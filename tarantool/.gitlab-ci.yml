@@ -1,0 +1,10 @@
+stages:
+    - build
+
+build:
+    stage: build
+    tags:
+        - docker
+    image: rust:1.45
+    script:
+        - cargo build
