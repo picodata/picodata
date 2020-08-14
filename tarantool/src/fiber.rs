@@ -34,20 +34,20 @@ impl<'a, T> Fiber<'a, T> {
         }
     }
 
-    pub fn wakeup(&mut self) {
+    pub fn wakeup(&self) {
         unsafe { c_api::fiber_wakeup(self.inner) }
     }
 
-    pub fn cancel(&mut self) {
-        unsafe { c_api::fiber_cancel(self.inner) }
+    pub fn join(&self) -> i32 {
+        unsafe { c_api::fiber_join(self.inner) }
     }
 
     pub fn set_joinable(&mut self, is_joinable: bool) {
         unsafe { c_api::fiber_set_joinable(self.inner, is_joinable) }
     }
 
-    pub fn join(&mut self) -> i32 {
-        unsafe { c_api::fiber_join(self.inner) }
+    pub fn cancel(&mut self) {
+        unsafe { c_api::fiber_cancel(self.inner) }
     }
 
     pub fn set_cancellable(is_cancellable: bool) -> bool {
@@ -66,10 +66,21 @@ impl<'a, T> Fiber<'a, T> {
         unsafe { c_api::fiber_time64() }
     }
 
-    pub fn reschedule() {
-        unsafe { c_api::fiber_reschedule() }
+    pub fn clock() -> f64 {
+        unsafe { c_api::fiber_clock() }
     }
 
+    pub fn clock64() -> u64 {
+        unsafe { c_api::fiber_clock64() }
+    }
+}
+
+pub fn fiber_yield() {
+    unsafe { c_api::fiber_yield() }
+}
+
+pub fn fiber_reschedule() {
+    unsafe { c_api::fiber_reschedule() }
 }
 
 unsafe fn unpack_callback<F, T>(callback: &mut F) -> (*mut c_void, c_api::FiberFunc)
