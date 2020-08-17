@@ -1,22 +1,20 @@
+use std::io::Cursor;
 use std::os::raw::c_char;
 
-use std::marker::PhantomData;
-use serde::{Serialize, Deserialize};
-use serde::de::DeserializeOwned;
-
 use rmp_serde::encode::Error as MsgpackError;
+use serde::{de::DeserializeOwned, Serialize};
 
 use crate::c_api::{self, BoxTuple};
-use std::io::Cursor;
 
 pub struct Tuple {
     ptr: *mut BoxTuple,
 }
 
 impl Tuple {
-    pub fn new_from_struct<T>(value: &T) -> Self where T: Serialize {
+    pub fn new_from_struct<T>(value: &T) -> Result<Self, MsgpackError> where T: Serialize {
         let format = unsafe { c_api::box_tuple_format_default() };
-        let buf = rmp_serde::to_vec(value).unwrap();
+        let buf = rmp_serde::to_vec(value)?;
+        println!("{:?}", buf);
         let buf_ptr = buf.as_ptr() as *const c_char;
         let tuple_ptr = unsafe { c_api::box_tuple_new(
             format,
@@ -24,7 +22,12 @@ impl Tuple {
             buf_ptr.offset(buf.len() as isize),
         ) };
 
-        Self{ptr: tuple_ptr}
+        unsafe { c_api::box_tuple_ref(tuple_ptr) };
+        Ok(Tuple{ptr: tuple_ptr})
+    }
+
+    pub(crate) fn from_ptr(ptr: *mut BoxTuple) -> Self {
+        Tuple{ptr}
     }
 
     pub fn field_count(&self) -> u32 {
@@ -35,7 +38,7 @@ impl Tuple {
         unsafe { c_api::box_tuple_bsize(self.ptr) }
     }
 
-    pub fn into_struct<T>(self) -> T where T: DeserializeOwned {
+    pub fn into_struct<T>(self) -> Result<T, MsgpackError> where T: DeserializeOwned {
         let raw_data_size = self.size();
         let mut raw_data = Vec::<u8>::with_capacity(raw_data_size);
         let actual_size = unsafe {
@@ -49,7 +52,7 @@ impl Tuple {
         unsafe { raw_data.set_len(actual_size as usize) };
 
         let reader = Cursor::new(raw_data);
-        rmp_serde::from_read::<_, T>(reader).unwrap()
+        Ok(rmp_serde::from_read::<_, T>(reader)?)
     }
 }
 
