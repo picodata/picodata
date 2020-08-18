@@ -6,7 +6,7 @@ authors = [
     "Anton Melnikov <volt0@picodata.io>"
 ]
 edition = "2018"
-license = "MIT"
+license = "BSD-2-Clause"
 readme = "README.md"
 
 [dependencies]

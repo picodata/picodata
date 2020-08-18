@@ -15,7 +15,6 @@ impl Tuple {
     pub fn new_from_struct<T>(value: &T) -> Result<Self, TupleEncodeError> where T: Serialize {
         let format = unsafe { c_api::box_tuple_format_default() };
         let buf = rmp_serde::to_vec(value)?;
-        println!("{:?}", buf);
         let buf_ptr = buf.as_ptr() as *const c_char;
         let tuple_ptr = unsafe { c_api::box_tuple_new(
             format,
