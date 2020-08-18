@@ -1,7 +1,8 @@
 use std::io::Cursor;
 use std::os::raw::c_char;
 
-use rmp_serde::encode::Error as MsgpackError;
+use rmp_serde::encode::Error as TupleEncodeError;
+use rmp_serde::decode::Error as TupleDecodeError;
 use serde::{de::DeserializeOwned, Serialize};
 
 use crate::c_api::{self, BoxTuple};
@@ -11,7 +12,7 @@ pub struct Tuple {
 }
 
 impl Tuple {
-    pub fn new_from_struct<T>(value: &T) -> Result<Self, MsgpackError> where T: Serialize {
+    pub fn new_from_struct<T>(value: &T) -> Result<Self, TupleEncodeError> where T: Serialize {
         let format = unsafe { c_api::box_tuple_format_default() };
         let buf = rmp_serde::to_vec(value)?;
         println!("{:?}", buf);
@@ -38,7 +39,7 @@ impl Tuple {
         unsafe { c_api::box_tuple_bsize(self.ptr) }
     }
 
-    pub fn into_struct<T>(self) -> Result<T, MsgpackError> where T: DeserializeOwned {
+    pub fn into_struct<T>(self) -> Result<T, TupleDecodeError> where T: DeserializeOwned {
         let raw_data_size = self.size();
         let mut raw_data = Vec::<u8>::with_capacity(raw_data_size);
         let actual_size = unsafe {
