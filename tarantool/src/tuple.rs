@@ -3,15 +3,15 @@ use std::os::raw::c_char;
 
 use serde::{de::DeserializeOwned, Serialize};
 
+use crate::Error;
 use crate::c_api::{self, BoxTuple};
-use crate::error::ModuleError;
 
 pub struct Tuple {
     ptr: *mut BoxTuple,
 }
 
 impl Tuple {
-    pub fn new_from_struct<T>(value: &T) -> Result<Self, ModuleError> where T: Serialize {
+    pub fn new_from_struct<T>(value: &T) -> Result<Self, Error> where T: Serialize {
         let format_ptr = unsafe { c_api::box_tuple_format_default() };
         let buf = rmp_serde::to_vec(value)?;
         let buf_ptr = buf.as_ptr() as *const c_char;
@@ -38,7 +38,7 @@ impl Tuple {
         unsafe { c_api::box_tuple_bsize(self.ptr) }
     }
 
-    pub fn into_struct<T>(self) -> Result<T, ModuleError> where T: DeserializeOwned {
+    pub fn into_struct<T>(self) -> Result<T, Error> where T: DeserializeOwned {
         let raw_data_size = self.size();
         let mut raw_data = Vec::<u8>::with_capacity(raw_data_size);
 
@@ -46,7 +46,7 @@ impl Tuple {
             c_api::box_tuple_to_buf(self.ptr, raw_data.as_ptr() as *mut c_char, raw_data_size)
         };
         if actual_size < 0 {
-            ModuleError::last()?;
+            Error::last()?;
         }
 
         unsafe { raw_data.set_len(actual_size as usize) };

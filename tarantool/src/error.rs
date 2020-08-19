@@ -8,7 +8,7 @@ use rmp_serde::encode::Error as EncodeError;
 use crate::c_api;
 
 #[derive(Debug, Fail)]
-pub enum ModuleError {
+pub enum Error {
     #[fail(display = "Tarantool error: {:?}: {}", code, message)]
     Tarantool{
         code: TarantoolError,
@@ -25,7 +25,7 @@ pub enum ModuleError {
     Decode(DecodeError),
 }
 
-impl ModuleError {
+impl Error {
     pub fn last() -> Result<(), Self> {
         let error_ptr = unsafe { c_api::box_error_last() };
         if error_ptr.is_null() {
@@ -42,28 +42,28 @@ impl ModuleError {
         let message = message.to_string_lossy().into_owned();
 
         unsafe { c_api::box_error_clear() };
-        Err(ModuleError::Tarantool{
+        Err(Error::Tarantool{
             code,
             message
         })
     }
 }
 
-impl From<io::Error> for ModuleError {
+impl From<io::Error> for Error {
     fn from(error: io::Error) -> Self {
-        ModuleError::IO(error)
+        Error::IO(error)
     }
 }
 
-impl From<EncodeError> for ModuleError {
+impl From<EncodeError> for Error {
     fn from(error: EncodeError) -> Self {
-        ModuleError::Encode(error)
+        Error::Encode(error)
     }
 }
 
-impl From<DecodeError> for ModuleError {
+impl From<DecodeError> for Error {
     fn from(error: DecodeError) -> Self {
-        ModuleError::Decode(error)
+        Error::Decode(error)
     }
 }
 

@@ -2,6 +2,7 @@
 #[macro_use] extern crate num_derive;
 
 pub use coio::{CoIOListener, CoIOStream};
+pub use error::Error;
 pub use fiber::Fiber;
 pub use space::Space;
 pub use tuple::Tuple;
