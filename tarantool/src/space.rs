@@ -1,9 +1,10 @@
+use std::marker::PhantomData;
 use std::os::raw::c_char;
 use std::ptr::null_mut;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
-use crate::{c_api, Error, Tuple};
+use crate::{AsTuple, c_api, Error, Tuple};
 
 pub struct Space {
     id: u32
@@ -42,8 +43,8 @@ impl Space {
     }
 
     pub fn insert<T>(&mut self, value: &T, with_result: bool) -> Result<Option<Tuple>, Error>
-            where T: Serialize {
-        let buf = rmp_serde::to_vec(value).unwrap();
+            where T: AsTuple {
+        let buf = value.serialize_as_tuple().unwrap();
         let buf_ptr = buf.as_ptr() as *const c_char;
         let mut result_ptr = null_mut::<c_api::BoxTuple>();
 
@@ -65,8 +66,8 @@ impl Space {
     }
 
     pub fn replace<T>(&mut self, value: &T, with_result: bool) -> Result<Option<Tuple>, Error>
-            where T: Serialize {
-        let buf = rmp_serde::to_vec(value).unwrap();
+            where T: AsTuple {
+        let buf = value.serialize_as_tuple().unwrap();
         let buf_ptr = buf.as_ptr() as *const c_char;
         let mut result_ptr = null_mut::<c_api::BoxTuple>();
 
@@ -87,9 +88,10 @@ impl Space {
         })
     }
 
-    pub fn delete(&mut self, index_id: u32, key: &Vec<String>, with_result: bool)
-            -> Result<Option<Tuple>, Error> {
-        let key_buf = rmp_serde::to_vec(key).unwrap();
+    pub fn delete<K>(&mut self, index_id: u32, key: &K, with_result: bool)
+            -> Result<Option<Tuple>, Error>
+            where K: AsTuple {
+        let key_buf = key.serialize_as_tuple().unwrap();
         let key_buf_ptr = key_buf.as_ptr() as *const c_char;
         let mut result_ptr = null_mut::<c_api::BoxTuple>();
 
@@ -111,12 +113,12 @@ impl Space {
         })
     }
 
-    pub fn update<Op>(&mut self, index_id: u32, key: &Vec<String>, ops: &Vec<Op>, index_base: i32, with_result: bool)
+    pub fn update<K, Op>(&mut self, index_id: u32, key: &K, ops: &Vec<Op>, index_base: i32, with_result: bool)
             -> Result<Option<Tuple>, Error>
-            where Op: Serialize {
-        let key_buf = rmp_serde::to_vec(key).unwrap();
+            where K: AsTuple, Op: AsTuple {
+        let key_buf = key.serialize_as_tuple().unwrap();
         let key_buf_ptr = key_buf.as_ptr() as *const c_char;
-        let ops_buf = rmp_serde::to_vec(ops).unwrap();
+        let ops_buf = ops.serialize_as_tuple().unwrap();
         let ops_buf_ptr = key_buf.as_ptr() as *const c_char;
         let mut result_ptr = null_mut::<c_api::BoxTuple>();
 
@@ -144,10 +146,10 @@ impl Space {
 
     pub fn upsert<T, Op>(&mut self, index_id: u32, value: &T, ops: &Vec<Op>, index_base: i32, with_result: bool)
             -> Result<Option<Tuple>, Error>
-            where T: Serialize, Op: Serialize {
-        let value_buf = rmp_serde::to_vec(value).unwrap();
+            where T: AsTuple, Op: AsTuple {
+        let value_buf = value.serialize_as_tuple().unwrap();
         let value_buf_ptr = value_buf.as_ptr() as *const c_char;
-        let ops_buf = rmp_serde::to_vec(ops).unwrap();
+        let ops_buf = ops.serialize_as_tuple().unwrap();
         let ops_buf_ptr = ops_buf.as_ptr() as *const c_char;
         let mut result_ptr = null_mut::<c_api::BoxTuple>();
 
@@ -177,5 +179,28 @@ impl Space {
             return Error::last();
         }
         Ok(())
+    }
+
+    pub fn get<K>(&self, index_id: u32, key: &K) -> Result<Option<Tuple>, Error> where K: AsTuple {
+        let key_buf = key.serialize_as_tuple().unwrap();
+        let key_buf_ptr = key_buf.as_ptr() as *const c_char;
+        let mut result_ptr = null_mut::<c_api::BoxTuple>();
+
+        if unsafe { c_api::box_index_get(
+            self.id,
+            index_id,
+            key_buf_ptr,
+            key_buf_ptr.offset(key_buf.len() as isize),
+            &mut result_ptr
+        ) } < 0 {
+            Error::last()?;
+        }
+
+        Ok(if result_ptr.is_null() {
+            None
+        }
+        else {
+            Some(Tuple::from_ptr(result_ptr))
+        })
     }
 }

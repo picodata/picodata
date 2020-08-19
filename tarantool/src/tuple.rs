@@ -3,15 +3,15 @@ use std::os::raw::c_char;
 
 use serde::{de::DeserializeOwned, Serialize};
 
-use crate::Error;
 use crate::c_api::{self, BoxTuple};
+use crate::Error;
 
 pub struct Tuple {
     ptr: *mut BoxTuple,
 }
 
 impl Tuple {
-    pub fn new_from_struct<T>(value: &T) -> Result<Self, Error> where T: Serialize {
+    pub fn new_from_struct<T>(value: &T) -> Result<Self, Error> where T: AsTuple {
         let format_ptr = unsafe { c_api::box_tuple_format_default() };
         let buf = rmp_serde::to_vec(value)?;
         let buf_ptr = buf.as_ptr() as *const c_char;
@@ -66,3 +66,12 @@ impl Clone for Tuple {
         Tuple{ptr: self.ptr}
     }
 }
+
+pub trait AsTuple: Serialize {
+    fn serialize_as_tuple(&self) -> Result<Vec<u8>, Error> {
+        Ok(rmp_serde::to_vec(self)?)
+    }
+}
+
+impl<T> AsTuple for (T,) where T: Serialize {}
+impl<T> AsTuple for Vec<T> where T: Serialize {}
