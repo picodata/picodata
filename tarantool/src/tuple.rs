@@ -25,6 +25,18 @@ impl Tuple {
         Ok(Tuple{ptr: tuple_ptr})
     }
 
+    pub(crate) fn from_raw_data(data_ptr: *mut c_char, len: u32) -> Self {
+        let format_ptr = unsafe { c_api::box_tuple_format_default() };
+        let tuple_ptr = unsafe { c_api::box_tuple_new(
+            format_ptr,
+            data_ptr,
+            data_ptr.offset(len as isize),
+        ) };
+
+        unsafe { c_api::box_tuple_ref(tuple_ptr) };
+        Tuple{ptr: tuple_ptr}
+    }
+
     pub(crate) fn from_ptr(ptr: *mut BoxTuple) -> Self {
         unsafe { c_api::box_tuple_ref(ptr) };
         Tuple{ptr}
@@ -51,6 +63,10 @@ impl Tuple {
 
         unsafe { raw_data.set_len(actual_size as usize) };
         Ok(rmp_serde::from_read::<_, T>(Cursor::new(raw_data))?)
+    }
+
+    pub(crate) fn into_ptr(self) -> *mut BoxTuple {
+        self.ptr
     }
 }
 

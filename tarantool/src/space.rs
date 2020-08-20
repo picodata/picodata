@@ -1,9 +1,7 @@
 use std::os::raw::c_char;
 use std::ptr::null_mut;
 
-use num_traits::ToPrimitive;
-
-use crate::{AsTuple, c_api, Error, Tuple};
+use crate::{AsTuple, c_api, Error, Index, Tuple};
 
 pub struct Space {
     id: u32
@@ -25,7 +23,7 @@ impl Space {
         })
     }
 
-    pub fn index_by_name(&self, name: &str) -> Result<Option<u32>, Error> {
+    pub fn index_by_name(&self, name: &str) -> Result<Option<Index>, Error> {
         let index_id = unsafe { c_api::box_index_id_by_name(
             self.id,
             name.as_ptr() as *const c_char,
@@ -37,7 +35,7 @@ impl Space {
             None
         }
         else {
-            Some(index_id)
+            Some(Index::new(self.id, index_id))
         })
     }
 
@@ -178,84 +176,5 @@ impl Space {
             return Error::last();
         }
         Ok(())
-    }
-
-    pub fn get<K>(&self, index_id: u32, key: &K) -> Result<Option<Tuple>, Error> where K: AsTuple {
-        let key_buf = key.serialize_as_tuple().unwrap();
-        let key_buf_ptr = key_buf.as_ptr() as *const c_char;
-        let mut result_ptr = null_mut::<c_api::BoxTuple>();
-
-        if unsafe { c_api::box_index_get(
-            self.id,
-            index_id,
-            key_buf_ptr,
-            key_buf_ptr.offset(key_buf.len() as isize),
-            &mut result_ptr
-        ) } < 0 {
-            Error::last()?;
-        }
-
-        Ok(if result_ptr.is_null() {
-            None
-        }
-        else {
-            Some(Tuple::from_ptr(result_ptr))
-        })
-    }
-
-    pub fn select<K>(&self, index_id: u32, iterator_type: c_api::IteratorType, key: &K)
-            -> Result<SpaceIterator, Error>
-            where K: AsTuple {
-
-        let key_buf = key.serialize_as_tuple().unwrap();
-        let key_buf_ptr = key_buf.as_ptr() as *const c_char;
-
-        let ptr = unsafe {
-            c_api::box_index_iterator(
-                self.id,
-                index_id,
-                iterator_type.to_i32().unwrap(),
-                key_buf_ptr,
-                key_buf_ptr.offset(key_buf.len() as isize),
-            )
-        };
-
-        if ptr.is_null() {
-            Error::last()?;
-        }
-
-        Ok(SpaceIterator{
-            ptr,
-            _key_data: key_buf
-        })
-    }
-}
-
-pub struct SpaceIterator {
-    ptr: *mut c_api::BoxIterator,
-    _key_data: Vec<u8>
-}
-
-impl Iterator for SpaceIterator {
-    type Item = Tuple;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let mut result_ptr = null_mut::<c_api::BoxTuple>();
-        if unsafe { c_api::box_iterator_next(self.ptr, &mut result_ptr) } < 0 {
-            return None;
-        }
-
-        if result_ptr.is_null() {
-            None
-        }
-        else {
-            Some(Tuple::from_ptr(result_ptr))
-        }
-    }
-}
-
-impl Drop for SpaceIterator {
-    fn drop(&mut self) {
-        unsafe { c_api::box_iterator_free(self.ptr) };
     }
 }
