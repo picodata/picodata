@@ -224,12 +224,16 @@ impl Space {
             Error::last()?;
         }
 
-        Ok(SpaceIterator{ptr})
+        Ok(SpaceIterator{
+            ptr,
+            _key_data: key_buf
+        })
     }
 }
 
 pub struct SpaceIterator {
     ptr: *mut c_api::BoxIterator,
+    _key_data: Vec<u8>
 }
 
 impl Iterator for SpaceIterator {
