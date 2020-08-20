@@ -748,11 +748,11 @@ pub struct BoxIterator {
  * to NULL.
  * For ITER_EQ, the key must not be NULL.
  */
-#[repr(u32)]
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+#[repr(i32)]
+#[derive(Debug, Copy, Clone, ToPrimitive)]
 pub enum IteratorType {
     /// key == x ASC order
-    EQ = 0,
+    Eq = 0,
 
     /// key == x DESC order
     Req = 1,
@@ -787,6 +787,7 @@ pub enum IteratorType {
     /// tuples in distance ascending order from specified point
     Neigbor = 11,
 }
+
 extern "C" {
     /**
      * Allocate and initialize iterator for space_id, index_id.

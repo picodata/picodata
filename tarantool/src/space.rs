@@ -1,8 +1,7 @@
-use std::marker::PhantomData;
 use std::os::raw::c_char;
 use std::ptr::null_mut;
 
-use serde::{Deserialize, Serialize};
+use num_traits::ToPrimitive;
 
 use crate::{AsTuple, c_api, Error, Tuple};
 
@@ -202,5 +201,57 @@ impl Space {
         else {
             Some(Tuple::from_ptr(result_ptr))
         })
+    }
+
+    pub fn select<K>(&self, index_id: u32, iterator_type: c_api::IteratorType, key: &K)
+            -> Result<SpaceIterator, Error>
+            where K: AsTuple {
+
+        let key_buf = key.serialize_as_tuple().unwrap();
+        let key_buf_ptr = key_buf.as_ptr() as *const c_char;
+
+        let ptr = unsafe {
+            c_api::box_index_iterator(
+                self.id,
+                index_id,
+                iterator_type.to_i32().unwrap(),
+                key_buf_ptr,
+                key_buf_ptr.offset(key_buf.len() as isize),
+            )
+        };
+
+        if ptr.is_null() {
+            Error::last()?;
+        }
+
+        Ok(SpaceIterator{ptr})
+    }
+}
+
+pub struct SpaceIterator {
+    ptr: *mut c_api::BoxIterator,
+}
+
+impl Iterator for SpaceIterator {
+    type Item = Tuple;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let mut result_ptr = null_mut::<c_api::BoxTuple>();
+        if unsafe { c_api::box_iterator_next(self.ptr, &mut result_ptr) } < 0 {
+            return None;
+        }
+
+        if result_ptr.is_null() {
+            None
+        }
+        else {
+            Some(Tuple::from_ptr(result_ptr))
+        }
+    }
+}
+
+impl Drop for SpaceIterator {
+    fn drop(&mut self) {
+        unsafe { c_api::box_iterator_free(self.ptr) };
     }
 }
