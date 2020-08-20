@@ -6,6 +6,7 @@ pub use error::Error;
 pub use fiber::Fiber;
 pub use index::{Index, IndexIterator};
 pub use space::Space;
+pub use transaction::start_transaction;
 pub use tuple::{AsTuple, Tuple};
 
 pub mod c_api;
@@ -14,4 +15,5 @@ pub mod fiber;
 mod coio;
 mod index;
 mod space;
+mod transaction;
 mod tuple;

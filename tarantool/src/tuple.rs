@@ -1,5 +1,6 @@
 use std::io::Cursor;
 use std::os::raw::c_char;
+use std::ptr::copy_nonoverlapping;
 
 use serde::{de::DeserializeOwned, Serialize};
 
@@ -13,7 +14,7 @@ pub struct Tuple {
 impl Tuple {
     pub fn new_from_struct<T>(value: &T) -> Result<Self, Error> where T: AsTuple {
         let format_ptr = unsafe { c_api::box_tuple_format_default() };
-        let buf = rmp_serde::to_vec(value)?;
+        let buf = value.serialize_as_tuple()?;
         let buf_ptr = buf.as_ptr() as *const c_char;
         let tuple_ptr = unsafe { c_api::box_tuple_new(
             format_ptr,
@@ -84,10 +85,51 @@ impl Clone for Tuple {
 }
 
 pub trait AsTuple: Serialize {
-    fn serialize_as_tuple(&self) -> Result<Vec<u8>, Error> {
-        Ok(rmp_serde::to_vec(self)?)
+    fn serialize_as_tuple(&self) -> Result<TupleBuffer, Error> {
+        Ok(rmp_serde::to_vec(self)?.into())
     }
 }
 
 impl<T> AsTuple for (T,) where T: Serialize {}
 impl<T> AsTuple for Vec<T> where T: Serialize {}
+
+pub enum TupleBuffer {
+    Vector(Vec<u8>),
+    TransactionScoped{
+        ptr: *mut u8,
+        size: usize,
+    },
+}
+
+impl TupleBuffer {
+    pub fn as_ptr(&self) -> *const u8 {
+        match self {
+            TupleBuffer::Vector(vec) => vec.as_ptr(),
+            TupleBuffer::TransactionScoped { ptr, size: _ } => ptr.clone()
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        match self {
+            TupleBuffer::Vector(vec) => vec.len(),
+            TupleBuffer::TransactionScoped { ptr: _, size } => size.clone()
+        }
+    }
+}
+
+impl From<Vec<u8>> for TupleBuffer {
+    fn from(buf: Vec<u8>) -> Self {
+        if unsafe { c_api::box_txn() } {
+            let size = buf.len();
+            unsafe {
+                let ptr = c_api::box_txn_alloc(size) as *mut u8;
+                copy_nonoverlapping(buf.as_ptr(), ptr, size);
+
+                Self::TransactionScoped{ptr, size}
+            }
+        }
+        else {
+            Self::Vector(buf)
+        }
+    }
+}

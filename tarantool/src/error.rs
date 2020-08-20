@@ -23,6 +23,9 @@ pub enum Error {
 
     #[fail(display = "Failed to decode tuple: {}", _0)]
     Decode(DecodeError),
+
+    #[fail(display = "Transaction issue: {}", _0)]
+    Transaction(TransactionError),
 }
 
 impl Error {
@@ -66,6 +69,25 @@ impl From<DecodeError> for Error {
         Error::Decode(error)
     }
 }
+
+#[derive(Debug, Fail)]
+pub enum TransactionError {
+    #[fail(display = "Transaction has already been started")]
+    AlreadyStarted,
+
+    #[fail(display = "Failed to commit")]
+    FailedToCommit,
+
+    #[fail(display = "Failed to rollback")]
+    FailedToRollback,
+}
+
+impl From<TransactionError> for Error {
+    fn from(error: TransactionError) -> Self {
+        Error::Transaction(error)
+    }
+}
+
 
 #[repr(u32)]
 #[derive(Debug, FromPrimitive)]

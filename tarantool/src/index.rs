@@ -4,6 +4,7 @@ use std::ptr::null_mut;
 use num_traits::ToPrimitive;
 
 use crate::{AsTuple, c_api, Error, Tuple};
+use crate::tuple::TupleBuffer;
 
 pub struct Index {
     space_id: u32,
@@ -191,7 +192,7 @@ impl Index {
 
 pub struct IndexIterator {
     ptr: *mut c_api::BoxIterator,
-    _key_data: Vec<u8>
+    _key_data: TupleBuffer
 }
 
 impl Iterator for IndexIterator {
