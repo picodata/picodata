@@ -4,7 +4,7 @@ use std::os::raw::c_void;
 
 use va_list::VaList;
 
-use super::c_api::{self};
+use super::c_api;
 
 pub struct Fiber<'a, T: 'a> {
     inner: *mut c_api::Fiber,
