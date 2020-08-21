@@ -3,15 +3,15 @@ use std::os::raw::c_char;
 
 use serde::{de::DeserializeOwned, Serialize};
 
-use crate::Error;
 use crate::c_api::{self, BoxTuple};
+use crate::Error;
 
 pub struct Tuple {
     ptr: *mut BoxTuple,
 }
 
 impl Tuple {
-    pub fn new_from_struct<T>(value: &T) -> Result<Self, Error> where T: Serialize {
+    pub fn new_from_struct<T>(value: &T) -> Result<Self, Error> where T: AsTuple {
         let format_ptr = unsafe { c_api::box_tuple_format_default() };
         let buf = rmp_serde::to_vec(value)?;
         let buf_ptr = buf.as_ptr() as *const c_char;
@@ -23,6 +23,18 @@ impl Tuple {
 
         unsafe { c_api::box_tuple_ref(tuple_ptr) };
         Ok(Tuple{ptr: tuple_ptr})
+    }
+
+    pub(crate) fn from_raw_data(data_ptr: *mut c_char, len: u32) -> Self {
+        let format_ptr = unsafe { c_api::box_tuple_format_default() };
+        let tuple_ptr = unsafe { c_api::box_tuple_new(
+            format_ptr,
+            data_ptr,
+            data_ptr.offset(len as isize),
+        ) };
+
+        unsafe { c_api::box_tuple_ref(tuple_ptr) };
+        Tuple{ptr: tuple_ptr}
     }
 
     pub(crate) fn from_ptr(ptr: *mut BoxTuple) -> Self {
@@ -52,6 +64,10 @@ impl Tuple {
         unsafe { raw_data.set_len(actual_size as usize) };
         Ok(rmp_serde::from_read::<_, T>(Cursor::new(raw_data))?)
     }
+
+    pub(crate) fn into_ptr(self) -> *mut BoxTuple {
+        self.ptr
+    }
 }
 
 impl Drop for Tuple {
@@ -66,3 +82,12 @@ impl Clone for Tuple {
         Tuple{ptr: self.ptr}
     }
 }
+
+pub trait AsTuple: Serialize {
+    fn serialize_as_tuple(&self) -> Result<Vec<u8>, Error> {
+        Ok(rmp_serde::to_vec(self)?)
+    }
+}
+
+impl<T> AsTuple for (T,) where T: Serialize {}
+impl<T> AsTuple for Vec<T> where T: Serialize {}
