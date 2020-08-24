@@ -17,3 +17,10 @@ mod index;
 mod space;
 mod transaction;
 mod tuple;
+
+#[cfg(feature = "with_tests")]
+pub mod integration_tests {
+    pub fn test_test() {
+        assert!(true);
+    }
+}
