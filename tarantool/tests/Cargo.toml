@@ -16,7 +16,6 @@ git = "https://github.com/picodata/luajit-rs"
 
 [dependencies.tarantool-module]
 path = ".."
-features = ["with_tests"]
 
 [lib]
 crate-type = ["cdylib"]

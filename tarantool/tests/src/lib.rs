@@ -7,7 +7,23 @@ use tester::{
     TestFn, TestName, TestOpts, TestType
 };
 
-pub fn run() -> Result<bool, io::Error>{
+mod test_fiber;
+mod test_space;
+
+fn add_test_default(name: &'static str, f: fn()) -> TestDescAndFn {
+    TestDescAndFn{
+        desc: TestDesc{
+            name: TestName::StaticTestName(name),
+            ignore: false,
+            should_panic: ShouldPanic::No,
+            allow_fail: false,
+            test_type: TestType::UnitTest
+        },
+        testfn: TestFn::StaticTestFn(f)
+    }
+}
+
+fn run() -> Result<bool, io::Error>{
     let opts = TestOpts{
         list: false,
         filter: None,
@@ -28,16 +44,10 @@ pub fn run() -> Result<bool, io::Error>{
     };
 
     let tests = vec![
-        TestDescAndFn{
-            desc: TestDesc{
-                name: TestName::StaticTestName("test_test"),
-                ignore: false,
-                should_panic: ShouldPanic::No,
-                allow_fail: false,
-                test_type: TestType::UnitTest
-            },
-            testfn: TestFn::StaticTestFn(tarantool_module::integration_tests::test_test)
-        }
+        add_test_default("fiber", test_fiber::test_fiber),
+        add_test_default("fiber_arg", test_fiber::test_fiber_arg),
+        add_test_default("fiber_cancel", test_fiber::test_fiber_cancel),
+        add_test_default("fiber_wake", test_fiber::test_fiber_wake),
     ];
 
     run_tests_console(&opts, tests)

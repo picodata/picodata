@@ -13,8 +13,7 @@ pub struct Fiber<'a, T: 'a> {
 }
 
 impl<'a, T> Fiber<'a, T> {
-    pub fn new<F>(name: &str, callback: &mut F) -> Self
-        where F: FnMut(Box<T>) -> i32
+    pub fn new<F>(name: &str, callback: &mut F) -> Self where F: FnMut(Box<T>) -> i32
     {
         let (callback_ptr, trampoline) = unsafe { unpack_callback(callback) };
         Self {
@@ -49,30 +48,34 @@ impl<'a, T> Fiber<'a, T> {
     pub fn cancel(&mut self) {
         unsafe { c_api::fiber_cancel(self.inner) }
     }
+}
 
-    pub fn set_cancellable(is_cancellable: bool) -> bool {
-        unsafe { c_api::fiber_set_cancellable(is_cancellable) }
-    }
+pub fn set_cancellable(is_cancellable: bool) -> bool {
+    unsafe { c_api::fiber_set_cancellable(is_cancellable) }
+}
 
-    pub fn is_cancelled() -> bool {
-        unsafe { c_api::fiber_is_cancelled() }
-    }
+pub fn is_cancelled() -> bool {
+    unsafe { c_api::fiber_is_cancelled() }
+}
 
-    pub fn time() -> f64 {
-        unsafe { c_api::fiber_time() }
-    }
+pub fn sleep(time: f64) {
+    unsafe { c_api::fiber_sleep(time) }
+}
 
-    pub fn time64() -> u64 {
-        unsafe { c_api::fiber_time64() }
-    }
+pub fn time() -> f64 {
+    unsafe { c_api::fiber_time() }
+}
 
-    pub fn clock() -> f64 {
-        unsafe { c_api::fiber_clock() }
-    }
+pub fn time64() -> u64 {
+    unsafe { c_api::fiber_time64() }
+}
 
-    pub fn clock64() -> u64 {
-        unsafe { c_api::fiber_clock64() }
-    }
+pub fn clock() -> f64 {
+    unsafe { c_api::fiber_clock() }
+}
+
+pub fn clock64() -> u64 {
+    unsafe { c_api::fiber_clock64() }
 }
 
 pub fn fiber_yield() {
