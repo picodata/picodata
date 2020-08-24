@@ -21,7 +21,7 @@ pub fn run() -> Result<bool, io::Error>{
         nocapture: false,
         color: ColorConfig::AutoColor,
         format: OutputFormat::Pretty,
-        test_threads: None,
+        test_threads: Some(1),
         skip: vec![],
         time_options: None,
         options: Options::new()
