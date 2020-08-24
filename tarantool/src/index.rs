@@ -65,6 +65,92 @@ impl Index {
         })
     }
 
+    pub fn delete<K>(&mut self, key: &K, with_result: bool)
+        -> Result<Option<Tuple>, Error>
+        where K: AsTuple {
+        let key_buf = key.serialize_as_tuple().unwrap();
+        let key_buf_ptr = key_buf.as_ptr() as *const c_char;
+        let mut result_ptr = null_mut::<c_api::BoxTuple>();
+
+        if unsafe { c_api::box_delete(
+            self.space_id,
+            self.index_id,
+            key_buf_ptr,
+            key_buf_ptr.offset(key_buf.len() as isize),
+            if with_result { &mut result_ptr } else { null_mut() }
+        ) } < 0 {
+            return Error::last().map(|_| None);
+        }
+
+        Ok(if with_result {
+            Some(Tuple::from_ptr(result_ptr))
+        }
+        else {
+            None
+        })
+    }
+
+    pub fn update<K, Op>(&mut self, key: &K, ops: &Vec<Op>, with_result: bool)
+        -> Result<Option<Tuple>, Error>
+        where K: AsTuple, Op: AsTuple {
+        let key_buf = key.serialize_as_tuple().unwrap();
+        let key_buf_ptr = key_buf.as_ptr() as *const c_char;
+        let ops_buf = ops.serialize_as_tuple().unwrap();
+        let ops_buf_ptr = ops_buf.as_ptr() as *const c_char;
+        let mut result_ptr = null_mut::<c_api::BoxTuple>();
+
+        if unsafe { c_api::box_update(
+            self.space_id,
+            self.index_id,
+            key_buf_ptr,
+            key_buf_ptr.offset(key_buf.len() as isize),
+            ops_buf_ptr,
+            ops_buf_ptr.offset(ops_buf.len() as isize),
+            0,
+            if with_result { &mut result_ptr } else { null_mut() }
+        ) } < 0 {
+            return Error::last().map(|_| None);
+        }
+
+
+        Ok(if with_result {
+            Some(Tuple::from_ptr(result_ptr))
+        }
+        else {
+            None
+        })
+    }
+
+    pub fn upsert<T, Op>(&mut self, value: &T, ops: &Vec<Op>, with_result: bool)
+        -> Result<Option<Tuple>, Error>
+        where T: AsTuple, Op: AsTuple {
+        let value_buf = value.serialize_as_tuple().unwrap();
+        let value_buf_ptr = value_buf.as_ptr() as *const c_char;
+        let ops_buf = ops.serialize_as_tuple().unwrap();
+        let ops_buf_ptr = ops_buf.as_ptr() as *const c_char;
+        let mut result_ptr = null_mut::<c_api::BoxTuple>();
+
+        if unsafe { c_api::box_upsert(
+            self.space_id,
+            self.index_id,
+            value_buf_ptr,
+            value_buf_ptr.offset(value_buf.len() as isize),
+            ops_buf_ptr,
+            ops_buf_ptr.offset(ops_buf.len() as isize),
+            0,
+            if with_result { &mut result_ptr } else { null_mut() }
+        ) } < 0 {
+            return Error::last().map(|_| None);
+        }
+
+        Ok(if with_result && !result_ptr.is_null() {
+            Some(Tuple::from_ptr(result_ptr))
+        }
+        else {
+            None
+        })
+    }
+
     pub fn len(&self) -> Result<usize, Error> {
         let result = unsafe { c_api::box_index_len(
             self.space_id,

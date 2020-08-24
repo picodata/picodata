@@ -8,7 +8,7 @@ use tester::{
 };
 
 mod test_fiber;
-mod test_space;
+mod test_box;
 
 fn add_test_default(name: &'static str, f: fn()) -> TestDescAndFn {
     TestDescAndFn{
@@ -48,6 +48,22 @@ fn run() -> Result<bool, io::Error>{
         add_test_default("fiber_arg", test_fiber::test_fiber_arg),
         add_test_default("fiber_cancel", test_fiber::test_fiber_cancel),
         add_test_default("fiber_wake", test_fiber::test_fiber_wake),
+
+        add_test_default("box_space_get_by_name", test_box::test_space_get_by_name),
+        add_test_default("box_index_get_by_name", test_box::test_index_get_by_name),
+        add_test_default("box_insert", test_box::test_box_insert),
+        add_test_default("box_replace", test_box::test_box_replace),
+        add_test_default("box_delete", test_box::test_box_delete),
+        add_test_default("box_update", test_box::test_box_update),
+        add_test_default("box_upsert", test_box::test_box_upsert),
+        add_test_default("box_truncate", test_box::test_box_truncate),
+        add_test_default("box_get", test_box::test_box_get),
+        add_test_default("box_select", test_box::test_box_select),
+        add_test_default("box_len", test_box::test_box_len),
+        add_test_default("box_random", test_box::test_box_random),
+        add_test_default("box_min_max", test_box::test_box_min_max),
+        add_test_default("box_count", test_box::test_box_count),
+        add_test_default("box_extract_key", test_box::test_box_extract_key),
     ];
 
     run_tests_console(&opts, tests)

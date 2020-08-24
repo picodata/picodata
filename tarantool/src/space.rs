@@ -39,6 +39,10 @@ impl Space {
         })
     }
 
+    pub fn primary_key(&self) -> Index {
+        Index::new(self.id, 0)
+    }
+
     pub fn insert<T>(&mut self, value: &T, with_result: bool) -> Result<Option<Tuple>, Error>
             where T: AsTuple {
         let buf = value.serialize_as_tuple().unwrap();
@@ -72,92 +76,6 @@ impl Space {
             self.id,
             buf_ptr,
             buf_ptr.offset(buf.len() as isize),
-            if with_result { &mut result_ptr } else { null_mut() }
-        ) } < 0 {
-            return Error::last().map(|_| None);
-        }
-
-        Ok(if with_result {
-            Some(Tuple::from_ptr(result_ptr))
-        }
-        else {
-            None
-        })
-    }
-
-    pub fn delete<K>(&mut self, index_id: u32, key: &K, with_result: bool)
-            -> Result<Option<Tuple>, Error>
-            where K: AsTuple {
-        let key_buf = key.serialize_as_tuple().unwrap();
-        let key_buf_ptr = key_buf.as_ptr() as *const c_char;
-        let mut result_ptr = null_mut::<c_api::BoxTuple>();
-
-        if unsafe { c_api::box_delete(
-            self.id,
-            index_id,
-            key_buf_ptr,
-            key_buf_ptr.offset(key_buf.len() as isize),
-            if with_result { &mut result_ptr } else { null_mut() }
-        ) } < 0 {
-            return Error::last().map(|_| None);
-        }
-
-        Ok(if with_result {
-            Some(Tuple::from_ptr(result_ptr))
-        }
-        else {
-            None
-        })
-    }
-
-    pub fn update<K, Op>(&mut self, index_id: u32, key: &K, ops: &Vec<Op>, index_base: i32, with_result: bool)
-            -> Result<Option<Tuple>, Error>
-            where K: AsTuple, Op: AsTuple {
-        let key_buf = key.serialize_as_tuple().unwrap();
-        let key_buf_ptr = key_buf.as_ptr() as *const c_char;
-        let ops_buf = ops.serialize_as_tuple().unwrap();
-        let ops_buf_ptr = key_buf.as_ptr() as *const c_char;
-        let mut result_ptr = null_mut::<c_api::BoxTuple>();
-
-        if unsafe { c_api::box_update(
-            self.id,
-            index_id,
-            key_buf_ptr,
-            key_buf_ptr.offset(key_buf.len() as isize),
-            ops_buf_ptr,
-            ops_buf_ptr.offset(ops_buf.len() as isize),
-            index_base,
-            if with_result { &mut result_ptr } else { null_mut() }
-        ) } < 0 {
-            return Error::last().map(|_| None);
-        }
-
-
-        Ok(if with_result {
-            Some(Tuple::from_ptr(result_ptr))
-        }
-        else {
-            None
-        })
-    }
-
-    pub fn upsert<T, Op>(&mut self, index_id: u32, value: &T, ops: &Vec<Op>, index_base: i32, with_result: bool)
-            -> Result<Option<Tuple>, Error>
-            where T: AsTuple, Op: AsTuple {
-        let value_buf = value.serialize_as_tuple().unwrap();
-        let value_buf_ptr = value_buf.as_ptr() as *const c_char;
-        let ops_buf = ops.serialize_as_tuple().unwrap();
-        let ops_buf_ptr = ops_buf.as_ptr() as *const c_char;
-        let mut result_ptr = null_mut::<c_api::BoxTuple>();
-
-        if unsafe { c_api::box_upsert(
-            self.id,
-            index_id,
-            value_buf_ptr,
-            value_buf_ptr.offset(value_buf.len() as isize),
-            ops_buf_ptr,
-            ops_buf_ptr.offset(ops_buf.len() as isize),
-            index_base,
             if with_result { &mut result_ptr } else { null_mut() }
         ) } < 0 {
             return Error::last().map(|_| None);

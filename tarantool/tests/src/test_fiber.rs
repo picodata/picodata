@@ -33,7 +33,6 @@ pub fn test_fiber_cancel() {
 
 pub fn test_fiber_wake() {
     let mut fiber = Fiber::new("test_fiber", &mut |_| {
-        sleep(0.01);
         fiber_yield();
         0
     });
