@@ -9,9 +9,6 @@ edition = "2018"
 license = "BSD-2-Clause"
 readme = "README.md"
 
-[features]
-with_tests = []
-
 [dependencies]
 failure = "0.1.8"
 num-traits = "0.2"
