@@ -14,7 +14,12 @@ pub struct CoIOStream<T> {
     inner: T
 }
 
-impl<T> CoIOStream<T> {
+impl<T> CoIOStream<T> where T: Read + Write + AsRawFd{
+    pub fn new(inner: TcpStream) -> Result<CoIOStream<TcpStream>, io::Error> {
+        inner.set_nonblocking(true)?;
+        Ok(CoIOStream{inner})
+    }
+
     pub fn inner_stream(&mut self) -> &mut T {
         &mut self.inner
     }
