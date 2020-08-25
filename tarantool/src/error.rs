@@ -44,7 +44,6 @@ impl Error {
         let message = unsafe { CStr::from_ptr(c_api::box_error_message(error_ptr)) };
         let message = message.to_string_lossy().into_owned();
 
-        unsafe { c_api::box_error_clear() };
         Err(Error::Tarantool{
             code,
             message

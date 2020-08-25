@@ -82,7 +82,7 @@ impl Index {
             return Error::last().map(|_| None);
         }
 
-        Ok(if with_result {
+        Ok(if with_result && !result_ptr.is_null(){
             Some(Tuple::from_ptr(result_ptr))
         }
         else {
@@ -109,11 +109,12 @@ impl Index {
             0,
             if with_result { &mut result_ptr } else { null_mut() }
         ) } < 0 {
+            println!("{:?}", Error::last());
             return Error::last().map(|_| None);
         }
 
 
-        Ok(if with_result {
+        Ok(if with_result && !result_ptr.is_null() {
             Some(Tuple::from_ptr(result_ptr))
         }
         else {

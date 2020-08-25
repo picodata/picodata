@@ -8,8 +8,9 @@ use tester::{
 };
 
 mod common;
-mod test_fiber;
 mod test_box;
+mod test_error;
+mod test_fiber;
 mod test_transaction;
 mod test_tuple;
 
@@ -76,6 +77,8 @@ fn run() -> Result<bool, io::Error>{
 
         add_test_default("transaction_commit", test_transaction::test_transaction_commit),
         add_test_default("transaction_rollback", test_transaction::test_transaction_rollback),
+
+        add_test_default("error_last", test_error::test_error_last),
     ];
 
     run_tests_console(&opts, tests)
