@@ -1,36 +1,10 @@
 use rand::Rng;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 
 use tarantool_module::{AsTuple, Space, Tuple};
 use tarantool_module::c_api::IteratorType;
 
-#[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
-struct S1Record {
-    id: u32,
-    text: String,
-}
-
-impl AsTuple for S1Record {}
-
-#[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
-struct S2Record {
-    id: u32,
-    key: String,
-    value: String,
-    a: i32,
-    b: i32,
-}
-
-impl AsTuple for S2Record {}
-
-#[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
-struct S2Key {
-    id: u32,
-    a: i32,
-    b: i32,
-}
-
-impl AsTuple for S2Key {}
+use crate::common::{S1Record, S2Key, S2Record};
 
 #[derive(Serialize)]
 struct QueryOperation {

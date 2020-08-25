@@ -7,8 +7,10 @@ use tester::{
     TestFn, TestName, TestOpts, TestType
 };
 
+mod common;
 mod test_fiber;
 mod test_box;
+mod test_tuple;
 
 fn add_test_default(name: &'static str, f: fn()) -> TestDescAndFn {
     TestDescAndFn{
@@ -64,6 +66,12 @@ fn run() -> Result<bool, io::Error>{
         add_test_default("box_min_max", test_box::test_box_min_max),
         add_test_default("box_count", test_box::test_box_count),
         add_test_default("box_extract_key", test_box::test_box_extract_key),
+
+        add_test_default("tuple_new_from_struct", test_tuple::test_tuple_new_from_struct),
+        add_test_default("tuple_field_count", test_tuple::test_tuple_field_count),
+        add_test_default("tuple_size", test_tuple::test_tuple_size),
+        add_test_default("tuple_into_struct", test_tuple::test_tuple_into_struct),
+        add_test_default("tuple_clone", test_tuple::test_tuple_clone),
     ];
 
     run_tests_console(&opts, tests)
