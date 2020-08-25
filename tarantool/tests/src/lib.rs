@@ -10,6 +10,7 @@ use tester::{
 mod common;
 mod test_fiber;
 mod test_box;
+mod test_transaction;
 mod test_tuple;
 
 fn add_test_default(name: &'static str, f: fn()) -> TestDescAndFn {
@@ -72,6 +73,9 @@ fn run() -> Result<bool, io::Error>{
         add_test_default("tuple_size", test_tuple::test_tuple_size),
         add_test_default("tuple_into_struct", test_tuple::test_tuple_into_struct),
         add_test_default("tuple_clone", test_tuple::test_tuple_clone),
+
+        add_test_default("transaction_commit", test_transaction::test_transaction_commit),
+        add_test_default("transaction_rollback", test_transaction::test_transaction_rollback),
     ];
 
     run_tests_console(&opts, tests)
