@@ -5,11 +5,10 @@ use std::net::{TcpListener, TcpStream};
 use std::os::raw::c_int;
 use std::os::unix::io::AsRawFd;
 
-use crate::c_api;
-
 pub const TIMEOUT_INFINITY: f64 = 365.0 * 86400.0 * 100.0;
 
 
+/// Uses CoIO main loop to poll read/write events from wrapped socket
 pub struct CoIOStream<T> {
     inner: T
 }
@@ -30,7 +29,7 @@ impl<T> Read for CoIOStream<T> where T: Read + AsRawFd {
         let res = self.inner.read(buf);
         match res {
             Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
-                wait(&self.inner, c_api::CoioFlags::Read, TIMEOUT_INFINITY)?;
+                wait(&self.inner, ffi::CoioFlags::Read, TIMEOUT_INFINITY)?;
                 self.inner.read(buf)
             }
             res => res,
@@ -43,7 +42,7 @@ impl<T> Write for CoIOStream<T> where T: Write + AsRawFd {
         let res = self.inner.write(buf);
         match res {
             Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
-                wait(&self.inner, c_api::CoioFlags::Write, TIMEOUT_INFINITY)?;
+                wait(&self.inner, ffi::CoioFlags::Write, TIMEOUT_INFINITY)?;
                 self.inner.write(buf)
             }
             res => res,
@@ -55,6 +54,7 @@ impl<T> Write for CoIOStream<T> where T: Write + AsRawFd {
     }
 }
 
+/// Uses CoIO main loop to poll incoming connections from wrapped socket listener
 pub struct CoIOListener {
     inner: TcpListener
 }
@@ -73,7 +73,7 @@ impl CoIOListener {
 
                 Err(e) => {
                     if e.kind() == io::ErrorKind::WouldBlock {
-                        wait(&self.inner, c_api::CoioFlags::Read, TIMEOUT_INFINITY)?;
+                        wait(&self.inner, ffi::CoioFlags::Read, TIMEOUT_INFINITY)?;
                         continue;
                     }
                     Err(e)
@@ -98,9 +98,27 @@ impl TryFrom<TcpListener> for CoIOListener {
     }
 }
 
-fn wait<T>(fp: &T, flags: c_api::CoioFlags, timeout: f64) -> Result<(), io::Error> where T: AsRawFd{
-    match unsafe { c_api::coio_wait(fp.as_raw_fd(), flags as c_int, timeout) } {
+fn wait<T>(fp: &T, flags: ffi::CoioFlags, timeout: f64) -> Result<(), io::Error> where T: AsRawFd{
+    match unsafe { ffi::coio_wait(fp.as_raw_fd(), flags as c_int, timeout) } {
         0 => Err(io::ErrorKind::TimedOut.into()),
         _ => Ok(())
+    }
+}
+
+mod ffi {
+    use std::os::raw::c_int;
+
+    #[repr(u32)]
+    #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+    pub enum CoioFlags {
+        Read = 1,
+        Write = 2,
+    }
+
+    extern "C" {
+        pub fn coio_wait(fd: c_int, event: c_int, timeout: f64) -> c_int;
+
+        #[allow(dead_code)]
+        pub fn coio_close(fd: c_int) -> c_int;
     }
 }

@@ -2,7 +2,7 @@ use rand::Rng;
 use serde::Serialize;
 
 use tarantool_module::{AsTuple, Space, Tuple};
-use tarantool_module::c_api::IteratorType;
+use tarantool_module::index::IteratorType;
 
 use crate::common::{S1Record, S2Key, S2Record};
 

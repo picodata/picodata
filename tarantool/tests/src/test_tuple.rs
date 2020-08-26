@@ -18,15 +18,15 @@ pub fn test_tuple_field_count() {
         a: 2,
         b: 3
     }).unwrap();
-    assert_eq!(tuple.field_count(), 5);
+    assert_eq!(tuple.len(), 5);
 
     // tuple w/ single field
     let tuple = Tuple::new_from_struct(&(0,)).unwrap();
-    assert_eq!(tuple.field_count(), 1);
+    assert_eq!(tuple.len(), 1);
 
     // empty tuple
     let tuple = Tuple::new_from_struct::<Vec<()>>(&vec![]).unwrap();
-    assert_eq!(tuple.field_count(), 0);
+    assert_eq!(tuple.len(), 0);
 }
 
 pub fn test_tuple_size() {

@@ -6,8 +6,6 @@ use num_traits::FromPrimitive;
 use rmp_serde::decode::Error as DecodeError;
 use rmp_serde::encode::Error as EncodeError;
 
-use crate::c_api;
-
 #[derive(Debug, Fail)]
 pub enum Error {
     #[fail(display = "Tarantool error: {}", _0)]
@@ -70,18 +68,18 @@ pub struct TarantoolError {
 
 impl TarantoolError {
     pub fn maybe_last() -> Result<(), Self> {
-        let error_ptr = unsafe { c_api::box_error_last() };
+        let error_ptr = unsafe { ffi::box_error_last() };
         if error_ptr.is_null() {
             return Ok(())
         }
 
-        let code = unsafe { c_api::box_error_code(error_ptr) };
+        let code = unsafe { ffi::box_error_code(error_ptr) };
         let code = match TarantoolErrorCode::from_u32(code) {
             Some(code) => code,
             None => TarantoolErrorCode::Unknown,
         };
 
-        let message = unsafe { CStr::from_ptr(c_api::box_error_message(error_ptr)) };
+        let message = unsafe { CStr::from_ptr(ffi::box_error_message(error_ptr)) };
         let message = message.to_string_lossy().into_owned();
 
         Err(TarantoolError{
@@ -312,4 +310,23 @@ pub enum TarantoolErrorCode {
     FuncIndexFormat = 199,
     FuncIndexParts = 200,
     BootstrapReadonly = 201,
+}
+
+mod ffi {
+    use std::os::raw::c_char;
+
+    #[repr(C)]
+    #[derive(Debug, Copy, Clone)]
+    pub struct BoxError {
+        _unused: [u8; 0],
+    }
+
+    extern "C" {
+        pub fn box_error_code(error: *const BoxError) -> u32;
+        pub fn box_error_message(error: *const BoxError) -> *const c_char;
+        pub fn box_error_last() -> *mut BoxError;
+
+        #[allow(dead_code)]
+        pub fn box_error_type(error: *const BoxError) -> *const c_char;
+    }
 }
