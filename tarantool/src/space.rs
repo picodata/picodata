@@ -2,6 +2,7 @@ use std::os::raw::c_char;
 use std::ptr::null_mut;
 
 use crate::{AsTuple, c_api, Error, Index, Tuple};
+use crate::error::TarantoolError;
 
 pub struct Space {
     id: u32
@@ -14,13 +15,12 @@ impl Space {
             name.len() as u32
         )};
 
-        Ok(if id == c_api::BOX_ID_NIL {
-            Error::last()?;
-            None
+        if id == c_api::BOX_ID_NIL {
+            TarantoolError::maybe_last().map(|_| None).map_err(|e| e.into())
         }
         else {
-            Some(Self{id})
-        })
+            Ok(Some(Self{id}))
+        }
     }
 
     pub fn index_by_name(&self, name: &str) -> Result<Option<Index>, Error> {
@@ -30,13 +30,12 @@ impl Space {
             name.len() as u32
         )};
 
-        Ok(if index_id == c_api::BOX_ID_NIL {
-            Error::last()?;
-            None
+        if index_id == c_api::BOX_ID_NIL {
+            TarantoolError::maybe_last().map(|_| None).map_err(|e| e.into())
         }
         else {
-            Some(Index::new(self.id, index_id))
-        })
+            Ok(Some(Index::new(self.id, index_id)))
+        }
     }
 
     pub fn primary_key(&self) -> Index {
@@ -55,7 +54,7 @@ impl Space {
             buf_ptr.offset(buf.len() as isize),
             if with_result { &mut result_ptr } else { null_mut() }
         ) } < 0 {
-            return Error::last().map(|_| None);
+            return Err(TarantoolError::last().into());
         }
 
         Ok(if with_result {
@@ -78,7 +77,7 @@ impl Space {
             buf_ptr.offset(buf.len() as isize),
             if with_result { &mut result_ptr } else { null_mut() }
         ) } < 0 {
-            return Error::last().map(|_| None);
+            return Err(TarantoolError::last().into());
         }
 
         Ok(if with_result {
@@ -91,7 +90,7 @@ impl Space {
 
     pub fn truncate(&mut self) -> Result<(), Error> {
         if unsafe { c_api::box_truncate(self.id) } < 0 {
-            return Error::last();
+            return Err(TarantoolError::last().into());
         }
         Ok(())
     }

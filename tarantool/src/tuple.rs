@@ -5,7 +5,7 @@ use std::ptr::copy_nonoverlapping;
 use serde::{de::DeserializeOwned, Serialize};
 
 use crate::c_api::{self, BoxTuple};
-use crate::Error;
+use crate::error::{Error, TarantoolError};
 
 pub struct Tuple {
     ptr: *mut BoxTuple,
@@ -59,7 +59,7 @@ impl Tuple {
             c_api::box_tuple_to_buf(self.ptr, raw_data.as_ptr() as *mut c_char, raw_data_size)
         };
         if actual_size < 0 {
-            Error::last()?;
+            return Err(TarantoolError::last().into());
         }
 
         unsafe { raw_data.set_len(actual_size as usize) };

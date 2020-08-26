@@ -4,6 +4,7 @@ use std::ptr::null_mut;
 use num_traits::ToPrimitive;
 
 use crate::{AsTuple, c_api, Error, Tuple};
+use crate::error::TarantoolError;
 use crate::tuple::TupleBuffer;
 
 pub struct Index {
@@ -28,7 +29,7 @@ impl Index {
             key_buf_ptr.offset(key_buf.len() as isize),
             &mut result_ptr
         ) } < 0 {
-            Error::last()?;
+            return Err(TarantoolError::last().into());
         }
 
         Ok(if result_ptr.is_null() {
@@ -56,7 +57,7 @@ impl Index {
         };
 
         if ptr.is_null() {
-            Error::last()?;
+            return Err(TarantoolError::last().into());
         }
 
         Ok(IndexIterator {
@@ -79,7 +80,7 @@ impl Index {
             key_buf_ptr.offset(key_buf.len() as isize),
             if with_result { &mut result_ptr } else { null_mut() }
         ) } < 0 {
-            return Error::last().map(|_| None);
+            return Err(TarantoolError::last().into());
         }
 
         Ok(if with_result && !result_ptr.is_null(){
@@ -109,8 +110,7 @@ impl Index {
             0,
             if with_result { &mut result_ptr } else { null_mut() }
         ) } < 0 {
-            println!("{:?}", Error::last());
-            return Error::last().map(|_| None);
+            return Err(TarantoolError::last().into());
         }
 
 
@@ -141,7 +141,7 @@ impl Index {
             0,
             if with_result { &mut result_ptr } else { null_mut() }
         ) } < 0 {
-            return Error::last().map(|_| None);
+            return Err(TarantoolError::last().into());
         }
 
         Ok(if with_result && !result_ptr.is_null() {
@@ -159,9 +159,11 @@ impl Index {
         ) };
 
         if result < 0 {
-            Error::last()?;
+            Err(TarantoolError::last().into())
         }
-        Ok(result as usize)
+        else {
+            Ok(result as usize)
+        }
     }
 
     pub fn size(&self) -> Result<usize, Error> {
@@ -171,9 +173,11 @@ impl Index {
         ) };
 
         if result < 0 {
-            Error::last()?;
+            Err(TarantoolError::last().into())
         }
-        Ok(result as usize)
+        else {
+            Ok(result as usize)
+        }
     }
 
     pub fn random(&self, seed: u32) -> Result<Option<Tuple>, Error> {
@@ -184,7 +188,7 @@ impl Index {
             seed,
             &mut result_ptr
         ) } < 0 {
-            Error::last()?;
+            return Err(TarantoolError::last().into());
         }
 
         Ok(if result_ptr.is_null() {
@@ -207,7 +211,7 @@ impl Index {
             key_buf_ptr.offset(key_buf.len() as isize),
             &mut result_ptr
         ) } < 0 {
-            Error::last()?;
+            return Err(TarantoolError::last().into());
         }
 
         Ok(if result_ptr.is_null() {
@@ -230,7 +234,7 @@ impl Index {
             key_buf_ptr.offset(key_buf.len() as isize),
             &mut result_ptr
         ) } < 0 {
-            Error::last()?;
+            return Err(TarantoolError::last().into());
         }
 
         Ok(if result_ptr.is_null() {
@@ -258,9 +262,11 @@ impl Index {
         };
 
         if result < 0 {
-            Error::last()?;
+            Err(TarantoolError::last().into())
         }
-        Ok(result as usize)
+        else {
+            Ok(result as usize)
+        }
     }
 
     pub fn extract_key(&self, tuple: Tuple) -> Tuple {

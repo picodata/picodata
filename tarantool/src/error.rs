@@ -1,6 +1,7 @@
+use std::{fmt, io};
 use std::ffi::CStr;
-use std::io;
 
+use failure::_core::fmt::{Display, Formatter};
 use num_traits::FromPrimitive;
 use rmp_serde::decode::Error as DecodeError;
 use rmp_serde::encode::Error as EncodeError;
@@ -9,11 +10,8 @@ use crate::c_api;
 
 #[derive(Debug, Fail)]
 pub enum Error {
-    #[fail(display = "Tarantool error: {:?}: {}", code, message)]
-    Tarantool{
-        code: TarantoolError,
-        message: String
-    },
+    #[fail(display = "Tarantool error: {}", _0)]
+    Tarantool(TarantoolError),
 
     #[fail(display = "IO error: {}", _0)]
     IO(io::Error),
@@ -26,29 +24,6 @@ pub enum Error {
 
     #[fail(display = "Transaction issue: {}", _0)]
     Transaction(TransactionError),
-}
-
-impl Error {
-    pub fn last() -> Result<(), Self> {
-        let error_ptr = unsafe { c_api::box_error_last() };
-        if error_ptr.is_null() {
-            return Ok(())
-        }
-
-        let code = unsafe { c_api::box_error_code(error_ptr) };
-        let code = match TarantoolError::from_u32(code) {
-            Some(code) => code,
-            None => TarantoolError::Unknown,
-        };
-
-        let message = unsafe { CStr::from_ptr(c_api::box_error_message(error_ptr)) };
-        let message = message.to_string_lossy().into_owned();
-
-        Err(Error::Tarantool{
-            code,
-            message
-        })
-    }
 }
 
 impl From<io::Error> for Error {
@@ -87,10 +62,54 @@ impl From<TransactionError> for Error {
     }
 }
 
+#[derive(Debug)]
+pub struct TarantoolError {
+    code: TarantoolErrorCode,
+    message: String
+}
+
+impl TarantoolError {
+    pub fn maybe_last() -> Result<(), Self> {
+        let error_ptr = unsafe { c_api::box_error_last() };
+        if error_ptr.is_null() {
+            return Ok(())
+        }
+
+        let code = unsafe { c_api::box_error_code(error_ptr) };
+        let code = match TarantoolErrorCode::from_u32(code) {
+            Some(code) => code,
+            None => TarantoolErrorCode::Unknown,
+        };
+
+        let message = unsafe { CStr::from_ptr(c_api::box_error_message(error_ptr)) };
+        let message = message.to_string_lossy().into_owned();
+
+        Err(TarantoolError{
+            code,
+            message
+        })
+    }
+
+    pub fn last() -> Self {
+        TarantoolError::maybe_last().err().unwrap()
+    }
+}
+
+impl Display for TarantoolError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}: {}", self.code, self.message)
+    }
+}
+
+impl From<TarantoolError> for Error {
+    fn from(error: TarantoolError) -> Self {
+        Error::Tarantool(error)
+    }
+}
 
 #[repr(u32)]
 #[derive(Debug, FromPrimitive)]
-pub enum TarantoolError {
+pub enum TarantoolErrorCode {
     Unknown = 0,
     IllegalParams = 1,
     MemoryIssue = 2,
