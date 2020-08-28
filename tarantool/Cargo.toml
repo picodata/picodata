@@ -1,5 +1,6 @@
 [package]
 name = "tarantool-module"
+description = "Tarantool C API bindings"
 version = "0.1.0"
 authors = [
     "Dmitriy Koltsov <dkoltsov@picodata.io>",
@@ -8,6 +9,8 @@ authors = [
 edition = "2018"
 license = "BSD-2-Clause"
 readme = "README.md"
+repository = "https://github.com/picodata/tarantool-module"
+keywords = ["ffi", "tarantool"]
 
 [dependencies]
 failure = "0.1.8"
