@@ -83,6 +83,17 @@ pub fn test_box_select() {
     ]);
 }
 
+pub fn test_box_select_composite_key() {
+    let space = Space::find_by_name("test_s2").unwrap().unwrap();
+    let idx = space.index_by_name("idx_2").unwrap().unwrap();
+
+    let result: Vec<S2Record> = idx.select(IteratorType::Eq, &(3, 3, 0),)
+        .unwrap()
+        .map(|x| x.into_struct().unwrap())
+        .collect();
+    assert_eq!(result, vec![S2Record{id: 3, key: "key_3".to_string(), value: "value_3".to_string(), a: 3, b: 0}]);
+}
+
 pub fn test_box_len() {
     let space = Space::find_by_name("test_s2").unwrap().unwrap();
     assert_eq!(space.primary_key().len().unwrap(), 20 as usize);

@@ -96,8 +96,29 @@ pub trait AsTuple: Serialize {
     }
 }
 
+impl AsTuple for () {
+    fn serialize_as_tuple(&self) -> Result<TupleBuffer, Error> {
+        Ok(rmp_serde::to_vec(&Vec::<()>::new())?.into())
+    }
+}
+
 impl<T> AsTuple for (T,) where T: Serialize {}
 impl<T> AsTuple for Vec<T> where T: Serialize {}
+
+impl<Ta, Tb> AsTuple for (Ta, Tb) where
+    Ta: Serialize,
+    Tb: Serialize {}
+
+impl<Ta, Tb, Tc> AsTuple for (Ta, Tb, Tc) where
+    Ta: Serialize,
+    Tb: Serialize,
+    Tc: Serialize {}
+
+impl<Ta, Tb, Tc, Td> AsTuple for (Ta, Tb, Tc, Td) where
+    Ta: Serialize,
+    Tb: Serialize,
+    Tc: Serialize,
+    Td: Serialize {}
 
 pub enum TupleBuffer {
     Vector(Vec<u8>),

@@ -64,6 +64,7 @@ fn run() -> Result<bool, io::Error>{
         add_test_default("box_truncate", test_box::test_box_truncate),
         add_test_default("box_get", test_box::test_box_get),
         add_test_default("box_select", test_box::test_box_select),
+        add_test_default("box_select_composite_key", test_box::test_box_select_composite_key),
         add_test_default("box_len", test_box::test_box_len),
         add_test_default("box_random", test_box::test_box_random),
         add_test_default("box_min_max", test_box::test_box_min_max),
