@@ -135,6 +135,65 @@ pub fn fiber_reschedule() {
     unsafe { ffi::fiber_reschedule() }
 }
 
+/// Conditional variable for cooperative multitasking (fibers).
+///
+/// A cond (short for "condition variable") is a synchronization primitive
+/// that allow fibers to yield until some predicate is satisfied. Fiber
+/// conditions have two basic operations - `wait()` and `signal()`. [wait()](#method.wait)
+/// suspends execution of fiber (i.e. yields) until [signal()](#method.signal) is called.
+///
+/// Unlike `pthread_cond`, `fiber_cond` doesn't require mutex/latch wrapping.
+pub struct FiberCond {
+    inner: *mut ffi::FiberCond
+}
+
+impl FiberCond {
+    /// Instantiate a new fiber cond object.
+    pub fn new() -> Self {
+        FiberCond{
+            inner: unsafe { ffi::fiber_cond_new() }
+        }
+    }
+
+    /// Wake one fiber waiting for the cond.
+    /// Does nothing if no one is waiting.
+    pub fn signal(&self) {
+        unsafe { ffi::fiber_cond_signal(self.inner) }
+    }
+
+    /// Wake up all fibers waiting for the cond.
+    pub fn broadcast(&self) {
+        unsafe { ffi::fiber_cond_broadcast(self.inner) }
+    }
+
+    /// Suspend the execution of the current fiber (i.e. yield) until [signal()](#method.signal) is called.
+    ///
+    /// Like pthread_cond, FiberCond can issue spurious wake ups caused by explicit
+    /// [Fiber::wakeup()](struct.Fiber.html#method.wakeup) or [Fiber::cancel()](struct.Fiber.html#method.cancel)
+    /// calls. It is highly recommended to wrap calls to this function into a loop
+    /// and check an actual predicate and `fiber_testcancel()` on every iteration.
+    ///
+    /// - `timeout` - timeout in seconds
+    ///
+    /// Returns:
+    /// - `true` on [signal()](#method.signal) call or a spurious wake up.
+    /// - `false` on timeout, diag is set to `TimedOut`
+    pub fn wait_timeout(&self, timeout: f64) -> bool {
+        !(unsafe { ffi::fiber_cond_wait_timeout(self.inner, timeout) } < 0)
+    }
+
+    /// Shortcut for [wait_timeout()](#method.wait_timeout).
+    pub fn wait(&self) -> bool {
+        !(unsafe { ffi::fiber_cond_wait(self.inner) } < 0)
+    }
+}
+
+impl Drop for FiberCond {
+    fn drop(&mut self) {
+        unsafe { ffi::fiber_cond_delete(self.inner) }
+    }
+}
+
 mod ffi {
     use std::os::raw::{c_char, c_int};
 
@@ -166,6 +225,20 @@ mod ffi {
         pub fn fiber_reschedule();
     }
 
+    #[repr(C)]
+    #[derive(Debug, Copy, Clone)]
+    pub struct FiberCond {
+        _unused: [u8; 0]
+    }
+
+    extern "C" {
+        pub fn fiber_cond_new() -> *mut FiberCond;
+        pub fn fiber_cond_delete(cond: *mut FiberCond);
+        pub fn fiber_cond_signal(cond: *mut FiberCond);
+        pub fn fiber_cond_broadcast(cond: *mut FiberCond);
+        pub fn fiber_cond_wait_timeout(cond: *mut FiberCond, timeout: f64) -> c_int;
+        pub fn fiber_cond_wait(cond: *mut FiberCond) -> c_int;
+    }
 }
 
 unsafe fn unpack_callback<F, T>(callback: &mut F) -> (*mut c_void, ffi::FiberFunc)

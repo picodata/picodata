@@ -1,4 +1,6 @@
-use tarantool_module::Fiber;
+use std::rc::Rc;
+
+use tarantool_module::{Fiber, FiberCond};
 use tarantool_module::fiber::{fiber_yield, is_cancelled, sleep};
 
 pub fn test_fiber() {
@@ -40,5 +42,55 @@ pub fn test_fiber_wake() {
     fiber.start(());
     sleep(0.01);
     fiber.wakeup();
+    fiber.join();
+}
+
+pub fn test_fiber_cond_signal() {
+    let cond = Rc::new(FiberCond::new());
+    let mut fiber = Fiber::new("test_fiber", &mut |cond: Box<Rc<FiberCond>>| {
+        (*cond).wait();
+        0
+    });
+    fiber.set_joinable(true);
+    fiber.start(cond.clone());
+    sleep(0.01);
+    cond.signal();
+    fiber.join();
+}
+
+pub fn test_fiber_cond_broadcast() {
+    let cond = Rc::new(FiberCond::new());
+
+    let mut fiber_a = Fiber::new("test_fiber_a", &mut |cond: Box<Rc<FiberCond>>| {
+        (*cond).wait();
+        0
+    });
+    fiber_a.set_joinable(true);
+    fiber_a.start(cond.clone());
+
+    let mut fiber_b = Fiber::new("test_fiber_b", &mut |cond: Box<Rc<FiberCond>>| {
+        (*cond).wait();
+        0
+    });
+    fiber_b.set_joinable(true);
+    fiber_b.start(cond.clone());
+
+    sleep(0.01);
+    cond.broadcast();
+    fiber_a.join();
+    fiber_b.join();
+}
+
+pub fn test_fiber_cond_timeout() {
+    let cond = Rc::new(FiberCond::new());
+    let mut fiber = Fiber::new("test_fiber", &mut |cond: Box<Rc<FiberCond>>| {
+        let r = (*cond).wait_timeout(0.01);
+        assert!(!r);
+        0
+    });
+    fiber.set_joinable(true);
+    fiber.start(cond.clone());
+    sleep(0.02);
+    cond.signal();
     fiber.join();
 }

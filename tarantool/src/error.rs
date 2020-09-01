@@ -91,6 +91,10 @@ impl TarantoolError {
     pub fn last() -> Self {
         TarantoolError::maybe_last().err().unwrap()
     }
+
+    pub fn error_code(&self) -> TarantoolErrorCode {
+        self.code.clone()
+    }
 }
 
 impl Display for TarantoolError {
@@ -106,7 +110,7 @@ impl From<TarantoolError> for Error {
 }
 
 #[repr(u32)]
-#[derive(Debug, FromPrimitive)]
+#[derive(Debug, Clone, PartialEq, FromPrimitive)]
 pub enum TarantoolErrorCode {
     Unknown = 0,
     IllegalParams = 1,

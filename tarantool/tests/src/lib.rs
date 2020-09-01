@@ -53,6 +53,9 @@ fn run() -> Result<bool, io::Error>{
         add_test_default("fiber_arg", test_fiber::test_fiber_arg),
         add_test_default("fiber_cancel", test_fiber::test_fiber_cancel),
         add_test_default("fiber_wake", test_fiber::test_fiber_wake),
+        add_test_default("fiber_cond_signal", test_fiber::test_fiber_cond_signal),
+        add_test_default("fiber_cond_broadcast", test_fiber::test_fiber_cond_broadcast),
+        add_test_default("fiber_cond_timeout", test_fiber::test_fiber_cond_timeout),
 
         add_test_default("box_space_get_by_name", test_box::test_space_get_by_name),
         add_test_default("box_index_get_by_name", test_box::test_index_get_by_name),

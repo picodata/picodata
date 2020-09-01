@@ -3,7 +3,7 @@
 
 pub use coio::{CoIOListener, CoIOStream};
 pub use error::Error;
-pub use fiber::Fiber;
+pub use fiber::{Fiber, FiberCond};
 pub use index::{Index, IndexIterator};
 pub use space::Space;
 pub use transaction::start_transaction;
