@@ -13,6 +13,7 @@ pub mod c_api;
 pub mod error;
 pub mod fiber;
 pub mod index;
+pub mod log;
 mod coio;
 mod space;
 mod transaction;

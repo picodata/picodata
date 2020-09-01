@@ -5,31 +5,6 @@ use va_list::VaList;
 use crate::tuple::ffi::BoxTuple;
 
 // ===========================================================================
-// Logging
-
-#[repr(u32)]
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub enum SayLevel {
-    Fatal = 0,
-    System = 1,
-    Error = 2,
-    Crit = 3,
-    Warn = 4,
-    Info = 5,
-    Debug = 6,
-}
-
-pub type SayFunc = Option<unsafe extern "C" fn(c_int, *const c_char, c_int, *const c_char, *const c_char, ...)>;
-
-extern "C" {
-    #[link_name = "log_level"]
-    pub static mut LOG_LEVEL: c_int;
-
-    #[link_name = "_say"]
-    pub static mut SAY_FN: SayFunc;
-}
-
-// ===========================================================================
 // Slab cache
 
 #[repr(C)]

@@ -12,6 +12,7 @@ mod test_box;
 mod test_coio;
 mod test_error;
 mod test_fiber;
+mod test_log;
 mod test_transaction;
 mod test_tuple;
 
@@ -80,6 +81,7 @@ fn run() -> Result<bool, io::Error>{
         add_test_default("transaction_rollback", test_transaction::test_transaction_rollback),
 
         add_test_default("error_last", test_error::test_error_last),
+        add_test_default("log", test_log::test_log),
 
         add_test_default("coio_accept", test_coio::test_coio_accept),
         add_test_default("coio_read_write", test_coio::test_coio_read_write),
