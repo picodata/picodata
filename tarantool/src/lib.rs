@@ -7,7 +7,7 @@ pub use coio::{CoIOListener, CoIOStream};
 pub use error::Error;
 pub use fiber::{Fiber, FiberAttr, FiberCond};
 pub use index::{Index, IndexIterator};
-pub use space::Space;
+pub use space::{Space, SystemSpace};
 pub use transaction::start_transaction;
 pub use tuple::{AsTuple, Tuple};
 

@@ -63,6 +63,7 @@ fn run() -> Result<bool, io::Error> {
             test_fiber::test_fiber_cond_broadcast,
             test_fiber::test_fiber_cond_timeout,
             test_box::test_space_get_by_name,
+            test_box::test_space_get_system,
             test_box::test_index_get_by_name,
             test_box::test_box_insert,
             test_box::test_box_replace,
