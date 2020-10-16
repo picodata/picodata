@@ -54,7 +54,8 @@ fn run() -> Result<bool, io::Error> {
             options: Options::new(),
         },
         tests![
-            test_fiber::test_fiber,
+            test_fiber::test_fiber_new,
+            test_fiber::test_fiber_new_with_attr,
             test_fiber::test_fiber_arg,
             test_fiber::test_fiber_cancel,
             test_fiber::test_fiber_wake,
