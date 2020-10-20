@@ -4,6 +4,8 @@ use std::os::raw::c_void;
 
 use va_list::VaList;
 
+use crate::error::{Error, TarantoolError};
+
 /// Contains information about fiber
 pub struct Fiber<'a, T: 'a> {
     inner: *mut ffi::Fiber,
@@ -24,11 +26,43 @@ impl<'a, T> Fiber<'a, T> {
     /// - `callback` - function for run inside fiber
     ///
     /// See also: [start](#method.start)
-    pub fn new<F>(name: &str, callback: &mut F) -> Self where F: FnMut(Box<T>) -> i32
+    pub fn new<F>(name: &str, callback: &mut F) -> Self
+    where
+        F: FnMut(Box<T>) -> i32,
     {
         let (callback_ptr, trampoline) = unsafe { unpack_callback(callback) };
         Self {
             inner: unsafe { ffi::fiber_new(CString::new(name).unwrap().as_ptr(), trampoline) },
+            callback: callback_ptr,
+            phantom: PhantomData,
+        }
+    }
+
+    /// Create a new fiber with defined attributes.
+    ///
+    /// Can fail only if there is not enough memory for the fiber structure or fiber stack.
+    ///
+    /// The created fiber automatically returns itself to the fiber cache if has default stack size
+    /// when its `main` function completes.
+    ///
+    /// - `name` - string with fiber name
+    /// - `fiber_attr` - fiber attributes
+    /// - `callback` - function for run inside fiber
+    ///
+    /// See also: [start](#method.start)
+    pub fn new_with_attr<F>(name: &str, fiber_attr: &FiberAttr, callback: &mut F) -> Self
+    where
+        F: FnMut(Box<T>) -> i32,
+    {
+        let (callback_ptr, trampoline) = unsafe { unpack_callback(callback) };
+        Self {
+            inner: unsafe {
+                ffi::fiber_new_ex(
+                    CString::new(name).unwrap().as_ptr(),
+                    fiber_attr.inner,
+                    trampoline,
+                )
+            },
             callback: callback_ptr,
             phantom: PhantomData,
         }
@@ -41,11 +75,7 @@ impl<'a, T> Fiber<'a, T> {
     /// See also: [new](#method.new)
     pub fn start(&mut self, arg: T) {
         unsafe {
-            ffi::fiber_start(
-                self.inner,
-                self.callback,
-                Box::into_raw(Box::<T>::new(arg))
-            );
+            ffi::fiber_start(self.inner, self.callback, Box::into_raw(Box::<T>::new(arg)));
         }
     }
 
@@ -135,6 +165,47 @@ pub fn fiber_reschedule() {
     unsafe { ffi::fiber_reschedule() }
 }
 
+/// Fiber attributes container
+pub struct FiberAttr {
+    inner: *mut ffi::FiberAttr,
+}
+
+impl FiberAttr {
+    /// Create a new fiber attribute container and initialize it with default parameters.
+    /// Can be used for many fibers creation, corresponding fibers will not take ownership.
+    ///
+    /// This is safe to drop `FiberAttr` value when fibers created with this attribute still exist.
+    pub fn new() -> Self {
+        FiberAttr {
+            inner: unsafe { ffi::fiber_attr_new() },
+        }
+    }
+
+    /// Get stack size from the fiber attribute.
+    ///
+    /// Returns: stack size
+    pub fn stack_size(&self) -> usize {
+        unsafe { ffi::fiber_attr_getstacksize(self.inner) }
+    }
+
+    ///Set stack size for the fiber attribute.
+    ///
+    /// - `stack_size` - stack size for new fibers
+    pub fn set_stack_size(&mut self, stack_size: usize) -> Result<(), Error> {
+        if unsafe { ffi::fiber_attr_setstacksize(self.inner, stack_size) } < 0 {
+            Err(TarantoolError::last().into())
+        } else {
+            Ok(())
+        }
+    }
+}
+
+impl Drop for FiberAttr {
+    fn drop(&mut self) {
+        unsafe { ffi::fiber_attr_delete(self.inner) }
+    }
+}
+
 /// Conditional variable for cooperative multitasking (fibers).
 ///
 /// A cond (short for "condition variable") is a synchronization primitive
@@ -144,14 +215,14 @@ pub fn fiber_reschedule() {
 ///
 /// Unlike `pthread_cond`, `fiber_cond` doesn't require mutex/latch wrapping.
 pub struct FiberCond {
-    inner: *mut ffi::FiberCond
+    inner: *mut ffi::FiberCond,
 }
 
 impl FiberCond {
     /// Instantiate a new fiber cond object.
     pub fn new() -> Self {
-        FiberCond{
-            inner: unsafe { ffi::fiber_cond_new() }
+        FiberCond {
+            inner: unsafe { ffi::fiber_cond_new() },
         }
     }
 
@@ -202,13 +273,18 @@ mod ffi {
     #[repr(C)]
     #[derive(Debug, Copy, Clone)]
     pub struct Fiber {
-        _unused: [u8; 0]
+        _unused: [u8; 0],
     }
 
     pub type FiberFunc = Option<unsafe extern "C" fn(VaList) -> c_int>;
 
     extern "C" {
         pub fn fiber_new(name: *const c_char, f: FiberFunc) -> *mut Fiber;
+        pub fn fiber_new_ex(
+            name: *const c_char,
+            fiber_attr: *const FiberAttr,
+            f: FiberFunc,
+        ) -> *mut Fiber;
         pub fn fiber_yield();
         pub fn fiber_start(callee: *mut Fiber, ...);
         pub fn fiber_wakeup(f: *mut Fiber);
@@ -227,8 +303,21 @@ mod ffi {
 
     #[repr(C)]
     #[derive(Debug, Copy, Clone)]
+    pub struct FiberAttr {
+        _unused: [u8; 0],
+    }
+
+    extern "C" {
+        pub fn fiber_attr_new() -> *mut FiberAttr;
+        pub fn fiber_attr_delete(fiber_attr: *mut FiberAttr);
+        pub fn fiber_attr_setstacksize(fiber_attr: *mut FiberAttr, stack_size: usize) -> c_int;
+        pub fn fiber_attr_getstacksize(fiber_attr: *mut FiberAttr) -> usize;
+    }
+
+    #[repr(C)]
+    #[derive(Debug, Copy, Clone)]
     pub struct FiberCond {
-        _unused: [u8; 0]
+        _unused: [u8; 0],
     }
 
     extern "C" {
@@ -242,9 +331,12 @@ mod ffi {
 }
 
 unsafe fn unpack_callback<F, T>(callback: &mut F) -> (*mut c_void, ffi::FiberFunc)
-    where F: FnMut(Box<T>) -> i32
+where
+    F: FnMut(Box<T>) -> i32,
 {
-    unsafe extern "C" fn trampoline<F, T>(mut args: VaList) -> i32 where F: FnMut(Box<T>) -> i32,
+    unsafe extern "C" fn trampoline<F, T>(mut args: VaList) -> i32
+    where
+        F: FnMut(Box<T>) -> i32,
     {
         let closure: &mut F = &mut *(args.get::<*const c_void>() as *mut F);
         let arg = Box::from_raw(args.get::<*const c_void>() as *mut T);

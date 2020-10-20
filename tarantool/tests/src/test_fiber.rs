@@ -1,10 +1,20 @@
 use std::rc::Rc;
 
-use tarantool_module::{Fiber, FiberCond};
 use tarantool_module::fiber::{fiber_yield, is_cancelled, sleep};
+use tarantool_module::{Fiber, FiberAttr, FiberCond};
 
-pub fn test_fiber() {
-    let mut fiber = Fiber::new("test_fiber", &mut |_| { 0 });
+pub fn test_fiber_new() {
+    let mut fiber = Fiber::new("test_fiber", &mut |_| 0);
+    fiber.set_joinable(true);
+    fiber.start(());
+    fiber.join();
+}
+
+pub fn test_fiber_new_with_attr() {
+    let mut attr = FiberAttr::new();
+    attr.set_stack_size(100_000).unwrap();
+
+    let mut fiber = Fiber::new_with_attr("test_fiber", &attr, &mut |_| 0);
     fiber.set_joinable(true);
     fiber.start(());
     fiber.join();
