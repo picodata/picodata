@@ -62,11 +62,38 @@ impl Tuple {
         }
     }
 
+    /// Allocate and initialize a new `Tuple` iterator. The `Tuple` iterator
+    /// allow to iterate over fields at root level of MsgPack array.
+    ///
+    /// Example:
+    /// ```
+    /// let mut it = tuple.iterator().unwrap();
+    ///
+    /// while let Some(field) = it.next().unwrap() {
+    ///     // process data
+    /// }
+    ///
+    /// // rewind iterator to first position
+    /// it.rewind();
+    /// assert!(it.position() == 0);
+    ///
+    /// // rewind iterator to first position
+    /// field = it.seek(3).unwrap();
+    /// assert!(it.position() == 4);
+    /// ```
+    pub fn iterator(&self) -> Result<TupleIterator, Error> {
+        let inner = unsafe { ffi::box_tuple_iterator(self.ptr) };
+        if inner.is_null() {
+            Err(TarantoolError::last().into())
+        } else {
+            Ok(TupleIterator { inner })
+        }
+    }
+
     /// Return the raw Tuple field in MsgPack format.
     ///
     /// The buffer is valid until next call to box_tuple_* functions.
     ///
-    /// - `tuple` - a tuple
     /// - `fieldno` - zero-based index in MsgPack array.
     ///
     /// Returns:
@@ -76,47 +103,8 @@ impl Tuple {
     where
         T: DeserializeOwned,
     {
-        let result_ptr = unsafe { ffi::box_tuple_field(self.ptr, fieldno) } as *mut u8;
-        if result_ptr.is_null() {
-            return Ok(None);
-        }
-
-        let marker = Marker::from_u8(unsafe { *result_ptr });
-        Ok(match marker {
-            Marker::FixStr(str_len) => {
-                let buf = unsafe { from_raw_parts(result_ptr as *mut u8, (str_len + 1) as usize) };
-                Some(rmp_serde::from_read_ref::<_, T>(buf)?)
-            }
-
-            Marker::Str8 | Marker::Str16 | Marker::Str32 => {
-                let head = unsafe { from_raw_parts(result_ptr as *mut u8, 9) };
-                let len = rmp::decode::read_str_len(&mut Cursor::new(head))?;
-
-                let buf = unsafe { from_raw_parts(result_ptr as *mut u8, (len + 9) as usize) };
-                Some(rmp_serde::from_read_ref::<_, T>(buf)?)
-            }
-
-            Marker::FixPos(_)
-            | Marker::FixNeg(_)
-            | Marker::Null
-            | Marker::True
-            | Marker::False
-            | Marker::U8
-            | Marker::U16
-            | Marker::U32
-            | Marker::U64
-            | Marker::I8
-            | Marker::I16
-            | Marker::I32
-            | Marker::I64
-            | Marker::F32
-            | Marker::F64 => {
-                let buf = unsafe { from_raw_parts(result_ptr as *mut u8, 9) };
-                Some(rmp_serde::from_read_ref::<_, T>(buf)?)
-            }
-
-            _ => None,
-        })
+        let result_ptr = unsafe { ffi::box_tuple_field(self.ptr, fieldno) };
+        field_value_from_ptr(result_ptr as *mut u8)
     }
 
     pub fn into_struct<T>(self) -> Result<T, Error>
@@ -251,6 +239,72 @@ impl Default for TupleFormat {
     }
 }
 
+/// Tuple iterator
+pub struct TupleIterator {
+    inner: *mut ffi::BoxTupleIterator,
+}
+
+impl TupleIterator {
+    /// Return zero-based next position in iterator.
+    ///
+    /// That is, this function return the field id of field that will be
+    /// returned by the next call to `box_tuple_next(it)`. Returned value is zero
+    /// after initialization or rewind and `box_tuple_field_count(Tuple)`
+    /// after the end of iteration.
+    pub fn position(&self) -> u32 {
+        unsafe { ffi::box_tuple_position(self.inner) }
+    }
+
+    /// Rewind iterator to the initial position.
+    pub fn rewind(&mut self) {
+        unsafe { ffi::box_tuple_rewind(self.inner) }
+    }
+
+    /// Seek the Tuple iterator.
+    ///
+    /// Requested fieldno returned by next call to `box_tuple_next(it)`.
+    ///
+    /// - `fieldno` - zero-based position in MsgPack array.
+    ///
+    /// After call:
+    /// - `box_tuple_position(it) == fieldno` if returned value is not `None`
+    /// - `box_tuple_position(it) == box_tuple_field_count(Tuple)` if returned value is `None`.
+    pub fn seek<T>(&mut self, fieldno: u32) -> Result<Option<T>, Error>
+    where
+        T: DeserializeOwned,
+    {
+        let result_ptr = unsafe { ffi::box_tuple_seek(self.inner, fieldno) };
+        field_value_from_ptr(result_ptr as *mut u8)
+    }
+
+    /// Return the next Tuple field from Tuple iterator.
+    ///
+    /// Returns:
+    /// - `None` if `i >= box_tuple_field_count(Tuple)` or if field has a non primitive type
+    /// - field value otherwise
+    ///
+    /// After call:
+    /// - `box_tuple_position(it) == fieldno` if returned value is not `None`
+    /// - `box_tuple_position(it) == box_tuple_field_count(Tuple)` if returned value is `None`.
+    pub fn next<T>(&mut self) -> Result<Option<T>, Error>
+    where
+        T: DeserializeOwned,
+    {
+        let result_ptr = unsafe { ffi::box_tuple_next(self.inner) };
+        field_value_from_ptr(result_ptr as *mut u8)
+    }
+
+    pub fn update(&mut self) {}
+}
+
+impl Drop for TupleIterator {
+    fn drop(&mut self) {
+        unsafe { ffi::box_tuple_iterator_free(self.inner) }
+    }
+}
+
+impl TupleIterator {}
+
 #[repr(u32)]
 #[derive(Debug, ToPrimitive)]
 pub enum FieldType {
@@ -337,6 +391,52 @@ impl Drop for KeyDef {
     }
 }
 
+fn field_value_from_ptr<T>(value_ptr: *mut u8) -> Result<Option<T>, Error>
+where
+    T: DeserializeOwned,
+{
+    if value_ptr.is_null() {
+        return Ok(None);
+    }
+
+    let marker = Marker::from_u8(unsafe { *value_ptr });
+    Ok(match marker {
+        Marker::FixStr(str_len) => {
+            let buf = unsafe { from_raw_parts(value_ptr as *mut u8, (str_len + 1) as usize) };
+            Some(rmp_serde::from_read_ref::<_, T>(buf)?)
+        }
+
+        Marker::Str8 | Marker::Str16 | Marker::Str32 => {
+            let head = unsafe { from_raw_parts(value_ptr as *mut u8, 9) };
+            let len = rmp::decode::read_str_len(&mut Cursor::new(head))?;
+
+            let buf = unsafe { from_raw_parts(value_ptr as *mut u8, (len + 9) as usize) };
+            Some(rmp_serde::from_read_ref::<_, T>(buf)?)
+        }
+
+        Marker::FixPos(_)
+        | Marker::FixNeg(_)
+        | Marker::Null
+        | Marker::True
+        | Marker::False
+        | Marker::U8
+        | Marker::U16
+        | Marker::U32
+        | Marker::U64
+        | Marker::I8
+        | Marker::I16
+        | Marker::I32
+        | Marker::I64
+        | Marker::F32
+        | Marker::F64 => {
+            let buf = unsafe { from_raw_parts(value_ptr as *mut u8, 9) };
+            Some(rmp_serde::from_read_ref::<_, T>(buf)?)
+        }
+
+        _ => None,
+    })
+}
+
 pub(crate) mod ffi {
     use std::os::raw::{c_char, c_int};
 
@@ -369,6 +469,21 @@ pub(crate) mod ffi {
         pub fn box_tuple_format_default() -> *mut BoxTupleFormat;
         pub fn box_tuple_format(tuple: *const BoxTuple) -> *mut BoxTupleFormat;
         pub fn box_tuple_field(tuple: *const BoxTuple, fieldno: u32) -> *const c_char;
+    }
+
+    #[repr(C)]
+    #[derive(Debug, Copy, Clone)]
+    pub struct BoxTupleIterator {
+        _unused: [u8; 0],
+    }
+
+    extern "C" {
+        pub fn box_tuple_iterator(tuple: *mut BoxTuple) -> *mut BoxTupleIterator;
+        pub fn box_tuple_iterator_free(it: *mut BoxTupleIterator);
+        pub fn box_tuple_position(it: *mut BoxTupleIterator) -> u32;
+        pub fn box_tuple_rewind(it: *mut BoxTupleIterator);
+        pub fn box_tuple_seek(it: *mut BoxTupleIterator, fieldno: u32) -> *const c_char;
+        pub fn box_tuple_next(it: *mut BoxTupleIterator) -> *const c_char;
     }
 
     #[repr(C)]

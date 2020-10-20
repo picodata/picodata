@@ -84,6 +84,39 @@ pub fn test_tuple_clone() {
     assert!(tuple_1.into_struct::<S1Record>().is_ok());
 }
 
+pub fn test_tuple_iterator() {
+    let tuple = Tuple::new_from_struct(&S1Record {
+        id: 1,
+        text: "text".to_string(),
+    })
+    .unwrap();
+    let mut iterator = tuple.iterator().unwrap();
+
+    assert_eq!(iterator.next().unwrap(), Some(1));
+    assert_eq!(iterator.next().unwrap(), Some("text".to_string()));
+    assert_eq!(iterator.next::<()>().unwrap(), None);
+}
+
+pub fn test_tuple_iterator_seek_rewind() {
+    let tuple = Tuple::new_from_struct(&S2Record {
+        id: 1,
+        key: "key".to_string(),
+        value: "value".to_string(),
+        a: 1,
+        b: 2,
+    })
+    .unwrap();
+    let mut iterator = tuple.iterator().unwrap();
+
+    // rewind iterator to first position
+    iterator.rewind();
+    assert_eq!(iterator.position(), 0);
+
+    // rewind iterator to first position
+    assert!(iterator.seek::<i32>(3).unwrap().is_some());
+    assert_eq!(iterator.position(), 4);
+}
+
 pub fn test_tuple_get_format() {
     let tuple = Tuple::new_from_struct(&S1Record {
         id: 1,
