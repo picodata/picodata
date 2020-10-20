@@ -79,49 +79,12 @@ extern "C" {
         port: *const c_char,
         hints: *const AddrInfo,
         res: *mut *mut AddrInfo,
-        timeout: f64
+        timeout: f64,
     ) -> c_int;
 }
 
 // ===========================================================================
 // Tuple
-
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct BoxTupleFormat {
-    _unused: [u8; 0],
-}
-
-extern "C" {
-    /**
-     * Tuple Format.
-     *
-     * Each Tuple has associated format (class). Default format is used to
-     * create tuples which are not attach to any particular space.
-     */
-    pub fn box_tuple_format_default() -> *mut BoxTupleFormat;
-}
-
-extern "C" {
-    /**
-     * Return the associated format.
-     * \param Tuple Tuple
-     * \return TupleFormat
-     */
-    pub fn box_tuple_format(tuple: *const BoxTuple) -> *mut BoxTupleFormat;
-
-    /**
-     * Return the raw Tuple field in MsgPack format.
-     *
-     * The buffer is valid until next call to box_tuple_* functions.
-     *
-     * \param Tuple a Tuple
-     * \param fieldno zero-based index in MsgPack array.
-     * \retval NULL if i >= box_tuple_field_count(Tuple)
-     * \retval msgpack otherwise
-     */
-    pub fn box_tuple_field(tuple: *const BoxTuple, fieldno: u32) -> *const c_char;
-}
 
 /**
  * Tuple iterator
@@ -215,8 +178,16 @@ extern "C" {
      */
     pub fn box_tuple_next(it: *mut BoxTupleIterator) -> *const c_char;
 
-    pub fn box_tuple_update(tuple: *const BoxTuple, expr: *const c_char, expr_end: *const c_char) -> *mut BoxTuple;
-    pub fn box_tuple_upsert(tuple: *const BoxTuple, expr: *const c_char, expr_end: *const c_char) -> *mut BoxTuple;
+    pub fn box_tuple_update(
+        tuple: *const BoxTuple,
+        expr: *const c_char,
+        expr_end: *const c_char,
+    ) -> *mut BoxTuple;
+    pub fn box_tuple_upsert(
+        tuple: *const BoxTuple,
+        expr: *const c_char,
+        expr_end: *const c_char,
+    ) -> *mut BoxTuple;
 }
 
 // ===========================================================================
@@ -275,7 +246,13 @@ extern "C" {
      *
      * \sa enum box_error_code
      */
-    pub fn box_error_set(file: *const c_char, line: c_uint, code: u32, format: *const c_char, ...)-> c_int;
+    pub fn box_error_set(
+        file: *const c_char,
+        line: c_uint,
+        code: u32,
+        format: *const c_char,
+        ...
+    ) -> c_int;
 }
 
 // ===========================================================================

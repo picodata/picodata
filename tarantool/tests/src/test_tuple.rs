@@ -84,6 +84,39 @@ pub fn test_tuple_clone() {
     assert!(tuple_1.into_struct::<S1Record>().is_ok());
 }
 
+pub fn test_tuple_get_format() {
+    let tuple = Tuple::new_from_struct(&S1Record {
+        id: 1,
+        text: "text".to_string(),
+    })
+    .unwrap();
+    let _ = tuple.format();
+}
+
+pub fn test_tuple_get_field() {
+    let tuple = Tuple::new_from_struct(&S2Record {
+        id: 1,
+        key: "key".to_string(),
+        value: "value".to_string(),
+        a: 1,
+        b: 2,
+    })
+    .unwrap();
+
+    assert_eq!(tuple.get_field::<u32>(0).unwrap(), Some(1));
+    assert_eq!(
+        tuple.get_field::<String>(1).unwrap(),
+        Some("key".to_string())
+    );
+    assert_eq!(
+        tuple.get_field::<String>(2).unwrap(),
+        Some("value".to_string())
+    );
+    assert_eq!(tuple.get_field::<i32>(3).unwrap(), Some(1));
+    assert_eq!(tuple.get_field::<i32>(4).unwrap(), Some(2));
+    assert_eq!(tuple.get_field::<i32>(5).unwrap(), None);
+}
+
 pub fn test_tuple_compare() {
     let tuple_a = Tuple::new_from_struct(&S2Record {
         id: 1,

@@ -2,8 +2,10 @@ use std::cmp::Ordering;
 use std::io::Cursor;
 use std::os::raw::c_char;
 use std::ptr::copy_nonoverlapping;
+use std::slice::from_raw_parts;
 
 use num_traits::ToPrimitive;
+use rmp::Marker;
 use serde::{de::DeserializeOwned, Serialize};
 
 use crate::error::{Error, TarantoolError};
@@ -18,20 +20,21 @@ impl Tuple {
     where
         T: AsTuple,
     {
-        let format_ptr = unsafe { ffi::box_tuple_format_default() };
+        let format = TupleFormat::default();
         let buf = value.serialize_as_tuple()?;
         let buf_ptr = buf.as_ptr() as *const c_char;
-        let tuple_ptr =
-            unsafe { ffi::box_tuple_new(format_ptr, buf_ptr, buf_ptr.offset(buf.len() as isize)) };
+        let tuple_ptr = unsafe {
+            ffi::box_tuple_new(format.inner, buf_ptr, buf_ptr.offset(buf.len() as isize))
+        };
 
         unsafe { ffi::box_tuple_ref(tuple_ptr) };
         Ok(Tuple { ptr: tuple_ptr })
     }
 
     pub(crate) fn from_raw_data(data_ptr: *mut c_char, len: u32) -> Self {
-        let format_ptr = unsafe { ffi::box_tuple_format_default() };
+        let format = TupleFormat::default();
         let tuple_ptr =
-            unsafe { ffi::box_tuple_new(format_ptr, data_ptr, data_ptr.offset(len as isize)) };
+            unsafe { ffi::box_tuple_new(format.inner, data_ptr, data_ptr.offset(len as isize)) };
 
         unsafe { ffi::box_tuple_ref(tuple_ptr) };
         Tuple { ptr: tuple_ptr }
@@ -50,6 +53,70 @@ impl Tuple {
     /// Return the number of bytes used to store internal tuple data (MsgPack Array).
     pub fn size(&self) -> usize {
         unsafe { ffi::box_tuple_bsize(self.ptr) }
+    }
+
+    /// Return the associated format.
+    pub fn format(&self) -> TupleFormat {
+        TupleFormat {
+            inner: unsafe { ffi::box_tuple_format(self.ptr) },
+        }
+    }
+
+    /// Return the raw Tuple field in MsgPack format.
+    ///
+    /// The buffer is valid until next call to box_tuple_* functions.
+    ///
+    /// - `tuple` - a tuple
+    /// - `fieldno` - zero-based index in MsgPack array.
+    ///
+    /// Returns:
+    /// - `None` if `i >= box_tuple_field_count(Tuple)` or if field has a non primitive type
+    /// - field value otherwise
+    pub fn get_field<T>(&self, fieldno: u32) -> Result<Option<T>, Error>
+    where
+        T: DeserializeOwned,
+    {
+        let result_ptr = unsafe { ffi::box_tuple_field(self.ptr, fieldno) } as *mut u8;
+        if result_ptr.is_null() {
+            return Ok(None);
+        }
+
+        let marker = Marker::from_u8(unsafe { *result_ptr });
+        Ok(match marker {
+            Marker::FixStr(str_len) => {
+                let buf = unsafe { from_raw_parts(result_ptr as *mut u8, (str_len + 1) as usize) };
+                Some(rmp_serde::from_read_ref::<_, T>(buf)?)
+            }
+
+            Marker::Str8 | Marker::Str16 | Marker::Str32 => {
+                let head = unsafe { from_raw_parts(result_ptr as *mut u8, 9) };
+                let len = rmp::decode::read_str_len(&mut Cursor::new(head))?;
+
+                let buf = unsafe { from_raw_parts(result_ptr as *mut u8, (len + 9) as usize) };
+                Some(rmp_serde::from_read_ref::<_, T>(buf)?)
+            }
+
+            Marker::FixPos(_)
+            | Marker::FixNeg(_)
+            | Marker::Null
+            | Marker::True
+            | Marker::False
+            | Marker::U8
+            | Marker::U16
+            | Marker::U32
+            | Marker::U64
+            | Marker::I8
+            | Marker::I16
+            | Marker::I32
+            | Marker::I64
+            | Marker::F32
+            | Marker::F64 => {
+                let buf = unsafe { from_raw_parts(result_ptr as *mut u8, 9) };
+                Some(rmp_serde::from_read_ref::<_, T>(buf)?)
+            }
+
+            _ => None,
+        })
     }
 
     pub fn into_struct<T>(self) -> Result<T, Error>
@@ -168,6 +235,22 @@ impl From<Vec<u8>> for TupleBuffer {
     }
 }
 
+/// Tuple Format.
+///
+/// Each Tuple has associated format (class). Default format is used to
+/// create tuples which are not attach to any particular space.
+pub struct TupleFormat {
+    inner: *mut ffi::BoxTupleFormat,
+}
+
+impl Default for TupleFormat {
+    fn default() -> Self {
+        TupleFormat {
+            inner: unsafe { ffi::box_tuple_format_default() },
+        }
+    }
+}
+
 #[repr(u32)]
 #[derive(Debug, ToPrimitive)]
 pub enum FieldType {
@@ -257,8 +340,6 @@ impl Drop for KeyDef {
 pub(crate) mod ffi {
     use std::os::raw::{c_char, c_int};
 
-    pub use crate::c_api::{box_tuple_format_default, BoxTupleFormat};
-
     #[repr(C)]
     #[derive(Debug, Copy, Clone)]
     pub struct BoxTuple {
@@ -276,6 +357,18 @@ pub(crate) mod ffi {
         pub fn box_tuple_field_count(tuple: *const BoxTuple) -> u32;
         pub fn box_tuple_bsize(tuple: *const BoxTuple) -> usize;
         pub fn box_tuple_to_buf(tuple: *const BoxTuple, buf: *mut c_char, size: usize) -> isize;
+    }
+
+    #[repr(C)]
+    #[derive(Debug, Copy, Clone)]
+    pub struct BoxTupleFormat {
+        _unused: [u8; 0],
+    }
+
+    extern "C" {
+        pub fn box_tuple_format_default() -> *mut BoxTupleFormat;
+        pub fn box_tuple_format(tuple: *const BoxTuple) -> *mut BoxTupleFormat;
+        pub fn box_tuple_field(tuple: *const BoxTuple, fieldno: u32) -> *const c_char;
     }
 
     #[repr(C)]

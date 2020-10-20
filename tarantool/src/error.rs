@@ -1,8 +1,9 @@
-use std::{fmt, io};
 use std::ffi::CStr;
+use std::{fmt, io};
 
 use failure::_core::fmt::{Display, Formatter};
 use num_traits::FromPrimitive;
+use rmp::decode::ValueReadError;
 use rmp_serde::decode::Error as DecodeError;
 use rmp_serde::encode::Error as EncodeError;
 
@@ -19,6 +20,9 @@ pub enum Error {
 
     #[fail(display = "Failed to decode tuple: {}", _0)]
     Decode(DecodeError),
+
+    #[fail(display = "Value read error: {}", _0)]
+    ValueRead(ValueReadError),
 
     #[fail(display = "Transaction issue: {}", _0)]
     Transaction(TransactionError),
@@ -39,6 +43,12 @@ impl From<EncodeError> for Error {
 impl From<DecodeError> for Error {
     fn from(error: DecodeError) -> Self {
         Error::Decode(error)
+    }
+}
+
+impl From<ValueReadError> for Error {
+    fn from(error: ValueReadError) -> Self {
+        Error::ValueRead(error)
     }
 }
 
@@ -63,14 +73,14 @@ impl From<TransactionError> for Error {
 #[derive(Debug)]
 pub struct TarantoolError {
     code: TarantoolErrorCode,
-    message: String
+    message: String,
 }
 
 impl TarantoolError {
     pub fn maybe_last() -> Result<(), Self> {
         let error_ptr = unsafe { ffi::box_error_last() };
         if error_ptr.is_null() {
-            return Ok(())
+            return Ok(());
         }
 
         let code = unsafe { ffi::box_error_code(error_ptr) };
@@ -82,10 +92,7 @@ impl TarantoolError {
         let message = unsafe { CStr::from_ptr(ffi::box_error_message(error_ptr)) };
         let message = message.to_string_lossy().into_owned();
 
-        Err(TarantoolError{
-            code,
-            message
-        })
+        Err(TarantoolError { code, message })
     }
 
     pub fn last() -> Self {

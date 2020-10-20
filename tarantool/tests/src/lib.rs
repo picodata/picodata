@@ -85,6 +85,8 @@ fn run() -> Result<bool, io::Error> {
             test_tuple::test_tuple_size,
             test_tuple::test_tuple_into_struct,
             test_tuple::test_tuple_clone,
+            test_tuple::test_tuple_get_format,
+            test_tuple::test_tuple_get_field,
             test_tuple::test_tuple_compare,
             test_tuple::test_tuple_compare_with_key,
             test_error::test_error_last,
