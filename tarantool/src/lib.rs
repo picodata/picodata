@@ -19,6 +19,7 @@ pub mod fiber;
 pub mod index;
 mod latch;
 pub mod log;
+pub mod sequence;
 mod space;
 mod transaction;
 pub mod tuple;
