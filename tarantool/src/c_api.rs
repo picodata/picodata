@@ -69,46 +69,6 @@ extern "C" {
     ) -> *mut BoxTuple;
 }
 
-// ===========================================================================
-// Space
-
-pub const BOX_SYSTEM_ID_MIN: u32 = 256;
-pub const BOX_SCHEMA_ID: u32 = 272;
-pub const BOX_SPACE_ID: u32 = 280;
-pub const BOX_VSPACE_ID: u32 = 281;
-pub const BOX_INDEX_ID: u32 = 288;
-pub const BOX_VINDEX_ID: u32 = 289;
-pub const BOX_FUNC_ID: u32 = 296;
-pub const BOX_VFUNC_ID: u32 = 297;
-pub const BOX_USER_ID: u32 = 304;
-pub const BOX_VUSER_ID: u32 = 305;
-pub const BOX_PRIV_ID: u32 = 312;
-pub const BOX_VPRIV_ID: u32 = 313;
-pub const BOX_CLUSTER_ID: u32 = 320;
-pub const BOX_SYSTEM_ID_MAX: u32 = 511;
-pub const BOX_ID_NIL: u32 = 2147483647;
-
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct BoxFunctionCtx {
-    _unused: [u8; 0],
-}
-
-extern "C" {
-    /**
-     * Return a Tuple from stored C procedure.
-     *
-     * Returned Tuple is automatically reference counted by Tarantool.
-     *
-     * \param ctx an opaque structure passed to the stored C procedure by
-     * Tarantool
-     * \param Tuple a Tuple to return
-     * \retval -1 on error (perhaps, out of memory; check box_error_last())
-     * \retval 0 otherwise
-     */
-    pub fn box_return_tuple(ctx: *mut BoxFunctionCtx, tuple: *mut BoxTuple) -> c_int;
-}
-
 extern "C" {
     /**
      * Clear the last error.
