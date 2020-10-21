@@ -14,6 +14,7 @@ keywords = ["ffi", "tarantool"]
 
 [dependencies]
 failure = "0.1.8"
+libc = "0.2"
 log = "0.4"
 num-traits = "0.2"
 num-derive = "0.3"

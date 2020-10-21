@@ -53,36 +53,6 @@ extern "C" {
     pub fn coio_call(func: Option<unsafe extern "C" fn(VaList) -> c_int>, ...) -> isize;
 }
 
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct AddrInfo {
-    _unused: [u8; 0],
-}
-
-extern "C" {
-    /**
-     * Fiber-friendly version of getaddrinfo(3).
-     *
-     * @param host host name, i.e. "tarantool.org"
-     * @param port service name, i.e. "80" or "http"
-     * @param hints hints, see getaddrinfo(3)
-     * @param res[out] result, see getaddrinfo(3)
-     * @param timeout timeout
-     * @retval  0 on success, please free @a res using freeaddrinfo(3).
-     * @retval -1 on error, check diag.
-     *            Please note that the return value is not compatible with
-     *            getaddrinfo(3).
-     * @sa getaddrinfo()
-     */
-    pub fn coio_getaddrinfo(
-        host: *const c_char,
-        port: *const c_char,
-        hints: *const AddrInfo,
-        res: *mut *mut AddrInfo,
-        timeout: f64,
-    ) -> c_int;
-}
-
 // ===========================================================================
 // Tuple
 
