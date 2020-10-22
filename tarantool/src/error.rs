@@ -1,8 +1,8 @@
-use std::ffi::CStr;
+use std::ffi::{CStr, CString};
 use std::{fmt, io};
 
 use failure::_core::fmt::{Display, Formatter};
-use num_traits::FromPrimitive;
+use num_traits::{FromPrimitive, ToPrimitive};
 use rmp::decode::ValueReadError;
 use rmp_serde::decode::Error as DecodeError;
 use rmp_serde::encode::Error as EncodeError;
@@ -74,6 +74,7 @@ impl From<TransactionError> for Error {
 pub struct TarantoolError {
     code: TarantoolErrorCode,
     message: String,
+    error_ptr: Box<ffi::BoxError>,
 }
 
 impl TarantoolError {
@@ -92,7 +93,11 @@ impl TarantoolError {
         let message = unsafe { CStr::from_ptr(ffi::box_error_message(error_ptr)) };
         let message = message.to_string_lossy().into_owned();
 
-        Err(TarantoolError { code, message })
+        Err(TarantoolError {
+            code,
+            message,
+            error_ptr: unsafe { Box::from_raw(error_ptr) },
+        })
     }
 
     pub fn last() -> Self {
@@ -101,6 +106,13 @@ impl TarantoolError {
 
     pub fn error_code(&self) -> TarantoolErrorCode {
         self.code.clone()
+    }
+
+    pub fn error_type(&self) -> String {
+        let result = unsafe { ffi::box_error_type(&*self.error_ptr) };
+        unsafe { CStr::from_ptr(result) }
+            .to_string_lossy()
+            .to_string()
     }
 }
 
@@ -117,7 +129,7 @@ impl From<TarantoolError> for Error {
 }
 
 #[repr(u32)]
-#[derive(Debug, Clone, PartialEq, FromPrimitive)]
+#[derive(Debug, Clone, PartialEq, ToPrimitive, FromPrimitive)]
 pub enum TarantoolErrorCode {
     Unknown = 0,
     IllegalParams = 1,
@@ -323,8 +335,25 @@ pub enum TarantoolErrorCode {
     BootstrapReadonly = 201,
 }
 
+/// Clear the last error.
+pub fn clear_error() {
+    unsafe { ffi::box_error_clear() }
+}
+
+/// Set the last error.
+pub fn set_error(file: &str, line: u32, code: &TarantoolErrorCode, msg: &str) {
+    unsafe {
+        ffi::box_error_set(
+            CString::new(file).unwrap().as_ptr(),
+            line,
+            code.to_u32().unwrap(),
+            CString::new(msg).unwrap().as_ptr(),
+        )
+    };
+}
+
 mod ffi {
-    use std::os::raw::c_char;
+    use std::os::raw::{c_char, c_int, c_uint};
 
     #[repr(C)]
     #[derive(Debug, Copy, Clone)]
@@ -336,8 +365,14 @@ mod ffi {
         pub fn box_error_code(error: *const BoxError) -> u32;
         pub fn box_error_message(error: *const BoxError) -> *const c_char;
         pub fn box_error_last() -> *mut BoxError;
-
-        #[allow(dead_code)]
         pub fn box_error_type(error: *const BoxError) -> *const c_char;
+        pub fn box_error_clear();
+        pub fn box_error_set(
+            file: *const c_char,
+            line: c_uint,
+            code: u32,
+            format: *const c_char,
+            ...
+        ) -> c_int;
     }
 }

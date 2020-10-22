@@ -1,4 +1,4 @@
-use std::os::raw::{c_char, c_int, c_uint};
+use std::os::raw::{c_char, c_int};
 
 use crate::tuple::ffi::BoxTuple;
 
@@ -32,31 +32,6 @@ extern "C" {
         expr: *const c_char,
         expr_end: *const c_char,
     ) -> *mut BoxTuple;
-}
-
-extern "C" {
-    /**
-     * Clear the last error.
-     */
-    pub fn box_error_clear();
-
-    /**
-     * Set the last error.
-     *
-     * \param code IPROTO error code (enum \link box_error_code \endlink)
-     * \param format (const char * ) - printf()-like format string
-     * \param ... - format arguments
-     * \returns -1 for convention use
-     *
-     * \sa enum box_error_code
-     */
-    pub fn box_error_set(
-        file: *const c_char,
-        line: c_uint,
-        code: u32,
-        format: *const c_char,
-        ...
-    ) -> c_int;
 }
 
 // ===========================================================================
