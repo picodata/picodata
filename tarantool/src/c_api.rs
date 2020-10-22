@@ -79,144 +79,24 @@ extern "C" {
         port: *const c_char,
         hints: *const AddrInfo,
         res: *mut *mut AddrInfo,
-        timeout: f64
+        timeout: f64,
     ) -> c_int;
 }
 
 // ===========================================================================
 // Tuple
 
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct BoxTupleFormat {
-    _unused: [u8; 0],
-}
-
 extern "C" {
-    /**
-     * Tuple Format.
-     *
-     * Each Tuple has associated format (class). Default format is used to
-     * create tuples which are not attach to any particular space.
-     */
-    pub fn box_tuple_format_default() -> *mut BoxTupleFormat;
-}
-
-extern "C" {
-    /**
-     * Return the associated format.
-     * \param Tuple Tuple
-     * \return TupleFormat
-     */
-    pub fn box_tuple_format(tuple: *const BoxTuple) -> *mut BoxTupleFormat;
-
-    /**
-     * Return the raw Tuple field in MsgPack format.
-     *
-     * The buffer is valid until next call to box_tuple_* functions.
-     *
-     * \param Tuple a Tuple
-     * \param fieldno zero-based index in MsgPack array.
-     * \retval NULL if i >= box_tuple_field_count(Tuple)
-     * \retval msgpack otherwise
-     */
-    pub fn box_tuple_field(tuple: *const BoxTuple, fieldno: u32) -> *const c_char;
-}
-
-/**
- * Tuple iterator
- */
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct BoxTupleIterator {
-    _unused: [u8; 0],
-}
-
-extern "C" {
-    /**
-     * Allocate and initialize a new Tuple iterator. The Tuple iterator
-     * allow to iterate over fields at root level of MsgPack array.
-     *
-     * Example:
-     * \code
-     * box_tuple_iterator *it = box_tuple_iterator(Tuple);
-     * if (it == NULL) {
-     *      // error handling using box_error_last()
-     * }
-     * const char *field;
-     * while (field = box_tuple_next(it)) {
-     *      // process raw MsgPack data
-     * }
-     *
-     * // rewind iterator to first position
-     * box_tuple_rewind(it);
-     * assert(box_tuple_position(it) == 0);
-     *
-     * // rewind iterator to first position
-     * field = box_tuple_seek(it, 3);
-     * assert(box_tuple_position(it) == 4);
-     *
-     * box_iterator_free(it);
-     * \endcode
-     *
-     * \post box_tuple_position(it) == 0
-     */
-    pub fn box_tuple_iterator(tuple: *mut BoxTuple) -> *mut BoxTupleIterator;
-
-    /**
-     * Destroy and free Tuple iterator
-     */
-    pub fn box_tuple_iterator_free(it: *mut BoxTupleIterator);
-
-    /**
-     * Return zero-based next position in iterator.
-     * That is, this function return the field id of field that will be
-     * returned by the next call to box_tuple_next(it). Returned value is zero
-     * after initialization or rewind and box_tuple_field_count(Tuple)
-     * after the end of iteration.
-     *
-     * \param it Tuple iterator
-     * \returns position.
-     */
-    pub fn box_tuple_position(it: *mut BoxTupleIterator) -> u32;
-
-    /**
-     * Rewind iterator to the initial position.
-     *
-     * \param it Tuple iterator
-     * \post box_tuple_position(it) == 0
-     */
-    pub fn box_tuple_rewind(it: *mut BoxTupleIterator);
-
-    /**
-     * Seek the Tuple iterator.
-     *
-     * The returned buffer is valid until next call to box_tuple_* API.
-     * Requested fieldno returned by next call to box_tuple_next(it).
-     *
-     * \param it Tuple iterator
-     * \param fieldno - zero-based position in MsgPack array.
-     * \post box_tuple_position(it) == fieldno if returned value is not NULL
-     * \post box_tuple_position(it) == box_tuple_field_count(Tuple) if returned
-     * value is NULL.
-     */
-    pub fn box_tuple_seek(it: *mut BoxTupleIterator, fieldno: u32) -> *const c_char;
-
-    /**
-     * Return the next Tuple field from Tuple iterator.
-     * The returned buffer is valid until next call to box_tuple_* API.
-     *
-     * \param it Tuple iterator.
-     * \retval NULL if there are no more fields.
-     * \retval MsgPack otherwise
-     * \pre box_tuple_position(it) is zerod-based id of returned field
-     * \post box_tuple_position(it) == box_tuple_field_count(Tuple) if returned
-     * value is NULL.
-     */
-    pub fn box_tuple_next(it: *mut BoxTupleIterator) -> *const c_char;
-
-    pub fn box_tuple_update(tuple: *const BoxTuple, expr: *const c_char, expr_end: *const c_char) -> *mut BoxTuple;
-    pub fn box_tuple_upsert(tuple: *const BoxTuple, expr: *const c_char, expr_end: *const c_char) -> *mut BoxTuple;
+    pub fn box_tuple_update(
+        tuple: *const BoxTuple,
+        expr: *const c_char,
+        expr_end: *const c_char,
+    ) -> *mut BoxTuple;
+    pub fn box_tuple_upsert(
+        tuple: *const BoxTuple,
+        expr: *const c_char,
+        expr_end: *const c_char,
+    ) -> *mut BoxTuple;
 }
 
 // ===========================================================================
@@ -275,7 +155,13 @@ extern "C" {
      *
      * \sa enum box_error_code
      */
-    pub fn box_error_set(file: *const c_char, line: c_uint, code: u32, format: *const c_char, ...)-> c_int;
+    pub fn box_error_set(
+        file: *const c_char,
+        line: c_uint,
+        code: u32,
+        format: *const c_char,
+        ...
+    ) -> c_int;
 }
 
 // ===========================================================================

@@ -21,4 +21,4 @@ mod latch;
 pub mod log;
 mod space;
 mod transaction;
-mod tuple;
+pub mod tuple;
