@@ -4,6 +4,7 @@ use std::net::{TcpListener, TcpStream};
 use std::os::unix::io::{AsRawFd, FromRawFd};
 use std::os::unix::net::UnixStream;
 
+use tarantool_module::coio::call;
 use tarantool_module::fiber::sleep;
 use tarantool_module::{CoIOListener, CoIOStream, Fiber};
 
@@ -47,4 +48,15 @@ pub fn test_coio_read_write() {
 
     reader_fiber.join();
     writer_fiber.join();
+}
+
+pub fn test_coio_call() {
+    let res = call(
+        &mut |x| {
+            assert_eq!(*x, 99);
+            100
+        },
+        99,
+    );
+    assert_eq!(res, 100)
 }
