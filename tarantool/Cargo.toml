@@ -13,6 +13,7 @@ repository = "https://github.com/picodata/tarantool-module"
 keywords = ["ffi", "tarantool"]
 
 [dependencies]
+bitflags = "1.2"
 failure = "0.1.8"
 libc = "0.2"
 log = "0.4"

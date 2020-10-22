@@ -1,9 +1,10 @@
 use std::convert::TryFrom;
+use std::ffi::c_void;
 use std::io;
 use std::io::{Read, Write};
-use std::net::{TcpListener, TcpStream};
+use std::net::TcpListener;
 use std::os::raw::{c_char, c_int};
-use std::os::unix::io::AsRawFd;
+use std::os::unix::io::{AsRawFd, IntoRawFd, RawFd};
 
 use failure::_core::ptr::null_mut;
 
@@ -13,57 +14,102 @@ use crate::Error;
 pub const TIMEOUT_INFINITY: f64 = 365.0 * 86400.0 * 100.0;
 
 /// Uses CoIO main loop to poll read/write events from wrapped socket
-pub struct CoIOStream<T> {
-    inner: T,
+pub struct CoIOStream {
+    fd: RawFd,
 }
 
-impl<T> CoIOStream<T>
-where
-    T: Read + Write + AsRawFd,
-{
-    pub fn new(inner: TcpStream) -> Result<CoIOStream<TcpStream>, io::Error> {
-        inner.set_nonblocking(true)?;
-        Ok(CoIOStream { inner })
-    }
-
-    pub fn inner_stream(&mut self) -> &mut T {
-        &mut self.inner
+bitflags! {
+    pub struct CoioFlags: c_int {
+        const READ = 1;
+        const WRITE = 2;
     }
 }
 
-impl<T> Read for CoIOStream<T>
-where
-    T: Read + AsRawFd,
-{
+impl CoIOStream {
+    pub fn new<T>(inner: T) -> Result<CoIOStream, io::Error>
+    where
+        T: IntoRawFd,
+    {
+        let fd = inner.into_raw_fd();
+        let flags = unsafe { libc::fcntl(fd, libc::F_GETFL, 0) };
+        if flags < 0 {
+            return Err(io::Error::last_os_error());
+        }
+
+        if unsafe { libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK) < 0 } {
+            Err(io::Error::last_os_error())
+        } else {
+            Ok(CoIOStream { fd })
+        }
+    }
+
+    fn read_with_timeout(&mut self, buf: &mut [u8], timeout: f64) -> Result<usize, io::Error> {
+        let buf_len = buf.len();
+        let result = unsafe { libc::read(self.fd, buf.as_mut_ptr() as *mut c_void, buf_len) };
+        if result >= 0 {
+            return Ok(result as usize);
+        }
+
+        let err = io::Error::last_os_error();
+        if err.kind() != io::ErrorKind::WouldBlock {
+            return Err(err);
+        }
+
+        wait(self.fd, CoioFlags::READ, timeout)?;
+        let result = unsafe { libc::read(self.fd, buf.as_mut_ptr() as *mut c_void, buf_len) };
+        if result < 0 {
+            Err(io::Error::last_os_error())
+        } else {
+            Ok(result as usize)
+        }
+    }
+
+    fn write_with_timeout(&mut self, buf: &[u8], timeout: f64) -> Result<usize, io::Error> {
+        let result = unsafe { libc::write(self.fd, buf.as_ptr() as *mut c_void, buf.len()) };
+        if result >= 0 {
+            return Ok(result as usize);
+        }
+
+        let err = io::Error::last_os_error();
+        if err.kind() != io::ErrorKind::WouldBlock {
+            return Err(err);
+        }
+
+        wait(self.fd, CoioFlags::WRITE, timeout)?;
+        let result = unsafe { libc::write(self.fd, buf.as_ptr() as *mut c_void, buf.len()) };
+        if result < 0 {
+            Err(io::Error::last_os_error())
+        } else {
+            Ok(result as usize)
+        }
+    }
+}
+
+impl IntoRawFd for CoIOStream {
+    fn into_raw_fd(self) -> RawFd {
+        self.fd
+    }
+}
+
+impl Read for CoIOStream {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize, io::Error> {
-        let res = self.inner.read(buf);
-        match res {
-            Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
-                wait(&self.inner, ffi::CoioFlags::Read, TIMEOUT_INFINITY)?;
-                self.inner.read(buf)
-            }
-            res => res,
-        }
+        self.read_with_timeout(buf, TIMEOUT_INFINITY)
     }
 }
 
-impl<T> Write for CoIOStream<T>
-where
-    T: Write + AsRawFd,
-{
+impl Write for CoIOStream {
     fn write(&mut self, buf: &[u8]) -> Result<usize, io::Error> {
-        let res = self.inner.write(buf);
-        match res {
-            Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
-                wait(&self.inner, ffi::CoioFlags::Write, TIMEOUT_INFINITY)?;
-                self.inner.write(buf)
-            }
-            res => res,
-        }
+        self.write_with_timeout(buf, TIMEOUT_INFINITY)
     }
 
     fn flush(&mut self) -> Result<(), io::Error> {
-        self.inner.flush()
+        Ok(())
+    }
+}
+
+impl Drop for CoIOStream {
+    fn drop(&mut self) {
+        unsafe { ffi::coio_close(self.fd) };
     }
 }
 
@@ -73,18 +119,15 @@ pub struct CoIOListener {
 }
 
 impl CoIOListener {
-    pub fn accept(&self) -> Result<CoIOStream<TcpStream>, io::Error> {
+    pub fn accept(&self) -> Result<CoIOStream, io::Error> {
         loop {
             let res = self.inner.accept();
             return match res {
-                Ok((stream, _)) => {
-                    stream.set_nonblocking(true)?;
-                    Ok(CoIOStream { inner: stream })
-                }
+                Ok((stream, _)) => CoIOStream::new(stream),
 
                 Err(e) => {
                     if e.kind() == io::ErrorKind::WouldBlock {
-                        wait(&self.inner, ffi::CoioFlags::Read, TIMEOUT_INFINITY)?;
+                        wait(self.inner.as_raw_fd(), CoioFlags::READ, TIMEOUT_INFINITY)?;
                         continue;
                     }
                     Err(e)
@@ -107,11 +150,13 @@ impl TryFrom<TcpListener> for CoIOListener {
     }
 }
 
-pub fn wait<T>(fp: &T, flags: ffi::CoioFlags, timeout: f64) -> Result<(), io::Error>
-where
-    T: AsRawFd,
-{
-    match unsafe { ffi::coio_wait(fp.as_raw_fd(), flags as c_int, timeout) } {
+/// Wait until `READ` or `WRITE` event on socket (\a fd). Yields.
+///
+/// - `fd` - non-blocking socket file description
+/// - `events` - requested events to wait. Combination of `TNT_IO_READ | TNT_IO_WRITE` bit flags.
+/// - `timeoout` - timeout in seconds.
+pub fn wait(fd: RawFd, flags: CoioFlags, timeout: f64) -> Result<(), io::Error> {
+    match unsafe { ffi::coio_wait(fd, flags.bits, timeout) } {
         0 => Err(io::ErrorKind::TimedOut.into()),
         _ => Ok(()),
     }
@@ -158,10 +203,7 @@ mod ffi {
 
     extern "C" {
         pub fn coio_wait(fd: c_int, event: c_int, timeout: f64) -> c_int;
-
-        #[allow(dead_code)]
         pub fn coio_close(fd: c_int) -> c_int;
-
         pub fn coio_getaddrinfo(
             host: *const c_char,
             port: *const c_char,
