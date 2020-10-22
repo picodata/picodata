@@ -15,6 +15,7 @@ pub use transaction::start_transaction;
 pub use tuple::{AsTuple, Tuple};
 
 pub mod c_api;
+pub mod clock;
 pub mod coio;
 pub mod error;
 pub mod fiber;

@@ -83,17 +83,3 @@ extern "C" {
      */
     pub fn box_latch_unlock(latch: *mut BoxLatch);
 }
-
-// ===========================================================================
-// Clock
-
-extern "C" {
-    pub fn clock_realtime() -> f64;
-    pub fn clock_monotonic() -> f64;
-    pub fn clock_process() -> f64;
-    pub fn clock_thread() -> f64;
-    pub fn clock_realtime64() -> u64;
-    pub fn clock_monotonic64() -> u64;
-    pub fn clock_process64() -> u64;
-    pub fn clock_thread64() -> u64;
-}
