@@ -437,6 +437,25 @@ where
     })
 }
 
+pub struct FunctionCtx {
+    inner: *mut ffi::BoxFunctionCtx,
+}
+
+impl FunctionCtx {
+    /// Return a Tuple from stored C procedure.
+    ///
+    /// Returned Tuple is automatically reference counted by Tarantool.
+    ///
+    /// - `tuple` - a Tuple to return
+    pub fn return_tuple(self, tuple: Tuple) -> Result<(), Error> {
+        if unsafe { ffi::box_return_tuple(self.inner, tuple.ptr) } < 0 {
+            Err(TarantoolError::last().into())
+        } else {
+            Ok(())
+        }
+    }
+}
+
 pub(crate) mod ffi {
     use std::os::raw::{c_char, c_int};
 
@@ -509,5 +528,15 @@ pub(crate) mod ffi {
             key_b: *const c_char,
             key_def: *mut BoxKeyDef,
         ) -> c_int;
+    }
+
+    #[repr(C)]
+    #[derive(Debug, Copy, Clone)]
+    pub struct BoxFunctionCtx {
+        _unused: [u8; 0],
+    }
+
+    extern "C" {
+        pub fn box_return_tuple(ctx: *mut BoxFunctionCtx, tuple: *mut BoxTuple) -> c_int;
     }
 }

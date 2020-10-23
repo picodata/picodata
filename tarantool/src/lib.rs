@@ -13,12 +13,13 @@ pub use transaction::start_transaction;
 pub use tuple::{AsTuple, Tuple};
 
 pub mod c_api;
-mod coio;
+pub mod coio;
 pub mod error;
 pub mod fiber;
 pub mod index;
 mod latch;
 pub mod log;
+pub mod sequence;
 mod space;
 mod transaction;
 pub mod tuple;

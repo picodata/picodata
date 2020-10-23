@@ -53,36 +53,6 @@ extern "C" {
     pub fn coio_call(func: Option<unsafe extern "C" fn(VaList) -> c_int>, ...) -> isize;
 }
 
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct AddrInfo {
-    _unused: [u8; 0],
-}
-
-extern "C" {
-    /**
-     * Fiber-friendly version of getaddrinfo(3).
-     *
-     * @param host host name, i.e. "tarantool.org"
-     * @param port service name, i.e. "80" or "http"
-     * @param hints hints, see getaddrinfo(3)
-     * @param res[out] result, see getaddrinfo(3)
-     * @param timeout timeout
-     * @retval  0 on success, please free @a res using freeaddrinfo(3).
-     * @retval -1 on error, check diag.
-     *            Please note that the return value is not compatible with
-     *            getaddrinfo(3).
-     * @sa getaddrinfo()
-     */
-    pub fn coio_getaddrinfo(
-        host: *const c_char,
-        port: *const c_char,
-        hints: *const AddrInfo,
-        res: *mut *mut AddrInfo,
-        timeout: f64,
-    ) -> c_int;
-}
-
 // ===========================================================================
 // Tuple
 
@@ -97,46 +67,6 @@ extern "C" {
         expr: *const c_char,
         expr_end: *const c_char,
     ) -> *mut BoxTuple;
-}
-
-// ===========================================================================
-// Space
-
-pub const BOX_SYSTEM_ID_MIN: u32 = 256;
-pub const BOX_SCHEMA_ID: u32 = 272;
-pub const BOX_SPACE_ID: u32 = 280;
-pub const BOX_VSPACE_ID: u32 = 281;
-pub const BOX_INDEX_ID: u32 = 288;
-pub const BOX_VINDEX_ID: u32 = 289;
-pub const BOX_FUNC_ID: u32 = 296;
-pub const BOX_VFUNC_ID: u32 = 297;
-pub const BOX_USER_ID: u32 = 304;
-pub const BOX_VUSER_ID: u32 = 305;
-pub const BOX_PRIV_ID: u32 = 312;
-pub const BOX_VPRIV_ID: u32 = 313;
-pub const BOX_CLUSTER_ID: u32 = 320;
-pub const BOX_SYSTEM_ID_MAX: u32 = 511;
-pub const BOX_ID_NIL: u32 = 2147483647;
-
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct BoxFunctionCtx {
-    _unused: [u8; 0],
-}
-
-extern "C" {
-    /**
-     * Return a Tuple from stored C procedure.
-     *
-     * Returned Tuple is automatically reference counted by Tarantool.
-     *
-     * \param ctx an opaque structure passed to the stored C procedure by
-     * Tarantool
-     * \param Tuple a Tuple to return
-     * \retval -1 on error (perhaps, out of memory; check box_error_last())
-     * \retval 0 otherwise
-     */
-    pub fn box_return_tuple(ctx: *mut BoxFunctionCtx, tuple: *mut BoxTuple) -> c_int;
 }
 
 extern "C" {
