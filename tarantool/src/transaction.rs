@@ -11,10 +11,10 @@ use crate::error::TransactionError;
 /// - will **commit** - if function completes successfully
 /// - will **rollback** - if function completes with any error
 pub fn start_transaction<T, E, F>(f: F) -> Result<T, E>
-        where
-            F: FnOnce() -> Result<T, E>,
-            E: From<TransactionError>, {
-
+where
+    F: FnOnce() -> Result<T, E>,
+    E: From<TransactionError>,
+{
     if unsafe { ffi::box_txn_begin() } < 0 {
         return Err(TransactionError::AlreadyStarted.into());
     }
@@ -23,14 +23,14 @@ pub fn start_transaction<T, E, F>(f: F) -> Result<T, E>
     match &result {
         Ok(_) => {
             if unsafe { ffi::box_txn_commit() } < 0 {
-                return Err(TransactionError::FailedToCommit.into())
+                return Err(TransactionError::FailedToCommit.into());
             }
-        },
+        }
         Err(_) => {
             if unsafe { ffi::box_txn_rollback() } < 0 {
-                return Err(TransactionError::FailedToRollback.into())
+                return Err(TransactionError::FailedToRollback.into());
             }
-        },
+        }
     }
     result
 }
@@ -46,5 +46,4 @@ pub(crate) mod ffi {
         pub fn box_txn_rollback() -> c_int;
         pub fn box_txn_alloc(size: usize) -> *mut c_void;
     }
-
 }

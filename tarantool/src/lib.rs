@@ -1,6 +1,8 @@
 #[macro_use]
 extern crate bitflags;
 #[macro_use]
+extern crate derivative;
+#[macro_use]
 extern crate failure;
 #[macro_use]
 extern crate num_derive;
@@ -12,7 +14,7 @@ pub use index::{Index, IndexIterator};
 pub use latch::{Latch, LatchGuard};
 pub use space::{Space, SystemSpace};
 pub use transaction::start_transaction;
-pub use tuple::{AsTuple, Tuple};
+pub use tuple::{AsTuple, FunctionCtx, Tuple};
 
 pub mod c_api;
 pub mod clock;

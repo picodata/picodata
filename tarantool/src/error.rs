@@ -70,10 +70,12 @@ impl From<TransactionError> for Error {
     }
 }
 
-#[derive(Debug)]
+#[derive(Derivative)]
+#[derivative(Debug)]
 pub struct TarantoolError {
     code: TarantoolErrorCode,
     message: String,
+    #[derivative(Debug = "ignore")]
     error_ptr: Box<ffi::BoxError>,
 }
 
@@ -356,7 +358,6 @@ mod ffi {
     use std::os::raw::{c_char, c_int, c_uint};
 
     #[repr(C)]
-    #[derive(Debug, Copy, Clone)]
     pub struct BoxError {
         _unused: [u8; 0],
     }

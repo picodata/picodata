@@ -20,7 +20,7 @@ pub struct CoIOStream {
 }
 
 bitflags! {
-    pub struct CoioFlags: c_int {
+    pub struct CoIOFlags: c_int {
         const READ = 1;
         const WRITE = 2;
     }
@@ -56,7 +56,7 @@ impl CoIOStream {
             return Err(err);
         }
 
-        wait(self.fd, CoioFlags::READ, timeout)?;
+        wait(self.fd, CoIOFlags::READ, timeout)?;
         let result = unsafe { libc::read(self.fd, buf.as_mut_ptr() as *mut c_void, buf_len) };
         if result < 0 {
             Err(io::Error::last_os_error())
@@ -76,7 +76,7 @@ impl CoIOStream {
             return Err(err);
         }
 
-        wait(self.fd, CoioFlags::WRITE, timeout)?;
+        wait(self.fd, CoIOFlags::WRITE, timeout)?;
         let result = unsafe { libc::write(self.fd, buf.as_ptr() as *mut c_void, buf.len()) };
         if result < 0 {
             Err(io::Error::last_os_error())
@@ -128,7 +128,7 @@ impl CoIOListener {
 
                 Err(e) => {
                     if e.kind() == io::ErrorKind::WouldBlock {
-                        wait(self.inner.as_raw_fd(), CoioFlags::READ, TIMEOUT_INFINITY)?;
+                        wait(self.inner.as_raw_fd(), CoIOFlags::READ, TIMEOUT_INFINITY)?;
                         continue;
                     }
                     Err(e)
@@ -156,7 +156,7 @@ impl TryFrom<TcpListener> for CoIOListener {
 /// - `fd` - non-blocking socket file description
 /// - `events` - requested events to wait. Combination of `TNT_IO_READ | TNT_IO_WRITE` bit flags.
 /// - `timeoout` - timeout in seconds.
-pub fn wait(fd: RawFd, flags: CoioFlags, timeout: f64) -> Result<(), io::Error> {
+pub fn wait(fd: RawFd, flags: CoIOFlags, timeout: f64) -> Result<(), io::Error> {
     match unsafe { ffi::coio_wait(fd, flags.bits, timeout) } {
         0 => Err(io::ErrorKind::TimedOut.into()),
         _ => Ok(()),

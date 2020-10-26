@@ -19,7 +19,7 @@ impl Log for TarantoolLogger {
             record.file().unwrap_or_default(),
             record.line().unwrap_or(0) as i32,
             None,
-            record.args().to_string().as_str()
+            record.args().to_string().as_str(),
         )
     }
 
@@ -50,16 +50,13 @@ impl From<Level> for SayLevel {
     }
 }
 
-
 #[inline]
 pub fn say(level: SayLevel, file: &str, line: i32, error: Option<&str>, message: &str) {
     let level = level.to_i32().unwrap();
     let file = CString::new(file).unwrap();
     let error = error.map(|e| CString::new(e).unwrap());
     let error_ptr = match error {
-        Some(ref error) => {
-            error.as_ptr()
-        },
+        Some(ref error) => error.as_ptr(),
         None => null(),
     };
     let message = CString::new(message).unwrap();
@@ -76,7 +73,9 @@ pub fn say(level: SayLevel, file: &str, line: i32, error: Option<&str>, message:
 mod ffi {
     use std::os::raw::{c_char, c_int};
 
-    pub type SayFunc = Option<unsafe extern "C" fn(c_int, *const c_char, c_int, *const c_char, *const c_char, ...)>;
+    pub type SayFunc = Option<
+        unsafe extern "C" fn(c_int, *const c_char, c_int, *const c_char, *const c_char, ...),
+    >;
 
     extern "C" {
         #[link_name = "log_level"]
@@ -85,5 +84,4 @@ mod ffi {
         #[link_name = "_say"]
         pub static mut SAY_FN: SayFunc;
     }
-
 }

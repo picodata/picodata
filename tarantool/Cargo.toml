@@ -1,7 +1,7 @@
 [package]
 name = "tarantool-module"
 description = "Tarantool C API bindings"
-version = "0.1.0"
+version = "0.2.0"
 authors = [
     "Dmitriy Koltsov <dkoltsov@picodata.io>",
     "Anton Melnikov <volt0@picodata.io>"
@@ -14,6 +14,7 @@ keywords = ["ffi", "tarantool"]
 
 [dependencies]
 bitflags = "1.2"
+derivative = "2.1"
 failure = "0.1.8"
 libc = "0.2"
 log = "0.4"

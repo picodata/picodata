@@ -1,17 +1,17 @@
-use tarantool_module::{start_transaction, Error, Space};
 use crate::common::S1Record;
 use std::io;
+use tarantool_module::{start_transaction, Error, Space};
 
 pub fn test_transaction_commit() {
     let mut space = Space::find_by_name("test_s1").unwrap().unwrap();
     space.truncate().unwrap();
 
-    let input = S1Record{
+    let input = S1Record {
         id: 1,
-        text: "test".to_string()
+        text: "test".to_string(),
     };
 
-    let result = start_transaction(|| -> Result<(), Error>{
+    let result = start_transaction(|| -> Result<(), Error> {
         space.insert(&input, false)?;
         Ok(())
     });
@@ -20,20 +20,19 @@ pub fn test_transaction_commit() {
     let output = space.primary_key().get(&(1,)).unwrap();
     assert!(output.is_some());
     assert_eq!(output.unwrap().into_struct::<S1Record>().unwrap(), input);
-
 }
 
 pub fn test_transaction_rollback() {
     let mut space = Space::find_by_name("test_s1").unwrap().unwrap();
     space.truncate().unwrap();
 
-    let result = start_transaction(|| -> Result<(), Error>{
+    let result = start_transaction(|| -> Result<(), Error> {
         space.insert(
-            &S1Record{
+            &S1Record {
                 id: 1,
-                text: "test".to_string()
+                text: "test".to_string(),
             },
-            false
+            false,
         )?;
         Err(Error::IO(io::ErrorKind::Interrupted.into()))
     });

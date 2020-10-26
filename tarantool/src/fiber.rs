@@ -271,7 +271,6 @@ pub(crate) mod ffi {
     use va_list::VaList;
 
     #[repr(C)]
-    #[derive(Debug, Copy, Clone)]
     pub struct Fiber {
         _unused: [u8; 0],
     }
@@ -302,7 +301,6 @@ pub(crate) mod ffi {
     }
 
     #[repr(C)]
-    #[derive(Debug, Copy, Clone)]
     pub struct FiberAttr {
         _unused: [u8; 0],
     }
@@ -315,7 +313,6 @@ pub(crate) mod ffi {
     }
 
     #[repr(C)]
-    #[derive(Debug, Copy, Clone)]
     pub struct FiberCond {
         _unused: [u8; 0],
     }

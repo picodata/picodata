@@ -3,9 +3,9 @@ use std::ptr::null_mut;
 
 use num_traits::ToPrimitive;
 
-use crate::{AsTuple, Error, Tuple};
 use crate::error::TarantoolError;
 use crate::tuple::{ffi::BoxTuple, TupleBuffer};
+use crate::{AsTuple, Error, Tuple};
 
 pub struct Index {
     space_id: u32,
@@ -69,10 +69,9 @@ pub enum IteratorType {
     Neigbor = 11,
 }
 
-
 impl Index {
     pub(crate) fn new(space_id: u32, index_id: u32) -> Self {
-        Index{space_id, index_id}
+        Index { space_id, index_id }
     }
 
     /// Get a tuple from index by the key.
@@ -82,25 +81,30 @@ impl Index {
     /// - `key` - encoded key in MsgPack Array format ([part1, part2, ...]).
     ///
     /// Returns a tuple or `None` if index is empty
-    pub fn get<K>(&self, key: &K) -> Result<Option<Tuple>, Error> where K: AsTuple {
+    pub fn get<K>(&self, key: &K) -> Result<Option<Tuple>, Error>
+    where
+        K: AsTuple,
+    {
         let key_buf = key.serialize_as_tuple().unwrap();
         let key_buf_ptr = key_buf.as_ptr() as *const c_char;
         let mut result_ptr = null_mut::<BoxTuple>();
 
-        if unsafe { c_api::box_index_get(
-            self.space_id,
-            self.index_id,
-            key_buf_ptr,
-            key_buf_ptr.offset(key_buf.len() as isize),
-            &mut result_ptr
-        ) } < 0 {
+        if unsafe {
+            c_api::box_index_get(
+                self.space_id,
+                self.index_id,
+                key_buf_ptr,
+                key_buf_ptr.offset(key_buf.len() as isize),
+                &mut result_ptr,
+            )
+        } < 0
+        {
             return Err(TarantoolError::last().into());
         }
 
         Ok(if result_ptr.is_null() {
             None
-        }
-        else {
+        } else {
             Some(Tuple::from_ptr(result_ptr))
         })
     }
@@ -109,9 +113,10 @@ impl Index {
     ///
     /// - `type` - iterator type
     /// - `key` - encoded key in MsgPack Array format ([part1, part2, ...]).
-    pub fn select<K>(&self, iterator_type: IteratorType, key: &K)
-            -> Result<IndexIterator, Error>
-            where K: AsTuple {
+    pub fn select<K>(&self, iterator_type: IteratorType, key: &K) -> Result<IndexIterator, Error>
+    where
+        K: AsTuple,
+    {
         let key_buf = key.serialize_as_tuple().unwrap();
         let key_buf_ptr = key_buf.as_ptr() as *const c_char;
 
@@ -131,7 +136,7 @@ impl Index {
 
         Ok(IndexIterator {
             ptr,
-            _key_data: key_buf
+            _key_data: key_buf,
         })
     }
 
@@ -143,27 +148,34 @@ impl Index {
     /// Returns an old tuple
     ///
     /// See also: `box.space[space_id].index[index_id]:delete(key)`
-    pub fn delete<K>(&mut self, key: &K, with_result: bool)
-        -> Result<Option<Tuple>, Error>
-        where K: AsTuple {
+    pub fn delete<K>(&mut self, key: &K, with_result: bool) -> Result<Option<Tuple>, Error>
+    where
+        K: AsTuple,
+    {
         let key_buf = key.serialize_as_tuple().unwrap();
         let key_buf_ptr = key_buf.as_ptr() as *const c_char;
         let mut result_ptr = null_mut::<BoxTuple>();
 
-        if unsafe { c_api::box_delete(
-            self.space_id,
-            self.index_id,
-            key_buf_ptr,
-            key_buf_ptr.offset(key_buf.len() as isize),
-            if with_result { &mut result_ptr } else { null_mut() }
-        ) } < 0 {
+        if unsafe {
+            c_api::box_delete(
+                self.space_id,
+                self.index_id,
+                key_buf_ptr,
+                key_buf_ptr.offset(key_buf.len() as isize),
+                if with_result {
+                    &mut result_ptr
+                } else {
+                    null_mut()
+                },
+            )
+        } < 0
+        {
             return Err(TarantoolError::last().into());
         }
 
-        Ok(if with_result && !result_ptr.is_null(){
+        Ok(if with_result && !result_ptr.is_null() {
             Some(Tuple::from_ptr(result_ptr))
-        }
-        else {
+        } else {
             None
         })
     }
@@ -177,33 +189,45 @@ impl Index {
     /// Returns a new tuple.
     ///
     /// See also: `box.space[space_id].index[index_id]:update(key, ops)`, [upsert](#method.upsert)
-    pub fn update<K, Op>(&mut self, key: &K, ops: &Vec<Op>, with_result: bool)
-        -> Result<Option<Tuple>, Error>
-        where K: AsTuple, Op: AsTuple {
+    pub fn update<K, Op>(
+        &mut self,
+        key: &K,
+        ops: &Vec<Op>,
+        with_result: bool,
+    ) -> Result<Option<Tuple>, Error>
+    where
+        K: AsTuple,
+        Op: AsTuple,
+    {
         let key_buf = key.serialize_as_tuple().unwrap();
         let key_buf_ptr = key_buf.as_ptr() as *const c_char;
         let ops_buf = ops.serialize_as_tuple().unwrap();
         let ops_buf_ptr = ops_buf.as_ptr() as *const c_char;
         let mut result_ptr = null_mut::<BoxTuple>();
 
-        if unsafe { c_api::box_update(
-            self.space_id,
-            self.index_id,
-            key_buf_ptr,
-            key_buf_ptr.offset(key_buf.len() as isize),
-            ops_buf_ptr,
-            ops_buf_ptr.offset(ops_buf.len() as isize),
-            0,
-            if with_result { &mut result_ptr } else { null_mut() }
-        ) } < 0 {
+        if unsafe {
+            c_api::box_update(
+                self.space_id,
+                self.index_id,
+                key_buf_ptr,
+                key_buf_ptr.offset(key_buf.len() as isize),
+                ops_buf_ptr,
+                ops_buf_ptr.offset(ops_buf.len() as isize),
+                0,
+                if with_result {
+                    &mut result_ptr
+                } else {
+                    null_mut()
+                },
+            )
+        } < 0
+        {
             return Err(TarantoolError::last().into());
         }
 
-
         Ok(if with_result && !result_ptr.is_null() {
             Some(Tuple::from_ptr(result_ptr))
-        }
-        else {
+        } else {
             None
         })
     }
@@ -217,62 +241,67 @@ impl Index {
     /// Returns a new tuple.
     ///
     /// See also: `box.space[space_id].index[index_id]:update(key, ops)`, [update](#method.update)
-    pub fn upsert<T, Op>(&mut self, value: &T, ops: &Vec<Op>, with_result: bool)
-        -> Result<Option<Tuple>, Error>
-        where T: AsTuple, Op: AsTuple {
+    pub fn upsert<T, Op>(
+        &mut self,
+        value: &T,
+        ops: &Vec<Op>,
+        with_result: bool,
+    ) -> Result<Option<Tuple>, Error>
+    where
+        T: AsTuple,
+        Op: AsTuple,
+    {
         let value_buf = value.serialize_as_tuple().unwrap();
         let value_buf_ptr = value_buf.as_ptr() as *const c_char;
         let ops_buf = ops.serialize_as_tuple().unwrap();
         let ops_buf_ptr = ops_buf.as_ptr() as *const c_char;
         let mut result_ptr = null_mut::<BoxTuple>();
 
-        if unsafe { c_api::box_upsert(
-            self.space_id,
-            self.index_id,
-            value_buf_ptr,
-            value_buf_ptr.offset(value_buf.len() as isize),
-            ops_buf_ptr,
-            ops_buf_ptr.offset(ops_buf.len() as isize),
-            0,
-            if with_result { &mut result_ptr } else { null_mut() }
-        ) } < 0 {
+        if unsafe {
+            c_api::box_upsert(
+                self.space_id,
+                self.index_id,
+                value_buf_ptr,
+                value_buf_ptr.offset(value_buf.len() as isize),
+                ops_buf_ptr,
+                ops_buf_ptr.offset(ops_buf.len() as isize),
+                0,
+                if with_result {
+                    &mut result_ptr
+                } else {
+                    null_mut()
+                },
+            )
+        } < 0
+        {
             return Err(TarantoolError::last().into());
         }
 
         Ok(if with_result && !result_ptr.is_null() {
             Some(Tuple::from_ptr(result_ptr))
-        }
-        else {
+        } else {
             None
         })
     }
 
     /// Return the number of elements in the index.
     pub fn len(&self) -> Result<usize, Error> {
-        let result = unsafe { c_api::box_index_len(
-            self.space_id,
-            self.index_id,
-        ) };
+        let result = unsafe { c_api::box_index_len(self.space_id, self.index_id) };
 
         if result < 0 {
             Err(TarantoolError::last().into())
-        }
-        else {
+        } else {
             Ok(result as usize)
         }
     }
 
     /// Return the number of bytes used in memory by the index.
     pub fn size(&self) -> Result<usize, Error> {
-        let result = unsafe { c_api::box_index_bsize(
-            self.space_id,
-            self.index_id,
-        ) };
+        let result = unsafe { c_api::box_index_bsize(self.space_id, self.index_id) };
 
         if result < 0 {
             Err(TarantoolError::last().into())
-        }
-        else {
+        } else {
             Ok(result as usize)
         }
     }
@@ -284,19 +313,15 @@ impl Index {
     /// See also: `box.space[space_id].index[index_id]:random(rnd)`
     pub fn random(&self, seed: u32) -> Result<Option<Tuple>, Error> {
         let mut result_ptr = null_mut::<BoxTuple>();
-        if unsafe { c_api::box_index_random(
-            self.space_id,
-            self.index_id,
-            seed,
-            &mut result_ptr
-        ) } < 0 {
+        if unsafe { c_api::box_index_random(self.space_id, self.index_id, seed, &mut result_ptr) }
+            < 0
+        {
             return Err(TarantoolError::last().into());
         }
 
         Ok(if result_ptr.is_null() {
             None
-        }
-        else {
+        } else {
             Some(Tuple::from_ptr(result_ptr))
         })
     }
@@ -306,25 +331,30 @@ impl Index {
     /// - `key` - encoded key in MsgPack Array format ([part1, part2, ...]).
     ///
     /// Returns a tuple or `None` if index is empty
-    pub fn min<K>(&self, key: &K) -> Result<Option<Tuple>, Error> where K: AsTuple {
+    pub fn min<K>(&self, key: &K) -> Result<Option<Tuple>, Error>
+    where
+        K: AsTuple,
+    {
         let key_buf = key.serialize_as_tuple().unwrap();
         let key_buf_ptr = key_buf.as_ptr() as *const c_char;
         let mut result_ptr = null_mut::<BoxTuple>();
 
-        if unsafe { c_api::box_index_min(
-            self.space_id,
-            self.index_id,
-            key_buf_ptr,
-            key_buf_ptr.offset(key_buf.len() as isize),
-            &mut result_ptr
-        ) } < 0 {
+        if unsafe {
+            c_api::box_index_min(
+                self.space_id,
+                self.index_id,
+                key_buf_ptr,
+                key_buf_ptr.offset(key_buf.len() as isize),
+                &mut result_ptr,
+            )
+        } < 0
+        {
             return Err(TarantoolError::last().into());
         }
 
         Ok(if result_ptr.is_null() {
             None
-        }
-        else {
+        } else {
             Some(Tuple::from_ptr(result_ptr))
         })
     }
@@ -334,25 +364,30 @@ impl Index {
     /// - `key` - encoded key in MsgPack Array format ([part1, part2, ...]).
     ///
     /// Returns a tuple or `None` if index is empty
-    pub fn max<K>(&self, key: &K) -> Result<Option<Tuple>, Error> where K: AsTuple {
+    pub fn max<K>(&self, key: &K) -> Result<Option<Tuple>, Error>
+    where
+        K: AsTuple,
+    {
         let key_buf = key.serialize_as_tuple().unwrap();
         let key_buf_ptr = key_buf.as_ptr() as *const c_char;
         let mut result_ptr = null_mut::<BoxTuple>();
 
-        if unsafe { c_api::box_index_max(
-            self.space_id,
-            self.index_id,
-            key_buf_ptr,
-            key_buf_ptr.offset(key_buf.len() as isize),
-            &mut result_ptr
-        ) } < 0 {
+        if unsafe {
+            c_api::box_index_max(
+                self.space_id,
+                self.index_id,
+                key_buf_ptr,
+                key_buf_ptr.offset(key_buf.len() as isize),
+                &mut result_ptr,
+            )
+        } < 0
+        {
             return Err(TarantoolError::last().into());
         }
 
         Ok(if result_ptr.is_null() {
             None
-        }
-        else {
+        } else {
             Some(Tuple::from_ptr(result_ptr))
         })
     }
@@ -361,13 +396,14 @@ impl Index {
     ///
     /// - `type` - iterator type
     /// - `key` - encoded key in MsgPack Array format ([part1, part2, ...]).
-    pub fn count<K>(&self, iterator_type: IteratorType, key: &K)
-        -> Result<usize, Error>
-        where K: AsTuple {
+    pub fn count<K>(&self, iterator_type: IteratorType, key: &K) -> Result<usize, Error>
+    where
+        K: AsTuple,
+    {
         let key_buf = key.serialize_as_tuple().unwrap();
         let key_buf_ptr = key_buf.as_ptr() as *const c_char;
 
-        let result  = unsafe {
+        let result = unsafe {
             c_api::box_index_count(
                 self.space_id,
                 self.index_id,
@@ -379,8 +415,7 @@ impl Index {
 
         if result < 0 {
             Err(TarantoolError::last().into())
-        }
-        else {
+        } else {
             Ok(result as usize)
         }
     }
@@ -397,7 +432,7 @@ impl Index {
                 tuple.into_ptr(),
                 self.space_id,
                 self.index_id,
-                &mut result_size
+                &mut result_size,
             )
         };
         Tuple::from_raw_data(result_ptr, result_size)
@@ -406,7 +441,7 @@ impl Index {
 
 pub struct IndexIterator {
     ptr: *mut c_api::BoxIterator,
-    _key_data: TupleBuffer
+    _key_data: TupleBuffer,
 }
 
 impl Iterator for IndexIterator {
@@ -420,8 +455,7 @@ impl Iterator for IndexIterator {
 
         if result_ptr.is_null() {
             None
-        }
-        else {
+        } else {
             Some(Tuple::from_ptr(result_ptr))
         }
     }
@@ -439,7 +473,6 @@ mod c_api {
     use crate::tuple::ffi::BoxTuple;
 
     #[repr(C)]
-    #[derive(Debug, Copy, Clone)]
     pub struct BoxIterator {
         _unused: [u8; 0],
     }
@@ -450,21 +483,26 @@ mod c_api {
             index_id: u32,
             type_: c_int,
             key: *const c_char,
-            key_end: *const c_char
+            key_end: *const c_char,
         ) -> *mut BoxIterator;
 
         pub fn box_iterator_next(iterator: *mut BoxIterator, result: *mut *mut BoxTuple) -> c_int;
         pub fn box_iterator_free(iterator: *mut BoxIterator);
         pub fn box_index_len(space_id: u32, index_id: u32) -> isize;
         pub fn box_index_bsize(space_id: u32, index_id: u32) -> isize;
-        pub fn box_index_random(space_id: u32, index_id: u32, rnd: u32, result: *mut *mut BoxTuple) -> c_int;
+        pub fn box_index_random(
+            space_id: u32,
+            index_id: u32,
+            rnd: u32,
+            result: *mut *mut BoxTuple,
+        ) -> c_int;
 
         pub fn box_index_get(
             space_id: u32,
             index_id: u32,
             key: *const c_char,
             key_end: *const c_char,
-            result: *mut *mut BoxTuple
+            result: *mut *mut BoxTuple,
         ) -> c_int;
 
         pub fn box_index_min(
@@ -472,7 +510,7 @@ mod c_api {
             index_id: u32,
             key: *const c_char,
             key_end: *const c_char,
-            result: *mut *mut BoxTuple
+            result: *mut *mut BoxTuple,
         ) -> c_int;
 
         pub fn box_index_max(
@@ -480,7 +518,7 @@ mod c_api {
             index_id: u32,
             key: *const c_char,
             key_end: *const c_char,
-            result: *mut *mut BoxTuple
+            result: *mut *mut BoxTuple,
         ) -> c_int;
 
         pub fn box_index_count(
@@ -488,7 +526,7 @@ mod c_api {
             index_id: u32,
             type_: c_int,
             key: *const c_char,
-            key_end: *const c_char
+            key_end: *const c_char,
         ) -> isize;
 
         pub fn box_delete(
@@ -496,7 +534,7 @@ mod c_api {
             index_id: u32,
             key: *const c_char,
             key_end: *const c_char,
-            result: *mut *mut BoxTuple
+            result: *mut *mut BoxTuple,
         ) -> c_int;
 
         pub fn box_update(
@@ -507,7 +545,7 @@ mod c_api {
             ops: *const c_char,
             ops_end: *const c_char,
             index_base: c_int,
-            result: *mut *mut BoxTuple
+            result: *mut *mut BoxTuple,
         ) -> c_int;
 
         pub fn box_upsert(
@@ -518,14 +556,14 @@ mod c_api {
             ops: *const c_char,
             ops_end: *const c_char,
             index_base: c_int,
-            result: *mut *mut BoxTuple
+            result: *mut *mut BoxTuple,
         ) -> c_int;
 
         pub fn box_tuple_extract_key(
             tuple: *const BoxTuple,
             space_id: u32,
             index_id: u32,
-            key_size: *mut u32
+            key_size: *mut u32,
         ) -> *mut c_char;
     }
 }

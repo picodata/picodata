@@ -477,7 +477,6 @@ pub(crate) mod ffi {
     use std::os::raw::{c_char, c_int};
 
     #[repr(C)]
-    #[derive(Debug, Copy, Clone)]
     pub struct BoxTuple {
         _unused: [u8; 0],
     }
@@ -496,7 +495,6 @@ pub(crate) mod ffi {
     }
 
     #[repr(C)]
-    #[derive(Debug, Copy, Clone)]
     pub struct BoxTupleFormat {
         _unused: [u8; 0],
     }
@@ -508,7 +506,6 @@ pub(crate) mod ffi {
     }
 
     #[repr(C)]
-    #[derive(Debug, Copy, Clone)]
     pub struct BoxTupleIterator {
         _unused: [u8; 0],
     }
@@ -523,7 +520,6 @@ pub(crate) mod ffi {
     }
 
     #[repr(C)]
-    #[derive(Debug, Copy, Clone)]
     pub struct BoxKeyDef {
         _unused: [u8; 0],
     }
@@ -548,7 +544,6 @@ pub(crate) mod ffi {
     }
 
     #[repr(C)]
-    #[derive(Debug, Copy, Clone)]
     pub struct BoxFunctionCtx {
         _unused: [u8; 0],
     }

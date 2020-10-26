@@ -28,4 +28,3 @@ pub struct S2Key {
 }
 
 impl AsTuple for S2Key {}
-

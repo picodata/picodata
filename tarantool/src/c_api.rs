@@ -1,4 +1,4 @@
-use std::os::raw::{c_char, c_int};
+use std::os::raw::c_char;
 
 use crate::tuple::ffi::BoxTuple;
 
@@ -32,54 +32,4 @@ extern "C" {
         expr: *const c_char,
         expr_end: *const c_char,
     ) -> *mut BoxTuple;
-}
-
-// ===========================================================================
-// Latch
-
-/**
- * A lock for cooperative multitasking environment
- */
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct BoxLatch {
-    _unused: [u8; 0],
-}
-
-extern "C" {
-    /**
-     * Allocate and initialize the new latch.
-     * \returns latch
-     */
-    pub fn box_latch_new() -> *mut BoxLatch;
-
-    /**
-     * Destroy and free the latch.
-     * \param latch latch
-     */
-    pub fn box_latch_delete(latch: *mut BoxLatch);
-
-    /**
-     * Lock a latch. Waits indefinitely until the current fiber can gain access to
-     * the latch.
-     *
-     * \param latch a latch
-     */
-    pub fn box_latch_lock(latch: *mut BoxLatch);
-
-    /**
-     * Try to lock a latch. Return immediately if the latch is locked.
-     * \param latch a latch
-     * \retval 0 - success
-     * \retval 1 - the latch is locked.
-     */
-    pub fn box_latch_trylock(latch: *mut BoxLatch) -> c_int;
-
-    /**
-     * Unlock a latch. The fiber calling this function must
-     * own the latch.
-     *
-     * \param latch a latch
-     */
-    pub fn box_latch_unlock(latch: *mut BoxLatch);
 }

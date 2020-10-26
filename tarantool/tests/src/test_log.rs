@@ -1,9 +1,9 @@
-use log::{LevelFilter, warn};
+use log::{warn, LevelFilter};
 
 use tarantool_module::log::{say, SayLevel, TarantoolLogger};
 
 pub fn test_log() {
-    log::set_logger(&TarantoolLogger{}).unwrap();
+    log::set_logger(&TarantoolLogger {}).unwrap();
     log::set_max_level(LevelFilter::Debug);
     warn!(target: "target", "message {}", 99);
 
