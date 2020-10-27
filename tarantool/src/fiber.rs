@@ -265,7 +265,7 @@ impl Drop for FiberCond {
     }
 }
 
-mod ffi {
+pub(crate) mod ffi {
     use std::os::raw::{c_char, c_int};
 
     use va_list::VaList;
@@ -330,7 +330,7 @@ mod ffi {
     }
 }
 
-unsafe fn unpack_callback<F, T>(callback: &mut F) -> (*mut c_void, ffi::FiberFunc)
+pub(crate) unsafe fn unpack_callback<F, T>(callback: &mut F) -> (*mut c_void, ffi::FiberFunc)
 where
     F: FnMut(Box<T>) -> i32,
 {

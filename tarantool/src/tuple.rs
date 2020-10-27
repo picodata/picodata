@@ -456,6 +456,23 @@ impl FunctionCtx {
     }
 }
 
+/// Push MessagePack data into a session data channel - socket,
+/// console or whatever is behind the session. Note, that
+/// successful push does not guarantee delivery in case it was sent
+/// into the network. Just like with `write()`/`send()` system calls.
+pub fn session_push<T>(value: &T) -> Result<(), Error>
+where
+    T: AsTuple,
+{
+    let buf = value.serialize_as_tuple().unwrap();
+    let buf_ptr = buf.as_ptr() as *const c_char;
+    if unsafe { ffi::box_session_push(buf_ptr, buf_ptr.offset(buf.len() as isize)) } < 0 {
+        Err(TarantoolError::last().into())
+    } else {
+        Ok(())
+    }
+}
+
 pub(crate) mod ffi {
     use std::os::raw::{c_char, c_int};
 
@@ -538,5 +555,6 @@ pub(crate) mod ffi {
 
     extern "C" {
         pub fn box_return_tuple(ctx: *mut BoxFunctionCtx, tuple: *mut BoxTuple) -> c_int;
+        pub fn box_session_push(data: *const c_char, data_end: *const c_char) -> c_int;
     }
 }
