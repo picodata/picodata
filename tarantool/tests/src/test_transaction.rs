@@ -1,6 +1,10 @@
-use crate::common::S1Record;
 use std::io;
-use tarantool_module::{start_transaction, Error, Space};
+
+use tarantool_module::error::Error;
+use tarantool_module::space::Space;
+use tarantool_module::transaction::start_transaction;
+
+use crate::common::S1Record;
 
 pub fn test_transaction_commit() {
     let mut space = Space::find_by_name("test_s1").unwrap().unwrap();

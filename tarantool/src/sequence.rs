@@ -1,5 +1,4 @@
-use crate::error::TarantoolError;
-use crate::Error;
+use crate::error::{Error, TarantoolError};
 
 pub struct Sequence {
     pub seq_id: u32,
@@ -45,7 +44,7 @@ impl Sequence {
     }
 }
 
-pub(crate) mod ffi {
+pub mod ffi {
     use std::os::raw::c_int;
 
     extern "C" {

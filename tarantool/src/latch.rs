@@ -37,7 +37,7 @@ impl Drop for Latch {
     }
 }
 
-/// An RAII implementation of a "scoped lock" of a mutex. When this structure is dropped (falls out of scope),
+/// An RAII implementation of a "scoped lock" of a latch. When this structure is dropped (falls out of scope),
 /// the lock will be unlocked.
 pub struct LatchGuard<'a> {
     latch: &'a Latch,
@@ -49,7 +49,7 @@ impl<'a> Drop for LatchGuard<'a> {
     }
 }
 
-mod ffi {
+pub mod ffi {
     use std::os::raw::c_int;
 
     #[repr(C)]

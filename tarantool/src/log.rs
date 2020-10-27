@@ -50,6 +50,7 @@ impl From<Level> for SayLevel {
     }
 }
 
+/// Format and print a message to Tarantool log file.
 #[inline]
 pub fn say(level: SayLevel, file: &str, line: i32, error: Option<&str>, message: &str) {
     let level = level.to_i32().unwrap();
@@ -70,7 +71,7 @@ pub fn say(level: SayLevel, file: &str, line: i32, error: Option<&str>, message:
     }
 }
 
-mod ffi {
+pub mod ffi {
     use std::os::raw::{c_char, c_int};
 
     pub type SayFunc = Option<

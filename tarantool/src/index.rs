@@ -3,9 +3,8 @@ use std::ptr::null_mut;
 
 use num_traits::ToPrimitive;
 
-use crate::error::TarantoolError;
-use crate::tuple::{ffi::BoxTuple, TupleBuffer};
-use crate::{AsTuple, Error, Tuple};
+use crate::error::{Error, TarantoolError};
+use crate::tuple::{ffi::BoxTuple, AsTuple, Tuple, TupleBuffer};
 
 pub struct Index {
     space_id: u32,
@@ -78,7 +77,7 @@ impl Index {
     ///
     /// Please note that this function works much more faster than [select](#method.select)
     ///
-    /// - `key` - encoded key in MsgPack Array format ([part1, part2, ...]).
+    /// - `key` - encoded key in MsgPack Array format (`[part1, part2, ...]`).
     ///
     /// Returns a tuple or `None` if index is empty
     pub fn get<K>(&self, key: &K) -> Result<Option<Tuple>, Error>
@@ -112,7 +111,7 @@ impl Index {
     /// Allocate and initialize iterator for index.
     ///
     /// - `type` - iterator type
-    /// - `key` - encoded key in MsgPack Array format ([part1, part2, ...]).
+    /// - `key` - encoded key in MsgPack Array format (`[part1, part2, ...]`).
     pub fn select<K>(&self, iterator_type: IteratorType, key: &K) -> Result<IndexIterator, Error>
     where
         K: AsTuple,
@@ -142,7 +141,7 @@ impl Index {
 
     /// Execute an DELETE request.
     ///
-    /// - `key` - encoded key in MsgPack Array format ([part1, part2, ...]).
+    /// - `key` - encoded key in MsgPack Array format (`[part1, part2, ...]`).
     /// - `with_result` - indicates if result is required. If `false` - successful result will always contain `None`
     ///
     /// Returns an old tuple
@@ -182,8 +181,8 @@ impl Index {
 
     /// Execute an UPDATE request.
     ///
-    /// - `key` - encoded key in MsgPack Array format ([part1, part2, ...]).
-    /// - `ops` - encoded operations in MsgPack Arrat format, e.g. [ [ '=', field_id, value ],  ['!', 2, 'xxx'] ]
+    /// - `key` - encoded key in MsgPack Array format (`[part1, part2, ...]`).
+    /// - `ops` - encoded operations in MsgPack Arrat format, e.g. `[['=', field_id, value], ['!', 2, 'xxx']]`
     /// - `with_result` - indicates if result is required. If `false` - successful result will always contain `None`
     ///
     /// Returns a new tuple.
@@ -234,8 +233,8 @@ impl Index {
 
     /// Execute an UPSERT request.
     ///
-    /// - `value` - encoded tuple in MsgPack Array format ([ field1, field2, ...])
-    /// - `ops` - encoded operations in MsgPack Arrat format, e.g. [ [ '=', field_id, value ],  ['!', 2, 'xxx'] ]
+    /// - `value` - encoded tuple in MsgPack Array format (`[field1, field2, ...]`)
+    /// - `ops` - encoded operations in MsgPack Arrat format, e.g. `[['=', field_id, value], ['!', 2, 'xxx']]`
     /// - `with_result` - indicates if result is required. If `false` - successful result will always contain `None`
     ///
     /// Returns a new tuple.
@@ -328,7 +327,7 @@ impl Index {
 
     /// Return a first (minimal) tuple matched the provided key.
     ///
-    /// - `key` - encoded key in MsgPack Array format ([part1, part2, ...]).
+    /// - `key` - encoded key in MsgPack Array format (`[part1, part2, ...]`).
     ///
     /// Returns a tuple or `None` if index is empty
     pub fn min<K>(&self, key: &K) -> Result<Option<Tuple>, Error>
@@ -361,7 +360,7 @@ impl Index {
 
     /// Return a last (maximal) tuple matched the provided key.
     ///
-    /// - `key` - encoded key in MsgPack Array format ([part1, part2, ...]).
+    /// - `key` - encoded key in MsgPack Array format (`[part1, part2, ...]`).
     ///
     /// Returns a tuple or `None` if index is empty
     pub fn max<K>(&self, key: &K) -> Result<Option<Tuple>, Error>
@@ -395,7 +394,7 @@ impl Index {
     /// Count the number of tuple matched the provided key.
     ///
     /// - `type` - iterator type
-    /// - `key` - encoded key in MsgPack Array format ([part1, part2, ...]).
+    /// - `key` - encoded key in MsgPack Array format (`[part1, part2, ...]`).
     pub fn count<K>(&self, iterator_type: IteratorType, key: &K) -> Result<usize, Error>
     where
         K: AsTuple,
@@ -467,7 +466,7 @@ impl Drop for IndexIterator {
     }
 }
 
-mod c_api {
+pub mod c_api {
     use std::os::raw::{c_char, c_int};
 
     use crate::tuple::ffi::BoxTuple;

@@ -1,5 +1,5 @@
 use tarantool_module::error::TarantoolError;
-use tarantool_module::Space;
+use tarantool_module::space::Space;
 
 use crate::common::S1Record;
 

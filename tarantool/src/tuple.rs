@@ -1,6 +1,6 @@
 use std::cmp::Ordering;
 use std::io::Cursor;
-use std::os::raw::c_char;
+use std::os::raw::{c_char, c_int};
 use std::ptr::copy_nonoverlapping;
 use std::slice::from_raw_parts;
 
@@ -447,11 +447,38 @@ impl FunctionCtx {
     /// Returned Tuple is automatically reference counted by Tarantool.
     ///
     /// - `tuple` - a Tuple to return
-    pub fn return_tuple(self, tuple: Tuple) -> Result<(), Error> {
-        if unsafe { ffi::box_return_tuple(self.inner, tuple.ptr) } < 0 {
+    pub fn return_tuple(self, tuple: Tuple) -> Result<c_int, Error> {
+        let result = unsafe { ffi::box_return_tuple(self.inner, tuple.ptr) };
+        if result < 0 {
             Err(TarantoolError::last().into())
         } else {
-            Ok(())
+            Ok(result)
+        }
+    }
+
+    /// Return MessagePack from a stored C procedure. The MessagePack
+    /// is copied, so it is safe to free/reuse the passed arguments
+    /// after the call.
+    ///
+    /// MessagePack is not validated, for the sake of speed. It is
+    /// expected to be a single encoded object. An attempt to encode
+    /// and return multiple objects without wrapping them into an
+    /// `MP_ARRAY` or `MP_MAP` is undefined behaviour.
+    ///
+    /// - `value` - value to be encoded to MessagePack
+    pub fn return_mp<T>(self, value: &T) -> Result<c_int, Error>
+    where
+        T: AsTuple,
+    {
+        let buf = value.serialize_as_tuple().unwrap();
+        let buf_ptr = buf.as_ptr() as *const c_char;
+        let result =
+            unsafe { ffi::box_return_mp(self.inner, buf_ptr, buf_ptr.offset(buf.len() as isize)) };
+
+        if result < 0 {
+            Err(TarantoolError::last().into())
+        } else {
+            Ok(result)
         }
     }
 }
@@ -473,7 +500,7 @@ where
     }
 }
 
-pub(crate) mod ffi {
+pub mod ffi {
     use std::os::raw::{c_char, c_int};
 
     #[repr(C)]
@@ -492,6 +519,16 @@ pub(crate) mod ffi {
         pub fn box_tuple_field_count(tuple: *const BoxTuple) -> u32;
         pub fn box_tuple_bsize(tuple: *const BoxTuple) -> usize;
         pub fn box_tuple_to_buf(tuple: *const BoxTuple, buf: *mut c_char, size: usize) -> isize;
+        pub fn box_tuple_update(
+            tuple: *const BoxTuple,
+            expr: *const c_char,
+            expr_end: *const c_char,
+        ) -> *mut BoxTuple;
+        pub fn box_tuple_upsert(
+            tuple: *const BoxTuple,
+            expr: *const c_char,
+            expr_end: *const c_char,
+        ) -> *mut BoxTuple;
     }
 
     #[repr(C)]
@@ -550,6 +587,11 @@ pub(crate) mod ffi {
 
     extern "C" {
         pub fn box_return_tuple(ctx: *mut BoxFunctionCtx, tuple: *mut BoxTuple) -> c_int;
+        pub fn box_return_mp(
+            ctx: *mut BoxFunctionCtx,
+            mp: *const c_char,
+            mp_end: *const c_char,
+        ) -> c_int;
         pub fn box_session_push(data: *const c_char, data_end: *const c_char) -> c_int;
     }
 }

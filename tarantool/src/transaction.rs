@@ -35,7 +35,7 @@ where
     result
 }
 
-pub(crate) mod ffi {
+pub mod ffi {
     use std::ffi::c_void;
     use std::os::raw::c_int;
 

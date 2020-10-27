@@ -20,6 +20,12 @@ This library contains following Tarantool API's:
 - Logging (see https://docs.rs/log/0.4.11/log/)
 - Error handling
 
+Links:
+
+- [Crate page][crates.io]
+- [API Documentation][docs.rs]
+- [Repository](https://github.com/picodata/tarantool-module)
+
 See also:
 
 - https://tarantool.io

@@ -8,11 +8,10 @@ use std::os::unix::io::{AsRawFd, IntoRawFd, RawFd};
 
 use failure::_core::ptr::null_mut;
 
-use crate::error::TarantoolError;
+use crate::error::{Error, TarantoolError};
 use crate::fiber::unpack_callback;
-use crate::Error;
 
-pub const TIMEOUT_INFINITY: f64 = 365.0 * 86400.0 * 100.0;
+const TIMEOUT_INFINITY: f64 = 365.0 * 86400.0 * 100.0;
 
 /// Uses CoIO main loop to poll read/write events from wrapped socket
 pub struct CoIOStream {
@@ -56,7 +55,7 @@ impl CoIOStream {
             return Err(err);
         }
 
-        wait(self.fd, CoIOFlags::READ, timeout)?;
+        coio_wait(self.fd, CoIOFlags::READ, timeout)?;
         let result = unsafe { libc::read(self.fd, buf.as_mut_ptr() as *mut c_void, buf_len) };
         if result < 0 {
             Err(io::Error::last_os_error())
@@ -76,7 +75,7 @@ impl CoIOStream {
             return Err(err);
         }
 
-        wait(self.fd, CoIOFlags::WRITE, timeout)?;
+        coio_wait(self.fd, CoIOFlags::WRITE, timeout)?;
         let result = unsafe { libc::write(self.fd, buf.as_ptr() as *mut c_void, buf.len()) };
         if result < 0 {
             Err(io::Error::last_os_error())
@@ -128,7 +127,7 @@ impl CoIOListener {
 
                 Err(e) => {
                     if e.kind() == io::ErrorKind::WouldBlock {
-                        wait(self.inner.as_raw_fd(), CoIOFlags::READ, TIMEOUT_INFINITY)?;
+                        coio_wait(self.inner.as_raw_fd(), CoIOFlags::READ, TIMEOUT_INFINITY)?;
                         continue;
                     }
                     Err(e)
@@ -156,11 +155,41 @@ impl TryFrom<TcpListener> for CoIOListener {
 /// - `fd` - non-blocking socket file description
 /// - `events` - requested events to wait. Combination of `TNT_IO_READ | TNT_IO_WRITE` bit flags.
 /// - `timeoout` - timeout in seconds.
-pub fn wait(fd: RawFd, flags: CoIOFlags, timeout: f64) -> Result<(), io::Error> {
+pub fn coio_wait(fd: RawFd, flags: CoIOFlags, timeout: f64) -> Result<(), io::Error> {
     match unsafe { ffi::coio_wait(fd, flags.bits, timeout) } {
         0 => Err(io::ErrorKind::TimedOut.into()),
         _ => Ok(()),
     }
+}
+
+/// Create new eio task with specified function and
+/// arguments. Yield and wait until the task is complete
+/// or a timeout occurs.
+///
+/// This function doesn't throw exceptions to avoid double error
+/// checking: in most cases it's also necessary to check the return
+/// value of the called function and perform necessary actions. If
+/// func sets errno, the errno is preserved across the call.
+///
+/// Returns:
+/// - `-1` and `errno = ENOMEM` if failed to create a task
+/// - the function return (errno is preserved).
+///
+/// ```
+/// struct FuncArgs {}
+///
+/// fn func(args: FuncArgs) -> i32 {}
+///
+/// if coio_call(func, FuncArgs{}) == -1 {
+///		// handle errors.
+/// }
+/// ```
+pub fn coio_call<F, T>(callback: &mut F, arg: T) -> isize
+where
+    F: FnMut(Box<T>) -> i32,
+{
+    let (callback_ptr, trampoline) = unsafe { unpack_callback(callback) };
+    unsafe { ffi::coio_call(trampoline, callback_ptr, Box::into_raw(Box::<T>::new(arg))) }
 }
 
 /// Fiber-friendly version of `getaddrinfo(3)`.
@@ -192,37 +221,7 @@ pub fn getaddrinfo(
     }
 }
 
-/// Create new eio task with specified function and
-/// arguments. Yield and wait until the task is complete
-/// or a timeout occurs.
-///
-/// This function doesn't throw exceptions to avoid double error
-/// checking: in most cases it's also necessary to check the return
-/// value of the called function and perform necessary actions. If
-/// func sets errno, the errno is preserved across the call.
-///
-/// Returns:
-/// - `-1` and `errno = ENOMEM` if failed to create a task
-/// - the function return (errno is preserved).
-///
-/// ```
-/// struct FuncArgs {}
-///
-/// fn func(args: FuncArgs) -> i32 {}
-///
-/// if call(func, FuncArgs{}) == -1 {
-///		// handle errors.
-/// }
-/// ```
-pub fn call<F, T>(callback: &mut F, arg: T) -> isize
-where
-    F: FnMut(Box<T>) -> i32,
-{
-    let (callback_ptr, trampoline) = unsafe { unpack_callback(callback) };
-    unsafe { ffi::coio_call(trampoline, callback_ptr, Box::into_raw(Box::<T>::new(arg))) }
-}
-
-mod ffi {
+pub mod ffi {
     use std::os::raw::{c_char, c_int};
 
     use va_list::VaList;

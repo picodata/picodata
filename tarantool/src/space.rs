@@ -3,8 +3,9 @@ use std::ptr::null_mut;
 
 use num_traits::ToPrimitive;
 
-use crate::error::TarantoolError;
-use crate::{AsTuple, Error, Index, Tuple};
+use crate::error::{Error, TarantoolError};
+use crate::index::Index;
+use crate::tuple::{AsTuple, Tuple};
 
 #[repr(u32)]
 #[derive(Debug, Clone, PartialEq, ToPrimitive)]
@@ -66,7 +67,7 @@ pub struct Space {
 }
 
 impl Space {
-    /// Find space id by name.
+    /// Find space by name.
     ///
     /// This function performs SELECT request to `_vspace` system space.
     /// - `name` - space name
@@ -89,7 +90,7 @@ impl Space {
         }
     }
 
-    /// Find index id by name.
+    /// Find index by name.
     ///
     /// This function performs SELECT request to _vindex system space.
     /// - `name` - index name
@@ -211,8 +212,7 @@ impl Space {
     }
 }
 
-#[allow(dead_code)]
-mod ffi {
+pub mod ffi {
     use std::os::raw::{c_char, c_int};
 
     pub use crate::tuple::ffi::BoxTuple;
