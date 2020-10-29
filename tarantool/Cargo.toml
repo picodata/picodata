@@ -26,4 +26,11 @@ serde = "1.0"
 va_list = "0.1.3"
 
 [workspace]
-members = ["tests"]
+members = [
+    "tests",
+    "examples/easy",
+    "examples/harder",
+    "examples/hardest",
+    "examples/read",
+    "examples/write",
+]

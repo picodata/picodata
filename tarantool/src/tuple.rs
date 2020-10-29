@@ -437,6 +437,7 @@ where
     })
 }
 
+#[repr(C)]
 pub struct FunctionCtx {
     inner: *mut ffi::BoxFunctionCtx,
 }
@@ -480,6 +481,19 @@ impl FunctionCtx {
         } else {
             Ok(result)
         }
+    }
+}
+
+#[repr(C)]
+pub struct FunctionArgs {
+    pub args: *const c_char,
+    pub args_end: *const c_char,
+}
+
+impl Into<Tuple> for FunctionArgs {
+    fn into(self) -> Tuple {
+        let len = (self.args_end as usize) - (self.args as usize);
+        Tuple::from_raw_data(self.args as *mut c_char, len as u32)
     }
 }
 

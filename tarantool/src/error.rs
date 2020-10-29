@@ -1,4 +1,5 @@
 use std::ffi::{CStr, CString};
+use std::os::raw::c_int;
 use std::{fmt, io};
 
 use failure::_core::fmt::{Display, Formatter};
@@ -364,7 +365,7 @@ pub fn clear_error() {
 }
 
 /// Set the last error.
-pub fn set_error(file: &str, line: u32, code: &TarantoolErrorCode, msg: &str) {
+pub fn set_error(file: &str, line: u32, code: &TarantoolErrorCode, msg: &str) -> c_int {
     unsafe {
         ffi::box_error_set(
             CString::new(file).unwrap().as_ptr(),
@@ -372,7 +373,7 @@ pub fn set_error(file: &str, line: u32, code: &TarantoolErrorCode, msg: &str) {
             code.to_u32().unwrap(),
             CString::new(msg).unwrap().as_ptr(),
         )
-    };
+    }
 }
 
 pub mod ffi {

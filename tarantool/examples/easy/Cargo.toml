@@ -1,0 +1,15 @@
+[package]
+name = "easy"
+version = "0.1.0"
+authors = [
+    "Dmitriy Koltsov <dkoltsov@picodata.io>",
+    "Anton Melnikov <volt0@picodata.io>"
+]
+edition = "2018"
+license = "BSD-2-Clause"
+
+[dependencies.tarantool-module]
+path = "../.."
+
+[lib]
+crate-type = ["cdylib"]
