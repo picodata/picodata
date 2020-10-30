@@ -8,8 +8,8 @@
 [Docs badge]: https://img.shields.io/badge/docs.rs-rustdoc-green
 [docs.rs]: https://docs.rs/tarantool-module/
 
-Tarantool module C API bindings for Rust. 
-This library contains following Tarantool API's:
+Tarantool API bindings for Rust. 
+This library contains the following Tarantool API's:
 
 - Box: spaces, indexes, sequences 
 - Fibers: fiber attributes, conditional variables
@@ -33,7 +33,8 @@ See also:
 
 ## Getting Started
 
-These instructions will get you a copy of the project up and running on your local machine for development and testing purposes. See deployment for notes on how to deploy the project on a live system.
+These instructions will get a copy of the project up and running on your local machine.
+For deployment, check out the deployment notes at the end of the tutorial.
 
 ### Prerequisites
 
@@ -42,7 +43,7 @@ These instructions will get you a copy of the project up and running on your loc
 
 ### Usage
 
-Add following lines to your project Cargo.toml:
+Add the following lines to your project Cargo.toml:
 ```toml
 [dependencies]
 tarantool-module = "0.2"
@@ -51,13 +52,15 @@ tarantool-module = "0.2"
 crate-type = ["cdylib"]
 ```
 
-See https://github.com/picodata/brod for example of usage. 
+See https://github.com/picodata/brod for example usage. 
 
 ### Stored procedures
 
-Tarantool can call C code with modules, or with ffi, or with stored procedures. This tutorial only is about the third 
-option, Rust stored procedures. In fact the routines are always "C functions" but the phrase "stored procedure" is
-commonly used for historical reasons.
+Tarantool can call Rust code via a plugin, from Lua using FFI, or as a stored procedure.
+This tutorial only is about the third 
+option, Rust stored procedures. In fact Rust routines are always "C
+functions" to Tarantool but the phrase "stored procedure" is commonly used
+for historical reasons.
 
 This tutorial contains the following simple steps:
 1. `examples/easy` - prints "hello world";
@@ -66,8 +69,8 @@ This tutorial contains the following simple steps:
 1. `examples/read` - uses this library to do a DBMS select;
 1. `examples/write` - uses this library to do a DBMS replace.
 
-After following the instructions, and seeing that the results are what is described here, users should feel confident 
-about writing their own stored procedures.
+By following the instructions and seeing that the results users should
+become confident in writing their own stored procedures.
 
 #### Preparation
 
@@ -80,7 +83,7 @@ Create cargo project:
 $ cargo init --lib
 ```
 
-Add following lines to `Cargo.toml`:
+Add the following lines to `Cargo.toml`:
 ```toml
 [package]
 name = "easy"
@@ -110,9 +113,9 @@ net_box = require('net.box')
 capi_connection = net_box:new(3306)
 ```
 
-In plainer language: create a space named `capi_test`, and make a connection to self named `capi_connection`.
+In plain language: create a space named `capi_test`, and make a connection to self named `capi_connection`.
 
-Leave the client running. It will be necessary to enter more requests later.
+Leave the client running. It will be used to enter more requests later.
 
 #### Easy
 
@@ -139,9 +142,9 @@ Compile the program:
 $ cargo build
 ```
 
-Start another shell. Change directory (`cd`) so that it is the same as the directory that the client is running on.
-Copy compiled library (it located in subfolder `target/debug` at you project sources folder) to current folder and rename 
-it to `easy.so`
+Start another shell. Change directory (`cd`) so that it is the same as the directory that the client is running in.
+Copy the compiled library (it is located in subfolder `target/debug` at you
+project sources folder) to the current folder and rename it to `easy.so`
 
 Now go back to the client and execute these requests:
 ```lua
@@ -150,7 +153,7 @@ box.schema.user.grant('guest', 'execute', 'function', 'easy')
 capi_connection:call('easy')
 ```
 
-If these requests appear unfamiliar, re-read the descriptions of 
+If these requests appear unfamiliar, read the descriptions of 
 [box.schema.func.create()](https://www.tarantool.io/en/doc/2.2/reference/reference_lua/box_schema/#box-schema-func-create), 
 [box.schema.user.grant()](https://www.tarantool.io/en/doc/2.2/reference/reference_lua/box_schema/#box-schema-user-grant) 
 and [conn:call()](https://www.tarantool.io/en/doc/2.2/reference/reference_lua/net_box/#net-box-call).
@@ -185,7 +188,7 @@ capi_connection:call('easy.easy2')
 
 ... and this time the result will be `hello world -- easy2`.
 
-Conclusion: calling a C function is easy.
+Conclusion: calling a Rust function is easy.
 
 #### Harder
 
@@ -282,7 +285,8 @@ pub extern "C" fn hardest(ctx: FunctionCtx, _: FunctionArgs) -> c_int {
 ```
 This time the rust function is doing three things:
 1. finding the `capi_test` space by calling `Space::find_by_name()` method;
-1. row structure can be passed as is, it will be serialized to tuple implicitly;
+1. row structure can be passed as is, it will be serialized to tuple
+   automaticaly;
 1. inserting a tuple using `.insert()`.
 
 Compile the program, producing a library file named `hardest.so`.
