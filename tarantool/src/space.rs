@@ -77,16 +77,21 @@ impl Space {
     /// - `Some(space)` otherwise
     ///
     /// See also: [index_by_name](#method.index_by_name)
-    pub fn find_by_name(name: &str) -> Result<Option<Self>, Error> {
+    pub fn find(name: &str) -> Option<Self> {
         let id =
             unsafe { ffi::box_space_id_by_name(name.as_ptr() as *const c_char, name.len() as u32) };
 
         if id == ffi::BOX_ID_NIL {
-            TarantoolError::maybe_last()
-                .map(|_| None)
-                .map_err(|e| e.into())
+            None
         } else {
-            Ok(Some(Self { id }))
+            Some(Self { id })
+        }
+    }
+
+    /// Access to system space
+    pub fn system_space(id: SystemSpace) -> Self {
+        Self {
+            id: id.to_u32().unwrap(),
         }
     }
 
@@ -100,27 +105,20 @@ impl Space {
     /// - `Some(index)` otherwise
     ///
     /// See also: [find_by_name](#method.find_by_name)
-    pub fn index_by_name(&self, name: &str) -> Result<Option<Index>, Error> {
+    pub fn index(&self, name: &str) -> Option<Index> {
         let index_id = unsafe {
             ffi::box_index_id_by_name(self.id, name.as_ptr() as *const c_char, name.len() as u32)
         };
 
         if index_id == ffi::BOX_ID_NIL {
-            TarantoolError::maybe_last()
-                .map(|_| None)
-                .map_err(|e| e.into())
+            None
         } else {
-            Ok(Some(Index::new(self.id, index_id)))
-        }
-    }
-
-    pub fn system_space(id: SystemSpace) -> Self {
-        Self {
-            id: id.to_u32().unwrap(),
+            Some(Index::new(self.id, index_id))
         }
     }
 
     /// Returns index with id = 0
+    #[inline(always)]
     pub fn primary_key(&self) -> Index {
         Index::new(self.id, 0)
     }
@@ -128,12 +126,11 @@ impl Space {
     /// Execute an INSERT request.
     ///
     /// - `value` - tuple value to insert
-    /// - `with_result` - indicates if result is required. If `false` - successful result will always contain `None`
     ///
     /// Returns a new tuple.
     ///
     /// See also: `box.space[space_id]:insert(tuple)`
-    pub fn insert<T>(&mut self, value: &T, with_result: bool) -> Result<Option<Tuple>, Error>
+    pub fn insert<T>(&mut self, value: &T) -> Result<Option<Tuple>, Error>
     where
         T: AsTuple,
     {
@@ -146,33 +143,28 @@ impl Space {
                 self.id,
                 buf_ptr,
                 buf_ptr.offset(buf.len() as isize),
-                if with_result {
-                    &mut result_ptr
-                } else {
-                    null_mut()
-                },
+                &mut result_ptr,
             )
         } < 0
         {
             return Err(TarantoolError::last().into());
         }
 
-        Ok(if with_result {
-            Some(Tuple::from_ptr(result_ptr))
-        } else {
+        Ok(if result_ptr.is_null() {
             None
+        } else {
+            Some(Tuple::from_ptr(result_ptr))
         })
     }
 
     /// Execute an REPLACE request.
     ///
     /// - `value` - tuple value to replace with
-    /// - `with_result` - indicates if result is required. If `false` - successful result will always contain `None`
     ///
     /// Returns a new tuple.
     ///
     /// See also: `box.space[space_id]:replace(tuple)`
-    pub fn replace<T>(&mut self, value: &T, with_result: bool) -> Result<Option<Tuple>, Error>
+    pub fn replace<T>(&mut self, value: &T) -> Result<Option<Tuple>, Error>
     where
         T: AsTuple,
     {
@@ -185,22 +177,28 @@ impl Space {
                 self.id,
                 buf_ptr,
                 buf_ptr.offset(buf.len() as isize),
-                if with_result {
-                    &mut result_ptr
-                } else {
-                    null_mut()
-                },
+                &mut result_ptr,
             )
         } < 0
         {
             return Err(TarantoolError::last().into());
         }
 
-        Ok(if with_result {
-            Some(Tuple::from_ptr(result_ptr))
-        } else {
+        Ok(if result_ptr.is_null() {
             None
+        } else {
+            Some(Tuple::from_ptr(result_ptr))
         })
+    }
+
+    /// Insert a tuple into a space. If a tuple with the same primary key already exists, replaces the existing tuple
+    /// with a new one. Alias for [replace](#method.replace)
+    #[inline(always)]
+    pub fn put<T>(&mut self, value: &T) -> Result<Option<Tuple>, Error>
+    where
+        T: AsTuple,
+    {
+        self.replace(value)
     }
 
     /// Truncate space.
@@ -209,6 +207,50 @@ impl Space {
             return Err(TarantoolError::last().into());
         }
         Ok(())
+    }
+
+    #[inline(always)]
+    pub fn len(&self) -> Result<usize, Error> {
+        self.primary_key().len()
+    }
+
+    #[inline(always)]
+    pub fn bsize(&self) -> Result<usize, Error> {
+        self.primary_key().bsize()
+    }
+
+    #[inline(always)]
+    pub fn get<K>(&self, key: &K) -> Result<Option<Tuple>, Error>
+    where
+        K: AsTuple,
+    {
+        self.primary_key().get(key)
+    }
+
+    #[inline(always)]
+    pub fn delete<K>(&mut self, key: &K) -> Result<Option<Tuple>, Error>
+    where
+        K: AsTuple,
+    {
+        self.primary_key().delete(key)
+    }
+
+    #[inline(always)]
+    pub fn update<K, Op>(&mut self, key: &K, ops: &Vec<Op>) -> Result<Option<Tuple>, Error>
+    where
+        K: AsTuple,
+        Op: AsTuple,
+    {
+        self.primary_key().update(key, ops)
+    }
+
+    #[inline(always)]
+    pub fn upsert<T, Op>(&mut self, value: &T, ops: &Vec<Op>) -> Result<Option<Tuple>, Error>
+    where
+        T: AsTuple,
+        Op: AsTuple,
+    {
+        self.primary_key().upsert(value, ops)
     }
 }
 

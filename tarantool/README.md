@@ -31,6 +31,9 @@ See also:
 - https://tarantool.io
 - https://github.com/tarantool/tarantool
 
+> **Caution!** The library is currently under development.
+> API may be unstable until version 1.0 will be released.
+
 ## Getting Started
 
 These instructions will get a copy of the project up and running on your local machine.
@@ -272,15 +275,14 @@ impl AsTuple for Row {}
 
 #[no_mangle]
 pub extern "C" fn hardest(ctx: FunctionCtx, _: FunctionArgs) -> c_int {
-    let mut space = Space::find_by_name("capi_test").unwrap().unwrap(); // (1)
+    let mut space = Space::find("capi_test").unwrap(); // (1)
     let result = space.insert( // (3)
         &Row { // (2)
             int_field: 10000,
             str_field: "String 2".to_string(),
-        },
-        true,
+        }
     );
-    0
+    ctx.return_tuple(result.unwrap().unwrap()).unwrap()
 }
 ```
 This time the rust function is doing three things:
@@ -335,21 +337,19 @@ impl AsTuple for Row {}
 
 #[no_mangle]
 pub extern "C" fn read(_: FunctionCtx, _: FunctionArgs) -> c_int {
-    let space = Space::find_by_name("capi_test").unwrap().unwrap(); // (1)
-    let index = space.primary_key(); // (2)
+    let space = Space::find("capi_test").unwrap(); // (1)
 
     let key = 10000;
-    let result = index.get(&(key,)).unwrap(); // (3, 4)
+    let result = space.get(&(key,)).unwrap(); // (2, 3)
     assert!(result.is_some());
 
-    let result = result.unwrap().into_struct::<Row>().unwrap(); // (5)
+    let result = result.unwrap().into_struct::<Row>().unwrap(); // (4)
     println!("value={:?}", result);
 
     0
 }
 ```
-1. once again, finding the `capi_test` space by calling `Space::find_by_name()`;
-1. get primary index;
+1. once again, finding the `capi_test` space by calling `Space::find()`;
 1. formatting a search key = 10000 using rust tuple literal (an alternative to serializing structures);
 1. getting a tuple using `.get()`;
 1. deserializing result.
@@ -366,7 +366,7 @@ capi_connection:call('read')
 
 The result of `capi_connection:call('read')` should look like this:
 
-``` {.sourceCode .tarantoolsession}
+```
 tarantool> capi_connection:call('read')
 uint value=10000.
 string value=String 2.
@@ -391,7 +391,7 @@ use tarantool_module::tuple::{FunctionArgs, FunctionCtx};
 
 #[no_mangle]
 pub extern "C" fn hardest(ctx: FunctionCtx, _: FunctionArgs) -> c_int {
-    let mut space = match Space::find_by_name("capi_test").unwrap() { // (1)
+    let mut space = match Space::find("capi_test").unwrap() { // (1)
         None => {
             return set_error(
                 file!(),
@@ -435,7 +435,7 @@ capi_connection:call('write')
 ```
 
 The result of `capi_connection:call('write')` should look like this:
-``` {.sourceCode .tarantoolsession}
+```
 tarantool> capi_connection:call('write')
 ---
 - [[1, 22]]

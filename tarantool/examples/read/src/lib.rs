@@ -15,11 +15,10 @@ impl AsTuple for Row {}
 
 #[no_mangle]
 pub extern "C" fn read(_: FunctionCtx, _: FunctionArgs) -> c_int {
-    let space = Space::find_by_name("capi_test").unwrap().unwrap();
-    let index = space.primary_key();
+    let space = Space::find("capi_test").unwrap();
 
     let key = 10000;
-    let result = index.get(&(key,)).unwrap();
+    let result = space.get(&(key,)).unwrap();
     assert!(result.is_some());
 
     let result = result.unwrap().into_struct::<Row>().unwrap();

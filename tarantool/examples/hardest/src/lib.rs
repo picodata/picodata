@@ -15,13 +15,10 @@ impl AsTuple for Row {}
 
 #[no_mangle]
 pub extern "C" fn hardest(ctx: FunctionCtx, _: FunctionArgs) -> c_int {
-    let mut space = Space::find_by_name("capi_test").unwrap().unwrap();
-    let result = space.insert(
-        &Row {
-            int_field: 10000,
-            str_field: "String 2".to_string(),
-        },
-        true,
-    );
+    let mut space = Space::find("capi_test").unwrap();
+    let result = space.insert(&Row {
+        int_field: 10000,
+        str_field: "String 2".to_string(),
+    });
     ctx.return_tuple(result.unwrap().unwrap()).unwrap()
 }

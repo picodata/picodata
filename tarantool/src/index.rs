@@ -142,12 +142,11 @@ impl Index {
     /// Execute an DELETE request.
     ///
     /// - `key` - encoded key in MsgPack Array format (`[part1, part2, ...]`).
-    /// - `with_result` - indicates if result is required. If `false` - successful result will always contain `None`
     ///
     /// Returns an old tuple
     ///
     /// See also: `box.space[space_id].index[index_id]:delete(key)`
-    pub fn delete<K>(&mut self, key: &K, with_result: bool) -> Result<Option<Tuple>, Error>
+    pub fn delete<K>(&mut self, key: &K) -> Result<Option<Tuple>, Error>
     where
         K: AsTuple,
     {
@@ -161,21 +160,17 @@ impl Index {
                 self.index_id,
                 key_buf_ptr,
                 key_buf_ptr.offset(key_buf.len() as isize),
-                if with_result {
-                    &mut result_ptr
-                } else {
-                    null_mut()
-                },
+                &mut result_ptr,
             )
         } < 0
         {
             return Err(TarantoolError::last().into());
         }
 
-        Ok(if with_result && !result_ptr.is_null() {
-            Some(Tuple::from_ptr(result_ptr))
-        } else {
+        Ok(if result_ptr.is_null() {
             None
+        } else {
+            Some(Tuple::from_ptr(result_ptr))
         })
     }
 
@@ -183,17 +178,11 @@ impl Index {
     ///
     /// - `key` - encoded key in MsgPack Array format (`[part1, part2, ...]`).
     /// - `ops` - encoded operations in MsgPack Arrat format, e.g. `[['=', field_id, value], ['!', 2, 'xxx']]`
-    /// - `with_result` - indicates if result is required. If `false` - successful result will always contain `None`
     ///
     /// Returns a new tuple.
     ///
     /// See also: `box.space[space_id].index[index_id]:update(key, ops)`, [upsert](#method.upsert)
-    pub fn update<K, Op>(
-        &mut self,
-        key: &K,
-        ops: &Vec<Op>,
-        with_result: bool,
-    ) -> Result<Option<Tuple>, Error>
+    pub fn update<K, Op>(&mut self, key: &K, ops: &Vec<Op>) -> Result<Option<Tuple>, Error>
     where
         K: AsTuple,
         Op: AsTuple,
@@ -213,21 +202,17 @@ impl Index {
                 ops_buf_ptr,
                 ops_buf_ptr.offset(ops_buf.len() as isize),
                 0,
-                if with_result {
-                    &mut result_ptr
-                } else {
-                    null_mut()
-                },
+                &mut result_ptr,
             )
         } < 0
         {
             return Err(TarantoolError::last().into());
         }
 
-        Ok(if with_result && !result_ptr.is_null() {
-            Some(Tuple::from_ptr(result_ptr))
-        } else {
+        Ok(if result_ptr.is_null() {
             None
+        } else {
+            Some(Tuple::from_ptr(result_ptr))
         })
     }
 
@@ -235,17 +220,11 @@ impl Index {
     ///
     /// - `value` - encoded tuple in MsgPack Array format (`[field1, field2, ...]`)
     /// - `ops` - encoded operations in MsgPack Arrat format, e.g. `[['=', field_id, value], ['!', 2, 'xxx']]`
-    /// - `with_result` - indicates if result is required. If `false` - successful result will always contain `None`
     ///
     /// Returns a new tuple.
     ///
     /// See also: `box.space[space_id].index[index_id]:update(key, ops)`, [update](#method.update)
-    pub fn upsert<T, Op>(
-        &mut self,
-        value: &T,
-        ops: &Vec<Op>,
-        with_result: bool,
-    ) -> Result<Option<Tuple>, Error>
+    pub fn upsert<T, Op>(&mut self, value: &T, ops: &Vec<Op>) -> Result<Option<Tuple>, Error>
     where
         T: AsTuple,
         Op: AsTuple,
@@ -265,21 +244,17 @@ impl Index {
                 ops_buf_ptr,
                 ops_buf_ptr.offset(ops_buf.len() as isize),
                 0,
-                if with_result {
-                    &mut result_ptr
-                } else {
-                    null_mut()
-                },
+                &mut result_ptr,
             )
         } < 0
         {
             return Err(TarantoolError::last().into());
         }
 
-        Ok(if with_result && !result_ptr.is_null() {
-            Some(Tuple::from_ptr(result_ptr))
-        } else {
+        Ok(if result_ptr.is_null() {
             None
+        } else {
+            Some(Tuple::from_ptr(result_ptr))
         })
     }
 
@@ -295,7 +270,7 @@ impl Index {
     }
 
     /// Return the number of bytes used in memory by the index.
-    pub fn size(&self) -> Result<usize, Error> {
+    pub fn bsize(&self) -> Result<usize, Error> {
         let result = unsafe { c_api::box_index_bsize(self.space_id, self.index_id) };
 
         if result < 0 {

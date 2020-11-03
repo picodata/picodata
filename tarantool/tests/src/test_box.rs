@@ -17,25 +17,25 @@ struct QueryOperation {
 impl AsTuple for QueryOperation {}
 
 pub fn test_space_get_by_name() {
-    assert!(Space::find_by_name("test_s1").unwrap().is_some());
-    assert!(Space::find_by_name("test_s1_invalid").unwrap().is_none());
+    assert!(Space::find("test_s1").is_some());
+    assert!(Space::find("test_s1_invalid").is_none());
 }
 
 pub fn test_space_get_system() {
     let space = Space::system_space(SystemSpace::Space);
-    assert!(space.primary_key().len().is_ok());
+    assert!(space.len().is_ok());
 }
 
 pub fn test_index_get_by_name() {
-    let space = Space::find_by_name("test_s2").unwrap().unwrap();
-    assert!(space.index_by_name("idx_1").unwrap().is_some());
-    assert!(space.index_by_name("idx_1_invalid").unwrap().is_none());
+    let space = Space::find("test_s2").unwrap();
+    assert!(space.index("idx_1").is_some());
+    assert!(space.index("idx_1_invalid").is_none());
 }
 
 pub fn test_box_get() {
-    let space = Space::find_by_name("test_s2").unwrap().unwrap();
+    let space = Space::find("test_s2").unwrap();
 
-    let idx_1 = space.index_by_name("idx_1").unwrap().unwrap();
+    let idx_1 = space.index("idx_1").unwrap();
     let output = idx_1.get(&("key_16".to_string(),)).unwrap();
     assert!(output.is_some());
     assert_eq!(
@@ -49,7 +49,7 @@ pub fn test_box_get() {
         }
     );
 
-    let idx_2 = space.index_by_name("idx_2").unwrap().unwrap();
+    let idx_2 = space.index("idx_2").unwrap();
     let output = idx_2.get(&S2Key { id: 17, a: 2, b: 3 }).unwrap();
     assert!(output.is_some());
     assert_eq!(
@@ -65,7 +65,7 @@ pub fn test_box_get() {
 }
 
 pub fn test_box_select() {
-    let space = Space::find_by_name("test_s2").unwrap().unwrap();
+    let space = Space::find("test_s2").unwrap();
     let result: Vec<S1Record> = space
         .primary_key()
         .select(IteratorType::LE, &(5,))
@@ -98,7 +98,7 @@ pub fn test_box_select() {
         ]
     );
 
-    let idx = space.index_by_name("idx_3").unwrap().unwrap();
+    let idx = space.index("idx_3").unwrap();
     let result: Vec<S2Record> = idx
         .select(IteratorType::Eq, &(3,))
         .unwrap()
@@ -140,8 +140,8 @@ pub fn test_box_select() {
 }
 
 pub fn test_box_select_composite_key() {
-    let space = Space::find_by_name("test_s2").unwrap().unwrap();
-    let idx = space.index_by_name("idx_2").unwrap().unwrap();
+    let space = Space::find("test_s2").unwrap();
+    let idx = space.index("idx_2").unwrap();
 
     let result: Vec<S2Record> = idx
         .select(IteratorType::Eq, &(3, 3, 0))
@@ -161,12 +161,12 @@ pub fn test_box_select_composite_key() {
 }
 
 pub fn test_box_len() {
-    let space = Space::find_by_name("test_s2").unwrap().unwrap();
-    assert_eq!(space.primary_key().len().unwrap(), 20 as usize);
+    let space = Space::find("test_s2").unwrap();
+    assert_eq!(space.len().unwrap(), 20 as usize);
 }
 
 pub fn test_box_random() {
-    let space = Space::find_by_name("test_s2").unwrap().unwrap();
+    let space = Space::find("test_s2").unwrap();
     let idx = space.primary_key();
     let mut rng = rand::thread_rng();
 
@@ -181,8 +181,8 @@ pub fn test_box_random() {
 }
 
 pub fn test_box_min_max() {
-    let space = Space::find_by_name("test_s2").unwrap().unwrap();
-    let idx = space.index_by_name("idx_3").unwrap().unwrap();
+    let space = Space::find("test_s2").unwrap();
+    let idx = space.index("idx_3").unwrap();
 
     let result_min = idx.min(&(3,)).unwrap();
     assert!(result_min.is_some());
@@ -212,7 +212,7 @@ pub fn test_box_min_max() {
 }
 
 pub fn test_box_count() {
-    let space = Space::find_by_name("test_s2").unwrap().unwrap();
+    let space = Space::find("test_s2").unwrap();
     assert_eq!(
         space.primary_key().count(IteratorType::LE, &(7,),).unwrap(),
         7 as usize
@@ -224,8 +224,8 @@ pub fn test_box_count() {
 }
 
 pub fn test_box_extract_key() {
-    let space = Space::find_by_name("test_s2").unwrap().unwrap();
-    let idx = space.index_by_name("idx_2").unwrap().unwrap();
+    let space = Space::find("test_s2").unwrap();
+    let idx = space.index("idx_2").unwrap();
     let record = S2Record {
         id: 11,
         key: "key_11".to_string(),
@@ -242,47 +242,47 @@ pub fn test_box_extract_key() {
 }
 
 pub fn test_box_insert() {
-    let mut space = Space::find_by_name("test_s1").unwrap().unwrap();
+    let mut space = Space::find("test_s1").unwrap();
     space.truncate().unwrap();
 
     let input = S1Record {
         id: 1,
         text: "Test".to_string(),
     };
-    let insert_result = space.insert(&input, true).unwrap();
+    let insert_result = space.insert(&input).unwrap();
     assert!(insert_result.is_some());
     assert_eq!(
         insert_result.unwrap().into_struct::<S1Record>().unwrap(),
         input
     );
 
-    let output = space.primary_key().get(&(input.id,)).unwrap();
+    let output = space.get(&(input.id,)).unwrap();
     assert!(output.is_some());
     assert_eq!(output.unwrap().into_struct::<S1Record>().unwrap(), input);
 }
 
 pub fn test_box_replace() {
-    let mut space = Space::find_by_name("test_s1").unwrap().unwrap();
+    let mut space = Space::find("test_s1").unwrap();
     space.truncate().unwrap();
 
     let original_input = S1Record {
         id: 1,
         text: "Original".to_string(),
     };
-    space.insert(&original_input, false).unwrap();
+    space.insert(&original_input).unwrap();
 
     let new_input = S1Record {
         id: original_input.id,
         text: "New".to_string(),
     };
-    let replace_result = space.replace(&new_input, true).unwrap();
+    let replace_result = space.replace(&new_input).unwrap();
     assert!(replace_result.is_some());
     assert_eq!(
         replace_result.unwrap().into_struct::<S1Record>().unwrap(),
         new_input
     );
 
-    let output = space.primary_key().get(&(new_input.id,)).unwrap();
+    let output = space.get(&(new_input.id,)).unwrap();
     assert!(output.is_some());
     assert_eq!(
         output.unwrap().into_struct::<S1Record>().unwrap(),
@@ -291,39 +291,37 @@ pub fn test_box_replace() {
 }
 
 pub fn test_box_delete() {
-    let mut space = Space::find_by_name("test_s1").unwrap().unwrap();
-    let mut idx = space.primary_key();
+    let mut space = Space::find("test_s1").unwrap();
     space.truncate().unwrap();
 
     let input = S1Record {
         id: 1,
         text: "Test".to_string(),
     };
-    space.insert(&input, false).unwrap();
+    space.insert(&input).unwrap();
 
-    let delete_result = idx.delete(&(input.id,), true).unwrap();
+    let delete_result = space.delete(&(input.id,)).unwrap();
     assert!(delete_result.is_some());
     assert_eq!(
         delete_result.unwrap().into_struct::<S1Record>().unwrap(),
         input
     );
 
-    let output = idx.get(&(input.id,)).unwrap();
+    let output = space.get(&(input.id,)).unwrap();
     assert!(output.is_none());
 }
 
 pub fn test_box_update() {
-    let mut space = Space::find_by_name("test_s1").unwrap().unwrap();
-    let mut idx = space.primary_key();
+    let mut space = Space::find("test_s1").unwrap();
     space.truncate().unwrap();
 
     let input = S1Record {
         id: 1,
         text: "Original".to_string(),
     };
-    space.insert(&input, false).unwrap();
+    space.insert(&input).unwrap();
 
-    let update_result = idx
+    let update_result = space
         .update(
             &(input.id,),
             &vec![QueryOperation {
@@ -331,7 +329,6 @@ pub fn test_box_update() {
                 field_id: 1,
                 value: "New".into(),
             }],
-            true,
         )
         .unwrap();
     assert!(update_result.is_some());
@@ -344,7 +341,7 @@ pub fn test_box_update() {
         "New"
     );
 
-    let output = space.primary_key().get(&(input.id,)).unwrap();
+    let output = space.get(&(input.id,)).unwrap();
     assert_eq!(
         output.unwrap().into_struct::<S1Record>().unwrap().text,
         "New"
@@ -352,51 +349,50 @@ pub fn test_box_update() {
 }
 
 pub fn test_box_upsert() {
-    let mut space = Space::find_by_name("test_s1").unwrap().unwrap();
-    let mut idx = space.primary_key();
+    let mut space = Space::find("test_s1").unwrap();
     space.truncate().unwrap();
 
     let original_input = S1Record {
         id: 1,
         text: "Original".to_string(),
     };
-    space.insert(&original_input, false).unwrap();
+    space.insert(&original_input).unwrap();
 
-    idx.upsert(
-        &S1Record {
-            id: 1,
-            text: "New".to_string(),
-        },
-        &vec![QueryOperation {
-            op: "=".to_string(),
-            field_id: 1,
-            value: "Test 1".into(),
-        }],
-        false,
-    )
-    .unwrap();
+    space
+        .upsert(
+            &S1Record {
+                id: 1,
+                text: "New".to_string(),
+            },
+            &vec![QueryOperation {
+                op: "=".to_string(),
+                field_id: 1,
+                value: "Test 1".into(),
+            }],
+        )
+        .unwrap();
 
-    idx.upsert(
-        &S1Record {
-            id: 2,
-            text: "New".to_string(),
-        },
-        &vec![QueryOperation {
-            op: "=".to_string(),
-            field_id: 1,
-            value: "Test 2".into(),
-        }],
-        false,
-    )
-    .unwrap();
+    space
+        .upsert(
+            &S1Record {
+                id: 2,
+                text: "New".to_string(),
+            },
+            &vec![QueryOperation {
+                op: "=".to_string(),
+                field_id: 1,
+                value: "Test 2".into(),
+            }],
+        )
+        .unwrap();
 
-    let output = space.primary_key().get(&(1,)).unwrap();
+    let output = space.get(&(1,)).unwrap();
     assert_eq!(
         output.unwrap().into_struct::<S1Record>().unwrap().text,
         "Test 1"
     );
 
-    let output = space.primary_key().get(&(2,)).unwrap();
+    let output = space.get(&(2,)).unwrap();
     assert_eq!(
         output.unwrap().into_struct::<S1Record>().unwrap().text,
         "New"
@@ -404,22 +400,19 @@ pub fn test_box_upsert() {
 }
 
 pub fn test_box_truncate() {
-    let mut space = Space::find_by_name("test_s1").unwrap().unwrap();
+    let mut space = Space::find("test_s1").unwrap();
     space.truncate().unwrap();
 
-    assert_eq!(space.primary_key().len().unwrap(), 0 as usize);
+    assert_eq!(space.len().unwrap(), 0 as usize);
     for i in 0..10 {
         space
-            .insert(
-                &S1Record {
-                    id: i,
-                    text: "Test".to_string(),
-                },
-                false,
-            )
+            .insert(&S1Record {
+                id: i,
+                text: "Test".to_string(),
+            })
             .unwrap();
     }
-    assert_eq!(space.primary_key().len().unwrap(), 10 as usize);
+    assert_eq!(space.len().unwrap(), 10 as usize);
     space.truncate().unwrap();
-    assert_eq!(space.primary_key().len().unwrap(), 0 as usize);
+    assert_eq!(space.len().unwrap(), 0 as usize);
 }

@@ -8,7 +8,7 @@ use tarantool_module::tuple::{FunctionArgs, FunctionCtx};
 
 #[no_mangle]
 pub extern "C" fn hardest(ctx: FunctionCtx, _: FunctionArgs) -> c_int {
-    let mut space = match Space::find_by_name("capi_test").unwrap() {
+    let mut space = match Space::find("capi_test") {
         None => {
             return set_error(
                 file!(),
@@ -23,7 +23,7 @@ pub extern "C" fn hardest(ctx: FunctionCtx, _: FunctionArgs) -> c_int {
     let row = (1, 22);
 
     start_transaction(|| -> Result<(), Error> {
-        space.replace(&row, false)?;
+        space.replace(&row)?;
         Ok(())
     })
     .unwrap();
