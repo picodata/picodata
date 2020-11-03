@@ -2,6 +2,7 @@ use rand::Rng;
 use serde::Serialize;
 
 use tarantool_module::index::IteratorType;
+use tarantool_module::sequence::Sequence;
 use tarantool_module::space::{Space, SystemSpace};
 use tarantool_module::tuple::{AsTuple, Tuple};
 
@@ -415,4 +416,26 @@ pub fn test_box_truncate() {
     assert_eq!(space.len().unwrap(), 10 as usize);
     space.truncate().unwrap();
     assert_eq!(space.len().unwrap(), 0 as usize);
+}
+
+pub fn test_box_sequence_get_by_name() {
+    assert!(Sequence::find("test_seq").unwrap().is_some());
+    assert!(Sequence::find("test_seq_invalid").unwrap().is_none());
+}
+
+pub fn test_box_sequence_iterate() {
+    let mut seq = Sequence::find("test_seq").unwrap().unwrap();
+    seq.reset().unwrap();
+    assert_eq!(seq.next().unwrap(), 1);
+    assert_eq!(seq.next().unwrap(), 2);
+    assert_eq!(seq.current().unwrap(), 2);
+}
+
+pub fn test_box_sequence_set() {
+    let mut seq = Sequence::find("test_seq").unwrap().unwrap();
+    seq.reset().unwrap();
+    assert_eq!(seq.next().unwrap(), 1);
+
+    seq.set(99).unwrap();
+    assert_eq!(seq.next().unwrap(), 100);
 }

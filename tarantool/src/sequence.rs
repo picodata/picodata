@@ -1,10 +1,32 @@
 use crate::error::{Error, TarantoolError};
+use crate::space::{Space, SystemSpace};
+use crate::tuple::AsTuple;
 
 pub struct Sequence {
-    pub seq_id: u32,
+    seq_id: u32,
 }
 
 impl Sequence {
+    pub fn find(name: &str) -> Result<Option<Self>, Error> {
+        #[derive(Serialize, Deserialize)]
+        struct Row {
+            seq_id: u32,
+        }
+
+        impl AsTuple for Row {}
+
+        let name_idx = Space::system_space(SystemSpace::Sequence)
+            .index("name")
+            .unwrap();
+
+        Ok(match name_idx.get(&(name,))? {
+            None => None,
+            Some(row_tuple) => Some(Sequence {
+                seq_id: row_tuple.into_struct::<Row>()?.seq_id,
+            }),
+        })
+    }
+
     /// Advance a sequence.
     pub fn next(&mut self) -> Result<i64, Error> {
         let mut result: i64 = 0;

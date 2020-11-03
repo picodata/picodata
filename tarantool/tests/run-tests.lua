@@ -35,6 +35,8 @@ box.once('bootstrap', function()
     for i = 1, 20 do
         test_s2:insert{i, 'key_' .. i, 'value_' .. i, i % 5, math.floor(i / 5)}
     end
+
+    box.schema.sequence.create('test_seq')
 end)
 
 -- Add test runner library location to lua search path
