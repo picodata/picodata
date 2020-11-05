@@ -9,12 +9,12 @@ pub fn test_tuple_new_from_struct() {
         id: 1,
         text: "text".to_string(),
     };
-    assert!(Tuple::new_from_struct(&input).is_ok());
+    assert!(Tuple::from_struct(&input).is_ok());
 }
 
 pub fn test_tuple_field_count() {
     // struct -> tuple
-    let tuple = Tuple::new_from_struct(&S2Record {
+    let tuple = Tuple::from_struct(&S2Record {
         id: 1,
         key: "key".to_string(),
         value: "value".to_string(),
@@ -25,16 +25,16 @@ pub fn test_tuple_field_count() {
     assert_eq!(tuple.len(), 5);
 
     // tuple w/ single field
-    let tuple = Tuple::new_from_struct(&(0,)).unwrap();
+    let tuple = Tuple::from_struct(&(0,)).unwrap();
     assert_eq!(tuple.len(), 1);
 
     // empty tuple
-    let tuple = Tuple::new_from_struct::<Vec<()>>(&vec![]).unwrap();
+    let tuple = Tuple::from_struct::<Vec<()>>(&vec![]).unwrap();
     assert_eq!(tuple.len(), 0);
 }
 
 pub fn test_tuple_size() {
-    let tuple = Tuple::new_from_struct(&S2Record {
+    let tuple = Tuple::from_struct(&S2Record {
         id: 1,
         key: "key".to_string(),
         value: "value".to_string(),
@@ -42,7 +42,7 @@ pub fn test_tuple_size() {
         b: 3,
     })
     .unwrap();
-    assert_eq!(tuple.size(), 14);
+    assert_eq!(tuple.bsize(), 14);
 }
 
 pub fn test_tuple_into_struct() {
@@ -55,12 +55,12 @@ pub fn test_tuple_into_struct() {
     };
 
     // 1:1 decode
-    let tuple = Tuple::new_from_struct(&input).unwrap();
+    let tuple = Tuple::from_struct(&input).unwrap();
     let output: S2Record = tuple.into_struct().unwrap();
     assert_eq!(output, input);
 
     // partial decode (with trimming trailing fields)
-    let tuple = Tuple::new_from_struct(&input).unwrap();
+    let tuple = Tuple::from_struct(&input).unwrap();
     let output: S1Record = tuple.into_struct().unwrap();
     assert_eq!(
         output,
@@ -73,7 +73,7 @@ pub fn test_tuple_into_struct() {
 
 pub fn test_tuple_clone() {
     let tuple_1 = {
-        let tuple_2 = Tuple::new_from_struct(&S1Record {
+        let tuple_2 = Tuple::from_struct(&S1Record {
             id: 1,
             text: "text".to_string(),
         })
@@ -84,12 +84,12 @@ pub fn test_tuple_clone() {
 }
 
 pub fn test_tuple_iterator() {
-    let tuple = Tuple::new_from_struct(&S1Record {
+    let tuple = Tuple::from_struct(&S1Record {
         id: 1,
         text: "text".to_string(),
     })
     .unwrap();
-    let mut iterator = tuple.iterator().unwrap();
+    let mut iterator = tuple.iter().unwrap();
 
     assert_eq!(iterator.next().unwrap(), Some(1));
     assert_eq!(iterator.next().unwrap(), Some("text".to_string()));
@@ -97,7 +97,7 @@ pub fn test_tuple_iterator() {
 }
 
 pub fn test_tuple_iterator_seek_rewind() {
-    let tuple = Tuple::new_from_struct(&S2Record {
+    let tuple = Tuple::from_struct(&S2Record {
         id: 1,
         key: "key".to_string(),
         value: "value".to_string(),
@@ -105,7 +105,7 @@ pub fn test_tuple_iterator_seek_rewind() {
         b: 2,
     })
     .unwrap();
-    let mut iterator = tuple.iterator().unwrap();
+    let mut iterator = tuple.iter().unwrap();
 
     // rewind iterator to first position
     iterator.rewind();
@@ -117,7 +117,7 @@ pub fn test_tuple_iterator_seek_rewind() {
 }
 
 pub fn test_tuple_get_format() {
-    let tuple = Tuple::new_from_struct(&S1Record {
+    let tuple = Tuple::from_struct(&S1Record {
         id: 1,
         text: "text".to_string(),
     })
@@ -126,7 +126,7 @@ pub fn test_tuple_get_format() {
 }
 
 pub fn test_tuple_get_field() {
-    let tuple = Tuple::new_from_struct(&S2Record {
+    let tuple = Tuple::from_struct(&S2Record {
         id: 1,
         key: "key".to_string(),
         value: "value".to_string(),
@@ -135,22 +135,16 @@ pub fn test_tuple_get_field() {
     })
     .unwrap();
 
-    assert_eq!(tuple.get_field::<u32>(0).unwrap(), Some(1));
-    assert_eq!(
-        tuple.get_field::<String>(1).unwrap(),
-        Some("key".to_string())
-    );
-    assert_eq!(
-        tuple.get_field::<String>(2).unwrap(),
-        Some("value".to_string())
-    );
-    assert_eq!(tuple.get_field::<i32>(3).unwrap(), Some(1));
-    assert_eq!(tuple.get_field::<i32>(4).unwrap(), Some(2));
-    assert_eq!(tuple.get_field::<i32>(5).unwrap(), None);
+    assert_eq!(tuple.field::<u32>(0).unwrap(), Some(1));
+    assert_eq!(tuple.field::<String>(1).unwrap(), Some("key".to_string()));
+    assert_eq!(tuple.field::<String>(2).unwrap(), Some("value".to_string()));
+    assert_eq!(tuple.field::<i32>(3).unwrap(), Some(1));
+    assert_eq!(tuple.field::<i32>(4).unwrap(), Some(2));
+    assert_eq!(tuple.field::<i32>(5).unwrap(), None);
 }
 
 pub fn test_tuple_compare() {
-    let tuple_a = Tuple::new_from_struct(&S2Record {
+    let tuple_a = Tuple::from_struct(&S2Record {
         id: 1,
         key: "key".to_string(),
         value: "value".to_string(),
@@ -159,7 +153,7 @@ pub fn test_tuple_compare() {
     })
     .unwrap();
 
-    let tuple_b = Tuple::new_from_struct(&S2Record {
+    let tuple_b = Tuple::from_struct(&S2Record {
         id: 1,
         key: "key".to_string(),
         value: "value".to_string(),
@@ -182,7 +176,7 @@ pub fn test_tuple_compare() {
 }
 
 pub fn test_tuple_compare_with_key() {
-    let tuple = Tuple::new_from_struct(&S2Record {
+    let tuple = Tuple::from_struct(&S2Record {
         id: 1,
         key: "key".to_string(),
         value: "value".to_string(),

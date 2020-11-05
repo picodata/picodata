@@ -16,7 +16,7 @@ pub struct Tuple {
 
 impl Tuple {
     /// Creates new tuple from `value`.
-    pub fn new_from_struct<T>(value: &T) -> Result<Self, Error>
+    pub fn from_struct<T>(value: &T) -> Result<Self, Error>
     where
         T: AsTuple,
     {
@@ -51,7 +51,7 @@ impl Tuple {
     }
 
     /// Return the number of bytes used to store internal tuple data (MsgPack Array).
-    pub fn size(&self) -> usize {
+    pub fn bsize(&self) -> usize {
         unsafe { ffi::box_tuple_bsize(self.ptr) }
     }
 
@@ -67,7 +67,7 @@ impl Tuple {
     ///
     /// Example:
     /// ```
-    /// let mut it = tuple.iterator().unwrap();
+    /// let mut it = tuple.iter().unwrap();
     ///
     /// while let Some(field) = it.next().unwrap() {
     ///     // process data
@@ -81,7 +81,7 @@ impl Tuple {
     /// field = it.seek(3).unwrap();
     /// assert!(it.position() == 4);
     /// ```
-    pub fn iterator(&self) -> Result<TupleIterator, Error> {
+    pub fn iter(&self) -> Result<TupleIterator, Error> {
         let inner = unsafe { ffi::box_tuple_iterator(self.ptr) };
         if inner.is_null() {
             Err(TarantoolError::last().into())
@@ -99,7 +99,7 @@ impl Tuple {
     /// Returns:
     /// - `None` if `i >= box_tuple_field_count(Tuple)` or if field has a non primitive type
     /// - field value otherwise
-    pub fn get_field<T>(&self, fieldno: u32) -> Result<Option<T>, Error>
+    pub fn field<T>(&self, fieldno: u32) -> Result<Option<T>, Error>
     where
         T: DeserializeOwned,
     {
@@ -111,7 +111,7 @@ impl Tuple {
     where
         T: DeserializeOwned,
     {
-        let raw_data_size = self.size();
+        let raw_data_size = self.bsize();
         let mut raw_data = Vec::<u8>::with_capacity(raw_data_size);
 
         let actual_size = unsafe {

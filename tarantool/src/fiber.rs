@@ -155,13 +155,13 @@ pub fn clock64() -> u64 {
 
 /// Return control to another fiber and wait until it'll be woken.
 ///
-/// See also: [fiber_wakeup](struct.Fiber.html#method.wakeup)
+/// See also: [Fiber::wakeup](struct.Fiber.html#method.wakeup)
 pub fn fiber_yield() {
     unsafe { ffi::fiber_yield() }
 }
 
 /// Reschedule fiber to end of event loop cycle.
-pub fn fiber_reschedule() {
+pub fn reschedule() {
     unsafe { ffi::fiber_reschedule() }
 }
 
@@ -214,14 +214,14 @@ impl Drop for FiberAttr {
 /// suspends execution of fiber (i.e. yields) until [signal()](#method.signal) is called.
 ///
 /// Unlike `pthread_cond`, `fiber_cond` doesn't require mutex/latch wrapping.
-pub struct FiberCond {
+pub struct Cond {
     inner: *mut ffi::FiberCond,
 }
 
-impl FiberCond {
+impl Cond {
     /// Instantiate a new fiber cond object.
     pub fn new() -> Self {
-        FiberCond {
+        Cond {
             inner: unsafe { ffi::fiber_cond_new() },
         }
     }
@@ -259,7 +259,7 @@ impl FiberCond {
     }
 }
 
-impl Drop for FiberCond {
+impl Drop for Cond {
     fn drop(&mut self) {
         unsafe { ffi::fiber_cond_delete(self.inner) }
     }
