@@ -89,7 +89,7 @@ impl Index {
         let mut result_ptr = null_mut::<BoxTuple>();
 
         if unsafe {
-            c_api::box_index_get(
+            ffi::box_index_get(
                 self.space_id,
                 self.index_id,
                 key_buf_ptr,
@@ -120,7 +120,7 @@ impl Index {
         let key_buf_ptr = key_buf.as_ptr() as *const c_char;
 
         let ptr = unsafe {
-            c_api::box_index_iterator(
+            ffi::box_index_iterator(
                 self.space_id,
                 self.index_id,
                 iterator_type.to_i32().unwrap(),
@@ -155,7 +155,7 @@ impl Index {
         let mut result_ptr = null_mut::<BoxTuple>();
 
         if unsafe {
-            c_api::box_delete(
+            ffi::box_delete(
                 self.space_id,
                 self.index_id,
                 key_buf_ptr,
@@ -194,7 +194,7 @@ impl Index {
         let mut result_ptr = null_mut::<BoxTuple>();
 
         if unsafe {
-            c_api::box_update(
+            ffi::box_update(
                 self.space_id,
                 self.index_id,
                 key_buf_ptr,
@@ -236,7 +236,7 @@ impl Index {
         let mut result_ptr = null_mut::<BoxTuple>();
 
         if unsafe {
-            c_api::box_upsert(
+            ffi::box_upsert(
                 self.space_id,
                 self.index_id,
                 value_buf_ptr,
@@ -260,7 +260,7 @@ impl Index {
 
     /// Return the number of elements in the index.
     pub fn len(&self) -> Result<usize, Error> {
-        let result = unsafe { c_api::box_index_len(self.space_id, self.index_id) };
+        let result = unsafe { ffi::box_index_len(self.space_id, self.index_id) };
 
         if result < 0 {
             Err(TarantoolError::last().into())
@@ -271,7 +271,7 @@ impl Index {
 
     /// Return the number of bytes used in memory by the index.
     pub fn bsize(&self) -> Result<usize, Error> {
-        let result = unsafe { c_api::box_index_bsize(self.space_id, self.index_id) };
+        let result = unsafe { ffi::box_index_bsize(self.space_id, self.index_id) };
 
         if result < 0 {
             Err(TarantoolError::last().into())
@@ -287,8 +287,7 @@ impl Index {
     /// See also: `box.space[space_id].index[index_id]:random(rnd)`
     pub fn random(&self, seed: u32) -> Result<Option<Tuple>, Error> {
         let mut result_ptr = null_mut::<BoxTuple>();
-        if unsafe { c_api::box_index_random(self.space_id, self.index_id, seed, &mut result_ptr) }
-            < 0
+        if unsafe { ffi::box_index_random(self.space_id, self.index_id, seed, &mut result_ptr) } < 0
         {
             return Err(TarantoolError::last().into());
         }
@@ -314,7 +313,7 @@ impl Index {
         let mut result_ptr = null_mut::<BoxTuple>();
 
         if unsafe {
-            c_api::box_index_min(
+            ffi::box_index_min(
                 self.space_id,
                 self.index_id,
                 key_buf_ptr,
@@ -347,7 +346,7 @@ impl Index {
         let mut result_ptr = null_mut::<BoxTuple>();
 
         if unsafe {
-            c_api::box_index_max(
+            ffi::box_index_max(
                 self.space_id,
                 self.index_id,
                 key_buf_ptr,
@@ -378,7 +377,7 @@ impl Index {
         let key_buf_ptr = key_buf.as_ptr() as *const c_char;
 
         let result = unsafe {
-            c_api::box_index_count(
+            ffi::box_index_count(
                 self.space_id,
                 self.index_id,
                 iterator_type.to_i32().unwrap(),
@@ -402,7 +401,7 @@ impl Index {
     pub fn extract_key(&self, tuple: Tuple) -> Tuple {
         let mut result_size: u32 = 0;
         let result_ptr = unsafe {
-            c_api::box_tuple_extract_key(
+            ffi::box_tuple_extract_key(
                 tuple.into_ptr(),
                 self.space_id,
                 self.index_id,
@@ -414,7 +413,7 @@ impl Index {
 }
 
 pub struct IndexIterator {
-    ptr: *mut c_api::BoxIterator,
+    ptr: *mut ffi::BoxIterator,
     _key_data: TupleBuffer,
 }
 
@@ -423,7 +422,7 @@ impl Iterator for IndexIterator {
 
     fn next(&mut self) -> Option<Self::Item> {
         let mut result_ptr = null_mut::<BoxTuple>();
-        if unsafe { c_api::box_iterator_next(self.ptr, &mut result_ptr) } < 0 {
+        if unsafe { ffi::box_iterator_next(self.ptr, &mut result_ptr) } < 0 {
             return None;
         }
 
@@ -437,11 +436,11 @@ impl Iterator for IndexIterator {
 
 impl Drop for IndexIterator {
     fn drop(&mut self) {
-        unsafe { c_api::box_iterator_free(self.ptr) };
+        unsafe { ffi::box_iterator_free(self.ptr) };
     }
 }
 
-pub mod c_api {
+mod ffi {
     use std::os::raw::{c_char, c_int};
 
     use crate::tuple::ffi::BoxTuple;

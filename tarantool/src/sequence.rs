@@ -56,7 +56,7 @@ impl Sequence {
     }
 }
 
-pub mod ffi {
+mod ffi {
     use std::os::raw::c_int;
 
     extern "C" {

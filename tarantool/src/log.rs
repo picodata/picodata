@@ -71,7 +71,7 @@ pub fn say(level: SayLevel, file: &str, line: i32, error: Option<&str>, message:
     }
 }
 
-pub mod ffi {
+mod ffi {
     use std::os::raw::{c_char, c_int};
 
     pub type SayFunc = Option<

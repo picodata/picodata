@@ -221,7 +221,7 @@ pub fn getaddrinfo(
     }
 }
 
-pub mod ffi {
+mod ffi {
     use std::os::raw::{c_char, c_int};
 
     use va_list::VaList;

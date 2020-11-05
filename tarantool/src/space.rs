@@ -254,13 +254,11 @@ impl Space {
     }
 }
 
-pub mod ffi {
+mod ffi {
     use std::os::raw::{c_char, c_int};
 
     pub use crate::tuple::ffi::BoxTuple;
 
-    pub const BOX_SYSTEM_ID_MIN: u32 = 256;
-    pub const BOX_SYSTEM_ID_MAX: u32 = 511;
     pub const BOX_ID_NIL: u32 = 2147483647;
 
     extern "C" {

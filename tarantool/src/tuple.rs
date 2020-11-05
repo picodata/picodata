@@ -514,7 +514,7 @@ where
     }
 }
 
-pub mod ffi {
+pub(crate) mod ffi {
     use std::os::raw::{c_char, c_int};
 
     #[repr(C)]
@@ -533,16 +533,6 @@ pub mod ffi {
         pub fn box_tuple_field_count(tuple: *const BoxTuple) -> u32;
         pub fn box_tuple_bsize(tuple: *const BoxTuple) -> usize;
         pub fn box_tuple_to_buf(tuple: *const BoxTuple, buf: *mut c_char, size: usize) -> isize;
-        pub fn box_tuple_update(
-            tuple: *const BoxTuple,
-            expr: *const c_char,
-            expr_end: *const c_char,
-        ) -> *mut BoxTuple;
-        pub fn box_tuple_upsert(
-            tuple: *const BoxTuple,
-            expr: *const c_char,
-            expr_end: *const c_char,
-        ) -> *mut BoxTuple;
     }
 
     #[repr(C)]

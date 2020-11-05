@@ -265,7 +265,7 @@ impl Drop for Cond {
     }
 }
 
-pub mod ffi {
+mod ffi {
     use std::os::raw::{c_char, c_int};
 
     use va_list::VaList;
@@ -324,16 +324,6 @@ pub mod ffi {
         pub fn fiber_cond_broadcast(cond: *mut FiberCond);
         pub fn fiber_cond_wait_timeout(cond: *mut FiberCond, timeout: f64) -> c_int;
         pub fn fiber_cond_wait(cond: *mut FiberCond) -> c_int;
-    }
-
-    #[repr(C)]
-    pub struct SlabCache {
-        _unused: [u8; 0],
-    }
-
-    extern "C" {
-        /// Return SlabCache suitable to use with tarantool/small library
-        pub fn cord_slab_cache() -> *mut SlabCache;
     }
 }
 

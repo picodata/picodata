@@ -376,7 +376,7 @@ pub fn set_error(file: &str, line: u32, code: &TarantoolErrorCode, msg: &str) ->
     }
 }
 
-pub mod ffi {
+mod ffi {
     use std::os::raw::{c_char, c_int, c_uint};
 
     #[repr(C)]
