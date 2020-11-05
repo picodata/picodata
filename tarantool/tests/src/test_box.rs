@@ -428,7 +428,6 @@ pub fn test_box_sequence_iterate() {
     seq.reset().unwrap();
     assert_eq!(seq.next().unwrap(), 1);
     assert_eq!(seq.next().unwrap(), 2);
-    assert_eq!(seq.current().unwrap(), 2);
 }
 
 pub fn test_box_sequence_set() {
