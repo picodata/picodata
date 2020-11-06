@@ -110,6 +110,9 @@ impl Index {
 
     /// Allocate and initialize iterator for index.
     ///
+    /// This is an alternative to [space.select()](../space/struct.Space.html#method.select) which goes via a particular
+    /// index and can make use of additional parameter that specify the iterator type.
+    ///
     /// - `type` - iterator type
     /// - `key` - encoded key in MsgPack Array format (`[part1, part2, ...]`).
     pub fn select<K>(&self, iterator_type: IteratorType, key: &K) -> Result<IndexIterator, Error>
@@ -139,11 +142,14 @@ impl Index {
         })
     }
 
-    /// Execute an DELETE request.
+    /// Delete a tuple identified by a key.
+    ///
+    /// Same as [space.delete()](../space/struct.Space.html#method.delete), but key is searched in this index instead
+    /// of in the primary-key index. This index ought to be unique.
     ///
     /// - `key` - encoded key in MsgPack Array format (`[part1, part2, ...]`).
     ///
-    /// Returns an old tuple
+    /// Returns the deleted tuple
     ///
     /// See also: `box.space[space_id].index[index_id]:delete(key)`
     pub fn delete<K>(&mut self, key: &K) -> Result<Option<Tuple>, Error>
@@ -174,7 +180,10 @@ impl Index {
         })
     }
 
-    /// Execute an UPDATE request.
+    /// Update a tuple.
+    ///
+    /// Same as [space.update()](../space/struct.Space.html#method.update), but key is searched in this index instead
+    /// of primary key. This index ought to be unique.
     ///
     /// - `key` - encoded key in MsgPack Array format (`[part1, part2, ...]`).
     /// - `ops` - encoded operations in MsgPack Arrat format, e.g. `[['=', field_id, value], ['!', 2, 'xxx']]`
@@ -217,6 +226,8 @@ impl Index {
     }
 
     /// Execute an UPSERT request.
+    ///
+    /// Will try to insert tuple. Update if already exists.
     ///
     /// - `value` - encoded tuple in MsgPack Array format (`[field1, field2, ...]`)
     /// - `ops` - encoded operations in MsgPack Arrat format, e.g. `[['=', field_id, value], ['!', 2, 'xxx']]`

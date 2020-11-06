@@ -4,7 +4,7 @@ use std::ptr::null_mut;
 use num_traits::ToPrimitive;
 
 use crate::error::{Error, TarantoolError};
-use crate::index::Index;
+use crate::index::{Index, IndexIterator, IteratorType};
 use crate::tuple::{AsTuple, Tuple};
 
 #[repr(u32)]
@@ -225,6 +225,14 @@ impl Space {
         K: AsTuple,
     {
         self.primary_key().get(key)
+    }
+
+    #[inline(always)]
+    pub fn select<K>(&self, iterator_type: IteratorType, key: &K) -> Result<IndexIterator, Error>
+    where
+        K: AsTuple,
+    {
+        self.primary_key().select(iterator_type, key)
     }
 
     #[inline(always)]
