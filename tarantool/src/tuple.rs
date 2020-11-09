@@ -1,3 +1,8 @@
+//! Tuples
+//!
+//! The `tuple` submodule provides read-only access for the tuple userdata type.
+//! It allows, for a single tuple: selective retrieval of the field contents, retrieval of information about size,
+//! iteration over all the fields, and conversion from/to rust structures
 use std::cmp::Ordering;
 use std::io::Cursor;
 use std::os::raw::{c_char, c_int};
@@ -16,6 +21,10 @@ pub struct Tuple {
 
 impl Tuple {
     /// Creates new tuple from `value`.
+    ///
+    /// This function will serialize structure instance `value` of type `T` into tuple internal representation
+    ///
+    /// See also: [AsTuple](trait.AsTuple.html)
     pub fn from_struct<T>(value: &T) -> Result<Self, Error>
     where
         T: AsTuple,
@@ -50,7 +59,15 @@ impl Tuple {
         unsafe { ffi::box_tuple_field_count(self.ptr) }
     }
 
-    /// Return the number of bytes used to store internal tuple data (MsgPack Array).
+    /// Will return the number of bytes in the tuple.
+    ///
+    /// With both the memtx storage engine and the vinyl storage engine the default maximum is one megabyte
+    /// (`memtx_max_tuple_size` or `vinyl_max_tuple_size`). Every field has one or more "length" bytes preceding the
+    /// actual contents, so `bsize()` returns a value which is slightly greater than the sum of the lengths of the
+    /// contents.
+    ///
+    /// The value does not include the size of "struct tuple"
+    /// (for the current size of this structure look in the tuple.h file in Tarantool’s source code).
     pub fn bsize(&self) -> usize {
         unsafe { ffi::box_tuple_bsize(self.ptr) }
     }
@@ -107,6 +124,7 @@ impl Tuple {
         field_value_from_ptr(result_ptr as *mut u8)
     }
 
+    /// Deserializes tuple contents into structure of type `T`
     pub fn into_struct<T>(self) -> Result<T, Error>
     where
         T: DeserializeOwned,

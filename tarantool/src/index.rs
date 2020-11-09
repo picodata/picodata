@@ -1,3 +1,8 @@
+//! Box: indices
+//!
+//! The `index` submodule provides access for index definitions and index keys.
+//! They provide an API for ordered iteration over tuples.
+//! This API is a direct binding to corresponding methods of index objects of type `box.index` in the storage engine.
 use std::os::raw::c_char;
 use std::ptr::null_mut;
 
@@ -150,8 +155,6 @@ impl Index {
     /// - `key` - encoded key in MsgPack Array format (`[part1, part2, ...]`).
     ///
     /// Returns the deleted tuple
-    ///
-    /// See also: `box.space[space_id].index[index_id]:delete(key)`
     pub fn delete<K>(&mut self, key: &K) -> Result<Option<Tuple>, Error>
     where
         K: AsTuple,
@@ -186,11 +189,11 @@ impl Index {
     /// of primary key. This index ought to be unique.
     ///
     /// - `key` - encoded key in MsgPack Array format (`[part1, part2, ...]`).
-    /// - `ops` - encoded operations in MsgPack Arrat format, e.g. `[['=', field_id, value], ['!', 2, 'xxx']]`
+    /// - `ops` - encoded operations in MsgPack array format, e.g. `[['=', field_id, value], ['!', 2, 'xxx']]`
     ///
     /// Returns a new tuple.
     ///
-    /// See also: `box.space[space_id].index[index_id]:update(key, ops)`, [upsert](#method.upsert)
+    /// See also: [index.upsert()](#method.upsert)
     pub fn update<K, Op>(&mut self, key: &K, ops: &Vec<Op>) -> Result<Option<Tuple>, Error>
     where
         K: AsTuple,
@@ -230,11 +233,11 @@ impl Index {
     /// Will try to insert tuple. Update if already exists.
     ///
     /// - `value` - encoded tuple in MsgPack Array format (`[field1, field2, ...]`)
-    /// - `ops` - encoded operations in MsgPack Arrat format, e.g. `[['=', field_id, value], ['!', 2, 'xxx']]`
+    /// - `ops` - encoded operations in MsgPack array format, e.g. `[['=', field_id, value], ['!', 2, 'xxx']]`
     ///
     /// Returns a new tuple.
     ///
-    /// See also: `box.space[space_id].index[index_id]:update(key, ops)`, [update](#method.update)
+    /// See also: [index.update()](#method.update)
     pub fn upsert<T, Op>(&mut self, value: &T, ops: &Vec<Op>) -> Result<Option<Tuple>, Error>
     where
         T: AsTuple,

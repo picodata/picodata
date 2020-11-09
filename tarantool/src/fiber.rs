@@ -1,4 +1,4 @@
-//! Fibers.
+//! Fibers
 //!
 //! With the fiber module, you can:
 //! - create, run and manage [fibers](struct.Fiber.html),

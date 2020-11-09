@@ -23,7 +23,7 @@ pub fn test_space_get_by_name() {
 }
 
 pub fn test_space_get_system() {
-    let space = Space::system_space(SystemSpace::Space);
+    let space: Space = SystemSpace::Space.into();
     assert!(space.len().is_ok());
 }
 

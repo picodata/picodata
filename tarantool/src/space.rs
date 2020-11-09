@@ -1,3 +1,7 @@
+//! Box: spaces
+//!
+//! **CRUD operations** in Tarantool are implemented by the box.space submodule.
+//! It has the data-manipulation functions select, insert, replace, update, upsert, delete, get, put.
 use std::os::raw::c_char;
 use std::ptr::null_mut;
 
@@ -7,6 +11,13 @@ use crate::error::{Error, TarantoolError};
 use crate::index::{Index, IndexIterator, IteratorType};
 use crate::tuple::{AsTuple, Tuple};
 
+/// Provides access to system spaces
+///
+/// Example:
+/// ```rust
+/// use tarantool_module::space::SystemSpace;
+/// let schema_space = SystemSpace::Schema.into();
+/// ```
 #[repr(u32)]
 #[derive(Debug, Clone, PartialEq, ToPrimitive)]
 pub enum SystemSpace {
@@ -62,6 +73,14 @@ pub enum SystemSpace {
     SessionSettings = 380,
 }
 
+impl Into<Space> for SystemSpace {
+    fn into(self) -> Space {
+        Space {
+            id: self.to_u32().unwrap(),
+        }
+    }
+}
+
 pub struct Space {
     id: u32,
 }
@@ -75,8 +94,6 @@ impl Space {
     /// Returns:
     /// - `None` if not found
     /// - `Some(space)` otherwise
-    ///
-    /// See also: [index_by_name](#method.index_by_name)
     pub fn find(name: &str) -> Option<Self> {
         let id =
             unsafe { ffi::box_space_id_by_name(name.as_ptr() as *const c_char, name.len() as u32) };
@@ -88,13 +105,6 @@ impl Space {
         }
     }
 
-    /// Access to system space
-    pub fn system_space(id: SystemSpace) -> Self {
-        Self {
-            id: id.to_u32().unwrap(),
-        }
-    }
-
     /// Find index by name.
     ///
     /// This function performs SELECT request to _vindex system space.
@@ -103,8 +113,6 @@ impl Space {
     /// Returns:
     /// - `None` if not found
     /// - `Some(index)` otherwise
-    ///
-    /// See also: [find_by_name](#method.find_by_name)
     pub fn index(&self, name: &str) -> Option<Index> {
         let index_id = unsafe {
             ffi::box_index_id_by_name(self.id, name.as_ptr() as *const c_char, name.len() as u32)
@@ -123,7 +131,7 @@ impl Space {
         Index::new(self.id, 0)
     }
 
-    /// Execute an INSERT request.
+    /// Insert a tuple into a space.
     ///
     /// - `value` - tuple value to insert
     ///
@@ -157,13 +165,15 @@ impl Space {
         })
     }
 
-    /// Execute an REPLACE request.
+    /// Insert a tuple into a space.
+    /// If a tuple with the same primary key already exists, [space.replace()](#method.replace) replaces the existing
+    /// tuple with a new one. The syntax variants [space.replace()](#method.replace) and [space.put()](#method.put)
+    /// have the same effect;
+    /// the latter is sometimes used to show that the effect is the converse of [space.get()](#method.get).
     ///
     /// - `value` - tuple value to replace with
     ///
     /// Returns a new tuple.
-    ///
-    /// See also: `box.space[space_id]:replace(tuple)`
     pub fn replace<T>(&mut self, value: &T) -> Result<Option<Tuple>, Error>
     where
         T: AsTuple,
@@ -192,7 +202,7 @@ impl Space {
     }
 
     /// Insert a tuple into a space. If a tuple with the same primary key already exists, replaces the existing tuple
-    /// with a new one. Alias for [replace](#method.replace)
+    /// with a new one. Alias for [space.replace()](#method.replace)
     #[inline(always)]
     pub fn put<T>(&mut self, value: &T) -> Result<Option<Tuple>, Error>
     where
@@ -201,7 +211,7 @@ impl Space {
         self.replace(value)
     }
 
-    /// Truncate space.
+    /// Deletes all tuples. The method is performed in background and doesn’t block consequent requests.
     pub fn truncate(&mut self) -> Result<(), Error> {
         if unsafe { ffi::box_truncate(self.id) } < 0 {
             return Err(TarantoolError::last().into());
@@ -209,16 +219,25 @@ impl Space {
         Ok(())
     }
 
+    /// Return the number of tuples in the space.
+    ///
+    /// If compared with [space.count()](#method.count), this method works faster because [space.len()](#method.len)
+    /// does not scan the entire space to count the tuples.
     #[inline(always)]
     pub fn len(&self) -> Result<usize, Error> {
         self.primary_key().len()
     }
 
+    /// Number of bytes in the space.
+    ///
+    /// This number, which is stored in Tarantool’s internal memory, represents the total number of bytes in all tuples,
+    /// not including index keys. For a measure of index size, see [index.bsize()](../index/struct.Index.html#method.bsize).
     #[inline(always)]
     pub fn bsize(&self) -> Result<usize, Error> {
         self.primary_key().bsize()
     }
 
+    /// Search for a tuple in the given space.
     #[inline(always)]
     pub fn get<K>(&self, key: &K) -> Result<Option<Tuple>, Error>
     where
@@ -227,6 +246,11 @@ impl Space {
         self.primary_key().get(key)
     }
 
+    /// Search for a tuple or a set of tuples in the given space. This method doesn’t yield
+    /// (for details see [Сooperative multitasking](https://www.tarantool.io/en/doc/latest/book/box/atomic_index/#atomic-cooperative-multitasking)).
+    ///
+    /// - `type` - iterator type
+    /// - `key` - encoded key in MsgPack Array format (`[part1, part2, ...]`).
     #[inline(always)]
     pub fn select<K>(&self, iterator_type: IteratorType, key: &K) -> Result<IndexIterator, Error>
     where
@@ -235,6 +259,23 @@ impl Space {
         self.primary_key().select(iterator_type, key)
     }
 
+    /// Return the number of tuples. If compared with [space.len()](#method.len), this method works slower because
+    /// [space.count()](#method.count) scans the entire space to count the tuples.
+    ///
+    /// - `type` - iterator type
+    /// - `key` - encoded key in MsgPack Array format (`[part1, part2, ...]`).
+    pub fn count<K>(&self, iterator_type: IteratorType, key: &K) -> Result<usize, Error>
+    where
+        K: AsTuple,
+    {
+        self.primary_key().count(iterator_type, key)
+    }
+
+    /// Delete a tuple identified by a primary key.
+    ///
+    /// - `key` - encoded key in MsgPack Array format (`[part1, part2, ...]`).
+    ///
+    /// Returns the deleted tuple
     #[inline(always)]
     pub fn delete<K>(&mut self, key: &K) -> Result<Option<Tuple>, Error>
     where
@@ -243,6 +284,23 @@ impl Space {
         self.primary_key().delete(key)
     }
 
+    /// Update a tuple.
+    ///
+    /// The `update` function supports operations on fields — assignment, arithmetic (if the field is numeric),
+    /// cutting and pasting fragments of a field, deleting or inserting a field. Multiple operations can be combined in
+    /// a single update request, and in this case they are performed atomically and sequentially. Each operation
+    /// requires specification of a field number. When multiple operations are present, the field number for each
+    /// operation is assumed to be relative to the most recent state of the tuple, that is, as if all previous
+    /// operations in a multi-operation update have already been applied.
+    /// In other words, it is always safe to merge multiple `update` invocations into a single invocation, with no
+    /// change in semantics.
+    ///
+    /// - `key` - encoded key in MsgPack Array format (`[part1, part2, ...]`).
+    /// - `ops` - encoded operations in MsgPack array format, e.g. `[['=', field_id, value], ['!', 2, 'xxx']]`
+    ///
+    /// Returns a new tuple.
+    ///
+    /// See also: [space.upsert()](#method.upsert)
     #[inline(always)]
     pub fn update<K, Op>(&mut self, key: &K, ops: &Vec<Op>) -> Result<Option<Tuple>, Error>
     where
@@ -252,6 +310,22 @@ impl Space {
         self.primary_key().update(key, ops)
     }
 
+    /// Update or insert a tuple.
+    ///
+    /// If there is an existing tuple which matches the key fields of tuple, then the request has the same effect as
+    /// [space.update()](#method.update) and the `{{operator, field_no, value}, ...}` parameter is used.
+    /// If there is no existing tuple which matches the key fields of tuple, then the request has the same effect as
+    /// [space.insert()](#method.insert) and the `{tuple}` parameter is used.
+    /// However, unlike `insert` or `update`, `upsert` will not read a tuple and perform error checks before
+    /// returning – this is a design feature which enhances throughput but requires more caution on the part of the
+    /// user.
+    ///
+    /// - `value` - encoded tuple in MsgPack Array format (`[field1, field2, ...]`)
+    /// - `ops` - encoded operations in MsgPack array format, e.g. `[['=', field_id, value], ['!', 2, 'xxx']]`
+    ///
+    /// Returns a new tuple.
+    ///
+    /// See also: [space.update()](#method.update)
     #[inline(always)]
     pub fn upsert<T, Op>(&mut self, value: &T, ops: &Vec<Op>) -> Result<Option<Tuple>, Error>
     where
