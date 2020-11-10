@@ -1,4 +1,4 @@
-//! Fibers
+//! Сooperative multitasking module
 //!
 //! With the fiber module, you can:
 //! - create, run and manage [fibers](struct.Fiber.html),
