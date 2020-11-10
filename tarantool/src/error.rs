@@ -1,3 +1,4 @@
+//! Errors
 use std::ffi::{CStr, CString};
 use std::os::raw::c_int;
 use std::{fmt, io};
@@ -8,6 +9,7 @@ use rmp::decode::ValueReadError;
 use rmp_serde::decode::Error as DecodeError;
 use rmp_serde::encode::Error as EncodeError;
 
+/// Represents all error cases for all routines of crate (including Tarantool errors)
 #[derive(Debug, Fail)]
 pub enum Error {
     #[fail(display = "Tarantool error: {}", _0)]
@@ -53,6 +55,7 @@ impl From<ValueReadError> for Error {
     }
 }
 
+/// Transaction-related error cases
 #[derive(Debug, Fail)]
 pub enum TransactionError {
     #[fail(display = "Transaction has already been started")]
@@ -71,6 +74,7 @@ impl From<TransactionError> for Error {
     }
 }
 
+/// Settable by Tarantool error type
 #[derive(Derivative)]
 #[derivative(Debug)]
 pub struct TarantoolError {
@@ -152,6 +156,7 @@ impl From<TarantoolError> for Error {
     }
 }
 
+/// Codes of Tarantool errors
 #[repr(u32)]
 #[derive(Debug, Clone, PartialEq, ToPrimitive, FromPrimitive)]
 pub enum TarantoolErrorCode {

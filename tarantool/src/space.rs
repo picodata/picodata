@@ -2,6 +2,10 @@
 //!
 //! **CRUD operations** in Tarantool are implemented by the box.space submodule.
 //! It has the data-manipulation functions select, insert, replace, update, upsert, delete, get, put.
+//!
+//! See also:
+//! - [Lua reference: Submodule box.space](https://www.tarantool.io/en/doc/latest/reference/reference_lua/box_space/)
+//! - [C API reference: Module box](https://www.tarantool.io/en/doc/latest/dev_guide/reference_capi/box/)
 use std::os::raw::c_char;
 use std::ptr::null_mut;
 

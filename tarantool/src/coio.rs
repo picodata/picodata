@@ -1,3 +1,7 @@
+//! Cooperative input/output
+//!
+//! See also:
+//! - [C API reference: Module coio](https://www.tarantool.io/en/doc/latest/dev_guide/reference_capi/coio/)
 use std::convert::TryFrom;
 use std::ffi::c_void;
 use std::io;
@@ -19,6 +23,7 @@ pub struct CoIOStream {
 }
 
 bitflags! {
+    /// Event type(s) to wait. Can be `READ` or/and `WRITE`
     pub struct CoIOFlags: c_int {
         const READ = 1;
         const WRITE = 2;
@@ -43,6 +48,7 @@ impl CoIOStream {
         }
     }
 
+    /// Pull some bytes from this source into the specified buffer. Returns how many bytes were read or 0 on timeout.
     fn read_with_timeout(&mut self, buf: &mut [u8], timeout: f64) -> Result<usize, io::Error> {
         let buf_len = buf.len();
         let result = unsafe { libc::read(self.fd, buf.as_mut_ptr() as *mut c_void, buf_len) };
@@ -64,6 +70,7 @@ impl CoIOStream {
         }
     }
 
+    /// Write a buffer into this writer. Returning how many bytes were written or 0 on timeout.
     fn write_with_timeout(&mut self, buf: &[u8], timeout: f64) -> Result<usize, io::Error> {
         let result = unsafe { libc::write(self.fd, buf.as_ptr() as *mut c_void, buf.len()) };
         if result >= 0 {
@@ -119,6 +126,7 @@ pub struct CoIOListener {
 }
 
 impl CoIOListener {
+    /// Accept a new incoming connection from this listener.
     pub fn accept(&self) -> Result<CoIOStream, io::Error> {
         loop {
             let res = self.inner.accept();
@@ -150,10 +158,10 @@ impl TryFrom<TcpListener> for CoIOListener {
     }
 }
 
-/// Wait until `READ` or `WRITE` event on socket (\a fd). Yields.
+/// Wait until `READ` or `WRITE` event on socket (`fd`). Yields.
 ///
 /// - `fd` - non-blocking socket file description
-/// - `events` - requested events to wait. Combination of `TNT_IO_READ | TNT_IO_WRITE` bit flags.
+/// - `events` - requested events to wait. Combination of [CoIOFlags::READ | CoIOFlags::WRITE](struct.CoIOFlags.html) bit flags.
 /// - `timeoout` - timeout in seconds.
 pub fn coio_wait(fd: RawFd, flags: CoIOFlags, timeout: f64) -> Result<(), io::Error> {
     match unsafe { ffi::coio_wait(fd, flags.bits, timeout) } {

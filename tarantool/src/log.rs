@@ -1,3 +1,21 @@
+//! Logging utils. See ["log" crate documentation](https://docs.rs/log/) for details
+//!
+//! Example:
+//! ```rust
+//! use log::{info, LevelFilter};
+//! use tarantool_module::log::{TarantoolLogger, say, SayLevel};
+//!
+//! log::set_logger(&TarantoolLogger {}).unwrap();
+//! log::set_max_level(LevelFilter::Debug);
+//! info!("Hello {}", username);
+//!
+//! // Or you can write to Tarantool logger directly
+//! say(SayLevel::Info, "log_demo.rs", 9, None, "Hello world");
+//! ```
+//!
+//! See also:
+//! - [Lua reference: Module log](https://www.tarantool.io/en/doc/latest/reference/reference_lua/log/)
+//! - [C API reference: Module say (logging)](https://www.tarantool.io/en/doc/latest/dev_guide/reference_capi/say/)
 use std::ffi::CString;
 use std::mem::forget;
 
@@ -5,6 +23,7 @@ use failure::_core::ptr::null;
 use log::{Level, Log, Metadata, Record};
 use num_traits::{FromPrimitive, ToPrimitive};
 
+/// [Log](https://docs.rs/log/latest/log/trait.Log.html) trait implementation. Wraps [say()](fn.say.html).
 pub struct TarantoolLogger {}
 
 impl Log for TarantoolLogger {
@@ -26,6 +45,7 @@ impl Log for TarantoolLogger {
     fn flush(&self) {}
 }
 
+/// Tarantool-native logging levels (use it with [say()](fn.say.html))
 #[repr(u32)]
 #[derive(Debug, Clone, PartialEq, PartialOrd, ToPrimitive, FromPrimitive)]
 pub enum SayLevel {

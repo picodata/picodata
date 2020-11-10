@@ -21,6 +21,11 @@
 //! Tarantool version 2.1 or later. Data-definition requests which change an index or change a format, such as
 //! `space_object:create_index()` and `space_object:format()`, are not allowed inside transactions except as the first
 //! request.
+//!
+//! See also:
+//! - [Transaction control](https://www.tarantool.io/en/doc/latest/book/box/atomic/)
+//! - [Lua reference: Functions for transaction management](https://www.tarantool.io/en/doc/latest/reference/reference_lua/box_txn_management/)
+//! - [C API reference: Module txn](https://www.tarantool.io/en/doc/latest/dev_guide/reference_capi/txn/)
 
 use crate::error::TransactionError;
 

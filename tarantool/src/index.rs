@@ -3,6 +3,10 @@
 //! The `index` submodule provides access for index definitions and index keys.
 //! They provide an API for ordered iteration over tuples.
 //! This API is a direct binding to corresponding methods of index objects of type `box.index` in the storage engine.
+//!
+//! See also:
+//! - [Indexes](https://www.tarantool.io/en/doc/latest/book/box/data_model/#indexes)
+//! - [Lua reference: Submodule box.index](https://www.tarantool.io/en/doc/latest/reference/reference_lua/box_index/)
 use std::os::raw::c_char;
 use std::ptr::null_mut;
 
@@ -11,6 +15,7 @@ use num_traits::ToPrimitive;
 use crate::error::{Error, TarantoolError};
 use crate::tuple::{ffi::BoxTuple, AsTuple, Tuple, TupleBuffer};
 
+/// An index is a group of key values and pointers.
 pub struct Index {
     space_id: u32,
     index_id: u32,
@@ -297,8 +302,6 @@ impl Index {
     /// Return a random tuple from the index (useful for statistical analysis).
     ///
     /// - `rnd` - random seed
-    ///
-    /// See also: `box.space[space_id].index[index_id]:random(rnd)`
     pub fn random(&self, seed: u32) -> Result<Option<Tuple>, Error> {
         let mut result_ptr = null_mut::<BoxTuple>();
         if unsafe { ffi::box_index_random(self.space_id, self.index_id, seed, &mut result_ptr) } < 0
@@ -426,6 +429,7 @@ impl Index {
     }
 }
 
+/// Index iterator. Can be used with `for` statement.
 pub struct IndexIterator {
     ptr: *mut ffi::BoxIterator,
     _key_data: TupleBuffer,

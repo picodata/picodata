@@ -14,7 +14,6 @@ pub mod coio;
 pub mod error;
 pub mod fiber;
 pub mod index;
-pub mod latch;
 pub mod log;
 pub mod sequence;
 pub mod space;

@@ -3,6 +3,11 @@
 //! The `tuple` submodule provides read-only access for the tuple userdata type.
 //! It allows, for a single tuple: selective retrieval of the field contents, retrieval of information about size,
 //! iteration over all the fields, and conversion from/to rust structures
+//!
+//! See also:
+//! - [Tuples](https://www.tarantool.io/en/doc/2.2/book/box/data_model/#tuples)
+//! - [Lua reference: Submodule box.tuple](https://www.tarantool.io/en/doc/2.2/reference/reference_lua/box_tuple/)
+//! - [C API reference: Module tuple](https://www.tarantool.io/en/doc/2.2/dev_guide/reference_capi/tuple/)
 use std::cmp::Ordering;
 use std::io::Cursor;
 use std::os::raw::{c_char, c_int};
@@ -15,6 +20,7 @@ use serde::{de::DeserializeOwned, Serialize};
 
 use crate::error::{Error, TarantoolError};
 
+/// Tuple
 pub struct Tuple {
     ptr: *mut ffi::BoxTuple,
 }
@@ -204,12 +210,17 @@ where
 {
 }
 
+/// Buffer containing tuple contents (MsgPack array)
+///
+/// If buffer is allocated within transaction: will be disposed after transaction ended (committed or dropped).
+/// If not: will act as a regular rust `Vec<u8>`
 pub enum TupleBuffer {
     Vector(Vec<u8>),
     TransactionScoped { ptr: *mut u8, size: usize },
 }
 
 impl TupleBuffer {
+    /// Get raw pointer to buffer.
     pub fn as_ptr(&self) -> *const u8 {
         match self {
             TupleBuffer::Vector(vec) => vec.as_ptr(),
@@ -217,6 +228,7 @@ impl TupleBuffer {
         }
     }
 
+    /// Return the number of bytes used in memory by the tuple.
     pub fn len(&self) -> usize {
         match self {
             TupleBuffer::Vector(vec) => vec.len(),
@@ -241,7 +253,7 @@ impl From<Vec<u8>> for TupleBuffer {
     }
 }
 
-/// Tuple Format.
+/// Tuple format
 ///
 /// Each Tuple has associated format (class). Default format is used to
 /// create tuples which are not attach to any particular space.

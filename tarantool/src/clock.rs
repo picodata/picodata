@@ -13,6 +13,10 @@
 //! - [proc64()](fn.proc64.html) - Get the processor time in nanoseconds
 //! - [thread()](fn.thread.html) - Get the thread time in seconds
 //! - [thread64()](fn.thread64.html) - Get the thread time in nanoseconds
+//!
+//! See also:
+//! - [Lua reference: Module clock](https://www.tarantool.io/en/doc/latest/reference/reference_lua/clock/)
+//! - [C API reference: Module clock](https://www.tarantool.io/en/doc/latest/dev_guide/reference_capi/clock/)
 
 /// The wall clock time.
 ///

@@ -4,6 +4,11 @@
 //! - create, run and manage [fibers](struct.Fiber.html),
 //! - use a synchronization mechanism for fibers, similar to “condition variables” and similar to operating-system
 //! functions such as `pthread_cond_wait()` plus `pthread_cond_signal()`.
+//!
+//! See also:
+//! - [Threads, fibers and yields](https://www.tarantool.io/en/doc/latest/book/box/atomic/#threads-fibers-and-yields)
+//! - [Lua reference: Module fiber](https://www.tarantool.io/en/doc/latest/reference/reference_lua/fiber/)
+//! - [C API reference: Module fiber](https://www.tarantool.io/en/doc/latest/dev_guide/reference_capi/fiber/)
 use std::ffi::CString;
 use std::marker::PhantomData;
 use std::os::raw::c_void;
@@ -347,6 +352,72 @@ impl Drop for Cond {
     }
 }
 
+/// A lock for cooperative multitasking environment
+pub struct Latch {
+    inner: *mut ffi::Latch,
+}
+
+impl Latch {
+    /// Allocate and initialize the new latch.
+    pub fn new() -> Self {
+        Latch {
+            inner: unsafe { ffi::box_latch_new() },
+        }
+    }
+
+    /// Lock a latch. Waits indefinitely until the current fiber can gain access to the latch.
+    pub fn lock(&self) -> LatchGuard {
+        unsafe { ffi::box_latch_lock(self.inner) };
+        LatchGuard { latch: self }
+    }
+
+    /// Try to lock a latch. Return immediately if the latch is locked.
+    ///
+    /// Returns:
+    /// - `Some` - success
+    /// - `None` - the latch is locked.
+    pub fn try_lock(&self) -> Option<LatchGuard> {
+        if unsafe { ffi::box_latch_trylock(self.inner) } == 0 {
+            Some(LatchGuard { latch: self })
+        } else {
+            None
+        }
+    }
+}
+
+impl Drop for Latch {
+    fn drop(&mut self) {
+        unsafe { ffi::box_latch_delete(self.inner) }
+    }
+}
+
+/// An RAII implementation of a "scoped lock" of a latch. When this structure is dropped (falls out of scope),
+/// the lock will be unlocked.
+pub struct LatchGuard<'a> {
+    latch: &'a Latch,
+}
+
+impl<'a> Drop for LatchGuard<'a> {
+    fn drop(&mut self) {
+        unsafe { ffi::box_latch_unlock(self.latch.inner) }
+    }
+}
+
+pub(crate) unsafe fn unpack_callback<F, T>(callback: &mut F) -> (*mut c_void, ffi::FiberFunc)
+where
+    F: FnMut(Box<T>) -> i32,
+{
+    unsafe extern "C" fn trampoline<F, T>(mut args: VaList) -> i32
+    where
+        F: FnMut(Box<T>) -> i32,
+    {
+        let closure: &mut F = &mut *(args.get::<*const c_void>() as *mut F);
+        let arg = Box::from_raw(args.get::<*const c_void>() as *mut T);
+        (*closure)(arg)
+    }
+    (callback as *mut F as *mut c_void, Some(trampoline::<F, T>))
+}
+
 mod ffi {
     use std::os::raw::{c_char, c_int};
 
@@ -407,19 +478,17 @@ mod ffi {
         pub fn fiber_cond_wait_timeout(cond: *mut FiberCond, timeout: f64) -> c_int;
         pub fn fiber_cond_wait(cond: *mut FiberCond) -> c_int;
     }
-}
 
-pub(crate) unsafe fn unpack_callback<F, T>(callback: &mut F) -> (*mut c_void, ffi::FiberFunc)
-where
-    F: FnMut(Box<T>) -> i32,
-{
-    unsafe extern "C" fn trampoline<F, T>(mut args: VaList) -> i32
-    where
-        F: FnMut(Box<T>) -> i32,
-    {
-        let closure: &mut F = &mut *(args.get::<*const c_void>() as *mut F);
-        let arg = Box::from_raw(args.get::<*const c_void>() as *mut T);
-        (*closure)(arg)
+    #[repr(C)]
+    pub struct Latch {
+        _unused: [u8; 0],
     }
-    (callback as *mut F as *mut c_void, Some(trampoline::<F, T>))
+
+    extern "C" {
+        pub fn box_latch_new() -> *mut Latch;
+        pub fn box_latch_delete(latch: *mut Latch);
+        pub fn box_latch_lock(latch: *mut Latch);
+        pub fn box_latch_trylock(latch: *mut Latch) -> c_int;
+        pub fn box_latch_unlock(latch: *mut Latch);
+    }
 }

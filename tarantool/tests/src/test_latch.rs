@@ -1,7 +1,6 @@
 use std::rc::Rc;
 
-use tarantool_module::fiber::{sleep, Fiber};
-use tarantool_module::latch::Latch;
+use tarantool_module::fiber::{sleep, Fiber, Latch};
 
 pub fn test_latch_lock() {
     let latch = Rc::new(Latch::new());
