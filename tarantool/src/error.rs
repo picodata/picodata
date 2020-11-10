@@ -1,4 +1,21 @@
-//! Errors
+//! Error handling utils. See ["failure" crate documentation](https://docs.rs/failure/) for details
+//!
+//! The Tarantool error handling works most like libc's errno. All API calls
+//! return -1 or `NULL` in the event of error. An internal pointer to
+//! `box_error_t` type is set by API functions to indicate what went wrong.
+//! This value is only significant if API call failed (returned -1 or `NULL`).
+//!
+//! Successful function can also touch the last error in some
+//! cases. You don't have to clear the last error before calling
+//! API functions. The returned object is valid only until next
+//! call to **any** API function.
+//!
+//! You must set the last error using `set_error()` in your stored C
+//! procedures if you want to return a custom error message.
+//! You can re-throw the last API error to IPROTO client by keeping
+//! the current value and returning -1 to Tarantool from your
+//! stored procedure.
+
 use std::ffi::{CStr, CString};
 use std::os::raw::c_int;
 use std::{fmt, io};
@@ -110,22 +127,6 @@ impl TarantoolError {
     }
 
     /// Get the information about the last API call error.
-    ///
-    /// The Tarantool error handling works most like libc's errno. All API calls
-    /// return -1 or `NULL` in the event of error. An internal pointer to
-    /// `box_error_t` type is set by API functions to indicate what went wrong.
-    /// This value is only significant if API call failed (returned -1 or `NULL`).
-    ///
-    /// Successful function can also touch the last error in some
-    /// cases. You don't have to clear the last error before calling
-    /// API functions. The returned object is valid only until next
-    /// call to **any** API function.
-    ///
-    /// You must set the last error using `set_error()` in your stored C
-    /// procedures if you want to return a custom error message.
-    /// You can re-throw the last API error to IPROTO client by keeping
-    /// the current value and returning -1 to Tarantool from your
-    /// stored procedure.
     pub fn last() -> Self {
         TarantoolError::maybe_last().err().unwrap()
     }
