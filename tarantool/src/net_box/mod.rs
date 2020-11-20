@@ -35,6 +35,10 @@ use url::Url;
 
 use crate::error::Error;
 use crate::tuple::{AsTuple, Tuple};
+use bitflags::_core::cell::Cell;
+use std::io::Cursor;
+
+mod protocol;
 
 /// Most [Conn](struct.Conn.html) methods allow a `options` argument
 ///
@@ -46,9 +50,6 @@ pub struct Options {
     /// server node.
     pub timeout: Option<Duration>,
 }
-
-/// Connection to remote Tarantool server
-pub struct Conn {}
 
 /// Connection options; see [Conn::new()](struct.Conn.html#method.new)
 #[derive(Default)]
@@ -89,6 +90,12 @@ pub struct ConnOptions {
     pub reconnect_after: Duration,
 }
 
+/// Connection to remote Tarantool server
+pub struct Conn {
+    options: ConnOptions,
+    sync: Cell<u64>,
+}
+
 impl Conn {
     /// Create a new connection.
     ///
@@ -98,7 +105,10 @@ impl Conn {
     ///
     /// See also: [ConnOptions]()
     pub fn new(url: Url, options: ConnOptions) -> Self {
-        unimplemented!()
+        Conn {
+            options,
+            sync: Cell::new(0),
+        }
     }
 
     /// Wait for connection to be active or closed.
@@ -115,7 +125,13 @@ impl Conn {
     ///
     /// - `options` – the supported option is `timeout`
     pub fn ping(&self, options: &Options) -> Result<(), Error> {
-        unimplemented!()
+        let mut buf = Vec::new();
+        let mut cur = Cursor::new(buf);
+
+        let sync = self.next_sync();
+        protocol::encode_ping(&mut cur, sync).unwrap();
+        // TBD
+        Ok(())
     }
 
     /// Close a connection.
@@ -128,7 +144,7 @@ impl Conn {
     /// `conn.call("func", &("1", "2", "3"))` is the remote-call equivalent of `func('1', '2', '3')`.
     /// That is, `conn.call` is a remote stored-procedure call.
     /// The return from `conn.call` is whatever the function returns.
-    pub fn call<T, R>(
+    pub fn call<T>(
         &self,
         function_name: &str,
         args: &T,
@@ -137,6 +153,18 @@ impl Conn {
     where
         T: AsTuple,
     {
-        unimplemented!()
+        let mut buf = Vec::new();
+        let mut cur = Cursor::new(buf);
+
+        let sync = self.next_sync();
+        protocol::encode_call(&mut cur, sync, function_name, args).unwrap();
+        // TBD
+        Ok(None)
+    }
+
+    fn next_sync(&self) -> u64 {
+        let sync = self.sync.get();
+        self.sync.set(sync + 1);
+        sync
     }
 }

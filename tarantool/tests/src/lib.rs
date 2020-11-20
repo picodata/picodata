@@ -14,6 +14,7 @@ mod test_error;
 mod test_fiber;
 mod test_latch;
 mod test_log;
+mod test_net_box;
 mod test_transaction;
 mod test_tuple;
 
@@ -103,6 +104,8 @@ fn run() -> Result<bool, io::Error> {
             test_log::test_log,
             test_latch::test_latch_lock,
             test_latch::test_latch_try_lock,
+            test_net_box::test_ping,
+            test_net_box::test_call,
         ],
     )
 }

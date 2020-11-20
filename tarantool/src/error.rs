@@ -23,6 +23,7 @@ use std::{fmt, io};
 use failure::_core::fmt::{Display, Formatter};
 use num_traits::{FromPrimitive, ToPrimitive};
 use rmp::decode::ValueReadError;
+use rmp::encode::ValueWriteError;
 use rmp_serde::decode::Error as DecodeError;
 use rmp_serde::encode::Error as EncodeError;
 
@@ -43,6 +44,9 @@ pub enum Error {
 
     #[fail(display = "Value read error: {}", _0)]
     ValueRead(ValueReadError),
+
+    #[fail(display = "Value write error: {}", _0)]
+    ValueWrite(ValueWriteError),
 
     #[fail(display = "Transaction issue: {}", _0)]
     Transaction(TransactionError),
@@ -69,6 +73,12 @@ impl From<DecodeError> for Error {
 impl From<ValueReadError> for Error {
     fn from(error: ValueReadError) -> Self {
         Error::ValueRead(error)
+    }
+}
+
+impl From<ValueWriteError> for Error {
+    fn from(error: ValueWriteError) -> Self {
+        Error::ValueWrite(error)
     }
 }
 
