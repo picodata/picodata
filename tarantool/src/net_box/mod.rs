@@ -30,70 +30,33 @@
 //! See also:
 //! - [Lua reference: Module net.box](https://www.tarantool.io/en/doc/latest/reference/reference_lua/net_box/)
 
-use bitflags::_core::time::Duration;
-use url::Url;
+use std::io::{Cursor, Read, Write};
+use std::net::{SocketAddr, ToSocketAddrs};
 
+use bitflags::_core::cell::{Cell, RefCell};
+use bitflags::_core::time::Duration;
+
+pub use options::{ConnOptions, Options};
+
+use crate::coio::CoIOStream;
 use crate::error::Error;
 use crate::tuple::{AsTuple, Tuple};
-use bitflags::_core::cell::Cell;
-use std::io::Cursor;
 
+mod options;
 mod protocol;
 
-/// Most [Conn](struct.Conn.html) methods allow a `options` argument
-///
-/// Which can be:
-#[derive(Default)]
-pub struct Options {
-    /// For example, a method whose `options` argument is `{timeout: Some(Duration::from_secs_f32(1.5)})` will stop
-    /// after 1.5 seconds on the local node, although this does not guarantee that execution will stop on the remote
-    /// server node.
-    pub timeout: Option<Duration>,
-}
-
-/// Connection options; see [Conn::new()](struct.Conn.html#method.new)
-#[derive(Default)]
-pub struct ConnOptions {
-    pub user: String,
-    /// You have two ways to connect to a remote host: using URI or using the options user and password.
-    /// For example, instead of
-    /// ```rust
-    /// # use tarantool_module::net_box::{Conn, ConnOptions};
-    /// # use url::Url;
-    /// Conn::new(
-    ///     Url::parse("username:userpassword@localhost:3301").unwrap(),
-    ///     ConnOptions::default()
-    /// );
-    /// ```
-    /// you can write
-    /// ```rust
-    /// # use tarantool_module::net_box::{Conn, ConnOptions};
-    /// # use url::Url;
-    /// Conn::new(
-    ///     Url::parse("localhost:3301").unwrap(),
-    ///     ConnOptions {
-    ///         user: "username".to_string(),
-    ///         password: "userpassword".to_string(),
-    ///         ..ConnOptions::default()
-    ///     }
-    /// );
-    /// ```
-    pub password: String,
-
-    /// If `reconnect_after` is greater than zero, then a [Conn](struct.Conn.html) instance will try to reconnect if a
-    /// connection is broken or if a connection attempt fails.
-    /// This makes transient network failures become transparent to the application.
-    /// Reconnect happens automatically in the background, so requests that initially fail due to connectivity loss are
-    /// transparently retried.
-    /// The number of retries is unlimited, connection attempts are made after each specified interval
-    /// When a connection is explicitly closed, or when connection object is dropped, then reconnect attempts stop.
-    pub reconnect_after: Duration,
-}
-
 /// Connection to remote Tarantool server
+#[derive(Default)]
 pub struct Conn {
+    addrs: Vec<SocketAddr>,
     options: ConnOptions,
     sync: Cell<u64>,
+    session: RefCell<Option<Session>>,
+}
+
+struct Session {
+    stream: CoIOStream,
+    salt: Vec<u8>,
 }
 
 impl Conn {
@@ -104,11 +67,13 @@ impl Conn {
     /// The returned conn object supports methods for making remote requests, such as select, update or delete.
     ///
     /// See also: [ConnOptions]()
-    pub fn new(url: Url, options: ConnOptions) -> Self {
-        Conn {
+    pub fn new(addr: &str, options: ConnOptions) -> Result<Self, Error> {
+        Ok(Conn {
             options,
+            addrs: addr.to_socket_addrs()?.collect(),
             sync: Cell::new(0),
-        }
+            ..Default::default()
+        })
     }
 
     /// Wait for connection to be active or closed.
@@ -130,6 +95,7 @@ impl Conn {
 
         let sync = self.next_sync();
         protocol::encode_ping(&mut cur, sync).unwrap();
+        self.send_request(&cur.into_inner())?;
         // TBD
         Ok(())
     }
@@ -160,6 +126,29 @@ impl Conn {
         protocol::encode_call(&mut cur, sync, function_name, args).unwrap();
         // TBD
         Ok(None)
+    }
+
+    fn connect(&self) -> Result<(), Error> {
+        let mut stream = CoIOStream::connect(&*self.addrs)?;
+        let salt = protocol::decode_greeting(&mut stream)?;
+
+        *self.session.borrow_mut() = Some(Session { stream, salt });
+
+        Ok(())
+    }
+
+    fn send_request(&self, data: &Vec<u8>) -> Result<(), Error> {
+        if self.session.borrow().is_none() {
+            self.connect();
+        }
+
+        let mut session_ref_opt = self.session.borrow_mut();
+        let session = session_ref_opt.as_mut().unwrap();
+        session.stream.write_all(data);
+
+        protocol::decode_response(&mut session.stream)?;
+
+        Ok(())
     }
 
     fn next_sync(&self) -> u64 {

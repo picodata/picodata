@@ -6,7 +6,7 @@ use std::convert::TryFrom;
 use std::ffi::c_void;
 use std::io;
 use std::io::{Read, Write};
-use std::net::TcpListener;
+use std::net::{TcpListener, TcpStream, ToSocketAddrs};
 use std::os::raw::{c_char, c_int};
 use std::os::unix::io::{AsRawFd, IntoRawFd, RawFd};
 
@@ -31,6 +31,7 @@ bitflags! {
 }
 
 impl CoIOStream {
+    /// Convert fd-like object to CoIO stream
     pub fn new<T>(inner: T) -> Result<CoIOStream, io::Error>
     where
         T: IntoRawFd,
@@ -46,6 +47,15 @@ impl CoIOStream {
         } else {
             Ok(CoIOStream { fd })
         }
+    }
+
+    /// Connect to remote TCP socket
+    pub fn connect<A: ToSocketAddrs>(addr: A) -> Result<CoIOStream, io::Error> {
+        let inner_stream = TcpStream::connect(addr)?;
+        inner_stream.set_nonblocking(true);
+        Ok(CoIOStream {
+            fd: inner_stream.into_raw_fd(),
+        })
     }
 
     /// Pull some bytes from this source into the specified buffer. Returns how many bytes were read or 0 on timeout.
