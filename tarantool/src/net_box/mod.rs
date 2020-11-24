@@ -30,18 +30,20 @@
 //! See also:
 //! - [Lua reference: Module net.box](https://www.tarantool.io/en/doc/latest/reference/reference_lua/net_box/)
 
-use std::io::{Cursor, Read, Write};
+use std::io::{self, Cursor, Write};
 use std::net::{SocketAddr, ToSocketAddrs};
 
 use bitflags::_core::cell::{Cell, RefCell};
 use bitflags::_core::time::Duration;
 
+pub use error::NetBoxError;
 pub use options::{ConnOptions, Options};
 
 use crate::coio::CoIOStream;
 use crate::error::Error;
 use crate::tuple::{AsTuple, Tuple};
 
+mod error;
 mod options;
 mod protocol;
 
@@ -51,12 +53,22 @@ pub struct Conn {
     addrs: Vec<SocketAddr>,
     options: ConnOptions,
     sync: Cell<u64>,
-    session: RefCell<Option<Session>>,
+    state: Cell<ConnState>,
+    stream: RefCell<Option<CoIOStream>>,
 }
 
-struct Session {
-    stream: CoIOStream,
-    salt: Vec<u8>,
+#[derive(Copy, Clone)]
+enum ConnState {
+    Init,
+    Connecting,
+    Auth,
+    Active,
+}
+
+impl Default for ConnState {
+    fn default() -> Self {
+        ConnState::Init
+    }
 }
 
 impl Conn {
@@ -66,18 +78,19 @@ impl Conn {
     /// automatically after a disconnect (see [reconnect_after](struct.ConnOptions.html#structfield.reconnect_after) option).
     /// The returned conn object supports methods for making remote requests, such as select, update or delete.
     ///
-    /// See also: [ConnOptions]()
+    /// See also: [ConnOptions](struct.ConnOptions.html)
     pub fn new(addr: &str, options: ConnOptions) -> Result<Self, Error> {
         Ok(Conn {
             options,
             addrs: addr.to_socket_addrs()?.collect(),
             sync: Cell::new(0),
+            state: Cell::new(ConnState::Init),
             ..Default::default()
         })
     }
 
     /// Wait for connection to be active or closed.
-    pub fn wait_connected(&self, timeout: Option<Duration>) -> Result<(), Error> {
+    pub fn wait_connected(&self, _timeout: Option<Duration>) -> Result<(), Error> {
         unimplemented!()
     }
 
@@ -89,14 +102,13 @@ impl Conn {
     /// Execute a PING command.
     ///
     /// - `options` – the supported option is `timeout`
-    pub fn ping(&self, options: &Options) -> Result<(), Error> {
-        let mut buf = Vec::new();
+    pub fn ping(&self, _options: &Options) -> Result<(), Error> {
+        let buf = Vec::new();
         let mut cur = Cursor::new(buf);
 
         let sync = self.next_sync();
-        protocol::encode_ping(&mut cur, sync).unwrap();
-        self.send_request(&cur.into_inner())?;
-        // TBD
+        protocol::encode_ping(&mut cur, sync)?;
+        self.communicate(&cur.into_inner())?;
         Ok(())
     }
 
@@ -114,40 +126,72 @@ impl Conn {
         &self,
         function_name: &str,
         args: &T,
-        options: &Options,
+        _options: &Options,
     ) -> Result<Option<Tuple>, Error>
     where
         T: AsTuple,
     {
-        let mut buf = Vec::new();
+        let buf = Vec::new();
         let mut cur = Cursor::new(buf);
 
         let sync = self.next_sync();
-        protocol::encode_call(&mut cur, sync, function_name, args).unwrap();
+        protocol::encode_call(&mut cur, sync, function_name, args)?;
+        self.communicate(&cur.into_inner())?;
         // TBD
         Ok(None)
     }
 
+    fn communicate(&self, request: &Vec<u8>) -> Result<(), Error> {
+        if let ConnState::Init = self.state.get() {
+            self.connect()?;
+        }
+        self.send_request(request)?;
+        self.recv_response()?;
+        Ok(())
+    }
+
     fn connect(&self) -> Result<(), Error> {
+        self.state.set(ConnState::Connecting);
         let mut stream = CoIOStream::connect(&*self.addrs)?;
         let salt = protocol::decode_greeting(&mut stream)?;
 
-        *self.session.borrow_mut() = Some(Session { stream, salt });
+        if !self.options.user.is_empty() {
+            self.state.set(ConnState::Auth);
+            self.auth(&mut stream, &salt)?;
+        }
+
+        self.state.set(ConnState::Active);
+        *self.stream.borrow_mut() = Some(stream);
+        Ok(())
+    }
+
+    fn auth(&self, stream: &mut CoIOStream, salt: &Vec<u8>) -> Result<(), Error> {
+        let buf = Vec::new();
+        let mut cur = Cursor::new(buf);
+        let sync = self.next_sync();
+        protocol::encode_auth(
+            &mut cur,
+            self.options.user.as_str(),
+            self.options.password.as_str(),
+            salt,
+            sync,
+        )?;
+        stream.write_all(&cur.into_inner())?;
+        protocol::decode_response(stream)?;
 
         Ok(())
     }
 
-    fn send_request(&self, data: &Vec<u8>) -> Result<(), Error> {
-        if self.session.borrow().is_none() {
-            self.connect();
-        }
+    fn send_request(&self, data: &Vec<u8>) -> Result<(), io::Error> {
+        let mut stream_ref_opt = self.stream.borrow_mut();
+        let stream = stream_ref_opt.as_mut().unwrap();
+        stream.write_all(data)
+    }
 
-        let mut session_ref_opt = self.session.borrow_mut();
-        let session = session_ref_opt.as_mut().unwrap();
-        session.stream.write_all(data);
-
-        protocol::decode_response(&mut session.stream)?;
-
+    fn recv_response(&self) -> Result<(), Error> {
+        let mut stream_ref_opt = self.stream.borrow_mut();
+        let stream = stream_ref_opt.as_mut().unwrap();
+        protocol::decode_response(stream)?;
         Ok(())
     }
 

@@ -52,7 +52,7 @@ impl CoIOStream {
     /// Connect to remote TCP socket
     pub fn connect<A: ToSocketAddrs>(addr: A) -> Result<CoIOStream, io::Error> {
         let inner_stream = TcpStream::connect(addr)?;
-        inner_stream.set_nonblocking(true);
+        inner_stream.set_nonblocking(true)?;
         Ok(CoIOStream {
             fd: inner_stream.into_raw_fd(),
         })

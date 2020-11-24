@@ -27,6 +27,8 @@ use rmp::encode::ValueWriteError;
 use rmp_serde::decode::Error as DecodeError;
 use rmp_serde::encode::Error as EncodeError;
 
+use crate::net_box::NetBoxError;
+
 /// Represents all error cases for all routines of crate (including Tarantool errors)
 #[derive(Debug, Fail)]
 pub enum Error {
@@ -50,6 +52,9 @@ pub enum Error {
 
     #[fail(display = "Transaction issue: {}", _0)]
     Transaction(TransactionError),
+
+    #[fail(display = "Net.box error: {}", _0)]
+    NetBox(NetBoxError),
 }
 
 impl From<io::Error> for Error {
@@ -79,6 +84,12 @@ impl From<ValueReadError> for Error {
 impl From<ValueWriteError> for Error {
     fn from(error: ValueWriteError) -> Self {
         Error::ValueWrite(error)
+    }
+}
+
+impl From<NetBoxError> for Error {
+    fn from(error: NetBoxError) -> Self {
+        Error::NetBox(error)
     }
 }
 

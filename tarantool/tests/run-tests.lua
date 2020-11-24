@@ -6,6 +6,9 @@ box.cfg{
 
 -- Init test database
 box.once('bootstrap', function()
+    box.schema.user.create('test_user', { password = 'password' })
+    box.schema.user.grant('test_user', 'read,write,execute,create,drop', 'universe')
+
     local test_s1 = box.schema.space.create('test_s1')
     test_s1:format{
         {name = 'id', type = 'unsigned'},
@@ -37,7 +40,12 @@ box.once('bootstrap', function()
     end
 
     box.schema.sequence.create('test_seq')
+
+    box.schema.func.create('test_stored_proc')
 end)
+
+function test_stored_proc()
+end
 
 -- Add test runner library location to lua search path
 package.cpath = 'target/debug/?.so;' .. package.cpath

@@ -14,23 +14,14 @@ pub struct Options {
 /// Connection options; see [Conn::new()](struct.Conn.html#method.new)
 #[derive(Default)]
 pub struct ConnOptions {
-    pub user: String,
-    /// You have two ways to connect to a remote host: using URI or using the options user and password.
-    /// For example, instead of
+    /// Authentication user name. If left empty, then the session user is `'guest'`
+    /// (the `'guest'` user does not need a password).
+    ///
+    /// Example:
     /// ```rust
     /// # use tarantool_module::net_box::{Conn, ConnOptions};
-    /// # use url::Url;
     /// Conn::new(
-    ///     Url::parse("username:userpassword@localhost:3301").unwrap(),
-    ///     ConnOptions::default()
-    /// );
-    /// ```
-    /// you can write
-    /// ```rust
-    /// # use tarantool_module::net_box::{Conn, ConnOptions};
-    /// # use url::Url;
-    /// Conn::new(
-    ///     Url::parse("localhost:3301").unwrap(),
+    ///     "localhost:3301",
     ///     ConnOptions {
     ///         user: "username".to_string(),
     ///         password: "userpassword".to_string(),
@@ -38,6 +29,9 @@ pub struct ConnOptions {
     ///     }
     /// );
     /// ```
+    pub user: String,
+
+    /// Authentication password.
     pub password: String,
 
     /// If `reconnect_after` is greater than zero, then a [Conn](struct.Conn.html) instance will try to reconnect if a
