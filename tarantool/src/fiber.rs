@@ -368,7 +368,9 @@ impl Latch {
     /// Lock a latch. Waits indefinitely until the current fiber can gain access to the latch.
     pub fn lock(&self) -> LatchGuard {
         unsafe { ffi::box_latch_lock(self.inner) };
-        LatchGuard { latch: self }
+        LatchGuard {
+            latch_inner: self.inner,
+        }
     }
 
     /// Try to lock a latch. Return immediately if the latch is locked.
@@ -378,7 +380,9 @@ impl Latch {
     /// - `None` - the latch is locked.
     pub fn try_lock(&self) -> Option<LatchGuard> {
         if unsafe { ffi::box_latch_trylock(self.inner) } == 0 {
-            Some(LatchGuard { latch: self })
+            Some(LatchGuard {
+                latch_inner: self.inner,
+            })
         } else {
             None
         }
@@ -393,13 +397,13 @@ impl Drop for Latch {
 
 /// An RAII implementation of a "scoped lock" of a latch. When this structure is dropped (falls out of scope),
 /// the lock will be unlocked.
-pub struct LatchGuard<'a> {
-    latch: &'a Latch,
+pub struct LatchGuard {
+    latch_inner: *mut ffi::Latch,
 }
 
-impl<'a> Drop for LatchGuard<'a> {
+impl Drop for LatchGuard {
     fn drop(&mut self) {
-        unsafe { ffi::box_latch_unlock(self.latch.inner) }
+        unsafe { ffi::box_latch_unlock(self.latch_inner) }
     }
 }
 

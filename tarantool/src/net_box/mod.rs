@@ -30,17 +30,19 @@
 //! See also:
 //! - [Lua reference: Module net.box](https://www.tarantool.io/en/doc/latest/reference/reference_lua/net_box/)
 
+use core::cell::{Cell, RefCell};
+use core::time::Duration;
+use std::collections::HashMap;
 use std::io::{self, Cursor, Write};
 use std::net::{SocketAddr, ToSocketAddrs};
-
-use bitflags::_core::cell::{Cell, RefCell};
-use bitflags::_core::time::Duration;
 
 pub use error::NetBoxError;
 pub use options::{ConnOptions, Options};
 
 use crate::coio::CoIOStream;
 use crate::error::Error;
+use crate::fiber::{set_cancellable, Cond, Fiber, Latch};
+use crate::net_box::protocol::Response;
 use crate::tuple::{AsTuple, Tuple};
 
 mod error;
@@ -48,16 +50,15 @@ mod options;
 mod protocol;
 
 /// Connection to remote Tarantool server
-#[derive(Default)]
-pub struct Conn {
+pub struct Conn<'a> {
     addrs: Vec<SocketAddr>,
     options: ConnOptions,
     sync: Cell<u64>,
-    state: Cell<ConnState>,
-    stream: RefCell<Option<CoIOStream>>,
+    recv_fiber: RefCell<Fiber<'a, *mut ConnSession>>,
+    session: RefCell<Box<ConnSession>>,
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 enum ConnState {
     Init,
     Connecting,
@@ -65,13 +66,20 @@ enum ConnState {
     Active,
 }
 
-impl Default for ConnState {
-    fn default() -> Self {
-        ConnState::Init
-    }
+struct ConnSession {
+    state: ConnState,
+    stream: Option<CoIOStream>,
+    active_requests: HashMap<u64, RequestState>,
+    send_lock: Latch,
+    recv_lock: Latch,
 }
 
-impl Conn {
+struct RequestState {
+    recv_cond: Cond,
+    response: Option<Response>,
+}
+
+impl<'a> Conn<'a> {
     /// Create a new connection.
     ///
     /// The connection is established on demand, at the time of the first request. It can be re-established
@@ -80,12 +88,21 @@ impl Conn {
     ///
     /// See also: [ConnOptions](struct.ConnOptions.html)
     pub fn new(addr: &str, options: ConnOptions) -> Result<Self, Error> {
+        let mut recv_fiber = Fiber::new("_recv", &mut Conn::recv_fiber_main);
+        recv_fiber.set_joinable(true);
+
         Ok(Conn {
             options,
             addrs: addr.to_socket_addrs()?.collect(),
             sync: Cell::new(0),
-            state: Cell::new(ConnState::Init),
-            ..Default::default()
+            recv_fiber: RefCell::new(recv_fiber),
+            session: RefCell::new(Box::new(ConnSession {
+                state: ConnState::Init,
+                stream: None,
+                send_lock: Latch::new(),
+                recv_lock: Latch::new(),
+                active_requests: Default::default(),
+            })),
         })
     }
 
@@ -99,6 +116,11 @@ impl Conn {
         unimplemented!()
     }
 
+    /// Close a connection.
+    pub fn close(self) {
+        unimplemented!()
+    }
+
     /// Execute a PING command.
     ///
     /// - `options` – the supported option is `timeout`
@@ -108,13 +130,9 @@ impl Conn {
 
         let sync = self.next_sync();
         protocol::encode_ping(&mut cur, sync)?;
-        self.communicate(&cur.into_inner())?;
+        self.communicate(&cur.into_inner(), sync)?;
+        // TBD
         Ok(())
-    }
-
-    /// Close a connection.
-    pub fn close(self) {
-        unimplemented!()
     }
 
     /// Call a remote stored procedure.
@@ -136,32 +154,42 @@ impl Conn {
 
         let sync = self.next_sync();
         protocol::encode_call(&mut cur, sync, function_name, args)?;
-        self.communicate(&cur.into_inner())?;
+        self.communicate(&cur.into_inner(), sync)?;
         // TBD
         Ok(None)
     }
 
-    fn communicate(&self, request: &Vec<u8>) -> Result<(), Error> {
-        if let ConnState::Init = self.state.get() {
+    fn communicate(&self, request: &Vec<u8>, sync: u64) -> Result<(), Error> {
+        let state = self.session.borrow().state;
+        if let ConnState::Init = state {
             self.connect()?;
         }
-        self.send_request(request)?;
-        self.recv_response()?;
+
+        self.send_request(request, sync)?;
+        self.recv_response(sync)?;
         Ok(())
     }
 
     fn connect(&self) -> Result<(), Error> {
-        self.state.set(ConnState::Connecting);
+        self.session.borrow_mut().state = ConnState::Connecting;
         let mut stream = CoIOStream::connect(&*self.addrs)?;
         let salt = protocol::decode_greeting(&mut stream)?;
 
         if !self.options.user.is_empty() {
-            self.state.set(ConnState::Auth);
+            self.session.borrow_mut().state = ConnState::Auth;
             self.auth(&mut stream, &salt)?;
         }
 
-        self.state.set(ConnState::Active);
-        *self.stream.borrow_mut() = Some(stream);
+        {
+            let mut session = self.session.borrow_mut();
+            session.state = ConnState::Active;
+            session.stream = Some(stream);
+        }
+
+        self.recv_fiber
+            .borrow_mut()
+            .start(&mut **self.session.borrow_mut());
+
         Ok(())
     }
 
@@ -182,22 +210,75 @@ impl Conn {
         Ok(())
     }
 
-    fn send_request(&self, data: &Vec<u8>) -> Result<(), io::Error> {
-        let mut stream_ref_opt = self.stream.borrow_mut();
-        let stream = stream_ref_opt.as_mut().unwrap();
-        stream.write_all(data)
+    fn send_request(&self, data: &Vec<u8>, sync: u64) -> Result<(), io::Error> {
+        let mut session = self.session.borrow_mut();
+        {
+            let _lock = session.recv_lock.lock();
+            session.active_requests.insert(
+                sync,
+                RequestState {
+                    recv_cond: Cond::new(),
+                    response: None,
+                },
+            );
+        }
+        {
+            let _lock = session.send_lock.lock();
+            let stream = session.stream.as_mut().unwrap();
+            stream.write_all(data)
+        }
     }
 
-    fn recv_response(&self) -> Result<(), Error> {
-        let mut stream_ref_opt = self.stream.borrow_mut();
-        let stream = stream_ref_opt.as_mut().unwrap();
-        protocol::decode_response(stream)?;
+    fn recv_response(&self, sync: u64) -> Result<(), Error> {
+        let mut session = self.session.borrow_mut();
+        session.active_requests.get(&sync).unwrap().recv_cond.wait();
+        let response = {
+            let _lock = session.recv_lock.lock();
+            session.active_requests.remove(&sync)
+        };
+
+        let _ = response.unwrap().response.unwrap();
+        // TBD
+
         Ok(())
+    }
+
+    fn recv_fiber_main(conn: Box<*mut ConnSession>) -> i32 {
+        set_cancellable(true);
+
+        let conn = unsafe { (*conn).as_mut() }.unwrap();
+        loop {
+            match protocol::decode_response(&mut conn.stream.as_mut().unwrap()) {
+                Ok(response) => {
+                    let _lock = conn.recv_lock.lock();
+                    if let Some(request_state) =
+                        conn.active_requests.get_mut(&(response.sync as u64))
+                    {
+                        request_state.response = Some(response);
+                        request_state.recv_cond.signal();
+                    }
+                }
+
+                Err(_) => {
+                    break;
+                }
+            }
+        }
+
+        0
     }
 
     fn next_sync(&self) -> u64 {
         let sync = self.sync.get();
         self.sync.set(sync + 1);
         sync
+    }
+}
+
+impl<'a> Drop for Conn<'a> {
+    fn drop(&mut self) {
+        let mut fiber = self.recv_fiber.borrow_mut();
+        fiber.cancel();
+        fiber.join();
     }
 }

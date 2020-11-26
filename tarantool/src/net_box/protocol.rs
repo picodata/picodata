@@ -1,10 +1,9 @@
-use std::io::{Cursor, Read, Write};
+use std::io::{self, Cursor, Read, Write};
 use std::os::raw::c_char;
 
 use sha1::{Digest, Sha1};
 
 use crate::error::Error;
-use crate::net_box::NetBoxError;
 use crate::tuple::{AsTuple, Tuple};
 
 const REQUEST_TYPE: u8 = 0x00;
@@ -129,11 +128,6 @@ pub fn decode_greeting(stream: &mut dyn Read) -> Result<Vec<u8>, Error> {
     Ok(salt)
 }
 
-pub fn decode_error(_cur: &mut Cursor<Vec<u8>>) -> NetBoxError {
-    // TBD
-    NetBoxError::ResponseMessage("Error".to_string())
-}
-
 pub fn decode_response<R: Read>(stream: &mut R) -> Result<Response, Error> {
     let response_len = rmp::decode::read_u32(stream)? as usize;
     let mut buf = Vec::with_capacity(response_len);
@@ -160,16 +154,11 @@ pub fn decode_response<R: Read>(stream: &mut R) -> Result<Response, Error> {
 
     // check all header fields are present
     if status_code.is_none() || sync.is_none() {
-        return Err(NetBoxError::BadResponse.into());
+        return Err(io::Error::from(io::ErrorKind::InvalidData).into());
     }
 
     let status_code = status_code.unwrap();
     let sync = sync.unwrap();
-
-    // on error
-    if status_code != 0 {
-        return Err(decode_error(&mut cur).into());
-    }
 
     Ok(Response {
         status_code,
@@ -179,9 +168,9 @@ pub fn decode_response<R: Read>(stream: &mut R) -> Result<Response, Error> {
 }
 
 pub struct Response {
-    status_code: u32,
-    sync: u32,
-    payload_cur: Cursor<Vec<u8>>,
+    pub status_code: u32,
+    pub sync: u32,
+    pub payload_cur: Cursor<Vec<u8>>,
 }
 
 impl Response {
