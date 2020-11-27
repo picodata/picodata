@@ -1,7 +1,6 @@
 use std::io;
 use std::os::raw::{c_int, c_schar};
 
-use luajit::ffi::{luaL_error, lua_State, lua_pushinteger};
 use tester::{
     run_tests_console, ColorConfig, Options, OutputFormat, RunIgnored, ShouldPanic, TestDesc,
     TestDescAndFn, TestFn, TestName, TestOpts, TestType,
@@ -111,15 +110,31 @@ fn run() -> Result<bool, io::Error> {
 }
 
 #[no_mangle]
-pub extern "C" fn luaopen_libtarantool_module_test_runner(l: *mut lua_State) -> c_int {
+pub extern "C" fn luaopen_libtarantool_module_test_runner(l: *mut ffi::lua_State) -> c_int {
     match run() {
         Ok(is_success) => {
-            unsafe { lua_pushinteger(l, (!is_success) as isize) };
+            unsafe { ffi::lua_pushinteger(l, (!is_success) as isize) };
             1
         }
         Err(e) => {
-            unsafe { luaL_error(l, e.to_string().as_ptr() as *const c_schar) };
+            unsafe { ffi::luaL_error(l, e.to_string().as_ptr() as *const c_schar) };
             0
         }
+    }
+}
+
+#[allow(non_camel_case_types)]
+mod ffi {
+    use std::os::raw::{c_int, c_schar};
+
+    #[repr(C)]
+    #[derive(Debug, Copy, Clone)]
+    pub struct lua_State {
+        _unused: [u8; 0],
+    }
+
+    extern "C" {
+        pub fn luaL_error(l: *mut lua_State, fmt: *const c_schar, ...) -> c_int;
+        pub fn lua_pushinteger(l: *mut lua_State, n: isize);
     }
 }
