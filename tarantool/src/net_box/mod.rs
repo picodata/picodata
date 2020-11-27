@@ -58,20 +58,29 @@ pub struct Conn<'a> {
     session: RefCell<Box<ConnSession>>,
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone)]
 enum ConnState {
     Init,
     Connecting,
     Auth,
     Active,
+    Closed,
 }
 
 struct ConnSession {
     state: ConnState,
+    state_change_cond: Cond,
     stream: Option<CoIOStream>,
     active_requests: HashMap<u64, RequestState>,
     send_lock: Latch,
     recv_lock: Latch,
+}
+
+impl ConnSession {
+    fn update_state(&mut self, state: ConnState) {
+        self.state = state;
+        self.state_change_cond.signal();
+    }
 }
 
 struct RequestState {
@@ -98,6 +107,7 @@ impl<'a> Conn<'a> {
             recv_fiber: RefCell::new(recv_fiber),
             session: RefCell::new(Box::new(ConnSession {
                 state: ConnState::Init,
+                state_change_cond: Cond::new(),
                 stream: None,
                 send_lock: Latch::new(),
                 recv_lock: Latch::new(),
@@ -160,30 +170,41 @@ impl<'a> Conn<'a> {
     }
 
     fn communicate(&self, request: &Vec<u8>, sync: u64) -> Result<(), Error> {
-        let state = self.session.borrow().state;
-        if let ConnState::Init = state {
-            self.connect()?;
+        loop {
+            let state = self.session.borrow().state;
+            match state {
+                ConnState::Init => {
+                    self.connect()?;
+                }
+                ConnState::Active => {
+                    self.send_request(request, sync)?;
+                    self.recv_response(sync)?;
+                    return Ok(());
+                }
+                ConnState::Closed => return Err(io::Error::from(io::ErrorKind::BrokenPipe).into()),
+                _ => {
+                    self.session.borrow().state_change_cond.wait();
+                }
+            };
         }
-
-        self.send_request(request, sync)?;
-        self.recv_response(sync)?;
-        Ok(())
     }
 
     fn connect(&self) -> Result<(), Error> {
-        self.session.borrow_mut().state = ConnState::Connecting;
+        self.session
+            .borrow_mut()
+            .update_state(ConnState::Connecting);
         let mut stream = CoIOStream::connect(&*self.addrs)?;
         let salt = protocol::decode_greeting(&mut stream)?;
 
         if !self.options.user.is_empty() {
-            self.session.borrow_mut().state = ConnState::Auth;
+            self.session.borrow_mut().update_state(ConnState::Auth);
             self.auth(&mut stream, &salt)?;
         }
 
         {
             let mut session = self.session.borrow_mut();
-            session.state = ConnState::Active;
             session.stream = Some(stream);
+            session.update_state(ConnState::Active);
         }
 
         self.recv_fiber
@@ -231,14 +252,16 @@ impl<'a> Conn<'a> {
 
     fn recv_response(&self, sync: u64) -> Result<(), Error> {
         let mut session = self.session.borrow_mut();
-        session.active_requests.get(&sync).unwrap().recv_cond.wait();
-        let response = {
-            let _lock = session.recv_lock.lock();
-            session.active_requests.remove(&sync)
-        };
+        if let Some(request_state) = session.active_requests.get(&sync) {
+            request_state.recv_cond.wait();
+            let response = {
+                let _lock = session.recv_lock.lock();
+                session.active_requests.remove(&sync)
+            };
 
-        let _ = response.unwrap().response.unwrap();
-        // TBD
+            let _ = response.unwrap().response.unwrap();
+            // TBD
+        }
 
         Ok(())
     }
@@ -248,19 +271,26 @@ impl<'a> Conn<'a> {
 
         let conn = unsafe { (*conn).as_mut() }.unwrap();
         loop {
-            match protocol::decode_response(&mut conn.stream.as_mut().unwrap()) {
-                Ok(response) => {
-                    let _lock = conn.recv_lock.lock();
-                    if let Some(request_state) =
-                        conn.active_requests.get_mut(&(response.sync as u64))
-                    {
-                        request_state.response = Some(response);
-                        request_state.recv_cond.signal();
+            match conn.state {
+                ConnState::Active => {
+                    match protocol::decode_response(&mut conn.stream.as_mut().unwrap()) {
+                        Ok(response) => {
+                            let _lock = conn.recv_lock.lock();
+                            if let Some(request_state) =
+                                conn.active_requests.get_mut(&(response.sync as u64))
+                            {
+                                request_state.response = Some(response);
+                                request_state.recv_cond.signal();
+                            }
+                        }
+
+                        Err(_) => continue,
                     }
                 }
 
-                Err(_) => {
-                    break;
+                ConnState::Closed => break,
+                _ => {
+                    conn.state_change_cond.wait();
                 }
             }
         }
@@ -277,6 +307,7 @@ impl<'a> Conn<'a> {
 
 impl<'a> Drop for Conn<'a> {
     fn drop(&mut self) {
+        self.session.borrow_mut().update_state(ConnState::Closed);
         let mut fiber = self.recv_fiber.borrow_mut();
         fiber.cancel();
         fiber.join();
