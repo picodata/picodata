@@ -44,7 +44,8 @@ box.once('bootstrap', function()
     box.schema.func.create('test_stored_proc')
 end)
 
-function test_stored_proc()
+function test_stored_proc(a, b)
+    return a + b
 end
 
 -- Add test runner library location to lua search path

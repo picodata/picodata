@@ -36,16 +36,16 @@ use std::collections::HashMap;
 use std::io::{self, Cursor, Write};
 use std::net::{SocketAddr, ToSocketAddrs};
 
-pub use error::NetBoxError;
+use serde::de::DeserializeOwned;
+
 pub use options::{ConnOptions, Options};
+pub(crate) use protocol::ResponseError;
 
 use crate::coio::CoIOStream;
 use crate::error::Error;
 use crate::fiber::{set_cancellable, Cond, Fiber, Latch};
-use crate::net_box::protocol::Response;
 use crate::tuple::{AsTuple, Tuple};
 
-mod error;
 mod options;
 mod protocol;
 
@@ -85,7 +85,7 @@ impl ConnSession {
 
 struct RequestState {
     recv_cond: Cond,
-    response: Option<Response>,
+    response: Option<protocol::Response>,
 }
 
 impl<'a> Conn<'a> {
@@ -164,22 +164,24 @@ impl<'a> Conn<'a> {
 
         let sync = self.next_sync();
         protocol::encode_call(&mut cur, sync, function_name, args)?;
-        self.communicate(&cur.into_inner(), sync)?;
-        // TBD
-        Ok(None)
+        let response = self.communicate(&cur.into_inner(), sync)?;
+        Ok(response.into_tuple()?)
     }
 
-    fn communicate(&self, request: &Vec<u8>, sync: u64) -> Result<(), Error> {
+    fn communicate(&self, request: &Vec<u8>, sync: u64) -> Result<protocol::Response, Error> {
         loop {
             let state = self.session.borrow().state;
             match state {
                 ConnState::Init => {
-                    self.connect()?;
+                    let result = self.connect();
+                    if result.is_err() {
+                        self.disconnect();
+                    }
+                    result?;
                 }
                 ConnState::Active => {
                     self.send_request(request, sync)?;
-                    self.recv_response(sync)?;
-                    return Ok(());
+                    return Ok(self.recv_response(sync)?.unwrap());
                 }
                 ConnState::Closed => return Err(io::Error::from(io::ErrorKind::BrokenPipe).into()),
                 _ => {
@@ -250,20 +252,19 @@ impl<'a> Conn<'a> {
         }
     }
 
-    fn recv_response(&self, sync: u64) -> Result<(), Error> {
+    fn recv_response(&self, sync: u64) -> Result<Option<protocol::Response>, Error> {
         let mut session = self.session.borrow_mut();
         if let Some(request_state) = session.active_requests.get(&sync) {
             request_state.recv_cond.wait();
             let response = {
                 let _lock = session.recv_lock.lock();
                 session.active_requests.remove(&sync)
-            };
-
-            let _ = response.unwrap().response.unwrap();
-            // TBD
+            }
+            .unwrap();
+            Ok(response.response)
+        } else {
+            Ok(None)
         }
-
-        Ok(())
     }
 
     fn recv_fiber_main(conn: Box<*mut ConnSession>) -> i32 {
@@ -287,15 +288,18 @@ impl<'a> Conn<'a> {
                         Err(_) => continue,
                     }
                 }
-
-                ConnState::Closed => break,
+                ConnState::Closed => return 0,
                 _ => {
                     conn.state_change_cond.wait();
                 }
             }
         }
+    }
 
-        0
+    fn disconnect(&self) {
+        let mut session = self.session.borrow_mut();
+        session.stream = None;
+        session.update_state(ConnState::Closed);
     }
 
     fn next_sync(&self) -> u64 {
@@ -307,7 +311,7 @@ impl<'a> Conn<'a> {
 
 impl<'a> Drop for Conn<'a> {
     fn drop(&mut self) {
-        self.session.borrow_mut().update_state(ConnState::Closed);
+        self.disconnect();
         let mut fiber = self.recv_fiber.borrow_mut();
         fiber.cancel();
         fiber.join();

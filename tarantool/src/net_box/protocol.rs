@@ -1,6 +1,10 @@
+use core::convert::TryInto;
+use std::collections::HashMap;
+use std::fmt::{Display, Formatter};
 use std::io::{self, Cursor, Read, Write};
 use std::os::raw::c_char;
 
+use serde::de::DeserializeOwned;
 use sha1::{Digest, Sha1};
 
 use crate::error::Error;
@@ -11,6 +15,9 @@ const SYNC: u8 = 0x01;
 const TUPLE: u8 = 0x21;
 const FUNCTION_NAME: u8 = 0x22;
 const USER_NAME: u8 = 0x23;
+
+const DATA: u8 = 0x30;
+const ERROR: u8 = 0x31;
 
 enum IProtoType {
     Auth = 7,
@@ -119,6 +126,27 @@ where
     Ok(())
 }
 
+fn decode_map(cur: &mut Cursor<Vec<u8>>) -> Result<HashMap<u8, rmpv::Value>, Error> {
+    let mut map = HashMap::new();
+    let map_len = rmp::decode::read_map_len(cur)?;
+    for _ in 0..map_len {
+        let key = rmp::decode::read_pfix(cur)?;
+        let value = rmpv::decode::read_value(cur)?;
+        map.insert(key, value);
+    }
+    Ok(map)
+}
+
+fn decode_error(cur: &mut Cursor<Vec<u8>>) -> Result<ResponseError, Error> {
+    let mut err_data = decode_map(cur)?;
+    Ok(ResponseError {
+        message: err_data
+            .remove(&ERROR)
+            .ok_or(io::Error::from(io::ErrorKind::InvalidData))?
+            .to_string(),
+    })
+}
+
 pub fn decode_greeting(stream: &mut dyn Read) -> Result<Vec<u8>, Error> {
     let mut buf = Vec::with_capacity(128);
     buf.resize(128, 0);
@@ -136,29 +164,17 @@ pub fn decode_response<R: Read>(stream: &mut R) -> Result<Response, Error> {
     stream.read_exact(&mut *buf)?;
     let mut cur = Cursor::new(buf);
 
-    let mut status_code: Option<u32> = None;
-    let mut sync: Option<u32> = None;
-
     // decode header
-    let header_len = rmp::decode::read_map_len(&mut cur)?;
-    for _ in 0..header_len {
-        let key = rmp::decode::read_pfix(&mut cur)?;
-        match key {
-            0 => status_code = Some(rmp::decode::read_int(&mut cur).unwrap()),
-            SYNC => sync = Some(rmp::decode::read_int(&mut cur).unwrap()),
-            _ => {
-                rmpv::decode::read_value(&mut cur).unwrap();
-            }
-        };
-    }
+    let mut header = decode_map(&mut cur)?;
+    let status_code = header
+        .get(&0)
+        .map_or(None, |val| val.as_i64())
+        .ok_or(io::Error::from(io::ErrorKind::InvalidData))? as u32;
 
-    // check all header fields are present
-    if status_code.is_none() || sync.is_none() {
-        return Err(io::Error::from(io::ErrorKind::InvalidData).into());
-    }
-
-    let status_code = status_code.unwrap();
-    let sync = sync.unwrap();
+    let sync = header
+        .get(&SYNC)
+        .map_or(None, |val| val.as_i64())
+        .ok_or(io::Error::from(io::ErrorKind::InvalidData))? as u32;
 
     Ok(Response {
         status_code,
@@ -168,19 +184,66 @@ pub fn decode_response<R: Read>(stream: &mut R) -> Result<Response, Error> {
 }
 
 pub struct Response {
-    pub status_code: u32,
     pub sync: u32,
-    pub payload_cur: Cursor<Vec<u8>>,
+    status_code: u32,
+    payload_cur: Cursor<Vec<u8>>,
+}
+
+#[derive(Debug)]
+pub struct ResponseError {
+    message: String,
+}
+
+impl Display for ResponseError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        write!(f, "{}", self.message)
+    }
 }
 
 impl Response {
-    pub fn into_tuple(self) -> Tuple {
-        let payload_offset = self.payload_cur.position();
-        let buf = self.payload_cur.into_inner();
-        let payload_len = buf.len() as u64 - payload_offset;
-        Tuple::from_raw_data(
-            Box::leak(buf.into_boxed_slice()).as_mut_ptr() as *mut c_char,
-            payload_len as u32,
-        )
+    pub fn is_ok(&self) -> bool {
+        self.status_code == 0
+    }
+
+    pub fn into_tuple(mut self) -> Result<Option<Tuple>, Error> {
+        if self.status_code == 0 {
+            let payload_len = rmp::decode::read_map_len(&mut self.payload_cur)?;
+            for _ in 0..payload_len {
+                let key = rmp::decode::read_pfix(&mut self.payload_cur)?;
+                match key {
+                    DATA => {
+                        let payload_offset = self.payload_cur.position();
+                        let buf = self.payload_cur.into_inner();
+                        let payload_len = buf.len() as u64 - payload_offset;
+                        unsafe {
+                            return Ok(Some(Tuple::from_raw_data(
+                                Box::leak(buf.into_boxed_slice())
+                                    .as_mut_ptr()
+                                    .add(payload_offset as usize)
+                                    as *mut c_char,
+                                payload_len as u32,
+                            )));
+                        }
+                    }
+                    _ => {
+                        rmpv::decode::read_value(&mut self.payload_cur).unwrap();
+                    }
+                };
+            }
+            Ok(None)
+        } else {
+            Err(decode_error(&mut self.payload_cur)?.into())
+        }
+    }
+
+    pub fn into_struct<T>(mut self) -> Result<T, Error>
+    where
+        T: DeserializeOwned,
+    {
+        if self.status_code == 0 {
+            Ok(rmp_serde::decode::from_read(self.payload_cur)?)
+        } else {
+            Err(decode_error(&mut self.payload_cur)?.into())
+        }
     }
 }

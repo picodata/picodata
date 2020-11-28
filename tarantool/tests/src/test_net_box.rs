@@ -12,6 +12,8 @@ pub fn test_call() {
         ..ConnOptions::default()
     };
     let conn = Conn::new("localhost:3301", conn_options).unwrap();
-    conn.call("test_stored_proc", &(1, 2), &Options::default())
+    let result = conn
+        .call("test_stored_proc", &(1, 2), &Options::default())
         .unwrap();
+    assert_eq!(result.unwrap().into_struct::<(i32,)>().unwrap(), (3,));
 }
