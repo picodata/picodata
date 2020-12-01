@@ -42,4 +42,7 @@ pub struct ConnOptions {
     /// The number of retries is unlimited, connection attempts are made after each specified interval
     /// When a connection is explicitly closed, or when connection object is dropped, then reconnect attempts stop.
     pub reconnect_after: Duration,
+
+    /// Duration to wait before returning “error: Connection timed out”.
+    pub connect_timeout: Duration,
 }

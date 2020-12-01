@@ -6,9 +6,10 @@ use std::convert::TryFrom;
 use std::ffi::c_void;
 use std::io;
 use std::io::{Read, Write};
-use std::net::{TcpListener, TcpStream, ToSocketAddrs};
+use std::net::{SocketAddr, TcpListener, TcpStream, ToSocketAddrs};
 use std::os::raw::{c_char, c_int};
 use std::os::unix::io::{AsRawFd, IntoRawFd, RawFd};
+use std::time::Duration;
 
 use failure::_core::ptr::null_mut;
 
@@ -58,8 +59,21 @@ impl CoIOStream {
         })
     }
 
+    /// Opens a TCP connection to a remote host with a timeout.
+    pub fn connect_timeout(addr: &SocketAddr, timeout: Duration) -> Result<CoIOStream, io::Error> {
+        let inner_stream = TcpStream::connect_timeout(addr, timeout)?;
+        inner_stream.set_nonblocking(true)?;
+        Ok(CoIOStream {
+            fd: inner_stream.into_raw_fd(),
+        })
+    }
+
     /// Pull some bytes from this source into the specified buffer. Returns how many bytes were read or 0 on timeout.
-    fn read_with_timeout(&mut self, buf: &mut [u8], timeout: f64) -> Result<usize, io::Error> {
+    pub fn read_with_timeout(
+        &mut self,
+        buf: &mut [u8],
+        timeout: Option<Duration>,
+    ) -> Result<usize, io::Error> {
         let buf_len = buf.len();
         let result = unsafe { libc::read(self.fd, buf.as_mut_ptr() as *mut c_void, buf_len) };
         if result >= 0 {
@@ -71,6 +85,11 @@ impl CoIOStream {
             return Err(err);
         }
 
+        let timeout = match timeout {
+            None => TIMEOUT_INFINITY,
+            Some(timeout) => timeout.as_secs_f64(),
+        };
+
         coio_wait(self.fd, CoIOFlags::READ, timeout)?;
         let result = unsafe { libc::read(self.fd, buf.as_mut_ptr() as *mut c_void, buf_len) };
         if result < 0 {
@@ -81,7 +100,11 @@ impl CoIOStream {
     }
 
     /// Write a buffer into this writer. Returning how many bytes were written or 0 on timeout.
-    fn write_with_timeout(&mut self, buf: &[u8], timeout: f64) -> Result<usize, io::Error> {
+    pub fn write_with_timeout(
+        &mut self,
+        buf: &[u8],
+        timeout: Option<Duration>,
+    ) -> Result<usize, io::Error> {
         let result = unsafe { libc::write(self.fd, buf.as_ptr() as *mut c_void, buf.len()) };
         if result >= 0 {
             return Ok(result as usize);
@@ -91,6 +114,11 @@ impl CoIOStream {
         if err.kind() != io::ErrorKind::WouldBlock {
             return Err(err);
         }
+
+        let timeout = match timeout {
+            None => TIMEOUT_INFINITY,
+            Some(timeout) => timeout.as_secs_f64(),
+        };
 
         coio_wait(self.fd, CoIOFlags::WRITE, timeout)?;
         let result = unsafe { libc::write(self.fd, buf.as_ptr() as *mut c_void, buf.len()) };
@@ -110,13 +138,13 @@ impl IntoRawFd for CoIOStream {
 
 impl Read for CoIOStream {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize, io::Error> {
-        self.read_with_timeout(buf, TIMEOUT_INFINITY)
+        self.read_with_timeout(buf, None)
     }
 }
 
 impl Write for CoIOStream {
     fn write(&mut self, buf: &[u8]) -> Result<usize, io::Error> {
-        self.write_with_timeout(buf, TIMEOUT_INFINITY)
+        self.write_with_timeout(buf, None)
     }
 
     fn flush(&mut self) -> Result<(), io::Error> {

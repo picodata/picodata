@@ -12,6 +12,7 @@
 use std::ffi::CString;
 use std::marker::PhantomData;
 use std::os::raw::c_void;
+use std::time::Duration;
 
 use va_list::VaList;
 
@@ -336,8 +337,8 @@ impl Cond {
     /// Returns:
     /// - `true` on [signal()](#method.signal) call or a spurious wake up.
     /// - `false` on timeout, diag is set to `TimedOut`
-    pub fn wait_timeout(&self, timeout: f64) -> bool {
-        !(unsafe { ffi::fiber_cond_wait_timeout(self.inner, timeout) } < 0)
+    pub fn wait_timeout(&self, timeout: Duration) -> bool {
+        !(unsafe { ffi::fiber_cond_wait_timeout(self.inner, timeout.as_secs_f64()) } < 0)
     }
 
     /// Shortcut for [wait_timeout()](#method.wait_timeout).

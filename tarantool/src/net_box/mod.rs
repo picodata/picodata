@@ -140,13 +140,13 @@ impl<'a> Conn<'a> {
     /// Execute a PING command.
     ///
     /// - `options` – the supported option is `timeout`
-    pub fn ping(&self, _options: &Options) -> Result<(), Error> {
+    pub fn ping(&self, options: &Options) -> Result<(), Error> {
         let buf = Vec::new();
         let mut cur = Cursor::new(buf);
 
         let sync = self.next_sync();
         protocol::encode_ping(&mut cur, sync)?;
-        self.communicate(&cur.into_inner(), sync)?;
+        self.communicate(&cur.into_inner(), sync, options)?;
         Ok(())
     }
 
@@ -159,7 +159,7 @@ impl<'a> Conn<'a> {
         &self,
         function_name: &str,
         args: &T,
-        _options: &Options,
+        options: &Options,
     ) -> Result<Option<Tuple>, Error>
     where
         T: AsTuple,
@@ -169,11 +169,16 @@ impl<'a> Conn<'a> {
 
         let sync = self.next_sync();
         protocol::encode_call(&mut cur, sync, function_name, args)?;
-        let response = self.communicate(&cur.into_inner(), sync)?;
+        let response = self.communicate(&cur.into_inner(), sync, options)?;
         Ok(response.into_tuple()?)
     }
 
-    fn communicate(&self, request: &Vec<u8>, sync: u64) -> Result<protocol::Response, Error> {
+    fn communicate(
+        &self,
+        request: &Vec<u8>,
+        sync: u64,
+        options: &Options,
+    ) -> Result<protocol::Response, Error> {
         loop {
             let state = self.session.borrow().state;
             match state {
@@ -189,10 +194,10 @@ impl<'a> Conn<'a> {
                     }
                 }
                 ConnState::Active => {
-                    if let Err(err) = self.send_request(request, sync) {
+                    if let Err(err) = self.send_request(request, sync, options) {
                         self.handle_error(err.into())?;
                     }
-                    return Ok(self.recv_response(sync)?.unwrap());
+                    return Ok(self.recv_response(sync, options)?.unwrap());
                 }
                 ConnState::Error => self.disconnect(),
                 ConnState::ErrorReconnect => self.reconnect_or_fail()?,
@@ -206,14 +211,25 @@ impl<'a> Conn<'a> {
 
     fn connect(&self) -> Result<(), Error> {
         self.update_state(ConnState::Connecting);
-        let mut stream = CoIOStream::connect(&*self.addrs)?;
+
+        // connect
+        let connect_timeout = self.options.connect_timeout;
+        let mut stream = if connect_timeout.subsec_millis() == 0 && connect_timeout.as_secs() == 0 {
+            CoIOStream::connect(&*self.addrs)?
+        } else {
+            CoIOStream::connect_timeout(self.addrs.first().unwrap(), connect_timeout)?
+        };
+
+        // recv greeting msg
         let salt = protocol::decode_greeting(&mut stream)?;
 
+        // auth if required
         if !self.options.user.is_empty() {
             self.update_state(ConnState::Auth);
             self.auth(&mut stream, &salt)?;
         }
 
+        // if ok: save stream to session
         {
             let mut session = self.session.borrow_mut();
             session.stream = Some(stream);
@@ -241,7 +257,12 @@ impl<'a> Conn<'a> {
         Ok(())
     }
 
-    fn send_request(&self, data: &Vec<u8>, sync: u64) -> Result<(), io::Error> {
+    fn send_request(
+        &self,
+        data: &Vec<u8>,
+        sync: u64,
+        options: &Options,
+    ) -> Result<usize, io::Error> {
         let mut session = self.session.borrow_mut();
         {
             let _lock = session.recv_lock.lock();
@@ -256,15 +277,22 @@ impl<'a> Conn<'a> {
         {
             let _lock = session.send_lock.lock();
             let stream = session.stream.as_mut().unwrap();
-            stream.write_all(data)
+            stream.write_with_timeout(data, options.timeout)
         }
     }
 
-    fn recv_response(&self, sync: u64) -> Result<Option<protocol::Response>, Error> {
+    fn recv_response(
+        &self,
+        sync: u64,
+        options: &Options,
+    ) -> Result<Option<protocol::Response>, Error> {
         let mut session = self.session.borrow_mut();
         Ok(
             if let Some(request_state) = session.active_requests.get(&sync) {
-                request_state.recv_cond.wait();
+                match options.timeout {
+                    None => request_state.recv_cond.wait(),
+                    Some(timeout) => request_state.recv_cond.wait_timeout(timeout),
+                };
                 {
                     let _lock = session.recv_lock.lock();
                     session.active_requests.remove(&sync)

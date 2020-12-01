@@ -6,6 +6,20 @@ pub fn test_ping() {
     conn.ping(&Options::default()).unwrap();
 }
 
+pub fn test_ping_timeout() {
+    let conn = Conn::new("localhost:3301", ConnOptions::default()).unwrap();
+    conn.ping(&Options {
+        timeout: Some(Duration::from_millis(1)),
+        ..Options::default()
+    })
+    .unwrap();
+    conn.ping(&Options {
+        timeout: None,
+        ..Options::default()
+    })
+    .unwrap();
+}
+
 pub fn test_call() {
     let conn_options = ConnOptions {
         user: "test_user".to_string(),
