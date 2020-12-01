@@ -36,14 +36,12 @@ use std::collections::HashMap;
 use std::io::{self, Cursor, Write};
 use std::net::{SocketAddr, ToSocketAddrs};
 
-use serde::de::DeserializeOwned;
-
 pub use options::{ConnOptions, Options};
 pub(crate) use protocol::ResponseError;
 
 use crate::coio::CoIOStream;
 use crate::error::Error;
-use crate::fiber::{set_cancellable, Cond, Fiber, Latch};
+use crate::fiber::{is_cancelled, set_cancellable, sleep, Cond, Fiber, Latch};
 use crate::tuple::{AsTuple, Tuple};
 
 mod options;
@@ -58,12 +56,14 @@ pub struct Conn<'a> {
     session: RefCell<Box<ConnSession>>,
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq, Debug)]
 enum ConnState {
     Init,
     Connecting,
     Auth,
     Active,
+    Error,
+    ErrorReconnect,
     Closed,
 }
 
@@ -74,12 +74,16 @@ struct ConnSession {
     active_requests: HashMap<u64, RequestState>,
     send_lock: Latch,
     recv_lock: Latch,
+    recv_error: Option<Error>,
+    last_io_error: Option<io::Error>,
 }
 
 impl ConnSession {
     fn update_state(&mut self, state: ConnState) {
-        self.state = state;
-        self.state_change_cond.signal();
+        if self.state != state {
+            self.state = state;
+            self.state_change_cond.signal();
+        }
     }
 }
 
@@ -112,6 +116,8 @@ impl<'a> Conn<'a> {
                 send_lock: Latch::new(),
                 recv_lock: Latch::new(),
                 active_requests: Default::default(),
+                recv_error: None,
+                last_io_error: None,
             })),
         })
     }
@@ -141,7 +147,6 @@ impl<'a> Conn<'a> {
         let sync = self.next_sync();
         protocol::encode_ping(&mut cur, sync)?;
         self.communicate(&cur.into_inner(), sync)?;
-        // TBD
         Ok(())
     }
 
@@ -173,16 +178,24 @@ impl<'a> Conn<'a> {
             let state = self.session.borrow().state;
             match state {
                 ConnState::Init => {
-                    let result = self.connect();
-                    if result.is_err() {
-                        self.disconnect();
+                    // start recv fiber
+                    self.recv_fiber
+                        .borrow_mut()
+                        .start(&mut **self.session.borrow_mut());
+
+                    // try to connect
+                    if let Err(err) = self.connect() {
+                        self.handle_error(err)?;
                     }
-                    result?;
                 }
                 ConnState::Active => {
-                    self.send_request(request, sync)?;
+                    if let Err(err) = self.send_request(request, sync) {
+                        self.handle_error(err.into())?;
+                    }
                     return Ok(self.recv_response(sync)?.unwrap());
                 }
+                ConnState::Error => self.disconnect(),
+                ConnState::ErrorReconnect => self.reconnect_or_fail()?,
                 ConnState::Closed => return Err(io::Error::from(io::ErrorKind::BrokenPipe).into()),
                 _ => {
                     self.session.borrow().state_change_cond.wait();
@@ -192,26 +205,21 @@ impl<'a> Conn<'a> {
     }
 
     fn connect(&self) -> Result<(), Error> {
-        self.session
-            .borrow_mut()
-            .update_state(ConnState::Connecting);
+        self.update_state(ConnState::Connecting);
         let mut stream = CoIOStream::connect(&*self.addrs)?;
         let salt = protocol::decode_greeting(&mut stream)?;
 
         if !self.options.user.is_empty() {
-            self.session.borrow_mut().update_state(ConnState::Auth);
+            self.update_state(ConnState::Auth);
             self.auth(&mut stream, &salt)?;
         }
 
         {
             let mut session = self.session.borrow_mut();
             session.stream = Some(stream);
+            session.last_io_error = None;
             session.update_state(ConnState::Active);
         }
-
-        self.recv_fiber
-            .borrow_mut()
-            .start(&mut **self.session.borrow_mut());
 
         Ok(())
     }
@@ -254,52 +262,98 @@ impl<'a> Conn<'a> {
 
     fn recv_response(&self, sync: u64) -> Result<Option<protocol::Response>, Error> {
         let mut session = self.session.borrow_mut();
-        if let Some(request_state) = session.active_requests.get(&sync) {
-            request_state.recv_cond.wait();
-            let response = {
-                let _lock = session.recv_lock.lock();
-                session.active_requests.remove(&sync)
-            }
-            .unwrap();
-            Ok(response.response)
-        } else {
-            Ok(None)
-        }
+        Ok(
+            if let Some(request_state) = session.active_requests.get(&sync) {
+                request_state.recv_cond.wait();
+                {
+                    let _lock = session.recv_lock.lock();
+                    session.active_requests.remove(&sync)
+                }
+                .unwrap()
+                .response
+            } else {
+                None
+            },
+        )
     }
 
     fn recv_fiber_main(conn: Box<*mut ConnSession>) -> i32 {
         set_cancellable(true);
 
-        let conn = unsafe { (*conn).as_mut() }.unwrap();
+        let session = unsafe { (*conn).as_mut() }.unwrap();
         loop {
-            match conn.state {
+            if is_cancelled() {
+                return 0;
+            }
+
+            match session.state {
                 ConnState::Active => {
-                    match protocol::decode_response(&mut conn.stream.as_mut().unwrap()) {
+                    match protocol::decode_response(&mut session.stream.as_mut().unwrap()) {
                         Ok(response) => {
-                            let _lock = conn.recv_lock.lock();
-                            if let Some(request_state) =
-                                conn.active_requests.get_mut(&(response.sync as u64))
-                            {
-                                request_state.response = Some(response);
-                                request_state.recv_cond.signal();
+                            match session.active_requests.get_mut(&(response.sync as u64)) {
+                                None => continue,
+                                Some(request_state) => {
+                                    let _lock = session.recv_lock.lock();
+                                    request_state.response = Some(response);
+                                    request_state.recv_cond.signal();
+                                }
                             }
                         }
+                        Err(err) => {
+                            if is_cancelled() {
+                                return 0;
+                            }
 
-                        Err(_) => continue,
-                    }
+                            session.recv_error = Some(err);
+                            session.update_state(ConnState::Error);
+                        }
+                    };
                 }
                 ConnState::Closed => return 0,
                 _ => {
-                    conn.state_change_cond.wait();
+                    session.state_change_cond.wait();
                 }
             }
         }
+    }
+
+    fn handle_error(&self, err: Error) -> Result<(), Error> {
+        let mut session = self.session.borrow_mut();
+        match err {
+            Error::IO(err) => {
+                session.stream = None;
+                session.last_io_error = Some(err);
+                session.update_state(ConnState::ErrorReconnect);
+                Ok(())
+            }
+            err => {
+                session.update_state(ConnState::Error);
+                Err(err)
+            }
+        }
+    }
+
+    fn reconnect_or_fail(&self) -> Result<(), Error> {
+        let reconnect_after = self.options.reconnect_after;
+        if reconnect_after.as_secs() == 0 && reconnect_after.subsec_nanos() == 0 {
+            self.update_state(ConnState::Error);
+        } else {
+            sleep(reconnect_after.as_secs_f64());
+            if let Err(err) = self.connect() {
+                self.handle_error(err)?;
+            }
+        }
+        Ok(())
     }
 
     fn disconnect(&self) {
         let mut session = self.session.borrow_mut();
         session.stream = None;
         session.update_state(ConnState::Closed);
+    }
+
+    fn update_state(&self, state: ConnState) {
+        self.session.borrow_mut().update_state(state);
     }
 
     fn next_sync(&self) -> u64 {

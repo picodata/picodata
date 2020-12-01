@@ -1,6 +1,6 @@
 [package]
 name = "tarantool-module"
-description = "Tarantool C API bindings"
+description = "Tarantool rust bindings"
 version = "0.2.1"
 authors = [
     "Dmitriy Koltsov <dkoltsov@picodata.io>",

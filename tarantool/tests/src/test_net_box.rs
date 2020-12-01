@@ -1,3 +1,4 @@
+use std::time::Duration;
 use tarantool_module::net_box::{Conn, ConnOptions, Options};
 
 pub fn test_ping() {
@@ -16,4 +17,16 @@ pub fn test_call() {
         .call("test_stored_proc", &(1, 2), &Options::default())
         .unwrap();
     assert_eq!(result.unwrap().into_struct::<(i32,)>().unwrap(), (3,));
+}
+
+pub fn test_connection_error() {
+    let conn = Conn::new(
+        "localhost:255",
+        ConnOptions {
+            reconnect_after: Duration::from_secs(0),
+            ..ConnOptions::default()
+        },
+    )
+    .unwrap();
+    assert!(matches!(conn.ping(&Options::default()), Err(_)));
 }

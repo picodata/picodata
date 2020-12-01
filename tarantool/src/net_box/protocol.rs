@@ -1,10 +1,8 @@
-use core::convert::TryInto;
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 use std::io::{self, Cursor, Read, Write};
 use std::os::raw::c_char;
 
-use serde::de::DeserializeOwned;
 use sha1::{Digest, Sha1};
 
 use crate::error::Error;
@@ -165,7 +163,7 @@ pub fn decode_response<R: Read>(stream: &mut R) -> Result<Response, Error> {
     let mut cur = Cursor::new(buf);
 
     // decode header
-    let mut header = decode_map(&mut cur)?;
+    let header = decode_map(&mut cur)?;
     let status_code = header
         .get(&0)
         .map_or(None, |val| val.as_i64())
@@ -201,10 +199,6 @@ impl Display for ResponseError {
 }
 
 impl Response {
-    pub fn is_ok(&self) -> bool {
-        self.status_code == 0
-    }
-
     pub fn into_tuple(mut self) -> Result<Option<Tuple>, Error> {
         if self.status_code == 0 {
             let payload_len = rmp::decode::read_map_len(&mut self.payload_cur)?;
@@ -231,17 +225,6 @@ impl Response {
                 };
             }
             Ok(None)
-        } else {
-            Err(decode_error(&mut self.payload_cur)?.into())
-        }
-    }
-
-    pub fn into_struct<T>(mut self) -> Result<T, Error>
-    where
-        T: DeserializeOwned,
-    {
-        if self.status_code == 0 {
-            Ok(rmp_serde::decode::from_read(self.payload_cur)?)
         } else {
             Err(decode_error(&mut self.payload_cur)?.into())
         }
