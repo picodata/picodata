@@ -39,6 +39,7 @@ use std::net::{SocketAddr, ToSocketAddrs};
 pub use options::{ConnOptions, Options};
 pub(crate) use protocol::ResponseError;
 
+use crate::clock::time;
 use crate::coio::CoIOStream;
 use crate::error::Error;
 use crate::fiber::{is_cancelled, set_cancellable, sleep, Cond, Fiber, Latch};
@@ -123,13 +124,50 @@ impl<'a> Conn<'a> {
     }
 
     /// Wait for connection to be active or closed.
-    pub fn wait_connected(&self, _timeout: Option<Duration>) -> Result<(), Error> {
-        unimplemented!()
+    ///
+    /// Returns:
+    /// - `Ok(true)`: if active
+    /// - `Ok(true)`: if closed
+    /// - `Err(...TimedOut...)`: on timeout
+    pub fn wait_connected(&self, timeout: Option<Duration>) -> Result<bool, Error> {
+        let begin_ts = time();
+        loop {
+            let state = self.session.borrow().state;
+            return match state {
+                ConnState::Active => Ok(true),
+                ConnState::Closed => Ok(false),
+                _ => {
+                    match timeout {
+                        None => {
+                            if self.session.borrow().state_change_cond.wait() {
+                                continue;
+                            }
+                        }
+                        Some(timeout) => {
+                            match timeout.checked_sub(Duration::from_secs_f64(time() - begin_ts)) {
+                                None => (),
+                                Some(timeout) => {
+                                    if self
+                                        .session
+                                        .borrow()
+                                        .state_change_cond
+                                        .wait_timeout(timeout)
+                                    {
+                                        continue;
+                                    }
+                                }
+                            }
+                        }
+                    };
+                    Err(io::Error::from(io::ErrorKind::TimedOut).into())
+                }
+            };
+        }
     }
 
     /// Show whether connection is active or closed.
     pub fn is_connected(&self) -> bool {
-        unimplemented!()
+        matches!(self.session.borrow().state, ConnState::Active)
     }
 
     /// Close a connection.

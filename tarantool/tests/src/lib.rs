@@ -107,6 +107,7 @@ fn run() -> Result<bool, io::Error> {
             test_net_box::test_ping_timeout,
             test_net_box::test_call,
             test_net_box::test_connection_error,
+            test_net_box::test_is_connected,
         ],
     )
 }

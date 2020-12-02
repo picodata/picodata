@@ -44,3 +44,17 @@ pub fn test_connection_error() {
     .unwrap();
     assert!(matches!(conn.ping(&Options::default()), Err(_)));
 }
+
+pub fn test_is_connected() {
+    let conn = Conn::new(
+        "localhost:3301",
+        ConnOptions {
+            reconnect_after: Duration::from_secs(0),
+            ..ConnOptions::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(conn.is_connected(), false);
+    conn.ping(&Options::default()).unwrap();
+    assert_eq!(conn.is_connected(), true);
+}
