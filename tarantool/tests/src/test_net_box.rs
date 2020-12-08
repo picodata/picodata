@@ -1,5 +1,9 @@
 use std::time::Duration;
+
+use tarantool_module::index::IteratorType;
 use tarantool_module::net_box::{Conn, ConnOptions, Options};
+
+use crate::common::S1Record;
 
 pub fn test_ping() {
     let conn = Conn::new("localhost:3301", ConnOptions::default()).unwrap();
@@ -57,4 +61,37 @@ pub fn test_is_connected() {
     assert_eq!(conn.is_connected(), false);
     conn.ping(&Options::default()).unwrap();
     assert_eq!(conn.is_connected(), true);
+}
+
+pub fn test_select() {
+    let conn = Conn::new(
+        "localhost:3301",
+        ConnOptions {
+            user: "test_user".to_string(),
+            password: "password".to_string(),
+            ..ConnOptions::default()
+        },
+    )
+    .unwrap();
+
+    let space = conn.space("test_s2").unwrap().unwrap();
+    let result: Vec<S1Record> = space
+        .select(IteratorType::LE, &(2,))
+        .unwrap()
+        .map(|x| x.into_struct().unwrap())
+        .collect();
+
+    assert_eq!(
+        result,
+        vec![
+            S1Record {
+                id: 2,
+                text: "key_2".to_string()
+            },
+            S1Record {
+                id: 1,
+                text: "key_1".to_string()
+            }
+        ]
+    );
 }

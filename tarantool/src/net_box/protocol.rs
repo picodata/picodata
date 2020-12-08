@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::fmt::{Display, Formatter};
 use std::io::{self, Cursor, Read, Write};
 use std::os::raw::c_char;
@@ -6,10 +6,19 @@ use std::os::raw::c_char;
 use sha1::{Digest, Sha1};
 
 use crate::error::Error;
+use crate::index::IteratorType;
 use crate::tuple::{AsTuple, Tuple};
 
 const REQUEST_TYPE: u8 = 0x00;
 const SYNC: u8 = 0x01;
+
+const SPACE_ID: u8 = 0x10;
+const INDEX_ID: u8 = 0x11;
+const LIMIT: u8 = 0x12;
+const OFFSET: u8 = 0x13;
+const ITERATOR: u8 = 0x14;
+
+const KEY: u8 = 0x20;
 const TUPLE: u8 = 0x21;
 const FUNCTION_NAME: u8 = 0x22;
 const USER_NAME: u8 = 0x23;
@@ -18,6 +27,7 @@ const DATA: u8 = 0x30;
 const ERROR: u8 = 0x31;
 
 enum IProtoType {
+    Select = 1,
     Auth = 7,
     Call = 10,
     Ping = 64,
@@ -116,10 +126,41 @@ where
 {
     let header_offset = prepare_request(buf, sync, IProtoType::Call)?;
     rmp::encode::write_map_len(buf, 2)?;
-    rmp::encode::write_pfix(buf, FUNCTION_NAME as u8)?;
+    rmp::encode::write_pfix(buf, FUNCTION_NAME)?;
     rmp::encode::write_str(buf, function_name)?;
-    rmp::encode::write_pfix(buf, TUPLE as u8)?;
+    rmp::encode::write_pfix(buf, TUPLE)?;
     rmp_serde::encode::write(buf, args)?;
+    encode_request(buf, header_offset)?;
+    Ok(())
+}
+
+pub fn encode_select<K>(
+    buf: &mut Cursor<Vec<u8>>,
+    sync: u64,
+    space_id: u32,
+    index_id: u32,
+    limit: u32,
+    offset: u32,
+    iterator_type: IteratorType,
+    key: &K,
+) -> Result<(), Error>
+where
+    K: AsTuple,
+{
+    let header_offset = prepare_request(buf, sync, IProtoType::Select)?;
+    rmp::encode::write_map_len(buf, 6)?;
+    rmp::encode::write_pfix(buf, SPACE_ID)?;
+    rmp::encode::write_u32(buf, space_id)?;
+    rmp::encode::write_pfix(buf, INDEX_ID)?;
+    rmp::encode::write_u32(buf, index_id)?;
+    rmp::encode::write_pfix(buf, LIMIT)?;
+    rmp::encode::write_u32(buf, limit)?;
+    rmp::encode::write_pfix(buf, OFFSET)?;
+    rmp::encode::write_u32(buf, offset)?;
+    rmp::encode::write_pfix(buf, ITERATOR)?;
+    rmp::encode::write_u32(buf, iterator_type as u32)?;
+    rmp::encode::write_pfix(buf, KEY)?;
+    rmp_serde::encode::write(buf, key)?;
     encode_request(buf, header_offset)?;
     Ok(())
 }
@@ -187,17 +228,6 @@ pub struct Response {
     payload_cur: Cursor<Vec<u8>>,
 }
 
-#[derive(Debug)]
-pub struct ResponseError {
-    message: String,
-}
-
-impl Display for ResponseError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        write!(f, "{}", self.message)
-    }
-}
-
 impl Response {
     pub fn into_tuple(mut self) -> Result<Option<Tuple>, Error> {
         if self.status_code == 0 {
@@ -220,6 +250,39 @@ impl Response {
                         }
                     }
                     _ => {
+                        rmpv::decode::read_value(&mut self.payload_cur)?;
+                    }
+                };
+            }
+            Ok(None)
+        } else {
+            Err(decode_error(&mut self.payload_cur)?.into())
+        }
+    }
+
+    pub fn into_iter(mut self) -> Result<Option<ResponseIterator>, Error> {
+        if self.status_code == 0 {
+            let payload_len = rmp::decode::read_map_len(&mut self.payload_cur)?;
+            for _ in 0..payload_len {
+                let key = rmp::decode::read_pfix(&mut self.payload_cur)?;
+                match key {
+                    DATA => {
+                        let items_count = rmp::decode::read_array_len(&mut self.payload_cur)?;
+                        let start_offset = self.payload_cur.position() as usize;
+                        let mut offsets = VecDeque::with_capacity(items_count as usize);
+                        for _ in 0..items_count {
+                            rmpv::decode::read_value(&mut self.payload_cur)?;
+                            offsets.push_back(self.payload_cur.position() as usize);
+                        }
+
+                        return Ok(Some(ResponseIterator {
+                            current_offset: start_offset,
+                            rest_offsets: offsets,
+                            buf_ptr: Box::leak(self.payload_cur.into_inner().into_boxed_slice())
+                                .as_mut_ptr(),
+                        }));
+                    }
+                    _ => {
                         rmpv::decode::read_value(&mut self.payload_cur).unwrap();
                     }
                 };
@@ -227,6 +290,42 @@ impl Response {
             Ok(None)
         } else {
             Err(decode_error(&mut self.payload_cur)?.into())
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct ResponseError {
+    message: String,
+}
+
+impl Display for ResponseError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        write!(f, "{}", self.message)
+    }
+}
+
+pub struct ResponseIterator {
+    current_offset: usize,
+    rest_offsets: VecDeque<usize>,
+    buf_ptr: *mut u8,
+}
+
+impl ResponseIterator {
+    pub fn next_tuple(&mut self) -> Option<Tuple> {
+        match self.rest_offsets.pop_front() {
+            None => None,
+            Some(next_offset) => {
+                let current_offset = self.current_offset;
+                self.current_offset = next_offset;
+
+                Some(unsafe {
+                    Tuple::from_raw_data(
+                        self.buf_ptr.clone().add(current_offset) as *mut c_char,
+                        (next_offset - current_offset) as u32,
+                    )
+                })
+            }
         }
     }
 }

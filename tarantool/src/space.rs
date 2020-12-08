@@ -111,7 +111,7 @@ impl Space {
 
     /// Find index by name.
     ///
-    /// This function performs SELECT request to _vindex system space.
+    /// This function performs SELECT request to `_vindex` system space.
     /// - `name` - index name
     ///
     /// Returns:
