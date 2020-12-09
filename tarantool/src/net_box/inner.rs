@@ -89,15 +89,15 @@ impl ConnInner {
             let state = self.session.borrow().state;
             match state {
                 ConnState::Init => {
-                    // start recv fiber
-                    self.recv_fiber
-                        .borrow_mut()
-                        .start(&mut **self.session.borrow_mut());
-
                     // try to connect
                     if let Err(err) = self.connect() {
                         self.handle_error(err)?;
                     }
+
+                    // start recv fiber
+                    self.recv_fiber
+                        .borrow_mut()
+                        .start(&mut **self.session.borrow_mut());
                 }
                 ConnState::Active => {
                     if let Err(err) = self.send_request(request, sync, options) {
@@ -120,7 +120,7 @@ impl ConnInner {
 
         // connect
         let connect_timeout = self.options.connect_timeout;
-        let mut stream = if connect_timeout.subsec_millis() == 0 && connect_timeout.as_secs() == 0 {
+        let mut stream = if connect_timeout.subsec_nanos() == 0 && connect_timeout.as_secs() == 0 {
             CoIOStream::connect(&*self.addrs)?
         } else {
             CoIOStream::connect_timeout(self.addrs.first().unwrap(), connect_timeout)?
@@ -193,22 +193,25 @@ impl ConnInner {
         options: &Options,
     ) -> Result<Option<protocol::Response>, Error> {
         let mut session = self.session.borrow_mut();
-        Ok(
-            if let Some(request_state) = session.active_requests.get(&sync) {
-                match options.timeout {
-                    None => request_state.recv_cond.wait(),
-                    Some(timeout) => request_state.recv_cond.wait_timeout(timeout),
-                };
-                {
+        if let Some(request_state) = session.active_requests.get(&sync) {
+            let wait_is_successful = match options.timeout {
+                None => request_state.recv_cond.wait(),
+                Some(timeout) => request_state.recv_cond.wait_timeout(timeout),
+            };
+
+            if wait_is_successful {
+                Ok({
                     let _lock = session.recv_lock.lock();
                     session.active_requests.remove(&sync)
                 }
                 .unwrap()
-                .response
+                .response)
             } else {
-                None
-            },
-        )
+                Err(io::Error::from(io::ErrorKind::TimedOut).into())
+            }
+        } else {
+            Err(session.recv_error.take().unwrap())
+        }
     }
 
     fn handle_error(&self, err: Error) -> Result<(), Error> {
@@ -274,10 +277,13 @@ impl ConnInner {
 
 impl Drop for ConnInner {
     fn drop(&mut self) {
+        let was_started = !matches!(self.state(), ConnState::Init);
         self.disconnect();
-        let mut fiber = self.recv_fiber.borrow_mut();
-        fiber.cancel();
-        fiber.join();
+        if was_started {
+            let mut fiber = self.recv_fiber.borrow_mut();
+            fiber.cancel();
+            fiber.join();
+        }
     }
 }
 

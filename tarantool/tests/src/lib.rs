@@ -103,6 +103,7 @@ fn run() -> Result<bool, io::Error> {
             test_log::test_log,
             test_latch::test_latch_lock,
             test_latch::test_latch_try_lock,
+            test_net_box::test_immediate_close,
             test_net_box::test_ping,
             test_net_box::test_ping_timeout,
             test_net_box::test_call,

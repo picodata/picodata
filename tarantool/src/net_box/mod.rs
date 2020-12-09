@@ -16,8 +16,16 @@
 //! for details.
 //!
 //! The diagram below shows possible connection states and transitions:
-//!
-//! ![img](https://hb.bizmrg.com/tarantool-io/doc-builds/tarantool/2.6/images_en/net_states.svg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=5qdnUajcfXmhe1ME4C5DqG%2F20201118%2Fru-msk%2Fs3%2Faws4_request&X-Amz-Date=20201118T130426Z&X-Amz-Expires=86400&X-Amz-SignedHeaders=host&X-Amz-Signature=d7df0b06513b11fa375875cfe6dc9de2dbc7073fe6ed1a11c8ce668b5fd02530)
+//! ```text
+//! connecting -> initial +-> active                                                                                    
+//!                        \                                                                                            
+//!                         +-> auth -> fetch_schema <-> active                                                         
+//!                                                                                                                     
+//!  (any state, on error) -> error_reconnect -> connecting -> ...                                                      
+//!                                           \                                                                         
+//!                                             -> [error]                                                              
+//!  (any_state, but [error]) -> [closed]
+//! ```
 //!
 //! On this diagram:
 //! - The state machine starts in the `initial` state.

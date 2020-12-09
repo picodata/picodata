@@ -5,6 +5,10 @@ use tarantool_module::net_box::{Conn, ConnOptions, Options};
 
 use crate::common::S1Record;
 
+pub fn test_immediate_close() {
+    let _ = Conn::new("localhost:3301", ConnOptions::default()).unwrap();
+}
+
 pub fn test_ping() {
     let conn = Conn::new("localhost:3301", ConnOptions::default()).unwrap();
     conn.ping(&Options::default()).unwrap();
