@@ -7,7 +7,9 @@ use std::time::Duration;
 
 use crate::coio::CoIOStream;
 use crate::error::Error;
-use crate::fiber::{is_cancelled, set_cancellable, sleep, Cond, Fiber, Latch};
+use crate::fiber::{is_cancelled, set_cancellable, sleep, time, Cond, Fiber, Latch};
+use crate::index::IteratorType;
+use crate::space::SystemSpace;
 
 use super::options::{ConnOptions, Options};
 use super::protocol;
@@ -21,14 +23,20 @@ pub struct ConnSession {
     recv_lock: Latch,
     recv_error: Option<Error>,
     last_io_error: Option<io::Error>,
+    schema_version: u32,
+    schema_space_ids: HashMap<String, u32>,
 }
 
 impl ConnSession {
     fn update_state(&mut self, state: ConnState) {
         if self.state != state {
             self.state = state;
-            self.state_change_cond.signal();
+            self.state_change_cond.broadcast();
         }
+    }
+
+    fn lookup_space(&self, name: &str) -> Option<u32> {
+        self.schema_space_ids.get(name).map(|id| id.clone())
     }
 }
 
@@ -37,6 +45,7 @@ pub enum ConnState {
     Init,
     Connecting,
     Auth,
+    FetchSchema,
     Active,
     Error,
     ErrorReconnect,
@@ -75,7 +84,37 @@ impl ConnInner {
                 active_requests: Default::default(),
                 recv_error: None,
                 last_io_error: None,
+                schema_version: 0,
+                schema_space_ids: Default::default(),
             })),
+        }
+    }
+
+    pub fn wait_connected(&self, timeout: Option<Duration>) -> Result<bool, Error> {
+        let begin_ts = time();
+        loop {
+            let state = self.state();
+            return match state {
+                ConnState::Init => {
+                    self.init()?;
+                    continue;
+                }
+                ConnState::Active => Ok(true),
+                ConnState::Closed => Ok(false),
+                _ => {
+                    let timeout = match timeout {
+                        None => None,
+                        Some(timeout) => {
+                            timeout.checked_sub(Duration::from_secs_f64(time() - begin_ts))
+                        }
+                    };
+                    if self.wait_state(timeout) {
+                        continue;
+                    }
+
+                    Err(io::Error::from(io::ErrorKind::TimedOut).into())
+                }
+            };
         }
     }
 
@@ -89,21 +128,19 @@ impl ConnInner {
             let state = self.session.borrow().state;
             match state {
                 ConnState::Init => {
-                    // try to connect
-                    if let Err(err) = self.connect() {
-                        self.handle_error(err)?;
-                    }
-
-                    // start recv fiber
-                    self.recv_fiber
-                        .borrow_mut()
-                        .start(&mut **self.session.borrow_mut());
+                    self.init()?;
                 }
                 ConnState::Active => {
                     if let Err(err) = self.send_request(request, sync, options) {
                         self.handle_error(err.into())?;
                     }
-                    return Ok(self.recv_response(sync, options)?.unwrap());
+
+                    let response = self.recv_response(sync, options)?.unwrap();
+                    if self.state() == ConnState::FetchSchema {
+                        self.sync_schema()?;
+                    }
+
+                    return Ok(response);
                 }
                 ConnState::Error => self.disconnect(),
                 ConnState::ErrorReconnect => self.reconnect_or_fail()?,
@@ -113,6 +150,20 @@ impl ConnInner {
                 }
             };
         }
+    }
+
+    fn init(&self) -> Result<(), Error> {
+        // try to connect
+        if let Err(err) = self.connect() {
+            self.handle_error(err)?;
+        }
+
+        // start recv fiber
+        self.recv_fiber
+            .borrow_mut()
+            .start(&mut **self.session.borrow_mut());
+
+        Ok(())
     }
 
     fn connect(&self) -> Result<(), Error> {
@@ -140,8 +191,10 @@ impl ConnInner {
             let mut session = self.session.borrow_mut();
             session.stream = Some(stream);
             session.last_io_error = None;
-            session.update_state(ConnState::Active);
         }
+
+        // synchronise schema
+        self.sync_schema()?;
 
         Ok(())
     }
@@ -150,6 +203,7 @@ impl ConnInner {
         let buf = Vec::new();
         let mut cur = Cursor::new(buf);
         let sync = self.next_sync();
+
         protocol::encode_auth(
             &mut cur,
             self.options.user.as_str(),
@@ -160,6 +214,47 @@ impl ConnInner {
         stream.write_all(&cur.into_inner())?;
         protocol::decode_response(stream)?;
 
+        Ok(())
+    }
+
+    fn sync_schema(&self) -> Result<(), Error> {
+        self.update_state(ConnState::FetchSchema);
+        let buf = Vec::new();
+        let mut cur = Cursor::new(buf);
+        protocol::encode_select(
+            &mut cur,
+            self.next_sync(),
+            SystemSpace::VSpace as u32,
+            0,
+            u32::max_value(),
+            0,
+            IteratorType::GT,
+            &(SystemSpace::SystemIdMax as u32,),
+        )?;
+
+        let response = {
+            let mut session = self.session.borrow_mut();
+            let stream = session.as_mut().stream.as_mut().unwrap();
+            stream.write_all(&cur.into_inner())?;
+            protocol::decode_response(stream)?
+        };
+
+        let schema_version = response.schema_version;
+        let mut iter = response.into_iter()?.unwrap();
+        {
+            let mut session = self.session.borrow_mut();
+            session.schema_version = schema_version;
+
+            let schema_space_ids = &mut session.as_mut().schema_space_ids;
+            schema_space_ids.clear();
+
+            while let Some(item) = iter.next_tuple() {
+                let (id, _, name) = item.into_struct::<(u32, u32, String)>()?;
+                schema_space_ids.insert(name, id);
+            }
+        }
+
+        self.update_state(ConnState::Active);
         Ok(())
     }
 
@@ -268,6 +363,12 @@ impl ConnInner {
         }
     }
 
+    #[inline(always)]
+    pub fn lookup_space(&self, name: &str) -> Result<Option<u32>, Error> {
+        self.wait_connected(Some(self.options.connect_timeout))?;
+        Ok(self.session.borrow().lookup_space(name))
+    }
+
     pub fn next_sync(&self) -> u64 {
         let sync = self.sync.get();
         self.sync.set(sync + 1);
@@ -300,6 +401,10 @@ pub fn recv_fiber_main(conn: Box<*mut ConnSession>) -> i32 {
             ConnState::Active => {
                 match protocol::decode_response(&mut session.stream.as_mut().unwrap()) {
                     Ok(response) => {
+                        if response.schema_version != session.schema_version {
+                            session.update_state(ConnState::FetchSchema);
+                        }
+
                         match session.active_requests.get_mut(&(response.sync as u64)) {
                             None => continue,
                             Some(request_state) => {

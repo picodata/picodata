@@ -42,10 +42,20 @@ box.once('bootstrap', function()
     box.schema.sequence.create('test_seq')
 
     box.schema.func.create('test_stored_proc')
+    box.schema.func.create('test_schema_update')
+    box.schema.func.create('test_schema_cleanup')
 end)
 
 function test_stored_proc(a, b)
     return a + b
+end
+
+function test_schema_update()
+    box.schema.space.create('test_s_tmp')
+end
+
+function test_schema_cleanup()
+    box.space.test_s_tmp:drop()
 end
 
 -- Add test runner library location to lua search path

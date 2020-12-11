@@ -67,6 +67,32 @@ pub fn test_is_connected() {
     assert_eq!(conn.is_connected(), true);
 }
 
+pub fn test_schema_sync() {
+    let conn = Conn::new(
+        "localhost:3301",
+        ConnOptions {
+            user: "test_user".to_string(),
+            password: "password".to_string(),
+            ..ConnOptions::default()
+        },
+    )
+    .unwrap();
+
+    assert!(conn.space("test_s2").unwrap().is_some());
+    assert!(conn.space("test_s_tmp").unwrap().is_none());
+
+    conn.call("test_schema_update", &Vec::<()>::new(), &Options::default())
+        .unwrap();
+    assert!(conn.space("test_s_tmp").unwrap().is_some());
+
+    conn.call(
+        "test_schema_cleanup",
+        &Vec::<()>::new(),
+        &Options::default(),
+    )
+    .unwrap();
+}
+
 pub fn test_select() {
     let conn = Conn::new(
         "localhost:3301",

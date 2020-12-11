@@ -39,7 +39,7 @@
 //! - [Lua reference: Module net.box](https://www.tarantool.io/en/doc/latest/reference/reference_lua/net_box/)
 
 use core::time::Duration;
-use std::io::{self, Cursor};
+use std::io::Cursor;
 use std::net::ToSocketAddrs;
 use std::rc::Rc;
 
@@ -47,10 +47,8 @@ use inner::{ConnInner, ConnState};
 pub use options::{ConnOptions, Options};
 pub(crate) use protocol::ResponseError;
 
-use crate::clock::time;
 use crate::error::Error;
 use crate::index::IteratorType;
-use crate::space::SystemSpace;
 use crate::tuple::{AsTuple, Tuple};
 
 mod inner;
@@ -83,27 +81,7 @@ impl Conn {
     /// - `Ok(true)`: if closed
     /// - `Err(...TimedOut...)`: on timeout
     pub fn wait_connected(&self, timeout: Option<Duration>) -> Result<bool, Error> {
-        let begin_ts = time();
-        loop {
-            let state = self.inner.state();
-            return match state {
-                ConnState::Active => Ok(true),
-                ConnState::Closed => Ok(false),
-                _ => {
-                    let timeout = match timeout {
-                        None => None,
-                        Some(timeout) => {
-                            timeout.checked_sub(Duration::from_secs_f64(time() - begin_ts))
-                        }
-                    };
-                    if self.inner.wait_state(timeout) {
-                        continue;
-                    }
-
-                    Err(io::Error::from(io::ErrorKind::TimedOut).into())
-                }
-            };
-        }
+        self.inner.wait_connected(timeout)
     }
 
     /// Show whether connection is active or closed.
@@ -153,23 +131,10 @@ impl Conn {
     }
 
     pub fn space(&self, name: &str) -> Result<Option<RemoteSpace>, Error> {
-        let space_name_idx = RemoteIndex {
+        Ok(self.inner.lookup_space(name)?.map(|space_id| RemoteSpace {
             conn_inner: self.inner.clone(),
-            space_id: SystemSpace::Space as u32,
-            index_id: 2, // the "name" index
-        };
-
-        let space_record = space_name_idx.select(IteratorType::Eq, &(name,))?.next();
-        Ok(match space_record {
-            None => None,
-            Some(space_record) => {
-                let space_id = space_record.into_struct::<(u32,)>()?.0;
-                Some(RemoteSpace {
-                    conn_inner: self.inner.clone(),
-                    space_id,
-                })
-            }
-        })
+            space_id,
+        }))
     }
 }
 

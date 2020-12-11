@@ -11,6 +11,7 @@ use crate::tuple::{AsTuple, Tuple};
 
 const REQUEST_TYPE: u8 = 0x00;
 const SYNC: u8 = 0x01;
+const SCHEMA_VERSION: u8 = 0x05;
 
 const SPACE_ID: u8 = 0x10;
 const INDEX_ID: u8 = 0x11;
@@ -207,23 +208,30 @@ pub fn decode_response<R: Read>(stream: &mut R) -> Result<Response, Error> {
     let header = decode_map(&mut cur)?;
     let status_code = header
         .get(&0)
-        .map_or(None, |val| val.as_i64())
+        .map_or(None, |val| val.as_u64())
         .ok_or(io::Error::from(io::ErrorKind::InvalidData))? as u32;
 
     let sync = header
         .get(&SYNC)
-        .map_or(None, |val| val.as_i64())
+        .map_or(None, |val| val.as_u64())
+        .ok_or(io::Error::from(io::ErrorKind::InvalidData))?;
+
+    let schema_version = header
+        .get(&SCHEMA_VERSION)
+        .map_or(None, |val| val.as_u64())
         .ok_or(io::Error::from(io::ErrorKind::InvalidData))? as u32;
 
     Ok(Response {
         status_code,
         sync,
+        schema_version,
         payload_cur: cur,
     })
 }
 
 pub struct Response {
-    pub sync: u32,
+    pub sync: u64,
+    pub schema_version: u32,
     status_code: u32,
     payload_cur: Cursor<Vec<u8>>,
 }
