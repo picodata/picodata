@@ -9,12 +9,13 @@ use crate::coio::CoIOStream;
 use crate::error::Error;
 use crate::fiber::{is_cancelled, set_cancellable, sleep, time, Cond, Fiber, Latch};
 use crate::index::IteratorType;
+use crate::net_box::protocol::Response;
 use crate::space::SystemSpace;
 
 use super::options::{ConnOptions, Options};
 use super::protocol;
 
-pub struct ConnSession {
+pub struct Session {
     state: ConnState,
     state_change_cond: Cond,
     stream: Option<CoIOStream>,
@@ -23,20 +24,59 @@ pub struct ConnSession {
     recv_lock: Latch,
     recv_error: Option<Error>,
     last_io_error: Option<io::Error>,
-    schema_version: u32,
-    schema_space_ids: HashMap<String, u32>,
+    schema: Schema,
 }
 
-impl ConnSession {
+impl Session {
     fn update_state(&mut self, state: ConnState) {
         if self.state != state {
             self.state = state;
             self.state_change_cond.broadcast();
         }
     }
+}
+
+#[derive(Default)]
+pub struct Schema {
+    version: u32,
+    space_ids: HashMap<String, u32>,
+    index_ids: HashMap<(u32, String), u32>,
+}
+
+impl Schema {
+    fn update(
+        &mut self,
+        spaces_response: Response,
+        indexes_response: Response,
+    ) -> Result<(), Error> {
+        let schema_version = spaces_response.schema_version;
+
+        self.space_ids.clear();
+        let mut iter = spaces_response.into_iter()?.unwrap();
+        while let Some(item) = iter.next_tuple() {
+            let (id, _, name) = item.into_struct::<(u32, u32, String)>()?;
+            self.space_ids.insert(name, id);
+        }
+
+        self.index_ids.clear();
+        let mut iter = indexes_response.into_iter()?.unwrap();
+        while let Some(item) = iter.next_tuple() {
+            let (space_id, index_id, name) = item.into_struct::<(u32, u32, String)>()?;
+            self.index_ids.insert((space_id, name), index_id);
+        }
+
+        self.version = schema_version;
+        Ok(())
+    }
 
     fn lookup_space(&self, name: &str) -> Option<u32> {
-        self.schema_space_ids.get(name).map(|id| id.clone())
+        self.space_ids.get(name).map(|id| id.clone())
+    }
+
+    fn lookup_index(&self, name: &str, space_id: u32) -> Option<u32> {
+        self.index_ids
+            .get(&(space_id, name.to_string()))
+            .map(|id| id.clone())
     }
 }
 
@@ -61,8 +101,8 @@ pub struct ConnInner {
     addrs: Vec<SocketAddr>,
     options: ConnOptions,
     sync: Cell<u64>,
-    recv_fiber: RefCell<Fiber<'static, *mut ConnSession>>,
-    session: RefCell<Box<ConnSession>>,
+    recv_fiber: RefCell<Fiber<'static, *mut Session>>,
+    session: RefCell<Box<Session>>,
 }
 
 impl ConnInner {
@@ -75,7 +115,7 @@ impl ConnInner {
             addrs,
             sync: Cell::new(0),
             recv_fiber: RefCell::new(recv_fiber),
-            session: RefCell::new(Box::new(ConnSession {
+            session: RefCell::new(Box::new(Session {
                 state: ConnState::Init,
                 state_change_cond: Cond::new(),
                 stream: None,
@@ -84,8 +124,7 @@ impl ConnInner {
                 active_requests: Default::default(),
                 recv_error: None,
                 last_io_error: None,
-                schema_version: 0,
-                schema_space_ids: Default::default(),
+                schema: Default::default(),
             })),
         }
     }
@@ -219,6 +258,18 @@ impl ConnInner {
 
     fn sync_schema(&self) -> Result<(), Error> {
         self.update_state(ConnState::FetchSchema);
+        let spaces_response = self.fetch_schema_spaces()?;
+        let indexes_response = self.fetch_schema_indexes()?;
+        {
+            let mut session = self.session.borrow_mut();
+            session.schema.update(spaces_response, indexes_response)?;
+        }
+
+        self.update_state(ConnState::Active);
+        Ok(())
+    }
+
+    fn fetch_schema_spaces(&self) -> Result<Response, Error> {
         let buf = Vec::new();
         let mut cur = Cursor::new(buf);
         protocol::encode_select(
@@ -232,30 +283,30 @@ impl ConnInner {
             &(SystemSpace::SystemIdMax as u32,),
         )?;
 
-        let response = {
-            let mut session = self.session.borrow_mut();
-            let stream = session.as_mut().stream.as_mut().unwrap();
-            stream.write_all(&cur.into_inner())?;
-            protocol::decode_response(stream)?
-        };
+        let mut session = self.session.borrow_mut();
+        let stream = session.as_mut().stream.as_mut().unwrap();
+        stream.write_all(&cur.into_inner())?;
+        Ok(protocol::decode_response(stream)?)
+    }
 
-        let schema_version = response.schema_version;
-        let mut iter = response.into_iter()?.unwrap();
-        {
-            let mut session = self.session.borrow_mut();
-            session.schema_version = schema_version;
+    fn fetch_schema_indexes(&self) -> Result<Response, Error> {
+        let buf = Vec::new();
+        let mut cur = Cursor::new(buf);
+        protocol::encode_select(
+            &mut cur,
+            self.next_sync(),
+            SystemSpace::VIndex as u32,
+            0,
+            u32::max_value(),
+            0,
+            IteratorType::All,
+            &Vec::<()>::new(),
+        )?;
 
-            let schema_space_ids = &mut session.as_mut().schema_space_ids;
-            schema_space_ids.clear();
-
-            while let Some(item) = iter.next_tuple() {
-                let (id, _, name) = item.into_struct::<(u32, u32, String)>()?;
-                schema_space_ids.insert(name, id);
-            }
-        }
-
-        self.update_state(ConnState::Active);
-        Ok(())
+        let mut session = self.session.borrow_mut();
+        let stream = session.as_mut().stream.as_mut().unwrap();
+        stream.write_all(&cur.into_inner())?;
+        Ok(protocol::decode_response(stream)?)
     }
 
     fn send_request(
@@ -338,6 +389,16 @@ impl ConnInner {
         Ok(())
     }
 
+    pub fn close(&self) {
+        let was_started = !matches!(self.state(), ConnState::Init);
+        self.disconnect();
+        if was_started {
+            let mut fiber = self.recv_fiber.borrow_mut();
+            fiber.cancel();
+            fiber.join();
+        }
+    }
+
     fn disconnect(&self) {
         let mut session = self.session.borrow_mut();
         session.stream = None;
@@ -366,7 +427,13 @@ impl ConnInner {
     #[inline(always)]
     pub fn lookup_space(&self, name: &str) -> Result<Option<u32>, Error> {
         self.wait_connected(Some(self.options.connect_timeout))?;
-        Ok(self.session.borrow().lookup_space(name))
+        Ok(self.session.borrow().schema.lookup_space(name))
+    }
+
+    #[inline(always)]
+    pub fn lookup_index(&self, name: &str, space_id: u32) -> Result<Option<u32>, Error> {
+        self.wait_connected(Some(self.options.connect_timeout))?;
+        Ok(self.session.borrow().schema.lookup_index(name, space_id))
     }
 
     pub fn next_sync(&self) -> u64 {
@@ -378,17 +445,11 @@ impl ConnInner {
 
 impl Drop for ConnInner {
     fn drop(&mut self) {
-        let was_started = !matches!(self.state(), ConnState::Init);
-        self.disconnect();
-        if was_started {
-            let mut fiber = self.recv_fiber.borrow_mut();
-            fiber.cancel();
-            fiber.join();
-        }
+        self.close()
     }
 }
 
-pub fn recv_fiber_main(conn: Box<*mut ConnSession>) -> i32 {
+pub fn recv_fiber_main(conn: Box<*mut Session>) -> i32 {
     set_cancellable(true);
 
     let session = unsafe { (*conn).as_mut() }.unwrap();
@@ -401,7 +462,7 @@ pub fn recv_fiber_main(conn: Box<*mut ConnSession>) -> i32 {
             ConnState::Active => {
                 match protocol::decode_response(&mut session.stream.as_mut().unwrap()) {
                     Ok(response) => {
-                        if response.schema_version != session.schema_version {
+                        if response.schema_version != session.schema.version {
                             session.update_state(ConnState::FetchSchema);
                         }
 

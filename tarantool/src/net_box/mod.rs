@@ -90,8 +90,8 @@ impl Conn {
     }
 
     /// Close a connection.
-    pub fn close(self) {
-        unimplemented!()
+    pub fn close(&self) {
+        self.inner.close()
     }
 
     /// Execute a PING command.
@@ -144,6 +144,25 @@ pub struct RemoteSpace {
 }
 
 impl RemoteSpace {
+    pub fn index(&self, name: &str) -> Result<Option<RemoteIndex>, Error> {
+        Ok(self
+            .conn_inner
+            .lookup_index(name, self.space_id)?
+            .map(|index_id| RemoteIndex {
+                index_id,
+                ..self.primary_key()
+            }))
+    }
+
+    #[inline(always)]
+    pub fn primary_key(&self) -> RemoteIndex {
+        RemoteIndex {
+            conn_inner: self.conn_inner.clone(),
+            space_id: self.space_id,
+            index_id: 0,
+        }
+    }
+
     pub fn select<K>(
         &self,
         iterator_type: IteratorType,
@@ -152,12 +171,7 @@ impl RemoteSpace {
     where
         K: AsTuple,
     {
-        let primary_key = RemoteIndex {
-            conn_inner: self.conn_inner.clone(),
-            space_id: self.space_id,
-            index_id: 0,
-        };
-        primary_key.select(iterator_type, key)
+        self.primary_key().select(iterator_type, key)
     }
 }
 
