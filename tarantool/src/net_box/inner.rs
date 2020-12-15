@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use std::io;
 use std::io::{Cursor, Write};
 use std::net::SocketAddr;
+use std::rc::Rc;
 use std::time::Duration;
 
 use crate::coio::CoIOStream;
@@ -17,11 +18,9 @@ use super::protocol;
 
 pub struct Session {
     state: ConnState,
-    state_change_cond: Cond,
+    state_change_cond: Rc<Cond>,
     stream: Option<CoIOStream>,
     active_requests: HashMap<u64, RequestState>,
-    send_lock: Latch,
-    recv_lock: Latch,
     recv_error: Option<Error>,
     last_io_error: Option<io::Error>,
     schema: Schema,
@@ -103,6 +102,7 @@ pub struct ConnInner {
     sync: Cell<u64>,
     recv_fiber: RefCell<Fiber<'static, *mut Session>>,
     session: RefCell<Box<Session>>,
+    session_lock: Latch,
 }
 
 impl ConnInner {
@@ -117,20 +117,24 @@ impl ConnInner {
             recv_fiber: RefCell::new(recv_fiber),
             session: RefCell::new(Box::new(Session {
                 state: ConnState::Init,
-                state_change_cond: Cond::new(),
+                state_change_cond: Rc::new(Cond::new()),
                 stream: None,
-                send_lock: Latch::new(),
-                recv_lock: Latch::new(),
                 active_requests: Default::default(),
                 recv_error: None,
                 last_io_error: None,
                 schema: Default::default(),
             })),
+            session_lock: Latch::new(),
         }
     }
 
     pub fn wait_connected(&self, timeout: Option<Duration>) -> Result<bool, Error> {
         let begin_ts = time();
+        let state_change_cond = {
+            let _lock = self.session_lock.lock();
+            self.session.borrow().state_change_cond.clone()
+        };
+
         loop {
             let state = self.state();
             return match state {
@@ -147,11 +151,17 @@ impl ConnInner {
                             timeout.checked_sub(Duration::from_secs_f64(time() - begin_ts))
                         }
                     };
-                    if self.wait_state(timeout) {
-                        continue;
-                    }
 
-                    Err(io::Error::from(io::ErrorKind::TimedOut).into())
+                    let is_signalled = match timeout {
+                        None => state_change_cond.wait(),
+                        Some(timeout) => state_change_cond.wait_timeout(timeout),
+                    };
+
+                    if is_signalled {
+                        continue;
+                    } else {
+                        Err(io::Error::from(io::ErrorKind::TimedOut).into())
+                    }
                 }
             };
         }
@@ -163,8 +173,13 @@ impl ConnInner {
         sync: u64,
         options: &Options,
     ) -> Result<protocol::Response, Error> {
+        let state_change_cond = {
+            let _lock = self.session_lock.lock();
+            self.session.borrow().state_change_cond.clone()
+        };
+
         loop {
-            let state = self.session.borrow().state;
+            let state = self.state();
             match state {
                 ConnState::Init => {
                     self.init()?;
@@ -185,7 +200,7 @@ impl ConnInner {
                 ConnState::ErrorReconnect => self.reconnect_or_fail()?,
                 ConnState::Closed => return Err(io::Error::from(io::ErrorKind::BrokenPipe).into()),
                 _ => {
-                    self.session.borrow().state_change_cond.wait();
+                    state_change_cond.wait();
                 }
             };
         }
@@ -193,8 +208,13 @@ impl ConnInner {
 
     fn init(&self) -> Result<(), Error> {
         // try to connect
-        if let Err(err) = self.connect() {
-            self.handle_error(err)?;
+        match self.connect() {
+            Ok(_) => {
+                self.sync_schema()?;
+            }
+            Err(err) => {
+                self.handle_error(err)?;
+            }
         }
 
         // start recv fiber
@@ -206,7 +226,9 @@ impl ConnInner {
     }
 
     fn connect(&self) -> Result<(), Error> {
-        self.update_state(ConnState::Connecting);
+        let _lock = self.session_lock.lock();
+        let mut session = self.session.borrow_mut();
+        session.update_state(ConnState::Connecting);
 
         // connect
         let connect_timeout = self.options.connect_timeout;
@@ -221,20 +243,14 @@ impl ConnInner {
 
         // auth if required
         if !self.options.user.is_empty() {
-            self.update_state(ConnState::Auth);
+            session.update_state(ConnState::Auth);
             self.auth(&mut stream, &salt)?;
         }
 
         // if ok: save stream to session
-        {
-            let mut session = self.session.borrow_mut();
-            session.stream = Some(stream);
-            session.last_io_error = None;
-        }
-
-        // synchronise schema
-        self.sync_schema()?;
-
+        session.stream = Some(stream);
+        session.last_io_error = None;
+        session.update_state(ConnState::Active);
         Ok(())
     }
 
@@ -257,19 +273,20 @@ impl ConnInner {
     }
 
     fn sync_schema(&self) -> Result<(), Error> {
-        self.update_state(ConnState::FetchSchema);
-        let spaces_response = self.fetch_schema_spaces()?;
-        let indexes_response = self.fetch_schema_indexes()?;
-        {
-            let mut session = self.session.borrow_mut();
-            session.schema.update(spaces_response, indexes_response)?;
-        }
+        let _lock = self.session_lock.lock();
+        let mut session = self.session.borrow_mut();
 
-        self.update_state(ConnState::Active);
+        session.update_state(ConnState::FetchSchema);
+        let stream = session.stream.as_mut().unwrap();
+        let spaces_response = self.fetch_schema_spaces(stream)?;
+        let indexes_response = self.fetch_schema_indexes(stream)?;
+        session.schema.update(spaces_response, indexes_response)?;
+
+        session.update_state(ConnState::Active);
         Ok(())
     }
 
-    fn fetch_schema_spaces(&self) -> Result<Response, Error> {
+    fn fetch_schema_spaces(&self, stream: &mut CoIOStream) -> Result<Response, Error> {
         let buf = Vec::new();
         let mut cur = Cursor::new(buf);
         protocol::encode_select(
@@ -283,13 +300,11 @@ impl ConnInner {
             &(SystemSpace::SystemIdMax as u32,),
         )?;
 
-        let mut session = self.session.borrow_mut();
-        let stream = session.as_mut().stream.as_mut().unwrap();
         stream.write_all(&cur.into_inner())?;
         Ok(protocol::decode_response(stream)?)
     }
 
-    fn fetch_schema_indexes(&self) -> Result<Response, Error> {
+    fn fetch_schema_indexes(&self, stream: &mut CoIOStream) -> Result<Response, Error> {
         let buf = Vec::new();
         let mut cur = Cursor::new(buf);
         protocol::encode_select(
@@ -303,8 +318,6 @@ impl ConnInner {
             &Vec::<()>::new(),
         )?;
 
-        let mut session = self.session.borrow_mut();
-        let stream = session.as_mut().stream.as_mut().unwrap();
         stream.write_all(&cur.into_inner())?;
         Ok(protocol::decode_response(stream)?)
     }
@@ -315,22 +328,19 @@ impl ConnInner {
         sync: u64,
         options: &Options,
     ) -> Result<usize, io::Error> {
+        let _lock = self.session_lock.lock();
         let mut session = self.session.borrow_mut();
-        {
-            let _lock = session.recv_lock.lock();
-            session.active_requests.insert(
-                sync,
-                RequestState {
-                    recv_cond: Cond::new(),
-                    response: None,
-                },
-            );
-        }
-        {
-            let _lock = session.send_lock.lock();
-            let stream = session.stream.as_mut().unwrap();
-            stream.write_with_timeout(data, options.timeout)
-        }
+
+        session.active_requests.insert(
+            sync,
+            RequestState {
+                recv_cond: Cond::new(),
+                response: None,
+            },
+        );
+
+        let stream = session.stream.as_mut().unwrap();
+        stream.write_with_timeout(data, options.timeout)
     }
 
     fn recv_response(
@@ -338,29 +348,35 @@ impl ConnInner {
         sync: u64,
         options: &Options,
     ) -> Result<Option<protocol::Response>, Error> {
+        let _lock = self.session_lock.lock();
         let mut session = self.session.borrow_mut();
-        if let Some(request_state) = session.active_requests.get(&sync) {
-            let wait_is_successful = match options.timeout {
-                None => request_state.recv_cond.wait(),
-                Some(timeout) => request_state.recv_cond.wait_timeout(timeout),
-            };
 
-            if wait_is_successful {
-                Ok({
-                    let _lock = session.recv_lock.lock();
-                    session.active_requests.remove(&sync)
-                }
-                .unwrap()
-                .response)
-            } else {
-                Err(io::Error::from(io::ErrorKind::TimedOut).into())
-            }
+        let request_state = session
+            .active_requests
+            .get(&sync)
+            .ok_or(io::Error::from(io::ErrorKind::TimedOut))?;
+
+        let wait_is_completed = request_state
+            .response
+            .as_ref()
+            .map(|_| true)
+            .or_else(|| {
+                Some(match options.timeout {
+                    None => request_state.recv_cond.wait(),
+                    Some(timeout) => request_state.recv_cond.wait_timeout(timeout),
+                })
+            })
+            .unwrap();
+
+        if wait_is_completed {
+            Ok(session.active_requests.remove(&sync).unwrap().response)
         } else {
-            Err(session.recv_error.take().unwrap())
+            Err(io::Error::from(io::ErrorKind::TimedOut).into())
         }
     }
 
     fn handle_error(&self, err: Error) -> Result<(), Error> {
+        let _lock = self.session_lock.lock();
         let mut session = self.session.borrow_mut();
         match err {
             Error::IO(err) => {
@@ -379,11 +395,17 @@ impl ConnInner {
     fn reconnect_or_fail(&self) -> Result<(), Error> {
         let reconnect_after = self.options.reconnect_after;
         if reconnect_after.as_secs() == 0 && reconnect_after.subsec_nanos() == 0 {
-            self.update_state(ConnState::Error);
+            let _lock = self.session_lock.lock();
+            self.session.borrow_mut().update_state(ConnState::Error);
         } else {
             sleep(reconnect_after.as_secs_f64());
-            if let Err(err) = self.connect() {
-                self.handle_error(err)?;
+            match self.connect() {
+                Ok(_) => {
+                    self.sync_schema()?;
+                }
+                Err(err) => {
+                    self.handle_error(err)?;
+                }
             }
         }
         Ok(())
@@ -400,40 +422,33 @@ impl ConnInner {
     }
 
     fn disconnect(&self) {
+        let _lock = self.session_lock.lock();
         let mut session = self.session.borrow_mut();
         session.stream = None;
         session.update_state(ConnState::Closed);
     }
 
     pub fn state(&self) -> ConnState {
+        let _lock = self.session_lock.lock();
         self.session.borrow().state
-    }
-
-    pub fn update_state(&self, state: ConnState) {
-        self.session.borrow_mut().update_state(state);
-    }
-
-    pub fn wait_state(&self, timeout: Option<Duration>) -> bool {
-        match timeout {
-            None => self.session.borrow().state_change_cond.wait(),
-            Some(timeout) => self
-                .session
-                .borrow()
-                .state_change_cond
-                .wait_timeout(timeout),
-        }
     }
 
     #[inline(always)]
     pub fn lookup_space(&self, name: &str) -> Result<Option<u32>, Error> {
         self.wait_connected(Some(self.options.connect_timeout))?;
-        Ok(self.session.borrow().schema.lookup_space(name))
+        Ok({
+            let _lock = self.session_lock.lock();
+            self.session.borrow().schema.lookup_space(name)
+        })
     }
 
     #[inline(always)]
     pub fn lookup_index(&self, name: &str, space_id: u32) -> Result<Option<u32>, Error> {
         self.wait_connected(Some(self.options.connect_timeout))?;
-        Ok(self.session.borrow().schema.lookup_index(name, space_id))
+        Ok({
+            let _lock = self.session_lock.lock();
+            self.session.borrow().schema.lookup_index(name, space_id)
+        })
     }
 
     pub fn next_sync(&self) -> u64 {
@@ -453,6 +468,8 @@ pub fn recv_fiber_main(conn: Box<*mut Session>) -> i32 {
     set_cancellable(true);
 
     let session = unsafe { (*conn).as_mut() }.unwrap();
+    let state_change_cond = session.state_change_cond.clone();
+
     loop {
         if is_cancelled() {
             return 0;
@@ -469,7 +486,6 @@ pub fn recv_fiber_main(conn: Box<*mut Session>) -> i32 {
                         match session.active_requests.get_mut(&(response.sync as u64)) {
                             None => continue,
                             Some(request_state) => {
-                                let _lock = session.recv_lock.lock();
                                 request_state.response = Some(response);
                                 request_state.recv_cond.signal();
                             }
@@ -487,7 +503,7 @@ pub fn recv_fiber_main(conn: Box<*mut Session>) -> i32 {
             }
             ConnState::Closed => return 0,
             _ => {
-                session.state_change_cond.wait();
+                state_change_cond.wait();
             }
         }
     }

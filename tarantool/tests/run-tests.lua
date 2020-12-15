@@ -1,5 +1,7 @@
 #!/usr/bin/env tarantool
 
+fiber = require('fiber')
+
 box.cfg{
     listen = 3301,
 }
@@ -48,6 +50,10 @@ end)
 
 function test_stored_proc(a, b)
     return a + b
+end
+
+function test_timeout()
+    fiber.sleep(1.5)
 end
 
 function test_schema_update()
