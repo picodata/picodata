@@ -6,6 +6,7 @@ use tarantool_module::error::Error;
 use tarantool_module::fiber::Fiber;
 use tarantool_module::index::IteratorType;
 use tarantool_module::net_box::{Conn, ConnOptions, Options};
+use tarantool_module::space::Space;
 
 use crate::common::S1Record;
 
@@ -149,10 +150,10 @@ pub fn test_select() {
         },
     )
     .unwrap();
-
     let space = conn.space("test_s2").unwrap().unwrap();
+
     let result: Vec<S1Record> = space
-        .select(IteratorType::LE, &(2,))
+        .select(IteratorType::LE, &(2,), &Options::default())
         .unwrap()
         .map(|x| x.into_struct().unwrap())
         .collect();
@@ -169,5 +170,78 @@ pub fn test_select() {
                 text: "key_1".to_string()
             }
         ]
+    );
+}
+
+pub fn test_insert() {
+    let mut local_space = Space::find("test_s1").unwrap();
+    local_space.truncate().unwrap();
+
+    let conn = Conn::new(
+        "localhost:3301",
+        ConnOptions {
+            user: "test_user".to_string(),
+            password: "password".to_string(),
+            ..ConnOptions::default()
+        },
+    )
+    .unwrap();
+    let mut remote_space = conn.space("test_s1").unwrap().unwrap();
+
+    let input = S1Record {
+        id: 1,
+        text: "Test".to_string(),
+    };
+    let insert_result = remote_space.insert(&input, &Options::default()).unwrap();
+    assert!(insert_result.is_some());
+    assert_eq!(
+        insert_result.unwrap().into_struct::<S1Record>().unwrap(),
+        input
+    );
+
+    let output = local_space.get(&(input.id,)).unwrap();
+    assert!(output.is_some());
+    assert_eq!(output.unwrap().into_struct::<S1Record>().unwrap(), input);
+}
+
+pub fn test_replace() {
+    let mut local_space = Space::find("test_s1").unwrap();
+    local_space.truncate().unwrap();
+
+    let original_input = S1Record {
+        id: 1,
+        text: "Original".to_string(),
+    };
+    local_space.insert(&original_input).unwrap();
+
+    let conn = Conn::new(
+        "localhost:3301",
+        ConnOptions {
+            user: "test_user".to_string(),
+            password: "password".to_string(),
+            ..ConnOptions::default()
+        },
+    )
+    .unwrap();
+    let mut remote_space = conn.space("test_s1").unwrap().unwrap();
+
+    let new_input = S1Record {
+        id: original_input.id,
+        text: "New".to_string(),
+    };
+    let replace_result = remote_space
+        .replace(&new_input, &Options::default())
+        .unwrap();
+    assert!(replace_result.is_some());
+    assert_eq!(
+        replace_result.unwrap().into_struct::<S1Record>().unwrap(),
+        new_input
+    );
+
+    let output = local_space.get(&(new_input.id,)).unwrap();
+    assert!(output.is_some());
+    assert_eq!(
+        output.unwrap().into_struct::<S1Record>().unwrap(),
+        new_input
     );
 }

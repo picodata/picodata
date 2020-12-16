@@ -29,6 +29,8 @@ const ERROR: u8 = 0x31;
 
 enum IProtoType {
     Select = 1,
+    Insert = 2,
+    Replace = 3,
     Auth = 7,
     Call = 10,
     Ping = 64,
@@ -162,6 +164,44 @@ where
     rmp::encode::write_u32(buf, iterator_type as u32)?;
     rmp::encode::write_pfix(buf, KEY)?;
     rmp_serde::encode::write(buf, key)?;
+    encode_request(buf, header_offset)?;
+    Ok(())
+}
+
+pub fn encode_insert<T>(
+    buf: &mut Cursor<Vec<u8>>,
+    sync: u64,
+    space_id: u32,
+    value: &T,
+) -> Result<(), Error>
+where
+    T: AsTuple,
+{
+    let header_offset = prepare_request(buf, sync, IProtoType::Insert)?;
+    rmp::encode::write_map_len(buf, 2)?;
+    rmp::encode::write_pfix(buf, SPACE_ID)?;
+    rmp::encode::write_u32(buf, space_id)?;
+    rmp::encode::write_pfix(buf, TUPLE)?;
+    rmp_serde::encode::write(buf, value)?;
+    encode_request(buf, header_offset)?;
+    Ok(())
+}
+
+pub fn encode_replace<T>(
+    buf: &mut Cursor<Vec<u8>>,
+    sync: u64,
+    space_id: u32,
+    value: &T,
+) -> Result<(), Error>
+where
+    T: AsTuple,
+{
+    let header_offset = prepare_request(buf, sync, IProtoType::Replace)?;
+    rmp::encode::write_map_len(buf, 2)?;
+    rmp::encode::write_pfix(buf, SPACE_ID)?;
+    rmp::encode::write_u32(buf, space_id)?;
+    rmp::encode::write_pfix(buf, TUPLE)?;
+    rmp_serde::encode::write(buf, value)?;
     encode_request(buf, header_offset)?;
     Ok(())
 }

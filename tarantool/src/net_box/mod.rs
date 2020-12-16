@@ -43,17 +43,20 @@ use std::io::Cursor;
 use std::net::ToSocketAddrs;
 use std::rc::Rc;
 
+pub use index::{RemoteIndex, RemoteIndexIterator};
 use inner::{ConnInner, ConnState};
 pub use options::{ConnOptions, Options};
 pub(crate) use protocol::ResponseError;
+pub use space::RemoteSpace;
 
 use crate::error::Error;
-use crate::index::IteratorType;
 use crate::tuple::{AsTuple, Tuple};
 
+mod index;
 mod inner;
 mod options;
 mod protocol;
+mod space;
 
 /// Connection to remote Tarantool server
 pub struct Conn {
@@ -130,101 +133,11 @@ impl Conn {
         Ok(response.into_tuple()?)
     }
 
+    /// Search space by name on remote server
     pub fn space(&self, name: &str) -> Result<Option<RemoteSpace>, Error> {
-        Ok(self.inner.lookup_space(name)?.map(|space_id| RemoteSpace {
-            conn_inner: self.inner.clone(),
-            space_id,
-        }))
-    }
-}
-
-pub struct RemoteSpace {
-    conn_inner: Rc<ConnInner>,
-    space_id: u32,
-}
-
-impl RemoteSpace {
-    pub fn index(&self, name: &str) -> Result<Option<RemoteIndex>, Error> {
         Ok(self
-            .conn_inner
-            .lookup_index(name, self.space_id)?
-            .map(|index_id| RemoteIndex {
-                index_id,
-                ..self.primary_key()
-            }))
-    }
-
-    #[inline(always)]
-    pub fn primary_key(&self) -> RemoteIndex {
-        RemoteIndex {
-            conn_inner: self.conn_inner.clone(),
-            space_id: self.space_id,
-            index_id: 0,
-        }
-    }
-
-    pub fn select<K>(
-        &self,
-        iterator_type: IteratorType,
-        key: &K,
-    ) -> Result<RemoteIndexIterator, Error>
-    where
-        K: AsTuple,
-    {
-        self.primary_key().select(iterator_type, key)
-    }
-}
-
-pub struct RemoteIndex {
-    conn_inner: Rc<ConnInner>,
-    space_id: u32,
-    index_id: u32,
-}
-
-impl RemoteIndex {
-    pub fn select<K>(
-        &self,
-        iterator_type: IteratorType,
-        key: &K,
-    ) -> Result<RemoteIndexIterator, Error>
-    where
-        K: AsTuple,
-    {
-        let buf = Vec::new();
-        let mut cur = Cursor::new(buf);
-
-        let sync = self.conn_inner.next_sync();
-        protocol::encode_select(
-            &mut cur,
-            sync,
-            self.space_id,
-            self.index_id,
-            u32::max_value(),
-            0,
-            iterator_type,
-            key,
-        )?;
-        let response = self
-            .conn_inner
-            .communicate(&cur.into_inner(), sync, &Options::default())?;
-
-        Ok(RemoteIndexIterator {
-            inner: response.into_iter()?,
-        })
-    }
-}
-
-pub struct RemoteIndexIterator {
-    inner: Option<protocol::ResponseIterator>,
-}
-
-impl<'a> Iterator for RemoteIndexIterator {
-    type Item = Tuple;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        match self.inner {
-            None => None,
-            Some(ref mut inner) => inner.next_tuple(),
-        }
+            .inner
+            .lookup_space(name)?
+            .map(|space_id| RemoteSpace::new(self.inner.clone(), space_id)))
     }
 }

@@ -113,6 +113,8 @@ fn run() -> Result<bool, io::Error> {
             test_net_box::test_is_connected,
             test_net_box::test_schema_sync,
             test_net_box::test_select,
+            test_net_box::test_insert,
+            test_net_box::test_replace,
         ],
     )
 }
