@@ -115,6 +115,9 @@ fn run() -> Result<bool, io::Error> {
             test_net_box::test_select,
             test_net_box::test_insert,
             test_net_box::test_replace,
+            test_net_box::test_update,
+            test_net_box::test_upsert,
+            test_net_box::test_delete,
         ],
     )
 }

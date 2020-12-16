@@ -1,21 +1,11 @@
 use rand::Rng;
-use serde::Serialize;
 
 use tarantool_module::index::IteratorType;
 use tarantool_module::sequence::Sequence;
 use tarantool_module::space::{Space, SystemSpace};
-use tarantool_module::tuple::{AsTuple, Tuple};
+use tarantool_module::tuple::Tuple;
 
-use crate::common::{S1Record, S2Key, S2Record};
-
-#[derive(Serialize)]
-struct QueryOperation {
-    op: String,
-    field_id: u32,
-    value: serde_json::Value,
-}
-
-impl AsTuple for QueryOperation {}
+use crate::common::{QueryOperation, S1Record, S2Key, S2Record};
 
 pub fn test_space_get_by_name() {
     assert!(Space::find("test_s1").is_some());

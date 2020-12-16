@@ -8,7 +8,7 @@ use tarantool_module::index::IteratorType;
 use tarantool_module::net_box::{Conn, ConnOptions, Options};
 use tarantool_module::space::Space;
 
-use crate::common::S1Record;
+use crate::common::{QueryOperation, S1Record};
 
 pub fn test_immediate_close() {
     let _ = Conn::new("localhost:3301", ConnOptions::default()).unwrap();
@@ -244,4 +244,151 @@ pub fn test_replace() {
         output.unwrap().into_struct::<S1Record>().unwrap(),
         new_input
     );
+}
+
+pub fn test_update() {
+    let mut local_space = Space::find("test_s1").unwrap();
+    local_space.truncate().unwrap();
+
+    let input = S1Record {
+        id: 1,
+        text: "Original".to_string(),
+    };
+    local_space.insert(&input).unwrap();
+
+    let conn = Conn::new(
+        "localhost:3301",
+        ConnOptions {
+            user: "test_user".to_string(),
+            password: "password".to_string(),
+            ..ConnOptions::default()
+        },
+    )
+    .unwrap();
+    let mut remote_space = conn.space("test_s1").unwrap().unwrap();
+
+    let update_result = remote_space
+        .update(
+            &(input.id,),
+            &vec![QueryOperation {
+                op: "=".to_string(),
+                field_id: 1,
+                value: "New".into(),
+            }],
+            &Options::default(),
+        )
+        .unwrap();
+    assert!(update_result.is_some());
+    assert_eq!(
+        update_result
+            .unwrap()
+            .into_struct::<S1Record>()
+            .unwrap()
+            .text,
+        "New"
+    );
+
+    let output = local_space.get(&(input.id,)).unwrap();
+    assert_eq!(
+        output.unwrap().into_struct::<S1Record>().unwrap().text,
+        "New"
+    );
+}
+
+pub fn test_upsert() {
+    let mut local_space = Space::find("test_s1").unwrap();
+    local_space.truncate().unwrap();
+
+    let original_input = S1Record {
+        id: 1,
+        text: "Original".to_string(),
+    };
+    local_space.insert(&original_input).unwrap();
+
+    let conn = Conn::new(
+        "localhost:3301",
+        ConnOptions {
+            user: "test_user".to_string(),
+            password: "password".to_string(),
+            ..ConnOptions::default()
+        },
+    )
+    .unwrap();
+    let mut remote_space = conn.space("test_s1").unwrap().unwrap();
+
+    remote_space
+        .upsert(
+            &S1Record {
+                id: 1,
+                text: "New".to_string(),
+            },
+            &vec![QueryOperation {
+                op: "=".to_string(),
+                field_id: 1,
+                value: "Test 1".into(),
+            }],
+            &Options::default(),
+        )
+        .unwrap();
+
+    remote_space
+        .upsert(
+            &S1Record {
+                id: 2,
+                text: "New".to_string(),
+            },
+            &vec![QueryOperation {
+                op: "=".to_string(),
+                field_id: 1,
+                value: "Test 2".into(),
+            }],
+            &Options::default(),
+        )
+        .unwrap();
+
+    let output = local_space.get(&(1,)).unwrap();
+    assert_eq!(
+        output.unwrap().into_struct::<S1Record>().unwrap().text,
+        "Test 1"
+    );
+
+    let output = local_space.get(&(2,)).unwrap();
+    assert_eq!(
+        output.unwrap().into_struct::<S1Record>().unwrap().text,
+        "New"
+    );
+}
+
+pub fn test_delete() {
+    let mut local_space = Space::find("test_s1").unwrap();
+    local_space.truncate().unwrap();
+
+    let input = S1Record {
+        id: 1,
+        text: "Test".to_string(),
+    };
+    local_space.insert(&input).unwrap();
+
+    let conn = Conn::new(
+        "localhost:3301",
+        ConnOptions {
+            user: "test_user".to_string(),
+            password: "password".to_string(),
+            ..ConnOptions::default()
+        },
+    )
+    .unwrap();
+    let mut remote_space = conn.space("test_s1").unwrap().unwrap();
+
+    let delete_result = remote_space
+        .delete(&(input.id,), &Options::default())
+        .unwrap();
+    assert!(delete_result.is_some());
+    assert_eq!(
+        delete_result.unwrap().into_struct::<S1Record>().unwrap(),
+        input
+    );
+
+    let output = local_space.get(&(input.id,)).unwrap();
+    assert!(output.is_none());
 }

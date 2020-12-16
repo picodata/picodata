@@ -87,4 +87,43 @@ impl RemoteSpace {
             .into_iter()?
             .and_then(|ref mut iter| iter.next_tuple()))
     }
+
+    /// The remote-call equivalent of the local call `Space::update(...)`
+    /// (see [details](../space/struct.Space.html#method.update)).
+    pub fn update<K, Op>(
+        &mut self,
+        key: &K,
+        ops: &Vec<Op>,
+        options: &Options,
+    ) -> Result<Option<Tuple>, Error>
+    where
+        K: AsTuple,
+        Op: AsTuple,
+    {
+        self.primary_key().update(key, ops, options)
+    }
+
+    /// The remote-call equivalent of the local call `Space::upsert(...)`
+    /// (see [details](../space/struct.Space.html#method.upsert)).
+    pub fn upsert<T, Op>(
+        &mut self,
+        value: &T,
+        ops: &Vec<Op>,
+        options: &Options,
+    ) -> Result<Option<Tuple>, Error>
+    where
+        T: AsTuple,
+        Op: AsTuple,
+    {
+        self.primary_key().upsert(value, ops, options)
+    }
+
+    /// The remote-call equivalent of the local call `Space::delete(...)`
+    /// (see [details](../space/struct.Space.html#method.delete)).
+    pub fn delete<K>(&mut self, key: &K, options: &Options) -> Result<Option<Tuple>, Error>
+    where
+        K: AsTuple,
+    {
+        self.primary_key().delete(key, options)
+    }
 }

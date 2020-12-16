@@ -18,11 +18,13 @@ const INDEX_ID: u8 = 0x11;
 const LIMIT: u8 = 0x12;
 const OFFSET: u8 = 0x13;
 const ITERATOR: u8 = 0x14;
+const INDEX_BASE: u8 = 0x15;
 
 const KEY: u8 = 0x20;
 const TUPLE: u8 = 0x21;
 const FUNCTION_NAME: u8 = 0x22;
 const USER_NAME: u8 = 0x23;
+const OPS: u8 = 0x28;
 
 const DATA: u8 = 0x30;
 const ERROR: u8 = 0x31;
@@ -31,7 +33,10 @@ enum IProtoType {
     Select = 1,
     Insert = 2,
     Replace = 3,
+    Update = 4,
+    Delete = 5,
     Auth = 7,
+    Upsert = 9,
     Call = 10,
     Ping = 64,
 }
@@ -202,6 +207,80 @@ where
     rmp::encode::write_u32(buf, space_id)?;
     rmp::encode::write_pfix(buf, TUPLE)?;
     rmp_serde::encode::write(buf, value)?;
+    encode_request(buf, header_offset)?;
+    Ok(())
+}
+
+pub fn encode_update<K, Op>(
+    buf: &mut Cursor<Vec<u8>>,
+    sync: u64,
+    space_id: u32,
+    index_id: u32,
+    key: &K,
+    ops: &Op,
+) -> Result<(), Error>
+where
+    K: AsTuple,
+    Op: AsTuple,
+{
+    let header_offset = prepare_request(buf, sync, IProtoType::Update)?;
+    rmp::encode::write_map_len(buf, 4)?;
+    rmp::encode::write_pfix(buf, SPACE_ID)?;
+    rmp::encode::write_u32(buf, space_id)?;
+    rmp::encode::write_pfix(buf, INDEX_ID)?;
+    rmp::encode::write_u32(buf, index_id)?;
+    rmp::encode::write_pfix(buf, KEY)?;
+    rmp_serde::encode::write(buf, key)?;
+    rmp::encode::write_pfix(buf, TUPLE)?;
+    rmp_serde::encode::write(buf, ops)?;
+    encode_request(buf, header_offset)?;
+    Ok(())
+}
+
+pub fn encode_upsert<T, Op>(
+    buf: &mut Cursor<Vec<u8>>,
+    sync: u64,
+    space_id: u32,
+    index_id: u32,
+    value: &T,
+    ops: &Op,
+) -> Result<(), Error>
+where
+    T: AsTuple,
+    Op: AsTuple,
+{
+    let header_offset = prepare_request(buf, sync, IProtoType::Upsert)?;
+    rmp::encode::write_map_len(buf, 4)?;
+    rmp::encode::write_pfix(buf, SPACE_ID)?;
+    rmp::encode::write_u32(buf, space_id)?;
+    rmp::encode::write_pfix(buf, INDEX_BASE)?;
+    rmp::encode::write_u32(buf, index_id)?;
+    rmp::encode::write_pfix(buf, OPS)?;
+    rmp_serde::encode::write(buf, ops)?;
+    rmp::encode::write_pfix(buf, TUPLE)?;
+    rmp_serde::encode::write(buf, value)?;
+    encode_request(buf, header_offset)?;
+    Ok(())
+}
+
+pub fn encode_delete<K>(
+    buf: &mut Cursor<Vec<u8>>,
+    sync: u64,
+    space_id: u32,
+    index_id: u32,
+    key: &K,
+) -> Result<(), Error>
+where
+    K: AsTuple,
+{
+    let header_offset = prepare_request(buf, sync, IProtoType::Delete)?;
+    rmp::encode::write_map_len(buf, 3)?;
+    rmp::encode::write_pfix(buf, SPACE_ID)?;
+    rmp::encode::write_u32(buf, space_id)?;
+    rmp::encode::write_pfix(buf, INDEX_ID)?;
+    rmp::encode::write_u32(buf, index_id)?;
+    rmp::encode::write_pfix(buf, KEY)?;
+    rmp_serde::encode::write(buf, key)?;
     encode_request(buf, header_offset)?;
     Ok(())
 }

@@ -28,3 +28,12 @@ pub struct S2Key {
 }
 
 impl AsTuple for S2Key {}
+
+#[derive(Serialize)]
+pub struct QueryOperation {
+    pub op: String,
+    pub field_id: u32,
+    pub value: serde_json::Value,
+}
+
+impl AsTuple for QueryOperation {}
