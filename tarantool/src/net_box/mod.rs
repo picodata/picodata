@@ -133,6 +133,31 @@ impl Conn {
         Ok(response.into_tuple()?)
     }
 
+    /// Evaluates and executes the expression in Lua-string, which may be any statement or series of statements.
+    ///
+    /// An execute privilege is required; if the user does not have it, an administrator may grant it with
+    /// `box.schema.user.grant(username, 'execute', 'universe')`.
+    ///
+    /// To ensure that the return from `eval` is whatever the Lua expression returns, begin the Lua-string with the
+    /// word `return`.
+    pub fn eval<T>(
+        &self,
+        expression: &str,
+        args: &T,
+        options: &Options,
+    ) -> Result<Option<Tuple>, Error>
+    where
+        T: AsTuple,
+    {
+        let buf = Vec::new();
+        let mut cur = Cursor::new(buf);
+
+        let sync = self.inner.next_sync();
+        protocol::encode_eval(&mut cur, sync, expression, args)?;
+        let response = self.inner.communicate(&cur.into_inner(), sync, options)?;
+        Ok(response.into_tuple()?)
+    }
+
     /// Search space by name on remote server
     pub fn space(&self, name: &str) -> Result<Option<RemoteSpace>, Error> {
         Ok(self

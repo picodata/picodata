@@ -88,6 +88,19 @@ pub fn test_call_timeout() {
     assert!(matches!(result, Err(Error::IO(ref e)) if e.kind() == io::ErrorKind::TimedOut));
 }
 
+pub fn test_eval() {
+    let conn_options = ConnOptions {
+        user: "test_user".to_string(),
+        password: "password".to_string(),
+        ..ConnOptions::default()
+    };
+    let conn = Conn::new("localhost:3301", conn_options).unwrap();
+    let result = conn
+        .eval("return ...", &(1, 2), &Options::default())
+        .unwrap();
+    assert_eq!(result.unwrap().into_struct::<(i32, i32)>().unwrap(), (1, 2));
+}
+
 pub fn test_connection_error() {
     let conn = Conn::new(
         "localhost:255",

@@ -24,6 +24,7 @@ const KEY: u8 = 0x20;
 const TUPLE: u8 = 0x21;
 const FUNCTION_NAME: u8 = 0x22;
 const USER_NAME: u8 = 0x23;
+const EXPR: u8 = 0x27;
 const OPS: u8 = 0x28;
 
 const DATA: u8 = 0x30;
@@ -36,6 +37,7 @@ enum IProtoType {
     Update = 4,
     Delete = 5,
     Auth = 7,
+    Eval = 8,
     Upsert = 9,
     Call = 10,
     Ping = 64,
@@ -136,6 +138,25 @@ where
     rmp::encode::write_map_len(buf, 2)?;
     rmp::encode::write_pfix(buf, FUNCTION_NAME)?;
     rmp::encode::write_str(buf, function_name)?;
+    rmp::encode::write_pfix(buf, TUPLE)?;
+    rmp_serde::encode::write(buf, args)?;
+    encode_request(buf, header_offset)?;
+    Ok(())
+}
+
+pub fn encode_eval<T>(
+    buf: &mut Cursor<Vec<u8>>,
+    sync: u64,
+    expression: &str,
+    args: &T,
+) -> Result<(), Error>
+where
+    T: AsTuple,
+{
+    let header_offset = prepare_request(buf, sync, IProtoType::Eval)?;
+    rmp::encode::write_map_len(buf, 2)?;
+    rmp::encode::write_pfix(buf, EXPR)?;
+    rmp::encode::write_str(buf, expression)?;
     rmp::encode::write_pfix(buf, TUPLE)?;
     rmp_serde::encode::write(buf, args)?;
     encode_request(buf, header_offset)?;
