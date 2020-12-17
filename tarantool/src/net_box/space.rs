@@ -37,7 +37,17 @@ impl RemoteSpace {
         RemoteIndex::new(self.conn_inner.clone(), self.space_id, 0)
     }
 
+    /// The remote-call equivalent of the local call `Space::get(...)`
+    /// (see [details](../space/struct.Space.html#method.get)).
+    pub fn get<K>(&self, key: &K, options: &Options) -> Result<Option<Tuple>, Error>
+    where
+        K: AsTuple,
+    {
+        self.primary_key().get(key, options)
+    }
+
     /// The remote-call equivalent of the local call `Space::select(...)`
+    /// (see [details](../space/struct.Space.html#method.select)).
     pub fn select<K>(
         &self,
         iterator_type: IteratorType,

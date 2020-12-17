@@ -21,6 +21,25 @@ impl RemoteIndex {
         }
     }
 
+    /// The remote-call equivalent of the local call `Index::get(...)`
+    /// (see [details](../index/struct.Index.html#method.get)).
+    pub fn get<K>(&self, key: &K, options: &Options) -> Result<Option<Tuple>, Error>
+    where
+        K: AsTuple,
+    {
+        Ok(self
+            .select(
+                IteratorType::Eq,
+                key,
+                &Options {
+                    offset: 0,
+                    limit: Some(1),
+                    ..options.clone()
+                },
+            )?
+            .next())
+    }
+
     /// The remote-call equivalent of the local call `Index::select(...)`
     /// (see [details](../index/struct.Index.html#method.select)).
     pub fn select<K>(
@@ -41,8 +60,8 @@ impl RemoteIndex {
             sync,
             self.space_id,
             self.index_id,
-            u32::max_value(),
-            0,
+            options.limit.unwrap_or(u32::max_value()),
+            options.offset,
             iterator_type,
             key,
         )?;

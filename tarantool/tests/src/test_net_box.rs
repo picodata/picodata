@@ -8,7 +8,7 @@ use tarantool_module::index::IteratorType;
 use tarantool_module::net_box::{Conn, ConnOptions, Options};
 use tarantool_module::space::Space;
 
-use crate::common::{QueryOperation, S1Record};
+use crate::common::{QueryOperation, S1Record, S2Record};
 
 pub fn test_immediate_close() {
     let _ = Conn::new("localhost:3301", ConnOptions::default()).unwrap();
@@ -138,6 +138,35 @@ pub fn test_schema_sync() {
         &Options::default(),
     )
     .unwrap();
+}
+
+pub fn test_get() {
+    let conn = Conn::new(
+        "localhost:3301",
+        ConnOptions {
+            user: "test_user".to_string(),
+            password: "password".to_string(),
+            ..ConnOptions::default()
+        },
+    )
+    .unwrap();
+    let space = conn.space("test_s2").unwrap().unwrap();
+
+    let idx = space.index("idx_1").unwrap().unwrap();
+    let output = idx
+        .get(&("key_16".to_string(),), &Options::default())
+        .unwrap();
+    assert!(output.is_some());
+    assert_eq!(
+        output.unwrap().into_struct::<S2Record>().unwrap(),
+        S2Record {
+            id: 16,
+            key: "key_16".to_string(),
+            value: "value_16".to_string(),
+            a: 1,
+            b: 3
+        }
+    );
 }
 
 pub fn test_select() {
