@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use std::io;
 use std::io::{Cursor, Write};
 use std::net::SocketAddr;
-use std::rc::Rc;
+use std::rc::{Rc, Weak};
 use std::time::Duration;
 
 use crate::coio::CoIOStream;
@@ -11,6 +11,7 @@ use crate::error::Error;
 use crate::fiber::{is_cancelled, set_cancellable, sleep, time, Cond, Fiber, Latch};
 use crate::index::IteratorType;
 use crate::net_box::protocol::Response;
+use crate::net_box::{Conn, ConnTriggers};
 use crate::space::SystemSpace;
 
 use super::options::{ConnOptions, Options};
@@ -79,6 +80,11 @@ impl Schema {
     }
 }
 
+struct Triggers {
+    callbacks: Box<dyn ConnTriggers>,
+    self_ref: Weak<ConnInner>,
+}
+
 #[derive(Copy, Clone, PartialEq, Debug)]
 pub enum ConnState {
     Init,
@@ -103,14 +109,17 @@ pub struct ConnInner {
     recv_fiber: RefCell<Fiber<'static, *mut Session>>,
     session: RefCell<Box<Session>>,
     session_lock: Latch,
+    triggers: RefCell<Option<Triggers>>,
 }
 
 impl ConnInner {
-    pub fn new(addrs: Vec<SocketAddr>, options: ConnOptions) -> Self {
+    pub fn new(addrs: Vec<SocketAddr>, mut options: ConnOptions) -> Rc<Self> {
         let mut recv_fiber = Fiber::new("_recv", &mut recv_fiber_main);
         recv_fiber.set_joinable(true);
 
-        ConnInner {
+        let triggers_callbacks = options.triggers.take();
+
+        let self_ref = Rc::new(ConnInner {
             options,
             addrs,
             sync: Cell::new(0),
@@ -125,7 +134,17 @@ impl ConnInner {
                 schema: Default::default(),
             })),
             session_lock: Latch::new(),
+            triggers: RefCell::new(None),
+        });
+
+        if let Some(callbacks) = triggers_callbacks {
+            self_ref.triggers.replace(Some(Triggers {
+                callbacks,
+                self_ref: Rc::downgrade(&self_ref),
+            }));
         }
+
+        self_ref
     }
 
     pub fn wait_connected(&self, timeout: Option<Duration>) -> Result<bool, Error> {
@@ -198,7 +217,9 @@ impl ConnInner {
                 }
                 ConnState::Error => self.disconnect(),
                 ConnState::ErrorReconnect => self.reconnect_or_fail()?,
-                ConnState::Closed => return Err(io::Error::from(io::ErrorKind::BrokenPipe).into()),
+                ConnState::Closed => {
+                    return Err(io::Error::from(io::ErrorKind::NotConnected).into())
+                }
                 _ => {
                     state_change_cond.wait();
                 }
@@ -251,6 +272,15 @@ impl ConnInner {
         session.stream = Some(stream);
         session.last_io_error = None;
         session.update_state(ConnState::Active);
+
+        // call trigger (if available)
+        if let Some(triggers) = self.triggers.borrow().as_ref() {
+            triggers.callbacks.on_connect(&Conn {
+                inner: triggers.self_ref.upgrade().unwrap(),
+                is_master: false,
+            })?;
+        }
+
         Ok(())
     }
 
@@ -281,6 +311,13 @@ impl ConnInner {
         let spaces_response = self.fetch_schema_spaces(stream)?;
         let indexes_response = self.fetch_schema_indexes(stream)?;
         session.schema.update(spaces_response, indexes_response)?;
+
+        if let Some(triggers) = self.triggers.borrow().as_ref() {
+            triggers.callbacks.on_schema_reload(&Conn {
+                inner: triggers.self_ref.upgrade().unwrap(),
+                is_master: false,
+            });
+        }
 
         session.update_state(ConnState::Active);
         Ok(())
@@ -396,7 +433,12 @@ impl ConnInner {
         let reconnect_after = self.options.reconnect_after;
         if reconnect_after.as_secs() == 0 && reconnect_after.subsec_nanos() == 0 {
             let _lock = self.session_lock.lock();
-            self.session.borrow_mut().update_state(ConnState::Error);
+            let mut session = self.session.borrow_mut();
+            session.update_state(ConnState::Error);
+
+            if let Some(err) = session.last_io_error.take() {
+                return Err(err.into());
+            }
         } else {
             sleep(reconnect_after.as_secs_f64());
             match self.connect() {
@@ -412,9 +454,9 @@ impl ConnInner {
     }
 
     pub fn close(&self) {
-        let was_started = !matches!(self.state(), ConnState::Init);
+        let fiber_is_running = !matches!(self.state(), ConnState::Init | ConnState::Closed);
         self.disconnect();
-        if was_started {
+        if fiber_is_running {
             let mut fiber = self.recv_fiber.borrow_mut();
             fiber.cancel();
             fiber.join();
@@ -426,6 +468,10 @@ impl ConnInner {
         let mut session = self.session.borrow_mut();
         session.stream = None;
         session.update_state(ConnState::Closed);
+
+        if let Some(triggers) = self.triggers.borrow().as_ref() {
+            triggers.callbacks.on_disconnect();
+        }
     }
 
     pub fn state(&self) -> ConnState {

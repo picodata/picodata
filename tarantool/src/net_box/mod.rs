@@ -45,7 +45,7 @@ use std::rc::Rc;
 
 pub use index::{RemoteIndex, RemoteIndexIterator};
 use inner::{ConnInner, ConnState};
-pub use options::{ConnOptions, Options};
+pub use options::{ConnOptions, ConnTriggers, Options};
 pub(crate) use protocol::ResponseError;
 pub use space::RemoteSpace;
 
@@ -61,6 +61,7 @@ mod space;
 /// Connection to remote Tarantool server
 pub struct Conn {
     inner: Rc<ConnInner>,
+    is_master: bool,
 }
 
 impl Conn {
@@ -73,7 +74,8 @@ impl Conn {
     /// See also: [ConnOptions](struct.ConnOptions.html)
     pub fn new(addr: &str, options: ConnOptions) -> Result<Self, Error> {
         Ok(Conn {
-            inner: Rc::new(ConnInner::new(addr.to_socket_addrs()?.collect(), options)),
+            inner: ConnInner::new(addr.to_socket_addrs()?.collect(), options),
+            is_master: true,
         })
     }
 
@@ -164,5 +166,13 @@ impl Conn {
             .inner
             .lookup_space(name)?
             .map(|space_id| RemoteSpace::new(self.inner.clone(), space_id)))
+    }
+}
+
+impl Drop for Conn {
+    fn drop(&mut self) {
+        if self.is_master {
+            self.close();
+        }
     }
 }

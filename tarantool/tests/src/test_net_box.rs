@@ -5,10 +5,11 @@ use std::time::Duration;
 use tarantool_module::error::Error;
 use tarantool_module::fiber::Fiber;
 use tarantool_module::index::IteratorType;
-use tarantool_module::net_box::{Conn, ConnOptions, Options};
+use tarantool_module::net_box::{Conn, ConnOptions, ConnTriggers, Options};
 use tarantool_module::space::Space;
 
 use crate::common::{QueryOperation, S1Record, S2Record};
+use std::cell::{Cell, RefCell};
 
 pub fn test_immediate_close() {
     let _ = Conn::new("localhost:3301", ConnOptions::default()).unwrap();
@@ -23,7 +24,7 @@ pub fn test_ping_timeout() {
     let conn = Conn::new("localhost:3301", ConnOptions::default()).unwrap();
 
     conn.ping(&Options {
-        timeout: Some(Duration::from_millis(1)),
+        timeout: Some(Duration::from_secs(1)),
         ..Options::default()
     })
     .unwrap();
@@ -433,4 +434,117 @@ pub fn test_delete() {
 
     let output = local_space.get(&(input.id,)).unwrap();
     assert!(output.is_none());
+}
+
+pub fn test_triggers_connect() {
+    struct Checklist {
+        connected: bool,
+        disconnected: bool,
+    }
+
+    struct TriggersMock {
+        checklist: Rc<RefCell<Checklist>>,
+    }
+
+    impl ConnTriggers for TriggersMock {
+        fn on_connect(&self, _: &Conn) -> Result<(), Error> {
+            self.checklist.borrow_mut().connected = true;
+            Ok(())
+        }
+        fn on_disconnect(&self) {
+            self.checklist.borrow_mut().disconnected = true;
+        }
+        fn on_schema_reload(&self, _: &Conn) {}
+    }
+
+    let checklist = Rc::new(RefCell::new(Checklist {
+        connected: false,
+        disconnected: false,
+    }));
+
+    let conn = Conn::new(
+        "localhost:3301",
+        ConnOptions {
+            triggers: Some(Box::new(TriggersMock {
+                checklist: checklist.clone(),
+            })),
+            ..ConnOptions::default()
+        },
+    )
+    .unwrap();
+    conn.ping(&Options::default()).unwrap();
+    conn.close();
+
+    assert_eq!(checklist.borrow().connected, true);
+    assert_eq!(checklist.borrow().disconnected, true);
+}
+
+pub fn test_triggers_reject() {
+    struct TriggersMock {}
+
+    impl ConnTriggers for TriggersMock {
+        fn on_connect(&self, _: &Conn) -> Result<(), Error> {
+            Err(Error::IO(io::ErrorKind::Interrupted.into()))
+        }
+        fn on_disconnect(&self) {}
+        fn on_schema_reload(&self, _: &Conn) {}
+    }
+
+    let conn = Conn::new(
+        "localhost:3301",
+        ConnOptions {
+            triggers: Some(Box::new(TriggersMock {})),
+            ..ConnOptions::default()
+        },
+    )
+    .unwrap();
+
+    let res = conn.ping(&Options::default());
+    assert!(matches!(res, Err(Error::IO(err)) if err.kind() == io::ErrorKind::Interrupted));
+}
+
+pub fn test_triggers_schema_sync() {
+    struct TriggersMock {
+        is_trigger_called: Rc<Cell<bool>>,
+    }
+
+    impl ConnTriggers for TriggersMock {
+        fn on_connect(&self, _: &Conn) -> Result<(), Error> {
+            Ok(())
+        }
+        fn on_disconnect(&self) {}
+
+        fn on_schema_reload(&self, _: &Conn) {
+            self.is_trigger_called.set(true);
+        }
+    }
+
+    let is_trigger_called = Rc::new(Cell::new(false));
+
+    let conn = Conn::new(
+        "localhost:3301",
+        ConnOptions {
+            user: "test_user".to_string(),
+            password: "password".to_string(),
+            triggers: Some(Box::new(TriggersMock {
+                is_trigger_called: is_trigger_called.clone(),
+            })),
+            ..ConnOptions::default()
+        },
+    )
+    .unwrap();
+
+    conn.call("test_schema_update", &Vec::<()>::new(), &Options::default())
+        .unwrap();
+    conn.call(
+        "test_schema_cleanup",
+        &Vec::<()>::new(),
+        &Options::default(),
+    )
+    .unwrap();
+
+    conn.ping(&Options::default()).unwrap();
+    conn.close();
+
+    assert_eq!(is_trigger_called.get(), true);
 }

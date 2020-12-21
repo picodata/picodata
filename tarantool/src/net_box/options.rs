@@ -1,5 +1,8 @@
 use bitflags::_core::time::Duration;
 
+use crate::error::Error;
+use crate::net_box::Conn;
+
 /// Most [Conn](struct.Conn.html) methods allow a `options` argument
 ///
 /// Some options are applicable **only to some** methods (will be ignored otherwise).  
@@ -59,4 +62,23 @@ pub struct ConnOptions {
 
     /// Duration to wait before returning “error: Connection timed out”.
     pub connect_timeout: Duration,
+
+    /// Triggers
+    pub triggers: Option<Box<dyn ConnTriggers>>,
+}
+
+pub trait ConnTriggers {
+    /// Defines a trigger for execution when a new connection is established, and authentication and schema fetch are
+    /// completed due to an event such as `connect`.
+    ///
+    /// If the trigger execution fails and an exception happens, the connection’s state changes to ‘error’. In this
+    /// case, the connection is terminated, regardless of the reconnect_after option’s value.
+    fn on_connect(&self, conn: &Conn) -> Result<(), Error>;
+
+    /// Define a trigger for execution after a connection is closed.
+    fn on_disconnect(&self);
+
+    /// Define a trigger executed when some operation has been performed on the remote server after schema has been
+    /// updated. So, if a server request fails due to a schema version mismatch error, schema reload is triggered.
+    fn on_schema_reload(&self, conn: &Conn);
 }
