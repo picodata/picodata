@@ -53,6 +53,7 @@ pub struct ConnOptions {
 
     /// If `reconnect_after` is greater than zero, then a [Conn](struct.Conn.html) instance will try to reconnect if a
     /// connection is broken or if a connection attempt fails.
+    ///
     /// This makes transient network failures become transparent to the application.
     /// Reconnect happens automatically in the background, so requests that initially fail due to connectivity loss are
     /// transparently retried.
@@ -63,7 +64,12 @@ pub struct ConnOptions {
     /// Duration to wait before returning “error: Connection timed out”.
     pub connect_timeout: Duration,
 
-    /// Triggers
+    /// Triggers for some connection states changes.
+    ///
+    /// Events can be hooked:
+    /// - on connection set
+    /// - after disconnected
+    /// - after schema updated  
     pub triggers: Option<Box<dyn ConnTriggers>>,
 }
 
@@ -71,8 +77,8 @@ pub trait ConnTriggers {
     /// Defines a trigger for execution when a new connection is established, and authentication and schema fetch are
     /// completed due to an event such as `connect`.
     ///
-    /// If the trigger execution fails and an exception happens, the connection’s state changes to ‘error’. In this
-    /// case, the connection is terminated, regardless of the reconnect_after option’s value.
+    /// If the trigger execution fails and an exception happens, the connection’s state changes to `error`. In this
+    /// case, the connection is terminated.
     fn on_connect(&self, conn: &Conn) -> Result<(), Error>;
 
     /// Define a trigger for execution after a connection is closed.

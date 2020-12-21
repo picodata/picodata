@@ -6,6 +6,7 @@ use crate::tuple::{AsTuple, Tuple};
 use std::io::Cursor;
 use std::rc::Rc;
 
+/// Remote index (a group of key values and pointers)
 pub struct RemoteIndex {
     conn_inner: Rc<ConnInner>,
     space_id: u32,
@@ -141,6 +142,7 @@ impl RemoteIndex {
     }
 }
 
+/// Remote index iterator. Can be used with `for` statement
 pub struct RemoteIndexIterator {
     inner: Option<protocol::ResponseIterator>,
 }

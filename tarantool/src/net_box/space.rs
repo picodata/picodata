@@ -10,6 +10,7 @@ use super::inner::ConnInner;
 use super::options::Options;
 use super::protocol;
 
+/// Remote space
 pub struct RemoteSpace {
     conn_inner: Rc<ConnInner>,
     space_id: u32,
