@@ -75,6 +75,8 @@ pub enum SystemSpace {
     FuncIndex = 372,
     /// Space id of _session_settings.
     SessionSettings = 380,
+    #[doc(hidden)]
+    SystemIdMax = 511,
 }
 
 impl Into<Space> for SystemSpace {
@@ -111,7 +113,7 @@ impl Space {
 
     /// Find index by name.
     ///
-    /// This function performs SELECT request to _vindex system space.
+    /// This function performs SELECT request to `_vindex` system space.
     /// - `name` - index name
     ///
     /// Returns:

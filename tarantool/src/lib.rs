@@ -7,7 +7,7 @@
 //! - Transactions
 //! - Latches
 //! - Tuple utils
-//! - Logging (see https://!docs.rs/log/0.4.11/log/)
+//! - Logging (see https://docs.rs/log/0.4.11/log/)
 //! - Error handling
 //!
 //! > **Caution!** The library is currently under development.
@@ -168,6 +168,7 @@ pub mod error;
 pub mod fiber;
 pub mod index;
 pub mod log;
+pub mod net_box;
 pub mod sequence;
 pub mod space;
 pub mod transaction;

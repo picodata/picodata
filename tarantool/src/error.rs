@@ -23,8 +23,9 @@ use std::{fmt, io};
 use failure::_core::fmt::{Display, Formatter};
 use num_traits::{FromPrimitive, ToPrimitive};
 use rmp::decode::ValueReadError;
-use rmp_serde::decode::Error as DecodeError;
-use rmp_serde::encode::Error as EncodeError;
+use rmp::encode::ValueWriteError;
+
+use crate::net_box::ResponseError;
 
 /// Represents all error cases for all routines of crate (including Tarantool errors)
 #[derive(Debug, Fail)]
@@ -36,16 +37,22 @@ pub enum Error {
     IO(io::Error),
 
     #[fail(display = "Failed to encode tuple: {}", _0)]
-    Encode(EncodeError),
+    Encode(rmp_serde::encode::Error),
 
     #[fail(display = "Failed to decode tuple: {}", _0)]
-    Decode(DecodeError),
+    Decode(rmp_serde::decode::Error),
 
     #[fail(display = "Value read error: {}", _0)]
     ValueRead(ValueReadError),
 
+    #[fail(display = "Value write error: {}", _0)]
+    ValueWrite(ValueWriteError),
+
     #[fail(display = "Transaction issue: {}", _0)]
     Transaction(TransactionError),
+
+    #[fail(display = "Sever respond with error: {}", _0)]
+    Remote(ResponseError),
 }
 
 impl From<io::Error> for Error {
@@ -54,21 +61,46 @@ impl From<io::Error> for Error {
     }
 }
 
-impl From<EncodeError> for Error {
-    fn from(error: EncodeError) -> Self {
+impl From<rmp_serde::encode::Error> for Error {
+    fn from(error: rmp_serde::encode::Error) -> Self {
         Error::Encode(error)
     }
 }
 
-impl From<DecodeError> for Error {
-    fn from(error: DecodeError) -> Self {
+impl From<rmp_serde::decode::Error> for Error {
+    fn from(error: rmp_serde::decode::Error) -> Self {
         Error::Decode(error)
+    }
+}
+
+impl From<rmpv::decode::Error> for Error {
+    fn from(error: rmpv::decode::Error) -> Self {
+        Error::Decode(match error {
+            rmpv::decode::Error::InvalidMarkerRead(err) => {
+                rmp_serde::decode::Error::InvalidMarkerRead(err)
+            }
+            rmpv::decode::Error::InvalidDataRead(err) => {
+                rmp_serde::decode::Error::InvalidDataRead(err)
+            }
+        })
     }
 }
 
 impl From<ValueReadError> for Error {
     fn from(error: ValueReadError) -> Self {
         Error::ValueRead(error)
+    }
+}
+
+impl From<ValueWriteError> for Error {
+    fn from(error: ValueWriteError) -> Self {
+        Error::ValueWrite(error)
+    }
+}
+
+impl From<ResponseError> for Error {
+    fn from(error: ResponseError) -> Self {
+        Error::Remote(error)
     }
 }
 

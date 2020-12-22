@@ -15,9 +15,6 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 tester = "0.7.0"
 
-[dependencies.luajit]
-git = "https://github.com/picodata/luajit-rs"
-
 [dependencies.tarantool-module]
 path = ".."
 
