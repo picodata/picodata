@@ -56,14 +56,14 @@
 //! # author, license, etc
 //!
 //! [dependencies]
-//! tarantool-module = "0.3.0" # (1)
+//! tarantool = "0.3.0" # (1)
 //! serde = "1.0" # (2)
 //!
 //! [lib]
 //! crate-type = ["cdylib"] # (3)
 //! ```
 //!
-//! 1. add to dependencies `tarantool-module` library;
+//! 1. add to dependencies `tarantool` library;
 //! 1. add to dependencies [Serde](https://!github.com/serde-rs/serde), this is optional and required if you want to use rust
 //! structures as a tuple values (see [this example](#harder));
 //! 1. you need to compile dynamic library.

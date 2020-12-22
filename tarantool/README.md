@@ -2,16 +2,16 @@
 
 [![Latest Version]][crates.io] [![Docs badge]][docs.rs]
 
-[Latest Version]: https://img.shields.io/crates/v/tarantool-module.svg
-[crates.io]: https://crates.io/crates/tarantool-module
+[Latest Version]: https://img.shields.io/crates/v/tarantool.svg
+[crates.io]: https://crates.io/crates/tarantool
 
 [Docs badge]: https://img.shields.io/badge/docs.rs-rustdoc-green
-[docs.rs]: https://docs.rs/tarantool-module/
+[docs.rs]: https://docs.rs/tarantool/
 
 Tarantool API bindings for Rust. 
 This library contains the following Tarantool API's:
 
-- Box: spaces, indexes, sequences 
+- Box: spaces, indexes, sequences
 - Fibers: fiber attributes, conditional variables, latches
 - CoIO
 - Transactions
@@ -49,7 +49,7 @@ For deployment, check out the deployment notes at the end of the tutorial.
 Add the following lines to your project Cargo.toml:
 ```toml
 [dependencies]
-tarantool-module = "0.3"
+tarantool = "0.3"
 
 [lib]
 crate-type = ["cdylib"]
@@ -95,14 +95,14 @@ edition = "2018"
 # author, license, etc
 
 [dependencies]
-tarantool-module = "0.3.0" # (1)
+tarantool = "0.3.0" # (1)
 serde = "1.0" # (2)
 
 [lib]
 crate-type = ["cdylib"] # (3)
 ```
 
-1. add to dependencies `tarantool-module` library;
+1. add to dependencies `tarantool` library;
 1. add to dependencies [Serde](https://github.com/serde-rs/serde), this is optional and required if you want to use rust 
 structures as a tuple values (see [this example](#harder));
 1. you need to compile dynamic library.
