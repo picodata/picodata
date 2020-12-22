@@ -8,7 +8,7 @@ authors = [
 edition = "2018"
 license = "BSD-2-Clause"
 
-[dependencies.tarantool-module]
+[dependencies.tarantool]
 path = "../.."
 
 [lib]

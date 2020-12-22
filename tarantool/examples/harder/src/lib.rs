@@ -2,7 +2,7 @@ use std::os::raw::c_int;
 
 use serde::{Deserialize, Serialize};
 
-use tarantool_module::tuple::{AsTuple, FunctionArgs, FunctionCtx, Tuple};
+use tarantool::tuple::{AsTuple, FunctionArgs, FunctionCtx, Tuple};
 
 #[derive(Serialize, Deserialize)]
 struct Args {

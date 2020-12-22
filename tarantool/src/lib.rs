@@ -2,10 +2,10 @@
 //! This library contains the following Tarantool API's:
 //!
 //! - Box: spaces, indexes, sequences
-//! - Fibers: fiber attributes, conditional variables
+//! - Fibers: fiber attributes, conditional variables, latches
 //! - CoIO
 //! - Transactions
-//! - Latches
+//! - Protocol implementation ('net.box')  
 //! - Tuple utils
 //! - Logging (see https://docs.rs/log/0.4.11/log/)
 //! - Error handling
@@ -56,7 +56,7 @@
 //! # author, license, etc
 //!
 //! [dependencies]
-//! tarantool-module = "0.2.0" # (1)
+//! tarantool-module = "0.3.0" # (1)
 //! serde = "1.0" # (2)
 //!
 //! [lib]
@@ -84,7 +84,7 @@
 //! Edit `lib.rs` file and add the following lines:
 //! ```rust
 //! use std::os::raw::c_int;
-//! use tarantool_module::tuple::{FunctionArgs, FunctionCtx};
+//! use tarantool::tuple::{FunctionArgs, FunctionCtx};
 //!
 //! #[no_mangle]
 //! pub extern "C" fn easy(_: FunctionCtx, _: FunctionArgs) -> c_int {

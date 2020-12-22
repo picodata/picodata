@@ -29,7 +29,7 @@
 /// Example:
 /// ```rust
 /// // This will print an approximate number of years since 1970.
-/// use tarantool_module::clock::time;
+/// use tarantool::clock::time;
 /// println!("{}", time() / (365 * 24 * 60 * 60));
 /// ```
 ///
@@ -57,7 +57,7 @@ pub fn time64() -> u64 {
 /// Example:
 /// ```rust
 /// // This will print nanoseconds since the start.
-/// use tarantool_module::clock::monotonic64;
+/// use tarantool::clock::monotonic64;
 /// println!("{}", monotonic64());
 /// ```
 #[inline(always)]
@@ -82,7 +82,7 @@ pub fn monotonic64() -> u64 {
 /// Example:
 /// ```rust
 /// // This will print nanoseconds in the CPU since the start.
-/// use tarantool_module::clock::process64;
+/// use tarantool::clock::process64;
 /// println!("{}", process64());
 /// ```
 #[inline(always)]
@@ -108,7 +108,7 @@ pub fn process64() -> u64 {
 /// Example:
 /// ```rust
 /// // This will print seconds in the thread since the start.
-/// use tarantool_module::clock::thread64;
+/// use tarantool::clock::thread64;
 /// println!("{}", thread64());
 /// ```
 #[inline(always)]

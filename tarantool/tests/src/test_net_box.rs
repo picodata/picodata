@@ -2,11 +2,11 @@ use std::io;
 use std::rc::Rc;
 use std::time::Duration;
 
-use tarantool_module::error::Error;
-use tarantool_module::fiber::Fiber;
-use tarantool_module::index::IteratorType;
-use tarantool_module::net_box::{Conn, ConnOptions, ConnTriggers, Options};
-use tarantool_module::space::Space;
+use tarantool::error::Error;
+use tarantool::fiber::Fiber;
+use tarantool::index::IteratorType;
+use tarantool::net_box::{Conn, ConnOptions, ConnTriggers, Options};
+use tarantool::space::Space;
 
 use crate::common::{QueryOperation, S1Record, S2Record};
 use std::cell::{Cell, RefCell};

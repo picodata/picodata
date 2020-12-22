@@ -11,7 +11,7 @@ license = "BSD-2-Clause"
 [dependencies]
 serde = "1.0"
 
-[dependencies.tarantool-module]
+[dependencies.tarantool]
 path = "../.."
 
 [lib]

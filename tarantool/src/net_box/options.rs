@@ -36,7 +36,7 @@ pub struct ConnOptions {
     ///
     /// Example:
     /// ```rust
-    /// # use tarantool_module::net_box::{Conn, ConnOptions};
+    /// # use tarantool::net_box::{Conn, ConnOptions};
     /// Conn::new(
     ///     "localhost:3301",
     ///     ConnOptions {

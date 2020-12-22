@@ -19,7 +19,7 @@ use crate::tuple::{AsTuple, Tuple};
 ///
 /// Example:
 /// ```rust
-/// use tarantool_module::space::SystemSpace;
+/// use tarantool::space::SystemSpace;
 /// let schema_space = SystemSpace::Schema.into();
 /// ```
 #[repr(u32)]

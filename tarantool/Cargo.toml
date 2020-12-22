@@ -1,7 +1,7 @@
 [package]
-name = "tarantool-module"
+name = "tarantool"
 description = "Tarantool rust bindings"
-version = "0.2.1"
+version = "0.3.0"
 authors = [
     "Dmitriy Koltsov <dkoltsov@picodata.io>",
     "Anton Melnikov <volt0@picodata.io>"
@@ -10,7 +10,8 @@ edition = "2018"
 license = "BSD-2-Clause"
 readme = "README.md"
 repository = "https://github.com/picodata/tarantool-module"
-keywords = ["ffi", "tarantool"]
+keywords = ["ffi", "database", "tarantool"]
+categories = ["database"]
 
 [dependencies]
 base64 = "0.13"

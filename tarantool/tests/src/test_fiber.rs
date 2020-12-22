@@ -1,7 +1,7 @@
 use std::rc::Rc;
 use std::time::Duration;
 
-use tarantool_module::fiber::{fiber_yield, is_cancelled, sleep, Cond, Fiber, FiberAttr};
+use tarantool::fiber::{fiber_yield, is_cancelled, sleep, Cond, Fiber, FiberAttr};
 
 pub fn test_fiber_new() {
     let mut fiber = Fiber::new("test_fiber", &mut |_| 0);

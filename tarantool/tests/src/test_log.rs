@@ -1,6 +1,6 @@
 use log::{warn, LevelFilter};
 
-use tarantool_module::log::{say, SayLevel, TarantoolLogger};
+use tarantool::log::{say, SayLevel, TarantoolLogger};
 
 pub fn test_log() {
     log::set_logger(&TarantoolLogger {}).unwrap();

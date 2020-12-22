@@ -1,9 +1,9 @@
 use rand::Rng;
 
-use tarantool_module::index::IteratorType;
-use tarantool_module::sequence::Sequence;
-use tarantool_module::space::{Space, SystemSpace};
-use tarantool_module::tuple::Tuple;
+use tarantool::index::IteratorType;
+use tarantool::sequence::Sequence;
+use tarantool::space::{Space, SystemSpace};
+use tarantool::tuple::Tuple;
 
 use crate::common::{QueryOperation, S1Record, S2Key, S2Record};
 

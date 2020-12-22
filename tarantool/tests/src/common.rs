@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
-use tarantool_module::tuple::AsTuple;
+
+use tarantool::tuple::AsTuple;
 
 #[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct S1Record {

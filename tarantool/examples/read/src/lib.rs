@@ -2,8 +2,8 @@ use std::os::raw::c_int;
 
 use serde::{Deserialize, Serialize};
 
-use tarantool_module::space::Space;
-use tarantool_module::tuple::{AsTuple, FunctionArgs, FunctionCtx};
+use tarantool::space::Space;
+use tarantool::tuple::{AsTuple, FunctionArgs, FunctionCtx};
 
 #[derive(Serialize, Deserialize, Debug)]
 struct Row {

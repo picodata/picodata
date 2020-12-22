@@ -1,8 +1,8 @@
 use std::io;
 
-use tarantool_module::error::Error;
-use tarantool_module::space::Space;
-use tarantool_module::transaction::start_transaction;
+use tarantool::error::Error;
+use tarantool::space::Space;
+use tarantool::transaction::start_transaction;
 
 use crate::common::S1Record;
 

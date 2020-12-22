@@ -12,10 +12,10 @@ Tarantool API bindings for Rust.
 This library contains the following Tarantool API's:
 
 - Box: spaces, indexes, sequences 
-- Fibers: fiber attributes, conditional variables
+- Fibers: fiber attributes, conditional variables, latches
 - CoIO
 - Transactions
-- Latches
+- Protocol implementation ('net.box')
 - Tuple utils
 - Logging (see https://docs.rs/log/0.4.11/log/)
 - Error handling
@@ -49,7 +49,7 @@ For deployment, check out the deployment notes at the end of the tutorial.
 Add the following lines to your project Cargo.toml:
 ```toml
 [dependencies]
-tarantool-module = "0.2"
+tarantool-module = "0.3"
 
 [lib]
 crate-type = ["cdylib"]
@@ -95,7 +95,7 @@ edition = "2018"
 # author, license, etc
 
 [dependencies]
-tarantool-module = "0.2.0" # (1)
+tarantool-module = "0.3.0" # (1)
 serde = "1.0" # (2)
 
 [lib]

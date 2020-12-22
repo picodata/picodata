@@ -40,7 +40,7 @@ use crate::error::{Error, TarantoolError};
 ///
 /// Example:
 /// ```rust
-/// use tarantool_module::fiber::Fiber;
+/// use tarantool::fiber::Fiber;
 /// let mut fiber = Fiber::new("test_fiber", &mut |_| {
 ///     println!("I'm a fiber");
 ///     0
@@ -279,7 +279,7 @@ impl Drop for FiberAttr {
 /// Example:
 ///
 /// ```rust
-/// use tarantool_module::fiber::Cond;
+/// use tarantool::fiber::Cond;
 /// let cond = fiber.cond();
 /// cond.wait();
 /// ```

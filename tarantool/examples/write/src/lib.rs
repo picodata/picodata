@@ -1,10 +1,10 @@
 use std::os::raw::c_int;
 
-use tarantool_module::error::{set_error, Error, TarantoolErrorCode};
-use tarantool_module::fiber::sleep;
-use tarantool_module::space::Space;
-use tarantool_module::transaction::start_transaction;
-use tarantool_module::tuple::{FunctionArgs, FunctionCtx};
+use tarantool::error::{set_error, Error, TarantoolErrorCode};
+use tarantool::fiber::sleep;
+use tarantool::space::Space;
+use tarantool::transaction::start_transaction;
+use tarantool::tuple::{FunctionArgs, FunctionCtx};
 
 #[no_mangle]
 pub extern "C" fn hardest(ctx: FunctionCtx, _: FunctionArgs) -> c_int {

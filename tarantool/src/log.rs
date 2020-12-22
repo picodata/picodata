@@ -3,7 +3,7 @@
 //! Example:
 //! ```rust
 //! use log::{info, LevelFilter};
-//! use tarantool_module::log::{TarantoolLogger, say, SayLevel};
+//! use tarantool::log::{TarantoolLogger, say, SayLevel};
 //!
 //! log::set_logger(&TarantoolLogger {}).unwrap();
 //! log::set_max_level(LevelFilter::Debug);
