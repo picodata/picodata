@@ -7,7 +7,7 @@ box.cfg{
 }
 
 -- Init test database
-box.once('bootstrap', function()
+box.once('bootstrap_tests', function()
     box.schema.user.create('test_user', { password = 'password' })
     box.schema.user.grant('test_user', 'read,write,execute,create,drop', 'universe')
 
@@ -68,5 +68,6 @@ end
 package.cpath = 'target/debug/?.so;' .. package.cpath
 
 -- Run tests
-local exit_code = require('libtarantool_module_test_runner')
+local test_main = require('libtarantool_module_test_runner')
+local exit_code = test_main()
 os.exit(exit_code)

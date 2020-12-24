@@ -2,4 +2,7 @@ all:
 	cargo build --all
 
 test:
-	tests/run-tests.lua
+	tests/run_tests.lua
+
+benchmark:
+	tests/run_benchmarks.lua
