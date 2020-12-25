@@ -32,28 +32,37 @@ local num_rows = 1000;
 local num_passes = 100;
 
 local text = string.rep('X', test_size)
-
-local_space = box.space.bench_s1
-local_space:truncate()
-
 local pass_times = {}
 
 ------------------------------------------------------------------------------
 
 for i = 1, num_passes do
     local begin_time = tonumber(clock.monotonic64())
+    local local_space = box.space.bench_s1
+    local_space:truncate()
 
+    local fiber_pool = {}
     for i = 1, num_fibers do
-        fiber.create(
+        local fiber = fiber.create(
             function(id_base)
                 local conn = net_box.connect('bench_user:password@127.0.0.1:3301')
                 local remote_space = conn.space.bench_s1
                 for id = 1, num_rows  do
                     remote_space:insert{id + id_base, text}
                 end
+                conn:close()
             end,
             i * num_rows
         )
+        fiber:set_joinable(true)
+        table.insert(fiber_pool, fiber)
+    end
+
+    for i = 1, num_fibers do
+        local fiber = fiber_pool[i]
+        if fiber:status() ~= 'dead' then
+            local result = fiber:join()
+        end
     end
 
     local end_time = tonumber(clock.monotonic64())
