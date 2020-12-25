@@ -208,7 +208,7 @@ impl ConnInner {
                         self.handle_error(err.into())?;
                     }
 
-                    let response = self.recv_response(sync, options)?.unwrap();
+                    let response = self.recv_response(sync, options)?;
                     if self.state() == ConnState::FetchSchema {
                         self.sync_schema()?;
                     }
@@ -380,11 +380,7 @@ impl ConnInner {
         stream.write_with_timeout(data, options.timeout)
     }
 
-    fn recv_response(
-        &self,
-        sync: u64,
-        options: &Options,
-    ) -> Result<Option<protocol::Response>, Error> {
+    fn recv_response(&self, sync: u64, options: &Options) -> Result<protocol::Response, Error> {
         let _lock = self.session_lock.lock();
         let mut session = self.session.borrow_mut();
 
@@ -406,7 +402,12 @@ impl ConnInner {
             .unwrap();
 
         if wait_is_completed {
-            Ok(session.active_requests.remove(&sync).unwrap().response)
+            Ok(session
+                .active_requests
+                .remove(&sync)
+                .unwrap()
+                .response
+                .unwrap())
         } else {
             Err(io::Error::from(io::ErrorKind::TimedOut).into())
         }
