@@ -8,9 +8,7 @@ use tester::{
     TestDescAndFn, TestFn, TestName, TestOpts, TestType,
 };
 
-use benchmarks::BenchCase1;
-
-mod benchmarks;
+mod bench_bulk_insert;
 mod common;
 mod test_box;
 mod test_coio;
@@ -31,7 +29,7 @@ macro_rules! tests {
                     ignore: false,
                     should_panic: ShouldPanic::No,
                     allow_fail: false,
-                    test_type: TestType::UnitTest
+                    test_type: TestType::IntegrationTest
                 },
                 testfn: TestFn::StaticTestFn($func_name)
             },)*
@@ -67,13 +65,17 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
         if cfg.bench {
             vec![TestDescAndFn {
                 desc: TestDesc {
-                    name: TestName::StaticTestName("bench_case_1"),
+                    name: TestName::StaticTestName("bench_bulk_insert:100/100"),
                     ignore: false,
                     should_panic: ShouldPanic::No,
                     allow_fail: false,
-                    test_type: TestType::UnitTest,
+                    test_type: TestType::Unknown,
                 },
-                testfn: TestFn::DynBenchFn(Box::new(BenchCase1 {})),
+                testfn: TestFn::DynBenchFn(Box::new(bench_bulk_insert::BulkInsertBenchmark {
+                    test_size: 1000,
+                    num_fibers: 10,
+                    num_rows: 10,
+                })),
             }]
         } else {
             tests![
