@@ -18,11 +18,12 @@
 
 use std::ffi::{CStr, CString};
 use std::os::raw::c_int;
+use std::str::Utf8Error;
 use std::{fmt, io};
 
 use failure::_core::fmt::{Display, Formatter};
 use num_traits::{FromPrimitive, ToPrimitive};
-use rmp::decode::ValueReadError;
+use rmp::decode::{MarkerReadError, NumValueReadError, ValueReadError};
 use rmp::encode::ValueWriteError;
 
 use crate::net_box::ResponseError;
@@ -41,6 +42,12 @@ pub enum Error {
 
     #[fail(display = "Failed to decode tuple: {}", _0)]
     Decode(rmp_serde::decode::Error),
+
+    #[fail(display = "Unicode string decode error: {}", _0)]
+    Unicode(Utf8Error),
+
+    #[fail(display = "Numeric value read error: {}", _0)]
+    NumValueRead(NumValueReadError),
 
     #[fail(display = "Value read error: {}", _0)]
     ValueRead(ValueReadError),
@@ -73,16 +80,21 @@ impl From<rmp_serde::decode::Error> for Error {
     }
 }
 
-impl From<rmpv::decode::Error> for Error {
-    fn from(error: rmpv::decode::Error) -> Self {
-        Error::Decode(match error {
-            rmpv::decode::Error::InvalidMarkerRead(err) => {
-                rmp_serde::decode::Error::InvalidMarkerRead(err)
-            }
-            rmpv::decode::Error::InvalidDataRead(err) => {
-                rmp_serde::decode::Error::InvalidDataRead(err)
-            }
-        })
+impl From<Utf8Error> for Error {
+    fn from(error: Utf8Error) -> Self {
+        Error::Unicode(error)
+    }
+}
+
+impl From<NumValueReadError> for Error {
+    fn from(error: NumValueReadError) -> Self {
+        Error::NumValueRead(error)
+    }
+}
+
+impl From<MarkerReadError> for Error {
+    fn from(error: MarkerReadError) -> Self {
+        Error::ValueRead(error.into())
     }
 }
 

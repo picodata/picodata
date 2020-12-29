@@ -3,7 +3,8 @@
 box.cfg{
     listen = 3301,
     memtx_memory = 48 * 1024 * 1024 * 1024,
-    net_msg_max = 50000,
+    net_msg_max = 500000,
+    readahead = 1024 * 1024,
     wal_mode = 'none'
 }
 

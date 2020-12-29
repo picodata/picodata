@@ -73,8 +73,8 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 },
                 testfn: TestFn::DynBenchFn(Box::new(bench_bulk_insert::BulkInsertBenchmark {
                     test_size: 1000,
-                    num_fibers: 10,
-                    num_rows: 10,
+                    num_fibers: 503,
+                    num_rows: 1000,
                 })),
             }]
         } else {

@@ -3,7 +3,8 @@
 box.cfg{
     listen = 3301,
     memtx_memory = 48 * 1024 * 1024 * 1024,
-    net_msg_max = 5000,
+    net_msg_max = 500000,
+    readahead = 1024 * 1024,
     wal_mode = 'none'
 }
 
@@ -27,9 +28,9 @@ fiber = require('fiber')
 net_box = require('net.box')
 
 local test_size = 1000;
-local num_fibers = 10;
+local num_fibers = 503;
 local num_rows = 1000;
-local num_passes = 100;
+local num_passes = 301;
 
 local text = string.rep('X', test_size)
 local pass_times = {}
