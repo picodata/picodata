@@ -56,6 +56,7 @@ mod index;
 mod inner;
 mod options;
 mod protocol;
+mod send_queue;
 mod space;
 
 /// Connection to remote Tarantool server
