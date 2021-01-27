@@ -1,8 +1,10 @@
-use std::collections::{HashMap, VecDeque};
+use core::str::from_utf8;
+use std::collections::VecDeque;
 use std::fmt::{Display, Formatter};
-use std::io::{self, Cursor, Read, Write};
+use std::io::{self, Cursor, Read, Seek, SeekFrom, Write};
 use std::os::raw::c_char;
 
+use byteorder::{BigEndian, ReadBytesExt};
 use sha1::{Digest, Sha1};
 
 use crate::error::Error;
@@ -306,24 +308,21 @@ where
     Ok(())
 }
 
-fn decode_map(cur: &mut Cursor<Vec<u8>>) -> Result<HashMap<u8, rmpv::Value>, Error> {
-    let mut map = HashMap::new();
+fn decode_error(cur: &mut Cursor<Vec<u8>>) -> Result<ResponseError, Error> {
+    let mut message: Option<String> = None;
+
     let map_len = rmp::decode::read_map_len(cur)?;
     for _ in 0..map_len {
-        let key = rmp::decode::read_pfix(cur)?;
-        let value = rmpv::decode::read_value(cur)?;
-        map.insert(key, value);
+        if rmp::decode::read_pfix(cur)? == ERROR {
+            let str_len = rmp::decode::read_str_len(cur)? as usize;
+            let mut str_buf = vec![0u8; str_len];
+            cur.read_exact(&mut str_buf)?;
+            message = Some(from_utf8(&mut str_buf)?.to_string());
+        }
     }
-    Ok(map)
-}
 
-fn decode_error(cur: &mut Cursor<Vec<u8>>) -> Result<ResponseError, Error> {
-    let mut err_data = decode_map(cur)?;
     Ok(ResponseError {
-        message: err_data
-            .remove(&ERROR)
-            .ok_or(io::Error::from(io::ErrorKind::InvalidData))?
-            .to_string(),
+        message: message.ok_or(io::Error::from(io::ErrorKind::InvalidData))?,
     })
 }
 
@@ -344,22 +343,24 @@ pub fn decode_response<R: Read>(stream: &mut R) -> Result<Response, Error> {
     stream.read_exact(&mut *buf)?;
     let mut cur = Cursor::new(buf);
 
-    // decode header
-    let header = decode_map(&mut cur)?;
-    let status_code = header
-        .get(&0)
-        .map_or(None, |val| val.as_u64())
-        .ok_or(io::Error::from(io::ErrorKind::InvalidData))? as u32;
+    let mut sync: Option<u64> = None;
+    let mut schema_version: Option<u32> = None;
+    let mut status_code: Option<u32> = None;
 
-    let sync = header
-        .get(&SYNC)
-        .map_or(None, |val| val.as_u64())
-        .ok_or(io::Error::from(io::ErrorKind::InvalidData))?;
+    let map_len = rmp::decode::read_map_len(&mut cur)?;
+    for _ in 0..map_len {
+        let key = rmp::decode::read_pfix(&mut cur)?;
+        match key {
+            0 => status_code = Some(rmp::decode::read_int(&mut cur)?),
+            SYNC => sync = Some(rmp::decode::read_int(&mut cur)?),
+            SCHEMA_VERSION => schema_version = Some(rmp::decode::read_int(&mut cur)?),
+            _ => skip_msgpack(&mut cur)?,
+        }
+    }
 
-    let schema_version = header
-        .get(&SCHEMA_VERSION)
-        .map_or(None, |val| val.as_u64())
-        .ok_or(io::Error::from(io::ErrorKind::InvalidData))? as u32;
+    let status_code = status_code.ok_or(io::Error::from(io::ErrorKind::InvalidData))?;
+    let sync = sync.ok_or(io::Error::from(io::ErrorKind::InvalidData))?;
+    let schema_version = schema_version.ok_or(io::Error::from(io::ErrorKind::InvalidData))?;
 
     Ok(Response {
         status_code,
@@ -367,6 +368,107 @@ pub fn decode_response<R: Read>(stream: &mut R) -> Result<Response, Error> {
         schema_version,
         payload_cur: cur,
     })
+}
+
+fn skip_msgpack(cur: &mut Cursor<Vec<u8>>) -> Result<(), Error> {
+    use rmp::Marker;
+
+    match rmp::decode::read_marker(cur)? {
+        Marker::FixPos(_) | Marker::FixNeg(_) | Marker::Null | Marker::True | Marker::False => {}
+        Marker::U8 | Marker::I8 => {
+            cur.seek(SeekFrom::Current(1))?;
+        }
+        Marker::U16 | Marker::I16 => {
+            cur.seek(SeekFrom::Current(2))?;
+        }
+        Marker::U32 | Marker::I32 | Marker::F32 => {
+            cur.seek(SeekFrom::Current(4))?;
+        }
+        Marker::U64 | Marker::I64 | Marker::F64 => {
+            cur.seek(SeekFrom::Current(8))?;
+        }
+        Marker::FixStr(len) => {
+            cur.seek(SeekFrom::Current(len as i64))?;
+        }
+        Marker::Str8 | Marker::Bin8 => {
+            let len = cur.read_u8()?;
+            cur.seek(SeekFrom::Current(len as i64))?;
+        }
+        Marker::Str16 | Marker::Bin16 => {
+            let len = cur.read_u16::<BigEndian>()?;
+            cur.seek(SeekFrom::Current(len as i64))?;
+        }
+        Marker::Str32 | Marker::Bin32 => {
+            let len = cur.read_u32::<BigEndian>()?;
+            cur.seek(SeekFrom::Current(len as i64))?;
+        }
+        Marker::FixArray(len) => {
+            for _ in 0..len {
+                skip_msgpack(cur)?;
+            }
+        }
+        Marker::Array16 => {
+            let len = cur.read_u16::<BigEndian>()?;
+            for _ in 0..len {
+                skip_msgpack(cur)?;
+            }
+        }
+        Marker::Array32 => {
+            let len = cur.read_u32::<BigEndian>()?;
+            for _ in 0..len {
+                skip_msgpack(cur)?;
+            }
+        }
+        Marker::FixMap(len) => {
+            let len = len * 2;
+            for _ in 0..len {
+                skip_msgpack(cur)?;
+            }
+        }
+        Marker::Map16 => {
+            let len = cur.read_u16::<BigEndian>()? * 2;
+            for _ in 0..len {
+                skip_msgpack(cur)?;
+            }
+        }
+        Marker::Map32 => {
+            let len = cur.read_u32::<BigEndian>()? * 2;
+            for _ in 0..len {
+                skip_msgpack(cur)?;
+            }
+        }
+        Marker::FixExt1 => {
+            cur.seek(SeekFrom::Current(2))?;
+        }
+        Marker::FixExt2 => {
+            cur.seek(SeekFrom::Current(3))?;
+        }
+        Marker::FixExt4 => {
+            cur.seek(SeekFrom::Current(5))?;
+        }
+        Marker::FixExt8 => {
+            cur.seek(SeekFrom::Current(9))?;
+        }
+        Marker::FixExt16 => {
+            cur.seek(SeekFrom::Current(17))?;
+        }
+        Marker::Ext8 => {
+            let len = cur.read_u8()?;
+            cur.seek(SeekFrom::Current(len as i64 + 1))?;
+        }
+        Marker::Ext16 => {
+            let len = cur.read_u16::<BigEndian>()?;
+            cur.seek(SeekFrom::Current(len as i64 + 1))?;
+        }
+        Marker::Ext32 => {
+            let len = cur.read_u32::<BigEndian>()?;
+            cur.seek(SeekFrom::Current(len as i64 + 1))?;
+        }
+        Marker::Reserved => {
+            return Err(rmp::decode::ValueReadError::TypeMismatch(Marker::Reserved).into())
+        }
+    }
+    Ok(())
 }
 
 pub struct Response {
@@ -398,7 +500,7 @@ impl Response {
                         }
                     }
                     _ => {
-                        rmpv::decode::read_value(&mut self.payload_cur)?;
+                        skip_msgpack(&mut self.payload_cur)?;
                     }
                 };
             }
@@ -419,7 +521,7 @@ impl Response {
                         let start_offset = self.payload_cur.position() as usize;
                         let mut offsets = VecDeque::with_capacity(items_count as usize);
                         for _ in 0..items_count {
-                            rmpv::decode::read_value(&mut self.payload_cur)?;
+                            skip_msgpack(&mut self.payload_cur)?;
                             offsets.push_back(self.payload_cur.position() as usize);
                         }
 
@@ -431,7 +533,7 @@ impl Response {
                         }));
                     }
                     _ => {
-                        rmpv::decode::read_value(&mut self.payload_cur).unwrap();
+                        skip_msgpack(&mut self.payload_cur)?;
                     }
                 };
             }
