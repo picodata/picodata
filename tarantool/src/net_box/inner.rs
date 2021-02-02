@@ -1,3 +1,4 @@
+#![allow(unused)]
 use core::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::io;
@@ -274,12 +275,12 @@ impl ConnInner {
         session.update_state(ConnState::Active);
 
         // call trigger (if available)
-        if let Some(triggers) = self.triggers.borrow().as_ref() {
-            triggers.callbacks.on_connect(&Conn {
-                inner: triggers.self_ref.upgrade().unwrap(),
-                is_master: false,
-            })?;
-        }
+        // if let Some(triggers) = self.triggers.borrow().as_ref() {
+        //     triggers.callbacks.on_connect(&Conn {
+        //         inner: triggers.self_ref.upgrade().unwrap(),
+        //         is_master: false,
+        //     })?;
+        // }
 
         Ok(())
     }
@@ -312,12 +313,12 @@ impl ConnInner {
         let indexes_response = self.fetch_schema_indexes(stream)?;
         session.schema.update(spaces_response, indexes_response)?;
 
-        if let Some(triggers) = self.triggers.borrow().as_ref() {
-            triggers.callbacks.on_schema_reload(&Conn {
-                inner: triggers.self_ref.upgrade().unwrap(),
-                is_master: false,
-            });
-        }
+        // if let Some(triggers) = self.triggers.borrow().as_ref() {
+        //     triggers.callbacks.on_schema_reload(&Conn {
+        //         inner: triggers.self_ref.upgrade().unwrap(),
+        //         is_master: false,
+        //     });
+        // }
 
         session.update_state(ConnState::Active);
         Ok(())

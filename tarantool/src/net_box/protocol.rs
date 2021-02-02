@@ -45,6 +45,19 @@ enum IProtoType {
     Ping = 64,
 }
 
+fn encode_header(
+    stream: &mut impl Write,
+    sync: u64,
+    request_type: IProtoType,
+) -> Result<(), Error> {
+    rmp::encode::write_map_len(stream, 2)?;
+    rmp::encode::write_pfix(stream, REQUEST_TYPE)?;
+    rmp::encode::write_pfix(stream, request_type as u8)?;
+    rmp::encode::write_pfix(stream, SYNC)?;
+    rmp::encode::write_uint(stream, sync)?;
+    Ok(())
+}
+
 fn prepare_request(
     buf: &mut Cursor<Vec<u8>>,
     sync: u64,
@@ -120,10 +133,9 @@ pub fn encode_auth(
     Ok(())
 }
 
-pub fn encode_ping(buf: &mut Cursor<Vec<u8>>, sync: u64) -> Result<(), Error> {
-    let header_offset = prepare_request(buf, sync, IProtoType::Ping)?;
-    rmp::encode::write_map_len(buf, 0)?;
-    encode_request(buf, header_offset)?;
+pub fn encode_ping(stream: &mut impl Write, sync: u64) -> Result<(), Error> {
+    encode_header(stream, sync, IProtoType::Ping)?;
+    rmp::encode::write_map_len(stream, 0)?;
     Ok(())
 }
 
@@ -308,6 +320,40 @@ where
     Ok(())
 }
 
+#[derive(Debug)]
+pub struct Header {
+    pub sync: u64,
+    pub status_code: u32,
+    pub schema_version: u32,
+}
+
+pub fn decode_header(stream: &mut (impl Read + Seek)) -> Result<Header, Error> {
+    let mut sync: Option<u64> = None;
+    let mut status_code: Option<u32> = None;
+    let mut schema_version: Option<u32> = None;
+
+    let map_len = rmp::decode::read_map_len(stream)?;
+    for _ in 0..map_len {
+        let key = rmp::decode::read_pfix(stream)?;
+        match key {
+            0 => status_code = Some(rmp::decode::read_int(stream)?),
+            SYNC => sync = Some(rmp::decode::read_int(stream)?),
+            SCHEMA_VERSION => schema_version = Some(rmp::decode::read_int(stream)?),
+            _ => skip_msgpack(stream)?,
+        }
+    }
+
+    if sync.is_none() || status_code.is_none() || schema_version.is_none() {
+        return Err(io::Error::from(io::ErrorKind::InvalidData).into());
+    }
+
+    Ok(Header {
+        sync: sync.unwrap(),
+        status_code: status_code.unwrap(),
+        schema_version: schema_version.unwrap(),
+    })
+}
+
 fn decode_error(cur: &mut Cursor<Vec<u8>>) -> Result<ResponseError, Error> {
     let mut message: Option<String> = None;
 
@@ -326,7 +372,7 @@ fn decode_error(cur: &mut Cursor<Vec<u8>>) -> Result<ResponseError, Error> {
     })
 }
 
-pub fn decode_greeting(stream: &mut dyn Read) -> Result<Vec<u8>, Error> {
+pub fn decode_greeting(stream: &mut impl Read) -> Result<Vec<u8>, Error> {
     let mut buf = Vec::with_capacity(128);
     buf.resize(128, 0);
 
@@ -370,7 +416,7 @@ pub fn decode_response<R: Read>(stream: &mut R) -> Result<Response, Error> {
     })
 }
 
-fn skip_msgpack(cur: &mut Cursor<Vec<u8>>) -> Result<(), Error> {
+fn skip_msgpack(cur: &mut (impl Read + Seek)) -> Result<(), Error> {
     use rmp::Marker;
 
     match rmp::decode::read_marker(cur)? {
