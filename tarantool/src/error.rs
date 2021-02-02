@@ -26,6 +26,7 @@ use num_traits::{FromPrimitive, ToPrimitive};
 use rmp::decode::{MarkerReadError, NumValueReadError, ValueReadError};
 use rmp::encode::ValueWriteError;
 
+use crate::ffi::tarantool as ffi;
 use crate::net_box::ResponseError;
 
 /// Represents all error cases for all routines of crate (including Tarantool errors)
@@ -423,29 +424,5 @@ pub fn set_error(file: &str, line: u32, code: &TarantoolErrorCode, msg: &str) ->
             code.to_u32().unwrap(),
             CString::new(msg).unwrap().as_ptr(),
         )
-    }
-}
-
-mod ffi {
-    use std::os::raw::{c_char, c_int, c_uint};
-
-    #[repr(C)]
-    pub struct BoxError {
-        _unused: [u8; 0],
-    }
-
-    extern "C" {
-        pub fn box_error_code(error: *const BoxError) -> u32;
-        pub fn box_error_message(error: *const BoxError) -> *const c_char;
-        pub fn box_error_last() -> *mut BoxError;
-        pub fn box_error_type(error: *const BoxError) -> *const c_char;
-        pub fn box_error_clear();
-        pub fn box_error_set(
-            file: *const c_char,
-            line: c_uint,
-            code: u32,
-            format: *const c_char,
-            ...
-        ) -> c_int;
     }
 }

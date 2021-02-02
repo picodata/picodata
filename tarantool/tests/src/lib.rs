@@ -8,6 +8,8 @@ use tester::{
     TestDescAndFn, TestFn, TestName, TestOpts, TestType,
 };
 
+use tarantool::ffi::lua as ffi_lua;
+
 mod bench_bulk_insert;
 mod common;
 mod test_box;
@@ -155,8 +157,8 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
     )
 }
 
-pub extern "C" fn start(l: *mut ffi::lua_State) -> c_int {
-    let cfg_src = unsafe { ffi::lua_tostring(l, 1) };
+pub extern "C" fn start(l: *mut ffi_lua::lua_State) -> c_int {
+    let cfg_src = unsafe { ffi_lua::lua_tostring(l, 1) };
     let cfg = if !cfg_src.is_null() {
         let cfg_src = unsafe { CStr::from_ptr(cfg_src) }.to_str().unwrap();
         serde_json::from_str::<TestConfig>(cfg_src).unwrap()
@@ -166,49 +168,18 @@ pub extern "C" fn start(l: *mut ffi::lua_State) -> c_int {
 
     match run_tests(cfg) {
         Ok(is_success) => {
-            unsafe { ffi::lua_pushinteger(l, (!is_success) as isize) };
+            unsafe { ffi_lua::lua_pushinteger(l, (!is_success) as isize) };
             1
         }
         Err(e) => {
-            unsafe { ffi::luaL_error(l, e.to_string().as_ptr() as *const c_schar) };
+            unsafe { ffi_lua::luaL_error(l, e.to_string().as_ptr() as *const c_schar) };
             0
         }
     }
 }
 
 #[no_mangle]
-pub extern "C" fn luaopen_libtarantool_module_test_runner(l: *mut ffi::lua_State) -> c_int {
-    unsafe { ffi::lua_pushcfunction(l, Some(start)) };
+pub extern "C" fn luaopen_libtarantool_module_test_runner(l: *mut ffi_lua::lua_State) -> c_int {
+    unsafe { ffi_lua::lua_pushcfunction(l, Some(start)) };
     1
-}
-
-#[allow(non_camel_case_types)]
-mod ffi {
-    use std::os::raw::{c_int, c_schar};
-    use std::ptr::null_mut;
-
-    #[repr(C)]
-    #[derive(Debug, Copy, Clone)]
-    pub struct lua_State {
-        _unused: [u8; 0],
-    }
-
-    pub type lua_CFunction = Option<unsafe extern "C" fn(l: *mut lua_State) -> c_int>;
-
-    #[inline(always)]
-    pub unsafe fn lua_pushcfunction(state: *mut lua_State, f: lua_CFunction) {
-        lua_pushcclosure(state, f, 0);
-    }
-
-    #[inline(always)]
-    pub unsafe fn lua_tostring(state: *mut lua_State, i: c_int) -> *const c_schar {
-        lua_tolstring(state, i, null_mut())
-    }
-
-    extern "C" {
-        pub fn lua_pushinteger(l: *mut lua_State, n: isize);
-        pub fn lua_pushcclosure(l: *mut lua_State, fun: lua_CFunction, n: c_int);
-        pub fn lua_tolstring(l: *mut lua_State, idx: c_int, len: *mut usize) -> *const c_schar;
-        pub fn luaL_error(l: *mut lua_State, fmt: *const c_schar, ...) -> c_int;
-    }
 }

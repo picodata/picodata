@@ -28,6 +28,7 @@
 //! - [C API reference: Module txn](https://www.tarantool.io/en/doc/latest/dev_guide/reference_capi/txn/)
 
 use crate::error::TransactionError;
+use crate::ffi::tarantool as ffi;
 
 /// Begin a transaction in the current fiber.
 ///
@@ -62,17 +63,4 @@ where
         }
     }
     result
-}
-
-pub(crate) mod ffi {
-    use std::ffi::c_void;
-    use std::os::raw::c_int;
-
-    extern "C" {
-        pub fn box_txn() -> bool;
-        pub fn box_txn_begin() -> c_int;
-        pub fn box_txn_commit() -> c_int;
-        pub fn box_txn_rollback() -> c_int;
-        pub fn box_txn_alloc(size: usize) -> *mut c_void;
-    }
 }
