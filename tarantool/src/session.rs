@@ -1,8 +1,17 @@
+//! Box: session
+//!
+//! A session is an object associated with each client connection.
+//! box.session submodule provides functions to query session state.
+//!
+//! See also:
+//! - [Lua reference: Submodule box.session](https://www.tarantool.io/en/doc/1.10/reference/reference_lua/box_session/)
 use std::ffi::CString;
 
+use crate::error::{Error, TarantoolError};
 use crate::ffi::lua as ffi_lua;
 
-pub fn uid() -> Option<isize> {
+/// Get the user ID of the current user.
+pub fn uid() -> Result<isize, Error> {
     let result = unsafe {
         // Create new stack (just in case - in order no to mess things
         // in current stack).
@@ -18,9 +27,9 @@ pub fn uid() -> Option<isize> {
         ffi_lua::lua_getfield(uid_state, -1, name_uid.as_ptr());
 
         let result = if ffi_lua::luaT_call(uid_state, 0, 1) == 1 {
-            None
+            return Err(TarantoolError::last().into());
         } else {
-            Some(ffi_lua::lua_tointeger(uid_state, -1))
+            Ok(ffi_lua::lua_tointeger(uid_state, -1))
         };
 
         // No need to clean uid_state. It will be gc'ed.
@@ -30,7 +39,8 @@ pub fn uid() -> Option<isize> {
     result
 }
 
-pub fn euid() -> Option<isize> {
+/// Get the effective user ID of the current user.
+pub fn euid() -> Result<isize, Error> {
     let result = unsafe {
         // Create new stack (just in case - in order no to mess things
         // in current stack).
@@ -46,9 +56,9 @@ pub fn euid() -> Option<isize> {
         ffi_lua::lua_getfield(euid_state, -1, name_euid.as_ptr());
 
         let result = if ffi_lua::luaT_call(euid_state, 0, 1) == 1 {
-            None
+            return Err(TarantoolError::last().into());
         } else {
-            Some(ffi_lua::lua_tointeger(euid_state, -1))
+            Ok(ffi_lua::lua_tointeger(euid_state, -1))
         };
 
         // No need to clean euid_state. It will be gc'ed.
