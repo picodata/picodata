@@ -310,7 +310,7 @@ impl ConnInner {
     }
 
     fn wait_state_changed(&self) {
-        unimplemented!()
+        self.state_change_cond.wait();
     }
 
     fn handle_error(&self, err: Error) -> Result<(), Error> {
@@ -358,7 +358,7 @@ fn send_worker(conn: Box<Rc<ConnInner>>) -> i32 {
             }
             ConnState::Closed => return 0,
             _ => {
-                conn.state_change_cond.wait();
+                conn.wait_state_changed();
             }
         }
     }
@@ -381,7 +381,7 @@ fn recv_worker(conn: Box<Rc<ConnInner>>) -> i32 {
             }
             ConnState::Closed => return 0,
             _ => {
-                conn.state_change_cond.wait();
+                conn.wait_state_changed();
             }
         }
     }

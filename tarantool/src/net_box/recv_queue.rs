@@ -62,8 +62,15 @@ impl RecvQueue {
         let response_len = decode::read_u32(stream)?;
         let header = {
             let _lock = self.lock.lock();
+
             let mut buffer = self.buffer.borrow_mut();
-            buffer.get_mut().reserve(response_len as usize);
+            buffer.set_position(0);
+            {
+                let buffer = buffer.get_mut();
+                buffer.clear();
+                buffer.reserve(response_len as usize);
+            }
+
             stream
                 .take(response_len as u64)
                 .read_to_end(buffer.get_mut())?;
