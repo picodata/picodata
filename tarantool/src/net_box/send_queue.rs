@@ -5,6 +5,7 @@ use crate::error::Error;
 use crate::fiber::{Cond, Latch};
 
 pub struct SendQueue {
+    is_active: Cell<bool>,
     sync: Cell<u64>,
     front_buffer: RefCell<Cursor<Vec<u8>>>,
     back_buffer: RefCell<Cursor<Vec<u8>>>,
@@ -15,6 +16,7 @@ pub struct SendQueue {
 impl SendQueue {
     pub fn new(buffer_size: usize) -> Self {
         SendQueue {
+            is_active: Cell::new(true),
             sync: Cell::new(0),
             front_buffer: RefCell::new(Cursor::new(Vec::with_capacity(buffer_size))),
             back_buffer: RefCell::new(Cursor::new(Vec::with_capacity(buffer_size))),
@@ -56,6 +58,10 @@ impl SendQueue {
             let is_data_available = {
                 let _lock = self.lock.lock();
 
+                if !self.is_active.get() {
+                    return Err(io::Error::from(io::ErrorKind::TimedOut));
+                }
+
                 let is_data_available = self.back_buffer.borrow().position() > 0;
                 if is_data_available {
                     self.back_buffer.swap(&self.front_buffer);
@@ -77,6 +83,14 @@ impl SendQueue {
         buffer.set_position(0);
         buffer.get_mut().clear();
         Ok(())
+    }
+
+    pub fn close(&self) {
+        {
+            let _lock = self.lock.lock();
+            self.is_active.set(false);
+        }
+        self.swap_cond.signal();
     }
 }
 

@@ -38,14 +38,14 @@
 //! See also:
 //! - [Lua reference: Module net.box](https://www.tarantool.io/en/doc/latest/reference/reference_lua/net_box/)
 
-use core::cell::{Cell, RefCell};
+use core::cell::RefCell;
 use core::time::Duration;
 use std::io;
 use std::io::Cursor;
 
 use std::net::{SocketAddr, ToSocketAddrs};
 use std::os::unix::io::AsRawFd;
-use std::rc::{Rc, Weak};
+use std::rc::Rc;
 
 pub use index::{RemoteIndex, RemoteIndexIterator};
 pub use options::{ConnOptions, ConnTriggers, Options};
@@ -54,7 +54,7 @@ pub use space::RemoteSpace;
 
 use crate::coio::CoIOStream;
 use crate::error::Error;
-use crate::fiber::{is_cancelled, set_cancellable, Cond, Fiber};
+use crate::fiber::{is_cancelled, set_cancellable, sleep, Cond, Fiber, Latch};
 use crate::net_box::protocol::encode_ping;
 use crate::net_box::recv_queue::RecvQueue;
 use crate::net_box::send_queue::SendQueue;
@@ -167,53 +167,58 @@ impl Drop for Conn {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-pub enum ConnState {
+#[derive(Clone)]
+enum ConnState {
     Init,
     Connecting,
     Auth,
     FetchSchema,
-    Active,
+    Active(Rc<ConnSession>),
     Error,
-    ErrorReconnect,
+    ErrorReconnect(Rc<RefCell<Option<io::Error>>>),
     Closed,
 }
 
 struct ConnInner {
     addrs: Vec<SocketAddr>,
     options: ConnOptions,
-    state: Cell<ConnState>,
+    state: RefCell<ConnState>,
+    state_lock: Latch,
     state_change_cond: Cond,
     send_queue: SendQueue,
     recv_queue: RecvQueue,
     send_fiber: RefCell<Fiber<'static, Rc<ConnInner>>>,
     recv_fiber: RefCell<Fiber<'static, Rc<ConnInner>>>,
-    self_ref: RefCell<Option<Weak<ConnInner>>>,
-    session: RefCell<Option<Rc<ConnSession>>>,
 }
 
 impl ConnInner {
     pub fn new(addrs: Vec<SocketAddr>, options: ConnOptions) -> Rc<Self> {
+        // init recv fiber
         let mut recv_fiber = Fiber::new("_recv_worker", &mut recv_worker);
         recv_fiber.set_joinable(true);
 
+        // init send fiber
         let mut send_fiber = Fiber::new("_send_worker", &mut send_worker);
         send_fiber.set_joinable(true);
 
-        let session = Rc::new(ConnInner {
+        // construct object
+        let conn_inner = Rc::new(ConnInner {
             addrs,
             options,
-            state: Cell::new(ConnState::Init),
+            state: RefCell::new(ConnState::Init),
+            state_lock: Latch::new(),
             state_change_cond: Cond::new(),
             send_queue: SendQueue::new(1024),
             recv_queue: RecvQueue::new(1024),
             send_fiber: RefCell::new(send_fiber),
             recv_fiber: RefCell::new(recv_fiber),
-            self_ref: RefCell::new(None),
-            session: RefCell::new(None),
         });
-        session.self_ref.replace(Some(Rc::downgrade(&session)));
-        session
+
+        // start send/recv fibers
+        conn_inner.send_fiber.borrow_mut().start(conn_inner.clone());
+        conn_inner.recv_fiber.borrow_mut().start(conn_inner.clone());
+
+        conn_inner
     }
 
     pub fn request<Fp, Fc, R>(
@@ -230,16 +235,16 @@ impl ConnInner {
             let state = self.state();
             match state {
                 ConnState::Init => {
-                    self.init(self.self_ref.replace(None).unwrap())?;
+                    self.init()?;
                 }
-                ConnState::Active => {
+                ConnState::Active(_) => {
                     return match self.send_queue.send(request_producer) {
                         Ok(sync) => self.recv_queue.recv(sync, response_consumer, options),
                         Err(err) => Err(self.handle_error(err.into()).err().unwrap()),
                     };
                 }
                 ConnState::Error => self.disconnect(),
-                ConnState::ErrorReconnect => self.reconnect_or_fail()?,
+                ConnState::ErrorReconnect(err) => self.reconnect_or_fail(err.take().unwrap())?,
                 ConnState::Closed => {
                     return Err(io::Error::from(io::ErrorKind::NotConnected).into())
                 }
@@ -252,13 +257,17 @@ impl ConnInner {
 
     pub fn close(&self) {
         self.disconnect();
-        let mut fiber = self.recv_fiber.borrow_mut();
-        fiber.cancel();
-        fiber.join();
+
+        let mut send_fiber = self.send_fiber.borrow_mut();
+        send_fiber.cancel();
+        send_fiber.join();
+
+        let mut recv_fiber = self.recv_fiber.borrow_mut();
+        recv_fiber.cancel();
+        recv_fiber.join();
     }
 
-    fn init(&self, self_ref: Weak<ConnInner>) -> Result<(), Error> {
-        // try to connect
+    fn init(&self) -> Result<(), Error> {
         match self.connect() {
             Ok(_) => {}
             Err(err) => {
@@ -266,18 +275,10 @@ impl ConnInner {
             }
         };
 
-        // start send/recv fibers
-        {
-            let self_ref = self_ref.upgrade().unwrap();
-            self.send_fiber.borrow_mut().start(self_ref.clone());
-            self.recv_fiber.borrow_mut().start(self_ref.clone());
-        }
-
         Ok(())
     }
 
     fn connect(&self) -> Result<(), Error> {
-        // let _lock = self.session_lock.lock();
         self.update_state(ConnState::Connecting);
 
         // connect
@@ -288,24 +289,25 @@ impl ConnInner {
             CoIOStream::connect_timeout(self.addrs.first().unwrap(), connect_timeout)?
         };
 
-        // recv greeting msg
+        // receive greeting msg
         let salt = protocol::decode_greeting(&mut stream)?;
 
         // if ok: save stream to session
-        let stream = Rc::new(ConnSession::new(stream)?);
-        self.session.replace(Some(stream));
-        self.update_state(ConnState::Active);
-
+        let session = Rc::new(ConnSession::new(stream)?);
+        self.update_state(ConnState::Active(session));
         Ok(())
     }
 
     fn state(&self) -> ConnState {
-        // let _lock = self.session_lock.lock();
-        self.state.get()
+        let _lock = self.state_lock.lock();
+        self.state.borrow().clone()
     }
 
     fn update_state(&self, state: ConnState) {
-        self.state.set(state);
+        {
+            let _lock = self.state_lock.lock();
+            self.state.replace(state)
+        };
         self.state_change_cond.broadcast();
     }
 
@@ -314,15 +316,39 @@ impl ConnInner {
     }
 
     fn handle_error(&self, err: Error) -> Result<(), Error> {
-        unimplemented!()
+        match err {
+            Error::IO(err) => {
+                self.update_state(ConnState::ErrorReconnect(Rc::new(RefCell::new(Some(err)))));
+                Ok(())
+            }
+            err => {
+                self.update_state(ConnState::Error);
+                Err(err)
+            }
+        }
     }
 
-    fn reconnect_or_fail(&self) -> Result<(), Error> {
-        unimplemented!()
+    fn reconnect_or_fail(&self, error: io::Error) -> Result<(), Error> {
+        let reconnect_after = self.options.reconnect_after;
+        if reconnect_after.as_secs() == 0 && reconnect_after.subsec_nanos() == 0 {
+            self.update_state(ConnState::Error);
+            return Err(error.into());
+        } else {
+            sleep(reconnect_after.as_secs_f64());
+            match self.connect() {
+                Ok(_) => {}
+                Err(err) => {
+                    self.handle_error(err)?;
+                }
+            }
+        }
+        Ok(())
     }
 
     fn disconnect(&self) {
         self.update_state(ConnState::Closed);
+        self.send_queue.close();
+        self.recv_fiber.borrow().wakeup();
     }
 }
 
@@ -344,7 +370,6 @@ impl ConnSession {
 fn send_worker(conn: Box<Rc<ConnInner>>) -> i32 {
     set_cancellable(true);
     let conn = *conn;
-    let session = conn.session.borrow().as_ref().unwrap().clone();
 
     loop {
         if is_cancelled() {
@@ -352,7 +377,8 @@ fn send_worker(conn: Box<Rc<ConnInner>>) -> i32 {
         }
 
         match conn.state() {
-            ConnState::Active => {
+            ConnState::Active(session) => {
+                let session = session.clone();
                 let mut stream = session.secondary_stream.borrow_mut();
                 conn.send_queue.flush_to_stream(&mut *stream);
             }
@@ -367,7 +393,6 @@ fn send_worker(conn: Box<Rc<ConnInner>>) -> i32 {
 fn recv_worker(conn: Box<Rc<ConnInner>>) -> i32 {
     set_cancellable(true);
     let conn = *conn;
-    let session = conn.session.borrow().as_ref().unwrap().clone();
 
     loop {
         if is_cancelled() {
@@ -375,7 +400,8 @@ fn recv_worker(conn: Box<Rc<ConnInner>>) -> i32 {
         }
 
         match conn.state() {
-            ConnState::Active => {
+            ConnState::Active(session) => {
+                let session = session.clone();
                 let mut stream = session.primary_stream.borrow_mut();
                 conn.recv_queue.pull(&mut *stream);
             }
