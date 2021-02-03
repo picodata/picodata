@@ -23,6 +23,8 @@ use failure::_core::ptr::null;
 use log::{Level, Log, Metadata, Record};
 use num_traits::{FromPrimitive, ToPrimitive};
 
+use crate::ffi::tarantool as ffi;
+
 /// [Log](https://docs.rs/log/latest/log/trait.Log.html) trait implementation. Wraps [say()](fn.say.html).
 pub struct TarantoolLogger {}
 
@@ -88,21 +90,5 @@ pub fn say(level: SayLevel, file: &str, line: i32, error: Option<&str>, message:
     forget(message);
     if error.is_some() {
         forget(error.unwrap());
-    }
-}
-
-mod ffi {
-    use std::os::raw::{c_char, c_int};
-
-    pub type SayFunc = Option<
-        unsafe extern "C" fn(c_int, *const c_char, c_int, *const c_char, *const c_char, ...),
-    >;
-
-    extern "C" {
-        #[link_name = "log_level"]
-        pub static mut LOG_LEVEL: c_int;
-
-        #[link_name = "_say"]
-        pub static mut SAY_FN: SayFunc;
     }
 }

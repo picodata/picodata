@@ -1,5 +1,6 @@
 //! Box: sequences
 use crate::error::{Error, TarantoolError};
+use crate::ffi::tarantool as ffi;
 use crate::space::{Space, SystemSpace};
 use crate::tuple::AsTuple;
 
@@ -68,15 +69,5 @@ impl Sequence {
         } else {
             Ok(())
         }
-    }
-}
-
-mod ffi {
-    use std::os::raw::c_int;
-
-    extern "C" {
-        pub fn box_sequence_next(seq_id: u32, result: *mut i64) -> c_int;
-        pub fn box_sequence_set(seq_id: u32, value: i64) -> c_int;
-        pub fn box_sequence_reset(seq_id: u32) -> c_int;
     }
 }

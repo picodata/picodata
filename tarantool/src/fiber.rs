@@ -17,6 +17,7 @@ use std::time::Duration;
 use va_list::VaList;
 
 use crate::error::{Error, TarantoolError};
+use crate::ffi::tarantool as ffi;
 
 /// A fiber is a set of instructions which are executed with cooperative multitasking.
 ///
@@ -421,79 +422,4 @@ where
         (*closure)(arg)
     }
     (callback as *mut F as *mut c_void, Some(trampoline::<F, T>))
-}
-
-mod ffi {
-    use std::os::raw::{c_char, c_int};
-
-    use va_list::VaList;
-
-    #[repr(C)]
-    pub struct Fiber {
-        _unused: [u8; 0],
-    }
-
-    pub type FiberFunc = Option<unsafe extern "C" fn(VaList) -> c_int>;
-
-    extern "C" {
-        pub fn fiber_new(name: *const c_char, f: FiberFunc) -> *mut Fiber;
-        pub fn fiber_new_ex(
-            name: *const c_char,
-            fiber_attr: *const FiberAttr,
-            f: FiberFunc,
-        ) -> *mut Fiber;
-        pub fn fiber_yield();
-        pub fn fiber_start(callee: *mut Fiber, ...);
-        pub fn fiber_wakeup(f: *mut Fiber);
-        pub fn fiber_cancel(f: *mut Fiber);
-        pub fn fiber_set_cancellable(yesno: bool) -> bool;
-        pub fn fiber_set_joinable(fiber: *mut Fiber, yesno: bool);
-        pub fn fiber_join(f: *mut Fiber) -> c_int;
-        pub fn fiber_sleep(s: f64);
-        pub fn fiber_is_cancelled() -> bool;
-        pub fn fiber_time() -> f64;
-        pub fn fiber_time64() -> u64;
-        pub fn fiber_clock() -> f64;
-        pub fn fiber_clock64() -> u64;
-        pub fn fiber_reschedule();
-    }
-
-    #[repr(C)]
-    pub struct FiberAttr {
-        _unused: [u8; 0],
-    }
-
-    extern "C" {
-        pub fn fiber_attr_new() -> *mut FiberAttr;
-        pub fn fiber_attr_delete(fiber_attr: *mut FiberAttr);
-        pub fn fiber_attr_setstacksize(fiber_attr: *mut FiberAttr, stack_size: usize) -> c_int;
-        pub fn fiber_attr_getstacksize(fiber_attr: *mut FiberAttr) -> usize;
-    }
-
-    #[repr(C)]
-    pub struct FiberCond {
-        _unused: [u8; 0],
-    }
-
-    extern "C" {
-        pub fn fiber_cond_new() -> *mut FiberCond;
-        pub fn fiber_cond_delete(cond: *mut FiberCond);
-        pub fn fiber_cond_signal(cond: *mut FiberCond);
-        pub fn fiber_cond_broadcast(cond: *mut FiberCond);
-        pub fn fiber_cond_wait_timeout(cond: *mut FiberCond, timeout: f64) -> c_int;
-        pub fn fiber_cond_wait(cond: *mut FiberCond) -> c_int;
-    }
-
-    #[repr(C)]
-    pub struct Latch {
-        _unused: [u8; 0],
-    }
-
-    extern "C" {
-        pub fn box_latch_new() -> *mut Latch;
-        pub fn box_latch_delete(latch: *mut Latch);
-        pub fn box_latch_lock(latch: *mut Latch);
-        pub fn box_latch_trylock(latch: *mut Latch) -> c_int;
-        pub fn box_latch_unlock(latch: *mut Latch);
-    }
 }

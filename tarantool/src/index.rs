@@ -13,7 +13,8 @@ use std::ptr::null_mut;
 use num_traits::ToPrimitive;
 
 use crate::error::{Error, TarantoolError};
-use crate::tuple::{ffi::BoxTuple, AsTuple, Tuple, TupleBuffer};
+use crate::ffi::tarantool as ffi;
+use crate::tuple::{AsTuple, Tuple, TupleBuffer};
 
 /// An index is a group of key values and pointers.
 pub struct Index {
@@ -96,7 +97,7 @@ impl Index {
     {
         let key_buf = key.serialize_as_tuple().unwrap();
         let key_buf_ptr = key_buf.as_ptr() as *const c_char;
-        let mut result_ptr = null_mut::<BoxTuple>();
+        let mut result_ptr = null_mut::<ffi::BoxTuple>();
 
         if unsafe {
             ffi::box_index_get(
@@ -166,7 +167,7 @@ impl Index {
     {
         let key_buf = key.serialize_as_tuple().unwrap();
         let key_buf_ptr = key_buf.as_ptr() as *const c_char;
-        let mut result_ptr = null_mut::<BoxTuple>();
+        let mut result_ptr = null_mut::<ffi::BoxTuple>();
 
         if unsafe {
             ffi::box_delete(
@@ -208,7 +209,7 @@ impl Index {
         let key_buf_ptr = key_buf.as_ptr() as *const c_char;
         let ops_buf = ops.serialize_as_tuple().unwrap();
         let ops_buf_ptr = ops_buf.as_ptr() as *const c_char;
-        let mut result_ptr = null_mut::<BoxTuple>();
+        let mut result_ptr = null_mut::<ffi::BoxTuple>();
 
         if unsafe {
             ffi::box_update(
@@ -252,7 +253,7 @@ impl Index {
         let value_buf_ptr = value_buf.as_ptr() as *const c_char;
         let ops_buf = ops.serialize_as_tuple().unwrap();
         let ops_buf_ptr = ops_buf.as_ptr() as *const c_char;
-        let mut result_ptr = null_mut::<BoxTuple>();
+        let mut result_ptr = null_mut::<ffi::BoxTuple>();
 
         if unsafe {
             ffi::box_upsert(
@@ -303,7 +304,7 @@ impl Index {
     ///
     /// - `rnd` - random seed
     pub fn random(&self, seed: u32) -> Result<Option<Tuple>, Error> {
-        let mut result_ptr = null_mut::<BoxTuple>();
+        let mut result_ptr = null_mut::<ffi::BoxTuple>();
         if unsafe { ffi::box_index_random(self.space_id, self.index_id, seed, &mut result_ptr) } < 0
         {
             return Err(TarantoolError::last().into());
@@ -327,7 +328,7 @@ impl Index {
     {
         let key_buf = key.serialize_as_tuple().unwrap();
         let key_buf_ptr = key_buf.as_ptr() as *const c_char;
-        let mut result_ptr = null_mut::<BoxTuple>();
+        let mut result_ptr = null_mut::<ffi::BoxTuple>();
 
         if unsafe {
             ffi::box_index_min(
@@ -360,7 +361,7 @@ impl Index {
     {
         let key_buf = key.serialize_as_tuple().unwrap();
         let key_buf_ptr = key_buf.as_ptr() as *const c_char;
-        let mut result_ptr = null_mut::<BoxTuple>();
+        let mut result_ptr = null_mut::<ffi::BoxTuple>();
 
         if unsafe {
             ffi::box_index_max(
@@ -439,7 +440,7 @@ impl Iterator for IndexIterator {
     type Item = Tuple;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let mut result_ptr = null_mut::<BoxTuple>();
+        let mut result_ptr = null_mut::<ffi::BoxTuple>();
         if unsafe { ffi::box_iterator_next(self.ptr, &mut result_ptr) } < 0 {
             return None;
         }
@@ -455,106 +456,5 @@ impl Iterator for IndexIterator {
 impl Drop for IndexIterator {
     fn drop(&mut self) {
         unsafe { ffi::box_iterator_free(self.ptr) };
-    }
-}
-
-mod ffi {
-    use std::os::raw::{c_char, c_int};
-
-    use crate::tuple::ffi::BoxTuple;
-
-    #[repr(C)]
-    pub struct BoxIterator {
-        _unused: [u8; 0],
-    }
-
-    extern "C" {
-        pub fn box_index_iterator(
-            space_id: u32,
-            index_id: u32,
-            type_: c_int,
-            key: *const c_char,
-            key_end: *const c_char,
-        ) -> *mut BoxIterator;
-
-        pub fn box_iterator_next(iterator: *mut BoxIterator, result: *mut *mut BoxTuple) -> c_int;
-        pub fn box_iterator_free(iterator: *mut BoxIterator);
-        pub fn box_index_len(space_id: u32, index_id: u32) -> isize;
-        pub fn box_index_bsize(space_id: u32, index_id: u32) -> isize;
-        pub fn box_index_random(
-            space_id: u32,
-            index_id: u32,
-            rnd: u32,
-            result: *mut *mut BoxTuple,
-        ) -> c_int;
-
-        pub fn box_index_get(
-            space_id: u32,
-            index_id: u32,
-            key: *const c_char,
-            key_end: *const c_char,
-            result: *mut *mut BoxTuple,
-        ) -> c_int;
-
-        pub fn box_index_min(
-            space_id: u32,
-            index_id: u32,
-            key: *const c_char,
-            key_end: *const c_char,
-            result: *mut *mut BoxTuple,
-        ) -> c_int;
-
-        pub fn box_index_max(
-            space_id: u32,
-            index_id: u32,
-            key: *const c_char,
-            key_end: *const c_char,
-            result: *mut *mut BoxTuple,
-        ) -> c_int;
-
-        pub fn box_index_count(
-            space_id: u32,
-            index_id: u32,
-            type_: c_int,
-            key: *const c_char,
-            key_end: *const c_char,
-        ) -> isize;
-
-        pub fn box_delete(
-            space_id: u32,
-            index_id: u32,
-            key: *const c_char,
-            key_end: *const c_char,
-            result: *mut *mut BoxTuple,
-        ) -> c_int;
-
-        pub fn box_update(
-            space_id: u32,
-            index_id: u32,
-            key: *const c_char,
-            key_end: *const c_char,
-            ops: *const c_char,
-            ops_end: *const c_char,
-            index_base: c_int,
-            result: *mut *mut BoxTuple,
-        ) -> c_int;
-
-        pub fn box_upsert(
-            space_id: u32,
-            index_id: u32,
-            tuple: *const c_char,
-            tuple_end: *const c_char,
-            ops: *const c_char,
-            ops_end: *const c_char,
-            index_base: c_int,
-            result: *mut *mut BoxTuple,
-        ) -> c_int;
-
-        pub fn box_tuple_extract_key(
-            tuple: *const BoxTuple,
-            space_id: u32,
-            index_id: u32,
-            key_size: *mut u32,
-        ) -> *mut c_char;
     }
 }

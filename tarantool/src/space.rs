@@ -12,6 +12,7 @@ use std::ptr::null_mut;
 use num_traits::ToPrimitive;
 
 use crate::error::{Error, TarantoolError};
+use crate::ffi::tarantool as ffi;
 use crate::index::{Index, IndexIterator, IteratorType};
 use crate::tuple::{AsTuple, Tuple};
 
@@ -339,31 +340,5 @@ impl Space {
         Op: AsTuple,
     {
         self.primary_key().upsert(value, ops)
-    }
-}
-
-mod ffi {
-    use std::os::raw::{c_char, c_int};
-
-    pub use crate::tuple::ffi::BoxTuple;
-
-    pub const BOX_ID_NIL: u32 = 2147483647;
-
-    extern "C" {
-        pub fn box_space_id_by_name(name: *const c_char, len: u32) -> u32;
-        pub fn box_index_id_by_name(space_id: u32, name: *const c_char, len: u32) -> u32;
-        pub fn box_insert(
-            space_id: u32,
-            tuple: *const c_char,
-            tuple_end: *const c_char,
-            result: *mut *mut BoxTuple,
-        ) -> c_int;
-        pub fn box_replace(
-            space_id: u32,
-            tuple: *const c_char,
-            tuple_end: *const c_char,
-            result: *mut *mut BoxTuple,
-        ) -> c_int;
-        pub fn box_truncate(space_id: u32) -> c_int;
     }
 }
