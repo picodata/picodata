@@ -17,6 +17,7 @@
 //! See also:
 //! - [Lua reference: Module clock](https://www.tarantool.io/en/doc/latest/reference/reference_lua/clock/)
 //! - [C API reference: Module clock](https://www.tarantool.io/en/doc/latest/dev_guide/reference_capi/clock/)
+use crate::ffi::tarantool as ffi;
 
 /// The wall clock time.
 ///
@@ -120,17 +121,4 @@ pub fn thread() -> f64 {
 #[inline(always)]
 pub fn thread64() -> u64 {
     unsafe { ffi::clock_thread64() }
-}
-
-mod ffi {
-    extern "C" {
-        pub fn clock_realtime() -> f64;
-        pub fn clock_monotonic() -> f64;
-        pub fn clock_process() -> f64;
-        pub fn clock_thread() -> f64;
-        pub fn clock_realtime64() -> u64;
-        pub fn clock_monotonic64() -> u64;
-        pub fn clock_process64() -> u64;
-        pub fn clock_thread64() -> u64;
-    }
 }

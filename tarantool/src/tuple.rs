@@ -19,6 +19,7 @@ use rmp::Marker;
 use serde::{de::DeserializeOwned, Serialize};
 
 use crate::error::{Error, TarantoolError};
+use crate::ffi::tarantool as ffi;
 
 /// Tuple
 pub struct Tuple {
@@ -239,10 +240,10 @@ impl TupleBuffer {
 
 impl From<Vec<u8>> for TupleBuffer {
     fn from(buf: Vec<u8>) -> Self {
-        if unsafe { crate::transaction::ffi::box_txn() } {
+        if unsafe { ffi::box_txn() } {
             let size = buf.len();
             unsafe {
-                let ptr = crate::transaction::ffi::box_txn_alloc(size) as *mut u8;
+                let ptr = ffi::box_txn_alloc(size) as *mut u8;
                 copy_nonoverlapping(buf.as_ptr(), ptr, size);
 
                 Self::TransactionScoped { ptr, size }
@@ -541,91 +542,5 @@ where
         Err(TarantoolError::last().into())
     } else {
         Ok(())
-    }
-}
-
-pub(crate) mod ffi {
-    use std::os::raw::{c_char, c_int};
-
-    #[repr(C)]
-    pub struct BoxTuple {
-        _unused: [u8; 0],
-    }
-
-    extern "C" {
-        pub fn box_tuple_new(
-            format: *mut BoxTupleFormat,
-            data: *const c_char,
-            end: *const c_char,
-        ) -> *mut BoxTuple;
-        pub fn box_tuple_ref(tuple: *mut BoxTuple) -> c_int;
-        pub fn box_tuple_unref(tuple: *mut BoxTuple);
-        pub fn box_tuple_field_count(tuple: *const BoxTuple) -> u32;
-        pub fn box_tuple_bsize(tuple: *const BoxTuple) -> usize;
-        pub fn box_tuple_to_buf(tuple: *const BoxTuple, buf: *mut c_char, size: usize) -> isize;
-    }
-
-    #[repr(C)]
-    pub struct BoxTupleFormat {
-        _unused: [u8; 0],
-    }
-
-    extern "C" {
-        pub fn box_tuple_format_default() -> *mut BoxTupleFormat;
-        pub fn box_tuple_format(tuple: *const BoxTuple) -> *mut BoxTupleFormat;
-        pub fn box_tuple_field(tuple: *const BoxTuple, fieldno: u32) -> *const c_char;
-    }
-
-    #[repr(C)]
-    pub struct BoxTupleIterator {
-        _unused: [u8; 0],
-    }
-
-    extern "C" {
-        pub fn box_tuple_iterator(tuple: *mut BoxTuple) -> *mut BoxTupleIterator;
-        pub fn box_tuple_iterator_free(it: *mut BoxTupleIterator);
-        pub fn box_tuple_position(it: *mut BoxTupleIterator) -> u32;
-        pub fn box_tuple_rewind(it: *mut BoxTupleIterator);
-        pub fn box_tuple_seek(it: *mut BoxTupleIterator, fieldno: u32) -> *const c_char;
-        pub fn box_tuple_next(it: *mut BoxTupleIterator) -> *const c_char;
-    }
-
-    #[repr(C)]
-    pub struct BoxKeyDef {
-        _unused: [u8; 0],
-    }
-
-    extern "C" {
-        pub fn box_key_def_new(
-            fields: *mut u32,
-            types: *mut u32,
-            part_count: u32,
-        ) -> *mut BoxKeyDef;
-        pub fn box_key_def_delete(key_def: *mut BoxKeyDef);
-        pub fn box_tuple_compare(
-            tuple_a: *mut BoxTuple,
-            tuple_b: *mut BoxTuple,
-            key_def: *mut BoxKeyDef,
-        ) -> c_int;
-        pub fn box_tuple_compare_with_key(
-            tuple_a: *mut BoxTuple,
-            key_b: *const c_char,
-            key_def: *mut BoxKeyDef,
-        ) -> c_int;
-    }
-
-    #[repr(C)]
-    pub struct BoxFunctionCtx {
-        _unused: [u8; 0],
-    }
-
-    extern "C" {
-        pub fn box_return_tuple(ctx: *mut BoxFunctionCtx, tuple: *mut BoxTuple) -> c_int;
-        pub fn box_return_mp(
-            ctx: *mut BoxFunctionCtx,
-            mp: *const c_char,
-            mp_end: *const c_char,
-        ) -> c_int;
-        pub fn box_session_push(data: *const c_char, data_end: *const c_char) -> c_int;
     }
 }

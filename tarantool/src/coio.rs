@@ -7,13 +7,14 @@ use std::ffi::c_void;
 use std::io;
 use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream, ToSocketAddrs};
-use std::os::raw::{c_char, c_int};
+use std::os::raw::c_char;
 use std::os::unix::io::{AsRawFd, IntoRawFd, RawFd};
 use std::time::Duration;
 
 use failure::_core::ptr::null_mut;
 
 use crate::error::{Error, TarantoolError};
+use crate::ffi::tarantool as ffi;
 use crate::fiber::unpack_callback;
 
 const TIMEOUT_INFINITY: f64 = 365.0 * 86400.0 * 100.0;
@@ -21,14 +22,6 @@ const TIMEOUT_INFINITY: f64 = 365.0 * 86400.0 * 100.0;
 /// Uses CoIO main loop to poll read/write events from wrapped socket
 pub struct CoIOStream {
     fd: RawFd,
-}
-
-bitflags! {
-    /// Event type(s) to wait. Can be `READ` or/and `WRITE`
-    pub struct CoIOFlags: c_int {
-        const READ = 1;
-        const WRITE = 2;
-    }
 }
 
 impl CoIOStream {
@@ -90,7 +83,7 @@ impl CoIOStream {
             Some(timeout) => timeout.as_secs_f64(),
         };
 
-        coio_wait(self.fd, CoIOFlags::READ, timeout)?;
+        coio_wait(self.fd, ffi::CoIOFlags::READ, timeout)?;
         let result = unsafe { libc::read(self.fd, buf.as_mut_ptr() as *mut c_void, buf_len) };
         if result < 0 {
             Err(io::Error::last_os_error())
@@ -120,7 +113,7 @@ impl CoIOStream {
             Some(timeout) => timeout.as_secs_f64(),
         };
 
-        coio_wait(self.fd, CoIOFlags::WRITE, timeout)?;
+        coio_wait(self.fd, ffi::CoIOFlags::WRITE, timeout)?;
         let result = unsafe { libc::write(self.fd, buf.as_ptr() as *mut c_void, buf.len()) };
         if result < 0 {
             Err(io::Error::last_os_error())
@@ -179,7 +172,11 @@ impl CoIOListener {
 
                 Err(e) => {
                     if e.kind() == io::ErrorKind::WouldBlock {
-                        coio_wait(self.inner.as_raw_fd(), CoIOFlags::READ, TIMEOUT_INFINITY)?;
+                        coio_wait(
+                            self.inner.as_raw_fd(),
+                            ffi::CoIOFlags::READ,
+                            TIMEOUT_INFINITY,
+                        )?;
                         continue;
                     }
                     Err(e)
@@ -207,8 +204,8 @@ impl TryFrom<TcpListener> for CoIOListener {
 /// - `fd` - non-blocking socket file description
 /// - `events` - requested events to wait. Combination of [CoIOFlags::READ | CoIOFlags::WRITE](struct.CoIOFlags.html) bit flags.
 /// - `timeoout` - timeout in seconds.
-pub fn coio_wait(fd: RawFd, flags: CoIOFlags, timeout: f64) -> Result<(), io::Error> {
-    match unsafe { ffi::coio_wait(fd, flags.bits, timeout) } {
+pub fn coio_wait(fd: RawFd, flags: ffi::CoIOFlags, timeout: f64) -> Result<(), io::Error> {
+    match unsafe { ffi::coio_wait(fd, flags.bits(), timeout) } {
         0 => Err(io::ErrorKind::TimedOut.into()),
         _ => Ok(()),
     }
@@ -270,24 +267,5 @@ pub fn getaddrinfo(
         Err(TarantoolError::last().into())
     } else {
         Ok(unsafe { result.read() })
-    }
-}
-
-mod ffi {
-    use std::os::raw::{c_char, c_int};
-
-    use va_list::VaList;
-
-    extern "C" {
-        pub fn coio_wait(fd: c_int, event: c_int, timeout: f64) -> c_int;
-        pub fn coio_close(fd: c_int) -> c_int;
-        pub fn coio_getaddrinfo(
-            host: *const c_char,
-            port: *const c_char,
-            hints: *const libc::addrinfo,
-            res: *mut *mut libc::addrinfo,
-            timeout: f64,
-        ) -> c_int;
-        pub fn coio_call(func: Option<unsafe extern "C" fn(VaList) -> c_int>, ...) -> isize;
     }
 }
