@@ -84,7 +84,7 @@ pub fn encode_request(buf: &mut Cursor<Vec<u8>>, header_offset: u64) -> Result<(
 }
 
 pub fn encode_auth(
-    buf: &mut Cursor<Vec<u8>>,
+    stream: &mut impl Write,
     user: &str,
     password: &str,
     salt: &Vec<u8>,
@@ -115,21 +115,19 @@ pub fn encode_auth(
         .zip(step_3.iter())
         .for_each(|(a, b)| *a ^= *b);
 
-    let header_offset = prepare_request(buf, sync, IProtoType::Auth)?;
-    rmp::encode::write_map_len(buf, 2)?;
+    encode_header(stream, sync, IProtoType::Ping)?;
+    rmp::encode::write_map_len(stream, 2)?;
 
     // username:
-    rmp::encode::write_pfix(buf, USER_NAME)?;
-    rmp::encode::write_str(buf, user)?;
+    rmp::encode::write_pfix(stream, USER_NAME)?;
+    rmp::encode::write_str(stream, user)?;
 
     // encrypted password:
-    rmp::encode::write_pfix(buf, TUPLE)?;
-    rmp::encode::write_array_len(buf, 2)?;
-    rmp::encode::write_str(buf, "chap-sha1")?;
-    rmp::encode::write_str_len(buf, 20)?;
-    buf.write_all(&step_1_and_scramble)?;
-
-    encode_request(buf, header_offset)?;
+    rmp::encode::write_pfix(stream, TUPLE)?;
+    rmp::encode::write_array_len(stream, 2)?;
+    rmp::encode::write_str(stream, "chap-sha1")?;
+    rmp::encode::write_str_len(stream, 20)?;
+    stream.write_all(&step_1_and_scramble)?;
     Ok(())
 }
 

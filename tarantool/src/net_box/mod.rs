@@ -292,9 +292,39 @@ impl ConnInner {
         // receive greeting msg
         let salt = protocol::decode_greeting(&mut stream)?;
 
+        // auth if required
+        if !self.options.user.is_empty() {
+            self.update_state(ConnState::Auth);
+            self.auth(&mut stream, &salt)?;
+        }
+
         // if ok: save stream to session
         let session = Rc::new(ConnSession::new(stream)?);
         self.update_state(ConnState::Active(session));
+        Ok(())
+    }
+
+    fn auth(&self, stream: &mut CoIOStream, salt: &Vec<u8>) -> Result<(), Error> {
+        let buf = Vec::new();
+        let mut cur = Cursor::new(buf);
+
+        // send auth request
+        let sync = self.send_queue.next_sync();
+        send_queue::write_to_buffer(&mut cur, sync, |buf, sync| {
+            protocol::encode_auth(
+                buf,
+                self.options.user.as_str(),
+                self.options.password.as_str(),
+                salt,
+                sync,
+            )
+        });
+
+        // handle response
+        let response_len = rmp::decode::read_u32(stream)?;
+        recv_queue::recv_message(stream, &mut cur, response_len as usize)?;
+        protocol::decode_header(&mut cur)?;
+
         Ok(())
     }
 

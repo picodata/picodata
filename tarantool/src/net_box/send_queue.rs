@@ -7,9 +7,10 @@ use crate::fiber::{Cond, Latch};
 pub struct SendQueue {
     is_active: Cell<bool>,
     sync: Cell<u64>,
+    sync_lock: Latch,
     front_buffer: RefCell<Cursor<Vec<u8>>>,
     back_buffer: RefCell<Cursor<Vec<u8>>>,
-    lock: Latch,
+    buffer_lock: Latch,
     swap_cond: Cond,
 }
 
@@ -18,9 +19,10 @@ impl SendQueue {
         SendQueue {
             is_active: Cell::new(true),
             sync: Cell::new(0),
+            sync_lock: Latch::new(),
             front_buffer: RefCell::new(Cursor::new(Vec::with_capacity(buffer_size))),
             back_buffer: RefCell::new(Cursor::new(Vec::with_capacity(buffer_size))),
-            lock: Latch::new(),
+            buffer_lock: Latch::new(),
             swap_cond: Cond::new(),
         }
     }
@@ -29,13 +31,13 @@ impl SendQueue {
     where
         F: FnOnce(&mut Cursor<Vec<u8>>, u64) -> Result<(), Error>,
     {
-        self.sync.set(self.sync.get() + 1);
+        let sync = self.next_sync();
         let offset = {
-            let _lock = self.lock.lock();
+            let _lock = self.buffer_lock.lock();
             let buffer = &mut *self.back_buffer.borrow_mut();
 
             let offset = buffer.position();
-            match write_to_buffer(self.sync.get(), buffer, payload_producer, offset) {
+            match write_to_buffer(buffer, sync, payload_producer) {
                 Err(err) => {
                     // rollback buffer position on error
                     buffer.set_position(offset);
@@ -50,13 +52,20 @@ impl SendQueue {
             self.swap_cond.signal();
         }
 
-        Ok(self.sync.get())
+        Ok(sync)
+    }
+
+    pub fn next_sync(&self) -> u64 {
+        let _lock = self.sync_lock.lock();
+        let sync = self.sync.get() + 1;
+        self.sync.set(sync);
+        sync
     }
 
     pub fn flush_to_stream(&self, stream: &mut impl Write) -> io::Result<()> {
         loop {
             let is_data_available = {
-                let _lock = self.lock.lock();
+                let _lock = self.buffer_lock.lock();
 
                 if !self.is_active.get() {
                     return Err(io::Error::from(io::ErrorKind::TimedOut));
@@ -87,23 +96,23 @@ impl SendQueue {
 
     pub fn close(&self) {
         {
-            let _lock = self.lock.lock();
+            let _lock = self.buffer_lock.lock();
             self.is_active.set(false);
         }
         self.swap_cond.signal();
     }
 }
 
-fn write_to_buffer<F>(
-    sync: u64,
+pub fn write_to_buffer<F>(
     buffer: &mut Cursor<Vec<u8>>,
+    sync: u64,
     payload_producer: F,
-    msg_start_offset: u64,
 ) -> Result<(), Error>
 where
     F: FnOnce(&mut Cursor<Vec<u8>>, u64) -> Result<(), Error>,
 {
     // write MSG_SIZE placeholder
+    let msg_start_offset = buffer.position();
     rmp::encode::write_u32(buffer, 0)?;
 
     // write message payload
