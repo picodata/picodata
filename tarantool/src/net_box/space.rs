@@ -6,9 +6,9 @@ use crate::index::IteratorType;
 use crate::tuple::{AsTuple, Tuple};
 
 use super::index::{RemoteIndex, RemoteIndexIterator};
-use super::inner::ConnInner;
 use super::options::Options;
 use super::protocol;
+use crate::net_box::inner::ConnInner;
 
 /// Remote space
 pub struct RemoteSpace {
@@ -17,25 +17,15 @@ pub struct RemoteSpace {
 }
 
 impl RemoteSpace {
-    pub(crate) fn new(conn_inner: Rc<ConnInner>, space_id: u32) -> Self {
-        RemoteSpace {
-            conn_inner,
-            space_id,
-        }
-    }
-
     /// Find index by name (on remote space)
     pub fn index(&self, name: &str) -> Result<Option<RemoteIndex>, Error> {
-        Ok(self
-            .conn_inner
-            .lookup_index(name, self.space_id)?
-            .map(|index_id| RemoteIndex::new(self.conn_inner.clone(), self.space_id, index_id)))
+        unimplemented!()
     }
 
     /// Returns index with id = 0
     #[inline(always)]
     pub fn primary_key(&self) -> RemoteIndex {
-        RemoteIndex::new(self.conn_inner.clone(), self.space_id, 0)
+        unimplemented!()
     }
 
     /// The remote-call equivalent of the local call `Space::get(...)`
@@ -67,17 +57,7 @@ impl RemoteSpace {
     where
         T: AsTuple,
     {
-        let buf = Vec::new();
-        let mut cur = Cursor::new(buf);
-
-        let sync = self.conn_inner.next_sync();
-        protocol::encode_insert(&mut cur, sync, self.space_id, value)?;
-        let response = self
-            .conn_inner
-            .communicate(&cur.into_inner(), sync, options)?;
-        Ok(response
-            .into_iter()?
-            .and_then(|ref mut iter| iter.next_tuple()))
+        unimplemented!()
     }
 
     /// The remote-call equivalent of the local call `Space::replace(...)`
@@ -86,17 +66,7 @@ impl RemoteSpace {
     where
         T: AsTuple,
     {
-        let buf = Vec::new();
-        let mut cur = Cursor::new(buf);
-
-        let sync = self.conn_inner.next_sync();
-        protocol::encode_replace(&mut cur, sync, self.space_id, value)?;
-        let response = self
-            .conn_inner
-            .communicate(&cur.into_inner(), sync, options)?;
-        Ok(response
-            .into_iter()?
-            .and_then(|ref mut iter| iter.next_tuple()))
+        unimplemented!()
     }
 
     /// The remote-call equivalent of the local call `Space::update(...)`
