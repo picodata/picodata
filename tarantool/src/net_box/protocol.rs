@@ -115,7 +115,7 @@ pub fn encode_auth(
         .zip(step_3.iter())
         .for_each(|(a, b)| *a ^= *b);
 
-    encode_header(stream, sync, IProtoType::Ping)?;
+    encode_header(stream, sync, IProtoType::Auth)?;
     rmp::encode::write_map_len(stream, 2)?;
 
     // username:
@@ -138,7 +138,7 @@ pub fn encode_ping(stream: &mut impl Write, sync: u64) -> Result<(), Error> {
 }
 
 pub fn encode_call<T>(
-    buf: &mut Cursor<Vec<u8>>,
+    stream: &mut impl Write,
     sync: u64,
     function_name: &str,
     args: &T,
@@ -146,18 +146,17 @@ pub fn encode_call<T>(
 where
     T: AsTuple,
 {
-    let header_offset = prepare_request(buf, sync, IProtoType::Call)?;
-    rmp::encode::write_map_len(buf, 2)?;
-    rmp::encode::write_pfix(buf, FUNCTION_NAME)?;
-    rmp::encode::write_str(buf, function_name)?;
-    rmp::encode::write_pfix(buf, TUPLE)?;
-    rmp_serde::encode::write(buf, args)?;
-    encode_request(buf, header_offset)?;
+    encode_header(stream, sync, IProtoType::Call)?;
+    rmp::encode::write_map_len(stream, 2)?;
+    rmp::encode::write_pfix(stream, FUNCTION_NAME)?;
+    rmp::encode::write_str(stream, function_name)?;
+    rmp::encode::write_pfix(stream, TUPLE)?;
+    rmp_serde::encode::write(stream, args)?;
     Ok(())
 }
 
 pub fn encode_eval<T>(
-    buf: &mut Cursor<Vec<u8>>,
+    stream: &mut impl Write,
     sync: u64,
     expression: &str,
     args: &T,
@@ -165,13 +164,12 @@ pub fn encode_eval<T>(
 where
     T: AsTuple,
 {
-    let header_offset = prepare_request(buf, sync, IProtoType::Eval)?;
-    rmp::encode::write_map_len(buf, 2)?;
-    rmp::encode::write_pfix(buf, EXPR)?;
-    rmp::encode::write_str(buf, expression)?;
-    rmp::encode::write_pfix(buf, TUPLE)?;
-    rmp_serde::encode::write(buf, args)?;
-    encode_request(buf, header_offset)?;
+    encode_header(stream, sync, IProtoType::Eval)?;
+    rmp::encode::write_map_len(stream, 2)?;
+    rmp::encode::write_pfix(stream, EXPR)?;
+    rmp::encode::write_str(stream, expression)?;
+    rmp::encode::write_pfix(stream, TUPLE)?;
+    rmp_serde::encode::write(stream, args)?;
     Ok(())
 }
 
@@ -352,15 +350,15 @@ pub fn decode_header(stream: &mut (impl Read + Seek)) -> Result<Header, Error> {
     })
 }
 
-fn decode_error(cur: &mut Cursor<Vec<u8>>) -> Result<ResponseError, Error> {
+pub fn decode_error(stream: &mut impl Read) -> Result<ResponseError, Error> {
     let mut message: Option<String> = None;
 
-    let map_len = rmp::decode::read_map_len(cur)?;
+    let map_len = rmp::decode::read_map_len(stream)?;
     for _ in 0..map_len {
-        if rmp::decode::read_pfix(cur)? == ERROR {
-            let str_len = rmp::decode::read_str_len(cur)? as usize;
+        if rmp::decode::read_pfix(stream)? == ERROR {
+            let str_len = rmp::decode::read_str_len(stream)? as usize;
             let mut str_buf = vec![0u8; str_len];
-            cur.read_exact(&mut str_buf)?;
+            stream.read_exact(&mut str_buf)?;
             message = Some(from_utf8(&mut str_buf)?.to_string());
         }
     }
@@ -377,6 +375,30 @@ pub fn decode_greeting(stream: &mut impl Read) -> Result<Vec<u8>, Error> {
     stream.read_exact(&mut *buf)?;
     let salt = base64::decode(&buf[64..108]).unwrap();
     Ok(salt)
+}
+
+pub fn decode_tuple(buffer: &mut Cursor<Vec<u8>>) -> Result<Option<Tuple>, Error> {
+    let payload_len = rmp::decode::read_map_len(buffer)?;
+    for _ in 0..payload_len {
+        let key = rmp::decode::read_pfix(buffer)?;
+        match key {
+            DATA => {
+                let payload_offset = buffer.position();
+                let buf = buffer.get_mut();
+                let payload_len = buf.len() as u64 - payload_offset;
+                unsafe {
+                    return Ok(Some(Tuple::from_raw_data(
+                        buf.as_slice().as_ptr().add(payload_offset as usize) as *mut c_char,
+                        payload_len as u32,
+                    )));
+                }
+            }
+            _ => {
+                skip_msgpack(buffer)?;
+            }
+        };
+    }
+    Ok(None)
 }
 
 pub fn decode_response<R: Read>(stream: &mut R) -> Result<Response, Error> {

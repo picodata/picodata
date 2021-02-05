@@ -123,7 +123,11 @@ impl Conn {
     where
         T: AsTuple,
     {
-        unimplemented!()
+        self.inner.request(
+            |buf, sync| protocol::encode_call(buf, sync, function_name, args),
+            protocol::decode_tuple,
+            options,
+        )
     }
 
     /// Evaluates and executes the expression in Lua-string, which may be any statement or series of statements.
@@ -142,7 +146,11 @@ impl Conn {
     where
         T: AsTuple,
     {
-        unimplemented!()
+        self.inner.request(
+            |buf, sync| protocol::encode_eval(buf, sync, expression, args),
+            protocol::decode_tuple,
+            options,
+        )
     }
 
     /// Search space by name on remote server

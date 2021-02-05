@@ -1,7 +1,7 @@
 use core::cell::RefCell;
 use std::collections::HashMap;
 use std::io;
-use std::io::Cursor;
+use std::io::{Cursor, Write};
 use std::net::SocketAddr;
 use std::os::unix::io::AsRawFd;
 use std::rc::Rc;
@@ -212,12 +212,16 @@ impl ConnInner {
                 salt,
                 sync,
             )
-        });
+        })?;
+        stream.write(cur.get_ref())?;
 
         // handle response
         let response_len = rmp::decode::read_u32(stream)?;
         recv_queue::recv_message(stream, &mut cur, response_len as usize)?;
-        protocol::decode_header(&mut cur)?;
+        let header = protocol::decode_header(&mut cur)?;
+        if header.status_code != 0 {
+            return Err(protocol::decode_error(stream)?.into());
+        }
 
         Ok(())
     }

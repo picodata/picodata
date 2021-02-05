@@ -7,11 +7,12 @@ use rmp::decode;
 
 use crate::error::Error;
 use crate::fiber::{Cond, Latch};
-use crate::net_box::protocol::decode_header;
+use crate::net_box::protocol::{decode_error, decode_header, Header};
 use crate::net_box::Options;
 
 pub struct RecvQueue {
     buffer: RefCell<Cursor<Vec<u8>>>,
+    header: RefCell<Option<Header>>,
     cond_map: RefCell<HashMap<u64, PoolRef<Cond>>>,
     cond_pool: Pool<Cond>,
     read_completed_cond: Cond,
@@ -22,6 +23,7 @@ impl RecvQueue {
     pub fn new(buffer_size: usize) -> Self {
         RecvQueue {
             buffer: RefCell::new(Cursor::new(Vec::with_capacity(buffer_size))),
+            header: RefCell::new(None),
             cond_map: RefCell::new(HashMap::new()),
             cond_pool: Pool::new(1024),
             read_completed_cond: Cond::new(),
@@ -47,6 +49,11 @@ impl RecvQueue {
         if is_signaled {
             let result = {
                 let _lock = self.lock.lock();
+                let header = self.header.take().unwrap();
+                if header.status_code != 0 {
+                    return Err(decode_error(self.buffer.borrow_mut().by_ref())?.into());
+                }
+
                 payload_consumer(self.buffer.borrow_mut().by_ref())
             };
             self.read_completed_cond.signal();
@@ -70,11 +77,14 @@ impl RecvQueue {
 
         let cond_ref = {
             let _lock = self.lock.lock();
-            self.cond_map.borrow_mut().remove(&header.sync)
+            let sync = header.sync;
+            self.header.replace(Some(header));
+            self.cond_map.borrow_mut().remove(&sync)
         };
 
         if let Some(cond_ref) = cond_ref {
-            cond_ref.signal()
+            cond_ref.signal();
+            self.read_completed_cond.wait();
         }
 
         Ok(())
