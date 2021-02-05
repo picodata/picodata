@@ -163,6 +163,8 @@ extern crate lazy_static;
 extern crate num_derive;
 #[macro_use]
 extern crate serde;
+#[macro_use]
+extern crate serde_json;
 
 pub mod clock;
 pub mod coio;
@@ -172,6 +174,7 @@ pub mod fiber;
 pub mod index;
 pub mod log;
 pub mod net_box;
+pub mod schema;
 pub mod sequence;
 pub mod session;
 pub mod space;

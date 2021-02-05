@@ -2,7 +2,7 @@ use rand::Rng;
 
 use tarantool::index::IteratorType;
 use tarantool::sequence::Sequence;
-use tarantool::space::{Space, SystemSpace};
+use tarantool::space::{Space, SpaceCreateOptions, SystemSpace};
 use tarantool::tuple::Tuple;
 
 use crate::common::{QueryOperation, S1Record, S2Key, S2Record};
@@ -427,4 +427,62 @@ pub fn test_box_sequence_set() {
 
     seq.set(99).unwrap();
     assert_eq!(seq.next().unwrap(), 100);
+}
+
+pub fn test_space_create_opt_default() {
+    let opts = SpaceCreateOptions::default();
+
+    // Create space with default options.
+    let result = Space::create("new_space_1", &opts);
+    assert_eq!(result.is_ok(), true);
+}
+
+pub fn test_space_create_opt_if_not_exists() {
+    let mut opts = SpaceCreateOptions::default();
+    let _result = Space::create("new_space_2", &opts);
+
+    // Test `SpaceExists` error.
+    let result_1 = Space::create("new_space_2", &opts);
+    assert_eq!(result_1.is_err(), true);
+
+    // Test `if_not_exists` option.
+    opts.if_not_exists = true;
+    let result_2 = Space::create("new_space_2", &opts);
+    assert_eq!(result_2.is_err(), false);
+}
+
+pub fn test_space_create_id_increment() {
+    let opts = SpaceCreateOptions::default();
+    let _result = Space::create("new_space_3", &opts);
+    let mut prev_id = Space::find("new_space_3").unwrap().id();
+    for i in 302..306 {
+        let space_name = format!("new_space_{}", i);
+        let result = Space::create(space_name.as_str(), &opts);
+        let curr_id = result.unwrap().id();
+        assert_eq!(prev_id + 1, curr_id);
+        prev_id = curr_id;
+    }
+}
+
+pub fn test_space_create_opt_user() {
+    let mut opts = SpaceCreateOptions::default();
+
+    // Test `user` option.
+    opts.user = Some("admin".to_string());
+    let result_4 = Space::create("new_space_4", &opts);
+    assert_eq!(result_4.is_ok(), true);
+
+    // Test `NoSuchUser` error.
+    opts.user = Some("user".to_string());
+    let result_5 = Space::create("new_space_5", &opts);
+    assert_eq!(result_5.is_err(), true);
+}
+
+pub fn test_space_create_opt_id() {
+    let mut opts = SpaceCreateOptions::default();
+
+    opts.id = Some(10000);
+    let result_5 = Space::create("new_space_6", &opts);
+    let id = result_5.unwrap().id();
+    assert_eq!(id, opts.id.unwrap());
 }
