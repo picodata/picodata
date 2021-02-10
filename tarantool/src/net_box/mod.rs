@@ -88,12 +88,12 @@ impl Conn {
     /// - `Ok(true)`: if closed
     /// - `Err(...TimedOut...)`: on timeout
     pub fn wait_connected(&self, timeout: Option<Duration>) -> Result<bool, Error> {
-        unimplemented!()
+        self.inner.wait_connected(timeout)
     }
 
     /// Show whether connection is active or closed.
     pub fn is_connected(&self) -> bool {
-        unimplemented!()
+        self.inner.is_connected()
     }
 
     /// Close a connection.

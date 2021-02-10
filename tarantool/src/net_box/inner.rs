@@ -80,6 +80,36 @@ impl ConnInner {
         conn_inner
     }
 
+    pub fn is_connected(&self) -> bool {
+        matches!(self.state(), ConnState::Active)
+    }
+
+    pub fn wait_connected(&self, timeout: Option<Duration>) -> Result<bool, Error> {
+        let begin_ts = time();
+        loop {
+            let state = self.state();
+            match state {
+                ConnState::Init => {
+                    self.init()?;
+                }
+                ConnState::Active => return Ok(true),
+                ConnState::Closed => return Ok(false),
+                _ => {
+                    let timeout = match timeout {
+                        None => None,
+                        Some(timeout) => {
+                            timeout.checked_sub(Duration::from_secs_f64(time() - begin_ts))
+                        }
+                    };
+
+                    if !self.wait_state_changed(timeout) {
+                        return Err(io::Error::from(io::ErrorKind::TimedOut).into());
+                    }
+                }
+            };
+        }
+    }
+
     pub fn request<Fp, Fc, R>(
         &self,
         request_producer: Fp,
@@ -246,32 +276,6 @@ impl ConnInner {
             self.state.replace(state)
         };
         self.state_change_cond.broadcast();
-    }
-
-    fn wait_connected(&self, timeout: Option<Duration>) -> Result<bool, Error> {
-        let begin_ts = time();
-        loop {
-            let state = self.state();
-            match state {
-                ConnState::Init => {
-                    self.init()?;
-                }
-                ConnState::Active => return Ok(true),
-                ConnState::Closed => return Ok(false),
-                _ => {
-                    let timeout = match timeout {
-                        None => None,
-                        Some(timeout) => {
-                            timeout.checked_sub(Duration::from_secs_f64(time() - begin_ts))
-                        }
-                    };
-
-                    if !self.wait_state_changed(timeout) {
-                        return Err(io::Error::from(io::ErrorKind::TimedOut).into());
-                    }
-                }
-            };
-        }
     }
 
     fn wait_state_changed(&self, timeout: Option<Duration>) -> bool {
