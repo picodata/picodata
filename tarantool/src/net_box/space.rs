@@ -17,6 +17,13 @@ pub struct RemoteSpace {
 }
 
 impl RemoteSpace {
+    pub(crate) fn new(conn_inner: Rc<ConnInner>, space_id: u32) -> Self {
+        RemoteSpace {
+            conn_inner,
+            space_id,
+        }
+    }
+
     /// Find index by name (on remote space)
     pub fn index(&self, name: &str) -> Result<Option<RemoteIndex>, Error> {
         unimplemented!()

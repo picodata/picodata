@@ -7,7 +7,7 @@ use rmp::decode;
 
 use crate::error::Error;
 use crate::fiber::{Cond, Latch};
-use crate::net_box::protocol::{decode_error, decode_header, Header};
+use crate::net_box::protocol::{decode_error, decode_header, Header, Response};
 use crate::net_box::Options;
 
 pub struct RecvQueue {
@@ -31,7 +31,12 @@ impl RecvQueue {
         }
     }
 
-    pub fn recv<F, R>(&self, sync: u64, payload_consumer: F, options: &Options) -> Result<R, Error>
+    pub fn recv<F, R>(
+        &self,
+        sync: u64,
+        payload_consumer: F,
+        options: &Options,
+    ) -> Result<Response<R>, Error>
     where
         F: FnOnce(&mut Cursor<Vec<u8>>) -> Result<R, Error>,
     {
@@ -55,6 +60,7 @@ impl RecvQueue {
                 }
 
                 payload_consumer(self.buffer.borrow_mut().by_ref())
+                    .map(|payload| Response { payload, header })
             };
             self.read_completed_cond.signal();
             result

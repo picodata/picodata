@@ -1,72 +1,27 @@
 use core::cell::RefCell;
-use std::collections::HashMap;
+use std::cell::Cell;
 use std::io;
 use std::io::{Cursor, Write};
 use std::net::SocketAddr;
 use std::os::unix::io::AsRawFd;
 use std::rc::Rc;
+use std::time::Duration;
 
 use crate::coio::CoIOStream;
 use crate::error::Error;
-use crate::fiber::{is_cancelled, set_cancellable, sleep, Cond, Fiber, Latch};
-use crate::net_box::protocol::Response;
-use crate::net_box::recv_queue::RecvQueue;
-use crate::net_box::send_queue::SendQueue;
-use crate::net_box::{recv_queue, send_queue};
+use crate::fiber::{is_cancelled, set_cancellable, sleep, time, Cond, Fiber, Latch};
 
 use super::options::{ConnOptions, Options};
 use super::protocol;
-
-#[derive(Default)]
-pub struct Schema {
-    version: u32,
-    space_ids: HashMap<String, u32>,
-    index_ids: HashMap<(u32, String), u32>,
-}
-
-impl Schema {
-    fn update(
-        &mut self,
-        spaces_response: Response,
-        indexes_response: Response,
-    ) -> Result<(), Error> {
-        let schema_version = spaces_response.schema_version;
-
-        self.space_ids.clear();
-        let mut iter = spaces_response.into_iter()?.unwrap();
-        while let Some(item) = iter.next_tuple() {
-            let (id, _, name) = item.into_struct::<(u32, u32, String)>()?;
-            self.space_ids.insert(name, id);
-        }
-
-        self.index_ids.clear();
-        let mut iter = indexes_response.into_iter()?.unwrap();
-        while let Some(item) = iter.next_tuple() {
-            let (space_id, index_id, name) = item.into_struct::<(u32, u32, String)>()?;
-            self.index_ids.insert((space_id, name), index_id);
-        }
-
-        self.version = schema_version;
-        Ok(())
-    }
-
-    fn lookup_space(&self, name: &str) -> Option<u32> {
-        self.space_ids.get(name).map(|id| id.clone())
-    }
-
-    fn lookup_index(&self, name: &str, space_id: u32) -> Option<u32> {
-        self.index_ids
-            .get(&(space_id, name.to_string()))
-            .map(|id| id.clone())
-    }
-}
+use super::recv_queue::{self, RecvQueue};
+use super::schema::ConnSchema;
+use super::send_queue::{self, SendQueue};
 
 #[derive(Clone)]
 enum ConnState {
     Init,
     Connecting,
     Auth,
-    FetchSchema,
     Active(Rc<ConnSession>),
     Error,
     ErrorReconnect(Rc<RefCell<Option<io::Error>>>),
@@ -79,6 +34,9 @@ pub struct ConnInner {
     state: RefCell<ConnState>,
     state_lock: Latch,
     state_change_cond: Cond,
+    schema: RefCell<ConnSchema>,
+    schema_version: Cell<Option<u32>>,
+    schema_lock: Latch,
     send_queue: SendQueue,
     recv_queue: RecvQueue,
     send_fiber: RefCell<Fiber<'static, Rc<ConnInner>>>,
@@ -102,6 +60,9 @@ impl ConnInner {
             state: RefCell::new(ConnState::Init),
             state_lock: Latch::new(),
             state_change_cond: Cond::new(),
+            schema: RefCell::new(Default::default()),
+            schema_version: Cell::new(None),
+            schema_lock: Latch::new(),
             send_queue: SendQueue::new(1024),
             recv_queue: RecvQueue::new(1024),
             send_fiber: RefCell::new(send_fiber),
@@ -133,7 +94,14 @@ impl ConnInner {
                 }
                 ConnState::Active(_) => {
                     return match self.send_queue.send(request_producer) {
-                        Ok(sync) => self.recv_queue.recv(sync, response_consumer, options),
+                        Ok(sync) => self
+                            .recv_queue
+                            .recv(sync, response_consumer, options)
+                            .and_then(|response| {
+                                self.schema_version
+                                    .set(Some(response.header.schema_version));
+                                Ok(response.payload)
+                            }),
                         Err(err) => Err(self.handle_error(err.into()).err().unwrap()),
                     };
                 }
@@ -143,10 +111,22 @@ impl ConnInner {
                     return Err(io::Error::from(io::ErrorKind::NotConnected).into())
                 }
                 _ => {
-                    self.wait_state_changed();
+                    self.wait_state_changed(None);
                 }
             };
         }
+    }
+
+    #[inline(always)]
+    pub fn lookup_space(&self, name: &str) -> Result<Option<u32>, Error> {
+        self.sync_schema()?;
+        Ok(self.schema.borrow().lookup_space(name))
+    }
+
+    #[inline(always)]
+    pub fn lookup_index(&self, name: &str, space_id: u32) -> Result<Option<u32>, Error> {
+        self.sync_schema()?;
+        Ok(self.schema.borrow().lookup_index(name, space_id))
     }
 
     pub fn close(&self) {
@@ -163,7 +143,7 @@ impl ConnInner {
 
     fn init(&self) -> Result<(), Error> {
         match self.connect() {
-            Ok(_) => {}
+            Ok(_) => (),
             Err(err) => {
                 return self.handle_error(err);
             }
@@ -226,9 +206,33 @@ impl ConnInner {
         Ok(())
     }
 
+    fn sync_schema(&self) -> Result<(), Error> {
+        self.wait_connected(Some(self.options.connect_timeout))?;
+        let _lock = self.schema_lock.lock();
+
+        let is_schema_outdated = match self.schema_version.get() {
+            None => true,
+            Some(actual_version) => self.schema.borrow().version < actual_version,
+        };
+
+        if is_schema_outdated {
+            self.schema.borrow_mut().update(self)
+        } else {
+            Ok(())
+        }
+    }
+
     fn state(&self) -> ConnState {
         let _lock = self.state_lock.lock();
         self.state.borrow().clone()
+    }
+
+    fn session(&self) -> Rc<ConnSession> {
+        let _lock = self.state_lock.lock();
+        match self.state.borrow().clone() {
+            ConnState::Active(state) => state,
+            _ => panic!("Invalid sate"),
+        }
     }
 
     fn update_state(&self, state: ConnState) {
@@ -239,8 +243,37 @@ impl ConnInner {
         self.state_change_cond.broadcast();
     }
 
-    fn wait_state_changed(&self) {
-        self.state_change_cond.wait();
+    fn wait_connected(&self, timeout: Option<Duration>) -> Result<bool, Error> {
+        let begin_ts = time();
+        loop {
+            let state = self.state();
+            match state {
+                ConnState::Init => {
+                    self.init()?;
+                }
+                ConnState::Active(_) => return Ok(true),
+                ConnState::Closed => return Ok(false),
+                _ => {
+                    let timeout = match timeout {
+                        None => None,
+                        Some(timeout) => {
+                            timeout.checked_sub(Duration::from_secs_f64(time() - begin_ts))
+                        }
+                    };
+
+                    if !self.wait_state_changed(timeout) {
+                        return Err(io::Error::from(io::ErrorKind::TimedOut).into());
+                    }
+                }
+            };
+        }
+    }
+
+    fn wait_state_changed(&self, timeout: Option<Duration>) -> bool {
+        match timeout {
+            Some(timeout) => self.state_change_cond.wait_timeout(timeout),
+            None => self.state_change_cond.wait(),
+        }
     }
 
     fn handle_error(&self, err: Error) -> Result<(), Error> {
@@ -312,7 +345,7 @@ fn send_worker(conn: Box<Rc<ConnInner>>) -> i32 {
             }
             ConnState::Closed => return 0,
             _ => {
-                conn.wait_state_changed();
+                conn.wait_state_changed(None);
             }
         }
     }
@@ -335,7 +368,7 @@ fn recv_worker(conn: Box<Rc<ConnInner>>) -> i32 {
             }
             ConnState::Closed => return 0,
             _ => {
-                conn.wait_state_changed();
+                conn.wait_state_changed(None);
             }
         }
     }

@@ -56,6 +56,7 @@ mod inner;
 mod options;
 mod protocol;
 mod recv_queue;
+mod schema;
 mod send_queue;
 mod space;
 
@@ -155,7 +156,10 @@ impl Conn {
 
     /// Search space by name on remote server
     pub fn space(&self, name: &str) -> Result<Option<RemoteSpace>, Error> {
-        unimplemented!()
+        Ok(self
+            .inner
+            .lookup_space(name)?
+            .map(|space_id| RemoteSpace::new(self.inner.clone(), space_id)))
     }
 }
 
