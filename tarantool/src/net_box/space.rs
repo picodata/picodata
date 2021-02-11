@@ -1,4 +1,3 @@
-use std::io::Cursor;
 use std::rc::Rc;
 
 use crate::error::Error;
@@ -6,9 +5,9 @@ use crate::index::IteratorType;
 use crate::tuple::{AsTuple, Tuple};
 
 use super::index::{RemoteIndex, RemoteIndexIterator};
+use super::inner::ConnInner;
 use super::options::Options;
 use super::protocol;
-use crate::net_box::inner::ConnInner;
 
 /// Remote space
 pub struct RemoteSpace {
@@ -26,13 +25,16 @@ impl RemoteSpace {
 
     /// Find index by name (on remote space)
     pub fn index(&self, name: &str) -> Result<Option<RemoteIndex>, Error> {
-        unimplemented!()
+        Ok(self
+            .conn_inner
+            .lookup_index(name, self.space_id)?
+            .map(|index_id| RemoteIndex::new(self.conn_inner.clone(), self.space_id, index_id)))
     }
 
     /// Returns index with id = 0
     #[inline(always)]
     pub fn primary_key(&self) -> RemoteIndex {
-        unimplemented!()
+        RemoteIndex::new(self.conn_inner.clone(), self.space_id, 0)
     }
 
     /// The remote-call equivalent of the local call `Space::get(...)`
@@ -64,7 +66,11 @@ impl RemoteSpace {
     where
         T: AsTuple,
     {
-        unimplemented!()
+        self.conn_inner.request(
+            |buf, sync| protocol::encode_insert(buf, sync, self.space_id, value),
+            protocol::decode_single_row,
+            options,
+        )
     }
 
     /// The remote-call equivalent of the local call `Space::replace(...)`
@@ -73,7 +79,11 @@ impl RemoteSpace {
     where
         T: AsTuple,
     {
-        unimplemented!()
+        self.conn_inner.request(
+            |buf, sync| protocol::encode_replace(buf, sync, self.space_id, value),
+            protocol::decode_single_row,
+            options,
+        )
     }
 
     /// The remote-call equivalent of the local call `Space::update(...)`

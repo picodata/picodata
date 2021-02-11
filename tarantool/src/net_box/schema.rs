@@ -54,7 +54,7 @@ impl ConnSchema {
                     &(SystemSpace::SystemIdMax as u32,),
                 )
             },
-            decode_data,
+            |buf| decode_data(buf, None),
             &Options::default(),
         )
     }
@@ -73,7 +73,7 @@ impl ConnSchema {
                     &Vec::<()>::new(),
                 )
             },
-            decode_data,
+            |buf| decode_data(buf, None),
             &Options::default(),
         )
     }

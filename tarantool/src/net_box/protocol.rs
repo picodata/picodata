@@ -1,5 +1,5 @@
 use core::str::from_utf8;
-use std::collections::VecDeque;
+use std::cmp::min;
 use std::fmt::{Display, Formatter};
 use std::io::{self, Cursor, Read, Seek, SeekFrom, Write};
 use std::os::raw::c_char;
@@ -55,31 +55,6 @@ fn encode_header(
     rmp::encode::write_pfix(stream, request_type as u8)?;
     rmp::encode::write_pfix(stream, SYNC)?;
     rmp::encode::write_uint(stream, sync)?;
-    Ok(())
-}
-
-fn prepare_request(
-    buf: &mut Cursor<Vec<u8>>,
-    sync: u64,
-    request_type: IProtoType,
-) -> Result<u64, Error> {
-    rmp::encode::write_u32(buf, 0)?;
-    let header_offset = buf.position();
-
-    // Header fields
-    rmp::encode::write_map_len(buf, 2)?;
-    rmp::encode::write_pfix(buf, REQUEST_TYPE)?;
-    rmp::encode::write_pfix(buf, request_type as u8)?;
-    rmp::encode::write_pfix(buf, SYNC)?;
-    rmp::encode::write_uint(buf, sync)?;
-
-    Ok(header_offset)
-}
-
-pub fn encode_request(buf: &mut Cursor<Vec<u8>>, header_offset: u64) -> Result<(), Error> {
-    let len = buf.position() - header_offset;
-    buf.set_position(0);
-    rmp::encode::write_u32(buf, len as u32)?;
     Ok(())
 }
 
@@ -204,7 +179,7 @@ where
 }
 
 pub fn encode_insert<T>(
-    buf: &mut Cursor<Vec<u8>>,
+    stream: &mut impl Write,
     sync: u64,
     space_id: u32,
     value: &T,
@@ -212,18 +187,17 @@ pub fn encode_insert<T>(
 where
     T: AsTuple,
 {
-    let header_offset = prepare_request(buf, sync, IProtoType::Insert)?;
-    rmp::encode::write_map_len(buf, 2)?;
-    rmp::encode::write_pfix(buf, SPACE_ID)?;
-    rmp::encode::write_u32(buf, space_id)?;
-    rmp::encode::write_pfix(buf, TUPLE)?;
-    rmp_serde::encode::write(buf, value)?;
-    encode_request(buf, header_offset)?;
+    encode_header(stream, sync, IProtoType::Insert)?;
+    rmp::encode::write_map_len(stream, 2)?;
+    rmp::encode::write_pfix(stream, SPACE_ID)?;
+    rmp::encode::write_u32(stream, space_id)?;
+    rmp::encode::write_pfix(stream, TUPLE)?;
+    rmp_serde::encode::write(stream, value)?;
     Ok(())
 }
 
 pub fn encode_replace<T>(
-    buf: &mut Cursor<Vec<u8>>,
+    stream: &mut impl Write,
     sync: u64,
     space_id: u32,
     value: &T,
@@ -231,18 +205,17 @@ pub fn encode_replace<T>(
 where
     T: AsTuple,
 {
-    let header_offset = prepare_request(buf, sync, IProtoType::Replace)?;
-    rmp::encode::write_map_len(buf, 2)?;
-    rmp::encode::write_pfix(buf, SPACE_ID)?;
-    rmp::encode::write_u32(buf, space_id)?;
-    rmp::encode::write_pfix(buf, TUPLE)?;
-    rmp_serde::encode::write(buf, value)?;
-    encode_request(buf, header_offset)?;
+    encode_header(stream, sync, IProtoType::Replace)?;
+    rmp::encode::write_map_len(stream, 2)?;
+    rmp::encode::write_pfix(stream, SPACE_ID)?;
+    rmp::encode::write_u32(stream, space_id)?;
+    rmp::encode::write_pfix(stream, TUPLE)?;
+    rmp_serde::encode::write(stream, value)?;
     Ok(())
 }
 
 pub fn encode_update<K, Op>(
-    buf: &mut Cursor<Vec<u8>>,
+    stream: &mut impl Write,
     sync: u64,
     space_id: u32,
     index_id: u32,
@@ -253,22 +226,21 @@ where
     K: AsTuple,
     Op: AsTuple,
 {
-    let header_offset = prepare_request(buf, sync, IProtoType::Update)?;
-    rmp::encode::write_map_len(buf, 4)?;
-    rmp::encode::write_pfix(buf, SPACE_ID)?;
-    rmp::encode::write_u32(buf, space_id)?;
-    rmp::encode::write_pfix(buf, INDEX_ID)?;
-    rmp::encode::write_u32(buf, index_id)?;
-    rmp::encode::write_pfix(buf, KEY)?;
-    rmp_serde::encode::write(buf, key)?;
-    rmp::encode::write_pfix(buf, TUPLE)?;
-    rmp_serde::encode::write(buf, ops)?;
-    encode_request(buf, header_offset)?;
+    encode_header(stream, sync, IProtoType::Update)?;
+    rmp::encode::write_map_len(stream, 4)?;
+    rmp::encode::write_pfix(stream, SPACE_ID)?;
+    rmp::encode::write_u32(stream, space_id)?;
+    rmp::encode::write_pfix(stream, INDEX_ID)?;
+    rmp::encode::write_u32(stream, index_id)?;
+    rmp::encode::write_pfix(stream, KEY)?;
+    rmp_serde::encode::write(stream, key)?;
+    rmp::encode::write_pfix(stream, TUPLE)?;
+    rmp_serde::encode::write(stream, ops)?;
     Ok(())
 }
 
 pub fn encode_upsert<T, Op>(
-    buf: &mut Cursor<Vec<u8>>,
+    stream: &mut impl Write,
     sync: u64,
     space_id: u32,
     index_id: u32,
@@ -279,22 +251,21 @@ where
     T: AsTuple,
     Op: AsTuple,
 {
-    let header_offset = prepare_request(buf, sync, IProtoType::Upsert)?;
-    rmp::encode::write_map_len(buf, 4)?;
-    rmp::encode::write_pfix(buf, SPACE_ID)?;
-    rmp::encode::write_u32(buf, space_id)?;
-    rmp::encode::write_pfix(buf, INDEX_BASE)?;
-    rmp::encode::write_u32(buf, index_id)?;
-    rmp::encode::write_pfix(buf, OPS)?;
-    rmp_serde::encode::write(buf, ops)?;
-    rmp::encode::write_pfix(buf, TUPLE)?;
-    rmp_serde::encode::write(buf, value)?;
-    encode_request(buf, header_offset)?;
+    encode_header(stream, sync, IProtoType::Upsert)?;
+    rmp::encode::write_map_len(stream, 4)?;
+    rmp::encode::write_pfix(stream, SPACE_ID)?;
+    rmp::encode::write_u32(stream, space_id)?;
+    rmp::encode::write_pfix(stream, INDEX_BASE)?;
+    rmp::encode::write_u32(stream, index_id)?;
+    rmp::encode::write_pfix(stream, OPS)?;
+    rmp_serde::encode::write(stream, ops)?;
+    rmp::encode::write_pfix(stream, TUPLE)?;
+    rmp_serde::encode::write(stream, value)?;
     Ok(())
 }
 
 pub fn encode_delete<K>(
-    buf: &mut Cursor<Vec<u8>>,
+    stream: &mut impl Write,
     sync: u64,
     space_id: u32,
     index_id: u32,
@@ -303,15 +274,14 @@ pub fn encode_delete<K>(
 where
     K: AsTuple,
 {
-    let header_offset = prepare_request(buf, sync, IProtoType::Delete)?;
-    rmp::encode::write_map_len(buf, 3)?;
-    rmp::encode::write_pfix(buf, SPACE_ID)?;
-    rmp::encode::write_u32(buf, space_id)?;
-    rmp::encode::write_pfix(buf, INDEX_ID)?;
-    rmp::encode::write_u32(buf, index_id)?;
-    rmp::encode::write_pfix(buf, KEY)?;
-    rmp_serde::encode::write(buf, key)?;
-    encode_request(buf, header_offset)?;
+    encode_header(stream, sync, IProtoType::Delete)?;
+    rmp::encode::write_map_len(stream, 3)?;
+    rmp::encode::write_pfix(stream, SPACE_ID)?;
+    rmp::encode::write_u32(stream, space_id)?;
+    rmp::encode::write_pfix(stream, INDEX_ID)?;
+    rmp::encode::write_u32(stream, index_id)?;
+    rmp::encode::write_pfix(stream, KEY)?;
+    rmp_serde::encode::write(stream, key)?;
     Ok(())
 }
 
@@ -405,7 +375,10 @@ pub fn decode_tuple(buffer: &mut Cursor<Vec<u8>>) -> Result<Option<Tuple>, Error
     Ok(None)
 }
 
-pub fn decode_data(buffer: &mut Cursor<Vec<u8>>) -> Result<Vec<Tuple>, Error> {
+pub fn decode_data(
+    buffer: &mut Cursor<Vec<u8>>,
+    limit: Option<usize>,
+) -> Result<Vec<Tuple>, Error> {
     let payload_len = rmp::decode::read_map_len(buffer)?;
     for _ in 0..payload_len {
         let key = rmp::decode::read_pfix(buffer)?;
@@ -415,6 +388,11 @@ pub fn decode_data(buffer: &mut Cursor<Vec<u8>>) -> Result<Vec<Tuple>, Error> {
                 let mut current_offset = buffer.position() as usize;
                 let buf_ptr = buffer.get_mut().as_slice().as_ptr() as *mut c_char;
                 let mut result = Vec::with_capacity(items_count);
+
+                let items_count = match limit {
+                    None => items_count,
+                    Some(limit) => min(limit, items_count),
+                };
 
                 for _ in 0..items_count {
                     skip_msgpack(buffer)?;
@@ -433,6 +411,10 @@ pub fn decode_data(buffer: &mut Cursor<Vec<u8>>) -> Result<Vec<Tuple>, Error> {
         };
     }
     Ok(vec![])
+}
+
+pub fn decode_single_row(buffer: &mut Cursor<Vec<u8>>) -> Result<Option<Tuple>, Error> {
+    decode_data(buffer, Some(1)).map(|result| result.into_iter().next())
 }
 
 fn skip_msgpack(cur: &mut (impl Read + Seek)) -> Result<(), Error> {
@@ -544,30 +526,5 @@ pub struct ResponseError {
 impl Display for ResponseError {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         write!(f, "{}", self.message)
-    }
-}
-
-pub struct ResponseIterator {
-    current_offset: usize,
-    rest_offsets: VecDeque<usize>,
-    buf_ptr: *mut u8,
-}
-
-impl ResponseIterator {
-    pub fn next_tuple(&mut self) -> Option<Tuple> {
-        match self.rest_offsets.pop_front() {
-            None => None,
-            Some(next_offset) => {
-                let current_offset = self.current_offset;
-                self.current_offset = next_offset;
-
-                Some(unsafe {
-                    Tuple::from_raw_data(
-                        self.buf_ptr.clone().add(current_offset) as *mut c_char,
-                        (next_offset - current_offset) as u32,
-                    )
-                })
-            }
-        }
     }
 }

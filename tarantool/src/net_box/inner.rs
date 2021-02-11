@@ -151,13 +151,11 @@ impl ConnInner {
         }
     }
 
-    #[inline(always)]
     pub fn lookup_space(&self, name: &str) -> Result<Option<u32>, Error> {
         self.sync_schema()?;
         Ok(self.schema.borrow().lookup_space(name))
     }
 
-    #[inline(always)]
     pub fn lookup_index(&self, name: &str, space_id: u32) -> Result<Option<u32>, Error> {
         self.sync_schema()?;
         Ok(self.schema.borrow().lookup_index(name, space_id))
