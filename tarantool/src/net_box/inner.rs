@@ -4,18 +4,19 @@ use std::io;
 use std::io::{Cursor, Write};
 use std::net::SocketAddr;
 use std::os::unix::io::AsRawFd;
-use std::rc::Rc;
+use std::rc::{Rc, Weak};
 use std::time::Duration;
 
 use crate::coio::CoIOStream;
 use crate::error::Error;
 use crate::fiber::{is_cancelled, set_cancellable, sleep, time, Cond, Fiber, Latch};
 
-use super::options::{ConnOptions, Options};
+use super::options::{ConnOptions, ConnTriggers, Options};
 use super::protocol;
 use super::recv_queue::{self, RecvQueue};
 use super::schema::ConnSchema;
 use super::send_queue::{self, SendQueue};
+use super::Conn;
 
 #[derive(Debug, Clone)]
 enum ConnState {
@@ -42,11 +43,14 @@ pub struct ConnInner {
     recv_queue: RecvQueue,
     send_fiber: RefCell<Fiber<'static, Rc<ConnInner>>>,
     recv_fiber: RefCell<Fiber<'static, Rc<ConnInner>>>,
+    triggers: RefCell<Option<ConnTriggersWrapper>>,
     error: RefCell<Option<io::Error>>,
 }
 
 impl ConnInner {
-    pub fn new(addrs: Vec<SocketAddr>, options: ConnOptions) -> Rc<Self> {
+    pub fn new(addrs: Vec<SocketAddr>, mut options: ConnOptions) -> Rc<Self> {
+        let triggers = options.triggers.take();
+
         // init recv fiber
         let mut recv_fiber = Fiber::new("_recv_worker", &mut recv_worker);
         recv_fiber.set_joinable(true);
@@ -70,8 +74,17 @@ impl ConnInner {
             recv_queue: RecvQueue::new(1024),
             send_fiber: RefCell::new(send_fiber),
             recv_fiber: RefCell::new(recv_fiber),
+            triggers: RefCell::new(None),
             error: RefCell::new(None),
         });
+
+        // setup triggers
+        if let Some(triggers) = triggers {
+            conn_inner.triggers.replace(Some(ConnTriggersWrapper {
+                callbacks: triggers,
+                self_ref: Rc::downgrade(&conn_inner),
+            }));
+        }
 
         // start send/recv fibers
         conn_inner.send_fiber.borrow_mut().start(conn_inner.clone());
@@ -162,15 +175,17 @@ impl ConnInner {
     }
 
     pub fn close(&self) {
-        self.disconnect();
+        if !matches!(self.state(), ConnState::Closed) {
+            self.disconnect();
 
-        let mut send_fiber = self.send_fiber.borrow_mut();
-        send_fiber.cancel();
-        send_fiber.join();
+            let mut send_fiber = self.send_fiber.borrow_mut();
+            send_fiber.cancel();
+            send_fiber.join();
 
-        let mut recv_fiber = self.recv_fiber.borrow_mut();
-        recv_fiber.cancel();
-        recv_fiber.join();
+            let mut recv_fiber = self.recv_fiber.borrow_mut();
+            recv_fiber.cancel();
+            recv_fiber.join();
+        }
     }
 
     fn init(&self) -> Result<(), Error> {
@@ -208,6 +223,15 @@ impl ConnInner {
         self.session
             .replace(Some(Rc::new(ConnSession::new(stream)?)));
         self.update_state(ConnState::Active);
+
+        // call trigger (if available)
+        if let Some(triggers) = self.triggers.borrow().as_ref() {
+            triggers.callbacks.on_connect(&Conn {
+                inner: triggers.self_ref.upgrade().unwrap(),
+                is_master: false,
+            })?;
+        }
+
         Ok(())
     }
 
@@ -249,10 +273,19 @@ impl ConnInner {
         };
 
         if is_schema_outdated {
-            self.schema.borrow_mut().update(self)
-        } else {
-            Ok(())
+            // synchronize
+            self.schema.borrow_mut().update(self)?;
+
+            // call trigger
+            if let Some(triggers) = self.triggers.borrow().as_ref() {
+                triggers.callbacks.on_schema_reload(&Conn {
+                    inner: triggers.self_ref.upgrade().unwrap(),
+                    is_master: false,
+                });
+            }
         }
+
+        Ok(())
     }
 
     fn state(&self) -> ConnState {
@@ -320,6 +353,10 @@ impl ConnInner {
         self.update_state(ConnState::Closed);
         self.send_queue.close();
         self.recv_fiber.borrow().wakeup();
+
+        if let Some(triggers) = self.triggers.take() {
+            triggers.callbacks.on_disconnect();
+        }
     }
 }
 
@@ -336,6 +373,11 @@ impl ConnSession {
             secondary_stream: RefCell::new(CoIOStream::new(secondary_fd)?),
         })
     }
+}
+
+struct ConnTriggersWrapper {
+    callbacks: Box<dyn ConnTriggers>,
+    self_ref: Weak<ConnInner>,
 }
 
 fn send_worker(conn: Box<Rc<ConnInner>>) -> i32 {

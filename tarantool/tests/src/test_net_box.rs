@@ -542,8 +542,7 @@ pub fn test_triggers_schema_sync() {
         &Options::default(),
     )
     .unwrap();
-
-    conn.ping(&Options::default()).unwrap();
+    conn.space("test_s2").unwrap().unwrap();
     conn.close();
 
     assert_eq!(is_trigger_called.get(), true);
