@@ -6,6 +6,7 @@
 //! See also:
 //! - [Lua reference: Submodule box.space](https://www.tarantool.io/en/doc/latest/reference/reference_lua/box_space/)
 //! - [C API reference: Module box](https://www.tarantool.io/en/doc/latest/dev_guide/reference_capi/box/)
+use std::cmp::max;
 use std::os::raw::c_char;
 use std::ptr::null_mut;
 
@@ -82,8 +83,6 @@ pub enum SystemSpace {
     FuncIndex = 372,
     /// Space id of _session_settings.
     SessionSettings = 380,
-    #[doc(hidden)]
-    SystemIdMax = 511,
 }
 
 impl Into<Space> for SystemSpace {
@@ -201,11 +200,7 @@ impl Space {
             // Get tuple with greatest id. Increment it and use as id of new space.
             let max_tuple = sys_space.index("primary").unwrap().max(&())?.unwrap();
             let max_tuple_id = max_tuple.field::<u32>(0)?.unwrap();
-            let max_id_val = if max_tuple_id < SYSTEM_ID_MAX {
-                SYSTEM_ID_MAX
-            } else {
-                max_tuple_id
-            };
+            let max_id_val = max(max_tuple_id, SYSTEM_ID_MAX);
             // Insert max_id into _schema space.
             let created_max_id = sys_schema
                 .insert(&("max_id".to_string(), max_id_val + 1))?

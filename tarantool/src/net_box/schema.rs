@@ -6,7 +6,7 @@ use std::rc::Rc;
 use crate::error::Error;
 use crate::fiber::Latch;
 use crate::index::IteratorType;
-use crate::space::SystemSpace;
+use crate::space::{SystemSpace, SYSTEM_ID_MAX};
 use crate::tuple::Tuple;
 
 use super::inner::ConnInner;
@@ -93,7 +93,7 @@ impl ConnSchema {
                     u32::max_value(),
                     0,
                     IteratorType::GT,
-                    &(SystemSpace::SystemIdMax as u32,),
+                    &(SYSTEM_ID_MAX,),
                 )
             },
             |buf, header| Ok((decode_data(buf, None)?, header.schema_version)),
