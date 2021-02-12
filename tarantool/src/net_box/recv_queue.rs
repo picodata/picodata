@@ -55,7 +55,7 @@ impl RecvQueue {
         if is_signaled {
             let result = {
                 let _lock = self.lock.lock();
-                let header = self.header.take().unwrap();
+                let header = self.header.replace(None).unwrap();
                 if header.status_code != 0 {
                     return Err(decode_error(self.buffer.borrow_mut().by_ref())?.into());
                 }

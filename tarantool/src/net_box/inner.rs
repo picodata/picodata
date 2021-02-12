@@ -3,7 +3,7 @@ use std::cell::Cell;
 use std::io;
 use std::io::{Cursor, Write};
 use std::net::SocketAddr;
-use std::os::unix::io::AsRawFd;
+use std::os::unix::io::{AsRawFd, RawFd};
 use std::rc::{Rc, Weak};
 use std::time::Duration;
 
@@ -331,7 +331,7 @@ impl ConnInner {
     }
 
     fn reconnect_or_fail(&self) -> Result<(), Error> {
-        let error = self.error.take().unwrap();
+        let error = self.error.replace(None).unwrap();
         let reconnect_after = self.options.reconnect_after;
         if reconnect_after.as_secs() == 0 && reconnect_after.subsec_nanos() == 0 {
             self.update_state(ConnState::Error);
@@ -354,7 +354,7 @@ impl ConnInner {
         self.send_queue.close();
         self.recv_fiber.borrow().wakeup();
 
-        if let Some(triggers) = self.triggers.take() {
+        if let Some(triggers) = self.triggers.replace(None) {
             triggers.callbacks.on_disconnect();
         }
     }
@@ -370,7 +370,7 @@ impl ConnSession {
         let secondary_fd = unsafe { libc::dup(primary_stream.as_raw_fd()) };
         Ok(ConnSession {
             primary_stream: RefCell::new(primary_stream),
-            secondary_stream: RefCell::new(CoIOStream::new(secondary_fd)?),
+            secondary_stream: RefCell::new(CoIOStream::new(secondary_fd as RawFd)?),
         })
     }
 }
