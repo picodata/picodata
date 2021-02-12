@@ -11,7 +11,7 @@ build:
     stage: build
     tags:
         - docker
-    image: registry.gitlab.com/picodata/dockers/brod-builder:0.1
+    image: registry.gitlab.com/picodata/dockers/brod-builder:0.2
     script:
         - make
 
@@ -19,6 +19,6 @@ test:
     stage: test
     tags:
         - docker
-    image: registry.gitlab.com/picodata/dockers/brod-builder:0.1
+    image: registry.gitlab.com/picodata/dockers/brod-builder:0.2
     script:
         - make test
