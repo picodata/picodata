@@ -351,7 +351,7 @@ pub fn decode_greeting(stream: &mut impl Read) -> Result<Vec<u8>, Error> {
     Ok(salt)
 }
 
-pub fn decode_tuple(buffer: &mut Cursor<Vec<u8>>) -> Result<Option<Tuple>, Error> {
+pub fn decode_tuple(buffer: &mut Cursor<Vec<u8>>, _: &Header) -> Result<Option<Tuple>, Error> {
     let payload_len = rmp::decode::read_map_len(buffer)?;
     for _ in 0..payload_len {
         let key = rmp::decode::read_pfix(buffer)?;
@@ -413,7 +413,7 @@ pub fn decode_data(
     Ok(vec![])
 }
 
-pub fn decode_single_row(buffer: &mut Cursor<Vec<u8>>) -> Result<Option<Tuple>, Error> {
+pub fn decode_single_row(buffer: &mut Cursor<Vec<u8>>, _: &Header) -> Result<Option<Tuple>, Error> {
     decode_data(buffer, Some(1)).map(|result| result.into_iter().next())
 }
 

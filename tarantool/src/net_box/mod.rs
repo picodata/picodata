@@ -106,7 +106,7 @@ impl Conn {
     /// - `options` – the supported option is `timeout`
     pub fn ping(&self, options: &Options) -> Result<(), Error> {
         self.inner
-            .request(protocol::encode_ping, |_| Ok(()), options)?;
+            .request(protocol::encode_ping, |_, _| Ok(()), options)?;
         Ok(())
     }
 

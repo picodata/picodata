@@ -12,7 +12,7 @@ use crate::error::Error;
 use crate::fiber::{is_cancelled, set_cancellable, sleep, time, Cond, Fiber, Latch};
 
 use super::options::{ConnOptions, ConnTriggers, Options};
-use super::protocol;
+use super::protocol::{self, Header};
 use super::recv_queue::{self, RecvQueue};
 use super::schema::ConnSchema;
 use super::send_queue::{self, SendQueue};
@@ -35,7 +35,7 @@ pub struct ConnInner {
     state: RefCell<ConnState>,
     state_lock: Latch,
     state_change_cond: Cond,
-    schema: RefCell<ConnSchema>,
+    schema: Rc<ConnSchema>,
     schema_version: Cell<Option<u32>>,
     schema_lock: Latch,
     session: RefCell<Option<Rc<ConnSession>>>,
@@ -61,12 +61,10 @@ impl ConnInner {
 
         // construct object
         let conn_inner = Rc::new(ConnInner {
-            addrs,
-            options,
             state: RefCell::new(ConnState::Init),
             state_lock: Latch::new(),
             state_change_cond: Cond::new(),
-            schema: RefCell::new(Default::default()),
+            schema: ConnSchema::acquire(&addrs),
             schema_version: Cell::new(None),
             schema_lock: Latch::new(),
             session: RefCell::new(None),
@@ -76,6 +74,8 @@ impl ConnInner {
             recv_fiber: RefCell::new(recv_fiber),
             triggers: RefCell::new(None),
             error: RefCell::new(None),
+            addrs,
+            options,
         });
 
         // setup triggers
@@ -131,7 +131,7 @@ impl ConnInner {
     ) -> Result<R, Error>
     where
         Fp: FnOnce(&mut Cursor<Vec<u8>>, u64) -> Result<(), Error>,
-        Fc: FnOnce(&mut Cursor<Vec<u8>>) -> Result<R, Error>,
+        Fc: FnOnce(&mut Cursor<Vec<u8>>, &Header) -> Result<R, Error>,
     {
         loop {
             let state = self.state();
@@ -166,12 +166,12 @@ impl ConnInner {
 
     pub fn lookup_space(&self, name: &str) -> Result<Option<u32>, Error> {
         self.sync_schema()?;
-        Ok(self.schema.borrow().lookup_space(name))
+        Ok(self.schema.lookup_space(name))
     }
 
     pub fn lookup_index(&self, name: &str, space_id: u32) -> Result<Option<u32>, Error> {
         self.sync_schema()?;
-        Ok(self.schema.borrow().lookup_index(name, space_id))
+        Ok(self.schema.lookup_index(name, space_id))
     }
 
     pub fn close(&self) {
@@ -269,12 +269,12 @@ impl ConnInner {
 
         let is_schema_outdated = match self.schema_version.get() {
             None => true,
-            Some(actual_version) => self.schema.borrow().version < actual_version,
+            Some(actual_version) => actual_version > self.schema.cached_version(),
         };
 
         if is_schema_outdated {
             // synchronize
-            self.schema.borrow_mut().update(self)?;
+            self.schema.update(self)?;
 
             // call trigger
             if let Some(triggers) = self.triggers.borrow().as_ref() {

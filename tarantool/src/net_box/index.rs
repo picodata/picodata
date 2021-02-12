@@ -68,7 +68,7 @@ impl RemoteIndex {
                     key,
                 )
             },
-            |buf| {
+            |buf, _| {
                 protocol::decode_data(buf, None).map(|result| RemoteIndexIterator {
                     inner: result.into_iter(),
                 })
