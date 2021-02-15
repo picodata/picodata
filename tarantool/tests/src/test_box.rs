@@ -435,6 +435,8 @@ pub fn test_space_create_opt_default() {
     // Create space with default options.
     let result = Space::create("new_space_1", &opts);
     assert_eq!(result.is_ok(), true);
+
+    drop_space("new_space_1");
 }
 
 pub fn test_space_create_opt_if_not_exists() {
@@ -449,6 +451,8 @@ pub fn test_space_create_opt_if_not_exists() {
     opts.if_not_exists = true;
     let result_2 = Space::create("new_space_2", &opts);
     assert_eq!(result_2.is_err(), false);
+
+    drop_space("new_space_2");
 }
 
 pub fn test_space_create_id_increment() {
@@ -456,11 +460,17 @@ pub fn test_space_create_id_increment() {
     let _result = Space::create("new_space_3", &opts);
     let mut prev_id = Space::find("new_space_3").unwrap().id();
     for i in 302..306 {
-        let space_name = format!("new_space_{}", i);
-        let result = Space::create(space_name.as_str(), &opts);
+        let name = format!("new_space_{}", i);
+        let result = Space::create(name.as_str(), &opts);
         let curr_id = result.unwrap().id();
         assert_eq!(prev_id + 1, curr_id);
         prev_id = curr_id;
+    }
+
+    drop_space("new_space_3");
+    for i in 302..306 {
+        let name = format!("new_space_{}", i);
+        drop_space(name.as_str());
     }
 }
 
@@ -476,6 +486,8 @@ pub fn test_space_create_opt_user() {
     opts.user = Some("user".to_string());
     let result_5 = Space::create("new_space_5", &opts);
     assert_eq!(result_5.is_err(), true);
+
+    drop_space("new_space_4");
 }
 
 pub fn test_space_create_opt_id() {
@@ -485,4 +497,25 @@ pub fn test_space_create_opt_id() {
     let result_5 = Space::create("new_space_6", &opts);
     let id = result_5.unwrap().id();
     assert_eq!(id, opts.id.unwrap());
+
+    drop_space("new_space_6");
+}
+
+pub fn test_space_drop() {
+    let opts = SpaceCreateOptions::default();
+
+    for i in 400..406 {
+        // Create space and drop it.
+        let name = format!("new_space_{}", i);
+        let _create_result = Space::create(name.as_str(), &opts);
+        drop_space(name.as_str());
+        // Check that space has been poperly removed.
+        let find_result = Space::find(name.as_str());
+        assert_eq!(find_result.is_none(), true);
+    }
+}
+
+pub fn drop_space(name: &str) {
+    let result = Space::find(name).unwrap().drop();
+    assert_eq!(result.is_err(), false);
 }

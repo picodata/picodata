@@ -115,6 +115,7 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 test_box::test_space_create_id_increment,
                 test_box::test_space_create_opt_user,
                 test_box::test_space_create_opt_id,
+                test_box::test_space_drop,
                 test_tuple::test_tuple_new_from_struct,
                 test_tuple::test_tuple_field_count,
                 test_tuple::test_tuple_size,

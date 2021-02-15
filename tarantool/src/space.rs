@@ -15,7 +15,9 @@ use num_traits::ToPrimitive;
 use crate::error::{set_error, Error, TarantoolError, TarantoolErrorCode};
 use crate::ffi::tarantool as ffi;
 use crate::index::{Index, IndexIterator, IteratorType};
+use crate::schema;
 use crate::schema::SpaceMetadata;
+use crate::sequence::Sequence;
 use crate::serde_json::{Map, Number, Value};
 use crate::session;
 use crate::tuple::{AsTuple, Tuple};
@@ -135,6 +137,10 @@ impl SpaceCreateOptions {
             is_sync: false,
         }
     }
+}
+
+pub struct SpaceDropOptions {
+    pub if_not_exists: bool,
 }
 
 impl Space {
@@ -264,6 +270,95 @@ impl Space {
             Err(e) => Err(e),
             Ok(_) => Ok(Space::find(name).unwrap()),
         }
+    }
+
+    /// Drop a space.
+    pub fn drop(&self) -> Result<(), Error> {
+        // Delete automatically generated sequence.
+        let mut sys_space_sequence: Space = SystemSpace::SpaceSequence.into();
+        let seq_tuple = sys_space_sequence.delete(&(self.id,))?;
+        match seq_tuple {
+            None => (),
+            Some(t) => {
+                let is_generated = t.field::<bool>(2)?.unwrap();
+                if is_generated {
+                    let seq_id = t.field::<u32>(1)?.unwrap();
+                    let seq = Sequence::find_by_id(seq_id)?.unwrap();
+                    seq.drop()?;
+                }
+            }
+        }
+
+        // Remove from _trigger.
+        let mut sys_trigger: Space = SystemSpace::Trigger.into();
+        let sys_space_idx = sys_trigger.index("space_id").unwrap();
+        for t in sys_space_idx
+            .select(IteratorType::Eq, &(self.id,))?
+            .collect::<Vec<Tuple>>()
+        {
+            let name = t.field::<String>(0)?.unwrap();
+            sys_trigger.delete(&(name,))?;
+        }
+
+        // Remove from _fk_constraint.
+        let mut sys_fk_constraint: Space = SystemSpace::FkConstraint.into();
+        let sys_space_idx = sys_fk_constraint.index("child_id").unwrap();
+        for t in sys_space_idx
+            .select(IteratorType::Eq, &(self.id,))?
+            .collect::<Vec<Tuple>>()
+        {
+            let name = t.field::<String>(0)?.unwrap();
+            sys_fk_constraint.delete(&(name, self.id))?;
+        }
+
+        // CRemove from _ck_constraint.
+        let mut sys_ck_constraint: Space = SystemSpace::CkConstraint.into();
+        let sys_space_idx = sys_ck_constraint.index("primary").unwrap();
+        for t in sys_space_idx
+            .select(IteratorType::Eq, &(self.id,))?
+            .collect::<Vec<Tuple>>()
+        {
+            let name = t.field::<String>(2)?.unwrap();
+            sys_ck_constraint.delete(&(self.id, name))?;
+        }
+
+        // Remove from _func_index.
+        let mut sys_func_index: Space = SystemSpace::FuncIndex.into();
+        let sys_space_idx = sys_func_index.index("primary").unwrap();
+        for t in sys_space_idx
+            .select(IteratorType::Eq, &(self.id,))?
+            .collect::<Vec<Tuple>>()
+        {
+            let index_id = t.field::<u32>(1)?.unwrap();
+            sys_func_index.delete(&(self.id, index_id))?;
+        }
+
+        // Remove from _index.
+        let sys_vindex: Space = SystemSpace::VIndex.into();
+        let mut sys_index: Space = SystemSpace::Index.into();
+        let keys = sys_vindex
+            .select(IteratorType::Eq, &(self.id,))?
+            .collect::<Vec<Tuple>>();
+        for i in 1..keys.len() + 1 {
+            let t_idx = keys.len() - i;
+            let t = &keys[t_idx];
+            let id = t.field::<u32>(0)?.unwrap();
+            let iid = t.field::<u32>(1)?.unwrap();
+            sys_index.delete(&(id, iid))?;
+        }
+
+        // Revoke priveleges.
+        schema::revoke_object_priveleges("space", self.id)?;
+
+        // Remove from _truncate.
+        let mut sys_truncate: Space = SystemSpace::Truncate.into();
+        sys_truncate.delete(&(self.id,))?;
+
+        // Remove from _space.
+        let mut sys_space: Space = SystemSpace::Space.into();
+        sys_space.delete(&(self.id,))?;
+
+        Ok(())
     }
 
     /// Find space by name.
