@@ -1,5 +1,6 @@
 //! Box: schema
 
+use crate::serde::{Serialize, Serializer};
 use crate::serde_json::{Map, Value};
 
 use crate::error::Error;
@@ -7,14 +8,33 @@ use crate::index::IteratorType;
 use crate::space::{Space, SystemSpace};
 use crate::tuple::{AsTuple, Tuple};
 
-/// SpaceInternal is tuple, hodiing space metdata in system `_space` space.
+/// Type of engine, used by space.
+#[derive(Copy, Clone, Debug)]
+pub enum SpaceEngineType {
+    Memtx,
+    Vinyl,
+}
+
+impl Serialize for SpaceEngineType {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match *self {
+            SpaceEngineType::Memtx => serializer.serialize_str("memtx"),
+            SpaceEngineType::Vinyl => serializer.serialize_str("vinyl"),
+        }
+    }
+}
+
+/// SpaceInternal is tuple, holdiing space metdata in system `_space` space.
 /// For details see internal Space::insert_new_space function.
-#[derive(Serialize)]
+#[derive(Serialize, Debug)]
 pub struct SpaceMetadata {
     pub id: u32,
     pub uid: u32,
     pub name: String,
-    pub engine: String,
+    pub engine: SpaceEngineType,
     pub field_count: u32,
     pub options: Map<String, Value>,
     pub format: Vec<Value>,

@@ -16,7 +16,7 @@ use crate::error::{set_error, Error, TarantoolError, TarantoolErrorCode};
 use crate::ffi::tarantool as ffi;
 use crate::index::{Index, IndexIterator, IteratorType};
 use crate::schema;
-use crate::schema::SpaceMetadata;
+use crate::schema::{SpaceEngineType, SpaceMetadata};
 use crate::sequence::Sequence;
 use crate::serde_json::{Map, Number, Value};
 use crate::session;
@@ -97,15 +97,6 @@ impl Into<Space> for SystemSpace {
 
 pub struct Space {
     id: u32,
-}
-
-/// Type of engine, used by space.
-#[derive(Copy, Clone, Serialize)]
-pub enum SpaceEngineType {
-    #[serde(rename = "memtx")]
-    Memtx,
-    #[serde(rename = "vinyl")]
-    Vinyl,
 }
 
 /// Options for new space, used by Space::create.
@@ -234,11 +225,8 @@ impl Space {
     ) -> Result<Space, Error> {
         // Update _space with metadata about new space.
         let engine = match opts.engine {
-            None => "memtx".to_string(),
-            Some(e) => match e {
-                SpaceEngineType::Memtx => "memtx".to_string(),
-                SpaceEngineType::Vinyl => "vynil".to_string(),
-            },
+            None => SpaceEngineType::Memtx,
+            Some(e) => e,
         };
 
         let field_count = match opts.field_count {
