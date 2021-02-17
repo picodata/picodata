@@ -1,4 +1,3 @@
-use std::io::Cursor;
 use std::rc::Rc;
 
 use crate::error::Error;
@@ -67,17 +66,11 @@ impl RemoteSpace {
     where
         T: AsTuple,
     {
-        let buf = Vec::new();
-        let mut cur = Cursor::new(buf);
-
-        let sync = self.conn_inner.next_sync();
-        protocol::encode_insert(&mut cur, sync, self.space_id, value)?;
-        let response = self
-            .conn_inner
-            .communicate(&cur.into_inner(), sync, options)?;
-        Ok(response
-            .into_iter()?
-            .and_then(|ref mut iter| iter.next_tuple()))
+        self.conn_inner.request(
+            |buf, sync| protocol::encode_insert(buf, sync, self.space_id, value),
+            protocol::decode_single_row,
+            options,
+        )
     }
 
     /// The remote-call equivalent of the local call `Space::replace(...)`
@@ -86,17 +79,11 @@ impl RemoteSpace {
     where
         T: AsTuple,
     {
-        let buf = Vec::new();
-        let mut cur = Cursor::new(buf);
-
-        let sync = self.conn_inner.next_sync();
-        protocol::encode_replace(&mut cur, sync, self.space_id, value)?;
-        let response = self
-            .conn_inner
-            .communicate(&cur.into_inner(), sync, options)?;
-        Ok(response
-            .into_iter()?
-            .and_then(|ref mut iter| iter.next_tuple()))
+        self.conn_inner.request(
+            |buf, sync| protocol::encode_replace(buf, sync, self.space_id, value),
+            protocol::decode_single_row,
+            options,
+        )
     }
 
     /// The remote-call equivalent of the local call `Space::update(...)`

@@ -1,5 +1,5 @@
 use core::str::from_utf8;
-use std::collections::VecDeque;
+use std::cmp::min;
 use std::fmt::{Display, Formatter};
 use std::io::{self, Cursor, Read, Seek, SeekFrom, Write};
 use std::os::raw::c_char;
@@ -45,33 +45,21 @@ enum IProtoType {
     Ping = 64,
 }
 
-fn prepare_request(
-    buf: &mut Cursor<Vec<u8>>,
+fn encode_header(
+    stream: &mut impl Write,
     sync: u64,
     request_type: IProtoType,
-) -> Result<u64, Error> {
-    rmp::encode::write_u32(buf, 0)?;
-    let header_offset = buf.position();
-
-    // Header fields
-    rmp::encode::write_map_len(buf, 2)?;
-    rmp::encode::write_pfix(buf, REQUEST_TYPE)?;
-    rmp::encode::write_pfix(buf, request_type as u8)?;
-    rmp::encode::write_pfix(buf, SYNC)?;
-    rmp::encode::write_uint(buf, sync)?;
-
-    Ok(header_offset)
-}
-
-pub fn encode_request(buf: &mut Cursor<Vec<u8>>, header_offset: u64) -> Result<(), Error> {
-    let len = buf.position() - header_offset;
-    buf.set_position(0);
-    rmp::encode::write_u32(buf, len as u32)?;
+) -> Result<(), Error> {
+    rmp::encode::write_map_len(stream, 2)?;
+    rmp::encode::write_pfix(stream, REQUEST_TYPE)?;
+    rmp::encode::write_pfix(stream, request_type as u8)?;
+    rmp::encode::write_pfix(stream, SYNC)?;
+    rmp::encode::write_uint(stream, sync)?;
     Ok(())
 }
 
 pub fn encode_auth(
-    buf: &mut Cursor<Vec<u8>>,
+    stream: &mut impl Write,
     user: &str,
     password: &str,
     salt: &Vec<u8>,
@@ -102,33 +90,30 @@ pub fn encode_auth(
         .zip(step_3.iter())
         .for_each(|(a, b)| *a ^= *b);
 
-    let header_offset = prepare_request(buf, sync, IProtoType::Auth)?;
-    rmp::encode::write_map_len(buf, 2)?;
+    encode_header(stream, sync, IProtoType::Auth)?;
+    rmp::encode::write_map_len(stream, 2)?;
 
     // username:
-    rmp::encode::write_pfix(buf, USER_NAME)?;
-    rmp::encode::write_str(buf, user)?;
+    rmp::encode::write_pfix(stream, USER_NAME)?;
+    rmp::encode::write_str(stream, user)?;
 
     // encrypted password:
-    rmp::encode::write_pfix(buf, TUPLE)?;
-    rmp::encode::write_array_len(buf, 2)?;
-    rmp::encode::write_str(buf, "chap-sha1")?;
-    rmp::encode::write_str_len(buf, 20)?;
-    buf.write_all(&step_1_and_scramble)?;
-
-    encode_request(buf, header_offset)?;
+    rmp::encode::write_pfix(stream, TUPLE)?;
+    rmp::encode::write_array_len(stream, 2)?;
+    rmp::encode::write_str(stream, "chap-sha1")?;
+    rmp::encode::write_str_len(stream, 20)?;
+    stream.write_all(&step_1_and_scramble)?;
     Ok(())
 }
 
-pub fn encode_ping(buf: &mut Cursor<Vec<u8>>, sync: u64) -> Result<(), Error> {
-    let header_offset = prepare_request(buf, sync, IProtoType::Ping)?;
-    rmp::encode::write_map_len(buf, 0)?;
-    encode_request(buf, header_offset)?;
+pub fn encode_ping(stream: &mut impl Write, sync: u64) -> Result<(), Error> {
+    encode_header(stream, sync, IProtoType::Ping)?;
+    rmp::encode::write_map_len(stream, 0)?;
     Ok(())
 }
 
 pub fn encode_call<T>(
-    buf: &mut Cursor<Vec<u8>>,
+    stream: &mut impl Write,
     sync: u64,
     function_name: &str,
     args: &T,
@@ -136,18 +121,17 @@ pub fn encode_call<T>(
 where
     T: AsTuple,
 {
-    let header_offset = prepare_request(buf, sync, IProtoType::Call)?;
-    rmp::encode::write_map_len(buf, 2)?;
-    rmp::encode::write_pfix(buf, FUNCTION_NAME)?;
-    rmp::encode::write_str(buf, function_name)?;
-    rmp::encode::write_pfix(buf, TUPLE)?;
-    rmp_serde::encode::write(buf, args)?;
-    encode_request(buf, header_offset)?;
+    encode_header(stream, sync, IProtoType::Call)?;
+    rmp::encode::write_map_len(stream, 2)?;
+    rmp::encode::write_pfix(stream, FUNCTION_NAME)?;
+    rmp::encode::write_str(stream, function_name)?;
+    rmp::encode::write_pfix(stream, TUPLE)?;
+    rmp_serde::encode::write(stream, args)?;
     Ok(())
 }
 
 pub fn encode_eval<T>(
-    buf: &mut Cursor<Vec<u8>>,
+    stream: &mut impl Write,
     sync: u64,
     expression: &str,
     args: &T,
@@ -155,18 +139,17 @@ pub fn encode_eval<T>(
 where
     T: AsTuple,
 {
-    let header_offset = prepare_request(buf, sync, IProtoType::Eval)?;
-    rmp::encode::write_map_len(buf, 2)?;
-    rmp::encode::write_pfix(buf, EXPR)?;
-    rmp::encode::write_str(buf, expression)?;
-    rmp::encode::write_pfix(buf, TUPLE)?;
-    rmp_serde::encode::write(buf, args)?;
-    encode_request(buf, header_offset)?;
+    encode_header(stream, sync, IProtoType::Eval)?;
+    rmp::encode::write_map_len(stream, 2)?;
+    rmp::encode::write_pfix(stream, EXPR)?;
+    rmp::encode::write_str(stream, expression)?;
+    rmp::encode::write_pfix(stream, TUPLE)?;
+    rmp_serde::encode::write(stream, args)?;
     Ok(())
 }
 
 pub fn encode_select<K>(
-    buf: &mut Cursor<Vec<u8>>,
+    stream: &mut impl Write,
     sync: u64,
     space_id: u32,
     index_id: u32,
@@ -178,26 +161,25 @@ pub fn encode_select<K>(
 where
     K: AsTuple,
 {
-    let header_offset = prepare_request(buf, sync, IProtoType::Select)?;
-    rmp::encode::write_map_len(buf, 6)?;
-    rmp::encode::write_pfix(buf, SPACE_ID)?;
-    rmp::encode::write_u32(buf, space_id)?;
-    rmp::encode::write_pfix(buf, INDEX_ID)?;
-    rmp::encode::write_u32(buf, index_id)?;
-    rmp::encode::write_pfix(buf, LIMIT)?;
-    rmp::encode::write_u32(buf, limit)?;
-    rmp::encode::write_pfix(buf, OFFSET)?;
-    rmp::encode::write_u32(buf, offset)?;
-    rmp::encode::write_pfix(buf, ITERATOR)?;
-    rmp::encode::write_u32(buf, iterator_type as u32)?;
-    rmp::encode::write_pfix(buf, KEY)?;
-    rmp_serde::encode::write(buf, key)?;
-    encode_request(buf, header_offset)?;
+    encode_header(stream, sync, IProtoType::Select)?;
+    rmp::encode::write_map_len(stream, 6)?;
+    rmp::encode::write_pfix(stream, SPACE_ID)?;
+    rmp::encode::write_u32(stream, space_id)?;
+    rmp::encode::write_pfix(stream, INDEX_ID)?;
+    rmp::encode::write_u32(stream, index_id)?;
+    rmp::encode::write_pfix(stream, LIMIT)?;
+    rmp::encode::write_u32(stream, limit)?;
+    rmp::encode::write_pfix(stream, OFFSET)?;
+    rmp::encode::write_u32(stream, offset)?;
+    rmp::encode::write_pfix(stream, ITERATOR)?;
+    rmp::encode::write_u32(stream, iterator_type as u32)?;
+    rmp::encode::write_pfix(stream, KEY)?;
+    rmp_serde::encode::write(stream, key)?;
     Ok(())
 }
 
 pub fn encode_insert<T>(
-    buf: &mut Cursor<Vec<u8>>,
+    stream: &mut impl Write,
     sync: u64,
     space_id: u32,
     value: &T,
@@ -205,18 +187,17 @@ pub fn encode_insert<T>(
 where
     T: AsTuple,
 {
-    let header_offset = prepare_request(buf, sync, IProtoType::Insert)?;
-    rmp::encode::write_map_len(buf, 2)?;
-    rmp::encode::write_pfix(buf, SPACE_ID)?;
-    rmp::encode::write_u32(buf, space_id)?;
-    rmp::encode::write_pfix(buf, TUPLE)?;
-    rmp_serde::encode::write(buf, value)?;
-    encode_request(buf, header_offset)?;
+    encode_header(stream, sync, IProtoType::Insert)?;
+    rmp::encode::write_map_len(stream, 2)?;
+    rmp::encode::write_pfix(stream, SPACE_ID)?;
+    rmp::encode::write_u32(stream, space_id)?;
+    rmp::encode::write_pfix(stream, TUPLE)?;
+    rmp_serde::encode::write(stream, value)?;
     Ok(())
 }
 
 pub fn encode_replace<T>(
-    buf: &mut Cursor<Vec<u8>>,
+    stream: &mut impl Write,
     sync: u64,
     space_id: u32,
     value: &T,
@@ -224,18 +205,17 @@ pub fn encode_replace<T>(
 where
     T: AsTuple,
 {
-    let header_offset = prepare_request(buf, sync, IProtoType::Replace)?;
-    rmp::encode::write_map_len(buf, 2)?;
-    rmp::encode::write_pfix(buf, SPACE_ID)?;
-    rmp::encode::write_u32(buf, space_id)?;
-    rmp::encode::write_pfix(buf, TUPLE)?;
-    rmp_serde::encode::write(buf, value)?;
-    encode_request(buf, header_offset)?;
+    encode_header(stream, sync, IProtoType::Replace)?;
+    rmp::encode::write_map_len(stream, 2)?;
+    rmp::encode::write_pfix(stream, SPACE_ID)?;
+    rmp::encode::write_u32(stream, space_id)?;
+    rmp::encode::write_pfix(stream, TUPLE)?;
+    rmp_serde::encode::write(stream, value)?;
     Ok(())
 }
 
 pub fn encode_update<K, Op>(
-    buf: &mut Cursor<Vec<u8>>,
+    stream: &mut impl Write,
     sync: u64,
     space_id: u32,
     index_id: u32,
@@ -246,22 +226,21 @@ where
     K: AsTuple,
     Op: AsTuple,
 {
-    let header_offset = prepare_request(buf, sync, IProtoType::Update)?;
-    rmp::encode::write_map_len(buf, 4)?;
-    rmp::encode::write_pfix(buf, SPACE_ID)?;
-    rmp::encode::write_u32(buf, space_id)?;
-    rmp::encode::write_pfix(buf, INDEX_ID)?;
-    rmp::encode::write_u32(buf, index_id)?;
-    rmp::encode::write_pfix(buf, KEY)?;
-    rmp_serde::encode::write(buf, key)?;
-    rmp::encode::write_pfix(buf, TUPLE)?;
-    rmp_serde::encode::write(buf, ops)?;
-    encode_request(buf, header_offset)?;
+    encode_header(stream, sync, IProtoType::Update)?;
+    rmp::encode::write_map_len(stream, 4)?;
+    rmp::encode::write_pfix(stream, SPACE_ID)?;
+    rmp::encode::write_u32(stream, space_id)?;
+    rmp::encode::write_pfix(stream, INDEX_ID)?;
+    rmp::encode::write_u32(stream, index_id)?;
+    rmp::encode::write_pfix(stream, KEY)?;
+    rmp_serde::encode::write(stream, key)?;
+    rmp::encode::write_pfix(stream, TUPLE)?;
+    rmp_serde::encode::write(stream, ops)?;
     Ok(())
 }
 
 pub fn encode_upsert<T, Op>(
-    buf: &mut Cursor<Vec<u8>>,
+    stream: &mut impl Write,
     sync: u64,
     space_id: u32,
     index_id: u32,
@@ -272,22 +251,21 @@ where
     T: AsTuple,
     Op: AsTuple,
 {
-    let header_offset = prepare_request(buf, sync, IProtoType::Upsert)?;
-    rmp::encode::write_map_len(buf, 4)?;
-    rmp::encode::write_pfix(buf, SPACE_ID)?;
-    rmp::encode::write_u32(buf, space_id)?;
-    rmp::encode::write_pfix(buf, INDEX_BASE)?;
-    rmp::encode::write_u32(buf, index_id)?;
-    rmp::encode::write_pfix(buf, OPS)?;
-    rmp_serde::encode::write(buf, ops)?;
-    rmp::encode::write_pfix(buf, TUPLE)?;
-    rmp_serde::encode::write(buf, value)?;
-    encode_request(buf, header_offset)?;
+    encode_header(stream, sync, IProtoType::Upsert)?;
+    rmp::encode::write_map_len(stream, 4)?;
+    rmp::encode::write_pfix(stream, SPACE_ID)?;
+    rmp::encode::write_u32(stream, space_id)?;
+    rmp::encode::write_pfix(stream, INDEX_BASE)?;
+    rmp::encode::write_u32(stream, index_id)?;
+    rmp::encode::write_pfix(stream, OPS)?;
+    rmp_serde::encode::write(stream, ops)?;
+    rmp::encode::write_pfix(stream, TUPLE)?;
+    rmp_serde::encode::write(stream, value)?;
     Ok(())
 }
 
 pub fn encode_delete<K>(
-    buf: &mut Cursor<Vec<u8>>,
+    stream: &mut impl Write,
     sync: u64,
     space_id: u32,
     index_id: u32,
@@ -296,27 +274,65 @@ pub fn encode_delete<K>(
 where
     K: AsTuple,
 {
-    let header_offset = prepare_request(buf, sync, IProtoType::Delete)?;
-    rmp::encode::write_map_len(buf, 3)?;
-    rmp::encode::write_pfix(buf, SPACE_ID)?;
-    rmp::encode::write_u32(buf, space_id)?;
-    rmp::encode::write_pfix(buf, INDEX_ID)?;
-    rmp::encode::write_u32(buf, index_id)?;
-    rmp::encode::write_pfix(buf, KEY)?;
-    rmp_serde::encode::write(buf, key)?;
-    encode_request(buf, header_offset)?;
+    encode_header(stream, sync, IProtoType::Delete)?;
+    rmp::encode::write_map_len(stream, 3)?;
+    rmp::encode::write_pfix(stream, SPACE_ID)?;
+    rmp::encode::write_u32(stream, space_id)?;
+    rmp::encode::write_pfix(stream, INDEX_ID)?;
+    rmp::encode::write_u32(stream, index_id)?;
+    rmp::encode::write_pfix(stream, KEY)?;
+    rmp_serde::encode::write(stream, key)?;
     Ok(())
 }
 
-fn decode_error(cur: &mut Cursor<Vec<u8>>) -> Result<ResponseError, Error> {
+#[derive(Debug)]
+pub struct Header {
+    pub sync: u64,
+    pub status_code: u32,
+    pub schema_version: u32,
+}
+
+pub struct Response<T> {
+    pub header: Header,
+    pub payload: T,
+}
+
+pub fn decode_header(stream: &mut (impl Read + Seek)) -> Result<Header, Error> {
+    let mut sync: Option<u64> = None;
+    let mut status_code: Option<u32> = None;
+    let mut schema_version: Option<u32> = None;
+
+    let map_len = rmp::decode::read_map_len(stream)?;
+    for _ in 0..map_len {
+        let key = rmp::decode::read_pfix(stream)?;
+        match key {
+            0 => status_code = Some(rmp::decode::read_int(stream)?),
+            SYNC => sync = Some(rmp::decode::read_int(stream)?),
+            SCHEMA_VERSION => schema_version = Some(rmp::decode::read_int(stream)?),
+            _ => skip_msgpack(stream)?,
+        }
+    }
+
+    if sync.is_none() || status_code.is_none() || schema_version.is_none() {
+        return Err(io::Error::from(io::ErrorKind::InvalidData).into());
+    }
+
+    Ok(Header {
+        sync: sync.unwrap(),
+        status_code: status_code.unwrap(),
+        schema_version: schema_version.unwrap(),
+    })
+}
+
+pub fn decode_error(stream: &mut impl Read) -> Result<ResponseError, Error> {
     let mut message: Option<String> = None;
 
-    let map_len = rmp::decode::read_map_len(cur)?;
+    let map_len = rmp::decode::read_map_len(stream)?;
     for _ in 0..map_len {
-        if rmp::decode::read_pfix(cur)? == ERROR {
-            let str_len = rmp::decode::read_str_len(cur)? as usize;
+        if rmp::decode::read_pfix(stream)? == ERROR {
+            let str_len = rmp::decode::read_str_len(stream)? as usize;
             let mut str_buf = vec![0u8; str_len];
-            cur.read_exact(&mut str_buf)?;
+            stream.read_exact(&mut str_buf)?;
             message = Some(from_utf8(&mut str_buf)?.to_string());
         }
     }
@@ -326,7 +342,7 @@ fn decode_error(cur: &mut Cursor<Vec<u8>>) -> Result<ResponseError, Error> {
     })
 }
 
-pub fn decode_greeting(stream: &mut dyn Read) -> Result<Vec<u8>, Error> {
+pub fn decode_greeting(stream: &mut impl Read) -> Result<Vec<u8>, Error> {
     let mut buf = Vec::with_capacity(128);
     buf.resize(128, 0);
 
@@ -335,42 +351,73 @@ pub fn decode_greeting(stream: &mut dyn Read) -> Result<Vec<u8>, Error> {
     Ok(salt)
 }
 
-pub fn decode_response<R: Read>(stream: &mut R) -> Result<Response, Error> {
-    let response_len = rmp::decode::read_u32(stream)? as usize;
-    let mut buf = Vec::with_capacity(response_len);
-    buf.resize(response_len, 0);
-
-    stream.read_exact(&mut *buf)?;
-    let mut cur = Cursor::new(buf);
-
-    let mut sync: Option<u64> = None;
-    let mut schema_version: Option<u32> = None;
-    let mut status_code: Option<u32> = None;
-
-    let map_len = rmp::decode::read_map_len(&mut cur)?;
-    for _ in 0..map_len {
-        let key = rmp::decode::read_pfix(&mut cur)?;
+pub fn decode_tuple(buffer: &mut Cursor<Vec<u8>>, _: &Header) -> Result<Option<Tuple>, Error> {
+    let payload_len = rmp::decode::read_map_len(buffer)?;
+    for _ in 0..payload_len {
+        let key = rmp::decode::read_pfix(buffer)?;
         match key {
-            0 => status_code = Some(rmp::decode::read_int(&mut cur)?),
-            SYNC => sync = Some(rmp::decode::read_int(&mut cur)?),
-            SCHEMA_VERSION => schema_version = Some(rmp::decode::read_int(&mut cur)?),
-            _ => skip_msgpack(&mut cur)?,
-        }
+            DATA => {
+                let payload_offset = buffer.position();
+                let buf = buffer.get_mut();
+                let payload_len = buf.len() as u64 - payload_offset;
+                unsafe {
+                    return Ok(Some(Tuple::from_raw_data(
+                        buf.as_slice().as_ptr().add(payload_offset as usize) as *mut c_char,
+                        payload_len as u32,
+                    )));
+                }
+            }
+            _ => {
+                skip_msgpack(buffer)?;
+            }
+        };
     }
-
-    let status_code = status_code.ok_or(io::Error::from(io::ErrorKind::InvalidData))?;
-    let sync = sync.ok_or(io::Error::from(io::ErrorKind::InvalidData))?;
-    let schema_version = schema_version.ok_or(io::Error::from(io::ErrorKind::InvalidData))?;
-
-    Ok(Response {
-        status_code,
-        sync,
-        schema_version,
-        payload_cur: cur,
-    })
+    Ok(None)
 }
 
-fn skip_msgpack(cur: &mut Cursor<Vec<u8>>) -> Result<(), Error> {
+pub fn decode_data(
+    buffer: &mut Cursor<Vec<u8>>,
+    limit: Option<usize>,
+) -> Result<Vec<Tuple>, Error> {
+    let payload_len = rmp::decode::read_map_len(buffer)?;
+    for _ in 0..payload_len {
+        let key = rmp::decode::read_pfix(buffer)?;
+        match key {
+            DATA => unsafe {
+                let items_count = rmp::decode::read_array_len(buffer)? as usize;
+                let mut current_offset = buffer.position() as usize;
+                let buf_ptr = buffer.get_mut().as_slice().as_ptr() as *mut c_char;
+                let mut result = Vec::with_capacity(items_count);
+
+                let items_count = match limit {
+                    None => items_count,
+                    Some(limit) => min(limit, items_count),
+                };
+
+                for _ in 0..items_count {
+                    skip_msgpack(buffer)?;
+                    let next_offset = buffer.position() as usize;
+                    result.push(Tuple::from_raw_data(
+                        buf_ptr.clone().add(current_offset) as *mut c_char,
+                        (next_offset - current_offset) as u32,
+                    ));
+                    current_offset = next_offset;
+                }
+                return Ok(result);
+            },
+            _ => {
+                skip_msgpack(buffer)?;
+            }
+        };
+    }
+    Ok(vec![])
+}
+
+pub fn decode_single_row(buffer: &mut Cursor<Vec<u8>>, _: &Header) -> Result<Option<Tuple>, Error> {
+    decode_data(buffer, Some(1)).map(|result| result.into_iter().next())
+}
+
+fn skip_msgpack(cur: &mut (impl Read + Seek)) -> Result<(), Error> {
     use rmp::Marker;
 
     match rmp::decode::read_marker(cur)? {
@@ -471,79 +518,6 @@ fn skip_msgpack(cur: &mut Cursor<Vec<u8>>) -> Result<(), Error> {
     Ok(())
 }
 
-pub struct Response {
-    pub sync: u64,
-    pub schema_version: u32,
-    status_code: u32,
-    payload_cur: Cursor<Vec<u8>>,
-}
-
-impl Response {
-    pub fn into_tuple(mut self) -> Result<Option<Tuple>, Error> {
-        if self.status_code == 0 {
-            let payload_len = rmp::decode::read_map_len(&mut self.payload_cur)?;
-            for _ in 0..payload_len {
-                let key = rmp::decode::read_pfix(&mut self.payload_cur)?;
-                match key {
-                    DATA => {
-                        let payload_offset = self.payload_cur.position();
-                        let buf = self.payload_cur.into_inner();
-                        let payload_len = buf.len() as u64 - payload_offset;
-                        unsafe {
-                            return Ok(Some(Tuple::from_raw_data(
-                                Box::leak(buf.into_boxed_slice())
-                                    .as_mut_ptr()
-                                    .add(payload_offset as usize)
-                                    as *mut c_char,
-                                payload_len as u32,
-                            )));
-                        }
-                    }
-                    _ => {
-                        skip_msgpack(&mut self.payload_cur)?;
-                    }
-                };
-            }
-            Ok(None)
-        } else {
-            Err(decode_error(&mut self.payload_cur)?.into())
-        }
-    }
-
-    pub fn into_iter(mut self) -> Result<Option<ResponseIterator>, Error> {
-        if self.status_code == 0 {
-            let payload_len = rmp::decode::read_map_len(&mut self.payload_cur)?;
-            for _ in 0..payload_len {
-                let key = rmp::decode::read_pfix(&mut self.payload_cur)?;
-                match key {
-                    DATA => {
-                        let items_count = rmp::decode::read_array_len(&mut self.payload_cur)?;
-                        let start_offset = self.payload_cur.position() as usize;
-                        let mut offsets = VecDeque::with_capacity(items_count as usize);
-                        for _ in 0..items_count {
-                            skip_msgpack(&mut self.payload_cur)?;
-                            offsets.push_back(self.payload_cur.position() as usize);
-                        }
-
-                        return Ok(Some(ResponseIterator {
-                            current_offset: start_offset,
-                            rest_offsets: offsets,
-                            buf_ptr: Box::leak(self.payload_cur.into_inner().into_boxed_slice())
-                                .as_mut_ptr(),
-                        }));
-                    }
-                    _ => {
-                        skip_msgpack(&mut self.payload_cur)?;
-                    }
-                };
-            }
-            Ok(None)
-        } else {
-            Err(decode_error(&mut self.payload_cur)?.into())
-        }
-    }
-}
-
 #[derive(Debug)]
 pub struct ResponseError {
     message: String,
@@ -552,30 +526,5 @@ pub struct ResponseError {
 impl Display for ResponseError {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         write!(f, "{}", self.message)
-    }
-}
-
-pub struct ResponseIterator {
-    current_offset: usize,
-    rest_offsets: VecDeque<usize>,
-    buf_ptr: *mut u8,
-}
-
-impl ResponseIterator {
-    pub fn next_tuple(&mut self) -> Option<Tuple> {
-        match self.rest_offsets.pop_front() {
-            None => None,
-            Some(next_offset) => {
-                let current_offset = self.current_offset;
-                self.current_offset = next_offset;
-
-                Some(unsafe {
-                    Tuple::from_raw_data(
-                        self.buf_ptr.clone().add(current_offset) as *mut c_char,
-                        (next_offset - current_offset) as u32,
-                    )
-                })
-            }
-        }
     }
 }

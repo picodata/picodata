@@ -1,168 +1,112 @@
-use core::cell::{Cell, RefCell};
-use std::collections::HashMap;
+use core::cell::RefCell;
+use std::cell::Cell;
 use std::io;
 use std::io::{Cursor, Write};
 use std::net::SocketAddr;
+use std::os::unix::io::{AsRawFd, RawFd};
 use std::rc::{Rc, Weak};
 use std::time::Duration;
 
 use crate::coio::CoIOStream;
 use crate::error::Error;
 use crate::fiber::{is_cancelled, set_cancellable, sleep, time, Cond, Fiber, Latch};
-use crate::index::IteratorType;
-use crate::net_box::protocol::Response;
-use crate::net_box::{Conn, ConnTriggers};
-use crate::space::SystemSpace;
 
-use super::options::{ConnOptions, Options};
-use super::protocol;
+use super::options::{ConnOptions, ConnTriggers, Options};
+use super::protocol::{self, Header};
+use super::recv_queue::{self, RecvQueue};
+use super::schema::ConnSchema;
+use super::send_queue::{self, SendQueue};
+use super::Conn;
 
-pub struct Session {
-    state: ConnState,
-    state_change_cond: Rc<Cond>,
-    stream: Option<CoIOStream>,
-    active_requests: HashMap<u64, RequestState>,
-    recv_error: Option<Error>,
-    last_io_error: Option<io::Error>,
-    schema: Schema,
-}
-
-impl Session {
-    fn update_state(&mut self, state: ConnState) {
-        if self.state != state {
-            self.state = state;
-            self.state_change_cond.broadcast();
-        }
-    }
-}
-
-#[derive(Default)]
-pub struct Schema {
-    version: u32,
-    space_ids: HashMap<String, u32>,
-    index_ids: HashMap<(u32, String), u32>,
-}
-
-impl Schema {
-    fn update(
-        &mut self,
-        spaces_response: Response,
-        indexes_response: Response,
-    ) -> Result<(), Error> {
-        let schema_version = spaces_response.schema_version;
-
-        self.space_ids.clear();
-        let mut iter = spaces_response.into_iter()?.unwrap();
-        while let Some(item) = iter.next_tuple() {
-            let (id, _, name) = item.into_struct::<(u32, u32, String)>()?;
-            self.space_ids.insert(name, id);
-        }
-
-        self.index_ids.clear();
-        let mut iter = indexes_response.into_iter()?.unwrap();
-        while let Some(item) = iter.next_tuple() {
-            let (space_id, index_id, name) = item.into_struct::<(u32, u32, String)>()?;
-            self.index_ids.insert((space_id, name), index_id);
-        }
-
-        self.version = schema_version;
-        Ok(())
-    }
-
-    fn lookup_space(&self, name: &str) -> Option<u32> {
-        self.space_ids.get(name).map(|id| id.clone())
-    }
-
-    fn lookup_index(&self, name: &str, space_id: u32) -> Option<u32> {
-        self.index_ids
-            .get(&(space_id, name.to_string()))
-            .map(|id| id.clone())
-    }
-}
-
-struct Triggers {
-    callbacks: Box<dyn ConnTriggers>,
-    self_ref: Weak<ConnInner>,
-}
-
-#[derive(Copy, Clone, PartialEq, Debug)]
-pub enum ConnState {
+#[derive(Debug, Clone)]
+enum ConnState {
     Init,
     Connecting,
     Auth,
-    FetchSchema,
     Active,
     Error,
     ErrorReconnect,
     Closed,
 }
 
-struct RequestState {
-    recv_cond: Cond,
-    response: Option<protocol::Response>,
-}
-
 pub struct ConnInner {
     addrs: Vec<SocketAddr>,
     options: ConnOptions,
-    sync: Cell<u64>,
-    recv_fiber: RefCell<Fiber<'static, *mut Session>>,
-    session: RefCell<Box<Session>>,
-    session_lock: Latch,
-    triggers: RefCell<Option<Triggers>>,
+    state: RefCell<ConnState>,
+    state_lock: Latch,
+    state_change_cond: Cond,
+    schema: Rc<ConnSchema>,
+    schema_version: Cell<Option<u32>>,
+    schema_lock: Latch,
+    session: RefCell<Option<Rc<ConnSession>>>,
+    send_queue: SendQueue,
+    recv_queue: RecvQueue,
+    send_fiber: RefCell<Fiber<'static, Rc<ConnInner>>>,
+    recv_fiber: RefCell<Fiber<'static, Rc<ConnInner>>>,
+    triggers: RefCell<Option<ConnTriggersWrapper>>,
+    error: RefCell<Option<io::Error>>,
 }
 
 impl ConnInner {
     pub fn new(addrs: Vec<SocketAddr>, mut options: ConnOptions) -> Rc<Self> {
-        let mut recv_fiber = Fiber::new("_recv", &mut recv_fiber_main);
+        let triggers = options.triggers.take();
+
+        // init recv fiber
+        let mut recv_fiber = Fiber::new("_recv_worker", &mut recv_worker);
         recv_fiber.set_joinable(true);
 
-        let triggers_callbacks = options.triggers.take();
+        // init send fiber
+        let mut send_fiber = Fiber::new("_send_worker", &mut send_worker);
+        send_fiber.set_joinable(true);
 
-        let self_ref = Rc::new(ConnInner {
-            options,
-            addrs,
-            sync: Cell::new(0),
+        // construct object
+        let conn_inner = Rc::new(ConnInner {
+            state: RefCell::new(ConnState::Init),
+            state_lock: Latch::new(),
+            state_change_cond: Cond::new(),
+            schema: ConnSchema::acquire(&addrs),
+            schema_version: Cell::new(None),
+            schema_lock: Latch::new(),
+            session: RefCell::new(None),
+            send_queue: SendQueue::new(1024),
+            recv_queue: RecvQueue::new(1024),
+            send_fiber: RefCell::new(send_fiber),
             recv_fiber: RefCell::new(recv_fiber),
-            session: RefCell::new(Box::new(Session {
-                state: ConnState::Init,
-                state_change_cond: Rc::new(Cond::new()),
-                stream: None,
-                active_requests: Default::default(),
-                recv_error: None,
-                last_io_error: None,
-                schema: Default::default(),
-            })),
-            session_lock: Latch::new(),
             triggers: RefCell::new(None),
+            error: RefCell::new(None),
+            addrs,
+            options,
         });
 
-        if let Some(callbacks) = triggers_callbacks {
-            self_ref.triggers.replace(Some(Triggers {
-                callbacks,
-                self_ref: Rc::downgrade(&self_ref),
+        // setup triggers
+        if let Some(triggers) = triggers {
+            conn_inner.triggers.replace(Some(ConnTriggersWrapper {
+                callbacks: triggers,
+                self_ref: Rc::downgrade(&conn_inner),
             }));
         }
 
-        self_ref
+        // start send/recv fibers
+        conn_inner.send_fiber.borrow_mut().start(conn_inner.clone());
+        conn_inner.recv_fiber.borrow_mut().start(conn_inner.clone());
+
+        conn_inner
+    }
+
+    pub fn is_connected(&self) -> bool {
+        matches!(self.state(), ConnState::Active)
     }
 
     pub fn wait_connected(&self, timeout: Option<Duration>) -> Result<bool, Error> {
         let begin_ts = time();
-        let state_change_cond = {
-            let _lock = self.session_lock.lock();
-            self.session.borrow().state_change_cond.clone()
-        };
-
         loop {
             let state = self.state();
-            return match state {
+            match state {
                 ConnState::Init => {
                     self.init()?;
-                    continue;
                 }
-                ConnState::Active => Ok(true),
-                ConnState::Closed => Ok(false),
+                ConnState::Active => return Ok(true),
+                ConnState::Closed => return Ok(false),
                 _ => {
                     let timeout = match timeout {
                         None => None,
@@ -171,32 +115,24 @@ impl ConnInner {
                         }
                     };
 
-                    let is_signalled = match timeout {
-                        None => state_change_cond.wait(),
-                        Some(timeout) => state_change_cond.wait_timeout(timeout),
-                    };
-
-                    if is_signalled {
-                        continue;
-                    } else {
-                        Err(io::Error::from(io::ErrorKind::TimedOut).into())
+                    if !self.wait_state_changed(timeout) {
+                        return Err(io::Error::from(io::ErrorKind::TimedOut).into());
                     }
                 }
             };
         }
     }
 
-    pub fn communicate(
+    pub fn request<Fp, Fc, R>(
         &self,
-        request: &Vec<u8>,
-        sync: u64,
+        request_producer: Fp,
+        response_consumer: Fc,
         options: &Options,
-    ) -> Result<protocol::Response, Error> {
-        let state_change_cond = {
-            let _lock = self.session_lock.lock();
-            self.session.borrow().state_change_cond.clone()
-        };
-
+    ) -> Result<R, Error>
+    where
+        Fp: FnOnce(&mut Cursor<Vec<u8>>, u64) -> Result<(), Error>,
+        Fc: FnOnce(&mut Cursor<Vec<u8>>, &Header) -> Result<R, Error>,
+    {
         loop {
             let state = self.state();
             match state {
@@ -204,16 +140,17 @@ impl ConnInner {
                     self.init()?;
                 }
                 ConnState::Active => {
-                    if let Err(err) = self.send_request(request, sync, options) {
-                        self.handle_error(err.into())?;
-                    }
-
-                    let response = self.recv_response(sync, options)?;
-                    if self.state() == ConnState::FetchSchema {
-                        self.sync_schema()?;
-                    }
-
-                    return Ok(response);
+                    return match self.send_queue.send(request_producer) {
+                        Ok(sync) => self
+                            .recv_queue
+                            .recv(sync, response_consumer, options)
+                            .and_then(|response| {
+                                self.schema_version
+                                    .set(Some(response.header.schema_version));
+                                Ok(response.payload)
+                            }),
+                        Err(err) => Err(self.handle_error(err.into()).err().unwrap()),
+                    };
                 }
                 ConnState::Error => self.disconnect(),
                 ConnState::ErrorReconnect => self.reconnect_or_fail()?,
@@ -221,35 +158,49 @@ impl ConnInner {
                     return Err(io::Error::from(io::ErrorKind::NotConnected).into())
                 }
                 _ => {
-                    state_change_cond.wait();
+                    self.wait_state_changed(None);
                 }
             };
         }
     }
 
-    fn init(&self) -> Result<(), Error> {
-        // try to connect
-        match self.connect() {
-            Ok(_) => {
-                self.sync_schema()?;
-            }
-            Err(err) => {
-                self.handle_error(err)?;
-            }
-        }
+    pub fn lookup_space(&self, name: &str) -> Result<Option<u32>, Error> {
+        self.sync_schema()?;
+        Ok(self.schema.lookup_space(name))
+    }
 
-        // start recv fiber
-        self.recv_fiber
-            .borrow_mut()
-            .start(&mut **self.session.borrow_mut());
+    pub fn lookup_index(&self, name: &str, space_id: u32) -> Result<Option<u32>, Error> {
+        self.sync_schema()?;
+        Ok(self.schema.lookup_index(name, space_id))
+    }
+
+    pub fn close(&self) {
+        if !matches!(self.state(), ConnState::Closed) {
+            self.disconnect();
+
+            let mut send_fiber = self.send_fiber.borrow_mut();
+            send_fiber.cancel();
+            send_fiber.join();
+
+            let mut recv_fiber = self.recv_fiber.borrow_mut();
+            recv_fiber.cancel();
+            recv_fiber.join();
+        }
+    }
+
+    fn init(&self) -> Result<(), Error> {
+        match self.connect() {
+            Ok(_) => (),
+            Err(err) => {
+                return self.handle_error(err);
+            }
+        };
 
         Ok(())
     }
 
     fn connect(&self) -> Result<(), Error> {
-        let _lock = self.session_lock.lock();
-        let mut session = self.session.borrow_mut();
-        session.update_state(ConnState::Connecting);
+        self.update_state(ConnState::Connecting);
 
         // connect
         let connect_timeout = self.options.connect_timeout;
@@ -259,19 +210,19 @@ impl ConnInner {
             CoIOStream::connect_timeout(self.addrs.first().unwrap(), connect_timeout)?
         };
 
-        // recv greeting msg
+        // receive greeting msg
         let salt = protocol::decode_greeting(&mut stream)?;
 
         // auth if required
         if !self.options.user.is_empty() {
-            session.update_state(ConnState::Auth);
+            self.update_state(ConnState::Auth);
             self.auth(&mut stream, &salt)?;
         }
 
         // if ok: save stream to session
-        session.stream = Some(stream);
-        session.last_io_error = None;
-        session.update_state(ConnState::Active);
+        self.session
+            .replace(Some(Rc::new(ConnSession::new(stream)?)));
+        self.update_state(ConnState::Active);
 
         // call trigger (if available)
         if let Some(triggers) = self.triggers.borrow().as_ref() {
@@ -287,165 +238,108 @@ impl ConnInner {
     fn auth(&self, stream: &mut CoIOStream, salt: &Vec<u8>) -> Result<(), Error> {
         let buf = Vec::new();
         let mut cur = Cursor::new(buf);
-        let sync = self.next_sync();
 
-        protocol::encode_auth(
-            &mut cur,
-            self.options.user.as_str(),
-            self.options.password.as_str(),
-            salt,
-            sync,
-        )?;
-        stream.write_all(&cur.into_inner())?;
-        protocol::decode_response(stream)?;
+        // send auth request
+        let sync = self.send_queue.next_sync();
+        send_queue::write_to_buffer(&mut cur, sync, |buf, sync| {
+            protocol::encode_auth(
+                buf,
+                self.options.user.as_str(),
+                self.options.password.as_str(),
+                salt,
+                sync,
+            )
+        })?;
+        stream.write(cur.get_ref())?;
+
+        // handle response
+        let response_len = rmp::decode::read_u32(stream)?;
+        recv_queue::recv_message(stream, &mut cur, response_len as usize)?;
+        let header = protocol::decode_header(&mut cur)?;
+        if header.status_code != 0 {
+            return Err(protocol::decode_error(stream)?.into());
+        }
 
         Ok(())
     }
 
     fn sync_schema(&self) -> Result<(), Error> {
-        let _lock = self.session_lock.lock();
-        let mut session = self.session.borrow_mut();
+        self.wait_connected(Some(self.options.connect_timeout))?;
+        let _lock = self.schema_lock.lock();
 
-        session.update_state(ConnState::FetchSchema);
-        let stream = session.stream.as_mut().unwrap();
-        let spaces_response = self.fetch_schema_spaces(stream)?;
-        let indexes_response = self.fetch_schema_indexes(stream)?;
-        session.schema.update(spaces_response, indexes_response)?;
+        let is_schema_outdated = match self.schema_version.get() {
+            None => true,
+            Some(actual_version) => actual_version > self.schema.cached_version(),
+        };
 
-        if let Some(triggers) = self.triggers.borrow().as_ref() {
-            triggers.callbacks.on_schema_reload(&Conn {
-                inner: triggers.self_ref.upgrade().unwrap(),
-                is_master: false,
-            });
+        if is_schema_outdated {
+            // synchronize
+            self.schema.update(self)?;
+
+            // call trigger
+            if let Some(triggers) = self.triggers.borrow().as_ref() {
+                triggers.callbacks.on_schema_reload(&Conn {
+                    inner: triggers.self_ref.upgrade().unwrap(),
+                    is_master: false,
+                });
+            }
         }
 
-        session.update_state(ConnState::Active);
         Ok(())
     }
 
-    fn fetch_schema_spaces(&self, stream: &mut CoIOStream) -> Result<Response, Error> {
-        let buf = Vec::new();
-        let mut cur = Cursor::new(buf);
-        protocol::encode_select(
-            &mut cur,
-            self.next_sync(),
-            SystemSpace::VSpace as u32,
-            0,
-            u32::max_value(),
-            0,
-            IteratorType::GT,
-            &(SystemSpace::SystemIdMax as u32,),
-        )?;
-
-        stream.write_all(&cur.into_inner())?;
-        Ok(protocol::decode_response(stream)?)
+    fn state(&self) -> ConnState {
+        let _lock = self.state_lock.lock();
+        self.state.borrow().clone()
     }
 
-    fn fetch_schema_indexes(&self, stream: &mut CoIOStream) -> Result<Response, Error> {
-        let buf = Vec::new();
-        let mut cur = Cursor::new(buf);
-        protocol::encode_select(
-            &mut cur,
-            self.next_sync(),
-            SystemSpace::VIndex as u32,
-            0,
-            u32::max_value(),
-            0,
-            IteratorType::All,
-            &Vec::<()>::new(),
-        )?;
-
-        stream.write_all(&cur.into_inner())?;
-        Ok(protocol::decode_response(stream)?)
+    fn get_session(&self) -> Rc<ConnSession> {
+        let _lock = self.state_lock.lock();
+        match self.state.borrow().clone() {
+            ConnState::Active => self.session.borrow().as_ref().unwrap().clone(),
+            _ => panic!("Invalid sate"),
+        }
     }
 
-    fn send_request(
-        &self,
-        data: &Vec<u8>,
-        sync: u64,
-        options: &Options,
-    ) -> Result<usize, io::Error> {
-        let _lock = self.session_lock.lock();
-        let mut session = self.session.borrow_mut();
-
-        session.active_requests.insert(
-            sync,
-            RequestState {
-                recv_cond: Cond::new(),
-                response: None,
-            },
-        );
-
-        let stream = session.stream.as_mut().unwrap();
-        stream.write_with_timeout(data, options.timeout)
+    fn update_state(&self, state: ConnState) {
+        {
+            let _lock = self.state_lock.lock();
+            self.state.replace(state)
+        };
+        self.state_change_cond.broadcast();
     }
 
-    fn recv_response(&self, sync: u64, options: &Options) -> Result<protocol::Response, Error> {
-        let _lock = self.session_lock.lock();
-        let mut session = self.session.borrow_mut();
-
-        let request_state = session
-            .active_requests
-            .get(&sync)
-            .ok_or(io::Error::from(io::ErrorKind::TimedOut))?;
-
-        let wait_is_completed = request_state
-            .response
-            .as_ref()
-            .map(|_| true)
-            .or_else(|| {
-                Some(match options.timeout {
-                    None => request_state.recv_cond.wait(),
-                    Some(timeout) => request_state.recv_cond.wait_timeout(timeout),
-                })
-            })
-            .unwrap();
-
-        if wait_is_completed {
-            Ok(session
-                .active_requests
-                .remove(&sync)
-                .unwrap()
-                .response
-                .unwrap())
-        } else {
-            Err(io::Error::from(io::ErrorKind::TimedOut).into())
+    fn wait_state_changed(&self, timeout: Option<Duration>) -> bool {
+        match timeout {
+            Some(timeout) => self.state_change_cond.wait_timeout(timeout),
+            None => self.state_change_cond.wait(),
         }
     }
 
     fn handle_error(&self, err: Error) -> Result<(), Error> {
-        let _lock = self.session_lock.lock();
-        let mut session = self.session.borrow_mut();
         match err {
             Error::IO(err) => {
-                session.stream = None;
-                session.last_io_error = Some(err);
-                session.update_state(ConnState::ErrorReconnect);
+                self.error.replace(Some(err));
+                self.update_state(ConnState::ErrorReconnect);
                 Ok(())
             }
             err => {
-                session.update_state(ConnState::Error);
+                self.update_state(ConnState::Error);
                 Err(err)
             }
         }
     }
 
     fn reconnect_or_fail(&self) -> Result<(), Error> {
+        let error = self.error.replace(None).unwrap();
         let reconnect_after = self.options.reconnect_after;
         if reconnect_after.as_secs() == 0 && reconnect_after.subsec_nanos() == 0 {
-            let _lock = self.session_lock.lock();
-            let mut session = self.session.borrow_mut();
-            session.update_state(ConnState::Error);
-
-            if let Some(err) = session.last_io_error.take() {
-                return Err(err.into());
-            }
+            self.update_state(ConnState::Error);
+            return Err(error.into());
         } else {
             sleep(reconnect_after.as_secs_f64());
             match self.connect() {
-                Ok(_) => {
-                    self.sync_schema()?;
-                }
+                Ok(_) => {}
                 Err(err) => {
                     self.handle_error(err)?;
                 }
@@ -454,103 +348,79 @@ impl ConnInner {
         Ok(())
     }
 
-    pub fn close(&self) {
-        let fiber_is_running = !matches!(self.state(), ConnState::Init | ConnState::Closed);
-        self.disconnect();
-        if fiber_is_running {
-            let mut fiber = self.recv_fiber.borrow_mut();
-            fiber.cancel();
-            fiber.join();
-        }
-    }
-
     fn disconnect(&self) {
-        let _lock = self.session_lock.lock();
-        let mut session = self.session.borrow_mut();
-        session.stream = None;
-        session.update_state(ConnState::Closed);
+        self.session.replace(None);
+        self.update_state(ConnState::Closed);
+        self.send_queue.close();
+        self.recv_fiber.borrow().wakeup();
 
-        if let Some(triggers) = self.triggers.borrow().as_ref() {
+        if let Some(triggers) = self.triggers.replace(None) {
             triggers.callbacks.on_disconnect();
         }
     }
+}
 
-    pub fn state(&self) -> ConnState {
-        let _lock = self.session_lock.lock();
-        self.session.borrow().state
-    }
+struct ConnSession {
+    primary_stream: RefCell<CoIOStream>,
+    secondary_stream: RefCell<CoIOStream>,
+}
 
-    #[inline(always)]
-    pub fn lookup_space(&self, name: &str) -> Result<Option<u32>, Error> {
-        self.wait_connected(Some(self.options.connect_timeout))?;
-        Ok({
-            let _lock = self.session_lock.lock();
-            self.session.borrow().schema.lookup_space(name)
+impl ConnSession {
+    fn new(primary_stream: CoIOStream) -> Result<Self, Error> {
+        let secondary_fd = unsafe { libc::dup(primary_stream.as_raw_fd()) };
+        Ok(ConnSession {
+            primary_stream: RefCell::new(primary_stream),
+            secondary_stream: RefCell::new(CoIOStream::new(secondary_fd as RawFd)?),
         })
-    }
-
-    #[inline(always)]
-    pub fn lookup_index(&self, name: &str, space_id: u32) -> Result<Option<u32>, Error> {
-        self.wait_connected(Some(self.options.connect_timeout))?;
-        Ok({
-            let _lock = self.session_lock.lock();
-            self.session.borrow().schema.lookup_index(name, space_id)
-        })
-    }
-
-    pub fn next_sync(&self) -> u64 {
-        let sync = self.sync.get();
-        self.sync.set(sync + 1);
-        sync
     }
 }
 
-impl Drop for ConnInner {
-    fn drop(&mut self) {
-        self.close()
-    }
+struct ConnTriggersWrapper {
+    callbacks: Box<dyn ConnTriggers>,
+    self_ref: Weak<ConnInner>,
 }
 
-pub fn recv_fiber_main(conn: Box<*mut Session>) -> i32 {
+fn send_worker(conn: Box<Rc<ConnInner>>) -> i32 {
     set_cancellable(true);
-
-    let session = unsafe { (*conn).as_mut() }.unwrap();
-    let state_change_cond = session.state_change_cond.clone();
+    let conn = *conn;
 
     loop {
         if is_cancelled() {
             return 0;
         }
 
-        match session.state {
+        match conn.state() {
             ConnState::Active => {
-                match protocol::decode_response(&mut session.stream.as_mut().unwrap()) {
-                    Ok(response) => {
-                        if response.schema_version != session.schema.version {
-                            session.update_state(ConnState::FetchSchema);
-                        }
-
-                        match session.active_requests.get_mut(&(response.sync as u64)) {
-                            None => continue,
-                            Some(request_state) => {
-                                request_state.response = Some(response);
-                                request_state.recv_cond.signal();
-                            }
-                        }
-                    }
-                    Err(err) => {
-                        if is_cancelled() {
-                            return 0;
-                        }
-
-                        session.recv_error = Some(err);
-                        session.update_state(ConnState::Error);
-                    }
-                };
+                let session = conn.get_session();
+                let mut stream = session.secondary_stream.borrow_mut();
+                conn.send_queue.flush_to_stream(&mut *stream);
             }
             ConnState::Closed => return 0,
             _ => {
-                state_change_cond.wait();
+                conn.wait_state_changed(None);
+            }
+        }
+    }
+}
+
+fn recv_worker(conn: Box<Rc<ConnInner>>) -> i32 {
+    set_cancellable(true);
+    let conn = *conn;
+
+    loop {
+        if is_cancelled() {
+            return 0;
+        }
+
+        match conn.state() {
+            ConnState::Active => {
+                let session = conn.get_session();
+                let mut stream = session.primary_stream.borrow_mut();
+                conn.recv_queue.pull(&mut *stream);
+            }
+            ConnState::Closed => return 0,
+            _ => {
+                conn.wait_state_changed(None);
             }
         }
     }

@@ -39,12 +39,11 @@
 //! - [Lua reference: Module net.box](https://www.tarantool.io/en/doc/latest/reference/reference_lua/net_box/)
 
 use core::time::Duration;
-use std::io::Cursor;
 use std::net::ToSocketAddrs;
 use std::rc::Rc;
 
 pub use index::{RemoteIndex, RemoteIndexIterator};
-use inner::{ConnInner, ConnState};
+use inner::ConnInner;
 pub use options::{ConnOptions, ConnTriggers, Options};
 pub(crate) use protocol::ResponseError;
 pub use space::RemoteSpace;
@@ -56,6 +55,9 @@ mod index;
 mod inner;
 mod options;
 mod protocol;
+mod recv_queue;
+mod schema;
+mod send_queue;
 mod space;
 
 /// Connection to remote Tarantool server
@@ -91,7 +93,7 @@ impl Conn {
 
     /// Show whether connection is active or closed.
     pub fn is_connected(&self) -> bool {
-        matches!(self.inner.state(), ConnState::Active)
+        self.inner.is_connected()
     }
 
     /// Close a connection.
@@ -103,12 +105,8 @@ impl Conn {
     ///
     /// - `options` – the supported option is `timeout`
     pub fn ping(&self, options: &Options) -> Result<(), Error> {
-        let buf = Vec::new();
-        let mut cur = Cursor::new(buf);
-
-        let sync = self.inner.next_sync();
-        protocol::encode_ping(&mut cur, sync)?;
-        self.inner.communicate(&cur.into_inner(), sync, options)?;
+        self.inner
+            .request(protocol::encode_ping, |_, _| Ok(()), options)?;
         Ok(())
     }
 
@@ -126,13 +124,11 @@ impl Conn {
     where
         T: AsTuple,
     {
-        let buf = Vec::new();
-        let mut cur = Cursor::new(buf);
-
-        let sync = self.inner.next_sync();
-        protocol::encode_call(&mut cur, sync, function_name, args)?;
-        let response = self.inner.communicate(&cur.into_inner(), sync, options)?;
-        Ok(response.into_tuple()?)
+        self.inner.request(
+            |buf, sync| protocol::encode_call(buf, sync, function_name, args),
+            protocol::decode_tuple,
+            options,
+        )
     }
 
     /// Evaluates and executes the expression in Lua-string, which may be any statement or series of statements.
@@ -151,13 +147,11 @@ impl Conn {
     where
         T: AsTuple,
     {
-        let buf = Vec::new();
-        let mut cur = Cursor::new(buf);
-
-        let sync = self.inner.next_sync();
-        protocol::encode_eval(&mut cur, sync, expression, args)?;
-        let response = self.inner.communicate(&cur.into_inner(), sync, options)?;
-        Ok(response.into_tuple()?)
+        self.inner.request(
+            |buf, sync| protocol::encode_eval(buf, sync, expression, args),
+            protocol::decode_tuple,
+            options,
+        )
     }
 
     /// Search space by name on remote server

@@ -1,10 +1,13 @@
+use std::rc::Rc;
+use std::vec::IntoIter;
+
 use crate::error::Error;
 use crate::index::IteratorType;
-use crate::net_box::inner::ConnInner;
-use crate::net_box::{protocol, Options};
 use crate::tuple::{AsTuple, Tuple};
-use std::io::Cursor;
-use std::rc::Rc;
+
+use super::inner::ConnInner;
+use super::protocol;
+use super::Options;
 
 /// Remote index (a group of key values and pointers)
 pub struct RemoteIndex {
@@ -52,27 +55,26 @@ impl RemoteIndex {
     where
         K: AsTuple,
     {
-        let buf = Vec::new();
-        let mut cur = Cursor::new(buf);
-
-        let sync = self.conn_inner.next_sync();
-        protocol::encode_select(
-            &mut cur,
-            sync,
-            self.space_id,
-            self.index_id,
-            options.limit.unwrap_or(u32::max_value()),
-            options.offset,
-            iterator_type,
-            key,
-        )?;
-        let response = self
-            .conn_inner
-            .communicate(&cur.into_inner(), sync, options)?;
-
-        Ok(RemoteIndexIterator {
-            inner: response.into_iter()?,
-        })
+        self.conn_inner.request(
+            |buf, sync| {
+                protocol::encode_select(
+                    buf,
+                    sync,
+                    self.space_id,
+                    self.index_id,
+                    options.limit.unwrap_or(u32::max_value()),
+                    options.offset,
+                    iterator_type,
+                    key,
+                )
+            },
+            |buf, _| {
+                protocol::decode_data(buf, None).map(|result| RemoteIndexIterator {
+                    inner: result.into_iter(),
+                })
+            },
+            options,
+        )
     }
 
     /// The remote-call equivalent of the local call `Space::update(...)`
@@ -87,16 +89,11 @@ impl RemoteIndex {
         K: AsTuple,
         Op: AsTuple,
     {
-        let buf = Vec::new();
-        let mut cur = Cursor::new(buf);
-
-        let sync = self.conn_inner.next_sync();
-        protocol::encode_update(&mut cur, sync, self.space_id, self.index_id, key, ops)?;
-        Ok(self
-            .conn_inner
-            .communicate(&cur.into_inner(), sync, options)?
-            .into_iter()?
-            .and_then(|ref mut iter| iter.next_tuple()))
+        self.conn_inner.request(
+            |buf, sync| protocol::encode_update(buf, sync, self.space_id, self.index_id, key, ops),
+            protocol::decode_single_row,
+            options,
+        )
     }
 
     /// The remote-call equivalent of the local call `Space::upsert(...)`
@@ -111,16 +108,13 @@ impl RemoteIndex {
         T: AsTuple,
         Op: AsTuple,
     {
-        let buf = Vec::new();
-        let mut cur = Cursor::new(buf);
-
-        let sync = self.conn_inner.next_sync();
-        protocol::encode_upsert(&mut cur, sync, self.space_id, self.index_id, value, ops)?;
-        Ok(self
-            .conn_inner
-            .communicate(&cur.into_inner(), sync, options)?
-            .into_iter()?
-            .and_then(|ref mut iter| iter.next_tuple()))
+        self.conn_inner.request(
+            |buf, sync| {
+                protocol::encode_upsert(buf, sync, self.space_id, self.index_id, value, ops)
+            },
+            protocol::decode_single_row,
+            options,
+        )
     }
 
     /// The remote-call equivalent of the local call `Space::delete(...)`
@@ -129,31 +123,23 @@ impl RemoteIndex {
     where
         K: AsTuple,
     {
-        let buf = Vec::new();
-        let mut cur = Cursor::new(buf);
-
-        let sync = self.conn_inner.next_sync();
-        protocol::encode_delete(&mut cur, sync, self.space_id, self.index_id, key)?;
-        Ok(self
-            .conn_inner
-            .communicate(&cur.into_inner(), sync, options)?
-            .into_iter()?
-            .and_then(|ref mut iter| iter.next_tuple()))
+        self.conn_inner.request(
+            |buf, sync| protocol::encode_delete(buf, sync, self.space_id, self.index_id, key),
+            protocol::decode_single_row,
+            options,
+        )
     }
 }
 
 /// Remote index iterator. Can be used with `for` statement
 pub struct RemoteIndexIterator {
-    inner: Option<protocol::ResponseIterator>,
+    inner: IntoIter<Tuple>,
 }
 
 impl<'a> Iterator for RemoteIndexIterator {
     type Item = Tuple;
 
     fn next(&mut self) -> Option<Self::Item> {
-        match self.inner {
-            None => None,
-            Some(ref mut inner) => inner.next_tuple(),
-        }
+        self.inner.next()
     }
 }

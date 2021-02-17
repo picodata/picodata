@@ -129,6 +129,12 @@ impl IntoRawFd for CoIOStream {
     }
 }
 
+impl AsRawFd for CoIOStream {
+    fn as_raw_fd(&self) -> RawFd {
+        self.fd
+    }
+}
+
 impl Read for CoIOStream {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize, io::Error> {
         self.read_with_timeout(buf, None)
