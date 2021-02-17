@@ -1,3 +1,5 @@
+#![allow(non_upper_case_globals)]
+
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::net::SocketAddr;

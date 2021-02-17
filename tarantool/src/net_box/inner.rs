@@ -3,13 +3,13 @@ use std::cell::Cell;
 use std::io;
 use std::io::{Cursor, Write};
 use std::net::SocketAddr;
-use std::os::unix::io::{AsRawFd, RawFd};
 use std::rc::{Rc, Weak};
 use std::time::Duration;
 
 use crate::coio::CoIOStream;
 use crate::error::Error;
 use crate::fiber::{is_cancelled, set_cancellable, sleep, time, Cond, Fiber, Latch};
+use crate::net_box::stream::ConnStream;
 
 use super::options::{ConnOptions, ConnTriggers, Options};
 use super::protocol::{self, Header};
@@ -38,7 +38,7 @@ pub struct ConnInner {
     schema: Rc<ConnSchema>,
     schema_version: Cell<Option<u32>>,
     schema_lock: Latch,
-    session: RefCell<Option<Rc<ConnSession>>>,
+    stream: RefCell<Option<ConnStream>>,
     send_queue: SendQueue,
     recv_queue: RecvQueue,
     send_fiber: RefCell<Fiber<'static, Rc<ConnInner>>>,
@@ -67,7 +67,7 @@ impl ConnInner {
             schema: ConnSchema::acquire(&addrs),
             schema_version: Cell::new(None),
             schema_lock: Latch::new(),
-            session: RefCell::new(None),
+            stream: RefCell::new(None),
             send_queue: SendQueue::new(1024),
             recv_queue: RecvQueue::new(1024),
             send_fiber: RefCell::new(send_fiber),
@@ -219,9 +219,8 @@ impl ConnInner {
             self.auth(&mut stream, &salt)?;
         }
 
-        // if ok: save stream to session
-        self.session
-            .replace(Some(Rc::new(ConnSession::new(stream)?)));
+        // if ok: put stream to result + set state to active
+        self.stream.replace(Some(ConnStream::new(stream)?));
         self.update_state(ConnState::Active);
 
         // call trigger (if available)
@@ -293,14 +292,6 @@ impl ConnInner {
         self.state.borrow().clone()
     }
 
-    fn get_session(&self) -> Rc<ConnSession> {
-        let _lock = self.state_lock.lock();
-        match self.state.borrow().clone() {
-            ConnState::Active => self.session.borrow().as_ref().unwrap().clone(),
-            _ => panic!("Invalid sate"),
-        }
-    }
-
     fn update_state(&self, state: ConnState) {
         {
             let _lock = self.state_lock.lock();
@@ -349,29 +340,14 @@ impl ConnInner {
     }
 
     fn disconnect(&self) {
-        self.session.replace(None);
         self.update_state(ConnState::Closed);
-        self.send_queue.close();
         self.recv_fiber.borrow().wakeup();
+        self.send_queue.close();
+        self.stream.replace(None);
 
         if let Some(triggers) = self.triggers.replace(None) {
             triggers.callbacks.on_disconnect();
         }
-    }
-}
-
-struct ConnSession {
-    primary_stream: RefCell<CoIOStream>,
-    secondary_stream: RefCell<CoIOStream>,
-}
-
-impl ConnSession {
-    fn new(primary_stream: CoIOStream) -> Result<Self, Error> {
-        let secondary_fd = unsafe { libc::dup(primary_stream.as_raw_fd()) };
-        Ok(ConnSession {
-            primary_stream: RefCell::new(primary_stream),
-            secondary_stream: RefCell::new(CoIOStream::new(secondary_fd as RawFd)?),
-        })
     }
 }
 
@@ -391,9 +367,8 @@ fn send_worker(conn: Box<Rc<ConnInner>>) -> i32 {
 
         match conn.state() {
             ConnState::Active => {
-                let session = conn.get_session();
-                let mut stream = session.secondary_stream.borrow_mut();
-                conn.send_queue.flush_to_stream(&mut *stream);
+                let mut writer = conn.stream.borrow().as_ref().unwrap().acquire_writer();
+                conn.send_queue.flush_to_stream(&mut writer);
             }
             ConnState::Closed => return 0,
             _ => {
@@ -414,9 +389,8 @@ fn recv_worker(conn: Box<Rc<ConnInner>>) -> i32 {
 
         match conn.state() {
             ConnState::Active => {
-                let session = conn.get_session();
-                let mut stream = session.primary_stream.borrow_mut();
-                conn.recv_queue.pull(&mut *stream);
+                let mut reader = conn.stream.borrow().as_ref().unwrap().acquire_reader();
+                conn.recv_queue.pull(&mut reader);
             }
             ConnState::Closed => return 0,
             _ => {

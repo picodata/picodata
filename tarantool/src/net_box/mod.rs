@@ -59,6 +59,7 @@ mod recv_queue;
 mod schema;
 mod send_queue;
 mod space;
+mod stream;
 
 /// Connection to remote Tarantool server
 pub struct Conn {
