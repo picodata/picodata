@@ -6,7 +6,7 @@ use refpool::{Pool, PoolRef};
 use rmp::decode;
 
 use crate::error::Error;
-use crate::fiber::{Cond, Latch};
+use crate::fiber::Cond;
 
 use super::options::Options;
 use super::protocol::{decode_error, decode_header, Header, Response};
@@ -86,7 +86,7 @@ impl RecvQueue {
                 let chunk_offset = buffer.position();
                 chunks.push(chunk_offset);
 
-                let new_offset = (chunk_offset + chunk_len as u64);
+                let new_offset = chunk_offset + chunk_len as u64;
                 if new_offset >= data_len as u64 {
                     break;
                 }

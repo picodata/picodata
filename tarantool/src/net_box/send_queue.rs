@@ -1,8 +1,9 @@
 use std::cell::{Cell, RefCell};
 use std::io::{self, Cursor, Write};
+use std::time::SystemTime;
 
 use crate::error::Error;
-use crate::fiber::{Cond, Latch};
+use crate::fiber::{reschedule, Cond};
 
 pub struct SendQueue {
     is_active: Cell<bool>,
@@ -57,23 +58,31 @@ impl SendQueue {
     }
 
     pub fn flush_to_stream(&self, stream: &mut impl Write) -> io::Result<()> {
+        let start_ts = SystemTime::now();
+        let mut prev_data_size = 0u64;
+
         loop {
             if !self.is_active.get() {
                 return Err(io::Error::from(io::ErrorKind::TimedOut));
             }
 
-            self.back_buffer.borrow().position();
-            let is_data_available = self.back_buffer.borrow().position() > 0;
-            if is_data_available {
-                self.back_buffer.swap(&self.front_buffer);
+            let data_size = self.back_buffer.borrow().position();
+            if data_size == 0 {
+                // await for data (if buffer is empty)
+                self.swap_cond.wait();
+                continue;
             }
 
-            // await for data (if buffer is empty)
-            if is_data_available {
-                break;
-            } else {
-                self.swap_cond.wait();
+            if let Ok(elapsed) = start_ts.elapsed() {
+                if data_size > prev_data_size && elapsed.as_millis() <= 10 {
+                    prev_data_size = data_size;
+                    reschedule();
+                    continue;
+                }
             }
+
+            self.back_buffer.swap(&self.front_buffer);
+            break;
         }
 
         // write front buffer contents to stream + clear front buffer

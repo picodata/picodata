@@ -6,7 +6,6 @@ use std::net::SocketAddr;
 use std::rc::Rc;
 
 use crate::error::Error;
-use crate::fiber::Latch;
 use crate::index::IteratorType;
 use crate::space::SystemSpace;
 use crate::tuple::Tuple;
@@ -19,12 +18,10 @@ pub struct ConnSchema {
     pub(crate) version: Cell<u32>,
     space_ids: RefCell<HashMap<String, u32>>,
     index_ids: RefCell<HashMap<(u32, String), u32>>,
-    lock: Latch,
 }
 
 impl ConnSchema {
     pub fn acquire(addrs: &Vec<SocketAddr>) -> Rc<ConnSchema> {
-        let _lock = schema_cache.lock.lock();
         let mut cache = schema_cache.cache.borrow_mut();
 
         for addr in addrs {
@@ -37,7 +34,6 @@ impl ConnSchema {
             version: Cell::new(0),
             space_ids: Default::default(),
             index_ids: Default::default(),
-            lock: Latch::new(),
         });
 
         for addr in addrs {
@@ -48,8 +44,6 @@ impl ConnSchema {
     }
 
     pub fn update(&self, conn_inner: &ConnInner) -> Result<(), Error> {
-        let _lock = self.lock.lock();
-
         let (spaces_data, actual_schema_version) = self.fetch_schema_spaces(conn_inner)?;
         for row in spaces_data {
             let (id, _, name) = row.into_struct::<(u32, u32, String)>()?;
@@ -72,12 +66,10 @@ impl ConnSchema {
     }
 
     pub fn lookup_space(&self, name: &str) -> Option<u32> {
-        let _lock = self.lock.lock();
         self.space_ids.borrow().get(name).map(|id| id.clone())
     }
 
     pub fn lookup_index(&self, name: &str, space_id: u32) -> Option<u32> {
-        let _lock = self.lock.lock();
         self.index_ids
             .borrow()
             .get(&(space_id, name.to_string()))
@@ -125,7 +117,6 @@ impl ConnSchema {
 
 struct ConnSchemaCache {
     cache: RefCell<HashMap<SocketAddr, Rc<ConnSchema>>>,
-    lock: Latch,
 }
 
 unsafe impl Sync for ConnSchemaCache {}
@@ -133,6 +124,5 @@ unsafe impl Sync for ConnSchemaCache {}
 lazy_static! {
     static ref schema_cache: ConnSchemaCache = ConnSchemaCache {
         cache: RefCell::new(HashMap::new()),
-        lock: Latch::new(),
     };
 }

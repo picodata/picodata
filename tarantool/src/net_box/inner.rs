@@ -8,7 +8,7 @@ use std::time::Duration;
 
 use crate::coio::CoIOStream;
 use crate::error::Error;
-use crate::fiber::{is_cancelled, set_cancellable, sleep, time, Cond, Fiber, Latch};
+use crate::fiber::{is_cancelled, set_cancellable, sleep, time, Cond, Fiber};
 use crate::net_box::stream::ConnStream;
 
 use super::options::{ConnOptions, ConnTriggers, Options};

@@ -358,7 +358,7 @@ pub fn decode_tuple(buffer: &mut Cursor<Vec<u8>>, _: &Header) -> Result<Option<T
         match key {
             DATA => {
                 let payload_offset = buffer.position();
-                skip_msgpack(buffer);
+                skip_msgpack(buffer)?;
                 let payload_len = buffer.position() - payload_offset;
                 let buf = buffer.get_mut();
                 unsafe {
