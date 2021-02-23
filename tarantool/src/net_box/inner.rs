@@ -18,7 +18,7 @@ use super::schema::ConnSchema;
 use super::send_queue::{self, SendQueue};
 use super::Conn;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Copy, Clone)]
 enum ConnState {
     Init,
     Connecting,
@@ -32,12 +32,10 @@ enum ConnState {
 pub struct ConnInner {
     addrs: Vec<SocketAddr>,
     options: ConnOptions,
-    state: RefCell<ConnState>,
-    state_lock: Latch,
+    state: Cell<ConnState>,
     state_change_cond: Cond,
     schema: Rc<ConnSchema>,
     schema_version: Cell<Option<u32>>,
-    schema_lock: Latch,
     stream: RefCell<Option<ConnStream>>,
     send_queue: SendQueue,
     recv_queue: RecvQueue,
@@ -61,15 +59,13 @@ impl ConnInner {
 
         // construct object
         let conn_inner = Rc::new(ConnInner {
-            state: RefCell::new(ConnState::Init),
-            state_lock: Latch::new(),
+            state: Cell::new(ConnState::Init),
             state_change_cond: Cond::new(),
             schema: ConnSchema::acquire(&addrs),
             schema_version: Cell::new(None),
-            schema_lock: Latch::new(),
             stream: RefCell::new(None),
-            send_queue: SendQueue::new(1024),
-            recv_queue: RecvQueue::new(1024),
+            send_queue: SendQueue::new(65536),
+            recv_queue: RecvQueue::new(65536),
             send_fiber: RefCell::new(send_fiber),
             recv_fiber: RefCell::new(recv_fiber),
             triggers: RefCell::new(None),
@@ -94,13 +90,13 @@ impl ConnInner {
     }
 
     pub fn is_connected(&self) -> bool {
-        matches!(self.state(), ConnState::Active)
+        matches!(self.state.get(), ConnState::Active)
     }
 
     pub fn wait_connected(&self, timeout: Option<Duration>) -> Result<bool, Error> {
         let begin_ts = time();
         loop {
-            let state = self.state();
+            let state = self.state.get();
             match state {
                 ConnState::Init => {
                     self.init()?;
@@ -134,7 +130,7 @@ impl ConnInner {
         Fc: FnOnce(&mut Cursor<Vec<u8>>, &Header) -> Result<R, Error>,
     {
         loop {
-            let state = self.state();
+            let state = self.state.get();
             match state {
                 ConnState::Init => {
                     self.init()?;
@@ -175,7 +171,7 @@ impl ConnInner {
     }
 
     pub fn close(&self) {
-        if !matches!(self.state(), ConnState::Closed) {
+        if !matches!(self.state.get(), ConnState::Closed) {
             self.disconnect();
 
             let mut send_fiber = self.send_fiber.borrow_mut();
@@ -264,7 +260,6 @@ impl ConnInner {
 
     fn sync_schema(&self) -> Result<(), Error> {
         self.wait_connected(Some(self.options.connect_timeout))?;
-        let _lock = self.schema_lock.lock();
 
         let is_schema_outdated = match self.schema_version.get() {
             None => true,
@@ -287,16 +282,8 @@ impl ConnInner {
         Ok(())
     }
 
-    fn state(&self) -> ConnState {
-        let _lock = self.state_lock.lock();
-        self.state.borrow().clone()
-    }
-
     fn update_state(&self, state: ConnState) {
-        {
-            let _lock = self.state_lock.lock();
-            self.state.replace(state)
-        };
+        self.state.set(state);
         self.state_change_cond.broadcast();
     }
 
@@ -365,7 +352,7 @@ fn send_worker(conn: Box<Rc<ConnInner>>) -> i32 {
             return 0;
         }
 
-        match conn.state() {
+        match conn.state.get() {
             ConnState::Active => {
                 let mut writer = conn.stream.borrow().as_ref().unwrap().acquire_writer();
                 conn.send_queue.flush_to_stream(&mut writer);
@@ -387,7 +374,7 @@ fn recv_worker(conn: Box<Rc<ConnInner>>) -> i32 {
             return 0;
         }
 
-        match conn.state() {
+        match conn.state.get() {
             ConnState::Active => {
                 let mut reader = conn.stream.borrow().as_ref().unwrap().acquire_reader();
                 conn.recv_queue.pull(&mut reader);

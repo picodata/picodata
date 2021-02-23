@@ -7,10 +7,8 @@ use crate::fiber::{Cond, Latch};
 pub struct SendQueue {
     is_active: Cell<bool>,
     sync: Cell<u64>,
-    sync_lock: Latch,
     front_buffer: RefCell<Cursor<Vec<u8>>>,
     back_buffer: RefCell<Cursor<Vec<u8>>>,
-    buffer_lock: Latch,
     swap_cond: Cond,
 }
 
@@ -19,10 +17,8 @@ impl SendQueue {
         SendQueue {
             is_active: Cell::new(true),
             sync: Cell::new(0),
-            sync_lock: Latch::new(),
             front_buffer: RefCell::new(Cursor::new(Vec::with_capacity(buffer_size))),
             back_buffer: RefCell::new(Cursor::new(Vec::with_capacity(buffer_size))),
-            buffer_lock: Latch::new(),
             swap_cond: Cond::new(),
         }
     }
@@ -33,7 +29,6 @@ impl SendQueue {
     {
         let sync = self.next_sync();
         let offset = {
-            let _lock = self.buffer_lock.lock();
             let buffer = &mut *self.back_buffer.borrow_mut();
 
             let offset = buffer.position();
@@ -56,7 +51,6 @@ impl SendQueue {
     }
 
     pub fn next_sync(&self) -> u64 {
-        let _lock = self.sync_lock.lock();
         let sync = self.sync.get() + 1;
         self.sync.set(sync);
         sync
@@ -64,19 +58,15 @@ impl SendQueue {
 
     pub fn flush_to_stream(&self, stream: &mut impl Write) -> io::Result<()> {
         loop {
-            let is_data_available = {
-                let _lock = self.buffer_lock.lock();
+            if !self.is_active.get() {
+                return Err(io::Error::from(io::ErrorKind::TimedOut));
+            }
 
-                if !self.is_active.get() {
-                    return Err(io::Error::from(io::ErrorKind::TimedOut));
-                }
-
-                let is_data_available = self.back_buffer.borrow().position() > 0;
-                if is_data_available {
-                    self.back_buffer.swap(&self.front_buffer);
-                }
-                is_data_available
-            };
+            self.back_buffer.borrow().position();
+            let is_data_available = self.back_buffer.borrow().position() > 0;
+            if is_data_available {
+                self.back_buffer.swap(&self.front_buffer);
+            }
 
             // await for data (if buffer is empty)
             if is_data_available {
@@ -95,10 +85,7 @@ impl SendQueue {
     }
 
     pub fn close(&self) {
-        {
-            let _lock = self.buffer_lock.lock();
-            self.is_active.set(false);
-        }
+        self.is_active.set(false);
         self.swap_cond.signal();
     }
 }

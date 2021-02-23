@@ -358,8 +358,9 @@ pub fn decode_tuple(buffer: &mut Cursor<Vec<u8>>, _: &Header) -> Result<Option<T
         match key {
             DATA => {
                 let payload_offset = buffer.position();
+                skip_msgpack(buffer);
+                let payload_len = buffer.position() - payload_offset;
                 let buf = buffer.get_mut();
-                let payload_len = buf.len() as u64 - payload_offset;
                 unsafe {
                     return Ok(Some(Tuple::from_raw_data(
                         buf.as_slice().as_ptr().add(payload_offset as usize) as *mut c_char,
