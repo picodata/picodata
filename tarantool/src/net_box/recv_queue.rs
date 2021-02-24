@@ -1,4 +1,4 @@
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::io::{self, Cursor, Read};
 
@@ -17,6 +17,7 @@ pub struct RecvQueue {
     chunks: RefCell<Vec<u64>>,
     cond_map: RefCell<HashMap<u64, PoolRef<Cond>>>,
     cond_pool: Pool<Cond>,
+    read_offset: Cell<usize>,
     read_completed_cond: Cond,
 }
 
@@ -31,6 +32,7 @@ impl RecvQueue {
             chunks: RefCell::new(Vec::with_capacity(1024)),
             cond_map: RefCell::new(HashMap::new()),
             cond_pool: Pool::new(1024),
+            read_offset: Cell::new(0),
             read_completed_cond: Cond::new(),
         }
     }
@@ -75,22 +77,30 @@ impl RecvQueue {
     pub fn pull(&self, stream: &mut impl Read) -> Result<(), Error> {
         let mut chunks = self.chunks.borrow_mut();
 
+        let mut overflow_range = 0..0;
         {
             let mut buffer = self.buffer.borrow_mut();
-            let data_len = stream.read(buffer.get_mut())?;
+            let data_len = stream.read(&mut buffer.get_mut()[self.read_offset.get()..])? as u64;
             chunks.clear();
             buffer.set_position(0);
 
             loop {
-                let chunk_len = decode::read_u32(&mut *buffer)?;
+                let prefix_chunk_offset = buffer.position();
+                let chunk_len = decode::read_u32(&mut *buffer)? as u64;
                 let chunk_offset = buffer.position();
-                chunks.push(chunk_offset);
-
-                let new_offset = chunk_offset + chunk_len as u64;
-                if new_offset >= data_len as u64 {
+                let new_offset = chunk_offset + chunk_len;
+                if new_offset > data_len {
+                    overflow_range = (prefix_chunk_offset as usize)..(data_len as usize);
                     break;
                 }
-                buffer.set_position(new_offset);
+
+                chunks.push(chunk_offset);
+
+                if new_offset == data_len {
+                    break;
+                }
+
+                buffer.set_position(new_offset as u64);
             }
         };
 
@@ -112,6 +122,18 @@ impl RecvQueue {
                 self.read_completed_cond.wait();
             }
         }
+
+        let new_read_offset = if !overflow_range.is_empty() {
+            let new_read_offset = overflow_range.end - overflow_range.end;
+            self.buffer
+                .borrow_mut()
+                .get_mut()
+                .copy_within(overflow_range, 0);
+            new_read_offset as usize
+        } else {
+            0
+        };
+        self.read_offset.set(new_read_offset);
 
         Ok(())
     }
