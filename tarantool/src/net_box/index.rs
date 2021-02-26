@@ -69,7 +69,7 @@ impl RemoteIndex {
                 )
             },
             |buf, _| {
-                protocol::decode_data(buf, None).map(|result| RemoteIndexIterator {
+                protocol::decode_multiple_rows(buf, None).map(|result| RemoteIndexIterator {
                     inner: result.into_iter(),
                 })
             },

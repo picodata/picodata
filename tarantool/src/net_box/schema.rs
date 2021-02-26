@@ -13,7 +13,7 @@ use crate::tuple::Tuple;
 
 use super::inner::ConnInner;
 use super::options::Options;
-use super::protocol::{decode_data, encode_select};
+use super::protocol::{decode_multiple_rows, encode_select};
 
 pub struct ConnSchema {
     version: Cell<Option<u32>>,
@@ -127,7 +127,7 @@ impl ConnSchema {
                     &(SystemSpace::SystemIdMax as u32,),
                 )
             },
-            |buf, header| Ok((decode_data(buf, None)?, header.schema_version)),
+            |buf, header| Ok((decode_multiple_rows(buf, None)?, header.schema_version)),
             &Options::default(),
         )
     }
@@ -146,7 +146,7 @@ impl ConnSchema {
                     &Vec::<()>::new(),
                 )
             },
-            |buf, _| decode_data(buf, None),
+            |buf, _| decode_multiple_rows(buf, None),
             &Options::default(),
         )
     }
