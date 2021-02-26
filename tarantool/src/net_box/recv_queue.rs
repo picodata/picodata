@@ -138,21 +138,3 @@ impl RecvQueue {
         Ok(())
     }
 }
-
-pub fn recv_message(
-    stream: &mut impl Read,
-    buffer: &mut Cursor<Vec<u8>>,
-    response_len: usize,
-) -> Result<usize, Error> {
-    buffer.set_position(0);
-    {
-        let buffer = buffer.get_mut();
-        buffer.clear();
-        buffer.reserve(response_len);
-    }
-
-    stream
-        .take(response_len as u64)
-        .read_to_end(buffer.get_mut())
-        .map_err(|err| err.into())
-}

@@ -1,7 +1,6 @@
 use core::cell::RefCell;
 use std::cell::Cell;
-use std::io;
-use std::io::{Cursor, Write};
+use std::io::{self, Cursor, Read, Write};
 use std::net::SocketAddr;
 use std::rc::{Rc, Weak};
 use std::time::Duration;
@@ -13,7 +12,7 @@ use crate::net_box::stream::ConnStream;
 
 use super::options::{ConnOptions, ConnTriggers, Options};
 use super::protocol::{self, Header};
-use super::recv_queue::{self, RecvQueue};
+use super::recv_queue::RecvQueue;
 use super::schema::ConnSchema;
 use super::send_queue::{self, SendQueue};
 use super::Conn;
@@ -161,12 +160,12 @@ impl ConnInner {
     }
 
     pub fn lookup_space(&self, name: &str) -> Result<Option<u32>, Error> {
-        self.sync_schema()?;
+        self.refresh_schema()?;
         Ok(self.schema.lookup_space(name))
     }
 
     pub fn lookup_index(&self, name: &str, space_id: u32) -> Result<Option<u32>, Error> {
-        self.sync_schema()?;
+        self.refresh_schema()?;
         Ok(self.schema.lookup_index(name, space_id))
     }
 
@@ -249,7 +248,14 @@ impl ConnInner {
 
         // handle response
         let response_len = rmp::decode::read_u32(stream)?;
-        recv_queue::recv_message(stream, &mut cur, response_len as usize)?;
+        {
+            let buffer = cur.get_mut();
+            buffer.clear();
+            buffer.reserve(response_len as usize);
+            stream.take(response_len as u64).read_to_end(buffer)?;
+            cur.set_position(0);
+        }
+
         let header = protocol::decode_header(&mut cur)?;
         if header.status_code != 0 {
             return Err(protocol::decode_error(stream)?.into());
@@ -258,18 +264,11 @@ impl ConnInner {
         Ok(())
     }
 
-    fn sync_schema(&self) -> Result<(), Error> {
+    fn refresh_schema(&self) -> Result<(), Error> {
         self.wait_connected(Some(self.options.connect_timeout))?;
 
-        let is_schema_outdated = match self.schema_version.get() {
-            None => true,
-            Some(actual_version) => actual_version > self.schema.cached_version(),
-        };
-
-        if is_schema_outdated {
-            // synchronize
-            self.schema.update(self)?;
-
+        // synchronize
+        if self.schema.refresh(self, self.schema_version.get())? {
             // call trigger
             if let Some(triggers) = self.triggers.borrow().as_ref() {
                 triggers.callbacks.on_schema_reload(&Conn {
@@ -278,7 +277,6 @@ impl ConnInner {
                 });
             }
         }
-
         Ok(())
     }
 
