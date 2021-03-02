@@ -73,10 +73,10 @@ pub enum IteratorType {
     BitsAllNotSet = 9,
 
     /// key overlaps x
-    Ovelaps = 10,
+    Overlaps = 10,
 
     /// tuples in distance ascending order from specified point
-    Neigbor = 11,
+    Neighbor = 11,
 }
 
 impl Index {

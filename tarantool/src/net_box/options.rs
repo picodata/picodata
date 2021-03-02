@@ -29,7 +29,6 @@ pub struct Options {
 }
 
 /// Connection options; see [Conn::new()](struct.Conn.html#method.new)
-#[derive(Default)]
 pub struct ConnOptions {
     /// Authentication user name. If left empty, then the session user is `'guest'`
     /// (the `'guest'` user does not need a password).
@@ -64,6 +63,28 @@ pub struct ConnOptions {
     /// Duration to wait before returning “error: Connection timed out”.
     pub connect_timeout: Duration,
 
+    /// Send buffer flush interval enforced in case of intensive requests stream. Guarantied to be maximum while
+    /// requests are going.
+    pub send_buffer_flush_interval: Duration,
+
+    /// Send buffer soft limit. If limit is reached, fiber will block before buffer flush.
+    ///
+    /// Note: This mechanism will prevent buffer overflow in most cases (not at all). In case overflow, buffer
+    /// reallocation will occurred, which may cause performance issues.
+    ///
+    /// Default: 64000  
+    pub send_buffer_limit: usize,
+
+    /// Reallocated capacity of send buffer
+    ///
+    /// Default: 65536
+    pub send_buffer_size: usize,
+
+    /// Reallocated capacity of receive buffer
+    ///
+    /// Default: 65536
+    pub recv_buffer_size: usize,
+
     /// Triggers for some connection states changes.
     ///
     /// Events can be hooked:
@@ -71,6 +92,22 @@ pub struct ConnOptions {
     /// - after disconnected
     /// - after schema updated  
     pub triggers: Option<Box<dyn ConnTriggers>>,
+}
+
+impl Default for ConnOptions {
+    fn default() -> Self {
+        ConnOptions {
+            user: "".to_string(),
+            password: "".to_string(),
+            reconnect_after: Default::default(),
+            connect_timeout: Default::default(),
+            send_buffer_flush_interval: Duration::from_millis(10),
+            send_buffer_limit: 64000,
+            send_buffer_size: 65536,
+            recv_buffer_size: 65536,
+            triggers: None,
+        }
+    }
 }
 
 pub trait ConnTriggers {

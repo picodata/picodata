@@ -1,6 +1,6 @@
 use std::cell::{Cell, RefCell};
 use std::io::{self, Cursor, Write};
-use std::time::SystemTime;
+use std::time::{Duration, SystemTime};
 
 use crate::error::Error;
 use crate::fiber::{reschedule, Cond};
@@ -13,18 +13,20 @@ pub struct SendQueue {
     swap_cond: Cond,
     buffer_limit: u64,
     buffer_limit_cond: Cond,
+    flush_interval: Duration,
 }
 
 impl SendQueue {
-    pub fn new(buffer_size: usize) -> Self {
+    pub fn new(buffer_size: usize, buffer_limit: usize, flush_interval: Duration) -> Self {
         SendQueue {
             is_active: Cell::new(true),
             sync: Cell::new(0),
             front_buffer: RefCell::new(Cursor::new(Vec::with_capacity(buffer_size))),
             back_buffer: RefCell::new(Cursor::new(Vec::with_capacity(buffer_size))),
             swap_cond: Cond::new(),
-            buffer_limit: 1024,
+            buffer_limit: buffer_limit as u64,
             buffer_limit_cond: Cond::new(),
+            flush_interval,
         }
     }
 
@@ -83,7 +85,7 @@ impl SendQueue {
             }
 
             if let Ok(elapsed) = start_ts.elapsed() {
-                if data_size > prev_data_size && elapsed.as_millis() <= 10 {
+                if data_size > prev_data_size && elapsed <= self.flush_interval {
                     prev_data_size = data_size;
                     reschedule();
                     continue;
