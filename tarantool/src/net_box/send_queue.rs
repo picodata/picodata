@@ -11,6 +11,8 @@ pub struct SendQueue {
     front_buffer: RefCell<Cursor<Vec<u8>>>,
     back_buffer: RefCell<Cursor<Vec<u8>>>,
     swap_cond: Cond,
+    buffer_limit: u64,
+    buffer_limit_cond: Cond,
 }
 
 impl SendQueue {
@@ -21,6 +23,8 @@ impl SendQueue {
             front_buffer: RefCell::new(Cursor::new(Vec::with_capacity(buffer_size))),
             back_buffer: RefCell::new(Cursor::new(Vec::with_capacity(buffer_size))),
             swap_cond: Cond::new(),
+            buffer_limit: 1024,
+            buffer_limit_cond: Cond::new(),
         }
     }
 
@@ -29,6 +33,11 @@ impl SendQueue {
         F: FnOnce(&mut Cursor<Vec<u8>>, u64) -> Result<(), Error>,
     {
         let sync = self.next_sync();
+
+        if self.back_buffer.borrow().position() >= self.buffer_limit {
+            self.buffer_limit_cond.wait();
+        }
+
         let offset = {
             let buffer = &mut *self.back_buffer.borrow_mut();
 
@@ -83,6 +92,11 @@ impl SendQueue {
 
             self.back_buffer.swap(&self.front_buffer);
             break;
+        }
+
+        // check if buffer has reached the limit: then signal to continue filling
+        if self.front_buffer.borrow().position() >= self.buffer_limit {
+            self.buffer_limit_cond.broadcast();
         }
 
         // write front buffer contents to stream + clear front buffer
