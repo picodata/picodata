@@ -147,6 +147,7 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 test_net_box::test_update,
                 test_net_box::test_upsert,
                 test_net_box::test_delete,
+                test_net_box::test_cancel_recv,
                 test_net_box::test_triggers_connect,
                 test_net_box::test_triggers_reject,
                 test_net_box::test_triggers_schema_sync,

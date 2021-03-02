@@ -375,7 +375,7 @@ pub fn decode_multiple_rows(
     for _ in 0..payload_len {
         let key = rmp::decode::read_pfix(buffer)?;
         match key {
-            DATA => unsafe {
+            DATA => {
                 let items_count = rmp::decode::read_array_len(buffer)? as usize;
                 let items_count = match limit {
                     None => items_count,
@@ -387,7 +387,7 @@ pub fn decode_multiple_rows(
                     result.push(decode_tuple(buffer)?);
                 }
                 return Ok(result);
-            },
+            }
             _ => {
                 skip_msgpack(buffer)?;
             }
@@ -401,14 +401,14 @@ pub fn decode_single_row(buffer: &mut Cursor<Vec<u8>>, _: &Header) -> Result<Opt
     for _ in 0..payload_len {
         let key = rmp::decode::read_pfix(buffer)?;
         match key {
-            DATA => unsafe {
+            DATA => {
                 let items_count = rmp::decode::read_array_len(buffer)? as usize;
                 return Ok(if items_count == 0 {
                     None
                 } else {
                     Some(decode_tuple(buffer)?)
                 });
-            },
+            }
             _ => {
                 skip_msgpack(buffer)?;
             }
@@ -423,10 +423,10 @@ pub fn decode_tuple(buffer: &mut Cursor<Vec<u8>>) -> Result<Tuple, Error> {
     let payload_len = buffer.position() - payload_offset;
     let buf = buffer.get_mut();
     unsafe {
-        Ok((Tuple::from_raw_data(
+        Ok(Tuple::from_raw_data(
             buf.as_slice().as_ptr().add(payload_offset as usize) as *mut c_char,
             payload_len as u32,
-        )))
+        ))
     }
 }
 

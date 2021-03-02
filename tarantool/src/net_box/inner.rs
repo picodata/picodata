@@ -170,6 +170,11 @@ impl ConnInner {
     }
 
     pub fn close(&self) {
+        let state = self.state.get();
+        if matches!(state, ConnState::Connecting) || matches!(state, ConnState::Auth) {
+            let _ = self.wait_connected(None);
+        }
+
         if !matches!(self.state.get(), ConnState::Closed) {
             self.disconnect();
 
@@ -327,6 +332,7 @@ impl ConnInner {
     fn disconnect(&self) {
         self.update_state(ConnState::Closed);
         self.recv_fiber.borrow().wakeup();
+        self.recv_queue.close();
         self.send_queue.close();
         self.stream.replace(None);
 
