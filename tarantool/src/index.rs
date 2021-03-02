@@ -14,6 +14,7 @@ use num_traits::ToPrimitive;
 
 use crate::error::{Error, TarantoolError};
 use crate::ffi::tarantool as ffi;
+use crate::schema;
 use crate::tuple::{AsTuple, Tuple, TupleBuffer};
 
 /// An index is a group of key values and pointers.
@@ -82,6 +83,11 @@ pub enum IteratorType {
 impl Index {
     pub(crate) fn new(space_id: u32, index_id: u32) -> Self {
         Index { space_id, index_id }
+    }
+
+    // Drops index.
+    pub fn drop(&self) -> Result<(), Error> {
+        schema::drop_index(self.space_id, self.index_id)
     }
 
     /// Get a tuple from index by the key.

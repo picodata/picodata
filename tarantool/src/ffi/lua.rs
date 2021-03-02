@@ -1,5 +1,5 @@
 #![allow(non_camel_case_types)]
-use std::os::raw::{c_int, c_schar};
+use std::os::raw::{c_double, c_int, c_schar};
 use std::ptr::null_mut;
 
 /// Module provides FFI bindings for the following constants,
@@ -21,13 +21,21 @@ pub type lua_CFunction = Option<unsafe extern "C" fn(l: *mut lua_State) -> c_int
 extern "C" {
     // Lua C API functions.
     pub fn lua_newthread(l: *mut lua_State) -> *mut lua_State;
+    pub fn lua_pushboolean(l: *mut lua_State, n: c_int) -> *mut lua_State;
     pub fn lua_pushstring(l: *mut lua_State, s: *const c_schar) -> *const c_schar;
     pub fn lua_pushinteger(l: *mut lua_State, n: isize);
+    pub fn lua_pushnumber(l: *mut lua_State, n: c_double);
     pub fn lua_pushcclosure(l: *mut lua_State, fun: lua_CFunction, n: c_int);
+    pub fn lua_pushnil(l: *mut lua_State);
+    pub fn lua_pushvalue(L: *mut lua_State, idx: c_int);
     pub fn lua_tointeger(l: *mut lua_State, idx: c_int) -> isize;
     pub fn lua_tolstring(l: *mut lua_State, idx: c_int, len: *mut usize) -> *const c_schar;
-    pub fn lua_getfield(L: *mut lua_State, idx: c_int, k: *const c_schar);
+    pub fn lua_setfield(L: *mut lua_State, idx: c_int, s: *const c_schar);
+    pub fn lua_getfield(L: *mut lua_State, idx: c_int, s: *const c_schar);
+    pub fn lua_createtable(L: *mut lua_State, narr: c_int, nrec: c_int);
     pub fn lua_gettable(L: *mut lua_State, idx: c_int);
+    pub fn lua_settable(L: *mut lua_State, idx: c_int);
+    pub fn lua_remove(L: *mut lua_State, idx: c_int);
 
     // lauxlib functions.
     pub fn luaL_error(l: *mut lua_State, fmt: *const c_schar, ...) -> c_int;
@@ -50,4 +58,9 @@ pub unsafe fn lua_pushcfunction(state: *mut lua_State, f: lua_CFunction) {
 #[inline(always)]
 pub unsafe fn lua_tostring(state: *mut lua_State, i: c_int) -> *const c_schar {
     lua_tolstring(state, i, null_mut())
+}
+
+#[inline(always)]
+pub unsafe fn lua_newtable(state: *mut lua_State) {
+    lua_createtable(state, 0, 0);
 }

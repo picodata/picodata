@@ -16,7 +16,7 @@ use crate::error::{set_error, Error, TarantoolError, TarantoolErrorCode};
 use crate::ffi::tarantool as ffi;
 use crate::index::{Index, IndexIterator, IteratorType};
 use crate::schema;
-use crate::schema::{SpaceEngineType, SpaceMetadata};
+use crate::schema::{IndexOptions, SpaceEngineType, SpaceMetadata};
 use crate::sequence::Sequence;
 use crate::serde_json::{Map, Number, Value};
 use crate::session;
@@ -130,10 +130,6 @@ impl SpaceCreateOptions {
     }
 }
 
-pub struct SpaceDropOptions {
-    pub if_not_exists: bool,
-}
-
 impl Space {
     /// Create a space.
     /// (for details see [box.schema.space.create()](https://www.tarantool.io/en/doc/latest/reference/reference_lua/box_schema/space_create/)).
@@ -241,7 +237,8 @@ impl Space {
         if opts.is_temporary {
             space_opts.insert("temporary".to_string(), Value::Bool(true));
         }
-        // space_opts.insert("is_sync".to_string(), Value::Bool(opts.is_sync)); // Only for Tarantool version >= 2.6
+        // Only for Tarantool version >= 2.6
+        // space_opts.insert("is_sync".to_string(), Value::Bool(opts.is_sync));
 
         let new_space = SpaceMetadata {
             id: id,
@@ -371,6 +368,15 @@ impl Space {
     /// Get space ID.
     pub const fn id(&self) -> u32 {
         self.id
+    }
+
+    /// Create new index.
+    ///
+    /// - `name` - name of index to create, which should conform to the rules for object names.
+    /// - `opts` - see schema::IndexOptions struct.
+    pub fn create_index(&self, name: &str, opts: &IndexOptions) -> Result<Index, Error> {
+        schema::create_index(self.id, name, opts)?;
+        Ok(self.index(name).unwrap())
     }
 
     /// Find index by name.

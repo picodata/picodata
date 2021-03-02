@@ -1,6 +1,7 @@
 use rand::Rng;
 
 use tarantool::index::IteratorType;
+use tarantool::schema::IndexOptions;
 use tarantool::sequence::Sequence;
 use tarantool::space::{Space, SpaceCreateOptions, SystemSpace};
 use tarantool::tuple::Tuple;
@@ -479,13 +480,13 @@ pub fn test_space_create_opt_user() {
 
     // Test `user` option.
     opts.user = Some("admin".to_string());
-    let result_4 = Space::create("new_space_4", &opts);
-    assert_eq!(result_4.is_ok(), true);
+    let result_1 = Space::create("new_space_4", &opts);
+    assert_eq!(result_1.is_ok(), true);
 
     // Test `NoSuchUser` error.
     opts.user = Some("user".to_string());
-    let result_5 = Space::create("new_space_5", &opts);
-    assert_eq!(result_5.is_err(), true);
+    let result_2 = Space::create("new_space_5", &opts);
+    assert_eq!(result_2.is_err(), true);
 
     drop_space("new_space_4");
 }
@@ -494,8 +495,8 @@ pub fn test_space_create_opt_id() {
     let mut opts = SpaceCreateOptions::default();
 
     opts.id = Some(10000);
-    let result_5 = Space::create("new_space_6", &opts);
-    let id = result_5.unwrap().id();
+    let result_1 = Space::create("new_space_6", &opts);
+    let id = result_1.unwrap().id();
     assert_eq!(id, opts.id.unwrap());
 
     drop_space("new_space_6");
@@ -513,6 +514,30 @@ pub fn test_space_drop() {
         let find_result = Space::find(name.as_str());
         assert_eq!(find_result.is_none(), true);
     }
+}
+
+pub fn test_index_create_drop() {
+    let space_opts = SpaceCreateOptions::default();
+    let space = Space::create("new_space_7", &space_opts).unwrap();
+
+    let index_opts = IndexOptions::default();
+    let create_result = space.create_index("new_index", &index_opts);
+
+    if create_result.is_err() {
+        panic!(dbg!(create_result.err()));
+    }
+    assert_eq!(create_result.is_ok(), true);
+
+    let index_query_1 = space.index("new_index");
+    assert_eq!(index_query_1.is_some(), true);
+
+    let drop_result = index_query_1.unwrap().drop();
+    assert_eq!(drop_result.is_ok(), true);
+
+    let index_query_2 = space.index("new_index");
+    assert_eq!(index_query_2.is_none(), true);
+
+    drop_space("new_space_7");
 }
 
 pub fn drop_space(name: &str) {
