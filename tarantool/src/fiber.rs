@@ -82,7 +82,7 @@ impl<'a, T> Fiber<'a, T> {
     {
         let (callback_ptr, trampoline) = unsafe { unpack_callback(callback) };
         Self {
-            inner: unsafe { ffi::fiber_new(CString::new(name).unwrap().as_ptr(), trampoline) },
+            inner: unsafe { ffi::fiber_new(CString::new(name).unwrap().into_raw(), trampoline) },
             callback: callback_ptr,
             phantom: PhantomData,
         }
@@ -107,7 +107,11 @@ impl<'a, T> Fiber<'a, T> {
         let (callback_ptr, trampoline) = unsafe { unpack_callback(callback) };
         Self {
             inner: unsafe {
-                ffi::fiber_new_ex(CString::new(name).unwrap().as_ptr(), attr.inner, trampoline)
+                ffi::fiber_new_ex(
+                    CString::new(name).unwrap().into_raw(),
+                    attr.inner,
+                    trampoline,
+                )
             },
             callback: callback_ptr,
             phantom: PhantomData,
