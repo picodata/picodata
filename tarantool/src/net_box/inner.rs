@@ -302,6 +302,10 @@ impl ConnInner {
     }
 
     fn handle_error(&self, err: Error) -> Result<(), Error> {
+        if matches!(self.state.get(), ConnState::Closed) {
+            return Ok(());
+        }
+
         match err {
             Error::IO(err) => {
                 self.error.replace(Some(err));
@@ -316,6 +320,10 @@ impl ConnInner {
     }
 
     fn reconnect_or_fail(&self) -> Result<(), Error> {
+        if matches!(self.state.get(), ConnState::Closed) {
+            return Ok(());
+        }
+
         let error = self.error.replace(None).unwrap();
         let reconnect_after = self.options.reconnect_after;
         if reconnect_after.as_secs() == 0 && reconnect_after.subsec_nanos() == 0 {
@@ -334,6 +342,10 @@ impl ConnInner {
     }
 
     fn disconnect(&self) {
+        if matches!(self.state.get(), ConnState::Closed) {
+            return;
+        }
+
         self.update_state(ConnState::Closed);
         self.recv_fiber.borrow().wakeup();
         self.recv_queue.close();
@@ -363,7 +375,12 @@ fn send_worker(conn: Box<Rc<ConnInner>>) -> i32 {
         match conn.state.get() {
             ConnState::Active => {
                 let mut writer = conn.stream.borrow().as_ref().unwrap().acquire_writer();
-                conn.send_queue.flush_to_stream(&mut writer);
+                if let Err(e) = conn.send_queue.flush_to_stream(&mut writer) {
+                    if is_cancelled() {
+                        return 0;
+                    }
+                    conn.handle_error(e.into()).unwrap();
+                }
             }
             ConnState::Closed => return 0,
             _ => {
@@ -385,7 +402,12 @@ fn recv_worker(conn: Box<Rc<ConnInner>>) -> i32 {
         match conn.state.get() {
             ConnState::Active => {
                 let mut reader = conn.stream.borrow().as_ref().unwrap().acquire_reader();
-                conn.recv_queue.pull(&mut reader);
+                if let Err(e) = conn.recv_queue.pull(&mut reader) {
+                    if is_cancelled() {
+                        return 0;
+                    }
+                    conn.handle_error(e).unwrap();
+                }
             }
             ConnState::Closed => return 0,
             _ => {
