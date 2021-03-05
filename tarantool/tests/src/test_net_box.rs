@@ -436,6 +436,26 @@ pub fn test_delete() {
     assert!(output.is_none());
 }
 
+pub fn test_cancel_recv() {
+    let conn = Rc::new(Conn::new("localhost:3301", ConnOptions::default()).unwrap());
+
+    let mut fiber = Fiber::new("test_fiber_a", &mut |conn: Box<Rc<Conn>>| {
+        for _ in 0..10 {
+            match conn.ping(&Options::default()) {
+                Ok(_) => {}
+                Err(Error::IO(e)) if e.kind() == io::ErrorKind::ConnectionAborted => {}
+                Err(Error::IO(e)) if e.kind() == io::ErrorKind::NotConnected => {}
+                e => e.unwrap(),
+            }
+        }
+        0
+    });
+    fiber.set_joinable(true);
+    fiber.start(conn.clone());
+    conn.close();
+    fiber.join();
+}
+
 pub fn test_triggers_connect() {
     struct Checklist {
         connected: bool,

@@ -1,4 +1,4 @@
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::io::{self, Cursor, Read};
 
@@ -12,23 +12,32 @@ use super::options::Options;
 use super::protocol::{decode_error, decode_header, Header, Response};
 
 pub struct RecvQueue {
+    is_active: Cell<bool>,
     buffer: RefCell<Cursor<Vec<u8>>>,
-    header: RefCell<Option<Header>>,
+    chunks: RefCell<Vec<u64>>,
     cond_map: RefCell<HashMap<u64, PoolRef<Cond>>>,
     cond_pool: Pool<Cond>,
+    read_offset: Cell<usize>,
     read_completed_cond: Cond,
-    lock: Latch,
+    header_recv_result: RefCell<Option<Result<Header, Error>>>,
+    notification_lock: Latch,
 }
 
 impl RecvQueue {
     pub fn new(buffer_size: usize) -> Self {
+        let mut buffer = Vec::with_capacity(buffer_size);
+        buffer.resize(buffer_size, 0);
+
         RecvQueue {
-            buffer: RefCell::new(Cursor::new(Vec::with_capacity(buffer_size))),
-            header: RefCell::new(None),
+            is_active: Cell::new(true),
+            buffer: RefCell::new(Cursor::new(buffer)),
+            chunks: RefCell::new(Vec::with_capacity(1024)),
             cond_map: RefCell::new(HashMap::new()),
             cond_pool: Pool::new(1024),
+            read_offset: Cell::new(0),
             read_completed_cond: Cond::new(),
-            lock: Latch::new(),
+            header_recv_result: RefCell::new(None),
+            notification_lock: Latch::new(),
         }
     }
 
@@ -41,9 +50,12 @@ impl RecvQueue {
     where
         F: FnOnce(&mut Cursor<Vec<u8>>, &Header) -> Result<R, Error>,
     {
+        if !self.is_active.get() {
+            return Err(io::Error::from(io::ErrorKind::ConnectionAborted).into());
+        }
+
         let cond_ref = PoolRef::new(&self.cond_pool, Cond::new());
         {
-            let _lock = self.lock.lock();
             self.cond_map.borrow_mut().insert(sync, cond_ref.clone());
         }
 
@@ -54,64 +66,108 @@ impl RecvQueue {
 
         if is_signaled {
             let result = {
-                let _lock = self.lock.lock();
-                let header = self.header.replace(None).unwrap();
-                if header.status_code != 0 {
-                    return Err(decode_error(self.buffer.borrow_mut().by_ref())?.into());
-                }
+                let header = self.header_recv_result.replace(None).unwrap();
 
-                payload_consumer(self.buffer.borrow_mut().by_ref(), &header)
-                    .map(|payload| Response { payload, header })
+                match header {
+                    Ok(header) => {
+                        if header.status_code != 0 {
+                            return Err(decode_error(self.buffer.borrow_mut().by_ref())?.into());
+                        }
+
+                        payload_consumer(self.buffer.borrow_mut().by_ref(), &header)
+                            .map(|payload| Response { payload, header })
+                    }
+                    Err(e) => return Err(e),
+                }
             };
             self.read_completed_cond.signal();
             result
         } else {
-            let _lock = self.lock.lock();
             self.cond_map.borrow_mut().remove(&sync);
             Err(io::Error::from(io::ErrorKind::TimedOut).into())
         }
     }
 
     pub fn pull(&self, stream: &mut impl Read) -> Result<(), Error> {
-        let response_len = decode::read_u32(stream)?;
-        let header = {
-            let _lock = self.lock.lock();
-
-            let mut buffer = self.buffer.borrow_mut();
-            recv_message(stream, &mut *buffer, response_len as usize)?;
-            decode_header(buffer.by_ref())?
-        };
-
-        let cond_ref = {
-            let _lock = self.lock.lock();
-            let sync = header.sync;
-            self.header.replace(Some(header));
-            self.cond_map.borrow_mut().remove(&sync)
-        };
-
-        if let Some(cond_ref) = cond_ref {
-            cond_ref.signal();
-            self.read_completed_cond.wait();
+        if !self.is_active.get() {
+            return Ok(());
         }
+
+        let mut chunks = self.chunks.borrow_mut();
+
+        let mut overflow_range = 0..0;
+        {
+            let mut buffer = self.buffer.borrow_mut();
+            let data_len = stream.read(&mut buffer.get_mut()[self.read_offset.get()..])? as u64;
+            chunks.clear();
+            buffer.set_position(0);
+
+            loop {
+                let prefix_chunk_offset = buffer.position();
+                let chunk_len = decode::read_u32(&mut *buffer)? as u64;
+                let chunk_offset = buffer.position();
+                let new_offset = chunk_offset + chunk_len;
+                if new_offset > data_len {
+                    overflow_range = (prefix_chunk_offset as usize)..(data_len as usize);
+                    break;
+                }
+
+                chunks.push(chunk_offset);
+
+                if new_offset == data_len {
+                    break;
+                }
+
+                buffer.set_position(new_offset as u64);
+            }
+        };
+
+        {
+            let _lock = self.notification_lock.lock();
+            for chunk_offset in chunks.iter() {
+                let header = {
+                    let mut buffer = self.buffer.borrow_mut();
+                    buffer.set_position(*chunk_offset);
+                    decode_header(buffer.by_ref())?
+                };
+
+                let cond_ref = {
+                    let sync = header.sync;
+                    self.header_recv_result.replace(Some(Ok(header)));
+                    self.cond_map.borrow_mut().remove(&sync)
+                };
+
+                if let Some(cond_ref) = cond_ref {
+                    cond_ref.signal();
+                    self.read_completed_cond.wait();
+                }
+            }
+        }
+
+        let new_read_offset = if !overflow_range.is_empty() {
+            let new_read_offset = overflow_range.end - overflow_range.end;
+            self.buffer
+                .borrow_mut()
+                .get_mut()
+                .copy_within(overflow_range, 0);
+            new_read_offset as usize
+        } else {
+            0
+        };
+        self.read_offset.set(new_read_offset);
 
         Ok(())
     }
-}
 
-pub fn recv_message(
-    stream: &mut impl Read,
-    buffer: &mut Cursor<Vec<u8>>,
-    response_len: usize,
-) -> Result<usize, Error> {
-    buffer.set_position(0);
-    {
-        let buffer = buffer.get_mut();
-        buffer.clear();
-        buffer.reserve(response_len);
+    pub fn close(&self) {
+        let _lock = self.notification_lock.lock();
+        self.is_active.set(false);
+        for (_, cond_ref) in self.cond_map.borrow_mut().drain() {
+            self.header_recv_result
+                .replace(Some(Err(
+                    io::Error::from(io::ErrorKind::ConnectionAborted).into()
+                )));
+            cond_ref.signal();
+        }
     }
-
-    stream
-        .take(response_len as u64)
-        .read_to_end(buffer.get_mut())
-        .map_err(|err| err.into())
 }

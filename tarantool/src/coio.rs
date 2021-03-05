@@ -6,6 +6,7 @@ use std::convert::TryFrom;
 use std::ffi::c_void;
 use std::io;
 use std::io::{Read, Write};
+use std::mem::forget;
 use std::net::{SocketAddr, TcpListener, TcpStream, ToSocketAddrs};
 use std::os::raw::c_char;
 use std::os::unix::io::{AsRawFd, IntoRawFd, RawFd};
@@ -67,29 +68,7 @@ impl CoIOStream {
         buf: &mut [u8],
         timeout: Option<Duration>,
     ) -> Result<usize, io::Error> {
-        let buf_len = buf.len();
-        let result = unsafe { libc::read(self.fd, buf.as_mut_ptr() as *mut c_void, buf_len) };
-        if result >= 0 {
-            return Ok(result as usize);
-        }
-
-        let err = io::Error::last_os_error();
-        if err.kind() != io::ErrorKind::WouldBlock {
-            return Err(err);
-        }
-
-        let timeout = match timeout {
-            None => TIMEOUT_INFINITY,
-            Some(timeout) => timeout.as_secs_f64(),
-        };
-
-        coio_wait(self.fd, ffi::CoIOFlags::READ, timeout)?;
-        let result = unsafe { libc::read(self.fd, buf.as_mut_ptr() as *mut c_void, buf_len) };
-        if result < 0 {
-            Err(io::Error::last_os_error())
-        } else {
-            Ok(result as usize)
-        }
+        read(self.fd, buf, timeout)
     }
 
     /// Write a buffer into this writer. Returning how many bytes were written or 0 on timeout.
@@ -98,34 +77,15 @@ impl CoIOStream {
         buf: &[u8],
         timeout: Option<Duration>,
     ) -> Result<usize, io::Error> {
-        let result = unsafe { libc::write(self.fd, buf.as_ptr() as *mut c_void, buf.len()) };
-        if result >= 0 {
-            return Ok(result as usize);
-        }
-
-        let err = io::Error::last_os_error();
-        if err.kind() != io::ErrorKind::WouldBlock {
-            return Err(err);
-        }
-
-        let timeout = match timeout {
-            None => TIMEOUT_INFINITY,
-            Some(timeout) => timeout.as_secs_f64(),
-        };
-
-        coio_wait(self.fd, ffi::CoIOFlags::WRITE, timeout)?;
-        let result = unsafe { libc::write(self.fd, buf.as_ptr() as *mut c_void, buf.len()) };
-        if result < 0 {
-            Err(io::Error::last_os_error())
-        } else {
-            Ok(result as usize)
-        }
+        write(self.fd, buf, timeout)
     }
 }
 
 impl IntoRawFd for CoIOStream {
     fn into_raw_fd(self) -> RawFd {
-        self.fd
+        let fd = self.fd;
+        forget(self);
+        fd
     }
 }
 
@@ -267,5 +227,62 @@ pub fn getaddrinfo(
         Err(TarantoolError::last().into())
     } else {
         Ok(unsafe { result.read() })
+    }
+}
+
+#[inline(always)]
+pub(crate) fn read(
+    fd: RawFd,
+    buf: &mut [u8],
+    timeout: Option<Duration>,
+) -> Result<usize, io::Error> {
+    let buf_len = buf.len();
+    let result = unsafe { libc::read(fd, buf.as_mut_ptr() as *mut c_void, buf_len) };
+    if result >= 0 {
+        return Ok(result as usize);
+    }
+
+    let err = io::Error::last_os_error();
+    if err.kind() != io::ErrorKind::WouldBlock {
+        return Err(err);
+    }
+
+    let timeout = match timeout {
+        None => TIMEOUT_INFINITY,
+        Some(timeout) => timeout.as_secs_f64(),
+    };
+
+    coio_wait(fd, ffi::CoIOFlags::READ, timeout)?;
+    let result = unsafe { libc::read(fd, buf.as_mut_ptr() as *mut c_void, buf_len) };
+    if result < 0 {
+        Err(io::Error::last_os_error())
+    } else {
+        Ok(result as usize)
+    }
+}
+
+#[inline(always)]
+pub(crate) fn write(fd: RawFd, buf: &[u8], timeout: Option<Duration>) -> Result<usize, io::Error> {
+    let result = unsafe { libc::write(fd, buf.as_ptr() as *mut c_void, buf.len()) };
+    if result >= 0 {
+        return Ok(result as usize);
+    }
+
+    let err = io::Error::last_os_error();
+    if err.kind() != io::ErrorKind::WouldBlock {
+        return Err(err);
+    }
+
+    let timeout = match timeout {
+        None => TIMEOUT_INFINITY,
+        Some(timeout) => timeout.as_secs_f64(),
+    };
+
+    coio_wait(fd, ffi::CoIOFlags::WRITE, timeout)?;
+    let result = unsafe { libc::write(fd, buf.as_ptr() as *mut c_void, buf.len()) };
+    if result < 0 {
+        Err(io::Error::last_os_error())
+    } else {
+        Ok(result as usize)
     }
 }

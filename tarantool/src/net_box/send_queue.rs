@@ -1,29 +1,30 @@
 use std::cell::{Cell, RefCell};
 use std::io::{self, Cursor, Write};
+use std::time::{Duration, SystemTime};
 
 use crate::error::Error;
-use crate::fiber::{Cond, Latch};
+use crate::fiber::{reschedule, Cond};
 
 pub struct SendQueue {
     is_active: Cell<bool>,
     sync: Cell<u64>,
-    sync_lock: Latch,
     front_buffer: RefCell<Cursor<Vec<u8>>>,
     back_buffer: RefCell<Cursor<Vec<u8>>>,
-    buffer_lock: Latch,
     swap_cond: Cond,
+    buffer_limit: u64,
+    flush_interval: Duration,
 }
 
 impl SendQueue {
-    pub fn new(buffer_size: usize) -> Self {
+    pub fn new(buffer_size: usize, buffer_limit: usize, flush_interval: Duration) -> Self {
         SendQueue {
             is_active: Cell::new(true),
             sync: Cell::new(0),
-            sync_lock: Latch::new(),
             front_buffer: RefCell::new(Cursor::new(Vec::with_capacity(buffer_size))),
             back_buffer: RefCell::new(Cursor::new(Vec::with_capacity(buffer_size))),
-            buffer_lock: Latch::new(),
             swap_cond: Cond::new(),
+            buffer_limit: buffer_limit as u64,
+            flush_interval,
         }
     }
 
@@ -32,8 +33,12 @@ impl SendQueue {
         F: FnOnce(&mut Cursor<Vec<u8>>, u64) -> Result<(), Error>,
     {
         let sync = self.next_sync();
+
+        if self.back_buffer.borrow().position() >= self.buffer_limit {
+            self.swap_cond.signal();
+        }
+
         let offset = {
-            let _lock = self.buffer_lock.lock();
             let buffer = &mut *self.back_buffer.borrow_mut();
 
             let offset = buffer.position();
@@ -56,34 +61,37 @@ impl SendQueue {
     }
 
     pub fn next_sync(&self) -> u64 {
-        let _lock = self.sync_lock.lock();
         let sync = self.sync.get() + 1;
         self.sync.set(sync);
         sync
     }
 
     pub fn flush_to_stream(&self, stream: &mut impl Write) -> io::Result<()> {
+        let start_ts = SystemTime::now();
+        let mut prev_data_size = 0u64;
+
         loop {
-            let is_data_available = {
-                let _lock = self.buffer_lock.lock();
-
-                if !self.is_active.get() {
-                    return Err(io::Error::from(io::ErrorKind::TimedOut));
-                }
-
-                let is_data_available = self.back_buffer.borrow().position() > 0;
-                if is_data_available {
-                    self.back_buffer.swap(&self.front_buffer);
-                }
-                is_data_available
-            };
-
-            // await for data (if buffer is empty)
-            if is_data_available {
-                break;
-            } else {
-                self.swap_cond.wait();
+            if !self.is_active.get() {
+                return Err(io::Error::from(io::ErrorKind::TimedOut));
             }
+
+            let data_size = self.back_buffer.borrow().position();
+            if data_size == 0 {
+                // await for data (if buffer is empty)
+                self.swap_cond.wait();
+                continue;
+            }
+
+            if let Ok(elapsed) = start_ts.elapsed() {
+                if data_size > prev_data_size && elapsed <= self.flush_interval {
+                    prev_data_size = data_size;
+                    reschedule();
+                    continue;
+                }
+            }
+
+            self.back_buffer.swap(&self.front_buffer);
+            break;
         }
 
         // write front buffer contents to stream + clear front buffer
@@ -95,10 +103,7 @@ impl SendQueue {
     }
 
     pub fn close(&self) {
-        {
-            let _lock = self.buffer_lock.lock();
-            self.is_active.set(false);
-        }
+        self.is_active.set(false);
         self.swap_cond.signal();
     }
 }

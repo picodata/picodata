@@ -1,24 +1,23 @@
 use core::cell::RefCell;
 use std::cell::Cell;
-use std::io;
-use std::io::{Cursor, Write};
+use std::io::{self, Cursor, Read, Write};
 use std::net::SocketAddr;
-use std::os::unix::io::{AsRawFd, RawFd};
 use std::rc::{Rc, Weak};
 use std::time::Duration;
 
 use crate::coio::CoIOStream;
 use crate::error::Error;
-use crate::fiber::{is_cancelled, set_cancellable, sleep, time, Cond, Fiber, Latch};
+use crate::fiber::{is_cancelled, set_cancellable, sleep, time, Cond, Fiber};
+use crate::net_box::stream::ConnStream;
 
 use super::options::{ConnOptions, ConnTriggers, Options};
 use super::protocol::{self, Header};
-use super::recv_queue::{self, RecvQueue};
+use super::recv_queue::RecvQueue;
 use super::schema::ConnSchema;
 use super::send_queue::{self, SendQueue};
 use super::Conn;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Copy, Clone)]
 enum ConnState {
     Init,
     Connecting,
@@ -32,13 +31,11 @@ enum ConnState {
 pub struct ConnInner {
     addrs: Vec<SocketAddr>,
     options: ConnOptions,
-    state: RefCell<ConnState>,
-    state_lock: Latch,
+    state: Cell<ConnState>,
     state_change_cond: Cond,
     schema: Rc<ConnSchema>,
     schema_version: Cell<Option<u32>>,
-    schema_lock: Latch,
-    session: RefCell<Option<Rc<ConnSession>>>,
+    stream: RefCell<Option<ConnStream>>,
     send_queue: SendQueue,
     recv_queue: RecvQueue,
     send_fiber: RefCell<Fiber<'static, Rc<ConnInner>>>,
@@ -61,15 +58,17 @@ impl ConnInner {
 
         // construct object
         let conn_inner = Rc::new(ConnInner {
-            state: RefCell::new(ConnState::Init),
-            state_lock: Latch::new(),
+            state: Cell::new(ConnState::Init),
             state_change_cond: Cond::new(),
             schema: ConnSchema::acquire(&addrs),
             schema_version: Cell::new(None),
-            schema_lock: Latch::new(),
-            session: RefCell::new(None),
-            send_queue: SendQueue::new(1024),
-            recv_queue: RecvQueue::new(1024),
+            stream: RefCell::new(None),
+            send_queue: SendQueue::new(
+                options.send_buffer_size,
+                options.send_buffer_limit,
+                options.send_buffer_flush_interval,
+            ),
+            recv_queue: RecvQueue::new(options.recv_buffer_size),
             send_fiber: RefCell::new(send_fiber),
             recv_fiber: RefCell::new(recv_fiber),
             triggers: RefCell::new(None),
@@ -94,13 +93,13 @@ impl ConnInner {
     }
 
     pub fn is_connected(&self) -> bool {
-        matches!(self.state(), ConnState::Active)
+        matches!(self.state.get(), ConnState::Active)
     }
 
     pub fn wait_connected(&self, timeout: Option<Duration>) -> Result<bool, Error> {
         let begin_ts = time();
         loop {
-            let state = self.state();
+            let state = self.state.get();
             match state {
                 ConnState::Init => {
                     self.init()?;
@@ -134,7 +133,7 @@ impl ConnInner {
         Fc: FnOnce(&mut Cursor<Vec<u8>>, &Header) -> Result<R, Error>,
     {
         loop {
-            let state = self.state();
+            let state = self.state.get();
             match state {
                 ConnState::Init => {
                     self.init()?;
@@ -165,17 +164,22 @@ impl ConnInner {
     }
 
     pub fn lookup_space(&self, name: &str) -> Result<Option<u32>, Error> {
-        self.sync_schema()?;
+        self.refresh_schema()?;
         Ok(self.schema.lookup_space(name))
     }
 
     pub fn lookup_index(&self, name: &str, space_id: u32) -> Result<Option<u32>, Error> {
-        self.sync_schema()?;
+        self.refresh_schema()?;
         Ok(self.schema.lookup_index(name, space_id))
     }
 
     pub fn close(&self) {
-        if !matches!(self.state(), ConnState::Closed) {
+        let state = self.state.get();
+        if matches!(state, ConnState::Connecting) || matches!(state, ConnState::Auth) {
+            let _ = self.wait_connected(None);
+        }
+
+        if !matches!(self.state.get(), ConnState::Closed) {
             self.disconnect();
 
             let mut send_fiber = self.send_fiber.borrow_mut();
@@ -219,9 +223,8 @@ impl ConnInner {
             self.auth(&mut stream, &salt)?;
         }
 
-        // if ok: save stream to session
-        self.session
-            .replace(Some(Rc::new(ConnSession::new(stream)?)));
+        // if ok: put stream to result + set state to active
+        self.stream.replace(Some(ConnStream::new(stream)?));
         self.update_state(ConnState::Active);
 
         // call trigger (if available)
@@ -254,7 +257,14 @@ impl ConnInner {
 
         // handle response
         let response_len = rmp::decode::read_u32(stream)?;
-        recv_queue::recv_message(stream, &mut cur, response_len as usize)?;
+        {
+            let buffer = cur.get_mut();
+            buffer.clear();
+            buffer.reserve(response_len as usize);
+            stream.take(response_len as u64).read_to_end(buffer)?;
+            cur.set_position(0);
+        }
+
         let header = protocol::decode_header(&mut cur)?;
         if header.status_code != 0 {
             return Err(protocol::decode_error(stream)?.into());
@@ -263,19 +273,11 @@ impl ConnInner {
         Ok(())
     }
 
-    fn sync_schema(&self) -> Result<(), Error> {
+    fn refresh_schema(&self) -> Result<(), Error> {
         self.wait_connected(Some(self.options.connect_timeout))?;
-        let _lock = self.schema_lock.lock();
 
-        let is_schema_outdated = match self.schema_version.get() {
-            None => true,
-            Some(actual_version) => actual_version > self.schema.cached_version(),
-        };
-
-        if is_schema_outdated {
-            // synchronize
-            self.schema.update(self)?;
-
+        // synchronize
+        if self.schema.refresh(self, self.schema_version.get())? {
             // call trigger
             if let Some(triggers) = self.triggers.borrow().as_ref() {
                 triggers.callbacks.on_schema_reload(&Conn {
@@ -284,28 +286,11 @@ impl ConnInner {
                 });
             }
         }
-
         Ok(())
     }
 
-    fn state(&self) -> ConnState {
-        let _lock = self.state_lock.lock();
-        self.state.borrow().clone()
-    }
-
-    fn get_session(&self) -> Rc<ConnSession> {
-        let _lock = self.state_lock.lock();
-        match self.state.borrow().clone() {
-            ConnState::Active => self.session.borrow().as_ref().unwrap().clone(),
-            _ => panic!("Invalid sate"),
-        }
-    }
-
     fn update_state(&self, state: ConnState) {
-        {
-            let _lock = self.state_lock.lock();
-            self.state.replace(state)
-        };
+        self.state.set(state);
         self.state_change_cond.broadcast();
     }
 
@@ -349,29 +334,15 @@ impl ConnInner {
     }
 
     fn disconnect(&self) {
-        self.session.replace(None);
         self.update_state(ConnState::Closed);
-        self.send_queue.close();
         self.recv_fiber.borrow().wakeup();
+        self.recv_queue.close();
+        self.send_queue.close();
+        self.stream.replace(None);
 
         if let Some(triggers) = self.triggers.replace(None) {
             triggers.callbacks.on_disconnect();
         }
-    }
-}
-
-struct ConnSession {
-    primary_stream: RefCell<CoIOStream>,
-    secondary_stream: RefCell<CoIOStream>,
-}
-
-impl ConnSession {
-    fn new(primary_stream: CoIOStream) -> Result<Self, Error> {
-        let secondary_fd = unsafe { libc::dup(primary_stream.as_raw_fd()) };
-        Ok(ConnSession {
-            primary_stream: RefCell::new(primary_stream),
-            secondary_stream: RefCell::new(CoIOStream::new(secondary_fd as RawFd)?),
-        })
     }
 }
 
@@ -389,11 +360,10 @@ fn send_worker(conn: Box<Rc<ConnInner>>) -> i32 {
             return 0;
         }
 
-        match conn.state() {
+        match conn.state.get() {
             ConnState::Active => {
-                let session = conn.get_session();
-                let mut stream = session.secondary_stream.borrow_mut();
-                conn.send_queue.flush_to_stream(&mut *stream);
+                let mut writer = conn.stream.borrow().as_ref().unwrap().acquire_writer();
+                conn.send_queue.flush_to_stream(&mut writer);
             }
             ConnState::Closed => return 0,
             _ => {
@@ -412,11 +382,10 @@ fn recv_worker(conn: Box<Rc<ConnInner>>) -> i32 {
             return 0;
         }
 
-        match conn.state() {
+        match conn.state.get() {
             ConnState::Active => {
-                let session = conn.get_session();
-                let mut stream = session.primary_stream.borrow_mut();
-                conn.recv_queue.pull(&mut *stream);
+                let mut reader = conn.stream.borrow().as_ref().unwrap().acquire_reader();
+                conn.recv_queue.pull(&mut reader);
             }
             ConnState::Closed => return 0,
             _ => {

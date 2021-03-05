@@ -59,6 +59,7 @@ mod recv_queue;
 mod schema;
 mod send_queue;
 mod space;
+mod stream;
 
 /// Connection to remote Tarantool server
 pub struct Conn {
@@ -126,7 +127,7 @@ impl Conn {
     {
         self.inner.request(
             |buf, sync| protocol::encode_call(buf, sync, function_name, args),
-            protocol::decode_tuple,
+            protocol::decode_call,
             options,
         )
     }
@@ -149,7 +150,7 @@ impl Conn {
     {
         self.inner.request(
             |buf, sync| protocol::encode_eval(buf, sync, expression, args),
-            protocol::decode_tuple,
+            protocol::decode_call,
             options,
         )
     }
