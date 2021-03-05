@@ -1,8 +1,8 @@
 //! Box: schema
 use std::os::raw::c_int;
 
-use crate::serde::{Serialize, Serializer};
-use crate::serde_json::{Map, Value};
+use serde::{Serialize, Serializer};
+use serde_json::{Map, Value};
 
 use crate::error::{Error, TarantoolError};
 use crate::ffi::helper::new_c_str;
