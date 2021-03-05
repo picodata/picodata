@@ -12,7 +12,6 @@ pub struct SendQueue {
     back_buffer: RefCell<Cursor<Vec<u8>>>,
     swap_cond: Cond,
     buffer_limit: u64,
-    buffer_limit_cond: Cond,
     flush_interval: Duration,
 }
 
@@ -25,7 +24,6 @@ impl SendQueue {
             back_buffer: RefCell::new(Cursor::new(Vec::with_capacity(buffer_size))),
             swap_cond: Cond::new(),
             buffer_limit: buffer_limit as u64,
-            buffer_limit_cond: Cond::new(),
             flush_interval,
         }
     }
@@ -37,7 +35,7 @@ impl SendQueue {
         let sync = self.next_sync();
 
         if self.back_buffer.borrow().position() >= self.buffer_limit {
-            self.buffer_limit_cond.wait();
+            self.swap_cond.signal();
         }
 
         let offset = {
@@ -94,11 +92,6 @@ impl SendQueue {
 
             self.back_buffer.swap(&self.front_buffer);
             break;
-        }
-
-        // check if buffer has reached the limit: then signal to continue filling
-        if self.front_buffer.borrow().position() >= self.buffer_limit {
-            self.buffer_limit_cond.broadcast();
         }
 
         // write front buffer contents to stream + clear front buffer
