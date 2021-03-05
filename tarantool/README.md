@@ -15,9 +15,10 @@ This library contains the following Tarantool API's:
 - Fibers: fiber attributes, conditional variables, latches
 - CoIO
 - Transactions
-- Protocol implementation ('net.box')
+- Schema management
+- Protocol implementation (`net.box`): CRUD, stored procedure call, triggers
 - Tuple utils
-- Logging (see https://docs.rs/log/0.4.11/log/)
+- Logging (see https://docs.rs/log/)
 - Error handling
 
 Links:
@@ -41,7 +42,7 @@ For deployment, check out the deployment notes at the end of the tutorial.
 
 ### Prerequisites
 
-- rustc 1.45.0 or newer (other versions were not tested)
+- rustc 1.48 or newer
 - tarantool 2.2
 
 ### Usage
@@ -475,7 +476,7 @@ We use [SemVer](http://semver.org/) for versioning. For the versions available, 
 - **Anton Melnikov**
 - **Dmitriy Koltsov**
 
-© 2020 Picodata.io https://github.com/picodata
+© 2020-2021 Picodata.io https://github.com/picodata
 
 ## License
 

@@ -333,7 +333,7 @@ impl Space {
         }
 
         // Revoke priveleges.
-        schema::revoke_object_priveleges("space", self.id)?;
+        schema::revoke_object_privileges("space", self.id)?;
 
         // Remove from _truncate.
         let mut sys_truncate: Space = SystemSpace::Truncate.into();

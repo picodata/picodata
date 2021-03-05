@@ -30,8 +30,7 @@ impl Serialize for SpaceEngineType {
     }
 }
 
-/// SpaceInternal is tuple, holdiing space metdata in system `_space` space.
-/// For details see internal Space::insert_new_space function.
+/// SpaceInternal is tuple, holding space metadata in system `_space` space.
 #[derive(Serialize, Debug)]
 pub struct SpaceMetadata {
     pub id: u32,
@@ -46,7 +45,8 @@ pub struct SpaceMetadata {
 impl AsTuple for SpaceMetadata {}
 
 /// List of options for new or updated index.
-/// (for details see [space_object:create_index - options](https://www.tarantool.io/en/doc/latest/reference/reference_lua/box_space/create_index/)).
+///
+/// For details see [space_object:create_index - options](https://www.tarantool.io/en/doc/latest/reference/reference_lua/box_space/create_index/).
 pub struct IndexOptions {
     pub index_type: Option<IndexType>,
     pub id: Option<u32>,
@@ -137,7 +137,8 @@ pub enum RtreeIndexDistanceType {
 }
 
 /// Sequence option for new or updated index.
-/// (for details see [specifying a sequence in create_index](https://www.tarantool.io/en/doc/latest/reference/reference_lua/box_schema_sequence/create_index/#box-schema-sequence-create-index)).
+///
+/// For details see [specifying a sequence in create_index](https://www.tarantool.io/en/doc/latest/reference/reference_lua/box_schema_sequence/create_index/#box-schema-sequence-create-index).
 pub enum IndexSequenceOption {
     SeqId {
         seq_id: u32,
@@ -152,11 +153,12 @@ pub enum IndexSequenceOption {
 }
 
 /// Create new index for space.
-/// (for details see [space_object:create_index](https://www.tarantool.io/en/doc/latest/reference/reference_lua/box_space/create_index/))
 ///
 /// - `space_id`   - ID of existing space.
 /// - `index_name` - name of index to create, which should conform to the rules for object names.
 /// - `opts`       - see IndexOptions struct.
+///
+/// For details see [space_object:create_index](https://www.tarantool.io/en/doc/latest/reference/reference_lua/box_space/create_index/)
 pub fn create_index(space_id: u32, index_name: &str, opts: &IndexOptions) -> Result<(), Error> {
     unsafe {
         // Create new stack (just in case - in order no to mess things
@@ -475,7 +477,7 @@ pub fn drop_index(space_id: u32, index_id: u32) -> Result<(), Error> {
 ///
 /// - `obj_type` - string representation of object's type. Can be one of the following: "space", "sequence" or "function".
 /// - `obj_id` - object's ID
-pub fn revoke_object_priveleges(obj_type: &str, obj_id: u32) -> Result<(), Error> {
+pub fn revoke_object_privileges(obj_type: &str, obj_id: u32) -> Result<(), Error> {
     let sys_vpriv: Space = SystemSpace::VPriv.into();
     let mut sys_priv: Space = SystemSpace::Priv.into();
 
