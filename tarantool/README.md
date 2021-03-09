@@ -50,7 +50,7 @@ For deployment, check out the deployment notes at the end of the tutorial.
 Add the following lines to your project Cargo.toml:
 ```toml
 [dependencies]
-tarantool = "0.3"
+tarantool = "0.4"
 
 [lib]
 crate-type = ["cdylib"]
@@ -96,7 +96,7 @@ edition = "2018"
 # author, license, etc
 
 [dependencies]
-tarantool = "0.3.0" # (1)
+tarantool = "0.4.0" # (1)
 serde = "1.0" # (2)
 
 [lib]

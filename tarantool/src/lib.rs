@@ -57,7 +57,7 @@
 //! # author, license, etc
 //!
 //! [dependencies]
-//! tarantool = "0.3.0" # (1)
+//! tarantool = "0.4.0" # (1)
 //! serde = "1.0" # (2)
 //!
 //! [lib]
