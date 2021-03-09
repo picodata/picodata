@@ -419,10 +419,10 @@ pub fn clear_error() {
 pub fn set_error(file: &str, line: u32, code: &TarantoolErrorCode, msg: &str) -> c_int {
     unsafe {
         ffi::box_error_set(
-            CString::new(file).unwrap().as_ptr(),
+            CString::new(file).unwrap().into_raw(),
             line,
             code.to_u32().unwrap(),
-            CString::new(msg).unwrap().as_ptr(),
+            CString::new(msg).unwrap().into_raw(),
         )
     }
 }

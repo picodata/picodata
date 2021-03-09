@@ -11,6 +11,7 @@ use std::os::raw::c_char;
 use std::ptr::null_mut;
 
 use num_traits::ToPrimitive;
+use serde_json::{Map, Number, Value};
 
 use crate::error::{set_error, Error, TarantoolError, TarantoolErrorCode};
 use crate::ffi::tarantool as ffi;
@@ -18,7 +19,6 @@ use crate::index::{Index, IndexIterator, IteratorType};
 use crate::schema;
 use crate::schema::{IndexOptions, SpaceEngineType, SpaceMetadata};
 use crate::sequence::Sequence;
-use crate::serde_json::{Map, Number, Value};
 use crate::session;
 use crate::tuple::{AsTuple, Tuple};
 
@@ -333,7 +333,7 @@ impl Space {
         }
 
         // Revoke priveleges.
-        schema::revoke_object_priveleges("space", self.id)?;
+        schema::revoke_object_privileges("space", self.id)?;
 
         // Remove from _truncate.
         let mut sys_truncate: Space = SystemSpace::Truncate.into();

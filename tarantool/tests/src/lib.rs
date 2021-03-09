@@ -68,15 +68,15 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
         if cfg.bench {
             vec![TestDescAndFn {
                 desc: TestDesc {
-                    name: TestName::StaticTestName("bench_bulk_insert:100/100"),
+                    name: TestName::StaticTestName("bench_bulk_insert"),
                     ignore: false,
                     should_panic: ShouldPanic::No,
                     allow_fail: false,
                     test_type: TestType::Unknown,
                 },
                 testfn: TestFn::DynBenchFn(Box::new(bench_bulk_insert::BulkInsertBenchmark {
-                    test_size: 1000,
-                    num_fibers: 503,
+                    test_size: 64,
+                    num_fibers: 256,
                     num_rows: 1000,
                 })),
             }]

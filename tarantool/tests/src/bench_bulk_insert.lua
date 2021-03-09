@@ -1,74 +1,68 @@
 #!/usr/bin/env tarantool
 
 box.cfg{
-    listen = 3301,
-    memtx_memory = 48 * 1024 * 1024 * 1024,
-    net_msg_max = 500000,
-    readahead = 1024 * 1024,
+    listen = 3302,
     wal_mode = 'none'
 }
-
--- Init test database
-box.once('bootstrap_bench', function()
-    box.schema.user.create('bench_user', { password = 'password' })
-    box.schema.user.grant('bench_user', 'read,write,execute,create,drop', 'universe')
-
-    local bench_s1 = box.schema.space.create('bench_s1')
-    bench_s1:format{
-        {name = 'id', type = 'unsigned'},
-        {name = 'text', type = 'string' }
-    }
-    bench_s1:create_index('primary', {type = 'TREE', parts = {{ field = 1, type = 'unsigned' }}})
-end)
 
 ------------------------------------------------------------------------------
 
 clock = require('clock')
 fiber = require('fiber')
+log = require('log')
 net_box = require('net.box')
 
-local test_size = 1000;
-local num_fibers = 503;
+local test_size = 64;
+local num_fibers = 256;
 local num_rows = 1000;
-local num_passes = 301;
+local num_passes = 30;
 
 local text = string.rep('X', test_size)
 local pass_times = {}
 
 ------------------------------------------------------------------------------
 
-for i = 1, num_passes do
+local conn = net_box.connect('bench_user:password@127.0.0.1:3301')
+conn:call('_cleanup')
+
+local id_base = 1
+for pass_id = 1, num_passes do
     local begin_time = tonumber(clock.monotonic64())
     local local_space = box.space.bench_s1
-    local_space:truncate()
 
     local fiber_pool = {}
-    for i = 1, num_fibers do
+    for fiber_id = 1, num_fibers do
         local fiber = fiber.create(
             function(id_base)
-                local conn = net_box.connect('bench_user:password@127.0.0.1:3301')
                 local remote_space = conn.space.bench_s1
-                for id = 1, num_rows  do
-                    remote_space:insert{id + id_base, text}
+                for id = id_base, (id_base + num_rows - 1)  do
+                    local res = pcall(remote_space.insert, remote_space, {id + id_base, text})
+                    if not res then
+                        io.write('x')
+                    end
                 end
-                conn:close()
             end,
-            i * num_rows
+            id_base
         )
         fiber:set_joinable(true)
         table.insert(fiber_pool, fiber)
+        id_base = id_base + num_rows
     end
 
     for i = 1, num_fibers do
         local fiber = fiber_pool[i]
         if fiber:status() ~= 'dead' then
-            local result = fiber:join()
+            fiber:join()
         end
     end
 
     local end_time = tonumber(clock.monotonic64())
     table.insert(pass_times, end_time - begin_time)
+    io.write('.')
+    io.flush()
 end
+
+conn:close()
 
 ------------------------------------------------------------------------------
 

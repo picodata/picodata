@@ -1,21 +1,22 @@
 //! Tarantool C API bindings for Rust.
 //! This library contains the following Tarantool API's:
 //!
-//! - Box: spaces, indexes, sequences
-//! - Fibers: fiber attributes, conditional variables, latches
-//! - CoIO
-//! - Transactions
-//! - Protocol implementation ('net.box')  
-//! - Tuple utils
-//! - Logging (see https://docs.rs/log/0.4.11/log/)
-//! - Error handling
+//! - Box: [spaces](space), [indexes](index), [sequences](sequence)
+//! - [Fibers: fiber attributes, conditional variables, latches](fiber)
+//! - [CoIO](coio)
+//! - [Transactions](transaction)
+//! - [Schema management](schema)
+//! - [Protocol implementation](net_box) (`net.box`): CRUD, stored procedure call, triggers
+//! - [Tuple utils](tuple)
+//! - [Logging](log) (see https://docs.rs/log/)
+//! - [Error handling](error)
 //!
 //! > **Caution!** The library is currently under development.
 //! > API may be unstable until version 1.0 will be released.
 //!
 //! ### Prerequisites
 //!
-//! - rustc 1.45.0 or newer (other versions were not tested)
+//! - rustc 1.48 or newer
 //! - tarantool 2.2
 //!
 //! ### Stored procedures
@@ -163,12 +164,11 @@ extern crate lazy_static;
 extern crate num_derive;
 #[macro_use]
 extern crate serde;
-#[macro_use]
-extern crate serde_json;
 
 pub mod clock;
 pub mod coio;
 pub mod error;
+#[doc(hidden)]
 pub mod ffi;
 pub mod fiber;
 pub mod index;

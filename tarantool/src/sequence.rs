@@ -43,7 +43,7 @@ impl Sequence {
 
     /// Drop sequence.
     pub fn drop(&self) -> Result<(), Error> {
-        schema::revoke_object_priveleges("sequence", self.seq_id)?;
+        schema::revoke_object_privileges("sequence", self.seq_id)?;
 
         let mut sys_sequence: Space = SystemSpace::Sequence.into();
         sys_sequence.delete(&(self.seq_id,))?;

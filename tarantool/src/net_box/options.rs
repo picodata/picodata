@@ -3,7 +3,7 @@ use bitflags::_core::time::Duration;
 use crate::error::Error;
 use crate::net_box::Conn;
 
-/// Most [Conn](struct.Conn.html) methods allow a `options` argument
+/// Most [Conn](struct.Conn.html) methods allows to pass an `options` argument
 ///
 /// Some options are applicable **only to some** methods (will be ignored otherwise).  
 ///
@@ -24,7 +24,8 @@ pub struct Options {
     /// The `limit` option specifies the number of rows to return after the `offset` option has been processed.
     ///
     /// Can be used with [select()](struct.RemoteIndex.html#method.select) method.
-    /// Default: unlimited (if `None` specified)
+    /// Treats as unlimited if `None` specified.
+    /// Default: `None`
     pub limit: Option<u32>,
 }
 
@@ -63,15 +64,16 @@ pub struct ConnOptions {
     /// Duration to wait before returning “error: Connection timed out”.
     pub connect_timeout: Duration,
 
-    /// Send buffer flush interval enforced in case of intensive requests stream. Guarantied to be maximum while
-    /// requests are going.
+    /// Send buffer flush interval enforced in case of intensive requests stream.
+    ///
+    /// Guarantied to be maximum while requests are going.
+    /// Default: 10ms
     pub send_buffer_flush_interval: Duration,
 
     /// Send buffer soft limit. If limit is reached, fiber will block before buffer flush.
     ///
     /// Note: This mechanism will prevent buffer overflow in most cases (not at all). In case overflow, buffer
     /// reallocation will occurred, which may cause performance issues.
-    ///
     /// Default: 64000  
     pub send_buffer_limit: usize,
 
@@ -110,6 +112,7 @@ impl Default for ConnOptions {
     }
 }
 
+/// Provides triggers for connect, disconnect and schema reload events.
 pub trait ConnTriggers {
     /// Defines a trigger for execution when a new connection is established, and authentication and schema fetch are
     /// completed due to an event such as `connect`.
