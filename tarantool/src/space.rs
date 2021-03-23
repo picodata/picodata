@@ -102,6 +102,7 @@ pub struct Space {
 /// (for details see [Options for box.schema.space.create](https://www.tarantool.io/en/doc/latest/reference/reference_lua/box_schema/space_create/)).
 ///
 /// `format` option is not supported at this moment.
+#[derive(Serialize)]
 pub struct SpaceCreateOptions {
     pub if_not_exists: bool,
     pub engine: Option<SpaceEngineType>,

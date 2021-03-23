@@ -469,6 +469,7 @@ impl Drop for IndexIterator {
 /// List of options for new or updated index.
 ///
 /// For details see [space_object:create_index - options](https://www.tarantool.io/en/doc/latest/reference/reference_lua/box_space/create_index/).
+#[derive(Serialize)]
 pub struct IndexOptions {
     pub index_type: Option<IndexType>,
     pub id: Option<u32>,
@@ -520,6 +521,7 @@ impl Default for IndexOptions {
 /// Sequence option for new or updated index.
 ///
 /// For details see [specifying a sequence in create_index](https://www.tarantool.io/en/doc/latest/reference/reference_lua/box_schema_sequence/create_index/#box-schema-sequence-create-index).
+#[derive(Serialize)]
 pub enum IndexSequenceOption {
     SeqId {
         seq_id: u32,

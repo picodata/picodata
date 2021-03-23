@@ -174,6 +174,7 @@ pub mod fiber;
 pub mod index;
 pub mod log;
 pub mod net_box;
+mod raft;
 pub mod schema;
 pub mod sequence;
 pub mod session;

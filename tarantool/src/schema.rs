@@ -41,7 +41,7 @@ pub struct SpaceMetadata {
 impl AsTuple for SpaceMetadata {}
 
 /// Type of index.
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Serialize)]
 pub enum IndexType {
     Hash,
     Tree,
@@ -50,7 +50,7 @@ pub enum IndexType {
 }
 
 /// Type of index part.
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Serialize)]
 pub enum IndexFieldType {
     Unsigned,
     String,
@@ -66,6 +66,7 @@ pub enum IndexFieldType {
 }
 
 /// Index part.
+#[derive(Serialize)]
 pub struct IndexPart {
     pub field_index: u32,
     pub field_type: IndexFieldType,
@@ -75,7 +76,7 @@ pub struct IndexPart {
 }
 
 /// Type of distance for retree index.
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Serialize)]
 pub enum RtreeIndexDistanceType {
     Euclid,
     Manhattan,
