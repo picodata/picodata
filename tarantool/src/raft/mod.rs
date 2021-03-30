@@ -8,10 +8,12 @@ use raft::{is_empty_snap, Config, RawNode};
 pub use fsm::Command;
 use fsm::Fsm;
 use protocol::{Protocol, Queue, QueueMsg};
+pub use rpc::{init_rpc, raft_rpc_proc};
 use storage::NodeStorage;
 
 mod fsm;
 mod protocol;
+mod rpc;
 mod storage;
 
 pub struct Node {
