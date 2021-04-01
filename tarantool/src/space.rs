@@ -114,9 +114,8 @@ pub struct SpaceCreateOptions {
     pub is_sync: bool,
 }
 
-impl SpaceCreateOptions {
-    /// Create instance of SpaceCreateOptions with default values.
-    pub fn default() -> SpaceCreateOptions {
+impl Default for SpaceCreateOptions {
+    fn default() -> Self {
         SpaceCreateOptions {
             if_not_exists: false,
             engine: None,
