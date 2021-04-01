@@ -15,9 +15,8 @@ use serde_json::{Map, Number, Value};
 
 use crate::error::{set_error, Error, TarantoolError, TarantoolErrorCode};
 use crate::ffi::tarantool as ffi;
-use crate::index::{Index, IndexIterator, IteratorType};
-use crate::schema;
-use crate::schema::{IndexOptions, SpaceEngineType, SpaceMetadata};
+use crate::index::{self, Index, IndexIterator, IndexOptions, IteratorType};
+use crate::schema::{self, SpaceEngineType, SpaceMetadata};
 use crate::sequence::Sequence;
 use crate::session;
 use crate::tuple::{AsTuple, Tuple};
@@ -103,6 +102,7 @@ pub struct Space {
 /// (for details see [Options for box.schema.space.create](https://www.tarantool.io/en/doc/latest/reference/reference_lua/box_schema/space_create/)).
 ///
 /// `format` option is not supported at this moment.
+#[derive(Serialize)]
 pub struct SpaceCreateOptions {
     pub if_not_exists: bool,
     pub engine: Option<SpaceEngineType>,
@@ -142,12 +142,12 @@ impl Space {
         // Check if space already exists.
         let space = Space::find(name);
         if space.is_some() {
-            if opts.if_not_exists {
-                return Ok(space.unwrap());
+            return if opts.if_not_exists {
+                Ok(space.unwrap())
             } else {
                 set_error(file!(), line!(), &TarantoolErrorCode::SpaceExists, name);
-                return Err(TarantoolError::last().into());
-            }
+                Err(TarantoolError::last().into())
+            };
         }
 
         // Resolve ID of user, specified in options, or use ID of current session's user.
@@ -375,7 +375,7 @@ impl Space {
     /// - `name` - name of index to create, which should conform to the rules for object names.
     /// - `opts` - see schema::IndexOptions struct.
     pub fn create_index(&self, name: &str, opts: &IndexOptions) -> Result<Index, Error> {
-        schema::create_index(self.id, name, opts)?;
+        index::create_index(self.id, name, opts)?;
         Ok(self.index(name).unwrap())
     }
 

@@ -1,7 +1,6 @@
 use rand::Rng;
 
-use tarantool::index::IteratorType;
-use tarantool::schema::IndexOptions;
+use tarantool::index::{IndexOptions, IteratorType};
 use tarantool::sequence::Sequence;
 use tarantool::space::{Space, SpaceCreateOptions, SystemSpace};
 use tarantool::tuple::Tuple;
