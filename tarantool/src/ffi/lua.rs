@@ -1,6 +1,6 @@
 #![allow(non_camel_case_types)]
 use std::os::raw::{c_double, c_int, c_schar};
-use std::ptr::null_mut;
+use std::ptr::{null, null_mut};
 
 /// Module provides FFI bindings for the following constants,
 /// types and functions, realted to Lua C API:
@@ -16,6 +16,21 @@ pub struct lua_State {
     pub _unused: [u8; 0],
 }
 
+#[repr(C)]
+pub struct luaL_Reg {
+    pub name: *const c_schar,
+    pub func: lua_CFunction,
+}
+
+impl luaL_Reg {
+    pub fn end() -> Self {
+        luaL_Reg {
+            name: null(),
+            func: None,
+        }
+    }
+}
+
 pub type lua_CFunction = Option<unsafe extern "C" fn(l: *mut lua_State) -> c_int>;
 
 extern "C" {
@@ -27,17 +42,18 @@ extern "C" {
     pub fn lua_pushnumber(l: *mut lua_State, n: c_double);
     pub fn lua_pushcclosure(l: *mut lua_State, fun: lua_CFunction, n: c_int);
     pub fn lua_pushnil(l: *mut lua_State);
-    pub fn lua_pushvalue(L: *mut lua_State, idx: c_int);
+    pub fn lua_pushvalue(l: *mut lua_State, idx: c_int);
     pub fn lua_tointeger(l: *mut lua_State, idx: c_int) -> isize;
     pub fn lua_tolstring(l: *mut lua_State, idx: c_int, len: *mut usize) -> *const c_schar;
-    pub fn lua_setfield(L: *mut lua_State, idx: c_int, s: *const c_schar);
-    pub fn lua_getfield(L: *mut lua_State, idx: c_int, s: *const c_schar);
-    pub fn lua_createtable(L: *mut lua_State, narr: c_int, nrec: c_int);
-    pub fn lua_gettable(L: *mut lua_State, idx: c_int);
-    pub fn lua_settable(L: *mut lua_State, idx: c_int);
-    pub fn lua_remove(L: *mut lua_State, idx: c_int);
+    pub fn lua_setfield(l: *mut lua_State, idx: c_int, s: *const c_schar);
+    pub fn lua_getfield(l: *mut lua_State, idx: c_int, s: *const c_schar);
+    pub fn lua_createtable(l: *mut lua_State, narr: c_int, nrec: c_int);
+    pub fn lua_gettable(l: *mut lua_State, idx: c_int);
+    pub fn lua_settable(l: *mut lua_State, idx: c_int);
+    pub fn lua_remove(l: *mut lua_State, idx: c_int);
 
     // lauxlib functions.
+    pub fn luaL_register(l: *mut lua_State, libname: *const c_schar, lr: *const luaL_Reg);
     pub fn luaL_error(l: *mut lua_State, fmt: *const c_schar, ...) -> c_int;
 
     // Lua Tarantool util functios.
