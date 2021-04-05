@@ -1,21 +1,58 @@
+use std::collections::BTreeMap;
 use std::ffi::{c_void, CStr};
-
 use std::path::Path;
 
 use crate::error::Error;
+use crate::net_box::Conn;
 use crate::schema::{FuncMetadata, Privilege};
 use crate::session;
 use crate::space::{Space, SystemSpace};
+use crate::tuple::AsTuple;
 
-pub struct Rpc {}
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(tag = "type")]
+pub enum Request {
+    #[serde(rename = "bootstrap")]
+    Bootstrap(BootstrapRequest),
+    Propose,
+    Raft,
+}
 
-impl Rpc {
-    pub fn new(function_name: &str) -> Result<Self, Error> {
-        init_stored_proc(function_name)?;
-        Ok(Rpc {})
+impl AsTuple for Request {}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct BootstrapRequest {
+    pub nodes: Vec<(u64, String)>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(tag = "type")]
+pub enum Response {
+    #[serde(rename = "bootstrap")]
+    Bootstrap(BootstrapResponse),
+    Raft,
+}
+
+impl AsTuple for Response {}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct BootstrapResponse {
+    pub nodes: Vec<(u64, String)>,
+}
+
+pub struct ConnectionPool {
+    connections: BTreeMap<u64, Conn>,
+}
+
+impl ConnectionPool {
+    pub fn new() -> Result<Self, Error> {
+        Ok(ConnectionPool {
+            connections: BTreeMap::new(),
+        })
     }
 }
 
+#[allow(unused)]
 pub fn init_stored_proc(function_name: &str) -> Result<(), Error> {
     // get library metadata
     let mut module_info = libc::Dl_info {
@@ -41,6 +78,7 @@ pub fn init_stored_proc(function_name: &str) -> Result<(), Error> {
     let idx = func_sys_space
         .index("name")
         .expect("System space \"_func\" not found");
+
     if idx.get(&(stored_proc_name.as_str(),))?.is_none() {
         // resolve new func id: get max id + increment
         let id = match func_sys_space.primary_key().max(&Vec::<()>::new())? {
