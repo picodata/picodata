@@ -36,7 +36,9 @@ pub type lua_CFunction = Option<unsafe extern "C" fn(l: *mut lua_State) -> c_int
 extern "C" {
     // Lua C API functions.
     pub fn lua_newthread(l: *mut lua_State) -> *mut lua_State;
-    pub fn lua_pushboolean(l: *mut lua_State, n: c_int) -> *mut lua_State;
+    pub fn lua_gettop(l: *mut lua_State) -> c_int;
+    pub fn lua_settop(l: *mut lua_State, idx: c_int);
+    pub fn lua_pushboolean(l: *mut lua_State, n: c_int);
     pub fn lua_pushstring(l: *mut lua_State, s: *const c_schar) -> *const c_schar;
     pub fn lua_pushinteger(l: *mut lua_State, n: isize);
     pub fn lua_pushnumber(l: *mut lua_State, n: c_double);

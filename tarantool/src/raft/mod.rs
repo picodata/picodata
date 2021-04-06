@@ -47,7 +47,7 @@ impl Node {
                         connections.push(Conn::new(addr, Default::default())?)
                     }
                     let bootstrap_state = Bootstrap::new();
-                    bootstrap_state.broadcast_announce(&connections)?;
+                    bootstrap_state.cold_bootstrap(&connections)?;
 
                     break;
                 }

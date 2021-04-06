@@ -162,6 +162,10 @@ impl Conn {
             .lookup_space(name)?
             .map(|space_id| RemoteSpace::new(self.inner.clone(), space_id)))
     }
+
+    pub(crate) fn inner(&self) -> Rc<ConnInner> {
+        self.inner.clone()
+    }
 }
 
 impl Drop for Conn {
