@@ -1,6 +1,6 @@
 use std::os::raw::c_int;
 
-use tarantool::error::{set_error, Error, TarantoolErrorCode};
+use tarantool::error::{Error, TarantoolErrorCode};
 use tarantool::fiber::sleep;
 use tarantool::space::Space;
 use tarantool::transaction::start_transaction;
@@ -10,12 +10,7 @@ use tarantool::tuple::{FunctionArgs, FunctionCtx};
 pub extern "C" fn hardest(ctx: FunctionCtx, _: FunctionArgs) -> c_int {
     let mut space = match Space::find("capi_test") {
         None => {
-            return set_error(
-                file!(),
-                line!(),
-                &TarantoolErrorCode::ProcC,
-                "Can't find space capi_test",
-            )
+            return tarantool::set_error!(TarantoolErrorCode::ProcC, "Can't find space capi_test")
         }
         Some(space) => space,
     };

@@ -16,13 +16,12 @@
 //! the current value and returning -1 to Tarantool from your
 //! stored procedure.
 
-use std::ffi::{CStr, CString};
-use std::os::raw::c_int;
+use std::ffi::CStr;
 use std::str::Utf8Error;
 use std::{fmt, io};
 
 use failure::_core::fmt::{Display, Formatter};
-use num_traits::{FromPrimitive, ToPrimitive};
+use num_traits::FromPrimitive;
 use rmp::decode::{MarkerReadError, NumValueReadError, ValueReadError};
 use rmp::encode::ValueWriteError;
 
@@ -416,13 +415,14 @@ pub fn clear_error() {
 }
 
 /// Set the last error.
-pub fn set_error(file: &str, line: u32, code: &TarantoolErrorCode, msg: &str) -> c_int {
-    unsafe {
-        ffi::box_error_set(
-            CString::new(file).unwrap().into_raw(),
-            line,
-            code.to_u32().unwrap(),
-            CString::new(msg).unwrap().into_raw(),
-        )
-    }
+#[macro_export]
+macro_rules! set_error {
+    ($code:expr, $($msg_args:expr),+) => {{
+        let msg = std::fmt::format(format_args!($($msg_args),*));
+        unsafe {
+            let file = std::ffi::CString::new(file!()).unwrap().into_raw();
+            let msg = std::ffi::CString::new(msg).unwrap().into_raw();
+            $crate::ffi::tarantool::box_error_set(file, line!(), $code as u32, msg)
+        }
+    }};
 }
