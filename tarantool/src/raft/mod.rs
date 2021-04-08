@@ -18,9 +18,10 @@ mod protocol;
 mod rpc;
 mod storage;
 
+#[derive(Copy, Clone)]
 pub enum NodeState {
     Init,
-    // Bootstrapping,
+    Bootstrapping,
     // ClusterNode,
     Closed,
 }
@@ -28,7 +29,7 @@ pub enum NodeState {
 pub struct Node {
     id: u64,
     addr: Cell<Option<SocketAddr>>,
-    state: RefCell<NodeState>,
+    state: Cell<NodeState>,
     nodes: RefCell<BTreeMap<u64, SocketAddr>>,
     connections: RefCell<ConnectionPool>,
     rpc_function: String,
@@ -43,7 +44,7 @@ impl Node {
         Ok(Node {
             id: random::<u64>(),
             addr: Cell::new(None),
-            state: RefCell::new(NodeState::Init),
+            state: Cell::new(NodeState::Init),
             nodes: RefCell::new(BTreeMap::new()),
             connections: RefCell::new(ConnectionPool::default()),
             rpc_function: rpc_function.to_string(),
@@ -53,15 +54,16 @@ impl Node {
 
     pub fn run(&self, bootstrap_addrs: &Vec<&str>) -> Result<(), Error> {
         loop {
-            match *self.state.borrow() {
+            match self.state.get() {
                 NodeState::Init => {
                     let mut connections = vec![];
                     for addr in bootstrap_addrs.into_iter() {
                         connections.push(Conn::new(addr, Default::default())?)
                     }
                     self.cold_bootstrap(connections)?;
+                    break;
                 }
-                // NodeState::Bootstrapping => {}
+                NodeState::Bootstrapping => {}
                 // NodeState::ClusterNode => {}
                 NodeState::Closed => break,
             }
@@ -74,11 +76,10 @@ impl Node {
         let args: Tuple = args.into();
         let request = args.into_struct::<rpc::Request>().unwrap();
 
-        ctx.return_mp(&rpc::Response::Bootstrap(rpc::BootstrapMsg {
-            from: self.id,
-            nodes: self.nodes.borrow().clone(),
-        }))
-        .unwrap()
+        match request {
+            rpc::Request::Bootstrap(msg) => self.recv_bootstrap_request(ctx, msg),
+            _ => unimplemented!(),
+        }
     }
 
     pub fn cold_bootstrap(&self, connections: Vec<Conn>) -> Result<(), Error> {
@@ -119,19 +120,23 @@ impl Node {
                 }
             }
 
-            let _ = self.send_bootstrap_request(
+            let response = self.send_bootstrap_request(
                 &conn,
                 rpc::BootstrapMsg {
                     from: self.id,
                     nodes: self.nodes.borrow().clone(),
                 },
             )?;
+
+            if let Some(rpc::Response::Bootstrap(response)) = response {
+                let _ = self.merge_nodes_list(response.nodes);
+            }
         }
 
         Ok(())
     }
 
-    pub fn send_bootstrap_request(
+    fn send_bootstrap_request(
         &self,
         conn: &Conn,
         request: rpc::BootstrapMsg,
@@ -153,5 +158,57 @@ impl Node {
                 }
             },
         }
+    }
+
+    fn recv_bootstrap_request(&self, ctx: FunctionCtx, request: rpc::BootstrapMsg) -> i32 {
+        let response = rpc::Response::Bootstrap(rpc::BootstrapMsg {
+            from: self.id,
+            nodes: self.nodes.borrow().clone(),
+        });
+
+        if let NodeState::Init | NodeState::Bootstrapping = self.state.get() {
+            let _ = self.merge_nodes_list(request.nodes);
+        }
+
+        ctx.return_mp(&response).unwrap()
+    }
+
+    /// Merges `other` nodes list to already known. Returns new nodes count
+    fn merge_nodes_list(&self, other: BTreeMap<u64, SocketAddr>) -> usize {
+        let mut new_nodes = Vec::<(u64, SocketAddr)>::with_capacity(other.len());
+        {
+            let self_nodes = self.nodes.borrow();
+            // a - already known nodes
+            // b - received from peer nodes list
+            let mut a_iter = self_nodes.iter();
+            let mut b_iter = other.into_iter();
+            let mut a = a_iter.next();
+            let mut b = b_iter.next();
+
+            while let (Some((a_id, _)), Some((b_id, b_addr))) = (a, b) {
+                let a_id = *a_id;
+                if b_id < a_id {
+                    new_nodes.push((b_id, b_addr));
+                    b = b_iter.next();
+                } else if b_id > a_id {
+                    a = a_iter.next();
+                } else {
+                    a = a_iter.next();
+                    b = b_iter.next();
+                }
+            }
+
+            while let Some(node) = b {
+                new_nodes.push(node);
+                b = b_iter.next();
+            }
+        }
+
+        let mut known_nodes = self.nodes.borrow_mut();
+        let new_nodes_count = new_nodes.len();
+        for (id, addr) in new_nodes {
+            known_nodes.insert(id, addr);
+        }
+        new_nodes_count
     }
 }
