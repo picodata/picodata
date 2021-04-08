@@ -39,7 +39,7 @@
 //! - [Lua reference: Module net.box](https://www.tarantool.io/en/doc/latest/reference/reference_lua/net_box/)
 
 use core::time::Duration;
-use std::net::ToSocketAddrs;
+use std::net::{SocketAddr, ToSocketAddrs};
 use std::rc::Rc;
 
 pub use index::{RemoteIndex, RemoteIndexIterator};
@@ -163,8 +163,12 @@ impl Conn {
             .map(|space_id| RemoteSpace::new(self.inner.clone(), space_id)))
     }
 
-    pub(crate) fn inner(&self) -> Rc<ConnInner> {
-        self.inner.clone()
+    /// Detect outgoing socket address
+    pub(crate) fn self_addr(&self) -> Option<Result<SocketAddr, Error>> {
+        self.inner
+            .stream()
+            .as_ref()
+            .map(|stream| unsafe { stream.self_addr() })
     }
 }
 

@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 use std::ffi::{c_void, CStr};
+use std::net::SocketAddr;
 use std::path::Path;
 
 use crate::error::Error;
@@ -13,7 +14,7 @@ use crate::tuple::AsTuple;
 #[serde(tag = "type")]
 pub enum Request {
     #[serde(rename = "bootstrap")]
-    Bootstrap(BootstrapRequest),
+    Bootstrap(BootstrapMsg),
     Propose,
     Raft,
 }
@@ -21,36 +22,27 @@ pub enum Request {
 impl AsTuple for Request {}
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct BootstrapRequest {
-    pub nodes: Vec<(u64, String)>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum Response {
     #[serde(rename = "bootstrap")]
-    Bootstrap(BootstrapResponse),
+    Bootstrap(BootstrapMsg),
     Raft,
 }
 
 impl AsTuple for Response {}
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct BootstrapResponse {
-    pub nodes: Vec<(u64, String)>,
+pub struct BootstrapMsg {
+    pub from: u64,
+    pub nodes: BTreeMap<u64, SocketAddr>,
 }
 
+#[derive(Default)]
 pub struct ConnectionPool {
     connections: BTreeMap<u64, Conn>,
 }
 
-impl ConnectionPool {
-    pub fn new() -> Result<Self, Error> {
-        Ok(ConnectionPool {
-            connections: BTreeMap::new(),
-        })
-    }
-}
+impl ConnectionPool {}
 
 #[allow(unused)]
 pub fn init_stored_proc(function_name: &str) -> Result<(), Error> {
