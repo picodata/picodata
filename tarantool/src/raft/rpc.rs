@@ -37,13 +37,6 @@ pub struct BootstrapMsg {
     pub nodes: BTreeMap<u64, SocketAddr>,
 }
 
-#[derive(Default)]
-pub struct ConnectionPool {
-    connections: BTreeMap<u64, Conn>,
-}
-
-impl ConnectionPool {}
-
 #[allow(unused)]
 pub fn init_stored_proc(function_name: &str) -> Result<(), Error> {
     // get library metadata

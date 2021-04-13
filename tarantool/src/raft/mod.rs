@@ -1,14 +1,13 @@
 use std::cell::{Cell, RefCell};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::ffi::CString;
 use std::net::SocketAddr;
 use std::time::Duration;
 
 use rand::random;
 
-use rpc::ConnectionPool;
-
 use crate::error::Error;
+use crate::fiber::sleep;
 use crate::net_box::Conn;
 use crate::tuple::{FunctionArgs, FunctionCtx, Tuple};
 
@@ -18,11 +17,11 @@ mod protocol;
 mod rpc;
 mod storage;
 
-#[derive(Copy, Clone)]
+#[derive(Debug, Copy, Clone)]
 pub enum NodeState {
     Init,
     Bootstrapping,
-    // ClusterNode,
+    ClusterNode,
     Closed,
 }
 
@@ -31,7 +30,7 @@ pub struct Node {
     addr: Cell<Option<SocketAddr>>,
     state: Cell<NodeState>,
     nodes: RefCell<BTreeMap<u64, SocketAddr>>,
-    connections: RefCell<ConnectionPool>,
+    connections: RefCell<HashMap<u64, Conn>>,
     rpc_function: String,
     options: NodeOptions,
 }
@@ -46,7 +45,7 @@ impl Node {
             addr: Cell::new(None),
             state: Cell::new(NodeState::Init),
             nodes: RefCell::new(BTreeMap::new()),
-            connections: RefCell::new(ConnectionPool::default()),
+            connections: RefCell::new(HashMap::new()),
             rpc_function: rpc_function.to_string(),
             options,
         })
@@ -54,18 +53,40 @@ impl Node {
 
     pub fn run(&self, bootstrap_addrs: &Vec<&str>) -> Result<(), Error> {
         loop {
-            match self.state.get() {
+            let next_state = match self.state.get() {
                 NodeState::Init => {
                     let mut connections = vec![];
                     for addr in bootstrap_addrs.into_iter() {
                         connections.push(Conn::new(addr, Default::default())?)
                     }
-                    self.cold_bootstrap(connections)?;
-                    break;
+
+                    let is_completed = self.cold_bootstrap(connections)?;
+                    if is_completed {
+                        Some(NodeState::Bootstrapping)
+                    } else {
+                        sleep(1.0);
+                        None
+                    }
                 }
-                NodeState::Bootstrapping => {}
-                // NodeState::ClusterNode => {}
+                NodeState::Bootstrapping => {
+                    let new_nodes_count = self.warm_bootstrap()?;
+                    if let Some(0) = new_nodes_count {
+                        Some(NodeState::ClusterNode)
+                    } else {
+                        sleep(1.0);
+                        None
+                    }
+                }
+                NodeState::ClusterNode => {
+                    /// TBD
+                    sleep(1.0);
+                    None
+                }
                 NodeState::Closed => break,
+            };
+
+            if let Some(next_state) = next_state {
+                self.state.set(next_state);
             }
         }
 
@@ -82,7 +103,12 @@ impl Node {
         }
     }
 
-    pub fn cold_bootstrap(&self, connections: Vec<Conn>) -> Result<(), Error> {
+    pub fn close(&self) {
+        self.state.set(NodeState::Closed);
+    }
+
+    fn cold_bootstrap(&self, connections: Vec<Conn>) -> Result<bool, Error> {
+        let mut is_completed = false;
         for conn in connections {
             // detect self addr/port if so far unknown
             if self.addr.get().is_none() {
@@ -120,20 +146,59 @@ impl Node {
                 }
             }
 
+            let nodes = self.nodes.borrow().clone();
             let response = self.send_bootstrap_request(
                 &conn,
                 rpc::BootstrapMsg {
                     from: self.id,
-                    nodes: self.nodes.borrow().clone(),
+                    nodes,
                 },
             )?;
 
             if let Some(rpc::Response::Bootstrap(response)) = response {
-                let _ = self.merge_nodes_list(response.nodes);
+                is_completed = true;
+                self.merge_nodes_list(response.nodes);
+            }
+        }
+        Ok(is_completed)
+    }
+
+    fn warm_bootstrap(&self) -> Result<Option<usize>, Error> {
+        {
+            let mut connections = self.connections.borrow_mut();
+            for (id, addr) in self.nodes.borrow().iter() {
+                if *id == self.id {
+                    continue;
+                }
+
+                if !connections.contains_key(id) {
+                    connections.insert(*id, Conn::new(*addr, Default::default())?);
+                }
             }
         }
 
-        Ok(())
+        let mut new_nodes_total = None;
+        for conn in self.connections.borrow().values() {
+            let nodes = self.nodes.borrow().clone();
+            let response = self.send_bootstrap_request(
+                conn,
+                rpc::BootstrapMsg {
+                    from: self.id,
+                    nodes,
+                },
+            )?;
+
+            if let Some(rpc::Response::Bootstrap(response)) = response {
+                let new_nodes = self.merge_nodes_list(response.nodes);
+                let new_nodes_len = new_nodes.len();
+                if let Some(new_nodes_count) = new_nodes_total.as_mut() {
+                    *new_nodes_count += new_nodes_len;
+                } else {
+                    new_nodes_total = Some(new_nodes_len);
+                }
+            }
+        }
+        Ok(new_nodes_total)
     }
 
     fn send_bootstrap_request(
@@ -174,7 +239,7 @@ impl Node {
     }
 
     /// Merges `other` nodes list to already known. Returns new nodes count
-    fn merge_nodes_list(&self, other: BTreeMap<u64, SocketAddr>) -> usize {
+    fn merge_nodes_list(&self, other: BTreeMap<u64, SocketAddr>) -> Vec<(u64, SocketAddr)> {
         let mut new_nodes = Vec::<(u64, SocketAddr)>::with_capacity(other.len());
         {
             let self_nodes = self.nodes.borrow();
@@ -205,10 +270,9 @@ impl Node {
         }
 
         let mut known_nodes = self.nodes.borrow_mut();
-        let new_nodes_count = new_nodes.len();
-        for (id, addr) in new_nodes {
-            known_nodes.insert(id, addr);
+        for (id, addr) in new_nodes.iter() {
+            known_nodes.insert(*id, *addr);
         }
-        new_nodes_count
+        new_nodes
     }
 }

@@ -24,7 +24,8 @@ lazy_static! {
 pub extern "C" fn run_node(_: FunctionCtx, _: FunctionArgs) -> c_int {
     let node = Rc::new(Node::new("libcluster_node.rpc", Default::default()).unwrap());
     GLOBAL.node.replace(Rc::downgrade(&node));
-    node.run(&vec!["127.0.0.1:3301", "127.0.0.1:3303"]).unwrap();
+    node.run(&vec!["127.0.0.1:3301", "127.0.0.1:3302", "127.0.0.1:3303"])
+        .unwrap();
     0
 }
 
