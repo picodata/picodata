@@ -4,7 +4,7 @@ use raft::prelude::Message;
 
 use crate::fiber::Cond;
 
-use super::Command;
+use super::fsm::Command;
 
 pub struct Protocol {}
 

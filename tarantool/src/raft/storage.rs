@@ -7,8 +7,8 @@ use crate::error::Error;
 pub struct NodeStorage {}
 
 impl NodeStorage {
-    pub fn new() -> Self {
-        NodeStorage {}
+    pub fn new() -> Result<Self, Error> {
+        Ok(NodeStorage {})
     }
 
     pub fn apply_snapshot(&mut self, snapshot: Snapshot) -> Result<(), Error> {
@@ -19,7 +19,7 @@ impl NodeStorage {
         unimplemented!()
     }
 
-    pub fn set_hardstate(&mut self, hs: HardState) -> Result<(), Error> {
+    pub fn set_hard_state(&mut self, hs: HardState) -> Result<(), Error> {
         unimplemented!()
     }
 

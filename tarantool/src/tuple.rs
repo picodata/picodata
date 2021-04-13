@@ -136,18 +136,23 @@ impl Tuple {
     where
         T: DeserializeOwned,
     {
-        let raw_data_size = self.bsize();
-        let mut raw_data = Vec::<u8>::with_capacity(raw_data_size);
+        let raw_data = self.into_buffer()?;
+        Ok(rmp_serde::from_read::<_, T>(Cursor::new(raw_data))?)
+    }
 
-        let actual_size = unsafe {
-            ffi::box_tuple_to_buf(self.ptr, raw_data.as_ptr() as *mut c_char, raw_data_size)
-        };
+    #[inline]
+    pub(crate) fn into_buffer(self) -> Result<Vec<u8>, Error> {
+        let buffer_size = self.bsize();
+        let mut buffer = Vec::<u8>::with_capacity(buffer_size);
+
+        let actual_size =
+            unsafe { ffi::box_tuple_to_buf(self.ptr, buffer.as_ptr() as *mut c_char, buffer_size) };
         if actual_size < 0 {
             return Err(TarantoolError::last().into());
         }
 
-        unsafe { raw_data.set_len(actual_size as usize) };
-        Ok(rmp_serde::from_read::<_, T>(Cursor::new(raw_data))?)
+        unsafe { buffer.set_len(actual_size as usize) };
+        Ok(buffer)
     }
 
     pub(crate) fn into_ptr(self) -> *mut ffi::BoxTuple {
@@ -479,7 +484,7 @@ impl FunctionCtx {
     /// Returned Tuple is automatically reference counted by Tarantool.
     ///
     /// - `tuple` - a Tuple to return
-    pub fn return_tuple(self, tuple: Tuple) -> Result<c_int, Error> {
+    pub fn return_tuple(&self, tuple: Tuple) -> Result<c_int, Error> {
         let result = unsafe { ffi::box_return_tuple(self.inner, tuple.ptr) };
         if result < 0 {
             Err(TarantoolError::last().into())
@@ -498,11 +503,11 @@ impl FunctionCtx {
     /// `MP_ARRAY` or `MP_MAP` is undefined behaviour.
     ///
     /// - `value` - value to be encoded to MessagePack
-    pub fn return_mp<T>(self, value: &T) -> Result<c_int, Error>
+    pub fn return_mp<T>(&self, value: &T) -> Result<c_int, Error>
     where
-        T: AsTuple,
+        T: Serialize,
     {
-        let buf = value.serialize_as_tuple().unwrap();
+        let buf = rmp_serde::to_vec(value)?;
         let buf_ptr = buf.as_ptr() as *const c_char;
         let result =
             unsafe { ffi::box_return_mp(self.inner, buf_ptr, buf_ptr.offset(buf.len() as isize)) };

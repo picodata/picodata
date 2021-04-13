@@ -82,6 +82,42 @@ pub enum RtreeIndexDistanceType {
     Manhattan,
 }
 
+#[derive(Serialize, Debug)]
+pub struct FuncMetadata {
+    pub id: u32,
+    pub owner: u32,
+    pub name: String,
+    pub setuid: u32,
+    pub language: String,
+    pub body: String,
+    pub routine_type: String,
+    pub param_list: Vec<Value>,
+    pub returns: String,
+    pub aggregate: String,
+    pub sql_data_access: String,
+    pub is_deterministic: bool,
+    pub is_sandboxed: bool,
+    pub is_null_call: bool,
+    pub exports: Vec<String>,
+    pub opts: Map<String, Value>,
+    pub comment: String,
+    pub created: String,
+    pub last_altered: String,
+}
+
+impl AsTuple for FuncMetadata {}
+
+#[derive(Serialize, Debug)]
+pub struct Privilege {
+    pub grantor: u32,
+    pub grantee: u32,
+    pub object_type: String,
+    pub object_id: u32,
+    pub privilege: u32,
+}
+
+impl AsTuple for Privilege {}
+
 /// Revoke all privileges associated with the given object.
 ///
 /// - `obj_type` - string representation of object's type. Can be one of the following: "space", "sequence" or "function".
