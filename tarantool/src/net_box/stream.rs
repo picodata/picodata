@@ -31,6 +31,10 @@ impl ConnStream {
         })
     }
 
+    pub fn is_reader_acquired(&self) -> bool {
+        self.reader_guard.is_acquired.get()
+    }
+
     pub fn acquire_reader(&self) -> ConnStreamReader {
         self.reader_guard.wait();
         self.reader_guard.is_acquired.set(true);

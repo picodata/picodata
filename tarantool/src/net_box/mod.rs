@@ -75,7 +75,7 @@ impl Conn {
     /// The returned conn object supports methods for making remote requests, such as select, update or delete.
     ///
     /// See also: [ConnOptions](struct.ConnOptions.html)
-    pub fn new(addr: &str, options: ConnOptions) -> Result<Self, Error> {
+    pub fn new(addr: impl ToSocketAddrs, options: ConnOptions) -> Result<Self, Error> {
         Ok(Conn {
             inner: ConnInner::new(addr.to_socket_addrs()?.collect(), options),
             is_master: true,

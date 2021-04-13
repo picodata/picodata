@@ -351,7 +351,12 @@ impl ConnInner {
         }
 
         self.update_state(ConnState::Closed);
-        self.recv_fiber.borrow().wakeup();
+        if let Some(stream) = self.stream.borrow().as_ref() {
+            if stream.is_reader_acquired() {
+                self.recv_fiber.borrow().wakeup();
+            }
+        }
+
         self.recv_queue.close();
         self.send_queue.close();
         self.stream.replace(None);
@@ -405,12 +410,24 @@ fn recv_worker(conn: Box<Rc<ConnInner>>) -> i32 {
 
         match conn.state.get() {
             ConnState::Active => {
-                let mut reader = conn.stream.borrow().as_ref().unwrap().acquire_reader();
-                if let Err(e) = conn.recv_queue.pull(&mut reader) {
-                    if is_cancelled() {
-                        return 0;
+                let result = {
+                    let mut reader = conn.stream.borrow().as_ref().unwrap().acquire_reader();
+                    conn.recv_queue.pull(&mut reader)
+                };
+                match result {
+                    Err(e) => {
+                        if is_cancelled() {
+                            return 0;
+                        }
+                        conn.handle_error(e).unwrap();
                     }
-                    conn.handle_error(e).unwrap();
+                    Ok(is_data_pulled) => {
+                        if !is_data_pulled {
+                            if conn.is_connected() {
+                                conn.disconnect();
+                            }
+                        }
+                    }
                 }
             }
             ConnState::Closed => return 0,

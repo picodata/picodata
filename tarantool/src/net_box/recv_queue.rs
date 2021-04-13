@@ -88,9 +88,9 @@ impl RecvQueue {
         }
     }
 
-    pub fn pull(&self, stream: &mut impl Read) -> Result<(), Error> {
+    pub fn pull(&self, stream: &mut impl Read) -> Result<bool, Error> {
         if !self.is_active.get() {
-            return Ok(());
+            return Ok(false);
         }
 
         let mut chunks = self.chunks.borrow_mut();
@@ -99,6 +99,10 @@ impl RecvQueue {
         {
             let mut buffer = self.buffer.borrow_mut();
             let data_len = stream.read(&mut buffer.get_mut()[self.read_offset.get()..])? as u64;
+            if data_len == 0 {
+                return Ok(false);
+            }
+
             chunks.clear();
             buffer.set_position(0);
 
@@ -156,7 +160,7 @@ impl RecvQueue {
         };
         self.read_offset.set(new_read_offset);
 
-        Ok(())
+        Ok(true)
     }
 
     pub fn close(&self) {
