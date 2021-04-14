@@ -1,7 +1,6 @@
 //! Box: sequences
 use crate::error::{Error, TarantoolError};
 use crate::ffi::tarantool as ffi;
-use crate::schema;
 use crate::space::{Space, SystemSpace};
 use crate::tuple::AsTuple;
 
@@ -29,29 +28,6 @@ impl Sequence {
                 seq_id: row_tuple.into_struct::<Row>()?.seq_id,
             }),
         })
-    }
-
-    /// Find sequence by id.
-    pub fn find_by_id(id: u32) -> Result<Option<Self>, Error> {
-        let sys_vsequence: Space = SystemSpace::VSequence.into();
-        let index_name = sys_vsequence.index("name").unwrap();
-        match index_name.get(&(id,))? {
-            None => Ok(None),
-            Some(_) => Ok(Some(Sequence { seq_id: id })),
-        }
-    }
-
-    /// Drop sequence.
-    pub fn drop(&self) -> Result<(), Error> {
-        schema::revoke_object_privileges("sequence", self.seq_id)?;
-
-        let mut sys_sequence: Space = SystemSpace::Sequence.into();
-        sys_sequence.delete(&(self.seq_id,))?;
-
-        let mut sys_sequence_data: Space = SystemSpace::SequenceData.into();
-        sys_sequence_data.delete(&(self.seq_id,))?;
-
-        Ok(())
     }
 
     /// Generate the next value and return it.
