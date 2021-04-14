@@ -4,8 +4,8 @@ use std::path::Path;
 
 use crate::error::Error;
 use crate::net_box::Conn;
-use crate::schema::{FuncMetadata, Privilege};
 use crate::session;
+use crate::space::{FuncMetadata, Privilege};
 use crate::space::{Space, SystemSpace};
 use crate::tuple::AsTuple;
 
