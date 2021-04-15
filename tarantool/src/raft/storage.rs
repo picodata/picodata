@@ -30,26 +30,31 @@ impl NodeStorage {
 
 impl Storage for NodeStorage {
     fn initial_state(&self) -> Result<RaftState, RaftError> {
-        unimplemented!()
+        todo!()
     }
 
-    fn entries(&self, low: u64, high: u64, max_size: u64) -> Result<Vec<Entry>, RaftError> {
-        unimplemented!()
+    fn entries(
+        &self,
+        low: u64,
+        high: u64,
+        max_size: impl Into<Option<u64>>,
+    ) -> Result<Vec<Entry>, RaftError> {
+        todo!()
     }
 
     fn term(&self, idx: u64) -> Result<u64, RaftError> {
-        unimplemented!()
+        todo!()
     }
 
     fn first_index(&self) -> Result<u64, RaftError> {
-        unimplemented!()
+        todo!()
     }
 
     fn last_index(&self) -> Result<u64, RaftError> {
-        unimplemented!()
+        todo!()
     }
 
-    fn snapshot(&self) -> Result<Snapshot, RaftError> {
-        unimplemented!()
+    fn snapshot(&self, request_index: u64) -> Result<Snapshot, RaftError> {
+        todo!()
     }
 }

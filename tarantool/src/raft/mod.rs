@@ -1,5 +1,5 @@
 use std::cell::{Cell, RefCell};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::ffi::CString;
 use std::net::SocketAddr;
 use std::time::Duration;
@@ -11,24 +11,25 @@ use crate::fiber::sleep;
 use crate::net_box::Conn;
 use crate::tuple::{FunctionArgs, FunctionCtx, Tuple};
 
+use self::cluster_node::ClusterNodeState;
+
 mod cluster_node;
 mod fsm;
 mod protocol;
 mod rpc;
 mod storage;
 
-#[derive(Debug, Copy, Clone)]
 pub enum NodeState {
     Init,
     Bootstrapping,
-    ClusterNode,
+    ClusterNode(ClusterNodeState),
     Closed,
 }
 
 pub struct Node {
     id: u64,
     addr: Cell<Option<SocketAddr>>,
-    state: Cell<NodeState>,
+    state: RefCell<NodeState>,
     nodes: RefCell<BTreeMap<u64, SocketAddr>>,
     connections: RefCell<HashMap<u64, Conn>>,
     rpc_function: String,
@@ -43,7 +44,7 @@ impl Node {
         Ok(Node {
             id: random::<u64>(),
             addr: Cell::new(None),
-            state: Cell::new(NodeState::Init),
+            state: RefCell::new(NodeState::Init),
             nodes: RefCell::new(BTreeMap::new()),
             connections: RefCell::new(HashMap::new()),
             rpc_function: rpc_function.to_string(),
@@ -52,8 +53,9 @@ impl Node {
     }
 
     pub fn run(&self, bootstrap_addrs: &Vec<&str>) -> Result<(), Error> {
+        let mut send_queue = VecDeque::new();
         loop {
-            let next_state = match self.state.get() {
+            let next_state = match *self.state.borrow() {
                 NodeState::Init => {
                     let mut connections = vec![];
                     for addr in bootstrap_addrs.into_iter() {
@@ -71,22 +73,22 @@ impl Node {
                 NodeState::Bootstrapping => {
                     let new_nodes_count = self.warm_bootstrap()?;
                     if let Some(0) = new_nodes_count {
-                        Some(NodeState::ClusterNode)
+                        Some(NodeState::ClusterNode(ClusterNodeState::new(self.id)?))
                     } else {
                         sleep(1.0);
                         None
                     }
                 }
-                NodeState::ClusterNode => {
-                    /// TBD
-                    sleep(1.0);
+                NodeState::ClusterNode(ref state) => {
+                    sleep(0.5);
+                    state.tick(&mut send_queue);
                     None
                 }
                 NodeState::Closed => break,
             };
 
             if let Some(next_state) = next_state {
-                self.state.set(next_state);
+                self.state.replace(next_state);
             }
         }
 
@@ -104,7 +106,7 @@ impl Node {
     }
 
     pub fn close(&self) {
-        self.state.set(NodeState::Closed);
+        self.state.replace(NodeState::Closed);
     }
 
     fn cold_bootstrap(&self, connections: Vec<Conn>) -> Result<bool, Error> {
@@ -231,7 +233,7 @@ impl Node {
             nodes: self.nodes.borrow().clone(),
         });
 
-        if let NodeState::Init | NodeState::Bootstrapping = self.state.get() {
+        if let NodeState::Init | NodeState::Bootstrapping = *self.state.borrow() {
             let _ = self.merge_nodes_list(request.nodes);
         }
 

@@ -6,8 +6,7 @@ use std::path::Path;
 use crate::error::Error;
 use crate::net_box::Conn;
 use crate::session;
-use crate::space::{FuncMetadata, Privilege};
-use crate::space::{Space, SystemSpace};
+use crate::space::{FuncMetadata, Privilege, Space, SystemSpace};
 use crate::tuple::AsTuple;
 
 #[derive(Debug, Serialize, Deserialize)]
