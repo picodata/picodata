@@ -150,6 +150,9 @@ impl ClusterNodeState {
     }
 
     pub fn handle_msg(&self, msg: Message) {
-        todo!()
+        self.recv_queue
+            .borrow_mut()
+            .push_back(RecvMessage::RaftMsg(msg));
+        self.recv_cond.signal();
     }
 }

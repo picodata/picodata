@@ -4,6 +4,8 @@ use std::ffi::CString;
 use std::net::SocketAddr;
 use std::time::Duration;
 
+use protobuf::Message as _;
+use raft::prelude::Message;
 use rand::random;
 
 use crate::error::Error;
@@ -74,7 +76,7 @@ impl Node {
                     let new_nodes_count = self.warm_bootstrap()?;
                     if let Some(0) = new_nodes_count {
                         let nodes = self.nodes.borrow();
-                        let is_leader = (*nodes.iter().next().unwrap().0 == self.id);
+                        let is_leader = *nodes.iter().next().unwrap().0 == self.id;
                         let peers = nodes.keys().map(|id| *id).collect();
 
                         Some(NodeState::ClusterNode(ClusterNodeState::new(
@@ -87,6 +89,7 @@ impl Node {
                 }
                 NodeState::ClusterNode(ref state) => {
                     state.step(&mut send_queue);
+                    self.send_raft_batch(&mut send_queue.drain(..));
                     None
                 }
                 NodeState::Closed => break,
@@ -106,6 +109,16 @@ impl Node {
 
         match request {
             rpc::Request::Bootstrap(msg) => self.recv_bootstrap_request(ctx, msg),
+            rpc::Request::Raft { data: msg_data } => {
+                let mut msg = Message::default();
+                msg.merge_from_bytes(&msg_data).unwrap();
+
+                if let NodeState::ClusterNode(ref cluster_node) = *self.state.borrow() {
+                    cluster_node.handle_msg(msg);
+                }
+
+                ctx.return_mp(&rpc::Response::Ack).unwrap()
+            }
             _ => unimplemented!(),
         }
     }
@@ -243,6 +256,37 @@ impl Node {
         }
 
         ctx.return_mp(&response).unwrap()
+    }
+
+    fn send_raft_batch(&self, msgs: &mut dyn Iterator<Item = Message>) {
+        let mut connections = self.connections.borrow_mut();
+        for msg in msgs {
+            let recipient_id = msg.to;
+            if !connections.contains_key(&recipient_id) {
+                match self.nodes.borrow().get(&recipient_id) {
+                    None => continue,
+                    Some(recipient_addr) => {
+                        let conn = Conn::new(recipient_addr, Default::default()).unwrap();
+                        connections.insert(recipient_id, conn);
+                    }
+                }
+            }
+
+            let conn = connections.get_mut(&recipient_id).unwrap();
+            let result = conn.call(
+                self.rpc_function.as_str(),
+                &rpc::Request::Raft {
+                    data: msg.write_to_bytes().unwrap(),
+                },
+                &Default::default(),
+            );
+            match result {
+                Err(Error::IO(_)) => (),
+                result => {
+                    result.unwrap();
+                }
+            }
+        }
     }
 
     /// Merges `other` nodes list to already known. Returns new nodes count
