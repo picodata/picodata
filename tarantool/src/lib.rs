@@ -167,6 +167,7 @@ extern crate serde;
 
 pub mod clock;
 pub mod coio;
+#[macro_use]
 pub mod error;
 #[doc(hidden)]
 pub mod ffi;

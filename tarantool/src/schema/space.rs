@@ -3,7 +3,7 @@ use std::cmp::max;
 use serde::Serialize;
 use serde_json::{Map, Number, Value};
 
-use crate::error::{set_error, Error, TarantoolError, TarantoolErrorCode};
+use crate::error::{Error, TarantoolError, TarantoolErrorCode};
 use crate::index::IteratorType;
 use crate::schema;
 use crate::schema::sequence as schema_seq;
@@ -40,7 +40,7 @@ pub fn create_space(name: &str, opts: &SpaceCreateOptions) -> Result<Space, Erro
         return if opts.if_not_exists {
             Ok(space.unwrap())
         } else {
-            set_error(file!(), line!(), &TarantoolErrorCode::SpaceExists, name);
+            set_error!(TarantoolErrorCode::SpaceExists, "{}", name);
             Err(TarantoolError::last().into())
         };
     }
@@ -53,12 +53,7 @@ pub fn create_space(name: &str, opts: &SpaceCreateOptions) -> Result<Space, Erro
             match resolved_uid {
                 Some(uid) => uid,
                 None => {
-                    set_error(
-                        file!(),
-                        line!(),
-                        &TarantoolErrorCode::NoSuchUser,
-                        user.as_str(),
-                    );
+                    set_error!(TarantoolErrorCode::NoSuchUser, "{}", user.as_str());
                     return Err(TarantoolError::last().into());
                 }
             }
