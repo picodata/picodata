@@ -73,15 +73,20 @@ impl Node {
                 NodeState::Bootstrapping => {
                     let new_nodes_count = self.warm_bootstrap()?;
                     if let Some(0) = new_nodes_count {
-                        Some(NodeState::ClusterNode(ClusterNodeState::new(self.id)?))
+                        let nodes = self.nodes.borrow();
+                        let is_leader = (*nodes.iter().next().unwrap().0 == self.id);
+                        let peers = nodes.keys().map(|id| *id).collect();
+
+                        Some(NodeState::ClusterNode(ClusterNodeState::new(
+                            self.id, peers, is_leader,
+                        )?))
                     } else {
                         sleep(1.0);
                         None
                     }
                 }
                 NodeState::ClusterNode(ref state) => {
-                    sleep(0.5);
-                    state.tick(&mut send_queue);
+                    state.step(&mut send_queue);
                     None
                 }
                 NodeState::Closed => break,
