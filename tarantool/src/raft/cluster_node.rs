@@ -8,6 +8,7 @@ use raft::{Config, RawNode};
 
 use crate::error::Error;
 use crate::fiber::Cond;
+use crate::raft::NodeOptions;
 
 use super::fsm::Command;
 
@@ -26,7 +27,12 @@ enum RecvMessage {
 }
 
 impl ClusterNodeState {
-    pub fn new(id: u64, peers: Vec<u64>, is_leader: bool) -> Result<Self, Error> {
+    pub fn new(
+        id: u64,
+        peers: Vec<u64>,
+        is_leader: bool,
+        options: &NodeOptions,
+    ) -> Result<Self, Error> {
         let raft_config = Config {
             id,
             ..Default::default()
@@ -48,9 +54,9 @@ impl ClusterNodeState {
 
         Ok(Self {
             node: RefCell::new(node),
-            timeout: Duration::from_millis(100),
-            remaining_timeout: Cell::new(Duration::from_millis(300)),
-            recv_queue: RefCell::new(VecDeque::new()),
+            timeout: options.tick_interval,
+            remaining_timeout: Cell::new(options.tick_interval),
+            recv_queue: RefCell::new(VecDeque::with_capacity(options.recv_queue_size)),
             recv_cond: Cond::new(),
         })
     }

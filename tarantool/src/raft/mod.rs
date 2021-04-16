@@ -37,8 +37,23 @@ pub struct Node {
     options: NodeOptions,
 }
 
-#[derive(Default)]
-pub struct NodeOptions {}
+pub struct NodeOptions {
+    bootstrap_poll_interval: Duration,
+    tick_interval: Duration,
+    recv_queue_size: usize,
+    send_queue_size: usize,
+}
+
+impl Default for NodeOptions {
+    fn default() -> Self {
+        NodeOptions {
+            bootstrap_poll_interval: Duration::from_secs(1),
+            tick_interval: Duration::from_millis(100),
+            recv_queue_size: 127,
+            send_queue_size: 127,
+        }
+    }
+}
 
 impl Node {
     pub fn new(rpc_function: &str, options: NodeOptions) -> Result<Self, Error> {
@@ -54,7 +69,7 @@ impl Node {
     }
 
     pub fn run(&self, bootstrap_addrs: &Vec<&str>) -> Result<(), Error> {
-        let mut send_queue = VecDeque::new();
+        let mut send_queue = VecDeque::with_capacity(self.options.send_queue_size);
         loop {
             let next_state = match *self.state.borrow() {
                 NodeState::Init => {
@@ -67,7 +82,7 @@ impl Node {
                     if is_completed {
                         Some(NodeState::Bootstrapping)
                     } else {
-                        sleep(1.0);
+                        sleep(self.options.bootstrap_poll_interval.as_secs_f64());
                         None
                     }
                 }
@@ -79,10 +94,13 @@ impl Node {
                         let peers = nodes.keys().map(|id| *id).collect();
 
                         Some(NodeState::ClusterNode(ClusterNodeState::new(
-                            self.id, peers, is_leader,
+                            self.id,
+                            peers,
+                            is_leader,
+                            &self.options,
                         )?))
                     } else {
-                        sleep(1.0);
+                        sleep(self.options.bootstrap_poll_interval.as_secs_f64());
                         None
                     }
                 }
