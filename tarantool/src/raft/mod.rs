@@ -17,7 +17,6 @@ use self::cluster_node::ClusterNodeState;
 
 mod cluster_node;
 mod fsm;
-mod protocol;
 mod rpc;
 mod storage;
 
