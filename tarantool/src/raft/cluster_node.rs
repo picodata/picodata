@@ -37,14 +37,14 @@ impl ClusterNodeState {
             id,
             ..Default::default()
         };
-        let mut storage = raft::storage::MemStorage::new();
-        let mut node = RawNode::with_default_logger(&raft_config, storage).unwrap();
+        let storage = raft::storage::MemStorage::new();
+        let mut node = RawNode::with_default_logger(&raft_config, storage)?;
 
         for id in peers {
             let mut conf_change = ConfChange::default();
             conf_change.node_id = id;
             conf_change.set_change_type(raft::eraftpb::ConfChangeType::AddNode);
-            node.apply_conf_change(&conf_change).unwrap();
+            node.apply_conf_change(&conf_change)?;
         }
 
         if is_leader {
@@ -61,7 +61,7 @@ impl ClusterNodeState {
         })
     }
 
-    pub fn step(&self, send_queue: &mut VecDeque<Message>) {
+    pub fn step(&self, send_queue: &mut VecDeque<Message>) -> Result<(), Error> {
         let now = Instant::now();
         let mut node = self.node.borrow_mut();
 
@@ -76,7 +76,7 @@ impl ClusterNodeState {
                 RecvMessage::Propose(_) => {
                     todo!();
                 }
-                RecvMessage::RaftMsg(msg) => node.step(msg).unwrap(),
+                RecvMessage::RaftMsg(msg) => node.step(msg)?,
                 RecvMessage::Conf(_) => {}
             }
         }
@@ -99,13 +99,13 @@ impl ClusterNodeState {
             // if this is a snapshot: we need to apply the snapshot at first
             let snapshot = ready.snapshot();
             if !snapshot.is_empty() {
-                store.wl().apply_snapshot(snapshot.clone()).unwrap();
+                store.wl().apply_snapshot(snapshot.clone())?;
             }
 
             // append entries to the Raft log
             let entries = ready.entries();
             if !entries.is_empty() {
-                store.wl().append(entries).unwrap();
+                store.wl().append(entries)?;
             }
 
             // if Raft hard-state changed: we need to persist it
@@ -136,12 +136,12 @@ impl ClusterNodeState {
                         EntryType::EntryNormal => {}
                         EntryType::EntryConfChange => {
                             let mut conf_change = ConfChange::default();
-                            conf_change.merge_from_bytes(&entry.data).unwrap();
+                            conf_change.merge_from_bytes(&entry.data)?;
 
-                            let conf_state = node.apply_conf_change(&conf_change).unwrap();
+                            let conf_state = node.apply_conf_change(&conf_change)?;
                             node.mut_store().wl().set_conf_state(conf_state);
                         }
-                        EntryType::EntryConfChangeV2 => unimplemented!(),
+                        _ => {}
                     }
                 }
             }
@@ -149,6 +149,8 @@ impl ClusterNodeState {
             // advance the apply index.
             node.advance_apply();
         }
+
+        Ok(())
     }
 
     pub fn add_entry(&self, command: Command) {

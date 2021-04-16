@@ -4,7 +4,6 @@ use std::net::SocketAddr;
 use std::path::Path;
 
 use crate::error::Error;
-use crate::net_box::Conn;
 use crate::session;
 use crate::space::{FuncMetadata, Privilege, Space, SystemSpace};
 use crate::tuple::AsTuple;

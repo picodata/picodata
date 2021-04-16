@@ -8,7 +8,7 @@ use protobuf::Message as _;
 use raft::prelude::Message;
 use rand::random;
 
-use crate::error::Error;
+use crate::error::{Error, TarantoolErrorCode};
 use crate::fiber::sleep;
 use crate::net_box::Conn;
 use crate::tuple::{FunctionArgs, FunctionCtx, Tuple};
@@ -105,8 +105,8 @@ impl Node {
                     }
                 }
                 NodeState::ClusterNode(ref state) => {
-                    state.step(&mut send_queue);
-                    self.send_raft_batch(&mut send_queue.drain(..));
+                    state.step(&mut send_queue)?;
+                    self.send_raft_batch(&mut send_queue.drain(..))?;
                     None
                 }
                 NodeState::Closed => break,
@@ -122,21 +122,34 @@ impl Node {
 
     pub fn handle_rpc(&self, ctx: FunctionCtx, args: FunctionArgs) -> i32 {
         let args: Tuple = args.into();
-        let request = args.into_struct::<rpc::Request>().unwrap();
 
-        match request {
-            rpc::Request::Bootstrap(msg) => self.recv_bootstrap_request(ctx, msg),
-            rpc::Request::Raft { data: msg_data } => {
-                let mut msg = Message::default();
-                msg.merge_from_bytes(&msg_data).unwrap();
+        match args.into_struct::<rpc::Request>() {
+            Err(e) => set_error!(TarantoolErrorCode::Protocol, "{}", e),
+            Ok(request) => {
+                let response = match request {
+                    rpc::Request::Bootstrap(msg) => self.recv_bootstrap_request(msg),
+                    rpc::Request::Raft { data: msg_data } => {
+                        let mut msg = Message::default();
+                        match msg.merge_from_bytes(&msg_data) {
+                            Err(e) => {
+                                return set_error!(TarantoolErrorCode::Protocol, "{}", e);
+                            }
+                            Ok(()) => {
+                                if let NodeState::ClusterNode(ref cluster_node) =
+                                    *self.state.borrow()
+                                {
+                                    cluster_node.handle_msg(msg);
+                                }
+                            }
+                        }
+                        rpc::Response::Ack
+                    }
+                    _ => unimplemented!(),
+                };
 
-                if let NodeState::ClusterNode(ref cluster_node) = *self.state.borrow() {
-                    cluster_node.handle_msg(msg);
-                }
-
-                ctx.return_mp(&rpc::Response::Ack).unwrap()
+                ctx.return_mp(&response)
+                    .unwrap_or_else(|e| set_error!(TarantoolErrorCode::ProcC, "{}", e))
             }
-            _ => unimplemented!(),
         }
     }
 
@@ -262,7 +275,7 @@ impl Node {
         }
     }
 
-    fn recv_bootstrap_request(&self, ctx: FunctionCtx, request: rpc::BootstrapMsg) -> i32 {
+    fn recv_bootstrap_request(&self, request: rpc::BootstrapMsg) -> rpc::Response {
         let response = rpc::Response::Bootstrap(rpc::BootstrapMsg {
             from: self.id,
             nodes: self.nodes.borrow().clone(),
@@ -272,10 +285,10 @@ impl Node {
             let _ = self.merge_nodes_list(request.nodes);
         }
 
-        ctx.return_mp(&response).unwrap()
+        response
     }
 
-    fn send_raft_batch(&self, msgs: &mut dyn Iterator<Item = Message>) {
+    fn send_raft_batch(&self, msgs: &mut dyn Iterator<Item = Message>) -> Result<(), Error> {
         let mut connections = self.connections.borrow_mut();
         for msg in msgs {
             let recipient_id = msg.to;
@@ -283,7 +296,7 @@ impl Node {
                 match self.nodes.borrow().get(&recipient_id) {
                     None => continue,
                     Some(recipient_addr) => {
-                        let conn = Conn::new(recipient_addr, Default::default()).unwrap();
+                        let conn = Conn::new(recipient_addr, Default::default())?;
                         connections.insert(recipient_id, conn);
                     }
                 }
@@ -293,17 +306,16 @@ impl Node {
             let result = conn.call(
                 self.rpc_function.as_str(),
                 &rpc::Request::Raft {
-                    data: msg.write_to_bytes().unwrap(),
+                    data: msg.write_to_bytes()?,
                 },
                 &Default::default(),
             );
             match result {
-                Err(Error::IO(_)) => (),
-                result => {
-                    result.unwrap();
-                }
+                Err(Error::IO(_)) | Ok(_) => (),
+                Err(e) => return Err(e),
             }
         }
+        Ok(())
     }
 
     /// Merges `other` nodes list to already known. Returns new nodes count
