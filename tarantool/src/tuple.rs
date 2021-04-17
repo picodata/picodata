@@ -132,7 +132,7 @@ impl Tuple {
     }
 
     /// Deserializes tuple contents into structure of type `T`
-    pub fn into_struct<T>(self) -> Result<T, Error>
+    pub fn as_struct<T>(&self) -> Result<T, Error>
     where
         T: DeserializeOwned,
     {
@@ -148,6 +148,15 @@ impl Tuple {
 
         unsafe { raw_data.set_len(actual_size as usize) };
         Ok(rmp_serde::from_read::<_, T>(Cursor::new(raw_data))?)
+    }
+
+    /// Deserializes tuple contents into structure of type `T`
+    /// Deprecated. Use as_struct.
+    pub fn into_struct<T>(self) -> Result<T, Error>
+    where
+        T: DeserializeOwned,
+    {
+        self.as_struct()
     }
 
     pub(crate) fn into_ptr(self) -> *mut ffi::BoxTuple {
