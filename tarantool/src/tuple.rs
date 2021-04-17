@@ -488,7 +488,7 @@ impl FunctionCtx {
     /// Returned Tuple is automatically reference counted by Tarantool.
     ///
     /// - `tuple` - a Tuple to return
-    pub fn return_tuple(self, tuple: Tuple) -> Result<c_int, Error> {
+    pub fn return_tuple(&self, tuple: Tuple) -> Result<c_int, Error> {
         let result = unsafe { ffi::box_return_tuple(self.inner, tuple.ptr) };
         if result < 0 {
             Err(TarantoolError::last().into())
@@ -507,7 +507,7 @@ impl FunctionCtx {
     /// `MP_ARRAY` or `MP_MAP` is undefined behaviour.
     ///
     /// - `value` - value to be encoded to MessagePack
-    pub fn return_mp<T>(self, value: &T) -> Result<c_int, Error>
+    pub fn return_mp<T>(&self, value: &T) -> Result<c_int, Error>
     where
         T: AsTuple,
     {
