@@ -151,7 +151,10 @@ impl Tuple {
     }
 
     /// Deserializes tuple contents into structure of type `T`
-    /// Deprecated. Use as_struct.
+    #[deprecated(
+        since = "0.4.1",
+        note = "Please use as_struct"
+    )]
     pub fn into_struct<T>(self) -> Result<T, Error>
     where
         T: DeserializeOwned,
