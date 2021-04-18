@@ -26,7 +26,7 @@ impl Sequence {
         Ok(match name_idx.get(&(name,))? {
             None => None,
             Some(row_tuple) => Some(Sequence {
-                seq_id: row_tuple.into_struct::<Row>()?.seq_id,
+                seq_id: row_tuple.as_struct::<Row>()?.seq_id,
             }),
         })
     }

@@ -31,7 +31,7 @@ pub fn test_box_get() {
     let output = idx_1.get(&("key_16".to_string(),)).unwrap();
     assert!(output.is_some());
     assert_eq!(
-        output.unwrap().into_struct::<S2Record>().unwrap(),
+        output.unwrap().as_struct::<S2Record>().unwrap(),
         S2Record {
             id: 16,
             key: "key_16".to_string(),
@@ -45,7 +45,7 @@ pub fn test_box_get() {
     let output = idx_2.get(&S2Key { id: 17, a: 2, b: 3 }).unwrap();
     assert!(output.is_some());
     assert_eq!(
-        output.unwrap().into_struct::<S2Record>().unwrap(),
+        output.unwrap().as_struct::<S2Record>().unwrap(),
         S2Record {
             id: 17,
             key: "key_17".to_string(),
@@ -62,7 +62,7 @@ pub fn test_box_select() {
         .primary_key()
         .select(IteratorType::LE, &(5,))
         .unwrap()
-        .map(|x| x.into_struct().unwrap())
+        .map(|x| x.as_struct().unwrap())
         .collect();
     assert_eq!(
         result,
@@ -94,7 +94,7 @@ pub fn test_box_select() {
     let result: Vec<S2Record> = idx
         .select(IteratorType::Eq, &(3,))
         .unwrap()
-        .map(|x| x.into_struct().unwrap())
+        .map(|x| x.as_struct().unwrap())
         .collect();
     assert_eq!(
         result,
@@ -138,7 +138,7 @@ pub fn test_box_select_composite_key() {
     let result: Vec<S2Record> = idx
         .select(IteratorType::Eq, &(3, 3, 0))
         .unwrap()
-        .map(|x| x.into_struct().unwrap())
+        .map(|x| x.as_struct().unwrap())
         .collect();
     assert_eq!(
         result,
@@ -165,7 +165,7 @@ pub fn test_box_random() {
     let result = idx.random(rng.gen()).unwrap();
     assert!(result.is_some());
 
-    let output = result.unwrap().into_struct::<S2Record>().unwrap();
+    let output = result.unwrap().as_struct::<S2Record>().unwrap();
     assert_eq!(output.a, (output.id as i32) % 5);
     assert_eq!(output.b, (output.id as i32) / 5);
     assert_eq!(output.key, format!("key_{}", output.id));
@@ -179,7 +179,7 @@ pub fn test_box_min_max() {
     let result_min = idx.min(&(3,)).unwrap();
     assert!(result_min.is_some());
     assert_eq!(
-        result_min.unwrap().into_struct::<S2Record>().unwrap(),
+        result_min.unwrap().as_struct::<S2Record>().unwrap(),
         S2Record {
             id: 3,
             key: "key_3".to_string(),
@@ -192,7 +192,7 @@ pub fn test_box_min_max() {
     let result_max = idx.max(&(3,)).unwrap();
     assert!(result_max.is_some());
     assert_eq!(
-        result_max.unwrap().into_struct::<S2Record>().unwrap(),
+        result_max.unwrap().as_struct::<S2Record>().unwrap(),
         S2Record {
             id: 18,
             key: "key_18".to_string(),
@@ -227,7 +227,7 @@ pub fn test_box_extract_key() {
     };
     assert_eq!(
         idx.extract_key(Tuple::from_struct(&record).unwrap())
-            .into_struct::<S2Key>()
+            .as_struct::<S2Key>()
             .unwrap(),
         S2Key { id: 11, a: 1, b: 2 }
     );
@@ -244,13 +244,13 @@ pub fn test_box_insert() {
     let insert_result = space.insert(&input).unwrap();
     assert!(insert_result.is_some());
     assert_eq!(
-        insert_result.unwrap().into_struct::<S1Record>().unwrap(),
+        insert_result.unwrap().as_struct::<S1Record>().unwrap(),
         input
     );
 
     let output = space.get(&(input.id,)).unwrap();
     assert!(output.is_some());
-    assert_eq!(output.unwrap().into_struct::<S1Record>().unwrap(), input);
+    assert_eq!(output.unwrap().as_struct::<S1Record>().unwrap(), input);
 }
 
 pub fn test_box_replace() {
@@ -270,14 +270,14 @@ pub fn test_box_replace() {
     let replace_result = space.replace(&new_input).unwrap();
     assert!(replace_result.is_some());
     assert_eq!(
-        replace_result.unwrap().into_struct::<S1Record>().unwrap(),
+        replace_result.unwrap().as_struct::<S1Record>().unwrap(),
         new_input
     );
 
     let output = space.get(&(new_input.id,)).unwrap();
     assert!(output.is_some());
     assert_eq!(
-        output.unwrap().into_struct::<S1Record>().unwrap(),
+        output.unwrap().as_struct::<S1Record>().unwrap(),
         new_input
     );
 }
@@ -295,7 +295,7 @@ pub fn test_box_delete() {
     let delete_result = space.delete(&(input.id,)).unwrap();
     assert!(delete_result.is_some());
     assert_eq!(
-        delete_result.unwrap().into_struct::<S1Record>().unwrap(),
+        delete_result.unwrap().as_struct::<S1Record>().unwrap(),
         input
     );
 
@@ -327,7 +327,7 @@ pub fn test_box_update() {
     assert_eq!(
         update_result
             .unwrap()
-            .into_struct::<S1Record>()
+            .as_struct::<S1Record>()
             .unwrap()
             .text,
         "New"
@@ -335,7 +335,7 @@ pub fn test_box_update() {
 
     let output = space.get(&(input.id,)).unwrap();
     assert_eq!(
-        output.unwrap().into_struct::<S1Record>().unwrap().text,
+        output.unwrap().as_struct::<S1Record>().unwrap().text,
         "New"
     );
 }
@@ -380,13 +380,13 @@ pub fn test_box_upsert() {
 
     let output = space.get(&(1,)).unwrap();
     assert_eq!(
-        output.unwrap().into_struct::<S1Record>().unwrap().text,
+        output.unwrap().as_struct::<S1Record>().unwrap().text,
         "Test 1"
     );
 
     let output = space.get(&(2,)).unwrap();
     assert_eq!(
-        output.unwrap().into_struct::<S1Record>().unwrap().text,
+        output.unwrap().as_struct::<S1Record>().unwrap().text,
         "New"
     );
 }

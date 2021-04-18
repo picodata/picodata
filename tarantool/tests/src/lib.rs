@@ -120,7 +120,7 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 test_tuple::test_tuple_new_from_struct,
                 test_tuple::test_tuple_field_count,
                 test_tuple::test_tuple_size,
-                test_tuple::test_tuple_into_struct,
+                test_tuple::test_tuple_as_struct,
                 test_tuple::test_tuple_clone,
                 test_tuple::test_tuple_iterator,
                 test_tuple::test_tuple_iterator_seek_rewind,

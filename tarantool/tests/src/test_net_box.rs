@@ -68,7 +68,7 @@ pub fn test_call() {
     let result = conn
         .call("test_stored_proc", &(1, 2), &Options::default())
         .unwrap();
-    assert_eq!(result.unwrap().into_struct::<(i32,)>().unwrap(), (3,));
+    assert_eq!(result.unwrap().as_struct::<(i32,)>().unwrap(), (3,));
 }
 
 pub fn test_call_timeout() {
@@ -99,7 +99,7 @@ pub fn test_eval() {
     let result = conn
         .eval("return ...", &(1, 2), &Options::default())
         .unwrap();
-    assert_eq!(result.unwrap().into_struct::<(i32, i32)>().unwrap(), (1, 2));
+    assert_eq!(result.unwrap().as_struct::<(i32, i32)>().unwrap(), (1, 2));
 }
 
 pub fn test_connection_error() {
@@ -172,7 +172,7 @@ pub fn test_get() {
         .unwrap();
     assert!(output.is_some());
     assert_eq!(
-        output.unwrap().into_struct::<S2Record>().unwrap(),
+        output.unwrap().as_struct::<S2Record>().unwrap(),
         S2Record {
             id: 16,
             key: "key_16".to_string(),
@@ -198,7 +198,7 @@ pub fn test_select() {
     let result: Vec<S1Record> = space
         .select(IteratorType::LE, &(2,), &Options::default())
         .unwrap()
-        .map(|x| x.into_struct().unwrap())
+        .map(|x| x.as_struct().unwrap())
         .collect();
 
     assert_eq!(
@@ -238,13 +238,13 @@ pub fn test_insert() {
     let insert_result = remote_space.insert(&input, &Options::default()).unwrap();
     assert!(insert_result.is_some());
     assert_eq!(
-        insert_result.unwrap().into_struct::<S1Record>().unwrap(),
+        insert_result.unwrap().as_struct::<S1Record>().unwrap(),
         input
     );
 
     let output = local_space.get(&(input.id,)).unwrap();
     assert!(output.is_some());
-    assert_eq!(output.unwrap().into_struct::<S1Record>().unwrap(), input);
+    assert_eq!(output.unwrap().as_struct::<S1Record>().unwrap(), input);
 }
 
 pub fn test_replace() {
@@ -277,14 +277,14 @@ pub fn test_replace() {
         .unwrap();
     assert!(replace_result.is_some());
     assert_eq!(
-        replace_result.unwrap().into_struct::<S1Record>().unwrap(),
+        replace_result.unwrap().as_struct::<S1Record>().unwrap(),
         new_input
     );
 
     let output = local_space.get(&(new_input.id,)).unwrap();
     assert!(output.is_some());
     assert_eq!(
-        output.unwrap().into_struct::<S1Record>().unwrap(),
+        output.unwrap().as_struct::<S1Record>().unwrap(),
         new_input
     );
 }
@@ -325,7 +325,7 @@ pub fn test_update() {
     assert_eq!(
         update_result
             .unwrap()
-            .into_struct::<S1Record>()
+            .as_struct::<S1Record>()
             .unwrap()
             .text,
         "New"
@@ -333,7 +333,7 @@ pub fn test_update() {
 
     let output = local_space.get(&(input.id,)).unwrap();
     assert_eq!(
-        output.unwrap().into_struct::<S1Record>().unwrap().text,
+        output.unwrap().as_struct::<S1Record>().unwrap().text,
         "New"
     );
 }
@@ -391,13 +391,13 @@ pub fn test_upsert() {
 
     let output = local_space.get(&(1,)).unwrap();
     assert_eq!(
-        output.unwrap().into_struct::<S1Record>().unwrap().text,
+        output.unwrap().as_struct::<S1Record>().unwrap().text,
         "Test 1"
     );
 
     let output = local_space.get(&(2,)).unwrap();
     assert_eq!(
-        output.unwrap().into_struct::<S1Record>().unwrap().text,
+        output.unwrap().as_struct::<S1Record>().unwrap().text,
         "New"
     );
 }
@@ -428,7 +428,7 @@ pub fn test_delete() {
         .unwrap();
     assert!(delete_result.is_some());
     assert_eq!(
-        delete_result.unwrap().into_struct::<S1Record>().unwrap(),
+        delete_result.unwrap().as_struct::<S1Record>().unwrap(),
         input
     );
 
