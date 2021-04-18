@@ -491,7 +491,7 @@ impl FunctionCtx {
     /// Returned Tuple is automatically reference counted by Tarantool.
     ///
     /// - `tuple` - a Tuple to return
-    pub fn return_tuple(&self, tuple: Tuple) -> Result<c_int, Error> {
+    pub fn return_tuple(&self, tuple: &Tuple) -> Result<c_int, Error> {
         let result = unsafe { ffi::box_return_tuple(self.inner, tuple.ptr) };
         if result < 0 {
             Err(TarantoolError::last().into())
