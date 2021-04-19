@@ -30,6 +30,7 @@ pub struct Options {
 }
 
 /// Connection options; see [Conn::new()](struct.Conn.html#method.new)
+#[derive(Clone)]
 pub struct ConnOptions {
     /// Authentication user name. If left empty, then the session user is `'guest'`
     /// (the `'guest'` user does not need a password).
