@@ -12,16 +12,16 @@ use crate::common::{QueryOperation, S1Record, S2Record};
 use std::cell::{Cell, RefCell};
 
 pub fn test_immediate_close() {
-    let _ = Conn::new("localhost:3301", ConnOptions::default()).unwrap();
+    let _ = Conn::new("localhost:3301", ConnOptions::default(), None).unwrap();
 }
 
 pub fn test_ping() {
-    let conn = Conn::new("localhost:3301", ConnOptions::default()).unwrap();
+    let conn = Conn::new("localhost:3301", ConnOptions::default(), None).unwrap();
     conn.ping(&Options::default()).unwrap();
 }
 
 pub fn test_ping_timeout() {
-    let conn = Conn::new("localhost:3301", ConnOptions::default()).unwrap();
+    let conn = Conn::new("localhost:3301", ConnOptions::default(), None).unwrap();
 
     conn.ping(&Options {
         timeout: Some(Duration::from_secs(1)),
@@ -37,7 +37,7 @@ pub fn test_ping_timeout() {
 }
 
 pub fn test_ping_concurrent() {
-    let conn = Rc::new(Conn::new("localhost:3301", ConnOptions::default()).unwrap());
+    let conn = Rc::new(Conn::new("localhost:3301", ConnOptions::default(), None).unwrap());
 
     let mut fiber_a = Fiber::new("test_fiber_a", &mut |conn: Box<Rc<Conn>>| {
         conn.ping(&Options::default()).unwrap();
@@ -64,7 +64,7 @@ pub fn test_call() {
         password: "password".to_string(),
         ..ConnOptions::default()
     };
-    let conn = Conn::new("localhost:3301", conn_options).unwrap();
+    let conn = Conn::new("localhost:3301", conn_options, None).unwrap();
     let result = conn
         .call("test_stored_proc", &(1, 2), &Options::default())
         .unwrap();
@@ -77,7 +77,7 @@ pub fn test_call_timeout() {
         password: "password".to_string(),
         ..ConnOptions::default()
     };
-    let conn = Conn::new("localhost:3301", conn_options).unwrap();
+    let conn = Conn::new("localhost:3301", conn_options, None).unwrap();
     let result = conn.call(
         "test_timeout",
         &Vec::<()>::new(),
@@ -95,7 +95,7 @@ pub fn test_eval() {
         password: "password".to_string(),
         ..ConnOptions::default()
     };
-    let conn = Conn::new("localhost:3301", conn_options).unwrap();
+    let conn = Conn::new("localhost:3301", conn_options, None).unwrap();
     let result = conn
         .eval("return ...", &(1, 2), &Options::default())
         .unwrap();
@@ -109,6 +109,7 @@ pub fn test_connection_error() {
             reconnect_after: Duration::from_secs(0),
             ..ConnOptions::default()
         },
+        None,
     )
     .unwrap();
     assert!(matches!(conn.ping(&Options::default()), Err(_)));
@@ -121,6 +122,7 @@ pub fn test_is_connected() {
             reconnect_after: Duration::from_secs(0),
             ..ConnOptions::default()
         },
+        None,
     )
     .unwrap();
     assert_eq!(conn.is_connected(), false);
@@ -136,6 +138,7 @@ pub fn test_schema_sync() {
             password: "password".to_string(),
             ..ConnOptions::default()
         },
+        None,
     )
     .unwrap();
 
@@ -162,6 +165,7 @@ pub fn test_get() {
             password: "password".to_string(),
             ..ConnOptions::default()
         },
+        None,
     )
     .unwrap();
     let space = conn.space("test_s2").unwrap().unwrap();
@@ -191,6 +195,7 @@ pub fn test_select() {
             password: "password".to_string(),
             ..ConnOptions::default()
         },
+        None,
     )
     .unwrap();
     let space = conn.space("test_s2").unwrap().unwrap();
@@ -227,6 +232,7 @@ pub fn test_insert() {
             password: "password".to_string(),
             ..ConnOptions::default()
         },
+        None,
     )
     .unwrap();
     let mut remote_space = conn.space("test_s1").unwrap().unwrap();
@@ -264,6 +270,7 @@ pub fn test_replace() {
             password: "password".to_string(),
             ..ConnOptions::default()
         },
+        None,
     )
     .unwrap();
     let mut remote_space = conn.space("test_s1").unwrap().unwrap();
@@ -306,6 +313,7 @@ pub fn test_update() {
             password: "password".to_string(),
             ..ConnOptions::default()
         },
+        None,
     )
     .unwrap();
     let mut remote_space = conn.space("test_s1").unwrap().unwrap();
@@ -355,6 +363,7 @@ pub fn test_upsert() {
             password: "password".to_string(),
             ..ConnOptions::default()
         },
+        None,
     )
     .unwrap();
     let mut remote_space = conn.space("test_s1").unwrap().unwrap();
@@ -419,6 +428,7 @@ pub fn test_delete() {
             password: "password".to_string(),
             ..ConnOptions::default()
         },
+        None,
     )
     .unwrap();
     let mut remote_space = conn.space("test_s1").unwrap().unwrap();
@@ -437,7 +447,7 @@ pub fn test_delete() {
 }
 
 pub fn test_cancel_recv() {
-    let conn = Rc::new(Conn::new("localhost:3301", ConnOptions::default()).unwrap());
+    let conn = Rc::new(Conn::new("localhost:3301", ConnOptions::default(), None).unwrap());
 
     let mut fiber = Fiber::new("test_fiber_a", &mut |conn: Box<Rc<Conn>>| {
         for _ in 0..10 {
@@ -484,12 +494,10 @@ pub fn test_triggers_connect() {
 
     let conn = Conn::new(
         "localhost:3301",
-        ConnOptions {
-            triggers: Some(Box::new(TriggersMock {
-                checklist: checklist.clone(),
-            })),
-            ..ConnOptions::default()
-        },
+        ConnOptions::default(),
+        Some(Rc::new(TriggersMock {
+            checklist: checklist.clone(),
+        })),
     )
     .unwrap();
     conn.ping(&Options::default()).unwrap();
@@ -512,10 +520,8 @@ pub fn test_triggers_reject() {
 
     let conn = Conn::new(
         "localhost:3301",
-        ConnOptions {
-            triggers: Some(Box::new(TriggersMock {})),
-            ..ConnOptions::default()
-        },
+        ConnOptions::default(),
+        Some(Rc::new(TriggersMock {})),
     )
     .unwrap();
 
@@ -546,11 +552,11 @@ pub fn test_triggers_schema_sync() {
         ConnOptions {
             user: "test_user".to_string(),
             password: "password".to_string(),
-            triggers: Some(Box::new(TriggersMock {
-                is_trigger_called: is_trigger_called.clone(),
-            })),
             ..ConnOptions::default()
         },
+        Some(Rc::new(TriggersMock {
+            is_trigger_called: is_trigger_called.clone(),
+        })),
     )
     .unwrap();
 

@@ -75,7 +75,7 @@ impl Node {
                 NodeState::Init => {
                     let mut connections = vec![];
                     for addr in bootstrap_addrs.into_iter() {
-                        connections.push(Conn::new(addr, Default::default())?)
+                        connections.push(Conn::new(addr, Default::default(), None)?)
                     }
 
                     let is_completed = self.cold_bootstrap(connections)?;
@@ -222,7 +222,7 @@ impl Node {
                 }
 
                 if !connections.contains_key(id) {
-                    connections.insert(*id, Conn::new(*addr, Default::default())?);
+                    connections.insert(*id, Conn::new(*addr, Default::default(), None)?);
                 }
             }
         }
