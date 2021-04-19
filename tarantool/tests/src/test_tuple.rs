@@ -45,7 +45,7 @@ pub fn test_tuple_size() {
     assert_eq!(tuple.bsize(), 14);
 }
 
-pub fn test_tuple_as_struct() {
+pub fn test_tuple_into_struct() {
     let input = S2Record {
         id: 1,
         key: "key".to_string(),
@@ -56,12 +56,12 @@ pub fn test_tuple_as_struct() {
 
     // 1:1 decode
     let tuple = Tuple::from_struct(&input).unwrap();
-    let output: S2Record = tuple.as_struct().unwrap();
+    let output: S2Record = tuple.into_struct().unwrap();
     assert_eq!(output, input);
 
     // partial decode (with trimming trailing fields)
     let tuple = Tuple::from_struct(&input).unwrap();
-    let output: S1Record = tuple.as_struct().unwrap();
+    let output: S1Record = tuple.into_struct().unwrap();
     assert_eq!(
         output,
         S1Record {
@@ -80,7 +80,7 @@ pub fn test_tuple_clone() {
         .unwrap();
         tuple_2.clone()
     };
-    assert!(tuple_1.as_struct::<S1Record>().is_ok());
+    assert!(tuple_1.into_struct::<S1Record>().is_ok());
 }
 
 pub fn test_tuple_iterator() {

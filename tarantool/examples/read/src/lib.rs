@@ -21,7 +21,7 @@ pub extern "C" fn read(_: FunctionCtx, _: FunctionArgs) -> c_int {
     let result = space.get(&(key,)).unwrap();
     assert!(result.is_some());
 
-    let result = result.unwrap().as_struct::<Row>().unwrap();
+    let result = result.unwrap().into_struct::<Row>().unwrap();
     println!("value={:?}", result);
 
     0
