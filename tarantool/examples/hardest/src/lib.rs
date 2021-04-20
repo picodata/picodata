@@ -20,5 +20,5 @@ pub extern "C" fn hardest(ctx: FunctionCtx, _: FunctionArgs) -> c_int {
         int_field: 10000,
         str_field: "String 2".to_string(),
     });
-    ctx.return_tuple(result.unwrap().unwrap()).unwrap()
+    ctx.return_tuple(&result.unwrap().unwrap()).unwrap()
 }

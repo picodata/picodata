@@ -136,12 +136,12 @@ impl Tuple {
     where
         T: DeserializeOwned,
     {
-        let raw_data = self.into_buffer()?;
+        let raw_data = self.as_buffer()?;
         Ok(rmp_serde::from_read::<_, T>(Cursor::new(raw_data))?)
     }
 
     #[inline]
-    pub(crate) fn into_buffer(self) -> Result<Vec<u8>, Error> {
+    pub(crate) fn as_buffer(&self) -> Result<Vec<u8>, Error> {
         let buffer_size = self.bsize();
         let mut buffer = Vec::<u8>::with_capacity(buffer_size);
 
