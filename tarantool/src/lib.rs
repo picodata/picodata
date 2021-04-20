@@ -167,6 +167,7 @@ extern crate serde;
 
 pub mod clock;
 pub mod coio;
+#[macro_use]
 pub mod error;
 #[doc(hidden)]
 pub mod ffi;
@@ -174,6 +175,7 @@ pub mod fiber;
 pub mod index;
 pub mod log;
 pub mod net_box;
+pub mod raft;
 pub mod schema;
 pub mod sequence;
 pub mod session;

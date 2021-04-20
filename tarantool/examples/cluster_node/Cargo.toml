@@ -1,0 +1,18 @@
+[package]
+name = "cluster_node"
+version = "0.1.0"
+authors = [
+    "Dmitriy Koltsov <dkoltsov@picodata.io>",
+    "Anton Melnikov <volt0@picodata.io>"
+]
+edition = "2018"
+license = "BSD-2-Clause"
+
+[dependencies]
+lazy_static = "1.4.0"
+
+[dependencies.tarantool]
+path = "../.."
+
+[lib]
+crate-type = ["cdylib"]

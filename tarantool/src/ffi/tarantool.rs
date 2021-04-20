@@ -1,8 +1,4 @@
 #![allow(non_camel_case_types)]
-use std::os::raw::{c_char, c_int, c_uint, c_void};
-
-use va_list::VaList;
-
 /// Module provides FFI bindings for the following constants,
 /// types and functios from Tarantool module C API:
 /// 1. Clock.
@@ -11,6 +7,9 @@ use va_list::VaList;
 /// 4. Latches.
 /// 5. Log.
 /// 6. Box - errors, sessions, sequences, transactions, indexes, spaces, tuples.
+use std::os::raw::{c_char, c_int, c_uint, c_void};
+
+use va_list::VaList;
 
 // Clock.
 extern "C" {
@@ -168,46 +167,52 @@ extern "C" {
 // Indexes, spaces and tuples.
 pub const BOX_ID_NIL: u32 = 2147483647;
 
-#[repr(C)]
-pub struct BoxIterator {
-    _unused: [u8; 0],
-}
-
-#[repr(C)]
-pub struct BoxTuple {
-    _unused: [u8; 0],
-}
-
-#[repr(C)]
-pub struct BoxTupleFormat {
-    _unused: [u8; 0],
-}
-
-#[repr(C)]
-pub struct BoxTupleIterator {
-    _unused: [u8; 0],
-}
-
-#[repr(C)]
-pub struct BoxKeyDef {
-    _unused: [u8; 0],
-}
-
-#[repr(C)]
-pub struct BoxFunctionCtx {
-    _unused: [u8; 0],
+extern "C" {
+    pub fn box_insert(
+        space_id: u32,
+        tuple: *const c_char,
+        tuple_end: *const c_char,
+        result: *mut *mut BoxTuple,
+    ) -> c_int;
+    pub fn box_update(
+        space_id: u32,
+        index_id: u32,
+        key: *const c_char,
+        key_end: *const c_char,
+        ops: *const c_char,
+        ops_end: *const c_char,
+        index_base: c_int,
+        result: *mut *mut BoxTuple,
+    ) -> c_int;
+    pub fn box_upsert(
+        space_id: u32,
+        index_id: u32,
+        tuple: *const c_char,
+        tuple_end: *const c_char,
+        ops: *const c_char,
+        ops_end: *const c_char,
+        index_base: c_int,
+        result: *mut *mut BoxTuple,
+    ) -> c_int;
+    pub fn box_replace(
+        space_id: u32,
+        tuple: *const c_char,
+        tuple_end: *const c_char,
+        result: *mut *mut BoxTuple,
+    ) -> c_int;
+    pub fn box_delete(
+        space_id: u32,
+        index_id: u32,
+        key: *const c_char,
+        key_end: *const c_char,
+        result: *mut *mut BoxTuple,
+    ) -> c_int;
+    pub fn box_truncate(space_id: u32) -> c_int;
 }
 
 extern "C" {
-    pub fn box_index_iterator(
-        space_id: u32,
-        index_id: u32,
-        type_: c_int,
-        key: *const c_char,
-        key_end: *const c_char,
-    ) -> *mut BoxIterator;
-    pub fn box_iterator_next(iterator: *mut BoxIterator, result: *mut *mut BoxTuple) -> c_int;
-    pub fn box_iterator_free(iterator: *mut BoxIterator);
+    pub fn box_index_id_by_name(space_id: u32, name: *const c_char, len: u32) -> u32;
+    pub fn box_space_id_by_name(name: *const c_char, len: u32) -> u32;
     pub fn box_index_len(space_id: u32, index_id: u32) -> isize;
     pub fn box_index_bsize(space_id: u32, index_id: u32) -> isize;
     pub fn box_index_random(
@@ -244,36 +249,38 @@ extern "C" {
         key: *const c_char,
         key_end: *const c_char,
     ) -> isize;
-    pub fn box_delete(
+}
+
+#[repr(C)]
+pub struct BoxIterator {
+    _unused: [u8; 0],
+}
+
+// Index iterator
+extern "C" {
+    pub fn box_index_iterator(
         space_id: u32,
         index_id: u32,
+        type_: c_int,
         key: *const c_char,
         key_end: *const c_char,
-        result: *mut *mut BoxTuple,
-    ) -> c_int;
-    pub fn box_update(
-        space_id: u32,
-        index_id: u32,
-        key: *const c_char,
-        key_end: *const c_char,
-        ops: *const c_char,
-        ops_end: *const c_char,
-        index_base: c_int,
-        result: *mut *mut BoxTuple,
-    ) -> c_int;
-    pub fn box_index_id_by_name(space_id: u32, name: *const c_char, len: u32) -> u32;
-    pub fn box_space_id_by_name(name: *const c_char, len: u32) -> u32;
-    pub fn box_truncate(space_id: u32) -> c_int;
-    pub fn box_upsert(
-        space_id: u32,
-        index_id: u32,
-        tuple: *const c_char,
-        tuple_end: *const c_char,
-        ops: *const c_char,
-        ops_end: *const c_char,
-        index_base: c_int,
-        result: *mut *mut BoxTuple,
-    ) -> c_int;
+    ) -> *mut BoxIterator;
+    pub fn box_iterator_next(iterator: *mut BoxIterator, result: *mut *mut BoxTuple) -> c_int;
+    pub fn box_iterator_free(iterator: *mut BoxIterator);
+}
+
+#[repr(C)]
+pub struct BoxTuple {
+    _unused: [u8; 0],
+}
+
+#[repr(C)]
+pub struct BoxTupleFormat {
+    _unused: [u8; 0],
+}
+
+// Tuple
+extern "C" {
     pub fn box_tuple_extract_key(
         tuple: *const BoxTuple,
         space_id: u32,
@@ -293,14 +300,6 @@ extern "C" {
     pub fn box_tuple_format_default() -> *mut BoxTupleFormat;
     pub fn box_tuple_format(tuple: *const BoxTuple) -> *mut BoxTupleFormat;
     pub fn box_tuple_field(tuple: *const BoxTuple, fieldno: u32) -> *const c_char;
-    pub fn box_tuple_iterator(tuple: *mut BoxTuple) -> *mut BoxTupleIterator;
-    pub fn box_tuple_iterator_free(it: *mut BoxTupleIterator);
-    pub fn box_tuple_position(it: *mut BoxTupleIterator) -> u32;
-    pub fn box_tuple_rewind(it: *mut BoxTupleIterator);
-    pub fn box_tuple_seek(it: *mut BoxTupleIterator, fieldno: u32) -> *const c_char;
-    pub fn box_tuple_next(it: *mut BoxTupleIterator) -> *const c_char;
-    pub fn box_key_def_new(fields: *mut u32, types: *mut u32, part_count: u32) -> *mut BoxKeyDef;
-    pub fn box_key_def_delete(key_def: *mut BoxKeyDef);
     pub fn box_tuple_compare(
         tuple_a: *mut BoxTuple,
         tuple_b: *mut BoxTuple,
@@ -311,19 +310,40 @@ extern "C" {
         key_b: *const c_char,
         key_def: *mut BoxKeyDef,
     ) -> c_int;
+}
+
+#[repr(C)]
+pub struct BoxTupleIterator {
+    _unused: [u8; 0],
+}
+
+// Tuple iterator
+extern "C" {
+    pub fn box_tuple_iterator(tuple: *mut BoxTuple) -> *mut BoxTupleIterator;
+    pub fn box_tuple_iterator_free(it: *mut BoxTupleIterator);
+    pub fn box_tuple_position(it: *mut BoxTupleIterator) -> u32;
+    pub fn box_tuple_rewind(it: *mut BoxTupleIterator);
+    pub fn box_tuple_seek(it: *mut BoxTupleIterator, fieldno: u32) -> *const c_char;
+    pub fn box_tuple_next(it: *mut BoxTupleIterator) -> *const c_char;
+}
+
+#[repr(C)]
+pub struct BoxKeyDef {
+    _unused: [u8; 0],
+}
+
+extern "C" {
+    pub fn box_key_def_new(fields: *mut u32, types: *mut u32, part_count: u32) -> *mut BoxKeyDef;
+    pub fn box_key_def_delete(key_def: *mut BoxKeyDef);
+}
+
+#[repr(C)]
+pub struct BoxFunctionCtx {
+    _unused: [u8; 0],
+}
+
+extern "C" {
     pub fn box_return_tuple(ctx: *mut BoxFunctionCtx, tuple: *mut BoxTuple) -> c_int;
-    pub fn box_insert(
-        space_id: u32,
-        tuple: *const c_char,
-        tuple_end: *const c_char,
-        result: *mut *mut BoxTuple,
-    ) -> c_int;
-    pub fn box_replace(
-        space_id: u32,
-        tuple: *const c_char,
-        tuple_end: *const c_char,
-        result: *mut *mut BoxTuple,
-    ) -> c_int;
     pub fn box_return_mp(
         ctx: *mut BoxFunctionCtx,
         mp: *const c_char,

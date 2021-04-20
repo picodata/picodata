@@ -14,7 +14,7 @@ use num_traits::ToPrimitive;
 
 use crate::error::{Error, TarantoolError};
 use crate::ffi::tarantool as ffi;
-use crate::schema;
+use crate::schema::index as schema_index;
 use crate::tuple::{AsTuple, Tuple, TupleBuffer};
 
 /// An index is a group of key values and pointers.
@@ -80,6 +80,117 @@ pub enum IteratorType {
     Neighbor = 11,
 }
 
+/// List of options for new or updated index.
+///
+/// For details see [space_object:create_index - options](https://www.tarantool.io/en/doc/latest/reference/reference_lua/box_space/create_index/).
+#[derive(Serialize)]
+pub struct IndexOptions {
+    pub index_type: Option<IndexType>,
+    pub id: Option<u32>,
+    pub unique: Option<bool>,
+    pub if_not_exists: Option<bool>,
+    pub parts: Option<Vec<IndexPart>>,
+    pub dimension: Option<u32>,
+    pub distance: Option<RtreeIndexDistanceType>,
+    pub bloom_fpr: Option<f32>,
+    pub page_size: Option<u32>,
+    pub range_size: Option<u32>,
+    pub run_count_per_level: Option<u32>,
+    pub run_size_ratio: Option<f32>,
+    pub sequence: Option<IndexSequenceOption>,
+    pub func: Option<String>,
+    // Only for Tarantool >= 2.6
+    // pub hint: Option<bool>,
+}
+
+impl Default for IndexOptions {
+    fn default() -> Self {
+        IndexOptions {
+            index_type: Some(IndexType::Tree),
+            id: None,
+            unique: Some(true),
+            if_not_exists: Some(false),
+            parts: Some(vec![IndexPart {
+                field_index: 1,
+                field_type: IndexFieldType::Unsigned,
+                collation: None,
+                is_nullable: None,
+                path: None,
+            }]),
+            dimension: Some(2),
+            distance: Some(RtreeIndexDistanceType::Euclid),
+            bloom_fpr: Some(0.05),
+            page_size: Some(8 * 1024),
+            range_size: None,
+            run_count_per_level: Some(2),
+            run_size_ratio: Some(3.5),
+            sequence: None,
+            func: None,
+            // Only for Tarantool >= 2.6
+            // hint: Some(true),
+        }
+    }
+}
+
+/// Sequence option for new or updated index.
+///
+/// For details see [specifying a sequence in create_index](https://www.tarantool.io/en/doc/latest/reference/reference_lua/box_schema_sequence/create_index/#box-schema-sequence-create-index).
+#[derive(Serialize)]
+pub enum IndexSequenceOption {
+    SeqId {
+        seq_id: u32,
+        field_index: Option<u32>,
+    },
+    SeqName {
+        seq_name: String,
+        field_index: Option<u32>,
+    },
+    True,
+    Empty,
+}
+
+/// Type of index.
+#[derive(Copy, Clone, Debug, Serialize)]
+pub enum IndexType {
+    Hash,
+    Tree,
+    Bitset,
+    Rtree,
+}
+
+/// Type of index part.
+#[derive(Copy, Clone, Debug, Serialize)]
+pub enum IndexFieldType {
+    Unsigned,
+    String,
+    Integer,
+    Number,
+    Double,
+    Decimal,
+    Boolean,
+    Varbinary,
+    Uuid,
+    Array,
+    Scalar,
+}
+
+/// Index part.
+#[derive(Serialize)]
+pub struct IndexPart {
+    pub field_index: u32,
+    pub field_type: IndexFieldType,
+    pub collation: Option<String>,
+    pub is_nullable: Option<bool>,
+    pub path: Option<String>,
+}
+
+/// Type of distance for retree index.
+#[derive(Copy, Clone, Debug, Serialize)]
+pub enum RtreeIndexDistanceType {
+    Euclid,
+    Manhattan,
+}
+
 impl Index {
     pub(crate) fn new(space_id: u32, index_id: u32) -> Self {
         Index { space_id, index_id }
@@ -87,7 +198,7 @@ impl Index {
 
     // Drops index.
     pub fn drop(&self) -> Result<(), Error> {
-        schema::drop_index(self.space_id, self.index_id)
+        schema_index::drop_index(self.space_id, self.index_id)
     }
 
     /// Get a tuple from index by the key.

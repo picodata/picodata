@@ -18,6 +18,7 @@ categories = ["database"]
 base64 = "0.13"
 bitflags = "1.2"
 byteorder = "1.3"
+chrono = "0.4.19"
 derivative = "2.1"
 failure = "0.1.8"
 lazy_static = "1.4"
@@ -25,13 +26,20 @@ libc = "0.2"
 log = "0.4"
 num-traits = "0.2"
 num-derive = "0.3"
+protobuf = "2"
+raft = "0.6.0-alpha"
 refpool = "0.4.3"
+rand = "0.8.3"
 rmp = "0.8"
 rmp-serde = "0.14"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 sha-1 = "0.9"
 va_list = "0.1.3"
+
+[patch.crates-io]
+raft = { git = "https://github.com/tikv/raft-rs", branch = "master", default-features = true }
+raft-proto = { git = "https://github.com/tikv/raft-rs", branch = "master", default-features = true }
 
 [workspace]
 members = [
@@ -41,4 +49,5 @@ members = [
     "examples/hardest",
     "examples/read",
     "examples/write",
+    "examples/cluster_node"
 ]

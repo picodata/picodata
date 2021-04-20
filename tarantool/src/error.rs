@@ -16,18 +16,18 @@
 //! the current value and returning -1 to Tarantool from your
 //! stored procedure.
 
-use std::ffi::{CStr, CString};
-use std::os::raw::c_int;
+use std::ffi::CStr;
 use std::str::Utf8Error;
 use std::{fmt, io};
 
 use failure::_core::fmt::{Display, Formatter};
-use num_traits::{FromPrimitive, ToPrimitive};
+use num_traits::FromPrimitive;
 use rmp::decode::{MarkerReadError, NumValueReadError, ValueReadError};
 use rmp::encode::ValueWriteError;
 
 use crate::ffi::tarantool as ffi;
 use crate::net_box::ResponseError;
+use protobuf::ProtobufError;
 
 /// Represents all error cases for all routines of crate (including Tarantool errors)
 #[derive(Debug, Fail)]
@@ -38,11 +38,17 @@ pub enum Error {
     #[fail(display = "IO error: {}", _0)]
     IO(io::Error),
 
+    #[fail(display = "Raft: {}", _0)]
+    Raft(raft::Error),
+
     #[fail(display = "Failed to encode tuple: {}", _0)]
     Encode(rmp_serde::encode::Error),
 
     #[fail(display = "Failed to decode tuple: {}", _0)]
     Decode(rmp_serde::decode::Error),
+
+    #[fail(display = "Protobuf encode/decode error: {}", _0)]
+    Protobuf(ProtobufError),
 
     #[fail(display = "Unicode string decode error: {}", _0)]
     Unicode(Utf8Error),
@@ -69,6 +75,12 @@ impl From<io::Error> for Error {
     }
 }
 
+impl From<raft::Error> for Error {
+    fn from(error: raft::Error) -> Self {
+        Error::Raft(error)
+    }
+}
+
 impl From<rmp_serde::encode::Error> for Error {
     fn from(error: rmp_serde::encode::Error) -> Self {
         Error::Encode(error)
@@ -78,6 +90,12 @@ impl From<rmp_serde::encode::Error> for Error {
 impl From<rmp_serde::decode::Error> for Error {
     fn from(error: rmp_serde::decode::Error) -> Self {
         Error::Decode(error)
+    }
+}
+
+impl From<ProtobufError> for Error {
+    fn from(error: ProtobufError) -> Self {
+        Error::Protobuf(error)
     }
 }
 
@@ -416,13 +434,14 @@ pub fn clear_error() {
 }
 
 /// Set the last error.
-pub fn set_error(file: &str, line: u32, code: &TarantoolErrorCode, msg: &str) -> c_int {
-    unsafe {
-        ffi::box_error_set(
-            CString::new(file).unwrap().into_raw(),
-            line,
-            code.to_u32().unwrap(),
-            CString::new(msg).unwrap().into_raw(),
-        )
-    }
+#[macro_export]
+macro_rules! set_error {
+    ($code:expr, $($msg_args:expr),+) => {{
+        let msg = std::fmt::format(format_args!($($msg_args),*));
+        unsafe {
+            let file = std::ffi::CString::new(file!()).unwrap().into_raw();
+            let msg = std::ffi::CString::new(msg).unwrap().into_raw();
+            $crate::ffi::tarantool::box_error_set(file, line!(), $code as u32, msg)
+        }
+    }};
 }
