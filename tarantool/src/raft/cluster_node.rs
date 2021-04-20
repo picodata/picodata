@@ -1,146 +1,166 @@
 use std::cell::{Cell, RefCell};
-use std::rc::Rc;
+use std::collections::VecDeque;
 use std::time::{Duration, Instant};
 
-use raft::prelude::EntryType;
-use raft::{is_empty_snap, Config, RawNode};
+use protobuf::Message as _;
+use raft::prelude::{ConfChange, EntryType, Message};
+use raft::{Config, RawNode};
 
 use crate::error::Error;
-use crate::raft::fsm::{Command, Fsm};
-use crate::raft::protocol::{Protocol, Queue, QueueMsg};
-use crate::raft::storage::NodeStorage;
+use crate::fiber::Cond;
+use crate::raft::NodeOptions;
 
-use super::NodeOptions;
+use super::fsm::Command;
 
-pub struct ClusterNode {
-    is_active: Cell<bool>,
+pub struct ClusterNodeState {
+    node: RefCell<RawNode<raft::storage::MemStorage>>,
     timeout: Duration,
-    raft_node: RefCell<RawNode<NodeStorage>>,
-    fsm: RefCell<Fsm>,
-    protocol: Protocol,
-    queue: Rc<Queue>,
+    remaining_timeout: Cell<Duration>,
+    recv_queue: RefCell<VecDeque<RecvMessage>>,
+    recv_cond: Cond,
 }
 
-impl ClusterNode {
-    pub fn bootstrap(
-        bootstrap_addrs: Vec<&str>,
-        rpc_function: &str,
-        options: NodeOptions,
-    ) -> Result<ClusterNode, Error> {
+enum RecvMessage {
+    Propose(Command),
+    RaftMsg(Message),
+    Conf(ConfChange),
+}
+
+impl ClusterNodeState {
+    pub fn new(
+        id: u64,
+        peers: Vec<u64>,
+        is_leader: bool,
+        options: &NodeOptions,
+    ) -> Result<Self, Error> {
         let raft_config = Config {
-            id: 1,
-            peers: vec![1, 2],
+            id,
             ..Default::default()
         };
-        let timeout = Duration::from_millis(100);
+        let storage = raft::storage::MemStorage::new();
+        let mut node = RawNode::with_default_logger(&raft_config, storage)?;
 
-        let storage = NodeStorage::new().unwrap();
-        let raft_node = RawNode::new(&raft_config, storage, vec![]).unwrap();
+        for id in peers {
+            let mut conf_change = ConfChange::default();
+            conf_change.node_id = id;
+            conf_change.set_change_type(raft::eraftpb::ConfChangeType::AddNode);
+            node.apply_conf_change(&conf_change)?;
+        }
+
+        if is_leader {
+            node.raft.become_candidate();
+            node.raft.become_leader();
+        }
 
         Ok(Self {
-            is_active: Cell::new(false),
-            timeout,
-            raft_node: RefCell::new(raft_node),
-            fsm: RefCell::new(Fsm::new()),
-            protocol: Protocol::new(),
-            queue: Rc::new(Queue::new()),
+            node: RefCell::new(node),
+            timeout: options.tick_interval,
+            remaining_timeout: Cell::new(options.tick_interval),
+            recv_queue: RefCell::new(VecDeque::with_capacity(options.recv_queue_size)),
+            recv_cond: Cond::new(),
         })
     }
 
-    pub fn add_entry(&self, command: Command) {
-        self.queue.send(QueueMsg::Propose(command))
-    }
+    pub fn step(&self, send_queue: &mut VecDeque<Message>) -> Result<(), Error> {
+        let now = Instant::now();
+        let mut node = self.node.borrow_mut();
 
-    pub fn start(&self) {
-        let mut remaining_timeout = self.timeout;
-        loop {
-            if !self.is_active.get() {
-                break;
-            }
+        // block if recv queue is empty (wait t <= remaining_timeout)
+        if self.recv_queue.borrow().is_empty() {
+            self.recv_cond.wait_timeout(self.remaining_timeout.get());
+        }
 
-            let now = Instant::now();
-            match self.queue.recv(remaining_timeout) {
-                Some(QueueMsg::Propose(cmd)) => {
-                    let serialized_cmd = rmp_serde::encode::to_vec(&cmd).unwrap();
-                    self.raft_node
-                        .borrow_mut()
-                        .propose(vec![], serialized_cmd)
-                        .expect("failed to propose FSM command");
+        // dispatch next message from queue
+        if let Some(msg) = self.recv_queue.borrow_mut().pop_front() {
+            match msg {
+                RecvMessage::Propose(_) => {
+                    todo!();
                 }
-                Some(QueueMsg::Raft(raft_msg)) => {
-                    self.raft_node
-                        .borrow_mut()
-                        .step(raft_msg)
-                        .expect("failed to perform Raft step");
-                }
-                None => (),
-            };
-
-            // tick the Raft node at regular intervals (see: `self.timeout`)
-            let elapsed = now.elapsed();
-            if elapsed >= remaining_timeout {
-                remaining_timeout = self.timeout;
-                self.raft_node.borrow_mut().tick();
-            } else {
-                remaining_timeout -= elapsed;
-            }
-
-            if self.raft_node.borrow().has_ready() {
-                let mut raft_node = self.raft_node.borrow_mut();
-                let mut ready = raft_node.ready();
-
-                // if this is a snapshot: we need to apply the snapshot at first
-                if !is_empty_snap(ready.snapshot()) {
-                    raft_node
-                        .mut_store()
-                        .apply_snapshot(ready.snapshot().clone())
-                        .unwrap();
-                }
-
-                // append entries to the Raft log
-                if !ready.entries().is_empty() {
-                    raft_node.mut_store().append(ready.entries()).unwrap();
-                }
-
-                // if Raft hard-state changed: we need to persist it
-                if let Some(hs) = ready.hs() {
-                    raft_node.mut_store().set_hard_state(hs.clone()).unwrap();
-                }
-
-                let msgs = ready.messages.drain(..);
-                for msg in msgs {
-                    self.protocol.send(msg);
-                }
-
-                // if newly committed log entries are available: apply to the state machine
-                if let Some(committed_entries) = ready.committed_entries.take() {
-                    for entry in committed_entries {
-                        // when the peer becomes leader it will send an empty entry
-                        if entry.get_data().is_empty() {
-                            continue;
-                        }
-
-                        let entry_index = entry.get_index();
-                        match entry.get_entry_type() {
-                            EntryType::EntryNormal => self.fsm.borrow_mut().handle_normal(entry),
-                            EntryType::EntryConfChange => {
-                                self.fsm.borrow_mut().handle_conf_change(entry)
-                            }
-                        }
-
-                        raft_node
-                            .mut_store()
-                            .set_last_apply_index(entry_index)
-                            .unwrap();
-                    }
-                }
-
-                raft_node.advance(ready);
+                RecvMessage::RaftMsg(msg) => node.step(msg)?,
+                RecvMessage::Conf(_) => {}
             }
         }
+
+        // tick the Raft node at regular intervals (see: `self.timeout`)
+        let elapsed = now.elapsed();
+        self.remaining_timeout
+            .set(match self.remaining_timeout.get().checked_sub(elapsed) {
+                None => {
+                    node.tick();
+                    self.timeout
+                }
+                Some(remaining_timeout) => remaining_timeout,
+            });
+
+        if node.has_ready() {
+            let mut ready = node.ready();
+            let store = node.mut_store();
+
+            // if this is a snapshot: we need to apply the snapshot at first
+            let snapshot = ready.snapshot();
+            if !snapshot.is_empty() {
+                store.wl().apply_snapshot(snapshot.clone())?;
+            }
+
+            // append entries to the Raft log
+            let entries = ready.entries();
+            if !entries.is_empty() {
+                store.wl().append(entries)?;
+            }
+
+            // if Raft hard-state changed: we need to persist it
+            if let Some(hs) = ready.hs() {
+                store.wl().set_hardstate(hs.clone());
+            }
+
+            for msgs in ready.take_messages() {
+                send_queue.extend(msgs);
+            }
+
+            // advance the Raft.
+            let mut light_ready = node.advance(ready);
+
+            for msgs in light_ready.take_messages() {
+                send_queue.extend(msgs);
+            }
+
+            // if newly committed log entries are available: apply to the state machine
+            let committed_entries = light_ready.take_committed_entries();
+            if !committed_entries.is_empty() {
+                for entry in committed_entries {
+                    if entry.get_data().is_empty() {
+                        // when the peer becomes Leader it will send an empty entry
+                        continue;
+                    }
+                    match entry.get_entry_type() {
+                        EntryType::EntryNormal => {}
+                        EntryType::EntryConfChange => {
+                            let mut conf_change = ConfChange::default();
+                            conf_change.merge_from_bytes(&entry.data)?;
+
+                            let conf_state = node.apply_conf_change(&conf_change)?;
+                            node.mut_store().wl().set_conf_state(conf_state);
+                        }
+                        _ => {}
+                    }
+                }
+            }
+
+            // advance the apply index.
+            node.advance_apply();
+        }
+
+        Ok(())
     }
 
-    pub fn stop(&self) {
-        self.is_active.set(false);
+    pub fn add_entry(&self, command: Command) {
+        todo!()
+    }
+
+    pub fn handle_msg(&self, msg: Message) {
+        self.recv_queue
+            .borrow_mut()
+            .push_back(RecvMessage::RaftMsg(msg));
+        self.recv_cond.signal();
     }
 }

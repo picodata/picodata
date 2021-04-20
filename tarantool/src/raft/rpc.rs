@@ -4,10 +4,8 @@ use std::net::SocketAddr;
 use std::path::Path;
 
 use crate::error::Error;
-use crate::net_box::Conn;
 use crate::session;
-use crate::space::{FuncMetadata, Privilege};
-use crate::space::{Space, SystemSpace};
+use crate::space::{FuncMetadata, Privilege, Space, SystemSpace};
 use crate::tuple::AsTuple;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -15,8 +13,10 @@ use crate::tuple::AsTuple;
 pub enum Request {
     #[serde(rename = "bootstrap")]
     Bootstrap(BootstrapMsg),
+    #[serde(rename = "propose")]
     Propose,
-    Raft,
+    #[serde(rename = "raft")]
+    Raft { data: Vec<u8> },
 }
 
 impl AsTuple for Request {}
@@ -26,7 +26,8 @@ impl AsTuple for Request {}
 pub enum Response {
     #[serde(rename = "bootstrap")]
     Bootstrap(BootstrapMsg),
-    Raft,
+    #[serde(rename = "ack")]
+    Ack,
 }
 
 impl AsTuple for Response {}
