@@ -132,7 +132,7 @@ impl Tuple {
     }
 
     /// Deserializes tuple contents into structure of type `T`
-    pub fn into_struct<T>(self) -> Result<T, Error>
+    pub fn as_struct<T>(&self) -> Result<T, Error>
     where
         T: DeserializeOwned,
     {
@@ -153,6 +153,14 @@ impl Tuple {
 
         unsafe { buffer.set_len(actual_size as usize) };
         Ok(buffer)
+    }
+
+    /// Deserializes tuple contents into structure of type `T`
+    pub fn into_struct<T>(self) -> Result<T, Error>
+    where
+        T: DeserializeOwned,
+    {
+        self.as_struct()
     }
 
     pub(crate) fn into_ptr(self) -> *mut ffi::BoxTuple {
@@ -484,7 +492,7 @@ impl FunctionCtx {
     /// Returned Tuple is automatically reference counted by Tarantool.
     ///
     /// - `tuple` - a Tuple to return
-    pub fn return_tuple(&self, tuple: Tuple) -> Result<c_int, Error> {
+    pub fn return_tuple(&self, tuple: &Tuple) -> Result<c_int, Error> {
         let result = unsafe { ffi::box_return_tuple(self.inner, tuple.ptr) };
         if result < 0 {
             Err(TarantoolError::last().into())
