@@ -6,6 +6,7 @@
 //! See also:
 //! - [Lua reference: Submodule box.space](https://www.tarantool.io/en/doc/latest/reference/reference_lua/box_space/)
 //! - [C API reference: Module box](https://www.tarantool.io/en/doc/latest/dev_guide/reference_capi/box/)
+use std::fmt;
 use std::os::raw::c_char;
 use std::ptr::null_mut;
 
@@ -126,6 +127,7 @@ pub struct SpaceCreateOptions {
     pub is_local: bool,
     pub is_temporary: bool,
     pub is_sync: bool,
+    pub format: Option<Vec<SpaceFieldFormat>>,
 }
 
 impl Default for SpaceCreateOptions {
@@ -139,7 +141,45 @@ impl Default for SpaceCreateOptions {
             is_local: true,
             is_temporary: true,
             is_sync: false,
+            format: None,
         }
+    }
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct SpaceFieldFormat {
+    pub name: String,
+    #[serde(alias = "type")]
+    pub field_type: SpaceFieldType,
+}
+
+impl SpaceFieldFormat {
+    pub fn new(name: &str, ft: SpaceFieldType) -> Self {
+        return SpaceFieldFormat {
+            name: name.to_string(),
+            field_type: ft,
+        };
+    }
+}
+
+#[derive(Copy, Clone, Debug, Serialize)]
+pub enum SpaceFieldType {
+    Any,
+    Unsigned,
+    String,
+    Number,
+    Double,
+    Integer,
+    Boolean,
+    Decimal,
+    Uuid,
+    Array,
+    Scalar,
+}
+
+impl fmt::Display for SpaceFieldType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:?}", self)
     }
 }
 

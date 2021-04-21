@@ -8,7 +8,10 @@ use tester::{
     TestDescAndFn, TestFn, TestName, TestOpts, TestType,
 };
 
+use tarantool::error::Error;
 use tarantool::ffi::lua as ffi_lua;
+use tarantool::index::{IndexFieldType, IndexOptions, IndexPart, IndexType};
+use tarantool::space::{Space, SpaceCreateOptions, SpaceFieldFormat, SpaceFieldType};
 
 mod bench_bulk_insert;
 mod common;
@@ -40,9 +43,97 @@ macro_rules! tests {
     }
 }
 
-#[derive(Default, Deserialize)]
+#[derive(Clone, Copy, Default, Deserialize)]
 struct TestConfig {
     bench: bool,
+}
+
+fn create_test_spaces() -> Result<(), Error> {
+    // space.test_s1
+    let mut test_s1_opts = SpaceCreateOptions::default();
+    test_s1_opts.format = Some(vec![
+        SpaceFieldFormat::new("id", SpaceFieldType::Unsigned),
+        SpaceFieldFormat::new("text", SpaceFieldType::String),
+    ]);
+    let mut test_s1 = match Space::create("test_s1", &test_s1_opts) {
+        Ok(s) => s,
+        Err(e) => return Err(e),
+    };
+
+    // space.test_s1.index.primary
+    let mut test_s1_idx_primary = IndexOptions::default();
+    test_s1_idx_primary.index_type = Some(IndexType::Tree);
+    test_s1_idx_primary.parts = Some(vec![IndexPart::new(1, IndexFieldType::Unsigned)]);
+    test_s1.create_index("primary", &test_s1_idx_primary)?;
+
+    // space.test_s2
+    let mut test_s2_opts = SpaceCreateOptions::default();
+    test_s2_opts.format = Some(vec![
+        SpaceFieldFormat::new("id", SpaceFieldType::Unsigned),
+        SpaceFieldFormat::new("key", SpaceFieldType::String),
+        SpaceFieldFormat::new("value", SpaceFieldType::String),
+        SpaceFieldFormat::new("a", SpaceFieldType::Integer),
+        SpaceFieldFormat::new("b", SpaceFieldType::Integer),
+    ]);
+    let mut test_s2 = match Space::create("test_s2", &test_s1_opts) {
+        Ok(s) => s,
+        Err(e) => return Err(e),
+    };
+
+    // space.test_s2.index.primary
+    let mut test_s2_idx_primary = IndexOptions::default();
+    test_s2_idx_primary.index_type = Some(IndexType::Tree);
+    test_s2_idx_primary.parts = Some(vec![IndexPart::new(1, IndexFieldType::Unsigned)]);
+    test_s2.create_index("primary", &test_s2_idx_primary)?;
+
+    // space.test_s2.index.idx_1
+    let mut test_s2_idx_sec_1 = IndexOptions::default();
+    test_s2_idx_sec_1.index_type = Some(IndexType::Hash);
+    test_s2_idx_sec_1.parts = Some(vec![IndexPart::new(2, IndexFieldType::String)]);
+    test_s2.create_index("idx_1", &test_s2_idx_sec_1)?;
+
+    // space.test_s2.index.idx_2
+    let mut test_s2_idx_sec_2 = IndexOptions::default();
+    test_s2_idx_sec_2.index_type = Some(IndexType::Tree);
+    test_s2_idx_sec_2.parts = Some(vec![
+        IndexPart::new(1, IndexFieldType::Unsigned),
+        IndexPart::new(4, IndexFieldType::Integer),
+        IndexPart::new(5, IndexFieldType::Integer),
+    ]);
+    test_s2.create_index("idx_2", &test_s2_idx_sec_2)?;
+
+    // space.test_s2.index.idx_3
+    let mut test_s2_idx_sec_3 = IndexOptions::default();
+    test_s2_idx_sec_3.index_type = Some(IndexType::Tree);
+    test_s2_idx_sec_3.unique = Some(false);
+    test_s2_idx_sec_3.parts = Some(vec![IndexPart::new(4, IndexFieldType::Integer)]);
+    test_s2.create_index("idx_3", &test_s2_idx_sec_3)?;
+
+    // Insert test data into space.test_s2
+    for i in 1..21 {
+        let rec = common::S2Record {
+            id: i,
+            key: format!("key_{}", i),
+            value: format!("value_{}", i),
+            a: (i as i32) % 5,
+            b: (i as f32 / 5.0).floor() as i32,
+        };
+        test_s2.insert(&rec)?;
+    }
+
+    Ok(())
+}
+
+fn drop_test_spaces() -> Result<(), Error> {
+    let space_names = vec!["test_s1".to_string(), "test_s2".to_string()];
+
+    for s in space_names.iter() {
+        if let Some(space) = Space::find(s) {
+            space.drop()?;
+        }
+    }
+
+    Ok(())
 }
 
 fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
@@ -174,16 +265,28 @@ pub extern "C" fn start(l: *mut ffi_lua::lua_State) -> c_int {
         TestConfig::default()
     };
 
-    match run_tests(cfg) {
-        Ok(is_success) => {
-            unsafe { ffi_lua::lua_pushinteger(l, (!is_success) as isize) };
-            1
-        }
-        Err(e) => {
-            unsafe { ffi_lua::luaL_error(l, e.to_string().as_ptr() as *const c_schar) };
-            0
-        }
+    if let Err(e) = create_test_spaces() {
+        unsafe { ffi_lua::luaL_error(l, e.to_string().as_ptr() as *const c_schar) };
+        return 0;
     }
+
+    let is_success = match run_tests(cfg) {
+        Ok(success) => success,
+        Err(e) => {
+            // Clenaup without handling error to avoid code mess.
+            drop_test_spaces();
+            unsafe { ffi_lua::luaL_error(l, e.to_string().as_ptr() as *const c_schar) };
+            return 0;
+        }
+    };
+
+    if let Err(e) = drop_test_spaces() {
+        unsafe { ffi_lua::luaL_error(l, e.to_string().as_ptr() as *const c_schar) };
+        return 0;
+    }
+
+    unsafe { ffi_lua::lua_pushinteger(l, (!is_success) as isize) };
+    1
 }
 
 #[no_mangle]

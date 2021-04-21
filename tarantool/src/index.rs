@@ -184,6 +184,18 @@ pub struct IndexPart {
     pub path: Option<String>,
 }
 
+impl IndexPart {
+    pub fn new(fi: u32, ft: IndexFieldType) -> Self {
+        return IndexPart {
+            field_index: fi,
+            field_type: ft,
+            collation: None,
+            is_nullable: None,
+            path: None,
+        };
+    }
+}
+
 /// Type of distance for retree index.
 #[derive(Copy, Clone, Debug, Serialize)]
 pub enum RtreeIndexDistanceType {

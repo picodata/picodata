@@ -9,7 +9,7 @@ use crate::schema;
 use crate::schema::sequence as schema_seq;
 use crate::session;
 use crate::space::{Space, SystemSpace, SYSTEM_ID_MAX};
-use crate::space::{SpaceCreateOptions, SpaceEngineType};
+use crate::space::{SpaceCreateOptions, SpaceEngineType, SpaceFieldFormat};
 use crate::tuple::{AsTuple, Tuple};
 
 /// SpaceMetadata is tuple, holding space metadata in system `_space` space.
@@ -100,17 +100,19 @@ fn insert_new_space(
     name: &str,
     opts: &SpaceCreateOptions,
 ) -> Result<Space, Error> {
-    // Update _space with metadata about new space.
+    // `engine`
     let engine = match opts.engine {
         None => SpaceEngineType::Memtx,
         Some(e) => e,
     };
 
+    // `field_count`
     let field_count = match opts.field_count {
         None => 0,
         Some(count) => count,
     };
 
+    // `space_opts`
     let mut space_opts = Map::<String, Value>::new();
     if opts.is_local {
         space_opts.insert("group_id".to_string(), Value::Number(Number::from(1)));
@@ -121,6 +123,17 @@ fn insert_new_space(
     // Only for Tarantool version >= 2.6
     // space_opts.insert("is_sync".to_string(), Value::Bool(opts.is_sync));
 
+    // `space_format`
+    let mut space_format = Vec::<Value>::new();
+    if let Some(format) = &opts.format {
+        for ft in format {
+            let mut field_format = Map::<String, Value>::new();
+            field_format.insert("name".to_string(), Value::String(ft.name.clone()));
+            field_format.insert("type".to_string(), Value::String(ft.field_type.to_string()));
+            space_format.push(Value::Object(field_format));
+        }
+    }
+
     let new_space = SpaceMetadata {
         id: id,
         uid: uid,
@@ -128,7 +141,7 @@ fn insert_new_space(
         engine: engine,
         field_count: field_count,
         options: space_opts.clone(),
-        format: Vec::<Value>::new(),
+        format: space_format.clone(),
     };
 
     let mut sys_space: Space = SystemSpace::Space.into();
