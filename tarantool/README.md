@@ -1,4 +1,4 @@
-# Tarantool C API bindings
+# Tarantool Rust SDK
 
 [![Latest Version]][crates.io] [![Docs badge]][docs.rs]
 
