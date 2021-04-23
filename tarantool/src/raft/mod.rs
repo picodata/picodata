@@ -10,7 +10,7 @@ use rand::random;
 
 use crate::error::{Error, TarantoolErrorCode};
 use crate::fiber::sleep;
-use crate::net_box::Conn;
+use crate::net_box::{Conn, ConnOptions, Options};
 use crate::tuple::{FunctionArgs, FunctionCtx, Tuple};
 
 use self::cluster_node::ClusterNodeState;
@@ -42,6 +42,8 @@ pub struct NodeOptions {
     tick_interval: Duration,
     recv_queue_size: usize,
     send_queue_size: usize,
+    connection_options: ConnOptions,
+    rpc_call_options: Options,
 }
 
 impl Default for NodeOptions {
@@ -51,6 +53,8 @@ impl Default for NodeOptions {
             tick_interval: Duration::from_millis(100),
             recv_queue_size: 127,
             send_queue_size: 127,
+            connection_options: Default::default(),
+            rpc_call_options: Default::default(),
         }
     }
 }
@@ -75,7 +79,11 @@ impl Node {
                 NodeState::Init => {
                     let mut connections = vec![];
                     for addr in bootstrap_addrs.into_iter() {
-                        connections.push(Conn::new(addr, Default::default())?)
+                        connections.push(Conn::new(
+                            addr,
+                            self.options.connection_options.clone(),
+                            None,
+                        )?)
                     }
 
                     let is_completed = self.cold_bootstrap(connections)?;
@@ -222,7 +230,10 @@ impl Node {
                 }
 
                 if !connections.contains_key(id) {
-                    connections.insert(*id, Conn::new(*addr, Default::default())?);
+                    connections.insert(
+                        *id,
+                        Conn::new(*addr, self.options.connection_options.clone(), None)?,
+                    );
                 }
             }
         }
@@ -259,7 +270,7 @@ impl Node {
         let result = conn.call(
             self.rpc_function.as_str(),
             &rpc::Request::Bootstrap(request),
-            &Default::default(),
+            &self.options.rpc_call_options,
         );
 
         match result {
@@ -296,7 +307,7 @@ impl Node {
                 match self.nodes.borrow().get(&recipient_id) {
                     None => continue,
                     Some(recipient_addr) => {
-                        let conn = Conn::new(recipient_addr, Default::default())?;
+                        let conn = Conn::new(recipient_addr, Default::default(), None)?;
                         connections.insert(recipient_id, conn);
                     }
                 }

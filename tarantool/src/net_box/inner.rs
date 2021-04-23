@@ -45,9 +45,11 @@ pub struct ConnInner {
 }
 
 impl ConnInner {
-    pub fn new(addrs: Vec<SocketAddr>, mut options: ConnOptions) -> Rc<Self> {
-        let triggers = options.triggers.take();
-
+    pub fn new(
+        addrs: Vec<SocketAddr>,
+        options: ConnOptions,
+        triggers: Option<Rc<dyn ConnTriggers>>,
+    ) -> Rc<Self> {
         // init recv fiber
         let mut recv_fiber = Fiber::new("_recv_worker", &mut recv_worker);
         recv_fiber.set_joinable(true);
@@ -368,7 +370,7 @@ impl ConnInner {
 }
 
 struct ConnTriggersWrapper {
-    callbacks: Box<dyn ConnTriggers>,
+    callbacks: Rc<dyn ConnTriggers>,
     self_ref: Weak<ConnInner>,
 }
 

@@ -42,6 +42,7 @@ impl TDynBenchFn for BulkInsertBenchmark {
                     password: "password".to_string(),
                     ..ConnOptions::default()
                 },
+                None,
             )
             .unwrap(),
         );

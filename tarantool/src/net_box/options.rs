@@ -30,6 +30,7 @@ pub struct Options {
 }
 
 /// Connection options; see [Conn::new()](struct.Conn.html#method.new)
+#[derive(Clone)]
 pub struct ConnOptions {
     /// Authentication user name. If left empty, then the session user is `'guest'`
     /// (the `'guest'` user does not need a password).
@@ -43,7 +44,8 @@ pub struct ConnOptions {
     ///         user: "username".to_string(),
     ///         password: "userpassword".to_string(),
     ///         ..ConnOptions::default()
-    ///     }
+    ///     },
+    ///     None
     /// );
     /// ```
     pub user: String,
@@ -86,14 +88,6 @@ pub struct ConnOptions {
     ///
     /// Default: 65536
     pub recv_buffer_size: usize,
-
-    /// Triggers for some connection states changes.
-    ///
-    /// Events can be hooked:
-    /// - on connection set
-    /// - after disconnected
-    /// - after schema updated  
-    pub triggers: Option<Box<dyn ConnTriggers>>,
 }
 
 impl Default for ConnOptions {
@@ -107,7 +101,6 @@ impl Default for ConnOptions {
             send_buffer_limit: 64000,
             send_buffer_size: 65536,
             recv_buffer_size: 65536,
-            triggers: None,
         }
     }
 }
