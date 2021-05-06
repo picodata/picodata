@@ -1,6 +1,7 @@
 use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, HashMap, VecDeque};
-use std::ffi::CString;
+use std::ffi::{CStr, CString};
+use std::io;
 use std::net::SocketAddr;
 use std::time::Duration;
 
@@ -9,7 +10,7 @@ use raft::prelude::Message;
 use rand::random;
 
 use crate::error::{Error, TarantoolErrorCode};
-use crate::fiber::{sleep, Latch};
+use crate::fiber::{sleep, Cond, Latch};
 use crate::net_box::{Conn, ConnOptions, Options};
 use crate::tuple::{FunctionArgs, FunctionCtx, Tuple};
 
@@ -20,7 +21,7 @@ mod inner;
 mod rpc;
 mod storage;
 
-#[derive(Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub enum NodeState {
     Init,
     Bootstrapping,
@@ -33,7 +34,8 @@ pub struct Node {
     addr: Cell<Option<SocketAddr>>,
     state: Cell<NodeState>,
     state_lock: Latch,
-    node: RefCell<NodeInner>,
+    state_cond: Cond,
+    inner: RefCell<NodeInner>,
     peer_addrs: RefCell<BTreeMap<u64, SocketAddr>>,
     connections: RefCell<HashMap<u64, Conn>>,
     rpc_function: String,
@@ -70,7 +72,8 @@ impl Node {
             addr: Cell::new(None),
             state: Cell::new(NodeState::Init),
             state_lock: Latch::new(),
-            node: RefCell::new(NodeInner::new(id, &options)?),
+            state_cond: Cond::new(),
+            inner: RefCell::new(NodeInner::new(id, &options)?),
             peer_addrs: RefCell::new(BTreeMap::new()),
             connections: RefCell::new(HashMap::new()),
             rpc_function: rpc_function.to_string(),
@@ -81,50 +84,58 @@ impl Node {
     pub fn run(&self, bootstrap_addrs: &Vec<&str>) -> Result<(), Error> {
         let mut send_queue = VecDeque::with_capacity(self.options.send_queue_size);
         loop {
-            let _lock = self.state_lock.lock();
-            let next_state = match self.state.get() {
-                NodeState::Init => {
-                    let mut connections = vec![];
-                    for addr in bootstrap_addrs.into_iter() {
-                        connections.push(Conn::new(
-                            addr,
-                            self.options.connection_options.clone(),
-                            None,
-                        )?)
-                    }
+            let mut is_state_changed = false;
+            {
+                let _lock = self.state_lock.lock();
+                let next_state = match self.state.get() {
+                    NodeState::Init => {
+                        let mut connections = vec![];
+                        for addr in bootstrap_addrs.into_iter() {
+                            connections.push(Conn::new(
+                                addr,
+                                self.options.connection_options.clone(),
+                                None,
+                            )?)
+                        }
 
-                    let is_completed = self.cold_bootstrap(connections)?;
-                    if is_completed {
-                        Some(NodeState::Bootstrapping)
-                    } else {
-                        sleep(self.options.bootstrap_poll_interval.as_secs_f64());
+                        let is_completed = self.cold_bootstrap(connections)?;
+                        if is_completed {
+                            Some(NodeState::Bootstrapping)
+                        } else {
+                            sleep(self.options.bootstrap_poll_interval.as_secs_f64());
+                            None
+                        }
+                    }
+                    NodeState::Bootstrapping => {
+                        let new_nodes_count = self.warm_bootstrap()?;
+                        if let Some(0) = new_nodes_count {
+                            let nodes = self.peer_addrs.borrow();
+                            let is_leader = *nodes.iter().next().unwrap().0 == self.id;
+                            let peers = nodes.keys().map(|id| *id).collect();
+
+                            self.inner.borrow_mut().init(peers, is_leader);
+                            Some(NodeState::Active)
+                        } else {
+                            sleep(self.options.bootstrap_poll_interval.as_secs_f64());
+                            None
+                        }
+                    }
+                    NodeState::Active => {
+                        self.inner.borrow_mut().step(&mut send_queue)?;
+                        self.send_raft_batch(&mut send_queue.drain(..))?;
                         None
                     }
-                }
-                NodeState::Bootstrapping => {
-                    let new_nodes_count = self.warm_bootstrap()?;
-                    if let Some(0) = new_nodes_count {
-                        let nodes = self.peer_addrs.borrow();
-                        let is_leader = *nodes.iter().next().unwrap().0 == self.id;
-                        let peers = nodes.keys().map(|id| *id).collect();
+                    NodeState::Closed => break,
+                };
 
-                        self.node.borrow_mut().init(peers, is_leader);
-                        Some(NodeState::Active)
-                    } else {
-                        sleep(self.options.bootstrap_poll_interval.as_secs_f64());
-                        None
-                    }
+                if let Some(next_state) = next_state {
+                    self.state.replace(next_state);
+                    is_state_changed = true;
                 }
-                NodeState::Active => {
-                    self.node.borrow_mut().step(&mut send_queue)?;
-                    self.send_raft_batch(&mut send_queue.drain(..))?;
-                    None
-                }
-                NodeState::Closed => break,
-            };
+            }
 
-            if let Some(next_state) = next_state {
-                self.state.replace(next_state);
+            if is_state_changed {
+                self.state_cond.broadcast();
             }
         }
 
@@ -148,7 +159,7 @@ impl Node {
                             Ok(()) => {
                                 let _lock = self.state_lock.lock();
                                 if let NodeState::Active = self.state.get() {
-                                    self.node.borrow().handle_msg(msg);
+                                    self.inner.borrow().handle_msg(msg);
                                 }
                             }
                         }
@@ -161,6 +172,22 @@ impl Node {
                     .unwrap_or_else(|e| set_error!(TarantoolErrorCode::ProcC, "{}", e))
             }
         }
+    }
+
+    pub fn wait_ready(&self, timeout: Duration) -> Result<(), Error> {
+        let started_at = Instant::now();
+        while self.state.get() != NodeState::Active {
+            let is_timeout = !match timeout.checked_sub(started_at.elapsed()) {
+                None => false,
+                Some(timeout) => self.state_cond.wait_timeout(timeout),
+            };
+
+            if is_timeout {
+                return Err(io::Error::from(io::ErrorKind::TimedOut).into());
+            }
+        }
+
+        Ok(())
     }
 
     pub fn close(&self) {
