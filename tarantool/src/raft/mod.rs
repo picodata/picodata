@@ -110,10 +110,8 @@ impl Node {
                         let new_nodes_count = self.warm_bootstrap()?;
                         if let Some(0) = new_nodes_count {
                             let nodes = self.peer_addrs.borrow();
-                            let is_leader = *nodes.iter().next().unwrap().0 == self.id;
                             let peers = nodes.keys().map(|id| *id).collect();
-
-                            self.inner.borrow_mut().init(peers, is_leader);
+                            self.inner.borrow_mut().init(peers, false)?;
                             Some(NodeState::Active)
                         } else {
                             sleep(self.options.bootstrap_poll_interval.as_secs_f64());
@@ -243,6 +241,8 @@ impl Node {
                     self.merge_nodes_list(response.nodes);
                 }
             }
+        }
+
         Ok(is_completed)
     }
 

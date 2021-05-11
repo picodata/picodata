@@ -44,7 +44,7 @@ impl NodeInner {
         })
     }
 
-    pub fn init(&mut self, peers: Vec<u64>, is_leader: bool) -> Result<(), Error> {
+    pub fn init(&mut self, peers: Vec<u64>, become_leader: bool) -> Result<(), Error> {
         let node = &mut self.node;
         for id in peers {
             let mut conf_change = ConfChange::default();
@@ -53,7 +53,7 @@ impl NodeInner {
             node.apply_conf_change(&conf_change)?;
         }
 
-        if is_leader {
+        if become_leader {
             node.raft.become_candidate();
             node.raft.become_leader();
         }
