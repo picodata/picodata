@@ -1,7 +1,11 @@
 use std::collections::BTreeMap;
 use std::ffi::{c_void, CStr};
-use std::net::SocketAddr;
+use std::io;
+use std::net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4, SocketAddrV6, ToSocketAddrs};
 use std::path::Path;
+use std::ptr::null_mut;
+
+use ipnetwork::{Ipv4Network, Ipv6Network};
 
 use crate::error::Error;
 use crate::session;
@@ -36,6 +40,71 @@ impl AsTuple for Response {}
 pub struct BootstrapMsg {
     pub from: u64,
     pub nodes: BTreeMap<u64, SocketAddr>,
+}
+
+pub fn self_addr(listen_addr_config: &str) -> Result<Vec<SocketAddr>, Error> {
+    let listen_addrs = match listen_addr_config.parse::<u16>() {
+        Ok(port) => vec![SocketAddr::V4(SocketAddrV4::new(
+            Ipv4Addr::UNSPECIFIED,
+            port,
+        ))],
+        _ => listen_addr_config.to_socket_addrs()?.collect(),
+    };
+
+    let mut if_addrs = null_mut::<libc::ifaddrs>();
+    let res = unsafe { libc::getifaddrs(&mut if_addrs as *mut _) };
+    if res < 0 {
+        return Err(io::Error::last_os_error().into());
+    }
+
+    let mut result = Vec::<SocketAddr>::new();
+    let mut current_if_addr = if_addrs;
+    while !current_if_addr.is_null() {
+        unsafe {
+            let ifa_addr = (*current_if_addr).ifa_addr;
+            let netmask = (*current_if_addr).ifa_netmask;
+            current_if_addr = (*current_if_addr).ifa_next;
+
+            if !(ifa_addr.is_null() || netmask.is_null()) {
+                let addr_family = (*ifa_addr).sa_family as i32;
+                let network = match addr_family {
+                    libc::AF_INET => {
+                        // is a valid IP4 Address
+                        let addr = (*(ifa_addr as *const _ as *const SocketAddrV4)).ip();
+                        let netmask = (*(netmask as *const _ as *const SocketAddrV4)).ip();
+                        ipnetwork::IpNetwork::V4(
+                            Ipv4Network::with_netmask(*addr, *netmask).unwrap(),
+                        )
+                    }
+                    libc::AF_INET6 => {
+                        // is a valid IP6 Address
+                        let addr = (*(ifa_addr as *const _ as *const SocketAddrV6)).ip();
+                        let netmask = (*(netmask as *const _ as *const SocketAddrV6)).ip();
+                        ipnetwork::IpNetwork::V6(
+                            Ipv6Network::with_netmask(*addr, *netmask).unwrap(),
+                        )
+                    }
+                    _ => continue,
+                };
+
+                for listen_addr in listen_addrs.iter() {
+                    let is_matches = match listen_addr.ip() {
+                        IpAddr::V4(ip) if ip.is_unspecified() => true,
+                        listen_addr => network.contains(listen_addr),
+                    };
+
+                    if is_matches {
+                        result.push(SocketAddr::new(network.ip(), listen_addr.port()));
+                    }
+                }
+            }
+        }
+    }
+
+    unsafe {
+        libc::freeifaddrs(if_addrs);
+    }
+    Ok(result)
 }
 
 #[allow(unused)]

@@ -3,7 +3,7 @@ use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::ffi::{CStr, CString};
 use std::io;
 use std::net::SocketAddr;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use protobuf::Message as _;
 use raft::prelude::Message;
@@ -196,58 +196,53 @@ impl Node {
     }
 
     fn cold_bootstrap(&self, connections: Vec<Conn>) -> Result<bool, Error> {
+        if self.addr.get().is_none() {
+            // detect self addr/port if so far unknown
+            let self_addrs = unsafe {
+                use crate::ffi::lua::{
+                    luaT_state, lua_getfield, lua_getglobal, lua_gettop, lua_settop, lua_tostring,
+                };
+
+                let l = luaT_state();
+                let top_idx = lua_gettop(l);
+
+                let s = CString::new("box").unwrap();
+                lua_getglobal(l, s.as_ptr());
+
+                let s = CString::new("cfg").unwrap();
+                lua_getfield(l, -1, s.as_ptr());
+
+                let s = CString::new("listen").unwrap();
+                lua_getfield(l, -1, s.as_ptr());
+                let listen_addr_str = CStr::from_ptr(lua_tostring(l, -1)).to_string_lossy();
+
+                lua_settop(l, top_idx);
+
+                rpc::self_addr(&listen_addr_str)?
+            };
+
+            let addr = self_addrs.first().unwrap().clone();
+            self.addr.set(Some(addr));
+            self.peer_addrs.borrow_mut().insert(self.id, addr);
+        }
+
         let mut is_completed = false;
         for conn in connections {
-            // detect self addr/port if so far unknown
-            if self.addr.get().is_none() {
-                if let Ok(true) = conn.wait_connected(Some(Duration::from_secs(1))) {
-                    if let Some(Ok(mut addr)) = conn.self_addr() {
-                        unsafe {
-                            use crate::ffi::lua::{
-                                luaT_state, lua_getfield, lua_getglobal, lua_gettop, lua_settop,
-                                lua_tointeger,
-                            };
+            if let Ok(true) = conn.wait_connected(Some(Duration::from_secs(1))) {
+                let nodes = self.peer_addrs.borrow();
+                let response = self.send_bootstrap_request(
+                    &conn,
+                    rpc::BootstrapMsg {
+                        from: self.id,
+                        nodes: nodes.clone(),
+                    },
+                )?;
 
-                            let l = luaT_state();
-                            let top_idx = lua_gettop(l);
-
-                            let s = CString::new("box").unwrap();
-                            lua_getglobal(l, s.as_ptr());
-
-                            let s = CString::new("cfg").unwrap();
-                            lua_getfield(l, -1, s.as_ptr());
-
-                            let s = CString::new("listen").unwrap();
-                            lua_getfield(l, -1, s.as_ptr());
-
-                            let port = lua_tointeger(l, -1) as u16;
-                            assert!(port > 0);
-                            lua_settop(l, top_idx);
-                            addr.set_port(port);
-                        };
-
-                        self.addr.set(Some(addr));
-                        self.peer_addrs.borrow_mut().insert(self.id, addr);
-                    }
-                } else {
-                    continue;
+                if let Some(rpc::Response::Bootstrap(response)) = response {
+                    is_completed = true;
+                    self.merge_nodes_list(response.nodes);
                 }
             }
-
-            let nodes = self.peer_addrs.borrow().clone();
-            let response = self.send_bootstrap_request(
-                &conn,
-                rpc::BootstrapMsg {
-                    from: self.id,
-                    nodes,
-                },
-            )?;
-
-            if let Some(rpc::Response::Bootstrap(response)) = response {
-                is_completed = true;
-                self.merge_nodes_list(response.nodes);
-            }
-        }
         Ok(is_completed)
     }
 

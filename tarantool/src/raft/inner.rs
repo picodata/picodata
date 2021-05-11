@@ -33,7 +33,7 @@ impl NodeInner {
             ..Default::default()
         };
         let storage = raft::storage::MemStorage::new();
-        let mut node = RawNode::with_default_logger(&raft_config, storage)?;
+        let node = RawNode::with_default_logger(&raft_config, storage)?;
 
         Ok(Self {
             node,

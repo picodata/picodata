@@ -1,5 +1,5 @@
 use core::cell::RefCell;
-use std::cell::{Cell, Ref};
+use std::cell::Cell;
 use std::io::{self, Cursor, Read, Write};
 use std::net::SocketAddr;
 use std::rc::{Rc, Weak};
@@ -173,10 +173,6 @@ impl ConnInner {
     pub fn lookup_index(&self, name: &str, space_id: u32) -> Result<Option<u32>, Error> {
         self.refresh_schema()?;
         Ok(self.schema.lookup_index(name, space_id))
-    }
-
-    pub fn stream(&self) -> Ref<Option<ConnStream>> {
-        self.stream.borrow()
     }
 
     pub fn close(&self) {
