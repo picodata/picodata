@@ -1,7 +1,5 @@
 use std::cell::Cell;
 use std::io::{self, Read, Write};
-use std::mem::size_of;
-use std::net::SocketAddr;
 use std::os::unix::io::{IntoRawFd, RawFd};
 use std::rc::Rc;
 
