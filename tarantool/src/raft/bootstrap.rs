@@ -67,11 +67,13 @@ impl BoostrapController {
         use BootstrapState as S;
 
         let new_state = match (self.state.get(), event) {
-            (S::Cold, E::Request(req) | E::Response(req)) | (S::Offline, E::Request(req)) => {
+            (S::Cold, E::Request(req))
+            | (S::Cold, E::Response(req))
+            | (S::Offline, E::Request(req)) => {
                 self.handle_msg(req);
                 Some(S::Warm)
             }
-            (S::Warm, E::Request(req) | E::Response(req)) => {
+            (S::Warm, E::Request(req)) | (S::Warm, E::Response(req)) => {
                 self.handle_msg(req);
 
                 let num_peers = self.peers.borrow().len();
