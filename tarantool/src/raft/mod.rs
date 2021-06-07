@@ -1,43 +1,43 @@
 use std::cell::{Cell, RefCell};
-use std::collections::{BTreeMap, HashMap, VecDeque};
-use std::ffi::{CStr, CString};
 use std::io;
-use std::net::SocketAddr;
+use std::net::ToSocketAddrs;
 use std::time::{Duration, Instant};
 
 use protobuf::Message as _;
 use raft::prelude::Message;
 use rand::random;
 
+use bootstrap::{BoostrapController, BootstrapAction};
+use net::{get_local_addrs, ConnectionPoll};
+
 use crate::error::{Error, TarantoolErrorCode};
-use crate::fiber::{sleep, Cond, Latch};
+use crate::fiber::{Cond, Latch};
 use crate::net_box::{Conn, ConnOptions, Options};
 use crate::tuple::{FunctionArgs, FunctionCtx, Tuple};
 
 use self::inner::NodeInner;
 
+pub mod bootstrap;
 mod fsm;
 mod inner;
-mod rpc;
+mod net;
+pub mod rpc;
 mod storage;
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum NodeState {
-    Init,
     Bootstrapping,
     Active,
     Closed,
 }
 
 pub struct Node {
-    id: u64,
-    addr: Cell<Option<SocketAddr>>,
     state: Cell<NodeState>,
     state_lock: Latch,
     state_cond: Cond,
+    bootstrap_ctrl: BoostrapController,
     inner: RefCell<NodeInner>,
-    peer_addrs: RefCell<BTreeMap<u64, SocketAddr>>,
-    connections: RefCell<HashMap<u64, Conn>>,
+    connections: RefCell<ConnectionPoll>,
     rpc_function: String,
     options: NodeOptions,
 }
@@ -65,63 +65,56 @@ impl Default for NodeOptions {
 }
 
 impl Node {
-    pub fn new(rpc_function: &str, options: NodeOptions) -> Result<Self, Error> {
+    pub fn new(
+        rpc_function: &str,
+        bootstrap_addrs: Vec<impl ToSocketAddrs>,
+        options: NodeOptions,
+    ) -> Result<Self, Error> {
         let id = random::<u64>();
+        let local_addrs = get_local_addrs()?;
+
+        let mut bootstrap_addrs_cfg = Vec::with_capacity(bootstrap_addrs.len());
+        for addrs in bootstrap_addrs {
+            bootstrap_addrs_cfg.push(addrs.to_socket_addrs()?.collect())
+        }
+
         Ok(Node {
-            id,
-            addr: Cell::new(None),
-            state: Cell::new(NodeState::Init),
+            state: Cell::new(NodeState::Bootstrapping),
             state_lock: Latch::new(),
             state_cond: Cond::new(),
+            bootstrap_ctrl: BoostrapController::new(id, local_addrs, bootstrap_addrs_cfg),
             inner: RefCell::new(NodeInner::new(id, &options)?),
-            peer_addrs: RefCell::new(BTreeMap::new()),
-            connections: RefCell::new(HashMap::new()),
+            connections: Default::default(),
             rpc_function: rpc_function.to_string(),
             options,
         })
     }
 
-    pub fn run(&self, bootstrap_addrs: &Vec<&str>) -> Result<(), Error> {
-        let mut send_queue = VecDeque::with_capacity(self.options.send_queue_size);
+    pub fn run(&self) -> Result<(), Error> {
         loop {
             let mut is_state_changed = false;
             {
                 let _lock = self.state_lock.lock();
                 let next_state = match self.state.get() {
-                    NodeState::Init => {
-                        let mut connections = vec![];
-                        for addr in bootstrap_addrs.into_iter() {
-                            connections.push(Conn::new(
-                                addr,
-                                self.options.connection_options.clone(),
-                                None,
-                            )?)
+                    NodeState::Bootstrapping => {
+                        for action in self.bootstrap_ctrl.pending_actions() {
+                            match action {
+                                BootstrapAction::Request(msg, to) => {
+                                    let mut conn_pool = self.connections.borrow_mut();
+                                    self.send(
+                                        conn_pool.connect_or_get(None, &to)?,
+                                        rpc::Request::Bootstrap(msg),
+                                    )?;
+                                }
+                                BootstrapAction::Response(_) => {}
+                                BootstrapAction::Completed => {}
+                            };
                         }
 
-                        let is_completed = self.cold_bootstrap(connections)?;
-                        if is_completed {
-                            Some(NodeState::Bootstrapping)
-                        } else {
-                            sleep(self.options.bootstrap_poll_interval.as_secs_f64());
-                            None
-                        }
-                    }
-                    NodeState::Bootstrapping => {
-                        let new_nodes_count = self.warm_bootstrap()?;
-                        if let Some(0) = new_nodes_count {
-                            let nodes = self.peer_addrs.borrow();
-                            let peers = nodes.keys().map(|id| *id).collect();
-                            self.inner.borrow_mut().init(peers, false)?;
-                            Some(NodeState::Active)
-                        } else {
-                            sleep(self.options.bootstrap_poll_interval.as_secs_f64());
-                            None
-                        }
+                        Some(NodeState::Closed)
                     }
                     NodeState::Active => {
-                        self.inner.borrow_mut().step(&mut send_queue)?;
-                        self.send_raft_batch(&mut send_queue.drain(..))?;
-                        None
+                        unimplemented!()
                     }
                     NodeState::Closed => break,
                 };
@@ -193,108 +186,10 @@ impl Node {
         self.state.replace(NodeState::Closed);
     }
 
-    fn cold_bootstrap(&self, connections: Vec<Conn>) -> Result<bool, Error> {
-        if self.addr.get().is_none() {
-            // detect self addr/port if so far unknown
-            let self_addrs = unsafe {
-                use crate::ffi::lua::{
-                    luaT_state, lua_getfield, lua_getglobal, lua_gettop, lua_settop, lua_tostring,
-                };
-
-                let l = luaT_state();
-                let top_idx = lua_gettop(l);
-
-                let s = CString::new("box").unwrap();
-                lua_getglobal(l, s.as_ptr());
-
-                let s = CString::new("cfg").unwrap();
-                lua_getfield(l, -1, s.as_ptr());
-
-                let s = CString::new("listen").unwrap();
-                lua_getfield(l, -1, s.as_ptr());
-                let listen_addr_str = CStr::from_ptr(lua_tostring(l, -1)).to_string_lossy();
-
-                lua_settop(l, top_idx);
-
-                rpc::self_addr(&listen_addr_str)?
-            };
-
-            let addr = self_addrs.first().unwrap().clone();
-            self.addr.set(Some(addr));
-            self.peer_addrs.borrow_mut().insert(self.id, addr);
-        }
-
-        let mut is_completed = false;
-        for conn in connections {
-            if let Ok(true) = conn.wait_connected(Some(Duration::from_secs(1))) {
-                let nodes = self.peer_addrs.borrow();
-                let response = self.send_bootstrap_request(
-                    &conn,
-                    rpc::BootstrapMsg {
-                        from: self.id,
-                        nodes: nodes.clone(),
-                    },
-                )?;
-
-                if let Some(rpc::Response::Bootstrap(response)) = response {
-                    is_completed = true;
-                    self.merge_nodes_list(response.nodes);
-                }
-            }
-        }
-
-        Ok(is_completed)
-    }
-
-    fn warm_bootstrap(&self) -> Result<Option<usize>, Error> {
-        {
-            let mut connections = self.connections.borrow_mut();
-            for (id, addr) in self.peer_addrs.borrow().iter() {
-                if *id == self.id {
-                    continue;
-                }
-
-                if !connections.contains_key(id) {
-                    connections.insert(
-                        *id,
-                        Conn::new(*addr, self.options.connection_options.clone(), None)?,
-                    );
-                }
-            }
-        }
-
-        let mut new_nodes_total = None;
-        for conn in self.connections.borrow().values() {
-            let nodes = self.peer_addrs.borrow().clone();
-            let response = self.send_bootstrap_request(
-                conn,
-                rpc::BootstrapMsg {
-                    from: self.id,
-                    nodes,
-                },
-            )?;
-
-            if let Some(rpc::Response::Bootstrap(response)) = response {
-                let new_nodes = self.merge_nodes_list(response.nodes);
-                let new_nodes_len = new_nodes.len();
-                if let Some(new_nodes_count) = new_nodes_total.as_mut() {
-                    *new_nodes_count += new_nodes_len;
-                } else {
-                    new_nodes_total = Some(new_nodes_len);
-                }
-            }
-        }
-        Ok(new_nodes_total)
-    }
-
-    fn send_bootstrap_request(
-        &self,
-        conn: &Conn,
-        request: rpc::BootstrapMsg,
-    ) -> Result<Option<rpc::Response>, Error> {
+    fn send(&self, conn: &Conn, request: rpc::Request) -> Result<Option<rpc::Response>, Error> {
         let result = conn.call(
             self.rpc_function.as_str(),
-            &rpc::Request::Bootstrap(request),
+            &request,
             &self.options.rpc_call_options,
         );
 
@@ -312,83 +207,10 @@ impl Node {
     }
 
     fn recv_bootstrap_request(&self, request: rpc::BootstrapMsg) -> rpc::Response {
-        let response = rpc::Response::Bootstrap(rpc::BootstrapMsg {
-            from: self.id,
-            nodes: self.peer_addrs.borrow().clone(),
-        });
-
-        if let NodeState::Init | NodeState::Bootstrapping = self.state.get() {
-            let _ = self.merge_nodes_list(request.nodes);
-        }
-
-        response
+        unimplemented!()
     }
 
     fn send_raft_batch(&self, msgs: &mut dyn Iterator<Item = Message>) -> Result<(), Error> {
-        let mut connections = self.connections.borrow_mut();
-        for msg in msgs {
-            let recipient_id = msg.to;
-            if !connections.contains_key(&recipient_id) {
-                match self.peer_addrs.borrow().get(&recipient_id) {
-                    None => continue,
-                    Some(recipient_addr) => {
-                        let conn = Conn::new(recipient_addr, Default::default(), None)?;
-                        connections.insert(recipient_id, conn);
-                    }
-                }
-            }
-
-            let conn = connections.get_mut(&recipient_id).unwrap();
-            let result = conn.call(
-                self.rpc_function.as_str(),
-                &rpc::Request::Raft {
-                    data: msg.write_to_bytes()?,
-                },
-                &Default::default(),
-            );
-            match result {
-                Err(Error::IO(_)) | Ok(_) => (),
-                Err(e) => return Err(e),
-            }
-        }
-        Ok(())
-    }
-
-    /// Merges `other` nodes list to already known. Returns new nodes count
-    fn merge_nodes_list(&self, other: BTreeMap<u64, SocketAddr>) -> Vec<(u64, SocketAddr)> {
-        let mut new_nodes = Vec::<(u64, SocketAddr)>::with_capacity(other.len());
-        {
-            let self_nodes = self.peer_addrs.borrow();
-            // a - already known nodes
-            // b - received from peer nodes list
-            let mut a_iter = self_nodes.iter();
-            let mut b_iter = other.into_iter();
-            let mut a = a_iter.next();
-            let mut b = b_iter.next();
-
-            while let (Some((a_id, _)), Some((b_id, b_addr))) = (a, b) {
-                let a_id = *a_id;
-                if b_id < a_id {
-                    new_nodes.push((b_id, b_addr));
-                    b = b_iter.next();
-                } else if b_id > a_id {
-                    a = a_iter.next();
-                } else {
-                    a = a_iter.next();
-                    b = b_iter.next();
-                }
-            }
-
-            while let Some(node) = b {
-                new_nodes.push(node);
-                b = b_iter.next();
-            }
-        }
-
-        let mut known_nodes = self.peer_addrs.borrow_mut();
-        for (id, addr) in new_nodes.iter() {
-            known_nodes.insert(*id, *addr);
-        }
-        new_nodes
+        unimplemented!()
     }
 }
