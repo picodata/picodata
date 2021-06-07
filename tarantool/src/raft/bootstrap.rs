@@ -77,6 +77,7 @@ impl BoostrapController {
                 let num_peers = self.peers.borrow().len();
                 let num_responded = self.responded_ids.borrow().len();
                 if num_peers == (num_responded + 1) {
+                    self.send(BootstrapAction::Completed);
                     Some(S::Done)
                 } else {
                     None

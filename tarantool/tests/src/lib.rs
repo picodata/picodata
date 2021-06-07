@@ -22,6 +22,7 @@ mod test_fiber;
 mod test_latch;
 mod test_log;
 mod test_net_box;
+mod test_raft;
 mod test_session;
 mod test_transaction;
 mod test_tuple;
@@ -251,6 +252,8 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 test_net_box::test_triggers_schema_sync,
                 test_session::test_uid,
                 test_session::test_euid,
+                test_raft::test_bootstrap_solo,
+                test_raft::test_bootstrap_2n,
             ]
         },
     )

@@ -20,7 +20,7 @@ pub enum Request {
 
 impl AsTuple for Request {}
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum Response {
     #[serde(rename = "bootstrap")]
@@ -31,7 +31,7 @@ pub enum Response {
 
 impl AsTuple for Response {}
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct BootstrapMsg {
     pub from_id: u64,
     pub from_addrs: Vec<SocketAddr>,
