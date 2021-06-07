@@ -113,15 +113,15 @@ impl NodeInner {
                 store.wl().set_hardstate(hs.clone());
             }
 
-            for msgs in ready.take_messages() {
-                send_queue.extend(msgs);
+            for msg in ready.take_messages() {
+                send_queue.push_back(msg);
             }
 
             // advance the Raft.
             let mut light_ready = node.advance(ready);
 
-            for msgs in light_ready.take_messages() {
-                send_queue.extend(msgs);
+            for msg in light_ready.take_messages() {
+                send_queue.push_back(msg);
             }
 
             // if newly committed log entries are available: apply to the state machine
