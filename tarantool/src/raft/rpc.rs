@@ -1,4 +1,3 @@
-use std::collections::BTreeMap;
 use std::ffi::{c_void, CStr};
 use std::net::SocketAddr;
 use std::path::Path;
@@ -21,7 +20,7 @@ pub enum Request {
 
 impl AsTuple for Request {}
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum Response {
     #[serde(rename = "bootstrap")]
@@ -32,10 +31,11 @@ pub enum Response {
 
 impl AsTuple for Response {}
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct BootstrapMsg {
-    pub from: u64,
-    pub nodes: BTreeMap<u64, SocketAddr>,
+    pub from_id: u64,
+    pub from_addrs: Vec<SocketAddr>,
+    pub nodes: Vec<(u64, Vec<SocketAddr>)>,
 }
 
 #[allow(unused)]

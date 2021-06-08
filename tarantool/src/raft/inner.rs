@@ -12,8 +12,8 @@ use crate::raft::NodeOptions;
 
 use super::fsm::Command;
 
-pub struct ClusterNodeState {
-    node: RefCell<RawNode<raft::storage::MemStorage>>,
+pub struct NodeInner {
+    node: RawNode<raft::storage::MemStorage>,
     timeout: Duration,
     remaining_timeout: Cell<Duration>,
     recv_queue: RefCell<VecDeque<RecvMessage>>,
@@ -26,34 +26,17 @@ enum RecvMessage {
     Conf(ConfChange),
 }
 
-impl ClusterNodeState {
-    pub fn new(
-        id: u64,
-        peers: Vec<u64>,
-        is_leader: bool,
-        options: &NodeOptions,
-    ) -> Result<Self, Error> {
+impl NodeInner {
+    pub fn new(id: u64, options: &NodeOptions) -> Result<Self, Error> {
         let raft_config = Config {
             id,
             ..Default::default()
         };
         let storage = raft::storage::MemStorage::new();
-        let mut node = RawNode::with_default_logger(&raft_config, storage)?;
-
-        for id in peers {
-            let mut conf_change = ConfChange::default();
-            conf_change.node_id = id;
-            conf_change.set_change_type(raft::eraftpb::ConfChangeType::AddNode);
-            node.apply_conf_change(&conf_change)?;
-        }
-
-        if is_leader {
-            node.raft.become_candidate();
-            node.raft.become_leader();
-        }
+        let node = RawNode::with_default_logger(&raft_config, storage)?;
 
         Ok(Self {
-            node: RefCell::new(node),
+            node,
             timeout: options.tick_interval,
             remaining_timeout: Cell::new(options.tick_interval),
             recv_queue: RefCell::new(VecDeque::with_capacity(options.recv_queue_size)),
@@ -61,9 +44,26 @@ impl ClusterNodeState {
         })
     }
 
-    pub fn step(&self, send_queue: &mut VecDeque<Message>) -> Result<(), Error> {
+    pub fn init(&mut self, peers: Vec<u64>, become_leader: bool) -> Result<(), Error> {
+        let node = &mut self.node;
+        for id in peers {
+            let mut conf_change = ConfChange::default();
+            conf_change.node_id = id;
+            conf_change.set_change_type(raft::eraftpb::ConfChangeType::AddNode);
+            node.apply_conf_change(&conf_change)?;
+        }
+
+        if become_leader {
+            node.raft.become_candidate();
+            node.raft.become_leader();
+        }
+
+        Ok(())
+    }
+
+    pub fn step(&mut self, send_queue: &mut VecDeque<Message>) -> Result<(), Error> {
         let now = Instant::now();
-        let mut node = self.node.borrow_mut();
+        let node = &mut self.node;
 
         // block if recv queue is empty (wait t <= remaining_timeout)
         if self.recv_queue.borrow().is_empty() {
@@ -113,15 +113,15 @@ impl ClusterNodeState {
                 store.wl().set_hardstate(hs.clone());
             }
 
-            for msgs in ready.take_messages() {
-                send_queue.extend(msgs);
+            for msg in ready.take_messages() {
+                send_queue.push_back(msg);
             }
 
             // advance the Raft.
             let mut light_ready = node.advance(ready);
 
-            for msgs in light_ready.take_messages() {
-                send_queue.extend(msgs);
+            for msg in light_ready.take_messages() {
+                send_queue.push_back(msg);
             }
 
             // if newly committed log entries are available: apply to the state machine

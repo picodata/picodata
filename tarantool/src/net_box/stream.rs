@@ -1,7 +1,5 @@
 use std::cell::Cell;
 use std::io::{self, Read, Write};
-use std::mem::size_of;
-use std::net::SocketAddr;
 use std::os::unix::io::{IntoRawFd, RawFd};
 use std::rc::Rc;
 
@@ -50,25 +48,6 @@ impl ConnStream {
         ConnStreamWriter {
             fd: self.fd,
             writer_guard: self.writer_guard.clone(),
-        }
-    }
-
-    pub unsafe fn self_addr(&self) -> Result<SocketAddr, Error> {
-        let mut addr: libc::sockaddr_in = std::mem::zeroed();
-        let mut addr_len = size_of::<libc::sockaddr_in>();
-        if libc::getsockname(
-            self.fd,
-            &mut addr as *mut _ as *mut libc::sockaddr,
-            &mut addr_len as *mut _ as *mut u32,
-        ) != 0
-        {
-            return Err(io::Error::last_os_error().into());
-        }
-
-        match addr.sin_family as i32 {
-            libc::AF_INET => Ok(SocketAddr::V4(*(&addr as *const _ as *const _))),
-            libc::AF_INET6 => Ok(SocketAddr::V6(*(&addr as *const _ as *const _))),
-            _ => panic!("Unsupported address family"),
         }
     }
 }
