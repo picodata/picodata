@@ -17,6 +17,7 @@ tester = "0.7.0"
 
 [dependencies.tarantool]
 path = ".."
+features = ["all"]
 
 [lib]
 crate-type = ["cdylib"]

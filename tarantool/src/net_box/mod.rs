@@ -37,6 +37,7 @@
 //!
 //! See also:
 //! - [Lua reference: Module net.box](https://www.tarantool.io/en/doc/latest/reference/reference_lua/net_box/)
+#![cfg(feature = "net_box")]
 
 use core::time::Duration;
 use std::net::ToSocketAddrs;

@@ -1,3 +1,5 @@
+#![cfg(feature = "raft_node")]
+
 use std::cell::{Cell, RefCell};
 use std::io;
 use std::net::ToSocketAddrs;

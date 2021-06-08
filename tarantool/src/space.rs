@@ -16,9 +16,7 @@ use serde_json::{Map, Value};
 
 use crate::error::{Error, TarantoolError};
 use crate::ffi::tarantool as ffi;
-use crate::index::{Index, IndexIterator, IndexOptions, IteratorType};
-use crate::schema::index as schema_index;
-use crate::schema::space as schema_space;
+use crate::index::{Index, IndexIterator, IteratorType};
 use crate::tuple::{AsTuple, Tuple};
 
 /// End of the reserved range of system spaces.
@@ -231,13 +229,15 @@ impl Space {
     /// - `opts` - see SpaceCreateOptions struct.
     ///
     /// Returns a new space.
+    #[cfg(feature = "schema")]
     pub fn create(name: &str, opts: &SpaceCreateOptions) -> Result<Space, Error> {
-        return schema_space::create_space(name, opts);
+        return crate::schema::space::create_space(name, opts);
     }
 
     /// Drop a space.
+    #[cfg(feature = "schema")]
     pub fn drop(&self) -> Result<(), Error> {
-        return schema_space::drop_space(self.id);
+        return crate::schema::space::drop_space(self.id);
     }
 
     /// Find space by name.
@@ -268,8 +268,13 @@ impl Space {
     ///
     /// - `name` - name of index to create, which should conform to the rules for object names.
     /// - `opts` - see schema::IndexOptions struct.
-    pub fn create_index(&self, name: &str, opts: &IndexOptions) -> Result<Index, Error> {
-        schema_index::create_index(self.id, name, opts)?;
+    #[cfg(feature = "schema")]
+    pub fn create_index(
+        &self,
+        name: &str,
+        opts: &crate::index::IndexOptions,
+    ) -> Result<Index, Error> {
+        crate::schema::index::create_index(self.id, name, opts)?;
         Ok(self.index(name).unwrap())
     }
 

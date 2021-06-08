@@ -14,6 +14,11 @@
 //! > **Caution!** The library is currently under development.
 //! > API may be unstable until version 1.0 will be released.
 //!
+//! ### Features
+//!
+//! - `net_box` - Enables protocol implementation (enabled by default)
+//! - `schema` - Enables schema manipulation utils (WIP for now)
+//!
 //! ### Prerequisites
 //!
 //! - rustc 1.48 or newer
@@ -158,6 +163,7 @@ extern crate bitflags;
 extern crate derivative;
 #[macro_use]
 extern crate failure;
+#[cfg(feature = "net_box")]
 #[macro_use]
 extern crate lazy_static;
 #[macro_use]

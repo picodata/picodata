@@ -58,6 +58,11 @@ crate-type = ["cdylib"]
 
 See https://github.com/picodata/brod for example usage. 
 
+### Features
+
+- `net_box` - Enables protocol implementation (enabled by default)
+- `schema` - Enables schema manipulation utils (WIP for now)
+
 ### Stored procedures
 
 Tarantool can call Rust code via a plugin, from Lua using FFI, or as a stored procedure.

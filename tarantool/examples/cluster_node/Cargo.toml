@@ -13,6 +13,7 @@ lazy_static = "1.4.0"
 
 [dependencies.tarantool]
 path = "../.."
+features = ["raft_node"]
 
 [lib]
 crate-type = ["cdylib"]

@@ -1,3 +1,5 @@
+#![cfg(feature = "schema")]
+
 pub mod index;
 pub mod sequence;
 pub mod space;

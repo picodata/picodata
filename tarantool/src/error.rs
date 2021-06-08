@@ -26,8 +26,6 @@ use rmp::decode::{MarkerReadError, NumValueReadError, ValueReadError};
 use rmp::encode::ValueWriteError;
 
 use crate::ffi::tarantool as ffi;
-use crate::net_box::ResponseError;
-use protobuf::ProtobufError;
 
 /// Represents all error cases for all routines of crate (including Tarantool errors)
 #[derive(Debug, Fail)]
@@ -38,6 +36,7 @@ pub enum Error {
     #[fail(display = "IO error: {}", _0)]
     IO(io::Error),
 
+    #[cfg(feature = "raft_node")]
     #[fail(display = "Raft: {}", _0)]
     Raft(raft::Error),
 
@@ -47,8 +46,9 @@ pub enum Error {
     #[fail(display = "Failed to decode tuple: {}", _0)]
     Decode(rmp_serde::decode::Error),
 
+    #[cfg(feature = "raft_node")]
     #[fail(display = "Protobuf encode/decode error: {}", _0)]
-    Protobuf(ProtobufError),
+    Protobuf(protobuf::ProtobufError),
 
     #[fail(display = "Unicode string decode error: {}", _0)]
     Unicode(Utf8Error),
@@ -65,8 +65,9 @@ pub enum Error {
     #[fail(display = "Transaction issue: {}", _0)]
     Transaction(TransactionError),
 
+    #[cfg(feature = "net_box")]
     #[fail(display = "Sever respond with error: {}", _0)]
-    Remote(ResponseError),
+    Remote(crate::net_box::ResponseError),
 }
 
 impl From<io::Error> for Error {
@@ -75,6 +76,7 @@ impl From<io::Error> for Error {
     }
 }
 
+#[cfg(feature = "raft_node")]
 impl From<raft::Error> for Error {
     fn from(error: raft::Error) -> Self {
         Error::Raft(error)
@@ -93,8 +95,9 @@ impl From<rmp_serde::decode::Error> for Error {
     }
 }
 
-impl From<ProtobufError> for Error {
-    fn from(error: ProtobufError) -> Self {
+#[cfg(feature = "raft_node")]
+impl From<protobuf::ProtobufError> for Error {
+    fn from(error: protobuf::ProtobufError) -> Self {
         Error::Protobuf(error)
     }
 }
@@ -129,8 +132,9 @@ impl From<ValueWriteError> for Error {
     }
 }
 
-impl From<ResponseError> for Error {
-    fn from(error: ResponseError) -> Self {
+#[cfg(feature = "net_box")]
+impl From<crate::net_box::ResponseError> for Error {
+    fn from(error: crate::net_box::ResponseError) -> Self {
         Error::Remote(error)
     }
 }
