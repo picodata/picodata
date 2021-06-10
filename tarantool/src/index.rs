@@ -14,7 +14,6 @@ use num_traits::ToPrimitive;
 
 use crate::error::{Error, TarantoolError};
 use crate::ffi::tarantool as ffi;
-use crate::schema::index as schema_index;
 use crate::tuple::{AsTuple, Tuple, TupleBuffer};
 
 /// An index is a group of key values and pointers.
@@ -209,8 +208,9 @@ impl Index {
     }
 
     // Drops index.
+    #[cfg(feature = "schema")]
     pub fn drop(&self) -> Result<(), Error> {
-        schema_index::drop_index(self.space_id, self.index_id)
+        crate::schema::index::drop_index(self.space_id, self.index_id)
     }
 
     /// Get a tuple from index by the key.
