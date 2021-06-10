@@ -16,7 +16,10 @@ use failure::_core::ptr::null_mut;
 
 use crate::error::{Error, TarantoolError};
 use crate::ffi::tarantool as ffi;
-use crate::fiber::unpack_callback;
+use crate::fiber::{unpack_callback, Cond};
+use std::cell::RefCell;
+use std::collections::VecDeque;
+use std::rc::Rc;
 
 const TIMEOUT_INFINITY: f64 = 365.0 * 86400.0 * 100.0;
 
@@ -284,5 +287,64 @@ pub(crate) fn write(fd: RawFd, buf: &[u8], timeout: Option<Duration>) -> Result<
         Err(io::Error::last_os_error())
     } else {
         Ok(result as usize)
+    }
+}
+
+pub fn channel<T>(capacity: usize) -> (Sender<T>, Receiver<T>) {
+    let chan = Rc::new(Chan {
+        buffer: RefCell::new(VecDeque::with_capacity(capacity)),
+        cond: Cond::new(),
+    });
+
+    (Sender(chan.clone()), Receiver(chan))
+}
+
+pub struct Sender<T>(Rc<Chan<T>>);
+
+impl<T> Sender<T> {
+    pub fn send(&self, value: T) {
+        self.0.send(value)
+    }
+}
+
+impl<T> Clone for Sender<T> {
+    fn clone(&self) -> Self {
+        Sender(self.0.clone())
+    }
+}
+
+pub struct Receiver<T>(Rc<Chan<T>>);
+
+impl<T> Receiver<T> {
+    pub fn recv(&self) -> T {
+        self.0.recv()
+    }
+}
+
+struct Chan<T> {
+    buffer: RefCell<VecDeque<T>>,
+    cond: Cond,
+}
+
+impl<T> Chan<T> {
+    fn send(&self, value: T) {
+        let was_empty = {
+            let mut buffer = self.buffer.borrow_mut();
+            let was_empty = buffer.len() == 0;
+            buffer.push_back(value);
+            was_empty
+        };
+
+        if was_empty {
+            self.cond.signal();
+        }
+    }
+
+    fn recv(&self) -> T {
+        while self.buffer.borrow().len() == 0 {
+            self.cond.wait();
+        }
+
+        self.buffer.borrow_mut().pop_front().unwrap()
     }
 }

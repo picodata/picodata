@@ -224,6 +224,7 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 test_coio::test_coio_accept,
                 test_coio::test_coio_read_write,
                 test_coio::test_coio_call,
+                test_coio::test_channel,
                 test_transaction::test_transaction_commit,
                 test_transaction::test_transaction_rollback,
                 test_log::test_log,
