@@ -2,24 +2,24 @@
 //!
 //! See also:
 //! - [C API reference: Module coio](https://www.tarantool.io/en/doc/latest/dev_guide/reference_capi/coio/)
+use std::cell::{Cell, RefCell};
+use std::collections::VecDeque;
 use std::convert::TryFrom;
 use std::ffi::c_void;
-use std::io;
-use std::io::{Read, Write};
+use std::io::{self, Read, Write};
 use std::mem::forget;
 use std::net::{SocketAddr, TcpListener, TcpStream, ToSocketAddrs};
 use std::os::raw::c_char;
 use std::os::unix::io::{AsRawFd, IntoRawFd, RawFd};
+use std::rc::Rc;
 use std::time::Duration;
 
 use failure::_core::ptr::null_mut;
+use num_traits::Zero;
 
 use crate::error::{Error, TarantoolError};
 use crate::ffi::tarantool as ffi;
 use crate::fiber::{unpack_callback, Cond};
-use std::cell::RefCell;
-use std::collections::VecDeque;
-use std::rc::Rc;
 
 const TIMEOUT_INFINITY: f64 = 365.0 * 86400.0 * 100.0;
 
@@ -294,6 +294,8 @@ pub fn channel<T>(capacity: usize) -> (Sender<T>, Receiver<T>) {
     let chan = Rc::new(Chan {
         buffer: RefCell::new(VecDeque::with_capacity(capacity)),
         cond: Cond::new(),
+        tx_count: Cell::new(1),
+        rx_is_active: Cell::new(true),
     });
 
     (Sender(chan.clone()), Receiver(chan))
@@ -302,49 +304,65 @@ pub fn channel<T>(capacity: usize) -> (Sender<T>, Receiver<T>) {
 pub struct Sender<T>(Rc<Chan<T>>);
 
 impl<T> Sender<T> {
-    pub fn send(&self, value: T) {
-        self.0.send(value)
-    }
-}
+    pub fn send(&self, value: T) -> Result<(), io::Error> {
+        if !self.0.rx_is_active.get() {
+            return Err(io::ErrorKind::NotConnected.into());
+        }
 
-impl<T> Clone for Sender<T> {
-    fn clone(&self) -> Self {
-        Sender(self.0.clone())
-    }
-}
-
-pub struct Receiver<T>(Rc<Chan<T>>);
-
-impl<T> Receiver<T> {
-    pub fn recv(&self) -> T {
-        self.0.recv()
-    }
-}
-
-struct Chan<T> {
-    buffer: RefCell<VecDeque<T>>,
-    cond: Cond,
-}
-
-impl<T> Chan<T> {
-    fn send(&self, value: T) {
         let was_empty = {
-            let mut buffer = self.buffer.borrow_mut();
+            let mut buffer = self.0.buffer.borrow_mut();
             let was_empty = buffer.len() == 0;
             buffer.push_back(value);
             was_empty
         };
 
         if was_empty {
-            self.cond.signal();
-        }
-    }
-
-    fn recv(&self) -> T {
-        while self.buffer.borrow().len() == 0 {
-            self.cond.wait();
+            self.0.cond.signal();
         }
 
-        self.buffer.borrow_mut().pop_front().unwrap()
+        Ok(())
     }
+}
+
+impl<T> Clone for Sender<T> {
+    fn clone(&self) -> Self {
+        self.0.tx_count.set(self.0.tx_count.get() + 1);
+        Sender(self.0.clone())
+    }
+}
+
+impl<T> Drop for Sender<T> {
+    fn drop(&mut self) {
+        self.0.tx_count.set(self.0.tx_count.get() - 1);
+        self.0.cond.signal();
+    }
+}
+
+pub struct Receiver<T>(Rc<Chan<T>>);
+
+impl<T> Receiver<T> {
+    pub fn recv(&self) -> Option<T> {
+        if self.0.buffer.borrow().len() == 0 {
+            if self.0.tx_count.get().is_zero() {
+                return None;
+            }
+
+            self.0.cond.wait();
+        }
+
+        self.0.buffer.borrow_mut().pop_front()
+    }
+}
+
+impl<T> Drop for Receiver<T> {
+    fn drop(&mut self) {
+        self.0.rx_is_active.set(false);
+    }
+}
+
+struct Chan<T> {
+    buffer: RefCell<VecDeque<T>>,
+    cond: Cond,
+    tx_count: Cell<usize>,
+    rx_is_active: Cell<bool>,
 }

@@ -1,5 +1,5 @@
 use std::convert::TryInto;
-use std::io::{Read, Write};
+use std::io::{self, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::os::unix::io::{AsRawFd, FromRawFd};
 use std::os::unix::net::UnixStream;
@@ -64,14 +64,14 @@ pub fn test_channel() {
     let (tx, rx) = channel::<i32>(1);
 
     let mut fiber_a = Fiber::new("test_fiber_a", &mut |tx: Box<Sender<i32>>| {
-        tx.send(99);
+        tx.send(99).unwrap();
         0
     });
     fiber_a.set_joinable(true);
     fiber_a.start(tx);
 
     let mut fiber_b = Fiber::new("test_fiber_b", &mut |rx: Box<Receiver<i32>>| {
-        let value = rx.recv();
+        let value = rx.recv().unwrap();
         assert_eq!(value, 99);
         0
     });
@@ -80,4 +80,28 @@ pub fn test_channel() {
 
     fiber_a.join();
     fiber_b.join();
+}
+
+pub fn test_channel_rx_closed() {
+    let (tx, _) = channel::<i32>(1);
+
+    let mut fiber = Fiber::new("test_fiber", &mut |tx: Box<Sender<i32>>| {
+        assert!(tx.send(99).is_err());
+        0
+    });
+    fiber.set_joinable(true);
+    fiber.start(tx);
+    fiber.join();
+}
+
+pub fn test_channel_tx_closed() {
+    let (_, rx) = channel::<i32>(1);
+
+    let mut fiber = Fiber::new("test_fiber", &mut |rx: Box<Receiver<i32>>| {
+        assert!(rx.recv().is_none());
+        0
+    });
+    fiber.set_joinable(true);
+    fiber.start(rx);
+    fiber.join();
 }
