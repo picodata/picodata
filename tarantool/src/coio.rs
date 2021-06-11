@@ -290,6 +290,10 @@ pub(crate) fn write(fd: RawFd, buf: &[u8], timeout: Option<Duration>) -> Result<
     }
 }
 
+/// Creates a new asynchronous channel, returning the sender/receiver halves.
+///
+/// All data sent on the Sender will become available on the [Receiver] in the same order as it was sent,
+/// and no `send` will block the calling fiber, `recv` will block until a message is available.
 pub fn channel<T>(capacity: usize) -> (Sender<T>, Receiver<T>) {
     let chan = Rc::new(Chan {
         buffer: RefCell::new(VecDeque::with_capacity(capacity)),
@@ -301,9 +305,14 @@ pub fn channel<T>(capacity: usize) -> (Sender<T>, Receiver<T>) {
     (Sender(chan.clone()), Receiver(chan))
 }
 
+/// The sending-half of channel.
+///
+/// Messages can be sent through this channel with `send`. Can be cloned.
 pub struct Sender<T>(Rc<Chan<T>>);
 
 impl<T> Sender<T> {
+    /// Attempts to send a value on this channel, returning it back if it could not be sent.
+    /// This method will never block.
     pub fn send(&self, value: T) -> Result<(), io::Error> {
         if !self.0.rx_is_active.get() {
             return Err(io::ErrorKind::NotConnected.into());
@@ -338,9 +347,11 @@ impl<T> Drop for Sender<T> {
     }
 }
 
+/// The receiving half of channel.
 pub struct Receiver<T>(Rc<Chan<T>>);
 
 impl<T> Receiver<T> {
+    /// Attempts to wait for a value on this receiver, returning `None` if the corresponding channel has hung up.
     pub fn recv(&self) -> Option<T> {
         if self.0.buffer.borrow().len() == 0 {
             if self.0.tx_count.get().is_zero() {
