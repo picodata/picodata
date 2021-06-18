@@ -4,6 +4,7 @@ use std::net::SocketAddr;
 
 use crate::error::Error;
 
+use super::net::ConnectionId;
 use super::rpc;
 
 pub struct BoostrapController {
@@ -30,7 +31,9 @@ pub enum BootstrapEvent {
 
 #[derive(Debug)]
 pub enum BootstrapAction {
-    Request(rpc::BootstrapMsg, Vec<SocketAddr>),
+    Connect(ConnectionId, Vec<SocketAddr>),
+    UpgradeSeed(ConnectionId, u64),
+    Request(ConnectionId, rpc::BootstrapMsg),
     Response(Result<rpc::Response, Error>),
     Completed,
 }
@@ -51,7 +54,7 @@ impl BoostrapController {
             responded_ids: Default::default(),
             pending_actions_buffer: Default::default(),
         };
-        bootstrap_controller.broadcast(bootstrap_addrs.into_iter());
+        bootstrap_controller.poll_seeds(bootstrap_addrs.into_iter());
         bootstrap_controller
     }
 
@@ -103,38 +106,39 @@ impl BoostrapController {
         let mut responded_ids = self.responded_ids.borrow_mut();
         if !responded_ids.contains(&req.from_id) {
             let new_nodes = self.merge_nodes_list(&req.nodes);
-            let new_nodes = new_nodes.iter().map(|(_, addrs)| addrs.clone());
-            self.broadcast(new_nodes);
-
+            for (id, addrs) in new_nodes {
+                let id = ConnectionId::Peer(id);
+                self.send(BootstrapAction::Connect(id.clone(), addrs));
+                self.send_bootstrap_request(id);
+            }
             responded_ids.insert(req.from_id);
         }
     }
 
     #[inline]
-    fn broadcast(&self, addrs: impl Iterator<Item = Vec<SocketAddr>>) {
-        for peer_addrs in addrs {
-            self.send_request(peer_addrs.clone());
+    fn poll_seeds(&self, addrs: impl Iterator<Item = Vec<SocketAddr>>) {
+        for (id, seed_addrs) in addrs.enumerate() {
+            let id = ConnectionId::Seed(id);
+            self.send(BootstrapAction::Connect(id.clone(), seed_addrs));
+            self.send_bootstrap_request(id);
         }
     }
 
     #[inline]
-    fn send_request(&self, to: Vec<SocketAddr>) {
+    fn send_bootstrap_request(&self, to: ConnectionId) {
         let nodes = self
             .peers
             .borrow()
             .iter()
-            .map(|(a, b)| (*a, b.clone()))
+            .map(|(id, addrs)| (*id, addrs.clone()))
             .collect();
 
-        let peers = self.peers.borrow();
-        let local_addrs = peers.get(&self.local_id).unwrap();
         self.send(BootstrapAction::Request(
+            to,
             rpc::BootstrapMsg {
                 from_id: self.local_id,
-                from_addrs: local_addrs.clone(),
                 nodes,
             },
-            to,
         ));
     }
 

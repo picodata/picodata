@@ -1,4 +1,5 @@
 use tarantool::raft::bootstrap::{BoostrapController, BootstrapAction, BootstrapEvent};
+use tarantool::raft::net::ConnectionId;
 use tarantool::raft::rpc;
 
 pub fn test_bootstrap_solo() {
@@ -8,45 +9,43 @@ pub fn test_bootstrap_solo() {
     let mut node = BoostrapController::new(1, local_addrs.clone(), vec![remote_addrs.clone()]);
 
     let actions = node.pending_actions();
-    assert_eq!(actions.len(), 1);
+    assert_eq!(actions.len(), 2);
     assert!(matches!(
         &actions[0],
-        BootstrapAction::Request(
-            req,
-            to
-        ) if req == &rpc::BootstrapMsg {
+        BootstrapAction::Connect(ConnectionId::Seed(_), addrs) if addrs == &remote_addrs
+    ));
+    assert!(matches!(
+        &actions[1],
+        BootstrapAction::Request(_, req) if req == &rpc::BootstrapMsg {
             from_id: 1,
-            from_addrs: local_addrs.clone(),
             nodes: vec![(1, local_addrs.clone())],
-        } && to == &remote_addrs
+        }
     ));
 
     node.handle_event(BootstrapEvent::Response(rpc::BootstrapMsg {
         from_id: 2,
-        from_addrs: local_addrs.clone(),
         nodes: vec![(2, remote_addrs.clone())],
     }));
 
     let actions = node.pending_actions();
-    assert_eq!(actions.len(), 1);
+    assert_eq!(actions.len(), 2);
     assert!(matches!(
         &actions[0],
-        BootstrapAction::Request(
-            req,
-            to
-        ) if req == &rpc::BootstrapMsg {
+        BootstrapAction::Connect(ConnectionId::Peer(2), addrs) if addrs == &remote_addrs
+    ));
+    assert!(matches!(
+        &actions[1],
+        BootstrapAction::Request(_, req) if req == &rpc::BootstrapMsg {
             from_id: 1,
-            from_addrs: local_addrs.clone(),
             nodes: vec![
                 (1, local_addrs.clone()),
                 (2, remote_addrs.clone())
             ],
-        } && to == &remote_addrs
+        }
     ));
 
     node.handle_event(BootstrapEvent::Response(rpc::BootstrapMsg {
         from_id: 2,
-        from_addrs: local_addrs.clone(),
         nodes: vec![(1, local_addrs.clone()), (2, remote_addrs.clone())],
     }));
 
@@ -92,7 +91,7 @@ fn communicate(n1_ctrl: &BoostrapController, n2_ctrl: &BoostrapController) -> (b
 
 fn forward_action(action: BootstrapAction, node_ctrl: &BoostrapController) {
     match action {
-        BootstrapAction::Request(msg, _) => node_ctrl.handle_event(BootstrapEvent::Request(msg)),
+        BootstrapAction::Request(_, msg) => node_ctrl.handle_event(BootstrapEvent::Request(msg)),
         BootstrapAction::Response(resp) => match resp.unwrap() {
             rpc::Response::Bootstrap(msg) => node_ctrl.handle_event(BootstrapEvent::Response(msg)),
             _ => {}
