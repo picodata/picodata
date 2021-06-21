@@ -10,7 +10,7 @@ use crate::error::Error;
 use crate::net_box::{Conn, ConnOptions};
 
 #[derive(Default)]
-pub struct ConnectionPoll {
+pub struct ConnectionPool {
     options: ConnOptions,
     inner: HashMap<ConnectionId, Conn>,
 }
@@ -21,9 +21,9 @@ pub enum ConnectionId {
     Peer(u64),
 }
 
-impl ConnectionPoll {
+impl ConnectionPool {
     pub fn new(options: ConnOptions) -> Self {
-        ConnectionPoll {
+        ConnectionPool {
             options,
             inner: HashMap::new(),
         }

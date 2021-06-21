@@ -7,7 +7,7 @@ use std::time::Duration;
 use rand::random;
 
 use bootstrap::{BoostrapController, BootstrapAction};
-use net::{get_local_addrs, ConnectionPoll};
+use net::{get_local_addrs, ConnectionPool};
 
 use crate::error::Error;
 use crate::net_box::{Conn, ConnOptions, Options};
@@ -29,7 +29,7 @@ pub enum NodeState {
 
 pub struct Node {
     bootstrap_ctrl: BoostrapController,
-    connections: RefCell<ConnectionPoll>,
+    connections: RefCell<ConnectionPool>,
     rpc_function: String,
     options: NodeOptions,
 }
@@ -72,7 +72,7 @@ impl Node {
 
         Ok(Node {
             bootstrap_ctrl: BoostrapController::new(id, local_addrs, bootstrap_addrs_cfg),
-            connections: RefCell::new(ConnectionPoll::new(options.connection_options.clone())),
+            connections: RefCell::new(ConnectionPool::new(options.connection_options.clone())),
             rpc_function: rpc_function.to_string(),
             options,
         })
