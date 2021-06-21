@@ -148,40 +148,19 @@ impl BoostrapController {
     }
 
     /// Merges `other` nodes list to already known. Returns new nodes count
-    fn merge_nodes_list(&self, other: &Vec<(u64, Vec<SocketAddr>)>) -> Vec<(u64, Vec<SocketAddr>)> {
-        let mut new_nodes = Vec::<(u64, Vec<SocketAddr>)>::with_capacity(other.len());
+    fn merge_nodes_list(
+        &self,
+        nodes_from: &Vec<(u64, Vec<SocketAddr>)>,
+    ) -> Vec<(u64, Vec<SocketAddr>)> {
+        let mut new_nodes = Vec::<(u64, Vec<SocketAddr>)>::with_capacity(nodes_from.len());
         {
-            let self_nodes = self.peers.borrow();
-            // a - already known nodes
-            // b - received from peer nodes list
-            let mut a_iter = self_nodes.iter();
-            let mut b_iter = other.into_iter();
-            let mut a = a_iter.next();
-            let mut b = b_iter.next();
-
-            while let (Some((a_id, _)), Some((b_id, b_addr))) = (a, b) {
-                let a_id = *a_id;
-                let b_id = *b_id;
-                if b_id < a_id {
-                    new_nodes.push((b_id, b_addr.clone()));
-                    b = b_iter.next();
-                } else if b_id > a_id {
-                    a = a_iter.next();
-                } else {
-                    a = a_iter.next();
-                    b = b_iter.next();
+            let mut nodes_into = self.peers.borrow_mut();
+            for (id, addrs) in nodes_from.into_iter() {
+                if !nodes_into.contains_key(id) {
+                    nodes_into.insert(*id, addrs.clone());
+                    new_nodes.push((*id, addrs.clone()));
                 }
             }
-
-            while let Some((id, addr)) = b {
-                new_nodes.push((*id, addr.clone()));
-                b = b_iter.next();
-            }
-        }
-
-        let mut known_nodes = self.peers.borrow_mut();
-        for (id, addr) in new_nodes.iter() {
-            known_nodes.insert(*id, addr.clone());
         }
         new_nodes
     }
