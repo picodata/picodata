@@ -6,29 +6,21 @@ use std::time::Duration;
 
 use rand::random;
 
-use bootstrap::{BoostrapController, BootstrapAction};
+use inner::{NodeAction, NodeInner};
 use net::{get_local_addrs, ConnectionPool};
 
 use crate::error::Error;
 use crate::net_box::{Conn, ConnOptions, Options};
 use crate::tuple::{FunctionArgs, FunctionCtx};
 
-pub mod bootstrap;
 mod fsm;
-mod inner;
+pub mod inner;
 pub mod net;
 pub mod rpc;
 mod storage;
 
-#[derive(Debug, Copy, Clone, PartialEq)]
-pub enum NodeState {
-    Bootstrapping,
-    Active,
-    Closed,
-}
-
 pub struct Node {
-    bootstrap_ctrl: BoostrapController,
+    inner: NodeInner,
     connections: RefCell<ConnectionPool>,
     rpc_function: String,
     options: NodeOptions,
@@ -71,7 +63,7 @@ impl Node {
         }
 
         Ok(Node {
-            bootstrap_ctrl: BoostrapController::new(id, local_addrs, bootstrap_addrs_cfg),
+            inner: NodeInner::new(id, local_addrs, bootstrap_addrs_cfg),
             connections: RefCell::new(ConnectionPool::new(options.connection_options.clone())),
             rpc_function: rpc_function.to_string(),
             options,
@@ -80,14 +72,14 @@ impl Node {
 
     pub fn run(&self) -> Result<(), Error> {
         loop {
-            for action in self.bootstrap_ctrl.pending_actions() {
+            for action in self.inner.pending_actions() {
                 match action {
-                    BootstrapAction::Request(to, msg) => {
+                    NodeAction::Request(to, msg) => {
                         let mut conn_pool = self.connections.borrow_mut();
                         self.send(conn_pool.get(&to).unwrap(), rpc::Request::Bootstrap(msg))?;
                     }
-                    BootstrapAction::Response(_) => {}
-                    BootstrapAction::Completed => {
+                    NodeAction::Response(_) => {}
+                    NodeAction::Completed => {
                         return Ok(());
                     }
                     _ => {}

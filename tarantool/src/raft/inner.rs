@@ -1,166 +1,166 @@
 use std::cell::{Cell, RefCell};
-use std::collections::VecDeque;
-use std::time::{Duration, Instant};
-
-use protobuf::Message as _;
-use raft::prelude::{ConfChange, EntryType, Message};
-use raft::{Config, RawNode};
+use std::collections::{BTreeMap, HashSet, VecDeque};
+use std::net::SocketAddr;
 
 use crate::error::Error;
-use crate::fiber::Cond;
-use crate::raft::NodeOptions;
-
-use super::fsm::Command;
+use crate::raft::net::ConnectionId;
+use crate::raft::rpc;
 
 pub struct NodeInner {
-    node: RawNode<raft::storage::MemStorage>,
-    timeout: Duration,
-    remaining_timeout: Cell<Duration>,
-    recv_queue: RefCell<VecDeque<RecvMessage>>,
-    recv_cond: Cond,
+    state: Cell<State>,
+    local_id: u64,
+    peers: RefCell<BTreeMap<u64, Vec<SocketAddr>>>,
+    responded_ids: RefCell<HashSet<u64>>,
+    pending_actions_buffer: RefCell<VecDeque<NodeAction>>,
 }
 
-enum RecvMessage {
-    Propose(Command),
-    RaftMsg(Message),
-    Conf(ConfChange),
+#[derive(Debug, Copy, Clone)]
+enum State {
+    Cold,
+    Warm,
+    Offline,
+    Done,
+}
+
+pub enum NodeEvent {
+    Request(rpc::BootstrapMsg),
+    Response(rpc::BootstrapMsg),
+    Timeout,
+}
+
+#[derive(Debug)]
+pub enum NodeAction {
+    Connect(ConnectionId, Vec<SocketAddr>),
+    UpgradeSeed(ConnectionId, u64),
+    Request(ConnectionId, rpc::BootstrapMsg),
+    Response(Result<rpc::Response, Error>),
+    Completed,
 }
 
 impl NodeInner {
-    pub fn new(id: u64, options: &NodeOptions) -> Result<Self, Error> {
-        let raft_config = Config {
-            id,
-            ..Default::default()
+    pub fn new(
+        local_id: u64,
+        local_addrs: Vec<SocketAddr>,
+        bootstrap_addrs: Vec<Vec<SocketAddr>>,
+    ) -> Self {
+        let mut peers = BTreeMap::new();
+        peers.insert(local_id, local_addrs);
+
+        let bootstrap_controller = NodeInner {
+            state: Cell::new(State::Cold),
+            local_id,
+            peers: RefCell::new(peers),
+            responded_ids: Default::default(),
+            pending_actions_buffer: Default::default(),
         };
-        let storage = raft::storage::MemStorage::new();
-        let node = RawNode::with_default_logger(&raft_config, storage)?;
-
-        Ok(Self {
-            node,
-            timeout: options.tick_interval,
-            remaining_timeout: Cell::new(options.tick_interval),
-            recv_queue: RefCell::new(VecDeque::with_capacity(options.recv_queue_size)),
-            recv_cond: Cond::new(),
-        })
+        bootstrap_controller.poll_seeds(bootstrap_addrs.into_iter());
+        bootstrap_controller
     }
 
-    pub fn init(&mut self, peers: Vec<u64>, become_leader: bool) -> Result<(), Error> {
-        let node = &mut self.node;
-        for id in peers {
-            let mut conf_change = ConfChange::default();
-            conf_change.node_id = id;
-            conf_change.set_change_type(raft::eraftpb::ConfChangeType::AddNode);
-            node.apply_conf_change(&conf_change)?;
-        }
-
-        if become_leader {
-            node.raft.become_candidate();
-            node.raft.become_leader();
-        }
-
-        Ok(())
-    }
-
-    pub fn step(&mut self, send_queue: &mut VecDeque<Message>) -> Result<(), Error> {
-        let now = Instant::now();
-        let node = &mut self.node;
-
-        // block if recv queue is empty (wait t <= remaining_timeout)
-        if self.recv_queue.borrow().is_empty() {
-            self.recv_cond.wait_timeout(self.remaining_timeout.get());
-        }
-
-        // dispatch next message from queue
-        if let Some(msg) = self.recv_queue.borrow_mut().pop_front() {
-            match msg {
-                RecvMessage::Propose(_) => {
-                    todo!();
-                }
-                RecvMessage::RaftMsg(msg) => node.step(msg)?,
-                RecvMessage::Conf(_) => {}
-            }
-        }
-
-        // tick the Raft node at regular intervals (see: `self.timeout`)
-        let elapsed = now.elapsed();
-        self.remaining_timeout
-            .set(match self.remaining_timeout.get().checked_sub(elapsed) {
-                None => {
-                    node.tick();
-                    self.timeout
-                }
-                Some(remaining_timeout) => remaining_timeout,
-            });
-
-        if node.has_ready() {
-            let mut ready = node.ready();
-            let store = node.mut_store();
-
-            // if this is a snapshot: we need to apply the snapshot at first
-            let snapshot = ready.snapshot();
-            if !snapshot.is_empty() {
-                store.wl().apply_snapshot(snapshot.clone())?;
-            }
-
-            // append entries to the Raft log
-            let entries = ready.entries();
-            if !entries.is_empty() {
-                store.wl().append(entries)?;
-            }
-
-            // if Raft hard-state changed: we need to persist it
-            if let Some(hs) = ready.hs() {
-                store.wl().set_hardstate(hs.clone());
-            }
-
-            for msg in ready.take_messages() {
-                send_queue.push_back(msg);
-            }
-
-            // advance the Raft.
-            let mut light_ready = node.advance(ready);
-
-            for msg in light_ready.take_messages() {
-                send_queue.push_back(msg);
-            }
-
-            // if newly committed log entries are available: apply to the state machine
-            let committed_entries = light_ready.take_committed_entries();
-            if !committed_entries.is_empty() {
-                for entry in committed_entries {
-                    if entry.get_data().is_empty() {
-                        // when the peer becomes Leader it will send an empty entry
-                        continue;
-                    }
-                    match entry.get_entry_type() {
-                        EntryType::EntryNormal => {}
-                        EntryType::EntryConfChange => {
-                            let mut conf_change = ConfChange::default();
-                            conf_change.merge_from_bytes(&entry.data)?;
-
-                            let conf_state = node.apply_conf_change(&conf_change)?;
-                            node.mut_store().wl().set_conf_state(conf_state);
-                        }
-                        _ => {}
-                    }
-                }
-            }
-
-            // advance the apply index.
-            node.advance_apply();
-        }
-
-        Ok(())
-    }
-
-    pub fn add_entry(&self, command: Command) {
-        todo!()
-    }
-
-    pub fn handle_msg(&self, msg: Message) {
-        self.recv_queue
+    pub fn pending_actions(&self) -> Vec<NodeAction> {
+        self.pending_actions_buffer
             .borrow_mut()
-            .push_back(RecvMessage::RaftMsg(msg));
-        self.recv_cond.signal();
+            .drain(..)
+            .collect::<Vec<NodeAction>>()
+    }
+
+    pub fn handle_event(&self, event: NodeEvent) {
+        use NodeEvent as E;
+        use State as S;
+
+        let new_state = match (self.state.get(), event) {
+            (S::Cold, E::Request(req))
+            | (S::Cold, E::Response(req))
+            | (S::Offline, E::Request(req)) => {
+                self.handle_msg(req);
+                Some(S::Warm)
+            }
+            (S::Warm, E::Request(req)) | (S::Warm, E::Response(req)) => {
+                self.handle_msg(req);
+
+                let num_peers = self.peers.borrow().len();
+                let num_responded = self.responded_ids.borrow().len();
+                if num_peers == (num_responded + 1) {
+                    self.send(NodeAction::Completed);
+                    Some(S::Done)
+                } else {
+                    None
+                }
+            }
+            (S::Cold, E::Timeout) => Some(S::Offline),
+            (S::Offline, E::Timeout) => None,
+            _ => panic!("invalid state"),
+        };
+
+        if let Some(new_state) = new_state {
+            self.state.set(new_state);
+        }
+    }
+
+    fn handle_msg(&self, req: rpc::BootstrapMsg) {
+        if req.from_id == self.local_id {
+            return;
+        }
+
+        let mut responded_ids = self.responded_ids.borrow_mut();
+        if !responded_ids.contains(&req.from_id) {
+            let new_nodes = self.merge_nodes_list(&req.nodes);
+            for (id, addrs) in new_nodes {
+                let id = ConnectionId::Peer(id);
+                self.send(NodeAction::Connect(id.clone(), addrs));
+                self.send_bootstrap_request(id);
+            }
+            responded_ids.insert(req.from_id);
+        }
+    }
+
+    #[inline]
+    fn poll_seeds(&self, addrs: impl Iterator<Item = Vec<SocketAddr>>) {
+        for (id, seed_addrs) in addrs.enumerate() {
+            let id = ConnectionId::Seed(id);
+            self.send(NodeAction::Connect(id.clone(), seed_addrs));
+            self.send_bootstrap_request(id);
+        }
+    }
+
+    #[inline]
+    fn send_bootstrap_request(&self, to: ConnectionId) {
+        let nodes = self
+            .peers
+            .borrow()
+            .iter()
+            .map(|(id, addrs)| (*id, addrs.clone()))
+            .collect();
+
+        self.send(NodeAction::Request(
+            to,
+            rpc::BootstrapMsg {
+                from_id: self.local_id,
+                nodes,
+            },
+        ));
+    }
+
+    #[inline]
+    fn send(&self, action: NodeAction) {
+        self.pending_actions_buffer.borrow_mut().push_back(action)
+    }
+
+    /// Merges `other` nodes list to already known. Returns new nodes count
+    fn merge_nodes_list(
+        &self,
+        nodes_from: &Vec<(u64, Vec<SocketAddr>)>,
+    ) -> Vec<(u64, Vec<SocketAddr>)> {
+        let mut new_nodes = Vec::<(u64, Vec<SocketAddr>)>::with_capacity(nodes_from.len());
+        {
+            let mut nodes_into = self.peers.borrow_mut();
+            for (id, addrs) in nodes_from.into_iter() {
+                if !nodes_into.contains_key(id) {
+                    nodes_into.insert(*id, addrs.clone());
+                    new_nodes.push((*id, addrs.clone()));
+                }
+            }
+        }
+        new_nodes
     }
 }
