@@ -10,13 +10,14 @@ pub struct NodeInner {
     local_id: u64,
     peers: BTreeMap<u64, Vec<SocketAddr>>,
     responded_ids: HashSet<u64>,
-    pending_actions_buffer: VecDeque<NodeAction>,
+    bootstrap_addrs: Vec<Vec<SocketAddr>>,
 }
 
 #[derive(Debug, Copy, Clone)]
 enum State {
-    Cold,
-    Warm,
+    Init,
+    ColdBootstrap,
+    WarmBootstrap,
     Offline,
     Done,
 }
@@ -46,51 +47,59 @@ impl NodeInner {
         let mut peers = BTreeMap::new();
         peers.insert(local_id, local_addrs);
 
-        let mut node_inner = NodeInner {
-            state: State::Cold,
+        NodeInner {
+            state: State::Init,
             local_id,
             peers,
             responded_ids: Default::default(),
-            pending_actions_buffer: Default::default(),
-        };
-        node_inner.poll_seeds(bootstrap_addrs.into_iter());
-        node_inner
+            bootstrap_addrs,
+        }
     }
 
     pub fn update(&mut self, events: &mut VecDeque<NodeEvent>, actions: &mut VecDeque<NodeAction>) {
-        while let Some(event) = events.pop_front() {
-            self.handle_event(event);
+        if let State::Init = self.state {
+            self.init(actions);
         }
 
-        for action in self.pending_actions_buffer.drain(..) {
-            actions.push_back(action);
+        while let Some(event) = events.pop_front() {
+            self.handle_event(event, actions);
         }
     }
 
-    fn handle_event(&mut self, event: NodeEvent) {
+    fn init(&mut self, actions_buf: &mut VecDeque<NodeAction>) {
+        for (id, seed_addrs) in self.bootstrap_addrs.clone().into_iter().enumerate() {
+            let id = ConnectionId::Seed(id);
+            actions_buf.push_back(NodeAction::Connect(id.clone(), seed_addrs));
+            self.send_bootstrap_request(id, actions_buf);
+        }
+
+        self.state = State::ColdBootstrap;
+    }
+
+    fn handle_event(&mut self, event: NodeEvent, actions_buf: &mut VecDeque<NodeAction>) {
         use NodeEvent as E;
         use State as S;
 
         let new_state = match (self.state, event) {
-            (S::Cold, E::Request(req))
-            | (S::Cold, E::Response(req))
+            (S::ColdBootstrap, E::Request(req))
+            | (S::ColdBootstrap, E::Response(req))
             | (S::Offline, E::Request(req)) => {
-                self.handle_msg(req);
-                Some(S::Warm)
+                self.handle_msg(req, actions_buf);
+                Some(S::WarmBootstrap)
             }
-            (S::Warm, E::Request(req)) | (S::Warm, E::Response(req)) => {
-                self.handle_msg(req);
+            (S::WarmBootstrap, E::Request(req)) | (S::WarmBootstrap, E::Response(req)) => {
+                self.handle_msg(req, actions_buf);
 
                 let num_peers = self.peers.len();
                 let num_responded = self.responded_ids.len();
                 if num_peers == (num_responded + 1) {
-                    self.send(NodeAction::Completed);
+                    actions_buf.push_back(NodeAction::Completed);
                     Some(S::Done)
                 } else {
                     None
                 }
             }
-            (S::Cold, E::Timeout) => Some(S::Offline),
+            (S::ColdBootstrap, E::Timeout) => Some(S::Offline),
             (S::Offline, E::Timeout) => None,
             _ => panic!("invalid state"),
         };
@@ -100,7 +109,7 @@ impl NodeInner {
         }
     }
 
-    fn handle_msg(&mut self, req: rpc::BootstrapMsg) {
+    fn handle_msg(&mut self, req: rpc::BootstrapMsg, actions_buf: &mut VecDeque<NodeAction>) {
         if req.from_id == self.local_id {
             return;
         }
@@ -109,42 +118,28 @@ impl NodeInner {
             let new_nodes = self.merge_nodes_list(&req.nodes);
             for (id, addrs) in new_nodes {
                 let id = ConnectionId::Peer(id);
-                self.send(NodeAction::Connect(id.clone(), addrs));
-                self.send_bootstrap_request(id);
+                actions_buf.push_back(NodeAction::Connect(id.clone(), addrs));
+                self.send_bootstrap_request(id, actions_buf);
             }
             self.responded_ids.insert(req.from_id);
         }
     }
 
     #[inline]
-    fn poll_seeds(&mut self, addrs: impl Iterator<Item = Vec<SocketAddr>>) {
-        for (id, seed_addrs) in addrs.enumerate() {
-            let id = ConnectionId::Seed(id);
-            self.send(NodeAction::Connect(id.clone(), seed_addrs));
-            self.send_bootstrap_request(id);
-        }
-    }
-
-    #[inline]
-    fn send_bootstrap_request(&mut self, to: ConnectionId) {
+    fn send_bootstrap_request(&mut self, to: ConnectionId, actions_buf: &mut VecDeque<NodeAction>) {
         let nodes = self
             .peers
             .iter()
             .map(|(id, addrs)| (*id, addrs.clone()))
             .collect();
 
-        self.send(NodeAction::Request(
+        actions_buf.push_back(NodeAction::Request(
             to,
             rpc::BootstrapMsg {
                 from_id: self.local_id,
                 nodes,
             },
         ));
-    }
-
-    #[inline]
-    fn send(&mut self, action: NodeAction) {
-        self.pending_actions_buffer.push_back(action)
     }
 
     /// Merges `other` nodes list to already known. Returns new nodes count
