@@ -21,6 +21,7 @@ enum State {
     Done,
 }
 
+#[derive(Debug)]
 pub enum NodeEvent {
     Request(rpc::BootstrapMsg),
     Response(rpc::BootstrapMsg),
@@ -56,13 +57,17 @@ impl NodeInner {
         node_inner
     }
 
-    pub fn pending_actions(&mut self) -> Vec<NodeAction> {
-        self.pending_actions_buffer
-            .drain(..)
-            .collect::<Vec<NodeAction>>()
+    pub fn update(&mut self, events: &mut VecDeque<NodeEvent>, actions: &mut VecDeque<NodeAction>) {
+        while let Some(event) = events.pop_front() {
+            self.handle_event(event);
+        }
+
+        for action in self.pending_actions_buffer.drain(..) {
+            actions.push_back(action);
+        }
     }
 
-    pub fn handle_event(&mut self, event: NodeEvent) {
+    fn handle_event(&mut self, event: NodeEvent) {
         use NodeEvent as E;
         use State as S;
 

@@ -1,6 +1,7 @@
 #![cfg(feature = "raft_node")]
 
 use std::cell::RefCell;
+use std::collections::VecDeque;
 use std::net::ToSocketAddrs;
 use std::time::Duration;
 
@@ -71,8 +72,11 @@ impl Node {
     }
 
     pub fn run(&self) -> Result<(), Error> {
+        let mut events = VecDeque::new();
+        let mut actions = VecDeque::new();
         loop {
-            for action in self.inner.borrow_mut().pending_actions() {
+            self.inner.borrow_mut().update(&mut events, &mut actions);
+            for action in actions.drain(..) {
                 match action {
                     NodeAction::Request(to, msg) => {
                         let mut conn_pool = self.connections.borrow_mut();
