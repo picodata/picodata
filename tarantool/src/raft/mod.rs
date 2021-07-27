@@ -20,7 +20,7 @@ pub mod rpc;
 mod storage;
 
 pub struct Node {
-    inner: NodeInner,
+    inner: RefCell<NodeInner>,
     connections: RefCell<ConnectionPool>,
     rpc_function: String,
     options: NodeOptions,
@@ -63,7 +63,7 @@ impl Node {
         }
 
         Ok(Node {
-            inner: NodeInner::new(id, local_addrs, bootstrap_addrs_cfg),
+            inner: RefCell::new(NodeInner::new(id, local_addrs, bootstrap_addrs_cfg)),
             connections: RefCell::new(ConnectionPool::new(options.connection_options.clone())),
             rpc_function: rpc_function.to_string(),
             options,
@@ -72,7 +72,7 @@ impl Node {
 
     pub fn run(&self) -> Result<(), Error> {
         loop {
-            for action in self.inner.pending_actions() {
+            for action in self.inner.borrow_mut().pending_actions() {
                 match action {
                     NodeAction::Request(to, msg) => {
                         let mut conn_pool = self.connections.borrow_mut();

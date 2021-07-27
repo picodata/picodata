@@ -61,12 +61,12 @@ pub fn test_bootstrap_2n() {
     let mut n1_ctrl = NodeInner::new(1, n1_addrs.clone(), vec![n2_addrs.clone()]);
     let mut n2_ctrl = NodeInner::new(2, n2_addrs.clone(), vec![n1_addrs.clone()]);
 
-    assert_eq!(communicate(&n1_ctrl, &n2_ctrl), (false, false));
-    assert_eq!(communicate(&n1_ctrl, &n2_ctrl), (false, false));
-    assert_eq!(communicate(&n1_ctrl, &n2_ctrl), (true, true));
+    assert_eq!(communicate(&mut n1_ctrl, &mut n2_ctrl), (false, false));
+    assert_eq!(communicate(&mut n1_ctrl, &mut n2_ctrl), (false, false));
+    assert_eq!(communicate(&mut n1_ctrl, &mut n2_ctrl), (true, true));
 }
 
-fn communicate(n1_ctrl: &NodeInner, n2_ctrl: &NodeInner) -> (bool, bool) {
+fn communicate(n1_ctrl: &mut NodeInner, n2_ctrl: &mut NodeInner) -> (bool, bool) {
     let n1_actions = n1_ctrl.pending_actions();
     let n2_actions = n2_ctrl.pending_actions();
 
@@ -89,7 +89,7 @@ fn communicate(n1_ctrl: &NodeInner, n2_ctrl: &NodeInner) -> (bool, bool) {
     (n1_is_completed, n2_is_completed)
 }
 
-fn forward_action(action: NodeAction, node_ctrl: &NodeInner) {
+fn forward_action(action: NodeAction, node_ctrl: &mut NodeInner) {
     match action {
         NodeAction::Request(_, msg) => node_ctrl.handle_event(NodeEvent::Request(msg)),
         NodeAction::Response(resp) => match resp.unwrap() {
