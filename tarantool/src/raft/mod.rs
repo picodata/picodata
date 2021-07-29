@@ -1,45 +1,28 @@
 #![cfg(feature = "raft_node")]
 
-use std::cell::{Cell, RefCell};
-use std::io;
+use std::cell::RefCell;
+use std::collections::VecDeque;
 use std::net::ToSocketAddrs;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
-use protobuf::Message as _;
-use raft::prelude::Message;
 use rand::random;
 
-use bootstrap::{BoostrapController, BootstrapAction};
-use net::{get_local_addrs, ConnectionPoll};
+use inner::{NodeAction, NodeInner};
+use net::{get_local_addrs, ConnectionPool};
 
-use crate::error::{Error, TarantoolErrorCode};
-use crate::fiber::{Cond, Latch};
+use crate::error::Error;
 use crate::net_box::{Conn, ConnOptions, Options};
-use crate::tuple::{FunctionArgs, FunctionCtx, Tuple};
+use crate::tuple::{FunctionArgs, FunctionCtx};
 
-use self::inner::NodeInner;
-
-pub mod bootstrap;
 mod fsm;
-mod inner;
-mod net;
+pub mod inner;
+pub mod net;
 pub mod rpc;
 mod storage;
 
-#[derive(Debug, Copy, Clone, PartialEq)]
-pub enum NodeState {
-    Bootstrapping,
-    Active,
-    Closed,
-}
-
 pub struct Node {
-    state: Cell<NodeState>,
-    state_lock: Latch,
-    state_cond: Cond,
-    bootstrap_ctrl: BoostrapController,
     inner: RefCell<NodeInner>,
-    connections: RefCell<ConnectionPoll>,
+    connections: RefCell<ConnectionPool>,
     rpc_function: String,
     options: NodeOptions,
 }
@@ -81,111 +64,44 @@ impl Node {
         }
 
         Ok(Node {
-            state: Cell::new(NodeState::Bootstrapping),
-            state_lock: Latch::new(),
-            state_cond: Cond::new(),
-            bootstrap_ctrl: BoostrapController::new(id, local_addrs, bootstrap_addrs_cfg),
-            inner: RefCell::new(NodeInner::new(id, &options)?),
-            connections: Default::default(),
+            inner: RefCell::new(NodeInner::new(id, local_addrs, bootstrap_addrs_cfg)),
+            connections: RefCell::new(ConnectionPool::new(options.connection_options.clone())),
             rpc_function: rpc_function.to_string(),
             options,
         })
     }
 
     pub fn run(&self) -> Result<(), Error> {
+        let mut events = VecDeque::new();
+        let mut actions = VecDeque::new();
         loop {
-            let mut is_state_changed = false;
-            {
-                let _lock = self.state_lock.lock();
-                let next_state = match self.state.get() {
-                    NodeState::Bootstrapping => {
-                        for action in self.bootstrap_ctrl.pending_actions() {
-                            match action {
-                                BootstrapAction::Request(msg, to) => {
-                                    let mut conn_pool = self.connections.borrow_mut();
-                                    self.send(
-                                        conn_pool.connect_or_get(None, &to)?,
-                                        rpc::Request::Bootstrap(msg),
-                                    )?;
-                                }
-                                BootstrapAction::Response(_) => {}
-                                BootstrapAction::Completed => {}
-                            };
-                        }
-
-                        Some(NodeState::Closed)
+            self.inner.borrow_mut().update(&mut events, &mut actions);
+            for action in actions.drain(..) {
+                match action {
+                    NodeAction::Request(to, msg) => {
+                        let mut conn_pool = self.connections.borrow_mut();
+                        self.send(conn_pool.get(&to).unwrap(), rpc::Request::Bootstrap(msg))?;
                     }
-                    NodeState::Active => {
-                        unimplemented!()
+                    NodeAction::Response(_) => {}
+                    NodeAction::Completed => {
+                        return Ok(());
                     }
-                    NodeState::Closed => break,
+                    _ => {}
                 };
-
-                if let Some(next_state) = next_state {
-                    self.state.replace(next_state);
-                    is_state_changed = true;
-                }
-            }
-
-            if is_state_changed {
-                self.state_cond.broadcast();
             }
         }
-
-        Ok(())
     }
 
     pub fn handle_rpc(&self, ctx: FunctionCtx, args: FunctionArgs) -> i32 {
-        let args: Tuple = args.into();
-
-        match args.into_struct::<rpc::Request>() {
-            Err(e) => set_error!(TarantoolErrorCode::Protocol, "{}", e),
-            Ok(request) => {
-                let response = match request {
-                    rpc::Request::Bootstrap(msg) => self.recv_bootstrap_request(msg),
-                    rpc::Request::Raft { data: msg_data } => {
-                        let mut msg = Message::default();
-                        match msg.merge_from_bytes(&msg_data) {
-                            Err(e) => {
-                                return set_error!(TarantoolErrorCode::Protocol, "{}", e);
-                            }
-                            Ok(()) => {
-                                let _lock = self.state_lock.lock();
-                                if let NodeState::Active = self.state.get() {
-                                    self.inner.borrow().handle_msg(msg);
-                                }
-                            }
-                        }
-                        rpc::Response::Ack
-                    }
-                    _ => unimplemented!(),
-                };
-
-                ctx.return_mp(&response)
-                    .unwrap_or_else(|e| set_error!(TarantoolErrorCode::ProcC, "{}", e))
-            }
-        }
+        unimplemented!();
     }
 
     pub fn wait_ready(&self, timeout: Duration) -> Result<(), Error> {
-        let started_at = Instant::now();
-        while self.state.get() != NodeState::Active {
-            let is_timeout = !match timeout.checked_sub(started_at.elapsed()) {
-                None => false,
-                Some(timeout) => self.state_cond.wait_timeout(timeout),
-            };
-
-            if is_timeout {
-                return Err(io::Error::from(io::ErrorKind::TimedOut).into());
-            }
-        }
-
-        Ok(())
+        unimplemented!();
     }
 
     pub fn close(&self) {
-        let _lock = self.state_lock.lock();
-        self.state.replace(NodeState::Closed);
+        unimplemented!();
     }
 
     fn send(&self, conn: &Conn, request: rpc::Request) -> Result<Option<rpc::Response>, Error> {
@@ -206,13 +122,5 @@ impl Node {
                 }
             },
         }
-    }
-
-    fn recv_bootstrap_request(&self, request: rpc::BootstrapMsg) -> rpc::Response {
-        unimplemented!()
-    }
-
-    fn send_raft_batch(&self, msgs: &mut dyn Iterator<Item = Message>) -> Result<(), Error> {
-        unimplemented!()
     }
 }

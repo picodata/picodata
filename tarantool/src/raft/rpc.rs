@@ -34,7 +34,6 @@ impl AsTuple for Response {}
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct BootstrapMsg {
     pub from_id: u64,
-    pub from_addrs: Vec<SocketAddr>,
     pub nodes: Vec<(u64, Vec<SocketAddr>)>,
 }
 

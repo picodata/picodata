@@ -7,56 +7,36 @@ use std::ptr::null_mut;
 use ipnetwork::{Ipv4Network, Ipv6Network};
 
 use crate::error::Error;
-
-use super::{Conn, ConnOptions};
+use crate::net_box::{Conn, ConnOptions};
 
 #[derive(Default)]
-pub struct ConnectionPoll {
-    connections: Vec<Conn>,
-    ids_index: HashMap<u64, usize>,
-    addrs_index: HashMap<SocketAddr, usize>,
+pub struct ConnectionPool {
     options: ConnOptions,
+    inner: HashMap<ConnectionId, Conn>,
 }
 
-impl ConnectionPoll {
-    pub fn connect_or_get(
-        &mut self,
-        id: Option<u64>,
-        addrs: &Vec<SocketAddr>,
-    ) -> Result<&Conn, Error> {
-        let inner_id = if let Some(id) = id {
-            self.ids_index.get(&id)
-        } else {
-            let mut inner_id = None;
-            for addr in addrs {
-                inner_id = self.addrs_index.get(addr);
-                if inner_id.is_some() {
-                    break;
-                }
-            }
-            inner_id
-        };
+#[derive(Clone, Debug, Hash, Eq, PartialEq)]
+pub enum ConnectionId {
+    Seed(usize),
+    Peer(u64),
+}
 
-        let inner_id = match inner_id {
-            Some(inner_id) => *inner_id,
-            None => {
-                let inner_id = self.connections.len();
-                self.connections
-                    .push(Conn::new(addrs.as_slice(), self.options.clone(), None)?);
+impl ConnectionPool {
+    pub fn new(options: ConnOptions) -> Self {
+        ConnectionPool {
+            options,
+            inner: HashMap::new(),
+        }
+    }
 
-                if let Some(id) = id {
-                    self.ids_index.insert(id, inner_id);
-                }
+    pub fn connect(&mut self, id: ConnectionId, addrs: impl ToSocketAddrs) -> Result<(), Error> {
+        let conn = Conn::new(addrs, self.options.clone(), None)?;
+        self.inner.insert(id, conn);
+        Ok(())
+    }
 
-                for addr in addrs {
-                    self.addrs_index.insert(addr.clone(), inner_id);
-                }
-
-                inner_id
-            }
-        };
-
-        Ok(self.connections.get(inner_id).unwrap())
+    pub fn get(&mut self, id: &ConnectionId) -> Option<&mut Conn> {
+        self.inner.get_mut(id)
     }
 }
 
