@@ -2,12 +2,13 @@
 
 use std::cell::RefCell;
 use std::collections::VecDeque;
+use std::io;
 use std::net::ToSocketAddrs;
 use std::time::Duration;
 
 use rand::random;
 
-use inner::{NodeAction, NodeInner};
+use inner::{NodeAction, NodeInner, NodeState};
 use net::{get_local_addrs, ConnectionPool};
 
 use crate::error::{Error, TarantoolErrorCode};
@@ -29,6 +30,7 @@ pub struct Node {
     events_cond: Cond,
     events_buffer: RefCell<VecDeque<NodeEvent>>,
     actions_buffer: RefCell<VecDeque<NodeAction>>,
+    ready_cond: Cond,
     options: NodeOptions,
 }
 
@@ -75,6 +77,7 @@ impl Node {
             events_cond: Cond::new(),
             events_buffer: RefCell::new(VecDeque::with_capacity(options.recv_queue_size)),
             actions_buffer: RefCell::new(VecDeque::with_capacity(options.send_queue_size)),
+            ready_cond: Cond::new(),
             options,
         })
     }
@@ -97,9 +100,13 @@ impl Node {
                         self.send(conn_pool.get(&to).unwrap(), rpc::Request::Bootstrap(msg))?;
                     }
                     NodeAction::Response(_) => {}
-                    NodeAction::Completed => {
-                        return Ok(());
-                    }
+                    NodeAction::StateChangeNotification(state) => match state {
+                        NodeState::Ready => {
+                            self.ready_cond.signal();
+                        }
+                        NodeState::Done => return Ok(()),
+                        _ => {}
+                    },
                     _ => {}
                 };
             }
@@ -119,7 +126,7 @@ impl Node {
                         self.events_buffer
                             .borrow_mut()
                             .push_back(NodeEvent::Request(msg));
-                        self.events_cond.wait();
+                        self.events_cond.signal();
                     }
                     _ => unimplemented!(),
                 };
@@ -131,11 +138,17 @@ impl Node {
     }
 
     pub fn wait_ready(&self, timeout: Duration) -> Result<(), Error> {
-        unimplemented!();
+        if self.inner.borrow().state() != &NodeState::Ready {
+            if !self.ready_cond.wait_timeout(timeout) {
+                return Err(Error::IO(io::ErrorKind::TimedOut.into()));
+            }
+        }
+        Ok(())
     }
 
     pub fn close(&self) {
-        unimplemented!();
+        self.events_buffer.borrow_mut().push_back(NodeEvent::Stop);
+        self.events_cond.signal();
     }
 
     fn send(&self, conn: &Conn, request: rpc::Request) -> Result<Option<rpc::Response>, Error> {

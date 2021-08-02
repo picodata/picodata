@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
 
-use tarantool::raft::inner::{NodeAction, NodeEvent, NodeInner};
+use tarantool::raft::inner::{NodeAction, NodeEvent, NodeInner, NodeState};
 use tarantool::raft::net::ConnectionId;
 use tarantool::raft::rpc;
 
@@ -34,7 +34,7 @@ pub fn test_bootstrap_solo() {
     }));
     node.update(&mut events, &mut actions);
 
-    assert_eq!(actions.len(), 2);
+    assert_eq!(actions.len(), 3);
     assert!(matches!(
         &actions[0],
         NodeAction::Connect(ConnectionId::Peer(2), addrs) if addrs == &remote_addrs
@@ -58,7 +58,10 @@ pub fn test_bootstrap_solo() {
     node.update(&mut events, &mut actions);
 
     assert_eq!(actions.len(), 1);
-    assert!(matches!(&actions[0], NodeAction::Completed))
+    assert!(matches!(
+        &actions[0],
+        NodeAction::StateChangeNotification(NodeState::Ready)
+    ))
 }
 
 pub fn test_bootstrap_2n() {
@@ -91,7 +94,7 @@ pub fn test_bootstrap_2n() {
 fn communicate(from: &mut VecDeque<NodeAction>, to: &mut VecDeque<NodeEvent>) -> bool {
     let mut is_completed = false;
     for action in from.drain(..) {
-        if let NodeAction::Completed = action {
+        if let NodeAction::StateChangeNotification(NodeState::Ready) = action {
             is_completed = true;
         }
 
