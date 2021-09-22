@@ -6,18 +6,19 @@ use crate::raft::net::ConnectionId;
 use crate::raft::rpc;
 
 pub struct NodeInner {
-    state: State,
+    state: NodeState,
     local_id: u64,
     peers: BTreeMap<u64, Vec<SocketAddr>>,
     responded_ids: HashSet<u64>,
     bootstrap_addrs: Vec<Vec<SocketAddr>>,
 }
 
-#[derive(Debug, Copy, Clone)]
-enum State {
+#[derive(Debug, Copy, Clone, PartialEq)]
+pub enum NodeState {
     Init,
     ColdBootstrap,
     WarmBootstrap,
+    Ready,
     Offline,
     Done,
 }
@@ -27,6 +28,7 @@ pub enum NodeEvent {
     Request(rpc::BootstrapMsg),
     Response(rpc::BootstrapMsg),
     Timeout,
+    Stop,
 }
 
 #[derive(Debug)]
@@ -35,7 +37,7 @@ pub enum NodeAction {
     UpgradeSeed(ConnectionId, u64),
     Request(ConnectionId, rpc::BootstrapMsg),
     Response(Result<rpc::Response, Error>),
-    Completed,
+    StateChangeNotification(NodeState),
 }
 
 impl NodeInner {
@@ -48,7 +50,7 @@ impl NodeInner {
         peers.insert(local_id, local_addrs);
 
         NodeInner {
-            state: State::Init,
+            state: NodeState::Init,
             local_id,
             peers,
             responded_ids: Default::default(),
@@ -57,13 +59,17 @@ impl NodeInner {
     }
 
     pub fn update(&mut self, events: &mut VecDeque<NodeEvent>, actions: &mut VecDeque<NodeAction>) {
-        if let State::Init = self.state {
+        if let NodeState::Init = self.state {
             self.init(actions);
         }
 
         while let Some(event) = events.pop_front() {
             self.handle_event(event, actions);
         }
+    }
+
+    pub fn state(&self) -> &NodeState {
+        &self.state
     }
 
     fn init(&mut self, actions_buf: &mut VecDeque<NodeAction>) {
@@ -73,12 +79,12 @@ impl NodeInner {
             self.send_bootstrap_request(id, actions_buf);
         }
 
-        self.state = State::ColdBootstrap;
+        self.state = NodeState::ColdBootstrap;
     }
 
     fn handle_event(&mut self, event: NodeEvent, actions_buf: &mut VecDeque<NodeAction>) {
         use NodeEvent as E;
-        use State as S;
+        use NodeState as S;
 
         let new_state = match (self.state, event) {
             (S::ColdBootstrap, E::Request(req))
@@ -93,19 +99,22 @@ impl NodeInner {
                 let num_peers = self.peers.len();
                 let num_responded = self.responded_ids.len();
                 if num_peers == (num_responded + 1) {
-                    actions_buf.push_back(NodeAction::Completed);
-                    Some(S::Done)
+                    Some(S::Ready)
                 } else {
                     None
                 }
             }
             (S::ColdBootstrap, E::Timeout) => Some(S::Offline),
             (S::Offline, E::Timeout) => None,
+            (_, E::Stop) => Some(S::Done),
             _ => panic!("invalid state"),
         };
 
         if let Some(new_state) = new_state {
-            self.state = new_state;
+            if self.state != new_state {
+                actions_buf.push_back(NodeAction::StateChangeNotification(new_state.clone()));
+                self.state = new_state;
+            }
         }
     }
 

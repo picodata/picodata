@@ -6,7 +6,7 @@ use std::os::raw::c_int;
 use std::rc::{Rc, Weak};
 
 use tarantool::raft::Node;
-use tarantool::tuple::{FunctionArgs, FunctionCtx};
+use tarantool::tuple::{FunctionArgs, FunctionCtx, Tuple};
 
 #[derive(Default)]
 struct Global {
@@ -21,15 +21,12 @@ lazy_static! {
 }
 
 #[no_mangle]
-pub extern "C" fn run_node(_: FunctionCtx, _: FunctionArgs) -> c_int {
-    let node = Rc::new(
-        Node::new(
-            "libcluster_node.rpc",
-            vec!["127.0.0.1:3301", "127.0.0.1:3302", "127.0.0.1:3303"],
-            Default::default(),
-        )
-        .unwrap(),
-    );
+pub extern "C" fn run_node(_: FunctionCtx, args: FunctionArgs) -> c_int {
+    let args: Tuple = args.into();
+    let (bootstrap_addrs,) = args.into_struct::<(Vec<String>,)>().unwrap();
+
+    let node =
+        Rc::new(Node::new("libcluster_node.rpc", bootstrap_addrs, Default::default()).unwrap());
     GLOBAL.node.replace(Rc::downgrade(&node));
     node.run().unwrap();
     0
