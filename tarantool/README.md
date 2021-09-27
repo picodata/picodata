@@ -101,7 +101,7 @@ edition = "2018"
 # author, license, etc
 
 [dependencies]
-tarantool = "0.4.1" # (1)
+tarantool = "0.4.2" # (1)
 serde = "1.0" # (2)
 
 [lib]
