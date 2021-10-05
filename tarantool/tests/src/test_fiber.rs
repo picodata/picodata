@@ -1,7 +1,12 @@
-use std::rc::Rc;
-use std::time::Duration;
+use std::{
+    cell::RefCell,
+    rc::Rc,
+    time::Duration,
+};
 
-use tarantool::fiber::{fiber_yield, is_cancelled, sleep, Cond, Fiber, FiberAttr};
+use tarantool::fiber::{
+    self, fiber_yield, is_cancelled, sleep, Cond, Fiber, FiberAttr
+};
 
 pub fn test_fiber_new() {
     let mut fiber = Fiber::new("test_fiber", &mut |_| 0);
@@ -55,6 +60,44 @@ pub fn test_fiber_wake() {
     fiber.join();
 }
 
+pub fn test_fiber_wake_multiple() {
+    let res = Rc::new(RefCell::new(vec![]));
+    let mut fibers = vec![];
+    for (i, c) in (1..).zip(&['a', 'b', 'c']) {
+        let mut fiber = Fiber::new(
+            &format!("test_fiber_{}", c),
+            &mut |r: Box<Rc<RefCell<Vec<i32>>>>| {
+                fiber_yield();
+                r.borrow_mut().push(i);
+                0
+            }
+        );
+        fiber.start(res.clone());
+        fiber.wakeup();
+        fibers.push(fiber);
+    }
+
+    for f in &mut fibers {
+        f.set_joinable(true);
+    }
+
+    res.borrow_mut().push(0);
+    for f in fibers {
+        f.join();
+    }
+    res.borrow_mut().push(4);
+
+    let res = res.borrow().iter().copied().collect::<Vec<_>>();
+    // This is what we want:
+    // assert_eq(res, vec![0, 1, 2, 3, 4]);
+    // This is what we get:
+    assert_eq!(res, vec![0, 3, 3, 3, 4]);
+    // Because `Fiber` doesn't work with closures. `i` is passed by reference
+    // and by the time the first fiber starts executing, it is equal to 3.
+    // This is actually undefined behavior, so adding this test is probably a
+    // bad idea
+}
+
 pub fn test_fiber_cond_signal() {
     let cond = Rc::new(Cond::new());
     let mut fiber = Fiber::new("test_fiber", &mut |cond: Box<Rc<Cond>>| {
@@ -103,4 +146,182 @@ pub fn test_fiber_cond_timeout() {
     sleep(0.02);
     cond.signal();
     fiber.join();
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// New
+////////////////////////////////////////////////////////////////////////////////
+
+pub fn test_immediate() {
+    let jh = fiber::Builder::new()
+        .callee(|| 69)
+        .start()
+        .unwrap();
+    let res = jh.join();
+    assert_eq!(res, 69);
+
+    let jh = fiber::start(|| 420);
+    let res = jh.join();
+    assert_eq!(res, 420);
+}
+
+pub fn test_immediate_with_attrs() {
+    let jh = fiber::Builder::new()
+        .name("boo")
+        .stack_size(100_000).unwrap()
+        .callee(|| 42)
+        .start()
+        .unwrap();
+    let res = jh.join();
+    assert_eq!(res, 42);
+}
+
+pub fn test_multiple_immediate() {
+    let mut res = vec![];
+    let fibers = vec![vec![1, 2], vec![3, 4], vec![5, 6]]
+        .into_iter()
+        .map(|v|
+            fiber::start(move || {
+                v.into_iter().map(|e| e + 1).collect::<Vec::<_>>()
+            })
+        )
+        .collect::<Vec<_>>();
+    res.push(1);
+    res.extend(
+        fibers.into_iter()
+            .map(fiber::JoinHandle::join)
+            .flatten()
+    );
+    res.push(8);
+    assert_eq!(res, vec![1, 2, 3, 4, 5, 6, 7, 8]);
+}
+
+pub fn test_unit_immediate() {
+    let jh = fiber::Builder::new()
+        .callee(|| ())
+        .start_unit()
+        .unwrap();
+    let () = jh.join();
+
+    let () = fiber::start_unit(|| ()).join();
+}
+
+pub fn test_unit_immediate_with_attrs() {
+    let jh = fiber::Builder::new()
+        .name("boo")
+        .stack_size(100_000).unwrap()
+        .callee(|| ())
+        .start_unit()
+        .unwrap();
+    let () = jh.join();
+}
+
+pub fn test_multiple_unit_immediate() {
+    let res = Rc::new(RefCell::new(vec![]));
+    let fibers = vec![vec![1, 2], vec![3, 4], vec![5, 6]]
+        .into_iter()
+        .map(|v| {
+            let res_ref = res.clone();
+            fiber::start_unit(move || {
+                res_ref.borrow_mut().extend(
+                    v.into_iter().map(|e| e + 1).collect::<Vec::<_>>()
+                )
+            })
+        })
+        .collect::<Vec<_>>();
+    res.borrow_mut().push(8);
+    for f in fibers {
+        f.join()
+    }
+    res.borrow_mut().push(9);
+    let res = res.borrow().iter().copied().collect::<Vec<_>>();
+    assert_eq!(res, vec![2, 3, 4, 5, 6, 7, 8, 9]);
+}
+
+pub fn test_deferred() {
+    let jh = fiber::Builder::new()
+        .callee(|| 13)
+        .defer()
+        .unwrap();
+    assert_eq!(jh.join(), 13);
+
+    let jh = fiber::defer(|| 42);
+    assert_eq!(jh.join(), 42);
+}
+
+pub fn test_deferred_with_attrs() {
+    let res = fiber::Builder::new()
+        .name("boo")
+        .stack_size(100_000).unwrap()
+        .callee(|| 15)
+        .defer()
+        .unwrap()
+        .join();
+    assert_eq!(res, 15);
+}
+
+pub fn test_multiple_deferred() {
+    let mut res = vec![];
+    let fibers = vec![vec![1, 2], vec![3, 4], vec![5, 6]]
+        .into_iter()
+        .map(|v|
+            fiber::defer(move || {
+                v.into_iter().map(|e| e + 1).collect::<Vec::<_>>()
+            })
+        )
+        .collect::<Vec<_>>();
+    res.push(1);
+    res.extend(
+        fibers.into_iter()
+            .map(fiber::JoinHandle::join)
+            .flatten()
+    );
+    res.push(8);
+    assert_eq!(res, vec![1, 2, 3, 4, 5, 6, 7, 8]);
+}
+
+pub fn test_unit_deferred() {
+    let jh = fiber::Builder::new()
+        .callee(|| ())
+        .defer_unit()
+        .unwrap();
+    let () = jh.join();
+
+    let res = std::cell::Cell::new(0);
+    let jh = fiber::defer_unit(|| res.set(42));
+    assert_eq!(res.get(), 0);
+    jh.join();
+    assert_eq!(res.get(), 42);
+}
+
+pub fn test_unit_deferred_with_attrs() {
+    let () = fiber::Builder::new()
+        .name("boo")
+        .stack_size(100_000).unwrap()
+        .callee(|| ())
+        .defer_unit()
+        .unwrap()
+        .join();
+}
+
+pub fn test_multiple_unit_deferred() {
+    let res = Rc::new(RefCell::new(vec![]));
+    let fibers = vec![vec![1, 2], vec![3, 4], vec![5, 6]]
+        .into_iter()
+        .map(|v| {
+            let res_ref = res.clone();
+            fiber::defer_unit(move ||
+                res_ref.borrow_mut().extend(
+                    v.into_iter().map(|e| e + 1).collect::<Vec::<_>>()
+                )
+            )
+        })
+        .collect::<Vec<_>>();
+    res.borrow_mut().push(1);
+    for f in fibers {
+        f.join()
+    }
+    res.borrow_mut().push(8);
+    let res = res.borrow().iter().copied().collect::<Vec<_>>();
+    assert_eq!(res, vec![1, 2, 3, 4, 5, 6, 7, 8]);
 }

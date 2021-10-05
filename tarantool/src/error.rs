@@ -27,6 +27,9 @@ use rmp::encode::ValueWriteError;
 
 use crate::ffi::tarantool as ffi;
 
+/// A specialized [`Result`] type for the crate
+pub type Result<T> = std::result::Result<T, Error>;
+
 /// Represents all error cases for all routines of crate (including Tarantool errors)
 #[derive(Debug, Fail)]
 pub enum Error {
@@ -171,7 +174,7 @@ pub struct TarantoolError {
 impl TarantoolError {
     /// Tries to get the information about the last API call error. If error was not set
     /// returns `Ok(())`
-    pub fn maybe_last() -> Result<(), Self> {
+    pub fn maybe_last() -> std::result::Result<(), Self> {
         let error_ptr = unsafe { ffi::box_error_last() };
         if error_ptr.is_null() {
             return Ok(());

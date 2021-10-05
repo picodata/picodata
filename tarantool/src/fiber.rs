@@ -9,6 +9,7 @@
 //! - [Threads, fibers and yields](https://www.tarantool.io/en/doc/latest/book/box/atomic/#threads-fibers-and-yields)
 //! - [Lua reference: Module fiber](https://www.tarantool.io/en/doc/latest/reference/reference_lua/fiber/)
 //! - [C API reference: Module fiber](https://www.tarantool.io/en/doc/latest/dev_guide/reference_capi/fiber/)
+use std::cell::UnsafeCell;
 use std::ffi::CString;
 use std::marker::PhantomData;
 use std::os::raw::c_void;
@@ -16,9 +17,13 @@ use std::time::Duration;
 
 use va_list::VaList;
 
-use crate::error::{Error, TarantoolError};
+use crate::error::TarantoolError;
 use crate::ffi::tarantool as ffi;
+use crate::Result;
 
+/// *OBSOLETE*: This struct is being deprecated in favour of [`Immediate`],
+/// [`Deferred`], etc. due to them being more efficient and idiomatic.
+///
 /// A fiber is a set of instructions which are executed with cooperative multitasking.
 ///
 /// Fibers managed by the fiber module are associated with a user-supplied function called the fiber function.
@@ -125,7 +130,8 @@ impl<'a, T> Fiber<'a, T> {
     /// See also: [fiber.new()](#method.new)
     pub fn start(&mut self, arg: T) {
         unsafe {
-            ffi::fiber_start(self.inner, self.callback, Box::into_raw(Box::<T>::new(arg)));
+            let boxed_arg = Box::into_raw(Box::<T>::new(arg));
+            ffi::fiber_start(self.inner, self.callback, boxed_arg);
         }
     }
 
@@ -170,6 +176,583 @@ impl<'a, T> Fiber<'a, T> {
     pub fn cancel(&mut self) {
         unsafe { ffi::fiber_cancel(self.inner) }
     }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Builder
+////////////////////////////////////////////////////////////////////////////////
+
+/// Fiber factory which can be used to configure the properties of the new
+/// fiber.
+///
+/// Methods can be chained on it in order to configure it.
+///
+/// The two configurations available are:
+///
+/// * `name`:       specifies an associated name for the fiber
+/// * `stack_size`: specifies the desired stack size for the fiber
+///
+/// The [`start`](#method.start), [`start_unit`](#method.start_unit),
+/// [`defer`](#method.defer) and [`defer_unit`](#method.defer_unit) methods will
+/// take ownership of the builder and create a [`Result`] to the fiber handle
+/// with the given configuration.
+///
+/// The [`fiber::start`](start), [`fiber::start_unit`](start_unit),
+/// [`fiber::defer`](defer) and [`fiber::defer_unit`](defer_unit) free functions
+/// use a `Builder` with default configuration and unwraps its return value.
+pub struct Builder {
+    name: Option<String>,
+    attr: Option<FiberAttr>,
+}
+
+impl Builder {
+    /// Generates the base configuration for spawning a fiber, from which
+    /// configuration methods can be chained.
+    pub fn new() -> Self {
+        Builder {
+            name: None,
+            attr: None,
+        }
+    }
+
+    /// Names the fiber-to-be.
+    ///
+    /// The name must not contain null bytes (`\0`).
+    pub fn name(mut self, name: impl Into<String>) -> Self {
+        self.name = Some(name.into());
+        self
+    }
+
+    /// Sets the size of the stack (in bytes) for the new fiber.
+    pub fn stack_size(mut self, stack_size: usize) -> Result<Self> {
+        let mut attr = FiberAttr::new();
+        attr.set_stack_size(stack_size)?;
+        self.attr = Some(attr);
+        Ok(self)
+    }
+
+    /// Sets the callee function for the new fiber.
+    ///
+    /// Returns a [`CalleeBuilder`] taking ownership of `self`.
+    pub fn callee<F, T>(self, f: F) -> CalleeBuilder<F, T>
+    where
+        F: FnOnce() -> T,
+    {
+        CalleeBuilder { builder: self, f: f }
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// CalleeBuilder
+////////////////////////////////////////////////////////////////////////////////
+
+/// An intermediate fiber factory specialized for the given fiber function.
+///
+/// This type exists to avoid forcing [`Builder`] to know about the type of the
+/// function.
+pub struct CalleeBuilder<F, T>
+where
+    F: FnOnce() -> T,
+{
+    builder: Builder,
+    f: F,
+}
+
+macro_rules! inner_spawn {
+    ($self:expr, $fiber:tt) => {
+        {
+            let Self { builder: Builder { name, attr }, f } = $self;
+            let name = name.unwrap_or_else(|| "<rust>".into());
+            Ok($fiber::new(name, f, attr.as_ref())?.spawn())
+        }
+    };
+}
+
+impl<F, T> CalleeBuilder<F, T>
+where
+    F: FnOnce() -> T,
+{
+    /// Spawns a new fiber by taking ownership of the `Builder`, and returns a
+    /// [`Result`] to its [`JoinHandle`].
+    ///
+    /// See the [`start`] free function for more details.
+    pub fn start(self) -> Result<JoinHandle<T>> {
+        inner_spawn!(self, Immediate)
+    }
+
+    /// Spawns a new deferred fiber by taking ownership of the `Builder`,
+    /// and returns a [`Result`] to its [`JoinHandle`].
+    ///
+    /// See the [`defer`] free function for more details.
+    pub fn defer(self) -> Result<JoinHandle<T>> {
+        inner_spawn!(self, Deferred)
+    }
+}
+
+impl<F> CalleeBuilder<F, ()>
+where
+    F: FnOnce(),
+{
+    /// Spawns a new unit fiber by taking ownership of the `Builder`, and
+    /// returns a [`Result`] to its [`UnitJoinHandle`].
+    ///
+    /// See the [`start_unit`] free function for more details.
+    pub fn start_unit(self) -> Result<UnitJoinHandle> {
+        inner_spawn!(self, UnitImmediate)
+    }
+
+    /// Spawns a new deferred unit fiber by taking ownership of the `Builder`,
+    /// and returns a [`Result`] to its [`UnitJoinHandle`].
+    ///
+    /// See the [`defer_unit`] free function for more details.
+    pub fn defer_unit(self) -> Result<UnitJoinHandle> {
+        inner_spawn!(self, UnitDeferred)
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Macros
+////////////////////////////////////////////////////////////////////////////////
+
+macro_rules! inner_fiber_new {
+    ($name:expr, $attr:expr) => {
+        {
+            let cname = CString::new($name)
+                .expect("fiber name may not contain interior null bytes");
+
+            let inner = unsafe {
+                if let Some(attr) = $attr {
+                    ffi::fiber_new_ex(
+                        cname.as_ptr(), attr.inner, Some(Self::trampoline)
+                    )
+                } else {
+                    ffi::fiber_new(cname.as_ptr(), Some(Self::trampoline))
+                }
+            };
+
+            if inner.is_null() {
+                return Err(TarantoolError::last().into())
+            }
+
+            inner
+        }
+    };
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Immediate
+////////////////////////////////////////////////////////////////////////////////
+
+/// A handle to a fiber.
+///
+/// There is usually no need to create a `Immediate` struct yourself, one
+/// should instead use a function like `start` to create new fibers,
+/// see the docs of [`Builder`] and [`start`] for more details.
+pub struct Immediate<F, T>
+where
+    F: FnOnce() -> T,
+{
+    inner: *mut ffi::Fiber,
+    f: Box<F>,
+}
+
+impl<F, T> Immediate<F, T>
+where
+    F: FnOnce() -> T,
+{
+    pub fn new(name: String, f: F, attr: Option<&FiberAttr>) -> Result<Self> {
+        Ok(
+            Self {
+                inner: inner_fiber_new!(name, attr),
+                f: Box::new(f),
+            }
+        )
+    }
+
+    /// See [`start`] for details.
+    pub fn spawn(self) -> JoinHandle<T> {
+        let result = Box::new(UnsafeCell::new(None));
+        unsafe {
+            ffi::fiber_set_joinable(self.inner, true);
+            ffi::fiber_start(
+                self.inner,
+                Box::into_raw(self.f),
+                result.get(),
+            );
+        };
+        JoinHandle { inner: self.inner, result }
+    }
+
+    // A C compatible function which processes the passed arguments:
+    // * the rust function object (either a regular `fn` item or a closure) and
+    //   a pointer to the cell where
+    // * a cell in which the fiber result value will be written
+    //
+    // This function will be passed to the `ffi::fiber_new` function and will
+    // be invoked upon fiber execution start.
+    unsafe extern "C" fn trampoline(mut args: VaList) -> i32 {
+        let callback = args.get_boxed::<F>();
+        let result = args.get_ptr::<Option<T>>();
+        std::ptr::write(result, Some(callback()));
+        0
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// JoinHandle
+////////////////////////////////////////////////////////////////////////////////
+
+/// An owned permission to join on an immediate fiber (block on its termination).
+pub struct JoinHandle<T> {
+    inner: *mut ffi::Fiber,
+    result: Box<UnsafeCell<Option<T>>>,
+}
+
+impl<T> JoinHandle<T> {
+    /// Block until the fiber's termination and return it's result value.
+    pub fn join(self) -> T {
+        // TODO: add error handling
+        let _code = unsafe { ffi::fiber_join(self.inner) };
+        self.result.into_inner().unwrap()
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// UnitImmediate
+////////////////////////////////////////////////////////////////////////////////
+
+/// A handle to a unit fiber.
+///
+/// This is an optimized version of [`Immediate`]`<F, ()>`.
+///
+/// There is usually no need to create a `UnitImmediate` struct yourself, one
+/// should instead use a function like `start_unit` to create new
+/// fibers, see the docs of [`Builder`] and [`start_unit`] for more
+/// details.
+pub struct UnitImmediate<F>
+where
+    F: FnOnce(),
+{
+    inner: *mut ffi::Fiber,
+    f: Box<F>,
+}
+
+impl<F> UnitImmediate<F>
+where
+    F: FnOnce(),
+{
+    pub fn new(name: String, f: F, attr: Option<&FiberAttr>) -> Result<Self> {
+        Ok(
+            Self {
+                inner: inner_fiber_new!(name, attr),
+                f: Box::new(f),
+            }
+        )
+    }
+
+    /// See [`start_unit`] for details.
+    pub fn spawn(self) -> UnitJoinHandle {
+        unsafe {
+            ffi::fiber_set_joinable(self.inner, true);
+            ffi::fiber_start(
+                self.inner,
+                Box::into_raw(self.f),
+            );
+        };
+        UnitJoinHandle { inner: self.inner }
+    }
+
+    // A C compatible function which processes the passed arguments:
+    // * the rust function object (either a regular `fn` item or a closure) and
+    //   a pointer to the cell where
+    //
+    // This function will be passed to the `ffi::fiber_new` function and will
+    // be invoked upon fiber execution start.
+    unsafe extern "C" fn trampoline(mut args: VaList) -> i32 {
+        let callback = args.get_boxed::<F>();
+        callback();
+        0
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// UnitJoinHandle
+////////////////////////////////////////////////////////////////////////////////
+
+/// An owned permission to join on an immediate fiber (block on its termination).
+///
+/// This is an optimized case of [`JoinHandle`]`<()>`.
+pub struct UnitJoinHandle {
+    inner: *mut ffi::Fiber,
+}
+
+impl UnitJoinHandle {
+    /// Block until the fiber's termination.
+    pub fn join(self) {
+        let _code = unsafe { ffi::fiber_join(self.inner) };
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Deferred
+////////////////////////////////////////////////////////////////////////////////
+
+/// A handle to a deferred fiber.
+///
+/// There is usually no need to create a `Deferred` struct yourself, one
+/// should instead use a function like `defer` to create new
+/// fibers, see the docs of [`Builder`] and [`defer`] for more
+/// details.
+pub struct Deferred<F, T>
+where
+    F: FnOnce() -> T,
+{
+    inner: *mut ffi::Fiber,
+    f: Box<F>,
+}
+
+impl<F, T> Deferred<F, T>
+where
+    F: FnOnce() -> T,
+{
+    pub fn new(name: String, f: F, attr: Option<&FiberAttr>) -> Result<Self> {
+        Ok(
+            Self {
+                inner: inner_fiber_new!(name, attr),
+                f: Box::new(f),
+            }
+        )
+    }
+
+    /// See [`defer`] for details.
+    pub fn spawn(self) -> JoinHandle<T> {
+        let result = Box::new(UnsafeCell::new(None));
+        unsafe {
+            ffi::fiber_set_joinable(self.inner, true);
+            ffi::fiber_start(
+                self.inner,
+                Box::into_raw(self.f),
+                result.get(),
+            );
+            // XXX: Not sure if this hack works. The problem is: if we want to
+            // pass an arbitrary rust function as a fiber function, we need to
+            // be able to pass a pointer to it's closure. We can use the
+            // additional arguments to `fiber_start` for this, but what if we
+            // don't want to start the fiber and instead just `fiber_wakeup` it?
+            // (similarly to how lua's `fiber.new` does it). In here I decided
+            // to try do the following:
+            // 1.) `fiber_start` with a trampoline and a pointer to the actual
+            //     rust function object
+            // 2.) the trampoline immediately does a `fiber_yield` before
+            //     transfering the control to the rust function
+            // 3.) `fiber_wakeup` to make the fiber READY for execution
+            ffi::fiber_wakeup(self.inner);
+        }
+
+        JoinHandle { inner: self.inner, result }
+    }
+
+    // A C compatible function which processes the passed arguments:
+    // * the rust function object (either a regular `fn` item or a closure) and
+    //   a pointer to the cell where
+    // * a cell in which the fiber result value will be written
+    //
+    // XXX: need to be tested
+    // This function will be passed to the `ffi::fiber_new` function and will
+    // be invoked upon fiber execution start. The first thing it does (after
+    // retrieving the argument) is yields the execution in order to move it to
+    // the "detached" mode. After that whenever the execution returns to this
+    // fiber the actual rust fiber functino will be executed.
+    unsafe extern "C" fn trampoline(mut args: VaList) -> i32 {
+        let callback = args.get_boxed::<F>();
+        let result = args.get_ptr::<Option<T>>();
+        ffi::fiber_yield();
+        std::ptr::write(result, Some(callback()));
+        0
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// UnitDeferred
+////////////////////////////////////////////////////////////////////////////////
+
+/// A handle to a deferred unit fiber.
+///
+/// This is an optimized version of [`Deferred`]`<F, ()>`.
+///
+/// There is usually no need to create a `UnitDeferred` struct yourself, one
+/// should instead use a function like `defer_unit` to create new
+/// fibers, see the docs of [`Builder`] and [`defer_unit`] for more
+/// details.
+pub struct UnitDeferred<F>
+where
+    F: FnOnce(),
+{
+    inner: *mut ffi::Fiber,
+    f: Box<F>,
+}
+
+impl<F> UnitDeferred<F>
+where
+    F: FnOnce(),
+{
+    pub fn new(name: String, f: F, attr: Option<&FiberAttr>) -> Result<Self> {
+        Ok(
+            Self {
+                inner: inner_fiber_new!(name, attr),
+                f: Box::new(f),
+            }
+        )
+    }
+
+    /// See [`defer_unit`] for details.
+    pub fn spawn(self) -> UnitJoinHandle {
+        unsafe {
+            ffi::fiber_set_joinable(self.inner, true);
+            ffi::fiber_start(
+                self.inner,
+                Box::into_raw(self.f),
+            );
+            // XXX: Not sure if this hack works. The problem is: if we want to
+            // pass an arbitrary rust function as a fiber function, we need to
+            // be able to pass a pointer to it's closure. We can use the
+            // additional arguments to `fiber_start` for this, but what if we
+            // don't want to start the fiber and instead just `fiber_wakeup` it?
+            // (similarly to how lua's `fiber.new` does it). In here I decided
+            // to try do the following:
+            // 1.) `fiber_start` with a trampoline and a pointer to the actual
+            //     rust function object
+            // 2.) the trampoline immediately does a `fiber_yield` before
+            //     transfering the control to the rust function
+            // 3.) `fiber_wakeup` to make the fiber READY for execution
+            ffi::fiber_wakeup(self.inner);
+        }
+
+        UnitJoinHandle { inner: self.inner }
+    }
+
+    // A C compatible function which processes the passed arguments:
+    // * the rust function object (either a regular `fn` item or a closure) and
+    //   a pointer to the cell where
+    //
+    // XXX: need to be tested
+    // This function will be passed to the `ffi::fiber_new` function and will
+    // be invoked upon fiber execution start. The first thing it does (after
+    // retrieving the argument) is yields the execution in order to move it to
+    // the "detached" mode. After that whenever the execution returns to this
+    // fiber the actual rust fiber functino will be executed.
+    unsafe extern "C" fn trampoline(mut args: VaList) -> i32 {
+        let callback = args.get_boxed::<F>();
+        ffi::fiber_yield();
+        callback();
+        0
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// TrampolineArgs
+////////////////////////////////////////////////////////////////////////////////
+
+/// A helper trait that implements some useful functions for working with
+/// trampoline function arguments.
+trait TrampolineArgs {
+    unsafe fn get<T>(&mut self) -> T
+    where
+        T: va_list::VaPrimitive;
+
+    unsafe fn get_boxed<T>(&mut self) -> Box<T> {
+        Box::from_raw(self.get::<*const c_void>() as *mut T)
+    }
+
+    unsafe fn get_ptr<T>(&mut self) -> *mut T {
+        self.get::<*const c_void>() as *mut T
+    }
+
+    unsafe fn get_str(&mut self) -> String {
+        let buf = self.get::<*const u8>() as *mut u8;
+        let length = self.get::<usize>();
+        let capacity = self.get::<usize>();
+        String::from_raw_parts(buf, length, capacity)
+    }
+}
+
+impl TrampolineArgs for VaList {
+    unsafe fn get<T>(&mut self) -> T
+    where
+        T: va_list::VaPrimitive,
+    {
+        self.get::<T>()
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Free functions
+////////////////////////////////////////////////////////////////////////////////
+
+/// Creates a new fiber and runs it immediately, returning a [`JoinHandle`] for
+/// it.
+///
+/// **NOTE**: The argument `f` is a function that returns `T`. In case when `T =
+/// ()` (no return value) one should instead use [`start_unit`].
+///
+/// The join handle will implicitly *detach* the child fiber upon being
+/// dropped. In this case, the child fiber may outlive the parent. Additionally,
+/// the join handle provides a [`JoinHandle::join`] method that can be used to
+/// join the child fiber and acquire the result value of the fiber function.
+///
+/// This will create a fiber using default parameters of [`Builder`], if you
+/// want to specify the stack size or the name of the thread, use this API
+/// instead.
+pub fn start<F, T>(f: F) -> JoinHandle<T>
+where
+    F: FnOnce() -> T,
+{
+    Builder::new().callee(f).start().unwrap()
+}
+
+/// Creates a new unit fiber and runs it immediately, returning a
+/// [`UnitJoinHandle`] for it.
+///
+/// The *unit fiber* is a special case of a fiber whose function does not return
+/// a value. In fact `UnitJoinHandle` is identical to `JoinHanble<()>` is all
+/// aspects instead that it is implemented more efficiently and the former
+/// should always be used instead of the latter.
+///
+/// For more details see: [`start`]
+pub fn start_unit<F>(f: F) -> UnitJoinHandle
+where
+    F: FnOnce(),
+{
+    Builder::new().callee(f).start_unit().unwrap()
+}
+
+/// Creates and schedules a new deferred fiber, returning a [`JoinHandle`] for
+/// it.
+///
+/// **NOTE**: The argument `f` is a function that returns `T`. In case when `T =
+/// ()` (no return value) one should instead use [`defer_unit`].
+///
+/// The **deferred fiber** is a fiber which starts in a detached mode. It can be
+/// joined by calling the [`JoinHandle::join`] method.
+pub fn defer<F, T>(f: F) -> JoinHandle<T>
+where
+    F: FnOnce() -> T,
+{
+    Builder::new().callee(f).defer().unwrap()
+}
+
+/// Creates and schedules a new deferred unit fiber, returning a
+/// [`UnitJoinHandle`] for it.
+///
+/// The **deferred unit fiber** is a fiber which starts in a detached mode. It
+/// can be joined by calling the [`UnitJoinHandle::join`] method.
+///
+/// This is an optimized version [`defer`]`<F, ()>`.
+pub fn defer_unit<F>(f: F) -> UnitJoinHandle
+where
+    F: FnOnce(),
+{
+    Builder::new().callee(f).defer_unit().unwrap()
 }
 
 /// Make it possible or not possible to wakeup the current
@@ -259,7 +842,7 @@ impl FiberAttr {
     ///Set stack size for the fiber attribute.
     ///
     /// - `stack_size` - stack size for new fibers
-    pub fn set_stack_size(&mut self, stack_size: usize) -> Result<(), Error> {
+    pub fn set_stack_size(&mut self, stack_size: usize) -> Result<()> {
         if unsafe { ffi::fiber_attr_setstacksize(self.inner, stack_size) } < 0 {
             Err(TarantoolError::last().into())
         } else {
@@ -422,8 +1005,8 @@ where
         F: FnMut(Box<T>) -> i32,
     {
         let closure: &mut F = &mut *(args.get::<*const c_void>() as *mut F);
-        let arg = Box::from_raw(args.get::<*const c_void>() as *mut T);
-        (*closure)(arg)
+        let boxed_arg = Box::from_raw(args.get::<*const c_void>() as *mut T);
+        (*closure)(boxed_arg)
     }
     (callback as *mut F as *mut c_void, Some(trampoline::<F, T>))
 }
