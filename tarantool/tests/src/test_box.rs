@@ -2,7 +2,7 @@ use rand::Rng;
 
 use tarantool::index::{IndexOptions, IteratorType};
 use tarantool::sequence::Sequence;
-use tarantool::space::{Space, SpaceCreateOptions, SpaceFieldFormat, SpaceFieldType, SystemSpace};
+use tarantool::space::{Space, SpaceCreateOptions, SystemSpace};
 use tarantool::tuple::Tuple;
 
 use crate::common::{QueryOperation, S1Record, S2Key, S2Record};
@@ -517,13 +517,13 @@ pub fn test_space_drop() {
 
 pub fn test_index_create_drop() {
     let space_opts = SpaceCreateOptions::default();
-    let mut space = Space::create("new_space_7", &space_opts).unwrap();
+    let space = Space::create("new_space_7", &space_opts).unwrap();
 
     let index_opts = IndexOptions::default();
     let create_result = space.create_index("new_index", &index_opts);
 
     if create_result.is_err() {
-        panic!(dbg!(create_result.err()));
+        panic!("{:?}", create_result.err());
     }
     assert_eq!(create_result.is_ok(), true);
 
