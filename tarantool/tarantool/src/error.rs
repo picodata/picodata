@@ -20,7 +20,7 @@ use std::ffi::CStr;
 use std::str::Utf8Error;
 use std::{fmt, io};
 
-use failure::_core::fmt::{Display, Formatter};
+use core::fmt::{Display, Formatter};
 use num_traits::FromPrimitive;
 use rmp::decode::{MarkerReadError, NumValueReadError, ValueReadError};
 use rmp::encode::ValueWriteError;
@@ -32,48 +32,48 @@ use crate::tlua::LuaError;
 pub type Result<T> = std::result::Result<T, Error>;
 
 /// Represents all error cases for all routines of crate (including Tarantool errors)
-#[derive(Debug, Fail)]
+#[derive(Debug, thiserror::Error)]
 pub enum Error {
-    #[fail(display = "Tarantool error: {}", _0)]
+    #[error("Tarantool error: {0}")]
     Tarantool(TarantoolError),
 
-    #[fail(display = "IO error: {}", _0)]
+    #[error("IO error: {0}")]
     IO(io::Error),
 
     #[cfg(feature = "raft_node")]
-    #[fail(display = "Raft: {}", _0)]
+    #[error("Raft: {0}")]
     Raft(raft::Error),
 
-    #[fail(display = "Failed to encode tuple: {}", _0)]
+    #[error("Failed to encode tuple: {0}")]
     Encode(rmp_serde::encode::Error),
 
-    #[fail(display = "Failed to decode tuple: {}", _0)]
+    #[error("Failed to decode tuple: {0}")]
     Decode(rmp_serde::decode::Error),
 
     #[cfg(feature = "raft_node")]
-    #[fail(display = "Protobuf encode/decode error: {}", _0)]
+    #[error("Protobuf encode/decode error: {0}")]
     Protobuf(protobuf::ProtobufError),
 
-    #[fail(display = "Unicode string decode error: {}", _0)]
+    #[error("Unicode string decode error: {0}")]
     Unicode(Utf8Error),
 
-    #[fail(display = "Numeric value read error: {}", _0)]
+    #[error("Numeric value read error: {0}")]
     NumValueRead(NumValueReadError),
 
-    #[fail(display = "Value read error: {}", _0)]
+    #[error("Value read error: {0}")]
     ValueRead(ValueReadError),
 
-    #[fail(display = "Value write error: {}", _0)]
+    #[error("Value write error: {0}")]
     ValueWrite(ValueWriteError),
 
-    #[fail(display = "Transaction issue: {}", _0)]
+    #[error("Transaction issue: {0}")]
     Transaction(TransactionError),
 
     #[cfg(feature = "net_box")]
-    #[fail(display = "Sever respond with error: {}", _0)]
+    #[error("Sever respond with error: {0}")]
     Remote(crate::net_box::ResponseError),
 
-    #[fail(display = "Lua error: {}", _0)]
+    #[error("Lua error: {0}")]
     LuaError(LuaError),
 }
 
@@ -153,15 +153,15 @@ impl From<LuaError> for Error {
 }
 
 /// Transaction-related error cases
-#[derive(Debug, Fail)]
+#[derive(Debug, thiserror::Error)]
 pub enum TransactionError {
-    #[fail(display = "Transaction has already been started")]
+    #[error("Transaction has already been started")]
     AlreadyStarted,
 
-    #[fail(display = "Failed to commit")]
+    #[error("Failed to commit")]
     FailedToCommit,
 
-    #[fail(display = "Failed to rollback")]
+    #[error("Failed to rollback")]
     FailedToRollback,
 }
 

@@ -19,7 +19,7 @@
 use std::ffi::CString;
 use std::mem::forget;
 
-use failure::_core::ptr::null;
+use core::ptr::null;
 use log::{Level, Log, Metadata, Record};
 use num_traits::{FromPrimitive, ToPrimitive};
 

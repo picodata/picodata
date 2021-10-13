@@ -162,8 +162,6 @@
 extern crate bitflags;
 #[macro_use]
 extern crate derivative;
-#[macro_use]
-extern crate failure;
 #[cfg(feature = "net_box")]
 #[macro_use]
 extern crate lazy_static;

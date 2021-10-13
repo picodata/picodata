@@ -14,7 +14,7 @@ use std::os::unix::io::{AsRawFd, IntoRawFd, RawFd};
 use std::rc::Rc;
 use std::time::Duration;
 
-use failure::_core::ptr::null_mut;
+use core::ptr::null_mut;
 use num_traits::Zero;
 
 use crate::error::{Error, TarantoolError};
