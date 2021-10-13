@@ -1,10 +1,17 @@
 #!/usr/bin/env tarantool
 
-fiber = require('fiber')
+local fio = require('fio')
+local fiber = require('fiber')
+
+local tmpdir = fio.tempdir()
 
 box.cfg{
     listen = 3301,
+    wal_mode = 'none',
+    memtx_dir = tmpdir,
 }
+
+fio.rmtree(tmpdir)
 
 -- Init test database
 box.once('bootstrap_tests', function()
