@@ -56,7 +56,7 @@ fn create_test_spaces() -> Result<(), Error> {
         SpaceFieldFormat::new("id", SpaceFieldType::Unsigned),
         SpaceFieldFormat::new("text", SpaceFieldType::String),
     ]);
-    let mut test_s1 = match Space::create("test_s1", &test_s1_opts) {
+    let test_s1 = match Space::create("test_s1", &test_s1_opts) {
         Ok(s) => s,
         Err(e) => return Err(e),
     };
@@ -179,9 +179,22 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 test_fiber::test_fiber_arg,
                 test_fiber::test_fiber_cancel,
                 test_fiber::test_fiber_wake,
+                test_fiber::test_fiber_wake_multiple,
                 test_fiber::test_fiber_cond_signal,
                 test_fiber::test_fiber_cond_broadcast,
                 test_fiber::test_fiber_cond_timeout,
+                test_fiber::test_immediate,
+                test_fiber::test_immediate_with_attrs,
+                test_fiber::test_multiple_immediate,
+                test_fiber::test_unit_immediate,
+                test_fiber::test_unit_immediate_with_attrs,
+                test_fiber::test_multiple_unit_immediate,
+                test_fiber::test_deferred,
+                test_fiber::test_deferred_with_attrs,
+                test_fiber::test_multiple_deferred,
+                test_fiber::test_unit_deferred,
+                test_fiber::test_unit_deferred_with_attrs,
+                test_fiber::test_multiple_unit_deferred,
                 test_box::test_space_get_by_name,
                 test_box::test_space_get_system,
                 test_box::test_index_get_by_name,
@@ -280,7 +293,7 @@ pub extern "C" fn start(l: *mut ffi_lua::lua_State) -> c_int {
         Ok(success) => success,
         Err(e) => {
             // Clenaup without handling error to avoid code mess.
-            drop_test_spaces();
+            let _ = drop_test_spaces();
             unsafe { ffi_lua::luaL_error(l, e.to_string().as_ptr() as *const c_schar) };
             return 0;
         }

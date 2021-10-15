@@ -33,8 +33,37 @@ bitflags! {
 }
 
 extern "C" {
+    /// Wait until **READ** or **WRITE** event on socket (`fd`). Yields.
+    /// - `fd` - non-blocking socket file description
+    /// - `events` - requested events to wait.
+    /// Combination of `TNT_IO_READ` | `TNT_IO_WRITE` bit flags.
+    /// - `timeoout` - timeout in seconds.
+    ///
+    /// Returns:
+    /// - `0` - timeout
+    /// - `>0` - returned events. Combination of `TNT_IO_READ` | `TNT_IO_WRITE`
+    /// bit flags.
     pub fn coio_wait(fd: c_int, event: c_int, timeout: f64) -> c_int;
+
+/**
+ * Close the fd and wake any fiber blocked in
+ * coio_wait() call on this fd.
+ */
     pub fn coio_close(fd: c_int) -> c_int;
+
+    /// Fiber-friendly version of getaddrinfo(3).
+    ///
+    /// - `host` host name, i.e. "tarantool.org"
+    /// - `port` service name, i.e. "80" or "http"
+    /// - `hints` hints, see getaddrinfo(3)
+    /// - `res`[out] result, see getaddrinfo(3)
+    /// - `timeout` timeout
+    ///
+    /// Returns:
+    /// -  `0` on success, please free @a res using freeaddrinfo(3).
+    /// - `-1` on error, check diag.
+    ///            Please note that the return value is not compatible with
+    ///            getaddrinfo(3).
     pub fn coio_getaddrinfo(
         host: *const c_char,
         port: *const c_char,
@@ -42,6 +71,32 @@ extern "C" {
         res: *mut *mut libc::addrinfo,
         timeout: f64,
     ) -> c_int;
+
+    /// Create new eio task with specified function and
+    /// arguments. Yield and wait until the task is complete.
+    ///
+    /// This function doesn't throw exceptions to avoid double error
+    /// checking: in most cases it's also necessary to check the return
+    /// value of the called function and perform necessary actions. If
+    /// func sets errno, the errno is preserved across the call.
+    ///
+    /// Returns:
+    /// - `-1` and `errno = ENOMEM` if failed to create a task
+    /// - the function return (errno is preserved).
+    ///
+    /// # Example
+    /// ```c
+    ///	static ssize_t openfile_cb(va_list ap)
+    ///	{
+    ///	         const char *filename = va_arg(ap);
+    ///	         int flags = va_arg(ap);
+    ///	         return open(filename, flags);
+    ///	}
+    ///
+    ///	if (coio_call(openfile_cb, "/tmp/file", 0) == -1)
+    ///		// handle errors.
+    ///	...
+    /// ```
     pub fn coio_call(func: Option<unsafe extern "C" fn(VaList) -> c_int>, ...) -> isize;
 }
 
@@ -64,35 +119,180 @@ pub struct FiberCond {
 pub type FiberFunc = Option<unsafe extern "C" fn(VaList) -> c_int>;
 
 extern "C" {
+    /// Create a new fiber.
+    ///
+    /// Takes a fiber from fiber cache, if it's not empty.
+    /// Can fail only if there is not enough memory for
+    /// the fiber structure or fiber stack.
+    ///
+    /// The created fiber automatically returns itself
+    /// to the fiber cache when its "main" function
+    /// completes.
+    ///
+    /// - `name`       string with fiber name
+    /// - `fiber_func` func for run inside fiber
+    ///
+    /// See also: [fiber_start](#fn.fiber_start)
     pub fn fiber_new(name: *const c_char, f: FiberFunc) -> *mut Fiber;
+
+    /// Create a new fiber with defined attributes.
+    ///
+    /// Can fail only if there is not enough memory for
+    /// the fiber structure or fiber stack.
+    ///
+    /// The created fiber automatically returns itself
+    /// to the fiber cache if has default stack size
+    /// when its "main" function completes.
+    ///
+    /// - `name`       string with fiber name
+    /// - `fiber_attr` fiber attributes
+    /// - `fiber_func` func for run inside fiber
+    ///
+    /// See also: [fiber_start](#fn.fiber_start)
     pub fn fiber_new_ex(
         name: *const c_char,
         fiber_attr: *const FiberAttr,
         f: FiberFunc,
     ) -> *mut Fiber;
+
+    /// Return control to another fiber and wait until it'll be woken.
+    ///
+    /// See also: [fiber_wakeup](#fn.fiber_wakeup)
     pub fn fiber_yield();
+
+    /// Start execution of created fiber.
+    ///
+    /// - `callee` fiber to start
+    /// - `...`    arguments to start the fiber with
+    ///
+    /// See also: [fiber_new](#fn.fiber_new)
     pub fn fiber_start(callee: *mut Fiber, ...);
+
+    /// Interrupt a synchronous wait of a fiber. Nop for the currently running
+    /// fiber.
+    ///
+    /// - `f` fiber to be woken up
     pub fn fiber_wakeup(f: *mut Fiber);
+
+    /// Cancel the subject fiber. (set FIBER_IS_CANCELLED flag)
+    ///
+    /// If target fiber's flag FIBER_IS_CANCELLABLE set, then it would
+    /// be woken up (maybe prematurely). Then current fiber yields
+    /// until the target fiber is dead (or is woken up by
+    /// see also: [fiber_wakeup](#fn.fiber_wakeup)).
+    ///
+    /// - `f` fiber to be cancelled
     pub fn fiber_cancel(f: *mut Fiber);
+
+    /// Make it possible or not possible to wakeup the current
+    /// fiber immediately when it's cancelled.
+    ///
+    /// - `yesno` status to set
+    ///
+    /// Returns: previous state.
     pub fn fiber_set_cancellable(yesno: bool) -> bool;
+
+    /// Set fiber to be joinable (false by default).
+    /// - `yesno` status to set
     pub fn fiber_set_joinable(fiber: *mut Fiber, yesno: bool);
+
+    /// Wait until the fiber is dead and then move its execution
+    /// status to the caller.
+    /// The fiber must not be detached (See also:
+    /// [fiber_set_joinable](#fn.fiber_set_joinable)).
+    /// `FIBER_IS_JOINABLE` flag is set.
+    ///
+    /// - `f` fiber to be woken up
+    ///
+    /// Returns: fiber function ret code
     pub fn fiber_join(f: *mut Fiber) -> c_int;
+
+    /// Put the current fiber to sleep for at least 's' seconds.
+    ///
+    /// - `s` time to sleep
+    ///
+    /// **Note:** this is a cancellation point (\sa fiber_is_cancelled)
     pub fn fiber_sleep(s: f64);
+
+    /// Check current fiber for cancellation (it must be checked manually).
     pub fn fiber_is_cancelled() -> bool;
+
+    /// Report loop begin time as double (cheap).
+    /// Uses real time clock.
     pub fn fiber_time() -> f64;
+
+    /// Report loop begin time as 64-bit int.
+    /// Uses real time clock.
     pub fn fiber_time64() -> u64;
+
+    /// Report loop begin time as double (cheap).
+    /// Uses monotonic clock.
     pub fn fiber_clock() -> f64;
+
+    /// Report loop begin time as 64-bit int.
+    /// Uses monotonic clock.
     pub fn fiber_clock64() -> u64;
+
+    /// Reschedule fiber to end of event loop cycle.
     pub fn fiber_reschedule();
+
+    /// Create a new fiber attribute container and initialize it
+    /// with default parameters.
+    /// Can be used for many fibers creation, corresponding fibers
+    /// will not take ownership.
     pub fn fiber_attr_new() -> *mut FiberAttr;
+
+    /// Delete the fiber_attr and free all allocated resources.
+    /// This is safe when fibers created with this attribute still exist.
+    ///
+    /// - `fiber_attr` fiber attribute
     pub fn fiber_attr_delete(fiber_attr: *mut FiberAttr);
+
+    /// Set stack size for the fiber attribute.
+    ///
+    /// - `fiber_attribute` fiber attribute container
+    /// - `stacksize` stack size for new fibers
     pub fn fiber_attr_setstacksize(fiber_attr: *mut FiberAttr, stack_size: usize) -> c_int;
+
+    /// Get stack size from the fiber attribute.
+    ///
+    /// - `fiber_attribute` fiber attribute container or NULL for default
+    ///
+    /// Returns: stack size
     pub fn fiber_attr_getstacksize(fiber_attr: *mut FiberAttr) -> usize;
+
+    /// Instantiate a new fiber cond object.
     pub fn fiber_cond_new() -> *mut FiberCond;
+
+    /// Delete the fiber cond object.
+    /// Behaviour is undefined if there are fiber waiting for the cond.
     pub fn fiber_cond_delete(cond: *mut FiberCond);
+
+    /// Wake one fiber waiting for the cond.
+    /// Does nothing if no one is waiting.
+    /// - `cond` condition
     pub fn fiber_cond_signal(cond: *mut FiberCond);
+
+    /// Wake up all fibers waiting for the cond.
+    /// - `cond` condition
     pub fn fiber_cond_broadcast(cond: *mut FiberCond);
+
+    /// Suspend the execution of the current fiber (i.e. yield) until
+    /// fiber_cond_signal() is called. Like pthread_cond, fiber_cond can issue
+    /// spurious wake ups caused by explicit fiber_wakeup() or fiber_cancel()
+    /// calls. It is highly recommended to wrap calls to this function into a loop
+    /// and check an actual predicate and fiber_testcancel() on every iteration.
+    ///
+    /// - `cond`    condition
+    /// - `timeout` timeout in seconds
+    ///
+    /// Returns:
+    /// -  `0` on fiber_cond_signal() call or a spurious wake up
+    /// - `-1` on timeout or fiber cancellation, diag is set
     pub fn fiber_cond_wait_timeout(cond: *mut FiberCond, timeout: f64) -> c_int;
+
+    /// Shortcut for fiber_cond_wait_timeout().
+    /// See also: [fiber_cond_wait_timeout](#fn.fiber_cond_wait_timeout)
     pub fn fiber_cond_wait(cond: *mut FiberCond) -> c_int;
 }
 
@@ -103,10 +303,33 @@ pub struct Latch {
 }
 
 extern "C" {
+    /// Allocate and initialize the new latch.
+    ///
+    /// Returns: latch
     pub fn box_latch_new() -> *mut Latch;
+
+    /// Destroy and free the latch.
+    /// - `latch` latch
     pub fn box_latch_delete(latch: *mut Latch);
+
+    /// Lock a latch. Waits indefinitely until the current fiber can gain access to
+    /// the latch.
+    ///
+    /// - `latch` a latch
     pub fn box_latch_lock(latch: *mut Latch);
+
+    /// Try to lock a latch. Return immediately if the latch is locked.
+    /// - `latch` a latch
+    ///
+    /// Returns:
+    /// - `0` - success
+    /// - `1` - the latch is locked.
     pub fn box_latch_trylock(latch: *mut Latch) -> c_int;
+
+    /// Unlock a latch. The fiber calling this function must
+    /// own the latch.
+    ///
+    /// - `latch` a latch
     pub fn box_latch_unlock(latch: *mut Latch);
 }
 
@@ -129,11 +352,55 @@ pub struct BoxError {
 }
 
 extern "C" {
+    /// Return IPROTO error code
+    /// - `error` error
+    ///
+    /// Returns: enum `box_error_code`
     pub fn box_error_code(error: *const BoxError) -> u32;
+
+    /// Return the error message
+    /// - `error` error
+    ///
+    /// Returns: not-null string
     pub fn box_error_message(error: *const BoxError) -> *const c_char;
+
+    /// Get the information about the last API call error.
+    ///
+    /// The Tarantool error handling works most like libc's errno. All API calls
+    /// return -1 or NULL in the event of error. An internal pointer to
+    /// box_error_t type is set by API functions to indicate what went wrong.
+    /// This value is only significant if API call failed (returned -1 or NULL).
+    ///
+    /// Successful function can also touch the last error in some
+    /// cases. You don't have to clear the last error before calling
+    /// API functions. The returned object is valid only until next
+    /// call to **any** API function.
+    ///
+    /// You must set the last error using [box_error_set](#fn.box_error_set) in
+    /// your stored C procedures if you want to return a custom error message.
+    /// You can re-throw the last API error to IPROTO client by keeping
+    /// the current value and returning -1 to Tarantool from your
+    /// stored procedure.
+    ///
+    /// Returns: last error.
     pub fn box_error_last() -> *mut BoxError;
+
+    /// Return the error type, e.g. "ClientError", "SocketError", etc.
+    /// - `error`
+    ///
+    /// Returns: not-null string
     pub fn box_error_type(error: *const BoxError) -> *const c_char;
+
+    /// Clear the last error.
     pub fn box_error_clear();
+
+    /// Set the last error.
+    ///
+    /// - `code` IPROTO error code (enum \link box_error_code \endlink)
+    /// - `format` (const char * ) - printf()-like format string
+    /// - ... - format arguments
+    ///
+    /// Returns: `-1` for convention use
     pub fn box_error_set(
         file: *const c_char,
         line: c_uint,
