@@ -200,21 +200,47 @@ impl<'a, T> Fiber<'a, T> {
 /// The [`fiber::start`](start), [`fiber::start_unit`](start_unit),
 /// [`fiber::defer`](defer) and [`fiber::defer_unit`](defer_unit) free functions
 /// use a `Builder` with default configuration and unwraps its return value.
-pub struct Builder {
+pub struct Builder<F> {
     name: Option<String>,
     attr: Option<FiberAttr>,
+    f: F,
 }
 
-impl Builder {
+/// This is *typestate* helper type representing a state of a [`Builder`] that
+/// hasn't been assigned a fiber function yet.
+pub struct NoFunc;
+
+/// This is *typestate* helper type representing a state of a [`Builder`] that
+/// has already been assigned a fiber function.
+pub struct HasFunc<F, T>(F)
+where
+    F: FnOnce() -> T;
+
+impl Builder<NoFunc> {
     /// Generates the base configuration for spawning a fiber, from which
     /// configuration methods can be chained.
     pub fn new() -> Self {
         Builder {
             name: None,
             attr: None,
+            f: NoFunc,
         }
     }
 
+    /// Sets the callee function for the new fiber.
+    pub fn callee<F, T>(self, f: F) -> Builder<HasFunc<F, T>>
+    where
+        F: FnOnce() -> T,
+    {
+        Builder {
+            name: self.name,
+            attr: self.attr,
+            f: HasFunc(f),
+        }
+    }
+}
+
+impl<F> Builder<F> {
     /// Names the fiber-to-be.
     ///
     /// The name must not contain null bytes (`\0`).
@@ -224,51 +250,31 @@ impl Builder {
     }
 
     /// Sets the size of the stack (in bytes) for the new fiber.
+    ///
+    /// This function performs some runtime tests to validate the given stack
+    /// size. If `stack_size` is invalid then [`Error::Tarantool`] will be
+    /// returned.
+    ///
+    /// [`Error::Tarantool`]: crate::error::Error::Tarantool
     pub fn stack_size(mut self, stack_size: usize) -> Result<Self> {
         let mut attr = FiberAttr::new();
         attr.set_stack_size(stack_size)?;
         self.attr = Some(attr);
         Ok(self)
     }
-
-    /// Sets the callee function for the new fiber.
-    ///
-    /// Returns a [`CalleeBuilder`] taking ownership of `self`.
-    pub fn callee<F, T>(self, f: F) -> CalleeBuilder<F, T>
-    where
-        F: FnOnce() -> T,
-    {
-        CalleeBuilder { builder: self, f: f }
-    }
-}
-
-////////////////////////////////////////////////////////////////////////////////
-/// CalleeBuilder
-////////////////////////////////////////////////////////////////////////////////
-
-/// An intermediate fiber factory specialized for the given fiber function.
-///
-/// This type exists to avoid forcing [`Builder`] to know about the type of the
-/// function.
-pub struct CalleeBuilder<F, T>
-where
-    F: FnOnce() -> T,
-{
-    builder: Builder,
-    f: F,
 }
 
 macro_rules! inner_spawn {
     ($self:expr, $fiber:tt) => {
         {
-            let Self { builder: Builder { name, attr }, f } = $self;
+            let Self { name, attr, f: HasFunc(f) } = $self;
             let name = name.unwrap_or_else(|| "<rust>".into());
             Ok($fiber::new(name, f, attr.as_ref())?.spawn())
         }
     };
 }
 
-impl<F, T> CalleeBuilder<F, T>
+impl<F, T> Builder<HasFunc<F, T>>
 where
     F: FnOnce() -> T,
 {
@@ -289,7 +295,7 @@ where
     }
 }
 
-impl<F> CalleeBuilder<F, ()>
+impl<F> Builder<HasFunc<F, ()>>
 where
     F: FnOnce(),
 {
