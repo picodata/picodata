@@ -5,10 +5,10 @@
 //! - [Fibers: fiber attributes, conditional variables, latches](fiber)
 //! - [CoIO](coio)
 //! - [Transactions](transaction)
-//! - [Schema management](schema)
+//! - Schema management
 //! - [Protocol implementation](net_box) (`net.box`): CRUD, stored procedure call, triggers
-//! - [Tuple utils](tuple)
-//! - [Logging](log) (see https://docs.rs/log/)
+//! - [Tuple utils](mod@tuple)
+//! - [Logging](log) (see <https://docs.rs/log/>)
 //! - [Error handling](error)
 //!
 //! > **Caution!** The library is currently under development.
