@@ -44,9 +44,12 @@ macro_rules! tests {
     }
 }
 
-#[derive(Clone, Copy, Default, Deserialize)]
+#[derive(Clone, Default, Deserialize)]
 struct TestConfig {
+    #[serde(default)]
     bench: bool,
+
+    filter: Option<String>,
 }
 
 fn create_test_spaces() -> Result<(), Error> {
@@ -141,7 +144,7 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
     run_tests_console(
         &TestOpts {
             list: false,
-            filter: None,
+            filter: cfg.filter,
             filter_exact: false,
             force_run_in_process: false,
             exclude_should_panic: false,
