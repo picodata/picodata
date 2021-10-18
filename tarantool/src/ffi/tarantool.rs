@@ -617,3 +617,9 @@ extern "C" {
         mp_end: *const c_char,
     ) -> c_int;
 }
+
+use crate::ffi::lua::lua_State;
+extern "C" {
+    pub fn luaT_state() -> *mut lua_State;
+    pub fn luaT_call(l: *mut lua_State, nargs: c_int, nreturns: c_int) -> isize;
+}

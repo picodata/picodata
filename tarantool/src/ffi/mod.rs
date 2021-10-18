@@ -1,3 +1,3 @@
 pub mod helper;
-pub mod lua;
+pub use lua_ffi as lua;
 pub mod tarantool;

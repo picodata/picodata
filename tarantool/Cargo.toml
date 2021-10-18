@@ -38,6 +38,13 @@ serde_json = "1.0"
 sha-1 = "0.9"
 va_list = "0.1.3"
 
+[dependencies.hlua]
+path = "hlua/hlua"
+
+[dependencies.lua_ffi]
+path = "hlua/ffi"
+package = "ffi"
+
 [features]
 default = ["net_box"]
 net_box = ["lazy_static", "refpool"]
@@ -46,6 +53,7 @@ schema = []
 all = ["default", "raft_node", "schema"]
 
 [workspace]
+exclude = [ "hlua" ]
 members = [
     "tests",
     "examples/easy",

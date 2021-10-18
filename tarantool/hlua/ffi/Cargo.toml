@@ -1,0 +1,8 @@
+[package]
+name = "ffi"
+version = "0.1.0"
+edition = "2018"
+authors = [ "gmoshkin@picodata.io" ]
+
+[dependencies]
+libc = "0.2"

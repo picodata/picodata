@@ -189,4 +189,6 @@ pub mod space;
 pub mod transaction;
 pub mod tuple;
 
+pub use hlua;
+
 pub use error::Result;

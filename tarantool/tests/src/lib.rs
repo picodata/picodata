@@ -313,6 +313,6 @@ pub extern "C" fn start(l: *mut ffi_lua::lua_State) -> c_int {
 
 #[no_mangle]
 pub extern "C" fn luaopen_libtarantool_module_test_runner(l: *mut ffi_lua::lua_State) -> c_int {
-    unsafe { ffi_lua::lua_pushcfunction(l, Some(start)) };
+    unsafe { ffi_lua::lua_pushcfunction(l, start) };
     1
 }
