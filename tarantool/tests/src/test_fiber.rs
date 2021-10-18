@@ -154,7 +154,7 @@ pub fn test_fiber_cond_timeout() {
 
 pub fn test_immediate() {
     let jh = fiber::Builder::new()
-        .callee(|| 69)
+        .func(|| 69)
         .start()
         .unwrap();
     let res = jh.join();
@@ -169,7 +169,7 @@ pub fn test_immediate_with_attrs() {
     let jh = fiber::Builder::new()
         .name("boo")
         .stack_size(100_000).unwrap()
-        .callee(|| 42)
+        .func(|| 42)
         .start()
         .unwrap();
     let res = jh.join();
@@ -198,20 +198,20 @@ pub fn test_multiple_immediate() {
 
 pub fn test_unit_immediate() {
     let jh = fiber::Builder::new()
-        .callee(|| ())
-        .start_unit()
+        .func(|| ())
+        .start()
         .unwrap();
     let () = jh.join();
 
-    let () = fiber::start_unit(|| ()).join();
+    let () = fiber::start_proc(|| ()).join();
 }
 
 pub fn test_unit_immediate_with_attrs() {
     let jh = fiber::Builder::new()
         .name("boo")
         .stack_size(100_000).unwrap()
-        .callee(|| ())
-        .start_unit()
+        .proc(|| ())
+        .start()
         .unwrap();
     let () = jh.join();
 }
@@ -222,7 +222,7 @@ pub fn test_multiple_unit_immediate() {
         .into_iter()
         .map(|v| {
             let res_ref = res.clone();
-            fiber::start_unit(move || {
+            fiber::start_proc(move || {
                 res_ref.borrow_mut().extend(
                     v.into_iter().map(|e| e + 1).collect::<Vec::<_>>()
                 )
@@ -240,7 +240,7 @@ pub fn test_multiple_unit_immediate() {
 
 pub fn test_deferred() {
     let jh = fiber::Builder::new()
-        .callee(|| 13)
+        .func(|| 13)
         .defer()
         .unwrap();
     assert_eq!(jh.join(), 13);
@@ -253,7 +253,7 @@ pub fn test_deferred_with_attrs() {
     let res = fiber::Builder::new()
         .name("boo")
         .stack_size(100_000).unwrap()
-        .callee(|| 15)
+        .func(|| 15)
         .defer()
         .unwrap()
         .join();
@@ -282,13 +282,13 @@ pub fn test_multiple_deferred() {
 
 pub fn test_unit_deferred() {
     let jh = fiber::Builder::new()
-        .callee(|| ())
-        .defer_unit()
+        .proc(|| ())
+        .defer()
         .unwrap();
     let () = jh.join();
 
     let res = std::cell::Cell::new(0);
-    let jh = fiber::defer_unit(|| res.set(42));
+    let jh = fiber::defer_proc(|| res.set(42));
     assert_eq!(res.get(), 0);
     jh.join();
     assert_eq!(res.get(), 42);
@@ -298,8 +298,8 @@ pub fn test_unit_deferred_with_attrs() {
     let () = fiber::Builder::new()
         .name("boo")
         .stack_size(100_000).unwrap()
-        .callee(|| ())
-        .defer_unit()
+        .proc(|| ())
+        .defer()
         .unwrap()
         .join();
 }
@@ -310,7 +310,7 @@ pub fn test_multiple_unit_deferred() {
         .into_iter()
         .map(|v| {
             let res_ref = res.clone();
-            fiber::defer_unit(move ||
+            fiber::defer_proc(move ||
                 res_ref.borrow_mut().extend(
                     v.into_iter().map(|e| e + 1).collect::<Vec::<_>>()
                 )
