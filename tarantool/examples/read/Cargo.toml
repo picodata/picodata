@@ -12,7 +12,7 @@ license = "BSD-2-Clause"
 serde = "1.0"
 
 [dependencies.tarantool]
-path = "../.."
+path = "../../tarantool"
 
 [lib]
 crate-type = ["cdylib"]

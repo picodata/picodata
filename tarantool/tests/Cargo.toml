@@ -3,6 +3,7 @@ name = "tarantool-module-test-runner"
 version = "0.1.0"
 authors = [
     "Dmitriy Koltsov <dkoltsov@picodata.io>",
+    "Georgy Moshkin <gmoshkin@picodata.io>",
     "Anton Melnikov <volt0@picodata.io>"
 ]
 edition = "2018"
@@ -16,7 +17,7 @@ serde_json = "1.0"
 tester = "0.7.0"
 
 [dependencies.tarantool]
-path = ".."
+path = "../tarantool"
 features = ["all"]
 
 [lib]
