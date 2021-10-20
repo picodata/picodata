@@ -1,4 +1,5 @@
 #![cfg(feature = "raft_node")]
+#![allow(dead_code, unused_variables)]
 
 use std::cell::RefCell;
 use std::collections::VecDeque;
