@@ -51,5 +51,6 @@ default = ["net_box"]
 net_box = ["lazy_static", "refpool"]
 raft_node = ["chrono", "ipnetwork", "net_box", "protobuf", "raft", "rand"]
 schema = []
-all = ["default", "raft_node", "schema"]
+defer = []
+all = ["default", "raft_node", "schema", "defer"]
 

@@ -5,7 +5,7 @@
 //! - [Fibers: fiber attributes, conditional variables, latches](fiber)
 //! - [CoIO](coio)
 //! - [Transactions](transaction)
-//! - Schema management
+//! - [Schema management](schema)
 //! - [Protocol implementation](net_box) (`net.box`): CRUD, stored procedure call, triggers
 //! - [Tuple utils](mod@tuple)
 //! - [Logging](log) (see <https://docs.rs/log/>)

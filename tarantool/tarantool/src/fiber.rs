@@ -286,13 +286,23 @@ where
     /// Spawns a new fiber by taking ownership of the `Builder`, and returns a
     /// [`Result`] to its [`JoinHandle`].
     ///
+    /// The current fiber performs a **yield** and the execution is transfered
+    /// to the new fiber immediately.
+    ///
     /// See the [`start`] free function for more details.
     pub fn start(self) -> Result<C::JoinHandle> {
         inner_spawn!(self, immediate)
     }
 
-    /// Spawns a new deferred fiber by taking ownership of the `Builder`,
-    /// and returns a [`Result`] to its [`JoinHandle`].
+    #[cfg(feature = "defer")]
+    /// Spawns a new deferred fiber by taking ownership of the `Builder`, and
+    /// returns a [`Result`] to its [`JoinHandle`].
+    ///
+    /// **NOTE:** In the current implementation the current fiber performs a
+    /// **yield** to start the newly created fiber and then the new fiber
+    /// performs another **yield**. This means that the deferred fiber is **not
+    /// applicable for transactions** (which do not allow any context switches).
+    /// In the future we are planning to add a correct implementation.
     ///
     /// See the [`defer`] free function for more details.
     pub fn defer(self) -> Result<C::JoinHandle> {
@@ -634,8 +644,8 @@ impl TrampolineArgs for VaList {
 // Free functions
 ////////////////////////////////////////////////////////////////////////////////
 
-/// Creates a new fiber and runs it immediately, returning a [`JoinHandle`] for
-/// it.
+/// Creates a new fiber and **yields** execution to it immediately, returning a
+/// [`JoinHandle`] for the new fiber.
 ///
 /// **NOTE**: The argument `f` is a function that returns `T`. In case when `T =
 /// ()` (no return value) one should instead use [`start_proc`].
@@ -655,10 +665,10 @@ where
     Builder::new().func(f).start().unwrap()
 }
 
-/// Creates a new unit fiber and runs it immediately, returning a
-/// [`UnitJoinHandle`] for it.
+/// Creates a new proc fiber and **yields** execution to it immediately,
+/// returning a [`UnitJoinHandle`] for the new fiber.
 ///
-/// The *unit fiber* is a special case of a fiber whose function does not return
+/// The *proc fiber* is a special case of a fiber whose function does not return
 /// a value. In fact `UnitJoinHandle` is identical to `JoinHanble<()>` is all
 /// aspects instead that it is implemented more efficiently and the former
 /// should always be used instead of the latter.
@@ -671,14 +681,21 @@ where
     Builder::new().proc(f).start().unwrap()
 }
 
-/// Creates and schedules a new deferred fiber, returning a [`JoinHandle`] for
-/// it.
+#[cfg(any(feature = "defer", doc))]
+/// Creates a new fiber and schedules it for exeution, returning a
+/// [`JoinHandle`] for it.
+///
+/// **NOTE:** In the current implementation the current fiber performs a
+/// **yield** to start the newly created fiber and then the new fiber
+/// performs another **yield**. This means that the deferred fiber is **not
+/// applicable for transactions** (which do not allow any context switches).
+/// In the future we are planning to add a correct implementation.
 ///
 /// **NOTE**: The argument `f` is a function that returns `T`. In case when `T =
 /// ()` (no return value) one should instead use [`defer_proc`].
 ///
-/// The **deferred fiber** is a fiber which starts in a detached mode. It can be
-/// joined by calling the [`JoinHandle::join`] method.
+/// The new fiber can be joined by calling [`JoinHandle::join`] method on it's
+/// join handle.
 pub fn defer<F, T>(f: F) -> JoinHandle<T>
 where
     F: FnOnce() -> T,
@@ -686,11 +703,18 @@ where
     Builder::new().func(f).defer().unwrap()
 }
 
-/// Creates and schedules a new deferred unit fiber, returning a
+#[cfg(any(feature = "defer", doc))]
+/// Creates a new proc fiber and schedules it for exeution, returning a
 /// [`UnitJoinHandle`] for it.
 ///
-/// The **deferred unit fiber** is a fiber which starts in a detached mode. It
-/// can be joined by calling the [`UnitJoinHandle::join`] method.
+/// **NOTE:** In the current implementation the current fiber performs a
+/// **yield** to start the newly created fiber and then the new fiber performs
+/// another **yield**. This means that the deferred fiber is **not applicable
+/// for transactions** (which do not allow any context switches). In the future
+/// we are planning to add a correct implementation.
+///
+/// The new fiber can be joined by calling [`UnitJoinHandle::join`] method on
+/// it's join handle.
 ///
 /// This is an optimized version [`defer`]`<F, ()>`.
 pub fn defer_proc<F>(f: F) -> UnitJoinHandle
