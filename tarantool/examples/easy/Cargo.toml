@@ -9,7 +9,7 @@ edition = "2018"
 license = "BSD-2-Clause"
 
 [dependencies.tarantool]
-path = "../.."
+path = "../../tarantool"
 
 [lib]
 crate-type = ["cdylib"]

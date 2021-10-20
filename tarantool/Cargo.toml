@@ -1,52 +1,7 @@
-[package]
-name = "tarantool"
-description = "Tarantool rust bindings"
-version = "0.4.2"
-authors = [
-    "Dmitriy Koltsov <dkoltsov@picodata.io>",
-    "Anton Melnikov <volt0@picodata.io>"
-]
-edition = "2018"
-license = "BSD-2-Clause"
-readme = "README.md"
-documentation = "https://docs.rs/tarantool/"
-repository = "https://github.com/picodata/tarantool-module"
-keywords = ["ffi", "database", "tarantool"]
-categories = ["database"]
-
-[dependencies]
-base64 = "0.13"
-bitflags = "1.2"
-byteorder = "1.3"
-chrono = { version = "0.4.19", optional = true }
-derivative = "2.1"
-failure = "0.1.8"
-ipnetwork = { version = "0.18.0", optional = true }
-lazy_static = { version = "1.4", optional = true }
-libc = "0.2"
-log = "0.4"
-num-traits = "0.2"
-num-derive = "0.3"
-protobuf = { version = "2", optional = true }
-raft = { version = "0.6.0", optional = true }
-refpool = { version = "0.4.3", optional = true }
-rand = { version = "0.8.3", optional = true }
-rmp = "0.8"
-rmp-serde = "0.14"
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-sha-1 = "0.9"
-va_list = "0.1.3"
-
-[features]
-default = ["net_box"]
-net_box = ["lazy_static", "refpool"]
-raft_node = ["chrono", "ipnetwork", "net_box", "protobuf", "raft", "rand"]
-schema = []
-all = ["default", "raft_node", "schema"]
-
 [workspace]
+exclude = [ "hlua" ]
 members = [
+    "tarantool",
     "tests",
     "examples/easy",
     "examples/harder",
@@ -55,3 +10,4 @@ members = [
     "examples/write",
     "examples/cluster_node"
 ]
+

@@ -108,8 +108,9 @@ pub fn get_local_addrs() -> Result<Vec<SocketAddr>, Error> {
 
 unsafe fn get_listen_addr_config<'a>() -> Cow<'a, str> {
     use crate::ffi::lua::{
-        luaT_state, lua_getfield, lua_getglobal, lua_gettop, lua_settop, lua_tostring,
+        lua_getfield, lua_getglobal, lua_gettop, lua_settop, lua_tostring,
     };
+    use crate::ffi::tarantool::luaT_state;
     use std::ffi::{CStr, CString};
 
     let l = luaT_state();

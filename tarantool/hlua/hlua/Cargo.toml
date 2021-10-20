@@ -1,0 +1,19 @@
+[package]
+name = "hlua"
+version = "0.4.1"
+edition = "2018"
+authors = [
+    "pierre.krieger1708@gmail.com",
+    "gmoshkin@picodata.io",
+]
+description = "Zero-cost high-level wrapper for Lua"
+keywords = ["lua"]
+repository = "https://github.com/tomaka/hlua"
+documentation = "http://docs.rs/hlua"
+license = "MIT"
+
+[dependencies]
+libc = "0.2"
+
+[dependencies.ffi]
+path = "../ffi"

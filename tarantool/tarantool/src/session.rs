@@ -9,13 +9,14 @@ use std::ffi::CString;
 
 use crate::error::{Error, TarantoolError};
 use crate::ffi::lua as ffi_lua;
+use crate::ffi::tarantool::{luaT_call, luaT_state};
 
 /// Get the user ID of the current user.
 pub fn uid() -> Result<isize, Error> {
     let result = unsafe {
         // Create new stack (just in case - in order no to mess things
         // in current stack).
-        let state = ffi_lua::luaT_state();
+        let state = luaT_state();
         let uid_state = ffi_lua::lua_newthread(state);
 
         // Push box.session.uid function on the stack.
@@ -26,7 +27,7 @@ pub fn uid() -> Result<isize, Error> {
         let name_uid = CString::new("uid").unwrap();
         ffi_lua::lua_getfield(uid_state, -1, name_uid.as_ptr());
 
-        let result = if ffi_lua::luaT_call(uid_state, 0, 1) == 1 {
+        let result = if luaT_call(uid_state, 0, 1) == 1 {
             return Err(TarantoolError::last().into());
         } else {
             Ok(ffi_lua::lua_tointeger(uid_state, -1))
@@ -44,7 +45,7 @@ pub fn euid() -> Result<isize, Error> {
     let result = unsafe {
         // Create new stack (just in case - in order no to mess things
         // in current stack).
-        let state = ffi_lua::luaT_state();
+        let state = luaT_state();
         let euid_state = ffi_lua::lua_newthread(state);
 
         // Push box.session.euid on the stack.
@@ -55,7 +56,7 @@ pub fn euid() -> Result<isize, Error> {
         let name_euid = CString::new("euid").unwrap();
         ffi_lua::lua_getfield(euid_state, -1, name_euid.as_ptr());
 
-        let result = if ffi_lua::luaT_call(euid_state, 0, 1) == 1 {
+        let result = if luaT_call(euid_state, 0, 1) == 1 {
             return Err(TarantoolError::last().into());
         } else {
             Ok(ffi_lua::lua_tointeger(euid_state, -1))

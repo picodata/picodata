@@ -3,6 +3,7 @@ use std::os::raw::c_int;
 use crate::error::{Error, TarantoolError};
 use crate::ffi::helper::new_c_str;
 use crate::ffi::lua;
+use crate::ffi::tarantool::{luaT_state, luaT_call};
 use crate::index::{
     IndexFieldType, IndexOptions, IndexSequenceOption, IndexType, RtreeIndexDistanceType,
 };
@@ -18,7 +19,7 @@ pub fn create_index(space_id: u32, index_name: &str, opts: &IndexOptions) -> Res
     unsafe {
         // Create new stack (just in case - in order no to mess things
         // in current stack).
-        let state = lua::luaT_state();
+        let state = luaT_state();
         let ci_state = lua::lua_newthread(state);
 
         // Execute the following lua Code:
@@ -33,7 +34,7 @@ pub fn create_index(space_id: u32, index_name: &str, opts: &IndexOptions) -> Res
         lua::lua_getfield(ci_state, -1, new_c_str("get").as_ptr());
         lua::lua_pushvalue(ci_state, -2);
         lua::lua_pushinteger(ci_state, space_id as isize);
-        if lua::luaT_call(ci_state, 2, 1) == 1 {
+        if luaT_call(ci_state, 2, 1) == 1 {
             return Err(TarantoolError::last().into());
         }
 
@@ -244,7 +245,7 @@ pub fn create_index(space_id: u32, index_name: &str, opts: &IndexOptions) -> Res
         */
 
         // Call space_object:create_index.
-        if lua::luaT_call(ci_state, 3, 1) == 1 {
+        if luaT_call(ci_state, 3, 1) == 1 {
             return Err(TarantoolError::last().into());
         }
 
@@ -262,7 +263,7 @@ pub fn drop_index(space_id: u32, index_id: u32) -> Result<(), Error> {
     unsafe {
         // Create new stack (just in case - in order no to mess things
         // in current stack).
-        let state = lua::luaT_state();
+        let state = luaT_state();
         let drop_state = lua::lua_newthread(state);
 
         // Execute the following Lua code:
@@ -279,7 +280,7 @@ pub fn drop_index(space_id: u32, index_id: u32) -> Result<(), Error> {
         lua::lua_getfield(drop_state, -1, new_c_str("get").as_ptr());
         lua::lua_pushvalue(drop_state, -2);
         lua::lua_pushinteger(drop_state, space_id as isize);
-        if lua::luaT_call(drop_state, 2, 1) == 1 {
+        if luaT_call(drop_state, 2, 1) == 1 {
             return Err(TarantoolError::last().into());
         }
 
@@ -301,7 +302,7 @@ pub fn drop_index(space_id: u32, index_id: u32) -> Result<(), Error> {
         lua::lua_pushinteger(drop_state, 2);
         lua::lua_pushinteger(drop_state, index_id as isize);
         lua::lua_settable(drop_state, -3);
-        if lua::luaT_call(drop_state, 2, 1) == 1 {
+        if luaT_call(drop_state, 2, 1) == 1 {
             return Err(TarantoolError::last().into());
         }
 
@@ -318,7 +319,7 @@ pub fn drop_index(space_id: u32, index_id: u32) -> Result<(), Error> {
         lua::lua_getfield(drop_state, -1, index_name);
         lua::lua_getfield(drop_state, -1, new_c_str("drop").as_ptr());
         lua::lua_pushvalue(drop_state, -2);
-        if lua::luaT_call(drop_state, 1, 1) == 1 {
+        if luaT_call(drop_state, 1, 1) == 1 {
             return Err(TarantoolError::last().into());
         }
 

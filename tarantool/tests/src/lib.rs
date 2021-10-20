@@ -26,6 +26,7 @@ mod test_raft;
 mod test_session;
 mod test_transaction;
 mod test_tuple;
+mod hlua;
 
 macro_rules! tests {
     ($($func_name:expr,)*) => {
@@ -177,6 +178,91 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
             }]
         } else {
             tests![
+                hlua::lua_functions::basic,
+                hlua::lua_functions::args,
+                hlua::lua_functions::args_in_order,
+                hlua::lua_functions::syntax_error,
+                hlua::lua_functions::execution_error,
+                hlua::lua_functions::wrong_type,
+                hlua::lua_functions::call_and_read_table,
+                hlua::lua_functions::lua_function_returns_function,
+                hlua::lua_functions::execute_from_reader_errors_if_cant_read,
+
+                hlua::lua_tables::iterable,
+                hlua::lua_tables::iterable_multipletimes,
+                hlua::lua_tables::get_set,
+                hlua::lua_tables::table_over_table,
+                hlua::lua_tables::metatable,
+                hlua::lua_tables::empty_array,
+                hlua::lua_tables::by_value,
+                hlua::lua_tables::registry,
+                hlua::lua_tables::registry_metatable,
+
+                hlua::functions_write::simple_function,
+                hlua::functions_write::one_argument,
+                hlua::functions_write::two_arguments,
+                hlua::functions_write::wrong_arguments_types,
+                hlua::functions_write::return_result,
+                hlua::functions_write::closures,
+                hlua::functions_write::closures_lifetime,
+                hlua::functions_write::closures_extern_access,
+                hlua::functions_write::closures_drop_env,
+
+                hlua::any::read_numbers,
+                hlua::any::read_hashable_numbers,
+                hlua::any::read_strings,
+                hlua::any::read_hashable_strings,
+                hlua::any::read_booleans,
+                hlua::any::read_hashable_booleans,
+                hlua::any::read_tables,
+                hlua::any::read_hashable_tables,
+                hlua::any::push_numbers,
+                hlua::any::push_hashable_numbers,
+                hlua::any::push_strings,
+                hlua::any::push_hashable_strings,
+                hlua::any::push_booleans,
+                hlua::any::push_hashable_booleans,
+                hlua::any::push_nil,
+                hlua::any::push_hashable_nil,
+                hlua::any::non_utf_8_string,
+
+                hlua::misc::print,
+                hlua::misc::json,
+
+                hlua::userdata::readwrite,
+                hlua::userdata::destructor_called,
+                hlua::userdata::type_check,
+                hlua::userdata::metatables,
+                hlua::userdata::multiple_userdata,
+
+                hlua::rust_tables::write,
+                hlua::rust_tables::write_map,
+                hlua::rust_tables::write_set,
+                hlua::rust_tables::globals_table,
+                hlua::rust_tables::reading_vec_works,
+                hlua::rust_tables::reading_vec_from_sparse_table_doesnt_work,
+                hlua::rust_tables::reading_vec_with_empty_table_works,
+                hlua::rust_tables::reading_vec_with_complex_indexes_doesnt_work,
+                hlua::rust_tables::reading_heterogenous_vec_works,
+                hlua::rust_tables::reading_vec_set_from_lua_works,
+                hlua::rust_tables::reading_hashmap_works,
+                hlua::rust_tables::reading_hashmap_from_sparse_table_works,
+                hlua::rust_tables::reading_hashmap_with_empty_table_works,
+                hlua::rust_tables::reading_hashmap_with_complex_indexes_works,
+                hlua::rust_tables::reading_hashmap_with_floating_indexes_works,
+                hlua::rust_tables::reading_heterogenous_hashmap_works,
+                hlua::rust_tables::reading_hashmap_set_from_lua_works,
+
+                hlua::values::read_i32s,
+                hlua::values::write_i32s,
+                hlua::values::readwrite_floats,
+                hlua::values::readwrite_bools,
+                hlua::values::readwrite_strings,
+                hlua::values::i32_to_string,
+                hlua::values::string_to_i32,
+                hlua::values::string_on_lua,
+                hlua::values::push_opt,
+
                 test_fiber::test_fiber_new,
                 test_fiber::test_fiber_new_with_attr,
                 test_fiber::test_fiber_arg,
@@ -313,6 +399,6 @@ pub extern "C" fn start(l: *mut ffi_lua::lua_State) -> c_int {
 
 #[no_mangle]
 pub extern "C" fn luaopen_libtarantool_module_test_runner(l: *mut ffi_lua::lua_State) -> c_int {
-    unsafe { ffi_lua::lua_pushcfunction(l, Some(start)) };
+    unsafe { ffi_lua::lua_pushcfunction(l, start) };
     1
 }

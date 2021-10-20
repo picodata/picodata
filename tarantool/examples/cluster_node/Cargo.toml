@@ -12,7 +12,7 @@ license = "BSD-2-Clause"
 lazy_static = "1.4.0"
 
 [dependencies.tarantool]
-path = "../.."
+path = "../../tarantool"
 features = ["raft_node"]
 
 [lib]
