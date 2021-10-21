@@ -8,6 +8,17 @@ use std::ptr::null_mut;
 /// 2. lauxlib
 /// 3. Lua utitlites, implemented in Tarantool
 
+/// Lua provides a registry, a pre-defined table that can be used by any C code
+/// to store whatever Lua value it needs to store. This table is always located
+/// at pseudo-index `LUA_REGISTRYINDEX`. Any C library can store data into this
+/// table, but it should take care to choose keys different from those used by
+/// other libraries, to avoid collisions. Typically, you should use as key a
+/// string containing your library name or a light userdata with the address of
+/// a C object in your code.
+///
+/// The integer keys in the registry are used by the reference mechanism,
+/// implemented by the auxiliary library, and therefore should not be used for
+/// other purposes.
 pub const LUA_REGISTRYINDEX: c_int = -10000;
 pub const LUA_ENVIRONINDEX: c_int = -10001;
 pub const LUA_GLOBALSINDEX: c_int = -10002;
@@ -32,6 +43,9 @@ pub const LUA_TUSERDATA: c_int = 7;
 pub const LUA_TTHREAD: c_int = 8;
 
 pub const LUA_MINSTACK: c_int = 20;
+
+pub const LUA_NOREF: c_int = -2;
+pub const LUA_REFNIL: c_int = -1;
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
@@ -321,6 +335,29 @@ extern "C" {
     /// as return `luaL_error(args)`.
     pub fn luaL_error(l: *mut lua_State, fmt: *const c_schar, ...) -> c_int;
     pub fn luaL_openlibs(L: *mut lua_State);
+
+    /// Creates and returns a reference, in the table at index `t`, for the
+    /// object at the top of the stack (and pops the object).
+    /// *[-1, +0, m]*
+    ///
+    /// A reference is a unique integer key. As long as you do not manually add
+    /// integer keys into table t, `luaL_ref` ensures the uniqueness of the key
+    /// it returns. You can retrieve an object referred by reference r by
+    /// calling [`lua_rawgeti`]`(L, t, r)`. Function [`luaL_unref`] frees a
+    /// reference and its associated object.
+    ///
+    /// If the object at the top of the stack is nil, `luaL_ref` returns the
+    /// constant [`LUA_REFNIL`]. The constant [`LUA_NOREF`] is guaranteed to be
+    /// different from any reference returned by `luaL_ref`.
+    pub fn luaL_ref(l: *mut lua_State, t: c_int) -> c_int;
+
+    /// Releases reference `r` from the table at index `t` (see [`luaL_ref`]).
+    /// The entry is removed from the table, so that the referred object can be
+    /// collected. The reference `r` is also freed to be used again.
+    /// *[-0, +0, -]*
+    ///
+    /// If ref is [`LUA_NOREF`] or [`LUA_REFNIL`], `luaL_unref` does nothing.
+    pub fn luaL_unref(l: *mut lua_State, t: c_int, r: c_int);
 }
 
 #[inline(always)]
