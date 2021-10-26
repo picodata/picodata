@@ -233,6 +233,17 @@ extern "C" {
     /// "index" event
     pub fn lua_gettable(l: *mut lua_State, index: c_int);
 
+    /// Similar to [`lua_gettable`], but does a raw access (i.e., without
+    /// metamethods).
+    /// *[-1, +1, -]*
+    pub fn lua_rawget(l: *mut lua_State, index: c_int);
+
+    /// Pushes onto the stack the value `t[n]`, where `t` is the value at the
+    /// given valid `index`. The access is *raw*; that is, it does not invoke
+    /// metamethods.
+    /// *[-0, +1, -]*
+    pub fn lua_rawgeti(l: *mut lua_State, index: c_int, n: c_int);
+
     /// Does the equivalent to `t[k] = v`, where `t` is the value at the given
     /// valid `index`, `v` is the value at the top of the stack, and `k` is the
     /// value just below the top.
@@ -241,6 +252,19 @@ extern "C" {
     /// This function pops both the key and the value from the stack. As in Lua,
     /// this function may trigger a metamethod for the "newindex" event.
     pub fn lua_settable(l: *mut lua_State, index: c_int);
+
+    /// Similar to [`lua_settable`], but does a raw assignment (i.e., without
+    /// metamethods).
+    /// *[-2, +0, m]*
+    pub fn lua_rawset(l: *mut lua_State, index: c_int);
+
+    /// Does the equivalent of `t[n] = v`, where `t` is the value at the given
+    /// valid `index` and `v` is the value at the top of the stack.
+    /// *[-1, +0, m]*
+    ///
+    /// This function pops the value from the stack. The assignment is raw; that
+    /// is, it does not invoke metamethods.
+    pub fn lua_rawseti(l: *mut lua_State, index: c_int, n: c_int);
 
     /// Returns the type of the value in the given acceptable `index`, or
     /// [`LUA_TNONE`] for a non-valid index (that is, an index to an "empty"
