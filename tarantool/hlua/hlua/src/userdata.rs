@@ -13,7 +13,44 @@ use crate::{
     LuaRead,
     InsideCallback,
     LuaTable,
+    c_ptr,
 };
+
+/// Pushes `value` of type `T` onto the stack as a userdata. The value is
+/// put inside a `Option` so that it can be safely moved out of there. Useful
+/// for example when passing `FnOnce` as a c closure, because it must be dropped
+/// after the call.
+/// *[0, +1, -]*
+pub unsafe fn push_some_userdata<T>(lua: *mut ffi::lua_State, value: T) {
+    type UDBox<T> = Option<T>;
+    let ud_ptr = ffi::lua_newuserdata(lua, std::mem::size_of::<UDBox<T>>());
+    std::ptr::write(ud_ptr as *mut UDBox<T>, Some(value));
+
+    if std::mem::needs_drop::<T>() {
+        // Creating a metatable.
+        ffi::lua_newtable(lua);
+
+        // Index "__gc" in the metatable calls the object's destructor.
+        ffi::lua_pushstring(lua, c_ptr!("__gc"));
+        ffi::lua_pushcfunction(lua, wrap_gc::<T>);
+        ffi::lua_settable(lua, -3);
+
+        ffi::lua_setmetatable(lua, -2);
+    }
+
+    /// A callback for the "__gc" event. It checks if the value was moved out
+    /// and if not it drops the value.
+    unsafe extern "C" fn wrap_gc<T>(lua: *mut ffi::lua_State) -> i32 {
+        let ud_ptr = ffi::lua_touserdata(lua, 1);
+        let ud = (ud_ptr as *mut UDBox<T>)
+            .as_mut()
+            .expect("__gc called with userdata pointing to NULL");
+        drop(ud.take());
+
+        0
+    }
+}
+
 
 // Called when an object inside Lua is being dropped.
 #[inline]

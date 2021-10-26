@@ -60,3 +60,21 @@ macro_rules! implement_lua_read {
         }
     };
 }
+
+#[macro_export]
+macro_rules! c_ptr {
+    ($s:literal) => {
+        ::std::concat!($s, "\0").as_bytes().as_ptr() as *mut i8
+    };
+}
+
+#[macro_export]
+macro_rules! lua_error {
+    ($l:expr, $msg:literal) => {
+        {
+            $crate::luaL_error($l, c_ptr!($msg));
+            unreachable!()
+        }
+    }
+}
+

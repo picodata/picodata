@@ -125,8 +125,11 @@ pub use lua_tables::LuaTable;
 pub use lua_tables::LuaTableIterator;
 pub use tuples::TuplePushError;
 pub use userdata::UserdataOnStack;
-pub use userdata::{push_userdata, read_userdata};
+pub use userdata::{push_userdata, read_userdata, push_some_userdata};
 pub use values::StringInLua;
+
+// Needed for `lua_error` macro
+pub use ffi::luaL_error;
 
 mod any;
 mod functions_write;
