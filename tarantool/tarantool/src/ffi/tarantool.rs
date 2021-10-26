@@ -56,7 +56,7 @@ extern "C" {
     /// - `host` host name, i.e. "tarantool.org"
     /// - `port` service name, i.e. "80" or "http"
     /// - `hints` hints, see getaddrinfo(3)
-    /// - `res`[out] result, see getaddrinfo(3)
+    /// - `res`(out) result, see getaddrinfo(3)
     /// - `timeout` timeout
     ///
     /// Returns:
