@@ -12,3 +12,9 @@ pub extern "C" fn easy2(_: FunctionCtx, _: FunctionArgs) -> c_int {
     println!("hello world -- easy2");
     0
 }
+
+pub extern "C" fn luaopen_easy(_l: std::ffi::c_void) -> c_int {
+    // Tarantool calls this function upon require("easy")
+    println!("easy module loaded");
+    0
+}
