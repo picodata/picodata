@@ -44,13 +44,26 @@ pub fn execution_error() {
     };
 }
 
-pub fn wrong_type() {
+pub fn check_types() {
     let mut lua = crate::hlua::global();
     let mut f = LuaFunction::load(&mut lua, "return 12").unwrap();
-    match f.call::<LuaFunction<_>>() {
-        Err(LuaError::WrongType) => (),
-        _ => panic!(),
+    let err = f.call::<bool>().unwrap_err();
+    match err {
+        LuaError::WrongType{ref rust_expected, ref lua_actual} => {
+            assert_eq!(rust_expected, "bool");
+            assert_eq!(lua_actual, "number");
+        },
+        v => panic!("{}", v),
     };
+    assert_eq!(
+        err.to_string(),
+        "Wrong type returned by Lua: bool expected, got number"
+    );
+
+    assert_eq!(f.call::<i32>().unwrap(), 12i32);
+    assert_eq!(f.call::<f32>().unwrap(), 12f32);
+    assert_eq!(f.call::<f64>().unwrap(), 12f64);
+    assert_eq!(f.call::<String>().unwrap(), "12".to_string());
 }
 
 pub fn call_and_read_table() {

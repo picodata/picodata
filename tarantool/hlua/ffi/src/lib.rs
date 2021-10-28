@@ -112,6 +112,7 @@ extern "C" {
     pub fn lua_gettable(l: *mut lua_State, index: c_int);
     pub fn lua_settable(l: *mut lua_State, idx: c_int);
     pub fn lua_type(state: *mut lua_State, index: c_int) -> c_int;
+    pub fn lua_typename(state: *mut lua_State, tp: c_int) -> *mut c_schar;
     pub fn lua_setmetatable(l: *mut lua_State, objindex: c_int) -> c_int;
     pub fn lua_getmetatable(l: *mut lua_State, objindex: c_int) -> c_int;
 
