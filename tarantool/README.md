@@ -87,12 +87,14 @@ Check that these items exist on the computer:
 - Tarantool 2.2
 - A rustc compiler + cargo builder. Any modern version should work
 
-Create cargo project:
-```shell script
+1. Create cargo project:
+
+```console
 $ cargo init --lib
 ```
 
-Add the following lines to `Cargo.toml`:
+2. Add the following lines to `Cargo.toml`:
+
 ```toml
 [package]
 name = "easy"
@@ -101,37 +103,34 @@ edition = "2018"
 # author, license, etc
 
 [dependencies]
-tarantool = "0.4.2" # (1)
-serde = "1.0" # (2)
+tarantool = "0.4.2"
+serde = "1.0"
 
 [lib]
-crate-type = ["cdylib"] # (3)
+crate-type = ["cdylib"]
 ```
 
-1. add to dependencies `tarantool` library;
-1. add to dependencies [Serde](https://github.com/serde-rs/serde), this is optional and required if you want to use rust 
-structures as a tuple values (see [this example](#harder));
-1. you need to compile dynamic library.
+3. Create the server entypoint named `init.lua` with the following script:
 
-Requests will be done using Tarantool as a client. Start Tarantool, and enter these requests:
 ```lua
-box.cfg{listen=3306}
-box.schema.space.create('capi_test')
-box.space.capi_test:create_index('primary')
-net_box = require('net.box')
-capi_connection = net_box:new(3306)
+require('easy')
+box.cfg({listen = 3301})
+box.schema.func.create('easy', {language = 'C', if_not_exists = true})
+box.schema.func.create('easy.easy2', {language = 'C', if_not_exists = true})
+box.schema.user.grant('guest', 'execute', 'function', 'easy', {if_not_exists = true})
+box.schema.user.grant('guest', 'execute', 'function', 'easy.easy2', {if_not_exists = true})
 ```
 
-In plain language: create a space named `capi_test`, and make a connection to self named `capi_connection`.
+If these commands appear unfamiliar, look at the Tarantool documentation:
+- [box.cfg()](https://www.tarantool.io/en/doc/latest/reference/reference_lua/box_cfg/);
+- [box.schema.func.create()](https://www.tarantool.io/en/doc/latest/reference/reference_lua/box_schema/func_create/);
+- [box.schema.user.grant()](https://www.tarantool.io/en/doc/latest/reference/reference_lua/box_schema/user_grant/).
 
-Leave the client running. It will be used to enter more requests later.
+4. Edit `lib.rs` file and add the following lines:
 
-#### Easy
-
-Edit `lib.rs` file and add the following lines:
 ```rust
 use std::os::raw::c_int;
-use tarantool_module::tuple::{FunctionArgs, FunctionCtx};
+use tarantool::tuple::{FunctionArgs, FunctionCtx};
 
 #[no_mangle]
 pub extern "C" fn easy(_: FunctionCtx, _: FunctionArgs) -> c_int {
@@ -144,55 +143,50 @@ pub extern "C" fn easy2(_: FunctionCtx, _: FunctionArgs) -> c_int {
     println!("hello world -- easy2");
     0
 }
+
+#[no_mangle]
+pub extern "C" fn luaopen_easy(_l: std::ffi::c_void) -> c_int {
+    // Tarantool calls this function upon require("easy")
+    println!("easy module loaded");
+    0
+}
 ```
 
-Compile the program:
-```shell script
+#### Running a demo
+
+Compile the program and start the server:
+
+```console
 $ cargo build
+$ LUA_CPATH=target/debug/lib?.so tarantool init.lua
 ```
 
-Start another shell. Change directory (`cd`) so that it is the same as the directory that the client is running in.
-Copy the compiled library (it is located in subfolder `target/debug` at you
-project sources folder) to the current folder and rename it to `easy.so`
+The [LUA_CPATH](https://www.lua.org/pil/8.1.html) is necessary because Rust layout conventions
+slightly differs from those in Lua. Fortunately, Lua is rater flexible. 
 
-Now go back to the client and execute these requests:
+Now you're ready to make some requests. Open separate console window and run tarantool, we'll use it
+as a client. In the tarantool console paste the following:  
+
 ```lua
-box.schema.func.create('easy', {language = 'C'})
-box.schema.user.grant('guest', 'execute', 'function', 'easy')
-capi_connection:call('easy')
+conn = require('net.box').connect(3301)
+conn:call('easy')
 ```
 
-If these requests appear unfamiliar, read the descriptions of 
-[box.schema.func.create()](https://www.tarantool.io/en/doc/2.2/reference/reference_lua/box_schema/#box-schema-func-create), 
-[box.schema.user.grant()](https://www.tarantool.io/en/doc/2.2/reference/reference_lua/box_schema/#box-schema-user-grant) 
-and [conn:call()](https://www.tarantool.io/en/doc/2.2/reference/reference_lua/net_box/#net-box-call).
+Again, check out [net.box](https://www.tarantool.io/en/doc/latest/reference/reference_lua/net_box/)
+module documentation, if necessary.
 
-The function that matters is `capi_connection:call('easy')`.
+The code above connects to the server and calls the 'easy' function. Since the `easy()` function in
+`lib.rs` begins with `println!("hello world")`, the words "hello world" will appear in the server console.
 
-Its first job is to find the 'easy' function, which should be easy because by default Tarantool looks on the current directory
-for a file named `easy.so`.
+Also, it checks that the call was successful. Since the `easy()` function in `lib.rs` ends
+with return 0, there is no error message to display and the request is over.
 
-Its second job is to call the 'easy' function. Since the `easy()` function in `lib.rs` begins with `println!("hello world")`, 
-the words "hello world" will appear on the screen.
+Now let's call the other function in lib.rs - `easy2()`. This is almost the same as the `easy()`
+function, but there's a detail: when the file name is not the same as the function name, then we
+have to specify _{file-name}_._{function-name}_.
 
-Its third job is to check that the call was successful. Since the `easy()` function in `lib.rs` ends with return 0, there 
-is no error message to display and the request is over.
-
-The result should look like this:
-```
-tarantool> capi_connection:call('easy')
-hello world
----
-- []
-...
-```
-
-Now let's call the other function in lib.rs - `easy2()`. This is almost the same as the `easy()` function, but there's a 
-detail: when the file name is not the same as the function name, then we have to specify _{file-name}_._{function-name}_
 ```lua
-box.schema.func.create('easy.easy2', {language = 'C'})
-box.schema.user.grant('guest', 'execute', 'function', 'easy.easy2')
-capi_connection:call('easy.easy2')
+conn:call('easy.easy2')
 ```
 
 ... and this time the result will be `hello world -- easy2`.
@@ -202,6 +196,7 @@ Conclusion: calling a Rust function is easy.
 #### Harder
 
 Create a new crate "harder". Put these lines to `lib.rs`:
+
 ```rust
 use serde::{Deserialize, Serialize};
 use std::os::raw::c_int;
