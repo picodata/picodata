@@ -7,7 +7,10 @@ use std::{
 use tarantool::fiber::{
     self, fiber_yield, is_cancelled, sleep, Cond, Fiber, FiberAttr
 };
-use tarantool::{space, transaction, error::{Error, TransactionError}};
+use tarantool::hlua::{
+    Lua,
+    LuaFunction
+};
 
 pub fn test_fiber_new() {
     let mut fiber = Fiber::new("test_fiber", &mut |_| 0);
@@ -329,40 +332,43 @@ pub fn test_multiple_unit_deferred() {
     assert_eq!(res, vec![1, 2, 3, 4, 5, 6, 7, 8]);
 }
 
+fn fiber_csw() -> i32 {
+    static mut FLAG: bool = false;
+    let mut lua: Lua = crate::hlua::global();
+
+    if unsafe { !FLAG } {
+        lua.execute::<()>(r#"
+        function fiber_csw()
+            local fiber = require('fiber')
+            return fiber.info()[fiber.id()].csw
+        end
+        "#).unwrap();
+        unsafe { FLAG = true; }
+    }
+
+    return lua.get::<LuaFunction<_>, _>("fiber_csw").unwrap().call().unwrap();
+}
+
 pub fn immediate_yields() {
-    let mut space = space::Space::find("test_s1").unwrap();
-    space.truncate().unwrap();
+    let mut upvalue = 0;
+    let csw1 = fiber_csw();
+    fiber::start(|| upvalue = 69);
+    let csw2 = fiber_csw();
 
-    let mut fib = None;
-
-    let result = transaction::start_transaction(|| -> Result<(), Error> {
-        space.insert(&(1, "test".to_string()))?;
-        fib = Some(fiber::start(|| 69));
-        Ok(())
-    });
-
-    assert!(matches!(
-        result,
-        Err(Error::Transaction(TransactionError::FailedToCommit)),
-    ));
-
-    assert_eq!(fib.map(|f| f.join()), Some(69))
+    assert_eq!(upvalue, 69);
+    assert_eq!(csw2, csw1+1);
 }
 
 pub fn deferred_doesnt_yield() {
-    let mut space = space::Space::find("test_s1").unwrap();
-    space.truncate().unwrap();
+    let mut upvalue = 0;
+    let csw1 = fiber_csw();
+    fiber::defer(|| upvalue = 96);
+    let csw2 = fiber_csw();
 
-    let mut fib = None;
+    assert_eq!(upvalue, 0);
+    assert_eq!(csw2, csw1);
 
-    let result = transaction::start_transaction(|| -> Result<(), Error> {
-        space.insert(&(1, "test".to_string()))?;
-        fib = Some(fiber::defer(|| 69));
-        Ok(())
-    });
-
-    assert!(result.is_ok());
-
-    assert!(matches!(fib.map(|f| f.join()), Some(Ok(69))))
+    fiber::sleep(0.);
+    assert_eq!(upvalue, 96);
 }
 
