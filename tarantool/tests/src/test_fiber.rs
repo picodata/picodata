@@ -7,6 +7,7 @@ use std::{
 use tarantool::fiber::{
     self, fiber_yield, is_cancelled, sleep, Cond, Fiber, FiberAttr
 };
+use tarantool::{space, transaction, error::{Error, TransactionError}};
 
 pub fn test_fiber_new() {
     let mut fiber = Fiber::new("test_fiber", &mut |_| 0);
@@ -327,3 +328,41 @@ pub fn test_multiple_unit_deferred() {
     let res = res.borrow().iter().copied().collect::<Vec<_>>();
     assert_eq!(res, vec![1, 2, 3, 4, 5, 6, 7, 8]);
 }
+
+pub fn immediate_yields() {
+    let mut space = space::Space::find("test_s1").unwrap();
+    space.truncate().unwrap();
+
+    let mut fib = None;
+
+    let result = transaction::start_transaction(|| -> Result<(), Error> {
+        space.insert(&(1, "test".to_string()))?;
+        fib = Some(fiber::start(|| 69));
+        Ok(())
+    });
+
+    assert!(matches!(
+        result,
+        Err(Error::Transaction(TransactionError::FailedToCommit)),
+    ));
+
+    assert_eq!(fib.map(|f| f.join()), Some(69))
+}
+
+pub fn deferred_doesnt_yield() {
+    let mut space = space::Space::find("test_s1").unwrap();
+    space.truncate().unwrap();
+
+    let mut fib = None;
+
+    let result = transaction::start_transaction(|| -> Result<(), Error> {
+        space.insert(&(1, "test".to_string()))?;
+        fib = Some(fiber::defer(|| 69));
+        Ok(())
+    });
+
+    assert!(result.is_ok());
+
+    assert!(matches!(fib.map(|f| f.join()), Some(Ok(69))))
+}
+

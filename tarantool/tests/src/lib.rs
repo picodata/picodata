@@ -284,6 +284,9 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 test_fiber::test_unit_deferred,
                 test_fiber::test_unit_deferred_with_attrs,
                 test_fiber::test_multiple_unit_deferred,
+                test_fiber::deferred_doesnt_yield,
+                test_fiber::immediate_yields,
+
                 test_box::test_space_get_by_name,
                 test_box::test_space_get_system,
                 test_box::test_index_get_by_name,
