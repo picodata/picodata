@@ -408,7 +408,10 @@ pub enum LuaError {
     ReadError(IoError),
 
     /// The call to `execute` has requested the wrong type of data.
-    WrongType,
+    WrongType{
+        rust_expected: String,
+        lua_actual: String,
+    },
 }
 
 impl fmt::Display for LuaError {
@@ -419,7 +422,10 @@ impl fmt::Display for LuaError {
             SyntaxError(ref s) => write!(f, "Syntax error: {}", s),
             ExecutionError(ref s) => write!(f, "Execution error: {}", s),
             ReadError(ref e) => write!(f, "Read error: {}", e),
-            WrongType => write!(f, "Wrong type returned by Lua"),
+            WrongType{
+                rust_expected: ref e1,
+                lua_actual: ref e2
+            } => write!(f, "Wrong type returned by Lua: {} expected, got {}", e1, e2),
         }
     }
 }
@@ -432,7 +438,7 @@ impl Error for LuaError {
             SyntaxError(ref s) => &s,
             ExecutionError(ref s) => &s,
             ReadError(_) => "read error",
-            WrongType => "wrong type returned by Lua",
+            WrongType{rust_expected: _, lua_actual: _} => "wrong type returned by Lua",
         }
     }
 
@@ -443,7 +449,7 @@ impl Error for LuaError {
             SyntaxError(_) => None,
             ExecutionError(_) => None,
             ReadError(ref e) => Some(e),
-            WrongType => None,
+            WrongType{rust_expected: _, lua_actual: _} => None,
         }
     }
 }

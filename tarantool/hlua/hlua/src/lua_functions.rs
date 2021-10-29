@@ -284,7 +284,14 @@ impl<'lua, L> LuaFunction<L>
 
         match pcall_return_value {
             0 => match LuaRead::lua_read(pushed_value) {
-                Err(_) => Err(LuaFunctionCallError::LuaError(LuaError::WrongType)),
+                Err(lua) => Err(LuaFunctionCallError::LuaError(LuaError::WrongType{
+                    rust_expected: std::any::type_name::<V>().to_string(),
+                    lua_actual: unsafe {
+                        let lua_type = ffi::lua_type(lua.raw_lua.state_ptr(), -1);
+                        let typename = ffi::lua_typename(lua.raw_lua.state_ptr(), lua_type);
+                        std::ffi::CStr::from_ptr(typename).to_string_lossy().into_owned()
+                    }
+                })),
                 Ok(x) => Ok(x),
             },
             ffi::LUA_ERRMEM => panic!("lua_pcall returned LUA_ERRMEM"),
