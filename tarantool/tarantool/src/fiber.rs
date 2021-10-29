@@ -418,6 +418,11 @@ pub struct LuaFiber<C> {
     callee: C,
 }
 
+/// Deferred non-yielding fiber implemented using **lua** api. This (hopefully)
+/// temporary implementation is a workaround. Tarantool C API lacks the method
+/// for passing the necessary information into the underlying `struct fiber`
+/// reliably. In this case we need to be able to set the `void *f_arg` field to
+/// be able to implement correct deferred fibers which don't yield.
 impl<C> LuaFiber<C>
 where
     C: LuaCallee,
@@ -431,7 +436,6 @@ where
         let Self { callee } = self;
         let fiber_ref = unsafe {
             let l = ffi::luaT_state();
-            // TODO don't require("fiber") everytime
             lua::lua_getglobal(l, c_ptr!("require"));
             lua::lua_pushstring(l, c_ptr!("fiber"));
             if lua::lua_pcall(l, 1, 1, 0) == lua::LUA_ERRRUN {
