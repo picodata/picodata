@@ -435,22 +435,25 @@ where
             lua::lua_getglobal(l, c_ptr!("require"));
             lua::lua_pushstring(l, c_ptr!("fiber"));
             if lua::lua_pcall(l, 1, 1, 0) == lua::LUA_ERRRUN {
-                return Err(impl_details::lua_error_from_top(l).into())
+                let ret = Err(impl_details::lua_error_from_top(l).into());
+                lua::lua_pop(l, 1);
+                return ret
             };
             lua::lua_getfield(l, -1, c_ptr!("new"));
             hlua::push_some_userdata(l, callee.into_inner());
             lua::lua_pushcclosure(l, Self::trampoline, 1);
             if lua::lua_pcall(l, 1, 1, 0) == lua::LUA_ERRRUN {
-                return Err(impl_details::lua_error_from_top(l).into())
+                let ret = Err(impl_details::lua_error_from_top(l).into());
+                lua::lua_pop(l, 2);
+                return ret
             };
             lua::lua_getfield(l, -1, c_ptr!("set_joinable"));
             lua::lua_pushvalue(l, -2);
             lua::lua_pushboolean(l, true as i32);
             if lua::lua_pcall(l, 2, 0, 0) == lua::LUA_ERRRUN {
-                return Err(impl_details::lua_error_from_top(l).into())
+                panic!("{}", impl_details::lua_error_from_top(l))
             };
             let fiber_ref = lua::luaL_ref(l, lua::LUA_REGISTRYINDEX);
-
             // pop the fiber module from the stack
             lua::lua_pop(l, 1);
 

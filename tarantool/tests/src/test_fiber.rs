@@ -8,9 +8,12 @@ use tarantool::fiber::{
     self, fiber_yield, is_cancelled, sleep, Cond, Fiber, FiberAttr
 };
 use tarantool::hlua::{
+    AsMutLua,
     Lua,
     LuaFunction
 };
+
+use tarantool::ffi::lua;
 
 pub fn test_fiber_new() {
     let mut fiber = Fiber::new("test_fiber", &mut |_| 0);
@@ -333,23 +336,57 @@ pub fn test_multiple_unit_deferred() {
 }
 
 fn fiber_csw() -> i32 {
-    static mut FLAG: bool = false;
+    static mut FUNCTION_DEFINED: bool = false;
     let mut lua: Lua = crate::hlua::global();
 
-    if unsafe { !FLAG } {
+    if unsafe { !FUNCTION_DEFINED } {
         lua.execute::<()>(r#"
         function fiber_csw()
-            local fiber = require('fiber')
-            return fiber.info()[fiber.id()].csw
+        local fiber = require('fiber')
+        return fiber.info()[fiber.id()].csw
         end
         "#).unwrap();
-        unsafe { FLAG = true; }
+        unsafe { FUNCTION_DEFINED = true; }
     }
 
     return lua.get::<LuaFunction<_>, _>("fiber_csw").unwrap().call().unwrap();
 }
 
+struct LuaStackIntegrityGuard {
+    name: &'static str,
+}
+
+impl LuaStackIntegrityGuard {
+    fn new(name: &'static str) -> Self {
+        let mut lua: Lua = crate::hlua::global();
+        let l = lua.as_mut_lua().state_ptr();
+        unsafe { lua::lua_pushlstring(l, name.as_bytes().as_ptr() as *mut i8, name.len()) };
+        Self{name}
+    }
+}
+
+impl Drop for LuaStackIntegrityGuard {
+    fn drop(&mut self) {
+        let mut lua: Lua = crate::hlua::global();
+        let l = lua.as_mut_lua().state_ptr();
+
+        let msg = unsafe {
+            let cstr = lua::lua_tostring(l, -1);
+            if cstr.is_null() {
+                panic!("Lua stack integrity violation");
+            }
+            let msg = std::ffi::CStr::from_ptr(cstr).to_str().unwrap();
+            lua::lua_pop(l, 1);
+            msg
+        };
+
+        assert_eq!(msg, self.name);
+    }
+}
+
 pub fn immediate_yields() {
+    let _guard = LuaStackIntegrityGuard::new("immediate_fiber_guard");
+
     let mut upvalue = 0;
     let csw1 = fiber_csw();
     fiber::start(|| upvalue = 69);
@@ -360,6 +397,8 @@ pub fn immediate_yields() {
 }
 
 pub fn deferred_doesnt_yield() {
+    let _guard = LuaStackIntegrityGuard::new("deferred_fiber_guard");
+
     let mut upvalue = 0;
     let csw1 = fiber_csw();
     fiber::defer(|| upvalue = 96);
@@ -372,3 +411,78 @@ pub fn deferred_doesnt_yield() {
     assert_eq!(upvalue, 96);
 }
 
+pub fn start_error() {
+    let _guard = LuaStackIntegrityGuard::new("fiber_error_guard");
+
+    let _spoiler = LuaContextSpoiler::new();
+
+    match fiber::LuaFiber::new(fiber::LuaFiberFunc(|| ())).spawn() {
+        Err(e) => assert_eq!(
+            format!("{}", e),
+            "Lua error: Execution error: Artificial error"
+        ),
+        _ => panic!(),
+    }
+
+    struct LuaContextSpoiler;
+
+    impl LuaContextSpoiler {
+        fn new() -> Self {
+            let mut lua: Lua = crate::hlua::global();
+            lua.execute::<()>(r#"
+            _fiber_new_backup = package.loaded.fiber.new
+            package.loaded.fiber.new = function() error("Artificial error", 0) end
+            "#).unwrap();
+            Self
+        }
+    }
+
+    impl Drop for LuaContextSpoiler {
+        fn drop(&mut self) {
+            let mut lua: Lua = crate::hlua::global();
+            lua.execute::<()>(r#"
+            package.loaded.fiber.new = _fiber_new_backup
+            _fiber_new_backup = nil
+            "#).unwrap();
+        }
+    }
+}
+
+pub fn require_error() {
+    let _guard = LuaStackIntegrityGuard::new("fiber_error_guard");
+
+    let _spoiler = LuaContextSpoiler::new();
+
+    match fiber::LuaFiber::new(fiber::LuaFiberFunc(|| ())).spawn() {
+        Err(e) => assert_eq!(
+            format!("{}", e),
+            "Lua error: Execution error: Artificial require error"
+        ),
+        _ => panic!(),
+    }
+
+    struct LuaContextSpoiler;
+
+    impl LuaContextSpoiler {
+        fn new() -> Self {
+            let mut lua: Lua = crate::hlua::global();
+            lua.execute::<()>(r#"
+            _fiber_backup = package.loaded.fiber
+            package.loaded.fiber = nil
+            package.preload.fiber = function() error("Artificial require error", 0) end
+            "#).unwrap();
+            Self
+        }
+    }
+
+    impl Drop for LuaContextSpoiler {
+        fn drop(&mut self) {
+            let mut lua: Lua = crate::hlua::global();
+            lua.execute::<()>(r#"
+            package.preload.fiber = nil
+            package.loaded.fiber = _fiber_backup
+            _fiber_backup = nil
+            "#).unwrap();
+        }
+    }
+}
