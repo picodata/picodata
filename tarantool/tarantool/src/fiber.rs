@@ -933,7 +933,7 @@ where
 /// **NOTE**: The argument `f` is a function that returns `T`. In case when `T =
 /// ()` (no return value) one should instead use [`defer_proc`].
 ///
-/// The new fiber can be joined by calling [`JuaJoinHandle::join`] method on
+/// The new fiber can be joined by calling [`LuaJoinHandle::join`] method on
 /// it's join handle.
 pub fn defer<F, T>(f: F) -> LuaJoinHandle<T>
 where

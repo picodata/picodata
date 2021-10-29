@@ -1,12 +1,12 @@
+//! Module provides FFI bindings for the following constants,
+//! types and functions, realted to Lua C API:
+//! 1. Plain lua C API
+//! 2. lauxlib
+//! 3. Lua utitlites, implemented in Tarantool
+
 #![allow(non_camel_case_types)]
 use std::os::raw::{c_double, c_int, c_schar};
 use std::ptr::null_mut;
-
-/// Module provides FFI bindings for the following constants,
-/// types and functions, realted to Lua C API:
-/// 1. Plain lua C API
-/// 2. lauxlib
-/// 3. Lua utitlites, implemented in Tarantool
 
 /// Lua provides a registry, a pre-defined table that can be used by any C code
 /// to store whatever Lua value it needs to store. This table is always located
@@ -70,7 +70,7 @@ pub type lua_Integer = libc::ptrdiff_t;
 /// (the first argument is pushed first). So, when the function starts,
 /// [`lua_gettop`]`(L)` returns the number of arguments received by the function.
 /// The first argument (if any) is at index 1 and its last argument is at index
-/// [`lua_gettop`](L). To return values to Lua, a C function just pushes them
+/// [`lua_gettop`]`(L)`. To return values to Lua, a C function just pushes them
 /// onto the stack, in direct order (the first result is pushed first), and
 /// returns the number of results. Any other value in the stack below the
 /// results will be properly discarded by Lua. Like a Lua function, a C function
