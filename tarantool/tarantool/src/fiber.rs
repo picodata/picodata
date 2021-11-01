@@ -440,25 +440,22 @@ where
             let l = ffi::luaT_state();
             lua::lua_getglobal(l, c_ptr!("require"));
             lua::lua_pushstring(l, c_ptr!("fiber"));
-            if lua::lua_pcall(l, 1, 1, 0) == lua::LUA_ERRRUN {
-                let ret = Err(impl_details::lua_error_from_top(l).into());
-                lua::lua_pop(l, 1);
-                return ret
-            };
+            impl_details::guarded_pcall(l, 1, 1)?;
             lua::lua_getfield(l, -1, c_ptr!("new"));
             hlua::push_some_userdata(l, callee.into_inner());
             lua::lua_pushcclosure(l, Self::trampoline, 1);
-            if lua::lua_pcall(l, 1, 1, 0) == lua::LUA_ERRRUN {
-                let ret = Err(impl_details::lua_error_from_top(l).into());
-                lua::lua_pop(l, 2);
-                return ret
-            };
+            impl_details::guarded_pcall(l, 1, 1)
+                .map_err(|e| {
+                    // Pop the fiber module from the stack
+                    lua::lua_pop(l, 1);
+                    e
+                })?;
             lua::lua_getfield(l, -1, c_ptr!("set_joinable"));
             lua::lua_pushvalue(l, -2);
             lua::lua_pushboolean(l, true as i32);
-            if lua::lua_pcall(l, 2, 0, 0) == lua::LUA_ERRRUN {
-                panic!("{}", impl_details::lua_error_from_top(l))
-            };
+            impl_details::guarded_pcall(l, 2, 0)
+                .map_err(|e| panic!("{}", e))
+                .unwrap();
             let fiber_ref = lua::luaL_ref(l, lua::LUA_REGISTRYINDEX);
             // pop the fiber module from the stack
             lua::lua_pop(l, 1);
@@ -538,14 +535,14 @@ impl LuaUnitJoinHandle {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-/// impl_details
+// impl_details
 ////////////////////////////////////////////////////////////////////////////////
 
 mod impl_details {
     use super::*;
     use hlua::{AsMutLua, Lua, LuaError, PushGuard};
 
-    pub unsafe fn lua_error_from_top(l: *mut lua::lua_State) -> LuaError {
+    pub(super) unsafe fn lua_error_from_top(l: *mut lua::lua_State) -> LuaError {
         let mut len = std::mem::MaybeUninit::uninit();
         let data = lua::lua_tolstring(l, -1, len.as_mut_ptr());
         assert!(!data.is_null());
@@ -556,28 +553,49 @@ mod impl_details {
         hlua::LuaError::ExecutionError(msg.into()).into()
     }
 
-    pub unsafe fn lua_fiber_join(f_ref: i32) -> Result<PushGuard<Lua<'static>>> {
+    /// In case of success, the stack contains the results.
+    ///
+    /// In case of error, pops the error from the stack and wraps it into
+    /// tarantool::error::Error.
+    pub(super) unsafe fn guarded_pcall(
+        lptr: *mut lua::lua_State, nargs: i32, nresults: i32
+    ) -> Result<()>
+    {
+        match lua::lua_pcall(lptr, nargs, nresults, 0) {
+            lua::LUA_OK => Ok(()),
+            lua::LUA_ERRRUN => {
+                let err = lua_error_from_top(lptr).into();
+                lua::lua_pop(lptr, 1);
+                Err(err)
+            }
+            code => panic!("lua_pcall: Unrecoverable failure code: {}", code)
+        }
+    }
+
+    pub(super) unsafe fn lua_fiber_join(f_ref: i32) -> Result<PushGuard<Lua<'static>>> {
         let mut l = Lua::from_existing_state(ffi::luaT_state(), false);
         let lptr = l.as_mut_lua().state_ptr();
         lua::lua_rawgeti(lptr, lua::LUA_REGISTRYINDEX, f_ref);
         lua::lua_getfield(lptr, -1, c_ptr!("join"));
         lua::lua_pushvalue(lptr, -2);
 
-        if lua::lua_pcall(lptr, 1, 2, 0) == lua::LUA_ERRRUN {
-            let err = lua_error_from_top(lptr).into();
-            // 2 values on the stack:
-            // 1) fiber; 2) error
-            let _guard = PushGuard::new(l, 2);
-            return Err(err)
-        };
+        // fiber instance can now be garbage collected by lua
+        lua::luaL_unref(lptr, lua::LUA_REGISTRYINDEX, f_ref);
+
+        guarded_pcall(lptr, 1, 2)
+            .map_err(|e| {
+                // Pop the fiber value from the stack
+                lua::lua_pop(lptr, 1);
+                e
+            })?;
+
         // 3 values on the stack that need to be dropped:
-        // 1) fiber; 2) join function; 3) fiber
+        // 1) fiber; 2) flag; 3) return value / error
         let guard = PushGuard::new(l, 3);
 
         // check fiber return code
         assert_ne!(lua::lua_toboolean(lptr, -2), 0);
 
-        // fiber object and the 2 return values will need to be poped
         Ok(guard)
     }
 }
