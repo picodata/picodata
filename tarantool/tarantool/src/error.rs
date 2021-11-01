@@ -26,6 +26,7 @@ use rmp::decode::{MarkerReadError, NumValueReadError, ValueReadError};
 use rmp::encode::ValueWriteError;
 
 use crate::ffi::tarantool as ffi;
+use crate::hlua::LuaError;
 
 /// A specialized [`Result`] type for the crate
 pub type Result<T> = std::result::Result<T, Error>;
@@ -71,6 +72,9 @@ pub enum Error {
     #[cfg(feature = "net_box")]
     #[fail(display = "Sever respond with error: {}", _0)]
     Remote(crate::net_box::ResponseError),
+
+    #[fail(display = "Lua error: {}", _0)]
+    LuaError(LuaError),
 }
 
 impl From<io::Error> for Error {
@@ -139,6 +143,12 @@ impl From<ValueWriteError> for Error {
 impl From<crate::net_box::ResponseError> for Error {
     fn from(error: crate::net_box::ResponseError) -> Self {
         Error::Remote(error)
+    }
+}
+
+impl From<LuaError> for Error {
+    fn from(error: LuaError) -> Self {
+        Error::LuaError(error)
     }
 }
 

@@ -125,8 +125,11 @@ pub use lua_tables::LuaTable;
 pub use lua_tables::LuaTableIterator;
 pub use tuples::TuplePushError;
 pub use userdata::UserdataOnStack;
-pub use userdata::{push_userdata, read_userdata};
+pub use userdata::{push_userdata, read_userdata, push_some_userdata};
 pub use values::StringInLua;
+
+// Needed for `lua_error` macro
+pub use ffi::luaL_error;
 
 mod any;
 mod functions_write;
@@ -369,7 +372,7 @@ pub trait PushOne<L>: Push<L> {}
 
 /// Type that cannot be instantiated.
 ///
-/// Will be replaced with `!` eventually (https://github.com/rust-lang/rust/issues/35121).
+/// Will be replaced with `!` eventually (<https://github.com/rust-lang/rust/issues/35121>).
 #[derive(Debug, Copy, Clone)]
 pub enum Void {}
 
@@ -520,7 +523,7 @@ impl<'lua> Lua<'lua> {
     /// Opens all standard Lua libraries.
     ///
     /// See the reference for the standard library here:
-    /// https://www.lua.org/manual/5.2/manual.html#6
+    /// <https://www.lua.org/manual/5.2/manual.html#6>
     ///
     /// This is done by calling `luaL_openlibs`.
     ///
@@ -538,7 +541,7 @@ impl<'lua> Lua<'lua> {
 
     /// Opens base library.
     ///
-    /// https://www.lua.org/manual/5.2/manual.html#pdf-luaopen_base
+    /// <https://www.lua.org/manual/5.2/manual.html#pdf-luaopen_base>
     #[inline]
     pub fn open_base(&mut self) {
         unsafe { ffi::luaopen_base(self.lua.0) }
@@ -546,7 +549,7 @@ impl<'lua> Lua<'lua> {
 
     /// Opens bit32 library.
     ///
-    /// https://www.lua.org/manual/5.2/manual.html#pdf-luaopen_bit32
+    /// <https://www.lua.org/manual/5.2/manual.html#pdf-luaopen_bit32>
     #[inline]
     pub fn open_bit(&mut self) {
         unsafe { ffi::luaopen_bit(self.lua.0) }
@@ -554,7 +557,7 @@ impl<'lua> Lua<'lua> {
 
     /// Opens debug library.
     ///
-    /// https://www.lua.org/manual/5.2/manual.html#pdf-luaopen_debug
+    /// <https://www.lua.org/manual/5.2/manual.html#pdf-luaopen_debug>
     #[inline]
     pub fn open_debug(&mut self) {
         unsafe { ffi::luaopen_debug(self.lua.0) }
@@ -562,7 +565,7 @@ impl<'lua> Lua<'lua> {
 
     /// Opens io library.
     ///
-    /// https://www.lua.org/manual/5.2/manual.html#pdf-luaopen_io
+    /// <https://www.lua.org/manual/5.2/manual.html#pdf-luaopen_io>
     #[inline]
     pub fn open_io(&mut self) {
         unsafe { ffi::luaopen_io(self.lua.0) }
@@ -570,7 +573,7 @@ impl<'lua> Lua<'lua> {
 
     /// Opens math library.
     ///
-    /// https://www.lua.org/manual/5.2/manual.html#pdf-luaopen_math
+    /// <https://www.lua.org/manual/5.2/manual.html#pdf-luaopen_math>
     #[inline]
     pub fn open_math(&mut self) {
         unsafe { ffi::luaopen_math(self.lua.0) }
@@ -578,7 +581,7 @@ impl<'lua> Lua<'lua> {
 
     /// Opens os library.
     ///
-    /// https://www.lua.org/manual/5.2/manual.html#pdf-luaopen_os
+    /// <https://www.lua.org/manual/5.2/manual.html#pdf-luaopen_os>
     #[inline]
     pub fn open_os(&mut self) {
         unsafe { ffi::luaopen_os(self.lua.0) }
@@ -586,7 +589,7 @@ impl<'lua> Lua<'lua> {
 
     /// Opens package library.
     ///
-    /// https://www.lua.org/manual/5.2/manual.html#pdf-luaopen_package
+    /// <https://www.lua.org/manual/5.2/manual.html#pdf-luaopen_package>
     #[inline]
     pub fn open_package(&mut self) {
         unsafe { ffi::luaopen_package(self.lua.0) }
@@ -594,7 +597,7 @@ impl<'lua> Lua<'lua> {
 
     /// Opens string library.
     ///
-    /// https://www.lua.org/manual/5.2/manual.html#pdf-luaopen_string
+    /// <https://www.lua.org/manual/5.2/manual.html#pdf-luaopen_string>
     #[inline]
     pub fn open_string(&mut self) {
         unsafe { ffi::luaopen_string(self.lua.0) }
@@ -602,7 +605,7 @@ impl<'lua> Lua<'lua> {
 
     /// Opens table library.
     ///
-    /// https://www.lua.org/manual/5.2/manual.html#pdf-luaopen_table
+    /// <https://www.lua.org/manual/5.2/manual.html#pdf-luaopen_table>
     #[inline]
     pub fn open_table(&mut self) {
         unsafe { ffi::luaopen_table(self.lua.0) }
