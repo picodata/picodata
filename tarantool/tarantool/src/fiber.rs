@@ -500,17 +500,19 @@ pub struct LuaJoinHandle<T> {
 }
 
 impl<T> LuaJoinHandle<T> {
-    pub fn join(self) -> Result<T> {
+    pub fn join(self) -> T {
         let Self { fiber_ref, .. } = self;
         unsafe {
-            let guard = impl_details::lua_fiber_join(fiber_ref)?;
+            let guard = impl_details::lua_fiber_join(fiber_ref)
+                .map_err(|e| panic!("Unrecoverable lua failure: {}", e))
+                .unwrap();
             let l = guard.as_lua().state_ptr();
             let ud_ptr = lua::lua_touserdata(l, -1);
             let res = (ud_ptr as *mut Option<T>).as_mut()
                 .expect("fiber:join must return correct userdata")
                 .take()
                 .expect("data can only be taken once from the UDBox");
-            Ok(res)
+            res
         }
     }
 }
@@ -524,10 +526,12 @@ pub struct LuaUnitJoinHandle {
 }
 
 impl LuaUnitJoinHandle {
-    pub fn join(self) -> Result<()> {
+    pub fn join(self) {
         let Self { fiber_ref, .. } = self;
-        unsafe { impl_details::lua_fiber_join(fiber_ref)? };
-        Ok(())
+        match unsafe { impl_details::lua_fiber_join(fiber_ref) } {
+            Ok(_pushguard) => (),
+            Err(e) => panic!("Unrecoverable lua failure: {}", e),
+        }
     }
 }
 
