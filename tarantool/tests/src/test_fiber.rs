@@ -484,3 +484,61 @@ pub fn require_error() {
         }
     }
 }
+
+pub fn immediate_with_cond() {
+    let msgs = Rc::new(RefCell::new(vec![]));
+    let cond = Rc::new(fiber::Cond::new());
+
+    let fibers = (1..=3).map(|i| {
+        let msgs = msgs.clone();
+        let cond = cond.clone();
+        fiber::start_proc(move || {
+            msgs.borrow_mut().push(i);
+            cond.wait();
+            msgs.borrow_mut().push(i + 3);
+        })
+    })
+        .collect::<Vec<_>>();
+
+    assert_eq!(*msgs.borrow(), vec![1, 2, 3]);
+
+    cond.broadcast();
+    fiber::sleep(0.000001);
+
+    assert_eq!(*msgs.borrow(), vec![1, 2, 3, 4, 5, 6]);
+
+    for f in fibers {
+        f.join()
+    }
+}
+
+pub fn deferred_with_cond() {
+    let msgs = Rc::new(RefCell::new(vec![]));
+    let cond = Rc::new(fiber::Cond::new());
+
+    let fibers = (1..=3).map(|i| {
+        let msgs = msgs.clone();
+        let cond = cond.clone();
+        fiber::defer_proc(move || {
+            msgs.borrow_mut().push(i);
+            cond.wait();
+            msgs.borrow_mut().push(i + 3);
+        })
+    })
+        .collect::<Vec<_>>();
+
+    assert!(msgs.borrow().is_empty());
+
+    fiber::sleep(0.000001);
+
+    assert_eq!(*msgs.borrow(), vec![1, 2, 3]);
+
+    cond.broadcast();
+    fiber::sleep(0.000001);
+
+    assert_eq!(*msgs.borrow(), vec![1, 2, 3, 4, 5, 6]);
+
+    for f in fibers {
+        f.join()
+    }
+}
