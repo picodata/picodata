@@ -445,6 +445,23 @@ pub enum TarantoolErrorCode {
     BootstrapReadonly = 201,
 }
 
+impl TarantoolErrorCode {
+    pub fn try_last() -> Option<Self> {
+        unsafe {
+            let e_ptr = ffi::box_error_last();
+            if e_ptr.is_null() {
+                return None
+            }
+            let u32_code = ffi::box_error_code(e_ptr);
+            TarantoolErrorCode::from_u32(u32_code)
+        }
+    }
+
+    pub fn last() -> Self {
+        Self::try_last().unwrap()
+    }
+}
+
 /// Clear the last error.
 pub fn clear_error() {
     unsafe { ffi::box_error_clear() }

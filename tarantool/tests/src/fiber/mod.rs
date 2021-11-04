@@ -14,6 +14,7 @@ use tarantool::ffi::lua;
 use tarantool::util::IntoClones;
 
 pub mod old;
+pub mod channel;
 
 pub fn immediate() {
     let jh = fiber::Builder::new()

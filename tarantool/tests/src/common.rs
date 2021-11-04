@@ -69,3 +69,12 @@ pub(crate) fn fiber_csw() -> i32 {
         .unwrap().call().unwrap();
 }
 
+pub(crate) fn count_csw<F>(f: F) -> i32
+where
+    F: FnOnce(),
+{
+    let csw_before = fiber_csw();
+    f();
+    fiber_csw() - csw_before
+}
+
