@@ -45,7 +45,7 @@ pub fn test_fiber_arg() {
 pub fn test_fiber_cancel() {
     let mut fiber = Fiber::new("test_fiber", &mut |_| {
         assert_eq!(is_cancelled(), false);
-        sleep(0.01);
+        sleep(Duration::from_millis(10));
         assert_eq!(is_cancelled(), true);
         0
     });
@@ -62,7 +62,7 @@ pub fn test_fiber_wake() {
     });
     fiber.set_joinable(true);
     fiber.start(());
-    sleep(0.01);
+    sleep(Duration::from_millis(10));
     fiber.wakeup();
     fiber.join();
 }
@@ -113,7 +113,7 @@ pub fn test_fiber_cond_signal() {
     });
     fiber.set_joinable(true);
     fiber.start(cond.clone());
-    sleep(0.01);
+    sleep(Duration::from_millis(10));
     cond.signal();
     fiber.join();
 }
@@ -135,7 +135,7 @@ pub fn test_fiber_cond_broadcast() {
     fiber_b.set_joinable(true);
     fiber_b.start(cond.clone());
 
-    sleep(0.01);
+    sleep(Duration::from_millis(10));
     cond.broadcast();
     fiber_a.join();
     fiber_b.join();
@@ -144,13 +144,13 @@ pub fn test_fiber_cond_broadcast() {
 pub fn test_fiber_cond_timeout() {
     let cond = Rc::new(Cond::new());
     let mut fiber = Fiber::new("test_fiber", &mut |cond: Box<Rc<Cond>>| {
-        let r = (*cond).wait_timeout(Duration::from_secs_f32(0.01));
+        let r = (*cond).wait_timeout(Duration::from_millis(10));
         assert!(!r);
         0
     });
     fiber.set_joinable(true);
     fiber.start(cond.clone());
-    sleep(0.02);
+    sleep(Duration::from_millis(20));
     cond.signal();
     fiber.join();
 }
@@ -414,7 +414,7 @@ pub fn deferred_doesnt_yield() {
     assert_eq!(upvalue.get(), 0);
     assert_eq!(csw2, csw1);
 
-    fiber::sleep(0.);
+    fiber::sleep(Duration::ZERO);
     assert_eq!(upvalue.get(), 96);
 }
 
@@ -512,7 +512,7 @@ pub fn immediate_with_cond() {
     assert_eq!(*msgs.borrow(), vec![1, 2, 3]);
 
     cond.broadcast();
-    fiber::sleep(0.000001);
+    fiber::sleep(Duration::ZERO);
 
     assert_eq!(*msgs.borrow(), vec![1, 2, 3, 4, 5, 6]);
 
@@ -538,12 +538,12 @@ pub fn deferred_with_cond() {
 
     assert!(msgs.borrow().is_empty());
 
-    fiber::sleep(0.000001);
+    fiber::sleep(Duration::ZERO);
 
     assert_eq!(*msgs.borrow(), vec![1, 2, 3]);
 
     cond.broadcast();
-    fiber::sleep(0.000001);
+    fiber::sleep(Duration::ZERO);
 
     assert_eq!(*msgs.borrow(), vec![1, 2, 3, 4, 5, 6]);
 

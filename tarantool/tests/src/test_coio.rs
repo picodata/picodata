@@ -3,6 +3,7 @@ use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::os::unix::io::{AsRawFd, FromRawFd};
 use std::os::unix::net::UnixStream;
+use std::time::Duration;
 
 use tarantool::coio::{channel, coio_call, CoIOListener, CoIOStream, Receiver, Sender};
 use tarantool::fiber::{sleep, Fiber};
@@ -13,7 +14,7 @@ pub fn test_coio_accept() {
 
     let coio_listener: CoIOListener = tcp_listener.try_into().unwrap();
     let mut client_fiber = Fiber::new("test_fiber", &mut |_| {
-        sleep(0.01);
+        sleep(Duration::from_millis(10));
         TcpStream::connect(addr).unwrap();
         0
     });

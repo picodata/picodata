@@ -1019,8 +1019,8 @@ pub fn is_cancelled() -> bool {
 /// - `time` - time to sleep
 ///
 /// > **Note:** this is a cancellation point (See also: [is_cancelled()](fn.is_cancelled.html))
-pub fn sleep(time: f64) {
-    unsafe { ffi::fiber_sleep(time) }
+pub fn sleep(time: Duration) {
+    unsafe { ffi::fiber_sleep(time.as_secs_f64()) }
 }
 
 /// Report loop begin time as double (cheap).

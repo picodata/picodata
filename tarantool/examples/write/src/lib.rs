@@ -23,6 +23,6 @@ pub extern "C" fn hardest(ctx: FunctionCtx, _: FunctionArgs) -> c_int {
     })
     .unwrap();
 
-    sleep(0.001);
+    sleep(std::time::Duration::from_millis(1));
     ctx.return_mp(&row).unwrap()
 }

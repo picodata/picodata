@@ -332,7 +332,7 @@ impl ConnInner {
             self.update_state(ConnState::Error);
             return Err(error.into());
         } else {
-            sleep(reconnect_after.as_secs_f64());
+            sleep(reconnect_after);
             match self.connect() {
                 Ok(_) => {}
                 Err(err) => {
