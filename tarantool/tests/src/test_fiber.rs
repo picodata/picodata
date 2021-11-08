@@ -253,7 +253,7 @@ pub fn test_deferred() {
     assert_eq!(jh.join(), 13);
 
     let jh = fiber::defer(|| 42);
-    assert_eq!(jh.join().unwrap(), 42);
+    assert_eq!(jh.join(), 42);
 }
 
 pub fn test_deferred_with_attrs() {
@@ -281,7 +281,6 @@ pub fn test_multiple_deferred() {
     res.extend(
         fibers.into_iter()
             .map(fiber::LuaJoinHandle::join)
-            .map(Result::unwrap)
             .flatten()
     );
     res.push(8);
@@ -298,7 +297,7 @@ pub fn test_unit_deferred() {
     let res = std::cell::Cell::new(0);
     let jh = fiber::defer_proc(|| res.set(42));
     assert_eq!(res.get(), 0);
-    jh.join().unwrap();
+    jh.join();
     assert_eq!(res.get(), 42);
 }
 
@@ -328,7 +327,6 @@ pub fn test_multiple_unit_deferred() {
     res.borrow_mut().push(1);
     for f in fibers {
         f.join()
-            .unwrap()
     }
     res.borrow_mut().push(8);
     let res = res.borrow().iter().copied().collect::<Vec<_>>();
@@ -484,5 +482,63 @@ pub fn require_error() {
             _fiber_backup = nil
             "#).unwrap();
         }
+    }
+}
+
+pub fn immediate_with_cond() {
+    let msgs = Rc::new(RefCell::new(vec![]));
+    let cond = Rc::new(fiber::Cond::new());
+
+    let fibers = (1..=3).map(|i| {
+        let msgs = msgs.clone();
+        let cond = cond.clone();
+        fiber::start_proc(move || {
+            msgs.borrow_mut().push(i);
+            cond.wait();
+            msgs.borrow_mut().push(i + 3);
+        })
+    })
+        .collect::<Vec<_>>();
+
+    assert_eq!(*msgs.borrow(), vec![1, 2, 3]);
+
+    cond.broadcast();
+    fiber::sleep(0.000001);
+
+    assert_eq!(*msgs.borrow(), vec![1, 2, 3, 4, 5, 6]);
+
+    for f in fibers {
+        f.join()
+    }
+}
+
+pub fn deferred_with_cond() {
+    let msgs = Rc::new(RefCell::new(vec![]));
+    let cond = Rc::new(fiber::Cond::new());
+
+    let fibers = (1..=3).map(|i| {
+        let msgs = msgs.clone();
+        let cond = cond.clone();
+        fiber::defer_proc(move || {
+            msgs.borrow_mut().push(i);
+            cond.wait();
+            msgs.borrow_mut().push(i + 3);
+        })
+    })
+        .collect::<Vec<_>>();
+
+    assert!(msgs.borrow().is_empty());
+
+    fiber::sleep(0.000001);
+
+    assert_eq!(*msgs.borrow(), vec![1, 2, 3]);
+
+    cond.broadcast();
+    fiber::sleep(0.000001);
+
+    assert_eq!(*msgs.borrow(), vec![1, 2, 3, 4, 5, 6]);
+
+    for f in fibers {
+        f.join()
     }
 }
