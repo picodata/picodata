@@ -1,5 +1,5 @@
 use std::{
-    cell::RefCell,
+    cell::{Cell, RefCell},
     rc::Rc,
     time::Duration,
 };
@@ -294,8 +294,11 @@ pub fn test_unit_deferred() {
         .unwrap();
     let () = jh.join();
 
-    let res = std::cell::Cell::new(0);
-    let jh = fiber::defer_proc(|| res.set(42));
+    let res = Rc::new(Cell::new(0));
+    let jh = {
+        let res = res.clone();
+        fiber::defer_proc(move || res.set(42))
+    };
     assert_eq!(res.get(), 0);
     jh.join();
     assert_eq!(res.get(), 42);
@@ -385,28 +388,34 @@ impl Drop for LuaStackIntegrityGuard {
 pub fn immediate_yields() {
     let _guard = LuaStackIntegrityGuard::new("immediate_fiber_guard");
 
-    let mut upvalue = 0;
+    let upvalue = Rc::new(Cell::new(0));
     let csw1 = fiber_csw();
-    fiber::start(|| upvalue = 69);
+    {
+        let upvalue = upvalue.clone();
+        fiber::start(move || upvalue.set(69));
+    }
     let csw2 = fiber_csw();
 
-    assert_eq!(upvalue, 69);
+    assert_eq!(upvalue.get(), 69);
     assert_eq!(csw2, csw1+1);
 }
 
 pub fn deferred_doesnt_yield() {
     let _guard = LuaStackIntegrityGuard::new("deferred_fiber_guard");
 
-    let mut upvalue = 0;
+    let upvalue = Rc::new(Cell::new(0));
     let csw1 = fiber_csw();
-    fiber::defer(|| upvalue = 96);
+    {
+        let upvalue = upvalue.clone();
+        fiber::defer(move || upvalue.set(96));
+    }
     let csw2 = fiber_csw();
 
-    assert_eq!(upvalue, 0);
+    assert_eq!(upvalue.get(), 0);
     assert_eq!(csw2, csw1);
 
     fiber::sleep(0.);
-    assert_eq!(upvalue, 96);
+    assert_eq!(upvalue.get(), 96);
 }
 
 pub fn start_error() {

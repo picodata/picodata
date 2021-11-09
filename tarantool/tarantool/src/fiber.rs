@@ -222,6 +222,7 @@ impl Builder<NoFunc> {
     pub fn func<F, T>(self, f: F) -> Builder<FiberFunc<F, T>>
     where
         F: FnOnce() -> T,
+        F: 'static,
     {
         Builder {
             name: self.name,
@@ -237,6 +238,7 @@ impl Builder<NoFunc> {
     pub fn proc<F>(self, f: F) -> Builder<FiberProc<F>>
     where
         F: FnOnce(),
+        F: 'static,
     {
         Builder {
             name: self.name,
@@ -586,7 +588,7 @@ mod impl_details {
 
 pub trait LuaCallee {
     /// Type of the callee
-    type Function: FnOnce() -> Self::Output;
+    type Function: FnOnce() -> Self::Output + 'static;
 
     /// Return type of the callee
     type Output;
@@ -617,6 +619,7 @@ pub struct LuaFiberFunc<F>(pub F);
 impl<F, T> LuaCallee for LuaFiberFunc<F>
 where
     F: FnOnce() -> T,
+    F: 'static,
 {
     type Function = F;
     type Output = T;
@@ -645,6 +648,7 @@ pub struct LuaFiberProc<F>(pub F);
 impl<F> LuaCallee for LuaFiberProc<F>
 where
     F: FnOnce(),
+    F: 'static,
 {
     type Function = F;
     type Output = ();
@@ -915,6 +919,7 @@ impl TrampolineArgs for VaList {
 pub fn start<F, T>(f: F) -> JoinHandle<T>
 where
     F: FnOnce() -> T,
+    F: 'static,
 {
     Builder::new().func(f).start().unwrap()
 }
@@ -931,6 +936,7 @@ where
 pub fn start_proc<F>(f: F) -> UnitJoinHandle
 where
     F: FnOnce(),
+    F: 'static,
 {
     Builder::new().proc(f).start().unwrap()
 }
@@ -949,6 +955,7 @@ where
 pub fn defer<F, T>(f: F) -> LuaJoinHandle<T>
 where
     F: FnOnce() -> T,
+    F: 'static,
 {
     LuaFiber::new(LuaFiberFunc(f)).spawn().unwrap()
 }
@@ -966,6 +973,7 @@ where
 pub fn defer_proc<F>(f: F) -> LuaUnitJoinHandle
 where
     F: FnOnce(),
+    F: 'static,
 {
     LuaFiber::new(LuaFiberProc(f)).spawn().unwrap()
 }
