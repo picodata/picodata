@@ -12,7 +12,7 @@ use tarantool::hlua::{
     Lua,
     LuaFunction
 };
-
+use tarantool::util::IntoClones;
 use tarantool::ffi::lua;
 
 pub fn test_fiber_new() {
@@ -388,34 +388,32 @@ impl Drop for LuaStackIntegrityGuard {
 pub fn immediate_yields() {
     let _guard = LuaStackIntegrityGuard::new("immediate_fiber_guard");
 
-    let upvalue = Rc::new(Cell::new(0));
+    let (tx, rx) = Rc::new(Cell::new(0)).into_clones();
     let csw1 = fiber_csw();
-    {
-        let upvalue = upvalue.clone();
-        fiber::start(move || upvalue.set(69));
-    }
+    let f = fiber::start(move || tx.set(69));
     let csw2 = fiber_csw();
 
-    assert_eq!(upvalue.get(), 69);
+    assert_eq!(rx.get(), 69);
     assert_eq!(csw2, csw1+1);
+
+    f.join();
 }
 
 pub fn deferred_doesnt_yield() {
     let _guard = LuaStackIntegrityGuard::new("deferred_fiber_guard");
 
-    let upvalue = Rc::new(Cell::new(0));
+    let (tx, rx) = Rc::new(Cell::new(0)).into_clones();
     let csw1 = fiber_csw();
-    {
-        let upvalue = upvalue.clone();
-        fiber::defer(move || upvalue.set(96));
-    }
+    let f = fiber::defer(move || tx.set(96));
     let csw2 = fiber_csw();
 
-    assert_eq!(upvalue.get(), 0);
+    assert_eq!(rx.get(), 0);
     assert_eq!(csw2, csw1);
 
     fiber::sleep(Duration::ZERO);
-    assert_eq!(upvalue.get(), 96);
+    assert_eq!(rx.get(), 96);
+
+    f.join();
 }
 
 pub fn start_error() {
@@ -492,6 +490,70 @@ pub fn require_error() {
             "#).unwrap();
         }
     }
+}
+
+struct DropCounter(Rc<Cell<usize>>);
+
+impl Drop for DropCounter {
+    fn drop(&mut self) {
+        let old_count = self.0.get();
+        self.0.set(old_count + 1);
+    }
+}
+
+fn capture_value<T>(_: &T) {}
+
+pub fn start_dont_join() {
+    let (tx, rx) = Rc::new(Cell::new(0)).into_clones();
+    let f = fiber::start(move || DropCounter(tx));
+
+    assert_eq!(rx.get(), 0);
+    drop(f);
+    assert_eq!(rx.get(), 1);
+}
+
+pub fn start_proc_dont_join() {
+    let (tx, rx) = Rc::new(Cell::new(0)).into_clones();
+    let d = DropCounter(tx);
+
+    assert_eq!(rx.get(), 0);
+    let f = fiber::start_proc(move || capture_value(&d));
+    assert_eq!(rx.get(), 1);
+    drop(f);
+    assert_eq!(rx.get(), 1);
+}
+
+pub fn defer_dont_join() {
+    let _guard = LuaStackIntegrityGuard::new("defer_dont_join");
+
+    let tx = Rc::new(Cell::new(0));
+    let rx = Rc::downgrade(&tx);
+    let f = fiber::defer(move || DropCounter(tx));
+
+    assert_eq!(rx.strong_count(), 1);
+    assert_eq!(rx.upgrade().unwrap().get(), 0);
+    drop(f);
+    // There's a memory leak that we can't do anything about if we drop the
+    // LuaJoinHandle without joining it first
+    assert_eq!(rx.strong_count(), 1);
+    assert_eq!(rx.upgrade().unwrap().get(), 0);
+}
+
+pub fn defer_proc_dont_join() {
+    let _guard = LuaStackIntegrityGuard::new("defer_proc_dont_join");
+
+    let tx = Rc::new(Cell::new(0));
+    let rx = Rc::downgrade(&tx);
+    let d = DropCounter(tx);
+    let f = fiber::defer_proc(move || capture_value(&d));
+
+    assert_eq!(rx.strong_count(), 1);
+    assert_eq!(rx.upgrade().unwrap().get(), 0);
+    drop(f);
+    // There's a memory leak that we can't do anything about if we drop the
+    // LuaJoinHandle without joining it first
+    assert_eq!(rx.strong_count(), 1);
+    assert_eq!(rx.upgrade().unwrap().get(), 0);
 }
 
 pub fn immediate_with_cond() {

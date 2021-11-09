@@ -29,13 +29,15 @@ mod test_tuple;
 mod hlua;
 
 macro_rules! tests {
-    ($($func_name:expr,)*) => {
+    (@should_panic should_panic) => { ShouldPanic::Yes };
+    (@should_panic $( $_:tt )?)  => { ShouldPanic::No };
+    ($( $( #[ $attr:tt ] )? $func_name:path,)*) => {
         vec![
             $(TestDescAndFn{
                 desc: TestDesc{
                     name: TestName::StaticTestName(stringify!($func_name)),
                     ignore: false,
-                    should_panic: ShouldPanic::No,
+                    should_panic: tests!(@should_panic $($attr)?),
                     allow_fail: false,
                     test_type: TestType::IntegrationTest
                 },
@@ -288,6 +290,10 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 test_fiber::immediate_yields,
                 test_fiber::start_error,
                 test_fiber::require_error,
+                #[should_panic] test_fiber::start_dont_join,
+                #[should_panic] test_fiber::start_proc_dont_join,
+                #[should_panic] test_fiber::defer_dont_join,
+                #[should_panic] test_fiber::defer_proc_dont_join,
                 test_fiber::immediate_with_cond,
                 test_fiber::deferred_with_cond,
 
