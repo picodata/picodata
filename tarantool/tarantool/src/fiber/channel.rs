@@ -1,7 +1,7 @@
 use std::{
-    cell::Cell,
     marker::PhantomData,
     mem::MaybeUninit,
+    ptr::NonNull,
     rc::Rc,
     time::Duration,
 };
@@ -9,44 +9,58 @@ use std::{
 use crate::{
     error::TarantoolErrorCode,
     ffi::tarantool as ffi,
-    StdResult,
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 // Channel
 ////////////////////////////////////////////////////////////////////////////////
 
-pub(super) struct Channel<T> {
-    inner: *mut ffi::fiber_channel,
-    tx_count: Cell<usize>,
-    rx_count: Cell<usize>,
-    marker: PhantomData<T>,
-}
+#[derive(Clone)]
+pub struct Channel<T>(Rc<ChannelBox<T>>);
 
 impl<T> Channel<T> {
     pub fn new(size: u32) -> Self {
-        let inner = unsafe { ffi::fiber_channel_new(size) };
-        Self {
-            inner,
-            tx_count: Cell::new(0),
-            rx_count: Cell::new(0),
-            marker: PhantomData,
-        }
+        let inner_raw = unsafe { ffi::fiber_channel_new(size) };
+        let inner = NonNull::new(inner_raw)
+            .expect("Memory allocation failure when creating fiber::Channel");
+        Self(Rc::new(ChannelBox { inner, marker: PhantomData }))
     }
 
-    /// Send a message `t` over the channel.
-    ///
-    /// In case the channel was closed or the current fiber was cancelled the
-    /// function returns `Err(t)`, so that the caller has an option to reuse the
-    /// value.
-    ///
-    /// This function may perform a **yield** in case the channel buffer is full
-    /// and there are no readers ready to receive the message.
-    pub fn send(&self, t: T, timeout: Option<Duration>) -> StdResult<(), SendError<T>> {
-        if self.rx_count.get() == 0 {
-            // There's no way to create new receivers once their count gets to 0
-            return Err(SendError::Disconnected(t))
-        }
+    fn as_ptr(&self) -> *mut ffi::fiber_channel {
+        self.0.inner.as_ptr()
+    }
+
+    pub fn close(self) {
+        unsafe { ffi::fiber_channel_close(self.as_ptr()) }
+    }
+
+    pub fn is_closed(&self) -> bool {
+        unsafe { ffi::fiber_channel_is_closed(self.as_ptr()) }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        unsafe { ffi::fiber_channel_is_empty(self.as_ptr()) }
+    }
+
+    pub fn size(&self) -> u32 {
+        unsafe { ffi::fiber_channel_size(self.as_ptr()) }
+    }
+
+    pub fn count(&self) -> u32 {
+        unsafe { ffi::fiber_channel_count(self.as_ptr()) }
+    }
+
+    pub fn has_readers(&self) -> bool {
+        unsafe { ffi::fiber_channel_has_readers(self.as_ptr()) }
+    }
+
+    pub fn has_writers(&self) -> bool {
+        unsafe { ffi::fiber_channel_has_writers(self.as_ptr()) }
+    }
+}
+
+impl<T> SendTimeout<T> for Channel<T> {
+    fn send_maybe_timeout(&self, t: T, timeout: Option<Duration>) -> Result<(), SendError<T>> {
         unsafe {
             let ipc_value_ptr = ffi::ipc_value_new();
             let ipc_value = &mut *ipc_value_ptr;
@@ -55,7 +69,7 @@ impl<T> Channel<T> {
             ipc_value.base.destroy = Some(Self::destroy_msg);
 
             let ret_code = ffi::fiber_channel_put_msg_timeout(
-                self.inner,
+                self.as_ptr(),
                 ipc_value_ptr.cast(),
                 timeout.map(|t| t.as_secs_f64())
                     .unwrap_or(ffi::TIMEOUT_INFINITY),
@@ -81,23 +95,14 @@ impl<T> Channel<T> {
             }
         }
     }
+}
 
-    /// Receive a message from the channel.
-    ///
-    /// In case the channel was closed or the current fiber was cancelled the
-    /// function returns `None`.
-    ///
-    /// This function may perform a **yield** in case there is no message ready.
-    pub fn recv(&self, timeout: Option<Duration>) -> StdResult<T, RecvError> {
-        let is_empty = unsafe { ffi::fiber_channel_is_empty(self.inner) };
-        if self.tx_count.get() == 0 && is_empty {
-            // There's no way to create new senders once their count gets to 0
-            return Err(RecvError::Disconnected)
-        }
+impl<T> RecvTimeout<T> for Channel<T> {
+    fn recv_maybe_timeout(&self, timeout: Option<Duration>) -> Result<T, RecvError> {
         unsafe {
             let mut ipc_msg_ptr_uninit = MaybeUninit::uninit();
             let ret_code = ffi::fiber_channel_get_msg_timeout(
-                self.inner,
+                self.as_ptr(),
                 ipc_msg_ptr_uninit.as_mut_ptr(),
                 timeout.map(|t| t.as_secs_f64())
                     .unwrap_or(ffi::TIMEOUT_INFINITY),
@@ -123,7 +128,9 @@ impl<T> Channel<T> {
             }
         }
     }
+}
 
+impl<T> Channel<T> {
     pub unsafe extern "C" fn destroy_msg(msg: *mut ffi::ipc_msg) {
         let ipc_value = msg.cast::<ffi::ipc_value>();
         let value_ptr = (&mut *ipc_value).data_union.data.cast::<T>();
@@ -132,64 +139,37 @@ impl<T> Channel<T> {
     }
 }
 
-impl<T> Drop for Channel<T> {
-    fn drop(&mut self) {
-        assert_eq!(self.tx_count.get(), 0, "Channel dropped with live senders");
-        assert_eq!(self.rx_count.get(), 0, "Channel dropped with live receivers");
-        unsafe { ffi::fiber_channel_delete(self.inner) }
-    }
-}
+pub trait SendTimeout<T> {
+    /// Send a message `t` over the channel.
+    ///
+    /// In case the channel was closed or the current fiber was cancelled the
+    /// function returns `SendError<T>` which contains the original message, so
+    /// that the caller has an option to reuse the value.
+    ///
+    /// This function may perform a **yield** in case the channel buffer is full
+    /// and there are no readers ready to receive the message.
+    fn send_maybe_timeout(
+        &self,
+        t: T,
+        timeout: Option<Duration>,
+    ) -> Result<(), SendError<T>>;
 
-////////////////////////////////////////////////////////////////////////////////
-// Sender
-////////////////////////////////////////////////////////////////////////////////
-
-pub struct Sender<T> {
-    chan: Rc<Channel<T>>,
-}
-
-impl<T> Sender<T> {
-    pub(super) fn new(chan: Rc<Channel<T>>) -> Self {
-        let old = chan.tx_count.get();
-        chan.tx_count.set(old + 1);
-        Self { chan }
-    }
-
-    pub fn send(&self, t: T) -> StdResult<(), T> {
-        self.chan.send(t, None)
-            .map_err(|e|
-                match e {
-                    SendError::Timeout(_) => {
-                        unreachable!("100 years have passed, wake up!")
-                    }
-                    SendError::Disconnected(t) => t,
-                }
-            )
-    }
-
-    pub fn send_timeout(&self, t: T, timeout: Duration) -> StdResult<(), SendError<T>> {
-        self.chan.send(t, Some(timeout))
-    }
-
-    pub fn try_send(&self, t: T) -> StdResult<(), TrySendError<T>> {
-        self.send_timeout(t, Duration::ZERO).map_err(From::from)
-    }
-}
-
-impl<T> Clone for Sender<T> {
-    fn clone(&self) -> Self {
-        Self::new(self.chan.clone())
-    }
-}
-
-impl<T> Drop for Sender<T> {
-    fn drop(&mut self) {
-        let new = self.chan.tx_count.get().checked_sub(1)
-            .expect("We went bellow zero somehow");
-        self.chan.tx_count.set(new);
-        if new == 0 {
-            unsafe { ffi::fiber_channel_close(self.chan.inner) };
+    fn send(&self, t: T) -> Result<(), T> {
+        match self.send_maybe_timeout(t, None) {
+            Ok(()) => Ok(()),
+            Err(SendError::Disconnected(t)) => Err(t),
+            Err(SendError::Timeout(_)) => {
+                unreachable!("100 years have passed, wake up!")
+            }
         }
+    }
+
+    fn send_timeout(&self, t: T, timeout: Duration) -> Result<(), SendError<T>> {
+        self.send_maybe_timeout(t, Some(timeout))
+    }
+
+    fn try_send(&self, t: T) -> Result<(), TrySendError<T>> {
+        self.send_timeout(t, Duration::ZERO).map_err(From::from)
     }
 }
 
@@ -230,29 +210,17 @@ impl<T> From<SendError<T>> for TrySendError<T> {
     }
 }
 
-////////////////////////////////////////////////////////////////////////////////
-// Receiver
-////////////////////////////////////////////////////////////////////////////////
+pub trait RecvTimeout<T> {
+    /// Receive a message from the channel.
+    ///
+    /// In case the channel was closed or the current fiber was cancelled the
+    /// function returns `None`.
+    ///
+    /// This function may perform a **yield** in case there is no message ready.
+    fn recv_maybe_timeout(&self, timeout: Option<Duration>) -> Result<T, RecvError>;
 
-pub struct Receiver<T> {
-    // TODO: now both Receiver and Sender have a strong reference to the Channel
-    // and as a result the number of Rc::strong(&chan) is always equal to
-    // chan.tx_count + chan.rx_count, which means that we store some redundant
-    // info. It's not such a big deal, but if we wanted to be crazy efficient we
-    // would have to implement our custom Rc whith tx_count and rx_count instead
-    // of strong and weak.
-    chan: Rc<Channel<T>>,
-}
-
-impl<T> Receiver<T> {
-    pub(super) fn new(chan: Rc<Channel<T>>) -> Self {
-        let old = chan.rx_count.get();
-        chan.rx_count.set(old + 1);
-        Self { chan }
-    }
-
-    pub fn recv(&self) -> Option<T> {
-        match self.chan.recv(None) {
+    fn recv(&self) -> Option<T> {
+        match self.recv_maybe_timeout(None) {
             Err(RecvError::Timeout) => {
                 unreachable!("100 years have passed, wake up!")
             }
@@ -260,36 +228,88 @@ impl<T> Receiver<T> {
         }
     }
 
-    pub fn recv_timeout(&self, timeout: Duration) -> StdResult<T, RecvError> {
-        self.chan.recv(Some(timeout))
+    fn recv_timeout(&self, timeout: Duration) -> Result<T, RecvError> {
+        self.recv_maybe_timeout(Some(timeout))
     }
 
-    pub fn try_recv(&self) -> StdResult<T, TryRecvError> {
+    fn try_recv(&self) -> Result<T, TryRecvError> {
         self.recv_timeout(Duration::ZERO).map_err(From::from)
     }
+}
 
+impl<T> Channel<T> {
     pub fn iter(&self) -> Iter<'_, T> {
-        Iter { rx: self }
+        Iter(self)
     }
 
     pub fn try_iter(&self) -> TryIter<'_, T> {
-        TryIter { rx: self }
+        TryIter(self)
     }
 }
 
-pub struct Iter<'a, T: 'a> {
-    rx: &'a Receiver<T>,
-}
+// These reimplementations are here just so that we don't have to
+// `use tarantool::fiber::{SendTimeout, RecvTimeout}` every time you want to
+// use the channel
+impl<T> Channel<T> {
+    #[inline(always)]
+    pub fn send(&self, t: T) -> Result<(), T> {
+        SendTimeout::send(self, t)
+    }
 
-impl<'a, T> Iterator for Iter<'a, T> {
-    type Item = T;
+    #[inline(always)]
+    pub fn send_timeout(&self, t: T, timeout: Duration) -> Result<(), SendError<T>> {
+        SendTimeout::send_timeout(self, t, timeout)
+    }
 
-    fn next(&mut self) -> Option<T> {
-        self.rx.recv()
+    #[inline(always)]
+    pub fn try_send(&self, t: T) -> Result<(), TrySendError<T>> {
+        SendTimeout::try_send(self, t)
+    }
+
+    #[inline(always)]
+    pub fn recv(&self) -> Option<T> {
+        RecvTimeout::recv(self)
+    }
+
+    #[inline(always)]
+    pub fn recv_timeout(&self, timeout: Duration) -> Result<T, RecvError> {
+        RecvTimeout::recv_timeout(self, timeout)
+    }
+
+    #[inline(always)]
+    pub fn try_recv(&self) -> Result<T, TryRecvError> {
+        RecvTimeout::try_recv(self)
     }
 }
 
-impl<'a, T> IntoIterator for &'a Receiver<T> {
+macro_rules! iter_struct {
+    (
+        $(
+            $struct:ident $( [ $( $tp:tt )* ] )? ( $of:ty )
+            $([ where $( $where:tt )+ ])?  | $self:ident | { $( $body:tt )+ }
+        )+
+    ) => {
+        $(
+            pub struct $struct $( < $($tp)* > )? ( $of ) $(where $($where)+)?;
+
+            impl $( < $($tp)* > )? Iterator for $struct $( < $($tp)* > )? {
+                type Item = T;
+
+                fn next(&mut $self) -> Option<T> {
+                    $( $body )*
+                }
+            }
+        )+
+    }
+}
+
+iter_struct!{
+    Iter['a, T](&'a Channel<T>) [where T: 'a] |self| { self.0.recv() }
+    TryIter['a, T](&'a Channel<T>) [where T: 'a] |self| { self.0.try_recv().ok() }
+    IntoIter[T](Channel<T>) |self| { self.0.recv() }
+}
+
+impl<'a, T> IntoIterator for &'a Channel<T> {
     type Item = T;
     type IntoIter = Iter<'a, T>;
 
@@ -298,53 +318,23 @@ impl<'a, T> IntoIterator for &'a Receiver<T> {
     }
 }
 
-pub struct TryIter<'a, T: 'a> {
-    rx: &'a Receiver<T>,
-}
-
-impl<'a, T> Iterator for TryIter<'a, T> {
-    type Item = T;
-
-    fn next(&mut self) -> Option<T> {
-        self.rx.try_recv().ok()
-    }
-}
-
-pub struct IntoIter<T> {
-    rx: Receiver<T>,
-}
-
-impl<T> Iterator for IntoIter<T> {
-    type Item = T;
-
-    fn next(&mut self) -> Option<T> {
-        self.rx.recv()
-    }
-}
-
-impl<T> IntoIterator for Receiver<T> {
+impl<T> IntoIterator for Channel<T> {
     type Item = T;
     type IntoIter = IntoIter<T>;
 
     fn into_iter(self) -> IntoIter<T> {
-        IntoIter { rx: self }
+        IntoIter(self)
     }
 }
 
-impl<T> Clone for Receiver<T> {
-    fn clone(&self) -> Self {
-        Self::new(self.chan.clone())
-    }
+struct ChannelBox<T> {
+    inner: NonNull<ffi::fiber_channel>,
+    marker: PhantomData<T>,
 }
 
-impl<T> Drop for Receiver<T> {
+impl<T> Drop for ChannelBox<T> {
     fn drop(&mut self) {
-        let new = self.chan.rx_count.get().checked_sub(1)
-            .expect("We went bellow zero somehow");
-        self.chan.rx_count.set(new);
-        if new == 0 {
-            unsafe { ffi::fiber_channel_close(self.chan.inner) }
-        }
+        unsafe { ffi::fiber_channel_delete(self.inner.as_ptr()) }
     }
 }
 

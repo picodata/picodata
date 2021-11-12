@@ -9,47 +9,47 @@ use tarantool::fiber;
 use tarantool::util::IntoClones;
 
 pub fn send_self() {
-    let (tx, rx) = fiber::channel(1);
+    let ch = fiber::Channel::new(1);
 
-    tx.send("hello").unwrap();
+    ch.send("hello").unwrap();
 
-    assert_eq!(rx.recv().unwrap(), "hello");
+    assert_eq!(ch.recv().unwrap(), "hello");
 }
 
 pub fn send_full() {
-    let (tx, _rx) = fiber::channel(0);
+    let ch = fiber::Channel::new(0);
 
     let csw = count_csw(|| {
-        let e = tx.send_timeout("echo1", Duration::from_micros(1)).unwrap_err();
+        let e = ch.send_timeout("echo1", Duration::from_micros(1)).unwrap_err();
         assert_eq!(e, fiber::SendError::Timeout("echo1"));
     });
     assert_eq!(csw, 1);
 
     let csw = count_csw(|| {
-        let e = tx.try_send("echo2").unwrap_err();
+        let e = ch.try_send("echo2").unwrap_err();
         assert_eq!(e, fiber::TrySendError::Full("echo2"));
     });
     assert_eq!(csw, 0);
 }
 
 pub fn recv_empty() {
-    let (_tx, rx) = fiber::channel::<()>(0);
+    let ch = fiber::Channel::<()>::new(0);
 
     let csw = count_csw(|| {
-        let e = rx.recv_timeout(Duration::from_micros(1)).unwrap_err();
+        let e = ch.recv_timeout(Duration::from_micros(1)).unwrap_err();
         assert_eq!(e, fiber::RecvError::Timeout);
     });
     assert_eq!(csw, 1);
 
     let csw = count_csw(|| {
-        let e = rx.try_recv().unwrap_err();
+        let e = ch.try_recv().unwrap_err();
         assert_eq!(e, fiber::TryRecvError::Empty);
     });
     assert_eq!(csw, 0);
 }
 
 pub fn unbuffered() {
-    let (tx, rx) = fiber::channel(0);
+    let (tx, rx) = fiber::Channel::new(0).into_clones();
 
     let f = fiber::defer(move || rx.recv().unwrap());
 
@@ -62,26 +62,25 @@ pub fn unbuffered() {
 }
 
 pub fn drop_sender() {
-    let (tx, rx) = fiber::channel::<()>(0);
+    let (tx, rx) = fiber::Channel::<()>::new(0).into_clones();
 
     let f = fiber::defer(move || rx.recv());
 
-    drop(tx);
+    tx.close();
 
     assert_eq!(f.join(), None);
 }
 
 pub fn dont_drop_msg() {
-    let (tx, rx) = fiber::channel(1);
+    let (tx, rx) = fiber::Channel::new(1).into_clones();
     tx.send("don't drop this").unwrap();
-    drop(tx);
+    tx.close();
     // fiber_channel_close destroys all the messages, isn't that nice?
     assert_eq!(rx.recv(), None);
 }
 
 pub fn one_v_two() {
-    let (tx, rx1) = fiber::channel(0);
-    let rx2 = rx1.clone();
+    let (tx, rx1, rx2) = fiber::Channel::new(0).into_clones();
     let f1 = fiber::defer(move || rx1.recv().unwrap());
     let f2 = fiber::defer(move || rx2.recv().unwrap());
     tx.send("hello").unwrap();
@@ -91,8 +90,7 @@ pub fn one_v_two() {
 }
 
 pub fn two_v_one() {
-    let (tx1, rx) = fiber::channel(0);
-    let tx2 = tx1.clone();
+    let (tx1, tx2, rx) = fiber::Channel::new(0).into_clones();
     let f1 = fiber::defer(move || tx1.send("how ya doin?").unwrap());
     let f2 = fiber::defer(move || tx2.send("what's good").unwrap());
     assert_eq!(rx.recv(), Some("how ya doin?"));
@@ -105,7 +103,7 @@ pub fn drop_msgs() {
     let (drop_count_tx, drop_count_rx) = Rc::new(Cell::new(0)).into_clones();
     let (s1, s2, s3) = DropCounter(drop_count_tx).into_clones();
 
-    let (tx, rx) = fiber::channel(3);
+    let (tx, rx) = fiber::Channel::new(3).into_clones();
     tx.send(s1).unwrap();
     tx.send(s2).unwrap();
     tx.send(s3).unwrap();
@@ -116,7 +114,7 @@ pub fn drop_msgs() {
 }
 
 pub fn circle() {
-    let ((tx1, tx2, tx3), (rx1, rx2, rx3)) = fiber::channel_clones(0);
+    let (tx1, tx2, tx3, rx1, rx2, rx3) = fiber::Channel::new(0).into_clones();
 
     let f1 = fiber::defer_proc(move || {
         let mut msg = rx1.recv().unwrap();
@@ -138,7 +136,7 @@ pub fn circle() {
 }
 
 pub fn iter() {
-    let ((tx1, tx2, tx3), (rx,)) = fiber::channel_clones(0);
+    let (tx1, tx2, tx3, rx) = fiber::Channel::new(0).into_clones();
     let f1 = fiber::defer_proc(move || tx1.send(1).unwrap());
     let f2 = fiber::defer_proc(move || tx2.send(2).unwrap());
     let f3 = fiber::defer_proc(move || tx3.send(3).unwrap());
@@ -154,7 +152,7 @@ pub fn iter() {
 }
 
 pub fn into_iter() {
-    let ((tx1, tx2, tx3), (rx,)) = fiber::channel_clones(0);
+    let (tx1, tx2, tx3, rx) = fiber::Channel::new(0).into_clones();
     let f1 = fiber::defer_proc(move || tx1.send(1).unwrap());
     let f2 = fiber::defer_proc(move || tx2.send(2).unwrap());
     let f3 = fiber::defer_proc(move || tx3.send(3).unwrap());
@@ -170,17 +168,16 @@ pub fn into_iter() {
 }
 
 pub fn try_iter() {
-    let (tx, rx) = fiber::channel(3);
-    tx.send(1).unwrap();
-    tx.send(2).unwrap();
-    tx.send(3).unwrap();
-    assert_eq!(rx.try_iter().collect::<Vec<_>>(), vec![1, 2, 3]);
+    let ch = fiber::Channel::new(3);
+    ch.send(1).unwrap();
+    ch.send(2).unwrap();
+    ch.send(3).unwrap();
+    assert_eq!(ch.try_iter().collect::<Vec<_>>(), vec![1, 2, 3]);
 }
 
 pub fn as_mutex() {
-    let ((lock1, lock2, lock3), (release1, release2, release3)) =
-        fiber::channel_clones(1);
-    let ((log0, log1, log2, log3), (log_out,)) = fiber::channel_clones(14);
+    let (lock1, lock2, lock3) = fiber::Channel::new(1).into_clones();
+    let (log0, log1, log2, log3, log_out) = fiber::Channel::new(14).into_clones();
     let shared_resource = std::cell::UnsafeCell::new(vec![]);
     let sr = shared_resource.get();
 
@@ -190,7 +187,7 @@ pub fn as_mutex() {
         log1.send("f1:critical").unwrap();
         fiber::sleep(Duration::ZERO);       // Tease the other fibers
         unsafe { (&mut *sr).push(1); }      // Access the critical section
-        let () = release1.recv().unwrap();  // Release the lock
+        let () = lock1.recv().unwrap();     // Release the lock
         log1.send("f1:release").unwrap();
     });
 
@@ -200,7 +197,7 @@ pub fn as_mutex() {
         log2.send("f2:critical").unwrap();
         fiber::sleep(Duration::ZERO);       // Tease the other fibers
         unsafe { (&mut *sr).push(2); }      // Access the critical section
-        let () = release2.recv().unwrap();  // Release the lock
+        let () = lock2.recv().unwrap();     // Release the lock
         log2.send("f2:release").unwrap();
     });
 
@@ -209,9 +206,9 @@ pub fn as_mutex() {
         lock3.send(()).unwrap();            // Capture the lock
         log3.send("f3:critical").unwrap();
         fiber::sleep(Duration::ZERO);       // Tease the other fibers
-        log3.send("f3:release").unwrap();
         unsafe { (&mut *sr).push(3); }      // Access the critical section
-        let () = release3.recv().unwrap();  // Release the lock
+        let () = lock3.recv().unwrap();     // Release the lock
+        log3.send("f3:release").unwrap();
     });
 
     log0.send("main:sleep").unwrap();
@@ -249,8 +246,8 @@ pub fn as_mutex() {
 }
 
 pub fn demo() {
-    let (log_tx, log_rx) = fiber::channel(0);
-    let (tx, rx) = fiber::channel(0);
+    let (log_tx, log_rx) = fiber::Channel::new(0).into_clones();
+    let (tx, rx) = fiber::Channel::new(0).into_clones();
 
     let flog = fiber::defer(move || log_rx.into_iter().collect::<Vec<_>>());
 
@@ -260,11 +257,12 @@ pub fn demo() {
             log_tx.send(format!("job got data: {}", msg)).unwrap();
         }
         log_tx.send("job done".to_string()).unwrap();
+        log_tx.close();
     });
     fiber::sleep(Duration::from_millis(10));
     tx.send(1).unwrap();
     fiber::sleep(Duration::from_millis(10));
-    drop(tx);
+    tx.close();
 
     f.join();
 
@@ -278,8 +276,8 @@ pub fn demo() {
 }
 
 pub fn drop_rx() {
-    let (tx, rx) = fiber::channel(0);
-    let f = fiber::defer_proc(move || drop(rx));
+    let (tx, rx) = fiber::Channel::new(0).into_clones();
+    let f = fiber::defer_proc(move || rx.close());
     assert_eq!(tx.send("no block"), Err("no block"));
     f.join();
 }

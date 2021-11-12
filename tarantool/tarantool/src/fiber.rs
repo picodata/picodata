@@ -14,7 +14,6 @@ use std::ffi::CString;
 use std::marker::PhantomData;
 use std::os::raw::c_void;
 use std::ptr::NonNull;
-use std::rc::Rc;
 use std::time::Duration;
 
 use crate::hlua::{AsLua, c_ptr, lua_error};
@@ -23,12 +22,11 @@ use va_list::VaList;
 use crate::error::TarantoolError;
 use crate::ffi::{tarantool as ffi, lua};
 use crate::Result;
-use crate::util::IntoClones;
 
 pub mod channel;
 
 pub use channel::{
-    Sender, Receiver, SendError, RecvError, TrySendError, TryRecvError,
+    Channel, SendTimeout, RecvTimeout, SendError, RecvError, TrySendError, TryRecvError,
 };
 
 /// *OBSOLETE*: This struct is being deprecated in favour of [`Immediate`],
@@ -1000,20 +998,6 @@ impl TrampolineArgs for VaList {
 ////////////////////////////////////////////////////////////////////////////////
 // Free functions
 ////////////////////////////////////////////////////////////////////////////////
-
-pub fn channel<T>(size: u32) -> (Sender<T>, Receiver<T>) {
-    let chan = Rc::new(channel::Channel::new(size));
-    (Sender::new(chan.clone()), Receiver::new(chan))
-}
-
-pub fn channel_clones<T, S, R>(size: u32) -> (S, R)
-where
-    Sender<T>: IntoClones<S>,
-    Receiver<T>: IntoClones<R>,
-{
-    let chan = Rc::new(channel::Channel::new(size));
-    (Sender::new(chan.clone()).into_clones(), Receiver::new(chan).into_clones())
-}
 
 /// Creates a new fiber and **yields** execution to it immediately, returning a
 /// [`JoinHandle`] for the new fiber.
