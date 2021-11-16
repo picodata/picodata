@@ -69,12 +69,22 @@ pub(crate) fn fiber_csw() -> i32 {
         .unwrap().call().unwrap();
 }
 
-pub(crate) fn count_csw<F>(f: F) -> i32
+pub(crate) fn check_yield<F, T>(f: F) -> YieldResult<T>
 where
-    F: FnOnce(),
+    F: FnOnce() -> T,
 {
     let csw_before = fiber_csw();
-    f();
-    fiber_csw() - csw_before
+    let res = f();
+    if fiber_csw() == csw_before {
+        YieldResult::DoesntYield(res)
+    } else {
+        YieldResult::Yields(res)
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum YieldResult<T> {
+    Yields(T),
+    DoesntYield(T),
 }
 

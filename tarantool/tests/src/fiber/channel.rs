@@ -4,7 +4,7 @@ use std::{
     time::Duration,
 };
 
-use crate::common::{DropCounter, count_csw};
+use crate::common::{DropCounter, check_yield, YieldResult::{Yields, DoesntYield}};
 use tarantool::fiber;
 use tarantool::util::IntoClones;
 
@@ -19,33 +19,30 @@ pub fn send_self() {
 pub fn send_full() {
     let ch = fiber::Channel::new(0);
 
-    let csw = count_csw(|| {
-        let e = ch.send_timeout("echo1", Duration::from_micros(1)).unwrap_err();
-        assert_eq!(e, fiber::SendError::Timeout("echo1"));
-    });
-    assert_eq!(csw, 1);
+    assert_eq!(
+        check_yield(||
+            ch.send_timeout("echo1", Duration::from_micros(1)).unwrap_err()),
+        Yields(fiber::SendError::Timeout("echo1"))
+    );
 
-    let csw = count_csw(|| {
-        let e = ch.try_send("echo2").unwrap_err();
-        assert_eq!(e, fiber::TrySendError::Full("echo2"));
-    });
-    assert_eq!(csw, 0);
+    assert_eq!(
+        check_yield(|| ch.try_send("echo2").unwrap_err()),
+        DoesntYield(fiber::TrySendError::Full("echo2"))
+    );
 }
 
 pub fn recv_empty() {
     let ch = fiber::Channel::<()>::new(0);
 
-    let csw = count_csw(|| {
-        let e = ch.recv_timeout(Duration::from_micros(1)).unwrap_err();
-        assert_eq!(e, fiber::RecvError::Timeout);
-    });
-    assert_eq!(csw, 1);
+    assert_eq!(
+        check_yield(|| ch.recv_timeout(Duration::from_micros(1)).unwrap_err()),
+        Yields(fiber::RecvError::Timeout)
+    );
 
-    let csw = count_csw(|| {
-        let e = ch.try_recv().unwrap_err();
-        assert_eq!(e, fiber::TryRecvError::Empty);
-    });
-    assert_eq!(csw, 0);
+    assert_eq!(
+        check_yield(|| ch.try_recv().unwrap_err()),
+        DoesntYield(fiber::TryRecvError::Empty)
+    );
 }
 
 pub fn unbuffered() {
@@ -53,10 +50,10 @@ pub fn unbuffered() {
 
     let f = fiber::defer(move || rx.recv().unwrap());
 
-    let csw = count_csw(|| {
-        tx.send("hello").unwrap();
-    });
-    assert_eq!(csw, 1);
+    assert_eq!(
+        check_yield(|| tx.send("hello").unwrap()),
+        Yields(())
+    );
 
     assert_eq!(f.join(), "hello")
 }
@@ -175,6 +172,7 @@ pub fn try_iter() {
     assert_eq!(ch.try_iter().collect::<Vec<_>>(), vec![1, 2, 3]);
 }
 
+#[rustfmt::skip]
 pub fn as_mutex() {
     let (lock1, lock2, lock3) = fiber::Channel::new(1).into_clones();
     let (log0, log1, log2, log3, log_out) = fiber::Channel::new(14).into_clones();
