@@ -23,6 +23,12 @@ use crate::error::TarantoolError;
 use crate::ffi::{tarantool as ffi, lua};
 use crate::Result;
 
+pub mod channel;
+
+pub use channel::{
+    Channel, SendTimeout, RecvTimeout, SendError, RecvError, TrySendError, TryRecvError,
+};
+
 /// *OBSOLETE*: This struct is being deprecated in favour of [`Immediate`],
 /// [`Deferred`], etc. due to them being more efficient and idiomatic.
 ///

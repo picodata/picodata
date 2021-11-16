@@ -193,3 +193,4 @@ pub mod util;
 pub use hlua;
 
 pub use error::Result;
+pub type StdResult<T, E> = std::result::Result<T, E>;

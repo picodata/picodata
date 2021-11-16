@@ -4,162 +4,19 @@ use std::{
     time::Duration,
 };
 
-use tarantool::fiber::{
-    self, fiber_yield, is_cancelled, sleep, Cond, Fiber, FiberAttr
-};
+use crate::common::{DropCounter, capture_value, fiber_csw};
+use tarantool::fiber;
 use tarantool::hlua::{
     AsMutLua,
     Lua,
-    LuaFunction
 };
-use tarantool::util::IntoClones;
 use tarantool::ffi::lua;
+use tarantool::util::IntoClones;
 
-pub fn test_fiber_new() {
-    let mut fiber = Fiber::new("test_fiber", &mut |_| 0);
-    fiber.set_joinable(true);
-    fiber.start(());
-    fiber.join();
-}
+pub mod old;
+pub mod channel;
 
-pub fn test_fiber_new_with_attr() {
-    let mut attr = FiberAttr::new();
-    attr.set_stack_size(100_000).unwrap();
-
-    let mut fiber = Fiber::new_with_attr("test_fiber", &attr, &mut |_| 0);
-    fiber.set_joinable(true);
-    fiber.start(());
-    fiber.join();
-}
-
-pub fn test_fiber_arg() {
-    let mut fiber = Fiber::new("test_fiber", &mut |x| {
-        assert_eq!(*x, 99);
-        0
-    });
-    fiber.set_joinable(true);
-    fiber.start(99);
-    fiber.join();
-}
-
-pub fn test_fiber_cancel() {
-    let mut fiber = Fiber::new("test_fiber", &mut |_| {
-        assert_eq!(is_cancelled(), false);
-        sleep(Duration::from_millis(10));
-        assert_eq!(is_cancelled(), true);
-        0
-    });
-    fiber.set_joinable(true);
-    fiber.start(());
-    fiber.cancel();
-    fiber.join();
-}
-
-pub fn test_fiber_wake() {
-    let mut fiber = Fiber::new("test_fiber", &mut |_| {
-        fiber_yield();
-        0
-    });
-    fiber.set_joinable(true);
-    fiber.start(());
-    sleep(Duration::from_millis(10));
-    fiber.wakeup();
-    fiber.join();
-}
-
-pub fn test_fiber_wake_multiple() {
-    let res = Rc::new(RefCell::new(vec![]));
-    let mut fibers = vec![];
-    for (i, c) in (1..).zip(&['a', 'b', 'c']) {
-        let mut fiber = Fiber::new(
-            &format!("test_fiber_{}", c),
-            &mut |r: Box<Rc<RefCell<Vec<i32>>>>| {
-                fiber_yield();
-                r.borrow_mut().push(i);
-                0
-            }
-        );
-        fiber.start(res.clone());
-        fiber.wakeup();
-        fibers.push(fiber);
-    }
-
-    for f in &mut fibers {
-        f.set_joinable(true);
-    }
-
-    res.borrow_mut().push(0);
-    for f in fibers {
-        f.join();
-    }
-    res.borrow_mut().push(4);
-
-    let res = res.borrow().iter().copied().collect::<Vec<_>>();
-    // This is what we want:
-    // assert_eq(res, vec![0, 1, 2, 3, 4]);
-    // This is what we get:
-    assert_eq!(res, vec![0, 3, 3, 3, 4]);
-    // Because `Fiber` doesn't work with closures. `i` is passed by reference
-    // and by the time the first fiber starts executing, it is equal to 3.
-    // This is actually undefined behavior, so adding this test is probably a
-    // bad idea
-}
-
-pub fn test_fiber_cond_signal() {
-    let cond = Rc::new(Cond::new());
-    let mut fiber = Fiber::new("test_fiber", &mut |cond: Box<Rc<Cond>>| {
-        (*cond).wait();
-        0
-    });
-    fiber.set_joinable(true);
-    fiber.start(cond.clone());
-    sleep(Duration::from_millis(10));
-    cond.signal();
-    fiber.join();
-}
-
-pub fn test_fiber_cond_broadcast() {
-    let cond = Rc::new(Cond::new());
-
-    let mut fiber_a = Fiber::new("test_fiber_a", &mut |cond: Box<Rc<Cond>>| {
-        (*cond).wait();
-        0
-    });
-    fiber_a.set_joinable(true);
-    fiber_a.start(cond.clone());
-
-    let mut fiber_b = Fiber::new("test_fiber_b", &mut |cond: Box<Rc<Cond>>| {
-        (*cond).wait();
-        0
-    });
-    fiber_b.set_joinable(true);
-    fiber_b.start(cond.clone());
-
-    sleep(Duration::from_millis(10));
-    cond.broadcast();
-    fiber_a.join();
-    fiber_b.join();
-}
-
-pub fn test_fiber_cond_timeout() {
-    let cond = Rc::new(Cond::new());
-    let mut fiber = Fiber::new("test_fiber", &mut |cond: Box<Rc<Cond>>| {
-        let r = (*cond).wait_timeout(Duration::from_millis(10));
-        assert!(!r);
-        0
-    });
-    fiber.set_joinable(true);
-    fiber.start(cond.clone());
-    sleep(Duration::from_millis(20));
-    cond.signal();
-    fiber.join();
-}
-
-////////////////////////////////////////////////////////////////////////////////
-// New
-////////////////////////////////////////////////////////////////////////////////
-
-pub fn test_immediate() {
+pub fn immediate() {
     let jh = fiber::Builder::new()
         .func(|| 69)
         .start()
@@ -172,7 +29,7 @@ pub fn test_immediate() {
     assert_eq!(res, 420);
 }
 
-pub fn test_immediate_with_attrs() {
+pub fn immediate_with_attrs() {
     let jh = fiber::Builder::new()
         .name("boo")
         .stack_size(100_000).unwrap()
@@ -183,7 +40,7 @@ pub fn test_immediate_with_attrs() {
     assert_eq!(res, 42);
 }
 
-pub fn test_multiple_immediate() {
+pub fn multiple_immediate() {
     let mut res = vec![];
     let fibers = vec![vec![1, 2], vec![3, 4], vec![5, 6]]
         .into_iter()
@@ -203,7 +60,7 @@ pub fn test_multiple_immediate() {
     assert_eq!(res, vec![1, 2, 3, 4, 5, 6, 7, 8]);
 }
 
-pub fn test_unit_immediate() {
+pub fn unit_immediate() {
     let jh = fiber::Builder::new()
         .func(|| ())
         .start()
@@ -213,7 +70,7 @@ pub fn test_unit_immediate() {
     let () = fiber::start_proc(|| ()).join();
 }
 
-pub fn test_unit_immediate_with_attrs() {
+pub fn unit_immediate_with_attrs() {
     let jh = fiber::Builder::new()
         .name("boo")
         .stack_size(100_000).unwrap()
@@ -223,7 +80,7 @@ pub fn test_unit_immediate_with_attrs() {
     let () = jh.join();
 }
 
-pub fn test_multiple_unit_immediate() {
+pub fn multiple_unit_immediate() {
     let res = Rc::new(RefCell::new(vec![]));
     let fibers = vec![vec![1, 2], vec![3, 4], vec![5, 6]]
         .into_iter()
@@ -245,7 +102,7 @@ pub fn test_multiple_unit_immediate() {
     assert_eq!(res, vec![2, 3, 4, 5, 6, 7, 8, 9]);
 }
 
-pub fn test_deferred() {
+pub fn deferred() {
     let jh = fiber::Builder::new()
         .func(|| 13)
         .defer()
@@ -256,7 +113,7 @@ pub fn test_deferred() {
     assert_eq!(jh.join(), 42);
 }
 
-pub fn test_deferred_with_attrs() {
+pub fn deferred_with_attrs() {
     let res = fiber::Builder::new()
         .name("boo")
         .stack_size(100_000).unwrap()
@@ -267,7 +124,7 @@ pub fn test_deferred_with_attrs() {
     assert_eq!(res, 15);
 }
 
-pub fn test_multiple_deferred() {
+pub fn multiple_deferred() {
     let mut res = vec![];
     let fibers = vec![vec![1, 2], vec![3, 4], vec![5, 6]]
         .into_iter()
@@ -287,7 +144,7 @@ pub fn test_multiple_deferred() {
     assert_eq!(res, vec![1, 2, 3, 4, 5, 6, 7, 8]);
 }
 
-pub fn test_unit_deferred() {
+pub fn unit_deferred() {
     let jh = fiber::Builder::new()
         .proc(|| ())
         .defer()
@@ -304,7 +161,7 @@ pub fn test_unit_deferred() {
     assert_eq!(res.get(), 42);
 }
 
-pub fn test_unit_deferred_with_attrs() {
+pub fn unit_deferred_with_attrs() {
     let () = fiber::Builder::new()
         .name("boo")
         .stack_size(100_000).unwrap()
@@ -314,7 +171,7 @@ pub fn test_unit_deferred_with_attrs() {
         .join();
 }
 
-pub fn test_multiple_unit_deferred() {
+pub fn multiple_unit_deferred() {
     let res = Rc::new(RefCell::new(vec![]));
     let fibers = vec![vec![1, 2], vec![3, 4], vec![5, 6]]
         .into_iter()
@@ -334,23 +191,6 @@ pub fn test_multiple_unit_deferred() {
     res.borrow_mut().push(8);
     let res = res.borrow().iter().copied().collect::<Vec<_>>();
     assert_eq!(res, vec![1, 2, 3, 4, 5, 6, 7, 8]);
-}
-
-fn fiber_csw() -> i32 {
-    static mut FUNCTION_DEFINED: bool = false;
-    let mut lua: Lua = crate::hlua::global();
-
-    if unsafe { !FUNCTION_DEFINED } {
-        lua.execute::<()>(r#"
-        function fiber_csw()
-        local fiber = require('fiber')
-        return fiber.info()[fiber.id()].csw
-        end
-        "#).unwrap();
-        unsafe { FUNCTION_DEFINED = true; }
-    }
-
-    return lua.get::<LuaFunction<_>, _>("fiber_csw").unwrap().call().unwrap();
 }
 
 struct LuaStackIntegrityGuard {
@@ -492,17 +332,6 @@ pub fn require_error() {
     }
 }
 
-struct DropCounter(Rc<Cell<usize>>);
-
-impl Drop for DropCounter {
-    fn drop(&mut self) {
-        let old_count = self.0.get();
-        self.0.set(old_count + 1);
-    }
-}
-
-fn capture_value<T>(_: &T) {}
-
 pub fn start_dont_join() {
     let (tx, rx) = Rc::new(Cell::new(0)).into_clones();
     let f = fiber::start(move || DropCounter(tx));
@@ -613,3 +442,4 @@ pub fn deferred_with_cond() {
         f.join()
     }
 }
+
