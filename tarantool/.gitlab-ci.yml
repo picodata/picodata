@@ -22,3 +22,4 @@ test:
     image: registry.gitlab.com/picodata/dockers/brod-builder:0.2
     script:
         - make test
+        - cargo test

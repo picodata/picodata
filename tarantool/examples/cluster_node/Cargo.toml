@@ -16,4 +16,5 @@ path = "../../tarantool"
 features = ["raft_node"]
 
 [lib]
+test = false
 crate-type = ["cdylib"]

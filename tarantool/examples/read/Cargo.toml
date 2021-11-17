@@ -15,4 +15,5 @@ serde = "1.0"
 path = "../../tarantool"
 
 [lib]
+test = false
 crate-type = ["cdylib"]
