@@ -427,6 +427,44 @@ pub enum LuaError {
     },
 }
 
+impl LuaError {
+    pub fn wrong_type<'lua, T, L>(lua: L, n_values: i32) -> Self
+    where
+        L: AsMutLua<'lua>,
+    {
+        Self::WrongType {
+            rust_expected: std::any::type_name::<T>().into(),
+            lua_actual: lua_typename(lua, n_values),
+        }
+    }
+}
+
+pub fn lua_typename<'lua>(mut lua: impl AsMutLua<'lua>, n_values: i32) -> String {
+    let l_ptr = lua.as_mut_lua().state_ptr();
+    macro_rules! single_typename {
+        ($i:expr) => {
+            unsafe {
+                let lua_type = ffi::lua_type(l_ptr, -$i);
+                let typename = ffi::lua_typename(l_ptr, lua_type);
+                std::ffi::CStr::from_ptr(typename).to_string_lossy()
+            }
+        }
+    }
+
+    if n_values == 1 {
+        return single_typename!(1).into_owned()
+    }
+
+    let mut res = vec![std::borrow::Cow::Borrowed("(")];
+    for i in 1..n_values {
+        res.push(single_typename!(i));
+        res.push(", ".into());
+    }
+    res.push(single_typename!(n_values));
+    res.push(")".into());
+    res.join("")
+}
+
 impl fmt::Display for LuaError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         use LuaError::*;

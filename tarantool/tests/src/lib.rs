@@ -188,6 +188,8 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 hlua::lua_functions::check_types,
                 hlua::lua_functions::call_and_read_table,
                 hlua::lua_functions::lua_function_returns_function,
+                hlua::lua_functions::multiple_return_values,
+                hlua::lua_functions::multiple_return_values_fail,
                 hlua::lua_functions::execute_from_reader_errors_if_cant_read,
 
                 hlua::lua_tables::iterable,

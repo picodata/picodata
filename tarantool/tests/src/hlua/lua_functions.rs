@@ -82,6 +82,45 @@ pub fn lua_function_returns_function() {
     assert_eq!(val, 5);
 }
 
+pub fn multiple_return_values() {
+    let mut lua = crate::hlua::global();
+    let mut f = LuaFunction::load(&mut lua, r#"return 69, "foo", 3.14, true;"#).unwrap();
+    let res: (i32, String, f64, bool) = f.call().unwrap();
+    assert_eq!(res, (69, "foo".to_string(), 3.14, true));
+}
+
+pub fn multiple_return_values_fail() {
+    let mut lua = crate::hlua::global();
+    let mut f = LuaFunction::load(&mut lua,
+        r#"return 1, 2, 3;"#
+    ).unwrap();
+    assert_eq!(f.call::<i32>().unwrap(), 1);
+    assert_eq!(f.call::<(i32,)>().unwrap(), (1,));
+    assert_eq!(f.call::<(i32, i32)>().unwrap(), (1, 2));
+    assert_eq!(f.call::<(i32, i32, i32)>().unwrap(), (1, 2, 3));
+    assert_eq!(
+        f.call::<(i32, i32, i32, i32)>()
+            .unwrap_err().to_string(),
+        "Wrong type returned by Lua: (i32, i32, i32, i32) expected, got (number, number, number)"
+            .to_string()
+    );
+    assert_eq!(
+        f.call::<(i32, i32, i32, Option<i32>)>().unwrap(),
+        (1, 2, 3, None)
+    );
+    assert_eq!(
+        f.call::<(i32, i32, i32, Option<i32>, Option<i32>)>().unwrap(),
+        (1, 2, 3, None, None)
+    );
+
+    assert_eq!(
+        f.call::<(bool, String, f64)>()
+            .unwrap_err().to_string(),
+        "Wrong type returned by Lua: (bool, alloc::string::String, f64) expected, got (number, number, number)"
+            .to_string()
+    );
+}
+
 pub fn execute_from_reader_errors_if_cant_read() {
     struct Reader { }
 
