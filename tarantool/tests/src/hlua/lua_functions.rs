@@ -82,6 +82,36 @@ pub fn lua_function_returns_function() {
     assert_eq!(val, 5);
 }
 
+pub fn error() {
+    let mut lua = crate::hlua::global();
+    lua.execute::<()>("function foo() error('oops'); end").unwrap();
+    let mut foo: LuaFunction<_> = lua.get("foo").unwrap();
+    let res: Result<(), _> = foo.call();
+    assert!(res.is_err());
+    if let Err(LuaError::ExecutionError(msg)) = res {
+        assert_eq!(msg, "[string \"chunk\"]:1: oops");
+    }
+}
+
+pub fn either_or() {
+    let mut lua = crate::hlua::global();
+    lua.execute::<()>(r#"
+        function foo(a)
+            if a > 0 then
+                return true, 69, 420
+            else
+                return false, "hello"
+            end
+        end
+    "#).unwrap();
+    let mut foo: LuaFunction<_> = lua.get("foo").unwrap();
+    type Res = Result<(bool, i32, i32), (bool, String)>;
+    let res: Res = foo.call_with_args(1).unwrap();
+    assert_eq!(res, Ok((true, 69, 420)));
+    let res: Res = foo.call_with_args(0).unwrap();
+    assert_eq!(res, Err((false, "hello".to_string())));
+}
+
 pub fn multiple_return_values() {
     let mut lua = crate::hlua::global();
     let mut f = LuaFunction::load(&mut lua, r#"return 69, "foo", 3.14, true;"#).unwrap();

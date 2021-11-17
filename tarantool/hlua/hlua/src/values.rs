@@ -402,6 +402,23 @@ where
     }
 }
 
+impl<'lua, L, A, B> LuaRead<L> for Result<A, B>
+where
+    L: AsLua<'lua>,
+    A: for<'a> LuaRead<&'a L>,
+    B: for<'b> LuaRead<&'b L>,
+{
+    fn lua_read_at_position(lua: L, index: NonZeroI32) -> Result<Result<A, B>, L> {
+        if let Ok(a) = A::lua_read_at_position(&lua, index) {
+            return Ok(Ok(a))
+        }
+        if let Ok(b) = B::lua_read_at_position(&lua, index) {
+            return Ok(Err(b))
+        }
+        Err(lua)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::{
