@@ -12,4 +12,5 @@ license = "BSD-2-Clause"
 path = "../../tarantool"
 
 [lib]
+test = false
 crate-type = ["cdylib"]

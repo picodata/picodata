@@ -54,3 +54,6 @@ schema = []
 defer = []
 all = ["default", "raft_node", "schema", "defer"]
 
+[lib]
+test = false
+doctest = false

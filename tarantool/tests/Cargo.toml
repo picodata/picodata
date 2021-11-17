@@ -21,4 +21,5 @@ path = "../tarantool"
 features = ["all"]
 
 [lib]
+test = false
 crate-type = ["cdylib"]
