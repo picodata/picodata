@@ -381,6 +381,27 @@ where T: PushOne<L, Err = E>,
 {
 }
 
+impl<'lua, L, T> LuaRead<L> for Option<T>
+where
+    L: AsLua<'lua>,
+    T: LuaRead<L>,
+{
+    fn lua_read_at_maybe_zero_position(lua: L, index: i32) -> Result<Option<T>, L> {
+        if let Some(index) = NonZeroI32::new(index) {
+            Self::lua_read_at_position(lua, index)
+        } else {
+            Ok(None)
+        }
+    }
+
+    fn lua_read_at_position(lua: L, index: NonZeroI32) -> Result<Option<T>, L> {
+        if unsafe { ffi::lua_isnil(lua.as_lua().0, index.into()) } {
+            return Ok(None)
+        }
+        T::lua_read_at_position(lua, index).map(Some)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::{

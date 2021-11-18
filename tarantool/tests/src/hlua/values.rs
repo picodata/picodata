@@ -164,5 +164,6 @@ pub fn push_opt() {
 pub fn read_nil() {
     let mut lua = Lua::new();
     assert_eq!(lua.execute::<Nil>("return nil").unwrap(), Nil);
+    assert_eq!(lua.execute::<Option<i32>>("return nil").unwrap(), None);
 }
 
