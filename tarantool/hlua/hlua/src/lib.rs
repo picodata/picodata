@@ -109,6 +109,7 @@ use std::io::Read;
 use std::io::Error as IoError;
 use std::borrow::Borrow;
 use std::marker::PhantomData;
+use std::num::NonZeroI32;
 use std::error::Error;
 use std::fmt;
 use std::convert::From;
@@ -390,11 +391,20 @@ pub trait LuaRead<L>: Sized {
     /// Reads the data from Lua.
     #[inline]
     fn lua_read(lua: L) -> Result<Self, L> {
-        LuaRead::lua_read_at_position(lua, -1)
+        let index = unsafe { NonZeroI32::new_unchecked(-1) };
+        Self::lua_read_at_position(lua, index)
+    }
+
+    fn lua_read_at_maybe_zero_position(lua: L, index: i32) -> Result<Self, L> {
+        if let Some(index) = NonZeroI32::new(index) {
+            Self::lua_read_at_position(lua, index)
+        } else {
+            Err(lua)
+        }
     }
 
     /// Reads the data from Lua at a given position.
-    fn lua_read_at_position(lua: L, index: i32) -> Result<Self, L>;
+    fn lua_read_at_position(lua: L, index: NonZeroI32) -> Result<Self, L>;
 }
 
 /// Error that can happen when executing Lua code.
@@ -967,8 +977,16 @@ impl<'lua, L> LuaRead<L> for Nil
 where
     L: AsMutLua<'lua>,
 {
-    fn lua_read_at_position(lua: L, index: i32) -> Result<Nil, L> {
-        if unsafe { ffi::lua_isnil(lua.as_lua().0, index) } {
+    fn lua_read_at_maybe_zero_position(lua: L, index: i32) -> Result<Nil, L> {
+        if let Some(index) = NonZeroI32::new(index) {
+            Self::lua_read_at_position(lua, index)
+        } else {
+            Ok(Nil)
+        }
+    }
+
+    fn lua_read_at_position(lua: L, index: NonZeroI32) -> Result<Nil, L> {
+        if unsafe { ffi::lua_isnil(lua.as_lua().0, index.into()) } {
             Ok(Nil)
         } else {
             Err(lua)

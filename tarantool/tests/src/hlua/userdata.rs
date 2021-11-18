@@ -1,3 +1,5 @@
+use std::num::NonZeroI32;
+
 use tarantool::hlua;
 
 pub fn readwrite() {
@@ -15,7 +17,7 @@ pub fn readwrite() {
     impl<'lua, L> hlua::LuaRead<L> for Foo
         where L: hlua::AsMutLua<'lua>
     {
-        fn lua_read_at_position(lua: L, index: i32) -> Result<Foo, L> {
+        fn lua_read_at_position(lua: L, index: NonZeroI32) -> Result<Foo, L> {
             let val: Result<hlua::UserdataOnStack<Foo, _>, _> =
                 hlua::LuaRead::lua_read_at_position(lua, index);
             val.map(|d| d.clone())
@@ -78,7 +80,7 @@ pub fn type_check() {
     impl<'lua, L> hlua::LuaRead<L> for Foo
         where L: hlua::AsMutLua<'lua>
     {
-        fn lua_read_at_position(lua: L, index: i32) -> Result<Foo, L> {
+        fn lua_read_at_position(lua: L, index: NonZeroI32) -> Result<Foo, L> {
             let val: Result<hlua::UserdataOnStack<Foo, _>, _> =
                 hlua::LuaRead::lua_read_at_position(lua, index);
             val.map(|d| d.clone())
@@ -99,7 +101,7 @@ pub fn type_check() {
     impl<'lua, L> hlua::LuaRead<L> for Bar
         where L: hlua::AsMutLua<'lua>
     {
-        fn lua_read_at_position(lua: L, index: i32) -> Result<Bar, L> {
+        fn lua_read_at_position(lua: L, index: NonZeroI32) -> Result<Bar, L> {
             let val: Result<hlua::UserdataOnStack<Bar, _>, _> =
                 hlua::LuaRead::lua_read_at_position(lua, index);
             val.map(|d| d.clone())
@@ -153,7 +155,7 @@ pub fn multiple_userdata() {
     impl<'lua, L> hlua::LuaRead<L> for Integer
         where L: hlua::AsMutLua<'lua>
     {
-        fn lua_read_at_position(lua: L, index: i32) -> Result<Integer, L> {
+        fn lua_read_at_position(lua: L, index: NonZeroI32) -> Result<Integer, L> {
             let val: Result<hlua::UserdataOnStack<Integer, _>, _> =
                 hlua::LuaRead::lua_read_at_position(lua, index);
             val.map(|d| d.clone())
@@ -174,7 +176,7 @@ pub fn multiple_userdata() {
     impl<'lua, L> hlua::LuaRead<L> for BigInteger
         where L: hlua::AsMutLua<'lua>
     {
-        fn lua_read_at_position(lua: L, index: i32) -> Result<BigInteger, L> {
+        fn lua_read_at_position(lua: L, index: NonZeroI32) -> Result<BigInteger, L> {
             let val: Result<hlua::UserdataOnStack<BigInteger, _>, _> =
                 hlua::LuaRead::lua_read_at_position(lua, index);
             val.map(|d| d.clone())

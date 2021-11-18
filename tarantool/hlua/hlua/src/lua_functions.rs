@@ -3,6 +3,7 @@ use std::fmt;
 use std::io::Cursor;
 use std::io::Read;
 use std::io::Error as IoError;
+use std::num::NonZeroI32;
 use std::ptr;
 
 use crate::{
@@ -428,7 +429,8 @@ impl<'lua, L> LuaRead<L> for LuaFunction<L>
     where L: AsMutLua<'lua>
 {
     #[inline]
-    fn lua_read_at_position(mut lua: L, index: i32) -> Result<LuaFunction<L>, L> {
+    fn lua_read_at_position(mut lua: L, index: NonZeroI32) -> Result<LuaFunction<L>, L> {
+        let index: i32 = index.into();
         assert!(index == -1);   // FIXME:
         if unsafe { ffi::lua_isfunction(lua.as_mut_lua().0, -1) } {
             Ok(LuaFunction { variable: lua })

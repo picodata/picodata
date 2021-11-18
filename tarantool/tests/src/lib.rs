@@ -264,6 +264,7 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 hlua::values::string_to_i32,
                 hlua::values::string_on_lua,
                 hlua::values::push_opt,
+                hlua::values::read_nil,
 
                 fiber::old::test_fiber_new,
                 fiber::old::test_fiber_new_with_attr,

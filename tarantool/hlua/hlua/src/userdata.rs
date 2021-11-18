@@ -1,5 +1,6 @@
 use std::any::{Any, TypeId};
 use std::marker::PhantomData;
+use std::num::NonZeroI32;
 use std::ops::{Deref, DerefMut};
 use std::mem;
 use std::ptr;
@@ -181,7 +182,7 @@ pub fn read_userdata<'t, 'c, T>(lua: &'c mut InsideCallback,
 #[derive(Debug)]
 pub struct UserdataOnStack<T, L> {
     variable: L,
-    index: i32,
+    index: NonZeroI32,
     marker: PhantomData<T>,
 }
 
@@ -190,9 +191,9 @@ impl<'lua, T, L> LuaRead<L> for UserdataOnStack<T, L>
           T: 'lua + Any
 {
     #[inline]
-    fn lua_read_at_position(lua: L, index: i32) -> Result<UserdataOnStack<T, L>, L> {
+    fn lua_read_at_position(lua: L, index: NonZeroI32) -> Result<UserdataOnStack<T, L>, L> {
         unsafe {
-            let data_ptr = ffi::lua_touserdata(lua.as_lua().0, index);
+            let data_ptr = ffi::lua_touserdata(lua.as_lua().0, index.into());
             if data_ptr.is_null() {
                 return Err(lua);
             }
@@ -240,7 +241,7 @@ impl<'lua, T, L> Deref for UserdataOnStack<T, L>
     #[inline]
     fn deref(&self) -> &T {
         unsafe {
-            let base = ffi::lua_touserdata(self.variable.as_lua().0, self.index);
+            let base = ffi::lua_touserdata(self.variable.as_lua().0, self.index.into());
             let data = (base as *const u8).offset(mem::size_of::<TypeId>() as isize);
             &*(data as *const T)
         }
@@ -254,7 +255,7 @@ impl<'lua, T, L> DerefMut for UserdataOnStack<T, L>
     #[inline]
     fn deref_mut(&mut self) -> &mut T {
         unsafe {
-            let base = ffi::lua_touserdata(self.variable.as_mut_lua().0, self.index);
+            let base = ffi::lua_touserdata(self.variable.as_mut_lua().0, self.index.into());
             let data = (base as *const u8).offset(mem::size_of::<TypeId>() as isize);
             &mut *(data as *mut T)
         }

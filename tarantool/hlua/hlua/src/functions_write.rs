@@ -398,7 +398,9 @@ extern "C" fn wrapper<T, P, R>(lua: *mut ffi::lua_State) -> libc::c_int
 
     // trying to read the arguments
     let arguments_count = unsafe { ffi::lua_gettop(lua) } as i32;
-    let args = match LuaRead::lua_read_at_position(&mut tmp_lua, -arguments_count as libc::c_int) {      // TODO: what if the user has the wrong params?
+    // TODO: what if the user has the wrong params?
+    let args = LuaRead::lua_read_at_maybe_zero_position(&mut tmp_lua, -arguments_count);
+    let args = match args {
         Err(_) => {
             let err_msg = format!("wrong parameter types for callback function");
             match err_msg.push_to_lua(&mut tmp_lua) {

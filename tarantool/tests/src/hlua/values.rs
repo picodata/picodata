@@ -4,6 +4,7 @@ use tarantool::hlua::{
     Lua,
     StringInLua,
     function0,
+    Nil,
 };
 
 pub fn read_i32s() {
@@ -159,3 +160,9 @@ pub fn push_opt() {
     assert_eq!(lua.get("no_value"), None::<String>);
     assert_eq!(lua.get("some_value"), Some("Hello!".to_string()));
 }
+
+pub fn read_nil() {
+    let mut lua = Lua::new();
+    assert_eq!(lua.execute::<Nil>("return nil").unwrap(), Nil);
+}
+

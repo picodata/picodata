@@ -1,4 +1,5 @@
 use std::mem::MaybeUninit;
+use std::num::NonZeroI32;
 use std::slice;
 use std::str;
 use std::ops::Deref;
@@ -33,9 +34,9 @@ macro_rules! integer_impl(
 
         impl<'lua, L> LuaRead<L> for $t where L: AsLua<'lua> {
             #[inline]
-            fn lua_read_at_position(lua: L, index: i32) -> Result<$t, L> {
+            fn lua_read_at_position(lua: L, index: NonZeroI32) -> Result<$t, L> {
                 let mut success = MaybeUninit::uninit();
-                let val = unsafe { ffi::lua_tointegerx(lua.as_lua().0, index, success.as_mut_ptr()) };
+                let val = unsafe { ffi::lua_tointegerx(lua.as_lua().0, index.into(), success.as_mut_ptr()) };
                 match unsafe { success.assume_init() } {
                     0 => Err(lua),
                     _ => Ok(val as $t)
@@ -68,9 +69,9 @@ macro_rules! unsigned_impl(
 
         impl<'lua, L> LuaRead<L> for $t where L: AsLua<'lua> {
             #[inline]
-            fn lua_read_at_position(lua: L, index: i32) -> Result<$t, L> {
+            fn lua_read_at_position(lua: L, index: NonZeroI32) -> Result<$t, L> {
                 let mut success = MaybeUninit::uninit();
-                let val = unsafe { ffi::lua_tointegerx(lua.as_lua().0, index, success.as_mut_ptr()) };
+                let val = unsafe { ffi::lua_tointegerx(lua.as_lua().0, index.into(), success.as_mut_ptr()) };
                 match unsafe { success.assume_init() } {
                     0 => Err(lua),
                     _ => Ok(val as $t)
@@ -103,9 +104,9 @@ macro_rules! numeric_impl(
 
         impl<'lua, L> LuaRead<L> for $t where L: AsLua<'lua> {
             #[inline]
-            fn lua_read_at_position(lua: L, index: i32) -> Result<$t, L> {
+            fn lua_read_at_position(lua: L, index: NonZeroI32) -> Result<$t, L> {
                 let mut success = MaybeUninit::uninit();
-                let val = unsafe { ffi::lua_tonumberx(lua.as_lua().0, index, success.as_mut_ptr()) };
+                let val = unsafe { ffi::lua_tonumberx(lua.as_lua().0, index.into(), success.as_mut_ptr()) };
                 match unsafe { success.assume_init() } {
                     0 => Err(lua),
                     _ => Ok(val as $t)
@@ -146,10 +147,10 @@ impl<'lua, L> LuaRead<L> for String
     where L: AsLua<'lua>
 {
     #[inline]
-    fn lua_read_at_position(lua: L, index: i32) -> Result<String, L> {
+    fn lua_read_at_position(lua: L, index: NonZeroI32) -> Result<String, L> {
         let mut size = MaybeUninit::uninit();
         let c_str_raw = unsafe {
-            ffi::lua_tolstring(lua.as_lua().0, index, size.as_mut_ptr())
+            ffi::lua_tolstring(lua.as_lua().0, index.into(), size.as_mut_ptr())
         };
         if c_str_raw.is_null() {
             return Err(lua);
@@ -193,10 +194,10 @@ impl<'lua, L> LuaRead<L> for AnyLuaString
     where L: AsLua<'lua>
 {
     #[inline]
-    fn lua_read_at_position(lua: L, index: i32) -> Result<AnyLuaString, L> {
+    fn lua_read_at_position(lua: L, index: NonZeroI32) -> Result<AnyLuaString, L> {
         let mut size = MaybeUninit::uninit();
         let c_str_raw = unsafe {
-            ffi::lua_tolstring(lua.as_lua().0, index, size.as_mut_ptr())
+            ffi::lua_tolstring(lua.as_lua().0, index.into(), size.as_mut_ptr())
         };
         if c_str_raw.is_null() {
             return Err(lua);
@@ -260,10 +261,10 @@ impl<'lua, L> LuaRead<L> for StringInLua<L>
     where L: AsLua<'lua>
 {
     #[inline]
-    fn lua_read_at_position(lua: L, index: i32) -> Result<StringInLua<L>, L> {
+    fn lua_read_at_position(lua: L, index: NonZeroI32) -> Result<StringInLua<L>, L> {
         let mut size = MaybeUninit::uninit();
         let c_str_raw = unsafe {
-            ffi::lua_tolstring(lua.as_lua().0, index, size.as_mut_ptr())
+            ffi::lua_tolstring(lua.as_lua().0, index.into(), size.as_mut_ptr())
         };
         if c_str_raw.is_null() {
             return Err(lua);
@@ -320,12 +321,12 @@ impl<'lua, L> LuaRead<L> for bool
     where L: AsLua<'lua>
 {
     #[inline]
-    fn lua_read_at_position(lua: L, index: i32) -> Result<bool, L> {
-        if unsafe { ffi::lua_isboolean(lua.as_lua().0, index) } != true {
+    fn lua_read_at_position(lua: L, index: NonZeroI32) -> Result<bool, L> {
+        if unsafe { ffi::lua_isboolean(lua.as_lua().0, index.into()) } != true {
             return Err(lua);
         }
 
-        Ok(unsafe { ffi::lua_toboolean(lua.as_lua().0, index) != 0 })
+        Ok(unsafe { ffi::lua_toboolean(lua.as_lua().0, index.into()) != 0 })
     }
 }
 
@@ -349,8 +350,12 @@ impl<'lua, L> Push<L> for ()
 impl<'lua, L> LuaRead<L> for ()
     where L: AsLua<'lua>
 {
+    fn lua_read_at_maybe_zero_position(_: L, _: i32) -> Result<(), L> {
+        Ok(())
+    }
+
     #[inline]
-    fn lua_read_at_position(_: L, _: i32) -> Result<(), L> {
+    fn lua_read_at_position(_: L, _: NonZeroI32) -> Result<(), L> {
         Ok(())
     }
 }

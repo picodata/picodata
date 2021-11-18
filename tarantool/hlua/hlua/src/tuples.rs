@@ -1,3 +1,5 @@
+use std::num::NonZeroI32;
+
 use crate::{
     AsMutLua,
     AsLua,
@@ -24,7 +26,7 @@ macro_rules! tuple_impl {
 
         impl<'lua, LU, $ty> LuaRead<LU> for ($ty,) where LU: AsMutLua<'lua>, $ty: LuaRead<LU> {
             #[inline]
-            fn lua_read_at_position(lua: LU, index: i32) -> Result<($ty,), LU> {
+            fn lua_read_at_position(lua: LU, index: NonZeroI32) -> Result<($ty,), LU> {
                 LuaRead::lua_read_at_position(lua, index).map(|v| (v,))
             }
         }
@@ -78,22 +80,24 @@ macro_rules! tuple_impl {
             LuaRead<LU> for ($first, $($other),+) where LU: AsLua<'lua>
         {
             #[inline]
-            fn lua_read_at_position(mut lua: LU, index: i32) -> Result<($first, $($other),+), LU> {
-                let mut i = index;
-
-                let $first: $first = match LuaRead::lua_read_at_position(&mut lua, i) {
+            fn lua_read_at_position(mut lua: LU, index: NonZeroI32) -> Result<($first, $($other),+), LU> {
+                let $first: $first = match LuaRead::lua_read_at_position(&mut lua, index) {
                     Ok(v) => v,
                     Err(_) => return Err(lua)
                 };
 
+                let mut i: i32 = index.into();
                 i += 1;
 
                 $(
-                    let $other: $other = match LuaRead::lua_read_at_position(&mut lua, i) {
+                    let $other: $other = match LuaRead::lua_read_at_maybe_zero_position(&mut lua, i) {
                         Ok(v) => v,
                         Err(_) => return Err(lua)
                     };
-                    i += 1;
+                    // The 0 index is the special case that should not be walked
+                    // over. Either we return Err on it or we handle the
+                    // situation correctly (e.g. Option<T>, (), ...)
+                    i = if i == 0 { 0 } else { i + 1 };
                 )+
 
                 Ok(($first, $($other),+))

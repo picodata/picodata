@@ -12,6 +12,7 @@ use crate::{
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::hash::Hash;
 use std::iter;
+use std::num::NonZeroI32;
 
 #[inline]
 fn push_iter<'lua, L, V, I, E>(mut lua: L, iterator: I) -> Result<PushGuard<L>, (E, L)>
@@ -105,7 +106,7 @@ impl<'lua, L, T, E> PushOne<L> for Vec<T>
 impl<'lua, L> LuaRead<L> for Vec<AnyLuaValue>
     where L: AsMutLua<'lua>
 {
-    fn lua_read_at_position(mut lua: L, index: i32) -> Result<Self, L> {
+    fn lua_read_at_position(mut lua: L, index: NonZeroI32) -> Result<Self, L> {
         // We need this as iteration order isn't guaranteed to match order of
         // keys, even if they're numeric
         // https://www.lua.org/manual/5.2/manual.html#pdf-next
@@ -174,7 +175,7 @@ impl<'lua, L> LuaRead<L> for HashMap<AnyHashableLuaValue, AnyLuaValue>
     where L: AsMutLua<'lua>
 {
     // TODO: this should be implemented using the LuaTable API instead of raw Lua calls.
-    fn lua_read_at_position(lua: L, index: i32) -> Result<Self, L> {
+    fn lua_read_at_position(lua: L, index: NonZeroI32) -> Result<Self, L> {
         let mut table = LuaTable::lua_read_at_position(lua, index)?;
         Ok(table.iter().flatten().collect())
     }

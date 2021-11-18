@@ -1,4 +1,5 @@
 use std::marker::PhantomData;
+use std::num::NonZeroI32;
 
 use crate::{
     LuaContext,
@@ -32,7 +33,7 @@ use crate::{
 #[derive(Debug)]
 pub struct LuaTable<L> {
     table: L,
-    index: i32,
+    index: NonZeroI32,
 }
 
 impl<L> LuaTable<L> {
@@ -42,14 +43,17 @@ impl<L> LuaTable<L> {
     // table is.
     #[inline]
     fn offset(&self, offset: i32) -> i32 {
-        if self.index >= 0 || self.index == ffi::LUA_REGISTRYINDEX {
+        let index: i32 = self.index.into();
+        if index > 0 || index == ffi::LUA_REGISTRYINDEX {
             // If this table is the registry or was indexed from the bottom of the stack, its
             // current position will be unchanged.
-            self.index
+            index
         } else {
             // If this table was indexed from the top of the stack, its current
             // index will have been pushed down by the newly-pushed items.
-            self.index + offset
+            let new_index = index + offset;
+            assert_ne!(new_index, 0);
+            new_index
         }
     }
 }
@@ -76,8 +80,8 @@ impl<'lua, L> LuaRead<L> for LuaTable<L>
     where L: AsMutLua<'lua>
 {
     #[inline]
-    fn lua_read_at_position(mut lua: L, index: i32) -> Result<LuaTable<L>, L> {
-        if unsafe { ffi::lua_istable(lua.as_mut_lua().0, index) } {
+    fn lua_read_at_position(mut lua: L, index: NonZeroI32) -> Result<LuaTable<L>, L> {
+        if unsafe { ffi::lua_istable(lua.as_mut_lua().0, index.into()) } {
             Ok(LuaTable {
                 table: lua,
                 index: index,
@@ -345,11 +349,11 @@ impl<'lua, L> LuaTable<L>
     pub fn get_or_create_metatable(mut self) -> LuaTable<PushGuard<L>> {
         unsafe {
             // We put the metatable at the top of the stack.
-            if ffi::lua_getmetatable(self.table.as_mut_lua().0, self.index) == 0 {
+            if ffi::lua_getmetatable(self.table.as_mut_lua().0, self.index.into()) == 0 {
                 // No existing metatable ; create one then set it and reload it.
                 ffi::lua_newtable(self.table.as_mut_lua().0);
                 ffi::lua_setmetatable(self.table.as_mut_lua().0, self.offset(-1));
-                let r = ffi::lua_getmetatable(self.table.as_mut_lua().0, self.index);
+                let r = ffi::lua_getmetatable(self.table.as_mut_lua().0, self.index.into());
                 debug_assert!(r != 0);
             }
 
@@ -360,7 +364,7 @@ impl<'lua, L> LuaTable<L>
                     size: 1,
                     raw_lua: raw_lua,
                 },
-                index: -1,
+                index: NonZeroI32::new_unchecked(-1),
             }
         }
     }
@@ -385,7 +389,7 @@ impl<'lua, L> LuaTable<L>
     pub fn registry(lua: L) -> LuaTable<L> {
         LuaTable {
             table: lua,
-            index: ffi::LUA_REGISTRYINDEX,
+            index: unsafe { NonZeroI32::new_unchecked(ffi::LUA_REGISTRYINDEX) },
         }
     }
 }
@@ -455,8 +459,8 @@ impl<'t, 'lua, L, K, V> Iterator for LuaTableIterator<'t, L, K, V>
 
             // Reading the key and value.
             let mut me = self;
-            let key = LuaRead::lua_read_at_position(&mut me, -2).ok();
-            let value = LuaRead::lua_read_at_position(&mut me, -1).ok();
+            let key = K::lua_read_at_position(&mut me, NonZeroI32::new_unchecked(-2)).ok();
+            let value = V::lua_read_at_position(&mut me, NonZeroI32::new_unchecked(-1)).ok();
 
             // Removing the value, leaving only the key on the top of the stack.
             ffi::lua_pop(me.table.as_mut_lua().0, 1);
