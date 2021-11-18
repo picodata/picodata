@@ -45,6 +45,17 @@ For deployment, check out the deployment notes at the end of the tutorial.
 - rustc 1.48 or newer
 - tarantool 2.2
 
+#### MacOS linking issues
+
+On MacOS you may encounter linking errors like this: `ld: symbol(s) not found for architecture x86_64`. To solve it please put this to your `$CARGO_HOME/config.toml` (`~/.cargo/config.toml` by default):
+
+```toml
+[target.x86_64-apple-darwin]
+rustflags = [
+    "-C", "link-arg=-undefined",  "-C", "link-arg=dynamic_lookup"
+]
+```
+
 ### Usage
 
 Add the following lines to your project Cargo.toml:
