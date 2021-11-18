@@ -42,7 +42,7 @@ function test_schema_cleanup()
 end
 
 -- Add test runner library location to lua search path
-package.cpath = 'target/debug/?.so;' .. package.cpath
+package.cpath = 'target/debug/?.so;target/debug/?.dylib;' .. package.cpath
 
 -- Prepare config
 json = require('json')
