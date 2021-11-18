@@ -939,6 +939,43 @@ impl<L> Drop for PushGuard<L> {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct Nil;
+
+impl<'lua, L> Push<L> for Nil
+where
+    L: AsMutLua<'lua>,
+{
+    type Err = Void;      // TODO: use `!` instead (https://github.com/rust-lang/rust/issues/35121)
+
+    fn push_to_lua(self, mut lua: L) -> Result<PushGuard<L>, (Void, L)> {
+        unsafe {
+            ffi::lua_pushnil(lua.as_mut_lua().0);
+        }
+        let raw_lua = lua.as_lua();
+        Ok(PushGuard {
+            lua,
+            size: 1,
+            raw_lua,
+        })
+    }
+}
+
+impl<'lua, L: AsMutLua<'lua>> PushOne<L> for Nil {}
+
+impl<'lua, L> LuaRead<L> for Nil
+where
+    L: AsMutLua<'lua>,
+{
+    fn lua_read_at_position(lua: L, index: i32) -> Result<Nil, L> {
+        if unsafe { ffi::lua_isnil(lua.as_lua().0, index) } {
+            Ok(Nil)
+        } else {
+            Err(lua)
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::{

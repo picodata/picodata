@@ -4,11 +4,11 @@ use std::str;
 use std::ops::Deref;
 
 use crate::{
-    AnyLuaValue,
     AnyLuaString,
     AsLua,
     AsMutLua,
     LuaRead,
+    Nil,
     Push,
     PushGuard,
     PushOne,
@@ -365,7 +365,7 @@ where T: Push<L, Err = E>,
     fn push_to_lua(self, lua: L) -> Result<PushGuard<L>, (E, L)> {
         match self {
             Some(val) => val.push_to_lua(lua),
-            None => Ok(AnyLuaValue::LuaNil.push_no_err(lua)),
+            None => Ok(Nil.push_no_err(lua)),
         }
     }
 }
@@ -379,7 +379,6 @@ where T: PushOne<L, Err = E>,
 #[cfg(test)]
 mod tests {
     use crate::{
-        AnyLuaValue,
         AnyLuaString,
         Lua,
         StringInLua,
@@ -536,8 +535,8 @@ mod tests {
             unexpected => panic!("{:?}", unexpected),
         }
 
-        match lua.execute::<AnyLuaValue>("return none()") {
-            Ok(AnyLuaValue::LuaNil) => {}
+        match lua.execute::<Nil>("return none()") {
+            Ok(Nil) => {}
             unexpected => panic!("{:?}", unexpected),
         }
 

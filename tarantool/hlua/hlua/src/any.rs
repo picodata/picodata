@@ -1,11 +1,11 @@
 use crate::{
-    AsLua,
     AsMutLua,
     Push,
     PushGuard,
     PushOne,
     LuaRead,
     LuaTable,
+    Nil,
     Void,
 };
 
@@ -73,16 +73,7 @@ impl<'lua, L> Push<L> for AnyLuaValue
                     raw_lua: raw_lua,
                 })
             }
-            AnyLuaValue::LuaNil => {
-                unsafe {
-                    ffi::lua_pushnil(lua.as_mut_lua().0);
-                }
-                Ok(PushGuard {
-                    lua: lua,
-                    size: 1,
-                    raw_lua: raw_lua,
-                })
-            } // Use ffi::lua_pushnil.
+            AnyLuaValue::LuaNil => Nil.push_to_lua(lua),
             AnyLuaValue::LuaOther => panic!("can't push a AnyLuaValue of type Other"),
         }
     }
@@ -131,14 +122,15 @@ impl<'lua, L> LuaRead<L> for AnyLuaValue
                 Err(lua) => lua,
             };
 
-            let lua = match LuaRead::lua_read_at_position(&mut lua as &mut dyn AsMutLua<'lua>, index) {
+            let mut lua = match LuaRead::lua_read_at_position(&mut lua as &mut dyn AsMutLua<'lua>, index) {
                 Ok(v) => return Ok(AnyLuaValue::LuaAnyString(v)),
                 Err(lua) => lua,
             };
 
-            if unsafe { ffi::lua_isnil(lua.as_lua().0, index) } {
-                return Ok(AnyLuaValue::LuaNil);
-            }
+            let lua = match Nil::lua_read_at_position(&mut lua, index) {
+                Ok(Nil) => return Ok(AnyLuaValue::LuaNil),
+                Err(lua) => lua,
+            };
 
             let table: Result<LuaTable<_>, _> = LuaRead::lua_read_at_position(lua, index);
             let _lua = match table {
@@ -182,16 +174,7 @@ impl<'lua, L> Push<L> for AnyHashableLuaValue
                     raw_lua: raw_lua,
                 })
             }
-            AnyHashableLuaValue::LuaNil => {
-                unsafe {
-                    ffi::lua_pushnil(lua.as_mut_lua().0);
-                }
-                Ok(PushGuard {
-                    lua: lua,
-                    size: 1,
-                    raw_lua: raw_lua,
-                })
-            } // Use ffi::lua_pushnil.
+            AnyHashableLuaValue::LuaNil => Nil.push_to_lua(lua),
             AnyHashableLuaValue::LuaOther => panic!("can't push a AnyHashableLuaValue of type Other"),
         }
     }
@@ -241,9 +224,10 @@ impl<'lua, L> LuaRead<L> for AnyHashableLuaValue
                 Err(lua) => lua,
             };
 
-            if unsafe { ffi::lua_isnil(lua.as_lua().0, index) } {
-                return Ok(AnyHashableLuaValue::LuaNil);
-            }
+            let mut lua = match Nil::lua_read_at_position(&mut lua, index) {
+                Ok(Nil) => return Ok(AnyHashableLuaValue::LuaNil),
+                Err(lua) => lua,
+            };
 
             let table: Result<LuaTable<_>, _> = LuaRead::lua_read_at_position(&mut lua as &mut dyn AsMutLua<'lua>, index);
             let _lua = match table {
