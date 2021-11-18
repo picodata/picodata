@@ -6,6 +6,7 @@ use crate::{
     AsMutLua,
     TuplePushError,
     LuaRead,
+    LuaTable,
 };
 
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -104,39 +105,17 @@ impl<'lua, L, T, E> PushOne<L> for Vec<T>
 impl<'lua, L> LuaRead<L> for Vec<AnyLuaValue>
     where L: AsMutLua<'lua>
 {
-    fn lua_read_at_position(lua: L, index: i32) -> Result<Self, L> {
+    fn lua_read_at_position(mut lua: L, index: i32) -> Result<Self, L> {
         // We need this as iteration order isn't guaranteed to match order of
         // keys, even if they're numeric
         // https://www.lua.org/manual/5.2/manual.html#pdf-next
+        let mut table = match LuaTable::lua_read_at_position(&mut lua, index) {
+            Ok(table) => table,
+            Err(_) => return Err(lua),
+        };
         let mut dict: BTreeMap<i32, AnyLuaValue> = BTreeMap::new();
 
-        let mut me = lua;
-        unsafe { ffi::lua_pushnil(me.as_mut_lua().0) };
-        let index = index - 1;
-
-        loop {
-            if unsafe { ffi::lua_next(me.as_mut_lua().0, index) } == 0 {
-                break;
-            }
-
-            let key = {
-                let maybe_key: Option<i32> =
-                    LuaRead::lua_read_at_position(&mut me, -2).ok();
-                match maybe_key {
-                    None => {
-                        // Cleaning up after ourselves
-                        unsafe { ffi::lua_pop(me.as_mut_lua().0, 2) };
-                        return Err(me)
-                    }
-                    Some(k) => k,
-                }
-            };
-
-            let value: AnyLuaValue =
-                LuaRead::lua_read_at_position(&mut me, -1).ok().unwrap();
-
-            unsafe { ffi::lua_pop(me.as_mut_lua().0, 1) };
-
+        for (key, value) in table.iter().flatten() {
             dict.insert(key, value);
         }
 
@@ -146,7 +125,7 @@ impl<'lua, L> LuaRead<L> for Vec<AnyLuaValue>
         if minimum_key != 1 {
             // Rust doesn't support sparse arrays or arrays with negative
             // indices
-            return Err(me);
+            return Err(lua);
         }
 
         let mut result =
@@ -160,7 +139,7 @@ impl<'lua, L> LuaRead<L> for Vec<AnyLuaValue>
         // and check that table represented non-sparse 1-indexed array
         for (k, v) in dict {
             if previous_key + 1 != k {
-                return Err(me)
+                return Err(lua)
             } else {
                 // We just push, thus converting Lua 1-based indexing
                 // to Rust 0-based indexing
@@ -196,38 +175,8 @@ impl<'lua, L> LuaRead<L> for HashMap<AnyHashableLuaValue, AnyLuaValue>
 {
     // TODO: this should be implemented using the LuaTable API instead of raw Lua calls.
     fn lua_read_at_position(lua: L, index: i32) -> Result<Self, L> {
-        let mut me = lua;
-        unsafe { ffi::lua_pushnil(me.as_mut_lua().0) };
-        let index = index - 1;
-        let mut result = HashMap::new();
-
-        loop {
-            if unsafe { ffi::lua_next(me.as_mut_lua().0, index) } == 0 {
-                break;
-            }
-
-            let key = {
-                let maybe_key: Option<AnyHashableLuaValue> =
-                    LuaRead::lua_read_at_position(&mut me, -2).ok();
-                match maybe_key {
-                    None => {
-                        // Cleaning up after ourselves
-                        unsafe { ffi::lua_pop(me.as_mut_lua().0, 2) };
-                        return Err(me)
-                    }
-                    Some(k) => k,
-                }
-            };
-
-            let value: AnyLuaValue =
-                LuaRead::lua_read_at_position(&mut me, -1).ok().unwrap();
-
-            unsafe { ffi::lua_pop(me.as_mut_lua().0, 1) };
-
-            result.insert(key, value);
-        }
-
-        Ok(result)
+        let mut table = LuaTable::lua_read_at_position(lua, index)?;
+        Ok(table.iter().flatten().collect())
     }
 }
 
