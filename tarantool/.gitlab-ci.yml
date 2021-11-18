@@ -3,7 +3,10 @@ stages:
     - test
 
 cache:
-    key: ${CI_COMMIT_REF_SLUG}
+    key:
+        files:
+            - Cargo.toml
+            - Cargo.lock
     paths:
         - target
 
