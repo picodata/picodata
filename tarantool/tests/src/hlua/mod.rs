@@ -7,7 +7,7 @@ pub mod rust_tables;
 pub mod userdata;
 pub mod values;
 
-pub fn global<'lua>() -> tarantool::hlua::Lua<'lua> {
+pub fn global() -> tarantool::hlua::Lua {
     unsafe {
         tarantool::hlua::Lua::from_existing_state(
             tarantool::ffi::tarantool::luaT_state(), false

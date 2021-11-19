@@ -108,7 +108,6 @@ use std::ffi::{CStr, CString};
 use std::io::Read;
 use std::io::Error as IoError;
 use std::borrow::Borrow;
-use std::marker::PhantomData;
 use std::num::NonZeroI32;
 use std::error::Error;
 use std::fmt;
@@ -142,6 +141,8 @@ mod userdata;
 mod values;
 mod tuples;
 
+type LuaState = *mut ffi::lua_State;
+
 /// Main object of the library.
 ///
 /// The lifetime parameter corresponds to the lifetime of the content of the Lua context.
@@ -152,10 +153,9 @@ mod tuples;
 /// then it will probably stay in a corrupt state. Trying to use the `Lua` again will most likely
 /// result in another panic but shouldn't result in unsafety.
 #[derive(Debug)]
-pub struct Lua<'lua> {
-    lua: LuaContext,
+pub struct Lua {
+    lua: *mut ffi::lua_State,
     must_be_closed: bool,
-    marker: PhantomData<&'lua ()>,
 }
 
 /// RAII guard for a value pushed on the stack.
@@ -163,26 +163,24 @@ pub struct Lua<'lua> {
 /// You shouldn't have to manipulate this type directly unless you are fiddling with the
 /// library's internals.
 #[derive(Debug)]
-pub struct PushGuard<L> {
+pub struct PushGuard<L>
+where
+    L: AsLua,
+{
     lua: L,
     size: i32,
-    raw_lua: LuaContext,
 }
 
-impl<'lua, L> PushGuard<L>
-    where L: AsMutLua<'lua>
-{
+impl<L: AsLua> PushGuard<L> {
     /// Creates a new `PushGuard` from this Lua context representing `size` items on the stack.
     /// When this `PushGuard` is destroyed, `size` items will be popped.
     ///
     /// This is unsafe because the Lua stack can be corrupted if this is misused.
     #[inline]
-    pub unsafe fn new(mut lua: L, size: i32) -> Self {
-        let raw_lua = lua.as_mut_lua();
+    pub unsafe fn new(lua: L, size: i32) -> Self {
         PushGuard {
             lua,
             size,
-            raw_lua,
         }
     }
 
@@ -219,14 +217,14 @@ impl<'lua, L> PushGuard<L>
     /// Destroys the guard, popping the value. Returns the inner part,
     /// which returns access when using by-value capture.
     #[inline]
-    pub fn into_inner(mut self) -> L {
+    pub fn into_inner(self) -> L {
         use std::{mem::{self, MaybeUninit}, ptr};
 
         let mut res = MaybeUninit::uninit();
         unsafe {
             ptr::copy_nonoverlapping(&self.lua, res.as_mut_ptr(), 1);
             if self.size != 0 {
-                ffi::lua_pop(self.lua.as_mut_lua().0, self.size);
+                ffi::lua_pop(self.lua.as_lua(), self.size);
             }
         };
         mem::forget(self);
@@ -238,101 +236,45 @@ impl<'lua, L> PushGuard<L>
 /// Trait for objects that have access to a Lua context. When using a context returned by a
 /// `AsLua`, you are not allowed to modify the stack.
 // TODO: the lifetime should be an associated lifetime instead
-pub unsafe trait AsLua<'lua> {
-    fn as_lua(&self) -> LuaContext;
+pub trait AsLua {
+    fn as_lua(&self) -> *mut ffi::lua_State;
 }
 
-/// Trait for objects that have access to a Lua context. You are allowed to modify the stack, but
-/// it must be in the same state as it was when you started.
-// TODO: the lifetime should be an associated lifetime instead
-pub unsafe trait AsMutLua<'lua>: AsLua<'lua> {
-    /// Returns the raw Lua context.
-    fn as_mut_lua(&mut self) -> LuaContext;
-}
-
-/// Opaque type that contains the raw Lua context.
-// TODO: probably no longer necessary
-#[derive(Copy, Clone, Debug)]
-pub struct LuaContext(*mut ffi::lua_State);
-
-impl LuaContext {
-    /// Return a pointer to the inner `lua_State` for this context. This is an escape hatch that
-    /// lets the caller perform arbitrary operations against the FFI directly.
-    ///
-    /// Be careful: performing operations on this state might invalidate assumptions made in
-    /// higher-level APIs. For example, pushing a value onto the Lua stack will cause `PushGuard`s
-    /// in Rust code to be out of sync with the Lua stack.
-    #[doc(hidden)]
-    #[inline]
-    pub fn state_ptr(&self) -> *mut ffi::lua_State {
-        self.0
+impl<T> AsLua for &'_ T
+where
+    T: AsLua,
+{
+    fn as_lua(&self) -> *mut ffi::lua_State {
+        T::as_lua(self)
     }
 }
 
-unsafe impl Send for LuaContext {}
-
-unsafe impl<'a, 'lua> AsLua<'lua> for Lua<'lua> {
+impl AsLua for Lua {
     #[inline]
-    fn as_lua(&self) -> LuaContext {
+    fn as_lua(&self) -> *mut ffi::lua_State {
         self.lua
     }
 }
 
-unsafe impl<'lua> AsMutLua<'lua> for Lua<'lua> {
-    #[inline]
-    fn as_mut_lua(&mut self) -> LuaContext {
-        self.lua
+impl AsLua for *mut ffi::lua_State {
+    fn as_lua(&self) -> *mut ffi::lua_State {
+        *self
     }
 }
 
-unsafe impl<'lua, L> AsLua<'lua> for PushGuard<L>
-    where L: AsMutLua<'lua>
+impl<L> AsLua for PushGuard<L>
+where
+    L: AsLua,
 {
     #[inline]
-    fn as_lua(&self) -> LuaContext {
+    fn as_lua(&self) -> *mut ffi::lua_State {
         self.lua.as_lua()
-    }
-}
-
-unsafe impl<'lua, L> AsMutLua<'lua> for PushGuard<L>
-    where L: AsMutLua<'lua>
-{
-    #[inline]
-    fn as_mut_lua(&mut self) -> LuaContext {
-        self.lua.as_mut_lua()
-    }
-}
-
-unsafe impl<'a, 'lua, L: ?Sized> AsLua<'lua> for &'a L
-    where L: AsLua<'lua>
-{
-    #[inline]
-    fn as_lua(&self) -> LuaContext {
-        (**self).as_lua()
-    }
-}
-
-unsafe impl<'a, 'lua, L: ?Sized> AsLua<'lua> for &'a mut L
-    where L: AsLua<'lua>
-{
-    #[inline]
-    fn as_lua(&self) -> LuaContext {
-        (**self).as_lua()
-    }
-}
-
-unsafe impl<'a, 'lua, L: ?Sized> AsMutLua<'lua> for &'a mut L
-    where L: AsMutLua<'lua>
-{
-    #[inline]
-    fn as_mut_lua(&mut self) -> LuaContext {
-        (**self).as_mut_lua()
     }
 }
 
 /// Types that can be given to a Lua context, for example with `lua.set()` or as a return value
 /// of a function.
-pub trait Push<L> {
+pub trait Push<L: AsLua> {
     /// Error that can happen when pushing a value.
     type Err;
 
@@ -349,9 +291,10 @@ pub trait Push<L> {
     // TODO: when https://github.com/rust-lang/rust/issues/20041 is fixed, use `Self::Err == Void`
     #[inline]
     fn push_no_err<E>(self, lua: L) -> PushGuard<L>
-        where Self: Sized,
-              Self: Push<L, Err = E>,
-              E: Into<Void>,
+    where
+        Self: Sized,
+        Self: Push<L, Err = E>,
+        E: Into<Void>,
     {
         match self.push_to_lua(lua) {
             Ok(p) => p,
@@ -359,6 +302,8 @@ pub trait Push<L> {
         }
     }
 }
+
+// TODO(gmoshkin): PushRef for pushing by reference
 
 /// Extension trait for `Push`. Guarantees that only one element will be pushed.
 ///
@@ -369,7 +314,7 @@ pub trait Push<L> {
 // Note for the implementation: since this trait is not unsafe, it is mostly a hint. Functions can
 // require this trait if they only accept one pushed element, but they must also add a runtime
 // assertion to make sure that only one element was actually pushed.
-pub trait PushOne<L>: Push<L> {}
+pub trait PushOne<L: AsLua>: Push<L> {}
 
 /// Type that cannot be instantiated.
 ///
@@ -383,6 +328,9 @@ impl fmt::Display for Void {
     }
 }
 
+pub const NEGATIVE_ONE: NonZeroI32 = unsafe { NonZeroI32::new_unchecked(-1) };
+pub const NEGATIVE_TWO: NonZeroI32 = unsafe { NonZeroI32::new_unchecked(-2) };
+
 /// Types that can be obtained from a Lua context.
 ///
 /// Most types that implement `Push` also implement `LuaRead`, but this is not always the case
@@ -391,8 +339,7 @@ pub trait LuaRead<L>: Sized {
     /// Reads the data from Lua.
     #[inline]
     fn lua_read(lua: L) -> Result<Self, L> {
-        let index = unsafe { NonZeroI32::new_unchecked(-1) };
-        Self::lua_read_at_position(lua, index)
+        Self::lua_read_at_position(lua, NEGATIVE_ONE)
     }
 
     fn lua_read_at_maybe_zero_position(lua: L, index: i32) -> Result<Self, L> {
@@ -428,10 +375,7 @@ pub enum LuaError {
 }
 
 impl LuaError {
-    pub fn wrong_type<'lua, T, L>(lua: L, n_values: i32) -> Self
-    where
-        L: AsMutLua<'lua>,
-    {
+    pub fn wrong_type<T, L: AsLua>(lua: L, n_values: i32) -> Self {
         Self::WrongType {
             rust_expected: std::any::type_name::<T>().into(),
             lua_actual: lua_typename(lua, n_values),
@@ -439,8 +383,8 @@ impl LuaError {
     }
 }
 
-pub fn lua_typename<'lua>(mut lua: impl AsMutLua<'lua>, n_values: i32) -> String {
-    let l_ptr = lua.as_mut_lua().state_ptr();
+pub fn lua_typename(lua: impl AsLua, n_values: i32) -> String {
+    let l_ptr = lua.as_lua();
     macro_rules! single_typename {
         ($i:expr) => {
             unsafe {
@@ -511,7 +455,7 @@ impl From<io::Error> for LuaError {
     }
 }
 
-impl<'lua> Lua<'lua> {
+impl Lua {
     /// Builds a new empty Lua context.
     ///
     /// There are no global variables and the registry is totally empty. Even the functions from
@@ -532,7 +476,7 @@ impl<'lua> Lua<'lua> {
     /// The function panics if the underlying call to `lua_newstate` fails
     /// (which indicates lack of memory).
     #[inline]
-    pub fn new() -> Lua<'lua> {
+    pub fn new() -> Lua {
         let lua = unsafe { ffi::luaL_newstate() };
         if lua.is_null() {
             panic!("lua_newstate failed");
@@ -549,9 +493,8 @@ impl<'lua> Lua<'lua> {
         unsafe { ffi::lua_atpanic(lua, panic) };
 
         Lua {
-            lua: LuaContext(lua),
+            lua,
             must_be_closed: true,
-            marker: PhantomData,
         }
     }
 
@@ -560,11 +503,10 @@ impl<'lua> Lua<'lua> {
     /// If `close_at_the_end` is true, `lua_close` will be called on the `lua_State` in the
     /// destructor.
     #[inline]
-    pub unsafe fn from_existing_state<T>(lua: *mut T, close_at_the_end: bool) -> Lua<'lua> {
+    pub unsafe fn from_existing_state<T>(lua: *mut T, close_at_the_end: bool) -> Lua {
         Lua {
             lua: std::mem::transmute(lua),
             must_be_closed: close_at_the_end,
-            marker: PhantomData,
         }
     }
 
@@ -583,80 +525,80 @@ impl<'lua> Lua<'lua> {
     /// lua.openlibs();
     /// ```
     #[inline]
-    pub fn openlibs(&mut self) {
-        unsafe { ffi::luaL_openlibs(self.lua.0) }
+    pub fn openlibs(&self) {
+        unsafe { ffi::luaL_openlibs(self.lua) }
     }
 
     /// Opens base library.
     ///
     /// <https://www.lua.org/manual/5.2/manual.html#pdf-luaopen_base>
     #[inline]
-    pub fn open_base(&mut self) {
-        unsafe { ffi::luaopen_base(self.lua.0) }
+    pub fn open_base(&self) {
+        unsafe { ffi::luaopen_base(self.lua) }
     }
 
     /// Opens bit32 library.
     ///
     /// <https://www.lua.org/manual/5.2/manual.html#pdf-luaopen_bit32>
     #[inline]
-    pub fn open_bit(&mut self) {
-        unsafe { ffi::luaopen_bit(self.lua.0) }
+    pub fn open_bit(&self) {
+        unsafe { ffi::luaopen_bit(self.lua) }
     }
 
     /// Opens debug library.
     ///
     /// <https://www.lua.org/manual/5.2/manual.html#pdf-luaopen_debug>
     #[inline]
-    pub fn open_debug(&mut self) {
-        unsafe { ffi::luaopen_debug(self.lua.0) }
+    pub fn open_debug(&self) {
+        unsafe { ffi::luaopen_debug(self.lua) }
     }
 
     /// Opens io library.
     ///
     /// <https://www.lua.org/manual/5.2/manual.html#pdf-luaopen_io>
     #[inline]
-    pub fn open_io(&mut self) {
-        unsafe { ffi::luaopen_io(self.lua.0) }
+    pub fn open_io(&self) {
+        unsafe { ffi::luaopen_io(self.lua) }
     }
 
     /// Opens math library.
     ///
     /// <https://www.lua.org/manual/5.2/manual.html#pdf-luaopen_math>
     #[inline]
-    pub fn open_math(&mut self) {
-        unsafe { ffi::luaopen_math(self.lua.0) }
+    pub fn open_math(&self) {
+        unsafe { ffi::luaopen_math(self.lua) }
     }
 
     /// Opens os library.
     ///
     /// <https://www.lua.org/manual/5.2/manual.html#pdf-luaopen_os>
     #[inline]
-    pub fn open_os(&mut self) {
-        unsafe { ffi::luaopen_os(self.lua.0) }
+    pub fn open_os(&self) {
+        unsafe { ffi::luaopen_os(self.lua) }
     }
 
     /// Opens package library.
     ///
     /// <https://www.lua.org/manual/5.2/manual.html#pdf-luaopen_package>
     #[inline]
-    pub fn open_package(&mut self) {
-        unsafe { ffi::luaopen_package(self.lua.0) }
+    pub fn open_package(&self) {
+        unsafe { ffi::luaopen_package(self.lua) }
     }
 
     /// Opens string library.
     ///
     /// <https://www.lua.org/manual/5.2/manual.html#pdf-luaopen_string>
     #[inline]
-    pub fn open_string(&mut self) {
-        unsafe { ffi::luaopen_string(self.lua.0) }
+    pub fn open_string(&self) {
+        unsafe { ffi::luaopen_string(self.lua) }
     }
 
     /// Opens table library.
     ///
     /// <https://www.lua.org/manual/5.2/manual.html#pdf-luaopen_table>
     #[inline]
-    pub fn open_table(&mut self) {
-        unsafe { ffi::luaopen_table(self.lua.0) }
+    pub fn open_table(&self) {
+        unsafe { ffi::luaopen_table(self.lua) }
     }
 
     /// Executes some Lua code in the context.
@@ -697,11 +639,12 @@ impl<'lua> Lua<'lua> {
     /// let sixty = lua.execute::<i32>("return 6 * 10;").unwrap();
     /// ```
     #[inline]
-    pub fn execute<'a, T>(&'a mut self, code: &str) -> Result<T, LuaError>
-        where T: for<'g> LuaRead<PushGuard<&'g mut PushGuard<&'a mut Lua<'lua>>>>
+    pub fn execute<'lua, T>(&'lua self, code: &str) -> Result<T, LuaError>
+    where
+        T: LuaRead<PushGuard<LuaFunction<PushGuard<&'lua Self>>>>,
     {
-        let mut f = lua_functions::LuaFunction::load(self, code)?;
-        f.call()
+        LuaFunction::load(self, code)?
+            .into_call()
     }
 
     /// Executes some Lua code on the context.
@@ -724,12 +667,12 @@ impl<'lua> Lua<'lua> {
     /// lua.execute_from_reader::<(), _>(script).unwrap();
     /// ```
     #[inline]
-    pub fn execute_from_reader<'a, T, R>(&'a mut self, code: R) -> Result<T, LuaError>
-        where T: for<'g> LuaRead<PushGuard<&'g mut PushGuard<&'a mut Lua<'lua>>>>,
-              R: Read
+    pub fn execute_from_reader<'lua, T>(&'lua self, code: impl Read) -> Result<T, LuaError>
+    where
+        T: LuaRead<PushGuard<LuaFunction<PushGuard<&'lua Self>>>>,
     {
-        let mut f = lua_functions::LuaFunction::load_from_reader(self, code)?;
-        f.call()
+        LuaFunction::load_from_reader(self, code)?
+            .into_call()
     }
 
     /// Reads the value of a global variable.
@@ -750,28 +693,19 @@ impl<'lua> Lua<'lua> {
     /// assert_eq!(a, 5);
     /// ```
     #[inline]
-    pub fn get<'l, V, I>(&'l mut self, index: I) -> Option<V>
-        where I: Borrow<str>,
-              V: LuaRead<PushGuard<&'l mut Lua<'lua>>>
+    pub fn get<'lua, V, I>(&'lua self, index: I) -> Option<V>
+    where
+        I: Borrow<str>,
+        V: LuaRead<PushGuard<&'lua Self>>,
     {
         let index = CString::new(index.borrow()).unwrap();
-        unsafe {
-            ffi::lua_getglobal(self.lua.0, index.as_ptr());
-        }
-        if unsafe { ffi::lua_isnil(self.as_lua().0, -1) } {
-            let raw_lua = self.as_lua();
-            let _guard = PushGuard {
-                lua: self,
-                size: 1,
-                raw_lua: raw_lua,
-            };
-            return None;
-        }
-        let raw_lua = self.as_lua();
-        let guard = PushGuard {
-            lua: self,
-            size: 1,
-            raw_lua: raw_lua,
+        let guard = unsafe {
+            ffi::lua_getglobal(self.lua, index.as_ptr());
+            let guard = PushGuard::new(self, 1);
+            if ffi::lua_isnil(self.as_lua(), -1) {
+                return None;
+            }
+            guard
         };
         LuaRead::lua_read(guard).ok()
     }
@@ -779,24 +713,20 @@ impl<'lua> Lua<'lua> {
     /// Reads the value of a global, capturing the context by value.
     #[inline]
     pub fn into_get<V, I>(self, index: I) -> Result<V, PushGuard<Self>>
-        where I: Borrow<str>,
-              V: LuaRead<PushGuard<Lua<'lua>>>
+    where
+        I: Borrow<str>,
+        V: LuaRead<PushGuard<Self>>,
     {
         let index = CString::new(index.borrow()).unwrap();
         unsafe {
-            ffi::lua_getglobal(self.lua.0, index.as_ptr());
-        }
-        let is_nil = unsafe { ffi::lua_isnil(self.as_lua().0, -1) };
-        let raw_lua = self.as_lua();
-        let guard = PushGuard {
-            lua: self,
-            size: 1,
-            raw_lua: raw_lua,
-        };
-        if is_nil {
-            Err(guard)
-        } else {
-            LuaRead::lua_read(guard)
+            ffi::lua_getglobal(self.lua, index.as_ptr());
+            let is_nil = ffi::lua_isnil(self.lua, -1);
+            let guard = PushGuard::new(self, 1);
+            if is_nil {
+                Err(guard)
+            } else {
+                LuaRead::lua_read(guard)
+            }
         }
     }
 
@@ -820,10 +750,11 @@ impl<'lua> Lua<'lua> {
     /// assert_eq!(six, 6);
     /// ```
     #[inline]
-    pub fn set<I, V, E>(&mut self, index: I, value: V)
-        where I: Borrow<str>,
-              for<'a> V: PushOne<&'a mut Lua<'lua>, Err = E>,
-              E: Into<Void>,
+    pub fn set<'lua, I, V, E>(&'lua self, index: I, value: V)
+    where
+        I: Borrow<str>,
+        V: PushOne<&'lua Self, Err = E>,
+        E: Into<Void>,
     {
         match self.checked_set(index, value) {
             Ok(_) => (),
@@ -834,33 +765,33 @@ impl<'lua> Lua<'lua> {
     /// Modifies the value of a global variable.
     // TODO: docs
     #[inline]
-    pub fn checked_set<I, V, E>(&mut self, index: I, value: V) -> Result<(), E>
-        where I: Borrow<str>,
-              for<'a> V: PushOne<&'a mut Lua<'lua>, Err = E>
+    pub fn checked_set<'lua, I, V>(&'lua self, index: I, value: V)
+        -> Result<(), <V as Push<&'lua Self>>::Err>
+    where
+        I: Borrow<str>,
+        V: PushOne<&'lua Self>,
     {
         unsafe {
-            // TODO: can be simplified
-            let mut me = self;
-            ffi::lua_pushglobaltable(me.lua.0);
-            match index.borrow().push_to_lua(&mut me) {
+            ffi::lua_pushglobaltable(self.lua);
+            match index.borrow().push_to_lua(self.as_lua()) {
                 Ok(pushed) => {
                     debug_assert_eq!(pushed.size, 1);
                     pushed.forget()
                 }
                 Err(_) => unreachable!(),
             };
-            match value.push_to_lua(&mut me) {
+            match value.push_to_lua(self) {
                 Ok(pushed) => {
                     assert_eq!(pushed.size, 1);
                     pushed.forget()
                 }
                 Err((err, lua)) => {
-                    ffi::lua_pop(lua.lua.0, 2);
+                    ffi::lua_pop(lua.as_lua(), 2);
                     return Err(err);
                 }
             };
-            ffi::lua_settable(me.lua.0, -3);
-            ffi::lua_pop(me.lua.0, 1);
+            ffi::lua_settable(self.lua, -3);
+            ffi::lua_pop(self.lua, 1);
             Ok(())
         }
     }
@@ -896,22 +827,22 @@ impl<'lua> Lua<'lua> {
     /// assert_eq!(sum, 45);
     /// ```
     #[inline]
-    pub fn empty_array<'a, I>(&'a mut self, index: I) -> LuaTable<PushGuard<&'a mut Lua<'lua>>>
-        where I: Borrow<str>
+    pub fn empty_array<'lua, I>(&'lua self, index: I) -> LuaTable<PushGuard<&'lua Self>>
+    where
+        I: Borrow<str>,
     {
         unsafe {
-            let mut me = self;
-            ffi::lua_pushglobaltable(me.lua.0);
-            match index.borrow().push_to_lua(&mut me) {
+            ffi::lua_pushglobaltable(self.as_lua());
+            match index.borrow().push_to_lua(self.as_lua()) {
                 Ok(pushed) => pushed.forget(),
                 Err(_) => unreachable!(),
             };
-            ffi::lua_newtable(me.lua.0);
-            ffi::lua_settable(me.lua.0, -3);
-            ffi::lua_pop(me.lua.0, 1);
+            ffi::lua_newtable(self.as_lua());
+            ffi::lua_settable(self.as_lua(), -3);
+            ffi::lua_pop(self.as_lua(), 1);
 
             // TODO: cleaner implementation
-            me.get(index).unwrap()
+            self.get(index).unwrap()
         }
     }
 
@@ -953,68 +884,55 @@ impl<'lua> Lua<'lua> {
     /// assert_eq!(b, 96);
     /// ```
     #[inline]
-    pub fn globals_table<'a>(&'a mut self) -> LuaTable<PushGuard<&'a mut Lua<'lua>>> {
+    pub fn globals_table<'lua>(&'lua self) -> LuaTable<PushGuard<&'lua Self>> {
         unsafe {
-            ffi::lua_pushglobaltable(self.lua.0);
-        }
-        let raw_lua = self.as_lua();
-        let guard = PushGuard {
-            lua: self,
-            size: 1,
-            raw_lua: raw_lua,
-        };
-        LuaRead::lua_read(guard).ok().unwrap()
-    }
-}
-
-impl<'lua> Drop for Lua<'lua> {
-    #[inline]
-    fn drop(&mut self) {
-        if self.must_be_closed {
-            unsafe { ffi::lua_close(self.lua.0) }
+            ffi::lua_pushglobaltable(self.lua);
+            let guard = PushGuard::new(self, 1);
+            LuaRead::lua_read(guard).ok().unwrap()
         }
     }
 }
 
-impl<L> Drop for PushGuard<L> {
-    #[inline]
-    fn drop(&mut self) {
-        if self.size != 0 {
-            unsafe {
-                ffi::lua_pop(self.raw_lua.0, self.size);
-            }
-        }
-    }
-}
+ impl Drop for Lua {
+     #[inline]
+     fn drop(&mut self) {
+         if self.must_be_closed {
+             unsafe { ffi::lua_close(self.lua) }
+         }
+     }
+ }
+
+ impl<L: AsLua> Drop for PushGuard<L> {
+     #[inline]
+     fn drop(&mut self) {
+         if self.size != 0 {
+             unsafe {
+                 ffi::lua_pop(self.lua.as_lua(), self.size);
+             }
+         }
+     }
+ }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Nil;
 
-impl<'lua, L> Push<L> for Nil
+impl<L> Push<L> for Nil
 where
-    L: AsMutLua<'lua>,
+    L: AsLua,
 {
     type Err = Void;      // TODO: use `!` instead (https://github.com/rust-lang/rust/issues/35121)
 
-    fn push_to_lua(self, mut lua: L) -> Result<PushGuard<L>, (Void, L)> {
+    fn push_to_lua(self, lua: L) -> Result<PushGuard<L>, (Void, L)> {
         unsafe {
-            ffi::lua_pushnil(lua.as_mut_lua().0);
+            ffi::lua_pushnil(lua.as_lua());
+            Ok(PushGuard::new(lua, 1))
         }
-        let raw_lua = lua.as_lua();
-        Ok(PushGuard {
-            lua,
-            size: 1,
-            raw_lua,
-        })
     }
 }
 
-impl<'lua, L: AsMutLua<'lua>> PushOne<L> for Nil {}
+impl<L: AsLua> PushOne<L> for Nil {}
 
-impl<'lua, L> LuaRead<L> for Nil
-where
-    L: AsMutLua<'lua>,
-{
+impl<L: AsLua> LuaRead<L> for Nil {
     fn lua_read_at_maybe_zero_position(lua: L, index: i32) -> Result<Nil, L> {
         if let Some(index) = NonZeroI32::new(index) {
             Self::lua_read_at_position(lua, index)
@@ -1024,7 +942,7 @@ where
     }
 
     fn lua_read_at_position(lua: L, index: NonZeroI32) -> Result<Nil, L> {
-        if unsafe { ffi::lua_isnil(lua.as_lua().0, index.into()) } {
+        if unsafe { ffi::lua_isnil(lua.as_lua(), index.into()) } {
             Ok(Nil)
         } else {
             Err(lua)

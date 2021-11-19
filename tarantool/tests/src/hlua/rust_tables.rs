@@ -7,18 +7,18 @@ use tarantool::hlua::{
 };
 
 pub fn write() {
-    let mut lua = Lua::new();
+    let lua = Lua::new();
 
     lua.set("a", vec![9, 8, 7]);
 
-    let mut table: LuaTable<_> = lua.get("a").unwrap();
+    let table: LuaTable<_> = lua.get("a").unwrap();
 
     let values: Vec<(i32, i32)> = table.iter().filter_map(|e| e).collect();
     assert_eq!(values, vec![(1, 9), (2, 8), (3, 7)]);
 }
 
 pub fn write_map() {
-    let mut lua = Lua::new();
+    let lua = Lua::new();
 
     let mut map = HashMap::new();
     map.insert(5, 8);
@@ -27,14 +27,14 @@ pub fn write_map() {
 
     lua.set("a", map.clone());
 
-    let mut table: LuaTable<_> = lua.get("a").unwrap();
+    let table: LuaTable<_> = lua.get("a").unwrap();
 
     let values: HashMap<i32, i32> = table.iter().filter_map(|e| e).collect();
     assert_eq!(values, map);
 }
 
 pub fn write_set() {
-    let mut lua = Lua::new();
+    let lua = Lua::new();
 
     let mut set = HashSet::new();
     set.insert(5);
@@ -46,7 +46,7 @@ pub fn write_set() {
 
     lua.set("a", set.clone());
 
-    let mut table: LuaTable<_> = lua.get("a").unwrap();
+    let table: LuaTable<_> = lua.get("a").unwrap();
 
     let values: HashSet<i32> = table.iter()
         .filter_map(|e| e)
@@ -60,7 +60,7 @@ pub fn write_set() {
 }
 
 pub fn globals_table() {
-    let mut lua = Lua::new();
+    let lua = Lua::new();
 
     lua.globals_table().set("a", 12);
 
@@ -69,7 +69,7 @@ pub fn globals_table() {
 }
 
 pub fn reading_vec_works() {
-    let mut lua = Lua::new();
+    let lua = Lua::new();
 
     let orig = [1., 2., 3.];
 
@@ -86,7 +86,7 @@ pub fn reading_vec_works() {
 }
 
 pub fn reading_vec_from_sparse_table_doesnt_work() {
-    let mut lua = Lua::new();
+    let lua = Lua::new();
 
     lua.execute::<()>(r#"v = { [-1] = -1, [2] = 2, [42] = 42 }"#).unwrap();
 
@@ -97,7 +97,7 @@ pub fn reading_vec_from_sparse_table_doesnt_work() {
 }
 
 pub fn reading_vec_with_empty_table_works() {
-    let mut lua = Lua::new();
+    let lua = Lua::new();
 
     lua.execute::<()>(r#"v = { }"#).unwrap();
 
@@ -106,7 +106,7 @@ pub fn reading_vec_with_empty_table_works() {
 }
 
 pub fn reading_vec_with_complex_indexes_doesnt_work() {
-    let mut lua = Lua::new();
+    let lua = Lua::new();
 
     lua.execute::<()>(r#"v = { [-1] = -1, ["foo"] = 2, [{}] = 42 }"#).unwrap();
 
@@ -117,7 +117,7 @@ pub fn reading_vec_with_complex_indexes_doesnt_work() {
 }
 
 pub fn reading_heterogenous_vec_works() {
-    let mut lua = Lua::new();
+    let lua = Lua::new();
 
     let orig = [
         AnyLuaValue::LuaNumber(1.),
@@ -134,7 +134,7 @@ pub fn reading_heterogenous_vec_works() {
 }
 
 pub fn reading_vec_set_from_lua_works() {
-    let mut lua = Lua::new();
+    let lua = Lua::new();
 
     lua.execute::<()>(r#"v = { 1, 2, 3 }"#).unwrap();
 
@@ -146,7 +146,7 @@ pub fn reading_vec_set_from_lua_works() {
 }
 
 pub fn reading_hashmap_works() {
-    let mut lua = Lua::new();
+    let lua = Lua::new();
 
     let orig: HashMap<i32, f64> = (0..).zip([1., 2., 3.]).collect();
     let orig_copy = orig.clone();
@@ -170,7 +170,7 @@ pub fn reading_hashmap_works() {
 }
 
 pub fn reading_hashmap_from_sparse_table_works() {
-    let mut lua = Lua::new();
+    let lua = Lua::new();
 
     lua.execute::<()>(r#"v = { [-1] = -1, [2] = 2, [42] = 42 }"#).unwrap();
 
@@ -182,7 +182,7 @@ pub fn reading_hashmap_from_sparse_table_works() {
 }
 
 pub fn reading_hashmap_with_empty_table_works() {
-    let mut lua = Lua::new();
+    let lua = Lua::new();
 
     lua.execute::<()>(r#"v = { }"#).unwrap();
 
@@ -191,7 +191,7 @@ pub fn reading_hashmap_with_empty_table_works() {
 }
 
 pub fn reading_hashmap_with_complex_indexes_works() {
-    let mut lua = Lua::new();
+    let lua = Lua::new();
 
     lua.execute::<()>(r#"v = { [-1] = -1, ["foo"] = 2, [2.] = 42 }"#).unwrap();
 
@@ -203,7 +203,7 @@ pub fn reading_hashmap_with_complex_indexes_works() {
 }
 
 pub fn reading_hashmap_with_floating_indexes_works() {
-    let mut lua = Lua::new();
+    let lua = Lua::new();
 
     lua.execute::<()>(r#"v = { [-1.25] = -1, [2.5] = 42 }"#).unwrap();
 
@@ -216,7 +216,7 @@ pub fn reading_hashmap_with_floating_indexes_works() {
 }
 
 pub fn reading_heterogenous_hashmap_works() {
-    let mut lua = Lua::new();
+    let lua = Lua::new();
 
     let mut orig = HashMap::new();
     orig.insert(AnyHashableLuaValue::LuaNumber(42), AnyLuaValue::LuaNumber(42.));
@@ -231,7 +231,7 @@ pub fn reading_heterogenous_hashmap_works() {
 }
 
 pub fn reading_hashmap_set_from_lua_works() {
-    let mut lua = Lua::new();
+    let lua = Lua::new();
 
     lua.execute::<()>(r#"v = { [1] = 2, [2] = 3, [3] = 4 }"#).unwrap();
 

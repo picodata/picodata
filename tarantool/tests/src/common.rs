@@ -53,7 +53,7 @@ pub(crate) fn capture_value<T>(_: &T) {}
 
 pub(crate) fn fiber_csw() -> i32 {
     static mut FUNCTION_DEFINED: bool = false;
-    let mut lua = crate::hlua::global();
+    let lua = crate::hlua::global();
 
     if unsafe { !FUNCTION_DEFINED } {
         lua.execute::<()>(r#"

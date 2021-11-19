@@ -7,37 +7,37 @@ use tarantool::hlua::{
 use std::io::Read;
 
 pub fn basic() {
-    let mut lua = crate::hlua::global();
-    let mut f = LuaFunction::load(&mut lua, "return 5;").unwrap();
+    let lua = crate::hlua::global();
+    let f = LuaFunction::load(&lua, "return 5;").unwrap();
     let val: i32 = f.call().unwrap();
     assert_eq!(val, 5);
 }
 
 pub fn args() {
-    let mut lua = crate::hlua::global();
+    let lua = crate::hlua::global();
     lua.execute::<()>("function foo(a) return a * 5 end").unwrap();
     let val: i32 = lua.get::<LuaFunction<_>, _>("foo").unwrap().call_with_args(3).unwrap();
     assert_eq!(val, 15);
 }
 
 pub fn args_in_order() {
-    let mut lua = crate::hlua::global();
+    let lua = crate::hlua::global();
     lua.execute::<()>("function foo(a, b) return a - b end").unwrap();
     let val: i32 = lua.get::<LuaFunction<_>, _>("foo").unwrap().call_with_args((5, 3)).unwrap();
     assert_eq!(val, 2);
 }
 
 pub fn syntax_error() {
-    let mut lua = crate::hlua::global();
-    match LuaFunction::load(&mut lua, "azerazer") {
+    let lua = crate::hlua::global();
+    match LuaFunction::load(&lua, "azerazer") {
         Err(LuaError::SyntaxError(_)) => (),
         _ => panic!(),
     };
 }
 
 pub fn execution_error() {
-    let mut lua = crate::hlua::global();
-    let mut f = LuaFunction::load(&mut lua, "return a:hello()").unwrap();
+    let lua = crate::hlua::global();
+    let f = LuaFunction::load(&lua, "return a:hello()").unwrap();
     match f.call::<()>() {
         Err(LuaError::ExecutionError(_)) => (),
         _ => panic!(),
@@ -45,8 +45,8 @@ pub fn execution_error() {
 }
 
 pub fn check_types() {
-    let mut lua = crate::hlua::global();
-    let mut f = LuaFunction::load(&mut lua, "return 12").unwrap();
+    let lua = crate::hlua::global();
+    let f = LuaFunction::load(&lua, "return 12").unwrap();
     let err = f.call::<bool>().unwrap_err();
     match err {
         LuaError::WrongType{ref rust_expected, ref lua_actual} => {
@@ -67,25 +67,25 @@ pub fn check_types() {
 }
 
 pub fn call_and_read_table() {
-    let mut lua = crate::hlua::global();
-    let mut f = LuaFunction::load(&mut lua, "return {1, 2, 3};").unwrap();
-    let mut val: LuaTable<_> = f.call().unwrap();
-    assert_eq!(val.get::<u8, _, _>(2).unwrap(), 2);
+    let lua = crate::hlua::global();
+    let f = LuaFunction::load(&lua, "return {1, 2, 3};").unwrap();
+    let val: LuaTable<_> = f.call().unwrap();
+    assert_eq!(val.get::<u8, _>(2).unwrap(), 2);
 }
 
 pub fn lua_function_returns_function() {
-    let mut lua = crate::hlua::global();
+    let lua = crate::hlua::global();
     lua.execute::<()>("function foo() return 5 end").unwrap();
-    let mut bar = LuaFunction::load(&mut lua, "return foo;").unwrap();
-    let mut foo: LuaFunction<_> = bar.call().unwrap();
+    let bar = LuaFunction::load(&lua, "return foo;").unwrap();
+    let foo: LuaFunction<_> = bar.call().unwrap();
     let val: i32 = foo.call().unwrap();
     assert_eq!(val, 5);
 }
 
 pub fn error() {
-    let mut lua = crate::hlua::global();
+    let lua = crate::hlua::global();
     lua.execute::<()>("function foo() error('oops'); end").unwrap();
-    let mut foo: LuaFunction<_> = lua.get("foo").unwrap();
+    let foo: LuaFunction<_> = lua.get("foo").unwrap();
     let res: Result<(), _> = foo.call();
     assert!(res.is_err());
     if let Err(LuaError::ExecutionError(msg)) = res {
@@ -94,7 +94,7 @@ pub fn error() {
 }
 
 pub fn either_or() {
-    let mut lua = crate::hlua::global();
+    let lua = crate::hlua::global();
     lua.execute::<()>(r#"
         function foo(a)
             if a > 0 then
@@ -104,7 +104,7 @@ pub fn either_or() {
             end
         end
     "#).unwrap();
-    let mut foo: LuaFunction<_> = lua.get("foo").unwrap();
+    let foo: LuaFunction<_> = lua.get("foo").unwrap();
     type Res = Result<(bool, i32, i32), (bool, String)>;
     let res: Res = foo.call_with_args(1).unwrap();
     assert_eq!(res, Ok((true, 69, 420)));
@@ -113,17 +113,15 @@ pub fn either_or() {
 }
 
 pub fn multiple_return_values() {
-    let mut lua = crate::hlua::global();
-    let mut f = LuaFunction::load(&mut lua, r#"return 69, "foo", 3.14, true;"#).unwrap();
+    let lua = crate::hlua::global();
+    let f = LuaFunction::load(&lua, r#"return 69, "foo", 3.14, true;"#).unwrap();
     let res: (i32, String, f64, bool) = f.call().unwrap();
     assert_eq!(res, (69, "foo".to_string(), 3.14, true));
 }
 
 pub fn multiple_return_values_fail() {
-    let mut lua = crate::hlua::global();
-    let mut f = LuaFunction::load(&mut lua,
-        r#"return 1, 2, 3;"#
-    ).unwrap();
+    let lua = crate::hlua::global();
+    let f = LuaFunction::load(&lua, "return 1, 2, 3;").unwrap();
     assert_eq!(f.call::<i32>().unwrap(), 1);
     assert_eq!(f.call::<(i32,)>().unwrap(), (1,));
     assert_eq!(f.call::<(i32, i32)>().unwrap(), (1, 2));
@@ -161,7 +159,7 @@ pub fn execute_from_reader_errors_if_cant_read() {
         }
     }
 
-    let mut lua = crate::hlua::global();
+    let lua = crate::hlua::global();
     let reader = Reader { };
     let res: Result<(), _> = lua.execute_from_reader(reader);
     match res {

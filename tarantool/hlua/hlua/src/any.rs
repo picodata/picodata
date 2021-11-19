@@ -1,7 +1,7 @@
 use std::num::NonZeroI32;
 
 use crate::{
-    AsMutLua,
+    AsLua,
     Push,
     PushGuard,
     PushOne,
@@ -45,62 +45,47 @@ pub enum AnyLuaValue {
 }
 
 impl<'lua, L> Push<L> for AnyLuaValue
-    where L: AsMutLua<'lua>
+where
+    L: AsLua,
 {
     type Err = Void;      // TODO: use `!` instead (https://github.com/rust-lang/rust/issues/35121)
 
     #[inline]
-    fn push_to_lua(self, mut lua: L) -> Result<PushGuard<L>, (Void, L)> {
-        let raw_lua = lua.as_lua();
+    fn push_to_lua(self, lua: L) -> Result<PushGuard<L>, (Void, L)> {
         match self {
             AnyLuaValue::LuaString(val) => val.push_to_lua(lua),
             AnyLuaValue::LuaAnyString(val) => val.push_to_lua(lua),
             AnyLuaValue::LuaNumber(val) => val.push_to_lua(lua),
             AnyLuaValue::LuaBoolean(val) => val.push_to_lua(lua),
-            AnyLuaValue::LuaArray(val) => {
-                // Pushing a `Vec<(AnyLuaValue, AnyLuaValue)>` on a `L` requires calling the
-                // function that pushes a `AnyLuaValue` on a `&mut L`, which in turns requires
-                // calling the function that pushes a `AnyLuaValue` on a `&mut &mut L`, and so on.
-                // In order to avoid this infinite recursion, we push the array on a
-                // `&mut AsMutLua` instead.
-
-                // We also need to destroy and recreate the push guard, otherwise the type parameter
-                // doesn't match.
-                let size = val.push_no_err(&mut lua as &mut dyn AsMutLua<'lua>)
-                    .forget_internal();
-
-                Ok(PushGuard {
-                    lua: lua,
-                    size: size,
-                    raw_lua: raw_lua,
-                })
-            }
+            AnyLuaValue::LuaArray(val) => Ok(val.push_no_err(lua)),
             AnyLuaValue::LuaNil => Nil.push_to_lua(lua),
             AnyLuaValue::LuaOther => panic!("can't push a AnyLuaValue of type Other"),
         }
     }
 }
 
-impl<'lua, L> PushOne<L> for AnyLuaValue where L: AsMutLua<'lua> {}
-
-impl<'lua, L> LuaRead<L> for AnyLuaValue
-    where L: AsMutLua<'lua>
+impl<'lua, L> PushOne<L> for AnyLuaValue
+where
+    L: AsLua,
 {
+}
+
+impl<L: AsLua> LuaRead<L> for AnyLuaValue {
     #[inline]
-    fn lua_read_at_position(mut lua: L, index: NonZeroI32) -> Result<AnyLuaValue, L> {
+    fn lua_read_at_position(lua: L, index: NonZeroI32) -> Result<AnyLuaValue, L> {
 
         // If we know that the value on the stack is a string, we should try
         // to parse it as a string instead of a number or boolean, so that
         // values such as '1.10' don't become `AnyLuaValue::LuaNumber(1.1)`.
-        let data_type = unsafe { ffi::lua_type(lua.as_lua().0, index.into()) };
+        let data_type = unsafe { ffi::lua_type(lua.as_lua(), index.into()) };
         if data_type == ffi::LUA_TSTRING {
 
-            let mut lua = match LuaRead::lua_read_at_position(&mut lua as &mut dyn AsMutLua<'lua>, index) {
+            let lua = match LuaRead::lua_read_at_position(lua, index) {
                 Ok(v) => return Ok(AnyLuaValue::LuaString(v)),
                 Err(lua) => lua,
             };
 
-            let _lua = match LuaRead::lua_read_at_position(&mut lua as &mut dyn AsMutLua<'lua>, index) {
+            let _lua = match LuaRead::lua_read_at_position(lua, index) {
                 Ok(v) => return Ok(AnyLuaValue::LuaAnyString(v)),
                 Err(lua) => lua,
             };
@@ -109,35 +94,38 @@ impl<'lua, L> LuaRead<L> for AnyLuaValue
 
         } else {
 
-            let mut lua = match LuaRead::lua_read_at_position(&mut lua as &mut dyn AsMutLua<'lua>, index) {
+            let lua = match LuaRead::lua_read_at_position(lua, index) {
                 Ok(v) => return Ok(AnyLuaValue::LuaNumber(v)),
                 Err(lua) => lua,
             };
 
-            let mut lua = match LuaRead::lua_read_at_position(&mut lua as &mut dyn AsMutLua<'lua>, index) {
+            let lua = match LuaRead::lua_read_at_position(lua, index) {
                 Ok(v) => return Ok(AnyLuaValue::LuaBoolean(v)),
                 Err(lua) => lua,
             };
 
-            let mut lua = match LuaRead::lua_read_at_position(&mut lua as &mut dyn AsMutLua<'lua>, index) {
+            let lua = match LuaRead::lua_read_at_position(lua, index) {
                 Ok(v) => return Ok(AnyLuaValue::LuaString(v)),
                 Err(lua) => lua,
             };
 
-            let mut lua = match LuaRead::lua_read_at_position(&mut lua as &mut dyn AsMutLua<'lua>, index) {
+            let lua = match LuaRead::lua_read_at_position(lua, index) {
                 Ok(v) => return Ok(AnyLuaValue::LuaAnyString(v)),
                 Err(lua) => lua,
             };
 
-            let lua = match Nil::lua_read_at_position(&mut lua, index) {
+            let lua = match Nil::lua_read_at_position(lua, index) {
                 Ok(Nil) => return Ok(AnyLuaValue::LuaNil),
                 Err(lua) => lua,
             };
 
-            let table: Result<LuaTable<_>, _> = LuaRead::lua_read_at_position(lua, index);
+            let table = LuaTable::lua_read_at_position(lua.as_lua(), index);
             let _lua = match table {
-                Ok(mut v) => return Ok(AnyLuaValue::LuaArray(v.iter::<AnyLuaValue, AnyLuaValue>()
-                                                              .filter_map(|e| e).collect())),
+                Ok(v) => return Ok(
+                    AnyLuaValue::LuaArray(
+                        v.iter::<AnyLuaValue, AnyLuaValue>().flatten().collect()
+                    )
+                ),
                 Err(lua) => lua,
             };
 
@@ -147,57 +135,46 @@ impl<'lua, L> LuaRead<L> for AnyLuaValue
 }
 
 impl<'lua, L> Push<L> for AnyHashableLuaValue
-    where L: AsMutLua<'lua>
+where
+    L: AsLua,
 {
     type Err = Void;      // TODO: use `!` instead (https://github.com/rust-lang/rust/issues/35121)
 
     #[inline]
-    fn push_to_lua(self, mut lua: L) -> Result<PushGuard<L>, (Void, L)> {
-        let raw_lua = lua.as_lua();
+    fn push_to_lua(self, lua: L) -> Result<PushGuard<L>, (Void, L)> {
         match self {
             AnyHashableLuaValue::LuaString(val) => val.push_to_lua(lua),
             AnyHashableLuaValue::LuaAnyString(val) => val.push_to_lua(lua),
             AnyHashableLuaValue::LuaNumber(val) => val.push_to_lua(lua),
             AnyHashableLuaValue::LuaBoolean(val) => val.push_to_lua(lua),
-            AnyHashableLuaValue::LuaArray(val) => {
-                // Pushing a `Vec<(AnyHashableLuaValue, AnyHashableLuaValue)>` on a `L` requires calling the
-                // function that pushes a `AnyHashableLuaValue` on a `&mut L`, which in turns requires
-                // calling the function that pushes a `AnyHashableLuaValue` on a `&mut &mut L`, and so on.
-                // In order to avoid this infinite recursion, we push the array on a
-                // `&mut AsMutLua` instead.
-
-                // We also need to destroy and recreate the push guard, otherwise the type parameter
-                // doesn't match.
-                let size = val.push_no_err(&mut lua as &mut dyn AsMutLua<'lua>).forget_internal();
-
-                Ok(PushGuard {
-                    lua: lua,
-                    size: size,
-                    raw_lua: raw_lua,
-                })
-            }
+            AnyHashableLuaValue::LuaArray(val) => Ok(val.push_no_err(lua)),
             AnyHashableLuaValue::LuaNil => Nil.push_to_lua(lua),
             AnyHashableLuaValue::LuaOther => panic!("can't push a AnyHashableLuaValue of type Other"),
         }
     }
 }
 
-impl<'lua, L> PushOne<L> for AnyHashableLuaValue where L: AsMutLua<'lua> {}
+impl<'lua, L> PushOne<L> for AnyHashableLuaValue
+where
+    L: AsLua,
+{
+}
 
 impl<'lua, L> LuaRead<L> for AnyHashableLuaValue
-    where L: AsMutLua<'lua>
+where
+    L: AsLua,
 {
     #[inline]
-    fn lua_read_at_position(mut lua: L, index: NonZeroI32) -> Result<AnyHashableLuaValue, L> {
-        let data_type = unsafe { ffi::lua_type(lua.as_lua().0, index.into()) };
+    fn lua_read_at_position(lua: L, index: NonZeroI32) -> Result<AnyHashableLuaValue, L> {
+        let data_type = unsafe { ffi::lua_type(lua.as_lua(), index.into()) };
         if data_type == ffi::LUA_TSTRING {
 
-            let mut lua = match LuaRead::lua_read_at_position(&mut lua as &mut dyn AsMutLua<'lua>, index) {
+            let lua = match LuaRead::lua_read_at_position(lua, index) {
                 Ok(v) => return Ok(AnyHashableLuaValue::LuaString(v)),
                 Err(lua) => lua,
             };
 
-            let _lua = match LuaRead::lua_read_at_position(&mut lua as &mut dyn AsMutLua<'lua>, index) {
+            let _lua = match LuaRead::lua_read_at_position(lua, index) {
                 Ok(v) => return Ok(AnyHashableLuaValue::LuaAnyString(v)),
                 Err(lua) => lua,
             };
@@ -206,36 +183,37 @@ impl<'lua, L> LuaRead<L> for AnyHashableLuaValue
 
         } else {
 
-            let mut lua = match LuaRead::lua_read_at_position(&mut lua as &mut dyn AsMutLua<'lua>, index) {
+            let lua = match LuaRead::lua_read_at_position(lua, index) {
                 Ok(v) => return Ok(AnyHashableLuaValue::LuaNumber(v)),
                 Err(lua) => lua,
             };
 
-            let mut lua = match LuaRead::lua_read_at_position(&mut lua as &mut dyn AsMutLua<'lua>, index) {
+            let lua = match LuaRead::lua_read_at_position(lua, index) {
                 Ok(v) => return Ok(AnyHashableLuaValue::LuaBoolean(v)),
                 Err(lua) => lua,
             };
 
-            let mut lua = match LuaRead::lua_read_at_position(&mut lua as &mut dyn AsMutLua<'lua>, index) {
+            let lua = match LuaRead::lua_read_at_position(lua, index) {
                 Ok(v) => return Ok(AnyHashableLuaValue::LuaString(v)),
                 Err(lua) => lua,
             };
 
-            let mut lua = match LuaRead::lua_read_at_position(&mut lua as &mut dyn AsMutLua<'lua>, index) {
+            let lua = match LuaRead::lua_read_at_position(lua, index) {
                 Ok(v) => return Ok(AnyHashableLuaValue::LuaAnyString(v)),
                 Err(lua) => lua,
             };
 
-            let mut lua = match Nil::lua_read_at_position(&mut lua, index) {
+            let lua = match Nil::lua_read_at_position(lua, index) {
                 Ok(Nil) => return Ok(AnyHashableLuaValue::LuaNil),
                 Err(lua) => lua,
             };
 
-            let table: Result<LuaTable<_>, _> = LuaRead::lua_read_at_position(&mut lua as &mut dyn AsMutLua<'lua>, index);
+            let table = LuaTable::lua_read_at_position(lua.as_lua(), index);
             let _lua = match table {
-                Ok(mut v) => return Ok(AnyHashableLuaValue::LuaArray(v
-                    .iter::<AnyHashableLuaValue, AnyHashableLuaValue>()
-                    .filter_map(|e| e).collect())),
+                Ok(v) => return Ok(AnyHashableLuaValue::LuaArray(
+                    v.iter::<AnyHashableLuaValue, AnyHashableLuaValue>()
+                        .flatten().collect()
+                )),
                 Err(lua) => lua,
             };
 

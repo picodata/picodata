@@ -8,7 +8,7 @@ use tarantool::hlua::{
 };
 
 pub fn read_i32s() {
-    let mut lua = Lua::new();
+    let lua = Lua::new();
 
     lua.set("a", 2);
 
@@ -40,7 +40,7 @@ pub fn read_i32s() {
 pub fn write_i32s() {
     // TODO:
 
-    let mut lua = Lua::new();
+    let lua = Lua::new();
 
     lua.set("a", 2);
     let x: i32 = lua.get("a").unwrap();
@@ -48,7 +48,7 @@ pub fn write_i32s() {
 }
 
 pub fn readwrite_floats() {
-    let mut lua = Lua::new();
+    let lua = Lua::new();
 
     lua.set("a", 2.51234 as f32);
     lua.set("b", 3.4123456789 as f64);
@@ -67,7 +67,7 @@ pub fn readwrite_floats() {
 }
 
 pub fn readwrite_bools() {
-    let mut lua = Lua::new();
+    let lua = Lua::new();
 
     lua.set("a", true);
     lua.set("b", false);
@@ -80,7 +80,7 @@ pub fn readwrite_bools() {
 }
 
 pub fn readwrite_strings() {
-    let mut lua = Lua::new();
+    let lua = Lua::new();
 
     lua.set("a", "hello");
     lua.set("b", "hello".to_string());
@@ -101,7 +101,7 @@ pub fn readwrite_strings() {
 }
 
 pub fn i32_to_string() {
-    let mut lua = Lua::new();
+    let lua = Lua::new();
 
     lua.set("a", 2);
 
@@ -110,7 +110,7 @@ pub fn i32_to_string() {
 }
 
 pub fn string_to_i32() {
-    let mut lua = Lua::new();
+    let lua = Lua::new();
 
     lua.set("a", "2");
     lua.set("b", "aaa");
@@ -123,7 +123,7 @@ pub fn string_to_i32() {
 }
 
 pub fn string_on_lua() {
-    let mut lua = Lua::new();
+    let lua = Lua::new();
 
     lua.set("a", "aaa");
     {
@@ -139,7 +139,7 @@ pub fn string_on_lua() {
 }
 
 pub fn push_opt() {
-    let mut lua = Lua::new();
+    let lua = Lua::new();
 
     lua.set("some", function0(|| Some(123)));
     lua.set("none", function0(|| Option::None::<i32>));
@@ -162,7 +162,7 @@ pub fn push_opt() {
 }
 
 pub fn read_nil() {
-    let mut lua = Lua::new();
+    let lua = Lua::new();
     assert_eq!(lua.execute::<Nil>("return nil").unwrap(), Nil);
     assert_eq!(lua.execute::<Option<i32>>("return nil").unwrap(), None);
 }

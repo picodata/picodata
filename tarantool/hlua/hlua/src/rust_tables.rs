@@ -3,10 +3,11 @@ use crate::{
     Push,
     PushGuard,
     PushOne,
-    AsMutLua,
-    TuplePushError,
+    AsLua,
+    tuples::TuplePushError::{self, First, Other},
     LuaRead,
-    LuaTable,
+    LuaState,
+    lua_tables::LuaTable,
 };
 
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -15,102 +16,107 @@ use std::iter;
 use std::num::NonZeroI32;
 
 #[inline]
-fn push_iter<'lua, L, V, I, E>(mut lua: L, iterator: I) -> Result<PushGuard<L>, (E, L)>
-    where L: AsMutLua<'lua>,
-          V: for<'b> Push<&'b mut L, Err = E>,
-          I: Iterator<Item = V>
+fn push_iter<L, I>(lua: L, iterator: I)
+    -> Result<PushGuard<L>, (<<I as Iterator>::Item as Push<LuaState>>::Err, L)>
+where
+    L: AsLua,
+    I: Iterator,
+    <I as Iterator>::Item: Push<LuaState>,
 {
     // creating empty table
-    unsafe { ffi::lua_newtable(lua.as_mut_lua().0) };
+    unsafe { ffi::lua_newtable(lua.as_lua()) };
 
     for (elem, index) in iterator.zip(1..) {
-        let size = match elem.push_to_lua(&mut lua) {
+        let size = match elem.push_to_lua(lua.as_lua()) {
             Ok(pushed) => pushed.forget_internal(),
-            Err((_err, _lua)) => panic!(),     // TODO: wrong   return Err((err, lua)),      // FIXME: destroy the temporary table
+            // TODO: wrong   return Err((err, lua)),
+            // FIXME: destroy the temporary table
+            Err((_err, _lua)) => panic!(),
         };
 
         match size {
             0 => continue,
             1 => {
                 let index = index as u32;
-                match index.push_to_lua(&mut lua) {
+                match index.push_to_lua(lua.as_lua()) {
                     Ok(pushed) => pushed.forget_internal(),
                     Err(_) => unreachable!(),
                 };
-                unsafe { ffi::lua_insert(lua.as_mut_lua().0, -2) }
-                unsafe { ffi::lua_settable(lua.as_mut_lua().0, -3) }
+                unsafe { ffi::lua_insert(lua.as_lua(), -2) }
+                unsafe { ffi::lua_settable(lua.as_lua(), -3) }
             }
-            2 => unsafe { ffi::lua_settable(lua.as_mut_lua().0, -3) },
+            2 => unsafe { ffi::lua_settable(lua.as_lua(), -3) },
             _ => unreachable!(),
         }
     }
 
-    let raw_lua = lua.as_lua();
-    Ok(PushGuard {
-        lua: lua,
-        size: 1,
-        raw_lua: raw_lua,
-    })
+    unsafe {
+        Ok(PushGuard::new(lua, 1))
+    }
 }
 
 #[inline]
-fn push_rec_iter<'lua, L, V, I, E>(mut lua: L, iterator: I) -> Result<PushGuard<L>, (E, L)>
-    where L: AsMutLua<'lua>,
-          V: for<'a> Push<&'a mut L, Err = E>,
-          I: Iterator<Item = V>
+fn push_rec_iter<L, I>(lua: L, iterator: I)
+    -> Result<PushGuard<L>, (<<I as Iterator>::Item as Push<LuaState>>::Err, L)>
+where
+    L: AsLua,
+    I: Iterator,
+    <I as Iterator>::Item: Push<LuaState>,
 {
     let (nrec, _) = iterator.size_hint();
 
     // creating empty table with pre-allocated non-array elements
-    unsafe { ffi::lua_createtable(lua.as_mut_lua().0, 0, nrec as i32) };
+    unsafe { ffi::lua_createtable(lua.as_lua(), 0, nrec as i32) };
 
     for elem in iterator {
-        let size = match elem.push_to_lua(&mut lua) {
+        let size = match elem.push_to_lua(lua.as_lua()) {
             Ok(pushed) => pushed.forget_internal(),
-            Err((_err, _lua)) => panic!(),     // TODO: wrong   return Err((err, lua)),      // FIXME: destroy the temporary table
+            // TODO: wrong   return Err((err, lua)),
+            // FIXME: destroy the temporary table
+            Err((_err, _lua)) => panic!(),
         };
 
         match size {
             0 => continue,
-            2 => unsafe { ffi::lua_settable(lua.as_mut_lua().0, -3) },
+            2 => unsafe { ffi::lua_settable(lua.as_lua(), -3) },
             _ => unreachable!(),
         }
     }
 
-    let raw_lua = lua.as_lua();
-    Ok(PushGuard {
-        lua: lua,
-        size: 1,
-        raw_lua: raw_lua,
-    })
+    unsafe {
+        Ok(PushGuard::new(lua, 1))
+    }
 }
 
-impl<'lua, L, T, E> Push<L> for Vec<T>
-    where L: AsMutLua<'lua>,
-          T: for<'a> Push<&'a mut L, Err = E>
+impl<L, T> Push<L> for Vec<T>
+where
+    L: AsLua,
+    T: Push<LuaState>,
 {
-    type Err = E;
+    type Err = T::Err;
 
     #[inline]
-    fn push_to_lua(self, lua: L) -> Result<PushGuard<L>, (E, L)> {
+    fn push_to_lua(self, lua: L) -> Result<PushGuard<L>, (T::Err, L)> {
         push_iter(lua, self.into_iter())
     }
 }
 
-impl<'lua, L, T, E> PushOne<L> for Vec<T>
-    where L: AsMutLua<'lua>,
-          T: for<'a> Push<&'a mut L, Err = E>
+impl<L, T> PushOne<L> for Vec<T>
+where
+    L: AsLua,
+    T: Push<LuaState>,
 {
 }
 
-impl<'lua, L> LuaRead<L> for Vec<AnyLuaValue>
-    where L: AsMutLua<'lua>
+impl<L> LuaRead<L> for Vec<AnyLuaValue>
+where
+    L: AsLua,
 {
-    fn lua_read_at_position(mut lua: L, index: NonZeroI32) -> Result<Self, L> {
+    fn lua_read_at_position(lua: L, index: NonZeroI32) -> Result<Self, L> {
         // We need this as iteration order isn't guaranteed to match order of
         // keys, even if they're numeric
         // https://www.lua.org/manual/5.2/manual.html#pdf-next
-        let mut table = match LuaTable::lua_read_at_position(&mut lua, index) {
+        let table = match LuaTable::lua_read_at_position(lua.as_lua(), index) {
             Ok(table) => table,
             Err(_) => return Err(lua),
         };
@@ -129,8 +135,7 @@ impl<'lua, L> LuaRead<L> for Vec<AnyLuaValue>
             return Err(lua);
         }
 
-        let mut result =
-            Vec::with_capacity(maximum_key as usize);
+        let mut result = Vec::with_capacity(maximum_key as _);
 
         // We expect to start with first element of table and have this
         // be smaller that first key by one
@@ -153,67 +158,77 @@ impl<'lua, L> LuaRead<L> for Vec<AnyLuaValue>
     }
 }
 
-impl<'a, 'lua, L, T, E> Push<L> for &'a [T]
-    where L: AsMutLua<'lua>,
-          T: Clone + for<'b> Push<&'b mut L, Err = E>
+impl<'a, L, T> Push<L> for &'a [T]
+where
+    L: AsLua,
+    T: Push<LuaState>,
+    T: Clone,
 {
-    type Err = E;
+    type Err = T::Err;
 
     #[inline]
-    fn push_to_lua(self, lua: L) -> Result<PushGuard<L>, (E, L)> {
-        push_iter(lua, self.iter().map(|e| e.clone()))
+    fn push_to_lua(self, lua: L) -> Result<PushGuard<L>, (Self::Err, L)> {
+        push_iter(lua, self.into_iter().map(Clone::clone))
     }
 }
 
-impl<'a, 'lua, L, T, E> PushOne<L> for &'a [T]
-    where L: AsMutLua<'lua>,
-          T: Clone + for<'b> Push<&'b mut L, Err = E>
+impl<'a, L, T> PushOne<L> for &'a [T]
+where
+    L: AsLua,
+    T: Push<LuaState>,
+    T: Clone,
 {
 }
 
-impl<'lua, L> LuaRead<L> for HashMap<AnyHashableLuaValue, AnyLuaValue>
-    where L: AsMutLua<'lua>
+impl<L> LuaRead<L> for HashMap<AnyHashableLuaValue, AnyLuaValue>
+where
+    L: AsLua,
 {
-    // TODO: this should be implemented using the LuaTable API instead of raw Lua calls.
     fn lua_read_at_position(lua: L, index: NonZeroI32) -> Result<Self, L> {
-        let mut table = LuaTable::lua_read_at_position(lua, index)?;
+        let table = LuaTable::lua_read_at_position(lua, index)?;
         Ok(table.iter().flatten().collect())
     }
 }
 
 // TODO: use an enum for the error to allow different error types for K and V
-impl<'lua, L, K, V, E> Push<L> for HashMap<K, V>
-    where L: AsMutLua<'lua>,
-          K: for<'a, 'b> PushOne<&'a mut &'b mut L, Err = E> + Eq + Hash,
-          V: for<'a, 'b> PushOne<&'a mut &'b mut L, Err = E>
+impl<L, K, V> Push<L> for HashMap<K, V>
+where
+    L: AsLua,
+    K: PushOne<LuaState> + Eq + Hash,
+    V: PushOne<LuaState>,
 {
-    type Err = E;
+    type Err = TuplePushError<
+        <K as Push<LuaState>>::Err,
+        <V as Push<LuaState>>::Err,
+    >;
 
     #[inline]
-    fn push_to_lua(self, lua: L) -> Result<PushGuard<L>, (E, L)> {
+    fn push_to_lua(self, lua: L) -> Result<PushGuard<L>, (Self::Err, L)> {
         match push_rec_iter(lua, self.into_iter()) {
             Ok(g) => Ok(g),
-            Err((TuplePushError::First(err), lua)) => Err((err, lua)),
-            Err((TuplePushError::Other(err), lua)) => Err((err, lua)),
+            Err((TuplePushError::First(err), lua)) => Err((First(err), lua)),
+            Err((TuplePushError::Other(err), lua)) => Err((Other(err), lua)),
         }
     }
 }
 
-impl<'lua, L, K, V, E> PushOne<L> for HashMap<K, V>
-    where L: AsMutLua<'lua>,
-          K: for<'a, 'b> PushOne<&'a mut &'b mut L, Err = E> + Eq + Hash,
-          V: for<'a, 'b> PushOne<&'a mut &'b mut L, Err = E>
+impl<L, K, V, E> PushOne<L> for HashMap<K, V>
+where
+    L: AsLua,
+    K: PushOne<LuaState, Err = E> + Eq + Hash,
+    V: PushOne<LuaState, Err = E>
 {
 }
 
-impl<'lua, L, K, E> Push<L> for HashSet<K>
-    where L: AsMutLua<'lua>,
-          K: for<'a, 'b> PushOne<&'a mut &'b mut L, Err = E> + Eq + Hash
+impl<L, K> Push<L> for HashSet<K>
+where
+    L: AsLua,
+    K: PushOne<LuaState> + Eq + Hash
 {
-    type Err = E;
+    type Err = K::Err;
 
     #[inline]
-    fn push_to_lua(self, lua: L) -> Result<PushGuard<L>, (E, L)> {
+    fn push_to_lua(self, lua: L) -> Result<PushGuard<L>, (K::Err, L)> {
         match push_rec_iter(lua, self.into_iter().zip(iter::repeat(true))) {
             Ok(g) => Ok(g),
             Err((TuplePushError::First(err), lua)) => Err((err, lua)),
@@ -222,9 +237,10 @@ impl<'lua, L, K, E> Push<L> for HashSet<K>
     }
 }
 
-impl<'lua, L, K, E> PushOne<L> for HashSet<K>
-    where L: AsMutLua<'lua>,
-          K: for<'a, 'b> PushOne<&'a mut &'b mut L, Err = E> + Eq + Hash
+impl<L, K, E> PushOne<L> for HashSet<K>
+where
+    L: AsLua,
+    K: PushOne<LuaState, Err = E> + Eq + Hash
 {
 }
 

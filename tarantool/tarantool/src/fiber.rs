@@ -516,8 +516,7 @@ impl<T> LuaJoinHandle<T> {
             let guard = impl_details::lua_fiber_join(fiber_ref)
                 .map_err(|e| panic!("Unrecoverable lua failure: {}", e))
                 .unwrap();
-            let l = guard.as_lua().state_ptr();
-            let ud_ptr = lua::lua_touserdata(l, -1);
+            let ud_ptr = lua::lua_touserdata(guard.as_lua(), -1);
             let res = (ud_ptr as *mut Option<T>).as_mut()
                 .expect("fiber:join must return correct userdata")
                 .take()
@@ -571,7 +570,7 @@ impl Drop for LuaUnitJoinHandle {
 
 mod impl_details {
     use super::*;
-    use hlua::{AsMutLua, Lua, LuaError, PushGuard};
+    use hlua::{AsLua, Lua, LuaError, PushGuard};
 
     pub(super) unsafe fn lua_error_from_top(l: *mut lua::lua_State) -> LuaError {
         let mut len = std::mem::MaybeUninit::uninit();
@@ -603,9 +602,9 @@ mod impl_details {
         }
     }
 
-    pub(super) unsafe fn lua_fiber_join(f_ref: i32) -> Result<PushGuard<Lua<'static>>> {
-        let mut l = Lua::from_existing_state(ffi::luaT_state(), false);
-        let lptr = l.as_mut_lua().state_ptr();
+    pub(super) unsafe fn lua_fiber_join(f_ref: i32) -> Result<PushGuard<Lua>> {
+        let l = Lua::from_existing_state(ffi::luaT_state(), false);
+        let lptr = l.as_lua();
         lua::lua_rawgeti(lptr, lua::LUA_REGISTRYINDEX, f_ref);
         lua::lua_getfield(lptr, -1, c_ptr!("join"));
         lua::lua_pushvalue(lptr, -2);

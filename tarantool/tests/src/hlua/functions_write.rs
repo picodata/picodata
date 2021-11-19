@@ -8,7 +8,7 @@ use tarantool::hlua::{
 use std::sync::Arc;
 
 pub fn simple_function() {
-    let mut lua = crate::hlua::global();
+    let lua = crate::hlua::global();
 
     fn ret5() -> i32 {
         5
@@ -20,7 +20,7 @@ pub fn simple_function() {
 }
 
 pub fn one_argument() {
-    let mut lua = crate::hlua::global();
+    let lua = crate::hlua::global();
 
     fn plus_one(val: i32) -> i32 {
         val + 1
@@ -32,7 +32,7 @@ pub fn one_argument() {
 }
 
 pub fn two_arguments() {
-    let mut lua = crate::hlua::global();
+    let lua = crate::hlua::global();
 
     fn add(val1: i32, val2: i32) -> i32 {
         val1 + val2
@@ -44,7 +44,7 @@ pub fn two_arguments() {
 }
 
 pub fn wrong_arguments_types() {
-    let mut lua = crate::hlua::global();
+    let lua = crate::hlua::global();
 
     fn add(val1: i32, val2: i32) -> i32 {
         val1 + val2
@@ -58,7 +58,7 @@ pub fn wrong_arguments_types() {
 }
 
 pub fn return_result() {
-    let mut lua = crate::hlua::global();
+    let lua = crate::hlua::global();
     lua.openlibs();
 
     fn always_fails() -> Result<i32, &'static str> {
@@ -77,7 +77,7 @@ pub fn return_result() {
 }
 
 pub fn closures() {
-    let mut lua = crate::hlua::global();
+    let lua = crate::hlua::global();
 
     lua.set("add", function2(|a: i32, b: i32| a + b));
     lua.set("sub", function2(|a: i32, b: i32| a - b));
@@ -93,7 +93,7 @@ pub fn closures_lifetime() {
     fn t<F>(f: F)
         where F: Fn(i32, i32) -> i32
     {
-        let mut lua = crate::hlua::global();
+        let lua = crate::hlua::global();
 
         lua.set("add", function2(f));
 
@@ -108,7 +108,7 @@ pub fn closures_extern_access() {
     let mut a = 5;
 
     {
-        let mut lua = crate::hlua::global();
+        let lua = crate::hlua::global();
 
         lua.set("inc", function0(|| a += 1));
         for _ in 0..15 {
@@ -135,7 +135,7 @@ pub fn closures_drop_env() {
         let foo = Arc::new(Foo { });
 
         {
-            let mut lua = Lua::new();
+            let lua = Lua::new();
 
             lua.set("print_foo", function0(move || println!("{:?}", foo)));
         }

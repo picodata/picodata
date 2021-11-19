@@ -7,7 +7,7 @@ use std::{
 use crate::common::{DropCounter, capture_value, fiber_csw};
 use tarantool::fiber;
 use tarantool::hlua::{
-    AsMutLua,
+    AsLua,
     Lua,
 };
 use tarantool::ffi::lua;
@@ -199,8 +199,8 @@ struct LuaStackIntegrityGuard {
 
 impl LuaStackIntegrityGuard {
     fn new(name: &'static str) -> Self {
-        let mut lua: Lua = crate::hlua::global();
-        let l = lua.as_mut_lua().state_ptr();
+        let lua: Lua = crate::hlua::global();
+        let l = lua.as_lua();
         unsafe { lua::lua_pushlstring(l, name.as_bytes().as_ptr() as *mut i8, name.len()) };
         Self{name}
     }
@@ -208,8 +208,8 @@ impl LuaStackIntegrityGuard {
 
 impl Drop for LuaStackIntegrityGuard {
     fn drop(&mut self) {
-        let mut lua: Lua = crate::hlua::global();
-        let l = lua.as_mut_lua().state_ptr();
+        let lua: Lua = crate::hlua::global();
+        let l = lua.as_lua();
 
         let msg = unsafe {
             let cstr = lua::lua_tostring(l, -1);
@@ -273,8 +273,7 @@ pub fn start_error() {
 
     impl LuaContextSpoiler {
         fn new() -> Self {
-            let mut lua: Lua = crate::hlua::global();
-            lua.execute::<()>(r#"
+            crate::hlua::global().execute::<()>(r#"
             _fiber_new_backup = package.loaded.fiber.new
             package.loaded.fiber.new = function() error("Artificial error", 0) end
             "#).unwrap();
@@ -284,8 +283,7 @@ pub fn start_error() {
 
     impl Drop for LuaContextSpoiler {
         fn drop(&mut self) {
-            let mut lua: Lua = crate::hlua::global();
-            lua.execute::<()>(r#"
+            crate::hlua::global().execute::<()>(r#"
             package.loaded.fiber.new = _fiber_new_backup
             _fiber_new_backup = nil
             "#).unwrap();
@@ -310,7 +308,7 @@ pub fn require_error() {
 
     impl LuaContextSpoiler {
         fn new() -> Self {
-            let mut lua: Lua = crate::hlua::global();
+            let lua: Lua = crate::hlua::global();
             lua.execute::<()>(r#"
             _fiber_backup = package.loaded.fiber
             package.loaded.fiber = nil
@@ -322,7 +320,7 @@ pub fn require_error() {
 
     impl Drop for LuaContextSpoiler {
         fn drop(&mut self) {
-            let mut lua: Lua = crate::hlua::global();
+            let lua: Lua = crate::hlua::global();
             lua.execute::<()>(r#"
             package.preload.fiber = nil
             package.loaded.fiber = _fiber_backup

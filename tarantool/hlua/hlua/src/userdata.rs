@@ -7,11 +7,10 @@ use std::ptr;
 
 use crate::{
     AsLua,
-    AsMutLua,
     Push,
     PushGuard,
-    LuaContext,
     LuaRead,
+    LuaState,
     InsideCallback,
     LuaTable,
     c_ptr,
@@ -88,17 +87,18 @@ extern "C" fn destructor_wrapper<T>(lua: *mut ffi::lua_State) -> libc::c_int {
 ///  - `metatable`: Function that fills the metatable of the object.
 ///
 #[inline]
-pub fn push_userdata<'lua, L, T, F>(data: T, mut lua: L, metatable: F) -> PushGuard<L>
-    where F: FnOnce(LuaTable<&mut PushGuard<&mut L>>),
-          L: AsMutLua<'lua>,
-          T: Send + 'static + Any
+pub fn push_userdata<L, T, F>(data: T, lua: L, metatable: F) -> PushGuard<L>
+where
+    F: for<'a> FnOnce(LuaTable<&'a PushGuard<L>>),
+    L: AsLua,
+    T: Send + 'static + Any,
 {
     unsafe {
         let typeid = TypeId::of::<T>();
 
         let lua_data = {
             let tot_size = mem::size_of_val(&typeid) + mem::size_of_val(&data);
-            ffi::lua_newuserdata(lua.as_mut_lua().0, tot_size as libc::size_t)
+            ffi::lua_newuserdata(lua.as_lua(), tot_size as libc::size_t)
         };
 
         // We check the alignment requirements.
@@ -112,10 +112,8 @@ pub fn push_userdata<'lua, L, T, F>(data: T, mut lua: L, metatable: F) -> PushGu
         let data_loc = (lua_data as *const u8).offset(mem::size_of_val(&typeid) as isize);
         ptr::write(data_loc as *mut _, data);
 
-        let lua_raw = lua.as_mut_lua();
-
         // Creating a metatable.
-        ffi::lua_newtable(lua.as_mut_lua().0);
+        ffi::lua_newtable(lua.as_lua());
 
         // Index "__gc" in the metatable calls the object's destructor.
 
@@ -123,47 +121,35 @@ pub fn push_userdata<'lua, L, T, F>(data: T, mut lua: L, metatable: F) -> PushGu
         // After some discussion on IRC, it would be acceptable to add a reexport in libcore
         // without going through the RFC process.
         {
-            match "__gc".push_to_lua(&mut lua) {
+            match "__gc".push_to_lua(lua.as_lua()) {
                 Ok(p) => p.forget(),
                 Err(_) => unreachable!(),
             };
 
-            ffi::lua_pushcfunction(lua.as_mut_lua().0, destructor_wrapper::<T>);
-            ffi::lua_settable(lua.as_mut_lua().0, -3);
+            ffi::lua_pushcfunction(lua.as_lua(), destructor_wrapper::<T>);
+            ffi::lua_settable(lua.as_lua(), -3);
         }
+
+        let lua_state = lua.as_lua();
 
         // Calling the metatable closure.
-        {
-            let raw_lua = lua.as_lua();
-            let mut guard = PushGuard {
-                lua: &mut lua,
-                size: 1,
-                raw_lua: raw_lua,
-            };
-            metatable(LuaRead::lua_read(&mut guard).ok().unwrap());
-            guard.forget();
-        }
+        let guard = PushGuard::new(lua, 1);
+        metatable(LuaTable::lua_read(&guard).ok().unwrap());
 
-        ffi::lua_setmetatable(lua_raw.0, -2);
-    }
+        ffi::lua_setmetatable(lua_state, -2);
 
-    let raw_lua = lua.as_lua();
-    PushGuard {
-        lua: lua,
-        size: 1,
-        raw_lua: raw_lua,
+        guard
     }
 }
 
-///
 #[inline]
-pub fn read_userdata<'t, 'c, T>(lua: &'c mut InsideCallback,
-                                index: i32)
-                                -> Result<&'t mut T, &'c mut InsideCallback>
-    where T: 'static + Any
+pub fn read_userdata<'t, 'c, T>(lua: &'c InsideCallback, index: i32)
+    -> Result<&'t mut T, &'c InsideCallback>
+where
+    T: 'static + Any,
 {
     unsafe {
-        let data_ptr = ffi::lua_touserdata(lua.as_lua().0, index);
+        let data_ptr = ffi::lua_touserdata(lua.as_lua(), index);
         if data_ptr.is_null() {
             return Err(lua);
         }
@@ -186,14 +172,15 @@ pub struct UserdataOnStack<T, L> {
     marker: PhantomData<T>,
 }
 
-impl<'lua, T, L> LuaRead<L> for UserdataOnStack<T, L>
-    where L: AsMutLua<'lua>,
-          T: 'lua + Any
+impl<T, L> LuaRead<L> for UserdataOnStack<T, L>
+where
+    L: AsLua,
+    T: Any,
 {
     #[inline]
     fn lua_read_at_position(lua: L, index: NonZeroI32) -> Result<UserdataOnStack<T, L>, L> {
         unsafe {
-            let data_ptr = ffi::lua_touserdata(lua.as_lua().0, index.into());
+            let data_ptr = ffi::lua_touserdata(lua.as_lua(), index.into());
             if data_ptr.is_null() {
                 return Err(lua);
             }
@@ -212,51 +199,44 @@ impl<'lua, T, L> LuaRead<L> for UserdataOnStack<T, L>
     }
 }
 
-unsafe impl<'lua, T, L> AsLua<'lua> for UserdataOnStack<T, L>
-    where L: AsLua<'lua>,
-          T: 'lua + Any
+impl<T, L> AsLua for UserdataOnStack<T, L>
+where
+    L: AsLua,
+    T: Any,
 {
     #[inline]
-    fn as_lua(&self) -> LuaContext {
+    fn as_lua(&self) -> LuaState {
         self.variable.as_lua()
     }
 }
 
-unsafe impl<'lua, T, L> AsMutLua<'lua> for UserdataOnStack<T, L>
-    where L: AsMutLua<'lua>,
-          T: 'lua + Any
-{
-    #[inline]
-    fn as_mut_lua(&mut self) -> LuaContext {
-        self.variable.as_mut_lua()
-    }
-}
-
-impl<'lua, T, L> Deref for UserdataOnStack<T, L>
-    where L: AsLua<'lua>,
-          T: 'lua + Any
+impl<T, L> Deref for UserdataOnStack<T, L>
+where
+    L: AsLua,
+    T: Any,
 {
     type Target = T;
 
     #[inline]
     fn deref(&self) -> &T {
         unsafe {
-            let base = ffi::lua_touserdata(self.variable.as_lua().0, self.index.into());
-            let data = (base as *const u8).offset(mem::size_of::<TypeId>() as isize);
+            let base = ffi::lua_touserdata(self.variable.as_lua(), self.index.into());
+            let data = (base as *const u8).offset(mem::size_of::<TypeId>() as _);
             &*(data as *const T)
         }
     }
 }
 
-impl<'lua, T, L> DerefMut for UserdataOnStack<T, L>
-    where L: AsMutLua<'lua>,
-          T: 'lua + Any
+impl<T, L> DerefMut for UserdataOnStack<T, L>
+where
+    L: AsLua,
+    T: Any,
 {
     #[inline]
     fn deref_mut(&mut self) -> &mut T {
         unsafe {
-            let base = ffi::lua_touserdata(self.variable.as_mut_lua().0, self.index.into());
-            let data = (base as *const u8).offset(mem::size_of::<TypeId>() as isize);
+            let base = ffi::lua_touserdata(self.variable.as_lua(), self.index.into());
+            let data = (base as *const u8).offset(mem::size_of::<TypeId>() as _);
             &mut *(data as *mut T)
         }
     }

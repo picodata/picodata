@@ -5,7 +5,7 @@ use tarantool::hlua::{
 };
 
 pub fn read_numbers() {
-    let mut lua = crate::hlua::global();
+    let lua = crate::hlua::global();
 
     lua.set("a", "-2");
     lua.set("b", 3.5f32);
@@ -22,7 +22,7 @@ pub fn read_numbers() {
 }
 
 pub fn read_hashable_numbers() {
-    let mut lua = crate::hlua::global();
+    let lua = crate::hlua::global();
 
     lua.set("a", -2.0f32);
     lua.set("b", 4.0f32);
@@ -39,7 +39,7 @@ pub fn read_hashable_numbers() {
 }
 
 pub fn read_strings() {
-    let mut lua = crate::hlua::global();
+    let lua = crate::hlua::global();
 
     lua.set("a", "hello");
     lua.set("b", "3x");
@@ -56,7 +56,7 @@ pub fn read_strings() {
 }
 
 pub fn read_hashable_strings() {
-    let mut lua = crate::hlua::global();
+    let lua = crate::hlua::global();
 
     lua.set("a", "hello");
     lua.set("b", "3x");
@@ -73,7 +73,7 @@ pub fn read_hashable_strings() {
 }
 
 pub fn read_booleans() {
-    let mut lua = crate::hlua::global();
+    let lua = crate::hlua::global();
 
     lua.set("a", true);
     lua.set("b", false);
@@ -86,7 +86,7 @@ pub fn read_booleans() {
 }
 
 pub fn read_hashable_booleans() {
-    let mut lua = crate::hlua::global();
+    let lua = crate::hlua::global();
 
     lua.set("a", true);
     lua.set("b", false);
@@ -99,7 +99,7 @@ pub fn read_hashable_booleans() {
 }
 
 pub fn read_tables() {
-    let mut lua = crate::hlua::global();
+    let lua = crate::hlua::global();
     lua.execute::<()>("
     a = {x = 12, y = 19}
     b = {z = a, w = 'test string'}
@@ -142,7 +142,7 @@ pub fn read_tables() {
 }
 
 pub fn read_hashable_tables() {
-    let mut lua = crate::hlua::global();
+    let lua = crate::hlua::global();
     lua.execute::<()>("
     a = {x = 12, y = 19}
     b = {z = a, w = 'test string'}
@@ -185,7 +185,7 @@ pub fn read_hashable_tables() {
 }
 
 pub fn push_numbers() {
-    let mut lua = crate::hlua::global();
+    let lua = crate::hlua::global();
 
     lua.set("a", AnyLuaValue::LuaNumber(3.0));
 
@@ -194,7 +194,7 @@ pub fn push_numbers() {
 }
 
 pub fn push_hashable_numbers() {
-    let mut lua = crate::hlua::global();
+    let lua = crate::hlua::global();
 
     lua.set("a", AnyHashableLuaValue::LuaNumber(3));
 
@@ -203,7 +203,7 @@ pub fn push_hashable_numbers() {
 }
 
 pub fn push_strings() {
-    let mut lua = crate::hlua::global();
+    let lua = crate::hlua::global();
 
     lua.set("a", AnyLuaValue::LuaString("hello".to_string()));
 
@@ -212,7 +212,7 @@ pub fn push_strings() {
 }
 
 pub fn push_hashable_strings() {
-    let mut lua = crate::hlua::global();
+    let lua = crate::hlua::global();
 
     lua.set("a", AnyHashableLuaValue::LuaString("hello".to_string()));
 
@@ -221,7 +221,7 @@ pub fn push_hashable_strings() {
 }
 
 pub fn push_booleans() {
-    let mut lua = crate::hlua::global();
+    let lua = crate::hlua::global();
 
     lua.set("a", AnyLuaValue::LuaBoolean(true));
 
@@ -230,7 +230,7 @@ pub fn push_booleans() {
 }
 
 pub fn push_hashable_booleans() {
-    let mut lua = crate::hlua::global();
+    let lua = crate::hlua::global();
 
     lua.set("a", AnyHashableLuaValue::LuaBoolean(true));
 
@@ -239,7 +239,7 @@ pub fn push_hashable_booleans() {
 }
 
 pub fn push_nil() {
-    let mut lua = crate::hlua::global();
+    let lua = crate::hlua::global();
 
     lua.set("a", AnyLuaValue::LuaNil);
 
@@ -250,7 +250,7 @@ pub fn push_nil() {
 }
 
 pub fn push_hashable_nil() {
-    let mut lua = crate::hlua::global();
+    let lua = crate::hlua::global();
 
     lua.set("a", AnyHashableLuaValue::LuaNil);
 
@@ -261,7 +261,7 @@ pub fn push_hashable_nil() {
 }
 
 pub fn non_utf_8_string() {
-    let mut lua = crate::hlua::global();
+    let lua = crate::hlua::global();
     let a = lua.execute::<AnyLuaValue>(r"return '\xff\xfe\xff\xfe'").unwrap();
     match a {
         AnyLuaValue::LuaAnyString(AnyLuaString(v)) => {

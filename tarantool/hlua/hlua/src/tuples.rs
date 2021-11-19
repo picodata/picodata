@@ -1,18 +1,22 @@
 use std::num::NonZeroI32;
 
 use crate::{
-    AsMutLua,
     AsLua,
     Push,
     PushOne,
     PushGuard,
     LuaRead,
+    LuaState,
     Void,
 };
 
 macro_rules! tuple_impl {
-    ($ty:ident) => (
-        impl<'lua, LU, $ty> Push<LU> for ($ty,) where LU: AsMutLua<'lua>, $ty: Push<LU> {
+    ($ty:ident) => {
+        impl<LU, $ty> Push<LU> for ($ty,)
+        where
+            LU: AsLua,
+            $ty: Push<LU>,
+        {
             type Err = <$ty as Push<LU>>::Err;
 
             #[inline]
@@ -21,33 +25,45 @@ macro_rules! tuple_impl {
             }
         }
 
-        impl<'lua, LU, $ty> PushOne<LU> for ($ty,) where LU: AsMutLua<'lua>, $ty: PushOne<LU> {
+        impl<LU, $ty> PushOne<LU> for ($ty,)
+        where
+            LU: AsLua,
+            $ty: PushOne<LU>,
+        {
         }
 
-        impl<'lua, LU, $ty> LuaRead<LU> for ($ty,) where LU: AsMutLua<'lua>, $ty: LuaRead<LU> {
+        impl<LU, $ty> LuaRead<LU> for ($ty,)
+        where
+            LU: AsLua,
+            $ty: LuaRead<LU>,
+        {
             #[inline]
             fn lua_read_at_position(lua: LU, index: NonZeroI32) -> Result<($ty,), LU> {
                 LuaRead::lua_read_at_position(lua, index).map(|v| (v,))
             }
         }
-    );
+    };
 
-    ($first:ident, $($other:ident),+) => (
+    ($first:ident, $($other:ident),+) => {
         #[allow(non_snake_case)]
-        impl<'lua, LU, FE, OE, $first, $($other),+> Push<LU> for ($first, $($other),+)
-            where LU: AsMutLua<'lua>,
-                  $first: for<'a> Push<&'a mut LU, Err = FE>,
-                  ($($other,)+): for<'a> Push<&'a mut LU, Err = OE>
+        impl<LU, $first, $($other),+> Push<LU> for ($first, $($other),+)
+        where
+            LU: AsLua,
+            $first: Push<LuaState>,
+            ($($other,)+): Push<LuaState>,
         {
-            type Err = TuplePushError<FE, OE>;
+            type Err = TuplePushError<
+                <$first as Push<LuaState>>::Err,
+                <($($other,)+) as Push<LuaState>>::Err,
+            >;
 
             #[inline]
-            fn push_to_lua(self, mut lua: LU) -> Result<PushGuard<LU>, (Self::Err, LU)> {
+            fn push_to_lua(self, lua: LU) -> Result<PushGuard<LU>, (Self::Err, LU)> {
                 match self {
                     ($first, $($other),+) => {
                         let mut total = 0;
 
-                        let first_err = match $first.push_to_lua(&mut lua) {
+                        let first_err = match $first.push_to_lua(lua.as_lua()) {
                             Ok(pushed) => { total += pushed.forget_internal(); None },
                             Err((err, _)) => Some(err),
                         };
@@ -57,7 +73,7 @@ macro_rules! tuple_impl {
                         }
 
                         let rest = ($($other,)+);
-                        let other_err = match rest.push_to_lua(&mut lua) {
+                        let other_err = match rest.push_to_lua(lua.as_lua()) {
                             Ok(pushed) => { total += pushed.forget_internal(); None },
                             Err((err, _)) => Some(err),
                         };
@@ -66,8 +82,9 @@ macro_rules! tuple_impl {
                             return Err((TuplePushError::Other(err), lua));
                         }
 
-                        let raw_lua = lua.as_lua();
-                        Ok(PushGuard { lua: lua, size: total, raw_lua: raw_lua })
+                        unsafe {
+                            Ok(PushGuard::new(lua, total))
+                        }
                     }
                 }
             }
@@ -76,12 +93,15 @@ macro_rules! tuple_impl {
         // TODO: what if T or U are also tuples? indices won't match
         #[allow(unused_assignments)]
         #[allow(non_snake_case)]
-        impl<'lua, LU, $first: for<'a> LuaRead<&'a mut LU>, $($other: for<'a> LuaRead<&'a mut LU>),+>
-            LuaRead<LU> for ($first, $($other),+) where LU: AsLua<'lua>
+        impl<LU, $first, $($other),+> LuaRead<LU> for ($first, $($other),+)
+        where
+            LU: AsLua,
+            $first: for<'a> LuaRead<&'a LU>,
+            $($other: for<'a> LuaRead<&'a LU>),+
         {
             #[inline]
-            fn lua_read_at_position(mut lua: LU, index: NonZeroI32) -> Result<($first, $($other),+), LU> {
-                let $first: $first = match LuaRead::lua_read_at_position(&mut lua, index) {
+            fn lua_read_at_position(lua: LU, index: NonZeroI32) -> Result<($first, $($other),+), LU> {
+                let $first: $first = match LuaRead::lua_read_at_position(&lua, index) {
                     Ok(v) => v,
                     Err(_) => return Err(lua)
                 };
@@ -90,7 +110,7 @@ macro_rules! tuple_impl {
                 i += 1;
 
                 $(
-                    let $other: $other = match LuaRead::lua_read_at_maybe_zero_position(&mut lua, i) {
+                    let $other: $other = match LuaRead::lua_read_at_maybe_zero_position(&lua, i) {
                         Ok(v) => v,
                         Err(_) => return Err(lua)
                     };
@@ -105,8 +125,8 @@ macro_rules! tuple_impl {
             }
         }
 
-        tuple_impl!($($other),+);
-    );
+        tuple_impl!{ $($other),+ }
+    };
 }
 
 tuple_impl!(A, B, C, D, E, F, G, H, I, J, K, L, M);

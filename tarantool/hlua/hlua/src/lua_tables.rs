@@ -2,13 +2,12 @@ use std::marker::PhantomData;
 use std::num::NonZeroI32;
 
 use crate::{
-    LuaContext,
     AsLua,
-    AsMutLua,
     Push,
     PushGuard,
     PushOne,
     LuaRead,
+    LuaState,
     Void,
 };
 
@@ -58,30 +57,23 @@ impl<L> LuaTable<L> {
     }
 }
 
-unsafe impl<'lua, L> AsLua<'lua> for LuaTable<L>
-    where L: AsLua<'lua>
+impl<L> AsLua for LuaTable<L>
+where
+    L: AsLua,
 {
     #[inline]
-    fn as_lua(&self) -> LuaContext {
+    fn as_lua(&self) -> LuaState {
         self.table.as_lua()
     }
 }
 
-unsafe impl<'lua, L> AsMutLua<'lua> for LuaTable<L>
-    where L: AsMutLua<'lua>
+impl<L> LuaRead<L> for LuaTable<L>
+where
+    L: AsLua,
 {
     #[inline]
-    fn as_mut_lua(&mut self) -> LuaContext {
-        self.table.as_mut_lua()
-    }
-}
-
-impl<'lua, L> LuaRead<L> for LuaTable<L>
-    where L: AsMutLua<'lua>
-{
-    #[inline]
-    fn lua_read_at_position(mut lua: L, index: NonZeroI32) -> Result<LuaTable<L>, L> {
-        if unsafe { ffi::lua_istable(lua.as_mut_lua().0, index.into()) } {
+    fn lua_read_at_position(lua: L, index: NonZeroI32) -> Result<LuaTable<L>, L> {
+        if unsafe { ffi::lua_istable(lua.as_lua(), index.into()) } {
             Ok(LuaTable {
                 table: lua,
                 index: index,
@@ -92,8 +84,9 @@ impl<'lua, L> LuaRead<L> for LuaTable<L>
     }
 }
 
-impl<'lua, L> LuaTable<L>
-    where L: AsMutLua<'lua>
+impl<L> LuaTable<L>
+where
+    L: AsLua,
 {
     /// Destroys the `LuaTable` and returns its inner Lua context. Useful when it takes Lua by
     /// value.
@@ -106,15 +99,13 @@ impl<'lua, L> LuaTable<L>
     /// Iterates over the elements inside the table.
     // TODO: doc
     #[inline]
-    pub fn iter<K, V>(&mut self) -> LuaTableIterator<L, K, V> {
+    pub fn iter<K, V>(&self) -> LuaTableIterator<L, K, V> {
         unsafe {
-            ffi::lua_pushnil(self.table.as_mut_lua().0);
+            ffi::lua_pushnil(self.table.as_lua());
 
-            let raw_lua = self.table.as_lua();
             LuaTableIterator {
                 table: self,
                 finished: false,
-                raw_lua: raw_lua,
                 marker: PhantomData,
             }
         }
@@ -146,30 +137,18 @@ impl<'lua, L> LuaTable<L>
     /// ```
     ///
     #[inline]
-    pub fn get<'a, R, I, E>(&'a mut self, index: I) -> Option<R>
-        where R: LuaRead<PushGuard<&'a mut LuaTable<L>>>,
-              I: for<'b> PushOne<&'b mut &'a mut LuaTable<L>, Err = E>,
-              E: Into<Void>,
+    pub fn get<'a, R, I>(&'a self, index: I) -> Option<R>
+    where
+        R: LuaRead<PushGuard<LuaState>>,
+        I: PushOne<LuaState, Err = Void>,
     {
         unsafe {
-            // Because of a weird borrow error, we need to push the index by borrowing `&mut &mut L`
-            // instead of `&mut L`. `self` matches `&mut L`, so in theory we could do `&mut self`.
-            // But in practice `self` isn't mutable, so we need to move it into `me` first.
-            // TODO: remove this by simplifying the PushOne requirement ; however this is complex
-            //       because of the empty_array method
-            let mut me = self;
+            index.push_no_err(self.as_lua()).assert_one_and_forget();
+            ffi::lua_gettable(self.as_lua(), self.offset(-1));
 
-            index.push_no_err(&mut me).assert_one_and_forget();
-            ffi::lua_gettable(me.as_mut_lua().0, me.offset(-1));
+            let guard = PushGuard::new(self.as_lua(), 1);
 
-            let raw_lua = me.as_lua();
-            let guard = PushGuard {
-                lua: me,
-                size: 1,
-                raw_lua: raw_lua,
-            };
-
-            if ffi::lua_isnil(raw_lua.0, -1) {
+            if ffi::lua_isnil(self.as_lua(), -1) {
                 None
             } else {
                 LuaRead::lua_read(guard).ok()
@@ -180,24 +159,20 @@ impl<'lua, L> LuaTable<L>
     /// Loads a value in the table, with the result capturing the table by value.
     // TODO: doc
     #[inline]
-    pub fn into_get<R, I, E>(mut self, index: I) -> Result<R, PushGuard<Self>>
-        where R: LuaRead<PushGuard<LuaTable<L>>>,
-              I: for<'b> PushOne<&'b mut LuaTable<L>, Err = E>,
-              E: Into<Void>,
+    pub fn into_get<R, I>(self, index: I) -> Result<R, PushGuard<Self>>
+    where
+        R: LuaRead<PushGuard<Self>>,
+        I: PushOne<LuaState, Err = Void>,
     {
         unsafe {
-            index.push_no_err(&mut self).assert_one_and_forget();
+            index.push_no_err(self.as_lua()).assert_one_and_forget();
 
-            ffi::lua_gettable(self.as_mut_lua().0, self.offset(-1));
+            ffi::lua_gettable(self.as_lua(), self.offset(-1));
 
             let raw_lua = self.as_lua();
-            let guard = PushGuard {
-                lua: self,
-                size: 1,
-                raw_lua: raw_lua,
-            };
+            let guard = PushGuard::new(self, 1);
 
-            if ffi::lua_isnil(raw_lua.0, -1) {
+            if ffi::lua_isnil(raw_lua, -1) {
                 Err(guard)
             } else {
                 LuaRead::lua_read(guard)
@@ -215,11 +190,12 @@ impl<'lua, L> LuaTable<L>
     /// information.
     // TODO: doc
     #[inline]
-    pub fn set<I, V, Ei, Ev>(&mut self, index: I, value: V)
-        where I: for<'r> PushOne<&'r mut LuaTable<L>, Err = Ei>,
-              V: for<'r, 's> PushOne<&'r mut PushGuard<&'s mut LuaTable<L>>, Err = Ev>,
-              Ei: Into<Void>,
-              Ev: Into<Void>,
+    pub fn set<I, V, Ei, Ev>(&self, index: I, value: V)
+    where
+        I: PushOne<LuaState, Err = Ei>,
+        V: PushOne<LuaState, Err = Ev>,
+        Ei: Into<Void>,
+        Ev: Into<Void>,
     {
         match self.checked_set(index, value) {
             Ok(()) => (),
@@ -233,18 +209,20 @@ impl<'lua, L> LuaTable<L>
     /// limited set of types. You are encouraged to use the `set` method if writing cannot fail.
     // TODO: doc
     #[inline]
-    pub fn checked_set<I, V, Ke, Ve>(&mut self,
-                                     index: I,
-                                     value: V)
-                                     -> Result<(), CheckedSetError<Ke, Ve>>
-        where I: for<'r> PushOne<&'r mut LuaTable<L>, Err = Ke>,
-              V: for<'r, 's> PushOne<&'r mut PushGuard<&'s mut LuaTable<L>>, Err = Ve>
+    pub fn checked_set<I, V>(
+        &self,
+        index: I,
+        value: V,
+    ) -> Result<(), CheckedSetError<<I as Push<LuaState>>::Err, <V as Push<LuaState>>::Err>>
+    where
+        I: PushOne<LuaState>,
+        V: PushOne<LuaState>,
     {
         unsafe {
-            let raw_lua = self.as_mut_lua().0;
+            let raw_lua = self.as_lua();
             let my_offset = self.offset(-2);
 
-            let mut guard = match index.push_to_lua(self) {
+            let guard = match index.push_to_lua(self.as_lua()) {
                 Ok(guard) => {
                     assert_eq!(guard.size, 1);
                     guard
@@ -254,7 +232,7 @@ impl<'lua, L> LuaTable<L>
                 }
             };
 
-            match value.push_to_lua(&mut guard) {
+            match value.push_to_lua(self.as_lua()) {
                 Ok(pushed) => {
                     assert_eq!(pushed.size, 1);
                     pushed.forget()
@@ -272,14 +250,13 @@ impl<'lua, L> LuaTable<L>
 
     /// Inserts an empty array, then loads it.
     #[inline]
-    pub fn empty_array<'s, I, E>(&'s mut self, index: I) -> LuaTable<PushGuard<&'s mut LuaTable<L>>>
-        where I: for<'a> PushOne<&'a mut &'s mut LuaTable<L>, Err = E> + Clone,
-              E: Into<Void>,
+    pub fn empty_array<I>(&self, index: I) -> LuaTable<PushGuard<LuaState>>
+    where
+        I: PushOne<LuaState, Err = Void> + Clone,
     {
         // TODO: cleaner implementation
         unsafe {
-            let mut me = self;
-            match index.clone().push_to_lua(&mut me) {
+            match index.clone().push_to_lua(self.as_lua()) {
                 Ok(pushed) => {
                     assert_eq!(pushed.size, 1);
                     pushed.forget()
@@ -287,14 +264,14 @@ impl<'lua, L> LuaTable<L>
                 Err(_) => panic!(),      // TODO:
             };
 
-            match Vec::<u8>::with_capacity(0).push_to_lua(&mut me) {
+            match Vec::<u8>::with_capacity(0).push_to_lua(self.as_lua()) {
                 Ok(pushed) => pushed.forget(),
                 Err(_) => panic!(),      // TODO:
             };
 
-            ffi::lua_settable(me.as_mut_lua().0, me.offset(-2));
+            ffi::lua_settable(self.as_lua(), self.offset(-2));
 
-            me.get(index).unwrap()
+            self.get(index).unwrap()
         }
     }
 
@@ -346,25 +323,20 @@ impl<'lua, L> LuaTable<L>
     /// }
     /// ```
     #[inline]
-    pub fn get_or_create_metatable(mut self) -> LuaTable<PushGuard<L>> {
+    pub fn get_or_create_metatable(self) -> LuaTable<PushGuard<L>> {
         unsafe {
             // We put the metatable at the top of the stack.
-            if ffi::lua_getmetatable(self.table.as_mut_lua().0, self.index.into()) == 0 {
+            if ffi::lua_getmetatable(self.table.as_lua(), self.index.into()) == 0 {
                 // No existing metatable ; create one then set it and reload it.
-                ffi::lua_newtable(self.table.as_mut_lua().0);
-                ffi::lua_setmetatable(self.table.as_mut_lua().0, self.offset(-1));
-                let r = ffi::lua_getmetatable(self.table.as_mut_lua().0, self.index.into());
+                ffi::lua_newtable(self.table.as_lua());
+                ffi::lua_setmetatable(self.table.as_lua(), self.offset(-1));
+                let r = ffi::lua_getmetatable(self.table.as_lua(), self.index.into());
                 debug_assert!(r != 0);
             }
 
-            let raw_lua = self.as_lua();
             LuaTable {
-                table: PushGuard {
-                    lua: self.table,
-                    size: 1,
-                    raw_lua: raw_lua,
-                },
-                index: NonZeroI32::new_unchecked(-1),
+                table: PushGuard::new(self.table, 1),
+                index: crate::NEGATIVE_ONE,
             }
         }
     }
@@ -410,35 +382,20 @@ pub enum CheckedSetError<K, V> {
 // Implementation note: While the LuaTableIterator is active, the current key is constantly
 // pushed over the table. The destructor takes care of removing it.
 #[derive(Debug)]
-pub struct LuaTableIterator<'t, L: 't, K, V> {
-    table: &'t mut LuaTable<L>,
+pub struct LuaTableIterator<'t, L: 't, K, V>
+where
+    L: AsLua,
+{
+    table: &'t LuaTable<L>,
     finished: bool, // if true, the key is not on the stack anymore
-    raw_lua: LuaContext,
     marker: PhantomData<(K, V)>,
 }
 
-unsafe impl<'t, 'lua, L, K, V> AsLua<'lua> for LuaTableIterator<'t, L, K, V>
-    where L: AsMutLua<'lua>
-{
-    #[inline]
-    fn as_lua(&self) -> LuaContext {
-        self.table.as_lua()
-    }
-}
-
-unsafe impl<'t, 'lua, L, K, V> AsMutLua<'lua> for LuaTableIterator<'t, L, K, V>
-    where L: AsMutLua<'lua>
-{
-    #[inline]
-    fn as_mut_lua(&mut self) -> LuaContext {
-        self.table.as_mut_lua()
-    }
-}
-
-impl<'t, 'lua, L, K, V> Iterator for LuaTableIterator<'t, L, K, V>
-    where L: AsMutLua<'lua> + 't,
-          K: for<'i, 'j> LuaRead<&'i mut &'j mut LuaTableIterator<'t, L, K, V>> + 'static,
-          V: for<'i, 'j> LuaRead<&'i mut &'j mut LuaTableIterator<'t, L, K, V>> + 'static
+impl<'t, L, K, V> Iterator for LuaTableIterator<'t, L, K, V>
+where
+    L: AsLua + 't,
+    K: for<'i> LuaRead<&'i LuaTable<L>> + 'static,
+    V: for<'i> LuaRead<&'i LuaTable<L>> + 'static,
 {
     type Item = Option<(K, V)>;
 
@@ -452,18 +409,17 @@ impl<'t, 'lua, L, K, V> Iterator for LuaTableIterator<'t, L, K, V>
             // As a reminder, the key is always at the top of the stack unless `finished` is true.
 
             // This call pops the current key and pushes the next key and value at the top.
-            if ffi::lua_next(self.table.as_mut_lua().0, self.table.offset(-1)) == 0 {
+            if ffi::lua_next(self.table.as_lua(), self.table.offset(-1)) == 0 {
                 self.finished = true;
                 return None;
             }
 
             // Reading the key and value.
-            let mut me = self;
-            let key = K::lua_read_at_position(&mut me, NonZeroI32::new_unchecked(-2)).ok();
-            let value = V::lua_read_at_position(&mut me, NonZeroI32::new_unchecked(-1)).ok();
+            let key = K::lua_read_at_position(self.table, crate::NEGATIVE_TWO).ok();
+            let value = V::lua_read_at_position(self.table, crate::NEGATIVE_ONE).ok();
 
             // Removing the value, leaving only the key on the top of the stack.
-            ffi::lua_pop(me.table.as_mut_lua().0, 1);
+            ffi::lua_pop(self.table.as_lua(), 1);
 
             if key.is_none() || value.is_none() {
                 Some(None)
@@ -474,12 +430,15 @@ impl<'t, 'lua, L, K, V> Iterator for LuaTableIterator<'t, L, K, V>
     }
 }
 
-impl<'t, L, K, V> Drop for LuaTableIterator<'t, L, K, V> {
+impl<'t, L, K, V> Drop for LuaTableIterator<'t, L, K, V>
+where
+    L: AsLua,
+{
     #[inline]
     fn drop(&mut self) {
         unsafe {
             if !self.finished {
-                ffi::lua_pop(self.raw_lua.0, 1);
+                ffi::lua_pop(self.table.as_lua(), 1);
             }
         }
     }

@@ -7,9 +7,9 @@ use std::num::NonZeroI32;
 use std::ptr;
 
 use crate::{
+    c_ptr,
     AsLua,
-    AsMutLua,
-    LuaContext,
+    LuaState,
     LuaRead,
     LuaError,
     Push,
@@ -40,8 +40,9 @@ use crate::{
 #[derive(Debug)]
 pub struct LuaCode<'a>(pub &'a str);
 
-impl<'lua, 'c, L> Push<L> for LuaCode<'c>
-    where L: AsMutLua<'lua>
+impl<'c, L> Push<L> for LuaCode<'c>
+where
+    L: AsLua,
 {
     type Err = LuaError;
 
@@ -51,7 +52,11 @@ impl<'lua, 'c, L> Push<L> for LuaCode<'c>
     }
 }
 
-impl<'lua, 'c, L> PushOne<L> for LuaCode<'c> where L: AsMutLua<'lua> {}
+impl<'c, L> PushOne<L> for LuaCode<'c>
+where
+    L: AsLua,
+{
+}
 
 /// Wrapper around a `Read` object. When pushed, the content will be parsed as Lua code and turned
 /// into a function.
@@ -77,14 +82,15 @@ impl<'lua, 'c, L> PushOne<L> for LuaCode<'c> where L: AsMutLua<'lua> {}
 #[derive(Debug)]
 pub struct LuaCodeFromReader<R>(pub R);
 
-impl<'lua, L, R> Push<L> for LuaCodeFromReader<R>
-    where L: AsMutLua<'lua>,
-          R: Read
+impl<L, R> Push<L> for LuaCodeFromReader<R>
+where
+    L: AsLua,
+    R: Read,
 {
     type Err = LuaError;
 
     #[inline]
-    fn push_to_lua(self, mut lua: L) -> Result<PushGuard<L>, (LuaError, L)> {
+    fn push_to_lua(self, lua: L) -> Result<PushGuard<L>, (LuaError, L)> {
         unsafe {
             struct ReadData<R> {
                 reader: R,
@@ -98,7 +104,7 @@ impl<'lua, L, R> Push<L> for LuaCodeFromReader<R>
                 triggered_error: None,
             };
 
-            extern "C" fn reader<R>(_: *mut ffi::lua_State,
+            extern "C" fn reader<R>(_: LuaState,
                                     data: *mut libc::c_void,
                                     size: *mut libc::size_t)
                                     -> *const libc::c_char
@@ -126,18 +132,14 @@ impl<'lua, L, R> Push<L> for LuaCodeFromReader<R>
             }
 
             let (load_return_value, pushed_value) = {
-                let code = ffi::lua_load(lua.as_mut_lua().0,
-                                         reader::<R>,
-                                         &mut read_data as *mut ReadData<_> as *mut libc::c_void,
-                                         b"chunk\0".as_ptr() as *const _,
-                                         ptr::null());
-                let raw_lua = lua.as_lua();
-                (code,
-                 PushGuard {
-                     lua: lua,
-                     size: 1,
-                     raw_lua: raw_lua,
-                 })
+                let code = ffi::lua_load(
+                    lua.as_lua(),
+                    reader::<R>,
+                    &mut read_data as *mut ReadData<_> as *mut _,
+                    c_ptr!("chunk"),
+                    ptr::null(),
+                );
+                (code, PushGuard { lua, size: 1 })
             };
 
             if read_data.triggered_error.is_some() {
@@ -149,7 +151,7 @@ impl<'lua, L, R> Push<L> for LuaCodeFromReader<R>
                 return Ok(pushed_value);
             }
 
-            let error_msg: String = LuaRead::lua_read(&pushed_value)
+            let error_msg: String = LuaRead::lua_read(pushed_value.as_lua())
                 .ok()
                 .expect("can't find error message at the top of the Lua stack");
 
@@ -166,9 +168,10 @@ impl<'lua, L, R> Push<L> for LuaCodeFromReader<R>
     }
 }
 
-impl<'lua, L, R> PushOne<L> for LuaCodeFromReader<R>
-    where L: AsMutLua<'lua>,
-          R: Read
+impl<L, R> PushOne<L> for LuaCodeFromReader<R>
+where
+    L: AsLua,
+    R: Read,
 {
 }
 
@@ -195,26 +198,17 @@ pub struct LuaFunction<L> {
     variable: L,
 }
 
-unsafe impl<'lua, L> AsLua<'lua> for LuaFunction<L>
-    where L: AsLua<'lua>
-{
+impl<L: AsLua> AsLua for LuaFunction<L> {
     #[inline]
-    fn as_lua(&self) -> LuaContext {
+    fn as_lua(&self) -> LuaState {
         self.variable.as_lua()
     }
 }
 
-unsafe impl<'lua, L> AsMutLua<'lua> for LuaFunction<L>
-    where L: AsMutLua<'lua>
-{
-    #[inline]
-    fn as_mut_lua(&mut self) -> LuaContext {
-        self.variable.as_mut_lua()
-    }
-}
-
 impl<'lua, L> LuaFunction<L>
-    where L: AsMutLua<'lua>
+where
+    L: 'lua,
+    L: AsLua,
 {
     /// Calls the function. Doesn't allow passing parameters.
     ///
@@ -225,10 +219,33 @@ impl<'lua, L> LuaFunction<L>
     ///
     /// > **Note**: In order to pass parameters, see `call_with_args` instead.
     #[inline]
-    pub fn call<'a, V>(&'a mut self) -> Result<V, LuaError>
-        where V: LuaRead<PushGuard<&'a mut L>>
+    pub fn call<V>(&'lua self) -> Result<V, LuaError>
+    where
+        V: LuaRead<PushGuard<&'lua L>>,
     {
-        match self.call_with_args(()) {
+        match Self::call_impl(&self.lua, -1, ()) {
+            Ok(v) => Ok(v),
+            Err(LuaFunctionCallError::LuaError(err)) => Err(err),
+            Err(LuaFunctionCallError::PushError(_)) => unreachable!(),
+        }
+    }
+
+    /// Calls the function taking ownership of the underlying push guard.
+    /// Doesn't allow passing parameters.
+    ///
+    /// TODO: will eventually disappear and get replaced with `call_with_args`
+    ///
+    /// Returns an error if there is an error while executing the Lua code (eg. a function call
+    /// returns an error), or if the requested return type doesn't match the actual return type.
+    ///
+    /// > **Note**: In order to pass parameters, see `into_call_with_args`
+    /// instead.
+    #[inline]
+    pub fn into_call<V>(self) -> Result<V, LuaError>
+    where
+        V: LuaRead<PushGuard<Self>>,
+    {
+        match Self::call_impl(self.lua, -1, ()) {
             Ok(v) => Ok(v),
             Err(LuaFunctionCallError::LuaError(err)) => Err(err),
             Err(LuaFunctionCallError::PushError(_)) => unreachable!(),
@@ -284,34 +301,101 @@ impl<'lua, L> LuaFunction<L>
     /// assert_eq!(excess_results, (4, 2, None));
     /// ```
     #[inline]
-    pub fn call_with_args<'a, V, A, E>(&'a mut self, args: A) -> Result<V, LuaFunctionCallError<E>>
-        where A: for<'r> Push<&'r mut LuaFunction<L>, Err = E>,
-              V: LuaRead<PushGuard<&'a mut L>>
+    pub fn call_with_args<V, A, E>(&'lua self, args: A) -> Result<V, LuaFunctionCallError<E>>
+    where
+        A: Push<LuaState, Err = E>,
+        V: LuaRead<PushGuard<&'lua L>>,
     {
-        let raw_lua = self.variable.as_lua();
+        Self::call_impl(&self.lua, -1, args)
+    }
 
+    /// Calls the function with parameters taking ownership of the underlying
+    /// push guard.
+    ///
+    /// TODO: should be eventually be renamed to `call`
+    ///
+    /// **Note:** this function can return multiple values if `V` is a tuple.
+    /// * If the expected number of values is less than the actual, only the
+    ///   first few values will be returned.
+    /// * If the expected number of values is greater than the actual, the
+    ///   function will return an error, unless the excess elements are
+    ///   Option<T>.
+    ///
+    /// You can either pass a single value by passing a single value, or multiple parameters by
+    /// passing a tuple.
+    /// If you pass a tuple, the first element of the tuple will be the first argument, the second
+    /// element of the tuple the second argument, and so on.
+    ///
+    /// Returns an error if there is an error while executing the Lua code (eg. a function call
+    /// returns an error), if the requested return type doesn't match the actual return type, or
+    /// if we failed to push an argument.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// let mut lua = hlua::Lua::new();
+    /// lua.execute::<()>("function sub(a, b) return a - b end").unwrap();
+    ///
+    /// let mut foo: hlua::LuaFunction<_> = lua.get("sub").unwrap();
+    /// let result: i32 = foo.call_with_args((18, 4)).unwrap();
+    /// assert_eq!(result, 14);
+    /// ```
+    ///
+    /// # Multiple return values
+    ///
+    /// ```
+    /// let mut lua = hlua::Lua::new();
+    /// lua.execute::<()>("function divmod(a, b) return math.floor(a / b), a % b end").unwrap();
+    ///
+    /// let mut foo: hlua::LuaFunction<_> = lua.get("divmod").unwrap();
+    ///
+    /// let first_result: i32 = foo.call_with_args((18, 4)).unwrap();
+    /// assert_eq!(first_result, 4);
+    ///
+    /// let all_result: (i32, i32) = foo.call_with_args((18, 4)).unwrap();
+    /// assert_eq!(all_result, (4, 2));
+    ///
+    /// let excess_results: (i32, i32, Option<i32>) = foo.call_with_args((18, 4)).unwrap();
+    /// assert_eq!(excess_results, (4, 2, None));
+    /// ```
+    #[inline]
+    pub fn into_call_with_args<V, A, E>(self, args: A) -> Result<V, LuaFunctionCallError<E>>
+    where
+        A: Push<LuaState, Err = E>,
+        V: LuaRead<PushGuard<Self>>,
+    {
+        Self::call_impl(self.lua, -1, args)
+    }
+
+    #[inline]
+    pub fn call_impl<T, V, A, E>(
+        this: T,
+        index: i32,
+        args: A,
+    ) -> Result<V, LuaFunctionCallError<E>>
+    where
+        T: AsLua,
+        A: Push<LuaState, Err = E>,
+        V: LuaRead<PushGuard<T>>,
+    {
+        let raw_lua = this.as_lua();
         // calling pcall pops the parameters and pushes output
-        let (pcall_return_value, n_results) = unsafe {
-            let old_top = ffi::lua_gettop(raw_lua.0);
+        let (pcall_return_value, pushed_value) = unsafe {
+            let old_top = ffi::lua_gettop(raw_lua);
             // lua_pcall pops the function, so we have to make a copy of it
-            ffi::lua_pushvalue(raw_lua.0, -1);
-            let num_pushed = match args.push_to_lua(self) {
+            ffi::lua_pushvalue(raw_lua, index);
+            let num_pushed = match args.push_to_lua(this.as_lua()) {
                 Ok(g) => g.forget_internal(),
                 Err((err, _)) => return Err(LuaFunctionCallError::PushError(err)),
             };
             let pcall_return_value = ffi::lua_pcall(
-                raw_lua.0,
+                raw_lua,
                 num_pushed,
                 ffi::LUA_MULTRET,
                 0,
             );
-            (pcall_return_value, ffi::lua_gettop(raw_lua.0) - old_top)
-        };
-
-        let pushed_value = PushGuard {
-            lua: &mut self.variable,
-            size: n_results,
-            raw_lua: raw_lua,
+            let n_results = ffi::lua_gettop(raw_lua) - old_top;
+            (pcall_return_value, PushGuard::new(this, n_results))
         };
 
         match pcall_return_value {
@@ -326,6 +410,7 @@ impl<'lua, L> LuaFunction<L>
             _ => panic!("Unknown error code returned by lua_pcall: {}", pcall_return_value),
         }
 
+        let n_results = pushed_value.size;
         LuaRead::lua_read_at_maybe_zero_position(pushed_value, -n_results)
             .map_err(|lua| LuaError::wrong_type::<V, _>(lua, n_results).into())
     }
@@ -347,8 +432,8 @@ impl<'lua, L> LuaFunction<L>
     /// assert_eq!(ret, 8);
     /// ```
     #[inline]
-    pub fn load_from_reader<R>(lua: L, code: R) -> Result<LuaFunction<PushGuard<L>>, LuaError>
-        where R: Read
+    pub fn load_from_reader(lua: L, code: impl Read)
+        -> Result<LuaFunction<PushGuard<L>>, LuaError>
     {
         match LuaCodeFromReader(code).push_to_lua(lua) {
             Ok(pushed) => Ok(LuaFunction { variable: pushed }),
@@ -449,14 +534,15 @@ impl Error for LuaFunctionCallError<Void> {
 // }
 // }
 
-impl<'lua, L> LuaRead<L> for LuaFunction<L>
-    where L: AsMutLua<'lua>
+impl<L> LuaRead<L> for LuaFunction<L>
+where
+    L: AsLua,
 {
     #[inline]
-    fn lua_read_at_position(mut lua: L, index: NonZeroI32) -> Result<LuaFunction<L>, L> {
+    fn lua_read_at_position(lua: L, index: NonZeroI32) -> Result<LuaFunction<L>, L> {
         let index: i32 = index.into();
         assert!(index == -1);   // FIXME:
-        if unsafe { ffi::lua_isfunction(lua.as_mut_lua().0, -1) } {
+        if unsafe { ffi::lua_isfunction(lua.as_lua(), -1) } {
             Ok(LuaFunction { variable: lua })
         } else {
             Err(lua)

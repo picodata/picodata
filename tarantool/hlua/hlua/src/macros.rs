@@ -1,7 +1,7 @@
 #[macro_export]
 macro_rules! implement_lua_push {
     ($ty:ty, $cb:expr) => {
-        impl<'lua, L> $crate::Push<L> for $ty where L: $crate::AsMutLua<'lua> {
+        impl<'lua, L> $crate::Push<L> for $ty where L: $crate::AsLua<'lua> {
             type Err = $crate::Void;      // TODO: use ! instead
             #[inline]
             fn push_to_lua(self, lua: L) -> Result<$crate::PushGuard<L>, ($crate::Void, L)> {
@@ -9,7 +9,7 @@ macro_rules! implement_lua_push {
             }
         }
         
-        impl<'lua, L> $crate::PushOne<L> for $ty where L: $crate::AsMutLua<'lua> {
+        impl<'lua, L> $crate::PushOne<L> for $ty where L: $crate::AsLua<'lua> {
         }
     };
 }
@@ -72,7 +72,7 @@ macro_rules! c_ptr {
 macro_rules! lua_error {
     ($l:expr, $msg:literal) => {
         {
-            $crate::luaL_error($l, c_ptr!($msg));
+            $crate::luaL_error($l, $crate::c_ptr!($msg));
             unreachable!()
         }
     }
