@@ -13,6 +13,14 @@ pub fn basic() {
     assert_eq!(val, 5);
 }
 
+pub fn two_functions_at_the_same_time() {
+    let lua = crate::hlua::global();
+    let f1 = LuaFunction::load(&lua, "return 69;").unwrap();
+    let f2 = LuaFunction::load(&lua, "return 420;").unwrap();
+    assert_eq!(f1.call::<i32>().unwrap(), 69);
+    assert_eq!(f2.call::<i32>().unwrap(), 420);
+}
+
 pub fn args() {
     let lua = crate::hlua::global();
     lua.execute::<()>("function foo(a) return a * 5 end").unwrap();

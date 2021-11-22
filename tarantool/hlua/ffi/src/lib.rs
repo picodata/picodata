@@ -23,6 +23,10 @@ pub const LUA_REGISTRYINDEX: c_int = -10000;
 pub const LUA_ENVIRONINDEX: c_int = -10001;
 pub const LUA_GLOBALSINDEX: c_int = -10002;
 
+pub unsafe fn is_relative_index(index: c_int) -> bool {
+    index < 0 && index > LUA_REGISTRYINDEX
+}
+
 pub const LUA_OK: c_int = 0;
 pub const LUA_YIELD: c_int = 1;
 pub const LUA_ERRRUN: c_int = 2;

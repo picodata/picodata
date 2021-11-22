@@ -181,6 +181,7 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
         } else {
             tests![
                 hlua::lua_functions::basic,
+                hlua::lua_functions::two_functions_at_the_same_time,
                 hlua::lua_functions::args,
                 hlua::lua_functions::args_in_order,
                 hlua::lua_functions::syntax_error,

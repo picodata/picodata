@@ -8,6 +8,7 @@ use std::ptr;
 
 use crate::{
     c_ptr,
+    AbsoluteIndex,
     AsLua,
     LuaState,
     LuaRead,
@@ -195,13 +196,26 @@ where
 // TODO: example for how to get a LuaFunction as a parameter of a Rust function
 #[derive(Debug)]
 pub struct LuaFunction<L> {
-    variable: L,
+    lua: L,
+    index: AbsoluteIndex,
+}
+
+impl<L> LuaFunction<L>
+where
+    L: AsLua,
+{
+    fn new(lua: L, index: NonZeroI32) -> Self {
+        Self {
+            index: AbsoluteIndex::new(index, lua.as_lua()),
+            lua,
+        }
+    }
 }
 
 impl<L: AsLua> AsLua for LuaFunction<L> {
     #[inline]
     fn as_lua(&self) -> LuaState {
-        self.variable.as_lua()
+        self.lua.as_lua()
     }
 }
 
@@ -223,7 +237,7 @@ where
     where
         V: LuaRead<PushGuard<&'lua L>>,
     {
-        match Self::call_impl(&self.lua, -1, ()) {
+        match Self::call_impl(&self.lua, self.index.into(), ()) {
             Ok(v) => Ok(v),
             Err(LuaFunctionCallError::LuaError(err)) => Err(err),
             Err(LuaFunctionCallError::PushError(_)) => unreachable!(),
@@ -245,7 +259,8 @@ where
     where
         V: LuaRead<PushGuard<Self>>,
     {
-        match Self::call_impl(self.lua, -1, ()) {
+        let index = self.index.into();
+        match Self::call_impl(self, index, ()) {
             Ok(v) => Ok(v),
             Err(LuaFunctionCallError::LuaError(err)) => Err(err),
             Err(LuaFunctionCallError::PushError(_)) => unreachable!(),
@@ -306,7 +321,7 @@ where
         A: Push<LuaState, Err = E>,
         V: LuaRead<PushGuard<&'lua L>>,
     {
-        Self::call_impl(&self.lua, -1, args)
+        Self::call_impl(&self.lua, self.index.into(), args)
     }
 
     /// Calls the function with parameters taking ownership of the underlying
@@ -364,7 +379,8 @@ where
         A: Push<LuaState, Err = E>,
         V: LuaRead<PushGuard<Self>>,
     {
-        Self::call_impl(self.lua, -1, args)
+        let index = self.index.into();
+        Self::call_impl(self, index, args)
     }
 
     #[inline]
@@ -436,7 +452,7 @@ where
         -> Result<LuaFunction<PushGuard<L>>, LuaError>
     {
         match LuaCodeFromReader(code).push_to_lua(lua) {
-            Ok(pushed) => Ok(LuaFunction { variable: pushed }),
+            Ok(pushed) => Ok(LuaFunction::new(pushed, crate::NEGATIVE_ONE)),
             Err((err, _)) => Err(err),
         }
     }
@@ -540,10 +556,8 @@ where
 {
     #[inline]
     fn lua_read_at_position(lua: L, index: NonZeroI32) -> Result<LuaFunction<L>, L> {
-        let index: i32 = index.into();
-        assert!(index == -1);   // FIXME:
-        if unsafe { ffi::lua_isfunction(lua.as_lua(), -1) } {
-            Ok(LuaFunction { variable: lua })
+        if unsafe { ffi::lua_isfunction(lua.as_lua(), index.get()) } {
+            Ok(LuaFunction::new(lua, index))
         } else {
             Err(lua)
         }

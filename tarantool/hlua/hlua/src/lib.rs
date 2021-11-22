@@ -950,6 +950,30 @@ impl<L: AsLua> LuaRead<L> for Nil {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct AbsoluteIndex(NonZeroI32);
+
+impl AbsoluteIndex {
+    pub fn new<L>(index: NonZeroI32, lua: L) -> Self
+    where
+        L: AsLua,
+    {
+        let top = unsafe { ffi::lua_gettop(lua.as_lua()) };
+        let i = index.get();
+        if unsafe { ffi::is_relative_index(i) } {
+            Self(NonZeroI32::new(top + i + 1).expect("Invalid relative index"))
+        } else {
+            Self(index)
+        }
+    }
+}
+
+impl From<AbsoluteIndex> for i32 {
+    fn from(index: AbsoluteIndex) -> i32 {
+        index.0.get()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::{
