@@ -26,3 +26,17 @@ test:
     script:
         - make test
         - cargo test
+
+pages:
+  image: registry.gitlab.com/picodata/dockers/brod-builder:0.2
+  stage: build
+  only:
+    - master
+  script:
+    - cargo doc
+    - rm -rf public
+    - mkdir public
+    - cp -R target/doc/* public
+  artifacts:
+    paths:
+    - public
