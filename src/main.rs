@@ -1,5 +1,9 @@
+use clap::App;
 use std::collections::HashMap;
 use std::ffi::CString;
+
+#[macro_use]
+extern crate clap;
 
 mod execve;
 
@@ -10,6 +14,23 @@ macro_rules! CString {
 }
 
 fn main() {
+    let yml = load_yaml!("cli.yml");
+    let matches = App::from_yaml(yml).version(crate_version!()).get_matches();
+    println!("{:?}", matches);
+
+    if matches.subcommand_name().is_none() {
+        println!("{}", matches.usage());
+        std::process::exit(0);
+    }
+
+    if let Some(matches) = matches.subcommand_matches("run") {
+        return main_run(matches);
+    }
+
+    unreachable!();
+}
+
+fn main_run(matches: &clap::ArgMatches) {
     let tarantool_path: String = match execve::which("tarantool") {
         Some(v) => v
             .into_os_string()
@@ -21,16 +42,30 @@ fn main() {
         }
     };
 
-    let args = [&tarantool_path, "-l", "picodata"];
-    let argv = std::iter::empty()
-        .chain(args.iter().map(|&s| CString!(s)))
-        .chain(std::env::args().skip(1).map(|s| CString!(s)))
-        .collect();
+    let mut args: Vec<&str> = vec![&tarantool_path, "-l", "picodata"];
+    if let Some(script) = matches.value_of("tarantool-exec") {
+        args.push("-e");
+        args.push(script);
+    }
+    let argv = args.iter().map(|&s| CString!(s)).collect();
 
     let mut envp = HashMap::new();
     for (k, v) in std::env::vars() {
         if !k.starts_with("TT_") && !k.starts_with("TARANTOOL_") {
             envp.insert(k, v);
+        }
+    }
+
+    if let Some(peer) = matches.values_of("peer") {
+        let append = |s: String, str| if s.is_empty() {s + str} else {s + "," + str};
+        let peer = peer.fold(String::new(), append);
+        envp.insert("PICODATA_PEER".to_owned(), peer);
+    }
+
+    for arg in ["listen", "instance-id", "replicaset-id", "cluster-id"] {
+        if let Some(v) = matches.value_of(arg) {
+            let k = format!("PICODATA_{}", arg.to_uppercase().replace("-", "_"));
+            envp.insert(k, v.to_owned());
         }
     }
 

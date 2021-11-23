@@ -1,0 +1,49 @@
+name: picodata
+version: "0.1"
+args: []
+subcommands:
+  - run:
+      about: run the picodata instance
+      args:
+        - listen:
+            # short: l
+            long: listen
+            help: Socket bind address
+            takes_value: true
+            default_value: "0.0.0.0:3301"
+            value_name: "[host:]port"
+
+        - peer:
+            # short: p
+            long: peer
+            help: Address of another instance(s)
+            multiple: true
+            takes_value: true
+            value_name: "host:port"
+
+        - cluster-id:
+            long: cluster-id
+            help: Name of the cluster
+            value_name: "name"
+            takes_value: true
+
+        - instance-id:
+            long: instance-id
+            help: Name of the instance
+            value_name: "name"
+            takes_value: true
+
+        - replicaset-id:
+            long: replicaset-id
+            help: Name of the replicaset
+            value_name: "name"
+            takes_value: true
+
+        - tarantool-exec:
+            short: e
+            help: Execute tarantool script
+            value_name: expr
+
+        # - advertise-peer:
+        #     help: URI advertised to other instances in cluster
+        #     long: advertise
