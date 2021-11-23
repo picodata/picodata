@@ -15,8 +15,8 @@ use crate::{
     Void,
 };
 
-macro_rules! integer_impl(
-    ($t:ident) => (
+macro_rules! numeric_impl {
+    ($t:ident, $push:path, $read:path) => {
         impl<L> Push<L> for $t
         where
             L: AsLua,
@@ -26,7 +26,7 @@ macro_rules! integer_impl(
             #[inline]
             fn push_to_lua(self, lua: L) -> Result<PushGuard<L>, (Void, L)> {
                 unsafe {
-                    ffi::lua_pushinteger(lua.as_lua(), self as _);
+                    $push(lua.as_lua(), self as _);
                     Ok(PushGuard::new(lua, 1))
                 }
             }
@@ -44,73 +44,49 @@ macro_rules! integer_impl(
         {
             #[inline]
             fn lua_read_at_position(lua: L, index: NonZeroI32) -> Result<$t, L> {
-                let mut success = MaybeUninit::uninit();
-                let val = unsafe {
-                    ffi::lua_tointegerx(lua.as_lua(), index.into(), success.as_mut_ptr())
-                };
-                match unsafe { success.assume_init() } {
-                    0 => Err(lua),
-                    _ => Ok(val as $t)
-                }
+                unsafe { $read(lua.as_lua(), index.into()) }
+                    .map(|v| v as _)
+                    .ok_or(lua)
             }
         }
-    );
-);
+    }
+}
 
-integer_impl!(i8);
-integer_impl!(i16);
-integer_impl!(i32);
+unsafe fn lua_try_tointeger(l: *mut ffi::lua_State, idx: i32) -> Option<isize> {
+    let mut success = MaybeUninit::uninit();
+    let val = ffi::lua_tointegerx(l, idx, success.as_mut_ptr());
+    if success.assume_init() == 0 {
+        None
+    } else {
+        Some(val)
+    }
+}
+
+numeric_impl!{i8, ffi::lua_pushinteger, lua_try_tointeger}
+numeric_impl!{i16, ffi::lua_pushinteger, lua_try_tointeger}
+numeric_impl!{i32, ffi::lua_pushinteger, lua_try_tointeger}
 // integer_impl!(i64)   // data loss
 
-macro_rules! unsigned_impl(
-    ($t:ident) => (
-        impl<L> Push<L> for $t
-        where
-            L: AsLua,
-        {
-            type Err = Void;      // TODO: use `!` instead (https://github.com/rust-lang/rust/issues/35121)
-
-            #[inline]
-            fn push_to_lua(self, lua: L) -> Result<PushGuard<L>, (Void, L)> {
-                unsafe {
-                    ffi::lua_pushinteger(lua.as_lua(), self as _);
-                    Ok(PushGuard::new(lua, 1))
-                }
-            }
-        }
-
-        impl<L> PushOne<L> for $t
-        where
-            L: AsLua,
-        {
-        }
-
-        impl<L> LuaRead<L> for $t
-        where
-            L: AsLua,
-        {
-            #[inline]
-            fn lua_read_at_position(lua: L, index: NonZeroI32) -> Result<$t, L> {
-                let mut success = MaybeUninit::uninit();
-                let val = unsafe {
-                    ffi::lua_tointegerx(lua.as_lua(), index.into(), success.as_mut_ptr())
-                };
-                match unsafe { success.assume_init() } {
-                    0 => Err(lua),
-                    _ => Ok(val as $t)
-                }
-            }
-        }
-    );
-);
-
-unsigned_impl!(u8);
-unsigned_impl!(u16);
-unsigned_impl!(u32);
+numeric_impl!{u8, ffi::lua_pushinteger, lua_try_tointeger}
+numeric_impl!{u16, ffi::lua_pushinteger, lua_try_tointeger}
+numeric_impl!{u32, ffi::lua_pushinteger, lua_try_tointeger}
 // unsigned_impl!(u64);   // data loss
 
-macro_rules! numeric_impl(
-    ($t:ident) => (
+unsafe fn lua_try_tonumber(l: *mut ffi::lua_State, idx: i32) -> Option<f64> {
+    let mut success = MaybeUninit::uninit();
+    let val = ffi::lua_tonumberx(l, idx, success.as_mut_ptr());
+    if success.assume_init() == 0 {
+        None
+    } else {
+        Some(val)
+    }
+}
+
+numeric_impl!{f32, ffi::lua_pushnumber, lua_try_tonumber}
+numeric_impl!{f64, ffi::lua_pushnumber, lua_try_tonumber}
+
+macro_rules! push_string_impl {
+    ($t:ty) => {
         impl<L> Push<L> for $t
         where
             L: AsLua,
@@ -120,7 +96,11 @@ macro_rules! numeric_impl(
             #[inline]
             fn push_to_lua(self, lua: L) -> Result<PushGuard<L>, (Void, L)> {
                 unsafe {
-                    ffi::lua_pushnumber(lua.as_lua(), self as _);
+                    ffi::lua_pushlstring(
+                        lua.as_lua(),
+                        self.as_bytes().as_ptr() as _,
+                        self.as_bytes().len() as _
+                    );
                     Ok(PushGuard::new(lua, 1))
                 }
             }
@@ -130,141 +110,47 @@ macro_rules! numeric_impl(
         where
             L: AsLua,
         {
+        }
+    }
 }
 
-        impl<L> LuaRead<L> for $t
+push_string_impl!{ String }
+push_string_impl!{ AnyLuaString }
+push_string_impl!{ &'_ str }
+
+macro_rules! lua_read_string_impl {
+    ($(@lt $lt:tt,)? $s:ty, $from_slice:expr) => {
+        impl< $($lt,)? L> LuaRead<L> for $s
         where
+            $( L: $lt, )?
             L: AsLua,
         {
             #[inline]
-            fn lua_read_at_position(lua: L, index: NonZeroI32) -> Result<$t, L> {
-                let mut success = MaybeUninit::uninit();
-                let val = unsafe {
-                    ffi::lua_tonumberx(lua.as_lua(), index.into(), success.as_mut_ptr())
-                };
-                match unsafe { success.assume_init() } {
-                    0 => Err(lua),
-                    _ => Ok(val as $t)
+            fn lua_read_at_position(lua: L, index: NonZeroI32) -> Result<$s, L> {
+                unsafe {
+                    let mut size = MaybeUninit::uninit();
+                    let c_ptr = ffi::lua_tolstring(
+                        lua.as_lua(), index.into(), size.as_mut_ptr()
+                    );
+                    if c_ptr.is_null() {
+                        return Err(lua)
+                    }
+                    let slice = slice::from_raw_parts(c_ptr as _, size.assume_init());
+                    $from_slice(slice, lua)
                 }
             }
         }
-    );
-);
-
-numeric_impl!(f32);
-numeric_impl!(f64);
-
-impl<L> Push<L> for String
-where
-    L: AsLua,
-{
-    type Err = Void;      // TODO: use `!` instead (https://github.com/rust-lang/rust/issues/35121)
-
-    #[inline]
-    fn push_to_lua(self, lua: L) -> Result<PushGuard<L>, (Void, L)> {
-        unsafe {
-            ffi::lua_pushlstring(
-                lua.as_lua(),
-                self.as_bytes().as_ptr() as _,
-                self.as_bytes().len() as _
-            );
-            Ok(PushGuard::new(lua, 1))
-        }
     }
 }
 
-impl<L> PushOne<L> for String
-where
-    L: AsLua,
-{
+lua_read_string_impl!{ String,
+    |slice: &[u8], lua| String::from_utf8(slice.to_vec()).map_err(|_| lua)
 }
 
-impl<L> LuaRead<L> for String
-where
-    L: AsLua,
-{
-    #[inline]
-    fn lua_read_at_position(lua: L, index: NonZeroI32) -> Result<String, L> {
-        let mut size = MaybeUninit::uninit();
-        let c_str_raw = unsafe {
-            ffi::lua_tolstring(lua.as_lua(), index.into(), size.as_mut_ptr())
-        };
-        if c_str_raw.is_null() {
-            return Err(lua);
-        }
-
-        let c_slice = unsafe {
-            slice::from_raw_parts(c_str_raw as *const u8, size.assume_init())
-        };
-        let maybe_string = String::from_utf8(c_slice.to_vec());
-        match maybe_string {
-            Ok(string) => Ok(string),
-            Err(_) => Err(lua),
-        }
-    }
+lua_read_string_impl!{ AnyLuaString,
+    |slice: &[u8], _| Ok(AnyLuaString(slice.to_vec()))
 }
 
-impl<L> Push<L> for AnyLuaString
-where
-    L: AsLua,
-{
-    type Err = Void;      // TODO: use `!` instead (https://github.com/rust-lang/rust/issues/35121)
-
-    #[inline]
-    fn push_to_lua(self, lua: L) -> Result<PushGuard<L>, (Void, L)> {
-        let AnyLuaString(v) = self;
-        unsafe {
-            ffi::lua_pushlstring(lua.as_lua(), v.as_ptr() as _, v.len() as _);
-            Ok(PushGuard::new(lua, 1))
-        }
-    }
-}
-
-impl<L> LuaRead<L> for AnyLuaString
-where
-    L: AsLua,
-{
-    #[inline]
-    fn lua_read_at_position(lua: L, index: NonZeroI32) -> Result<AnyLuaString, L> {
-        let mut size = MaybeUninit::uninit();
-        let c_str_raw = unsafe {
-            ffi::lua_tolstring(lua.as_lua(), index.into(), size.as_mut_ptr())
-        };
-        if c_str_raw.is_null() {
-            return Err(lua);
-        }
-        let c_slice = unsafe {
-            slice::from_raw_parts(c_str_raw as _, size.assume_init())
-        };
-        Ok(AnyLuaString(c_slice.to_vec()))
-    }
-}
-
-impl<L> Push<L> for &'_ str
-where
-    L: AsLua,
-{
-    type Err = Void;      // TODO: use `!` instead (https://github.com/rust-lang/rust/issues/35121)
-
-    #[inline]
-    fn push_to_lua(self, lua: L) -> Result<PushGuard<L>, (Void, L)> {
-        unsafe {
-            ffi::lua_pushlstring(
-                lua.as_lua(),
-                self.as_bytes().as_ptr() as _,
-                self.as_bytes().len() as _,
-            );
-
-            Ok(PushGuard::new(lua, 1))
-        }
-    }
-}
-
-impl<L> PushOne<L> for &'_ str
-where
-    L: AsLua,
-{
-}
 
 /// String on the Lua stack.
 ///
@@ -282,52 +168,38 @@ where
 /// let s: hlua::StringInLua<_> = lua.get("a").unwrap();
 /// println!("{}", &*s);    // Prints "hello".
 /// ```
-#[derive(Debug)]
-pub struct StringInLua<L> {
+#[derive(Debug, Eq, Ord, Hash)]
+pub struct StringInLua<'a, L: 'a> {
     lua: L,
-    c_str_raw: *const libc::c_char,
-    size: libc::size_t,
+    str_ref: &'a str,
 }
 
-impl<L> LuaRead<L> for StringInLua<L>
-where
-    L: AsLua,
-{
-    #[inline]
-    fn lua_read_at_position(lua: L, index: NonZeroI32) -> Result<StringInLua<L>, L> {
-        let mut size = MaybeUninit::uninit();
-        let c_str_raw = unsafe {
-            ffi::lua_tolstring(lua.as_lua(), index.into(), size.as_mut_ptr())
-        };
-        if c_str_raw.is_null() {
-            return Err(lua);
-        }
-        let size = unsafe { size.assume_init() };
-
-        let c_slice = unsafe { slice::from_raw_parts(c_str_raw as *const u8, size) };
-        match str::from_utf8(c_slice) {
-            Ok(_) => (),
-            Err(_) => return Err(lua)
-        };
-
-        Ok(StringInLua {
-            lua: lua,
-            c_str_raw: c_str_raw,
-            size: size,
-        })
+impl<'a, L> std::cmp::PartialEq for StringInLua<'a, L> {
+    fn eq(&self, other: &Self) -> bool {
+        self.str_ref.eq(other.str_ref)
     }
 }
 
-impl<L> Deref for StringInLua<L> {
+impl<'a, L> std::cmp::PartialOrd for StringInLua<'a, L> {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        self.str_ref.partial_cmp(other.str_ref)
+    }
+}
+
+lua_read_string_impl!{ @lt 'a, StringInLua<'a, L>,
+    |slice: &'a [u8], lua|
+        match str::from_utf8(slice) {
+            Ok(str_ref) => Ok(StringInLua { lua, str_ref }),
+            Err(_) => return Err(lua)
+        }
+}
+
+impl<'a, L> Deref for StringInLua<'a, L> {
     type Target = str;
 
     #[inline]
     fn deref(&self) -> &str {
-        let c_slice = unsafe { slice::from_raw_parts(self.c_str_raw as *const u8, self.size) };
-        match str::from_utf8(c_slice) {
-            Ok(s) => s,
-            Err(_) => unreachable!()        // Checked earlier
-        }
+        &self.str_ref
     }
 }
 

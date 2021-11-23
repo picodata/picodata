@@ -14,6 +14,12 @@ use crate::{
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct AnyLuaString(pub Vec<u8>);
 
+impl AnyLuaString {
+    pub fn as_bytes(&self) -> &[u8] {
+        self.0.as_slice()
+    }
+}
+
 /// Represents any value that can be stored by Lua
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum AnyHashableLuaValue {
