@@ -121,8 +121,7 @@ pub use functions_write::{function6, function7, function8, function9, function10
 pub use lua_functions::LuaFunction;
 pub use lua_functions::LuaFunctionCallError;
 pub use lua_functions::{LuaCode, LuaCodeFromReader};
-pub use lua_tables::LuaTable;
-pub use lua_tables::LuaTableIterator;
+pub use lua_tables::{LuaTable, LuaTableIterator, MethodCallError};
 pub use tuples::TuplePushError;
 pub use userdata::UserdataOnStack;
 pub use userdata::{push_userdata, read_userdata, push_some_userdata};

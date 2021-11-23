@@ -188,6 +188,8 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 hlua::lua_functions::execution_error,
                 hlua::lua_functions::check_types,
                 hlua::lua_functions::call_and_read_table,
+                hlua::lua_functions::table_as_args,
+                hlua::lua_functions::table_method_call,
                 hlua::lua_functions::lua_function_returns_function,
                 hlua::lua_functions::error,
                 hlua::lua_functions::either_or,

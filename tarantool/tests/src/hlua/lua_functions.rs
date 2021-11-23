@@ -3,6 +3,7 @@ use tarantool::hlua::{
     LuaError,
     LuaFunction,
     LuaTable,
+    MethodCallError,
 };
 use std::io::Read;
 
@@ -79,6 +80,47 @@ pub fn call_and_read_table() {
     let f = LuaFunction::load(&lua, "return {1, 2, 3};").unwrap();
     let val: LuaTable<_> = f.call().unwrap();
     assert_eq!(val.get::<u8, _>(2).unwrap(), 2);
+}
+
+pub fn table_as_args() {
+    let lua = crate::hlua::global();
+    let f: LuaFunction<_> = lua.execute("return function(a) return a.foo end").unwrap();
+    let t: LuaTable<_> = lua.execute("return { foo = 69 };").unwrap();
+    let val: i32 = f.call_with_args(&t).unwrap();
+    assert_eq!(val, 69);
+
+    let f: LuaFunction<_> = lua.execute("return function(a, b) return a.foo + b.bar end").unwrap();
+    let u: LuaTable<_> = lua.execute("return { bar = 420 };").unwrap();
+    let val: i32 = f.call_with_args((&t, &u)).unwrap();
+    assert_eq!(val, 420 + 69);
+}
+
+#[rustfmt::skip]
+pub fn table_method_call() {
+    let lua = crate::hlua::global();
+    let t: LuaTable<_> = lua.execute("
+        return {
+            a = 0,
+            inc_a = function(self, b, c)
+                self.a = self.a + (b or 1) + (c or 0)
+            end
+        }
+    ").unwrap();
+    let method: LuaFunction<_> = t.get("inc_a").unwrap();
+    let () = method.call_with_args(&t).unwrap();
+    assert_eq!(t.get::<i32, _>("a"), Some(1));
+    let () = method.call_with_args((&t, 2)).unwrap();
+    assert_eq!(t.get::<i32, _>("a"), Some(3));
+
+    let () = t.call_method("inc_a", ()).unwrap();
+    assert_eq!(t.get::<i32, _>("a"), Some(4));
+    let () = t.call_method("inc_a", (2,)).unwrap();
+    assert_eq!(t.get::<i32, _>("a"), Some(6));
+    let () = t.call_method("inc_a", (2, 3)).unwrap();
+    assert_eq!(t.get::<i32, _>("a"), Some(11));
+
+    let e = t.call_method::<(), _>("inc_b", ()).unwrap_err();
+    assert!(matches!(e, MethodCallError::NoSuchMethod));
 }
 
 pub fn lua_function_returns_function() {

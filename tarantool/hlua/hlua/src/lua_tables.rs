@@ -1,13 +1,19 @@
+use std::convert::From;
 use std::marker::PhantomData;
 use std::num::NonZeroI32;
 
 use crate::{
+    AbsoluteIndex,
     AsLua,
     Push,
     PushGuard,
     PushOne,
+    TuplePushError,
+    LuaError,
+    LuaFunction,
     LuaRead,
     LuaState,
+    LuaFunctionCallError,
     Void,
 };
 
@@ -31,28 +37,18 @@ use crate::{
 ///
 #[derive(Debug)]
 pub struct LuaTable<L> {
-    table: L,
-    index: NonZeroI32,
+    lua: L,
+    index: AbsoluteIndex,
 }
 
-impl<L> LuaTable<L> {
-    // Return the index on the stack of this table, assuming -(offset - 1)
-    // items have been pushed to the stack since it was loaded.
-    // For example if you push one element over the table, call `offset(-1)` to know where the
-    // table is.
-    #[inline]
-    fn offset(&self, offset: i32) -> i32 {
-        let index: i32 = self.index.into();
-        if index > 0 || index == ffi::LUA_REGISTRYINDEX {
-            // If this table is the registry or was indexed from the bottom of the stack, its
-            // current position will be unchanged.
-            index
-        } else {
-            // If this table was indexed from the top of the stack, its current
-            // index will have been pushed down by the newly-pushed items.
-            let new_index = index + offset;
-            assert_ne!(new_index, 0);
-            new_index
+impl<L> LuaTable<L>
+where
+    L: AsLua,
+{
+    fn new(lua: L, index: NonZeroI32) -> Self {
+        Self {
+            index: AbsoluteIndex::new(index, lua.as_lua()),
+            lua,
         }
     }
 }
@@ -63,7 +59,7 @@ where
 {
     #[inline]
     fn as_lua(&self) -> LuaState {
-        self.table.as_lua()
+        self.lua.as_lua()
     }
 }
 
@@ -74,18 +70,36 @@ where
     #[inline]
     fn lua_read_at_position(lua: L, index: NonZeroI32) -> Result<LuaTable<L>, L> {
         if unsafe { ffi::lua_istable(lua.as_lua(), index.into()) } {
-            Ok(LuaTable {
-                table: lua,
-                index: index,
-            })
+            Ok(LuaTable::new(lua, index))
         } else {
             Err(lua)
         }
     }
 }
 
-impl<L> LuaTable<L>
+impl<L, T> Push<L> for &'_ LuaTable<T>
 where
+    L: AsLua,
+{
+    type Err = Void;
+
+    fn push_to_lua(self, lua: L) -> Result<PushGuard<L>, (Void, L)> {
+        unsafe {
+            ffi::lua_pushvalue(lua.as_lua(), self.index.into());
+            Ok(PushGuard::new(lua, 1))
+        }
+    }
+}
+
+impl<L, T> PushOne<L> for &'_ LuaTable<T>
+where
+    L: AsLua,
+{
+}
+
+impl<'lua, L> LuaTable<L>
+where
+    L: 'lua,
     L: AsLua,
 {
     /// Destroys the `LuaTable` and returns its inner Lua context. Useful when it takes Lua by
@@ -93,7 +107,7 @@ where
     // TODO: find an example where it is useful
     #[inline]
     pub fn into_inner(self) -> L {
-        self.table
+        self.lua
     }
 
     /// Iterates over the elements inside the table.
@@ -101,7 +115,7 @@ where
     #[inline]
     pub fn iter<K, V>(&self) -> LuaTableIterator<L, K, V> {
         unsafe {
-            ffi::lua_pushnil(self.table.as_lua());
+            ffi::lua_pushnil(self.lua.as_lua());
 
             LuaTableIterator {
                 table: self,
@@ -137,23 +151,12 @@ where
     /// ```
     ///
     #[inline]
-    pub fn get<'a, R, I>(&'a self, index: I) -> Option<R>
+    pub fn get<R, I>(&'lua self, index: I) -> Option<R>
     where
-        R: LuaRead<PushGuard<LuaState>>,
         I: PushOne<LuaState, Err = Void>,
+        R: LuaRead<PushGuard<&'lua L>>,
     {
-        unsafe {
-            index.push_no_err(self.as_lua()).assert_one_and_forget();
-            ffi::lua_gettable(self.as_lua(), self.offset(-1));
-
-            let guard = PushGuard::new(self.as_lua(), 1);
-
-            if ffi::lua_isnil(self.as_lua(), -1) {
-                None
-            } else {
-                LuaRead::lua_read(guard).ok()
-            }
-        }
+        Self::get_impl(&self.lua, self.index.into(), index).ok()
     }
 
     /// Loads a value in the table, with the result capturing the table by value.
@@ -161,16 +164,30 @@ where
     #[inline]
     pub fn into_get<R, I>(self, index: I) -> Result<R, PushGuard<Self>>
     where
-        R: LuaRead<PushGuard<Self>>,
         I: PushOne<LuaState, Err = Void>,
+        R: LuaRead<PushGuard<Self>>,
     {
+        let this_index = self.index.into();
+        Self::get_impl(self, this_index, index)
+    }
+
+    #[inline]
+    pub fn get_impl<T, R, I>(
+        this: T,
+        this_index: i32,
+        index: I,
+    ) -> Result<R, PushGuard<T>>
+    where
+        T: AsLua,
+        I: PushOne<LuaState, Err = Void>,
+        R: LuaRead<PushGuard<T>>,
+    {
+        let raw_lua = this.as_lua();
         unsafe {
-            index.push_no_err(self.as_lua()).assert_one_and_forget();
+            index.push_no_err(raw_lua).assert_one_and_forget();
+            ffi::lua_gettable(raw_lua, this_index);
 
-            ffi::lua_gettable(self.as_lua(), self.offset(-1));
-
-            let raw_lua = self.as_lua();
-            let guard = PushGuard::new(self, 1);
+            let guard = PushGuard::new(this, 1);
 
             if ffi::lua_isnil(raw_lua, -1) {
                 Err(guard)
@@ -219,9 +236,6 @@ where
         V: PushOne<LuaState>,
     {
         unsafe {
-            let raw_lua = self.as_lua();
-            let my_offset = self.offset(-2);
-
             let guard = match index.push_to_lua(self.as_lua()) {
                 Ok(guard) => {
                     assert_eq!(guard.size, 1);
@@ -243,14 +257,24 @@ where
             };
 
             guard.forget();
-            ffi::lua_settable(raw_lua, my_offset);
+            ffi::lua_settable(self.as_lua(), self.index.into());
             Ok(())
         }
     }
 
+    pub fn call_method<R, A>(&'lua self, name: &str, args: A)
+        -> Result<R, MethodCallError<TuplePushError<Void, <A as Push<LuaState>>::Err>>>
+    where
+        A: Push<LuaState>,
+        R: LuaRead<PushGuard<LuaFunction<PushGuard<&'lua L>>>>,
+    {
+        let method: LuaFunction<_> = self.get(name).ok_or(MethodCallError::NoSuchMethod)?;
+        method.into_call_with_args((self, args)).map_err(|e| e.into())
+    }
+
     /// Inserts an empty array, then loads it.
     #[inline]
-    pub fn empty_array<I>(&self, index: I) -> LuaTable<PushGuard<LuaState>>
+    pub fn empty_array<I>(&'lua self, index: I) -> LuaTable<PushGuard<&'lua L>>
     where
         I: PushOne<LuaState, Err = Void> + Clone,
     {
@@ -269,7 +293,7 @@ where
                 Err(_) => panic!(),      // TODO:
             };
 
-            ffi::lua_settable(self.as_lua(), self.offset(-2));
+            ffi::lua_settable(self.as_lua(), self.index.into());
 
             self.get(index).unwrap()
         }
@@ -326,18 +350,15 @@ where
     pub fn get_or_create_metatable(self) -> LuaTable<PushGuard<L>> {
         unsafe {
             // We put the metatable at the top of the stack.
-            if ffi::lua_getmetatable(self.table.as_lua(), self.index.into()) == 0 {
+            if ffi::lua_getmetatable(self.lua.as_lua(), self.index.into()) == 0 {
                 // No existing metatable ; create one then set it and reload it.
-                ffi::lua_newtable(self.table.as_lua());
-                ffi::lua_setmetatable(self.table.as_lua(), self.offset(-1));
-                let r = ffi::lua_getmetatable(self.table.as_lua(), self.index.into());
+                ffi::lua_newtable(self.lua.as_lua());
+                ffi::lua_setmetatable(self.lua.as_lua(), self.index.into());
+                let r = ffi::lua_getmetatable(self.lua.as_lua(), self.index.into());
                 debug_assert!(r != 0);
             }
 
-            LuaTable {
-                table: PushGuard::new(self.table, 1),
-                index: crate::NEGATIVE_ONE,
-            }
+            LuaTable::new(PushGuard::new(self.lua, 1), crate::NEGATIVE_ONE)
         }
     }
 
@@ -359,9 +380,25 @@ where
     /// ```
     #[inline]
     pub fn registry(lua: L) -> LuaTable<L> {
-        LuaTable {
-            table: lua,
-            index: unsafe { NonZeroI32::new_unchecked(ffi::LUA_REGISTRYINDEX) },
+        LuaTable::new(
+            lua,
+            unsafe { NonZeroI32::new_unchecked(ffi::LUA_REGISTRYINDEX) }
+        )
+    }
+}
+
+#[derive(Debug)]
+pub enum MethodCallError<E> {
+    NoSuchMethod,
+    LuaError(LuaError),
+    PushError(E),
+}
+
+impl<E> From<LuaFunctionCallError<E>> for MethodCallError<E> {
+    fn from(e: LuaFunctionCallError<E>) -> Self {
+        match e {
+            LuaFunctionCallError::PushError(e) => MethodCallError::PushError(e),
+            LuaFunctionCallError::LuaError(e) => MethodCallError::LuaError(e),
         }
     }
 }
@@ -409,7 +446,7 @@ where
             // As a reminder, the key is always at the top of the stack unless `finished` is true.
 
             // This call pops the current key and pushes the next key and value at the top.
-            if ffi::lua_next(self.table.as_lua(), self.table.offset(-1)) == 0 {
+            if ffi::lua_next(self.table.as_lua(), self.table.index.into()) == 0 {
                 self.finished = true;
                 return None;
             }
