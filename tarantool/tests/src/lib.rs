@@ -235,6 +235,8 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
 
                 hlua::misc::print,
                 hlua::misc::json,
+                hlua::misc::dump_stack,
+                hlua::misc::dump_stack_raw,
 
                 hlua::userdata::readwrite,
                 hlua::userdata::destructor_called,

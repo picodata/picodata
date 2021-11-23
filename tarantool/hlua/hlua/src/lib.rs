@@ -132,6 +132,7 @@ pub use values::StringInLua;
 pub use ffi::luaL_error;
 
 mod any;
+pub mod debug;
 mod functions_write;
 mod lua_functions;
 mod lua_tables;
