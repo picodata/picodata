@@ -290,10 +290,10 @@ where
     /// # Example
     ///
     /// ```
-    /// let mut lua = hlua::Lua::new();
+    /// let lua = hlua::Lua::new();
     /// lua.execute::<()>("function sub(a, b) return a - b end").unwrap();
     ///
-    /// let mut foo: hlua::LuaFunction<_> = lua.get("sub").unwrap();
+    /// let foo: hlua::LuaFunction<_> = lua.get("sub").unwrap();
     /// let result: i32 = foo.call_with_args((18, 4)).unwrap();
     /// assert_eq!(result, 14);
     /// ```
@@ -301,10 +301,10 @@ where
     /// # Multiple return values
     ///
     /// ```
-    /// let mut lua = hlua::Lua::new();
+    /// let lua = hlua::Lua::new();
     /// lua.execute::<()>("function divmod(a, b) return math.floor(a / b), a % b end").unwrap();
     ///
-    /// let mut foo: hlua::LuaFunction<_> = lua.get("divmod").unwrap();
+    /// let foo: hlua::LuaFunction<_> = lua.get("divmod").unwrap();
     ///
     /// let first_result: i32 = foo.call_with_args((18, 4)).unwrap();
     /// assert_eq!(first_result, 4);
@@ -349,30 +349,24 @@ where
     /// # Example
     ///
     /// ```
-    /// let mut lua = hlua::Lua::new();
+    /// let lua = hlua::Lua::new();
     /// lua.execute::<()>("function sub(a, b) return a - b end").unwrap();
     ///
-    /// let mut foo: hlua::LuaFunction<_> = lua.get("sub").unwrap();
-    /// let result: i32 = foo.call_with_args((18, 4)).unwrap();
+    /// let foo: hlua::LuaFunction<_> = lua.get("sub").unwrap();
+    /// let result: i32 = foo.into_call_with_args((18, 4)).unwrap();
     /// assert_eq!(result, 14);
     /// ```
     ///
     /// # Multiple return values
     ///
     /// ```
-    /// let mut lua = hlua::Lua::new();
+    /// let lua = hlua::Lua::new();
     /// lua.execute::<()>("function divmod(a, b) return math.floor(a / b), a % b end").unwrap();
     ///
-    /// let mut foo: hlua::LuaFunction<_> = lua.get("divmod").unwrap();
+    /// let foo: hlua::LuaFunction<_> = lua.get("divmod").unwrap();
     ///
-    /// let first_result: i32 = foo.call_with_args((18, 4)).unwrap();
-    /// assert_eq!(first_result, 4);
-    ///
-    /// let all_result: (i32, i32) = foo.call_with_args((18, 4)).unwrap();
+    /// let all_result: (i32, i32) = foo.into_call_with_args((18, 4)).unwrap();
     /// assert_eq!(all_result, (4, 2));
-    ///
-    /// let excess_results: (i32, i32, Option<i32>) = foo.call_with_args((18, 4)).unwrap();
-    /// assert_eq!(excess_results, (4, 2, None));
     /// ```
     #[inline]
     pub fn into_call_with_args<V, A>(self, args: A)
