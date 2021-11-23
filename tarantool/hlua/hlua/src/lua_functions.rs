@@ -316,9 +316,10 @@ where
     /// assert_eq!(excess_results, (4, 2, None));
     /// ```
     #[inline]
-    pub fn call_with_args<V, A, E>(&'lua self, args: A) -> Result<V, LuaFunctionCallError<E>>
+    pub fn call_with_args<V, A>(&'lua self, args: A)
+        -> Result<V, LuaFunctionCallError<<A as Push<LuaState>>::Err>>
     where
-        A: Push<LuaState, Err = E>,
+        A: Push<LuaState>,
         V: LuaRead<PushGuard<&'lua L>>,
     {
         Self::call_impl(&self.lua, self.index.into(), args)
@@ -374,9 +375,10 @@ where
     /// assert_eq!(excess_results, (4, 2, None));
     /// ```
     #[inline]
-    pub fn into_call_with_args<V, A, E>(self, args: A) -> Result<V, LuaFunctionCallError<E>>
+    pub fn into_call_with_args<V, A>(self, args: A)
+        -> Result<V, LuaFunctionCallError<<A as Push<LuaState>>::Err>>
     where
-        A: Push<LuaState, Err = E>,
+        A: Push<LuaState>,
         V: LuaRead<PushGuard<Self>>,
     {
         let index = self.index.into();
