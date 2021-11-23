@@ -238,6 +238,56 @@ impl<L: AsLua> PushGuard<L> {
 // TODO: the lifetime should be an associated lifetime instead
 pub trait AsLua {
     fn as_lua(&self) -> *mut ffi::lua_State;
+
+    fn try_push<T>(self, v: T) -> Result<PushGuard<Self>, (<T as Push<Self>>::Err, Self)>
+    where
+        Self: Sized,
+        T: Push<Self>,
+    {
+        v.push_to_lua(self)
+    }
+
+    fn push<T, E>(self, v: T) -> PushGuard<Self>
+    where
+        Self: Sized,
+        T: Push<Self, Err = E>,
+        E: Into<Void>,
+    {
+        v.push_no_err(self)
+    }
+
+    fn push_one<T, E>(self, v: T) -> PushGuard<Self>
+    where
+        Self: Sized,
+        T: PushOne<Self, Err = E>,
+        E: Into<Void>,
+    {
+        v.push_no_err(self)
+    }
+
+    fn read<T>(self) -> Result<T, Self>
+    where
+        Self: Sized,
+        T: LuaRead<Self>,
+    {
+        T::lua_read(self)
+    }
+
+    fn read_at<T>(self, index: i32) -> Result<T, Self>
+    where
+        Self: Sized,
+        T: LuaRead<Self>,
+    {
+        T::lua_read_at_maybe_zero_position(self, index)
+    }
+
+    fn read_at_nz<T>(self, index: NonZeroI32) -> Result<T, Self>
+    where
+        Self: Sized,
+        T: LuaRead<Self>,
+    {
+        T::lua_read_at_position(self, index)
+    }
 }
 
 impl<T> AsLua for &'_ T

@@ -32,10 +32,11 @@ pub fn dump_stack() {
     let lua = Lua::new();
     lua.openlibs();
     let mut buf = std::io::Cursor::new(Vec::with_capacity(0x1000));
-    let lua = "hello".push_to_lua(lua).unwrap();
-    let lua = 3.14.push_to_lua(lua).unwrap();
-    let lua = false.push_to_lua(lua).unwrap();
-    let lua = 420.push_to_lua(lua).unwrap();
+    let lua = lua
+        .push("hello")
+        .push(3.14)
+        .push(false)
+        .push(420);
     tarantool::hlua::debug::dump_stack_to(lua, &mut buf).unwrap();
     assert_eq!(
         String::from_utf8_lossy(buf.into_inner().as_slice()),
@@ -53,10 +54,11 @@ pub fn dump_stack_raw() {
     let lua = Lua::new();
     lua.openlibs();
     let mut buf = std::io::Cursor::new(Vec::with_capacity(0x1000));
-    let lua = "hello".push_to_lua(lua).unwrap();
-    let lua = 3.14.push_to_lua(lua).unwrap();
-    let lua = false.push_to_lua(lua).unwrap();
-    let lua = 420.push_to_lua(lua).unwrap();
+    let lua = lua
+        .push("hello")
+        .push(3.14)
+        .push(false)
+        .push(420);
     tarantool::hlua::debug::dump_stack_raw_to(lua.as_lua(), &mut buf).unwrap();
     assert_eq!(
         String::from_utf8_lossy(buf.into_inner().as_slice()),
