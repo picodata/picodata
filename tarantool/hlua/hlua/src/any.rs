@@ -1,6 +1,7 @@
 use std::num::NonZeroI32;
 
 use crate::{
+    ffi,
     AsLua,
     Push,
     PushGuard,

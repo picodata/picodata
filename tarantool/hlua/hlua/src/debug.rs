@@ -1,6 +1,7 @@
 use std::io::Write;
 
 use crate::{
+    ffi,
     c_ptr,
     AsLua,
     Lua,

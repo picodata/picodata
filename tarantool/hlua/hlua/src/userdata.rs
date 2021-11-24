@@ -6,6 +6,7 @@ use std::mem;
 use std::ptr;
 
 use crate::{
+    ffi,
     AsLua,
     Push,
     PushGuard,

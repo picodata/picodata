@@ -3,6 +3,7 @@ use std::marker::PhantomData;
 use std::num::NonZeroI32;
 
 use crate::{
+    ffi,
     AbsoluteIndex,
     AsLua,
     Push,

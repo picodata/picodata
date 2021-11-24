@@ -130,11 +130,9 @@ pub use values::StringInLua;
 pub type LuaTableMap = std::collections::HashMap<AnyHashableLuaValue, AnyLuaValue>;
 pub type LuaSequence = Vec<AnyLuaValue>;
 
-// Needed for `lua_error` macro
-pub use ffi::luaL_error;
-
 mod any;
 pub mod debug;
+pub mod ffi;
 mod functions_write;
 mod lua_functions;
 mod lua_tables;

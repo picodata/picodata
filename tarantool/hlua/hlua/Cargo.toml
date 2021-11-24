@@ -15,5 +15,3 @@ license = "MIT"
 [dependencies]
 libc = "0.2"
 
-[dependencies.ffi]
-path = "../ffi"

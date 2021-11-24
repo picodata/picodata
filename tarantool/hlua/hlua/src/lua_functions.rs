@@ -7,6 +7,7 @@ use std::num::NonZeroI32;
 use std::ptr;
 
 use crate::{
+    ffi,
     c_ptr,
     AbsoluteIndex,
     AsLua,

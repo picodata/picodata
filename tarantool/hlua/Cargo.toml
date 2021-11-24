@@ -1,5 +1,5 @@
 [workspace]
 members = [
     "hlua",
-    "ffi",
+    "hlua-derive",
 ]

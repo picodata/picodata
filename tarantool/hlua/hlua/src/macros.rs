@@ -72,7 +72,7 @@ macro_rules! c_ptr {
 macro_rules! lua_error {
     ($l:expr, $msg:literal) => {
         {
-            $crate::luaL_error($l, $crate::c_ptr!($msg));
+            $crate::ffi::luaL_error($l, $crate::c_ptr!($msg));
             unreachable!()
         }
     }

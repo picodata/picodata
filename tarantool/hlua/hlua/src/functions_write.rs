@@ -1,6 +1,7 @@
 use libc;
 
 use crate::{
+    ffi,
     AnyLuaValue,
     AsLua,
     lua_error,

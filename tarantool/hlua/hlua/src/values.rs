@@ -5,6 +5,7 @@ use std::str;
 use std::ops::Deref;
 
 use crate::{
+    ffi,
     AnyLuaString,
     AsLua,
     LuaRead,

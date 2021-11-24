@@ -42,10 +42,6 @@ va_list = "0.1.3"
 [dependencies.hlua]
 path = "../hlua/hlua"
 
-[dependencies.lua_ffi]
-path = "../hlua/ffi"
-package = "ffi"
-
 [features]
 default = ["net_box"]
 net_box = ["lazy_static", "refpool"]
