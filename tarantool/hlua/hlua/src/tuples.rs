@@ -117,6 +117,7 @@ macro_rules! tuple_impl {
                 };
 
                 let mut i: i32 = index.into();
+                // TODO(gmoshkin): + n_values_expected
                 i += 1;
 
                 $(
@@ -127,6 +128,8 @@ macro_rules! tuple_impl {
                     // The 0 index is the special case that should not be walked
                     // over. Either we return Err on it or we handle the
                     // situation correctly (e.g. Option<T>, (), ...)
+                    // TODO(gmoshkin): + n_values_expected but make sure not to
+                    // ignore going over 0
                     i = if i == 0 { 0 } else { i + 1 };
                 )+
 

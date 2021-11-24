@@ -15,3 +15,6 @@ license = "MIT"
 [dependencies]
 libc = "0.2"
 
+[dependencies.hlua-derive]
+path = "../hlua-derive"
+

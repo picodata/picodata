@@ -1,4 +1,6 @@
 use tarantool::hlua::{
+    self,
+    AsLua,
     LuaError,
     LuaFunction,
     LuaTable,
@@ -88,12 +90,12 @@ pub fn call_and_read_table() {
 pub fn table_as_args() {
     let lua = crate::hlua::global();
     let f: LuaFunction<_> = lua.execute("return function(a) return a.foo end").unwrap();
-    let t: LuaTable<_> = lua.execute("return { foo = 69 };").unwrap();
+    let t: LuaTable<_> = (&lua).push(Foo { foo: 69 }).read().unwrap();
     let val: i32 = f.call_with_args(&t).unwrap();
     assert_eq!(val, 69);
 
     let f: LuaFunction<_> = lua.execute("return function(a, b) return a.foo + b.bar end").unwrap();
-    let u: LuaTable<_> = lua.execute("return { bar = 420 };").unwrap();
+    let u: LuaTable<_> = (&lua).push(Bar { bar: 420 }).read().unwrap();
     let val: i32 = f.call_with_args((&t, &u)).unwrap();
     assert_eq!(val, 420 + 69);
 
@@ -105,6 +107,10 @@ pub fn table_as_args() {
     t.insert("foo", "bar");
     let res: String = json_encode.call_with_args(t).unwrap();
     assert_eq!(res, r#"{"foo":"bar"}"#);
+
+    #[derive(hlua::Push)] struct Foo { foo: i32 }
+
+    #[derive(hlua::Push)] struct Bar { bar: i32 }
 }
 
 #[rustfmt::skip]

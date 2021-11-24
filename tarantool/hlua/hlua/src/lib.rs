@@ -126,6 +126,7 @@ pub use tuples::TuplePushError;
 pub use userdata::UserdataOnStack;
 pub use userdata::{push_userdata, read_userdata, push_some_userdata};
 pub use values::StringInLua;
+pub use hlua_derive::*;
 
 pub type LuaTableMap = std::collections::HashMap<AnyHashableLuaValue, AnyLuaValue>;
 pub type LuaSequence = Vec<AnyLuaValue>;
@@ -206,7 +207,7 @@ impl<L: AsLua> PushGuard<L> {
     }
 
     #[inline]
-    fn assert_one_and_forget(self) -> i32 {
+    pub fn assert_one_and_forget(self) -> i32 {
         assert_eq!(self.size, 1);
         self.forget_internal()
     }

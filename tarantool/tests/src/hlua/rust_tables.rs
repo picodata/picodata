@@ -1,11 +1,15 @@
 use std::collections::{HashMap, HashSet, BTreeMap};
 use tarantool::hlua::{
+    self,
+    AsLua,
     Lua,
     LuaSequence,
     LuaTable,
     LuaTableMap,
+    LuaRead,
     AnyLuaValue,
     AnyHashableLuaValue,
+    Push,
 };
 
 pub fn write() {
@@ -258,3 +262,231 @@ pub fn reading_hashmap_set_from_lua_works() {
         [2., 3., 4.].iter().enumerate()
             .map(|(k, v)| (AnyHashableLuaValue::LuaNumber((k + 1) as i32), AnyLuaValue::LuaNumber(*v))).collect::<HashMap<_, _>>());
 }
+
+pub fn derive_struct_push() {
+    #[derive(Push)]
+    struct S {
+        i: i32,
+        s: String,
+        boo: bool,
+        table: Vec<u8>,
+        r#struct: T,
+    }
+
+    #[derive(Push)]
+    struct T {
+        x: f64,
+    }
+
+    let lua = Lua::new();
+    let lua = lua.push(
+        S {
+            i: 69,
+            s: "nice".into(),
+            boo: true,
+            table: vec![11, 12, 13],
+            r#struct: T { x: 3.14 },
+        }
+    );
+    let t: LuaTable<_> = lua.read().unwrap();
+    assert_eq!(t.get::<i32, _>("i"), Some(69));
+    assert_eq!(t.get::<String, _>("s"), Some("nice".into()));
+    assert_eq!(t.get::<bool, _>("boo"), Some(true));
+    let u: LuaTable<_> = t.get("table").unwrap();
+    assert_eq!(u.get::<u8, _>(1), Some(11));
+    assert_eq!(u.get::<u8, _>(2), Some(12));
+    assert_eq!(u.get::<u8, _>(3), Some(13));
+    let v: LuaTable<_> = t.get("r#struct").unwrap();
+    assert_eq!(v.get::<f64, _>("x"), Some(3.14));
+}
+
+pub fn derive_tuple_struct_push() {
+    let lua = Lua::new();
+
+    #[derive(Push)]
+    struct U(i32);
+    let lua = lua.push(U(420));
+    assert_eq!((&lua).read::<i32>().unwrap(), 420);
+
+    #[derive(Push)]
+    struct V(String, i32, bool);
+    let lua = lua.push(V("foo".into(), 13, true));
+    assert_eq!(
+        (&lua).read::<(String, i32, bool)>().unwrap(),
+        ("foo".to_string(), 13, true)
+    );
+}
+
+pub fn derive_struct_lua_read() {
+    #[derive(Debug, PartialEq, Eq, LuaRead)]
+    struct S { i: i32, s: String, boo: bool, o: Option<i32> }
+
+    #[derive(Debug, PartialEq, Eq, LuaRead)]
+    struct T { i: i32, s: String }
+
+    let lua = Lua::new();
+    let () = lua.execute(r#"t = { i = 69, s = "booboo", boo = true }"#).unwrap();
+    let s: S = lua.get("t").unwrap();
+    assert_eq!(s, S { i: 69, s: "booboo".into(), boo: true, o: None });
+
+    let t: T = lua.get("t").unwrap();
+    assert_eq!(t, T { i: 69, s: "booboo".into() });
+}
+
+pub fn derive_tuple_struct_lua_read() {
+    let lua = Lua::new();
+
+    #[derive(LuaRead, PartialEq, Eq, Debug)]
+    struct S(i32);
+    let lua = lua.push(420);
+    assert_eq!((&lua).read::<S>().unwrap(), S(420));
+
+    let lua = lua.into_inner();
+
+    #[derive(LuaRead, PartialEq, Eq, Debug)]
+    struct T(String, Vec<i32>, bool);
+    let lua = lua.push(("foo".to_string(), vec![1, 2, 3], true));
+    assert_eq!((&lua).read::<T>().unwrap(), T("foo".into(), vec![1, 2, 3], true));
+
+    let lua = lua.into_inner();
+    let t: T = lua.execute("return \"hello\", {3, 2, 1}, false").unwrap();
+    assert_eq!(t, T("hello".into(), vec![3, 2, 1], false));
+}
+
+pub fn derive_enum_push() {
+    #[derive(Push)]
+    enum E {
+        Num(i32),
+        Str(String),
+        Vec(f32, f32, f32),
+        Tuple((f32, f32, f32)),
+        S(S),
+        Struct {
+            i: i32,
+            s: String,
+        },
+    }
+
+    #[derive(Push, LuaRead, PartialEq, Eq, Debug)]
+    struct S { foo: i32, bar: String }
+
+    let lua = Lua::new();
+    let lua = lua.push(E::Num(69));
+    assert_eq!((&lua).read::<i32>().unwrap(), 69);
+    let lua = lua.push(E::Str("hello".into()));
+    assert_eq!((&lua).read::<String>().unwrap(), "hello");
+    let lua = lua.push(E::Vec(3.14, 2.71, 1.62));
+    assert_eq!((&lua).read::<(f32, f32, f32)>().unwrap(), (3.14, 2.71, 1.62));
+    let lua = lua.push(E::Tuple((2.71, 1.62, 3.14)));
+    assert_eq!((&lua).read::<(f32, f32, f32)>().unwrap(), (2.71, 1.62, 3.14));
+    let lua = lua.push(E::S(S { foo: 69, bar: "nice".into() }));
+    assert_eq!((&lua).read::<S>().unwrap(), S { foo: 69, bar: "nice".into() });
+    let lua = lua.push(E::Struct { i: 420, s: "blaze".into() });
+    let t: LuaTable<_> = (&lua).read().unwrap();
+    assert_eq!(t.get::<i32, _>("i").unwrap(), 420);
+    assert_eq!(t.get::<String, _>("s").unwrap(), "blaze");
+}
+
+pub fn derive_enum_lua_read() {
+    #[derive(LuaRead, Debug, PartialEq)]
+    enum E {
+        Vec(f32, f32, f32),
+        Num(i32),
+        Str(String),
+        S(S),
+        Struct {
+            i: i32,
+            s: String,
+        },
+    }
+
+    #[derive(Push, LuaRead, PartialEq, Eq, Debug)]
+    struct S { foo: i32, bar: String }
+
+    let lua = Lua::new();
+    let res: E = lua.execute("return 7").unwrap();
+    assert_eq!(res, E::Num(7));
+    let res: E = lua.execute(r#"return "howdy""#).unwrap();
+    assert_eq!(res, E::Str("howdy".into()));
+    let res: E = lua.execute("return 1.5, 2.5, 3.5").unwrap();
+    assert_eq!(res, E::Vec(1.5, 2.5, 3.5));
+    let res: E = lua.execute(r#"return { foo = 420, bar = "foo" }"#).unwrap();
+    assert_eq!(res, E::S(S { foo: 420, bar: "foo".into() }));
+    let res: E = lua.execute(r#"return { i = 69, s = "nice" }"#).unwrap();
+    assert_eq!(res, E::Struct { i: 69, s: "nice".into() });
+
+    let lua = lua.push((1, 2, 3));
+    assert_eq!((&lua).read::<E>().unwrap(), E::Vec(1., 2., 3.));
+    let lua = lua.push(S { foo: 314, bar: "pi".into() });
+    assert_eq!((&lua).read::<E>().unwrap(), E::S(S { foo: 314, bar: "pi".into() }));
+}
+
+pub fn enum_variants_order_matters() {
+    let lua = Lua::new();
+
+    #[derive(LuaRead, PartialEq, Debug)]
+    enum A {
+        Multiple(f32, f32),
+        Single(i32),
+    }
+
+    let res: A = lua.execute("return 1, 2").unwrap();
+    assert_eq!(res, A::Multiple(1., 2.));
+
+    #[derive(LuaRead, PartialEq, Debug)]
+    enum B {
+        Single(i32),
+        Multiple(f32, f32),
+    }
+
+    let res: B = lua.execute("return 1, 2").unwrap();
+    assert_eq!(res, B::Single(1));
+
+}
+
+pub fn struct_of_enums_vs_enum_of_structs() {
+    let lua = Lua::new();
+
+    let () = lua.execute(r#"v = {
+        vec = {
+            { x = 69 },
+            { y = "hello" },
+            { z = true },
+        }
+    }"#).unwrap();
+
+    let s: S = lua.get("v").unwrap();
+    assert_eq!(s,
+        S {
+            vec: vec![
+                V { x: Some(69), .. Default::default() },
+                V { y: Some("hello".into()), .. Default::default() },
+                V { z: Some(true), .. Default::default() },
+            ],
+        }
+    );
+
+    let t: T = lua.get("v").unwrap();
+    assert_eq!(t,
+        T {
+            vec: vec![
+                E::X { x: 69 },
+                E::Y { y: "hello".into() },
+                E::Z { z: true },
+            ],
+        }
+    );
+
+    #[derive(Debug, PartialEq, LuaRead)]
+    struct S { vec: Vec<V> }
+
+    #[derive(Debug, PartialEq, LuaRead, Default)]
+    struct V { x: Option<i32>, y: Option<String>, z: Option<bool> }
+
+    #[derive(Debug, PartialEq, LuaRead)]
+    struct T { vec: Vec<E> }
+
+    #[derive(Debug, PartialEq, LuaRead)]
+    enum E { X { x: i32 }, Y { y: String, }, Z { z: bool } }
+}
+
