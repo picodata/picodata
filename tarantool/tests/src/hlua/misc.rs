@@ -3,7 +3,6 @@ use tarantool::hlua::{
     Lua,
     LuaFunction,
     LuaTable,
-    Push,
 };
 
 pub fn print() {

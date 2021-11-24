@@ -345,6 +345,8 @@ impl AsLua for InsideCallback {
     }
 }
 
+// This impl is the reason Push has a generic type parameter. But do we really
+// need this impl at all?
 impl<T, E> Push<InsideCallback> for Result<T, E>
 where
     T: Push<InsideCallback>,

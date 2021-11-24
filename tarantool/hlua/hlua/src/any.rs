@@ -50,7 +50,7 @@ pub enum AnyLuaValue {
     LuaOther,
 }
 
-impl<'lua, L> Push<L> for AnyLuaValue
+impl<L> Push<L> for AnyLuaValue
 where
     L: AsLua,
 {
@@ -70,7 +70,7 @@ where
     }
 }
 
-impl<'lua, L> PushOne<L> for AnyLuaValue
+impl<L> PushOne<L> for AnyLuaValue
 where
     L: AsLua,
 {
@@ -140,7 +140,7 @@ impl<L: AsLua> LuaRead<L> for AnyLuaValue {
     }
 }
 
-impl<'lua, L> Push<L> for AnyHashableLuaValue
+impl<L> Push<L> for AnyHashableLuaValue
 where
     L: AsLua,
 {
@@ -160,13 +160,13 @@ where
     }
 }
 
-impl<'lua, L> PushOne<L> for AnyHashableLuaValue
+impl<L> PushOne<L> for AnyHashableLuaValue
 where
     L: AsLua,
 {
 }
 
-impl<'lua, L> LuaRead<L> for AnyHashableLuaValue
+impl<L> LuaRead<L> for AnyHashableLuaValue
 where
     L: AsLua,
 {

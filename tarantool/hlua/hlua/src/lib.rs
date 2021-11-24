@@ -575,6 +575,7 @@ impl Lua {
     /// lua.openlibs();
     /// ```
     #[inline]
+    // TODO(gmoshkin): this method should be part of AsLua
     pub fn openlibs(&self) {
         unsafe { ffi::luaL_openlibs(self.lua) }
     }
@@ -583,6 +584,7 @@ impl Lua {
     ///
     /// <https://www.lua.org/manual/5.2/manual.html#pdf-luaopen_base>
     #[inline]
+    // TODO(gmoshkin): this method should be part of AsLua
     pub fn open_base(&self) {
         unsafe { ffi::luaopen_base(self.lua) }
     }
@@ -591,6 +593,7 @@ impl Lua {
     ///
     /// <https://www.lua.org/manual/5.2/manual.html#pdf-luaopen_bit32>
     #[inline]
+    // TODO(gmoshkin): this method should be part of AsLua
     pub fn open_bit(&self) {
         unsafe { ffi::luaopen_bit(self.lua) }
     }
@@ -599,6 +602,7 @@ impl Lua {
     ///
     /// <https://www.lua.org/manual/5.2/manual.html#pdf-luaopen_debug>
     #[inline]
+    // TODO(gmoshkin): this method should be part of AsLua
     pub fn open_debug(&self) {
         unsafe { ffi::luaopen_debug(self.lua) }
     }
@@ -607,6 +611,7 @@ impl Lua {
     ///
     /// <https://www.lua.org/manual/5.2/manual.html#pdf-luaopen_io>
     #[inline]
+    // TODO(gmoshkin): this method should be part of AsLua
     pub fn open_io(&self) {
         unsafe { ffi::luaopen_io(self.lua) }
     }
@@ -615,6 +620,7 @@ impl Lua {
     ///
     /// <https://www.lua.org/manual/5.2/manual.html#pdf-luaopen_math>
     #[inline]
+    // TODO(gmoshkin): this method should be part of AsLua
     pub fn open_math(&self) {
         unsafe { ffi::luaopen_math(self.lua) }
     }
@@ -623,6 +629,7 @@ impl Lua {
     ///
     /// <https://www.lua.org/manual/5.2/manual.html#pdf-luaopen_os>
     #[inline]
+    // TODO(gmoshkin): this method should be part of AsLua
     pub fn open_os(&self) {
         unsafe { ffi::luaopen_os(self.lua) }
     }
@@ -631,6 +638,7 @@ impl Lua {
     ///
     /// <https://www.lua.org/manual/5.2/manual.html#pdf-luaopen_package>
     #[inline]
+    // TODO(gmoshkin): this method should be part of AsLua
     pub fn open_package(&self) {
         unsafe { ffi::luaopen_package(self.lua) }
     }
@@ -639,6 +647,7 @@ impl Lua {
     ///
     /// <https://www.lua.org/manual/5.2/manual.html#pdf-luaopen_string>
     #[inline]
+    // TODO(gmoshkin): this method should be part of AsLua
     pub fn open_string(&self) {
         unsafe { ffi::luaopen_string(self.lua) }
     }
@@ -647,6 +656,7 @@ impl Lua {
     ///
     /// <https://www.lua.org/manual/5.2/manual.html#pdf-luaopen_table>
     #[inline]
+    // TODO(gmoshkin): this method should be part of AsLua
     pub fn open_table(&self) {
         unsafe { ffi::luaopen_table(self.lua) }
     }
@@ -689,6 +699,7 @@ impl Lua {
     /// let sixty = lua.execute::<i32>("return 6 * 10;").unwrap();
     /// ```
     #[inline]
+    // TODO(gmoshkin): this method should be part of AsLua
     pub fn execute<'lua, T>(&'lua self, code: &str) -> Result<T, LuaError>
     where
         T: LuaRead<PushGuard<LuaFunction<PushGuard<&'lua Self>>>>,
@@ -717,6 +728,7 @@ impl Lua {
     /// lua.execute_from_reader::<(), _>(script).unwrap();
     /// ```
     #[inline]
+    // TODO(gmoshkin): this method should be part of AsLua
     pub fn execute_from_reader<'lua, T>(&'lua self, code: impl Read) -> Result<T, LuaError>
     where
         T: LuaRead<PushGuard<LuaFunction<PushGuard<&'lua Self>>>>,
@@ -743,6 +755,7 @@ impl Lua {
     /// assert_eq!(a, 5);
     /// ```
     #[inline]
+    // TODO(gmoshkin): this method should be part of AsLua
     pub fn get<'lua, V, I>(&'lua self, index: I) -> Option<V>
     where
         I: Borrow<str>,
@@ -762,6 +775,7 @@ impl Lua {
 
     /// Reads the value of a global, capturing the context by value.
     #[inline]
+    // TODO(gmoshkin): this method should be part of AsLua
     pub fn into_get<V, I>(self, index: I) -> Result<V, PushGuard<Self>>
     where
         I: Borrow<str>,
@@ -800,6 +814,7 @@ impl Lua {
     /// assert_eq!(six, 6);
     /// ```
     #[inline]
+    // TODO(gmoshkin): this method should be part of AsLua
     pub fn set<'lua, I, V, E>(&'lua self, index: I, value: V)
     where
         I: Borrow<str>,
@@ -815,6 +830,7 @@ impl Lua {
     /// Modifies the value of a global variable.
     // TODO: docs
     #[inline]
+    // TODO(gmoshkin): this method should be part of AsLua
     pub fn checked_set<'lua, I, V>(&'lua self, index: I, value: V)
         -> Result<(), <V as Push<&'lua Self>>::Err>
     where
@@ -877,6 +893,7 @@ impl Lua {
     /// assert_eq!(sum, 45);
     /// ```
     #[inline]
+    // TODO(gmoshkin): this method should be part of AsLua
     pub fn empty_array<'lua, I>(&'lua self, index: I) -> LuaTable<PushGuard<&'lua Self>>
     where
         I: Borrow<str>,
@@ -934,6 +951,7 @@ impl Lua {
     /// assert_eq!(b, 96);
     /// ```
     #[inline]
+    // TODO(gmoshkin): this method should be part of AsLua
     pub fn globals_table<'lua>(&'lua self) -> LuaTable<PushGuard<&'lua Self>> {
         unsafe {
             ffi::lua_pushglobaltable(self.lua);
