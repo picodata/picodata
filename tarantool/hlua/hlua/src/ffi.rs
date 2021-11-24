@@ -5,7 +5,7 @@
 //! 3. Lua utitlites, implemented in Tarantool
 
 #![allow(non_camel_case_types)]
-use std::os::raw::{c_double, c_int, c_schar};
+use std::os::raw::{c_double, c_int, c_schar, c_void};
 use std::ptr::null_mut;
 
 /// Lua provides a registry, a pre-defined table that can be used by any C code
@@ -45,6 +45,7 @@ pub const LUA_TTABLE: c_int = 5;
 pub const LUA_TFUNCTION: c_int = 6;
 pub const LUA_TUSERDATA: c_int = 7;
 pub const LUA_TTHREAD: c_int = 8;
+pub const LUA_TCDATA: c_int = 10;
 
 pub const LUA_MINSTACK: c_int = 20;
 
@@ -292,6 +293,7 @@ extern "C" {
     pub fn lua_setmetatable(l: *mut lua_State, index: c_int) -> c_int;
     pub fn lua_getmetatable(l: *mut lua_State, index: c_int) -> c_int;
 
+    pub fn lua_tonumber(l: *mut lua_State, index: c_int) -> lua_Number;
     pub fn lua_tonumberx(l: *mut lua_State, index: c_int, isnum: *mut c_int) -> lua_Number;
     pub fn lua_tointegerx(l: *mut lua_State, index: c_int, isnum: *mut c_int) -> lua_Integer;
 
@@ -506,6 +508,12 @@ pub unsafe fn lua_isthread(state: *mut lua_State, index: c_int) -> bool {
     lua_type(state, index) == LUA_TTHREAD
 }
 
+#[allow(non_snake_case)]
+#[inline(always)]
+pub unsafe fn luaL_iscdata(state: *mut lua_State, index: c_int) -> bool {
+    lua_type(state, index) == LUA_TCDATA
+}
+
 #[inline(always)]
 pub unsafe fn lua_isnone(state: *mut lua_State, index: c_int) -> bool {
     lua_type(state, index) == LUA_TNONE
@@ -520,3 +528,68 @@ pub unsafe fn lua_isnoneornil(state: *mut lua_State, index: c_int) -> bool {
 pub unsafe fn lua_pushglobaltable(state: *mut lua_State) {
     lua_pushvalue(state, LUA_GLOBALSINDEX)
 }
+
+pub const CTID_NONE           : u32 = 0;
+pub const CTID_VOID           : u32 = 1;
+pub const CTID_CVOID          : u32 = 2;
+pub const CTID_BOOL           : u32 = 3;
+pub const CTID_CCHAR          : u32 = 4;
+pub const CTID_INT8           : u32 = 5;
+pub const CTID_UINT8          : u32 = 6;
+pub const CTID_INT16          : u32 = 7;
+pub const CTID_UINT16         : u32 = 8;
+pub const CTID_INT32          : u32 = 9;
+pub const CTID_UINT32         : u32 = 10;
+pub const CTID_INT64          : u32 = 11;
+pub const CTID_UINT64         : u32 = 12;
+pub const CTID_FLOAT          : u32 = 13;
+pub const CTID_DOUBLE         : u32 = 14;
+pub const CTID_COMPLEX_FLOAT  : u32 = 15;
+pub const CTID_COMPLEX_DOUBLE : u32 = 16;
+pub const CTID_P_VOID         : u32 = 17;
+pub const CTID_P_CVOID        : u32 = 18;
+pub const CTID_P_CCHAR        : u32 = 19;
+pub const CTID_A_CCHAR        : u32 = 20;
+pub const CTID_CTYPEID        : u32 = 21;
+
+extern "C" {
+    /// Push `u64` onto the stack
+    /// *[-0, +1, -]*
+    pub fn luaL_pushuint64(l: *mut lua_State, val: u64);
+
+    /// Push `i64` onto the stack
+    /// *[-0, +1, -]*
+    pub fn luaL_pushint64(l: *mut lua_State, val: i64);
+
+    /// Checks whether the argument `idx` is a `u64` or a convertable string and
+    /// returns this number.
+    /// *[-0, +0, -]*
+    ///
+    /// **Return** the converted number or 0 of argument can't be converted.
+    pub fn luaL_touint64(l: *mut lua_State, idx: c_int) -> u64;
+
+    /// Checks whether the argument `idx` is a `i64` or a convertable string and
+    /// returns this number.
+    /// *[-0, +0, -]*
+    ///
+    /// **Return** the converted number or 0 of argument can't be converted.
+    pub fn luaL_toint64(l: *mut lua_State, idx: c_int) -> i64;
+
+    /// Push cdata of given `ctypeid` onto the stack.
+    /// CTypeID must be used from FFI at least once. Allocated memory returned
+    /// uninitialized. Only numbers and pointers are supported.
+    /// - `l`:       Lua State
+    /// - `ctypeid`: FFI's CTypeID of this cdata
+    /// See also: [`luaL_checkcdata`]
+    /// **Returns** memory associated with this cdata
+    pub fn luaL_pushcdata(l: *mut lua_State, ctypeid: u32) -> *mut c_void;
+
+    /// Checks whether the function argument `idx` is a cdata
+    /// * `l`:       Lua State
+    /// * `idx`:     stack index
+    /// * `ctypeid`: FFI's CTypeID of this cdata
+    /// See also: [`luaL_pushcdata`]
+    /// **Returns** memory associated with this cdata
+    pub fn luaL_checkcdata(l: *mut lua_State, idx: c_int, ctypeid: *mut u32) -> *mut c_void;
+}
+

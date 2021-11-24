@@ -1,4 +1,5 @@
 use tarantool::hlua::{
+    AsLua,
     AnyLuaValue,
     AnyLuaString,
     Lua,
@@ -45,6 +46,30 @@ pub fn write_i32s() {
     lua.set("a", 2);
     let x: i32 = lua.get("a").unwrap();
     assert_eq!(x, 2);
+}
+
+pub fn int64() {
+    let lua = crate::hlua::global();
+    let res: i64 = (&lua).push(-0x69).read().unwrap();
+    assert_eq!(res, -0x69);
+
+    let res: i64 = (&lua).push(0x77bbccddeeff0011i64).read().unwrap();
+    assert_eq!(res, 0x77bbccddeeff0011i64);
+
+    let res: u64 = (&lua).push(0xaabbccddeeff0011u64).read().unwrap();
+    assert_eq!(res, 0xaabbccddeeff0011u64);
+
+    let res: u64 = (&lua).push(f64::INFINITY).read().unwrap();
+    assert_eq!(res, u64::MAX);
+
+    let res: i64 = (&lua).push(f64::NEG_INFINITY).read().unwrap();
+    assert_eq!(res, i64::MIN);
+
+    let err = lua.execute::<i32>("return 0ull").unwrap_err();
+    assert_eq!(err.to_string(), "Wrong type returned by Lua: i32 expected, got cdata");
+
+    let res = lua.execute::<i64>("return 0ull").unwrap();
+    assert_eq!(res, 0);
 }
 
 pub fn readwrite_floats() {

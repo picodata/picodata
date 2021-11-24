@@ -273,6 +273,7 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
 
                 hlua::values::read_i32s,
                 hlua::values::write_i32s,
+                hlua::values::int64,
                 hlua::values::readwrite_floats,
                 hlua::values::readwrite_bools,
                 hlua::values::readwrite_strings,

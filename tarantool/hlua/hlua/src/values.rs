@@ -3,6 +3,7 @@ use std::num::NonZeroI32;
 use std::slice;
 use std::str;
 use std::ops::Deref;
+use std::os::raw::c_int;
 
 use crate::{
     ffi,
@@ -75,12 +76,42 @@ impl_try_to_numeric!{lua_try_tointeger, isize, ffi::lua_tointegerx}
 numeric_impl!{i8, ffi::lua_pushinteger, lua_try_tointeger}
 numeric_impl!{i16, ffi::lua_pushinteger, lua_try_tointeger}
 numeric_impl!{i32, ffi::lua_pushinteger, lua_try_tointeger}
-// integer_impl!(i64)   // data loss
 
 numeric_impl!{u8, ffi::lua_pushinteger, lua_try_tointeger}
 numeric_impl!{u16, ffi::lua_pushinteger, lua_try_tointeger}
 numeric_impl!{u32, ffi::lua_pushinteger, lua_try_tointeger}
-// unsigned_impl!(u64);   // data loss
+
+macro_rules! impl_try_tointeger64 {
+    ($name:ident, $t:ty) => {
+        #[inline(always)]
+        pub unsafe fn $name(l: *mut ffi::lua_State, idx: c_int) -> Option<$t> {
+            match ffi::lua_type(l, idx) {
+                ffi::LUA_TNUMBER => Some(ffi::lua_tonumber(l, idx) as _),
+                ffi::LUA_TCDATA => {
+                    let mut ctypeid = std::mem::MaybeUninit::uninit();
+                    let cdata = ffi::luaL_checkcdata(l, idx, ctypeid.as_mut_ptr());
+                    match ctypeid.assume_init() {
+                        ffi::CTID_CCHAR | ffi::CTID_INT8 => Some(*cdata.cast::<i8>() as _),
+                        ffi::CTID_INT16 => Some(*cdata.cast::<i16>() as _),
+                        ffi::CTID_INT32 => Some(*cdata.cast::<i32>() as _),
+                        ffi::CTID_INT64 => Some(*cdata.cast::<i64>() as _),
+                        ffi::CTID_UINT8 => Some(*cdata.cast::<u8>() as _),
+                        ffi::CTID_UINT16 => Some(*cdata.cast::<u16>() as _),
+                        ffi::CTID_UINT32 => Some(*cdata.cast::<u32>() as _),
+                        ffi::CTID_UINT64 => Some(*cdata.cast::<u64>() as _),
+                        _ => None,
+                    }
+                }
+                _ => None,
+            }
+        }
+    }
+}
+
+impl_try_tointeger64!{lua_try_toi64, i64}
+numeric_impl!{i64, ffi::luaL_pushint64, lua_try_toi64}
+impl_try_tointeger64!{lua_try_tou64, u64}
+numeric_impl!{u64, ffi::luaL_pushuint64, lua_try_tou64}
 
 impl_try_to_numeric!{lua_try_tonumber, f64, ffi::lua_tonumberx}
 
