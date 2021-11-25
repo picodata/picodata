@@ -16,6 +16,7 @@ build:
         - docker
     image: registry.gitlab.com/picodata/dockers/brod-builder:0.2
     script:
+        - cargo -V
         - make
 
 test:

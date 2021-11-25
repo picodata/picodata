@@ -1,4 +1,3 @@
-
 use tarantool::hlua::{
     LuaError,
     LuaFunction,
@@ -6,6 +5,7 @@ use tarantool::hlua::{
     MethodCallError,
 };
 use std::io::Read;
+use std::collections::HashMap;
 
 pub fn basic() {
     let lua = crate::hlua::global();
@@ -93,6 +93,15 @@ pub fn table_as_args() {
     let u: LuaTable<_> = lua.execute("return { bar = 420 };").unwrap();
     let val: i32 = f.call_with_args((&t, &u)).unwrap();
     assert_eq!(val, 420 + 69);
+
+    let json_encode: LuaFunction<_> = lua.execute("return require('json').encode").unwrap();
+    let res: String = json_encode.call_with_args(vec!("a", "b", "c")).unwrap();
+    assert_eq!(res, r#"["a","b","c"]"#);
+
+    let mut t = HashMap::new();
+    t.insert("foo", "bar");
+    let res: String = json_encode.call_with_args(t).unwrap();
+    assert_eq!(res, r#"{"foo":"bar"}"#);
 }
 
 #[rustfmt::skip]
