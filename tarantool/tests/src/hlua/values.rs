@@ -105,8 +105,7 @@ pub fn i32_to_string() {
 
     lua.set("a", 2);
 
-    let x: String = lua.get("a").unwrap();
-    assert_eq!(x, "2");
+    assert_eq!(lua.get("a"), None::<String>);
 }
 
 pub fn string_to_i32() {
@@ -133,8 +132,7 @@ pub fn string_on_lua() {
 
     lua.set("a", 18);
     {
-        let x: StringInLua<_> = lua.get("a").unwrap();
-        assert_eq!(&*x, "18");
+        assert_eq!(lua.get("a"), None::<StringInLua<_>>);
     }
 }
 

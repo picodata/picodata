@@ -127,6 +127,9 @@ pub use userdata::UserdataOnStack;
 pub use userdata::{push_userdata, read_userdata, push_some_userdata};
 pub use values::StringInLua;
 
+pub type LuaTableMap = std::collections::HashMap<AnyHashableLuaValue, AnyLuaValue>;
+pub type LuaSequence = Vec<AnyLuaValue>;
+
 // Needed for `lua_error` macro
 pub use ffi::luaL_error;
 

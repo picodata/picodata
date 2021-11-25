@@ -1,5 +1,4 @@
 use crate::{
-    any::{AnyLuaValue, AnyHashableLuaValue},
     Push,
     PushGuard,
     PushOne,
@@ -108,34 +107,42 @@ where
 {
 }
 
-impl<L> LuaRead<L> for Vec<AnyLuaValue>
+impl<L, T> LuaRead<L> for Vec<T>
 where
     L: AsLua,
+    T: for<'a> LuaRead<&'a LuaTable<L>>,
+    T: 'static,
 {
     fn lua_read_at_position(lua: L, index: NonZeroI32) -> Result<Self, L> {
         // We need this as iteration order isn't guaranteed to match order of
         // keys, even if they're numeric
         // https://www.lua.org/manual/5.2/manual.html#pdf-next
-        let table = match LuaTable::lua_read_at_position(lua.as_lua(), index) {
+        let table = match LuaTable::lua_read_at_position(lua, index) {
             Ok(table) => table,
-            Err(_) => return Err(lua),
+            Err(lua) => return Err(lua),
         };
-        let mut dict: BTreeMap<i32, AnyLuaValue> = BTreeMap::new();
+        let mut dict: BTreeMap<i32, T> = BTreeMap::new();
 
-        for (key, value) in table.iter().flatten() {
+        let mut max_key = i32::MIN;
+        let mut min_key = i32::MAX;
+
+        for (key, value) in table.iter::<i32, T>().flatten() {
+            max_key = max_key.max(key);
+            min_key = min_key.min(key);
             dict.insert(key, value);
         }
 
-        let (maximum_key, minimum_key) =
-            (*dict.keys().max().unwrap_or(&1), *dict.keys().min().unwrap_or(&1));
-
-        if minimum_key != 1 {
-            // Rust doesn't support sparse arrays or arrays with negative
-            // indices
-            return Err(lua);
+        if dict.is_empty() {
+            return Ok(vec![])
         }
 
-        let mut result = Vec::with_capacity(maximum_key as _);
+        if min_key != 1 {
+            // Rust doesn't support sparse arrays or arrays with negative
+            // indices
+            return Err(table.into_inner());
+        }
+
+        let mut result = Vec::with_capacity(max_key as _);
 
         // We expect to start with first element of table and have this
         // be smaller that first key by one
@@ -145,7 +152,7 @@ where
         // and check that table represented non-sparse 1-indexed array
         for (k, v) in dict {
             if previous_key + 1 != k {
-                return Err(lua)
+                return Err(table.into_inner())
             } else {
                 // We just push, thus converting Lua 1-based indexing
                 // to Rust 0-based indexing
@@ -180,9 +187,13 @@ where
 {
 }
 
-impl<L> LuaRead<L> for HashMap<AnyHashableLuaValue, AnyLuaValue>
+impl<L, K, V> LuaRead<L> for HashMap<K, V>
 where
     L: AsLua,
+    K: 'static + Hash + Eq,
+    K: for<'k> LuaRead<&'k LuaTable<L>>,
+    V: 'static,
+    V: for<'v> LuaRead<&'v LuaTable<L>>,
 {
     fn lua_read_at_position(lua: L, index: NonZeroI32) -> Result<Self, L> {
         let table = LuaTable::lua_read_at_position(lua, index)?;

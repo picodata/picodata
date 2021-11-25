@@ -129,6 +129,14 @@ macro_rules! lua_read_string_impl {
             fn lua_read_at_position(lua: L, index: NonZeroI32) -> Result<$s, L> {
                 unsafe {
                     let mut size = MaybeUninit::uninit();
+                    let type_code = ffi::lua_type(lua.as_lua(), index.into());
+                    // Because this function may be called while iterating over
+                    // a table we must make sure not to change the value on the
+                    // stack. So no number to string conversions are supported
+                    // anymore
+                    if type_code != ffi::LUA_TSTRING {
+                        return Err(lua)
+                    }
                     let c_ptr = ffi::lua_tolstring(
                         lua.as_lua(), index.into(), size.as_mut_ptr()
                     );

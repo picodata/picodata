@@ -72,7 +72,10 @@ pub fn check_types() {
     assert_eq!(f.call::<i32>().unwrap(), 12i32);
     assert_eq!(f.call::<f32>().unwrap(), 12f32);
     assert_eq!(f.call::<f64>().unwrap(), 12f64);
-    assert_eq!(f.call::<String>().unwrap(), "12".to_string());
+    assert_eq!(
+        f.call::<String>().unwrap_err().to_string(),
+        "Wrong type returned by Lua: alloc::string::String expected, got number"
+    );
 }
 
 pub fn call_and_read_table() {

@@ -334,6 +334,35 @@ extern "C" {
     /// jump, and therefore never returns. (see [`luaL_error`]).
     /// *[-1, +0, v]*
     pub fn lua_error(l: *mut lua_State) -> c_int;
+
+    /// Pops a key from the stack, and pushes a key-value pair from the table at
+    /// the given `index` (the "next" pair after the given key). If there are no
+    /// more elements in the table, then `lua_next` returns 0 (and pushes
+    /// nothing).
+    /// *[-1, +(2|0), e]*
+    ///
+    /// A typical traversal looks like this:
+    ///
+    /// ```
+    /// use std::ffi::CStr;
+    /// unsafe {
+    ///     // table is in the stack at index 't'
+    ///     lua_pushnil(l);  // first key
+    ///     while lua_next(l, t) != 0 {
+    ///         // uses 'key' (at index -2) and 'value' (at index -1)
+    ///         println!("{} - {}",
+    ///             CStr::from_ptr(lua_typename(l, lua_type(l, -2))).to_str().unwrap(),
+    ///             CStr::from_ptr(lua_typename(l, lua_type(l, -1))).to_str().unwrap(),
+    ///         );
+    ///         // removes 'value'; keeps 'key' for next iteration
+    ///         lua_pop(l, 1);
+    ///     }
+    /// }
+    /// ```
+    /// While traversing a table, do not call [`lua_tolstring`] directly on a
+    /// key, unless you know that the key is actually a string. Recall that
+    /// `lua_tolstring` changes the value at the given index; this confuses the
+    /// next call to lua_next.
     pub fn lua_next(l: *mut lua_State, index: c_int) -> c_int;
     pub fn lua_concat(l: *mut lua_State, n: c_int);
     pub fn lua_len(l: *mut lua_State, index: c_int);
