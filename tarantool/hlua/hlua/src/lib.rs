@@ -763,15 +763,10 @@ impl Lua {
         V: LuaRead<PushGuard<&'lua Self>>,
     {
         let index = CString::new(index.borrow()).unwrap();
-        let guard = unsafe {
+        unsafe {
             ffi::lua_getglobal(self.lua, index.as_ptr());
-            let guard = PushGuard::new(self, 1);
-            if ffi::lua_isnil(self.as_lua(), -1) {
-                return None;
-            }
-            guard
-        };
-        LuaRead::lua_read(guard).ok()
+            V::lua_read(PushGuard::new(self, 1)).ok()
+        }
     }
 
     /// Reads the value of a global, capturing the context by value.
@@ -785,13 +780,7 @@ impl Lua {
         let index = CString::new(index.borrow()).unwrap();
         unsafe {
             ffi::lua_getglobal(self.lua, index.as_ptr());
-            let is_nil = ffi::lua_isnil(self.lua, -1);
-            let guard = PushGuard::new(self, 1);
-            if is_nil {
-                Err(guard)
-            } else {
-                LuaRead::lua_read(guard)
-            }
+            V::lua_read(PushGuard::new(self, 1))
         }
     }
 

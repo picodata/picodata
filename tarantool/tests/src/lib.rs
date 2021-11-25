@@ -200,6 +200,7 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 hlua::lua_tables::iterable,
                 hlua::lua_tables::iterable_multipletimes,
                 hlua::lua_tables::get_set,
+                hlua::lua_tables::get_nil,
                 hlua::lua_tables::table_over_table,
                 hlua::lua_tables::metatable,
                 hlua::lua_tables::empty_array,

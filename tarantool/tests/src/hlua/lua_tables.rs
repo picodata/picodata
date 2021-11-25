@@ -54,6 +54,14 @@ pub fn get_set() {
     assert_eq!(z, 9);
 }
 
+pub fn get_nil() {
+    let lua = Lua::new();
+    let t: LuaTable<_> = lua.execute("return {}").unwrap();
+    assert_eq!(t.get::<i32, _>(1), None);
+    assert_eq!(t.get::<Option<i32>, _>(1), Some(None));
+    assert_eq!(t.get::<Option<Option<i32>>, _>(1), Some(None));
+}
+
 pub fn table_over_table() {
     let lua = crate::hlua::global();
 

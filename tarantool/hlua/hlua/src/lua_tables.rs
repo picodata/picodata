@@ -187,14 +187,7 @@ where
         unsafe {
             index.push_no_err(raw_lua).assert_one_and_forget();
             ffi::lua_gettable(raw_lua, this_index);
-
-            let guard = PushGuard::new(this, 1);
-
-            if ffi::lua_isnil(raw_lua, -1) {
-                Err(guard)
-            } else {
-                LuaRead::lua_read(guard)
-            }
+            R::lua_read(PushGuard::new(this, 1))
         }
     }
 

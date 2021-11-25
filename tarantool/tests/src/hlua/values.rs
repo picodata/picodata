@@ -160,5 +160,10 @@ pub fn read_nil() {
     let lua = Lua::new();
     assert_eq!(lua.execute::<Nil>("return nil").unwrap(), Nil);
     assert_eq!(lua.execute::<Option<i32>>("return nil").unwrap(), None);
+
+    lua.set("v", None::<i32>);
+    assert_eq!(lua.get::<i32, _>("v"), None);
+    assert_eq!(lua.get::<Option<i32>, _>("v"), Some(None));
+    assert_eq!(lua.get::<Option<Option<i32>>, _>("v"), Some(None));
 }
 
