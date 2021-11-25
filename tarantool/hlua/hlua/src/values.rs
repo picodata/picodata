@@ -52,15 +52,24 @@ macro_rules! numeric_impl {
     }
 }
 
-unsafe fn lua_try_tointeger(l: *mut ffi::lua_State, idx: i32) -> Option<isize> {
-    let mut success = MaybeUninit::uninit();
-    let val = ffi::lua_tointegerx(l, idx, success.as_mut_ptr());
-    if success.assume_init() == 0 {
-        None
-    } else {
-        Some(val)
+macro_rules! impl_try_to_numeric {
+    ($name:ident, $t:ty, $read:path) => {
+        unsafe fn $name(l: *mut ffi::lua_State, idx: i32) -> Option<$t> {
+            if ffi::lua_type(l, idx) != ffi::LUA_TNUMBER {
+                return None
+            }
+            let mut success = MaybeUninit::uninit();
+            let val = $read(l, idx, success.as_mut_ptr());
+            if success.assume_init() == 0 {
+                None
+            } else {
+                Some(val)
+            }
+        }
     }
 }
+
+impl_try_to_numeric!{lua_try_tointeger, isize, ffi::lua_tointegerx}
 
 numeric_impl!{i8, ffi::lua_pushinteger, lua_try_tointeger}
 numeric_impl!{i16, ffi::lua_pushinteger, lua_try_tointeger}
@@ -72,15 +81,7 @@ numeric_impl!{u16, ffi::lua_pushinteger, lua_try_tointeger}
 numeric_impl!{u32, ffi::lua_pushinteger, lua_try_tointeger}
 // unsigned_impl!(u64);   // data loss
 
-unsafe fn lua_try_tonumber(l: *mut ffi::lua_State, idx: i32) -> Option<f64> {
-    let mut success = MaybeUninit::uninit();
-    let val = ffi::lua_tonumberx(l, idx, success.as_mut_ptr());
-    if success.assume_init() == 0 {
-        None
-    } else {
-        Some(val)
-    }
-}
+impl_try_to_numeric!{lua_try_tonumber, f64, ffi::lua_tonumberx}
 
 numeric_impl!{f32, ffi::lua_pushnumber, lua_try_tonumber}
 numeric_impl!{f64, ffi::lua_pushnumber, lua_try_tonumber}

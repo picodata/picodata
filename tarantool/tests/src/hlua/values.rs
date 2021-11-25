@@ -114,11 +114,8 @@ pub fn string_to_i32() {
     lua.set("a", "2");
     lua.set("b", "aaa");
 
-    let x: i32 = lua.get("a").unwrap();
-    assert_eq!(x, 2);
-
-    let y: Option<i32> = lua.get("b");
-    assert!(y.is_none());
+    assert_eq!(lua.get("a"), None::<i32>);
+    assert_eq!(lua.get("b"), None::<i32>);
 }
 
 pub fn string_on_lua() {
