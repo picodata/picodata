@@ -159,10 +159,15 @@ impl_function!(function10, A, B, C, D, E, F, G, H, I, J);
 /// let ret = lua.execute::<()>("res = assert(err())");
 /// assert!(ret.is_err());
 /// ```
-#[derive(Debug)]
 pub struct Function<F, P, R> {
     function: F,
     marker: PhantomData<(P, R)>,
+}
+
+impl<F, P, R> std::fmt::Debug for Function<F, P, R> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Function({})", std::any::type_name::<F>())
+    }
 }
 
 /// Trait implemented on `Function` to mimic `FnMut`.

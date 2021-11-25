@@ -259,7 +259,9 @@ where
     pub fn call_method<R, A>(&'lua self, name: &str, args: A)
         -> Result<R, MethodCallError<TuplePushError<Void, <A as Push<LuaState>>::Err>>>
     where
+        L: std::fmt::Debug,
         A: Push<LuaState>,
+        A: std::fmt::Debug,
         R: LuaRead<PushGuard<LuaFunction<PushGuard<&'lua L>>>>,
     {
         let method: LuaFunction<_> = self.get(name).ok_or(MethodCallError::NoSuchMethod)?;

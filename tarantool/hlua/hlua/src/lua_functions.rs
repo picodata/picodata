@@ -141,7 +141,7 @@ where
                     c_ptr!("chunk"),
                     ptr::null(),
                 );
-                (code, PushGuard { lua, size: 1 })
+                (code, PushGuard::new(lua, 1))
             };
 
             if read_data.triggered_error.is_some() {

@@ -207,7 +207,9 @@ impl<L, K, V> Push<L> for HashMap<K, V>
 where
     L: AsLua,
     K: PushOne<LuaState> + Eq + Hash,
+    K: std::fmt::Debug,
     V: PushOne<LuaState>,
+    V: std::fmt::Debug,
 {
     type Err = TuplePushError<
         <K as Push<LuaState>>::Err,
@@ -228,14 +230,17 @@ impl<L, K, V, E> PushOne<L> for HashMap<K, V>
 where
     L: AsLua,
     K: PushOne<LuaState, Err = E> + Eq + Hash,
-    V: PushOne<LuaState, Err = E>
+    K: std::fmt::Debug,
+    V: PushOne<LuaState, Err = E>,
+    V: std::fmt::Debug,
 {
 }
 
 impl<L, K> Push<L> for HashSet<K>
 where
     L: AsLua,
-    K: PushOne<LuaState> + Eq + Hash
+    K: PushOne<LuaState> + Eq + Hash,
+    K: std::fmt::Debug,
 {
     type Err = K::Err;
 
@@ -252,7 +257,8 @@ where
 impl<L, K, E> PushOne<L> for HashSet<K>
 where
     L: AsLua,
-    K: PushOne<LuaState, Err = E> + Eq + Hash
+    K: PushOne<LuaState, Err = E> + Eq + Hash,
+    K: std::fmt::Debug,
 {
 }
 

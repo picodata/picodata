@@ -53,6 +53,7 @@ macro_rules! tuple_impl {
         impl<LU, $first, $($other),+> Push<LU> for ($first, $($other),+)
         where
             LU: AsLua,
+            Self: std::fmt::Debug,
             $first: Push<LuaState>,
             ($($other,)+): Push<LuaState>,
         {

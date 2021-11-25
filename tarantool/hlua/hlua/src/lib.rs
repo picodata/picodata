@@ -111,7 +111,7 @@ use std::borrow::Borrow;
 use std::num::NonZeroI32;
 use std::error::Error;
 use std::fmt;
-use std::convert::From;
+use std::convert::{From, TryInto};
 use std::io;
 
 pub use any::{AnyHashableLuaValue, AnyLuaString, AnyLuaValue};
@@ -163,13 +163,32 @@ pub struct Lua {
 ///
 /// You shouldn't have to manipulate this type directly unless you are fiddling with the
 /// library's internals.
-#[derive(Debug)]
 pub struct PushGuard<L>
 where
     L: AsLua,
 {
     lua: L,
+    top: i32,
     size: i32,
+}
+
+impl<L> std::fmt::Debug for PushGuard<L>
+where
+    L: AsLua,
+    L: std::fmt::Debug,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let start = unsafe {
+            AbsoluteIndex::new_unchecked(
+                NonZeroI32::new(self.top - self.size + 1).unwrap()
+            )
+        };
+        write!(f, "PushGuard {{ lua: {:?}, size: {:?}, lua_type: {} }}",
+            self.lua,
+            self.size,
+            lua_typename(self.lua.as_lua(), start, self.size as _),
+        )
+    }
 }
 
 impl<L: AsLua> PushGuard<L> {
@@ -180,8 +199,9 @@ impl<L: AsLua> PushGuard<L> {
     #[inline]
     pub unsafe fn new(lua: L, size: i32) -> Self {
         PushGuard {
+            top: ffi::lua_gettop(lua.as_lua()),
             lua,
-            size,
+            size: size as _,
         }
     }
 
@@ -225,7 +245,7 @@ impl<L: AsLua> PushGuard<L> {
         unsafe {
             ptr::copy_nonoverlapping(&self.lua, res.as_mut_ptr(), 1);
             if self.size != 0 {
-                ffi::lua_pop(self.lua.as_lua(), self.size);
+                ffi::lua_pop(self.lua.as_lua(), self.size as _);
             }
         };
         mem::forget(self);
@@ -433,35 +453,37 @@ pub enum LuaError {
 
 impl LuaError {
     pub fn wrong_type<T, L: AsLua>(lua: L, n_values: i32) -> Self {
+        let nz = unsafe { NonZeroI32::new_unchecked(-n_values) };
+        let start = AbsoluteIndex::new(nz, lua.as_lua());
         Self::WrongType {
             rust_expected: std::any::type_name::<T>().into(),
-            lua_actual: lua_typename(lua, n_values),
+            lua_actual: lua_typename(lua, start, n_values as _),
         }
     }
 }
 
-pub fn lua_typename(lua: impl AsLua, n_values: i32) -> String {
+pub fn lua_typename(lua: impl AsLua, start: AbsoluteIndex, count: u32) -> String {
     let l_ptr = lua.as_lua();
-    macro_rules! single_typename {
-        ($i:expr) => {
-            unsafe {
-                let lua_type = ffi::lua_type(l_ptr, -$i);
-                let typename = ffi::lua_typename(l_ptr, lua_type);
-                std::ffi::CStr::from_ptr(typename).to_string_lossy()
-            }
-        }
-    }
+    let single_typename = |i| unsafe {
+        let lua_type = ffi::lua_type(l_ptr, i as _);
+        let typename = ffi::lua_typename(l_ptr, lua_type);
+        std::ffi::CStr::from_ptr(typename).to_string_lossy()
+    };
 
-    if n_values == 1 {
-        return single_typename!(1).into_owned()
+    let start = start.get();
+    match count {
+        0 => return "()".into(),
+        1 => return single_typename(start).into_owned(),
+        _ => {}
     }
 
     let mut res = vec![std::borrow::Cow::Borrowed("(")];
-    for i in (2..=n_values).rev() {
-        res.push(single_typename!(i));
+    let end = start + count - 1;
+    for i in start..end {
+        res.push(single_typename(i));
         res.push(", ".into());
     }
-    res.push(single_typename!(1));
+    res.push(single_typename(end));
     res.push(")".into());
     res.join("")
 }
@@ -971,7 +993,7 @@ impl Lua {
      fn drop(&mut self) {
          if self.size != 0 {
              unsafe {
-                 ffi::lua_pop(self.lua.as_lua(), self.size);
+                 ffi::lua_pop(self.lua.as_lua(), self.size as _);
              }
          }
      }
@@ -1025,10 +1047,19 @@ impl AbsoluteIndex {
         let top = unsafe { ffi::lua_gettop(lua.as_lua()) };
         let i = index.get();
         if unsafe { ffi::is_relative_index(i) } {
-            Self(NonZeroI32::new(top + i + 1).expect("Invalid relative index"))
+            let index = (top + i + 1).try_into().expect("Invalid relative index");
+            Self(NonZeroI32::new(index).expect("Invalid relative index"))
         } else {
             Self(index)
         }
+    }
+
+    pub unsafe fn new_unchecked(index: NonZeroI32) -> Self {
+        Self(index)
+    }
+
+    pub fn get(&self) -> u32 {
+        self.0.get() as _
     }
 }
 
