@@ -179,6 +179,11 @@ pub fn multiple_return_values() {
     let f = LuaFunction::load(&lua, r#"return 69, "foo", 3.14, true;"#).unwrap();
     let res: (i32, String, f64, bool) = f.call().unwrap();
     assert_eq!(res, (69, "foo".to_string(), 3.14, true));
+    let e = f.call::<(i8, i8, i8, i8)>().unwrap_err();
+    assert_eq!(
+        e.to_string(),
+        "Wrong type returned by Lua: (i8, i8, i8, i8) expected, got (number, string, number, boolean)",
+    );
 }
 
 pub fn multiple_return_values_fail() {

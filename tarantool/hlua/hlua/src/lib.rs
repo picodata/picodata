@@ -451,11 +451,11 @@ pub fn lua_typename(lua: impl AsLua, n_values: i32) -> String {
     }
 
     let mut res = vec![std::borrow::Cow::Borrowed("(")];
-    for i in 1..n_values {
+    for i in (2..=n_values).rev() {
         res.push(single_typename!(i));
         res.push(", ".into());
     }
-    res.push(single_typename!(n_values));
+    res.push(single_typename!(1));
     res.push(")".into());
     res.join("")
 }
