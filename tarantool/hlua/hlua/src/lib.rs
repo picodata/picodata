@@ -387,10 +387,16 @@ pub const NEGATIVE_TWO: NonZeroI32 = unsafe { NonZeroI32::new_unchecked(-2) };
 /// Most types that implement `Push` also implement `LuaRead`, but this is not always the case
 /// (for example `&'static str` implements `Push` but not `LuaRead`).
 pub trait LuaRead<L>: Sized {
+    #[inline(always)]
+    fn n_values_expected() -> i32 {
+        1
+    }
+
     /// Reads the data from Lua.
     #[inline]
     fn lua_read(lua: L) -> Result<Self, L> {
-        Self::lua_read_at_position(lua, NEGATIVE_ONE)
+        let index = NonZeroI32::new(-Self::n_values_expected()).expect("Invalid n_values_expected");
+        Self::lua_read_at_position(lua, index)
     }
 
     fn lua_read_at_maybe_zero_position(lua: L, index: i32) -> Result<Self, L> {

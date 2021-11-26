@@ -37,6 +37,10 @@ macro_rules! tuple_impl {
             LU: AsLua,
             $ty: LuaRead<LU>,
         {
+            fn n_values_expected() -> i32 {
+                $ty::n_values_expected()
+            }
+
             #[inline]
             fn lua_read_at_position(lua: LU, index: NonZeroI32) -> Result<($ty,), LU> {
                 LuaRead::lua_read_at_position(lua, index).map(|v| (v,))
@@ -99,6 +103,11 @@ macro_rules! tuple_impl {
             $first: for<'a> LuaRead<&'a LU>,
             $($other: for<'a> LuaRead<&'a LU>),+
         {
+            #[inline(always)]
+            fn n_values_expected() -> i32 {
+                $first::n_values_expected() $( + $other::n_values_expected() )+
+            }
+
             #[inline]
             fn lua_read_at_position(lua: LU, index: NonZeroI32) -> Result<($first, $($other),+), LU> {
                 let $first: $first = match LuaRead::lua_read_at_position(&lua, index) {
