@@ -5,6 +5,13 @@ subcommands:
   - run:
       about: run the picodata instance
       args:
+        - data-dir:
+            long: data-dir
+            help: Here instance persists all its data
+            takes_value: true
+            default_value: "."
+            value_name: path
+
         - listen:
             # short: l
             long: listen

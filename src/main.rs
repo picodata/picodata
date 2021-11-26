@@ -62,7 +62,13 @@ fn main_run(matches: &clap::ArgMatches) {
         envp.insert("PICODATA_PEER".to_owned(), peer);
     }
 
-    for arg in ["listen", "instance-id", "replicaset-id", "cluster-id"] {
+    for arg in [
+        "cluster-id",
+        "data-dir",
+        "instance-id",
+        "listen",
+        "replicaset-id",
+    ] {
         if let Some(v) = matches.value_of(arg) {
             let k = format!("PICODATA_{}", arg.to_uppercase().replace("-", "_"));
             envp.insert(k, v.to_owned());
