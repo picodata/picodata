@@ -149,9 +149,20 @@ pub enum TuplePushError<C, O> {
     Other(O),
 }
 
-impl From<TuplePushError<Void, Void>> for Void {
-    #[inline]
-    fn from(_: TuplePushError<Void, Void>) -> Void {
-        unreachable!()
-    }
+macro_rules! impl_tuple_push_error {
+    [@t] => { Void };
+    [@t Void $($v:tt)*] => { TuplePushError<Void, impl_tuple_push_error![@t $($v)*]> };
+    () => {};
+    ($h:tt $($t:tt)*) => {
+        impl From<impl_tuple_push_error![@t $h $($t)*]> for Void {
+            #[inline]
+            fn from(_: impl_tuple_push_error![@t $h $($t)*]) -> Void {
+                unreachable!("There's no way to create an instance of Void")
+            }
+        }
+        impl_tuple_push_error!{ $($t)* }
+    };
 }
+
+impl_tuple_push_error!{Void Void Void Void Void Void Void Void Void Void Void Void}
+
