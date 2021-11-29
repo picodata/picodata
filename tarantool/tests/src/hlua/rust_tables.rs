@@ -300,23 +300,6 @@ pub fn derive_struct_push() {
     assert_eq!(v.get::<f64, _>("x"), Some(3.14));
 }
 
-pub fn derive_tuple_struct_push() {
-    let lua = Lua::new();
-
-    #[derive(Push)]
-    struct U(i32);
-    let lua = lua.push(U(420));
-    assert_eq!((&lua).read::<i32>().unwrap(), 420);
-
-    #[derive(Push)]
-    struct V(String, i32, bool);
-    let lua = lua.push(V("foo".into(), 13, true));
-    assert_eq!(
-        (&lua).read::<(String, i32, bool)>().unwrap(),
-        ("foo".to_string(), 13, true)
-    );
-}
-
 pub fn derive_struct_lua_read() {
     #[derive(Debug, PartialEq, Eq, LuaRead)]
     struct S { i: i32, s: String, boo: bool, o: Option<i32> }
@@ -331,26 +314,6 @@ pub fn derive_struct_lua_read() {
 
     let t: T = lua.get("t").unwrap();
     assert_eq!(t, T { i: 69, s: "booboo".into() });
-}
-
-pub fn derive_tuple_struct_lua_read() {
-    let lua = Lua::new();
-
-    #[derive(LuaRead, PartialEq, Eq, Debug)]
-    struct S(i32);
-    let lua = lua.push(420);
-    assert_eq!((&lua).read::<S>().unwrap(), S(420));
-
-    let lua = lua.into_inner();
-
-    #[derive(LuaRead, PartialEq, Eq, Debug)]
-    struct T(String, Vec<i32>, bool);
-    let lua = lua.push(("foo".to_string(), vec![1, 2, 3], true));
-    assert_eq!((&lua).read::<T>().unwrap(), T("foo".into(), vec![1, 2, 3], true));
-
-    let lua = lua.into_inner();
-    let t: T = lua.execute("return \"hello\", {3, 2, 1}, false").unwrap();
-    assert_eq!(t, T("hello".into(), vec![3, 2, 1], false));
 }
 
 pub fn derive_enum_push() {
