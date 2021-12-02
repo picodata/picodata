@@ -18,7 +18,7 @@ use crate::{
 };
 
 macro_rules! numeric_impl {
-    ($t:ident, $push:path, $read:path) => {
+    ($t:ident, $push:path, $read:path $(, coerce: $coerce:expr)?) => {
         impl<L> Push<L> for $t
         where
             L: AsLua,
@@ -46,77 +46,65 @@ macro_rules! numeric_impl {
         {
             #[inline]
             fn lua_read_at_position(lua: L, index: NonZeroI32) -> Result<$t, L> {
-                unsafe { $read(lua.as_lua(), index.into()) }
+                return unsafe { read_numeric(lua.as_lua(), index.into()) }
                     .map(|v| v as _)
-                    .ok_or(lua)
-            }
-        }
-    }
-}
+                    .ok_or(lua);
 
-macro_rules! impl_try_to_numeric {
-    ($name:ident, $t:ty, $read:path) => {
-        unsafe fn $name(l: *mut ffi::lua_State, idx: i32) -> Option<$t> {
-            if ffi::lua_type(l, idx) != ffi::LUA_TNUMBER {
-                return None
-            }
-            let mut success = MaybeUninit::uninit();
-            let val = $read(l, idx, success.as_mut_ptr());
-            if success.assume_init() == 0 {
-                None
-            } else {
-                Some(val)
-            }
-        }
-    }
-}
-
-impl_try_to_numeric!{lua_try_tointeger, isize, ffi::lua_tointegerx}
-
-numeric_impl!{i8, ffi::lua_pushinteger, lua_try_tointeger}
-numeric_impl!{i16, ffi::lua_pushinteger, lua_try_tointeger}
-numeric_impl!{i32, ffi::lua_pushinteger, lua_try_tointeger}
-
-numeric_impl!{u8, ffi::lua_pushinteger, lua_try_tointeger}
-numeric_impl!{u16, ffi::lua_pushinteger, lua_try_tointeger}
-numeric_impl!{u32, ffi::lua_pushinteger, lua_try_tointeger}
-
-macro_rules! impl_try_tointeger64 {
-    ($name:ident, $t:ty) => {
-        #[inline(always)]
-        pub unsafe fn $name(l: *mut ffi::lua_State, idx: c_int) -> Option<$t> {
-            match ffi::lua_type(l, idx) {
-                ffi::LUA_TNUMBER => Some(ffi::lua_tonumber(l, idx) as _),
-                ffi::LUA_TCDATA => {
-                    let mut ctypeid = std::mem::MaybeUninit::uninit();
-                    let cdata = ffi::luaL_checkcdata(l, idx, ctypeid.as_mut_ptr());
-                    match ctypeid.assume_init() {
-                        ffi::CTID_CCHAR | ffi::CTID_INT8 => Some(*cdata.cast::<i8>() as _),
-                        ffi::CTID_INT16 => Some(*cdata.cast::<i16>() as _),
-                        ffi::CTID_INT32 => Some(*cdata.cast::<i32>() as _),
-                        ffi::CTID_INT64 => Some(*cdata.cast::<i64>() as _),
-                        ffi::CTID_UINT8 => Some(*cdata.cast::<u8>() as _),
-                        ffi::CTID_UINT16 => Some(*cdata.cast::<u16>() as _),
-                        ffi::CTID_UINT32 => Some(*cdata.cast::<u32>() as _),
-                        ffi::CTID_UINT64 => Some(*cdata.cast::<u64>() as _),
+                #[inline(always)]
+                pub unsafe fn read_numeric(l: *mut ffi::lua_State, idx: c_int) -> Option<$t> {
+                    match ffi::lua_type(l, idx) {
+                        ffi::LUA_TNUMBER => {
+                            let number = $read(l, idx);
+                            $(
+                                let number = $coerce(number);
+                            )?
+                            Some(number as _)
+                        }
+                        ffi::LUA_TCDATA => {
+                            let mut ctypeid = std::mem::MaybeUninit::uninit();
+                            let cdata = ffi::luaL_checkcdata(l, idx, ctypeid.as_mut_ptr());
+                            match ctypeid.assume_init() {
+                                ffi::CTID_CCHAR | ffi::CTID_INT8 => Some(*cdata.cast::<i8>() as _),
+                                ffi::CTID_INT16 => Some(*cdata.cast::<i16>() as _),
+                                ffi::CTID_INT32 => Some(*cdata.cast::<i32>() as _),
+                                ffi::CTID_INT64 => Some(*cdata.cast::<i64>() as _),
+                                ffi::CTID_UINT8 => Some(*cdata.cast::<u8>() as _),
+                                ffi::CTID_UINT16 => Some(*cdata.cast::<u16>() as _),
+                                ffi::CTID_UINT32 => Some(*cdata.cast::<u32>() as _),
+                                ffi::CTID_UINT64 => Some(*cdata.cast::<u64>() as _),
+                                ffi::CTID_FLOAT => Some(*cdata.cast::<f32>() as _),
+                                ffi::CTID_DOUBLE => Some(*cdata.cast::<f64>() as _),
+                                _ => None,
+                            }
+                        }
                         _ => None,
                     }
                 }
-                _ => None,
             }
         }
     }
 }
 
-impl_try_tointeger64!{lua_try_toi64, i64}
-numeric_impl!{i64, ffi::luaL_pushint64, lua_try_toi64}
-impl_try_tointeger64!{lua_try_tou64, u64}
-numeric_impl!{u64, ffi::luaL_pushuint64, lua_try_tou64}
+numeric_impl!{i64, ffi::luaL_pushint64, ffi::lua_tonumber}
+numeric_impl!{i32, ffi::lua_pushinteger, ffi::lua_tointeger}
+numeric_impl!{i16, ffi::lua_pushinteger, ffi::lua_tointeger}
+numeric_impl!{i8, ffi::lua_pushinteger, ffi::lua_tointeger}
 
-impl_try_to_numeric!{lua_try_tonumber, f64, ffi::lua_tonumberx}
+numeric_impl!{u64, ffi::luaL_pushuint64, ffi::lua_tonumber,
+    coerce: |n| {
+        if n >= 0. {
+            n as u64
+        } else {
+            n as i64 as u64
+        }
+    }
+}
+numeric_impl!{u32, ffi::lua_pushinteger, ffi::lua_tointeger}
+numeric_impl!{u16, ffi::lua_pushinteger, ffi::lua_tointeger}
+numeric_impl!{u8, ffi::lua_pushinteger, ffi::lua_tointeger}
 
-numeric_impl!{f32, ffi::lua_pushnumber, lua_try_tonumber}
-numeric_impl!{f64, ffi::lua_pushnumber, lua_try_tonumber}
+numeric_impl!{f64, ffi::lua_pushnumber, ffi::lua_tonumber}
+numeric_impl!{f32, ffi::lua_pushnumber, ffi::lua_tonumber}
 
 macro_rules! push_string_impl {
     ($t:ty) => {

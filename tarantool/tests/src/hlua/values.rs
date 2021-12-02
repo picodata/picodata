@@ -50,26 +50,154 @@ pub fn write_i32s() {
 
 pub fn int64() {
     let lua = crate::hlua::global();
-    let res: i64 = (&lua).push(-0x69).read().unwrap();
-    assert_eq!(res, -0x69);
 
-    let res: i64 = (&lua).push(0x77bbccddeeff0011i64).read().unwrap();
-    assert_eq!(res, 0x77bbccddeeff0011i64);
+    let lua = lua.push(-69);
+    assert_eq!((&lua).read::<i64>().unwrap(), -69);
+    assert_eq!((&lua).read::<i32>().unwrap(), -69);
+    assert_eq!((&lua).read::<i16>().unwrap(), -69);
+    assert_eq!((&lua).read::<i8>().unwrap(),  -69);
+    assert_eq!((&lua).read::<u64>().unwrap(), u64::MAX - 69 + 1);
+    assert_eq!((&lua).read::<u32>().unwrap(), u32::MAX - 69 + 1);
+    assert_eq!((&lua).read::<u16>().unwrap(), u16::MAX - 69 + 1);
+    assert_eq!((&lua).read::<u8 >().unwrap(), u8 ::MAX - 69 + 1);
+    assert_eq!((&lua).read::<f64>().unwrap(), -69.);
+    assert_eq!((&lua).read::<f32>().unwrap(), -69.);
 
-    let res: u64 = (&lua).push(0xaabbccddeeff0011u64).read().unwrap();
-    assert_eq!(res, 0xaabbccddeeff0011u64);
+    let lua = lua.into_inner().push(3.14);
+    assert_eq!((&lua).read::<i64>().unwrap(), 3);
+    assert_eq!((&lua).read::<i32>().unwrap(), 3);
+    assert_eq!((&lua).read::<i16>().unwrap(), 3);
+    assert_eq!((&lua).read::<i8 >().unwrap(), 3);
+    assert_eq!((&lua).read::<u64>().unwrap(), 3);
+    assert_eq!((&lua).read::<u32>().unwrap(), 3);
+    assert_eq!((&lua).read::<u16>().unwrap(), 3);
+    assert_eq!((&lua).read::<u8 >().unwrap(), 3);
+    assert_eq!((&lua).read::<f64>().unwrap(), 3.14);
+    assert_eq!((&lua).read::<f32>().unwrap(), 3.14);
 
-    let res: u64 = (&lua).push(f64::INFINITY).read().unwrap();
-    assert_eq!(res, u64::MAX);
+    let lua = lua.into_inner().push(-1.5);
+    assert_eq!((&lua).read::<i64>().unwrap(), -1);
+    assert_eq!((&lua).read::<i32>().unwrap(), -1);
+    assert_eq!((&lua).read::<i16>().unwrap(), -1);
+    assert_eq!((&lua).read::<i8 >().unwrap(), -1);
+    assert_eq!((&lua).read::<u64>().unwrap(), u64::MAX - 1 + 1);
+    assert_eq!((&lua).read::<u32>().unwrap(), u32::MAX - 1 + 1);
+    assert_eq!((&lua).read::<u16>().unwrap(), u16::MAX - 1 + 1);
+    assert_eq!((&lua).read::<u8 >().unwrap(), u8 ::MAX - 1 + 1);
+    assert_eq!((&lua).read::<f64>().unwrap(), -1.5);
+    assert_eq!((&lua).read::<f32>().unwrap(), -1.5);
 
-    let res: i64 = (&lua).push(f64::NEG_INFINITY).read().unwrap();
-    assert_eq!(res, i64::MIN);
+    let lua = lua.into_inner().push(0x77bbccddeeff0011i64);
+    assert_eq!((&lua).read::<i64>().unwrap(), 0x77bbccddeeff0011i64);
+    assert_eq!((&lua).read::<i32>().unwrap(), 0x77bbccddeeff0011i64 as i32);
+    assert_eq!((&lua).read::<i16>().unwrap(), 0x77bbccddeeff0011i64 as i16);
+    assert_eq!((&lua).read::<i8 >().unwrap(), 0x77bbccddeeff0011i64 as i8);
+    assert_eq!((&lua).read::<u64>().unwrap(), 0x77bbccddeeff0011i64 as u64);
+    assert_eq!((&lua).read::<u32>().unwrap(), 0x77bbccddeeff0011i64 as u32);
+    assert_eq!((&lua).read::<u16>().unwrap(), 0x77bbccddeeff0011i64 as u16);
+    assert_eq!((&lua).read::<u8 >().unwrap(), 0x77bbccddeeff0011i64 as u8);
+    assert_eq!((&lua).read::<f64>().unwrap(), 0x77bbccddeeff0011i64 as f64);
+    assert_eq!((&lua).read::<f32>().unwrap(), 0x77bbccddeeff0011i64 as f32);
 
-    let err = lua.execute::<i32>("return 0ull").unwrap_err();
-    assert_eq!(err.to_string(), "Wrong type returned by Lua: i32 expected, got cdata");
+    let lua = lua.into_inner().push(0xaabbccddeeff0011u64);
+    assert_eq!((&lua).read::<i64>().unwrap(), 0xaabbccddeeff0011u64 as i64);
+    assert_eq!((&lua).read::<i32>().unwrap(), 0xaabbccddeeff0011u64 as i32);
+    assert_eq!((&lua).read::<i16>().unwrap(), 0xaabbccddeeff0011u64 as i16);
+    assert_eq!((&lua).read::<i8 >().unwrap(), 0xaabbccddeeff0011u64 as i8);
+    assert_eq!((&lua).read::<u64>().unwrap(), 0xaabbccddeeff0011u64);
+    assert_eq!((&lua).read::<u32>().unwrap(), 0xaabbccddeeff0011u64 as u32);
+    assert_eq!((&lua).read::<u16>().unwrap(), 0xaabbccddeeff0011u64 as u16);
+    assert_eq!((&lua).read::<u8 >().unwrap(), 0xaabbccddeeff0011u64 as u8);
+    assert_eq!((&lua).read::<f64>().unwrap(), 0xaabbccddeeff0011u64 as f64);
+    assert_eq!((&lua).read::<f32>().unwrap(), 0xaabbccddeeff0011u64 as f32);
 
-    let res = lua.execute::<i64>("return 0ull").unwrap();
-    assert_eq!(res, 0);
+    let lua = lua.into_inner().push(f64::INFINITY);
+    assert_eq!((&lua).read::<i64>().unwrap(), i64::MAX);
+    assert_eq!((&lua).read::<i32>().unwrap(), 0);
+    assert_eq!((&lua).read::<i16>().unwrap(), 0);
+    assert_eq!((&lua).read::<i8 >().unwrap(), 0);
+    assert_eq!((&lua).read::<u64>().unwrap(), u64::MAX);
+    assert_eq!((&lua).read::<u32>().unwrap(), 0);
+    assert_eq!((&lua).read::<u16>().unwrap(), 0);
+    assert_eq!((&lua).read::<u8 >().unwrap(), 0);
+    assert_eq!((&lua).read::<f64>().unwrap(), f64::INFINITY);
+    assert_eq!((&lua).read::<f32>().unwrap(), f32::INFINITY);
+
+    let lua = lua.into_inner().push(f64::NEG_INFINITY);
+    assert_eq!((&lua).read::<i64>().unwrap(), i64::MIN);
+    assert_eq!((&lua).read::<i32>().unwrap(), 0);
+    assert_eq!((&lua).read::<i16>().unwrap(), 0);
+    assert_eq!((&lua).read::<i8 >().unwrap(), 0);
+    assert_eq!((&lua).read::<u64>().unwrap(), i64::MIN as u64);
+    assert_eq!((&lua).read::<u32>().unwrap(), 0);
+    assert_eq!((&lua).read::<u16>().unwrap(), 0);
+    assert_eq!((&lua).read::<u8 >().unwrap(), 0);
+    assert_eq!((&lua).read::<f64>().unwrap(), f64::NEG_INFINITY);
+    assert_eq!((&lua).read::<f32>().unwrap(), f32::NEG_INFINITY);
+}
+
+pub fn cdata_numbers() {
+    let lua = crate::hlua::global();
+
+    let () = lua.execute("tmp = 0ull").unwrap();
+    assert_eq!(lua.get::<i64, _>("tmp").unwrap(), 0);
+    assert_eq!(lua.get::<i32, _>("tmp").unwrap(), 0);
+    assert_eq!(lua.get::<i16, _>("tmp").unwrap(), 0);
+    assert_eq!(lua.get::<i8 , _>("tmp").unwrap(), 0);
+    assert_eq!(lua.get::<u64, _>("tmp").unwrap(), 0);
+    assert_eq!(lua.get::<u32, _>("tmp").unwrap(), 0);
+    assert_eq!(lua.get::<u16, _>("tmp").unwrap(), 0);
+    assert_eq!(lua.get::<u8 , _>("tmp").unwrap(), 0);
+    assert_eq!(lua.get::<f64, _>("tmp").unwrap(), 0.);
+    assert_eq!(lua.get::<f32, _>("tmp").unwrap(), 0.);
+
+    let () = lua.execute("tmp = require('ffi').new('double', 3.14)").unwrap();
+    assert_eq!(lua.get::<i64, _>("tmp").unwrap(), 3);
+    assert_eq!(lua.get::<i32, _>("tmp").unwrap(), 3);
+    assert_eq!(lua.get::<i16, _>("tmp").unwrap(), 3);
+    assert_eq!(lua.get::<i8 , _>("tmp").unwrap(), 3);
+    assert_eq!(lua.get::<u64, _>("tmp").unwrap(), 3);
+    assert_eq!(lua.get::<u32, _>("tmp").unwrap(), 3);
+    assert_eq!(lua.get::<u16, _>("tmp").unwrap(), 3);
+    assert_eq!(lua.get::<u8 , _>("tmp").unwrap(), 3);
+    assert_eq!(lua.get::<f64, _>("tmp").unwrap(), 3.14);
+    assert_eq!(lua.get::<f32, _>("tmp").unwrap(), 3.14);
+
+    let () = lua.execute("tmp = require('ffi').new('int8_t', 69)").unwrap();
+    assert_eq!(lua.get::<i64, _>("tmp").unwrap(), 69);
+    assert_eq!(lua.get::<i32, _>("tmp").unwrap(), 69);
+    assert_eq!(lua.get::<i16, _>("tmp").unwrap(), 69);
+    assert_eq!(lua.get::<i8 , _>("tmp").unwrap(), 69);
+    assert_eq!(lua.get::<u64, _>("tmp").unwrap(), 69);
+    assert_eq!(lua.get::<u32, _>("tmp").unwrap(), 69);
+    assert_eq!(lua.get::<u16, _>("tmp").unwrap(), 69);
+    assert_eq!(lua.get::<u8 , _>("tmp").unwrap(), 69);
+    assert_eq!(lua.get::<f64, _>("tmp").unwrap(), 69.);
+    assert_eq!(lua.get::<f32, _>("tmp").unwrap(), 69.);
+
+    let () = lua.execute("tmp = require('ffi').new('int16_t', 420)").unwrap();
+    assert_eq!(lua.get::<i64, _>("tmp").unwrap(), 420);
+    assert_eq!(lua.get::<i32, _>("tmp").unwrap(), 420);
+    assert_eq!(lua.get::<i16, _>("tmp").unwrap(), 420);
+    assert_eq!(lua.get::<i8 , _>("tmp").unwrap(), 420i16 as i8);
+    assert_eq!(lua.get::<u64, _>("tmp").unwrap(), 420);
+    assert_eq!(lua.get::<u32, _>("tmp").unwrap(), 420);
+    assert_eq!(lua.get::<u16, _>("tmp").unwrap(), 420);
+    assert_eq!(lua.get::<u8 , _>("tmp").unwrap(), 420i16 as u8);
+    assert_eq!(lua.get::<f64, _>("tmp").unwrap(), 420.);
+    assert_eq!(lua.get::<f32, _>("tmp").unwrap(), 420.);
+
+    let () = lua.execute("tmp = require('ffi').new('uint32_t', -1)").unwrap();
+    assert_eq!(lua.get::<i64, _>("tmp").unwrap(), u32::MAX as i64);
+    assert_eq!(lua.get::<i32, _>("tmp").unwrap(), -1);
+    assert_eq!(lua.get::<i16, _>("tmp").unwrap(), -1);
+    assert_eq!(lua.get::<i8 , _>("tmp").unwrap(), -1);
+    assert_eq!(lua.get::<u64, _>("tmp").unwrap(), u32::MAX as u64);
+    assert_eq!(lua.get::<u32, _>("tmp").unwrap(), u32::MAX);
+    assert_eq!(lua.get::<u16, _>("tmp").unwrap(), u16::MAX);
+    assert_eq!(lua.get::<u8 , _>("tmp").unwrap(), u8::MAX);
+    assert_eq!(lua.get::<f64, _>("tmp").unwrap(), u32::MAX as f64);
+    assert_eq!(lua.get::<f32, _>("tmp").unwrap(), u32::MAX as f32);
 }
 
 pub fn readwrite_floats() {
