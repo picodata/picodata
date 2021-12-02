@@ -186,11 +186,11 @@ where
                 NonZeroI32::new(self.top - self.size + 1).unwrap()
             )
         };
-        write!(f, "PushGuard {{ lua: {:?}, size: {:?}, lua_type: {} }}",
-            self.lua,
-            self.size,
-            lua_typename(self.lua.as_lua(), start, self.size as _),
-        )
+        f.debug_struct("PushGuard")
+            .field("lua", &self.lua)
+            .field("size", &self.size)
+            .field("lua_type", &typenames(self.lua.as_lua(), start, self.size as _))
+            .finish()
     }
 }
 
