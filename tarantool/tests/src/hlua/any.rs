@@ -100,7 +100,7 @@ pub fn read_hashable_booleans() {
 
 pub fn read_tables() {
     let lua = crate::hlua::global();
-    lua.execute::<()>("
+    lua.exec("
     a = {x = 12, y = 19}
     b = {z = a, w = 'test string'}
     c = {'first', 'second'}
@@ -143,7 +143,7 @@ pub fn read_tables() {
 
 pub fn read_hashable_tables() {
     let lua = crate::hlua::global();
-    lua.execute::<()>("
+    lua.exec("
     a = {x = 12, y = 19}
     b = {z = a, w = 'test string'}
     c = {'first', 'second'}
@@ -262,7 +262,7 @@ pub fn push_hashable_nil() {
 
 pub fn non_utf_8_string() {
     let lua = crate::hlua::global();
-    let a = lua.execute::<AnyLuaValue>(r"return '\xff\xfe\xff\xfe'").unwrap();
+    let a = lua.eval::<AnyLuaValue>(r"return '\xff\xfe\xff\xfe'").unwrap();
     match a {
         AnyLuaValue::LuaAnyString(AnyLuaString(v)) => {
             assert_eq!(Vec::from(&b"\xff\xfe\xff\xfe"[..]), v);

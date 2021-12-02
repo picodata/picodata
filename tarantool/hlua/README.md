@@ -32,7 +32,7 @@ let mut lua = Lua::new();     // mutable is mandatory
 
 ```rust
 lua.set("x", 2);
-lua.execute::<()>("x = x + 1").unwrap();
+lua.exec("x = x + 1").unwrap();
 let x: i32 = lua.get("x").unwrap();  // x is equal to 3
 ```
 
@@ -46,16 +46,20 @@ If you wish so, you can also add other types by implementing the `Push` and `Lua
 #### Executing Lua
 
 ```rust
-let x: u32 = lua.execute("return 6 * 2;").unwrap();    // equals 12
+lua.exec("a = 2");
+let x: u32 = lua.eval("return 6 * a;").unwrap();    // equals 12
 ```
 
-The `execute` function takes a `&str` and returns a `Result<T, ExecutionError>` where `T: LuaRead`.
+The `exec` function takes a `&str` and returns `Result<(), LuaError>`.
+The `eval` function takes a `&str` and returns a `Result<T, LuaError>`
+where `T: LuaRead`.
 
-You can also call `execute_from_reader` which takes a `std::io::Read` as parameter.
+You can also call `exec_from`/`eval_from` which take a `std::io::Read` as
+parameter.
 For example you can easily execute the content of a file like this:
 
 ```rust
-lua.execute_from_reader::<()>(File::open(&Path::new("script.lua")).unwrap())
+lua.exec_from(File::open(&Path::new("script.lua")).unwrap())
 ```
 
 #### Writing functions
@@ -68,7 +72,7 @@ fn add(a: i32, b: i32) -> i32 {
 }
 
 lua.set("add", hlua::function2(add));
-lua.execute::<()>("local c = add(2, 4)");   // calls the `add` function above
+lua.exec("local c = add(2, 4)");   // calls the `add` function above
 let c: i32 = lua.get("c").unwrap();   // returns 6
 ```
 
@@ -90,7 +94,7 @@ let mut a = 5i;
 
     lua.set("inc", || a += 1);    // borrows 'a'
     for i in (0 .. 15) {
-        lua.execute::<()>("inc()").unwrap();
+        lua.exec("inc()").unwrap();
     }
 } // unborrows `a`
 
@@ -129,7 +133,7 @@ table.set("b", "hello");
 You can call Lua functions by reading a `functions_read::LuaFunction`.
 
 ```rust
-lua.execute::<()>("
+lua.exec("
     function get_five() 
         return 5
     end");
@@ -169,7 +173,7 @@ lua.set("mylib", [
     ("bar", hlua::function0(bar))
 ]);
 
-lua.execute::<()>("mylib.foo()");
+lua.exec("mylib.foo()");
 ```
 
 It is possible to read a `Vec<AnyLuaValue>`:
@@ -177,7 +181,7 @@ It is possible to read a `Vec<AnyLuaValue>`:
 ```rust
         let mut lua = Lua::new();
 
-        lua.execute::<()>(r#"v = { 1, 2, 3 }"#).unwrap();
+        lua.exec(r#"v = { 1, 2, 3 }"#).unwrap();
 
         let read: Vec<_> = lua.get("v").unwrap();
         assert_eq!(
@@ -195,7 +199,7 @@ It is possible to read a `HashMap<AnyHashableLuaValue, AnyLuaValue>`:
 ```rust
 let mut lua = Lua::new();
 
-lua.execute::<()>(r#"v = { [-1] = -1, ["foo"] = 2, [2.] = 42 }"#).unwrap();
+lua.exec(r#"v = { [-1] = -1, ["foo"] = 2, [2.] = 42 }"#).unwrap();
 
 let read: HashMap<_, _> = lua.get("v").unwrap();
 assert_eq!(read[&AnyHashableLuaValue::LuaNumber(-1)], AnyLuaValue::LuaNumber(-1.));
@@ -230,7 +234,7 @@ impl<L> hlua::Push<L> for Foo where L: hlua::AsMutLua<'lua> {
 fn main() {
     let mut lua = lua::Lua::new();
     lua.set("foo", Foo);
-    lua.execute::<()>("foo()");       // prints "hello from foo"
+    lua.exec("foo()");       // prints "hello from foo"
 }
 ```
 

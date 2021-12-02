@@ -15,7 +15,7 @@ pub fn simple_function() {
     }
     lua.set("ret5", function0(ret5));
 
-    let val: i32 = lua.execute("return ret5()").unwrap();
+    let val: i32 = lua.eval("return ret5()").unwrap();
     assert_eq!(val, 5);
 }
 
@@ -27,7 +27,7 @@ pub fn one_argument() {
     }
     lua.set("plus_one", function1(plus_one));
 
-    let val: i32 = lua.execute("return plus_one(3)").unwrap();
+    let val: i32 = lua.eval("return plus_one(3)").unwrap();
     assert_eq!(val, 4);
 }
 
@@ -39,7 +39,7 @@ pub fn two_arguments() {
     }
     lua.set("add", function2(add));
 
-    let val: i32 = lua.execute("return add(3, 7)").unwrap();
+    let val: i32 = lua.eval("return add(3, 7)").unwrap();
     assert_eq!(val, 10);
 }
 
@@ -51,7 +51,7 @@ pub fn wrong_arguments_types() {
     }
     lua.set("add", function2(add));
 
-    match lua.execute::<i32>("return add(3, \"hello\")") {
+    match lua.eval::<i32>("return add(3, \"hello\")") {
         Err(LuaError::ExecutionError(_)) => (),
         _ => panic!(),
     }
@@ -66,7 +66,7 @@ pub fn return_result() {
     }
     lua.set("always_fails", function0(always_fails));
 
-    match lua.execute::<()>(r#"
+    match lua.exec(r#"
         local res, err = always_fails();
         assert(res == nil);
         assert(err == "oops, problem");
@@ -82,10 +82,10 @@ pub fn closures() {
     lua.set("add", function2(|a: i32, b: i32| a + b));
     lua.set("sub", function2(|a: i32, b: i32| a - b));
 
-    let val1: i32 = lua.execute("return add(3, 7)").unwrap();
+    let val1: i32 = lua.eval("return add(3, 7)").unwrap();
     assert_eq!(val1, 10);
 
-    let val2: i32 = lua.execute("return sub(5, 2)").unwrap();
+    let val2: i32 = lua.eval("return sub(5, 2)").unwrap();
     assert_eq!(val2, 3);
 }
 
@@ -97,7 +97,7 @@ pub fn closures_lifetime() {
 
         lua.set("add", function2(f));
 
-        let val1: i32 = lua.execute("return add(3, 7)").unwrap();
+        let val1: i32 = lua.eval("return add(3, 7)").unwrap();
         assert_eq!(val1, 10);
     }
 
@@ -112,7 +112,7 @@ pub fn closures_extern_access() {
 
         lua.set("inc", function0(|| a += 1));
         for _ in 0..15 {
-            lua.execute::<()>("inc()").unwrap();
+            lua.exec("inc()").unwrap();
         }
     }
 

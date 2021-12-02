@@ -56,11 +56,12 @@ pub(crate) fn fiber_csw() -> i32 {
     let lua = crate::hlua::global();
 
     if unsafe { !FUNCTION_DEFINED } {
-        lua.execute::<()>(r#"
-        function fiber_csw()
-        local fiber = require('fiber')
-        return fiber.info()[fiber.id()].csw
-        end
+        #[rustfmt::skip]
+        lua.exec(r#"
+            function fiber_csw()
+                local fiber = require('fiber')
+                return fiber.info()[fiber.id()].csw
+            end
         "#).unwrap();
         unsafe { FUNCTION_DEFINED = true; }
     }

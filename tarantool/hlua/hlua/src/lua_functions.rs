@@ -36,7 +36,7 @@ use crate::{
 /// let mut lua = hlua::Lua::new();
 /// lua.checked_set("hello", hlua::LuaCode("return 5")).unwrap();
 ///
-/// let r: i32 = lua.execute("return hello();").unwrap();
+/// let r: i32 = lua.eval("return hello();").unwrap();
 /// assert_eq!(r, 5);
 /// ```
 #[derive(Debug)]
@@ -78,7 +78,7 @@ where
 ///     return hlua::LuaCodeFromReader(Cursor::new(lua_code.to_owned()));
 /// }));
 ///
-/// let r: i32 = lua.execute("local lua_func = call_rust(); return lua_func();").unwrap();
+/// let r: i32 = lua.eval("local lua_func = call_rust(); return lua_func();").unwrap();
 /// assert_eq!(r, 18);
 /// ```
 #[derive(Debug)]
@@ -188,7 +188,7 @@ where
 ///
 /// ```
 /// let mut lua = hlua::Lua::new();
-/// lua.execute::<()>("function foo() return 12 end").unwrap();
+/// lua.exec("function foo() return 12 end").unwrap();
 ///
 /// let mut foo: hlua::LuaFunction<_> = lua.get("foo").unwrap();
 /// let result: i32 = foo.call().unwrap();
@@ -292,7 +292,7 @@ where
     ///
     /// ```
     /// let lua = hlua::Lua::new();
-    /// lua.execute::<()>("function sub(a, b) return a - b end").unwrap();
+    /// lua.exec("function sub(a, b) return a - b end").unwrap();
     ///
     /// let foo: hlua::LuaFunction<_> = lua.get("sub").unwrap();
     /// let result: i32 = foo.call_with_args((18, 4)).unwrap();
@@ -303,7 +303,7 @@ where
     ///
     /// ```
     /// let lua = hlua::Lua::new();
-    /// lua.execute::<()>("function divmod(a, b) return math.floor(a / b), a % b end").unwrap();
+    /// lua.exec("function divmod(a, b) return math.floor(a / b), a % b end").unwrap();
     ///
     /// let foo: hlua::LuaFunction<_> = lua.get("divmod").unwrap();
     ///
@@ -351,7 +351,7 @@ where
     ///
     /// ```
     /// let lua = hlua::Lua::new();
-    /// lua.execute::<()>("function sub(a, b) return a - b end").unwrap();
+    /// lua.exec("function sub(a, b) return a - b end").unwrap();
     ///
     /// let foo: hlua::LuaFunction<_> = lua.get("sub").unwrap();
     /// let result: i32 = foo.into_call_with_args((18, 4)).unwrap();
@@ -362,7 +362,7 @@ where
     ///
     /// ```
     /// let lua = hlua::Lua::new();
-    /// lua.execute::<()>("function divmod(a, b) return math.floor(a / b), a % b end").unwrap();
+    /// lua.exec("function divmod(a, b) return math.floor(a / b), a % b end").unwrap();
     ///
     /// let foo: hlua::LuaFunction<_> = lua.get("divmod").unwrap();
     ///
@@ -563,117 +563,3 @@ where
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use crate::{
-        Lua,
-        LuaError,
-        LuaFunction,
-        LuaFunctionCallError,
-        LuaTable,
-        Void,
-    };
-
-    use std::io::{Error as IoError, ErrorKind as IoErrorKind, Read};
-    use std::error::Error;
-
-    #[test]
-    fn basic() {
-        let mut lua = Lua::new();
-        let mut f = LuaFunction::load(&mut lua, "return 5;").unwrap();
-        let val: i32 = f.call().unwrap();
-        assert_eq!(val, 5);
-    }
-
-    #[test]
-    fn args() {
-        let mut lua = Lua::new();
-        lua.execute::<()>("function foo(a) return a * 5 end").unwrap();
-        let val: i32 = lua.get::<LuaFunction<_>, _>("foo").unwrap().call_with_args(3).unwrap();
-        assert_eq!(val, 15);
-    }
-
-    #[test]
-    fn args_in_order() {
-        let mut lua = Lua::new();
-        lua.execute::<()>("function foo(a, b) return a - b end").unwrap();
-        let val: i32 = lua.get::<LuaFunction<_>, _>("foo").unwrap().call_with_args((5, 3)).unwrap();
-        assert_eq!(val, 2);
-    }
-
-    #[test]
-    fn syntax_error() {
-        let mut lua = Lua::new();
-        match LuaFunction::load(&mut lua, "azerazer") {
-            Err(LuaError::SyntaxError(_)) => (),
-            _ => panic!(),
-        };
-    }
-
-    #[test]
-    fn execution_error() {
-        let mut lua = Lua::new();
-        let mut f = LuaFunction::load(&mut lua, "return a:hello()").unwrap();
-        match f.call::<()>() {
-            Err(LuaError::ExecutionError(_)) => (),
-            _ => panic!(),
-        };
-    }
-
-    #[test]
-    fn wrong_type() {
-        let mut lua = Lua::new();
-        let mut f = LuaFunction::load(&mut lua, "return 12").unwrap();
-        match f.call::<LuaFunction<_>>() {
-            Err(LuaError::WrongType) => (),
-            _ => panic!(),
-        };
-    }
-
-    #[test]
-    fn call_and_read_table() {
-        let mut lua = Lua::new();
-        let mut f = LuaFunction::load(&mut lua, "return {1, 2, 3};").unwrap();
-        let mut val: LuaTable<_> = f.call().unwrap();
-        assert_eq!(val.get::<u8, _, _>(2).unwrap(), 2);
-    }
-
-    #[test]
-    fn lua_function_returns_function() {
-        let mut lua = Lua::new();
-        lua.execute::<()>("function foo() return 5 end").unwrap();
-        let mut bar = LuaFunction::load(&mut lua, "return foo;").unwrap();
-        let mut foo: LuaFunction<_> = bar.call().unwrap();
-        let val: i32 = foo.call().unwrap();
-        assert_eq!(val, 5);
-    }
-
-    #[test]
-    fn execute_from_reader_errors_if_cant_read() {
-        struct Reader { }
-
-        impl Read for Reader {
-            fn read(&mut self, _: &mut [u8]) -> ::std::io::Result<usize> {
-                use std::io::{Error, ErrorKind};
-                Err(Error::new(ErrorKind::Other, "oh no!"))
-            }
-        }
-
-        let mut lua = Lua::new();
-        let reader = Reader { };
-        let res: Result<(), _> = lua.execute_from_reader(reader);
-        match res {
-            Ok(_) => panic!("Reading succeded"),
-            Err(LuaError::ReadError(e)) => { assert_eq!("oh no!", e.to_string()) },
-            Err(_) => panic!("Unexpected error happened"),
-        }
-    }
-
-    fn _assert_error() {
-        // Compile-time trait checks.
-        fn _assert<T: Error>(_: T) {}
-
-        _assert(LuaFunctionCallError::LuaError::<Void>(LuaError::WrongType));
-        _assert(LuaFunctionCallError::PushError(IoError::new(IoErrorKind::Other, "Test")));
-    }
-}

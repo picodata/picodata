@@ -273,7 +273,7 @@ pub fn start_error() {
 
     impl LuaContextSpoiler {
         fn new() -> Self {
-            crate::hlua::global().execute::<()>(r#"
+            crate::hlua::global().exec(r#"
             _fiber_new_backup = package.loaded.fiber.new
             package.loaded.fiber.new = function() error("Artificial error", 0) end
             "#).unwrap();
@@ -283,7 +283,7 @@ pub fn start_error() {
 
     impl Drop for LuaContextSpoiler {
         fn drop(&mut self) {
-            crate::hlua::global().execute::<()>(r#"
+            crate::hlua::global().exec(r#"
             package.loaded.fiber.new = _fiber_new_backup
             _fiber_new_backup = nil
             "#).unwrap();
@@ -309,7 +309,7 @@ pub fn require_error() {
     impl LuaContextSpoiler {
         fn new() -> Self {
             let lua: Lua = crate::hlua::global();
-            lua.execute::<()>(r#"
+            lua.exec(r#"
             _fiber_backup = package.loaded.fiber
             package.loaded.fiber = nil
             package.preload.fiber = function() error("Artificial require error", 0) end
@@ -321,7 +321,7 @@ pub fn require_error() {
     impl Drop for LuaContextSpoiler {
         fn drop(&mut self) {
             let lua: Lua = crate::hlua::global();
-            lua.execute::<()>(r#"
+            lua.exec(r#"
             package.preload.fiber = nil
             package.loaded.fiber = _fiber_backup
             _fiber_backup = nil

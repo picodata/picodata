@@ -139,7 +139,7 @@ pub fn int64() {
 pub fn cdata_numbers() {
     let lua = crate::hlua::global();
 
-    let () = lua.execute("tmp = 0ull").unwrap();
+    lua.exec("tmp = 0ull").unwrap();
     assert_eq!(lua.get::<i64, _>("tmp").unwrap(), 0);
     assert_eq!(lua.get::<i32, _>("tmp").unwrap(), 0);
     assert_eq!(lua.get::<i16, _>("tmp").unwrap(), 0);
@@ -151,7 +151,7 @@ pub fn cdata_numbers() {
     assert_eq!(lua.get::<f64, _>("tmp").unwrap(), 0.);
     assert_eq!(lua.get::<f32, _>("tmp").unwrap(), 0.);
 
-    let () = lua.execute("tmp = require('ffi').new('double', 3.14)").unwrap();
+    lua.exec("tmp = require('ffi').new('double', 3.14)").unwrap();
     assert_eq!(lua.get::<i64, _>("tmp").unwrap(), 3);
     assert_eq!(lua.get::<i32, _>("tmp").unwrap(), 3);
     assert_eq!(lua.get::<i16, _>("tmp").unwrap(), 3);
@@ -163,7 +163,7 @@ pub fn cdata_numbers() {
     assert_eq!(lua.get::<f64, _>("tmp").unwrap(), 3.14);
     assert_eq!(lua.get::<f32, _>("tmp").unwrap(), 3.14);
 
-    let () = lua.execute("tmp = require('ffi').new('int8_t', 69)").unwrap();
+    lua.exec("tmp = require('ffi').new('int8_t', 69)").unwrap();
     assert_eq!(lua.get::<i64, _>("tmp").unwrap(), 69);
     assert_eq!(lua.get::<i32, _>("tmp").unwrap(), 69);
     assert_eq!(lua.get::<i16, _>("tmp").unwrap(), 69);
@@ -175,7 +175,7 @@ pub fn cdata_numbers() {
     assert_eq!(lua.get::<f64, _>("tmp").unwrap(), 69.);
     assert_eq!(lua.get::<f32, _>("tmp").unwrap(), 69.);
 
-    let () = lua.execute("tmp = require('ffi').new('int16_t', 420)").unwrap();
+    lua.exec("tmp = require('ffi').new('int16_t', 420)").unwrap();
     assert_eq!(lua.get::<i64, _>("tmp").unwrap(), 420);
     assert_eq!(lua.get::<i32, _>("tmp").unwrap(), 420);
     assert_eq!(lua.get::<i16, _>("tmp").unwrap(), 420);
@@ -187,7 +187,7 @@ pub fn cdata_numbers() {
     assert_eq!(lua.get::<f64, _>("tmp").unwrap(), 420.);
     assert_eq!(lua.get::<f32, _>("tmp").unwrap(), 420.);
 
-    let () = lua.execute("tmp = require('ffi').new('uint32_t', -1)").unwrap();
+    lua.exec("tmp = require('ffi').new('uint32_t', -1)").unwrap();
     assert_eq!(lua.get::<i64, _>("tmp").unwrap(), u32::MAX as i64);
     assert_eq!(lua.get::<i32, _>("tmp").unwrap(), -1);
     assert_eq!(lua.get::<i16, _>("tmp").unwrap(), -1);
@@ -244,13 +244,13 @@ pub fn readwrite_strings() {
     let y: String = lua.get("b").unwrap();
     assert_eq!(y, "hello");
 
-    assert_eq!(lua.execute::<String>("return 'abc'").unwrap(), "abc");
-    assert_eq!(lua.execute::<u32>("return #'abc'").unwrap(), 3);
-    assert_eq!(lua.execute::<u32>("return #'a\\x00c'").unwrap(), 3);
-    assert_eq!(lua.execute::<AnyLuaString>("return 'a\\x00c'").unwrap().0, vec!(97, 0, 99));
-    assert_eq!(lua.execute::<AnyLuaString>("return 'a\\x00c'").unwrap().0.len(), 3);
-    assert_eq!(lua.execute::<AnyLuaString>("return '\\x01\\xff'").unwrap().0, vec!(1, 255));
-    lua.execute::<String>("return 'a\\x00\\xc0'").unwrap_err();
+    assert_eq!(lua.eval::<String>("return 'abc'").unwrap(), "abc");
+    assert_eq!(lua.eval::<u32>("return #'abc'").unwrap(), 3);
+    assert_eq!(lua.eval::<u32>("return #'a\\x00c'").unwrap(), 3);
+    assert_eq!(lua.eval::<AnyLuaString>("return 'a\\x00c'").unwrap().0, vec!(97, 0, 99));
+    assert_eq!(lua.eval::<AnyLuaString>("return 'a\\x00c'").unwrap().0.len(), 3);
+    assert_eq!(lua.eval::<AnyLuaString>("return '\\x01\\xff'").unwrap().0, vec!(1, 255));
+    lua.eval::<String>("return 'a\\x00\\xc0'").unwrap_err();
 }
 
 pub fn i32_to_string() {
@@ -292,12 +292,12 @@ pub fn push_opt() {
     lua.set("some", function0(|| Some(123)));
     lua.set("none", function0(|| Option::None::<i32>));
 
-    match lua.execute::<i32>("return some()") {
+    match lua.eval::<i32>("return some()") {
         Ok(123) => {}
         unexpected => panic!("{:?}", unexpected),
     }
 
-    match lua.execute::<AnyLuaValue>("return none()") {
+    match lua.eval::<AnyLuaValue>("return none()") {
         Ok(AnyLuaValue::LuaNil) => {}
         unexpected => panic!("{:?}", unexpected),
     }
@@ -311,8 +311,8 @@ pub fn push_opt() {
 
 pub fn read_nil() {
     let lua = Lua::new();
-    assert_eq!(lua.execute::<Nil>("return nil").unwrap(), Nil);
-    assert_eq!(lua.execute::<Option<i32>>("return nil").unwrap(), None);
+    assert_eq!(lua.eval::<Nil>("return nil").unwrap(), Nil);
+    assert_eq!(lua.eval::<Option<i32>>("return nil").unwrap(), None);
 
     lua.set("v", None::<i32>);
     assert_eq!(lua.get::<i32, _>("v"), None);

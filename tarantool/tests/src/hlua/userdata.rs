@@ -146,7 +146,7 @@ pub fn metatables() {
 
     lua.set("a", Foo);
 
-    let x: i32 = lua.execute("return a.test()").unwrap();
+    let x: i32 = lua.eval("return a.test()").unwrap();
     assert_eq!(x, 5);
 }
 
@@ -219,17 +219,17 @@ pub fn multiple_userdata() {
     lua.set("broadcast_mul", hlua::function2(&broadcast_mul));
     lua.set("collapse", hlua::function3(&collapse));
 
-    assert_eq!(lua.execute::<Integer>("return add(a, b)").unwrap().0, 19 + 114);
-    assert_eq!(lua.execute::<Integer>("return add(b, c)").unwrap().0, 114 + 96);
-    assert_eq!(lua.execute::<Integer>("return add(c, d)").unwrap().0, 96 + 313);
-    assert_eq!(lua.execute::<Integer>("return axpy(a, b, c)").unwrap().0, 19 * 114 + 96);
-    assert_eq!(lua.execute::<Integer>("return axpy(b, c, d)").unwrap().0, 114 * 96 + 313);
-    assert_eq!(lua.execute::<f64>("return axpy_float(2.5, c, d)").unwrap(),
+    assert_eq!(lua.eval::<Integer>("return add(a, b)").unwrap().0, 19 + 114);
+    assert_eq!(lua.eval::<Integer>("return add(b, c)").unwrap().0, 114 + 96);
+    assert_eq!(lua.eval::<Integer>("return add(c, d)").unwrap().0, 96 + 313);
+    assert_eq!(lua.eval::<Integer>("return axpy(a, b, c)").unwrap().0, 19 * 114 + 96);
+    assert_eq!(lua.eval::<Integer>("return axpy(b, c, d)").unwrap().0, 114 * 96 + 313);
+    assert_eq!(lua.eval::<f64>("return axpy_float(2.5, c, d)").unwrap(),
         axpy_float(2.5, Integer(96), Integer(313)));
-    assert_eq!(lua.execute::<BigInteger>("return broadcast_mul(a, v)").unwrap(),
+    assert_eq!(lua.eval::<BigInteger>("return broadcast_mul(a, v)").unwrap(),
         broadcast_mul(Integer(19), big_integer.clone()));
-    assert_eq!(lua.execute::<BigInteger>("return broadcast_mul(b, v)").unwrap(),
+    assert_eq!(lua.eval::<BigInteger>("return broadcast_mul(b, v)").unwrap(),
         broadcast_mul(Integer(114), big_integer.clone()));
-    assert_eq!(lua.execute::<f32>("return collapse(19.25, c, v)").unwrap(),
+    assert_eq!(lua.eval::<f32>("return collapse(19.25, c, v)").unwrap(),
         collapse(19.25, Integer(96), big_integer.clone()));
 }

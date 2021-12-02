@@ -94,7 +94,7 @@ pub fn reading_vec_works() {
 pub fn reading_vec_from_sparse_table_doesnt_work() {
     let lua = Lua::new();
 
-    lua.execute::<()>(r#"v = { [-1] = -1, [2] = 2, [42] = 42 }"#).unwrap();
+    lua.exec(r#"v = { [-1] = -1, [2] = 2, [42] = 42 }"#).unwrap();
 
     assert_eq!(lua.get("v"), None::<LuaSequence>);
 }
@@ -102,7 +102,7 @@ pub fn reading_vec_from_sparse_table_doesnt_work() {
 pub fn reading_vec_with_empty_table_works() {
     let lua = Lua::new();
 
-    lua.execute::<()>(r#"v = { }"#).unwrap();
+    lua.exec(r#"v = { }"#).unwrap();
 
     let read: LuaSequence = lua.get("v").unwrap();
     assert!(read.is_empty());
@@ -111,7 +111,7 @@ pub fn reading_vec_with_empty_table_works() {
 pub fn reading_vec_with_complex_indexes_doesnt_work() {
     let lua = Lua::new();
 
-    lua.execute::<()>(r#"v = { [-1] = -1, ["foo"] = 2, [{}] = 42 }"#).unwrap();
+    lua.exec(r#"v = { [-1] = -1, ["foo"] = 2, [{}] = 42 }"#).unwrap();
 
     assert_eq!(lua.get("v"), None::<LuaSequence>);
 }
@@ -134,7 +134,7 @@ pub fn reading_heterogenous_vec_works() {
 pub fn reading_vec_set_from_lua_works() {
     let lua = Lua::new();
 
-    lua.execute::<()>(r#"v = { 1, 2, 3 }"#).unwrap();
+    lua.exec(r#"v = { 1, 2, 3 }"#).unwrap();
 
     let read: LuaSequence = lua.get("v").unwrap();
     assert_eq!(
@@ -181,7 +181,7 @@ pub fn reading_hashmap_works() {
 pub fn reading_hashmap_from_sparse_table_works() {
     let lua = Lua::new();
 
-    lua.execute::<()>(r#"v = { [-1] = -1, [2] = 2, [42] = 42 }"#).unwrap();
+    lua.exec(r#"v = { [-1] = -1, [2] = 2, [42] = 42 }"#).unwrap();
 
     let read: LuaTableMap = lua.get("v").unwrap();
     assert_eq!(read[&AnyHashableLuaValue::LuaNumber(-1)], AnyLuaValue::LuaNumber(-1.));
@@ -205,7 +205,7 @@ pub fn reading_hashmap_from_sparse_table_works() {
 pub fn reading_hashmap_with_empty_table_works() {
     let lua = Lua::new();
 
-    lua.execute::<()>(r#"v = { }"#).unwrap();
+    lua.exec(r#"v = { }"#).unwrap();
 
     let read: LuaTableMap = lua.get("v").unwrap();
     assert!(read.is_empty());
@@ -214,7 +214,7 @@ pub fn reading_hashmap_with_empty_table_works() {
 pub fn reading_hashmap_with_complex_indexes_works() {
     let lua = Lua::new();
 
-    lua.execute::<()>(r#"v = { [-1] = -1, ["foo"] = 2, [2.] = 42 }"#).unwrap();
+    lua.exec(r#"v = { [-1] = -1, ["foo"] = 2, [2.] = 42 }"#).unwrap();
 
     let read: LuaTableMap = lua.get("v").unwrap();
     assert_eq!(read[&AnyHashableLuaValue::LuaNumber(-1)], AnyLuaValue::LuaNumber(-1.));
@@ -226,7 +226,7 @@ pub fn reading_hashmap_with_complex_indexes_works() {
 pub fn reading_hashmap_with_floating_indexes_works() {
     let lua = Lua::new();
 
-    lua.execute::<()>(r#"v = { [-1.25] = -1, [2.5] = 42 }"#).unwrap();
+    lua.exec(r#"v = { [-1.25] = -1, [2.5] = 42 }"#).unwrap();
 
     let read: LuaTableMap = lua.get("v").unwrap();
     // It works by truncating integers in some unspecified way
@@ -254,7 +254,7 @@ pub fn reading_heterogenous_hashmap_works() {
 pub fn reading_hashmap_set_from_lua_works() {
     let lua = Lua::new();
 
-    lua.execute::<()>(r#"v = { [1] = 2, [2] = 3, [3] = 4 }"#).unwrap();
+    lua.exec(r#"v = { [1] = 2, [2] = 3, [3] = 4 }"#).unwrap();
 
     let read: HashMap<_, _> = lua.get("v").unwrap();
     assert_eq!(
@@ -308,7 +308,7 @@ pub fn derive_struct_lua_read() {
     struct T { i: i32, s: String }
 
     let lua = Lua::new();
-    let () = lua.execute(r#"t = { i = 69, s = "booboo", boo = true }"#).unwrap();
+    lua.exec(r#"t = { i = 69, s = "booboo", boo = true }"#).unwrap();
     let s: S = lua.get("t").unwrap();
     assert_eq!(s, S { i: 69, s: "booboo".into(), boo: true, o: None });
 
@@ -367,15 +367,15 @@ pub fn derive_enum_lua_read() {
     struct S { foo: i32, bar: String }
 
     let lua = Lua::new();
-    let res: E = lua.execute("return 7").unwrap();
+    let res: E = lua.eval("return 7").unwrap();
     assert_eq!(res, E::Num(7));
-    let res: E = lua.execute(r#"return "howdy""#).unwrap();
+    let res: E = lua.eval(r#"return "howdy""#).unwrap();
     assert_eq!(res, E::Str("howdy".into()));
-    let res: E = lua.execute("return 1.5, 2.5, 3.5").unwrap();
+    let res: E = lua.eval("return 1.5, 2.5, 3.5").unwrap();
     assert_eq!(res, E::Vec(1.5, 2.5, 3.5));
-    let res: E = lua.execute(r#"return { foo = 420, bar = "foo" }"#).unwrap();
+    let res: E = lua.eval(r#"return { foo = 420, bar = "foo" }"#).unwrap();
     assert_eq!(res, E::S(S { foo: 420, bar: "foo".into() }));
-    let res: E = lua.execute(r#"return { i = 69, s = "nice" }"#).unwrap();
+    let res: E = lua.eval(r#"return { i = 69, s = "nice" }"#).unwrap();
     assert_eq!(res, E::Struct { i: 69, s: "nice".into() });
 
     let lua = lua.push((1, 2, 3));
@@ -393,7 +393,7 @@ pub fn enum_variants_order_matters() {
         Single(i32),
     }
 
-    let res: A = lua.execute("return 1, 2").unwrap();
+    let res: A = lua.eval("return 1, 2").unwrap();
     assert_eq!(res, A::Multiple(1., 2.));
 
     #[derive(LuaRead, PartialEq, Debug)]
@@ -402,7 +402,7 @@ pub fn enum_variants_order_matters() {
         Multiple(f32, f32),
     }
 
-    let res: B = lua.execute("return 1, 2").unwrap();
+    let res: B = lua.eval("return 1, 2").unwrap();
     assert_eq!(res, B::Single(1));
 
 }
@@ -410,7 +410,7 @@ pub fn enum_variants_order_matters() {
 pub fn struct_of_enums_vs_enum_of_structs() {
     let lua = Lua::new();
 
-    let () = lua.execute(r#"v = {
+    lua.exec(r#"v = {
         vec = {
             { x = 69 },
             { y = "hello" },

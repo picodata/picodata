@@ -8,7 +8,7 @@ use tarantool::hlua::{
 pub fn iterable() {
     let lua = crate::hlua::global();
 
-    let _: () = lua.execute("a = { 9, 8, 7 }").unwrap();
+    lua.exec("a = { 9, 8, 7 }").unwrap();
 
     let table = lua.get::<LuaTable<_>, _>("a").unwrap();
     let mut counter = 0;
@@ -26,7 +26,7 @@ pub fn iterable() {
 pub fn iterable_multipletimes() {
     let lua = crate::hlua::global();
 
-    let _: () = lua.execute("a = { 9, 8, 7 }").unwrap();
+    lua.exec("a = { 9, 8, 7 }").unwrap();
 
     let table = lua.get::<LuaTable<_>, _>("a").unwrap();
 
@@ -40,7 +40,7 @@ pub fn iterable_multipletimes() {
 pub fn get_set() {
     let lua = crate::hlua::global();
 
-    let _: () = lua.execute("a = { 9, 8, 7 }").unwrap();
+    lua.exec("a = { 9, 8, 7 }").unwrap();
     let table = lua.get::<LuaTable<_>, _>("a").unwrap();
 
     let x: i32 = table.get(2).unwrap();
@@ -56,7 +56,7 @@ pub fn get_set() {
 
 pub fn get_nil() {
     let lua = Lua::new();
-    let t: LuaTable<_> = lua.execute("return {}").unwrap();
+    let t: LuaTable<_> = lua.eval("return {}").unwrap();
     assert_eq!(t.get::<i32, _>(1), None);
     assert_eq!(t.get::<Option<i32>, _>(1), Some(None));
     assert_eq!(t.get::<Option<Option<i32>>, _>(1), Some(None));
@@ -65,7 +65,7 @@ pub fn get_nil() {
 pub fn table_over_table() {
     let lua = crate::hlua::global();
 
-    lua.execute::<()>("a = { 9, { 8, 7 }, 6 }").unwrap();
+    lua.exec("a = { 9, { 8, 7 }, 6 }").unwrap();
     let table = lua.get::<LuaTable<_>, _>("a").unwrap();
 
     let x: i32 = table.get(1).unwrap();
@@ -88,7 +88,7 @@ pub fn table_over_table() {
 pub fn metatable() {
     let lua = crate::hlua::global();
 
-    let _: () = lua.execute("a = { 9, 8, 7 }").unwrap();
+    lua.exec("a = { 9, 8, 7 }").unwrap();
 
     {
         let table = lua.get::<LuaTable<_>, _>("a").unwrap();
@@ -100,7 +100,7 @@ pub fn metatable() {
         metatable.set("__add".to_string(), function0(handler));
     }
 
-    let r: i32 = lua.execute("return a + a").unwrap();
+    let r: i32 = lua.eval("return a + a").unwrap();
     assert_eq!(r, 5);
 }
 

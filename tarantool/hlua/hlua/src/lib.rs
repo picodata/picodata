@@ -5,8 +5,9 @@
 //! # General usage
 //!
 //! In order to execute Lua code you first need a *Lua context*, which is represented in this
-//! library with [the `Lua` struct](struct.Lua.html). You can then call
-//! [the `execute` method](struct.Lua.html#method.execute) on this object.
+//! library with [the `Lua` struct](struct.Lua.html). You can then call the
+//! the [`eval`](struct.Lua.html#method.eval) or
+//! [`exec`](struct.Lua.html#method.exec) method on this object.
 //!
 //! For example:
 //!
@@ -14,7 +15,8 @@
 //! use hlua::Lua;
 //!
 //! let mut lua = Lua::new();
-//! lua.execute::<()>("a = 12 * 5").unwrap();
+//! lua.exec("a = 12 * 5").unwrap();
+//! let a: u32 = lua.eval("return a + 1").unwrap();
 //! ```
 //!
 //! This example puts the value `60` in the global variable `a`. The values of all global variables
@@ -30,7 +32,7 @@
 //!   example you can write to a global variable with a Lua script then read it from Rust, or you
 //!   can write to a global variable from Rust then read it from a Lua script.
 //!
-//! - The Lua script that you execute with the [`execute`](struct.Lua.html#method.execute) method
+//! - The Lua script that you evaluate with the [`eval`](struct.Lua.html#method.eval) method
 //!   can return a value.
 //!
 //! - You can set the value of a global variable to a Rust functions or closures, which can then be
@@ -101,7 +103,7 @@
 //!   keys and values can be of different types. The table can then be iterated and individual
 //!   elements can be loaded or modified.
 //! - As a special case, tuples can be loaded when they are the return type of a Lua function or as
-//!   the return type of [`execute`](struct.Lua.html#method.execute).
+//!   the return type of [`eval`](struct.Lua.html#method.eval).
 //! - TODO: userdata
 //!
 use std::ffi::{CStr, CString};
@@ -445,7 +447,7 @@ pub enum LuaError {
     /// There was an IoError while reading the source code to execute.
     ReadError(IoError),
 
-    /// The call to `execute` has requested the wrong type of data.
+    /// The call to `eval` has requested the wrong type of data.
     WrongType{
         rust_expected: String,
         lua_actual: String,
@@ -699,7 +701,7 @@ impl Lua {
     /// The template parameter of this function is the return type of the expression that is being
     /// evaluated.
     /// In order to avoid compilation error, you should call this function either by doing
-    /// `lua.execute::<T>(...)` or `let result: T = lua.execute(...);` where `T` is the type of
+    /// `lua.eval::<T>(...)` or `let result: T = lua.eval(...);` where `T` is the type of
     /// the expression.
     /// The function will return an error if the actual return type of the expression doesn't
     /// match the template parameter.
@@ -710,27 +712,16 @@ impl Lua {
     ///
     /// # Examples
     ///
-    /// Without a return value:
-    ///
-    /// ```
-    /// use hlua::Lua;
-    /// let mut lua = Lua::new();
-    /// lua.execute::<()>("function multiply_by_two(a) return a * 2 end").unwrap();
-    /// lua.execute::<()>("twelve = multiply_by_two(6)").unwrap();
-    /// ```
-    ///
-    /// With a return value:
-    ///
     /// ```
     /// use hlua::Lua;
     /// let mut lua = Lua::new();
     ///
-    /// let twelve: i32 = lua.execute("return 3 * 4;").unwrap();
-    /// let sixty = lua.execute::<i32>("return 6 * 10;").unwrap();
+    /// let twelve: i32 = lua.eval("return 3 * 4;").unwrap();
+    /// let sixty = lua.eval::<i32>("return 6 * 10;").unwrap();
     /// ```
-    #[inline]
+    #[inline(always)]
     // TODO(gmoshkin): this method should be part of AsLua
-    pub fn execute<'lua, T>(&'lua self, code: &str) -> Result<T, LuaError>
+    pub fn eval<'lua, T>(&'lua self, code: &str) -> Result<T, LuaError>
     where
         T: LuaRead<PushGuard<LuaFunction<PushGuard<&'lua Self>>>>,
     {
@@ -738,10 +729,31 @@ impl Lua {
             .into_call()
     }
 
+    /// Executes some Lua code in the context.
+    ///
+    /// The code will have access to all the global variables you set with
+    /// methods such as `set`.  Every time you execute some code in the context,
+    /// the code can modify these global variables.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hlua::Lua;
+    /// let mut lua = Lua::new();
+    /// lua.exec("function multiply_by_two(a) return a * 2 end").unwrap();
+    /// lua.exec("twelve = multiply_by_two(6)").unwrap();
+    /// ```
+    #[inline(always)]
+    // TODO(gmoshkin): this method should be part of AsLua
+    pub fn exec<'lua>(&'lua self, code: &str) -> Result<(), LuaError> {
+        LuaFunction::load(self, code)?
+            .into_call()
+    }
+
     /// Executes some Lua code on the context.
     ///
-    /// This does the same thing as [the `execute` method](#method.execute), but the code to
-    /// execute is loaded from an object that implements `Read`.
+    /// This does the same thing as [the `eval` method](#method.eval), but the
+    /// code to evaluate is loaded from an object that implements `Read`.
     ///
     /// Use this method when you potentially have a large amount of code (for example if you read
     /// the code from a file) in order to avoid having to put everything in memory first before
@@ -755,14 +767,40 @@ impl Lua {
     ///
     /// let mut lua = Lua::new();
     /// let script = File::open("script.lua").unwrap();
-    /// lua.execute_from_reader::<(), _>(script).unwrap();
+    /// let res: u32 = lua.eval_from(script).unwrap();
     /// ```
-    #[inline]
+    #[inline(always)]
     // TODO(gmoshkin): this method should be part of AsLua
-    pub fn execute_from_reader<'lua, T>(&'lua self, code: impl Read) -> Result<T, LuaError>
+    pub fn eval_from<'lua, T>(&'lua self, code: impl Read) -> Result<T, LuaError>
     where
         T: LuaRead<PushGuard<LuaFunction<PushGuard<&'lua Self>>>>,
     {
+        LuaFunction::load_from_reader(self, code)?
+            .into_call()
+    }
+
+    /// Executes some Lua code on the context.
+    ///
+    /// This does the same thing as [the `exec` method](#method.exec), but the
+    /// code to execute is loaded from an object that implements `Read`.
+    ///
+    /// Use this method when you potentially have a large amount of code (for
+    /// example if you read the code from a file) in order to avoid having to
+    /// put everything in memory first before passing it to the Lua interpreter.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use std::fs::File;
+    /// use hlua::Lua;
+    ///
+    /// let mut lua = Lua::new();
+    /// let script = File::open("script.lua").unwrap();
+    /// lua.exec_from(script).unwrap();
+    /// ```
+    #[inline(always)]
+    // TODO(gmoshkin): this method should be part of AsLua
+    pub fn exec_from<'lua>(&'lua self, code: impl Read) -> Result<(), LuaError> {
         LuaFunction::load_from_reader(self, code)?
             .into_call()
     }
@@ -780,7 +818,7 @@ impl Lua {
     /// ```
     /// use hlua::Lua;
     /// let mut lua = Lua::new();
-    /// lua.execute::<()>("a = 5").unwrap();
+    /// lua.exec("a = 5").unwrap();
     /// let a: i32 = lua.get("a").unwrap();
     /// assert_eq!(a, 5);
     /// ```
@@ -829,7 +867,7 @@ impl Lua {
     /// let mut lua = Lua::new();
     ///
     /// lua.set("a", 12);
-    /// let six: i32 = lua.execute("return a / 2;").unwrap();
+    /// let six: i32 = lua.eval("return a / 2;").unwrap();
     /// assert_eq!(six, 6);
     /// ```
     #[inline]
@@ -901,7 +939,7 @@ impl Lua {
     ///     array.set(3, 20);
     /// }
     ///
-    /// let sum: i32 = lua.execute(r#"
+    /// let sum: i32 = lua.eval(r#"
     ///     local sum = 0
     ///     for i, val in ipairs(my_values) do
     ///         sum = sum + val
@@ -964,7 +1002,7 @@ impl Lua {
     ///     }));
     /// }
     ///
-    /// let b: i32 = lua.execute("return b * 2;").unwrap();
+    /// let b: i32 = lua.eval("return b * 2;").unwrap();
     /// // -> The user tried to access the variable "b"
     ///
     /// assert_eq!(b, 96);
@@ -1070,37 +1108,3 @@ impl From<AbsoluteIndex> for i32 {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use crate::{
-        Lua,
-        LuaError,
-    };
-
-    #[test]
-    fn open_base_opens_base_library() {
-        let mut lua = Lua::new();
-        match lua.execute::<()>("return assert(true)") {
-            Err(LuaError::ExecutionError(_)) => { },
-            Err(_) => panic!("Wrong error"),
-            Ok(_) => panic!("Unexpected success"),
-        }
-        lua.open_base();
-        let result: bool = lua.execute("return assert(true)").unwrap();
-        assert_eq!(result, true);
-    }
-
-    #[test]
-    fn opening_all_libraries_doesnt_panic() {
-        let mut lua = Lua::new();
-        lua.open_base();
-        lua.open_bit();
-        lua.open_debug();
-        lua.open_io();
-        lua.open_math();
-        lua.open_os();
-        lua.open_package();
-        lua.open_string();
-        lua.open_table();
-    }
-}

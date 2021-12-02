@@ -26,14 +26,14 @@ pub fn two_functions_at_the_same_time() {
 
 pub fn args() {
     let lua = crate::hlua::global();
-    lua.execute::<()>("function foo(a) return a * 5 end").unwrap();
+    lua.exec("function foo(a) return a * 5 end").unwrap();
     let val: i32 = lua.get::<LuaFunction<_>, _>("foo").unwrap().call_with_args(3).unwrap();
     assert_eq!(val, 15);
 }
 
 pub fn args_in_order() {
     let lua = crate::hlua::global();
-    lua.execute::<()>("function foo(a, b) return a - b end").unwrap();
+    lua.exec("function foo(a, b) return a - b end").unwrap();
     let val: i32 = lua.get::<LuaFunction<_>, _>("foo").unwrap().call_with_args((5, 3)).unwrap();
     assert_eq!(val, 2);
 }
@@ -89,17 +89,17 @@ pub fn call_and_read_table() {
 
 pub fn table_as_args() {
     let lua = crate::hlua::global();
-    let f: LuaFunction<_> = lua.execute("return function(a) return a.foo end").unwrap();
+    let f: LuaFunction<_> = lua.eval("return function(a) return a.foo end").unwrap();
     let t: LuaTable<_> = (&lua).push(Foo { foo: 69 }).read().unwrap();
     let val: i32 = f.call_with_args(&t).unwrap();
     assert_eq!(val, 69);
 
-    let f: LuaFunction<_> = lua.execute("return function(a, b) return a.foo + b.bar end").unwrap();
+    let f: LuaFunction<_> = lua.eval("return function(a, b) return a.foo + b.bar end").unwrap();
     let u: LuaTable<_> = (&lua).push(Bar { bar: 420 }).read().unwrap();
     let val: i32 = f.call_with_args((&t, &u)).unwrap();
     assert_eq!(val, 420 + 69);
 
-    let json_encode: LuaFunction<_> = lua.execute("return require('json').encode").unwrap();
+    let json_encode: LuaFunction<_> = lua.eval("return require('json').encode").unwrap();
     let res: String = json_encode.call_with_args(vec!("a", "b", "c")).unwrap();
     assert_eq!(res, r#"["a","b","c"]"#);
 
@@ -116,7 +116,7 @@ pub fn table_as_args() {
 #[rustfmt::skip]
 pub fn table_method_call() {
     let lua = crate::hlua::global();
-    let t: LuaTable<_> = lua.execute("
+    let t: LuaTable<_> = lua.eval("
         return {
             a = 0,
             inc_a = function(self, b, c)
@@ -143,7 +143,7 @@ pub fn table_method_call() {
 
 pub fn lua_function_returns_function() {
     let lua = crate::hlua::global();
-    lua.execute::<()>("function foo() return 5 end").unwrap();
+    lua.exec("function foo() return 5 end").unwrap();
     let bar = LuaFunction::load(&lua, "return foo;").unwrap();
     let foo: LuaFunction<_> = bar.call().unwrap();
     let val: i32 = foo.call().unwrap();
@@ -152,7 +152,7 @@ pub fn lua_function_returns_function() {
 
 pub fn error() {
     let lua = crate::hlua::global();
-    lua.execute::<()>("function foo() error('oops'); end").unwrap();
+    lua.exec("function foo() error('oops'); end").unwrap();
     let foo: LuaFunction<_> = lua.get("foo").unwrap();
     let res: Result<(), _> = foo.call();
     assert!(res.is_err());
@@ -163,7 +163,7 @@ pub fn error() {
 
 pub fn either_or() {
     let lua = crate::hlua::global();
-    lua.execute::<()>(r#"
+    lua.exec(r#"
         function foo(a)
             if a > 0 then
                 return true, 69, 420
@@ -234,8 +234,7 @@ pub fn execute_from_reader_errors_if_cant_read() {
 
     let lua = crate::hlua::global();
     let reader = Reader { };
-    let res: Result<(), _> = lua.execute_from_reader(reader);
-    match res {
+    match lua.exec_from(reader) {
         Ok(_) => panic!("Reading succeded"),
         Err(LuaError::ReadError(e)) => { assert_eq!("oh no!", e.to_string()) },
         Err(_) => panic!("Unexpected error happened"),
@@ -245,7 +244,7 @@ pub fn execute_from_reader_errors_if_cant_read() {
 pub fn from_function_call_error() {
     fn inner() -> Result<u32, LuaError> {
         let lua = crate::hlua::global();
-        let f: LuaFunction<_> = lua.execute("return function(x, y) return x + y end").unwrap();
+        let f: LuaFunction<_> = lua.eval("return function(x, y) return x + y end").unwrap();
         let res = f.call_with_args((1, 2))?;
         Ok(res)
     }
