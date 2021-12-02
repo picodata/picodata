@@ -127,7 +127,7 @@ pub use lua_tables::{LuaTable, LuaTableIterator, MethodCallError};
 pub use tuples::TuplePushError;
 pub use userdata::UserdataOnStack;
 pub use userdata::{push_userdata, read_userdata, push_some_userdata};
-pub use values::StringInLua;
+pub use values::{StringInLua, Nil, Null};
 pub use hlua_derive::*;
 
 pub type LuaTableMap = std::collections::HashMap<AnyHashableLuaValue, AnyLuaValue>;
@@ -1037,43 +1037,6 @@ impl Lua {
          }
      }
  }
-
-#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct Nil;
-
-impl<L> Push<L> for Nil
-where
-    L: AsLua,
-{
-    type Err = Void;      // TODO: use `!` instead (https://github.com/rust-lang/rust/issues/35121)
-
-    fn push_to_lua(self, lua: L) -> Result<PushGuard<L>, (Void, L)> {
-        unsafe {
-            ffi::lua_pushnil(lua.as_lua());
-            Ok(PushGuard::new(lua, 1))
-        }
-    }
-}
-
-impl<L: AsLua> PushOne<L> for Nil {}
-
-impl<L: AsLua> LuaRead<L> for Nil {
-    fn lua_read_at_maybe_zero_position(lua: L, index: i32) -> Result<Nil, L> {
-        if let Some(index) = NonZeroI32::new(index) {
-            Self::lua_read_at_position(lua, index)
-        } else {
-            Ok(Nil)
-        }
-    }
-
-    fn lua_read_at_position(lua: L, index: NonZeroI32) -> Result<Nil, L> {
-        if unsafe { ffi::lua_isnil(lua.as_lua(), index.into()) } {
-            Ok(Nil)
-        } else {
-            Err(lua)
-        }
-    }
-}
 
 #[derive(Debug, Clone, Copy)]
 pub struct AbsoluteIndex(NonZeroI32);

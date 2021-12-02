@@ -3,14 +3,14 @@ use std::num::NonZeroI32;
 use std::slice;
 use std::str;
 use std::ops::Deref;
-use std::os::raw::c_int;
+use std::os::raw::{c_int, c_void};
+use std::ptr::null_mut;
 
 use crate::{
     ffi,
     AnyLuaString,
     AsLua,
     LuaRead,
-    Nil,
     Push,
     PushGuard,
     PushOne,
@@ -232,33 +232,58 @@ impl<'a, L> Deref for StringInLua<'a, L> {
     }
 }
 
-impl<L> Push<L> for bool
-where
-    L: AsLua,
-{
-    type Err = Void;      // TODO: use `!` instead (https://github.com/rust-lang/rust/issues/35121)
+macro_rules! impl_push_read {
+    (
+        $t:ty,
+        push_to_lua($self:ident, $lua:ident) { $($push:tt)* }
+        read_at_position($lua2:ident, $index:ident) { $($read:tt)* }
+        $(read_at_maybe_zero_position($lua3:ident, $index2:ident) { $($read_mz:tt)* })?
+    ) => {
+        impl<L> Push<L> for $t
+        where
+            L: AsLua,
+        {
+            type Err = Void;      // TODO: use `!` instead (https://github.com/rust-lang/rust/issues/35121)
 
-    #[inline]
-    fn push_to_lua(self, lua: L) -> Result<PushGuard<L>, (Void, L)> {
+            #[inline]
+            fn push_to_lua($self, $lua: L) -> Result<PushGuard<L>, (Void, L)> {
+                $($push)*
+            }
+        }
+
+        impl<L> PushOne<L> for $t
+        where
+            L: AsLua,
+        {
+        }
+
+        impl<L> LuaRead<L> for $t
+        where
+            L: AsLua,
+        {
+            #[inline]
+            fn lua_read_at_position($lua2: L, $index: NonZeroI32) -> Result<Self, L> {
+                $($read)*
+            }
+
+            $(
+                #[inline]
+                fn lua_read_at_maybe_zero_position($lua3: L, $index2: i32) -> Result<Self, L> {
+                    $($read_mz)*
+                }
+            )?
+        }
+    }
+}
+
+impl_push_read!{ bool,
+    push_to_lua(self, lua) {
         unsafe {
             ffi::lua_pushboolean(lua.as_lua(), self as _);
             Ok(PushGuard::new(lua, 1))
         }
     }
-}
-
-impl<L> PushOne<L> for bool
-where
-    L: AsLua,
-{
-}
-
-impl<L> LuaRead<L> for bool
-where
-    L: AsLua,
-{
-    #[inline]
-    fn lua_read_at_position(lua: L, index: NonZeroI32) -> Result<bool, L> {
+    read_at_position(lua, index) {
         if unsafe { ffi::lua_isboolean(lua.as_lua(), index.into()) } != true {
             return Err(lua);
         }
@@ -267,28 +292,14 @@ where
     }
 }
 
-impl<L> Push<L> for ()
-where
-    L: AsLua,
-{
-    type Err = Void;      // TODO: use `!` instead (https://github.com/rust-lang/rust/issues/35121)
-
-    #[inline]
-    fn push_to_lua(self, lua: L) -> Result<PushGuard<L>, (Void, L)> {
+impl_push_read!{ (),
+    push_to_lua(self, lua) {
         unsafe { Ok(PushGuard::new(lua, 0)) }
     }
-}
-
-impl<L> LuaRead<L> for ()
-where
-    L: AsLua,
-{
-    fn lua_read_at_maybe_zero_position(_: L, _: i32) -> Result<(), L> {
+    read_at_position(_lua, _index) {
         Ok(())
     }
-
-    #[inline]
-    fn lua_read_at_position(_: L, _: NonZeroI32) -> Result<(), L> {
+    read_at_maybe_zero_position(_lua, _index) {
         Ok(())
     }
 }
@@ -330,7 +341,7 @@ where
     }
 
     fn lua_read_at_position(lua: L, index: NonZeroI32) -> Result<Option<T>, L> {
-        if unsafe { ffi::lua_isnil(lua.as_lua(), index.into()) } {
+        if unsafe { is_null_or_nil(lua.as_lua(), index.get()) } {
             return Ok(None)
         }
         T::lua_read_at_position(lua, index).map(Some)
@@ -351,6 +362,76 @@ where
             return Ok(Err(b))
         }
         Err(lua)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct Nil;
+
+impl_push_read!{Nil,
+    push_to_lua(self, lua) {
+        unsafe {
+            ffi::lua_pushnil(lua.as_lua());
+            Ok(PushGuard::new(lua, 1))
+        }
+    }
+    read_at_position(lua, index) {
+        if unsafe { ffi::lua_isnil(lua.as_lua(), index.into()) } {
+            Ok(Nil)
+        } else {
+            Err(lua)
+        }
+    }
+    read_at_maybe_zero_position(lua, index) {
+        if let Some(index) = NonZeroI32::new(index) {
+            Self::lua_read_at_position(lua, index)
+        } else {
+            Ok(Nil)
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct Null;
+
+impl Null {
+    unsafe fn is_null(lua: crate::LuaState, index: i32) -> bool {
+        if ffi::lua_type(lua, index) == ffi::LUA_TCDATA {
+            let mut ctypeid = MaybeUninit::uninit();
+            let cdata = ffi::luaL_checkcdata(lua, index, ctypeid.as_mut_ptr());
+            if ctypeid.assume_init() == ffi::CTID_P_VOID {
+                return (*cdata.cast::<*const c_void>()).is_null()
+            }
+        }
+        false
+    }
+}
+
+pub unsafe fn is_null_or_nil(lua: crate::LuaState, index: i32) -> bool {
+    ffi::lua_isnil(lua, index) || Null::is_null(lua, index)
+}
+
+impl_push_read!{Null,
+    push_to_lua(self, lua) {
+        unsafe {
+            let cdata = ffi::luaL_pushcdata(lua.as_lua(), ffi::CTID_P_VOID);
+            *cdata.cast::<*mut c_void>() = null_mut();
+            Ok(PushGuard::new(lua, 1))
+        }
+    }
+    read_at_position(lua, index) {
+        if unsafe { Null::is_null(lua.as_lua(), index.into()) } {
+            Ok(Null)
+        } else {
+            Err(lua)
+        }
+    }
+    read_at_maybe_zero_position(lua, index) {
+        if let Some(index) = NonZeroI32::new(index) {
+            Null::lua_read_at_position(lua, index)
+        } else {
+            Ok(Null)
+        }
     }
 }
 

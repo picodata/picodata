@@ -6,6 +6,7 @@ use tarantool::hlua::{
     StringInLua,
     function0,
     Nil,
+    Null,
 };
 
 pub fn read_i32s() {
@@ -310,9 +311,11 @@ pub fn push_opt() {
 }
 
 pub fn read_nil() {
-    let lua = Lua::new();
+    let lua = crate::hlua::global();
     assert_eq!(lua.eval::<Nil>("return nil").unwrap(), Nil);
     assert_eq!(lua.eval::<Option<i32>>("return nil").unwrap(), None);
+    assert_eq!(lua.eval::<Null>("return box.NULL").unwrap(), Null);
+    assert_eq!(lua.eval::<Option<i32>>("return box.NULL").unwrap(), None);
 
     lua.set("v", None::<i32>);
     assert_eq!(lua.get::<i32, _>("v"), None);
