@@ -7,6 +7,8 @@ use tarantool::hlua::{
     function0,
     Nil,
     Null,
+    True,
+    False,
 };
 
 pub fn read_i32s() {
@@ -223,14 +225,17 @@ pub fn readwrite_floats() {
 pub fn readwrite_bools() {
     let lua = Lua::new();
 
-    lua.set("a", true);
-    lua.set("b", false);
+    let lua = lua.push(true);
+    assert_eq!((&lua).read::<bool>().ok(), Some(true));
+    assert_eq!((&lua).read::<True>().ok(), Some(True));
+    assert_eq!((&lua).read::<False>().ok(), None);
 
-    let x: bool = lua.get("a").unwrap();
-    assert_eq!(x, true);
+    let lua = lua.into_inner();
 
-    let y: bool = lua.get("b").unwrap();
-    assert_eq!(y, false);
+    let lua = lua.push(false);
+    assert_eq!((&lua).read::<bool>().ok(), Some(false));
+    assert_eq!((&lua).read::<True>().ok(), None);
+    assert_eq!((&lua).read::<False>().ok(), Some(False));
 }
 
 pub fn readwrite_strings() {

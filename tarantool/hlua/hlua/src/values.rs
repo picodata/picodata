@@ -1,3 +1,4 @@
+use std::convert::TryFrom;
 use std::mem::MaybeUninit;
 use std::num::NonZeroI32;
 use std::slice;
@@ -431,6 +432,70 @@ impl_push_read!{Null,
             Null::lua_read_at_position(lua, index)
         } else {
             Ok(Null)
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct True;
+
+impl From<True> for bool {
+    fn from(_: True) -> Self {
+        true
+    }
+}
+
+impl TryFrom<bool> for True {
+    type Error = False;
+    fn try_from(v: bool) -> Result<Self, False> {
+        if v {
+            Ok(True)
+        } else {
+            Err(False)
+        }
+    }
+}
+
+impl_push_read!{True,
+    push_to_lua(self, lua) {
+        true.push_to_lua(lua)
+    }
+    read_at_position(lua, index) {
+        match bool::lua_read_at_position(&lua, index) {
+            Ok(v) if v => Ok(True),
+            _ => Err(lua),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct False;
+
+impl From<False> for bool {
+    fn from(_: False) -> Self {
+        false
+    }
+}
+
+impl TryFrom<bool> for False {
+    type Error = True;
+    fn try_from(v: bool) -> Result<Self, True> {
+        if !v {
+            Ok(False)
+        } else {
+            Err(True)
+        }
+    }
+}
+
+impl_push_read!{False,
+    push_to_lua(self, lua) {
+        false.push_to_lua(lua)
+    }
+    read_at_position(lua, index) {
+        match bool::lua_read_at_position(&lua, index) {
+            Ok(v) if !v => Ok(False),
+            _ => Err(lua),
         }
     }
 }

@@ -5,6 +5,8 @@ use tarantool::hlua::{
     LuaFunction,
     LuaTable,
     MethodCallError,
+    True,
+    False,
 };
 use std::io::Read;
 use std::collections::HashMap;
@@ -163,8 +165,8 @@ pub fn error() {
 
 pub fn either_or() {
     let lua = crate::hlua::global();
-    lua.exec(r#"
-        function foo(a)
+    let foo: LuaFunction<_> = lua.eval(r#"
+        return function(a)
             if a > 0 then
                 return true, 69, 420
             else
@@ -172,12 +174,11 @@ pub fn either_or() {
             end
         end
     "#).unwrap();
-    let foo: LuaFunction<_> = lua.get("foo").unwrap();
-    type Res = Result<(bool, i32, i32), (bool, String)>;
+    type Res = Result<(True, i32, i32), (False, String)>;
     let res: Res = foo.call_with_args(1).unwrap();
-    assert_eq!(res, Ok((true, 69, 420)));
+    assert_eq!(res, Ok((True, 69, 420)));
     let res: Res = foo.call_with_args(0).unwrap();
-    assert_eq!(res, Err((false, "hello".to_string())));
+    assert_eq!(res, Err((False, "hello".to_string())));
 }
 
 pub fn multiple_return_values() {
