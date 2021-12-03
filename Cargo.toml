@@ -28,7 +28,9 @@ test = false
 [[bin]]
 name = "picodata"
 path = "picodata/main.rs"
-test = false
+test = true
+harness = true
+doctest = false
 
 [[test]]
 name = "cli"
