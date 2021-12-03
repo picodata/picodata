@@ -42,7 +42,7 @@ fn main_run(matches: &clap::ArgMatches) {
         }
     };
 
-    let mut args: Vec<&str> = vec![&tarantool_path, "-l", "picodata"];
+    let mut args: Vec<&str> = vec![&tarantool_path, "-l", "picolib"];
     if let Some(script) = matches.value_of("tarantool-exec") {
         args.push("-e");
         args.push(script);
@@ -57,10 +57,11 @@ fn main_run(matches: &clap::ArgMatches) {
     }
 
     if let Some(peer) = matches.values_of("peer") {
-        let append = |s: String, str| if s.is_empty() {s + str} else {s + "," + str};
+        let append = |s: String, str| if s.is_empty() { s + str } else { s + "," + str };
         let peer = peer.fold(String::new(), append);
         envp.insert("PICODATA_PEER".to_owned(), peer);
     }
+    envp.insert("PICODATA_COMMAND".to_owned(), "run".to_owned());
 
     for arg in [
         "cluster-id",
@@ -100,7 +101,11 @@ fn main_run(matches: &clap::ArgMatches) {
         .map(|(k, v)| CString!(format!("{}={}", k, v)))
         .collect();
 
-    println!("Hello from picodata main");
+    println!(
+        "Hello from picodata main ({}, {})",
+        std::env!("CARGO_PKG_NAME"),
+        std::module_path!()
+    );
 
     let e = execve::execve(argv, envp);
     eprintln!("{}: {}", tarantool_path, e);
