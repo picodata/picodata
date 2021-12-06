@@ -1018,25 +1018,25 @@ impl Lua {
     }
 }
 
- impl Drop for Lua {
-     #[inline]
-     fn drop(&mut self) {
-         if self.must_be_closed {
-             unsafe { ffi::lua_close(self.lua) }
-         }
-     }
- }
+impl Drop for Lua {
+    #[inline]
+    fn drop(&mut self) {
+        if self.must_be_closed {
+            unsafe { ffi::lua_close(self.lua) }
+        }
+    }
+}
 
- impl<L: AsLua> Drop for PushGuard<L> {
-     #[inline]
-     fn drop(&mut self) {
-         if self.size != 0 {
-             unsafe {
-                 ffi::lua_pop(self.lua.as_lua(), self.size as _);
-             }
-         }
-     }
- }
+impl<L: AsLua> Drop for PushGuard<L> {
+    #[inline]
+    fn drop(&mut self) {
+        if self.size != 0 {
+            unsafe {
+                ffi::lua_pop(self.lua.as_lua(), self.size as _);
+            }
+        }
+    }
+}
 
 #[derive(Debug, Clone, Copy)]
 pub struct AbsoluteIndex(NonZeroI32);
