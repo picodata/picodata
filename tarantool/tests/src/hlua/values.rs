@@ -9,6 +9,7 @@ use tarantool::hlua::{
     Null,
     True,
     False,
+    Typename,
 };
 
 pub fn read_i32s() {
@@ -326,5 +327,13 @@ pub fn read_nil() {
     assert_eq!(lua.get::<i32, _>("v"), None);
     assert_eq!(lua.get::<Option<i32>, _>("v"), Some(None));
     assert_eq!(lua.get::<Option<Option<i32>>, _>("v"), Some(None));
+}
+
+pub fn typename() {
+    let lua = Lua::new();
+    assert_eq!((&lua).push("hello").read::<Typename>().unwrap().get(), "string");
+    assert_eq!((&lua).push(3.14).read::<Typename>().unwrap().get(), "number");
+    assert_eq!((&lua).push(true).read::<Typename>().unwrap().get(), "boolean");
+    assert_eq!((&lua).push(vec![1, 2, 3]).read::<Typename>().unwrap().get(), "table");
 }
 

@@ -127,7 +127,7 @@ pub use lua_tables::{LuaTable, LuaTableIterator, MethodCallError};
 pub use tuples::TuplePushError;
 pub use userdata::UserdataOnStack;
 pub use userdata::{push_userdata, read_userdata, push_some_userdata};
-pub use values::{StringInLua, Nil, Null, True, False};
+pub use values::{StringInLua, Nil, Null, True, False, Typename};
 pub use hlua_derive::*;
 
 pub type LuaTableMap = std::collections::HashMap<AnyHashableLuaValue, AnyLuaValue>;
@@ -460,18 +460,22 @@ impl LuaError {
         let start = AbsoluteIndex::new(nz, lua.as_lua());
         Self::WrongType {
             rust_expected: std::any::type_name::<T>().into(),
-            lua_actual: lua_typename(lua, start, n_values as _),
+            lua_actual: typenames(lua, start, n_values as _),
         }
     }
 }
 
-pub fn lua_typename(lua: impl AsLua, start: AbsoluteIndex, count: u32) -> String {
+pub fn typename(lua: impl AsLua, index: i32) -> &'static CStr {
+    unsafe {
+        let lua_type = ffi::lua_type(lua.as_lua(), index);
+        let typename = ffi::lua_typename(lua.as_lua(), lua_type);
+        CStr::from_ptr(typename)
+    }
+}
+
+pub fn typenames(lua: impl AsLua, start: AbsoluteIndex, count: u32) -> String {
     let l_ptr = lua.as_lua();
-    let single_typename = |i| unsafe {
-        let lua_type = ffi::lua_type(l_ptr, i as _);
-        let typename = ffi::lua_typename(l_ptr, lua_type);
-        std::ffi::CStr::from_ptr(typename).to_string_lossy()
-    };
+    let single_typename = |i| typename(l_ptr, i as _).to_string_lossy();
 
     let start = start.get();
     match count {

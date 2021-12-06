@@ -1,4 +1,5 @@
 use std::convert::TryFrom;
+use std::borrow::Cow;
 use std::mem::MaybeUninit;
 use std::num::NonZeroI32;
 use std::slice;
@@ -497,6 +498,29 @@ impl_push_read!{False,
             Ok(v) if !v => Ok(False),
             _ => Err(lua),
         }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct Typename(&'static str);
+
+impl Typename {
+    pub fn get(&self) -> &'static str {
+        self.0
+    }
+}
+
+impl_push_read!{Typename,
+    push_to_lua(self, _lua) {
+        unimplemented!()
+    }
+    read_at_position(lua, index) {
+        Ok(Self(
+            match crate::typename(lua.as_lua(), index.into()).to_string_lossy() {
+                Cow::Borrowed(s) => s,
+                _ => unreachable!("lua typename is a valid unicode string"),
+            }
+        ))
     }
 }
 
