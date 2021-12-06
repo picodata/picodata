@@ -8,7 +8,6 @@
 //! - [C API reference: Module box](https://www.tarantool.io/en/doc/latest/dev_guide/reference_capi/box/)
 use std::fmt;
 use std::os::raw::c_char;
-use std::ptr::null_mut;
 
 use num_traits::ToPrimitive;
 use serde::{Serialize, Serializer};
@@ -18,6 +17,7 @@ use crate::error::{Error, TarantoolError};
 use crate::ffi::tarantool as ffi;
 use crate::index::{Index, IndexIterator, IteratorType};
 use crate::tuple::{AsTuple, Tuple};
+use crate::tuple_from_box_api;
 
 /// End of the reserved range of system spaces.
 pub const SYSTEM_ID_MAX: u32 = 511;
@@ -317,25 +317,14 @@ impl Space {
     {
         let buf = value.serialize_as_tuple().unwrap();
         let buf_ptr = buf.as_ptr() as *const c_char;
-        let mut result_ptr = null_mut::<ffi::BoxTuple>();
-
-        if unsafe {
-            ffi::box_insert(
+        tuple_from_box_api!(
+            ffi::box_insert[
                 self.id,
                 buf_ptr,
                 buf_ptr.offset(buf.len() as isize),
-                &mut result_ptr,
-            )
-        } < 0
-        {
-            return Err(TarantoolError::last().into());
-        }
-
-        Ok(if result_ptr.is_null() {
-            None
-        } else {
-            Some(Tuple::from_ptr(result_ptr))
-        })
+                @out
+            ]
+        )
     }
 
     /// Insert a tuple into a space.
@@ -353,25 +342,14 @@ impl Space {
     {
         let buf = value.serialize_as_tuple().unwrap();
         let buf_ptr = buf.as_ptr() as *const c_char;
-        let mut result_ptr = null_mut::<ffi::BoxTuple>();
-
-        if unsafe {
-            ffi::box_replace(
+        tuple_from_box_api!(
+            ffi::box_replace[
                 self.id,
                 buf_ptr,
                 buf_ptr.offset(buf.len() as isize),
-                &mut result_ptr,
-            )
-        } < 0
-        {
-            return Err(TarantoolError::last().into());
-        }
-
-        Ok(if result_ptr.is_null() {
-            None
-        } else {
-            Some(Tuple::from_ptr(result_ptr))
-        })
+                @out
+            ]
+        )
     }
 
     /// Insert a tuple into a space. If a tuple with the same primary key already exists, replaces the existing tuple

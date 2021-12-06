@@ -25,3 +25,18 @@ macro_rules! impl_into_clones {
 
 impl_into_clones!{T T T T T T T T T T T}
 
+#[macro_export]
+macro_rules! tuple_from_box_api {
+    ($f:path [ $($args:expr),* , @out ]) => {
+        {
+            let mut result = ::std::mem::MaybeUninit::uninit();
+            unsafe {
+                if $f($($args),*, result.as_mut_ptr()) < 0 {
+                    return Err($crate::error::TarantoolError::last().into());
+                }
+                Ok($crate::tuple::Tuple::try_from_ptr(result.assume_init()))
+            }
+        }
+    }
+}
+

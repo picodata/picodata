@@ -11,7 +11,7 @@
 use std::cmp::Ordering;
 use std::io::Cursor;
 use std::os::raw::{c_char, c_int};
-use std::ptr::copy_nonoverlapping;
+use std::ptr::{copy_nonoverlapping, NonNull};
 use std::slice::from_raw_parts;
 
 use num_traits::ToPrimitive;
@@ -23,7 +23,7 @@ use crate::ffi::tarantool as ffi;
 
 /// Tuple
 pub struct Tuple {
-    ptr: *mut ffi::BoxTuple,
+    ptr: NonNull<ffi::BoxTuple>,
 }
 
 impl Tuple {
@@ -36,34 +36,35 @@ impl Tuple {
     where
         T: AsTuple,
     {
-        let format = TupleFormat::default();
         let buf = value.serialize_as_tuple()?;
-        let buf_ptr = buf.as_ptr() as *const c_char;
-        let tuple_ptr = unsafe {
-            ffi::box_tuple_new(format.inner, buf_ptr, buf_ptr.offset(buf.len() as isize))
-        };
-
-        unsafe { ffi::box_tuple_ref(tuple_ptr) };
-        Ok(Tuple { ptr: tuple_ptr })
+        unsafe {
+            Ok(Self::from_raw_data(buf.as_ptr() as _, buf.len() as _))
+        }
     }
 
-    pub(crate) fn from_raw_data(data_ptr: *mut c_char, len: u32) -> Self {
+    pub unsafe fn from_raw_data(data: *mut c_char, len: u32) -> Self {
         let format = TupleFormat::default();
-        let tuple_ptr =
-            unsafe { ffi::box_tuple_new(format.inner, data_ptr, data_ptr.offset(len as isize)) };
+        let tuple_ptr = ffi::box_tuple_new(
+            format.inner,
+            data as _,
+            data.offset(len as isize) as _
+        );
 
-        unsafe { ffi::box_tuple_ref(tuple_ptr) };
-        Tuple { ptr: tuple_ptr }
+        Self::from_ptr(NonNull::new_unchecked(tuple_ptr))
     }
 
-    pub(crate) fn from_ptr(ptr: *mut ffi::BoxTuple) -> Self {
-        unsafe { ffi::box_tuple_ref(ptr) };
+    pub fn from_ptr(mut ptr: NonNull<ffi::BoxTuple>) -> Self {
+        unsafe { ffi::box_tuple_ref(ptr.as_mut()) };
         Tuple { ptr }
+    }
+
+    pub fn try_from_ptr(ptr: *mut ffi::BoxTuple) -> Option<Self> {
+        NonNull::new(ptr).map(Self::from_ptr)
     }
 
     /// Return the number of fields in tuple (the size of MsgPack Array).
     pub fn len(&self) -> u32 {
-        unsafe { ffi::box_tuple_field_count(self.ptr) }
+        unsafe { ffi::box_tuple_field_count(self.ptr.as_ptr()) }
     }
 
     /// Will return the number of bytes in the tuple.
@@ -76,13 +77,13 @@ impl Tuple {
     /// The value does not include the size of "struct tuple"
     /// (for the current size of this structure look in the tuple.h file in Tarantool’s source code).
     pub fn bsize(&self) -> usize {
-        unsafe { ffi::box_tuple_bsize(self.ptr) }
+        unsafe { ffi::box_tuple_bsize(self.ptr.as_ptr()) }
     }
 
     /// Return the associated format.
     pub fn format(&self) -> TupleFormat {
         TupleFormat {
-            inner: unsafe { ffi::box_tuple_format(self.ptr) },
+            inner: unsafe { ffi::box_tuple_format(self.ptr.as_ptr()) },
         }
     }
 
@@ -106,7 +107,7 @@ impl Tuple {
     /// assert!(it.position() == 4);
     /// ```
     pub fn iter(&self) -> Result<TupleIterator, Error> {
-        let inner = unsafe { ffi::box_tuple_iterator(self.ptr) };
+        let inner = unsafe { ffi::box_tuple_iterator(self.ptr.as_ptr()) };
         if inner.is_null() {
             Err(TarantoolError::last().into())
         } else {
@@ -127,7 +128,7 @@ impl Tuple {
     where
         T: DeserializeOwned,
     {
-        let result_ptr = unsafe { ffi::box_tuple_field(self.ptr, fieldno) };
+        let result_ptr = unsafe { ffi::box_tuple_field(self.ptr.as_ptr(), fieldno) };
         field_value_from_ptr(result_ptr as *mut u8)
     }
 
@@ -146,7 +147,7 @@ impl Tuple {
         let mut buffer = Vec::<u8>::with_capacity(buffer_size);
 
         let actual_size =
-            unsafe { ffi::box_tuple_to_buf(self.ptr, buffer.as_ptr() as *mut c_char, buffer_size) };
+            unsafe { ffi::box_tuple_to_buf(self.ptr.as_ptr(), buffer.as_ptr() as *mut c_char, buffer_size) };
         if actual_size < 0 {
             return Err(TarantoolError::last().into());
         }
@@ -164,19 +165,19 @@ impl Tuple {
     }
 
     pub(crate) fn into_ptr(self) -> *mut ffi::BoxTuple {
-        self.ptr
+        self.ptr.as_ptr()
     }
 }
 
 impl Drop for Tuple {
     fn drop(&mut self) {
-        unsafe { ffi::box_tuple_unref(self.ptr) };
+        unsafe { ffi::box_tuple_unref(self.ptr.as_ptr()) };
     }
 }
 
 impl Clone for Tuple {
     fn clone(&self) -> Self {
-        unsafe { ffi::box_tuple_ref(self.ptr) };
+        unsafe { ffi::box_tuple_ref(self.ptr.as_ptr()) };
         Tuple { ptr: self.ptr }
     }
 }
@@ -407,7 +408,10 @@ impl KeyDef {
     /// - `Ordering::Less`    if `key_fields(tuple_a) < key_fields(tuple_b)`
     /// - `Ordering::Greater` if `key_fields(tuple_a) > key_fields(tuple_b)`
     pub fn compare(&self, tuple_a: &Tuple, tuple_b: &Tuple) -> Ordering {
-        unsafe { ffi::box_tuple_compare(tuple_a.ptr, tuple_b.ptr, self.inner) }.cmp(&0)
+        unsafe {
+            ffi::box_tuple_compare(tuple_a.ptr.as_ptr(), tuple_b.ptr.as_ptr(), self.inner)
+                .cmp(&0)
+        }
     }
 
     /// Compare tuple with key using the key definition.
@@ -424,8 +428,11 @@ impl KeyDef {
         K: AsTuple,
     {
         let key_buf = key.serialize_as_tuple().unwrap();
-        let key_buf_ptr = key_buf.as_ptr() as *const c_char;
-        unsafe { ffi::box_tuple_compare_with_key(tuple.ptr, key_buf_ptr, self.inner) }.cmp(&0)
+        let key_buf_ptr = key_buf.as_ptr() as _;
+        unsafe {
+            ffi::box_tuple_compare_with_key(tuple.ptr.as_ptr(), key_buf_ptr, self.inner)
+                .cmp(&0)
+        }
     }
 }
 
@@ -493,7 +500,7 @@ impl FunctionCtx {
     ///
     /// - `tuple` - a Tuple to return
     pub fn return_tuple(&self, tuple: &Tuple) -> Result<c_int, Error> {
-        let result = unsafe { ffi::box_return_tuple(self.inner, tuple.ptr) };
+        let result = unsafe { ffi::box_return_tuple(self.inner, tuple.ptr.as_ptr()) };
         if result < 0 {
             Err(TarantoolError::last().into())
         } else {
@@ -530,14 +537,18 @@ impl FunctionCtx {
 
 #[repr(C)]
 pub struct FunctionArgs {
-    pub args: *const c_char,
-    pub args_end: *const c_char,
+    pub start: *const u8,
+    pub end: *const u8,
 }
 
-impl Into<Tuple> for FunctionArgs {
-    fn into(self) -> Tuple {
-        let len = (self.args_end as usize) - (self.args as usize);
-        Tuple::from_raw_data(self.args as *mut c_char, len as u32)
+impl From<FunctionArgs> for Tuple {
+    fn from(args: FunctionArgs) -> Tuple {
+        unsafe {
+            Tuple::from_raw_data(
+                args.start as _,
+                args.end.offset_from(args.start) as _,
+            )
+        }
     }
 }
 
