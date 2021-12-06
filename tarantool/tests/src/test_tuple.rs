@@ -1,5 +1,6 @@
 use std::cmp::Ordering;
 
+use tarantool::hlua::AsLua;
 use tarantool::tuple::{FieldType, KeyDef, KeyDefItem, Tuple};
 
 use crate::common::{S1Record, S2Key, S2Record};
@@ -203,3 +204,26 @@ pub fn test_tuple_compare_with_key() {
     ]);
     assert_eq!(key_def.compare_with_key(&tuple, &key_value), Ordering::Less);
 }
+
+pub fn to_and_from_lua() {
+    let tuple = Tuple::from_struct(&S2Record {
+        id: 42,
+        key: "hello".into(),
+        value: "nice".into(),
+        a: 420,
+        b: 69,
+    }).unwrap();
+
+    let lua = tarantool::global_lua();
+    let lua = lua.push(tuple);
+    let tuple = lua.read::<Tuple>().unwrap();
+    let res = tuple.into_struct::<S2Record>().unwrap();
+    assert_eq!(res, S2Record {
+        id: 42,
+        key: "hello".into(),
+        value: "nice".into(),
+        a: 420,
+        b: 69,
+    });
+}
+

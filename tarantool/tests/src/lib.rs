@@ -365,6 +365,7 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 test_box::test_space_create_opt_id,
                 test_box::test_space_drop,
                 test_box::test_index_create_drop,
+
                 test_tuple::test_tuple_new_from_struct,
                 test_tuple::test_tuple_field_count,
                 test_tuple::test_tuple_size,
@@ -376,6 +377,8 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 test_tuple::test_tuple_get_field,
                 test_tuple::test_tuple_compare,
                 test_tuple::test_tuple_compare_with_key,
+                test_tuple::to_and_from_lua,
+
                 test_error::test_error_last,
                 test_coio::test_coio_accept,
                 test_coio::test_coio_read_write,

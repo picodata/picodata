@@ -826,4 +826,6 @@ use crate::ffi::lua::lua_State;
 extern "C" {
     pub fn luaT_state() -> *mut lua_State;
     pub fn luaT_call(l: *mut lua_State, nargs: c_int, nreturns: c_int) -> isize;
+    pub fn luaT_istuple(l: *mut lua_State, index: i32) -> *mut BoxTuple;
+    pub fn luaT_pushtuple(l: *mut lua_State, tuple: *mut BoxTuple);
 }
