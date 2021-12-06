@@ -8,7 +8,7 @@ use tarantool::hlua::{
 use std::sync::Arc;
 
 pub fn simple_function() {
-    let lua = crate::hlua::global();
+    let lua = tarantool::global_lua();
 
     fn ret5() -> i32 {
         5
@@ -20,7 +20,7 @@ pub fn simple_function() {
 }
 
 pub fn one_argument() {
-    let lua = crate::hlua::global();
+    let lua = tarantool::global_lua();
 
     fn plus_one(val: i32) -> i32 {
         val + 1
@@ -32,7 +32,7 @@ pub fn one_argument() {
 }
 
 pub fn two_arguments() {
-    let lua = crate::hlua::global();
+    let lua = tarantool::global_lua();
 
     fn add(val1: i32, val2: i32) -> i32 {
         val1 + val2
@@ -44,7 +44,7 @@ pub fn two_arguments() {
 }
 
 pub fn wrong_arguments_types() {
-    let lua = crate::hlua::global();
+    let lua = tarantool::global_lua();
 
     fn add(val1: i32, val2: i32) -> i32 {
         val1 + val2
@@ -58,7 +58,7 @@ pub fn wrong_arguments_types() {
 }
 
 pub fn return_result() {
-    let lua = crate::hlua::global();
+    let lua = tarantool::global_lua();
     lua.openlibs();
 
     fn always_fails() -> Result<i32, &'static str> {
@@ -77,7 +77,7 @@ pub fn return_result() {
 }
 
 pub fn closures() {
-    let lua = crate::hlua::global();
+    let lua = tarantool::global_lua();
 
     lua.set("add", function2(|a: i32, b: i32| a + b));
     lua.set("sub", function2(|a: i32, b: i32| a - b));
@@ -93,7 +93,7 @@ pub fn closures_lifetime() {
     fn t<F>(f: F)
         where F: Fn(i32, i32) -> i32
     {
-        let lua = crate::hlua::global();
+        let lua = tarantool::global_lua();
 
         lua.set("add", function2(f));
 
@@ -108,7 +108,7 @@ pub fn closures_extern_access() {
     let mut a = 5;
 
     {
-        let lua = crate::hlua::global();
+        let lua = tarantool::global_lua();
 
         lua.set("inc", function0(|| a += 1));
         for _ in 0..15 {

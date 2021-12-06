@@ -199,7 +199,7 @@ struct LuaStackIntegrityGuard {
 
 impl LuaStackIntegrityGuard {
     fn new(name: &'static str) -> Self {
-        let lua: Lua = crate::hlua::global();
+        let lua: Lua = tarantool::global_lua();
         let l = lua.as_lua();
         unsafe { lua::lua_pushlstring(l, name.as_bytes().as_ptr() as *mut i8, name.len()) };
         Self{name}
@@ -208,7 +208,7 @@ impl LuaStackIntegrityGuard {
 
 impl Drop for LuaStackIntegrityGuard {
     fn drop(&mut self) {
-        let lua: Lua = crate::hlua::global();
+        let lua: Lua = tarantool::global_lua();
         let l = lua.as_lua();
 
         let msg = unsafe {
@@ -273,7 +273,7 @@ pub fn start_error() {
 
     impl LuaContextSpoiler {
         fn new() -> Self {
-            crate::hlua::global().exec(r#"
+            tarantool::global_lua().exec(r#"
             _fiber_new_backup = package.loaded.fiber.new
             package.loaded.fiber.new = function() error("Artificial error", 0) end
             "#).unwrap();
@@ -283,7 +283,7 @@ pub fn start_error() {
 
     impl Drop for LuaContextSpoiler {
         fn drop(&mut self) {
-            crate::hlua::global().exec(r#"
+            tarantool::global_lua().exec(r#"
             package.loaded.fiber.new = _fiber_new_backup
             _fiber_new_backup = nil
             "#).unwrap();
@@ -308,7 +308,7 @@ pub fn require_error() {
 
     impl LuaContextSpoiler {
         fn new() -> Self {
-            let lua: Lua = crate::hlua::global();
+            let lua: Lua = tarantool::global_lua();
             lua.exec(r#"
             _fiber_backup = package.loaded.fiber
             package.loaded.fiber = nil
@@ -320,7 +320,7 @@ pub fn require_error() {
 
     impl Drop for LuaContextSpoiler {
         fn drop(&mut self) {
-            let lua: Lua = crate::hlua::global();
+            let lua: Lua = tarantool::global_lua();
             lua.exec(r#"
             package.preload.fiber = nil
             package.loaded.fiber = _fiber_backup

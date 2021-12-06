@@ -6,14 +6,14 @@ use tarantool::hlua::{
 };
 
 pub fn print() {
-    let lua = crate::hlua::global();
+    let lua = tarantool::global_lua();
 
     let print: LuaFunction<_> = lua.get("print").unwrap();
     let () = print.call_with_args("hello").unwrap();
 }
 
 pub fn json() {
-    let lua = crate::hlua::global();
+    let lua = tarantool::global_lua();
     let require: LuaFunction<_> = lua.get("require").unwrap();
     let json: LuaTable<_> = require.call_with_args("json").unwrap();
     let encode: LuaFunction<_> = json.get("encode").unwrap();

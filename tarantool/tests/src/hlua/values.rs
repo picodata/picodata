@@ -53,7 +53,7 @@ pub fn write_i32s() {
 }
 
 pub fn int64() {
-    let lua = crate::hlua::global();
+    let lua = tarantool::global_lua();
 
     let lua = lua.push(-69);
     assert_eq!((&lua).read::<i64>().unwrap(), -69);
@@ -141,7 +141,7 @@ pub fn int64() {
 }
 
 pub fn cdata_numbers() {
-    let lua = crate::hlua::global();
+    let lua = tarantool::global_lua();
 
     lua.exec("tmp = 0ull").unwrap();
     assert_eq!(lua.get::<i64, _>("tmp").unwrap(), 0);
@@ -317,7 +317,7 @@ pub fn push_opt() {
 }
 
 pub fn read_nil() {
-    let lua = crate::hlua::global();
+    let lua = tarantool::global_lua();
     assert_eq!(lua.eval::<Nil>("return nil").unwrap(), Nil);
     assert_eq!(lua.eval::<Option<i32>>("return nil").unwrap(), None);
     assert_eq!(lua.eval::<Null>("return box.NULL").unwrap(), Null);

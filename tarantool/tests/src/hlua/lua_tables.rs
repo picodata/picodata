@@ -6,7 +6,7 @@ use tarantool::hlua::{
 };
 
 pub fn iterable() {
-    let lua = crate::hlua::global();
+    let lua = tarantool::global_lua();
 
     lua.exec("a = { 9, 8, 7 }").unwrap();
 
@@ -24,7 +24,7 @@ pub fn iterable() {
 }
 
 pub fn iterable_multipletimes() {
-    let lua = crate::hlua::global();
+    let lua = tarantool::global_lua();
 
     lua.exec("a = { 9, 8, 7 }").unwrap();
 
@@ -38,7 +38,7 @@ pub fn iterable_multipletimes() {
 }
 
 pub fn get_set() {
-    let lua = crate::hlua::global();
+    let lua = tarantool::global_lua();
 
     lua.exec("a = { 9, 8, 7 }").unwrap();
     let table = lua.get::<LuaTable<_>, _>("a").unwrap();
@@ -63,7 +63,7 @@ pub fn get_nil() {
 }
 
 pub fn table_over_table() {
-    let lua = crate::hlua::global();
+    let lua = tarantool::global_lua();
 
     lua.exec("a = { 9, { 8, 7 }, 6 }").unwrap();
     let table = lua.get::<LuaTable<_>, _>("a").unwrap();
@@ -86,7 +86,7 @@ pub fn table_over_table() {
 }
 
 pub fn metatable() {
-    let lua = crate::hlua::global();
+    let lua = tarantool::global_lua();
 
     lua.exec("a = { 9, 8, 7 }").unwrap();
 
@@ -105,7 +105,7 @@ pub fn metatable() {
 }
 
 pub fn empty_array() {
-    let lua = crate::hlua::global();
+    let lua = tarantool::global_lua();
 
     {
         let array = lua.empty_array("a");
@@ -117,7 +117,7 @@ pub fn empty_array() {
 }
 
 pub fn by_value() {
-    let lua = crate::hlua::global();
+    let lua = tarantool::global_lua();
 
     {
         let array = lua.empty_array("a");

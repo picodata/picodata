@@ -192,5 +192,11 @@ pub mod util;
 
 pub use hlua;
 
+pub fn global_lua() -> hlua::Lua {
+    unsafe {
+        hlua::Lua::from_existing_state(ffi::tarantool::luaT_state(), false)
+    }
+}
+
 pub use error::Result;
 pub type StdResult<T, E> = std::result::Result<T, E>;
