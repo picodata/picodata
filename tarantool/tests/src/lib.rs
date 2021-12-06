@@ -208,6 +208,8 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 hlua::lua_tables::by_value,
                 hlua::lua_tables::registry,
                 hlua::lua_tables::registry_metatable,
+                #[should_panic] hlua::lua_tables::table_iter_stack_invariance,
+                hlua::lua_tables::iter_table_of_tables,
 
                 hlua::functions_write::simple_function,
                 hlua::functions_write::one_argument,

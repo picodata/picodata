@@ -156,3 +156,39 @@ pub fn registry_metatable() {
     let metatable = registry.get_or_create_metatable();
     metatable.set(3, "hello");
 }
+
+pub fn table_iter_stack_invariance() {
+    let lua = Lua::new();
+    let table_of_tables: LuaTable<_> = lua.eval("return {{1}, {2}, {3}}").unwrap();
+    // Here we are attempting to create an Vec<LuaTable<_>> by iterating over
+    // the nested LuaTable. This is not allowed, because the lua stack must
+    // conform to an invariant while iterating over a lua table: before each
+    // iteration the stack must have the same number of elements and the top
+    // element must be a table key, so the value returned by `lua_next` must be
+    // removed from the stack. But LuaTable instance requires the underlying
+    // table to stay on the stack for it's lifetime, which means that it must be
+    // dropped before next iteration. And if we try to collect the LuaTable
+    // instances created during iteration, this will break the stack invariance.
+    let _vec_of_tables = table_of_tables.iter::<i32, LuaTable<_>>()
+        .flatten()
+        .map(|(_, t)| t)
+        .collect::<Vec<_>>();
+}
+
+pub fn iter_table_of_tables() {
+    let lua = Lua::new();
+
+    let t: LuaTable<_> = lua.eval("return {
+        { f = function(self) return 'hello ' .. self.x end, x = 'world' },
+        { f = function() return 'goodbye' end },
+        { f = function(self) return '' .. self.v end, v = 69 }
+    }").unwrap();
+    let mut res = Vec::<String>::new();
+    for (_, t) in t.iter::<i32, LuaTable<_>>().flatten() {
+        res.push(t.call_method("f", ()).unwrap());
+    }
+    assert_eq!(res,
+        vec!["hello world".to_string(), "goodbye".to_string(), "69".to_string()]
+    );
+}
+

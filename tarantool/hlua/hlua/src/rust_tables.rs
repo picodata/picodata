@@ -111,7 +111,7 @@ where
 impl<L, T> LuaRead<L> for Vec<T>
 where
     L: AsLua,
-    T: for<'a> LuaRead<&'a LuaTable<L>>,
+    T: for<'a> LuaRead<PushGuard<&'a LuaTable<L>>>,
     T: 'static,
 {
     fn lua_read_at_position(lua: L, index: NonZeroI32) -> Result<Self, L> {
@@ -194,7 +194,7 @@ where
     K: 'static + Hash + Eq,
     K: for<'k> LuaRead<&'k LuaTable<L>>,
     V: 'static,
-    V: for<'v> LuaRead<&'v LuaTable<L>>,
+    V: for<'v> LuaRead<PushGuard<&'v LuaTable<L>>>,
 {
     fn lua_read_at_position(lua: L, index: NonZeroI32) -> Result<Self, L> {
         let table = LuaTable::lua_read_at_position(lua, index)?;

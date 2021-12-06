@@ -121,6 +121,7 @@ where
             LuaTableIterator {
                 table: self,
                 finished: false,
+                last_top: ffi::lua_gettop(self.lua.as_lua()),
                 marker: PhantomData,
             }
         }
@@ -421,14 +422,15 @@ where
 {
     table: &'t LuaTable<L>,
     finished: bool, // if true, the key is not on the stack anymore
+    last_top: i32,
     marker: PhantomData<(K, V)>,
 }
 
 impl<'t, L, K, V> Iterator for LuaTableIterator<'t, L, K, V>
 where
     L: AsLua + 't,
-    K: for<'i> LuaRead<&'i LuaTable<L>> + 'static,
-    V: for<'i> LuaRead<&'i LuaTable<L>> + 'static,
+    K: LuaRead<&'t LuaTable<L>>,
+    V: LuaRead<PushGuard<&'t LuaTable<L>>>,
 {
     type Item = Option<(K, V)>;
 
@@ -439,20 +441,29 @@ where
                 return None;
             }
 
-            // As a reminder, the key is always at the top of the stack unless `finished` is true.
-
+            // The key must always be at the top of the stack unless
+            // `finished` is true. Because the `value` may capture the pushguard
+            // by value and the caller will be responsibe for dropping the stack
+            // values, we need to make sure the stack is in the correct
+            // configuration before invoking `lua_next`.
+            assert_eq!(self.last_top, ffi::lua_gettop(self.table.as_lua()),
+                "lua stack is corrupt"
+            );
             // This call pops the current key and pushes the next key and value at the top.
             if ffi::lua_next(self.table.as_lua(), self.table.index.into()) == 0 {
                 self.finished = true;
                 return None;
             }
 
+            // The key must remain on the stack, but the value must be dropped
+            // before next iteration. If `V` captures the `guard`, the user
+            // must make sure it is dropped before calling `next` on this
+            // iterator, otherwise it will result in a panic
+            let guard = PushGuard::new(self.table, 1);
+
             // Reading the key and value.
             let key = K::lua_read_at_position(self.table, crate::NEGATIVE_TWO).ok();
-            let value = V::lua_read_at_position(self.table, crate::NEGATIVE_ONE).ok();
-
-            // Removing the value, leaving only the key on the top of the stack.
-            ffi::lua_pop(self.table.as_lua(), 1);
+            let value = V::lua_read_at_position(guard, crate::NEGATIVE_ONE).ok();
 
             if key.is_none() || value.is_none() {
                 Some(None)
