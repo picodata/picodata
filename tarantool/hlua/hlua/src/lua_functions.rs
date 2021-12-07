@@ -496,9 +496,11 @@ impl<E> From<LuaError> for LuaFunctionCallError<E> {
     }
 }
 
-impl From<LuaFunctionCallError<Void>> for LuaError {
-    #[inline]
-    fn from(err: LuaFunctionCallError<Void>) -> LuaError {
+impl<E> From<LuaFunctionCallError<E>> for LuaError
+where
+    E: Into<Void>,
+{
+    fn from(err: LuaFunctionCallError<E>) -> LuaError {
         match err {
             LuaFunctionCallError::LuaError(lua_error) => lua_error,
             LuaFunctionCallError::PushError(_) => unreachable!("Void cannot be instantiated"),

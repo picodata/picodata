@@ -241,3 +241,15 @@ pub fn execute_from_reader_errors_if_cant_read() {
         Err(_) => panic!("Unexpected error happened"),
     }
 }
+
+pub fn from_function_call_error() {
+    fn inner() -> Result<u32, LuaError> {
+        let lua = crate::hlua::global();
+        let f: LuaFunction<_> = lua.execute("return function(x, y) return x + y end").unwrap();
+        let res = f.call_with_args((1, 2))?;
+        Ok(res)
+    }
+
+    assert_eq!(inner().unwrap(), 3);
+}
+
