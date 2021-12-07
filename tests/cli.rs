@@ -69,7 +69,7 @@ fn pass_environment() {
     cmd.args(["--cluster-id", "sam"]);
     cmd.args(["--replicaset-id", "r1"]);
     cmd.args(["--instance-id", "i1"]);
-    cmd.args(["--data-dir", "/tmp/picodata-test"]);
+    cmd.args(["--data-dir", "./data/i1"]);
     cmd.args(["--peer", "i1,i2"]);
     cmd.args(["--peer", "i3"]);
     cmd.arg("-e").arg(
@@ -90,10 +90,16 @@ fn pass_environment() {
         assert_eq(os.environ()['PICODATA_REPLICASET_ID'], "r1")
         assert_eq(os.environ()['PICODATA_INSTANCE_ID'], "i1")
         assert_eq(os.environ()['PICODATA_PEER'], "i1,i2,i3")
-        assert_eq(os.environ()['PICODATA_DATA_DIR'], "/tmp/picodata-test")
+        assert_eq(os.environ()['PICODATA_DATA_DIR'], "./data/i1")
         assert_eq(os.environ()['PICODATA_COMMAND'], "run")
+        require('picolib')
         os.exit(0)
     "#,
     );
     cmd.timeout(Duration::from_secs(1)).assert().success();
+
+    assert!(
+        temp_path.join("data/i1/00000000000000000000.snap").exists(),
+        "tarantool didn't make a snapshot"
+    );
 }
