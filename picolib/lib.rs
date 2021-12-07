@@ -5,7 +5,7 @@ mod tarantool;
 pub extern "C" fn luaopen_picolib(_l: std::ffi::c_void) -> c_int {
     for (key, value) in std::env::vars() {
         if key.starts_with("PICODATA_") {
-            println!("{}: {}", key, value);
+            println!("{}: {:?}", key, value);
         }
     }
 

@@ -1,12 +1,18 @@
 use assert_cmd::Command;
 use std::fs::File;
+use std::time::Duration;
 use tempfile::tempdir;
 
 #[test]
 fn positive() {
+    let temp = tempdir().unwrap();
+    let temp_path = temp.path();
+
     let mut cmd = Command::cargo_bin("picodata").unwrap();
+    cmd.current_dir(temp_path);
     cmd.arg("run");
-    cmd.assert().success();
+    cmd.args(["-e", "os.exit()"]);
+    cmd.timeout(Duration::from_secs(1)).assert().success();
 }
 
 #[test]
@@ -14,7 +20,8 @@ fn missing_tarantool() {
     let mut cmd = Command::cargo_bin("picodata").unwrap();
     cmd.arg("run");
     cmd.env("PATH", "/nowhere");
-    cmd.assert()
+    cmd.timeout(Duration::from_secs(1))
+        .assert()
         .failure()
         .stderr("tarantool: No such file or directory\n");
 }
@@ -28,7 +35,7 @@ fn broken_tarantool() {
     let mut cmd = Command::cargo_bin("picodata").unwrap();
     cmd.arg("run");
     cmd.env("PATH", temp_path);
-    cmd.assert().failure().stderr(format!(
+    cmd.timeout(Duration::from_secs(1)).assert().failure().stderr(format!(
         "{}/tarantool: {}\n",
         temp_path.display(),
         errno::Errno(libc::EACCES)
@@ -48,13 +55,17 @@ fn pass_arguments() {
 
 #[test]
 fn pass_environment() {
+    let temp = tempdir().unwrap();
+    let temp_path = temp.path();
+
     let mut cmd = Command::cargo_bin("picodata").unwrap();
+    cmd.current_dir(temp_path);
     cmd.arg("run");
     cmd.env("LUA_CPATH", "/dev/null/?");
     cmd.env("CUSTOM_VAR", "keep me");
     cmd.env("TARANTOOL_VAR", "purge me");
     cmd.env("TT_VAR", "purge me too");
-    cmd.args(["--listen", "127.0.0.1:3301"]);
+    cmd.args(["--listen", "127.0.0.1:0"]);
     cmd.args(["--cluster-id", "sam"]);
     cmd.args(["--replicaset-id", "r1"]);
     cmd.args(["--instance-id", "i1"]);
@@ -74,13 +85,15 @@ fn pass_environment() {
         assert_eq(os.environ()['CUSTOM_VAR'], 'keep me')
         assert_eq(os.environ()['TARANTOOL_VAR'], nil)
         assert_eq(os.environ()['TT_VAR'], nil)
-        assert_eq(os.environ()['PICODATA_LISTEN'], "127.0.0.1:3301")
+        assert_eq(os.environ()['PICODATA_LISTEN'], "127.0.0.1:0")
         assert_eq(os.environ()['PICODATA_CLUSTER_ID'], "sam")
         assert_eq(os.environ()['PICODATA_REPLICASET_ID'], "r1")
         assert_eq(os.environ()['PICODATA_INSTANCE_ID'], "i1")
         assert_eq(os.environ()['PICODATA_PEER'], "i1,i2,i3")
         assert_eq(os.environ()['PICODATA_DATA_DIR'], "/tmp/picodata-test")
+        assert_eq(os.environ()['PICODATA_COMMAND'], "run")
+        os.exit(0)
     "#,
     );
-    cmd.assert().success();
+    cmd.timeout(Duration::from_secs(1)).assert().success();
 }

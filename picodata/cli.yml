@@ -48,7 +48,7 @@ subcommands:
 
         - tarantool-exec:
             short: e
-            help: Execute tarantool script
+            help: Execute tarantool (Lua) script
             value_name: expr
 
         # - advertise-peer:

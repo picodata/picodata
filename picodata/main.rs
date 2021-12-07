@@ -16,18 +16,16 @@ macro_rules! CString {
 fn main() {
     let yml = load_yaml!("cli.yml");
     let matches = App::from_yaml(yml).version(crate_version!()).get_matches();
-    println!("{:?}", matches);
 
     if matches.subcommand_name().is_none() {
         println!("{}", matches.usage());
         std::process::exit(0);
     }
 
-    if let Some(matches) = matches.subcommand_matches("run") {
-        return main_run(matches);
+    match matches.subcommand() {
+        ("run", Some(subm)) => main_run(subm),
+        _ => unreachable!(),
     }
-
-    unreachable!();
 }
 
 fn main_run(matches: &clap::ArgMatches) {
@@ -42,14 +40,18 @@ fn main_run(matches: &clap::ArgMatches) {
         }
     };
 
-    let mut args: Vec<&str> = vec![&tarantool_path, "-l", "picolib"];
+    let mut argv: Vec<&str> = vec![&tarantool_path];
     if let Some(script) = matches.value_of("tarantool-exec") {
-        args.push("-e");
-        args.push(script);
+        argv.push("-e");
+        argv.push(script);
     }
-    let argv = args.iter().map(|&s| CString!(s)).collect();
+    argv.push("-l");
+    argv.push("picolib");
+    let argv = argv.iter().map(|&s| CString!(s)).collect();
 
     let mut envp = HashMap::new();
+    // Tarantool implicitly parses some environment variables.
+    // We don't want them to affect the behavior and thus filter them out.
     for (k, v) in std::env::vars() {
         if !k.starts_with("TT_") && !k.starts_with("TARANTOOL_") {
             envp.insert(k, v);
@@ -61,17 +63,20 @@ fn main_run(matches: &clap::ArgMatches) {
         let peer = peer.fold(String::new(), append);
         envp.insert("PICODATA_PEER".to_owned(), peer);
     }
+
     envp.insert("PICODATA_COMMAND".to_owned(), "run".to_owned());
 
-    for arg in [
+    let bypass_vars = [
         "cluster-id",
         "data-dir",
         "instance-id",
         "listen",
         "replicaset-id",
-    ] {
-        if let Some(v) = matches.value_of(arg) {
-            let k = format!("PICODATA_{}", arg.to_uppercase().replace("-", "_"));
+    ];
+
+    for var in bypass_vars {
+        if let Some(v) = matches.value_of(var) {
+            let k = format!("PICODATA_{}", var.to_uppercase().replace("-", "_"));
             envp.insert(k, v.to_owned());
         }
     }
@@ -103,8 +108,8 @@ fn main_run(matches: &clap::ArgMatches) {
 
     println!(
         "Hello from picodata main ({}, {})",
-        std::env!("CARGO_PKG_NAME"),
-        std::module_path!()
+        std::env!("CARGO_PKG_NAME"), // expanded at compile time
+        std::module_path!()          // expanded at compile time
     );
 
     let e = execve::execve(argv, envp);
