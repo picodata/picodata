@@ -4,7 +4,6 @@ use std::io::Cursor;
 use std::io::Read;
 use std::io::Error as IoError;
 use std::num::NonZeroI32;
-use std::ptr;
 
 use crate::{
     ffi,
@@ -15,8 +14,10 @@ use crate::{
     LuaRead,
     LuaError,
     Push,
+    PushInto,
     PushGuard,
     PushOne,
+    PushOneInto,
     Void,
 };
 
@@ -49,8 +50,8 @@ where
     type Err = LuaError;
 
     #[inline]
-    fn push_to_lua(self, lua: L) -> Result<PushGuard<L>, (LuaError, L)> {
-        LuaCodeFromReader(Cursor::new(self.0.as_bytes())).push_to_lua(lua)
+    fn push_to_lua(&self, lua: L) -> Result<PushGuard<L>, (LuaError, L)> {
+        LuaCodeFromReader(Cursor::new(self.0.as_bytes())).push_into_lua(lua)
     }
 }
 
@@ -84,7 +85,7 @@ where
 #[derive(Debug)]
 pub struct LuaCodeFromReader<R>(pub R);
 
-impl<L, R> Push<L> for LuaCodeFromReader<R>
+impl<L, R> PushInto<L> for LuaCodeFromReader<R>
 where
     L: AsLua,
     R: Read,
@@ -92,7 +93,7 @@ where
     type Err = LuaError;
 
     #[inline]
-    fn push_to_lua(self, lua: L) -> Result<PushGuard<L>, (LuaError, L)> {
+    fn push_into_lua(self, lua: L) -> Result<PushGuard<L>, (LuaError, L)> {
         unsafe {
             struct ReadData<R> {
                 reader: R,
@@ -139,7 +140,6 @@ where
                     reader::<R>,
                     &mut read_data as *mut ReadData<_> as *mut _,
                     c_ptr!("chunk"),
-                    ptr::null(),
                 );
                 (code, PushGuard::new(lua, 1))
             };
@@ -170,7 +170,7 @@ where
     }
 }
 
-impl<L, R> PushOne<L> for LuaCodeFromReader<R>
+impl<L, R> PushOneInto<L> for LuaCodeFromReader<R>
 where
     L: AsLua,
     R: Read,
@@ -448,7 +448,7 @@ where
     pub fn load_from_reader(lua: L, code: impl Read)
         -> Result<LuaFunction<PushGuard<L>>, LuaError>
     {
-        match LuaCodeFromReader(code).push_to_lua(lua) {
+        match LuaCodeFromReader(code).push_into_lua(lua) {
             Ok(pushed) => Ok(LuaFunction::new(pushed, crate::NEGATIVE_ONE)),
             Err((err, _)) => Err(err),
         }

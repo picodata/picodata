@@ -1,9 +1,12 @@
 use std::num::NonZeroI32;
+use std::fmt::Debug;
 
 use crate::{
     AsLua,
     Push,
+    PushInto,
     PushOne,
+    PushOneInto,
     PushGuard,
     LuaRead,
     LuaState,
@@ -17,11 +20,15 @@ macro_rules! tuple_impl {
             LU: AsLua,
             $ty: Push<LU>,
         {
-            type Err = <$ty as Push<LU>>::Err;
+            type Err = TuplePushError<
+                <$ty as Push<LU>>::Err,
+                Void,
+            >;
 
             #[inline]
-            fn push_to_lua(self, lua: LU) -> Result<PushGuard<LU>, (Self::Err, LU)> {
+            fn push_to_lua(&self, lua: LU) -> Result<PushGuard<LU>, (Self::Err, LU)> {
                 self.0.push_to_lua(lua)
+                    .map_err(|(e, l)| (TuplePushError::First(e), l))
             }
         }
 
@@ -29,6 +36,30 @@ macro_rules! tuple_impl {
         where
             LU: AsLua,
             $ty: PushOne<LU>,
+        {
+        }
+
+        impl<LU, $ty> PushInto<LU> for ($ty,)
+        where
+            LU: AsLua,
+            $ty: PushInto<LU>,
+        {
+            type Err = TuplePushError<
+                <$ty as PushInto<LU>>::Err,
+                Void,
+            >;
+
+            #[inline]
+            fn push_into_lua(self, lua: LU) -> Result<PushGuard<LU>, (Self::Err, LU)> {
+                self.0.push_into_lua(lua)
+                    .map_err(|(e, l)| (TuplePushError::First(e), l))
+            }
+        }
+
+        impl<LU, $ty> PushOneInto<LU> for ($ty,)
+        where
+            LU: AsLua,
+            $ty: PushOneInto<LU>,
         {
         }
 
@@ -53,9 +84,8 @@ macro_rules! tuple_impl {
         impl<LU, $first, $($other),+> Push<LU> for ($first, $($other),+)
         where
             LU: AsLua,
-            Self: std::fmt::Debug,
-            $first: Push<LuaState>,
-            ($($other,)+): Push<LuaState>,
+            $first: Debug + Push<LuaState>,
+            $( $other: Debug + Push<LuaState>, )+
         {
             type Err = TuplePushError<
                 <$first as Push<LuaState>>::Err,
@@ -63,28 +93,61 @@ macro_rules! tuple_impl {
             >;
 
             #[inline]
-            fn push_to_lua(self, lua: LU) -> Result<PushGuard<LU>, (Self::Err, LU)> {
+            fn push_to_lua(&self, lua: LU) -> Result<PushGuard<LU>, (Self::Err, LU)> {
+                use TuplePushError::{First, Other};
                 match self {
                     ($first, $($other),+) => {
                         let mut total = 0;
 
-                        let first_err = match $first.push_to_lua(lua.as_lua()) {
-                            Ok(pushed) => { total += pushed.forget_internal(); None },
-                            Err((err, _)) => Some(err),
-                        };
-
-                        if let Some(err) = first_err {
-                            return Err((TuplePushError::First(err), lua));
+                        let error = |e| e;
+                        match $first.push_to_lua(lua.as_lua()) {
+                            Ok(pushed) => total += pushed.forget_internal(),
+                            Err((err, _)) => return Err((error(First(err)), lua)),
                         }
 
-                        let rest = ($($other,)+);
-                        let other_err = match rest.push_to_lua(lua.as_lua()) {
-                            Ok(pushed) => { total += pushed.forget_internal(); None },
-                            Err((err, _)) => Some(err),
-                        };
+                        $(
+                            let error = |e| error(Other(e));
+                            match $other.push_to_lua(lua.as_lua()) {
+                                Ok(pushed) => total += pushed.forget_internal(),
+                                Err((err, _)) => return Err((error(First(err)), lua)),
+                            }
+                        )+
 
-                        if let Some(err) = other_err {
-                            return Err((TuplePushError::Other(err), lua));
+                        unsafe {
+                            Ok(PushGuard::new(lua, total))
+                        }
+                    }
+                }
+            }
+        }
+
+        #[allow(non_snake_case)]
+        impl<LU, $first, $($other),+> PushInto<LU> for ($first, $($other),+)
+        where
+            LU: AsLua,
+            $first: Debug + PushInto<LuaState>,
+            $( $other: Debug + PushInto<LuaState>, )+
+        {
+            type Err = TuplePushError<
+                <$first as PushInto<LuaState>>::Err,
+                <($($other,)+) as PushInto<LuaState>>::Err,
+            >;
+
+            #[inline]
+            fn push_into_lua(self, lua: LU) -> Result<PushGuard<LU>, (Self::Err, LU)> {
+                use TuplePushError::{First, Other};
+                match self {
+                    ($first, $($other),+) => {
+                        let mut total = 0;
+
+                        match $first.push_into_lua(lua.as_lua()) {
+                            Ok(pushed) => total += pushed.forget_internal(),
+                            Err((err, _)) => return Err((First(err), lua)),
+                        }
+
+                        match ($($other,)+).push_into_lua(lua.as_lua()) {
+                            Ok(pushed) => total += pushed.forget_internal(),
+                            Err((err, _)) => return Err((Other(err), lua)),
                         }
 
                         unsafe {
@@ -150,6 +213,28 @@ tuple_impl!(A, B, C, D, E, F, G, H, I, J, K, L, M);
 pub enum TuplePushError<C, O> {
     First(C),
     Other(O),
+}
+
+impl<F, O> TuplePushError<F, O> {
+    pub fn first(self) -> F
+    where
+        O: Into<Void>,
+    {
+        match self {
+            Self::First(f) => f,
+            Self::Other(_) => unreachable!("no way to construct an instance of Void"),
+        }
+    }
+
+    pub fn other(self) -> O
+    where
+        F: Into<Void>,
+    {
+        match self {
+            Self::First(_) => unreachable!("no way to construct an instance of Void"),
+            Self::Other(o) => o,
+        }
+    }
 }
 
 macro_rules! impl_tuple_push_error {

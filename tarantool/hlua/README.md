@@ -220,8 +220,8 @@ This is usually done by redirecting the call to `userdata::push_userdata`.
 ```rust
 struct Foo;
 
-impl<L> hlua::Push<L> for Foo where L: hlua::AsMutLua<'lua> {
-    fn push_to_lua(self, lua: L) -> hlua::PushGuard<L> {
+impl<L> hlua::Push<L> for Foo where L: hlua::AsLua {
+    fn push_to_lua(&self, lua: L) -> hlua::PushGuard<L> {
         lua::userdata::push_userdata(self, lua,
             |mut metatable| {
                 // you can define all the member functions of Foo here

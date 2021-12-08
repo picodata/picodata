@@ -23,12 +23,12 @@ enum ValueOnTheStack {
 impl<L: AsLua> Push<L> for ValueOnTheStack {
     type Err = Void;
 
-    fn push_to_lua(self, lua: L) -> Result<PushGuard<L>, (Void, L)> {
+    fn push_to_lua(&self, lua: L) -> Result<PushGuard<L>, (Void, L)> {
         let index = match self {
             Self::Absolute(index) | Self::Relative(index) => index,
         };
         unsafe {
-            ffi::lua_pushvalue(lua.as_lua(), index);
+            ffi::lua_pushvalue(lua.as_lua(), *index);
             Ok(PushGuard::new(lua, 1))
         }
     }

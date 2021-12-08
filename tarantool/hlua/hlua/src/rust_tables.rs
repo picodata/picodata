@@ -1,8 +1,10 @@
 use crate::{
     ffi,
     Push,
+    PushInto,
     PushGuard,
     PushOne,
+    PushOneInto,
     AsLua,
     tuples::TuplePushError::{self, First, Other},
     LuaRead,
@@ -17,17 +19,17 @@ use std::num::NonZeroI32;
 
 #[inline]
 fn push_iter<L, I>(lua: L, iterator: I)
-    -> Result<PushGuard<L>, (<<I as Iterator>::Item as Push<LuaState>>::Err, L)>
+    -> Result<PushGuard<L>, (<<I as Iterator>::Item as PushInto<LuaState>>::Err, L)>
 where
     L: AsLua,
     I: Iterator,
-    <I as Iterator>::Item: Push<LuaState>,
+    <I as Iterator>::Item: PushInto<LuaState>
 {
     // creating empty table
     unsafe { ffi::lua_newtable(lua.as_lua()) };
 
     for (elem, index) in iterator.zip(1..) {
-        let size = match elem.push_to_lua(lua.as_lua()) {
+        let size = match elem.push_into_lua(lua.as_lua()) {
             Ok(pushed) => pushed.forget_internal(),
             // TODO: wrong   return Err((err, lua)),
             // FIXME: destroy the temporary table
@@ -37,8 +39,7 @@ where
         match size {
             0 => continue,
             1 => {
-                let index = index as u32;
-                match index.push_to_lua(lua.as_lua()) {
+                match index.push_into_lua(lua.as_lua()) {
                     Ok(pushed) => pushed.forget_internal(),
                     Err(_) => unreachable!(),
                 };
@@ -96,8 +97,8 @@ where
     type Err = T::Err;
 
     #[inline]
-    fn push_to_lua(self, lua: L) -> Result<PushGuard<L>, (T::Err, L)> {
-        push_iter(lua, self.into_iter())
+    fn push_to_lua(&self, lua: L) -> Result<PushGuard<L>, (T::Err, L)> {
+        push_iter(lua, self.iter())
     }
 }
 
@@ -105,6 +106,26 @@ impl<L, T> PushOne<L> for Vec<T>
 where
     L: AsLua,
     T: Push<LuaState>,
+{
+}
+
+impl<L, T> PushInto<L> for Vec<T>
+where
+    L: AsLua,
+    T: PushInto<LuaState>,
+{
+    type Err = T::Err;
+
+    #[inline]
+    fn push_into_lua(self, lua: L) -> Result<PushGuard<L>, (T::Err, L)> {
+        push_iter(lua, self.into_iter())
+    }
+}
+
+impl<L, T> PushOneInto<L> for Vec<T>
+where
+    L: AsLua,
+    T: PushInto<LuaState>,
 {
 }
 
@@ -166,25 +187,23 @@ where
     }
 }
 
-impl<'a, L, T> Push<L> for &'a [T]
+impl<L, T> Push<L> for [T]
 where
     L: AsLua,
     T: Push<LuaState>,
-    T: Clone,
 {
     type Err = T::Err;
 
     #[inline]
-    fn push_to_lua(self, lua: L) -> Result<PushGuard<L>, (Self::Err, L)> {
-        push_iter(lua, self.into_iter().map(Clone::clone))
+    fn push_to_lua(&self, lua: L) -> Result<PushGuard<L>, (Self::Err, L)> {
+        push_iter(lua, self.iter())
     }
 }
 
-impl<'a, L, T> PushOne<L> for &'a [T]
+impl<L, T> PushOne<L> for [T]
 where
     L: AsLua,
     T: Push<LuaState>,
-    T: Clone,
 {
 }
 
@@ -217,11 +236,11 @@ where
     >;
 
     #[inline]
-    fn push_to_lua(self, lua: L) -> Result<PushGuard<L>, (Self::Err, L)> {
+    fn push_to_lua(&self, lua: L) -> Result<PushGuard<L>, (Self::Err, L)> {
         match push_rec_iter(lua, self.into_iter()) {
             Ok(g) => Ok(g),
-            Err((TuplePushError::First(err), lua)) => Err((First(err), lua)),
-            Err((TuplePushError::Other(err), lua)) => Err((Other(err), lua)),
+            Err((First(err), lua)) => Err((First(err), lua)),
+            Err((Other(err), lua)) => Err((Other(err.first()), lua)),
         }
     }
 }
@@ -245,11 +264,11 @@ where
     type Err = K::Err;
 
     #[inline]
-    fn push_to_lua(self, lua: L) -> Result<PushGuard<L>, (K::Err, L)> {
+    fn push_to_lua(&self, lua: L) -> Result<PushGuard<L>, (K::Err, L)> {
         match push_rec_iter(lua, self.into_iter().zip(iter::repeat(true))) {
             Ok(g) => Ok(g),
-            Err((TuplePushError::First(err), lua)) => Err((err, lua)),
-            Err((TuplePushError::Other(_), _)) => unreachable!(),
+            Err((First(err), lua)) => Err((err, lua)),
+            Err((Other(_), _)) => unreachable!(),
         }
     }
 }

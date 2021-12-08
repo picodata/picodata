@@ -31,7 +31,7 @@ pub fn write_map() {
     map.insert(13, 21);
     map.insert(34, 55);
 
-    lua.set("a", map.clone());
+    lua.set("a", &map);
 
     let table: LuaTable<_> = lua.get("a").unwrap();
 
@@ -50,7 +50,7 @@ pub fn write_set() {
     set.insert(34);
     set.insert(55);
 
-    lua.set("a", set.clone());
+    lua.set("a", &set);
 
     let table: LuaTable<_> = lua.get("a").unwrap();
 
@@ -158,11 +158,10 @@ pub fn reading_hashmap_works() {
     let lua = Lua::new();
 
     let orig: HashMap<i32, f64> = (0..).zip([1., 2., 3.]).collect();
-    let orig_copy = orig.clone();
     // Collect to BTreeMap so that iterator yields values in order
-    let orig_btree: BTreeMap<_, _> = orig_copy.into_iter().collect();
+    let orig_btree: BTreeMap<_, _> = orig.iter().map(|(&k, &v)| (k, v)).collect();
 
-    lua.set("v", orig);
+    lua.set("v", &orig);
 
     let read: LuaTableMap = lua.get("v").unwrap();
     // Same as above
@@ -244,11 +243,10 @@ pub fn reading_heterogenous_hashmap_works() {
     orig.insert(AnyHashableLuaValue::LuaString("foo".to_owned()), AnyLuaValue::LuaString("foo".to_owned()));
     orig.insert(AnyHashableLuaValue::LuaBoolean(true), AnyLuaValue::LuaBoolean(true));
 
-    let orig_clone = orig.clone();
-    lua.set("v", orig);
+    lua.set("v", &orig);
 
     let read: HashMap<_, _> = lua.get("v").unwrap();
-    assert_eq!(read, orig_clone);
+    assert_eq!(read, orig);
 }
 
 pub fn reading_hashmap_set_from_lua_works() {
@@ -280,7 +278,7 @@ pub fn derive_struct_push() {
 
     let lua = Lua::new();
     let lua = lua.push(
-        S {
+        &S {
             i: 69,
             s: "nice".into(),
             boo: true,
@@ -334,17 +332,17 @@ pub fn derive_enum_push() {
     struct S { foo: i32, bar: String }
 
     let lua = Lua::new();
-    let lua = lua.push(E::Num(69));
+    let lua = lua.push(&E::Num(69));
     assert_eq!((&lua).read::<i32>().unwrap(), 69);
-    let lua = lua.push(E::Str("hello".into()));
+    let lua = lua.push(&E::Str("hello".into()));
     assert_eq!((&lua).read::<String>().unwrap(), "hello");
-    let lua = lua.push(E::Vec(3.14, 2.71, 1.62));
+    let lua = lua.push(&E::Vec(3.14, 2.71, 1.62));
     assert_eq!((&lua).read::<(f32, f32, f32)>().unwrap(), (3.14, 2.71, 1.62));
-    let lua = lua.push(E::Tuple((2.71, 1.62, 3.14)));
+    let lua = lua.push(&E::Tuple((2.71, 1.62, 3.14)));
     assert_eq!((&lua).read::<(f32, f32, f32)>().unwrap(), (2.71, 1.62, 3.14));
-    let lua = lua.push(E::S(S { foo: 69, bar: "nice".into() }));
+    let lua = lua.push(&E::S(S { foo: 69, bar: "nice".into() }));
     assert_eq!((&lua).read::<S>().unwrap(), S { foo: 69, bar: "nice".into() });
-    let lua = lua.push(E::Struct { i: 420, s: "blaze".into() });
+    let lua = lua.push(&E::Struct { i: 420, s: "blaze".into() });
     let t: LuaTable<_> = (&lua).read().unwrap();
     assert_eq!(t.get::<i32, _>("i").unwrap(), 420);
     assert_eq!(t.get::<String, _>("s").unwrap(), "blaze");
@@ -380,7 +378,7 @@ pub fn derive_enum_lua_read() {
 
     let lua = lua.push((1, 2, 3));
     assert_eq!((&lua).read::<E>().unwrap(), E::Vec(1., 2., 3.));
-    let lua = lua.push(S { foo: 314, bar: "pi".into() });
+    let lua = lua.push(&S { foo: 314, bar: "pi".into() });
     assert_eq!((&lua).read::<E>().unwrap(), E::S(S { foo: 314, bar: "pi".into() }));
 }
 
@@ -550,13 +548,13 @@ pub fn derive_unit_structs_push() {
     }
 
     let lua = Lua::new();
-    let lua = lua.push(E::A);
+    let lua = lua.push(&E::A);
     assert_eq!((&lua).read().ok(), Some(hlua::Typename("string")));
     assert_eq!((&lua).read().ok(), Some("a".to_string()));
-    let lua = lua.into_inner().push(E::Foo);
+    let lua = lua.into_inner().push(&E::Foo);
     assert_eq!((&lua).read().ok(), Some(hlua::Typename("string")));
     assert_eq!((&lua).read().ok(), Some("foo".to_string()));
-    let lua = lua.into_inner().push(E::XXX);
+    let lua = lua.into_inner().push(&E::XXX);
     assert_eq!((&lua).read().ok(), Some(hlua::Typename("string")));
     assert_eq!((&lua).read().ok(), Some("xxx".to_string()));
 }

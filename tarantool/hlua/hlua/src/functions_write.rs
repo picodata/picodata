@@ -2,14 +2,15 @@ use libc;
 
 use crate::{
     ffi,
-    AnyLuaValue,
     AsLua,
     lua_error,
+    Nil,
     LuaRead,
     LuaState,
     Push,
+    PushInto,
     PushGuard,
-    PushOne,
+    PushOneInto,
     Void,
 };
 
@@ -190,72 +191,11 @@ extern "C" fn closure_destructor_wrapper<T>(lua: *mut ffi::lua_State) -> libc::c
 }
 
 macro_rules! impl_function_ext {
-    () => (
-        impl<Z, R> FunctionExt<()> for Function<Z, (), R>
-        where
-            Z: FnMut() -> R,
-        {
-            type Output = R;
-
-            #[allow(non_snake_case)]
-            #[inline]
-            fn call_mut(&mut self, _: ()) -> Self::Output {
-                (self.function)()
-            }
-        }
-
-        impl<L, Z, R> Push<L> for Function<Z, (), R>
-        where
-            L: AsLua,
-            Z: FnMut() -> R,
-            R: Push<InsideCallback> + 'static,
-        {
-            type Err = Void;      // TODO: use `!` instead (https://github.com/rust-lang/rust/issues/35121)
-
-            #[inline]
-            fn push_to_lua(self, lua: L) -> Result<PushGuard<L>, (Void, L)> {
-                unsafe {
-                    // pushing the function pointer as a userdata
-                    let lua_data = ffi::lua_newuserdata(lua.as_lua(), mem::size_of::<Z>() as _);
-                    let lua_data: *mut Z = mem::transmute(lua_data);
-                    ptr::write(lua_data, self.function);
-
-                    // Creating a metatable.
-                    ffi::lua_newtable(lua.as_lua());
-
-                    // Index "__gc" in the metatable calls the object's destructor.
-
-                    // TODO: Could use std::intrinsics::needs_drop to avoid that if not needed.
-                    // After some discussion on IRC, it would be acceptable to add a reexport in libcore
-                    // without going through the RFC process.
-                    {
-                        match "__gc".push_to_lua(&lua) {
-                            Ok(p) => p.forget(),
-                            Err(_) => unreachable!(),
-                        };
-
-                        ffi::lua_pushcfunction(lua.as_lua(), closure_destructor_wrapper::<Z>);
-                        ffi::lua_settable(lua.as_lua(), -3);
-                    }
-                    ffi::lua_setmetatable(lua.as_lua(), -2);
-
-                    // pushing wrapper as a closure
-                    ffi::lua_pushcclosure(lua.as_lua(), wrapper::<Self, _, R>, 1);
-                    Ok(PushGuard::new(lua, 1))
-                }
-            }
-        }
-
-        impl<L, Z, R> PushOne<L> for Function<Z, (), R>
-        where
-            L: AsLua,
-            Z: FnMut() -> R,
-            R: Push<InsideCallback> + 'static,
-        {
-        }
-    );
-
-    ($($p:ident),+) => (
+    (@recur) => {};
+    (@recur $_head:ident $($tail:ident)*) => {
+        impl_function_ext!{ $($tail)* }
+    };
+    ($($p:ident)*) => {
         impl<Z, R $(,$p)*> FunctionExt<($($p,)*)> for Function<Z, ($($p,)*), R>
         where
             Z: FnMut($($p),*) -> R,
@@ -270,21 +210,20 @@ macro_rules! impl_function_ext {
             }
         }
 
-        impl<L, Z, R $(,$p: 'static)+> Push<L> for Function<Z, ($($p,)*), R>
+        impl<L, Z, R $(,$p: 'static)*> PushInto<L> for Function<Z, ($($p,)*), R>
         where
             L: AsLua,
             Z: FnMut($($p),*) -> R,
             ($($p,)*): for<'p> LuaRead<&'p InsideCallback>,
-            R: Push<InsideCallback> + 'static,
+            R: PushInto<InsideCallback> + 'static,
         {
             type Err = Void;      // TODO: use `!` instead (https://github.com/rust-lang/rust/issues/35121)
 
             #[inline]
-            fn push_to_lua(self, lua: L) -> Result<PushGuard<L>, (Void, L)> {
+            fn push_into_lua(self, lua: L) -> Result<PushGuard<L>, (Void, L)> {
                 unsafe {
                     // pushing the function pointer as a userdata
-                    let lua_data = ffi::lua_newuserdata(lua.as_lua(),
-                                                        mem::size_of::<Z>() as libc::size_t);
+                    let lua_data = ffi::lua_newuserdata(lua.as_lua(), mem::size_of::<Z>() as _);
                     let lua_data: *mut Z = mem::transmute(lua_data);
                     ptr::write(lua_data, self.function);
 
@@ -314,28 +253,20 @@ macro_rules! impl_function_ext {
             }
         }
 
-        impl<L, Z, R $(,$p: 'static)+> PushOne<L> for Function<Z, ($($p,)*), R>
+        impl<L, Z, R $(,$p: 'static)*> PushOneInto<L> for Function<Z, ($($p,)*), R>
         where
             L: AsLua,
             Z: FnMut($($p),*) -> R,
             ($($p,)*): for<'p> LuaRead<&'p InsideCallback>,
-            R: Push<InsideCallback> + 'static,
+            R: PushInto<InsideCallback> + 'static,
         {
         }
-    )
+
+        impl_function_ext!{ @recur $($p)* }
+    }
 }
 
-impl_function_ext!();
-impl_function_ext!(A);
-impl_function_ext!(A, B);
-impl_function_ext!(A, B, C);
-impl_function_ext!(A, B, C, D);
-impl_function_ext!(A, B, C, D, E);
-impl_function_ext!(A, B, C, D, E, F);
-impl_function_ext!(A, B, C, D, E, F, G);
-impl_function_ext!(A, B, C, D, E, F, G, H);
-impl_function_ext!(A, B, C, D, E, F, G, H, I);
-impl_function_ext!(A, B, C, D, E, F, G, H, I, J);
+impl_function_ext!{A B C D E F G H I J K M N}
 
 /// Opaque type that represents the Lua context when inside a callback.
 ///
@@ -353,29 +284,27 @@ impl AsLua for InsideCallback {
 
 // This impl is the reason Push has a generic type parameter. But do we really
 // need this impl at all?
-impl<T, E> Push<InsideCallback> for Result<T, E>
+impl<T, E> PushInto<InsideCallback> for Result<T, E>
 where
-    T: Push<InsideCallback>,
+    T: PushInto<InsideCallback>,
     E: Display,
 {
-    type Err = <T as Push<InsideCallback>>::Err;
+    type Err = T::Err;
 
     #[inline]
-    fn push_to_lua(self, lua: InsideCallback)
-        -> Result<PushGuard<InsideCallback>, (<Self as Push<InsideCallback>>::Err, InsideCallback)>
+    fn push_into_lua(self, lua: InsideCallback)
+        -> Result<PushGuard<InsideCallback>, (T::Err, InsideCallback)>
     {
         match self {
-            Ok(val) => val.push_to_lua(lua),
-            Err(val) => {
-                Ok((AnyLuaValue::LuaNil, format!("{}", val)).push_no_err(lua))
-            }
+            Ok(val) => val.push_into_lua(lua),
+            Err(val) => Ok(lua.push(&(Nil, val.to_string()))),
         }
     }
 }
 
-impl<'a, T, E> PushOne<InsideCallback> for Result<T, E>
+impl<'a, T, E> PushOneInto<InsideCallback> for Result<T, E>
 where
-    T: PushOne<InsideCallback>,
+    T: PushOneInto<InsideCallback>,
     E: Display
 {
 }
@@ -386,7 +315,7 @@ extern "C" fn wrapper<T, A, R>(lua: LuaState) -> libc::c_int
 where
     T: FunctionExt<A, Output = R>,
     A: for<'p> LuaRead<&'p InsideCallback> + 'static,
-    R: Push<InsideCallback>,
+    R: PushInto<InsideCallback>,
 {
     // loading the object that we want to call from the Lua context
     let data_raw = unsafe { ffi::lua_touserdata(lua, ffi::lua_upvalueindex(1)) };
@@ -409,7 +338,7 @@ where
     let ret_value = data.call_mut(args);
 
     // pushing back the result of the function on the stack
-    let nb = match ret_value.push_to_lua(tmp_lua) {
+    let nb = match ret_value.push_into_lua(tmp_lua) {
         Ok(p) => p.forget_internal(),
         Err(_) => panic!(),      // TODO: wrong
     };

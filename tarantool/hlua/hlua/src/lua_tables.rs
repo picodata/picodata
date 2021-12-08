@@ -7,9 +7,10 @@ use crate::{
     AbsoluteIndex,
     AsLua,
     Push,
+    PushInto,
     PushGuard,
     PushOne,
-    TuplePushError,
+    PushOneInto,
     LuaError,
     LuaFunction,
     LuaRead,
@@ -78,13 +79,13 @@ where
     }
 }
 
-impl<L, T> Push<L> for &'_ LuaTable<T>
+impl<L, T> Push<L> for LuaTable<T>
 where
     L: AsLua,
 {
     type Err = Void;
 
-    fn push_to_lua(self, lua: L) -> Result<PushGuard<L>, (Void, L)> {
+    fn push_to_lua(&self, lua: L) -> Result<PushGuard<L>, (Void, L)> {
         unsafe {
             ffi::lua_pushvalue(lua.as_lua(), self.index.into());
             Ok(PushGuard::new(lua, 1))
@@ -92,7 +93,7 @@ where
     }
 }
 
-impl<L, T> PushOne<L> for &'_ LuaTable<T>
+impl<L, T> PushOne<L> for LuaTable<T>
 where
     L: AsLua,
 {
@@ -155,7 +156,7 @@ where
     #[inline]
     pub fn get<R, I>(&'lua self, index: I) -> Option<R>
     where
-        I: PushOne<LuaState, Err = Void>,
+        I: PushOneInto<LuaState, Err = Void>,
         R: LuaRead<PushGuard<&'lua L>>,
     {
         Self::get_impl(&self.lua, self.index.into(), index).ok()
@@ -166,14 +167,14 @@ where
     #[inline]
     pub fn into_get<R, I>(self, index: I) -> Result<R, PushGuard<Self>>
     where
-        I: PushOne<LuaState, Err = Void>,
+        I: PushOneInto<LuaState, Err = Void>,
         R: LuaRead<PushGuard<Self>>,
     {
         let this_index = self.index.into();
         Self::get_impl(self, this_index, index)
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn get_impl<T, R, I>(
         this: T,
         this_index: i32,
@@ -181,12 +182,12 @@ where
     ) -> Result<R, PushGuard<T>>
     where
         T: AsLua,
-        I: PushOne<LuaState, Err = Void>,
+        I: PushOneInto<LuaState, Err = Void>,
         R: LuaRead<PushGuard<T>>,
     {
         let raw_lua = this.as_lua();
         unsafe {
-            index.push_no_err(raw_lua).assert_one_and_forget();
+            index.push_into_no_err(raw_lua).assert_one_and_forget();
             ffi::lua_gettable(raw_lua, this_index);
             R::lua_read(PushGuard::new(this, 1))
         }
@@ -201,11 +202,11 @@ where
     /// [the documentation at the crate root](index.html#pushing-and-loading-values) for more
     /// information.
     // TODO: doc
-    #[inline]
+    #[inline(always)]
     pub fn set<I, V, Ei, Ev>(&self, index: I, value: V)
     where
-        I: PushOne<LuaState, Err = Ei>,
-        V: PushOne<LuaState, Err = Ev>,
+        I: PushOneInto<LuaState, Err = Ei>,
+        V: PushOneInto<LuaState, Err = Ev>,
         Ei: Into<Void>,
         Ev: Into<Void>,
     {
@@ -225,13 +226,13 @@ where
         &self,
         index: I,
         value: V,
-    ) -> Result<(), CheckedSetError<<I as Push<LuaState>>::Err, <V as Push<LuaState>>::Err>>
+    ) -> Result<(), CheckedSetError<<I as PushInto<LuaState>>::Err, <V as PushInto<LuaState>>::Err>>
     where
-        I: PushOne<LuaState>,
-        V: PushOne<LuaState>,
+        I: PushOneInto<LuaState>,
+        V: PushOneInto<LuaState>,
     {
         unsafe {
-            let guard = match index.push_to_lua(self.as_lua()) {
+            let guard = match index.push_into_lua(self.as_lua()) {
                 Ok(guard) => {
                     assert_eq!(guard.size, 1);
                     guard
@@ -241,7 +242,7 @@ where
                 }
             };
 
-            match value.push_to_lua(self.as_lua()) {
+            match value.push_into_lua(self.as_lua()) {
                 Ok(pushed) => {
                     assert_eq!(pushed.size, 1);
                     pushed.forget()
@@ -258,7 +259,7 @@ where
     }
 
     pub fn call_method<R, A>(&'lua self, name: &str, args: A)
-        -> Result<R, MethodCallError<TuplePushError<Void, <A as Push<LuaState>>::Err>>>
+        -> Result<R, MethodCallError<<A as Push<LuaState>>::Err>>
     where
         L: std::fmt::Debug,
         A: Push<LuaState>,
@@ -266,33 +267,28 @@ where
         R: LuaRead<PushGuard<LuaFunction<PushGuard<&'lua L>>>>,
     {
         let method: LuaFunction<_> = self.get(name).ok_or(MethodCallError::NoSuchMethod)?;
-        method.into_call_with_args((self, args)).map_err(|e| e.into())
+        method.into_call_with_args((self, args))
+            .map_err(|e|
+                match e {
+                    LuaFunctionCallError::LuaError(e) => MethodCallError::LuaError(e),
+                    LuaFunctionCallError::PushError(e) => {
+                        MethodCallError::PushError(e.other().first())
+                    }
+                }
+            )
     }
 
     /// Inserts an empty array, then loads it.
     #[inline]
     pub fn empty_array<I>(&'lua self, index: I) -> LuaTable<PushGuard<&'lua L>>
     where
-        I: PushOne<LuaState, Err = Void> + Clone,
+        I: PushOne<LuaState, Err = Void>,
     {
-        // TODO: cleaner implementation
         unsafe {
-            match index.clone().push_to_lua(self.as_lua()) {
-                Ok(pushed) => {
-                    assert_eq!(pushed.size, 1);
-                    pushed.forget()
-                }
-                Err(_) => panic!(),      // TODO:
-            };
-
-            match Vec::<u8>::with_capacity(0).push_to_lua(self.as_lua()) {
-                Ok(pushed) => pushed.forget(),
-                Err(_) => panic!(),      // TODO:
-            };
-
+            self.as_lua().push(&index).assert_one_and_forget();
+            ffi::lua_newtable(self.as_lua());
             ffi::lua_settable(self.as_lua(), self.index.into());
-
-            self.get(index).unwrap()
+            self.get(&index).unwrap()
         }
     }
 

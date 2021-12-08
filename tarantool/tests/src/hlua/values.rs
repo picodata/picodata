@@ -243,7 +243,7 @@ pub fn readwrite_strings() {
     let lua = Lua::new();
 
     lua.set("a", "hello");
-    lua.set("b", "hello".to_string());
+    lua.set("b", &"hello".to_string());
 
     let x: String = lua.get("a").unwrap();
     assert_eq!(x, "hello");

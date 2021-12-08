@@ -112,10 +112,17 @@ pub type lua_Alloc = extern "C" fn(
     nsize: libc::size_t,
 ) -> *mut libc::c_void;
 
+/// The reader function used by [`lua_load`]. Every time it needs another piece
+/// of the chunk, [`lua_load`] calls the reader, passing along its `data`
+/// parameter. The reader must return a pointer to a block of memory with a new
+/// piece of the chunk and set `size` to the block size. The block must exist
+/// until the reader function is called again. To signal the end of the chunk,
+/// the reader must return `NULL` or set `size` to zero. The reader function may
+/// return pieces of any size greater than zero.
 pub type lua_Reader = extern "C" fn(
     L: *mut lua_State,
-    ud: *mut libc::c_void,
-    sz: *mut libc::size_t,
+    data: *mut libc::c_void,
+    size: *mut libc::size_t,
 ) -> *const libc::c_char;
 
 pub type lua_Writer = extern "C" fn(
@@ -328,7 +335,28 @@ extern "C" {
     ///
     /// - [`LUA_ERRERR`]: error while running the error handler function.
     pub fn lua_pcall(l: *mut lua_State, nargs: c_int, nresults: c_int, errfunc: c_int) -> c_int;
-    pub fn lua_load(l: *mut lua_State, reader: lua_Reader, dt: *mut libc::c_void, chunkname: *const libc::c_char, mode: *const libc::c_char) -> c_int;
+
+    /// [-0, +1, -]
+    /// Loads a Lua chunk. If there are no errors, `lua_load` pushes the
+    /// compiled chunk as a Lua function on top of the stack. Otherwise, it
+    /// pushes an error message. The return values of `lua_load` are:
+    ///
+    /// - `0`: no errors;
+    /// - [`LUA_ERRSYNTAX`]: syntax error during pre-compilation;
+    /// - [`LUA_ERRMEM`]: memory allocation error.
+    /// This function only loads a chunk; it does not run it.
+    ///
+    /// `lua_load` automatically detects whether the chunk is text or binary,
+    /// and loads it accordingly (see program `luac`).
+    ///
+    /// The `lua_load` function uses a user-supplied `reader` function to read
+    /// the chunk (see [`lua_Reader`]). The `data` argument is an opaque value
+    /// passed to the reader function.
+    ///
+    /// The `chunkname` argument gives a name to the chunk, which is used for
+    /// error messages and in debug information
+    pub fn lua_load(l: *mut lua_State, reader: lua_Reader, dt: *mut libc::c_void, chunkname: *const libc::c_char) -> c_int;
+    pub fn lua_loadx(l: *mut lua_State, reader: lua_Reader, dt: *mut libc::c_void, chunkname: *const libc::c_char, mode: *const libc::c_char) -> c_int;
     pub fn lua_dump(l: *mut lua_State, writer: lua_Writer, data: *mut libc::c_void) -> c_int;
 
     /// Generates a Lua error. The error message (which can actually be a Lua
@@ -369,6 +397,10 @@ extern "C" {
     pub fn lua_concat(l: *mut lua_State, n: c_int);
     pub fn lua_len(l: *mut lua_State, index: c_int);
 
+    /// Moves the top element into the given valid `index`, shifting up the
+    /// elements above this `index` to open space. Cannot be called with a
+    /// pseudo-index, because a pseudo-index is not an actual stack position.
+    /// **[-1, +1, -]**
     pub fn lua_insert(l: *mut lua_State, index: c_int);
     pub fn lua_remove(l: *mut lua_State, index: c_int);
 

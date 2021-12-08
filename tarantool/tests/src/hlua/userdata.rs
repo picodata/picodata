@@ -5,16 +5,16 @@ use tarantool::hlua;
 pub fn readwrite() {
     #[derive(Clone)]
     struct Foo;
-    impl<L> hlua::Push<L> for Foo
+    impl<L> hlua::PushInto<L> for Foo
     where
         L: hlua::AsLua,
     {
         type Err = hlua::Void;
-        fn push_to_lua(self, lua: L) -> Result<hlua::PushGuard<L>, (hlua::Void, L)> {
+        fn push_into_lua(self, lua: L) -> Result<hlua::PushGuard<L>, (hlua::Void, L)> {
             Ok(hlua::push_userdata(self, lua, |_| {}))
         }
     }
-    impl<L> hlua::PushOne<L> for Foo where L: hlua::AsLua {}
+    impl<L> hlua::PushOneInto<L> for Foo where L: hlua::AsLua {}
     impl<L> hlua::LuaRead<L> for Foo
     where
         L: hlua::AsLua,
@@ -48,16 +48,16 @@ pub fn destructor_called() {
         }
     }
 
-    impl<L> hlua::Push<L> for Foo
+    impl<L> hlua::PushInto<L> for Foo
     where
         L: hlua::AsLua,
     {
         type Err = hlua::Void;
-        fn push_to_lua(self, lua: L) -> Result<hlua::PushGuard<L>, (hlua::Void, L)> {
+        fn push_into_lua(self, lua: L) -> Result<hlua::PushGuard<L>, (hlua::Void, L)> {
             Ok(hlua::push_userdata(self, lua, |_| {}))
         }
     }
-    impl<L> hlua::PushOne<L> for Foo where L: hlua::AsLua {}
+    impl<L> hlua::PushOneInto<L> for Foo where L: hlua::AsLua {}
 
     {
         let lua = hlua::Lua::new();
@@ -71,16 +71,16 @@ pub fn destructor_called() {
 pub fn type_check() {
     #[derive(Clone)]
     struct Foo;
-    impl<L> hlua::Push<L> for Foo
+    impl<L> hlua::PushInto<L> for Foo
     where
         L: hlua::AsLua,
     {
         type Err = hlua::Void;
-        fn push_to_lua(self, lua: L) -> Result<hlua::PushGuard<L>, (hlua::Void, L)> {
+        fn push_into_lua(self, lua: L) -> Result<hlua::PushGuard<L>, (hlua::Void, L)> {
             Ok(hlua::push_userdata(self, lua, |_| {}))
         }
     }
-    impl<L> hlua::PushOne<L> for Foo where L: hlua::AsLua {}
+    impl<L> hlua::PushOneInto<L> for Foo where L: hlua::AsLua {}
     impl<L> hlua::LuaRead<L> for Foo
     where
         L: hlua::AsLua,
@@ -94,16 +94,16 @@ pub fn type_check() {
 
     #[derive(Clone)]
     struct Bar;
-    impl<L> hlua::Push<L> for Bar
+    impl<L> hlua::PushInto<L> for Bar
     where
         L: hlua::AsLua,
     {
         type Err = hlua::Void;
-        fn push_to_lua(self, lua: L) -> Result<hlua::PushGuard<L>, (hlua::Void, L)> {
+        fn push_into_lua(self, lua: L) -> Result<hlua::PushGuard<L>, (hlua::Void, L)> {
             Ok(hlua::push_userdata(self, lua, |_| {}))
         }
     }
-    impl<L> hlua::PushOne<L> for Bar where L: hlua::AsLua {}
+    impl<L> hlua::PushOneInto<L> for Bar where L: hlua::AsLua {}
     impl<L> hlua::LuaRead<L> for Bar
     where
         L: hlua::AsLua,
@@ -126,21 +126,21 @@ pub fn type_check() {
 pub fn metatables() {
     #[derive(Clone)]
     struct Foo;
-    impl<L> hlua::Push<L> for Foo
+    impl<L> hlua::PushInto<L> for Foo
     where
         L: hlua::AsLua,
     {
         type Err = hlua::Void;
-        fn push_to_lua(self, lua: L) -> Result<hlua::PushGuard<L>, (hlua::Void, L)> {
+        fn push_into_lua(self, lua: L) -> Result<hlua::PushGuard<L>, (hlua::Void, L)> {
             Ok(hlua::push_userdata(self, lua, |table| {
                 table.set(
-                    "__index".to_string(),
-                    vec![("test".to_string(), hlua::function0(|| 5))]
+                    "__index",
+                    vec![("test", hlua::function0(|| 5))]
                 );
             }))
         }
     }
-    impl<L> hlua::PushOne<L> for Foo where L: hlua::AsLua {}
+    impl<L> hlua::PushOneInto<L> for Foo where L: hlua::AsLua {}
 
     let lua = hlua::Lua::new();
 
@@ -153,16 +153,16 @@ pub fn metatables() {
 pub fn multiple_userdata() {
    #[derive(Clone)]
     struct Integer(u32);
-    impl<L> hlua::Push<L> for Integer
+    impl<L> hlua::PushInto<L> for Integer
     where
         L: hlua::AsLua,
     {
         type Err = hlua::Void;
-        fn push_to_lua(self, lua: L) -> Result<hlua::PushGuard<L>, (hlua::Void, L)> {
+        fn push_into_lua(self, lua: L) -> Result<hlua::PushGuard<L>, (hlua::Void, L)> {
             Ok(hlua::push_userdata(self, lua, |_| { }))
         }
     }
-    impl<L> hlua::PushOne<L> for Integer where L: hlua::AsLua {}
+    impl<L> hlua::PushOneInto<L> for Integer where L: hlua::AsLua {}
     impl<L> hlua::LuaRead<L> for Integer
     where
         L: hlua::AsLua,
@@ -176,16 +176,16 @@ pub fn multiple_userdata() {
 
     #[derive(Debug, Clone, PartialEq, Eq)]
     struct BigInteger(u32, u32, u32, u32);
-    impl<L> hlua::Push<L> for BigInteger
+    impl<L> hlua::PushInto<L> for BigInteger
     where
         L: hlua::AsLua,
     {
         type Err = hlua::Void;
-        fn push_to_lua(self, lua: L) -> Result<hlua::PushGuard<L>, (hlua::Void, L)> {
+        fn push_into_lua(self, lua: L) -> Result<hlua::PushGuard<L>, (hlua::Void, L)> {
             Ok(hlua::push_userdata(self, lua, |_| { }))
         }
     }
-    impl<L> hlua::PushOne<L> for BigInteger where L: hlua::AsLua {}
+    impl<L> hlua::PushOneInto<L> for BigInteger where L: hlua::AsLua {}
     impl<L> hlua::LuaRead<L> for BigInteger
     where
         L: hlua::AsLua,

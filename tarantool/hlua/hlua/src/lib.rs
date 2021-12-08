@@ -257,38 +257,83 @@ impl<L: AsLua> PushGuard<L> {
     }
 }
 
-/// Trait for objects that have access to a Lua context. When using a context returned by a
-/// `AsLua`, you are not allowed to modify the stack.
-// TODO: the lifetime should be an associated lifetime instead
+/// Trait for objects that have access to a Lua context.
 pub trait AsLua {
     fn as_lua(&self) -> *mut ffi::lua_State;
 
-    fn try_push<T>(self, v: T) -> Result<PushGuard<Self>, (<T as Push<Self>>::Err, Self)>
+    /// Try to push `v` onto the lua stack.
+    ///
+    /// In case of success returns a `PushGuard` which captures `self` by value
+    /// and stores the amount of values pushed onto the stack.
+    ///
+    /// In case of failure returns a tuple with 2 elements:
+    /// - an error, which occured during the attempt to push
+    /// - `self`
+    #[inline(always)]
+    fn try_push<T>(self, v: T) -> Result<PushGuard<Self>, (<T as PushInto<Self>>::Err, Self)>
     where
         Self: Sized,
-        T: Push<Self>,
+        T: PushInto<Self>,
     {
-        v.push_to_lua(self)
+        v.push_into_lua(self)
     }
 
-    fn push<T, E>(self, v: T) -> PushGuard<Self>
+    /// Push `v` onto the lua stack.
+    ///
+    /// This method is only available if `T::Err` implements `Into<Void>`, which
+    /// means that no error can happen during the attempt to push.
+    ///
+    /// Returns a `PushGuard` which captures `self` by value and stores the
+    /// amount of values pushed onto the stack.
+    #[inline(always)]
+    fn push<T>(self, v: T) -> PushGuard<Self>
     where
         Self: Sized,
-        T: Push<Self, Err = E>,
-        E: Into<Void>,
+        T: PushInto<Self>,
+        <T as PushInto<Self>>::Err: Into<Void>,
     {
-        v.push_no_err(self)
+        v.push_into_no_err(self)
     }
 
-    fn push_one<T, E>(self, v: T) -> PushGuard<Self>
+    /// Try to push `v` onto the lua stack.
+    ///
+    /// This method is only available if `T` implements `PushOneInto`, which
+    /// means that it pushes a single value onto the stack.
+    ///
+    /// Returns a `PushGuard` which captures `self` by value and stores the
+    /// amount of values pushed onto the stack (ideally this will be 1, but it
+    /// is the responsibility of the impelemntor to make sure it is so).
+    #[inline(always)]
+    fn try_push_one<T>(self, v: T) -> Result<PushGuard<Self>, (<T as PushInto<Self>>::Err, Self)>
     where
         Self: Sized,
-        T: PushOne<Self, Err = E>,
-        E: Into<Void>,
+        T: PushOneInto<Self>,
     {
-        v.push_no_err(self)
+        v.push_into_lua(self)
     }
 
+    /// Push `v` onto the lua stack.
+    ///
+    /// This method is only available if
+    /// - `T` implements `PushOneInto`, which means that it pushes a single
+    /// value onto the stack
+    /// - `T::Err` implements `Into<Void>`, which means that no error can happen
+    /// during the attempt to push
+    ///
+    /// Returns a `PushGuard` which captures `self` by value and stores the
+    /// amount of values pushed onto the stack (ideally this will be 1, but it
+    /// is the responsibility of the impelemntor to make sure it is so).
+    #[inline(always)]
+    fn push_one<T>(self, v: T) -> PushGuard<Self>
+    where
+        Self: Sized,
+        T: PushOneInto<Self>,
+        <T as PushInto<Self>>::Err: Into<Void>,
+    {
+        v.push_into_no_err(self)
+    }
+
+    #[inline(always)]
     fn read<T>(self) -> Result<T, Self>
     where
         Self: Sized,
@@ -297,6 +342,7 @@ pub trait AsLua {
         T::lua_read(self)
     }
 
+    #[inline(always)]
     fn read_at<T>(self, index: i32) -> Result<T, Self>
     where
         Self: Sized,
@@ -305,6 +351,7 @@ pub trait AsLua {
         T::lua_read_at_maybe_zero_position(self, index)
     }
 
+    #[inline(always)]
     fn read_at_nz<T>(self, index: NonZeroI32) -> Result<T, Self>
     where
         Self: Sized,
@@ -346,8 +393,7 @@ where
     }
 }
 
-/// Types that can be given to a Lua context, for example with `lua.set()` or as a return value
-/// of a function.
+/// Types implementing this trait can be pushed onto the Lua stack by reference.
 pub trait Push<L: AsLua> {
     /// Error that can happen when pushing a value.
     type Err;
@@ -359,25 +405,34 @@ pub trait Push<L: AsLua> {
     /// You can implement this for any type you want by redirecting to call to
     /// another implementation (for example `5.push_to_lua`) or by calling
     /// `userdata::push_userdata`.
-    fn push_to_lua(self, lua: L) -> Result<PushGuard<L>, (Self::Err, L)>;
+    fn push_to_lua(&self, lua: L) -> Result<PushGuard<L>, (Self::Err, L)>;
 
-    /// Same as `push_to_lua` but can only succeed and is only available if `Err` is `Void`.
-    // TODO: when https://github.com/rust-lang/rust/issues/20041 is fixed, use `Self::Err == Void`
+    /// Same as `push_to_lua` but can only succeed and is only available if
+    /// `Err` implements `Into<Void>`.
     #[inline]
-    fn push_no_err<E>(self, lua: L) -> PushGuard<L>
+    fn push_no_err(&self, lua: L) -> PushGuard<L>
     where
-        Self: Sized,
-        Self: Push<L, Err = E>,
-        E: Into<Void>,
+        <Self as Push<L>>::Err: Into<Void>,
     {
         match self.push_to_lua(lua) {
             Ok(p) => p,
-            Err(_) => unreachable!(),
+            Err(_) => unreachable!("no way to instantiate Void"),
         }
     }
 }
 
-// TODO(gmoshkin): PushRef for pushing by reference
+impl<T, L> Push<L> for &'_ T
+where
+    L: AsLua,
+    T: ?Sized,
+    T: Push<L>,
+{
+    type Err = T::Err;
+
+    fn push_to_lua(&self, lua: L) -> Result<PushGuard<L>, (Self::Err, L)> {
+        T::push_to_lua(*self, lua)
+    }
+}
 
 /// Extension trait for `Push`. Guarantees that only one element will be pushed.
 ///
@@ -389,6 +444,75 @@ pub trait Push<L: AsLua> {
 // require this trait if they only accept one pushed element, but they must also add a runtime
 // assertion to make sure that only one element was actually pushed.
 pub trait PushOne<L: AsLua>: Push<L> {}
+
+impl<T, L> PushOne<L> for &'_ T
+where
+    L: AsLua,
+    T: ?Sized,
+    T: PushOne<L>,
+{
+}
+
+/// Types implementing this trait can be pushed onto the Lua stack by value.
+pub trait PushInto<L>
+where
+    L: AsLua,
+{
+    type Err;
+
+    /// Push the value into lua by value
+    fn push_into_lua(self, lua: L) -> Result<PushGuard<L>, (Self::Err, L)>;
+
+    /// Same as `push_into_lua` but can only succeed and is only available if
+    /// `Err` implements `Into<Void>`.
+    #[inline]
+    fn push_into_no_err(self, lua: L) -> PushGuard<L>
+    where
+        Self: Sized,
+        <Self as PushInto<L>>::Err: Into<Void>,
+    {
+        match self.push_into_lua(lua) {
+            Ok(p) => p,
+            Err(_) => unreachable!("no way to instantiate Void"),
+        }
+    }
+}
+
+impl<T, L> PushInto<L> for &'_ T
+where
+    L: AsLua,
+    T: ?Sized,
+    T: Push<L>,
+{
+    type Err = T::Err;
+
+    fn push_into_lua(self, lua: L) -> Result<PushGuard<L>, (Self::Err, L)> {
+        self.push_to_lua(lua)
+    }
+}
+
+/// Extension trait for `PushInto`. Guarantees that only one element will be
+/// pushed.
+///
+/// This should be implemented on most types that implement `PushInto`, except
+/// for tuples.
+///
+/// > **Note**: Implementing this trait on a type that pushes multiple elements
+/// > will most likely result in panics.
+///
+// Note for the implementation: since this trait is not unsafe, it is mostly a
+// hint. Functions can require this trait if they only accept one pushed
+// element, but they must also add a runtime assertion to make sure that only
+// one element was actually pushed.
+pub trait PushOneInto<L: AsLua>: PushInto<L> {}
+
+impl<T, L> PushOneInto<L> for &'_ T
+where
+    L: AsLua,
+    T: ?Sized,
+    T: PushOne<L>,
+{
+}
 
 /// Type that cannot be instantiated.
 ///
@@ -879,7 +1003,7 @@ impl Lua {
     pub fn set<'lua, I, V, E>(&'lua self, index: I, value: V)
     where
         I: Borrow<str>,
-        V: PushOne<&'lua Self, Err = E>,
+        V: PushOneInto<&'lua Self, Err = E>,
         E: Into<Void>,
     {
         match self.checked_set(index, value) {
@@ -893,21 +1017,15 @@ impl Lua {
     #[inline]
     // TODO(gmoshkin): this method should be part of AsLua
     pub fn checked_set<'lua, I, V>(&'lua self, index: I, value: V)
-        -> Result<(), <V as Push<&'lua Self>>::Err>
+        -> Result<(), <V as PushInto<&'lua Self>>::Err>
     where
         I: Borrow<str>,
-        V: PushOne<&'lua Self>,
+        V: PushOneInto<&'lua Self>,
     {
         unsafe {
             ffi::lua_pushglobaltable(self.lua);
-            match index.borrow().push_to_lua(self.as_lua()) {
-                Ok(pushed) => {
-                    debug_assert_eq!(pushed.size, 1);
-                    pushed.forget()
-                }
-                Err(_) => unreachable!(),
-            };
-            match value.push_to_lua(self) {
+            self.as_lua().push(index.borrow()).assert_one_and_forget();
+            match self.try_push(value) {
                 Ok(pushed) => {
                     assert_eq!(pushed.size, 1);
                     pushed.forget()

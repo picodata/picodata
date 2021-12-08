@@ -97,7 +97,7 @@ pub fn metatable() {
         fn handler() -> i32 {
             5
         }
-        metatable.set("__add".to_string(), function0(handler));
+        metatable.set("__add", function0(handler));
     }
 
     let r: i32 = lua.eval("return a + a").unwrap();

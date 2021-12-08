@@ -92,12 +92,12 @@ pub fn call_and_read_table() {
 pub fn table_as_args() {
     let lua = tarantool::global_lua();
     let f: LuaFunction<_> = lua.eval("return function(a) return a.foo end").unwrap();
-    let t: LuaTable<_> = (&lua).push(Foo { foo: 69 }).read().unwrap();
+    let t: LuaTable<_> = (&lua).push(&Foo { foo: 69 }).read().unwrap();
     let val: i32 = f.call_with_args(&t).unwrap();
     assert_eq!(val, 69);
 
     let f: LuaFunction<_> = lua.eval("return function(a, b) return a.foo + b.bar end").unwrap();
-    let u: LuaTable<_> = (&lua).push(Bar { bar: 420 }).read().unwrap();
+    let u: LuaTable<_> = (&lua).push(&Bar { bar: 420 }).read().unwrap();
     let val: i32 = f.call_with_args((&t, &u)).unwrap();
     assert_eq!(val, 420 + 69);
 

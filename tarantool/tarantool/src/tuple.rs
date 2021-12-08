@@ -575,9 +575,9 @@ where
 {
     type Err = hlua::Void;
 
-    fn push_to_lua(self, lua: L) -> Result<hlua::PushGuard<L>, (hlua::Void, L)> {
+    fn push_to_lua(&self, lua: L) -> Result<hlua::PushGuard<L>, (hlua::Void, L)> {
         unsafe {
-            ffi::luaT_pushtuple(hlua::AsLua::as_lua(&lua), self.into_ptr());
+            ffi::luaT_pushtuple(hlua::AsLua::as_lua(&lua), self.ptr.as_ptr());
             Ok(hlua::PushGuard::new(lua, 1))
         }
     }

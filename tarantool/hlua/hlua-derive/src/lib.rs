@@ -17,7 +17,7 @@ pub fn proc_macro_derive_push(input: proc_macro::TokenStream) -> proc_macro::Tok
         {
             type Err = hlua::Void;
 
-            fn push_to_lua(self, __lua: L)
+            fn push_to_lua(&self, __lua: L)
                 -> ::std::result::Result<hlua::PushGuard<L>, (Self::Err, L)>
             {
                 Ok(#push_code)

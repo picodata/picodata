@@ -14,8 +14,10 @@ use crate::{
     AsLua,
     LuaRead,
     Push,
+    PushInto,
     PushGuard,
     PushOne,
+    PushOneInto,
     Void,
 };
 
@@ -27,12 +29,9 @@ macro_rules! numeric_impl {
         {
             type Err = Void;      // TODO: use `!` instead (https://github.com/rust-lang/rust/issues/35121)
 
-            #[inline]
-            fn push_to_lua(self, lua: L) -> Result<PushGuard<L>, (Void, L)> {
-                unsafe {
-                    $push(lua.as_lua(), self as _);
-                    Ok(PushGuard::new(lua, 1))
-                }
+            #[inline(always)]
+            fn push_to_lua(&self, lua: L) -> Result<PushGuard<L>, (Void, L)> {
+                Self::push_into_lua(*self, lua)
             }
         }
 
@@ -42,11 +41,32 @@ macro_rules! numeric_impl {
         {
         }
 
+        impl<L> PushInto<L> for $t
+        where
+            L: AsLua,
+        {
+            type Err = Void;      // TODO: use `!` instead (https://github.com/rust-lang/rust/issues/35121)
+
+            #[inline(always)]
+            fn push_into_lua(self, lua: L) -> Result<PushGuard<L>, (Void, L)> {
+                unsafe {
+                    $push(lua.as_lua(), self as _);
+                    Ok(PushGuard::new(lua, 1))
+                }
+            }
+        }
+
+        impl<L> PushOneInto<L> for $t
+        where
+            L: AsLua,
+        {
+        }
+
         impl<L> LuaRead<L> for $t
         where
             L: AsLua,
         {
-            #[inline]
+            #[inline(always)]
             fn lua_read_at_position(lua: L, index: NonZeroI32) -> Result<$t, L> {
                 return unsafe { read_numeric(lua.as_lua(), index.into()) }
                     .map(|v| v as _)
@@ -116,8 +136,8 @@ macro_rules! push_string_impl {
         {
             type Err = Void;      // TODO: use `!` instead (https://github.com/rust-lang/rust/issues/35121)
 
-            #[inline]
-            fn push_to_lua(self, lua: L) -> Result<PushGuard<L>, (Void, L)> {
+            #[inline(always)]
+            fn push_to_lua(&self, lua: L) -> Result<PushGuard<L>, (Void, L)> {
                 unsafe {
                     ffi::lua_pushlstring(
                         lua.as_lua(),
@@ -139,7 +159,7 @@ macro_rules! push_string_impl {
 
 push_string_impl!{ String }
 push_string_impl!{ AnyLuaString }
-push_string_impl!{ &'_ str }
+push_string_impl!{ str }
 
 macro_rules! lua_read_string_impl {
     ($(@lt $lt:tt,)? $s:ty, $from_slice:expr) => {
@@ -148,7 +168,7 @@ macro_rules! lua_read_string_impl {
             $( L: $lt, )?
             L: AsLua,
         {
-            #[inline]
+            #[inline(always)]
             fn lua_read_at_position(lua: L, index: NonZeroI32) -> Result<$s, L> {
                 unsafe {
                     let mut size = MaybeUninit::uninit();
@@ -243,40 +263,63 @@ impl<'a, L> Deref for StringInLua<'a, L> {
 macro_rules! impl_push_read {
     (
         $t:ty,
-        push_to_lua($self:ident, $lua:ident) { $($push:tt)* }
-        read_at_position($lua2:ident, $index:ident) { $($read:tt)* }
-        $(read_at_maybe_zero_position($lua3:ident, $index2:ident) { $($read_mz:tt)* })?
+        $(push_to_lua(&$self1:ident, $lua1:ident) { $($push:tt)* })?
+        $(push_into_lua($self2:ident, $lua2:ident) { $($push_into:tt)* })?
+        read_at_position($lua3:ident, $index1:ident) { $($read:tt)* }
+        $(read_at_maybe_zero_position($lua4:ident, $index2:ident) { $($read_mz:tt)* })?
     ) => {
-        impl<L> Push<L> for $t
-        where
-            L: AsLua,
-        {
-            type Err = Void;      // TODO: use `!` instead (https://github.com/rust-lang/rust/issues/35121)
+        $(
+            impl<L> Push<L> for $t
+            where
+                L: AsLua,
+            {
+                type Err = Void;      // TODO: use `!` instead (https://github.com/rust-lang/rust/issues/35121)
 
-            #[inline]
-            fn push_to_lua($self, $lua: L) -> Result<PushGuard<L>, (Void, L)> {
-                $($push)*
+                #[inline(always)]
+                fn push_to_lua(&$self1, $lua1: L) -> Result<PushGuard<L>, (Void, L)> {
+                    $($push)*
+                }
             }
-        }
 
-        impl<L> PushOne<L> for $t
-        where
-            L: AsLua,
-        {
-        }
+            impl<L> PushOne<L> for $t
+            where
+                L: AsLua,
+            {
+            }
+        )?
+
+        $(
+            impl<L> PushInto<L> for $t
+            where
+                L: AsLua,
+            {
+                type Err = Void;      // TODO: use `!` instead (https://github.com/rust-lang/rust/issues/35121)
+
+                #[inline(always)]
+                fn push_into_lua($self2, $lua2: L) -> Result<PushGuard<L>, (Void, L)> {
+                    $($push_into)?
+                }
+            }
+
+            impl<L> PushOneInto<L> for $t
+            where
+                L: AsLua,
+            {
+            }
+        )?
 
         impl<L> LuaRead<L> for $t
         where
             L: AsLua,
         {
-            #[inline]
-            fn lua_read_at_position($lua2: L, $index: NonZeroI32) -> Result<Self, L> {
+            #[inline(always)]
+            fn lua_read_at_position($lua3: L, $index1: NonZeroI32) -> Result<Self, L> {
                 $($read)*
             }
 
             $(
-                #[inline]
-                fn lua_read_at_maybe_zero_position($lua3: L, $index2: i32) -> Result<Self, L> {
+                #[inline(always)]
+                fn lua_read_at_maybe_zero_position($lua4: L, $index2: i32) -> Result<Self, L> {
                     $($read_mz)*
                 }
             )?
@@ -285,7 +328,10 @@ macro_rules! impl_push_read {
 }
 
 impl_push_read!{ bool,
-    push_to_lua(self, lua) {
+    push_to_lua(&self, lua) {
+        Self::push_into_lua(*self, lua)
+    }
+    push_into_lua(self, lua) {
         unsafe {
             ffi::lua_pushboolean(lua.as_lua(), self as _);
             Ok(PushGuard::new(lua, 1))
@@ -301,7 +347,10 @@ impl_push_read!{ bool,
 }
 
 impl_push_read!{ (),
-    push_to_lua(self, lua) {
+    push_to_lua(&self, lua) {
+        ().push_into_lua(lua)
+    }
+    push_into_lua(self, lua) {
         unsafe { Ok(PushGuard::new(lua, 0)) }
     }
     read_at_position(_lua, _index) {
@@ -320,10 +369,10 @@ where
     type Err = T::Err;
 
     #[inline]
-    fn push_to_lua(self, lua: L) -> Result<PushGuard<L>, (Self::Err, L)> {
+    fn push_to_lua(&self, lua: L) -> Result<PushGuard<L>, (Self::Err, L)> {
         match self {
             Some(val) => val.push_to_lua(lua),
-            None => Ok(Nil.push_no_err(lua)),
+            None => Ok(Nil.push_into_no_err(lua)),
         }
     }
 }
@@ -331,6 +380,29 @@ where
 impl<L, T> PushOne<L> for Option<T>
 where
     T: PushOne<L>,
+    L: AsLua,
+{
+}
+
+impl<L, T> PushInto<L> for Option<T>
+where
+    T: PushInto<L>,
+    L: AsLua,
+{
+    type Err = T::Err;
+
+    #[inline]
+    fn push_into_lua(self, lua: L) -> Result<PushGuard<L>, (Self::Err, L)> {
+        match self {
+            Some(val) => val.push_into_lua(lua),
+            None => Ok(Nil.push_into_no_err(lua)),
+        }
+    }
+}
+
+impl<L, T> PushOneInto<L> for Option<T>
+where
+    T: PushOneInto<L>,
     L: AsLua,
 {
 }
@@ -373,11 +445,14 @@ where
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Nil;
 
 impl_push_read!{Nil,
-    push_to_lua(self, lua) {
+    push_to_lua(&self, lua) {
+        Self::push_into_lua(*self, lua)
+    }
+    push_into_lua(self, lua) {
         unsafe {
             ffi::lua_pushnil(lua.as_lua());
             Ok(PushGuard::new(lua, 1))
@@ -399,7 +474,7 @@ impl_push_read!{Nil,
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Null;
 
 impl Null {
@@ -420,7 +495,10 @@ pub unsafe fn is_null_or_nil(lua: crate::LuaState, index: i32) -> bool {
 }
 
 impl_push_read!{Null,
-    push_to_lua(self, lua) {
+    push_to_lua(&self, lua) {
+        Self::push_into_lua(*self, lua)
+    }
+    push_into_lua(self, lua) {
         unsafe {
             let cdata = ffi::luaL_pushcdata(lua.as_lua(), ffi::CTID_P_VOID);
             *cdata.cast::<*mut c_void>() = null_mut();
@@ -443,7 +521,7 @@ impl_push_read!{Null,
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct True;
 
 impl From<True> for bool {
@@ -464,8 +542,11 @@ impl TryFrom<bool> for True {
 }
 
 impl_push_read!{True,
-    push_to_lua(self, lua) {
-        true.push_to_lua(lua)
+    push_to_lua(&self, lua) {
+        Self::push_into_lua(*self, lua)
+    }
+    push_into_lua(self, lua) {
+        true.push_into_lua(lua)
     }
     read_at_position(lua, index) {
         match bool::lua_read_at_position(&lua, index) {
@@ -475,7 +556,7 @@ impl_push_read!{True,
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct False;
 
 impl From<False> for bool {
@@ -496,8 +577,11 @@ impl TryFrom<bool> for False {
 }
 
 impl_push_read!{False,
-    push_to_lua(self, lua) {
-        false.push_to_lua(lua)
+    push_to_lua(&self, lua) {
+        Self::push_into_lua(*self, lua)
+    }
+    push_into_lua(self, lua) {
+        false.push_into_lua(lua)
     }
     read_at_position(lua, index) {
         match bool::lua_read_at_position(&lua, index) {
@@ -507,7 +591,7 @@ impl_push_read!{False,
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Typename(pub &'static str);
 
 impl Typename {
@@ -517,9 +601,6 @@ impl Typename {
 }
 
 impl_push_read!{Typename,
-    push_to_lua(self, _lua) {
-        unimplemented!()
-    }
     read_at_position(lua, index) {
         Ok(Self(
             match crate::typename(lua.as_lua(), index.into()).to_string_lossy() {
@@ -530,174 +611,3 @@ impl_push_read!{Typename,
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use crate::{
-        AnyLuaString,
-        Lua,
-        StringInLua,
-    };
-
-    #[test]
-    fn read_i32s() {
-        let mut lua = Lua::new();
-
-        lua.set("a", 2);
-
-        let x: i32 = lua.get("a").unwrap();
-        assert_eq!(x, 2);
-
-        let y: i8 = lua.get("a").unwrap();
-        assert_eq!(y, 2);
-
-        let z: i16 = lua.get("a").unwrap();
-        assert_eq!(z, 2);
-
-        let w: i32 = lua.get("a").unwrap();
-        assert_eq!(w, 2);
-
-        let a: u32 = lua.get("a").unwrap();
-        assert_eq!(a, 2);
-
-        let b: u8 = lua.get("a").unwrap();
-        assert_eq!(b, 2);
-
-        let c: u16 = lua.get("a").unwrap();
-        assert_eq!(c, 2);
-
-        let d: u32 = lua.get("a").unwrap();
-        assert_eq!(d, 2);
-    }
-
-    #[test]
-    fn write_i32s() {
-        // TODO:
-
-        let mut lua = Lua::new();
-
-        lua.set("a", 2);
-        let x: i32 = lua.get("a").unwrap();
-        assert_eq!(x, 2);
-    }
-
-    #[test]
-    fn readwrite_floats() {
-        let mut lua = Lua::new();
-
-        lua.set("a", 2.51234 as f32);
-        lua.set("b", 3.4123456789 as f64);
-
-        let x: f32 = lua.get("a").unwrap();
-        assert!(x - 2.51234 < 0.000001);
-
-        let y: f64 = lua.get("a").unwrap();
-        assert!(y - 2.51234 < 0.000001);
-
-        let z: f32 = lua.get("b").unwrap();
-        assert!(z - 3.4123456789 < 0.000001);
-
-        let w: f64 = lua.get("b").unwrap();
-        assert!(w - 3.4123456789 < 0.000001);
-    }
-
-    #[test]
-    fn readwrite_bools() {
-        let mut lua = Lua::new();
-
-        lua.set("a", true);
-        lua.set("b", false);
-
-        let x: bool = lua.get("a").unwrap();
-        assert_eq!(x, true);
-
-        let y: bool = lua.get("b").unwrap();
-        assert_eq!(y, false);
-    }
-
-    #[test]
-    fn readwrite_strings() {
-        let mut lua = Lua::new();
-
-        lua.set("a", "hello");
-        lua.set("b", "hello".to_string());
-
-        let x: String = lua.get("a").unwrap();
-        assert_eq!(x, "hello");
-
-        let y: String = lua.get("b").unwrap();
-        assert_eq!(y, "hello");
-
-        assert_eq!(lua.execute::<String>("return 'abc'").unwrap(), "abc");
-        assert_eq!(lua.execute::<u32>("return #'abc'").unwrap(), 3);
-        assert_eq!(lua.execute::<u32>("return #'a\\x00c'").unwrap(), 3);
-        assert_eq!(lua.execute::<AnyLuaString>("return 'a\\x00c'").unwrap().0, vec!(97, 0, 99));
-        assert_eq!(lua.execute::<AnyLuaString>("return 'a\\x00c'").unwrap().0.len(), 3);
-        assert_eq!(lua.execute::<AnyLuaString>("return '\\x01\\xff'").unwrap().0, vec!(1, 255));
-        lua.execute::<String>("return 'a\\x00\\xc0'").unwrap_err();
-    }
-
-    #[test]
-    fn i32_to_string() {
-        let mut lua = Lua::new();
-
-        lua.set("a", 2);
-
-        let x: String = lua.get("a").unwrap();
-        assert_eq!(x, "2");
-    }
-
-    #[test]
-    fn string_to_i32() {
-        let mut lua = Lua::new();
-
-        lua.set("a", "2");
-        lua.set("b", "aaa");
-
-        let x: i32 = lua.get("a").unwrap();
-        assert_eq!(x, 2);
-
-        let y: Option<i32> = lua.get("b");
-        assert!(y.is_none());
-    }
-
-    #[test]
-    fn string_on_lua() {
-        let mut lua = Lua::new();
-
-        lua.set("a", "aaa");
-        {
-            let x: StringInLua<_> = lua.get("a").unwrap();
-            assert_eq!(&*x, "aaa");
-        }
-
-        lua.set("a", 18);
-        {
-            let x: StringInLua<_> = lua.get("a").unwrap();
-            assert_eq!(&*x, "18");
-        }
-    }
-
-    #[test]
-    fn push_opt() {
-        let mut lua = Lua::new();
-
-        lua.set("some", crate::function0(|| Some(123)));
-        lua.set("none", crate::function0(|| Option::None::<i32>));
-
-        match lua.execute::<i32>("return some()") {
-            Ok(123) => {}
-            unexpected => panic!("{:?}", unexpected),
-        }
-
-        match lua.execute::<Nil>("return none()") {
-            Ok(Nil) => {}
-            unexpected => panic!("{:?}", unexpected),
-        }
-
-        lua.set("no_value", None::<i32>);
-        lua.set("some_value", Some("Hello!"));
-
-        assert_eq!(lua.get("no_value"), None::<String>);
-        assert_eq!(lua.get("some_value"), Some("Hello!".to_string()));
-    }
-}
