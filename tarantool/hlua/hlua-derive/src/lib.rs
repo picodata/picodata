@@ -71,7 +71,13 @@ enum Info<'a> {
 impl<'a> Info<'a> {
     fn new(input: &'a DeriveInput) -> Self {
         match input.data {
-            syn::Data::Struct(ref s) => Self::Struct(FieldsInfo::new(&s.fields)),
+            syn::Data::Struct(ref s) => {
+                if let Some(fields) = FieldsInfo::new(&s.fields) {
+                    Self::Struct(fields)
+                } else {
+                    unimplemented!("standalone unit structs aren't supproted yet")
+                }
+            }
             syn::Data::Enum(ref e) => Self::Enum(VariantsInfo::new(e)),
             syn::Data::Union(_) => unimplemented!("unions will never be supported"),
         }
@@ -133,7 +139,13 @@ impl<'a> Info<'a> {
                 let mut n_vals = vec![];
                 let mut read_and_maybe_return = vec![];
                 for variant in &v.variants {
-                    n_vals.push(variant.info.n_values());
+                    n_vals.push(
+                        if let Some(ref fields) = variant.info {
+                            fields.n_values()
+                        } else {
+                            quote! { 1 }
+                        }
+                    );
                     read_and_maybe_return.push(variant.read_and_maybe_return());
                 }
                 quote! {
@@ -185,11 +197,10 @@ enum FieldsInfo<'a> {
         field_idents: Vec<Ident>,
         field_types: Vec<&'a syn::Type>,
     },
-    // TODO(gmoshkin): Unit
 }
 
 impl<'a> FieldsInfo<'a> {
-    fn new(fields: &'a syn::Fields) -> Self {
+    fn new(fields: &'a syn::Fields) -> Option<Self> {
         match &fields {
             syn::Fields::Named(ref fields) => {
                 let n_fields = fields.named.len();
@@ -200,11 +211,11 @@ impl<'a> FieldsInfo<'a> {
                     field_idents.push(ident);
                 }
 
-                Self::Named {
+                Some(Self::Named {
                     field_names,
                     field_idents,
                     n_rec: n_fields as _,
-                }
+                })
             }
             syn::Fields::Unnamed(ref fields) => {
                 let mut field_idents = Vec::with_capacity(fields.unnamed.len());
@@ -216,13 +227,14 @@ impl<'a> FieldsInfo<'a> {
                     field_types.push(&field.ty);
                 }
 
-                Self::Unnamed {
+                Some(Self::Unnamed {
                     field_idents,
                     field_types,
-                }
+                })
             }
-            // TODO(gmoshkin)
-            syn::Fields::Unit => unimplemented!("unit struct are not supported yet"),
+            // TODO(gmoshkin): add attributes for changing string value, case
+            // sensitivity etc. (see serde)
+            syn::Fields::Unit => None,
         }
     }
 
@@ -329,7 +341,7 @@ struct VariantsInfo<'a> {
 
 struct VariantInfo<'a> {
     name: &'a Ident,
-    info: FieldsInfo<'a>,
+    info: Option<FieldsInfo<'a>>,
 }
 
 impl<'a> VariantsInfo<'a> {
@@ -350,10 +362,21 @@ impl<'a> VariantsInfo<'a> {
 impl<'a> VariantInfo<'a> {
     fn push(&self) -> TokenStream {
         let Self { name, info } = self;
-        let fields = info.pattern();
-        let push_fields = info.push();
-        quote! {
-            Self::#name #fields => #push_fields,
+        if let Some(info) = info {
+            let fields = info.pattern();
+            let push_fields = info.push();
+            quote! {
+                Self::#name #fields => #push_fields,
+            }
+        } else {
+            let value = name.to_string().to_lowercase();
+            quote! {
+                Self::#name => {
+                    hlua::AsLua::push_one(__lua.as_lua(), #value)
+                        .assert_one_and_forget();
+                    unsafe { hlua::PushGuard::new(__lua, 1) }
+                }
+            }
         }
     }
 
@@ -361,9 +384,12 @@ impl<'a> VariantInfo<'a> {
         let read_variant = self.read();
         let pattern = self.pattern();
         let constructor = self.constructor();
+        let (guard, catch_all) = self.optional_match();
         quote! {
             match #read_variant {
-                ::std::result::Result::Ok(#pattern) => return ::std::result::Result::Ok(#constructor),
+                ::std::result::Result::Ok(#pattern) #guard
+                    => return ::std::result::Result::Ok(#constructor),
+                #catch_all
                 ::std::result::Result::Err(__lua) => __lua,
             }
         }
@@ -372,15 +398,20 @@ impl<'a> VariantInfo<'a> {
     fn read(&self) -> TokenStream {
         let Self { name, info } = self;
         match info {
-            s @ FieldsInfo::Named { .. } => {
+            Some(s @ FieldsInfo::Named { .. }) => {
                 let read_struct = s.read_as(quote! { Self::#name });
                 quote! {
                     (|| { #read_struct })()
                 }
             }
-            FieldsInfo::Unnamed { .. } => {
+            Some(FieldsInfo::Unnamed { .. }) => {
                 quote! {
                     hlua::AsLua::read_at_nz(__lua, __index)
+                }
+            }
+            None => {
+                quote! {
+                    hlua::AsLua::read_at_nz::<hlua::StringInLua<_>>(__lua, __index)
                 }
             }
         }
@@ -389,8 +420,8 @@ impl<'a> VariantInfo<'a> {
     fn pattern(&self) -> TokenStream {
         let Self { info, .. } = self;
         match info {
-            FieldsInfo::Named { .. } => quote! { v },
-            FieldsInfo::Unnamed { field_idents, .. } => {
+            Some(FieldsInfo::Named { .. }) | None => quote! { v },
+            Some(FieldsInfo::Unnamed { field_idents, .. }) => {
                 match field_idents.len() {
                     0 => unimplemented!("unit structs aren't supported yet"),
                     1 => quote! { v },
@@ -403,14 +434,45 @@ impl<'a> VariantInfo<'a> {
     fn constructor(&self) -> TokenStream {
         let Self { name, info } = self;
         match info {
-            FieldsInfo::Named { .. } => quote! { v },
-            FieldsInfo::Unnamed { field_idents, .. } => {
+            Some(FieldsInfo::Named { .. }) => quote! { v },
+            Some(FieldsInfo::Unnamed { field_idents, .. }) => {
                 match field_idents.len() {
                     0 => quote! { Self::#name },
                     1 => quote! { Self::#name(v) },
                     _ => quote! { Self::#name(#(#field_idents,)*) },
                 }
             }
+            None => quote! { Self::#name }
+        }
+    }
+
+    fn optional_match(&self) -> (TokenStream, TokenStream) {
+        let Self { name, info } = self;
+        let value = name.to_string().to_lowercase();
+        if info.is_none() {
+            (
+                quote! {
+                    if {
+                        let mut v_count = 0;
+                        v.chars()
+                            .flat_map(char::to_lowercase)
+                            .zip(
+                                #value.chars()
+                                    .map(::std::option::Option::Some)
+                                    .chain(::std::iter::repeat(::std::option::Option::None))
+                            )
+                            .all(|(l, r)| {
+                                v_count += 1;
+                                r.map(|r| l == r).unwrap_or(false)
+                            }) && v_count == #value.len()
+                    }
+                },
+                quote! {
+                    ::std::result::Result::Ok(v) => v.into_inner(),
+                }
+            )
+        } else {
+            (quote! {}, quote! {})
         }
     }
 }

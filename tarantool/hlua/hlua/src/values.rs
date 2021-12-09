@@ -205,6 +205,12 @@ pub struct StringInLua<'a, L: 'a> {
     str_ref: &'a str,
 }
 
+impl<L> StringInLua<'_, L> {
+    pub fn into_inner(self) -> L {
+        self.lua
+    }
+}
+
 impl<'a, L> std::cmp::PartialEq for StringInLua<'a, L> {
     fn eq(&self, other: &Self) -> bool {
         self.str_ref.eq(other.str_ref)
@@ -502,7 +508,7 @@ impl_push_read!{False,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct Typename(&'static str);
+pub struct Typename(pub &'static str);
 
 impl Typename {
     pub fn get(&self) -> &'static str {

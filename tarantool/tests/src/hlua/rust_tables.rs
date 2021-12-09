@@ -453,3 +453,111 @@ pub fn struct_of_enums_vs_enum_of_structs() {
     enum E { X { x: i32 }, Y { y: String, }, Z { z: bool } }
 }
 
+pub fn derive_unit_structs_lua_read() {
+    #[derive(LuaRead, Debug, PartialEq, Eq)]
+    enum E {
+        A,
+        Foo,
+        XXX,
+    }
+
+    let lua = Lua::new();
+    assert_eq!((&lua).push("a").read().ok(), Some(E::A));
+    assert_eq!((&lua).push("A").read().ok(), Some(E::A));
+    assert_eq!((&lua).push("FOO").read().ok(), Some(E::Foo));
+    assert_eq!((&lua).push("Foo").read().ok(), Some(E::Foo));
+    assert_eq!((&lua).push("fo").read().ok(), None::<E>);
+    assert_eq!((&lua).push("foo").read().ok(), Some(E::Foo));
+    assert_eq!((&lua).push("fooo").read().ok(), None::<E>);
+    assert_eq!((&lua).push("XXX").read().ok(), Some(E::XXX));
+    assert_eq!((&lua).push("Xxx").read().ok(), Some(E::XXX));
+    assert_eq!((&lua).push("xxx").read().ok(), Some(E::XXX));
+    assert_eq!((&lua).push("f_oo").read().ok(), None::<E>);
+
+    #[derive(LuaRead, Debug, PartialEq, Eq)]
+    struct QueryResult {
+        metadata: Vec<Column>,
+        rows: Vec<Vec<Value>>,
+    }
+
+    #[derive(LuaRead, Debug, PartialEq, Eq)]
+    struct Column {
+        name: String,
+        r#type: Type,
+    }
+
+    #[derive(LuaRead, Debug, PartialEq, Eq)]
+    enum Type {
+        Boolean,
+        Integer,
+        String,
+    }
+
+    #[derive(LuaRead, Debug, PartialEq, Eq)]
+    enum Value {
+        Boolean(bool),
+        Null(hlua::Null),
+        Number(u64),
+        String(String),
+    }
+
+    let lua = tarantool::global_lua();
+    let v: QueryResult = lua.eval("return {
+        metadata = {
+            {
+                name = 'id',
+                type = 'integer'
+            },
+            {
+                name = 'name',
+                type = 'string'
+            },
+            {
+                name = 'product_units',
+                type = 'integer'
+            }
+        },
+        rows = {
+            {1, '123', box.NULL}
+        }
+    }").unwrap();
+
+    assert_eq!(
+        v,
+        QueryResult {
+            metadata: vec![
+                Column { name: "id".into(), r#type: Type::Integer },
+                Column { name: "name".into(), r#type: Type::String },
+                Column { name: "product_units".into(), r#type: Type::Integer },
+            ],
+            rows: vec![
+                vec![
+                    Value::Number(1),
+                    Value::String("123".into()),
+                    Value::Null(hlua::Null),
+                ]
+            ]
+        }
+    );
+}
+
+pub fn derive_unit_structs_push() {
+    #[derive(Push, Debug, PartialEq, Eq)]
+    enum E {
+        A,
+        Foo,
+        XXX,
+    }
+
+    let lua = Lua::new();
+    let lua = lua.push(E::A);
+    assert_eq!((&lua).read().ok(), Some(hlua::Typename("string")));
+    assert_eq!((&lua).read().ok(), Some("a".to_string()));
+    let lua = lua.into_inner().push(E::Foo);
+    assert_eq!((&lua).read().ok(), Some(hlua::Typename("string")));
+    assert_eq!((&lua).read().ok(), Some("foo".to_string()));
+    let lua = lua.into_inner().push(E::XXX);
+    assert_eq!((&lua).read().ok(), Some(hlua::Typename("string")));
+    assert_eq!((&lua).read().ok(), Some("xxx".to_string()));
+}
+
