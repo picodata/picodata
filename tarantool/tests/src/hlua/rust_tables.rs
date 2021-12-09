@@ -296,7 +296,7 @@ pub fn derive_struct_push() {
     assert_eq!(u.get::<u8, _>(1), Some(11));
     assert_eq!(u.get::<u8, _>(2), Some(12));
     assert_eq!(u.get::<u8, _>(3), Some(13));
-    let v: LuaTable<_> = t.get("r#struct").unwrap();
+    let v: LuaTable<_> = t.get("struct").unwrap();
     assert_eq!(v.get::<f64, _>("x"), Some(3.14));
 }
 

@@ -196,7 +196,7 @@ impl<'a> FieldsInfo<'a> {
                 let mut field_names = Vec::with_capacity(n_fields);
                 let mut field_idents = Vec::with_capacity(n_fields);
                 for ident in fields.named.iter().filter_map(|f| f.ident.as_ref()) {
-                    field_names.push(ident.to_string());
+                    field_names.push(ident.to_string().trim_start_matches("r#").into());
                     field_idents.push(ident);
                 }
 
