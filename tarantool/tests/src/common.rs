@@ -1,6 +1,9 @@
 use serde::{Deserialize, Serialize};
 
-use tarantool::tuple::AsTuple;
+use tarantool::{
+    hlua::{self, AsLua},
+    tuple::AsTuple,
+};
 
 #[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct S1Record {
@@ -87,5 +90,27 @@ where
 pub(crate) enum YieldResult<T> {
     Yields(T),
     DoesntYield(T),
+}
+
+pub(crate) struct LuaStackIntegrityGuard {
+    name: &'static str,
+}
+
+impl LuaStackIntegrityGuard {
+    pub fn new(name: &'static str) -> Self {
+        let lua = tarantool::global_lua();
+        unsafe { lua.push_one(name).forget() };
+        Self { name }
+    }
+}
+
+impl Drop for LuaStackIntegrityGuard {
+    fn drop(&mut self) {
+        let lua = tarantool::global_lua();
+        let single_value = unsafe { hlua::PushGuard::new(lua, 1) };
+        let msg: hlua::StringInLua<_> = single_value.read()
+            .expect("Lua stack integrity violation");
+        assert_eq!(msg, self.name);
+    }
 }
 

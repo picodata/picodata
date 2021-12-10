@@ -243,6 +243,12 @@ impl<'a, L> std::cmp::PartialOrd for StringInLua<'a, L> {
     }
 }
 
+impl<'a, L> std::cmp::PartialEq<&'_ str> for StringInLua<'a, L> {
+    fn eq(&self, other: &&str) -> bool {
+        self.str_ref.eq(*other)
+    }
+}
+
 lua_read_string_impl!{ @lt 'a, StringInLua<'a, L>,
     |slice: &'a [u8], lua|
         match str::from_utf8(slice) {

@@ -4,13 +4,9 @@ use std::{
     time::Duration,
 };
 
-use crate::common::{DropCounter, capture_value, fiber_csw};
+use crate::common::{DropCounter, capture_value, fiber_csw, LuaStackIntegrityGuard};
 use tarantool::fiber;
-use tarantool::hlua::{
-    AsLua,
-    Lua,
-};
-use tarantool::ffi::lua;
+use tarantool::hlua::Lua;
 use tarantool::util::IntoClones;
 
 pub mod old;
@@ -191,38 +187,6 @@ pub fn multiple_unit_deferred() {
     res.borrow_mut().push(8);
     let res = res.borrow().iter().copied().collect::<Vec<_>>();
     assert_eq!(res, vec![1, 2, 3, 4, 5, 6, 7, 8]);
-}
-
-struct LuaStackIntegrityGuard {
-    name: &'static str,
-}
-
-impl LuaStackIntegrityGuard {
-    fn new(name: &'static str) -> Self {
-        let lua: Lua = tarantool::global_lua();
-        let l = lua.as_lua();
-        unsafe { lua::lua_pushlstring(l, name.as_bytes().as_ptr() as *mut i8, name.len()) };
-        Self{name}
-    }
-}
-
-impl Drop for LuaStackIntegrityGuard {
-    fn drop(&mut self) {
-        let lua: Lua = tarantool::global_lua();
-        let l = lua.as_lua();
-
-        let msg = unsafe {
-            let cstr = lua::lua_tostring(l, -1);
-            if cstr.is_null() {
-                panic!("Lua stack integrity violation");
-            }
-            let msg = std::ffi::CStr::from_ptr(cstr).to_str().unwrap();
-            lua::lua_pop(l, 1);
-            msg
-        };
-
-        assert_eq!(msg, self.name);
-    }
 }
 
 pub fn immediate_yields() {
