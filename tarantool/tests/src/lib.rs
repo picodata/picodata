@@ -276,6 +276,8 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 hlua::rust_tables::struct_of_enums_vs_enum_of_structs,
                 hlua::rust_tables::derive_unit_structs_lua_read,
                 hlua::rust_tables::derive_unit_structs_push,
+                hlua::rust_tables::push_custom_iter,
+                hlua::rust_tables::error_during_push_iter,
 
                 hlua::values::read_i32s,
                 hlua::values::write_i32s,

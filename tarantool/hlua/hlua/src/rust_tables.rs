@@ -10,6 +10,7 @@ use crate::{
     LuaRead,
     LuaState,
     lua_tables::LuaTable,
+    Void,
 };
 
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -18,8 +19,11 @@ use std::iter;
 use std::num::NonZeroI32;
 
 #[inline]
-fn push_iter<L, I>(lua: L, iterator: I)
-    -> Result<PushGuard<L>, (<<I as Iterator>::Item as PushInto<LuaState>>::Err, L)>
+pub(crate) fn push_iter<L, I>(lua: L, iterator: I)
+    -> Result<
+        PushGuard<L>,
+        (PushIterError<<<I as Iterator>::Item as PushInto<LuaState>>::Err>, L)
+    >
 where
     L: AsLua,
     I: Iterator,
@@ -31,23 +35,28 @@ where
     for (elem, index) in iterator.zip(1..) {
         let size = match elem.push_into_lua(lua.as_lua()) {
             Ok(pushed) => pushed.forget_internal(),
-            // TODO: wrong   return Err((err, lua)),
-            // FIXME: destroy the temporary table
-            Err((_err, _lua)) => panic!(),
+            Err((err, _)) => unsafe {
+                // TODO(gmoshkin): return an error capturing this push guard
+                // drop the lua table
+                drop(PushGuard::new(lua.as_lua(), 1));
+                return Err((PushIterError::ValuePushError(err), lua))
+            }
         };
 
         match size {
             0 => continue,
             1 => {
-                match index.push_into_lua(lua.as_lua()) {
-                    Ok(pushed) => pushed.forget_internal(),
-                    Err(_) => unreachable!(),
-                };
+                lua.as_lua().push_one(index).forget_internal();
                 unsafe { ffi::lua_insert(lua.as_lua(), -2) }
                 unsafe { ffi::lua_settable(lua.as_lua(), -3) }
             }
             2 => unsafe { ffi::lua_settable(lua.as_lua(), -3) },
-            _ => unreachable!(),
+            n => unsafe {
+                // TODO(gmoshkin): return an error capturing this push guard
+                // n + 1 == n values from the recent push + lua table
+                drop(PushGuard::new(lua.as_lua(), n + 1));
+                return Err((PushIterError::TooManyValues, lua))
+            }
         }
     }
 
@@ -56,36 +65,33 @@ where
     }
 }
 
-#[inline]
-fn push_rec_iter<L, I>(lua: L, iterator: I)
-    -> Result<PushGuard<L>, (<<I as Iterator>::Item as Push<LuaState>>::Err, L)>
-where
-    L: AsLua,
-    I: Iterator,
-    <I as Iterator>::Item: Push<LuaState>,
-{
-    let (nrec, _) = iterator.size_hint();
+#[derive(Debug, PartialEq, Eq)]
+pub enum PushIterError<E> {
+    TooManyValues,
+    ValuePushError(E),
+}
 
-    // creating empty table with pre-allocated non-array elements
-    unsafe { ffi::lua_createtable(lua.as_lua(), 0, nrec as i32) };
+// Note: only the following From<_> for Void implementations are correct,
+//       don't add other ones!
 
-    for elem in iterator {
-        let size = match elem.push_to_lua(lua.as_lua()) {
-            Ok(pushed) => pushed.forget_internal(),
-            // TODO: wrong   return Err((err, lua)),
-            // FIXME: destroy the temporary table
-            Err((_err, _lua)) => panic!(),
-        };
-
-        match size {
-            0 => continue,
-            2 => unsafe { ffi::lua_settable(lua.as_lua(), -3) },
-            _ => unreachable!(),
-        }
+// T::Err: Void => no error possible
+impl From<PushIterError<Void>> for Void {
+    fn from(_: PushIterError<Void>) -> Self {
+        unreachable!("no way to create instance of Void")
     }
+}
 
-    unsafe {
-        Ok(PushGuard::new(lua, 1))
+// T::Err: Void; (T,) => no error possible
+impl From<PushIterError<TuplePushError<Void, Void>>> for Void {
+    fn from(_: PushIterError<TuplePushError<Void, Void>>) -> Self {
+        unreachable!("no way to create instance of Void")
+    }
+}
+
+// T::Err: Void; U::Err: Void; (T, U) => no error possible
+impl From<PushIterError<TuplePushError<Void, TuplePushError<Void, Void>>>> for Void {
+    fn from(_: PushIterError<TuplePushError<Void, TuplePushError<Void, Void>>>) -> Self {
+        unreachable!("no way to create instance of Void")
     }
 }
 
@@ -94,10 +100,10 @@ where
     L: AsLua,
     T: Push<LuaState>,
 {
-    type Err = T::Err;
+    type Err = PushIterError<T::Err>;
 
     #[inline]
-    fn push_to_lua(&self, lua: L) -> Result<PushGuard<L>, (T::Err, L)> {
+    fn push_to_lua(&self, lua: L) -> Result<PushGuard<L>, (Self::Err, L)> {
         push_iter(lua, self.iter())
     }
 }
@@ -114,10 +120,10 @@ where
     L: AsLua,
     T: PushInto<LuaState>,
 {
-    type Err = T::Err;
+    type Err = PushIterError<T::Err>;
 
     #[inline]
-    fn push_into_lua(self, lua: L) -> Result<PushGuard<L>, (T::Err, L)> {
+    fn push_into_lua(self, lua: L) -> Result<PushGuard<L>, (Self::Err, L)> {
         push_iter(lua, self.into_iter())
     }
 }
@@ -192,7 +198,7 @@ where
     L: AsLua,
     T: Push<LuaState>,
 {
-    type Err = T::Err;
+    type Err = PushIterError<T::Err>;
 
     #[inline]
     fn push_to_lua(&self, lua: L) -> Result<PushGuard<L>, (Self::Err, L)> {
@@ -237,7 +243,12 @@ where
 
     #[inline]
     fn push_to_lua(&self, lua: L) -> Result<PushGuard<L>, (Self::Err, L)> {
-        match push_rec_iter(lua, self.into_iter()) {
+        let res = push_iter(lua, self.into_iter())
+            .map_err(|(e, lua)| match e {
+                PushIterError::TooManyValues => unreachable!("K and V implement PushOne"),
+                PushIterError::ValuePushError(e) => (e, lua),
+            });
+        match res {
             Ok(g) => Ok(g),
             Err((First(err), lua)) => Err((First(err), lua)),
             Err((Other(err), lua)) => Err((Other(err.first()), lua)),
@@ -265,10 +276,15 @@ where
 
     #[inline]
     fn push_to_lua(&self, lua: L) -> Result<PushGuard<L>, (K::Err, L)> {
-        match push_rec_iter(lua, self.into_iter().zip(iter::repeat(true))) {
+        let res = push_iter(lua, self.into_iter().zip(iter::repeat(true)))
+            .map_err(|(e, lua)| match e {
+                PushIterError::TooManyValues => unreachable!("K implements PushOne"),
+                PushIterError::ValuePushError(e) => (e, lua),
+            });
+        match res {
             Ok(g) => Ok(g),
             Err((First(err), lua)) => Err((err, lua)),
-            Err((Other(_), _)) => unreachable!(),
+            Err((Other(_), _)) => unreachable!("no way to create instance of Void"),
         }
     }
 }

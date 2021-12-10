@@ -10,6 +10,9 @@ use tarantool::hlua::{
     AnyLuaValue,
     AnyHashableLuaValue,
     Push,
+    PushGuard,
+    PushOne,
+    TuplePushError,
 };
 
 pub fn write() {
@@ -557,5 +560,71 @@ pub fn derive_unit_structs_push() {
     let lua = lua.into_inner().push(&E::XXX);
     assert_eq!((&lua).read().ok(), Some(hlua::Typename("string")));
     assert_eq!((&lua).read().ok(), Some("xxx".to_string()));
+}
+
+pub fn error_during_push_iter() {
+    #[derive(Debug, PartialEq, Eq)]
+    struct CustomError;
+    #[derive(Debug, PartialEq, Eq, Hash)]
+    struct S;
+    impl<L: AsLua> Push<L> for S {
+        type Err = CustomError;
+        fn push_to_lua(&self, lua: L) -> Result<PushGuard<L>, (CustomError, L)> {
+            Err((CustomError, lua))
+        }
+    }
+    impl<L: AsLua> PushOne<L> for S {}
+
+    let lua = Lua::new();
+    let (e, lua) = lua.try_push(&vec![S]).unwrap_err();
+    assert_eq!(e, hlua::PushIterError::ValuePushError(CustomError));
+
+    let mut hm = HashMap::new();
+    hm.insert(S, 1);
+    let (e, lua) = lua.try_push(&hm).unwrap_err();
+    assert_eq!(e, TuplePushError::First(CustomError));
+
+    let mut hm = HashMap::new();
+    hm.insert(1, S);
+    let (e, lua) = lua.try_push(&hm).unwrap_err();
+    assert_eq!(e, TuplePushError::Other(CustomError));
+
+    let mut hm = HashSet::new();
+    hm.insert(S);
+    let (e, lua) = lua.try_push(&hm).unwrap_err();
+    assert_eq!(e, CustomError);
+
+    let (e, lua) = lua.try_push_iter(std::iter::once(&S)).unwrap_err();
+    assert_eq!(e, hlua::PushIterError::ValuePushError(CustomError));
+
+    let (e, lua) = lua.try_push(vec![(1, 2, 3)]).unwrap_err();
+    assert_eq!(e, hlua::PushIterError::TooManyValues);
+
+    let (e, lua) = lua.try_push_iter(std::iter::once((1, 2, 3))).unwrap_err();
+    assert_eq!(e, hlua::PushIterError::TooManyValues);
+
+    drop(lua);
+}
+
+pub fn push_custom_iter() {
+    let lua = Lua::new();
+
+    let lua = lua.push_iter((1..=5).map(|i| i * i).filter(|i| i % 2 != 0)).unwrap();
+    let t: LuaTable<_> = lua.read().unwrap();
+    assert_eq!(t.get(1), Some(1_i32));
+    assert_eq!(t.get(2), Some(9_i32));
+    assert_eq!(t.get(3), Some(25_i32));
+    assert_eq!(t.get(4), None::<i32>);
+
+    let lua = t.into_inner().push_iter(
+        ["a", "b", "c"].iter().zip(["foo", "bar", "baz"])
+    ).unwrap();
+    let t: LuaTable<_> = lua.read().unwrap();
+    assert_eq!(t.get("a"), Some("foo".to_string()));
+    assert_eq!(t.get("b"), Some("bar".to_string()));
+    assert_eq!(t.get("c"), Some("baz".to_string()));
+
+    let res = t.into_inner().push_iter([(1,2,3), (4,5,6)].iter());
+    assert!(res.is_err());
 }
 

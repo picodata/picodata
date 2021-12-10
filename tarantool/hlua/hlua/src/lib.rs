@@ -124,6 +124,7 @@ pub use lua_functions::LuaFunction;
 pub use lua_functions::LuaFunctionCallError;
 pub use lua_functions::{LuaCode, LuaCodeFromReader};
 pub use lua_tables::{LuaTable, LuaTableIterator, MethodCallError};
+pub use rust_tables::PushIterError;
 pub use tuples::TuplePushError;
 pub use userdata::UserdataOnStack;
 pub use userdata::{push_userdata, read_userdata, push_some_userdata};
@@ -333,6 +334,67 @@ pub trait AsLua {
         v.push_into_no_err(self)
     }
 
+    /// Push `iterator` onto the lua stack as a lua table.
+    ///
+    /// This method is only available if
+    /// - `I::Item` implements `PushInto<LuaState>`, which means that it can be
+    /// pushed onto the lua stack by value
+    /// - `I::Item::Err` implements `Into<Void>`, which means that no error can
+    /// happen during the attempt to push
+    ///
+    /// If `I::Item` pushes a single value onto the stack, the resulting lua
+    /// table is a lua sequence (a table with 1-based integer keys).
+    ///
+    /// If `I::Item` pushes 2 values onto the stack, the resulting lua table is
+    /// a regular lua table with the provided keys.
+    ///
+    /// If `I::Item` pushes more than 2 values, the function returns `Err(self)`.
+    ///
+    /// Returns a `PushGuard` which captures `self` by value and stores the
+    /// amount of values pushed onto the stack (exactly 1 -- lua table).
+    #[inline(always)]
+    fn push_iter<I>(self, iterator: I) -> Result<PushGuard<Self>, Self>
+    where
+        Self: Sized,
+        I: Iterator,
+        <I as Iterator>::Item: PushInto<LuaState>,
+        <<I as Iterator>::Item as PushInto<LuaState>>::Err: Into<Void>,
+    {
+        crate::rust_tables::push_iter(self, iterator).map_err(|(_, lua)| lua)
+    }
+
+    /// Push `iterator` onto the lua stack as a lua table.
+    ///
+    /// This method is only available if `I::Item` implements
+    /// `PushInto<LuaState>`, which means that it can be pushed onto the lua
+    /// stack by value.
+    ///
+    /// If `I::Item` pushes a single value onto the stack, the resulting lua
+    /// table is a lua sequence (a table with 1-based integer keys).
+    ///
+    /// If `I::Item` pushes 2 values onto the stack, the resulting lua table is
+    /// a regular lua table with the provided keys.
+    ///
+    /// If `I::Item` pushes more than 2 values or an error happens during an
+    /// attempt to push, the function returns `Err((e, self))` where `e` is a
+    /// `PushIterError`.
+    ///
+    /// Returns a `PushGuard` which captures `self` by value and stores the
+    /// amount of values pushed onto the stack (exactly 1 -- lua table).
+    #[inline(always)]
+    fn try_push_iter<I>(self, iterator: I)
+        -> Result<
+            PushGuard<Self>,
+            (PushIterError<<<I as Iterator>::Item as PushInto<LuaState>>::Err>, Self)
+        >
+    where
+        Self: Sized,
+        I: Iterator,
+        <I as Iterator>::Item: PushInto<LuaState>,
+    {
+        crate::rust_tables::push_iter(self, iterator)
+    }
+
     #[inline(always)]
     fn read<T>(self) -> Result<T, Self>
     where
@@ -517,7 +579,7 @@ where
 /// Type that cannot be instantiated.
 ///
 /// Will be replaced with `!` eventually (<https://github.com/rust-lang/rust/issues/35121>).
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Void {}
 
 impl fmt::Display for Void {

@@ -209,7 +209,7 @@ tuple_impl!(A, B, C, D, E, F, G, H, I, J, K, L, M);
 
 /// Error that can happen when pushing multiple values at once.
 // TODO: implement Error on that thing
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum TuplePushError<C, O> {
     First(C),
     Other(O),
