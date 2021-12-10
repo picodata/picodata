@@ -253,3 +253,22 @@ pub fn from_function_call_error() {
     assert_eq!(inner().unwrap(), 3);
 }
 
+pub fn non_string_error() {
+    let lua = tarantool::global_lua();
+
+    match lua.exec("error()").unwrap_err() {
+        LuaError::ExecutionError(msg) => assert_eq!(msg, "nil"),
+        _ => unreachable!(),
+    }
+
+    match lua.exec("error(box.error.new(box.error.UNKNOWN))").unwrap_err() {
+        LuaError::ExecutionError(msg) => assert_eq!(msg, "Unknown error"),
+        _ => unreachable!(),
+    }
+
+    match lua.exec("error(box.error.new(box.error.SYSTEM, 'oops'))").unwrap_err() {
+        LuaError::ExecutionError(msg) => assert_eq!(msg, "oops"),
+        _ => unreachable!(),
+    }
+}
+

@@ -127,7 +127,7 @@ pub use lua_tables::{LuaTable, LuaTableIterator, MethodCallError};
 pub use tuples::TuplePushError;
 pub use userdata::UserdataOnStack;
 pub use userdata::{push_userdata, read_userdata, push_some_userdata};
-pub use values::{StringInLua, Nil, Null, True, False, Typename};
+pub use values::{StringInLua, Nil, Null, True, False, Typename, ToString};
 pub use hlua_derive::*;
 
 pub type LuaTableMap = std::collections::HashMap<AnyHashableLuaValue, AnyLuaValue>;

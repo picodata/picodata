@@ -611,3 +611,31 @@ impl_push_read!{Typename,
     }
 }
 
+/// String wrapper struct that can be used to read a lua value by converting it
+/// to string possibly using `__tostring` metamethod.
+pub struct ToString(pub String);
+
+impl From<ToString> for String {
+    fn from(other: ToString) -> Self {
+        other.0
+    }
+}
+
+impl_push_read!{ToString,
+    read_at_position(lua, index) {
+        unsafe {
+            let mut size = MaybeUninit::uninit();
+            let c_ptr = ffi::luaT_tolstring(
+                lua.as_lua(), index.into(), size.as_mut_ptr()
+            );
+            // the newly created string needs to be popped
+            let _new_string = PushGuard::new(lua.as_lua(), 1);
+            if c_ptr.is_null() {
+                return Err(lua)
+            }
+            let slice = slice::from_raw_parts(c_ptr as _, size.assume_init());
+            Ok(Self(String::from_utf8_lossy(slice).into()))
+        }
+    }
+}
+

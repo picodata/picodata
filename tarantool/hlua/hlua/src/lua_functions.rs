@@ -18,6 +18,7 @@ use crate::{
     PushGuard,
     PushOne,
     PushOneInto,
+    ToString,
     Void,
 };
 
@@ -414,10 +415,10 @@ where
         match pcall_return_value {
             ffi::LUA_ERRMEM => panic!("lua_pcall returned LUA_ERRMEM"),
             ffi::LUA_ERRRUN => {
-                let error_msg: String = LuaRead::lua_read(pushed_value)
+                let error_msg: ToString = LuaRead::lua_read(pushed_value)
                     .ok()
                     .expect("can't find error message at the top of the Lua stack");
-                return Err(LuaError::ExecutionError(error_msg).into())
+                return Err(LuaError::ExecutionError(error_msg.into()).into())
             }
             0 => {}
             _ => panic!("Unknown error code returned by lua_pcall: {}", pcall_return_value),

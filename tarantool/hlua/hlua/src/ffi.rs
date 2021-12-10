@@ -625,3 +625,11 @@ extern "C" {
     pub fn luaL_checkcdata(l: *mut lua_State, idx: c_int, ctypeid: *mut u32) -> *mut c_void;
 }
 
+extern "C" {
+    /// Convert the value at `idx` to string using `__tostring` metamethod if
+    /// other measures didn't work and return it. Sets the `len` if it's not
+    /// `NULL`. The newly created string is left on top of the stack.
+    /// *[-0, +1, m]*
+    pub fn luaT_tolstring(l: *mut lua_State, idx: c_int, len: *mut usize) -> *const c_schar;
+}
+
