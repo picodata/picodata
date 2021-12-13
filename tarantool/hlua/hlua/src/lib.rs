@@ -146,7 +146,7 @@ mod userdata;
 mod values;
 mod tuples;
 
-type LuaState = *mut ffi::lua_State;
+pub type LuaState = *mut ffi::lua_State;
 
 /// Main object of the library.
 ///

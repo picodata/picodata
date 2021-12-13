@@ -657,3 +657,71 @@ pub fn push_custom_iter() {
     assert!(res.is_err());
 }
 
+pub fn push_custom_collection() {
+    struct MyVec<T> {
+        data: [Option<T>; 3],
+        last: usize,
+    }
+
+    impl<T> MyVec<T> {
+        fn new() -> Self {
+            Self { data: [None, None, None], last: 0 }
+        }
+
+        fn try_push(&mut self, v: T) -> Result<(), T> {
+            if self.last < 3 {
+                self.data[self.last] = Some(v);
+                self.last += 1;
+                Ok(())
+            } else {
+                Err(v)
+            }
+        }
+
+        fn iter(&self) -> Iter<'_, T> {
+            Iter(self.data.iter())
+        }
+    }
+
+    struct Iter<'a, T>(std::slice::Iter<'a, Option<T>>);
+
+    impl<'a, T> Iterator for Iter<'a, T> {
+        type Item = &'a T;
+
+        fn next(&mut self) -> Option<&'a T> {
+            while let Some(maybe_v) = self.0.next() {
+                if let Some(v) = maybe_v {
+                    return Some(&v)
+                }
+            }
+            None
+        }
+    }
+
+    impl<L, T> Push<L> for MyVec<T>
+    where
+        L: AsLua,
+        T: Push<hlua::LuaState>,
+        <T as Push<hlua::LuaState>>::Err: Into<hlua::Void>,
+    {
+        type Err = ();
+
+        fn push_to_lua(&self, lua: L) -> Result<PushGuard<L>, ((), L)> {
+            lua.push_iter(self.iter()).map_err(|l| ((), l))
+        }
+    }
+
+    let lua = Lua::new();
+
+    let mut v = MyVec::new();
+    v.try_push(10).unwrap();
+    v.try_push(20).unwrap();
+    v.try_push(30).unwrap();
+    let lua = lua.try_push(&v).unwrap();
+    let t: LuaTable<_> = lua.read().unwrap();
+    assert_eq!(t.get(1), Some(10_i32));
+    assert_eq!(t.get(2), Some(20_i32));
+    assert_eq!(t.get(3), Some(30_i32));
+    assert_eq!(t.get(4), None::<i32>);
+}
+
