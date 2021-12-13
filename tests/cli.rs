@@ -35,7 +35,8 @@ fn broken_tarantool() {
     let mut cmd = Command::cargo_bin("picodata").unwrap();
     cmd.arg("run");
     cmd.env("PATH", temp_path);
-    cmd.timeout(Duration::from_secs(1)).assert().failure().stderr(format!(
+    cmd.timeout(Duration::from_secs(1));
+    cmd.assert().failure().stderr(format!(
         "{}/tarantool: {}\n",
         temp_path.display(),
         errno::Errno(libc::EACCES)
