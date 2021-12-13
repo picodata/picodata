@@ -32,7 +32,7 @@ fn tarantool_L() -> Lua {
 
 #[derive(Clone, Debug, hlua::Push, hlua::LuaRead, PartialEq)]
 pub struct Cfg {
-    pub listen: String,
+    pub listen: Option<String>,
     pub wal_dir: String,
     pub memtx_dir: String,
 }
@@ -40,7 +40,7 @@ pub struct Cfg {
 impl Default for Cfg {
     fn default() -> Self {
         Self {
-            listen: "3301".to_owned(),
+            listen: Some("3301".to_owned()),
             wal_dir: ".".to_owned(),
             memtx_dir: ".".to_owned(),
         }
@@ -50,15 +50,21 @@ impl Default for Cfg {
 #[allow(dead_code)]
 pub fn cfg() -> Option<Cfg> {
     let l = tarantool_L();
-    let cfg: Result<Cfg, _> = l.execute("return box.cfg");
+    let cfg: Result<Cfg, _> = l.eval("return box.cfg");
     match cfg {
         Ok(v) => Some(v),
         Err(_) => None,
     }
 }
 
-pub fn set_cfg(cfg: Cfg) {
+pub fn set_cfg(cfg: &Cfg) {
     let l = tarantool_L();
-    let box_cfg = LuaFunction::load(l, "box.cfg(...)").unwrap();
+    let box_cfg = LuaFunction::load(l, "return box.cfg(...)").unwrap();
     box_cfg.call_with_args(cfg).unwrap()
+}
+
+pub fn eval(code: &str) {
+    let l = tarantool_L();
+    let f = LuaFunction::load(l, code).unwrap();
+    f.call().unwrap()
 }

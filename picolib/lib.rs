@@ -36,12 +36,10 @@ fn main_run() {
         tarantool::version()
     );
 
-    let mut cfg = tarantool::Cfg::default();
-
-    std::env::var("PICODATA_LISTEN").ok().and_then(|v| {
-        cfg.listen = v.clone();
-        Some(v)
-    });
+    let mut cfg = tarantool::Cfg {
+        listen: None,
+        ..Default::default()
+    };
 
     std::env::var("PICODATA_DATA_DIR").ok().and_then(|v| {
         std::fs::create_dir_all(&v).unwrap();
@@ -50,6 +48,17 @@ fn main_run() {
         Some(v)
     });
 
-    println!("{:?}", cfg);
-    tarantool::set_cfg(cfg);
+    tarantool::set_cfg(&cfg);
+    tarantool::eval(
+        r#"
+        box.schema.user.grant('guest', 'super', nil, nil, {if_not_exists = true})
+    "#,
+    );
+
+    std::env::var("PICODATA_LISTEN").ok().and_then(|v| {
+        cfg.listen = Some(v.clone());
+        Some(v)
+    });
+
+    tarantool::set_cfg(&cfg);
 }
