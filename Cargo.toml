@@ -13,6 +13,7 @@ members = []
 clap = {version = "2.33", features = ["yaml"]}
 errno = "0.2.8"
 libc = "0.2.108"
+slog = "2.7.0"
 
 [dependencies.tarantool]
 path = "../tarantool-module/tarantool"

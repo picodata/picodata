@@ -1,3 +1,4 @@
+use slog::{debug, info, o};
 use std::os::raw::c_int;
 mod tarantool;
 
@@ -22,20 +23,6 @@ pub extern "C" fn luaopen_picolib(_l: std::ffi::c_void) -> c_int {
 }
 
 fn main_run() {
-    println!(
-        "Picodata running on {} {}",
-        tarantool::package(),
-        tarantool::version()
-    );
-
-    println!();
-    println!("Hello from Rust {}", std::module_path!());
-    println!(
-        "Running on {} {}",
-        tarantool::package(),
-        tarantool::version()
-    );
-
     let mut cfg = tarantool::Cfg {
         listen: None,
         ..Default::default()
@@ -52,6 +39,7 @@ fn main_run() {
     tarantool::eval(
         r#"
         box.schema.user.grant('guest', 'super', nil, nil, {if_not_exists = true})
+        box.cfg({log_level = 6})
     "#,
     );
 
@@ -61,4 +49,14 @@ fn main_run() {
     });
 
     tarantool::set_cfg(&cfg);
+
+    let logger = slog::Logger::root(tarantool::SlogDrain, o!());
+
+    info!(logger, "Hello, Rust!"; "module" => std::module_path!());
+    debug!(
+        logger,
+        "Picodata running on {} {}",
+        tarantool::package(),
+        tarantool::version()
+    );
 }
