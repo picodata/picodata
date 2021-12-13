@@ -57,7 +57,8 @@ pub enum SayLevel {
     Crit = 3,
     Warn = 4,
     Info = 5,
-    Debug = 6,
+    Verbose = 6,
+    Debug = 7,
 }
 
 impl From<Level> for SayLevel {
