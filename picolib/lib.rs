@@ -1,9 +1,16 @@
 use slog::{debug, info, o};
 use std::os::raw::c_int;
+use ::tarantool::hlua;
 mod tarantool;
 
+pub struct InnerTest {
+    pub name: &'static str,
+    pub body: fn(),
+}
+inventory::collect!(InnerTest);
+
 #[no_mangle]
-pub extern "C" fn luaopen_picolib(_l: std::ffi::c_void) -> c_int {
+pub extern "C" fn luaopen_picolib(l: *mut std::ffi::c_void) -> c_int {
     for (key, value) in std::env::vars() {
         if key.starts_with("PICODATA_") {
             println!("{}: {:?}", key, value);
@@ -19,7 +26,22 @@ pub extern "C" fn luaopen_picolib(_l: std::ffi::c_void) -> c_int {
         Err(_) => {}
     };
 
-    0
+    unsafe {
+        let l = hlua::Lua::from_existing_state(l, false);
+
+        let mut test = Vec::new();
+        for t in inventory::iter::<InnerTest> {
+            test.push((t.name, hlua::function0(t.body)));
+        }
+
+        let luamod: hlua::LuaTable<_> = (&l).push(vec![()]).read().unwrap();
+        luamod.set("VERSION", env!("CARGO_PKG_VERSION"));
+        luamod.set("test", test);
+
+        use hlua::AsLua;
+        (&l).push(&luamod).forget();
+        1
+    }
 }
 
 fn main_run() {

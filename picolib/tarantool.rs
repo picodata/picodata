@@ -22,6 +22,16 @@ pub fn package() -> &'static str {
     return c_str.to_str().unwrap();
 }
 
+inventory::submit!(crate::InnerTest {
+    name: "test_version",
+    body: || {
+        let l = tarantool_L();
+        let t: hlua::LuaTable<_> = l.eval("return require('tarantool')").unwrap();
+        assert_eq!(version(), t.get::<String, _>("version").unwrap());
+        assert_eq!(package(), t.get::<String, _>("package").unwrap());
+    }
+});
+
 #[allow(non_snake_case)]
 fn tarantool_L() -> Lua {
     unsafe {
