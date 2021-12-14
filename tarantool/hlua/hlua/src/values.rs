@@ -128,151 +128,15 @@ numeric_impl!{u8, ffi::lua_pushinteger, ffi::lua_tointeger}
 numeric_impl!{f64, ffi::lua_pushnumber, ffi::lua_tonumber}
 numeric_impl!{f32, ffi::lua_pushnumber, ffi::lua_tonumber}
 
-macro_rules! push_string_impl {
-    ($t:ty) => {
-        impl<L> Push<L> for $t
-        where
-            L: AsLua,
-        {
-            type Err = Void;      // TODO: use `!` instead (https://github.com/rust-lang/rust/issues/35121)
-
-            #[inline(always)]
-            fn push_to_lua(&self, lua: L) -> Result<PushGuard<L>, (Void, L)> {
-                unsafe {
-                    ffi::lua_pushlstring(
-                        lua.as_lua(),
-                        self.as_bytes().as_ptr() as _,
-                        self.as_bytes().len() as _
-                    );
-                    Ok(PushGuard::new(lua, 1))
-                }
-            }
-        }
-
-        impl<L> PushOne<L> for $t
-        where
-            L: AsLua,
-        {
-        }
-    }
-}
-
-push_string_impl!{ String }
-push_string_impl!{ AnyLuaString }
-push_string_impl!{ str }
-
-macro_rules! lua_read_string_impl {
-    ($(@lt $lt:tt,)? $s:ty, $from_slice:expr) => {
-        impl< $($lt,)? L> LuaRead<L> for $s
-        where
-            $( L: $lt, )?
-            L: AsLua,
-        {
-            #[inline(always)]
-            fn lua_read_at_position(lua: L, index: NonZeroI32) -> Result<$s, L> {
-                unsafe {
-                    let mut size = MaybeUninit::uninit();
-                    let type_code = ffi::lua_type(lua.as_lua(), index.into());
-                    // Because this function may be called while iterating over
-                    // a table we must make sure not to change the value on the
-                    // stack. So no number to string conversions are supported
-                    // anymore
-                    if type_code != ffi::LUA_TSTRING {
-                        return Err(lua)
-                    }
-                    let c_ptr = ffi::lua_tolstring(
-                        lua.as_lua(), index.into(), size.as_mut_ptr()
-                    );
-                    if c_ptr.is_null() {
-                        return Err(lua)
-                    }
-                    let slice = slice::from_raw_parts(c_ptr as _, size.assume_init());
-                    $from_slice(slice, lua)
-                }
-            }
-        }
-    }
-}
-
-lua_read_string_impl!{ String,
-    |slice: &[u8], lua| String::from_utf8(slice.to_vec()).map_err(|_| lua)
-}
-
-lua_read_string_impl!{ AnyLuaString,
-    |slice: &[u8], _| Ok(AnyLuaString(slice.to_vec()))
-}
-
-
-/// String on the Lua stack.
-///
-/// It is faster -but less convenient- to read a `StringInLua` rather than a `String` because you
-/// avoid any allocation.
-///
-/// The `StringInLua` derefs to `str`.
-///
-/// # Example
-///
-/// ```
-/// let mut lua = hlua::Lua::new();
-/// lua.set("a", "hello");
-///
-/// let s: hlua::StringInLua<_> = lua.get("a").unwrap();
-/// println!("{}", &*s);    // Prints "hello".
-/// ```
-#[derive(Debug, Eq, Ord, Hash)]
-pub struct StringInLua<'a, L: 'a> {
-    lua: L,
-    str_ref: &'a str,
-}
-
-impl<L> StringInLua<'_, L> {
-    pub fn into_inner(self) -> L {
-        self.lua
-    }
-}
-
-impl<'a, L> std::cmp::PartialEq for StringInLua<'a, L> {
-    fn eq(&self, other: &Self) -> bool {
-        self.str_ref.eq(other.str_ref)
-    }
-}
-
-impl<'a, L> std::cmp::PartialOrd for StringInLua<'a, L> {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        self.str_ref.partial_cmp(other.str_ref)
-    }
-}
-
-impl<'a, L> std::cmp::PartialEq<&'_ str> for StringInLua<'a, L> {
-    fn eq(&self, other: &&str) -> bool {
-        self.str_ref.eq(*other)
-    }
-}
-
-lua_read_string_impl!{ @lt 'a, StringInLua<'a, L>,
-    |slice: &'a [u8], lua|
-        match str::from_utf8(slice) {
-            Ok(str_ref) => Ok(StringInLua { lua, str_ref }),
-            Err(_) => return Err(lua)
-        }
-}
-
-impl<'a, L> Deref for StringInLua<'a, L> {
-    type Target = str;
-
-    #[inline]
-    fn deref(&self) -> &str {
-        &self.str_ref
-    }
-}
-
 macro_rules! impl_push_read {
     (
         $t:ty,
         $(push_to_lua(&$self1:ident, $lua1:ident) { $($push:tt)* })?
         $(push_into_lua($self2:ident, $lua2:ident) { $($push_into:tt)* })?
-        read_at_position($lua3:ident, $index1:ident) { $($read:tt)* }
-        $(read_at_maybe_zero_position($lua4:ident, $index2:ident) { $($read_mz:tt)* })?
+        $(
+            read_at_position($lua3:ident, $index1:ident) { $($read:tt)* }
+            $(read_at_maybe_zero_position($lua4:ident, $index2:ident) { $($read_mz:tt)* })?
+        )?
     ) => {
         $(
             impl<L> Push<L> for $t
@@ -314,22 +178,165 @@ macro_rules! impl_push_read {
             }
         )?
 
-        impl<L> LuaRead<L> for $t
-        where
-            L: AsLua,
-        {
-            #[inline(always)]
-            fn lua_read_at_position($lua3: L, $index1: NonZeroI32) -> Result<Self, L> {
-                $($read)*
-            }
-
-            $(
+        $(
+            impl<L> LuaRead<L> for $t
+            where
+                L: AsLua,
+            {
                 #[inline(always)]
-                fn lua_read_at_maybe_zero_position($lua4: L, $index2: i32) -> Result<Self, L> {
-                    $($read_mz)*
+                fn lua_read_at_position($lua3: L, $index1: NonZeroI32) -> Result<Self, L> {
+                    $($read)*
                 }
-            )?
+
+                $(
+                    #[inline(always)]
+                    fn lua_read_at_maybe_zero_position($lua4: L, $index2: i32) -> Result<Self, L> {
+                        $($read_mz)*
+                    }
+                )?
+            }
+        )?
+    }
+}
+
+macro_rules! push_string_impl {
+    ($self:ident, $lua:ident) => {
+        unsafe {
+            ffi::lua_pushlstring(
+                $lua.as_lua(),
+                $self.as_bytes().as_ptr() as _,
+                $self.as_bytes().len() as _
+            );
+            Ok(PushGuard::new($lua, 1))
         }
+    }
+}
+
+macro_rules! lua_read_string_impl {
+    ($lua:ident, $index:ident, $from_slice:expr) => {
+        unsafe {
+            let mut size = MaybeUninit::uninit();
+            let type_code = ffi::lua_type($lua.as_lua(), $index.into());
+            // Because this function may be called while iterating over
+            // a table we must make sure not to change the value on the
+            // stack. So no number to string conversions are supported
+            // anymore
+            if type_code != ffi::LUA_TSTRING {
+                return Err($lua)
+            }
+            let c_ptr = ffi::lua_tolstring(
+                $lua.as_lua(), $index.into(), size.as_mut_ptr()
+            );
+            if c_ptr.is_null() {
+                return Err($lua)
+            }
+            let slice = slice::from_raw_parts(c_ptr as _, size.assume_init());
+            $from_slice(slice, $lua)
+        }
+    }
+}
+
+impl_push_read!{ String,
+    push_to_lua(&self, lua) {
+        push_string_impl!(self, lua)
+    }
+    push_into_lua(self, lua) {
+        push_string_impl!(self, lua)
+    }
+    read_at_position(lua, index) {
+        lua_read_string_impl!(lua, index,
+            |slice: &[u8], lua| String::from_utf8(slice.to_vec()).map_err(|_| lua)
+        )
+    }
+}
+
+impl_push_read!{ AnyLuaString,
+    push_to_lua(&self, lua) {
+        push_string_impl!(self, lua)
+    }
+    push_into_lua(self, lua) {
+        push_string_impl!(self, lua)
+    }
+    read_at_position(lua, index) {
+        lua_read_string_impl!(lua, index,
+            |slice: &[u8], _| Ok(AnyLuaString(slice.to_vec()))
+        )
+    }
+}
+
+impl_push_read!{ str,
+    push_to_lua(&self, lua) {
+        push_string_impl!(self, lua)
+    }
+}
+
+/// String on the Lua stack.
+///
+/// It is faster -but less convenient- to read a `StringInLua` rather than a `String` because you
+/// avoid any allocation.
+///
+/// The `StringInLua` derefs to `str`.
+///
+/// # Example
+///
+/// ```
+/// let mut lua = hlua::Lua::new();
+/// lua.set("a", "hello");
+///
+/// let s: hlua::StringInLua<_> = lua.get("a").unwrap();
+/// println!("{}", &*s);    // Prints "hello".
+/// ```
+#[derive(Debug, Eq, Ord, Hash)]
+pub struct StringInLua<'a, L: 'a> {
+    lua: L,
+    str_ref: &'a str,
+}
+
+impl<L> StringInLua<'_, L> {
+    pub fn into_inner(self) -> L {
+        self.lua
+    }
+}
+
+impl<L> std::cmp::PartialEq for StringInLua<'_, L> {
+    fn eq(&self, other: &Self) -> bool {
+        self.str_ref.eq(other.str_ref)
+    }
+}
+
+impl<L> std::cmp::PartialOrd for StringInLua<'_, L> {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        self.str_ref.partial_cmp(other.str_ref)
+    }
+}
+
+impl<L> std::cmp::PartialEq<&'_ str> for StringInLua<'_, L> {
+    fn eq(&self, other: &&str) -> bool {
+        self.str_ref.eq(*other)
+    }
+}
+
+impl<'a, L> LuaRead<L> for StringInLua<'a, L>
+where
+    L: 'a + AsLua,
+{
+    fn lua_read_at_position(lua: L, index: NonZeroI32) -> Result<Self, L> {
+        lua_read_string_impl!(lua, index,
+            |slice: &'a [u8], lua|
+                match str::from_utf8(slice) {
+                    Ok(str_ref) => Ok(StringInLua { lua, str_ref }),
+                    Err(_) => return Err(lua)
+                }
+        )
+    }
+}
+
+impl<'a, L> Deref for StringInLua<'a, L> {
+    type Target = str;
+
+    #[inline]
+    fn deref(&self) -> &str {
+        &self.str_ref
     }
 }
 
@@ -619,11 +626,18 @@ impl_push_read!{Typename,
 
 /// String wrapper struct that can be used to read a lua value by converting it
 /// to string possibly using `__tostring` metamethod.
+#[derive(Debug, Clone)]
 pub struct ToString(pub String);
 
 impl From<ToString> for String {
     fn from(other: ToString) -> Self {
         other.0
+    }
+}
+
+impl std::fmt::Display for ToString {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+        write!(f, "{}", self.0)
     }
 }
 
