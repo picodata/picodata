@@ -20,6 +20,19 @@ use std::fmt::Display;
 use std::mem;
 use std::ptr;
 
+#[macro_export]
+macro_rules! function {
+    (@ret) => { () };
+    (@ret $t:ty) => { $t };
+    (($($p:ty),*) $(-> $r:ty)?) => {
+        $crate::Function<
+            fn($($p),*) $(-> $r)?,
+            ($($p,)*),
+            function!(@ret $($r)?)
+        >
+    }
+}
+
 macro_rules! impl_function {
     ($name:ident, $($p:ident),*) => (
         /// Wraps a type that implements `FnMut` so that it can be used by hlua.

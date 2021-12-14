@@ -1,5 +1,6 @@
 use tarantool::hlua::{
     self,
+    function,
     AsLua,
     Lua,
     LuaError,
@@ -17,7 +18,8 @@ pub fn simple_function() {
     fn ret5() -> i32 {
         5
     }
-    lua.set("ret5", function0(ret5));
+    let f: function![() -> i32] = function0(ret5);
+    lua.set("ret5", f);
 
     let val: i32 = lua.eval("return ret5()").unwrap();
     assert_eq!(val, 5);
@@ -29,7 +31,8 @@ pub fn one_argument() {
     fn plus_one(val: i32) -> i32 {
         val + 1
     }
-    lua.set("plus_one", function1(plus_one));
+    let f: function![(i32) -> i32] = function1(plus_one);
+    lua.set("plus_one", f);
 
     let val: i32 = lua.eval("return plus_one(3)").unwrap();
     assert_eq!(val, 4);
@@ -41,7 +44,8 @@ pub fn two_arguments() {
     fn add(val1: i32, val2: i32) -> i32 {
         val1 + val2
     }
-    lua.set("add", function2(add));
+    let f: function![(i32, i32) -> i32] = function2(add);
+    lua.set("add", f);
 
     let val: i32 = lua.eval("return add(3, 7)").unwrap();
     assert_eq!(val, 10);
@@ -68,7 +72,8 @@ pub fn return_result() {
     fn always_fails() -> Result<i32, &'static str> {
         Err("oops, problem")
     }
-    lua.set("always_fails", function0(always_fails));
+    let f: function![() -> Result<i32, &'static str>] = function0(always_fails);
+    lua.set("always_fails", &f);
 
     match lua.exec(r#"
         local res, err = always_fails();
@@ -147,6 +152,24 @@ pub fn closures_drop_env() {
     assert_eq!(unsafe { DID_DESTRUCTOR_RUN }, true);
 }
 
+static mut GLOBAL_DATA: i32 = 0;
+
+pub fn global_data() {
+    let lua = Lua::new();
+    let f: function![()] = Function::new(access_global_state);
+    let f: LuaFunction<_> = lua.push(f).read().unwrap();
+    let () = f.call().unwrap();
+    assert_eq!(unsafe { GLOBAL_DATA }, 1);
+    let () = f.call().unwrap();
+    assert_eq!(unsafe { GLOBAL_DATA }, 2);
+
+    fn access_global_state() {
+        unsafe {
+            GLOBAL_DATA += 1
+        }
+    }
+}
+
 pub fn push_callback_by_ref() {
     let lua = Lua::new();
 
@@ -169,7 +192,7 @@ pub fn push_callback_by_ref() {
 
     #[derive(hlua::Push)]
     struct S {
-        callback: Function<fn() -> i32, (), i32>,
+        callback: function![() -> i32],
     }
 
     let s = S { callback: Function::new(|| 42) };

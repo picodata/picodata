@@ -221,6 +221,7 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 hlua::functions_write::closures_lifetime,
                 hlua::functions_write::closures_extern_access,
                 hlua::functions_write::closures_drop_env,
+                hlua::functions_write::global_data,
                 hlua::functions_write::push_callback_by_ref,
 
                 hlua::any::read_numbers,
