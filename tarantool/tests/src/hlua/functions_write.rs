@@ -1,6 +1,10 @@
 use tarantool::hlua::{
+    self,
+    AsLua,
     Lua,
     LuaError,
+    LuaFunction,
+    Function,
     function0,
     function1,
     function2,
@@ -142,3 +146,35 @@ pub fn closures_drop_env() {
     }
     assert_eq!(unsafe { DID_DESTRUCTOR_RUN }, true);
 }
+
+pub fn push_callback_by_ref() {
+    let lua = Lua::new();
+
+    let f: LuaFunction<_> = lua.push(&function1(|x: i32| x + 1)).read().unwrap();
+    assert_eq!(f.call_with_args(2_i32).ok(), Some(3_i32));
+    let lua = f.into_inner();
+
+    let data = vec![1, 2, 3];
+
+    let f: LuaFunction<_> = lua.push(&function0(|| data[0] + data[1] + data[2])).read().unwrap();
+    assert_eq!(f.call().ok(), Some(6_i32));
+    let lua = f.into_inner();
+
+    // Doesn't compile, because the closure isn't Copy and cannot be moved from
+    // a reference
+    // let f: LuaFunction<_> = lua.push(&function0(move || data[0] + data[1] + data[2])).read().unwrap();
+    let f: LuaFunction<_> = lua.push(function0(move || data[0] + data[1] + data[2])).read().unwrap();
+    assert_eq!(f.call().ok(), Some(6_i32));
+    let lua = f.into_inner();
+
+    #[derive(hlua::Push)]
+    struct S {
+        callback: Function<fn() -> i32, (), i32>,
+    }
+
+    let s = S { callback: Function::new(|| 42) };
+
+    let t: hlua::LuaTable<_> = lua.push(&s).read().unwrap();
+    assert_eq!(t.call_method("callback", ()).ok(), Some(42_i32));
+}
+

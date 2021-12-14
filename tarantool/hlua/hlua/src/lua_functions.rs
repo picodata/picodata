@@ -212,6 +212,10 @@ where
             lua,
         }
     }
+
+    pub fn into_inner(self) -> L {
+        self.lua
+    }
 }
 
 impl<L: AsLua> AsLua for LuaFunction<L> {

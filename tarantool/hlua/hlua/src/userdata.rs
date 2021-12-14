@@ -43,7 +43,7 @@ pub unsafe fn push_some_userdata<T>(lua: *mut ffi::lua_State, value: T) {
     /// and if not it drops the value.
     unsafe extern "C" fn wrap_gc<T>(lua: *mut ffi::lua_State) -> i32 {
         let ud_ptr = ffi::lua_touserdata(lua, 1);
-        let ud = (ud_ptr as *mut UDBox<T>)
+        let ud = ud_ptr.cast::<UDBox<T>>()
             .as_mut()
             .expect("__gc called with userdata pointing to NULL");
         drop(ud.take());

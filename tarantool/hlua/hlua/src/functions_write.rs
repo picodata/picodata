@@ -10,6 +10,7 @@ use crate::{
     Push,
     PushInto,
     PushGuard,
+    PushOne,
     PushOneInto,
     Void,
 };
@@ -160,6 +161,7 @@ impl_function!(function10, A, B, C, D, E, F, G, H, I, J);
 /// let ret = lua.exec("res = assert(err())");
 /// assert!(ret.is_err());
 /// ```
+#[derive(Clone, Copy)]
 pub struct Function<F, P, R> {
     function: F,
     marker: PhantomData<(P, R)>,
@@ -171,23 +173,19 @@ impl<F, P, R> std::fmt::Debug for Function<F, P, R> {
     }
 }
 
+impl<F, P, R> Function<F, P, R> {
+    pub fn new(function: F) -> Self {
+        Self { function, marker: PhantomData }
+    }
+}
+
 /// Trait implemented on `Function` to mimic `FnMut`.
 ///
 /// We could in theory use the `FnMut` trait instead of this one, but it is still unstable.
-pub trait FunctionExt<P> {
+pub trait FnMutExt<P> {
     type Output;
 
     fn call_mut(&mut self, params: P) -> Self::Output;
-}
-
-// Called when an object inside Lua is being dropped.
-#[inline]
-extern "C" fn closure_destructor_wrapper<T>(lua: *mut ffi::lua_State) -> libc::c_int {
-    unsafe {
-        let obj = ffi::lua_touserdata(lua, -1);
-        ptr::drop_in_place((obj as *mut u8) as *mut T);
-        0
-    }
 }
 
 macro_rules! impl_function_ext {
@@ -196,7 +194,7 @@ macro_rules! impl_function_ext {
         impl_function_ext!{ $($tail)* }
     };
     ($($p:ident)*) => {
-        impl<Z, R $(,$p)*> FunctionExt<($($p,)*)> for Function<Z, ($($p,)*), R>
+        impl<Z, R $(,$p)*> FnMutExt<($($p,)*)> for Function<Z, ($($p,)*), R>
         where
             Z: FnMut($($p),*) -> R,
         {
@@ -223,32 +221,32 @@ macro_rules! impl_function_ext {
             fn push_into_lua(self, lua: L) -> Result<PushGuard<L>, (Void, L)> {
                 unsafe {
                     // pushing the function pointer as a userdata
-                    let lua_data = ffi::lua_newuserdata(lua.as_lua(), mem::size_of::<Z>() as _);
-                    let lua_data: *mut Z = mem::transmute(lua_data);
-                    ptr::write(lua_data, self.function);
+                    let ud = ffi::lua_newuserdata(lua.as_lua(), mem::size_of::<Z>() as _);
+                    ptr::write(ud.cast::<Z>(), self.function);
 
-                    // Creating a metatable.
-                    ffi::lua_newtable(lua.as_lua());
+                    if std::mem::needs_drop::<Z>() {
+                        // Creating a metatable.
+                        ffi::lua_newtable(lua.as_lua());
 
-                    // Index "__gc" in the metatable calls the object's destructor.
-
-                    // TODO: Could use std::intrinsics::needs_drop to avoid that if not needed.
-                    // After some discussion on IRC, it would be acceptable to add a reexport in libcore
-                    // without going through the RFC process.
-                    {
-                        match "__gc".push_to_lua(&lua) {
-                            Ok(p) => p.forget_internal(),
-                            Err(_) => unreachable!(),
-                        };
-
-                        ffi::lua_pushcfunction(lua.as_lua(), closure_destructor_wrapper::<Z>);
+                        // Index "__gc" in the metatable calls the object's destructor.
+                        lua.as_lua().push("__gc").forget_internal();
+                        ffi::lua_pushcfunction(lua.as_lua(), wrap_gc::<Z>);
                         ffi::lua_settable(lua.as_lua(), -3);
+
+                        ffi::lua_setmetatable(lua.as_lua(), -2);
                     }
-                    ffi::lua_setmetatable(lua.as_lua(), -2);
 
                     // pushing wrapper as a closure
                     ffi::lua_pushcclosure(lua.as_lua(), wrapper::<Self, _, R>, 1);
-                    Ok(PushGuard::new(lua, 1))
+                    return Ok(PushGuard::new(lua, 1));
+
+                    extern "C" fn wrap_gc<T>(lua: LuaState) -> i32 {
+                        unsafe {
+                            let obj = ffi::lua_touserdata(lua, -1);
+                            ptr::drop_in_place(obj.cast::<T>());
+                            0
+                        }
+                    }
                 }
             }
         }
@@ -257,6 +255,39 @@ macro_rules! impl_function_ext {
         where
             L: AsLua,
             Z: FnMut($($p),*) -> R,
+            ($($p,)*): for<'p> LuaRead<&'p InsideCallback>,
+            R: PushInto<InsideCallback> + 'static,
+        {
+        }
+
+        impl<L, Z, R $(,$p: 'static)*> Push<L> for Function<Z, ($($p,)*), R>
+        where
+            L: AsLua,
+            Z: FnMut($($p),*) -> R,
+            Z: Copy,
+            ($($p,)*): for<'p> LuaRead<&'p InsideCallback>,
+            R: PushInto<InsideCallback> + 'static,
+        {
+            type Err = Void;      // TODO: use `!` instead (https://github.com/rust-lang/rust/issues/35121)
+
+            fn push_to_lua(&self, lua: L) -> Result<PushGuard<L>, (Void, L)> {
+                unsafe {
+                    // pushing the function pointer as a userdata
+                    let ud = ffi::lua_newuserdata(lua.as_lua(), mem::size_of::<Z>() as _);
+                    ptr::write(ud.cast::<Z>(), self.function);
+
+                    // pushing wrapper as a closure
+                    ffi::lua_pushcclosure(lua.as_lua(), wrapper::<Self, _, R>, 1);
+                    Ok(PushGuard::new(lua, 1))
+                }
+            }
+        }
+
+        impl<L, Z, R $(,$p: 'static)*> PushOne<L> for Function<Z, ($($p,)*), R>
+        where
+            L: AsLua,
+            Z: FnMut($($p),*) -> R,
+            Z: Copy,
             ($($p,)*): for<'p> LuaRead<&'p InsideCallback>,
             R: PushInto<InsideCallback> + 'static,
         {
@@ -310,10 +341,9 @@ where
 }
 
 // this function is called when Lua wants to call one of our functions
-#[inline]
 extern "C" fn wrapper<T, A, R>(lua: LuaState) -> libc::c_int
 where
-    T: FunctionExt<A, Output = R>,
+    T: FnMutExt<A, Output = R>,
     A: for<'p> LuaRead<&'p InsideCallback> + 'static,
     R: PushInto<InsideCallback>,
 {
