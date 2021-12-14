@@ -251,9 +251,9 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 hlua::userdata::metatables,
                 hlua::userdata::multiple_userdata,
 
-                hlua::rust_tables::write,
-                hlua::rust_tables::write_map,
-                hlua::rust_tables::write_set,
+                hlua::rust_tables::push_vec,
+                hlua::rust_tables::push_hashmap,
+                hlua::rust_tables::push_hashset,
                 hlua::rust_tables::globals_table,
                 hlua::rust_tables::reading_vec_works,
                 hlua::rust_tables::reading_vec_from_sparse_table_doesnt_work,

@@ -14,6 +14,7 @@ use crate::{
 };
 
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::fmt::Debug;
 use std::hash::Hash;
 use std::iter;
 use std::num::NonZeroI32;
@@ -94,6 +95,10 @@ impl From<PushIterError<TuplePushError<Void, TuplePushError<Void, Void>>>> for V
         unreachable!("no way to create instance of Void")
     }
 }
+
+////////////////////////////////////////////////////////////////////////////////
+/// Vec
+////////////////////////////////////////////////////////////////////////////////
 
 impl<L, T> Push<L> for Vec<T>
 where
@@ -193,6 +198,10 @@ where
     }
 }
 
+////////////////////////////////////////////////////////////////////////////////
+/// [_]
+////////////////////////////////////////////////////////////////////////////////
+
 impl<L, T> Push<L> for [T]
 where
     L: AsLua,
@@ -213,6 +222,10 @@ where
 {
 }
 
+////////////////////////////////////////////////////////////////////////////////
+/// HashMap
+////////////////////////////////////////////////////////////////////////////////
+
 impl<L, K, V> LuaRead<L> for HashMap<K, V>
 where
     L: AsLua,
@@ -227,73 +240,115 @@ where
     }
 }
 
-// TODO: use an enum for the error to allow different error types for K and V
-impl<L, K, V> Push<L> for HashMap<K, V>
-where
-    L: AsLua,
-    K: PushOne<LuaState> + Eq + Hash,
-    K: std::fmt::Debug,
-    V: PushOne<LuaState>,
-    V: std::fmt::Debug,
-{
-    type Err = TuplePushError<
-        <K as Push<LuaState>>::Err,
-        <V as Push<LuaState>>::Err,
-    >;
-
-    #[inline]
-    fn push_to_lua(&self, lua: L) -> Result<PushGuard<L>, (Self::Err, L)> {
-        let res = push_iter(lua, self.into_iter())
+macro_rules! push_hashmap_impl {
+    ($self:expr, $lua:expr) => {
+        push_iter($lua, $self.into_iter())
             .map_err(|(e, lua)| match e {
                 PushIterError::TooManyValues => unreachable!("K and V implement PushOne"),
-                PushIterError::ValuePushError(e) => (e, lua),
-            });
-        match res {
-            Ok(g) => Ok(g),
-            Err((First(err), lua)) => Err((First(err), lua)),
-            Err((Other(err), lua)) => Err((Other(err.first()), lua)),
-        }
+                PushIterError::ValuePushError(First(e)) => (First(e), lua),
+                PushIterError::ValuePushError(Other(e)) => (Other(e.first()), lua),
+            })
     }
 }
 
-impl<L, K, V, E> PushOne<L> for HashMap<K, V>
+impl<L, K, V> Push<L> for HashMap<K, V>
 where
     L: AsLua,
-    K: PushOne<LuaState, Err = E> + Eq + Hash,
-    K: std::fmt::Debug,
-    V: PushOne<LuaState, Err = E>,
-    V: std::fmt::Debug,
+    K: PushOne<LuaState> + Eq + Hash + Debug,
+    V: PushOne<LuaState> + Debug,
 {
+    type Err = TuplePushError<K::Err, V::Err>;
+
+    #[inline]
+    fn push_to_lua(&self, lua: L) -> Result<PushGuard<L>, (Self::Err, L)> {
+        push_hashmap_impl!(self, lua)
+    }
+}
+
+impl<L, K, V> PushOne<L> for HashMap<K, V>
+where
+    L: AsLua,
+    K: PushOne<LuaState> + Eq + Hash + Debug,
+    V: PushOne<LuaState> + Debug,
+{
+}
+
+impl<L, K, V> PushInto<L> for HashMap<K, V>
+where
+    L: AsLua,
+    K: PushOneInto<LuaState> + Eq + Hash + Debug,
+    V: PushOneInto<LuaState> + Debug,
+{
+    type Err = TuplePushError<K::Err, V::Err>;
+
+    #[inline]
+    fn push_into_lua(self, lua: L) -> Result<PushGuard<L>, (Self::Err, L)> {
+        push_hashmap_impl!(self, lua)
+    }
+}
+
+impl<L, K, V> PushOneInto<L> for HashMap<K, V>
+where
+    L: AsLua,
+    K: PushOneInto<LuaState> + Eq + Hash + Debug,
+    V: PushOneInto<LuaState> + Debug,
+{
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// HashSet
+////////////////////////////////////////////////////////////////////////////////
+
+macro_rules! push_hashset_impl {
+    ($self:expr, $lua:expr) => {
+        push_iter($lua, $self.into_iter().zip(iter::repeat(true)))
+            .map_err(|(e, lua)| match e {
+                PushIterError::TooManyValues => unreachable!("K implements PushOne"),
+                PushIterError::ValuePushError(First(e)) => (e, lua),
+                PushIterError::ValuePushError(Other(_)) => {
+                    unreachable!("no way to create instance of Void")
+                }
+            })
+    }
 }
 
 impl<L, K> Push<L> for HashSet<K>
 where
     L: AsLua,
-    K: PushOne<LuaState> + Eq + Hash,
-    K: std::fmt::Debug,
+    K: PushOne<LuaState> + Eq + Hash + Debug,
 {
     type Err = K::Err;
 
     #[inline]
     fn push_to_lua(&self, lua: L) -> Result<PushGuard<L>, (K::Err, L)> {
-        let res = push_iter(lua, self.into_iter().zip(iter::repeat(true)))
-            .map_err(|(e, lua)| match e {
-                PushIterError::TooManyValues => unreachable!("K implements PushOne"),
-                PushIterError::ValuePushError(e) => (e, lua),
-            });
-        match res {
-            Ok(g) => Ok(g),
-            Err((First(err), lua)) => Err((err, lua)),
-            Err((Other(_), _)) => unreachable!("no way to create instance of Void"),
-        }
+        push_hashset_impl!(self, lua)
     }
 }
 
-impl<L, K, E> PushOne<L> for HashSet<K>
+impl<L, K> PushOne<L> for HashSet<K>
 where
     L: AsLua,
-    K: PushOne<LuaState, Err = E> + Eq + Hash,
-    K: std::fmt::Debug,
+    K: PushOne<LuaState> + Eq + Hash + Debug,
+{
+}
+
+impl<L, K> PushInto<L> for HashSet<K>
+where
+    L: AsLua,
+    K: PushOneInto<LuaState> + Eq + Hash + Debug,
+{
+    type Err = K::Err;
+
+    #[inline]
+    fn push_into_lua(self, lua: L) -> Result<PushGuard<L>, (K::Err, L)> {
+        push_hashset_impl!(self, lua)
+    }
+}
+
+impl<L, K> PushOneInto<L> for HashSet<K>
+where
+    L: AsLua,
+    K: PushOneInto<LuaState> + Eq + Hash + Debug,
 {
 }
 

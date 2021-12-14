@@ -14,58 +14,65 @@ use tarantool::hlua::{
     PushOne,
     TuplePushError,
 };
+use crate::common::BoolExt;
 
-pub fn write() {
+pub fn push_vec() {
     let lua = Lua::new();
 
-    lua.set("a", vec![9, 8, 7]);
+    let orig_vec = vec![9, 8, 7];
 
-    let table: LuaTable<_> = lua.get("a").unwrap();
+    // By reference
+    let table: LuaTable<_> = (&lua).push(&orig_vec).read().unwrap();
+    let values = table.iter::<i32, i32>().flatten().map(|(_, v)| v).collect::<Vec<_>>();
+    assert_eq!(values, orig_vec);
 
-    let values: Vec<(i32, i32)> = table.iter().filter_map(|e| e).collect();
-    assert_eq!(values, vec![(1, 9), (2, 8), (3, 7)]);
+    // By value
+    let table: LuaTable<_> = (&lua).push(orig_vec.clone()).read().unwrap();
+    let values = table.iter::<i32, i32>().flatten().map(|(_, v)| v).collect::<Vec<_>>();
+    assert_eq!(values, orig_vec);
 }
 
-pub fn write_map() {
+pub fn push_hashmap() {
     let lua = Lua::new();
 
-    let mut map = HashMap::new();
-    map.insert(5, 8);
-    map.insert(13, 21);
-    map.insert(34, 55);
+    let mut orig_map = HashMap::new();
+    orig_map.insert(5, 8);
+    orig_map.insert(13, 21);
+    orig_map.insert(34, 55);
 
-    lua.set("a", &map);
+    // By reference
+    let table: LuaTable<_> = (&lua).push(&orig_map).read().unwrap();
+    let values: HashMap<i32, i32> = table.iter().flatten().collect();
+    assert_eq!(values, orig_map);
 
-    let table: LuaTable<_> = lua.get("a").unwrap();
-
-    let values: HashMap<i32, i32> = table.iter().filter_map(|e| e).collect();
-    assert_eq!(values, map);
+    // By value
+    let table: LuaTable<_> = (&lua).push(orig_map.clone()).read().unwrap();
+    let values: HashMap<i32, i32> = table.iter().flatten().collect();
+    assert_eq!(values, orig_map);
 }
 
-pub fn write_set() {
+pub fn push_hashset() {
     let lua = Lua::new();
 
-    let mut set = HashSet::new();
-    set.insert(5);
-    set.insert(8);
-    set.insert(13);
-    set.insert(21);
-    set.insert(34);
-    set.insert(55);
+    let mut orig_set = HashSet::new();
+    orig_set.insert(5);
+    orig_set.insert(8);
+    orig_set.insert(13);
+    orig_set.insert(21);
+    orig_set.insert(34);
+    orig_set.insert(55);
 
-    lua.set("a", &set);
+    // Be reference
+    let table: LuaTable<_> = (&lua).push(&orig_set).read().unwrap();
+    let values: HashSet<i32> = table.iter::<i32, bool>().flatten()
+        .filter_map(|(v, is_set)| is_set.as_some(v)).collect();
+    assert_eq!(values, orig_set);
 
-    let table: LuaTable<_> = lua.get("a").unwrap();
-
-    let values: HashSet<i32> = table.iter()
-        .filter_map(|e| e)
-        .map(|(elem, set): (i32, bool)| {
-            assert!(set);
-            elem
-        })
-        .collect();
-
-    assert_eq!(values, set);
+    // Be value
+    let table: LuaTable<_> = (&lua).push(orig_set.clone()).read().unwrap();
+    let values: HashSet<i32> = table.iter::<i32, bool>().flatten()
+        .filter_map(|(v, is_set)| is_set.as_some(v)).collect();
+    assert_eq!(values, orig_set);
 }
 
 pub fn globals_table() {
