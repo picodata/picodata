@@ -72,9 +72,6 @@ pub fn eval(code: &str) {
 pub use self::slog::Drain as SlogDrain;
 
 mod slog {
-    use ::tarantool::log::say;
-    use ::tarantool::log::SayLevel;
-
     pub struct Drain;
 
     impl slog::Drain for Drain {
@@ -85,6 +82,12 @@ mod slog {
             record: &slog::Record,
             values: &slog::OwnedKVList,
         ) -> Result<Self::Ok, Self::Err> {
+            use ::tarantool::log::say;
+            use ::tarantool::log::SayLevel;
+
+            // Max level is constant = trace
+            // It's hardcoded in Cargo.toml dependency features
+            // In runtime it's managed by tarantool box.cfg.log_level
             let lvl = match record.level() {
                 slog::Level::Critical => SayLevel::Crit,
                 slog::Level::Error => SayLevel::Error,
