@@ -34,6 +34,36 @@ pub fn proc_macro_derive_push(input: proc_macro::TokenStream) -> proc_macro::Tok
     expanded.into()
 }
 
+#[proc_macro_derive(PushInto)]
+pub fn proc_macro_derive_push_into(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    let name = &input.ident;
+    let push_code = Info::new(&input).push();
+
+    let expanded = quote! {
+        impl<L> hlua::PushInto<L> for #name
+        where
+            L: hlua::AsLua,
+        {
+            type Err = hlua::Void;
+
+            fn push_into_lua(self, __lua: L)
+                -> ::std::result::Result<hlua::PushGuard<L>, (Self::Err, L)>
+            {
+                Ok(#push_code)
+            }
+        }
+
+        impl<L> hlua::PushOneInto<L> for #name
+        where
+            L: hlua::AsLua,
+        {
+        }
+    };
+
+    expanded.into()
+}
+
 #[proc_macro_derive(LuaRead)]
 pub fn proc_macro_derive_lua_read(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = parse_macro_input!(input as DeriveInput);

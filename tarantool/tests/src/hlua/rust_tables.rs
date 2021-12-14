@@ -10,6 +10,7 @@ use tarantool::hlua::{
     AnyLuaValue,
     AnyHashableLuaValue,
     Push,
+    PushInto,
     PushGuard,
     PushOne,
     TuplePushError,
@@ -356,6 +357,54 @@ pub fn derive_enum_push() {
     let t: LuaTable<_> = (&lua).read().unwrap();
     assert_eq!(t.get::<i32, _>("i").unwrap(), 420);
     assert_eq!(t.get::<String, _>("s").unwrap(), "blaze");
+}
+
+pub fn derive_push_into() {
+    #[derive(PushInto)]
+    enum E {
+        Num(i32),
+        Str(String),
+        Vec(f32, f32, f32),
+        Tuple((f32, f32, f32)),
+        S(S),
+        Struct {
+            i: i32,
+            s: String,
+            b: bool,
+        },
+        Hello,
+        Goodbye,
+    }
+
+    #[derive(PushInto, LuaRead, PartialEq, Eq, Debug)]
+    struct S { foo: i32, bar: String }
+
+    let lua = Lua::new();
+    let lua = lua.push(E::Num(69));
+    assert_eq!((&lua).read().ok(), Some(69));
+
+    let lua = lua.push(E::Str("hello".into()));
+    assert_eq!((&lua).read().ok(), Some("hello".to_string()));
+
+    let lua = lua.push(E::Vec(3.14, 2.71, 1.62));
+    assert_eq!((&lua).read().ok(), Some((3.14f32, 2.71f32, 1.62f32)));
+
+    let lua = lua.push(E::Tuple((2.71, 1.62, 3.14)));
+    assert_eq!((&lua).read().ok(), Some((2.71f32, 1.62f32, 3.14f32)));
+
+    let lua = lua.push(E::S(S { foo: 69, bar: "nice".into() }));
+    assert_eq!((&lua).read().ok(), Some(S { foo: 69, bar: "nice".into() }));
+
+    let lua = lua.push(E::Struct { i: 420, s: "blaze".into(), b: true });
+    let t: LuaTable<_> = (&lua).read().unwrap();
+    assert_eq!(t.get("i"), Some(420));
+    assert_eq!(t.get("s"), Some("blaze".to_string()));
+
+    let lua = lua.push(E::Hello);
+    assert_eq!((&lua).read().ok(), Some("hello".to_string()));
+
+    let lua = lua.push(E::Goodbye);
+    assert_eq!((&lua).read().ok(), Some("goodbye".to_string()));
 }
 
 pub fn derive_enum_lua_read() {
