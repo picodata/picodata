@@ -8,6 +8,7 @@
 //! - [Schema management](schema)
 //! - [Protocol implementation](net_box) (`net.box`): CRUD, stored procedure call, triggers
 //! - [Tuple utils](mod@tuple)
+//! - [Decimal numbers](mod@decimal)
 //! - [Logging](log) (see <https://docs.rs/log/>)
 //! - [Error handling](error)
 //!
@@ -173,6 +174,7 @@ extern crate serde;
 
 pub mod clock;
 pub mod coio;
+pub mod decimal;
 #[macro_use]
 pub mod error;
 #[doc(hidden)]

@@ -15,6 +15,7 @@ use tarantool::space::{Space, SpaceCreateOptions, SpaceFieldFormat, SpaceFieldTy
 
 mod bench_bulk_insert;
 mod common;
+mod decimal;
 mod test_box;
 mod test_coio;
 mod test_error;
@@ -180,6 +181,16 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
             }]
         } else {
             tests![
+                decimal::from_lua,
+                decimal::to_lua,
+                decimal::from_string,
+                decimal::from_tuple,
+                decimal::to_tuple,
+                decimal::from_num,
+                decimal::to_num,
+                decimal::cmp,
+                decimal::ops,
+
                 hlua::lua_functions::basic,
                 hlua::lua_functions::two_functions_at_the_same_time,
                 hlua::lua_functions::args,
