@@ -253,6 +253,7 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 hlua::userdata::metatables,
                 hlua::userdata::multiple_userdata,
 
+                hlua::rust_tables::push_array,
                 hlua::rust_tables::push_vec,
                 hlua::rust_tables::push_hashmap,
                 hlua::rust_tables::push_hashset,

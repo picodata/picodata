@@ -199,7 +199,7 @@ where
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-/// [_]
+/// [T]
 ////////////////////////////////////////////////////////////////////////////////
 
 impl<L, T> Push<L> for [T]
@@ -219,6 +219,50 @@ impl<L, T> PushOne<L> for [T]
 where
     L: AsLua,
     T: Push<LuaState>,
+{
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// [T; N]
+////////////////////////////////////////////////////////////////////////////////
+
+impl<L, T, const N: usize> Push<L> for [T; N]
+where
+    L: AsLua,
+    T: Push<LuaState>,
+{
+    type Err = PushIterError<T::Err>;
+
+    #[inline]
+    fn push_to_lua(&self, lua: L) -> Result<PushGuard<L>, (Self::Err, L)> {
+        push_iter(lua, self.iter())
+    }
+}
+
+impl<L, T, const N: usize> PushOne<L> for [T; N]
+where
+    L: AsLua,
+    T: Push<LuaState>,
+{
+}
+
+impl<L, T, const N: usize> PushInto<L> for [T; N]
+where
+    L: AsLua,
+    T: PushInto<LuaState>,
+{
+    type Err = PushIterError<T::Err>;
+
+    #[inline]
+    fn push_into_lua(self, lua: L) -> Result<PushGuard<L>, (Self::Err, L)> {
+        push_iter(lua, std::array::IntoIter::new(self))
+    }
+}
+
+impl<L, T, const N: usize> PushOneInto<L> for [T; N]
+where
+    L: AsLua,
+    T: PushInto<LuaState>,
 {
 }
 

@@ -17,6 +17,27 @@ use tarantool::hlua::{
 };
 use crate::common::BoolExt;
 
+pub fn push_array() {
+    let lua = Lua::new();
+
+    // Slice
+    let data: &[i32] = &[9, 8, 7];
+    let table: LuaTable<_> = (&lua).push(data).read().unwrap();
+    let values = table.iter::<i32, i32>().flatten().map(|(_, v)| v).collect::<Vec<_>>();
+    assert_eq!(values, vec![9, 8, 7]);
+
+    // By reference
+    let data: &[i32; 3] = &[9, 8, 7];
+    let table: LuaTable<_> = (&lua).push(data).read().unwrap();
+    let values = table.iter::<i32, i32>().flatten().map(|(_, v)| v).collect::<Vec<_>>();
+    assert_eq!(values, vec![9, 8, 7]);
+
+    // By value
+    let table: LuaTable<_> = (&lua).push([9, 8, 7]).read().unwrap();
+    let values = table.iter::<i32, i32>().flatten().map(|(_, v)| v).collect::<Vec<_>>();
+    assert_eq!(values, vec![9, 8, 7]);
+}
+
 pub fn push_vec() {
     let lua = Lua::new();
 
