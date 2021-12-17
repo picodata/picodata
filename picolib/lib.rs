@@ -101,7 +101,21 @@ fn main_run() {
     tarantool::eval(
         r#"
         box.schema.user.grant('guest', 'super', nil, nil, {if_not_exists = true})
-        box.schema.func.create('raft_propose', {language = "C", if_not_exists = true})
+        box.schema.space.create('raft_log', {
+            if_not_exists = true,
+            is_local = true,
+            format = {
+                {name = 'raft_index', type = 'unsigned', is_nullable = false},
+                {name = 'raft_term', type = 'unsigned', is_nullable = false},
+                {name = 'raft_id', type = 'unsigned', is_nullable = false},
+                {name = 'command', type = 'string', is_nullable = false},
+                {name = 'data', type = 'any', is_nullable = false},
+            }
+        })
+        box.space.raft_log:create_index('pk', {
+            if_not_exists = true,
+            parts = {{'raft_index'}},
+        })
         box.cfg({log_level = 6})
     "#,
     );
@@ -243,9 +257,40 @@ fn on_ready(
     if !ready.entries().is_empty() {
         // Append entries to the Raft log.
         let entries = ready.entries();
+        use serde::{Deserialize, Serialize};
+        use ::tarantool::space::Space;
+        use ::tarantool::tuple::{AsTuple, FunctionArgs, FunctionCtx};
+
+        let mut space = Space::find("raft_log").unwrap();
+
+        #[derive(Serialize, Deserialize)]
+        struct Row {
+            pub raft_index: u64,
+            pub raft_term: u64,
+            pub raft_id: u64,
+            pub command: String,
+            pub data: Vec<u8>,
+        }
+
+        impl Row {
+            fn from(e: &Entry) -> Self {
+                Self {
+                    raft_index: e.get_index(),
+                    raft_term: e.get_term(),
+                    raft_id: 1,
+                    command: format!("{:?}", e.get_entry_type()),
+                    data: Vec::from(e.get_data()),
+                }
+            }
+        }
+
+        impl AsTuple for Row {}
+
         for entry in entries {
+            space.insert(&Row::from(entry)).unwrap();
             info!(logger, "--- uncommitted_entry: {:?}", entry);
         }
+
 
         store.wl().append(entries).unwrap();
     }
