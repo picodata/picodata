@@ -133,3 +133,76 @@ mod slog {
         }
     }
 }
+
+pub use self::raft::RaftNode;
+pub use self::raft::NodeStorage;
+
+mod raft {
+    use slog::{debug, o};
+    use raft::prelude::*;
+    use raft::Error as RaftError;
+    use raft::storage::MemStorage;
+    use raft::eraftpb::ConfState;
+
+    pub struct NodeStorage(pub MemStorage);
+    pub type RaftNode = RawNode<NodeStorage>;
+
+    impl NodeStorage {
+        pub fn new() -> Self {
+            let stor = MemStorage::new_with_conf_state(ConfState::from((vec![1], vec![])));
+            Self(stor)
+        }
+    }
+
+    impl Storage for NodeStorage {
+        fn initial_state(&self) -> Result<RaftState, RaftError> {
+            let ret = self.0.initial_state();
+            let logger = slog::Logger::root(crate::tarantool::SlogDrain, o!());
+            debug!(logger, "+++ initial_state() -> {:?}", ret);
+            ret
+        }
+
+        fn entries(
+            &self,
+            low: u64,
+            high: u64,
+            max_size: impl Into<Option<u64>>,
+        ) -> Result<Vec<Entry>, RaftError> {
+            let max_size: Option<u64> = max_size.into();
+            let ret = self.0.entries(low, high, max_size);
+            let logger = slog::Logger::root(crate::tarantool::SlogDrain, o!());
+            debug!(logger, "+++ entries(low={}, high={}, max_size={:?}) -> {:?}",
+                low, high, max_size, ret
+            );
+            ret
+        }
+
+        fn term(&self, idx: u64) -> Result<u64, RaftError> {
+            let ret = self.0.term(idx);
+            let logger = slog::Logger::root(crate::tarantool::SlogDrain, o!());
+            debug!(logger, "+++ term(idx={}) -> {:?}", idx, ret);
+            ret
+        }
+
+        fn first_index(&self) -> Result<u64, RaftError> {
+            let ret = self.0.first_index();
+            let logger = slog::Logger::root(crate::tarantool::SlogDrain, o!());
+            debug!(logger, "+++ first_index() -> {:?}", ret);
+            ret
+        }
+
+        fn last_index(&self) -> Result<u64, RaftError> {
+            let ret = self.0.last_index();
+            let logger = slog::Logger::root(crate::tarantool::SlogDrain, o!());
+            debug!(logger, "+++ last_index() -> {:?}", ret);
+            ret
+        }
+
+        fn snapshot(&self, request_index: u64) -> Result<Snapshot, RaftError> {
+            let ret = self.0.snapshot(request_index);
+            let logger = slog::Logger::root(crate::tarantool::SlogDrain, o!());
+            debug!(logger, "+++ snapshot(idx={}) -> {:?}", request_index, ret);
+            ret
+        }
+    }
+}
