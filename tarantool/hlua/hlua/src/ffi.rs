@@ -623,6 +623,12 @@ extern "C" {
     /// See also: [`luaL_pushcdata`]
     /// **Returns** memory associated with this cdata
     pub fn luaL_checkcdata(l: *mut lua_State, idx: c_int, ctypeid: *mut u32) -> *mut c_void;
+
+    /// Return CTypeID (FFI) of given CDATA type
+    /// `ctypename` is a C type name as string (e.g. "struct request",
+    /// "uint32_t", etc.).
+    /// See also: [`luaL_pushcdata`], [`luaL_checkcdata`]
+    pub fn luaL_ctypeid(l: *mut lua_State, ctypename: *const c_schar) -> u32;
 }
 
 extern "C" {

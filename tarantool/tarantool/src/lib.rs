@@ -191,6 +191,7 @@ pub mod space;
 pub mod transaction;
 pub mod tuple;
 pub mod util;
+pub mod uuid;
 
 pub use hlua;
 

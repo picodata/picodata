@@ -28,6 +28,7 @@ mod test_session;
 mod test_transaction;
 mod test_tuple;
 mod hlua;
+mod uuid;
 
 macro_rules! tests {
     (@should_panic should_panic) => { ShouldPanic::Yes };
@@ -437,6 +438,11 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 test_session::test_euid,
                 test_raft::test_bootstrap_solo,
                 test_raft::test_bootstrap_2n,
+
+                uuid::to_tuple,
+                uuid::from_tuple,
+                uuid::to_lua,
+                uuid::from_lua,
             ]
         },
     )
