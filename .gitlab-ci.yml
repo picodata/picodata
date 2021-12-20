@@ -1,0 +1,69 @@
+stages:
+  - prebuild
+  - build
+
+workflow:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+
+variables:
+  GIT_SUBMODULE_STRATEGY: recursive
+  BASE_IMAGE: build-base:latest
+  CARGO_INCREMENTAL: 0
+  CARGO_HOME: ${CI_PROJECT_DIR}/.cargo
+
+  #
+  # See also:
+  #   GitLab CI/CD predefined variables
+  #   https://docs.gitlab.com/ee/ci/variables/predefined_variables.html
+  #
+  # CI_COMMIT_SHA: The commit revision the project is built for
+  # CI_REGISTRY: The address of the GitLab Container Registry
+  # CI_REGISTRY_USER: The username to push containers to the project’s
+  #   GitLab Container Registry
+  # CI_REGISTRY_PASSWORD: The password to push containers to the project’s
+  #   GitLab Container Registry
+  # CI_REGISTRY_IMAGE: The address of the project’s Container Registry
+
+docker-build-base:
+  stage: prebuild
+  image: docker:20
+  tags:
+    - docker
+  services:
+    - docker:dind
+  rules:
+    - # if
+      changes:
+        - docker-build-base/Dockerfile
+  before_script:
+    - >
+      echo -n ${CI_REGISTRY_PASSWORD} | docker login
+      -u ${CI_REGISTRY_USER}
+      --password-stdin
+      ${CI_REGISTRY}
+  script:
+    - docker pull ${CI_REGISTRY_IMAGE}/${BASE_IMAGE} || true
+    - >
+      docker build
+      --pull
+      --label GIT_COMMIT=${CI_COMMIT_SHA}
+      --cache-from ${CI_REGISTRY_IMAGE}/${BASE_IMAGE}
+      -t ${CI_REGISTRY_IMAGE}/${BASE_IMAGE}
+      -f ./docker-build-base/Dockerfile
+      ./docker-build-base
+    - docker push ${CI_REGISTRY_IMAGE}/${BASE_IMAGE}
+
+build:
+  image: ${CI_REGISTRY_IMAGE}/${BASE_IMAGE}
+  stage: build
+  script:
+    - cargo -V
+    - cargo build
+    - cargo test
+  cache:
+    paths:
+      - target
+      - Cargo.lock
+      - .cargo

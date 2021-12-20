@@ -6,9 +6,6 @@ autotests = false
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
-[workspace]
-members = []
-
 [dependencies]
 clap = {version = "2.33", features = ["yaml"]}
 errno = "0.2.8"
@@ -20,7 +17,7 @@ version = "2.7.0"
 features = ["max_level_trace", "release_max_level_trace"]
 
 [dependencies.tarantool]
-path = "../tarantool-module/tarantool"
+path = "./tarantool/tarantool"
 version = "0.4.2"
 
 [dev-dependencies]

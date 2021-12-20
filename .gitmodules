@@ -1,0 +1,3 @@
+[submodule "tarantool"]
+	path = tarantool
+	url = ../tarantool-module.git
