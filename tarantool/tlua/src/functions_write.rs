@@ -35,7 +35,7 @@ macro_rules! function {
 
 macro_rules! impl_function {
     ($name:ident, $($p:ident),*) => (
-        /// Wraps a type that implements `FnMut` so that it can be used by hlua.
+        /// Wraps a type that implements `FnMut` so that it can be used by tlua.
         ///
         /// This is needed because of a limitation in Rust's inferrence system. Even though in
         /// practice functions and closures always have a fixed number of parameters, the `FnMut`
@@ -75,7 +75,7 @@ impl_function!(function10, A, B, C, D, E, F, G, H, I, J);
 /// Example:
 ///
 /// ```
-/// let f: hlua::Function<_, _, _> = hlua::function2(move |a: i32, b: i32| { });
+/// let f: tlua::Function<_, _, _> = tlua::function2(move |a: i32, b: i32| { });
 /// ```
 ///
 /// > **Note**: In practice you will never need to build an object of type `Function` as an
@@ -85,10 +85,10 @@ impl_function!(function10, A, B, C, D, E, F, G, H, I, J);
 /// You can push a `Function` object like any other value:
 ///
 /// ```
-/// use hlua::Lua;
-/// let mut lua = Lua::new();
+/// use tlua::Lua;
+/// let lua = Lua::new();
 ///
-/// lua.set("foo", hlua::function1(move |a: i32| -> i32 {
+/// lua.set("foo", tlua::function1(move |a: i32| -> i32 {
 ///     a * 5
 /// }));
 /// ```
@@ -96,9 +96,9 @@ impl_function!(function10, A, B, C, D, E, F, G, H, I, J);
 /// The function can then be called from Lua:
 ///
 /// ```
-/// # use hlua::Lua;
-/// # let mut lua = Lua::new();
-/// # lua.set("foo", hlua::function1(move |a: i32| -> i32 { a * 5 }));
+/// # use tlua::Lua;
+/// # let lua = Lua::new();
+/// # lua.set("foo", tlua::function1(move |a: i32| -> i32 { a * 5 }));
 /// lua.exec("a = foo(12)").unwrap();
 ///
 /// assert_eq!(lua.get::<i32, _>("a").unwrap(), 60);
@@ -108,9 +108,9 @@ impl_function!(function10, A, B, C, D, E, F, G, H, I, J);
 /// for example:
 ///
 /// ```
-/// # use hlua::Lua;
-/// # let mut lua = Lua::new();
-/// # lua.set("foo", hlua::function1(move |a: i32| -> i32 { a * 5 }));
+/// # use tlua::Lua;
+/// # let lua = Lua::new();
+/// # lua.set("foo", tlua::function1(move |a: i32| -> i32 { a * 5 }));
 /// lua.exec("bar = foo; a = bar(12)").unwrap();
 /// ```
 ///
@@ -122,10 +122,10 @@ impl_function!(function10, A, B, C, D, E, F, G, H, I, J);
 /// of the tuple will be returned in order.
 ///
 /// ```
-/// use hlua::Lua;
-/// let mut lua = Lua::new();
+/// use tlua::Lua;
+/// let lua = Lua::new();
 ///
-/// lua.set("values", hlua::function0(move || -> (i32, i32, i32) {
+/// lua.set("values", tlua::function0(move || -> (i32, i32, i32) {
 ///     (12, 24, 48)
 /// }));
 ///
@@ -145,11 +145,11 @@ impl_function!(function10, A, B, C, D, E, F, G, H, I, J);
 /// Lua string.
 ///
 /// ```
-/// use hlua::Lua;
-/// let mut lua = Lua::new();
+/// use tlua::Lua;
+/// let lua = Lua::new();
 /// lua.openlibs();
 ///
-/// lua.set("err", hlua::function0(move || -> Result<i32, &'static str> {
+/// lua.set("err", tlua::function0(move || -> Result<i32, &'static str> {
 ///     Err("something wrong happened")
 /// }));
 ///
@@ -163,11 +163,11 @@ impl_function!(function10, A, B, C, D, E, F, G, H, I, J);
 /// This also allows easy use of `assert` to act like `.unwrap()` in Rust:
 ///
 /// ```
-/// use hlua::Lua;
-/// let mut lua = Lua::new();
+/// use tlua::Lua;
+/// let lua = Lua::new();
 /// lua.openlibs();
 ///
-/// lua.set("err", hlua::function0(move || -> Result<i32, &'static str> {
+/// lua.set("err", tlua::function0(move || -> Result<i32, &'static str> {
 ///     Err("something wrong happened")
 /// }));
 ///

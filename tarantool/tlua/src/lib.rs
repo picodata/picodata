@@ -1,4 +1,5 @@
-//! High-level zero-cost bindings for Lua
+//! High-level zero-cost bindings for Lua (fork of
+//! [hlua](https://crates.io/crates/hlua))
 //!
 //! Lua is an interpreted programming language. This crate allows you to execute Lua code.
 //!
@@ -12,7 +13,7 @@
 //! For example:
 //!
 //! ```
-//! use hlua::Lua;
+//! use tlua::Lua;
 //!
 //! let mut lua = Lua::new();
 //! lua.exec("a = 12 * 5").unwrap();
@@ -56,7 +57,7 @@
 //! [the `set` method](struct.Lua.html#method.set):
 //!
 //! ```
-//! # use hlua::Lua;
+//! # use tlua::Lua;
 //! # let mut lua = Lua::new();
 //! lua.set("a", 50);
 //! ```
@@ -85,7 +86,7 @@
 //! [the `get` method](struct.Lua.html#method.get):
 //!
 //! ```no_run
-//! # use hlua::Lua;
+//! # use tlua::Lua;
 //! # let mut lua = Lua::new();
 //! let a: i32 = lua.get("a").unwrap();
 //! ```
@@ -129,7 +130,7 @@ pub use tuples::TuplePushError;
 pub use userdata::UserdataOnStack;
 pub use userdata::{push_userdata, read_userdata, push_some_userdata};
 pub use values::{StringInLua, Nil, Null, True, False, Typename, ToString};
-pub use hlua_derive::*;
+pub use ::tlua_derive::*;
 
 pub type LuaTableMap = std::collections::HashMap<AnyHashableLuaValue, AnyLuaValue>;
 pub type LuaSequence = Vec<AnyLuaValue>;
@@ -360,7 +361,7 @@ pub trait AsLua {
         <I as Iterator>::Item: PushInto<LuaState>,
         <<I as Iterator>::Item as PushInto<LuaState>>::Err: Into<Void>,
     {
-        crate::rust_tables::push_iter(self, iterator).map_err(|(_, lua)| lua)
+        rust_tables::push_iter(self, iterator).map_err(|(_, lua)| lua)
     }
 
     /// Push `iterator` onto the lua stack as a lua table.
@@ -392,7 +393,7 @@ pub trait AsLua {
         I: Iterator,
         <I as Iterator>::Item: PushInto<LuaState>,
     {
-        crate::rust_tables::push_iter(self, iterator)
+        rust_tables::push_iter(self, iterator)
     }
 
     #[inline(always)]
@@ -739,7 +740,7 @@ impl Lua {
     /// # Example
     ///
     /// ```
-    /// use hlua::Lua;
+    /// use tlua::Lua;
     /// let mut lua = Lua::new();
     /// ```
     ///
@@ -792,7 +793,7 @@ impl Lua {
     /// # Example
     ///
     /// ```
-    /// use hlua::Lua;
+    /// use tlua::Lua;
     /// let mut lua = Lua::new();
     /// lua.openlibs();
     /// ```
@@ -903,7 +904,7 @@ impl Lua {
     /// # Examples
     ///
     /// ```
-    /// use hlua::Lua;
+    /// use tlua::Lua;
     /// let mut lua = Lua::new();
     ///
     /// let twelve: i32 = lua.eval("return 3 * 4;").unwrap();
@@ -928,7 +929,7 @@ impl Lua {
     /// # Examples
     ///
     /// ```
-    /// use hlua::Lua;
+    /// use tlua::Lua;
     /// let mut lua = Lua::new();
     /// lua.exec("function multiply_by_two(a) return a * 2 end").unwrap();
     /// lua.exec("twelve = multiply_by_two(6)").unwrap();
@@ -953,7 +954,7 @@ impl Lua {
     ///
     /// ```no_run
     /// use std::fs::File;
-    /// use hlua::Lua;
+    /// use tlua::Lua;
     ///
     /// let mut lua = Lua::new();
     /// let script = File::open("script.lua").unwrap();
@@ -982,7 +983,7 @@ impl Lua {
     ///
     /// ```no_run
     /// use std::fs::File;
-    /// use hlua::Lua;
+    /// use tlua::Lua;
     ///
     /// let mut lua = Lua::new();
     /// let script = File::open("script.lua").unwrap();
@@ -1006,7 +1007,7 @@ impl Lua {
     /// # Example
     ///
     /// ```
-    /// use hlua::Lua;
+    /// use tlua::Lua;
     /// let mut lua = Lua::new();
     /// lua.exec("a = 5").unwrap();
     /// let a: i32 = lua.get("a").unwrap();
@@ -1053,7 +1054,7 @@ impl Lua {
     /// # Example
     ///
     /// ```
-    /// use hlua::Lua;
+    /// use tlua::Lua;
     /// let mut lua = Lua::new();
     ///
     /// lua.set("a", 12);
@@ -1112,7 +1113,7 @@ impl Lua {
     /// # Example
     ///
     /// ```
-    /// use hlua::Lua;
+    /// use tlua::Lua;
     /// let mut lua = Lua::new();
     /// lua.openlibs();     // Necessary for `ipairs`.
     ///
@@ -1164,7 +1165,7 @@ impl Lua {
     /// The function can be used to write global variables, just like `set`.
     ///
     /// ```
-    /// use hlua::Lua;
+    /// use tlua::Lua;
     /// let mut lua = Lua::new();
     /// lua.globals_table().set("a", 5);
     /// assert_eq!(lua.get::<i32, _>("a"), Some(5));
@@ -1174,13 +1175,13 @@ impl Lua {
     /// global variables. See TODO for more info.
     ///
     /// ```
-    /// use hlua::Lua;
-    /// use hlua::AnyLuaValue;
+    /// use tlua::Lua;
+    /// use tlua::AnyLuaValue;
     ///
     /// let mut lua = Lua::new();
     /// {
     ///     let mut metatable = lua.globals_table().get_or_create_metatable();
-    ///     metatable.set("__index", hlua::function2(|_: AnyLuaValue, var: String| -> AnyLuaValue {
+    ///     metatable.set("__index", tlua::function2(|_: AnyLuaValue, var: String| -> AnyLuaValue {
     ///         println!("The user tried to access the variable {:?}", var);
     ///         AnyLuaValue::LuaNumber(48.0)
     ///     }));

@@ -1,4 +1,4 @@
-use tarantool::hlua::{
+use tarantool::tlua::{
     Lua,
     LuaTable,
     PushGuard,

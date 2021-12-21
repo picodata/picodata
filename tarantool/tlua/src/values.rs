@@ -280,10 +280,10 @@ impl_push_read!{ str,
 /// # Example
 ///
 /// ```
-/// let mut lua = hlua::Lua::new();
+/// let mut lua = tlua::Lua::new();
 /// lua.set("a", "hello");
 ///
-/// let s: hlua::StringInLua<_> = lua.get("a").unwrap();
+/// let s: tlua::StringInLua<_> = lua.get("a").unwrap();
 /// println!("{}", &*s);    // Prints "hello".
 /// ```
 #[derive(Debug, Eq, Ord, Hash)]

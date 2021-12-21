@@ -193,11 +193,11 @@ pub mod tuple;
 pub mod util;
 pub mod uuid;
 
-pub use hlua;
+pub use tlua;
 
-pub fn global_lua() -> hlua::Lua {
+pub fn global_lua() -> tlua::Lua {
     unsafe {
-        hlua::Lua::from_existing_state(ffi::tarantool::luaT_state(), false)
+        tlua::Lua::from_existing_state(ffi::tarantool::luaT_state(), false)
     }
 }
 

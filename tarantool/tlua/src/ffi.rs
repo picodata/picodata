@@ -87,7 +87,7 @@ pub type lua_Integer = libc::ptrdiff_t;
 /// numerical arguments and returns their average and sum:
 ///
 /// ```
-/// unsafe extern "C" fn foo(l: *mut lua_State) {
+/// unsafe extern "C" fn foo(l: *mut lua_State) -> i32 {
 ///     let n = lua_gettop(l);    /* number of arguments */
 ///     let mut sum: lua_Number = 0;
 ///     let i: i32;

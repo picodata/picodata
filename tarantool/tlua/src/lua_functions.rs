@@ -35,8 +35,8 @@ use crate::{
 /// # Example
 ///
 /// ```
-/// let mut lua = hlua::Lua::new();
-/// lua.checked_set("hello", hlua::LuaCode("return 5")).unwrap();
+/// let mut lua = tlua::Lua::new();
+/// lua.checked_set("hello", tlua::LuaCode("return 5")).unwrap();
 ///
 /// let r: i32 = lua.eval("return hello();").unwrap();
 /// assert_eq!(r, 5);
@@ -73,11 +73,11 @@ where
 /// ```
 /// use std::io::Cursor;
 ///
-/// let mut lua = hlua::Lua::new();
+/// let mut lua = tlua::Lua::new();
 ///
-/// lua.set("call_rust", hlua::function0(|| -> hlua::LuaCodeFromReader<Cursor<String>> {
+/// lua.set("call_rust", tlua::function0(|| -> tlua::LuaCodeFromReader<Cursor<String>> {
 ///     let lua_code = "return 18;";
-///     return hlua::LuaCodeFromReader(Cursor::new(lua_code.to_owned()));
+///     return tlua::LuaCodeFromReader(Cursor::new(lua_code.to_owned()));
 /// }));
 ///
 /// let r: i32 = lua.eval("local lua_func = call_rust(); return lua_func();").unwrap();
@@ -188,10 +188,10 @@ where
 /// # Example
 ///
 /// ```
-/// let mut lua = hlua::Lua::new();
+/// let mut lua = tlua::Lua::new();
 /// lua.exec("function foo() return 12 end").unwrap();
 ///
-/// let mut foo: hlua::LuaFunction<_> = lua.get("foo").unwrap();
+/// let mut foo: tlua::LuaFunction<_> = lua.get("foo").unwrap();
 /// let result: i32 = foo.call().unwrap();
 /// assert_eq!(result, 12);
 /// ```
@@ -296,10 +296,10 @@ where
     /// # Example
     ///
     /// ```
-    /// let lua = hlua::Lua::new();
+    /// let lua = tlua::Lua::new();
     /// lua.exec("function sub(a, b) return a - b end").unwrap();
     ///
-    /// let foo: hlua::LuaFunction<_> = lua.get("sub").unwrap();
+    /// let foo: tlua::LuaFunction<_> = lua.get("sub").unwrap();
     /// let result: i32 = foo.call_with_args((18, 4)).unwrap();
     /// assert_eq!(result, 14);
     /// ```
@@ -307,10 +307,10 @@ where
     /// # Multiple return values
     ///
     /// ```
-    /// let lua = hlua::Lua::new();
+    /// let lua = tlua::Lua::new();
     /// lua.exec("function divmod(a, b) return math.floor(a / b), a % b end").unwrap();
     ///
-    /// let foo: hlua::LuaFunction<_> = lua.get("divmod").unwrap();
+    /// let foo: tlua::LuaFunction<_> = lua.get("divmod").unwrap();
     ///
     /// let first_result: i32 = foo.call_with_args((18, 4)).unwrap();
     /// assert_eq!(first_result, 4);
@@ -355,10 +355,10 @@ where
     /// # Example
     ///
     /// ```
-    /// let lua = hlua::Lua::new();
+    /// let lua = tlua::Lua::new();
     /// lua.exec("function sub(a, b) return a - b end").unwrap();
     ///
-    /// let foo: hlua::LuaFunction<_> = lua.get("sub").unwrap();
+    /// let foo: tlua::LuaFunction<_> = lua.get("sub").unwrap();
     /// let result: i32 = foo.into_call_with_args((18, 4)).unwrap();
     /// assert_eq!(result, 14);
     /// ```
@@ -366,10 +366,10 @@ where
     /// # Multiple return values
     ///
     /// ```
-    /// let lua = hlua::Lua::new();
+    /// let lua = tlua::Lua::new();
     /// lua.exec("function divmod(a, b) return math.floor(a / b), a % b end").unwrap();
     ///
-    /// let foo: hlua::LuaFunction<_> = lua.get("divmod").unwrap();
+    /// let foo: tlua::LuaFunction<_> = lua.get("divmod").unwrap();
     ///
     /// let all_result: (i32, i32) = foo.into_call_with_args((18, 4)).unwrap();
     /// assert_eq!(all_result, (4, 2));
@@ -443,9 +443,9 @@ where
     /// ```
     /// use std::io::Cursor;
     ///
-    /// let mut lua = hlua::Lua::new();
+    /// let mut lua = tlua::Lua::new();
     ///
-    /// let mut f = hlua::LuaFunction::load_from_reader(&mut lua, Cursor::new("return 8")).unwrap();
+    /// let mut f = tlua::LuaFunction::load_from_reader(&mut lua, Cursor::new("return 8")).unwrap();
     /// let ret: i32 = f.call().unwrap();
     /// assert_eq!(ret, 8);
     /// ```

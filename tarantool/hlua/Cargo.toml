@@ -1,5 +1,0 @@
-[workspace]
-members = [
-    "hlua",
-    "hlua-derive",
-]

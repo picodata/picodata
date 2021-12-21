@@ -77,7 +77,7 @@ extern "C" fn destructor_wrapper<T>(lua: *mut ffi::lua_State) -> libc::c_int {
 /// # About the Drop trait
 ///
 /// When the Lua context detects that a userdata is no longer needed it calls the function at the
-/// `__gc` index in the userdata's metatable, if any. The hlua library will automatically fill this
+/// `__gc` index in the userdata's metatable, if any. The tlua library will automatically fill this
 /// index with a function that invokes the `Drop` trait of the userdata.
 ///
 /// You can replace the function if you wish so, although you are strongly discouraged to do it.

@@ -5,7 +5,7 @@ use std::{
 use tarantool::{
     decimal,
     decimal::Decimal,
-    hlua,
+    tlua,
     tuple::Tuple,
 };
 
@@ -17,7 +17,7 @@ pub fn from_lua() {
 
 pub fn to_lua() {
     let lua = tarantool::global_lua();
-    let tostring: hlua::LuaFunction<_> = lua.eval("return tostring").unwrap();
+    let tostring: tlua::LuaFunction<_> = lua.eval("return tostring").unwrap();
     let d: Decimal = "-8.11".parse().unwrap();
     let s: String = tostring.call_with_args(d).unwrap();
     assert_eq!(s, "-8.11");
@@ -48,7 +48,7 @@ pub fn to_tuple() {
     let d = decimal!(-8.11);
     let t = Tuple::from_struct(&(d,)).unwrap();
     let lua = tarantool::global_lua();
-    let f: hlua::LuaFunction<_> = lua.eval("return box.tuple.unpack").unwrap();
+    let f: tlua::LuaFunction<_> = lua.eval("return box.tuple.unpack").unwrap();
     let d: Decimal = f.call_with_args(t).unwrap();
     assert_eq!(d.to_string(), "-8.11");
 }

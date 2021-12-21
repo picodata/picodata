@@ -1,32 +1,32 @@
 use std::num::NonZeroI32;
 
-use tarantool::hlua;
+use tarantool::tlua;
 
 pub fn readwrite() {
     #[derive(Clone)]
     struct Foo;
-    impl<L> hlua::PushInto<L> for Foo
+    impl<L> tlua::PushInto<L> for Foo
     where
-        L: hlua::AsLua,
+        L: tlua::AsLua,
     {
-        type Err = hlua::Void;
-        fn push_into_lua(self, lua: L) -> Result<hlua::PushGuard<L>, (hlua::Void, L)> {
-            Ok(hlua::push_userdata(self, lua, |_| {}))
+        type Err = tlua::Void;
+        fn push_into_lua(self, lua: L) -> Result<tlua::PushGuard<L>, (tlua::Void, L)> {
+            Ok(tlua::push_userdata(self, lua, |_| {}))
         }
     }
-    impl<L> hlua::PushOneInto<L> for Foo where L: hlua::AsLua {}
-    impl<L> hlua::LuaRead<L> for Foo
+    impl<L> tlua::PushOneInto<L> for Foo where L: tlua::AsLua {}
+    impl<L> tlua::LuaRead<L> for Foo
     where
-        L: hlua::AsLua,
+        L: tlua::AsLua,
     {
         fn lua_read_at_position(lua: L, index: NonZeroI32) -> Result<Foo, L> {
-            let val: Result<hlua::UserdataOnStack<Foo, _>, _> =
-                hlua::LuaRead::lua_read_at_position(lua, index);
+            let val: Result<tlua::UserdataOnStack<Foo, _>, _> =
+                tlua::LuaRead::lua_read_at_position(lua, index);
             val.map(|d| d.clone())
         }
     }
 
-    let lua = hlua::Lua::new();
+    let lua = tlua::Lua::new();
 
     lua.set("a", Foo);
     let _: Foo = lua.get("a").unwrap();
@@ -48,19 +48,19 @@ pub fn destructor_called() {
         }
     }
 
-    impl<L> hlua::PushInto<L> for Foo
+    impl<L> tlua::PushInto<L> for Foo
     where
-        L: hlua::AsLua,
+        L: tlua::AsLua,
     {
-        type Err = hlua::Void;
-        fn push_into_lua(self, lua: L) -> Result<hlua::PushGuard<L>, (hlua::Void, L)> {
-            Ok(hlua::push_userdata(self, lua, |_| {}))
+        type Err = tlua::Void;
+        fn push_into_lua(self, lua: L) -> Result<tlua::PushGuard<L>, (tlua::Void, L)> {
+            Ok(tlua::push_userdata(self, lua, |_| {}))
         }
     }
-    impl<L> hlua::PushOneInto<L> for Foo where L: hlua::AsLua {}
+    impl<L> tlua::PushOneInto<L> for Foo where L: tlua::AsLua {}
 
     {
-        let lua = hlua::Lua::new();
+        let lua = tlua::Lua::new();
         lua.set("a", Foo { called: called.clone() });
     }
 
@@ -71,51 +71,51 @@ pub fn destructor_called() {
 pub fn type_check() {
     #[derive(Clone)]
     struct Foo;
-    impl<L> hlua::PushInto<L> for Foo
+    impl<L> tlua::PushInto<L> for Foo
     where
-        L: hlua::AsLua,
+        L: tlua::AsLua,
     {
-        type Err = hlua::Void;
-        fn push_into_lua(self, lua: L) -> Result<hlua::PushGuard<L>, (hlua::Void, L)> {
-            Ok(hlua::push_userdata(self, lua, |_| {}))
+        type Err = tlua::Void;
+        fn push_into_lua(self, lua: L) -> Result<tlua::PushGuard<L>, (tlua::Void, L)> {
+            Ok(tlua::push_userdata(self, lua, |_| {}))
         }
     }
-    impl<L> hlua::PushOneInto<L> for Foo where L: hlua::AsLua {}
-    impl<L> hlua::LuaRead<L> for Foo
+    impl<L> tlua::PushOneInto<L> for Foo where L: tlua::AsLua {}
+    impl<L> tlua::LuaRead<L> for Foo
     where
-        L: hlua::AsLua,
+        L: tlua::AsLua,
     {
         fn lua_read_at_position(lua: L, index: NonZeroI32) -> Result<Foo, L> {
-            let val: Result<hlua::UserdataOnStack<Foo, _>, _> =
-                hlua::LuaRead::lua_read_at_position(lua, index);
+            let val: Result<tlua::UserdataOnStack<Foo, _>, _> =
+                tlua::LuaRead::lua_read_at_position(lua, index);
             val.map(|d| d.clone())
         }
     }
 
     #[derive(Clone)]
     struct Bar;
-    impl<L> hlua::PushInto<L> for Bar
+    impl<L> tlua::PushInto<L> for Bar
     where
-        L: hlua::AsLua,
+        L: tlua::AsLua,
     {
-        type Err = hlua::Void;
-        fn push_into_lua(self, lua: L) -> Result<hlua::PushGuard<L>, (hlua::Void, L)> {
-            Ok(hlua::push_userdata(self, lua, |_| {}))
+        type Err = tlua::Void;
+        fn push_into_lua(self, lua: L) -> Result<tlua::PushGuard<L>, (tlua::Void, L)> {
+            Ok(tlua::push_userdata(self, lua, |_| {}))
         }
     }
-    impl<L> hlua::PushOneInto<L> for Bar where L: hlua::AsLua {}
-    impl<L> hlua::LuaRead<L> for Bar
+    impl<L> tlua::PushOneInto<L> for Bar where L: tlua::AsLua {}
+    impl<L> tlua::LuaRead<L> for Bar
     where
-        L: hlua::AsLua,
+        L: tlua::AsLua,
     {
         fn lua_read_at_position(lua: L, index: NonZeroI32) -> Result<Bar, L> {
-            let val: Result<hlua::UserdataOnStack<Bar, _>, _> =
-                hlua::LuaRead::lua_read_at_position(lua, index);
+            let val: Result<tlua::UserdataOnStack<Bar, _>, _> =
+                tlua::LuaRead::lua_read_at_position(lua, index);
             val.map(|d| d.clone())
         }
     }
 
-    let lua = hlua::Lua::new();
+    let lua = tlua::Lua::new();
 
     lua.set("a", Foo);
 
@@ -126,23 +126,23 @@ pub fn type_check() {
 pub fn metatables() {
     #[derive(Clone)]
     struct Foo;
-    impl<L> hlua::PushInto<L> for Foo
+    impl<L> tlua::PushInto<L> for Foo
     where
-        L: hlua::AsLua,
+        L: tlua::AsLua,
     {
-        type Err = hlua::Void;
-        fn push_into_lua(self, lua: L) -> Result<hlua::PushGuard<L>, (hlua::Void, L)> {
-            Ok(hlua::push_userdata(self, lua, |table| {
+        type Err = tlua::Void;
+        fn push_into_lua(self, lua: L) -> Result<tlua::PushGuard<L>, (tlua::Void, L)> {
+            Ok(tlua::push_userdata(self, lua, |table| {
                 table.set(
                     "__index",
-                    vec![("test", hlua::function0(|| 5))]
+                    vec![("test", tlua::function0(|| 5))]
                 );
             }))
         }
     }
-    impl<L> hlua::PushOneInto<L> for Foo where L: hlua::AsLua {}
+    impl<L> tlua::PushOneInto<L> for Foo where L: tlua::AsLua {}
 
-    let lua = hlua::Lua::new();
+    let lua = tlua::Lua::new();
 
     lua.set("a", Foo);
 
@@ -153,46 +153,46 @@ pub fn metatables() {
 pub fn multiple_userdata() {
    #[derive(Clone)]
     struct Integer(u32);
-    impl<L> hlua::PushInto<L> for Integer
+    impl<L> tlua::PushInto<L> for Integer
     where
-        L: hlua::AsLua,
+        L: tlua::AsLua,
     {
-        type Err = hlua::Void;
-        fn push_into_lua(self, lua: L) -> Result<hlua::PushGuard<L>, (hlua::Void, L)> {
-            Ok(hlua::push_userdata(self, lua, |_| { }))
+        type Err = tlua::Void;
+        fn push_into_lua(self, lua: L) -> Result<tlua::PushGuard<L>, (tlua::Void, L)> {
+            Ok(tlua::push_userdata(self, lua, |_| { }))
         }
     }
-    impl<L> hlua::PushOneInto<L> for Integer where L: hlua::AsLua {}
-    impl<L> hlua::LuaRead<L> for Integer
+    impl<L> tlua::PushOneInto<L> for Integer where L: tlua::AsLua {}
+    impl<L> tlua::LuaRead<L> for Integer
     where
-        L: hlua::AsLua,
+        L: tlua::AsLua,
     {
         fn lua_read_at_position(lua: L, index: NonZeroI32) -> Result<Integer, L> {
-            let val: Result<hlua::UserdataOnStack<Integer, _>, _> =
-                hlua::LuaRead::lua_read_at_position(lua, index);
+            let val: Result<tlua::UserdataOnStack<Integer, _>, _> =
+                tlua::LuaRead::lua_read_at_position(lua, index);
             val.map(|d| d.clone())
         }
     }
 
     #[derive(Debug, Clone, PartialEq, Eq)]
     struct BigInteger(u32, u32, u32, u32);
-    impl<L> hlua::PushInto<L> for BigInteger
+    impl<L> tlua::PushInto<L> for BigInteger
     where
-        L: hlua::AsLua,
+        L: tlua::AsLua,
     {
-        type Err = hlua::Void;
-        fn push_into_lua(self, lua: L) -> Result<hlua::PushGuard<L>, (hlua::Void, L)> {
-            Ok(hlua::push_userdata(self, lua, |_| { }))
+        type Err = tlua::Void;
+        fn push_into_lua(self, lua: L) -> Result<tlua::PushGuard<L>, (tlua::Void, L)> {
+            Ok(tlua::push_userdata(self, lua, |_| { }))
         }
     }
-    impl<L> hlua::PushOneInto<L> for BigInteger where L: hlua::AsLua {}
-    impl<L> hlua::LuaRead<L> for BigInteger
+    impl<L> tlua::PushOneInto<L> for BigInteger where L: tlua::AsLua {}
+    impl<L> tlua::LuaRead<L> for BigInteger
     where
-        L: hlua::AsLua,
+        L: tlua::AsLua,
     {
         fn lua_read_at_position(lua: L, index: NonZeroI32) -> Result<BigInteger, L> {
-            let val: Result<hlua::UserdataOnStack<BigInteger, _>, _> =
-                hlua::LuaRead::lua_read_at_position(lua, index);
+            let val: Result<tlua::UserdataOnStack<BigInteger, _>, _> =
+                tlua::LuaRead::lua_read_at_position(lua, index);
             val.map(|d| d.clone())
         }
     }
@@ -203,7 +203,7 @@ pub fn multiple_userdata() {
         BigInteger(k.0 * v.0, k.0 * v.1, k.0 * v.2, k.0 * v.3);
     let collapse = |a: f32, k: Integer, v: BigInteger|
         (k.0 * v.0) as f32 * a + (k.0 * v.1) as f32 * a + (k.0 * v.2) as f32 * a + (k.0 * v.3) as f32 * a;
-    let lua = hlua::Lua::new();
+    let lua = tlua::Lua::new();
 
     let big_integer = BigInteger(531,246,1,953);
     lua.set("a", Integer(19));
@@ -211,13 +211,13 @@ pub fn multiple_userdata() {
     lua.set("c", Integer(96));
     lua.set("d", Integer(313));
     lua.set("v", big_integer.clone());
-    lua.set("add", hlua::function2(|Integer(x), Integer(y)| Integer(x + y)));
-    lua.set("axpy", hlua::function3(|a: Integer, x: Integer, y: Integer|
+    lua.set("add", tlua::function2(|Integer(x), Integer(y)| Integer(x + y)));
+    lua.set("axpy", tlua::function3(|a: Integer, x: Integer, y: Integer|
         Integer(a.0 * x.0 + y.0)));
-    lua.set("axpy_float", hlua::function3(&axpy_float));
-    lua.set("axpy_float_2", hlua::function3(&axpy_float_2));
-    lua.set("broadcast_mul", hlua::function2(&broadcast_mul));
-    lua.set("collapse", hlua::function3(&collapse));
+    lua.set("axpy_float", tlua::function3(&axpy_float));
+    lua.set("axpy_float_2", tlua::function3(&axpy_float_2));
+    lua.set("broadcast_mul", tlua::function2(&broadcast_mul));
+    lua.set("collapse", tlua::function3(&collapse));
 
     assert_eq!(lua.eval::<Integer>("return add(a, b)").unwrap().0, 19 + 114);
     assert_eq!(lua.eval::<Integer>("return add(b, c)").unwrap().0, 114 + 96);

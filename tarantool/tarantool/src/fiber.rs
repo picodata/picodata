@@ -16,9 +16,10 @@ use std::os::raw::c_void;
 use std::ptr::NonNull;
 use std::time::Duration;
 
-use crate::hlua::{AsLua, c_ptr, lua_error};
+use crate::tlua::{self as tlua, AsLua, lua_error};
 use va_list::VaList;
 
+use crate::c_ptr;
 use crate::error::TarantoolError;
 use crate::ffi::{tarantool as ffi, lua};
 use crate::Result;
@@ -447,7 +448,7 @@ where
             lua::lua_pushstring(l, c_ptr!("fiber"));
             impl_details::guarded_pcall(l, 1, 1)?;
             lua::lua_getfield(l, -1, c_ptr!("new"));
-            hlua::push_some_userdata(l, callee.into_inner());
+            tlua::push_some_userdata(l, callee.into_inner());
             lua::lua_pushcclosure(l, Self::trampoline, 1);
             impl_details::guarded_pcall(l, 1, 1)
                 .map_err(|e| {
@@ -570,7 +571,7 @@ impl Drop for LuaUnitJoinHandle {
 
 mod impl_details {
     use super::*;
-    use hlua::{AsLua, Lua, LuaError, PushGuard};
+    use crate::tlua::{AsLua, Lua, LuaError, PushGuard};
 
     pub(super) unsafe fn lua_error_from_top(l: *mut lua::lua_State) -> LuaError {
         let mut len = std::mem::MaybeUninit::uninit();
@@ -580,7 +581,7 @@ mod impl_details {
             data as *mut u8, len.assume_init()
         );
         let msg = String::from_utf8_lossy(msg_bytes);
-        hlua::LuaError::ExecutionError(msg.into()).into()
+        tlua::LuaError::ExecutionError(msg.into()).into()
     }
 
     /// In case of success, the stack contains the results.
@@ -700,7 +701,7 @@ where
     }
 
     unsafe fn save_result(l: *mut lua::lua_State, res: T) -> i32 {
-        hlua::push_some_userdata(l, res);
+        tlua::push_some_userdata(l, res);
         1
     }
 }

@@ -20,6 +20,7 @@ use serde::{de::DeserializeOwned, Serialize};
 
 use crate::error::{Error, TarantoolError};
 use crate::ffi::tarantool as ffi;
+use crate::tlua as tlua;
 
 /// Tuple
 pub struct Tuple {
@@ -569,33 +570,33 @@ where
     }
 }
 
-impl<L> hlua::Push<L> for Tuple
+impl<L> tlua::Push<L> for Tuple
 where
-    L: hlua::AsLua,
+    L: tlua::AsLua,
 {
-    type Err = hlua::Void;
+    type Err = tlua::Void;
 
-    fn push_to_lua(&self, lua: L) -> Result<hlua::PushGuard<L>, (hlua::Void, L)> {
+    fn push_to_lua(&self, lua: L) -> Result<tlua::PushGuard<L>, (tlua::Void, L)> {
         unsafe {
-            ffi::luaT_pushtuple(hlua::AsLua::as_lua(&lua), self.ptr.as_ptr());
-            Ok(hlua::PushGuard::new(lua, 1))
+            ffi::luaT_pushtuple(tlua::AsLua::as_lua(&lua), self.ptr.as_ptr());
+            Ok(tlua::PushGuard::new(lua, 1))
         }
     }
 }
 
-impl<L> hlua::PushOne<L> for Tuple
+impl<L> tlua::PushOne<L> for Tuple
 where
-    L: hlua::AsLua,
+    L: tlua::AsLua,
 {
 }
 
-impl<L> hlua::LuaRead<L> for Tuple
+impl<L> tlua::LuaRead<L> for Tuple
 where
-    L: hlua::AsLua,
+    L: tlua::AsLua,
 {
     fn lua_read_at_position(lua: L, index: std::num::NonZeroI32) -> Result<Self, L> {
         let ptr = unsafe {
-            ffi::luaT_istuple(hlua::AsLua::as_lua(&lua), index.get())
+            ffi::luaT_istuple(tlua::AsLua::as_lua(&lua), index.get())
         };
         Self::try_from_ptr(ptr).ok_or(lua)
     }

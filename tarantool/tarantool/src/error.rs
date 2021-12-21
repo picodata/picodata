@@ -26,7 +26,7 @@ use rmp::decode::{MarkerReadError, NumValueReadError, ValueReadError};
 use rmp::encode::ValueWriteError;
 
 use crate::ffi::tarantool as ffi;
-use crate::hlua::LuaError;
+use crate::tlua::LuaError;
 
 /// A specialized [`Result`] type for the crate
 pub type Result<T> = std::result::Result<T, Error>;

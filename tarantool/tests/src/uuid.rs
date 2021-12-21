@@ -1,5 +1,5 @@
 use tarantool::{
-    hlua::LuaFunction,
+    tlua::LuaFunction,
     tuple::Tuple,
     uuid::Uuid,
 };

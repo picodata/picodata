@@ -1,4 +1,4 @@
-use tarantool::hlua::{
+use tarantool::tlua::{
     AsLua,
     Lua,
     LuaFunction,
@@ -36,7 +36,7 @@ pub fn dump_stack() {
         .push(3.14)
         .push(false)
         .push(420);
-    tarantool::hlua::debug::dump_stack_to(lua, &mut buf).unwrap();
+    tarantool::tlua::debug::dump_stack_to(lua, &mut buf).unwrap();
     assert_eq!(
         String::from_utf8_lossy(buf.into_inner().as_slice()),
         r#"1: string(hello)
@@ -58,7 +58,7 @@ pub fn dump_stack_raw() {
         .push(3.14)
         .push(false)
         .push(420);
-    tarantool::hlua::debug::dump_stack_raw_to(lua.as_lua(), &mut buf).unwrap();
+    tarantool::tlua::debug::dump_stack_raw_to(lua.as_lua(), &mut buf).unwrap();
     assert_eq!(
         String::from_utf8_lossy(buf.into_inner().as_slice()),
         r#"1: string(hello)

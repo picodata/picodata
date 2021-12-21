@@ -1,4 +1,4 @@
-use tarantool::hlua::{
+use tarantool::tlua::{
     self,
     function,
     AsLua,
@@ -190,14 +190,14 @@ pub fn push_callback_by_ref() {
     assert_eq!(f.call().ok(), Some(6_i32));
     let lua = f.into_inner();
 
-    #[derive(hlua::Push)]
+    #[derive(tlua::Push)]
     struct S {
         callback: function![() -> i32],
     }
 
     let s = S { callback: Function::new(|| 42) };
 
-    let t: hlua::LuaTable<_> = lua.push(&s).read().unwrap();
+    let t: tlua::LuaTable<_> = lua.push(&s).read().unwrap();
     assert_eq!(t.call_method("callback", ()).ok(), Some(42_i32));
 }
 

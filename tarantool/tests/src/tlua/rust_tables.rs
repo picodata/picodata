@@ -1,5 +1,5 @@
 use std::collections::{HashMap, HashSet, BTreeMap};
-use tarantool::hlua::{
+use tarantool::tlua::{
     self,
     AsLua,
     Lua,
@@ -574,7 +574,7 @@ pub fn derive_unit_structs_lua_read() {
     #[derive(LuaRead, Debug, PartialEq, Eq)]
     enum Value {
         Boolean(bool),
-        Null(hlua::Null),
+        Null(tlua::Null),
         Number(u64),
         String(String),
     }
@@ -612,7 +612,7 @@ pub fn derive_unit_structs_lua_read() {
                 vec![
                     Value::Number(1),
                     Value::String("123".into()),
-                    Value::Null(hlua::Null),
+                    Value::Null(tlua::Null),
                 ]
             ]
         }
@@ -629,13 +629,13 @@ pub fn derive_unit_structs_push() {
 
     let lua = Lua::new();
     let lua = lua.push(&E::A);
-    assert_eq!((&lua).read().ok(), Some(hlua::Typename("string")));
+    assert_eq!((&lua).read().ok(), Some(tlua::Typename("string")));
     assert_eq!((&lua).read().ok(), Some("a".to_string()));
     let lua = lua.into_inner().push(&E::Foo);
-    assert_eq!((&lua).read().ok(), Some(hlua::Typename("string")));
+    assert_eq!((&lua).read().ok(), Some(tlua::Typename("string")));
     assert_eq!((&lua).read().ok(), Some("foo".to_string()));
     let lua = lua.into_inner().push(&E::XXX);
-    assert_eq!((&lua).read().ok(), Some(hlua::Typename("string")));
+    assert_eq!((&lua).read().ok(), Some(tlua::Typename("string")));
     assert_eq!((&lua).read().ok(), Some("xxx".to_string()));
 }
 
@@ -657,7 +657,7 @@ pub fn error_during_push_iter() {
     let lua = {
         let _guard = crate::common::LuaStackIntegrityGuard::new("push_vec_error");
         let (e, lua) = lua.try_push(&vec![S]).unwrap_err();
-        assert_eq!(e, hlua::PushIterError::ValuePushError(CustomError));
+        assert_eq!(e, tlua::PushIterError::ValuePushError(CustomError));
         lua
     };
 
@@ -691,21 +691,21 @@ pub fn error_during_push_iter() {
     let lua = {
         let _guard = crate::common::LuaStackIntegrityGuard::new("push_iter_error");
         let (e, lua) = lua.try_push_iter(std::iter::once(&S)).unwrap_err();
-        assert_eq!(e, hlua::PushIterError::ValuePushError(CustomError));
+        assert_eq!(e, tlua::PushIterError::ValuePushError(CustomError));
         lua
     };
 
     let lua = {
         let _guard = crate::common::LuaStackIntegrityGuard::new("push_vec_too_many");
         let (e, lua) = lua.try_push(vec![(1, 2, 3)]).unwrap_err();
-        assert_eq!(e, hlua::PushIterError::TooManyValues);
+        assert_eq!(e, tlua::PushIterError::TooManyValues);
         lua
     };
 
     let lua = {
         let _guard = crate::common::LuaStackIntegrityGuard::new("push_iter_too_many");
         let (e, lua) = lua.try_push_iter(std::iter::once((1, 2, 3))).unwrap_err();
-        assert_eq!(e, hlua::PushIterError::TooManyValues);
+        assert_eq!(e, tlua::PushIterError::TooManyValues);
         lua
     };
 
@@ -778,8 +778,8 @@ pub fn push_custom_collection() {
     impl<L, T> Push<L> for MyVec<T>
     where
         L: AsLua,
-        T: Push<hlua::LuaState>,
-        <T as Push<hlua::LuaState>>::Err: Into<hlua::Void>,
+        T: Push<tlua::LuaState>,
+        <T as Push<tlua::LuaState>>::Err: Into<tlua::Void>,
     {
         type Err = ();
 

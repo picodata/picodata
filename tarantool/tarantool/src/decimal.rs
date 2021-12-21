@@ -357,19 +357,19 @@ impl std::convert::TryFrom<&std::ffi::CStr> for Decimal {
 /// Lua
 ////////////////////////////////////////////////////////////////////////////////
 
-impl<L> hlua::LuaRead<L> for Decimal
+impl<L> tlua::LuaRead<L> for Decimal
 where
-    L: hlua::AsLua,
+    L: tlua::AsLua,
 {
     fn lua_read_at_position(lua: L, index: std::num::NonZeroI32) -> Result<Self, L> {
         let raw_lua = lua.as_lua();
         let index = index.get();
         unsafe {
-            if hlua::ffi::lua_type(raw_lua, index) != hlua::ffi::LUA_TCDATA {
+            if tlua::ffi::lua_type(raw_lua, index) != tlua::ffi::LUA_TCDATA {
                 return Err(lua)
             }
             let mut ctypeid = std::mem::MaybeUninit::uninit();
-            let cdata = hlua::ffi::luaL_checkcdata(raw_lua, index, ctypeid.as_mut_ptr());
+            let cdata = tlua::ffi::luaL_checkcdata(raw_lua, index, ctypeid.as_mut_ptr());
             if ctypeid.assume_init() != ffi::CTID_DECIMAL {
                 return Err(lua)
             }
@@ -380,33 +380,33 @@ where
 }
 
 #[inline(always)]
-fn push_decimal<L: hlua::AsLua>(lua: L, d: ffi::decNumber) -> hlua::PushGuard<L> {
+fn push_decimal<L: tlua::AsLua>(lua: L, d: ffi::decNumber) -> tlua::PushGuard<L> {
     unsafe {
-        let dec = hlua::ffi::luaL_pushcdata(lua.as_lua(), ffi::CTID_DECIMAL);
+        let dec = tlua::ffi::luaL_pushcdata(lua.as_lua(), ffi::CTID_DECIMAL);
         std::ptr::write(dec.cast::<ffi::decNumber>(), d);
-        hlua::PushGuard::new(lua, 1)
+        tlua::PushGuard::new(lua, 1)
     }
 }
 
-impl<L: hlua::AsLua> hlua::Push<L> for Decimal {
-    type Err = hlua::Void;
+impl<L: tlua::AsLua> tlua::Push<L> for Decimal {
+    type Err = tlua::Void;
 
-    fn push_to_lua(&self, lua: L) -> Result<hlua::PushGuard<L>, (Self::Err, L)> {
+    fn push_to_lua(&self, lua: L) -> Result<tlua::PushGuard<L>, (Self::Err, L)> {
         Ok(push_decimal(lua, self.inner))
     }
 }
 
-impl<L: hlua::AsLua> hlua::PushOne<L> for Decimal {}
+impl<L: tlua::AsLua> tlua::PushOne<L> for Decimal {}
 
-impl<L: hlua::AsLua> hlua::PushInto<L> for Decimal {
-    type Err = hlua::Void;
+impl<L: tlua::AsLua> tlua::PushInto<L> for Decimal {
+    type Err = tlua::Void;
 
-    fn push_into_lua(self, lua: L) -> Result<hlua::PushGuard<L>, (Self::Err, L)> {
+    fn push_into_lua(self, lua: L) -> Result<tlua::PushGuard<L>, (Self::Err, L)> {
         Ok(push_decimal(lua, self.inner))
     }
 }
 
-impl<L: hlua::AsLua> hlua::PushOneInto<L> for Decimal {}
+impl<L: tlua::AsLua> tlua::PushOneInto<L> for Decimal {}
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Number conversions

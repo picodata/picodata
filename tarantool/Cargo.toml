@@ -1,7 +1,8 @@
 [workspace]
-exclude = [ "hlua" ]
 members = [
     "tarantool",
+    "tlua",
+    "tlua-derive",
     "tests",
     "examples/easy",
     "examples/harder",

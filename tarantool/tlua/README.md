@@ -1,32 +1,21 @@
-## hlua
+## tlua
 
-This library is a high-level binding for Lua 5.2. You don't have access to the Lua stack, all you can do is read/write variables (including callbacks) and execute Lua code.
-
-[![Build Status](https://travis-ci.org/tomaka/hlua.svg?branch=master)](https://travis-ci.org/tomaka/hlua)
-
-### How to install it?
-
-Add this to the `Cargo.toml` file of your project
-
-```toml
-[dependencies]
-hlua = "0.3"
-```
+This library is a high-level binding for [Tarantool](https://github.com/tarantool/tarantool) LuaJIT. It is fork of
+[hlua](https://github.com/tomaka/hlua) library improved and modified to work with Tarantool LuaJIT ABI.
 
 ### How to use it?
 
 ```rust
-extern crate hlua;
-use hlua::Lua;
+use tlua::Lua;
 ```
 
 The `Lua` struct is the main element of this library. It represents a context in which you can execute Lua code.
 
 ```rust
-let mut lua = Lua::new();     // mutable is mandatory
+let lua = Lua::new();
 ```
 
-**[You can check the documentation here](http://docs.rs/hlua)**.
+**[You can check the documentation here](https://docs.rs/tlua)**.
 
 #### Reading and writing variables
 
@@ -64,14 +53,14 @@ lua.exec_from(File::open(&Path::new("script.lua")).unwrap())
 
 #### Writing functions
 
-In order to write a function, you must wrap it around `hlua::functionX` where `X` is the number of parameters. This is for the moment a limitation of Rust's inferrence system.
+In order to write a function, you must wrap it around `tlua::functionX` where `X` is the number of parameters. This is for the moment a limitation of Rust's inferrence system.
 
 ```rust
 fn add(a: i32, b: i32) -> i32 {
     a + b
 }
 
-lua.set("add", hlua::function2(add));
+lua.set("add", tlua::function2(add));
 lua.exec("local c = add(2, 4)");   // calls the `add` function above
 let c: i32 = lua.get("c").unwrap();   // returns 6
 ```
@@ -81,7 +70,7 @@ In Lua, functions are exactly like regular variables.
 You can write regular functions as well as closures:
 
 ```rust
-lua.set("mul", hlua::function2(|a: i32, b: i32| a * b));
+lua.set("mul", tlua::function2(|a: i32, b: i32| a * b));
 ```
 
 Note that the lifetime of the Lua context must be equal to or shorter than the lifetime of closures. This is enforced at compile-time.
@@ -90,7 +79,7 @@ Note that the lifetime of the Lua context must be equal to or shorter than the l
 let mut a = 5i;
 
 {
-    let mut lua = Lua::new();
+    let lua = Lua::new();
 
     lua.set("inc", || a += 1);    // borrows 'a'
     for i in (0 .. 15) {
@@ -110,7 +99,7 @@ If your Rust function returns a `Result` object which contains an error, then a 
 Manipulating a Lua table can be done by reading a `LuaTable` object. This can be achieved easily by reading a `LuaTable` object.
 
 ```rust
-let mut table: hlua::LuaTable<_> = lua.get("a").unwrap();
+let table: tlua::LuaTable<_> = lua.get("a").unwrap();
 ```
 
 You can then iterate through the table with the `.iter()` function. Note that the value returned by the iterator is an `Option<(Key, Value)>`, the `Option` being empty when either the key or the value is not convertible to the requested type. The `filter_map` function (provided by the standard `Iterator` trait) is very useful when dealing with this.
@@ -138,7 +127,7 @@ lua.exec("
         return 5
     end");
 
-let get_five: hlua::LuaFunction<_> = lua.get("get_five").unwrap();
+let get_five: tlua::LuaFunction<_> = lua.get("get_five").unwrap();
 let value: i32 = get_five.call().unwrap();
 assert_eq!(value, 5);
 ```
@@ -169,8 +158,8 @@ fn foo() { }
 fn bar() { }
 
 lua.set("mylib", [
-    ("foo", hlua::function0(foo)),
-    ("bar", hlua::function0(bar))
+    ("foo", tlua::function0(foo)),
+    ("bar", tlua::function0(bar))
 ]);
 
 lua.exec("mylib.foo()");
@@ -179,7 +168,7 @@ lua.exec("mylib.foo()");
 It is possible to read a `Vec<AnyLuaValue>`:
 
 ```rust
-        let mut lua = Lua::new();
+        let lua = Lua::new();
 
         lua.exec(r#"v = { 1, 2, 3 }"#).unwrap();
 
@@ -197,7 +186,7 @@ indices not starting at 1, `.get()` will return `None`, as Rust's
 It is possible to read a `HashMap<AnyHashableLuaValue, AnyLuaValue>`:
 
 ```rust
-let mut lua = Lua::new();
+let lua = Lua::new();
 
 lua.exec(r#"v = { [-1] = -1, ["foo"] = 2, [2.] = 42 }"#).unwrap();
 
@@ -220,81 +209,21 @@ This is usually done by redirecting the call to `userdata::push_userdata`.
 ```rust
 struct Foo;
 
-impl<L> hlua::Push<L> for Foo where L: hlua::AsLua {
-    fn push_to_lua(&self, lua: L) -> hlua::PushGuard<L> {
+impl<L> tlua::Push<L> for Foo where L: tlua::AsLua {
+    fn push_to_lua(&self, lua: L) -> tlua::PushGuard<L> {
         lua::userdata::push_userdata(self, lua,
-            |mut metatable| {
+            |metatable| {
                 // you can define all the member functions of Foo here
                 // see the official Lua documentation for metatables
-                metatable.set("__call", hlua::function0(|| println!("hello from foo")))
+                metatable.set("__call", tlua::function0(|| println!("hello from foo")))
             })
     }
 }
 
 fn main() {
-    let mut lua = lua::Lua::new();
+    let lua = lua::Lua::new();
     lua.set("foo", Foo);
     lua.exec("foo()");       // prints "hello from foo"
 }
 ```
 
-### Creating a Lua module
-
-**Note: OBSOLETE ; this is still some pre-Rust-1.0 stuff**
-
-This library also includes a second library named `rust-hl-lua-module` which allows you to create Lua modules in Rust.
-
-To use it, add this to `Cargo.toml`:
-
-```toml
-[dependencies.rust-hl-lua-modules]
-git = "https://github.com/tomaka/hlua"
-```
-
-Then you can use it like this:
-
-```rust
-#![feature(phase)]
-#[!plugin(rust-hl-lua-modules)]
-
-#[export_lua_module]
-pub mod mylib {         // <-- must be the name of the Lua module
-    static PI: f32 = 3.141592;
-
-    fn function1(a: int, b: int) -> int {
-        a + b
-    }
-
-    fn function2(a: int) -> int {
-        a + 5
-    }
-
-    #[lua_module_init]
-    fn init() {
-        println!("module initialized!")
-    }
-}
-```
-
-This module will then be usable by Lua:
-
-```lua
-> mylib = require("mylib")
-module initialized!
-> return mylib.function1(2, 4)
-6
-> return mylib.PI
-3.141592
-```
-
-Two syntax extensions are defined:
- - `#[export_lua_module]`: Must be put in front of a module. The name of the module must be the same as the name of your Lua module.
- - `#[lua_module_init]`: Can be put in front of a function inside the module. This function will be executed when the module is loaded.
-
-**Restrictions**: 
- - `fail!()` will crash the program.
- - If you spawn tasks, they will have to end before the hand is given back to lua.
-
-### Contributing
-
-Contributions are welcome!

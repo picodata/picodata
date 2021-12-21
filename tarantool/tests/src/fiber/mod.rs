@@ -6,7 +6,7 @@ use std::{
 
 use crate::common::{DropCounter, capture_value, fiber_csw, LuaStackIntegrityGuard};
 use tarantool::fiber;
-use tarantool::hlua::Lua;
+use tarantool::tlua::Lua;
 use tarantool::util::IntoClones;
 
 pub mod old;

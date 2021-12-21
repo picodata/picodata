@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use tarantool::{
-    hlua::{self, AsLua},
+    tlua::{self, AsLua},
     tuple::AsTuple,
 };
 
@@ -69,7 +69,7 @@ pub(crate) fn fiber_csw() -> i32 {
         unsafe { FUNCTION_DEFINED = true; }
     }
 
-    return lua.get::<tarantool::hlua::LuaFunction<_>, _>("fiber_csw")
+    return lua.get::<tarantool::tlua::LuaFunction<_>, _>("fiber_csw")
         .unwrap().call().unwrap();
 }
 
@@ -107,8 +107,8 @@ impl LuaStackIntegrityGuard {
 impl Drop for LuaStackIntegrityGuard {
     fn drop(&mut self) {
         let lua = tarantool::global_lua();
-        let single_value = unsafe { hlua::PushGuard::new(lua, 1) };
-        let msg: hlua::StringInLua<_> = single_value.read()
+        let single_value = unsafe { tlua::PushGuard::new(lua, 1) };
+        let msg: tlua::StringInLua<_> = single_value.read()
             .expect("Lua stack integrity violation");
         assert_eq!(msg, self.name);
     }

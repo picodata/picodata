@@ -1,6 +1,6 @@
 use std::cmp::Ordering;
 
-use tarantool::hlua::AsLua;
+use tarantool::tlua::AsLua;
 use tarantool::tuple::{FieldType, KeyDef, KeyDefItem, Tuple};
 
 use crate::common::{S1Record, S2Key, S2Record};

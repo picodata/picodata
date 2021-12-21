@@ -1,0 +1,21 @@
+[package]
+name = "tlua"
+version = "0.5.0"
+edition = "2018"
+authors = [
+    "pierre.krieger1708@gmail.com",
+    "Georgy Moshkin <gmoshkin@picodata.io>",
+]
+description = "Zero-cost high-level wrapper for Tarantool-LuaJIT"
+keywords = ["lua"]
+repository = "https://github.com/picodata/tarantool-module"
+documentation = "http://docs.rs/tlua"
+license = "MIT"
+
+[dependencies]
+libc = "0.2"
+tlua-derive = { path = "../tlua-derive", version = "0.1.0" }
+
+[lib]
+test = false
+doctest = false

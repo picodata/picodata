@@ -1,4 +1,4 @@
-use tarantool::hlua::{
+use tarantool::tlua::{
     self,
     AsLua,
     LuaError,
@@ -110,9 +110,9 @@ pub fn table_as_args() {
     let res: String = json_encode.call_with_args(t).unwrap();
     assert_eq!(res, r#"{"foo":"bar"}"#);
 
-    #[derive(hlua::Push)] struct Foo { foo: i32 }
+    #[derive(tlua::Push)] struct Foo { foo: i32 }
 
-    #[derive(hlua::Push)] struct Bar { bar: i32 }
+    #[derive(tlua::Push)] struct Bar { bar: i32 }
 }
 
 #[rustfmt::skip]
