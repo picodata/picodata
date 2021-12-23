@@ -9,7 +9,7 @@ authors = [
 ]
 edition = "2018"
 license = "BSD-2-Clause"
-readme = "README.md"
+readme = "../README.md"
 documentation = "https://docs.rs/tarantool/"
 repository = "https://github.com/picodata/tarantool-module"
 keywords = ["ffi", "database", "tarantool"]
