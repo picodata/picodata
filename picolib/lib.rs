@@ -3,6 +3,7 @@ use std::os::raw::c_int;
 use ::tarantool::hlua;
 use std::time::Duration;
 mod tarantool;
+mod raft;
 use ::tarantool::fiber;
 
 pub struct InnerTest {
@@ -16,11 +17,9 @@ use std::cell::RefMut;
 use std::cell::Ref;
 use std::rc::Rc;
 
-use raft::prelude::*;
-
 #[derive(Default)]
 struct Stash {
-    raft_node: Option<tarantool::RaftNode>,
+    raft_node: Option<raft::Node>,
     raft_loop: Option<fiber::LuaUnitJoinHandle>,
 }
 
@@ -71,11 +70,20 @@ pub extern "C" fn luaopen_picolib(l: *mut std::ffi::c_void) -> c_int {
         raft_init(&stash);
         {
             let stash = stash.clone();
-            luamod.set("get_stash", hlua::function0(move || {get_stash(&stash)}));
+            luamod.set("get_stash", hlua::function0(move || get_stash(&stash)));
         }
         {
             let stash = stash.clone();
-            luamod.set("raft_propose", hlua::function1(move |x| {raft_propose(&stash, x)}));
+            luamod.set("raft_propose", hlua::function1(move |x| raft_propose(&stash, x)));
+        }
+        {
+            l.exec(r#"
+                function inspect()
+                    return
+                        {raft_log = box.space.raft_log:fselect()},
+                        {raft_state = box.space.raft_state:fselect()}
+                end
+            "#).unwrap();
         }
 
         use hlua::AsLua;
@@ -101,6 +109,7 @@ fn main_run() {
     tarantool::eval(
         r#"
         box.schema.user.grant('guest', 'super', nil, nil, {if_not_exists = true})
+
         box.schema.space.create('raft_log', {
             if_not_exists = true,
             is_local = true,
@@ -116,6 +125,40 @@ fn main_run() {
             if_not_exists = true,
             parts = {{'raft_index'}},
         })
+
+        box.schema.space.create('raft_state', {
+            if_not_exists = true,
+            is_local = true,
+            format = {
+                {name = 'term', type = 'unsigned', is_nullable = false},
+                {name = 'vote', type = 'unsigned', is_nullable = false},
+                {name = 'commit', type = 'unsigned', is_nullable = false},
+            }
+        })
+
+        box.space.raft_state:create_index('pk', {
+            if_not_exists = true,
+            parts = {{'term'}},
+        })
+
+        box.schema.space.create('raft_group', {
+            if_not_exists = true,
+            is_local = true,
+            format = {
+                {name = 'raft_id', type = 'unsigned', is_nullable = false},
+                -- {name = 'raft_role', type = 'string', is_nullable = false},
+                -- {name = 'instance_id', type = 'string', is_nullable = false},
+                -- {name = 'instance_uuid', type = 'string', is_nullable = false},
+                -- {name = 'replicaset_id', type = 'string', is_nullable = false},
+                -- {name = 'replicaset_uuid', type = 'string', is_nullable = false},
+            }
+        })
+
+        box.space.raft_group:create_index('pk', {
+            if_not_exists = true,
+            parts = {{'raft_id'}},
+        })
+
         box.cfg({log_level = 6})
     "#,
     );
@@ -147,15 +190,10 @@ fn get_stash(stash: &Rc<RefCell<Stash>>) {
 
 // A simple example about how to use the Raft library in Rust.
 fn raft_init(stash: &Rc<RefCell<Stash>>) {
-    // Create a storage for Raft, and here we just use a simple memory storage.
-    // You need to build your own persistent storage in your production.
-    // Please check the Storage trait in src/storage.rs to see how to implement one.
-    let storage = tarantool::NodeStorage::new();
-
     let logger = slog::Logger::root(tarantool::SlogDrain, o!());
 
     // Create the configuration for the Raft node.
-    let cfg = Config {
+    let cfg = raft::Config {
         // The unique ID for the Raft node.
         id: 1,
         // Election tick is for how long the follower may campaign again after
@@ -176,7 +214,7 @@ fn raft_init(stash: &Rc<RefCell<Stash>>) {
     };
 
     // Create the Raft node.
-    let r = tarantool::RaftNode::new(&cfg, storage, &logger).unwrap();
+    let r = raft::Node::new(&cfg, raft::Storage, &logger).unwrap();
     stash.borrow_mut().raft_node = Some(r);
 
     let loop_fn = {
@@ -197,21 +235,20 @@ fn raft_init(stash: &Rc<RefCell<Stash>>) {
 }
 
 fn on_ready(
-    raft_group: &mut tarantool::RaftNode,
+    raft_group: &mut raft::Node,
     logger: &slog::Logger,
 ) {
     if !raft_group.has_ready() {
         return;
     }
-    let store = raft_group.raft.raft_log.store.0.clone();
 
     info!(logger, "vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv");
 
     // Get the `Ready` with `RawNode::ready` interface.
-    let mut ready: Ready = raft_group.ready();
+    let mut ready: raft::Ready = raft_group.ready();
     info!(logger, "--- {:?}", ready);
 
-    let handle_messages = |msgs: Vec<Message>| {
+    let handle_messages = |msgs: Vec<raft::Message>| {
         for _msg in msgs {
             info!(logger, "--- handle message: {:?}", _msg);
             // Send messages to other peers.
@@ -227,11 +264,12 @@ fn on_ready(
         // This is a snapshot, we need to apply the snapshot at first.
         let snap = ready.snapshot().clone();
         info!(logger, "--- apply_snapshot: {:?}", snap);
-        store.wl().apply_snapshot(snap).unwrap();
+        unimplemented!();
+        // store.wl().apply_snapshot(snap).unwrap();
     }
 
     let mut _last_apply_index = 0;
-    let mut handle_committed_entries = |committed_entries: Vec<Entry>| {
+    let mut handle_committed_entries = |committed_entries: Vec<raft::Entry>| {
         for entry in committed_entries {
             info!(logger, "--- committed_entry: {:?}", entry);
             // Mostly, you need to save the last apply index to resume applying
@@ -243,7 +281,7 @@ fn on_ready(
                 continue;
             }
 
-            if entry.get_entry_type() == EntryType::EntryNormal {
+            if entry.get_entry_type() == raft::EntryType::EntryNormal {
                 // let key = entry.data.get(0).unwrap();
                 // if let Some(value) = cbs.remove(key) {
                 // }
@@ -257,49 +295,19 @@ fn on_ready(
     if !ready.entries().is_empty() {
         // Append entries to the Raft log.
         let entries = ready.entries();
-        use serde::{Deserialize, Serialize};
-        use ::tarantool::space::Space;
-        use ::tarantool::tuple::{AsTuple, FunctionArgs, FunctionCtx};
-
-        let mut space = Space::find("raft_log").unwrap();
-
-        #[derive(Serialize, Deserialize)]
-        struct Row {
-            pub raft_index: u64,
-            pub raft_term: u64,
-            pub raft_id: u64,
-            pub command: String,
-            pub data: Vec<u8>,
-        }
-
-        impl Row {
-            fn from(e: &Entry) -> Self {
-                Self {
-                    raft_index: e.get_index(),
-                    raft_term: e.get_term(),
-                    raft_id: 1,
-                    command: format!("{:?}", e.get_entry_type()),
-                    data: Vec::from(e.get_data()),
-                }
-            }
-        }
-
-        impl AsTuple for Row {}
-
         for entry in entries {
-            space.insert(&Row::from(entry)).unwrap();
             info!(logger, "--- uncommitted_entry: {:?}", entry);
         }
 
-
-        store.wl().append(entries).unwrap();
+        raft::Storage::persist_entries(entries).unwrap();
     }
 
     if let Some(hs) = ready.hs() {
         // Raft HardState changed, and we need to persist it.
-        let hs = hs.clone();
+        // let hs = hs.clone();
         info!(logger, "--- hard_state: {:?}", hs);
-        store.wl().set_hardstate(hs);
+        raft::Storage::persist_hard_state(&hs).unwrap();
+        // store.wl().set_hardstate(hs);
     }
 
     if !ready.persisted_messages().is_empty() {
@@ -311,9 +319,10 @@ fn on_ready(
 
     // Advance the Raft.
     let mut light_rd = raft_group.advance(ready);
+    info!(logger, "--- {:?}", light_rd);
     // Update commit index.
     if let Some(commit) = light_rd.commit_index() {
-        store.wl().mut_hard_state().set_commit(commit);
+        raft::Storage::persist_commit(commit).unwrap();
     }
     // Send out the messages.
     handle_messages(light_rd.take_messages());
