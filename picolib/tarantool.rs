@@ -1,5 +1,5 @@
 use std::ffi::CStr;
-use tarantool::hlua::{self, Lua, LuaFunction};
+use tarantool::tlua::{self, Lua, LuaFunction};
 
 mod ffi {
     use libc::c_char;
@@ -26,7 +26,7 @@ inventory::submit!(crate::InnerTest {
     name: "test_version",
     body: || {
         let l = tarantool_L();
-        let t: hlua::LuaTable<_> = l.eval("return require('tarantool')").unwrap();
+        let t: tlua::LuaTable<_> = l.eval("return require('tarantool')").unwrap();
         assert_eq!(version(), t.get::<String, _>("version").unwrap());
         assert_eq!(package(), t.get::<String, _>("package").unwrap());
     }
@@ -40,7 +40,7 @@ fn tarantool_L() -> Lua {
     }
 }
 
-#[derive(Clone, Debug, hlua::Push, hlua::LuaRead, PartialEq)]
+#[derive(Clone, Debug, tlua::Push, tlua::LuaRead, PartialEq)]
 pub struct Cfg {
     pub listen: Option<String>,
     pub wal_dir: String,

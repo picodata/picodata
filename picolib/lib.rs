@@ -1,6 +1,6 @@
 use slog::{debug, info, o};
 use std::os::raw::c_int;
-use ::tarantool::hlua;
+use ::tarantool::tlua;
 use std::time::Duration;
 mod tarantool;
 mod raft;
@@ -50,8 +50,8 @@ pub extern "C" fn luaopen_picolib(l: *mut std::ffi::c_void) -> c_int {
     }
 
     unsafe {
-        let l = hlua::Lua::from_existing_state(l, false);
-        let luamod: hlua::LuaTable<_> = (&l).push(vec![()]).read().unwrap();
+        let l = tlua::Lua::from_existing_state(l, false);
+        let luamod: tlua::LuaTable<_> = (&l).push(vec![()]).read().unwrap();
         luamod.set("VERSION", env!("CARGO_PKG_VERSION"));
 
         //
@@ -59,7 +59,7 @@ pub extern "C" fn luaopen_picolib(l: *mut std::ffi::c_void) -> c_int {
         {
             let mut test = Vec::new();
             for t in inventory::iter::<InnerTest> {
-                test.push((t.name, hlua::function0(t.body)));
+                test.push((t.name, tlua::function0(t.body)));
             }
             luamod.set("test", test);
         }
@@ -70,11 +70,11 @@ pub extern "C" fn luaopen_picolib(l: *mut std::ffi::c_void) -> c_int {
         raft_init(&stash);
         {
             let stash = stash.clone();
-            luamod.set("get_stash", hlua::function0(move || get_stash(&stash)));
+            luamod.set("get_stash", tlua::function0(move || get_stash(&stash)));
         }
         {
             let stash = stash.clone();
-            luamod.set("raft_propose", hlua::function1(move |x| raft_propose(&stash, x)));
+            luamod.set("raft_propose", tlua::function1(move |x| raft_propose(&stash, x)));
         }
         {
             l.exec(r#"
@@ -86,7 +86,7 @@ pub extern "C" fn luaopen_picolib(l: *mut std::ffi::c_void) -> c_int {
             "#).unwrap();
         }
 
-        use hlua::AsLua;
+        use tlua::AsLua;
         (&l).push(&luamod).forget();
         1
     }
