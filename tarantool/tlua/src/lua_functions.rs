@@ -568,3 +568,23 @@ where
     }
 }
 
+impl<L, T> Push<L> for LuaFunction<T>
+where
+    L: AsLua,
+{
+    type Err = Void;
+
+    fn push_to_lua(&self, lua: L) -> crate::PushResult<L, Self> {
+        unsafe {
+            ffi::lua_pushvalue(lua.as_lua(), self.index.into());
+            Ok(PushGuard::new(lua, 1))
+        }
+    }
+}
+
+impl<L, T> PushOne<L> for LuaFunction<T>
+where
+    L: AsLua,
+{
+}
+

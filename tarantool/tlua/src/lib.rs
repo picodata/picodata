@@ -456,6 +456,9 @@ where
     }
 }
 
+/// Type returned from [`Push::push_to_lua`] function.
+pub type PushResult<L, P> = Result<PushGuard<L>, (<P as Push<L>>::Err, L)>;
+
 /// Types implementing this trait can be pushed onto the Lua stack by reference.
 pub trait Push<L: AsLua> {
     /// Error that can happen when pushing a value.
@@ -515,6 +518,9 @@ where
     T: PushOne<L>,
 {
 }
+
+/// Type returned from [`PushInto::push_into_lua`] function.
+pub type PushIntoResult<L, P> = Result<PushGuard<L>, (<P as PushInto<L>>::Err, L)>;
 
 /// Types implementing this trait can be pushed onto the Lua stack by value.
 pub trait PushInto<L>

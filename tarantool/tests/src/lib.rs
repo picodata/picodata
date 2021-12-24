@@ -210,6 +210,7 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 tlua::lua_functions::execute_from_reader_errors_if_cant_read,
                 tlua::lua_functions::from_function_call_error,
                 tlua::lua_functions::non_string_error,
+                tlua::lua_functions::push_function,
 
                 tlua::lua_tables::iterable,
                 tlua::lua_tables::iterable_multipletimes,

@@ -272,3 +272,17 @@ pub fn non_string_error() {
     }
 }
 
+pub fn push_function() {
+    let lua = tarantool::global_lua();
+    let call: LuaFunction<_> = lua.eval("return function(f, x) return f(x) end").unwrap();
+    let add_one: LuaFunction<_> = lua.eval("return function(x) return x + 1 end").unwrap();
+    let res: i32 = call.call_with_args((&add_one, 1)).unwrap();
+    assert_eq!(res, 2);
+
+    let type_f: LuaFunction<_> = lua.get("type").unwrap();
+    let lua = (&type_f).push_iter(std::iter::once(("get_type", &type_f))).unwrap();
+    let t: LuaTable<_> = (&lua).read().unwrap();
+    let res: String = t.call_method("get_type", ()).unwrap();
+    assert_eq!(res, "table");
+}
+
