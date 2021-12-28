@@ -6,10 +6,9 @@ use ::tarantool::space::Space;
 use ::tarantool::tuple::Tuple;
 use ::tarantool::index::IteratorType;
 
-pub use raft::prelude::*;
-pub use raft::Error as RaftError;
+use raft::prelude::*;
+use raft::Error as RaftError;
 
-pub type Node = RawNode<Storage>;
 pub struct Storage;
 
 impl Storage {
