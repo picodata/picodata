@@ -13,8 +13,64 @@ pub type Node = RawNode<Storage>;
 pub struct Storage;
 
 impl Storage {
-    #[allow(dead_code)]
-    pub fn init_schema() {}
+    pub fn init_schema() {
+        crate::tarantool::eval(
+            r#"
+            box.schema.user.grant('guest', 'super', nil, nil, {if_not_exists = true})
+
+            box.schema.space.create('raft_log', {
+                if_not_exists = true,
+                is_local = true,
+                format = {
+                    {name = 'raft_index', type = 'unsigned', is_nullable = false},
+                    {name = 'raft_term', type = 'unsigned', is_nullable = false},
+                    {name = 'raft_id', type = 'unsigned', is_nullable = false},
+                    {name = 'command', type = 'string', is_nullable = false},
+                    {name = 'data', type = 'any', is_nullable = false},
+                }
+            })
+            box.space.raft_log:create_index('pk', {
+                if_not_exists = true,
+                parts = {{'raft_index'}},
+            })
+
+            box.schema.space.create('raft_state', {
+                if_not_exists = true,
+                is_local = true,
+                format = {
+                    {name = 'term', type = 'unsigned', is_nullable = false},
+                    {name = 'vote', type = 'unsigned', is_nullable = false},
+                    {name = 'commit', type = 'unsigned', is_nullable = false},
+                }
+            })
+
+            box.space.raft_state:create_index('pk', {
+                if_not_exists = true,
+                parts = {{'term'}},
+            })
+
+            box.schema.space.create('raft_group', {
+                if_not_exists = true,
+                is_local = true,
+                format = {
+                    {name = 'raft_id', type = 'unsigned', is_nullable = false},
+                    -- {name = 'raft_role', type = 'string', is_nullable = false},
+                    -- {name = 'instance_id', type = 'string', is_nullable = false},
+                    -- {name = 'instance_uuid', type = 'string', is_nullable = false},
+                    -- {name = 'replicaset_id', type = 'string', is_nullable = false},
+                    -- {name = 'replicaset_uuid', type = 'string', is_nullable = false},
+                }
+            })
+
+            box.space.raft_group:create_index('pk', {
+                if_not_exists = true,
+                parts = {{'raft_id'}},
+            })
+
+            box.cfg({log_level = 6})
+        "#,
+        );
+    }
 
     pub fn persist_entries(entries: &Vec<Entry>) -> Result<(), RaftError> {
         let mut space = Space::find("raft_log").unwrap();

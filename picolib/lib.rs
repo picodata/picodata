@@ -40,10 +40,12 @@ pub extern "C" fn luaopen_picolib(l: *mut std::ffi::c_void) -> c_int {
         }
     }
 
+    let stash: Rc<RefCell<Stash>> = Default::default();
+
     let command = std::env::var("PICODATA_COMMAND");
     match command.as_deref() {
         Ok("run") => {
-            main_run();
+            main_run(&stash);
         },
         Ok(_) => {},
         Err(_) => {},
@@ -66,8 +68,6 @@ pub extern "C" fn luaopen_picolib(l: *mut std::ffi::c_void) -> c_int {
 
         //
         // Export public API
-        let stash: Rc<RefCell<Stash>> = Default::default();
-        raft_init(&stash);
         {
             let stash = stash.clone();
             luamod.set("get_stash", tlua::function0(move || get_stash(&stash)));
@@ -92,7 +92,7 @@ pub extern "C" fn luaopen_picolib(l: *mut std::ffi::c_void) -> c_int {
     }
 }
 
-fn main_run() {
+fn main_run(stash: &Rc<RefCell<Stash>>) {
     let mut cfg = tarantool::Cfg {
         listen: None,
         ..Default::default()
@@ -106,62 +106,8 @@ fn main_run() {
     });
 
     tarantool::set_cfg(&cfg);
-    tarantool::eval(
-        r#"
-        box.schema.user.grant('guest', 'super', nil, nil, {if_not_exists = true})
 
-        box.schema.space.create('raft_log', {
-            if_not_exists = true,
-            is_local = true,
-            format = {
-                {name = 'raft_index', type = 'unsigned', is_nullable = false},
-                {name = 'raft_term', type = 'unsigned', is_nullable = false},
-                {name = 'raft_id', type = 'unsigned', is_nullable = false},
-                {name = 'command', type = 'string', is_nullable = false},
-                {name = 'data', type = 'any', is_nullable = false},
-            }
-        })
-        box.space.raft_log:create_index('pk', {
-            if_not_exists = true,
-            parts = {{'raft_index'}},
-        })
-
-        box.schema.space.create('raft_state', {
-            if_not_exists = true,
-            is_local = true,
-            format = {
-                {name = 'term', type = 'unsigned', is_nullable = false},
-                {name = 'vote', type = 'unsigned', is_nullable = false},
-                {name = 'commit', type = 'unsigned', is_nullable = false},
-            }
-        })
-
-        box.space.raft_state:create_index('pk', {
-            if_not_exists = true,
-            parts = {{'term'}},
-        })
-
-        box.schema.space.create('raft_group', {
-            if_not_exists = true,
-            is_local = true,
-            format = {
-                {name = 'raft_id', type = 'unsigned', is_nullable = false},
-                -- {name = 'raft_role', type = 'string', is_nullable = false},
-                -- {name = 'instance_id', type = 'string', is_nullable = false},
-                -- {name = 'instance_uuid', type = 'string', is_nullable = false},
-                -- {name = 'replicaset_id', type = 'string', is_nullable = false},
-                -- {name = 'replicaset_uuid', type = 'string', is_nullable = false},
-            }
-        })
-
-        box.space.raft_group:create_index('pk', {
-            if_not_exists = true,
-            parts = {{'raft_id'}},
-        })
-
-        box.cfg({log_level = 6})
-    "#,
-    );
+    raft_init(&stash);
 
     std::env::var("PICODATA_LISTEN").ok().and_then(|v| {
         cfg.listen = Some(v.clone());
@@ -190,6 +136,7 @@ fn get_stash(stash: &Rc<RefCell<Stash>>) {
 
 // A simple example about how to use the Raft library in Rust.
 fn raft_init(stash: &Rc<RefCell<Stash>>) {
+    raft::Storage::init_schema();
     let logger = slog::Logger::root(tarantool::SlogDrain, o!());
 
     // Create the configuration for the Raft node.
