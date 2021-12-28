@@ -104,7 +104,12 @@ fn main_run(stash: &Rc<RefCell<Stash>>) {
     tarantool::set_cfg(&cfg);
 
     traft::Storage::init_schema();
-    let mut node = traft::Node::new(&traft::Config::new(1)).unwrap();
+    let raft_cfg = traft::Config {
+        id: 1,
+        applied: traft::Storage::applied().unwrap_or_default(),
+        ..Default::default()
+    };
+    let mut node = traft::Node::new(&raft_cfg).unwrap();
     node.start();
     stash.borrow_mut().raft_node = Some(node);
 

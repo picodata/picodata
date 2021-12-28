@@ -37,15 +37,14 @@ impl Storage {
                 if_not_exists = true,
                 is_local = true,
                 format = {
-                    {name = 'term', type = 'unsigned', is_nullable = false},
-                    {name = 'vote', type = 'unsigned', is_nullable = false},
-                    {name = 'commit', type = 'unsigned', is_nullable = false},
+                    {name = 'key', type = 'string', is_nullable = false},
+                    {name = 'value', type = 'any', is_nullable = false},
                 }
             })
 
             box.space.raft_state:create_index('pk', {
                 if_not_exists = true,
-                parts = {{'term'}},
+                parts = {{'key'}},
             })
 
             box.schema.space.create('raft_group', {
@@ -71,39 +70,83 @@ impl Storage {
         );
     }
 
-    pub fn persist_entries(entries: &Vec<Entry>) -> Result<(), RaftError> {
+    pub fn term() -> Option<u64> {
+        let space: Space = Space::find("raft_state").unwrap();
+        let row = space.get(&("term",)).unwrap();
+        row.and_then(|row| row.field(1).unwrap())
+    }
+
+    pub fn vote() -> Option<u64> {
+        let space: Space = Space::find("raft_state").unwrap();
+        let row = space.get(&("vote",)).unwrap();
+        row.and_then(|row| row.field(1).unwrap())
+    }
+
+    pub fn commit() -> Option<u64> {
+        let space: Space = Space::find("raft_state").unwrap();
+        let row = space.get(&("commit",)).unwrap();
+        row.and_then(|row| row.field(1).unwrap())
+    }
+
+    pub fn persist_commit(commit: u64) {
+        let mut space: Space = Space::find("raft_state").unwrap();
+        space.replace(&("commit", commit)).unwrap();
+    }
+
+    pub fn applied() -> Option<u64> {
+        let space: Space = Space::find("raft_state").unwrap();
+        let row = space.get(&("applied",)).unwrap();
+        row.and_then(|row| row.field(1).unwrap())
+    }
+
+    pub fn persist_applied(applied: u64) {
+        let mut space: Space = Space::find("raft_state").unwrap();
+        space.replace(&("applied", applied)).unwrap();
+    }
+
+    pub fn entries(low: u64, high: u64,) -> Vec<Entry> {
+        let mut ret: Vec<Entry> = vec![];
+        let space = Space::find("raft_log").unwrap();
+        let iter = space.primary_key().select(IteratorType::GE, &(low,)).unwrap();
+
+        for tuple in iter {
+            let row: LogRow = tuple.into_struct().unwrap();
+            if row.raft_index >= high {
+                break;
+            }
+            ret.push(row.into());
+        }
+
+        ret
+    }
+
+    pub fn persist_entries(entries: &Vec<Entry>) {
         let mut space = Space::find("raft_log").unwrap();
         for entry in entries {
             let row: LogRow = LogRow::from(entry);
             space.insert(&row).unwrap();
         }
-        Ok(())
     }
 
-    pub fn persist_hard_state(hs: &HardState) -> Result<(), RaftError> {
+    pub fn hard_state() -> HardState {
+        let mut ret = HardState::default();
+        Storage::term().map(|v| ret.term = v);
+        Storage::vote().map(|v| ret.vote = v);
+        Storage::commit().map(|v| ret.commit = v);
+        ret
+    }
+
+    pub fn persist_hard_state(hs: &HardState) {
         let mut space: Space = Space::find("raft_state").unwrap();
-        let row: HardStateRow = HardStateRow::from(hs);
-        space.insert(&row).unwrap();
-        Ok(())
-    }
-
-    pub fn persist_commit(commit: u64) -> Result<(), RaftError> {
-        // let mut space: Space = Space::find("raft_state").unwrap();
-        // space.primary_key().update()
-        println!("--- persist_commit(idx = {})", commit);
-        Ok(())
+        space.replace(&("term", hs.term)).unwrap();
+        space.replace(&("vote", hs.vote)).unwrap();
+        space.replace(&("commit", hs.commit)).unwrap();
     }
 }
 
 impl raft::Storage for Storage {
     fn initial_state(&self) -> Result<RaftState, RaftError> {
-        let space: Space = Space::find("raft_state").unwrap();
-        let tuple: Option<Tuple> = space.primary_key().max(&()).unwrap();
-        let row: Option<HardStateRow> = tuple
-            .and_then(|t| t.into_struct().unwrap());
-        let hs: HardState = row
-            .map(|row| row.into())
-            .unwrap_or_default();
+        let hs = Storage::hard_state();
 
         // See also: https://github.com/etcd-io/etcd/blob/main/raft/raftpb/raft.pb.go
         let cs: ConfState = ConfState {
@@ -123,24 +166,7 @@ impl raft::Storage for Storage {
         high: u64,
         _max_size: impl Into<Option<u64>>,
     ) -> Result<Vec<Entry>, RaftError> {
-        let mut ret: Vec<Entry> = vec![];
-        let space = Space::find("raft_log").unwrap();
-        let iter = space.primary_key().select(IteratorType::GE, &(low,)).unwrap();
-
-        for tuple in iter {
-            let row: LogRow = tuple.into_struct().unwrap();
-            if row.raft_index >= high {
-                break;
-            }
-            ret.push(row.into());
-        }
-        // let max_size: Option<u64> = max_size.into();
-        // let ret = self.0.entries(low, high, max_size);
-        // let logger = slog::Logger::root(crate::tarantool::SlogDrain, o!());
-        // debug!(logger, "+++ entries(low={}, high={}, max_size={:?}) -> {:?}",
-        //     low, high, max_size, ret
-        // );
-        Ok(ret)
+        Ok(Storage::entries(low, high))
     }
 
     fn term(&self, idx: u64) -> Result<u64, RaftError> {
@@ -188,37 +214,6 @@ impl raft::Storage for Storage {
         unimplemented!();
     }
 }
-
-
-#[derive(Debug, Serialize, Deserialize)]
-struct HardStateRow {
-    pub term: u64,
-    pub vote: u64,
-    pub commit: u64,
-}
-
-impl HardStateRow {
-    fn from(hs: &HardState) -> HardStateRow {
-        HardStateRow {
-            term: hs.term,
-            vote: hs.vote,
-            commit: hs.commit,
-        }
-    }
-}
-
-impl From<HardStateRow> for HardState {
-    fn from(hs: HardStateRow) -> HardState {
-        HardState {
-            term: hs.term,
-            vote: hs.vote,
-            commit: hs.commit,
-            ..Default::default()
-        }
-    }
-}
-
-impl ::tarantool::tuple::AsTuple for HardStateRow {}
 
 #[derive(Debug, Serialize, Deserialize)]
 struct LogRow {

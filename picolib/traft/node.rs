@@ -101,13 +101,10 @@ fn on_ready(
         // store.wl().apply_snapshot(snap).unwrap();
     }
 
-    let mut _last_apply_index = 0;
-    let mut handle_committed_entries = |committed_entries: Vec<Entry>| {
+    let handle_committed_entries = |committed_entries: Vec<Entry>| {
         for entry in committed_entries {
             info!(logger, "--- committed_entry: {:?}", entry);
-            // Mostly, you need to save the last apply index to resume applying
-            // after restart. Here we just ignore this because we use a Memory storage.
-            _last_apply_index = entry.index;
+            Storage::persist_applied(entry.index);
 
             if entry.data.is_empty() {
                 // Emtpy entry, when the peer becomes Leader it will send an empty entry.
@@ -132,14 +129,14 @@ fn on_ready(
             info!(logger, "--- uncommitted_entry: {:?}", entry);
         }
 
-        Storage::persist_entries(entries).unwrap();
+        Storage::persist_entries(entries);
     }
 
     if let Some(hs) = ready.hs() {
         // Raft HardState changed, and we need to persist it.
         // let hs = hs.clone();
         info!(logger, "--- hard_state: {:?}", hs);
-        Storage::persist_hard_state(&hs).unwrap();
+        Storage::persist_hard_state(&hs);
         // store.wl().set_hardstate(hs);
     }
 
@@ -155,7 +152,7 @@ fn on_ready(
     info!(logger, "--- {:?}", light_rd);
     // Update commit index.
     if let Some(commit) = light_rd.commit_index() {
-        Storage::persist_commit(commit).unwrap();
+        Storage::persist_commit(commit);
     }
     // Send out the messages.
     handle_messages(light_rd.take_messages());
