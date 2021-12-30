@@ -11,7 +11,18 @@ fn positive() {
     let mut cmd = Command::cargo_bin("picodata").unwrap();
     cmd.current_dir(temp_path);
     cmd.arg("run");
-    cmd.args(["-e", "os.exit()"]);
+    cmd.arg("-e").arg(
+        r#"
+        function assert_eq(l, r)
+            if l ~= r then
+                error(('Assertion failed: %q ~= %q'):format(l, r), 2)
+            end
+        end
+        assert_eq(os.environ()['PICODATA_LISTEN'], "3301")
+        assert_eq(os.environ()['PICODATA_DATA_DIR'], ".")
+        os.exit()
+        "#,
+    );
     cmd.timeout(Duration::from_secs(1)).assert().success();
 }
 
@@ -103,4 +114,29 @@ fn pass_environment() {
         temp_path.join("data/i1/00000000000000000000.snap").exists(),
         "tarantool didn't make a snapshot"
     );
+}
+
+#[test]
+fn precedence() {
+    let temp = tempdir().unwrap();
+    let temp_path = temp.path();
+
+    let mut cmd = Command::cargo_bin("picodata").unwrap();
+    cmd.current_dir(temp_path);
+    cmd.arg("run");
+    cmd.env("PICODATA_DATA_DIR", "./somewhere");
+    cmd.env("PICODATA_LISTEN", "0.0.0.0:0");
+    cmd.arg("-e").arg(
+        r#"
+        function assert_eq(l, r)
+            if l ~= r then
+                error(('Assertion failed: %q ~= %q'):format(l, r), 2)
+            end
+        end
+        assert_eq(os.environ()['PICODATA_DATA_DIR'], './somewhere')
+        assert_eq(os.environ()['PICODATA_LISTEN'], "0.0.0.0:0")
+        os.exit(0)
+    "#,
+    );
+    cmd.timeout(Duration::from_secs(1)).assert().success();
 }

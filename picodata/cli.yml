@@ -5,19 +5,23 @@ subcommands:
   - run:
       about: run the picodata instance
       args:
+        # Don't use `default_value` here,
+        # it breaks env vars precedence
+
         - data-dir:
             long: data-dir
-            help: Here instance persists all its data
+            help: >
+                Here instance persists all its data
+                (default: .)
             takes_value: true
-            default_value: "."
             value_name: path
 
         - listen:
             # short: l
             long: listen
-            help: Socket bind address
+            help: >
+                Socket bind address (default: 3301)
             takes_value: true
-            default_value: "0.0.0.0:3301"
             value_name: "[host:]port"
 
         - peer:

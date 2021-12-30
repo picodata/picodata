@@ -65,6 +65,10 @@ fn main_run(matches: &clap::ArgMatches) {
     }
 
     envp.insert("PICODATA_COMMAND".to_owned(), "run".to_owned());
+    envp.entry("PICODATA_LISTEN".to_owned())
+        .or_insert("3301".to_owned());
+    envp.entry("PICODATA_DATA_DIR".to_owned())
+        .or_insert(".".to_owned());
 
     let bypass_vars = [
         "cluster-id",
