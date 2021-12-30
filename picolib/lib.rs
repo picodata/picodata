@@ -1,10 +1,10 @@
 use ::tarantool::tlua;
 use rmp_serde;
 use serde::{Deserialize, Serialize};
-use slog::{debug, error, info, o};
 use std::os::raw::c_int;
 
 mod tarantool;
+mod tlog;
 mod traft;
 
 pub struct InnerTest {
@@ -139,17 +139,13 @@ fn main_run(stash: &Rc<RefCell<Stash>>) {
 
     tarantool::set_cfg(&cfg);
 
-    let logger = slog::Logger::root(tarantool::SlogDrain, o!());
-
-    info!(logger, "Hello, Rust!"; "module" => std::module_path!());
-    debug!(
-        logger,
+    tlog!(Info, "Hello, Rust!"; "module" => std::module_path!());
+    tlog!(
+        Debug,
         "Picodata running on {} {}",
         tarantool::package(),
         tarantool::version()
     );
-
-    // raft_main();
 }
 
 fn get_stash(stash: &Rc<RefCell<Stash>>) {
@@ -186,25 +182,24 @@ impl From<RaftEntryData> for Vec<u8> {
 fn raft_propose(stash: &Rc<RefCell<Stash>>, entry_data: RaftEntryData) {
     let mut stash: RefMut<Stash> = stash.borrow_mut();
     let raft_node = stash.raft_node.as_mut().unwrap();
-    let logger = slog::Logger::root(tarantool::SlogDrain, o!());
     let data: Vec<u8> = entry_data.into();
-    info!(
-        logger,
+    tlog!(
+        Info,
         "propose binary data ({} bytes).......................................",
         data.len()
     );
     raft_node.borrow_mut().propose(vec![], data).unwrap();
-    info!(logger, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,");
+    tlog!(Info, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,");
 }
 
-fn handle_committed_data(logger: &slog::Logger, data: &[u8]) {
+fn handle_committed_data(data: &[u8]) {
     use RaftEntryData::*;
 
     match data.try_into() {
         Ok(x) => match x {
             EvalLua(code) => crate::tarantool::eval(&code),
-            Info(msg) => info!(logger, "{}", msg),
+            Info(msg) => tlog!(Info, "{}", msg),
         },
-        Err(why) => error!(logger, "cannot decode raft entry data: {}", why),
+        Err(why) => tlog!(Error, "cannot decode raft entry data: {}", why),
     }
 }

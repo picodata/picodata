@@ -4,8 +4,8 @@ use ::tarantool::tuple::Tuple;
 use raft::eraftpb::ConfState;
 use raft::StorageError;
 use serde::{Deserialize, Serialize};
-use slog::{debug, o};
 
+use crate::tlog;
 use raft::prelude::*;
 use raft::Error as RaftError;
 
@@ -158,8 +158,7 @@ impl raft::Storage for Storage {
         };
 
         let ret: RaftState = RaftState::new(hs, cs);
-        let logger = slog::Logger::root(crate::tarantool::SlogDrain, o!());
-        debug!(logger, "+++ initial_state() -> {:?}", ret);
+        tlog!(Debug, "+++ initial_state() -> {:?}", ret);
         Ok(ret)
     }
 
@@ -182,12 +181,11 @@ impl raft::Storage for Storage {
         let tuple = space.primary_key().get(&(idx,)).unwrap();
         let row: Option<LogRow> = tuple.and_then(|t| t.into_struct().unwrap());
 
-        let logger = slog::Logger::root(crate::tarantool::SlogDrain, o!());
         if let Some(row) = row {
-            debug!(logger, "+++ term(idx={}) -> {:?}", idx, row.raft_term);
+            tlog!(Debug, "+++ term(idx={}) -> {:?}", idx, row.raft_term);
             return Ok(row.raft_term);
         } else {
-            debug!(logger, "+++ term(idx={}) -> Unavailable", idx);
+            tlog!(Debug, "+++ term(idx={}) -> Unavailable", idx);
             return Err(RaftError::Store(StorageError::Unavailable));
         }
     }
@@ -202,16 +200,14 @@ impl raft::Storage for Storage {
         let row: Option<LogRow> = tuple.and_then(|t| t.into_struct().unwrap());
         let ret: u64 = row.map(|row| row.raft_index).unwrap_or(0);
 
-        let logger = slog::Logger::root(crate::tarantool::SlogDrain, o!());
-        debug!(logger, "+++ last_index() -> {:?}", ret);
         Ok(ret)
     }
 
     fn snapshot(&self, request_index: u64) -> Result<Snapshot, RaftError> {
-        let logger = slog::Logger::root(crate::tarantool::SlogDrain, o!());
-        debug!(
-            logger,
-            "+++ snapshot(idx={}) -> unimplemented", request_index
+        tlog!(
+            Critical,
+            "+++ snapshot(idx={}) -> unimplemented",
+            request_index
         );
         unimplemented!();
     }
