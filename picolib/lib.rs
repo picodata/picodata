@@ -121,8 +121,41 @@ fn main_run() {
     );
 
     traft::Storage::init_schema();
+
+    let raft_id: u64 = {
+        // The id already stored in tarantool snashot
+        let snap_id: Option<u64> = traft::Storage::id();
+        // The id passed in env vars (or command line args)
+        let args_id: Option<u64> = std::env::var("PICODATA_RAFT_ID")
+            .and_then(|v| {
+                v.parse()
+                    .map_err(|e| panic!("Bad PICODATA_RAFT_ID value \"{}\": {}", v, e))
+            })
+            .ok();
+
+        match snap_id {
+            None => {
+                let id: u64 = args_id.unwrap_or(1);
+                traft::Storage::persist_id(id);
+                id
+            }
+            Some(snap_id) => match args_id {
+                Some(args_id) if args_id != snap_id => {
+                    panic!(
+                        "Already initialized with a different PICODATA_RAFT_ID:
+  snapshot: {s}
+ from args: {a}",
+                        s = snap_id,
+                        a = args_id
+                    )
+                }
+                _ => snap_id,
+            },
+        }
+    };
+
     let raft_cfg = raft::Config {
-        id: 1,
+        id: raft_id,
         applied: traft::Storage::applied().unwrap_or_default(),
         ..Default::default()
     };

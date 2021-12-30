@@ -86,6 +86,10 @@ impl Storage {
             .unwrap()
     }
 
+    pub fn id() -> Option<u64> {
+        Storage::raft_state("id")
+    }
+
     pub fn term() -> Option<u64> {
         Storage::raft_state("term")
     }
@@ -116,6 +120,15 @@ impl Storage {
 
     pub fn persist_vote(vote: u64) {
         Storage::persist_raft_state("vote", vote)
+    }
+
+    pub fn persist_id(id: u64) {
+        // We use `insert` instead of `replace` here
+        // because `id` can never be changed.
+        Space::find(SPACE_RAFT_STATE)
+            .unwrap()
+            .insert(&("id", id))
+            .unwrap();
     }
 
     pub fn entries(low: u64, high: u64) -> Vec<raft::Entry> {
