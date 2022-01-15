@@ -211,7 +211,7 @@ Create a new crate "harder". Put these lines to `lib.rs`:
 ```rust
 use serde::{Deserialize, Serialize};
 use std::os::raw::c_int;
-use tarantool_module::tuple::{AsTuple, FunctionArgs, FunctionCtx, Tuple};
+use tarantool::tuple::{AsTuple, FunctionArgs, FunctionCtx, Tuple};
 
 #[derive(Serialize, Deserialize)]
 struct Args {
@@ -246,7 +246,7 @@ passable_table = {}
 table.insert(passable_table, 1)
 table.insert(passable_table, 2)
 table.insert(passable_table, 3)
-capi_connection:call('harder', passable_table)
+capi_connection:call('harder', {passable_table})
 ```
 
 This time the call is passing a Lua table (`passable_table`) to the `harder()` function. The `harder()` function will see 
@@ -254,7 +254,7 @@ it, it's in the char `args` parameter.
 
 And now the screen looks like this:
 ```
-tarantool> capi_connection:call('harder', passable_table)
+tarantool> capi_connection:call('harder', {passable_table})
 field_count = 3
 val=1
 val=2
@@ -274,8 +274,8 @@ use std::os::raw::c_int;
 
 use serde::{Deserialize, Serialize};
 
-use tarantool_module::space::Space;
-use tarantool_module::tuple::{AsTuple, FunctionArgs, FunctionCtx};
+use tarantool::space::Space;
+use tarantool::tuple::{AsTuple, FunctionArgs, FunctionCtx};
 
 #[derive(Serialize, Deserialize)]
 struct Row {
@@ -294,7 +294,7 @@ pub extern "C" fn hardest(ctx: FunctionCtx, _: FunctionArgs) -> c_int {
             str_field: "String 2".to_string(),
         }
     );
-    ctx.return_tuple(result.unwrap().unwrap()).unwrap()
+    ctx.return_tuple(&result.unwrap().unwrap()).unwrap()
 }
 ```
 This time the rust function is doing three things:
@@ -336,8 +336,8 @@ use std::os::raw::c_int;
 
 use serde::{Deserialize, Serialize};
 
-use tarantool_module::space::Space;
-use tarantool_module::tuple::{AsTuple, FunctionArgs, FunctionCtx};
+use tarantool::space::Space;
+use tarantool::tuple::{AsTuple, FunctionArgs, FunctionCtx};
 
 #[derive(Serialize, Deserialize, Debug)]
 struct Row {
@@ -395,36 +395,31 @@ Create a new crate "write". Put these lines to `lib.rs`:
 ```rust
 use std::os::raw::c_int;
 
-use tarantool_module::error::{set_error, Error, TarantoolErrorCode};
-use tarantool_module::fiber::sleep;
-use tarantool_module::space::Space;
-use tarantool_module::transaction::start_transaction;
-use tarantool_module::tuple::{FunctionArgs, FunctionCtx};
+use tarantool::error::{Error, TarantoolErrorCode};
+use tarantool::fiber::sleep;
+use tarantool::space::Space;
+use tarantool::transaction::start_transaction;
+use tarantool::tuple::{FunctionArgs, FunctionCtx};
 
 #[no_mangle]
-pub extern "C" fn hardest(ctx: FunctionCtx, _: FunctionArgs) -> c_int {
-    let mut space = match Space::find("capi_test").unwrap() { // (1)
-        None => {
-            return set_error(
-                file!(),
-                line!(),
-                &TarantoolErrorCode::ProcC,
-                "Can't find space capi_test",
-            )
-        }
-        Some(space) => space,
-    };
+pub extern "C" fn write(ctx: FunctionCtx, _: FunctionArgs) -> c_int {
+   let mut space = match Space::find("capi_test") {
+      None => {
+         return tarantool::set_error!(TarantoolErrorCode::ProcC, "Can't find space capi_test")
+      }
+      Some(space) => space,
+   };
 
-    let row = (1, 22); // (2)
+   let row = (1, "22".to_string());
 
-    start_transaction(|| -> Result<(), Error> { // (3)
-        space.replace(&row, false)?; // (4)
-        Ok(()) // (5)
-    })
-    .unwrap();
+   start_transaction(|| -> Result<(), Error> {
+      space.replace(&row)?;
+      Ok(())
+   })
+           .unwrap();
 
-    sleep(0.001);
-    ctx.return_mp(&row).unwrap() // (6)
+   sleep(std::time::Duration::from_millis(1));
+   ctx.return_mp(&row).unwrap()
 }
 ```
 1. once again, finding the `capi_test` space by calling `Space::find_by_name()`;
