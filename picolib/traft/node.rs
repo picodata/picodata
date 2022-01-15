@@ -33,7 +33,7 @@ impl Node {
         Ok(ret)
     }
 
-    pub fn start(&mut self) {
+    pub fn start(&mut self, handle_committed_data: fn(&slog::Logger, &[u8])) {
         assert!(self.main_loop.is_none(), "Raft loop is already started");
 
         let logger = self.logger.clone();
@@ -45,7 +45,7 @@ impl Node {
                 // let mut raft_node = stash.raft_node.as_mut().unwrap();
                 let mut raw_node = raw_node.borrow_mut();
                 raw_node.tick();
-                on_ready(&mut raw_node, &logger);
+                on_ready(&mut raw_node, &logger, handle_committed_data);
             }
         };
 
@@ -70,6 +70,7 @@ impl DerefMut for Node {
 fn on_ready(
     raft_group: &mut RawNode,
     logger: &slog::Logger,
+    handle_committed_data: fn(&slog::Logger, &[u8]),
 ) {
     if !raft_group.has_ready() {
         return;
@@ -111,11 +112,9 @@ fn on_ready(
                 continue;
             }
 
-            // if entry.get_entry_type() == traft::EntryType::EntryNormal {
-                // let key = entry.data.get(0).unwrap();
-                // if let Some(value) = cbs.remove(key) {
-                // }
-            // }
+            if entry.get_entry_type() == EntryType::EntryNormal {
+                handle_committed_data(logger, entry.get_data())
+            }
 
             // TODO: handle EntryConfChange
         }
