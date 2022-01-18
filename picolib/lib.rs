@@ -1,6 +1,4 @@
 use ::tarantool::tlua;
-use rmp_serde;
-use serde::{Deserialize, Serialize};
 use std::os::raw::c_int;
 
 mod tarantool;
@@ -16,7 +14,6 @@ inventory::collect!(InnerTest);
 use std::cell::Ref;
 use std::cell::RefCell;
 use std::cell::RefMut;
-use std::convert::{TryFrom, TryInto};
 use std::rc::Rc;
 
 #[derive(Default)]
@@ -77,7 +74,7 @@ pub extern "C" fn luaopen_picolib(l: *mut std::ffi::c_void) -> c_int {
             luamod.set(
                 "raft_test_propose",
                 tlua::function1(move |x: String| {
-                    raft_propose(&stash, RaftEntryData::Info(format!("{}", x)))
+                    raft_propose(&stash, traft::Message::Info { msg: x })
                 }),
             );
         }
@@ -85,7 +82,9 @@ pub extern "C" fn luaopen_picolib(l: *mut std::ffi::c_void) -> c_int {
             let stash = stash.clone();
             luamod.set(
                 "broadcast_lua_eval",
-                tlua::function1(move |x: String| raft_propose(&stash, RaftEntryData::EvalLua(x))),
+                tlua::function1(move |x: String| {
+                    raft_propose(&stash, traft::Message::EvalLua { code: x })
+                }),
             )
         }
         {
@@ -153,36 +152,11 @@ fn get_stash(stash: &Rc<RefCell<Stash>>) {
     println!("{:?}", stash);
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-enum RaftEntryData {
-    Info(String),
-    EvalLua(String),
-}
-
-impl TryFrom<&[u8]> for RaftEntryData {
-    type Error = rmp_serde::decode::Error;
-
-    fn try_from(data: &[u8]) -> Result<Self, Self::Error> {
-        rmp_serde::from_read_ref(data)
-    }
-}
-
-impl From<RaftEntryData> for Vec<u8> {
-    fn from(data: RaftEntryData) -> Self {
-        let mut ser = rmp_serde::Serializer::new(Vec::new())
-            .with_struct_map()
-            .with_string_variants();
-        data.serialize(&mut ser).unwrap();
-        ser.into_inner()
-    }
-}
-
 #[no_mangle]
-fn raft_propose(stash: &Rc<RefCell<Stash>>, entry_data: RaftEntryData) {
+fn raft_propose(stash: &Rc<RefCell<Stash>>, msg: traft::Message) {
     let mut stash: RefMut<Stash> = stash.borrow_mut();
     let raft_node = stash.raft_node.as_mut().unwrap();
-    let data: Vec<u8> = entry_data.into();
+    let data: Vec<u8> = msg.into();
     tlog!(
         Info,
         "propose binary data ({} bytes).......................................",
@@ -193,12 +167,14 @@ fn raft_propose(stash: &Rc<RefCell<Stash>>, entry_data: RaftEntryData) {
 }
 
 fn handle_committed_data(data: &[u8]) {
-    use RaftEntryData::*;
+    use std::convert::TryInto;
+    use traft::Message::*;
 
     match data.try_into() {
         Ok(x) => match x {
-            EvalLua(code) => crate::tarantool::eval(&code),
-            Info(msg) => tlog!(Info, "{}", msg),
+            EvalLua { code } => crate::tarantool::eval(&code),
+            Info { msg } => tlog!(Info, "{}", msg),
+            Empty => {}
         },
         Err(why) => tlog!(Error, "cannot decode raft entry data: {}", why),
     }

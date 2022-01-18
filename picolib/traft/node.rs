@@ -100,11 +100,6 @@ fn on_ready(raft_group: &mut RawNode, handle_committed_data: fn(&[u8])) {
             tlog!(Info, "--- committed_entry: {:?}", entry);
             Storage::persist_applied(entry.index);
 
-            if entry.data.is_empty() {
-                // Emtpy entry, when the peer becomes Leader it will send an empty entry.
-                continue;
-            }
-
             if entry.get_entry_type() == EntryType::EntryNormal {
                 handle_committed_data(entry.get_data())
             }
