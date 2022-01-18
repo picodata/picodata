@@ -1,10 +1,10 @@
-use slog::{debug, o};
+use ::tarantool::index::IteratorType;
+use ::tarantool::space::Space;
+use ::tarantool::tuple::Tuple;
 use raft::eraftpb::ConfState;
 use raft::StorageError;
 use serde::{Deserialize, Serialize};
-use ::tarantool::space::Space;
-use ::tarantool::tuple::Tuple;
-use ::tarantool::index::IteratorType;
+use slog::{debug, o};
 
 use raft::prelude::*;
 use raft::Error as RaftError;
@@ -104,10 +104,13 @@ impl Storage {
         space.replace(&("applied", applied)).unwrap();
     }
 
-    pub fn entries(low: u64, high: u64,) -> Vec<Entry> {
+    pub fn entries(low: u64, high: u64) -> Vec<Entry> {
         let mut ret: Vec<Entry> = vec![];
         let space = Space::find("raft_log").unwrap();
-        let iter = space.primary_key().select(IteratorType::GE, &(low,)).unwrap();
+        let iter = space
+            .primary_key()
+            .select(IteratorType::GE, &(low,))
+            .unwrap();
 
         for tuple in iter {
             let row: LogRow = tuple.into_struct().unwrap();
@@ -177,13 +180,12 @@ impl raft::Storage for Storage {
         let space = Space::find("raft_log").unwrap();
 
         let tuple = space.primary_key().get(&(idx,)).unwrap();
-        let row: Option<LogRow> = tuple
-            .and_then(|t| t.into_struct().unwrap());
+        let row: Option<LogRow> = tuple.and_then(|t| t.into_struct().unwrap());
 
         let logger = slog::Logger::root(crate::tarantool::SlogDrain, o!());
         if let Some(row) = row {
             debug!(logger, "+++ term(idx={}) -> {:?}", idx, row.raft_term);
-            return Ok(row.raft_term)
+            return Ok(row.raft_term);
         } else {
             debug!(logger, "+++ term(idx={}) -> Unavailable", idx);
             return Err(RaftError::Store(StorageError::Unavailable));
@@ -197,11 +199,8 @@ impl raft::Storage for Storage {
     fn last_index(&self) -> Result<u64, RaftError> {
         let space: Space = Space::find("raft_log").unwrap();
         let tuple: Option<Tuple> = space.primary_key().max(&()).unwrap();
-        let row: Option<LogRow> = tuple
-            .and_then(|t| t.into_struct().unwrap());
-        let ret: u64 = row
-            .map(|row| row.raft_index)
-            .unwrap_or(0);
+        let row: Option<LogRow> = tuple.and_then(|t| t.into_struct().unwrap());
+        let ret: u64 = row.map(|row| row.raft_index).unwrap_or(0);
 
         let logger = slog::Logger::root(crate::tarantool::SlogDrain, o!());
         debug!(logger, "+++ last_index() -> {:?}", ret);
@@ -210,7 +209,10 @@ impl raft::Storage for Storage {
 
     fn snapshot(&self, request_index: u64) -> Result<Snapshot, RaftError> {
         let logger = slog::Logger::root(crate::tarantool::SlogDrain, o!());
-        debug!(logger, "+++ snapshot(idx={}) -> unimplemented", request_index);
+        debug!(
+            logger,
+            "+++ snapshot(idx={}) -> unimplemented", request_index
+        );
         unimplemented!();
     }
 }
@@ -251,7 +253,6 @@ impl From<LogRow> for Entry {
         ret.set_data(row.data.into());
         ret
     }
-
 }
 
 impl ::tarantool::tuple::AsTuple for LogRow {}

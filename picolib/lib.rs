@@ -1,8 +1,8 @@
-use slog::{debug, info, o, error};
-use std::os::raw::c_int;
 use ::tarantool::tlua;
 use rmp_serde;
 use serde::{Deserialize, Serialize};
+use slog::{debug, error, info, o};
+use std::os::raw::c_int;
 
 mod tarantool;
 mod traft;
@@ -13,9 +13,9 @@ pub struct InnerTest {
 }
 inventory::collect!(InnerTest);
 
+use std::cell::Ref;
 use std::cell::RefCell;
 use std::cell::RefMut;
-use std::cell::Ref;
 use std::convert::{TryFrom, TryInto};
 use std::rc::Rc;
 
@@ -46,9 +46,9 @@ pub extern "C" fn luaopen_picolib(l: *mut std::ffi::c_void) -> c_int {
     match command.as_deref() {
         Ok("run") => {
             main_run(&stash);
-        },
-        Ok(_) => {},
-        Err(_) => {},
+        }
+        Ok(_) => {}
+        Err(_) => {}
     }
 
     unsafe {
@@ -76,29 +76,29 @@ pub extern "C" fn luaopen_picolib(l: *mut std::ffi::c_void) -> c_int {
             let stash = stash.clone();
             luamod.set(
                 "raft_test_propose",
-                tlua::function1(move |x: String|
-                    raft_propose(&stash, RaftEntryData::Info(format!("{}", x)))),
+                tlua::function1(move |x: String| {
+                    raft_propose(&stash, RaftEntryData::Info(format!("{}", x)))
+                }),
             );
         }
         {
             let stash = stash.clone();
             luamod.set(
                 "broadcast_lua_eval",
-                tlua::function1(
-                    move |x: String| {
-                        raft_propose(&stash, RaftEntryData::EvalLua(x))
-                    }
-                )
+                tlua::function1(move |x: String| raft_propose(&stash, RaftEntryData::EvalLua(x))),
             )
         }
         {
-            l.exec(r#"
+            l.exec(
+                r#"
                 function inspect()
                     return
                         {raft_log = box.space.raft_log:fselect()},
                         {raft_state = box.space.raft_state:fselect()}
                 end
-            "#).unwrap();
+            "#,
+            )
+            .unwrap();
         }
 
         use tlua::AsLua;
@@ -204,9 +204,7 @@ fn handle_committed_data(logger: &slog::Logger, data: &[u8]) {
         Ok(x) => match x {
             EvalLua(code) => crate::tarantool::eval(&code),
             Info(msg) => info!(logger, "{}", msg),
-        }
+        },
         Err(why) => error!(logger, "cannot decode raft entry data: {}", why),
     }
 }
-
-

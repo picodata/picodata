@@ -1,15 +1,12 @@
-use slog::{
-    info,
-};
-use std::ops::{Deref, DerefMut};
 use raft::prelude::*;
 use raft::Error as RaftError;
+use slog::info;
+use std::ops::{Deref, DerefMut};
 
 use std::cell::RefCell;
 use std::rc::Rc;
 
 use std::time::Duration;
-
 
 use super::storage::Storage;
 use crate::tarantool::SlogDrain;
@@ -25,11 +22,15 @@ pub struct Node {
 }
 
 impl Node {
-    pub fn new(cfg: &raft::Config) -> Result<Self, RaftError>  {
+    pub fn new(cfg: &raft::Config) -> Result<Self, RaftError> {
         let logger = slog::Logger::root(SlogDrain, slog::o!());
         let raw_node = RawNode::new(cfg, Storage, &logger)?;
         let raw_node = Rc::from(RefCell::from(raw_node));
-        let ret = Node {logger, raw_node, main_loop: None};
+        let ret = Node {
+            logger,
+            raw_node,
+            main_loop: None,
+        };
         Ok(ret)
     }
 
