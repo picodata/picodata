@@ -62,6 +62,7 @@ build:
     - cargo -V
     - cargo build
     - cargo test
+    - cargo fmt -- -v --check
   cache:
     paths:
       - target
