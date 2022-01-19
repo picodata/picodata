@@ -8,4 +8,4 @@ RUN set -e; \
 ENV PATH=/root/.cargo/bin:${PATH}
 RUN set -e; \
     curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs |\
-    sh -s -- -y --profile default --default-toolchain 1.57.0;
+    sh -s -- -y --profile default --default-toolchain 1.58.0;
