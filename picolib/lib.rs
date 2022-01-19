@@ -117,7 +117,7 @@ fn main_run() {
         ..Default::default()
     };
 
-    std::env::var("PICODATA_DATA_DIR").ok().and_then(|v| {
+    std::env::var("PICODATA_DATA_DIR").ok().map(|v| {
         std::fs::create_dir_all(&v).unwrap();
         cfg.wal_dir = v.clone();
         cfg.memtx_dir = v.clone();
@@ -135,7 +135,7 @@ fn main_run() {
     let node = traft::Node::new(&raft_cfg, handle_committed_data).unwrap();
     stash.set_raft_node(node);
 
-    std::env::var("PICODATA_LISTEN").ok().and_then(|v| {
+    std::env::var("PICODATA_LISTEN").ok().map(|v| {
         cfg.listen = Some(v.clone());
         Some(v)
     });
@@ -166,7 +166,7 @@ fn handle_committed_data(data: &[u8]) {
     match Message::try_from(data) {
         Ok(x) => match x {
             EvalLua { code } => crate::tarantool::eval(&code),
-            Info { msg } => tlog!(Info, "{}", msg),
+            Info { msg } => tlog!(Info, "{msg}"),
             Empty => {}
         },
         Err(why) => tlog!(Error, "cannot decode raft entry data: {}", why),

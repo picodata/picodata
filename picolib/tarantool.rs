@@ -1,4 +1,5 @@
 use std::ffi::CStr;
+
 use tarantool::global_lua;
 use tarantool::tlua::{self, LuaFunction};
 

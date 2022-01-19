@@ -1,20 +1,21 @@
+use std::convert::TryFrom;
+
 use ::raft::prelude as raft;
 use ::raft::Error as RaftError;
 use ::raft::StorageError;
 use ::tarantool::index::IteratorType;
 use ::tarantool::space::Space;
 use ::tarantool::tuple::Tuple;
-use std::convert::TryFrom;
-
-use crate::tlog;
-use crate::traft::row;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 
+use crate::tlog;
+use crate::traft::row;
+
 pub struct Storage;
 
-pub const SPACE_RAFT_STATE: &'static str = "raft_state";
-pub const SPACE_RAFT_LOG: &'static str = "raft_log";
+pub const SPACE_RAFT_STATE: &str = "raft_state";
+pub const SPACE_RAFT_LOG: &str = "raft_log";
 
 impl Storage {
     pub fn init_schema() {
