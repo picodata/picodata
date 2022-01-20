@@ -10,6 +10,7 @@ fn positive() {
 
     let mut cmd = Command::cargo_bin("picodata").unwrap();
     cmd.current_dir(temp_path);
+    cmd.env("PICOLIB_NO_AUTORUN", "");
     cmd.arg("run");
     cmd.arg("-e").arg(
         r#"
@@ -20,7 +21,6 @@ fn positive() {
         end
         assert_eq(os.environ()['PICODATA_LISTEN'], "3301")
         assert_eq(os.environ()['PICODATA_DATA_DIR'], ".")
-        os.exit()
         "#,
     );
     cmd.timeout(Duration::from_secs(1)).assert().success();
@@ -57,6 +57,7 @@ fn broken_tarantool() {
 #[test]
 fn pass_arguments() {
     let mut cmd = Command::cargo_bin("picodata").unwrap();
+    cmd.env("PICOLIB_NO_AUTORUN", "");
     cmd.arg("run");
     cmd.args(["-e", "error('xxx', 0)"]);
     cmd.assert().failure().stderr(
@@ -73,6 +74,7 @@ fn pass_environment() {
     let mut cmd = Command::cargo_bin("picodata").unwrap();
     cmd.current_dir(temp_path);
     cmd.arg("run");
+    cmd.env("PICOLIB_NO_AUTORUN", "");
     cmd.env("LUA_CPATH", "/dev/null/?");
     cmd.env("CUSTOM_VAR", "keep me");
     cmd.env("TARANTOOL_VAR", "purge me");
@@ -103,8 +105,7 @@ fn pass_environment() {
         assert_eq(os.environ()['PICODATA_INSTANCE_ID'], "i1")
         assert_eq(os.environ()['PICODATA_PEER'], "i1,i2,i3")
         assert_eq(os.environ()['PICODATA_DATA_DIR'], "./data/i1")
-        assert_eq(os.environ()['PICODATA_COMMAND'], "run")
-        require('picolib')
+        require('picolib').run()
         os.exit(0)
     "#,
     );
@@ -124,6 +125,7 @@ fn precedence() {
     let mut cmd = Command::cargo_bin("picodata").unwrap();
     cmd.current_dir(temp_path);
     cmd.arg("run");
+    cmd.env("PICOLIB_NO_AUTORUN", "");
     cmd.env("PICODATA_DATA_DIR", "./somewhere");
     cmd.env("PICODATA_LISTEN", "0.0.0.0:0");
     cmd.arg("-e").arg(
@@ -135,7 +137,6 @@ fn precedence() {
         end
         assert_eq(os.environ()['PICODATA_DATA_DIR'], './somewhere')
         assert_eq(os.environ()['PICODATA_LISTEN'], "0.0.0.0:0")
-        os.exit(0)
     "#,
     );
     cmd.timeout(Duration::from_secs(1)).assert().success();

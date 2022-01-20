@@ -34,21 +34,13 @@ impl std::fmt::Debug for Stash {
 
 #[no_mangle]
 pub extern "C" fn luaopen_picolib(l: *mut std::ffi::c_void) -> c_int {
-    for (key, value) in std::env::vars() {
-        if key.starts_with("PICODATA_") {
-            println!("{}: {:?}", key, value);
-        }
-    }
-
     let stash: Rc<RefCell<Stash>> = Default::default();
 
-    let command = std::env::var("PICODATA_COMMAND");
-    match command.as_deref() {
-        Ok("run") => {
-            main_run(&stash);
-        }
-        Ok(_) => {}
-        Err(_) => {}
+    if std::env::var("PICOLIB_NO_AUTORUN").is_ok() {
+        // Skip box.cfg and other initialization
+        // Used mostly for testing purposes
+    } else {
+        main_run(&stash);
     }
 
     unsafe {
@@ -68,6 +60,10 @@ pub extern "C" fn luaopen_picolib(l: *mut std::ffi::c_void) -> c_int {
 
         //
         // Export public API
+        {
+            let stash = stash.clone();
+            luamod.set("run", tlua::function0(move || main_run(&stash)));
+        }
         {
             let stash = stash.clone();
             luamod.set("get_stash", tlua::function0(move || get_stash(&stash)));
@@ -108,6 +104,11 @@ pub extern "C" fn luaopen_picolib(l: *mut std::ffi::c_void) -> c_int {
 }
 
 fn main_run(stash: &Rc<RefCell<Stash>>) {
+    if tarantool::cfg().is_some() {
+        // Already initialized
+        return;
+    }
+
     let mut cfg = tarantool::Cfg {
         listen: None,
         ..Default::default()

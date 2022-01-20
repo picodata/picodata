@@ -41,12 +41,14 @@ fn main_run(matches: &clap::ArgMatches) {
     };
 
     let mut argv: Vec<&str> = vec![&tarantool_path];
+    argv.push("-l");
+    argv.push("picolib");
+
     if let Some(script) = matches.value_of("tarantool-exec") {
         argv.push("-e");
         argv.push(script);
     }
-    argv.push("-l");
-    argv.push("picolib");
+
     let argv = argv.iter().map(|&s| CString!(s)).collect();
 
     let mut envp = HashMap::new();
@@ -64,7 +66,6 @@ fn main_run(matches: &clap::ArgMatches) {
         envp.insert("PICODATA_PEER".to_owned(), peer);
     }
 
-    envp.insert("PICODATA_COMMAND".to_owned(), "run".to_owned());
     envp.entry("PICODATA_LISTEN".to_owned())
         .or_insert("3301".to_owned());
     envp.entry("PICODATA_DATA_DIR".to_owned())
@@ -109,12 +110,6 @@ fn main_run(matches: &clap::ArgMatches) {
         .into_iter()
         .map(|(k, v)| CString!(format!("{}={}", k, v)))
         .collect();
-
-    println!(
-        "Hello from picodata main ({}, {})",
-        std::env!("CARGO_PKG_NAME"), // expanded at compile time
-        std::module_path!()          // expanded at compile time
-    );
 
     let e = execve::execve(argv, envp);
     eprintln!("{}: {}", tarantool_path, e);

@@ -46,3 +46,7 @@ doctest = false
 [[test]]
 name = "cli"
 harness = true
+
+[[test]]
+name = "inner"
+harness = false
