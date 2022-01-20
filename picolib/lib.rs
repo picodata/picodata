@@ -1,6 +1,7 @@
 use ::tarantool::tlua;
 use std::os::raw::c_int;
 
+mod message;
 mod tarantool;
 mod tlog;
 mod traft;
@@ -11,9 +12,11 @@ pub struct InnerTest {
 }
 inventory::collect!(InnerTest);
 
+use message::Message;
 use std::cell::Ref;
 use std::cell::RefCell;
 use std::cell::RefMut;
+use std::convert::TryFrom;
 use std::rc::Rc;
 
 #[derive(Default)]
@@ -73,9 +76,7 @@ pub extern "C" fn luaopen_picolib(l: *mut std::ffi::c_void) -> c_int {
             let stash = stash.clone();
             luamod.set(
                 "raft_test_propose",
-                tlua::function1(move |x: String| {
-                    raft_propose(&stash, traft::Message::Info { msg: x })
-                }),
+                tlua::function1(move |x: String| raft_propose(&stash, Message::Info { msg: x })),
             );
         }
         {
@@ -83,7 +84,7 @@ pub extern "C" fn luaopen_picolib(l: *mut std::ffi::c_void) -> c_int {
             luamod.set(
                 "broadcast_lua_eval",
                 tlua::function1(move |x: String| {
-                    raft_propose(&stash, traft::Message::EvalLua { code: x })
+                    raft_propose(&stash, Message::EvalLua { code: x })
                 }),
             )
         }
@@ -153,7 +154,7 @@ fn get_stash(stash: &Rc<RefCell<Stash>>) {
 }
 
 #[no_mangle]
-fn raft_propose(stash: &Rc<RefCell<Stash>>, msg: traft::Message) {
+fn raft_propose(stash: &Rc<RefCell<Stash>>, msg: Message) {
     let mut stash: RefMut<Stash> = stash.borrow_mut();
     let raft_node = stash.raft_node.as_mut().unwrap();
     let data: Vec<u8> = msg.into();
@@ -167,10 +168,9 @@ fn raft_propose(stash: &Rc<RefCell<Stash>>, msg: traft::Message) {
 }
 
 fn handle_committed_data(data: &[u8]) {
-    use std::convert::TryInto;
-    use traft::Message::*;
+    use Message::*;
 
-    match data.try_into() {
+    match Message::try_from(data) {
         Ok(x) => match x {
             EvalLua { code } => crate::tarantool::eval(&code),
             Info { msg } => tlog!(Info, "{}", msg),

@@ -1,5 +1,4 @@
-use serde::Deserialize;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::convert::TryFrom;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -40,14 +39,14 @@ impl From<Message> for Vec<u8> {
 }
 
 inventory::submit!(crate::InnerTest {
-    name: "test_traft_storage_Message",
+    name: "test_message_serde",
     body: || {
         use ::tarantool::tuple::AsTuple;
         use ::tarantool::tuple::Tuple;
 
         // Test to / from tarantool::Tuple
 
-        fn ser<T: AsTuple>(e: T) -> serde_json::Value {
+        fn ser(e: impl AsTuple) -> serde_json::Value {
             let t = Tuple::from_struct(&e).unwrap();
             t.as_struct().unwrap()
         }

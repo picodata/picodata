@@ -5,7 +5,7 @@ use serde::Serialize;
 use std::convert::TryFrom;
 use std::convert::TryInto;
 
-use super::Message;
+use crate::message::Message;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct RaftEntryRow {

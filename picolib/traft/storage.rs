@@ -15,9 +15,6 @@ use raft::Error as RaftError;
 mod entry_row;
 use entry_row::RaftEntryRow;
 
-mod message;
-pub use message::Message;
-
 pub struct Storage;
 
 impl Storage {
