@@ -99,7 +99,7 @@ pub fn closures() {
 }
 
 pub fn closures_lifetime() {
-    fn t<F>(f: F)
+    fn t<F: 'static>(f: F)
         where F: Fn(i32, i32) -> i32
     {
         let lua = tarantool::global_lua();
@@ -114,18 +114,22 @@ pub fn closures_lifetime() {
 }
 
 pub fn closures_extern_access() {
-    let mut a = 5;
+    let a = std::rc::Rc::new(std::cell::Cell::new(5));
 
     {
         let lua = tarantool::global_lua();
 
-        lua.set("inc", function0(|| a += 1));
+        let a = a.clone();
+        lua.set("inc", function0(move || {
+            let old = a.get();
+            a.set(old + 1);
+        }));
         for _ in 0..15 {
             lua.exec("inc()").unwrap();
         }
     }
 
-    assert_eq!(a, 20)
+    assert_eq!(a.get(), 20)
 }
 
 pub fn closures_drop_env() {
@@ -179,9 +183,9 @@ pub fn push_callback_by_ref() {
 
     let data = vec![1, 2, 3];
 
-    let f: LuaFunction<_> = lua.push(&function0(|| data[0] + data[1] + data[2])).read().unwrap();
-    assert_eq!(f.call().ok(), Some(6_i32));
-    let lua = f.into_inner();
+    // Doesn't compile, because the closure isn't 'static and can capture a
+    // dangling reference
+    // let f: LuaFunction<_> = lua.push(&function0(|| data[0] + data[1] + data[2])).read().unwrap();
 
     // Doesn't compile, because the closure isn't Copy and cannot be moved from
     // a reference
@@ -199,5 +203,21 @@ pub fn push_callback_by_ref() {
 
     let t: tlua::LuaTable<_> = lua.push(&s).read().unwrap();
     assert_eq!(t.call_method("callback", ()).ok(), Some(42_i32));
+}
+
+pub fn closures_must_be_static() {
+    let lua = Lua::new();
+
+    static mut GLOBAL: Option<Vec<i32>> = None;
+    {
+        let v = vec![1, 2, 3];
+        let f = move || unsafe { GLOBAL = Some(v.clone()) };
+        // lua.set("a", Function::new(&f)); <- doesn't compile because otherwise
+        // this test fails
+        lua.set("a", Function::new(f));
+    }
+    let f: LuaFunction<_> = lua.get("a").unwrap();
+    let () = f.call().unwrap();
+    assert_eq!(unsafe { &GLOBAL }, &Some(vec![1, 2, 3]));
 }
 

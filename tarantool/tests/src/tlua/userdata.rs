@@ -214,10 +214,10 @@ pub fn multiple_userdata() {
     lua.set("add", tlua::function2(|Integer(x), Integer(y)| Integer(x + y)));
     lua.set("axpy", tlua::function3(|a: Integer, x: Integer, y: Integer|
         Integer(a.0 * x.0 + y.0)));
-    lua.set("axpy_float", tlua::function3(&axpy_float));
-    lua.set("axpy_float_2", tlua::function3(&axpy_float_2));
-    lua.set("broadcast_mul", tlua::function2(&broadcast_mul));
-    lua.set("collapse", tlua::function3(&collapse));
+    lua.set("axpy_float", tlua::function3(axpy_float));
+    lua.set("axpy_float_2", tlua::function3(axpy_float_2));
+    lua.set("broadcast_mul", tlua::function2(broadcast_mul));
+    lua.set("collapse", tlua::function3(collapse));
 
     assert_eq!(lua.eval::<Integer>("return add(a, b)").unwrap().0, 19 + 114);
     assert_eq!(lua.eval::<Integer>("return add(b, c)").unwrap().0, 114 + 96);

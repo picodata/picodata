@@ -225,6 +225,7 @@ macro_rules! impl_function_ext {
         where
             L: AsLua,
             Z: FnMut($($p),*) -> R,
+            Z: 'static,
             ($($p,)*): for<'p> LuaRead<&'p InsideCallback>,
             R: PushInto<InsideCallback> + 'static,
         {
@@ -234,16 +235,16 @@ macro_rules! impl_function_ext {
             fn push_into_lua(self, lua: L) -> Result<PushGuard<L>, (Void, L)> {
                 unsafe {
                     // pushing the function pointer as a userdata
-                    let ud = ffi::lua_newuserdata(lua.as_lua(), mem::size_of::<Z>() as _);
-                    ptr::write(ud.cast::<Z>(), self.function);
+                    let ud = ffi::lua_newuserdata(lua.as_lua(), mem::size_of::<Self>() as _);
+                    ptr::write(ud.cast(), self);
 
-                    if std::mem::needs_drop::<Z>() {
+                    if std::mem::needs_drop::<Self>() {
                         // Creating a metatable.
                         ffi::lua_newtable(lua.as_lua());
 
                         // Index "__gc" in the metatable calls the object's destructor.
                         lua.as_lua().push("__gc").forget_internal();
-                        ffi::lua_pushcfunction(lua.as_lua(), wrap_gc::<Z>);
+                        ffi::lua_pushcfunction(lua.as_lua(), wrap_gc::<Self>);
                         ffi::lua_settable(lua.as_lua(), -3);
 
                         ffi::lua_setmetatable(lua.as_lua(), -2);
@@ -268,6 +269,7 @@ macro_rules! impl_function_ext {
         where
             L: AsLua,
             Z: FnMut($($p),*) -> R,
+            Z: 'static,
             ($($p,)*): for<'p> LuaRead<&'p InsideCallback>,
             R: PushInto<InsideCallback> + 'static,
         {
@@ -277,7 +279,7 @@ macro_rules! impl_function_ext {
         where
             L: AsLua,
             Z: FnMut($($p),*) -> R,
-            Z: Copy,
+            Self: Copy + 'static,
             ($($p,)*): for<'p> LuaRead<&'p InsideCallback>,
             R: PushInto<InsideCallback> + 'static,
         {
@@ -286,8 +288,8 @@ macro_rules! impl_function_ext {
             fn push_to_lua(&self, lua: L) -> Result<PushGuard<L>, (Void, L)> {
                 unsafe {
                     // pushing the function pointer as a userdata
-                    let ud = ffi::lua_newuserdata(lua.as_lua(), mem::size_of::<Z>() as _);
-                    ptr::write(ud.cast::<Z>(), self.function);
+                    let ud = ffi::lua_newuserdata(lua.as_lua(), mem::size_of::<Self>() as _);
+                    ptr::write(ud.cast(), *self);
 
                     // pushing wrapper as a closure
                     ffi::lua_pushcclosure(lua.as_lua(), wrapper::<Self, _, R>, 1);
@@ -300,7 +302,7 @@ macro_rules! impl_function_ext {
         where
             L: AsLua,
             Z: FnMut($($p),*) -> R,
-            Z: Copy,
+            Self: Copy + 'static,
             ($($p,)*): for<'p> LuaRead<&'p InsideCallback>,
             R: PushInto<InsideCallback> + 'static,
         {
@@ -362,7 +364,8 @@ where
 {
     // loading the object that we want to call from the Lua context
     let data_raw = unsafe { ffi::lua_touserdata(lua, ffi::lua_upvalueindex(1)) };
-    let data: &mut T = unsafe { mem::transmute(data_raw) };
+    let data = unsafe { data_raw.cast::<T>().as_mut() }
+        .expect("lua_touserdata returned NULL");
 
     // creating a temporary Lua context in order to pass it to push & read functions
     let tmp_lua = InsideCallback(lua.as_lua());
