@@ -280,3 +280,14 @@ pub fn drop_rx() {
     f.join();
 }
 
+pub fn cannot_send_ref() {
+    let (tx, rx) = fiber::Channel::new(0).into_clones();
+    let f = fiber::defer(move || rx.recv());
+    {
+        let v = vec![1, 2, 3];
+        // tx.send(&v).unwrap(); <- must not compile anymore
+        tx.send(v).unwrap();
+    }
+    assert_eq!(f.join().unwrap(), &[1, 2, 3])
+}
+

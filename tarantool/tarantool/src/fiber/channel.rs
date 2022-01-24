@@ -60,7 +60,10 @@ impl<T> Channel<T> {
 }
 
 impl<T> SendTimeout<T> for Channel<T> {
-    fn send_maybe_timeout(&self, t: T, timeout: Option<Duration>) -> Result<(), SendError<T>> {
+    fn send_maybe_timeout(&self, t: T, timeout: Option<Duration>) -> Result<(), SendError<T>>
+    where
+        T: 'static,
+    {
         unsafe {
             let ipc_value_ptr = ffi::ipc_value_new();
             let ipc_value = &mut *ipc_value_ptr;
@@ -152,9 +155,14 @@ pub trait SendTimeout<T> {
         &self,
         t: T,
         timeout: Option<Duration>,
-    ) -> Result<(), SendError<T>>;
+    ) -> Result<(), SendError<T>>
+    where
+        T: 'static;
 
-    fn send(&self, t: T) -> Result<(), T> {
+    fn send(&self, t: T) -> Result<(), T>
+    where
+        T: 'static,
+    {
         match self.send_maybe_timeout(t, None) {
             Ok(()) => Ok(()),
             Err(SendError::Disconnected(t)) => Err(t),
@@ -164,11 +172,17 @@ pub trait SendTimeout<T> {
         }
     }
 
-    fn send_timeout(&self, t: T, timeout: Duration) -> Result<(), SendError<T>> {
+    fn send_timeout(&self, t: T, timeout: Duration) -> Result<(), SendError<T>>
+    where
+        T: 'static,
+    {
         self.send_maybe_timeout(t, Some(timeout))
     }
 
-    fn try_send(&self, t: T) -> Result<(), TrySendError<T>> {
+    fn try_send(&self, t: T) -> Result<(), TrySendError<T>>
+    where
+        T: 'static,
+    {
         self.send_timeout(t, Duration::ZERO).map_err(From::from)
     }
 }
@@ -252,17 +266,26 @@ impl<T> Channel<T> {
 // use the channel
 impl<T> Channel<T> {
     #[inline(always)]
-    pub fn send(&self, t: T) -> Result<(), T> {
+    pub fn send(&self, t: T) -> Result<(), T>
+    where
+        T: 'static,
+    {
         SendTimeout::send(self, t)
     }
 
     #[inline(always)]
-    pub fn send_timeout(&self, t: T, timeout: Duration) -> Result<(), SendError<T>> {
+    pub fn send_timeout(&self, t: T, timeout: Duration) -> Result<(), SendError<T>>
+    where
+        T: 'static,
+    {
         SendTimeout::send_timeout(self, t, timeout)
     }
 
     #[inline(always)]
-    pub fn try_send(&self, t: T) -> Result<(), TrySendError<T>> {
+    pub fn try_send(&self, t: T) -> Result<(), TrySendError<T>>
+    where
+        T: 'static,
+    {
         SendTimeout::try_send(self, t)
     }
 

@@ -361,6 +361,7 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 fiber::channel::try_iter,
                 fiber::channel::demo,
                 fiber::channel::drop_rx,
+                fiber::channel::cannot_send_ref,
 
                 test_box::test_space_get_by_name,
                 test_box::test_space_get_system,

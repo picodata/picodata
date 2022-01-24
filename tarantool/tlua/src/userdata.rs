@@ -22,7 +22,10 @@ use crate::{
 /// for example when passing `FnOnce` as a c closure, because it must be dropped
 /// after the call.
 /// *[0, +1, -]*
-pub unsafe fn push_some_userdata<T>(lua: *mut ffi::lua_State, value: T) {
+pub unsafe fn push_some_userdata<T>(lua: *mut ffi::lua_State, value: T)
+where
+    T: 'static,
+{
     type UDBox<T> = Option<T>;
     let ud_ptr = ffi::lua_newuserdata(lua, std::mem::size_of::<UDBox<T>>());
     std::ptr::write(ud_ptr as *mut UDBox<T>, Some(value));

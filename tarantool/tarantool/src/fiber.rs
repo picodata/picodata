@@ -687,6 +687,7 @@ impl<F, T> LuaCallee for LuaFiberFunc<F>
 where
     F: FnOnce() -> T,
     F: 'static,
+    T: 'static,
 {
     type Function = F;
     type Output = T;
@@ -793,6 +794,8 @@ where
 impl<F, T> Callee for FiberFunc<F, T>
 where
     F: FnOnce() -> T,
+    F: 'static,
+    T: 'static,
 {
     type JoinHandle = JoinHandle<T>;
     type Args = (Box<F>, *mut Option<T>);
@@ -826,6 +829,7 @@ where
 impl<F> Callee for FiberProc<F>
 where
     F: FnOnce(),
+    F: 'static,
 {
     type JoinHandle = UnitJoinHandle;
     type Args = Box<F>;
@@ -1017,6 +1021,7 @@ pub fn start<F, T>(f: F) -> JoinHandle<T>
 where
     F: FnOnce() -> T,
     F: 'static,
+    T: 'static,
 {
     Builder::new().func(f).start().unwrap()
 }
@@ -1053,6 +1058,7 @@ pub fn defer<F, T>(f: F) -> LuaJoinHandle<T>
 where
     F: FnOnce() -> T,
     F: 'static,
+    T: 'static,
 {
     LuaFiber::new(LuaFiberFunc(f)).spawn().unwrap()
 }
