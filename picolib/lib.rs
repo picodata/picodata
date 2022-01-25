@@ -2,6 +2,7 @@ use ::tarantool::tlua;
 use std::os::raw::c_int;
 
 mod message;
+pub mod stash;
 mod tarantool;
 mod tlog;
 mod traft;
@@ -15,32 +16,42 @@ inventory::collect!(InnerTest);
 use message::Message;
 use std::cell::Ref;
 use std::cell::RefCell;
-use std::cell::RefMut;
 use std::convert::TryFrom;
-use std::rc::Rc;
 
 #[derive(Default)]
-struct Stash {
-    raft_node: Option<traft::Node>,
+pub struct Stash {
+    raft_node: RefCell<Option<traft::Node>>,
+}
+
+impl Stash {
+    pub fn access() -> &'static Self {
+        stash::access("_picolib_stash")
+    }
+
+    pub fn set_raft_node(&self, raft_node: traft::Node) {
+        *self.raft_node.borrow_mut() = Some(raft_node);
+    }
+
+    pub fn raft_node(&self) -> Ref<Option<traft::Node>> {
+        self.raft_node.borrow()
+    }
 }
 
 impl std::fmt::Debug for Stash {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("")
-            .field("raft_node", &self.raft_node.is_some())
+            .field("raft_node", &self.raft_node().is_some())
             .finish()
     }
 }
 
 #[no_mangle]
 pub extern "C" fn luaopen_picolib(l: *mut std::ffi::c_void) -> c_int {
-    let stash: Rc<RefCell<Stash>> = Default::default();
-
     if std::env::var("PICOLIB_NO_AUTORUN").is_ok() {
         // Skip box.cfg and other initialization
         // Used mostly for testing purposes
     } else {
-        main_run(&stash);
+        main_run();
     }
 
     unsafe {
@@ -60,30 +71,19 @@ pub extern "C" fn luaopen_picolib(l: *mut std::ffi::c_void) -> c_int {
 
         //
         // Export public API
-        {
-            let stash = stash.clone();
-            luamod.set("run", tlua::function0(move || main_run(&stash)));
-        }
-        {
-            let stash = stash.clone();
-            luamod.set("get_stash", tlua::function0(move || get_stash(&stash)));
-        }
-        {
-            let stash = stash.clone();
-            luamod.set(
-                "raft_test_propose",
-                tlua::function1(move |x: String| raft_propose(&stash, Message::Info { msg: x })),
-            );
-        }
-        {
-            let stash = stash.clone();
-            luamod.set(
-                "broadcast_lua_eval",
-                tlua::function1(move |x: String| {
-                    raft_propose(&stash, Message::EvalLua { code: x })
-                }),
-            )
-        }
+        luamod.set("run", tlua::function0(main_run));
+        luamod.set(
+            "get_stash",
+            tlua::function0(|| println!("{:?}", Stash::access())),
+        );
+        luamod.set(
+            "raft_propose_info",
+            tlua::function1(|x: String| raft_propose(Message::Info { msg: x })),
+        );
+        luamod.set(
+            "raft_propose_eval",
+            tlua::function1(|x: String| raft_propose(Message::EvalLua { code: x })),
+        );
         {
             l.exec(
                 r#"
@@ -103,7 +103,9 @@ pub extern "C" fn luaopen_picolib(l: *mut std::ffi::c_void) -> c_int {
     }
 }
 
-fn main_run(stash: &Rc<RefCell<Stash>>) {
+fn main_run() {
+    let stash = Stash::access();
+
     if tarantool::cfg().is_some() {
         // Already initialized
         return;
@@ -131,7 +133,7 @@ fn main_run(stash: &Rc<RefCell<Stash>>) {
     };
     let mut node = traft::Node::new(&raft_cfg).unwrap();
     node.start(handle_committed_data);
-    stash.borrow_mut().raft_node = Some(node);
+    stash.set_raft_node(node);
 
     std::env::var("PICODATA_LISTEN").ok().and_then(|v| {
         cfg.listen = Some(v.clone());
@@ -149,15 +151,10 @@ fn main_run(stash: &Rc<RefCell<Stash>>) {
     );
 }
 
-fn get_stash(stash: &Rc<RefCell<Stash>>) {
-    let stash: Ref<Stash> = stash.borrow();
-    println!("{:?}", stash);
-}
-
-#[no_mangle]
-fn raft_propose(stash: &Rc<RefCell<Stash>>, msg: Message) {
-    let mut stash: RefMut<Stash> = stash.borrow_mut();
-    let raft_node = stash.raft_node.as_mut().unwrap();
+fn raft_propose(msg: Message) {
+    let stash = Stash::access();
+    let raft_ref = stash.raft_node();
+    let raft_node = raft_ref.as_ref().unwrap();
     let data: Vec<u8> = msg.into();
     tlog!(
         Info,
