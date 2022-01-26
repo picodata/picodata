@@ -92,7 +92,7 @@ pub fn push_userdata<L, T, F>(data: T, lua: L, metatable: F) -> PushGuard<L>
 where
     F: for<'a> FnOnce(LuaTable<&'a PushGuard<L>>),
     L: AsLua,
-    T: Send + 'static + Any,
+    T: 'static + Any,
 {
     unsafe {
         let typeid = TypeId::of::<T>();

@@ -33,17 +33,18 @@ pub fn readwrite() {
 }
 
 pub fn destructor_called() {
-    use std::sync::{Arc, Mutex};
+    use std::cell::RefCell;
+    use std::rc::Rc;
 
-    let called = Arc::new(Mutex::new(false));
+    let called = Rc::new(RefCell::new(false));
 
     struct Foo {
-        called: Arc<Mutex<bool>>,
+        called: Rc<RefCell<bool>>,
     }
 
     impl Drop for Foo {
         fn drop(&mut self) {
-            let mut called = self.called.lock().unwrap();
+            let mut called = self.called.borrow_mut();
             (*called) = true;
         }
     }
@@ -64,8 +65,7 @@ pub fn destructor_called() {
         lua.set("a", Foo { called: called.clone() });
     }
 
-    let locked = called.lock().unwrap();
-    assert!(*locked);
+    assert!(*called.borrow());
 }
 
 pub fn type_check() {
