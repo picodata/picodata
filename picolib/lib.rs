@@ -131,8 +131,7 @@ fn main_run() {
         applied: traft::Storage::applied().unwrap_or_default(),
         ..Default::default()
     };
-    let mut node = traft::Node::new(&raft_cfg).unwrap();
-    node.start(handle_committed_data);
+    let node = traft::Node::new(&raft_cfg, handle_committed_data).unwrap();
     stash.set_raft_node(node);
 
     std::env::var("PICODATA_LISTEN").ok().and_then(|v| {
@@ -154,14 +153,9 @@ fn main_run() {
 fn raft_propose(msg: Message) {
     let stash = Stash::access();
     let raft_ref = stash.raft_node();
-    let raft_node = raft_ref.as_ref().unwrap();
-    let data: Vec<u8> = msg.into();
-    tlog!(
-        Info,
-        "propose binary data ({} bytes).......................................",
-        data.len()
-    );
-    raft_node.borrow_mut().propose(vec![], data).unwrap();
+    let raft_node = raft_ref.as_ref().expect("Picodata not running yet");
+    tlog!(Info, "propose {:?} ................................", msg);
+    raft_node.propose(msg.into());
     tlog!(Info, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,");
 }
 
