@@ -1,26 +1,25 @@
-use raft::prelude::Entry as RaftEntry;
-use raft::prelude::EntryType as RaftEntryType;
+use ::raft::prelude as raft;
 use serde::Deserialize;
 use serde::Serialize;
 use std::convert::TryFrom;
 use std::convert::TryInto;
 
-use crate::message::Message;
+use crate::Message;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
-pub struct RaftEntryRow {
+pub struct Entry {
     pub entry_type: String,
     pub index: u64,
     pub term: u64,
     pub msg: Message,
 }
-impl ::tarantool::tuple::AsTuple for RaftEntryRow {}
+impl ::tarantool::tuple::AsTuple for Entry {}
 
-impl TryFrom<&RaftEntry> for RaftEntryRow {
+impl TryFrom<&raft::Entry> for self::Entry {
     type Error = rmp_serde::decode::Error;
 
-    fn try_from(e: &RaftEntry) -> Result<Self, Self::Error> {
-        Ok(RaftEntryRow {
+    fn try_from(e: &raft::Entry) -> Result<Self, Self::Error> {
+        Ok(Self {
             entry_type: format!("{:?}", e.get_entry_type()),
             index: e.get_index(),
             term: e.get_term(),
@@ -29,13 +28,13 @@ impl TryFrom<&RaftEntry> for RaftEntryRow {
     }
 }
 
-impl From<RaftEntryRow> for RaftEntry {
-    fn from(row: RaftEntryRow) -> RaftEntry {
-        let mut ret = RaftEntry::new();
+impl From<self::Entry> for raft::Entry {
+    fn from(row: self::Entry) -> raft::Entry {
+        let mut ret = raft::Entry::new();
 
         let entry_type = match row.entry_type.as_ref() {
-            "EntryNormal" => RaftEntryType::EntryNormal,
-            _ => unreachable!(),
+            "EntryNormal" => raft::EntryType::EntryNormal,
+            _ => unimplemented!(),
         };
 
         ret.set_entry_type(entry_type);
@@ -48,13 +47,13 @@ impl From<RaftEntryRow> for RaftEntry {
     }
 }
 
-impl Default for RaftEntryRow {
+impl Default for Entry {
     fn default() -> Self {
-        Self::try_from(&RaftEntry::default()).unwrap()
+        Self::try_from(&raft::Entry::default()).unwrap()
     }
 }
 
-impl RaftEntryRow {
+impl Entry {
     fn new(msg: Message) -> Self {
         Self {
             msg,
@@ -64,16 +63,16 @@ impl RaftEntryRow {
 }
 
 inventory::submit!(crate::InnerTest {
-    name: "test_traft_storage_RaftEntryRow",
+    name: "test_traft_row_Entry",
     body: || {
-        fn ser(e: RaftEntryRow) -> serde_json::Value {
+        fn ser(e: Entry) -> serde_json::Value {
             use ::tarantool::tuple::Tuple;
             let t = Tuple::from_struct(&e).unwrap();
             t.as_struct().unwrap()
         }
 
         assert_eq!(
-            ser(RaftEntryRow::default()),
+            ser(Entry::default()),
             serde_json::json!(["EntryNormal", 0, 0, ["empty"]])
         );
 
@@ -81,7 +80,7 @@ inventory::submit!(crate::InnerTest {
             msg: "!".to_owned(),
         };
         assert_eq!(
-            ser(RaftEntryRow::new(msg)),
+            ser(Entry::new(msg)),
             serde_json::json!(["EntryNormal", 0, 0, ["info", "!"]])
         );
 
@@ -89,7 +88,7 @@ inventory::submit!(crate::InnerTest {
             code: "return nil".to_owned(),
         };
         assert_eq!(
-            ser(RaftEntryRow {
+            ser(Entry {
                 entry_type: "EntryNormal".to_owned(),
                 index: 1001,
                 term: 1002,

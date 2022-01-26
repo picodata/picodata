@@ -1,21 +1,15 @@
+use ::raft::prelude as raft;
+use ::raft::Error as RaftError;
+use ::raft::StorageError;
 use ::tarantool::index::IteratorType;
 use ::tarantool::space::Space;
 use ::tarantool::tuple::Tuple;
-use raft::eraftpb::ConfState;
-use raft::StorageError;
-use std::convert::TryInto;
+use std::convert::TryFrom;
 
 use crate::tlog;
-use raft::prelude::Entry as RaftEntry;
-use raft::prelude::HardState as RaftHardState;
-use raft::prelude::RaftState;
-use raft::prelude::Snapshot as RaftSnapshot;
-use raft::Error as RaftError;
+use crate::traft::row;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
-
-mod entry_row;
-use entry_row::RaftEntryRow;
 
 pub struct Storage;
 
@@ -127,8 +121,8 @@ impl Storage {
         Storage::persist_raft_state("vote", vote)
     }
 
-    pub fn entries(low: u64, high: u64) -> Vec<RaftEntry> {
-        let mut ret: Vec<RaftEntry> = vec![];
+    pub fn entries(low: u64, high: u64) -> Vec<raft::Entry> {
+        let mut ret: Vec<raft::Entry> = vec![];
         let space = Space::find(SPACE_RAFT_LOG).unwrap();
         let iter = space
             .primary_key()
@@ -136,7 +130,7 @@ impl Storage {
             .unwrap();
 
         for tuple in iter {
-            let row: RaftEntryRow = tuple.into_struct().unwrap();
+            let row: row::Entry = tuple.into_struct().unwrap();
             if row.index >= high {
                 break;
             }
@@ -146,23 +140,23 @@ impl Storage {
         ret
     }
 
-    pub fn persist_entries(entries: &Vec<RaftEntry>) {
+    pub fn persist_entries(entries: &Vec<raft::Entry>) {
         let mut space = Space::find(SPACE_RAFT_LOG).unwrap();
         for entry in entries {
-            let row: RaftEntryRow = entry.try_into().unwrap();
+            let row = row::Entry::try_from(entry).unwrap();
             space.insert(&row).unwrap();
         }
     }
 
-    pub fn hard_state() -> RaftHardState {
-        let mut ret = RaftHardState::default();
+    pub fn hard_state() -> raft::HardState {
+        let mut ret = raft::HardState::default();
         Storage::term().map(|v| ret.term = v);
         Storage::vote().map(|v| ret.vote = v);
         Storage::commit().map(|v| ret.commit = v);
         ret
     }
 
-    pub fn persist_hard_state(hs: &RaftHardState) {
+    pub fn persist_hard_state(hs: &raft::HardState) {
         Storage::persist_term(hs.term);
         Storage::persist_vote(hs.vote);
         Storage::persist_commit(hs.commit);
@@ -170,16 +164,16 @@ impl Storage {
 }
 
 impl raft::Storage for Storage {
-    fn initial_state(&self) -> Result<RaftState, RaftError> {
+    fn initial_state(&self) -> Result<raft::RaftState, RaftError> {
         let hs = Storage::hard_state();
 
         // See also: https://github.com/etcd-io/etcd/blob/main/raft/raftpb/raft.pb.go
-        let cs: ConfState = ConfState {
+        let cs = raft::ConfState {
             voters: vec![1],
             ..Default::default()
         };
 
-        let ret: RaftState = RaftState::new(hs, cs);
+        let ret = raft::RaftState::new(hs, cs);
         tlog!(Debug, "+++ initial_state() -> {:?}", ret);
         Ok(ret)
     }
@@ -189,7 +183,7 @@ impl raft::Storage for Storage {
         low: u64,
         high: u64,
         _max_size: impl Into<Option<u64>>,
-    ) -> Result<Vec<RaftEntry>, RaftError> {
+    ) -> Result<Vec<raft::Entry>, RaftError> {
         Ok(Storage::entries(low, high))
     }
 
@@ -201,7 +195,7 @@ impl raft::Storage for Storage {
         let space = Space::find("raft_log").unwrap();
 
         let tuple = space.primary_key().get(&(idx,)).unwrap();
-        let row: Option<RaftEntryRow> = tuple.and_then(|t| t.into_struct().unwrap());
+        let row: Option<row::Entry> = tuple.and_then(|t| t.into_struct().unwrap());
 
         if let Some(row) = row {
             tlog!(Debug, "+++ term(idx={}) -> {:?}", idx, row.term);
@@ -219,13 +213,13 @@ impl raft::Storage for Storage {
     fn last_index(&self) -> Result<u64, RaftError> {
         let space: Space = Space::find("raft_log").unwrap();
         let tuple: Option<Tuple> = space.primary_key().max(&()).unwrap();
-        let row: Option<RaftEntryRow> = tuple.and_then(|t| t.into_struct().unwrap());
+        let row: Option<row::Entry> = tuple.and_then(|t| t.into_struct().unwrap());
         let ret: u64 = row.map(|row| row.index).unwrap_or(0);
 
         Ok(ret)
     }
 
-    fn snapshot(&self, request_index: u64) -> Result<RaftSnapshot, RaftError> {
+    fn snapshot(&self, request_index: u64) -> Result<raft::Snapshot, RaftError> {
         tlog!(
             Critical,
             "+++ snapshot(idx={}) -> unimplemented",

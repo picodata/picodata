@@ -1,3 +1,4 @@
+use ::raft::prelude as raft;
 use ::tarantool::tlua;
 use std::os::raw::c_int;
 
@@ -126,7 +127,7 @@ fn main_run() {
     tarantool::set_cfg(&cfg);
 
     traft::Storage::init_schema();
-    let raft_cfg = traft::Config {
+    let raft_cfg = raft::Config {
         id: 1,
         applied: traft::Storage::applied().unwrap_or_default(),
         ..Default::default()

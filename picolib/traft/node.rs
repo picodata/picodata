@@ -1,27 +1,25 @@
+use ::raft::prelude as raft;
+use ::raft::Error as RaftError;
 use ::tarantool::fiber;
 use ::tarantool::util::IntoClones;
-use raft::eraftpb::Entry as RaftEntry;
-use raft::eraftpb::EntryType as RaftEntryType;
-use raft::eraftpb::Message as RaftMessage;
-use raft::Error as RaftError;
 
 use std::time::Duration;
 use std::time::Instant;
 
-use super::storage::Storage;
 use crate::tlog;
+use crate::traft::Storage;
 
 type RawNode = raft::RawNode<Storage>;
 
 pub struct Node {
     _main_loop: fiber::LuaUnitJoinHandle,
-    inbox: fiber::Channel<RawRequest>,
+    inbox: fiber::Channel<Request>,
 }
 
 #[derive(Clone, Debug)]
-enum RawRequest {
+enum Request {
     Propose(Vec<u8>),
-    Step(RaftMessage),
+    Step(raft::Message),
 }
 
 impl Node {
@@ -37,7 +35,7 @@ impl Node {
             let mut next_tick = Instant::now() + Self::TICK;
 
             loop {
-                use RawRequest::*;
+                use Request::*;
                 match rx.recv_timeout(Self::TICK) {
                     Ok(Propose(data)) => {
                         raw_node.propose(vec![], data).unwrap();
@@ -66,11 +64,11 @@ impl Node {
     }
 
     pub fn propose(&self, data: Vec<u8>) {
-        self.inbox.send(RawRequest::Propose(data)).unwrap();
+        self.inbox.send(Request::Propose(data)).unwrap();
     }
 
-    pub fn step(&self, msg: RaftMessage) {
-        self.inbox.send(RawRequest::Step(msg)).unwrap();
+    pub fn step(&self, msg: raft::Message) {
+        self.inbox.send(Request::Step(msg)).unwrap();
     }
 }
 
@@ -85,7 +83,7 @@ fn on_ready(raft_group: &mut RawNode, handle_committed_data: fn(&[u8])) {
     let mut ready: raft::Ready = raft_group.ready();
     tlog!(Info, "--- {:?}", ready);
 
-    let handle_messages = |msgs: Vec<RaftMessage>| {
+    let handle_messages = |msgs: Vec<raft::Message>| {
         for _msg in msgs {
             tlog!(Info, "--- handle message: {:?}", _msg);
             // Send messages to other peers.
@@ -105,12 +103,12 @@ fn on_ready(raft_group: &mut RawNode, handle_committed_data: fn(&[u8])) {
         // store.wl().apply_snapshot(snap).unwrap();
     }
 
-    let handle_committed_entries = |committed_entries: Vec<RaftEntry>| {
+    let handle_committed_entries = |committed_entries: Vec<raft::Entry>| {
         for entry in committed_entries {
             tlog!(Info, "--- committed_entry: {:?}", entry);
             Storage::persist_applied(entry.index);
 
-            if entry.get_entry_type() == RaftEntryType::EntryNormal {
+            if entry.get_entry_type() == raft::EntryType::EntryNormal {
                 handle_committed_data(entry.get_data())
             }
 
