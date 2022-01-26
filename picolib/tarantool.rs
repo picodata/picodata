@@ -1,5 +1,6 @@
 use std::ffi::CStr;
-use tarantool::tlua::{self, Lua, LuaFunction};
+use tarantool::global_lua;
+use tarantool::tlua::{self, LuaFunction};
 
 mod ffi {
     use libc::c_char;
@@ -25,20 +26,12 @@ pub fn package() -> &'static str {
 inventory::submit!(crate::InnerTest {
     name: "test_version",
     body: || {
-        let l = tarantool_L();
+        let l = global_lua();
         let t: tlua::LuaTable<_> = l.eval("return require('tarantool')").unwrap();
         assert_eq!(version(), t.get::<String, _>("version").unwrap());
         assert_eq!(package(), t.get::<String, _>("package").unwrap());
     }
 });
-
-#[allow(non_snake_case)]
-fn tarantool_L() -> Lua {
-    unsafe {
-        use tarantool::ffi::tarantool::luaT_state;
-        Lua::from_existing_state(luaT_state(), false)
-    }
-}
 
 #[derive(Clone, Debug, tlua::Push, tlua::LuaRead, PartialEq)]
 pub struct Cfg {
@@ -59,7 +52,7 @@ impl Default for Cfg {
 
 #[allow(dead_code)]
 pub fn cfg() -> Option<Cfg> {
-    let l = tarantool_L();
+    let l = global_lua();
     let cfg: Result<Cfg, _> = l.eval("return box.cfg");
     match cfg {
         Ok(v) => Some(v),
@@ -68,13 +61,13 @@ pub fn cfg() -> Option<Cfg> {
 }
 
 pub fn set_cfg(cfg: &Cfg) {
-    let l = tarantool_L();
+    let l = global_lua();
     let box_cfg = LuaFunction::load(l, "return box.cfg(...)").unwrap();
     box_cfg.call_with_args(cfg).unwrap()
 }
 
 pub fn eval(code: &str) {
-    let l = tarantool_L();
+    let l = global_lua();
     let f = LuaFunction::load(l, code).unwrap();
     f.call().unwrap()
 }
