@@ -299,7 +299,8 @@ impl std::fmt::Display for Decimal {
     #[inline(always)]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         unsafe {
-            let c_ptr = ffi::decimal_to_string(&self.inner);
+            let mut buf = Vec::with_capacity((self.inner.digits + 14) as _);
+            let c_ptr = ffi::decNumberToString(&self.inner, buf.as_mut_ptr());
             let c_str = std::ffi::CStr::from_ptr(c_ptr);
             let r_str = std::str::from_utf8_unchecked(c_str.to_bytes());
             f.write_str(r_str)

@@ -1,3 +1,5 @@
+use std::os::raw::c_char;
+
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct decNumber {
@@ -75,10 +77,13 @@ extern "C" {
     /// Initialize a decimal with an integer value.
     pub fn decimal_from_uint64(dec: *mut decNumber, num: u64) -> *mut decNumber;
 
-    /// Write the decimal to a string.
-    /// Returns a statically allocated buffer containing
-    /// the decimal representation.
-    pub fn decimal_to_string(dec: *const decNumber) -> *const ::std::os::raw::c_char;
+    /// `dn` is the decNumber to convert
+    /// `string` is the string where the result will be laid out
+    ///
+    /// `string` must be at least `dn->digits+14` characters long
+    ///
+    /// No error is possible, and no status can be set.
+    pub fn decNumberToString(dn: *const decNumber, string: *mut c_char) -> *mut c_char;
 
     /// Convert a given decimal to `i64`.
     /// `num` - the result.
