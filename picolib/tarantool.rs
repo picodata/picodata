@@ -39,6 +39,7 @@ pub struct Cfg {
     pub listen: Option<String>,
     pub wal_dir: String,
     pub memtx_dir: String,
+    pub feedback_enabled: bool,
 }
 
 impl Default for Cfg {
@@ -47,6 +48,7 @@ impl Default for Cfg {
             listen: Some("3301".to_owned()),
             wal_dir: ".".to_owned(),
             memtx_dir: ".".to_owned(),
+            feedback_enabled: false,
         }
     }
 }
