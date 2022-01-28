@@ -63,12 +63,14 @@ impl Node {
         })
     }
 
-    pub fn propose(&self, data: Vec<u8>) {
-        self.inbox.send(Request::Propose(data)).unwrap();
+    pub fn propose<T: Into<Vec<u8>>>(&self, data: T) {
+        let req = Request::Propose(data.into());
+        self.inbox.send(req).unwrap();
     }
 
     pub fn step(&self, msg: raft::Message) {
-        self.inbox.send(Request::Step(msg)).unwrap();
+        let req = Request::Step(msg);
+        self.inbox.send(req).unwrap();
     }
 }
 

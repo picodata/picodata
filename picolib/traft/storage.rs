@@ -131,7 +131,7 @@ impl Storage {
             if row.index >= high {
                 break;
             }
-            ret.push(row.into());
+            ret.push(raft::Entry::from(row));
         }
 
         ret
@@ -139,8 +139,8 @@ impl Storage {
 
     pub fn persist_entries(entries: &Vec<raft::Entry>) {
         let mut space = Space::find(SPACE_RAFT_LOG).unwrap();
-        for entry in entries {
-            let row = row::Entry::try_from(entry).unwrap();
+        for e in entries {
+            let row = row::Entry::try_from(e.clone()).unwrap();
             space.insert(&row).unwrap();
         }
     }

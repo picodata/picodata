@@ -27,8 +27,8 @@ impl TryFrom<&[u8]> for Message {
     }
 }
 
-impl From<Message> for Vec<u8> {
-    fn from(msg: Message) -> Vec<u8> {
+impl From<&Message> for Vec<u8> {
+    fn from(msg: &Message) -> Vec<u8> {
         if matches!(msg, Message::Empty) {
             return Vec::new();
         }
@@ -82,7 +82,7 @@ inventory::submit!(crate::InnerTest {
         let msg = Message::EvalLua {
             code: "os.exit()".to_owned(),
         };
-        let buf: Vec<u8> = msg.clone().into();
+        let buf: Vec<u8> = Vec::from(&msg);
         assert_eq!(
             ("eval_lua", "os.exit()"),
             rmp_serde::from_read_ref(&buf).unwrap()

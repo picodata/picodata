@@ -2,7 +2,6 @@ use ::raft::prelude as raft;
 use serde::Deserialize;
 use serde::Serialize;
 use std::convert::TryFrom;
-use std::convert::TryInto;
 
 use crate::Message;
 
@@ -15,15 +14,15 @@ pub struct Entry {
 }
 impl ::tarantool::tuple::AsTuple for Entry {}
 
-impl TryFrom<&raft::Entry> for self::Entry {
+impl TryFrom<raft::Entry> for self::Entry {
     type Error = rmp_serde::decode::Error;
 
-    fn try_from(e: &raft::Entry) -> Result<Self, Self::Error> {
+    fn try_from(e: raft::Entry) -> Result<Self, Self::Error> {
         Ok(Self {
             entry_type: format!("{:?}", e.get_entry_type()),
             index: e.get_index(),
             term: e.get_term(),
-            msg: e.get_data().try_into()?,
+            msg: Message::try_from(e.get_data())?,
         })
     }
 }
@@ -40,7 +39,7 @@ impl From<self::Entry> for raft::Entry {
         ret.set_entry_type(entry_type);
         ret.set_index(row.index);
         ret.set_term(row.term);
-        let bytes: Vec<u8> = Vec::from(row.msg);
+        let bytes: Vec<u8> = Vec::from(&row.msg);
         ret.set_data(bytes.into());
 
         ret
@@ -49,7 +48,7 @@ impl From<self::Entry> for raft::Entry {
 
 impl Default for Entry {
     fn default() -> Self {
-        Self::try_from(&raft::Entry::default()).unwrap()
+        Self::try_from(raft::Entry::default()).expect("that's a bug")
     }
 }
 

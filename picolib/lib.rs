@@ -150,7 +150,7 @@ fn raft_propose(msg: Message) {
     let raft_ref = stash.raft_node();
     let raft_node = raft_ref.as_ref().expect("Picodata not running yet");
     tlog!(Debug, "propose {:?} ................................", msg);
-    raft_node.propose(msg.into());
+    raft_node.propose(&msg);
     tlog!(Debug, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,");
 }
 
