@@ -111,6 +111,20 @@ impl Storage {
         }
     }
 
+    pub fn peers() -> Result<Vec<row::Peer>, StorageError> {
+        let mut ret = Vec::new();
+
+        let iter = Storage::space(RAFT_GROUP)?
+            .select(IteratorType::All, &())
+            .map_err(box_err!())?;
+
+        for tuple in iter {
+            ret.push(tuple.into_struct().map_err(box_err!())?);
+        }
+
+        Ok(ret)
+    }
+
     pub fn id() -> Result<Option<u64>, StorageError> {
         Storage::raft_state("id")
     }

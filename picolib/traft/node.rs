@@ -9,6 +9,7 @@ use std::time::Duration;
 use std::time::Instant;
 
 use crate::tlog;
+use crate::traft::ConnectionPool;
 use crate::traft::LogicalClock;
 use crate::traft::Storage;
 
@@ -81,6 +82,12 @@ impl Node {
 
 fn raft_main(inbox: fiber::Channel<Request>, mut raw_node: RawNode, on_commit: fn(&[u8])) {
     let mut next_tick = Instant::now() + Node::TICK;
+    let mut pool = ConnectionPool::with_timeout(Node::TICK * 4);
+
+    // This is a temporary hack until fair joining is implemented
+    for peer in Storage::peers().unwrap() {
+        pool.connect(peer.raft_id, &peer.uri);
+    }
 
     let mut notifications: HashMap<LogicalClock, Notify> = HashMap::new();
     let mut lc = {
@@ -132,7 +139,10 @@ fn raft_main(inbox: fiber::Channel<Request>, mut raw_node: RawNode, on_commit: f
         let mut ready: raft::Ready = raw_node.ready();
 
         let handle_messages = |msgs: Vec<raft::Message>| {
-            for _msg in msgs {
+            for msg in msgs {
+                if let Err(e) = pool.send(&msg) {
+                    tlog!(Error, "{e}");
+                }
                 // Send messages to other peers.
             }
         };

@@ -162,9 +162,9 @@ inventory::submit!(crate::InnerTest {
                 fiber::Cond::new().wait()
             }),
         );
-        // let () = l
-        //     .eval("box.schema.func.drop('picolib.raft_interact')")
-        //     .unwrap();
+        let () = l
+            .eval("box.schema.func.drop('picolib.raft_interact')")
+            .unwrap();
 
         // Connect to the current Tarantool instance
         let mut pool = ConnectionPool::with_timeout(Duration::from_millis(50));

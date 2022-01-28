@@ -1,5 +1,8 @@
 use ::raft::prelude as raft;
+use ::tarantool::error::TarantoolErrorCode::ProcC as ProcCError;
+use ::tarantool::set_error;
 use ::tarantool::tlua;
+use ::tarantool::tuple::{FunctionArgs, FunctionCtx, Tuple};
 use indoc::indoc;
 use std::os::raw::c_int;
 
@@ -126,11 +129,12 @@ fn main_run() {
     tarantool::eval(
         r#"
         box.schema.user.grant('guest', 'super', nil, nil, {if_not_exists = true})
-        box.cfg({log_level = 6})
+        box.cfg({log_level = 5})
     "#,
     );
 
     traft::Storage::init_schema();
+    init_handlers();
 
     let raft_id: u64 = {
         // The id already stored in tarantool snashot
@@ -181,6 +185,7 @@ fn main_run() {
 
     let raft_cfg = raft::Config {
         id: raft_id,
+        pre_vote: true,
         applied: traft::Storage::applied().unwrap().unwrap_or_default(),
         ..Default::default()
     };
@@ -207,19 +212,14 @@ fn raft_propose(msg: Message) {
     let stash = Stash::access();
     let raft_ref = stash.raft_node();
     let raft_node = raft_ref.as_ref().expect("Picodata not running yet");
-    tlog!(Debug, "propose {:?} ................................", msg);
-    raft_node.propose(&msg);
-    tlog!(Debug, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,");
+    raft_node.propose(&msg)
 }
 
 fn raft_propose_wait_applied(msg: Message, timeout: Duration) -> bool {
     let stash = Stash::access();
     let raft_ref = stash.raft_node();
     let raft_node = raft_ref.as_ref().expect("Picodata not running yet");
-    tlog!(Debug, "propose {:?} ................................", msg);
-    let res = raft_node.propose_wait_applied(&msg, timeout);
-    tlog!(Debug, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,");
-    res
+    raft_node.propose_wait_applied(&msg, timeout)
 }
 
 fn handle_committed_data(data: &[u8]) {
@@ -233,4 +233,40 @@ fn handle_committed_data(data: &[u8]) {
         },
         Err(why) => tlog!(Error, "cannot decode raft entry data: {}", why),
     }
+}
+
+fn init_handlers() {
+    crate::tarantool::eval(
+        r#"
+        box.schema.func.create('picolib.raft_interact', {
+            language = "C",
+            if_not_exists = true
+        })
+    "#,
+    );
+}
+
+#[no_mangle]
+pub extern "C" fn raft_interact(_: FunctionCtx, args: FunctionArgs) -> c_int {
+    let stash = Stash::access();
+    let raft_ref = stash.raft_node();
+    let raft_node = raft_ref
+        .as_ref()
+        .expect("picodata should already be running");
+
+    // Conversion pipeline:
+    // FunctionArgs -> Tuple -?-> traft::row::Message -?-> raft::Message;
+
+    let m: traft::row::Message = match Tuple::from(args).into_struct() {
+        Ok(v) => v,
+        Err(e) => return set_error!(ProcCError, "{e}"),
+    };
+
+    let m = match raft::Message::try_from(m) {
+        Ok(v) => v,
+        Err(e) => return set_error!(ProcCError, "{e}"),
+    };
+
+    raft_node.step(m);
+    0
 }
