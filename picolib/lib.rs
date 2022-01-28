@@ -38,14 +38,6 @@ impl Stash {
     }
 }
 
-impl std::fmt::Debug for Stash {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("")
-            .field("raft_node", &self.raft_node().is_some())
-            .finish()
-    }
-}
-
 #[no_mangle]
 pub extern "C" fn luaopen_picolib(l: *mut std::ffi::c_void) -> c_int {
     if std::env::var("PICOLIB_NO_AUTORUN").is_ok() {
@@ -73,10 +65,6 @@ pub extern "C" fn luaopen_picolib(l: *mut std::ffi::c_void) -> c_int {
         //
         // Export public API
         luamod.set("run", tlua::function0(main_run));
-        luamod.set(
-            "get_stash",
-            tlua::function0(|| println!("{:?}", Stash::access())),
-        );
         luamod.set(
             "raft_propose_info",
             tlua::function1(|x: String| raft_propose(Message::Info { msg: x })),
@@ -125,6 +113,12 @@ fn main_run() {
     });
 
     tarantool::set_cfg(&cfg);
+    tarantool::eval(
+        r#"
+        box.schema.user.grant('guest', 'super', nil, nil, {if_not_exists = true})
+        box.cfg({log_level = 6})
+    "#,
+    );
 
     traft::Storage::init_schema();
     let raft_cfg = raft::Config {
@@ -155,9 +149,9 @@ fn raft_propose(msg: Message) {
     let stash = Stash::access();
     let raft_ref = stash.raft_node();
     let raft_node = raft_ref.as_ref().expect("Picodata not running yet");
-    tlog!(Info, "propose {:?} ................................", msg);
+    tlog!(Debug, "propose {:?} ................................", msg);
     raft_node.propose(msg.into());
-    tlog!(Info, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,");
+    tlog!(Debug, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,");
 }
 
 fn handle_committed_data(data: &[u8]) {

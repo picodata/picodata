@@ -77,15 +77,15 @@ fn on_ready(raft_group: &mut RawNode, handle_committed_data: fn(&[u8])) {
         return;
     }
 
-    tlog!(Info, "vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv");
+    tlog!(Debug, "vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv");
 
     // Get the `Ready` with `RawNode::ready` interface.
     let mut ready: raft::Ready = raft_group.ready();
-    tlog!(Info, "--- {:?}", ready);
+    tlog!(Debug, "--- {:?}", ready);
 
     let handle_messages = |msgs: Vec<raft::Message>| {
         for _msg in msgs {
-            tlog!(Info, "--- handle message: {:?}", _msg);
+            tlog!(Debug, "--- handle message: {:?}", _msg);
             // Send messages to other peers.
         }
     };
@@ -98,14 +98,14 @@ fn on_ready(raft_group: &mut RawNode, handle_committed_data: fn(&[u8])) {
     if !ready.snapshot().is_empty() {
         // This is a snapshot, we need to apply the snapshot at first.
         let snap = ready.snapshot().clone();
-        tlog!(Info, "--- apply_snapshot: {:?}", snap);
+        tlog!(Debug, "--- apply_snapshot: {:?}", snap);
         unimplemented!();
         // store.wl().apply_snapshot(snap).unwrap();
     }
 
     let handle_committed_entries = |committed_entries: Vec<raft::Entry>| {
         for entry in committed_entries {
-            tlog!(Info, "--- committed_entry: {:?}", entry);
+            tlog!(Debug, "--- committed_entry: {:?}", entry);
             Storage::persist_applied(entry.index);
 
             if entry.get_entry_type() == raft::EntryType::EntryNormal {
@@ -121,7 +121,7 @@ fn on_ready(raft_group: &mut RawNode, handle_committed_data: fn(&[u8])) {
         // Append entries to the Raft log.
         let entries = ready.entries();
         for entry in entries {
-            tlog!(Info, "--- uncommitted_entry: {:?}", entry);
+            tlog!(Debug, "--- uncommitted_entry: {:?}", entry);
         }
 
         Storage::persist_entries(entries);
@@ -130,7 +130,7 @@ fn on_ready(raft_group: &mut RawNode, handle_committed_data: fn(&[u8])) {
     if let Some(hs) = ready.hs() {
         // Raft HardState changed, and we need to persist it.
         // let hs = hs.clone();
-        tlog!(Info, "--- hard_state: {:?}", hs);
+        tlog!(Debug, "--- hard_state: {:?}", hs);
         Storage::persist_hard_state(&hs);
         // store.wl().set_hardstate(hs);
     }
@@ -140,11 +140,11 @@ fn on_ready(raft_group: &mut RawNode, handle_committed_data: fn(&[u8])) {
         handle_messages(ready.take_persisted_messages());
     }
 
-    tlog!(Info, "ADVANCE -----------------------------------------");
+    tlog!(Debug, "ADVANCE -----------------------------------------");
 
     // Advance the Raft.
     let mut light_rd = raft_group.advance(ready);
-    tlog!(Info, "--- {:?}", light_rd);
+    tlog!(Debug, "--- {:?}", light_rd);
     // Update commit index.
     if let Some(commit) = light_rd.commit_index() {
         Storage::persist_commit(commit);
@@ -155,5 +155,5 @@ fn on_ready(raft_group: &mut RawNode, handle_committed_data: fn(&[u8])) {
     handle_committed_entries(light_rd.take_committed_entries());
     // Advance the apply index.
     raft_group.advance_apply();
-    tlog!(Info, "^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^");
+    tlog!(Debug, "^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^");
 }

@@ -21,8 +21,6 @@ impl Storage {
     pub fn init_schema() {
         crate::tarantool::eval(
             r#"
-            box.schema.user.grant('guest', 'super', nil, nil, {if_not_exists = true})
-
             box.schema.space.create('raft_log', {
                 if_not_exists = true,
                 is_local = true,
@@ -69,8 +67,6 @@ impl Storage {
                 if_not_exists = true,
                 parts = {{'raft_id'}},
             })
-
-            box.cfg({log_level = 6})
         "#,
         );
     }
