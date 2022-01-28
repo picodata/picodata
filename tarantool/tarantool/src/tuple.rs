@@ -523,7 +523,7 @@ impl FunctionCtx {
     where
         T: Serialize,
     {
-        let buf = rmp_serde::to_vec(value)?;
+        let buf = rmp_serde::to_vec_named(value)?;
         let buf_ptr = buf.as_ptr() as *const c_char;
         let result =
             unsafe { ffi::box_return_mp(self.inner, buf_ptr, buf_ptr.offset(buf.len() as isize)) };
