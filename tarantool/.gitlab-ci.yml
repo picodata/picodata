@@ -1,6 +1,10 @@
 stages:
     - build
     - test
+    - lint
+
+variables:
+    DOCKER_IMAGE: registry.gitlab.com/picodata/dockers/brod-builder:0.5
 
 cache:
     key:
@@ -14,7 +18,7 @@ build:
     stage: build
     tags:
         - docker
-    image: registry.gitlab.com/picodata/dockers/brod-builder:0.2
+    image: ${DOCKER_IMAGE}
     script:
         - cargo -V
         - make
@@ -23,13 +27,22 @@ test:
     stage: test
     tags:
         - docker
-    image: registry.gitlab.com/picodata/dockers/brod-builder:0.2
+    image: ${DOCKER_IMAGE}
     script:
         - make test
         - cargo test
 
+lint:
+    stage: lint
+    tags:
+        - docker
+    image: ${DOCKER_IMAGE}
+    script:
+        - cargo clippy --version
+        - cargo clippy -- --deny warnings
+
 pages:
-  image: registry.gitlab.com/picodata/dockers/brod-builder:0.2
+  image: ${DOCKER_IMAGE}
   stage: build
   only:
     - master
