@@ -131,7 +131,7 @@ impl Storage {
             .unwrap();
     }
 
-    pub fn entries(low: u64, high: u64) -> Vec<raft::Entry> {
+    pub fn entries(low: u64, high: u64) -> Result<Vec<raft::Entry>, StorageError> {
         let mut ret: Vec<raft::Entry> = vec![];
         let space = Space::find(SPACE_RAFT_LOG).unwrap();
         let iter = space
@@ -144,10 +144,11 @@ impl Storage {
             if row.index >= high {
                 break;
             }
-            ret.push(raft::Entry::from(row));
+            let entry = raft::Entry::try_from(row)?;
+            ret.push(entry);
         }
 
-        ret
+        Ok(ret)
     }
 
     pub fn persist_entries(entries: &[raft::Entry]) {
@@ -194,7 +195,7 @@ impl raft::Storage for Storage {
         high: u64,
         _max_size: impl Into<Option<u64>>,
     ) -> Result<Vec<raft::Entry>, RaftError> {
-        Ok(Storage::entries(low, high))
+        Ok(Storage::entries(low, high)?)
     }
 
     fn term(&self, idx: u64) -> Result<u64, RaftError> {

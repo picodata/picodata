@@ -1,7 +1,9 @@
 use ::raft::prelude as raft;
+use ::raft::StorageError;
 use serde::Deserialize;
 use serde::Serialize;
 use std::convert::TryFrom;
+use thiserror::Error;
 
 use crate::Message;
 
@@ -27,13 +29,26 @@ impl TryFrom<raft::Entry> for self::Entry {
     }
 }
 
-impl From<self::Entry> for raft::Entry {
-    fn from(row: self::Entry) -> raft::Entry {
+#[derive(Debug, Error, PartialEq)]
+#[error("unknown entry type \"{0}\"")]
+pub struct UnknownEntryType(String);
+impl From<UnknownEntryType> for StorageError {
+    fn from(err: UnknownEntryType) -> StorageError {
+        StorageError::Other(Box::new(err))
+    }
+}
+
+impl TryFrom<self::Entry> for raft::Entry {
+    type Error = UnknownEntryType;
+
+    fn try_from(row: self::Entry) -> Result<raft::Entry, Self::Error> {
         let mut ret = raft::Entry::new();
 
-        let entry_type = match row.entry_type.as_ref() {
-            "EntryNormal" => raft::EntryType::EntryNormal,
-            _ => unimplemented!(),
+        let entry_type = match row.entry_type {
+            t if t == "EntryNormal" => raft::EntryType::EntryNormal,
+            t if t == "EntryConfChange" => raft::EntryType::EntryConfChange,
+            t if t == "EntryConfChangeV2" => raft::EntryType::EntryConfChangeV2,
+            other => return Err(UnknownEntryType(other)),
         };
 
         ret.set_entry_type(entry_type);
@@ -42,7 +57,7 @@ impl From<self::Entry> for raft::Entry {
         let bytes: Vec<u8> = Vec::from(&row.msg);
         ret.set_data(bytes.into());
 
-        ret
+        Ok(ret)
     }
 }
 
@@ -64,36 +79,71 @@ impl Entry {
 inventory::submit!(crate::InnerTest {
     name: "test_traft_row_Entry",
     body: || {
-        fn ser(e: Entry) -> serde_json::Value {
-            use ::tarantool::tuple::Tuple;
-            let t = Tuple::from_struct(&e).unwrap();
-            t.as_struct().unwrap()
+        use ::tarantool::tuple::Tuple;
+        use serde_json::json;
+
+        fn ser(e: self::Entry) -> serde_json::Value {
+            let t = Tuple::from_struct(&e).expect("coercing self::Entry to Tuple failed");
+            t.as_struct().expect("coercing Tuple to json::Value failed")
         }
 
+        // Serialize
+        ///////////////////////////////////////////////////////////////////////
         assert_eq!(
             ser(Entry::default()),
-            serde_json::json!(["EntryNormal", 0, 0, ["empty"]])
+            json!(["EntryNormal", 0, 0, ["empty"]])
         );
 
-        let msg = Message::Info {
-            msg: "!".to_owned(),
-        };
         assert_eq!(
-            ser(Entry::new(msg)),
-            serde_json::json!(["EntryNormal", 0, 0, ["info", "!"]])
+            ser(Entry::new(Message::Info {
+                msg: "!".to_owned()
+            })),
+            json!(["EntryNormal", 0, 0, ["info", "!"]])
         );
 
-        let msg = Message::EvalLua {
-            code: "return nil".to_owned(),
-        };
         assert_eq!(
             ser(Entry {
                 entry_type: "EntryNormal".to_owned(),
                 index: 1001,
                 term: 1002,
-                msg,
+                msg: Message::EvalLua {
+                    code: "return nil".to_owned(),
+                },
             }),
-            serde_json::json!(["EntryNormal", 1001, 1002, ["eval_lua", "return nil"]])
+            json!(["EntryNormal", 1001, 1002, ["eval_lua", "return nil"]])
+        );
+
+        let msg = Message::Info {
+            msg: "?".to_owned(),
+        };
+        assert_eq!(
+            raft::Entry::try_from(self::Entry {
+                entry_type: "EntryConfChangeV2".to_owned(),
+                index: 99,
+                term: 2,
+                msg: msg.clone(),
+            })
+            .expect("coercing self::Entry to raft::Entry failed"),
+            raft::Entry {
+                entry_type: raft::EntryType::EntryConfChangeV2,
+                index: 99,
+                term: 2,
+                data: Vec::<u8>::from(&msg).into(),
+                ..Default::default()
+            }
+        );
+
+        // Deserialize
+        ///////////////////////////////////////////////////////////////////////
+        let row = self::Entry {
+            entry_type: "EntryUnknown".to_owned(),
+            index: 0u64,
+            term: 0u64,
+            msg: Message::Empty,
+        };
+        assert_eq!(
+            raft::Entry::try_from(row),
+            Err(UnknownEntryType("EntryUnknown".to_owned()))
         );
     }
 });
