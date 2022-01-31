@@ -1,48 +1,101 @@
 stages:
+    - prebuild
     - build
-    - test
-    - lint
 
 variables:
-    DOCKER_IMAGE: docker-public.binary.picodata.io/brod-builder:0.5
+    DOCKER_AUTH_CONFIG: ${DOCKER_AUTH_RW}
+    DOCKER_REGISTRY_PUB: docker-public.binary.picodata.io
+    VANILA_IMAGE: ${DOCKER_REGISTRY_PUB}/tm-build-base:latest
+    VANILA_DOCKERFILE: docker/vanila.Dockerfile
+    PICODATA_IMAGE: ${DOCKER_REGISTRY_PUB}/picotnt-build-base:latest
+    PICODATA_DOCKERFILE: docker/picodata.Dockerfile
+    GIT_SUBMODULE_STRATEGY: recursive
+    CARGO_INCREMENTAL: 0
+    CARGO_HOME: ${CI_PROJECT_DIR}/.cargo
 
 cache:
     key:
         files:
             - Cargo.toml
-            - Cargo.lock
     paths:
         - target
 
-build:
+docker-vanila:
+    stage: prebuild
+    image: docker:20
+    tags:
+        - shell
+    rules:
+        - changes:
+            - ${VANILA_DOCKERFILE}
+    before_script:
+        - mkdir -p $CI_PROJECT_DIR/.docker
+        - echo $DOCKER_AUTH_RW > $CI_PROJECT_DIR/.docker/config.json
+    script:
+        - docker pull ${VANILA_IMAGE} || true
+        - >
+          docker build
+          --pull
+          --label GIT_COMMIT=${CI_COMMIT_SHA}
+          --cache-from ${VANILA_IMAGE}
+          -t ${VANILA_IMAGE}
+          -f ./${VANILA_DOCKERFILE}
+          ./docker
+        - docker --config $CI_PROJECT_DIR/.docker/ push ${VANILA_IMAGE}
+
+docker-picodata:
+    stage: prebuild
+    image: docker:20
+    tags:
+        - shell
+    rules:
+        - changes:
+            - ${PICODATA_DOCKERFILE}
+    before_script:
+        - mkdir -p $CI_PROJECT_DIR/.docker
+        - echo $DOCKER_AUTH_RW > $CI_PROJECT_DIR/.docker/config.json
+    script:
+        - docker pull ${PICODATA_IMAGE} || true
+        - >
+          docker build
+          --pull
+          --label GIT_COMMIT=${CI_COMMIT_SHA}
+          --cache-from ${PICODATA_IMAGE}
+          -t ${PICODATA_IMAGE}
+          -f ./${PICODATA_DOCKERFILE}
+          ./docker
+        - docker --config $CI_PROJECT_DIR/.docker/ push ${PICODATA_IMAGE}
+
+build-vanila:
     stage: build
+    rules:
     tags:
         - docker
-    image: ${DOCKER_IMAGE}
+    image: ${VANILA_IMAGE}
     script:
         - cargo -V
-        - make
-
-test:
-    stage: test
-    tags:
-        - docker
-    image: ${DOCKER_IMAGE}
-    script:
-        - make test
+        - cargo build --all
         - cargo test
-
-lint:
-    stage: lint
-    tags:
-        - docker
-    image: ${DOCKER_IMAGE}
-    script:
+        - ./tests/test.sh
         - cargo clippy --version
         - cargo clippy -- --deny warnings
 
+build-picodata:
+    stage: build
+    rules:
+    tags:
+        - docker
+    image: ${PICODATA_IMAGE}
+    script:
+        - cargo -V
+        - cargo build --all --features=picodata
+        - cargo test --features=picodata
+        - ./tests/test.sh
+        - cargo clippy --version
+        - cargo clippy --features=picodata -- --deny warnings
+
 pages:
-  image: ${DOCKER_IMAGE}
+  image: ${VANILA_IMAGE}
   stage: build
   only:
     - master
