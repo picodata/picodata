@@ -43,28 +43,26 @@ inventory::submit!(crate::InnerTest {
     body: || {
         use ::tarantool::tuple::AsTuple;
         use ::tarantool::tuple::Tuple;
+        use serde_json::json;
 
         // Test to / from tarantool::Tuple
 
         fn ser(e: impl AsTuple) -> serde_json::Value {
-            let t = Tuple::from_struct(&e).unwrap();
-            t.as_struct().unwrap()
+            let t = Tuple::from_struct(&e).expect("coercing Message to Tuple failed");
+            t.as_struct().expect("coercing Tuple to json::Value failed")
         }
 
-        assert_eq!(ser((Message::Empty,)), serde_json::json!([["empty"]]));
+        assert_eq!(ser((Message::Empty,)), json!([["empty"]]));
 
         let msg = Message::Info {
             msg: "hello, serde!".to_owned(),
         };
-        assert_eq!(ser((msg,)), serde_json::json!([["info", "hello, serde!"]]));
+        assert_eq!(ser((msg,)), json!([["info", "hello, serde!"]]));
 
         let msg = Message::EvalLua {
             code: "return true".to_owned(),
         };
-        assert_eq!(
-            ser((msg,)),
-            serde_json::json!([["eval_lua", "return true"]])
-        );
+        assert_eq!(ser((msg,)), json!([["eval_lua", "return true"]]));
 
         // Test from / to Vec<u8>
 
@@ -85,8 +83,17 @@ inventory::submit!(crate::InnerTest {
         let buf: Vec<u8> = Vec::from(&msg);
         assert_eq!(
             ("eval_lua", "os.exit()"),
-            rmp_serde::from_read_ref(&buf).unwrap()
+            rmp_serde::from_read_ref(&buf).expect("msgpack decode failed")
         );
-        assert_eq!(Message::try_from(buf.as_ref()).unwrap(), msg,);
+        assert_eq!(
+            Message::try_from(buf.as_ref()).expect("coercing &[u8] to Message failed"),
+            msg
+        );
+
+        let buf = [0xCCu8]; // truncated u8
+        assert_eq!(
+            Message::try_from(&buf as &[u8]).map_err(|e| format!("{e}")),
+            Err("IO error while reading data: failed to fill whole buffer".to_owned())
+        );
     }
 });
