@@ -150,7 +150,7 @@ impl Storage {
         ret
     }
 
-    pub fn persist_entries(entries: &Vec<raft::Entry>) {
+    pub fn persist_entries(entries: &[raft::Entry]) {
         let mut space = Space::find(SPACE_RAFT_LOG).unwrap();
         for e in entries {
             let row = row::Entry::try_from(e.clone()).unwrap();
