@@ -25,9 +25,7 @@ pub struct RecvQueue {
 
 impl RecvQueue {
     pub fn new(buffer_size: usize) -> Self {
-        let mut buffer = Vec::with_capacity(buffer_size);
-        buffer.resize(buffer_size, 0);
-
+        let buffer = vec![0; buffer_size];
         RecvQueue {
             is_active: Cell::new(true),
             buffer: RefCell::new(Cursor::new(buffer)),

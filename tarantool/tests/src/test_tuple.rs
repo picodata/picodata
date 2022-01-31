@@ -30,7 +30,7 @@ pub fn test_tuple_field_count() {
     assert_eq!(tuple.len(), 1);
 
     // empty tuple
-    let tuple = Tuple::from_struct::<Vec<()>>(&vec![]).unwrap();
+    let tuple = Tuple::from_struct(&()).unwrap();
     assert_eq!(tuple.len(), 0);
 }
 
@@ -72,15 +72,14 @@ pub fn test_tuple_into_struct() {
     );
 }
 
+#[allow(clippy::redundant_clone)]
 pub fn test_tuple_clone() {
-    let tuple_1 = {
-        let tuple_2 = Tuple::from_struct(&S1Record {
-            id: 1,
-            text: "text".to_string(),
-        })
-        .unwrap();
-        tuple_2.clone()
-    };
+    let tuple_2 = Tuple::from_struct(&S1Record {
+        id: 1,
+        text: "text".to_string(),
+    })
+    .unwrap();
+    let tuple_1 = tuple_2.clone();
     assert!(tuple_1.into_struct::<S1Record>().is_ok());
 }
 

@@ -66,7 +66,7 @@ pub fn init_stored_proc(function_name: &str) -> Result<(), Error> {
 
     if idx.get(&(stored_proc_name.as_str(),))?.is_none() {
         // resolve new func id: get max id + increment
-        let id = match func_sys_space.primary_key().max(&Vec::<()>::new())? {
+        let id = match func_sys_space.primary_key().max(&())? {
             None => 1,
             Some(t) => t.into_struct::<(u32,)>()?.0 + 1, // decode: Result -> Tuple[u32] -> (u32,) -> u32
         };

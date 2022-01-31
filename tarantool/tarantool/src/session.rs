@@ -13,7 +13,7 @@ use crate::ffi::tarantool::{luaT_call, luaT_state};
 
 /// Get the user ID of the current user.
 pub fn uid() -> Result<isize, Error> {
-    let result = unsafe {
+    unsafe {
         // Create new stack (just in case - in order no to mess things
         // in current stack).
         let state = luaT_state();
@@ -27,22 +27,19 @@ pub fn uid() -> Result<isize, Error> {
         let name_uid = CString::new("uid").unwrap();
         ffi_lua::lua_getfield(uid_state, -1, name_uid.as_ptr());
 
-        let result = if luaT_call(uid_state, 0, 1) == 1 {
-            return Err(TarantoolError::last().into());
+        if luaT_call(uid_state, 0, 1) == 1 {
+            Err(TarantoolError::last().into())
         } else {
             Ok(ffi_lua::lua_tointeger(uid_state, -1))
-        };
+        }
 
         // No need to clean uid_state. It will be gc'ed.
-        result
-    };
-
-    result
+    }
 }
 
 /// Get the effective user ID of the current user.
 pub fn euid() -> Result<isize, Error> {
-    let result = unsafe {
+    unsafe {
         // Create new stack (just in case - in order no to mess things
         // in current stack).
         let state = luaT_state();
@@ -56,15 +53,12 @@ pub fn euid() -> Result<isize, Error> {
         let name_euid = CString::new("euid").unwrap();
         ffi_lua::lua_getfield(euid_state, -1, name_euid.as_ptr());
 
-        let result = if luaT_call(euid_state, 0, 1) == 1 {
-            return Err(TarantoolError::last().into());
+        if luaT_call(euid_state, 0, 1) == 1 {
+            Err(TarantoolError::last().into())
         } else {
             Ok(ffi_lua::lua_tointeger(euid_state, -1))
-        };
+        }
 
         // No need to clean euid_state. It will be gc'ed.
-        result
-    };
-
-    result
+    }
 }

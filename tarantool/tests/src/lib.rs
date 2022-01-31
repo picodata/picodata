@@ -1,3 +1,7 @@
+#![allow(clippy::approx_constant)]
+#![allow(clippy::blacklisted_name)]
+#![allow(clippy::bool_assert_comparison)]
+#![allow(clippy::upper_case_acronyms)]
 use std::ffi::CStr;
 use std::io;
 use std::os::raw::{c_int, c_schar};
@@ -59,63 +63,77 @@ struct TestConfig {
 
 fn create_test_spaces() -> Result<(), Error> {
     // space.test_s1
-    let mut test_s1_opts = SpaceCreateOptions::default();
-    test_s1_opts.format = Some(vec![
-        SpaceFieldFormat::new("id", SpaceFieldType::Unsigned),
-        SpaceFieldFormat::new("text", SpaceFieldType::String),
-    ]);
+    let test_s1_opts = SpaceCreateOptions {
+        format: Some(vec![
+            SpaceFieldFormat::new("id", SpaceFieldType::Unsigned),
+            SpaceFieldFormat::new("text", SpaceFieldType::String),
+        ]),
+        .. Default::default()
+    };
     let test_s1 = match Space::create("test_s1", &test_s1_opts) {
         Ok(s) => s,
         Err(e) => return Err(e),
     };
 
     // space.test_s1.index.primary
-    let mut test_s1_idx_primary = IndexOptions::default();
-    test_s1_idx_primary.index_type = Some(IndexType::Tree);
-    test_s1_idx_primary.parts = Some(vec![IndexPart::new(1, IndexFieldType::Unsigned)]);
+    let test_s1_idx_primary = IndexOptions {
+        index_type: Some(IndexType::Tree),
+        parts: Some(vec![IndexPart::new(1, IndexFieldType::Unsigned)]),
+        .. Default::default()
+    };
     test_s1.create_index("primary", &test_s1_idx_primary)?;
 
     // space.test_s2
-    let mut test_s2_opts = SpaceCreateOptions::default();
-    test_s2_opts.format = Some(vec![
-        SpaceFieldFormat::new("id", SpaceFieldType::Unsigned),
-        SpaceFieldFormat::new("key", SpaceFieldType::String),
-        SpaceFieldFormat::new("value", SpaceFieldType::String),
-        SpaceFieldFormat::new("a", SpaceFieldType::Integer),
-        SpaceFieldFormat::new("b", SpaceFieldType::Integer),
-    ]);
-    let mut test_s2 = match Space::create("test_s2", &test_s1_opts) {
+    let test_s2_opts = SpaceCreateOptions {
+        format: Some(vec![
+            SpaceFieldFormat::new("id", SpaceFieldType::Unsigned),
+            SpaceFieldFormat::new("key", SpaceFieldType::String),
+            SpaceFieldFormat::new("value", SpaceFieldType::String),
+            SpaceFieldFormat::new("a", SpaceFieldType::Integer),
+            SpaceFieldFormat::new("b", SpaceFieldType::Integer),
+        ]),
+        .. Default::default()
+    };
+    let mut test_s2 = match Space::create("test_s2", &test_s2_opts) {
         Ok(s) => s,
         Err(e) => return Err(e),
     };
 
     // space.test_s2.index.primary
-    let mut test_s2_idx_primary = IndexOptions::default();
-    test_s2_idx_primary.index_type = Some(IndexType::Tree);
-    test_s2_idx_primary.parts = Some(vec![IndexPart::new(1, IndexFieldType::Unsigned)]);
+    let test_s2_idx_primary = IndexOptions {
+        index_type: Some(IndexType::Tree),
+        parts: Some(vec![IndexPart::new(1, IndexFieldType::Unsigned)]),
+        .. Default::default()
+    };
     test_s2.create_index("primary", &test_s2_idx_primary)?;
 
     // space.test_s2.index.idx_1
-    let mut test_s2_idx_sec_1 = IndexOptions::default();
-    test_s2_idx_sec_1.index_type = Some(IndexType::Hash);
-    test_s2_idx_sec_1.parts = Some(vec![IndexPart::new(2, IndexFieldType::String)]);
+    let test_s2_idx_sec_1 = IndexOptions {
+        index_type: Some(IndexType::Hash),
+        parts: Some(vec![IndexPart::new(2, IndexFieldType::String)]),
+        .. Default::default()
+    };
     test_s2.create_index("idx_1", &test_s2_idx_sec_1)?;
 
     // space.test_s2.index.idx_2
-    let mut test_s2_idx_sec_2 = IndexOptions::default();
-    test_s2_idx_sec_2.index_type = Some(IndexType::Tree);
-    test_s2_idx_sec_2.parts = Some(vec![
-        IndexPart::new(1, IndexFieldType::Unsigned),
-        IndexPart::new(4, IndexFieldType::Integer),
-        IndexPart::new(5, IndexFieldType::Integer),
-    ]);
+    let test_s2_idx_sec_2 = IndexOptions {
+        index_type: Some(IndexType::Tree),
+        parts: Some(vec![
+            IndexPart::new(1, IndexFieldType::Unsigned),
+            IndexPart::new(4, IndexFieldType::Integer),
+            IndexPart::new(5, IndexFieldType::Integer),
+        ]),
+        .. Default::default()
+    };
     test_s2.create_index("idx_2", &test_s2_idx_sec_2)?;
 
     // space.test_s2.index.idx_3
-    let mut test_s2_idx_sec_3 = IndexOptions::default();
-    test_s2_idx_sec_3.index_type = Some(IndexType::Tree);
-    test_s2_idx_sec_3.unique = Some(false);
-    test_s2_idx_sec_3.parts = Some(vec![IndexPart::new(4, IndexFieldType::Integer)]);
+    let test_s2_idx_sec_3 = IndexOptions {
+        index_type: Some(IndexType::Tree),
+        unique: Some(false),
+        parts: Some(vec![IndexPart::new(4, IndexFieldType::Integer)]),
+        .. Default::default()
+    };
     test_s2.create_index("idx_3", &test_s2_idx_sec_3)?;
 
     // Insert test data into space.test_s2
@@ -451,17 +469,18 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
     )
 }
 
-pub extern "C" fn start(l: *mut ffi_lua::lua_State) -> c_int {
-    let cfg_src = unsafe { ffi_lua::lua_tostring(l, 1) };
+#[allow(clippy::missing_safety_doc)]
+pub unsafe extern "C" fn start(l: *mut ffi_lua::lua_State) -> c_int {
+    let cfg_src = ffi_lua::lua_tostring(l, 1);
     let cfg = if !cfg_src.is_null() {
-        let cfg_src = unsafe { CStr::from_ptr(cfg_src) }.to_str().unwrap();
+        let cfg_src = CStr::from_ptr(cfg_src).to_str().unwrap();
         serde_json::from_str::<TestConfig>(cfg_src).unwrap()
     } else {
         TestConfig::default()
     };
 
     if let Err(e) = create_test_spaces() {
-        unsafe { ffi_lua::luaL_error(l, e.to_string().as_ptr() as *const c_schar) };
+        ffi_lua::luaL_error(l, e.to_string().as_ptr() as *const c_schar);
         return 0;
     }
 
@@ -470,22 +489,23 @@ pub extern "C" fn start(l: *mut ffi_lua::lua_State) -> c_int {
         Err(e) => {
             // Clenaup without handling error to avoid code mess.
             let _ = drop_test_spaces();
-            unsafe { ffi_lua::luaL_error(l, e.to_string().as_ptr() as *const c_schar) };
+            ffi_lua::luaL_error(l, e.to_string().as_ptr() as *const c_schar);
             return 0;
         }
     };
 
     if let Err(e) = drop_test_spaces() {
-        unsafe { ffi_lua::luaL_error(l, e.to_string().as_ptr() as *const c_schar) };
+        ffi_lua::luaL_error(l, e.to_string().as_ptr() as *const c_schar);
         return 0;
     }
 
-    unsafe { ffi_lua::lua_pushinteger(l, (!is_success) as isize) };
+    ffi_lua::lua_pushinteger(l, (!is_success) as isize);
     1
 }
 
+#[allow(clippy::missing_safety_doc)]
 #[no_mangle]
-pub extern "C" fn luaopen_libtarantool_module_test_runner(l: *mut ffi_lua::lua_State) -> c_int {
-    unsafe { ffi_lua::lua_pushcfunction(l, start) };
+pub unsafe extern "C" fn luaopen_libtarantool_module_test_runner(l: *mut ffi_lua::lua_State) -> c_int {
+    ffi_lua::lua_pushcfunction(l, start);
     1
 }

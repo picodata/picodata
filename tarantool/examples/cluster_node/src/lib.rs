@@ -14,6 +14,7 @@ struct Global {
 }
 
 unsafe impl Sync for Global {}
+#[allow(clippy::non_send_fields_in_send_ty)]
 unsafe impl Send for Global {}
 
 lazy_static! {

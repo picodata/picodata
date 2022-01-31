@@ -1,3 +1,4 @@
+#![allow(clippy::redundant_allocation)]
 use std::io;
 use std::rc::Rc;
 use std::time::Duration;
@@ -52,7 +53,7 @@ pub fn test_ping_concurrent() {
     fiber_b.set_joinable(true);
 
     fiber_a.start(conn.clone());
-    fiber_b.start(conn.clone());
+    fiber_b.start(conn);
 
     fiber_a.join();
     fiber_b.join();
@@ -80,7 +81,7 @@ pub fn test_call_timeout() {
     let conn = Conn::new("localhost:3301", conn_options, None).unwrap();
     let result = conn.call(
         "test_timeout",
-        &Vec::<()>::new(),
+        Vec::<()>::new().as_slice(),
         &Options {
             timeout: Some(Duration::from_millis(1)),
             ..Options::default()
@@ -145,13 +146,13 @@ pub fn test_schema_sync() {
     assert!(conn.space("test_s2").unwrap().is_some());
     assert!(conn.space("test_s_tmp").unwrap().is_none());
 
-    conn.call("test_schema_update", &Vec::<()>::new(), &Options::default())
+    conn.call("test_schema_update", Vec::<()>::new().as_slice(), &Options::default())
         .unwrap();
     assert!(conn.space("test_s_tmp").unwrap().is_some());
 
     conn.call(
         "test_schema_cleanup",
-        &Vec::<()>::new(),
+        Vec::<()>::new().as_slice(),
         &Options::default(),
     )
     .unwrap();
@@ -321,7 +322,7 @@ pub fn test_update() {
     let update_result = remote_space
         .update(
             &(input.id,),
-            &vec![QueryOperation {
+            &[QueryOperation {
                 op: "=".to_string(),
                 field_id: 1,
                 value: "New".into(),
@@ -374,7 +375,7 @@ pub fn test_upsert() {
                 id: 1,
                 text: "New".to_string(),
             },
-            &vec![QueryOperation {
+            &[QueryOperation {
                 op: "=".to_string(),
                 field_id: 1,
                 value: "Test 1".into(),
@@ -389,7 +390,7 @@ pub fn test_upsert() {
                 id: 2,
                 text: "New".to_string(),
             },
-            &vec![QueryOperation {
+            &[QueryOperation {
                 op: "=".to_string(),
                 field_id: 1,
                 value: "Test 2".into(),
@@ -560,11 +561,11 @@ pub fn test_triggers_schema_sync() {
     )
     .unwrap();
 
-    conn.call("test_schema_update", &Vec::<()>::new(), &Options::default())
+    conn.call("test_schema_update", &[()][..0], &Options::default())
         .unwrap();
     conn.call(
         "test_schema_cleanup",
-        &Vec::<()>::new(),
+        Vec::<()>::new().as_slice(),
         &Options::default(),
     )
     .unwrap();

@@ -9,6 +9,9 @@ impl Decimal {
     /// Initialize a `Decimal` instance from a raw [`decNumber`] struct
     ///
     /// [`decNumber`]: crate::ffi::decimal::decNumber
+    ///
+    /// # Safety
+    /// `inner` must a be valid instance of `decNumber` struct
     #[inline(always)]
     pub unsafe fn from_raw(inner: ffi::decNumber) -> Self {
         Self { inner }
@@ -547,13 +550,13 @@ macro_rules! impl_try_into_int {
             impl std::convert::TryFrom<Decimal> for $t {
                 type Error = DecimalToIntError;
 
-                fn try_from(mut dec: Decimal) -> Result<Self, Self::Error> {
+                fn try_from(dec: Decimal) -> Result<Self, Self::Error> {
                     if !dec.is_int() {
                         return Err(DecimalToIntError::NonInteger)
                     }
                     unsafe {
                         let mut num = std::mem::MaybeUninit::uninit();
-                        let res = $f(&mut dec.inner, num.as_mut_ptr());
+                        let res = $f(&dec.inner, num.as_mut_ptr());
                         if res.is_null() {
                             Err(DecimalToIntError::OutOfRange)
                         } else {

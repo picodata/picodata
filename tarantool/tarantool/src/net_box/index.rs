@@ -82,7 +82,7 @@ impl RemoteIndex {
     pub fn update<K, Op>(
         &mut self,
         key: &K,
-        ops: &Vec<Op>,
+        ops: &[Op],
         options: &Options,
     ) -> Result<Option<Tuple>, Error>
     where
@@ -101,7 +101,7 @@ impl RemoteIndex {
     pub fn upsert<T, Op>(
         &mut self,
         value: &T,
-        ops: &Vec<Op>,
+        ops: &[Op],
         options: &Options,
     ) -> Result<Option<Tuple>, Error>
     where

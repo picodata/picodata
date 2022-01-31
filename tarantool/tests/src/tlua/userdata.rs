@@ -231,5 +231,5 @@ pub fn multiple_userdata() {
     assert_eq!(lua.eval::<BigInteger>("return broadcast_mul(b, v)").unwrap(),
         broadcast_mul(Integer(114), big_integer.clone()));
     assert_eq!(lua.eval::<f32>("return collapse(19.25, c, v)").unwrap(),
-        collapse(19.25, Integer(96), big_integer.clone()));
+        collapse(19.25, Integer(96), big_integer));
 }

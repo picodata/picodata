@@ -1,3 +1,4 @@
+#![allow(clippy::redundant_allocation)]
 use std::{
     cell::RefCell,
     rc::Rc,

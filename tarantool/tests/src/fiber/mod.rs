@@ -36,6 +36,7 @@ pub fn immediate_with_attrs() {
     assert_eq!(res, 42);
 }
 
+#[allow(clippy::needless_collect)]
 pub fn multiple_immediate() {
     let mut res = vec![];
     let fibers = vec![vec![1, 2], vec![3, 4], vec![5, 6]]
@@ -49,8 +50,7 @@ pub fn multiple_immediate() {
     res.push(1);
     res.extend(
         fibers.into_iter()
-            .map(fiber::JoinHandle::join)
-            .flatten()
+            .flat_map(fiber::JoinHandle::join)
     );
     res.push(8);
     assert_eq!(res, vec![1, 2, 3, 4, 5, 6, 7, 8]);
@@ -120,6 +120,7 @@ pub fn deferred_with_attrs() {
     assert_eq!(res, 15);
 }
 
+#[allow(clippy::needless_collect)]
 pub fn multiple_deferred() {
     let mut res = vec![];
     let fibers = vec![vec![1, 2], vec![3, 4], vec![5, 6]]
@@ -133,8 +134,7 @@ pub fn multiple_deferred() {
     res.push(1);
     res.extend(
         fibers.into_iter()
-            .map(fiber::LuaJoinHandle::join)
-            .flatten()
+            .flat_map(fiber::LuaJoinHandle::join)
     );
     res.push(8);
     assert_eq!(res, vec![1, 2, 3, 4, 5, 6, 7, 8]);

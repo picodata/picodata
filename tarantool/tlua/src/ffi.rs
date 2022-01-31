@@ -5,6 +5,7 @@
 //! 3. Lua utitlites, implemented in Tarantool
 
 #![allow(non_camel_case_types)]
+#![allow(clippy::missing_safety_doc)]
 use std::os::raw::{c_double, c_int, c_char, c_void};
 use std::ptr::null_mut;
 
@@ -23,7 +24,7 @@ pub const LUA_REGISTRYINDEX: c_int = -10000;
 pub const LUA_ENVIRONINDEX: c_int = -10001;
 pub const LUA_GLOBALSINDEX: c_int = -10002;
 
-pub unsafe fn is_relative_index(index: c_int) -> bool {
+pub fn is_relative_index(index: c_int) -> bool {
     index < 0 && index > LUA_REGISTRYINDEX
 }
 

@@ -30,6 +30,7 @@ impl Sequence {
         })
     }
 
+    #[allow(clippy::should_implement_trait)]
     /// Generate the next value and return it.
     ///
     /// The generation algorithm is simple:

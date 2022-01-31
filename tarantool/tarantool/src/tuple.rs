@@ -43,12 +43,14 @@ impl Tuple {
         }
     }
 
+    /// # Safety
+    /// `data` must point to a buffer containing `len` bytes
     pub unsafe fn from_raw_data(data: *mut c_char, len: u32) -> Self {
         let format = TupleFormat::default();
         let tuple_ptr = ffi::box_tuple_new(
             format.inner,
             data as _,
-            data.offset(len as isize) as _
+            data.add(len as _) as _
         );
 
         Self::from_ptr(NonNull::new_unchecked(tuple_ptr))
@@ -66,6 +68,10 @@ impl Tuple {
     /// Return the number of fields in tuple (the size of MsgPack Array).
     pub fn len(&self) -> u32 {
         unsafe { ffi::box_tuple_field_count(self.ptr.as_ptr()) }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 
     /// Will return the number of bytes in the tuple.
@@ -200,7 +206,21 @@ impl AsTuple for () {
 }
 
 impl<T> AsTuple for (T,) where T: Serialize {}
-impl<T> AsTuple for Vec<T> where T: Serialize {}
+impl<T> AsTuple for [T] where T: Serialize {}
+
+macro_rules! impl_array {
+    ($($n:literal)+) => {
+        $(
+            #[allow(clippy::zero_prefixed_literal)]
+            impl<T> AsTuple for [T; $n] where T: Serialize {}
+        )+
+    }
+}
+
+impl_array!{
+    00 01 02 03 04 05 06 07 08 09 10 11 12 13 14 15
+    16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32
+}
 
 impl<Ta, Tb> AsTuple for (Ta, Tb)
 where
@@ -232,7 +252,7 @@ where
 /// If not: will act as a regular rust `Vec<u8>`
 pub enum TupleBuffer {
     Vector(Vec<u8>),
-    TransactionScoped { ptr: *mut u8, size: usize },
+    TransactionScoped { ptr: NonNull<u8>, size: usize },
 }
 
 impl TupleBuffer {
@@ -240,7 +260,7 @@ impl TupleBuffer {
     pub fn as_ptr(&self) -> *const u8 {
         match self {
             TupleBuffer::Vector(vec) => vec.as_ptr(),
-            TupleBuffer::TransactionScoped { ptr, size: _ } => ptr.clone(),
+            TupleBuffer::TransactionScoped { ptr, .. } => ptr.as_ptr(),
         }
     }
 
@@ -248,7 +268,14 @@ impl TupleBuffer {
     pub fn len(&self) -> usize {
         match self {
             TupleBuffer::Vector(vec) => vec.len(),
-            TupleBuffer::TransactionScoped { ptr: _, size } => size.clone(),
+            TupleBuffer::TransactionScoped { size, .. } => *size,
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        match self {
+            TupleBuffer::Vector(vec) => vec.is_empty(),
+            TupleBuffer::TransactionScoped { size, .. } => *size == 0,
         }
     }
 }
@@ -260,7 +287,7 @@ impl From<Vec<u8>> for TupleBuffer {
             unsafe {
                 let ptr = ffi::box_txn_alloc(size) as *mut u8;
                 copy_nonoverlapping(buf.as_ptr(), ptr, size);
-
+                let ptr = NonNull::new(ptr).expect("tarantool allocation failed");
                 Self::TransactionScoped { ptr, size }
             }
         } else {
@@ -332,6 +359,7 @@ impl TupleIterator {
     /// After call:
     /// - `box_tuple_position(it) == fieldno` if returned value is not `None`
     /// - `box_tuple_position(it) == box_tuple_field_count(Tuple)` if returned value is `None`.
+    #[allow(clippy::should_implement_trait)]
     pub fn next<T>(&mut self) -> Result<Option<T>, Error>
     where
         T: DeserializeOwned,
@@ -526,7 +554,7 @@ impl FunctionCtx {
         let buf = rmp_serde::to_vec_named(value)?;
         let buf_ptr = buf.as_ptr() as *const c_char;
         let result =
-            unsafe { ffi::box_return_mp(self.inner, buf_ptr, buf_ptr.offset(buf.len() as isize)) };
+            unsafe { ffi::box_return_mp(self.inner, buf_ptr, buf_ptr.add(buf.len())) };
 
         if result < 0 {
             Err(TarantoolError::last().into())
@@ -563,7 +591,7 @@ where
 {
     let buf = value.serialize_as_tuple().unwrap();
     let buf_ptr = buf.as_ptr() as *const c_char;
-    if unsafe { ffi::box_session_push(buf_ptr, buf_ptr.offset(buf.len() as isize)) } < 0 {
+    if unsafe { ffi::box_session_push(buf_ptr, buf_ptr.add(buf.len())) } < 0 {
         Err(TarantoolError::last().into())
     } else {
         Ok(())

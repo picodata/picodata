@@ -139,10 +139,9 @@ impl Node {
     }
 
     pub fn wait_ready(&self, timeout: Duration) -> Result<(), Error> {
-        if self.inner.borrow().state() != &NodeState::Ready {
-            if !self.ready_cond.wait_timeout(timeout) {
-                return Err(Error::IO(io::ErrorKind::TimedOut.into()));
-            }
+        if self.inner.borrow().state() != &NodeState::Ready
+            && !self.ready_cond.wait_timeout(timeout) {
+            return Err(Error::IO(io::ErrorKind::TimedOut.into()));
         }
         Ok(())
     }

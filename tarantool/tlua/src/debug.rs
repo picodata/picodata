@@ -53,34 +53,34 @@ pub fn dump_stack(lua: impl AsLua) {
     dump_stack_to(lua, std::io::stderr()).unwrap()
 }
 
-pub fn dump_stack_raw_to(lua: LuaState, mut out: impl Write) -> std::io::Result<()> {
-    unsafe {
-        let top = ffi::lua_gettop(lua);
-        ffi::lua_getglobal(lua, c_ptr!("type"));
-        ffi::lua_getglobal(lua, c_ptr!("tostring"));
-        for i in 1..=top {
-            ffi::lua_pushvalue(lua, -2);
-            ffi::lua_pushvalue(lua, i);
-            ffi::lua_pcall(lua, 1, 1, 0);
-            let t = std::ffi::CStr::from_ptr(ffi::lua_tostring(lua, -1)).to_owned();
-            let t = t.to_string_lossy();
-            ffi::lua_pop(lua, 1);
+#[allow(clippy::missing_safety_doc)]
+pub unsafe fn dump_stack_raw_to(lua: LuaState, mut out: impl Write) -> std::io::Result<()> {
+    let top = ffi::lua_gettop(lua);
+    ffi::lua_getglobal(lua, c_ptr!("type"));
+    ffi::lua_getglobal(lua, c_ptr!("tostring"));
+    for i in 1..=top {
+        ffi::lua_pushvalue(lua, -2);
+        ffi::lua_pushvalue(lua, i);
+        ffi::lua_pcall(lua, 1, 1, 0);
+        let t = std::ffi::CStr::from_ptr(ffi::lua_tostring(lua, -1)).to_owned();
+        let t = t.to_string_lossy();
+        ffi::lua_pop(lua, 1);
 
-            ffi::lua_pushvalue(lua, -1);
-            ffi::lua_pushvalue(lua, i);
-            ffi::lua_pcall(lua, 1, 1, 0);
-            let s = std::ffi::CStr::from_ptr(ffi::lua_tostring(lua, -1)).to_owned();
-            let s = s.to_string_lossy();
-            ffi::lua_pop(lua, 1);
+        ffi::lua_pushvalue(lua, -1);
+        ffi::lua_pushvalue(lua, i);
+        ffi::lua_pcall(lua, 1, 1, 0);
+        let s = std::ffi::CStr::from_ptr(ffi::lua_tostring(lua, -1)).to_owned();
+        let s = s.to_string_lossy();
+        ffi::lua_pop(lua, 1);
 
-            writeln!(out, "{}: {}({})", i, t, s)?;
-        }
-        ffi::lua_pop(lua, 2);
-        Ok(())
+        writeln!(out, "{}: {}({})", i, t, s)?;
     }
+    ffi::lua_pop(lua, 2);
+    Ok(())
 }
 
-pub fn dump_stack_raw(lua: LuaState) {
+#[allow(clippy::missing_safety_doc)]
+pub unsafe fn dump_stack_raw(lua: LuaState) {
     dump_stack_raw_to(lua, std::io::stderr()).unwrap()
 }
 

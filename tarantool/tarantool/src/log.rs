@@ -17,7 +17,6 @@
 //! - [Lua reference: Module log](https://www.tarantool.io/en/doc/latest/reference/reference_lua/log/)
 //! - [C API reference: Module say (logging)](https://www.tarantool.io/en/doc/latest/dev_guide/reference_capi/say/)
 use std::ffi::CString;
-use std::mem::forget;
 
 use core::ptr::null;
 use log::{Level, Log, Metadata, Record};
@@ -85,11 +84,7 @@ pub fn say(level: SayLevel, file: &str, line: i32, error: Option<&str>, message:
     };
     let message = CString::new(message).unwrap();
 
-    unsafe { ffi::SAY_FN.unwrap()(level, file.as_ptr(), line, error_ptr, message.as_ptr()) };
-
-    forget(file);
-    forget(message);
-    if error.is_some() {
-        forget(error.unwrap());
+    unsafe {
+        ffi::SAY_FN.unwrap()(level, file.as_ptr(), line, error_ptr, message.as_ptr())
     }
 }

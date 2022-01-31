@@ -7,7 +7,6 @@ use crate::{
     AbsoluteIndex,
     AsLua,
     Push,
-    PushInto,
     PushGuard,
     PushOne,
     PushOneInto,
@@ -226,7 +225,7 @@ where
         &self,
         index: I,
         value: V,
-    ) -> Result<(), CheckedSetError<<I as PushInto<LuaState>>::Err, <V as PushInto<LuaState>>::Err>>
+    ) -> Result<(), CheckedSetError<I::Err, V::Err>>
     where
         I: PushOneInto<LuaState>,
         V: PushOneInto<LuaState>,
@@ -461,11 +460,12 @@ where
             let key = K::lua_read_at_position(self.table, crate::NEGATIVE_TWO).ok();
             let value = V::lua_read_at_position(guard, crate::NEGATIVE_ONE).ok();
 
-            if key.is_none() || value.is_none() {
-                Some(None)
-            } else {
-                Some(Some((key.unwrap(), value.unwrap())))
-            }
+            Some(
+                match (key, value) {
+                    (Some(key), Some(value)) => Some((key, value)),
+                    _ => None
+                }
+            )
         }
     }
 }

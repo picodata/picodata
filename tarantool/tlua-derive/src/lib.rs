@@ -289,7 +289,7 @@ impl<'a> FieldsInfo<'a> {
                 match field_idents.len() {
                     0 => unimplemented!("unit structs are not supported yet"),
                     1 => {
-                        let ref field_ident = field_idents[0];
+                        let field_ident = &field_idents[0];
                         quote! {
                             tlua::AsLua::push(__lua, #field_ident)
                         }

@@ -84,10 +84,10 @@ pub enum SystemSpace {
     SessionSettings = 380,
 }
 
-impl Into<Space> for SystemSpace {
-    fn into(self) -> Space {
+impl From<SystemSpace> for Space {
+    fn from(ss: SystemSpace) -> Self {
         Space {
-            id: self.to_u32().unwrap(),
+            id: ss.to_u32().unwrap(),
         }
     }
 }
@@ -153,10 +153,10 @@ pub struct SpaceFieldFormat {
 
 impl SpaceFieldFormat {
     pub fn new(name: &str, ft: SpaceFieldType) -> Self {
-        return SpaceFieldFormat {
+        SpaceFieldFormat {
             name: name.to_string(),
             field_type: ft,
-        };
+        }
     }
 }
 
@@ -231,13 +231,13 @@ impl Space {
     /// Returns a new space.
     #[cfg(feature = "schema")]
     pub fn create(name: &str, opts: &SpaceCreateOptions) -> Result<Space, Error> {
-        return crate::schema::space::create_space(name, opts);
+        crate::schema::space::create_space(name, opts)
     }
 
     /// Drop a space.
     #[cfg(feature = "schema")]
     pub fn drop(&self) -> Result<(), Error> {
-        return crate::schema::space::drop_space(self.id);
+        crate::schema::space::drop_space(self.id)
     }
 
     /// Find space by name.
@@ -321,7 +321,7 @@ impl Space {
             ffi::box_insert[
                 self.id,
                 buf_ptr,
-                buf_ptr.offset(buf.len() as isize),
+                buf_ptr.add(buf.len()),
                 @out
             ]
         )
@@ -346,7 +346,7 @@ impl Space {
             ffi::box_replace[
                 self.id,
                 buf_ptr,
-                buf_ptr.offset(buf.len() as isize),
+                buf_ptr.add(buf.len()),
                 @out
             ]
         )
@@ -377,6 +377,11 @@ impl Space {
     #[inline(always)]
     pub fn len(&self) -> Result<usize, Error> {
         self.primary_key().len()
+    }
+
+    #[inline(always)]
+    pub fn is_empty(&self) -> Result<bool, Error> {
+        self.len().map(|l| l == 0)
     }
 
     /// Number of bytes in the space.
@@ -453,7 +458,7 @@ impl Space {
     ///
     /// See also: [space.upsert()](#method.upsert)
     #[inline(always)]
-    pub fn update<K, Op>(&mut self, key: &K, ops: &Vec<Op>) -> Result<Option<Tuple>, Error>
+    pub fn update<K, Op>(&mut self, key: &K, ops: &[Op]) -> Result<Option<Tuple>, Error>
     where
         K: AsTuple,
         Op: AsTuple,
@@ -478,7 +483,7 @@ impl Space {
     ///
     /// See also: [space.update()](#method.update)
     #[inline(always)]
-    pub fn upsert<T, Op>(&mut self, value: &T, ops: &Vec<Op>) -> Result<Option<Tuple>, Error>
+    pub fn upsert<T, Op>(&mut self, value: &T, ops: &[Op]) -> Result<Option<Tuple>, Error>
     where
         T: AsTuple,
         Op: AsTuple,

@@ -256,6 +256,12 @@ impl Builder<NoFunc> {
     }
 }
 
+impl Default for Builder<NoFunc> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<F> Builder<F> {
     /// Names the fiber-to-be.
     ///
@@ -581,7 +587,7 @@ mod impl_details {
             data as *mut u8, len.assume_init()
         );
         let msg = String::from_utf8_lossy(msg_bytes);
-        tlua::LuaError::ExecutionError(msg.into()).into()
+        tlua::LuaError::ExecutionError(msg.into())
     }
 
     /// In case of success, the stack contains the results.
@@ -672,8 +678,9 @@ pub trait LuaCallee {
     /// This function is called within `LuaFiber::trampoline` to save the
     /// return value after the callee's invocation
     ///
-    /// This function is unsafe, because it is very easy to mess things up
-    /// when preparing arugments.
+    /// # Safety
+    /// The function must return the number of values that it has put onto the
+    /// stack as result values
     unsafe fn save_result(l: *mut lua::lua_State, res: Self::Output) -> i32;
 }
 
@@ -758,6 +765,7 @@ pub trait Callee {
     /// This function is called within [`Fyber::spawn`] to prepare the arguments
     /// for and invoke the [`ffi::fiber_start`] function.
     ///
+    /// # Safety
     /// This function is unsafe, because it is very easy to mess things up
     /// when preparing arugments.
     unsafe fn start_fiber(self, inner: NonNull<ffi::Fiber>) -> Self::JoinHandle;
@@ -765,6 +773,7 @@ pub trait Callee {
     /// This function is called within `Fyber::trampoline` to extract the
     /// arguments from the [`va_list::VaList`].
     ///
+    /// # Safety
     /// This function is unsafe, because it is very easy to mess things up
     /// when extracting arugments.
     unsafe fn parse_args(args: VaList) -> Self::Args;
@@ -772,6 +781,7 @@ pub trait Callee {
     /// This function is called within `Fyber::trampoline` to invoke the
     /// underlying callee function and process it's results.
     ///
+    /// # Safety
     /// This function is unsafe, because it is very easy to mess things up
     /// when storing the callee's result values.
     unsafe fn invoke(a: Self::Args);
@@ -865,6 +875,7 @@ pub trait Invocation {
     /// This method is called from the `Fyber::trampoline` function right
     /// before calling the fiber function.
     ///
+    /// # Safety
     /// This is an implementation detail and will most likely be removed in the
     /// future.
     unsafe fn before_callee();
@@ -872,6 +883,7 @@ pub trait Invocation {
     /// This method is called from the [`Fyber::spawn`] function right
     /// after starting the fiber.
     ///
+    /// # Safety
     /// This is an implementation detail and will most likely be removed in the
     /// future.
     unsafe fn after_start(f: NonNull<ffi::Fiber>);
@@ -1177,6 +1189,12 @@ impl FiberAttr {
     }
 }
 
+impl Default for FiberAttr {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Drop for FiberAttr {
     fn drop(&mut self) {
         unsafe { ffi::fiber_attr_delete(self.inner) }
@@ -1252,12 +1270,20 @@ impl Cond {
     /// - `true` on [signal()](#method.signal) call or a spurious wake up.
     /// - `false` on timeout, diag is set to `TimedOut`
     pub fn wait_timeout(&self, timeout: Duration) -> bool {
-        !(unsafe { ffi::fiber_cond_wait_timeout(self.inner, timeout.as_secs_f64()) } < 0)
+        unsafe {
+            ffi::fiber_cond_wait_timeout(self.inner, timeout.as_secs_f64()) >= 0
+        }
     }
 
     /// Shortcut for [wait_timeout()](#method.wait_timeout).
     pub fn wait(&self) -> bool {
-        !(unsafe { ffi::fiber_cond_wait(self.inner) } < 0)
+        unsafe { ffi::fiber_cond_wait(self.inner) >= 0 }
+    }
+}
+
+impl Default for Cond {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -1301,6 +1327,12 @@ impl Latch {
         } else {
             None
         }
+    }
+}
+
+impl Default for Latch {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

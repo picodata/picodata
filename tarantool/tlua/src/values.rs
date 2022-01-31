@@ -325,7 +325,7 @@ where
             |slice: &'a [u8], lua|
                 match str::from_utf8(slice) {
                     Ok(str_ref) => Ok(StringInLua { lua, str_ref }),
-                    Err(_) => return Err(lua)
+                    Err(_) => Err(lua)
                 }
         )
     }
@@ -336,7 +336,7 @@ impl<'a, L> Deref for StringInLua<'a, L> {
 
     #[inline]
     fn deref(&self) -> &str {
-        &self.str_ref
+        self.str_ref
     }
 }
 
@@ -351,7 +351,7 @@ impl_push_read!{ bool,
         }
     }
     read_at_position(lua, index) {
-        if unsafe { ffi::lua_isboolean(lua.as_lua(), index.into()) } != true {
+        if !unsafe { ffi::lua_isboolean(lua.as_lua(), index.into()) } {
             return Err(lua);
         }
 

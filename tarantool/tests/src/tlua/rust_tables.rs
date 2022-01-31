@@ -172,7 +172,7 @@ pub fn reading_vec_set_from_lua_works() {
     assert_eq!(
         read,
         [1., 2., 3.].iter().copied()
-            .map(|x| AnyLuaValue::LuaNumber(x))
+            .map(AnyLuaValue::LuaNumber)
             .collect::<Vec<_>>()
     );
 
@@ -766,12 +766,7 @@ pub fn push_custom_collection() {
         type Item = &'a T;
 
         fn next(&mut self) -> Option<&'a T> {
-            while let Some(maybe_v) = self.0.next() {
-                if let Some(v) = maybe_v {
-                    return Some(&v)
-                }
-            }
-            None
+            self.0.by_ref().flatten().next()
         }
     }
 

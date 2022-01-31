@@ -145,12 +145,12 @@ impl ConnInner {
                         Ok(sync) => self
                             .recv_queue
                             .recv(sync, response_consumer, options)
-                            .and_then(|response| {
+                            .map(|response| {
                                 self.schema_version
                                     .set(Some(response.header.schema_version));
-                                Ok(response.payload)
+                                response.payload
                             }),
-                        Err(err) => Err(self.handle_error(err.into()).err().unwrap()),
+                        Err(err) => Err(self.handle_error(err).err().unwrap()),
                     };
                 }
                 ConnState::Error => self.disconnect(),
@@ -240,7 +240,7 @@ impl ConnInner {
         Ok(())
     }
 
-    fn auth(&self, stream: &mut CoIOStream, salt: &Vec<u8>) -> Result<(), Error> {
+    fn auth(&self, stream: &mut CoIOStream, salt: &[u8]) -> Result<(), Error> {
         let buf = Vec::new();
         let mut cur = Cursor::new(buf);
 
@@ -255,7 +255,7 @@ impl ConnInner {
                 sync,
             )
         })?;
-        stream.write(cur.get_ref())?;
+        stream.write_all(cur.get_ref())?;
 
         // handle response
         let response_len = rmp::decode::read_u32(stream)?;
@@ -370,6 +370,7 @@ struct ConnTriggersWrapper {
     self_ref: Weak<ConnInner>,
 }
 
+#[allow(clippy::redundant_allocation, clippy::boxed_local)]
 fn send_worker(conn: Box<Rc<ConnInner>>) -> i32 {
     set_cancellable(true);
     let conn = *conn;
@@ -397,6 +398,7 @@ fn send_worker(conn: Box<Rc<ConnInner>>) -> i32 {
     }
 }
 
+#[allow(clippy::redundant_allocation, clippy::boxed_local)]
 fn recv_worker(conn: Box<Rc<ConnInner>>) -> i32 {
     set_cancellable(true);
     let conn = *conn;
@@ -420,10 +422,8 @@ fn recv_worker(conn: Box<Rc<ConnInner>>) -> i32 {
                         conn.handle_error(e).unwrap();
                     }
                     Ok(is_data_pulled) => {
-                        if !is_data_pulled {
-                            if conn.is_connected() {
-                                conn.disconnect();
-                            }
+                        if !is_data_pulled && conn.is_connected() {
+                            conn.disconnect();
                         }
                     }
                 }

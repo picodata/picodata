@@ -207,8 +207,8 @@ pub fn cdata_numbers() {
 pub fn readwrite_floats() {
     let lua = Lua::new();
 
-    lua.set("a", 2.51234 as f32);
-    lua.set("b", 3.4123456789 as f64);
+    lua.set("a", 2.51234_f32);
+    lua.set("b", 3.4123456789_f64);
 
     let x: f32 = lua.get("a").unwrap();
     assert!(x - 2.51234 < 0.000001);
@@ -217,7 +217,7 @@ pub fn readwrite_floats() {
     assert!(y - 2.51234 < 0.000001);
 
     let z: f32 = lua.get("b").unwrap();
-    assert!(z - 3.4123456789 < 0.000001);
+    assert!(z - 3.4123456 < 0.000001);
 
     let w: f64 = lua.get("b").unwrap();
     assert!(w - 3.4123456789 < 0.000001);

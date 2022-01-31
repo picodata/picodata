@@ -114,7 +114,6 @@ use std::borrow::Borrow;
 use std::num::NonZeroI32;
 use std::error::Error;
 use std::fmt;
-use std::convert::{From, TryInto};
 use std::io;
 
 pub use any::{AnyHashableLuaValue, AnyLuaString, AnyLuaValue};
@@ -125,7 +124,7 @@ pub use lua_functions::LuaFunction;
 pub use lua_functions::LuaFunctionCallError;
 pub use lua_functions::{LuaCode, LuaCodeFromReader};
 pub use lua_tables::{LuaTable, LuaTableIterator, MethodCallError};
-pub use rust_tables::PushIterError;
+pub use rust_tables::{PushIterError, PushIterErrorOf};
 pub use tuples::TuplePushError;
 pub use userdata::UserdataOnStack;
 pub use userdata::{push_userdata, read_userdata, push_some_userdata};
@@ -200,7 +199,9 @@ impl<L: AsLua> PushGuard<L> {
     /// Creates a new `PushGuard` from this Lua context representing `size` items on the stack.
     /// When this `PushGuard` is destroyed, `size` items will be popped.
     ///
-    /// This is unsafe because the Lua stack can be corrupted if this is misused.
+    /// # Safety
+    /// There must be at least `size` elements on the `lua` stack and it must be
+    /// safe to drop them at the same time with this `PushGuard`.
     #[inline]
     pub unsafe fn new(lua: L, size: i32) -> Self {
         PushGuard {
@@ -225,7 +226,9 @@ impl<L: AsLua> PushGuard<L> {
     /// Prevents the value from being popped when the `PushGuard` is destroyed, and returns the
     /// number of elements on the Lua stack.
     ///
-    /// This is unsafe because the Lua stack can be corrupted if this is misused.
+    /// # Safety
+    /// The values on the stack will not be popped automatically, so the caller
+    /// must ensure nothing is leaked.
     #[inline]
     pub unsafe fn forget(self) -> i32 {
         self.forget_internal()
@@ -378,16 +381,13 @@ pub trait AsLua {
     ///
     /// If `I::Item` pushes more than 2 values or an error happens during an
     /// attempt to push, the function returns `Err((e, self))` where `e` is a
-    /// `PushIterError`.
+    /// `PushIterErrorOf`.
     ///
     /// Returns a `PushGuard` which captures `self` by value and stores the
     /// amount of values pushed onto the stack (exactly 1 -- lua table).
     #[inline(always)]
     fn try_push_iter<I>(self, iterator: I)
-        -> Result<
-            PushGuard<Self>,
-            (PushIterError<<<I as Iterator>::Item as PushInto<LuaState>>::Err>, Self)
-        >
+        -> Result<PushGuard<Self>, (PushIterErrorOf<I>, Self)>
     where
         Self: Sized,
         I: Iterator,
@@ -709,8 +709,8 @@ impl Error for LuaError {
         use LuaError::*;
 
         match *self {
-            SyntaxError(ref s) => &s,
-            ExecutionError(ref s) => &s,
+            SyntaxError(ref s) => s,
+            ExecutionError(ref s) => s,
             ReadError(_) => "read error",
             WrongType{rust_expected: _, lua_actual: _} => "wrong type returned by Lua",
         }
@@ -781,10 +781,15 @@ impl Lua {
     ///
     /// If `close_at_the_end` is true, `lua_close` will be called on the `lua_State` in the
     /// destructor.
+    ///
+    /// # Safety
+    /// A pointer to a valid `lua` context must be provided. If
+    /// `close_at_the_end` is `true`, the corresponding lua context must be ok
+    /// to be closed.
     #[inline]
     pub unsafe fn from_existing_state<T>(lua: *mut T, close_at_the_end: bool) -> Lua {
         Lua {
-            lua: std::mem::transmute(lua),
+            lua: lua as _,
             must_be_closed: close_at_the_end,
         }
     }
@@ -942,7 +947,7 @@ impl Lua {
     /// ```
     #[inline(always)]
     // TODO(gmoshkin): this method should be part of AsLua
-    pub fn exec<'lua>(&'lua self, code: &str) -> Result<(), LuaError> {
+    pub fn exec(&self, code: &str) -> Result<(), LuaError> {
         LuaFunction::load(self, code)?
             .into_call()
     }
@@ -997,7 +1002,7 @@ impl Lua {
     /// ```
     #[inline(always)]
     // TODO(gmoshkin): this method should be part of AsLua
-    pub fn exec_from<'lua>(&'lua self, code: impl Read) -> Result<(), LuaError> {
+    pub fn exec_from(&self, code: impl Read) -> Result<(), LuaError> {
         LuaFunction::load_from_reader(self, code)?
             .into_call()
     }
@@ -1142,7 +1147,7 @@ impl Lua {
     /// ```
     #[inline]
     // TODO(gmoshkin): this method should be part of AsLua
-    pub fn empty_array<'lua, I>(&'lua self, index: I) -> LuaTable<PushGuard<&'lua Self>>
+    pub fn empty_array<I>(&self, index: I) -> LuaTable<PushGuard<&Self>>
     where
         I: Borrow<str>,
     {
@@ -1200,12 +1205,18 @@ impl Lua {
     /// ```
     #[inline]
     // TODO(gmoshkin): this method should be part of AsLua
-    pub fn globals_table<'lua>(&'lua self) -> LuaTable<PushGuard<&'lua Self>> {
+    pub fn globals_table(&self) -> LuaTable<PushGuard<&Self>> {
         unsafe {
             ffi::lua_pushglobaltable(self.lua);
             let guard = PushGuard::new(self, 1);
             LuaRead::lua_read(guard).ok().unwrap()
         }
+    }
+}
+
+impl Default for Lua {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -1239,14 +1250,16 @@ impl AbsoluteIndex {
     {
         let top = unsafe { ffi::lua_gettop(lua.as_lua()) };
         let i = index.get();
-        if unsafe { ffi::is_relative_index(i) } {
-            let index = (top + i + 1).try_into().expect("Invalid relative index");
-            Self(NonZeroI32::new(index).expect("Invalid relative index"))
+        if ffi::is_relative_index(i) {
+            Self(NonZeroI32::new(top + i + 1).expect("Invalid relative index"))
         } else {
             Self(index)
         }
     }
 
+    /// # Safety
+    /// `index` must be a valid absolute or relative index into the lua stack
+    /// with which it's going to be used
     pub unsafe fn new_unchecked(index: NonZeroI32) -> Self {
         Self(index)
     }

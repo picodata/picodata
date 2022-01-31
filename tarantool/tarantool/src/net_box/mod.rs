@@ -129,6 +129,7 @@ impl Conn {
     ) -> Result<Option<Tuple>, Error>
     where
         T: AsTuple,
+        T: ?Sized,
     {
         self.inner.request(
             |buf, sync| protocol::encode_call(buf, sync, function_name, args),
@@ -152,6 +153,7 @@ impl Conn {
     ) -> Result<Option<Tuple>, Error>
     where
         T: AsTuple,
+        T: ?Sized,
     {
         self.inner.request(
             |buf, sync| protocol::encode_eval(buf, sync, expression, args),

@@ -134,9 +134,11 @@ impl<T> RecvTimeout<T> for Channel<T> {
 }
 
 impl<T> Channel<T> {
+    /// # Safety
+    /// `msg` must have been created with `ffi::ipc_value_new`
     pub unsafe extern "C" fn destroy_msg(msg: *mut ffi::ipc_msg) {
         let ipc_value = msg.cast::<ffi::ipc_value>();
-        let value_ptr = (&mut *ipc_value).data_union.data.cast::<T>();
+        let value_ptr = (*ipc_value).data_union.data.cast::<T>();
         drop(Box::from_raw(value_ptr));
         ffi::ipc_value_delete(msg)
     }

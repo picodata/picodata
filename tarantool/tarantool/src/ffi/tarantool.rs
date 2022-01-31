@@ -86,16 +86,16 @@ extern "C" {
     ///
     /// # Example
     /// ```c
-    ///	static ssize_t openfile_cb(va_list ap)
-    ///	{
-    ///	         const char *filename = va_arg(ap);
-    ///	         int flags = va_arg(ap);
-    ///	         return open(filename, flags);
-    ///	}
+    /// static ssize_t openfile_cb(va_list ap)
+    /// {
+    ///      const char *filename = va_arg(ap);
+    ///      int flags = va_arg(ap);
+    ///      return open(filename, flags);
+    /// }
     ///
-    ///	if (coio_call(openfile_cb, "/tmp/file", 0) == -1)
-    ///		// handle errors.
-    ///	...
+    /// if (coio_call(openfile_cb, "/tmp/file", 0) == -1)
+    ///     // handle errors.
+    /// ...
     /// ```
     pub fn coio_call(func: Option<unsafe extern "C" fn(VaList) -> c_int>, ...) -> isize;
 }
@@ -424,8 +424,8 @@ extern "C" {
     /// - `0`: success
     /// - `-1`: failure
     ///     - errno=ETIMEDOUT if timeout exceeded,
-    ///	    - errno=ECANCEL if the fiber is cancelled
-    ///	    - errno=EBADF if the channel is closed while waiting on it.
+    ///     - errno=ECANCEL if the fiber is cancelled
+    ///     - errno=EBADF if the channel is closed while waiting on it.
     ///
     pub fn fiber_channel_put_msg_timeout(
         ch: *mut fiber_channel,
@@ -454,29 +454,40 @@ extern "C" {
 }
 
 /// Channel buffer size.
+///
+/// # Safety
+/// `ch` must point to a valid instance of [`fiber_channel`]
 #[inline(always)]
 pub unsafe fn fiber_channel_size(ch: *mut fiber_channel) -> u32 {
-    (&*ch).size
+    (*ch).size
 }
 
 /// The number of messages in the buffer.
 /// There may be more messages outstanding
 /// if the buffer is full.
+///
+/// # Safety
+/// `ch` must point to a valid instance of [`fiber_channel`]
 #[inline(always)]
 pub unsafe fn fiber_channel_count(ch: *mut fiber_channel) -> u32 {
-    (&*ch).count
+    (*ch).count
 }
 
 /// True if the channel is closed for both for reading
 /// and writing.
+///
+/// # Safety
+/// `ch` must point to a valid instance of [`fiber_channel`]
 #[inline(always)]
 pub unsafe fn fiber_channel_is_closed(ch: *mut fiber_channel) -> bool {
-    (&*ch).is_closed
+    (*ch).is_closed
 }
 
+/// # Safety
+/// `ch` must point to a valid instance of [`fiber_channel`]
 #[inline(always)]
 pub unsafe fn fiber_channel_is_empty(ch: *mut fiber_channel) -> bool {
-    (&*ch).count == 0
+    (*ch).count == 0
 }
 
 #[repr(C)]

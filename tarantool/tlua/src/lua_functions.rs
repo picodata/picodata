@@ -155,7 +155,6 @@ where
             }
 
             let error_msg: String = LuaRead::lua_read(pushed_value.as_lua())
-                .ok()
                 .expect("can't find error message at the top of the Lua stack");
 
             if load_return_value == ffi::LUA_ERRMEM {

@@ -21,10 +21,7 @@ use std::num::NonZeroI32;
 
 #[inline]
 pub(crate) fn push_iter<L, I>(lua: L, iterator: I)
-    -> Result<
-        PushGuard<L>,
-        (PushIterError<<<I as Iterator>::Item as PushInto<LuaState>>::Err>, L)
-    >
+    -> Result<PushGuard<L>, (PushIterErrorOf<I>, L)>
 where
     L: AsLua,
     I: Iterator,
@@ -65,6 +62,8 @@ where
         Ok(PushGuard::new(lua, 1))
     }
 }
+
+pub type PushIterErrorOf<I> = PushIterError<<<I as Iterator>::Item as PushInto<LuaState>>::Err>;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum PushIterError<E> {
@@ -255,7 +254,7 @@ where
 
     #[inline]
     fn push_into_lua(self, lua: L) -> Result<PushGuard<L>, (Self::Err, L)> {
-        push_iter(lua, std::array::IntoIter::new(self))
+        push_iter(lua, IntoIterator::into_iter(self))
     }
 }
 

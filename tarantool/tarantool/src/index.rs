@@ -187,13 +187,13 @@ pub struct IndexPart {
 
 impl IndexPart {
     pub fn new(fi: u32, ft: IndexFieldType) -> Self {
-        return IndexPart {
+        IndexPart {
             field_index: fi,
             field_type: ft,
             collation: None,
             is_nullable: None,
             path: None,
-        };
+        }
     }
 }
 
@@ -233,7 +233,7 @@ impl Index {
                 self.space_id,
                 self.index_id,
                 key_buf_ptr,
-                key_buf_ptr.offset(key_buf.len() as isize),
+                key_buf_ptr.add(key_buf.len()),
                 @out
             ]
         )
@@ -259,7 +259,7 @@ impl Index {
                 self.index_id,
                 iterator_type.to_i32().unwrap(),
                 key_buf_ptr,
-                key_buf_ptr.offset(key_buf.len() as isize),
+                key_buf_ptr.add(key_buf.len()),
             )
         };
 
@@ -292,7 +292,7 @@ impl Index {
                 self.space_id,
                 self.index_id,
                 key_buf_ptr,
-                key_buf_ptr.offset(key_buf.len() as isize),
+                key_buf_ptr.add(key_buf.len()),
                 @out
             ]
         )
@@ -309,7 +309,7 @@ impl Index {
     /// Returns a new tuple.
     ///
     /// See also: [index.upsert()](#method.upsert)
-    pub fn update<K, Op>(&mut self, key: &K, ops: &Vec<Op>) -> Result<Option<Tuple>, Error>
+    pub fn update<K, Op>(&mut self, key: &K, ops: &[Op]) -> Result<Option<Tuple>, Error>
     where
         K: AsTuple,
         Op: AsTuple,
@@ -323,9 +323,9 @@ impl Index {
                 self.space_id,
                 self.index_id,
                 key_buf_ptr,
-                key_buf_ptr.offset(key_buf.len() as isize),
+                key_buf_ptr.add(key_buf.len()),
                 ops_buf_ptr,
-                ops_buf_ptr.offset(ops_buf.len() as isize),
+                ops_buf_ptr.add(ops_buf.len()),
                 0,
                 @out
             ]
@@ -342,7 +342,7 @@ impl Index {
     /// Returns a new tuple.
     ///
     /// See also: [index.update()](#method.update)
-    pub fn upsert<T, Op>(&mut self, value: &T, ops: &Vec<Op>) -> Result<Option<Tuple>, Error>
+    pub fn upsert<T, Op>(&mut self, value: &T, ops: &[Op]) -> Result<Option<Tuple>, Error>
     where
         T: AsTuple,
         Op: AsTuple,
@@ -356,9 +356,9 @@ impl Index {
                 self.space_id,
                 self.index_id,
                 value_buf_ptr,
-                value_buf_ptr.offset(value_buf.len() as isize),
+                value_buf_ptr.add(value_buf.len()),
                 ops_buf_ptr,
-                ops_buf_ptr.offset(ops_buf.len() as isize),
+                ops_buf_ptr.add(ops_buf.len()),
                 0,
                 @out
             ]
@@ -374,6 +374,11 @@ impl Index {
         } else {
             Ok(result as usize)
         }
+    }
+
+    #[inline(always)]
+    pub fn is_empty(&self) -> Result<bool, Error> {
+        self.len().map(|l| l == 0)
     }
 
     /// Return the number of bytes used in memory by the index.
@@ -417,7 +422,7 @@ impl Index {
                 self.space_id,
                 self.index_id,
                 key_buf_ptr,
-                key_buf_ptr.offset(key_buf.len() as isize),
+                key_buf_ptr.add(key_buf.len()),
                 @out
             ]
         )
@@ -439,7 +444,7 @@ impl Index {
                 self.space_id,
                 self.index_id,
                 key_buf_ptr,
-                key_buf_ptr.offset(key_buf.len() as isize),
+                key_buf_ptr.add(key_buf.len()),
                 @out
             ]
         )
@@ -462,7 +467,7 @@ impl Index {
                 self.index_id,
                 iterator_type.to_i32().unwrap(),
                 key_buf_ptr,
-                key_buf_ptr.offset(key_buf.len() as isize),
+                key_buf_ptr.add(key_buf.len()),
             )
         };
 

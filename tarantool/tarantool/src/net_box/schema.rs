@@ -24,7 +24,7 @@ pub struct ConnSchema {
 }
 
 impl ConnSchema {
-    pub fn acquire(addrs: &Vec<SocketAddr>) -> Rc<ConnSchema> {
+    pub fn acquire(addrs: &[SocketAddr]) -> Rc<ConnSchema> {
         let mut cache = schema_cache.cache.borrow_mut();
 
         for addr in addrs {
@@ -42,7 +42,7 @@ impl ConnSchema {
         });
 
         for addr in addrs {
-            cache.insert(addr.clone(), schema.clone());
+            cache.insert(*addr, schema.clone());
         }
 
         schema
@@ -60,7 +60,7 @@ impl ConnSchema {
         }
 
         let result = if self.is_outdated(actual_version) {
-            if let None = _lock {
+            if _lock.is_none() {
                 _lock = Some(self.lock.lock());
             }
 
@@ -93,14 +93,14 @@ impl ConnSchema {
     }
 
     pub fn lookup_space(&self, name: &str) -> Option<u32> {
-        self.space_ids.borrow().get(name).map(|id| id.clone())
+        self.space_ids.borrow().get(name).copied()
     }
 
     pub fn lookup_index(&self, name: &str, space_id: u32) -> Option<u32> {
         self.index_ids
             .borrow()
             .get(&(space_id, name.to_string()))
-            .map(|id| id.clone())
+            .copied()
     }
 
     fn is_outdated(&self, actual_version: Option<u32>) -> bool {
@@ -133,6 +133,7 @@ impl ConnSchema {
     }
 
     fn fetch_schema_indexes(&self, conn_inner: &ConnInner) -> Result<Vec<Tuple>, Error> {
+        let empty_array: [(); 0] = [];
         conn_inner.request(
             |buf, sync| {
                 encode_select(
@@ -143,7 +144,7 @@ impl ConnSchema {
                     u32::max_value(),
                     0,
                     IteratorType::All,
-                    &Vec::<()>::new(),
+                    &empty_array,
                 )
             },
             |buf, _| decode_multiple_rows(buf, None),

@@ -191,6 +191,7 @@ pub fn cmp() {
     assert_ne!(decimal!(-8.11), -8);
 }
 
+#[allow(clippy::bool_assert_comparison)]
 pub fn ops() {
     let a = decimal!(.1);
     let b = decimal!(.2);

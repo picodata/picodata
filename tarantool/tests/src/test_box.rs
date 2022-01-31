@@ -153,7 +153,7 @@ pub fn test_box_select_composite_key() {
 
 pub fn test_box_len() {
     let space = Space::find("test_s2").unwrap();
-    assert_eq!(space.len().unwrap(), 20 as usize);
+    assert_eq!(space.len().unwrap(), 20_usize);
 }
 
 pub fn test_box_random() {
@@ -206,11 +206,11 @@ pub fn test_box_count() {
     let space = Space::find("test_s2").unwrap();
     assert_eq!(
         space.primary_key().count(IteratorType::LE, &(7,),).unwrap(),
-        7 as usize
+        7_usize
     );
     assert_eq!(
         space.primary_key().count(IteratorType::GT, &(7,),).unwrap(),
-        13 as usize
+        13_usize
     );
 }
 
@@ -315,7 +315,7 @@ pub fn test_box_update() {
     let update_result = space
         .update(
             &(input.id,),
-            &vec![QueryOperation {
+            &[QueryOperation {
                 op: "=".to_string(),
                 field_id: 1,
                 value: "New".into(),
@@ -355,7 +355,7 @@ pub fn test_box_upsert() {
                 id: 1,
                 text: "New".to_string(),
             },
-            &vec![QueryOperation {
+            &[QueryOperation {
                 op: "=".to_string(),
                 field_id: 1,
                 value: "Test 1".into(),
@@ -369,7 +369,7 @@ pub fn test_box_upsert() {
                 id: 2,
                 text: "New".to_string(),
             },
-            &vec![QueryOperation {
+            &[QueryOperation {
                 op: "=".to_string(),
                 field_id: 1,
                 value: "Test 2".into(),
@@ -394,7 +394,7 @@ pub fn test_box_truncate() {
     let mut space = Space::find("test_s1").unwrap();
     space.truncate().unwrap();
 
-    assert_eq!(space.len().unwrap(), 0 as usize);
+    assert_eq!(space.len().unwrap(), 0_usize);
     for i in 0..10 {
         space
             .insert(&S1Record {
@@ -403,9 +403,9 @@ pub fn test_box_truncate() {
             })
             .unwrap();
     }
-    assert_eq!(space.len().unwrap(), 10 as usize);
+    assert_eq!(space.len().unwrap(), 10_usize);
     space.truncate().unwrap();
-    assert_eq!(space.len().unwrap(), 0 as usize);
+    assert_eq!(space.len().unwrap(), 0_usize);
 }
 
 pub fn test_box_sequence_get_by_name() {
@@ -474,6 +474,7 @@ pub fn test_space_create_id_increment() {
     }
 }
 
+#[allow(clippy::field_reassign_with_default)]
 pub fn test_space_create_opt_user() {
     let mut opts = SpaceCreateOptions::default();
 
@@ -491,9 +492,11 @@ pub fn test_space_create_opt_user() {
 }
 
 pub fn test_space_create_opt_id() {
-    let mut opts = SpaceCreateOptions::default();
+    let opts = SpaceCreateOptions {
+        id: Some(10000),
+        .. Default::default()
+    };
 
-    opts.id = Some(10000);
     let result_1 = Space::create("new_space_6", &opts);
     let id = result_1.unwrap().id();
     assert_eq!(id, opts.id.unwrap());

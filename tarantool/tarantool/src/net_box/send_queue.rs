@@ -96,7 +96,7 @@ impl SendQueue {
 
         // write front buffer contents to stream + clear front buffer
         let mut buffer = self.front_buffer.borrow_mut();
-        stream.write(buffer.get_ref())?;
+        stream.write_all(buffer.get_ref())?;
         buffer.set_position(0);
         buffer.get_mut().clear();
         Ok(())

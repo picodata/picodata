@@ -112,7 +112,7 @@ impl NodeInner {
 
         if let Some(new_state) = new_state {
             if self.state != new_state {
-                actions_buf.push_back(NodeAction::StateChangeNotification(new_state.clone()));
+                actions_buf.push_back(NodeAction::StateChangeNotification(new_state));
                 self.state = new_state;
             }
         }
@@ -154,11 +154,11 @@ impl NodeInner {
     /// Merges `other` nodes list to already known. Returns new nodes count
     fn merge_nodes_list(
         &mut self,
-        nodes_from: &Vec<(u64, Vec<SocketAddr>)>,
+        nodes_from: &[(u64, Vec<SocketAddr>)],
     ) -> Vec<(u64, Vec<SocketAddr>)> {
         let mut new_nodes = Vec::<(u64, Vec<SocketAddr>)>::with_capacity(nodes_from.len());
         {
-            for (id, addrs) in nodes_from.into_iter() {
+            for (id, addrs) in nodes_from {
                 if !self.peers.contains_key(id) {
                     self.peers.insert(*id, addrs.clone());
                     new_nodes.push((*id, addrs.clone()));

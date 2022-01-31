@@ -62,7 +62,7 @@ pub fn encode_auth(
     stream: &mut impl Write,
     user: &str,
     password: &str,
-    salt: &Vec<u8>,
+    salt: &[u8],
     sync: u64,
 ) -> Result<(), Error> {
     // prepare 'chap-sha1' scramble:
@@ -120,6 +120,7 @@ pub fn encode_call<T>(
 ) -> Result<(), Error>
 where
     T: AsTuple,
+    T: ?Sized,
 {
     encode_header(stream, sync, IProtoType::Call)?;
     rmp::encode::write_map_len(stream, 2)?;
@@ -138,6 +139,7 @@ pub fn encode_eval<T>(
 ) -> Result<(), Error>
 where
     T: AsTuple,
+    T: ?Sized,
 {
     encode_header(stream, sync, IProtoType::Eval)?;
     rmp::encode::write_map_len(stream, 2)?;
@@ -148,6 +150,7 @@ where
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn encode_select<K>(
     stream: &mut impl Write,
     sync: u64,
@@ -160,6 +163,7 @@ pub fn encode_select<K>(
 ) -> Result<(), Error>
 where
     K: AsTuple,
+    K: ?Sized,
 {
     encode_header(stream, sync, IProtoType::Select)?;
     rmp::encode::write_map_len(stream, 6)?;
@@ -186,6 +190,7 @@ pub fn encode_insert<T>(
 ) -> Result<(), Error>
 where
     T: AsTuple,
+    T: ?Sized,
 {
     encode_header(stream, sync, IProtoType::Insert)?;
     rmp::encode::write_map_len(stream, 2)?;
@@ -204,6 +209,7 @@ pub fn encode_replace<T>(
 ) -> Result<(), Error>
 where
     T: AsTuple,
+    T: ?Sized,
 {
     encode_header(stream, sync, IProtoType::Replace)?;
     rmp::encode::write_map_len(stream, 2)?;
@@ -225,6 +231,7 @@ pub fn encode_update<K, Op>(
 where
     K: AsTuple,
     Op: AsTuple,
+    Op: ?Sized,
 {
     encode_header(stream, sync, IProtoType::Update)?;
     rmp::encode::write_map_len(stream, 4)?;
@@ -250,6 +257,7 @@ pub fn encode_upsert<T, Op>(
 where
     T: AsTuple,
     Op: AsTuple,
+    Op: ?Sized,
 {
     encode_header(stream, sync, IProtoType::Upsert)?;
     rmp::encode::write_map_len(stream, 4)?;
@@ -273,6 +281,7 @@ pub fn encode_delete<K>(
 ) -> Result<(), Error>
 where
     K: AsTuple,
+    K: ?Sized,
 {
     encode_header(stream, sync, IProtoType::Delete)?;
     rmp::encode::write_map_len(stream, 3)?;
@@ -333,20 +342,18 @@ pub fn decode_error(stream: &mut impl Read) -> Result<ResponseError, Error> {
             let str_len = rmp::decode::read_str_len(stream)? as usize;
             let mut str_buf = vec![0u8; str_len];
             stream.read_exact(&mut str_buf)?;
-            message = Some(from_utf8(&mut str_buf)?.to_string());
+            message = Some(from_utf8(&str_buf)?.to_string());
         }
     }
 
     Ok(ResponseError {
-        message: message.ok_or(io::Error::from(io::ErrorKind::InvalidData))?,
+        message: message.ok_or_else(|| io::Error::from(io::ErrorKind::InvalidData))?,
     })
 }
 
 pub fn decode_greeting(stream: &mut impl Read) -> Result<Vec<u8>, Error> {
-    let mut buf = Vec::with_capacity(128);
-    buf.resize(128, 0);
-
-    stream.read_exact(&mut *buf)?;
+    let mut buf = [0; 128];
+    stream.read_exact(&mut buf)?;
     let salt = base64::decode(&buf[64..108]).unwrap();
     Ok(salt)
 }

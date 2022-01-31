@@ -13,7 +13,7 @@ pub fn iterable() {
     let table = lua.get::<LuaTable<_>, _>("a").unwrap();
     let mut counter = 0;
 
-    for (key, value) in table.iter().filter_map(|e| e) {
+    for (key, value) in table.iter().flatten() {
         let _: u32 = key;
         let _: u32 = value;
         assert_eq!(key + value, 10);

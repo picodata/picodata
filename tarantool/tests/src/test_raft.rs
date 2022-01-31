@@ -53,7 +53,7 @@ pub fn test_bootstrap_solo() {
 
     events.push_back(NodeEvent::Response(rpc::BootstrapMsg {
         from_id: 2,
-        nodes: vec![(1, local_addrs.clone()), (2, remote_addrs.clone())],
+        nodes: vec![(1, local_addrs), (2, remote_addrs)],
     }));
     node.update(&mut events, &mut actions);
 
@@ -74,7 +74,7 @@ pub fn test_bootstrap_2n() {
 
     let mut n2_events = VecDeque::new();
     let mut n2_actions = VecDeque::new();
-    let mut n2_ctrl = NodeInner::new(2, n2_addrs.clone(), vec![n1_addrs.clone()]);
+    let mut n2_ctrl = NodeInner::new(2, n2_addrs, vec![n1_addrs]);
 
     let mut n1_is_completed = false;
     let mut n2_is_completed = false;

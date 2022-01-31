@@ -22,6 +22,10 @@ use crate::{
 /// for example when passing `FnOnce` as a c closure, because it must be dropped
 /// after the call.
 /// *[0, +1, -]*
+///
+/// # Safety
+/// There must be enough space on the `lua` stack for 4 values. The `value` will
+/// be moved into the memory allocated by Lua.
 pub unsafe fn push_some_userdata<T>(lua: *mut ffi::lua_State, value: T)
 where
     T: 'static,
@@ -62,7 +66,7 @@ extern "C" fn destructor_wrapper<T>(lua: *mut ffi::lua_State) -> libc::c_int {
     unsafe {
         let obj = ffi::lua_touserdata(lua, -1);
         ptr::drop_in_place(obj as *mut TypeId);
-        ptr::drop_in_place((obj as *mut u8).offset(mem::size_of::<TypeId>() as isize) as *mut T);
+        ptr::drop_in_place(obj.cast::<u8>().add(mem::size_of::<TypeId>()).cast::<T>());
         0
     }
 }
@@ -113,7 +117,7 @@ where
 
         // We write the `TypeId` first, and the data right next to it.
         ptr::write(lua_data as *mut TypeId, typeid);
-        let data_loc = (lua_data as *const u8).offset(mem::size_of_val(&typeid) as isize);
+        let data_loc = lua_data.cast::<u8>().add(mem::size_of_val(&typeid));
         ptr::write(data_loc as *mut _, data);
 
         // Creating a metatable.
@@ -163,8 +167,8 @@ where
             return Err(lua);
         }
 
-        let data = (data_ptr as *const u8).offset(mem::size_of::<TypeId>() as isize);
-        Ok(&mut *(data as *mut T))
+        let data = data_ptr.cast::<u8>().add(mem::size_of::<TypeId>()).cast::<T>();
+        Ok(&mut *data)
     }
 }
 
@@ -196,7 +200,7 @@ where
 
             Ok(UserdataOnStack {
                 variable: lua,
-                index: index,
+                index,
                 marker: PhantomData,
             })
         }
@@ -225,8 +229,8 @@ where
     fn deref(&self) -> &T {
         unsafe {
             let base = ffi::lua_touserdata(self.variable.as_lua(), self.index.into());
-            let data = (base as *const u8).offset(mem::size_of::<TypeId>() as _);
-            &*(data as *const T)
+            let data = base.cast::<u8>().add(mem::size_of::<TypeId>()).cast::<T>();
+            &*data
         }
     }
 }
@@ -240,8 +244,8 @@ where
     fn deref_mut(&mut self) -> &mut T {
         unsafe {
             let base = ffi::lua_touserdata(self.variable.as_lua(), self.index.into());
-            let data = (base as *const u8).offset(mem::size_of::<TypeId>() as _);
-            &mut *(data as *mut T)
+            let data = base.cast::<u8>().add(mem::size_of::<TypeId>()).cast::<T>();
+            &mut *data
         }
     }
 }

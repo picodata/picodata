@@ -193,7 +193,7 @@ pub fn coio_wait(fd: RawFd, flags: ffi::CoIOFlags, timeout: f64) -> Result<(), i
 /// fn func(args: FuncArgs) -> i32 {}
 ///
 /// if coio_call(func, FuncArgs{}) == -1 {
-///		// handle errors.
+///     // handle errors.
 /// }
 /// ```
 pub fn coio_call<F, T>(callback: &mut F, arg: T) -> isize

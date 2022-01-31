@@ -1,5 +1,3 @@
-use libc;
-
 use crate::{
     ffi,
     AsLua,

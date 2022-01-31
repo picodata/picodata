@@ -35,10 +35,9 @@ impl AsTuple for SpaceMetadata {}
 /// Returns a new space.
 pub fn create_space(name: &str, opts: &SpaceCreateOptions) -> Result<Space, Error> {
     // Check if space already exists.
-    let space = Space::find(name);
-    if space.is_some() {
+    if let Some(space) = Space::find(name) {
         return if opts.if_not_exists {
-            Ok(space.unwrap())
+            Ok(space)
         } else {
             set_error!(TarantoolErrorCode::SpaceExists, "{}", name);
             Err(TarantoolError::last().into())
@@ -74,7 +73,7 @@ fn resolve_new_space_id() -> Result<u32, Error> {
     let mut sys_schema: Space = SystemSpace::Schema.into();
 
     // Try to update max_id in _schema space.
-    let new_max_id = sys_schema.update(&("max_id",), &vec![("+".to_string(), 1, 1)])?;
+    let new_max_id = sys_schema.update(&("max_id",), &[("+", 1, 1)])?;
 
     let space_id = if new_max_id.is_some() {
         // In case of successful update max_id return its value.
@@ -91,7 +90,7 @@ fn resolve_new_space_id() -> Result<u32, Error> {
         created_max_id.field::<u32>(1)?.unwrap()
     };
 
-    return Ok(space_id);
+    Ok(space_id)
 }
 
 fn insert_new_space(
@@ -107,10 +106,7 @@ fn insert_new_space(
     };
 
     // `field_count`
-    let field_count = match opts.field_count {
-        None => 0,
-        Some(count) => count,
-    };
+    let field_count = opts.field_count.unwrap_or(0);
 
     // `space_opts`
     let mut space_opts = Map::<String, Value>::new();
@@ -135,11 +131,11 @@ fn insert_new_space(
     }
 
     let new_space = SpaceMetadata {
-        id: id,
-        uid: uid,
+        id,
+        uid,
         name: name.to_string(),
-        engine: engine,
-        field_count: field_count,
+        engine,
+        field_count,
         options: space_opts.clone(),
         format: space_format.clone(),
     };

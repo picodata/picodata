@@ -91,7 +91,7 @@ impl RemoteSpace {
     pub fn update<K, Op>(
         &mut self,
         key: &K,
-        ops: &Vec<Op>,
+        ops: &[Op],
         options: &Options,
     ) -> Result<Option<Tuple>, Error>
     where
@@ -106,7 +106,7 @@ impl RemoteSpace {
     pub fn upsert<T, Op>(
         &mut self,
         value: &T,
-        ops: &Vec<Op>,
+        ops: &[Op],
         options: &Options,
     ) -> Result<Option<Tuple>, Error>
     where

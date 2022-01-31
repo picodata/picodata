@@ -1,7 +1,6 @@
 use std::cell::{Cell, RefCell};
 use std::io;
 use std::io::Write;
-use std::iter::repeat;
 use std::rc::Rc;
 
 use serde::{Deserialize, Serialize};
@@ -31,7 +30,7 @@ impl TDynBenchFn for BulkInsertBenchmark {
         let num_fibers = self.num_fibers;
         let num_rows = self.num_rows;
 
-        let text = RefCell::new(repeat("X").take(test_size).collect::<String>());
+        let text = RefCell::new("X".repeat(test_size));
         let id_counter: Cell<usize> = Cell::new(0);
 
         let conn = Rc::new(
@@ -47,7 +46,7 @@ impl TDynBenchFn for BulkInsertBenchmark {
             .unwrap(),
         );
 
-        conn.call("_cleanup", &Vec::<()>::new(), &Options::default())
+        conn.call("_cleanup", Vec::<()>::new().as_slice(), &Options::default())
             .unwrap();
 
         harness.iter(|| {

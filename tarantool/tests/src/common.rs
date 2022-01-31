@@ -69,8 +69,8 @@ pub(crate) fn fiber_csw() -> i32 {
         unsafe { FUNCTION_DEFINED = true; }
     }
 
-    return lua.get::<tarantool::tlua::LuaFunction<_>, _>("fiber_csw")
-        .unwrap().call().unwrap();
+    lua.get::<tarantool::tlua::LuaFunction<_>, _>("fiber_csw")
+        .unwrap().into_call().unwrap()
 }
 
 pub(crate) fn check_yield<F, T>(f: F) -> YieldResult<T>
