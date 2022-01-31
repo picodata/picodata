@@ -5,7 +5,7 @@
 //! 3. Lua utitlites, implemented in Tarantool
 
 #![allow(non_camel_case_types)]
-use std::os::raw::{c_double, c_int, c_schar, c_void};
+use std::os::raw::{c_double, c_int, c_char, c_void};
 use std::ptr::null_mut;
 
 /// Lua provides a registry, a pre-defined table that can be used by any C code
@@ -62,7 +62,7 @@ pub struct lua_State {
 
 #[repr(C)]
 pub struct luaL_Reg {
-    pub name: *const c_schar,
+    pub name: *const c_char,
     pub func: lua_CFunction,
 }
 
@@ -157,7 +157,7 @@ extern "C" {
     /// string cannot contain embedded zeros; it is assumed to end at the first
     /// zero.
     /// *[-0, +1, m]*
-    pub fn lua_pushstring(l: *mut lua_State, s: *const c_schar) -> *const c_schar;
+    pub fn lua_pushstring(l: *mut lua_State, s: *const c_char) -> *const c_char;
     pub fn lua_pushinteger(l: *mut lua_State, n: isize);
     pub fn lua_pushnumber(l: *mut lua_State, n: c_double);
 
@@ -199,7 +199,7 @@ extern "C" {
     /// garbage collection, there is no guarantee that the pointer returned by
     /// `lua_tolstring` will be valid after the corresponding value is removed
     /// from the stack.
-    pub fn lua_tolstring(l: *mut lua_State, index: c_int, len: *mut usize) -> *const c_schar;
+    pub fn lua_tolstring(l: *mut lua_State, index: c_int, len: *mut usize) -> *const c_char;
 
     /// If the value at the given acceptable `index` is a full userdata, returns
     /// its block address. If the value is a light userdata, returns its
@@ -213,13 +213,13 @@ extern "C" {
     ///
     /// This function pops the value from the stack. As in Lua, this function
     /// may trigger a metamethod for the "newindex" event
-    pub fn lua_setfield(l: *mut lua_State, index: c_int, k: *const c_schar);
+    pub fn lua_setfield(l: *mut lua_State, index: c_int, k: *const c_char);
 
     /// Pushes onto the stack the value `t[k]`, where `t` is the value at the
     /// given valid `index`. As in Lua, this function may trigger a metamethod
     /// for the "index" event
     /// *[-0, +1, e]*
-    pub fn lua_getfield(l: *mut lua_State, index: c_int, k: *const c_schar);
+    pub fn lua_getfield(l: *mut lua_State, index: c_int, k: *const c_char);
 
     pub fn lua_createtable(l: *mut lua_State, narr: c_int, nrec: c_int);
 
@@ -292,7 +292,7 @@ extern "C" {
     /// Returns the name of the type encoded by the value `tp`, which must be
     /// one the values returned by [`lua_type`].
     /// *[-0, +0, -]*
-    pub fn lua_typename(state: *mut lua_State, tp: c_int) -> *mut c_schar;
+    pub fn lua_typename(state: *mut lua_State, tp: c_int) -> *mut c_char;
 
     /// Pops a table from the stack and sets it as the new metatable for the
     /// value at the given acceptable `index`.
@@ -416,7 +416,7 @@ extern "C" {
 
     // lauxlib functions.
     pub fn luaL_newstate() -> *mut lua_State;
-    pub fn luaL_register(l: *mut lua_State, libname: *const c_schar, lr: *const luaL_Reg);
+    pub fn luaL_register(l: *mut lua_State, libname: *const c_char, lr: *const luaL_Reg);
 
     /// Raises an error. The error message format is given by `fmt` plus any
     /// extra arguments, following the same rules of `lua_pushfstring`. It also
@@ -426,7 +426,7 @@ extern "C" {
     ///
     /// This function never returns, but it is an idiom to use it in C functions
     /// as return `luaL_error(args)`.
-    pub fn luaL_error(l: *mut lua_State, fmt: *const c_schar, ...) -> c_int;
+    pub fn luaL_error(l: *mut lua_State, fmt: *const c_char, ...) -> c_int;
     pub fn luaL_openlibs(L: *mut lua_State);
 
     /// Creates and returns a reference, in the table at index `t`, for the
@@ -456,14 +456,14 @@ extern "C" {
 #[inline(always)]
 /// Pushes onto the stack the value of the global `name`.
 /// *[-0, +1, e]*
-pub unsafe fn lua_getglobal(state: *mut lua_State, name: *const c_schar) {
+pub unsafe fn lua_getglobal(state: *mut lua_State, name: *const c_char) {
     lua_getfield(state, LUA_GLOBALSINDEX, name);
 }
 
 #[inline(always)]
 /// Pops a value from the stack and sets it as the new value of global `name`.
 /// *[-1, +0, e]*
-pub unsafe fn lua_setglobal(state: *mut lua_State, name: *const c_schar) {
+pub unsafe fn lua_setglobal(state: *mut lua_State, name: *const c_char) {
     lua_setfield(state, LUA_GLOBALSINDEX, name);
 }
 
@@ -485,7 +485,7 @@ pub unsafe fn lua_pushcfunction(state: *mut lua_State, f: lua_CFunction) {
 }
 
 #[inline(always)]
-pub unsafe fn lua_tostring(state: *mut lua_State, i: c_int) -> *const c_schar {
+pub unsafe fn lua_tostring(state: *mut lua_State, i: c_int) -> *const c_char {
     lua_tolstring(state, i, null_mut())
 }
 
@@ -628,7 +628,7 @@ extern "C" {
     /// `ctypename` is a C type name as string (e.g. "struct request",
     /// "uint32_t", etc.).
     /// See also: [`luaL_pushcdata`], [`luaL_checkcdata`]
-    pub fn luaL_ctypeid(l: *mut lua_State, ctypename: *const c_schar) -> u32;
+    pub fn luaL_ctypeid(l: *mut lua_State, ctypename: *const c_char) -> u32;
 }
 
 extern "C" {
@@ -636,6 +636,6 @@ extern "C" {
     /// other measures didn't work and return it. Sets the `len` if it's not
     /// `NULL`. The newly created string is left on top of the stack.
     /// *[-0, +1, m]*
-    pub fn luaT_tolstring(l: *mut lua_State, idx: c_int, len: *mut usize) -> *const c_schar;
+    pub fn luaT_tolstring(l: *mut lua_State, idx: c_int, len: *mut usize) -> *const c_char;
 }
 
