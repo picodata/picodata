@@ -147,7 +147,7 @@ impl RecvQueue {
         }
 
         let new_read_offset = if !overflow_range.is_empty() {
-            let new_read_offset = overflow_range.end - overflow_range.end;
+            let new_read_offset = overflow_range.end - overflow_range.start;
             self.buffer
                 .borrow_mut()
                 .get_mut()
