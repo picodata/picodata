@@ -2,6 +2,7 @@ use ::raft::prelude as raft;
 use ::tarantool::tlua;
 use std::os::raw::c_int;
 
+mod error;
 mod message;
 pub mod stash;
 mod tarantool;
