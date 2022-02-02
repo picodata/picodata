@@ -75,9 +75,9 @@ fn resolve_new_space_id() -> Result<u32, Error> {
     // Try to update max_id in _schema space.
     let new_max_id = sys_schema.update(&("max_id",), &[("+", 1, 1)])?;
 
-    let space_id = if new_max_id.is_some() {
+    let space_id = if let Some(new_max_id) = new_max_id {
         // In case of successful update max_id return its value.
-        new_max_id.unwrap().field::<u32>(1)?.unwrap()
+        new_max_id.field::<u32>(1)?.unwrap()
     } else {
         // Get tuple with greatest id. Increment it and use as id of new space.
         let max_tuple = sys_space.index("primary").unwrap().max(&())?.unwrap();
@@ -85,8 +85,7 @@ fn resolve_new_space_id() -> Result<u32, Error> {
         let max_id_val = max(max_tuple_id, SYSTEM_ID_MAX);
         // Insert max_id into _schema space.
         let created_max_id = sys_schema
-            .insert(&("max_id".to_string(), max_id_val + 1))?
-            .unwrap();
+            .insert(&("max_id".to_string(), max_id_val + 1))?;
         created_max_id.field::<u32>(1)?.unwrap()
     };
 

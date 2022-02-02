@@ -241,9 +241,8 @@ pub fn test_box_insert() {
         text: "Test".to_string(),
     };
     let insert_result = space.insert(&input).unwrap();
-    assert!(insert_result.is_some());
     assert_eq!(
-        insert_result.unwrap().into_struct::<S1Record>().unwrap(),
+        insert_result.into_struct::<S1Record>().unwrap(),
         input
     );
 
@@ -267,9 +266,8 @@ pub fn test_box_replace() {
         text: "New".to_string(),
     };
     let replace_result = space.replace(&new_input).unwrap();
-    assert!(replace_result.is_some());
     assert_eq!(
-        replace_result.unwrap().into_struct::<S1Record>().unwrap(),
+        replace_result.into_struct::<S1Record>().unwrap(),
         new_input
     );
 
@@ -349,7 +347,7 @@ pub fn test_box_upsert() {
     };
     space.insert(&original_input).unwrap();
 
-    space
+    let () = space
         .upsert(
             &S1Record {
                 id: 1,
@@ -363,7 +361,7 @@ pub fn test_box_upsert() {
         )
         .unwrap();
 
-    space
+    let () = space
         .upsert(
             &S1Record {
                 id: 2,

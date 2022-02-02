@@ -339,10 +339,8 @@ impl Index {
     /// - `value` - encoded tuple in MsgPack Array format (`[field1, field2, ...]`)
     /// - `ops` - encoded operations in MsgPack array format, e.g. `[['=', field_id, value], ['!', 2, 'xxx']]`
     ///
-    /// Returns a new tuple.
-    ///
     /// See also: [index.update()](#method.update)
-    pub fn upsert<T, Op>(&mut self, value: &T, ops: &[Op]) -> Result<Option<Tuple>, Error>
+    pub fn upsert<T, Op>(&mut self, value: &T, ops: &[Op]) -> Result<(), Error>
     where
         T: AsTuple,
         Op: AsTuple,
@@ -363,6 +361,9 @@ impl Index {
                 @out
             ]
         )
+            .map(|t| if t.is_some() {
+                unreachable!("Upsert doesn't return a tuple")
+            })
     }
 
     /// Return the number of elements in the index.

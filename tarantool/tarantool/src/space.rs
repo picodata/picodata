@@ -312,7 +312,7 @@ impl Space {
     /// Returns a new tuple.
     ///
     /// See also: `box.space[space_id]:insert(tuple)`
-    pub fn insert<T>(&mut self, value: &T) -> Result<Option<Tuple>, Error>
+    pub fn insert<T>(&mut self, value: &T) -> Result<Tuple, Error>
     where
         T: AsTuple,
     {
@@ -326,6 +326,7 @@ impl Space {
                 @out
             ]
         )
+            .map(|t| t.expect("Returned tuple cannot be null"))
     }
 
     /// Insert a tuple into a space.
@@ -337,7 +338,7 @@ impl Space {
     /// - `value` - tuple value to replace with
     ///
     /// Returns a new tuple.
-    pub fn replace<T>(&mut self, value: &T) -> Result<Option<Tuple>, Error>
+    pub fn replace<T>(&mut self, value: &T) -> Result<Tuple, Error>
     where
         T: AsTuple,
     {
@@ -351,12 +352,13 @@ impl Space {
                 @out
             ]
         )
+            .map(|t| t.expect("Returned tuple cannot be null"))
     }
 
     /// Insert a tuple into a space. If a tuple with the same primary key already exists, replaces the existing tuple
     /// with a new one. Alias for [space.replace()](#method.replace)
     #[inline(always)]
-    pub fn put<T>(&mut self, value: &T) -> Result<Option<Tuple>, Error>
+    pub fn put<T>(&mut self, value: &T) -> Result<Tuple, Error>
     where
         T: AsTuple,
     {
@@ -480,11 +482,9 @@ impl Space {
     /// - `value` - encoded tuple in MsgPack Array format (`[field1, field2, ...]`)
     /// - `ops` - encoded operations in MsgPack array format, e.g. `[['=', field_id, value], ['!', 2, 'xxx']]`
     ///
-    /// Returns a new tuple.
-    ///
     /// See also: [space.update()](#method.update)
     #[inline(always)]
-    pub fn upsert<T, Op>(&mut self, value: &T, ops: &[Op]) -> Result<Option<Tuple>, Error>
+    pub fn upsert<T, Op>(&mut self, value: &T, ops: &[Op]) -> Result<(), Error>
     where
         T: AsTuple,
         Op: AsTuple,
