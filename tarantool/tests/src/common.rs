@@ -56,7 +56,7 @@ pub(crate) fn capture_value<T>(_: &T) {}
 
 pub(crate) fn fiber_csw() -> i32 {
     static mut FUNCTION_DEFINED: bool = false;
-    let lua = tarantool::global_lua();
+    let lua = global_lua();
 
     if unsafe { !FUNCTION_DEFINED } {
         #[rustfmt::skip]
@@ -98,7 +98,7 @@ pub(crate) struct LuaStackIntegrityGuard {
 
 impl LuaStackIntegrityGuard {
     pub fn new(name: &'static str) -> Self {
-        let lua = tarantool::global_lua();
+        let lua = global_lua();
         unsafe { lua.push_one(name).forget() };
         Self { name }
     }
@@ -106,11 +106,18 @@ impl LuaStackIntegrityGuard {
 
 impl Drop for LuaStackIntegrityGuard {
     fn drop(&mut self) {
-        let lua = tarantool::global_lua();
+        let lua = global_lua();
         let single_value = unsafe { tlua::PushGuard::new(lua, 1) };
         let msg: tlua::StringInLua<_> = single_value.read()
             .expect("Lua stack integrity violation");
         assert_eq!(msg, self.name);
+    }
+}
+
+fn global_lua() -> tlua::Lua {
+    unsafe {
+        tlua::Lua::from_existing_state(
+            tarantool::ffi::tarantool::luaT_state(), false)
     }
 }
 

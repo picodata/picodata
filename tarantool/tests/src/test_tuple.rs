@@ -213,9 +213,10 @@ pub fn to_and_from_lua() {
         b: 69,
     }).unwrap();
 
-    let lua = tarantool::global_lua();
-    let lua = lua.push(&tuple);
-    let tuple = lua.read::<Tuple>().unwrap();
+    let tuple = tarantool::lua_state(|lua| {
+        let lua = lua.push(&tuple);
+        lua.read::<Tuple>().unwrap()
+    });
     let res = tuple.into_struct::<S2Record>().unwrap();
     assert_eq!(res, S2Record {
         id: 42,

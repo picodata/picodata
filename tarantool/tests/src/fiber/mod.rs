@@ -6,7 +6,7 @@ use std::{
 
 use crate::common::{DropCounter, capture_value, fiber_csw, LuaStackIntegrityGuard};
 use tarantool::fiber;
-use tarantool::tlua::{Lua, AsLua};
+use tarantool::tlua::AsLua;
 use tarantool::util::IntoClones;
 
 pub mod old;
@@ -237,20 +237,26 @@ pub fn start_error() {
 
     impl LuaContextSpoiler {
         fn new() -> Self {
-            tarantool::global_lua().exec(r#"
-            _fiber_new_backup = package.loaded.fiber.new
-            package.loaded.fiber.new = function() error("Artificial error", 0) end
-            "#).unwrap();
+            tarantool::lua_state(|lua|
+                lua.exec(r#"
+                    _fiber_new_backup = package.loaded.fiber.new
+                    package.loaded.fiber.new = function()
+                        error("Artificial error", 0)
+                    end
+                "#).unwrap()
+            );
             Self
         }
     }
 
     impl Drop for LuaContextSpoiler {
         fn drop(&mut self) {
-            tarantool::global_lua().exec(r#"
-            package.loaded.fiber.new = _fiber_new_backup
-            _fiber_new_backup = nil
-            "#).unwrap();
+            tarantool::lua_state(|lua|
+                lua.exec(r#"
+                    package.loaded.fiber.new = _fiber_new_backup
+                    _fiber_new_backup = nil
+                "#).unwrap()
+            );
         }
     }
 }
@@ -272,24 +278,28 @@ pub fn require_error() {
 
     impl LuaContextSpoiler {
         fn new() -> Self {
-            let lua: Lua = tarantool::global_lua();
-            lua.exec(r#"
-            _fiber_backup = package.loaded.fiber
-            package.loaded.fiber = nil
-            package.preload.fiber = function() error("Artificial require error", 0) end
-            "#).unwrap();
+            tarantool::lua_state(|lua|
+                lua.exec(r#"
+                    _fiber_backup = package.loaded.fiber
+                    package.loaded.fiber = nil
+                    package.preload.fiber = function()
+                        error("Artificial require error", 0)
+                    end
+                "#).unwrap()
+            );
             Self
         }
     }
 
     impl Drop for LuaContextSpoiler {
         fn drop(&mut self) {
-            let lua: Lua = tarantool::global_lua();
-            lua.exec(r#"
-            package.preload.fiber = nil
-            package.loaded.fiber = _fiber_backup
-            _fiber_backup = nil
-            "#).unwrap();
+            tarantool::lua_state(|lua|
+                lua.exec(r#"
+                    package.preload.fiber = nil
+                    package.loaded.fiber = _fiber_backup
+                    _fiber_backup = nil
+                "#).unwrap()
+            );
         }
     }
 }
@@ -407,7 +417,7 @@ pub fn deferred_with_cond() {
 
 pub fn lua_thread() {
     let (log1, log2, log_out) = fiber::Channel::new(4).into_clones();
-    let v1 = tarantool::lua_thread(|l|
+    let v1 = tarantool::lua_state(|l|
         fiber::start(move || {
             log1.send("t1:push").unwrap();
             let l = l.push(42_i32);
@@ -417,7 +427,7 @@ pub fn lua_thread() {
         })
     );
 
-    let v2 = tarantool::lua_thread(|l|
+    let v2 = tarantool::lua_state(|l|
         fiber::start(move || {
             log2.send("t2:push").unwrap();
             let l = l.push("hello");

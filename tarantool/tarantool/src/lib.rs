@@ -198,16 +198,16 @@ pub use tlua;
 /// **WARNING:** using global lua state is error prone, especially when writing
 /// code that will be executed in multiple fibers. Consider using [`lua_thread`]
 /// instead. Use with caution if necessary.
-pub fn global_lua() -> tlua::Lua {
+fn global_lua() -> tlua::Lua {
     unsafe {
         tlua::Lua::from_existing_state(ffi::tarantool::luaT_state(), false)
     }
 }
 
 /// Create a new lua state with an isolated stack and run `f` within it. The new
-/// state has access to all the global tarantool data (tables, modules, etc.).
-/// Prefer using this function instead of [`global_lua`].
-pub fn lua_thread<F, R>(f: F) -> R
+/// state has access to all the global and tarantool data (Lua variables,
+/// tables, modules, etc.).
+pub fn lua_state<F, R>(f: F) -> R
 where
     F: FnOnce(tlua::Lua) -> R
 {

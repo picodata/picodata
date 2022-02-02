@@ -1,6 +1,7 @@
 use tarantool::tlua::{
     self,
     AsLua,
+    Lua,
     LuaError,
     LuaFunction,
     LuaTable,
@@ -12,14 +13,14 @@ use std::io::Read;
 use std::collections::HashMap;
 
 pub fn basic() {
-    let lua = tarantool::global_lua();
+    let lua = Lua::new();
     let f = LuaFunction::load(&lua, "return 5;").unwrap();
     let val: i32 = f.call().unwrap();
     assert_eq!(val, 5);
 }
 
 pub fn two_functions_at_the_same_time() {
-    let lua = tarantool::global_lua();
+    let lua = Lua::new();
     let f1 = LuaFunction::load(&lua, "return 69;").unwrap();
     let f2 = LuaFunction::load(&lua, "return 420;").unwrap();
     assert_eq!(f1.call::<i32>().unwrap(), 69);
@@ -27,21 +28,21 @@ pub fn two_functions_at_the_same_time() {
 }
 
 pub fn args() {
-    let lua = tarantool::global_lua();
+    let lua = Lua::new();
     lua.exec("function foo(a) return a * 5 end").unwrap();
     let val: i32 = lua.get::<LuaFunction<_>, _>("foo").unwrap().call_with_args(3).unwrap();
     assert_eq!(val, 15);
 }
 
 pub fn args_in_order() {
-    let lua = tarantool::global_lua();
+    let lua = Lua::new();
     lua.exec("function foo(a, b) return a - b end").unwrap();
     let val: i32 = lua.get::<LuaFunction<_>, _>("foo").unwrap().call_with_args((5, 3)).unwrap();
     assert_eq!(val, 2);
 }
 
 pub fn syntax_error() {
-    let lua = tarantool::global_lua();
+    let lua = Lua::new();
     match LuaFunction::load(&lua, "azerazer") {
         Err(LuaError::SyntaxError(_)) => (),
         _ => panic!(),
@@ -49,7 +50,7 @@ pub fn syntax_error() {
 }
 
 pub fn execution_error() {
-    let lua = tarantool::global_lua();
+    let lua = Lua::new();
     let f = LuaFunction::load(&lua, "return a:hello()").unwrap();
     match f.call::<()>() {
         Err(LuaError::ExecutionError(_)) => (),
@@ -58,7 +59,7 @@ pub fn execution_error() {
 }
 
 pub fn check_types() {
-    let lua = tarantool::global_lua();
+    let lua = Lua::new();
     let f = LuaFunction::load(&lua, "return 12").unwrap();
     let err = f.call::<bool>().unwrap_err();
     match err {
@@ -83,14 +84,14 @@ pub fn check_types() {
 }
 
 pub fn call_and_read_table() {
-    let lua = tarantool::global_lua();
+    let lua = Lua::new();
     let f = LuaFunction::load(&lua, "return {1, 2, 3};").unwrap();
     let val: LuaTable<_> = f.call().unwrap();
     assert_eq!(val.get::<u8, _>(2).unwrap(), 2);
 }
 
 pub fn table_as_args() {
-    let lua = tarantool::global_lua();
+    let lua = Lua::new();
     let f: LuaFunction<_> = lua.eval("return function(a) return a.foo end").unwrap();
     let t: LuaTable<_> = (&lua).push(&Foo { foo: 69 }).read().unwrap();
     let val: i32 = f.call_with_args(&t).unwrap();
@@ -101,14 +102,16 @@ pub fn table_as_args() {
     let val: i32 = f.call_with_args((&t, &u)).unwrap();
     assert_eq!(val, 420 + 69);
 
-    let json_encode: LuaFunction<_> = lua.eval("return require('json').encode").unwrap();
-    let res: String = json_encode.call_with_args(vec!("a", "b", "c")).unwrap();
-    assert_eq!(res, r#"["a","b","c"]"#);
+    tarantool::lua_state(|lua| {
+        let json_encode: LuaFunction<_> = lua.eval("return require('json').encode").unwrap();
+        let res: String = json_encode.call_with_args(vec!("a", "b", "c")).unwrap();
+        assert_eq!(res, r#"["a","b","c"]"#);
 
-    let mut t = HashMap::new();
-    t.insert("foo", "bar");
-    let res: String = json_encode.call_with_args(t).unwrap();
-    assert_eq!(res, r#"{"foo":"bar"}"#);
+        let mut t = HashMap::new();
+        t.insert("foo", "bar");
+        let res: String = json_encode.call_with_args(t).unwrap();
+        assert_eq!(res, r#"{"foo":"bar"}"#);
+    });
 
     #[derive(tlua::Push)] struct Foo { foo: i32 }
 
@@ -117,7 +120,7 @@ pub fn table_as_args() {
 
 #[rustfmt::skip]
 pub fn table_method_call() {
-    let lua = tarantool::global_lua();
+    let lua = Lua::new();
     let t: LuaTable<_> = lua.eval("
         return {
             a = 0,
@@ -144,7 +147,7 @@ pub fn table_method_call() {
 }
 
 pub fn lua_function_returns_function() {
-    let lua = tarantool::global_lua();
+    let lua = Lua::new();
     lua.exec("function foo() return 5 end").unwrap();
     let bar = LuaFunction::load(&lua, "return foo;").unwrap();
     let foo: LuaFunction<_> = bar.call().unwrap();
@@ -153,10 +156,11 @@ pub fn lua_function_returns_function() {
 }
 
 pub fn error() {
-    let lua = tarantool::global_lua();
-    lua.exec("function foo() error('oops'); end").unwrap();
-    let foo: LuaFunction<_> = lua.get("foo").unwrap();
-    let res: Result<(), _> = foo.call();
+    let res: Result<(), _> = tarantool::lua_state(|lua| {
+        lua.exec("function foo() error('oops'); end").unwrap();
+        let foo: LuaFunction<_> = lua.get("foo").unwrap();
+        foo.call()
+    });
     assert!(res.is_err());
     if let Err(LuaError::ExecutionError(msg)) = res {
         assert_eq!(msg, "[string \"chunk\"]:1: oops");
@@ -164,7 +168,7 @@ pub fn error() {
 }
 
 pub fn either_or() {
-    let lua = tarantool::global_lua();
+    let lua = Lua::new();
     let foo: LuaFunction<_> = lua.eval(r#"
         return function(a)
             if a > 0 then
@@ -182,7 +186,7 @@ pub fn either_or() {
 }
 
 pub fn multiple_return_values() {
-    let lua = tarantool::global_lua();
+    let lua = Lua::new();
     let f = LuaFunction::load(&lua, r#"return 69, "foo", 3.14, true;"#).unwrap();
     let res: (i32, String, f64, bool) = f.call().unwrap();
     assert_eq!(res, (69, "foo".to_string(), 3.14, true));
@@ -194,7 +198,7 @@ pub fn multiple_return_values() {
 }
 
 pub fn multiple_return_values_fail() {
-    let lua = tarantool::global_lua();
+    let lua = Lua::new();
     let f = LuaFunction::load(&lua, "return 1, 2, 3;").unwrap();
     assert_eq!(f.call::<i32>().unwrap(), 1);
     assert_eq!(f.call::<(i32,)>().unwrap(), (1,));
@@ -233,7 +237,7 @@ pub fn execute_from_reader_errors_if_cant_read() {
         }
     }
 
-    let lua = tarantool::global_lua();
+    let lua = Lua::new();
     let reader = Reader { };
     match lua.exec_from(reader) {
         Ok(_) => panic!("Reading succeded"),
@@ -244,7 +248,7 @@ pub fn execute_from_reader_errors_if_cant_read() {
 
 pub fn from_function_call_error() {
     fn inner() -> Result<u32, LuaError> {
-        let lua = tarantool::global_lua();
+        let lua = Lua::new();
         let f: LuaFunction<_> = lua.eval("return function(x, y) return x + y end").unwrap();
         let res = f.call_with_args((1, 2))?;
         Ok(res)
@@ -254,35 +258,37 @@ pub fn from_function_call_error() {
 }
 
 pub fn non_string_error() {
-    let lua = tarantool::global_lua();
+    tarantool::lua_state(|lua| {
+        match lua.exec("error()").unwrap_err() {
+            LuaError::ExecutionError(msg) => assert_eq!(msg, "nil"),
+            _ => unreachable!(),
+        }
 
-    match lua.exec("error()").unwrap_err() {
-        LuaError::ExecutionError(msg) => assert_eq!(msg, "nil"),
-        _ => unreachable!(),
-    }
+        match lua.exec("error(box.error.new(box.error.UNKNOWN))").unwrap_err() {
+            LuaError::ExecutionError(msg) => assert_eq!(msg, "Unknown error"),
+            _ => unreachable!(),
+        }
 
-    match lua.exec("error(box.error.new(box.error.UNKNOWN))").unwrap_err() {
-        LuaError::ExecutionError(msg) => assert_eq!(msg, "Unknown error"),
-        _ => unreachable!(),
-    }
-
-    match lua.exec("error(box.error.new(box.error.SYSTEM, 'oops'))").unwrap_err() {
-        LuaError::ExecutionError(msg) => assert_eq!(msg, "oops"),
-        _ => unreachable!(),
-    }
+        match lua.exec("error(box.error.new(box.error.SYSTEM, 'oops'))").unwrap_err() {
+            LuaError::ExecutionError(msg) => assert_eq!(msg, "oops"),
+            _ => unreachable!(),
+        }
+    })
 }
 
 pub fn push_function() {
-    let lua = tarantool::global_lua();
+    let lua = Lua::new();
     let call: LuaFunction<_> = lua.eval("return function(f, x) return f(x) end").unwrap();
     let add_one: LuaFunction<_> = lua.eval("return function(x) return x + 1 end").unwrap();
     let res: i32 = call.call_with_args((&add_one, 1)).unwrap();
     assert_eq!(res, 2);
 
-    let type_f: LuaFunction<_> = lua.get("type").unwrap();
-    let lua = (&type_f).push_iter(std::iter::once(("get_type", &type_f))).unwrap();
-    let t: LuaTable<_> = (&lua).read().unwrap();
-    let res: String = t.call_method("get_type", ()).unwrap();
-    assert_eq!(res, "table");
+    tarantool::lua_state(|lua| {
+        let type_f: LuaFunction<_> = lua.get("type").unwrap();
+        let lua = (&type_f).push_iter(std::iter::once(("get_type", &type_f))).unwrap();
+        let t: LuaTable<_> = (&lua).read().unwrap();
+        let res: String = t.call_method("get_type", ()).unwrap();
+        assert_eq!(res, "table");
+    });
 }
 

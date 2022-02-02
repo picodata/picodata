@@ -579,8 +579,7 @@ pub fn derive_unit_structs_lua_read() {
         String(String),
     }
 
-    let lua = tarantool::global_lua();
-    let v: QueryResult = lua.eval("return {
+    let v: QueryResult = tarantool::lua_state(|lua| lua.eval("return {
         metadata = {
             {
                 name = 'id',
@@ -598,7 +597,7 @@ pub fn derive_unit_structs_lua_read() {
         rows = {
             {1, '123', box.NULL}
         }
-    }").unwrap();
+    }").unwrap());
 
     assert_eq!(
         v,
