@@ -30,7 +30,7 @@ pub const SYSTEM_ID_MAX: u32 = 511;
 /// let schema_space = SystemSpace::Schema.into();
 /// ```
 #[repr(u32)]
-#[derive(Debug, Clone, PartialEq, ToPrimitive)]
+#[derive(Clone, Debug, PartialEq, Eq, ToPrimitive)]
 pub enum SystemSpace {
     /// Space if of _vinyl_deferred_delete.
     VinylDeferredDelete = 257,
@@ -93,7 +93,7 @@ impl From<SystemSpace> for Space {
 }
 
 /// Type of engine, used by space.
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum SpaceEngineType {
     Memtx,
     Vinyl,
@@ -115,7 +115,7 @@ impl Serialize for SpaceEngineType {
 /// (for details see [Options for box.schema.space.create](https://www.tarantool.io/en/doc/latest/reference/reference_lua/box_schema/space_create/)).
 ///
 /// `format` option is not supported at this moment.
-#[derive(Serialize)]
+#[derive(Clone, Debug, Serialize)]
 pub struct SpaceCreateOptions {
     pub if_not_exists: bool,
     pub engine: Option<SpaceEngineType>,
@@ -181,7 +181,7 @@ impl fmt::Display for SpaceFieldType {
     }
 }
 
-#[derive(Serialize, Debug)]
+#[derive(Clone, Debug, Serialize)]
 pub struct FuncMetadata {
     pub id: u32,
     pub owner: u32,
@@ -206,7 +206,7 @@ pub struct FuncMetadata {
 
 impl AsTuple for FuncMetadata {}
 
-#[derive(Serialize, Debug)]
+#[derive(Clone, Debug, Serialize)]
 pub struct Privilege {
     pub grantor: u32,
     pub grantee: u32,
@@ -217,6 +217,7 @@ pub struct Privilege {
 
 impl AsTuple for Privilege {}
 
+#[derive(Clone, Debug)]
 pub struct Space {
     id: u32,
 }

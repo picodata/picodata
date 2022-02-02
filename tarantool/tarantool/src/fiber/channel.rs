@@ -18,6 +18,17 @@ use crate::{
 #[derive(Clone)]
 pub struct Channel<T>(Rc<ChannelBox<T>>);
 
+impl<T> std::fmt::Debug for Channel<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        f.debug_struct("Channel")
+            .field("size", &self.size())
+            .field("count", &self.count())
+            .field("has_readers", &self.has_readers())
+            .field("has_writers", &self.has_writers())
+            .finish()
+    }
+}
+
 impl<T> Channel<T> {
     pub fn new(size: u32) -> Self {
         let inner_raw = unsafe { ffi::fiber_channel_new(size) };
@@ -315,6 +326,7 @@ macro_rules! iter_struct {
         )+
     ) => {
         $(
+            #[derive(Debug)]
             pub struct $struct $( < $($tp)* > )? ( $of ) $(where $($where)+)?;
 
             impl $( < $($tp)* > )? Iterator for $struct $( < $($tp)* > )? {

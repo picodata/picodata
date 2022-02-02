@@ -30,6 +30,38 @@ pub use channel::{
     Channel, SendTimeout, RecvTimeout, SendError, RecvError, TrySendError, TryRecvError,
 };
 
+macro_rules! impl_debug_stub {
+    ($t:ident $($p:tt)*) => {
+        impl $($p)* ::std::fmt::Debug for $t $($p)* {
+            fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+                f.debug_struct(::std::stringify!($t))
+                    .finish_non_exhaustive()
+            }
+        }
+    }
+}
+
+macro_rules! impl_eq_hash {
+    ($t:ident $($p:tt)*) => {
+        impl $($p)* ::std::cmp::PartialEq for $t $($p)* {
+            fn eq(&self, other: &Self) -> bool {
+                self.inner == other.inner
+            }
+        }
+
+        impl $($p)* ::std::cmp::Eq for $t $($p)* {}
+
+        impl $($p)* ::std::hash::Hash for $t $($p)* {
+            fn hash<H>(&self, state: &mut H)
+            where
+                H: ::std::hash::Hasher,
+            {
+                self.inner.hash(state)
+            }
+        }
+    }
+}
+
 /// *OBSOLETE*: This struct is being deprecated in favour of [`Immediate`],
 /// [`Deferred`], etc. due to them being more efficient and idiomatic.
 ///
@@ -73,6 +105,8 @@ pub struct Fiber<'a, T: 'a> {
     callback: *mut c_void,
     phantom: PhantomData<&'a T>,
 }
+
+impl_debug_stub!{Fiber<'a, T>}
 
 impl<'a, T> Fiber<'a, T> {
     /// Create a new fiber.
@@ -215,6 +249,8 @@ pub struct Builder<F> {
     f: F,
 }
 
+impl_debug_stub!{Builder<F>}
+
 impl Builder<NoFunc> {
     /// Generates the base configuration for spawning a fiber, from which
     /// configuration methods can be chained.
@@ -351,6 +387,8 @@ pub struct Fyber<C, I> {
     _invocation: PhantomData<I>,
 }
 
+impl_debug_stub!{Fyber<C, I>}
+
 impl<C, I> Fyber<C, I>
 where
     C: Callee,
@@ -432,6 +470,8 @@ pub struct LuaFiber<C> {
     callee: C,
 }
 
+impl_debug_stub!{LuaFiber<C>}
+
 /// Deferred non-yielding fiber implemented using **lua** api. This (hopefully)
 /// temporary implementation is a workaround. Tarantool C API lacks the method
 /// for passing the necessary information into the underlying `struct fiber`
@@ -505,10 +545,13 @@ where
 /// LuaJoinHandle
 ////////////////////////////////////////////////////////////////////////////////
 
+#[derive(PartialEq, Eq, Hash)]
 pub struct LuaJoinHandle<T> {
     fiber_ref: Option<i32>,
     marker: PhantomData<T>,
 }
+
+impl_debug_stub!{LuaJoinHandle<T>}
 
 impl<T> LuaJoinHandle<T> {
     fn new(fiber_ref: i32) -> Self {
@@ -545,9 +588,12 @@ impl<T> Drop for LuaJoinHandle<T> {
 /// LuaUnitJoinHandle
 ////////////////////////////////////////////////////////////////////////////////
 
+#[derive(PartialEq, Eq, Hash)]
 pub struct LuaUnitJoinHandle {
     fiber_ref: Option<i32>,
 }
+
+impl_debug_stub!{LuaUnitJoinHandle}
 
 impl LuaUnitJoinHandle {
     fn new(fiber_ref: i32) -> Self {
@@ -918,6 +964,9 @@ pub struct JoinHandle<T> {
     result: Box<UnsafeCell<Option<T>>>,
 }
 
+impl_debug_stub!{JoinHandle<T>}
+impl_eq_hash!{JoinHandle<T>}
+
 impl<T> JoinHandle<T> {
     fn new(inner: NonNull<ffi::Fiber>, result: Box<UnsafeCell<Option<T>>>) -> Self {
         Self { inner: Some(inner), result }
@@ -952,6 +1001,9 @@ impl<T> Drop for JoinHandle<T> {
 pub struct UnitJoinHandle {
     inner: Option<NonNull<ffi::Fiber>>,
 }
+
+impl_debug_stub!{UnitJoinHandle}
+impl_eq_hash!{UnitJoinHandle}
 
 impl UnitJoinHandle {
     fn new(inner: NonNull<ffi::Fiber>) -> Self {
@@ -1155,6 +1207,7 @@ pub fn reschedule() {
 }
 
 /// Fiber attributes container
+#[derive(Debug)]
 pub struct FiberAttr {
     inner: *mut ffi::FiberAttr,
 }
@@ -1229,6 +1282,7 @@ impl Drop for FiberAttr {
 /// In real life, programmers would make sure to use different conditional variable names for different applications.
 ///
 /// Unlike `pthread_cond`, [Cond]() doesn't require mutex/latch wrapping.
+#[derive(Debug)]
 pub struct Cond {
     inner: *mut ffi::FiberCond,
 }
@@ -1294,6 +1348,7 @@ impl Drop for Cond {
 }
 
 /// A lock for cooperative multitasking environment
+#[derive(Debug)]
 pub struct Latch {
     inner: *mut ffi::Latch,
 }
@@ -1344,6 +1399,7 @@ impl Drop for Latch {
 
 /// An RAII implementation of a "scoped lock" of a latch. When this structure is dropped (falls out of scope),
 /// the lock will be unlocked.
+#[derive(Debug)]
 pub struct LatchGuard {
     latch_inner: *mut ffi::Latch,
 }
