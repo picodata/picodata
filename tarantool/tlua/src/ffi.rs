@@ -137,6 +137,15 @@ extern "C" {
     // Lua C API functions.
     pub fn lua_newstate(f: lua_Alloc, ud: *mut libc::c_void) -> *mut lua_State;
     pub fn lua_close(l: *mut lua_State);
+
+    /// Creates a new thread, pushes it on the stack, and returns a pointer to a
+    /// `lua_State` that represents this new thread. The new state returned by
+    /// this function shares with the original state all global objects (such as
+    /// tables), but has an independent execution stack.
+    /// *[-0, +1, m]*
+    ///
+    /// There is no explicit function to close or to destroy a thread. Threads
+    /// are subject to garbage collection, like any Lua object.
     pub fn lua_newthread(l: *mut lua_State) -> *mut lua_State;
 
     pub fn lua_atpanic(l: *mut lua_State, panicf: lua_CFunction) -> lua_CFunction;

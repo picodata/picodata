@@ -6,7 +6,7 @@ use std::{
 
 use crate::common::{DropCounter, capture_value, fiber_csw, LuaStackIntegrityGuard};
 use tarantool::fiber;
-use tarantool::tlua::Lua;
+use tarantool::tlua::{Lua, AsLua};
 use tarantool::util::IntoClones;
 
 pub mod old;
@@ -403,5 +403,34 @@ pub fn deferred_with_cond() {
     for f in fibers {
         f.join()
     }
+}
+
+pub fn lua_thread() {
+    let (log1, log2, log_out) = fiber::Channel::new(4).into_clones();
+    let v1 = tarantool::lua_thread(|l|
+        fiber::start(move || {
+            log1.send("t1:push").unwrap();
+            let l = l.push(42_i32);
+            fiber::sleep(Duration::ZERO);
+            log1.send("t1:read").unwrap();
+            l.read::<i32>().unwrap()
+        })
+    );
+
+    let v2 = tarantool::lua_thread(|l|
+        fiber::start(move || {
+            log2.send("t2:push").unwrap();
+            let l = l.push("hello");
+            fiber::sleep(Duration::ZERO);
+            log2.send("t2:read").unwrap();
+            l.read::<String>().unwrap()
+        })
+    );
+
+    assert_eq!(v1.join(), 42);
+    assert_eq!(v2.join(), "hello");
+    assert_eq!(log_out.try_iter().collect::<Vec<_>>(),
+        vec!["t1:push", "t2:push", "t1:read", "t2:read"]
+    )
 }
 

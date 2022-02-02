@@ -362,6 +362,7 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 #[should_panic] fiber::defer_proc_dont_join,
                 fiber::immediate_with_cond,
                 fiber::deferred_with_cond,
+                fiber::lua_thread,
 
                 fiber::channel::send_self,
                 fiber::channel::send_full,

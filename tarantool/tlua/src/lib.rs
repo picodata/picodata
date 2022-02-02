@@ -1212,6 +1212,23 @@ impl Lua {
             LuaRead::lua_read(guard).ok().unwrap()
         }
     }
+
+    /// Creates a new Lua thread with an independent stack and runs the provided
+    /// function within it. The new state has access to all the global objects
+    /// available to `self`.
+    pub fn new_thread<F, R>(&self, f: F) -> R
+    where
+        F: FnOnce(Self) -> R,
+    {
+        unsafe {
+            let thread = ffi::lua_newthread(self.as_lua());
+            let l = Lua::from_existing_state(thread, false);
+            let t_ref = ffi::luaL_ref(self.as_lua(), ffi::LUA_REGISTRYINDEX);
+            let res = f(l);
+            ffi::luaL_unref(self.as_lua(), ffi::LUA_REGISTRYINDEX, t_ref);
+            res
+        }
+    }
 }
 
 impl Default for Lua {
