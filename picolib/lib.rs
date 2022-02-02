@@ -41,10 +41,13 @@ impl Stash {
 
 #[no_mangle]
 pub extern "C" fn luaopen_picolib(l: *mut std::ffi::c_void) -> c_int {
-    if std::env::var("PICOLIB_NO_AUTORUN").is_ok() {
-        // Skip box.cfg and other initialization
-        // Used mostly for testing purposes
-    } else {
+    // Perform box.cfg and other initialization.
+    // It's disabled only for testing purposes.
+    if std::env::var("PICOLIB_AUTORUN")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(true)
+    {
         main_run();
     }
 

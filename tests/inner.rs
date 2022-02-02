@@ -21,6 +21,10 @@ fn main() {
     cmd.arg("run");
     cmd.arg("-e").arg(
         r#"
+        assert(
+            type(box.cfg) == "function",
+            "Picodata shouldn't be running yet"
+        )
         log = require('log')
         picolib = require('picolib')
         for t, _ in pairs(picolib.test) do
@@ -32,6 +36,14 @@ fn main() {
     cmd.timeout(Duration::from_secs(1));
 
     let result = cmd.output().unwrap();
+    if !result.status.success() {
+        println!(
+            "{}\nPicodata exit status: {}",
+            String::from_utf8(result.stderr).unwrap(),
+            result.status
+        );
+        std::process::exit(1);
+    }
     let stdout = String::from_utf8(result.stdout).unwrap();
     let mut cnt_passed = 0u32;
     let mut cnt_failed = 0u32;
@@ -81,11 +93,12 @@ impl From<std::string::FromUtf8Error> for TestError {
 }
 
 fn run_test(test_name: &str) -> Result<(), TestError> {
-    let temp = tempdir().unwrap();
+    let temp = tempdir()?;
     let temp_path = temp.path();
 
     let mut cmd = Command::cargo_bin("picodata").unwrap();
     cmd.current_dir(temp_path);
+    cmd.env("PICODATA_LISTEN", "0.0.0.0:0");
     cmd.arg("run");
     cmd.arg("-e");
     cmd.arg(format!("picolib.test.{}() os.exit(0)", test_name));

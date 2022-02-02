@@ -10,7 +10,7 @@ fn positive() {
 
     let mut cmd = Command::cargo_bin("picodata").unwrap();
     cmd.current_dir(temp_path);
-    cmd.env("PICOLIB_NO_AUTORUN", "");
+    cmd.env("PICOLIB_AUTORUN", "false");
     cmd.arg("run");
     cmd.arg("-e").arg(
         r#"
@@ -57,7 +57,7 @@ fn broken_tarantool() {
 #[test]
 fn pass_arguments() {
     let mut cmd = Command::cargo_bin("picodata").unwrap();
-    cmd.env("PICOLIB_NO_AUTORUN", "");
+    cmd.env("PICOLIB_AUTORUN", "false");
     cmd.arg("run");
     cmd.args(["-e", "error('xxx', 0)"]);
     cmd.assert().failure().stderr(
@@ -74,7 +74,7 @@ fn pass_environment() {
     let mut cmd = Command::cargo_bin("picodata").unwrap();
     cmd.current_dir(temp_path);
     cmd.arg("run");
-    cmd.env("PICOLIB_NO_AUTORUN", "");
+    cmd.env("PICOLIB_AUTORUN", "false");
     cmd.env("LUA_CPATH", "/dev/null/?");
     cmd.env("CUSTOM_VAR", "keep me");
     cmd.env("TARANTOOL_VAR", "purge me");
@@ -88,6 +88,11 @@ fn pass_environment() {
     cmd.args(["--peer", "i3"]);
     cmd.arg("-e").arg(
         r#"
+        assert(
+            type(box.cfg) == "function",
+            "Picodata shouldn't be running yet"
+        )
+
         cpath = os.environ()['LUA_CPATH']
         assert(cpath and cpath:endswith(';/dev/null/?'), cpath)
 
@@ -125,7 +130,7 @@ fn precedence() {
     let mut cmd = Command::cargo_bin("picodata").unwrap();
     cmd.current_dir(temp_path);
     cmd.arg("run");
-    cmd.env("PICOLIB_NO_AUTORUN", "");
+    cmd.env("PICOLIB_AUTORUN", "false");
     cmd.env("PICODATA_DATA_DIR", "./somewhere");
     cmd.env("PICODATA_LISTEN", "0.0.0.0:0");
     cmd.arg("-e").arg(
