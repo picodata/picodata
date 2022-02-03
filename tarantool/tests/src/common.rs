@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use tarantool::{
-    tlua::{self, AsLua},
+    tlua::{self, AsLua, LuaState},
     tuple::AsTuple,
 };
 
@@ -94,30 +94,59 @@ pub(crate) enum YieldResult<T> {
 
 pub(crate) struct LuaStackIntegrityGuard {
     name: &'static str,
+    lua: LuaState,
 }
 
 impl LuaStackIntegrityGuard {
-    pub fn new(name: &'static str) -> Self {
-        let lua = global_lua();
+    pub fn global(name: &'static str) -> Self {
+        Self::new(name, global_lua())
+    }
+
+    pub fn new(name: &'static str, lua: impl AsLua) -> Self {
+        let lua = lua.as_lua();
         unsafe { lua.push_one(name).forget() };
-        Self { name }
+        Self { name, lua }
     }
 }
 
 impl Drop for LuaStackIntegrityGuard {
     fn drop(&mut self) {
-        let lua = global_lua();
-        let single_value = unsafe { tlua::PushGuard::new(lua, 1) };
+        let single_value = unsafe { tlua::PushGuard::new(self.lua, 1) };
         let msg: tlua::StringInLua<_> = single_value.read()
-            .expect("Lua stack integrity violation");
+            .map_err(|l|
+                panic!("Lua stack integrity violation
+    {:?}
+    Expected string: \"{}\"",
+                    l, self.name
+                )
+            )
+            .unwrap();
         assert_eq!(msg, self.name);
     }
 }
 
-fn global_lua() -> tlua::Lua {
+pub(crate) struct LuaContextSpoiler {
+    fix: Option<Box<dyn FnOnce()>>,
+}
+
+impl LuaContextSpoiler {
+    pub fn new(spoil: &str, fix: &'static str) -> Self {
+        tarantool::lua_state().exec(spoil).unwrap();
+        Self {
+            fix: Some(Box::new(move || global_lua().exec(fix).unwrap())),
+        }
+    }
+}
+
+impl Drop for LuaContextSpoiler {
+    fn drop(&mut self) {
+        (self.fix.take().unwrap())()
+    }
+}
+
+fn global_lua() -> tlua::StaticLua {
     unsafe {
-        tlua::Lua::from_existing_state(
-            tarantool::ffi::tarantool::luaT_state(), false)
+        tlua::Lua::from_static(tarantool::ffi::tarantool::luaT_state())
     }
 }
 

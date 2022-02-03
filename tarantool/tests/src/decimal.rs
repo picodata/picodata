@@ -10,18 +10,16 @@ use tarantool::{
 };
 
 pub fn from_lua() {
-    let d: Decimal = tarantool::lua_state(|lua|
-        lua.eval("return require('decimal').new('-8.11')").unwrap()
-    );
+    let d: Decimal = tarantool::lua_state()
+        .eval("return require('decimal').new('-8.11')").unwrap();
     assert_eq!(d.to_string(), "-8.11");
 }
 
 pub fn to_lua() {
-    let s: String = tarantool::lua_state(|lua| {
-        let tostring: tlua::LuaFunction<_> = lua.eval("return tostring").unwrap();
-        let d: Decimal = "-8.11".parse().unwrap();
-        tostring.call_with_args(d).unwrap()
-    });
+    let lua = tarantool::lua_state();
+    let tostring: tlua::LuaFunction<_> = lua.eval("return tostring").unwrap();
+    let d: Decimal = "-8.11".parse().unwrap();
+    let s: String = tostring.call_with_args(d).unwrap();
     assert_eq!(s, "-8.11");
 }
 
@@ -40,9 +38,8 @@ pub fn from_string() {
 }
 
 pub fn from_tuple() {
-    let t: Tuple = tarantool::lua_state(|lua|
-        lua.eval("return box.tuple.new(require('decimal').new('-8.11'))").unwrap()
-    );
+    let t: Tuple = tarantool::lua_state()
+        .eval("return box.tuple.new(require('decimal').new('-8.11'))").unwrap();
     let (d,): (Decimal,) = t.as_struct().unwrap();
     assert_eq!(d.to_string(), "-8.11");
 }
@@ -50,10 +47,9 @@ pub fn from_tuple() {
 pub fn to_tuple() {
     let d = decimal!(-8.11);
     let t = Tuple::from_struct(&(d,)).unwrap();
-    let d: Decimal = tarantool::lua_state(|lua| {
-        let f: tlua::LuaFunction<_> = lua.eval("return box.tuple.unpack").unwrap();
-        f.call_with_args(&t).unwrap()
-    });
+    let lua = tarantool::lua_state();
+    let f: tlua::LuaFunction<_> = lua.eval("return box.tuple.unpack").unwrap();
+    let d: Decimal = f.call_with_args(&t).unwrap();
     assert_eq!(d.to_string(), "-8.11");
 }
 

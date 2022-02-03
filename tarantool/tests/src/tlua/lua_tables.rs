@@ -127,6 +127,7 @@ pub fn by_value() {
         }
     }
 
+    type Lua = tarantool::tlua::TempLua;
     let table: LuaTable<PushGuard<Lua>> = lua.into_get("a").ok().unwrap();
     let table2: LuaTable<PushGuard<LuaTable<PushGuard<Lua>>>> =
         table.into_get("b").ok().unwrap();

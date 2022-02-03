@@ -623,7 +623,7 @@ impl Drop for LuaUnitJoinHandle {
 
 mod impl_details {
     use super::*;
-    use crate::tlua::{AsLua, Lua, LuaError, PushGuard};
+    use crate::tlua::{AsLua, StaticLua, LuaError, PushGuard};
 
     pub(super) unsafe fn lua_error_from_top(l: *mut lua::lua_State) -> LuaError {
         let mut len = std::mem::MaybeUninit::uninit();
@@ -655,8 +655,8 @@ mod impl_details {
         }
     }
 
-    pub(super) unsafe fn lua_fiber_join(f_ref: i32) -> Result<PushGuard<Lua>> {
-        let l = Lua::from_existing_state(ffi::luaT_state(), false);
+    pub(super) unsafe fn lua_fiber_join(f_ref: i32) -> Result<PushGuard<StaticLua>> {
+        let l = crate::global_lua();
         let lptr = l.as_lua();
         lua::lua_rawgeti(lptr, lua::LUA_REGISTRYINDEX, f_ref);
         lua::lua_getfield(lptr, -1, c_ptr!("join"));

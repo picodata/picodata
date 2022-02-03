@@ -4,7 +4,9 @@ use std::{
     time::Duration,
 };
 
-use crate::common::{DropCounter, capture_value, fiber_csw, LuaStackIntegrityGuard};
+use crate::common::{
+    DropCounter, capture_value, fiber_csw, LuaStackIntegrityGuard, LuaContextSpoiler,
+};
 use tarantool::fiber;
 use tarantool::tlua::AsLua;
 use tarantool::util::IntoClones;
@@ -190,7 +192,7 @@ pub fn multiple_unit_deferred() {
 }
 
 pub fn immediate_yields() {
-    let _guard = LuaStackIntegrityGuard::new("immediate_fiber_guard");
+    let _guard = LuaStackIntegrityGuard::global("immediate_fiber_guard");
 
     let (tx, rx) = Rc::new(Cell::new(0)).into_clones();
     let csw1 = fiber_csw();
@@ -204,7 +206,7 @@ pub fn immediate_yields() {
 }
 
 pub fn deferred_doesnt_yield() {
-    let _guard = LuaStackIntegrityGuard::new("deferred_fiber_guard");
+    let _guard = LuaStackIntegrityGuard::global("deferred_fiber_guard");
 
     let (tx, rx) = Rc::new(Cell::new(0)).into_clones();
     let csw1 = fiber_csw();
@@ -221,9 +223,20 @@ pub fn deferred_doesnt_yield() {
 }
 
 pub fn start_error() {
-    let _guard = LuaStackIntegrityGuard::new("fiber_error_guard");
+    let _guard = LuaStackIntegrityGuard::global("fiber_error_guard");
 
-    let _spoiler = LuaContextSpoiler::new();
+    let _spoiler = LuaContextSpoiler::new(
+        r#"
+            _fiber_new_backup = package.loaded.fiber.new
+            package.loaded.fiber.new = function()
+                error("Artificial error", 0)
+            end
+        "#,
+        r#"
+            package.loaded.fiber.new = _fiber_new_backup
+            _fiber_new_backup = nil
+        "#
+    );
 
     match fiber::LuaFiber::new(fiber::LuaFiberFunc(|| ())).spawn() {
         Err(e) => assert_eq!(
@@ -232,39 +245,25 @@ pub fn start_error() {
         ),
         _ => panic!(),
     }
-
-    struct LuaContextSpoiler;
-
-    impl LuaContextSpoiler {
-        fn new() -> Self {
-            tarantool::lua_state(|lua|
-                lua.exec(r#"
-                    _fiber_new_backup = package.loaded.fiber.new
-                    package.loaded.fiber.new = function()
-                        error("Artificial error", 0)
-                    end
-                "#).unwrap()
-            );
-            Self
-        }
-    }
-
-    impl Drop for LuaContextSpoiler {
-        fn drop(&mut self) {
-            tarantool::lua_state(|lua|
-                lua.exec(r#"
-                    package.loaded.fiber.new = _fiber_new_backup
-                    _fiber_new_backup = nil
-                "#).unwrap()
-            );
-        }
-    }
 }
 
 pub fn require_error() {
-    let _guard = LuaStackIntegrityGuard::new("fiber_error_guard");
+    let _guard = LuaStackIntegrityGuard::global("fiber_error_guard");
 
-    let _spoiler = LuaContextSpoiler::new();
+    let _spoiler = LuaContextSpoiler::new(
+        r#"
+            _fiber_backup = package.loaded.fiber
+            package.loaded.fiber = nil
+            package.preload.fiber = function()
+                error("Artificial require error", 0)
+            end
+        "#,
+        r#"
+            package.preload.fiber = nil
+            package.loaded.fiber = _fiber_backup
+            _fiber_backup = nil
+        "#
+    );
 
     match fiber::LuaFiber::new(fiber::LuaFiberFunc(|| ())).spawn() {
         Err(e) => assert_eq!(
@@ -272,35 +271,6 @@ pub fn require_error() {
             "Lua error: Execution error: Artificial require error"
         ),
         _ => panic!(),
-    }
-
-    struct LuaContextSpoiler;
-
-    impl LuaContextSpoiler {
-        fn new() -> Self {
-            tarantool::lua_state(|lua|
-                lua.exec(r#"
-                    _fiber_backup = package.loaded.fiber
-                    package.loaded.fiber = nil
-                    package.preload.fiber = function()
-                        error("Artificial require error", 0)
-                    end
-                "#).unwrap()
-            );
-            Self
-        }
-    }
-
-    impl Drop for LuaContextSpoiler {
-        fn drop(&mut self) {
-            tarantool::lua_state(|lua|
-                lua.exec(r#"
-                    package.preload.fiber = nil
-                    package.loaded.fiber = _fiber_backup
-                    _fiber_backup = nil
-                "#).unwrap()
-            );
-        }
     }
 }
 
@@ -325,7 +295,7 @@ pub fn start_proc_dont_join() {
 }
 
 pub fn defer_dont_join() {
-    let _guard = LuaStackIntegrityGuard::new("defer_dont_join");
+    let _guard = LuaStackIntegrityGuard::global("defer_dont_join");
 
     let tx = Rc::new(Cell::new(0));
     let rx = Rc::downgrade(&tx);
@@ -341,7 +311,7 @@ pub fn defer_dont_join() {
 }
 
 pub fn defer_proc_dont_join() {
-    let _guard = LuaStackIntegrityGuard::new("defer_proc_dont_join");
+    let _guard = LuaStackIntegrityGuard::global("defer_proc_dont_join");
 
     let tx = Rc::new(Cell::new(0));
     let rx = Rc::downgrade(&tx);
@@ -417,30 +387,31 @@ pub fn deferred_with_cond() {
 
 pub fn lua_thread() {
     let (log1, log2, log_out) = fiber::Channel::new(4).into_clones();
-    let v1 = tarantool::lua_state(|l|
-        fiber::start(move || {
-            log1.send("t1:push").unwrap();
-            let l = l.push(42_i32);
-            fiber::sleep(Duration::ZERO);
-            log1.send("t1:read").unwrap();
-            l.read::<i32>().unwrap()
-        })
-    );
+    let (l1, l1_keep) = Rc::new(tarantool::lua_state()).into_clones();
+    let v1 = fiber::start(move || {
+        log1.send("t1:push").unwrap();
+        let l = (&*l1).push(42_i32);
+        fiber::sleep(Duration::ZERO);
+        log1.send("t1:read").unwrap();
+        l.read::<i32>().unwrap()
+    });
 
-    let v2 = tarantool::lua_state(|l|
-        fiber::start(move || {
-            log2.send("t2:push").unwrap();
-            let l = l.push("hello");
-            fiber::sleep(Duration::ZERO);
-            log2.send("t2:read").unwrap();
-            l.read::<String>().unwrap()
-        })
-    );
+    let (l2, l2_keep) = Rc::new(tarantool::lua_state()).into_clones();
+    let v2 = fiber::start(move || {
+        log2.send("t2:push").unwrap();
+        let l = (&*l2).push("hello");
+        fiber::sleep(Duration::ZERO);
+        log2.send("t2:read").unwrap();
+        l.read::<String>().unwrap()
+    });
 
     assert_eq!(v1.join(), 42);
     assert_eq!(v2.join(), "hello");
     assert_eq!(log_out.try_iter().collect::<Vec<_>>(),
         vec!["t1:push", "t2:push", "t1:read", "t2:read"]
-    )
+    );
+
+    drop(l1_keep);
+    drop(l2_keep);
 }
 

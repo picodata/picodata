@@ -15,7 +15,7 @@ use tarantool::tlua::{
     PushOne,
     TuplePushError,
 };
-use crate::common::BoolExt;
+use crate::common::{BoolExt, LuaStackIntegrityGuard};
 
 pub fn push_array() {
     let lua = Lua::new();
@@ -579,7 +579,7 @@ pub fn derive_unit_structs_lua_read() {
         String(String),
     }
 
-    let v: QueryResult = tarantool::lua_state(|lua| lua.eval("return {
+    let v: QueryResult = tarantool::lua_state().eval("return {
         metadata = {
             {
                 name = 'id',
@@ -597,7 +597,7 @@ pub fn derive_unit_structs_lua_read() {
         rows = {
             {1, '123', box.NULL}
         }
-    }").unwrap());
+    }").unwrap();
 
     assert_eq!(
         v,
@@ -654,14 +654,14 @@ pub fn error_during_push_iter() {
     let lua = Lua::new();
 
     let lua = {
-        let _guard = crate::common::LuaStackIntegrityGuard::new("push_vec_error");
+        let _guard = LuaStackIntegrityGuard::new("push_vec_error", &lua);
         let (e, lua) = lua.try_push(&vec![S]).unwrap_err();
         assert_eq!(e, tlua::PushIterError::ValuePushError(CustomError));
         lua
     };
 
     let lua = {
-        let _guard = crate::common::LuaStackIntegrityGuard::new("push_hashmap_key_error");
+        let _guard = LuaStackIntegrityGuard::new("push_hashmap_key_error", &lua);
         let mut hm = HashMap::new();
         hm.insert(S, 1);
         let (e, lua) = lua.try_push(&hm).unwrap_err();
@@ -670,7 +670,7 @@ pub fn error_during_push_iter() {
     };
 
     let lua = {
-        let _guard = crate::common::LuaStackIntegrityGuard::new("push_hashmap_value_error");
+        let _guard = LuaStackIntegrityGuard::new("push_hashmap_value_error", &lua);
         let mut hm = HashMap::new();
         hm.insert(1, S);
         let (e, lua) = lua.try_push(&hm).unwrap_err();
@@ -679,7 +679,7 @@ pub fn error_during_push_iter() {
     };
 
     let lua = {
-        let _guard = crate::common::LuaStackIntegrityGuard::new("push_hashset_error");
+        let _guard = LuaStackIntegrityGuard::new("push_hashset_error", &lua);
         let mut hm = HashSet::new();
         hm.insert(S);
         let (e, lua) = lua.try_push(&hm).unwrap_err();
@@ -688,21 +688,21 @@ pub fn error_during_push_iter() {
     };
 
     let lua = {
-        let _guard = crate::common::LuaStackIntegrityGuard::new("push_iter_error");
+        let _guard = LuaStackIntegrityGuard::new("push_iter_error", &lua);
         let (e, lua) = lua.try_push_iter(std::iter::once(&S)).unwrap_err();
         assert_eq!(e, tlua::PushIterError::ValuePushError(CustomError));
         lua
     };
 
     let lua = {
-        let _guard = crate::common::LuaStackIntegrityGuard::new("push_vec_too_many");
+        let _guard = LuaStackIntegrityGuard::new("push_vec_too_many", &lua);
         let (e, lua) = lua.try_push(vec![(1, 2, 3)]).unwrap_err();
         assert_eq!(e, tlua::PushIterError::TooManyValues);
         lua
     };
 
     let lua = {
-        let _guard = crate::common::LuaStackIntegrityGuard::new("push_iter_too_many");
+        let _guard = LuaStackIntegrityGuard::new("push_iter_too_many", &lua);
         let (e, lua) = lua.try_push_iter(std::iter::once((1, 2, 3))).unwrap_err();
         assert_eq!(e, tlua::PushIterError::TooManyValues);
         lua

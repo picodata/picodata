@@ -6,24 +6,22 @@ use tarantool::tlua::{
 };
 
 pub fn print() {
-    tarantool::lua_state(|lua| {
-        let print: LuaFunction<_> = lua.get("print").unwrap();
-        let () = print.call_with_args("hello").unwrap();
-    })
+    let lua = tarantool::lua_state();
+    let print: LuaFunction<_> = lua.get("print").unwrap();
+    let () = print.call_with_args("hello").unwrap();
 }
 
 pub fn json() {
-    tarantool::lua_state(|lua| {
-        let require: LuaFunction<_> = lua.get("require").unwrap();
-        let json: LuaTable<_> = require.call_with_args("json").unwrap();
-        let encode: LuaFunction<_> = json.get("encode").unwrap();
-        let mut table = std::collections::HashMap::new();
-        let res: String = encode.call_with_args(vec![1, 2, 3]).unwrap();
-        assert_eq!(res, "[1,2,3]");
-        table.insert("a", "b");
-        let res: String = encode.call_with_args(table).unwrap();
-        assert_eq!(res, r#"{"a":"b"}"#);
-    });
+    let lua = tarantool::lua_state();
+    let require: LuaFunction<_> = lua.get("require").unwrap();
+    let json: LuaTable<_> = require.call_with_args("json").unwrap();
+    let encode: LuaFunction<_> = json.get("encode").unwrap();
+    let mut table = std::collections::HashMap::new();
+    let res: String = encode.call_with_args(vec![1, 2, 3]).unwrap();
+    assert_eq!(res, "[1,2,3]");
+    table.insert("a", "b");
+    let res: String = encode.call_with_args(table).unwrap();
+    assert_eq!(res, r#"{"a":"b"}"#);
 }
 
 #[rustfmt::skip]
@@ -37,7 +35,9 @@ pub fn dump_stack() {
         .push(3.14)
         .push(false)
         .push(420);
-    tarantool::tlua::debug::dump_stack_to(lua, &mut buf).unwrap();
+    unsafe {
+        tarantool::tlua::debug::dump_stack_raw_to(lua.as_lua(), &mut buf).unwrap()
+    }
     assert_eq!(
         String::from_utf8_lossy(buf.into_inner().as_slice()),
         r#"1: string(hello)

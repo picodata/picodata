@@ -148,9 +148,28 @@ mod tuples;
 
 pub type LuaState = *mut ffi::lua_State;
 
+/// A static lua context that must be created from an existing lua state pointer
+/// and that will **not** be closed when dropped.
+pub type StaticLua = Lua<on_drop::Ignore>;
+
+/// A temporary lua context that will be closed when dropped.
+pub type TempLua = Lua<on_drop::Close>;
+
+/// A lua context corresponding to a lua thread (see [`ffi::lua_newthread`])
+/// stored in the global [REGISTRY](ffi::LUA_REGISTRYINDEX) and will be removed
+/// from there when dropped.
+///
+/// `LuaThread` currently can only be created from an instance of [`StaticLua`]
+/// because closing a state from which a thread has been created is forbidden.
+pub type LuaThread = Lua<on_drop::Unref>;
+
 /// Main object of the library.
 ///
-/// The lifetime parameter corresponds to the lifetime of the content of the Lua context.
+/// The type parameter `OnDrop` specifies what happens with the underlying lua
+/// state when the instance gets dropped. There are currently 3 supported cases:
+/// - `on_drop::Ignore`: nothing happens
+/// - `on_drop::Close`: [`ffi::lua_close`] is called
+/// - `on_drop::Unref`: [`ffi::luaL_unref`] is called with the associated value
 ///
 /// # About panic safety
 ///
@@ -158,9 +177,48 @@ pub type LuaState = *mut ffi::lua_State;
 /// then it will probably stay in a corrupt state. Trying to use the `Lua` again will most likely
 /// result in another panic but shouldn't result in unsafety.
 #[derive(Debug)]
-pub struct Lua {
-    lua: *mut ffi::lua_State,
-    must_be_closed: bool,
+pub struct Lua<OnDrop>
+where
+    OnDrop: on_drop::OnDrop,
+{
+    lua: LuaState,
+    on_drop: OnDrop,
+}
+
+mod on_drop {
+    use crate::{LuaState, ffi};
+
+    pub trait OnDrop {
+        fn on_drop(&mut self, l: LuaState);
+    }
+
+    /// See [`StaticLua`].
+    #[derive(Debug)]
+    pub struct Ignore;
+
+    impl OnDrop for Ignore {
+        fn on_drop(&mut self, _: LuaState) {}
+    }
+
+    /// See [`TempLua`].
+    #[derive(Debug)]
+    pub struct Close;
+
+    impl OnDrop for Close {
+        fn on_drop(&mut self, l: LuaState) {
+            unsafe { ffi::lua_close(l) }
+        }
+    }
+
+    /// See [`LuaThread`].
+    #[derive(Debug)]
+    pub struct Unref(pub i32);
+
+    impl OnDrop for Unref {
+        fn on_drop(&mut self, l: LuaState) {
+            unsafe { ffi::luaL_unref(l, ffi::LUA_REGISTRYINDEX, self.0) }
+        }
+    }
 }
 
 /// RAII guard for a value pushed on the stack.
@@ -433,7 +491,10 @@ where
     }
 }
 
-impl AsLua for Lua {
+impl<D> AsLua for Lua<D>
+where
+    D: on_drop::OnDrop,
+{
     #[inline]
     fn as_lua(&self) -> *mut ffi::lua_State {
         self.lua
@@ -734,8 +795,8 @@ impl From<io::Error> for LuaError {
     }
 }
 
-impl Lua {
-    /// Builds a new empty Lua context.
+impl TempLua {
+    /// Builds a new empty TempLua context.
     ///
     /// There are no global variables and the registry is totally empty. Even the functions from
     /// the standard library can't be used.
@@ -755,7 +816,7 @@ impl Lua {
     /// The function panics if the underlying call to `lua_newstate` fails
     /// (which indicates lack of memory).
     #[inline]
-    pub fn new() -> Lua {
+    pub fn new() -> Self {
         let lua = unsafe { ffi::luaL_newstate() };
         if lua.is_null() {
             panic!("lua_newstate failed");
@@ -771,29 +832,59 @@ impl Lua {
 
         unsafe { ffi::lua_atpanic(lua, panic) };
 
-        Lua {
-            lua,
-            must_be_closed: true,
-        }
+        unsafe { Self::from_existing(lua) }
     }
 
-    /// Takes an existing `lua_State` and build a Lua object from it.
+    /// Takes an existing `lua_State` and build a TemplLua object from it.
     ///
-    /// If `close_at_the_end` is true, `lua_close` will be called on the `lua_State` in the
-    /// destructor.
+    /// `lua_close` will be called on the `lua_State` in drop.
     ///
     /// # Safety
-    /// A pointer to a valid `lua` context must be provided. If
-    /// `close_at_the_end` is `true`, the corresponding lua context must be ok
-    /// to be closed.
+    /// A pointer to a valid `lua` context must be provided which is ok to be
+    /// closed.
     #[inline]
-    pub unsafe fn from_existing_state<T>(lua: *mut T, close_at_the_end: bool) -> Lua {
-        Lua {
+    pub unsafe fn from_existing<T>(lua: *mut T) -> Self {
+        Self {
             lua: lua as _,
-            must_be_closed: close_at_the_end,
+            on_drop: on_drop::Close,
+        }
+    }
+}
+
+impl StaticLua {
+    /// Takes an existing `lua_State` and build a StaticLua object from it.
+    ///
+    /// `lua_close` is **NOT** called in `drop`.
+    ///
+    /// # Safety
+    /// A pointer to a valid `lua` context must be provided.
+    #[inline]
+    pub unsafe fn from_static<T>(lua: *mut T) -> Self {
+        Self {
+            lua: lua as _,
+            on_drop: on_drop::Ignore,
         }
     }
 
+    /// Creates a new Lua thread with an independent stack and runs the provided
+    /// function within it. The new state has access to all the global objects
+    /// available to `self`.
+    pub fn new_thread(&self) -> LuaThread {
+        unsafe {
+            let lua = ffi::lua_newthread(self.as_lua());
+            let r = ffi::luaL_ref(self.as_lua(), ffi::LUA_REGISTRYINDEX);
+            LuaThread {
+                lua,
+                on_drop: on_drop::Unref(r)
+            }
+        }
+    }
+}
+
+impl<OnDrop> Lua<OnDrop>
+where
+    OnDrop: on_drop::OnDrop,
+{
     /// Opens all standard Lua libraries.
     ///
     /// See the reference for the standard library here:
@@ -1212,37 +1303,21 @@ impl Lua {
             LuaRead::lua_read(guard).ok().unwrap()
         }
     }
-
-    /// Creates a new Lua thread with an independent stack and runs the provided
-    /// function within it. The new state has access to all the global objects
-    /// available to `self`.
-    pub fn new_thread<F, R>(&self, f: F) -> R
-    where
-        F: FnOnce(Self) -> R,
-    {
-        unsafe {
-            let thread = ffi::lua_newthread(self.as_lua());
-            let l = Lua::from_existing_state(thread, false);
-            let t_ref = ffi::luaL_ref(self.as_lua(), ffi::LUA_REGISTRYINDEX);
-            let res = f(l);
-            ffi::luaL_unref(self.as_lua(), ffi::LUA_REGISTRYINDEX, t_ref);
-            res
-        }
-    }
 }
 
-impl Default for Lua {
+impl Default for TempLua {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl Drop for Lua {
+impl<T> Drop for Lua<T>
+where
+    T: on_drop::OnDrop,
+{
     #[inline]
     fn drop(&mut self) {
-        if self.must_be_closed {
-            unsafe { ffi::lua_close(self.lua) }
-        }
+        self.on_drop.on_drop(self.lua)
     }
 }
 
