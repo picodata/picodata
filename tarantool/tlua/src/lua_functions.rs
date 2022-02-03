@@ -322,9 +322,9 @@ where
     /// ```
     #[inline]
     pub fn call_with_args<V, A>(&'lua self, args: A)
-        -> Result<V, LuaFunctionCallError<<A as Push<LuaState>>::Err>>
+        -> Result<V, LuaFunctionCallError<A::Err>>
     where
-        A: Push<LuaState>,
+        A: PushInto<LuaState>,
         V: LuaRead<PushGuard<&'lua L>>,
     {
         Self::call_impl(&self.lua, self.index.into(), args)
@@ -375,9 +375,9 @@ where
     /// ```
     #[inline]
     pub fn into_call_with_args<V, A>(self, args: A)
-        -> Result<V, LuaFunctionCallError<<A as Push<LuaState>>::Err>>
+        -> Result<V, LuaFunctionCallError<A::Err>>
     where
-        A: Push<LuaState>,
+        A: PushInto<LuaState>,
         V: LuaRead<PushGuard<Self>>,
     {
         let index = self.index.into();
@@ -392,7 +392,7 @@ where
     ) -> Result<V, LuaFunctionCallError<E>>
     where
         T: AsLua,
-        A: Push<LuaState, Err = E>,
+        A: PushInto<LuaState, Err = E>,
         V: LuaRead<PushGuard<T>>,
     {
         let raw_lua = this.as_lua();
@@ -401,7 +401,7 @@ where
             let old_top = ffi::lua_gettop(raw_lua);
             // lua_pcall pops the function, so we have to make a copy of it
             ffi::lua_pushvalue(raw_lua, index);
-            let num_pushed = match args.push_to_lua(this.as_lua()) {
+            let num_pushed = match this.as_lua().try_push(args) {
                 Ok(g) => g.forget_internal(),
                 Err((err, _)) => return Err(LuaFunctionCallError::PushError(err)),
             };

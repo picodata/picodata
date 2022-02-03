@@ -11,7 +11,7 @@ pub fn to_tuple() {
     let t = Tuple::from_struct(&(u,)).unwrap();
     let u: Uuid = tarantool::lua_state(|lua| {
         let f: LuaFunction<_> = lua.eval("return box.tuple.unpack").unwrap();
-        f.call_with_args(t).unwrap()
+        f.call_with_args(&t).unwrap()
     });
     assert_eq!(u.to_string(), UUID_STR);
 }

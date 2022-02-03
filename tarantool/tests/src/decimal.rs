@@ -52,7 +52,7 @@ pub fn to_tuple() {
     let t = Tuple::from_struct(&(d,)).unwrap();
     let d: Decimal = tarantool::lua_state(|lua| {
         let f: tlua::LuaFunction<_> = lua.eval("return box.tuple.unpack").unwrap();
-        f.call_with_args(t).unwrap()
+        f.call_with_args(&t).unwrap()
     });
     assert_eq!(d.to_string(), "-8.11");
 }

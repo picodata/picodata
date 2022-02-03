@@ -42,8 +42,8 @@ pub fn dump_stack_to(lua: impl AsLua, mut out: impl Write) -> std::io::Result<()
     let f_type: LuaFunction<_> = lua.get("type").unwrap();
     let f_tostring: LuaFunction<_> = lua.get("tostring").unwrap();
     for i in 1..=top {
-        let t: String = f_type.call_with_args(ValueOnTheStack::Absolute(i)).unwrap();
-        let s: String = f_tostring.call_with_args(ValueOnTheStack::Absolute(i)).unwrap();
+        let t: String = f_type.call_with_args(&ValueOnTheStack::Absolute(i)).unwrap();
+        let s: String = f_tostring.call_with_args(&ValueOnTheStack::Absolute(i)).unwrap();
         writeln!(out, "{}: {}({})", i, t, s)?;
     }
     Ok(())

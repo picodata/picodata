@@ -7,6 +7,7 @@ use crate::{
     AbsoluteIndex,
     AsLua,
     Push,
+    PushInto,
     PushGuard,
     PushOne,
     PushOneInto,
@@ -258,10 +259,10 @@ where
     }
 
     pub fn call_method<R, A>(&'lua self, name: &str, args: A)
-        -> Result<R, MethodCallError<<A as Push<LuaState>>::Err>>
+        -> Result<R, MethodCallError<A::Err>>
     where
         L: std::fmt::Debug,
-        A: Push<LuaState>,
+        A: PushInto<LuaState>,
         A: std::fmt::Debug,
         R: LuaRead<PushGuard<LuaFunction<PushGuard<&'lua L>>>>,
     {
