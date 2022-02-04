@@ -52,7 +52,7 @@ pub extern "C" fn luaopen_picolib(l: *mut std::ffi::c_void) -> c_int {
     }
 
     unsafe {
-        let l = tlua::Lua::from_existing_state(l, false);
+        let l = tlua::StaticLua::from_static(l);
         let luamod: tlua::LuaTable<_> = (&l).push(vec![()]).read().unwrap();
         luamod.set("VERSION", env!("CARGO_PKG_VERSION"));
 

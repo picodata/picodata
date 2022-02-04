@@ -24,7 +24,7 @@ features = ["max_level_trace", "release_max_level_trace"]
 
 [dependencies.tarantool]
 path = "./tarantool/tarantool"
-version = "0.5.0"
+version = "0.6"
 
 [dev-dependencies]
 assert_cmd = "2.0"

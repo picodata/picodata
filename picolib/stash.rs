@@ -99,7 +99,10 @@ pub fn access<S>(name: &str) -> &'static S
 where
     S: Default,
 {
-    let l = tarantool::global_lua();
+    // TODO: this place is a potential performance bottleneck.
+    // Every access to the stash implies a call to `lua_newthread()`
+    // and further garbage collection.
+    let l = tarantool::lua_state();
     let get = || l.get::<&Inner<S>, _>(name);
     match get() {
         Some(Inner(v)) => v,
