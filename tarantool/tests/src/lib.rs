@@ -278,6 +278,7 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 tlua::misc::json,
                 tlua::misc::dump_stack,
                 tlua::misc::dump_stack_raw,
+                tlua::misc::error_during_push_tuple,
 
                 tlua::userdata::readwrite,
                 tlua::userdata::destructor_called,

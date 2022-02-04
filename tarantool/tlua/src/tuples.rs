@@ -97,24 +97,27 @@ macro_rules! tuple_impl {
                 use TuplePushError::{First, Other};
                 match self {
                     ($first, $($other),+) => {
-                        let mut total = 0;
-
                         let error = |e| e;
-                        match $first.push_to_lua(lua.as_lua()) {
-                            Ok(pushed) => total += pushed.forget_internal(),
+                        let pushed = match lua.as_lua().try_push($first) {
+                            Ok(pushed) => pushed,
                             Err((err, _)) => return Err((error(First(err)), lua)),
-                        }
+                        };
+                        let total = move || pushed.forget_internal();
 
                         $(
                             let error = |e| error(Other(e));
-                            match $other.push_to_lua(lua.as_lua()) {
-                                Ok(pushed) => total += pushed.forget_internal(),
+                            let pushed = match lua.as_lua().try_push($other) {
+                                Ok(pushed) => pushed,
+                                // TODO(gmoshkin): return an error capturing the
+                                // previously created pushguards so that the
+                                // caller can handle partially pushed tuples
                                 Err((err, _)) => return Err((error(First(err)), lua)),
-                            }
+                            };
+                            let total = move || pushed.forget_internal() + total();
                         )+
 
                         unsafe {
-                            Ok(PushGuard::new(lua, total))
+                            Ok(PushGuard::new(lua, total()))
                         }
                     }
                 }
@@ -138,17 +141,21 @@ macro_rules! tuple_impl {
                 use TuplePushError::{First, Other};
                 match self {
                     ($first, $($other),+) => {
-                        let mut total = 0;
-
-                        match $first.push_into_lua(lua.as_lua()) {
-                            Ok(pushed) => total += pushed.forget_internal(),
+                        let first_pushed = match lua.as_lua().try_push($first) {
+                            Ok(pushed) => pushed,
                             Err((err, _)) => return Err((First(err), lua)),
-                        }
+                        };
 
-                        match ($($other,)+).push_into_lua(lua.as_lua()) {
-                            Ok(pushed) => total += pushed.forget_internal(),
+                        let other_pushed = match lua.as_lua().try_push(($($other,)+)) {
+                            Ok(pushed) => pushed,
+                            // TODO(gmoshkin): return an error capturing the
+                            // first_pushed pushguard so that the caller can
+                            // handle partially pushed tuples
                             Err((err, _)) => return Err((Other(err), lua)),
-                        }
+                        };
+
+                        let total = first_pushed.forget_internal()
+                            + other_pushed.forget_internal();
 
                         unsafe {
                             Ok(PushGuard::new(lua, total))

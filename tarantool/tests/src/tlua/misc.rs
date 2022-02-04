@@ -1,9 +1,13 @@
 use tarantool::tlua::{
+    self,
     AsLua,
     Lua,
     LuaFunction,
     LuaTable,
+    PushGuard,
+    TuplePushError::{First, Other},
 };
+use crate::common::LuaStackIntegrityGuard;
 
 pub fn print() {
     let lua = tarantool::lua_state();
@@ -70,5 +74,44 @@ pub fn dump_stack_raw() {
 4: number(420)
 "#
     )
+}
+
+pub fn error_during_push_tuple() {
+    #[derive(Debug, PartialEq, Eq)]
+    struct CustomError;
+    #[derive(Debug, PartialEq, Eq, Hash)]
+    struct S;
+    impl<L: AsLua> tlua::Push<L> for S {
+        type Err = CustomError;
+        fn push_to_lua(&self, lua: L) -> Result<PushGuard<L>, (CustomError, L)> {
+            Err((CustomError, lua))
+        }
+    }
+    impl<L: AsLua> tlua::PushOne<L> for S {}
+    impl<L: AsLua> tlua::PushInto<L> for S {
+        type Err = CustomError;
+        fn push_into_lua(self, lua: L) -> Result<PushGuard<L>, (CustomError, L)> {
+            Err((CustomError, lua))
+        }
+    }
+    impl<L: AsLua> tlua::PushOneInto<L> for S {}
+
+    let lua = Lua::new();
+
+    let lua = {
+        let _guard = LuaStackIntegrityGuard::new("push_tuple_by_val_error", &lua);
+        let (e, lua) = lua.try_push((1, 2, 3, S)).unwrap_err();
+        assert_eq!(e, Other(Other(Other(First(CustomError)))));
+        lua
+    };
+
+    let lua = {
+        let _guard = LuaStackIntegrityGuard::new("push_tuple_by_ref_error", &lua);
+        let (e, lua) = lua.try_push(&(1, 2, 3, S)).unwrap_err();
+        assert_eq!(e, Other(Other(Other(First(CustomError)))));
+        lua
+    };
+
+    drop(lua);
 }
 
