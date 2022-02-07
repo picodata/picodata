@@ -263,10 +263,10 @@ impl Builder<NoFunc> {
     }
 
     /// Sets the callee function for the new fiber.
-    pub fn func<F, T>(self, f: F) -> Builder<FiberFunc<F, T>>
+    pub fn func<'f, F, T>(self, f: F) -> Builder<FiberFunc<'f, F, T>>
     where
         F: FnOnce() -> T,
-        F: 'static,
+        F: 'f,
     {
         Builder {
             name: self.name,
@@ -274,20 +274,24 @@ impl Builder<NoFunc> {
             f: FiberFunc {
                 f: Box::new(f),
                 result: Default::default(),
+                marker: PhantomData,
             },
         }
     }
 
     /// Sets the callee function for the new fiber.
-    pub fn proc<F>(self, f: F) -> Builder<FiberProc<F>>
+    pub fn proc<'f, F>(self, f: F) -> Builder<FiberProc<'f, F>>
     where
         F: FnOnce(),
-        F: 'static,
+        F: 'f,
     {
         Builder {
             name: self.name,
             attr: self.attr,
-            f: FiberProc { f: Box::new(f) },
+            f: FiberProc {
+                f: Box::new(f),
+                marker: PhantomData,
+            },
         }
     }
 }
@@ -494,7 +498,7 @@ where
             lua::lua_pushstring(l, c_ptr!("fiber"));
             impl_details::guarded_pcall(l, 1, 1)?;
             lua::lua_getfield(l, -1, c_ptr!("new"));
-            tlua::push_some_userdata(l, callee.into_inner());
+            impl_details::push_userdata(l, callee.into_inner());
             lua::lua_pushcclosure(l, Self::trampoline, 1);
             impl_details::guarded_pcall(l, 1, 1)
                 .map_err(|e| {
@@ -546,14 +550,14 @@ where
 ////////////////////////////////////////////////////////////////////////////////
 
 #[derive(PartialEq, Eq, Hash)]
-pub struct LuaJoinHandle<T> {
+pub struct LuaJoinHandle<'f, T> {
     fiber_ref: Option<i32>,
-    marker: PhantomData<T>,
+    marker: PhantomData<(&'f (), T)>,
 }
 
-impl_debug_stub!{LuaJoinHandle<T>}
+impl_debug_stub!{LuaJoinHandle<'f, T>}
 
-impl<T> LuaJoinHandle<T> {
+impl<'f, T> LuaJoinHandle<'f, T> {
     fn new(fiber_ref: i32) -> Self {
         Self { fiber_ref: Some(fiber_ref), marker: PhantomData }
     }
@@ -576,7 +580,7 @@ impl<T> LuaJoinHandle<T> {
     }
 }
 
-impl<T> Drop for LuaJoinHandle<T> {
+impl<'f, T> Drop for LuaJoinHandle<'f, T> {
     fn drop(&mut self) {
         if self.fiber_ref.is_some() {
             panic!("LuaJoinHandle dropped before being joined")
@@ -589,15 +593,19 @@ impl<T> Drop for LuaJoinHandle<T> {
 ////////////////////////////////////////////////////////////////////////////////
 
 #[derive(PartialEq, Eq, Hash)]
-pub struct LuaUnitJoinHandle {
+pub struct LuaUnitJoinHandle<'f> {
     fiber_ref: Option<i32>,
+    marker: PhantomData<&'f ()>,
 }
 
-impl_debug_stub!{LuaUnitJoinHandle}
+impl_debug_stub!{LuaUnitJoinHandle<'f>}
 
-impl LuaUnitJoinHandle {
+impl<'f> LuaUnitJoinHandle<'f> {
     fn new(fiber_ref: i32) -> Self {
-        Self { fiber_ref: Some(fiber_ref) }
+        Self {
+            fiber_ref: Some(fiber_ref),
+            marker: PhantomData,
+        }
     }
 
     pub fn join(mut self) {
@@ -609,7 +617,7 @@ impl LuaUnitJoinHandle {
     }
 }
 
-impl Drop for LuaUnitJoinHandle {
+impl<'f> Drop for LuaUnitJoinHandle<'f> {
     fn drop(&mut self) {
         if self.fiber_ref.is_some() {
             panic!("LuaUnitJoinHandle dropped before being joined")
@@ -699,6 +707,43 @@ mod impl_details {
     //     lua::lua_settop(lptr, top_before);
     //     res
     // }
+
+    /// # Safety
+    /// **WARNING** this function is super unsafe in case `T` is not 'static.
+    /// It's used to implement non-static fibers which is safe because the
+    /// lifetime of `T` is captured in the join handle and so the compiler will
+    /// make sure the fiber is joined before the referenced data is dropped.
+    /// Keep this in mind if you want to use this function
+    pub(super) unsafe fn push_userdata<T>(lua: tlua::LuaState, value: T) {
+        use tlua::ffi;
+        type UDBox<T> = Option<T>;
+        let ud_ptr = ffi::lua_newuserdata(lua, std::mem::size_of::<UDBox<T>>());
+        std::ptr::write(ud_ptr.cast::<UDBox<T>>(), Some(value));
+
+        if std::mem::needs_drop::<T>() {
+            // Creating a metatable.
+            ffi::lua_newtable(lua);
+
+            // Index "__gc" in the metatable calls the object's destructor.
+            ffi::lua_pushstring(lua, c_ptr!("__gc"));
+            ffi::lua_pushcfunction(lua, wrap_gc::<T>);
+            ffi::lua_settable(lua, -3);
+
+            ffi::lua_setmetatable(lua, -2);
+        }
+
+        /// A callback for the "__gc" event. It checks if the value was moved out
+        /// and if not it drops the value.
+        unsafe extern "C" fn wrap_gc<T>(lua: *mut ffi::lua_State) -> i32 {
+            let ud_ptr = ffi::lua_touserdata(lua, 1);
+            let ud = ud_ptr.cast::<UDBox<T>>()
+                .as_mut()
+                .expect("__gc called with userdata pointing to NULL");
+            drop(ud.take());
+
+            0
+        }
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -707,7 +752,7 @@ mod impl_details {
 
 pub trait LuaCallee {
     /// Type of the callee
-    type Function: FnOnce() -> Self::Output + 'static;
+    type Function: FnOnce() -> Self::Output;
 
     /// Return type of the callee
     type Output;
@@ -734,20 +779,32 @@ pub trait LuaCallee {
 /// LuaFiberFunc
 ////////////////////////////////////////////////////////////////////////////////
 
-pub struct LuaFiberFunc<F>(pub F);
+pub struct LuaFiberFunc<'f, F> {
+    f: F,
+    marker: PhantomData<&'f ()>,
+}
 
-impl<F, T> LuaCallee for LuaFiberFunc<F>
+impl<'f, F> LuaFiberFunc<'f, F> {
+    pub fn new(f: F) -> Self {
+        Self {
+            f,
+            marker: PhantomData,
+        }
+    }
+}
+
+impl<'f, F, T> LuaCallee for LuaFiberFunc<'f, F>
 where
     F: FnOnce() -> T,
-    F: 'static,
-    T: 'static,
+    F: 'f,
+    T: 'f,
 {
     type Function = F;
     type Output = T;
-    type JoinHandle = LuaJoinHandle<T>;
+    type JoinHandle = LuaJoinHandle<'f, T>;
 
     fn into_inner(self) -> F {
-        self.0
+        self.f
     }
 
     fn join_handle(fiber_ref: i32) -> Self::JoinHandle {
@@ -755,7 +812,7 @@ where
     }
 
     unsafe fn save_result(l: *mut lua::lua_State, res: T) -> i32 {
-        tlua::push_some_userdata(l, res);
+        impl_details::push_userdata(l, res);
         1
     }
 }
@@ -764,23 +821,35 @@ where
 /// LuaFiberProc
 ////////////////////////////////////////////////////////////////////////////////
 
-pub struct LuaFiberProc<F>(pub F);
+pub struct LuaFiberProc<'f, F> {
+    f: F,
+    marker: PhantomData<&'f ()>,
+}
 
-impl<F> LuaCallee for LuaFiberProc<F>
+impl<'f, F> LuaFiberProc<'f, F> {
+    pub fn new(f: F) -> Self {
+        Self {
+            f,
+            marker: PhantomData,
+        }
+    }
+}
+
+impl<'f, F> LuaCallee for LuaFiberProc<'f, F>
 where
     F: FnOnce(),
-    F: 'static,
+    F: 'f,
 {
     type Function = F;
     type Output = ();
-    type JoinHandle = LuaUnitJoinHandle;
+    type JoinHandle = LuaUnitJoinHandle<'f>;
 
     fn join_handle(fiber_ref: i32) -> Self::JoinHandle {
         LuaUnitJoinHandle::new(fiber_ref)
     }
 
     fn into_inner(self) -> F {
-        self.0
+        self.f
     }
 
     unsafe fn save_result(_: *mut lua::lua_State, _: ()) -> i32 {
@@ -839,21 +908,23 @@ pub struct NoFunc;
 
 /// This is a helper type used to configure [`Fyber`] with the appropriate
 /// behavior for the fiber function that returns a value.
-pub struct FiberFunc<F, T>
+pub struct FiberFunc<'f, F, T>
 where
     F: FnOnce() -> T,
+    F: 'f,
 {
     f: Box<F>,
     result: Box<UnsafeCell<Option<T>>>,
+    marker: PhantomData<&'f ()>,
 }
 
-impl<F, T> Callee for FiberFunc<F, T>
+impl<'f, F, T> Callee for FiberFunc<'f, F, T>
 where
     F: FnOnce() -> T,
-    F: 'static,
-    T: 'static,
+    F: 'f,
+    T: 'f,
 {
-    type JoinHandle = JoinHandle<T>;
+    type JoinHandle = JoinHandle<'f, T>;
     type Args = (Box<F>, *mut Option<T>);
 
     unsafe fn start_fiber(self, inner: NonNull<ffi::Fiber>) -> Self::JoinHandle {
@@ -875,19 +946,20 @@ where
 
 /// This is a helper type used to configure [`Fyber`] with the appropriate
 /// behavior for the fiber procedure (function which doens't return a value).
-pub struct FiberProc<F>
+pub struct FiberProc<'f, F>
 where
     F: FnOnce(),
 {
     f: Box<F>,
+    marker: PhantomData<&'f ()>,
 }
 
-impl<F> Callee for FiberProc<F>
+impl<'f, F> Callee for FiberProc<'f, F>
 where
     F: FnOnce(),
-    F: 'static,
+    F: 'f,
 {
-    type JoinHandle = UnitJoinHandle;
+    type JoinHandle = UnitJoinHandle<'f>;
     type Args = Box<F>;
 
     unsafe fn start_fiber(self, inner: NonNull<ffi::Fiber>) -> Self::JoinHandle {
@@ -959,17 +1031,22 @@ impl Invocation for Deferred {
 ////////////////////////////////////////////////////////////////////////////////
 
 /// An owned permission to join on an immediate fiber (block on its termination).
-pub struct JoinHandle<T> {
+pub struct JoinHandle<'f, T> {
     inner: Option<NonNull<ffi::Fiber>>,
     result: Box<UnsafeCell<Option<T>>>,
+    marker: PhantomData<&'f ()>,
 }
 
-impl_debug_stub!{JoinHandle<T>}
-impl_eq_hash!{JoinHandle<T>}
+impl_debug_stub!{JoinHandle<'f, T>}
+impl_eq_hash!{JoinHandle<'f, T>}
 
-impl<T> JoinHandle<T> {
+impl<'f, T> JoinHandle<'f, T> {
     fn new(inner: NonNull<ffi::Fiber>, result: Box<UnsafeCell<Option<T>>>) -> Self {
-        Self { inner: Some(inner), result }
+        Self {
+            inner: Some(inner),
+            result,
+            marker: PhantomData,
+        }
     }
 
     /// Block until the fiber's termination and return it's result value.
@@ -983,7 +1060,7 @@ impl<T> JoinHandle<T> {
     }
 }
 
-impl<T> Drop for JoinHandle<T> {
+impl<'f, T> Drop for JoinHandle<'f, T> {
     fn drop(&mut self) {
         if self.inner.is_some() {
             panic!("JoinHandle dropped before being joined")
@@ -998,16 +1075,20 @@ impl<T> Drop for JoinHandle<T> {
 /// An owned permission to join on an immediate fiber (block on its termination).
 ///
 /// This is an optimized case of [`JoinHandle`]`<()>`.
-pub struct UnitJoinHandle {
+pub struct UnitJoinHandle<'f> {
     inner: Option<NonNull<ffi::Fiber>>,
+    marker: PhantomData<&'f ()>,
 }
 
-impl_debug_stub!{UnitJoinHandle}
-impl_eq_hash!{UnitJoinHandle}
+impl_debug_stub!{UnitJoinHandle<'f>}
+impl_eq_hash!{UnitJoinHandle<'f>}
 
-impl UnitJoinHandle {
+impl<'f> UnitJoinHandle<'f> {
     fn new(inner: NonNull<ffi::Fiber>) -> Self {
-        Self { inner: Some(inner) }
+        Self {
+            inner: Some(inner),
+            marker: PhantomData,
+        }
     }
 
     /// Block until the fiber's termination.
@@ -1019,7 +1100,7 @@ impl UnitJoinHandle {
     }
 }
 
-impl Drop for UnitJoinHandle {
+impl<'f> Drop for UnitJoinHandle<'f> {
     fn drop(&mut self) {
         if self.inner.is_some() {
             panic!("UnitJoinHandle dropped before being joined")
@@ -1081,11 +1162,11 @@ impl TrampolineArgs for VaList {
 /// This will create a fiber using default parameters of [`Builder`], if you
 /// want to specify the stack size or the name of the thread, use this API
 /// instead.
-pub fn start<F, T>(f: F) -> JoinHandle<T>
+pub fn start<'f, F, T>(f: F) -> JoinHandle<'f, T>
 where
     F: FnOnce() -> T,
-    F: 'static,
-    T: 'static,
+    F: 'f,
+    T: 'f,
 {
     Builder::new().func(f).start().unwrap()
 }
@@ -1099,10 +1180,10 @@ where
 /// should always be used instead of the latter.
 ///
 /// For more details see: [`start`]
-pub fn start_proc<F>(f: F) -> UnitJoinHandle
+pub fn start_proc<'f, F>(f: F) -> UnitJoinHandle<'f>
 where
     F: FnOnce(),
-    F: 'static,
+    F: 'f,
 {
     Builder::new().proc(f).start().unwrap()
 }
@@ -1118,13 +1199,13 @@ where
 ///
 /// The new fiber can be joined by calling [`LuaJoinHandle::join`] method on
 /// it's join handle.
-pub fn defer<F, T>(f: F) -> LuaJoinHandle<T>
+pub fn defer<'f, F, T>(f: F) -> LuaJoinHandle<'f, T>
 where
     F: FnOnce() -> T,
-    F: 'static,
-    T: 'static,
+    F: 'f,
+    T: 'f,
 {
-    LuaFiber::new(LuaFiberFunc(f)).spawn().unwrap()
+    LuaFiber::new(LuaFiberFunc::new(f)).spawn().unwrap()
 }
 
 /// Creates a new proc fiber and schedules it for execution, returning a
@@ -1137,12 +1218,12 @@ where
 /// it's join handle.
 ///
 /// This is an optimized version [`defer`]`<F, ()>`.
-pub fn defer_proc<F>(f: F) -> LuaUnitJoinHandle
+pub fn defer_proc<'f, F>(f: F) -> LuaUnitJoinHandle<'f>
 where
     F: FnOnce(),
-    F: 'static,
+    F: 'f,
 {
-    LuaFiber::new(LuaFiberProc(f)).spawn().unwrap()
+    LuaFiber::new(LuaFiberProc::new(f)).spawn().unwrap()
 }
 
 /// Make it possible or not possible to wakeup the current

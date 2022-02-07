@@ -238,7 +238,7 @@ pub fn start_error() {
         "#
     );
 
-    match fiber::LuaFiber::new(fiber::LuaFiberFunc(|| ())).spawn() {
+    match fiber::LuaFiber::new(fiber::LuaFiberFunc::new(|| ())).spawn() {
         Err(e) => assert_eq!(
             format!("{}", e),
             "Lua error: Execution error: Artificial error"
@@ -265,7 +265,7 @@ pub fn require_error() {
         "#
     );
 
-    match fiber::LuaFiber::new(fiber::LuaFiberFunc(|| ())).spawn() {
+    match fiber::LuaFiber::new(fiber::LuaFiberFunc::new(|| ())).spawn() {
         Err(e) => assert_eq!(
             format!("{}", e),
             "Lua error: Execution error: Artificial require error"
@@ -413,5 +413,57 @@ pub fn lua_thread() {
 
     drop(l1_keep);
     drop(l2_keep);
+}
+
+pub fn lifetime() {
+    {
+        let mut v = vec![1, 2, 3];
+        let jh = fiber::start_proc(|| v[0] = 2);
+        jh.join();
+        assert_eq!(v, vec![2, 2, 3]);
+    }
+
+    // Doesn't compile
+    // {
+    //     let mut v = vec![1, 2, 3];
+    //     fiber::start_proc(|| v[0] = 2)
+    // }.join();
+
+    {
+        let v = vec![1, 2, 3];
+        let jh = fiber::start(|| v[0]);
+        assert_eq!(jh.join(), 1);
+    }
+
+    // Doesn't compile
+    // {
+    //     let v = vec![1, 2, 3];
+    //     fiber::start(|| v[0])
+    // }.join();
+
+    {
+        let mut v = vec![1, 2, 3];
+        let jh = fiber::defer_proc(|| v[0] = 2);
+        jh.join();
+        assert_eq!(v, vec![2, 2, 3]);
+    }
+
+    // Doesn't compile
+    // {
+    //     let mut v = vec![1, 2, 3];
+    //     fiber::defer_proc(|| v[0] = 2)
+    // }.join();
+
+    {
+        let v = vec![1, 2, 3];
+        let jh = fiber::defer(|| v[0]);
+        assert_eq!(jh.join(), 1);
+    }
+
+    // Doesn't compile
+    // {
+    //     let v = vec![1, 2, 3];
+    //     fiber::defer(|| v[0])
+    // }.join();
 }
 
