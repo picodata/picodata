@@ -1,6 +1,8 @@
+mod network;
 mod node;
 mod storage;
 
+pub use network::ConnectionPool;
 pub use node::Node;
 use serde::{Deserialize, Serialize};
 use std::convert::TryFrom;

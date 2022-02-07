@@ -98,7 +98,7 @@ fn run_test(test_name: &str) -> Result<(), TestError> {
 
     let mut cmd = Command::cargo_bin("picodata").unwrap();
     cmd.current_dir(temp_path);
-    cmd.env("PICODATA_LISTEN", "0.0.0.0:0");
+    cmd.env("PICODATA_LISTEN", "127.0.0.1:0");
     cmd.arg("run");
     cmd.arg("-e");
     cmd.arg(format!("picolib.test.{}() os.exit(0)", test_name));
