@@ -1,3 +1,6 @@
+use serde::Serialize;
+use crate::error::Error;
+
 pub trait IntoClones<Tuple>: Clone {
     fn into_clones(self) -> Tuple;
 }
@@ -40,3 +43,10 @@ macro_rules! tuple_from_box_api {
     }
 }
 
+#[inline]
+pub fn rmp_to_vec<T>(val: &T) -> Result<Vec<u8>, Error>
+    where
+        T: Serialize + ?Sized
+{
+    Ok(rmp_serde::to_vec(val)?)
+}

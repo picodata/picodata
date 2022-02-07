@@ -469,6 +469,22 @@ impl Space {
         self.primary_key().update(key, ops)
     }
 
+    /// Update a tuple using `ops` already encoded in message pack format.
+    ///
+    /// This function is similar to [`update`](#method.update) but instead
+    /// of a generic type parameter `Op` it accepts preencoded message pack
+    /// values. This is usefull when the operations have values of different
+    /// types.
+    ///
+    /// Returns a new tuple.
+    #[inline(always)]
+    pub fn update_mp<K>(&mut self, key: &K, ops: &[Vec<u8>]) -> Result<Option<Tuple>, Error>
+    where
+        K: AsTuple,
+    {
+        self.primary_key().update_mp(key, ops)
+    }
+
     /// Update or insert a tuple.
     ///
     /// If there is an existing tuple which matches the key fields of tuple, then the request has the same effect as
@@ -492,3 +508,33 @@ impl Space {
         self.primary_key().upsert(value, ops)
     }
 }
+
+/// Update a tuple or index.
+///
+/// The helper macro with semantic same as `space.update()`/`index.update()` functions, but supports
+/// different types in `ops` argument.
+///
+/// - `target` - updated space or index.
+/// - `key` - encoded key in MsgPack Array format (`[part1, part2, ...]`).
+/// - `ops` - encoded operations in MsgPack array format, e.g. `[['=', field_id, 100], ['!', 2, 'xxx']]`
+///
+/// Returns a new tuple.
+///
+/// See also: [space.update()](#method.update)
+#[macro_export]
+macro_rules! update {
+        ($target:expr, $key: expr, $($op:expr),+ $(,)?) => {
+            {
+                use std::borrow::Borrow;
+                let mut f = || -> $crate::Result<::std::option::Option<$crate::tuple::Tuple>> {
+                    let ops = [
+                        $(
+                            $crate::util::rmp_to_vec($op.borrow())?,
+                        )+
+                    ];
+                    $target.update_mp($key.borrow(), &ops)
+                };
+                f()
+            }
+        };
+    }

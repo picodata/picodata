@@ -4,6 +4,7 @@ use tarantool::index::{IndexOptions, IteratorType};
 use tarantool::sequence::Sequence;
 use tarantool::space::{Space, SpaceCreateOptions, SystemSpace};
 use tarantool::tuple::Tuple;
+use tarantool::update;
 
 use crate::common::{QueryOperation, S1Record, S2Key, S2Record};
 
@@ -335,6 +336,92 @@ pub fn test_box_update() {
         output.unwrap().into_struct::<S1Record>().unwrap().text,
         "New"
     );
+}
+
+pub fn test_box_update_macro() {
+    let mut space = Space::find("test_s2").unwrap();
+
+    let input = S2Record {
+        id: 100,
+        key: "Original".to_string(),
+        value: "Original".to_string(),
+        a: 0,
+        b: 0
+    };
+    space.put(&input).unwrap();
+
+    let update_result = update!(
+            space,
+            (input.id,),
+            &("=", "key", "New"),
+            ("=", "value", "New"),
+            ("=", "a", 1),
+            &("=", "b", 2),
+        )
+        .unwrap();
+    assert!(update_result.is_some());
+
+    let updated = update_result
+        .unwrap()
+        .into_struct::<S2Record>().unwrap();
+    assert_eq!(updated.key, "New");
+    assert_eq!(updated.value, "New");
+    assert_eq!(updated.a, 1);
+    assert_eq!(updated.b, 2);
+
+    let output = space.get(&(input.id,))
+        .unwrap().unwrap()
+        .into_struct::<S2Record>().unwrap();
+    assert_eq!(output.key, "New");
+    assert_eq!(output.value, "New");
+    assert_eq!(output.a, 1);
+    assert_eq!(output.b, 2);
+}
+
+pub fn test_box_update_index_macro() {
+    let mut space = Space::find("test_s2").unwrap();
+
+    let input = S2Record {
+        id: 101,
+        key: "Original".to_string(),
+        value: "Original".to_string(),
+        a: 0,
+        b: 0
+    };
+    space.put(&input).unwrap();
+
+    let update_result = update!(
+            space.index("primary").unwrap(),
+            (input.id,),
+            ("=", "key", "NewKey"),
+            ("=", "a", 1),
+        )
+        .unwrap();
+    assert!(update_result.is_some());
+    let update_result = update!(
+            space.index("idx_1").unwrap(),
+            ("NewKey",),
+            ("=", "value", "New"),
+            ("=", "b", 2),
+        )
+        .unwrap();
+    assert!(update_result.is_some());
+
+    let updated = update_result
+        .unwrap()
+        .into_struct::<S2Record>().unwrap();
+    assert_eq!(updated.key, "NewKey");
+    assert_eq!(updated.value, "New");
+    assert_eq!(updated.a, 1);
+    assert_eq!(updated.b, 2);
+
+    let output = space.get(&(input.id,))
+        .unwrap().unwrap()
+        .into_struct::<S2Record>().unwrap();
+    assert_eq!(output.key, "NewKey");
+    assert_eq!(output.value, "New");
+    assert_eq!(output.a, 1);
+    assert_eq!(output.b, 2);
 }
 
 pub fn test_box_upsert() {

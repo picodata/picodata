@@ -7,6 +7,7 @@
 //! See also:
 //! - [Indexes](https://www.tarantool.io/en/doc/latest/book/box/data_model/#indexes)
 //! - [Lua reference: Submodule box.index](https://www.tarantool.io/en/doc/latest/reference/reference_lua/box_index/)
+use std::io::Write;
 use std::os::raw::c_char;
 use std::ptr::null_mut;
 use std::mem::MaybeUninit;
@@ -314,9 +315,27 @@ impl Index {
         K: AsTuple,
         Op: AsTuple,
     {
+        let mp_encoded_ops = ops.iter().try_fold(
+            Vec::with_capacity(ops.len()),
+            |mut v, op| -> crate::Result<Vec<Vec<u8>>> {
+                let buf = rmp_serde::to_vec(&op)?;
+                v.push(buf);
+                Ok(v)
+            })?;
+
+        self.update_mp(key, &mp_encoded_ops)
+    }
+
+    pub fn update_mp<K>(&mut self, key: &K, ops: &[Vec<u8>]) -> Result<Option<Tuple>, Error>
+        where
+            K: AsTuple,
+    {
         let key_buf = key.serialize_as_tuple().unwrap();
         let key_buf_ptr = key_buf.as_ptr() as *const c_char;
-        let ops_buf = ops.serialize_as_tuple().unwrap();
+        let mut buf = Vec::with_capacity(128);
+        rmp::encode::write_array_len(&mut buf, ops.len() as u32)?;
+        ops.iter().try_for_each(|op_buf| buf.write_all(op_buf))?;
+        let ops_buf: TupleBuffer = buf.into();
         let ops_buf_ptr = ops_buf.as_ptr() as *const c_char;
         tuple_from_box_api!(
             ffi::box_update[
