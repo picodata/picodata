@@ -63,6 +63,8 @@ build:
     - cargo build
     - cargo test
     - cargo fmt -- -v --check
+    - cargo clippy --version
+    - cargo clippy -- --deny clippy::all
   cache:
     paths:
       - target

@@ -40,7 +40,8 @@ impl Stash {
 }
 
 #[no_mangle]
-pub extern "C" fn luaopen_picolib(l: *mut std::ffi::c_void) -> c_int {
+#[allow(clippy::missing_safety_doc)]
+pub unsafe extern "C" fn luaopen_picolib(l: *mut std::ffi::c_void) -> c_int {
     // Perform box.cfg and other initialization.
     // It's disabled only for testing purposes.
     if std::env::var("PICOLIB_AUTORUN")
@@ -51,49 +52,47 @@ pub extern "C" fn luaopen_picolib(l: *mut std::ffi::c_void) -> c_int {
         main_run();
     }
 
-    unsafe {
-        let l = tlua::StaticLua::from_static(l);
-        let luamod: tlua::LuaTable<_> = (&l).push(vec![()]).read().unwrap();
-        luamod.set("VERSION", env!("CARGO_PKG_VERSION"));
+    let l = tlua::StaticLua::from_static(l);
+    let luamod: tlua::LuaTable<_> = (&l).push(vec![()]).read().unwrap();
+    luamod.set("VERSION", env!("CARGO_PKG_VERSION"));
 
-        //
-        // Export inner tests
-        {
-            let mut test = Vec::new();
-            for t in inventory::iter::<InnerTest> {
-                test.push((t.name, tlua::function0(t.body)));
-            }
-            luamod.set("test", test);
+    //
+    // Export inner tests
+    {
+        let mut test = Vec::new();
+        for t in inventory::iter::<InnerTest> {
+            test.push((t.name, tlua::function0(t.body)));
         }
+        luamod.set("test", test);
+    }
 
-        //
-        // Export public API
-        luamod.set("run", tlua::function0(main_run));
-        luamod.set(
-            "raft_propose_info",
-            tlua::function1(|x: String| raft_propose(Message::Info { msg: x })),
-        );
-        luamod.set(
-            "raft_propose_eval",
-            tlua::function1(|x: String| raft_propose(Message::EvalLua { code: x })),
-        );
-        {
-            l.exec(
-                r#"
+    //
+    // Export public API
+    luamod.set("run", tlua::function0(main_run));
+    luamod.set(
+        "raft_propose_info",
+        tlua::function1(|x: String| raft_propose(Message::Info { msg: x })),
+    );
+    luamod.set(
+        "raft_propose_eval",
+        tlua::function1(|x: String| raft_propose(Message::EvalLua { code: x })),
+    );
+    {
+        l.exec(
+            r#"
                 function inspect()
                     return
                         {raft_log = box.space.raft_log:fselect()},
                         {raft_state = box.space.raft_state:fselect()}
                 end
             "#,
-            )
-            .unwrap();
-        }
-
-        use tlua::AsLua;
-        (&l).push(&luamod).forget();
-        1
+        )
+        .unwrap();
     }
+
+    use tlua::AsLua;
+    (&l).push(&luamod).forget();
+    1
 }
 
 fn main_run() {

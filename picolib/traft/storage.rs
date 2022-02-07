@@ -161,9 +161,15 @@ impl Storage {
 
     pub fn hard_state() -> raft::HardState {
         let mut ret = raft::HardState::default();
-        Storage::term().map(|v| ret.term = v);
-        Storage::vote().map(|v| ret.vote = v);
-        Storage::commit().map(|v| ret.commit = v);
+        if let Some(term) = Storage::term() {
+            ret.term = term;
+        }
+        if let Some(vote) = Storage::vote() {
+            ret.vote = vote;
+        }
+        if let Some(commit) = Storage::commit() {
+            ret.commit = commit;
+        }
         ret
     }
 
@@ -210,10 +216,10 @@ impl raft::Storage for Storage {
 
         if let Some(row) = row {
             tlog!(Debug, "+++ term(idx={}) -> {:?}", idx, row.term);
-            return Ok(row.term);
+            Ok(row.term)
         } else {
             tlog!(Debug, "+++ term(idx={}) -> Unavailable", idx);
-            return Err(RaftError::Store(StorageError::Unavailable));
+            Err(RaftError::Store(StorageError::Unavailable))
         }
     }
 

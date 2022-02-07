@@ -133,7 +133,7 @@ fn on_ready(raft_group: &mut RawNode, handle_committed_data: fn(&[u8])) {
         // Raft HardState changed, and we need to persist it.
         // let hs = hs.clone();
         tlog!(Debug, "--- hard_state: {:?}", hs);
-        Storage::persist_hard_state(&hs);
+        Storage::persist_hard_state(hs);
         // store.wl().set_hardstate(hs);
     }
 

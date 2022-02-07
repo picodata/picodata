@@ -26,7 +26,7 @@ pub fn execve(argv: Vec<CString>, envp: Vec<CString>) -> errno::Errno {
 
 pub fn which(prog: &str) -> Option<path::PathBuf> {
     let path = std::env::var("PATH").unwrap_or_default();
-    for p in path.split(":") {
+    for p in path.split(':') {
         let pb: path::PathBuf = [p, prog].iter().collect();
         if pb.as_path().exists() {
             return Some(pb);
