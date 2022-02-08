@@ -19,6 +19,7 @@ fn positive() {
                 error(('Assertion failed: %q ~= %q'):format(l, r), 2)
             end
         end
+        assert_eq(os.environ()['PICODATA_PEER'], "127.0.0.1:3301")
         assert_eq(os.environ()['PICODATA_LISTEN'], "3301")
         assert_eq(os.environ()['PICODATA_DATA_DIR'], ".")
         "#,

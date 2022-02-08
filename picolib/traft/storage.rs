@@ -15,6 +15,7 @@ use crate::traft::row;
 
 pub struct Storage;
 
+const RAFT_GROUP: &str = "raft_group";
 const RAFT_STATE: &str = "raft_state";
 const RAFT_LOG: &str = "raft_log";
 
@@ -69,6 +70,7 @@ impl Storage {
                 is_local = true,
                 format = {
                     {name = 'raft_id', type = 'unsigned', is_nullable = false},
+                    {name = 'peer_uri', type = 'string', is_nullable = false},
                     -- {name = 'raft_role', type = 'string', is_nullable = false},
                     -- {name = 'instance_id', type = 'string', is_nullable = false},
                     -- {name = 'instance_uuid', type = 'string', is_nullable = false},
@@ -164,6 +166,14 @@ impl Storage {
         Ok(())
     }
 
+    pub fn persist_peers(peers: &[row::Peer]) {
+        let mut space = Space::find(RAFT_GROUP).unwrap();
+        space.truncate().unwrap();
+        for peer in peers {
+            space.insert(&(peer.raft_id, &peer.uri)).unwrap();
+        }
+    }
+
     pub fn entries(low: u64, high: u64) -> Result<Vec<raft::Entry>, StorageError> {
         let mut ret: Vec<raft::Entry> = vec![];
         let iter = Storage::space(RAFT_LOG)?
@@ -192,6 +202,21 @@ impl Storage {
         Ok(())
     }
 
+    pub fn conf_state() -> Result<raft::ConfState, StorageError> {
+        let mut ret = raft::ConfState::default();
+
+        let iter = Storage::space(RAFT_GROUP)?
+            .select(IteratorType::All, &())
+            .map_err(box_err!())?;
+
+        for tuple in iter {
+            let peer: row::Peer = tuple.into_struct().map_err(box_err!())?;
+            ret.mut_voters().push(peer.raft_id);
+        }
+
+        Ok(ret)
+    }
+
     pub fn hard_state() -> Result<raft::HardState, StorageError> {
         let mut ret = raft::HardState::default();
         if let Some(term) = Storage::term()? {
@@ -217,13 +242,9 @@ impl Storage {
 
 impl raft::Storage for Storage {
     fn initial_state(&self) -> Result<raft::RaftState, RaftError> {
-        let hs = Storage::hard_state()?;
-
         // See also: https://github.com/etcd-io/etcd/blob/main/raft/raftpb/raft.pb.go
-        let cs = raft::ConfState {
-            voters: vec![1],
-            ..Default::default()
-        };
+        let hs = Storage::hard_state()?;
+        let cs = Storage::conf_state()?;
 
         let ret = raft::RaftState::new(hs, cs);
         Ok(ret)

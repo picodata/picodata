@@ -90,7 +90,8 @@ pub unsafe extern "C" fn luaopen_picolib(l: *mut std::ffi::c_void) -> c_int {
                 function inspect()
                     return
                         {raft_log = box.space.raft_log:fselect()},
-                        {raft_state = box.space.raft_state:fselect()}
+                        {raft_state = box.space.raft_state:fselect()},
+                        {raft_group = box.space.raft_group:fselect()}
                 end
             "#,
         )
@@ -115,12 +116,11 @@ fn main_run() {
         ..Default::default()
     };
 
-    std::env::var("PICODATA_DATA_DIR").ok().map(|v| {
+    if let Ok(v) = std::env::var("PICODATA_DATA_DIR") {
         std::fs::create_dir_all(&v).unwrap();
         cfg.wal_dir = v.clone();
-        cfg.memtx_dir = v.clone();
-        Some(v)
-    });
+        cfg.memtx_dir = v;
+    };
 
     tarantool::set_cfg(&cfg);
     tarantool::eval(
@@ -165,6 +165,19 @@ fn main_run() {
             },
         }
     };
+
+    if let Ok(peers) = std::env::var("PICODATA_PEER") {
+        // This is a temporary hack until fair joining is implemented
+        let peers: Vec<_> = peers
+            .split(',')
+            .enumerate()
+            .map(|(i, x)| traft::row::Peer {
+                raft_id: (i + 1) as u64,
+                uri: x.to_owned(),
+            })
+            .collect();
+        traft::Storage::persist_peers(&peers);
+    }
 
     let raft_cfg = raft::Config {
         id: raft_id,

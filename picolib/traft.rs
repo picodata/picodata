@@ -8,9 +8,11 @@ pub use storage::Storage;
 pub mod row {
     mod entry;
     mod message;
+    mod peer;
 
     pub use entry::Entry;
     pub use message::Message;
+    pub use peer::Peer;
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, Hash, PartialEq, Eq)]

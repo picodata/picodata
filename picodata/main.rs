@@ -66,6 +66,8 @@ fn main_run(matches: &clap::ArgMatches) {
         envp.insert("PICODATA_PEER".into(), peer);
     }
 
+    envp.entry("PICODATA_PEER".into())
+        .or_insert_with(|| "127.0.0.1:3301".into());
     envp.entry("PICODATA_LISTEN".into())
         .or_insert_with(|| "3301".into());
     envp.entry("PICODATA_DATA_DIR".into())
