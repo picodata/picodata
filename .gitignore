@@ -1,5 +1,6 @@
 /target
 Cargo.lock
 
+.rocks
 *.snap
 *.xlog

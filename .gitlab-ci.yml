@@ -65,6 +65,8 @@ build:
     - cargo fmt -- -v --check
     - cargo clippy --version
     - cargo clippy -- --deny clippy::all
+    - luacheck .
+    - luatest -v
   cache:
     paths:
       - target

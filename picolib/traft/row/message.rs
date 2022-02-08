@@ -8,6 +8,7 @@ use crate::traft::row;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct Message {
+    // See also https://pkg.go.dev/go.etcd.io/etcd/raft/v3#hdr-MessageType
     pub msg_type: String,
     pub to: u64,
     pub from: u64,
