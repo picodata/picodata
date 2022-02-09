@@ -1,5 +1,6 @@
 use ::raft::prelude as raft;
 use ::tarantool::tlua;
+use indoc::indoc;
 use std::os::raw::c_int;
 
 mod error;
@@ -151,9 +152,11 @@ fn main_run() {
             Some(snap_id) => match args_id {
                 Some(args_id) if args_id != snap_id => {
                     panic!(
-                        "Already initialized with a different PICODATA_RAFT_ID:
-  snapshot: {s}
- from args: {a}",
+                        indoc! {"
+                            Already initialized with a different PICODATA_RAFT_ID:
+                              snapshot: {s}
+                             from args: {a}
+                        "},
                         s = snap_id,
                         a = args_id
                     )
