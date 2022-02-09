@@ -55,12 +55,12 @@ inventory::submit!(crate::InnerTest {
         assert_eq!(ser((Message::Empty,)), json!([["empty"]]));
 
         let msg = Message::Info {
-            msg: "hello, serde!".to_owned(),
+            msg: "hello, serde!".into(),
         };
         assert_eq!(ser((msg,)), json!([["info", "hello, serde!"]]));
 
         let msg = Message::EvalLua {
-            code: "return true".to_owned(),
+            code: "return true".into(),
         };
         assert_eq!(ser((msg,)), json!([["eval_lua", "return true"]]));
 
@@ -72,13 +72,11 @@ inventory::submit!(crate::InnerTest {
         let buf: Vec<u8> = rmp_serde::to_vec(&("info", "xxx")).unwrap();
         assert_eq!(
             Message::try_from(buf.as_ref()).unwrap(),
-            Message::Info {
-                msg: "xxx".to_owned()
-            }
+            Message::Info { msg: "xxx".into() }
         );
 
         let msg = Message::EvalLua {
-            code: "os.exit()".to_owned(),
+            code: "os.exit()".into(),
         };
         let buf: Vec<u8> = Vec::from(&msg);
         assert_eq!(
@@ -93,7 +91,7 @@ inventory::submit!(crate::InnerTest {
         let buf = [0xCCu8]; // truncated u8
         assert_eq!(
             Message::try_from(&buf as &[u8]).map_err(|e| format!("{e}")),
-            Err("IO error while reading data: failed to fill whole buffer".to_owned())
+            Err("IO error while reading data: failed to fill whole buffer".into())
         );
     }
 });

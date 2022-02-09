@@ -143,23 +143,23 @@ inventory::submit!(crate::InnerTest {
 
         assert_eq!(
             raft::Message::try_from(Message {
-                msg_type: "MsgUnknown".to_owned(),
+                msg_type: "MsgUnknown".into(),
                 ..Default::default()
             })
             .map_err(|e| format!("{e}")),
-            Err("unknown message type \"MsgUnknown\"".to_owned())
+            Err("unknown message type \"MsgUnknown\"".into())
         );
 
         assert_eq!(
             raft::Message::try_from(Message {
                 entries: vec![row::Entry {
-                    entry_type: "EntryUnknown".to_owned(),
+                    entry_type: "EntryUnknown".into(),
                     ..Default::default()
                 }],
                 ..Default::default()
             })
             .map_err(|e| format!("{e}")),
-            Err("unknown entry type \"EntryUnknown\"".to_owned())
+            Err("unknown entry type \"EntryUnknown\"".into())
         );
     }
 });

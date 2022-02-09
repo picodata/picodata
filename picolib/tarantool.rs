@@ -45,9 +45,9 @@ pub struct Cfg {
 impl Default for Cfg {
     fn default() -> Self {
         Self {
-            listen: Some("3301".to_owned()),
-            wal_dir: ".".to_owned(),
-            memtx_dir: ".".to_owned(),
+            listen: Some("3301".into()),
+            wal_dir: ".".into(),
+            memtx_dir: ".".into(),
             feedback_enabled: false,
         }
     }

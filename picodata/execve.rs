@@ -69,7 +69,7 @@ mod test {
         drop(_savepoint);
         assert_ne!(
             std::env::var("PATH").ok(),
-            Some("ensure:savepoint:works".to_owned())
+            Some("ensure:savepoint:works".into())
         );
 
         Ok(())

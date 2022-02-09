@@ -63,13 +63,13 @@ fn main_run(matches: &clap::ArgMatches) {
     if let Some(peer) = matches.values_of("peer") {
         let append = |s: String, str| if s.is_empty() { s + str } else { s + "," + str };
         let peer = peer.fold(String::new(), append);
-        envp.insert("PICODATA_PEER".to_owned(), peer);
+        envp.insert("PICODATA_PEER".into(), peer);
     }
 
-    envp.entry("PICODATA_LISTEN".to_owned())
-        .or_insert_with(|| "3301".to_owned());
-    envp.entry("PICODATA_DATA_DIR".to_owned())
-        .or_insert_with(|| ".".to_owned());
+    envp.entry("PICODATA_LISTEN".into())
+        .or_insert_with(|| "3301".into());
+    envp.entry("PICODATA_DATA_DIR".into())
+        .or_insert_with(|| ".".into());
 
     let bypass_vars = [
         "cluster-id",
@@ -82,7 +82,7 @@ fn main_run(matches: &clap::ArgMatches) {
     for var in bypass_vars {
         if let Some(v) = matches.value_of(var) {
             let k = format!("PICODATA_{}", var.to_uppercase().replace("-", "_"));
-            envp.insert(k, v.to_owned());
+            envp.insert(k, v.into());
         }
     }
 
@@ -102,7 +102,7 @@ fn main_run(matches: &clap::ArgMatches) {
         p.into_os_string().into_string().unwrap()
     };
 
-    envp.entry("LUA_CPATH".to_owned())
+    envp.entry("LUA_CPATH".into())
         .and_modify(|v| *v = format!("{};{}", cpath, v))
         .or_insert(cpath);
 

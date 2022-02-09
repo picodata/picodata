@@ -89,30 +89,26 @@ inventory::submit!(crate::InnerTest {
         );
 
         assert_eq!(
-            ser(Entry::new(Message::Info {
-                msg: "!".to_owned()
-            })),
+            ser(Entry::new(Message::Info { msg: "!".into() })),
             json!(["EntryNormal", 0u64, 0u64, ["info", "!"]])
         );
 
         assert_eq!(
             ser(Entry {
-                entry_type: "EntryNormal".to_owned(),
+                entry_type: "EntryNormal".into(),
                 index: 1001,
                 term: 1002,
                 msg: Message::EvalLua {
-                    code: "return nil".to_owned(),
+                    code: "return nil".into(),
                 },
             }),
             json!(["EntryNormal", 1001u64, 1002u64, ["eval_lua", "return nil"]])
         );
 
-        let msg = Message::Info {
-            msg: "?".to_owned(),
-        };
+        let msg = Message::Info { msg: "?".into() };
         assert_eq!(
             raft::Entry::try_from(self::Entry {
-                entry_type: "EntryConfChangeV2".to_owned(),
+                entry_type: "EntryConfChangeV2".into(),
                 index: 99,
                 term: 2,
                 msg: msg.clone(),
@@ -131,12 +127,12 @@ inventory::submit!(crate::InnerTest {
         ///////////////////////////////////////////////////////////////////////
 
         let row = self::Entry {
-            entry_type: "EntryUnknown".to_owned(),
+            entry_type: "EntryUnknown".into(),
             ..Default::default()
         };
         assert_eq!(
             raft::Entry::try_from(row).map_err(|e| format!("{e}")),
-            Err("unknown entry type \"EntryUnknown\"".to_owned())
+            Err("unknown entry type \"EntryUnknown\"".into())
         );
 
         assert_eq!(
