@@ -8,14 +8,27 @@ use ::tarantool::space::Space;
 use ::tarantool::tuple::Tuple;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
+use thiserror::Error;
 
 use crate::tlog;
 use crate::traft::row;
 
 pub struct Storage;
 
-pub const SPACE_RAFT_STATE: &str = "raft_state";
-pub const SPACE_RAFT_LOG: &str = "raft_log";
+const RAFT_STATE: &str = "raft_state";
+const RAFT_LOG: &str = "raft_log";
+
+#[derive(Debug, Error)]
+enum Error {
+    #[error("no such space \"{0}\"")]
+    NoSuchSpace(String),
+}
+
+macro_rules! box_err {
+    () => {
+        |e| StorageError::Other(Box::new(e))
+    };
+}
 
 impl Storage {
     pub fn init_schema() {
@@ -71,76 +84,84 @@ impl Storage {
         );
     }
 
-    fn persist_raft_state<T: Serialize>(key: &str, value: T) {
-        Space::find(SPACE_RAFT_STATE)
-            .unwrap()
-            .replace(&(key, value))
-            .unwrap();
+    fn space(name: &str) -> Result<Space, StorageError> {
+        Space::find(name)
+            .ok_or_else(|| Error::NoSuchSpace(name.into()))
+            .map_err(box_err!())
     }
 
-    fn raft_state<T: DeserializeOwned>(key: &str) -> Option<T> {
-        Space::find(SPACE_RAFT_STATE)?
+    fn persist_raft_state<T: Serialize>(key: &str, value: T) -> Result<(), StorageError> {
+        Storage::space(RAFT_STATE)?
+            .put(&(key, value))
+            .map_err(box_err!())?;
+        Ok(())
+    }
+
+    fn raft_state<T: DeserializeOwned>(key: &str) -> Result<Option<T>, StorageError> {
+        let tuple: Option<Tuple> = Storage::space(RAFT_STATE)?
             .get(&(key,))
-            .unwrap()?
-            .field(1)
-            .unwrap()
+            .map_err(box_err!())?;
+
+        match tuple {
+            Some(t) => t.field(1).map_err(box_err!()),
+            None => Ok(None),
+        }
     }
 
-    pub fn id() -> Option<u64> {
+    pub fn id() -> Result<Option<u64>, StorageError> {
         Storage::raft_state("id")
     }
 
-    pub fn term() -> Option<u64> {
+    pub fn term() -> Result<Option<u64>, StorageError> {
         Storage::raft_state("term")
     }
 
-    pub fn vote() -> Option<u64> {
+    pub fn vote() -> Result<Option<u64>, StorageError> {
         Storage::raft_state("vote")
     }
 
-    pub fn commit() -> Option<u64> {
+    pub fn commit() -> Result<Option<u64>, StorageError> {
         Storage::raft_state("commit")
     }
 
-    pub fn applied() -> Option<u64> {
+    pub fn applied() -> Result<Option<u64>, StorageError> {
         Storage::raft_state("applied")
     }
 
-    pub fn persist_commit(commit: u64) {
+    pub fn persist_commit(commit: u64) -> Result<(), StorageError> {
         Storage::persist_raft_state("commit", commit)
     }
 
-    pub fn persist_applied(applied: u64) {
+    pub fn persist_applied(applied: u64) -> Result<(), StorageError> {
         Storage::persist_raft_state("applied", applied)
     }
 
-    pub fn persist_term(term: u64) {
+    pub fn persist_term(term: u64) -> Result<(), StorageError> {
         Storage::persist_raft_state("term", term)
     }
 
-    pub fn persist_vote(vote: u64) {
+    pub fn persist_vote(vote: u64) -> Result<(), StorageError> {
         Storage::persist_raft_state("vote", vote)
     }
 
-    pub fn persist_id(id: u64) {
-        // We use `insert` instead of `replace` here
-        // because `id` can never be changed.
-        Space::find(SPACE_RAFT_STATE)
-            .unwrap()
+    pub fn persist_id(id: u64) -> Result<(), StorageError> {
+        Storage::space(RAFT_STATE)?
+            // We use `insert` instead of `replace` here
+            // because `id` can never be changed.
             .insert(&("id", id))
-            .unwrap();
+            .map_err(box_err!())?;
+
+        Ok(())
     }
 
     pub fn entries(low: u64, high: u64) -> Result<Vec<raft::Entry>, StorageError> {
         let mut ret: Vec<raft::Entry> = vec![];
-        let space = Space::find(SPACE_RAFT_LOG).unwrap();
-        let iter = space
-            .primary_key()
+        let iter = Storage::space(RAFT_LOG)?
             .select(IteratorType::GE, &(low,))
-            .unwrap();
+            .map_err(box_err!())?;
 
         for tuple in iter {
-            let row: row::Entry = tuple.into_struct().unwrap();
+            let row: row::Entry = tuple.into_struct().map_err(box_err!())?;
             if row.index >= high {
                 break;
             }
@@ -151,38 +172,42 @@ impl Storage {
         Ok(ret)
     }
 
-    pub fn persist_entries(entries: &[raft::Entry]) {
-        let mut space = Space::find(SPACE_RAFT_LOG).unwrap();
+    pub fn persist_entries(entries: &[raft::Entry]) -> Result<(), StorageError> {
+        let mut space = Storage::space(RAFT_LOG)?;
         for e in entries {
-            let row = row::Entry::try_from(e.clone()).unwrap();
-            space.insert(&row).unwrap();
+            let row = row::Entry::try_from(e.clone())?;
+            space.insert(&row).map_err(box_err!())?;
         }
+
+        Ok(())
     }
 
-    pub fn hard_state() -> raft::HardState {
+    pub fn hard_state() -> Result<raft::HardState, StorageError> {
         let mut ret = raft::HardState::default();
-        if let Some(term) = Storage::term() {
+        if let Some(term) = Storage::term()? {
             ret.term = term;
         }
-        if let Some(vote) = Storage::vote() {
+        if let Some(vote) = Storage::vote()? {
             ret.vote = vote;
         }
-        if let Some(commit) = Storage::commit() {
+        if let Some(commit) = Storage::commit()? {
             ret.commit = commit;
         }
-        ret
+
+        Ok(ret)
     }
 
-    pub fn persist_hard_state(hs: &raft::HardState) {
-        Storage::persist_term(hs.term);
-        Storage::persist_vote(hs.vote);
-        Storage::persist_commit(hs.commit);
+    pub fn persist_hard_state(hs: &raft::HardState) -> Result<(), StorageError> {
+        Storage::persist_term(hs.term)?;
+        Storage::persist_vote(hs.vote)?;
+        Storage::persist_commit(hs.commit)?;
+        Ok(())
     }
 }
 
 impl raft::Storage for Storage {
     fn initial_state(&self) -> Result<raft::RaftState, RaftError> {
-        let hs = Storage::hard_state();
+        let hs = Storage::hard_state()?;
 
         // See also: https://github.com/etcd-io/etcd/blob/main/raft/raftpb/raft.pb.go
         let cs = raft::ConfState {
@@ -191,7 +216,6 @@ impl raft::Storage for Storage {
         };
 
         let ret = raft::RaftState::new(hs, cs);
-        tlog!(Debug, "+++ initial_state() -> {:?}", ret);
         Ok(ret)
     }
 
@@ -209,16 +233,12 @@ impl raft::Storage for Storage {
             return Ok(0);
         }
 
-        let space = Space::find("raft_log").unwrap();
+        let tuple = Storage::space(RAFT_LOG)?.get(&(idx,)).map_err(box_err!())?;
 
-        let tuple = space.primary_key().get(&(idx,)).unwrap();
-        let row: Option<row::Entry> = tuple.and_then(|t| t.into_struct().unwrap());
-
-        if let Some(row) = row {
-            tlog!(Debug, "+++ term(idx={}) -> {:?}", idx, row.term);
+        if let Some(tuple) = tuple {
+            let row: row::Entry = tuple.into_struct().map_err(box_err!())?;
             Ok(row.term)
         } else {
-            tlog!(Debug, "+++ term(idx={}) -> Unavailable", idx);
             Err(RaftError::Store(StorageError::Unavailable))
         }
     }
@@ -228,12 +248,15 @@ impl raft::Storage for Storage {
     }
 
     fn last_index(&self) -> Result<u64, RaftError> {
-        let space: Space = Space::find("raft_log").unwrap();
-        let tuple: Option<Tuple> = space.primary_key().max(&()).unwrap();
-        let row: Option<row::Entry> = tuple.and_then(|t| t.into_struct().unwrap());
-        let ret: u64 = row.map(|row| row.index).unwrap_or(0);
+        let space: Space = Storage::space(RAFT_LOG)?;
+        let tuple: Option<Tuple> = space.primary_key().max(&()).map_err(box_err!())?;
 
-        Ok(ret)
+        if let Some(t) = tuple {
+            let row: row::Entry = t.into_struct().map_err(box_err!())?;
+            Ok(row.index)
+        } else {
+            Ok(0)
+        }
     }
 
     fn snapshot(&self, request_index: u64) -> Result<raft::Snapshot, RaftError> {
@@ -245,3 +268,124 @@ impl raft::Storage for Storage {
         unimplemented!();
     }
 }
+
+macro_rules! assert_err {
+    ($expr:expr, $err:tt) => {
+        assert_eq!($expr.map_err(|e| format!("{e}")), Err($err.into()))
+    };
+}
+
+inventory::submit!(crate::InnerTest {
+    name: "test_storage_log",
+    body: || {
+        use ::raft::Storage as _;
+        let test_entries = vec![raft::Entry {
+            term: 9u64,
+            index: 99u64,
+            ..Default::default()
+        }];
+
+        Storage::persist_entries(&test_entries).unwrap();
+
+        assert_eq!(Storage.first_index(), Ok(1));
+        assert_eq!(Storage.last_index(), Ok(99));
+        assert_eq!(Storage.term(99), Ok(9));
+        assert_eq!(Storage.entries(1, 99, u64::MAX), Ok(vec![]));
+        assert_eq!(Storage.entries(1, 100, u64::MAX), Ok(test_entries));
+
+        assert_eq!(
+            Storage.term(100).map_err(|e| format!("{e}")),
+            Err("log unavailable".into())
+        );
+
+        let mut raft_log = Storage::space("raft_log").unwrap();
+
+        raft_log
+            .put(&("EntryUnknown", 99, 1, vec!["empty"]))
+            .unwrap();
+        assert_err!(
+            Storage.entries(1, 100, u64::MAX),
+            "unknown error unknown entry type \"EntryUnknown\""
+        );
+
+        raft_log
+            .put(&("EntryNormal", 99, 1, vec!["unknown"]))
+            .unwrap();
+        assert_err!(
+            Storage.entries(1, 100, u64::MAX),
+            "unknown error \
+Failed to decode tuple: \
+unknown variant `unknown`, \
+expected one of `empty`, `info`, `eval_lua`"
+        );
+
+        raft_log.primary_key().drop().unwrap();
+        assert_err!(
+            Storage.entries(1, 100, u64::MAX),
+            "unknown error \
+Tarantool error: \
+NoSuchIndexID: \
+No index #0 is defined in space 'raft_log'"
+        );
+
+        raft_log.drop().unwrap();
+        assert_err!(
+            Storage.entries(1, 100, u64::MAX),
+            "unknown error no such space \"raft_log\""
+        );
+    }
+});
+
+inventory::submit!(crate::InnerTest {
+    name: "test_storage_state",
+    body: || {
+        use ::raft::Storage as _;
+
+        Storage::persist_term(9u64).unwrap();
+        Storage::persist_vote(1u64).unwrap();
+        Storage::persist_commit(98u64).unwrap();
+        Storage::persist_applied(97u64).unwrap();
+
+        let state = Storage.initial_state().unwrap();
+        assert_eq!(
+            state.hard_state,
+            raft::HardState {
+                term: 9,
+                vote: 1,
+                commit: 98,
+                ..Default::default()
+            }
+        );
+
+        let mut raft_state = Storage::space("raft_state").unwrap();
+
+        raft_state.delete(&("id",)).unwrap();
+        assert_eq!(Storage::id(), Ok(None));
+
+        Storage::persist_id(16).unwrap();
+        assert_err!(
+            Storage::persist_id(32),
+            "unknown error \
+Tarantool error: \
+TupleFound: \
+Duplicate key exists in unique index \"pk\" in space \"raft_state\" \
+with old tuple - [\"id\", 16] \
+and new tuple - [\"id\", 32]"
+        );
+
+        raft_state.primary_key().drop().unwrap();
+        assert_err!(
+            Storage::term(),
+            "unknown error \
+Tarantool error: \
+NoSuchIndexID: \
+No index #0 is defined in space 'raft_state'"
+        );
+
+        raft_state.drop().unwrap();
+        assert_err!(
+            Storage::commit(),
+            "unknown error no such space \"raft_state\""
+        );
+    }
+});

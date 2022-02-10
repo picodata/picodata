@@ -127,7 +127,7 @@ fn main_run() {
 
     let raft_id: u64 = {
         // The id already stored in tarantool snashot
-        let snap_id: Option<u64> = traft::Storage::id();
+        let snap_id: Option<u64> = traft::Storage::id().unwrap();
         // The id passed in env vars (or command line args)
         let args_id: Option<u64> = std::env::var("PICODATA_RAFT_ID")
             .and_then(|v| {
@@ -139,7 +139,7 @@ fn main_run() {
         match snap_id {
             None => {
                 let id: u64 = args_id.unwrap_or(1);
-                traft::Storage::persist_id(id);
+                traft::Storage::persist_id(id).unwrap();
                 id
             }
             Some(snap_id) => match args_id {
@@ -159,7 +159,7 @@ fn main_run() {
 
     let raft_cfg = raft::Config {
         id: raft_id,
-        applied: traft::Storage::applied().unwrap_or_default(),
+        applied: traft::Storage::applied().unwrap().unwrap_or_default(),
         ..Default::default()
     };
     let node = traft::Node::new(&raft_cfg, handle_committed_data).unwrap();

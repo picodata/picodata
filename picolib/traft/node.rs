@@ -93,7 +93,7 @@ fn raft_main(inbox: fiber::Channel<Request>, mut raw_node: RawNode, on_commit: f
 
         let handle_committed_entries = |committed_entries: Vec<raft::Entry>| {
             for entry in committed_entries {
-                Storage::persist_applied(entry.index);
+                Storage::persist_applied(entry.index).unwrap();
 
                 if entry.get_entry_type() == raft::EntryType::EntryNormal {
                     on_commit(entry.get_data())
@@ -107,13 +107,13 @@ fn raft_main(inbox: fiber::Channel<Request>, mut raw_node: RawNode, on_commit: f
 
         if !ready.entries().is_empty() {
             // Append entries to the Raft log.
-            Storage::persist_entries(ready.entries());
+            Storage::persist_entries(ready.entries()).unwrap();
         }
 
         if let Some(hs) = ready.hs() {
             // Raft HardState changed, and we need to persist it.
             // let hs = hs.clone();
-            Storage::persist_hard_state(hs);
+            Storage::persist_hard_state(hs).unwrap();
         }
 
         if !ready.persisted_messages().is_empty() {
@@ -126,7 +126,7 @@ fn raft_main(inbox: fiber::Channel<Request>, mut raw_node: RawNode, on_commit: f
 
         // Update commit index.
         if let Some(commit) = light_rd.commit_index() {
-            Storage::persist_commit(commit);
+            Storage::persist_commit(commit).unwrap();
         }
 
         // Send out the messages.
