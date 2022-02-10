@@ -53,7 +53,9 @@ impl Node {
                     raw_node.tick();
                 }
 
-                on_ready(&mut raw_node, handle_committed_data);
+                if raw_node.has_ready() {
+                    on_ready(&mut raw_node, handle_committed_data);
+                }
             }
         };
 
@@ -75,10 +77,6 @@ impl Node {
 }
 
 fn on_ready(raft_group: &mut RawNode, handle_committed_data: fn(&[u8])) {
-    if !raft_group.has_ready() {
-        return;
-    }
-
     tlog!(Debug, "vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv");
 
     // Get the `Ready` with `RawNode::ready` interface.
