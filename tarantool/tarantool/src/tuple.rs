@@ -207,6 +207,7 @@ impl AsTuple for () {
 
 impl<T> AsTuple for (T,) where T: Serialize {}
 impl<T> AsTuple for [T] where T: Serialize {}
+impl<T> AsTuple for Vec<T> where T: Serialize {}
 
 macro_rules! impl_array {
     ($($n:literal)+) => {
