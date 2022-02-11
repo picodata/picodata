@@ -19,6 +19,7 @@ use message::Message;
 use std::cell::Ref;
 use std::cell::RefCell;
 use std::convert::TryFrom;
+use std::time::Duration;
 
 #[derive(Default)]
 pub struct Stash {
@@ -75,7 +76,12 @@ pub unsafe extern "C" fn luaopen_picolib(l: *mut std::ffi::c_void) -> c_int {
     );
     luamod.set(
         "raft_propose_eval",
-        tlua::function1(|x: String| raft_propose(Message::EvalLua { code: x })),
+        tlua::function2(|timeout: f64, x: String| {
+            raft_propose_wait_applied(
+                Message::EvalLua { code: x },
+                Duration::from_secs_f64(timeout),
+            )
+        }),
     );
     {
         l.exec(
@@ -188,6 +194,16 @@ fn raft_propose(msg: Message) {
     tlog!(Debug, "propose {:?} ................................", msg);
     raft_node.propose(&msg);
     tlog!(Debug, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,");
+}
+
+fn raft_propose_wait_applied(msg: Message, timeout: Duration) -> bool {
+    let stash = Stash::access();
+    let raft_ref = stash.raft_node();
+    let raft_node = raft_ref.as_ref().expect("Picodata not running yet");
+    tlog!(Debug, "propose {:?} ................................", msg);
+    let res = raft_node.propose_wait_applied(&msg, timeout);
+    tlog!(Debug, ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,");
+    res
 }
 
 fn handle_committed_data(data: &[u8]) {

@@ -4,6 +4,7 @@ use serde::Serialize;
 use std::convert::TryFrom;
 
 use crate::error::CoercionError;
+use crate::traft::LogicalClock;
 use crate::Message;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -12,6 +13,8 @@ pub struct Entry {
     pub index: u64,
     pub term: u64,
     pub msg: Message,
+    #[serde(default)]
+    pub ctx: Option<LogicalClock>,
 }
 impl ::tarantool::tuple::AsTuple for Entry {}
 
@@ -24,6 +27,7 @@ impl TryFrom<raft::Entry> for self::Entry {
             index: e.get_index(),
             term: e.get_term(),
             msg: Message::try_from(e.get_data())?,
+            ctx: LogicalClock::try_from(e.get_context()).ok(),
         })
     }
 }
@@ -46,6 +50,11 @@ impl TryFrom<self::Entry> for raft::Entry {
         ret.set_term(row.term);
         let bytes: Vec<u8> = Vec::from(&row.msg);
         ret.set_data(bytes.into());
+
+        if let Some(ctx) = row.ctx {
+            let ctx: Vec<u8> = Vec::from(&ctx);
+            ret.set_context(ctx.into());
+        }
 
         Ok(ret)
     }
@@ -85,12 +94,12 @@ inventory::submit!(crate::InnerTest {
 
         assert_eq!(
             ser(Entry::default()),
-            json!(["EntryNormal", 0u64, 0u64, ["empty"]])
+            json!(["EntryNormal", 0u64, 0u64, ["empty"], null])
         );
 
         assert_eq!(
             ser(Entry::new(Message::Info { msg: "!".into() })),
-            json!(["EntryNormal", 0u64, 0u64, ["info", "!"]])
+            json!(["EntryNormal", 0u64, 0u64, ["info", "!"], null])
         );
 
         assert_eq!(
@@ -101,8 +110,38 @@ inventory::submit!(crate::InnerTest {
                 msg: Message::EvalLua {
                     code: "return nil".into(),
                 },
+                ctx: Some(LogicalClock {
+                    id: 1,
+                    gen: 2,
+                    count: 101
+                }),
             }),
-            json!(["EntryNormal", 1001u64, 1002u64, ["eval_lua", "return nil"]])
+            json!([
+                "EntryNormal",
+                1001u64,
+                1002u64,
+                ["eval_lua", "return nil"],
+                [1, 2, 101],
+            ])
+        );
+
+        assert_eq!(
+            ser(Entry {
+                entry_type: "EntryNormal".into(),
+                index: 1001,
+                term: 1002,
+                msg: Message::EvalLua {
+                    code: "return nil".into(),
+                },
+                ctx: None,
+            }),
+            json!([
+                "EntryNormal",
+                1001u64,
+                1002u64,
+                ["eval_lua", "return nil"],
+                null,
+            ])
         );
 
         let msg = Message::Info { msg: "?".into() };
@@ -112,6 +151,7 @@ inventory::submit!(crate::InnerTest {
                 index: 99,
                 term: 2,
                 msg: msg.clone(),
+                ctx: None,
             })
             .expect("coercing raft::Entry from self::Entry failed"),
             raft::Entry {

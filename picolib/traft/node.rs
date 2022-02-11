@@ -2,14 +2,18 @@ use ::raft::prelude as raft;
 use ::raft::Error as RaftError;
 use ::tarantool::fiber;
 use ::tarantool::util::IntoClones;
+use std::collections::HashMap;
+use std::convert::TryFrom;
 
 use std::time::Duration;
 use std::time::Instant;
 
 use crate::tlog;
+use crate::traft::LogicalClock;
 use crate::traft::Storage;
 
 type RawNode = raft::RawNode<Storage>;
+type Notify = fiber::Channel<()>;
 
 pub struct Node {
     _main_loop: fiber::LuaUnitJoinHandle,
@@ -18,7 +22,8 @@ pub struct Node {
 
 #[derive(Clone, Debug)]
 enum Request {
-    Propose(Vec<u8>),
+    Propose { data: Vec<u8> },
+    ProposeWaitApplied { data: Vec<u8>, notify: Notify },
     Step(raft::Message),
 }
 
@@ -36,9 +41,36 @@ impl Node {
         })
     }
 
-    pub fn propose<T: Into<Vec<u8>>>(&self, data: T) {
-        let req = Request::Propose(data.into());
+    pub fn propose(&self, data: impl Into<Vec<u8>>) {
+        let req = Request::Propose { data: data.into() };
         self.inbox.send(req).unwrap();
+    }
+
+    pub fn propose_wait_applied(&self, data: impl Into<Vec<u8>>, timeout: Duration) -> bool {
+        let (rx, tx) = fiber::Channel::new(1).into_clones();
+        let now = Instant::now();
+
+        let req = Request::ProposeWaitApplied {
+            data: data.into(),
+            notify: tx,
+        };
+
+        match self.inbox.send_timeout(req, timeout) {
+            Err(fiber::SendError::Disconnected(_)) => unreachable!(),
+            Err(fiber::SendError::Timeout(_)) => {
+                rx.close();
+                return false;
+            }
+            Ok(()) => (),
+        }
+
+        match rx.recv_timeout(timeout.saturating_sub(now.elapsed())) {
+            Err(_) => {
+                rx.close();
+                false
+            }
+            Ok(()) => true,
+        }
     }
 
     pub fn step(&self, msg: raft::Message) {
@@ -50,13 +82,37 @@ impl Node {
 fn raft_main(inbox: fiber::Channel<Request>, mut raw_node: RawNode, on_commit: fn(&[u8])) {
     let mut next_tick = Instant::now() + Node::TICK;
 
+    let mut notifications: HashMap<LogicalClock, Notify> = HashMap::new();
+    let mut lc = {
+        let id = Storage::id().unwrap().unwrap();
+        let gen = Storage::gen().unwrap().unwrap_or(0) + 1;
+        Storage::persist_gen(gen).unwrap();
+        LogicalClock::new(id, gen)
+    };
+
     loop {
+        // Clean up obsolete notifications
+        notifications.retain(|_, notify: &mut Notify| !notify.is_closed());
+
         match inbox.recv_timeout(Node::TICK) {
-            Ok(Request::Propose(data)) => {
-                raw_node.propose(vec![], data).unwrap();
+            Ok(Request::Propose { data }) => {
+                if let Err(e) = raw_node.propose(vec![], data) {
+                    tlog!(Error, "{e}");
+                }
+            }
+            Ok(Request::ProposeWaitApplied { data, notify }) => {
+                lc.inc();
+                if let Err(e) = raw_node.propose(Vec::from(&lc), data) {
+                    tlog!(Error, "{e}");
+                    notify.close();
+                } else {
+                    notifications.insert(lc.clone(), notify);
+                }
             }
             Ok(Request::Step(msg)) => {
-                raw_node.step(msg).unwrap();
+                if let Err(e) = raw_node.step(msg) {
+                    tlog!(Error, "{e}");
+                }
             }
             Err(fiber::RecvError::Timeout) => (),
             Err(fiber::RecvError::Disconnected) => unreachable!(),
@@ -91,12 +147,17 @@ fn raft_main(inbox: fiber::Channel<Request>, mut raw_node: RawNode, on_commit: f
             unimplemented!();
         }
 
-        let handle_committed_entries = |committed_entries: Vec<raft::Entry>| {
+        let mut handle_committed_entries = |committed_entries: Vec<raft::Entry>| {
             for entry in committed_entries {
                 Storage::persist_applied(entry.index).unwrap();
 
                 if entry.get_entry_type() == raft::EntryType::EntryNormal {
-                    on_commit(entry.get_data())
+                    on_commit(entry.get_data());
+                    if let Ok(lc) = LogicalClock::try_from(entry.get_context()) {
+                        if let Some(notify) = notifications.remove(&lc) {
+                            notify.try_send(()).ok();
+                        }
+                    }
                 }
 
                 // TODO: handle EntryConfChange

@@ -42,6 +42,7 @@ impl Storage {
                     {name = 'index', type = 'unsigned', is_nullable = false},
                     {name = 'term', type = 'unsigned', is_nullable = false},
                     {name = 'msg', type = 'any', is_nullable = true},
+                    {name = 'ctx', type = 'any', is_nullable = true},
                 }
             })
             box.space.raft_log:create_index('pk', {
@@ -112,6 +113,11 @@ impl Storage {
         Storage::raft_state("id")
     }
 
+    /// Node generation i.e. the number of restarts.
+    pub fn gen() -> Result<Option<u64>, StorageError> {
+        Storage::raft_state("gen")
+    }
+
     pub fn term() -> Result<Option<u64>, StorageError> {
         Storage::raft_state("term")
     }
@@ -142,6 +148,10 @@ impl Storage {
 
     pub fn persist_vote(vote: u64) -> Result<(), StorageError> {
         Storage::persist_raft_state("vote", vote)
+    }
+
+    pub fn persist_gen(gen: u64) -> Result<(), StorageError> {
+        Storage::persist_raft_state("gen", gen)
     }
 
     pub fn persist_id(id: u64) -> Result<(), StorageError> {
