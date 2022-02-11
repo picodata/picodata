@@ -25,7 +25,19 @@ use num_traits::{FromPrimitive, ToPrimitive};
 use crate::ffi::tarantool as ffi;
 
 /// [Log](https://docs.rs/log/latest/log/trait.Log.html) trait implementation. Wraps [say()](fn.say.html).
-pub struct TarantoolLogger {}
+pub struct TarantoolLogger(fn(Level) -> SayLevel);
+
+impl TarantoolLogger {
+    pub const fn new() -> Self {
+        const DEFAULT_MAPPING: fn(Level) -> SayLevel = |l: Level| l.into();
+        TarantoolLogger(DEFAULT_MAPPING)
+    }
+
+    pub fn with_mapping(map_fn: fn(Level) -> SayLevel) -> Self
+    {
+        TarantoolLogger(map_fn)
+    }
+}
 
 impl Log for TarantoolLogger {
     fn enabled(&self, metadata: &Metadata) -> bool {
@@ -35,7 +47,7 @@ impl Log for TarantoolLogger {
 
     fn log(&self, record: &Record) {
         say(
-            record.level().into(),
+            (self.0)(record.level()),
             record.file().unwrap_or_default(),
             record.line().unwrap_or(0) as i32,
             None,
