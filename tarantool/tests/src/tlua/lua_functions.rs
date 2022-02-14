@@ -290,3 +290,22 @@ pub fn push_function() {
     assert_eq!(res, "table");
 }
 
+#[rustfmt::skip]
+pub fn push_iter_no_err() {
+    let lua = tarantool::lua_state();
+    let call: LuaFunction<_> = lua.eval("return
+        function(a, b, c)
+            if b[1] == 1 then
+                error('oopsie')
+            end
+        end
+    ").unwrap();
+    let f = || -> Result<(), tlua::LuaError> {
+        Ok(call.call_with_args((69, [1, 2, 3], "foo"))?)
+    };
+    assert_eq!(
+        f().unwrap_err().to_string(),
+        r#"Execution error: [string "chunk"]:4: oopsie"#
+    );
+}
+

@@ -244,63 +244,23 @@ impl<F, O> TuplePushError<F, O> {
     }
 }
 
-impl<A> From<TuplePushError<A, Void>> for Void
-where
-    A: Into<Void>,
-{
-    #[allow(clippy::type_complexity)]
-    fn from(_: TuplePushError<A, Void>) -> Void {
-        unreachable!("There's no way to create an instance of Void")
-    }
+macro_rules! impl_tuple_push_error {
+    [@t] => { Void };
+    [@t $h:tt $($t:tt)*] => { TuplePushError<$h, impl_tuple_push_error![@t $($t)*]> };
+    () => {};
+    ($h:tt $($t:tt)*) => {
+        impl<$h, $($t,)*> From<impl_tuple_push_error![@t $h $($t)*]> for Void
+        where
+            $h: Into<Void>,
+            $( $t: Into<Void>, )*
+        {
+            #[inline]
+            fn from(_: impl_tuple_push_error![@t $h $($t)*]) -> Void {
+                unreachable!("There's no way to create an instance of Void")
+            }
+        }
+        impl_tuple_push_error!{ $($t)* }
+    };
 }
 
-impl<A, B> From<TuplePushError<A, TuplePushError<B, Void>>> for Void
-where
-    A: Into<Void>,
-    B: Into<Void>,
-{
-    #[allow(clippy::type_complexity)]
-    fn from(_: TuplePushError<A, TuplePushError<B, Void>>) -> Void {
-        unreachable!("There's no way to create an instance of Void")
-    }
-}
-
-impl<A, B, C> From<TuplePushError<A, TuplePushError<B, TuplePushError<C, Void>>>> for Void
-where
-    A: Into<Void>,
-    B: Into<Void>,
-    C: Into<Void>,
-{
-    #[allow(clippy::type_complexity)]
-    fn from(_: TuplePushError<A, TuplePushError<B, TuplePushError<C, Void>>>) -> Void {
-        unreachable!("There's no way to create an instance of Void")
-    }
-}
-
-impl<A, B, C, D> From<TuplePushError<A, TuplePushError<B, TuplePushError<C, TuplePushError<D, Void>>>>> for Void
-where
-    A: Into<Void>,
-    B: Into<Void>,
-    C: Into<Void>,
-    D: Into<Void>,
-{
-    #[allow(clippy::type_complexity)]
-    fn from(_: TuplePushError<A, TuplePushError<B, TuplePushError<C, TuplePushError<D, Void>>>>) -> Void {
-        unreachable!("There's no way to create an instance of Void")
-    }
-}
-
-impl<A, B, C, D, E> From<TuplePushError<A, TuplePushError<B, TuplePushError<C, TuplePushError<D, TuplePushError<E, Void>>>>>> for Void
-where
-    A: Into<Void>,
-    B: Into<Void>,
-    C: Into<Void>,
-    D: Into<Void>,
-    E: Into<Void>,
-{
-    #[allow(clippy::type_complexity)]
-    fn from(_: TuplePushError<A, TuplePushError<B, TuplePushError<C, TuplePushError<D, TuplePushError<E, Void>>>>>) -> Void {
-        unreachable!("There's no way to create an instance of Void")
-    }
-}
-
+impl_tuple_push_error!{A B C D E F G H I J K L M}
