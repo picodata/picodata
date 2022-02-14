@@ -9,6 +9,7 @@
 //! - [Lua reference: Submodule box.tuple](https://www.tarantool.io/en/doc/2.2/reference/reference_lua/box_tuple/)
 //! - [C API reference: Module tuple](https://www.tarantool.io/en/doc/2.2/dev_guide/reference_capi/tuple/)
 use std::cmp::Ordering;
+use std::fmt::{self, Debug, Formatter};
 use std::io::Cursor;
 use std::os::raw::{c_char, c_int};
 use std::ptr::{copy_nonoverlapping, NonNull};
@@ -25,6 +26,17 @@ use crate::tlua as tlua;
 /// Tuple
 pub struct Tuple {
     ptr: NonNull<ffi::BoxTuple>,
+}
+
+impl Debug for Tuple {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        if let Ok(v) = self.as_struct::<rmpv::Value>() {
+            f.debug_tuple("Tuple").field(&v).finish()
+        } else {
+            // Probably will never happen but better safe than sorry
+            f.debug_tuple("Tuple").field(&self.as_buffer()).finish()
+        }
+    }
 }
 
 impl Tuple {
@@ -301,6 +313,19 @@ impl From<Tuple> for TupleBuffer {
     }
 }
 
+impl Debug for TupleBuffer {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        f.debug_tuple(
+            match self {
+                Self::Vector(_) => "TupleBuffer::Vector",
+                Self::TransactionScoped { .. } => "TupleBuffer::TransactionScoped",
+            }
+        )
+            .field(&Tuple::from(self))
+            .finish()
+    }
+}
+
 /// Tuple format
 ///
 /// Each Tuple has associated format (class). Default format is used to
@@ -317,9 +342,27 @@ impl Default for TupleFormat {
     }
 }
 
+impl Debug for TupleFormat {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        if self.inner == Self::default().inner {
+            f.write_str("TupleFormat::default()")
+        } else {
+            f.debug_tuple("TupleFormat").field(&self.inner).finish()
+        }
+    }
+}
+
 /// Tuple iterator
 pub struct TupleIterator {
     inner: *mut ffi::BoxTupleIterator,
+}
+
+impl Debug for TupleIterator {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        f.debug_struct("TupleIterator")
+            .field("position", &self.position())
+            .finish()
+    }
 }
 
 impl TupleIterator {
@@ -385,7 +428,7 @@ impl Drop for TupleIterator {
 impl TupleIterator {}
 
 #[repr(u32)]
-#[derive(Debug, ToPrimitive)]
+#[derive(Debug, ToPrimitive, PartialEq, Eq, Hash)]
 pub enum FieldType {
     Any = 0,
     Unsigned,
@@ -402,10 +445,12 @@ pub enum FieldType {
     Map,
 }
 
+#[derive(Debug)]
 pub struct KeyDef {
     inner: *mut ffi::BoxKeyDef,
 }
 
+#[derive(Debug, PartialEq, Eq, Hash)]
 pub struct KeyDefItem {
     pub field_id: u32,
     pub field_type: FieldType,
@@ -523,6 +568,7 @@ where
 }
 
 #[repr(C)]
+#[derive(Debug)]
 pub struct FunctionCtx {
     inner: *mut ffi::BoxFunctionCtx,
 }
@@ -573,6 +619,12 @@ impl FunctionCtx {
 pub struct FunctionArgs {
     pub start: *const u8,
     pub end: *const u8,
+}
+
+impl Debug for FunctionArgs {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        f.debug_tuple("FunctionArgs").field(&Tuple::from(self)).finish()
+    }
 }
 
 impl From<FunctionArgs> for Tuple {

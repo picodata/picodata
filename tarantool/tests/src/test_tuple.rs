@@ -256,3 +256,24 @@ pub fn to_and_from_lua() {
     });
 }
 
+pub fn tuple_debug_fmt() {
+    let tuple = Tuple::from_struct(&S2Record {
+        id: 42,
+        key: "hello".into(),
+        value: "nice".into(),
+        a: 420,
+        b: 69,
+    }).unwrap();
+
+    assert_eq!(format!("{:?}", tuple),
+        r#"Tuple(Array([Integer(PosInt(42)), String(Utf8String { s: Ok("hello") }), String(Utf8String { s: Ok("nice") }), Integer(PosInt(420)), Integer(PosInt(69))]))"#
+    );
+
+    let tuple = Tuple::from_struct(&(1, true, "foo")).unwrap();
+    let buf = tarantool::tuple::TupleBuffer::from(tuple);
+
+    assert_eq!(format!("{:?}", buf),
+        r#"TupleBuffer::Vector(Tuple(Array([Integer(PosInt(1)), Boolean(true), String(Utf8String { s: Ok("foo") })])))"#
+    );
+}
+
