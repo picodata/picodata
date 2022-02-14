@@ -287,6 +287,12 @@ impl From<Vec<u8>> for TupleBuffer {
     }
 }
 
+impl From<Tuple> for TupleBuffer {
+    fn from(t: Tuple) -> Self {
+        Self::Vector(t.as_buffer())
+    }
+}
+
 /// Tuple format
 ///
 /// Each Tuple has associated format (class). Default format is used to
