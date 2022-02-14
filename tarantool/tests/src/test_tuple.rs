@@ -25,13 +25,18 @@ pub fn test_tuple_field_count() {
     .unwrap();
     assert_eq!(tuple.len(), 5);
 
+    // empty tuple
+    let tuple = Tuple::from_struct(&()).unwrap();
+    assert_eq!(tuple.len(), 0);
+
     // tuple w/ single field
     let tuple = Tuple::from_struct(&(0,)).unwrap();
     assert_eq!(tuple.len(), 1);
 
-    // empty tuple
-    let tuple = Tuple::from_struct(&()).unwrap();
-    assert_eq!(tuple.len(), 0);
+    // very long tuple
+    let tuple =
+        Tuple::from_struct(&(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16)).unwrap();
+    assert_eq!(tuple.len(), 16);
 }
 
 pub fn test_tuple_size() {
