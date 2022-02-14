@@ -53,12 +53,19 @@ macro_rules! tests {
     }
 }
 
-#[derive(Clone, Default, Deserialize)]
+#[derive(Clone, Deserialize)]
 struct TestConfig {
     #[serde(default)]
     bench: bool,
 
     filter: Option<String>,
+
+    #[serde(default = "default_listen")]
+    listen: u16,
+}
+
+const fn default_listen() -> u16 {
+    3301
 }
 
 fn create_test_spaces() -> Result<(), Error> {
@@ -163,7 +170,10 @@ fn drop_test_spaces() -> Result<(), Error> {
     Ok(())
 }
 
+static mut LISTEN: u16 = default_listen();
+
 fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
+    unsafe { LISTEN = cfg.listen };
     run_tests_console(
         &TestOpts {
             list: false,
@@ -481,12 +491,12 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
 #[allow(clippy::missing_safety_doc)]
 pub unsafe extern "C" fn start(l: *mut ffi_lua::lua_State) -> c_int {
     let cfg_src = ffi_lua::lua_tostring(l, 1);
-    let cfg = if !cfg_src.is_null() {
-        let cfg_src = CStr::from_ptr(cfg_src).to_str().unwrap();
-        serde_json::from_str::<TestConfig>(cfg_src).unwrap()
+    let cfg_src = if !cfg_src.is_null() {
+        CStr::from_ptr(cfg_src).to_str().unwrap()
     } else {
-        TestConfig::default()
+        "{}"
     };
+    let cfg: TestConfig = serde_json::from_str(cfg_src).unwrap();
 
     if let Err(e) = create_test_spaces() {
         ffi_lua::luaL_error(l, e.to_string().as_ptr() as *const c_schar);

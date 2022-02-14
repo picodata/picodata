@@ -9,20 +9,26 @@ use tarantool::index::IteratorType;
 use tarantool::net_box::{Conn, ConnOptions, ConnTriggers, Options};
 use tarantool::space::Space;
 
-use crate::common::{QueryOperation, S1Record, S2Record};
+use crate::{
+    common::{QueryOperation, S1Record, S2Record},
+    LISTEN,
+};
 use std::cell::{Cell, RefCell};
 
 pub fn test_immediate_close() {
-    let _ = Conn::new("localhost:3301", ConnOptions::default(), None).unwrap();
+    let port = unsafe { LISTEN };
+    let _ = Conn::new(("localhost", port), ConnOptions::default(), None).unwrap();
 }
 
 pub fn test_ping() {
-    let conn = Conn::new("localhost:3301", ConnOptions::default(), None).unwrap();
+    let port = unsafe { LISTEN };
+    let conn = Conn::new(("localhost", port), ConnOptions::default(), None).unwrap();
     conn.ping(&Options::default()).unwrap();
 }
 
 pub fn test_ping_timeout() {
-    let conn = Conn::new("localhost:3301", ConnOptions::default(), None).unwrap();
+    let port = unsafe { LISTEN };
+    let conn = Conn::new(("localhost", port), ConnOptions::default(), None).unwrap();
 
     conn.ping(&Options {
         timeout: Some(Duration::from_secs(1)),
@@ -38,7 +44,8 @@ pub fn test_ping_timeout() {
 }
 
 pub fn test_ping_concurrent() {
-    let conn = Rc::new(Conn::new("localhost:3301", ConnOptions::default(), None).unwrap());
+    let port = unsafe { LISTEN };
+    let conn = Rc::new(Conn::new(("localhost", port), ConnOptions::default(), None).unwrap());
 
     let mut fiber_a = Fiber::new("test_fiber_a", &mut |conn: Box<Rc<Conn>>| {
         conn.ping(&Options::default()).unwrap();
@@ -60,12 +67,13 @@ pub fn test_ping_concurrent() {
 }
 
 pub fn test_call() {
+    let port = unsafe { LISTEN };
     let conn_options = ConnOptions {
         user: "test_user".to_string(),
         password: "password".to_string(),
         ..ConnOptions::default()
     };
-    let conn = Conn::new("localhost:3301", conn_options, None).unwrap();
+    let conn = Conn::new(("localhost", port), conn_options, None).unwrap();
     let result = conn
         .call("test_stored_proc", &(1, 2), &Options::default())
         .unwrap();
@@ -73,12 +81,13 @@ pub fn test_call() {
 }
 
 pub fn test_call_timeout() {
+    let port = unsafe { LISTEN };
     let conn_options = ConnOptions {
         user: "test_user".to_string(),
         password: "password".to_string(),
         ..ConnOptions::default()
     };
-    let conn = Conn::new("localhost:3301", conn_options, None).unwrap();
+    let conn = Conn::new(("localhost", port), conn_options, None).unwrap();
     let result = conn.call(
         "test_timeout",
         Vec::<()>::new().as_slice(),
@@ -91,12 +100,13 @@ pub fn test_call_timeout() {
 }
 
 pub fn test_eval() {
+    let port = unsafe { LISTEN };
     let conn_options = ConnOptions {
         user: "test_user".to_string(),
         password: "password".to_string(),
         ..ConnOptions::default()
     };
-    let conn = Conn::new("localhost:3301", conn_options, None).unwrap();
+    let conn = Conn::new(("localhost", port), conn_options, None).unwrap();
     let result = conn
         .eval("return ...", &(1, 2), &Options::default())
         .unwrap();
@@ -117,8 +127,9 @@ pub fn test_connection_error() {
 }
 
 pub fn test_is_connected() {
+    let port = unsafe { LISTEN };
     let conn = Conn::new(
-        "localhost:3301",
+        ("localhost", port),
         ConnOptions {
             reconnect_after: Duration::from_secs(0),
             ..ConnOptions::default()
@@ -132,8 +143,9 @@ pub fn test_is_connected() {
 }
 
 pub fn test_schema_sync() {
+    let port = unsafe { LISTEN };
     let conn = Conn::new(
-        "localhost:3301",
+        ("localhost", port),
         ConnOptions {
             user: "test_user".to_string(),
             password: "password".to_string(),
@@ -159,8 +171,9 @@ pub fn test_schema_sync() {
 }
 
 pub fn test_get() {
+    let port = unsafe { LISTEN };
     let conn = Conn::new(
-        "localhost:3301",
+        ("localhost", port),
         ConnOptions {
             user: "test_user".to_string(),
             password: "password".to_string(),
@@ -189,8 +202,9 @@ pub fn test_get() {
 }
 
 pub fn test_select() {
+    let port = unsafe { LISTEN };
     let conn = Conn::new(
-        "localhost:3301",
+        ("localhost", port),
         ConnOptions {
             user: "test_user".to_string(),
             password: "password".to_string(),
@@ -223,11 +237,12 @@ pub fn test_select() {
 }
 
 pub fn test_insert() {
+    let port = unsafe { LISTEN };
     let mut local_space = Space::find("test_s1").unwrap();
     local_space.truncate().unwrap();
 
     let conn = Conn::new(
-        "localhost:3301",
+        ("localhost", port),
         ConnOptions {
             user: "test_user".to_string(),
             password: "password".to_string(),
@@ -255,6 +270,7 @@ pub fn test_insert() {
 }
 
 pub fn test_replace() {
+    let port = unsafe { LISTEN };
     let mut local_space = Space::find("test_s1").unwrap();
     local_space.truncate().unwrap();
 
@@ -265,7 +281,7 @@ pub fn test_replace() {
     local_space.insert(&original_input).unwrap();
 
     let conn = Conn::new(
-        "localhost:3301",
+        ("localhost", port),
         ConnOptions {
             user: "test_user".to_string(),
             password: "password".to_string(),
@@ -298,6 +314,7 @@ pub fn test_replace() {
 }
 
 pub fn test_update() {
+    let port = unsafe { LISTEN };
     let mut local_space = Space::find("test_s1").unwrap();
     local_space.truncate().unwrap();
 
@@ -308,7 +325,7 @@ pub fn test_update() {
     local_space.insert(&input).unwrap();
 
     let conn = Conn::new(
-        "localhost:3301",
+        ("localhost", port),
         ConnOptions {
             user: "test_user".to_string(),
             password: "password".to_string(),
@@ -348,6 +365,7 @@ pub fn test_update() {
 }
 
 pub fn test_upsert() {
+    let port = unsafe { LISTEN };
     let mut local_space = Space::find("test_s1").unwrap();
     local_space.truncate().unwrap();
 
@@ -358,7 +376,7 @@ pub fn test_upsert() {
     local_space.insert(&original_input).unwrap();
 
     let conn = Conn::new(
-        "localhost:3301",
+        ("localhost", port),
         ConnOptions {
             user: "test_user".to_string(),
             password: "password".to_string(),
@@ -413,6 +431,7 @@ pub fn test_upsert() {
 }
 
 pub fn test_delete() {
+    let port = unsafe { LISTEN };
     let mut local_space = Space::find("test_s1").unwrap();
     local_space.truncate().unwrap();
 
@@ -423,7 +442,7 @@ pub fn test_delete() {
     local_space.insert(&input).unwrap();
 
     let conn = Conn::new(
-        "localhost:3301",
+        ("localhost", port),
         ConnOptions {
             user: "test_user".to_string(),
             password: "password".to_string(),
@@ -448,7 +467,8 @@ pub fn test_delete() {
 }
 
 pub fn test_cancel_recv() {
-    let conn = Rc::new(Conn::new("localhost:3301", ConnOptions::default(), None).unwrap());
+    let port = unsafe { LISTEN };
+    let conn = Rc::new(Conn::new(("localhost", port), ConnOptions::default(), None).unwrap());
 
     let mut fiber = Fiber::new("test_fiber_a", &mut |conn: Box<Rc<Conn>>| {
         for _ in 0..10 {
@@ -468,6 +488,7 @@ pub fn test_cancel_recv() {
 }
 
 pub fn test_triggers_connect() {
+    let port = unsafe { LISTEN };
     struct Checklist {
         connected: bool,
         disconnected: bool,
@@ -494,7 +515,7 @@ pub fn test_triggers_connect() {
     }));
 
     let conn = Conn::new(
-        "localhost:3301",
+        ("localhost", port),
         ConnOptions::default(),
         Some(Rc::new(TriggersMock {
             checklist: checklist.clone(),
@@ -509,6 +530,7 @@ pub fn test_triggers_connect() {
 }
 
 pub fn test_triggers_reject() {
+    let port = unsafe { LISTEN };
     struct TriggersMock {}
 
     impl ConnTriggers for TriggersMock {
@@ -520,7 +542,7 @@ pub fn test_triggers_reject() {
     }
 
     let conn = Conn::new(
-        "localhost:3301",
+        ("localhost", port),
         ConnOptions::default(),
         Some(Rc::new(TriggersMock {})),
     )
@@ -531,6 +553,7 @@ pub fn test_triggers_reject() {
 }
 
 pub fn test_triggers_schema_sync() {
+    let port = unsafe { LISTEN };
     struct TriggersMock {
         is_trigger_called: Rc<Cell<bool>>,
     }
@@ -549,7 +572,7 @@ pub fn test_triggers_schema_sync() {
     let is_trigger_called = Rc::new(Cell::new(false));
 
     let conn = Conn::new(
-        "localhost:3301",
+        ("localhost", port),
         ConnOptions {
             user: "test_user".to_string(),
             password: "password".to_string(),
