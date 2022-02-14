@@ -84,8 +84,8 @@ macro_rules! tuple_impl {
         impl<LU, $first, $($other),+> Push<LU> for ($first, $($other),+)
         where
             LU: AsLua,
-            $first: Debug + Push<LuaState>,
-            $( $other: Debug + Push<LuaState>, )+
+            $first: Push<LuaState>,
+            $( $other: Push<LuaState>, )+
         {
             type Err = TuplePushError<
                 <$first as Push<LuaState>>::Err,
@@ -128,8 +128,8 @@ macro_rules! tuple_impl {
         impl<LU, $first, $($other),+> PushInto<LU> for ($first, $($other),+)
         where
             LU: AsLua,
-            $first: Debug + PushInto<LuaState>,
-            $( $other: Debug + PushInto<LuaState>, )+
+            $first: PushInto<LuaState>,
+            $( $other: PushInto<LuaState>, )+
         {
             type Err = TuplePushError<
                 <$first as PushInto<LuaState>>::Err,
