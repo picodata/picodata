@@ -205,7 +205,6 @@ impl AsTuple for () {
     }
 }
 
-impl<T> AsTuple for (T,) where T: Serialize {}
 impl<T> AsTuple for [T] where T: Serialize {}
 impl<T> AsTuple for Vec<T> where T: Serialize {}
 
@@ -224,28 +223,19 @@ impl_array! {
 }
 
 macro_rules! impl_tuple {
-    ($($t:ident),+) => {
+    () => {};
+    ($h:ident $($t:ident)*) => {
+        impl<$h, $($t),*> AsTuple for ($h, $($t),*)
+        where
+            $h: Serialize,
+            $($t: Serialize,)*
+        {}
 
-        #[allow(clippy::zero_prefixed_literal)]
-        impl<$($t),+> AsTuple for ($($t),+) where $($t: Serialize,)+ {}
+        impl_tuple! { $($t)* }
     }
 }
 
-impl_tuple! { T01, T02 }
-impl_tuple! { T01, T02, T03 }
-impl_tuple! { T01, T02, T03, T04 }
-impl_tuple! { T01, T02, T03, T04, T05 }
-impl_tuple! { T01, T02, T03, T04, T05, T06 }
-impl_tuple! { T01, T02, T03, T04, T05, T06, T07 }
-impl_tuple! { T01, T02, T03, T04, T05, T06, T07, T08 }
-impl_tuple! { T01, T02, T03, T04, T05, T06, T07, T08, T09 }
-impl_tuple! { T01, T02, T03, T04, T05, T06, T07, T08, T09, T10 }
-impl_tuple! { T01, T02, T03, T04, T05, T06, T07, T08, T09, T10, T11 }
-impl_tuple! { T01, T02, T03, T04, T05, T06, T07, T08, T09, T10, T11, T12 }
-impl_tuple! { T01, T02, T03, T04, T05, T06, T07, T08, T09, T10, T11, T12, T13 }
-impl_tuple! { T01, T02, T03, T04, T05, T06, T07, T08, T09, T10, T11, T12, T13, T14 }
-impl_tuple! { T01, T02, T03, T04, T05, T06, T07, T08, T09, T10, T11, T12, T13, T14, T15 }
-impl_tuple! { T01, T02, T03, T04, T05, T06, T07, T08, T09, T10, T11, T12, T13, T14, T15, T16 }
+impl_tuple! { A B C D E F G H I J K L M N O P }
 
 /// Buffer containing tuple contents (MsgPack array)
 ///
