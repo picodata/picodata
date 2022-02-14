@@ -144,23 +144,23 @@ impl Tuple {
     where
         T: DeserializeOwned,
     {
-        let raw_data = self.as_buffer()?;
+        let raw_data = self.as_buffer();
         Ok(rmp_serde::from_read::<_, T>(Cursor::new(raw_data))?)
     }
 
     #[inline]
-    pub(crate) fn as_buffer(&self) -> Result<Vec<u8>, Error> {
-        let buffer_size = self.bsize();
-        let mut buffer = Vec::<u8>::with_capacity(buffer_size);
+    pub(crate) fn as_buffer(&self) -> Vec<u8> {
+        let size = self.bsize();
+        let mut buf = Vec::with_capacity(size);
 
-        let actual_size =
-            unsafe { ffi::box_tuple_to_buf(self.ptr.as_ptr(), buffer.as_ptr() as *mut c_char, buffer_size) };
-        if actual_size < 0 {
-            return Err(TarantoolError::last().into());
+        unsafe {
+            let actual_size = ffi::box_tuple_to_buf(
+                self.ptr.as_ptr(), buf.as_ptr() as _, size,
+            );
+            buf.set_len(actual_size as usize);
         }
 
-        unsafe { buffer.set_len(actual_size as usize) };
-        Ok(buffer)
+        buf
     }
 
     /// Deserializes tuple contents into structure of type `T`
