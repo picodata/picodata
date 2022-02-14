@@ -176,6 +176,14 @@ impl Tuple {
     }
 }
 
+impl From<&TupleBuffer> for Tuple {
+    fn from(buf: &TupleBuffer) -> Self {
+        unsafe {
+            Self::from_raw_data(buf.as_ptr() as _, buf.len() as _)
+        }
+    }
+}
+
 impl Drop for Tuple {
     fn drop(&mut self) {
         unsafe { ffi::box_tuple_unref(self.ptr.as_ptr()) };
@@ -569,12 +577,28 @@ pub struct FunctionArgs {
 
 impl From<FunctionArgs> for Tuple {
     fn from(args: FunctionArgs) -> Tuple {
+        Tuple::from(&args)
+    }
+}
+
+impl From<&FunctionArgs> for Tuple {
+    fn from(args: &FunctionArgs) -> Tuple {
         unsafe {
             Tuple::from_raw_data(
                 args.start as _,
                 args.end.offset_from(args.start) as _,
             )
         }
+    }
+}
+
+impl FunctionArgs {
+    /// Deserialize a tuple reprsented by the function args as `T`.
+    pub fn as_struct<T>(&self) -> Result<T>
+    where
+        T: DeserializeOwned,
+    {
+        Tuple::from(self).as_struct()
     }
 }
 
