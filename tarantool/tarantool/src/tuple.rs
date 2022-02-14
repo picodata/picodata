@@ -18,7 +18,7 @@ use num_traits::ToPrimitive;
 use rmp::Marker;
 use serde::{de::DeserializeOwned, Serialize};
 
-use crate::error::{Error, TarantoolError};
+use crate::error::{Result, TarantoolError};
 use crate::ffi::tarantool as ffi;
 use crate::tlua as tlua;
 
@@ -33,7 +33,7 @@ impl Tuple {
     /// This function will serialize structure instance `value` of type `T` into tuple internal representation
     ///
     /// See also: [AsTuple](trait.AsTuple.html)
-    pub fn from_struct<T>(value: &T) -> Result<Self, Error>
+    pub fn from_struct<T>(value: &T) -> Result<Self>
     where
         T: AsTuple,
     {
@@ -113,7 +113,7 @@ impl Tuple {
     /// field = it.seek(3).unwrap();
     /// assert!(it.position() == 4);
     /// ```
-    pub fn iter(&self) -> Result<TupleIterator, Error> {
+    pub fn iter(&self) -> Result<TupleIterator> {
         let inner = unsafe { ffi::box_tuple_iterator(self.ptr.as_ptr()) };
         if inner.is_null() {
             Err(TarantoolError::last().into())
@@ -131,7 +131,7 @@ impl Tuple {
     /// Returns:
     /// - `None` if `i >= box_tuple_field_count(Tuple)` or if field has a non primitive type
     /// - field value otherwise
-    pub fn field<T>(&self, fieldno: u32) -> Result<Option<T>, Error>
+    pub fn field<T>(&self, fieldno: u32) -> Result<Option<T>>
     where
         T: DeserializeOwned,
     {
@@ -140,7 +140,7 @@ impl Tuple {
     }
 
     /// Deserializes tuple contents into structure of type `T`
-    pub fn as_struct<T>(&self) -> Result<T, Error>
+    pub fn as_struct<T>(&self) -> Result<T>
     where
         T: DeserializeOwned,
     {
@@ -164,7 +164,7 @@ impl Tuple {
     }
 
     /// Deserializes tuple contents into structure of type `T`
-    pub fn into_struct<T>(self) -> Result<T, Error>
+    pub fn into_struct<T>(self) -> Result<T>
     where
         T: DeserializeOwned,
     {
@@ -194,14 +194,16 @@ pub trait AsTuple: Serialize {
     /// Describes how object can be converted to [Tuple](struct.Tuple.html).
     ///
     /// Has default implementation, but can be overloaded for special cases
-    fn serialize_as_tuple(&self) -> Result<TupleBuffer, Error> {
-        Ok(rmp_serde::to_vec(self)?.into())
+    fn serialize_as_tuple(&self) -> Result<TupleBuffer> {
+        let data = rmp_serde::to_vec(self)?;
+        Ok(unsafe { TupleBuffer::from_vec(data) })
     }
 }
 
 impl AsTuple for () {
-    fn serialize_as_tuple(&self) -> Result<TupleBuffer, Error> {
-        Ok(rmp_serde::to_vec(&Vec::<()>::new())?.into())
+    fn serialize_as_tuple(&self) -> Result<TupleBuffer> {
+        let data = rmp_serde::to_vec(&Vec::<()>::new())?;
+        Ok(unsafe { TupleBuffer::from_vec(data) })
     }
 }
 
@@ -269,18 +271,16 @@ impl TupleBuffer {
             TupleBuffer::TransactionScoped { size, .. } => *size == 0,
         }
     }
-}
 
-impl From<Vec<u8>> for TupleBuffer {
-    fn from(buf: Vec<u8>) -> Self {
-        if unsafe { ffi::box_txn() } {
+    /// # Safety
+    /// `buf` must be a valid message pack array
+    pub unsafe fn from_vec(buf: Vec<u8>) -> Self {
+        if ffi::box_txn() {
             let size = buf.len();
-            unsafe {
-                let ptr = ffi::box_txn_alloc(size) as *mut u8;
-                copy_nonoverlapping(buf.as_ptr(), ptr, size);
-                let ptr = NonNull::new(ptr).expect("tarantool allocation failed");
-                Self::TransactionScoped { ptr, size }
-            }
+            let ptr = ffi::box_txn_alloc(size) as _;
+            copy_nonoverlapping(buf.as_ptr(), ptr, size);
+            let ptr = NonNull::new(ptr).expect("tarantool allocation failed");
+            Self::TransactionScoped { ptr, size }
         } else {
             Self::Vector(buf)
         }
@@ -339,7 +339,7 @@ impl TupleIterator {
     /// After call:
     /// - `box_tuple_position(it) == fieldno` if returned value is not `None`
     /// - `box_tuple_position(it) == box_tuple_field_count(Tuple)` if returned value is `None`.
-    pub fn seek<T>(&mut self, fieldno: u32) -> Result<Option<T>, Error>
+    pub fn seek<T>(&mut self, fieldno: u32) -> Result<Option<T>>
     where
         T: DeserializeOwned,
     {
@@ -357,7 +357,7 @@ impl TupleIterator {
     /// - `box_tuple_position(it) == fieldno` if returned value is not `None`
     /// - `box_tuple_position(it) == box_tuple_field_count(Tuple)` if returned value is `None`.
     #[allow(clippy::should_implement_trait)]
-    pub fn next<T>(&mut self) -> Result<Option<T>, Error>
+    pub fn next<T>(&mut self) -> Result<Option<T>>
     where
         T: DeserializeOwned,
     {
@@ -468,7 +468,7 @@ impl Drop for KeyDef {
     }
 }
 
-fn field_value_from_ptr<T>(value_ptr: *mut u8) -> Result<Option<T>, Error>
+fn field_value_from_ptr<T>(value_ptr: *mut u8) -> Result<Option<T>>
 where
     T: DeserializeOwned,
 {
@@ -525,7 +525,7 @@ impl FunctionCtx {
     /// Returned Tuple is automatically reference counted by Tarantool.
     ///
     /// - `tuple` - a Tuple to return
-    pub fn return_tuple(&self, tuple: &Tuple) -> Result<c_int, Error> {
+    pub fn return_tuple(&self, tuple: &Tuple) -> Result<c_int> {
         let result = unsafe { ffi::box_return_tuple(self.inner, tuple.ptr.as_ptr()) };
         if result < 0 {
             Err(TarantoolError::last().into())
@@ -544,7 +544,7 @@ impl FunctionCtx {
     /// `MP_ARRAY` or `MP_MAP` is undefined behaviour.
     ///
     /// - `value` - value to be encoded to MessagePack
-    pub fn return_mp<T>(&self, value: &T) -> Result<c_int, Error>
+    pub fn return_mp<T>(&self, value: &T) -> Result<c_int>
     where
         T: Serialize,
     {
@@ -582,7 +582,7 @@ impl From<FunctionArgs> for Tuple {
 /// console or whatever is behind the session. Note, that
 /// successful push does not guarantee delivery in case it was sent
 /// into the network. Just like with `write()`/`send()` system calls.
-pub fn session_push<T>(value: &T) -> Result<(), Error>
+pub fn session_push<T>(value: &T) -> Result<()>
 where
     T: AsTuple,
 {
@@ -601,7 +601,7 @@ where
 {
     type Err = tlua::Void;
 
-    fn push_to_lua(&self, lua: L) -> Result<tlua::PushGuard<L>, (tlua::Void, L)> {
+    fn push_to_lua(&self, lua: L) -> tlua::PushResult<L, Self> {
         unsafe {
             ffi::luaT_pushtuple(tlua::AsLua::as_lua(&lua), self.ptr.as_ptr());
             Ok(tlua::PushGuard::new(lua, 1))
@@ -619,7 +619,7 @@ impl<L> tlua::LuaRead<L> for Tuple
 where
     L: tlua::AsLua,
 {
-    fn lua_read_at_position(lua: L, index: std::num::NonZeroI32) -> Result<Self, L> {
+    fn lua_read_at_position(lua: L, index: std::num::NonZeroI32) -> std::result::Result<Self, L> {
         let ptr = unsafe {
             ffi::luaT_istuple(tlua::AsLua::as_lua(&lua), index.get())
         };
