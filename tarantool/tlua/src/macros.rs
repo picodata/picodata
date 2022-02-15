@@ -81,11 +81,22 @@ macro_rules! c_ptr {
 }
 
 #[macro_export]
-macro_rules! lua_error {
+macro_rules! error {
     ($l:expr, $msg:literal) => {
+        $crate::error!(@impl $l, $crate::c_ptr!($msg))
+    };
+    ($l:expr, $f:literal $($args:tt)*) => {
         {
-            $crate::ffi::luaL_error($l, $crate::c_ptr!($msg));
-            unreachable!()
+            let msg = ::std::format!(::std::concat![$f, "\0"] $($args)*);
+            $crate::error!(@impl $l, $crate::c_ptr!("%s"), msg.as_ptr())
+        }
+    };
+    (@impl $l:expr, $($args:tt)+) => {
+        {
+            unsafe {
+                $crate::ffi::luaL_error($crate::AsLua::as_lua(&$l), $($args)+);
+            }
+            unreachable!("luaL_error never returns")
         }
     }
 }

@@ -1,8 +1,9 @@
 use crate::{
     ffi,
     AsLua,
-    lua_error,
+    error,
     Nil,
+    LuaError,
     LuaRead,
     LuaState,
     Push,
@@ -357,6 +358,7 @@ where
 extern "C" fn wrapper<T, A, R>(lua: LuaState) -> libc::c_int
 where
     T: FnMutExt<A, Output = R>,
+    // TODO(gmoshkin): these bounds are too strict, how do we loosen them?
     A: for<'p> LuaRead<&'p InsideCallback> + 'static,
     R: PushInto<InsideCallback>,
 {
@@ -373,8 +375,10 @@ where
     // TODO: what if the user has the wrong params?
     let args = A::lua_read_at_maybe_zero_position(&tmp_lua, -arguments_count);
     let args = match args {
-        Err(_) => unsafe {
-            lua_error!(lua.as_lua(), "wrong parameter types for callback function")
+        Err(lua) => {
+            error!(lua, "{}",
+                LuaError::wrong_type_passed::<A, _>(lua, arguments_count),
+            )
         }
         Ok(a) => a,
     };

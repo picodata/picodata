@@ -3,7 +3,6 @@ use tarantool::tlua::{
     function,
     AsLua,
     Lua,
-    LuaError,
     LuaFunction,
     Function,
     function0,
@@ -59,10 +58,11 @@ pub fn wrong_arguments_types() {
     }
     lua.set("add", function2(add));
 
-    match lua.eval::<i32>("return add(3, \"hello\")") {
-        Err(LuaError::ExecutionError(_)) => (),
-        _ => panic!(),
-    }
+    let e = lua.eval::<i32>("return add(3, \"hello\")").unwrap_err();
+    assert!(matches!(e, tlua::LuaError::ExecutionError(_)));
+    assert_eq!(e.to_string(),
+        "Execution error: Wrong type passed into rust callback: (i32, i32) expected, got (number, string)"
+    )
 }
 
 pub fn return_result() {

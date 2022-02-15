@@ -62,10 +62,11 @@ pub fn check_types() {
     let lua = Lua::new();
     let f = LuaFunction::load(&lua, "return 12").unwrap();
     let err = f.call::<bool>().unwrap_err();
-    match err {
-        LuaError::WrongType{ref rust_expected, ref lua_actual} => {
+    match &err {
+        LuaError::WrongType { rust_expected, lua_actual, when } => {
             assert_eq!(rust_expected, "bool");
             assert_eq!(lua_actual, "number");
+            assert_eq!(*when, "Wrong type returned by Lua")
         },
         v => panic!("{}", v),
     };

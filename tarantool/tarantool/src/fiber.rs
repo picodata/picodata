@@ -16,7 +16,7 @@ use std::os::raw::c_void;
 use std::ptr::NonNull;
 use std::time::Duration;
 
-use crate::tlua::{self as tlua, AsLua, lua_error};
+use crate::tlua::{self as tlua, AsLua};
 use va_list::VaList;
 
 use crate::c_ptr;
@@ -528,13 +528,13 @@ where
         let f = (ud_ptr as *mut Option<C::Function>).as_mut()
             .unwrap_or_else(||
                 // lua_touserdata returned NULL
-                lua_error!(l, "failed to extract upvalue")
+                tlua::error!(l, "failed to extract upvalue")
             )
             // put None back into userdata
             .take()
             .unwrap_or_else(||
                 // userdata originally contained None
-                lua_error!(l, "rust FnOnce callback was called more than once")
+                tlua::error!(l, "rust FnOnce callback was called more than once")
             );
 
         // call f and drop it afterwards

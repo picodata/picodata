@@ -703,16 +703,26 @@ pub enum LuaError {
 
     /// The call to `eval` has requested the wrong type of data.
     WrongType{
+        when: &'static str,
         rust_expected: String,
         lua_actual: String,
     },
 }
 
 impl LuaError {
-    pub fn wrong_type<T, L: AsLua>(lua: L, n_values: i32) -> Self {
+    pub fn wrong_type_returned<T, L: AsLua>(lua: L, n_values: i32) -> Self {
+        Self::wrong_type::<T, _>(lua, n_values, "Wrong type returned by Lua")
+    }
+
+    pub fn wrong_type_passed<T, L: AsLua>(lua: L, n_values: i32) -> Self {
+        Self::wrong_type::<T, _>(lua, n_values, "Wrong type passed into rust callback")
+    }
+
+    pub fn wrong_type<T, L: AsLua>(lua: L, n_values: i32, when: &'static str) -> Self {
         let nz = unsafe { NonZeroI32::new_unchecked(-n_values) };
         let start = AbsoluteIndex::new(nz, lua.as_lua());
         Self::WrongType {
+            when,
             rust_expected: std::any::type_name::<T>().into(),
             lua_actual: typenames(lua, start, n_values as _),
         }
@@ -753,14 +763,13 @@ impl fmt::Display for LuaError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         use LuaError::*;
 
-        match *self {
-            SyntaxError(ref s) => write!(f, "Syntax error: {}", s),
-            ExecutionError(ref s) => write!(f, "Execution error: {}", s),
-            ReadError(ref e) => write!(f, "Read error: {}", e),
-            WrongType{
-                rust_expected: ref e1,
-                lua_actual: ref e2
-            } => write!(f, "Wrong type returned by Lua: {} expected, got {}", e1, e2),
+        match self {
+            SyntaxError(s) => write!(f, "Syntax error: {}", s),
+            ExecutionError(s) => write!(f, "Execution error: {}", s),
+            ReadError(e) => write!(f, "Read error: {}", e),
+            WrongType { when, rust_expected, lua_actual } => {
+                write!(f, "{}: {} expected, got {}", when, rust_expected, lua_actual)
+            }
         }
     }
 }
@@ -773,7 +782,7 @@ impl Error for LuaError {
             SyntaxError(ref s) => s,
             ExecutionError(ref s) => s,
             ReadError(_) => "read error",
-            WrongType{rust_expected: _, lua_actual: _} => "wrong type returned by Lua",
+            WrongType { when, .. } => when,
         }
     }
 
@@ -784,7 +793,7 @@ impl Error for LuaError {
             SyntaxError(_) => None,
             ExecutionError(_) => None,
             ReadError(ref e) => Some(e),
-            WrongType{rust_expected: _, lua_actual: _} => None,
+            WrongType { .. } => None,
         }
     }
 }

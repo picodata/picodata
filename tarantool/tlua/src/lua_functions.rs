@@ -429,7 +429,7 @@ where
 
         let n_results = pushed_value.size;
         LuaRead::lua_read_at_maybe_zero_position(pushed_value, -n_results)
-            .map_err(|lua| LuaError::wrong_type::<V, _>(lua, n_results).into())
+            .map_err(|lua| LuaError::wrong_type_returned::<V, _>(lua, n_results).into())
     }
 
     /// Builds a new `LuaFunction` from the code of a reader.
