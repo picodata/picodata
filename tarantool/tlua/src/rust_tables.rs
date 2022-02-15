@@ -96,6 +96,45 @@ impl From<PushIterError<TuplePushError<Void, TuplePushError<Void, Void>>>> for V
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// TableFromIter
+////////////////////////////////////////////////////////////////////////////////
+
+/// A wrapper struct for converting arbitrary iterators into lua tables. Use
+/// this instead of converting the iterator into a `Vec` to avoid unnecessary
+/// allocations
+/// # Example
+/// ```rust
+/// use std::io::BufRead;
+/// let lua = tlua::Lua::new();
+/// lua.set(
+///     "foo",
+///     tlua::TableFromIter(std::io::stdin().lock().lines().flatten()),
+/// )
+/// // Global variable 'foo' now contains an array of lines read from stdin
+/// ```
+pub struct TableFromIter<I>(pub I);
+
+impl<L, I> PushInto<L> for TableFromIter<I>
+where
+    L: AsLua,
+    I: Iterator,
+    <I as Iterator>::Item: PushInto<LuaState>,
+{
+    type Err = PushIterError<<I::Item as PushInto<LuaState>>::Err>;
+
+    fn push_into_lua(self, lua: L) -> crate::PushIntoResult<L, Self> {
+        push_iter(lua, self.0)
+    }
+}
+
+impl<L, I> PushOneInto<L> for TableFromIter<I>
+where
+    L: AsLua,
+    I: Iterator,
+    <I as Iterator>::Item: PushInto<LuaState>,
+{}
+
+////////////////////////////////////////////////////////////////////////////////
 /// Vec
 ////////////////////////////////////////////////////////////////////////////////
 

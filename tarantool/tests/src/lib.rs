@@ -316,6 +316,7 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 tlua::rust_tables::push_custom_iter,
                 tlua::rust_tables::error_during_push_iter,
                 tlua::rust_tables::push_custom_collection,
+                tlua::rust_tables::table_from_iter,
 
                 tlua::values::read_i32s,
                 tlua::values::write_i32s,

@@ -796,3 +796,13 @@ pub fn push_custom_collection() {
     assert_eq!(t.get(4), None::<i32>);
 }
 
+pub fn table_from_iter() {
+    let lua = Lua::new();
+    lua.set("foo", tlua::TableFromIter([1, 2, 3].iter().map(|&v| v + 1)));
+    let t: LuaTable<_> = lua.get("foo").unwrap();
+    assert_eq!(t.get(1), Some(2));
+    assert_eq!(t.get(2), Some(3));
+    assert_eq!(t.get(3), Some(4));
+    assert_eq!(t.get(4), None::<i32>);
+}
+
