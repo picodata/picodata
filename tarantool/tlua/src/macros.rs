@@ -62,9 +62,21 @@ macro_rules! implement_lua_read {
 }
 
 #[macro_export]
+macro_rules! c_str {
+    ($s:literal) => {
+        {
+            fn f(b: &[u8]) -> &::std::ffi::CStr {
+                unsafe { ::std::ffi::CStr::from_bytes_with_nul_unchecked(b) }
+            }
+            f(::std::concat!($s, "\0").as_bytes())
+        }
+    };
+}
+
+#[macro_export]
 macro_rules! c_ptr {
     ($s:literal) => {
-        ::std::concat!($s, "\0").as_ptr().cast::<i8>()
+        $crate::c_str!($s).as_ptr().cast::<::std::os::raw::c_char>()
     };
 }
 

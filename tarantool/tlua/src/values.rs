@@ -1,5 +1,6 @@
 use std::convert::TryFrom;
 use std::borrow::Cow;
+use std::ffi::{CStr, CString};
 use std::mem::MaybeUninit;
 use std::num::NonZeroI32;
 use std::slice;
@@ -250,6 +251,20 @@ impl_push_read!{ String,
     }
 }
 
+impl_push_read!{ CString,
+    push_to_lua(&self, lua) {
+        push_string_impl!(self, lua)
+    }
+    push_into_lua(self, lua) {
+        push_string_impl!(self, lua)
+    }
+    read_at_position(lua, index) {
+        lua_read_string_impl!(lua, index,
+            |slice: &[u8], lua| CString::new(slice).map_err(|_| lua)
+        )
+    }
+}
+
 impl_push_read!{ AnyLuaString,
     push_to_lua(&self, lua) {
         push_string_impl!(self, lua)
@@ -267,6 +282,19 @@ impl_push_read!{ AnyLuaString,
 impl_push_read!{ str,
     push_to_lua(&self, lua) {
         push_string_impl!(self, lua)
+    }
+}
+
+impl_push_read!{ CStr,
+    push_to_lua(&self, lua) {
+        unsafe {
+            ffi::lua_pushlstring(
+                lua.as_lua(),
+                self.as_ptr() as _,
+                self.to_bytes().len() as _,
+            );
+            Ok(PushGuard::new(lua, 1))
+        }
     }
 }
 

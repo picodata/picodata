@@ -1,4 +1,5 @@
 use tarantool::tlua::{
+    c_str,
     AsLua,
     AnyLuaValue,
     AnyLuaString,
@@ -11,6 +12,7 @@ use tarantool::tlua::{
     False,
     Typename,
 };
+use std::ffi::CString;
 
 pub fn read_i32s() {
     let lua = Lua::new();
@@ -244,6 +246,8 @@ pub fn readwrite_strings() {
 
     lua.set("a", "hello");
     lua.set("b", &"hello".to_string());
+    lua.set("c", c_str!("can you hear me?"));
+    lua.set("d", CString::new("HELLO!!!").unwrap());
 
     let x: String = lua.get("a").unwrap();
     assert_eq!(x, "hello");
@@ -251,7 +255,11 @@ pub fn readwrite_strings() {
     let y: String = lua.get("b").unwrap();
     assert_eq!(y, "hello");
 
+    assert_eq!(lua.get::<String, _>("c").unwrap(), "can you hear me?");
+    assert_eq!(lua.get::<String, _>("d").unwrap(), "HELLO!!!");
+
     assert_eq!(lua.eval::<String>("return 'abc'").unwrap(), "abc");
+    assert_eq!(lua.eval::<CString>("return 'abc'").unwrap().as_ref(), c_str!("abc"));
     assert_eq!(lua.eval::<u32>("return #'abc'").unwrap(), 3);
     assert_eq!(lua.eval::<u32>("return #'a\\x00c'").unwrap(), 3);
     assert_eq!(lua.eval::<AnyLuaString>("return 'a\\x00c'").unwrap().0, vec!(97, 0, 99));
