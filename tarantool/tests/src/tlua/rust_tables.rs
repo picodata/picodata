@@ -293,6 +293,12 @@ pub fn reading_hashmap_set_from_lua_works() {
             .map(|(k, v)| (AnyHashableLuaValue::LuaNumber((k + 1) as i32), AnyLuaValue::LuaNumber(*v))).collect::<HashMap<_, _>>());
 }
 
+pub fn read_wrong_type_fail() {
+    let lua = Lua::new();
+
+    assert_eq!(lua.eval("return { 1, 2, 'foo' }").ok(), None::<Vec<i32>>);
+}
+
 pub fn derive_struct_push() {
     #[derive(Push)]
     struct S {

@@ -90,3 +90,14 @@ macro_rules! lua_error {
     }
 }
 
+#[macro_export]
+macro_rules! unwrap_or {
+    ($o:expr, $($else:tt)+) => {
+        if let Some(v) = $o {
+            v
+        } else {
+            $($else)+
+        }
+    }
+}
+

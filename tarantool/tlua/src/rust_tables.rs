@@ -197,10 +197,17 @@ where
         let mut max_key = i32::MIN;
         let mut min_key = i32::MAX;
 
-        for (key, value) in table.iter::<i32, T>().flatten() {
-            max_key = max_key.max(key);
-            min_key = min_key.min(key);
-            dict.insert(key, value);
+        {
+            let mut iter = table.iter::<i32, T>();
+            while let Some(maybe_kv) = iter.next() {
+                let (key, value) = crate::unwrap_or!{maybe_kv,
+                    drop(iter);
+                    return Err(table.into_inner())
+                };
+                max_key = max_key.max(key);
+                min_key = min_key.min(key);
+                dict.insert(key, value);
+            }
         }
 
         if dict.is_empty() {

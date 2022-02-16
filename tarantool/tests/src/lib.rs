@@ -315,6 +315,7 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 tlua::rust_tables::reading_hashmap_with_floating_indexes_works,
                 tlua::rust_tables::reading_heterogenous_hashmap_works,
                 tlua::rust_tables::reading_hashmap_set_from_lua_works,
+                tlua::rust_tables::read_wrong_type_fail,
                 tlua::rust_tables::derive_struct_push,
                 tlua::rust_tables::derive_struct_lua_read,
                 tlua::rust_tables::derive_enum_push,
