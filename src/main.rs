@@ -75,6 +75,7 @@ fn picolib_setup(args: args::Run) {
     //
     // Export public API
     luamod.set("run", tlua::function0(move || start(&args)));
+    luamod.set("raft_status", tlua::function0(raft_status));
     luamod.set(
         "raft_propose_info",
         tlua::function1(|x: String| raft_propose(Message::Info { msg: x })),
@@ -182,6 +183,13 @@ fn start(args: &args::Run) {
         tarantool::package(),
         tarantool::version()
     );
+}
+
+fn raft_status() -> traft::Status {
+    let stash = Stash::access();
+    let raft_ref = stash.raft_node();
+    let raft_node = raft_ref.as_ref().expect("Picodata not running yet");
+    raft_node.status()
 }
 
 fn raft_propose(msg: Message) {

@@ -25,6 +25,15 @@ g.test = function()
     local conn = g.node:connect()
 
     t.assert_equals(
+        conn:call('picolib.raft_status'),
+        {
+            id = 1,
+            leader_id = 0,
+            raft_state = "Follower",
+        }
+    )
+
+    t.assert_equals(
         conn:call('picolib.raft_propose_eval', {1, 'return'}),
         false -- No leader is elected yet
     )
@@ -35,6 +44,17 @@ g.test = function()
         to = 1,
         from = 0,
     })
+
+    h.retrying({}, function()
+        t.assert_equals(
+            conn:call('picolib.raft_status'),
+            {
+                id = 1,
+                leader_id = 1,
+                raft_state = "Leader",
+            }
+        )
+    end)
 
     t.assert_equals(
         conn:call('picolib.raft_propose_eval', {0, 'return'}),

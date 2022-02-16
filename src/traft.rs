@@ -4,6 +4,7 @@ mod storage;
 
 pub use network::ConnectionPool;
 pub use node::Node;
+pub use node::Status;
 use serde::{Deserialize, Serialize};
 use std::convert::TryFrom;
 pub use storage::Storage;

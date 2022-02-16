@@ -1,0 +1,74 @@
+local t = require('luatest')
+local h = require('test.helper')
+local g = t.group()
+
+local fio = require('fio')
+
+g.before_all(function()
+    g.data_dir = fio.tempdir()
+    local peer = {'127.0.0.1:13301', '127.0.0.1:13302'}
+
+    g.cluster = {
+        i1 = h.Picodata:new({
+            name = 'i1',
+            data_dir = g.data_dir .. '/i1',
+            listen = '127.0.0.1:13301',
+            peer = peer,
+            env = {PICODATA_RAFT_ID = "1"},
+        }),
+        i2 = h.Picodata:new({
+            name = 'i2',
+            data_dir = g.data_dir .. '/i2',
+            listen = '127.0.0.1:13302',
+            peer = peer,
+            env = {PICODATA_RAFT_ID = "2"},
+        }),
+    }
+
+    for _, node in pairs(g.cluster) do
+        node:start()
+    end
+end)
+
+g.after_all(function()
+    for _, node in pairs(g.cluster) do
+        node:stop()
+    end
+    fio.rmtree(g.data_dir)
+end)
+
+g.test = function()
+    -- Speed up node election
+    g.cluster.i1:interact({
+        msg_type = "MsgTimeoutNow",
+        to = 1,
+        from = 0,
+    })
+
+    h.retrying({}, function()
+        t.assert_equals(
+            g.cluster.i2:connect():call('picolib.raft_status'),
+            {
+                id = 2,
+                leader_id = 1,
+                raft_state = "Follower",
+            }
+        )
+    end)
+
+    t.assert_equals(
+        g.cluster.i2:connect():call(
+            'picolib.raft_propose_eval',
+            {1, '_G.check = box.info.listen'}
+        ),
+        true
+    )
+    t.assert_equals(
+        g.cluster.i1:connect():eval('return check'),
+        '127.0.0.1:13301'
+    )
+    t.assert_equals(
+        g.cluster.i2:connect():eval('return check'),
+        '127.0.0.1:13302'
+    )
+end

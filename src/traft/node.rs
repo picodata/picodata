@@ -1,9 +1,12 @@
 use ::raft::prelude as raft;
 use ::raft::Error as RaftError;
 use ::tarantool::fiber;
+use ::tarantool::tlua;
 use ::tarantool::util::IntoClones;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::convert::TryFrom;
+use std::rc::Rc;
 
 use std::time::Duration;
 use std::time::Instant;
@@ -16,9 +19,17 @@ use crate::traft::Storage;
 type RawNode = raft::RawNode<Storage>;
 type Notify = fiber::Channel<()>;
 
+#[derive(Clone, Debug, tlua::Push, tlua::PushInto)]
+pub struct Status {
+    id: u64,
+    leader_id: u64,
+    raft_state: String,
+}
+
 pub struct Node {
     _main_loop: fiber::LuaUnitJoinHandle<'static>,
     inbox: fiber::Channel<Request>,
+    status: Rc<RefCell<Status>>,
 }
 
 #[derive(Clone, Debug)]
@@ -34,12 +45,23 @@ impl Node {
     pub fn new(cfg: &raft::Config, on_commit: fn(&[u8])) -> Result<Self, RaftError> {
         let raw_node = RawNode::new(cfg, Storage, &tlog::root())?;
         let (inbox, inbox_clone) = fiber::Channel::new(0).into_clones();
-        let loop_fn = move || raft_main(inbox_clone, raw_node, on_commit);
+        let (status, status_clone) = Rc::new(RefCell::new(Status {
+            id: cfg.id,
+            leader_id: 0,
+            raft_state: "Follower".into(),
+        }))
+        .into_clones();
+        let loop_fn = move || raft_main(inbox_clone, status_clone, raw_node, on_commit);
 
         Ok(Node {
             inbox,
+            status,
             _main_loop: fiber::defer_proc(loop_fn),
         })
+    }
+
+    pub fn status(&self) -> Status {
+        self.status.borrow().clone()
     }
 
     pub fn propose(&self, data: impl Into<Vec<u8>>) {
@@ -80,7 +102,12 @@ impl Node {
     }
 }
 
-fn raft_main(inbox: fiber::Channel<Request>, mut raw_node: RawNode, on_commit: fn(&[u8])) {
+fn raft_main(
+    inbox: fiber::Channel<Request>,
+    status: Rc<RefCell<Status>>,
+    mut raw_node: RawNode,
+    on_commit: fn(&[u8]),
+) {
     let mut next_tick = Instant::now() + Node::TICK;
     let mut pool = ConnectionPool::with_timeout(Node::TICK * 4);
 
@@ -185,6 +212,12 @@ fn raft_main(inbox: fiber::Channel<Request>, mut raw_node: RawNode, on_commit: f
             // Raft HardState changed, and we need to persist it.
             // let hs = hs.clone();
             Storage::persist_hard_state(hs).unwrap();
+        }
+
+        if let Some(ss) = ready.ss() {
+            let mut status = status.borrow_mut();
+            status.leader_id = ss.leader_id;
+            status.raft_state = format!("{:?}", ss.raft_state);
         }
 
         if !ready.persisted_messages().is_empty() {
