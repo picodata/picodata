@@ -302,6 +302,8 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 tlua::rust_tables::push_hashmap,
                 tlua::rust_tables::push_hashset,
                 tlua::rust_tables::globals_table,
+                tlua::rust_tables::read_array,
+                tlua::rust_tables::read_array_partial,
                 tlua::rust_tables::reading_vec_works,
                 tlua::rust_tables::reading_vec_from_sparse_table_doesnt_work,
                 tlua::rust_tables::reading_vec_with_empty_table_works,

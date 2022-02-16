@@ -1,4 +1,9 @@
-use std::collections::{HashMap, HashSet, BTreeMap};
+use std::{
+    cell::RefCell,
+    collections::{HashMap, HashSet, BTreeMap, BTreeSet},
+    num::NonZeroI32,
+    rc::Rc,
+};
 use tarantool::tlua::{
     self,
     AsLua,
@@ -104,6 +109,60 @@ pub fn globals_table() {
 
     let val: i32 = lua.get("a").unwrap();
     assert_eq!(val, 12);
+}
+
+pub fn read_array() {
+    let lua = Lua::new();
+
+    assert_eq!(lua.eval("return { 1, 2, 3 }").ok(), Some([1, 2, 3]));
+    assert_eq!(lua.eval("return { [1] = 1, [2] = 2, [3] = 3 }").ok(), Some([1, 2, 3]));
+    assert_eq!(lua.eval("return { 1, 2 }").ok(), None::<[i32; 3]>);
+    assert_eq!(lua.eval("return { 1, 2, 3, 4 }").ok(), None::<[i32; 3]>);
+    assert_eq!(lua.eval("return { [-1] = 1, [1] = 2, [2] = 3 }").ok(), None::<[i32; 3]>);
+    assert_eq!(lua.eval("return { [1] = 1, [3] = 3 }").ok(), None::<[i32; 3]>);
+    assert_eq!(lua.eval("return { 1, 2, 'foo' }").ok(), None::<[i32; 3]>);
+
+    assert_eq!(lua.eval("return { 1, 2 }").ok(), Some(E::Other(vec![1, 2])));
+    assert_eq!(lua.eval("return { 1, 2, 3 }").ok(), Some(E::Exact([1, 2, 3])));
+    assert_eq!(lua.eval("return { 1, 2, 3, 4 }").ok(), Some(E::Other(vec![1, 2, 3, 4])));
+
+    #[derive(Debug, PartialEq, LuaRead)]
+    enum E {
+        Exact([i32; 3]),
+        Other(Vec<i32>),
+    }
+}
+
+pub fn read_array_partial() {
+    static mut DROPPED: Option<Rc<RefCell<BTreeSet<i32>>>> = None;
+    unsafe { DROPPED = Some(Rc::default()) }
+
+    let lua = Lua::new();
+
+    // XXX: strictly speaking lua table iteration key order is not defined so
+    // this test may not work in some situations, but it seems to work for now
+    assert_eq!(lua.eval("return { 1, 2, 'foo', 4 }").ok(), None::<[DropCheck; 4]>);
+    let dropped = unsafe {
+        DROPPED.as_ref().unwrap().borrow().iter().copied().collect::<Vec<i32>>()
+    };
+    assert_eq!(dropped, [1, 2]);
+
+    #[derive(Debug, PartialEq)]
+    struct DropCheck(i32);
+
+    impl<L: AsLua> LuaRead<L> for DropCheck {
+        fn lua_read_at_position(lua: L, idx: NonZeroI32) -> Result<Self, L> {
+            Ok(DropCheck(lua.read_at_nz(idx)?))
+        }
+    }
+
+    impl Drop for DropCheck {
+        fn drop(&mut self) {
+            unsafe {
+                DROPPED.as_ref().unwrap().borrow_mut().insert(self.0);
+            }
+        }
+    }
 }
 
 pub fn reading_vec_works() {

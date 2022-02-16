@@ -311,6 +311,50 @@ where
 {
 }
 
+impl<L, T, const N: usize> LuaRead<L> for [T; N]
+where
+    L: AsLua,
+    T: for<'a> LuaRead<PushGuard<&'a LuaTable<L>>>,
+    T: 'static,
+{
+    fn lua_read_at_position(lua: L, index: NonZeroI32) -> Result<Self, L> {
+        let table = match LuaTable::lua_read_at_position(lua, index) {
+            Ok(table) => table,
+            Err(lua) => return Err(lua),
+        };
+
+        let mut res = std::mem::MaybeUninit::uninit();
+        let ptr = &mut res as *mut _ as *mut [T; N] as *mut T;
+        let mut was_assigned = [false; N];
+        let mut err = false;
+
+        for maybe_kv in table.iter::<i32, T>() {
+            match maybe_kv {
+                Some((key, value)) if 1 <= key && key as usize <= N => {
+                    let i = (key - 1) as usize;
+                    unsafe { std::ptr::write(ptr.add(i), value) }
+                    was_assigned[i] = true;
+                }
+                _ => {
+                    err = true;
+                    break
+                }
+            }
+        }
+
+        if err || was_assigned.iter().any(|&was_assigned| !was_assigned) {
+            for i in IntoIterator::into_iter(was_assigned).enumerate()
+                .flat_map(|(i, was_assigned)| was_assigned.then(|| i))
+            {
+                unsafe { std::ptr::drop_in_place(ptr.add(i)) }
+            }
+            return Err(table.into_inner())
+        }
+
+        Ok(unsafe { res.assume_init() })
+    }
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 /// HashMap
 ////////////////////////////////////////////////////////////////////////////////
