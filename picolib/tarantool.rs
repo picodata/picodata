@@ -1,7 +1,7 @@
 use std::ffi::CStr;
 
 use ::tarantool::lua_state;
-use ::tarantool::tlua::{self, LuaFunction};
+use ::tarantool::tlua::{self, LuaFunction, LuaTable};
 
 mod ffi {
     use libc::c_char;
@@ -56,11 +56,8 @@ impl Default for Cfg {
 #[allow(dead_code)]
 pub fn cfg() -> Option<Cfg> {
     let l = lua_state();
-    let cfg: Result<Cfg, _> = l.eval("return box.cfg");
-    match cfg {
-        Ok(v) => Some(v),
-        Err(_) => None,
-    }
+    let b: LuaTable<_> = l.get("box")?;
+    b.get("cfg")
 }
 
 pub fn set_cfg(cfg: &Cfg) {
@@ -71,6 +68,5 @@ pub fn set_cfg(cfg: &Cfg) {
 
 pub fn eval(code: &str) {
     let l = lua_state();
-    let f = LuaFunction::load(l, code).unwrap();
-    f.call().unwrap()
+    l.exec(code).unwrap()
 }
