@@ -210,7 +210,7 @@ impl Storage {
         let mut space = Storage::space(RAFT_LOG)?;
         for e in entries {
             let row = row::Entry::try_from(e.clone())?;
-            space.insert(&row).map_err(box_err!())?;
+            space.replace(&row).map_err(box_err!())?;
         }
 
         Ok(())

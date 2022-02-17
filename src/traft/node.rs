@@ -111,7 +111,7 @@ fn raft_main(
     let mut next_tick = Instant::now() + Node::TICK;
     let mut pool = ConnectionPool::builder()
         .handler_name(".raft_interact")
-        .queue_len(0)
+        .queue_len(10)
         .timeout(Node::TICK * 4)
         .build();
 
