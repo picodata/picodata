@@ -8,6 +8,7 @@ use ::tarantool::tlua;
 use ::tarantool::tuple::{FunctionArgs, FunctionCtx, Tuple};
 use indoc::indoc;
 
+mod app;
 mod args;
 mod error;
 mod message;
