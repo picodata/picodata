@@ -125,6 +125,7 @@ fn insert_new_space(
             let mut field_format = Map::<String, Value>::new();
             field_format.insert("name".to_string(), Value::String(ft.name.clone()));
             field_format.insert("type".to_string(), Value::String(ft.field_type.to_string()));
+            field_format.insert("is_nullable".to_string(), Value::Bool(ft.is_nullable));
             space_format.push(Value::Object(field_format));
         }
     }

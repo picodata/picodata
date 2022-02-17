@@ -149,6 +149,7 @@ pub struct SpaceFieldFormat {
     pub name: String,
     #[serde(alias = "type")]
     pub field_type: SpaceFieldType,
+    pub is_nullable: bool,
 }
 
 impl SpaceFieldFormat {
@@ -156,6 +157,7 @@ impl SpaceFieldFormat {
         SpaceFieldFormat {
             name: name.to_string(),
             field_type: ft,
+            is_nullable: false,
         }
     }
 }
