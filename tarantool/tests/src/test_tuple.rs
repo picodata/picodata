@@ -1,7 +1,8 @@
 use std::cmp::Ordering;
 
 use tarantool::tlua::AsLua;
-use tarantool::tuple::{FieldType, KeyDef, KeyDefItem, Tuple};
+use tarantool::tuple::{AsTuple, FieldType, KeyDef, KeyDefItem, Tuple};
+use serde::Serialize;
 
 use crate::common::{S1Record, S2Key, S2Record};
 
@@ -9,6 +10,30 @@ pub fn test_tuple_new_from_struct() {
     let input = S1Record {
         id: 1,
         text: "text".to_string(),
+    };
+    assert!(Tuple::from_struct(&input).is_ok());
+}
+
+pub fn new_tuple_from_flutten_struct() {
+    #[derive(Serialize)]
+    struct Embedded {
+        b: i32,
+        c: i32,
+    }
+    #[derive(Serialize)]
+    struct FlattenStruct {
+        a: i32,
+        #[serde(flatten)]
+        emb: Embedded,
+    }
+    impl AsTuple for FlattenStruct{}
+
+    let input = FlattenStruct {
+        a: 1,
+        emb: Embedded {
+            b: 2,
+            c: 3,
+        },
     };
     assert!(Tuple::from_struct(&input).is_ok());
 }

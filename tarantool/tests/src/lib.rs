@@ -415,6 +415,7 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 test_box::test_index_create_drop,
 
                 test_tuple::test_tuple_new_from_struct,
+                test_tuple::new_tuple_from_flutten_struct,
                 test_tuple::test_tuple_field_count,
                 test_tuple::test_tuple_size,
                 test_tuple::test_tuple_into_struct,
