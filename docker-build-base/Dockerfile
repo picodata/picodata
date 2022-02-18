@@ -20,5 +20,3 @@ RUN set -e; \
     cd /root; \
     tarantoolctl rocks install luacheck 0.26.0; \
     tarantoolctl rocks install luatest 0.5.7;
-
-

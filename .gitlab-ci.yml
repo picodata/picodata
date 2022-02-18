@@ -31,9 +31,8 @@ docker-build-base:
   stage: prebuild
   image: docker:20
   tags:
+    - picodata
     - docker
-  services:
-    - docker:dind
   rules:
     - # if
       changes:
@@ -59,6 +58,9 @@ docker-build-base:
 build:
   image: ${CI_REGISTRY_IMAGE}/${BASE_IMAGE}
   stage: build
+  tags:
+    - picodata
+    - docker
   script:
     # - git submodule foreach --recursive 'git fetch --tags; git describe --always'
     - pushd tarantool-sys; git describe; popd
