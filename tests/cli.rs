@@ -118,3 +118,16 @@ fn precedence() {
     );
     cmd.timeout(Duration::from_secs(1)).assert().success();
 }
+
+#[test]
+fn tarantool_hello() {
+    Command::cargo_bin("picodata")
+        .unwrap()
+        .arg("tarantool")
+        .arg("--")
+        .arg("-e")
+        .arg(r#"print("it's alive!")"#)
+        .assert()
+        .stdout(&b"it's alive!\n"[..])
+        .success();
+}

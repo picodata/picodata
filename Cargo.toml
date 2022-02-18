@@ -31,6 +31,7 @@ features = ["schema"]
 
 [dev-dependencies]
 assert_cmd = "2.0"
+predicates = "2.0"
 tempfile = "3"
 
 [build-dependencies]

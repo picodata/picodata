@@ -1,19 +1,24 @@
 use crate::traft::row::Peer;
-use std::ffi::CString;
+use std::{
+    borrow::Cow,
+    ffi::{CStr, CString},
+};
 use structopt::StructOpt;
-use tarantool::tlua;
+use tarantool::tlua::{self, c_str};
 
 #[derive(Debug, StructOpt)]
 #[structopt(name = "picodata", version = env!("CARGO_PKG_VERSION"))]
 pub enum Picodata {
     Run(Run),
+    Tarantool(Tarantool),
 }
 
+////////////////////////////////////////////////////////////////////////////////
+// Run
+////////////////////////////////////////////////////////////////////////////////
+
 #[derive(Debug, StructOpt, tlua::Push)]
-#[structopt(
-    about = "Run the picodata instance",
-    setting = clap::AppSettings::NoBinaryName,
-)]
+#[structopt(about = "Run the picodata instance")]
 pub struct Run {
     #[structopt(long, value_name = "name", env = "PICODATA_CLUSTER_ID")]
     /// Name of the cluster
@@ -80,12 +85,6 @@ pub struct Run {
     pub autorun: bool,
 }
 
-macro_rules! c_str {
-    ($s:literal) => {
-        unsafe { ::std::ffi::CStr::from_ptr(::std::concat!($s, "\0").as_ptr() as _) }
-    };
-}
-
 impl Run {
     #[allow(dead_code)]
     /// Returns argument matches as if the `argv` is empty
@@ -96,15 +95,7 @@ impl Run {
 
     /// Get the arguments that will be passed to `tarantool_main`
     pub fn tt_args(&self) -> Result<Vec<CString>, String> {
-        let exe = CString::new(
-            std::env::current_exe()
-                .map_err(|e| format!("Failed getting current executable path: {e}"))?
-                .display()
-                .to_string(),
-        )
-        .map_err(|e| format!("Current executable path contains nul bytes: {e}"))?;
-
-        let mut res = vec![exe];
+        let mut res = vec![current_exe()?];
 
         if let Some(script) = &self.tarantool_exec {
             res.extend([c_str!("-e").into(), script.clone()]);
@@ -112,6 +103,40 @@ impl Run {
 
         Ok(res)
     }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Tarantool
+////////////////////////////////////////////////////////////////////////////////
+
+#[derive(Debug, StructOpt, tlua::Push)]
+#[structopt(about = "Run tarantool")]
+pub struct Tarantool {
+    #[structopt(raw = true, parse(try_from_str = CString::new))]
+    pub args: Vec<CString>,
+}
+
+impl Tarantool {
+    /// Get the arguments that will be passed to `tarantool_main`
+    pub fn tt_args(&self) -> Result<Vec<Cow<CStr>>, String> {
+        Ok(std::iter::once(current_exe()?.into())
+            .chain(self.args.iter().map(AsRef::as_ref).map(Cow::from))
+            .collect())
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// fns
+////////////////////////////////////////////////////////////////////////////////
+
+fn current_exe() -> Result<CString, String> {
+    CString::new(
+        std::env::current_exe()
+            .map_err(|e| format!("Failed getting current executable path: {e}"))?
+            .display()
+            .to_string(),
+    )
+    .map_err(|e| format!("Current executable path contains nul bytes: {e}"))
 }
 
 fn parse_peer(text: &str) -> Peer {

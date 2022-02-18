@@ -258,9 +258,63 @@ pub extern "C" fn raft_interact(_: FunctionCtx, args: FunctionArgs) -> c_int {
 fn main() {
     let res = match args::Picodata::from_args() {
         args::Picodata::Run(r) => run(r),
+        args::Picodata::Tarantool(t) => tarantool(t),
     };
     if let Err(e) = res {
         eprintln!("Fatal: {}", e)
+    }
+}
+
+macro_rules! tarantool_main {
+    (@impl $tt_args:expr, $cb:expr, $cb_data:expr) => {
+        {
+            extern "C" {
+                fn tarantool_main(
+                    argc: i32,
+                    argv: *mut *mut c_char,
+                    cb: Option<extern "C" fn(*mut c_void)>,
+                    cb_data: *mut c_void,
+                ) -> c_int;
+            }
+
+            let tt_args = $tt_args;
+            // XXX: `argv` is a vec of pointers to data owned by `tt_args`, so
+            // make sure `tt_args` outlives `argv`, because the compiler is not
+            // gonna do that for you
+            let argv = tt_args.iter().map(|a| a.as_ptr()).collect::<Vec<_>>();
+
+            let rc = unsafe {
+                tarantool_main(
+                    argv.len() as _,
+                    argv.as_ptr() as _,
+                    $cb,
+                    $cb_data,
+                )
+            };
+
+            if rc == 0 {
+                Ok(())
+            } else {
+                Err(format!("return code {rc}"))
+            }
+        }
+    };
+    ($tt_args:expr) => {
+        tarantool_main!(@impl $tt_args, None, std::ptr::null_mut())
+    };
+    ($tt_args:expr, $pd_args:expr => $cb:expr) => {
+        {
+            extern "C" fn trampoline(data: *mut c_void) {
+                let args = unsafe { Box::from_raw(data as _) };
+                $cb(*args)
+            }
+
+            tarantool_main!(@impl
+                $tt_args,
+                Some(trampoline),
+                Box::into_raw(Box::new($pd_args)) as _
+            )
+        }
     }
 }
 
@@ -273,43 +327,14 @@ fn run(args: args::Run) -> Result<(), String> {
         }
     }
 
-    let tt_args = args.tt_args()?;
-    // XXX: `argv` is a vec of pointers to data owned by `tt_args`, so make sure
-    // `tt_args` outlives `argv`, because the compiler is not gonna do that for
-    // you
-    let argv = tt_args.iter().map(|a| a.as_ptr()).collect::<Vec<_>>();
-
-    let boxed_args: Box<args::Run> = Box::new(args);
-
-    let rc = unsafe {
-        tarantool_main(
-            argv.len() as _,
-            argv.as_ptr() as _,
-            trampoline,
-            Box::into_raw(boxed_args) as _,
-        )
-    };
-
-    return if rc == 0 {
-        Ok(())
-    } else {
-        Err(format!("return code {rc}"))
-    };
-
-    extern "C" fn trampoline(data: *mut c_void) {
-        let args: Box<args::Run> = unsafe { Box::from_raw(data as _) };
+    tarantool_main!(args.tt_args()?, args => |args: args::Run| {
         if args.autorun {
             start(&args);
         }
-        picolib_setup(*args);
-    }
+        picolib_setup(args);
+    })
+}
 
-    extern "C" {
-        fn tarantool_main(
-            argc: i32,
-            argv: *mut *mut c_char,
-            cb: extern "C" fn(*mut c_void),
-            cb_data: *mut c_void,
-        ) -> i32;
-    }
+fn tarantool(args: args::Tarantool) -> Result<(), String> {
+    tarantool_main!(args.tt_args()?)
 }
