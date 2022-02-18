@@ -14,10 +14,21 @@ use crate::traft::row;
 
 type RaftId = u64;
 
-#[derive(Debug)]
-pub struct ConnectionPool {
-    workers: HashMap<RaftId, PoolWorker>,
+#[derive(Clone, Debug)]
+struct WorkerOptions {
     timeout: Duration,
+    queue_len: u32,
+    handler_name: &'static str,
+}
+
+impl Default for WorkerOptions {
+    fn default() -> Self {
+        Self {
+            handler_name: "",
+            queue_len: 0,
+            timeout: Duration::ZERO,
+        }
+    }
 }
 
 struct PoolWorker {
@@ -28,8 +39,10 @@ struct PoolWorker {
 }
 
 impl PoolWorker {
-    pub fn run_with_timeout(id: RaftId, uri: &str, timeout: Duration) -> PoolWorker {
-        let (tx, rx) = fiber::Channel::new(0).into_clones();
+    pub fn run(id: RaftId, uri: &str, opts: &WorkerOptions) -> PoolWorker {
+        let timeout = opts.timeout;
+        let handler_name = opts.handler_name;
+        let (tx, rx) = fiber::Channel::new(opts.queue_len).into_clones();
         let worker_fn = {
             let uri = uri.to_owned();
             move || {
@@ -53,7 +66,7 @@ impl PoolWorker {
                     };
 
                     for msg in std::iter::once(msg).chain(&rx) {
-                        if let Err(e) = conn.call(".raft_interact", &msg, &call_opts) {
+                        if let Err(e) = conn.call(handler_name, &msg, &call_opts) {
                             tlog!(Error, "Interact with {uri} -> {e}");
                             break;
                         };
@@ -93,20 +106,52 @@ impl std::fmt::Debug for PoolWorker {
     }
 }
 
-impl ConnectionPool {
-    pub fn with_timeout(timeout: Duration) -> Self {
-        Self {
+#[derive(Default)]
+pub struct ConnectionPoolBuilder {
+    worker_options: WorkerOptions,
+}
+
+impl ConnectionPoolBuilder {
+    pub fn timeout(&'_ mut self, val: Duration) -> &'_ mut Self {
+        self.worker_options.timeout = val;
+        self
+    }
+
+    pub fn queue_len(&'_ mut self, val: u32) -> &'_ mut Self {
+        self.worker_options.queue_len = val;
+        self
+    }
+
+    pub fn handler_name(&'_ mut self, val: &'static str) -> &'_ mut Self {
+        self.worker_options.handler_name = val;
+        self
+    }
+
+    pub fn build(&self) -> ConnectionPool {
+        ConnectionPool {
+            worker_options: self.worker_options.clone(),
             workers: HashMap::new(),
-            timeout,
         }
+    }
+}
+
+#[derive(Debug)]
+pub struct ConnectionPool {
+    worker_options: WorkerOptions,
+    workers: HashMap<RaftId, PoolWorker>,
+}
+
+impl ConnectionPool {
+    pub fn builder() -> ConnectionPoolBuilder {
+        ConnectionPoolBuilder::default()
     }
 
     /// Create a worker for communicating with another node.
     /// Connection is established lazily at the first request.
     /// It's also re-established automatically upon any error.
     pub fn connect(&mut self, id: RaftId, uri: &str) {
-        self.workers
-            .insert(id, PoolWorker::run_with_timeout(id, uri, self.timeout));
+        let wrk = PoolWorker::run(id, uri, &self.worker_options);
+        self.workers.insert(id, wrk);
     }
 
     #[allow(dead_code)]
@@ -148,26 +193,28 @@ inventory::submit!(crate::InnerTest {
 
         let l = tarantool::lua_state();
 
-        // Monkeypatch the handler
+        // Mock the handler
         let (tx, rx) = fiber::Channel::new(0).into_clones();
         l.set(
-            "",
-            vec![(
-                "raft_interact",
-                tlua::function3(move |msg_type: String, to: u64, from: u64| {
-                    // It's hard to fully check traft::row::Message because
-                    // netbox sends its fields as a flat tuple.
-                    // So we only check three fields.
-                    tx.send((msg_type, to, from)).unwrap();
-                    // lock forever, never respond
-                    fiber::Cond::new().wait()
-                }),
-            )],
+            "test_interact",
+            tlua::function3(move |msg_type: String, to: u64, from: u64| {
+                // It's hard to fully check traft::row::Message because
+                // netbox sends its fields as a flat tuple.
+                // So we only check three fields.
+                tx.send((msg_type, to, from)).unwrap();
+
+                // Lock forever, never respond. This trick allows to check
+                // how pool behaves in case of the irresponsive TCP connection.
+                fiber::Cond::new().wait()
+            }),
         );
-        let () = l.eval("box.schema.func.drop('.raft_interact')").unwrap();
 
         // Connect to the current Tarantool instance
-        let mut pool = ConnectionPool::with_timeout(Duration::from_millis(50));
+        let mut pool = ConnectionPool::builder()
+            .handler_name("test_interact")
+            .queue_len(0)
+            .timeout(Duration::from_millis(50))
+            .build();
         let listen: String = l.eval("return box.info.listen").unwrap();
         tlog!(Info, "TEST: connecting {listen}");
         pool.connect(1337, &listen);

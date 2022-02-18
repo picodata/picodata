@@ -109,7 +109,11 @@ fn raft_main(
     on_commit: fn(&[u8]),
 ) {
     let mut next_tick = Instant::now() + Node::TICK;
-    let mut pool = ConnectionPool::with_timeout(Node::TICK * 4);
+    let mut pool = ConnectionPool::builder()
+        .handler_name(".raft_interact")
+        .queue_len(0)
+        .timeout(Node::TICK * 4)
+        .build();
 
     // This is a temporary hack until fair joining is implemented
     for peer in Storage::peers().unwrap() {
