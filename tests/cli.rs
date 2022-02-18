@@ -1,5 +1,4 @@
 use assert_cmd::Command;
-use std::fs::File;
 use std::time::Duration;
 use tempfile::tempdir;
 
@@ -19,40 +18,12 @@ fn positive() {
                 error(('Assertion failed: %q ~= %q'):format(l, r), 2)
             end
         end
-        assert_eq(os.environ()['PICODATA_PEER'], "127.0.0.1:3301")
-        assert_eq(os.environ()['PICODATA_LISTEN'], "3301")
-        assert_eq(os.environ()['PICODATA_DATA_DIR'], ".")
+        assert_eq(picolib.args.peers[1].uri, "127.0.0.1:3301")
+        assert_eq(picolib.args.listen, "3301")
+        assert_eq(picolib.args.data_dir, ".")
         "#,
     );
     cmd.timeout(Duration::from_secs(1)).assert().success();
-}
-
-#[test]
-fn missing_tarantool() {
-    let mut cmd = Command::cargo_bin("picodata").unwrap();
-    cmd.arg("run");
-    cmd.env("PATH", "/nowhere");
-    cmd.timeout(Duration::from_secs(1))
-        .assert()
-        .failure()
-        .stderr("tarantool: No such file or directory\n");
-}
-
-#[test]
-fn broken_tarantool() {
-    let temp = tempdir().unwrap();
-    let temp_path = temp.path();
-    File::create(temp_path.join("tarantool")).unwrap();
-
-    let mut cmd = Command::cargo_bin("picodata").unwrap();
-    cmd.arg("run");
-    cmd.env("PATH", temp_path);
-    cmd.timeout(Duration::from_secs(1));
-    cmd.assert().failure().stderr(format!(
-        "{}/tarantool: {}\n",
-        temp_path.display(),
-        errno::Errno(libc::EACCES)
-    ));
 }
 
 #[test]
@@ -94,24 +65,24 @@ fn pass_environment() {
             "Picodata shouldn't be running yet"
         )
 
-        cpath = os.environ()['LUA_CPATH']
-        assert(cpath and cpath:endswith(';/dev/null/?'), cpath)
-
         function assert_eq(l, r)
             if l ~= r then
                 error(('Assertion failed: %q ~= %q'):format(l, r), 2)
             end
         end
+        assert_eq(os.environ()['LUA_CPATH'], '/dev/null/?')
         assert_eq(os.environ()['CUSTOM_VAR'], 'keep me')
         assert_eq(os.environ()['TARANTOOL_VAR'], nil)
         assert_eq(os.environ()['TT_VAR'], nil)
-        assert_eq(os.environ()['PICODATA_LISTEN'], "127.0.0.1:0")
-        assert_eq(os.environ()['PICODATA_CLUSTER_ID'], "sam")
-        assert_eq(os.environ()['PICODATA_REPLICASET_ID'], "r1")
-        assert_eq(os.environ()['PICODATA_INSTANCE_ID'], "i1")
-        assert_eq(os.environ()['PICODATA_PEER'], "i1,i2,i3")
-        assert_eq(os.environ()['PICODATA_DATA_DIR'], "./data/i1")
-        require('picolib').run()
+        assert_eq(picolib.args.listen, '127.0.0.1:0')
+        assert_eq(picolib.args.cluster_id, "sam")
+        assert_eq(picolib.args.replicaset_id, "r1")
+        assert_eq(picolib.args.instance_id, "i1")
+        assert_eq(picolib.args.peers[1].uri, "i1")
+        assert_eq(picolib.args.peers[2].uri, "i2")
+        assert_eq(picolib.args.peers[3].uri, "i3")
+        assert_eq(picolib.args.data_dir, "./data/i1")
+        picolib.run()
         os.exit(0)
     "#,
     );
@@ -141,8 +112,8 @@ fn precedence() {
                 error(('Assertion failed: %q ~= %q'):format(l, r), 2)
             end
         end
-        assert_eq(os.environ()['PICODATA_DATA_DIR'], './somewhere')
-        assert_eq(os.environ()['PICODATA_LISTEN'], "0.0.0.0:0")
+        assert_eq(picolib.args.data_dir, './somewhere')
+        assert_eq(picolib.args.listen, "0.0.0.0:0")
     "#,
     );
     cmd.timeout(Duration::from_secs(1)).assert().success();

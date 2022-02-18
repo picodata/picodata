@@ -140,7 +140,7 @@ function Picodata:interact(opts)
         reject_hint = "?number",
         priority = "?number",
     })
-    return self:connect():call('picolib.raft_interact', {
+    return self:connect():call('.raft_interact', {
         opts.msg_type,
         opts.to,
         opts.from,

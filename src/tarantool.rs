@@ -28,7 +28,7 @@ inventory::submit!(crate::InnerTest {
     name: "test_version",
     body: || {
         let l = lua_state();
-        let t: tlua::LuaTable<_> = l.eval("return require('tarantool')").unwrap();
+        let t: LuaTable<_> = l.eval("return require('tarantool')").unwrap();
         assert_eq!(version(), t.get::<String, _>("version").unwrap());
         assert_eq!(package(), t.get::<String, _>("package").unwrap());
     }

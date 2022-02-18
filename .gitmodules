@@ -1,3 +1,6 @@
 [submodule "tarantool"]
 	path = tarantool
 	url = ../tarantool-module.git
+[submodule "tarantool-sys"]
+	path = tarantool-sys
+	url = https://github.com/tarantool/tarantool.git

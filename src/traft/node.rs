@@ -17,7 +17,7 @@ type RawNode = raft::RawNode<Storage>;
 type Notify = fiber::Channel<()>;
 
 pub struct Node {
-    _main_loop: fiber::LuaUnitJoinHandle,
+    _main_loop: fiber::LuaUnitJoinHandle<'static>,
     inbox: fiber::Channel<Request>,
 }
 

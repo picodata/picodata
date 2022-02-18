@@ -24,7 +24,7 @@ struct PoolWorker {
     id: RaftId,
     uri: String,
     channel: fiber::Channel<row::Message>,
-    fiber: fiber::UnitJoinHandle,
+    fiber: fiber::UnitJoinHandle<'static>,
 }
 
 impl PoolWorker {
@@ -53,7 +53,7 @@ impl PoolWorker {
                     };
 
                     for msg in std::iter::once(msg).chain(&rx) {
-                        if let Err(e) = conn.call("picolib.raft_interact", &msg, &call_opts) {
+                        if let Err(e) = conn.call(".raft_interact", &msg, &call_opts) {
                             tlog!(Error, "Interact with {uri} -> {e}");
                             break;
                         };
@@ -150,21 +150,21 @@ inventory::submit!(crate::InnerTest {
 
         // Monkeypatch the handler
         let (tx, rx) = fiber::Channel::new(0).into_clones();
-        let picolib: tlua::LuaTable<_> = l.get("picolib").unwrap();
-        picolib.set(
-            "raft_interact",
-            tlua::function3(move |msg_type: String, to: u64, from: u64| {
-                // It's hard to fully check traft::row::Message because
-                // netbox sends its fields as a flat tuple.
-                // So we only check three fields.
-                tx.send((msg_type, to, from)).unwrap();
-                // lock forever, never respond
-                fiber::Cond::new().wait()
-            }),
+        l.set(
+            "",
+            vec![(
+                "raft_interact",
+                tlua::function3(move |msg_type: String, to: u64, from: u64| {
+                    // It's hard to fully check traft::row::Message because
+                    // netbox sends its fields as a flat tuple.
+                    // So we only check three fields.
+                    tx.send((msg_type, to, from)).unwrap();
+                    // lock forever, never respond
+                    fiber::Cond::new().wait()
+                }),
+            )],
         );
-        let () = l
-            .eval("box.schema.func.drop('picolib.raft_interact')")
-            .unwrap();
+        let () = l.eval("box.schema.func.drop('.raft_interact')").unwrap();
 
         // Connect to the current Tarantool instance
         let mut pool = ConnectionPool::with_timeout(Duration::from_millis(50));

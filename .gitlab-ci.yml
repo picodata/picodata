@@ -8,6 +8,7 @@ workflow:
     - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
 
 variables:
+  GIT_DEPTH: 0
   GIT_SUBMODULE_STRATEGY: recursive
   BASE_IMAGE: build-base:latest
   CARGO_INCREMENTAL: 0
@@ -59,6 +60,9 @@ build:
   image: ${CI_REGISTRY_IMAGE}/${BASE_IMAGE}
   stage: build
   script:
+    # - git submodule foreach --recursive 'git fetch --tags; git describe --always'
+    - pushd tarantool-sys; git describe; popd
+    - pushd tarantool-sys/third_party/luajit; git describe; popd
     - cargo -V
     - cargo build
     - cargo test

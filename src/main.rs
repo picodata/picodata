@@ -1,11 +1,14 @@
+use std::os::raw::{c_char, c_int, c_void};
+use structopt::StructOpt;
+
 use ::raft::prelude as raft;
 use ::tarantool::error::TarantoolErrorCode::ProcC as ProcCError;
 use ::tarantool::set_error;
 use ::tarantool::tlua;
 use ::tarantool::tuple::{FunctionArgs, FunctionCtx, Tuple};
 use indoc::indoc;
-use std::os::raw::c_int;
 
+mod args;
 mod error;
 mod message;
 pub mod stash;
@@ -44,22 +47,20 @@ impl Stash {
     }
 }
 
-#[no_mangle]
-#[allow(clippy::missing_safety_doc)]
-pub unsafe extern "C" fn luaopen_picolib(l: *mut std::ffi::c_void) -> c_int {
-    // Perform box.cfg and other initialization.
-    // It's disabled only for testing purposes.
-    if std::env::var("PICOLIB_AUTORUN")
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(true)
-    {
-        main_run();
-    }
+fn picolib_setup(args: args::Run) {
+    let l = ::tarantool::lua_state();
+    let package: tlua::LuaTable<_> = l.get("package").expect("package == nil");
+    let loaded: tlua::LuaTable<_> = package.get("loaded").expect("package.loaded == nil");
+    loaded.set("picolib", &[()]);
+    let luamod: tlua::LuaTable<_> = loaded
+        .get("picolib")
+        .expect("package.loaded.picolib == nil");
 
-    let l = tlua::StaticLua::from_static(l);
-    let luamod: tlua::LuaTable<_> = (&l).push(vec![()]).read().unwrap();
+    // Also add a global picolib variable
+    l.set("picolib", &luamod);
+
     luamod.set("VERSION", env!("CARGO_PKG_VERSION"));
+    luamod.set("args", &args);
 
     //
     // Export inner tests
@@ -73,7 +74,7 @@ pub unsafe extern "C" fn luaopen_picolib(l: *mut std::ffi::c_void) -> c_int {
 
     //
     // Export public API
-    luamod.set("run", tlua::function0(main_run));
+    luamod.set("run", tlua::function0(move || start(&args)));
     luamod.set(
         "raft_propose_info",
         tlua::function1(|x: String| raft_propose(Message::Info { msg: x })),
@@ -100,13 +101,9 @@ pub unsafe extern "C" fn luaopen_picolib(l: *mut std::ffi::c_void) -> c_int {
         )
         .unwrap();
     }
-
-    use tlua::AsLua;
-    (&l).push(&luamod).forget();
-    1
 }
 
-fn main_run() {
+fn start(args: &args::Run) {
     let stash = Stash::access();
 
     if tarantool::cfg().is_some() {
@@ -116,14 +113,12 @@ fn main_run() {
 
     let mut cfg = tarantool::Cfg {
         listen: None,
+        wal_dir: args.data_dir.clone(),
+        memtx_dir: args.data_dir.clone(),
         ..Default::default()
     };
 
-    if let Ok(v) = std::env::var("PICODATA_DATA_DIR") {
-        std::fs::create_dir_all(&v).unwrap();
-        cfg.wal_dir = v.clone();
-        cfg.memtx_dir = v;
-    };
+    std::fs::create_dir_all(&args.data_dir).unwrap();
 
     tarantool::set_cfg(&cfg);
     tarantool::eval(
@@ -138,50 +133,35 @@ fn main_run() {
 
     let raft_id: u64 = {
         // The id already stored in tarantool snashot
-        let snap_id: Option<u64> = traft::Storage::id().unwrap();
+        let snap_id = traft::Storage::id().expect("failed to get id from storage");
         // The id passed in env vars (or command line args)
-        let args_id: Option<u64> = std::env::var("PICODATA_RAFT_ID")
-            .and_then(|v| {
-                v.parse()
-                    .map_err(|e| panic!("Bad PICODATA_RAFT_ID value \"{}\": {}", v, e))
-            })
-            .ok();
+        let args_id = args.raft_id;
 
-        match snap_id {
-            None => {
-                let id: u64 = args_id.unwrap_or(1);
-                traft::Storage::persist_id(id).unwrap();
+        match (snap_id, args_id) {
+            (None, _) => {
+                let id = args_id.unwrap_or(1);
+                traft::Storage::persist_id(id).expect("failed to persist id");
                 id
             }
-            Some(snap_id) => match args_id {
-                Some(args_id) if args_id != snap_id => {
-                    panic!(
-                        indoc! {"
-                            Already initialized with a different PICODATA_RAFT_ID:
-                              snapshot: {s}
-                             from args: {a}
-                        "},
-                        s = snap_id,
-                        a = args_id
-                    )
-                }
-                _ => snap_id,
-            },
+            (Some(snap_id), Some(args_id)) if args_id != snap_id => {
+                panic!(
+                    indoc!(
+                        "
+                        Already initialized with a different PICODATA_RAFT_ID:
+                          snapshot: {s}
+                         from args: {a}
+                    "
+                    ),
+                    s = snap_id,
+                    a = args_id
+                )
+            }
+            (Some(snap_id), _) => snap_id,
         }
     };
 
-    if let Ok(peers) = std::env::var("PICODATA_PEER") {
-        // This is a temporary hack until fair joining is implemented
-        let peers: Vec<_> = peers
-            .split(',')
-            .enumerate()
-            .map(|(i, x)| traft::row::Peer {
-                raft_id: (i + 1) as u64,
-                uri: x.to_owned(),
-            })
-            .collect();
-        traft::Storage::persist_peers(&peers);
-    }
+    // This is a temporary hack until fair joining is implemented
+    traft::Storage::persist_peers(&args.peers);
 
     let raft_cfg = raft::Config {
         id: raft_id,
@@ -192,11 +172,7 @@ fn main_run() {
     let node = traft::Node::new(&raft_cfg, handle_committed_data).unwrap();
     stash.set_raft_node(node);
 
-    std::env::var("PICODATA_LISTEN").ok().map(|v| {
-        cfg.listen = Some(v.clone());
-        Some(v)
-    });
-
+    cfg.listen = Some(args.listen.clone());
     tarantool::set_cfg(&cfg);
 
     tlog!(Info, "Hello, Rust!"; "module" => std::module_path!());
@@ -238,7 +214,7 @@ fn handle_committed_data(data: &[u8]) {
 fn init_handlers() {
     crate::tarantool::eval(
         r#"
-        box.schema.func.create('picolib.raft_interact', {
+        box.schema.func.create('.raft_interact', {
             language = "C",
             if_not_exists = true
         })
@@ -269,4 +245,63 @@ pub extern "C" fn raft_interact(_: FunctionCtx, args: FunctionArgs) -> c_int {
 
     raft_node.step(m);
     0
+}
+
+fn main() {
+    let res = match args::Picodata::from_args() {
+        args::Picodata::Run(r) => run(r),
+    };
+    if let Err(e) = res {
+        eprintln!("Fatal: {}", e)
+    }
+}
+
+fn run(args: args::Run) -> Result<(), String> {
+    // Tarantool implicitly parses some environment variables.
+    // We don't want them to affect the behavior and thus filter them out.
+    for (k, _) in std::env::vars() {
+        if k.starts_with("TT_") || k.starts_with("TARANTOOL_") {
+            std::env::remove_var(k)
+        }
+    }
+
+    let tt_args = args.tt_args()?;
+    // XXX: `argv` is a vec of pointers to data owned by `tt_args`, so make sure
+    // `tt_args` outlives `argv`, because the compiler is not gonna do that for
+    // you
+    let argv = tt_args.iter().map(|a| a.as_ptr()).collect::<Vec<_>>();
+
+    let boxed_args: Box<args::Run> = Box::new(args);
+
+    let rc = unsafe {
+        tarantool_main(
+            argv.len() as _,
+            argv.as_ptr() as _,
+            trampoline,
+            Box::into_raw(boxed_args) as _,
+        )
+    };
+
+    return if rc == 0 {
+        Ok(())
+    } else {
+        Err(format!("return code {rc}"))
+    };
+
+    extern "C" fn trampoline(data: *mut c_void) {
+        let args: Box<args::Run> = unsafe { Box::from_raw(data as _) };
+        if args.autorun {
+            start(&args);
+        }
+        picolib_setup(*args);
+    }
+
+    extern "C" {
+        fn tarantool_main(
+            argc: i32,
+            argv: *mut *mut c_char,
+            cb: extern "C" fn(*mut c_void),
+            cb_data: *mut c_void,
+        ) -> i32;
+    }
 }
