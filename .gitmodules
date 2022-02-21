@@ -4,3 +4,4 @@
 [submodule "tarantool-sys"]
 	path = tarantool-sys
 	url = https://github.com/tarantool/tarantool.git
+	ignore = dirty
