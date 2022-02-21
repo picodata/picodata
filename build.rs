@@ -1,23 +1,8 @@
 use std::path::Path;
 
 fn main() {
-    fetch_tarantool();
     patch_tarantool();
     build_tarantool();
-}
-
-fn fetch_tarantool() {
-    let status = std::process::Command::new("git")
-        .arg("submodule")
-        .arg("update")
-        .arg("--init")
-        .arg("--recursive")
-        .status()
-        .expect("git couldn't be executed");
-
-    if !status.success() {
-        panic!("failed to initialize tarantool-sys submodule")
-    }
 }
 
 fn patch_tarantool() {
