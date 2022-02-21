@@ -335,7 +335,7 @@ impl Index {
         let mut buf = Vec::with_capacity(128);
         rmp::encode::write_array_len(&mut buf, ops.len() as u32)?;
         ops.iter().try_for_each(|op_buf| buf.write_all(op_buf))?;
-        let ops_buf = unsafe { TupleBuffer::from_vec(buf) };
+        let ops_buf = unsafe { TupleBuffer::from_vec_unchecked(buf) };
         let ops_buf_ptr = ops_buf.as_ptr() as *const c_char;
         tuple_from_box_api!(
             ffi::box_update[

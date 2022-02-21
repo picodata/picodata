@@ -1,7 +1,7 @@
 use std::cmp::Ordering;
 
 use tarantool::tlua::AsLua;
-use tarantool::tuple::{AsTuple, FieldType, KeyDef, KeyDefItem, Tuple};
+use tarantool::tuple::{AsTuple, FieldType, KeyDef, KeyDefItem, Tuple, TupleBuffer};
 use serde::Serialize;
 
 use crate::common::{S1Record, S2Key, S2Record};
@@ -35,7 +35,23 @@ pub fn new_tuple_from_flutten_struct() {
             c: 3,
         },
     };
-    assert!(Tuple::from_struct(&input).is_ok());
+    assert_eq!(
+        Tuple::from_struct(&input).unwrap_err().to_string(),
+        concat![
+            "Failed to encode tuple: Invalid msgpack value (epxected array, found Map([",
+            r#"(String(Utf8String { s: Ok("a") }), Integer(PosInt(1))), "#,
+            r#"(String(Utf8String { s: Ok("b") }), Integer(PosInt(2))), "#,
+            r#"(String(Utf8String { s: Ok("c") }), Integer(PosInt(3)))"#,
+            "]))"
+        ]
+    )
+}
+
+pub fn tuple_buffer_from_vec_fail() {
+    assert_eq!(
+        TupleBuffer::try_from_vec(vec![1, 2, 3]).unwrap_err().to_string(),
+        "Failed to encode tuple: Invalid msgpack value (epxected array, found Integer(PosInt(1)))"
+    )
 }
 
 pub fn test_tuple_field_count() {
@@ -270,7 +286,7 @@ pub fn tuple_debug_fmt() {
     );
 
     let tuple = Tuple::from_struct(&(1, true, "foo")).unwrap();
-    let buf = tarantool::tuple::TupleBuffer::from(tuple);
+    let buf = TupleBuffer::from(tuple);
 
     assert_eq!(format!("{:?}", buf),
         r#"TupleBuffer::Vector(Tuple(Array([Integer(PosInt(1)), Boolean(true), String(Utf8String { s: Ok("foo") })])))"#

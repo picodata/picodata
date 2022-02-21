@@ -440,6 +440,7 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 test_tuple::test_tuple_compare_with_key,
                 test_tuple::to_and_from_lua,
                 test_tuple::tuple_debug_fmt,
+                test_tuple::tuple_buffer_from_vec_fail,
 
                 test_error::test_error_last,
                 test_coio::test_coio_accept,

@@ -9,6 +9,7 @@
 //! - [Lua reference: Submodule box.tuple](https://www.tarantool.io/en/doc/2.2/reference/reference_lua/box_tuple/)
 //! - [C API reference: Module tuple](https://www.tarantool.io/en/doc/2.2/dev_guide/reference_capi/tuple/)
 use std::cmp::Ordering;
+use std::convert::TryFrom;
 use std::fmt::{self, Debug, Formatter};
 use std::io::Cursor;
 use std::os::raw::{c_char, c_int};
@@ -19,7 +20,7 @@ use num_traits::ToPrimitive;
 use rmp::Marker;
 use serde::{de::DeserializeOwned, Serialize};
 
-use crate::error::{Result, TarantoolError};
+use crate::error::{Encode, Error, Result, TarantoolError};
 use crate::ffi::tarantool as ffi;
 use crate::tlua as tlua;
 
@@ -50,9 +51,7 @@ impl Tuple {
         T: AsTuple,
     {
         let buf = value.serialize_as_tuple()?;
-        unsafe {
-            Ok(Self::from_raw_data(buf.as_ptr() as _, buf.len() as _))
-        }
+        Ok(Self::from(&buf))
     }
 
     /// # Safety
@@ -214,16 +213,23 @@ pub trait AsTuple: Serialize {
     /// Describes how object can be converted to [Tuple](struct.Tuple.html).
     ///
     /// Has default implementation, but can be overloaded for special cases
+    #[inline]
     fn serialize_as_tuple(&self) -> Result<TupleBuffer> {
-        let data = rmp_serde::to_vec(self)?;
-        Ok(unsafe { TupleBuffer::from_vec(data) })
+        TupleBuffer::try_from(AsTuple::serialize(self)?)
     }
+
+    #[inline]
+    fn serialize(&self) -> Result<Vec<u8>> {
+        rmp_serde::to_vec(self).map_err(Into::into)
+    }
+
+    // TODO(gmoshkin):
+    // fn serialize_to(&self, mut w: &mut impl Write) -> Result<()>
 }
 
 impl AsTuple for () {
-    fn serialize_as_tuple(&self) -> Result<TupleBuffer> {
-        let data = rmp_serde::to_vec(&Vec::<()>::new())?;
-        Ok(unsafe { TupleBuffer::from_vec(data) })
+    fn serialize(&self) -> Result<Vec<u8>> {
+        rmp_serde::to_vec(&Vec::<()>::new()).map_err(Into::into)
     }
 }
 
@@ -264,6 +270,7 @@ impl_tuple! { A B C D E F G H I J K L M N O P }
 /// If buffer is allocated within transaction: will be disposed after transaction ended (committed or dropped).
 /// If not: will act as a regular rust `Vec<u8>`
 pub enum TupleBuffer {
+    // TODO(gmoshkin): use smallvec::SmallVec instead
     Vector(Vec<u8>),
     TransactionScoped { ptr: NonNull<u8>, size: usize },
 }
@@ -294,7 +301,7 @@ impl TupleBuffer {
 
     /// # Safety
     /// `buf` must be a valid message pack array
-    pub unsafe fn from_vec(buf: Vec<u8>) -> Self {
+    pub unsafe fn from_vec_unchecked(buf: Vec<u8>) -> Self {
         if ffi::box_txn() {
             let size = buf.len();
             let ptr = ffi::box_txn_alloc(size) as _;
@@ -304,6 +311,34 @@ impl TupleBuffer {
         } else {
             Self::Vector(buf)
         }
+    }
+
+    pub fn try_from_vec(data: Vec<u8>) -> Result<Self> {
+        let mut slice = &*data;
+        let m = rmp::decode::read_marker(&mut slice)?;
+        if !matches!(m, Marker::FixArray(_) | Marker::Array16 | Marker::Array32) {
+            return Err(Encode::InvalidMP(data).into())
+        }
+        unsafe { Ok(Self::from_vec_unchecked(data)) }
+    }
+}
+
+impl AsRef<[u8]> for TupleBuffer {
+    fn as_ref(&self) -> &[u8] {
+        match self {
+            Self::Vector(v) => v.as_ref(),
+            Self::TransactionScoped { ptr, size } => unsafe {
+                std::slice::from_raw_parts(ptr.as_ptr(), *size)
+            }
+        }
+    }
+}
+
+impl TryFrom<Vec<u8>> for TupleBuffer {
+    type Error = Error;
+
+    fn try_from(data: Vec<u8>) -> Result<Self> {
+        Self::try_from_vec(data)
     }
 }
 

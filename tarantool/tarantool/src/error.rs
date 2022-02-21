@@ -45,7 +45,7 @@ pub enum Error {
     Raft(raft::Error),
 
     #[error("Failed to encode tuple: {0}")]
-    Encode(rmp_serde::encode::Error),
+    Encode(#[from] Encode),
 
     #[error("Failed to decode tuple: {0}")]
     Decode(rmp_serde::decode::Error),
@@ -92,7 +92,7 @@ impl From<raft::Error> for Error {
 
 impl From<rmp_serde::encode::Error> for Error {
     fn from(error: rmp_serde::encode::Error) -> Self {
-        Error::Encode(error)
+        Encode::from(error).into()
     }
 }
 
@@ -479,3 +479,26 @@ macro_rules! set_error {
         }
     }};
 }
+
+/// Error that can happen when serializing a tuple
+#[derive(Debug, thiserror::Error)]
+pub enum Encode {
+    #[error("{0}")]
+    Rmp(#[from] rmp_serde::encode::Error),
+
+    #[error("Invalid msgpack value (epxected array, found {:?})", DebugAsMPValue(.0))]
+    InvalidMP(Vec<u8>),
+}
+
+struct DebugAsMPValue<'a>(&'a [u8]);
+
+impl std::fmt::Debug for DebugAsMPValue<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        let mut read = self.0;
+        match rmp_serde::from_read::<_, rmpv::Value>(&mut read) {
+            Ok(v) => write!(f, "{:?}", v),
+            Err(_) => write!(f, "{:?}", self.0),
+        }
+    }
+}
+
