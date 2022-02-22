@@ -37,7 +37,7 @@ g.after_all(function()
     fio.rmtree(g.data_dir)
 end)
 
-g.test = function()
+g.test_follower_proposal = function()
     -- Speed up node election
     g.cluster.i1:try_promote()
 
@@ -53,4 +53,23 @@ g.test = function()
         g.cluster.i2:connect():eval('return check'),
         '127.0.0.1:13302'
     )
+end
+
+g.test_failover = function()
+    g.cluster.i1:try_promote()
+    h.retrying({}, function()
+        g.cluster.i2:assert_raft_status("Follower", 1)
+    end)
+
+    -- Speed up election timeout
+    g.cluster.i2:connect():eval([[
+        while picolib.raft_status().raft_state == 'Follower' do
+            picolib.raft_tick(1)
+        end
+    ]])
+
+    h.retrying({}, function()
+        g.cluster.i1:assert_raft_status("Follower", 2)
+        g.cluster.i2:assert_raft_status("Leader")
+    end)
 end

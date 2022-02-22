@@ -37,6 +37,7 @@ enum Request {
     Propose { data: Vec<u8> },
     ProposeWaitApplied { data: Vec<u8>, notify: Notify },
     Step(raft::Message),
+    Tick,
 }
 
 impl Node {
@@ -100,6 +101,11 @@ impl Node {
         let req = Request::Step(msg);
         self.inbox.send(req).unwrap();
     }
+
+    pub fn tick(&self) {
+        let req = Request::Tick;
+        self.inbox.send(req).unwrap();
+    }
 }
 
 fn raft_main(
@@ -151,6 +157,9 @@ fn raft_main(
                 if let Err(e) = raw_node.step(msg) {
                     tlog!(Error, "{e}");
                 }
+            }
+            Ok(Request::Tick) => {
+                raw_node.tick();
             }
             Err(fiber::RecvError::Timeout) => (),
             Err(fiber::RecvError::Disconnected) => unreachable!(),
