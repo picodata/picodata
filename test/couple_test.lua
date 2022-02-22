@@ -39,28 +39,10 @@ end)
 
 g.test = function()
     -- Speed up node election
-    g.cluster.i1:interact({
-        msg_type = "MsgTimeoutNow",
-        to = 1,
-        from = 0,
-    })
-
-    h.retrying({}, function()
-        t.assert_equals(
-            g.cluster.i2:connect():call('picolib.raft_status'),
-            {
-                id = 2,
-                leader_id = 1,
-                raft_state = "Follower",
-            }
-        )
-    end)
+    g.cluster.i1:try_promote()
 
     t.assert_equals(
-        g.cluster.i2:connect():call(
-            'picolib.raft_propose_eval',
-            {1, '_G.check = box.info.listen'}
-        ),
+        g.cluster.i2:raft_propose_eval(1, '_G.check = box.info.listen'),
         true
     )
     t.assert_equals(

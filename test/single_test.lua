@@ -22,51 +22,26 @@ g.after_all(function()
 end)
 
 g.test = function()
-    local conn = g.node:connect()
+    g.node:assert_raft_status("Follower")
 
     t.assert_equals(
-        conn:call('picolib.raft_status'),
-        {
-            id = 1,
-            leader_id = 0,
-            raft_state = "Follower",
-        }
-    )
-
-    t.assert_equals(
-        conn:call('picolib.raft_propose_eval', {1, 'return'}),
+        g.node:raft_propose_eval(1, 'return'),
         false -- No leader is elected yet
     )
 
-    -- Speed up node election
-    g.node:interact({
-        msg_type = "MsgTimeoutNow",
-        to = 1,
-        from = 0,
-    })
-
-    h.retrying({}, function()
-        t.assert_equals(
-            conn:call('picolib.raft_status'),
-            {
-                id = 1,
-                leader_id = 1,
-                raft_state = "Leader",
-            }
-        )
-    end)
+    g.node:try_promote()
 
     t.assert_equals(
-        conn:call('picolib.raft_propose_eval', {0, 'return'}),
+        g.node:raft_propose_eval(0, 'return'),
         false -- Timeout
     )
 
     t.assert_equals(
-        conn:call('picolib.raft_propose_eval', {1, '_G.success = true'}),
+        g.node:raft_propose_eval(1, '_G.success = true'),
         true
     )
     t.assert_equals(
-        conn:eval('return success'),
+        g.node:connect():eval('return success'),
         true
     )
 end

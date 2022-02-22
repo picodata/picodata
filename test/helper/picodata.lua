@@ -18,6 +18,7 @@ local Picodata = {
     command = 'target/debug/picodata',
     process = nil,
     __type = 'Picodata',
+    id = -1,
 }
 
 function Picodata:inherit(object)
@@ -82,6 +83,7 @@ function Picodata:start()
 
     luatest.helpers.retrying({}, function()
         self:connect()
+        self.id = self:raft_status().id
     end)
 
 end
@@ -124,6 +126,42 @@ function Picodata:stop()
     self.process = nil
 end
 
+--- Get the status of raft node.
+-- @function
+-- @return {id = number, leader_id = number, state = string}
+--   State can be one of "Follower", "Candidate", "Leader", "PreCandidate".
+function Picodata:raft_status()
+    checks('Picodata')
+    return self:connect():call('picolib.raft_status')
+end
+
+--- Assert raft status matches expectations.
+-- @function
+-- @tparam string raft_state
+-- @tparam[opt] number leader_id
+function Picodata:assert_raft_status(raft_state, leader_id)
+    checks('Picodata', 'string', '?number')
+    return luatest.assert_covers(
+        self:raft_status(),
+        {
+            leader_id = leader_id,
+            raft_state = raft_state,
+        }
+    )
+end
+
+--- Propose Lua code evaluation on every node in cluster.
+-- @tparam number timeout
+-- @tparam string code
+-- @treturn boolean whether proposal was committed on the current node.
+function Picodata:raft_propose_eval(timeout, code)
+    checks('Picodata', 'number', 'string')
+    return self:connect():call(
+        'picolib.raft_propose_eval',
+        {timeout, code}
+    )
+end
+
 function Picodata:interact(opts)
     checks('Picodata', {
         -- See picolib/traft/row/message.rs
@@ -154,6 +192,23 @@ function Picodata:interact(opts)
         opts.reject_hint or 0,
         opts.priority or 0,
     })
+end
+
+--- Try forcing leader election when previous leader is dead.
+-- Wait for the node becoming a leader.
+-- Raise an exception if promotion fails.
+function Picodata:try_promote()
+    checks('Picodata')
+
+    self:interact({
+        msg_type = "MsgTimeoutNow",
+        to = self.id,
+        from = 0,
+    })
+
+    return luatest.helpers.retrying({}, function()
+        self:assert_raft_status("Leader", self.id)
+    end)
 end
 
 return Picodata
