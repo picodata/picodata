@@ -269,6 +269,7 @@ fn main() {
     let res = match args::Picodata::from_args() {
         args::Picodata::Run(r) => run(r),
         args::Picodata::Tarantool(t) => tarantool(t),
+        args::Picodata::Test(t) => test(t),
     };
     if let Err(e) = res {
         eprintln!("Fatal: {}", e)
@@ -347,4 +348,73 @@ fn run(args: args::Run) -> Result<(), String> {
 
 fn tarantool(args: args::Tarantool) -> Result<(), String> {
     tarantool_main!(args.tt_args()?)
+}
+
+fn test(args: args::Test) -> Result<(), String> {
+    // Tarantool implicitly parses some environment variables.
+    // We don't want them to affect the behavior and thus filter them out.
+    for (k, _) in std::env::vars() {
+        if k.starts_with("TT_") || k.starts_with("TARANTOOL_") {
+            std::env::remove_var(k)
+        }
+    }
+
+    let mut args = args.run;
+    args.listen = "127.0.0.1:0".into();
+
+    let temp = tempfile::tempdir().map_err(|e| format!("Failed creating a temp directory: {e}"))?;
+    std::env::set_current_dir(temp.path())
+        .map_err(|e| format!("Failed chainging current directory: {e}"))?;
+
+    tarantool_main!(args.tt_args()?, args => |args: args::Run| {
+        start(&args);
+        picolib_setup(args);
+        run_tests();
+    })
+}
+
+macro_rules! color {
+    (@impl red) => { "\x1b[0;31m" };
+    (@impl green) => { "\x1b[0;32m" };
+    (@impl clear) => { "\x1b[0m" };
+    (@impl $s:literal) => { $s };
+    ($($s:tt)*) => {
+        ::std::concat![ $( color!(@impl $s) ),* ]
+    }
+}
+
+fn run_tests() {
+    const PASSED: &str = color![green "ok" clear];
+    const FAILED: &str = color![red "FAILED" clear];
+    let mut cnt_passed = 0u32;
+    let mut cnt_failed = 0u32;
+
+    let now = std::time::Instant::now();
+
+    for t in inventory::iter::<InnerTest> {
+        eprint!("Running {} ... ", t.name);
+        if let Err(e) = std::panic::catch_unwind(t.body) {
+            eprintln!("{FAILED}");
+            cnt_failed += 1;
+            if let Some(msg) = e
+                .downcast_ref::<String>()
+                .map(|e| e.as_str())
+                .or_else(|| e.downcast_ref::<&'static str>().copied())
+            {
+                eprintln!("\n{msg}\n");
+            }
+        } else {
+            eprintln!("{PASSED}");
+            cnt_passed += 1
+        }
+    }
+
+    let ok = cnt_failed == 0;
+    print!("test result: {}.", if ok { PASSED } else { FAILED });
+    print!(" {cnt_passed} passed;");
+    print!(" {cnt_failed} failed;");
+    println!(" finished in {:.2}s", now.elapsed().as_secs_f32());
+    eprintln!();
+
+    std::process::exit(!ok as i32)
 }
