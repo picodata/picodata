@@ -2,7 +2,7 @@ name: Synchronization
 on: [push]
 jobs:
   synchronization:
-    runs-on: ["ubuntu"]
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
       - name: Install SSH Key
