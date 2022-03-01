@@ -663,6 +663,12 @@ impl From<ToString> for String {
     }
 }
 
+impl<'a> From<ToString> for Cow<'a, str> {
+    fn from(other: ToString) -> Self {
+        Cow::Owned(other.0)
+    }
+}
+
 impl std::fmt::Display for ToString {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
         write!(f, "{}", self.0)

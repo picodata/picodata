@@ -753,7 +753,45 @@ extern "C" {
 
 #[repr(C)]
 pub struct BoxTuple {
-    _unused: [u8; 0],
+    refs: u16,
+    format_id: u16,
+    bsize: u32,
+    data_offset: u16,
+}
+
+impl BoxTuple {
+    /// # Safety
+    /// Access to a field of a struct that can be changed in a future version of
+    /// tarantool. Valid for 2.9.0
+    #[inline(always)]
+    pub unsafe fn bsize(&self) -> u32 {
+        self.bsize
+    }
+
+    /// # Safety
+    /// Access to a field of a struct that can be changed in a future version of
+    /// tarantool. Valid for 2.9.0
+    #[inline(always)]
+    pub unsafe fn data_offset(&self) -> u16 {
+        // The last bit is a `is_dirty` flag since 2.5.1
+        self.data_offset & (u16::MAX >> 1)
+    }
+
+    /// # Safety
+    /// Access to a field of a struct that can be changed in a future version of
+    /// tarantool. Valid for 2.9.0
+    #[inline(always)]
+    pub unsafe fn data(&self) -> *const c_char {
+        (self as *const Self).cast::<c_char>().add(self.data_offset() as _)
+    }
+
+    /// # Safety
+    /// Access to a field of a struct that can be changed in a future version of
+    /// tarantool. Valid for 2.9.0
+    #[inline(always)]
+    pub unsafe fn field_map(&self) -> *const u32 {
+        self.data() as _
+    }
 }
 
 #[repr(C)]
@@ -792,6 +830,15 @@ extern "C" {
         key_b: *const c_char,
         key_def: *mut BoxKeyDef,
     ) -> c_int;
+
+    pub fn tuple_field_raw_by_full_path(
+        format: *const BoxTupleFormat,
+        tuple: *const c_char,
+        field_map: *const u32,
+        path: *const c_char,
+        path_len: u32,
+        path_hash: u32,
+    ) -> *const c_char;
 }
 
 #[repr(C)]

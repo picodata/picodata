@@ -14,7 +14,6 @@ use std::fmt::{self, Debug, Formatter};
 use std::io::Cursor;
 use std::os::raw::{c_char, c_int};
 use std::ptr::{copy_nonoverlapping, NonNull};
-use std::slice::from_raw_parts;
 
 use num_traits::ToPrimitive;
 use rmp::Marker;
@@ -133,21 +132,68 @@ impl Tuple {
         }
     }
 
-    /// Return the raw Tuple field in MsgPack format.
-    ///
-    /// The buffer is valid until next call to box_tuple_* functions.
+    /// Deserialize a tuple field specified by zero-based array index.
     ///
     /// - `fieldno` - zero-based index in MsgPack array.
     ///
     /// Returns:
-    /// - `None` if `i >= box_tuple_field_count(Tuple)` or if field has a non primitive type
-    /// - field value otherwise
+    /// - `Ok(None)` if `fieldno >= self.len()`
+    /// - `Err(e)` if deserialization failed
+    /// - `Ok(Some(field value))` otherwise
+    ///
+    /// See also [`Tuple::try_get`], [`Tuple::get`].
     pub fn field<T>(&self, fieldno: u32) -> Result<Option<T>>
     where
         T: DeserializeOwned,
     {
-        let result_ptr = unsafe { ffi::box_tuple_field(self.ptr.as_ptr(), fieldno) };
-        field_value_from_ptr(result_ptr as *mut u8)
+        unsafe {
+            let field_ptr = ffi::box_tuple_field(self.ptr.as_ptr(), fieldno);
+            self.field_from_ptr(field_ptr as _)
+        }
+    }
+
+    /// Deserialize a tuple field specified by an index implementing
+    /// [`TupleIndex`] trait.
+    ///
+    /// Currently 2 types of indexes are supported:
+    /// - `u32` - zero-based index in MsgPack array (See also [`Tuple::field`])
+    /// - `&str` - JSON path for tuples with non default formats
+    ///
+    /// Returns:
+    /// - `Ok(None)` if index wasn't found
+    /// - `Err(e)` if deserialization failed
+    /// - `Ok(Some(field value))` otherwise
+    ///
+    /// See also [`Tuple::get`].
+    #[inline(always)]
+    pub fn try_get<I, T>(&self, key: I) -> Result<Option<T>>
+    where
+        I: TupleIndex,
+        T: DeserializeOwned,
+    {
+        key.get_field(self)
+    }
+
+    /// Deserialize a tuple field specified by an index implementing
+    /// [`TupleIndex`] trait.
+    ///
+    /// Currently 2 types of indexes are supported:
+    /// - `u32` - zero-based index in MsgPack array (See also [`Tuple::field`])
+    /// - `&str` - JSON path for tuples with non default formats
+    ///
+    /// Returns:
+    /// - `None` if index wasn't found
+    /// - **panics** if deserialization failed
+    /// - `Some(field value)` otherwise
+    ///
+    /// See also [`Tuple::get`].
+    #[inline(always)]
+    pub fn get<I, T>(&self, key: I) -> Option<T>
+    where
+        I: TupleIndex,
+        T: DeserializeOwned,
+    {
+        self.try_get(key).expect("Error during getting tuple field")
     }
 
     /// Deserializes tuple contents into structure of type `T`
@@ -184,6 +230,56 @@ impl Tuple {
 
     pub(crate) fn into_ptr(self) -> *mut ffi::BoxTuple {
         self.ptr.as_ptr()
+    }
+
+    unsafe fn field_from_ptr<T>(&self, field_ptr: *const u8) -> Result<Option<T>>
+    where
+        T: DeserializeOwned,
+    {
+        if field_ptr.is_null() {
+            return Ok(None)
+        }
+        let field_offset = field_ptr.offset_from(self.ptr.as_ref().data() as _);
+        let max_len = self.ptr.as_ref().bsize() - field_offset as u32;
+        let field_slice = std::slice::from_raw_parts(field_ptr, max_len as _);
+        Ok(Some(rmp_serde::from_slice(field_slice)?))
+    }
+}
+
+pub trait TupleIndex {
+    fn get_field<T>(self, tuple: &Tuple) -> Result<Option<T>>
+    where
+        T: DeserializeOwned;
+}
+
+impl TupleIndex for u32 {
+    #[inline(always)]
+    fn get_field<T>(self, tuple: &Tuple) -> Result<Option<T>>
+    where
+        T: DeserializeOwned,
+    {
+        tuple.field(self)
+    }
+}
+
+impl TupleIndex for &str {
+    #[inline(always)]
+    fn get_field<T>(self, tuple: &Tuple) -> Result<Option<T>>
+    where
+        T: DeserializeOwned,
+    {
+        unsafe {
+            let tuple_raw = tuple.ptr.as_ref();
+            let field_ptr = ffi::tuple_field_raw_by_full_path(
+                tuple.format().inner,
+                tuple_raw.data(),
+                tuple_raw.field_map(),
+                self.as_ptr() as _,
+                self.len() as _,
+                tlua::util::hash(self),
+            );
+            tuple.field_from_ptr(field_ptr as _)
+        }
     }
 }
 
@@ -429,8 +525,9 @@ impl TupleIterator {
     where
         T: DeserializeOwned,
     {
-        let result_ptr = unsafe { ffi::box_tuple_seek(self.inner, fieldno) };
-        field_value_from_ptr(result_ptr as *mut u8)
+        unsafe {
+            field_value_from_ptr(ffi::box_tuple_seek(self.inner, fieldno) as _)
+        }
     }
 
     /// Return the next Tuple field from Tuple iterator.
@@ -447,8 +544,9 @@ impl TupleIterator {
     where
         T: DeserializeOwned,
     {
-        let result_ptr = unsafe { ffi::box_tuple_next(self.inner) };
-        field_value_from_ptr(result_ptr as *mut u8)
+        unsafe {
+            field_value_from_ptr(ffi::box_tuple_next(self.inner) as _)
+        }
     }
 
     pub fn update(&mut self) {}
@@ -556,50 +654,20 @@ impl Drop for KeyDef {
     }
 }
 
-fn field_value_from_ptr<T>(value_ptr: *mut u8) -> Result<Option<T>>
+unsafe fn field_value_from_ptr<T>(field_ptr: *mut u8) -> Result<Option<T>>
 where
     T: DeserializeOwned,
 {
-    if value_ptr.is_null() {
+    if field_ptr.is_null() {
         return Ok(None);
     }
 
-    let marker = Marker::from_u8(unsafe { *value_ptr });
-    Ok(match marker {
-        Marker::FixStr(str_len) => {
-            let buf = unsafe { from_raw_parts(value_ptr as *mut u8, (str_len + 1) as usize) };
-            Some(rmp_serde::from_read_ref::<_, T>(buf)?)
-        }
-
-        Marker::Str8 | Marker::Str16 | Marker::Str32 => {
-            let head = unsafe { from_raw_parts(value_ptr as *mut u8, 9) };
-            let len = rmp::decode::read_str_len(&mut Cursor::new(head))?;
-
-            let buf = unsafe { from_raw_parts(value_ptr as *mut u8, (len + 9) as usize) };
-            Some(rmp_serde::from_read_ref::<_, T>(buf)?)
-        }
-
-        Marker::FixPos(_)
-        | Marker::FixNeg(_)
-        | Marker::Null
-        | Marker::True
-        | Marker::False
-        | Marker::U8
-        | Marker::U16
-        | Marker::U32
-        | Marker::U64
-        | Marker::I8
-        | Marker::I16
-        | Marker::I32
-        | Marker::I64
-        | Marker::F32
-        | Marker::F64 => {
-            let buf = unsafe { from_raw_parts(value_ptr as *mut u8, 9) };
-            Some(rmp_serde::from_read_ref::<_, T>(buf)?)
-        }
-
-        _ => None,
-    })
+    // Theoretically this is an exploit point, which would allow reading up to
+    // 2gigs of memory in case `value_ptr` happens to point to memory which
+    // isn't a field of a tuple, but is a valid messagepack value
+    let max_len = u32::MAX >> 1;
+    let value_slice = std::slice::from_raw_parts(field_ptr, max_len as _);
+    Ok(Some(rmp_serde::from_slice(value_slice)?))
 }
 
 #[repr(C)]

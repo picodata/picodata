@@ -155,6 +155,24 @@ fn create_test_spaces() -> Result<(), Error> {
         test_s2.insert(&rec)?;
     }
 
+    // space.with_array
+    let mut with_array = Space::create("with_array", &SpaceCreateOptions {
+        format: Some(vec![
+            SpaceFieldFormat::new("id", SpaceFieldType::Unsigned),
+            SpaceFieldFormat::new("array", SpaceFieldType::Array),
+        ]),
+        .. Default::default()
+    })?;
+
+    // space.with_array.index.pk
+    with_array.create_index("pk", &IndexOptions {
+        parts: Some(vec![IndexPart::new(1, IndexFieldType::Unsigned)]),
+        .. Default::default()
+    })?;
+
+    with_array.insert(&(1, vec![1, 2, 3]))?;
+    with_array.insert(&(2, ("foo", ("bar", [69, 420]), 3.14)))?;
+
     Ok(())
 }
 
@@ -290,6 +308,7 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 tlua::misc::dump_stack,
                 tlua::misc::dump_stack_raw,
                 tlua::misc::error_during_push_tuple,
+                tlua::misc::hash,
 
                 tlua::userdata::readwrite,
                 tlua::userdata::destructor_called,
@@ -439,6 +458,7 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 test_tuple::test_tuple_iterator_seek_rewind,
                 test_tuple::test_tuple_get_format,
                 test_tuple::test_tuple_get_field,
+                test_tuple::tuple_get_field_path,
                 test_tuple::test_tuple_compare,
                 test_tuple::test_tuple_compare_with_key,
                 test_tuple::to_and_from_lua,

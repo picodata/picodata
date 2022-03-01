@@ -641,7 +641,7 @@ mod impl_details {
             data as *mut u8, len.assume_init()
         );
         let msg = String::from_utf8_lossy(msg_bytes);
-        tlua::LuaError::ExecutionError(msg.into())
+        tlua::LuaError::ExecutionError(msg)
     }
 
     /// In case of success, the stack contains the results.

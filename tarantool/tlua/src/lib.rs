@@ -110,7 +110,7 @@
 use std::ffi::{CStr, CString};
 use std::io::Read;
 use std::io::Error as IoError;
-use std::borrow::Borrow;
+use std::borrow::{Borrow, Cow};
 use std::num::NonZeroI32;
 use std::error::Error;
 use std::fmt;
@@ -143,6 +143,7 @@ mod lua_tables;
 mod macros;
 mod rust_tables;
 mod userdata;
+pub mod util;
 mod values;
 mod tuples;
 
@@ -696,7 +697,7 @@ pub enum LuaError {
 
     /// There was an error during execution of the Lua code
     /// (for example not enough parameters for a function call).
-    ExecutionError(String),
+    ExecutionError(Cow<'static, str>),
 
     /// There was an IoError while reading the source code to execute.
     ReadError(IoError),

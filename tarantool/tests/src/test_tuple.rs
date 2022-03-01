@@ -182,11 +182,50 @@ pub fn test_tuple_get_field() {
     .unwrap();
 
     assert_eq!(tuple.field::<u32>(0).unwrap(), Some(1));
+    assert_eq!(tuple.get(0), Some(1));
+    assert_eq!(tuple.get("id"), None::<()>);
     assert_eq!(tuple.field::<String>(1).unwrap(), Some("key".to_string()));
+    assert_eq!(tuple.get(1), Some("key".to_string()));
     assert_eq!(tuple.field::<String>(2).unwrap(), Some("value".to_string()));
+    assert_eq!(tuple.get(2), Some("value".to_string()));
     assert_eq!(tuple.field::<i32>(3).unwrap(), Some(1));
+    assert_eq!(tuple.get(3), Some(1));
     assert_eq!(tuple.field::<i32>(4).unwrap(), Some(2));
+    assert_eq!(tuple.get(4), Some(2));
     assert_eq!(tuple.field::<i32>(5).unwrap(), None);
+    assert_eq!(tuple.get(5), None::<()>);
+    assert_eq!(tuple.get(6), None::<()>);
+}
+
+pub fn tuple_get_field_path() {
+    let space = tarantool::space::Space::find("test_s2").unwrap();
+    let idx_1 = space.index("idx_1").unwrap();
+    let tuple = idx_1.get(&("key_16",)).unwrap().unwrap();
+    assert_eq!(tuple.get("key"), Some("key_16".to_string()));
+    assert_eq!(tuple.get("id"), Some(16));
+    assert_eq!(tuple.get("value"), Some("value_16".to_string()));
+    assert_eq!(tuple.get("a"), Some(1));
+    assert_eq!(tuple.get("b"), Some(3));
+
+    let space = tarantool::space::Space::find("with_array").unwrap();
+    let idx = space.index("pk").unwrap();
+    let tuple = idx.get(&(1,)).unwrap().unwrap();
+    assert_eq!(tuple.get("array[0]"), None::<()>);
+    assert_eq!(tuple.get("array[1]"), Some(1));
+    assert_eq!(tuple.get("array[2]"), Some(2));
+    assert_eq!(tuple.get("array[3]"), Some(3));
+    assert_eq!(tuple.get("array[4]"), None::<()>);
+    assert_eq!(tuple.get("array"), Some(vec![1, 2, 3]));
+
+    let tuple = idx.get(&(2,)).unwrap().unwrap();
+    assert_eq!(tuple.get("array[1]"), Some("foo".to_string()));
+    assert_eq!(tuple.get("array[2][1]"), Some("bar".to_string()));
+    assert_eq!(tuple.get("array[2][2][1]"), Some(69));
+    assert_eq!(tuple.get("array[2][2][2]"), Some(420));
+    assert_eq!(tuple.get("array[3]"), Some(3.14));
+    assert_eq!(tuple.get("array"), Some(
+            ("foo".to_string(), ("bar".to_string(), (69, 420)), 3.14)
+    ));
 }
 
 pub fn test_tuple_compare() {
