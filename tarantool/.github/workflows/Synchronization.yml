@@ -16,3 +16,4 @@ jobs:
         run: git remote set-url --push origin git@git.picodata.io:picodata/picodata/tarantool-module.git
       - name: Push files
         run: git push
+
