@@ -563,6 +563,8 @@ impl_push_read!{Null,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(try_from = "bool", into = "bool")]
 pub struct True;
 
 impl From<True> for bool {
@@ -597,7 +599,16 @@ impl_push_read!{True,
     }
 }
 
+impl std::fmt::Display for True {
+    #[inline(always)]
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        bool::from(*self).fmt(f)
+    }
+}
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(try_from = "bool", into = "bool")]
 pub struct False;
 
 impl From<False> for bool {
@@ -629,6 +640,13 @@ impl_push_read!{False,
             Ok(v) if !v => Ok(False),
             _ => Err(lua),
         }
+    }
+}
+
+impl std::fmt::Display for False {
+    #[inline(always)]
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        bool::from(*self).fmt(f)
     }
 }
 

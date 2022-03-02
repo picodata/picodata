@@ -168,7 +168,13 @@ extern "C" {
     /// zero.
     /// *[-0, +1, m]*
     pub fn lua_pushstring(l: *mut lua_State, s: *const c_char) -> *const c_char;
+
+    /// Pushes a number with value `n` onto the stack.
+    /// *[-0, +1, -]*
     pub fn lua_pushinteger(l: *mut lua_State, n: isize);
+
+    /// Pushes a number with value `n` onto the stack.
+    /// *[-0, +1, -]*
     pub fn lua_pushnumber(l: *mut lua_State, n: c_double);
 
     /// Pushes a new C closure onto the stack.
@@ -231,6 +237,12 @@ extern "C" {
     /// *[-0, +1, e]*
     pub fn lua_getfield(l: *mut lua_State, index: c_int, k: *const c_char);
 
+    /// Creates a new empty table and pushes it onto the stack. The new table
+    /// has space pre-allocated for `narr` array elements and `nrec` non-array
+    /// elements. This pre-allocation is useful when you know exactly how many
+    /// elements the table will have. Otherwise you can use the function
+    /// [`lua_newtable`].
+    /// *[-0, +1, m]*
     pub fn lua_createtable(l: *mut lua_State, narr: c_int, nrec: c_int);
 
     /// This function allocates a new block of memory with the given size,
@@ -486,7 +498,7 @@ pub unsafe fn lua_pop(state: *mut lua_State, n: c_int) {
 /// Pushes a C function onto the stack. This function receives a pointer to a C
 /// function and pushes onto the stack a Lua value of type function that, when
 /// called, invokes the corresponding C function.
-/// `[-0, +1, m]`
+/// *[-0, +1, m]*
 ///
 /// Any function to be registered in Lua must follow the correct protocol to
 /// receive its parameters and return its results (see [`lua_CFunction`]).
@@ -500,6 +512,9 @@ pub unsafe fn lua_tostring(state: *mut lua_State, i: c_int) -> *const c_char {
 }
 
 #[inline(always)]
+/// Creates a new empty table and pushes it onto the stack. It is equivalent to
+/// [`lua_createtable`]`(L, 0, 0)`.
+/// *[-0, +1, m]*
 pub unsafe fn lua_newtable(state: *mut lua_State) {
     lua_createtable(state, 0, 0);
 }

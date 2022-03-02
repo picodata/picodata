@@ -1,7 +1,9 @@
-use std::cmp::max;
+use std::{
+    collections::BTreeMap,
+    cmp::max
+};
 
 use serde::Serialize;
-use serde_json::{Map, Number, Value};
 
 use crate::error::{Error, TarantoolError, TarantoolErrorCode};
 use crate::index::IteratorType;
@@ -11,20 +13,7 @@ use crate::session;
 use crate::space::{Space, SystemSpace, SYSTEM_ID_MAX};
 use crate::space::{SpaceCreateOptions, SpaceEngineType};
 use crate::tuple::{AsTuple, Tuple};
-
-/// SpaceMetadata is tuple, holding space metadata in system `_space` space.
-#[derive(Serialize, Debug)]
-pub struct SpaceMetadata {
-    pub id: u32,
-    pub uid: u32,
-    pub name: String,
-    pub engine: SpaceEngineType,
-    pub field_count: u32,
-    pub options: Map<String, Value>,
-    pub format: Vec<Value>,
-}
-
-impl AsTuple for SpaceMetadata {}
+use crate::util::Value;
 
 /// Create a space.
 /// (for details see [box.schema.space.create()](https://www.tarantool.io/en/doc/latest/reference/reference_lua/box_schema/space_create/)).
@@ -60,13 +49,49 @@ pub fn create_space(name: &str, opts: &SpaceCreateOptions) -> Result<Space, Erro
     };
 
     // Resolve ID of new space or use ID, specified in options.
-    let space_id = match opts.id {
-        None => resolve_new_space_id()?,
-        Some(id) => id,
-    };
+    let id = opts.id.map(Ok).unwrap_or_else(resolve_new_space_id)?;
 
-    insert_new_space(space_id, user_id, name, opts)
+    let flags = opts.is_local.then(|| ("group_id", Value::Num(1))).into_iter()
+        .chain(opts.is_temporary.then(|| ("temporary", Value::Bool(true))))
+        .collect();
+
+    let format = opts.format.iter().flat_map(|f| f.iter())
+        .map(|f|
+            IntoIterator::into_iter([
+                ("name", Value::Str(&f.name)),
+                ("type", Value::Str(f.field_type.as_str())),
+                ("is_nullable", Value::Bool(f.is_nullable)),
+            ]).collect()
+        )
+        .collect();
+
+    let mut sys_space: Space = SystemSpace::Space.into();
+    sys_space.insert(&SpaceMetadata {
+        id,
+        user_id,
+        name,
+        engine: opts.engine,
+        field_count: opts.field_count,
+        flags,
+        format,
+    })?;
+
+    Ok(Space::find(name).unwrap())
 }
+
+/// SpaceMetadata is tuple, holding space metadata in system `_space` space.
+#[derive(Serialize, Debug)]
+pub struct SpaceMetadata<'a> {
+    pub id: u32,
+    pub user_id: u32,
+    pub name: &'a str,
+    pub engine: SpaceEngineType,
+    pub field_count: u32,
+    pub flags: BTreeMap<&'a str, Value<'a>>,
+    pub format: Vec<BTreeMap<&'a str, Value<'a>>>,
+}
+
+impl AsTuple for SpaceMetadata<'_> {}
 
 fn resolve_new_space_id() -> Result<u32, Error> {
     let sys_space: Space = SystemSpace::Space.into();
@@ -90,61 +115,6 @@ fn resolve_new_space_id() -> Result<u32, Error> {
     };
 
     Ok(space_id)
-}
-
-fn insert_new_space(
-    id: u32,
-    uid: u32,
-    name: &str,
-    opts: &SpaceCreateOptions,
-) -> Result<Space, Error> {
-    // `engine`
-    let engine = match opts.engine {
-        None => SpaceEngineType::Memtx,
-        Some(e) => e,
-    };
-
-    // `field_count`
-    let field_count = opts.field_count.unwrap_or(0);
-
-    // `space_opts`
-    let mut space_opts = Map::<String, Value>::new();
-    if opts.is_local {
-        space_opts.insert("group_id".to_string(), Value::Number(Number::from(1)));
-    }
-    if opts.is_temporary {
-        space_opts.insert("temporary".to_string(), Value::Bool(true));
-    }
-    // Only for Tarantool version >= 2.6
-    // space_opts.insert("is_sync".to_string(), Value::Bool(opts.is_sync));
-
-    // `space_format`
-    let mut space_format = Vec::<Value>::new();
-    if let Some(format) = &opts.format {
-        for ft in format {
-            let mut field_format = Map::<String, Value>::new();
-            field_format.insert("name".to_string(), Value::String(ft.name.clone()));
-            field_format.insert("type".to_string(), Value::String(ft.field_type.to_string()));
-            field_format.insert("is_nullable".to_string(), Value::Bool(ft.is_nullable));
-            space_format.push(Value::Object(field_format));
-        }
-    }
-
-    let new_space = SpaceMetadata {
-        id,
-        uid,
-        name: name.to_string(),
-        engine,
-        field_count,
-        options: space_opts.clone(),
-        format: space_format.clone(),
-    };
-
-    let mut sys_space: Space = SystemSpace::Space.into();
-    match sys_space.insert(&new_space) {
-        Err(e) => Err(e),
-        Ok(_) => Ok(Space::find(name).unwrap()),
-    }
 }
 
 /// Drop a space.

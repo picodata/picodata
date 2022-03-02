@@ -18,6 +18,7 @@ use crate::error::{Error, TarantoolError};
 use crate::ffi::tarantool as ffi;
 use crate::tuple::{AsTuple, Tuple, TupleBuffer};
 use crate::tuple_from_box_api;
+use crate::util::NumOrStr;
 
 /// An index is a group of key values and pointers.
 pub struct Index {
@@ -82,16 +83,82 @@ pub enum IteratorType {
     Neighbor = 11,
 }
 
+////////////////////////////////////////////////////////////////////////////////
+// Builder
+////////////////////////////////////////////////////////////////////////////////
+
+pub struct Builder<'a> {
+    space_id: u32,
+    name: &'a str,
+    opts: IndexOptions,
+}
+
+macro_rules! define_setters {
+    ($( $setter:ident ( $field:ident : $ty:ty ) )+) => {
+        $(
+            #[inline(always)]
+            pub fn $setter(mut self, $field: $ty) -> Self {
+                self.opts.$field = Some($field.into());
+                self
+            }
+        )+
+    }
+}
+
+impl<'a> Builder<'a> {
+    /// Creates a new index builder with default options.
+    pub fn new(space_id: u32, name: &'a str) -> Self {
+        Self {
+            space_id,
+            name,
+            opts: IndexOptions::default()
+        }
+    }
+
+    define_setters!{
+        index_type(r#type: IndexType)
+        id(id: u32)
+        unique(unique: bool)
+        if_not_exists(if_not_exists: bool)
+        parts(parts: Vec<Part>)
+        dimension(dimension: u32)
+        distance(distance: RtreeIndexDistanceType)
+        bloom_fpr(bloom_fpr: f32)
+        page_size(page_size: u32)
+        range_size(range_size: u32)
+        run_count_per_level(run_count_per_level: u32)
+        run_size_ratio(run_size_ratio: f32)
+        sequence(sequence: impl Into<SequenceOpt>)
+        func(func: String)
+    }
+
+    pub fn part(mut self, part: Part) -> Self {
+        self.opts.parts.get_or_insert_with(|| Vec::with_capacity(8))
+            .push(part);
+        self
+    }
+
+    /// Create a new index using the current options.
+    #[cfg(feature = "schema")]
+    pub fn create(self) -> crate::Result<Index> {
+        crate::schema::index::create_index(self.space_id, self.name, &self.opts)
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// IndexOptions
+////////////////////////////////////////////////////////////////////////////////
+
 /// List of options for new or updated index.
 ///
 /// For details see [space_object:create_index - options](https://www.tarantool.io/en/doc/latest/reference/reference_lua/box_space/create_index/).
-#[derive(Serialize)]
+#[derive(Default, Serialize, tlua::Push)]
 pub struct IndexOptions {
-    pub index_type: Option<IndexType>,
+    pub r#type: Option<IndexType>,
     pub id: Option<u32>,
     pub unique: Option<bool>,
     pub if_not_exists: Option<bool>,
-    pub parts: Option<Vec<IndexPart>>,
+    pub parts: Option<Vec<Part>>,
     pub dimension: Option<u32>,
     pub distance: Option<RtreeIndexDistanceType>,
     pub bloom_fpr: Option<f32>,
@@ -99,60 +166,112 @@ pub struct IndexOptions {
     pub range_size: Option<u32>,
     pub run_count_per_level: Option<u32>,
     pub run_size_ratio: Option<f32>,
-    pub sequence: Option<IndexSequenceOption>,
+    pub sequence: Option<SequenceOpt>,
     pub func: Option<String>,
     // Only for Tarantool >= 2.6
     // pub hint: Option<bool>,
 }
 
-impl Default for IndexOptions {
-    fn default() -> Self {
-        IndexOptions {
-            index_type: Some(IndexType::Tree),
-            id: None,
-            unique: Some(true),
-            if_not_exists: Some(false),
-            parts: Some(vec![IndexPart {
-                field_index: 1,
-                field_type: IndexFieldType::Unsigned,
-                collation: None,
-                is_nullable: None,
-                path: None,
-            }]),
-            dimension: Some(2),
-            distance: Some(RtreeIndexDistanceType::Euclid),
-            bloom_fpr: Some(0.05),
-            page_size: Some(8 * 1024),
-            range_size: None,
-            run_count_per_level: Some(2),
-            run_size_ratio: Some(3.5),
-            sequence: None,
-            func: None,
-            // Only for Tarantool >= 2.6
-            // hint: Some(true),
-        }
-    }
-}
+////////////////////////////////////////////////////////////////////////////////
+// SequenceOpt
+////////////////////////////////////////////////////////////////////////////////
+
+#[deprecated = "Use `index::SequenceOpt` instead"]
+/// Use [`SequenceOpt`] instead
+pub type IndexSequenceOption = SequenceOpt;
 
 /// Sequence option for new or updated index.
 ///
 /// For details see [specifying a sequence in create_index](https://www.tarantool.io/en/doc/latest/reference/reference_lua/box_schema_sequence/create_index/#box-schema-sequence-create-index).
-#[derive(Serialize)]
-pub enum IndexSequenceOption {
-    SeqId {
-        seq_id: u32,
-        field_index: Option<u32>,
-    },
-    SeqName {
-        seq_name: String,
-        field_index: Option<u32>,
-    },
-    True,
-    Empty,
+#[derive(Serialize, tlua::Push)]
+pub enum SequenceOpt {
+    IdAndField(SeqSpec),
+    AutoGenerated(bool),
 }
 
+impl SequenceOpt {
+    #[inline(always)]
+    pub fn auto() -> Self {
+        Self::AutoGenerated(true)
+    }
+
+    #[inline(always)]
+    pub fn none() -> Self {
+        Self::AutoGenerated(false)
+    }
+
+    #[inline(always)]
+    pub fn field(field: impl Into<NumOrStr>) -> Self {
+        Self::IdAndField(SeqSpec::field(field))
+    }
+
+    #[inline(always)]
+    pub fn id(id: impl Into<NumOrStr>) -> Self {
+        Self::IdAndField(SeqSpec::id(id))
+    }
+
+    #[inline(always)]
+    pub fn spec(s: SeqSpec) -> Self {
+        Self::IdAndField(s)
+    }
+}
+
+impl From<SeqSpec> for SequenceOpt {
+    #[inline(always)]
+    fn from(s: SeqSpec) -> Self {
+        Self::spec(s)
+    }
+}
+
+impl From<bool> for SequenceOpt {
+    #[inline(always)]
+    fn from(b: bool) -> Self {
+        Self::AutoGenerated(b)
+    }
+}
+
+#[derive(Serialize, tlua::Push)]
+pub struct SeqSpec {
+    id: Option<NumOrStr>,
+    field: Option<NumOrStr>,
+}
+
+impl SeqSpec {
+    #[inline(always)]
+    pub fn field(field: impl Into<NumOrStr>) -> Self {
+        Self {
+            id: None,
+            field: Some(field.into()),
+        }
+    }
+
+    #[inline(always)]
+    pub fn id(id: impl Into<NumOrStr>) -> Self {
+        Self {
+            id: Some(id.into()),
+            field: None,
+        }
+    }
+
+    #[inline(always)]
+    pub fn and_field(mut self, field: impl Into<NumOrStr>) -> Self {
+        self.field = Some(field.into());
+        self
+    }
+
+    #[inline(always)]
+    pub fn and_id(mut self, id: impl Into<NumOrStr>) -> Self {
+        self.id = Some(id.into());
+        self
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// IndexType
+////////////////////////////////////////////////////////////////////////////////
+
 /// Type of index.
-#[derive(Copy, Clone, Debug, Serialize)]
+#[derive(Copy, Clone, Debug, Serialize, tlua::Push)]
 pub enum IndexType {
     Hash,
     Tree,
@@ -161,7 +280,7 @@ pub enum IndexType {
 }
 
 /// Type of index part.
-#[derive(Copy, Clone, Debug, Serialize)]
+#[derive(Copy, Clone, Debug, Serialize, tlua::Push)]
 pub enum IndexFieldType {
     Unsigned,
     String,
@@ -176,30 +295,60 @@ pub enum IndexFieldType {
     Scalar,
 }
 
+////////////////////////////////////////////////////////////////////////////////
+// IndexPart
+////////////////////////////////////////////////////////////////////////////////
+
+#[deprecated = "Use `index::Part` instead"]
+pub type IndexPart = Part;
+
 /// Index part.
-#[derive(Serialize)]
-pub struct IndexPart {
-    pub field_index: u32,
-    pub field_type: IndexFieldType,
+#[derive(Serialize, tlua::Push)]
+pub struct Part {
+    pub field: NumOrStr,
+    pub r#type: Option<IndexFieldType>,
     pub collation: Option<String>,
     pub is_nullable: Option<bool>,
     pub path: Option<String>,
 }
 
-impl IndexPart {
-    pub fn new(fi: u32, ft: IndexFieldType) -> Self {
-        IndexPart {
-            field_index: fi,
-            field_type: ft,
+macro_rules! define_setters {
+    ($( $setter:ident ( $field:ident : $ty:ty ) )+) => {
+        $(
+            #[inline(always)]
+            pub fn $setter(mut self, $field: $ty) -> Self {
+                self.$field = Some($field.into());
+                self
+            }
+        )+
+    }
+}
+
+impl Part {
+    pub fn field(field: impl Into<NumOrStr>) -> Self {
+        Self {
+            field: field.into(),
+            r#type: None,
             collation: None,
             is_nullable: None,
             path: None,
         }
     }
+
+    define_setters!{
+        field_type(r#type: IndexFieldType)
+        collation(collation: String)
+        is_nullable(is_nullable: bool)
+        path(path: String)
+    }
+
+    pub fn new(fi: impl Into<NumOrStr>, ft: IndexFieldType) -> Self {
+        Self::field(fi).field_type(ft)
+    }
 }
 
 /// Type of distance for retree index.
-#[derive(Copy, Clone, Debug, Serialize)]
+#[derive(Copy, Clone, Debug, Serialize, tlua::Push)]
 pub enum RtreeIndexDistanceType {
     Euclid,
     Manhattan,

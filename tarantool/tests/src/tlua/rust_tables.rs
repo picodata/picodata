@@ -871,3 +871,17 @@ pub fn table_from_iter() {
     assert_eq!(t.get(4), None::<i32>);
 }
 
+pub fn push_struct_of_nones() {
+    #[derive(PushInto, Default)]
+    struct OfNones {
+        a: Option<i32>,
+        b: Option<String>,
+    }
+
+    let lua = Lua::new();
+    lua.set("push_struct_of_nones", OfNones::default());
+    let t: LuaTable<_> = lua.get("push_struct_of_nones").unwrap();
+    assert_eq!(t.get("a"), None::<i32>);
+    assert_eq!(t.get("b"), None::<String>);
+}
+

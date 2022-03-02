@@ -14,8 +14,8 @@ use tester::{
 
 use tarantool::error::Error;
 use tarantool::ffi::lua as ffi_lua;
-use tarantool::index::{IndexFieldType, IndexOptions, IndexPart, IndexType};
-use tarantool::space::{Space, SpaceCreateOptions, SpaceFieldFormat, SpaceFieldType};
+use tarantool::index::{IndexType, Part};
+use tarantool::space::{Space, Field};
 
 mod bench_bulk_insert;
 mod common;
@@ -70,78 +70,52 @@ const fn default_listen() -> u16 {
 
 fn create_test_spaces() -> Result<(), Error> {
     // space.test_s1
-    let test_s1_opts = SpaceCreateOptions {
-        format: Some(vec![
-            SpaceFieldFormat::new("id", SpaceFieldType::Unsigned),
-            SpaceFieldFormat::new("text", SpaceFieldType::String),
-        ]),
-        .. Default::default()
-    };
-    let test_s1 = match Space::create("test_s1", &test_s1_opts) {
-        Ok(s) => s,
-        Err(e) => return Err(e),
-    };
+    let test_s1 = Space::builder("test_s1")
+        .field(Field::unsigned("id"))
+        .field(Field::string("text"))
+        .create()?;
 
     // space.test_s1.index.primary
-    let test_s1_idx_primary = IndexOptions {
-        index_type: Some(IndexType::Tree),
-        parts: Some(vec![IndexPart::new(1, IndexFieldType::Unsigned)]),
-        .. Default::default()
-    };
-    test_s1.create_index("primary", &test_s1_idx_primary)?;
+    test_s1.index_builder("primary")
+        .index_type(IndexType::Tree)
+        .part(Part::field(1))
+        .create()?;
 
     // space.test_s2
-    let test_s2_opts = SpaceCreateOptions {
-        format: Some(vec![
-            SpaceFieldFormat::new("id", SpaceFieldType::Unsigned),
-            SpaceFieldFormat::new("key", SpaceFieldType::String),
-            SpaceFieldFormat::new("value", SpaceFieldType::String),
-            SpaceFieldFormat::new("a", SpaceFieldType::Integer),
-            SpaceFieldFormat::new("b", SpaceFieldType::Integer),
-        ]),
-        .. Default::default()
-    };
-    let mut test_s2 = match Space::create("test_s2", &test_s2_opts) {
-        Ok(s) => s,
-        Err(e) => return Err(e),
-    };
+    let mut test_s2 = Space::builder("test_s2")
+        .field(Field::unsigned("id"))
+        .field(Field::string("key"))
+        .field(Field::string("value"))
+        .field(Field::integer("a"))
+        .field(Field::integer("b"))
+        .create()?;
 
     // space.test_s2.index.primary
-    let test_s2_idx_primary = IndexOptions {
-        index_type: Some(IndexType::Tree),
-        parts: Some(vec![IndexPart::new(1, IndexFieldType::Unsigned)]),
-        .. Default::default()
-    };
-    test_s2.create_index("primary", &test_s2_idx_primary)?;
+    test_s2.index_builder("primary")
+        .index_type(IndexType::Tree)
+        .part(Part::field(1))
+        .create()?;
 
     // space.test_s2.index.idx_1
-    let test_s2_idx_sec_1 = IndexOptions {
-        index_type: Some(IndexType::Hash),
-        parts: Some(vec![IndexPart::new(2, IndexFieldType::String)]),
-        .. Default::default()
-    };
-    test_s2.create_index("idx_1", &test_s2_idx_sec_1)?;
+    test_s2.index_builder("idx_1")
+        .index_type(IndexType::Hash)
+        .part(Part::field(2))
+        .create()?;
 
     // space.test_s2.index.idx_2
-    let test_s2_idx_sec_2 = IndexOptions {
-        index_type: Some(IndexType::Tree),
-        parts: Some(vec![
-            IndexPart::new(1, IndexFieldType::Unsigned),
-            IndexPart::new(4, IndexFieldType::Integer),
-            IndexPart::new(5, IndexFieldType::Integer),
-        ]),
-        .. Default::default()
-    };
-    test_s2.create_index("idx_2", &test_s2_idx_sec_2)?;
+    test_s2.index_builder("idx_2")
+        .index_type(IndexType::Tree)
+        .part(Part::field("id"))
+        .part(Part::field("a"))
+        .part(Part::field("b"))
+        .create()?;
 
     // space.test_s2.index.idx_3
-    let test_s2_idx_sec_3 = IndexOptions {
-        index_type: Some(IndexType::Tree),
-        unique: Some(false),
-        parts: Some(vec![IndexPart::new(4, IndexFieldType::Integer)]),
-        .. Default::default()
-    };
-    test_s2.create_index("idx_3", &test_s2_idx_sec_3)?;
+    test_s2.index_builder("idx_3")
+        .index_type(IndexType::Tree)
+        .unique(false)
+        .part(Part::field("a"))
+        .create()?;
 
     // Insert test data into space.test_s2
     for i in 1..21 {
@@ -156,19 +130,15 @@ fn create_test_spaces() -> Result<(), Error> {
     }
 
     // space.with_array
-    let mut with_array = Space::create("with_array", &SpaceCreateOptions {
-        format: Some(vec![
-            SpaceFieldFormat::new("id", SpaceFieldType::Unsigned),
-            SpaceFieldFormat::new("array", SpaceFieldType::Array),
-        ]),
-        .. Default::default()
-    })?;
+    let mut with_array = Space::builder("with_array")
+        .field(Field::unsigned("id"))
+        .field(Field::array("array"))
+        .create()?;
 
     // space.with_array.index.pk
-    with_array.create_index("pk", &IndexOptions {
-        parts: Some(vec![IndexPart::new(1, IndexFieldType::Unsigned)]),
-        .. Default::default()
-    })?;
+    with_array.index_builder("pk")
+        .part(Part::field("id"))
+        .create()?;
 
     with_array.insert(&(1, vec![1, 2, 3]))?;
     with_array.insert(&(2, ("foo", ("bar", [69, 420]), 3.14)))?;
@@ -350,6 +320,7 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 tlua::rust_tables::error_during_push_iter,
                 tlua::rust_tables::push_custom_collection,
                 tlua::rust_tables::table_from_iter,
+                tlua::rust_tables::push_struct_of_nones,
 
                 tlua::values::read_i32s,
                 tlua::values::write_i32s,

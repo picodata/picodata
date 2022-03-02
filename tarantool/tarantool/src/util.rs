@@ -50,3 +50,41 @@ pub fn rmp_to_vec<T>(val: &T) -> Result<Vec<u8>, Error>
 {
     Ok(rmp_serde::to_vec(val)?)
 }
+
+#[derive(Serialize, tlua::Push)]
+pub enum NumOrStr {
+    Num(u32),
+    // TODO(gmoshkin): this should be a `&str` instead, but
+    // `#[derive(tlua::Push)]` doesn't support generic parameters yet
+    Str(String),
+}
+
+impl From<u32> for NumOrStr {
+    #[inline(always)]
+    fn from(n: u32) -> Self {
+        Self::Num(n)
+    }
+}
+
+impl From<String> for NumOrStr {
+    #[inline(always)]
+    fn from(s: String) -> Self {
+        Self::Str(s)
+    }
+}
+
+impl<'a> From<&'a str> for NumOrStr {
+    #[inline(always)]
+    fn from(s: &'a str) -> Self {
+        Self::Str(s.into())
+    }
+}
+
+#[derive(Serialize, Debug)]
+#[serde(untagged)]
+pub enum Value<'a> {
+    Num(u32),
+    Str(&'a str),
+    Bool(bool),
+}
+

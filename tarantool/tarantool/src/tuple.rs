@@ -17,7 +17,11 @@ use std::ptr::{copy_nonoverlapping, NonNull};
 
 use num_traits::ToPrimitive;
 use rmp::Marker;
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{
+    de::DeserializeOwned,
+    Deserialize,
+    Serialize,
+};
 
 use crate::error::{Encode, Error, Result, TarantoolError};
 use crate::ffi::tarantool as ffi;
@@ -142,9 +146,9 @@ impl Tuple {
     /// - `Ok(Some(field value))` otherwise
     ///
     /// See also [`Tuple::try_get`], [`Tuple::get`].
-    pub fn field<T>(&self, fieldno: u32) -> Result<Option<T>>
+    pub fn field<'a, T>(&'a self, fieldno: u32) -> Result<Option<T>>
     where
-        T: DeserializeOwned,
+        T: Deserialize<'a>,
     {
         unsafe {
             let field_ptr = ffi::box_tuple_field(self.ptr.as_ptr(), fieldno);
@@ -166,10 +170,10 @@ impl Tuple {
     ///
     /// See also [`Tuple::get`].
     #[inline(always)]
-    pub fn try_get<I, T>(&self, key: I) -> Result<Option<T>>
+    pub fn try_get<'a, I, T>(&'a self, key: I) -> Result<Option<T>>
     where
         I: TupleIndex,
-        T: DeserializeOwned,
+        T: Deserialize<'a>,
     {
         key.get_field(self)
     }
@@ -188,10 +192,10 @@ impl Tuple {
     ///
     /// See also [`Tuple::get`].
     #[inline(always)]
-    pub fn get<I, T>(&self, key: I) -> Option<T>
+    pub fn get<'a, I, T>(&'a self, key: I) -> Option<T>
     where
         I: TupleIndex,
-        T: DeserializeOwned,
+        T: Deserialize<'a>,
     {
         self.try_get(key).expect("Error during getting tuple field")
     }
@@ -232,9 +236,9 @@ impl Tuple {
         self.ptr.as_ptr()
     }
 
-    unsafe fn field_from_ptr<T>(&self, field_ptr: *const u8) -> Result<Option<T>>
+    unsafe fn field_from_ptr<'a, T>(&'a self, field_ptr: *const u8) -> Result<Option<T>>
     where
-        T: DeserializeOwned,
+        T: Deserialize<'a>,
     {
         if field_ptr.is_null() {
             return Ok(None)
@@ -247,16 +251,16 @@ impl Tuple {
 }
 
 pub trait TupleIndex {
-    fn get_field<T>(self, tuple: &Tuple) -> Result<Option<T>>
+    fn get_field<'a, T>(self, tuple: &'a Tuple) -> Result<Option<T>>
     where
-        T: DeserializeOwned;
+        T: Deserialize<'a>;
 }
 
 impl TupleIndex for u32 {
     #[inline(always)]
-    fn get_field<T>(self, tuple: &Tuple) -> Result<Option<T>>
+    fn get_field<'a, T>(self, tuple: &'a Tuple) -> Result<Option<T>>
     where
-        T: DeserializeOwned,
+        T: Deserialize<'a>,
     {
         tuple.field(self)
     }
@@ -264,9 +268,9 @@ impl TupleIndex for u32 {
 
 impl TupleIndex for &str {
     #[inline(always)]
-    fn get_field<T>(self, tuple: &Tuple) -> Result<Option<T>>
+    fn get_field<'a, T>(self, tuple: &'a Tuple) -> Result<Option<T>>
     where
-        T: DeserializeOwned,
+        T: Deserialize<'a>,
     {
         unsafe {
             let tuple_raw = tuple.ptr.as_ref();
@@ -316,6 +320,10 @@ pub trait AsTuple: Serialize {
 
     #[inline]
     fn serialize(&self) -> Result<Vec<u8>> {
+        // TODO(gmoshkin): tuple is required to be a message pack array only on
+        // the top layer, but `to_vec` serializes all of the nested structs as
+        // arrays, which is very bad. We should implement a custom serializer,
+        // which does the correct thing
         rmp_serde::to_vec(self).map_err(Into::into)
     }
 

@@ -15,7 +15,7 @@ use serde_json::{Map, Value};
 
 use crate::error::{Error, TarantoolError};
 use crate::ffi::tarantool as ffi;
-use crate::index::{Index, IndexIterator, IteratorType};
+use crate::index::{self, Index, IndexIterator, IteratorType};
 use crate::tuple::{AsTuple, Tuple};
 use crate::tuple_from_box_api;
 
@@ -118,23 +118,23 @@ impl Serialize for SpaceEngineType {
 #[derive(Clone, Debug, Serialize)]
 pub struct SpaceCreateOptions {
     pub if_not_exists: bool,
-    pub engine: Option<SpaceEngineType>,
+    pub engine: SpaceEngineType,
     pub id: Option<u32>,
-    pub field_count: Option<u32>,
+    pub field_count: u32,
     pub user: Option<String>,
     pub is_local: bool,
     pub is_temporary: bool,
     pub is_sync: bool,
-    pub format: Option<Vec<SpaceFieldFormat>>,
+    pub format: Option<Vec<Field>>,
 }
 
 impl Default for SpaceCreateOptions {
     fn default() -> Self {
         SpaceCreateOptions {
             if_not_exists: false,
-            engine: None,
+            engine: SpaceEngineType::Memtx,
             id: None,
-            field_count: None,
+            field_count: 0,
             user: None,
             is_local: true,
             is_temporary: true,
@@ -144,21 +144,75 @@ impl Default for SpaceCreateOptions {
     }
 }
 
+////////////////////////////////////////////////////////////////////////////////
+// Field
+////////////////////////////////////////////////////////////////////////////////
+
+#[deprecated = "Use `space::Field` instead"]
+pub type SpaceFieldFormat = Field;
+
 #[derive(Clone, Debug, Serialize)]
-pub struct SpaceFieldFormat {
-    pub name: String,
+pub struct Field {
+    pub name: String, // TODO(gmoshkin): &str
     #[serde(alias = "type")]
     pub field_type: SpaceFieldType,
     pub is_nullable: bool,
 }
 
-impl SpaceFieldFormat {
+macro_rules! define_constructors {
+    ($($constructor:ident ($type:path))+) => {
+        $(
+            #[doc = ::std::concat!(
+                "Create a new field format specifier with the given `name` and ",
+                "type \"", ::std::stringify!($constructor), "\""
+            )]
+            pub fn $constructor(name: &str) -> Self {
+                Self {
+                    name: name.into(),
+                    field_type: $type,
+                    is_nullable: false,
+                }
+            }
+        )+
+    }
+}
+
+impl Field {
+    #[deprecated = "Use one of `Field::any`, `Field::unsigned`, `Field::string`, etc. instead"]
+    /// Create a new field format specifier.
+    ///
+    /// You should use one of the other constructors instead
     pub fn new(name: &str, ft: SpaceFieldType) -> Self {
-        SpaceFieldFormat {
+        Self {
             name: name.to_string(),
             field_type: ft,
             is_nullable: false,
         }
+    }
+
+    /// Specify if the current field can be nullable or not. This method
+    /// captures `self` by value and returns it, so it should be used in a
+    /// builder fashion.
+    /// ```rust
+    /// let f = Field::string("middle name").is_nullable(true);
+    /// ```
+    pub fn is_nullable(mut self, is_nullable: bool) -> Self {
+        self.is_nullable = is_nullable;
+        self
+    }
+
+    define_constructors!{
+        any(SpaceFieldType::Any)
+        unsigned(SpaceFieldType::Unsigned)
+        string(SpaceFieldType::String)
+        number(SpaceFieldType::Number)
+        double(SpaceFieldType::Double)
+        integer(SpaceFieldType::Integer)
+        boolean(SpaceFieldType::Boolean)
+        decimal(SpaceFieldType::Decimal)
+        uuid(SpaceFieldType::Uuid)
+        array(SpaceFieldType::Array)
+        scalar(SpaceFieldType::Scalar)
     }
 }
 
@@ -177,9 +231,27 @@ pub enum SpaceFieldType {
     Scalar,
 }
 
+impl SpaceFieldType {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Any => "any",
+            Self::Unsigned => "unsigned",
+            Self::String => "string",
+            Self::Number => "number",
+            Self::Double => "double",
+            Self::Integer => "integer",
+            Self::Boolean => "boolean",
+            Self::Decimal => "decimal",
+            Self::Uuid => "uuid",
+            Self::Array => "array",
+            Self::Scalar => "scalar",
+        }
+    }
+}
+
 impl fmt::Display for SpaceFieldType {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:?}", self)
+        f.write_str(self.as_str())
     }
 }
 
@@ -225,6 +297,13 @@ pub struct Space {
 }
 
 impl Space {
+    /// Return a space builder.
+    ///
+    /// - `name` - name of space to be created
+    pub fn builder(name: &str) -> Builder {
+        Builder::new(name)
+    }
+
     /// Create a space.
     /// (for details see [box.schema.space.create()](https://www.tarantool.io/en/doc/latest/reference/reference_lua/box_schema/space_create/)).
     ///
@@ -277,8 +356,15 @@ impl Space {
         name: &str,
         opts: &crate::index::IndexOptions,
     ) -> Result<Index, Error> {
-        crate::schema::index::create_index(self.id, name, opts)?;
-        Ok(self.index(name).unwrap())
+        crate::schema::index::create_index(self.id, name, opts)
+    }
+
+    /// Return an index builder.
+    ///
+    /// - `name` - name of index to create, which should conform to the rules for object names.
+    #[cfg(feature = "schema")]
+    pub fn index_builder<'a>(&self, name: &'a str) -> index::Builder<'a> {
+        index::Builder::new(self.id, name)
     }
 
     /// Find index by name.
@@ -510,6 +596,63 @@ impl Space {
         self.primary_key().upsert(value, ops)
     }
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// Builder
+////////////////////////////////////////////////////////////////////////////////
+
+pub struct Builder<'a> {
+    name: &'a str,
+    opts: SpaceCreateOptions,
+}
+
+macro_rules! define_setters {
+    ($( $setter:ident ( $field:ident : $ty:ty ) )+) => {
+        $(
+            #[inline(always)]
+            pub fn $setter(mut self, $field: $ty) -> Self {
+                self.opts.$field = $field.into();
+                self
+            }
+        )+
+    }
+}
+
+impl<'a> Builder<'a> {
+    pub fn new(name: &'a str) -> Self {
+        Self {
+            name,
+            opts: Default::default(),
+        }
+    }
+
+    define_setters!{
+        if_not_exists(if_not_exists: bool)
+        engine(engine: SpaceEngineType)
+        id(id: u32)
+        field_count(field_count: u32)
+        user(user: String)
+        is_local(is_local: bool)
+        is_temporary(is_temporary: bool)
+        is_sync(is_sync: bool)
+        format(format: Vec<Field>)
+    }
+
+    pub fn field(mut self, field: Field) -> Self {
+        self.opts.format.get_or_insert_with(|| Vec::with_capacity(16))
+            .push(field);
+        self
+    }
+
+    #[cfg(feature = "schema")]
+    pub fn create(self) -> crate::Result<Space> {
+        crate::schema::space::create_space(self.name, &self.opts)
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// macros
+////////////////////////////////////////////////////////////////////////////////
 
 /// Update a tuple or index.
 ///
