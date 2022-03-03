@@ -17,10 +17,12 @@
 //! stored procedure.
 
 use std::ffi::CStr;
+use std::fmt::{self, Display, Formatter};
 use std::str::Utf8Error;
-use std::{fmt, io};
+use std::io;
 
-use core::fmt::{Display, Formatter};
+use derivative::Derivative;
+use num_derive::{ToPrimitive, FromPrimitive};
 use num_traits::FromPrimitive;
 use rmp::decode::{MarkerReadError, NumValueReadError, ValueReadError};
 use rmp::encode::ValueWriteError;

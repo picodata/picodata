@@ -16,6 +16,7 @@ use crate::error::{Error, TarantoolErrorCode};
 use crate::fiber::Cond;
 use crate::net_box::{Conn, ConnOptions, Options};
 use crate::raft::inner::NodeEvent;
+use crate::set_error;
 use crate::tuple::{FunctionArgs, FunctionCtx, Tuple};
 
 mod fsm;

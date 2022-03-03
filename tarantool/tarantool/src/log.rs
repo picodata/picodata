@@ -17,9 +17,10 @@
 //! - [Lua reference: Module log](https://www.tarantool.io/en/doc/latest/reference/reference_lua/log/)
 //! - [C API reference: Module say (logging)](https://www.tarantool.io/en/doc/latest/dev_guide/reference_capi/say/)
 use std::ffi::CString;
+use std::ptr::null;
 
-use core::ptr::null;
 use log::{Level, Log, Metadata, Record};
+use num_derive::{FromPrimitive, ToPrimitive};
 use num_traits::{FromPrimitive, ToPrimitive};
 
 use crate::ffi::tarantool as ffi;

@@ -1,5 +1,6 @@
 use crate::ffi::uuid as ffi;
 
+use serde::{Serialize, Deserialize};
 pub use ::uuid::{
     adapter,
     Error,

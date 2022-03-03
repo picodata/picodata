@@ -1,4 +1,4 @@
-#![allow(non_upper_case_globals)]
+use lazy_static::lazy_static;
 
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
@@ -25,7 +25,7 @@ pub struct ConnSchema {
 
 impl ConnSchema {
     pub fn acquire(addrs: &[SocketAddr]) -> Rc<ConnSchema> {
-        let mut cache = schema_cache.cache.borrow_mut();
+        let mut cache = SCHEMA_CACHE.cache.borrow_mut();
 
         for addr in addrs {
             if let Some(schema) = cache.get(addr) {
@@ -160,7 +160,7 @@ struct ConnSchemaCache {
 unsafe impl Sync for ConnSchemaCache {}
 
 lazy_static! {
-    static ref schema_cache: ConnSchemaCache = ConnSchemaCache {
+    static ref SCHEMA_CACHE: ConnSchemaCache = ConnSchemaCache {
         cache: RefCell::new(HashMap::new()),
     };
 }

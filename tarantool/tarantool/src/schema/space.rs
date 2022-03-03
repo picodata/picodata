@@ -10,6 +10,7 @@ use crate::index::IteratorType;
 use crate::schema;
 use crate::schema::sequence as schema_seq;
 use crate::session;
+use crate::set_error;
 use crate::space::{Space, SystemSpace, SYSTEM_ID_MAX};
 use crate::space::{SpaceCreateOptions, SpaceEngineType};
 use crate::tuple::{AsTuple, Tuple};

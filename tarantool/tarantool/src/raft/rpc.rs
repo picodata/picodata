@@ -2,6 +2,8 @@ use std::ffi::{c_void, CStr};
 use std::net::SocketAddr;
 use std::path::Path;
 
+use serde::{Serialize, Deserialize};
+
 use crate::error::Error;
 use crate::session;
 use crate::space::{FuncMetadata, Privilege, Space, SystemSpace};

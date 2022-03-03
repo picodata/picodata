@@ -9,6 +9,7 @@
 /// 6. Box - errors, sessions, sequences, transactions, indexes, spaces, tuples.
 use std::os::raw::{c_char, c_int, c_uint, c_void};
 
+use bitflags::bitflags;
 use va_list::VaList;
 
 // Clock.

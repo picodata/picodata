@@ -12,7 +12,9 @@ use std::os::raw::c_char;
 use std::ptr::null_mut;
 use std::mem::MaybeUninit;
 
+use num_derive::ToPrimitive;
 use num_traits::ToPrimitive;
+use serde::Serialize;
 
 use crate::error::{Error, TarantoolError};
 use crate::ffi::tarantool as ffi;

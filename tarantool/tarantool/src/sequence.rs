@@ -1,4 +1,6 @@
 //! Box: sequences
+use serde::{Serialize, Deserialize};
+
 use crate::error::{Error, TarantoolError};
 use crate::ffi::tarantool as ffi;
 use crate::space::{Space, SystemSpace};

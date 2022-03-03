@@ -15,6 +15,7 @@ use std::io::Cursor;
 use std::os::raw::{c_char, c_int};
 use std::ptr::{copy_nonoverlapping, NonNull};
 
+use num_derive::ToPrimitive;
 use num_traits::ToPrimitive;
 use rmp::Marker;
 use serde::{

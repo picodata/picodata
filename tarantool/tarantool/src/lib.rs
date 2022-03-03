@@ -158,22 +158,9 @@
 //! ... and this time the result will be `hello world -- easy2`.
 //!
 //! Conclusion: calling a Rust function is easy.
-#[macro_use]
-extern crate bitflags;
-#[macro_use]
-extern crate derivative;
-#[cfg(feature = "net_box")]
-#[macro_use]
-extern crate lazy_static;
-#[macro_use]
-extern crate num_derive;
-#[macro_use]
-extern crate serde;
-
 pub mod clock;
 pub mod coio;
 pub mod decimal;
-#[macro_use]
 pub mod error;
 #[doc(hidden)]
 pub mod ffi;

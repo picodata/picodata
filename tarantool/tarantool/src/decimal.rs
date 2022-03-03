@@ -1,5 +1,7 @@
 use crate::ffi::decimal as ffi;
 
+use serde::{Serialize, Deserialize};
+
 #[derive(Debug, Copy, Clone)]
 pub struct Decimal {
     pub(crate) inner: ffi::decNumber,

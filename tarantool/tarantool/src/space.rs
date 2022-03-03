@@ -9,6 +9,7 @@
 use std::fmt;
 use std::os::raw::c_char;
 
+use num_derive::ToPrimitive;
 use num_traits::ToPrimitive;
 use serde::{Serialize, Serializer};
 use serde_json::{Map, Value};

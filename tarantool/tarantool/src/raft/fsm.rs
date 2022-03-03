@@ -1,4 +1,5 @@
 use raft::prelude::Entry;
+use serde::Serialize;
 
 use crate::index::IndexOptions;
 use crate::space::SpaceCreateOptions;
