@@ -30,6 +30,9 @@ pub use channel::{
     Channel, SendTimeout, RecvTimeout, SendError, RecvError, TrySendError, TryRecvError,
 };
 
+pub mod mutex;
+pub use mutex::Mutex;
+
 macro_rules! impl_debug_stub {
     ($t:ident $($p:tt)*) => {
         impl $($p)* ::std::fmt::Debug for $t $($p)* {

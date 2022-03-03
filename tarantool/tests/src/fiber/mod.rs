@@ -13,6 +13,7 @@ use tarantool::util::IntoClones;
 
 pub mod old;
 pub mod channel;
+pub mod mutex;
 
 pub fn immediate() {
     let jh = fiber::Builder::new()

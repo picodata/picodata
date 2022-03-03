@@ -389,6 +389,11 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 fiber::channel::drop_rx,
                 fiber::channel::cannot_send_ref,
 
+                fiber::mutex::simple,
+                fiber::mutex::try_lock,
+                fiber::mutex::debug,
+                fiber::mutex::advanced,
+
                 test_box::test_space_get_by_name,
                 test_box::test_space_get_system,
                 test_box::test_index_get_by_name,
