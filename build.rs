@@ -116,22 +116,29 @@ fn build_tarantool() {
         "cpu_feature",
         "luajit",
         "yaml_static",
-        "gomp",
     ] {
         println!("cargo:rustc-link-lib=static={}", l);
     }
 
-    // These two must be linked as positional arguments, because they define
-    // duplicate symbols which is not allowed (by default) when linking with via
-    // -l... option
-    println!(
-        "cargo:rustc-link-arg={}/build/unwind-prefix/lib/libunwind-x86_64.a",
-        dst.display()
-    );
-    println!(
-        "cargo:rustc-link-arg={}/build/unwind-prefix/lib/libunwind.a",
-        dst.display()
-    );
+    if !cfg!(target_os = "macos") {
+        // OpenMP is builtin to the compiler on macos
+        println!("cargo:rustc-link-lib=static=gomp");
+
+        // Libunwind is builtin to the compiler on macos
+        //
+        // These two must be linked as positional arguments, because they define
+        // duplicate symbols which is not allowed (by default) when linking with
+        // via -l... option
+        println!(
+            "cargo:rustc-link-arg={}/build/unwind-prefix/lib/libunwind-x86_64.a",
+            dst.display()
+        );
+        println!(
+            "cargo:rustc-link-arg={}/build/unwind-prefix/lib/libunwind.a",
+            dst.display()
+        );
+    }
+
     println!("cargo:rustc-link-arg=-lc");
 
     println!(
@@ -186,7 +193,17 @@ fn build_tarantool() {
     );
     println!("cargo:rustc-link-lib=static=tinfo");
 
-    println!("cargo:rustc-link-lib=dylib=stdc++");
+    println!(
+        "cargo:rustc-link-search=native={}/build/iconv-prefix/lib",
+        dst.display()
+    );
 
-    println!("cargo:rustc-link-arg=-export-dynamic");
+    if cfg!(target_os = "macos") {
+        // -lc++ instead of -lstdc++ on macos
+        println!("cargo:rustc-link-lib=dylib=c++");
+    } else {
+        // not supported on macos
+        println!("cargo:rustc-link-arg=-export-dynamic");
+        println!("cargo:rustc-link-lib=dylib=stdc++");
+    }
 }
