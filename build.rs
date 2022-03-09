@@ -6,6 +6,15 @@ fn main() {
 }
 
 fn patch_tarantool() {
+    let patch_check = Path::new("tarantool-sys/patched-applied");
+    if patch_check.exists() {
+        println!(
+            "cargo:warning='{}' exists, so patching step is skipped",
+            patch_check.display()
+        );
+        return;
+    }
+
     let status = std::process::Command::new("git")
         .current_dir("tarantool-sys")
         .arg("apply")
@@ -25,32 +34,32 @@ fn patch_tarantool() {
     if !status.success() {
         panic!("failed to apply tarantool patches")
     }
+
+    let _ = std::fs::File::create(&patch_check)
+        .unwrap_or_else(|e| panic!("failed to create '{}': {}", patch_check.display(), e));
 }
 
 fn build_tarantool() {
+    // $OUT_DIR = ".../target/<build-type>/build/picodata-<smth>/out"
+    let out_dir = std::env::var("OUT_DIR").unwrap();
+    // cargo creates 2 different output directories when running `cargo build`
+    // and `cargo clippy`, which is stupid, so we're not going to use them
+    //
+    // build_dir = ".../target/<build-type>/build/tarantool-sys"
+    let build_dir = Path::new(&out_dir)
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .join("tarantool-sys");
+    std::fs::create_dir_all(&build_dir).expect("failed creating build directory");
     let dst = cmake::Config::new("tarantool-sys/static-build")
         .build_target("tarantool")
+        .out_dir(build_dir)
         .build();
 
     let build_dir = dst.join("build/tarantool-prefix/src/tarantool-build");
     let build_disp = build_dir.display();
-
-    // static-build/CMakeFiles.txt uses builds tarantool via the ExternalProject
-    // module, which doesn't rebuild tarantool if something is changed,
-    // therefore we do `cmake --build tarantool-prefix/src/tarantool-build`
-    // directly.
-    // XXX: this should only be done if the above command did not rebuild
-    // anything
-    let status = std::process::Command::new("cmake")
-        .arg("--build")
-        .arg(build_disp.to_string())
-        .arg("-j")
-        .status()
-        .expect("cmake couldn't be executed");
-
-    if !status.success() {
-        panic!("cmake failed")
-    }
 
     // Don't build a shared object in case it's the default for the compiler
     println!("cargo:rustc-link-arg=-no-pie");
