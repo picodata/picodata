@@ -17,7 +17,12 @@ use std::ptr::NonNull;
 use std::time::Duration;
 
 use crate::tlua::{self as tlua, AsLua};
-use va_list::VaList;
+
+#[cfg(not(all(target_arch = "aarch64", target_os = "macos")))]
+use ::va_list::{VaList, VaPrimitive};
+
+#[cfg(all(target_arch = "aarch64", target_os = "macos"))]
+use crate::va_list::{VaList, VaPrimitive};
 
 use crate::c_ptr;
 use crate::error::TarantoolError;
@@ -1120,7 +1125,7 @@ impl<'f> Drop for UnitJoinHandle<'f> {
 trait TrampolineArgs {
     unsafe fn get<T>(&mut self) -> T
     where
-        T: va_list::VaPrimitive;
+        T: VaPrimitive;
 
     unsafe fn get_boxed<T>(&mut self) -> Box<T> {
         Box::from_raw(self.get::<*const c_void>() as *mut T)
@@ -1141,7 +1146,7 @@ trait TrampolineArgs {
 impl TrampolineArgs for VaList {
     unsafe fn get<T>(&mut self) -> T
     where
-        T: va_list::VaPrimitive,
+        T: VaPrimitive,
     {
         self.get::<T>()
     }

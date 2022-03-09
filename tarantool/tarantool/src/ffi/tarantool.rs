@@ -10,7 +10,12 @@
 use std::os::raw::{c_char, c_int, c_uint, c_void};
 
 use bitflags::bitflags;
-use va_list::VaList;
+
+#[cfg(not(all(target_arch = "aarch64", target_os = "macos")))]
+use ::va_list::VaList;
+
+#[cfg(all(target_arch = "aarch64", target_os = "macos"))]
+use crate::va_list::VaList;
 
 // Clock.
 extern "C" {
