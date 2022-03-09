@@ -109,6 +109,7 @@ macro_rules! define_setters {
 
 impl<'a> Builder<'a> {
     /// Creates a new index builder with default options.
+    #[inline(always)]
     pub fn new(space_id: u32, name: &'a str) -> Self {
         Self {
             space_id,
@@ -134,14 +135,16 @@ impl<'a> Builder<'a> {
         func(func: String)
     }
 
-    pub fn part(mut self, part: Part) -> Self {
+    #[inline(always)]
+    pub fn part(mut self, part: impl Into<Part>) -> Self {
         self.opts.parts.get_or_insert_with(|| Vec::with_capacity(8))
-            .push(part);
+            .push(part.into());
         self
     }
 
     /// Create a new index using the current options.
     #[cfg(feature = "schema")]
+    #[inline(always)]
     pub fn create(self) -> crate::Result<Index> {
         crate::schema::index::create_index(self.space_id, self.name, &self.opts)
     }
@@ -348,6 +351,52 @@ impl Part {
         Self::field(fi).field_type(ft)
     }
 }
+
+impl From<&str> for Part {
+    #[inline(always)]
+    fn from(f: &str) -> Self {
+        Self::field(f.to_string())
+    }
+}
+
+impl From<String> for Part {
+    #[inline(always)]
+    fn from(f: String) -> Self {
+        Self::field(f)
+    }
+}
+
+impl From<u32> for Part {
+    #[inline(always)]
+    fn from(f: u32) -> Self {
+        Self::field(f)
+    }
+}
+
+impl From<(u32, IndexFieldType)> for Part {
+    #[inline(always)]
+    fn from((f, t): (u32, IndexFieldType)) -> Self {
+        Self::field(f).field_type(t)
+    }
+}
+
+impl From<(String, IndexFieldType)> for Part {
+    #[inline(always)]
+    fn from((f, t): (String, IndexFieldType)) -> Self {
+        Self::field(f).field_type(t)
+    }
+}
+
+impl From<(&str, IndexFieldType)> for Part {
+    #[inline(always)]
+    fn from((f, t): (&str, IndexFieldType)) -> Self {
+        Self::field(f.to_string()).field_type(t)
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// ...
+////////////////////////////////////////////////////////////////////////////////
 
 /// Type of distance for retree index.
 #[derive(Copy, Clone, Debug, Serialize, tlua::Push)]

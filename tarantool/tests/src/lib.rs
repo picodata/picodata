@@ -14,7 +14,7 @@ use tester::{
 
 use tarantool::error::Error;
 use tarantool::ffi::lua as ffi_lua;
-use tarantool::index::{IndexType, Part};
+use tarantool::index::IndexType;
 use tarantool::space::{Space, Field};
 
 mod bench_bulk_insert;
@@ -78,7 +78,7 @@ fn create_test_spaces() -> Result<(), Error> {
     // space.test_s1.index.primary
     test_s1.index_builder("primary")
         .index_type(IndexType::Tree)
-        .part(Part::field(1))
+        .part(1)
         .create()?;
 
     // space.test_s2
@@ -93,28 +93,28 @@ fn create_test_spaces() -> Result<(), Error> {
     // space.test_s2.index.primary
     test_s2.index_builder("primary")
         .index_type(IndexType::Tree)
-        .part(Part::field(1))
+        .part(1)
         .create()?;
 
     // space.test_s2.index.idx_1
     test_s2.index_builder("idx_1")
         .index_type(IndexType::Hash)
-        .part(Part::field(2))
+        .part(2)
         .create()?;
 
     // space.test_s2.index.idx_2
     test_s2.index_builder("idx_2")
         .index_type(IndexType::Tree)
-        .part(Part::field("id"))
-        .part(Part::field("a"))
-        .part(Part::field("b"))
+        .part("id")
+        .part("a")
+        .part("b")
         .create()?;
 
     // space.test_s2.index.idx_3
     test_s2.index_builder("idx_3")
         .index_type(IndexType::Tree)
         .unique(false)
-        .part(Part::field("a"))
+        .part("a")
         .create()?;
 
     // Insert test data into space.test_s2
@@ -137,7 +137,7 @@ fn create_test_spaces() -> Result<(), Error> {
 
     // space.with_array.index.pk
     with_array.index_builder("pk")
-        .part(Part::field("id"))
+        .part("id")
         .create()?;
 
     with_array.insert(&(1, vec![1, 2, 3]))?;
@@ -423,6 +423,7 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 test_box::test_space_create_opt_id,
                 test_box::test_space_drop,
                 test_box::test_index_create_drop,
+                test_box::index_parts,
 
                 test_tuple::test_tuple_new_from_struct,
                 test_tuple::new_tuple_from_flutten_struct,

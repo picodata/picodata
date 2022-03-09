@@ -1,6 +1,6 @@
 use rand::Rng;
 
-use tarantool::index::{IndexOptions, IteratorType};
+use tarantool::index::{IndexFieldType, IndexOptions, IteratorType};
 use tarantool::sequence::Sequence;
 use tarantool::space::{Space, SpaceCreateOptions, SystemSpace};
 use tarantool::tuple::Tuple;
@@ -630,4 +630,28 @@ pub fn test_index_create_drop() {
 pub fn drop_space(name: &str) {
     let result = Space::find(name).unwrap().drop();
     assert_eq!(result.is_err(), false);
+}
+
+pub fn index_parts() {
+    let mut space = Space::builder("index_parts_test")
+        .create().unwrap();
+
+    let index = space.index_builder("pk")
+        .part((1, IndexFieldType::Unsigned))
+        .part(2)
+        .create().unwrap();
+
+    space.insert(&(1, 2, 3)).unwrap();
+    space.insert(&(2, "foo")).unwrap();
+    space.insert(&(3, 3.14, [3, 2, 1])).unwrap();
+    space.insert(&(4,)).unwrap_err();
+    space.insert(&("5", 1)).unwrap_err();
+
+    let mut iter = index.select(tarantool::index::IteratorType::All, &())
+        .unwrap();
+
+    assert_eq!(iter.next().and_then(|t| t.as_struct().ok()), Some((1, 2, 3)));
+    assert_eq!(iter.next().and_then(|t| t.as_struct().ok()), Some((2, "foo".to_string())));
+    assert_eq!(iter.next().and_then(|t| t.as_struct().ok()), Some((3, 3.14, [3, 2, 1])));
+    assert!(iter.next().is_none());
 }
