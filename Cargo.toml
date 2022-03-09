@@ -43,8 +43,10 @@ doctest = false
 
 [[test]]
 name = "cli"
+path = "test/cli.rs"
 harness = true
 
 [[test]]
 name = "inner"
+path = "test/inner.rs"
 harness = false
