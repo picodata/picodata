@@ -15,19 +15,21 @@ fn patch_tarantool() {
         return;
     }
 
+    let mut patches = std::fs::read_dir("tarantool-patches")
+        .expect("failed reading tarantool-patches")
+        .map(|de| de.unwrap_or_else(|e| panic!("Failed reading directory entry: {}", e)))
+        .map(|de| de.path())
+        .filter(|f| f.extension().map(|e| e == "patch").unwrap_or(false))
+        .map(|f| Path::new("..").join(f))
+        .collect::<Vec<_>>();
+    patches.sort();
+
     let status = std::process::Command::new("git")
         .current_dir("tarantool-sys")
         .arg("apply")
         .arg("--3way")
         .arg("--index")
-        .args(
-            std::fs::read_dir("tarantool-patches")
-                .expect("failed reading tarantool-patches")
-                .map(|de| de.unwrap_or_else(|e| panic!("Failed reading directory entry: {}", e)))
-                .map(|de| de.path())
-                .filter(|f| f.extension().map(|e| e == "patch").unwrap_or(false))
-                .map(|f| Path::new("..").join(f)),
-        )
+        .args(patches)
         .status()
         .expect("git couldn't be executed");
 
