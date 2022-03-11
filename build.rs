@@ -6,7 +6,7 @@ fn main() {
 }
 
 fn patch_tarantool() {
-    let patch_check = Path::new("tarantool-sys/patched-applied");
+    let patch_check = Path::new("tarantool-sys/patches-applied");
     if patch_check.exists() {
         println!(
             "cargo:warning='{}' exists, so patching step is skipped",
