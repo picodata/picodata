@@ -1,4 +1,6 @@
 use std::os::raw::{c_char, c_int, c_void};
+use std::os::unix::process::CommandExt;
+use std::process::Command;
 use structopt::StructOpt;
 
 use ::raft::prelude as raft;
@@ -75,6 +77,7 @@ fn picolib_setup(args: args::Run) {
 
     //
     // Export public API
+    luamod.set("rebootstrap", tlua::function0(rebootstrap));
     luamod.set("run", tlua::function0(move || start(&args)));
     luamod.set("raft_status", tlua::function0(raft_status));
     luamod.set("raft_tick", tlua::function1(raft_tick));
@@ -330,6 +333,25 @@ macro_rules! tarantool_main {
     }
 }
 
+extern "C" {
+    static mut wal_dir_lock: i32;
+    fn close(fd: i32) -> i32;
+}
+
+const REBOOTSTRAP_ENV_VAR: &str = "PICODATA_REBOOTSTRAP";
+
+static mut ARGV: Vec<String> = vec![];
+
+fn rebootstrap() {
+    std::env::set_var(REBOOTSTRAP_ENV_VAR, "1");
+    unsafe {
+        tarantool::eval("box.cfg{listen=''}; require'fiber'.sleep(0.2)");
+        close(dbg!(wal_dir_lock));
+        tlog!(Warning, "Calling exec with: {:?}", &ARGV);
+        let _ = Command::new(&ARGV[0]).args(&ARGV[1..]).exec();
+    }
+}
+
 fn run(args: args::Run) -> Result<(), String> {
     // Tarantool implicitly parses some environment variables.
     // We don't want them to affect the behavior and thus filter them out.
@@ -339,10 +361,35 @@ fn run(args: args::Run) -> Result<(), String> {
         }
     }
 
+    unsafe {
+        ARGV = std::env::args().collect(); // Used in rebootstrap
+    }
+
     tarantool_main!(args.tt_args()?, args => |args: args::Run| {
+        if std::env::var(REBOOTSTRAP_ENV_VAR).is_ok() {
+            std::env::remove_var(REBOOTSTRAP_ENV_VAR);
+            tlog!(Warning, "re-bootstrapping...");
+            // cleanup data dir
+            std::fs::read_dir(&args.data_dir)
+                .expect("failed reading data_dir")
+                .map(|entry| entry.unwrap_or_else(|e| panic!("Failed reading directory entry: {}", e)))
+                .map(|entry| entry.path())
+                .filter(|path| path.is_file())
+                .filter(|f| {
+                    f.extension()
+                        .map(|ext| ext == "xlog" || ext == "snap")
+                        .unwrap_or(false)
+                })
+                .for_each(|f| {
+                    tlog!(Warning, "removing file: {}", (&f).to_string_lossy());
+                    std::fs::remove_file(f).unwrap();
+                });
+        };
+
         if args.autorun {
             start(&args);
         }
+
         picolib_setup(args);
     })
 }
