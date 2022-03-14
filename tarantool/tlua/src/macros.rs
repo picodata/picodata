@@ -83,13 +83,18 @@ macro_rules! c_ptr {
 #[macro_export]
 macro_rules! error {
     ($l:expr, $msg:literal) => {
-        $crate::error!(@impl $l, $crate::c_ptr!($msg))
+        $crate::error!(@impl $l, $crate::error!(@locz $msg).as_ptr().cast())
     };
     ($l:expr, $f:literal $($args:tt)*) => {
         {
             let msg = ::std::format!(::std::concat![$f, "\0"] $($args)*);
             $crate::error!(@impl $l, $crate::c_ptr!("%s"), msg.as_ptr())
         }
+    };
+    (@locz $f:literal) => {
+        ::std::concat![
+            ::std::file!(), ":", ::std::line!(), ":", ::std::column!(), "> ", $f, "\0"
+        ]
     };
     (@impl $l:expr, $($args:tt)+) => {
         {
@@ -108,6 +113,16 @@ macro_rules! unwrap_or {
             v
         } else {
             $($else)+
+        }
+    }
+}
+
+#[macro_export]
+macro_rules! nzi32 {
+    ($i:literal) => {
+        {
+            const _: () = assert!($i != 0, "NonZeroI32 cannot be equal to 0");
+            unsafe { ::std::num::NonZeroI32::new_unchecked($i) }
         }
     }
 }

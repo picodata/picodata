@@ -280,6 +280,15 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 tlua::misc::error_during_push_tuple,
                 tlua::misc::hash,
 
+                tlua::object::callable_builtin,
+                tlua::object::callable_ffi,
+                tlua::object::callable_meta,
+                tlua::object::indexable_builtin,
+                tlua::object::indexable_ffi,
+                tlua::object::indexable_meta,
+                tlua::object::indexable_rw_builtin,
+                tlua::object::indexable_rw_meta,
+
                 tlua::userdata::readwrite,
                 tlua::userdata::destructor_called,
                 tlua::userdata::type_check,

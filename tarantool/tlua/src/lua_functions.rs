@@ -13,12 +13,12 @@ use crate::{
     LuaState,
     LuaRead,
     LuaError,
+    object::{Call, CallError, OnStack},
     Push,
     PushInto,
     PushGuard,
     PushOne,
     PushOneInto,
-    ToString,
     Void,
 };
 
@@ -212,6 +212,12 @@ where
         }
     }
 
+    /// # Safety
+    /// `index` must be a valid index of a lua function in `lua`
+    pub unsafe fn from_raw_parts(lua: L, index: AbsoluteIndex) -> Self {
+        Self { lua, index }
+    }
+
     pub fn into_inner(self) -> L {
         self.lua
     }
@@ -223,6 +229,31 @@ impl<L: AsLua> AsLua for LuaFunction<L> {
         self.lua.as_lua()
     }
 }
+
+impl<L> OnStack<L> for LuaFunction<L>
+where
+    L: AsLua,
+{
+    #[inline(always)]
+    fn index(&self) -> AbsoluteIndex {
+        self.index
+    }
+
+    #[inline(always)]
+    fn guard(&self) -> &L {
+        &self.lua
+    }
+
+    #[inline(always)]
+    fn into_inner(self) -> L {
+        self.lua
+    }
+}
+
+impl<L> Call<L> for LuaFunction<L>
+where
+    L: AsLua,
+{}
 
 impl<'lua, L> LuaFunction<L>
 where
@@ -242,11 +273,7 @@ where
     where
         V: LuaRead<PushGuard<&'lua L>>,
     {
-        match Self::call_impl(&self.lua, self.index.into(), ()) {
-            Ok(v) => Ok(v),
-            Err(LuaFunctionCallError::LuaError(err)) => Err(err),
-            Err(LuaFunctionCallError::PushError(_)) => unreachable!(),
-        }
+        Call::call(self)
     }
 
     /// Calls the function taking ownership of the underlying push guard.
@@ -264,12 +291,7 @@ where
     where
         V: LuaRead<PushGuard<Self>>,
     {
-        let index = self.index.into();
-        match Self::call_impl(self, index, ()) {
-            Ok(v) => Ok(v),
-            Err(LuaFunctionCallError::LuaError(err)) => Err(err),
-            Err(LuaFunctionCallError::PushError(_)) => unreachable!(),
-        }
+        Call::into_call(self)
     }
 
     /// Calls the function with parameters.
@@ -321,13 +343,12 @@ where
     /// assert_eq!(excess_results, (4, 2, None));
     /// ```
     #[inline]
-    pub fn call_with_args<V, A>(&'lua self, args: A)
-        -> Result<V, LuaFunctionCallError<A::Err>>
+    pub fn call_with_args<V, A>(&'lua self, args: A) -> Result<V, CallError<A::Err>>
     where
         A: PushInto<LuaState>,
         V: LuaRead<PushGuard<&'lua L>>,
     {
-        Self::call_impl(&self.lua, self.index.into(), args)
+        Call::call_with(self, args)
     }
 
     /// Calls the function with parameters taking ownership of the underlying
@@ -374,62 +395,12 @@ where
     /// assert_eq!(all_result, (4, 2));
     /// ```
     #[inline]
-    pub fn into_call_with_args<V, A>(self, args: A)
-        -> Result<V, LuaFunctionCallError<A::Err>>
+    pub fn into_call_with_args<V, A>(self, args: A) -> Result<V, CallError<A::Err>>
     where
         A: PushInto<LuaState>,
         V: LuaRead<PushGuard<Self>>,
     {
-        let index = self.index.into();
-        Self::call_impl(self, index, args)
-    }
-
-    #[inline]
-    pub fn call_impl<T, V, A, E>(
-        this: T,
-        index: i32,
-        args: A,
-    ) -> Result<V, LuaFunctionCallError<E>>
-    where
-        T: AsLua,
-        A: PushInto<LuaState, Err = E>,
-        V: LuaRead<PushGuard<T>>,
-    {
-        let raw_lua = this.as_lua();
-        // calling pcall pops the parameters and pushes output
-        let (pcall_return_value, pushed_value) = unsafe {
-            let old_top = ffi::lua_gettop(raw_lua);
-            // lua_pcall pops the function, so we have to make a copy of it
-            ffi::lua_pushvalue(raw_lua, index);
-            let num_pushed = match this.as_lua().try_push(args) {
-                Ok(g) => g.forget_internal(),
-                Err((err, _)) => return Err(LuaFunctionCallError::PushError(err)),
-            };
-            let pcall_return_value = ffi::lua_pcall(
-                raw_lua,
-                num_pushed,
-                ffi::LUA_MULTRET,
-                0,
-            );
-            let n_results = ffi::lua_gettop(raw_lua) - old_top;
-            (pcall_return_value, PushGuard::new(this, n_results))
-        };
-
-        match pcall_return_value {
-            ffi::LUA_ERRMEM => panic!("lua_pcall returned LUA_ERRMEM"),
-            ffi::LUA_ERRRUN => {
-                let error_msg: ToString = LuaRead::lua_read(pushed_value)
-                    .ok()
-                    .expect("can't find error message at the top of the Lua stack");
-                return Err(LuaError::ExecutionError(error_msg.into()).into())
-            }
-            0 => {}
-            _ => panic!("Unknown error code returned by lua_pcall: {}", pcall_return_value),
-        }
-
-        let n_results = pushed_value.size;
-        LuaRead::lua_read_at_maybe_zero_position(pushed_value, -n_results)
-            .map_err(|lua| LuaError::wrong_type_returned::<V, _>(lua, n_results).into())
+        Call::into_call_with(self, args)
     }
 
     /// Builds a new `LuaFunction` from the code of a reader.

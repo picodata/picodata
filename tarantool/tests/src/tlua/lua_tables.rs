@@ -145,8 +145,8 @@ pub fn registry() {
     let lua = Lua::new();
 
     let table = LuaTable::registry(&lua);
-    table.set(3, "hello");
-    let y: String = table.get(3).unwrap();
+    table.set("3", "hello");
+    let y: String = table.get("3").unwrap();
     assert_eq!(y, "hello");
 }
 

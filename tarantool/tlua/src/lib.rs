@@ -114,7 +114,7 @@ use std::borrow::{Borrow, Cow};
 use std::num::NonZeroI32;
 use std::error::Error;
 use std::fmt;
-use std::io;
+use std::io::{self, Write};
 
 pub use any::{AnyHashableLuaValue, AnyLuaString, AnyLuaValue};
 pub use functions_write::{Function, InsideCallback};
@@ -123,7 +123,11 @@ pub use functions_write::{function6, function7, function8, function9, function10
 pub use lua_functions::LuaFunction;
 pub use lua_functions::LuaFunctionCallError;
 pub use lua_functions::{LuaCode, LuaCodeFromReader};
-pub use lua_tables::{LuaTable, LuaTableIterator, MethodCallError};
+pub use lua_tables::{LuaTable, LuaTableIterator};
+pub use object::{
+    Call, Callable, OnStack, Index, Indexable, IndexableRW, NewIndex,
+    MethodCallError,
+};
 pub use rust_tables::{TableFromIter, PushIterError, PushIterErrorOf};
 pub use tuples::TuplePushError;
 pub use userdata::UserdataOnStack;
@@ -141,6 +145,7 @@ mod functions_write;
 mod lua_functions;
 mod lua_tables;
 mod macros;
+mod object;
 mod rust_tables;
 mod userdata;
 pub mod util;
@@ -749,15 +754,15 @@ pub fn typenames(lua: impl AsLua, start: AbsoluteIndex, count: u32) -> String {
         _ => {}
     }
 
-    let mut res = vec![std::borrow::Cow::Borrowed("(")];
+    let mut res = Vec::with_capacity(32);
+    write!(res, "(").expect("writing to vec cannot fail");
     let end = start + count - 1;
     for i in start..end {
-        res.push(single_typename(i));
-        res.push(", ".into());
+        write!(res, "{}, ", single_typename(i)).expect("writing to vec cannot fail");
     }
-    res.push(single_typename(end));
-    res.push(")".into());
-    res.join("")
+    write!(res, "{})", single_typename(end)).expect("writing to vec cannot fail");
+    // concatenation of utf8 is utf8
+    unsafe { String::from_utf8_unchecked(res) }
 }
 
 impl fmt::Display for LuaError {

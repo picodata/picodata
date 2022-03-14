@@ -260,6 +260,16 @@ extern "C" {
     /// collected again then Lua frees its corresponding memory.
     pub fn lua_newuserdata(l: *mut lua_State, sz: libc::size_t) -> *mut libc::c_void;
 
+    /// Pushes a light userdata onto the stack.
+    /// *[-0, +1, -]*
+    ///
+    /// Userdata represent C values in Lua. A light userdata represents a
+    /// pointer. It is a value (like a number): you do not create it, it has no
+    /// individual metatable, and it is not collected (as it was never created).
+    /// A light userdata is equal to "any" light userdata with the same C
+    /// address.
+    pub fn lua_pushlightuserdata(l: *mut lua_State, ud: *mut c_void);
+
     /// Pushes onto the stack the value `t[k]`, where `t` is the value at the
     /// given valid `index` and `k` is the value at the top of the stack.
     /// *[-1, +1, e]*
@@ -357,6 +367,14 @@ extern "C" {
     ///
     /// - [`LUA_ERRERR`]: error while running the error handler function.
     pub fn lua_pcall(l: *mut lua_State, nargs: c_int, nresults: c_int, errfunc: c_int) -> c_int;
+
+    /// Calls the C function `func` in protected mode. `func` starts with only
+    /// one element in its stack, a light userdata containing `ud`. In case of
+    /// errors, lua_cpcall returns the same error codes as lua_pcall, plus the
+    /// error object on the top of the stack; otherwise, it returns zero, and
+    /// does not change the stack. All values returned by `func` are discarded.
+    /// *[-0, +(0|1), -]*
+    pub fn lua_cpcall(l: *mut lua_State, func: lua_CFunction, ud: *mut c_void) -> c_int;
 
     /// [-0, +1, -]
     /// Loads a Lua chunk. If there are no errors, `lua_load` pushes the
@@ -654,6 +672,15 @@ extern "C" {
     /// "uint32_t", etc.).
     /// See also: [`luaL_pushcdata`], [`luaL_checkcdata`]
     pub fn luaL_ctypeid(l: *mut lua_State, ctypename: *const c_char) -> u32;
+
+    /// Check if value at `index` is a lua function, a lua value with a `__call`
+    /// metamethod or a callable `cdata`.
+    pub fn luaL_iscallable(l: *mut lua_State, index: i32) -> i32;
+
+    /// Push the metafield `field` of the value at given `index` onto the stack.
+    /// Returns `1` if the value was pushed, `0` otherwise.
+    /// *[-0, +(1|0), -]*
+    pub fn luaL_getmetafield(l: *mut lua_State, index: i32, field: *const c_char) -> i32;
 }
 
 extern "C" {

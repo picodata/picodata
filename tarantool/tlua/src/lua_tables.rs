@@ -1,4 +1,3 @@
-use std::convert::From;
 use std::marker::PhantomData;
 use std::num::NonZeroI32;
 
@@ -11,11 +10,9 @@ use crate::{
     PushGuard,
     PushOne,
     PushOneInto,
-    LuaError,
-    LuaFunction,
     LuaRead,
     LuaState,
-    LuaFunctionCallError,
+    object::{Callable, CheckedSetError, Index, OnStack, MethodCallError, NewIndex},
     Void,
 };
 
@@ -53,6 +50,17 @@ where
             lua,
         }
     }
+
+    /// # Safety
+    /// `index` must be a valid index of a lua table in `lua`
+    pub unsafe fn from_raw_parts(lua: L, index: AbsoluteIndex) -> Self {
+        Self { lua, index }
+    }
+
+    pub fn empty(lua: L) -> Self {
+        unsafe { ffi::lua_newtable(lua.as_lua()) }
+        Self::new(lua, crate::nzi32!(-1))
+    }
 }
 
 impl<L> AsLua for LuaTable<L>
@@ -64,6 +72,36 @@ where
         self.lua.as_lua()
     }
 }
+
+impl<L> OnStack<L> for LuaTable<L>
+where
+    L: AsLua,
+{
+    #[inline(always)]
+    fn index(&self) -> AbsoluteIndex {
+        self.index
+    }
+
+    #[inline(always)]
+    fn guard(&self) -> &L {
+        &self.lua
+    }
+
+    #[inline(always)]
+    fn into_inner(self) -> L {
+        self.lua
+    }
+}
+
+impl<L> Index<L> for LuaTable<L>
+where
+    L: AsLua,
+{}
+
+impl<L> NewIndex<L> for LuaTable<L>
+where
+    L: AsLua,
+{}
 
 impl<L> LuaRead<L> for LuaTable<L>
 where
@@ -130,15 +168,14 @@ where
 
     /// Loads a value in the table given its index.
     ///
-    /// The index must implement the `PushOne` trait and the return type must implement the
-    /// `LuaRead` trait. See
-    /// [the documentation at the crate root](index.html#pushing-and-loading-values) for more
-    /// information.
+    /// The index must implement the [`PushOneInto`] trait and the return type
+    /// must implement the [`LuaRead`] trait. See [the documentation at the
+    /// crate root](index.html#pushing-and-loading-values) for more information.
     ///
     /// # Example: reading a table inside of a table.
     ///
     /// ```
-    /// let mut lua = tlua::Lua::new();
+    /// let lua = tlua::Lua::new();
     /// lua.exec("a = { 9, { 8, 7 }, 6 }").unwrap();
     ///
     /// let mut table = lua.get::<tlua::LuaTable<_>, _>("a").unwrap();
@@ -159,38 +196,19 @@ where
         I: PushOneInto<LuaState, Err = Void>,
         R: LuaRead<PushGuard<&'lua L>>,
     {
-        Self::get_impl(&self.lua, self.index.into(), index).ok()
+        Index::get(self, index)
     }
 
     /// Loads a value in the table, with the result capturing the table by value.
-    // TODO: doc
+    ///
+    /// See also [`LuaTable::get`]
     #[inline]
-    pub fn into_get<R, I>(self, index: I) -> Result<R, PushGuard<Self>>
+    pub fn into_get<R, I>(self, index: I) -> Result<R, Self>
     where
         I: PushOneInto<LuaState, Err = Void>,
         R: LuaRead<PushGuard<Self>>,
     {
-        let this_index = self.index.into();
-        Self::get_impl(self, this_index, index)
-    }
-
-    #[inline(always)]
-    pub fn get_impl<T, R, I>(
-        this: T,
-        this_index: i32,
-        index: I,
-    ) -> Result<R, PushGuard<T>>
-    where
-        T: AsLua,
-        I: PushOneInto<LuaState, Err = Void>,
-        R: LuaRead<PushGuard<T>>,
-    {
-        let raw_lua = this.as_lua();
-        unsafe {
-            index.push_into_no_err(raw_lua).assert_one_and_forget();
-            ffi::lua_gettable(raw_lua, this_index);
-            R::lua_read(PushGuard::new(this, 1))
-        }
+        Index::into_get(self, index)
     }
 
     /// Inserts or modifies an elements of the table.
@@ -203,17 +221,16 @@ where
     /// information.
     // TODO: doc
     #[inline(always)]
-    pub fn set<I, V, Ei, Ev>(&self, index: I, value: V)
+    pub fn set<I, V>(&self, index: I, value: V)
     where
-        I: PushOneInto<LuaState, Err = Ei>,
-        V: PushOneInto<LuaState, Err = Ev>,
-        Ei: Into<Void>,
-        Ev: Into<Void>,
+        I: PushOneInto<LuaState>,
+        V: PushOneInto<LuaState>,
+        // Cannot be just `Void`, because we want to support setting values to
+        // `Vec` and others
+        I::Err: Into<Void>,
+        V::Err: Into<Void>,
     {
-        match self.checked_set(index, value) {
-            Ok(()) => (),
-            Err(_) => unreachable!(),
-        }
+        NewIndex::set(self, index, value)
     }
 
     /// Inserts or modifies an elements of the table.
@@ -231,31 +248,7 @@ where
         I: PushOneInto<LuaState>,
         V: PushOneInto<LuaState>,
     {
-        unsafe {
-            let guard = match index.push_into_lua(self.as_lua()) {
-                Ok(guard) => {
-                    assert_eq!(guard.size, 1);
-                    guard
-                }
-                Err((err, _)) => {
-                    return Err(CheckedSetError::KeyPushError(err));
-                }
-            };
-
-            match value.push_into_lua(self.as_lua()) {
-                Ok(pushed) => {
-                    assert_eq!(pushed.size, 1);
-                    pushed.forget()
-                }
-                Err((err, _)) => {
-                    return Err(CheckedSetError::ValuePushError(err));
-                }
-            };
-
-            guard.forget();
-            ffi::lua_settable(self.as_lua(), self.index.into());
-            Ok(())
-        }
+        NewIndex::checked_set(self, index, value)
     }
 
     pub fn call_method<R, A>(&'lua self, name: &str, args: A)
@@ -264,18 +257,9 @@ where
         L: std::fmt::Debug,
         A: PushInto<LuaState>,
         A: std::fmt::Debug,
-        R: LuaRead<PushGuard<LuaFunction<PushGuard<&'lua L>>>>,
+        R: LuaRead<PushGuard<Callable<PushGuard<&'lua L>>>>,
     {
-        let method: LuaFunction<_> = self.get(name).ok_or(MethodCallError::NoSuchMethod)?;
-        method.into_call_with_args((self, args))
-            .map_err(|e|
-                match e {
-                    LuaFunctionCallError::LuaError(e) => MethodCallError::LuaError(e),
-                    LuaFunctionCallError::PushError(e) => {
-                        MethodCallError::PushError(e.other().first())
-                    }
-                }
-            )
+        Index::call_method(self, name, args)
     }
 
     /// Inserts an empty array, then loads it.
@@ -378,32 +362,6 @@ where
             unsafe { NonZeroI32::new_unchecked(ffi::LUA_REGISTRYINDEX) }
         )
     }
-}
-
-#[derive(Debug)]
-pub enum MethodCallError<E> {
-    NoSuchMethod,
-    LuaError(LuaError),
-    PushError(E),
-}
-
-impl<E> From<LuaFunctionCallError<E>> for MethodCallError<E> {
-    fn from(e: LuaFunctionCallError<E>) -> Self {
-        match e {
-            LuaFunctionCallError::PushError(e) => MethodCallError::PushError(e),
-            LuaFunctionCallError::LuaError(e) => MethodCallError::LuaError(e),
-        }
-    }
-}
-
-/// Error returned by the `checked_set` function.
-// TODO: implement `Error` on this type
-#[derive(Debug, Copy, Clone)]
-pub enum CheckedSetError<K, V> {
-    /// Error while pushing the key.
-    KeyPushError(K),
-    /// Error while pushing the value.
-    ValuePushError(V),
 }
 
 /// Iterator that enumerates the content of a Lua table.

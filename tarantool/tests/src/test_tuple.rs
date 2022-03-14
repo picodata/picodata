@@ -1,6 +1,6 @@
 use std::cmp::Ordering;
 
-use tarantool::tlua::AsLua;
+use tarantool::tlua::{Index, Indexable, Nil};
 use tarantool::tuple::{AsTuple, FieldType, KeyDef, KeyDefItem, Tuple, TupleBuffer};
 use serde::Serialize;
 
@@ -226,6 +226,16 @@ pub fn tuple_get_field_path() {
     assert_eq!(tuple.get("array"), Some(
             ("foo".to_string(), ("bar".to_string(), (69, 420)), 3.14)
     ));
+
+    let lua = tarantool::lua_state();
+    lua.set("tuple_get_field_path", &tuple);
+    let tuple_in_lua: Indexable<_> = lua.get("tuple_get_field_path").unwrap();
+    assert_eq!(tuple_in_lua.get("array[1]"), Some("foo".to_string()));
+    assert_eq!(tuple_in_lua.get("array[2][1]"), Some("bar".to_string()));
+    assert_eq!(tuple_in_lua.get("array[2][2][1]"), Some(69));
+    assert_eq!(tuple_in_lua.get("array[2][2][2]"), Some(420));
+    assert_eq!(tuple_in_lua.get("array[3]"), Some(3.14));
+    lua.set("tuple_get_field_path", Nil);
 }
 
 pub fn test_tuple_compare() {
@@ -299,8 +309,17 @@ pub fn to_and_from_lua() {
     }).unwrap();
 
     let lua = tarantool::lua_state();
-    let lua = lua.push(&tuple);
-    let tuple = lua.read::<Tuple>().unwrap();
+    lua.set("to_and_from_lua", &tuple);
+
+    let tuple_in_lua: Indexable<_> = lua.get("to_and_from_lua").unwrap();
+    assert_eq!(tuple_in_lua.get(1), Some(42));
+    assert_eq!(tuple_in_lua.get(2), Some("hello".to_string()));
+    assert_eq!(tuple_in_lua.get(3), Some("nice".to_string()));
+    assert_eq!(tuple_in_lua.get(4), Some(420));
+    assert_eq!(tuple_in_lua.get(5), Some(69));
+    drop(tuple_in_lua);
+
+    let tuple: Tuple = lua.get("to_and_from_lua").unwrap();
     let res = tuple.into_struct::<S2Record>().unwrap();
     assert_eq!(res, S2Record {
         id: 42,
@@ -309,6 +328,8 @@ pub fn to_and_from_lua() {
         a: 420,
         b: 69,
     });
+
+    lua.set("to_and_from_lua", Nil);
 }
 
 pub fn tuple_debug_fmt() {
