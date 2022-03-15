@@ -20,6 +20,7 @@ rmp-serde = "1.0"
 tempfile = "3"
 thiserror = "1.0"
 indoc = "1.0"
+nix = "0.23.1"
 
 [dependencies.slog]
 version = "2.7.0"

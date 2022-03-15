@@ -1,6 +1,7 @@
+use nix::sys::signal::{self, Signal};
+use nix::unistd::Pid;
 use std::os::raw::{c_char, c_int, c_void};
-use std::os::unix::process::CommandExt;
-use std::process::Command;
+use std::process::Stdio;
 use structopt::StructOpt;
 
 use ::raft::prelude as raft;
@@ -77,7 +78,6 @@ fn picolib_setup(args: args::Run) {
 
     //
     // Export public API
-    luamod.set("rebootstrap", tlua::function0(rebootstrap));
     luamod.set("run", tlua::function0(move || start(&args)));
     luamod.set("raft_status", tlua::function0(raft_status));
     luamod.set("raft_tick", tlua::function1(raft_tick));
@@ -269,6 +269,23 @@ pub extern "C" fn raft_interact(_: FunctionCtx, args: FunctionArgs) -> c_int {
     0
 }
 
+fn rm_tarantool_files(data_dir: &str) {
+    std::fs::read_dir(data_dir)
+        .expect("failed reading data_dir")
+        .map(|entry| entry.unwrap_or_else(|e| panic!("Failed reading directory entry: {}", e)))
+        .map(|entry| entry.path())
+        .filter(|path| path.is_file())
+        .filter(|f| {
+            f.extension()
+                .map(|ext| ext == "xlog" || ext == "snap")
+                .unwrap_or(false)
+        })
+        .for_each(|f| {
+            tlog!(Warning, "removing file: {}", (&f).to_string_lossy());
+            std::fs::remove_file(f).unwrap();
+        });
+}
+
 fn main() {
     let res = match args::Picodata::from_args() {
         args::Picodata::Run(r) => run(r),
@@ -333,24 +350,8 @@ macro_rules! tarantool_main {
     }
 }
 
-extern "C" {
-    static mut wal_dir_lock: i32;
-    fn close(fd: i32) -> i32;
-}
-
-const REBOOTSTRAP_ENV_VAR: &str = "PICODATA_REBOOTSTRAP";
-
-static mut ARGV: Vec<String> = vec![];
-
-fn rebootstrap() {
-    std::env::set_var(REBOOTSTRAP_ENV_VAR, "1");
-    unsafe {
-        tarantool::eval("box.cfg{listen=''}; require'fiber'.sleep(0.2)");
-        close(dbg!(wal_dir_lock));
-        tlog!(Warning, "Calling exec with: {:?}", &ARGV);
-        let _ = Command::new(&ARGV[0]).args(&ARGV[1..]).exec();
-    }
-}
+const INIT_SUBPROCESS_FLAG_ENV_VAR: &str = "PICODATA_IS_INIT_SUBPROCESS";
+const REBOOTSTRAP_FLAG_ENV_VAR: &str = "PICODATA_REBOOTSTRAP";
 
 fn run(args: args::Run) -> Result<(), String> {
     // Tarantool implicitly parses some environment variables.
@@ -361,31 +362,36 @@ fn run(args: args::Run) -> Result<(), String> {
         }
     }
 
-    unsafe {
-        ARGV = std::env::args().collect(); // Used in rebootstrap
+    if std::env::var(REBOOTSTRAP_FLAG_ENV_VAR).is_ok() {
+        // Rebootstrap main process
+        std::env::remove_var(REBOOTSTRAP_FLAG_ENV_VAR);
+        let argv: Vec<String> = std::env::args().collect();
+        let mut command = std::process::Command::new(&argv[0]);
+        command
+            .args(&argv[1..])
+            .stdin(Stdio::null())
+            .env(INIT_SUBPROCESS_FLAG_ENV_VAR, "1");
+        let mut child = command.spawn().expect("failed to spawn child process");
+        tlog!(Warning, "Spawned a child process pid={}", child.id());
+        std::thread::sleep(Duration::from_secs(3));
+        tlog!(
+            Warning,
+            "Sending SIGTERM to the child process pid={}",
+            child.id()
+        );
+        signal::kill(Pid::from_raw(child.id() as i32), Signal::SIGTERM).unwrap();
+        let exit_status = child.wait().unwrap();
+        tlog!(Warning, "Child process {}", exit_status);
+        tlog!(Warning, "Cleaning up the files of the child process...");
+        rm_tarantool_files(&args.data_dir);
+    }
+
+    if std::env::var(INIT_SUBPROCESS_FLAG_ENV_VAR).is_ok() {
+        // Rebootstrap child process
+        tlog!(Warning, "I'm a new child process");
     }
 
     tarantool_main!(args.tt_args()?, args => |args: args::Run| {
-        if std::env::var(REBOOTSTRAP_ENV_VAR).is_ok() {
-            std::env::remove_var(REBOOTSTRAP_ENV_VAR);
-            tlog!(Warning, "re-bootstrapping...");
-            // cleanup data dir
-            std::fs::read_dir(&args.data_dir)
-                .expect("failed reading data_dir")
-                .map(|entry| entry.unwrap_or_else(|e| panic!("Failed reading directory entry: {}", e)))
-                .map(|entry| entry.path())
-                .filter(|path| path.is_file())
-                .filter(|f| {
-                    f.extension()
-                        .map(|ext| ext == "xlog" || ext == "snap")
-                        .unwrap_or(false)
-                })
-                .for_each(|f| {
-                    tlog!(Warning, "removing file: {}", (&f).to_string_lossy());
-                    std::fs::remove_file(f).unwrap();
-                });
-        };
-
         if args.autorun {
             start(&args);
         }
