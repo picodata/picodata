@@ -10,45 +10,29 @@ use ::tarantool::set_error;
 use ::tarantool::tlua;
 use ::tarantool::tuple::{FunctionArgs, FunctionCtx, Tuple};
 use indoc::indoc;
+use message::Message;
+use std::convert::TryFrom;
+use std::time::Duration;
 
 mod app;
 mod args;
 mod error;
 mod message;
-pub mod stash;
 mod tarantool;
 mod tlog;
 mod traft;
+
+inventory::collect!(InnerTest);
 
 pub struct InnerTest {
     pub name: &'static str,
     pub body: fn(),
 }
-inventory::collect!(InnerTest);
 
-use message::Message;
-use std::cell::Ref;
-use std::cell::RefCell;
-use std::convert::TryFrom;
-use std::time::Duration;
+static mut NODE: Option<&'static traft::Node> = None;
 
-#[derive(Default)]
-pub struct Stash {
-    raft_node: RefCell<Option<traft::Node>>,
-}
-
-impl Stash {
-    pub fn access() -> &'static Self {
-        stash::access("_picolib_stash")
-    }
-
-    pub fn set_raft_node(&self, raft_node: traft::Node) {
-        *self.raft_node.borrow_mut() = Some(raft_node);
-    }
-
-    pub fn raft_node(&self) -> Ref<Option<traft::Node>> {
-        self.raft_node.borrow()
-    }
+fn node() -> &'static traft::Node {
+    unsafe { NODE.expect("Picodata not running yet") }
 }
 
 fn picolib_setup(args: args::Run) {
@@ -79,17 +63,17 @@ fn picolib_setup(args: args::Run) {
     //
     // Export public API
     luamod.set("run", tlua::function0(move || start(&args)));
-    luamod.set("raft_status", tlua::function0(raft_status));
+    luamod.set("raft_status", tlua::function0(|| node().status()));
     luamod.set("raft_tick", tlua::function1(raft_tick));
     luamod.set(
         "raft_propose_info",
-        tlua::function1(|x: String| raft_propose(Message::Info { msg: x })),
+        tlua::function1(|x: String| node().propose(&Message::Info { msg: x })),
     );
     luamod.set(
         "raft_propose_eval",
         tlua::function2(|timeout: f64, x: String| {
-            raft_propose_wait_applied(
-                Message::EvalLua { code: x },
+            node().propose_wait_applied(
+                &Message::EvalLua { code: x },
                 Duration::from_secs_f64(timeout),
             )
         }),
@@ -110,8 +94,6 @@ fn picolib_setup(args: args::Run) {
 }
 
 fn start(args: &args::Run) {
-    let stash = Stash::access();
-
     if tarantool::cfg().is_some() {
         // Already initialized
         return;
@@ -175,8 +157,12 @@ fn start(args: &args::Run) {
         applied: traft::Storage::applied().unwrap().unwrap_or_default(),
         ..Default::default()
     };
-    let node = traft::Node::new(&raft_cfg, handle_committed_data).unwrap();
-    stash.set_raft_node(node);
+
+    unsafe {
+        NODE = Some(Box::leak(Box::new(
+            traft::Node::new(&raft_cfg, handle_committed_data).unwrap(),
+        )));
+    };
 
     cfg.listen = Some(args.listen.clone());
     tarantool::set_cfg(&cfg);
@@ -191,33 +177,10 @@ fn start(args: &args::Run) {
 }
 
 fn raft_tick(n_times: u32) {
-    let stash = Stash::access();
-    let raft_ref = stash.raft_node();
-    let raft_node = raft_ref.as_ref().expect("Picodata not running yet");
+    let raft_node = node();
     for _ in 0..n_times {
         raft_node.tick();
     }
-}
-
-fn raft_status() -> traft::Status {
-    let stash = Stash::access();
-    let raft_ref = stash.raft_node();
-    let raft_node = raft_ref.as_ref().expect("Picodata not running yet");
-    raft_node.status()
-}
-
-fn raft_propose(msg: Message) {
-    let stash = Stash::access();
-    let raft_ref = stash.raft_node();
-    let raft_node = raft_ref.as_ref().expect("Picodata not running yet");
-    raft_node.propose(&msg)
-}
-
-fn raft_propose_wait_applied(msg: Message, timeout: Duration) -> bool {
-    let stash = Stash::access();
-    let raft_ref = stash.raft_node();
-    let raft_node = raft_ref.as_ref().expect("Picodata not running yet");
-    raft_node.propose_wait_applied(&msg, timeout)
 }
 
 fn handle_committed_data(data: &[u8]) {
@@ -246,11 +209,7 @@ fn init_handlers() {
 
 #[no_mangle]
 pub extern "C" fn raft_interact(_: FunctionCtx, args: FunctionArgs) -> c_int {
-    let stash = Stash::access();
-    let raft_ref = stash.raft_node();
-    let raft_node = raft_ref
-        .as_ref()
-        .expect("picodata should already be running");
+    let raft_node = node();
 
     // Conversion pipeline:
     // FunctionArgs -> Tuple -?-> traft::row::Message -?-> raft::Message;
