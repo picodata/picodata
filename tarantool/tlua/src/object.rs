@@ -613,6 +613,7 @@ mod imp {
         LuaError,
         LuaState,
         LuaRead,
+        nzi32,
         ToString,
         Void,
     };
@@ -668,7 +669,7 @@ mod imp {
 
             // move value from registry to stack
             ffi::lua_rawgeti(raw_lua, ffi::LUA_REGISTRYINDEX, value_ref);
-            let res = R::lua_read(PushGuard::new(this, 1))
+            let res = R::lua_read_at_position(PushGuard::new(this, 1), nzi32!(-1))
                 .map_err(|g| {
                     let e = LuaError::wrong_type_returned::<R, _>(raw_lua, 1);
                     (g.into_inner(), e)

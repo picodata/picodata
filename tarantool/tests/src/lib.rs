@@ -286,6 +286,7 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 tlua::object::indexable_builtin,
                 tlua::object::indexable_ffi,
                 tlua::object::indexable_meta,
+                tlua::object::cannot_get_mutltiple_values,
                 tlua::object::indexable_rw_builtin,
                 tlua::object::indexable_rw_meta,
 

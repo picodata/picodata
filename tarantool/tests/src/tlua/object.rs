@@ -106,6 +106,19 @@ pub fn indexable_meta() {
     );
 }
 
+pub fn cannot_get_mutltiple_values() {
+    let lua = tarantool::lua_state();
+    let i: Indexable<_> = lua.eval("return { 'one' };").unwrap();
+    assert_eq!(i.get::<_, String>(1), Some("one".to_string()));
+    assert_eq!(i.get::<_, (String,)>(1), Some(("one".to_string(),)));
+    assert_eq!(i.try_get::<_, (String, i32)>(1).unwrap_err().to_string(),
+        "Wrong type returned by Lua: (alloc::string::String, i32) expected, got string"
+    );
+    assert_eq!(i.try_get::<_, (i32, i32)>(2).unwrap_err().to_string(),
+        "Wrong type returned by Lua: (i32, i32) expected, got nil"
+    );
+}
+
 pub fn indexable_rw_builtin() {
     let lua = tarantool::lua_state();
     let i: IndexableRW<_> = lua.eval("return {}").unwrap();
