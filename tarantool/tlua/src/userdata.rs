@@ -1,5 +1,5 @@
 use std::any::{Any, TypeId};
-use std::marker::PhantomData;
+use std::convert::TryFrom;
 use std::num::NonZeroI32;
 use std::ops::{Deref, DerefMut};
 use std::mem;
@@ -14,6 +14,7 @@ use crate::{
     LuaState,
     InsideCallback,
     LuaTable,
+    object::{FromObject, Object},
     c_ptr,
 };
 
@@ -174,78 +175,89 @@ where
 
 /// Represents a user data located inside the Lua context.
 #[derive(Debug)]
-pub struct UserdataOnStack<T, L> {
-    variable: L,
-    index: NonZeroI32,
-    marker: PhantomData<T>,
+pub struct UserdataOnStack<'a, T, L: 'a> {
+    inner: Object<L>,
+    data: &'a mut T,
 }
 
-impl<T, L> LuaRead<L> for UserdataOnStack<T, L>
+impl<T, L> FromObject<L> for UserdataOnStack<'_, T, L>
 where
     L: AsLua,
     T: Any,
 {
-    #[inline]
-    fn lua_read_at_position(lua: L, index: NonZeroI32) -> Result<UserdataOnStack<T, L>, L> {
-        unsafe {
-            let data_ptr = ffi::lua_touserdata(lua.as_lua(), index.into());
-            if data_ptr.is_null() {
-                return Err(lua);
-            }
+    unsafe fn check(lua: impl AsLua, index: NonZeroI32) -> bool {
+        ffi::lua_touserdata(lua.as_lua(), index.into())
+            .cast::<TypeId>()
+            .as_ref()
+            .map(|&ti| ti == TypeId::of::<T>())
+            .unwrap_or(false)
+    }
 
-            let actual_typeid = data_ptr as *const TypeId;
-            if *actual_typeid != TypeId::of::<T>() {
-                return Err(lua);
-            }
-
-            Ok(UserdataOnStack {
-                variable: lua,
-                index,
-                marker: PhantomData,
-            })
+    unsafe fn from_obj(inner: Object<L>) -> Self {
+        let data = ffi::lua_touserdata(inner.as_lua(), inner.index().into())
+            .cast::<u8>()
+            .add(mem::size_of::<TypeId>())
+            .cast();
+        Self {
+            inner,
+            data: &mut *data,
         }
     }
 }
 
-impl<T, L> AsLua for UserdataOnStack<T, L>
+impl<T, L> TryFrom<Object<L>> for UserdataOnStack<'_, T, L>
+where
+    L: AsLua,
+    T: Any,
+{
+    type Error = Object<L>;
+
+    #[inline(always)]
+    fn try_from(o: Object<L>) -> Result<Self, Self::Error> {
+        Self::try_from_obj(o)
+    }
+}
+
+impl<'a, T, L> From<UserdataOnStack<'a, T, L>> for Object<L> {
+    fn from(ud: UserdataOnStack<'a, T, L>) -> Self {
+        ud.inner
+    }
+}
+
+impl<T, L> LuaRead<L> for UserdataOnStack<'_, T, L>
 where
     L: AsLua,
     T: Any,
 {
     #[inline]
-    fn as_lua(&self) -> LuaState {
-        self.variable.as_lua()
+    fn lua_read_at_position(lua: L, index: NonZeroI32) -> Result<Self, L> {
+        Self::try_from_obj(Object::new(lua, index))
+            .map_err(Object::into_guard)
     }
 }
 
-impl<T, L> Deref for UserdataOnStack<T, L>
+impl<T, L> AsLua for UserdataOnStack<'_, T, L>
 where
     L: AsLua,
-    T: Any,
 {
+    #[inline]
+    fn as_lua(&self) -> LuaState {
+        self.inner.as_lua()
+    }
+}
+
+impl<T, L> Deref for UserdataOnStack<'_, T, L> {
     type Target = T;
 
     #[inline]
     fn deref(&self) -> &T {
-        unsafe {
-            let base = ffi::lua_touserdata(self.variable.as_lua(), self.index.into());
-            let data = base.cast::<u8>().add(mem::size_of::<TypeId>()).cast::<T>();
-            &*data
-        }
+        self.data
     }
 }
 
-impl<T, L> DerefMut for UserdataOnStack<T, L>
-where
-    L: AsLua,
-    T: Any,
-{
+impl<T, L> DerefMut for UserdataOnStack<'_, T, L> {
     #[inline]
     fn deref_mut(&mut self) -> &mut T {
-        unsafe {
-            let base = ffi::lua_touserdata(self.variable.as_lua(), self.index.into());
-            let data = base.cast::<u8>().add(mem::size_of::<TypeId>()).cast::<T>();
-            &mut *data
-        }
+        self.data
     }
 }

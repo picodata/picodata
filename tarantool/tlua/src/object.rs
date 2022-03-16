@@ -1,42 +1,113 @@
 use crate::{
     AbsoluteIndex,
     AsLua,
-    ffi,
+    impl_object,
     Push,
     PushOneInto,
     PushGuard,
     PushInto,
-    PushResult,
     LuaError,
-    LuaFunction,
     LuaState,
     LuaRead,
-    LuaTable,
     Void,
 };
 use std::{
-    convert::TryFrom,
     error::Error,
     fmt,
     num::NonZeroI32,
 };
 
 ////////////////////////////////////////////////////////////////////////////////
-// OnStack
+// Object
 ////////////////////////////////////////////////////////////////////////////////
+
+/// A single value stored on the lua stack. Type parameter `L` represents a
+/// value guarding the state of the lua stack (see [`PushGuard`]).
+///
+/// Use this type to convert between different lua values, e.g. [`LuaTable`] <->
+/// [`Indexable`], etc.
+///
+/// [`LuaTable`]: crate::lua_tables::LuaTable
+#[derive(Debug)]
+pub struct Object<L> {
+    guard: L,
+    index: AbsoluteIndex,
+}
+
+impl<L> Object<L> {
+    #[inline(always)]
+    pub(crate) fn new(guard: L, index: NonZeroI32) -> Self
+    where
+        L: AsLua,
+    {
+        Self {
+            index: AbsoluteIndex::new(index, guard.as_lua()),
+            guard,
+        }
+    }
+
+    #[inline(always)]
+    pub fn guard(&self) -> &L {
+        &self.guard
+    }
+
+    #[inline(always)]
+    pub fn into_guard(self) -> L {
+        self.guard
+    }
+
+    #[inline(always)]
+    pub fn index(&self) -> AbsoluteIndex {
+        self.index
+    }
+
+    /// Try converting to a value implementing [`LuaRead`].
+    ///
+    /// # Safety
+    ///
+    /// In some cases this function will result in a drop of `self.guard` which
+    /// is invalid in case `self.index` is not the top of the lua stack.
+    #[inline(always)]
+    pub unsafe fn try_downcast<T>(self) -> Result<T, Self>
+    where
+        T: LuaRead<L>
+    {
+        let Self { guard, index } = self;
+        T::lua_read_at_position(guard, index.0)
+            .map_err(|guard| Self { guard, index })
+    }
+}
+
+impl<L> AsLua for Object<L>
+where
+    L: AsLua,
+{
+    fn as_lua(&self) -> LuaState {
+        self.guard.as_lua()
+    }
+}
 
 /// Types implementing this trait represent a single value stored on the lua
 /// stack. Type parameter `L` represents a value guarding the state of the lua
 /// stack (see [`PushGuard`]).
-pub trait OnStack<L> {
-    /// Get the absolute index of the value.
-    fn index(&self) -> AbsoluteIndex;
+pub trait FromObject<L> {
+    /// Check if a value at `index` satisfies the given type's invariants
+    unsafe fn check(lua: impl AsLua, index: NonZeroI32) -> bool;
 
-    /// Get a reference to the inner stack guard.
-    fn guard(&self) -> &L;
+    /// Duh
+    unsafe fn from_obj(inner: Object<L>) -> Self;
 
-    /// Consume the value returning the inner stack guard.
-    fn into_inner(self) -> L;
+    fn try_from_obj(inner: Object<L>) -> Result<Self, Object<L>>
+    where
+        Self: Sized,
+        L: AsLua,
+    {
+        if unsafe { Self::check(inner.guard(), inner.index().0) } {
+            Ok(unsafe { Self::from_obj(inner) })
+        } else {
+            Err(inner)
+        }
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -46,7 +117,7 @@ pub trait OnStack<L> {
 /// Types implementing this trait represent a single lua value that can be
 /// indexed, i.e. a regular lua table or other value implementing `__index`
 /// metamethod.
-pub trait Index<L>: OnStack<L>
+pub trait Index<L>: AsRef<Object<L>>
 where
     L: AsLua,
 {
@@ -57,14 +128,14 @@ where
     /// must implement the [`LuaRead`] trait. See [the documentation at the
     /// crate root](index.html#pushing-and-loading-values) for more information.
     #[inline(always)]
-    fn get<'lua, I, R>(&'lua self, index: I) -> Option<R>
+    fn get<'lua, K, R>(&'lua self, key: K) -> Option<R>
     where
         L: 'lua,
-        I: PushOneInto<LuaState>,
-        I::Err: Into<Void>,
+        K: PushOneInto<LuaState>,
+        K::Err: Into<Void>,
         R: LuaRead<PushGuard<&'lua L>>,
     {
-        self.try_get(index).ok()
+        self.try_get(key).ok()
     }
 
     /// Loads a value from the table (or other object using the `__index`
@@ -80,14 +151,15 @@ where
     /// must implement the [`LuaRead`] trait. See [the documentation at the
     /// crate root](index.html#pushing-and-loading-values) for more information.
     #[inline]
-    fn try_get<'lua, I, R>(&'lua self, index: I) -> Result<R, LuaError>
+    fn try_get<'lua, K, R>(&'lua self, key: K) -> Result<R, LuaError>
     where
         L: 'lua,
-        I: PushOneInto<LuaState>,
-        I::Err: Into<Void>,
+        K: PushOneInto<LuaState>,
+        K::Err: Into<Void>,
         R: LuaRead<PushGuard<&'lua L>>,
     {
-        imp::try_get(self.guard(), self.index(), index).map_err(|(_, e)| e)
+        let Object { guard, index } = self.as_ref();
+        imp::try_get(guard, *index, key).map_err(|(_, e)| e)
     }
 
     /// Loads a value in the table (or other object using the `__index`
@@ -96,14 +168,14 @@ where
     ///
     /// See also [`Index::get`]
     #[inline(always)]
-    fn into_get<I, R>(self, index: I) -> Result<R, Self>
+    fn into_get<K, R>(self, key: K) -> Result<R, Self>
     where
         Self: AsLua + Sized,
-        I: PushOneInto<LuaState>,
-        I::Err: Into<Void>,
+        K: PushOneInto<LuaState>,
+        K::Err: Into<Void>,
         R: LuaRead<PushGuard<Self>>,
     {
-        self.try_into_get(index).map_err(|(this, _)| this)
+        self.try_into_get(key).map_err(|(this, _)| this)
     }
 
     /// Loads a value in the table (or other object using the `__index`
@@ -118,15 +190,15 @@ where
     ///
     /// See also [`Index::get`]
     #[inline]
-    fn try_into_get<I, R>(self, index: I) -> Result<R, (Self, LuaError)>
+    fn try_into_get<K, R>(self, key: K) -> Result<R, (Self, LuaError)>
     where
         Self: AsLua + Sized,
-        I: PushOneInto<LuaState>,
-        I::Err: Into<Void>,
+        K: PushOneInto<LuaState>,
+        K::Err: Into<Void>,
         R: LuaRead<PushGuard<Self>>,
     {
-        let this_index = self.index();
-        imp::try_get(self, this_index, index)
+        let this_index = self.as_ref().index;
+        imp::try_get(self, this_index, key)
     }
 
     /// Calls the method called `name` of the table (or other indexable object)
@@ -165,7 +237,7 @@ where
 
 #[derive(Debug)]
 pub enum MethodCallError<E> {
-    /// The corresponding method was not found (t[k] == nil)
+    /// The corresponding method was not found (t\[k] == nil)
     NoSuchMethod,
     /// Error during function call
     LuaError(LuaError),
@@ -219,143 +291,6 @@ where
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// macros
-////////////////////////////////////////////////////////////////////////////////
-
-macro_rules! impl_object {
-    (
-        $obj:ident,
-        read($lua:ident, $index:ident) { $($read:tt)* }
-        $( try_from($try_from:ident, $check:path), )*
-        $( from($from:ident), )*
-        $( try_into($try_into:ident, $check_into:path), )*
-        $( impl $trait:ident, )*
-    ) => {
-        impl<L> $obj<L>
-        where
-            L: AsLua,
-        {
-            #[inline(always)]
-            fn new(lua: L, index: NonZeroI32) -> Self {
-                Self {
-                    index: AbsoluteIndex::new(index, lua.as_lua()),
-                    lua,
-                }
-            }
-        }
-
-        impl<L> AsLua for $obj<L>
-        where
-            L: AsLua,
-        {
-            #[inline(always)]
-            fn as_lua(&self) -> LuaState {
-                self.lua.as_lua()
-            }
-        }
-
-        impl<L> OnStack<L> for $obj<L>
-        where
-            L: AsLua,
-        {
-            #[inline(always)]
-            fn index(&self) -> AbsoluteIndex {
-                self.index
-            }
-
-            #[inline(always)]
-            fn guard(&self) -> &L {
-                &self.lua
-            }
-
-            #[inline(always)]
-            fn into_inner(self) -> L {
-                self.lua
-            }
-        }
-
-        $(
-            impl<L> $trait<L> for $obj<L>
-            where
-                L: AsLua,
-            {}
-        )*
-
-        impl<L> LuaRead<L> for $obj<L>
-        where
-            L: AsLua,
-        {
-            #[inline(always)]
-            fn lua_read_at_position($lua: L, $index: NonZeroI32) -> Result<Self, L> {
-                $( $read )*
-            }
-        }
-
-        impl<L, T> Push<L> for $obj<T>
-        where
-            L: AsLua,
-            T: AsLua,
-        {
-            type Err = Void;
-
-            #[inline(always)]
-            fn push_to_lua(&self, lua: L) -> PushResult<L, Self> {
-                unsafe {
-                    ffi::lua_pushvalue(lua.as_lua(), self.index().into());
-                    Ok(PushGuard::new(lua, 1))
-                }
-            }
-        }
-
-        $(
-            impl<L> TryFrom<$try_from<L>> for $obj<L>
-            where
-                L: AsLua,
-            {
-                type Error = $try_from<L>;
-
-                fn try_from(other: $try_from<L>) -> Result<Self, $try_from<L>> {
-                    if $check(&other.lua, other.index.0) {
-                        Ok(Self { lua: other.lua, index: other.index })
-                    } else {
-                        Err(other)
-                    }
-                }
-            }
-        )*
-
-        $(
-            impl<L> From<$from<L>> for $obj<L>
-            where
-                L: AsLua,
-            {
-                fn from(other: $from<L>) -> Self {
-                    Self { index: other.index(), lua: other.into_inner() }
-                }
-            }
-        )*
-
-        $(
-            impl<L> TryFrom<$obj<L>> for $try_into<L>
-            where
-                L: AsLua,
-            {
-                type Error = $obj<L>;
-
-                fn try_from(obj: $obj<L>) -> Result<Self, Self::Error> {
-                    if $check_into(&obj.lua, obj.index.0) {
-                        Ok(unsafe { Self::from_raw_parts(obj.lua, obj.index) })
-                    } else {
-                        Err(obj)
-                    }
-                }
-            }
-        )*
-
-    }
-}
-
-////////////////////////////////////////////////////////////////////////////////
 // Indexable
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -367,22 +302,13 @@ macro_rules! impl_object {
 /// function from tables.
 #[derive(Debug)]
 pub struct Indexable<L> {
-    lua: L,
-    index: AbsoluteIndex,
+    inner: Object<L>,
 }
 
 impl_object!{ Indexable,
-    read(lua, index) {
-        if imp::is_indexable(&lua, index) {
-            Ok(Self::new(lua, index))
-        } else {
-            Err(lua)
-        }
+    check(lua, index) {
+        imp::is_indexable(&lua, index)
     }
-    try_from(Callable, imp::is_indexable),
-    from(IndexableRW),
-    from(LuaTable),
-    try_into(LuaTable, imp::is_table),
     impl Index,
 }
 
@@ -393,32 +319,32 @@ impl_object!{ Indexable,
 /// Types implementing this trait represent a single lua value that can be
 /// changed by indexed, i.e. a regular lua table or other value implementing
 /// `__newindex` metamethod.
-pub trait NewIndex<L>: OnStack<L>
+pub trait NewIndex<L>: AsRef<Object<L>>
 where
     L: AsLua,
 {
     /// Inserts or modifies a `value` of the table (or other object using the
     /// `__index` or `__newindex` metamethod) given its `index`.
     ///
-    /// Contrary to [`checked_set`], can only be called when writing the key and
-    /// value cannot fail (which is the case for most types).
+    /// Contrary to [`NewIndex::checked_set`], can only be called when writing
+    /// the key and value cannot fail (which is the case for most types).
     ///
     /// # Panic
     ///
     /// Will panic if an error happens during attempt to set value. Can happen
-    /// if `__index` or `__newindex` throws an error. Use [`try_set`] if this
-    /// is a possibility in your case.
+    /// if `__index` or `__newindex` throws an error. Use [`NewIndex::try_set`]
+    /// if this is a possibility in your case.
     ///
     /// The index must implement the [`PushOneInto`] trait and the return type
     /// must implement the [`LuaRead`] trait. See [the documentation at the
     /// crate root](index.html#pushing-and-loading-values) for more information.
     #[inline(always)]
-    fn set<I, V>(&self, index: I, value: V)
+    fn set<K, V>(&self, key: K, value: V)
     where
-        I: PushOneInto<LuaState>, I::Err: Into<Void>,
+        K: PushOneInto<LuaState>, K::Err: Into<Void>,
         V: PushOneInto<LuaState>, V::Err: Into<Void>,
     {
-        if let Err(e) = self.try_set(index, value) {
+        if let Err(e) = self.try_set(key, value) {
             panic!("Setting value failed: {}", e)
         }
     }
@@ -426,8 +352,9 @@ where
     /// Inserts or modifies a `value` of the table (or other object using the
     /// `__index` or `__newindex` metamethod) given its `index`.
     ///
-    /// Contrary to [`try_checked_set`], can only be called when writing the key
-    /// and value cannot fail (which is the case for most types).
+    /// Contrary to [`NewIndex::try_checked_set`], can only be called when
+    /// writing the key and value cannot fail (which is the case for most
+    /// types).
     ///
     /// Returns a `LuaError::ExecutionError` in case an error happened during an
     /// attempt to set value.
@@ -436,12 +363,13 @@ where
     /// must implement the [`LuaRead`] trait. See [the documentation at the
     /// crate root](index.html#pushing-and-loading-values) for more information.
     #[inline]
-    fn try_set<I, V>(&self, index: I, value: V) -> Result<(), LuaError>
+    fn try_set<K, V>(&self, key: K, value: V) -> Result<(), LuaError>
     where
-        I: PushOneInto<LuaState>, I::Err: Into<Void>,
+        K: PushOneInto<LuaState>, K::Err: Into<Void>,
         V: PushOneInto<LuaState>, V::Err: Into<Void>,
     {
-        imp::try_checked_set(self.guard(), self.index(), index, value)
+        let Object { guard, index } = self.as_ref();
+        imp::try_checked_set(guard, *index, key, value)
             .map_err(|e|
                 match e {
                     Ok(_) => unreachable!("Void is uninstantiatable"),
@@ -454,25 +382,26 @@ where
     /// `__newindex` metamethod) given its `index`.
     ///
     /// Returns an error if pushing `index` or `value` failed. This can only
-    /// happen for a limited set of types. You are encouraged to use the [`set`]
+    /// happen for a limited set of types. You are encouraged to use the
+    /// [`NewIndex::set`]
     /// method if pushing cannot fail.
     ///
     /// # Panic
     ///
     /// Will panic if an error happens during attempt to set value. Can happen
-    /// if `__index` or `__newindex` throws an error. Use [`try_checked_set`] if
-    /// this is a possibility in your case.
+    /// if `__index` or `__newindex` throws an error. Use
+    /// [`NewIndex::try_checked_set`] if this is a possibility in your case.
     #[inline(always)]
-    fn checked_set<I, V>(
+    fn checked_set<K, V>(
         &self,
-        index: I,
+        key: K,
         value: V,
-    ) -> Result<(), CheckedSetError<I::Err, V::Err>>
+    ) -> Result<(), CheckedSetError<K::Err, V::Err>>
     where
-        I: PushOneInto<LuaState>,
+        K: PushOneInto<LuaState>,
         V: PushOneInto<LuaState>,
     {
-        self.try_checked_set(index, value)
+        self.try_checked_set(key, value)
             .map_err(|e| e.unwrap_or_else(|e| panic!("Setting value failed: {}", e)))
     }
 
@@ -481,21 +410,22 @@ where
     ///
     /// # Possible errors
     /// - Returns an error if pushing `index` or `value` failed. This can only
-    /// happen for a limited set of types. You are encouraged to use the [`set`]
-    /// method if pushing cannot fail.
+    /// happen for a limited set of types. You are encouraged to use the
+    /// [`NewIndex::set`] method if pushing cannot fail.
     /// - Returns a `LuaError::ExecutionError` in case an error happened during
     /// an attempt to set value.
     #[inline(always)]
-    fn try_checked_set<I, V>(
+    fn try_checked_set<K, V>(
         &self,
-        index: I,
+        key: K,
         value: V,
-    ) -> Result<(), TryCheckedSetError<I::Err, V::Err>>
+    ) -> Result<(), TryCheckedSetError<K::Err, V::Err>>
     where
-        I: PushOneInto<LuaState>,
+        K: PushOneInto<LuaState>,
         V: PushOneInto<LuaState>,
     {
-        imp::try_checked_set(self.guard(), self.index(), index, value)
+        let Object { guard, index } = self.as_ref();
+        imp::try_checked_set(guard, *index, key, value)
     }
 }
 
@@ -522,22 +452,13 @@ pub enum CheckedSetError<K, V> {
 /// function from tables.
 #[derive(Debug)]
 pub struct IndexableRW<L> {
-    lua: L,
-    index: AbsoluteIndex,
+    inner: Object<L>,
 }
 
 impl_object!{ IndexableRW,
-    read(lua, index) {
-        if imp::is_rw_indexable(&lua, index) {
-            Ok(Self::new(lua, index))
-        } else {
-            Err(lua)
-        }
+    check(lua, index) {
+        imp::is_rw_indexable(&lua, index)
     }
-    try_from(Indexable, imp::is_rw_indexable),
-    try_from(Callable, imp::is_rw_indexable),
-    from(LuaTable),
-    try_into(LuaTable, imp::is_table),
     impl Index,
     impl NewIndex,
 }
@@ -546,7 +467,7 @@ impl_object!{ IndexableRW,
 // Call
 ////////////////////////////////////////////////////////////////////////////////
 
-pub trait Call<L>: OnStack<L>
+pub trait Call<L>: AsRef<Object<L>>
 where
     L: AsLua,
 {
@@ -566,7 +487,8 @@ where
         A: PushInto<LuaState>,
         R: LuaRead<PushGuard<&'lua L>>,
     {
-        imp::call(self.guard(), self.index(), args)
+        let Object { guard, index } = self.as_ref();
+        imp::call(guard, *index, args)
     }
 
     #[inline]
@@ -585,7 +507,7 @@ where
         A: PushInto<LuaState>,
         R: LuaRead<PushGuard<Self>>,
     {
-        let index = self.index();
+        let index = self.as_ref().index;
         imp::call(self, index, args)
     }
 }
@@ -664,22 +586,13 @@ where
 /// function from tables.
 #[derive(Debug)]
 pub struct Callable<L> {
-    lua: L,
-    index: AbsoluteIndex,
+    inner: Object<L>,
 }
 
 impl_object!{ Callable,
-    read(lua, index) {
-        if imp::is_callable(&lua, index) {
-            Ok(Self::new(lua, index))
-        } else {
-            Err(lua)
-        }
+    check(lua, index) {
+        imp::is_callable(&lua, index)
     }
-    try_from(Indexable, imp::is_callable),
-    try_from(IndexableRW, imp::is_callable),
-    from(LuaFunction),
-    try_into(LuaFunction, imp::is_function),
     impl Call,
 }
 
@@ -710,21 +623,26 @@ mod imp {
     };
     use std::num::NonZeroI32;
 
-    pub(super) fn try_get<T, I, R>(
+    ////////////////////////////////////////////////////////////////////////////
+    // try_get
+    ////////////////////////////////////////////////////////////////////////////
+
+    pub(super) fn try_get<T, K, R>(
         this: T,
         this_index: AbsoluteIndex,
-        index: I,
+        key: K,
     ) -> Result<R, (T, LuaError)>
     where
         T: AsLua,
-        I: PushOneInto<LuaState>,
-        I::Err: Into<Void>,
+        K: PushOneInto<LuaState>,
+        K::Err: Into<Void>,
         R: LuaRead<PushGuard<T>>,
     {
+        // TODO(gmoshkin): optimize for lua table without __index
         let raw_lua = this.as_lua();
         unsafe {
             // push index onto the stack
-            raw_lua.push_one(index).assert_one_and_forget();
+            raw_lua.push_one(key).assert_one_and_forget();
             // move index into registry
             let index_ref = ffi::luaL_ref(raw_lua, ffi::LUA_REGISTRYINDEX);
             // push indexable onto the stack
@@ -765,17 +683,22 @@ mod imp {
         }
     }
 
-    pub(super) fn try_checked_set<T, I, V>(
+    ////////////////////////////////////////////////////////////////////////////
+    // try_checked_set
+    ////////////////////////////////////////////////////////////////////////////
+
+    pub(super) fn try_checked_set<T, K, V>(
         this: T,
         this_index: AbsoluteIndex,
-        index: I,
+        key: K,
         value: V,
-    ) -> Result<(), TryCheckedSetError<I::Err, V::Err>>
+    ) -> Result<(), TryCheckedSetError<K::Err, V::Err>>
     where
         T: AsLua,
-        I: PushOneInto<LuaState>,
+        K: PushOneInto<LuaState>,
         V: PushOneInto<LuaState>,
     {
+        // TODO(gmoshkin): optimize for lua table without __index|__newindex
         let raw_lua = this.as_lua();
         unsafe {
             // push value onto the stack
@@ -786,7 +709,7 @@ mod imp {
             let value_ref = ffi::luaL_ref(raw_lua, ffi::LUA_REGISTRYINDEX);
 
             // push index onto the stack
-            raw_lua.try_push_one(index)
+            raw_lua.try_push_one(key)
                 .map_err(|(e, _)| Ok(CheckedSetError::KeyPushError(e)))?
                 .assert_one_and_forget();
             // move index into registry
@@ -818,6 +741,10 @@ mod imp {
             Ok(())
         }
     }
+
+    ////////////////////////////////////////////////////////////////////////////
+    // protected_call
+    ////////////////////////////////////////////////////////////////////////////
 
     fn protected_call<L, F, R>(lua: L, f: F) -> Result<R, LuaError>
     where
@@ -862,6 +789,10 @@ mod imp {
             0
         }
     }
+
+    ////////////////////////////////////////////////////////////////////////////
+    // call
+    ////////////////////////////////////////////////////////////////////////////
 
     #[inline]
     pub(super) fn call<T, A, R>(
@@ -910,6 +841,10 @@ mod imp {
         LuaRead::lua_read_at_maybe_zero_position(pushed_value, -n_results)
             .map_err(|lua| LuaError::wrong_type_returned::<R, _>(lua, n_results).into())
     }
+
+    ////////////////////////////////////////////////////////////////////////////
+    // checks
+    ////////////////////////////////////////////////////////////////////////////
 
     #[inline(always)]
     pub(super) fn is_callable(lua: impl AsLua, index: NonZeroI32) -> bool {
@@ -966,14 +901,118 @@ mod imp {
             }
         }
     }
+}
 
-    #[inline(always)]
-    pub(super) fn is_table(lua: impl AsLua, index: NonZeroI32) -> bool {
-        unsafe { ffi::lua_istable(lua.as_lua(), index.into()) }
-    }
+////////////////////////////////////////////////////////////////////////////////
+// impl_object
+////////////////////////////////////////////////////////////////////////////////
 
-    #[inline(always)]
-    pub(super) fn is_function(lua: impl AsLua, index: NonZeroI32) -> bool {
-        unsafe { ffi::lua_isfunction(lua.as_lua(), index.into()) }
+#[macro_export]
+macro_rules! impl_object {
+    (
+        $this:ident,
+        check($lua:ident, $index:ident) { $($check:tt)* }
+        $( impl $trait:ident, )*
+    ) => {
+        impl<L> $crate::object::FromObject<L> for $this<L>
+        where
+            L: $crate::AsLua,
+        {
+            /// # Safety
+            /// `index` must correspond to a valid value in `lua`
+            #[inline(always)]
+            unsafe fn check($lua: impl $crate::AsLua, $index: ::std::num::NonZeroI32) -> bool {
+                $($check)*
+            }
+
+            /// # Safety
+            /// `inner` must satisfy the neccessary invariants of `Self`. See
+            /// [`check`]
+            #[inline(always)]
+            unsafe fn from_obj(inner: $crate::object::Object<L>) -> Self {
+                Self { inner }
+            }
+        }
+
+        impl<L> $crate::AsLua for $this<L>
+        where
+            L: $crate::AsLua,
+        {
+            #[inline(always)]
+            fn as_lua(&self) -> $crate::LuaState {
+                self.inner.as_lua()
+            }
+        }
+
+        impl<L> ::std::convert::AsRef<$crate::object::Object<L>> for $this<L> {
+            #[inline(always)]
+            fn as_ref(&self) -> &$crate::object::Object<L> {
+                &self.inner
+            }
+        }
+
+        impl<L> ::std::convert::From<$this<L>> for $crate::object::Object<L>
+        where
+            L: $crate::AsLua,
+        {
+            #[inline(always)]
+            fn from(o: $this<L>) -> Self {
+                o.inner
+            }
+        }
+
+        impl<L> ::std::convert::TryFrom<$crate::object::Object<L>> for $this<L>
+        where
+            L: $crate::AsLua,
+        {
+            type Error = $crate::object::Object<L>;
+
+            #[inline(always)]
+            fn try_from(o: $crate::object::Object<L>) -> ::std::result::Result<Self, Self::Error> {
+                Self::try_from_obj(o)
+            }
+        }
+
+        $(
+            impl<L> $trait<L> for $this<L>
+            where
+                L: $crate::AsLua,
+            {}
+        )*
+
+        impl<L> $crate::LuaRead<L> for $this<L>
+        where
+            L: $crate::AsLua,
+        {
+            #[inline(always)]
+            fn lua_read_at_position(
+                lua: L,
+                index: ::std::num::NonZeroI32,
+            ) -> ::std::result::Result<Self, L> {
+                ::std::convert::TryFrom::try_from($crate::object::Object::new(lua, index))
+                    .map_err($crate::object::Object::into_guard)
+            }
+        }
+
+        impl<L, T> $crate::Push<L> for $this<T>
+        where
+            L: $crate::AsLua,
+        {
+            type Err = $crate::Void;
+
+            #[inline(always)]
+            fn push_to_lua(&self, lua: L) -> $crate::PushResult<L, Self> {
+                unsafe {
+                    $crate::ffi::lua_pushvalue(lua.as_lua(), self.as_ref().index().into());
+                    Ok(PushGuard::new(lua, 1))
+                }
+            }
+        }
+
+        impl<L, T> $crate::PushOne<L> for $this<T>
+        where
+            L: $crate::AsLua,
+        {}
     }
 }
+

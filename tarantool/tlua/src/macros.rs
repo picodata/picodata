@@ -119,7 +119,8 @@ macro_rules! unwrap_or {
 
 #[macro_export]
 macro_rules! nzi32 {
-    ($i:literal) => {
+    ($i:expr) => {
+        #[allow(unused_unsafe)]
         {
             const _: () = assert!($i != 0, "NonZeroI32 cannot be equal to 0");
             unsafe { ::std::num::NonZeroI32::new_unchecked($i) }

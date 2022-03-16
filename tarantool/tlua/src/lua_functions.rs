@@ -1,5 +1,3 @@
-use std::error::Error;
-use std::fmt;
 use std::io::Cursor;
 use std::io::Read;
 use std::io::Error as IoError;
@@ -8,18 +6,18 @@ use std::num::NonZeroI32;
 use crate::{
     ffi,
     c_ptr,
-    AbsoluteIndex,
     AsLua,
+    impl_object,
     LuaState,
     LuaRead,
     LuaError,
-    object::{Call, CallError, OnStack},
+    object::{Call, CallError, FromObject, Object},
+    nzi32,
     Push,
     PushInto,
     PushGuard,
     PushOne,
     PushOneInto,
-    Void,
 };
 
 /// Wrapper around a `&str`. When pushed, the content will be parsed as Lua code and turned into a
@@ -197,63 +195,28 @@ where
 // TODO: example for how to get a LuaFunction as a parameter of a Rust function
 #[derive(Debug)]
 pub struct LuaFunction<L> {
-    lua: L,
-    index: AbsoluteIndex,
+    inner: Object<L>,
 }
 
 impl<L> LuaFunction<L>
 where
     L: AsLua,
 {
-    fn new(lua: L, index: NonZeroI32) -> Self {
-        Self {
-            index: AbsoluteIndex::new(index, lua.as_lua()),
-            lua,
-        }
-    }
-
-    /// # Safety
-    /// `index` must be a valid index of a lua function in `lua`
-    pub unsafe fn from_raw_parts(lua: L, index: AbsoluteIndex) -> Self {
-        Self { lua, index }
+    unsafe fn new(lua: L, index: NonZeroI32) -> Self {
+        Self::from_obj(Object::new(lua, index))
     }
 
     pub fn into_inner(self) -> L {
-        self.lua
+        self.inner.into_guard()
     }
 }
 
-impl<L: AsLua> AsLua for LuaFunction<L> {
-    #[inline]
-    fn as_lua(&self) -> LuaState {
-        self.lua.as_lua()
+impl_object!{ LuaFunction,
+    check(lua, index) {
+        ffi::lua_isfunction(lua.as_lua(), index.into())
     }
+    impl Call,
 }
-
-impl<L> OnStack<L> for LuaFunction<L>
-where
-    L: AsLua,
-{
-    #[inline(always)]
-    fn index(&self) -> AbsoluteIndex {
-        self.index
-    }
-
-    #[inline(always)]
-    fn guard(&self) -> &L {
-        &self.lua
-    }
-
-    #[inline(always)]
-    fn into_inner(self) -> L {
-        self.lua
-    }
-}
-
-impl<L> Call<L> for LuaFunction<L>
-where
-    L: AsLua,
-{}
 
 impl<'lua, L> LuaFunction<L>
 where
@@ -402,7 +365,12 @@ where
     {
         Call::into_call_with(self, args)
     }
+}
 
+impl<L> LuaFunction<PushGuard<L>>
+where
+    L: AsLua,
+{
     /// Builds a new `LuaFunction` from the code of a reader.
     ///
     /// Returns an error if reading from the `Read` object fails or if there is a syntax error in
@@ -420,11 +388,9 @@ where
     /// assert_eq!(ret, 8);
     /// ```
     #[inline]
-    pub fn load_from_reader(lua: L, code: impl Read)
-        -> Result<LuaFunction<PushGuard<L>>, LuaError>
-    {
+    pub fn load_from_reader(lua: L, code: impl Read) -> Result<Self, LuaError> {
         match LuaCodeFromReader(code).push_into_lua(lua) {
-            Ok(pushed) => Ok(LuaFunction::new(pushed, crate::NEGATIVE_ONE)),
+            Ok(pushed) => unsafe { Ok(Self::new(pushed, nzi32!(-1))) }
             Err((err, _)) => Err(err),
         }
     }
@@ -434,127 +400,9 @@ where
     /// > **Note**: This is just a wrapper around `load_from_reader`. There is no advantage in
     /// > using `load` except that it is more convenient.
     // TODO: remove this function? it's only a thin wrapper and it's for a very niche situation
-    #[inline]
-    pub fn load(lua: L, code: &str) -> Result<LuaFunction<PushGuard<L>>, LuaError> {
+    #[inline(always)]
+    pub fn load(lua: L, code: &str) -> Result<Self, LuaError> {
         let reader = Cursor::new(code.as_bytes());
-        LuaFunction::load_from_reader(lua, reader)
+        Self::load_from_reader(lua, reader)
     }
 }
-
-/// Error that can happen when calling a `LuaFunction`.
-// TODO: implement Error on this
-#[derive(Debug)]
-pub enum LuaFunctionCallError<E> {
-    /// Error while executing the function.
-    LuaError(LuaError),
-    /// Error while pushing one of the parameters.
-    PushError(E),
-}
-
-impl<E> fmt::Display for LuaFunctionCallError<E>
-    where E: fmt::Display
-{
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match *self {
-            LuaFunctionCallError::LuaError(ref lua_error) => write!(f, "Lua error: {}", lua_error),
-            LuaFunctionCallError::PushError(ref err) => {
-                write!(f, "Error while pushing arguments: {}", err)
-            }
-        }
-    }
-}
-
-impl<E> From<LuaError> for LuaFunctionCallError<E> {
-    #[inline]
-    fn from(err: LuaError) -> LuaFunctionCallError<E> {
-        LuaFunctionCallError::LuaError(err)
-    }
-}
-
-impl<E> From<LuaFunctionCallError<E>> for LuaError
-where
-    E: Into<Void>,
-{
-    fn from(err: LuaFunctionCallError<E>) -> LuaError {
-        match err {
-            LuaFunctionCallError::LuaError(lua_error) => lua_error,
-            LuaFunctionCallError::PushError(_) => unreachable!("Void cannot be instantiated"),
-        }
-    }
-}
-
-impl<E> Error for LuaFunctionCallError<E>
-    where E: Error
-{
-    fn description(&self) -> &str {
-        match *self {
-            LuaFunctionCallError::LuaError(_) => "Lua error",
-            LuaFunctionCallError::PushError(_) => "error while pushing arguments",
-        }
-    }
-
-    fn cause(&self) -> Option<&dyn Error> {
-        match *self {
-            LuaFunctionCallError::LuaError(ref lua_error) => Some(lua_error),
-            LuaFunctionCallError::PushError(ref err) => Some(err),
-        }
-    }
-}
-
-impl Error for LuaFunctionCallError<Void> {
-    fn description(&self) -> &str {
-        match *self {
-            LuaFunctionCallError::LuaError(_) => "Lua error",
-            _ => unreachable!("Void cannot be instantiated"),
-        }
-    }
-
-    fn cause(&self) -> Option<&dyn Error> {
-        match *self {
-            LuaFunctionCallError::LuaError(ref lua_error) => Some(lua_error),
-            _ => unreachable!("Void cannot be instantiated"),
-        }
-    }
-}
-
-// TODO: return Result<Ret, ExecutionError> instead
-// impl<'a, 'lua, Ret: CopyRead> ::std::ops::FnMut<(), Ret> for LuaFunction<'a,'lua> {
-// fn call_mut(&mut self, _: ()) -> Ret {
-// self.call().unwrap()
-// }
-// }
-
-impl<L> LuaRead<L> for LuaFunction<L>
-where
-    L: AsLua,
-{
-    #[inline]
-    fn lua_read_at_position(lua: L, index: NonZeroI32) -> Result<LuaFunction<L>, L> {
-        if unsafe { ffi::lua_isfunction(lua.as_lua(), index.get()) } {
-            Ok(LuaFunction::new(lua, index))
-        } else {
-            Err(lua)
-        }
-    }
-}
-
-impl<L, T> Push<L> for LuaFunction<T>
-where
-    L: AsLua,
-{
-    type Err = Void;
-
-    fn push_to_lua(&self, lua: L) -> crate::PushResult<L, Self> {
-        unsafe {
-            ffi::lua_pushvalue(lua.as_lua(), self.index.into());
-            Ok(PushGuard::new(lua, 1))
-        }
-    }
-}
-
-impl<L, T> PushOne<L> for LuaFunction<T>
-where
-    L: AsLua,
-{
-}
-

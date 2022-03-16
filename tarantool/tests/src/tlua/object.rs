@@ -7,6 +7,7 @@ use tarantool::tlua::{
     LuaTable,
     NewIndex,
     Nil,
+    Object,
 };
 
 use crate::common::LuaStackIntegrityGuard;
@@ -99,7 +100,7 @@ pub fn indexable_meta() {
     assert_eq!(i.try_get::<_, u8>("hello").unwrap_err().to_string(),
         r#"Execution error: [string "chunk"]:7: 'for' limit must be a number"#
     );
-    let t = LuaTable::try_from(i).unwrap();
+    let t = LuaTable::try_from(Object::from(i)).unwrap();
     assert_eq!(t.try_get::<_, u8>("hello").unwrap_err().to_string(),
         r#"Execution error: [string "chunk"]:7: 'for' limit must be a number"#
     );

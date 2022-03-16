@@ -121,12 +121,12 @@ pub use functions_write::{Function, InsideCallback};
 pub use functions_write::{function0, function1, function2, function3, function4, function5};
 pub use functions_write::{function6, function7, function8, function9, function10};
 pub use lua_functions::LuaFunction;
-pub use lua_functions::LuaFunctionCallError;
 pub use lua_functions::{LuaCode, LuaCodeFromReader};
 pub use lua_tables::{LuaTable, LuaTableIterator};
 pub use object::{
-    Call, Callable, OnStack, Index, Indexable, IndexableRW, NewIndex,
-    MethodCallError,
+    Call, Callable, CallError,
+    Index, Indexable, IndexableRW, MethodCallError, NewIndex,
+    Object,
 };
 pub use rust_tables::{TableFromIter, PushIterError, PushIterErrorOf};
 pub use tuples::TuplePushError;
@@ -135,6 +135,8 @@ pub use userdata::{push_userdata, read_userdata, push_some_userdata};
 pub use values::{StringInLua, Nil, Null, True, False, Typename, ToString};
 pub use ::tlua_derive::*;
 
+#[deprecated = "Use `CallError` instead"]
+pub type LuaFunctionCallError<E> = CallError<E>;
 pub type LuaTableMap = std::collections::HashMap<AnyHashableLuaValue, AnyLuaValue>;
 pub type LuaSequence = Vec<AnyLuaValue>;
 
