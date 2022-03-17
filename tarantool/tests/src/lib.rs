@@ -254,6 +254,7 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 tlua::functions_write::global_data,
                 tlua::functions_write::push_callback_by_ref,
                 tlua::functions_write::closures_must_be_static,
+                tlua::functions_write::pcall,
 
                 tlua::any::read_numbers,
                 tlua::any::read_hashable_numbers,

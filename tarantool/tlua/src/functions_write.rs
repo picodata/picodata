@@ -11,6 +11,8 @@ use crate::{
     PushGuard,
     PushOne,
     PushOneInto,
+    StaticLua,
+    values::ToString,
     Void,
 };
 
@@ -391,5 +393,50 @@ where
         Err(_) => panic!(),      // TODO: wrong
     };
     nb as _
+}
+
+/// See [`AsLua::pcall`].
+pub fn protected_call<L, F, R>(lua: L, f: F) -> Result<R, LuaError>
+where
+    L: AsLua,
+    F: FnOnce(StaticLua) -> R,
+{
+    let mut ud = PCallCtx { r#in: Some(f), out: None };
+    let ud_ptr = &mut ud as *mut PCallCtx<_, _>;
+    let rc = unsafe {
+        ffi::lua_cpcall(lua.as_lua(), trampoline::<F, R>, ud_ptr.cast())
+    };
+    match rc {
+        0 => {}
+        ffi::LUA_ERRMEM => panic!("lua_cpcall returned LUA_ERRMEM"),
+        ffi::LUA_ERRRUN => unsafe {
+            let error_msg = ToString::lua_read(PushGuard::new(lua, 1))
+                .ok()
+                .expect("can't find error message at the top of the Lua stack");
+            return Err(LuaError::ExecutionError(error_msg.into()))
+        }
+        rc => panic!("Unknown error code returned by lua_cpcall: {}", rc),
+    }
+    return Ok(ud.out.expect("if trampoline succeeded the value is set"));
+
+    struct PCallCtx<F, R> {
+        r#in: Option<F>,
+        out: Option<R>,
+    }
+
+    unsafe extern "C" fn trampoline<F, R>(l: LuaState) -> i32
+    where
+        F: FnOnce(StaticLua) -> R,
+    {
+        let ud_ptr = ffi::lua_touserdata(l, 1);
+        let PCallCtx { r#in, out } = ud_ptr.cast::<PCallCtx::<F, R>>()
+            .as_mut()
+            .unwrap_or_else(|| error!(l, "userdata is null"));
+
+        let f = r#in.take().expect("callback must be set by caller");
+        out.replace(f(StaticLua::from_static(l)));
+
+        0
+    }
 }
 

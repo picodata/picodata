@@ -117,9 +117,12 @@ use std::fmt;
 use std::io::{self, Write};
 
 pub use any::{AnyHashableLuaValue, AnyLuaString, AnyLuaValue};
-pub use functions_write::{Function, InsideCallback};
-pub use functions_write::{function0, function1, function2, function3, function4, function5};
-pub use functions_write::{function6, function7, function8, function9, function10};
+pub use functions_write::{
+    Function, InsideCallback,
+    function0, function1, function2, function3, function4, function5,
+    function6, function7, function8, function9, function10,
+    protected_call,
+};
 pub use lua_functions::LuaFunction;
 pub use lua_functions::{LuaCode, LuaCodeFromReader};
 pub use lua_tables::{LuaTable, LuaTableIterator};
@@ -488,11 +491,24 @@ pub trait AsLua {
     {
         T::lua_read_at_position(self, index)
     }
+
+    /// Call a rust function in protected mode. If a lua error is thrown during
+    /// execution of `f` the function will return a `LuaError`.
+    ///
+    /// This can also be sometimes used to catch other C++ exceptions although
+    /// be careful with that.
+    #[inline(always)]
+    fn pcall<F, R>(&self, f: F) -> Result<R, LuaError>
+    where
+        F: FnOnce(StaticLua) -> R,
+    {
+        protected_call(self, f)
+    }
 }
 
 impl<T> AsLua for &'_ T
 where
-    T: AsLua,
+    T: ?Sized + AsLua,
 {
     fn as_lua(&self) -> *mut ffi::lua_State {
         T::as_lua(self)

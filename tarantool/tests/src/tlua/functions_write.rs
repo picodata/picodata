@@ -221,3 +221,12 @@ pub fn closures_must_be_static() {
     assert_eq!(unsafe { &GLOBAL }, &Some(vec![1, 2, 3]));
 }
 
+pub fn pcall() {
+    let lua = tarantool::lua_state();
+    assert_eq!(lua.pcall(|_| "ok").ok(), Some("ok"));
+    let err_msg = lua.pcall(|l| tlua::error!(l, "catch this")).unwrap_err().to_string();
+    // assert_eq!(err_msg, "Execution error: tests/src/tlua/functions_write.rs:227:33> catch this");
+    assert!(err_msg.starts_with("Execution error: "              ));
+    assert!(err_msg.ends_with(                     "> catch this"));
+}
+
