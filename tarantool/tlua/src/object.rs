@@ -159,7 +159,7 @@ where
         R: LuaRead<PushGuard<&'lua L>>,
     {
         let Object { guard, index } = self.as_ref();
-        imp::try_get(guard, *index, key).map_err(|(_, e)| e)
+        unsafe { imp::try_get(guard, *index, key).map_err(|(_, e)| e) }
     }
 
     /// Loads a value in the table (or other object using the `__index`
@@ -198,7 +198,7 @@ where
         R: LuaRead<PushGuard<Self>>,
     {
         let this_index = self.as_ref().index;
-        imp::try_get(self, this_index, key)
+        unsafe { imp::try_get(self, this_index, key) }
     }
 
     /// Calls the method called `name` of the table (or other indexable object)
@@ -369,7 +369,7 @@ where
         V: PushOneInto<LuaState>, V::Err: Into<Void>,
     {
         let Object { guard, index } = self.as_ref();
-        imp::try_checked_set(guard, *index, key, value)
+        unsafe { imp::try_checked_set(guard, *index, key, value) }
             .map_err(|e|
                 match e {
                     Ok(_) => unreachable!("Void is uninstantiatable"),
@@ -425,7 +425,7 @@ where
         V: PushOneInto<LuaState>,
     {
         let Object { guard, index } = self.as_ref();
-        imp::try_checked_set(guard, *index, key, value)
+        unsafe { imp::try_checked_set(guard, *index, key, value) }
     }
 }
 
@@ -628,7 +628,7 @@ mod imp {
     // try_get
     ////////////////////////////////////////////////////////////////////////////
 
-    pub(super) fn try_get<T, K, R>(
+    pub(super) unsafe fn try_get<T, K, R>(
         this: T,
         this_index: AbsoluteIndex,
         key: K,
@@ -639,15 +639,23 @@ mod imp {
         K::Err: Into<Void>,
         R: LuaRead<PushGuard<T>>,
     {
-        // TODO(gmoshkin): optimize for lua table without __index
         let raw_lua = this.as_lua();
-        unsafe {
+        let this_index = this_index.into();
+
+        if ffi::lua_istable(raw_lua, this_index) &&
+            !ffi::luaL_hasmetafield(raw_lua, this_index, c_ptr!("__index"))
+        {
+            // push key
+            raw_lua.push_one(key).assert_one_and_forget();
+            // replace key with value
+            ffi::lua_rawget(raw_lua, this_index);
+        } else {
             // push index onto the stack
             raw_lua.push_one(key).assert_one_and_forget();
             // move index into registry
             let index_ref = ffi::luaL_ref(raw_lua, ffi::LUA_REGISTRYINDEX);
             // push indexable onto the stack
-            ffi::lua_pushvalue(raw_lua, this_index.into());
+            ffi::lua_pushvalue(raw_lua, this_index);
             // move indexable into registry
             let table_ref = ffi::luaL_ref(raw_lua, ffi::LUA_REGISTRYINDEX);
 
@@ -669,26 +677,25 @@ mod imp {
 
             // move value from registry to stack
             ffi::lua_rawgeti(raw_lua, ffi::LUA_REGISTRYINDEX, value_ref);
-            let res = R::lua_read_at_position(PushGuard::new(this, 1), nzi32!(-1))
-                .map_err(|g| {
-                    let e = LuaError::wrong_type_returned::<R, _>(raw_lua, 1);
-                    (g.into_inner(), e)
-                });
 
             // unref temporaries
             ffi::luaL_unref(raw_lua, ffi::LUA_REGISTRYINDEX, value_ref);
             ffi::luaL_unref(raw_lua, ffi::LUA_REGISTRYINDEX, index_ref);
             ffi::luaL_unref(raw_lua, ffi::LUA_REGISTRYINDEX, table_ref);
-
-            res
         }
+
+        R::lua_read_at_position(PushGuard::new(this, 1), nzi32!(-1))
+            .map_err(|g| {
+                let e = LuaError::wrong_type_returned::<R, _>(raw_lua, 1);
+                (g.into_inner(), e)
+            })
     }
 
     ////////////////////////////////////////////////////////////////////////////
     // try_checked_set
     ////////////////////////////////////////////////////////////////////////////
 
-    pub(super) fn try_checked_set<T, K, V>(
+    pub(super) unsafe fn try_checked_set<T, K, V>(
         this: T,
         this_index: AbsoluteIndex,
         key: K,
@@ -699,9 +706,23 @@ mod imp {
         K: PushOneInto<LuaState>,
         V: PushOneInto<LuaState>,
     {
-        // TODO(gmoshkin): optimize for lua table without __index|__newindex
         let raw_lua = this.as_lua();
-        unsafe {
+        let this_index = this_index.into();
+        if ffi::lua_istable(raw_lua, this_index) &&
+            !ffi::luaL_hasmetafield(raw_lua, this_index, c_ptr!("__index")) &&
+            !ffi::luaL_hasmetafield(raw_lua, this_index, c_ptr!("__newindex"))
+        {
+            // push key
+            raw_lua.try_push_one(key)
+                .map_err(|(e, _)| Ok(CheckedSetError::KeyPushError(e)))?
+                .assert_one_and_forget();
+            // push value
+            raw_lua.try_push_one(value)
+                .map_err(|(e, _)| Ok(CheckedSetError::ValuePushError(e)))?
+                .assert_one_and_forget();
+            // remove key and value
+            ffi::lua_rawset(raw_lua, this_index);
+        } else {
             // push value onto the stack
             raw_lua.try_push_one(value)
                 .map_err(|(e, _)| Ok(CheckedSetError::ValuePushError(e)))?
@@ -717,7 +738,7 @@ mod imp {
             let index_ref = ffi::luaL_ref(raw_lua, ffi::LUA_REGISTRYINDEX);
 
             // push indexable onto the stack
-            ffi::lua_pushvalue(raw_lua, this_index.into());
+            ffi::lua_pushvalue(raw_lua, this_index);
             // move indexable into registry
             let table_ref = ffi::luaL_ref(raw_lua, ffi::LUA_REGISTRYINDEX);
 
@@ -738,9 +759,8 @@ mod imp {
             ffi::luaL_unref(raw_lua, ffi::LUA_REGISTRYINDEX, value_ref);
             ffi::luaL_unref(raw_lua, ffi::LUA_REGISTRYINDEX, index_ref);
             ffi::luaL_unref(raw_lua, ffi::LUA_REGISTRYINDEX, table_ref);
-
-            Ok(())
         }
+        Ok(())
     }
 
     ////////////////////////////////////////////////////////////////////////////
@@ -853,15 +873,8 @@ mod imp {
         let i = index.into();
         unsafe {
             // luaL_iscallable doesn't work for `ffi`
-            if ffi::lua_isfunction(raw_lua, i) {
-                true
-            } else if ffi::luaL_getmetafield(raw_lua, i, c_ptr!("__call")) != 0 {
-                // Pop the metafield
-                ffi::lua_pop(raw_lua, 1);
-                true
-            } else {
-                false
-            }
+            ffi::lua_isfunction(raw_lua, i) ||
+                ffi::luaL_hasmetafield(raw_lua, i, c_ptr!("__call"))
         }
     }
 
@@ -870,15 +883,8 @@ mod imp {
         let raw_lua = lua.as_lua();
         let i = index.into();
         unsafe {
-            if ffi::lua_istable(raw_lua, i) {
-                true
-            } else if ffi::luaL_getmetafield(raw_lua, i, c_ptr!("__index")) != 0 {
-                // Pop the metafield
-                ffi::lua_pop(raw_lua, 1);
-                true
-            } else {
-                false
-            }
+            ffi::lua_istable(raw_lua, i) ||
+                ffi::luaL_hasmetafield(raw_lua, i, c_ptr!("__index"))
         }
     }
 
@@ -887,19 +893,9 @@ mod imp {
         let raw_lua = lua.as_lua();
         let i = index.into();
         unsafe {
-            let oldtop = ffi::lua_gettop(raw_lua);
-            if ffi::lua_istable(raw_lua, i) {
-                true
-            } else if
-                ffi::luaL_getmetafield(raw_lua, i, c_ptr!("__index")) != 0
-                && ffi::luaL_getmetafield(raw_lua, i, c_ptr!("__newindex")) != 0
-            {
-                // Pop the metafields
-                ffi::lua_settop(raw_lua, oldtop);
-                true
-            } else {
-                false
-            }
+            ffi::lua_istable(raw_lua, i) ||
+                ffi::luaL_hasmetafield(raw_lua, i, c_ptr!("__index")) &&
+                ffi::luaL_hasmetafield(raw_lua, i, c_ptr!("__newindex"))
         }
     }
 }

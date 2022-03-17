@@ -683,6 +683,14 @@ extern "C" {
     pub fn luaL_getmetafield(l: *mut lua_State, index: i32, field: *const c_char) -> i32;
 }
 
+/// Check if value at given `index` has metafield `field`.
+/// *[-0, +0, -]*
+#[inline(always)]
+#[allow(non_snake_case)]
+pub unsafe fn luaL_hasmetafield(l: *mut lua_State, index: i32, field: *const c_char) -> bool {
+    luaL_getmetafield(l, index, field) != 0 && { lua_pop(l, 1); true }
+}
+
 extern "C" {
     /// Convert the value at `idx` to string using `__tostring` metamethod if
     /// other measures didn't work and return it. Sets the `len` if it's not
