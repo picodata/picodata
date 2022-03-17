@@ -10,6 +10,8 @@ fn positive() {
     let mut cmd = Command::cargo_bin("picodata").unwrap();
     cmd.current_dir(temp_path);
     cmd.env("PICOLIB_AUTORUN", "false");
+    cmd.env("PICODATA_INSTANCE_ID", "i1");
+    cmd.env("PICODATA_PEER", "localhost");
     cmd.arg("run");
     cmd.arg("-e").arg(
         r#"
@@ -18,8 +20,7 @@ fn positive() {
                 error(('Assertion failed: %q ~= %q'):format(l, r), 2)
             end
         end
-        assert_eq(picolib.args.peers[1].uri, "127.0.0.1:3301")
-        assert_eq(picolib.args.listen, "3301")
+        assert_eq(picolib.args.listen, "localhost:3301")
         assert_eq(picolib.args.data_dir, ".")
         "#,
     );
@@ -32,6 +33,7 @@ fn pass_arguments() {
     cmd.env("PICOLIB_AUTORUN", "false");
     cmd.arg("run");
     cmd.args(["-e", "error('xxx', 0)"]);
+    cmd.args(["--instance-id", "i1", "--peer", "localhost"]);
     cmd.assert().failure().stderr(
         "LuajitError: xxx\n\
         fatal error, exiting the event loop\n",
@@ -56,8 +58,8 @@ fn pass_environment() {
     cmd.args(["--replicaset-id", "r1"]);
     cmd.args(["--instance-id", "i1"]);
     cmd.args(["--data-dir", "./data/i1"]);
-    cmd.args(["--peer", "i1,i2"]);
-    cmd.args(["--peer", "i3"]);
+    cmd.args(["--peer", "i1:3301,i2:3301"]);
+    cmd.args(["--peer", "i3:3301"]);
     cmd.arg("-e").arg(
         r#"
         assert(
@@ -78,9 +80,9 @@ fn pass_environment() {
         assert_eq(picolib.args.cluster_id, "sam")
         assert_eq(picolib.args.replicaset_id, "r1")
         assert_eq(picolib.args.instance_id, "i1")
-        assert_eq(picolib.args.peers[1].uri, "i1")
-        assert_eq(picolib.args.peers[2].uri, "i2")
-        assert_eq(picolib.args.peers[3].uri, "i3")
+        assert_eq(picolib.args.peers[1].uri, "i1:3301")
+        assert_eq(picolib.args.peers[2].uri, "i2:3301")
+        assert_eq(picolib.args.peers[3].uri, "i3:3301")
         assert_eq(picolib.args.data_dir, "./data/i1")
         picolib.run()
         os.exit(0)
@@ -105,6 +107,7 @@ fn precedence() {
     cmd.env("PICOLIB_AUTORUN", "false");
     cmd.env("PICODATA_DATA_DIR", "./somewhere");
     cmd.env("PICODATA_LISTEN", "0.0.0.0:0");
+    cmd.args(["--instance-id", "i1", "--peer", "localhost"]);
     cmd.arg("-e").arg(
         r#"
         function assert_eq(l, r)

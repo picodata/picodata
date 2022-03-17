@@ -15,6 +15,7 @@ g.before_all(function()
             listen = '127.0.0.1:13301',
             peer = peer,
             env = {PICODATA_RAFT_ID = "1"},
+            args = {'run', '--instance-id', 'i1'}
         }),
         i2 = h.Picodata:new({
             name = 'i2',
@@ -22,6 +23,7 @@ g.before_all(function()
             listen = '127.0.0.1:13302',
             peer = peer,
             env = {PICODATA_RAFT_ID = "2"},
+            args = {'run', '--instance-id', 'i2'}
         }),
     }
 

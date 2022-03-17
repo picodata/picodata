@@ -1,6 +1,6 @@
 use error::CoercionError;
 use nix::sys::signal::{self, Signal};
-use nix::unistd::Pid;
+use nix::unistd::{gethostname, Pid};
 use std::os::raw::{c_char, c_int, c_void};
 use std::process::Stdio;
 use structopt::StructOpt;
@@ -8,6 +8,7 @@ use structopt::StructOpt;
 use ::raft::prelude as raft;
 use ::tarantool::proc;
 use ::tarantool::tlua;
+use ::tarantool::tuple::{FunctionArgs, FunctionCtx};
 use indoc::indoc;
 use message::Message;
 use std::convert::TryFrom;
@@ -15,6 +16,7 @@ use std::time::Duration;
 
 mod app;
 mod args;
+mod discovery;
 mod error;
 mod message;
 mod tarantool;
@@ -195,14 +197,29 @@ fn handle_committed_data(data: &[u8]) {
     }
 }
 
+macro_rules! declare_stored_c_funcs {
+     ( $($func_name:expr) , + $(,)? ) => {
+
+        // This is needed to tell the compiler that the functions are really used.
+        // Otherwise the functions get optimized out and disappear from the binary
+        // and we may get this error: dlsym(RTLD_DEFAULT, some_fn): symbol not found
+        fn used(_: extern "C" fn(FunctionCtx, FunctionArgs) -> c_int) {}
+
+        $(used($func_name);
+            crate::tarantool::eval(concat!(
+                "box.schema.func.create('.", stringify!($func_name), "', {
+                    language = 'C',
+                    if_not_exists = true
+                });"
+            ));
+        )+
+    }
+}
+
 fn init_handlers() {
-    crate::tarantool::eval(
-        r#"
-        box.schema.func.create('.raft_interact', {
-            language = "C",
-            if_not_exists = true
-        })
-    "#,
+    declare_stored_c_funcs!(
+        //
+        discover,
     );
 }
 
@@ -334,17 +351,60 @@ fn run(args: args::Run) -> Result<(), String> {
         tlog!(Warning, "I'm a new child process");
     }
 
+    fn default_advertise_address(listen_address: &str) -> String {
+        let (listen_hostname, listen_port) = listen_address
+            .rsplit_once(":")
+            .expect("failed to split listen_addres into hostname and port");
+
+        let advertise_hostname = match listen_hostname {
+            "0.0.0.0" => get_hostname(),
+            _ => listen_hostname.into(),
+        };
+
+        return format!("{advertise_hostname}:{listen_port}");
+
+        fn get_hostname() -> String {
+            let mut buf = [0u8; 64];
+            let hostname_cstr = gethostname(&mut buf).expect("failed getting hostname");
+            let hostname = hostname_cstr.to_str().expect("hostname wasn't valid UTF-8");
+            hostname.into()
+        }
+    }
+
+    let _advertise_address = args
+        .advertise_address
+        .clone()
+        .unwrap_or_else(|| default_advertise_address(&args.listen));
+
+    fn rpc_discover(
+        request: discovery::Request,
+        address: &discovery::Address,
+    ) -> discovery::Response {
+        discovery::net_box_repeat_call_until_succeed(address, ".discover", (request, address))
+    }
+
     tarantool_main!(args.tt_args()?, args => |args: args::Run| {
         if args.autorun {
             start(&args);
         }
 
+        if std::env::var("PICODATA_DISCOVER_PEERS").is_ok() {
+            let bootstrap_role = discovery::discover(args.peers.iter().map(|p| &p.uri), rpc_discover);
+            tlog!(Info, "bootstrap role: {:?}", bootstrap_role);
+        }
         picolib_setup(args);
     })
 }
 
 fn tarantool(args: args::Tarantool) -> Result<(), String> {
     tarantool_main!(args.tt_args()?)
+}
+
+#[no_mangle]
+pub extern "C" fn discover(ctx: FunctionCtx, args: FunctionArgs) -> c_int {
+    let (request, addr): (discovery::Request, discovery::Address) = args.as_struct().unwrap();
+    ctx.return_mp(&discovery::handle_request(request, &addr))
+        .unwrap()
 }
 
 fn test(args: args::Test) -> Result<(), String> {

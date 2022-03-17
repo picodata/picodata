@@ -12,7 +12,7 @@ local Picodata = {
     name = 'default',
     listen = '127.0.0.1:13301',
     peer = {'127.0.0.1:13301'},
-    args = {'run'},
+    args = {'run', '--instance-id', 'i1'},
     env = {},
 
     command = 'target/debug/picodata',

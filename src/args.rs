@@ -1,7 +1,9 @@
 use crate::traft::row::Peer;
 use std::{
     borrow::Cow,
+    error::Error,
     ffi::{CStr, CString},
+    fmt::Display,
 };
 use structopt::StructOpt;
 use tarantool::tlua::{self, c_str};
@@ -45,13 +47,23 @@ pub struct Run {
 
     #[structopt(long, value_name = "name", env = "PICODATA_INSTANCE_ID")]
     /// Name of the instance
-    pub instance_id: Option<String>,
+    pub instance_id: String,
+
+    #[structopt(
+        long,
+        value_name = "host[:port]",
+        env = "PICODATA_ADVERTISE_ADDRESS",
+        parse(try_from_str = try_parse_address)
+    )]
+    /// Address the other instances should use to connect to this instance
+    pub advertise_address: Option<String>,
 
     #[structopt(
         short = "l",
         long = "listen",
-        value_name = "[host:]port",
-        default_value = "3301",
+        value_name = "host[:port]",
+        parse(try_from_str = try_parse_address),
+        default_value = "localhost:3301",
         env = "PICODATA_LISTEN"
     )]
     /// Socket bind address
@@ -59,10 +71,10 @@ pub struct Run {
 
     #[structopt(
         long = "peer",
-        value_name = "host:port",
+        value_name = "host[:port]",
         parse(from_str = parse_peer),
-        default_value = "127.0.0.1:3301",
         require_delimiter = true,
+        required = true,
         env = "PICODATA_PEER",
     )]
     /// Address of other instance(s)
@@ -156,13 +168,65 @@ fn parse_peer(text: &str) -> Peer {
 
     unsafe { CURRENT_RAFT_ID += 1 }
 
+    let address = try_parse_address(text)
+        .unwrap_or_else(|e| panic!("could not parse peer \"{}\" as an address: {}", text, e));
+
     Peer {
         raft_id: unsafe { CURRENT_RAFT_ID },
-        uri: text.into(),
+        uri: address,
     }
 }
 
 fn parse_flag(text: &str) -> bool {
     let text = text.to_lowercase();
     matches!(text.as_str(), "on" | "true" | "yes") || text.parse::<i64>().unwrap_or(0) != 0
+}
+
+#[derive(Debug)]
+pub struct BadAddress(String);
+
+impl Error for BadAddress {}
+
+impl Display for BadAddress {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "bad address: {}", self.0)
+    }
+}
+
+fn try_parse_address(text: &str) -> Result<String, Box<dyn Error>> {
+    let (host, port) = match text.rsplit_once(":") {
+        Some((mut host, port)) => {
+            if host.is_empty() {
+                host = "localhost";
+            }
+            if host.contains(':') {
+                return Err(Box::new(BadAddress(
+                    r#"contains more than 1 ":" symbol"#.into(),
+                )));
+            }
+            (host, port.parse::<u16>()?)
+        }
+        None => (text, 3301),
+    };
+    Ok(format!("{host}:{port}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_try_parse_address() {
+        assert_eq!(try_parse_address("1234").unwrap(), "1234:3301");
+        assert_eq!(try_parse_address(":1234").unwrap(), "localhost:1234");
+        assert_eq!(try_parse_address("example").unwrap(), "example:3301");
+        assert_eq!(
+            try_parse_address("localhost:1234").unwrap(),
+            "localhost:1234"
+        );
+        assert_eq!(try_parse_address("1.2.3.4:1234").unwrap(), "1.2.3.4:1234");
+        assert_eq!(try_parse_address("example:1234").unwrap(), "example:1234");
+        assert!(try_parse_address("example:123456").is_err());
+        assert!(try_parse_address("example::1234").is_err());
+    }
 }
