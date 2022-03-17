@@ -1,0 +1,12 @@
+(start)-|fork|
+
+|fork|[child]->(start_discover)->[summary\n{leader}]-><c>
+<c>-[its me]>(start_boot)->(postjoin)
+<c>->(drop_db)[rebootstrap]->|reboot|->(start_join)
+
+(start_join)->(postjoin)
+(start_discover)->(postjoin)
+(postjoin)->|b|
+
+|fork|-[supervisor]>(wait_pid)->|b|
+|b|->(end)

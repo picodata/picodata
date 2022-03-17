@@ -14,21 +14,21 @@ g.before_all(function()
             data_dir = g.data_dir .. '/i1',
             listen = '127.0.0.1:13301',
             peer = peer,
-            env = {PICODATA_RAFT_ID = "1"},
-            args = {'run', '--instance-id', 'i1'}
         }),
         i2 = h.Picodata:new({
             name = 'i2',
             data_dir = g.data_dir .. '/i2',
             listen = '127.0.0.1:13302',
             peer = peer,
-            env = {PICODATA_RAFT_ID = "2"},
-            args = {'run', '--instance-id', 'i2'}
         }),
     }
 
     for _, node in pairs(g.cluster) do
         node:start()
+    end
+
+    for _, node in pairs(g.cluster) do
+        node:wait_started()
     end
 end)
 
@@ -41,11 +41,10 @@ end)
 
 g.test_follower_proposal = function()
     -- Speed up node election
-    g.cluster.i1:try_promote()
+    g.cluster.i1:promote_or_fail()
 
-    t.assert_equals(
-        g.cluster.i2:raft_propose_eval(1, '_G.check = box.info.listen'),
-        true
+    t.assert(
+        g.cluster.i2:raft_propose_eval(1, '_G.check = box.info.listen')
     )
     t.assert_equals(
         g.cluster.i1:connect():eval('return check'),
@@ -58,20 +57,15 @@ g.test_follower_proposal = function()
 end
 
 g.test_failover = function()
-    g.cluster.i1:try_promote()
+    g.cluster.i1:promote_or_fail()
     h.retrying({}, function()
         g.cluster.i2:assert_raft_status("Follower", 1)
     end)
 
-    -- Speed up election timeout
-    g.cluster.i2:connect():eval([[
-        while picolib.raft_status().raft_state == 'Follower' do
-            picolib.raft_tick(1)
-        end
-    ]])
-
     h.retrying({}, function()
-        g.cluster.i1:assert_raft_status("Follower", 2)
+        -- Speed up election timeout
+        g.cluster.i2:connect():eval('picolib.raft_tick(20)')
         g.cluster.i2:assert_raft_status("Leader")
+        g.cluster.i1:assert_raft_status("Follower", 2)
     end)
 end

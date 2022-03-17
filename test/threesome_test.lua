@@ -18,26 +18,27 @@ g.before_all(function()
             data_dir = g.data_dir .. '/i1',
             listen = '127.0.0.1:13301',
             peer = peer,
-            env = {PICODATA_RAFT_ID = "1"},
         }),
         i2 = h.Picodata:new({
             name = 'i2',
             data_dir = g.data_dir .. '/i2',
             listen = '127.0.0.1:13302',
             peer = peer,
-            env = {PICODATA_RAFT_ID = "2"},
         }),
         i3 = h.Picodata:new({
             name = 'i3',
             data_dir = g.data_dir .. '/i3',
             listen = '127.0.0.1:13303',
             peer = peer,
-            env = {PICODATA_RAFT_ID = "3"},
         }),
     }
 
     for _, node in pairs(g.cluster) do
         node:start()
+    end
+
+    for _, node in pairs(g.cluster) do
+        node:wait_started()
     end
 end)
 
@@ -59,15 +60,14 @@ end
 
 g.test_log_rollback = function()
     -- Speed up node election
-    g.cluster.i1:try_promote()
+    g.cluster.i1:promote_or_fail()
     h.retrying({}, function()
         g.cluster.i2:assert_raft_status("Follower", 1)
         g.cluster.i3:assert_raft_status("Follower", 1)
     end)
 
-    t.assert_equals(
-        propose_state_change(g.cluster.i1, "i1 is a leader"),
-        true
+    t.assert(
+        propose_state_change(g.cluster.i1, "i1 is a leader")
     )
 
     -- Simulate the network partitioning: i1 can't reach i2 and i3.
@@ -75,8 +75,8 @@ g.test_log_rollback = function()
     g.cluster.i3:stop()
 
     t.assert_equals(
-        propose_state_change(g.cluster.i1, "i1 lost the quorum"),
-        false
+        {propose_state_change(g.cluster.i1, "i1 lost the quorum")},
+        {nil, "foo"}
     )
 
     -- And now i2 + i3 can't reach i1.
@@ -85,14 +85,13 @@ g.test_log_rollback = function()
     g.cluster.i3:start()
 
     -- Help I2 to become a new leader.
-    g.cluster.i2:try_promote()
+    g.cluster.i2:promote_or_fail()
     h.retrying({}, function()
         g.cluster.i3:assert_raft_status("Follower", 2)
     end)
 
-    t.assert_equals(
-        propose_state_change(g.cluster.i2, "i2 takes the leadership"),
-        true
+    t.assert(
+        propose_state_change(g.cluster.i2, "i2 takes the leadership")
     )
 
     -- Now i1 has an uncommitted, but persisted entry that should be rolled back.
@@ -108,7 +107,7 @@ g.test_log_rollback = function()
 end
 
 g.test_leader_disruption = function()
-    g.cluster.i1:try_promote()
+    g.cluster.i1:promote_or_fail()
     h.retrying({}, function()
         g.cluster.i2:assert_raft_status("Follower", 1)
         g.cluster.i3:assert_raft_status("Follower", 1)

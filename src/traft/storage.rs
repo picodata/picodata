@@ -5,13 +5,14 @@ use ::raft::Error as RaftError;
 use ::raft::StorageError;
 use ::tarantool::index::IteratorType;
 use ::tarantool::space::Space;
+use ::tarantool::tuple::AsTuple;
 use ::tarantool::tuple::Tuple;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use thiserror::Error;
 
 use crate::tlog;
-use crate::traft::row;
+use crate::traft;
 
 pub struct Storage;
 
@@ -23,6 +24,8 @@ const RAFT_LOG: &str = "raft_log";
 enum Error {
     #[error("no such space \"{0}\"")]
     NoSuchSpace(String),
+    #[error("no such index \"{1}\" in space \"{0}\"")]
+    NoSuchIndex(String, String),
 }
 
 macro_rules! box_err {
@@ -39,11 +42,11 @@ impl Storage {
                 if_not_exists = true,
                 is_local = true,
                 format = {
-                    {name = 'entry_type', type = 'string', is_nullable = false},
+                    {name = 'entry_type', type = 'unsigned', is_nullable = false},
                     {name = 'index', type = 'unsigned', is_nullable = false},
                     {name = 'term', type = 'unsigned', is_nullable = false},
-                    {name = 'msg', type = 'any', is_nullable = true},
-                    {name = 'ctx', type = 'any', is_nullable = true},
+                    {name = 'data', type = 'any', is_nullable = true},
+                    {name = 'context', type = 'any', is_nullable = true},
                 }
             })
             box.space.raft_log:create_index('pk', {
@@ -70,18 +73,29 @@ impl Storage {
                 is_local = true,
                 format = {
                     {name = 'raft_id', type = 'unsigned', is_nullable = false},
-                    {name = 'peer_uri', type = 'string', is_nullable = false},
-                    -- {name = 'raft_role', type = 'string', is_nullable = false},
-                    -- {name = 'instance_id', type = 'string', is_nullable = false},
+                    {name = 'peer_address', type = 'string', is_nullable = false},
+                    {name = 'voter', type = 'boolean', is_nullable = false},
+                    {name = 'instance_id', type = 'string', is_nullable = false},
                     -- {name = 'instance_uuid', type = 'string', is_nullable = false},
                     -- {name = 'replicaset_id', type = 'string', is_nullable = false},
                     -- {name = 'replicaset_uuid', type = 'string', is_nullable = false},
+                    {name = 'commit_index', type = 'unsigned', is_nullable = false},
                 }
             })
 
             box.space.raft_group:create_index('pk', {
                 if_not_exists = true,
                 parts = {{'raft_id'}},
+            })
+            box.space.raft_group:create_index('instance_id', {
+                if_not_exists = true,
+                parts = {{'instance_id'}},
+                unique = true,
+            })
+            box.space.raft_group:create_index('peer_address', {
+                if_not_exists = true,
+                parts = {{'peer_address'}},
+                unique = true,
             })
         "#,
         );
@@ -111,7 +125,50 @@ impl Storage {
         }
     }
 
-    pub fn peers() -> Result<Vec<row::Peer>, StorageError> {
+    pub fn max_peer_id() -> Result<u64, StorageError> {
+        let tuple = Storage::space(RAFT_GROUP)?
+            .primary_key()
+            .max(&())
+            .map_err(box_err!())?;
+        let peer: traft::Peer = match tuple {
+            None => return Ok(0),
+            Some(v) => v.into_struct().map_err(box_err!())?,
+        };
+
+        Ok(peer.raft_id)
+    }
+
+    pub fn peer_by_raft_id(raft_id: u64) -> Result<Option<traft::Peer>, StorageError> {
+        if raft_id == 0 {
+            return Ok(None);
+        }
+
+        let tuple = Storage::space(RAFT_GROUP)?
+            .get(&(raft_id,))
+            .map_err(box_err!())?;
+
+        match tuple {
+            None => Ok(None),
+            Some(v) => Ok(Some(v.into_struct().map_err(box_err!())?)),
+        }
+    }
+
+    pub fn peer_by_instance_id(instance_id: &str) -> Result<Option<traft::Peer>, StorageError> {
+        const IDX: &str = "instance_id";
+        let tuple = Storage::space(RAFT_GROUP)?
+            .index(IDX)
+            .ok_or_else(|| Error::NoSuchIndex(RAFT_GROUP.into(), IDX.into()))
+            .map_err(box_err!())?
+            .get(&(instance_id,))
+            .map_err(box_err!())?;
+
+        match tuple {
+            None => Ok(None),
+            Some(v) => Ok(Some(v.into_struct().map_err(box_err!())?)),
+        }
+    }
+
+    pub fn peers() -> Result<Vec<traft::Peer>, StorageError> {
         let mut ret = Vec::new();
 
         let iter = Storage::space(RAFT_GROUP)?
@@ -151,6 +208,7 @@ impl Storage {
     }
 
     pub fn persist_commit(commit: u64) -> Result<(), StorageError> {
+        // tlog!(Info, "++++++ persist commit {commit}");
         Storage::persist_raft_state("commit", commit)
     }
 
@@ -180,22 +238,23 @@ impl Storage {
         Ok(())
     }
 
-    pub fn persist_peers(peers: &[row::Peer]) {
-        let mut space = Space::find(RAFT_GROUP).unwrap();
-        space.truncate().unwrap();
-        for peer in peers {
-            space.insert(&(peer.raft_id, &peer.uri)).unwrap();
-        }
+    pub fn persist_peer(row: &impl AsTuple) -> Result<(), StorageError> {
+        Storage::space(RAFT_GROUP)?
+            .replace(row)
+            .map_err(box_err!())?;
+
+        Ok(())
     }
 
     pub fn entries(low: u64, high: u64) -> Result<Vec<raft::Entry>, StorageError> {
+        // idx \in [low, high)
         let mut ret: Vec<raft::Entry> = vec![];
         let iter = Storage::space(RAFT_LOG)?
             .select(IteratorType::GE, &(low,))
             .map_err(box_err!())?;
 
         for tuple in iter {
-            let row: row::Entry = tuple.into_struct().map_err(box_err!())?;
+            let row: traft::Entry = tuple.into_struct().map_err(box_err!())?;
             if row.index >= high {
                 break;
             }
@@ -209,7 +268,7 @@ impl Storage {
     pub fn persist_entries(entries: &[raft::Entry]) -> Result<(), StorageError> {
         let mut space = Storage::space(RAFT_LOG)?;
         for e in entries {
-            let row = row::Entry::try_from(e.clone())?;
+            let row = traft::Entry::try_from(e).unwrap();
             space.replace(&row).map_err(box_err!())?;
         }
 
@@ -217,18 +276,17 @@ impl Storage {
     }
 
     pub fn conf_state() -> Result<raft::ConfState, StorageError> {
-        let mut ret = raft::ConfState::default();
+        Ok(raft::ConfState {
+            voters: Storage::raft_state("voters")?.unwrap_or_default(),
+            learners: Storage::raft_state("learners")?.unwrap_or_default(),
+            ..Default::default()
+        })
+    }
 
-        let iter = Storage::space(RAFT_GROUP)?
-            .select(IteratorType::All, &())
-            .map_err(box_err!())?;
-
-        for tuple in iter {
-            let peer: row::Peer = tuple.into_struct().map_err(box_err!())?;
-            ret.mut_voters().push(peer.raft_id);
-        }
-
-        Ok(ret)
+    pub fn persist_conf_state(cs: &raft::ConfState) -> Result<(), StorageError> {
+        Storage::persist_raft_state("voters", &cs.voters)?;
+        Storage::persist_raft_state("learners", &cs.learners)?;
+        Ok(())
     }
 
     pub fn hard_state() -> Result<raft::HardState, StorageError> {
@@ -270,6 +328,7 @@ impl raft::Storage for Storage {
         high: u64,
         _max_size: impl Into<Option<u64>>,
     ) -> Result<Vec<raft::Entry>, RaftError> {
+        // tlog!(Info, "++++++ entries {low} {high}");
         Ok(Storage::entries(low, high)?)
     }
 
@@ -277,18 +336,19 @@ impl raft::Storage for Storage {
         if idx == 0 {
             return Ok(0);
         }
+        // tlog!(Info, "++++++ term {idx}");
 
         let tuple = Storage::space(RAFT_LOG)?.get(&(idx,)).map_err(box_err!())?;
 
         if let Some(tuple) = tuple {
-            let row: row::Entry = tuple.into_struct().map_err(box_err!())?;
-            Ok(row.term)
+            Ok(tuple.field(2).map_err(box_err!())?.unwrap())
         } else {
             Err(RaftError::Store(StorageError::Unavailable))
         }
     }
 
     fn first_index(&self) -> Result<u64, RaftError> {
+        // tlog!(Info, "++++++ first_index");
         Ok(1)
     }
 
@@ -297,20 +357,17 @@ impl raft::Storage for Storage {
         let tuple: Option<Tuple> = space.primary_key().max(&()).map_err(box_err!())?;
 
         if let Some(t) = tuple {
-            let row: row::Entry = t.into_struct().map_err(box_err!())?;
-            Ok(row.index)
+            Ok(t.field(1).map_err(box_err!())?.unwrap())
         } else {
             Ok(0)
         }
     }
 
-    fn snapshot(&self, request_index: u64) -> Result<raft::Snapshot, RaftError> {
-        tlog!(
-            Critical,
-            "+++ snapshot(idx={}) -> unimplemented",
-            request_index
-        );
+    fn snapshot(&self, idx: u64) -> Result<raft::Snapshot, RaftError> {
+        tlog!(Critical, "snapshot"; "request_index" => idx);
         unimplemented!();
+
+        // Ok(Storage::snapshot()?)
     }
 }
 
@@ -345,23 +402,18 @@ inventory::submit!(crate::InnerTest {
 
         let mut raft_log = Storage::space("raft_log").unwrap();
 
-        raft_log
-            .put(&("EntryUnknown", 99, 1, vec!["empty"]))
-            .unwrap();
+        raft_log.put(&(1337, 99, 1, "", ())).unwrap();
         assert_err!(
             Storage.entries(1, 100, u64::MAX),
-            "unknown error unknown entry type \"EntryUnknown\""
+            "unknown error unknown entry type (1337)"
         );
 
-        raft_log
-            .put(&("EntryNormal", 99, 1, vec!["unknown"]))
-            .unwrap();
+        raft_log.put(&(0, 99, 1, "", false)).unwrap();
         assert_err!(
             Storage.entries(1, 100, u64::MAX),
             "unknown error \
 Failed to decode tuple: \
-unknown variant `unknown`, \
-expected one of `empty`, `info`, `eval_lua`"
+data did not match any variant of untagged enum EntryContext"
         );
 
         raft_log.primary_key().drop().unwrap();

@@ -1,24 +1,25 @@
-use error::CoercionError;
-use nix::sys::signal::{self, Signal};
-use nix::unistd::{gethostname, Pid};
-use std::os::raw::{c_char, c_int, c_void};
-use std::process::Stdio;
+use nix::sys::termios::{tcgetattr, tcsetattr, SetArg::TCSADRAIN};
+use nix::sys::wait::WaitStatus;
+use nix::unistd::{self, fork, ForkResult};
+use serde::{Deserialize, Serialize};
 use structopt::StructOpt;
 
 use ::raft::prelude as raft;
-use ::tarantool::proc;
+use ::tarantool::error::Error;
+use ::tarantool::fiber;
 use ::tarantool::tlua;
-use ::tarantool::tuple::{FunctionArgs, FunctionCtx};
-use indoc::indoc;
-use message::Message;
+use ::tarantool::transaction::start_transaction;
 use std::convert::TryFrom;
-use std::time::Duration;
+use std::time::{Duration, Instant};
+
+use protobuf::Message as _;
+use protobuf::ProtobufEnum as _;
 
 mod app;
 mod args;
 mod discovery;
-mod error;
-mod message;
+mod ipc;
+mod mailbox;
 mod tarantool;
 mod tlog;
 mod traft;
@@ -30,13 +31,7 @@ pub struct InnerTest {
     pub body: fn(),
 }
 
-static mut NODE: Option<&'static traft::Node> = None;
-
-fn node() -> &'static traft::Node {
-    unsafe { NODE.expect("Picodata not running yet") }
-}
-
-fn picolib_setup(args: args::Run) {
+fn picolib_setup(args: &args::Run) {
     let l = ::tarantool::lua_state();
     let package: tlua::LuaTable<_> = l.get("package").expect("package == nil");
     let loaded: tlua::LuaTable<_> = package.get("loaded").expect("package.loaded == nil");
@@ -49,32 +44,43 @@ fn picolib_setup(args: args::Run) {
     l.set("picolib", &luamod);
 
     luamod.set("VERSION", env!("CARGO_PKG_VERSION"));
-    luamod.set("args", &args);
+    luamod.set("args", args);
 
-    //
-    // Export inner tests
-    {
-        let mut test = Vec::new();
-        for t in inventory::iter::<InnerTest> {
-            test.push((t.name, tlua::function0(t.body)));
-        }
-        luamod.set("test", test);
-    }
-
-    //
-    // Export public API
-    luamod.set("run", tlua::function0(move || start(&args)));
-    luamod.set("raft_status", tlua::function0(|| node().status()));
-    luamod.set("raft_tick", tlua::function1(raft_tick));
+    luamod.set(
+        "raft_status",
+        tlua::function0(|| traft::node::global().map(|n| n.status())),
+    );
+    luamod.set(
+        "raft_tick",
+        tlua::function1(|n_times: u32| {
+            traft::node::global().expect("uninitialized").tick(n_times);
+        }),
+    );
+    luamod.set(
+        "raft_read_index",
+        tlua::function1(|timeout: f64| {
+            traft::node::global()
+                .expect("uninitialized")
+                .read_index(Duration::from_secs_f64(timeout))
+        }),
+    );
     luamod.set(
         "raft_propose_info",
-        tlua::function1(|x: String| node().propose(&Message::Info { msg: x })),
+        tlua::function1(|x: String| {
+            traft::node::global()
+                .expect("uninitialized")
+                .propose(traft::Op::Info { msg: x }, Duration::from_secs(1))
+        }),
+    );
+    luamod.set(
+        "raft_timeout_now",
+        tlua::function0(|| traft::node::global().expect("uninitialized").timeout_now()),
     );
     luamod.set(
         "raft_propose_eval",
         tlua::function2(|timeout: f64, x: String| {
-            node().propose_wait_applied(
-                &Message::EvalLua { code: x },
+            traft::node::global().expect("uninitialized").propose(
+                traft::Op::EvalLua { code: x },
                 Duration::from_secs_f64(timeout),
             )
         }),
@@ -88,152 +94,50 @@ fn picolib_setup(args: args::Run) {
                         {raft_state = box.space.raft_state:fselect()},
                         {raft_group = box.space.raft_group:fselect()}
                 end
+
+                function inspect_idx(idx)
+                    local digest = require('digest')
+                    local msgpack = require('msgpack')
+                    local row = box.space.raft_log:get(idx)
+                    local function decode(v)
+                        local ok, ret = pcall(function()
+                            return msgpack.decode(digest.base64_decode(v))
+                        end)
+                        return ok and ret or "???"
+                    end
+                    return {
+                        decode(row.data),
+                        decode(row.ctx),
+                        nil
+                    }
+                end
             "#,
         )
         .unwrap();
     }
 }
 
-fn start(args: &args::Run) {
-    if tarantool::cfg().is_some() {
-        // Already initialized
-        return;
-    }
-
-    let mut cfg = tarantool::Cfg {
-        listen: None,
-        wal_dir: args.data_dir.clone(),
-        memtx_dir: args.data_dir.clone(),
-        ..Default::default()
-    };
-
-    std::fs::create_dir_all(&args.data_dir).unwrap();
-
-    tarantool::set_cfg(&cfg);
+fn init_handlers() {
     tarantool::eval(
         r#"
         box.schema.user.grant('guest', 'super', nil, nil, {if_not_exists = true})
-        box.cfg({log_level = 5})
-    "#,
+        "#,
     );
 
-    traft::Storage::init_schema();
-    init_handlers();
+    use discovery::raft_discover;
+    declare_cfunc!(raft_discover);
 
-    let raft_id: u64 = {
-        // The id already stored in tarantool snashot
-        let snap_id = traft::Storage::id().expect("failed to get id from storage");
-        // The id passed in env vars (or command line args)
-        let args_id = args.raft_id;
+    use traft::node::raft_interact;
+    declare_cfunc!(raft_interact);
 
-        match (snap_id, args_id) {
-            (None, _) => {
-                let id = args_id.unwrap_or(1);
-                traft::Storage::persist_id(id).expect("failed to persist id");
-                id
-            }
-            (Some(snap_id), Some(args_id)) if args_id != snap_id => {
-                panic!(
-                    indoc!(
-                        "
-                        Already initialized with a different PICODATA_RAFT_ID:
-                          snapshot: {s}
-                         from args: {a}
-                    "
-                    ),
-                    s = snap_id,
-                    a = args_id
-                )
-            }
-            (Some(snap_id), _) => snap_id,
-        }
-    };
-
-    // This is a temporary hack until fair joining is implemented
-    traft::Storage::persist_peers(&args.peers);
-
-    let raft_cfg = raft::Config {
-        id: raft_id,
-        pre_vote: true,
-        applied: traft::Storage::applied().unwrap().unwrap_or_default(),
-        ..Default::default()
-    };
-
-    unsafe {
-        NODE = Some(Box::leak(Box::new(
-            traft::Node::new(&raft_cfg, handle_committed_data).unwrap(),
-        )));
-    };
-
-    cfg.listen = Some(args.listen.clone());
-    tarantool::set_cfg(&cfg);
-
-    tlog!(Info, "Hello, Rust!"; "module" => std::module_path!());
-    tlog!(
-        Debug,
-        "Picodata running on {} {}",
-        tarantool::package(),
-        tarantool::version()
-    );
-}
-
-fn raft_tick(n_times: u32) {
-    let raft_node = node();
-    for _ in 0..n_times {
-        raft_node.tick();
-    }
-}
-
-fn handle_committed_data(data: &[u8]) {
-    use Message::*;
-
-    match Message::try_from(data) {
-        Ok(x) => match x {
-            EvalLua { code } => crate::tarantool::eval(&code),
-            Info { msg } => tlog!(Info, "{msg}"),
-            Empty => {}
-        },
-        Err(why) => tlog!(Error, "cannot decode raft entry data: {}", why),
-    }
-}
-
-macro_rules! declare_stored_c_funcs {
-     ( $($func_name:expr) , + $(,)? ) => {
-
-        // This is needed to tell the compiler that the functions are really used.
-        // Otherwise the functions get optimized out and disappear from the binary
-        // and we may get this error: dlsym(RTLD_DEFAULT, some_fn): symbol not found
-        fn used(_: unsafe extern "C" fn(FunctionCtx, FunctionArgs) -> c_int) {}
-
-        $(used($func_name);
-            crate::tarantool::eval(concat!(
-                "box.schema.func.create('.", stringify!($func_name), "', {
-                    language = 'C',
-                    if_not_exists = true
-                });"
-            ));
-        )+
-    }
-}
-
-fn init_handlers() {
-    declare_stored_c_funcs!(
-        //
-        raft_interact,
-        discover,
-    );
-}
-
-#[proc(packed_args)]
-fn raft_interact(msg: traft::row::Message) -> Result<(), CoercionError> {
-    node().step(raft::Message::try_from(msg)?);
-    Ok(())
+    use traft::node::raft_join;
+    declare_cfunc!(raft_join);
 }
 
 fn rm_tarantool_files(data_dir: &str) {
     std::fs::read_dir(data_dir)
-        .expect("failed reading data_dir")
-        .map(|entry| entry.unwrap_or_else(|e| panic!("Failed reading directory entry: {}", e)))
+        .expect("[supervisor] failed reading data_dir")
+        .map(|entry| entry.expect("[supervisor] failed reading directory entry"))
         .map(|entry| entry.path())
         .filter(|path| path.is_file())
         .filter(|f| {
@@ -242,79 +146,57 @@ fn rm_tarantool_files(data_dir: &str) {
                 .unwrap_or(false)
         })
         .for_each(|f| {
-            tlog!(Warning, "removing file: {}", (&f).to_string_lossy());
+            tlog!(
+                Warning,
+                "[supervisor] removing file: {}",
+                (&f).to_string_lossy()
+            );
             std::fs::remove_file(f).unwrap();
         });
 }
 
+struct ExitStatus {
+    raw: i32,
+}
+
 fn main() {
-    let res = match args::Picodata::from_args() {
-        args::Picodata::Run(r) => run(r),
-        args::Picodata::Tarantool(t) => tarantool(t),
-        args::Picodata::Test(t) => test(t),
+    let rc = match args::Picodata::from_args() {
+        args::Picodata::Run(args) => main_run(args),
+        args::Picodata::Test(args) => main_test(args),
+        args::Picodata::Tarantool(args) => main_tarantool(args),
     };
-    if let Err(e) = res {
-        eprintln!("Fatal: {}", e)
-    }
+    std::process::exit(rc.raw);
 }
 
-macro_rules! tarantool_main {
-    (@impl $tt_args:expr, $cb:expr, $cb_data:expr) => {
-        {
-            extern "C" {
-                fn tarantool_main(
-                    argc: i32,
-                    argv: *mut *mut c_char,
-                    cb: Option<extern "C" fn(*mut c_void)>,
-                    cb_data: *mut c_void,
-                ) -> c_int;
-            }
+#[derive(Debug, Serialize, Deserialize)]
+enum Entrypoint {
+    StartDiscover(),
+    StartJoin { leader_uri: String },
+    // StartBoot(),
+}
 
-            let tt_args = $tt_args;
-            // XXX: `argv` is a vec of pointers to data owned by `tt_args`, so
-            // make sure `tt_args` outlives `argv`, because the compiler is not
-            // gonna do that for you
-            let argv = tt_args.iter().map(|a| a.as_ptr()).collect::<Vec<_>>();
-
-            let rc = unsafe {
-                tarantool_main(
-                    argv.len() as _,
-                    argv.as_ptr() as _,
-                    $cb,
-                    $cb_data,
-                )
-            };
-
-            if rc == 0 {
-                Ok(())
-            } else {
-                Err(format!("return code {rc}"))
-            }
-        }
-    };
-    ($tt_args:expr) => {
-        tarantool_main!(@impl $tt_args, None, std::ptr::null_mut())
-    };
-    ($tt_args:expr, $pd_args:expr => $cb:expr) => {
-        {
-            extern "C" fn trampoline(data: *mut c_void) {
-                let args = unsafe { Box::from_raw(data as _) };
-                $cb(*args)
-            }
-
-            tarantool_main!(@impl
-                $tt_args,
-                Some(trampoline),
-                Box::into_raw(Box::new($pd_args)) as _
-            )
+impl Entrypoint {
+    fn exec(self, supervisor: Supervisor) {
+        match self {
+            Self::StartDiscover() => start_discover(supervisor),
+            Self::StartJoin { leader_uri } => start_join(leader_uri, supervisor),
+            // Self::StartBoot() => start_boot(supervisor),
         }
     }
 }
 
-const INIT_SUBPROCESS_FLAG_ENV_VAR: &str = "PICODATA_IS_INIT_SUBPROCESS";
-const REBOOTSTRAP_FLAG_ENV_VAR: &str = "PICODATA_REBOOTSTRAP";
+#[derive(Debug, Serialize, Deserialize)]
+struct IpcMessage {
+    next_entrypoint: Entrypoint,
+    drop_db: bool,
+}
 
-fn run(args: args::Run) -> Result<(), String> {
+struct Supervisor {
+    pub args: args::Run,
+    pub tx: ipc::Sender<IpcMessage>,
+}
+
+fn main_run(args: args::Run) -> ExitStatus {
     // Tarantool implicitly parses some environment variables.
     // We don't want them to affect the behavior and thus filter them out.
     for (k, _) in std::env::vars() {
@@ -323,126 +205,402 @@ fn run(args: args::Run) -> Result<(), String> {
         }
     }
 
-    if std::env::var(REBOOTSTRAP_FLAG_ENV_VAR).is_ok() {
-        // Rebootstrap main process
-        std::env::remove_var(REBOOTSTRAP_FLAG_ENV_VAR);
-        let argv: Vec<String> = std::env::args().collect();
-        let mut command = std::process::Command::new(&argv[0]);
-        command
-            .args(&argv[1..])
-            .stdin(Stdio::null())
-            .env(INIT_SUBPROCESS_FLAG_ENV_VAR, "1");
-        let mut child = command.spawn().expect("failed to spawn child process");
-        tlog!(Warning, "Spawned a child process pid={}", child.id());
-        std::thread::sleep(Duration::from_secs(3));
-        tlog!(
-            Warning,
-            "Sending SIGTERM to the child process pid={}",
-            child.id()
-        );
-        signal::kill(Pid::from_raw(child.id() as i32), Signal::SIGTERM).unwrap();
-        let exit_status = child.wait().unwrap();
-        tlog!(Warning, "Child process {}", exit_status);
-        tlog!(Warning, "Cleaning up the files of the child process...");
-        rm_tarantool_files(&args.data_dir);
+    let mut entrypoint = Entrypoint::StartDiscover {};
+
+    // Tarantool running in a fork (or, to be more percise, the
+    // libreadline) modifies termios settings to intercept echoed text.
+    //
+    // After subprocess termination it's not always possible to
+    // restore the settings (e.g. in case of SIGSEGV). At least it
+    // tries to. To preserve tarantool console operable, we cache
+    // initial termios attributes and restore them manually.
+    //
+    let tcattr = tcgetattr(0).ok();
+
+    loop {
+        tlog!(Info, "[supervisor] running {:?}", entrypoint);
+
+        let pipe = ipc::channel::<IpcMessage>();
+        let (rx, tx) = pipe.expect("pipe creation failed");
+
+        let pid = unsafe { fork() };
+        match pid.expect("fork failed") {
+            ForkResult::Child => {
+                drop(rx);
+                prctl::set_death_signal(15) // SIGTERM upon parent death
+                    .map_err(|e| tlog!(Error, "prctl failed: {e}"))
+                    .ok();
+
+                extern "C" fn trampoline(data: *mut libc::c_void) {
+                    // let args = unsafe { Box::from_raw(data as _) };
+                    let argbox = unsafe { Box::<(Entrypoint, Supervisor)>::from_raw(data as _) };
+                    let (entrypoint, supervisor) = *argbox;
+                    entrypoint.exec(supervisor);
+                }
+
+                // `argv` is a vec of pointers to data owned by `tt_args`, so
+                // make sure `tt_args` outlives `argv`, because the compiler is not
+                // gonna do that for you
+                let tt_args = args.tt_args().unwrap();
+                let argv = tt_args.iter().map(|a| a.as_ptr()).collect::<Vec<_>>();
+                let supervisor = Supervisor { args, tx };
+                let rc = unsafe {
+                    tarantool::main(
+                        argv.len() as _,
+                        argv.as_ptr() as _,
+                        Some(trampoline),
+                        Box::into_raw(Box::new((entrypoint, supervisor))) as _,
+                    )
+                };
+                return ExitStatus { raw: rc };
+            }
+            ForkResult::Parent { child } => {
+                drop(tx);
+                let msg = rx.recv().ok();
+
+                let mut rc: i32 = 0;
+                unsafe {
+                    libc::waitpid(
+                        child.into(),                // pid_t
+                        &mut rc as *mut libc::c_int, // int*
+                        0,                           // int options
+                    )
+                };
+
+                // Restore termios configuration as planned
+                if let Some(tcattr) = tcattr.as_ref() {
+                    tcsetattr(0, TCSADRAIN, tcattr).unwrap();
+                }
+
+                tlog!(Info, "[supervisor] tarantool process finished: {:?}",
+                    WaitStatus::from_raw(child.into(), rc);
+                );
+
+                if let Some(msg) = msg {
+                    entrypoint = msg.next_entrypoint;
+                    if msg.drop_db {
+                        tlog!(Info, "[supervisor] tarantool requested rebootstrap");
+                        rm_tarantool_files(&args.data_dir);
+                    }
+                } else {
+                    std::process::exit(rc);
+                }
+            }
+        };
+    }
+}
+
+fn start_discover(supervisor: Supervisor) {
+    tlog!(Info, ">>>>> start_discover()");
+    let args = &supervisor.args;
+
+    picolib_setup(&args);
+    assert!(tarantool::cfg().is_none());
+
+    let mut cfg = tarantool::Cfg {
+        listen: None,
+        read_only: false,
+        wal_dir: args.data_dir.clone(),
+        memtx_dir: args.data_dir.clone(),
+        ..Default::default()
+    };
+
+    std::fs::create_dir_all(&args.data_dir).unwrap();
+    tarantool::set_cfg(&cfg);
+
+    traft::Storage::init_schema();
+    discovery::init_global(
+        discovery::PeerInfo {
+            raft_id: traft::Storage::id().unwrap(),
+            random_uuid: tarantool::info("uuid").unwrap(),
+            instance_id: args.instance_id.clone(),
+            replicaset_id: args.replicaset_id.clone(),
+            advertise_address: args.advertise_address(),
+        },
+        &args.peers,
+    );
+    init_handlers();
+
+    cfg.listen = Some(args.listen.clone());
+    tarantool::set_cfg(&cfg);
+    let summary = discovery::wait_global().unwrap();
+
+    // TODO assert traft::Storage::instance_id == (null || args.instance_id)
+    if let Some(_) = traft::Storage::id().unwrap() {
+        return postjoin(supervisor);
     }
 
-    if std::env::var(INIT_SUBPROCESS_FLAG_ENV_VAR).is_ok() {
-        // Rebootstrap child process
-        tlog!(Warning, "I'm a new child process");
-    }
+    let msg = if summary.its_me {
+        return start_boot(supervisor);
+        // let next_entrypoint = Entrypoint::StartBoot();
+        // IpcMessage {
+        //     next_entrypoint,
+        //     drop_db: false,
+        // }
+    } else {
+        let next_entrypoint = Entrypoint::StartJoin {
+            leader_uri: summary.leader.unwrap().advertise_address,
+        };
+        IpcMessage {
+            next_entrypoint,
+            drop_db: true,
+        }
+    };
 
-    fn default_advertise_address(listen_address: &str) -> String {
-        let (listen_hostname, listen_port) = listen_address
-            .rsplit_once(":")
-            .expect("failed to split listen_addres into hostname and port");
+    supervisor.tx.send(&msg);
+    std::process::exit(0);
+}
 
-        let advertise_hostname = match listen_hostname {
-            "0.0.0.0" => get_hostname(),
-            _ => listen_hostname.into(),
+fn start_boot(supervisor: Supervisor) {
+    tlog!(Info, ">>>>> start_boot()");
+    let args = &supervisor.args;
+
+    // picolib_setup(&args);
+    // assert!(tarantool::cfg().is_none());
+
+    // let cfg = tarantool::Cfg {
+    //     listen: None,
+    //     read_only: false,
+    //     wal_dir: args.data_dir.clone(),
+    //     memtx_dir: args.data_dir.clone(),
+    //     ..Default::default()
+    // };
+
+    // std::fs::create_dir_all(&args.data_dir).unwrap();
+    // tarantool::set_cfg(&cfg);
+
+    // traft::Storage::init_schema();
+    // init_handlers();
+
+    let raft_id = 1u64;
+
+    start_transaction(|| -> Result<(), Error> {
+        let cs = raft::ConfState {
+            voters: vec![raft_id],
+            ..Default::default()
         };
 
-        return format!("{advertise_hostname}:{listen_port}");
+        let e0 = {
+            let peer = traft::Peer {
+                raft_id,
+                instance_id: args.instance_id.clone(),
+                peer_address: args.advertise_address(),
+                voter: true,
+                commit_index: 0,
+            };
 
-        fn get_hostname() -> String {
-            let mut buf = [0u8; 64];
-            let hostname_cstr = gethostname(&mut buf).expect("failed getting hostname");
-            let hostname = hostname_cstr.to_str().expect("hostname wasn't valid UTF-8");
-            hostname.into()
-        }
-    }
+            let c1 = raft::ConfChange {
+                change_type: raft::ConfChangeType::AddNode,
+                node_id: raft_id,
+                ..Default::default()
+            };
+            let ctx = traft::EntryContextConfChange {
+                lc: traft::LogicalClock::new(1, 0),
+                peers: vec![peer],
+            };
+            let e = traft::Entry {
+                entry_type: raft::EntryType::EntryConfChange.value(),
+                index: 1,
+                term: 1,
+                data: c1.write_to_bytes().unwrap(),
+                context: Some(traft::EntryContext::ConfChange(ctx)),
+            };
 
-    let _advertise_address = args
-        .advertise_address
-        .clone()
-        .unwrap_or_else(|| default_advertise_address(&args.listen));
+            raft::Entry::try_from(e).unwrap()
+        };
 
-    fn rpc_discover(
-        request: discovery::Request,
-        address: &discovery::Address,
-    ) -> discovery::Response {
-        discovery::net_box_repeat_call_until_succeed(address, ".discover", (request, address))
-    }
-
-    tarantool_main!(args.tt_args()?, args => |args: args::Run| {
-        if args.autorun {
-            start(&args);
-        }
-
-        if std::env::var("PICODATA_DISCOVER_PEERS").is_ok() {
-            let bootstrap_role = discovery::discover(args.peers.iter().map(|p| &p.uri), rpc_discover);
-            tlog!(Info, "bootstrap role: {:?}", bootstrap_role);
-        }
-        picolib_setup(args);
+        traft::Storage::persist_conf_state(&cs).unwrap();
+        traft::Storage::persist_entries(&[e0]).unwrap();
+        traft::Storage::persist_commit(1).unwrap();
+        traft::Storage::persist_term(1).unwrap();
+        traft::Storage::persist_id(raft_id).unwrap();
+        Ok(())
     })
+    .unwrap();
+
+    postjoin(supervisor)
 }
 
-fn tarantool(args: args::Tarantool) -> Result<(), String> {
-    tarantool_main!(args.tt_args()?)
+fn start_join(leader_uri: String, supervisor: Supervisor) {
+    tlog!(Info, ">>>>> start_join({leader_uri})");
+    let args = &supervisor.args;
+
+    let req = traft::node::JoinRequest {
+        instance_id: args.instance_id.clone(),
+        replicaset_id: args.replicaset_id.clone(),
+        voter: false,
+        advertise_address: args.advertise_address(),
+    };
+
+    use traft::node::raft_join;
+    let fn_name = stringify_cfunc!(raft_join);
+    let timeout = Duration::from_secs_f32(1.5);
+    let resp: traft::node::JoinResponse =
+        tarantool::net_box_call(&leader_uri, fn_name, req, timeout).unwrap_or_else(|e| {
+            tlog!(Warning, "net_box_call failed: {e}";
+                "peer" => &leader_uri,
+                "fn" => fn_name,
+            );
+
+            panic!();
+        });
+
+    picolib_setup(&args);
+    assert!(tarantool::cfg().is_none());
+
+    let cfg = tarantool::Cfg {
+        listen: None,
+        read_only: false,
+        // instance_uuid: resp.instance_uuid
+        // replicaset_uuid: resp.replicaset_uuid
+        replication: resp.box_replication.clone(),
+        wal_dir: args.data_dir.clone(),
+        memtx_dir: args.data_dir.clone(),
+        ..Default::default()
+    };
+
+    std::fs::create_dir_all(&args.data_dir).unwrap();
+    tarantool::set_cfg(&cfg);
+
+    traft::Storage::init_schema();
+    init_handlers();
+
+    let raft_id = resp.peer.raft_id;
+    start_transaction(|| -> Result<(), Error> {
+        for peer in resp.raft_group {
+            traft::Storage::persist_peer(&peer).unwrap();
+        }
+        traft::Storage::persist_id(raft_id).unwrap();
+        Ok(())
+    })
+    .unwrap();
+
+    postjoin(supervisor)
 }
 
-#[proc]
-fn discover(
-    request: discovery::Request,
-    address: discovery::Address,
-) -> proc::ReturnMsgpack<discovery::Response> {
-    proc::ReturnMsgpack(discovery::handle_request(request, &address))
-}
+fn postjoin(supervisor: Supervisor) {
+    tlog!(Info, ">>>>> postjoin()");
+    let args = &supervisor.args;
 
-fn test(args: args::Test) -> Result<(), String> {
-    // Tarantool implicitly parses some environment variables.
-    // We don't want them to affect the behavior and thus filter them out.
-    for (k, _) in std::env::vars() {
-        if k.starts_with("TT_") || k.starts_with("TARANTOOL_") {
-            std::env::remove_var(k)
+    let raft_id = traft::Storage::id().unwrap().unwrap();
+    let applied = traft::Storage::applied().unwrap().unwrap_or(0);
+    let raft_cfg = raft::Config {
+        id: raft_id,
+        applied,
+        pre_vote: true,
+        ..Default::default()
+    };
+
+    let node = traft::node::Node::new(&raft_cfg);
+    let node = node.expect("failed initializing raft node");
+
+    let cs = traft::Storage::conf_state().unwrap();
+    if cs.voters == vec![raft_cfg.id] {
+        tlog!(
+            Info,
+            concat!(
+                "this is the only vorer in cluster, ",
+                "triggering election immediately"
+            )
+        );
+
+        node.tick(1); // apply configuration, if any
+        node.campaign(); // trigger election immediately
+        assert_eq!(node.status().raft_state, "Leader");
+    }
+
+    traft::node::set_global(node);
+    let node = traft::node::global().unwrap();
+
+    tarantool::set_cfg(&tarantool::Cfg {
+        listen: Some(args.listen.clone()),
+        ..tarantool::cfg().unwrap()
+    });
+
+    while node.status().leader_id == 0 {
+        node.wait_status();
+    }
+
+    loop {
+        let timeout = Duration::from_secs(1);
+        if let Err(e) = traft::node::global().unwrap().read_index(timeout) {
+            tlog!(Warning, "unable to get a read barrier: {e}");
+            continue;
+        } else {
+            break;
         }
     }
 
-    let mut args = args.run;
-    args.listen = "127.0.0.1:0".into();
+    loop {
+        let timeout = Duration::from_secs(1);
+        let me = traft::Storage::peer_by_raft_id(raft_id)
+            .unwrap()
+            .expect("peer not found");
 
-    let temp = tempfile::tempdir().map_err(|e| format!("Failed creating a temp directory: {e}"))?;
-    std::env::set_current_dir(temp.path())
-        .map_err(|e| format!("Failed chainging current directory: {e}"))?;
+        if me.voter && me.peer_address == args.advertise_address() {
+            // already ok
+            break;
+        }
 
-    tarantool_main!(args.tt_args()?, args => |args: args::Run| {
-        start(&args);
-        picolib_setup(args);
-        run_tests();
-    })
+        tlog!(Warning, "initiating self-promotion of {me:?}");
+        let req = traft::node::JoinRequest {
+            instance_id: me.instance_id.clone(),
+            replicaset_id: None, // TODO
+            voter: true,
+            advertise_address: args.advertise_address(),
+        };
+
+        let leader_id = node.status().leader_id;
+        let leader = traft::Storage::peer_by_raft_id(leader_id).unwrap().unwrap();
+
+        use traft::node::raft_join;
+        let fn_name = stringify_cfunc!(raft_join);
+        let now = Instant::now();
+        match tarantool::net_box_call(&leader.peer_address, fn_name, req, timeout) {
+            Err(e) => {
+                tlog!(Error, "failed to promote myself: {e}");
+                fiber::sleep(timeout.saturating_sub(now.elapsed()));
+                continue;
+            }
+            Ok(traft::node::JoinResponse { .. }) => {
+                break;
+            }
+        };
+    }
+}
+
+fn main_tarantool(args: args::Tarantool) -> ExitStatus {
+    // XXX: `argv` is a vec of pointers to data owned by `tt_args`, so
+    // make sure `tt_args` outlives `argv`, because the compiler is not
+    // gonna do that for you
+    let tt_args = args.tt_args();
+    let argv = tt_args.iter().map(|a| a.as_ptr()).collect::<Vec<_>>();
+
+    let rc = unsafe {
+        tarantool::main(
+            argv.len() as _,
+            argv.as_ptr() as _,
+            None,
+            std::ptr::null_mut(),
+        )
+    };
+
+    ExitStatus { raw: rc }
 }
 
 macro_rules! color {
-    (@impl red) => { "\x1b[0;31m" };
-    (@impl green) => { "\x1b[0;32m" };
-    (@impl clear) => { "\x1b[0m" };
-    (@impl $s:literal) => { $s };
+    (@priv red) => { "\x1b[0;31m" };
+    (@priv green) => { "\x1b[0;32m" };
+    (@priv clear) => { "\x1b[0m" };
+    (@priv $s:literal) => { $s };
     ($($s:tt)*) => {
-        ::std::concat![ $( color!(@impl $s) ),* ]
+        ::std::concat![ $( color!(@priv $s) ),* ]
     }
 }
 
-fn run_tests() {
+fn main_test(args: args::Test) -> ExitStatus {
+    cleanup_env!();
+
     const PASSED: &str = color![green "ok" clear];
     const FAILED: &str = color![red "FAILED" clear];
     let mut cnt_passed = 0u32;
@@ -450,30 +608,108 @@ fn run_tests() {
 
     let now = std::time::Instant::now();
 
+    println!();
+    println!(
+        "running {} tests",
+        inventory::iter::<InnerTest>.into_iter().count()
+    );
     for t in inventory::iter::<InnerTest> {
-        eprint!("Running {} ... ", t.name);
-        if let Err(e) = std::panic::catch_unwind(t.body) {
-            eprintln!("{FAILED}");
-            cnt_failed += 1;
-            if let Some(msg) = e
-                .downcast_ref::<String>()
-                .map(|e| e.as_str())
-                .or_else(|| e.downcast_ref::<&'static str>().copied())
-            {
-                eprintln!("\n{msg}\n");
+        print!("test {} ... ", t.name);
+
+        let (mut rx, tx) = ipc::pipe().expect("pipe creation failed");
+        let pid = unsafe { fork() };
+        match pid.expect("fork failed") {
+            ForkResult::Child => {
+                drop(rx);
+                unistd::close(0).ok(); // stdin
+                unistd::dup2(*tx, 1).ok(); // stdout
+                unistd::dup2(*tx, 2).ok(); // stderr
+                drop(tx);
+
+                // `argv` is a vec of pointers to data owned by `tt_args`, so
+                // make sure `tt_args` outlives `argv`, because the compiler is not
+                // gonna do that for you
+                let tt_args = args.tt_args().unwrap();
+                let argv = tt_args.iter().map(|a| a.as_ptr()).collect::<Vec<_>>();
+                let rc = unsafe {
+                    tarantool::main(
+                        argv.len() as _,
+                        argv.as_ptr() as _,
+                        Some(test_one),
+                        Box::into_raw(Box::new(t)) as _,
+                    )
+                };
+                return ExitStatus { raw: rc };
             }
-        } else {
-            eprintln!("{PASSED}");
-            cnt_passed += 1
-        }
+            ForkResult::Parent { child } => {
+                drop(tx);
+                let log = {
+                    let mut buf = Vec::new();
+                    use std::io::Read;
+                    rx.read_to_end(&mut buf)
+                        .map_err(|e| println!("error reading ipc pipe: {e}"))
+                        .ok();
+                    buf
+                };
+
+                let mut rc: i32 = 0;
+                unsafe {
+                    libc::waitpid(
+                        child.into(),                // pid_t
+                        &mut rc as *mut libc::c_int, // int*
+                        0,                           // int options
+                    )
+                };
+
+                if rc == 0 {
+                    println!("{PASSED}");
+                    cnt_passed += 1;
+                } else {
+                    println!("{FAILED}");
+                    cnt_failed += 1;
+
+                    use std::io::Write;
+                    println!();
+                    std::io::stderr()
+                        .write_all(&log)
+                        .map_err(|e| println!("error writing stderr: {e}"))
+                        .ok();
+                    println!();
+                }
+            }
+        };
     }
 
     let ok = cnt_failed == 0;
+    println!();
     print!("test result: {}.", if ok { PASSED } else { FAILED });
     print!(" {cnt_passed} passed;");
     print!(" {cnt_failed} failed;");
     println!(" finished in {:.2}s", now.elapsed().as_secs_f32());
-    eprintln!();
+    println!();
 
-    std::process::exit(!ok as i32)
+    ExitStatus { raw: !ok as _ }
+}
+
+extern "C" fn test_one(data: *mut libc::c_void) {
+    let t = unsafe { Box::<&InnerTest>::from_raw(data as _) };
+    let temp = tempfile::tempdir().expect("Failed creating a temp directory");
+    std::env::set_current_dir(temp.path()).expect("Failed chainging current directory");
+
+    let cfg = tarantool::Cfg {
+        listen: Some("127.0.0.1:0".into()),
+        read_only: false,
+        ..Default::default()
+    };
+
+    tarantool::set_cfg(&cfg);
+    traft::Storage::init_schema();
+    tarantool::eval(
+        r#"
+        box.schema.user.grant('guest', 'super', nil, nil, {if_not_exists = true})
+        "#,
+    );
+
+    (t.body)();
+    std::process::exit(0i32);
 }

@@ -1,16 +1,79 @@
 use std::ffi::CStr;
+use std::time::Duration;
+use std::time::Instant;
 
 use ::tarantool::lua_state;
+use ::tarantool::net_box;
 use ::tarantool::tlua::{self, LuaFunction, LuaTable};
+use ::tarantool::tuple::AsTuple;
+
+#[macro_export]
+macro_rules! stringify_cfunc {
+    ( $func_name:expr ) => {{
+        use ::tarantool::tuple::FunctionArgs;
+        use ::tarantool::tuple::FunctionCtx;
+        use libc::c_int;
+
+        let _: unsafe extern "C" fn(FunctionCtx, FunctionArgs) -> c_int = $func_name;
+        concat!(".", stringify!($func_name))
+    }};
+}
+
+#[macro_export]
+macro_rules! declare_cfunc {
+    ( $func_name:expr ) => {{
+        use ::tarantool::tuple::FunctionArgs;
+        use ::tarantool::tuple::FunctionCtx;
+        use libc::c_int;
+
+        // This is needed to tell the compiler that the functions are really used.
+        // Otherwise the functions get optimized out and disappear from the binary
+        // and we may get this error: dlsym(RTLD_DEFAULT, some_fn): symbol not found
+        fn used(_: unsafe extern "C" fn(FunctionCtx, FunctionArgs) -> c_int) {}
+
+        used($func_name);
+        crate::tarantool::eval(concat!(
+            "box.schema.func.create('.",
+            stringify!($func_name),
+            "', {
+                language = 'C',
+                if_not_exists = true
+            });"
+        ));
+    }};
+}
+
+#[macro_export]
+macro_rules! cleanup_env {
+    () => {
+        // Tarantool implicitly parses some environment variables.
+        // We don't want them to affect the behavior and thus filter them out.
+
+        for (k, _) in std::env::vars() {
+            if k.starts_with("TT_") || k.starts_with("TARANTOOL_") {
+                std::env::remove_var(k)
+            }
+        }
+    };
+}
 
 mod ffi {
     use libc::c_char;
+    use libc::c_int;
+    use libc::c_void;
 
     extern "C" {
         pub fn tarantool_version() -> *const c_char;
         pub fn tarantool_package() -> *const c_char;
+        pub fn tarantool_main(
+            argc: i32,
+            argv: *mut *mut c_char,
+            cb: Option<extern "C" fn(*mut c_void)>,
+            cb_data: *mut c_void,
+        ) -> c_int;
     }
 }
+pub use ffi::tarantool_main as main;
 
 pub fn version() -> &'static str {
     let c_ptr = unsafe { ffi::tarantool_version() };
@@ -37,27 +100,49 @@ inventory::submit!(crate::InnerTest {
 #[derive(Clone, Debug, tlua::Push, tlua::LuaRead, PartialEq)]
 pub struct Cfg {
     pub listen: Option<String>,
+    pub read_only: bool,
+
+    pub instance_uuid: Option<String>,
+    pub replicaset_uuid: Option<String>,
+    pub replication: Vec<String>,
+
     pub wal_dir: String,
     pub memtx_dir: String,
+
     pub feedback_enabled: bool,
+    pub log_level: u8,
 }
 
 impl Default for Cfg {
     fn default() -> Self {
         Self {
             listen: Some("3301".into()),
+            read_only: true,
+
+            instance_uuid: None,
+            replicaset_uuid: None,
+            replication: vec![],
+
             wal_dir: ".".into(),
             memtx_dir: ".".into(),
+
             feedback_enabled: false,
+            log_level: tarantool::log::SayLevel::Info as u8,
         }
     }
 }
 
-#[allow(dead_code)]
 pub fn cfg() -> Option<Cfg> {
     let l = lua_state();
     let b: LuaTable<_> = l.get("box")?;
     b.get("cfg")
+}
+
+pub fn info(k: &str) -> Option<String> {
+    let l = lua_state();
+    let b: LuaTable<_> = l.get("box")?;
+    let info: LuaTable<_> = b.get("info").unwrap();
+    info.get(k)
 }
 
 pub fn set_cfg(cfg: &Cfg) {
@@ -69,4 +154,37 @@ pub fn set_cfg(cfg: &Cfg) {
 pub fn eval(code: &str) {
     let l = lua_state();
     l.exec(code).unwrap()
+}
+
+// fn net_box_repeat_call_until_succeed<Args, Res, Addr>(
+pub fn net_box_call<Args, Res, Addr>(
+    address: Addr,
+    fn_name: &str,
+    args: Args,
+    timeout: Duration,
+) -> Result<Res, ::tarantool::error::Error>
+where
+    Args: AsTuple,
+    Addr: std::net::ToSocketAddrs + std::fmt::Display,
+    Res: serde::de::DeserializeOwned,
+{
+    let now = Instant::now();
+
+    let conn_opts = net_box::ConnOptions {
+        connect_timeout: timeout,
+        ..Default::default()
+    };
+
+    let conn = net_box::Conn::new(&address, conn_opts, None)?;
+
+    let call_opts = net_box::Options {
+        timeout: Some(timeout.saturating_sub(now.elapsed())),
+        ..Default::default()
+    };
+
+    let tuple = conn
+        .call(fn_name, &args, &call_opts)?
+        .expect("unexpected net_box result Ok(None)");
+
+    tuple.into_struct::<((Res,),)>().map(|res| res.0 .0)
 }

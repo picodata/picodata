@@ -1,129 +1,218 @@
 use ::raft::prelude as raft;
 use ::raft::Error as RaftError;
+use ::tarantool::error::TransactionError;
 use ::tarantool::fiber;
+use ::tarantool::proc;
 use ::tarantool::tlua;
-use ::tarantool::util::IntoClones;
+use ::tarantool::transaction::start_transaction;
+use ::tarantool::tuple::AsTuple;
+use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::convert::TryFrom;
+use std::error::Error as StdError;
 use std::rc::Rc;
-
 use std::time::Duration;
 use std::time::Instant;
+use thiserror::Error;
 
+use crate::traft::ContextCoercion as _;
+use ::tarantool::util::IntoClones as _;
+use protobuf::Message as _;
+use protobuf::ProtobufEnum as _;
+
+use crate::mailbox::Mailbox;
 use crate::tlog;
+use crate::traft;
 use crate::traft::ConnectionPool;
 use crate::traft::LogicalClock;
 use crate::traft::Storage;
 
 type RawNode = raft::RawNode<Storage>;
-type Notify = fiber::Channel<()>;
+type Notify = fiber::Channel<Result<u64, RaftError>>;
+
+#[derive(Debug, Error)]
+pub enum Error {
+    #[error("uninitialized yet")]
+    Uninitialized,
+    #[error("timeout")]
+    Timeout,
+    #[error("{0}")]
+    RaftError(#[from] RaftError),
+}
 
 #[derive(Clone, Debug, tlua::Push, tlua::PushInto)]
 pub struct Status {
-    id: u64,
-    leader_id: u64,
-    raft_state: String,
+    pub id: u64,
+    pub leader_id: u64,
+    pub raft_state: String,
 }
 
+#[derive(Debug)]
 pub struct Node {
-    _main_loop: fiber::LuaUnitJoinHandle<'static>,
-    inbox: fiber::Channel<Request>,
+    _main_loop: fiber::UnitJoinHandle<'static>,
+    _join_loop: fiber::UnitJoinHandle<'static>,
+    loop_cond: Rc<fiber::Cond>,
+    main_inbox: Mailbox<NormalRequest>,
+    join_inbox: Mailbox<(JoinRequest, Notify)>,
     status: Rc<RefCell<Status>>,
+    status_cond: Rc<fiber::Cond>,
 }
 
 #[derive(Clone, Debug)]
-enum Request {
-    Propose { data: Vec<u8> },
-    ProposeWaitApplied { data: Vec<u8>, notify: Notify },
+enum NormalRequest {
+    ProposeNormal {
+        op: traft::Op,
+        notify: Notify,
+    },
+    ProposeConfChange {
+        peers: Vec<traft::Peer>,
+        notify: Notify,
+    },
+    ReadIndex {
+        notify: Notify,
+    },
+    Campaign(),
     Step(raft::Message),
-    Tick,
+    Tick(u32),
 }
 
 impl Node {
     pub const TICK: Duration = Duration::from_millis(100);
 
-    pub fn new(cfg: &raft::Config, on_commit: fn(&[u8])) -> Result<Self, RaftError> {
+    pub fn new(cfg: &raft::Config) -> Result<Self, RaftError> {
+        let loop_cond = Rc::new(fiber::Cond::new());
+        let status_cond = Rc::new(fiber::Cond::new());
+        let main_inbox = Mailbox::<NormalRequest>::new();
+        let join_inbox = Mailbox::<(JoinRequest, Notify)>::new();
         let raw_node = RawNode::new(cfg, Storage, &tlog::root())?;
-        let (inbox, inbox_clone) = fiber::Channel::new(0).into_clones();
-        let (status, status_clone) = Rc::new(RefCell::new(Status {
+        let status = Rc::new(RefCell::new(Status {
             id: cfg.id,
             leader_id: 0,
             raft_state: "Follower".into(),
-        }))
-        .into_clones();
-        let loop_fn = move || raft_main(inbox_clone, status_clone, raw_node, on_commit);
+        }));
 
-        Ok(Node {
-            inbox,
-            status,
-            _main_loop: fiber::defer_proc(loop_fn),
-        })
+        let main_loop_fn = {
+            let loop_cond = loop_cond.clone();
+            let status = status.clone();
+            let status_cond = status_cond.clone();
+            let main_inbox = main_inbox.clone();
+            move || raft_main_loop(loop_cond, main_inbox, status, status_cond, raw_node)
+        };
+
+        let join_loop_fn = {
+            let main_inbox = main_inbox.clone();
+            let join_inbox = join_inbox.clone();
+            move || raft_join_loop(join_inbox, main_inbox)
+        };
+
+        let node = Node {
+            loop_cond: loop_cond.clone(),
+            main_inbox: main_inbox.clone(),
+            join_inbox: join_inbox.clone(),
+            status: status.clone(),
+            status_cond: status_cond.clone(),
+            _main_loop: fiber::start_proc(main_loop_fn),
+            _join_loop: fiber::start_proc(join_loop_fn),
+        };
+
+        // Wait for the node to enter the main loop
+        loop_cond.wait();
+        Ok(node)
     }
 
     pub fn status(&self) -> Status {
         self.status.borrow().clone()
     }
 
-    pub fn propose(&self, data: impl Into<Vec<u8>>) {
-        let req = Request::Propose { data: data.into() };
-        self.inbox.send(req).unwrap();
+    pub fn wait_status(&self) {
+        self.status_cond.wait();
     }
 
-    pub fn propose_wait_applied(&self, data: impl Into<Vec<u8>>, timeout: Duration) -> bool {
-        let (rx, tx) = fiber::Channel::new(1).into_clones();
-        let now = Instant::now();
+    pub fn read_index(&self, timeout: Duration) -> Result<u64, Error> {
+        let (rx, tx) = Notify::new(1).into_clones();
 
-        let req = Request::ProposeWaitApplied {
-            data: data.into(),
-            notify: tx,
-        };
+        self.main_inbox
+            .send(NormalRequest::ReadIndex { notify: tx });
 
-        match self.inbox.send_timeout(req, timeout) {
-            Err(fiber::SendError::Disconnected(_)) => unreachable!(),
-            Err(fiber::SendError::Timeout(_)) => {
-                rx.close();
-                return false;
-            }
-            Ok(()) => (),
-        }
-
-        match rx.recv_timeout(timeout.saturating_sub(now.elapsed())) {
+        match rx.recv_timeout(timeout) {
+            Ok(v) => v.map_err(|e| e.into()),
             Err(_) => {
                 rx.close();
-                false
+                Err(Error::Timeout)
             }
-            Ok(()) => true,
         }
+    }
+
+    pub fn propose(&self, op: traft::Op, timeout: Duration) -> Result<u64, Error> {
+        let (rx, tx) = fiber::Channel::new(1).into_clones();
+
+        self.main_inbox
+            .send(NormalRequest::ProposeNormal { op, notify: tx });
+
+        match rx.recv_timeout(timeout) {
+            Ok(v) => v.map_err(|e| e.into()),
+            Err(_) => {
+                rx.close();
+                Err(Error::Timeout)
+            }
+        }
+    }
+
+    pub fn campaign(&self) {
+        let req = NormalRequest::Campaign();
+        self.main_inbox.send(req);
+        self.loop_cond.wait();
     }
 
     pub fn step(&self, msg: raft::Message) {
-        let req = Request::Step(msg);
-        self.inbox.send(req).unwrap();
+        let req = NormalRequest::Step(msg);
+        self.main_inbox.send(req);
     }
 
-    pub fn tick(&self) {
-        let req = Request::Tick;
-        self.inbox.send(req).unwrap();
+    pub fn tick(&self, n_times: u32) {
+        let req = NormalRequest::Tick(n_times);
+        self.main_inbox.send(req);
+        self.loop_cond.wait();
+    }
+
+    pub fn timeout_now(&self) {
+        self.step(raft::Message {
+            msg_type: raft::MessageType::MsgTimeoutNow,
+            ..Default::default()
+        })
+    }
+
+    pub fn join_one(&self, req: JoinRequest, timeout: Duration) -> Result<u64, RaftError> {
+        let (rx, tx) = fiber::Channel::new(1).into_clones();
+
+        self.join_inbox.send((req, tx));
+        match rx.recv_timeout(timeout) {
+            Ok(Ok(commit_index)) => Ok(commit_index),
+            Ok(Err(e)) => Err(e),
+            Err(_) => Err(RaftError::ConfChangeError("timeout".into())),
+        }
     }
 }
 
-fn raft_main(
-    inbox: fiber::Channel<Request>,
+fn raft_main_loop(
+    loop_cond: Rc<fiber::Cond>,
+    main_inbox: Mailbox<NormalRequest>,
     status: Rc<RefCell<Status>>,
+    status_cond: Rc<fiber::Cond>,
     mut raw_node: RawNode,
-    on_commit: fn(&[u8]),
 ) {
     let mut next_tick = Instant::now() + Node::TICK;
     let mut pool = ConnectionPool::builder()
         .handler_name(".raft_interact")
-        .queue_len(10)
-        .timeout(Node::TICK * 4)
+        .call_timeout(Node::TICK * 4)
+        .connect_timeout(Node::TICK * 4)
+        .inactivity_timeout(Duration::from_secs(60))
         .build();
 
     // This is a temporary hack until fair joining is implemented
     for peer in Storage::peers().unwrap() {
-        pool.connect(peer.raft_id, &peer.uri);
+        pool.connect(peer.raft_id, peer.peer_address);
     }
 
     let mut notifications: HashMap<LogicalClock, Notify> = HashMap::new();
@@ -134,35 +223,88 @@ fn raft_main(
         LogicalClock::new(id, gen)
     };
 
+    loop_cond.broadcast();
+
     loop {
         // Clean up obsolete notifications
         notifications.retain(|_, notify: &mut Notify| !notify.is_closed());
 
-        match inbox.recv_timeout(Node::TICK) {
-            Ok(Request::Propose { data }) => {
-                if let Err(e) = raw_node.propose(vec![], data) {
-                    tlog!(Error, "{e}");
+        for req in main_inbox.recv_timeout(Node::TICK) {
+            match req {
+                NormalRequest::ProposeNormal { op, notify } => {
+                    lc.inc();
+
+                    let ctx = traft::EntryContextNormal { lc: lc.clone(), op }.to_bytes();
+                    if let Err(e) = raw_node.propose(ctx, vec![]) {
+                        notify.try_send(Err(e)).expect("that's a bug");
+                    } else {
+                        notifications.insert(lc.clone(), notify);
+                    }
                 }
-            }
-            Ok(Request::ProposeWaitApplied { data, notify }) => {
-                lc.inc();
-                if let Err(e) = raw_node.propose(Vec::from(&lc), data) {
-                    tlog!(Error, "{e}");
-                    notify.close();
-                } else {
+                NormalRequest::ProposeConfChange { peers, notify } => {
+                    lc.inc();
+
+                    let mut changes = Vec::with_capacity(peers.len());
+                    for peer in &peers {
+                        let change_type = match peer.voter {
+                            true => raft::ConfChangeType::AddNode,
+                            false => raft::ConfChangeType::AddLearnerNode,
+                        };
+                        changes.push(raft::ConfChangeSingle {
+                            change_type,
+                            node_id: peer.raft_id,
+                            ..Default::default()
+                        });
+                    }
+
+                    let cc = raft::ConfChangeV2 {
+                        changes: changes.into(),
+                        transition: raft::ConfChangeTransition::Implicit,
+                        ..Default::default()
+                    };
+
+                    let ctx = traft::EntryContextConfChange {
+                        lc: lc.clone(),
+                        peers,
+                    }
+                    .to_bytes();
+
+                    if let Err(e) = raw_node.propose_conf_change(ctx, cc) {
+                        notify.try_send(Err(e)).expect("that's a bug");
+                    } else {
+                        notifications.insert(lc.clone(), notify);
+                    }
+                }
+                NormalRequest::ReadIndex { notify } => {
+                    lc.inc();
+
+                    // read_index puts this context into an Entry,
+                    // so we've got to compose full EntryContext,
+                    // despite single LogicalClock would be enough
+                    let ctx = traft::EntryContextNormal {
+                        lc: lc.clone(),
+                        op: traft::Op::Nop,
+                    }
+                    .to_bytes();
+                    raw_node.read_index(ctx);
                     notifications.insert(lc.clone(), notify);
                 }
-            }
-            Ok(Request::Step(msg)) => {
-                if let Err(e) = raw_node.step(msg) {
-                    tlog!(Error, "{e}");
+                NormalRequest::Campaign() => {
+                    if let Err(e) = raw_node.campaign() {
+                        tlog!(Error, "{e}");
+                    }
+                }
+                NormalRequest::Step(msg) => {
+                    if let Err(e) = raw_node.step(msg) {
+                        tlog!(Error, "{e}");
+                    }
+                }
+                NormalRequest::Tick(n_times) => {
+                    for _ in 0..n_times {
+                        raw_node.tick();
+                    }
                 }
             }
-            Ok(Request::Tick) => {
-                raw_node.tick();
-            }
-            Err(fiber::RecvError::Timeout) => (),
-            Err(fiber::RecvError::Disconnected) => unreachable!(),
         }
 
         let now = Instant::now();
@@ -173,86 +315,286 @@ fn raft_main(
 
         // Get the `Ready` with `RawNode::ready` interface.
         if !raw_node.has_ready() {
+            loop_cond.broadcast();
             continue;
         }
 
         let mut ready: raft::Ready = raw_node.ready();
 
-        let handle_messages = |msgs: Vec<raft::Message>| {
-            for msg in msgs {
-                if let Err(e) = pool.send(&msg) {
-                    tlog!(Error, "{e}");
-                }
-                // Send messages to other peers.
-            }
-        };
-
-        if !ready.messages().is_empty() {
-            // Send out the messages come from the node.
-            handle_messages(ready.take_messages());
-        }
-
-        if !ready.snapshot().is_empty() {
-            // This is a snapshot, we need to apply the snapshot at first.
-            unimplemented!();
-        }
-
-        let mut handle_committed_entries = |committed_entries: Vec<raft::Entry>| {
-            for entry in committed_entries {
-                Storage::persist_applied(entry.index).unwrap();
-
-                if entry.get_entry_type() == raft::EntryType::EntryNormal {
-                    on_commit(entry.get_data());
-                    if let Ok(lc) = LogicalClock::try_from(entry.get_context()) {
-                        if let Some(notify) = notifications.remove(&lc) {
-                            notify.try_send(()).ok();
+        macro_rules! handle_read_states {
+            ($read_states:ident) => {{
+                for rs in $read_states {
+                    if let Some(ctx) = traft::EntryContextNormal::read_from_bytes(&rs.request_ctx)
+                        .expect("Abnormal entry in message context")
+                    {
+                        if let Some(notify) = notifications.remove(&ctx.lc) {
+                            notify.try_send(Ok(rs.index)).ok();
                         }
                     }
                 }
+            }};
+        }
 
-                // TODO: handle EntryConfChange
+        macro_rules! handle_messages {
+            ($messages:ident) => {{
+                for msg in $messages {
+                    if let Err(e) = pool.send(&msg) {
+                        tlog!(Error, "{e}");
+                    }
+                }
+            }};
+        }
+
+        macro_rules! handle_committed_entries {
+            ($entries:ident) => {{
+                for entry in $entries
+                    .iter()
+                    .map(|e| traft::Entry::try_from(e).expect("wtf"))
+                {
+                    match raft::EntryType::from_i32(entry.entry_type) {
+                        Some(raft::EntryType::EntryNormal) => {
+                            use traft::Op::*;
+                            match entry.op() {
+                                None => (),
+                                Some(Nop) => (),
+                                Some(Info { msg }) => tlog!(Info, "{msg}"),
+                                Some(EvalLua { code }) => crate::tarantool::eval(&code),
+                            }
+                            if let Some(lc) = entry.lc() {
+                                if let Some(notify) = notifications.remove(lc) {
+                                    notify.try_send(Ok(entry.index)).ok();
+                                }
+                            }
+                        }
+                        Some(entry_type @ raft::EntryType::EntryConfChange)
+                        | Some(entry_type @ raft::EntryType::EntryConfChangeV2) => {
+                            if let Some(lc) = entry.lc() {
+                                if let Some(notify) = notifications.remove(lc) {
+                                    notify.try_send(Ok(entry.index)).ok();
+                                }
+                            }
+                            for peer in entry.iter_peers() {
+                                let peer = traft::Peer {
+                                    commit_index: entry.index,
+                                    ..peer.clone()
+                                };
+                                Storage::persist_peer(&peer).unwrap();
+                                pool.connect(peer.raft_id, peer.peer_address);
+                            }
+
+                            let cs = match entry_type {
+                                raft::EntryType::EntryConfChange => {
+                                    let mut cc = raft::ConfChange::default();
+                                    cc.merge_from_bytes(&entry.data).unwrap();
+                                    raw_node.apply_conf_change(&cc).unwrap()
+                                }
+                                raft::EntryType::EntryConfChangeV2 => {
+                                    let mut cc = raft::ConfChangeV2::default();
+                                    cc.merge_from_bytes(&entry.data).unwrap();
+                                    raw_node.apply_conf_change(&cc).unwrap()
+                                }
+                                _ => unreachable!(),
+                            };
+                            Storage::persist_conf_state(&cs).unwrap();
+                        }
+                        None => unreachable!(),
+                    }
+
+                    Storage::persist_applied(entry.index).unwrap();
+                }
+            }};
+        }
+
+        start_transaction(|| -> Result<(), TransactionError> {
+            if !ready.messages().is_empty() {
+                // Send out the messages come from the node.
+                let messages = ready.take_messages();
+                handle_messages!(messages);
             }
-        };
 
-        handle_committed_entries(ready.take_committed_entries());
+            if !ready.snapshot().is_empty() {
+                // This is a snapshot, we need to apply the snapshot at first.
+                unimplemented!();
+                // Storage::apply_snapshot(ready.snapshot()).unwrap();
+            }
 
-        if !ready.entries().is_empty() {
-            // Append entries to the Raft log.
-            Storage::persist_entries(ready.entries()).unwrap();
-        }
+            let committed_entries = ready.take_committed_entries();
+            handle_committed_entries!(committed_entries);
 
-        if let Some(hs) = ready.hs() {
-            // Raft HardState changed, and we need to persist it.
-            // let hs = hs.clone();
-            Storage::persist_hard_state(hs).unwrap();
-        }
+            if !ready.entries().is_empty() {
+                let e = ready.entries();
+                // Append entries to the Raft log.
+                Storage::persist_entries(e).unwrap();
+            }
 
-        if let Some(ss) = ready.ss() {
-            let mut status = status.borrow_mut();
-            status.leader_id = ss.leader_id;
-            status.raft_state = format!("{:?}", ss.raft_state);
-        }
+            if let Some(hs) = ready.hs() {
+                // Raft HardState changed, and we need to persist it.
+                // let hs = hs.clone();
+                Storage::persist_hard_state(hs).unwrap();
+            }
 
-        if !ready.persisted_messages().is_empty() {
-            // Send out the persisted messages come from the node.
-            handle_messages(ready.take_persisted_messages());
-        }
+            if let Some(ss) = ready.ss() {
+                let mut status = status.borrow_mut();
+                status.leader_id = ss.leader_id;
+                status.raft_state = format!("{:?}", ss.raft_state);
+                status_cond.broadcast();
+            }
+
+            if !ready.persisted_messages().is_empty() {
+                // Send out the persisted messages come from the node.
+                let messages = ready.take_persisted_messages();
+                handle_messages!(messages);
+            }
+
+            let read_states = ready.take_read_states();
+            handle_read_states!(read_states);
+
+            Ok(())
+        })
+        .unwrap();
 
         // Advance the Raft.
         let mut light_rd = raw_node.advance(ready);
 
         // Update commit index.
-        if let Some(commit) = light_rd.commit_index() {
-            Storage::persist_commit(commit).unwrap();
+        start_transaction(|| -> Result<(), TransactionError> {
+            if let Some(commit) = light_rd.commit_index() {
+                Storage::persist_commit(commit).unwrap();
+            }
+
+            // Send out the messages.
+            let messages = light_rd.take_messages();
+            handle_messages!(messages);
+
+            // Apply all committed entries.
+            let committed_entries = light_rd.take_committed_entries();
+            handle_committed_entries!(committed_entries);
+
+            // Advance the apply index.
+            raw_node.advance_apply();
+            Ok(())
+        })
+        .unwrap();
+
+        loop_cond.broadcast();
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct JoinRequest {
+    pub instance_id: String,
+    pub replicaset_id: Option<String>,
+    pub advertise_address: String,
+    pub voter: bool,
+}
+impl AsTuple for JoinRequest {}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct JoinResponse {
+    pub peer: traft::Peer,
+    pub raft_group: Vec<traft::Peer>,
+    pub box_replication: Vec<String>,
+    // TODO add later:
+    // Other parameters necessary for box.cfg()
+    // pub read_only: bool,
+}
+impl AsTuple for JoinResponse {}
+
+fn raft_join_loop(inbox: Mailbox<(JoinRequest, Notify)>, main_inbox: Mailbox<NormalRequest>) {
+    loop {
+        let batch = inbox.recv_timeout(Duration::MAX);
+        // TODO check leadership, else continue
+
+        let (rx, tx) = fiber::Channel::new(1).into_clones();
+
+        let mut peers = Vec::<traft::Peer>::new();
+        // TODO gererate raft_id
+
+        let mut max_id = Storage::max_peer_id().unwrap();
+        for (req, notify) in &batch {
+            // Check if the client is already joined.
+            // Be greedy when giving instances a new raft_id. We don't want
+            // rebotstrapped instances to affect quorum for no reason.
+            let maybe_peer = match Storage::peer_by_instance_id(&req.instance_id) {
+                Ok(v) => v,
+                Err(e) => {
+                    notify.try_send(Err(e.into())).expect("that's a bug");
+                    continue;
+                }
+            };
+
+            let raft_id = match maybe_peer {
+                Some(peer) => peer.raft_id,
+                None => {
+                    max_id += 1;
+                    max_id
+                }
+            };
+
+            // TODO check replicaset_id didn't change
+
+            peers.push(traft::Peer {
+                raft_id,
+                peer_address: req.advertise_address.clone(),
+                voter: req.voter,
+                instance_id: req.instance_id.clone(),
+                commit_index: 0,
+            });
         }
 
-        // Send out the messages.
-        handle_messages(light_rd.take_messages());
+        main_inbox.send(NormalRequest::ProposeConfChange { peers, notify: tx });
 
-        // Apply all committed entries.
-        handle_committed_entries(light_rd.take_committed_entries());
-
-        // Advance the apply index.
-        raw_node.advance_apply();
+        let res: Result<u64, RaftError> = rx.recv_timeout(Duration::MAX).unwrap();
+        match res {
+            Ok(v) => {
+                for (_, notify) in &batch {
+                    notify.try_send(Ok(v)).expect("that's a bug");
+                }
+            }
+            Err(e) => {
+                for (_, notify) in &batch {
+                    let e = RaftError::ConfChangeError(format!("{e:?}"));
+                    notify.try_send(Err(e)).expect("that's a bug");
+                }
+            }
+        }
     }
+}
+
+static mut RAFT_NODE: Option<&'static Node> = None;
+
+pub fn set_global(node: Node) {
+    unsafe {
+        RAFT_NODE = Some(Box::leak(Box::new(node)));
+    }
+}
+
+pub fn global() -> Option<&'static Node> {
+    unsafe { RAFT_NODE }
+}
+
+#[proc(packed_args)]
+fn raft_interact(pbs: Vec<traft::MessagePb>) -> Result<(), Box<dyn StdError>> {
+    let node = unsafe { RAFT_NODE }.ok_or(Error::Uninitialized)?;
+    for pb in pbs {
+        node.step(raft::Message::try_from(pb)?);
+    }
+    Ok(())
+}
+
+#[proc(packed_args)]
+fn raft_join(req: JoinRequest) -> Result<JoinResponse, Box<dyn StdError>> {
+    let node = unsafe { RAFT_NODE }
+        .ok_or_else(|| RaftError::ConfChangeError("Uninitialized yet".into()))?;
+
+    tlog!(Warning, "join_one({req:?})");
+    node.join_one(req.clone(), Duration::MAX)?;
+
+    let resp = JoinResponse {
+        peer: Storage::peer_by_instance_id(&req.instance_id)?.unwrap(),
+        raft_group: Storage::peers()?,
+        box_replication: vec![],
+    };
+    tlog!(Warning, "resp: {resp:?}");
+    Ok(resp)
 }

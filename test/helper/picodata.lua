@@ -54,6 +54,7 @@ function Picodata:initialize()
     checks('Picodata')
 
     self.env = fun.chain({
+        PICODATA_INSTANCE_ID = self.name,
         PICODATA_DATA_DIR = self.data_dir,
         PICODATA_LISTEN = self.listen,
         PICODATA_PEER = table.concat(self.peer, ','),
@@ -80,12 +81,18 @@ function Picodata:start()
         output_prefix = self.name,
     })
     log.debug('Started server PID: ' .. self.process.pid)
+end
+
+function Picodata:wait_started()
+    checks('Picodata')
 
     luatest.helpers.retrying({}, function()
         self:connect()
-        self.id = self:raft_status().id
+        local raft_status = self:raft_status()
+        luatest.assert(raft_status)
+        luatest.assert_ge(raft_status.leader_id, 1)
+        self.id = raft_status.id
     end)
-
 end
 
 --- Connect to the node.
@@ -162,50 +169,12 @@ function Picodata:raft_propose_eval(timeout, code)
     )
 end
 
-function Picodata:interact(opts)
-    checks('Picodata', {
-        -- See picolib/traft/row/message.rs
-        msg_type = "string",
-        to = "number",
-        from = "number",
-        term = "?number",
-        log_term = "?number",
-        index = "?number",
-        entries = "?table",
-        commit = "?number",
-        commit_term = "?number",
-        reject = "?boolean",
-        reject_hint = "?number",
-        priority = "?number",
-    })
-    return self:connect():call('.raft_interact', {
-        opts.msg_type,
-        opts.to,
-        opts.from,
-        opts.term or 0,
-        opts.log_term or 0,
-        opts.index or 0,
-        opts.entries or {},
-        opts.commit or 0,
-        opts.commit_term or 0,
-        opts.reject or false,
-        opts.reject_hint or 0,
-        opts.priority or 0,
-    })
-end
-
---- Try forcing leader election when previous leader is dead.
+--- Forcing leader election as if previous leader was dead.
 -- Wait for the node becoming a leader.
 -- Raise an exception if promotion fails.
-function Picodata:try_promote()
+function Picodata:promote_or_fail()
     checks('Picodata')
-
-    self:interact({
-        msg_type = "MsgTimeoutNow",
-        to = self.id,
-        from = 0,
-    })
-
+    self:connect():call('picolib.raft_timeout_now')
     return luatest.helpers.retrying({}, function()
         self:assert_raft_status("Leader", self.id)
     end)
