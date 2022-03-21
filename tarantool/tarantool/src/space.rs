@@ -596,6 +596,20 @@ impl Space {
     {
         self.primary_key().upsert(value, ops)
     }
+
+    /// Upsert a tuple using `ops` already encoded in message pack format.
+    ///
+    /// This function is similar to [`upsert`](#method.upsert) but instead
+    /// of a generic type parameter `Op` it accepts preencoded message pack
+    /// values. This is usefull when the operations have values of different
+    /// types.
+    #[inline(always)]
+    pub fn upsert_mp<K>(&mut self, key: &K, ops: &[Vec<u8>]) -> Result<(), Error>
+        where
+            K: AsTuple,
+    {
+        self.primary_key().upsert_mp(key, ops)
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -679,6 +693,34 @@ macro_rules! update {
                         )+
                     ];
                     $target.update_mp($key.borrow(), &ops)
+                };
+                f()
+            }
+        };
+    }
+
+/// Upsert a tuple or index.
+///
+/// The helper macro with semantic same as `space.upsert()`/`index.upsert()` functions, but supports
+/// different types in `ops` argument.
+///
+/// - `target` - updated space or index.
+/// - `value` - encoded tuple in MsgPack Array format (`[part1, part2, ...]`).
+/// - `ops` - encoded operations in MsgPack array format, e.g. `[['=', field_id, 100], ['!', 2, 'xxx']]`
+///
+/// See also: [space.update()](#method.update)
+#[macro_export]
+macro_rules! upsert {
+        ($target:expr, $value: expr, $($op:expr),+ $(,)?) => {
+            {
+                use std::borrow::Borrow;
+                let mut f = || -> $crate::Result<()> {
+                    let ops = [
+                        $(
+                            $crate::util::rmp_to_vec($op.borrow())?,
+                        )+
+                    ];
+                    $target.upsert_mp($value.borrow(), &ops)
                 };
                 f()
             }

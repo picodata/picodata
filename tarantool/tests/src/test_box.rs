@@ -4,7 +4,7 @@ use tarantool::index::{IndexFieldType, IndexOptions, IteratorType};
 use tarantool::sequence::Sequence;
 use tarantool::space::{Space, SpaceCreateOptions, SystemSpace};
 use tarantool::tuple::Tuple;
-use tarantool::update;
+use tarantool::{update, upsert};
 
 use crate::common::{QueryOperation, S1Record, S2Key, S2Record};
 
@@ -473,6 +473,56 @@ pub fn test_box_upsert() {
         output.unwrap().into_struct::<S1Record>().unwrap().text,
         "New"
     );
+}
+
+pub fn test_box_upsert_macro() {
+    let mut space = Space::find("test_s2").unwrap();
+
+    let original_input = S2Record {
+        id: 111,
+        key: "test_box_upsert_macro_1".to_string(),
+        value: "Original".to_string(),
+        a: 0,
+        b: 0,
+    };
+    space.insert(&original_input).unwrap();
+
+    let () = upsert!(
+            space,
+            &(S2Record {
+                id: 111,
+                key: "does not matter".to_string(),
+                value: "UpsertNew".to_string(),
+                a: 2,
+                b: 2
+            }),
+            ("=", "value", "UpsertUpdated"),
+            ("=", "a", 1),
+        )
+        .unwrap();
+
+    let () = upsert!(
+            space,
+            &S2Record {
+                id: 112,
+                key: "test_box_upsert_macro_2".to_string(),
+                value: "UpsertNew".to_string(),
+                a: 2,
+                b: 2
+            },
+            ("=", "key", "UpsertUpdated"),
+            ("=", "a", 1),
+    ).unwrap();
+
+    let output = space.get(&(111, )).unwrap().unwrap().into_struct::<S2Record>().unwrap();
+    assert_eq!(output.key, "test_box_upsert_macro_1");
+    assert_eq!(output.value, "UpsertUpdated");
+    assert_eq!(output.a, 1);
+
+    let output = space.get(&(112, )).unwrap().unwrap().into_struct::<S2Record>().unwrap();
+    assert_eq!(output.key, "test_box_upsert_macro_2");
+    assert_eq!(output.value, "UpsertNew");
+    assert_eq!(output.a, 2);
 }
 
 pub fn test_box_truncate() {

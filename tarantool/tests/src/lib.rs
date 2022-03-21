@@ -415,6 +415,7 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 test_box::test_box_update_macro,
                 test_box::test_box_update_index_macro,
                 test_box::test_box_upsert,
+                test_box::test_box_upsert_macro,
                 test_box::test_box_truncate,
                 test_box::test_box_get,
                 test_box::test_box_select,

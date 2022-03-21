@@ -515,14 +515,7 @@ impl Index {
         K: AsTuple,
         Op: AsTuple,
     {
-        let mp_encoded_ops = ops.iter().try_fold(
-            Vec::with_capacity(ops.len()),
-            |mut v, op| -> crate::Result<Vec<Vec<u8>>> {
-                let buf = rmp_serde::to_vec(&op)?;
-                v.push(buf);
-                Ok(v)
-            })?;
-
+        let mp_encoded_ops = Self::encode_ops(ops)?;
         self.update_mp(key, &mp_encoded_ops)
     }
 
@@ -564,9 +557,20 @@ impl Index {
         T: AsTuple,
         Op: AsTuple,
     {
+        let mp_encoded_ops = Self::encode_ops(ops)?;
+        self.upsert_mp(value, &mp_encoded_ops)
+    }
+
+    pub fn upsert_mp<T>(&mut self, value: &T, ops: &[Vec<u8>]) -> Result<(), Error>
+        where
+            T: AsTuple,
+    {
         let value_buf = value.serialize_as_tuple().unwrap();
         let value_buf_ptr = value_buf.as_ptr() as *const c_char;
-        let ops_buf = ops.serialize_as_tuple().unwrap();
+        let mut buf = Vec::with_capacity(128);
+        rmp::encode::write_array_len(&mut buf, ops.len() as u32)?;
+        ops.iter().try_for_each(|op_buf| buf.write_all(op_buf))?;
+        let ops_buf = unsafe { TupleBuffer::from_vec_unchecked(buf) };
         let ops_buf_ptr = ops_buf.as_ptr() as *const c_char;
         tuple_from_box_api!(
             ffi::box_upsert[
@@ -579,9 +583,18 @@ impl Index {
                 0,
                 @out
             ]
-        )
-            .map(|t| if t.is_some() {
-                unreachable!("Upsert doesn't return a tuple")
+        ).map(|t| if t.is_some() {
+            unreachable!("Upsert doesn't return a tuple")
+        })
+    }
+
+    fn encode_ops<Op: AsTuple>(ops: &[Op]) -> crate::Result<Vec<Vec<u8>>> {
+        ops.iter().try_fold(
+            Vec::with_capacity(ops.len()),
+            |mut v, op| -> crate::Result<Vec<Vec<u8>>> {
+                let buf = rmp_serde::to_vec(&op)?;
+                v.push(buf);
+                Ok(v)
             })
     }
 
