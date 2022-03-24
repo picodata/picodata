@@ -3,7 +3,7 @@ use tarantool::log::{say, SayLevel, TarantoolLogger};
 use once_cell::sync::Lazy;
 
 /// This test panics cause logger already set in log_with_user_defined_mapping test.
-pub fn test_log() {
+pub fn zlog() {
     static TLOGGER: TarantoolLogger = TarantoolLogger::new();
     log::set_logger(&TLOGGER).unwrap();
     log::set_max_level(LevelFilter::Debug);

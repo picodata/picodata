@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use tarantool::fiber::{sleep, Fiber, Latch};
 
-pub fn test_latch_lock() {
+pub fn latch_lock() {
     let latch = Rc::new(Latch::new());
 
     let mut fiber = Fiber::new("test_fiber", &mut |_| {
@@ -18,7 +18,7 @@ pub fn test_latch_lock() {
     fiber.join();
 }
 
-pub fn test_latch_try_lock() {
+pub fn latch_try_lock() {
     let latch = Rc::new(Latch::new());
 
     let mut fiber = Fiber::new("test_fiber", &mut |_| {

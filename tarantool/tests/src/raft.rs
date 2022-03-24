@@ -4,7 +4,7 @@ use tarantool::raft::inner::{NodeAction, NodeEvent, NodeInner, NodeState};
 use tarantool::raft::net::ConnectionId;
 use tarantool::raft::rpc;
 
-pub fn test_bootstrap_solo() {
+pub fn bootstrap_solo() {
     let local_addrs = vec!["127.0.0.1:3301".parse().unwrap()];
     let remote_addrs = vec!["127.0.0.1:3302".parse().unwrap()];
 
@@ -64,7 +64,7 @@ pub fn test_bootstrap_solo() {
     ))
 }
 
-pub fn test_bootstrap_2n() {
+pub fn bootstrap_2n() {
     let n1_addrs = vec!["127.0.0.1:3301".parse().unwrap()];
     let n2_addrs = vec!["127.0.0.1:3302".parse().unwrap()];
 

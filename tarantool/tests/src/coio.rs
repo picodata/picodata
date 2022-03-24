@@ -5,10 +5,10 @@ use std::os::unix::io::{AsRawFd, FromRawFd};
 use std::os::unix::net::UnixStream;
 use std::time::Duration;
 
-use tarantool::coio::{channel, coio_call, CoIOListener, CoIOStream, Receiver, Sender};
+use tarantool::coio::{channel, self, CoIOListener, CoIOStream, Receiver, Sender};
 use tarantool::fiber::{sleep, Fiber};
 
-pub fn test_coio_accept() {
+pub fn coio_accept() {
     let tcp_listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let addr = tcp_listener.local_addr().unwrap();
 
@@ -23,7 +23,7 @@ pub fn test_coio_accept() {
     assert!(accept_result.is_ok());
 }
 
-pub fn test_coio_read_write() {
+pub fn coio_read_write() {
     let (reader_soc, writer_soc) = UnixStream::pair().unwrap();
 
     let mut reader_fiber = Fiber::new("test_fiber", &mut move |soc: Box<UnixStream>| {
@@ -50,8 +50,8 @@ pub fn test_coio_read_write() {
     writer_fiber.join();
 }
 
-pub fn test_coio_call() {
-    let res = coio_call(
+pub fn coio_call() {
+    let res = coio::coio_call(
         &mut |x| {
             assert_eq!(*x, 99);
             100
@@ -61,7 +61,7 @@ pub fn test_coio_call() {
     assert_eq!(res, 100)
 }
 
-pub fn test_channel() {
+pub fn coio_channel() {
     let (tx, rx) = channel::<i32>(1);
 
     let mut fiber_a = Fiber::new("test_fiber_a", &mut |tx: Box<Sender<i32>>| {
@@ -83,7 +83,7 @@ pub fn test_channel() {
     fiber_b.join();
 }
 
-pub fn test_channel_rx_closed() {
+pub fn channel_rx_closed() {
     let (tx, _) = channel::<i32>(1);
 
     let mut fiber = Fiber::new("test_fiber", &mut |tx: Box<Sender<i32>>| {
@@ -95,7 +95,7 @@ pub fn test_channel_rx_closed() {
     fiber.join();
 }
 
-pub fn test_channel_tx_closed() {
+pub fn channel_tx_closed() {
     let (_, rx) = channel::<i32>(1);
 
     let mut fiber = Fiber::new("test_fiber", &mut |rx: Box<Receiver<i32>>| {

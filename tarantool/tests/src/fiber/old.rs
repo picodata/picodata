@@ -9,14 +9,14 @@ use tarantool::fiber::{
     fiber_yield, is_cancelled, sleep, Cond, Fiber, FiberAttr
 };
 
-pub fn test_fiber_new() {
+pub fn fiber_new() {
     let mut fiber = Fiber::new("test_fiber", &mut |_| 0);
     fiber.set_joinable(true);
     fiber.start(());
     fiber.join();
 }
 
-pub fn test_fiber_new_with_attr() {
+pub fn fiber_new_with_attr() {
     let mut attr = FiberAttr::new();
     attr.set_stack_size(100_000).unwrap();
 
@@ -26,7 +26,7 @@ pub fn test_fiber_new_with_attr() {
     fiber.join();
 }
 
-pub fn test_fiber_arg() {
+pub fn fiber_arg() {
     let mut fiber = Fiber::new("test_fiber", &mut |x| {
         assert_eq!(*x, 99);
         0
@@ -36,7 +36,7 @@ pub fn test_fiber_arg() {
     fiber.join();
 }
 
-pub fn test_fiber_cancel() {
+pub fn fiber_cancel() {
     let mut fiber = Fiber::new("test_fiber", &mut |_| {
         assert_eq!(is_cancelled(), false);
         sleep(Duration::from_millis(10));
@@ -49,7 +49,7 @@ pub fn test_fiber_cancel() {
     fiber.join();
 }
 
-pub fn test_fiber_wake() {
+pub fn fiber_wake() {
     let mut fiber = Fiber::new("test_fiber", &mut |_| {
         fiber_yield();
         0
@@ -61,7 +61,7 @@ pub fn test_fiber_wake() {
     fiber.join();
 }
 
-pub fn test_fiber_wake_multiple() {
+pub fn fiber_wake_multiple() {
     let res = Rc::new(RefCell::new(vec![]));
     let mut fibers = vec![];
     for (i, c) in (1..).zip(&['a', 'b', 'c']) {
@@ -99,7 +99,7 @@ pub fn test_fiber_wake_multiple() {
     // bad idea
 }
 
-pub fn test_fiber_cond_signal() {
+pub fn fiber_cond_signal() {
     let cond = Rc::new(Cond::new());
     let mut fiber = Fiber::new("test_fiber", &mut |cond: Box<Rc<Cond>>| {
         (*cond).wait();
@@ -112,7 +112,7 @@ pub fn test_fiber_cond_signal() {
     fiber.join();
 }
 
-pub fn test_fiber_cond_broadcast() {
+pub fn fiber_cond_broadcast() {
     let cond = Rc::new(Cond::new());
 
     let mut fiber_a = Fiber::new("test_fiber_a", &mut |cond: Box<Rc<Cond>>| {
@@ -135,7 +135,7 @@ pub fn test_fiber_cond_broadcast() {
     fiber_b.join();
 }
 
-pub fn test_fiber_cond_timeout() {
+pub fn fiber_cond_timeout() {
     let cond = Rc::new(Cond::new());
     let mut fiber = Fiber::new("test_fiber", &mut |cond: Box<Rc<Cond>>| {
         let r = (*cond).wait_timeout(Duration::from_millis(10));

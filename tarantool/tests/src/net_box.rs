@@ -15,18 +15,18 @@ use crate::{
 };
 use std::cell::{Cell, RefCell};
 
-pub fn test_immediate_close() {
+pub fn immediate_close() {
     let port = unsafe { LISTEN };
     let _ = Conn::new(("localhost", port), ConnOptions::default(), None).unwrap();
 }
 
-pub fn test_ping() {
+pub fn ping() {
     let port = unsafe { LISTEN };
     let conn = Conn::new(("localhost", port), ConnOptions::default(), None).unwrap();
     conn.ping(&Options::default()).unwrap();
 }
 
-pub fn test_ping_timeout() {
+pub fn ping_timeout() {
     let port = unsafe { LISTEN };
     let conn = Conn::new(("localhost", port), ConnOptions::default(), None).unwrap();
 
@@ -43,7 +43,7 @@ pub fn test_ping_timeout() {
     .unwrap();
 }
 
-pub fn test_ping_concurrent() {
+pub fn ping_concurrent() {
     let port = unsafe { LISTEN };
     let conn = Rc::new(Conn::new(("localhost", port), ConnOptions::default(), None).unwrap());
 
@@ -66,7 +66,7 @@ pub fn test_ping_concurrent() {
     fiber_b.join();
 }
 
-pub fn test_call() {
+pub fn call() {
     let port = unsafe { LISTEN };
     let conn_options = ConnOptions {
         user: "test_user".to_string(),
@@ -80,7 +80,7 @@ pub fn test_call() {
     assert_eq!(result.unwrap().into_struct::<(i32,)>().unwrap(), (3,));
 }
 
-pub fn test_call_timeout() {
+pub fn call_timeout() {
     let port = unsafe { LISTEN };
     let conn_options = ConnOptions {
         user: "test_user".to_string(),
@@ -99,7 +99,7 @@ pub fn test_call_timeout() {
     assert!(matches!(result, Err(Error::IO(ref e)) if e.kind() == io::ErrorKind::TimedOut));
 }
 
-pub fn test_eval() {
+pub fn eval() {
     let port = unsafe { LISTEN };
     let conn_options = ConnOptions {
         user: "test_user".to_string(),
@@ -113,7 +113,7 @@ pub fn test_eval() {
     assert_eq!(result.unwrap().into_struct::<(i32, i32)>().unwrap(), (1, 2));
 }
 
-pub fn test_connection_error() {
+pub fn connection_error() {
     let conn = Conn::new(
         "localhost:255",
         ConnOptions {
@@ -126,7 +126,7 @@ pub fn test_connection_error() {
     assert!(matches!(conn.ping(&Options::default()), Err(_)));
 }
 
-pub fn test_is_connected() {
+pub fn is_connected() {
     let port = unsafe { LISTEN };
     let conn = Conn::new(
         ("localhost", port),
@@ -142,7 +142,7 @@ pub fn test_is_connected() {
     assert_eq!(conn.is_connected(), true);
 }
 
-pub fn test_schema_sync() {
+pub fn schema_sync() {
     let port = unsafe { LISTEN };
     let conn = Conn::new(
         ("localhost", port),
@@ -170,7 +170,7 @@ pub fn test_schema_sync() {
     .unwrap();
 }
 
-pub fn test_get() {
+pub fn get() {
     let port = unsafe { LISTEN };
     let conn = Conn::new(
         ("localhost", port),
@@ -201,7 +201,7 @@ pub fn test_get() {
     );
 }
 
-pub fn test_select() {
+pub fn select() {
     let port = unsafe { LISTEN };
     let conn = Conn::new(
         ("localhost", port),
@@ -236,7 +236,7 @@ pub fn test_select() {
     );
 }
 
-pub fn test_insert() {
+pub fn insert() {
     let port = unsafe { LISTEN };
     let mut local_space = Space::find("test_s1").unwrap();
     local_space.truncate().unwrap();
@@ -269,7 +269,7 @@ pub fn test_insert() {
     assert_eq!(output.unwrap().into_struct::<S1Record>().unwrap(), input);
 }
 
-pub fn test_replace() {
+pub fn replace() {
     let port = unsafe { LISTEN };
     let mut local_space = Space::find("test_s1").unwrap();
     local_space.truncate().unwrap();
@@ -313,7 +313,7 @@ pub fn test_replace() {
     );
 }
 
-pub fn test_update() {
+pub fn update() {
     let port = unsafe { LISTEN };
     let mut local_space = Space::find("test_s1").unwrap();
     local_space.truncate().unwrap();
@@ -364,7 +364,7 @@ pub fn test_update() {
     );
 }
 
-pub fn test_upsert() {
+pub fn upsert() {
     let port = unsafe { LISTEN };
     let mut local_space = Space::find("test_s1").unwrap();
     local_space.truncate().unwrap();
@@ -430,7 +430,7 @@ pub fn test_upsert() {
     );
 }
 
-pub fn test_delete() {
+pub fn delete() {
     let port = unsafe { LISTEN };
     let mut local_space = Space::find("test_s1").unwrap();
     local_space.truncate().unwrap();
@@ -466,7 +466,7 @@ pub fn test_delete() {
     assert!(output.is_none());
 }
 
-pub fn test_cancel_recv() {
+pub fn cancel_recv() {
     let port = unsafe { LISTEN };
     let conn = Rc::new(Conn::new(("localhost", port), ConnOptions::default(), None).unwrap());
 
@@ -487,7 +487,7 @@ pub fn test_cancel_recv() {
     fiber.join();
 }
 
-pub fn test_triggers_connect() {
+pub fn triggers_connect() {
     let port = unsafe { LISTEN };
     struct Checklist {
         connected: bool,
@@ -529,7 +529,7 @@ pub fn test_triggers_connect() {
     assert_eq!(checklist.borrow().disconnected, true);
 }
 
-pub fn test_triggers_reject() {
+pub fn triggers_reject() {
     let port = unsafe { LISTEN };
     struct TriggersMock {}
 
@@ -552,7 +552,7 @@ pub fn test_triggers_reject() {
     assert!(matches!(res, Err(Error::IO(err)) if err.kind() == io::ErrorKind::Interrupted));
 }
 
-pub fn test_triggers_schema_sync() {
+pub fn triggers_schema_sync() {
     let port = unsafe { LISTEN };
     struct TriggersMock {
         is_trigger_called: Rc<Cell<bool>>,

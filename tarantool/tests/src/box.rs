@@ -8,23 +8,23 @@ use tarantool::{update, upsert};
 
 use crate::common::{QueryOperation, S1Record, S2Key, S2Record};
 
-pub fn test_space_get_by_name() {
+pub fn space_get_by_name() {
     assert!(Space::find("test_s1").is_some());
     assert!(Space::find("test_s1_invalid").is_none());
 }
 
-pub fn test_space_get_system() {
+pub fn space_get_system() {
     let space: Space = SystemSpace::Space.into();
     assert!(space.len().is_ok());
 }
 
-pub fn test_index_get_by_name() {
+pub fn index_get_by_name() {
     let space = Space::find("test_s2").unwrap();
     assert!(space.index("idx_1").is_some());
     assert!(space.index("idx_1_invalid").is_none());
 }
 
-pub fn test_box_get() {
+pub fn get() {
     let space = Space::find("test_s2").unwrap();
 
     let idx_1 = space.index("idx_1").unwrap();
@@ -56,7 +56,7 @@ pub fn test_box_get() {
     );
 }
 
-pub fn test_box_select() {
+pub fn select() {
     let space = Space::find("test_s2").unwrap();
     let result: Vec<S1Record> = space
         .primary_key()
@@ -131,7 +131,7 @@ pub fn test_box_select() {
     );
 }
 
-pub fn test_box_select_composite_key() {
+pub fn select_composite_key() {
     let space = Space::find("test_s2").unwrap();
     let idx = space.index("idx_2").unwrap();
 
@@ -152,12 +152,12 @@ pub fn test_box_select_composite_key() {
     );
 }
 
-pub fn test_box_len() {
+pub fn len() {
     let space = Space::find("test_s2").unwrap();
     assert_eq!(space.len().unwrap(), 20_usize);
 }
 
-pub fn test_box_random() {
+pub fn random() {
     let space = Space::find("test_s2").unwrap();
     let idx = space.primary_key();
     let mut rng = rand::thread_rng();
@@ -172,7 +172,7 @@ pub fn test_box_random() {
     assert_eq!(output.value, format!("value_{}", output.id));
 }
 
-pub fn test_box_min_max() {
+pub fn min_max() {
     let space = Space::find("test_s2").unwrap();
     let idx = space.index("idx_3").unwrap();
 
@@ -203,7 +203,7 @@ pub fn test_box_min_max() {
     );
 }
 
-pub fn test_box_count() {
+pub fn count() {
     let space = Space::find("test_s2").unwrap();
     assert_eq!(
         space.primary_key().count(IteratorType::LE, &(7,),).unwrap(),
@@ -215,7 +215,7 @@ pub fn test_box_count() {
     );
 }
 
-pub fn test_box_extract_key() {
+pub fn extract_key() {
     let space = Space::find("test_s2").unwrap();
     let idx = space.index("idx_2").unwrap();
     let record = S2Record {
@@ -233,7 +233,7 @@ pub fn test_box_extract_key() {
     );
 }
 
-pub fn test_box_insert() {
+pub fn insert() {
     let mut space = Space::find("test_s1").unwrap();
     space.truncate().unwrap();
 
@@ -252,7 +252,7 @@ pub fn test_box_insert() {
     assert_eq!(output.unwrap().into_struct::<S1Record>().unwrap(), input);
 }
 
-pub fn test_box_replace() {
+pub fn replace() {
     let mut space = Space::find("test_s1").unwrap();
     space.truncate().unwrap();
 
@@ -280,7 +280,7 @@ pub fn test_box_replace() {
     );
 }
 
-pub fn test_box_delete() {
+pub fn delete() {
     let mut space = Space::find("test_s1").unwrap();
     space.truncate().unwrap();
 
@@ -301,7 +301,7 @@ pub fn test_box_delete() {
     assert!(output.is_none());
 }
 
-pub fn test_box_update() {
+pub fn update() {
     let mut space = Space::find("test_s1").unwrap();
     space.truncate().unwrap();
 
@@ -338,7 +338,7 @@ pub fn test_box_update() {
     );
 }
 
-pub fn test_box_update_macro() {
+pub fn update_macro() {
     let mut space = Space::find("test_s2").unwrap();
 
     let input = S2Record {
@@ -378,7 +378,7 @@ pub fn test_box_update_macro() {
     assert_eq!(output.b, 2);
 }
 
-pub fn test_box_update_index_macro() {
+pub fn update_index_macro() {
     let mut space = Space::find("test_s2").unwrap();
 
     let input = S2Record {
@@ -424,7 +424,7 @@ pub fn test_box_update_index_macro() {
     assert_eq!(output.b, 2);
 }
 
-pub fn test_box_upsert() {
+pub fn upsert() {
     let mut space = Space::find("test_s1").unwrap();
     space.truncate().unwrap();
 
@@ -475,7 +475,7 @@ pub fn test_box_upsert() {
     );
 }
 
-pub fn test_box_upsert_macro() {
+pub fn upsert_macro() {
     let mut space = Space::find("test_s2").unwrap();
 
     let original_input = S2Record {
@@ -525,7 +525,7 @@ pub fn test_box_upsert_macro() {
     assert_eq!(output.a, 2);
 }
 
-pub fn test_box_truncate() {
+pub fn truncate() {
     let mut space = Space::find("test_s1").unwrap();
     space.truncate().unwrap();
 
@@ -543,19 +543,19 @@ pub fn test_box_truncate() {
     assert_eq!(space.len().unwrap(), 0_usize);
 }
 
-pub fn test_box_sequence_get_by_name() {
+pub fn sequence_get_by_name() {
     assert!(Sequence::find("test_seq").unwrap().is_some());
     assert!(Sequence::find("test_seq_invalid").unwrap().is_none());
 }
 
-pub fn test_box_sequence_iterate() {
+pub fn sequence_iterate() {
     let mut seq = Sequence::find("test_seq").unwrap().unwrap();
     seq.reset().unwrap();
     assert_eq!(seq.next().unwrap(), 1);
     assert_eq!(seq.next().unwrap(), 2);
 }
 
-pub fn test_box_sequence_set() {
+pub fn sequence_set() {
     let mut seq = Sequence::find("test_seq").unwrap().unwrap();
     seq.reset().unwrap();
     assert_eq!(seq.next().unwrap(), 1);
@@ -564,7 +564,7 @@ pub fn test_box_sequence_set() {
     assert_eq!(seq.next().unwrap(), 100);
 }
 
-pub fn test_space_create_opt_default() {
+pub fn space_create_opt_default() {
     let opts = SpaceCreateOptions::default();
 
     // Create space with default options.
@@ -574,7 +574,7 @@ pub fn test_space_create_opt_default() {
     drop_space("new_space_1");
 }
 
-pub fn test_space_create_opt_if_not_exists() {
+pub fn space_create_opt_if_not_exists() {
     let mut opts = SpaceCreateOptions::default();
     let _result = Space::create("new_space_2", &opts);
 
@@ -590,7 +590,7 @@ pub fn test_space_create_opt_if_not_exists() {
     drop_space("new_space_2");
 }
 
-pub fn test_space_create_id_increment() {
+pub fn space_create_id_increment() {
     let opts = SpaceCreateOptions::default();
     let _result = Space::create("new_space_3", &opts);
     let mut prev_id = Space::find("new_space_3").unwrap().id();
@@ -610,7 +610,7 @@ pub fn test_space_create_id_increment() {
 }
 
 #[allow(clippy::field_reassign_with_default)]
-pub fn test_space_create_opt_user() {
+pub fn space_create_opt_user() {
     let mut opts = SpaceCreateOptions::default();
 
     // Test `user` option.
@@ -626,7 +626,7 @@ pub fn test_space_create_opt_user() {
     drop_space("new_space_4");
 }
 
-pub fn test_space_create_opt_id() {
+pub fn space_create_opt_id() {
     let opts = SpaceCreateOptions {
         id: Some(10000),
         .. Default::default()
@@ -639,7 +639,7 @@ pub fn test_space_create_opt_id() {
     drop_space("new_space_6");
 }
 
-pub fn test_space_drop() {
+pub fn space_drop() {
     let opts = SpaceCreateOptions::default();
 
     for i in 400..406 {
@@ -653,7 +653,7 @@ pub fn test_space_drop() {
     }
 }
 
-pub fn test_index_create_drop() {
+pub fn index_create_drop() {
     let space_opts = SpaceCreateOptions::default();
     let space = Space::create("new_space_7", &space_opts).unwrap();
 

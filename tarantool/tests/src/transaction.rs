@@ -6,7 +6,7 @@ use tarantool::transaction::start_transaction;
 
 use crate::common::S1Record;
 
-pub fn test_transaction_commit() {
+pub fn transaction_commit() {
     let mut space = Space::find("test_s1").unwrap();
     space.truncate().unwrap();
 
@@ -26,7 +26,7 @@ pub fn test_transaction_commit() {
     assert_eq!(output.unwrap().into_struct::<S1Record>().unwrap(), input);
 }
 
-pub fn test_transaction_rollback() {
+pub fn transaction_rollback() {
     let mut space = Space::find("test_s1").unwrap();
     space.truncate().unwrap();
 
