@@ -3,6 +3,9 @@ use serde::Serialize;
 use std::error::Error;
 use std::fmt::Display;
 use std::time::Duration;
+use tarantool::error::Error as TarantoolError;
+use tarantool::index::IndexOptions;
+use tarantool::space::{Space, SpaceCreateOptions};
 
 pub trait Event {
     fn wait_timeout(&self, t: Duration) -> bool;
@@ -12,18 +15,34 @@ pub trait Event {
 pub trait AppError: Error {}
 impl<T> AppError for T where T: Error {}
 
+#[allow(dead_code)]
+enum DDL {
+    CreateSpace {
+        name: &'static str,
+        opts: SpaceCreateOptions,
+    },
+    CreateIndex {
+        space_name: &'static str,
+        name: &'static str,
+        opts: IndexOptions,
+    },
+}
+
 pub struct SchemaUpate {
     version: &'static str,
-    ddl: &'static dyn FnOnce() -> Result<(), Box<dyn AppError>>,
+    ddl: Box<[DDL]>,
 }
 
 pub trait App {
     const NAME: &'static str;
     const VERSION: &'static str;
-    const SCHEMA: &'static [SchemaUpate] = &[SchemaUpate {
-        version: "v0.0.0",
-        ddl: &|| Ok(()),
-    }];
+
+    fn schema() -> Box<[SchemaUpate]> {
+        Box::new([SchemaUpate {
+            version: "v0.0.0",
+            ddl: [].into(),
+        }])
+    }
 
     /// initialization, no yields, no I/O
     fn new(rpc: &mut impl RpcRegister) -> Result<Box<Self>, Box<dyn AppError>>;
@@ -39,8 +58,12 @@ pub trait App {
 
 pub trait Storage {
     // Cluster-wide Box API
-    fn create_space(&mut self);
-    fn space(&self, name: &str) -> tarantool::space::Space;
+    fn create_space(
+        &mut self,
+        name: &str,
+        opts: &SpaceCreateOptions,
+    ) -> Result<Space, TarantoolError>;
+    fn space(&self, name: &str) -> Space;
     fn drop_space(&mut self, name: &str);
     // ...
 }
@@ -122,7 +145,11 @@ mod example {
         pub struct SomeStorage();
 
         impl Storage for SomeStorage {
-            fn create_space(&mut self) {
+            fn create_space(
+                &mut self,
+                name: &str,
+                opts: &SpaceCreateOptions,
+            ) -> Result<Space, TarantoolError> {
                 todo!()
             }
 
@@ -218,17 +245,26 @@ mod example {
         impl super::App for App {
             const NAME: &'static str = "MyApp";
             const VERSION: &'static str = "0.1.0";
-            const SCHEMA: &'static [SchemaUpate] = &[
-                // ! Only add elements, never delete or change.
-                SchemaUpate {
-                    version: "1.0.0",
-                    ddl: &|| {
-                        tarantool::schema::space::create_space("hello_log", &Default::default())?
-                            .create_index("pk", &Default::default())?;
-                        Ok(())
+
+            fn schema() -> Box<[SchemaUpate]> {
+                Box::new([
+                    // ! Only add elements, never delete or change.
+                    SchemaUpate {
+                        version: "1.0.0",
+                        ddl: Box::new([
+                            DDL::CreateSpace {
+                                name: "hello_log",
+                                opts: SpaceCreateOptions::default(),
+                            },
+                            DDL::CreateIndex {
+                                space_name: "hello_log",
+                                name: "pk",
+                                opts: IndexOptions::default(),
+                            },
+                        ]),
                     },
-                },
-            ];
+                ])
+            }
 
             fn new(rpc: &mut impl RpcRegister) -> Result<Box<Self>, Box<dyn AppError>> {
                 let app = App {
@@ -268,10 +304,7 @@ mod example {
 
     struct RunAppError();
 
-    fn exec_cluster_ddl(
-        version: &str,
-        ddl: &dyn FnOnce() -> Result<(), Box<dyn AppError>>,
-    ) -> Result<(), RunAppError> {
+    fn exec_cluster_ddl(version: &str, ddl: &[DDL]) -> Result<(), RunAppError> {
         todo!()
     }
 
@@ -280,9 +313,9 @@ mod example {
         let mut rpc = rpc::SomeRpc();
 
         let mut app: user_code::App = *App::new(&mut rpc).unwrap();
-        for s in user_code::App::SCHEMA {
+        for s in user_code::App::schema().as_ref() {
             let SchemaUpate { version, ddl } = s;
-            exec_cluster_ddl(version, *ddl)?
+            exec_cluster_ddl(version, ddl)?
         }
 
         let event = &event::SomeEvent();
