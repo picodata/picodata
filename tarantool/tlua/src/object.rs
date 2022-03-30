@@ -521,6 +521,18 @@ pub enum CallError<E> {
     PushError(E),
 }
 
+impl<E> CallError<E> {
+    pub fn map<F, R>(self, f: F) -> CallError<R>
+    where
+        F: FnOnce(E) -> R,
+    {
+        match self {
+            CallError::LuaError(e) => CallError::LuaError(e),
+            CallError::PushError(e) => CallError::PushError(f(e)),
+        }
+    }
+}
+
 impl<E> From<LuaError> for CallError<E> {
     fn from(e: LuaError) -> Self {
         Self::LuaError(e)

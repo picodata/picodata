@@ -168,6 +168,7 @@ pub mod fiber;
 pub mod index;
 pub mod log;
 pub mod net_box;
+pub mod proc;
 pub mod raft;
 pub mod schema;
 pub mod sequence;
@@ -182,6 +183,7 @@ pub mod uuid;
 mod va_list;
 
 pub use tlua;
+pub use tarantool_proc::stored_proc as proc;
 
 /// Return a global tarantool lua state.
 ///

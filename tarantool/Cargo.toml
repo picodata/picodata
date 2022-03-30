@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "tarantool",
+    "tarantool-proc",
     "tlua",
     "tlua-derive",
     "tests",

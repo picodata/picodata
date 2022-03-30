@@ -171,3 +171,18 @@ impl BoolExt for bool {
     }
 }
 
+use once_cell::unsync::OnceCell;
+
+pub fn lib_name() -> String {
+    thread_local!{
+        static LIB_NAME: OnceCell<String> = OnceCell::new();
+    }
+    LIB_NAME.with(|lib_name|
+        lib_name
+            .get_or_init(||
+                format!("lib{}", env!("CARGO_PKG_NAME").replace('-', "_"))
+            )
+            .clone()
+    )
+}
+
