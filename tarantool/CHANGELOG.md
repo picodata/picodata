@@ -27,6 +27,8 @@ and support of the `fiber_clock` API.
 - `fiber::clock` now returns `tarantool::time::Instant`
 - `fiber::time` and `fiber::time64` returning non-monotonic time removed. If
     calendar time is needed, use `std::time::SystemTime`.
+- `tlua::PushIterError::TooManyValues` now stores how many values were attempted
+    to be pushed.
 - `fiber::clock64` removed in favor of a new `Instant` based `fiber::clock` API
 - `Error::Decode` now contains expected rust type and actual incorrect msgpack
     contents.

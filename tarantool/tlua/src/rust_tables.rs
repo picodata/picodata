@@ -45,7 +45,7 @@ where
                 // TODO(gmoshkin): return an error capturing this push guard
                 // n + 1 == n values from the recent push + lua table
                 drop(PushGuard::new(lua.as_lua(), n + 1));
-                return Err((PushIterError::TooManyValues, lua));
+                return Err((PushIterError::TooManyValues(n), lua));
             },
         }
     }
@@ -57,7 +57,7 @@ pub type PushIterErrorOf<I> = PushIterError<<<I as Iterator>::Item as PushInto<L
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum PushIterError<E> {
-    TooManyValues,
+    TooManyValues(i32),
     ValuePushError(E),
 }
 
@@ -68,7 +68,7 @@ impl<E> PushIterError<E> {
     {
         match self {
             Self::ValuePushError(e) => PushIterError::ValuePushError(f(e)),
-            Self::TooManyValues => PushIterError::TooManyValues,
+            Self::TooManyValues(n) => PushIterError::TooManyValues(n),
         }
     }
 }
@@ -79,8 +79,12 @@ where
 {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Self::TooManyValues => {
-                write!(fmt, "Can only push 1 or 2 values as lua table item",)
+            Self::TooManyValues(n) => {
+                write!(
+                    fmt,
+                    "Can only push 1 or 2 values as lua table item, got {} instead",
+                    n,
+                )
             }
             Self::ValuePushError(e) => {
                 write!(fmt, "Pushing iterable item failed: {}", e)
@@ -451,7 +455,7 @@ where
 macro_rules! push_hashmap_impl {
     ($self:expr, $lua:expr) => {
         push_iter($lua, $self.into_iter()).map_err(|(e, lua)| match e {
-            PushIterError::TooManyValues => unreachable!("K and V implement PushOne"),
+            PushIterError::TooManyValues(_) => unreachable!("K and V implement PushOne"),
             PushIterError::ValuePushError(First(e)) => (First(e), lua),
             PushIterError::ValuePushError(Other(e)) => (Other(e.first()), lua),
         })
@@ -509,7 +513,7 @@ where
 macro_rules! push_hashset_impl {
     ($self:expr, $lua:expr) => {
         push_iter($lua, $self.into_iter().zip(iter::repeat(true))).map_err(|(e, lua)| match e {
-            PushIterError::TooManyValues => unreachable!("K implements PushOne"),
+            PushIterError::TooManyValues(_) => unreachable!("K implements PushOne"),
             PushIterError::ValuePushError(First(e)) => (e, lua),
             PushIterError::ValuePushError(Other(_)) => {
                 unreachable!("no way to create instance of Void")

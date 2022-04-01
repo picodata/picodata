@@ -30,7 +30,7 @@ nix = "0.24.1"
 num-traits = "0.2"
 num-derive = "0.3"
 once_cell = "1.4.0"
-tlua = { path = "../tlua", version = "1.0.0" }
+tlua = { path = "../tlua", version = "2.0.0" }
 refpool = { version = "0.4.3", optional = true }
 rmp = "=0.8.11"
 rmp-serde = "=1.0.0"

@@ -1360,10 +1360,10 @@ pub fn error_during_push_iter() {
     let lua = {
         let _guard = LuaStackIntegrityGuard::new("push_vec_too_many", &lua);
         let (e, lua) = lua.try_push(vec![(1, 2, 3)]).unwrap_err();
-        assert_eq!(e, tlua::PushIterError::TooManyValues);
+        assert_eq!(e, tlua::PushIterError::TooManyValues(3));
         assert_eq!(
             e.to_string(),
-            "Can only push 1 or 2 values as lua table item"
+            "Can only push 1 or 2 values as lua table item, got 3 instead"
         );
         lua
     };
@@ -1371,7 +1371,7 @@ pub fn error_during_push_iter() {
     let lua = {
         let _guard = LuaStackIntegrityGuard::new("push_iter_too_many", &lua);
         let (e, lua) = lua.try_push_iter(std::iter::once((1, 2, 3))).unwrap_err();
-        assert_eq!(e, tlua::PushIterError::TooManyValues);
+        assert_eq!(e, tlua::PushIterError::TooManyValues(3));
         lua
     };
 

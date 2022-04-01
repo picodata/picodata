@@ -1045,7 +1045,7 @@ pub fn tuple_as_table() {
     let (e, _) = (&lua).try_push(AsTable(((1, 2), (1, 2, 3)))).unwrap_err();
     assert_eq!(
         e.to_string(),
-        "Can only push 1 or 2 values as lua table item"
+        "Can only push 1 or 2 values as lua table item, got 3 instead"
     );
 
     lua.set(
