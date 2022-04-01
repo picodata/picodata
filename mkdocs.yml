@@ -1,0 +1,6 @@
+site_name: Портал документации Picodata
+nav:
+    - Главная: index.md
+    - Преимущества: benefits.md
+    - Описание услуг: services.md
+theme: readthedocs
