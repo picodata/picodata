@@ -584,7 +584,7 @@ impl serde::Serialize for Decimal {
         S: serde::Serializer,
     {
         #[derive(Serialize)]
-        struct _ExtStruct((i8, serde_bytes::ByteBuf));
+        struct _ExtStruct((std::os::raw::c_char, serde_bytes::ByteBuf));
 
         let data = unsafe {
             let len = ffi::decimal_len(&self.inner) as usize;
@@ -604,12 +604,12 @@ impl<'de> serde::Deserialize<'de> for Decimal {
         D: serde::Deserializer<'de>,
     {
         #[derive(Deserialize)]
-        struct _ExtStruct((i8, serde_bytes::ByteBuf));
+        struct _ExtStruct((std::os::raw::c_char, serde_bytes::ByteBuf));
 
         match serde::Deserialize::deserialize(deserializer)? {
             _ExtStruct((ffi::MP_DECIMAL, bytes)) => {
                 let data = bytes.into_vec();
-                let data_p = &mut data.as_ptr().cast::<i8>();
+                let data_p = &mut data.as_ptr().cast();
                 let mut dec = std::mem::MaybeUninit::uninit();
                 let res = unsafe {
                     ffi::decimal_unpack(data_p, data.len() as _, dec.as_mut_ptr())

@@ -87,7 +87,8 @@ macro_rules! numeric_impl {
                             let mut ctypeid = std::mem::MaybeUninit::uninit();
                             let cdata = ffi::luaL_checkcdata(l, idx, ctypeid.as_mut_ptr());
                             match ctypeid.assume_init() {
-                                ffi::CTID_CCHAR | ffi::CTID_INT8 => Some(*cdata.cast::<i8>() as _),
+                                ffi::CTID_CCHAR => Some(*cdata.cast::<std::os::raw::c_char>() as _),
+                                ffi::CTID_INT8 => Some(*cdata.cast::<i8>() as _),
                                 ffi::CTID_INT16 => Some(*cdata.cast::<i16>() as _),
                                 ffi::CTID_INT32 => Some(*cdata.cast::<i32>() as _),
                                 ffi::CTID_INT64 => Some(*cdata.cast::<i64>() as _),

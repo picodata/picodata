@@ -4,7 +4,7 @@
 #![allow(clippy::upper_case_acronyms)]
 use std::ffi::CStr;
 use std::io;
-use std::os::raw::{c_int, c_schar};
+use std::os::raw::{c_int, c_char};
 
 use serde::Deserialize;
 use tester::{
@@ -514,7 +514,7 @@ pub unsafe extern "C" fn start(l: *mut ffi_lua::lua_State) -> c_int {
     let cfg: TestConfig = serde_json::from_str(cfg_src).unwrap();
 
     if let Err(e) = create_test_spaces() {
-        ffi_lua::luaL_error(l, e.to_string().as_ptr() as *const c_schar);
+        ffi_lua::luaL_error(l, e.to_string().as_ptr() as *const c_char);
         return 0;
     }
 
@@ -523,13 +523,13 @@ pub unsafe extern "C" fn start(l: *mut ffi_lua::lua_State) -> c_int {
         Err(e) => {
             // Clenaup without handling error to avoid code mess.
             let _ = drop_test_spaces();
-            ffi_lua::luaL_error(l, e.to_string().as_ptr() as *const c_schar);
+            ffi_lua::luaL_error(l, e.to_string().as_ptr() as *const c_char);
             return 0;
         }
     };
 
     if let Err(e) = drop_test_spaces() {
-        ffi_lua::luaL_error(l, e.to_string().as_ptr() as *const c_schar);
+        ffi_lua::luaL_error(l, e.to_string().as_ptr() as *const c_char);
         return 0;
     }
 

@@ -15,7 +15,7 @@ extern "C" {
 
 pub const DECNUMUNITS: u32 = 13;
 pub const DECIMAL_MAX_DIGITS: u32 = 38;
-pub const MP_DECIMAL: i8 = 1;
+pub const MP_DECIMAL: c_char = 1;
 
 extern "C" {
     /// Return decimal precision,

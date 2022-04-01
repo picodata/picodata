@@ -1,4 +1,5 @@
 use crate::ffi::uuid as ffi;
+use std::os::raw::c_char;
 
 use serde::{Serialize, Deserialize};
 pub use ::uuid::{
@@ -217,7 +218,7 @@ impl serde::Serialize for Uuid {
         S: serde::Serializer,
     {
         #[derive(Serialize)]
-        struct _ExtStruct((i8, serde_bytes::ByteBuf));
+        struct _ExtStruct((c_char, serde_bytes::ByteBuf));
 
         let data = self.as_bytes();
         _ExtStruct((ffi::MP_UUID, serde_bytes::ByteBuf::from(data as &[_])))
@@ -231,7 +232,7 @@ impl<'de> serde::Deserialize<'de> for Uuid {
         D: serde::Deserializer<'de>,
     {
         #[derive(Deserialize)]
-        struct _ExtStruct((i8, serde_bytes::ByteBuf));
+        struct _ExtStruct((c_char, serde_bytes::ByteBuf));
 
         let _ExtStruct((kind, bytes)) = serde::Deserialize::deserialize(deserializer)?;
 
