@@ -1,9 +1,11 @@
 use tarantool::tlua::{
     c_str,
     AsLua,
+    AsTable,
     AnyLuaValue,
     AnyLuaString,
     Lua,
+    LuaTable,
     StringInLua,
     function0,
     Nil,
@@ -344,5 +346,52 @@ pub fn typename() {
     assert_eq!((&lua).push(3.14).read::<Typename>().unwrap().get(), "number");
     assert_eq!((&lua).push(true).read::<Typename>().unwrap().get(), "boolean");
     assert_eq!((&lua).push(vec![1, 2, 3]).read::<Typename>().unwrap().get(), "table");
+}
+
+pub fn tuple_as_table() {
+    let lua = Lua::new();
+
+    let v = (&lua).try_push(AsTable((1, 2, 3))).unwrap();
+    assert_eq!(v.read::<[i32; 3]>().ok(), Some([1, 2, 3]));
+
+    let v = (&lua).try_push(
+        AsTable((
+            ("foo", 2),
+            (69, "nice"),
+            ("bar", AsTable((1, 2, 3))),
+        ))
+    ).unwrap();
+    let table = v.read::<LuaTable<_>>().unwrap();
+    assert_eq!(table.get("foo"), Some(2));
+    assert_eq!(table.get(69), Some("nice".to_string()));
+    assert_eq!(table.get("bar"), Some([1, 2, 3]));
+
+    let v = (&lua).try_push(
+        AsTable((
+            ("foo", 2),
+            (69, "nice"),
+            ("bar", AsTable((1, 2, 3))),
+        ))
+    ).unwrap();
+    let table = v.read::<LuaTable<_>>().unwrap();
+    assert_eq!(table.get("foo"), Some(2));
+    assert_eq!(table.get(69), Some("nice".to_string()));
+    assert_eq!(table.get("bar"), Some([1, 2, 3]));
+
+    let table = LuaTable::empty(&lua);
+    table.set(1, "one");
+    table.set(2, 69);
+    table.set(3, [1, 2, 3]);
+    lua.set("tuple_as_table::gvar", &table);
+    assert_eq!(
+        lua.get("tuple_as_table::gvar"),
+        Some(AsTable(("one".to_string(), 69, AsTable((1, 2, 3))))),
+    );
+
+    let (e, _) = (&lua).try_push(AsTable(((1, 2), (1, 2, 3)))).unwrap_err();
+    assert_eq!(
+        e.to_string(),
+        "Can only push 1 or 2 values as lua table item"
+    );
 }
 

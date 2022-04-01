@@ -346,6 +346,7 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 tlua::values::push_opt,
                 tlua::values::read_nil,
                 tlua::values::typename,
+                tlua::values::tuple_as_table,
 
                 fiber::old::fiber_new,
                 fiber::old::fiber_new_with_attr,

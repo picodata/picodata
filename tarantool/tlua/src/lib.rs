@@ -132,7 +132,7 @@ pub use object::{
     Object,
 };
 pub use rust_tables::{TableFromIter, PushIterError, PushIterErrorOf};
-pub use tuples::TuplePushError;
+pub use tuples::{AsTable, TuplePushError};
 pub use userdata::UserdataOnStack;
 pub use userdata::{push_userdata, read_userdata, push_some_userdata};
 pub use values::{StringInLua, Nil, Null, True, False, Typename, ToString};
