@@ -1,5 +1,5 @@
 use std::num::NonZeroI32;
-use std::fmt::Debug;
+use std::fmt::{self, Debug};
 
 use crate::{
     AsLua,
@@ -240,6 +240,34 @@ impl<F, O> TuplePushError<F, O> {
         match self {
             Self::First(_) => unreachable!("no way to construct an instance of Void"),
             Self::Other(o) => o,
+        }
+    }
+}
+
+impl<H, T> fmt::Display for TuplePushError<H, T>
+where
+    H: fmt::Display,
+    T: fmt::Display,
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f,
+            "Error during attempt to push multiple values: ({}, ...)",
+            TuplePushErrorDisplayHelper(self),
+        )
+    }
+}
+
+struct TuplePushErrorDisplayHelper<'a, H, T>(&'a TuplePushError<H, T>);
+
+impl<H, T> fmt::Display for TuplePushErrorDisplayHelper<'_, H, T>
+where
+    H: fmt::Display,
+    T: fmt::Display,
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self.0 {
+            TuplePushError::First(head) => write!(f, "{}", head),
+            TuplePushError::Other(tail) => write!(f, "ok, {}", tail),
         }
     }
 }

@@ -706,6 +706,13 @@ pub fn derive_unit_structs_push() {
 pub fn error_during_push_iter() {
     #[derive(Debug, PartialEq, Eq)]
     struct CustomError;
+
+    impl std::fmt::Display for CustomError {
+        fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+            f.write_str("CustomError")
+        }
+    }
+
     #[derive(Debug, PartialEq, Eq, Hash)]
     struct S;
     impl<L: AsLua> Push<L> for S {
@@ -722,6 +729,7 @@ pub fn error_during_push_iter() {
         let _guard = LuaStackIntegrityGuard::new("push_vec_error", &lua);
         let (e, lua) = lua.try_push(&vec![S]).unwrap_err();
         assert_eq!(e, tlua::PushIterError::ValuePushError(CustomError));
+        assert_eq!(e.to_string(), "Pushing iterable item failed: CustomError");
         lua
     };
 
@@ -731,6 +739,9 @@ pub fn error_during_push_iter() {
         hm.insert(S, 1);
         let (e, lua) = lua.try_push(&hm).unwrap_err();
         assert_eq!(e, TuplePushError::First(CustomError));
+        assert_eq!(e.to_string(),
+            "Error during attempt to push multiple values: (CustomError, ...)"
+        );
         lua
     };
 
@@ -740,6 +751,9 @@ pub fn error_during_push_iter() {
         hm.insert(1, S);
         let (e, lua) = lua.try_push(&hm).unwrap_err();
         assert_eq!(e, TuplePushError::Other(CustomError));
+        assert_eq!(e.to_string(),
+            "Error during attempt to push multiple values: (ok, CustomError, ...)"
+        );
         lua
     };
 
@@ -763,6 +777,9 @@ pub fn error_during_push_iter() {
         let _guard = LuaStackIntegrityGuard::new("push_vec_too_many", &lua);
         let (e, lua) = lua.try_push(vec![(1, 2, 3)]).unwrap_err();
         assert_eq!(e, tlua::PushIterError::TooManyValues);
+        assert_eq!(e.to_string(),
+            "Can only push 1 or 2 values as lua table item"
+        );
         lua
     };
 

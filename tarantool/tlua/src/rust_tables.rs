@@ -14,7 +14,7 @@ use crate::{
 };
 
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::fmt::Debug;
+use std::fmt::{self, Debug};
 use std::hash::Hash;
 use std::iter;
 use std::num::NonZeroI32;
@@ -69,6 +69,36 @@ pub type PushIterErrorOf<I> = PushIterError<<<I as Iterator>::Item as PushInto<L
 pub enum PushIterError<E> {
     TooManyValues,
     ValuePushError(E),
+}
+
+impl<E> PushIterError<E> {
+    pub fn map<F, R>(self, f: F) -> PushIterError<R>
+    where
+        F: FnOnce(E) -> R,
+    {
+        match self {
+            Self::ValuePushError(e) => PushIterError::ValuePushError(f(e)),
+            Self::TooManyValues => PushIterError::TooManyValues,
+        }
+    }
+}
+
+impl<E> fmt::Display for PushIterError<E>
+where
+    E: fmt::Display,
+{
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::TooManyValues => {
+                write!(fmt,
+                    "Can only push 1 or 2 values as lua table item",
+                )
+            }
+            Self::ValuePushError(e) => {
+                write!(fmt, "Pushing iterable item failed: {}", e)
+            }
+        }
+    }
 }
 
 // Note: only the following From<_> for Void implementations are correct,
