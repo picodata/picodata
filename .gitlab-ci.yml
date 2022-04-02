@@ -82,7 +82,7 @@ deploy-doc-to-test:
     - echo "Deploying picodata doc on test..."
     - source .vars
     - echo "FNAME=$FNAME"
-    - 'curl -X POST --fail -F token=$PIPELINE_TOKEN -F ref=main -F "variables[STAGE]=TEST" -F "variables[BASTIDA_DOC]=$FNAME" https://git.picodata.io/api/v4/projects/46/trigger/pipeline'
+    - 'curl -X POST --fail -F token=$PIPELINE_TOKEN -F ref=main -F "variables[STAGE]=TEST" -F "variables[PICODATA_DOC]=$FNAME" https://git.picodata.io/api/v4/projects/46/trigger/pipeline'
     - echo "Picodata doc successfully deployed on test."
 
 deploy-doc-to-prod:
@@ -100,5 +100,5 @@ deploy-doc-to-prod:
     - echo "Deploying picodata doc on prod..."
     - source .vars
     - echo "FNAME=$FNAME"
-    - 'curl -X POST --fail -F token=$PIPELINE_TOKEN -F ref=main -F "variables[STAGE]=PROD" -F "variables[BASTIDA_DOC]=$FNAME" https://git.picodata.io/api/v4/projects/46/trigger/pipeline'
+    - 'curl -X POST --fail -F token=$PIPELINE_TOKEN -F ref=main -F "variables[STAGE]=PROD" -F "variables[PICODATA_DOC]=$FNAME" https://git.picodata.io/api/v4/projects/46/trigger/pipeline'
     - echo "Picodata doc successfully deployed on prod."
