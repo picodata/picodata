@@ -14,7 +14,7 @@ build-doc:
     - shell
   only:
     - web
-    - master
+    - main
   before_script:
     - mkdir -p $HOME/.docker
     - echo $DOCKER_AUTH_RW > $HOME/.docker/config.json
@@ -32,7 +32,7 @@ pack-doc:
   stage: pack
   only:
     - web
-    - master
+    - main
   script:
     - echo "Pack picodata doc..."
     - VER=$(date +%Y%m%d%H%M)
@@ -58,7 +58,7 @@ upload-doc-to-binary:
   stage: upload
   only:
     - web
-    - master
+    - main
   script:
     - echo "Upload picodata doc to binary..."
     - source .vars
@@ -77,7 +77,7 @@ deploy-doc-to-test:
   stage: deploy
   only:
     - web
-    - master
+    - main
   script:
     - echo "Deploying picodata doc on test..."
     - source .vars
@@ -93,7 +93,7 @@ deploy-doc-to-prod:
   when: manual
   only:
     - web
-    - master
+    - main
   script:
     # triggering gitlab.com/picodata/infra pipeline to rebuild and deploy docker
     # - curl --request POST --form "token=$CI_JOB_TOKEN" --form ref=master https://gitlab.com/api/v4/projects/18035483/trigger/pipeline
