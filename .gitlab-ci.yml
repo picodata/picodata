@@ -1,0 +1,104 @@
+variables:
+  DOCKER_LATEST: docker-picodata.binary.picodata.io/picodata-doc:latest
+  DOCKER_AUTH_CONFIG: $DOCKER_AUTH_RO
+
+stages:
+  - build
+  - pack
+  - upload
+  - deploy
+
+build-doc:
+  stage: build
+  tags:
+    - shell
+  only:
+    - web
+    - master
+  before_script:
+    - mkdir -p $HOME/.docker
+    - echo $DOCKER_AUTH_RW > $HOME/.docker/config.json
+  script:
+    - echo "Build picodata doc..."
+    - cd docker/static
+    - docker build --no-cache --build-arg COMMIT_HASH=$CI_COMMIT_SHA -t $DOCKER_LATEST .
+    - docker push $DOCKER_LATEST
+    - echo "Picodata doc successfully builded."
+
+pack-doc:
+  image: $DOCKER_LATEST
+  tags:
+    - docker
+  stage: pack
+  only:
+    - web
+    - master
+  script:
+    - echo "Pack picodata doc..."
+    - VER=$(date +%Y%m%d%H%M)
+    - FNAME="picodata-doc-$VER.tgz"
+    - echo "FNAME=$FNAME" > .vars
+    - ls -la
+    - mkdocs build -d site
+    - pushd site
+    - ls -la
+    - tar -cvzf ../$FNAME ./
+    - popd
+    - echo "Picodata doc successfully packed."
+  artifacts:
+    expire_in: 5m
+    paths:
+      - .vars
+      - picodata-doc-*.tgz
+
+upload-doc-to-binary:
+  image: curlimages/curl
+  tags:
+    - docker
+  stage: upload
+  only:
+    - web
+    - master
+  script:
+    - echo "Upload picodata doc to binary..."
+    - source .vars
+    - echo "FNAME=$FNAME"
+    - 'curl --fail -H "Authorization: Basic ${WWW_RAW_RW}" --upload-file $FNAME https://binary.picodata.io/repository/www-raw/$FNAME'    
+    - echo "Picodata doc successfully uploaded to binary."
+  artifacts:
+    expire_in: 24h
+    paths:
+      - .vars
+
+deploy-doc-to-test:
+  image: curlimages/curl
+  tags:
+    - docker
+  stage: deploy
+  only:
+    - web
+    - master
+  script:
+    - echo "Deploying picodata doc on test..."
+    - source .vars
+    - echo "FNAME=$FNAME"
+    - 'curl -X POST --fail -F token=$PIPELINE_TOKEN -F ref=main -F "variables[STAGE]=TEST" -F "variables[BASTIDA_DOC]=$FNAME" https://git.picodata.io/api/v4/projects/46/trigger/pipeline'
+    - echo "Picodata doc successfully deployed on test."
+
+deploy-doc-to-prod:
+  image: curlimages/curl
+  tags:
+    - docker
+  stage: deploy
+  when: manual
+  only:
+    - web
+    - master
+  script:
+    # triggering gitlab.com/picodata/infra pipeline to rebuild and deploy docker
+    # - curl --request POST --form "token=$CI_JOB_TOKEN" --form ref=master https://gitlab.com/api/v4/projects/18035483/trigger/pipeline
+    - echo "Deploying picodata doc on prod..."
+    - source .vars
+    - echo "FNAME=$FNAME"
+    - 'curl -X POST --fail -F token=$PIPELINE_TOKEN -F ref=main -F "variables[STAGE]=PROD" -F "variables[BASTIDA_DOC]=$FNAME" https://git.picodata.io/api/v4/projects/46/trigger/pipeline'
+    - echo "Picodata doc successfully deployed on prod."
