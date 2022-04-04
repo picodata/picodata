@@ -4,3 +4,8 @@ nav:
     - Преимущества: benefits.md
     - Описание услуг: services.md
 theme: readthedocs
+plugins:
+    - search:
+        lang: 
+          - en
+          - ru
