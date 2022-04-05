@@ -3,6 +3,7 @@ nav:
     - Главная: index.md
     - Преимущества: benefits.md
     - Описание услуг: services.md
+    - Установка и первые шаги: install.md
 theme: readthedocs
 plugins:
     - search:
