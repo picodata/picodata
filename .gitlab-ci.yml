@@ -13,6 +13,8 @@ variables:
   BASE_IMAGE: build-base:latest
   CARGO_INCREMENTAL: 0
   CARGO_HOME: ${CI_PROJECT_DIR}/.cargo
+  DOCKER_AUTH_CONFIG: $DOCKER_AUTH_RW
+  REGISTRY_IMAGE: docker-public.binary.picodata.io
 
   #
   # See also:
@@ -31,35 +33,30 @@ docker-build-base:
   stage: prebuild
   image: docker:20
   tags:
-    - picodata
-    - docker
+    - dind
   rules:
     - # if
       changes:
         - docker-build-base/Dockerfile
   before_script:
-    - >
-      echo -n ${CI_REGISTRY_PASSWORD} | docker login
-      -u ${CI_REGISTRY_USER}
-      --password-stdin
-      ${CI_REGISTRY}
+    - mkdir -p $HOME/.docker
+    - echo $DOCKER_AUTH_RW > $HOME/.docker/config.json  
   script:
-    - docker pull ${CI_REGISTRY_IMAGE}/${BASE_IMAGE} || true
+    - docker pull ${REGISTRY_IMAGE}/${BASE_IMAGE} || true
     - >
       docker build
       --pull
       --label GIT_COMMIT=${CI_COMMIT_SHA}
-      --cache-from ${CI_REGISTRY_IMAGE}/${BASE_IMAGE}
-      -t ${CI_REGISTRY_IMAGE}/${BASE_IMAGE}
+      --cache-from ${REGISTRY_IMAGE}/${BASE_IMAGE}
+      -t ${REGISTRY_IMAGE}/${BASE_IMAGE}
       -f ./docker-build-base/Dockerfile
       ./docker-build-base
-    - docker push ${CI_REGISTRY_IMAGE}/${BASE_IMAGE}
+    - docker push ${REGISTRY_IMAGE}/${BASE_IMAGE}
 
 build:
-  image: ${CI_REGISTRY_IMAGE}/${BASE_IMAGE}
+  image: ${REGISTRY_IMAGE}/${BASE_IMAGE}
   stage: build
   tags:
-    - picodata
     - docker
   script:
     # - git submodule foreach --recursive 'git fetch --tags; git describe --always'
