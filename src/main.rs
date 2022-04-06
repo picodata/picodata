@@ -1,3 +1,4 @@
+use error::CoercionError;
 use nix::sys::signal::{self, Signal};
 use nix::unistd::Pid;
 use std::os::raw::{c_char, c_int, c_void};
@@ -5,10 +6,8 @@ use std::process::Stdio;
 use structopt::StructOpt;
 
 use ::raft::prelude as raft;
-use ::tarantool::error::TarantoolErrorCode::ProcC as ProcCError;
-use ::tarantool::set_error;
+use ::tarantool::proc;
 use ::tarantool::tlua;
-use ::tarantool::tuple::{FunctionArgs, FunctionCtx, Tuple};
 use indoc::indoc;
 use message::Message;
 use std::convert::TryFrom;
@@ -207,25 +206,10 @@ fn init_handlers() {
     );
 }
 
-#[no_mangle]
-pub extern "C" fn raft_interact(_: FunctionCtx, args: FunctionArgs) -> c_int {
-    let raft_node = node();
-
-    // Conversion pipeline:
-    // FunctionArgs -> Tuple -?-> traft::row::Message -?-> raft::Message;
-
-    let m: traft::row::Message = match Tuple::from(args).into_struct() {
-        Ok(v) => v,
-        Err(e) => return set_error!(ProcCError, "{e}"),
-    };
-
-    let m = match raft::Message::try_from(m) {
-        Ok(v) => v,
-        Err(e) => return set_error!(ProcCError, "{e}"),
-    };
-
-    raft_node.step(m);
-    0
+#[proc(packed_args)]
+fn raft_interact(msg: traft::row::Message) -> Result<(), CoercionError> {
+    node().step(raft::Message::try_from(msg)?);
+    Ok(())
 }
 
 fn rm_tarantool_files(data_dir: &str) {
