@@ -22,7 +22,7 @@ use std::{
 /// ```
 /// use tarantool::proc::ReturnMsgpack;
 ///
-/// #[stored_proc]
+/// #[tarantool::proc]
 /// fn foo(x: i32) -> ReturnMsgpack<MyStruct> {
 ///     ReturnMsgpack(MyStruct { x, y: x * 2 })
 /// }
@@ -39,7 +39,7 @@ use std::{
 /// use std::os::raw::c_int;
 /// use tarantool::{proc::{Return, ReturnMsgpack}, tuple::FunctionCtx};
 ///
-/// #[stored_proc]
+/// #[tarantool::proc]
 /// fn foo(x: i32) -> MyStruct {
 ///     MyStruct { x, y: x * 2 }
 /// }

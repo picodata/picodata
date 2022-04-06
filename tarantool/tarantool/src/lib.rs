@@ -11,6 +11,7 @@
 //! - [Decimal numbers](mod@decimal)
 //! - [Logging](log) (see <https://docs.rs/log/>)
 //! - [Error handling](error)
+//! - [Stored procedures](macro@crate::proc)
 //!
 //! > **Caution!** The library is currently under development.
 //! > API may be unstable until version 1.0 will be released.
@@ -183,6 +184,98 @@ pub mod uuid;
 mod va_list;
 
 pub use tlua;
+/// `#[tarantool::proc]` macro attribute for creating stored procedure
+/// functions.
+///
+/// ```rust
+/// #[tarantool::proc]
+/// fn add(x: i32, y: i32) -> i32 {
+///     x + y
+/// }
+/// ```
+///
+/// From tarantool create a "C" stored procedure and call with arguments wrapped
+/// within a lua table:
+/// ```lua
+/// box.schema.func.create("libname.add", { language = 'C' })
+/// assert(box.func['libname.add']:call({ 1, 2 }) == 3)
+/// ```
+///
+/// # Returning errors
+///
+/// If a function's return type is [`Result`]`<T, E>` (where `E` implements
+/// [`Display`]), then if it's return value is
+/// - `Ok(v)`: the stored procedure will return `v`
+/// - `Err(e)`: the stored procedure will fail and `e` will be set as the last
+/// tarantool error (see also [`TarantoolError::last`])
+/// ```rust
+/// use tarantool::{error::TarantoolError, index::IteratorType::Eq, space::Space};
+///
+/// #[tarantool::proc]
+/// fn get_name(id: usize) -> Result<Option<String>, TarantoolError> {
+///     Ok(
+///         if let Some(space) = Space::find("users") {
+///             if let Some(row) = space.select(Eq, &[id])?.next() {
+///                 row.get("name")
+///             } else {
+///                 None
+///             }
+///         } else {
+///             None
+///         }
+///     )
+/// }
+/// ```
+///
+/// # Returning custom types
+///
+/// Stored procedure's return type must implement the [`Return`] trait which is
+/// implemented for most builtin types. To retun an arbitrary type that
+/// implements [`serde::Serialize`] you can use the [`ReturnMsgpack`] wrapper
+/// type.
+///
+/// # Packed arguments
+///
+/// By default the stored procedure unpacks the received tuple and assigns the
+/// **i**th  field of the tuple to the **i**th argument. And if the number of
+/// arguments is less then the number of fields in the input tuple the rest are
+/// ignored.
+///
+/// If you want to instead deserialize the tuple directly into your structure
+/// you can use the `packed_args`
+/// attribute parameter
+/// ```rust
+/// #[tarantool::proc(packed_args)]
+/// fn sum_all(vals: Vec<i32>) -> i32 {
+///     vals.sum()
+/// }
+///
+/// #[tarantool::proc]
+/// fn sum_first_3(a: i32, b: i32, c: i32) -> String {
+///     a + b + c
+/// }
+/// ```
+///
+/// In the above example `sum_all` will sum all the inputs values it received
+/// whereas `sum_first_3` will only sum up the first 3 values
+///
+/// # Debugging
+///
+/// There's also a `debug` attribute parameter which enables debug printing of
+/// the arguments received by the stored procedure
+/// ```
+/// #[tarantool::proc(debug)]
+/// fn print_what_you_got() {}
+/// ```
+///
+/// The above stored procedure will just print it's any of it's arguments to
+/// stderr and return immediately.
+///
+/// [`Result`]: std::result::Result
+/// [`Display`]: std::fmt::Display
+/// [`TarantoolError::last`]: crate::error::TarantoolError::last
+/// [`Return`]: crate::proc::Return
+/// [`ReturnMsgpack`]: crate::proc::ReturnMsgpack
 pub use tarantool_proc::stored_proc as proc;
 
 /// Return a global tarantool lua state.
