@@ -1,5 +1,18 @@
 # Change Log
 
+# [0.6.1] Apr 08 2022
+
+### Added
+- `upsert!` macro for operations of different types
+- `tlua::AsTable` wrapper for pushing/reading rust tuples as lua tables
+- `#[tarantool::proc]` attribute macro for easy stored procedure definitions
+
+### Fixed
+
+- `c_char` related compile errors on systems where `c_char` is `unsigned`
+- `Display` not being implemented for some error types
+
+
 # [0.6.0] Mar 17 2022
 
 Added
