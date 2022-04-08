@@ -15,8 +15,13 @@ use crate::{
 // Channel
 ////////////////////////////////////////////////////////////////////////////////
 
-#[derive(Clone)]
 pub struct Channel<T>(Rc<ChannelBox<T>>);
+
+impl<T> Clone for Channel<T> {
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
+    }
+}
 
 impl<T> std::fmt::Debug for Channel<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {

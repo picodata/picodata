@@ -400,6 +400,7 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 fiber::channel::try_iter,
                 fiber::channel::demo,
                 fiber::channel::drop_rx,
+                fiber::channel::into_clones,
                 fiber::channel::cannot_send_ref,
 
                 fiber::mutex::simple,
