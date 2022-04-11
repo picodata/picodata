@@ -276,7 +276,7 @@ impl SeqSpec {
 ////////////////////////////////////////////////////////////////////////////////
 
 /// Type of index.
-#[derive(Copy, Clone, Debug, Serialize, tlua::Push)]
+#[derive(Copy, Clone, Debug, Serialize, PartialEq, tlua::Push)]
 #[serde(rename_all = "lowercase")]
 pub enum IndexType {
     Hash,
@@ -315,7 +315,7 @@ impl<'de> Deserialize<'de> for IndexType {
 }
 
 /// Type of index part.
-#[derive(Copy, Clone, Debug, Serialize, tlua::Push)]
+#[derive(Copy, Clone, Debug, Serialize, PartialEq, tlua::Push)]
 #[serde(rename_all = "lowercase")]
 pub enum IndexFieldType {
     Unsigned,
@@ -474,7 +474,7 @@ impl From<(&str, IndexFieldType)> for Part {
 ////////////////////////////////////////////////////////////////////////////////
 
 /// Type of distance for retree index.
-#[derive(Copy, Clone, Debug, Serialize, tlua::Push)]
+#[derive(Copy, Clone, Debug, Serialize, PartialEq, tlua::Push)]
 #[serde(rename_all = "lowercase")]
 pub enum RtreeIndexDistanceType {
     Euclid,

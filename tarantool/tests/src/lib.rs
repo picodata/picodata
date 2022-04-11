@@ -34,6 +34,7 @@ mod transaction;
 mod tuple;
 mod tlua;
 mod uuid;
+mod enums;
 
 macro_rules! tests {
     (@should_panic should_panic) => { ShouldPanic::Yes };
@@ -505,6 +506,12 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 uuid::from_tuple,
                 uuid::to_lua,
                 uuid::from_lua,
+
+                enums::space_engine_type,
+                enums::space_field_type,
+                enums::index_type,
+                enums::index_field_type,
+                enums::rtree_index_distance_type,
             ]
         },
     )
