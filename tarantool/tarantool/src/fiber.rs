@@ -94,12 +94,14 @@ macro_rules! impl_eq_hash {
 /// and [is_cancelled()](fn.is_cancelled.html) is checked whenever such a wakeup event occurs.
 ///
 /// Example:
-/// ```rust
+/// ```no_run
 /// use tarantool::fiber::Fiber;
-/// let mut fiber = Fiber::new("test_fiber", &mut |_| {
+///
+/// let mut f = |_| {
 ///     println!("I'm a fiber");
 ///     0
-/// });
+/// };
+/// let mut fiber = Fiber::new("test_fiber", &mut f);
 /// fiber.start(());
 /// println!("Fiber started")
 /// ```
@@ -1352,16 +1354,17 @@ impl Drop for FiberAttr {
 ///
 /// Example:
 ///
-/// ```rust
+/// ```no_run
 /// use tarantool::fiber::Cond;
-/// let cond = fiber.cond();
+/// let cond = Cond::new();
 /// cond.wait();
 /// ```
 ///
 /// The job will hang because [cond.wait()](#method.wait) – will go to sleep until the condition variable changes.
 ///
-/// ```rust
+/// ```no_run
 /// // Call from another fiber:
+/// # let cond = tarantool::fiber::Cond::new();
 /// cond.signal();
 /// ```
 ///

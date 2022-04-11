@@ -522,17 +522,17 @@ impl_tuple_push_error!{A B C D E F G H I J K L M}
 /// A wrapper type for pushing and reading rust tuples as lua tables.
 ///
 /// Useful when working heterogeneous lua tables.
-/// ```
+/// ```no_run
 /// use tlua::{Lua, AsTable, AnyLuaValue::{LuaNumber, LuaString, LuaBoolean}};
 ///
 /// let lua = Lua::new();
-/// lua.set("x", AsTable((true, "two", 3)));
+/// lua.checked_set("x", AsTable((true, "two", 3))).unwrap();
 ///
 /// assert_eq!(
 ///     lua.get("x"),
 ///     Some([LuaBoolean(true), LuaString("two".into()), LuaNumber(3.0)]),
 /// );
-/// assert_eq!(lua.get("x"), Some(AsTable(true, "two".to_string(), 3)));
+/// assert_eq!(lua.get("x"), Some(AsTable((true, "two".to_string(), 3))));
 /// ```
 pub struct AsTable<T>(pub T);
 

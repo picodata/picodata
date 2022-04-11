@@ -20,7 +20,7 @@ impl<T: ?Sized> Mutex<T> {
     ///
     /// # Examples
     ///
-    /// ```
+    /// ```no_run
     /// use tarantool::fiber::mutex::Mutex;
     ///
     /// let mutex = Mutex::new(0);
@@ -51,9 +51,9 @@ impl<T: ?Sized> Mutex<T> {
     /// the current fiber.
     ///
     /// # Examples
-    /// ```
-    /// use std::cell::Rc;
-    /// use tarantool::fiber::{start_proc, mutex::Mutex}
+    /// ```no_run
+    /// use std::rc::Rc;
+    /// use tarantool::fiber::{start_proc, mutex::Mutex};
     ///
     /// let mutex = Rc::new(Mutex::new(0));
     /// let c_mutex = Rc::clone(&mutex);
@@ -84,8 +84,8 @@ impl<T: ?Sized> Mutex<T> {
     ///
     /// # Examples
     ///
-    /// ```
-    /// use std::cell::Rc;
+    /// ```no_run
+    /// use std::rc::Rc;
     /// use tarantool::fiber::{start_proc, mutex::Mutex};
     ///
     /// let mutex = Rc::new(Mutex::new(0));
@@ -113,11 +113,11 @@ impl<T: ?Sized> Mutex<T> {
     /// self-documenting. Alternately, the guard will be automatically dropped
     /// when it goes out of scope.
     ///
-    /// ```
+    /// ```no_run
     /// use tarantool::fiber::mutex::Mutex;
     /// let mutex = Mutex::new(0);
     ///
-    /// let mut guard = mutex.lock().unwrap();
+    /// let mut guard = mutex.lock();
     /// *guard += 20;
     /// Mutex::unlock(guard);
     /// ```
@@ -129,7 +129,7 @@ impl<T: ?Sized> Mutex<T> {
     ///
     /// # Examples
     ///
-    /// ```
+    /// ```no_run
     /// use tarantool::fiber::mutex::Mutex;
     ///
     /// let mutex = Mutex::new(0);
@@ -149,7 +149,7 @@ impl<T: ?Sized> Mutex<T> {
     ///
     /// # Examples
     ///
-    /// ```
+    /// ```no_run
     /// use tarantool::fiber::mutex::Mutex;
     ///
     /// let mut mutex = Mutex::new(0);

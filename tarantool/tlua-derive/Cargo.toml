@@ -12,8 +12,6 @@ repository = "https://github.com/picodata/tarantool-module"
 
 [lib]
 proc-macro = true
-test = false
-doctest = false
 
 [dependencies]
 syn = "^1.0"

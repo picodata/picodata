@@ -32,9 +32,9 @@ use crate::{
 ///
 /// # Example
 ///
-/// ```
-/// let mut lua = tlua::Lua::new();
-/// lua.checked_set("hello", tlua::LuaCode("return 5")).unwrap();
+/// ```no_run
+/// let lua = tlua::Lua::new();
+/// lua.checked_set("hello", &tlua::LuaCode("return 5")).unwrap();
 ///
 /// let r: i32 = lua.eval("return hello();").unwrap();
 /// assert_eq!(r, 5);
@@ -68,10 +68,10 @@ where
 ///
 /// # Example: returning a Lua function from a Rust function
 ///
-/// ```
+/// ```no_run
 /// use std::io::Cursor;
 ///
-/// let mut lua = tlua::Lua::new();
+/// let lua = tlua::Lua::new();
 ///
 /// lua.set("call_rust", tlua::function0(|| -> tlua::LuaCodeFromReader<Cursor<String>> {
 ///     let lua_code = "return 18;";
@@ -184,11 +184,11 @@ where
 ///
 /// # Example
 ///
-/// ```
-/// let mut lua = tlua::Lua::new();
+/// ```no_run
+/// let lua = tlua::Lua::new();
 /// lua.exec("function foo() return 12 end").unwrap();
 ///
-/// let mut foo: tlua::LuaFunction<_> = lua.get("foo").unwrap();
+/// let foo: tlua::LuaFunction<_> = lua.get("foo").unwrap();
 /// let result: i32 = foo.call().unwrap();
 /// assert_eq!(result, 12);
 /// ```
@@ -279,7 +279,7 @@ where
     ///
     /// # Example
     ///
-    /// ```
+    /// ```no_run
     /// let lua = tlua::Lua::new();
     /// lua.exec("function sub(a, b) return a - b end").unwrap();
     ///
@@ -290,7 +290,7 @@ where
     ///
     /// # Multiple return values
     ///
-    /// ```
+    /// ```no_run
     /// let lua = tlua::Lua::new();
     /// lua.exec("function divmod(a, b) return math.floor(a / b), a % b end").unwrap();
     ///
@@ -337,7 +337,7 @@ where
     ///
     /// # Example
     ///
-    /// ```
+    /// ```no_run
     /// let lua = tlua::Lua::new();
     /// lua.exec("function sub(a, b) return a - b end").unwrap();
     ///
@@ -348,7 +348,7 @@ where
     ///
     /// # Multiple return values
     ///
-    /// ```
+    /// ```no_run
     /// let lua = tlua::Lua::new();
     /// lua.exec("function divmod(a, b) return math.floor(a / b), a % b end").unwrap();
     ///
@@ -378,12 +378,12 @@ where
     ///
     /// # Example
     ///
-    /// ```
+    /// ```no_run
     /// use std::io::Cursor;
     ///
-    /// let mut lua = tlua::Lua::new();
+    /// let lua = tlua::Lua::new();
     ///
-    /// let mut f = tlua::LuaFunction::load_from_reader(&mut lua, Cursor::new("return 8")).unwrap();
+    /// let f = tlua::LuaFunction::load_from_reader(&lua, Cursor::new("return 8")).unwrap();
     /// let ret: i32 = f.call().unwrap();
     /// assert_eq!(ret, 8);
     /// ```

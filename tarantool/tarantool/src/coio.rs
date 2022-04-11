@@ -187,12 +187,11 @@ pub fn coio_wait(fd: RawFd, flags: ffi::CoIOFlags, timeout: f64) -> Result<(), i
 /// - `-1` and `errno = ENOMEM` if failed to create a task
 /// - the function return (errno is preserved).
 ///
-/// ```
-/// struct FuncArgs {}
+/// ```no_run
+/// use tarantool::coio::coio_call;
 ///
-/// fn func(args: FuncArgs) -> i32 {}
-///
-/// if coio_call(func, FuncArgs{}) == -1 {
+/// let mut f = |a: Box<i32>| *a + 1;
+/// if coio_call(&mut f, 1) == -1 {
 ///     // handle errors.
 /// }
 /// ```

@@ -27,7 +27,7 @@ use std::{
 ///     ReturnMsgpack(MyStruct { x, y: x * 2 })
 /// }
 ///
-/// #[derive(Serialize)]
+/// #[derive(serde::Serialize)]
 /// struct MyStruct { x: i32, y: i32 }
 /// ```
 ///
@@ -44,7 +44,7 @@ use std::{
 ///     MyStruct { x, y: x * 2 }
 /// }
 ///
-/// #[derive(Serialize)]
+/// #[derive(serde::Serialize)]
 /// struct MyStruct { x: i32, y: i32 }
 ///
 /// impl Return for MyStruct {

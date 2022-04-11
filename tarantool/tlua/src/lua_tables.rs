@@ -24,11 +24,11 @@ use crate::{
 ///
 /// # Example: reading a global variable
 ///
-/// ```
-/// let mut lua = tlua::Lua::new();
+/// ```no_run
+/// let lua = tlua::Lua::new();
 /// lua.exec("a = {28, 92, 17};").unwrap();
 ///
-/// let mut table: tlua::LuaTable<_> = lua.get("a").unwrap();
+/// let table: tlua::LuaTable<_> = lua.get("a").unwrap();
 /// for (k, v) in table.iter::<i32, i32>().filter_map(|e| e) {
 ///     println!("{} => {}", k, v);
 /// }
@@ -100,19 +100,19 @@ where
     ///
     /// # Example: reading a table inside of a table.
     ///
-    /// ```
+    /// ```no_run
     /// let lua = tlua::Lua::new();
     /// lua.exec("a = { 9, { 8, 7 }, 6 }").unwrap();
     ///
-    /// let mut table = lua.get::<tlua::LuaTable<_>, _>("a").unwrap();
+    /// let table = lua.get::<tlua::LuaTable<_>, _>("a").unwrap();
     ///
-    /// assert_eq!(table.get::<i32, _, _>(1).unwrap(), 9);
-    /// assert_eq!(table.get::<i32, _, _>(3).unwrap(), 6);
+    /// assert_eq!(table.get::<i32, _>(1).unwrap(), 9);
+    /// assert_eq!(table.get::<i32, _>(3).unwrap(), 6);
     ///
     /// {
-    ///     let mut subtable: tlua::LuaTable<_> = table.get(2).unwrap();
-    ///     assert_eq!(subtable.get::<i32, _, _>(1).unwrap(), 8);
-    ///     assert_eq!(subtable.get::<i32, _, _>(2).unwrap(), 7);
+    ///     let subtable: tlua::LuaTable<_> = table.get(2).unwrap();
+    ///     assert_eq!(subtable.get::<i32, _>(1).unwrap(), 8);
+    ///     assert_eq!(subtable.get::<i32, _>(2).unwrap(), 7);
     /// }
     /// ```
     ///
@@ -232,17 +232,17 @@ where
     ///
     /// # Example
     ///
-    /// ```
+    /// ```no_run
     /// use tlua::Lua;
     /// use tlua::LuaTable;
     /// use tlua::AnyLuaValue;
     ///
-    /// let mut lua = Lua::new();
+    /// let lua = Lua::new();
     /// lua.exec("a = {}").unwrap();
     ///
     /// {
-    ///     let mut table: LuaTable<_> = lua.get("a").unwrap();
-    ///     let mut metatable = table.get_or_create_metatable();
+    ///     let table: LuaTable<_> = lua.get("a").unwrap();
+    ///     let metatable = table.get_or_create_metatable();
     ///     metatable.set("__index", tlua::function2(|_: AnyLuaValue, var: String| -> AnyLuaValue {
     ///         println!("The user tried to access non-existing index {:?}", var);
     ///         AnyLuaValue::LuaNil
@@ -273,13 +273,13 @@ where
     ///
     /// # Example
     ///
-    /// ```
+    /// ```no_run
     /// use tlua::Lua;
     /// use tlua::LuaTable;
     ///
-    /// let mut lua = Lua::new();
+    /// let lua = Lua::new();
     ///
-    /// let mut table = LuaTable::registry(&mut lua);
+    /// let table = LuaTable::registry(&lua);
     /// table.set(3, "hello");
     /// ```
     #[inline]

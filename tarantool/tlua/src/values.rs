@@ -308,7 +308,7 @@ impl_push_read!{ CStr,
 ///
 /// # Example
 ///
-/// ```
+/// ```no_run
 /// let mut lua = tlua::Lua::new();
 /// lua.set("a", "hello");
 ///

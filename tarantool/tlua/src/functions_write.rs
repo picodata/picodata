@@ -75,7 +75,7 @@ impl_function!(function10, A, B, C, D, E, F, G, H, I, J);
 /// with two parameters, you must use [`function2`](fn.function2.html).
 /// Example:
 ///
-/// ```
+/// ```no_run
 /// let f: tlua::Function<_, _, _> = tlua::function2(move |a: i32, b: i32| { });
 /// ```
 ///
@@ -85,7 +85,7 @@ impl_function!(function10, A, B, C, D, E, F, G, H, I, J);
 ///
 /// You can push a `Function` object like any other value:
 ///
-/// ```
+/// ```no_run
 /// use tlua::Lua;
 /// let lua = Lua::new();
 ///
@@ -96,7 +96,7 @@ impl_function!(function10, A, B, C, D, E, F, G, H, I, J);
 ///
 /// The function can then be called from Lua:
 ///
-/// ```
+/// ```no_run
 /// # use tlua::Lua;
 /// # let lua = Lua::new();
 /// # lua.set("foo", tlua::function1(move |a: i32| -> i32 { a * 5 }));
@@ -108,7 +108,7 @@ impl_function!(function10, A, B, C, D, E, F, G, H, I, J);
 /// Remember that in Lua functions are regular variables, so you can do something like this
 /// for example:
 ///
-/// ```
+/// ```no_run
 /// # use tlua::Lua;
 /// # let lua = Lua::new();
 /// # lua.set("foo", tlua::function1(move |a: i32| -> i32 { a * 5 }));
@@ -122,7 +122,7 @@ impl_function!(function10, A, B, C, D, E, F, G, H, I, J);
 /// In order to return multiple values from a Rust function, you can return a tuple. The elements
 /// of the tuple will be returned in order.
 ///
-/// ```
+/// ```no_run
 /// use tlua::Lua;
 /// let lua = Lua::new();
 ///
@@ -145,7 +145,7 @@ impl_function!(function10, A, B, C, D, E, F, G, H, I, J);
 /// The error type of the `Result` must implement the `Display` trait, and will be turned into a
 /// Lua string.
 ///
-/// ```
+/// ```no_run
 /// use tlua::Lua;
 /// let lua = Lua::new();
 /// lua.openlibs();
@@ -163,7 +163,7 @@ impl_function!(function10, A, B, C, D, E, F, G, H, I, J);
 ///
 /// This also allows easy use of `assert` to act like `.unwrap()` in Rust:
 ///
-/// ```
+/// ```no_run
 /// use tlua::Lua;
 /// let lua = Lua::new();
 /// lua.openlibs();

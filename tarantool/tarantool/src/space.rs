@@ -28,7 +28,8 @@ pub const SYSTEM_ID_MAX: u32 = 511;
 /// Example:
 /// ```rust
 /// use tarantool::space::SystemSpace;
-/// let schema_space = SystemSpace::Schema.into();
+/// use num_traits::ToPrimitive;
+/// assert_eq!(SystemSpace::Schema.to_u32(), Some(272))
 /// ```
 #[repr(u32)]
 #[derive(Clone, Debug, PartialEq, Eq, ToPrimitive)]
@@ -207,6 +208,7 @@ impl Field {
     /// captures `self` by value and returns it, so it should be used in a
     /// builder fashion.
     /// ```rust
+    /// use tarantool::space::Field;
     /// let f = Field::string("middle name").is_nullable(true);
     /// ```
     pub fn is_nullable(mut self, is_nullable: bool) -> Self {

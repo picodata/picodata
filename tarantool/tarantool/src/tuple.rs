@@ -113,10 +113,11 @@ impl Tuple {
     /// allow to iterate over fields at root level of MsgPack array.
     ///
     /// Example:
-    /// ```
+    /// ```no_run
+    /// # fn foo<T: serde::de::DeserializeOwned>(tuple: tarantool::tuple::Tuple) {
     /// let mut it = tuple.iter().unwrap();
     ///
-    /// while let Some(field) = it.next().unwrap() {
+    /// while let Some(field) = it.next::<T>().unwrap() {
     ///     // process data
     /// }
     ///
@@ -125,8 +126,9 @@ impl Tuple {
     /// assert!(it.position() == 0);
     ///
     /// // rewind iterator to first position
-    /// field = it.seek(3).unwrap();
+    /// let field = it.seek::<T>(3).unwrap();
     /// assert!(it.position() == 4);
+    /// }
     /// ```
     pub fn iter(&self) -> Result<TupleIterator> {
         let inner = unsafe { ffi::box_tuple_iterator(self.ptr.as_ptr()) };

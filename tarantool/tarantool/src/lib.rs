@@ -209,10 +209,10 @@ pub use tlua;
 /// - `Err(e)`: the stored procedure will fail and `e` will be set as the last
 /// tarantool error (see also [`TarantoolError::last`])
 /// ```rust
-/// use tarantool::{error::TarantoolError, index::IteratorType::Eq, space::Space};
+/// use tarantool::{error::Error, index::IteratorType::Eq, space::Space};
 ///
 /// #[tarantool::proc]
-/// fn get_name(id: usize) -> Result<Option<String>, TarantoolError> {
+/// fn get_name(id: usize) -> Result<Option<String>, Error> {
 ///     Ok(
 ///         if let Some(space) = Space::find("users") {
 ///             if let Some(row) = space.select(Eq, &[id])?.next() {
@@ -247,11 +247,11 @@ pub use tlua;
 /// ```rust
 /// #[tarantool::proc(packed_args)]
 /// fn sum_all(vals: Vec<i32>) -> i32 {
-///     vals.sum()
+///     vals.into_iter().sum()
 /// }
 ///
 /// #[tarantool::proc]
-/// fn sum_first_3(a: i32, b: i32, c: i32) -> String {
+/// fn sum_first_3(a: i32, b: i32, c: i32) -> i32 {
 ///     a + b + c
 /// }
 /// ```

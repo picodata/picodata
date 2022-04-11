@@ -101,7 +101,7 @@ where
     }
 }
 
-// Note: only the following From<_> for Void implementations are correct,
+// NOTE: only the following From<_> for Void implementations are correct,
 //       don't add other ones!
 
 // T::Err: Void => no error possible
@@ -133,7 +133,7 @@ impl From<PushIterError<TuplePushError<Void, TuplePushError<Void, Void>>>> for V
 /// this instead of converting the iterator into a `Vec` to avoid unnecessary
 /// allocations
 /// # Example
-/// ```rust
+/// ```no_run
 /// use std::io::BufRead;
 /// let lua = tlua::Lua::new();
 /// lua.set(

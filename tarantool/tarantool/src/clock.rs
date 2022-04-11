@@ -19,19 +19,18 @@
 //! - [C API reference: Module clock](https://www.tarantool.io/en/doc/latest/dev_guide/reference_capi/clock/)
 use crate::ffi::tarantool as ffi;
 
-/// The wall clock time.
+/// The wall clock time in seconds.
 ///
 /// Derived from C function `clock_gettime(CLOCK_REALTIME)`.
 /// This is the best function for knowing what the official time is, as determined by the system administrator.
 ///
-/// Return: seconds or nanoseconds since epoch (1970-01-01 00:00:00), adjusted.
-/// Return type: `u64` or `f64`
+/// Return: seconds since epoch (1970-01-01 00:00:00), adjusted.
 ///
 /// Example:
-/// ```rust
+/// ```no_run
 /// // This will print an approximate number of years since 1970.
 /// use tarantool::clock::time;
-/// println!("{}", time() / (365 * 24 * 60 * 60));
+/// println!("{}", time() / (365. * 24. * 60. * 60.));
 /// ```
 ///
 /// See also: [fiber::time()](../fiber/fn.time.html), [fiber::time64()](../fiber/fn.time64.html)
@@ -40,6 +39,14 @@ pub fn time() -> f64 {
     unsafe { ffi::clock_realtime() }
 }
 
+/// The wall clock time in nanoseconds since epoch.
+///
+/// Example:
+/// ```no_run
+/// // This will print an approximate number of years since 1970.
+/// use tarantool::clock::time64;
+/// println!("{}", time64() / (365 * 24 * 60 * 60));
+/// ```
 /// See: [time()](fn.time.html)
 #[inline(always)]
 pub fn time64() -> u64 {
@@ -56,7 +63,7 @@ pub fn time64() -> u64 {
 /// Return type: `u64` or `f64`
 ///
 /// Example:
-/// ```rust
+/// ```no_run
 /// // This will print nanoseconds since the start.
 /// use tarantool::clock::monotonic64;
 /// println!("{}", monotonic64());
@@ -81,7 +88,7 @@ pub fn monotonic64() -> u64 {
 /// Return type: `u64` or `f64`
 ///
 /// Example:
-/// ```rust
+/// ```no_run
 /// // This will print nanoseconds in the CPU since the start.
 /// use tarantool::clock::process64;
 /// println!("{}", process64());
@@ -107,7 +114,7 @@ pub fn process64() -> u64 {
 /// Return type: `u64` or `f64`
 ///
 /// Example:
-/// ```rust
+/// ```no_run
 /// // This will print seconds in the thread since the start.
 /// use tarantool::clock::thread64;
 /// println!("{}", thread64());

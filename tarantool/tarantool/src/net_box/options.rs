@@ -36,8 +36,8 @@ pub struct ConnOptions {
     /// (the `'guest'` user does not need a password).
     ///
     /// Example:
-    /// ```rust
-    /// # use tarantool::net_box::{Conn, ConnOptions};
+    /// ```no_run
+    /// use tarantool::net_box::{Conn, ConnOptions};
     /// Conn::new(
     ///     "localhost:3301",
     ///     ConnOptions {

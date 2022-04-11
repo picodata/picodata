@@ -12,7 +12,7 @@
 //!
 //! For example:
 //!
-//! ```
+//! ```no_run
 //! use tlua::Lua;
 //!
 //! let mut lua = Lua::new();
@@ -56,9 +56,8 @@
 //! Pushing (ie. sending from Rust to Lua) can be done with
 //! [the `set` method](struct.Lua.html#method.set):
 //!
-//! ```
-//! # use tlua::Lua;
-//! # let mut lua = Lua::new();
+//! ```no_run
+//! let lua = tlua::Lua::new();
 //! lua.set("a", 50);
 //! ```
 //!
@@ -87,7 +86,7 @@
 //!
 //! ```no_run
 //! # use tlua::Lua;
-//! # let mut lua = Lua::new();
+//! # let lua = Lua::new();
 //! let a: i32 = lua.get("a").unwrap();
 //! ```
 //!
@@ -839,9 +838,9 @@ impl TempLua {
     ///
     /// # Example
     ///
-    /// ```
+    /// ```no_run
     /// use tlua::Lua;
-    /// let mut lua = Lua::new();
+    /// let lua = Lua::new();
     /// ```
     ///
     /// # Panic
@@ -927,9 +926,9 @@ where
     ///
     /// # Example
     ///
-    /// ```
+    /// ```no_run
     /// use tlua::Lua;
-    /// let mut lua = Lua::new();
+    /// let lua = Lua::new();
     /// lua.openlibs();
     /// ```
     #[inline]
@@ -1038,9 +1037,9 @@ where
     ///
     /// # Examples
     ///
-    /// ```
+    /// ```no_run
     /// use tlua::Lua;
-    /// let mut lua = Lua::new();
+    /// let lua = Lua::new();
     ///
     /// let twelve: i32 = lua.eval("return 3 * 4;").unwrap();
     /// let sixty = lua.eval::<i32>("return 6 * 10;").unwrap();
@@ -1063,9 +1062,9 @@ where
     ///
     /// # Examples
     ///
-    /// ```
+    /// ```no_run
     /// use tlua::Lua;
-    /// let mut lua = Lua::new();
+    /// let lua = Lua::new();
     /// lua.exec("function multiply_by_two(a) return a * 2 end").unwrap();
     /// lua.exec("twelve = multiply_by_two(6)").unwrap();
     /// ```
@@ -1141,9 +1140,9 @@ where
     ///
     /// # Example
     ///
-    /// ```
+    /// ```no_run
     /// use tlua::Lua;
-    /// let mut lua = Lua::new();
+    /// let lua = Lua::new();
     /// lua.exec("a = 5").unwrap();
     /// let a: i32 = lua.get("a").unwrap();
     /// assert_eq!(a, 5);
@@ -1188,9 +1187,9 @@ where
     ///
     /// # Example
     ///
-    /// ```
+    /// ```no_run
     /// use tlua::Lua;
-    /// let mut lua = Lua::new();
+    /// let lua = Lua::new();
     ///
     /// lua.set("a", 12);
     /// let six: i32 = lua.eval("return a / 2;").unwrap();
@@ -1247,9 +1246,9 @@ where
     ///
     /// # Example
     ///
-    /// ```
+    /// ```no_run
     /// use tlua::Lua;
-    /// let mut lua = Lua::new();
+    /// let lua = Lua::new();
     /// lua.openlibs();     // Necessary for `ipairs`.
     ///
     /// {
@@ -1299,9 +1298,9 @@ where
     ///
     /// The function can be used to write global variables, just like `set`.
     ///
-    /// ```
+    /// ```no_run
     /// use tlua::Lua;
-    /// let mut lua = Lua::new();
+    /// let lua = Lua::new();
     /// lua.globals_table().set("a", 5);
     /// assert_eq!(lua.get::<i32, _>("a"), Some(5));
     /// ```
@@ -1309,13 +1308,13 @@ where
     /// A more useful feature for this function is that it allows you to set the metatable of the
     /// global variables. See TODO for more info.
     ///
-    /// ```
+    /// ```no_run
     /// use tlua::Lua;
     /// use tlua::AnyLuaValue;
     ///
-    /// let mut lua = Lua::new();
+    /// let lua = Lua::new();
     /// {
-    ///     let mut metatable = lua.globals_table().get_or_create_metatable();
+    ///     let metatable = lua.globals_table().get_or_create_metatable();
     ///     metatable.set("__index", tlua::function2(|_: AnyLuaValue, var: String| -> AnyLuaValue {
     ///         println!("The user tried to access the variable {:?}", var);
     ///         AnyLuaValue::LuaNumber(48.0)

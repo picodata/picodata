@@ -88,18 +88,23 @@ pub type lua_Integer = libc::ptrdiff_t;
 /// numerical arguments and returns their average and sum:
 ///
 /// ```
+/// use tlua::c_ptr;
+/// use tlua::ffi::{
+///     lua_gettop, lua_isnumber, lua_pushstring, lua_error, lua_tonumber,
+///     lua_pushnumber, lua_State, lua_Number,
+/// };
 /// unsafe extern "C" fn foo(l: *mut lua_State) -> i32 {
 ///     let n = lua_gettop(l);    /* number of arguments */
-///     let mut sum: lua_Number = 0;
+///     let mut sum: lua_Number = 0.;
 ///     let i: i32;
 ///     for i in 1..=n {
 ///         if !lua_isnumber(l, i) {
-///             lua_pushstring(l, CString::new("incorrect argument").into_raw());
+///             lua_pushstring(l, c_ptr!("incorrect argument"));
 ///             lua_error(l);
 ///         }
 ///         sum += lua_tonumber(l, i);
 ///     }
-///     lua_pushnumber(l, sum / n); /* first result */
+///     lua_pushnumber(l, sum / n as f64); /* first result */
 ///     lua_pushnumber(l, sum);     /* second result */
 ///     return 2;                   /* number of results */
 /// }
@@ -415,7 +420,10 @@ extern "C" {
     ///
     /// ```
     /// use std::ffi::CStr;
-    /// unsafe {
+    /// use tlua::ffi::{
+    ///     lua_pushnil, lua_next, lua_typename, lua_type, lua_pop, lua_State,
+    /// };
+    /// unsafe fn print_values(l: *mut lua_State, t: i32) {
     ///     // table is in the stack at index 't'
     ///     lua_pushnil(l);  // first key
     ///     while lua_next(l, t) != 0 {
@@ -587,6 +595,11 @@ pub unsafe fn lua_isthread(state: *mut lua_State, index: c_int) -> bool {
 #[inline(always)]
 pub unsafe fn luaL_iscdata(state: *mut lua_State, index: c_int) -> bool {
     lua_type(state, index) == LUA_TCDATA
+}
+
+#[inline(always)]
+pub unsafe fn lua_isnumber(state: *mut lua_State, index: c_int) -> bool {
+    lua_type(state, index) == LUA_TNUMBER
 }
 
 #[inline(always)]

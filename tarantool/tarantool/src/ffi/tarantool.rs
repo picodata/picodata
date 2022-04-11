@@ -406,8 +406,9 @@ extern "C" {
     /// - `size`:  of the channel buffer
     /// - returns: new channel
     ///
-    /// ```
-    /// let ch = fiber_channel_new(10);
+    /// ```no_run
+    /// use tarantool::ffi::tarantool::fiber_channel_new;
+    /// let ch = unsafe { fiber_channel_new(10) };
     /// ```
     pub fn fiber_channel_new(size: u32) -> *mut fiber_channel;
 

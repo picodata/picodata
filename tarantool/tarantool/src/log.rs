@@ -1,12 +1,14 @@
 //! Logging utils. See ["log" crate documentation](https://docs.rs/log/) for details
 //!
 //! Example:
-//! ```rust
+//! ```no_run
 //! use log::{info, LevelFilter};
 //! use tarantool::log::{TarantoolLogger, say, SayLevel};
 //!
-//! log::set_logger(&TarantoolLogger {}).unwrap();
+//! static LOGGER: TarantoolLogger = TarantoolLogger::new();
+//! log::set_logger(&LOGGER).unwrap();
 //! log::set_max_level(LevelFilter::Debug);
+//! # let username = "Dave";
 //! info!("Hello {}", username);
 //!
 //! // Or you can write to Tarantool logger directly
