@@ -280,6 +280,17 @@ pub fn drop_rx() {
     f.join();
 }
 
+pub fn into_clones() {
+    // fiber::Channel allows cloning
+    // even if the inner type doesn't.
+    struct NonClonable();
+
+    #[derive(Clone)]
+    struct MyChannel(fiber::Channel<NonClonable>);
+
+    let (_, _) = MyChannel(fiber::Channel::new(1)).into_clones();
+}
+
 pub fn cannot_send_ref() {
     let (tx, rx) = fiber::Channel::new(0).into_clones();
     let f = fiber::defer(move || rx.recv());
@@ -290,4 +301,3 @@ pub fn cannot_send_ref() {
     }
     assert_eq!(f.join().unwrap(), &[1, 2, 3])
 }
-
