@@ -292,10 +292,10 @@ impl<'de> Deserialize<'de> for IndexType {
     {
         let str = String::deserialize(deserializer)?.trim().to_lowercase();
 
-        const HASH: &'static str = "hash";
-        const TREE: &'static str = "tree";
-        const BITSET: &'static str = "bitset";
-        const RTREE: &'static str = "rtree";
+        const HASH: &str = "hash";
+        const TREE: &str = "tree";
+        const BITSET: &str = "bitset";
+        const RTREE: &str = "rtree";
 
         Ok(match str.as_str() {
             HASH => Self::Hash,
@@ -338,17 +338,17 @@ impl<'de> Deserialize<'de> for IndexFieldType {
     {
         let str = String::deserialize(deserializer)?.trim().to_lowercase();
 
-        const UNSIGNED: &'static str = "unsigned";
-        const STRING: &'static str = "string";
-        const INTEGER: &'static str = "integer";
-        const NUMBER: &'static str = "number";
-        const DOUBLE: &'static str = "double";
-        const DECIMAL: &'static str = "decimal";
-        const BOOLEAN: &'static str = "boolean";
-        const VARBINARY: &'static str = "varbinary";
-        const UUID: &'static str = "uuid";
-        const ARRAY: &'static str = "array";
-        const SCALAR: &'static str = "scalar";
+        const UNSIGNED: &str = "unsigned";
+        const STRING: &str = "string";
+        const INTEGER: &str = "integer";
+        const NUMBER: &str = "number";
+        const DOUBLE: &str = "double";
+        const DECIMAL: &str = "decimal";
+        const BOOLEAN: &str = "boolean";
+        const VARBINARY: &str = "varbinary";
+        const UUID: &str = "uuid";
+        const ARRAY: &str = "array";
+        const SCALAR: &str = "scalar";
 
         Ok(match str.as_str() {
             UNSIGNED => Self::Unsigned,
@@ -488,8 +488,8 @@ impl<'de> Deserialize<'de> for RtreeIndexDistanceType {
     {
         let str = String::deserialize(deserializer)?.trim().to_lowercase();
 
-        const EUCLID: &'static str = "euclid";
-        const MANHATTAN: &'static str = "manhattan";
+        const EUCLID: &str = "euclid";
+        const MANHATTAN: &str = "manhattan";
 
         Ok(match str.as_str() {
             EUCLID => Self::Euclid,

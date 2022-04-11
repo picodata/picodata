@@ -108,8 +108,8 @@ impl<'de> Deserialize<'de> for SpaceEngineType {
     {
         let str = String::deserialize(deserializer)?.trim().to_lowercase();
 
-        const MEMTX: &'static str = "memtx";
-        const VINYL: &'static str = "vinyl";
+        const MEMTX: &str = "memtx";
+        const VINYL: &str = "vinyl";
 
         Ok(match str.as_str() {
             MEMTX => Self::Memtx,
@@ -245,17 +245,17 @@ pub enum SpaceFieldType {
     Scalar,
 }
 
-const SPACE_FIELD_TYPE_ANY: &'static str = "any";
-const SPACE_FIELD_TYPE_UNSIGNED: &'static str = "unsigned";
-const SPACE_FIELD_TYPE_STRING: &'static str = "string";
-const SPACE_FIELD_TYPE_NUMBER: &'static str = "number";
-const SPACE_FIELD_TYPE_DOUBLE: &'static str = "double";
-const SPACE_FIELD_TYPE_INTEGER: &'static str = "integer";
-const SPACE_FIELD_TYPE_BOOLEAN: &'static str = "boolean";
-const SPACE_FIELD_TYPE_DECIMAL: &'static str = "decimal";
-const SPACE_FIELD_TYPE_UUID: &'static str = "uuid";
-const SPACE_FIELD_TYPE_ARRAY: &'static str = "array";
-const SPACE_FIELD_TYPE_SCALAR: &'static str = "scalar";
+const SPACE_FIELD_TYPE_ANY: &str = "any";
+const SPACE_FIELD_TYPE_UNSIGNED: &str = "unsigned";
+const SPACE_FIELD_TYPE_STRING: &str = "string";
+const SPACE_FIELD_TYPE_NUMBER: &str = "number";
+const SPACE_FIELD_TYPE_DOUBLE: &str = "double";
+const SPACE_FIELD_TYPE_INTEGER: &str = "integer";
+const SPACE_FIELD_TYPE_BOOLEAN: &str = "boolean";
+const SPACE_FIELD_TYPE_DECIMAL: &str = "decimal";
+const SPACE_FIELD_TYPE_UUID: &str = "uuid";
+const SPACE_FIELD_TYPE_ARRAY: &str = "array";
+const SPACE_FIELD_TYPE_SCALAR: &str = "scalar";
 
 impl SpaceFieldType {
     pub fn as_str(&self) -> &'static str {
