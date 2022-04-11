@@ -100,12 +100,13 @@ macro_rules! tuple_impl {
             LU: AsLua,
             $ty: Push<LuaState>,
         {
-            type Err = PushIterError<TuplePushError<$ty::Err, Void>>;
+            type Err = AsTablePushError<TuplePushError<$ty::Err, Void>>;
 
             #[inline]
             fn push_to_lua(&self, lua: LU) -> Result<PushGuard<LU>, (Self::Err, LU)> {
                 push_iter(lua, std::iter::once(&self.0.0))
                     .map_err(|(e, l)| (e.map(TuplePushError::First), l))
+                    .map_err(|(e, l)| (e.into(), l))
             }
         }
 
@@ -123,12 +124,13 @@ macro_rules! tuple_impl {
             LU: AsLua,
             $ty: PushInto<LuaState>,
         {
-            type Err = PushIterError<TuplePushError<$ty::Err, Void>>;
+            type Err = AsTablePushError<TuplePushError<$ty::Err, Void>>;
 
             #[inline]
             fn push_into_lua(self, lua: LU) -> Result<PushGuard<LU>, (Self::Err, LU)> {
                 push_iter(lua, std::iter::once(self.0.0))
                     .map_err(|(e, l)| (e.map(TuplePushError::First), l))
+                    .map_err(|(e, l)| (e.into(), l))
             }
         }
 
@@ -329,7 +331,7 @@ macro_rules! tuple_impl {
             $first: Push<LuaState>,
             $( $other: Push<LuaState>, )+
         {
-            type Err = PushIterError<
+            type Err = AsTablePushError<
                 TuplePushError<
                     $first::Err,
                     <($($other,)+) as Push<LuaState>>::Err,
@@ -383,7 +385,7 @@ macro_rules! tuple_impl {
             $first: PushInto<LuaState>,
             $( $other: PushInto<LuaState>, )+
         {
-            type Err = PushIterError<
+            type Err = AsTablePushError<
                 TuplePushError<
                     $first::Err,
                     <($($other,)+) as PushInto<LuaState>>::Err,
@@ -580,13 +582,92 @@ impl_tuple_push_error! {A B C D E F G H I J K L M}
 /// ```
 pub struct AsTable<T>(pub T);
 
-fn push_table_entry<T>(raw_lua: LuaState, i: i32, v: T) -> Result<(), PushIterError<T::Err>>
+////////////////////////////////////////////////////////////////////////////////
+// AsTablePushError
+////////////////////////////////////////////////////////////////////////////////
+
+/// An error that can happen during an attempt to push a rust tuple as a lua
+/// table (see [`AsTable`]).
+#[derive(Debug, PartialEq, Eq)]
+pub enum AsTablePushError<E> {
+    TooManyValues(i32),
+    ValuePushError(E),
+}
+
+impl<E> AsTablePushError<E> {
+    pub fn map<F, R>(self, f: F) -> AsTablePushError<R>
+    where
+        F: FnOnce(E) -> R,
+    {
+        match self {
+            Self::ValuePushError(e) => AsTablePushError::ValuePushError(f(e)),
+            Self::TooManyValues(n) => AsTablePushError::TooManyValues(n),
+        }
+    }
+}
+
+impl<E> fmt::Display for AsTablePushError<E>
+where
+    E: fmt::Display,
+{
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::TooManyValues(n) => {
+                write!(
+                    fmt,
+                    "Can only push 1 or 2 values as lua table item, got {} instead",
+                    n,
+                )
+            }
+            Self::ValuePushError(e) => {
+                write!(fmt, "Pushing iterable item failed: {}", e)
+            }
+        }
+    }
+}
+
+impl<V> From<AsTablePushError<V>> for Void
+where
+    Void: From<V>,
+{
+    fn from(_: AsTablePushError<V>) -> Void {
+        unreachable!("value of Void cannot be created")
+    }
+}
+
+impl<E> From<PushIterError<E>> for AsTablePushError<E> {
+    fn from(e: PushIterError<E>) -> Self {
+        match e {
+            PushIterError::TooManyValues(n) => Self::TooManyValues(n),
+            PushIterError::ValuePushError(e) => Self::ValuePushError(e),
+        }
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// push_table_entry
+////////////////////////////////////////////////////////////////////////////////
+
+/// Push a single `table` entry. This function assumes a table is located at the
+/// top of the stack (index `-1`).
+///
+/// Depending on how many values are pushed onto the stack when
+/// `T::push_into_lua` is called the following can happen:
+/// - `0` values => nothing happens
+/// - `1` value: `v` => `table[i] = v`
+/// - `2` values: `k` & `v` => `table[k] = v`
+/// - any other number => nothing is inserted into table,
+/// `AsTablePushError::TooManyValues(n)` is returned
+///
+/// If an error happens during attempt to push `T`,
+/// `AsTablePushError::ValuePushError(e)` is returned
+fn push_table_entry<T>(raw_lua: LuaState, i: i32, v: T) -> Result<(), AsTablePushError<T::Err>>
 where
     T: PushInto<LuaState>,
 {
     let n_pushed = match raw_lua.try_push(v) {
         Ok(pushed) => pushed.forget_internal(),
-        Err((e, _)) => return Err(PushIterError::ValuePushError(e)),
+        Err((e, _)) => return Err(AsTablePushError::ValuePushError(e)),
     };
     match n_pushed {
         0 => {}
@@ -601,7 +682,7 @@ where
         },
         n => unsafe {
             drop(PushGuard::new(raw_lua, n));
-            return Err(PushIterError::TooManyValues(n));
+            return Err(AsTablePushError::TooManyValues(n));
         },
     }
     Ok(())

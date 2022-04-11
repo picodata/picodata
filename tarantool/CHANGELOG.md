@@ -29,6 +29,8 @@ and support of the `fiber_clock` API.
     calendar time is needed, use `std::time::SystemTime`.
 - `tlua::PushIterError::TooManyValues` now stores how many values were attempted
     to be pushed.
+- `<tlua::AsTable as Push>::Err` changed from `PushIterError` to
+    `AsTablePushError`.
 - `fiber::clock64` removed in favor of a new `Instant` based `fiber::clock` API
 - `Error::Decode` now contains expected rust type and actual incorrect msgpack
     contents.
