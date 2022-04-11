@@ -11,7 +11,7 @@ use std::os::raw::c_char;
 
 use num_derive::ToPrimitive;
 use num_traits::ToPrimitive;
-use serde::{Serialize, Serializer};
+use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::{Map, Value};
 
 use crate::error::{Error, TarantoolError};
@@ -94,21 +94,33 @@ impl From<SystemSpace> for Space {
 }
 
 /// Type of engine, used by space.
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
 pub enum SpaceEngineType {
     Memtx,
     Vinyl,
 }
 
-impl Serialize for SpaceEngineType {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+impl<'de> Deserialize<'de> for SpaceEngineType {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
-        S: Serializer,
+        D: Deserializer<'de>,
     {
-        match *self {
-            SpaceEngineType::Memtx => serializer.serialize_str("memtx"),
-            SpaceEngineType::Vinyl => serializer.serialize_str("vinyl"),
-        }
+        let str = String::deserialize(deserializer)?.trim().to_lowercase();
+
+        const MEMTX: &'static str = "memtx";
+        const VINYL: &'static str = "vinyl";
+
+        Ok(match str.as_str() {
+            MEMTX => Self::Memtx,
+            VINYL => Self::Vinyl,
+            _ => {
+                return Err(serde::de::Error::unknown_variant(
+                    &str,
+                    &[MEMTX, VINYL],
+                ));
+            }
+        })
     }
 }
 
@@ -217,7 +229,8 @@ impl Field {
     }
 }
 
-#[derive(Copy, Clone, Debug, Serialize)]
+#[derive(Copy, Clone, Debug, Serialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
 pub enum SpaceFieldType {
     Any,
     Unsigned,
@@ -232,21 +245,73 @@ pub enum SpaceFieldType {
     Scalar,
 }
 
+const SPACE_FIELD_TYPE_ANY: &'static str = "any";
+const SPACE_FIELD_TYPE_UNSIGNED: &'static str = "unsigned";
+const SPACE_FIELD_TYPE_STRING: &'static str = "string";
+const SPACE_FIELD_TYPE_NUMBER: &'static str = "number";
+const SPACE_FIELD_TYPE_DOUBLE: &'static str = "double";
+const SPACE_FIELD_TYPE_INTEGER: &'static str = "integer";
+const SPACE_FIELD_TYPE_BOOLEAN: &'static str = "boolean";
+const SPACE_FIELD_TYPE_DECIMAL: &'static str = "decimal";
+const SPACE_FIELD_TYPE_UUID: &'static str = "uuid";
+const SPACE_FIELD_TYPE_ARRAY: &'static str = "array";
+const SPACE_FIELD_TYPE_SCALAR: &'static str = "scalar";
+
 impl SpaceFieldType {
     pub fn as_str(&self) -> &'static str {
         match self {
-            Self::Any => "any",
-            Self::Unsigned => "unsigned",
-            Self::String => "string",
-            Self::Number => "number",
-            Self::Double => "double",
-            Self::Integer => "integer",
-            Self::Boolean => "boolean",
-            Self::Decimal => "decimal",
-            Self::Uuid => "uuid",
-            Self::Array => "array",
-            Self::Scalar => "scalar",
+            Self::Any => SPACE_FIELD_TYPE_ANY,
+            Self::Unsigned => SPACE_FIELD_TYPE_UNSIGNED,
+            Self::String => SPACE_FIELD_TYPE_STRING,
+            Self::Number => SPACE_FIELD_TYPE_NUMBER,
+            Self::Double => SPACE_FIELD_TYPE_DOUBLE,
+            Self::Integer => SPACE_FIELD_TYPE_INTEGER,
+            Self::Boolean => SPACE_FIELD_TYPE_BOOLEAN,
+            Self::Decimal => SPACE_FIELD_TYPE_DECIMAL,
+            Self::Uuid => SPACE_FIELD_TYPE_UUID,
+            Self::Array => SPACE_FIELD_TYPE_ARRAY,
+            Self::Scalar => SPACE_FIELD_TYPE_SCALAR,
         }
+    }
+}
+impl<'de> Deserialize<'de> for SpaceFieldType {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let str = String::deserialize(deserializer)?.trim().to_lowercase();
+
+        Ok(match str.as_str() {
+            SPACE_FIELD_TYPE_ANY => Self::Any,
+            SPACE_FIELD_TYPE_UNSIGNED => Self::Unsigned,
+            SPACE_FIELD_TYPE_STRING => Self::String,
+            SPACE_FIELD_TYPE_NUMBER => Self::Number,
+            SPACE_FIELD_TYPE_DOUBLE => Self::Double,
+            SPACE_FIELD_TYPE_INTEGER => Self::Integer,
+            SPACE_FIELD_TYPE_BOOLEAN => Self::Boolean,
+            SPACE_FIELD_TYPE_DECIMAL => Self::Decimal,
+            SPACE_FIELD_TYPE_UUID => Self::Uuid,
+            SPACE_FIELD_TYPE_ARRAY => Self::Array,
+            SPACE_FIELD_TYPE_SCALAR => Self::Scalar,
+            _ => {
+                return Err(serde::de::Error::unknown_variant(
+                    &str,
+                    &[
+                        SPACE_FIELD_TYPE_ANY,
+                        SPACE_FIELD_TYPE_UNSIGNED,
+                        SPACE_FIELD_TYPE_STRING,
+                        SPACE_FIELD_TYPE_NUMBER,
+                        SPACE_FIELD_TYPE_DOUBLE,
+                        SPACE_FIELD_TYPE_INTEGER,
+                        SPACE_FIELD_TYPE_BOOLEAN,
+                        SPACE_FIELD_TYPE_DECIMAL,
+                        SPACE_FIELD_TYPE_UUID,
+                        SPACE_FIELD_TYPE_ARRAY,
+                        SPACE_FIELD_TYPE_SCALAR,
+                    ],
+                ));
+            }
+        })
     }
 }
 

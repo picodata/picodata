@@ -1,4 +1,4 @@
-use serde::Serialize;
+use serde::{ Serialize, Deserialize };
 use crate::error::Error;
 
 pub trait IntoClones<Tuple>: Clone {
@@ -51,7 +51,7 @@ pub fn rmp_to_vec<T>(val: &T) -> Result<Vec<u8>, Error>
     Ok(rmp_serde::to_vec(val)?)
 }
 
-#[derive(Serialize, tlua::Push)]
+#[derive(Clone, Debug, Serialize, Deserialize, tlua::Push)]
 pub enum NumOrStr {
     Num(u32),
     // TODO(gmoshkin): this should be a `&str` instead, but

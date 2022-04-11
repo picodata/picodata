@@ -14,7 +14,7 @@ use std::mem::MaybeUninit;
 
 use num_derive::ToPrimitive;
 use num_traits::ToPrimitive;
-use serde::Serialize;
+use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::error::{Error, TarantoolError};
 use crate::ffi::tarantool as ffi;
@@ -277,6 +277,7 @@ impl SeqSpec {
 
 /// Type of index.
 #[derive(Copy, Clone, Debug, Serialize, tlua::Push)]
+#[serde(rename_all = "lowercase")]
 pub enum IndexType {
     Hash,
     Tree,
@@ -284,8 +285,38 @@ pub enum IndexType {
     Rtree,
 }
 
+impl<'de> Deserialize<'de> for IndexType {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+        where
+            D: Deserializer<'de>,
+    {
+        let str = String::deserialize(deserializer)?.trim().to_lowercase();
+
+        const HASH: &'static str = "hash";
+        const TREE: &'static str = "tree";
+        const BITSET: &'static str = "bitset";
+        const RTREE: &'static str = "rtree";
+
+        Ok(match str.as_str() {
+            HASH => Self::Hash,
+            TREE => Self::Tree,
+            BITSET => Self::Bitset,
+            RTREE => Self::Rtree,
+            _ => {
+                return Err(serde::de::Error::unknown_variant(
+                    &str,
+                    &[
+                        HASH, TREE, BITSET, RTREE,
+                    ],
+                ));
+            }
+        })
+    }
+}
+
 /// Type of index part.
 #[derive(Copy, Clone, Debug, Serialize, tlua::Push)]
+#[serde(rename_all = "lowercase")]
 pub enum IndexFieldType {
     Unsigned,
     String,
@@ -300,6 +331,50 @@ pub enum IndexFieldType {
     Scalar,
 }
 
+impl<'de> Deserialize<'de> for IndexFieldType {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let str = String::deserialize(deserializer)?.trim().to_lowercase();
+
+        const UNSIGNED: &'static str = "unsigned";
+        const STRING: &'static str = "string";
+        const INTEGER: &'static str = "integer";
+        const NUMBER: &'static str = "number";
+        const DOUBLE: &'static str = "double";
+        const DECIMAL: &'static str = "decimal";
+        const BOOLEAN: &'static str = "boolean";
+        const VARBINARY: &'static str = "varbinary";
+        const UUID: &'static str = "uuid";
+        const ARRAY: &'static str = "array";
+        const SCALAR: &'static str = "scalar";
+
+        Ok(match str.as_str() {
+            UNSIGNED => Self::Unsigned,
+            STRING => Self::String,
+            INTEGER => Self::Integer,
+            NUMBER => Self::Number,
+            DOUBLE => Self::Double,
+            DECIMAL => Self::Decimal,
+            BOOLEAN => Self::Boolean,
+            VARBINARY => Self::Varbinary,
+            UUID => Self::Uuid,
+            ARRAY => Self::Array,
+            SCALAR => Self::Scalar,
+            _ => {
+                return Err(serde::de::Error::unknown_variant(
+                    &str,
+                    &[
+                        UNSIGNED, STRING, INTEGER, NUMBER, DOUBLE, DECIMAL, BOOLEAN, VARBINARY,
+                        UUID, ARRAY, SCALAR,
+                    ],
+                ));
+            }
+        })
+    }
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // IndexPart
 ////////////////////////////////////////////////////////////////////////////////
@@ -308,7 +383,7 @@ pub enum IndexFieldType {
 pub type IndexPart = Part;
 
 /// Index part.
-#[derive(Serialize, tlua::Push)]
+#[derive(Clone, Debug, Serialize, Deserialize, tlua::Push)]
 pub struct Part {
     pub field: NumOrStr,
     pub r#type: Option<IndexFieldType>,
@@ -400,9 +475,30 @@ impl From<(&str, IndexFieldType)> for Part {
 
 /// Type of distance for retree index.
 #[derive(Copy, Clone, Debug, Serialize, tlua::Push)]
+#[serde(rename_all = "lowercase")]
 pub enum RtreeIndexDistanceType {
     Euclid,
     Manhattan,
+}
+
+impl<'de> Deserialize<'de> for RtreeIndexDistanceType {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+        where
+            D: Deserializer<'de>,
+    {
+        let str = String::deserialize(deserializer)?.trim().to_lowercase();
+
+        const EUCLID: &'static str = "euclid";
+        const MANHATTAN: &'static str = "manhattan";
+
+        Ok(match str.as_str() {
+            EUCLID => Self::Euclid,
+            MANHATTAN => Self::Manhattan,
+            _ => {
+                return Err(serde::de::Error::unknown_variant(&str, &[EUCLID, MANHATTAN]));
+            }
+        })
+    }
 }
 
 impl Index {
