@@ -1,12 +1,16 @@
 site_name: Портал документации Picodata
 nav:
     - Главная: index.md
+    - Описание продукта: description.md
     - Преимущества: benefits.md
-    - Описание услуг: services.md
     - Установка и первые шаги: install.md
+    - Услуги: services.md
 theme: readthedocs
 plugins:
     - search:
         lang: 
           - en
           - ru
+markdown_extensions:
+  - attr_list
+  - md_in_html
