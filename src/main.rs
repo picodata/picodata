@@ -203,7 +203,7 @@ macro_rules! declare_stored_c_funcs {
         // This is needed to tell the compiler that the functions are really used.
         // Otherwise the functions get optimized out and disappear from the binary
         // and we may get this error: dlsym(RTLD_DEFAULT, some_fn): symbol not found
-        fn used(_: extern "C" fn(FunctionCtx, FunctionArgs) -> c_int) {}
+        fn used(_: unsafe extern "C" fn(FunctionCtx, FunctionArgs) -> c_int) {}
 
         $(used($func_name);
             crate::tarantool::eval(concat!(
@@ -219,6 +219,7 @@ macro_rules! declare_stored_c_funcs {
 fn init_handlers() {
     declare_stored_c_funcs!(
         //
+        raft_interact,
         discover,
     );
 }
@@ -400,11 +401,12 @@ fn tarantool(args: args::Tarantool) -> Result<(), String> {
     tarantool_main!(args.tt_args()?)
 }
 
-#[no_mangle]
-pub extern "C" fn discover(ctx: FunctionCtx, args: FunctionArgs) -> c_int {
-    let (request, addr): (discovery::Request, discovery::Address) = args.as_struct().unwrap();
-    ctx.return_mp(&discovery::handle_request(request, &addr))
-        .unwrap()
+#[proc]
+fn discover(
+    request: discovery::Request,
+    address: discovery::Address,
+) -> proc::ReturnMsgpack<discovery::Response> {
+    proc::ReturnMsgpack(discovery::handle_request(request, &address))
 }
 
 fn test(args: args::Test) -> Result<(), String> {
