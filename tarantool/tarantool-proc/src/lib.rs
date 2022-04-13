@@ -13,6 +13,7 @@ pub fn stored_proc(attr: TokenStream, item: TokenStream) -> TokenStream {
         tarantool,
         debug_tuple,
         is_packed,
+        wrap_ret,
         ..
     } = Context::from_args(args);
 
@@ -83,6 +84,8 @@ pub fn stored_proc(attr: TokenStream, item: TokenStream) -> TokenStream {
 
             let __tp_res = __tp_inner(#(#input_idents),*);
 
+            #wrap_ret
+
             #tarantool::proc::Return::ret(__tp_res, __tp_ctx)
         }
     }.into()
@@ -92,6 +95,7 @@ struct Context {
     tarantool: TokenStream2,
     debug_tuple: TokenStream2,
     is_packed: bool,
+    wrap_ret: TokenStream2,
 }
 
 impl Context {
@@ -99,27 +103,28 @@ impl Context {
         let mut tarantool = quote! { ::tarantool };
         let mut debug_tuple = quote! {};
         let mut is_packed = false;
+        let mut wrap_ret = quote! {};
 
+        use syn::NestedMeta::{Lit as NMLit, Meta as NMMeta};
         for arg in args {
             match arg {
-                NestedMeta::Lit(lit) => {
+                NMLit(lit) => {
                     eprintln!("unsuported attribute argument: {:?}", lit)
                 }
-                NestedMeta::Meta(Meta::Path(path))
-                    if path.get_ident()
-                        .map(|p| p == "packed_args")
-                        .unwrap_or(false) => {
+                NMMeta(Meta::Path(path)) if path.is_ident("custom_ret") => {
+                    wrap_ret = quote! {
+                        let __tp_res = #tarantool::proc::ReturnMsgpack(__tp_res);
+                    }
+                }
+                NMMeta(Meta::Path(path)) if path.is_ident("packed_args") => {
                     is_packed = true
                 }
-                NestedMeta::Meta(Meta::Path(path))
-                    if path.get_ident()
-                        .map(|p| p == "debug")
-                        .unwrap_or(false) => {
+                NMMeta(Meta::Path(path)) if path.is_ident("debug") => {
                     debug_tuple = quote! {
                         let __tp_tuple = ::std::dbg!(__tp_tuple);
                     }
                 }
-                NestedMeta::Meta(Meta::NameValue(MetaNameValue {
+                NMMeta(Meta::NameValue(MetaNameValue {
                     path,
                     lit,
                     ..
@@ -144,6 +149,7 @@ impl Context {
             tarantool,
             debug_tuple,
             is_packed,
+            wrap_ret,
         }
     }
 }

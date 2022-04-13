@@ -230,9 +230,38 @@ pub use tlua;
 /// # Returning custom types
 ///
 /// Stored procedure's return type must implement the [`Return`] trait which is
-/// implemented for most builtin types. To retun an arbitrary type that
+/// implemented for most builtin types. To return an arbitrary type that
 /// implements [`serde::Serialize`] you can use the [`ReturnMsgpack`] wrapper
-/// type.
+/// type or the `custom_ret` attribute parameter
+/// ```no_run
+/// #[derive(serde::Serialize)]
+/// struct Complex {
+///     re: f64,
+///     im: f64,
+/// }
+///
+/// #[tarantool::proc(custom_ret)]
+/// fn sqrt(x: f64) -> Complex {
+///     if x < 0. {
+///         Complex { re: 0., im: x.abs().sqrt() }
+///     } else {
+///         Complex { re: x.sqrt(), im: 0. }
+///     }
+/// }
+///
+/// // above is equivalent to this
+/// use tarantool::proc::ReturnMsgpack;
+/// #[tarantool::proc]
+/// fn sqrt_explicit(x: f64) -> ReturnMsgpack<Complex> {
+///     ReturnMsgpack(
+///         if x < 0. {
+///             Complex { re: 0., im: x.abs().sqrt() }
+///         } else {
+///             Complex { re: x.sqrt(), im: 0. }
+///         }
+///     )
+/// }
+/// ```
 ///
 /// # Packed arguments
 ///

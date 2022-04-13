@@ -13,7 +13,9 @@ use std::{
 // ReturnMsgpack
 ////////////////////////////////////////////////////////////////////////////////
 
-/// A wrapper type for returning custom types form stored procedures.
+/// A wrapper type for returning custom types from stored procedures. Consider
+/// using the `custom_ret` attribute parameter instead (see [`tarantool::proc`]
+/// docs for examples).
 ///
 /// # using `ReturnMsgpack` directly
 ///
@@ -53,6 +55,8 @@ use std::{
 ///     }
 /// }
 /// ```
+///
+/// [`tarantool::proc`]: macro@crate::proc
 pub struct ReturnMsgpack<T>(pub T);
 
 impl<T: Serialize> Return for ReturnMsgpack<T> {

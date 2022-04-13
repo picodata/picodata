@@ -1,5 +1,7 @@
 use tarantool::{
+    proc::ReturnMsgpack,
     tlua::{
+        self,
         Call, PushGuard, LuaState, PushInto, LuaFunction, LuaThread,
         CallError, LuaRead, AsTable,
     },
@@ -92,4 +94,32 @@ pub fn tarantool_reimport() {
     }
 
     assert_eq!(call_proc::<(), i32>("proc_tarantool_reimport", ()).unwrap(), 42);
+}
+
+pub fn custom_ret() {
+    #[derive(serde::Serialize, tlua::LuaRead, PartialEq, Eq, Debug)]
+    struct MyStruct {
+        x: i32,
+        y: String,
+    }
+
+    #[tarantool::proc]
+    fn proc_custom_ret(x: i32) -> ReturnMsgpack<MyStruct> {
+        ReturnMsgpack(MyStruct { x, y: format!("{:x}", x) })
+    }
+
+    #[tarantool::proc(custom_ret)]
+    fn proc_custom_ret_attr(x: i32) -> MyStruct {
+        MyStruct { x, y: format!("{:x}", x) }
+    }
+
+    assert_eq!(
+        call_proc::<_, MyStruct>("proc_custom_ret", 69).unwrap(),
+        MyStruct { x: 69, y: "45".into() }
+    );
+
+    assert_eq!(
+        call_proc::<_, MyStruct>("proc_custom_ret_attr", 69).unwrap(),
+        MyStruct { x: 69, y: "45".into() }
+    );
 }
