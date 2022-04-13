@@ -1285,9 +1285,19 @@ pub fn clock64() -> u64 {
 
 /// Yield control to the scheduler.
 ///
-/// Return control to another fiber and wait until it'll be woken. Equivalent to `fiber.sleep(0)`.
+/// **NOTE**: currently the only way to wakeup a yielded fiber is to call
+/// [`Fiber::wakeup`], which isn't possible if the fiber was created via one of
+/// [`fiber::start`], [`fiber::defer`], etc.
 ///
-/// See also: [Fiber::wakeup()](struct.Fiber.html#method.wakeup)
+/// Return control to another fiber and wait until it'll be explicitly awoken by
+/// another fiber.
+///
+/// Consider using [`fiber::sleep`]`(Duration::ZERO)` instead, that way the
+/// fiber will be automatically awoken and will resume execution shortly.
+///
+/// [`fiber::sleep`]: crate::fiber::sleep
+/// [`fiber::start`]: crate::fiber::start
+/// [`fiber::defer`]: crate::fiber::defer
 pub fn fiber_yield() {
     unsafe { ffi::fiber_yield() }
 }
