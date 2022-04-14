@@ -40,7 +40,7 @@ docker-build-base:
         - docker-build-base/Dockerfile
   before_script:
     - mkdir -p $HOME/.docker
-    - echo $DOCKER_AUTH_RW > $HOME/.docker/config.json  
+    - echo $DOCKER_AUTH_RW > $HOME/.docker/config.json
   script:
     - docker pull ${REGISTRY_IMAGE}/${BASE_IMAGE} || true
     - >
@@ -63,8 +63,8 @@ build:
     - pushd tarantool-sys; git describe; popd
     - pushd tarantool-sys/third_party/luajit; git describe; popd
     - cargo -V
-    - cargo build
-    - cargo test
+    - cargo build --locked
+    - cargo test --locked
     - cargo fmt -- -v --check
     - cargo clippy --version
     - cargo clippy -- --deny clippy::all
