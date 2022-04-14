@@ -23,7 +23,7 @@ build-doc:
     - cd docker/static
     - docker build --no-cache --build-arg COMMIT_HASH=$CI_COMMIT_SHA -t $DOCKER_LATEST .
     - docker push $DOCKER_LATEST
-    - echo "Picodata doc successfully builded."
+    - echo "Picodata doc successfully built"
 
 pack-doc:
   image: $DOCKER_LATEST
