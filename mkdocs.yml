@@ -2,7 +2,8 @@ site_name: Портал документации Picodata
 nav:
     - Главная: index.md
     - Описание продукта: description.md
-    - Преимущества: benefits.md
+    - Преимущества Picodata: benefits.md
+    - Преимуществая языка Rust: benefits_rust.md
     - Установка и первые шаги: install.md
     - Услуги: services.md
 theme:
