@@ -1,4 +1,3 @@
-use crate::traft::row::Peer;
 use std::{
     borrow::Cow,
     error::Error,
@@ -72,13 +71,12 @@ pub struct Run {
     #[structopt(
         long = "peer",
         value_name = "host[:port]",
-        parse(from_str = parse_peer),
         require_delimiter = true,
         required = true,
-        env = "PICODATA_PEER",
+        env = "PICODATA_PEER"
     )]
     /// Address of other instance(s)
-    pub peers: Vec<Peer>,
+    pub peers: Vec<String>,
 
     #[structopt(hidden = true, env = "PICODATA_RAFT_ID")]
     pub raft_id: Option<u64>,
@@ -161,20 +159,6 @@ fn current_exe() -> Result<CString, String> {
             .to_string(),
     )
     .map_err(|e| format!("Current executable path contains nul bytes: {e}"))
-}
-
-fn parse_peer(text: &str) -> Peer {
-    static mut CURRENT_RAFT_ID: u64 = 0;
-
-    unsafe { CURRENT_RAFT_ID += 1 }
-
-    let address = try_parse_address(text)
-        .unwrap_or_else(|e| panic!("could not parse peer \"{}\" as an address: {}", text, e));
-
-    Peer {
-        raft_id: unsafe { CURRENT_RAFT_ID },
-        uri: address,
-    }
 }
 
 fn parse_flag(text: &str) -> bool {
