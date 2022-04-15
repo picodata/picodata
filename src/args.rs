@@ -114,6 +114,13 @@ impl Run {
 
         Ok(res)
     }
+
+    pub fn advertise_address(&self) -> String {
+        match &self.advertise_address {
+            Some(v) => v.clone(),
+            None => self.listen.clone(),
+        }
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -145,6 +152,12 @@ impl Tarantool {
 pub struct Test {
     #[structopt(flatten)]
     pub run: Run,
+}
+
+impl Test {
+    pub fn tt_args(&self) -> Result<Vec<CString>, String> {
+        Ok(vec![current_exe()?])
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -124,8 +124,8 @@ fn init_handlers() {
         "#,
     );
 
-    use discovery::raft_discover;
-    declare_cfunc!(raft_discover);
+    use discovery::proc_discover;
+    declare_cfunc!(proc_discover);
 
     use traft::node::raft_interact;
     declare_cfunc!(raft_interact);
@@ -309,41 +309,41 @@ fn start_discover(supervisor: Supervisor) {
     tarantool::set_cfg(&cfg);
 
     traft::Storage::init_schema();
-    discovery::init_global(
-        discovery::PeerInfo {
-            raft_id: traft::Storage::id().unwrap(),
-            random_uuid: tarantool::info("uuid").unwrap(),
-            instance_id: args.instance_id.clone(),
-            replicaset_id: args.replicaset_id.clone(),
-            advertise_address: args.advertise_address(),
-        },
-        &args.peers,
-    );
+
+    // исходный discovery::discover() пришлось разбить на две части -
+    // init_global и wait_global. К сожалению, они не могут быть атомарны,
+    // потому что listen порт надо поднимать именно посередине. С неподнятым портом
+    // уходить в кишки discovery::discover() нельзя - на запросы отвечать будет некому.
+    // А если поднять порт до инициализации дискавери, то образуется временно́е окно,
+    // и прилетевший пакет приведёт к панике "discovery error: expected DISCOVERY
+    // to be set on instance startup"
+    discovery::init_global(&args.peers);
     init_handlers();
 
     cfg.listen = Some(args.listen.clone());
     tarantool::set_cfg(&cfg);
-    let summary = discovery::wait_global().unwrap();
+    let role = discovery::wait_global();
 
     // TODO assert traft::Storage::instance_id == (null || args.instance_id)
     if let Some(_) = traft::Storage::id().unwrap() {
         return postjoin(supervisor);
     }
 
-    let msg = if summary.its_me {
-        return start_boot(supervisor);
-        // let next_entrypoint = Entrypoint::StartBoot();
-        // IpcMessage {
-        //     next_entrypoint,
-        //     drop_db: false,
-        // }
-    } else {
-        let next_entrypoint = Entrypoint::StartJoin {
-            leader_uri: summary.leader.unwrap().advertise_address,
-        };
-        IpcMessage {
-            next_entrypoint,
-            drop_db: true,
+    let msg = match role {
+        discovery::Role::Leader { .. } => {
+            return start_boot(supervisor);
+            // let next_entrypoint = Entrypoint::StartBoot();
+            // IpcMessage {
+            //     next_entrypoint,
+            //     drop_db: false,
+            // }
+        }
+        discovery::Role::NonLeader { leader } => {
+            let next_entrypoint = Entrypoint::StartJoin { leader_uri: leader };
+            IpcMessage {
+                next_entrypoint,
+                drop_db: true,
+            }
         }
     };
 
@@ -436,7 +436,7 @@ fn start_join(leader_uri: String, supervisor: Supervisor) {
     let fn_name = stringify_cfunc!(raft_join);
     let timeout = Duration::from_secs_f32(1.5);
     let resp: traft::node::JoinResponse =
-        tarantool::net_box_call(&leader_uri, fn_name, req, timeout).unwrap_or_else(|e| {
+        tarantool::net_box_call(&leader_uri, fn_name, &req, timeout).unwrap_or_else(|e| {
             tlog!(Warning, "net_box_call failed: {e}";
                 "peer" => &leader_uri,
                 "fn" => fn_name,
@@ -556,7 +556,7 @@ fn postjoin(supervisor: Supervisor) {
         use traft::node::raft_join;
         let fn_name = stringify_cfunc!(raft_join);
         let now = Instant::now();
-        match tarantool::net_box_call(&leader.peer_address, fn_name, req, timeout) {
+        match tarantool::net_box_call(&leader.peer_address, fn_name, &req, timeout) {
             Err(e) => {
                 tlog!(Error, "failed to promote myself: {e}");
                 fiber::sleep(timeout.saturating_sub(now.elapsed()));

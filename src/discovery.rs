@@ -1,122 +1,15 @@
-use std::{
-    collections::BTreeSet,
-    fmt::{Debug, Display},
-    net::{SocketAddr, ToSocketAddrs},
-    time::Duration,
-    vec,
-};
-
+use ::tarantool::fiber::{mutex::MutexGuard, Mutex};
+use ::tarantool::proc;
+use ::tarantool::uuid::Uuid;
 use itertools::Itertools;
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use tarantool::{
-    fiber::{self, mutex::MutexGuard, Mutex},
-    net_box,
-    tuple::AsTuple,
-    uuid::Uuid,
-};
+use serde::{Deserialize, Serialize};
+use std::collections::BTreeSet;
+use std::error::Error as StdError;
 
-use crate::tlog;
+use crate::stringify_cfunc;
+use crate::tarantool;
 
-pub fn net_box_repeat_call_until_succeed<Args, Res, Addr>(
-    address: Addr,
-    fn_name: &str,
-    args: Args,
-) -> Res
-where
-    Args: AsTuple,
-    Addr: ToSocketAddrs + Display,
-    Res: DeserializeOwned,
-{
-    loop {
-        let conn = match net_box::Conn::new(
-            &address,
-            net_box::ConnOptions {
-                connect_timeout: Duration::from_secs(2),
-                ..Default::default()
-            },
-            None,
-        ) {
-            Ok(conn) => conn,
-            Err(e) => {
-                tlog!(Warning, "could not connect to {}: {}", address, e);
-                fiber::sleep(Duration::from_secs(2));
-                continue;
-            }
-        };
-        match conn.call(
-            fn_name,
-            &args,
-            &net_box::Options {
-                timeout: Some(Duration::from_secs(2)),
-                ..Default::default()
-            },
-        ) {
-            Ok(Some(tuple)) => break tuple.into_struct::<((Res,),)>().unwrap().0 .0,
-            Ok(None) => unreachable!(),
-            Err(e) => {
-                tlog!(
-                    Warning,
-                    "net.box call failed address={address} fn={fn_name}: {e}"
-                );
-                fiber::sleep(Duration::from_secs(2))
-            }
-        }
-    }
-}
-
-static mut DISCOVERY: &Option<Mutex<Discovery>> = &None;
-
-pub fn handle_request(request: Request, request_to: &Address) -> Response {
-    Discovery::handle_request(&mut discovery(), request, request_to)
-}
-
-fn set_discovery(d: Discovery) {
-    unsafe { DISCOVERY = Box::leak(Box::new(Some(Mutex::new(d)))) }
-}
-
-fn discovery() -> MutexGuard<'static, Discovery> {
-    unsafe { DISCOVERY }
-        .as_ref()
-        .expect("discovery error: expected DISCOVERY to be set on instance startup")
-        .lock()
-}
-
-#[derive(Serialize, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord, Clone)]
-pub struct Address {
-    pub host: String,
-    pub port: u16,
-}
-
-impl<S> From<S> for Address
-where
-    S: AsRef<str>,
-{
-    fn from(s: S) -> Self {
-        let (host, port_str) = s.as_ref().split_once(":").unwrap();
-        Self {
-            host: host.into(),
-            port: port_str.parse().unwrap(),
-        }
-    }
-}
-
-impl Display for Address {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}:{}", self.host, self.port)
-    }
-}
-impl Debug for Address {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        Display::fmt(self, f)
-    }
-}
-
-impl ToSocketAddrs for Address {
-    type Iter = vec::IntoIter<SocketAddr>;
-    fn to_socket_addrs(&self) -> std::io::Result<vec::IntoIter<SocketAddr>> {
-        format!("{}", self).to_socket_addrs()
-    }
-}
+type Address = String;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub enum Role {
@@ -294,12 +187,38 @@ impl Discovery {
     }
 }
 
-pub fn discover(
+// TODO Мутекс здесь не нужен, пусть даже он тарантульный.
+// Здесь достаточно просто
+// static mut RAFT_DISCOVERY: Option<&'static Discovery> = None;
+// Мутекс - это потенциальный йилд, но алгоритм дискавери не предполагает
+// никаких йилдов. Обработка запросов и ответов и так должна быть атомарной.
+// Если же это не так - то это некорректный алгоритм,
+// а мутекс - не больше чем попытка замести грязь под ковёр.
+static mut DISCOVERY: &Option<Mutex<Discovery>> = &None;
+
+fn discovery() -> MutexGuard<'static, Discovery> {
+    unsafe { DISCOVERY }
+        .as_ref()
+        .expect("discovery error: expected DISCOVERY to be set on instance startup")
+        .lock()
+}
+
+pub fn init_global(
     peers: impl IntoIterator<Item = impl Into<Address>>,
-    make_request: impl Fn(Request, &Address) -> Response,
-) -> Role {
+    // make_request: impl Fn(Request, &Address) -> Response,
+) {
+    // make_request = fn rpc_discover(
+    //     request: discovery::Request,
+    //     address: &discovery::Address,
+    // ) -> discovery::Response {
+    //     net_box_repeat_call_until_succeed(address, ".discover", (request, address))
+    // }
+
     let d = Discovery::new(Uuid::random().to_string(), peers);
-    set_discovery(d);
+    unsafe { DISCOVERY = Box::leak(Box::new(Some(Mutex::new(d)))) }
+}
+
+pub fn wait_global() -> Role {
     loop {
         let mut d = discovery();
         if let State::Done(role) = &d.state {
@@ -307,11 +226,18 @@ pub fn discover(
         }
         let step = d.next();
         drop(d); // release the lock before doing i/o
-        if let Some((request, address)) = step {
-            let response = make_request(request, &address);
+        if let Some((request, address)) = &step {
+            let fn_name = stringify_cfunc!(proc_discover);
+            let response = tarantool::net_box_call_retry(address, fn_name, &(request, address));
             discovery().handle_response(response);
         }
     }
+}
+
+#[proc]
+fn proc_discover(request: Request, request_to: Address) -> Result<Response, Box<dyn StdError>> {
+    let mut discovery = discovery();
+    Ok(discovery.handle_request(request, &request_to))
 }
 
 #[cfg(test)]

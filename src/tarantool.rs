@@ -2,6 +2,7 @@ use std::ffi::CStr;
 use std::time::Duration;
 use std::time::Instant;
 
+use ::tarantool::fiber;
 use ::tarantool::lua_state;
 use ::tarantool::net_box;
 use ::tarantool::tlua::{self, LuaFunction, LuaTable};
@@ -138,13 +139,6 @@ pub fn cfg() -> Option<Cfg> {
     b.get("cfg")
 }
 
-pub fn info(k: &str) -> Option<String> {
-    let l = lua_state();
-    let b: LuaTable<_> = l.get("box")?;
-    let info: LuaTable<_> = b.get("info").unwrap();
-    info.get(k)
-}
-
 pub fn set_cfg(cfg: &Cfg) {
     let l = lua_state();
     let box_cfg = LuaFunction::load(l, "return box.cfg(...)").unwrap();
@@ -160,7 +154,7 @@ pub fn eval(code: &str) {
 pub fn net_box_call<Args, Res, Addr>(
     address: Addr,
     fn_name: &str,
-    args: Args,
+    args: &Args,
     timeout: Duration,
 ) -> Result<Res, ::tarantool::error::Error>
 where
@@ -183,8 +177,27 @@ where
     };
 
     let tuple = conn
-        .call(fn_name, &args, &call_opts)?
+        .call(fn_name, args, &call_opts)?
         .expect("unexpected net_box result Ok(None)");
 
     tuple.into_struct::<((Res,),)>().map(|res| res.0 .0)
+}
+
+pub fn net_box_call_retry<Args, Res, Addr>(address: Addr, fn_name: &str, args: &Args) -> Res
+where
+    Args: AsTuple,
+    Addr: std::net::ToSocketAddrs + std::fmt::Display,
+    Res: serde::de::DeserializeOwned,
+{
+    loop {
+        let timeout = Duration::from_millis(200);
+        let now = Instant::now();
+        match net_box_call(&address, fn_name, args, timeout) {
+            Ok(v) => break v,
+            Err(e) => {
+                crate::tlog!(Warning, "could not connect to {}: {}", address, e);
+                fiber::sleep(timeout.saturating_sub(now.elapsed()))
+            }
+        }
+    }
 }
