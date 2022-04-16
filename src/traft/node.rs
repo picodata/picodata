@@ -210,7 +210,6 @@ fn raft_main_loop(
         .inactivity_timeout(Duration::from_secs(60))
         .build();
 
-    // This is a temporary hack until fair joining is implemented
     for peer in Storage::peers().unwrap() {
         pool.connect(peer.raft_id, peer.peer_address);
     }
@@ -544,16 +543,21 @@ fn raft_join_loop(inbox: Mailbox<(JoinRequest, Notify)>, main_inbox: Mailbox<Nor
 
         main_inbox.send(NormalRequest::ProposeConfChange { peers, notify: tx });
 
-        let res: Result<u64, RaftError> = rx.recv_timeout(Duration::MAX).unwrap();
-        match res {
-            Ok(v) => {
+        match rx.recv_timeout(Duration::from_millis(200)) {
+            Ok(Ok(v)) => {
                 for (_, notify) in &batch {
                     notify.try_send(Ok(v)).expect("that's a bug");
                 }
             }
-            Err(e) => {
+            Ok(Err(e)) => {
                 for (_, notify) in &batch {
                     let e = RaftError::ConfChangeError(format!("{e:?}"));
+                    notify.try_send(Err(e)).expect("that's a bug");
+                }
+            }
+            Err(_) => {
+                for (_, notify) in &batch {
+                    let e = RaftError::ConfChangeError("timeout".into());
                     notify.try_send(Err(e)).expect("that's a bug");
                 }
             }
@@ -565,17 +569,25 @@ static mut RAFT_NODE: Option<&'static Node> = None;
 
 pub fn set_global(node: Node) {
     unsafe {
+        assert!(
+            RAFT_NODE.is_none(),
+            "discovery::set_global() called twice, it's a leak"
+        );
         RAFT_NODE = Some(Box::leak(Box::new(node)));
     }
 }
 
-pub fn global() -> Option<&'static Node> {
-    unsafe { RAFT_NODE }
+pub fn global() -> Result<&'static Node, Error> {
+    // Uninitialized raft node is a regular case. This case may take
+    // place while the instance is executing `start_discover()` function.
+    // It has already started listening, but the node is only initialized
+    // in `postjoin()`.
+    unsafe { RAFT_NODE }.ok_or(Error::Uninitialized)
 }
 
 #[proc(packed_args)]
 fn raft_interact(pbs: Vec<traft::MessagePb>) -> Result<(), Box<dyn StdError>> {
-    let node = unsafe { RAFT_NODE }.ok_or(Error::Uninitialized)?;
+    let node = global()?;
     for pb in pbs {
         node.step(raft::Message::try_from(pb)?);
     }
@@ -584,8 +596,7 @@ fn raft_interact(pbs: Vec<traft::MessagePb>) -> Result<(), Box<dyn StdError>> {
 
 #[proc(packed_args)]
 fn raft_join(req: JoinRequest) -> Result<JoinResponse, Box<dyn StdError>> {
-    let node = unsafe { RAFT_NODE }
-        .ok_or_else(|| RaftError::ConfChangeError("Uninitialized yet".into()))?;
+    let node = global()?;
 
     tlog!(Warning, "join_one({req:?})");
     node.join_one(req.clone(), Duration::MAX)?;

@@ -52,38 +52,38 @@ fn picolib_setup(args: &args::Run) {
     );
     luamod.set(
         "raft_tick",
-        tlua::function1(|n_times: u32| {
-            traft::node::global().expect("uninitialized").tick(n_times);
+        tlua::function1(|n_times: u32| -> Result<(), traft::node::Error> {
+            Ok(traft::node::global()?.tick(n_times))
         }),
     );
     luamod.set(
         "raft_read_index",
-        tlua::function1(|timeout: f64| {
-            traft::node::global()
-                .expect("uninitialized")
-                .read_index(Duration::from_secs_f64(timeout))
+        tlua::function1(|timeout: f64| -> Result<u64, traft::node::Error> {
+            traft::node::global()?.read_index(Duration::from_secs_f64(timeout))
         }),
     );
     luamod.set(
         "raft_propose_info",
-        tlua::function1(|x: String| {
-            traft::node::global()
-                .expect("uninitialized")
-                .propose(traft::Op::Info { msg: x }, Duration::from_secs(1))
+        tlua::function1(|x: String| -> Result<u64, traft::node::Error> {
+            traft::node::global()?.propose(traft::Op::Info { msg: x }, Duration::from_secs(1))
         }),
     );
     luamod.set(
         "raft_timeout_now",
-        tlua::function0(|| traft::node::global().expect("uninitialized").timeout_now()),
+        tlua::function0(|| -> Result<(), traft::node::Error> {
+            Ok(traft::node::global()?.timeout_now())
+        }),
     );
     luamod.set(
         "raft_propose_eval",
-        tlua::function2(|timeout: f64, x: String| {
-            traft::node::global().expect("uninitialized").propose(
-                traft::Op::EvalLua { code: x },
-                Duration::from_secs_f64(timeout),
-            )
-        }),
+        tlua::function2(
+            |timeout: f64, x: String| -> Result<u64, traft::node::Error> {
+                traft::node::global()?.propose(
+                    traft::Op::EvalLua { code: x },
+                    Duration::from_secs_f64(timeout),
+                )
+            },
+        ),
     );
     {
         l.exec(
@@ -434,16 +434,7 @@ fn start_join(leader_uri: String, supervisor: Supervisor) {
 
     use traft::node::raft_join;
     let fn_name = stringify_cfunc!(raft_join);
-    let timeout = Duration::from_secs_f32(1.5);
-    let resp: traft::node::JoinResponse =
-        tarantool::net_box_call(&leader_uri, fn_name, &req, timeout).unwrap_or_else(|e| {
-            tlog!(Warning, "net_box_call failed: {e}";
-                "peer" => &leader_uri,
-                "fn" => fn_name,
-            );
-
-            panic!();
-        });
+    let resp: traft::node::JoinResponse = tarantool::net_box_call_retry(&leader_uri, fn_name, &req);
 
     picolib_setup(&args);
     assert!(tarantool::cfg().is_none());
@@ -532,7 +523,7 @@ fn postjoin(supervisor: Supervisor) {
     }
 
     loop {
-        let timeout = Duration::from_secs(1);
+        let timeout = Duration::from_millis(220);
         let me = traft::Storage::peer_by_raft_id(raft_id)
             .unwrap()
             .expect("peer not found");

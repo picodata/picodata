@@ -186,7 +186,7 @@ where
 pub fn net_box_call_retry<Args, Res, Addr>(address: Addr, fn_name: &str, args: &Args) -> Res
 where
     Args: AsTuple,
-    Addr: std::net::ToSocketAddrs + std::fmt::Display,
+    Addr: std::net::ToSocketAddrs + std::fmt::Display + slog::Value,
     Res: serde::de::DeserializeOwned,
 {
     loop {
@@ -195,7 +195,10 @@ where
         match net_box_call(&address, fn_name, args, timeout) {
             Ok(v) => break v,
             Err(e) => {
-                crate::tlog!(Warning, "could not connect to {}: {}", address, e);
+                crate::tlog!(Warning, "net_box_call failed: {e}";
+                    "peer" => &address,
+                    "fn" => fn_name,
+                );
                 fiber::sleep(timeout.saturating_sub(now.elapsed()))
             }
         }

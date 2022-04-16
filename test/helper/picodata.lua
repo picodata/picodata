@@ -174,8 +174,8 @@ end
 -- Raise an exception if promotion fails.
 function Picodata:promote_or_fail()
     checks('Picodata')
-    self:connect():call('picolib.raft_timeout_now')
     return luatest.helpers.retrying({}, function()
+        self:connect():call('picolib.raft_timeout_now')
         self:assert_raft_status("Leader", self.id)
     end)
 end

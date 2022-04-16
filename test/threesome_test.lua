@@ -59,11 +59,21 @@ local function propose_state_change(srv, value)
 end
 
 g.test_log_rollback = function()
+    -- TODO
+    -- Этот тест стал некорректен с появлением фазы дискавери.
+    -- Инстансы i2 и i3 не смогут стартануть, т.к. одним из пиров
+    -- является дохлый i1.
+    -- Тем не менее, сам тест удалять не следует. Данная
+    -- проблема требует пересмотреть лишь подход к созданию причин
+    -- для ролбека рафт лога. Но основная задача теста (проверка
+    -- поведения пикодаты при ролбеке) остается актуальной.
+    t.skip('Fix me')
+
     -- Speed up node election
     g.cluster.i1:promote_or_fail()
     h.retrying({}, function()
-        g.cluster.i2:assert_raft_status("Follower", 1)
-        g.cluster.i3:assert_raft_status("Follower", 1)
+        g.cluster.i2:assert_raft_status("Follower", g.cluster.i1.id)
+        g.cluster.i3:assert_raft_status("Follower", g.cluster.i1.id)
     end)
 
     t.assert(
@@ -74,9 +84,10 @@ g.test_log_rollback = function()
     g.cluster.i2:stop()
     g.cluster.i3:stop()
 
+    -- No operations can be committed, i1 is alone.
     t.assert_equals(
         {propose_state_change(g.cluster.i1, "i1 lost the quorum")},
-        {nil, "foo"}
+        {nil, "timeout"}
     )
 
     -- And now i2 + i3 can't reach i1.
@@ -87,7 +98,7 @@ g.test_log_rollback = function()
     -- Help I2 to become a new leader.
     g.cluster.i2:promote_or_fail()
     h.retrying({}, function()
-        g.cluster.i3:assert_raft_status("Follower", 2)
+        g.cluster.i3:assert_raft_status("Follower", g.cluster.i2.id)
     end)
 
     t.assert(
@@ -97,12 +108,11 @@ g.test_log_rollback = function()
     -- Now i1 has an uncommitted, but persisted entry that should be rolled back.
     g.cluster.i1:start()
     h.retrying({}, function()
-        g.cluster.i1:assert_raft_status("Follower", 2)
+        g.cluster.i1:assert_raft_status("Follower", g.cluster.i2.id)
     end)
 
-    t.assert_equals(
-        propose_state_change(g.cluster.i1, "i1 is alive again"),
-        true
+    t.assert(
+        propose_state_change(g.cluster.i1, "i1 is alive again")
     )
 end
 
