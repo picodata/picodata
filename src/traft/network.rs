@@ -255,7 +255,7 @@ inventory::submit!(crate::InnerTest {
             tlua::function1(move |pb: tlua::AnyLuaString| {
                 use protobuf::Message as _;
                 let mut msg = raft::Message::default();
-                msg.merge_from_bytes(&pb.as_bytes()).unwrap();
+                msg.merge_from_bytes(pb.as_bytes()).unwrap();
                 tx.send((msg.msg_type, msg.to, msg.from)).unwrap();
 
                 // Lock forever, never respond. This trick allows to check

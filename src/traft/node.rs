@@ -38,7 +38,7 @@ pub enum Error {
     #[error("timeout")]
     Timeout,
     #[error("{0}")]
-    RaftError(#[from] RaftError),
+    Raft(#[from] RaftError),
 }
 
 #[derive(Clone, Debug, tlua::Push, tlua::PushInto)]
@@ -108,10 +108,10 @@ impl Node {
 
         let node = Node {
             loop_cond: loop_cond.clone(),
-            main_inbox: main_inbox.clone(),
-            join_inbox: join_inbox.clone(),
-            status: status.clone(),
-            status_cond: status_cond.clone(),
+            main_inbox,
+            join_inbox,
+            status,
+            status_cond,
             _main_loop: fiber::start_proc(main_loop_fn),
             _join_loop: fiber::start_proc(join_loop_fn),
         };

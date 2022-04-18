@@ -53,7 +53,8 @@ fn picolib_setup(args: &args::Run) {
     luamod.set(
         "raft_tick",
         tlua::function1(|n_times: u32| -> Result<(), traft::node::Error> {
-            Ok(traft::node::global()?.tick(n_times))
+            traft::node::global()?.tick(n_times);
+            Ok(())
         }),
     );
     luamod.set(
@@ -71,7 +72,8 @@ fn picolib_setup(args: &args::Run) {
     luamod.set(
         "raft_timeout_now",
         tlua::function0(|| -> Result<(), traft::node::Error> {
-            Ok(traft::node::global()?.timeout_now())
+            traft::node::global()?.timeout_now();
+            Ok(())
         }),
     );
     luamod.set(
@@ -273,7 +275,7 @@ fn main_run(args: args::Run) -> ExitStatus {
                 }
 
                 tlog!(Info, "[supervisor] tarantool process finished: {:?}",
-                    WaitStatus::from_raw(child.into(), rc);
+                    WaitStatus::from_raw(child, rc);
                 );
 
                 if let Some(msg) = msg {
@@ -294,7 +296,7 @@ fn start_discover(supervisor: Supervisor) {
     tlog!(Info, ">>>>> start_discover()");
     let args = &supervisor.args;
 
-    picolib_setup(&args);
+    picolib_setup(args);
     assert!(tarantool::cfg().is_none());
 
     let mut cfg = tarantool::Cfg {
@@ -325,7 +327,7 @@ fn start_discover(supervisor: Supervisor) {
     let role = discovery::wait_global();
 
     // TODO assert traft::Storage::instance_id == (null || args.instance_id)
-    if let Some(_) = traft::Storage::id().unwrap() {
+    if traft::Storage::id().unwrap().is_some() {
         return postjoin(supervisor);
     }
 
@@ -436,7 +438,7 @@ fn start_join(leader_uri: String, supervisor: Supervisor) {
     let fn_name = stringify_cfunc!(raft_join);
     let resp: traft::node::JoinResponse = tarantool::net_box_call_retry(&leader_uri, fn_name, &req);
 
-    picolib_setup(&args);
+    picolib_setup(args);
     assert!(tarantool::cfg().is_none());
 
     let cfg = tarantool::Cfg {
