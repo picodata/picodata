@@ -485,6 +485,7 @@ name = "picodata"
 version = "0.1.0"
 dependencies = [
  "assert_cmd",
+ "base64",
  "bytes",
  "clap",
  "cmake",
@@ -494,11 +495,14 @@ dependencies = [
  "itertools",
  "libc",
  "nix",
+ "prctl",
  "predicates",
+ "protobuf",
  "raft",
  "rand",
  "rmp-serde",
  "serde",
+ "serde_bytes",
  "serde_json",
  "slog",
  "structopt",
@@ -512,6 +516,16 @@ name = "ppv-lite86"
 version = "0.2.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ed0cfbc8191465bed66e1718596ee0b0b35d5ee1f41c5df2189d0fe8bde535ba"
+
+[[package]]
+name = "prctl"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "059a34f111a9dee2ce1ac2826a68b24601c4298cfeb1a587c3cb493d5ab46f52"
+dependencies = [
+ "libc",
+ "nix",
+]
 
 [[package]]
 name = "predicates"
@@ -578,9 +592,9 @@ dependencies = [
 
 [[package]]
 name = "protobuf"
-version = "2.25.2"
+version = "2.27.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "47c327e191621a2158159df97cdbc2e7074bb4e940275e35abf38eb3d2595754"
+checksum = "cf7e6d18738ecd0902d30d1ad232c9125985a3422929b16c65517b38adc14f96"
 dependencies = [
  "bytes",
 ]
@@ -599,9 +613,9 @@ dependencies = [
 
 [[package]]
 name = "protobuf-codegen"
-version = "2.25.2"
+version = "2.27.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3df8c98c08bd4d6653c2dbae00bd68c1d1d82a360265a5b0bbc73d48c63cb853"
+checksum = "aec1632b7c8f2e620343439a7dfd1f3c47b18906c4be58982079911482b5d707"
 dependencies = [
  "protobuf",
 ]
