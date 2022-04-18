@@ -191,6 +191,35 @@ struct IpcMessage {
     drop_db: bool,
 }
 
+macro_rules! tarantool_main {
+    (
+        $tt_args:expr,
+         callback_data: $cb_data:ident,
+         callback_data_type: $cb_data_ty:ty,
+         callback_body: $cb_body:expr
+    ) => {{
+        let tt_args = $tt_args;
+        // `argv` is a vec of pointers to data owned by `tt_args`, so
+        // make sure `tt_args` outlives `argv`, because the compiler is not
+        // gonna do that for you
+        let argv = tt_args.iter().map(|a| a.as_ptr()).collect::<Vec<_>>();
+        extern "C" fn trampoline(data: *mut libc::c_void) {
+            let args = unsafe { Box::from_raw(data as _) };
+            let cb = |$cb_data: $cb_data_ty| $cb_body;
+            cb(*args)
+        }
+        let cb_data: $cb_data_ty = $cb_data;
+        unsafe {
+            tarantool::main(
+                argv.len() as _,
+                argv.as_ptr() as _,
+                Some(trampoline),
+                Box::into_raw(Box::new(cb_data)) as _,
+            )
+        }
+    }};
+}
+
 fn main_run(args: args::Run) -> ExitStatus {
     // Tarantool implicitly parses some environment variables.
     // We don't want them to affect the behavior and thus filter them out.
@@ -223,28 +252,17 @@ fn main_run(args: args::Run) -> ExitStatus {
             ForkResult::Child => {
                 drop(rx);
 
-                type TrampolineArgs = (Entrypoint, ipc::Sender<IpcMessage>, args::Run);
-                extern "C" fn trampoline(data: *mut libc::c_void) {
-                    // let args = unsafe { Box::from_raw(data as _) };
-                    let argbox = unsafe { Box::<TrampolineArgs>::from_raw(data as _) };
-                    let (entrypoint, to_supervisor, args) = *argbox;
-                    entrypoint.exec(args, to_supervisor);
-                }
-
-                // `argv` is a vec of pointers to data owned by `tt_args`, so
-                // make sure `tt_args` outlives `argv`, because the compiler is not
-                // gonna do that for you
                 let tt_args = args.tt_args().unwrap();
-                let argv = tt_args.iter().map(|a| a.as_ptr()).collect::<Vec<_>>();
-                let trampoline_args: TrampolineArgs = (entrypoint, tx, args);
-                let rc = unsafe {
-                    tarantool::main(
-                        argv.len() as _,
-                        argv.as_ptr() as _,
-                        Some(trampoline),
-                        Box::into_raw(Box::new(trampoline_args)) as _,
-                    )
-                };
+                let data = (entrypoint, args, tx);
+                let rc = tarantool_main!(
+                    tt_args,
+                    callback_data: data,
+                    callback_data_type: (Entrypoint, args::Run, ipc::Sender<IpcMessage>),
+                    callback_body: {
+                        let (entrypoint, args, to_supervisor) = data;
+                        entrypoint.exec(args, to_supervisor)
+                    }
+                );
                 return ExitStatus { raw: rc };
             }
             ForkResult::Parent { child } => {
@@ -586,19 +604,12 @@ fn main_test(args: args::Test) -> ExitStatus {
                 unistd::dup2(*tx, 2).ok(); // stderr
                 drop(tx);
 
-                // `argv` is a vec of pointers to data owned by `tt_args`, so
-                // make sure `tt_args` outlives `argv`, because the compiler is not
-                // gonna do that for you
-                let tt_args = args.tt_args().unwrap();
-                let argv = tt_args.iter().map(|a| a.as_ptr()).collect::<Vec<_>>();
-                let rc = unsafe {
-                    tarantool::main(
-                        argv.len() as _,
-                        argv.as_ptr() as _,
-                        Some(test_one),
-                        Box::into_raw(Box::new(t)) as _,
-                    )
-                };
+                let rc = tarantool_main!(
+                    args.tt_args().unwrap(),
+                    callback_data: t,
+                    callback_data_type: &InnerTest,
+                    callback_body: test_one(t)
+                );
                 return ExitStatus { raw: rc };
             }
             ForkResult::Parent { child } => {
@@ -651,8 +662,7 @@ fn main_test(args: args::Test) -> ExitStatus {
     ExitStatus { raw: !ok as _ }
 }
 
-extern "C" fn test_one(data: *mut libc::c_void) {
-    let t = unsafe { Box::<&InnerTest>::from_raw(data as _) };
+fn test_one(t: &InnerTest) {
     let temp = tempfile::tempdir().expect("Failed creating a temp directory");
     std::env::set_current_dir(temp.path()).expect("Failed chainging current directory");
 
