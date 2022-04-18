@@ -203,17 +203,7 @@ fn discovery() -> MutexGuard<'static, Discovery> {
         .lock()
 }
 
-pub fn init_global(
-    peers: impl IntoIterator<Item = impl Into<Address>>,
-    // make_request: impl Fn(Request, &Address) -> Response,
-) {
-    // make_request = fn rpc_discover(
-    //     request: discovery::Request,
-    //     address: &discovery::Address,
-    // ) -> discovery::Response {
-    //     net_box_repeat_call_until_succeed(address, ".discover", (request, address))
-    // }
-
+pub fn init_global(peers: impl IntoIterator<Item = impl Into<Address>>) {
     let d = Discovery::new(Uuid::random().to_string(), peers);
     unsafe { DISCOVERY = Box::leak(Box::new(Some(Mutex::new(d)))) }
 }
