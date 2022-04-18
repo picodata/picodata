@@ -123,12 +123,14 @@ function Picodata:stop()
     if process == nil then
         return
     end
-    self.process:kill()
+
+    os.execute('pkill -TERM -P ' .. self.process.pid)
     luatest.helpers.retrying({}, function()
-        luatest.assert_not(process:is_alive(),
-            '%s is still running', self.name
-        )
+        if process:is_alive() then
+            return error(self.name .. ' is still running')
+        end
     end)
+
     log.warn('%s killed', self.name)
     self.process = nil
 end

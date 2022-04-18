@@ -229,9 +229,6 @@ fn main_run(args: args::Run) -> ExitStatus {
         match pid.expect("fork failed") {
             ForkResult::Child => {
                 drop(rx);
-                prctl::set_death_signal(15) // SIGTERM upon parent death
-                    .map_err(|e| tlog!(Error, "prctl failed: {e}"))
-                    .ok();
 
                 extern "C" fn trampoline(data: *mut libc::c_void) {
                     // let args = unsafe { Box::from_raw(data as _) };
