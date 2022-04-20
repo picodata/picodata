@@ -177,10 +177,10 @@ enum Entrypoint {
 }
 
 impl Entrypoint {
-    fn exec(self, supervisor: Supervisor) {
+    fn exec(self, supervisor: ipc::Sender<IpcMessage>, args: args::Run) {
         match self {
-            Self::StartDiscover => start_discover(supervisor),
-            Self::StartJoin { leader_address } => start_join(leader_address, supervisor),
+            Self::StartDiscover => start_discover(supervisor, &args),
+            Self::StartJoin { leader_address } => start_join(supervisor, &args, leader_address),
         }
     }
 }
@@ -189,11 +189,6 @@ impl Entrypoint {
 struct IpcMessage {
     next_entrypoint: Entrypoint,
     drop_db: bool,
-}
-
-struct Supervisor {
-    pub args: args::Run,
-    pub tx: ipc::Sender<IpcMessage>,
 }
 
 fn main_run(args: args::Run) -> ExitStatus {
@@ -228,11 +223,12 @@ fn main_run(args: args::Run) -> ExitStatus {
             ForkResult::Child => {
                 drop(rx);
 
+                type TrampolineArgs = (Entrypoint, ipc::Sender<IpcMessage>, args::Run);
                 extern "C" fn trampoline(data: *mut libc::c_void) {
                     // let args = unsafe { Box::from_raw(data as _) };
-                    let argbox = unsafe { Box::<(Entrypoint, Supervisor)>::from_raw(data as _) };
-                    let (entrypoint, supervisor) = *argbox;
-                    entrypoint.exec(supervisor);
+                    let argbox = unsafe { Box::<TrampolineArgs>::from_raw(data as _) };
+                    let (entrypoint, supervisor, args) = *argbox;
+                    entrypoint.exec(supervisor, args);
                 }
 
                 // `argv` is a vec of pointers to data owned by `tt_args`, so
@@ -240,13 +236,13 @@ fn main_run(args: args::Run) -> ExitStatus {
                 // gonna do that for you
                 let tt_args = args.tt_args().unwrap();
                 let argv = tt_args.iter().map(|a| a.as_ptr()).collect::<Vec<_>>();
-                let supervisor = Supervisor { args, tx };
+                let trampoline_args: TrampolineArgs = (entrypoint, tx, args);
                 let rc = unsafe {
                     tarantool::main(
                         argv.len() as _,
                         argv.as_ptr() as _,
                         Some(trampoline),
-                        Box::into_raw(Box::new((entrypoint, supervisor))) as _,
+                        Box::into_raw(Box::new(trampoline_args)) as _,
                     )
                 };
                 return ExitStatus { raw: rc };
@@ -287,9 +283,8 @@ fn main_run(args: args::Run) -> ExitStatus {
     }
 }
 
-fn start_discover(supervisor: Supervisor) {
+fn start_discover(supervisor: ipc::Sender<IpcMessage>, args: &args::Run) {
     tlog!(Info, ">>>>> start_discover()");
-    let args = &supervisor.args;
 
     picolib_setup(args);
     assert!(tarantool::cfg().is_none());
@@ -323,53 +318,29 @@ fn start_discover(supervisor: Supervisor) {
 
     // TODO assert traft::Storage::instance_id == (null || args.instance_id)
     if traft::Storage::id().unwrap().is_some() {
-        return postjoin(supervisor);
+        return postjoin(supervisor, args);
     }
 
-    let msg = match role {
+    match role {
         discovery::Role::Leader { .. } => {
-            return start_boot(supervisor);
-            // let next_entrypoint = Entrypoint::StartBoot();
-            // IpcMessage {
-            //     next_entrypoint,
-            //     drop_db: false,
-            // }
+            return start_boot(supervisor, args);
         }
         discovery::Role::NonLeader { leader } => {
             let next_entrypoint = Entrypoint::StartJoin {
                 leader_address: leader,
             };
-            IpcMessage {
+            let msg = IpcMessage {
                 next_entrypoint,
                 drop_db: true,
-            }
+            };
+            supervisor.send(&msg);
+            std::process::exit(0);
         }
     };
-
-    supervisor.tx.send(&msg);
-    std::process::exit(0);
 }
 
-fn start_boot(supervisor: Supervisor) {
+fn start_boot(supervisor: ipc::Sender<IpcMessage>, args: &args::Run) {
     tlog!(Info, ">>>>> start_boot()");
-    let args = &supervisor.args;
-
-    // picolib_setup(&args);
-    // assert!(tarantool::cfg().is_none());
-
-    // let cfg = tarantool::Cfg {
-    //     listen: None,
-    //     read_only: false,
-    //     wal_dir: args.data_dir.clone(),
-    //     memtx_dir: args.data_dir.clone(),
-    //     ..Default::default()
-    // };
-
-    // std::fs::create_dir_all(&args.data_dir).unwrap();
-    // tarantool::set_cfg(&cfg);
-
-    // traft::Storage::init_schema();
-    // init_handlers();
 
     let raft_id = 1u64;
 
@@ -417,12 +388,11 @@ fn start_boot(supervisor: Supervisor) {
     })
     .unwrap();
 
-    postjoin(supervisor)
+    postjoin(supervisor, args)
 }
 
-fn start_join(leader_address: String, supervisor: Supervisor) {
+fn start_join(supervisor: ipc::Sender<IpcMessage>, args: &args::Run, leader_address: String) {
     tlog!(Info, ">>>>> start_join({leader_address})");
-    let args = &supervisor.args;
 
     let req = traft::node::JoinRequest {
         instance_id: args.instance_id.clone(),
@@ -466,12 +436,11 @@ fn start_join(leader_address: String, supervisor: Supervisor) {
     })
     .unwrap();
 
-    postjoin(supervisor)
+    postjoin(supervisor, args)
 }
 
-fn postjoin(supervisor: Supervisor) {
+fn postjoin(_supervisor: ipc::Sender<IpcMessage>, args: &args::Run) {
     tlog!(Info, ">>>>> postjoin()");
-    let args = &supervisor.args;
 
     let raft_id = traft::Storage::id().unwrap().unwrap();
     let applied = traft::Storage::applied().unwrap().unwrap_or(0);
