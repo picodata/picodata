@@ -1,3 +1,5 @@
+//! Compatibility layer between Tarantool and `raft-rs`.
+
 mod error;
 mod network;
 pub mod node;
@@ -15,9 +17,14 @@ use protobuf::ProtobufEnum as _;
 pub use network::ConnectionPool;
 pub use storage::Storage;
 
-///////////////////////////////////////////////////////////////////////////////
-/// LogicalClock
-
+//////////////////////////////////////////////////////////////////////////////////////////
+/// Timestamps for raft entries.
+///
+/// Logical clock provides a cheap and easy way for generating globally unique identifiers.
+///
+/// - `count` is a simple in-memory counter. It's cheap to increment because it's volatile.
+/// - `gen` should be persisted upon LogicalClock initialization to ensure the uniqueness.
+/// - `id` corresponds to `raft_id` of the instance (that is already unique across nodes).
 #[derive(Clone, Debug, Default, Serialize, Deserialize, Hash, PartialEq, Eq)]
 pub struct LogicalClock {
     id: u64,
@@ -30,27 +37,27 @@ impl LogicalClock {
         Self { id, gen, count: 0 }
     }
 
-    pub fn inc(&mut self) -> Self {
+    pub fn inc(&mut self) {
         self.count += 1;
-        self.clone()
     }
 }
 
-///////////////////////////////////////////////////////////////////////////////
-/// Op
-
+//////////////////////////////////////////////////////////////////////////////////////////
+/// The operation on the raft state machine.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
 #[serde(tag = "kind")]
 pub enum Op {
+    /// No operation.
     Nop,
+    /// Print the message in tarantool log.
     Info { msg: String },
+    /// Evaluate the code on every instance in cluster.
     EvalLua { code: String },
 }
 
-///////////////////////////////////////////////////////////////////////////////
-/// Peer
-
+//////////////////////////////////////////////////////////////////////////////////////////
+/// Serializable struct representing the member of the raft group.
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 pub struct Peer {
     pub raft_id: u64,
@@ -60,25 +67,41 @@ pub struct Peer {
     // pub replicaset_id: String,
     // pub instance_uuid: String,
     // pub replicaset_uuid: String,
-    pub commit_index: u64, // 0 means it's not committed yet
+    /// `0` means it's not committed yet.
+    pub commit_index: u64,
 }
 impl AsTuple for Peer {}
 
 impl Peer {}
 
-///////////////////////////////////////////////////////////////////////////////
-/// Entry
-
+//////////////////////////////////////////////////////////////////////////////////////////
+/// Serializable representation of `raft::prelude::Entry`.
+///
+/// See correspondig definition in `raft-rs`:
+/// - <https://github.com/tikv/raft-rs/blob/v0.6.0/proto/proto/eraftpb.proto#L23>
+///
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct Entry {
+    /// ```
+    /// enum EntryType {
+    ///     EntryNormal = 0;
+    ///     EntryConfChange = 1;
+    ///     EntryConfChangeV2 = 2;
+    /// }
+    /// ```
     pub entry_type: i32,
     pub index: u64,
     pub term: u64,
+
+    /// Corresponding `entry.data`. Solely managed by `raft-rs`.
     #[serde(with = "serde_bytes")]
-    pub data: Vec<u8>, // base64
+    pub data: Vec<u8>,
+
+    /// Corresponding `entry.payload`. Managed by the Picodata.
     pub context: Option<EntryContext>,
 }
 
+/// Raft entry payload specific to the Picodata.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(untagged)]
 pub enum EntryContext {
@@ -86,12 +109,14 @@ pub enum EntryContext {
     ConfChange(EntryContextConfChange),
 }
 
+/// [`EntryContext`] of a normal entry.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct EntryContextNormal {
     pub lc: LogicalClock,
     pub op: Op,
 }
 
+/// [`EntryContext`] of a conf change entry, either `EntryConfChange` or `EntryConfChangeV2`
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct EntryContextConfChange {
     pub lc: LogicalClock,
@@ -103,6 +128,8 @@ impl ContextCoercion for EntryContextNormal {}
 impl ContextCoercion for EntryContextConfChange {}
 
 impl Entry {
+    /// Returns the logical clock value (if any)
+    /// from both `EntryNormal` and `EntryConfChange`.
     fn lc(&self) -> Option<&LogicalClock> {
         match &self.context {
             None => None,
@@ -111,6 +138,7 @@ impl Entry {
         }
     }
 
+    /// Returns the contained `Op` if it's an `EntryNormal`.
     fn op(&self) -> Option<&Op> {
         match &self.context {
             Some(EntryContext::Normal(v)) => Some(&v.op),
@@ -118,10 +146,11 @@ impl Entry {
             None => None,
         }
     }
+
+    /// Returns the iterator over contained `Vec<Peer>` if it's an `EntryConfChange`.
     fn iter_peers(&self) -> std::slice::Iter<'_, Peer> {
         match &self.context {
             Some(EntryContext::ConfChange(v)) => v.peers.iter(),
-            // Some(EntryContext::Normal(v)) => &[].iter(),
             _ => (&[]).iter(),
         }
     }
@@ -191,8 +220,10 @@ impl TryFrom<self::Entry> for raft::Entry {
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-/// Message
-
+/// A wrapper for `raft::prelude::Message` already serialized with a protobuf.
+///
+/// This struct is used for passing `raft::prelude::Message`
+/// over Tarantool binary protocol (`net_box`).
 #[derive(Clone, Deserialize, Serialize)]
 struct MessagePb(#[serde(with = "serde_bytes")] Vec<u8>);
 impl AsTuple for MessagePb {}
@@ -220,8 +251,7 @@ impl TryFrom<self::MessagePb> for raft::Message {
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-/// Context coercion
-
+/// This trait allows converting `EntryContext` to / from `Vec<u8>`.
 pub trait ContextCoercion: Serialize + DeserializeOwned {
     fn read_from_bytes(bytes: &[u8]) -> Result<Option<Self>, error::CoercionError> {
         match bytes {
