@@ -172,17 +172,15 @@ fn main() {
 
 #[derive(Debug, Serialize, Deserialize)]
 enum Entrypoint {
-    StartDiscover(),
-    StartJoin { leader_uri: String },
-    // StartBoot(),
+    StartDiscover,
+    StartJoin { leader_address: String },
 }
 
 impl Entrypoint {
     fn exec(self, supervisor: Supervisor) {
         match self {
-            Self::StartDiscover() => start_discover(supervisor),
-            Self::StartJoin { leader_uri } => start_join(leader_uri, supervisor),
-            // Self::StartBoot() => start_boot(supervisor),
+            Self::StartDiscover => start_discover(supervisor),
+            Self::StartJoin { leader_address } => start_join(leader_address, supervisor),
         }
     }
 }
@@ -338,7 +336,9 @@ fn start_discover(supervisor: Supervisor) {
             // }
         }
         discovery::Role::NonLeader { leader } => {
-            let next_entrypoint = Entrypoint::StartJoin { leader_uri: leader };
+            let next_entrypoint = Entrypoint::StartJoin {
+                leader_address: leader,
+            };
             IpcMessage {
                 next_entrypoint,
                 drop_db: true,
@@ -420,8 +420,8 @@ fn start_boot(supervisor: Supervisor) {
     postjoin(supervisor)
 }
 
-fn start_join(leader_uri: String, supervisor: Supervisor) {
-    tlog!(Info, ">>>>> start_join({leader_uri})");
+fn start_join(leader_address: String, supervisor: Supervisor) {
+    tlog!(Info, ">>>>> start_join({leader_address})");
     let args = &supervisor.args;
 
     let req = traft::node::JoinRequest {
@@ -433,7 +433,8 @@ fn start_join(leader_uri: String, supervisor: Supervisor) {
 
     use traft::node::raft_join;
     let fn_name = stringify_cfunc!(raft_join);
-    let resp: traft::node::JoinResponse = tarantool::net_box_call_retry(&leader_uri, fn_name, &req);
+    let resp: traft::node::JoinResponse =
+        tarantool::net_box_call_retry(&leader_address, fn_name, &req);
 
     picolib_setup(args);
     assert!(tarantool::cfg().is_none());
