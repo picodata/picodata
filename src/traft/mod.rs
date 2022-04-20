@@ -57,7 +57,7 @@ pub enum Op {
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////
-/// Serializable struct representing the member of the raft group.
+/// Serializable struct representing a member of the raft group.
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 pub struct Peer {
     pub raft_id: u64,
