@@ -28,7 +28,7 @@ impl<T> Mailbox<T> {
 
     pub fn send(&self, v: T) {
         self.0.content.borrow_mut().push(v);
-        self.0.cond.broadcast();
+        self.0.cond.signal();
     }
 
     pub fn recv_timeout(&self, timeout: Duration) -> Vec<T> {
