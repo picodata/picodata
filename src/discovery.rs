@@ -89,26 +89,6 @@ impl Discovery {
     }
 
     fn handle_response(&mut self, response: Response) {
-        //     def handle_resp(self_id, resp):
-        //         self_state = instances[self_id]
-
-        //         if resp['leader']:
-        //             leader = resp['leader']
-        //             self_state['leader'] =  leader
-        //             diag.append(f"note over {self_id}: DONE (early) {leader}")
-        //             return leader
-        //         else:
-        //             if resp['peers'] - self_state['peers']:
-        //                 self_state['visited'].clear()
-        //                 diag.append(f"note over {self_id}: reset visits")
-        //             self_state['peers'].update(resp['peers'])
-        //             diag.append(f"note over {self_id}: (after resp) {state_fmt(self_state)}")
-
-        //         if not (self_state['peers'] - self_state['visited']):
-        //             leader = sorted(self_state['peers'])[0]
-        //             self_state['leader'] = leader
-        //             diag.append(f"note over {self_id}: DONE {leader}")
-        //             return leader
         match (&mut self.state, response) {
             (
                 State::LeaderElection(LeaderElection { peers, .. }),
@@ -186,21 +166,10 @@ impl Discovery {
         }
     }
 }
-
-// TODO Мутекс здесь не нужен, пусть даже он тарантульный.
-// Здесь достаточно просто
-// static mut RAFT_DISCOVERY: Option<&'static Discovery> = None;
-// Мутекс - это потенциальный йилд, но алгоритм дискавери не предполагает
-// никаких йилдов. Обработка запросов и ответов и так должна быть атомарной.
-// Если же это не так - то это некорректный алгоритм,
-// а мутекс - не больше чем попытка замести грязь под ковёр.
 static mut DISCOVERY: &Option<Mutex<Discovery>> = &None;
 
-fn discovery() -> MutexGuard<'static, Discovery> {
-    unsafe { DISCOVERY }
-        .as_ref()
-        .expect("discovery error: expected DISCOVERY to be set on instance startup")
-        .lock()
+fn discovery() -> Option<MutexGuard<'static, Discovery>> {
+    unsafe { DISCOVERY }.as_ref().map(|d| d.lock())
 }
 
 pub fn init_global(peers: impl IntoIterator<Item = impl Into<Address>>) {
@@ -210,7 +179,7 @@ pub fn init_global(peers: impl IntoIterator<Item = impl Into<Address>>) {
 
 pub fn wait_global() -> Role {
     loop {
-        let mut d = discovery();
+        let mut d = discovery().expect("discovery uninitialized");
         if let State::Done(role) = &d.state {
             return role.clone();
         }
@@ -219,14 +188,16 @@ pub fn wait_global() -> Role {
         if let Some((request, address)) = &step {
             let fn_name = stringify_cfunc!(proc_discover);
             let response = tarantool::net_box_call_retry(address, fn_name, &(request, address));
-            discovery().handle_response(response);
+            discovery()
+                .expect("discovery uninitialized")
+                .handle_response(response);
         }
     }
 }
 
 #[proc]
 fn proc_discover(request: Request, request_to: Address) -> Result<Response, Box<dyn StdError>> {
-    let mut discovery = discovery();
+    let mut discovery = discovery().ok_or("discovery uninitialized")?;
     Ok(discovery.handle_request(request, &request_to))
 }
 
