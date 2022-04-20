@@ -323,7 +323,7 @@ fn start_discover(supervisor: ipc::Sender<IpcMessage>, args: &args::Run) {
 
     match role {
         discovery::Role::Leader { .. } => {
-            return start_boot(supervisor, args);
+            start_boot(supervisor, args);
         }
         discovery::Role::NonLeader { leader } => {
             let next_entrypoint = Entrypoint::StartJoin {

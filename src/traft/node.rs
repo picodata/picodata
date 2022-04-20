@@ -360,7 +360,7 @@ fn raft_main_loop(
                             None => (),
                             Some(Nop) => (),
                             Some(Info { msg }) => tlog!(Info, "{msg}"),
-                            Some(EvalLua { code }) => crate::tarantool::eval(&code),
+                            Some(EvalLua { code }) => crate::tarantool::eval(code),
                         }
                         if let Some(lc) = entry.lc() {
                             if let Some(notify) = notifications.remove(lc) {
