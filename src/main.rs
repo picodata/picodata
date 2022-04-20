@@ -350,7 +350,7 @@ fn start_boot(supervisor: ipc::Sender<IpcMessage>, args: &args::Run) {
             ..Default::default()
         };
 
-        let e0 = {
+        let entry = {
             let peer = traft::Peer {
                 raft_id,
                 instance_id: args.instance_id.clone(),
@@ -359,7 +359,7 @@ fn start_boot(supervisor: ipc::Sender<IpcMessage>, args: &args::Run) {
                 commit_index: 0,
             };
 
-            let c1 = raft::ConfChange {
+            let conf_change = raft::ConfChange {
                 change_type: raft::ConfChangeType::AddNode,
                 node_id: raft_id,
                 ..Default::default()
@@ -372,7 +372,7 @@ fn start_boot(supervisor: ipc::Sender<IpcMessage>, args: &args::Run) {
                 entry_type: raft::EntryType::EntryConfChange.value(),
                 index: 1,
                 term: 1,
-                data: c1.write_to_bytes().unwrap(),
+                data: conf_change.write_to_bytes().unwrap(),
                 context: Some(traft::EntryContext::ConfChange(ctx)),
             };
 
@@ -380,7 +380,7 @@ fn start_boot(supervisor: ipc::Sender<IpcMessage>, args: &args::Run) {
         };
 
         traft::Storage::persist_conf_state(&cs).unwrap();
-        traft::Storage::persist_entries(&[e0]).unwrap();
+        traft::Storage::persist_entries(&[entry]).unwrap();
         traft::Storage::persist_commit(1).unwrap();
         traft::Storage::persist_term(1).unwrap();
         traft::Storage::persist_id(raft_id).unwrap();
