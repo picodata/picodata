@@ -157,17 +157,12 @@ fn rm_tarantool_files(data_dir: &str) {
         });
 }
 
-struct ExitStatus {
-    raw: i32,
-}
-
-fn main() {
-    let rc = match args::Picodata::from_args() {
+fn main() -> ! {
+    match args::Picodata::from_args() {
         args::Picodata::Run(args) => main_run(args),
         args::Picodata::Test(args) => main_test(args),
         args::Picodata::Tarantool(args) => main_tarantool(args),
-    };
-    std::process::exit(rc.raw);
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -220,7 +215,7 @@ macro_rules! tarantool_main {
     }};
 }
 
-fn main_run(args: args::Run) -> ExitStatus {
+fn main_run(args: args::Run) -> ! {
     // Tarantool implicitly parses some environment variables.
     // We don't want them to affect the behavior and thus filter them out.
     for (k, _) in std::env::vars() {
@@ -260,7 +255,7 @@ fn main_run(args: args::Run) -> ExitStatus {
                         entrypoint.exec(args, tx)
                     }
                 );
-                return ExitStatus { raw: rc };
+                std::process::exit(rc);
             }
             ForkResult::Parent { child } => {
                 drop(tx);
@@ -544,7 +539,7 @@ fn postjoin(args: &args::Run) {
     }
 }
 
-fn main_tarantool(args: args::Tarantool) -> ExitStatus {
+fn main_tarantool(args: args::Tarantool) -> ! {
     // XXX: `argv` is a vec of pointers to data owned by `tt_args`, so
     // make sure `tt_args` outlives `argv`, because the compiler is not
     // gonna do that for you
@@ -560,7 +555,7 @@ fn main_tarantool(args: args::Tarantool) -> ExitStatus {
         )
     };
 
-    ExitStatus { raw: rc }
+    std::process::exit(rc);
 }
 
 macro_rules! color {
@@ -573,7 +568,7 @@ macro_rules! color {
     }
 }
 
-fn main_test(args: args::Test) -> ExitStatus {
+fn main_test(args: args::Test) -> ! {
     cleanup_env!();
 
     const PASSED: &str = color![green "ok" clear];
@@ -607,7 +602,7 @@ fn main_test(args: args::Test) -> ExitStatus {
                     callback_data_type: &InnerTest,
                     callback_body: test_one(t)
                 );
-                return ExitStatus { raw: rc };
+                std::process::exit(rc);
             }
             ForkResult::Parent { child } => {
                 drop(tx);
@@ -656,7 +651,7 @@ fn main_test(args: args::Test) -> ExitStatus {
     println!(" finished in {:.2}s", now.elapsed().as_secs_f32());
     println!();
 
-    ExitStatus { raw: !ok as _ }
+    std::process::exit(!ok as _);
 }
 
 fn test_one(t: &InnerTest) {
