@@ -1,3 +1,4 @@
+use nix::sys::signal;
 use nix::sys::termios::{tcgetattr, tcsetattr, SetArg::TCSADRAIN};
 use nix::sys::wait::WaitStatus;
 use nix::unistd::{self, fork, ForkResult};
@@ -230,6 +231,35 @@ fn main_run(args: args::Run) -> ! {
     //
     let tcattr = tcgetattr(0).ok();
 
+    // Intercept and forward signals to the child. As for the child
+    // itself, one shouldn't worry about setting up signal handlers -
+    // Tarantool does that implicitly.
+    // See also: man 7 signal-safety
+    static mut CHILD_PID: Option<libc::c_int> = None;
+    extern "C" fn sigh(sig: libc::c_int) {
+        println!("[supervisor:{}] got signal {sig}", unistd::getpid());
+        unsafe {
+            match CHILD_PID {
+                Some(pid) => match libc::kill(pid, sig) {
+                    0 => (),
+                    _ => std::process::exit(0),
+                },
+                None => std::process::exit(0),
+            };
+        }
+    }
+    let sigaction = signal::SigAction::new(
+        signal::SigHandler::Handler(sigh),
+        signal::SaFlags::SA_RESTART,
+        signal::SigSet::empty(),
+    );
+    unsafe {
+        signal::sigaction(signal::SIGHUP, &sigaction).unwrap();
+        signal::sigaction(signal::SIGINT, &sigaction).unwrap();
+        signal::sigaction(signal::SIGTERM, &sigaction).unwrap();
+        signal::sigaction(signal::SIGUSR1, &sigaction).unwrap();
+    }
+
     let parent = unistd::getpid();
     let mut entrypoint = Entrypoint::StartDiscover {};
     loop {
@@ -276,6 +306,7 @@ fn main_run(args: args::Run) -> ! {
                 std::process::exit(rc);
             }
             ForkResult::Parent { child } => {
+                unsafe { CHILD_PID = Some(child.into()) };
                 drop(from_parent);
                 drop(to_parent);
 
