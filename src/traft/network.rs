@@ -79,12 +79,13 @@ impl PoolWorker {
 
         loop {
             // implicit yield
-            let messages = inbox.recv_timeout(opts.inactivity_timeout);
+            let messages = inbox.receive_all(opts.inactivity_timeout);
             if stop_flag.take().is_some() {
                 return;
             }
 
             if messages.is_empty() {
+                // Connection has long been unused. Close it.
                 cache.take();
                 continue;
             }

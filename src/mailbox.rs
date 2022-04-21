@@ -31,7 +31,7 @@ impl<T> Mailbox<T> {
         self.0.cond.signal();
     }
 
-    pub fn recv_timeout(&self, timeout: Duration) -> Vec<T> {
+    pub fn receive_all(&self, timeout: Duration) -> Vec<T> {
         if self.0.content.borrow().is_empty() {
             self.0.cond.wait_timeout(timeout);
         }

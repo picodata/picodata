@@ -243,7 +243,7 @@ fn raft_main_loop(
         // Clean up obsolete notifications
         notifications.retain(|_, notify: &mut Notify| !notify.is_closed());
 
-        for req in main_inbox.recv_timeout(Node::TICK) {
+        for req in main_inbox.receive_all(Node::TICK) {
             match req {
                 NormalRequest::ProposeNormal { op, notify } => {
                     lc.inc();
@@ -525,7 +525,7 @@ impl AsTuple for JoinResponse {}
 
 fn raft_join_loop(inbox: Mailbox<(JoinRequest, Notify)>, main_inbox: Mailbox<NormalRequest>) {
     loop {
-        let batch = inbox.recv_timeout(Duration::MAX);
+        let batch = inbox.receive_all(Duration::MAX);
         // TODO check leadership, else continue
 
         let (rx, tx) = fiber::Channel::new(1).into_clones();
