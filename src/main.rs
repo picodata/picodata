@@ -148,11 +148,7 @@ fn rm_tarantool_files(data_dir: &str) {
                 .unwrap_or(false)
         })
         .for_each(|f| {
-            tlog!(
-                Warning,
-                "[supervisor] removing file: {}",
-                (&f).to_string_lossy()
-            );
+            println!("[supervisor] removing file: {}", (&f).to_string_lossy());
             std::fs::remove_file(f).unwrap();
         });
 }
@@ -224,8 +220,6 @@ fn main_run(args: args::Run) -> ! {
         }
     }
 
-    let mut entrypoint = Entrypoint::StartDiscover {};
-
     // Tarantool running in a fork (or, to be more percise, the
     // libreadline) modifies termios settings to intercept echoed text.
     //
@@ -236,30 +230,56 @@ fn main_run(args: args::Run) -> ! {
     //
     let tcattr = tcgetattr(0).ok();
 
+    let parent = unistd::getpid();
+    let mut entrypoint = Entrypoint::StartDiscover {};
     loop {
-        tlog!(Info, "[supervisor] running {:?}", entrypoint);
+        println!("[supervisor:{parent}] running {entrypoint:?}");
 
-        let pipe = ipc::channel::<IpcMessage>();
-        let (rx, tx) = pipe.expect("pipe creation failed");
+        let (from_child, to_parent) =
+            ipc::channel::<IpcMessage>().expect("ipc channel creation failed");
+        let (from_parent, to_child) = ipc::pipe().expect("ipc pipe creation failed");
 
         let pid = unsafe { fork() };
         match pid.expect("fork failed") {
             ForkResult::Child => {
-                drop(rx);
+                drop(from_child);
+                drop(to_child);
 
                 let rc = tarantool_main!(
                     args.tt_args().unwrap(),
-                    callback_data: (entrypoint, args, tx),
-                    callback_data_type: (Entrypoint, args::Run, ipc::Sender<IpcMessage>),
+                    callback_data: (entrypoint, args, to_parent, from_parent),
+                    callback_data_type: (Entrypoint, args::Run, ipc::Sender<IpcMessage>, ipc::Fd),
                     callback_body: {
-                        entrypoint.exec(args, tx)
+                        // We don't want a child to live without a supervisor.
+                        //
+                        // Usually, supervisor waits for child forever and retransmits
+                        // termination signals. But if the parent is killed with a SIGKILL
+                        // there's no way to pass anything.
+                        //
+                        // This fiber serves as a fuse - it tries to read from a pipe
+                        // (that supervisor never writes to), and if the writing end is
+                        // closed, it means the supervisor has terminated.
+                        let fuse = fiber::Builder::new()
+                            .name("supervisor_fuse")
+                            .func(move || {
+                                use ::tarantool::ffi::tarantool::CoIOFlags;
+                                use ::tarantool::coio::coio_wait;
+                                coio_wait(from_parent.0, CoIOFlags::READ, f64::INFINITY).ok();
+                                tlog!(Warning, "Supervisor terminated, exiting");
+                                std::process::exit(0);
+                        });
+                        std::mem::forget(fuse.start());
+
+                        entrypoint.exec(args, to_parent)
                     }
                 );
                 std::process::exit(rc);
             }
             ForkResult::Parent { child } => {
-                drop(tx);
-                let msg = rx.recv().ok();
+                drop(from_parent);
+                drop(to_parent);
+
+                let msg = from_child.recv().ok();
 
                 let mut rc: i32 = 0;
                 unsafe {
@@ -275,14 +295,15 @@ fn main_run(args: args::Run) -> ! {
                     tcsetattr(0, TCSADRAIN, tcattr).unwrap();
                 }
 
-                tlog!(Info, "[supervisor] tarantool process finished: {:?}",
-                    WaitStatus::from_raw(child, rc);
+                println!(
+                    "[supervisor:{parent}] subprocess finished: {:?}",
+                    WaitStatus::from_raw(child, rc)
                 );
 
                 if let Some(msg) = msg {
                     entrypoint = msg.next_entrypoint;
                     if msg.drop_db {
-                        tlog!(Info, "[supervisor] tarantool requested rebootstrap");
+                        println!("[supervisor:{parent}] subprocess requested rebootstrap");
                         rm_tarantool_files(&args.data_dir);
                     }
                 } else {
