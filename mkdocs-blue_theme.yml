@@ -7,9 +7,18 @@ nav:
     - Установка и первые шаги: install.md
     - Услуги: services.md
 theme:
-    name: readthedocs
+    name: material
+    custom_dir: overrides
+    font:
+        text: Inter
+    logo: assets/logo.svg
+    favicon: assets/favicon.png
     language: ru
+    features:
+        - navigation.tabs
 
+extra_css:
+    - extra/style.css
 plugins:
     - search:
         lang: 
