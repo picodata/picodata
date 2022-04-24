@@ -177,9 +177,9 @@ enum Entrypoint {
 }
 
 impl Entrypoint {
-    fn exec(self, supervisor_ipc: ipc::Sender<IpcMessage>, args: args::Run) {
+    fn exec(self, to_supervisor: ipc::Sender<IpcMessage>, args: args::Run) {
         match self {
-            Self::StartDiscover => start_discover(supervisor_ipc, &args),
+            Self::StartDiscover => start_discover(to_supervisor, &args),
             Self::StartJoin { leader_address } => start_join(&args, leader_address),
         }
     }
@@ -227,8 +227,8 @@ fn main_run(args: args::Run) -> ExitStatus {
                 extern "C" fn trampoline(data: *mut libc::c_void) {
                     // let args = unsafe { Box::from_raw(data as _) };
                     let argbox = unsafe { Box::<TrampolineArgs>::from_raw(data as _) };
-                    let (entrypoint, supervisor_ipc, args) = *argbox;
-                    entrypoint.exec(supervisor_ipc, args);
+                    let (entrypoint, to_supervisor, args) = *argbox;
+                    entrypoint.exec(to_supervisor, args);
                 }
 
                 // `argv` is a vec of pointers to data owned by `tt_args`, so
@@ -283,7 +283,7 @@ fn main_run(args: args::Run) -> ExitStatus {
     }
 }
 
-fn start_discover(supervisor_ipc: ipc::Sender<IpcMessage>, args: &args::Run) {
+fn start_discover(to_supervisor: ipc::Sender<IpcMessage>, args: &args::Run) {
     tlog!(Info, ">>>>> start_discover()");
 
     picolib_setup(args);
@@ -333,7 +333,7 @@ fn start_discover(supervisor_ipc: ipc::Sender<IpcMessage>, args: &args::Run) {
                 next_entrypoint,
                 drop_db: true,
             };
-            supervisor_ipc.send(&msg);
+            to_supervisor.send(&msg);
             std::process::exit(0);
         }
     };
