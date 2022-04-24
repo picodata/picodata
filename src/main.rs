@@ -177,9 +177,9 @@ enum Entrypoint {
 }
 
 impl Entrypoint {
-    fn exec(self, to_supervisor: ipc::Sender<IpcMessage>, args: args::Run) {
+    fn exec(self, args: args::Run, to_supervisor: ipc::Sender<IpcMessage>) {
         match self {
-            Self::StartDiscover => start_discover(to_supervisor, &args),
+            Self::StartDiscover => start_discover(&args, to_supervisor),
             Self::StartJoin { leader_address } => start_join(&args, leader_address),
         }
     }
@@ -228,7 +228,7 @@ fn main_run(args: args::Run) -> ExitStatus {
                     // let args = unsafe { Box::from_raw(data as _) };
                     let argbox = unsafe { Box::<TrampolineArgs>::from_raw(data as _) };
                     let (entrypoint, to_supervisor, args) = *argbox;
-                    entrypoint.exec(to_supervisor, args);
+                    entrypoint.exec(args, to_supervisor);
                 }
 
                 // `argv` is a vec of pointers to data owned by `tt_args`, so
@@ -283,7 +283,7 @@ fn main_run(args: args::Run) -> ExitStatus {
     }
 }
 
-fn start_discover(to_supervisor: ipc::Sender<IpcMessage>, args: &args::Run) {
+fn start_discover(args: &args::Run, to_supervisor: ipc::Sender<IpcMessage>) {
     tlog!(Info, ">>>>> start_discover()");
 
     picolib_setup(args);
