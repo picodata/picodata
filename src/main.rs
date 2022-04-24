@@ -194,7 +194,7 @@ struct IpcMessage {
 macro_rules! tarantool_main {
     (
         $tt_args:expr,
-         callback_data: $cb_data:ident,
+         callback_data: $cb_data:tt,
          callback_data_type: $cb_data_ty:ty,
          callback_body: $cb_body:expr
     ) => {{
@@ -252,15 +252,12 @@ fn main_run(args: args::Run) -> ExitStatus {
             ForkResult::Child => {
                 drop(rx);
 
-                let tt_args = args.tt_args().unwrap();
-                let data = (entrypoint, args, tx);
                 let rc = tarantool_main!(
-                    tt_args,
-                    callback_data: data,
+                    args.tt_args().unwrap(),
+                    callback_data: (entrypoint, args, tx),
                     callback_data_type: (Entrypoint, args::Run, ipc::Sender<IpcMessage>),
                     callback_body: {
-                        let (entrypoint, args, to_supervisor) = data;
-                        entrypoint.exec(args, to_supervisor)
+                        entrypoint.exec(args, tx)
                     }
                 );
                 return ExitStatus { raw: rc };
