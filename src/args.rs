@@ -191,7 +191,7 @@ impl Display for BadAddress {
 }
 
 fn try_parse_address(text: &str) -> Result<String, Box<dyn Error>> {
-    let (host, port) = match text.rsplit_once(":") {
+    let (host, port) = match text.rsplit_once(':') {
         Some((mut host, port)) => {
             if host.is_empty() {
                 host = "localhost";

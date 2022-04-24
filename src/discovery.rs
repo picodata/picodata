@@ -151,7 +151,7 @@ impl Discovery {
                 if self.pending_request {
                     return None;
                 }
-                let res = peers.difference(&self.visited).cloned().next();
+                let res = peers.difference(&self.visited).next().cloned();
                 let addr = match &res {
                     Some(addr) => {
                         self.visited.insert(addr.clone());

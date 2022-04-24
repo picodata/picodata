@@ -24,9 +24,8 @@ where
     T: Serialize,
 {
     pub fn send(mut self, msg: &T) {
-        match rmp_serde::encode::write(&mut self.fd, msg) {
-            Err(e) => tlog!(Error, "ipc error: {e}"),
-            Ok(()) => (),
+        if let Err(e) = rmp_serde::encode::write(&mut self.fd, msg) {
+            tlog!(Error, "ipc error: {e}")
         }
     }
 }
