@@ -1,9 +1,9 @@
+use clap::StructOpt;
 use nix::sys::signal;
 use nix::sys::termios::{tcgetattr, tcsetattr, SetArg::TCSADRAIN};
 use nix::sys::wait::WaitStatus;
 use nix::unistd::{self, fork, ForkResult};
 use serde::{Deserialize, Serialize};
-use structopt::StructOpt;
 
 use ::raft::prelude as raft;
 use ::tarantool::error::Error;
@@ -155,7 +155,7 @@ fn rm_tarantool_files(data_dir: &str) {
 }
 
 fn main() -> ! {
-    match args::Picodata::from_args() {
+    match args::Picodata::parse() {
         args::Picodata::Run(args) => main_run(args),
         args::Picodata::Test(args) => main_test(args),
         args::Picodata::Tarantool(args) => main_tarantool(args),

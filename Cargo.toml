@@ -8,7 +8,7 @@ autotests = false
 
 [dependencies]
 bytes = "1.1"
-clap = "^2.33"
+clap = {version = "3", features = ["derive", "env"]}
 errno = "0.2.8"
 inventory = "0.2.0"
 libc = "0.2.108"
@@ -16,7 +16,6 @@ raft = "0.6.0"
 serde = "1.0"
 serde_json = "1.0"
 serde_bytes = "0.11"
-structopt = "^0.3"
 rmp-serde = "1.0"
 tempfile = "3"
 thiserror = "1.0"
