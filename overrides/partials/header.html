@@ -3,8 +3,6 @@
 {% set class = class ~ " md-header--lifted" %}
 {% endif %}
 <header class="{{ class }}" data-md-component="header">
-  
-  {% include "site-header.html" %}
 
   <nav class="md-header__inner md-grid" aria-label="{{ lang.t('header.title') }}">
       <a href="{{ config.extra.homepage | d(nav.homepage.url, true) | url }}" title="{{ config.site_name | e }}" class="md-header__button md-logo" aria-label="{{ config.site_name }}" data-md-component="logo">
@@ -13,6 +11,9 @@
       <label class="md-header__button md-icon" for="__drawer">
       {% include ".icons/material/menu" ~ ".svg" %}
       </label>
+      <a href="{{ config.extra.homepage | d(nav.homepage.url, true) | url }}" title="{{ config.site_name | e }}" class="md-logo__mobile">
+        {% include "partials/logo-mobile.html" %}
+      </a>
       <div class="md-header__title" data-md-component="header-title">
       <div class="md-header__ellipsis">
           <div class="md-header__topic">
