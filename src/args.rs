@@ -18,7 +18,7 @@ pub enum Picodata {
 // Run
 ////////////////////////////////////////////////////////////////////////////////
 
-#[derive(Debug, Parser, tlua::Push)]
+#[derive(Debug, Parser, tlua::Push, PartialEq)]
 #[clap(about = "Run the picodata instance")]
 pub struct Run {
     #[clap(long, value_name = "name", env = "PICODATA_CLUSTER_ID")]
@@ -199,5 +199,80 @@ mod tests {
         assert_eq!(try_parse_address("example:1234").unwrap(), "example:1234");
         assert!(try_parse_address("example:123456").is_err());
         assert!(try_parse_address("example::1234").is_err());
+    }
+
+    macro_rules! parse {
+        ($subcmd:ty, $($arg:literal),*) => {{
+            let args = vec![stringify!($subcmd), $($arg),*];
+            <$subcmd>::try_parse_from(args).unwrap()
+        }}
+    }
+
+    struct EnvDump(Vec<(String, String)>);
+    impl EnvDump {
+        fn new() -> Self {
+            let dump: Vec<(String, String)> = std::env::vars()
+                .filter(|(k, _)| k.starts_with("PICODATA_"))
+                .collect();
+            for (k, _) in &dump {
+                std::env::remove_var(k);
+            }
+            Self(dump)
+        }
+    }
+
+    impl Drop for EnvDump {
+        fn drop(&mut self) {
+            for (k, v) in self.0.drain(..) {
+                std::env::set_var(k, v);
+            }
+        }
+    }
+
+    #[test]
+    fn test_parse() {
+        let _env_dump = EnvDump::new();
+
+        std::env::set_var("PICODATA_INSTANCE_ID", "instance-id-from-env");
+        std::env::set_var("PICODATA_PEER", "peer-from-env");
+        {
+            let parsed = parse![Run,];
+            assert_eq!(parsed.instance_id, "instance-id-from-env");
+            assert_eq!(parsed.peers.as_ref(), vec!["peer-from-env:3301"]);
+            assert_eq!(parsed.listen, "localhost:3301"); // default
+            assert_eq!(parsed.advertise_address(), "localhost:3301"); // default
+
+            let parsed = parse![Run, "--instance-id", "instance-id-from-args"];
+            assert_eq!(parsed.instance_id, "instance-id-from-args");
+
+            let parsed = parse![Run, "--peer", "peer-from-args"];
+            assert_eq!(parsed.peers.as_ref(), vec!["peer-from-args:3301"]);
+        }
+
+        std::env::set_var("PICODATA_LISTEN", "listen-from-env");
+        {
+            let parsed = parse![Run,];
+            assert_eq!(parsed.listen, "listen-from-env:3301");
+            assert_eq!(parsed.advertise_address(), "listen-from-env:3301");
+
+            let parsed = parse![Run, "-l", "listen-from-args"];
+            assert_eq!(parsed.listen, "listen-from-args:3301");
+            assert_eq!(parsed.advertise_address(), "listen-from-args:3301");
+        }
+
+        std::env::set_var("PICODATA_ADVERTISE_ADDRESS", "advertise-from-env");
+        {
+            let parsed = parse![Run,];
+            assert_eq!(parsed.listen, "listen-from-env:3301");
+            assert_eq!(parsed.advertise_address(), "advertise-from-env:3301");
+
+            let parsed = parse![Run, "-l", "listen-from-args"];
+            assert_eq!(parsed.listen, "listen-from-args:3301");
+            assert_eq!(parsed.advertise_address(), "advertise-from-env:3301");
+
+            let parsed = parse![Run, "--advertise-address", "advertise-from-args"];
+            assert_eq!(parsed.listen, "listen-from-env:3301");
+            assert_eq!(parsed.advertise_address(), "advertise-from-args:3301");
+        }
     }
 }
