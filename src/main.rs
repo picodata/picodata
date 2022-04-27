@@ -1,4 +1,3 @@
-use clap::StructOpt;
 use nix::sys::signal;
 use nix::sys::termios::{tcgetattr, tcsetattr, SetArg::TCSADRAIN};
 use nix::sys::wait::WaitStatus;
@@ -13,6 +12,7 @@ use ::tarantool::transaction::start_transaction;
 use std::convert::TryFrom;
 use std::time::{Duration, Instant};
 
+use clap::StructOpt as _;
 use protobuf::Message as _;
 use protobuf::ProtobufEnum as _;
 

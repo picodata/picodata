@@ -79,22 +79,9 @@ pub struct Run {
     /// Address of other instance(s)
     pub peers: Vec<String>,
 
-    #[clap(hide = true, env = "PICODATA_RAFT_ID")]
-    pub raft_id: Option<u64>,
-
     #[clap(long, value_name = "name", env = "PICODATA_REPLICASET_ID")]
     /// Name of the replicaset
     pub replicaset_id: Option<String>,
-
-    #[clap(
-        hide = true,
-        long = "picolib-autorun",
-        env = "PICOLIB_AUTORUN",
-        parse(from_str = parse_flag),
-        default_value = "true",
-    )]
-    /// Only used for testing. Should probably be removed at this point
-    pub autorun: bool,
 }
 
 impl Run {
@@ -166,11 +153,6 @@ fn current_exe() -> Result<CString, String> {
             .to_string(),
     )
     .map_err(|e| format!("Current executable path contains nul bytes: {e}"))
-}
-
-fn parse_flag(text: &str) -> bool {
-    let text = text.to_lowercase();
-    matches!(text.as_str(), "on" | "true" | "yes") || text.parse::<i64>().unwrap_or(0) != 0
 }
 
 #[derive(Error, Debug)]
