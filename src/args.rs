@@ -49,7 +49,7 @@ pub struct Run {
 
     #[clap(
         long,
-        value_name = "host[:port]",
+        value_name = "[host][:port]",
         env = "PICODATA_ADVERTISE_ADDRESS",
         parse(try_from_str = try_parse_address)
     )]
@@ -59,7 +59,7 @@ pub struct Run {
     #[clap(
         short = 'l',
         long = "listen",
-        value_name = "host[:port]",
+        value_name = "[host][:port]",
         parse(try_from_str = try_parse_address),
         default_value = "localhost:3301",
         env = "PICODATA_LISTEN"
@@ -69,9 +69,10 @@ pub struct Run {
 
     #[clap(
         long = "peer",
-        value_name = "host[:port]",
+        value_name = "[host][:port]",
         require_value_delimiter = true,
         use_value_delimiter = true,
+        parse(try_from_str = try_parse_address),
         required = true,
         env = "PICODATA_PEER"
     )]
