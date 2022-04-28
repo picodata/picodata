@@ -503,6 +503,7 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 proc::debug,
                 proc::tarantool_reimport,
                 proc::custom_ret,
+                proc::inject,
 
                 uuid::to_tuple,
                 uuid::from_tuple,

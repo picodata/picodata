@@ -288,6 +288,34 @@ pub use tlua;
 /// In the above example `sum_all` will sum all the inputs values it received
 /// whereas `sum_first_3` will only sum up the first 3 values
 ///
+/// # Injecting arguments
+///
+/// Because the return value of the stored procedure is immediately serialized
+/// it is in theory ok to return borrowed values. Rust however will not allow
+/// you to return references to the values owned by the function. In that case
+/// you can use an *injected* argument, which will be created just outside
+/// the stored procedure and will be passed to it as a corresponding argument.
+///
+/// ```no_run
+/// fn global_data() -> &'static [String] {
+///     todo!()
+/// }
+///
+/// #[tarantool::proc]
+/// fn get_ith<'a>(
+///     #[inject(global_data())]
+///     data: &'a [String],
+///     i: usize,
+/// ) -> &'a str {
+///     &data[i]
+/// }
+/// ```
+///
+/// When calling the stored procedure only the actual arguments need to be
+/// specified, so in the above example `get_ith` will effectively have just 1
+/// argument `i`. And `data` will be automatically injected and it's value will
+/// be set to `global_data()` each time it is called.
+///
 /// # Debugging
 ///
 /// There's also a `debug` attribute parameter which enables debug printing of

@@ -123,3 +123,84 @@ pub fn custom_ret() {
         MyStruct { x: 69, y: "45".into() }
     );
 }
+
+pub fn inject() {
+    #[tarantool::proc]
+    fn proc_inject<'a>(
+        #[inject(&vec!["hello", "how", "are", "you"])]
+        injected: &'a [&'static str],
+        start: usize,
+        end: usize,
+    ) -> &'a [&'static str] {
+        &injected[start..end]
+    }
+
+    assert_eq!(
+        call_proc::<_, Vec<String>>("proc_inject", (1, 3)).unwrap(),
+        vec!["how".to_string(), "are".to_string()]
+    );
+
+    #[tarantool::proc]
+    fn proc_inject_2<'a>(
+        #[inject("left")]
+        injected_1: &'a str,
+        #[inject("right")]
+        injected_2: &'a str,
+        second: bool,
+    ) -> &'a str {
+        if second { injected_2 } else { injected_1 }
+    }
+
+    assert_eq!(
+        call_proc::<_, String>("proc_inject_2", false).unwrap(),
+        "left".to_string(),
+    );
+
+    assert_eq!(
+        call_proc::<_, String>("proc_inject_2", true).unwrap(),
+        "right".to_string(),
+    );
+
+    struct GlobalData {
+        data: Vec<String>,
+    }
+
+    fn global() -> &'static GlobalData {
+        static mut GLOBAL: Option<GlobalData> = None;
+        unsafe {
+            GLOBAL.get_or_insert_with(||
+                GlobalData {
+                    data: vec![
+                        "some".into(),
+                        "global".into(),
+                        "data".into(),
+                    ]
+                }
+            )
+        }
+    }
+
+    #[tarantool::proc]
+    fn proc_inject_global<'a>(
+        #[inject(&global())]
+        data: &'a GlobalData,
+        i: usize,
+    ) -> &'a str {
+        &data.data[i]
+    }
+
+    assert_eq!(
+        call_proc::<_, String>("proc_inject_global", 0).unwrap(),
+        "some".to_string(),
+    );
+
+    assert_eq!(
+        call_proc::<_, String>("proc_inject_global", 1).unwrap(),
+        "global".to_string(),
+    );
+
+    assert_eq!(
+        call_proc::<_, String>("proc_inject_global", 2).unwrap(),
+        "data".to_string(),
+    );
+}

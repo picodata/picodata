@@ -1,21 +1,16 @@
 use proc_macro::TokenStream;
 use proc_macro2::{TokenStream as TokenStream2};
 use syn::{
-    AttributeArgs, parse_macro_input, FnArg, Generics, Item, ItemFn,
-    Lit, Meta, MetaNameValue, NestedMeta, PatType, Signature,
+    AttributeArgs, parse_macro_input, FnArg, Item, ItemFn,
+    Lit, Meta, MetaNameValue, NestedMeta, Signature,
+    punctuated::Punctuated, Token,
 };
 use quote::quote;
 
 #[proc_macro_attribute]
 pub fn stored_proc(attr: TokenStream, item: TokenStream) -> TokenStream {
     let args = parse_macro_input!(attr as AttributeArgs);
-    let Context {
-        tarantool,
-        debug_tuple,
-        is_packed,
-        wrap_ret,
-        ..
-    } = Context::from_args(args);
+    let ctx = Context::from_args(args);
 
     let input = parse_macro_input!(item as Item);
 
@@ -24,38 +19,36 @@ pub fn stored_proc(attr: TokenStream, item: TokenStream) -> TokenStream {
         _ => panic!("only `fn` items can be stored procedures"),
     };
 
-    let (ident, inputs, output) = match sig {
+    let (ident, inputs, output, generics) = match sig {
         Signature { asyncness: Some(_), .. } => {
             panic!("async stored procedures are not supported yet")
-        }
-        Signature { generics: Generics { lt_token: Some(_), .. }, .. } => {
-            panic!("generic stored procedures are not supported yet")
         }
         Signature { variadic: Some(_), .. } => {
             panic!("variadic stored procedures are not supported yet")
         }
-        Signature { ident, inputs, output, .. } => (ident, inputs, output),
+        Signature { ident, inputs, output, generics, .. } => {
+            (ident, inputs, output, generics)
+        }
     };
 
-    if is_packed && inputs.len() > 1 {
+    if ctx.is_packed && inputs.len() > 1 {
         panic!("proc with 'packed_args' can only have a single parameter")
     }
-    let input_idents = inputs.iter()
-        .map(|i| match i {
-            FnArg::Receiver(_) => {
-                panic!("`self` receivers aren't supported in stored procedures")
-            }
-            FnArg::Typed(PatType { pat, .. }) => pat,
-        })
-        .collect::<Vec<_>>();
+    let Inputs {
+        inputs,
+        input_pattern,
+        input_idents,
+        inject_inputs,
+    } = Inputs::parse(&ctx, inputs);
 
-    let input_pattern = if inputs.is_empty() {
-        quote!{ []: [(); 0] }
-    } else if is_packed {
-        quote!{ #(#input_idents)* }
-    } else {
-        quote!{ ( #(#input_idents,)* ) }
-    };
+    let Context {
+        tarantool,
+        debug_tuple,
+        wrap_ret,
+        ..
+    } = ctx;
+
+    let inner_fn_name = syn::Ident::new("__tp_inner", ident.span());
 
     quote! {
         #[no_mangle]
@@ -78,7 +71,9 @@ pub fn stored_proc(attr: TokenStream, item: TokenStream) -> TokenStream {
                     }
                 };
 
-            fn __tp_inner(#inputs) #output {
+            #inject_inputs
+
+            fn #inner_fn_name #generics (#inputs) #output {
                 #block
             }
 
@@ -152,6 +147,87 @@ impl Context {
             wrap_ret,
         }
     }
+}
+
+struct Inputs {
+    inputs: Punctuated<FnArg, Token![,]>,
+    input_pattern: TokenStream2,
+    input_idents: Vec<syn::Pat>,
+    inject_inputs: TokenStream2,
+}
+
+impl Inputs {
+    fn parse(ctx: &Context, mut inputs: Punctuated<FnArg, Token![,]>) -> Self {
+        let mut input_idents = vec![];
+        let mut actual_inputs = vec![];
+        let mut injected_inputs = vec![];
+        let mut injected_exprs = vec![];
+        for i in &mut inputs {
+            let syn::PatType { ref pat, ref mut attrs, .. } = match i {
+                FnArg::Receiver(_) => {
+                    panic!("`self` receivers aren't supported in stored procedures")
+                }
+                FnArg::Typed(pat_ty) => pat_ty,
+            };
+            let mut inject_expr = None;
+            attrs.retain(|attr|
+                if attr.path.is_ident("inject") {
+                    match attr.parse_args() {
+                        Ok(AttrInject { expr, .. }) =>  {
+                            inject_expr = Some(expr);
+                            false
+                        }
+                        Err(e) => panic!("attribute argument error: {}", e)
+                    }
+                } else {
+                    true
+                }
+            );
+            if let Some(expr) = inject_expr {
+                injected_inputs.push(pat.clone());
+                injected_exprs.push(expr);
+            } else {
+                actual_inputs.push(pat.clone());
+            }
+            input_idents.push((**pat).clone());
+        }
+
+        let input_pattern = if inputs.is_empty() {
+            quote!{ []: [(); 0] }
+        } else if ctx.is_packed {
+            quote!{ #(#actual_inputs)* }
+        } else {
+            quote!{ ( #(#actual_inputs,)* ) }
+        };
+
+        let inject_inputs = quote! {
+            #( let #injected_inputs = #injected_exprs; )*
+        };
+
+        Self {
+            inputs,
+            input_pattern,
+            input_idents,
+            inject_inputs,
+        }
+    }
+}
+
+#[derive(Debug)]
+struct AttrInject {
+    expr: syn::Expr,
+}
+
+impl syn::parse::Parse for AttrInject {
+    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        Ok(AttrInject {
+            expr: input.parse()?,
+        })
+    }
+}
+
+mod kw {
+    syn::custom_keyword!{inject}
 }
 
 mod imp {
