@@ -133,6 +133,7 @@ class Instance:
             self.command,
             cwd=self.workdir,
             env=self.env or {},
+            stdin=subprocess.DEVNULL,
             start_new_session=True,
         )
         # Assert a new process group is created
