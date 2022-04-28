@@ -1,0 +1,650 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
+
+<svg
+   width="316.60059mm"
+   height="82.949989mm"
+   viewBox="0 0 316.60058 82.949989"
+   version="1.1"
+   id="svg5"
+   inkscape:version="1.1.2 (0a00cf5339, 2022-02-04)"
+   sodipodi:docname="clustering.svg"
+   inkscape:export-filename="/home/atolstoy/picodata-git/picodata/docs/clustering.png"
+   inkscape:export-xdpi="120"
+   inkscape:export-ydpi="120"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <sodipodi:namedview
+     id="namedview7"
+     pagecolor="#ffffff"
+     bordercolor="#666666"
+     borderopacity="1.0"
+     inkscape:pageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:document-units="mm"
+     showgrid="false"
+     inkscape:zoom="0.69219277"
+     inkscape:cx="841.52858"
+     inkscape:cy="393.67646"
+     inkscape:window-width="1920"
+     inkscape:window-height="1016"
+     inkscape:window-x="0"
+     inkscape:window-y="0"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="layer1"
+     fit-margin-top="0"
+     fit-margin-left="0"
+     fit-margin-right="0"
+     fit-margin-bottom="0" />
+  <defs
+     id="defs2">
+    <marker
+       style="overflow:visible"
+       id="Arrow2Mend"
+       refX="0"
+       refY="0"
+       orient="auto"
+       inkscape:stockid="Arrow2Mend"
+       inkscape:isstock="true">
+      <path
+         transform="scale(-0.6)"
+         d="M 8.7185878,4.0337352 -2.2072895,0.01601326 8.7185884,-4.0017078 c -1.7454984,2.3720609 -1.7354408,5.6174519 -6e-7,8.035443 z"
+         style="fill:context-stroke;fill-rule:evenodd;stroke:context-stroke;stroke-width:0.625;stroke-linejoin:round"
+         id="path25869" />
+    </marker>
+    <marker
+       style="overflow:visible"
+       id="Arrow2Lend"
+       refX="0"
+       refY="0"
+       orient="auto"
+       inkscape:stockid="Arrow2Lend"
+       inkscape:isstock="true">
+      <path
+         transform="matrix(-1.1,0,0,-1.1,-1.1,0)"
+         d="M 8.7185878,4.0337352 -2.2072895,0.01601326 8.7185884,-4.0017078 c -1.7454984,2.3720609 -1.7354408,5.6174519 -6e-7,8.035443 z"
+         style="fill:context-stroke;fill-rule:evenodd;stroke:context-stroke;stroke-width:0.625;stroke-linejoin:round"
+         id="path8943" />
+    </marker>
+    <marker
+       style="overflow:visible"
+       id="Arrow1Lend"
+       refX="0"
+       refY="0"
+       orient="auto"
+       inkscape:stockid="Arrow1Lend"
+       inkscape:isstock="true">
+      <path
+         transform="matrix(-0.8,0,0,-0.8,-10,0)"
+         style="fill:context-stroke;fill-rule:evenodd;stroke:context-stroke;stroke-width:1pt"
+         d="M 0,0 5,-5 -12.5,0 5,5 Z"
+         id="path8925" />
+    </marker>
+    <marker
+       style="overflow:visible"
+       id="Arrow1Lstart"
+       refX="0"
+       refY="0"
+       orient="auto"
+       inkscape:stockid="Arrow1Lstart"
+       inkscape:isstock="true">
+      <path
+         transform="matrix(0.8,0,0,0.8,10,0)"
+         style="fill:context-stroke;fill-rule:evenodd;stroke:context-stroke;stroke-width:1pt"
+         d="M 0,0 5,-5 -12.5,0 5,5 Z"
+         id="path8922" />
+    </marker>
+    <marker
+       style="overflow:visible"
+       id="Arrow2Mend-3"
+       refX="0"
+       refY="0"
+       orient="auto"
+       inkscape:stockid="Arrow2Mend"
+       inkscape:isstock="true">
+      <path
+         transform="scale(-0.6)"
+         d="M 8.7185878,4.0337352 -2.2072895,0.01601326 8.7185884,-4.0017078 c -1.7454984,2.3720609 -1.7354408,5.6174519 -6e-7,8.035443 z"
+         style="fill:context-stroke;fill-rule:evenodd;stroke:context-stroke;stroke-width:0.625;stroke-linejoin:round"
+         id="path25869-6" />
+    </marker>
+  </defs>
+  <g
+     inkscape:label="Слой 1"
+     inkscape:groupmode="layer"
+     id="layer1"
+     transform="translate(-46.875582,-8.2850274)">
+    <path
+       id="path49037"
+       style="color:#000000;fill:#5154fb;fill-opacity:0.533333;stroke-width:3.77953;-inkscape-stroke:none"
+       d="m 898.13672,133.97656 c 15.09335,9.52662 30.88812,25.59059 46.97851,44.55274 24.0855,28.38414 48.92544,62.42805 76.31837,87.52734 10.7064,9.81004 26.0458,16.4665 41.123,21.24414 h 17.7618 c -0.2177,-0.0551 -0.4297,-0.10624 -0.6485,-0.16211 -18.8482,-4.81328 -40.8761,-12.47058 -53.7109,-24.21289 -26.91573,-24.6249 -51.85017,-58.65251 -76.26955,-87.38672 -14.09261,-16.58275 -28.01691,-31.3403 -41.97656,-41.5625 z"
+       transform="matrix(0.26458333,0,0,0.26458333,46.875582,8.2850274)" />
+    <path
+       id="path49311"
+       style="color:#000000;fill:#52d8fc;fill-opacity:0.531808;stroke-width:3.77953;-inkscape-stroke:none"
+       d="m 910.73047,133.97656 c 13.49779,10.28496 26.8331,24.57616 40.30273,40.42578 24.48019,28.80575 49.3959,62.77947 76.1152,87.22461 12.372,11.31902 34.227,19.02347 52.9571,23.80664 2.0618,0.52654 4.0744,1.01708 6.0254,1.47266 h 27.5625 v 0 c 0,0 -14.9789,-3.40774 -33.2246,-8.07422 -18.2458,-4.66647 -39.4226,-12.48459 -50.2403,-22.39648 -25.937,-23.76542 -50.65549,-57.4385 -75.19139,-86.35352 -11.46909,-13.51607 -22.893,-26.05501 -34.66797,-36.10547 z"
+       transform="matrix(0.26458333,0,0,0.26458333,46.875582,8.2850274)"
+       sodipodi:nodetypes="cssscccssscc" />
+    <path
+       style="color:#000000;fill:#51d8fb;fill-opacity:0.533333;-inkscape-stroke:none"
+       d="m 234.50586,11.105469 c -5.20093,-0.04237 -10.76404,0.171641 -15.5918,0.691406 -23.45111,2.52479 -39.04051,8.174388 -48.79883,13.244141 -9.75831,5.069752 -13.81054,9.710937 -13.81054,9.710937 l 2.62304,2.261719 c 0,0 3.43138,-4.036904 12.78516,-8.896485 9.35378,-4.85958 24.50535,-10.391573 47.57227,-12.874999 9.28268,-0.999392 21.94997,-0.788891 28.12695,0.140625 16.05835,2.41647 24.35316,7.599189 28.66016,12.005859 2.1535,2.203335 3.31913,4.224705 3.95117,5.666015 0.63204,1.441311 0.70898,2.167969 0.70898,2.167969 l 3.4375,-0.443359 c 0,0 -0.18757,-1.324917 -0.97265,-3.115235 -0.78509,-1.790317 -2.18823,-4.182115 -4.64649,-6.697265 -4.91652,-5.0303 -14.01433,-10.510475 -30.62305,-13.009766 -3.38284,-0.509052 -8.22094,-0.809191 -13.42187,-0.851562 z"
+       id="path52378" />
+    <path
+       style="color:#000000;fill:#5255fc;fill-opacity:0.531808;stroke-width:3.77953;-inkscape-stroke:none"
+       d="m 620.74219,91.462891 v 13.005859 c 82.65111,0.85147 163.455,8.22488 235.6289,18.03711 V 109.4375 C 784.17489,99.673174 703.4602,92.315682 620.74219,91.462891 Z"
+       transform="matrix(0.26458333,0,0,0.26458333,46.875582,8.2850274)"
+       id="path48919" />
+    <path
+       style="color:#000000;fill:#51d8fb;-inkscape-stroke:none;fill-opacity:0.53333336"
+       d="m 272.97852,41.947266 c 0,0 -0.81358,0.6675 -3.22266,1.83789 -2.40908,1.170391 -6.30915,2.760293 -12.16211,4.353516 -11.70591,3.186446 -31.22551,6.381645 -62.2207,6.255859 C 132.97313,54.141297 100.75781,63 100.75781,63 l 0.91992,3.339844 c 0,0 31.61101,-8.732359 93.67969,-8.480469 31.23911,0.126776 51.06559,-3.088434 63.14649,-6.376953 6.04044,-1.64426 10.14429,-3.306572 12.76562,-4.580078 2.62133,-1.273507 3.86524,-2.242188 3.86524,-2.242188 z"
+       id="path56650" />
+    <path
+       style="color:#000000;fill:#52d8fc;fill-opacity:0.531808;stroke-width:3.77953;-inkscape-stroke:none"
+       d="m 603.07812,91.380859 c -93.46515,0.09932 -188.72977,8.785021 -276.15429,31.851561 -47.13317,12.43584 -104.03451,52.9224 -149.99805,90.22461 -45.96354,37.30221 -80.621093,71.62305 -80.621092,71.62305 l 9.189452,9.16992 c 0,0 34.24912,-33.91096 79.66602,-70.76953 45.41686,-36.85857 102.3622,-76.45924 145.10351,-87.73633 89.39091,-23.58536 187.7278,-31.91927 283.97071,-31.32812 V 91.410156 c -2.23429,-0.01377 -4.47039,-0.02323 -6.70704,-0.02734 -1.48262,-0.0027 -2.96564,-0.0035 -4.44922,-0.002 z"
+       transform="matrix(0.26458333,0,0,0.26458333,46.875582,8.2850274)"
+       id="path47797" />
+    <path
+       style="fill:none;stroke:#ff6666;stroke-width:3.465;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:0.31"
+       d="m 53.799677,85.88547 c 306.044833,0 306.633853,0 306.633853,0"
+       id="path54471"
+       inkscape:export-filename="/home/atolstoy/picodata-git/picodata/docs/rect29727.png"
+       inkscape:export-xdpi="120"
+       inkscape:export-ydpi="120" />
+    <path
+       style="fill:none;stroke:#000000;stroke-width:0.465;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
+       d="m 72.938214,85.653053 c 0,0 36.674526,-36.53629 60.589896,-42.885039 46.86305,-12.44061 102.57079,-9.146957 145.4292,-2.928353 13.18732,1.913434 25.37423,24.913413 39.56519,37.896543 6.66928,6.101649 23.21994,8.128961 23.21994,8.128961"
+       id="path23021"
+       sodipodi:nodetypes="csssc"
+       inkscape:export-filename="/home/atolstoy/picodata-git/picodata/docs/rect29727.png"
+       inkscape:export-xdpi="120"
+       inkscape:export-ydpi="120" />
+    <path
+       style="fill:none;stroke:#000000;stroke-width:0.465;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
+       d="m 53.358227,85.903912 c 308.731703,0 309.325893,0 309.325893,0"
+       id="path42"
+       inkscape:export-filename="/home/atolstoy/picodata-git/picodata/docs/rect29727.png"
+       inkscape:export-xdpi="120"
+       inkscape:export-ydpi="120" />
+    <path
+       style="fill:none;stroke:#000000;stroke-width:0.465;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
+       d="m 101.21774,64.669613 c 0,0 31.91316,-8.794488 94.14752,-8.541926 62.23437,0.252562 78.69084,-12.823662 78.69084,-12.823662"
+       id="path38226"
+       sodipodi:nodetypes="czc"
+       inkscape:export-filename="/home/atolstoy/picodata-git/picodata/docs/rect29727.png"
+       inkscape:export-xdpi="120"
+       inkscape:export-ydpi="120" />
+    <path
+       style="fill:none;stroke:#000000;stroke-width:0.465;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
+       d="m 157.61649,35.882677 c 0,0 14.96519,-17.354575 61.48327,-22.362797 9.46911,-1.019462 22.09976,-0.824372 28.5711,0.149439 32.6671,4.915766 34.78062,21.33184 34.78062,21.33184"
+       id="path23806"
+       sodipodi:nodetypes="cssc"
+       inkscape:export-filename="/home/atolstoy/picodata-git/picodata/docs/rect29727.png"
+       inkscape:export-xdpi="120"
+       inkscape:export-ydpi="120" />
+    <circle
+       style="fill:#000000;fill-opacity:1;stroke:#000000;stroke-width:0.465;stroke-miterlimit:4;stroke-dasharray:none"
+       id="path8334"
+       cx="50.345684"
+       cy="86.011566"
+       r="3.2376018"
+       inkscape:export-filename="/home/atolstoy/picodata-git/picodata/docs/rect29727.png"
+       inkscape:export-xdpi="120"
+       inkscape:export-ydpi="120" />
+    <rect
+       style="fill:#000000;fill-opacity:1;stroke:#000000;stroke-width:0.464999;stroke-miterlimit:4;stroke-dasharray:none"
+       id="rect8542"
+       width="1.7220054"
+       height="10.43022"
+       x="71.465408"
+       y="80.154045"
+       rx="0.44400001"
+       ry="0.44400001"
+       inkscape:export-filename="/home/atolstoy/picodata-git/picodata/docs/rect29727.png"
+       inkscape:export-xdpi="120"
+       inkscape:export-ydpi="120" />
+    <g
+       id="g12394"
+       transform="translate(-44.385182,-25.104838)"
+       inkscape:export-filename="/home/atolstoy/picodata-git/picodata/docs/rect29727.png"
+       inkscape:export-xdpi="120"
+       inkscape:export-ydpi="120">
+      <rect
+         style="fill:#ffffff;fill-opacity:1;stroke:#000000;stroke-width:0.465;stroke-miterlimit:4;stroke-dasharray:none"
+         id="rect10445"
+         width="31.290659"
+         height="10.43022"
+         x="136.07224"
+         y="80.525139"
+         rx="1.444"
+         ry="1.444" />
+      <text
+         xml:space="preserve"
+         style="font-style:normal;font-weight:normal;font-size:4.42337px;line-height:1.25;font-family:sans-serif;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.110585"
+         x="137.72206"
+         y="87.038506"
+         id="text10449"><tspan
+           sodipodi:role="line"
+           id="tspan10447"
+           style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-family:HelveticaNeueCyr;-inkscape-font-specification:HelveticaNeueCyr;stroke-width:0.110585"
+           x="137.72206"
+           y="87.038506">start_discover</tspan></text>
+    </g>
+    <g
+       id="g12402"
+       transform="translate(-10.714393,-35.760317)"
+       inkscape:export-filename="/home/atolstoy/picodata-git/picodata/docs/rect29727.png"
+       inkscape:export-xdpi="120"
+       inkscape:export-ydpi="120">
+      <g
+         id="g19159"
+         transform="translate(-10.779161,-10.174717)">
+        <rect
+           style="fill:#ffffff;fill-opacity:1;stroke:#000000;stroke-width:0.465;stroke-miterlimit:4;stroke-dasharray:none"
+           id="rect12396"
+           width="24.927898"
+           height="10.43022"
+           x="137.98901"
+           y="81.661125" />
+        <text
+           xml:space="preserve"
+           style="font-style:normal;font-weight:normal;font-size:4.42337px;line-height:1.25;font-family:sans-serif;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.110585"
+           x="150.40208"
+           y="84.863251"
+           id="text12400"><tspan
+             sodipodi:role="line"
+             id="tspan12398"
+             style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-family:HelveticaNeueCyr;-inkscape-font-specification:HelveticaNeueCyr;text-align:center;text-anchor:middle;stroke-width:0.110585"
+             x="150.40208"
+             y="84.863251"
+             dy="0.97000003">summary</tspan><tspan
+             sodipodi:role="line"
+             style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-family:HelveticaNeueCyr;-inkscape-font-specification:HelveticaNeueCyr;text-align:center;text-anchor:middle;stroke-width:0.110585"
+             x="150.40208"
+             y="90.494774"
+             id="tspan12696">{leader}</tspan></text>
+      </g>
+    </g>
+    <rect
+       style="fill:#ffffff;fill-opacity:1;stroke:#000000;stroke-width:0.465;stroke-miterlimit:4;stroke-dasharray:none"
+       id="rect19408"
+       width="5.2734179"
+       height="5.2734179"
+       x="57.169559"
+       y="146.38918"
+       transform="rotate(-54.437379)"
+       inkscape:export-filename="/home/atolstoy/picodata-git/picodata/docs/rect29727.png"
+       inkscape:export-xdpi="120"
+       inkscape:export-ydpi="120" />
+    <rect
+       style="fill:#000000;fill-opacity:1;stroke:#000000;stroke-width:0.464999;stroke-miterlimit:4;stroke-dasharray:none"
+       id="rect35564"
+       width="1.7220054"
+       height="10.43022"
+       x="344.50919"
+       y="80.572296"
+       rx="0.44400001"
+       ry="0.44400001"
+       inkscape:export-filename="/home/atolstoy/picodata-git/picodata/docs/rect29727.png"
+       inkscape:export-xdpi="120"
+       inkscape:export-ydpi="120" />
+    <circle
+       style="fill:#ffffff;fill-opacity:1;stroke:#000000;stroke-width:0.465;stroke-miterlimit:4;stroke-dasharray:none"
+       id="circle38519"
+       cx="360.00607"
+       cy="86.143456"
+       r="3.2376018"
+       inkscape:export-filename="/home/atolstoy/picodata-git/picodata/docs/rect29727.png"
+       inkscape:export-xdpi="120"
+       inkscape:export-ydpi="120" />
+    <path
+       style="fill:none;stroke:#000000;stroke-width:0.465;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1;marker-end:url(#Arrow2Mend)"
+       d="m 170.14804,85.891697 2.05729,-0.0019"
+       id="path39981"
+       sodipodi:nodetypes="cc"
+       inkscape:export-filename="/home/atolstoy/picodata-git/picodata/docs/rect29727.png"
+       inkscape:export-xdpi="120"
+       inkscape:export-ydpi="120" />
+    <text
+       xml:space="preserve"
+       style="font-style:normal;font-weight:normal;font-size:3.175px;line-height:1.25;font-family:sans-serif;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.110585"
+       x="178.36273"
+       y="49.405216"
+       id="text40322"
+       transform="rotate(-10.316607)"
+       inkscape:export-filename="/home/atolstoy/picodata-git/picodata/docs/rect29727.png"
+       inkscape:export-xdpi="120"
+       inkscape:export-ydpi="120"><tspan
+         sodipodi:role="line"
+         id="tspan40320"
+         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.175px;font-family:HelveticaNeueCyr;-inkscape-font-specification:HelveticaNeueCyr;stroke-width:0.110585"
+         x="178.36273"
+         y="49.405216">[i_am_bootstrap_leader]</tspan></text>
+    <text
+       xml:space="preserve"
+       style="font-style:normal;font-weight:normal;font-size:3.175px;line-height:1.25;font-family:sans-serif;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.110585"
+       x="192.00154"
+       y="45.126656"
+       id="text40753"
+       inkscape:export-filename="/home/atolstoy/picodata-git/picodata/docs/rect29727.png"
+       inkscape:export-xdpi="120"
+       inkscape:export-ydpi="120"><tspan
+         sodipodi:role="line"
+         id="tspan40751"
+         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.175px;font-family:HelveticaNeueCyr;-inkscape-font-specification:HelveticaNeueCyr;stroke-width:0.110585"
+         x="192.00154"
+         y="45.126656">[rebootstrap]</tspan></text>
+    <text
+       xml:space="preserve"
+       style="font-style:normal;font-weight:normal;font-size:3.175px;line-height:1.25;font-family:sans-serif;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.110585"
+       x="146.28111"
+       y="82.030296"
+       id="text41816"
+       inkscape:export-filename="/home/atolstoy/picodata-git/picodata/docs/rect29727.png"
+       inkscape:export-xdpi="120"
+       inkscape:export-ydpi="120"><tspan
+         sodipodi:role="line"
+         id="tspan41814"
+         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.175px;font-family:HelveticaNeueCyr;-inkscape-font-specification:HelveticaNeueCyr;stroke-width:0.110585"
+         x="146.28111"
+         y="82.030296">[supervisor]</tspan></text>
+    <text
+       xml:space="preserve"
+       style="font-style:normal;font-weight:normal;font-size:3.175px;line-height:1.25;font-family:sans-serif;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.110585"
+       x="72.512505"
+       y="75.042404"
+       id="text78788"
+       inkscape:export-filename="/home/atolstoy/picodata-git/picodata/docs/rect29727.png"
+       inkscape:export-xdpi="120"
+       inkscape:export-ydpi="120"><tspan
+         sodipodi:role="line"
+         id="tspan78786"
+         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.175px;font-family:HelveticaNeueCyr;-inkscape-font-specification:HelveticaNeueCyr;stroke-width:0.110585"
+         x="72.512505"
+         y="75.042404">[child]</tspan></text>
+    <g
+       id="g12793"
+       transform="translate(-7.3401906,-17.531499)"
+       inkscape:export-filename="/home/atolstoy/picodata-git/picodata/docs/rect29727.png"
+       inkscape:export-xdpi="120"
+       inkscape:export-ydpi="120">
+      <rect
+         style="fill:#ffffff;fill-opacity:1;stroke:#000000;stroke-width:0.465;stroke-miterlimit:4;stroke-dasharray:none"
+         id="rect11063"
+         width="23.818783"
+         height="10.43022"
+         x="229.95459"
+         y="49.023315"
+         rx="1.444"
+         ry="1.444" />
+      <text
+         xml:space="preserve"
+         style="font-style:normal;font-weight:normal;font-size:4.42337px;line-height:1.25;font-family:sans-serif;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.110585"
+         x="232.92438"
+         y="55.353115"
+         id="text11067"><tspan
+           sodipodi:role="line"
+           id="tspan11065"
+           style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-family:HelveticaNeueCyr;-inkscape-font-specification:HelveticaNeueCyr;stroke-width:0.110585"
+           x="232.92438"
+           y="55.353115">start_join</tspan></text>
+    </g>
+    <g
+       id="g15793"
+       transform="translate(-6.7399709,-20.844207)"
+       inkscape:export-filename="/home/atolstoy/picodata-git/picodata/docs/rect29727.png"
+       inkscape:export-xdpi="120"
+       inkscape:export-ydpi="120">
+      <rect
+         style="fill:#ffffff;fill-opacity:1;stroke:#000000;stroke-width:0.465;stroke-miterlimit:4;stroke-dasharray:none"
+         id="rect12875"
+         width="23.818783"
+         height="10.43022"
+         x="229.35437"
+         y="29.361734"
+         rx="1.444"
+         ry="1.444" />
+      <text
+         xml:space="preserve"
+         style="font-style:normal;font-weight:normal;font-size:4.42337px;line-height:1.25;font-family:sans-serif;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.110585"
+         x="231.18292"
+         y="35.875103"
+         id="text12879"><tspan
+           sodipodi:role="line"
+           id="tspan12877"
+           style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-family:HelveticaNeueCyr;-inkscape-font-specification:HelveticaNeueCyr;stroke-width:0.110585"
+           x="231.18292"
+           y="35.875103">start_boot</tspan></text>
+    </g>
+    <g
+       id="g15881"
+       transform="translate(-56.26845,31.275236)"
+       inkscape:export-filename="/home/atolstoy/picodata-git/picodata/docs/rect29727.png"
+       inkscape:export-xdpi="120"
+       inkscape:export-ydpi="120">
+      <g
+         id="g17092">
+        <rect
+           style="fill:#ffffff;fill-opacity:1;stroke:#000000;stroke-width:0.465;stroke-miterlimit:4;stroke-dasharray:none"
+           id="rect15875"
+           width="23.818783"
+           height="10.43022"
+           x="229.18271"
+           y="49.00341"
+           rx="1.444"
+           ry="1.444" />
+        <text
+           xml:space="preserve"
+           style="font-style:normal;font-weight:normal;font-size:4.42337px;line-height:1.25;font-family:sans-serif;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.110585"
+           x="232.92438"
+           y="55.353115"
+           id="text15879"><tspan
+             sodipodi:role="line"
+             id="tspan15877"
+             style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-family:HelveticaNeueCyr;-inkscape-font-specification:HelveticaNeueCyr;stroke-width:0.110585"
+             x="232.92438"
+             y="55.353115">wait_pid</tspan></text>
+      </g>
+    </g>
+    <g
+       id="g22939"
+       transform="translate(0.02348115,-0.02917776)"
+       inkscape:export-filename="/home/atolstoy/picodata-git/picodata/docs/rect29727.png"
+       inkscape:export-xdpi="120"
+       inkscape:export-ydpi="120">
+      <rect
+         style="fill:#ffffff;fill-opacity:1;stroke:#000000;stroke-width:0.465;stroke-miterlimit:4;stroke-dasharray:none"
+         id="rect17174"
+         width="23.818783"
+         height="10.43022"
+         x="172.89078"
+         y="31.520994"
+         rx="1.444"
+         ry="1.444" />
+      <text
+         xml:space="preserve"
+         style="font-style:normal;font-weight:normal;font-size:4.42337px;line-height:1.25;font-family:sans-serif;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.110585"
+         x="176.48425"
+         y="37.870697"
+         id="text17178"><tspan
+           sodipodi:role="line"
+           id="tspan17176"
+           style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-family:HelveticaNeueCyr;-inkscape-font-specification:HelveticaNeueCyr;stroke-width:0.110585"
+           x="176.48425"
+           y="37.870697">drop_db</tspan></text>
+    </g>
+    <path
+       style="fill:none;stroke:#000000;stroke-width:0.465;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1;marker-end:url(#Arrow2Mend-3)"
+       d="m 68.693884,85.908166 2.05729,-0.0019"
+       id="path39981-7"
+       sodipodi:nodetypes="cc"
+       inkscape:export-filename="/home/atolstoy/picodata-git/picodata/docs/rect29727.png"
+       inkscape:export-xdpi="120"
+       inkscape:export-ydpi="120" />
+    <path
+       style="fill:none;stroke:#000000;stroke-width:0.465;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1;marker-end:url(#Arrow2Mend-3)"
+       d="M 92.814522,67.826708 94.393298,66.50765"
+       id="path27082"
+       sodipodi:nodetypes="cc"
+       inkscape:export-filename="/home/atolstoy/picodata-git/picodata/docs/rect29727.png"
+       inkscape:export-xdpi="120"
+       inkscape:export-ydpi="120" />
+    <path
+       style="fill:none;stroke:#000000;stroke-width:0.465;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1;marker-end:url(#Arrow2Mend-3)"
+       d="m 121.4915,47.78391 1.84116,-0.917921"
+       id="path27084"
+       sodipodi:nodetypes="cc"
+       inkscape:export-filename="/home/atolstoy/picodata-git/picodata/docs/rect29727.png"
+       inkscape:export-xdpi="120"
+       inkscape:export-ydpi="120" />
+    <path
+       style="fill:none;stroke:#000000;stroke-width:0.465;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1;marker-end:url(#Arrow2Mend-3)"
+       d="m 149.29359,39.173905 2.02273,-0.37553"
+       id="path27086"
+       sodipodi:nodetypes="cc"
+       inkscape:export-filename="/home/atolstoy/picodata-git/picodata/docs/rect29727.png"
+       inkscape:export-xdpi="120"
+       inkscape:export-ydpi="120" />
+    <path
+       style="fill:none;stroke:#000000;stroke-width:0.465;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1;marker-end:url(#Arrow2Mend-3)"
+       d="m 169.87989,36.100081 2.04975,-0.176106"
+       id="path27088"
+       sodipodi:nodetypes="cc"
+       inkscape:export-filename="/home/atolstoy/picodata-git/picodata/docs/rect29727.png"
+       inkscape:export-xdpi="120"
+       inkscape:export-ydpi="120" />
+    <path
+       style="fill:none;stroke:#000000;stroke-width:0.465;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1;marker-end:url(#Arrow2Mend-3)"
+       d="m 219.66607,34.476072 2.05625,0.06556"
+       id="path27090"
+       sodipodi:nodetypes="cc"
+       inkscape:export-filename="/home/atolstoy/picodata-git/picodata/docs/rect29727.png"
+       inkscape:export-xdpi="120"
+       inkscape:export-ydpi="120" />
+    <path
+       style="fill:none;stroke:#000000;stroke-width:0.465;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1;marker-end:url(#Arrow2Mend-3)"
+       d="m 206.45085,34.31645 2.05727,0.01132"
+       id="path27192"
+       sodipodi:nodetypes="cc"
+       inkscape:export-filename="/home/atolstoy/picodata-git/picodata/docs/rect29727.png"
+       inkscape:export-xdpi="120"
+       inkscape:export-ydpi="120" />
+    <path
+       style="fill:none;stroke:#000000;stroke-width:0.465;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1;marker-end:url(#Arrow2Mend-3)"
+       d="m 219.70123,13.403011 2.05164,-0.152384"
+       id="path27194"
+       sodipodi:nodetypes="cc"
+       inkscape:export-filename="/home/atolstoy/picodata-git/picodata/docs/rect29727.png"
+       inkscape:export-xdpi="120"
+       inkscape:export-ydpi="120" />
+    <path
+       style="fill:none;stroke:#000000;stroke-width:0.465;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1;marker-end:url(#Arrow2Mend-3)"
+       d="m 280.58776,30.453392 0.9951,1.800629"
+       id="path27196"
+       sodipodi:nodetypes="cc"
+       inkscape:export-filename="/home/atolstoy/picodata-git/picodata/docs/rect29727.png"
+       inkscape:export-xdpi="120"
+       inkscape:export-ydpi="120" />
+    <path
+       style="fill:none;stroke:#000000;stroke-width:0.465;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1;marker-end:url(#Arrow2Mend-3)"
+       d="m 270.55371,38.708763 2.04188,0.251577"
+       id="path27198"
+       sodipodi:nodetypes="cc"
+       inkscape:transform-center-x="0.55269468"
+       inkscape:transform-center-y="-1.0012494"
+       inkscape:export-filename="/home/atolstoy/picodata-git/picodata/docs/rect29727.png"
+       inkscape:export-xdpi="120"
+       inkscape:export-ydpi="120" />
+    <path
+       style="fill:none;stroke:#000000;stroke-width:0.465;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1;marker-end:url(#Arrow2Mend-3)"
+       d="m 297.08477,53.088982 1.33042,1.569238"
+       id="path27200"
+       sodipodi:nodetypes="cc"
+       inkscape:export-filename="/home/atolstoy/picodata-git/picodata/docs/rect29727.png"
+       inkscape:export-xdpi="120"
+       inkscape:export-ydpi="120" />
+    <path
+       style="fill:none;stroke:#000000;stroke-width:0.465;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1;marker-end:url(#Arrow2Mend-3)"
+       d="m 341.74244,85.865165 2.05718,0.02367"
+       id="path27623"
+       sodipodi:nodetypes="cc"
+       inkscape:export-filename="/home/atolstoy/picodata-git/picodata/docs/rect29727.png"
+       inkscape:export-xdpi="120"
+       inkscape:export-ydpi="120" />
+    <g
+       id="g45079"
+       transform="translate(-34.694757,-0.21776448)">
+      <rect
+         style="fill:#ffffff;fill-opacity:1;stroke:#000000;stroke-width:0.465;stroke-miterlimit:4;stroke-dasharray:none"
+         id="rect43755"
+         width="23.818783"
+         height="10.43022"
+         x="327.78665"
+         y="55.638065"
+         rx="1.444"
+         ry="1.444" />
+      <text
+         xml:space="preserve"
+         style="font-style:normal;font-weight:normal;font-size:4.42337px;line-height:1.25;font-family:sans-serif;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.110585"
+         x="332.2847"
+         y="61.967865"
+         id="text43759"><tspan
+           sodipodi:role="line"
+           id="tspan43757"
+           style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-family:HelveticaNeueCyr;-inkscape-font-specification:HelveticaNeueCyr;stroke-width:0.110585"
+           x="332.2847"
+           y="61.967865">running</tspan></text>
+    </g>
+    <path
+       style="fill:none;stroke:#000000;stroke-width:0.465;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1;marker-end:url(#Arrow2Mend-3)"
+       d="m 271.26594,44.973211 1.7932,-1.008468"
+       id="path47306"
+       sodipodi:nodetypes="cc"
+       inkscape:transform-center-x="1.0388247"
+       inkscape:transform-center-y="-0.4783429"
+       inkscape:export-filename="/home/atolstoy/picodata-git/picodata/docs/rect29727.png"
+       inkscape:export-xdpi="120"
+       inkscape:export-ydpi="120" />
+    <rect
+       style="fill:#000000;fill-opacity:1;stroke:#000000;stroke-width:0.464999;stroke-miterlimit:4;stroke-dasharray:none"
+       id="rect48914"
+       width="1.7220054"
+       height="10.43022"
+       x="209.34381"
+       y="29.319323"
+       rx="0.44400001"
+       ry="0.44400001"
+       inkscape:export-filename="/home/atolstoy/picodata-git/picodata/docs/rect29727.png"
+       inkscape:export-xdpi="120"
+       inkscape:export-ydpi="120" />
+    <g
+       id="g49029"
+       transform="translate(-13.021991,-15.983883)"
+       inkscape:export-filename="/home/atolstoy/picodata-git/picodata/docs/rect29727.png"
+       inkscape:export-xdpi="120"
+       inkscape:export-ydpi="120">
+      <rect
+         style="fill:#ffffff;fill-opacity:1;stroke:#000000;stroke-width:0.465;stroke-miterlimit:4;stroke-dasharray:none"
+         id="rect49023"
+         width="23.818783"
+         height="10.43022"
+         x="286.54056"
+         y="49.070297"
+         rx="1.444"
+         ry="1.444" />
+      <text
+         xml:space="preserve"
+         style="font-style:normal;font-weight:normal;font-size:4.42337px;line-height:1.25;font-family:sans-serif;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.110585"
+         x="290.58521"
+         y="55.400097"
+         id="text49027"><tspan
+           sodipodi:role="line"
+           id="tspan49025"
+           style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-family:HelveticaNeueCyr;-inkscape-font-specification:HelveticaNeueCyr;stroke-width:0.110585"
+           x="290.58521"
+           y="55.400097">postjoin</tspan></text>
+    </g>
+  </g>
+</svg>
