@@ -1,4 +1,9 @@
 site_name: Портал документации Picodata
+
+hide:
+  - navigation
+  - toc
+  
 nav:
     - Главная: index.md
     - Описание продукта: description.md
@@ -16,7 +21,7 @@ theme:
     favicon: assets/favicon.png
     language: ru
     features:
-        - navigation.tabs
+        - tabs.navigation
 
 extra:
     homepage: https://picodata.io/
@@ -32,3 +37,4 @@ plugins:
 markdown_extensions:
   - attr_list
   - md_in_html
+  - meta
