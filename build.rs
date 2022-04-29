@@ -3,6 +3,7 @@ use std::path::Path;
 fn main() {
     patch_tarantool();
     build_tarantool();
+    println!("cargo:rerun-if-changed=tarantool-sys");
 }
 
 fn patch_tarantool() {
