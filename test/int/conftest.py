@@ -256,6 +256,9 @@ class Instance:
     def drop_db(self):
         rmtree(self.data_dir)
 
+    def __hash__(self):
+        return hash(self.id) ^ hash(self.cluster_id) ^ hash(self.listen)
+
     def __raft_status(self) -> RaftStatus:
         status = self.call("picolib.raft_status")
         assert isinstance(status, dict)
@@ -314,16 +317,7 @@ class Cluster:
         assert not self.instances, "Already deployed"
 
         for i in range(1, instance_count + 1):
-            instance = Instance(
-                binary_path=self.binary_path,
-                instance_id=f"i{i}",
-                data_dir=f"{self.data_dir}/i{i}",
-                host=f"127.7.{self.subnet}.1",
-                port=3300 + i,
-                peers=[f"127.7.{self.subnet}.1:3301"],
-            )
-
-            self.instances.append(instance)
+            self.add_instance(i, wait_ready=False)
 
         for instance in self.instances:
             instance.start()
@@ -333,6 +327,26 @@ class Cluster:
 
         eprint(f" {self} deployed ".center(80, "="))
         return self.instances
+
+    def add_instance(self, i=None, wait_ready=True) -> Instance:
+        i = i or 1 + len(self.instances)
+
+        instance = Instance(
+            binary_path=self.binary_path,
+            instance_id=f"i{i}",
+            data_dir=f"{self.data_dir}/i{i}",
+            host=f"127.7.{self.subnet}.1",
+            port=3300 + i,
+            peers=[f"127.7.{self.subnet}.1:3301"],
+        )
+
+        self.instances.append(instance)
+
+        if wait_ready:
+            instance.start()
+            instance.wait_ready()
+
+        return instance
 
     def kill_all(self):
         for instance in self.instances:

@@ -73,3 +73,18 @@ def test_request_follower(cluster2: Cluster):
     with pytest.raises(TarantoolError) as e:
         fake_join(i2, "fake-0", timeout=1)
     assert e.value.args == ("ER_PROC_C", "not a leader")
+
+
+def test_discovery(cluster: Cluster):
+    cluster.deploy(instance_count=3)
+    i1, i2, i3 = cluster.instances
+
+    # make sure i1 is leader
+    i1.promote_or_fail()
+
+    # change leader
+    i2.promote_or_fail()
+
+    # add instance
+    i4 = cluster.add_instance()
+    i4.assert_raft_status("Follower", leader_id=i2.raft_id)
