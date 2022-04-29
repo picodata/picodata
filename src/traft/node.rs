@@ -51,10 +51,18 @@ pub enum Error {
 
 #[derive(Clone, Debug, tlua::Push, tlua::PushInto)]
 pub struct Status {
+    /// `raft_id` of the current instance
     pub id: u64,
+    /// `raft_id` of the leader instance
     pub leader_id: u64,
     pub raft_state: String,
     pub is_ready: bool,
+}
+
+impl Status {
+    pub fn am_leader(&self) -> bool {
+        self.id == self.leader_id
+    }
 }
 
 /// The heart of `traft` module - the Node.

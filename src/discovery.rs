@@ -2,11 +2,13 @@ use ::tarantool::fiber::{mutex::MutexGuard, Mutex};
 use ::tarantool::proc;
 use ::tarantool::uuid::Uuid;
 use serde::{Deserialize, Serialize};
+use std::borrow::Cow;
 use std::collections::BTreeSet;
 use std::error::Error as StdError;
 
 use crate::stringify_cfunc;
 use crate::tarantool;
+use crate::traft;
 
 type Address = String;
 
@@ -17,6 +19,14 @@ pub enum Role {
 }
 
 impl Role {
+    fn new(address: Address, is_leader: bool) -> Self {
+        if is_leader {
+            Self::Leader { address }
+        } else {
+            Self::NonLeader { leader: address }
+        }
+    }
+
     fn leader_address(&self) -> &Address {
         match self {
             Self::Leader { address } => address,
@@ -190,9 +200,19 @@ fn proc_discover<'a>(
     #[inject(&mut discovery())] discovery: &'a mut Option<MutexGuard<'a, Discovery>>,
     request: Request,
     request_to: Address,
-) -> Result<&'a Response, Box<dyn StdError>> {
-    let discovery = discovery.as_mut().ok_or("discovery uninitialized")?;
-    Ok(discovery.handle_request(request, request_to))
+) -> Result<Cow<'a, Response>, Box<dyn StdError>> {
+    if let Ok(node) = traft::node::global() {
+        let status = node.status();
+        let leader = traft::Storage::peer_by_raft_id(status.leader_id)?
+            .ok_or("leader id is present, but it's address is unknown")?;
+        Ok(Cow::Owned(Response::Done(Role::new(
+            leader.peer_address,
+            status.am_leader(),
+        ))))
+    } else {
+        let discovery = discovery.as_mut().ok_or("discovery uninitialized")?;
+        Ok(Cow::Borrowed(discovery.handle_request(request, request_to)))
+    }
 }
 
 #[cfg(test)]
