@@ -671,7 +671,7 @@ fn raft_join_loop(inbox: Mailbox<(JoinRequest, Notify)>, main_inbox: Mailbox<Nor
     }
 }
 
-static mut RAFT_NODE: Option<&'static Node> = None;
+static mut RAFT_NODE: Option<Box<Node>> = None;
 
 pub fn set_global(node: Node) {
     unsafe {
@@ -679,7 +679,7 @@ pub fn set_global(node: Node) {
             RAFT_NODE.is_none(),
             "discovery::set_global() called twice, it's a leak"
         );
-        RAFT_NODE = Some(Box::leak(Box::new(node)));
+        RAFT_NODE = Some(Box::new(node));
     }
 }
 
@@ -688,7 +688,7 @@ pub fn global() -> Result<&'static Node, Error> {
     // place while the instance is executing `start_discover()` function.
     // It has already started listening, but the node is only initialized
     // in `postjoin()`.
-    unsafe { RAFT_NODE }.ok_or(Error::Uninitialized)
+    unsafe { RAFT_NODE.as_deref() }.ok_or(Error::Uninitialized)
 }
 
 #[proc(packed_args)]
