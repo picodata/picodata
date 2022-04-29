@@ -8,7 +8,7 @@
 
    ```
    sudo add-apt-repository ppa:deadsnakes/ppa
-   sudo apt install python3.10
+   sudo apt install python3.10 python3.10-distutils
    curl -sSL https://bootstrap.pypa.io/get-pip.py -o get-pip.py
    python3.10 get-pip.py
    ```
