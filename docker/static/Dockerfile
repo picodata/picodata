@@ -3,7 +3,7 @@ FROM python:3.10
 ENV SITE_SRC '/site/src'
 ENV SITE_HTML '/site/html'
 
-RUN pip install mkdocs
+RUN pip install mkdocs mkdocs-material
 
 # Generate static content
 COPY . ${SITE_SRC}
