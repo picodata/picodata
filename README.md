@@ -34,7 +34,8 @@ python3.10 -m pipenv install <dependency-package-name>
 ### Running
 
 ```bash
-python3.10 -m pipenv  run pytest
+python3.10 -m pipenv run pytest
+python3.10 -m pipenv run lint
 ```
 
 or
@@ -43,6 +44,7 @@ or
 python3.10 -m pipenv shell
 # A new shell will be opened inside the pipenv environment
 pytest
+pipenv run lint
 ```
 
 #### Running tests in parallel with pytest-xdist

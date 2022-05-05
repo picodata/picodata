@@ -66,36 +66,36 @@ def test_call_normalization(instance: Instance):
     assert instance.call("dostring", "return nil") is None
     assert instance.call("dostring", "return true") is True
 
-    with pytest.raises(ReturnError) as exc:
+    with pytest.raises(ReturnError) as e1:
         instance.call("dostring", "return nil, 'some error'")
-    assert exc.value.args == ("some error",)
+    assert e1.value.args == ("some error",)
 
-    with pytest.raises(MalformedAPI) as exc:
+    with pytest.raises(MalformedAPI) as e2:
         instance.call("dostring", "return 'x', 1")
-    assert exc.value.args == ("x", 1)
+    assert e2.value.args == ("x", 1)
 
-    with pytest.raises(TarantoolError) as exc:
+    with pytest.raises(TarantoolError) as e3:
         instance.call("error", "lua exception", 0)
-    assert exc.value.args == ("ER_PROC_LUA", "lua exception")
+    assert e3.value.args == ("ER_PROC_LUA", "lua exception")
 
-    with pytest.raises(TarantoolError) as exc:
+    with pytest.raises(TarantoolError) as e4:
         instance.call("void")
-    assert exc.value.args == ("ER_NO_SUCH_PROC", "Procedure 'void' is not defined")
+    assert e4.value.args == ("ER_NO_SUCH_PROC", "Procedure 'void' is not defined")
 
     # Python connector for tarantool misinterprets timeout errors.
     # It should be TimeoutError instead of ECONNRESET
-    with pytest.raises(OSError) as exc:
+    with pytest.raises(OSError) as e5:
         instance.call("package.loaded.fiber.sleep", 1, timeout=0.1)
-    assert exc.value.errno == errno.ECONNRESET
+    assert e5.value.errno == errno.ECONNRESET
 
-    with pytest.raises(OSError) as exc:
+    with pytest.raises(OSError) as e6:
         instance.call("os.exit", 0)
-    assert exc.value.errno == errno.ECONNRESET
+    assert e6.value.errno == errno.ECONNRESET
 
     instance.terminate()
-    with pytest.raises(OSError) as exc:
+    with pytest.raises(OSError) as e7:
         instance.call("anything")
-    assert exc.value.errno == errno.ECONNREFUSED
+    assert e7.value.errno == errno.ECONNREFUSED
 
 
 def test_eval_normalization(instance: Instance):
@@ -106,21 +106,21 @@ def test_eval_normalization(instance: Instance):
     assert instance.eval("return nil") is None
     assert instance.eval("return true") is True
 
-    with pytest.raises(ReturnError) as exc:
+    with pytest.raises(ReturnError) as e1:
         instance.eval("return nil, 'some error'")
-    assert exc.value.args == ("some error",)
+    assert e1.value.args == ("some error",)
 
-    with pytest.raises(MalformedAPI) as exc:
+    with pytest.raises(MalformedAPI) as e2:
         instance.eval("return 'x', 2")
-    assert exc.value.args == ("x", 2)
+    assert e2.value.args == ("x", 2)
 
-    with pytest.raises(TarantoolError) as exc:
+    with pytest.raises(TarantoolError) as e3:
         instance.eval("error('lua exception', 0)")
-    assert exc.value.args == ("ER_PROC_LUA", "lua exception")
+    assert e3.value.args == ("ER_PROC_LUA", "lua exception")
 
-    with pytest.raises(TarantoolError) as exc:
+    with pytest.raises(TarantoolError) as e4:
         instance.eval("return box.schema.space.drop(0, 'void')")
-    assert exc.value.args == ("ER_NO_SUCH_SPACE", "Space 'void' does not exist")
+    assert e4.value.args == ("ER_NO_SUCH_SPACE", "Space 'void' does not exist")
 
 
 def test_process_management(instance: Instance):
