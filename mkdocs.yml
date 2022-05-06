@@ -1,9 +1,6 @@
 site_name: Портал документации Picodata
+site_description: Picodata documentation site
 
-hide:
-  - navigation
-  - toc
-  
 nav:
     - Главная: index.md
     - Описание продукта: description.md
@@ -20,6 +17,7 @@ theme:
     logo: assets/logo-full.svg
     logo_mobile: assets/logo.svg
     favicon: assets/favicon.png
+    locale: ru
     language: ru
     features:
         - tabs.navigation
