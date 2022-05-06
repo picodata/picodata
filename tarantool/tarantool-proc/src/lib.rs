@@ -31,15 +31,17 @@ pub fn stored_proc(attr: TokenStream, item: TokenStream) -> TokenStream {
         }
     };
 
-    if ctx.is_packed && inputs.len() > 1 {
-        panic!("proc with 'packed_args' can only have a single parameter")
-    }
     let Inputs {
         inputs,
         input_pattern,
         input_idents,
         inject_inputs,
+        n_actual_arguments,
     } = Inputs::parse(&ctx, inputs);
+
+    if ctx.is_packed && n_actual_arguments > 1 {
+        panic!("proc with 'packed_args' can only have a single parameter")
+    }
 
     let Context {
         tarantool,
@@ -154,6 +156,7 @@ struct Inputs {
     input_pattern: TokenStream2,
     input_idents: Vec<syn::Pat>,
     inject_inputs: TokenStream2,
+    n_actual_arguments: usize,
 }
 
 impl Inputs {
@@ -209,6 +212,7 @@ impl Inputs {
             input_pattern,
             input_idents,
             inject_inputs,
+            n_actual_arguments: actual_inputs.len(),
         }
     }
 }

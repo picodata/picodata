@@ -204,3 +204,33 @@ pub fn inject() {
         "data".to_string(),
     );
 }
+
+pub fn inject_with_packed() {
+    #[tarantool::proc(packed_args)]
+    fn proc_inject_with_packed<'a>(
+        #[inject(&[0, 1, 2, 3, 4, 5])]
+        data: &'a [i32],
+        args: Vec<usize>,
+    ) -> &'a [i32] {
+        match *args.as_slice() {
+            [start, end, ..] => &data[start..end],
+            [start] => &data[start..],
+            [] => data,
+        }
+    }
+
+    assert_eq!(
+        call_proc("proc_inject_with_packed", ()).ok(),
+        Some(vec![0, 1, 2, 3, 4, 5]),
+    );
+
+    assert_eq!(
+        call_proc("proc_inject_with_packed", 3).ok(),
+        Some(vec![3, 4, 5]),
+    );
+
+    assert_eq!(
+        call_proc("proc_inject_with_packed", (2, 5)).ok(),
+        Some(vec![2, 3, 4]),
+    );
+}
