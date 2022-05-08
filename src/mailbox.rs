@@ -39,3 +39,20 @@ impl<T> Mailbox<T> {
         self.0.content.take()
     }
 }
+
+inventory::submit!(crate::InnerTest {
+    name: "test_mailbox",
+    body: || {
+        let mailbox = Mailbox::<u8>::new();
+        assert_eq!(mailbox.receive_all(Duration::ZERO), Vec::<u8>::new());
+
+        mailbox.send(1);
+        assert_eq!(mailbox.receive_all(Duration::ZERO), vec![1]);
+
+        mailbox.send(2);
+        mailbox.send(3);
+        assert_eq!(mailbox.receive_all(Duration::ZERO), vec![2, 3]);
+
+        assert_eq!(format!("{mailbox:?}"), "Mailbox<u8> { .. }")
+    }
+});
