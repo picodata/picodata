@@ -1,33 +1,18 @@
-<!-- Global site tag (gtag.js) - Google Analytics -->
-<script async src="https://www.googletagmanager.com/gtag/js?id=G-6X8Z5N2CGR"></script>
-<script>
-  window.dataLayer = window.dataLayer || [];
-  function gtag(){dataLayer.push(arguments);}
-  gtag('js', new Date());
+<!-- Yandex.Metrika counter -->
+<script type="text/javascript" >
+   (function(m,e,t,r,i,k,a){m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)};
+   m[i].l=1*new Date();k=e.createElement(t),a=e.getElementsByTagName(t)[0],k.async=1,k.src=r,a.parentNode.insertBefore(k,a)})
+   (window, document, "script", "https://mc.yandex.ru/metrika/tag.js", "ym");
 
-  gtag('config', 'G-6X8Z5N2CGR');
+   ym(88751855, "init", {
+        clickmap:true,
+        trackLinks:true,
+        accurateTrackBounce:true,
+        webvisor:true
+   });
 </script>
-<script>
-(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
-(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
-m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
-})(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
-// Creates an adblock detection plugin.
-ga('provide', 'adblockTracker', function(tracker, opts) {
-var ad = document.createElement('ins');
-ad.className = 'AdSense'; //Name of ad partner you're working with.
-ad.style.display = 'block';
-ad.style.position = 'absolute';
-ad.style.top = '-1px';
-ad.style.height = '1px';
-document.body.appendChild(ad);
-tracker.set('dimension' + opts.dimensionIndex, !ad.clientHeight);
-document.body.removeChild(ad);
-});
-ga('create', 'G-6X8Z5N2CGR', 'auto'); //Your tracking ID.
-ga('require', 'adblockTracker', {dimensionIndex: 1});
-ga('send', 'pageview');
-</script>
+<noscript><div><img src="https://mc.yandex.ru/watch/88751855" style="position:absolute; left:-9999px;" alt="" /></div></noscript>
+<!-- /Yandex.Metrika counter -->
 
 # Добро пожаловать на портал документации Picodata
 Picodata  — это распределенный сервер приложений со встроенной распределенной базой данных. Этот продукт предоставляет систему хранения данных и платформу для работы персистентных приложений на языке программирования Rust.
