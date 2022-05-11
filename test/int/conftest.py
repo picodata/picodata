@@ -1,5 +1,6 @@
 import os
 import re
+import sys
 import funcy  # type: ignore
 import pytest
 import signal
@@ -20,6 +21,10 @@ from tarantool.error import (  # type: ignore
 # A constant represents invalid id of raft.
 # pub const INVALID_ID: u64 = 0;
 INVALID_ID = 0
+
+
+def eprint(*args, **kwargs):
+    print(*args, file=sys.stderr, **kwargs)
 
 
 re_xdist_worker_id = re.compile(r"^gw(\d+)$")
@@ -205,7 +210,7 @@ class Instance:
             os.killpg(pid, signal.SIGKILL)
             with suppress(ChildProcessError):
                 os.waitpid(pid, 0)
-            print(f"killed: {self}")
+            eprint(f"{self} killed")
         self.process = None
 
     def terminate(self, kill_after_seconds=10):
@@ -293,7 +298,7 @@ class Cluster:
     instances: list[Instance] = field(default_factory=list)
 
     def __repr__(self):
-        return f'Cluster("127.7.{self.subnet}.1", n={self.instances.count()})'
+        return f'Cluster("127.7.{self.subnet}.1", n={len(self.instances)})'
 
     def __getitem__(self, item: int) -> Instance:
         return self.instances[item]
@@ -319,6 +324,7 @@ class Cluster:
         for instance in self.instances:
             instance.wait_ready()
 
+        eprint(f" {self} deployed ".center(80, "="))
         return self.instances
 
     def kill_all(self):
