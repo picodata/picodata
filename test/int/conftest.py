@@ -1,209 +1,341 @@
-from contextlib import contextmanager, suppress
-from dataclasses import dataclass
-from functools import cached_property
-import itertools
-import json
 import os
-from pathlib import Path
-import signal
-import socket
-import subprocess
-import time
+import re
+import funcy  # type: ignore
 import pytest
-import tarantool
-from filelock import FileLock
+import signal
+import subprocess
+
+from shutil import rmtree
+from typing import Generator
+from pathlib import Path
+from contextlib import contextmanager, suppress
+from dataclasses import dataclass, field
+from tarantool.connection import Connection  # type: ignore
+from tarantool.error import (  # type: ignore
+    tnt_strerror,
+    DatabaseError,
+)
+
+# From raft.rs:
+# A constant represents invalid id of raft.
+# pub const INVALID_ID: u64 = 0;
+INVALID_ID = 0
 
 
-@pytest.fixture(scope="session")
-def session_data_mutex(tmp_path_factory, worker_id):
+re_xdist_worker_id = re.compile(r"^gw(\d+)$")
+
+
+def xdist_worker_number(worker_id: str) -> int:
     """
-    Returns a context manager with a mutex-guarded session-scoped dict to use
-    in parallel tests with multiprocessing.
+    Identify xdist worker by an integer instead of a string.
+    This is used for parallel testing.
+    See also: https://pypi.org/project/pytest-xdist/
     """
 
-    parallel_test_run = worker_id != "master"
+    if worker_id == "master":
+        return 0
 
-    if parallel_test_run:
-        common_dir_for_each_pytest_run = tmp_path_factory.getbasetemp().parent
-        data_file: Path = common_dir_for_each_pytest_run / "data.json"
-        lock_file: Path = data_file.with_suffix(".lock")
+    match = re_xdist_worker_id.match(worker_id)
+    if not match:
+        raise ValueError(worker_id)
 
-        @contextmanager
-        def lock_session_data() -> dict:
-            with FileLock(lock_file):
-                if data_file.is_file():
-                    data = json.loads(data_file.read_text())
-                else:
-                    data = {}
-                yield data
-                data_file.write_text(json.dumps(data))
-
-        return lock_session_data
-    else:
-        data = {}
-
-        @contextmanager
-        def d():
-            yield data
-
-        return d
+    return int(match.group(1))
 
 
-@pytest.fixture
-def run_id(session_data_mutex):
-    with session_data_mutex() as data:
-        prev_run_id = data.get("run_id", 0)
-        run_id = prev_run_id + 1
-        data["run_id"] = run_id
-    return run_id
+class TarantoolError(Exception):
+    """
+    Raised when Tarantool responds with an IPROTO_ERROR.
+    """
+
+    pass
+
+
+class ReturnError(Exception):
+    """
+    Raised when Tarantool returns `nil, err`.
+    """
+
+    pass
+
+
+class MalformedAPI(Exception):
+    """
+    Raised when Tarantool returns some data (IPROTO_OK),
+    but it's neither `return value` nor `return nil, err`.
+
+    The actual returned data is contained in `self.args`.
+    """
+
+    pass
+
+
+def normalize_net_box_result(func):
+    """
+    Convert lua-style responses to be more python-like.
+    This also fixes some of the connector API inconveniences.
+    """
+
+    def inner(*args, **kwargs):
+        try:
+            result = func(*args, **kwargs)
+        except DatabaseError as exc:
+            if hasattr(exc, "errno"):
+                # Error handling in Tarantool connector is awful.
+                # It wraps NetworkError in DatabaseError.
+                # We, instead, convert it to a native OSError.
+                strerror = os.strerror(exc.errno)
+                raise OSError(exc.errno, strerror) from exc
+
+            match exc.args:
+                case (int(code), arg):
+                    # Error handling in Tarantool connector is awful.
+                    # It returns error codes as raw numbers.
+                    # Here we format them for easier use in pytest assertions.
+                    raise TarantoolError(tnt_strerror(code)[0], arg) from exc
+                case _:
+                    raise exc from exc
+
+        match result.data:
+            case []:
+                return None
+            case [x]:
+                return x
+            case [None, str(err)]:
+                raise ReturnError(err)
+            case ret:
+                raise MalformedAPI(*ret)
+
+    return inner
+
+
+@dataclass(eq=False, frozen=True)
+class RaftStatus:
+    id: int
+    raft_state: str
+    leader_id: int
+
+    def __eq__(self, other):
+        match other:
+            # assert status == "Follower"
+            # assert status == "Candidate"
+            # assert status == "Leader"
+            # assert status == "PreCandidate"
+            case str(raft_state):
+                return self.raft_state == raft_state
+            # assert status == ("Follower", 1)
+            case (str(raft_state), int(leader_id)):
+                return self.raft_state == raft_state and self.leader_id == leader_id
+            case RaftStatus(_) as other:
+                return (
+                    self.id == other.id
+                    and self.raft_state == other.raft_state
+                    and self.leader_id == other.leader_id
+                )
+
+        return False
+
+    def is_ready(self):
+        return self.leader_id > INVALID_ID
 
 
 @dataclass
 class Instance:
-    id: str
-    cluster_id: str
-    peers: list[str]
-    listen: str
-    address: tuple[str, int]
-    workdir: str
     binary_path: str
-    env: dict[str, str] | None = None
-    replicaset_id: str | None = None
+
+    instance_id: str
+    data_dir: str
+    peers: list[str]
+    host: str
+    port: int
+
+    env: dict[str, str] = field(default_factory=dict)
     process: subprocess.Popen | None = None
+    raft_id: int = INVALID_ID
+
+    @property
+    def listen(self):
+        return f"{self.host}:{self.port}"
 
     @property
     def command(self):
         # fmt: off
         return [
             self.binary_path, "run",
-            "--cluster-id", self.cluster_id,
-            "--instance-id", self.id,
+            "--instance-id", self.instance_id,
+            "--data-dir", self.data_dir,
             "--listen", self.listen,
-            "--peer", ','.join(self.peers),
-            # "--data-dir", self.workdir
+            "--peer", ','.join(self.peers)
         ]
         # fmt: on
 
+    def __repr__(self):
+        return f"Instance({self.instance_id}, listen={self.listen})"
+
     @contextmanager
-    def connection(self):
-        c = tarantool.connect(*self.address)
+    def connection(self, timeout: int):
+        c = Connection(
+            self.host,
+            self.port,
+            socket_timeout=timeout,
+            connection_timeout=timeout,
+        )
         try:
             yield c
         finally:
             c.close()
 
-    def _normalize_net_box_result(self, result):
-        match result.data:
-            case []:
-                return
-            case [x]:
-                return x
-            case [x, *rest]:
-                return (x, *rest)
+    @normalize_net_box_result
+    def call(self, fn, *args, timeout: int = 1):
+        with self.connection(timeout) as conn:
+            return conn.call(fn, args)
 
-    def call(self, fn, *args):
-        with self.connection() as conn:
-            return self._normalize_net_box_result(conn.call(fn, args))
+    @normalize_net_box_result
+    def eval(self, expr, *args, timeout: int = 1):
+        with self.connection(timeout) as conn:
+            return conn.eval(expr, *args)
 
-    def eval(self, expr, *args):
-        with self.connection() as conn:
-            return self._normalize_net_box_result(conn.eval(expr, *args))
+    def killpg(self):
+        """Kill entire process group"""
+        if self.process is None:
+            # Be idempotent
+            return
 
-    def kill(self):
         pid = self.process.pid
         with suppress(ProcessLookupError, PermissionError):
             os.killpg(pid, signal.SIGKILL)
-            print("killed:,", self)
             with suppress(ChildProcessError):
                 os.waitpid(pid, 0)
+            print(f"killed: {self}")
+        self.process = None
 
-    def stop(self, kill_after_seconds=10) -> int:
+    def terminate(self, kill_after_seconds=10):
+        """Terminate the instance gracefully with SIGTERM"""
+        if self.process is None:
+            # Be idempotent
+            return
+
+        with suppress(ProcessLookupError, PermissionError):
+            os.killpg(self.process.pid, signal.SIGCONT)
+
         self.process.terminate()
+
         try:
-            try:
-                return self.process.wait(kill_after_seconds)
-            except subprocess.TimeoutExpired:
-                self.kill()
-                return -1
+            return self.process.wait(timeout=kill_after_seconds)
         finally:
-            self.kill()
+            self.killpg()
 
     def start(self):
+        if self.process:
+            # Be idempotent
+            return
+
         self.process = subprocess.Popen(
             self.command,
-            cwd=self.workdir,
             env=self.env or {},
             stdin=subprocess.DEVNULL,
             start_new_session=True,
         )
+
         # Assert a new process group is created
         assert os.getpgid(self.process.pid) == self.process.pid
-        wait_tcp_port(*self.address)
 
-    def restart(self, kill=False):
-        if kill:
-            self.kill()
+    def restart(self, killpg: bool = False, drop_db: bool = False):
+        if killpg:
+            self.killpg()
         else:
-            self.stop()
+            self.terminate()
+
+        if drop_db:
+            self.drop_db()
+
         self.start()
 
-    def remove_data(self):
-        for root, dirs, files in os.walk(self.workdir, topdown=False):
-            for name in files:
-                os.remove(os.path.join(root, name))
-            for name in dirs:
-                os.rmdir(os.path.join(root, name))
+    def drop_db(self):
+        rmtree(self.data_dir)
 
-    def __repr__(self):
-        return f"picodata({' '.join(self.command[1:])})"
+    def __raft_status(self) -> RaftStatus:
+        status = self.call("picolib.raft_status")
+        assert isinstance(status, dict)
+        return RaftStatus(**status)
+
+    def raft_propose_eval(self, lua_code: str, timeout_seconds=2):
+        return self.call(
+            "picolib.raft_propose_eval",
+            timeout_seconds,
+            lua_code,
+        )
+
+    def assert_raft_status(self, raft_state, leader_id=None):
+        status = self.__raft_status()
+        if leader_id is None:
+            assert status == raft_state
+        else:
+            assert status == (raft_state, leader_id)
+
+    @funcy.retry(tries=20, timeout=0.1)
+    def wait_ready(self):
+        status = self.__raft_status()
+        assert status.is_ready()
+        self.raft_id = status.id
+
+    @funcy.retry(tries=20, timeout=0.1)
+    def promote_or_fail(self):
+        self.assert_raft_status("Leader")
+        self.call("picolib.raft_timeout_now")
 
 
-@dataclass(frozen=True)
+@dataclass
 class Cluster:
-    id: str
-    instances: list[Instance]
+    binary_path: str
 
-    @cached_property
-    def instances_by_id(self) -> dict[str, Instance]:
-        return {i.id: i for i in self.instances}
-
-    @cached_property
-    def replicasets(self) -> dict[str, list[Instance]]:
-        rss = {}
-        for i in self.instances:
-            rss.setdefault(i.replicaset_id, []).append(i)
-        return rss
-
-    def for_each_instance(self, fn):
-        return list(map(fn, self.instances))
-
-    def stop(self, *args, **kwargs):
-        self.for_each_instance(lambda i: i.stop(*args, **kwargs))
-
-    def start(self, *args, **kwargs):
-        self.for_each_instance(lambda i: i.start(*args, **kwargs))
-
-    def kill(self, *args, **kwargs):
-        self.for_each_instance(lambda i: i.kill(*args, **kwargs))
-
-    def restart(self, *args, **kwargs):
-        self.for_each_instance(lambda i: i.restart(*args, **kwargs))
-
-    def remove_data(self, *args, **kwargs):
-        self.for_each_instance(lambda i: i.remove_data(*args, **kwargs))
+    subnet: int
+    data_dir: str
+    instances: list[Instance] = field(default_factory=list)
 
     def __repr__(self):
-        return f"Cluster(id={self.id}, [{', '.join(i.id for i in self.instances)}])"
+        return f'Cluster("127.7.{self.subnet}.1", n={self.instances.count()})'
+
+    def __getitem__(self, item: int) -> Instance:
+        return self.instances[item]
+
+    def deploy(self, *, instance_count: int) -> list[Instance]:
+        assert not self.instances, "Already deployed"
+
+        for i in range(1, instance_count + 1):
+            instance = Instance(
+                binary_path=self.binary_path,
+                instance_id=f"i{i}",
+                data_dir=f"{self.data_dir}/i{i}",
+                host=f"127.7.{self.subnet}.1",
+                port=3300 + i,
+                peers=[f"127.7.{self.subnet}.1:3301"],
+            )
+
+            self.instances.append(instance)
+
+        for instance in self.instances:
+            instance.start()
+
+        for instance in self.instances:
+            instance.wait_ready()
+
+        return self.instances
+
+    def kill_all(self):
+        for instance in self.instances:
+            instance.kill()
+
+    def terminate(self):
+        for instance in self.instances:
+            instance.terminate()
+
+    def drop_db(self):
+        rmtree(self.data_dir)
 
 
 @pytest.fixture(scope="session")
-def compile(session_data_mutex):
-    with session_data_mutex() as data:
-        if data.get("compiled"):
-            return
-        assert subprocess.call(["cargo", "build"]) == 0, "cargo build failed"
-
-        data["compiled"] = True
+def compile() -> None:
+    assert subprocess.call(["cargo", "build"]) == 0, "cargo build failed"
 
 
 @pytest.fixture(scope="session")
@@ -212,97 +344,22 @@ def binary_path(compile) -> str:
 
 
 @pytest.fixture
-def run_instance(binary_path, tmpdir, run_id):
-    tmpdir = Path(tmpdir)
-    ports = (30000 + run_id * 100 + i for i in itertools.count())
+def cluster(binary_path, tmpdir, worker_id) -> Generator[Cluster, None, None]:
+    subnet = xdist_worker_number(worker_id)
+    assert isinstance(subnet, int)
+    assert 0 <= subnet < 256
 
-    instances: list[Instance] = []
-
-    def really_run_instance(
-        *,
-        instance_id: str,
-        cluster_id: str,
-        port: int | None = None,
-        peers: list[str] | None = None,
-        env: dict[str, str] | None = None,
-    ):
-        cluster_dir = tmpdir / cluster_id
-        env = env or {}
-        workdir = cluster_dir / instance_id
-        port = port or next(ports)
-        address = ("127.0.0.1", port)
-        listen = f"127.0.0.1:{port}"
-        peers = peers or [listen]
-
-        with suppress(FileExistsError):
-            cluster_dir.mkdir()
-        workdir.mkdir()
-
-        instance = Instance(
-            cluster_id=cluster_id,
-            id=instance_id,
-            peers=peers,
-            address=address,
-            listen=listen,
-            workdir=str(workdir),
-            binary_path=str(binary_path),
-            env=env,
-        )
-
-        instance.start()
-        instances.append(instance)
-
-        return instance
-
-    yield really_run_instance
-
-    for instance in instances:
-        instance.stop(kill_after_seconds=2)
+    cluster = Cluster(
+        binary_path=binary_path,
+        subnet=subnet,
+        data_dir=tmpdir,
+    )
+    yield cluster
+    cluster.terminate()
+    cluster.drop_db()
 
 
 @pytest.fixture
-def run_cluster(run_instance, run_id):
-    cluster_ids = (f"cluster-{run_id:03d}-{i:03d}" for i in itertools.count(1))
-
-    def really_run_cluster(cluster_id=None, instance_count=1):
-        cluster_id = cluster_id or next(cluster_ids)
-        instance_numbers = tuple(range(1, instance_count + 1))
-        ports = [40000 + run_id * 1000 + i for i in instance_numbers]
-        peers = [f"127.0.0.1:{p}" for p in ports]
-
-        return Cluster(
-            id=cluster_id,
-            instances=[
-                run_instance(
-                    instance_id=f"i{instance_number}",
-                    peers=peers,
-                    cluster_id=cluster_id,
-                    port=port,
-                )
-                for instance_number, port in zip(instance_numbers, ports)
-            ],
-        )
-
-    yield really_run_cluster
-
-
-def wait_tcp_port(host, port, timeout=10):
-    t = time.monotonic()
-    while time.monotonic() - t < timeout:
-        try:
-            s = socket.create_connection((host, port), timeout=timeout)
-            s.close()
-            return
-        except socket.error:
-            time.sleep(0.02)
-    raise TimeoutError("Port is closed %s:%i" % (host, port))
-
-
-@pytest.fixture
-def instance(run_instance, run_id):
-    return run_instance(instance_id="i1", cluster_id=f"cluster-{run_id:03d}-1")
-
-
-@pytest.fixture
-def cluster(run_cluster):
-    return run_cluster(instance_count=3)
+def instance(cluster: Cluster) -> Generator[Instance, None, None]:
+    cluster.deploy(instance_count=1)
+    yield cluster[0]

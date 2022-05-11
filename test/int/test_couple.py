@@ -1,33 +1,39 @@
+import funcy  # type: ignore
 import pytest
 from conftest import Cluster
-from util import promote_or_fail, raft_propose_eval, assert_raft_status, retry
 
 
-@pytest.mark.skip
-def test_follower_proposal(run_cluster):
-    cluster: Cluster = run_cluster(instance_count=2)
+@funcy.retry(tries=20, timeout=0.1)
+def retry_call(call, *args, **kwargs):
+    return call(*args, **kwargs)
 
-    i1, i2 = cluster.instances
 
-    promote_or_fail(i1)  # Speed up node election
+@pytest.fixture
+def cluster2(cluster: Cluster):
+    cluster.deploy(instance_count=2)
+    return cluster
 
-    raft_propose_eval(i1, "rawset(_G, 'check', box.info.listen)")
+
+def test_follower_proposal(cluster2: Cluster):
+    i1, i2 = cluster2.instances
+    i1.promote_or_fail()
+
+    i2.assert_raft_status("Follower", leader_id=i1.raft_id)
+    i2.raft_propose_eval("rawset(_G, 'check', box.info.listen)")
+
     assert i1.eval("return check") == i1.listen
     assert i2.eval("return check") == i2.listen
 
 
-def test_failover(run_cluster):
-    cluster: Cluster = run_cluster(instance_count=2)
-    i1, i2 = cluster.instances
+def test_failover(cluster2: Cluster):
+    i1, i2 = cluster2.instances
+    i1.promote_or_fail()
 
-    promote_or_fail(i1)
+    retry_call(i2.assert_raft_status, "Follower", leader_id=i1.raft_id)
 
-    retry(assert_raft_status)(i2, raft_state="Follower", leader_id=1)
-
-    @retry
     def do_test():
         i2.eval("picolib.raft_tick(20)")
-        assert_raft_status(i2, raft_state="Leader")
-        assert_raft_status(i1, raft_state="Follower", leader_id=2)
+        i1.assert_raft_status("Follower", leader_id=i2.raft_id)
+        i2.assert_raft_status("Leader")
 
-    do_test()
+    retry_call(do_test)
