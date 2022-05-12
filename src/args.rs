@@ -3,6 +3,7 @@ use std::{
     borrow::Cow,
     ffi::{CStr, CString},
 };
+use tarantool::log::SayLevel;
 use tarantool::tlua::{self, c_str};
 use thiserror::Error;
 
@@ -82,6 +83,39 @@ pub struct Run {
     #[clap(long, value_name = "name", env = "PICODATA_REPLICASET_ID")]
     /// Name of the replicaset
     pub replicaset_id: Option<String>,
+
+    #[clap(long, arg_enum, default_value = "info", env = "PICODATA_LOG_LEVEL")]
+    /// Log level
+    log_level: LogLevel,
+}
+
+// Copy enum because clap:ArgEnum can't be derived for the foreign SayLevel.
+#[derive(Debug, Copy, Clone, tlua::Push, PartialEq, clap::ArgEnum)]
+#[clap(rename_all = "lower")]
+enum LogLevel {
+    Fatal,
+    System,
+    Error,
+    Crit,
+    Warn,
+    Info,
+    Verbose,
+    Debug,
+}
+
+impl From<LogLevel> for SayLevel {
+    fn from(l: LogLevel) -> SayLevel {
+        match l {
+            LogLevel::Fatal => SayLevel::Fatal,
+            LogLevel::System => SayLevel::System,
+            LogLevel::Error => SayLevel::Error,
+            LogLevel::Crit => SayLevel::Crit,
+            LogLevel::Warn => SayLevel::Warn,
+            LogLevel::Info => SayLevel::Info,
+            LogLevel::Verbose => SayLevel::Verbose,
+            LogLevel::Debug => SayLevel::Debug,
+        }
+    }
 }
 
 impl Run {
@@ -101,6 +135,10 @@ impl Run {
             Some(v) => v.clone(),
             None => self.listen.clone(),
         }
+    }
+
+    pub fn log_level(&self) -> SayLevel {
+        self.log_level.into()
     }
 }
 
@@ -274,5 +312,22 @@ mod tests {
             assert_eq!(parsed.listen, "listen-from-env:3301");
             assert_eq!(parsed.advertise_address(), "advertise-from-args:3301");
         }
+    }
+
+    #[test]
+    fn test_log_level() {
+        let _env_dump = EnvDump::new();
+        std::env::set_var("PICODATA_INSTANCE_ID", "test-log-level");
+        std::env::set_var("PICODATA_PEER", "test-log-level");
+
+        let parsed = parse![Run,];
+        assert_eq!(parsed.log_level(), SayLevel::Info);
+
+        std::env::set_var("PICODATA_LOG_LEVEL", "verbose");
+        let parsed = parse![Run,];
+        assert_eq!(parsed.log_level(), SayLevel::Verbose);
+
+        let parsed = parse![Run, "--log-level", "warn"];
+        assert_eq!(parsed.log_level(), SayLevel::Warn);
     }
 }

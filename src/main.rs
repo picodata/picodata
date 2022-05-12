@@ -356,6 +356,7 @@ fn start_discover(args: &args::Run, to_supervisor: ipc::Sender<IpcMessage>) {
         read_only: false,
         wal_dir: args.data_dir.clone(),
         memtx_dir: args.data_dir.clone(),
+        log_level: args.log_level() as u8,
         ..Default::default()
     };
 
@@ -476,6 +477,7 @@ fn start_join(args: &args::Run, leader_address: String) {
         replication: resp.box_replication.clone(),
         wal_dir: args.data_dir.clone(),
         memtx_dir: args.data_dir.clone(),
+        log_level: args.log_level() as u8,
         ..Default::default()
     };
 
