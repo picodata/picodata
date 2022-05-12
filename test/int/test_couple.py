@@ -25,6 +25,19 @@ def test_follower_proposal(cluster2: Cluster):
     assert i2.eval("return check") == i2.listen
 
 
+def test_switchover(cluster2: Cluster):
+    i1, i2 = cluster2.instances
+
+    i1.promote_or_fail()
+    i1.assert_raft_status("Leader")
+
+    i2.promote_or_fail()
+    i2.assert_raft_status("Leader")
+
+    # Check idempotency
+    i2.promote_or_fail()
+
+
 def test_failover(cluster2: Cluster):
     i1, i2 = cluster2.instances
     i1.promote_or_fail()

@@ -283,10 +283,19 @@ class Instance:
         assert status.is_ready()
         self.raft_id = status.id
 
-    @funcy.retry(tries=20, timeout=0.1)
+    @funcy.retry(tries=4, timeout=0.1, errors=AssertionError)
     def promote_or_fail(self):
-        self.assert_raft_status("Leader")
+        eprint(f"{self} is trying to become a leader")
+
+        # 1. Force the node to campaign.
         self.call("picolib.raft_timeout_now")
+
+        # 2. Wait until the miracle occurs.
+        @funcy.retry(tries=4, timeout=0.1, errors=AssertionError)
+        def wait_promoted():
+            assert self.__raft_status() == "Leader"
+
+        wait_promoted()
 
 
 @dataclass
