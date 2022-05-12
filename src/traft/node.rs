@@ -53,6 +53,7 @@ pub struct Status {
     pub id: u64,
     pub leader_id: u64,
     pub raft_state: String,
+    pub is_ready: bool,
 }
 
 /// The heart of `traft` module - the Node.
@@ -103,6 +104,7 @@ impl Node {
             id: cfg.id,
             leader_id: 0,
             raft_state: "Follower".into(),
+            is_ready: false,
         }));
 
         let main_loop_fn = {
@@ -134,6 +136,11 @@ impl Node {
 
     pub fn status(&self) -> Status {
         self.status.borrow().clone()
+    }
+
+    pub fn mark_as_ready(&self) {
+        self.status.borrow_mut().is_ready = true;
+        self.status_cond.broadcast();
     }
 
     pub fn wait_status(&self) {

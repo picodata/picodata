@@ -589,6 +589,8 @@ fn postjoin(args: &args::Run) {
             }
         };
     }
+
+    node.mark_as_ready();
 }
 
 fn main_tarantool(args: args::Tarantool) -> ! {

@@ -118,6 +118,7 @@ class RaftStatus:
     id: int
     raft_state: str
     leader_id: int
+    is_ready: bool
 
     def __eq__(self, other):
         match other:
@@ -138,9 +139,6 @@ class RaftStatus:
                 )
 
         return False
-
-    def is_ready(self):
-        return self.leader_id > INVALID_ID
 
 
 @dataclass
@@ -280,7 +278,7 @@ class Instance:
     @funcy.retry(tries=20, timeout=0.1)
     def wait_ready(self):
         status = self.__raft_status()
-        assert status.is_ready()
+        assert status.is_ready
         self.raft_id = status.id
 
     @funcy.retry(tries=4, timeout=0.1, errors=AssertionError)

@@ -36,6 +36,7 @@ def test_raft_status():
         id=1,
         raft_state="SomeState",
         leader_id=1,
+        is_ready=False,
     )
 
     assert (s == "SomeState") is True
@@ -48,13 +49,10 @@ def test_raft_status():
     assert (s == ("OtherState", 1)) is False
 
     assert (s == s) is True
-    assert (s == RaftStatus(s.id, s.raft_state, s.leader_id)) is True
-    assert (s == RaftStatus(-1, s.raft_state, s.leader_id)) is False
-    assert (s == RaftStatus(s.id, "OtherState", s.leader_id)) is False
-    assert (s == RaftStatus(s.id, s.raft_state, -1)) is False
-
-    assert RaftStatus(1, "Follower", 0).is_ready() is False
-    assert RaftStatus(1, "Follower", 1).is_ready() is True
+    assert (s == RaftStatus(s.id, s.raft_state, s.leader_id, True)) is True
+    assert (s == RaftStatus(-1, s.raft_state, s.leader_id, True)) is False
+    assert (s == RaftStatus(s.id, "OtherState", s.leader_id, True)) is False
+    assert (s == RaftStatus(s.id, s.raft_state, -1, True)) is False
 
 
 def test_call_normalization(instance: Instance):
