@@ -339,8 +339,14 @@ class Cluster:
             instance.kill()
 
     def terminate(self):
+        errors = []
         for instance in self.instances:
-            instance.terminate()
+            try:
+                instance.terminate()
+            except Exception as e:
+                errors.append(e)
+        if errors:
+            raise Exception(errors)
 
     def drop_db(self):
         rmtree(self.data_dir)
