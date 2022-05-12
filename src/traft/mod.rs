@@ -119,7 +119,6 @@ pub struct EntryContextNormal {
 /// [`EntryContext`] of a conf change entry, either `EntryConfChange` or `EntryConfChangeV2`
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct EntryContextConfChange {
-    pub lc: LogicalClock,
     pub peers: Vec<Peer>,
 }
 
@@ -128,13 +127,12 @@ impl ContextCoercion for EntryContextNormal {}
 impl ContextCoercion for EntryContextConfChange {}
 
 impl Entry {
-    /// Returns the logical clock value (if any)
-    /// from both `EntryNormal` and `EntryConfChange`.
+    /// Returns the logical clock value if it's an `EntryNormal`.
     fn lc(&self) -> Option<&LogicalClock> {
         match &self.context {
-            None => None,
             Some(EntryContext::Normal(v)) => Some(&v.lc),
-            Some(EntryContext::ConfChange(v)) => Some(&v.lc),
+            Some(EntryContext::ConfChange(_)) => None,
+            None => None,
         }
     }
 

@@ -7,6 +7,7 @@
 
 use ::raft::prelude as raft;
 use ::raft::Error as RaftError;
+use ::raft::StateRole as RaftStateRole;
 use ::tarantool::error::TransactionError;
 use ::tarantool::fiber;
 use ::tarantool::proc;
@@ -208,15 +209,11 @@ impl Node {
         })
     }
 
-    pub fn join_one(&self, req: JoinRequest, timeout: Duration) -> Result<u64, RaftError> {
+    pub fn join_one(&self, req: JoinRequest) -> Result<u64, RaftError> {
         let (rx, tx) = fiber::Channel::new(1).into_clones();
 
         self.join_inbox.send((req, tx));
-        match rx.recv_timeout(timeout) {
-            Ok(Ok(commit_index)) => Ok(commit_index),
-            Ok(Err(e)) => Err(e),
-            Err(_) => Err(RaftError::ConfChangeError("timeout".into())),
-        }
+        rx.recv().expect("that's a bug")
     }
 }
 
@@ -246,6 +243,13 @@ fn raft_main_loop(
         LogicalClock::new(id, gen)
     };
 
+    let mut joint_state_latch: Option<JointStateLatch> = None;
+
+    struct JointStateLatch {
+        index: u64,
+        notify: Notify,
+    }
+
     loop {
         // Clean up obsolete notifications
         notifications.retain(|_, notify: &mut Notify| !notify.is_closed());
@@ -263,7 +267,33 @@ fn raft_main_loop(
                     }
                 }
                 NormalRequest::ProposeConfChange { peers, notify } => {
-                    lc.inc();
+                    // In some states proposing a ConfChange is impossible.
+                    // Check if there's a reason to reject it.
+
+                    #[allow(clippy::never_loop)]
+                    let reason: Option<&str> = loop {
+                        // Raft-rs allows proposing ConfChange from any node, but it may cause
+                        // inconsistent raft_id generation. In picodata only the leader is
+                        // permitted to step a ProposeConfChange message.
+                        let status = raw_node.status();
+                        if status.ss.raft_state != RaftStateRole::Leader {
+                            break Some("not a leader");
+                        }
+
+                        // Without this check the node would silently ignore the conf change.
+                        // See https://github.com/tikv/raft-rs/blob/v0.6.0/src/raft.rs#L2014-L2026
+                        if raw_node.raft.has_pending_conf() {
+                            break Some("already has pending confchange");
+                        }
+
+                        break None;
+                    };
+
+                    if let Some(e) = reason {
+                        let e = RaftError::ConfChangeError(e.into());
+                        notify.try_send(Err(e)).expect("that's a bug");
+                        continue;
+                    }
 
                     let mut changes = Vec::with_capacity(peers.len());
                     for peer in &peers {
@@ -284,16 +314,18 @@ fn raft_main_loop(
                         ..Default::default()
                     };
 
-                    let ctx = traft::EntryContextConfChange {
-                        lc: lc.clone(),
-                        peers,
-                    }
-                    .to_bytes();
+                    let ctx = traft::EntryContextConfChange { peers }.to_bytes();
 
+                    let prev_index = raw_node.raft.raft_log.last_index();
                     if let Err(e) = raw_node.propose_conf_change(ctx, cc) {
                         notify.try_send(Err(e)).expect("that's a bug");
                     } else {
-                        notifications.insert(lc.clone(), notify);
+                        let last_index = raw_node.raft.raft_log.last_index();
+                        assert!(last_index == prev_index + 1);
+                        joint_state_latch = Some(JointStateLatch {
+                            index: last_index,
+                            notify,
+                        });
                     }
                 }
                 NormalRequest::ReadIndex { notify } => {
@@ -369,6 +401,7 @@ fn raft_main_loop(
             notifications: &mut HashMap<LogicalClock, Notify>,
             raw_node: &mut RawNode,
             pool: &mut ConnectionPool,
+            joint_state_latch: &mut Option<JointStateLatch>,
         ) {
             for entry in entries
                 .iter()
@@ -377,25 +410,38 @@ fn raft_main_loop(
                 match raft::EntryType::from_i32(entry.entry_type) {
                     Some(raft::EntryType::EntryNormal) => {
                         use traft::Op::*;
+
                         match entry.op() {
                             None => (),
                             Some(Nop) => (),
                             Some(Info { msg }) => tlog!(Info, "{msg}"),
                             Some(EvalLua { code }) => crate::tarantool::eval(code),
                         }
+
                         if let Some(lc) = entry.lc() {
                             if let Some(notify) = notifications.remove(lc) {
+                                // The notification may already have timed out.
+                                // Don't panic. Just ignore `try_send` error.
                                 notify.try_send(Ok(entry.index)).ok();
                             }
+                        }
+
+                        if let Some(latch) = joint_state_latch {
+                            if entry.index == latch.index {
+                                // It was expected to be a ConfChange entry, but it's
+                                // normal. Raft must have overriden it, or there was
+                                // a re-election.
+                                let e = RaftError::ConfChangeError("ignored".into());
+
+                                // The `raft_join_loop` waits forever and never closes
+                                // the notification channel. Panic if `try_send` fails.
+                                latch.notify.try_send(Err(e)).expect("that's a bug");
+                            }
+                            *joint_state_latch = None;
                         }
                     }
                     Some(entry_type @ raft::EntryType::EntryConfChange)
                     | Some(entry_type @ raft::EntryType::EntryConfChangeV2) => {
-                        if let Some(lc) = entry.lc() {
-                            if let Some(notify) = notifications.remove(lc) {
-                                notify.try_send(Ok(entry.index)).ok();
-                            }
-                        }
                         for peer in entry.iter_peers() {
                             let peer = traft::Peer {
                                 commit_index: entry.index,
@@ -406,18 +452,39 @@ fn raft_main_loop(
                         }
 
                         let cs = match entry_type {
+                            // Beware: this tiny difference in type names
+                            // (`V2` or not `V2`) makes a significant
+                            // difference in `entry.data` binary layout
+                            // and in joint state transitions.
                             raft::EntryType::EntryConfChange => {
                                 let mut cc = raft::ConfChange::default();
                                 cc.merge_from_bytes(&entry.data).unwrap();
+
                                 raw_node.apply_conf_change(&cc).unwrap()
                             }
                             raft::EntryType::EntryConfChangeV2 => {
                                 let mut cc = raft::ConfChangeV2::default();
                                 cc.merge_from_bytes(&entry.data).unwrap();
+
+                                // Unlock the latch only when leaving the joint state
+                                if cc.changes.is_empty() {
+                                    if let Some(latch) = joint_state_latch {
+                                        latch
+                                            .notify
+                                            .try_send(Ok(entry.index))
+                                            .expect("that's a bug");
+                                        *joint_state_latch = None;
+                                    }
+                                }
+
+                                // ConfChangeTransition::Implicit implies that at this
+                                // moment raft-rs will implicitly propose another empty
+                                // conf change that represents leaving the joint state.
                                 raw_node.apply_conf_change(&cc).unwrap()
                             }
                             _ => unreachable!(),
                         };
+
                         Storage::persist_conf_state(&cs).unwrap();
                     }
                     None => unreachable!(),
@@ -446,6 +513,7 @@ fn raft_main_loop(
                 &mut notifications,
                 &mut raw_node,
                 &mut pool,
+                &mut joint_state_latch,
             );
 
             if !ready.entries().is_empty() {
@@ -500,6 +568,7 @@ fn raft_main_loop(
                 &mut notifications,
                 &mut raw_node,
                 &mut pool,
+                &mut joint_state_latch,
             );
 
             // Advance the apply index.
@@ -533,13 +602,11 @@ impl AsTuple for JoinResponse {}
 fn raft_join_loop(inbox: Mailbox<(JoinRequest, Notify)>, main_inbox: Mailbox<NormalRequest>) {
     loop {
         let batch = inbox.receive_all(Duration::MAX);
-        // TODO check leadership, else continue
+        let ids: Vec<_> = batch.iter().map(|(req, _)| &req.instance_id).collect();
+        tlog!(Info, "processing batch: {ids:?}");
 
-        let (rx, tx) = fiber::Channel::new(1).into_clones();
-
+        // 1. Gererate raft_id
         let mut peers = Vec::<traft::Peer>::new();
-        // TODO gererate raft_id
-
         let mut max_id = Storage::max_peer_id().unwrap();
         for (req, notify) in &batch {
             // Check if the client is already joined.
@@ -572,26 +639,26 @@ fn raft_join_loop(inbox: Mailbox<(JoinRequest, Notify)>, main_inbox: Mailbox<Nor
             });
         }
 
+        // 2. Propose the ConfChange.
+        let (rx, tx) = fiber::Channel::new(1).into_clones();
         main_inbox.send(NormalRequest::ProposeConfChange { peers, notify: tx });
 
-        match rx.recv_timeout(Duration::from_millis(200)) {
-            Ok(Ok(v)) => {
-                for (_, notify) in &batch {
-                    notify.try_send(Ok(v)).expect("that's a bug");
+        // main_loop gives the warranty that every ProposeConfChange
+        // will sometimes be handled and there's no need in timeout.
+        // It also guarantees that the notification will arrive only
+        // after the node leaves the joint state.
+        let res = rx.recv().expect("that's a bug");
+        tlog!(Info, "batch processed: {ids:?}, {res:?}");
+        for (_, notify) in batch {
+            // RaftError doesn't implement the Clone trait,
+            // so we have to be creative.
+            match &res {
+                Ok(v) => notify.try_send(Ok(*v)).ok(),
+                Err(e) => {
+                    let e = RaftError::ConfChangeError(format!("{e}"));
+                    notify.try_send(Err(e)).ok()
                 }
-            }
-            Ok(Err(e)) => {
-                for (_, notify) in &batch {
-                    let e = RaftError::ConfChangeError(format!("{e:?}"));
-                    notify.try_send(Err(e)).expect("that's a bug");
-                }
-            }
-            Err(_) => {
-                for (_, notify) in &batch {
-                    let e = RaftError::ConfChangeError("timeout".into());
-                    notify.try_send(Err(e)).expect("that's a bug");
-                }
-            }
+            };
         }
     }
 }
@@ -629,14 +696,12 @@ fn raft_interact(pbs: Vec<traft::MessagePb>) -> Result<(), Box<dyn StdError>> {
 fn raft_join(req: JoinRequest) -> Result<JoinResponse, Box<dyn StdError>> {
     let node = global()?;
 
-    tlog!(Warning, "join_one({req:?})");
-    node.join_one(req.clone(), Duration::MAX)?;
+    node.join_one(req.clone())?;
 
     let resp = JoinResponse {
         peer: Storage::peer_by_instance_id(&req.instance_id)?.unwrap(),
         raft_group: Storage::peers()?,
         box_replication: vec![],
     };
-    tlog!(Warning, "resp: {resp:?}");
     Ok(resp)
 }

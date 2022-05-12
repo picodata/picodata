@@ -426,10 +426,7 @@ fn start_boot(args: &args::Run) {
                 node_id: raft_id,
                 ..Default::default()
             };
-            let ctx = traft::EntryContextConfChange {
-                lc: traft::LogicalClock::new(1, 0),
-                peers: vec![peer],
-            };
+            let ctx = traft::EntryContextConfChange { peers: vec![peer] };
             let e = traft::Entry {
                 entry_type: raft::EntryType::EntryConfChange.value(),
                 index: 1,
