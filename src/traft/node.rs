@@ -126,8 +126,16 @@ impl Node {
             join_inbox,
             status,
             status_cond,
-            _main_loop: fiber::start_proc(main_loop_fn),
-            _join_loop: fiber::start_proc(join_loop_fn),
+            _main_loop: fiber::Builder::new()
+                .name("raft_main_loop")
+                .proc(main_loop_fn)
+                .start()
+                .unwrap(),
+            _join_loop: fiber::Builder::new()
+                .name("raft_join_loop")
+                .proc(join_loop_fn)
+                .start()
+                .unwrap(),
         };
 
         // Wait for the node to enter the main loop

@@ -106,7 +106,7 @@ impl PoolWorker {
                         uri: uri.clone(),
                         conn,
                     })
-                    .map_err(|e| tlog!(Error, "{e}"))
+                    .map_err(|e| tlog!(Debug, "{uri}: {e}"))
                     .ok();
             }
 
