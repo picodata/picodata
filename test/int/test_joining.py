@@ -9,6 +9,7 @@ from conftest import (
     eprint,
     Cluster,
     Instance,
+    TarantoolError,
 )
 
 
@@ -63,3 +64,12 @@ def test_concurrency(cluster2: Cluster):
     assert ret2["instance_id"] == "fake-2"
     # Make sure the batching works as expected
     assert ret1["commit_index"] == ret2["commit_index"]
+
+
+def test_request_follower(cluster2: Cluster):
+    _, i2 = cluster2.instances
+    i2.assert_raft_status("Follower")
+
+    with pytest.raises(TarantoolError) as e:
+        fake_join(i2, "fake-0", timeout=1)
+    assert e.value.args == ("ER_PROC_C", "not a leader")
