@@ -1,11 +1,13 @@
-use core::str::from_utf8;
 use std::cmp::min;
+use std::convert::TryFrom;
 use std::fmt::{Display, Formatter};
 use std::io::{self, Cursor, Read, Seek, SeekFrom, Write};
 use std::os::raw::c_char;
+use std::str::from_utf8;
 
 use byteorder::{BigEndian, ReadBytesExt};
 use sha1::{Digest, Sha1};
+use num_derive::FromPrimitive;
 
 use crate::error::Error;
 use crate::index::IteratorType;
@@ -32,7 +34,40 @@ const OPS: u8 = 0x28;
 const DATA: u8 = 0x30;
 const ERROR: u8 = 0x31;
 
-enum IProtoType {
+#[derive(Debug, Clone, Copy, serde::Deserialize, FromPrimitive)]
+#[serde(try_from = "u8")]
+#[repr(u8)]
+enum IProtoKey {
+    RequestType = REQUEST_TYPE,
+    Sync = SYNC,
+    SchemaVersion = SCHEMA_VERSION,
+    SpaceId = SPACE_ID,
+    IndexId = INDEX_ID,
+    Limit = LIMIT,
+    Offset = OFFSET,
+    Iterator = ITERATOR,
+    IndexBase = INDEX_BASE,
+    Key = KEY,
+    Tuple = TUPLE,
+    FunctionName = FUNCTION_NAME,
+    UserName = USER_NAME,
+    Expr = EXPR,
+    Ops = OPS,
+    Data = DATA,
+    Error = ERROR,
+}
+
+impl TryFrom<u8> for IProtoKey {
+    type Error = u8;
+
+    fn try_from(key: u8) -> Result<Self, u8> {
+        num_traits::FromPrimitive::from_u8(key).ok_or(key)
+    }
+}
+
+pub(crate) type Sync = u64;
+
+pub(crate) enum IProtoType {
     Select = 1,
     Insert = 2,
     Replace = 3,
@@ -43,6 +78,100 @@ enum IProtoType {
     Upsert = 9,
     Call = 10,
     Ping = 64,
+}
+
+pub(crate) trait Request {
+    const TYPE: IProtoType;
+
+    fn encode_header<W>(&self, out: &mut W, sync: Sync, ty: IProtoType) -> Result<(), Error>
+    where
+        W: Write,
+    {
+        encode_header(out, sync, ty)
+    }
+
+    fn encode_body<W>(&self, out: &mut W) -> Result<(), Error>
+    where
+        W: Write;
+}
+
+
+pub(crate) fn request_producer<R>(request: R) -> impl FnOnce(&mut Cursor<Vec<u8>>, Sync) -> crate::Result<()>
+where
+    R: Request,
+{
+    move |cur, sync| {
+        request.encode_header(cur, sync, R::TYPE)?;
+        request.encode_body(cur)?;
+        Ok(())
+    }
+}
+
+pub trait Consumer {
+    /// Is called to handle a single response consisting of a header and a body.
+    ///
+    /// The default implementation is suitable for most cases, so you probably
+    /// only need to implement [`consume_data`] and [`handle_error`].
+    ///
+    /// **Must not yield**
+    fn consume(&self, header: &Header, body: &[u8]) {
+        let _ = header;
+        let consume_impl = || {
+            let mut cursor = Cursor::new(body);
+            let map_len = rmp::decode::read_map_len(&mut cursor)?;
+            for _ in 0..map_len {
+                let key = rmp::decode::read_pfix(&mut cursor)?;
+                let value = value_slice(&mut cursor)?;
+                // dbg!((IProtoKey::try_from(key), rmp_serde::from_slice::<rmpv::Value>(value)));
+                match key {
+                    DATA => self.consume_data(value),
+                    ERROR => {
+                        let message = rmp_serde::from_slice(value)?;
+                        self.handle_error(ResponseError { message }.into());
+                    }
+                    // TODO: IPROTO_ERROR (0x52)
+                    other => self.consume_other(other, value),
+                }
+            }
+            Ok(())
+        };
+
+        if let Err(e) = consume_impl() {
+            self.handle_error(e)
+        }
+    }
+
+    /// Handles key-value pairs other than `IPROTO_DATA` and `IPROTO_ERROR_24`.
+    /// The default implementation ignores them, so if nothing needs to be done
+    /// for those, don't implement this method.
+    ///
+    /// **Must not yield**
+    fn consume_other(&self, key: u8, other: &[u8]) {
+        let (_, _) = (key, other);
+    }
+
+    /// If an error happens during the consumption of the response or if the
+    /// response contains the `IPROTO_ERROR_24` key this function is called with
+    /// the corresponding error value.
+    ///
+    /// **Must not yield**
+    fn handle_error(&self, error: Error);
+
+    /// Called when the connection is closed before the response was received.
+    ///
+    /// The default implementation calls [`handle_error`] with a
+    /// [`NotConnected`](std::io::ErrorKind::NotConnected) error kind.
+    ///
+    /// **Must not yield**
+    fn handle_disconnect(&self) {
+        self.handle_error(io::Error::from(io::ErrorKind::NotConnected).into())
+    }
+
+    /// Handles a slice that covers a msgpack value corresponding to the
+    /// `IPROTO_DATA` key.
+    ///
+    /// **Must not yield**
+    fn consume_data(&self, data: &[u8]);
 }
 
 fn encode_header(
@@ -127,8 +256,27 @@ where
     rmp::encode::write_pfix(stream, FUNCTION_NAME)?;
     rmp::encode::write_str(stream, function_name)?;
     rmp::encode::write_pfix(stream, TUPLE)?;
-    rmp_serde::encode::write(stream, args)?;
+    args.serialize_to(stream)?;
     Ok(())
+}
+
+pub(crate) struct Call<'a, A>(pub &'a str, pub A);
+
+impl<'a, A: AsTuple> Request for Call<'a, A> {
+    const TYPE: IProtoType = IProtoType::Call;
+
+    fn encode_body<W>(&self, out: &mut W) -> Result<(), Error>
+    where
+        W: Write,
+    {
+        let Self(function_name, args) = self;
+        rmp::encode::write_map_len(out, 2)?;
+        rmp::encode::write_pfix(out, FUNCTION_NAME)?;
+        rmp::encode::write_str(out, function_name)?;
+        rmp::encode::write_pfix(out, TUPLE)?;
+        args.serialize_to(out)?;
+        Ok(())
+    }
 }
 
 pub fn encode_eval<T>(
@@ -146,8 +294,27 @@ where
     rmp::encode::write_pfix(stream, EXPR)?;
     rmp::encode::write_str(stream, expression)?;
     rmp::encode::write_pfix(stream, TUPLE)?;
-    rmp_serde::encode::write(stream, args)?;
+    args.serialize_to(stream)?;
     Ok(())
+}
+
+pub(crate) struct Eval<'a, A>(pub &'a str, pub A);
+
+impl<'a, A: AsTuple> Request for Eval<'a, A> {
+    const TYPE: IProtoType = IProtoType::Eval;
+
+    fn encode_body<W>(&self, out: &mut W) -> Result<(), Error>
+    where
+        W: Write,
+    {
+        let Self(expr, args) = self;
+        rmp::encode::write_map_len(out, 2)?;
+        rmp::encode::write_pfix(out, EXPR)?;
+        rmp::encode::write_str(out, expr)?;
+        rmp::encode::write_pfix(out, TUPLE)?;
+        args.serialize_to(out)?;
+        Ok(())
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -178,7 +345,7 @@ where
     rmp::encode::write_pfix(stream, ITERATOR)?;
     rmp::encode::write_u32(stream, iterator_type as u32)?;
     rmp::encode::write_pfix(stream, KEY)?;
-    rmp_serde::encode::write(stream, key)?;
+    key.serialize_to(stream)?;
     Ok(())
 }
 
@@ -197,7 +364,7 @@ where
     rmp::encode::write_pfix(stream, SPACE_ID)?;
     rmp::encode::write_u32(stream, space_id)?;
     rmp::encode::write_pfix(stream, TUPLE)?;
-    rmp_serde::encode::write(stream, value)?;
+    value.serialize_to(stream)?;
     Ok(())
 }
 
@@ -216,7 +383,7 @@ where
     rmp::encode::write_pfix(stream, SPACE_ID)?;
     rmp::encode::write_u32(stream, space_id)?;
     rmp::encode::write_pfix(stream, TUPLE)?;
-    rmp_serde::encode::write(stream, value)?;
+    value.serialize_to(stream)?;
     Ok(())
 }
 
@@ -240,9 +407,9 @@ where
     rmp::encode::write_pfix(stream, INDEX_ID)?;
     rmp::encode::write_u32(stream, index_id)?;
     rmp::encode::write_pfix(stream, KEY)?;
-    rmp_serde::encode::write(stream, key)?;
+    key.serialize_to(stream)?;
     rmp::encode::write_pfix(stream, TUPLE)?;
-    rmp_serde::encode::write(stream, ops)?;
+    ops.serialize_to(stream)?;
     Ok(())
 }
 
@@ -266,9 +433,9 @@ where
     rmp::encode::write_pfix(stream, INDEX_BASE)?;
     rmp::encode::write_u32(stream, index_id)?;
     rmp::encode::write_pfix(stream, OPS)?;
-    rmp_serde::encode::write(stream, ops)?;
+    ops.serialize_to(stream)?;
     rmp::encode::write_pfix(stream, TUPLE)?;
-    rmp_serde::encode::write(stream, value)?;
+    value.serialize_to(stream)?;
     Ok(())
 }
 
@@ -290,13 +457,13 @@ where
     rmp::encode::write_pfix(stream, INDEX_ID)?;
     rmp::encode::write_u32(stream, index_id)?;
     rmp::encode::write_pfix(stream, KEY)?;
-    rmp_serde::encode::write(stream, key)?;
+    key.serialize_to(stream)?;
     Ok(())
 }
 
 #[derive(Debug)]
 pub struct Header {
-    pub sync: u64,
+    pub sync: Sync,
     pub status_code: u32,
     pub schema_version: u32,
 }
@@ -435,6 +602,12 @@ pub fn decode_tuple(buffer: &mut Cursor<Vec<u8>>) -> Result<Tuple, Error> {
             payload_len as u32,
         ))
     }
+}
+
+fn value_slice(cursor: &mut Cursor<impl AsRef<[u8]>>) -> crate::Result<&[u8]> {
+    let start = cursor.position() as usize;
+    skip_msgpack(cursor)?;
+    Ok(&cursor.get_ref().as_ref()[start..(cursor.position() as usize)])
 }
 
 fn skip_msgpack(cur: &mut (impl Read + Seek)) -> Result<(), Error> {

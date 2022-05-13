@@ -50,7 +50,7 @@ impl ConnSchema {
 
     pub fn refresh(
         &self,
-        conn_inner: &ConnInner,
+        conn_inner: &Rc<ConnInner>,
         actual_version: Option<u32>,
     ) -> Result<bool, Error> {
         let mut _lock: Option<LatchGuard> = None;
@@ -72,7 +72,7 @@ impl ConnSchema {
         Ok(result)
     }
 
-    pub fn update(&self, conn_inner: &ConnInner) -> Result<(), Error> {
+    pub fn update(&self, conn_inner: &Rc<ConnInner>) -> Result<(), Error> {
         self.is_updating.set(true);
         let (spaces_data, actual_schema_version) = self.fetch_schema_spaces(conn_inner)?;
         for row in spaces_data {
@@ -113,7 +113,7 @@ impl ConnSchema {
         }
     }
 
-    fn fetch_schema_spaces(&self, conn_inner: &ConnInner) -> Result<(Vec<Tuple>, u32), Error> {
+    fn fetch_schema_spaces(&self, conn_inner: &Rc<ConnInner>) -> Result<(Vec<Tuple>, u32), Error> {
         conn_inner.request(
             |buf, sync| {
                 encode_select(
@@ -132,7 +132,7 @@ impl ConnSchema {
         )
     }
 
-    fn fetch_schema_indexes(&self, conn_inner: &ConnInner) -> Result<Vec<Tuple>, Error> {
+    fn fetch_schema_indexes(&self, conn_inner: &Rc<ConnInner>) -> Result<Vec<Tuple>, Error> {
         let empty_array: [(); 0] = [];
         conn_inner.request(
             |buf, sync| {

@@ -11,8 +11,9 @@
 use std::cmp::Ordering;
 use std::convert::TryFrom;
 use std::fmt::{self, Debug, Formatter};
-use std::io::Cursor;
+use std::io::{Cursor, Write};
 use std::os::raw::{c_char, c_int};
+use std::ops::Range;
 use std::ptr::{copy_nonoverlapping, NonNull};
 
 use num_derive::ToPrimitive;
@@ -59,7 +60,8 @@ impl Tuple {
     }
 
     /// # Safety
-    /// `data` must point to a buffer containing `len` bytes
+    /// `data` must point to a buffer containing `len` bytes representing a
+    /// valid messagepack array
     pub unsafe fn from_raw_data(data: *mut c_char, len: u32) -> Self {
         let format = TupleFormat::default();
         let tuple_ptr = ffi::box_tuple_new(
@@ -69,6 +71,21 @@ impl Tuple {
         );
 
         Self::from_ptr(NonNull::new_unchecked(tuple_ptr))
+    }
+
+    /// # Safety
+    /// `data` must represent a valid messagepack array
+    pub unsafe fn from_slice(data: &[u8]) -> Self {
+        let format = TupleFormat::default();
+        let Range { start, end } = data.as_ptr_range();
+        let tuple_ptr = ffi::box_tuple_new(format.inner, start as _, end as _);
+
+        Self::from_ptr(NonNull::new_unchecked(tuple_ptr))
+    }
+
+    pub fn try_from_slice(data: &[u8]) -> Result<Self> {
+        let data = validate_msgpack(data)?;
+        unsafe { Ok(Self::from_slice(data)) }
     }
 
     pub fn from_ptr(mut ptr: NonNull<ffi::BoxTuple>) -> Self {
@@ -327,16 +344,19 @@ pub trait AsTuple: Serialize {
         // the top layer, but `to_vec` serializes all of the nested structs as
         // arrays, which is very bad. We should implement a custom serializer,
         // which does the correct thing
-        rmp_serde::to_vec(self).map_err(Into::into)
+        let mut vec = Vec::with_capacity(128);
+        self.serialize_to(&mut vec)?;
+        Ok(vec)
     }
 
-    // TODO(gmoshkin):
-    // fn serialize_to(&self, mut w: &mut impl Write) -> Result<()>
+    fn serialize_to(&self, w: &mut impl Write) -> Result<()> {
+        rmp_serde::encode::write(w, self).map_err(Into::into)
+    }
 }
 
 impl AsTuple for () {
-    fn serialize(&self) -> Result<Vec<u8>> {
-        rmp_serde::to_vec(&Vec::<()>::new()).map_err(Into::into)
+    fn serialize_to(&self, w: &mut impl Write) -> Result<()> {
+        rmp_serde::encode::write(w, &Vec::<()>::new()).map_err(Into::into)
     }
 }
 
@@ -421,11 +441,7 @@ impl TupleBuffer {
     }
 
     pub fn try_from_vec(data: Vec<u8>) -> Result<Self> {
-        let mut slice = &*data;
-        let m = rmp::decode::read_marker(&mut slice)?;
-        if !matches!(m, Marker::FixArray(_) | Marker::Array16 | Marker::Array32) {
-            return Err(Encode::InvalidMP(data).into())
-        }
+        let data = validate_msgpack(data)?;
         unsafe { Ok(Self::from_vec_unchecked(data)) }
     }
 }
@@ -785,6 +801,18 @@ where
     }
 }
 
+fn validate_msgpack<T>(data: T) -> Result<T>
+where
+    T: AsRef<[u8]> + Into<Vec<u8>>,
+{
+    let mut slice = data.as_ref();
+    let m = rmp::decode::read_marker(&mut slice)?;
+    if !matches!(m, Marker::FixArray(_) | Marker::Array16 | Marker::Array32) {
+        return Err(Encode::InvalidMP(data.into()).into())
+    }
+    Ok(data)
+}
+
 impl<L> tlua::Push<L> for Tuple
 where
     L: tlua::AsLua,
@@ -814,6 +842,30 @@ where
             ffi::luaT_istuple(tlua::AsLua::as_lua(&lua), index.get())
         };
         Self::try_from_ptr(ptr).ok_or(lua)
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// Decode
+////////////////////////////////////////////////////////////////////////////////
+
+/// Generalization of [`serde::Deserialize`] which includes [`Tuple`]
+pub trait Decode: Sized {
+    fn decode(data: &[u8]) -> Result<Self>;
+}
+
+impl<T> Decode for T
+where
+    T: for<'de> serde::Deserialize<'de>,
+{
+    fn decode(data: &[u8]) -> Result<Self> {
+        Ok(rmp_serde::from_slice(data)?)
+    }
+}
+
+impl Decode for Tuple {
+    fn decode(data: &[u8]) -> Result<Self> {
+        Self::try_from_slice(data)
     }
 }
 

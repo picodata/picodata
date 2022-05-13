@@ -72,7 +72,7 @@ pub enum Error {
     Transaction(TransactionError),
 
     #[cfg(feature = "net_box")]
-    #[error("Sever respond with error: {0}")]
+    #[error("Server responded with error: {0}")]
     Remote(crate::net_box::ResponseError),
 
     #[error("Lua error: {0}")]

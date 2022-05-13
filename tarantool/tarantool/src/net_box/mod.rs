@@ -17,13 +17,13 @@
 //!
 //! The diagram below shows possible connection states and transitions:
 //! ```text
-//! connecting -> initial +-> active                                                                                    
-//!                        \                                                                                            
-//!                         +-> auth -> fetch_schema <-> active                                                         
-//!                                                                                                                     
-//!  (any state, on error) -> error_reconnect -> connecting -> ...                                                      
-//!                                           \                                                                         
-//!                                             -> [error]                                                              
+//! connecting -> initial +-> active
+//!                        \
+//!                         +-> auth -> fetch_schema <-> active
+//!
+//!  (any state, on error) -> error_reconnect -> connecting -> ...
+//!                                           \
+//!                                             -> [error]
 //!  (any_state, but [error]) -> [closed]
 //! ```
 //!
@@ -47,14 +47,16 @@ pub use index::{RemoteIndex, RemoteIndexIterator};
 use inner::ConnInner;
 pub use options::{ConnOptions, ConnTriggers, Options};
 pub(crate) use protocol::ResponseError;
+use promise::Promise;
 pub use space::RemoteSpace;
 
 use crate::error::Error;
-use crate::tuple::{AsTuple, Tuple};
+use crate::tuple::{AsTuple, Decode, Tuple};
 
 mod index;
 mod inner;
 mod options;
+pub mod promise;
 mod protocol;
 mod recv_queue;
 mod schema;
@@ -85,6 +87,13 @@ impl Conn {
             inner: ConnInner::new(addr.to_socket_addrs()?.collect(), options, triggers),
             is_master: true,
         })
+    }
+
+    fn downgrade(inner: Rc<ConnInner>) -> Self {
+        Conn {
+            inner,
+            is_master: false,
+        }
     }
 
     /// Wait for connection to be active or closed.
@@ -138,6 +147,18 @@ impl Conn {
         )
     }
 
+    /// Call a remote stored procedure without yielding.
+    ///
+    /// If enqueuing a request succeeded a [`Promise`] is returned which will be
+    /// kept once a response is received.
+    pub fn call_async<A, R>(&self, func: &str, args: A) -> crate::Result<Promise<R>>
+    where
+        A: AsTuple,
+        R: Decode + 'static,
+    {
+        self.inner.request_async(protocol::Call(func, args))
+    }
+
     /// Evaluates and executes the expression in Lua-string, which may be any statement or series of statements.
     ///
     /// An execute privilege is required; if the user does not have it, an administrator may grant it with
@@ -160,6 +181,18 @@ impl Conn {
             protocol::decode_call,
             options,
         )
+    }
+
+    /// Executes a series of lua statements on a remote host without yielding.
+    ///
+    /// If enqueuing a request succeeded a [`Promise`] is returned which will be
+    /// kept once a response is received.
+    pub fn eval_async<A, R>(&self, expr: &str, args: A) -> crate::Result<Promise<R>>
+    where
+        A: AsTuple,
+        R: Decode + 'static,
+    {
+        self.inner.request_async(protocol::Eval(expr, args))
     }
 
     /// Search space by name on remote server

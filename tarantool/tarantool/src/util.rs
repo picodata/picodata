@@ -88,3 +88,13 @@ pub enum Value<'a> {
     Bool(bool),
 }
 
+#[macro_export]
+macro_rules! unwrap_or {
+    ($o:expr, $else:expr) => {
+        if let Some(v) = $o {
+            v
+        } else {
+            $else
+        }
+    }
+}

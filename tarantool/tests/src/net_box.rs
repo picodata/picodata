@@ -4,10 +4,11 @@ use std::rc::Rc;
 use std::time::Duration;
 
 use tarantool::error::Error;
-use tarantool::fiber::Fiber;
+use tarantool::fiber::{Cond, Fiber, reschedule, sleep, start_proc};
 use tarantool::index::IteratorType;
-use tarantool::net_box::{Conn, ConnOptions, ConnTriggers, Options};
+use tarantool::net_box::{Conn, ConnOptions, ConnTriggers, Options, promise::State};
 use tarantool::space::Space;
+use tarantool::tuple::Tuple;
 
 use crate::{
     common::{QueryOperation, S1Record, S2Record},
@@ -15,20 +16,35 @@ use crate::{
 };
 use std::cell::{Cell, RefCell};
 
+fn default_conn() -> Conn {
+    Conn::new(("localhost", unsafe { LISTEN }), ConnOptions::default(), None)
+        .unwrap()
+}
+
+fn test_user_conn() -> Conn {
+    Conn::new(
+        ("localhost", unsafe { LISTEN }),
+        ConnOptions {
+            user: "test_user".into(),
+            password: "password".into(),
+            ..ConnOptions::default()
+        },
+        None,
+    ).unwrap()
+}
+
 pub fn immediate_close() {
     let port = unsafe { LISTEN };
     let _ = Conn::new(("localhost", port), ConnOptions::default(), None).unwrap();
 }
 
 pub fn ping() {
-    let port = unsafe { LISTEN };
-    let conn = Conn::new(("localhost", port), ConnOptions::default(), None).unwrap();
+    let conn = default_conn();
     conn.ping(&Options::default()).unwrap();
 }
 
 pub fn ping_timeout() {
-    let port = unsafe { LISTEN };
-    let conn = Conn::new(("localhost", port), ConnOptions::default(), None).unwrap();
+    let conn = default_conn();
 
     conn.ping(&Options {
         timeout: Some(Duration::from_secs(1)),
@@ -44,8 +60,7 @@ pub fn ping_timeout() {
 }
 
 pub fn ping_concurrent() {
-    let port = unsafe { LISTEN };
-    let conn = Rc::new(Conn::new(("localhost", port), ConnOptions::default(), None).unwrap());
+    let conn = Rc::new(default_conn());
 
     let mut fiber_a = Fiber::new("test_fiber_a", &mut |conn: Box<Rc<Conn>>| {
         conn.ping(&Options::default()).unwrap();
@@ -67,27 +82,56 @@ pub fn ping_concurrent() {
 }
 
 pub fn call() {
-    let port = unsafe { LISTEN };
-    let conn_options = ConnOptions {
-        user: "test_user".to_string(),
-        password: "password".to_string(),
-        ..ConnOptions::default()
-    };
-    let conn = Conn::new(("localhost", port), conn_options, None).unwrap();
+    let conn = test_user_conn();
     let result = conn
         .call("test_stored_proc", &(1, 2), &Options::default())
         .unwrap();
     assert_eq!(result.unwrap().into_struct::<(i32,)>().unwrap(), (3,));
 }
 
+pub fn call_async() {
+    let conn = test_user_conn();
+    let p1 = conn.call_async::<_, Tuple>("test_stored_proc", (69, 420)).unwrap();
+    let p2 = conn.call_async::<_, (i32,)>("test_stored_proc", (13, 37)).unwrap();
+    assert_eq!(p1.state(), State::Pending);
+    assert_eq!(p2.state(), State::Pending);
+    assert_eq!(p2.wait().unwrap(), (50,));
+    assert_eq!(p1.state(), State::Kept);
+    let tuple: Tuple = p1.wait().unwrap();
+    assert_eq!(tuple.into_struct::<(i32,)>().unwrap(), (489,));
+}
+
+pub fn call_async_error() {
+    let conn = test_user_conn();
+    let p = conn.call_async::<_, ()>("Procedure is not defined", ()).unwrap();
+    assert_eq!(p.wait().unwrap_err().to_string(), "Server responded with error: Procedure 'Procedure is not defined' is not defined");
+
+    let mut p = conn.call_async::<_, ()>("Procedure is not defined", ()).unwrap();
+    let cond = Rc::new(Cond::new());
+    p.replace_cond(cond.clone());
+    cond.wait();
+    assert_eq!(p.state(), State::ReceivedError);
+}
+
+pub fn call_async_disconnected() {
+    let conn = test_user_conn();
+    let p = conn.call_async::<_, (i32,)>("test_stored_proc", (1, 1)).unwrap();
+    assert_eq!(p.state(), State::Pending);
+    let p = p.try_get().pending().unwrap();
+    drop(conn);
+    assert_eq!(p.state(), State::Disconnected);
+    assert_eq!(p.wait().unwrap_err().to_string(), "IO error: not connected");
+
+    let conn = test_user_conn();
+    let p = conn.call_async::<_, (i32,)>("test_stored_proc", (1, 1)).unwrap();
+    sleep(Duration::from_millis(100));
+    drop(conn);
+    assert_eq!(p.state(), State::Kept);
+    assert_eq!(p.try_get().ok(), Some((2,)));
+}
+
 pub fn call_timeout() {
-    let port = unsafe { LISTEN };
-    let conn_options = ConnOptions {
-        user: "test_user".to_string(),
-        password: "password".to_string(),
-        ..ConnOptions::default()
-    };
-    let conn = Conn::new(("localhost", port), conn_options, None).unwrap();
+    let conn = test_user_conn();
     let result = conn.call(
         "test_timeout",
         Vec::<()>::new().as_slice(),
@@ -99,18 +143,67 @@ pub fn call_timeout() {
     assert!(matches!(result, Err(Error::IO(ref e)) if e.kind() == io::ErrorKind::TimedOut));
 }
 
+pub fn call_async_timeout() {
+    let conn = test_user_conn();
+    let p = conn.call_async::<_, ()>("test_timeout", ()).unwrap();
+    assert_eq!(p.state(), State::Pending);
+    let _ = p.wait_timeout(Duration::from_millis(100)).pending().unwrap();
+}
+
+pub fn call_async_wait_disconnected() {
+    let conn = test_user_conn();
+    let p = conn.call_async::<_, ()>("test_timeout", ()).unwrap();
+    let jh = start_proc(|| { reschedule(); drop(conn); });
+    assert_eq!(p.wait().unwrap_err().to_string(), "IO error: not connected");
+    jh.join();
+}
+
 pub fn eval() {
-    let port = unsafe { LISTEN };
-    let conn_options = ConnOptions {
-        user: "test_user".to_string(),
-        password: "password".to_string(),
-        ..ConnOptions::default()
-    };
-    let conn = Conn::new(("localhost", port), conn_options, None).unwrap();
+    let conn = test_user_conn();
     let result = conn
         .eval("return ...", &(1, 2), &Options::default())
         .unwrap();
     assert_eq!(result.unwrap().into_struct::<(i32, i32)>().unwrap(), (1, 2));
+}
+
+pub fn eval_async() {
+    let conn = test_user_conn();
+    let expr = "return require 'math'.modf(...)";
+    let p1 = conn.eval_async(expr, (13.37,)).unwrap();
+    let p2 = conn.eval_async(expr, (420.69,)).unwrap();
+    assert_eq!(p2.wait().ok(), Some((420, 0.69f32)));
+    assert_eq!(p1.wait().ok(), Some((13, 0.37f32)));
+}
+
+pub fn async_common_cond() {
+    tarantool::lua_state().exec("
+        box.schema.func.create('async_common_cond_proc', {body = [[
+            function(timeout, value)
+                require'fiber'.sleep(timeout)
+                return value
+            end
+        ]]})
+    ").unwrap();
+    let conn = test_user_conn();
+    let mut p1 = conn.call_async("async_common_cond_proc", (0.300, "one")).unwrap();
+    let mut p2 = conn.call_async("async_common_cond_proc", (0.100, "two")).unwrap();
+    let mut p3 = conn.call_async("async_common_cond_proc", (0.200, "three")).unwrap();
+    let cond = Rc::new(Cond::new());
+    p1.replace_cond(cond.clone());
+    p2.replace_cond(cond.clone());
+    p3.replace_cond(cond.clone());
+    assert_eq!(p1.state(), State::Pending);
+    assert_eq!(p2.state(), State::Pending);
+    assert_eq!(p3.state(), State::Pending);
+    cond.wait();
+    assert_eq!(p1.state(), State::Pending);
+    assert_eq!(p2.try_get().ok(), Some(("two".to_string(),)));
+    assert_eq!(p3.state(), State::Pending);
+    cond.wait();
+    assert_eq!(p1.state(), State::Pending);
+    assert_eq!(p3.try_get().ok(), Some(("three".to_string(),)));
+    cond.wait();
+    assert_eq!(p1.try_get().ok(), Some(("one".to_string(),)));
 }
 
 pub fn connection_error() {
@@ -143,17 +236,7 @@ pub fn is_connected() {
 }
 
 pub fn schema_sync() {
-    let port = unsafe { LISTEN };
-    let conn = Conn::new(
-        ("localhost", port),
-        ConnOptions {
-            user: "test_user".to_string(),
-            password: "password".to_string(),
-            ..ConnOptions::default()
-        },
-        None,
-    )
-    .unwrap();
+    let conn = test_user_conn();
 
     assert!(conn.space("test_s2").unwrap().is_some());
     assert!(conn.space("test_s_tmp").unwrap().is_none());
@@ -171,17 +254,7 @@ pub fn schema_sync() {
 }
 
 pub fn get() {
-    let port = unsafe { LISTEN };
-    let conn = Conn::new(
-        ("localhost", port),
-        ConnOptions {
-            user: "test_user".to_string(),
-            password: "password".to_string(),
-            ..ConnOptions::default()
-        },
-        None,
-    )
-    .unwrap();
+    let conn = test_user_conn();
     let space = conn.space("test_s2").unwrap().unwrap();
 
     let idx = space.index("idx_1").unwrap().unwrap();
@@ -202,17 +275,7 @@ pub fn get() {
 }
 
 pub fn select() {
-    let port = unsafe { LISTEN };
-    let conn = Conn::new(
-        ("localhost", port),
-        ConnOptions {
-            user: "test_user".to_string(),
-            password: "password".to_string(),
-            ..ConnOptions::default()
-        },
-        None,
-    )
-    .unwrap();
+    let conn = test_user_conn();
     let space = conn.space("test_s2").unwrap().unwrap();
 
     let result: Vec<S1Record> = space
@@ -237,20 +300,10 @@ pub fn select() {
 }
 
 pub fn insert() {
-    let port = unsafe { LISTEN };
     let mut local_space = Space::find("test_s1").unwrap();
     local_space.truncate().unwrap();
 
-    let conn = Conn::new(
-        ("localhost", port),
-        ConnOptions {
-            user: "test_user".to_string(),
-            password: "password".to_string(),
-            ..ConnOptions::default()
-        },
-        None,
-    )
-    .unwrap();
+    let conn = test_user_conn();
     let mut remote_space = conn.space("test_s1").unwrap().unwrap();
 
     let input = S1Record {
@@ -270,7 +323,6 @@ pub fn insert() {
 }
 
 pub fn replace() {
-    let port = unsafe { LISTEN };
     let mut local_space = Space::find("test_s1").unwrap();
     local_space.truncate().unwrap();
 
@@ -280,16 +332,7 @@ pub fn replace() {
     };
     local_space.insert(&original_input).unwrap();
 
-    let conn = Conn::new(
-        ("localhost", port),
-        ConnOptions {
-            user: "test_user".to_string(),
-            password: "password".to_string(),
-            ..ConnOptions::default()
-        },
-        None,
-    )
-    .unwrap();
+    let conn = test_user_conn();
     let mut remote_space = conn.space("test_s1").unwrap().unwrap();
 
     let new_input = S1Record {
@@ -314,7 +357,6 @@ pub fn replace() {
 }
 
 pub fn update() {
-    let port = unsafe { LISTEN };
     let mut local_space = Space::find("test_s1").unwrap();
     local_space.truncate().unwrap();
 
@@ -324,16 +366,7 @@ pub fn update() {
     };
     local_space.insert(&input).unwrap();
 
-    let conn = Conn::new(
-        ("localhost", port),
-        ConnOptions {
-            user: "test_user".to_string(),
-            password: "password".to_string(),
-            ..ConnOptions::default()
-        },
-        None,
-    )
-    .unwrap();
+    let conn = test_user_conn();
     let mut remote_space = conn.space("test_s1").unwrap().unwrap();
 
     let update_result = remote_space
@@ -365,7 +398,6 @@ pub fn update() {
 }
 
 pub fn upsert() {
-    let port = unsafe { LISTEN };
     let mut local_space = Space::find("test_s1").unwrap();
     local_space.truncate().unwrap();
 
@@ -375,16 +407,7 @@ pub fn upsert() {
     };
     local_space.insert(&original_input).unwrap();
 
-    let conn = Conn::new(
-        ("localhost", port),
-        ConnOptions {
-            user: "test_user".to_string(),
-            password: "password".to_string(),
-            ..ConnOptions::default()
-        },
-        None,
-    )
-    .unwrap();
+    let conn = test_user_conn();
     let mut remote_space = conn.space("test_s1").unwrap().unwrap();
 
     remote_space
@@ -431,7 +454,6 @@ pub fn upsert() {
 }
 
 pub fn delete() {
-    let port = unsafe { LISTEN };
     let mut local_space = Space::find("test_s1").unwrap();
     local_space.truncate().unwrap();
 
@@ -441,16 +463,7 @@ pub fn delete() {
     };
     local_space.insert(&input).unwrap();
 
-    let conn = Conn::new(
-        ("localhost", port),
-        ConnOptions {
-            user: "test_user".to_string(),
-            password: "password".to_string(),
-            ..ConnOptions::default()
-        },
-        None,
-    )
-    .unwrap();
+    let conn = test_user_conn();
     let mut remote_space = conn.space("test_s1").unwrap().unwrap();
 
     let delete_result = remote_space
@@ -467,8 +480,7 @@ pub fn delete() {
 }
 
 pub fn cancel_recv() {
-    let port = unsafe { LISTEN };
-    let conn = Rc::new(Conn::new(("localhost", port), ConnOptions::default(), None).unwrap());
+    let conn = Rc::new(default_conn());
 
     let mut fiber = Fiber::new("test_fiber_a", &mut |conn: Box<Rc<Conn>>| {
         for _ in 0..10 {

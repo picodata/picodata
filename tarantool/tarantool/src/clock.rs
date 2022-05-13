@@ -17,6 +17,11 @@
 //! See also:
 //! - [Lua reference: Module clock](https://www.tarantool.io/en/doc/latest/reference/reference_lua/clock/)
 //! - [C API reference: Module clock](https://www.tarantool.io/en/doc/latest/dev_guide/reference_capi/clock/)
+
+use std::time::Duration;
+
+pub const INFINITY: Duration = Duration::from_secs(100 * 365 * 24 * 60 * 60);
+
 use crate::ffi::tarantool as ffi;
 
 /// The wall clock time in seconds.

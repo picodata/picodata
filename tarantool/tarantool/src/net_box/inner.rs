@@ -9,9 +9,12 @@ use crate::coio::CoIOStream;
 use crate::error::Error;
 use crate::fiber::{is_cancelled, set_cancellable, sleep, time, Cond, Fiber};
 use crate::net_box::stream::ConnStream;
+use crate::tuple::Decode;
+use crate::unwrap_or;
 
 use super::options::{ConnOptions, ConnTriggers, Options};
-use super::protocol::{self, Header};
+use super::promise::Promise;
+use super::protocol::{self, Header, Request};
 use super::recv_queue::RecvQueue;
 use super::schema::ConnSchema;
 use super::send_queue::{self, SendQueue};
@@ -38,9 +41,9 @@ pub struct ConnInner {
     stream: RefCell<Option<ConnStream>>,
     send_queue: SendQueue,
     recv_queue: RecvQueue,
-    send_fiber: RefCell<Fiber<'static, Rc<ConnInner>>>,
-    recv_fiber: RefCell<Fiber<'static, Rc<ConnInner>>>,
-    triggers: RefCell<Option<ConnTriggersWrapper>>,
+    send_fiber: RefCell<Fiber<'static, Weak<ConnInner>>>,
+    recv_fiber: RefCell<Fiber<'static, Weak<ConnInner>>>,
+    triggers: RefCell<Option<Rc<dyn ConnTriggers>>>,
     error: RefCell<Option<io::Error>>,
 }
 
@@ -73,23 +76,15 @@ impl ConnInner {
             recv_queue: RecvQueue::new(options.recv_buffer_size),
             send_fiber: RefCell::new(send_fiber),
             recv_fiber: RefCell::new(recv_fiber),
-            triggers: RefCell::new(None),
+            triggers: RefCell::new(triggers),
             error: RefCell::new(None),
             addrs,
             options,
         });
 
-        // setup triggers
-        if let Some(triggers) = triggers {
-            conn_inner.triggers.replace(Some(ConnTriggersWrapper {
-                callbacks: triggers,
-                self_ref: Rc::downgrade(&conn_inner),
-            }));
-        }
-
         // start send/recv fibers
-        conn_inner.send_fiber.borrow_mut().start(conn_inner.clone());
-        conn_inner.recv_fiber.borrow_mut().start(conn_inner.clone());
+        conn_inner.send_fiber.borrow_mut().start(Rc::downgrade(&conn_inner));
+        conn_inner.recv_fiber.borrow_mut().start(Rc::downgrade(&conn_inner));
 
         conn_inner
     }
@@ -98,7 +93,7 @@ impl ConnInner {
         matches!(self.state.get(), ConnState::Active)
     }
 
-    pub fn wait_connected(&self, timeout: Option<Duration>) -> Result<bool, Error> {
+    pub fn wait_connected(self: &Rc<Self>, timeout: Option<Duration>) -> Result<bool, Error> {
         let begin_ts = time();
         loop {
             let state = self.state.get();
@@ -125,7 +120,7 @@ impl ConnInner {
     }
 
     pub fn request<Fp, Fc, R>(
-        &self,
+        self: &Rc<Self>,
         request_producer: Fp,
         response_consumer: Fc,
         options: &Options,
@@ -165,17 +160,46 @@ impl ConnInner {
         }
     }
 
-    pub fn lookup_space(&self, name: &str) -> Result<Option<u32>, Error> {
+    pub(crate) fn request_async<I, O>(self: &Rc<Self>, request: I) -> crate::Result<Promise<O>>
+    where
+        I: Request,
+        O: Decode + 'static,
+    {
+        loop {
+            match self.state.get() {
+                ConnState::Init => {
+                    self.init()?;
+                }
+                ConnState::Active => {
+                    let sync = self.send_queue.send(protocol::request_producer(request))
+                        .map_err(|err| self.handle_error(err).err().unwrap())?;
+                    let promise = Promise::new(Rc::downgrade(self));
+                    self.recv_queue.add_consumer(sync, promise.downgrade());
+                    return Ok(promise)
+                }
+                ConnState::Error => self.disconnect(),
+                ConnState::ErrorReconnect => self.reconnect_or_fail()?,
+                ConnState::Closed => {
+                    return Err(io::Error::from(io::ErrorKind::NotConnected).into())
+                }
+                _ => {
+                    self.wait_state_changed(None);
+                }
+            }
+        }
+    }
+
+    pub fn lookup_space(self: &Rc<Self>, name: &str) -> Result<Option<u32>, Error> {
         self.refresh_schema()?;
         Ok(self.schema.lookup_space(name))
     }
 
-    pub fn lookup_index(&self, name: &str, space_id: u32) -> Result<Option<u32>, Error> {
+    pub fn lookup_index(self: &Rc<Self>, name: &str, space_id: u32) -> Result<Option<u32>, Error> {
         self.refresh_schema()?;
         Ok(self.schema.lookup_index(name, space_id))
     }
 
-    pub fn close(&self) {
+    pub fn close(self: &Rc<Self>) {
         let state = self.state.get();
         if matches!(state, ConnState::Connecting) || matches!(state, ConnState::Auth) {
             let _ = self.wait_connected(None);
@@ -194,7 +218,7 @@ impl ConnInner {
         }
     }
 
-    fn init(&self) -> Result<(), Error> {
+    fn init(self: &Rc<Self>) -> Result<(), Error> {
         match self.connect() {
             Ok(_) => (),
             Err(err) => {
@@ -205,7 +229,7 @@ impl ConnInner {
         Ok(())
     }
 
-    fn connect(&self) -> Result<(), Error> {
+    fn connect(self: &Rc<Self>) -> Result<(), Error> {
         self.update_state(ConnState::Connecting);
 
         // connect
@@ -231,10 +255,7 @@ impl ConnInner {
 
         // call trigger (if available)
         if let Some(triggers) = self.triggers.borrow().as_ref() {
-            triggers.callbacks.on_connect(&Conn {
-                inner: triggers.self_ref.upgrade().unwrap(),
-                is_master: false,
-            })?;
+            triggers.on_connect(&Conn::downgrade(self.clone()))?;
         }
 
         Ok(())
@@ -275,17 +296,14 @@ impl ConnInner {
         Ok(())
     }
 
-    fn refresh_schema(&self) -> Result<(), Error> {
+    fn refresh_schema(self: &Rc<Self>) -> Result<(), Error> {
         self.wait_connected(Some(self.options.connect_timeout))?;
 
         // synchronize
         if self.schema.refresh(self, self.schema_version.get())? {
             // call trigger
             if let Some(triggers) = self.triggers.borrow().as_ref() {
-                triggers.callbacks.on_schema_reload(&Conn {
-                    inner: triggers.self_ref.upgrade().unwrap(),
-                    is_master: false,
-                });
+                triggers.on_schema_reload(&Conn::downgrade(self.clone()));
             }
         }
         Ok(())
@@ -321,7 +339,7 @@ impl ConnInner {
         }
     }
 
-    fn reconnect_or_fail(&self) -> Result<(), Error> {
+    fn reconnect_or_fail(self: &Rc<Self>) -> Result<(), Error> {
         if matches!(self.state.get(), ConnState::Closed) {
             return Ok(());
         }
@@ -360,25 +378,22 @@ impl ConnInner {
         self.stream.replace(None);
 
         if let Some(triggers) = self.triggers.replace(None) {
-            triggers.callbacks.on_disconnect();
+            triggers.on_disconnect();
         }
     }
 }
 
-struct ConnTriggersWrapper {
-    callbacks: Rc<dyn ConnTriggers>,
-    self_ref: Weak<ConnInner>,
-}
-
 #[allow(clippy::redundant_allocation, clippy::boxed_local)]
-fn send_worker(conn: Box<Rc<ConnInner>>) -> i32 {
+fn send_worker(conn: Box<Weak<ConnInner>>) -> i32 {
     set_cancellable(true);
-    let conn = *conn;
+    let weak_conn = *conn;
 
     loop {
         if is_cancelled() {
             return 0;
         }
+
+        let conn = unwrap_or!(weak_conn.upgrade(), return 0);
 
         match conn.state.get() {
             ConnState::Active => {
@@ -399,14 +414,16 @@ fn send_worker(conn: Box<Rc<ConnInner>>) -> i32 {
 }
 
 #[allow(clippy::redundant_allocation, clippy::boxed_local)]
-fn recv_worker(conn: Box<Rc<ConnInner>>) -> i32 {
+fn recv_worker(conn: Box<Weak<ConnInner>>) -> i32 {
     set_cancellable(true);
-    let conn = *conn;
+    let weak_conn = *conn;
 
     loop {
         if is_cancelled() {
             return 0;
         }
+
+        let conn = unwrap_or!(weak_conn.upgrade(), return 0);
 
         match conn.state.get() {
             ConnState::Active => {
