@@ -279,6 +279,7 @@ mod tests {
             assert_eq!(parsed.peers.as_ref(), vec!["peer-from-env:3301"]);
             assert_eq!(parsed.listen, "localhost:3301"); // default
             assert_eq!(parsed.advertise_address(), "localhost:3301"); // default
+            assert_eq!(parsed.log_level(), SayLevel::Info); // default
 
             let parsed = parse![Run, "--instance-id", "instance-id-from-args"];
             assert_eq!(parsed.instance_id, "instance-id-from-args");
@@ -312,22 +313,14 @@ mod tests {
             assert_eq!(parsed.listen, "listen-from-env:3301");
             assert_eq!(parsed.advertise_address(), "advertise-from-args:3301");
         }
-    }
-
-    #[test]
-    fn test_log_level() {
-        let _env_dump = EnvDump::new();
-        std::env::set_var("PICODATA_INSTANCE_ID", "test-log-level");
-        std::env::set_var("PICODATA_PEER", "test-log-level");
-
-        let parsed = parse![Run,];
-        assert_eq!(parsed.log_level(), SayLevel::Info);
 
         std::env::set_var("PICODATA_LOG_LEVEL", "verbose");
-        let parsed = parse![Run,];
-        assert_eq!(parsed.log_level(), SayLevel::Verbose);
+        {
+            let parsed = parse![Run,];
+            assert_eq!(parsed.log_level(), SayLevel::Verbose);
 
-        let parsed = parse![Run, "--log-level", "warn"];
-        assert_eq!(parsed.log_level(), SayLevel::Warn);
+            let parsed = parse![Run, "--log-level", "warn"];
+            assert_eq!(parsed.log_level(), SayLevel::Warn);
+        }
     }
 }
