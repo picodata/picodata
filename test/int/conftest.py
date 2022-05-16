@@ -328,7 +328,7 @@ class Cluster:
         eprint(f" {self} deployed ".center(80, "="))
         return self.instances
 
-    def add_instance(self, i=None, wait_ready=True) -> Instance:
+    def add_instance(self, i=None, wait_ready=True, peers=None) -> Instance:
         i = i or 1 + len(self.instances)
 
         instance = Instance(
@@ -337,7 +337,7 @@ class Cluster:
             data_dir=f"{self.data_dir}/i{i}",
             host=f"127.7.{self.subnet}.1",
             port=3300 + i,
-            peers=[f"127.7.{self.subnet}.1:3301"],
+            peers=peers or [f"127.7.{self.subnet}.1:3301"],
         )
 
         self.instances.append(instance)

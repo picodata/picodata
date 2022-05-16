@@ -85,6 +85,24 @@ def test_discovery(cluster: Cluster):
     # change leader
     i2.promote_or_fail()
 
+    def req_discover(peer: Instance):
+        request = dict(tmp_id="unused", peers=["test:3301"])
+        request_to = peer.listen
+        return peer.call(".proc_discover", request, request_to)
+
+    # Run discovery against `--peer i1`.
+    # It used to be a bootstrap leader, but now it's just a follower.
+    assert req_discover(i1) == [{"Done": {"NonLeader": {"leader": i2.listen}}}]
+
     # add instance
-    i4 = cluster.add_instance()
+    i4 = cluster.add_instance(peers=[i1.listen])
     i4.assert_raft_status("Follower", leader_id=i2.raft_id)
+
+    # Run discovery against `--peer i3`.
+    # It has performed a rebootstrap after discovery,
+    # and now has the discovery module uninitialized.
+    assert req_discover(i3) == [{"Done": {"NonLeader": {"leader": i2.listen}}}]
+
+    # add instance
+    i5 = cluster.add_instance(peers=[i3.listen])
+    i5.assert_raft_status("Follower", leader_id=i2.raft_id)

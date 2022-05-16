@@ -190,7 +190,7 @@ where
     Res: serde::de::DeserializeOwned,
 {
     loop {
-        let timeout = Duration::from_millis(200);
+        let timeout = Duration::from_millis(500);
         let now = Instant::now();
         match net_box_call(&address, fn_name, args, timeout) {
             Ok(v) => break v,
