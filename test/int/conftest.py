@@ -21,13 +21,11 @@ from tarantool.error import (  # type: ignore
 # A constant represents invalid id of raft.
 # pub const INVALID_ID: u64 = 0;
 INVALID_ID = 0
+RE_XDIST_WORKER_ID = re.compile(r"^gw(\d+)$")
 
 
 def eprint(*args, **kwargs):
     print(*args, file=sys.stderr, **kwargs)
-
-
-re_xdist_worker_id = re.compile(r"^gw(\d+)$")
 
 
 def xdist_worker_number(worker_id: str) -> int:
@@ -40,7 +38,7 @@ def xdist_worker_number(worker_id: str) -> int:
     if worker_id == "master":
         return 0
 
-    match = re_xdist_worker_id.match(worker_id)
+    match = RE_XDIST_WORKER_ID.match(worker_id)
     if not match:
         raise ValueError(worker_id)
 
@@ -84,7 +82,7 @@ def normalize_net_box_result(func):
         try:
             result = func(*args, **kwargs)
         except DatabaseError as exc:
-            if hasattr(exc, "errno"):
+            if getattr(exc, "errno", None):
                 # Error handling in Tarantool connector is awful.
                 # It wraps NetworkError in DatabaseError.
                 # We, instead, convert it to a native OSError.
@@ -107,38 +105,20 @@ def normalize_net_box_result(func):
                 return x
             case [None, str(err)]:
                 raise ReturnError(err)
-            case ret:
-                raise MalformedAPI(*ret)
+            case [*args]:
+                raise MalformedAPI(*args)
+            case _:
+                raise RuntimeError("unreachable")
 
     return inner
 
 
-@dataclass(eq=False, frozen=True)
+@dataclass(frozen=True)
 class RaftStatus:
     id: int
     raft_state: str
     leader_id: int
     is_ready: bool
-
-    def __eq__(self, other):
-        match other:
-            # assert status == "Follower"
-            # assert status == "Candidate"
-            # assert status == "Leader"
-            # assert status == "PreCandidate"
-            case str(raft_state):
-                return self.raft_state == raft_state
-            # assert status == ("Follower", 1)
-            case (str(raft_state), int(leader_id)):
-                return self.raft_state == raft_state and self.leader_id == leader_id
-            case RaftStatus(_) as other:
-                return (
-                    self.id == other.id
-                    and self.raft_state == other.raft_state
-                    and self.leader_id == other.leader_id
-                )
-
-        return False
 
 
 @dataclass
@@ -245,24 +225,24 @@ class Instance:
         # Assert a new process group is created
         assert os.getpgid(self.process.pid) == self.process.pid
 
-    def restart(self, kill: bool = False, drop_db: bool = False):
+    def restart(self, kill: bool = False, remove_data: bool = False):
         if kill:
             self.kill()
         else:
             self.terminate()
 
-        if drop_db:
-            self.drop_db()
+        if remove_data:
+            self.remove_data()
 
         self.start()
 
-    def drop_db(self):
+    def remove_data(self):
         rmtree(self.data_dir)
 
     def __hash__(self):
         return hash(self.id) ^ hash(self.cluster_id) ^ hash(self.listen)
 
-    def __raft_status(self) -> RaftStatus:
+    def _raft_status(self) -> RaftStatus:
         status = self.call("picolib.raft_status")
         assert isinstance(status, dict)
         return RaftStatus(**status)
@@ -274,16 +254,23 @@ class Instance:
             lua_code,
         )
 
-    def assert_raft_status(self, raft_state, leader_id=None):
-        status = self.__raft_status()
+    def assert_raft_status(self, state, leader_id=None):
+        status = self._raft_status()
+
         if leader_id is None:
-            assert status == raft_state
-        else:
-            assert status == (raft_state, leader_id)
+            leader_id = status.leader_id
+
+        want = {"raft_state": state, "leader_id": leader_id}
+        have = {
+            "raft_state": status.raft_state,
+            "leader_id": status.leader_id,
+        }
+
+        assert want == have
 
     @funcy.retry(tries=20, timeout=0.1)
     def wait_ready(self):
-        status = self.__raft_status()
+        status = self._raft_status()
         assert status.is_ready
         self.raft_id = status.id
         eprint(f"{self} is ready")
@@ -298,7 +285,7 @@ class Instance:
         # 2. Wait until the miracle occurs.
         @funcy.retry(tries=4, timeout=0.1, errors=AssertionError)
         def wait_promoted():
-            assert self.__raft_status() == "Leader"
+            self.assert_raft_status("Leader")
 
         wait_promoted()
         eprint(f"{self} is a leader now")
@@ -323,8 +310,8 @@ class Cluster:
     def deploy(self, *, instance_count: int) -> list[Instance]:
         assert not self.instances, "Already deployed"
 
-        for i in range(1, instance_count + 1):
-            self.add_instance(i, wait_ready=False)
+        for i in range(instance_count):
+            self.add_instance(wait_ready=False)
 
         for instance in self.instances:
             instance.start()
@@ -335,8 +322,8 @@ class Cluster:
         eprint(f" {self} deployed ".center(80, "="))
         return self.instances
 
-    def add_instance(self, i=None, wait_ready=True, peers=None) -> Instance:
-        i = i or 1 + len(self.instances)
+    def add_instance(self, wait_ready=True, peers=None) -> Instance:
+        i = 1 + len(self.instances)
 
         instance = Instance(
             binary_path=self.binary_path,
@@ -356,7 +343,7 @@ class Cluster:
 
         return instance
 
-    def kill_all(self):
+    def kill(self):
         for instance in self.instances:
             instance.kill()
 
@@ -370,7 +357,7 @@ class Cluster:
         if errors:
             raise Exception(errors)
 
-    def drop_db(self):
+    def remove_data(self):
         rmtree(self.data_dir)
 
 
@@ -404,7 +391,7 @@ def cluster(binary_path, tmpdir, worker_id) -> Generator[Cluster, None, None]:
     )
     yield cluster
     cluster.terminate()
-    cluster.drop_db()
+    cluster.remove_data()
 
 
 @pytest.fixture

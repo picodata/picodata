@@ -69,7 +69,7 @@ build:
     - cargo clippy --version
     - cargo clippy -- --deny clippy::all
     - PIPENV_VENV_IN_PROJECT=1 PIP_NO_CACHE_DIR=true python3.10 -m pipenv install --deploy
-    - pipenv run pytest --numprocesses 2
+    - pipenv run pytest --numprocesses 2 -v
     - pipenv run lint
   cache:
     paths:

@@ -7,7 +7,6 @@ import signal
 from conftest import (
     xdist_worker_number,
     Instance,
-    RaftStatus,
     TarantoolError,
     ReturnError,
     MalformedAPI,
@@ -29,30 +28,6 @@ def test_xdist_worker_number():
 
     with pytest.raises(ValueError, match=r"wtf"):
         assert xdist_worker_number("wtf")
-
-
-def test_raft_status():
-    s = RaftStatus(
-        id=1,
-        raft_state="SomeState",
-        leader_id=1,
-        is_ready=False,
-    )
-
-    assert (s == "SomeState") is True
-    assert (s == ("SomeState")) is True
-    assert (s == ("SomeState",)) is False
-    assert (s == "OtherState") is False
-
-    assert (s == ("SomeState", 1)) is True
-    assert (s == ("SomeState", -1)) is False
-    assert (s == ("OtherState", 1)) is False
-
-    assert (s == s) is True
-    assert (s == RaftStatus(s.id, s.raft_state, s.leader_id, True)) is True
-    assert (s == RaftStatus(-1, s.raft_state, s.leader_id, True)) is False
-    assert (s == RaftStatus(s.id, "OtherState", s.leader_id, True)) is False
-    assert (s == RaftStatus(s.id, s.raft_state, -1, True)) is False
 
 
 def test_call_normalization(instance: Instance):

@@ -19,17 +19,22 @@ def cluster2(cluster: Cluster):
     return cluster
 
 
-def fake_join(peer: Instance, id: str, timeout: float):
-    args = (
-        f"{id}",  # instance_id
-        None,  # replicaset_id
-        # Workaround slow address resolving. Intentionally use
-        # invalid address format to eliminate blocking DNS requests.
-        # See https://git.picodata.io/picodata/picodata/tarantool-module/-/issues/81
-        f"nowhere/{id}",  # address
-        False,  # voter
+def raft_join(peer: Instance, id: str, timeout: float):
+    instance_id = f"{id}"
+    replicaset_id = None
+    # Workaround slow address resolving. Intentionally use
+    # invalid address format to eliminate blocking DNS requests.
+    # See https://git.picodata.io/picodata/picodata/tarantool-module/-/issues/81
+    address = f"nowhere/{id}"
+    is_voter = False
+    return peer.call(
+        ".raft_join",
+        instance_id,
+        replicaset_id,
+        address,
+        is_voter,
+        timeout=timeout,
     )
-    return peer.call(".raft_join", *args, timeout=timeout)
 
 
 def test_concurrency(cluster2: Cluster):
@@ -43,14 +48,14 @@ def test_concurrency(cluster2: Cluster):
 
     # First request blocks the `join_loop` until i2 is resumed.
     with pytest.raises(OSError) as e0:
-        fake_join(i1, "fake-0", timeout=0.1)
+        raft_join(i1, "fake-0", timeout=0.1)
     assert e0.value.errno == errno.ECONNRESET
 
     # Subsequent requests get batched
-    executor = ThreadPoolExecutor(max_workers=3)
-    f1 = executor.submit(fake_join, i1, "fake-1", timeout=5)
-    f2 = executor.submit(fake_join, i1, "fake-2", timeout=5)
-    f3 = executor.submit(fake_join, i1, "fake-3", timeout=0.1)
+    executor = ThreadPoolExecutor()
+    f1 = executor.submit(raft_join, i1, "fake-1", timeout=5)
+    f2 = executor.submit(raft_join, i1, "fake-2", timeout=5)
+    f3 = executor.submit(raft_join, i1, "fake-3", timeout=0.1)
 
     # Make sure all requests reach the server before resuming i2.
     with pytest.raises(OSError) as e1:
@@ -61,12 +66,12 @@ def test_concurrency(cluster2: Cluster):
     os.killpg(i2.process.pid, signal.SIGCONT)
     eprint(f"{i2} signalled with SIGCONT")
 
-    ret1 = f1.result()[0]["peer"]
-    ret2 = f2.result()[0]["peer"]
-    assert ret1["instance_id"] == "fake-1"
-    assert ret2["instance_id"] == "fake-2"
+    peer1 = f1.result()[0]["peer"]
+    peer2 = f2.result()[0]["peer"]
+    assert peer1["instance_id"] == "fake-1"
+    assert peer2["instance_id"] == "fake-2"
     # Make sure the batching works as expected
-    assert ret1["commit_index"] == ret2["commit_index"]
+    assert peer1["commit_index"] == peer2["commit_index"]
 
 
 def test_request_follower(cluster2: Cluster):
@@ -74,7 +79,7 @@ def test_request_follower(cluster2: Cluster):
     i2.assert_raft_status("Follower")
 
     with pytest.raises(TarantoolError) as e:
-        fake_join(i2, "fake-0", timeout=1)
+        raft_join(i2, "fake-0", timeout=1)
     assert e.value.args == ("ER_PROC_C", "not a leader")
 
 
@@ -105,8 +110,8 @@ def test_uuids(cluster2: Cluster):
     assert peer_2["replicaset_uuid"] == i2.eval("return box.info.cluster.uuid")
 
     # Two consequent requests must obtain same raft_id and instance_id
-    fake_peer_1 = fake_join(i1, "fake", timeout=1)[0]["peer"]
-    fake_peer_2 = fake_join(i1, "fake", timeout=1)[0]["peer"]
+    fake_peer_1 = raft_join(i1, "fake", timeout=1)[0]["peer"]
+    fake_peer_2 = raft_join(i1, "fake", timeout=1)[0]["peer"]
     assert fake_peer_1["instance_id"] == "fake"
     assert fake_peer_2["instance_id"] == "fake"
     assert fake_peer_1["raft_id"] == fake_peer_2["raft_id"]
