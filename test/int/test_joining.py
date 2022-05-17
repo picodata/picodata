@@ -23,7 +23,10 @@ def fake_join(peer: Instance, id: str, timeout: float):
     args = (
         f"{id}",  # instance_id
         None,  # replicaset_id
-        f"{id}:3301",  # address
+        # Workaround slow address resolving. Intentionally use
+        # invalid address format to eliminate blocking DNS requests.
+        # See https://git.picodata.io/picodata/picodata/tarantool-module/-/issues/81
+        f"nowhere/{id}",  # address
         False,  # voter
     )
     return peer.call(".raft_join", *args, timeout=timeout)
