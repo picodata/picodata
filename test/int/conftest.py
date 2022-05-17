@@ -234,7 +234,7 @@ class Instance:
 
         self.process = subprocess.Popen(
             self.command,
-            env=self.env or {},
+            env=self.env or None,
             stdin=subprocess.DEVNULL,
             start_new_session=True,
         )
