@@ -5,10 +5,10 @@ nav:
     - Главная: index.md
     - Описание продукта: description.md
     - Преимущества Picodata: benefits.md
-    - Архитектура Picodata: arch.md
     - Преимущества языка Rust: benefits_rust.md
     - Установка и первые шаги: install.md
-    - Услуги: services.md
+    - Управление версиями приложений: arch.md
+
 theme:
     name: material
     custom_dir: overrides
