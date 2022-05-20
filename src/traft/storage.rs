@@ -125,19 +125,6 @@ impl Storage {
         }
     }
 
-    pub fn max_peer_id() -> Result<u64, StorageError> {
-        let tuple = Storage::space(RAFT_GROUP)?
-            .primary_key()
-            .max(&())
-            .map_err(box_err!())?;
-        let peer: traft::Peer = match tuple {
-            None => return Ok(0),
-            Some(v) => v.into_struct().map_err(box_err!())?,
-        };
-
-        Ok(peer.raft_id)
-    }
-
     pub fn peer_by_raft_id(raft_id: u64) -> Result<Option<traft::Peer>, StorageError> {
         if raft_id == 0 {
             return Ok(None);

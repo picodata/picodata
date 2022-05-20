@@ -33,6 +33,7 @@ use crate::traft;
 use crate::traft::ConnectionPool;
 use crate::traft::LogicalClock;
 use crate::traft::Storage;
+use crate::traft::Topology;
 use crate::traft::{JoinRequest, JoinResponse};
 
 type RawNode = raft::RawNode<Storage>;
@@ -621,46 +622,29 @@ fn raft_join_loop(inbox: Mailbox<(JoinRequest, Notify)>, main_inbox: Mailbox<Nor
         let ids: Vec<_> = batch.iter().map(|(req, _)| &req.instance_id).collect();
         tlog!(Info, "processing batch: {ids:?}");
 
-        // 1. Gererate raft_id
         let term = Storage::term().unwrap().unwrap_or(0);
-        let mut peers = Vec::<traft::Peer>::new();
-        let mut max_id = Storage::max_peer_id().unwrap();
+        let mut topology = match Storage::peers() {
+            Ok(v) => Topology::from_peers(v),
+            Err(e) => {
+                for (_, notify) in batch {
+                    let e = RaftError::ConfChangeError(format!("{e}"));
+                    notify.try_send(Err(e)).ok();
+                }
+                continue;
+            }
+        };
+
         for (req, notify) in &batch {
-            // Check if the client is already joined.
-            // Be greedy when giving instances a new raft_id. We don't want
-            // rebotstrapped instances to affect quorum for no reason.
-            let maybe_peer = match Storage::peer_by_instance_id(&req.instance_id) {
-                Ok(v) => v,
-                Err(e) => {
-                    notify.try_send(Err(e.into())).expect("that's a bug");
-                    continue;
-                }
-            };
-
-            let raft_id = match maybe_peer {
-                Some(peer) => peer.raft_id,
-                None => {
-                    max_id += 1;
-                    max_id
-                }
-            };
-
-            // TODO check replicaset_id didn't change
-
-            peers.push(traft::Peer {
-                raft_id,
-                peer_address: req.advertise_address.clone(),
-                voter: req.voter,
-                instance_id: req.instance_id.clone(),
-                commit_index: 0,
-            });
+            if let Err(e) = topology.process(req) {
+                let e = RaftError::ConfChangeError(e);
+                notify.try_send(Err(e)).expect("that's a bug");
+            }
         }
 
-        // 2. Propose the ConfChange.
         let (rx, tx) = fiber::Channel::new(1).into_clones();
         main_inbox.send(NormalRequest::ProposeConfChange {
             term,
-            peers,
+            peers: topology.diff(),
             notify: tx,
         });
 
@@ -717,10 +701,14 @@ fn raft_interact(pbs: Vec<traft::MessagePb>) -> Result<(), Box<dyn StdError>> {
 fn raft_join(req: JoinRequest) -> Result<JoinResponse, Box<dyn StdError>> {
     let node = global()?;
 
-    node.join_one(req.clone())?;
+    let instance_id = req.instance_id.clone();
+    node.join_one(req)?;
 
     let resp = JoinResponse {
-        peer: Storage::peer_by_instance_id(&req.instance_id)?.unwrap(),
+        peer: {
+            // TODO: get rid of unwrap
+            Storage::peer_by_instance_id(&instance_id)?.unwrap()
+        },
         raft_group: Storage::peers()?,
         box_replication: vec![],
     };

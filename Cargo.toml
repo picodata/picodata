@@ -24,6 +24,8 @@ nix = "0.23.1"
 itertools = "0.10.3"
 base64 = "0.13"
 protobuf = "2.27"
+lazy_static = "1.4"
+uuid = {version = "1.0", features = ["v3"]}
 
 [dependencies.slog]
 version = "2.7.0"

@@ -14,8 +14,7 @@ use crate::mailbox::Mailbox;
 use crate::tlog;
 use crate::traft;
 use crate::traft::error::PoolSendError;
-
-type RaftId = u64;
+use crate::traft::RaftId;
 
 #[derive(Clone, Debug)]
 struct WorkerOptions {

@@ -4,6 +4,7 @@ mod error;
 mod network;
 pub mod node;
 mod storage;
+mod topology;
 
 use ::raft::prelude as raft;
 use ::tarantool::tuple::AsTuple;
@@ -16,6 +17,9 @@ use protobuf::ProtobufEnum as _;
 
 pub use network::ConnectionPool;
 pub use storage::Storage;
+pub use topology::Topology;
+
+pub type RaftId = u64;
 
 //////////////////////////////////////////////////////////////////////////////////////////
 /// Timestamps for raft entries.
