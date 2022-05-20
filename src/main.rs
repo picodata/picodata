@@ -454,7 +454,7 @@ fn start_boot(args: &args::Run) {
 fn start_join(args: &args::Run, leader_address: String) {
     tlog!(Info, ">>>>> start_join({leader_address})");
 
-    let req = traft::node::JoinRequest {
+    let req = traft::JoinRequest {
         instance_id: args.instance_id.clone(),
         replicaset_id: args.replicaset_id.clone(),
         voter: false,
@@ -463,8 +463,7 @@ fn start_join(args: &args::Run, leader_address: String) {
 
     use traft::node::raft_join;
     let fn_name = stringify_cfunc!(raft_join);
-    let resp: traft::node::JoinResponse =
-        tarantool::net_box_call_retry(&leader_address, fn_name, &req);
+    let resp: traft::JoinResponse = tarantool::net_box_call_retry(&leader_address, fn_name, &req);
 
     picolib_setup(args);
     assert!(tarantool::cfg().is_none());
@@ -564,7 +563,7 @@ fn postjoin(args: &args::Run) {
         }
 
         tlog!(Warning, "initiating self-promotion of {me:?}");
-        let req = traft::node::JoinRequest {
+        let req = traft::JoinRequest {
             instance_id: me.instance_id.clone(),
             replicaset_id: None, // TODO
             voter: true,
@@ -583,7 +582,7 @@ fn postjoin(args: &args::Run) {
                 fiber::sleep(timeout.saturating_sub(now.elapsed()));
                 continue;
             }
-            Ok(traft::node::JoinResponse { .. }) => {
+            Ok(traft::JoinResponse { .. }) => {
                 break;
             }
         };

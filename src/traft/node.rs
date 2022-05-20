@@ -13,8 +13,6 @@ use ::tarantool::fiber;
 use ::tarantool::proc;
 use ::tarantool::tlua;
 use ::tarantool::transaction::start_transaction;
-use ::tarantool::tuple::AsTuple;
-use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::convert::TryFrom;
@@ -35,6 +33,7 @@ use crate::traft;
 use crate::traft::ConnectionPool;
 use crate::traft::LogicalClock;
 use crate::traft::Storage;
+use crate::traft::{JoinRequest, JoinResponse};
 
 type RawNode = raft::RawNode<Storage>;
 type Notify = fiber::Channel<Result<u64, RaftError>>;
@@ -615,26 +614,6 @@ fn raft_main_loop(
         .unwrap();
     }
 }
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct JoinRequest {
-    pub instance_id: String,
-    pub replicaset_id: Option<String>,
-    pub advertise_address: String,
-    pub voter: bool,
-}
-impl AsTuple for JoinRequest {}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct JoinResponse {
-    pub peer: traft::Peer,
-    pub raft_group: Vec<traft::Peer>,
-    pub box_replication: Vec<String>,
-    // TODO add later:
-    // Other parameters necessary for box.cfg()
-    // pub read_only: bool,
-}
-impl AsTuple for JoinResponse {}
 
 fn raft_join_loop(inbox: Mailbox<(JoinRequest, Notify)>, main_inbox: Mailbox<NormalRequest>) {
     loop {

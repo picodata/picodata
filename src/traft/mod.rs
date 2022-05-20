@@ -269,3 +269,27 @@ pub trait ContextCoercion: Serialize + DeserializeOwned {
         ContextCoercion::write_to_bytes(Some(self))
     }
 }
+
+///////////////////////////////////////////////////////////////////////////////
+/// Request to join the cluster.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct JoinRequest {
+    pub instance_id: String,
+    pub replicaset_id: Option<String>,
+    pub advertise_address: String,
+    pub voter: bool,
+}
+impl AsTuple for JoinRequest {}
+
+///////////////////////////////////////////////////////////////////////////////
+/// Response to a JoinRequest
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct JoinResponse {
+    pub peer: Peer,
+    pub raft_group: Vec<Peer>,
+    pub box_replication: Vec<String>,
+    // TODO add later:
+    // Other parameters necessary for box.cfg()
+    // pub read_only: bool,
+}
+impl AsTuple for JoinResponse {}
