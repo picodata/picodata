@@ -78,6 +78,29 @@ def test_request_follower(cluster2: Cluster):
     assert e.value.args == ("ER_PROC_C", "not a leader")
 
 
+def test_instance_uuid(cluster2: Cluster):
+    i1, i2 = cluster2.instances
+    i1.assert_raft_status("Leader")
+
+    ret = i1.call(
+        ".raft_join",
+        i2.instance_id,
+        None,  # replicaset_id
+        i2.listen,  # address
+        True,  # voter
+    )[0]["peer"]
+    assert ret["instance_id"] == i2.instance_id
+    assert ret["instance_uuid"] == i2.eval("return box.info.uuid")
+
+    # Two consequent requests must obtain same raft_id and instance_id
+    ret1 = fake_join(i1, "fake", timeout=1)[0]["peer"]
+    ret2 = fake_join(i1, "fake", timeout=1)[0]["peer"]
+    assert ret1["instance_id"] == "fake"
+    assert ret2["instance_id"] == "fake"
+    assert ret1["raft_id"] == ret2["raft_id"]
+    assert ret1["instance_uuid"] == ret2["instance_uuid"]
+
+
 def test_discovery(cluster: Cluster):
     cluster.deploy(instance_count=3)
     i1, i2, i3 = cluster.instances
