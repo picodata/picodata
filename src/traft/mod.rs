@@ -11,6 +11,7 @@ use ::tarantool::tuple::AsTuple;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::convert::TryFrom;
+use uuid::Uuid;
 
 use protobuf::Message as _;
 use protobuf::ProtobufEnum as _;
@@ -69,7 +70,7 @@ pub struct Peer {
     pub voter: bool,
     pub instance_id: String,
     // pub replicaset_id: String,
-    // pub instance_uuid: String,
+    pub instance_uuid: String,
     // pub replicaset_uuid: String,
     /// `0` means it's not committed yet.
     pub commit_index: u64,
@@ -297,3 +298,16 @@ pub struct JoinResponse {
     // pub read_only: bool,
 }
 impl AsTuple for JoinResponse {}
+
+///////////////////////////////////////////////////////////////////////////////
+lazy_static::lazy_static! {
+    static ref NAMESPACE_INSTANCE_UUID: Uuid =
+        Uuid::new_v3(&Uuid::nil(), "INSTANCE_UUID".as_bytes());
+}
+
+/// Generate UUID for an instance from `instance_id` (String).
+/// Use Version-3 (MD5) UUID.
+pub fn instance_uuid(instance_id: &str) -> String {
+    let uuid = Uuid::new_v3(&NAMESPACE_INSTANCE_UUID, instance_id.as_bytes());
+    uuid.hyphenated().to_string()
+}

@@ -472,7 +472,7 @@ fn start_join(args: &args::Run, leader_address: String) {
     let cfg = tarantool::Cfg {
         listen: None,
         read_only: false,
-        // instance_uuid: resp.instance_uuid
+        instance_uuid: Some(resp.peer.instance_uuid.clone()),
         // replicaset_uuid: resp.replicaset_uuid
         replication: resp.box_replication.clone(),
         wal_dir: args.data_dir.clone(),

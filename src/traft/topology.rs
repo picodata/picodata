@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 
+use crate::traft::instance_uuid;
 use crate::traft::JoinRequest;
 use crate::traft::Peer;
 use crate::traft::RaftId;
@@ -62,6 +63,7 @@ impl Topology {
                 raft_id,
                 instance_id: req.instance_id.clone(),
                 commit_index: INVALID_INDEX,
+                instance_uuid: instance_uuid(&req.instance_id),
                 peer_address: req.advertise_address.clone(),
                 voter: req.voter,
             };
@@ -81,6 +83,7 @@ impl Topology {
 #[cfg(test)]
 mod tests {
     use super::Topology;
+    use crate::traft::instance_uuid;
     use crate::traft::JoinRequest;
     use crate::traft::Peer;
 
@@ -98,6 +101,7 @@ mod tests {
                     voter: $voter,
                     instance_id: $instance_id.into(),
                     commit_index: raft::INVALID_INDEX,
+                    instance_uuid: instance_uuid($instance_id),
                 }
             ),*]
         };
