@@ -69,7 +69,7 @@ pub struct Peer {
     pub peer_address: String,
     pub voter: bool,
     pub instance_id: String,
-    // pub replicaset_id: String,
+    pub replicaset_id: String,
     pub instance_uuid: String,
     // pub replicaset_uuid: String,
     /// `0` means it's not committed yet.
