@@ -405,7 +405,16 @@ fn start_discover(args: &args::Run, to_supervisor: ipc::Sender<IpcMessage>) {
 fn start_boot(args: &args::Run) {
     tlog!(Info, ">>>>> start_boot()");
 
-    let raft_id = 1u64;
+    let mut topology = traft::Topology::from_peers(vec![]);
+    let req = traft::JoinRequest {
+        instance_id: args.instance_id.clone(),
+        replicaset_id: args.replicaset_id.clone(),
+        advertise_address: args.advertise_address(),
+        voter: true,
+    };
+    topology.process(&req).unwrap();
+    let peer = topology.diff().pop().unwrap();
+    let raft_id = peer.raft_id;
 
     start_transaction(|| -> Result<(), Error> {
         let cs = raft::ConfState {
@@ -414,14 +423,6 @@ fn start_boot(args: &args::Run) {
         };
 
         let entry = {
-            let peer = traft::Peer {
-                raft_id,
-                instance_id: args.instance_id.clone(),
-                peer_address: args.advertise_address(),
-                voter: true,
-                commit_index: 0,
-            };
-
             let conf_change = raft::ConfChange {
                 change_type: raft::ConfChangeType::AddNode,
                 node_id: raft_id,
