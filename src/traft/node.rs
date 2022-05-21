@@ -624,7 +624,7 @@ fn raft_join_loop(inbox: Mailbox<(JoinRequest, Notify)>, main_inbox: Mailbox<Nor
 
         let term = Storage::term().unwrap().unwrap_or(0);
         let mut topology = match Storage::peers() {
-            Ok(v) => Topology::from_peers(v),
+            Ok(v) => Topology::from_peers(v).with_replication_factor(2),
             Err(e) => {
                 for (_, notify) in batch {
                     let e = RaftError::ConfChangeError(format!("{e}"));
