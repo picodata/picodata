@@ -78,7 +78,7 @@ impl Storage {
                     {name = 'instance_id', type = 'string', is_nullable = false},
                     {name = 'replicaset_id', type = 'string', is_nullable = false},
                     {name = 'instance_uuid', type = 'string', is_nullable = false},
-                    -- {name = 'replicaset_uuid', type = 'string', is_nullable = false},
+                    {name = 'replicaset_uuid', type = 'string', is_nullable = false},
                     {name = 'commit_index', type = 'unsigned', is_nullable = false},
                 }
             })

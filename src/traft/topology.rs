@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 
 use crate::traft::instance_uuid;
+use crate::traft::replicaset_uuid;
 use crate::traft::JoinRequest;
 use crate::traft::Peer;
 use crate::traft::RaftId;
@@ -106,6 +107,7 @@ impl Topology {
                 Some(v) => v.clone(),
                 None => self.choose_replicaset_id(),
             };
+            let replicaset_uuid = replicaset_uuid(&replicaset_id);
 
             let peer = Peer {
                 raft_id,
@@ -113,6 +115,7 @@ impl Topology {
                 replicaset_id,
                 commit_index: INVALID_INDEX,
                 instance_uuid: instance_uuid(&req.instance_id),
+                replicaset_uuid,
                 peer_address: req.advertise_address.clone(),
                 voter: req.voter,
             };
@@ -133,6 +136,7 @@ impl Topology {
 mod tests {
     use super::Topology;
     use crate::traft::instance_uuid;
+    use crate::traft::replicaset_uuid;
     use crate::traft::JoinRequest;
     use crate::traft::Peer;
 
@@ -151,8 +155,9 @@ mod tests {
                     voter: $voter,
                     instance_id: $instance_id.into(),
                     replicaset_id: $replicaset_id.into(),
-                    commit_index: raft::INVALID_INDEX,
                     instance_uuid: instance_uuid($instance_id),
+                    replicaset_uuid: replicaset_uuid($replicaset_id),
+                    commit_index: raft::INVALID_INDEX,
                 }
             ),*]
         };
