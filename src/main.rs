@@ -162,9 +162,11 @@ fn main() -> ! {
     }
 }
 
+#[allow(clippy::enum_variant_names)]
 #[derive(Debug, Serialize, Deserialize)]
 enum Entrypoint {
     StartDiscover,
+    StartBoot,
     StartJoin { leader_address: String },
 }
 
@@ -172,6 +174,7 @@ impl Entrypoint {
     fn exec(self, args: args::Run, to_supervisor: ipc::Sender<IpcMessage>) {
         match self {
             Self::StartDiscover => start_discover(&args, to_supervisor),
+            Self::StartBoot => start_boot(&args),
             Self::StartJoin { leader_address } => start_join(&args, leader_address),
         }
     }
@@ -351,6 +354,8 @@ fn start_discover(args: &args::Run, to_supervisor: ipc::Sender<IpcMessage>) {
     picolib_setup(args);
     assert!(tarantool::cfg().is_none());
 
+    // Don't try to guess instance and replicaset uuids now,
+    // finally, the box will be rebootstraped after discovery.
     let mut cfg = tarantool::Cfg {
         listen: None,
         read_only: false,
@@ -364,14 +369,6 @@ fn start_discover(args: &args::Run, to_supervisor: ipc::Sender<IpcMessage>) {
     tarantool::set_cfg(&cfg);
 
     traft::Storage::init_schema();
-
-    // исходный discovery::discover() пришлось разбить на две части -
-    // init_global и wait_global. К сожалению, они не могут быть атомарны,
-    // потому что listen порт надо поднимать именно посередине. С неподнятым портом
-    // уходить в кишки discovery::discover() нельзя - на запросы отвечать будет некому.
-    // А если поднять порт до инициализации дискавери, то образуется временно́е окно,
-    // и прилетевший пакет приведёт к панике "discovery error: expected DISCOVERY
-    // to be set on instance startup"
     discovery::init_global(&args.peers);
     init_handlers();
 
@@ -386,7 +383,13 @@ fn start_discover(args: &args::Run, to_supervisor: ipc::Sender<IpcMessage>) {
 
     match role {
         discovery::Role::Leader { .. } => {
-            start_boot(args);
+            let next_entrypoint = Entrypoint::StartBoot {};
+            let msg = IpcMessage {
+                next_entrypoint,
+                drop_db: true,
+            };
+            to_supervisor.send(&msg);
+            std::process::exit(0);
         }
         discovery::Role::NonLeader { leader } => {
             let next_entrypoint = Entrypoint::StartJoin {
@@ -415,6 +418,26 @@ fn start_boot(args: &args::Run) {
     topology.process(&req).unwrap();
     let peer = topology.diff().pop().unwrap();
     let raft_id = peer.raft_id;
+
+    picolib_setup(args);
+    assert!(tarantool::cfg().is_none());
+
+    let cfg = tarantool::Cfg {
+        listen: None,
+        read_only: false,
+        instance_uuid: Some(peer.instance_uuid.clone()),
+        replicaset_uuid: Some(peer.replicaset_uuid.clone()),
+        wal_dir: args.data_dir.clone(),
+        memtx_dir: args.data_dir.clone(),
+        log_level: args.log_level() as u8,
+        ..Default::default()
+    };
+
+    std::fs::create_dir_all(&args.data_dir).unwrap();
+    tarantool::set_cfg(&cfg);
+
+    traft::Storage::init_schema();
+    init_handlers();
 
     start_transaction(|| -> Result<(), Error> {
         let cs = raft::ConfState {

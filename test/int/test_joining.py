@@ -78,27 +78,39 @@ def test_request_follower(cluster2: Cluster):
     assert e.value.args == ("ER_PROC_C", "not a leader")
 
 
-def test_instance_uuid(cluster2: Cluster):
+def test_uuids(cluster2: Cluster):
     i1, i2 = cluster2.instances
     i1.assert_raft_status("Leader")
 
-    ret = i1.call(
+    peer_1 = i1.call(
+        ".raft_join",
+        i1.instance_id,
+        None,  # replicaset_id
+        i1.listen,  # address
+        True,  # voter
+    )[0]["peer"]
+    assert peer_1["instance_id"] == i1.instance_id
+    assert peer_1["instance_uuid"] == i1.eval("return box.info.uuid")
+    assert peer_1["replicaset_uuid"] == i1.eval("return box.info.cluster.uuid")
+
+    peer_2 = i1.call(
         ".raft_join",
         i2.instance_id,
         None,  # replicaset_id
         i2.listen,  # address
         True,  # voter
     )[0]["peer"]
-    assert ret["instance_id"] == i2.instance_id
-    assert ret["instance_uuid"] == i2.eval("return box.info.uuid")
+    assert peer_2["instance_id"] == i2.instance_id
+    assert peer_2["instance_uuid"] == i2.eval("return box.info.uuid")
+    assert peer_2["replicaset_uuid"] == i2.eval("return box.info.cluster.uuid")
 
     # Two consequent requests must obtain same raft_id and instance_id
-    ret1 = fake_join(i1, "fake", timeout=1)[0]["peer"]
-    ret2 = fake_join(i1, "fake", timeout=1)[0]["peer"]
-    assert ret1["instance_id"] == "fake"
-    assert ret2["instance_id"] == "fake"
-    assert ret1["raft_id"] == ret2["raft_id"]
-    assert ret1["instance_uuid"] == ret2["instance_uuid"]
+    fake_peer_1 = fake_join(i1, "fake", timeout=1)[0]["peer"]
+    fake_peer_2 = fake_join(i1, "fake", timeout=1)[0]["peer"]
+    assert fake_peer_1["instance_id"] == "fake"
+    assert fake_peer_2["instance_id"] == "fake"
+    assert fake_peer_1["raft_id"] == fake_peer_2["raft_id"]
+    assert fake_peer_1["instance_uuid"] == fake_peer_2["instance_uuid"]
 
 
 def test_discovery(cluster: Cluster):
