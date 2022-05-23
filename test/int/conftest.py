@@ -303,12 +303,14 @@ class Instance:
 class Cluster:
     binary_path: str
 
-    subnet: int
     data_dir: str
+    base_host: str
+    base_port: int
+    max_port: int
     instances: list[Instance] = field(default_factory=list)
 
     def __repr__(self):
-        return f'Cluster("127.7.{self.subnet}.1", n={len(self.instances)})'
+        return f'Cluster("{self.base_host}:{self.base_port}", n={len(self.instances)})'
 
     def __getitem__(self, item: int) -> Instance:
         return self.instances[item]
@@ -335,11 +337,12 @@ class Cluster:
             binary_path=self.binary_path,
             instance_id=f"i{i}",
             data_dir=f"{self.data_dir}/i{i}",
-            host=f"127.7.{self.subnet}.1",
-            port=3300 + i,
-            peers=peers or [f"127.7.{self.subnet}.1:3301"],
+            host=self.base_host,
+            port=self.base_port + i,
+            peers=peers or [f"{self.base_host}:{self.base_port + 1}"],
         )
 
+        assert self.base_port <= instance.port <= self.max_port
         self.instances.append(instance)
 
         if wait_ready:
@@ -378,14 +381,21 @@ def binary_path(compile) -> str:
 
 @pytest.fixture
 def cluster(binary_path, tmpdir, worker_id) -> Generator[Cluster, None, None]:
-    subnet = xdist_worker_number(worker_id)
-    assert isinstance(subnet, int)
-    assert 0 <= subnet < 256
+    n = xdist_worker_number(worker_id)
+    assert isinstance(n, int)
+    assert n >= 0
+
+    # Provide each worker a dedicated pool of 100 listening ports
+    base_port = 3300 + n * 100
+    max_port = base_port + 99
+    assert max_port <= 65535
 
     cluster = Cluster(
         binary_path=binary_path,
-        subnet=subnet,
         data_dir=tmpdir,
+        base_host="127.0.0.1",
+        base_port=base_port,
+        max_port=max_port,
     )
     yield cluster
     cluster.terminate()
