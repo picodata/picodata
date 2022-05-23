@@ -141,6 +141,12 @@ def test_process_management(instance: Instance):
             os.killpg(pgrp, 0)
         except ProcessLookupError:
             return True
+        except PermissionError:
+            # According to `man 2 kill`, MacOS raises it if at least one process
+            # in the process group has insufficient permissions. In fact, it also
+            # returns EPERM if the targed process is a zombie.
+            # See https://git.picodata.io/picodata/picodata/picodata/-/snippets/7
+            raise StillAlive
         else:
             raise StillAlive
 
@@ -162,16 +168,24 @@ def test_process_management(instance: Instance):
     assert exc.value.errno == errno.ECONNRESET
     with pytest.raises(StillAlive):
         waitpg(pgrp)
+    print(f"{instance} is still alive")
 
     # Kill the remaining child in the process group
     instance.killpg()
 
-    # When the supervisor is killed, the orphaned child is reparented to
-    # a subreaper. Pytest isn't the one, and therefore it can't do `waitpid`.
-    # Instead, the test retries `killpg` until it succeeds.
+    # When the supervisor is killed, the orphaned child is reparented
+    # to a subreaper. Pytest isn't the one, and therefore it can't do
+    # `waitpid` directly. Instead, the test retries `killpg` until
+    # it succeeds.
+    #
+    # Also, note, that after the child is killed, it remains
+    # a zombie for a while. The child is removed from the process
+    # table when a supreaper calls `waitpid`.
+    #
+    waitpg(pgrp)
+    print(f"{instance} is finally dead")
 
     # Ensure the child is dead
-    waitpg(pgrp)
     with pytest.raises(ProcessLookupError):
         os.killpg(pgrp, 0)
 
@@ -181,7 +195,6 @@ def test_process_management(instance: Instance):
     instance.start()
     pid2 = instance.process.pid
     assert pid1 == pid2
-
     instance.terminate()
     instance.terminate()
     instance.killpg()
