@@ -26,13 +26,13 @@
      inkscape:pagecheckerboard="0"
      inkscape:document-units="mm"
      showgrid="false"
-     inkscape:zoom="0.69219277"
-     inkscape:cx="841.52858"
-     inkscape:cy="393.67646"
+     inkscape:zoom="1"
+     inkscape:cx="527.5"
+     inkscape:cy="57.5"
      inkscape:window-width="1920"
      inkscape:window-height="1016"
      inkscape:window-x="0"
-     inkscape:window-y="0"
+     inkscape:window-y="32"
      inkscape:window-maximized="1"
      inkscape:current-layer="layer1"
      fit-margin-top="0"
@@ -118,49 +118,68 @@
      id="layer1"
      transform="translate(-46.875582,-8.2850274)">
     <path
-       id="path49037"
-       style="color:#000000;fill:#5154fb;fill-opacity:0.533333;stroke-width:3.77953;-inkscape-stroke:none"
-       d="m 898.13672,133.97656 c 15.09335,9.52662 30.88812,25.59059 46.97851,44.55274 24.0855,28.38414 48.92544,62.42805 76.31837,87.52734 10.7064,9.81004 26.0458,16.4665 41.123,21.24414 h 17.7618 c -0.2177,-0.0551 -0.4297,-0.10624 -0.6485,-0.16211 -18.8482,-4.81328 -40.8761,-12.47058 -53.7109,-24.21289 -26.91573,-24.6249 -51.85017,-58.65251 -76.26955,-87.38672 -14.09261,-16.58275 -28.01691,-31.3403 -41.97656,-41.5625 z"
-       transform="matrix(0.26458333,0,0,0.26458333,46.875582,8.2850274)" />
-    <path
-       id="path49311"
-       style="color:#000000;fill:#52d8fc;fill-opacity:0.531808;stroke-width:3.77953;-inkscape-stroke:none"
-       d="m 910.73047,133.97656 c 13.49779,10.28496 26.8331,24.57616 40.30273,40.42578 24.48019,28.80575 49.3959,62.77947 76.1152,87.22461 12.372,11.31902 34.227,19.02347 52.9571,23.80664 2.0618,0.52654 4.0744,1.01708 6.0254,1.47266 h 27.5625 v 0 c 0,0 -14.9789,-3.40774 -33.2246,-8.07422 -18.2458,-4.66647 -39.4226,-12.48459 -50.2403,-22.39648 -25.937,-23.76542 -50.65549,-57.4385 -75.19139,-86.35352 -11.46909,-13.51607 -22.893,-26.05501 -34.66797,-36.10547 z"
-       transform="matrix(0.26458333,0,0,0.26458333,46.875582,8.2850274)"
-       sodipodi:nodetypes="cssscccssscc" />
-    <path
-       style="color:#000000;fill:#51d8fb;fill-opacity:0.533333;-inkscape-stroke:none"
-       d="m 234.50586,11.105469 c -5.20093,-0.04237 -10.76404,0.171641 -15.5918,0.691406 -23.45111,2.52479 -39.04051,8.174388 -48.79883,13.244141 -9.75831,5.069752 -13.81054,9.710937 -13.81054,9.710937 l 2.62304,2.261719 c 0,0 3.43138,-4.036904 12.78516,-8.896485 9.35378,-4.85958 24.50535,-10.391573 47.57227,-12.874999 9.28268,-0.999392 21.94997,-0.788891 28.12695,0.140625 16.05835,2.41647 24.35316,7.599189 28.66016,12.005859 2.1535,2.203335 3.31913,4.224705 3.95117,5.666015 0.63204,1.441311 0.70898,2.167969 0.70898,2.167969 l 3.4375,-0.443359 c 0,0 -0.18757,-1.324917 -0.97265,-3.115235 -0.78509,-1.790317 -2.18823,-4.182115 -4.64649,-6.697265 -4.91652,-5.0303 -14.01433,-10.510475 -30.62305,-13.009766 -3.38284,-0.509052 -8.22094,-0.809191 -13.42187,-0.851562 z"
-       id="path52378" />
-    <path
-       style="color:#000000;fill:#5255fc;fill-opacity:0.531808;stroke-width:3.77953;-inkscape-stroke:none"
-       d="m 620.74219,91.462891 v 13.005859 c 82.65111,0.85147 163.455,8.22488 235.6289,18.03711 V 109.4375 C 784.17489,99.673174 703.4602,92.315682 620.74219,91.462891 Z"
-       transform="matrix(0.26458333,0,0,0.26458333,46.875582,8.2850274)"
-       id="path48919" />
-    <path
-       style="color:#000000;fill:#51d8fb;-inkscape-stroke:none;fill-opacity:0.53333336"
-       d="m 272.97852,41.947266 c 0,0 -0.81358,0.6675 -3.22266,1.83789 -2.40908,1.170391 -6.30915,2.760293 -12.16211,4.353516 -11.70591,3.186446 -31.22551,6.381645 -62.2207,6.255859 C 132.97313,54.141297 100.75781,63 100.75781,63 l 0.91992,3.339844 c 0,0 31.61101,-8.732359 93.67969,-8.480469 31.23911,0.126776 51.06559,-3.088434 63.14649,-6.376953 6.04044,-1.64426 10.14429,-3.306572 12.76562,-4.580078 2.62133,-1.273507 3.86524,-2.242188 3.86524,-2.242188 z"
-       id="path56650" />
-    <path
-       style="color:#000000;fill:#52d8fc;fill-opacity:0.531808;stroke-width:3.77953;-inkscape-stroke:none"
-       d="m 603.07812,91.380859 c -93.46515,0.09932 -188.72977,8.785021 -276.15429,31.851561 -47.13317,12.43584 -104.03451,52.9224 -149.99805,90.22461 -45.96354,37.30221 -80.621093,71.62305 -80.621092,71.62305 l 9.189452,9.16992 c 0,0 34.24912,-33.91096 79.66602,-70.76953 45.41686,-36.85857 102.3622,-76.45924 145.10351,-87.73633 89.39091,-23.58536 187.7278,-31.91927 283.97071,-31.32812 V 91.410156 c -2.23429,-0.01377 -4.47039,-0.02323 -6.70704,-0.02734 -1.48262,-0.0027 -2.96564,-0.0035 -4.44922,-0.002 z"
-       transform="matrix(0.26458333,0,0,0.26458333,46.875582,8.2850274)"
-       id="path47797" />
+       id="path43619"
+       style="fill:none;stroke:#3cf1fb;stroke-width:2.465;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:0.56862748"
+       d="m 72.938214,85.653051 c 0,0 9.197526,-50.225909 42.330056,-50.235627 7.63242,-0.0022 22.92273,-0.19585 30.51537,-0.346001 9.70067,-0.191841 23.40334,-0.713656 36.10817,-0.909719" />
+    <g
+       id="g68473"
+       transform="translate(-14.111518,10.08965)">
+      <path
+         style="color:#000000;fill:#3cf1fb;fill-opacity:0.568627;stroke-width:3.77953;-inkscape-stroke:none"
+         d="m 954.8456,67.74082 c 13.7342,2.518431 27.41721,7.576218 37.27354,15.520899 8.18696,6.599112 19.26316,20.076441 31.78706,36.583981 12.524,16.50753 26.657,36.09786 41.8399,55.3418 30.3659,38.48788 64.5313,75.98788 100.7129,84.33203 l 0.8476,-3.68359 c -34.1955,-7.88613 -68.114,-44.78279 -98.3475,-83.10285 -15.1167,-19.16005 -28.8688,-38.6807 -41.7968,-55.28907 -12.7706,-16.40625 -23.2901,-30.08329 -32.10085,-37.185139 -10.51283,-8.473898 -22.92851,-13.144701 -40.60599,-16.254205 0,0 -1.10805,3.63464 0.39014,3.736144 z"
+         transform="matrix(0.26458333,0,0,0.26458333,46.875582,8.2850274)"
+         id="path65443"
+         sodipodi:nodetypes="csssccssscc" />
+      <path
+         style="color:#000000;fill:#6b70ff;fill-opacity:0.572549;stroke-width:3.77953;-inkscape-stroke:none"
+         d="m 954.48022,58.283917 c -0.22727,1.237498 0.17551,2.7712 -0.0493,4.009157 14.33541,2.628684 30.34854,7.938112 41.16672,16.658098 9.10061,7.335621 20.13671,20.953817 32.72261,37.542968 12.5859,16.58915 26.6894,36.1407 41.7754,55.26172 30.1719,38.24205 64.3295,74.69404 97.6016,82.36719 -0.805,3.52642 0.6382,-2.76391 0.8496,-3.6836 -31.2859,-7.21511 -65.4449,-42.9492 -95.4844,-81.02343 -15.0198,-19.03713 -29.1082,-38.55827 -41.7363,-55.20313 -12.6282,-16.64485 -23.635,-30.362817 -33.3594,-38.201171 -11.47472,-9.249207 -28.74076,-15.02386 -43.48658,-17.727802 z"
+         transform="matrix(0.26458333,0,0,0.26458333,46.875582,8.2850274)"
+         id="path59741"
+         sodipodi:nodetypes="ccsssccsssc" />
+    </g>
     <path
        style="fill:none;stroke:#ff6666;stroke-width:3.465;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:0.31"
-       d="m 53.799677,85.88547 c 306.044833,0 306.633853,0 306.633853,0"
+       d="m 53.358227,85.903912 c 306.044833,0 306.633853,0 306.633853,0"
        id="path54471"
        inkscape:export-filename="/home/atolstoy/picodata-git/picodata/docs/rect29727.png"
        inkscape:export-xdpi="120"
        inkscape:export-ydpi="120" />
     <path
-       style="fill:none;stroke:#000000;stroke-width:0.465;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
-       d="m 72.938214,85.653053 c 0,0 36.674526,-36.53629 60.589896,-42.885039 46.86305,-12.44061 102.57079,-9.146957 145.4292,-2.928353 13.18732,1.913434 25.37423,24.913413 39.56519,37.896543 6.66928,6.101649 23.21994,8.128961 23.21994,8.128961"
+       id="path50906"
+       style="color:#000000;fill:#6b70ff;fill-opacity:0.572549;stroke-width:3.77953;-inkscape-stroke:none"
+       d="M 704.58594 47.189453 C 683.97696 47.124239 660.43576 47.653256 633.48242 47.828125 C 616.29593 47.939621 606.29392 54.620144 599.25977 62.207031 C 592.22557 69.793919 587.62684 77.594232 579.04883 82.603516 C 566.56905 89.891306 550.66987 92.733085 543.45898 92.835938 L 543.45898 92.888672 C 542.94577 92.875944 542.43278 92.856726 541.91797 92.857422 C 533.74697 92.868383 525.32051 92.938454 516.74805 93.050781 L 516.87109 102.36719 C 525.41347 102.25528 533.80242 102.18678 541.92969 102.17578 C 553.6514 102.15991 565.97786 106.56837 577.85352 111.80469 C 585.79124 115.30467 589.99897 122.90916 597.02148 131.03906 C 604.04404 139.16897 614.43148 146.95339 632.96484 147.38672 C 646.9892 147.71463 653.96571 151.15881 667.55859 149.91992 C 683.5895 148.45882 688.82877 148.41831 694.45898 148.49023 C 700.08923 148.56212 706.21323 148.75895 722.94531 147.78711 C 749.57605 146.24033 761.40381 134.50022 771.27344 124.35742 C 781.14303 114.21463 788.97044 105.63922 813.04883 105.09375 L 812.83789 95.779297 C 786.37402 96.378813 774.50625 107.67647 764.59766 117.85938 C 754.68902 128.04227 746.65336 137.07799 722.40625 138.48633 C 705.87369 139.44658 700.34361 139.24749 694.57812 139.17383 C 688.81268 139.10013 682.91682 139.16589 666.71289 140.64258 C 655.04953 141.70561 648.55932 138.43373 633.18359 138.07422 C 616.96772 137.69507 610.25024 132.1014 604.07227 124.94922 C 597.89429 117.79704 592.80444 108.21466 581.61133 103.2793 C 577.14315 101.30914 572.51624 99.391802 567.76367 97.746094 C 573.06988 96.008087 578.54366 93.690722 583.75 90.650391 C 594.62083 84.30219 599.9781 75.130875 606.08789 68.541016 C 612.19765 61.951152 618.53108 57.241915 633.54102 57.144531 C 669.59283 56.910616 699.45297 56.063756 723.95508 56.804688 C 745.24043 57.448333 754.17015 65.912886 764.93164 75.414062 C 775.69313 84.915239 788.31057 95.380053 812.56641 95.5 L 812.61133 86.183594 C 790.86098 86.076028 781.79887 77.879368 771.0957 68.429688 C 760.39257 58.980007 748.07526 48.209203 724.23438 47.488281 C 717.99859 47.299718 711.4556 47.211191 704.58594 47.189453 z "
+       transform="matrix(0.26458333,0,0,0.26458333,46.875582,8.2850274)" />
+    <path
+       style="fill:none;stroke:#3df0fb;stroke-width:2.465;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:0.56926847"
+       d="m 101.20808,61.138027 c 0,0 110.73443,3.622839 128.82401,-0.397348 18.08959,-4.020188 18.01892,-22.569839 32.35432,-23.144818"
+       id="path43393"
+       sodipodi:nodetypes="czc" />
+    <path
        id="path23021"
-       sodipodi:nodetypes="csssc"
-       inkscape:export-filename="/home/atolstoy/picodata-git/picodata/docs/rect29727.png"
-       inkscape:export-xdpi="120"
-       inkscape:export-ydpi="120" />
+       style="fill:none;stroke:#000000;stroke-width:1.75748;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
+       d="M 903.72411 101.77722 C 917.96413 104.38841 931.33571 109.2778 942.00123 117.87475 C 977.82401 146.74972 1046.9898 277.65698 1114.4574 293.21627 "
+       transform="matrix(0.26458333,0,0,0.26458333,46.875582,8.2850274)" />
+    <path
+       id="path47265"
+       style="fill:none;stroke:#000000;stroke-width:1.75748;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
+       d="M 813.69732 102.53633 C 833.18274 101.88964 870.7778 95.735884 903.72411 101.77722 "
+       transform="matrix(0.26458333,0,0,0.26458333,46.875582,8.2850274)" />
+    <path
+       id="path47263"
+       style="fill:none;stroke:#000000;stroke-width:1.75748;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
+       d="m 516.80936,97.708571 c 8.55743,-0.112127 16.96549,-0.180895 25.11463,-0.191936 12.86604,-0.01739 25.74489,4.706185 37.80888,10.025555 19.13084,8.43537 18.5918,34.37564 53.34108,35.18812 14.70005,0.34371 21.43283,3.70214 34.06095,2.55118 32.23487,-2.93798 22.2765,-0.21177 55.54121,-2.14386 50.87789,-2.95512 39.7243,-41.55648 90.2666,-42.70147"
+       transform="matrix(0.26458333,0,0,0.26458333,46.875582,8.2850274)"
+       sodipodi:nodetypes="csssssc" />
+    <path
+       id="path43616"
+       style="fill:none;stroke:#000000;stroke-width:1.75748;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
+       d="M 510.29757 97.801612 C 512.47653 97.767987 514.64772 97.736896 516.80937 97.708572 "
+       transform="matrix(0.26458333,0,0,0.26458333,46.875582,8.2850274)" />
+    <path
+       id="path43614"
+       style="fill:none;stroke:#000000;stroke-width:1.75748;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
+       d="M 98.504436 292.41458 C 98.504436 292.41458 133.26674 102.58437 258.49205 102.54764 C 287.33899 102.53933 345.12914 101.80742 373.82573 101.23992 C 410.48967 100.51485 462.27932 98.542635 510.29757 97.801612 "
+       transform="matrix(0.26458333,0,0,0.26458333,46.875582,8.2850274)" />
     <path
        style="fill:none;stroke:#000000;stroke-width:0.465;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
        d="m 53.358227,85.903912 c 308.731703,0 309.325893,0 309.325893,0"
@@ -170,17 +189,9 @@
        inkscape:export-ydpi="120" />
     <path
        style="fill:none;stroke:#000000;stroke-width:0.465;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
-       d="m 101.21774,64.669613 c 0,0 31.91316,-8.794488 94.14752,-8.541926 62.23437,0.252562 78.69084,-12.823662 78.69084,-12.823662"
-       id="path38226"
-       sodipodi:nodetypes="czc"
-       inkscape:export-filename="/home/atolstoy/picodata-git/picodata/docs/rect29727.png"
-       inkscape:export-xdpi="120"
-       inkscape:export-ydpi="120" />
-    <path
-       style="fill:none;stroke:#000000;stroke-width:0.465;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
-       d="m 157.61649,35.882677 c 0,0 14.96519,-17.354575 61.48327,-22.362797 9.46911,-1.019462 22.09976,-0.824372 28.5711,0.149439 32.6671,4.915766 34.78062,21.33184 34.78062,21.33184"
+       d="m 190.68279,34.079997 c 2.17406,-0.03101 6.46132,-0.796646 10.02156,-2.87571 5.14584,-3.005004 5.26894,-8.976738 13.78759,-9.032007 9.52363,-0.06179 17.42598,-0.287939 23.96719,-0.09014 11.93966,0.361042 11.24197,10.178596 23.41445,10.238791"
        id="path23806"
-       sodipodi:nodetypes="cssc"
+       sodipodi:nodetypes="csssc"
        inkscape:export-filename="/home/atolstoy/picodata-git/picodata/docs/rect29727.png"
        inkscape:export-xdpi="120"
        inkscape:export-ydpi="120" />
@@ -206,75 +217,55 @@
        inkscape:export-xdpi="120"
        inkscape:export-ydpi="120" />
     <g
-       id="g12394"
-       transform="translate(-44.385182,-25.104838)"
-       inkscape:export-filename="/home/atolstoy/picodata-git/picodata/docs/rect29727.png"
-       inkscape:export-xdpi="120"
-       inkscape:export-ydpi="120">
-      <rect
-         style="fill:#ffffff;fill-opacity:1;stroke:#000000;stroke-width:0.465;stroke-miterlimit:4;stroke-dasharray:none"
-         id="rect10445"
-         width="31.290659"
-         height="10.43022"
-         x="136.07224"
-         y="80.525139"
-         rx="1.444"
-         ry="1.444" />
-      <text
-         xml:space="preserve"
-         style="font-style:normal;font-weight:normal;font-size:4.42337px;line-height:1.25;font-family:sans-serif;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.110585"
-         x="137.72206"
-         y="87.038506"
-         id="text10449"><tspan
-           sodipodi:role="line"
-           id="tspan10447"
-           style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-family:HelveticaNeueCyr;-inkscape-font-specification:HelveticaNeueCyr;stroke-width:0.110585"
-           x="137.72206"
-           y="87.038506">start_discover</tspan></text>
-    </g>
-    <g
-       id="g12402"
-       transform="translate(-10.714393,-35.760317)"
-       inkscape:export-filename="/home/atolstoy/picodata-git/picodata/docs/rect29727.png"
-       inkscape:export-xdpi="120"
-       inkscape:export-ydpi="120">
+       id="g28770"
+       transform="translate(-0.17745256,0.27762849)">
       <g
-         id="g19159"
-         transform="translate(-10.779161,-10.174717)">
+         id="g12394"
+         transform="translate(-65.68517,-24.615516)"
+         inkscape:export-filename="/home/atolstoy/picodata-git/picodata/docs/rect29727.png"
+         inkscape:export-xdpi="120"
+         inkscape:export-ydpi="120">
         <rect
            style="fill:#ffffff;fill-opacity:1;stroke:#000000;stroke-width:0.465;stroke-miterlimit:4;stroke-dasharray:none"
-           id="rect12396"
-           width="24.927898"
+           id="rect10445"
+           width="31.290659"
            height="10.43022"
-           x="137.98901"
-           y="81.661125" />
+           x="136.07224"
+           y="80.525139"
+           rx="1.444"
+           ry="1.444" />
         <text
            xml:space="preserve"
            style="font-style:normal;font-weight:normal;font-size:4.42337px;line-height:1.25;font-family:sans-serif;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.110585"
-           x="150.40208"
-           y="84.863251"
-           id="text12400"><tspan
+           x="137.72206"
+           y="87.038506"
+           id="text10449"><tspan
              sodipodi:role="line"
-             id="tspan12398"
-             style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-family:HelveticaNeueCyr;-inkscape-font-specification:HelveticaNeueCyr;text-align:center;text-anchor:middle;stroke-width:0.110585"
-             x="150.40208"
-             y="84.863251"
-             dy="0.97000003">summary</tspan><tspan
-             sodipodi:role="line"
-             style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-family:HelveticaNeueCyr;-inkscape-font-specification:HelveticaNeueCyr;text-align:center;text-anchor:middle;stroke-width:0.110585"
-             x="150.40208"
-             y="90.494774"
-             id="tspan12696">{leader}</tspan></text>
+             id="tspan10447"
+             style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-family:HelveticaNeueCyr;-inkscape-font-specification:HelveticaNeueCyr;stroke-width:0.110585"
+             x="137.72206"
+             y="87.038506">start_discover</tspan></text>
       </g>
     </g>
+    <text
+       xml:space="preserve"
+       style="font-style:normal;font-weight:normal;font-size:3.175px;line-height:1.25;font-family:sans-serif;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.110585"
+       x="120.89931"
+       y="44.837784"
+       id="text12400"><tspan
+         sodipodi:role="line"
+         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.175px;font-family:HelveticaNeueCyr;-inkscape-font-specification:HelveticaNeueCyr;text-align:center;text-anchor:middle;stroke-width:0.110585"
+         x="120.89931"
+         y="44.837784"
+         id="tspan12696">[i_am_bootstrap_leader]</tspan></text>
     <rect
        style="fill:#ffffff;fill-opacity:1;stroke:#000000;stroke-width:0.465;stroke-miterlimit:4;stroke-dasharray:none"
        id="rect19408"
-       width="5.2734179"
-       height="5.2734179"
-       x="57.169559"
-       y="146.38918"
-       transform="rotate(-54.437379)"
+       width="3.1412454"
+       height="3.1412454"
+       x="106.8854"
+       y="155.31563"
+       transform="rotate(-45.054356)"
        inkscape:export-filename="/home/atolstoy/picodata-git/picodata/docs/rect29727.png"
        inkscape:export-xdpi="120"
        inkscape:export-ydpi="120" />
@@ -301,7 +292,7 @@
        inkscape:export-ydpi="120" />
     <path
        style="fill:none;stroke:#000000;stroke-width:0.465;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1;marker-end:url(#Arrow2Mend)"
-       d="m 170.14804,85.891697 2.05729,-0.0019"
+       d="m 182.84812,85.891697 2.05729,-0.0019"
        id="path39981"
        sodipodi:nodetypes="cc"
        inkscape:export-filename="/home/atolstoy/picodata-git/picodata/docs/rect29727.png"
@@ -310,23 +301,8 @@
     <text
        xml:space="preserve"
        style="font-style:normal;font-weight:normal;font-size:3.175px;line-height:1.25;font-family:sans-serif;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.110585"
-       x="178.36273"
-       y="49.405216"
-       id="text40322"
-       transform="rotate(-10.316607)"
-       inkscape:export-filename="/home/atolstoy/picodata-git/picodata/docs/rect29727.png"
-       inkscape:export-xdpi="120"
-       inkscape:export-ydpi="120"><tspan
-         sodipodi:role="line"
-         id="tspan40320"
-         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.175px;font-family:HelveticaNeueCyr;-inkscape-font-specification:HelveticaNeueCyr;stroke-width:0.110585"
-         x="178.36273"
-         y="49.405216">[i_am_bootstrap_leader]</tspan></text>
-    <text
-       xml:space="preserve"
-       style="font-style:normal;font-weight:normal;font-size:3.175px;line-height:1.25;font-family:sans-serif;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.110585"
-       x="192.00154"
-       y="45.126656"
+       x="166.14349"
+       y="44.837784"
        id="text40753"
        inkscape:export-filename="/home/atolstoy/picodata-git/picodata/docs/rect29727.png"
        inkscape:export-xdpi="120"
@@ -334,12 +310,12 @@
          sodipodi:role="line"
          id="tspan40751"
          style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.175px;font-family:HelveticaNeueCyr;-inkscape-font-specification:HelveticaNeueCyr;stroke-width:0.110585"
-         x="192.00154"
-         y="45.126656">[rebootstrap]</tspan></text>
+         x="166.14349"
+         y="44.837784">[rebootstrap]</tspan></text>
     <text
        xml:space="preserve"
        style="font-style:normal;font-weight:normal;font-size:3.175px;line-height:1.25;font-family:sans-serif;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.110585"
-       x="146.28111"
+       x="158.98094"
        y="82.030296"
        id="text41816"
        inkscape:export-filename="/home/atolstoy/picodata-git/picodata/docs/rect29727.png"
@@ -348,13 +324,13 @@
          sodipodi:role="line"
          id="tspan41814"
          style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.175px;font-family:HelveticaNeueCyr;-inkscape-font-specification:HelveticaNeueCyr;stroke-width:0.110585"
-         x="146.28111"
+         x="158.98094"
          y="82.030296">[supervisor]</tspan></text>
     <text
        xml:space="preserve"
        style="font-style:normal;font-weight:normal;font-size:3.175px;line-height:1.25;font-family:sans-serif;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.110585"
-       x="72.512505"
-       y="75.042404"
+       x="65.254509"
+       y="76.478996"
        id="text78788"
        inkscape:export-filename="/home/atolstoy/picodata-git/picodata/docs/rect29727.png"
        inkscape:export-xdpi="120"
@@ -362,11 +338,11 @@
          sodipodi:role="line"
          id="tspan78786"
          style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.175px;font-family:HelveticaNeueCyr;-inkscape-font-specification:HelveticaNeueCyr;stroke-width:0.110585"
-         x="72.512505"
-         y="75.042404">[child]</tspan></text>
+         x="65.254509"
+         y="76.478996">[child]</tspan></text>
     <g
        id="g12793"
-       transform="translate(-7.3401906,-17.531499)"
+       transform="translate(-14.557407,-8.7065322)"
        inkscape:export-filename="/home/atolstoy/picodata-git/picodata/docs/rect29727.png"
        inkscape:export-xdpi="120"
        inkscape:export-ydpi="120">
@@ -393,7 +369,7 @@
     </g>
     <g
        id="g15793"
-       transform="translate(-6.7399709,-20.844207)"
+       transform="translate(-13.957187,-12.01924)"
        inkscape:export-filename="/home/atolstoy/picodata-git/picodata/docs/rect29727.png"
        inkscape:export-xdpi="120"
        inkscape:export-ydpi="120">
@@ -420,7 +396,7 @@
     </g>
     <g
        id="g15881"
-       transform="translate(-56.26845,31.275236)"
+       transform="translate(-43.568442,31.275236)"
        inkscape:export-filename="/home/atolstoy/picodata-git/picodata/docs/rect29727.png"
        inkscape:export-xdpi="120"
        inkscape:export-ydpi="120">
@@ -450,7 +426,7 @@
     </g>
     <g
        id="g22939"
-       transform="translate(0.02348115,-0.02917776)"
+       transform="translate(-19.491183,-1.9146076)"
        inkscape:export-filename="/home/atolstoy/picodata-git/picodata/docs/rect29727.png"
        inkscape:export-xdpi="120"
        inkscape:export-ydpi="120">
@@ -485,15 +461,17 @@
        inkscape:export-ydpi="120" />
     <path
        style="fill:none;stroke:#000000;stroke-width:0.465;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1;marker-end:url(#Arrow2Mend-3)"
-       d="M 92.814522,67.826708 94.393298,66.50765"
+       d="m 150.75603,34.969003 2.0566,-0.05349"
        id="path27082"
        sodipodi:nodetypes="cc"
        inkscape:export-filename="/home/atolstoy/picodata-git/picodata/docs/rect29727.png"
        inkscape:export-xdpi="120"
-       inkscape:export-ydpi="120" />
+       inkscape:export-ydpi="120"
+       inkscape:transform-center-x="0.6014696"
+       inkscape:transform-center-y="3.1642512" />
     <path
        style="fill:none;stroke:#000000;stroke-width:0.465;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1;marker-end:url(#Arrow2Mend-3)"
-       d="m 121.4915,47.78391 1.84116,-0.917921"
+       d="m 258.7774,32.046207 2.04455,0.228599"
        id="path27084"
        sodipodi:nodetypes="cc"
        inkscape:export-filename="/home/atolstoy/picodata-git/picodata/docs/rect29727.png"
@@ -501,7 +479,7 @@
        inkscape:export-ydpi="120" />
     <path
        style="fill:none;stroke:#000000;stroke-width:0.465;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1;marker-end:url(#Arrow2Mend-3)"
-       d="m 149.29359,39.173905 2.02273,-0.37553"
+       d="m 178.9762,34.198467 2.05718,-0.02159"
        id="path27086"
        sodipodi:nodetypes="cc"
        inkscape:export-filename="/home/atolstoy/picodata-git/picodata/docs/rect29727.png"
@@ -509,7 +487,7 @@
        inkscape:export-ydpi="120" />
     <path
        style="fill:none;stroke:#000000;stroke-width:0.465;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1;marker-end:url(#Arrow2Mend-3)"
-       d="m 169.87989,36.100081 2.04975,-0.176106"
+       d="m 212.78695,45.914685 2.05393,0.117669"
        id="path27088"
        sodipodi:nodetypes="cc"
        inkscape:export-filename="/home/atolstoy/picodata-git/picodata/docs/rect29727.png"
@@ -517,7 +495,7 @@
        inkscape:export-ydpi="120" />
     <path
        style="fill:none;stroke:#000000;stroke-width:0.465;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1;marker-end:url(#Arrow2Mend-3)"
-       d="m 219.66607,34.476072 2.05625,0.06556"
+       d="m 258.91724,38.137992 2.01707,-0.404853"
        id="path27090"
        sodipodi:nodetypes="cc"
        inkscape:export-filename="/home/atolstoy/picodata-git/picodata/docs/rect29727.png"
@@ -525,15 +503,7 @@
        inkscape:export-ydpi="120" />
     <path
        style="fill:none;stroke:#000000;stroke-width:0.465;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1;marker-end:url(#Arrow2Mend-3)"
-       d="m 206.45085,34.31645 2.05727,0.01132"
-       id="path27192"
-       sodipodi:nodetypes="cc"
-       inkscape:export-filename="/home/atolstoy/picodata-git/picodata/docs/rect29727.png"
-       inkscape:export-xdpi="120"
-       inkscape:export-ydpi="120" />
-    <path
-       style="fill:none;stroke:#000000;stroke-width:0.465;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1;marker-end:url(#Arrow2Mend-3)"
-       d="m 219.70123,13.403011 2.05164,-0.152384"
+       d="m 258.83698,35.156179 2.03532,-0.299843"
        id="path27194"
        sodipodi:nodetypes="cc"
        inkscape:export-filename="/home/atolstoy/picodata-git/picodata/docs/rect29727.png"
@@ -541,7 +511,7 @@
        inkscape:export-ydpi="120" />
     <path
        style="fill:none;stroke:#000000;stroke-width:0.465;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1;marker-end:url(#Arrow2Mend-3)"
-       d="m 280.58776,30.453392 0.9951,1.800629"
+       d="m 77.808883,69.16575 0.785444,-1.901465"
        id="path27196"
        sodipodi:nodetypes="cc"
        inkscape:export-filename="/home/atolstoy/picodata-git/picodata/docs/rect29727.png"
@@ -549,17 +519,17 @@
        inkscape:export-ydpi="120" />
     <path
        style="fill:none;stroke:#000000;stroke-width:0.465;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1;marker-end:url(#Arrow2Mend-3)"
-       d="m 270.55371,38.708763 2.04188,0.251577"
+       d="m 307.90488,53.65678 1.26263,1.624288"
        id="path27198"
        sodipodi:nodetypes="cc"
-       inkscape:transform-center-x="0.55269468"
-       inkscape:transform-center-y="-1.0012494"
+       inkscape:transform-center-x="-0.31941032"
+       inkscape:transform-center-y="-1.0981579"
        inkscape:export-filename="/home/atolstoy/picodata-git/picodata/docs/rect29727.png"
        inkscape:export-xdpi="120"
        inkscape:export-ydpi="120" />
     <path
        style="fill:none;stroke:#000000;stroke-width:0.465;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1;marker-end:url(#Arrow2Mend-3)"
-       d="m 297.08477,53.088982 1.33042,1.569238"
+       d="m 212.68079,22.302566 2.05269,-0.137858"
        id="path27200"
        sodipodi:nodetypes="cc"
        inkscape:export-filename="/home/atolstoy/picodata-git/picodata/docs/rect29727.png"
@@ -575,7 +545,7 @@
        inkscape:export-ydpi="120" />
     <g
        id="g45079"
-       transform="translate(-34.694757,-0.21776448)">
+       transform="translate(-26.267529,0.54918601)">
       <rect
          style="fill:#ffffff;fill-opacity:1;stroke:#000000;stroke-width:0.465;stroke-miterlimit:4;stroke-dasharray:none"
          id="rect43755"
@@ -599,35 +569,67 @@
     </g>
     <path
        style="fill:none;stroke:#000000;stroke-width:0.465;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1;marker-end:url(#Arrow2Mend-3)"
-       d="m 271.26594,44.973211 1.7932,-1.008468"
+       d="m 109.91309,35.88063 2.03994,-0.266856"
        id="path47306"
        sodipodi:nodetypes="cc"
-       inkscape:transform-center-x="1.0388247"
-       inkscape:transform-center-y="-0.4783429"
+       inkscape:transform-center-x="0.7854447"
+       inkscape:transform-center-y="-0.8312909"
        inkscape:export-filename="/home/atolstoy/picodata-git/picodata/docs/rect29727.png"
        inkscape:export-xdpi="120"
        inkscape:export-ydpi="120" />
+    <g
+       id="g26962"
+       transform="translate(-10.61036,-6.2514621)">
+      <rect
+         style="fill:#ffffff;fill-opacity:1;stroke:#000000;stroke-width:0.465;stroke-miterlimit:4;stroke-dasharray:none"
+         id="rect12396"
+         width="24.927999"
+         height="10.43022"
+         x="123.33266"
+         y="36.435768" />
+      <text
+         xml:space="preserve"
+         style="font-style:normal;font-weight:normal;font-size:4.42337px;line-height:0.95;font-family:sans-serif;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.110585"
+         x="135.77454"
+         y="41.035744"
+         id="text12950"><tspan
+           sodipodi:role="line"
+           style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-family:HelveticaNeueCyr;-inkscape-font-specification:HelveticaNeueCyr;text-align:center;text-anchor:middle;stroke-width:0.110585"
+           x="135.77454"
+           y="41.035744"
+           id="tspan12948">detect</tspan><tspan
+           sodipodi:role="line"
+           style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-family:HelveticaNeueCyr;-inkscape-font-specification:HelveticaNeueCyr;text-align:center;text-anchor:middle;stroke-width:0.110585"
+           x="135.77454"
+           y="45.340252"
+           id="tspan13292">leader</tspan></text>
+    </g>
+    <path
+       style="fill:none;stroke:#000000;stroke-width:0.465;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
+       d="m 101.20808,61.138027 c 0,0 110.73443,3.622839 128.82401,-0.397348 18.08959,-4.020188 18.01892,-22.569839 32.35432,-23.144818"
+       id="path34519"
+       sodipodi:nodetypes="czc" />
     <rect
-       style="fill:#000000;fill-opacity:1;stroke:#000000;stroke-width:0.464999;stroke-miterlimit:4;stroke-dasharray:none"
-       id="rect48914"
+       style="fill:#000000;fill-opacity:1;stroke:#000000;stroke-width:0.464998;stroke-miterlimit:4;stroke-dasharray:none"
+       id="rect43611"
        width="1.7220054"
-       height="10.43022"
-       x="209.34381"
-       y="29.319323"
+       height="14.715237"
+       x="181.88298"
+       y="26.70587"
        rx="0.44400001"
        ry="0.44400001"
        inkscape:export-filename="/home/atolstoy/picodata-git/picodata/docs/rect29727.png"
        inkscape:export-xdpi="120"
        inkscape:export-ydpi="120" />
     <g
-       id="g49029"
-       transform="translate(-13.021991,-15.983883)"
+       id="g47258"
+       transform="translate(-25.21049,-19.232447)"
        inkscape:export-filename="/home/atolstoy/picodata-git/picodata/docs/rect29727.png"
        inkscape:export-xdpi="120"
        inkscape:export-ydpi="120">
       <rect
          style="fill:#ffffff;fill-opacity:1;stroke:#000000;stroke-width:0.465;stroke-miterlimit:4;stroke-dasharray:none"
-         id="rect49023"
+         id="rect47252"
          width="23.818783"
          height="10.43022"
          x="286.54056"
@@ -639,9 +641,9 @@
          style="font-style:normal;font-weight:normal;font-size:4.42337px;line-height:1.25;font-family:sans-serif;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.110585"
          x="290.58521"
          y="55.400097"
-         id="text49027"><tspan
+         id="text47256"><tspan
            sodipodi:role="line"
-           id="tspan49025"
+           id="tspan47254"
            style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-family:HelveticaNeueCyr;-inkscape-font-specification:HelveticaNeueCyr;stroke-width:0.110585"
            x="290.58521"
            y="55.400097">postjoin</tspan></text>
