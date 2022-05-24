@@ -197,8 +197,8 @@ class Instance:
         with self.connection(timeout) as conn:
             return conn.eval(expr, *args)
 
-    def killpg(self):
-        """Kill entire process group"""
+    def kill(self):
+        """Kill the instance brutally with SIGKILL"""
         if self.process is None:
             # Be idempotent
             return
@@ -225,7 +225,7 @@ class Instance:
         try:
             return self.process.wait(timeout=kill_after_seconds)
         finally:
-            self.killpg()
+            self.kill()
 
     def start(self):
         if self.process:
@@ -242,9 +242,9 @@ class Instance:
         # Assert a new process group is created
         assert os.getpgid(self.process.pid) == self.process.pid
 
-    def restart(self, killpg: bool = False, drop_db: bool = False):
-        if killpg:
-            self.killpg()
+    def restart(self, kill: bool = False, drop_db: bool = False):
+        if kill:
+            self.kill()
         else:
             self.terminate()
 

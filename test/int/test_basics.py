@@ -171,7 +171,7 @@ def test_process_management(instance: Instance):
     print(f"{instance} is still alive")
 
     # Kill the remaining child in the process group
-    instance.killpg()
+    instance.kill()
 
     # When the supervisor is killed, the orphaned child is reparented
     # to a subreaper. Pytest isn't the one, and therefore it can't do
@@ -197,8 +197,8 @@ def test_process_management(instance: Instance):
     assert pid1 == pid2
     instance.terminate()
     instance.terminate()
-    instance.killpg()
-    instance.killpg()
+    instance.kill()
+    instance.kill()
 
 
 def test_propose_eval(instance: Instance):
