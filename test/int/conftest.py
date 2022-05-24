@@ -223,7 +223,8 @@ class Instance:
         self.process.terminate()
 
         try:
-            return self.process.wait(timeout=kill_after_seconds)
+            self.process.wait(timeout=kill_after_seconds)
+            eprint(f"{self} terminated")
         finally:
             self.kill()
 
@@ -238,6 +239,8 @@ class Instance:
             stdin=subprocess.DEVNULL,
             start_new_session=True,
         )
+
+        eprint(f"{self} starting...")
 
         # Assert a new process group is created
         assert os.getpgid(self.process.pid) == self.process.pid
@@ -283,6 +286,7 @@ class Instance:
         status = self.__raft_status()
         assert status.is_ready
         self.raft_id = status.id
+        eprint(f"{self} is ready")
 
     @funcy.retry(tries=4, timeout=0.1, errors=AssertionError)
     def promote_or_fail(self):
@@ -297,6 +301,7 @@ class Instance:
             assert self.__raft_status() == "Leader"
 
         wait_promoted()
+        eprint(f"{self} is a leader now")
 
 
 @dataclass
