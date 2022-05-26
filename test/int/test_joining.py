@@ -19,6 +19,12 @@ def cluster2(cluster: Cluster):
     return cluster
 
 
+@pytest.fixture
+def cluster3(cluster: Cluster):
+    cluster.deploy(instance_count=3)
+    return cluster
+
+
 def raft_join(peer: Instance, id: str, timeout: float):
     instance_id = f"{id}"
     replicaset_id = None
@@ -118,9 +124,8 @@ def test_uuids(cluster2: Cluster):
     assert fake_peer_1["instance_uuid"] == fake_peer_2["instance_uuid"]
 
 
-def test_discovery(cluster: Cluster):
-    cluster.deploy(instance_count=3)
-    i1, i2, i3 = cluster.instances
+def test_discovery(cluster3: Cluster):
+    i1, i2, i3 = cluster3.instances
 
     # make sure i1 is leader
     i1.promote_or_fail()
@@ -138,7 +143,7 @@ def test_discovery(cluster: Cluster):
     assert req_discover(i1) == [{"Done": {"NonLeader": {"leader": i2.listen}}}]
 
     # add instance
-    i4 = cluster.add_instance(peers=[i1.listen])
+    i4 = cluster3.add_instance(peers=[i1.listen])
     i4.assert_raft_status("Follower", leader_id=i2.raft_id)
 
     # Run discovery against `--peer i3`.
@@ -147,5 +152,5 @@ def test_discovery(cluster: Cluster):
     assert req_discover(i3) == [{"Done": {"NonLeader": {"leader": i2.listen}}}]
 
     # add instance
-    i5 = cluster.add_instance(peers=[i3.listen])
+    i5 = cluster3.add_instance(peers=[i3.listen])
     i5.assert_raft_status("Follower", leader_id=i2.raft_id)
