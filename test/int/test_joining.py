@@ -154,3 +154,36 @@ def test_discovery(cluster3: Cluster):
     # add instance
     i5 = cluster3.add_instance(peers=[i3.listen])
     i5.assert_raft_status("Follower", leader_id=i2.raft_id)
+
+
+def test_replication(cluster2: Cluster):
+    i1, i2 = cluster2.instances
+
+    assert i1.replicaset_uuid() == i2.replicaset_uuid()
+
+    for instance in cluster2.instances:
+        with instance.connection(1) as conn:
+            raft_peer = conn.select("raft_group", [instance.raft_id])[0]
+            space_cluster = conn.select("_cluster")
+            cfg_replication = conn.eval("return box.cfg.replication")
+
+        assert raft_peer[:-1] == [
+            instance.raft_id,
+            instance.eval("return box.info.listen"),
+            True,  # voter
+            instance.instance_id,
+            "r1",
+            instance.eval("return box.info.uuid"),
+            instance.eval("return box.info.cluster.uuid"),
+        ]
+
+        assert list(space_cluster) == [
+            [1, i1.instance_uuid()],
+            [2, i2.instance_uuid()],
+        ]
+
+        if instance == i1:
+            with pytest.raises(AssertionError):  # FIXME
+                assert cfg_replication[0] == [i1.listen, i2.listen]
+        else:
+            assert cfg_replication[0] == [i1.listen, i2.listen]

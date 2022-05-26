@@ -139,6 +139,12 @@ class Instance:
     def listen(self):
         return f"{self.host}:{self.port}"
 
+    def instance_uuid(self):
+        return self.eval("return box.info.uuid")
+
+    def replicaset_uuid(self):
+        return self.eval("return box.info.cluster.uuid")
+
     @property
     def command(self):
         # fmt: off
