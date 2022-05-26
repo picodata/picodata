@@ -5,7 +5,6 @@ use ::raft::Error as RaftError;
 use ::raft::StorageError;
 use ::tarantool::index::IteratorType;
 use ::tarantool::space::Space;
-use ::tarantool::tuple::AsTuple;
 use ::tarantool::tuple::Tuple;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
@@ -225,9 +224,9 @@ impl Storage {
         Ok(())
     }
 
-    pub fn persist_peer(row: &impl AsTuple) -> Result<(), StorageError> {
+    pub fn persist_peer(peer: &traft::Peer) -> Result<(), StorageError> {
         Storage::space(RAFT_GROUP)?
-            .replace(row)
+            .replace(peer)
             .map_err(box_err!())?;
 
         Ok(())
@@ -479,6 +478,121 @@ inventory::submit!(crate::InnerTest {
         assert_err!(
             Storage::commit(),
             "unknown error no such space \"raft_state\""
+        );
+    }
+});
+
+inventory::submit!(crate::InnerTest {
+    name: "test_storage_peers",
+    body: || {
+        let mut raft_group = Storage::space(RAFT_GROUP).unwrap();
+
+        for peer in vec![
+            // r1
+            (1u64, "addr:1", true, "i1", "r1", "i1-uuid", "r1-uuid", 1u64),
+            (2, "addr:2", true, "i2", "r1", "i2-uuid", "r1-uuid", 2),
+            // r2
+            (3, "addr:3", true, "i3", "r2", "i3-uuid", "r2-uuid", 10),
+            (4, "addr:4", true, "i4", "r2", "i4-uuid", "r2-uuid", 10),
+            // r3
+            (5, "addr:5", true, "i5", "r3", "i5-uuid", "r3-uuid", 10),
+        ] {
+            raft_group.put(&peer).unwrap();
+        }
+
+        let peers = Storage::peers().unwrap();
+        assert_eq!(
+            peers.iter().map(|p| &p.instance_id).collect::<Vec<_>>(),
+            vec!["i1", "i2", "i3", "i4", "i5"]
+        );
+
+        assert_err!(
+            Storage::persist_peer(&traft::Peer {
+                raft_id: 99,
+                instance_id: "i1".into(),
+                ..Default::default()
+            }),
+            concat!(
+                "unknown error",
+                " Tarantool error:",
+                " TupleFound: Duplicate key exists",
+                " in unique index \"instance_id\"",
+                " in space \"raft_group\"",
+                " with old tuple",
+                " - [1, \"addr:1\", true, \"i1\", \"r1\", \"i1-uuid\", \"r1-uuid\", 1]",
+                " and new tuple",
+                " - [99, \"\", false, \"i1\", \"\", \"\", \"\", 0]"
+            )
+        );
+
+        assert_err!(
+            Storage::persist_peer(&traft::Peer {
+                raft_id: 99,
+                peer_address: "addr:1".into(),
+                ..Default::default()
+            }),
+            concat!(
+                "unknown error",
+                " Tarantool error:",
+                " TupleFound: Duplicate key exists",
+                " in unique index \"peer_address\"",
+                " in space \"raft_group\"",
+                " with old tuple",
+                " - [1, \"addr:1\", true, \"i1\", \"r1\", \"i1-uuid\", \"r1-uuid\", 1]",
+                " and new tuple",
+                " - [99, \"addr:1\", false, \"\", \"\", \"\", \"\", 0]"
+            )
+        );
+
+        let peer_by_raft_id = |id: u64| Storage::peer_by_raft_id(id).unwrap().unwrap();
+        {
+            assert_eq!(peer_by_raft_id(1).instance_id, "i1");
+            assert_eq!(peer_by_raft_id(2).instance_id, "i2");
+            assert_eq!(peer_by_raft_id(3).instance_id, "i3");
+            assert_eq!(peer_by_raft_id(4).instance_id, "i4");
+            assert_eq!(peer_by_raft_id(5).instance_id, "i5");
+            assert_eq!(Storage::peer_by_raft_id(6), Ok(None));
+        }
+
+        let peer_by_instance_id = |iid| Storage::peer_by_instance_id(iid).unwrap().unwrap();
+        {
+            assert_eq!(peer_by_instance_id("i1").peer_address, "addr:1");
+            assert_eq!(peer_by_instance_id("i2").peer_address, "addr:2");
+            assert_eq!(peer_by_instance_id("i3").peer_address, "addr:3");
+            assert_eq!(peer_by_instance_id("i4").peer_address, "addr:4");
+            assert_eq!(peer_by_instance_id("i5").peer_address, "addr:5");
+            assert_eq!(Storage::peer_by_instance_id("i6"), Ok(None));
+        }
+
+        raft_group.index("instance_id").unwrap().drop().unwrap();
+
+        assert_err!(
+            Storage::peer_by_instance_id("i1"),
+            concat!(
+                "unknown error",
+                " no such index \"instance_id\"",
+                " in space \"raft_group\""
+            )
+        );
+
+        raft_group.index("peer_address").unwrap().drop().unwrap();
+        raft_group.primary_key().drop().unwrap();
+
+        assert_err!(
+            Storage::peer_by_raft_id(1),
+            concat!(
+                "unknown error",
+                " Tarantool error:",
+                " NoSuchIndexID:",
+                " No index #0 is defined in space 'raft_group'"
+            )
+        );
+
+        raft_group.drop().unwrap();
+
+        assert_err!(
+            Storage::peers(),
+            "unknown error no such space \"raft_group\""
         );
     }
 });
