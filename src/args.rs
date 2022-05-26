@@ -168,10 +168,7 @@ impl Tarantool {
 
 #[derive(Debug, Parser, tlua::Push)]
 #[clap(about = "Run picodata integration tests")]
-pub struct Test {
-    #[clap(flatten)]
-    pub run: Run,
-}
+pub struct Test {}
 
 impl Test {
     pub fn tt_args(&self) -> Result<Vec<CString>, String> {
