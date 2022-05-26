@@ -91,6 +91,11 @@ impl Storage {
                 parts = {{'instance_id'}},
                 unique = true,
             })
+            box.space.raft_group:create_index('replicaset_id', {
+                if_not_exists = true,
+                parts = {{'replicaset_id'}, {'commit_index'}},
+                unique = false,
+            })
             box.space.raft_group:create_index('peer_address', {
                 if_not_exists = true,
                 parts = {{'peer_address'}},
@@ -163,6 +168,33 @@ impl Storage {
 
         for tuple in iter {
             ret.push(tuple.into_struct().map_err(box_err!())?);
+        }
+
+        Ok(ret)
+    }
+
+    pub fn box_replication(peer: &traft::Peer) -> Result<Vec<String>, StorageError> {
+        let mut ret = Vec::new();
+
+        const IDX: &str = "replicaset_id";
+        let iter = Storage::space(RAFT_GROUP)?
+            .index(IDX)
+            .ok_or_else(|| Error::NoSuchIndex(RAFT_GROUP.into(), IDX.into()))
+            .map_err(box_err!())?
+            .select(IteratorType::GE, &(&peer.replicaset_id,))
+            .map_err(box_err!())?;
+
+        for tuple in iter {
+            let replica: traft::Peer = tuple.into_struct().map_err(box_err!())?;
+
+            if replica.replicaset_id != peer.replicaset_id
+                || replica.commit_index > peer.commit_index
+            {
+                // In Tarantool the iteration must be interrupted explicitly.
+                break;
+            }
+
+            ret.push(replica.peer_address);
         }
 
         Ok(ret)
@@ -564,6 +596,29 @@ inventory::submit!(crate::InnerTest {
             assert_eq!(Storage::peer_by_instance_id("i6"), Ok(None));
         }
 
+        let box_replication = |rsid: &str, idx: u64| {
+            let peer = traft::Peer {
+                replicaset_id: rsid.into(),
+                commit_index: idx,
+                ..Default::default()
+            };
+            Storage::box_replication(&peer).unwrap()
+        };
+
+        {
+            assert_eq!(box_replication("r1", 0), Vec::<&str>::new());
+            assert_eq!(box_replication("XX", 99), Vec::<&str>::new());
+
+            assert_eq!(box_replication("r1", 1), vec!["addr:1"]);
+            assert_eq!(box_replication("r1", 2), vec!["addr:1", "addr:2"]);
+            assert_eq!(box_replication("r1", 99), vec!["addr:1", "addr:2"]);
+
+            assert_eq!(box_replication("r2", 10), vec!["addr:3", "addr:4"]);
+            assert_eq!(box_replication("r2", 10), vec!["addr:3", "addr:4"]);
+
+            assert_eq!(box_replication("r3", 10), vec!["addr:5"]);
+        }
+
         raft_group.index("instance_id").unwrap().drop().unwrap();
 
         assert_err!(
@@ -571,6 +626,17 @@ inventory::submit!(crate::InnerTest {
             concat!(
                 "unknown error",
                 " no such index \"instance_id\"",
+                " in space \"raft_group\""
+            )
+        );
+
+        raft_group.index("replicaset_id").unwrap().drop().unwrap();
+
+        assert_err!(
+            Storage::box_replication(&traft::Peer::default()),
+            concat!(
+                "unknown error",
+                " no such index \"replicaset_id\"",
                 " in space \"raft_group\""
             )
         );

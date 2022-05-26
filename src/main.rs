@@ -493,7 +493,7 @@ fn start_join(args: &args::Run, leader_address: String) {
     assert!(tarantool::cfg().is_none());
 
     let cfg = tarantool::Cfg {
-        listen: None,
+        listen: Some(args.listen.clone()),
         read_only: false,
         instance_uuid: Some(resp.peer.instance_uuid.clone()),
         replicaset_uuid: Some(resp.peer.replicaset_uuid.clone()),

@@ -704,13 +704,14 @@ fn raft_join(req: JoinRequest) -> Result<JoinResponse, Box<dyn StdError>> {
     let instance_id = req.instance_id.clone();
     node.join_one(req)?;
 
-    let resp = JoinResponse {
-        peer: {
-            // TODO: get rid of unwrap
-            Storage::peer_by_instance_id(&instance_id)?.unwrap()
-        },
-        raft_group: Storage::peers()?,
-        box_replication: vec![],
-    };
-    Ok(resp)
+    let peer = Storage::peer_by_instance_id(&instance_id)?
+        .ok_or("the peer has misteriously disappeared")?;
+    let raft_group = Storage::peers()?;
+    let box_replication = Storage::box_replication(&peer)?;
+
+    Ok(JoinResponse {
+        peer,
+        raft_group,
+        box_replication,
+    })
 }
