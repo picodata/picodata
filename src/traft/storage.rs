@@ -359,7 +359,7 @@ impl raft::Storage for Storage {
 }
 
 macro_rules! assert_err {
-    ($expr:expr, $err:tt) => {
+    ($expr:expr, $err:expr) => {
         assert_eq!($expr.map_err(|e| format!("{e}")), Err($err.into()))
     };
 }
@@ -398,18 +398,23 @@ inventory::submit!(crate::InnerTest {
         raft_log.put(&(0, 99, 1, "", false)).unwrap();
         assert_err!(
             Storage.entries(1, 100, u64::MAX),
-            "unknown error \
-Failed to decode tuple: \
-data did not match any variant of untagged enum EntryContext"
+            concat!(
+                "unknown error",
+                " Failed to decode tuple:",
+                " data did not match any variant",
+                " of untagged enum EntryContext"
+            )
         );
 
         raft_log.primary_key().drop().unwrap();
         assert_err!(
             Storage.entries(1, 100, u64::MAX),
-            "unknown error \
-Tarantool error: \
-NoSuchIndexID: \
-No index #0 is defined in space 'raft_log'"
+            concat!(
+                "unknown error",
+                " Tarantool error:",
+                " NoSuchIndexID:",
+                " No index #0 is defined in space 'raft_log'"
+            )
         );
 
         raft_log.drop().unwrap();
@@ -449,21 +454,25 @@ inventory::submit!(crate::InnerTest {
         Storage::persist_id(16).unwrap();
         assert_err!(
             Storage::persist_id(32),
-            "unknown error \
-Tarantool error: \
-TupleFound: \
-Duplicate key exists in unique index \"pk\" in space \"raft_state\" \
-with old tuple - [\"id\", 16] \
-and new tuple - [\"id\", 32]"
+            concat!(
+                "unknown error",
+                " Tarantool error:",
+                " TupleFound:",
+                " Duplicate key exists in unique index \"pk\" in space \"raft_state\"",
+                " with old tuple - [\"id\", 16]",
+                " and new tuple - [\"id\", 32]"
+            )
         );
 
         raft_state.primary_key().drop().unwrap();
         assert_err!(
             Storage::term(),
-            "unknown error \
-Tarantool error: \
-NoSuchIndexID: \
-No index #0 is defined in space 'raft_state'"
+            concat!(
+                "unknown error",
+                " Tarantool error:",
+                " NoSuchIndexID:",
+                " No index #0 is defined in space 'raft_state'"
+            )
         );
 
         raft_state.drop().unwrap();
