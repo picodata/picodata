@@ -561,7 +561,7 @@ fn postjoin(args: &args::Run) {
         ..tarantool::cfg().unwrap()
     });
 
-    while node.status().leader_id == 0 {
+    while node.status().leader_id == None {
         node.wait_status();
     }
 
@@ -594,22 +594,26 @@ fn postjoin(args: &args::Run) {
             advertise_address: args.advertise_address(),
         };
 
-        let leader_id = node.status().leader_id;
-        let leader = traft::Storage::peer_by_raft_id(leader_id).unwrap().unwrap();
+        match node.status().leader_id {
+            None => (),
+            Some(leader_id) => {
+                let leader = traft::Storage::peer_by_raft_id(leader_id).unwrap().unwrap();
 
-        use traft::node::raft_join;
-        let fn_name = stringify_cfunc!(raft_join);
-        let now = Instant::now();
-        match tarantool::net_box_call(&leader.peer_address, fn_name, &req, timeout) {
-            Err(e) => {
-                tlog!(Error, "failed to promote myself: {e}");
-                fiber::sleep(timeout.saturating_sub(now.elapsed()));
-                continue;
+                use traft::node::raft_join;
+                let fn_name = stringify_cfunc!(raft_join);
+                let now = Instant::now();
+                match tarantool::net_box_call(&leader.peer_address, fn_name, &req, timeout) {
+                    Err(e) => {
+                        tlog!(Error, "failed to promote myself: {e}");
+                        fiber::sleep(timeout.saturating_sub(now.elapsed()));
+                        continue;
+                    }
+                    Ok(traft::JoinResponse { .. }) => {
+                        break;
+                    }
+                };
             }
-            Ok(traft::JoinResponse { .. }) => {
-                break;
-            }
-        };
+        }
     }
 
     node.mark_as_ready();

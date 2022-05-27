@@ -8,6 +8,7 @@
 use ::raft::prelude as raft;
 use ::raft::Error as RaftError;
 use ::raft::StateRole as RaftStateRole;
+use ::raft::INVALID_ID;
 use ::tarantool::error::TransactionError;
 use ::tarantool::fiber;
 use ::tarantool::proc;
@@ -54,14 +55,17 @@ pub struct Status {
     /// `raft_id` of the current instance
     pub id: u64,
     /// `raft_id` of the leader instance
-    pub leader_id: u64,
+    pub leader_id: Option<u64>,
     pub raft_state: String,
     pub is_ready: bool,
 }
 
 impl Status {
     pub fn am_leader(&self) -> bool {
-        self.id == self.leader_id
+        match self.leader_id {
+            Some(id) => self.id == id,
+            None => false,
+        }
     }
 }
 
@@ -118,7 +122,7 @@ impl Node {
         let raw_node = RawNode::new(cfg, Storage, &tlog::root())?;
         let status = Rc::new(RefCell::new(Status {
             id: cfg.id,
-            leader_id: 0,
+            leader_id: None,
             raft_state: "Follower".into(),
             is_ready: false,
         }));
@@ -567,7 +571,10 @@ fn raft_main_loop(
 
             if let Some(ss) = ready.ss() {
                 let mut status = status.borrow_mut();
-                status.leader_id = ss.leader_id;
+                status.leader_id = match ss.leader_id {
+                    INVALID_ID => None,
+                    id => Some(id),
+                };
                 status.raft_state = format!("{:?}", ss.raft_state);
                 status_cond.broadcast();
             }

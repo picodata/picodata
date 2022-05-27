@@ -3,6 +3,7 @@ use std::convert::TryFrom;
 use ::raft::prelude as raft;
 use ::raft::Error as RaftError;
 use ::raft::StorageError;
+use ::raft::INVALID_ID;
 use ::tarantool::index::IteratorType;
 use ::tarantool::space::Space;
 use ::tarantool::tuple::Tuple;
@@ -130,8 +131,8 @@ impl Storage {
     }
 
     pub fn peer_by_raft_id(raft_id: u64) -> Result<Option<traft::Peer>, StorageError> {
-        if raft_id == 0 {
-            return Ok(None);
+        if raft_id == INVALID_ID {
+            unreachable!("peer_by_raft_id called with invalid id ({})", INVALID_ID);
         }
 
         let tuple = Storage::space(RAFT_GROUP)?

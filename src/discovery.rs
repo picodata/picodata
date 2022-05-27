@@ -203,12 +203,19 @@ fn proc_discover<'a>(
 ) -> Result<Cow<'a, Response>, Box<dyn StdError>> {
     if let Ok(node) = traft::node::global() {
         let status = node.status();
-        let leader = traft::Storage::peer_by_raft_id(status.leader_id)?
-            .ok_or("leader id is present, but it's address is unknown")?;
-        Ok(Cow::Owned(Response::Done(Role::new(
-            leader.peer_address,
-            status.am_leader(),
-        ))))
+        match status.leader_id {
+            Some(leader_id) => {
+                let leader = traft::Storage::peer_by_raft_id(leader_id)?.ok_or(format!(
+                    "leader_id is present ({}) but it's address is unknown for node {}",
+                    leader_id, status.id
+                ))?;
+                Ok(Cow::Owned(Response::Done(Role::new(
+                    leader.peer_address,
+                    status.am_leader(),
+                ))))
+            }
+            None => return Err(format!("leader_id is unknown for node {}", status.id).into()),
+        }
     } else {
         let discovery = discovery.as_mut().ok_or("discovery uninitialized")?;
         Ok(Cow::Borrowed(discovery.handle_request(request, request_to)))
