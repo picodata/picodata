@@ -97,11 +97,6 @@ impl Storage {
                 parts = {{'replicaset_id'}, {'commit_index'}},
                 unique = false,
             })
-            box.space.raft_group:create_index('peer_address', {
-                if_not_exists = true,
-                parts = {{'peer_address'}},
-                unique = true,
-            })
         "#,
         );
     }
@@ -558,24 +553,19 @@ inventory::submit!(crate::InnerTest {
             )
         );
 
-        assert_err!(
-            Storage::persist_peer(&traft::Peer {
-                raft_id: 99,
-                peer_address: "addr:1".into(),
+        {
+            // Ensure traft storage doesn't impose restrictions
+            // on peer_address uniqueness.
+            let peer = |id: u64, addr: &str| traft::Peer {
+                raft_id: id,
+                instance_id: format!("i{id}"),
+                peer_address: addr.into(),
                 ..Default::default()
-            }),
-            concat!(
-                "unknown error",
-                " Tarantool error:",
-                " TupleFound: Duplicate key exists",
-                " in unique index \"peer_address\"",
-                " in space \"raft_group\"",
-                " with old tuple",
-                " - [1, \"addr:1\", true, \"i1\", \"r1\", \"i1-uuid\", \"r1-uuid\", 1]",
-                " and new tuple",
-                " - [99, \"addr:1\", false, \"\", \"\", \"\", \"\", 0]"
-            )
-        );
+            };
+
+            Storage::persist_peer(&peer(10, "addr:collision")).unwrap();
+            Storage::persist_peer(&peer(11, "addr:collision")).unwrap();
+        }
 
         let peer_by_raft_id = |id: u64| Storage::peer_by_raft_id(id).unwrap().unwrap();
         {
@@ -594,6 +584,10 @@ inventory::submit!(crate::InnerTest {
             assert_eq!(peer_by_instance_id("i3").peer_address, "addr:3");
             assert_eq!(peer_by_instance_id("i4").peer_address, "addr:4");
             assert_eq!(peer_by_instance_id("i5").peer_address, "addr:5");
+            assert_eq!(
+                peer_by_instance_id("i10").peer_address,
+                peer_by_instance_id("i11").peer_address
+            );
             assert_eq!(Storage::peer_by_instance_id("i6"), Ok(None));
         }
 
@@ -642,7 +636,6 @@ inventory::submit!(crate::InnerTest {
             )
         );
 
-        raft_group.index("peer_address").unwrap().drop().unwrap();
         raft_group.primary_key().drop().unwrap();
 
         assert_err!(

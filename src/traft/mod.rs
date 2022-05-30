@@ -65,8 +65,14 @@ pub enum Op {
 /// Serializable struct representing a member of the raft group.
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 pub struct Peer {
+    /// Used for identifying raft nodes.
+    /// Must be unique in the raft group.
     pub raft_id: u64,
+    /// Inbound address used for communication with the node.
+    /// Not to be confused with listen address.
     pub peer_address: String,
+    /// Reflects the role of the node in the raft group.
+    /// Non-voters are also called learners in terms of raft.
     pub voter: bool,
     pub instance_id: String,
     pub replicaset_id: String,
