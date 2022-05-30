@@ -2,3 +2,4 @@
 .rocks
 *.snap
 *.xlog
+__pycache__/
