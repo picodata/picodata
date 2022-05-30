@@ -5,29 +5,11 @@ import pytest
 import signal
 
 from conftest import (
-    xdist_worker_number,
     Instance,
     TarantoolError,
     ReturnError,
     MalformedAPI,
 )
-
-
-def test_xdist_worker_number():
-    assert xdist_worker_number("master") == 0
-    assert xdist_worker_number("gw0") == 0
-    assert xdist_worker_number("gw1") == 1
-    assert xdist_worker_number("gw007") == 7
-    assert xdist_worker_number("gw1024") == 1024
-
-    with pytest.raises(ValueError, match=r"gw"):
-        assert xdist_worker_number("gw")
-
-    with pytest.raises(ValueError, match=r"xgw8x"):
-        assert xdist_worker_number("xgw8x")
-
-    with pytest.raises(ValueError, match=r"wtf"):
-        assert xdist_worker_number("wtf")
 
 
 def test_call_normalization(instance: Instance):

@@ -23,13 +23,13 @@ from tarantool.error import (  # type: ignore
 # A constant represents invalid id of raft.
 # pub const INVALID_ID: u64 = 0;
 INVALID_RAFT_ID = 0
-RE_XDIST_WORKER_ID = re.compile(r"^gw(\d+)$")
 
 
 def eprint(*args, **kwargs):
     print(*args, file=sys.stderr, **kwargs)
 
 
+@pytest.fixture(scope="session")
 def xdist_worker_number(worker_id: str) -> int:
     """
     Identify xdist worker by an integer instead of a string.
@@ -40,9 +40,8 @@ def xdist_worker_number(worker_id: str) -> int:
     if worker_id == "master":
         return 0
 
-    match = RE_XDIST_WORKER_ID.match(worker_id)
-    if not match:
-        raise ValueError(worker_id)
+    match = re.fullmatch(r"gw(\d+)", worker_id)
+    assert match, f"unexpected worker id: {worker_id}"
 
     return int(match.group(1))
 
@@ -403,8 +402,8 @@ def binary_path(compile) -> str:
 
 
 @pytest.fixture
-def cluster(binary_path, tmpdir, worker_id) -> Generator[Cluster, None, None]:
-    n = xdist_worker_number(worker_id)
+def cluster(binary_path, tmpdir, xdist_worker_number) -> Generator[Cluster, None, None]:
+    n = xdist_worker_number
     assert isinstance(n, int)
     assert n >= 0
 
