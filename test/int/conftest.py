@@ -1,6 +1,8 @@
+import io
 import os
 import re
 import sys
+import threading
 import funcy  # type: ignore
 import pytest
 import signal
@@ -20,7 +22,7 @@ from tarantool.error import (  # type: ignore
 # From raft.rs:
 # A constant represents invalid id of raft.
 # pub const INVALID_ID: u64 = 0;
-INVALID_ID = 0
+INVALID_RAFT_ID = 0
 RE_XDIST_WORKER_ID = re.compile(r"^gw(\d+)$")
 
 
@@ -121,6 +123,9 @@ class RaftStatus:
     is_ready: bool
 
 
+OUT_LOCK = threading.Lock()
+
+
 @dataclass
 class Instance:
     binary_path: str
@@ -133,7 +138,7 @@ class Instance:
 
     env: dict[str, str] = field(default_factory=dict)
     process: subprocess.Popen | None = None
-    raft_id: int = INVALID_ID
+    raft_id: int = INVALID_RAFT_ID
 
     @property
     def listen(self):
@@ -214,19 +219,39 @@ class Instance:
         finally:
             self.kill()
 
+    def _process_output(self, src, out):
+        prefix = f"{self.instance_id} | "
+        for line in io.TextIOWrapper(src, line_buffering=True):
+            with OUT_LOCK:
+                out.write(prefix)
+                out.write(line)
+                out.flush()
+
     def start(self):
         if self.process:
             # Be idempotent
             return
+
+        eprint(f"{self} starting...")
 
         self.process = subprocess.Popen(
             self.command,
             env=self.env or None,
             stdin=subprocess.DEVNULL,
             start_new_session=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
         )
 
-        eprint(f"{self} starting...")
+        for src, out in [
+            (self.process.stdout, sys.stdout),
+            (self.process.stderr, sys.stderr),
+        ]:
+            threading.Thread(
+                target=self._process_output,
+                args=(src, out),
+                daemon=True,
+            ).start()
 
         # Assert a new process group is created
         assert os.getpgid(self.process.pid) == self.process.pid
@@ -396,8 +421,7 @@ def cluster(binary_path, tmpdir, worker_id) -> Generator[Cluster, None, None]:
         max_port=max_port,
     )
     yield cluster
-    cluster.terminate()
-    cluster.remove_data()
+    cluster.kill()
 
 
 @pytest.fixture
