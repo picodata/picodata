@@ -285,6 +285,7 @@ pub trait ContextCoercion: Serialize + DeserializeOwned {
 /// Request to join the cluster.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct JoinRequest {
+    pub cluster_id: String,
     pub instance_id: String,
     pub replicaset_id: Option<String>,
     pub advertise_address: String,

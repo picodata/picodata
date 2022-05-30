@@ -171,6 +171,7 @@ mod tests {
             $voter:literal
         ) => {
             &JoinRequest {
+                cluster_id: "cluster1".into(),
                 instance_id: $instance_id.into(),
                 replicaset_id: $replicaset_id.map(|v: &str| v.into()),
                 advertise_address: $advertise_address.into(),

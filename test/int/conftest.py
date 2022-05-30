@@ -9,7 +9,8 @@ import signal
 import subprocess
 
 from shutil import rmtree
-from typing import Generator
+from typing import Generator, Iterator
+from itertools import count
 from pathlib import Path
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass, field
@@ -128,7 +129,7 @@ OUT_LOCK = threading.Lock()
 @dataclass
 class Instance:
     binary_path: str
-
+    cluster_id: str
     instance_id: str
     data_dir: str
     peers: list[str]
@@ -154,6 +155,7 @@ class Instance:
         # fmt: off
         return [
             self.binary_path, "run",
+            "--cluster-id", self.cluster_id,
             "--instance-id", self.instance_id,
             "--data-dir", self.data_dir,
             "--listen", self.listen,
@@ -324,7 +326,7 @@ class Instance:
 @dataclass
 class Cluster:
     binary_path: str
-
+    id: str
     data_dir: str
     base_host: str
     base_port: int
@@ -357,6 +359,7 @@ class Cluster:
 
         instance = Instance(
             binary_path=self.binary_path,
+            cluster_id=self.id,
             instance_id=f"i{i}",
             data_dir=f"{self.data_dir}/i{i}",
             host=self.base_host,
@@ -401,8 +404,18 @@ def binary_path(compile) -> str:
     return os.path.realpath(Path(__file__) / "../../../target/debug/picodata")
 
 
+@pytest.fixture(scope="session")
+def cluster_ids(xdist_worker_number) -> Iterator[str]:
+    return (f"cluster-{xdist_worker_number}-{i}" for i in count())
+
+
 @pytest.fixture
-def cluster(binary_path, tmpdir, xdist_worker_number) -> Generator[Cluster, None, None]:
+def cluster(
+    binary_path,
+    tmpdir,
+    xdist_worker_number,
+    cluster_ids,
+) -> Generator[Cluster, None, None]:
     n = xdist_worker_number
     assert isinstance(n, int)
     assert n >= 0
@@ -414,6 +427,7 @@ def cluster(binary_path, tmpdir, xdist_worker_number) -> Generator[Cluster, None
 
     cluster = Cluster(
         binary_path=binary_path,
+        id=next(cluster_ids),
         data_dir=tmpdir,
         base_host="127.0.0.1",
         base_port=base_port,

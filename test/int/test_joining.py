@@ -1,5 +1,7 @@
+from functools import partial
 import os
 import errno
+import re
 import signal
 import pytest
 
@@ -25,21 +27,23 @@ def cluster3(cluster: Cluster):
     return cluster
 
 
-def raft_join(peer: Instance, id: str, timeout: float):
-    instance_id = f"{id}"
+def raft_join(
+    peer: Instance, cluster_id: str, instance_id: str, timeout_seconds: float | int
+):
     replicaset_id = None
     # Workaround slow address resolving. Intentionally use
     # invalid address format to eliminate blocking DNS requests.
     # See https://git.picodata.io/picodata/picodata/tarantool-module/-/issues/81
-    address = f"nowhere/{id}"
+    address = f"nowhere/{instance_id}"
     is_voter = False
     return peer.call(
         ".raft_join",
+        cluster_id,
         instance_id,
         replicaset_id,
         address,
         is_voter,
-        timeout=timeout,
+        timeout=timeout_seconds,
     )
 
 
@@ -54,14 +58,18 @@ def test_concurrency(cluster2: Cluster):
 
     # First request blocks the `join_loop` until i2 is resumed.
     with pytest.raises(OSError) as e0:
-        raft_join(i1, "fake-0", timeout=0.1)
+        raft_join(
+            peer=i1, cluster_id=cluster2.id, instance_id="fake-0", timeout_seconds=0.1
+        )
     assert e0.value.errno == errno.ECONNRESET
 
     # Subsequent requests get batched
     executor = ThreadPoolExecutor()
-    f1 = executor.submit(raft_join, i1, "fake-1", timeout=5)
-    f2 = executor.submit(raft_join, i1, "fake-2", timeout=5)
-    f3 = executor.submit(raft_join, i1, "fake-3", timeout=0.1)
+    submit_join = partial(executor.submit, raft_join, peer=i1, cluster_id=cluster2.id)
+
+    f1 = submit_join(instance_id="fake-1", timeout_seconds=5)
+    f2 = submit_join(instance_id="fake-2", timeout_seconds=5)
+    f3 = submit_join(instance_id="fake-3", timeout_seconds=0.1)
 
     # Make sure all requests reach the server before resuming i2.
     with pytest.raises(OSError) as e1:
@@ -72,8 +80,8 @@ def test_concurrency(cluster2: Cluster):
     os.killpg(i2.process.pid, signal.SIGCONT)
     eprint(f"{i2} signalled with SIGCONT")
 
-    peer1 = f1.result()[0]["peer"]
-    peer2 = f2.result()[0]["peer"]
+    peer1 = f1.result()[0]["peer"]  # type: ignore
+    peer2 = f2.result()[0]["peer"]  # type: ignore
     assert peer1["instance_id"] == "fake-1"
     assert peer2["instance_id"] == "fake-2"
     # Make sure the batching works as expected
@@ -85,7 +93,9 @@ def test_request_follower(cluster2: Cluster):
     i2.assert_raft_status("Follower")
 
     with pytest.raises(TarantoolError) as e:
-        raft_join(i2, "fake-0", timeout=1)
+        raft_join(
+            peer=i2, cluster_id=cluster2.id, instance_id="fake-0", timeout_seconds=1
+        )
     assert e.value.args == ("ER_PROC_C", "not a leader")
 
 
@@ -95,6 +105,7 @@ def test_uuids(cluster2: Cluster):
 
     peer_1 = i1.call(
         ".raft_join",
+        cluster2.id,
         i1.instance_id,
         None,  # replicaset_id
         i1.listen,  # address
@@ -106,6 +117,7 @@ def test_uuids(cluster2: Cluster):
 
     peer_2 = i1.call(
         ".raft_join",
+        cluster2.id,
         i2.instance_id,
         None,  # replicaset_id
         i2.listen,  # address
@@ -115,9 +127,18 @@ def test_uuids(cluster2: Cluster):
     assert peer_2["instance_uuid"] == i2.eval("return box.info.uuid")
     assert peer_2["replicaset_uuid"] == i2.eval("return box.info.cluster.uuid")
 
+    def join():
+        return raft_join(
+            peer=i1,
+            cluster_id=cluster2.id,
+            instance_id="fake",
+            timeout_seconds=1,
+        )
+
     # Two consequent requests must obtain same raft_id and instance_id
-    fake_peer_1 = raft_join(i1, "fake", timeout=1)[0]["peer"]
-    fake_peer_2 = raft_join(i1, "fake", timeout=1)[0]["peer"]
+    fake_peer_1 = join()[0]["peer"]
+    fake_peer_2 = join()[0]["peer"]
+
     assert fake_peer_1["instance_id"] == "fake"
     assert fake_peer_2["instance_id"] == "fake"
     assert fake_peer_1["raft_id"] == fake_peer_2["raft_id"]
@@ -207,3 +228,23 @@ def test_replication(cluster2: Cluster):
                 assert cfg_replication[0] == [i1.listen, i2.listen]
         else:
             assert cfg_replication[0] == [i1.listen, i2.listen]
+
+
+def test_cluster_id_mismatch(instance: Instance):
+    wrong_cluster_id = "wrong-cluster-id"
+
+    assert wrong_cluster_id != instance.cluster_id
+
+    expected_error_re = re.escape(
+        "cannot join the instance to the cluster: cluster_id mismatch:"
+        ' cluster_id of the instance = "wrong-cluster-id",'
+        f' cluster_id of the cluster = "{instance.cluster_id}"'
+    )
+
+    with pytest.raises(TarantoolError, match=expected_error_re):
+        raft_join(
+            peer=instance,
+            cluster_id=wrong_cluster_id,
+            instance_id="whatever",
+            timeout_seconds=1,
+        )

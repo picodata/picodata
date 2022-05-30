@@ -411,6 +411,7 @@ fn start_boot(args: &args::Run) {
 
     let mut topology = traft::Topology::from_peers(vec![]);
     let req = traft::JoinRequest {
+        cluster_id: args.cluster_id.clone(),
         instance_id: args.instance_id.clone(),
         replicaset_id: args.replicaset_id.clone(),
         advertise_address: args.advertise_address(),
@@ -469,6 +470,7 @@ fn start_boot(args: &args::Run) {
         traft::Storage::persist_commit(1).unwrap();
         traft::Storage::persist_term(1).unwrap();
         traft::Storage::persist_id(raft_id).unwrap();
+        traft::Storage::persist_cluster_id(&args.cluster_id).unwrap();
         Ok(())
     })
     .unwrap();
@@ -480,6 +482,7 @@ fn start_join(args: &args::Run, leader_address: String) {
     tlog!(Info, ">>>>> start_join({leader_address})");
 
     let req = traft::JoinRequest {
+        cluster_id: args.cluster_id.clone(),
         instance_id: args.instance_id.clone(),
         replicaset_id: args.replicaset_id.clone(),
         voter: false,
@@ -517,6 +520,7 @@ fn start_join(args: &args::Run, leader_address: String) {
             traft::Storage::persist_peer(&peer).unwrap();
         }
         traft::Storage::persist_id(raft_id).unwrap();
+        traft::Storage::persist_cluster_id(&args.cluster_id).unwrap();
         Ok(())
     })
     .unwrap();
@@ -589,6 +593,7 @@ fn postjoin(args: &args::Run) {
 
         tlog!(Warning, "initiating self-promotion of {me:?}");
         let req = traft::JoinRequest {
+            cluster_id: args.cluster_id.clone(),
             instance_id: me.instance_id.clone(),
             replicaset_id: None, // TODO
             voter: true,

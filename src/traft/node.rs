@@ -48,6 +48,12 @@ pub enum Error {
     Timeout,
     #[error("{0}")]
     Raft(#[from] RaftError),
+    /// cluster_id of the joining peer mismatches the cluster_id of the cluster
+    #[error("cannot join the instance to the cluster: cluster_id mismatch: cluster_id of the instance = {instance_cluster_id:?}, cluster_id of the cluster = {cluster_cluster_id:?}")]
+    ClusterIdMismatch {
+        instance_cluster_id: String,
+        cluster_cluster_id: String,
+    },
 }
 
 #[derive(Clone, Debug, tlua::Push, tlua::PushInto)]
@@ -707,6 +713,15 @@ fn raft_interact(pbs: Vec<traft::MessagePb>) -> Result<(), Box<dyn StdError>> {
 #[proc(packed_args)]
 fn raft_join(req: JoinRequest) -> Result<JoinResponse, Box<dyn StdError>> {
     let node = global()?;
+
+    let cluster_id = Storage::cluster_id()?.ok_or("cluster_id is not set yet")?;
+
+    if req.cluster_id != cluster_id {
+        return Err(Box::new(Error::ClusterIdMismatch {
+            instance_cluster_id: req.cluster_id,
+            cluster_cluster_id: cluster_id,
+        }));
+    }
 
     let instance_id = req.instance_id.clone();
     node.join_one(req)?;

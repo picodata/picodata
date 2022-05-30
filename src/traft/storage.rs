@@ -200,6 +200,10 @@ impl Storage {
         Storage::raft_state("id")
     }
 
+    pub fn cluster_id() -> Result<Option<String>, StorageError> {
+        Storage::raft_state("cluster_id")
+    }
+
     /// Node generation i.e. the number of restarts.
     pub fn gen() -> Result<Option<u64>, StorageError> {
         Storage::raft_state("gen")
@@ -249,6 +253,15 @@ impl Storage {
             .insert(&("id", id))
             .map_err(box_err!())?;
 
+        Ok(())
+    }
+
+    pub fn persist_cluster_id(id: &str) -> Result<(), StorageError> {
+        Storage::space(RAFT_STATE)?
+            // We use `insert` instead of `replace` here
+            // because `cluster_id` should never be changed.
+            .insert(&("cluster_id", id))
+            .map_err(box_err!())?;
         Ok(())
     }
 

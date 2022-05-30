@@ -24,7 +24,7 @@ pub enum Picodata {
 pub struct Run {
     #[clap(long, value_name = "name", env = "PICODATA_CLUSTER_ID")]
     /// Name of the cluster
-    pub cluster_id: Option<String>,
+    pub cluster_id: String,
 
     #[clap(
         long,
@@ -268,6 +268,7 @@ mod tests {
     fn test_parse() {
         let _env_dump = EnvDump::new();
 
+        std::env::set_var("PICODATA_CLUSTER_ID", "cluster1");
         std::env::set_var("PICODATA_INSTANCE_ID", "instance-id-from-env");
         std::env::set_var("PICODATA_PEER", "peer-from-env");
         {
