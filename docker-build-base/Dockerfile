@@ -29,7 +29,7 @@ ENV PATH=/opt/rh/devtoolset-7/root/usr/bin:${PATH}
 ENV PATH=/root/.cargo/bin:${PATH}
 RUN set -e; \
     curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs |\
-    sh -s -- -y --profile default --default-toolchain 1.58.0;
+    sh -s -- -y --profile default --default-toolchain 1.61.0;
 
 ENV PATH=/root/.rocks/bin:${PATH}
 RUN set -e; \
