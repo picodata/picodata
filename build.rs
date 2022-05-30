@@ -42,6 +42,23 @@ fn patch_tarantool() {
         .unwrap_or_else(|e| panic!("failed to create '{}': {}", patch_check.display(), e));
 }
 
+fn version() -> (u32, u32) {
+    let version_bytes = std::process::Command::new("rustc")
+        .arg("--version")
+        .output()
+        .unwrap()
+        .stdout;
+    let version_line = String::from_utf8(version_bytes).unwrap();
+    let mut version_line_parts = version_line.split_whitespace();
+    let rustc = version_line_parts.next().unwrap();
+    assert_eq!(rustc, "rustc");
+    let version = version_line_parts.next().unwrap();
+    let mut version_parts = version.split('.');
+    let major = version_parts.next().unwrap().parse().unwrap();
+    let minor = version_parts.next().unwrap().parse().unwrap();
+    (major, minor)
+}
+
 fn build_tarantool() {
     // $OUT_DIR = ".../target/<build-type>/build/picodata-<smth>/out"
     let out_dir = std::env::var("OUT_DIR").unwrap();
@@ -67,6 +84,12 @@ fn build_tarantool() {
     // Don't build a shared object in case it's the default for the compiler
     println!("cargo:rustc-link-arg=-no-pie");
 
+    let link_static_flag = if version() < (1, 61) {
+        "cargo:rustc-link-lib=static"
+    } else {
+        "cargo:rustc-link-lib=static:+whole-archive"
+    };
+
     for l in [
         "core",
         "small",
@@ -91,7 +114,7 @@ fn build_tarantool() {
             "cargo:rustc-link-search=native={}/src/lib/{}",
             build_disp, l
         );
-        println!("cargo:rustc-link-lib=static={}", l);
+        println!("{}={}", link_static_flag, l);
     }
 
     println!("cargo:rustc-link-search=native={}", build_disp);
@@ -129,12 +152,12 @@ fn build_tarantool() {
         "luajit",
         "yaml_static",
     ] {
-        println!("cargo:rustc-link-lib=static={}", l);
+        println!("{}={}", link_static_flag, l);
     }
 
     if !cfg!(target_os = "macos") {
         // OpenMP is builtin to the compiler on macos
-        println!("cargo:rustc-link-lib=static=gomp");
+        println!("{}=gomp", link_static_flag);
 
         // Libunwind is builtin to the compiler on macos
         //
@@ -157,40 +180,40 @@ fn build_tarantool() {
         "cargo:rustc-link-search=native={}/build/readline-prefix/lib",
         dst.display()
     );
-    println!("cargo:rustc-link-lib=static=readline");
+    println!("{}=readline", link_static_flag);
 
     println!(
         "cargo:rustc-link-search=native={}/build/icu-prefix/lib",
         dst.display()
     );
-    println!("cargo:rustc-link-lib=static=icudata");
-    println!("cargo:rustc-link-lib=static=icui18n");
-    println!("cargo:rustc-link-lib=static=icuio");
-    println!("cargo:rustc-link-lib=static=icutu");
-    println!("cargo:rustc-link-lib=static=icuuc");
+    println!("{}=icudata", link_static_flag);
+    println!("{}=icui18n", link_static_flag);
+    println!("{}=icuio", link_static_flag);
+    println!("{}=icutu", link_static_flag);
+    println!("{}=icuuc", link_static_flag);
 
     println!(
         "cargo:rustc-link-search=native={}/build/zlib-prefix/lib",
         dst.display()
     );
-    println!("cargo:rustc-link-lib=static=z");
+    println!("{}=z", link_static_flag);
 
     println!(
         "cargo:rustc-link-search=native={}/build/curl/dest/lib",
         build_disp
     );
-    println!("cargo:rustc-link-lib=static=curl");
+    println!("{}=curl", link_static_flag);
     println!(
         "cargo:rustc-link-search=native={}/build/ares/dest/lib",
         build_disp
     );
-    println!("cargo:rustc-link-lib=static=cares");
+    println!("{}=cares", link_static_flag);
 
     println!(
         "cargo:rustc-link-search=native={}/build/openssl-prefix/lib",
         dst.display()
     );
-    println!("cargo:rustc-link-lib=static=ssl");
+    println!("{}=ssl", link_static_flag);
     // This one must be linked as a positional argument, because -lcrypto
     // conflicts with `src/lib/crypto/libcrypto.a`
     // duplicate symbols which is not allowed (by default) when linking with via
@@ -203,7 +226,7 @@ fn build_tarantool() {
         "cargo:rustc-link-search=native={}/build/ncurses-prefix/lib",
         dst.display()
     );
-    println!("cargo:rustc-link-lib=static=tinfo");
+    println!("{}=tinfo", link_static_flag);
 
     println!(
         "cargo:rustc-link-search=native={}/build/iconv-prefix/lib",
