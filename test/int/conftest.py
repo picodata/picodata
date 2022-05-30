@@ -161,7 +161,7 @@ class Instance:
         return f"Instance({self.instance_id}, listen={self.listen})"
 
     @contextmanager
-    def connection(self, timeout: int):
+    def connect(self, timeout: int):
         c = Connection(
             self.host,
             self.port,
@@ -175,12 +175,12 @@ class Instance:
 
     @normalize_net_box_result
     def call(self, fn, *args, timeout: int = 1):
-        with self.connection(timeout) as conn:
+        with self.connect(timeout) as conn:
             return conn.call(fn, args)
 
     @normalize_net_box_result
     def eval(self, expr, *args, timeout: int = 1):
-        with self.connection(timeout) as conn:
+        with self.connect(timeout) as conn:
             return conn.eval(expr, *args)
 
     def kill(self):

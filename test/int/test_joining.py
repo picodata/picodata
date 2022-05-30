@@ -162,7 +162,7 @@ def test_replication(cluster2: Cluster):
     assert i1.replicaset_uuid() == i2.replicaset_uuid()
 
     for instance in cluster2.instances:
-        with instance.connection(1) as conn:
+        with instance.connect(1) as conn:
             raft_peer = conn.select("raft_group", [instance.raft_id])[0]
             space_cluster = conn.select("_cluster")
             cfg_replication = conn.eval("return box.cfg.replication")
