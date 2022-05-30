@@ -98,6 +98,7 @@ macro_rules! error {
     };
     (@impl $l:expr, $($args:tt)+) => {
         {
+            #[allow(unused_unsafe)]
             unsafe {
                 $crate::ffi::luaL_error($crate::AsLua::as_lua(&$l), $($args)+);
             }
