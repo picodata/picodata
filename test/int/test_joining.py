@@ -156,6 +156,26 @@ def test_discovery(cluster3: Cluster):
     i5.assert_raft_status("Follower", leader_id=i2.raft_id)
 
 
+def test_parallel(cluster3: Cluster):
+    i1, i2, i3 = cluster3.instances
+
+    # Make sure cluster is ready
+    i1.promote_or_fail()
+    i2.assert_raft_status("Follower", leader_id=i1.raft_id)
+    i3.assert_raft_status("Follower", leader_id=i1.raft_id)
+
+    # Kill i1
+    i1.terminate()
+
+    # Make sure cluster is ready
+    i2.promote_or_fail()
+    i3.assert_raft_status("Follower", leader_id=i2.raft_id)
+
+    # Add instance with the first peer being i1
+    i4 = cluster3.add_instance(peers=[i1.listen, i2.listen, i3.listen])
+    i4.assert_raft_status("Follower", leader_id=i2.raft_id)
+
+
 def test_replication(cluster2: Cluster):
     i1, i2 = cluster2.instances
 
