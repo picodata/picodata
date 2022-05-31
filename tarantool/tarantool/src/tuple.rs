@@ -354,6 +354,15 @@ pub trait AsTuple: Serialize {
     }
 }
 
+impl<'a, T> AsTuple for &'a T
+where
+    T: AsTuple,
+{
+    fn serialize_to(&self, w: &mut impl Write) -> Result<()> {
+        T::serialize_to(*self, w)
+    }
+}
+
 impl AsTuple for () {
     fn serialize_to(&self, w: &mut impl Write) -> Result<()> {
         rmp_serde::encode::write(w, &Vec::<()>::new()).map_err(Into::into)
