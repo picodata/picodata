@@ -24,6 +24,7 @@ mod mailbox;
 mod tarantool;
 mod tlog;
 mod traft;
+mod util;
 
 inventory::collect!(InnerTest);
 

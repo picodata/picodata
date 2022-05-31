@@ -145,6 +145,7 @@ pub fn set_cfg(cfg: &Cfg) {
     box_cfg.call_with_args(cfg).unwrap()
 }
 
+#[track_caller]
 pub fn eval(code: &str) {
     let l = lua_state();
     l.exec(code).unwrap()
@@ -201,6 +202,30 @@ where
                 );
                 fiber::sleep(timeout.saturating_sub(now.elapsed()))
             }
+        }
+    }
+}
+
+#[inline]
+pub fn net_box_call_or_log<Args, Res, Addr>(
+    address: Addr,
+    fn_name: &str,
+    args: Args,
+    timeout: Duration,
+) -> Option<Res>
+where
+    Args: AsTuple,
+    Addr: std::net::ToSocketAddrs + std::fmt::Display + slog::Value,
+    Res: serde::de::DeserializeOwned,
+{
+    match net_box_call(&address, fn_name, &args, timeout) {
+        Ok(res) => Some(res),
+        Err(e) => {
+            crate::tlog!(Warning, "net_box_call failed: {e}";
+                "peer" => &address,
+                "fn" => fn_name,
+            );
+            None
         }
     }
 }
