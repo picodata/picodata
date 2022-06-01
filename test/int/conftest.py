@@ -167,7 +167,7 @@ class Instance:
         return f"Instance({self.instance_id}, listen={self.listen})"
 
     @contextmanager
-    def connect(self, timeout: int):
+    def connect(self, timeout: int | float):
         c = Connection(
             self.host,
             self.port,
@@ -180,12 +180,12 @@ class Instance:
             c.close()
 
     @normalize_net_box_result
-    def call(self, fn, *args, timeout: int = 1):
+    def call(self, fn, *args, timeout: int | float = 1):
         with self.connect(timeout) as conn:
             return conn.call(fn, args)
 
     @normalize_net_box_result
-    def eval(self, expr, *args, timeout: int = 1):
+    def eval(self, expr, *args, timeout: int | float = 1):
         with self.connect(timeout) as conn:
             return conn.eval(expr, *args)
 
@@ -270,9 +270,6 @@ class Instance:
 
     def remove_data(self):
         rmtree(self.data_dir)
-
-    def __hash__(self):
-        return hash(self.id) ^ hash(self.cluster_id) ^ hash(self.listen)
 
     def _raft_status(self) -> RaftStatus:
         status = self.call("picolib.raft_status")
