@@ -119,8 +119,8 @@ def normalize_net_box_result(func):
 class RaftStatus:
     id: int
     raft_state: str
-    leader_id: int
     is_ready: bool
+    leader_id: int | None = None
 
 
 OUT_LOCK = threading.Lock()
