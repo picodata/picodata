@@ -300,7 +300,7 @@ class Instance:
 
         assert want == have
 
-    @funcy.retry(tries=20, timeout=0.1)
+    @funcy.retry(tries=30, timeout=0.2)
     def wait_ready(self):
         status = self._raft_status()
         assert status.is_ready
