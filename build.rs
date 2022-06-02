@@ -72,6 +72,24 @@ fn build_tarantool() {
         .parent()
         .unwrap()
         .join("tarantool-sys");
+
+    if build_dir.exists() {
+        // static-build/CMakeFiles.txt builds tarantool via the ExternalProject
+        // module, which doesn't rebuild subprojects if their contents changed,
+        // therefore we do `cmake --build tarantool-prefix/src/tarantool-build`
+        // directly, to try and rebuild tarantool-sys.
+        let status = std::process::Command::new("cmake")
+            .arg("--build")
+            .arg(build_dir.join("build/tarantool-prefix/src/tarantool-build"))
+            .arg("-j")
+            .status()
+            .expect("cmake couldn't be executed");
+
+        if !status.success() {
+            panic!("cmake failed")
+        }
+    }
+
     std::fs::create_dir_all(&build_dir).expect("failed creating build directory");
     let dst = cmake::Config::new("tarantool-sys/static-build")
         .build_target("tarantool")
