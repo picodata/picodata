@@ -1,0 +1,48 @@
+From b148bed58e97b335d325faaac7c83737c18d3acb Mon Sep 17 00:00:00 2001
+From: Georgy Moshkin <gmoshkin@picodata.io>
+Date: Thu, 2 Jun 2022 20:28:03 +0300
+Subject: [PATCH] fix(picodata): fix graceful stopping
+
+Was broken because `tarantool_free` checks if the current process is the
+main one and not the child, which was forked at some point (at what
+point?). This check was implemented by saving the original process's id
+in the static variable master_pid, which got set when the code got
+loaded the first time into memory.
+
+So we broke this when we started forking the process in picodata, which
+resulted in `master_pid` being set to the pid of the picodata's
+"supervisor" process, which doesn't even enter tarantool runtime.
+
+The fix is simple - save master_pid first thing when running
+tarantool_main.
+---
+ src/main.cc | 6 +++++-
+ 1 file changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/src/main.cc b/src/main.cc
+index de082c17f..1c5faaede 100644
+--- a/src/main.cc
++++ b/src/main.cc
+@@ -84,7 +84,7 @@
+ #include "ssl_cert_paths_discover.h"
+ #include "core/errinj.h"
+ 
+-static pid_t master_pid = getpid();
++static pid_t master_pid = -1;
+ static struct pidfh *pid_file_handle;
+ static char *script = NULL;
+ static char *pid_file = NULL;
+@@ -590,6 +590,10 @@ export_syms(void);
+ int
+ main(int argc, char **argv)
+ {
++	// Picodata forks the process and only the child runs tarantool_main.
++	// Therefore master_pid must be set here instead of the static memory,
++	// so that the resources are cleaned up at the end
++	master_pid = getpid();
+ 	/* set locale to make iswXXXX function work */
+ 	if (setlocale(LC_CTYPE, "C.UTF-8") == NULL &&
+ 	    setlocale(LC_CTYPE, "en_US.UTF-8") == NULL &&
+-- 
+2.25.1
+
