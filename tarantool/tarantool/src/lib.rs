@@ -179,6 +179,7 @@ pub mod uuid;
 #[cfg(all(target_arch = "aarch64", target_os = "macos"))]
 #[doc(hidden)]
 mod va_list;
+pub mod sql;
 
 pub use tlua;
 /// `#[tarantool::proc]` is a macro attribute for creating stored procedure

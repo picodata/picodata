@@ -35,6 +35,7 @@ mod tuple;
 mod tlua;
 mod uuid;
 mod enums;
+mod sql;
 
 macro_rules! tests {
     (@should_panic should_panic) => { ShouldPanic::Yes };
@@ -528,6 +529,14 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 enums::index_type,
                 enums::index_field_type,
                 enums::rtree_index_distance_type,
+
+                sql::prepared_source_query,
+                sql::prepared_invalid_query,
+                sql::prepared_no_params,
+                sql::prepared_large_query,
+                sql::prepared_with_unnamed_params,
+                sql::prepared_with_named_params,
+                sql::prepared_invalid_params,
             ]
         },
     )
