@@ -164,3 +164,12 @@ def test_propose_eval(instance: Instance):
 
     assert instance.raft_propose_eval("_G.success = true")
     assert instance.eval("return _G.success") is True
+
+
+def test_graceful_stop(instance: Instance):
+    instance.terminate()
+    *_, last_xlog = sorted(
+        [f for f in os.listdir(instance.data_dir) if f.endswith(".xlog")]
+    )
+    with open(os.path.join(instance.data_dir, last_xlog), "rb") as f:
+        assert f.read()[-4:] == b"\xd5\x10\xad\xed"
