@@ -3,13 +3,14 @@ import os
 import re
 import sys
 import threading
+from types import SimpleNamespace
 import funcy  # type: ignore
 import pytest
 import signal
 import subprocess
 
 from shutil import rmtree
-from typing import Generator, Iterator
+from typing import Callable, Generator, Iterator
 from itertools import count
 from pathlib import Path
 from contextlib import contextmanager, suppress
@@ -123,6 +124,29 @@ class RaftStatus:
     leader_id: int | None = None
 
 
+color = SimpleNamespace(
+    **{
+        f"{prefix}{color}": f"\033[{ansi_color_code}{ansi_effect_code}m{{0}}\033[0m".format
+        for color, ansi_color_code in {
+            "grey": 30,
+            "red": 31,
+            "green": 32,
+            "yellow": 33,
+            "blue": 34,
+            "magenta": 35,
+            "cyan": 36,
+            "white": 37,
+        }.items()
+        for prefix, ansi_effect_code in {
+            "": "",
+            "intense_": ";1",
+        }.items()
+    }
+)
+# Usage:
+assert color.green("text") == "\x1b[32mtext\x1b[0m"
+assert color.intense_red("text") == "\x1b[31;1mtext\x1b[0m"
+
 OUT_LOCK = threading.Lock()
 
 
@@ -135,6 +159,8 @@ class Instance:
     peers: list[str]
     host: str
     port: int
+
+    color: Callable[[str], str]
 
     env: dict[str, str] = field(default_factory=dict)
     process: subprocess.Popen | None = None
@@ -221,7 +247,11 @@ class Instance:
             self.kill()
 
     def _process_output(self, src, out):
-        prefix = f"{self.instance_id} | "
+        prefix = f"{self.instance_id:<3} | "
+
+        if sys.stdout.isatty():
+            prefix = self.color(prefix)
+
         for line in io.TextIOWrapper(src, line_buffering=True):
             with OUT_LOCK:
                 out.write(prefix)
@@ -320,6 +350,20 @@ class Instance:
         eprint(f"{self} is a leader now")
 
 
+CLUSTER_COLORS = (
+    color.cyan,
+    color.yellow,
+    color.green,
+    color.magenta,
+    color.blue,
+    color.intense_cyan,
+    color.intense_yellow,
+    color.intense_green,
+    color.intense_magenta,
+    color.intense_blue,
+)
+
+
 @dataclass
 class Cluster:
     binary_path: str
@@ -362,6 +406,7 @@ class Cluster:
             host=self.base_host,
             port=self.base_port + i,
             peers=peers or [f"{self.base_host}:{self.base_port + 1}"],
+            color=CLUSTER_COLORS[len(self.instances) % len(CLUSTER_COLORS)],
         )
 
         assert self.base_port <= instance.port <= self.max_port
