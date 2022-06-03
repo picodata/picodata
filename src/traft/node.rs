@@ -66,15 +66,6 @@ pub struct Status {
     pub is_ready: bool,
 }
 
-impl Status {
-    pub fn am_leader(&self) -> bool {
-        match self.leader_id {
-            Some(id) => self.id == id,
-            None => false,
-        }
-    }
-}
-
 /// The heart of `traft` module - the Node.
 #[derive(Debug)]
 pub struct Node {

@@ -76,7 +76,6 @@ def test_restart_leader(cluster2: Cluster):
     assert i1.raft_propose_eval("return")
 
 
-@pytest.mark.xfail  # FIXME
 def test_restart_both(cluster2: Cluster):
     # Given a cluster of 2 instances - i1, i2
     # When both instances are stopped and then started again
@@ -91,9 +90,9 @@ def test_restart_both(cluster2: Cluster):
         assert instance._raft_status().is_ready is False
 
     i1.start()
-    # This synchronization makes sure the test fails.
+    # This synchronization is necessary for proper test case reproducing.
     # i1 has already initialized raft node but can't win election yet
-    # i2 starts discovery and fails: leader_id is unknown for node 1
+    # i2 starts discovery and should be able to advance further
     wait_alive(i1)
     i2.start()
 

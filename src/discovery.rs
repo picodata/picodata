@@ -199,18 +199,17 @@ fn proc_discover<'a>(
     request: Request,
     request_to: Address,
 ) -> Result<Cow<'a, Response>, Box<dyn StdError>> {
-    if let Ok(node) = traft::node::global() {
+    let ready_ids = traft::node::global().ok().and_then(|node| {
         let status = node.status();
-        let id = status.id;
-        let leader_id = status
-            .leader_id
-            .ok_or_else(|| format!("leader_id is unknown for node {id}"))?;
+        status.leader_id.map(|leader_id| (leader_id, status.id))
+    });
+    if let Some((leader_id, id)) = ready_ids {
         let leader = traft::Storage::peer_by_raft_id(leader_id)?.ok_or_else(|| {
             format!("leader_id is present ({leader_id}) but it's address is unknown for node {id}")
         })?;
         Ok(Cow::Owned(Response::Done(Role::new(
             leader.peer_address,
-            status.am_leader(),
+            leader_id == id,
         ))))
     } else {
         let discovery = discovery.as_mut().ok_or("discovery uninitialized")?;
