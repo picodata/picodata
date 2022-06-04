@@ -80,7 +80,7 @@ extern "C" {
     /// `dn` is the decNumber to convert
     /// `string` is the string where the result will be laid out
     ///
-    /// `string` must be at least `dn->digits+14` characters long
+    /// `string` must be at least `digits count + 14` characters long
     ///
     /// No error is possible, and no status can be set.
     pub fn decNumberToString(dn: *const decNumber, string: *mut c_char) -> *mut c_char;
