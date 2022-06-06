@@ -208,6 +208,7 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 decimal::from_num,
                 decimal::to_num,
                 decimal::cmp,
+                decimal::hash,
                 decimal::ops,
 
                 tlua::lua_functions::basic,

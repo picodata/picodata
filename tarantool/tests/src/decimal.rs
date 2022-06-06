@@ -1,5 +1,7 @@
 use std::{
+    collections::hash_map::DefaultHasher,
     convert::TryFrom,
+    hash::{Hash, Hasher},
 };
 
 use tarantool::{
@@ -189,6 +191,37 @@ pub fn cmp() {
     assert_eq!(decimal!(1), 1);
     assert_eq!(decimal!(-3), -3);
     assert_ne!(decimal!(-8.11), -8);
+}
+
+pub fn hash() {
+    fn to_hash<T: Hash>(t: &T) -> u64 {
+        let mut s = DefaultHasher::new();
+        t.hash(&mut s);
+        s.finish()
+    }
+
+    assert_eq!(to_hash(&decimal!(1)), to_hash(&decimal!(1.000)));
+    assert_eq!(to_hash(&decimal!(1.00)), to_hash(&decimal!(1.00)));
+    assert_eq!(to_hash(&decimal!(1)), to_hash(&decimal!(1)));
+    assert_eq!(to_hash(&decimal!(1.000000)), to_hash(&decimal!(1.0)));
+    assert_eq!(to_hash(&decimal!(1.000000000000000)), to_hash(&decimal!(1)));
+    assert_ne!(to_hash(&decimal!(1.000000000000000)), to_hash(&decimal!(1.000000000000001)));
+    assert_ne!(to_hash(&decimal!(1.000000000000000)), to_hash(&decimal!(0.999999999999999)));
+    assert_eq!(
+        to_hash(&decimal!(99999999999999999999999999999999999999)),
+        to_hash(&decimal!(99999999999999999999999999999999999999))
+    );
+    assert_ne!(
+        to_hash(&decimal!(9999999999999999999999999999999999999.0)),
+        to_hash(&decimal!(9999999999999999999999999999999999998.9))
+    );
+    assert_eq!(to_hash(&decimal!(0)), to_hash(&decimal!(0.000)));
+    assert_eq!(
+        to_hash(&decimal!(-99999999999999999999999999999999999999)),
+        to_hash(&decimal!(-99999999999999999999999999999999999999))
+    );
+    assert_eq!(to_hash(&decimal!(-1)), to_hash(&decimal!(-1.000)));
+    assert_ne!(to_hash(&decimal!(-1.000)), to_hash(&decimal!(-0.9999999999999999999999999999999999999)));
 }
 
 #[allow(clippy::bool_assert_comparison)]

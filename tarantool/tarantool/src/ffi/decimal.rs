@@ -1,4 +1,7 @@
-use std::os::raw::c_char;
+use std::{
+    os::raw::c_char,
+    hash::{Hash, Hasher},
+};
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
@@ -9,10 +12,23 @@ pub struct decNumber {
     pub lsu: [u16; DECNUMUNITS as _],
 }
 
+impl Hash for decNumber {
+    #[inline(always)]
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.digits.hash(state);
+        self.exponent.hash(state);
+        self.bits.hash(state);
+        for i in 0..self.digits as usize / DECDPUN {
+            self.lsu[i].hash(state);
+        }
+    }
+}
+
 extern "C" {
     pub static CTID_DECIMAL: u32;
 }
 
+pub const DECDPUN: usize = 3;
 pub const DECNUMUNITS: u32 = 13;
 pub const DECIMAL_MAX_DIGITS: u32 = 38;
 pub const MP_DECIMAL: c_char = 1;
@@ -205,4 +221,3 @@ extern "C" {
         dec: *mut decNumber,
     ) -> *mut decNumber;
 }
-
