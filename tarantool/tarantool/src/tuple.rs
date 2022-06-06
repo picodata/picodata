@@ -116,7 +116,7 @@ impl Tuple {
     /// The value does not include the size of "struct tuple"
     /// (for the current size of this structure look in the tuple.h file in Tarantool’s source code).
     pub fn bsize(&self) -> usize {
-        unsafe { ffi::box_tuple_bsize(self.ptr.as_ptr()) }
+        unsafe { self.ptr.as_ref().bsize() }
     }
 
     /// Return the associated format.
@@ -264,7 +264,7 @@ impl Tuple {
             return Ok(None)
         }
         let field_offset = field_ptr.offset_from(self.ptr.as_ref().data() as _);
-        let max_len = self.ptr.as_ref().bsize() - field_offset as u32;
+        let max_len = self.ptr.as_ref().bsize() - field_offset as usize;
         let field_slice = std::slice::from_raw_parts(field_ptr, max_len as _);
         Ok(Some(rmp_serde::from_slice(field_slice)?))
     }
