@@ -438,6 +438,7 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 r#box::space_create_id_increment,
                 r#box::space_create_opt_user,
                 r#box::space_create_opt_id,
+                r#box::space_create_is_sync,
                 r#box::space_drop,
                 r#box::index_create_drop,
                 r#box::index_parts,

@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use rand::Rng;
 
 use tarantool::index::{IndexFieldType, IndexOptions, IteratorType};
@@ -675,6 +676,37 @@ pub fn index_create_drop() {
     assert_eq!(index_query_2.is_none(), true);
 
     drop_space("new_space_7");
+}
+
+pub fn space_create_is_sync() {
+    let opts = SpaceCreateOptions {
+        is_local: false,
+        is_sync: true,
+        .. Default::default()
+    };
+
+    let result = Space::create("new_space_8", &opts);
+    assert_eq!(result.is_ok(), true);
+
+    let info = Space::from(SystemSpace::Space)
+        .index("name").unwrap()
+        .select(IteratorType::Eq, &("new_space_8", )).unwrap()
+        .next().expect("space info not found");
+
+    #[derive(serde::Deserialize)]
+    pub struct Info {
+        _id: u64,
+        _owner: u64,
+        _name: String,
+        _engine: String,
+        _field_count: u64,
+        flags: BTreeMap<String, bool>,
+    }
+
+    let info = info.as_struct::<Info>().unwrap();
+    assert_eq!(info.flags.get("is_sync"), Some(&true));
+
+    drop_space("new_space_8");
 }
 
 pub fn drop_space(name: &str) {

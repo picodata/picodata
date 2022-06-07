@@ -54,6 +54,7 @@ pub fn create_space(name: &str, opts: &SpaceCreateOptions) -> Result<Space, Erro
 
     let flags = opts.is_local.then(|| ("group_id", Value::Num(1))).into_iter()
         .chain(opts.is_temporary.then(|| ("temporary", Value::Bool(true))))
+        .chain(opts.is_sync.then(|| ("is_sync", Value::Bool(true))))
         .collect();
 
     let format = opts.format.iter().flat_map(|f| f.iter())
