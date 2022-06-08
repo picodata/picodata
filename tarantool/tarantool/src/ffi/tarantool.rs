@@ -758,6 +758,16 @@ extern "C" {
     pub fn box_iterator_free(iterator: *mut BoxIterator);
 }
 
+#[cfg(not(feature = "picodata"))]
+#[repr(C)]
+pub struct BoxTuple {
+    refs: u16,
+    format_id: u16,
+    bsize: u32,
+    data_offset: u16,
+}
+
+#[cfg(feature = "picodata")]
 #[repr(C, packed)]
 pub struct BoxTuple {
     refs: u8,
@@ -767,21 +777,32 @@ pub struct BoxTuple {
     bsize: u32,
 }
 
+#[cfg(not(feature = "picodata"))]
 impl BoxTuple {
     /// # Safety
     /// Access to a field of a struct that can be changed in a future version of
-    /// tarantool. Valid for 2.10.0
+    /// tarantool. Valid for 2.9.0
     #[inline(always)]
-    pub unsafe fn bsize(&self) -> usize {
-        box_tuple_bsize(self) as usize
+    pub unsafe fn data_offset(&self) -> u16 {
+        // The last bit is a `is_dirty` flag since 2.5.1
+        self.data_offset & (u16::MAX >> 1)
     }
+}
 
+#[cfg(feature = "picodata")]
+impl BoxTuple {
     /// # Safety
     /// Access to a field of a struct that can be changed in a future version of
     /// tarantool. Valid for 2.10.0
     #[inline(always)]
     pub unsafe fn data_offset(&self) -> u16 {
         box_tuple_data_offset(self)
+    }
+}
+
+impl BoxTuple {
+    pub fn bsize(&self) -> usize {
+        unsafe { box_tuple_bsize(self) }
     }
 
     /// # Safety
@@ -823,6 +844,7 @@ extern "C" {
     pub fn box_tuple_unref(tuple: *mut BoxTuple);
     pub fn box_tuple_field_count(tuple: *const BoxTuple) -> u32;
     pub fn box_tuple_bsize(tuple: *const BoxTuple) -> usize;
+    #[cfg(feature = "picodata")]
     pub fn box_tuple_data_offset(tuple: *const BoxTuple) -> u16;
     pub fn box_tuple_to_buf(tuple: *const BoxTuple, buf: *mut c_char, size: usize) -> isize;
     pub fn box_tuple_format_default() -> *mut BoxTupleFormat;
