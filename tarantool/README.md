@@ -33,21 +33,21 @@ See also:
 - https://github.com/tarantool/tarantool
 
 > **Caution!** The library is currently under development.
-> API may be unstable until version 1.0 will be released.
+> API may be unstable until version 1.0 is released.
 
 ## Getting Started
 
-These instructions will get a copy of the project up and running on your local machine.
-For deployment, check out the deployment notes at the end of the tutorial.
+The following instructions will help you get a copy of the project up and running on your local machine.
+For deployment check out the deployment notes at the end of this file.
 
 ### Prerequisites
 
-- rustc 1.48 or newer
+- rustc 1.48 or newer + cargo builder
 - tarantool 2.2
 
 #### MacOS linking issues
 
-On MacOS you may encounter linking errors like this: `ld: symbol(s) not found for architecture x86_64`. To solve it please put this to your `$CARGO_HOME/config.toml` (`~/.cargo/config.toml` by default):
+On macOS you may encounter linking errors like this: `ld: symbol(s) not found for architecture x86_64`. To solve it please put these lines to your `$CARGO_HOME/config.toml` (`~/.cargo/config.toml` by default):
 
 ```toml
 [target.x86_64-apple-darwin]
@@ -58,7 +58,7 @@ rustflags = [
 
 ### Usage
 
-Add the following lines to your project Cargo.toml:
+Add the following lines to your project's Cargo.toml:
 ```toml
 [dependencies]
 tarantool = "0.6"
@@ -76,11 +76,8 @@ See https://github.com/picodata/brod for example usage.
 
 ### Stored procedures
 
-Tarantool can call Rust code via a plugin, from Lua using FFI, or as a stored procedure.
-This tutorial only is about the third 
-option, Rust stored procedures. In fact Rust routines are always "C
-functions" to Tarantool but the phrase "stored procedure" is commonly used
-for historical reasons.
+There are several ways Tarantool can call a Rust code. It can use either a plugin, a Lua to Rust FFI code generator, or a stored procedure.
+In this file we only cover the third option, namely Rust stored procedures. Even though Tarantool always treats Rust routines just as "C functions", we keep on using the "stored procedure" term as an agreed convention and also for historical reasons.
 
 This tutorial contains the following simple steps:
 1. `examples/easy` - prints "hello world";
@@ -89,14 +86,11 @@ This tutorial contains the following simple steps:
 1. `examples/read` - uses this library to do a DBMS select;
 1. `examples/write` - uses this library to do a DBMS replace.
 
-By following the instructions and seeing that the results users should
-become confident in writing their own stored procedures.
+Our examples are a good starting point for users who want to confidently start writing their own stored procedures.
 
-#### Preparation
+#### Creating a Cargo project
 
-Check that these items exist on the computer:
-- Tarantool 2.2
-- A rustc compiler + cargo builder. Any modern version should work
+After getting the prerequisies installed, follow these steps:
 
 1. Create cargo project:
 
@@ -121,7 +115,7 @@ serde = "1.0"
 crate-type = ["cdylib"]
 ```
 
-3. Create the server entypoint named `init.lua` with the following script:
+3. Create the server entry point named `init.lua` with the following script:
 
 ```lua
 require('easy')
@@ -132,7 +126,7 @@ box.schema.user.grant('guest', 'execute', 'function', 'easy', {if_not_exists = t
 box.schema.user.grant('guest', 'execute', 'function', 'easy.easy2', {if_not_exists = true})
 ```
 
-If these commands appear unfamiliar, look at the Tarantool documentation:
+To learn more about the commands used above, look up their syntax and usage details in the Tarantool documentation:
 - [box.cfg()](https://www.tarantool.io/en/doc/latest/reference/reference_lua/box_cfg/);
 - [box.schema.func.create()](https://www.tarantool.io/en/doc/latest/reference/reference_lua/box_schema/func_create/);
 - [box.schema.user.grant()](https://www.tarantool.io/en/doc/latest/reference/reference_lua/box_schema/user_grant/).
@@ -162,39 +156,37 @@ pub extern "C" fn luaopen_easy(_l: std::ffi::c_void) -> c_int {
     0
 }
 ```
+We are now ready to provide three usage examples with varied difficulty level, from the basic usage example (`easy`), to a couple of more complex shared libraries (`harder` and `hardest`).
 
-#### Running a demo
+#### Basic usage example
 
-Compile the program and start the server:
+Compile the application and start the server:
 
 ```console
 $ cargo build
 $ LUA_CPATH=target/debug/lib?.so tarantool init.lua
 ```
 
-The [LUA_CPATH](https://www.lua.org/pil/8.1.html) is necessary because Rust layout conventions
-slightly differs from those in Lua. Fortunately, Lua is rater flexible. 
+Setting the [LUA_CPATH](https://www.lua.org/pil/8.1.html) environmental variable is necessary because Rust and Lua layout conventions are different. Fortunately, Lua is rather flexible. 
 
-Now you're ready to make some requests. Open separate console window and run tarantool, we'll use it
-as a client. In the tarantool console paste the following:  
+Now you're ready to make some requests. Open separate console window and run tarantool as a client. Paste the following into the console:  
 
 ```lua
 conn = require('net.box').connect(3301)
 conn:call('easy')
 ```
 
-Again, check out [net.box](https://www.tarantool.io/en/doc/latest/reference/reference_lua/net_box/)
-module documentation, if necessary.
+Again, check out the [net.box](https://www.tarantool.io/en/doc/latest/reference/reference_lua/net_box/)
+module documentation if necessary.
 
-The code above connects to the server and calls the 'easy' function. Since the `easy()` function in
-`lib.rs` begins with `println!("hello world")`, the words "hello world" will appear in the server console.
+The code above establishes a server connection and calls the 'easy' function. Since the `easy()` function in
+`lib.rs` begins with `println!("hello world")`, the "hello world" string will appear in the server console output.
 
-Also, it checks that the call was successful. Since the `easy()` function in `lib.rs` ends
+The code also checks that the call was successful. Since the `easy()` function in `lib.rs` ends
 with return 0, there is no error message to display and the request is over.
 
-Now let's call the other function in lib.rs - `easy2()`. This is almost the same as the `easy()`
-function, but there's a detail: when the file name is not the same as the function name, then we
-have to specify _{file-name}_._{function-name}_.
+Now let's call another function in lib.rs, namely `easy2()`. The sequence is almost the same as with he `easy()`
+function, but there's a difference: if the file name does not match the function name,  we have to explicitly specify _{file-name}_._{function-name}_.
 
 ```lua
 conn:call('easy.easy2')
@@ -202,11 +194,11 @@ conn:call('easy.easy2')
 
 ... and this time the result will be `hello world -- easy2`.
 
-Conclusion: calling a Rust function is easy.
+As you can see, calling a Rust function is as straightforward as it can be.
 
-#### Harder
+#### Compiling a library
 
-Create a new crate "harder". Put these lines to `lib.rs`:
+Create a new crate called "harder". Put these lines to `lib.rs`:
 
 ```rust
 use serde::{Deserialize, Serialize};
@@ -233,10 +225,11 @@ pub extern "C" fn harder(_: FunctionCtx, args: FunctionArgs) -> c_int {
     0
 }
 ```
-1. extract tuple from special structure `FunctionArgs`
-1. deserialize tuple into rust structure
+The above code does the following two things:
+1. Extracts tuple from the `FunctionArgs` special structure
+1. Deserializes tuple into the Rust structure
 
-Compile the program, producing a library file named `harder.so`.
+Compile the program into the `harder.so` library using `cargo build`.
 
 Now go back to the client and execute these requests:
 ```lua
@@ -249,10 +242,9 @@ table.insert(passable_table, 3)
 capi_connection:call('harder', {passable_table})
 ```
 
-This time the call is passing a Lua table (`passable_table`) to the `harder()` function. The `harder()` function will see 
-it, it's in the char `args` parameter.
+This time the call is passing a Lua table (`passable_table`) to the `harder()` function. The `harder()` function will detect it as that was coded in the `args` part of our example above.
 
-And now the screen looks like this:
+The console output should now look like this:
 ```
 tarantool> capi_connection:call('harder', {passable_table})
 field_count = 3
@@ -264,11 +256,11 @@ val=3
 ...
 ```
 
-Conclusion: decoding parameter values passed to a rust function is not easy at first, but there are routines to do the job.
+As you can see, decoding parameter values passed to a Rust function may be tricky since it requires coding extra routines.
 
-#### Hardest
+#### Compiling an advanced library
 
-Create a new crate "hardest". Put these lines to `lib.rs`:
+Create a new crate called "hardest". Put these lines to `lib.rs`:
 ```rust
 use std::os::raw::c_int;
 
@@ -297,13 +289,12 @@ pub extern "C" fn hardest(ctx: FunctionCtx, _: FunctionArgs) -> c_int {
     ctx.return_tuple(&result.unwrap().unwrap()).unwrap()
 }
 ```
-This time the rust function is doing three things:
-1. finding the `capi_test` space by calling `Space::find_by_name()` method;
-1. row structure can be passed as is, it will be serialized to tuple
-   automaticaly;
-1. inserting a tuple using `.insert()`.
+This time the Rust function does three things:
+1. Finds the `capi_test` space by calling the `Space::find_by_name()` method;
+1. Serializes the row structure to tuple in auto mode;
+1. Inserts a tuple using `.insert()`.
 
-Compile the program, producing a library file named `hardest.so`.
+Compile the program into the `hardest.so` library using `cargo build`.
 
 Now go back to the client and execute these requests:
 ```lua
@@ -313,7 +304,7 @@ box.schema.user.grant('guest', 'read,write', 'space', 'capi_test')
 capi_connection:call('hardest')
 ```
 
-Now, still on the client, execute this request:
+Additionally, execute another request at the client:
 ```lua
 box.space.capi_test:select()
 ```
@@ -326,7 +317,7 @@ tarantool> box.space.capi_test:select()
 ...
 ```
 
-This proves that the `hardest()` function succeeded.
+The above proves that the `hardest()` function succeeded.
 
 #### Read
 
