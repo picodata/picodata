@@ -6,6 +6,8 @@
 //! See also:
 //! - [Lua reference: Submodule box.space](https://www.tarantool.io/en/doc/latest/reference/reference_lua/box_space/)
 //! - [C API reference: Module box](https://www.tarantool.io/en/doc/latest/dev_guide/reference_capi/box/)
+use std::cell::RefCell;
+use std::collections::HashMap;
 use std::fmt;
 use std::os::raw::c_char;
 
@@ -359,6 +361,44 @@ pub struct Privilege {
 
 impl AsTuple for Privilege {}
 
+struct SpaceCache {
+    spaces: RefCell<HashMap<String, Space>>,
+    indexes: RefCell<HashMap<(u32, String), Index>>,
+}
+
+impl SpaceCache {
+    fn new() -> Self {
+        Self {
+            spaces: RefCell::new(HashMap::new()),
+            indexes: RefCell::new(HashMap::new()),
+        }
+    }
+
+    fn space(&self, name: &str) -> Option<Space> {
+        let mut cache = self.spaces.borrow_mut();
+        cache.get(name).cloned().or_else(|| {
+            Space::find(name).map(|space| {
+                cache.insert(name.to_string(), space.clone());
+                space
+            })
+        })
+    }
+
+    fn index(&self, space: &Space, name: &str) -> Option<Index> {
+        let mut cache = self.indexes.borrow_mut();
+        cache.get(&(space.id, name.to_string())).cloned().or_else(|| {
+            space.index(name).map(|index| {
+                cache.insert((space.id, name.to_string()), index.clone());
+                index
+            })
+        })
+    }
+}
+
+thread_local! {
+    static SPACE_CACHE: SpaceCache = SpaceCache::new();
+}
+
 #[derive(Clone, Debug)]
 pub struct Space {
     id: u32,
@@ -409,6 +449,21 @@ impl Space {
         }
     }
 
+    /// Memorized version of [`Space::find`] function.
+    ///
+    /// Function performs SELECT request to `_vspace` system space only if
+    /// this function never called for target space.
+    /// - `name` - space name
+    ///
+    /// Returns:
+    /// - `None` if not found
+    /// - `Some(space)` otherwise
+    pub fn find_cached(name: &str) -> Option<Self> {
+        SPACE_CACHE.with(|cache| {
+            cache.space(name)
+        })
+    }
+
     /// Get space ID.
     pub const fn id(&self) -> u32 {
         self.id
@@ -453,6 +508,20 @@ impl Space {
         } else {
             Some(Index::new(self.id, index_id))
         }
+    }
+
+    /// Memorized version of [`Space::index`] function.
+    ///
+    /// This function performs SELECT request to `_vindex` system space.
+    /// - `name` - index name
+    ///
+    /// Returns:
+    /// - `None` if not found
+    /// - `Some(index)` otherwise
+    pub fn index_cached(&self, name: &str) -> Option<Index> {
+        SPACE_CACHE.with(|cache| {
+            cache.index(self, name)
+        })
     }
 
     /// Returns index with id = 0

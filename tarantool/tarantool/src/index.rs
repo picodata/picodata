@@ -23,6 +23,7 @@ use crate::tuple_from_box_api;
 use crate::util::NumOrStr;
 
 /// An index is a group of key values and pointers.
+#[derive(Clone)]
 pub struct Index {
     space_id: u32,
     index_id: u32,

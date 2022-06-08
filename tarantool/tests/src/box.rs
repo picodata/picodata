@@ -14,6 +14,12 @@ pub fn space_get_by_name() {
     assert!(Space::find("test_s1_invalid").is_none());
 }
 
+pub fn space_get_by_name_cached() {
+    assert!(Space::find_cached("test_s1").is_some());
+    assert!(Space::find_cached("test_s1").is_some());
+    assert!(Space::find_cached("test_s1_invalid").is_none());
+}
+
 pub fn space_get_system() {
     let space: Space = SystemSpace::Space.into();
     assert!(space.len().is_ok());
@@ -23,6 +29,13 @@ pub fn index_get_by_name() {
     let space = Space::find("test_s2").unwrap();
     assert!(space.index("idx_1").is_some());
     assert!(space.index("idx_1_invalid").is_none());
+}
+
+pub fn index_get_by_name_cached() {
+    let space = Space::find("test_s2").unwrap();
+    assert!(space.index_cached("idx_1").is_some());
+    assert!(space.index_cached("idx_1").is_some());
+    assert!(space.index_cached("idx_1_invalid").is_none());
 }
 
 pub fn get() {

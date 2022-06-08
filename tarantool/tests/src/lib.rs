@@ -411,8 +411,10 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 fiber::mutex::advanced,
 
                 r#box::space_get_by_name,
+                r#box::space_get_by_name_cached,
                 r#box::space_get_system,
                 r#box::index_get_by_name,
+                r#box::index_get_by_name_cached,
                 r#box::insert,
                 r#box::replace,
                 r#box::delete,
