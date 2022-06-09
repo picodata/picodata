@@ -652,7 +652,7 @@ macro_rules! decimal {
             let c_str = unsafe {
                 ::std::ffi::CStr::from_bytes_with_nul_unchecked(r_str.as_bytes())
             };
-            let dec: crate::decimal::Decimal = ::std::convert::TryFrom::try_from(c_str)
+            let dec: $crate::decimal::Decimal = ::std::convert::TryFrom::try_from(c_str)
                 .expect(
                     ::std::concat![
                         "failed to convert '",
