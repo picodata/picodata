@@ -1,4 +1,4 @@
-#![cfg(any(feature = "sql", doc))]
+#![cfg(any(feature = "picodata", doc))]
 
 use std::cmp;
 use std::io::Read;

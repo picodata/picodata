@@ -1,4 +1,4 @@
-#![cfg(any(feature = "sql", doc))]
+#![cfg(any(feature = "picodata", doc))]
 
 use std::collections::HashMap;
 use std::ffi::CStr;

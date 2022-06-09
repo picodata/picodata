@@ -200,7 +200,8 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 })),
             }]
         } else {
-            tests![
+            #[allow(unused_mut)]
+            let mut tests = tests![
                 decimal::from_lua,
                 decimal::to_lua,
                 decimal::from_string,
@@ -529,15 +530,21 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 enums::index_type,
                 enums::index_field_type,
                 enums::rtree_index_distance_type,
+            ];
 
-                sql::prepared_source_query,
-                sql::prepared_invalid_query,
-                sql::prepared_no_params,
-                sql::prepared_large_query,
-                sql::prepared_with_unnamed_params,
-                sql::prepared_with_named_params,
-                sql::prepared_invalid_params,
-            ]
+            #[cfg(feature = "picodata")] {
+                tests.append(&mut tests![
+                    sql::prepared_source_query,
+                    sql::prepared_invalid_query,
+                    sql::prepared_no_params,
+                    sql::prepared_large_query,
+                    sql::prepared_with_unnamed_params,
+                    sql::prepared_with_named_params,
+                    sql::prepared_invalid_params,
+                ])
+            }
+
+            tests
         },
     )
 }

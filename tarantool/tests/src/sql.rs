@@ -1,3 +1,5 @@
+#![cfg(feature = "picodata")]
+
 use tarantool::error::{Error, TarantoolError};
 use tarantool::index::IndexType;
 use tarantool::space::{Field, Space};
