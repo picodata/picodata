@@ -8,8 +8,7 @@
 [Docs badge]: https://img.shields.io/badge/docs.rs-rustdoc-green
 [docs.rs]: https://docs.rs/tarantool/
 
-Tarantool API bindings for Rust. 
-This library contains the following Tarantool API's:
+Tarantool Rust SDK offers a library for interacting with Tarantool from Rust applications. This document describes the Tarantool API bindings for Rust and includes the following API's:
 
 - Box: spaces, indexes, sequences
 - Fibers: fiber attributes, conditional variables, latches
@@ -42,10 +41,10 @@ For deployment check out the deployment notes at the end of this file.
 
 ### Prerequisites
 
-- rustc 1.48 or newer + cargo builder
-- tarantool 2.2
+- Rust 1.48 or newer + Cargo
+- Tarantool 2.2
 
-#### MacOS linking issues
+#### Linking issues in macOS
 
 On macOS you may encounter linking errors like this: `ld: symbol(s) not found for architecture x86_64`. To solve it please put these lines to your `$CARGO_HOME/config.toml` (`~/.cargo/config.toml` by default):
 
@@ -72,7 +71,7 @@ See https://github.com/picodata/brod for example usage.
 ### Features
 
 - `net_box` - Enables protocol implementation (enabled by default)
-- `schema` - Enables schema manipulation utils (WIP for now)
+- `schema` - Enables schema manipulation utils (WIP as of now)
 
 ### Stored procedures
 
@@ -90,9 +89,9 @@ Our examples are a good starting point for users who want to confidently start w
 
 #### Creating a Cargo project
 
-After getting the prerequisies installed, follow these steps:
+After getting the prerequisites installed, follow these steps:
 
-1. Create cargo project:
+1. Create a Cargo project:
 
 ```console
 $ cargo init --lib
@@ -156,7 +155,7 @@ pub extern "C" fn luaopen_easy(_l: std::ffi::c_void) -> c_int {
     0
 }
 ```
-We are now ready to provide three usage examples with varied difficulty level, from the basic usage example (`easy`), to a couple of more complex shared libraries (`harder` and `hardest`).
+We are now ready to provide some usage examples. We will show three difficulty levels of calling a function, from a basic usage example (`easy`), to a couple of more complex shared libraries (`harder` and `hardest`) examples. Additionally, there will be separate examples for reading and writing data.
 
 #### Basic usage example
 
@@ -167,9 +166,9 @@ $ cargo build
 $ LUA_CPATH=target/debug/lib?.so tarantool init.lua
 ```
 
-Setting the [LUA_CPATH](https://www.lua.org/pil/8.1.html) environmental variable is necessary because Rust and Lua layout conventions are different. Fortunately, Lua is rather flexible. 
+Although Rust and Lua layout conventions are different, we can take hold of Lua flexibility and fix it by explicitly setting the [LUA_CPATH](https://www.lua.org/pil/8.1.html) environmental variable, as shown above.
 
-Now you're ready to make some requests. Open separate console window and run tarantool as a client. Paste the following into the console:  
+Now you're ready to make some requests. Open separate console window and run Tarantool as a client. Paste the following into the console:  
 
 ```lua
 conn = require('net.box').connect(3301)
@@ -196,7 +195,7 @@ conn:call('easy.easy2')
 
 As you can see, calling a Rust function is as straightforward as it can be.
 
-#### Compiling a library
+#### Retrieving call arguments
 
 Create a new crate called "harder". Put these lines to `lib.rs`:
 
@@ -225,7 +224,7 @@ pub extern "C" fn harder(_: FunctionCtx, args: FunctionArgs) -> c_int {
     0
 }
 ```
-The above code does the following two things:
+The above code does the following:
 1. Extracts tuple from the `FunctionArgs` special structure
 1. Deserializes tuple into the Rust structure
 
@@ -258,7 +257,7 @@ val=3
 
 As you can see, decoding parameter values passed to a Rust function may be tricky since it requires coding extra routines.
 
-#### Compiling an advanced library
+#### Accessing Tarantool space
 
 Create a new crate called "hardest". Put these lines to `lib.rs`:
 ```rust
@@ -289,10 +288,10 @@ pub extern "C" fn hardest(ctx: FunctionCtx, _: FunctionArgs) -> c_int {
     ctx.return_tuple(&result.unwrap().unwrap()).unwrap()
 }
 ```
-This time the Rust function does three things:
+This time the Rust function does the following:
 1. Finds the `capi_test` space by calling the `Space::find_by_name()` method;
-1. Serializes the row structure to tuple in auto mode;
-1. Inserts a tuple using `.insert()`.
+1. Serializes the row structure to a tuple in auto mode;
+1. Inserts the tuple using `.insert()`.
 
 Compile the program into the `hardest.so` library using `cargo build`.
 
@@ -317,9 +316,9 @@ tarantool> box.space.capi_test:select()
 ...
 ```
 
-The above proves that the `hardest()` function succeeded.
+The above proves that the `hardest()` function has succeeded.
 
-#### Read
+#### Reading example
 
 Create a new crate "read". Put these lines to `lib.rs`:
 ```rust
@@ -352,12 +351,13 @@ pub extern "C" fn read(_: FunctionCtx, _: FunctionArgs) -> c_int {
     0
 }
 ```
-1. once again, finding the `capi_test` space by calling `Space::find()`;
-1. formatting a search key = 10000 using rust tuple literal (an alternative to serializing structures);
-1. getting a tuple using `.get()`;
-1. deserializing result.
+The above code does the following:
+1. Finds the `capi_test` space by calling `Space::find()`;
+1. Formats a search key = 10000 using Rust tuple literal (an alternative to serializing structures);
+1. Gets the tuple using `.get()`;
+1. Deserializes the result.
 
-Compile the program, producing a library file named `read.so`.
+Compile the program into the `read.so` library using `cargo build`.
 
 Now go back to the client and execute these requests:
 ```lua
@@ -378,11 +378,11 @@ string value=String 2.
 ...
 ```
 
-This proves that the `read()` function succeeded.
+The above proves that the `read()` function has succeeded.
 
-#### Write
+#### Writing example
 
-Create a new crate "write". Put these lines to `lib.rs`:
+Create a new crate called "write". Put these lines to `lib.rs`:
 ```rust
 use std::os::raw::c_int;
 
@@ -413,16 +413,17 @@ pub extern "C" fn write(ctx: FunctionCtx, _: FunctionArgs) -> c_int {
    ctx.return_mp(&row).unwrap()
 }
 ```
-1. once again, finding the `capi_test` space by calling `Space::find_by_name()`;
-1. preparing row value;
-1. starting a transaction;
-1. replacing a tuple in `box.space.capi_test`
-1. ending a transaction: 
-    - commit if closure returns `Ok()`
-    - rollback on `Error()`;
-1. use the `.return_mp()` method to return the entire tuple to the caller and let the caller display it.
+The above code does the following:
+1. Finds the `capi_test` space by calling `Space::find_by_name()`;
+1. Prepares the row value;
+1. Launches the transaction;
+1. Replaces the tuple in `box.space.capi_test`
+1. Finishes the transaction: 
+    - performs a commit upon receiving `Ok()` on closure
+    - performs a rollback upon receiving `Error()`;
+1. Returns the entire tuple to the caller using the `.return_mp()` method and lets the caller display it.
 
-Compile the program, producing a library file named `write.so`.
+Compile the program into the `write.so` library using `cargo build`.
 
 Now go back to the client and execute these requests:
 ```lua
@@ -440,9 +441,9 @@ tarantool> capi_connection:call('write')
 ...
 ```
 
-This proves that the `write()` function succeeded.
+The above proves that the `write()` function has succeeded.
 
-Conclusion: Rust "stored procedures" have full access to the database.
+As you can see, Rust "stored procedures" have full access to a database.
 
 #### Cleaning up
 
@@ -466,7 +467,7 @@ Please make sure to update tests as appropriate.
 
 ## Versioning
 
-We use [SemVer](http://semver.org/) for versioning. For the versions available, see the [tags on this repository](https://github.com/picodata/tarantool-module/tags). 
+We use [SemVer](http://semver.org/) for versioning. For the versions available, see the [tags on this repository](https://git.picodata.io/picodata/picodata/tarantool-module/-/tags). 
 
 ## Authors
 
@@ -474,8 +475,7 @@ We use [SemVer](http://semver.org/) for versioning. For the versions available, 
 - **Dmitriy Koltsov**
 - **Georgy Moshkin**
 
-© 2020-2021 Picodata.io https://github.com/picodata
-
+© 2020-2022 Picodata.io https://git.picodata.io/picodata
 ## License
 
 This project is licensed under the BSD License - see the [LICENSE](LICENSE) file for details
