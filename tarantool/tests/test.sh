@@ -10,6 +10,5 @@ WORKSPACE_ROOT=$(
             'print(require("json").decode(io.read("*l")).workspace_root)'
 )
 
-cargo build -p tarantool-module-test-runner
-
-"${WORKSPACE_ROOT}/tests/run_tests.lua" "${FILTER}"
+TARANTOOL_EXECUTABLE=${TARANTOOL_EXECUTABLE:-tarantool}
+"${TARANTOOL_EXECUTABLE}" "${WORKSPACE_ROOT}/tests/run_tests.lua" "${FILTER}"

@@ -30,3 +30,6 @@ path = "../tarantool-proc"
 [lib]
 test = false
 crate-type = ["cdylib"]
+
+[features]
+picodata = ["tarantool/picodata"]
