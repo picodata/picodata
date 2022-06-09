@@ -1,5 +1,27 @@
 # Change Log
 
+# [0.6.2] Jun 09 2022
+
+### Added
+- `Conn::call_async`& `Conn::eval_async` functions for non-yielding network
+    operations
+- `Space::find_cached`& `Space::index_cached` functions better performance when
+    accessing spaces and indexes
+- `injected` & `custom_ret` arguments for `tarantool::proc` attribute macro
+- builtin trait implementations for a number of types (`Hash` for `Decimal`,
+    `Decirialize`, `Clone`, `Debug` for multiple space and index related structs
+    inside)
+
+### Fixed
+
+- `decimal!` macro can now be used
+- fixed memory corruption in `Decimal::to_string`
+- fixed `is_sync` space option not working
+- add a blanket impl `AsTuple` for `&T`
+- README typos and other mistakes
+- doc tests now pass
+- fixed "unused unsafe" warning in `error!` macro
+
 # [0.6.1] Apr 08 2022
 
 ### Added
