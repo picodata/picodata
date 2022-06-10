@@ -43,6 +43,25 @@ pub fn ping() {
     conn.ping(&Options::default()).unwrap();
 }
 
+pub fn execute() {
+    Space::find("test_s1").unwrap().insert(&(6001, "6001")).unwrap();
+    Space::find("test_s1").unwrap().insert(&(6002, "6002")).unwrap();
+
+    let conn: Conn = test_user_conn();
+
+    let result = conn
+        .execute( r#"SELECT * FROM "test_s1""#, &(), &Options::default())
+        .expect("IPROTO execute sql request fail");
+    assert!(result.len() >= 2);
+
+    let result = conn
+        .execute( r#"SELECT * FROM "test_s1" WHERE "id" = ?"#, &(6002,), &Options::default())
+        .expect("IPROTO execute sql request fail");
+
+    assert_eq!(result.len(), 1);
+    assert_eq!(result.get(0).unwrap().as_struct::<(u64, String)>().unwrap(), (6002, "6002".to_string()));
+}
+
 pub fn ping_timeout() {
     let conn = default_conn();
 

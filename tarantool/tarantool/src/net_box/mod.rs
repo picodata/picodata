@@ -202,6 +202,16 @@ impl Conn {
             .lookup_space(name)?
             .map(|space_id| RemoteSpace::new(self.inner.clone(), space_id)))
     }
+
+    /// Remote execute of sql query.
+    pub fn execute(&self, sql: &str, bind_params: &impl AsTuple, options: &Options) -> Result<Vec<Tuple>, Error>
+    {
+        self.inner.request(
+            |buf, sync| protocol::encode_execute(buf, sync, sql, bind_params),
+            |buf, _| protocol::decode_multiple_rows(buf, None),
+            options,
+        )
+    }
 }
 
 impl Drop for Conn {

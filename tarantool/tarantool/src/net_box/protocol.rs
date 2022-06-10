@@ -34,6 +34,9 @@ const OPS: u8 = 0x28;
 const DATA: u8 = 0x30;
 const ERROR: u8 = 0x31;
 
+const SQL_TEXT: u8 = 0x40;
+const SQL_BIND: u8 = 0x41;
+
 #[derive(Debug, Clone, Copy, serde::Deserialize, FromPrimitive)]
 #[serde(try_from = "u8")]
 #[repr(u8)]
@@ -55,6 +58,8 @@ enum IProtoKey {
     Ops = OPS,
     Data = DATA,
     Error = ERROR,
+    SqlText = SQL_TEXT,
+    SqlBind = SQL_BIND,
 }
 
 impl TryFrom<u8> for IProtoKey {
@@ -77,6 +82,7 @@ pub(crate) enum IProtoType {
     Eval = 8,
     Upsert = 9,
     Call = 10,
+    Execute = 11,
     Ping = 64,
 }
 
@@ -238,6 +244,17 @@ pub fn encode_auth(
 pub fn encode_ping(stream: &mut impl Write, sync: u64) -> Result<(), Error> {
     encode_header(stream, sync, IProtoType::Ping)?;
     rmp::encode::write_map_len(stream, 0)?;
+    Ok(())
+}
+
+pub fn encode_execute(stream: &mut impl Write, sync: u64, sql: &str, bind_params: &impl AsTuple) -> Result<(), Error> {
+    encode_header(stream, sync, IProtoType::Execute)?;
+    rmp::encode::write_map_len(stream, 2)?;
+    rmp::encode::write_pfix(stream, SQL_TEXT)?;
+    rmp::encode::write_str(stream, sql)?;
+
+    rmp::encode::write_pfix(stream, SQL_BIND)?;
+    bind_params.serialize_to(stream)?;
     Ok(())
 }
 
