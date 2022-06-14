@@ -273,6 +273,21 @@ impl Storage {
         Ok(())
     }
 
+    pub fn persist_peer_by_instance_id(peer: &traft::Peer) -> Result<(), StorageError> {
+        if let Some(peer) = Self::peer_by_instance_id(&peer.instance_id)? {
+            Self::delete_peer(peer.raft_id)?;
+        }
+        Self::persist_peer(peer)
+    }
+
+    pub fn delete_peer(raft_id: u64) -> Result<(), StorageError> {
+        Storage::space(RAFT_GROUP)?
+            .delete(&[raft_id])
+            .map_err(box_err!())?;
+
+        Ok(())
+    }
+
     pub fn entries(low: u64, high: u64) -> Result<Vec<raft::Entry>, StorageError> {
         // idx \in [low, high)
         let mut ret: Vec<raft::Entry> = vec![];

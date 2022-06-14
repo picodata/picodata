@@ -24,6 +24,7 @@ use std::time::Instant;
 use thiserror::Error;
 
 use crate::traft::ContextCoercion as _;
+use crate::traft::Peer;
 use ::tarantool::util::IntoClones as _;
 use protobuf::Message as _;
 use protobuf::ProtobufEnum as _;
@@ -90,6 +91,7 @@ enum NormalRequest {
     ProposeConfChange {
         term: u64,
         peers: Vec<traft::Peer>,
+        to_replace: Vec<(u64, traft::Peer)>,
         notify: Notify,
     },
 
@@ -293,6 +295,7 @@ fn raft_main_loop(
                 NormalRequest::ProposeConfChange {
                     term,
                     peers,
+                    to_replace,
                     notify,
                 } => {
                     // In some states proposing a ConfChange is impossible.
@@ -328,6 +331,7 @@ fn raft_main_loop(
                     }
 
                     let mut changes = Vec::with_capacity(peers.len());
+                    let mut new_peers: Vec<Peer> = Vec::new();
                     for peer in &peers {
                         let change_type = match peer.voter {
                             true => raft::ConfChangeType::AddNode,
@@ -338,6 +342,25 @@ fn raft_main_loop(
                             node_id: peer.raft_id,
                             ..Default::default()
                         });
+                        new_peers.push(peer.clone());
+                    }
+
+                    for (old_raft_id, peer) in &to_replace {
+                        changes.push(raft::ConfChangeSingle {
+                            change_type: raft::ConfChangeType::RemoveNode,
+                            node_id: *old_raft_id,
+                            ..Default::default()
+                        });
+                        let change_type = match peer.voter {
+                            true => raft::ConfChangeType::AddNode,
+                            false => raft::ConfChangeType::AddLearnerNode,
+                        };
+                        changes.push(raft::ConfChangeSingle {
+                            change_type,
+                            node_id: peer.raft_id,
+                            ..Default::default()
+                        });
+                        new_peers.push(peer.clone());
                     }
 
                     let cc = raft::ConfChangeV2 {
@@ -346,7 +369,7 @@ fn raft_main_loop(
                         ..Default::default()
                     };
 
-                    let ctx = traft::EntryContextConfChange { peers }.to_bytes();
+                    let ctx = traft::EntryContextConfChange { peers: new_peers }.to_bytes();
 
                     let prev_index = raw_node.raft.raft_log.last_index();
                     if let Err(e) = raw_node.propose_conf_change(ctx, cc) {
@@ -485,7 +508,7 @@ fn raft_main_loop(
                                 commit_index: entry.index,
                                 ..peer.clone()
                             };
-                            Storage::persist_peer(&peer).unwrap();
+                            Storage::persist_peer_by_instance_id(&peer).unwrap();
                             pool.connect(peer.raft_id, peer.peer_address);
                         }
 
@@ -649,6 +672,7 @@ fn raft_join_loop(inbox: Mailbox<(JoinRequest, Notify)>, main_inbox: Mailbox<Nor
         main_inbox.send(NormalRequest::ProposeConfChange {
             term,
             peers: topology.diff(),
+            to_replace: topology.to_replace(),
             notify: tx,
         });
 

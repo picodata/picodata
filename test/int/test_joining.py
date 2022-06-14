@@ -135,13 +135,13 @@ def test_uuids(cluster2: Cluster):
             timeout_seconds=1,
         )
 
-    # Two consequent requests must obtain same raft_id and instance_id
+    # Two consequent requests must obtain same instance_id but different raft_id
     fake_peer_1 = join()[0]["peer"]
     fake_peer_2 = join()[0]["peer"]
 
     assert fake_peer_1["instance_id"] == "fake"
     assert fake_peer_2["instance_id"] == "fake"
-    assert fake_peer_1["raft_id"] == fake_peer_2["raft_id"]
+    assert fake_peer_2["raft_id"] == fake_peer_1["raft_id"] + 1
     assert fake_peer_1["instance_uuid"] == fake_peer_2["instance_uuid"]
 
 
@@ -248,3 +248,17 @@ def test_cluster_id_mismatch(instance: Instance):
             instance_id="whatever",
             timeout_seconds=1,
         )
+
+
+def test_rebootstrap_follower(cluster3: Cluster):
+    # Scenario: rebootstrap a follower in a cluster of 3+
+    #   Given a cluster of 3 instances
+    #   When i3 is down
+    #   And i3 data dir is removed
+    #   And i3 started with same command-line arguments as first time
+    #   Then i3 should become a follower
+
+    i1, i2, i3 = cluster3.instances
+    i3.restart(remove_data=True)
+    i3.wait_ready()
+    i3.assert_raft_status("Follower")

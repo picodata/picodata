@@ -12,6 +12,7 @@ use raft::INVALID_INDEX;
 pub struct Topology {
     peers: BTreeMap<RaftId, Peer>,
     diff: BTreeMap<RaftId, Peer>,
+    to_replace: BTreeMap<RaftId, (RaftId, Peer)>,
     replication_factor: u8,
 
     max_raft_id: RaftId,
@@ -24,6 +25,7 @@ impl Topology {
         let mut ret = Self {
             peers: Default::default(),
             diff: Default::default(),
+            to_replace: Default::default(),
             replication_factor: 2,
 
             max_raft_id: 0,
@@ -97,7 +99,15 @@ impl Topology {
             peer.peer_address = req.advertise_address.clone();
             peer.voter = req.voter;
 
-            self.diff.insert(peer.raft_id, peer.clone());
+            if req.voter {
+                self.diff.insert(peer.raft_id, peer.clone());
+            } else {
+                let old_raft_id = peer.raft_id;
+                peer.raft_id = self.max_raft_id + 1;
+
+                self.to_replace
+                    .insert(peer.raft_id, (old_raft_id, peer.clone()));
+            }
             self.put_peer(peer);
 
             return Ok(());
@@ -127,8 +137,12 @@ impl Topology {
         Ok(())
     }
 
-    pub fn diff(self) -> Vec<Peer> {
-        self.diff.into_values().collect()
+    pub fn diff(&self) -> Vec<Peer> {
+        self.diff.clone().into_values().collect()
+    }
+
+    pub fn to_replace(&self) -> Vec<(RaftId, Peer)> {
+        self.to_replace.clone().into_values().collect()
     }
 }
 
@@ -163,6 +177,27 @@ mod tests {
         };
     }
 
+    macro_rules! peer {
+        (
+            $raft_id:expr,
+            $instance_id:literal,
+            $replicaset_id:literal,
+            $peer_address:literal,
+            $voter:literal
+        ) => {
+            Peer {
+                raft_id: $raft_id,
+                peer_address: $peer_address.into(),
+                voter: $voter,
+                instance_id: $instance_id.into(),
+                replicaset_id: $replicaset_id.into(),
+                instance_uuid: instance_uuid($instance_id),
+                replicaset_uuid: replicaset_uuid($replicaset_id),
+                commit_index: raft::INVALID_INDEX,
+            }
+        };
+    }
+
     macro_rules! req {
         (
             $instance_id:literal,
@@ -185,13 +220,15 @@ mod tests {
             replication_factor: $replication_factor:literal,
             init: $peers:expr,
             req: [ $( $req:expr ),* $(,)?],
-            expected_diff: $expected:expr
+            expected_diff: $expected:expr,
+            expected_to_replace: $expected_to_replace:expr,
         ) => {
             let mut t = Topology::from_peers($peers)
                 .with_replication_factor($replication_factor);
             $( t.process($req).unwrap(); )*
 
             assert_eq!(t.diff(), $expected);
+            assert_eq!(t.to_replace(), $expected_to_replace);
         };
     }
 
@@ -212,7 +249,8 @@ mod tests {
             expected_diff: peers![
                 (1, "i1", "r1", "nowhere", true),
                 (2, "i2", "r2", "nowhere", true),
-            ]
+            ],
+            expected_to_replace: vec![],
         );
 
         test!(
@@ -225,7 +263,8 @@ mod tests {
             ],
             expected_diff: peers![
                 (2, "i2", "R2", "addr:2", false),
-            ]
+            ],
+            expected_to_replace: vec![],
         );
     }
 
@@ -241,7 +280,8 @@ mod tests {
             ],
             expected_diff: peers![
                 (1, "i1", "R1", "addr:2", true),
-            ]
+            ],
+            expected_to_replace: vec![],
         );
     }
 
@@ -256,7 +296,8 @@ mod tests {
             ],
             expected_diff: peers![
                 (1, "i1", "R1", "addr:2", true),
-            ]
+            ],
+            expected_to_replace: vec![],
         );
     }
 
@@ -275,6 +316,7 @@ mod tests {
             .map_err(|e| assert_eq!(e, expected_error))
             .unwrap_err();
         assert_eq!(topology.diff(), vec![]);
+        assert_eq!(topology.to_replace(), vec![]);
 
         let peers = peers![(2, "i2", "R-A", "nowhere", true)];
         let mut topology = Topology::from_peers(peers);
@@ -286,6 +328,7 @@ mod tests {
             .map_err(|e| assert_eq!(e, expected_error))
             .unwrap_err();
         assert_eq!(topology.diff(), peers![(3, "i3", "R-A", "y:1", false)]);
+        assert_eq!(topology.to_replace(), vec![]);
     }
 
     #[test]
@@ -307,7 +350,25 @@ mod tests {
                 (12, "i2", "r1", "addr:2", false),
                 (13, "i3", "r2", "addr:3", false),
                 (14, "i4", "r2", "addr:4", false),
-            ]
+            ],
+            expected_to_replace: vec![],
+        );
+    }
+
+    #[test]
+    fn test_replace() {
+        test!(
+            replication_factor: 2,
+            init: peers![
+                (1, "i1", "r1", "nowhere", false),
+            ],
+            req: [
+                req!("i1", None, "addr:2", false),
+            ],
+            expected_diff: peers![],
+            expected_to_replace: vec![
+                (1, peer!(2, "i1", "r1", "addr:2", false)),
+            ],
         );
     }
 }
