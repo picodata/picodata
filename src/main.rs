@@ -531,6 +531,13 @@ fn start_join(args: &args::Run, leader_address: String) {
 fn postjoin(args: &args::Run) {
     tlog!(Info, ">>>>> postjoin()");
 
+    let mut box_cfg = tarantool::cfg().unwrap();
+
+    // Reset the quorum BEFORE initializing the raft node.
+    // Otherwise it may stuck on `box.cfg({replication})` call.
+    box_cfg.replication_connect_quorum = 0;
+    tarantool::set_cfg(&box_cfg);
+
     let raft_id = traft::Storage::id().unwrap().unwrap();
     let applied = traft::Storage::applied().unwrap().unwrap_or(0);
     let raft_cfg = raft::Config {
@@ -561,10 +568,8 @@ fn postjoin(args: &args::Run) {
     traft::node::set_global(node);
     let node = traft::node::global().unwrap();
 
-    tarantool::set_cfg(&tarantool::Cfg {
-        listen: Some(args.listen.clone()),
-        ..tarantool::cfg().unwrap()
-    });
+    box_cfg.listen = Some(args.listen.clone());
+    tarantool::set_cfg(&box_cfg);
 
     while node.status().leader_id == None {
         node.wait_status();
@@ -579,6 +584,10 @@ fn postjoin(args: &args::Run) {
             break;
         }
     }
+
+    let peer = traft::Storage::peer_by_raft_id(raft_id).unwrap().unwrap();
+    box_cfg.replication = traft::Storage::box_replication(&peer.replicaset_id, None).unwrap();
+    tarantool::set_cfg(&box_cfg);
 
     loop {
         let timeout = Duration::from_millis(220);

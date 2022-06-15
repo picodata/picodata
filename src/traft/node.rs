@@ -463,6 +463,7 @@ fn raft_main_loop(
             raw_node: &mut RawNode,
             pool: &mut ConnectionPool,
             joint_state_latch: &mut Option<JointStateLatch>,
+            config_changed: &mut bool,
         ) {
             for entry in entries
                 .iter()
@@ -521,6 +522,7 @@ fn raft_main_loop(
                                 let mut cc = raft::ConfChange::default();
                                 cc.merge_from_bytes(&entry.data).unwrap();
 
+                                *config_changed = true;
                                 raw_node.apply_conf_change(&cc).unwrap()
                             }
                             raft::EntryType::EntryConfChangeV2 => {
@@ -535,6 +537,7 @@ fn raft_main_loop(
                                             .try_send(Ok(entry.index))
                                             .expect("that's a bug");
                                         *joint_state_latch = None;
+                                        *config_changed = true;
                                     }
                                 }
 
@@ -554,6 +557,8 @@ fn raft_main_loop(
                 Storage::persist_applied(entry.index).unwrap();
             }
         }
+
+        let mut config_changed = false;
 
         start_transaction(|| -> Result<(), TransactionError> {
             if !ready.messages().is_empty() {
@@ -575,6 +580,7 @@ fn raft_main_loop(
                 &mut raw_node,
                 &mut pool,
                 &mut joint_state_latch,
+                &mut config_changed,
             );
 
             if !ready.entries().is_empty() {
@@ -633,6 +639,7 @@ fn raft_main_loop(
                 &mut raw_node,
                 &mut pool,
                 &mut joint_state_latch,
+                &mut config_changed,
             );
 
             // Advance the apply index.
@@ -640,6 +647,16 @@ fn raft_main_loop(
             Ok(())
         })
         .unwrap();
+
+        if config_changed {
+            if let Some(peer) = traft::Storage::peer_by_raft_id(raw_node.raft.id).unwrap() {
+                let mut box_cfg = crate::tarantool::cfg().unwrap();
+                assert_eq!(box_cfg.replication_connect_quorum, 0);
+                box_cfg.replication =
+                    traft::Storage::box_replication(&peer.replicaset_id, None).unwrap();
+                crate::tarantool::set_cfg(&box_cfg);
+            }
+        }
     }
 }
 
@@ -744,7 +761,7 @@ fn raft_join(req: JoinRequest) -> Result<JoinResponse, Box<dyn StdError>> {
     let peer = Storage::peer_by_instance_id(&instance_id)?
         .ok_or("the peer has misteriously disappeared")?;
     let raft_group = Storage::peers()?;
-    let box_replication = Storage::box_replication(&peer)?;
+    let box_replication = Storage::box_replication(&peer.replicaset_id, Some(peer.commit_index))?;
 
     Ok(JoinResponse {
         peer,

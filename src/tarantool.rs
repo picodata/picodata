@@ -106,6 +106,7 @@ pub struct Cfg {
     pub instance_uuid: Option<String>,
     pub replicaset_uuid: Option<String>,
     pub replication: Vec<String>,
+    pub replication_connect_quorum: u8,
 
     pub wal_dir: String,
     pub memtx_dir: String,
@@ -123,6 +124,7 @@ impl Default for Cfg {
             instance_uuid: None,
             replicaset_uuid: None,
             replication: vec![],
+            replication_connect_quorum: 32,
 
             wal_dir: ".".into(),
             memtx_dir: ".".into(),

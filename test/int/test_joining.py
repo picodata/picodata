@@ -1,6 +1,7 @@
 from functools import partial
 import os
 import errno
+import funcy  # type: ignore
 import re
 import signal
 import pytest
@@ -202,11 +203,15 @@ def test_replication(cluster2: Cluster):
 
     assert i1.replicaset_uuid() == i2.replicaset_uuid()
 
+    @funcy.retry(tries=20, timeout=0.1)
+    def wait_replicated(instance):
+        box_replication = instance.eval("return box.cfg.replication")
+        assert box_replication == [i1.listen, i2.listen], instance
+
     for instance in cluster2.instances:
         with instance.connect(1) as conn:
             raft_peer = conn.select("raft_group", [instance.raft_id])[0]
             space_cluster = conn.select("_cluster")
-            cfg_replication = conn.eval("return box.cfg.replication")
 
         assert raft_peer[:-1] == [
             instance.raft_id,
@@ -223,11 +228,21 @@ def test_replication(cluster2: Cluster):
             [2, i2.instance_uuid()],
         ]
 
-        if instance == i1:
-            with pytest.raises(AssertionError):  # FIXME
-                assert cfg_replication[0] == [i1.listen, i2.listen]
-        else:
-            assert cfg_replication[0] == [i1.listen, i2.listen]
+        wait_replicated(instance)
+
+    # It doesn't affect replication setup
+    # but speeds up the test by eliminating failover.
+    i1.promote_or_fail()
+
+    i2.assert_raft_status("Follower")
+    i2.restart()
+    wait_replicated(i2)
+
+    i2.promote_or_fail()
+
+    i1.assert_raft_status("Follower")
+    i1.restart()
+    wait_replicated(i1)
 
 
 def test_cluster_id_mismatch(instance: Instance):

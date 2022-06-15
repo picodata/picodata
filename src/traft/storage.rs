@@ -169,7 +169,10 @@ impl Storage {
         Ok(ret)
     }
 
-    pub fn box_replication(peer: &traft::Peer) -> Result<Vec<String>, StorageError> {
+    pub fn box_replication(
+        replicaset_id: &str,
+        max_index: Option<u64>,
+    ) -> Result<Vec<String>, StorageError> {
         let mut ret = Vec::new();
 
         const IDX: &str = "replicaset_id";
@@ -177,16 +180,18 @@ impl Storage {
             .index(IDX)
             .ok_or_else(|| Error::NoSuchIndex(RAFT_GROUP.into(), IDX.into()))
             .map_err(box_err!())?
-            .select(IteratorType::GE, &(&peer.replicaset_id,))
+            .select(IteratorType::GE, &(replicaset_id,))
             .map_err(box_err!())?;
 
         for tuple in iter {
             let replica: traft::Peer = tuple.into_struct().map_err(box_err!())?;
 
-            if replica.replicaset_id != peer.replicaset_id
-                || replica.commit_index > peer.commit_index
-            {
+            if replica.replicaset_id != replicaset_id {
                 // In Tarantool the iteration must be interrupted explicitly.
+                break;
+            }
+
+            if matches!(max_index, Some(idx) if replica.commit_index > idx) {
                 break;
             }
 
@@ -619,27 +624,25 @@ inventory::submit!(crate::InnerTest {
             assert_eq!(Storage::peer_by_instance_id("i6"), Ok(None));
         }
 
-        let box_replication = |rsid: &str, idx: u64| {
-            let peer = traft::Peer {
-                replicaset_id: rsid.into(),
-                commit_index: idx,
-                ..Default::default()
-            };
-            Storage::box_replication(&peer).unwrap()
+        let box_replication = |replicaset_id: &str, max_index: Option<u64>| {
+            Storage::box_replication(replicaset_id, max_index).unwrap()
         };
 
         {
-            assert_eq!(box_replication("r1", 0), Vec::<&str>::new());
-            assert_eq!(box_replication("XX", 99), Vec::<&str>::new());
+            assert_eq!(box_replication("r1", Some(0)), Vec::<&str>::new());
+            assert_eq!(box_replication("XX", None), Vec::<&str>::new());
 
-            assert_eq!(box_replication("r1", 1), vec!["addr:1"]);
-            assert_eq!(box_replication("r1", 2), vec!["addr:1", "addr:2"]);
-            assert_eq!(box_replication("r1", 99), vec!["addr:1", "addr:2"]);
+            assert_eq!(box_replication("r1", Some(1)), vec!["addr:1"]);
+            assert_eq!(box_replication("r1", Some(2)), vec!["addr:1", "addr:2"]);
+            assert_eq!(box_replication("r1", Some(99)), vec!["addr:1", "addr:2"]);
+            assert_eq!(box_replication("r1", None), vec!["addr:1", "addr:2"]);
 
-            assert_eq!(box_replication("r2", 10), vec!["addr:3", "addr:4"]);
-            assert_eq!(box_replication("r2", 10), vec!["addr:3", "addr:4"]);
+            assert_eq!(box_replication("r2", Some(10)), vec!["addr:3", "addr:4"]);
+            assert_eq!(box_replication("r2", Some(10)), vec!["addr:3", "addr:4"]);
+            assert_eq!(box_replication("r2", None), vec!["addr:3", "addr:4"]);
 
-            assert_eq!(box_replication("r3", 10), vec!["addr:5"]);
+            assert_eq!(box_replication("r3", Some(10)), vec!["addr:5"]);
+            assert_eq!(box_replication("r3", None), vec!["addr:5"]);
         }
 
         raft_group.index("instance_id").unwrap().drop().unwrap();
@@ -656,7 +659,7 @@ inventory::submit!(crate::InnerTest {
         raft_group.index("replicaset_id").unwrap().drop().unwrap();
 
         assert_err!(
-            Storage::box_replication(&traft::Peer::default()),
+            Storage::box_replication("", None),
             concat!(
                 "unknown error",
                 " no such index \"replicaset_id\"",
