@@ -22,8 +22,14 @@ pub enum Picodata {
 #[derive(Debug, Parser, tlua::Push, PartialEq)]
 #[clap(about = "Run the picodata instance")]
 pub struct Run {
-    #[clap(long, value_name = "name", env = "PICODATA_CLUSTER_ID")]
-    /// Name of the cluster
+    #[clap(
+        long,
+        value_name = "name",
+        default_value = "demo",
+        env = "PICODATA_CLUSTER_ID"
+    )]
+    /// Name of the cluster. The instance will refuse
+    /// to join a cluster with a different name.
     pub cluster_id: String,
 
     #[clap(
@@ -268,7 +274,6 @@ mod tests {
     fn test_parse() {
         let _env_dump = EnvDump::new();
 
-        std::env::set_var("PICODATA_CLUSTER_ID", "cluster1");
         std::env::set_var("PICODATA_INSTANCE_ID", "instance-id-from-env");
         std::env::set_var("PICODATA_PEER", "peer-from-env");
         {
