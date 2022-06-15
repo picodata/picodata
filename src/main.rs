@@ -605,26 +605,22 @@ fn postjoin(args: &args::Run) {
             advertise_address: args.advertise_address(),
         };
 
-        match node.status().leader_id {
-            None => (),
-            Some(leader_id) => {
-                let leader = traft::Storage::peer_by_raft_id(leader_id).unwrap().unwrap();
+        let leader_id = node.status().leader_id.expect("leader_id deinitialized");
+        let leader = traft::Storage::peer_by_raft_id(leader_id).unwrap().unwrap();
 
-                use traft::node::raft_join;
-                let fn_name = stringify_cfunc!(raft_join);
-                let now = Instant::now();
-                match tarantool::net_box_call(&leader.peer_address, fn_name, &req, timeout) {
-                    Err(e) => {
-                        tlog!(Error, "failed to promote myself: {e}");
-                        fiber::sleep(timeout.saturating_sub(now.elapsed()));
-                        continue;
-                    }
-                    Ok(traft::JoinResponse { .. }) => {
-                        break;
-                    }
-                };
+        use traft::node::raft_join;
+        let fn_name = stringify_cfunc!(raft_join);
+        let now = Instant::now();
+        match tarantool::net_box_call(&leader.peer_address, fn_name, &req, timeout) {
+            Err(e) => {
+                tlog!(Error, "failed to promote myself: {e}");
+                fiber::sleep(timeout.saturating_sub(now.elapsed()));
+                continue;
             }
-        }
+            Ok(traft::JoinResponse { .. }) => {
+                break;
+            }
+        };
     }
 
     node.mark_as_ready();
