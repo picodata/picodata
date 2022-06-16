@@ -55,12 +55,13 @@ pub struct Run {
     pub instance_id: String,
 
     #[clap(
-        long,
+        long = "advertise",
         value_name = "[host][:port]",
-        env = "PICODATA_ADVERTISE_ADDRESS",
+        env = "PICODATA_ADVERTISE",
         parse(try_from_str = try_parse_address)
     )]
-    /// Address the other instances should use to connect to this instance
+    /// Address the other instances should use to connect to this instance.
+    /// Defaults to `--listen` value.
     pub advertise_address: Option<String>,
 
     #[clap(
@@ -302,7 +303,7 @@ mod tests {
             assert_eq!(parsed.advertise_address(), "listen-from-args:3301");
         }
 
-        std::env::set_var("PICODATA_ADVERTISE_ADDRESS", "advertise-from-env");
+        std::env::set_var("PICODATA_ADVERTISE", "advertise-from-env");
         {
             let parsed = parse![Run,];
             assert_eq!(parsed.listen, "listen-from-env:3301");
@@ -312,7 +313,7 @@ mod tests {
             assert_eq!(parsed.listen, "listen-from-args:3301");
             assert_eq!(parsed.advertise_address(), "advertise-from-env:3301");
 
-            let parsed = parse![Run, "--advertise-address", "advertise-from-args"];
+            let parsed = parse![Run, "--advertise", "advertise-from-args"];
             assert_eq!(parsed.listen, "listen-from-env:3301");
             assert_eq!(parsed.advertise_address(), "advertise-from-args:3301");
         }
