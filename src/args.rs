@@ -81,10 +81,10 @@ pub struct Run {
         require_value_delimiter = true,
         use_value_delimiter = true,
         parse(try_from_str = try_parse_address),
-        required = true,
+        default_value = "localhost:3301",
         env = "PICODATA_PEER"
     )]
-    /// Address of other instance(s)
+    /// Address(es) of other instance(s)
     pub peers: Vec<String>,
 
     #[clap(long, value_name = "name", env = "PICODATA_REPLICASET_ID")]
@@ -276,20 +276,28 @@ mod tests {
         let _env_dump = EnvDump::new();
 
         std::env::set_var("PICODATA_INSTANCE_ID", "instance-id-from-env");
-        std::env::set_var("PICODATA_PEER", "peer-from-env");
         {
             let parsed = parse![Run,];
             assert_eq!(parsed.instance_id, "instance-id-from-env");
-            assert_eq!(parsed.peers.as_ref(), vec!["peer-from-env:3301"]);
+            assert_eq!(parsed.peers.as_ref(), vec!["localhost:3301"]);
             assert_eq!(parsed.listen, "localhost:3301"); // default
             assert_eq!(parsed.advertise_address(), "localhost:3301"); // default
             assert_eq!(parsed.log_level(), SayLevel::Info); // default
 
             let parsed = parse![Run, "--instance-id", "instance-id-from-args"];
             assert_eq!(parsed.instance_id, "instance-id-from-args");
+        }
+
+        std::env::set_var("PICODATA_PEER", "peer-from-env");
+        {
+            let parsed = parse![Run,];
+            assert_eq!(parsed.peers.as_ref(), vec!["peer-from-env:3301"]);
 
             let parsed = parse![Run, "--peer", "peer-from-args"];
             assert_eq!(parsed.peers.as_ref(), vec!["peer-from-args:3301"]);
+
+            let parsed = parse![Run, "--peer", ":3302"];
+            assert_eq!(parsed.peers.as_ref(), vec!["localhost:3302"]);
         }
 
         std::env::set_var("PICODATA_LISTEN", "listen-from-env");
