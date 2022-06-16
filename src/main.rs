@@ -547,7 +547,7 @@ fn postjoin(args: &args::Run) {
     let node = node.expect("failed initializing raft node");
 
     let cs = traft::Storage::conf_state().unwrap();
-    if cs.voters == vec![raft_cfg.id] {
+    if cs.voters == [raft_cfg.id] {
         tlog!(
             Info,
             concat!(
