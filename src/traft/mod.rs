@@ -91,7 +91,7 @@ impl Peer {}
 /// See correspondig definition in `raft-rs`:
 /// - <https://github.com/tikv/raft-rs/blob/v0.6.0/proto/proto/eraftpb.proto#L23>
 ///
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Serialize, Deserialize, PartialEq)]
 pub struct Entry {
     /// ```
     /// enum EntryType {
@@ -110,6 +110,21 @@ pub struct Entry {
 
     /// Corresponding `entry.payload`. Managed by the Picodata.
     pub context: Option<EntryContext>,
+}
+
+impl std::fmt::Debug for Entry {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        f.debug_struct("Entry")
+            .field(
+                "entry_type",
+                &raft::EntryType::from_i32(self.entry_type).ok_or(self.entry_type),
+            )
+            .field("index", &self.index)
+            .field("term", &self.term)
+            .field("data", &self.data)
+            .field("context", &self.context)
+            .finish()
+    }
 }
 
 /// Raft entry payload specific to the Picodata.
