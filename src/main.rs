@@ -128,14 +128,9 @@ fn init_handlers() {
         "#,
     );
 
-    use discovery::proc_discover;
-    declare_cfunc!(proc_discover);
-
-    use traft::node::raft_interact;
-    declare_cfunc!(raft_interact);
-
-    use traft::node::raft_join;
-    declare_cfunc!(raft_join);
+    declare_cfunc!(discovery::proc_discover);
+    declare_cfunc!(traft::node::raft_interact);
+    declare_cfunc!(traft::node::raft_join);
 }
 
 fn rm_tarantool_files(data_dir: &str) {
@@ -485,8 +480,7 @@ fn start_join(args: &args::Run, leader_address: String) {
         advertise_address: args.advertise_address(),
     };
 
-    use traft::node::raft_join;
-    let fn_name = stringify_cfunc!(raft_join);
+    let fn_name = stringify_cfunc!(traft::node::raft_join);
     let resp: traft::JoinResponse = tarantool::net_box_call_retry(&leader_address, fn_name, &req);
 
     picolib_setup(args);
@@ -608,8 +602,7 @@ fn postjoin(args: &args::Run) {
         let leader_id = node.status().leader_id.expect("leader_id deinitialized");
         let leader = traft::Storage::peer_by_raft_id(leader_id).unwrap().unwrap();
 
-        use traft::node::raft_join;
-        let fn_name = stringify_cfunc!(raft_join);
+        let fn_name = stringify_cfunc!(traft::node::raft_join);
         let now = Instant::now();
         match tarantool::net_box_call(&leader.peer_address, fn_name, &req, timeout) {
             Err(e) => {

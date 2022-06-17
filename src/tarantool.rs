@@ -9,20 +9,30 @@ use ::tarantool::tlua::{self, LuaFunction, LuaTable};
 use ::tarantool::tuple::AsTuple;
 
 #[macro_export]
+macro_rules! stringify_last_token {
+    ($tail:tt) => { std::stringify!($tail) };
+    ($head:tt $($tail:tt)+) => { $crate::stringify_last_token!($($tail)+) };
+}
+
+/// Checks that the given function exists and returns it's name suitable for
+/// calling it via tarantool rpc.
+///
+/// The argument can be a full path to the function.
+#[macro_export]
 macro_rules! stringify_cfunc {
-    ( $func_name:expr ) => {{
+    ( $($func_name:tt)+ ) => {{
         use ::tarantool::tuple::FunctionArgs;
         use ::tarantool::tuple::FunctionCtx;
         use libc::c_int;
 
-        let _: unsafe extern "C" fn(FunctionCtx, FunctionArgs) -> c_int = $func_name;
-        concat!(".", stringify!($func_name))
+        let _: unsafe extern "C" fn(FunctionCtx, FunctionArgs) -> c_int = $($func_name)+;
+        concat!(".", $crate::stringify_last_token!($($func_name)+))
     }};
 }
 
 #[macro_export]
 macro_rules! declare_cfunc {
-    ( $func_name:expr ) => {{
+    ( $($func_name:tt)+ ) => {{
         use ::tarantool::tuple::FunctionArgs;
         use ::tarantool::tuple::FunctionCtx;
         use libc::c_int;
@@ -32,10 +42,10 @@ macro_rules! declare_cfunc {
         // and we may get this error: dlsym(RTLD_DEFAULT, some_fn): symbol not found
         fn used(_: unsafe extern "C" fn(FunctionCtx, FunctionArgs) -> c_int) {}
 
-        used($func_name);
-        crate::tarantool::eval(concat!(
+        used($($func_name)+);
+        $crate::tarantool::eval(concat!(
             "box.schema.func.create('.",
-            stringify!($func_name),
+            $crate::stringify_last_token!($($func_name)+),
             "', {
                 language = 'C',
                 if_not_exists = true
