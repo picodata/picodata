@@ -322,10 +322,21 @@ impl Storage {
         Ok(())
     }
 
+    pub fn voters() -> Result<Vec<u64>, StorageError> {
+        Ok(Storage::raft_state("voters")?.unwrap_or_default())
+    }
+
+    pub fn learners() -> Result<Vec<u64>, StorageError> {
+        Ok(Storage::raft_state("learners")?.unwrap_or_default())
+    }
+
     pub fn conf_state() -> Result<raft::ConfState, StorageError> {
         Ok(raft::ConfState {
-            voters: Storage::raft_state("voters")?.unwrap_or_default(),
-            learners: Storage::raft_state("learners")?.unwrap_or_default(),
+            voters: Storage::voters()?,
+            learners: Storage::learners()?,
+            voters_outgoing: Storage::raft_state("voters_outgoing")?.unwrap_or_default(),
+            learners_next: Storage::raft_state("learners_next")?.unwrap_or_default(),
+            auto_leave: Storage::raft_state("auto_leave")?.unwrap_or_default(),
             ..Default::default()
         })
     }
@@ -333,6 +344,9 @@ impl Storage {
     pub fn persist_conf_state(cs: &raft::ConfState) -> Result<(), StorageError> {
         Storage::persist_raft_state("voters", &cs.voters)?;
         Storage::persist_raft_state("learners", &cs.learners)?;
+        Storage::persist_raft_state("voters_outgoing", &cs.voters_outgoing)?;
+        Storage::persist_raft_state("learners_next", &cs.learners_next)?;
+        Storage::persist_raft_state("auto_leave", &cs.auto_leave)?;
         Ok(())
     }
 
