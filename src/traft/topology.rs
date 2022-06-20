@@ -138,11 +138,11 @@ impl Topology {
     }
 
     pub fn diff(&self) -> Vec<Peer> {
-        self.diff.clone().into_values().collect()
+        self.diff.values().cloned().collect()
     }
 
     pub fn to_replace(&self) -> Vec<(RaftId, Peer)> {
-        self.to_replace.clone().into_values().collect()
+        self.to_replace.values().cloned().collect()
     }
 }
 
