@@ -176,6 +176,7 @@ pub mod sequence;
 pub mod session;
 pub mod space;
 pub mod transaction;
+pub mod trigger;
 pub mod tuple;
 pub mod util;
 pub mod uuid;

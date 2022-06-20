@@ -894,3 +894,25 @@ extern "C" {
     pub fn luaT_istuple(l: *mut lua_State, index: i32) -> *mut BoxTuple;
     pub fn luaT_pushtuple(l: *mut lua_State, tuple: *mut BoxTuple);
 }
+
+extern "C" {
+    /// Function, which registers or deletes on_shutdown handler.
+    /// - `arg` on_shutdown function's argument.
+    /// - `new_handler` New on_shutdown handler, in case this argument is `NULL`,
+    ///     function finds and destroys old on_shutdown handler.
+    /// - `old_handler` Old on_shutdown handler.
+    ///
+    /// Returns 0 if success otherwise return -1 and sets errno.
+    /// There are three cases when function fails:
+    ///    - both old_handler and new_handler are equal to
+    ///      zero (sets errno to EINVAL).
+    ///    - old_handler != NULL, but there is no trigger
+    ///      with such function (sets errno to EINVAL).
+    ///    - malloc for some internal struct memory allocation
+    ///      return NULL (errno sets by malloc to ENOMEM).
+    pub fn box_on_shutdown(
+        arg: *mut c_void,
+        new_handler: Option<extern "C" fn(*mut c_void) -> c_int>,
+        old_handler: Option<extern "C" fn(*mut c_void) -> c_int>,
+    ) -> c_int;
+}
