@@ -41,6 +41,7 @@ assert_cmd = "2.0"
 predicates = "2.0"
 tempfile = "3"
 rand = "0.8.5"
+pretty_assertions = "0.6.1"
 
 [build-dependencies]
 cmake = "^0"

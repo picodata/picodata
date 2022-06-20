@@ -102,3 +102,45 @@ def test_restart_both(cluster2: Cluster):
     i1.raft_propose_eval("rawset(_G, 'check', true)")
     assert i1.eval("return check") is True
     assert i2.eval("return check") is True
+
+
+def test_deactivation(cluster2: Cluster):
+    i1, i2 = cluster2.instances
+
+    def is_voter_is_active(instance, raft_id):
+        with instance.connect(1) as conn:
+            return tuple(
+                *conn.eval(
+                    """
+                        t = box.space.raft_group:get(...)
+                        return { t.voter, t.is_active }
+                    """,
+                    raft_id,
+                )
+            )
+
+    assert is_voter_is_active(i1, i1.raft_id) == (True, True)
+    assert is_voter_is_active(i2, i2.raft_id) == (True, True)
+
+    i1.terminate()
+
+    assert is_voter_is_active(i2, i1.raft_id) == (False, False)
+    assert is_voter_is_active(i2, i2.raft_id) == (True, True)
+
+    i2.terminate()
+
+    i1.start()
+    i2.start()
+
+    i1.wait_ready()
+    i2.wait_ready()
+
+    assert is_voter_is_active(i1, i1.raft_id) == (True, True)
+    assert is_voter_is_active(i2, i2.raft_id) == (True, True)
+
+    i1.promote_or_fail()
+
+    i2.terminate()
+
+    assert i1.call(".raft_deactivate", i2.instance_id, i2.cluster_id) == [{}]
+    assert i1.call(".raft_deactivate", i2.instance_id, i2.cluster_id) == [{}]

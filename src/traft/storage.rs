@@ -80,6 +80,7 @@ impl Storage {
                     {name = 'instance_uuid', type = 'string', is_nullable = false},
                     {name = 'replicaset_uuid', type = 'string', is_nullable = false},
                     {name = 'commit_index', type = 'unsigned', is_nullable = false},
+                    {name = 'is_active', type = 'boolean', is_nullable = false},
                 }
             })
 
@@ -564,13 +565,21 @@ inventory::submit!(crate::InnerTest {
 
         for peer in vec![
             // r1
-            (1u64, "addr:1", true, "i1", "r1", "i1-uuid", "r1-uuid", 1u64),
-            (2, "addr:2", true, "i2", "r1", "i2-uuid", "r1-uuid", 2),
+            (
+                1u64, "addr:1", true, "i1", "r1", "i1-uuid", "r1-uuid", 1u64, true,
+            ),
+            (2, "addr:2", true, "i2", "r1", "i2-uuid", "r1-uuid", 2, true),
             // r2
-            (3, "addr:3", true, "i3", "r2", "i3-uuid", "r2-uuid", 10),
-            (4, "addr:4", true, "i4", "r2", "i4-uuid", "r2-uuid", 10),
+            (
+                3, "addr:3", true, "i3", "r2", "i3-uuid", "r2-uuid", 10, true,
+            ),
+            (
+                4, "addr:4", true, "i4", "r2", "i4-uuid", "r2-uuid", 10, true,
+            ),
             // r3
-            (5, "addr:5", true, "i5", "r3", "i5-uuid", "r3-uuid", 10),
+            (
+                5, "addr:5", true, "i5", "r3", "i5-uuid", "r3-uuid", 10, true,
+            ),
         ] {
             raft_group.put(&peer).unwrap();
         }
@@ -594,9 +603,9 @@ inventory::submit!(crate::InnerTest {
                 " in unique index \"instance_id\"",
                 " in space \"raft_group\"",
                 " with old tuple",
-                " - [1, \"addr:1\", true, \"i1\", \"r1\", \"i1-uuid\", \"r1-uuid\", 1]",
+                " - [1, \"addr:1\", true, \"i1\", \"r1\", \"i1-uuid\", \"r1-uuid\", 1, true]",
                 " and new tuple",
-                " - [99, \"\", false, \"i1\", \"\", \"\", \"\", 0]"
+                " - [99, \"\", false, \"i1\", \"\", \"\", \"\", 0, false]"
             )
         );
 

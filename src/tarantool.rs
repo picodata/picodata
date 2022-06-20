@@ -6,6 +6,7 @@ use ::tarantool::fiber;
 use ::tarantool::lua_state;
 use ::tarantool::net_box;
 use ::tarantool::tlua::{self, LuaFunction, LuaTable};
+pub use ::tarantool::trigger::on_shutdown;
 use ::tarantool::tuple::AsTuple;
 
 #[macro_export]

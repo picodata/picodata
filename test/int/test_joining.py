@@ -206,14 +206,14 @@ def test_replication(cluster2: Cluster):
     @funcy.retry(tries=20, timeout=0.1)
     def wait_replicated(instance):
         box_replication = instance.eval("return box.cfg.replication")
-        assert box_replication == [i1.listen, i2.listen], instance
+        assert set(box_replication) == set([i1.listen, i2.listen]), instance
 
     for instance in cluster2.instances:
         with instance.connect(1) as conn:
             raft_peer = conn.select("raft_group", [instance.raft_id])[0]
             space_cluster = conn.select("_cluster")
 
-        assert raft_peer[:-1] == [
+        assert raft_peer[:7] == [
             instance.raft_id,
             instance.eval("return box.info.listen"),
             True,  # voter

@@ -3,9 +3,11 @@ use std::collections::BTreeSet;
 
 use crate::traft::instance_uuid;
 use crate::traft::replicaset_uuid;
+use crate::traft::DeactivateRequest;
 use crate::traft::JoinRequest;
 use crate::traft::Peer;
 use crate::traft::RaftId;
+use crate::traft::TopologyRequest;
 
 use raft::INVALID_INDEX;
 
@@ -78,7 +80,7 @@ impl Topology {
         }
     }
 
-    pub fn process(&mut self, req: &JoinRequest) -> Result<(), String> {
+    pub fn join(&mut self, req: &JoinRequest) -> Result<(), String> {
         if let Some(peer) = self.peer_by_instance_id(&req.instance_id) {
             match &req.replicaset_id {
                 Some(replicaset_id) if replicaset_id != &peer.replicaset_id => {
@@ -98,6 +100,7 @@ impl Topology {
             let mut peer = peer.clone();
             peer.peer_address = req.advertise_address.clone();
             peer.voter = req.voter;
+            peer.is_active = true;
 
             if req.voter {
                 self.diff.insert(peer.raft_id);
@@ -127,6 +130,7 @@ impl Topology {
                 replicaset_uuid,
                 peer_address: req.advertise_address.clone(),
                 voter: req.voter,
+                is_active: true,
             };
 
             self.diff.insert(raft_id);
@@ -134,6 +138,37 @@ impl Topology {
         }
 
         Ok(())
+    }
+
+    pub fn deactivate(&mut self, req: &DeactivateRequest) -> Result<(), String> {
+        let peer = match self.peer_by_instance_id(&req.instance_id) {
+            Some(peer) => peer,
+            None => {
+                return Err(format!(
+                    "request to deactivate unknown instance {}",
+                    &req.instance_id
+                ))
+            }
+        };
+
+        let peer = Peer {
+            voter: false,
+            is_active: false,
+            ..peer.clone()
+        };
+
+        self.diff.insert(peer.raft_id);
+        // no need to call put_peer, as the peer was already in the cluster
+        self.peers.insert(peer.raft_id, peer);
+
+        Ok(())
+    }
+
+    pub fn process(&mut self, req: &TopologyRequest) -> Result<(), String> {
+        match req {
+            TopologyRequest::Join(join) => self.join(join),
+            TopologyRequest::Deactivate(deactivate) => self.deactivate(deactivate),
+        }
     }
 
     pub fn diff(&self) -> Vec<Peer> {
@@ -174,7 +209,7 @@ pub fn initial_peer(
         advertise_address,
         voter: true,
     };
-    topology.process(&req).unwrap();
+    topology.join(&req).unwrap();
     topology.diff().pop().unwrap()
 }
 
@@ -183,7 +218,6 @@ mod tests {
     use super::Topology;
     use crate::traft::instance_uuid;
     use crate::traft::replicaset_uuid;
-    use crate::traft::JoinRequest;
     use crate::traft::Peer;
 
     macro_rules! peers {
@@ -193,18 +227,11 @@ mod tests {
             $replicaset_id:literal,
             $peer_address:literal,
             $voter:literal
+            $(, $is_active:literal)?
+            $(,)?
         ) ),* $(,)? ] => {
             vec![$(
-                Peer {
-                    raft_id: $raft_id,
-                    peer_address: $peer_address.into(),
-                    voter: $voter,
-                    instance_id: $instance_id.into(),
-                    replicaset_id: $replicaset_id.into(),
-                    instance_uuid: instance_uuid($instance_id),
-                    replicaset_uuid: replicaset_uuid($replicaset_id),
-                    commit_index: raft::INVALID_INDEX,
-                }
+                peer!($raft_id, $instance_id, $replicaset_id, $peer_address, $voter $(, $is_active)?)
             ),*]
         };
     }
@@ -216,8 +243,10 @@ mod tests {
             $replicaset_id:literal,
             $peer_address:literal,
             $voter:literal
-        ) => {
-            Peer {
+            $(, $is_active:literal)?
+            $(,)?
+        ) => {{
+            let peer = Peer {
                 raft_id: $raft_id,
                 peer_address: $peer_address.into(),
                 voter: $voter,
@@ -226,41 +255,53 @@ mod tests {
                 instance_uuid: instance_uuid($instance_id),
                 replicaset_uuid: replicaset_uuid($replicaset_id),
                 commit_index: raft::INVALID_INDEX,
-            }
-        };
+                is_active: true,
+            };
+            $( let peer = Peer { is_active: $is_active, ..peer }; )?
+            peer
+        }};
     }
 
-    macro_rules! req {
+    macro_rules! join {
         (
             $instance_id:literal,
             $replicaset_id:expr,
             $advertise_address:literal,
             $voter:literal
         ) => {
-            &JoinRequest {
+            &crate::traft::TopologyRequest::Join(crate::traft::JoinRequest {
                 cluster_id: "cluster1".into(),
                 instance_id: $instance_id.into(),
                 replicaset_id: $replicaset_id.map(|v: &str| v.into()),
                 advertise_address: $advertise_address.into(),
                 voter: $voter,
-            }
+            })
         };
     }
 
-    macro_rules! test {
+    macro_rules! deactivate {
+        ($instance_id:literal) => {
+            &crate::traft::TopologyRequest::Deactivate(crate::traft::DeactivateRequest {
+                instance_id: $instance_id.into(),
+                cluster_id: "cluster1".into(),
+            })
+        };
+    }
+
+    macro_rules! test_reqs {
         (
             replication_factor: $replication_factor:literal,
             init: $peers:expr,
             req: [ $( $req:expr ),* $(,)?],
             expected_diff: $expected:expr,
-            expected_to_replace: $expected_to_replace:expr,
+            $( expected_to_replace: $expected_to_replace:expr, )?
         ) => {
             let mut t = Topology::from_peers($peers)
                 .with_replication_factor($replication_factor);
             $( t.process($req).unwrap(); )*
 
-            assert_eq!(t.diff(), $expected);
-            assert_eq!(t.to_replace(), $expected_to_replace);
+            pretty_assertions::assert_eq!(t.diff(), $expected);
+            $( pretty_assertions::assert_eq!(t.to_replace(), $expected_to_replace); )?
         };
     }
 
@@ -271,65 +312,61 @@ mod tests {
         let peers = peers![(1, "i1", "R1", "addr:1", true)];
         assert_eq!(Topology::from_peers(peers).diff(), vec![]);
 
-        test!(
+        test_reqs!(
             replication_factor: 1,
             init: peers![],
             req: [
-                req!("i1", None, "nowhere", true),
-                req!("i2", None, "nowhere", true),
+                join!("i1", None, "nowhere", true),
+                join!("i2", None, "nowhere", true),
             ],
             expected_diff: peers![
                 (1, "i1", "r1", "nowhere", true),
                 (2, "i2", "r2", "nowhere", true),
             ],
-            expected_to_replace: vec![],
         );
 
-        test!(
+        test_reqs!(
             replication_factor: 1,
             init: peers![
                 (1, "i1", "R1", "addr:1", true),
             ],
             req: [
-                req!("i2", Some("R2"), "addr:2", false),
+                join!("i2", Some("R2"), "addr:2", false),
             ],
             expected_diff: peers![
                 (2, "i2", "R2", "addr:2", false),
             ],
-            expected_to_replace: vec![],
         );
     }
 
     #[test]
     fn test_override() {
-        test!(
+        test_reqs!(
             replication_factor: 1,
             init: peers![
                 (1, "i1", "R1", "addr:1", false),
             ],
             req: [
-                req!("i1", None, "addr:2", true),
+                join!("i1", None, "addr:2", true),
             ],
             expected_diff: peers![
                 (1, "i1", "R1", "addr:2", true),
             ],
-            expected_to_replace: vec![],
         );
     }
 
     #[test]
     fn test_batch_overlap() {
-        test!(
+        test_reqs!(
             replication_factor: 1,
             init: peers![],
             req: [
-                req!("i1", Some("R1"), "addr:1", false),
-                req!("i1", None, "addr:2", true),
+                join!("i1", Some("R1"), "addr:1", false),
+                join!("i1", None, "addr:2", true),
             ],
             expected_diff: peers![
                 (1, "i1", "R1", "addr:2", true),
             ],
-            expected_to_replace: vec![],
         );
     }
 
@@ -344,7 +381,7 @@ mod tests {
         let peers = peers![(3, "i3", "R-A", "x:1", false)];
         let mut topology = Topology::from_peers(peers);
         topology
-            .process(req!("i3", Some("R-B"), "x:2", true))
+            .process(join!("i3", Some("R-B"), "x:2", true))
             .map_err(|e| assert_eq!(e, expected_error))
             .unwrap_err();
         assert_eq!(topology.diff(), vec![]);
@@ -353,10 +390,10 @@ mod tests {
         let peers = peers![(2, "i2", "R-A", "nowhere", true)];
         let mut topology = Topology::from_peers(peers);
         topology
-            .process(req!("i3", Some("R-A"), "y:1", false))
+            .process(join!("i3", Some("R-A"), "y:1", false))
             .unwrap();
         topology
-            .process(req!("i3", Some("R-B"), "y:2", true))
+            .process(join!("i3", Some("R-B"), "y:2", true))
             .map_err(|e| assert_eq!(e, expected_error))
             .unwrap_err();
         assert_eq!(topology.diff(), peers![(3, "i3", "R-A", "y:1", false)]);
@@ -365,17 +402,17 @@ mod tests {
 
     #[test]
     fn test_replication_factor() {
-        test!(
+        test_reqs!(
             replication_factor: 2,
             init: peers![
                 (9, "i9", "r9", "nowhere", false),
                 (10, "i9", "r9", "nowhere", false),
             ],
             req: [
-                req!("i1", None, "addr:1", true),
-                req!("i2", None, "addr:2", false),
-                req!("i3", None, "addr:3", false),
-                req!("i4", None, "addr:4", false),
+                join!("i1", None, "addr:1", true),
+                join!("i2", None, "addr:2", false),
+                join!("i3", None, "addr:3", false),
+                join!("i4", None, "addr:4", false),
             ],
             expected_diff: peers![
                 (11, "i1", "r1", "addr:1", true),
@@ -383,23 +420,60 @@ mod tests {
                 (13, "i3", "r2", "addr:3", false),
                 (14, "i4", "r2", "addr:4", false),
             ],
-            expected_to_replace: vec![],
         );
     }
 
     #[test]
     fn test_replace() {
-        test!(
+        test_reqs!(
             replication_factor: 2,
             init: peers![
                 (1, "i1", "r1", "nowhere", false),
             ],
             req: [
-                req!("i1", None, "addr:2", false),
+                join!("i1", None, "addr:2", false),
             ],
             expected_diff: peers![],
             expected_to_replace: vec![
                 (1, peer!(2, "i1", "r1", "addr:2", false)),
+            ],
+        );
+    }
+
+    #[test]
+    fn test_deactivation() {
+        test_reqs!(
+            replication_factor: 1,
+            init: peers![
+                (1, "deactivate", "r1", "nowhere", true, true),
+                (2, "activate_learner", "r2", "nowhere", false, false),
+                (3, "activate_voter", "r3", "nowhere", false, false),
+            ],
+            req: [
+                deactivate!("deactivate"),
+                join!("activate_learner", None, "nowhere", false),
+                join!("activate_voter", None, "nowhere", true),
+            ],
+            expected_diff: peers![
+                (1, "deactivate", "r1", "nowhere", false, false),
+                (3, "activate_voter", "r3", "nowhere", true, true),
+            ],
+            expected_to_replace: vec![
+                (2, peer!(4, "activate_learner", "r2", "nowhere", false, true)),
+            ],
+        );
+
+        test_reqs!(
+            replication_factor: 1,
+            init: peers![],
+            req: [
+                join!("deactivate", Some("r1"), "nowhere", true),
+                deactivate!("deactivate"),
+                deactivate!("deactivate"),
+                deactivate!("deactivate"),
+            ],
+            expected_diff: peers![
+                (1, "deactivate", "r1", "nowhere", false, false),
             ],
         );
     }

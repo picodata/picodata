@@ -36,10 +36,12 @@ use crate::traft::ConnectionPool;
 use crate::traft::LogicalClock;
 use crate::traft::Storage;
 use crate::traft::Topology;
+use crate::traft::TopologyRequest;
 use crate::traft::{JoinRequest, JoinResponse};
 
 type RawNode = raft::RawNode<Storage>;
 type Notify = fiber::Channel<Result<u64, RaftError>>;
+type TopologyMailbox = Mailbox<(TopologyRequest, Notify)>;
 
 #[derive(Debug, Error)]
 pub enum Error {
@@ -73,7 +75,7 @@ pub struct Node {
     _main_loop: fiber::UnitJoinHandle<'static>,
     _join_loop: fiber::UnitJoinHandle<'static>,
     main_inbox: Mailbox<NormalRequest>,
-    join_inbox: Mailbox<(JoinRequest, Notify)>,
+    join_inbox: TopologyMailbox,
     status: Rc<RefCell<Status>>,
     status_cond: Rc<fiber::Cond>,
 }
@@ -117,7 +119,7 @@ impl Node {
     pub fn new(cfg: &raft::Config) -> Result<Self, RaftError> {
         let status_cond = Rc::new(fiber::Cond::new());
         let main_inbox = Mailbox::<NormalRequest>::new();
-        let join_inbox = Mailbox::<(JoinRequest, Notify)>::new();
+        let join_inbox = TopologyMailbox::new();
         let raw_node = RawNode::new(cfg, Storage, &tlog::root())?;
         let status = Rc::new(RefCell::new(Status {
             id: cfg.id,
@@ -235,10 +237,10 @@ impl Node {
         })
     }
 
-    pub fn join_one(&self, req: JoinRequest) -> Result<u64, RaftError> {
+    pub fn change_topology(&self, req: impl Into<TopologyRequest>) -> Result<u64, RaftError> {
         let (rx, tx) = fiber::Channel::new(1).into_clones();
 
-        self.join_inbox.send((req, tx));
+        self.join_inbox.send((req.into(), tx));
         rx.recv().expect("that's a bug")
     }
 }
@@ -660,10 +662,10 @@ fn raft_main_loop(
     }
 }
 
-fn raft_join_loop(inbox: Mailbox<(JoinRequest, Notify)>, main_inbox: Mailbox<NormalRequest>) {
+fn raft_join_loop(inbox: TopologyMailbox, main_inbox: Mailbox<NormalRequest>) {
     loop {
         let batch = inbox.receive_all(Duration::MAX);
-        let ids: Vec<_> = batch.iter().map(|(req, _)| &req.instance_id).collect();
+        let ids: Vec<_> = batch.iter().map(|(req, _)| req.instance_id()).collect();
         tlog!(Info, "processing batch: {ids:?}");
 
         let term = Storage::term().unwrap().unwrap_or(0);
@@ -756,7 +758,7 @@ fn raft_join(req: JoinRequest) -> Result<JoinResponse, Box<dyn StdError>> {
     }
 
     let instance_id = req.instance_id.clone();
-    node.join_one(req)?;
+    node.change_topology(req)?;
 
     let peer = Storage::peer_by_instance_id(&instance_id)?
         .ok_or("the peer has misteriously disappeared")?;

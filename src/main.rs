@@ -131,6 +131,7 @@ fn init_handlers() {
     declare_cfunc!(discovery::proc_discover);
     declare_cfunc!(traft::node::raft_interact);
     declare_cfunc!(traft::node::raft_join);
+    declare_cfunc!(traft::failover::raft_deactivate);
 }
 
 fn rm_tarantool_files(data_dir: &str) {
@@ -563,6 +564,10 @@ fn postjoin(args: &args::Run) {
 
     while node.status().leader_id == None {
         node.wait_status();
+    }
+
+    if let Err(e) = tarantool::on_shutdown(traft::failover::on_shutdown) {
+        tlog!(Error, "failed setting on_shutdown trigger: {e}");
     }
 
     loop {

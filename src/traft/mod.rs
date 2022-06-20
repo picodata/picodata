@@ -1,6 +1,7 @@
 //! Compatibility layer between Tarantool and `raft-rs`.
 
 mod error;
+pub mod failover;
 mod network;
 pub mod node;
 mod storage;
@@ -80,6 +81,8 @@ pub struct Peer {
     pub replicaset_uuid: String,
     /// `0` means it's not committed yet.
     pub commit_index: u64,
+    /// Is this instance active. Instances become inactive when they shut down.
+    pub is_active: bool,
 }
 impl AsTuple for Peer {}
 
@@ -297,6 +300,35 @@ pub trait ContextCoercion: Serialize + DeserializeOwned {
 }
 
 ///////////////////////////////////////////////////////////////////////////////
+/// Request to change cluster topology.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum TopologyRequest {
+    Join(JoinRequest),
+    Deactivate(DeactivateRequest),
+}
+
+impl TopologyRequest {
+    pub fn instance_id(&self) -> &str {
+        match self {
+            Self::Join(JoinRequest { instance_id, .. })
+            | Self::Deactivate(DeactivateRequest { instance_id, .. }) => instance_id,
+        }
+    }
+}
+
+impl From<JoinRequest> for TopologyRequest {
+    fn from(j: JoinRequest) -> Self {
+        Self::Join(j)
+    }
+}
+
+impl From<DeactivateRequest> for TopologyRequest {
+    fn from(d: DeactivateRequest) -> Self {
+        Self::Deactivate(d)
+    }
+}
+
+///////////////////////////////////////////////////////////////////////////////
 /// Request to join the cluster.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct JoinRequest {
@@ -320,6 +352,21 @@ pub struct JoinResponse {
     // pub read_only: bool,
 }
 impl AsTuple for JoinResponse {}
+
+///////////////////////////////////////////////////////////////////////////////
+/// Request to deactivate the instance.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct DeactivateRequest {
+    pub instance_id: String,
+    pub cluster_id: String,
+}
+impl AsTuple for DeactivateRequest {}
+
+///////////////////////////////////////////////////////////////////////////////
+/// Response to a [`DeactivateRequest`]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct DeactivateResponse {}
+impl AsTuple for DeactivateResponse {}
 
 ///////////////////////////////////////////////////////////////////////////////
 lazy_static::lazy_static! {
