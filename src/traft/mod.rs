@@ -4,7 +4,7 @@ mod error;
 mod network;
 pub mod node;
 mod storage;
-mod topology;
+pub mod topology;
 
 use ::raft::prelude as raft;
 use ::tarantool::tuple::AsTuple;

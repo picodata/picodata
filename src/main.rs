@@ -409,16 +409,12 @@ fn start_discover(args: &args::Run, to_supervisor: ipc::Sender<IpcMessage>) {
 fn start_boot(args: &args::Run) {
     tlog!(Info, ">>>>> start_boot()");
 
-    let mut topology = traft::Topology::from_peers(vec![]);
-    let req = traft::JoinRequest {
-        cluster_id: args.cluster_id.clone(),
-        instance_id: args.instance_id.clone(),
-        replicaset_id: args.replicaset_id.clone(),
-        advertise_address: args.advertise_address(),
-        voter: true,
-    };
-    topology.process(&req).unwrap();
-    let peer = topology.diff().pop().unwrap();
+    let peer = traft::topology::initial_peer(
+        args.cluster_id.clone(),
+        args.instance_id.clone(),
+        args.replicaset_id.clone(),
+        args.advertise_address(),
+    );
     let raft_id = peer.raft_id;
 
     picolib_setup(args);

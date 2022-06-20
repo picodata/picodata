@@ -146,6 +146,25 @@ impl Topology {
     }
 }
 
+// Create first peer in the cluster
+pub fn initial_peer(
+    cluster_id: String,
+    instance_id: String,
+    replicaset_id: Option<String>,
+    advertise_address: String,
+) -> Peer {
+    let mut topology = Topology::from_peers(vec![]);
+    let req = JoinRequest {
+        cluster_id,
+        instance_id,
+        replicaset_id,
+        advertise_address,
+        voter: true,
+    };
+    topology.process(&req).unwrap();
+    topology.diff().pop().unwrap()
+}
+
 #[cfg(test)]
 mod tests {
     use super::Topology;
