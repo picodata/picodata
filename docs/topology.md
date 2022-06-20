@@ -1,15 +1,4 @@
----
-title: Topology RFC (v3.11)
-tags: Picodata, RFC
----
-
-## Topology RFC (v3.11 for Workgroups)
-
-*2022-06-17*
-
-*Yaroslav Dynnikov*
-
-*Alexander Tolstoy*
+# Топология кластера Picodata
 
 В данном документе рассматриваются различные сценарии работы с кластером. Все они основаны на одном и том же принципе: запуске и объединении отдельных экземпляров Picodata в распределенный кластер. При этом сложность развертывания и поддержания работоспособности кластера зависит только от сложности его топологии.
 
@@ -33,35 +22,35 @@ picodata run --data-dir i2 --listen :3302
 picodata run --data-dir i3 --listen :3303
 ```
 
-> Q: Нужно ли для небольшого кластера указывать параметр `--peer`?
->
-> A: Это не обязательно, т.к. по умолчанию `--peer` имеет такое же значение по умолчанию как и `--listen`: _127.0.0.1:3301_.
-
-
 ## Кластер на нескольких серверах
 
 Выше был показан запуск Picodata на одном сервере, что удобно для тестирования и отладки, но не отражает сценариев полноценного использования кластера. Поэтому пора запустить Picodata на нескольких серверах. Предположим, что их два: `192.168.0.1` и `192.168.0.2`. Порядок запуска будет следующим:
 
 На `192.168.0.1`:
 ```shell
-picodata run --listen 0.0.0.0 --advertise 192.168.0.1
+picodata run --listen 192.168.0.1:3301
 ```
 
 На `192.168.0.2`:
 ```shell
-picodata run --listen 0.0.0.0 --advertise 192.168.0.2 --peer 192.168.0.1
+picodata run --listen 192.168.0.2:3301 --peer 192.168.0.1:3301
 ```
+
 На что нужно обратить внимание:
 
-Во-первых, для параметра `--listen` вместо стандартного значения `127.0.0.1` надо указать `0.0.0.0`. Порт указывать не обязательно (по умолчанию везде используется `:3301`).
+Во-первых, для параметра `--listen` вместо стандартного значения `127.0.0.1` надо указать конкретный адрес. Формат адреса допускает упрощения — можно указать только хост `192.168.0.1` (порт по умолчанию `:3301`), или только порт, но для наглядности лучше использовать полный формат `<HOST>:<PORT>`.
 
-Значение параметра `--listen` не хранится в кластерной конфигурации и может меняться при перезапуске инстанса. 
+Значение параметра `--listen` не хранится в кластерной конфигурации и может меняться при перезапуске инстанса.
 
 Во-вторых, надо дать инстансам возможность обнаружить друг друга для того чтобы механизм [discovery](discovery.md) правильно собрал все найденные экземпляры Picodata в один кластер. Для этого в параметре `--peer` нужно указать адрес какого-либо соседнего инстанса. По умолчанию значение параметра `--peer` установлено в `127.0.0.1:3301`. Параметр `--peer` не влияет больше ни на что, кроме механизма обнаружения других инстансов.
 
-Параметр `--advertise` используется для установки публичного IP-адреса инстанса. Параметр сообщает, по какому адресу остальные инстансы должны обращаться к текущему инстансу. По умолчанию он определяется автоматически как `<HOSTNAME>:<LISTEN_PORT>`.
+Параметр `--advertise` используется для установки публичного IP-адреса и порта инстанса. Параметр сообщает, по какому адресу остальные инстансы должны обращаться к текущему. По умолчанию он равен `--listen`, поэтому в примере выше не упоминается. Но, например, в случае `--listen 0.0.0.0` его придется указать явно:
 
-Значение параметра `--advertise` анонсируется кластеру при запуске инстанса. Его можно поменять при перезапуске инстанса или в процессе его работы командой `picodata set-advertise`. 
+```shell
+picodata run --listen 0.0.0.0:3301 --advertise 192.168.0.1:3301
+```
+
+Значение параметра `--advertise` анонсируется кластеру при запуске инстанса. Его можно поменять при перезапуске инстанса или в процессе его работы командой `picodata set-advertise`.
 
 ## Питомцы против стада
 
@@ -73,21 +62,46 @@ picodata run --instance-id barsik
 
 Если имя не дать, то оно будет сгенерировано автоматически в момент добавления в кластер. Имя инстанса задается один раз и не может быть изменено в дальнейшем (например, оно постоянно сохраняется в снапшотах инстанса). В кластере нельзя иметь два инстанса с одинаковым именем — второй инстанс сразу после запуска получит ошибку при добавлении в кластер. Тем не менее, имя можно повторно использовать если предварительно исключить первый инстанс с таким именем из кластера. Это делается командой `picodata expel barsik`.
 
+## Группы и роли
+
+До сих пор рассматриваемый кластер был гомогенным. Все инстансы были одинаковы по функциональности — хранили данные, обрабатывали запросы. В промышленной эксплуатации эти роли почти всегда требуется разделять, чтобы эффективнее использовать ресурсы оборудования. Под хранение выделяются серверы с большим объемом памяти, для обработки запросов это не требуется.
+
+В Picodata для этих целей служит понятие групп инстансов. Принадлежность инстанса той или иной группе задается при добавлении в кластер параметром `--group` и впоследствии не может быть изменена. По умолчанию кластер состоит из одной группы "common".
+
+Функциональность инстансов определяется набором ролей. На данный момент существует две роли:
+
+- storage — позволяет хранить шардированные данные на инстансе.
+- router — реализует логику доступа к шардированным данным.
+
+По умолчанию инстанс исполняет обе роли одновременно, но его можно ограничить явным указанием одной из них:
+
+```
+picodata run --role storage
+picodata run --role router
+```
+
+Важно то, что обе эти роли относятся только к шардированию. Так, отключение роли storage ничем не мешает хранить данные локально.
+
+Также инстанс можно запустить без ролей вовсе, в результате чего он будет функционировать исключительно как не-шардированное локальное хранилище:
+
+```
+picodata run --no-role
+```
+
+Все инстансы в группе имеют одинаковый набор ролей и одинаковый фактор репликации.
+
 ## Репликация и зоны доступности (failure domains)
 
-Количество реплик настраивается параметром `--init-replication-factor`.
-Этот параметр играет роль только в момент инициализации кластера. Bootstrap-лидер записывает это значение в конфигурацию кластера (`replication-factor`). В дальнейшем значение `--init-replication-factor` игнорируется.
+Количество инстансов в репликасете определяется значением переменной `replication_factor`. Внутри группы инстансов используется один и тот же `replication_factor`.
 
-Отредактировать фактор репликации, сохраненный в конфигурации кластера, можно командой `picodata set-replication-factor`. Редактирование конфигуарции сказывается только на вновь добавляемых инстансах, но не затрагивает уже работающие.
+Для ее инициализации служит параметр `--init-replication-factor`. Этот параметр играет роль только в момент создания группы (добавления первого инстанса). В этот момент значение из аргументов командной строки записывается в конфигурацию кластера. В дальнейшем значение параметра `--init-replication-factor` игнорируется.
 
-Этот параметр составляет часть конфигурации кластера и обозначает *желаемое* количество реплик в каждом репликасете.
-
-При добавлении инстанса фактор репликации будет записан в конфигурацию кластера, но такой сценарий позволяет изменять его только в сторону увеличения. При этом, сохраняется возможность уменьшить фактор репликации для вновь добавляемых инстансов командой `picodata set-replication-factor`(с уже работающими инстансами ничего не произойдет).
+Отредактировать фактор репликации, сохраненный в конфигурации кластера, можно командой `picodata set-replication-factor`. Редактирование конфигурации сказывается только на вновь добавляемых инстансах, но не затрагивает уже работающие.
 
 По мере усложнения топологии возникает еще один вопрос — как не допустить объединения в репликасет инстансов из одного и того же датацентра. Для этого введен параметр `--failure-domain` — _зона доступности_, отражающая признак физического размещения сервера, на котором выполняется инстанс Picodata. Это может быть как датацентр, так и какое-либо другое обозначение расположения: регион (например, `eu-east`), стойка, сервер, или собственное обозначение (blue, green, yellow). Ниже показан пример запуска инстанса Picodata с указанием зоны доступности:
 
 ```
-picodata run --replication-factor 2 --failure-domain region=us,zone=us-west-1
+picodata run --init-replication-factor 2 --failure-domain region=us,zone=us-west-1
 ```
 
 Добавление инстанса в репликасет происходит по следующим правилам:
@@ -104,31 +118,11 @@ picodata run --replication-factor 2 --failure-domain region=us,zone=us-west-1
 
 Добавляемый инстанс должен обладать тем же набором параметров, которые уже есть в кластере. Например, инстанс `dc=msk` не сможет присоединиться к кластеру с `--failure-domain region=eu/us` и вернет ошибку.
 
-## Группы инстансов
-
-Иногда бывает так, что в разных репликасетах хочется использовать разный фактор репликации или ограничить размер хранимых данных. Классический пример — разделение кластера на узлы хранения (`storage`) и узлы маршрутизации (`router`).
-
-Такое разделение делается с помощью логической группировки инстансов по разным функциональным группам. Это делается параметром `--instance-group`. По умолчанию инстансы добавляются в неявную группу `"default"`, но пользователь может создать сколько угодно новых групп, перечислив их в переменной `PICODATA_AVAILABLE_INSTANCE_GROUPS` подобным образом:
-
-```bash
-export PICODATA_AVAILABLE_INSTANCE_GROUPS=\
-"name=storage:replication-factor=3,"\
-"name=router:storage-weight=0"
-```
-
-Теперь при запуске инстансов можно будет указать группу:
-
-```
-picodata run --instance-group router
-```
-
-Наличие групп не ограничивает пользователя в создании новых. Как и в случае с `--replication-factor`, новые группы можно добавлять вместе с добавлением новых инстансов.
-
 ## Кейс: два датацентра по две реплики
 
-Picodata старается не объединять в один репликасет инстансы, у которых совпадает хотя бы один домен. Но иногда это прямо таки необходимо. Чтобы ограничить Picodata в бесконечном создании репликасетов, можно воспользоваться флагом `--max-replicaset-count` (по умолчанию `inf`).
+Picodata старается не объединять в один репликасет инстансы, у которых совпадает хотя бы один домен. Но иногда это все же необходимо. Чтобы ограничить Picodata в бесконечном создании репликасетов, можно воспользоваться флагом `--max-replicaset-count` (по умолчанию `inf`).
 
-Как и `--replication-factor`, параметр `--max-replicaset-count` можно назначать разным для разных групп репликасетов.
+Как и `--init-replication-factor`, параметр `--max-replicaset-count` может быть разным для разных групп.
 
 Как и другие параметры, `--max-replicaset-count` редактируется в любой момент:
 
@@ -147,22 +141,27 @@ Picodata старается не объединять в один реплика
 
 Мы перечислили достаточно много разнобразных параметров, некоторые из которых делают команду запуска достаточно длинной. Вместо отдельных команд можно использовать файл конифгурации. Пример:
 
-<h5 a><strong><code>c1.toml</code></strong></h5>
+<h5 a><strong><code>storage.toml</code></strong></h5>
 
-```
-[[available-replicaset-groups]]:
-name = "storage"
+```toml
+group = "storages"
 max-replicaset-count = 30
 replication-factor = 4
-
-[[available-replicaset-groups]]
-name = "router"
-storage-weight = 0
+roles = ["storage"]
 ```
-Пример запуска инстанса Picodata c использованием файла конфигурации:
+
+<h5 a><strong><code>storage.toml</code></strong></h5>
+
+```toml
+group = "routers"
+roles = ["router"]
+```
+
+Пример запуска кластера Picodata c использованием файла конфигурации:
 
 ```
-picodata run --cfg custom-config.toml
+picodata run --cfg storage.toml --listen :3301
+picodata run --cfg router.toml --listen :3302
 ```
 
 ## Динамическое переключение голосующих узлов в Raft (Raft voter failover)
@@ -185,13 +184,12 @@ picodata run --cfg custom-config.toml
 *env*: `PICODATA_DATA_DIR`
 *default*: `.`
 
-
 `--listen`
 : Socket bind address.
 *env*: `PICODATA_LISTEN`
 *default*: `localhost:3301`
- 
-`--peer <[host][:port]>`
+
+`--peer <[host][:port],...>`
 : Address of other instance(s).
 *env*: `PICODATA_PEER`
 *default*: `localhost:3301`
@@ -199,8 +197,7 @@ picodata run --cfg custom-config.toml
 `--advertise <[host][:port]>`
 : Address the other instances should use to connect to this instance.
 *env*: `PICODATA_ADVERTISE`
-*default*: `%hostname%:%listen_port%`
-:hammer_and_wrench:: Если `%listen% == "0.0.0.0"`, то надо подставлять `%hostname%`. Сейчас по умолчанию всегда просто `%listen%`.
+*default*: `%listen%`
 
 `--cluster-id <name>`
 : Name of the cluster. The instance will refuse to join the cluster with a different name.
@@ -211,31 +208,31 @@ picodata run --cfg custom-config.toml
 : Name of the instance.
 *env*: `PICODATA_INSTANCE_ID`
 *default*: `i%raft_id%`, e.g. `i1`, `i42`, etc.
-:hammer_and_wrench:: Надо придумать, как идентифицировать каждого клиента в больших наборах (advertise?). ID генерируется только при обработке запроса.
 
 `--failure-domain <key=value,...>`
-: Comma-separated list describing physical location of the server. Each domain is a key-value pair. Until max replicaset count is reached, picodata will never put two instances with a common failure domain in the same replicaset. Instead, new replicasets will e created. They'll be filled with other instances until desired replication factor is satisfied.
+: Comma-separated list describing physical location of the server. Each domain is a key-value pair. Until max replicaset count is reached, picodata will avoid putting two instances into the same replicaset if at least one key of their failure domains has the same value. Instead, new replicasets will be created. Replicasets will be populated with instances from different failure domains until the desired replication factor is reached.
 *env*: `PICODATA_FAILURE_DOMAIN`
 *default*: *none*
-:hammer_and_wrench:: Объяснить правила "common failure domain". 
 
-`--replicaset-group <name>`
-: Name of the replicaset group. It's an error to run instance with a group changed.
-*env*: `PICODATA_REPLICASET_GROUP`
+`--group <name>`
+: Name of the instance group. It's an error to run instance with a group changed.
+*env*: `PICODATA_GROUP`
 *default*: `default`
-:hammer_and_wrench: Зачем это? Без картинки, поясняющей архитектуру кластера, объяснить сложновато.
+
+`--role <name,...>`
+: Valid roles are `"storage"` and `"router"`.
+*env*: `PICODATA_ROLE`
+*default*: `storage,router`
 
 `--init-replication-factor <number>`
-: Total number of replicas (copies of data) for each replicaset in the current group.
+: Total number of replicas (copies of data) for each replicaset in the current group. It's only accounted upon the group creation (adding the first instance in the group), and ignored aftwerwards.
 *env*: `PICODATA_INIT_REPLICATION_FACTOR`
 *default*: `1`
-:hammer_and_wrench: Учитывается только при создании группы. Потом игнорируется.
 
 `--init-storage-weight <number>`
-: Proportional capacity of current instance. Common for each instance in the current group.
+: Proportional capacity of current instance. Common for each instance in the current group. Only valid for instances with "storage" role enabled.
 *env*: `PICODATA_INIT_STORAGE_WEIGHT`
 *default*: `1`
-:hammer_and_wrench: Учитывается только при создании группы. Потом игнорируется.
 
 `--max-replicaset-count`
 : Maximum number of replicasets in the current group.
