@@ -28,8 +28,10 @@
 //!
 //! ### Stored procedures
 //!
-//! There are several ways Tarantool can call a Rust code. It can use either a plugin, a Lua to Rust FFI code generator, or a stored procedure.
-//! In this file we only cover the third option, namely Rust stored procedures. Even though Tarantool always treats Rust routines just as "C functions", we keep on using the "stored procedure" term as an agreed convention and also for historical reasons.
+//! There are several ways Tarantool can call a Rust code. It can use either a plugin, a Lua to Rust FFI code generator,
+//! or a stored procedure. In this file we only cover the third option, namely Rust stored procedures.
+//! Even though Tarantool always treats Rust routines just as "C functions", we keep on using the "stored procedure" 
+//! term as an agreed convention and also for historical reasons.
 //!
 //! This tutorial contains the following simple steps:
 //! 1. `examples/easy` - prints "hello world";
@@ -66,7 +68,8 @@
 //! ```
 //!
 //! 1. Add the `tarantool` library to the dependencies;
-//! 1. Optionally add [Serde](https://!github.com/serde-rs/serde) to the dependencies. This is only required if you want to use Rust structures as tuple values (see [this example](#harder));
+//! 1. Optionally add [Serde](https://!github.com/serde-rs/serde) to the dependencies. 
+//! This is only required if you want to use Rust structures as tuple values (see [this example](#harder));
 //! 1. Compile the dynamic library.
 //!
 //! Requests will be done using Tarantool as a client. Start Tarantool, and enter the following requests:
@@ -128,8 +131,8 @@
 //! Another is to call the 'easy' function. Since the `easy()` function in `lib.rs` begins with `println!("hello world")`,
 //! the words "hello world" will be printed in the terminal.
 //!
-//! The third feature is to make sure the call was successful. Since the `easy()` function in `lib.rs` ends with return 0, there
-//! is no error message to display and therefore the request is over.
+//! The third feature is to make sure the call was successful. Since the `easy()` function in `lib.rs` 
+//! ends with return 0, there is no error message to display and therefore the request is over.
 //!
 //! The result should look like this:
 //! ```text
@@ -140,8 +143,9 @@
 //! ...
 //! ```
 //!
-//! Now let's call the other function in lib.rs - `easy2()`. This is almost the same as the `easy()` function, but with a difference:
-//! when the file name is not the same as the function name, we have to specify _{file-name}_._{function-name}_.
+//! Now let's call the other function in lib.rs - `easy2()`. This is almost the same as the `easy()` 
+//! function, but with a difference: when the file name is not the same as the function name, 
+//! we have to specify _{file-name}_._{function-name}_.
 //! ```lua
 //! box.schema.func.create('easy.easy2', {language = 'C'})
 //! box.schema.user.grant('guest', 'execute', 'function', 'easy.easy2')
@@ -259,7 +263,8 @@ pub use tlua;
 /// # Packed arguments
 ///
 /// By default the stored procedure unpacks the received tuple and assigns the
-/// **i**th  field of the tuple to the **i**th argument. If there are fewer arguments than there are fields in the input tuple, the unused tuple fields are ignored.
+/// **i**th  field of the tuple to the **i**th argument. If there are fewer
+/// arguments than there are fields in the input tuple, the unused tuple fields are ignored.
 ///
 /// If you want to instead deserialize the tuple directly into your structure
 /// you can use the `packed_args`
