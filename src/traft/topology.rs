@@ -11,8 +11,8 @@ use raft::INVALID_INDEX;
 
 pub struct Topology {
     peers: BTreeMap<RaftId, Peer>,
-    diff: BTreeMap<RaftId, Peer>,
-    to_replace: BTreeMap<RaftId, (RaftId, Peer)>,
+    diff: BTreeSet<RaftId>,
+    to_replace: BTreeMap<RaftId, RaftId>,
     replication_factor: u8,
 
     max_raft_id: RaftId,
@@ -100,13 +100,12 @@ impl Topology {
             peer.voter = req.voter;
 
             if req.voter {
-                self.diff.insert(peer.raft_id, peer.clone());
+                self.diff.insert(peer.raft_id);
             } else {
                 let old_raft_id = peer.raft_id;
                 peer.raft_id = self.max_raft_id + 1;
 
-                self.to_replace
-                    .insert(peer.raft_id, (old_raft_id, peer.clone()));
+                self.to_replace.insert(peer.raft_id, old_raft_id);
             }
             self.put_peer(peer);
 
@@ -130,7 +129,7 @@ impl Topology {
                 voter: req.voter,
             };
 
-            self.diff.insert(raft_id, peer.clone());
+            self.diff.insert(raft_id);
             self.put_peer(peer);
         }
 
@@ -138,11 +137,25 @@ impl Topology {
     }
 
     pub fn diff(&self) -> Vec<Peer> {
-        self.diff.values().cloned().collect()
+        self.diff
+            .iter()
+            .map(|id| self.peers.get(id).expect("peers must contain all peers"))
+            .cloned()
+            .collect()
     }
 
     pub fn to_replace(&self) -> Vec<(RaftId, Peer)> {
-        self.to_replace.values().cloned().collect()
+        self.to_replace
+            .iter()
+            .map(|(new_id, &old_id)| {
+                let peer = self
+                    .peers
+                    .get(new_id)
+                    .expect("peers must contain all peers")
+                    .clone();
+                (old_id, peer)
+            })
+            .collect()
     }
 }
 
