@@ -14,12 +14,12 @@
 //! - [Stored procedures](macro@crate::proc)
 //!
 //! > **Caution!** The library is currently under development.
-//! > API may be unstable until version 1.0 will be released.
+//! > API may be unstable until version 1.0 is released.
 //!
 //! ### Features
 //!
 //! - `net_box` - Enables protocol implementation (enabled by default)
-//! - `schema` - Enables schema manipulation utils (WIP for now)
+//! - `schema` - Enables schema manipulation utils (WIP as for now)
 //!
 //! ### Prerequisites
 //!
@@ -28,11 +28,8 @@
 //!
 //! ### Stored procedures
 //!
-//! Tarantool can call Rust code via a plugin, from Lua using FFI, or as a stored procedure.
-//! This tutorial only is about the third
-//! option, Rust stored procedures. In fact Rust routines are always "C
-//! functions" to Tarantool but the phrase "stored procedure" is commonly used
-//! for historical reasons.
+//! There are several ways Tarantool can call a Rust code. It can use either a plugin, a Lua to Rust FFI code generator, or a stored procedure.
+//! In this file we only cover the third option, namely Rust stored procedures. Even though Tarantool always treats Rust routines just as "C functions", we keep on using the "stored procedure" term as an agreed convention and also for historical reasons.
 //!
 //! This tutorial contains the following simple steps:
 //! 1. `examples/easy` - prints "hello world";
@@ -41,16 +38,13 @@
 //! 1. `examples/read` - uses this library to do a DBMS select;
 //! 1. `examples/write` - uses this library to do a DBMS replace.
 //!
-//! By following the instructions and seeing that the results users should
-//! become confident in writing their own stored procedures.
+//! Our examples are a good starting point for users who want to confidently start writing their own stored procedures.
 //!
-//! #### Example
+//! #### Creating a Cargo project
 //!
-//! Check that these items exist on the computer:
-//! - Tarantool 2.2
-//! - A rustc compiler + cargo builder. Any modern version should work
+//! After getting the prerequisites installed, follow these steps:
 //!
-//! Create cargo project:
+//! Create a Cargo project:
 //! ```shell script
 //! $ cargo init --lib
 //! ```
@@ -64,19 +58,18 @@
 //! # author, license, etc
 //!
 //! [dependencies]
-//! tarantool = "0.5.0" # (1)
+//! tarantool = "0.6.0" # (1)
 //! serde = "1.0" # (2)
 //!
 //! [lib]
 //! crate-type = ["cdylib"] # (3)
 //! ```
 //!
-//! 1. add to dependencies `tarantool` library;
-//! 1. add to dependencies [Serde](https://!github.com/serde-rs/serde), this is optional and required if you want to use rust
-//! structures as a tuple values (see [this example](#harder));
-//! 1. you need to compile dynamic library.
+//! 1. Add the `tarantool` library to the dependencies;
+//! 1. Optionally add [Serde](https://!github.com/serde-rs/serde) to the dependencies. This is only required if you want to use Rust structures as tuple values (see [this example](#harder));
+//! 1. Compile the dynamic library.
 //!
-//! Requests will be done using Tarantool as a client. Start Tarantool, and enter these requests:
+//! Requests will be done using Tarantool as a client. Start Tarantool, and enter the following requests:
 //! ```lua
 //! box.cfg{listen=3306}
 //! box.schema.space.create('capi_test')
@@ -85,11 +78,11 @@
 //! capi_connection = net_box:new(3306)
 //! ```
 //!
-//! In plain language: create a space named `capi_test`, and make a connection to self named `capi_connection`.
+//! Note: create a space named `capi_test` and establish the connection named `capi_connection` to yourself.
 //!
 //! Leave the client running. It will be used to enter more requests later.
 //!
-//! Edit `lib.rs` file and add the following lines:
+//! Edit the `lib.rs` file and add the following lines:
 //! ```rust
 //! use std::os::raw::c_int;
 //! use tarantool::tuple::{FunctionArgs, FunctionCtx};
@@ -113,8 +106,7 @@
 //! ```
 //!
 //! Start another shell. Change directory (`cd`) so that it is the same as the directory that the client is running in.
-//! Copy the compiled library (it is located in subfolder `target/debug` at you
-//! project sources folder) to the current folder and rename it to `easy.so`
+//! Copy the compiled library from `target/debug` to the current directory and rename it to `easy.so`
 //!
 //! Now go back to the client and execute these requests:
 //! ```lua
@@ -123,21 +115,21 @@
 //! capi_connection:call('easy')
 //! ```
 //!
-//! If these requests appear unfamiliar, read the descriptions of
+//! Consult the documentation of
 //! [box.schema.func.create()](https://!www.tarantool.io/en/doc/2.2/reference/reference_lua/box_schema/#box-schema-func-create),
 //! [box.schema.user.grant()](https://!www.tarantool.io/en/doc/2.2/reference/reference_lua/box_schema/#box-schema-user-grant)
-//! and [conn:call()](https://!www.tarantool.io/en/doc/2.2/reference/reference_lua/net_box/#net-box-call).
+//! and [conn:call()](https://!www.tarantool.io/en/doc/2.2/reference/reference_lua/net_box/#net-box-call) for more details.
 //!
-//! The function that matters is `capi_connection:call('easy')`.
+//! The matter in hand is the `capi_connection:call('easy')` function, which has three features.
 //!
-//! Its first job is to find the 'easy' function, which should be easy because by default Tarantool looks on the current directory
+//! One is to find the 'easy' function, which is easy indeed since by default Tarantool looks inside the current directory
 //! for a file named `easy.so`.
 //!
-//! Its second job is to call the 'easy' function. Since the `easy()` function in `lib.rs` begins with `println!("hello world")`,
-//! the words "hello world" will appear on the screen.
+//! Another is to call the 'easy' function. Since the `easy()` function in `lib.rs` begins with `println!("hello world")`,
+//! the words "hello world" will be printed in the terminal.
 //!
-//! Its third job is to check that the call was successful. Since the `easy()` function in `lib.rs` ends with return 0, there
-//! is no error message to display and the request is over.
+//! The third feature is to make sure the call was successful. Since the `easy()` function in `lib.rs` ends with return 0, there
+//! is no error message to display and therefore the request is over.
 //!
 //! The result should look like this:
 //! ```text
@@ -148,8 +140,8 @@
 //! ...
 //! ```
 //!
-//! Now let's call the other function in lib.rs - `easy2()`. This is almost the same as the `easy()` function, but there's a
-//! detail: when the file name is not the same as the function name, then we have to specify _{file-name}_._{function-name}_
+//! Now let's call the other function in lib.rs - `easy2()`. This is almost the same as the `easy()` function, but with a difference:
+//! when the file name is not the same as the function name, we have to specify _{file-name}_._{function-name}_.
 //! ```lua
 //! box.schema.func.create('easy.easy2', {language = 'C'})
 //! box.schema.user.grant('guest', 'execute', 'function', 'easy.easy2')
@@ -158,7 +150,7 @@
 //!
 //! ... and this time the result will be `hello world -- easy2`.
 //!
-//! Conclusion: calling a Rust function is easy.
+//! As you can see, calling a Rust function is as straightforward as it can be.
 pub mod clock;
 pub mod coio;
 pub mod decimal;
@@ -185,7 +177,7 @@ pub mod uuid;
 mod va_list;
 
 pub use tlua;
-/// `#[tarantool::proc]` macro attribute for creating stored procedure
+/// `#[tarantool::proc]` is a macro attribute for creating stored procedure
 /// functions.
 ///
 /// ```rust
@@ -195,8 +187,8 @@ pub use tlua;
 /// }
 /// ```
 ///
-/// From tarantool create a "C" stored procedure and call with arguments wrapped
-/// within a lua table:
+/// Create a "C" stored procedure from Tarantool and call it with arguments wrapped
+/// within a Lua table:
 /// ```lua
 /// box.schema.func.create("libname.add", { language = 'C' })
 /// assert(box.func['libname.add']:call({ 1, 2 }) == 3)
@@ -204,11 +196,11 @@ pub use tlua;
 ///
 /// # Returning errors
 ///
-/// If a function's return type is [`Result`]`<T, E>` (where `E` implements
-/// [`Display`]), then if it's return value is
+/// Assuming the function's return type is [`Result`]`<T, E>` (where `E` implements
+/// [`Display`]), the return values read as follows:
 /// - `Ok(v)`: the stored procedure will return `v`
 /// - `Err(e)`: the stored procedure will fail and `e` will be set as the last
-/// tarantool error (see also [`TarantoolError::last`])
+/// Tarantool error (see also [`TarantoolError::last`])
 /// ```rust
 /// use tarantool::{error::Error, index::IteratorType::Eq, space::Space};
 ///
@@ -230,10 +222,10 @@ pub use tlua;
 ///
 /// # Returning custom types
 ///
-/// Stored procedure's return type must implement the [`Return`] trait which is
-/// implemented for most builtin types. To return an arbitrary type that
+/// The return type of the stored procedure must have the [`Return`] trait which is
+/// implemented for most built-in types. To return an arbitrary type that
 /// implements [`serde::Serialize`] you can use the [`ReturnMsgpack`] wrapper
-/// type or the `custom_ret` attribute parameter
+/// type or the `custom_ret` attribute parameter.
 /// ```no_run
 /// #[derive(serde::Serialize)]
 /// struct Complex {
@@ -267,9 +259,7 @@ pub use tlua;
 /// # Packed arguments
 ///
 /// By default the stored procedure unpacks the received tuple and assigns the
-/// **i**th  field of the tuple to the **i**th argument. And if the number of
-/// arguments is less then the number of fields in the input tuple the rest are
-/// ignored.
+/// **i**th  field of the tuple to the **i**th argument. If there are fewer arguments than there are fields in the input tuple, the unused tuple fields are ignored.
 ///
 /// If you want to instead deserialize the tuple directly into your structure
 /// you can use the `packed_args`
