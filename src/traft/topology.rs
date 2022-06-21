@@ -3,6 +3,7 @@ use std::collections::BTreeSet;
 
 use crate::traft::instance_uuid;
 use crate::traft::replicaset_uuid;
+use crate::traft::FailureDomains;
 use crate::traft::Health;
 use crate::traft::Peer;
 use crate::traft::{InstanceId, RaftId, ReplicasetId};
@@ -63,7 +64,9 @@ impl Topology {
         format!("i{raft_id}")
     }
 
-    fn choose_replicaset_id(&self) -> String {
+    fn choose_replicaset_id(&self, failure_domains: &FailureDomains) -> String {
+        // TODO: implement logic
+        let _ = failure_domains;
         for (replicaset_id, peers) in self.replicaset_map.iter() {
             if peers.len() < self.replication_factor as usize {
                 return replicaset_id.clone();
@@ -85,6 +88,7 @@ impl Topology {
         instance_id: Option<String>,
         replicaset_id: Option<String>,
         advertise: String,
+        failure_domains: FailureDomains,
     ) -> Result<Peer, String> {
         if let Some(id) = instance_id.as_ref() {
             let existing_peer: Option<&Peer> = self.instance_map.get(id);
@@ -99,8 +103,12 @@ impl Topology {
         let raft_id = self.max_raft_id + 1;
         let instance_id: String = instance_id.unwrap_or_else(|| self.choose_instance_id(raft_id));
         let instance_uuid = instance_uuid(&instance_id);
-        let replicaset_id: String = replicaset_id.unwrap_or_else(|| self.choose_replicaset_id());
+        let replicaset_id: String =
+            replicaset_id.unwrap_or_else(|| self.choose_replicaset_id(&failure_domains));
         let replicaset_uuid = replicaset_uuid(&replicaset_id);
+
+        // TODO: store it in peer
+        let _ = failure_domains;
 
         let peer = Peer {
             instance_id,
@@ -151,10 +159,11 @@ pub fn initial_peer(
     instance_id: Option<String>,
     replicaset_id: Option<String>,
     advertise: String,
+    failure_domains: FailureDomains,
 ) -> Peer {
     let mut topology = Topology::from_peers(vec![]);
     let mut peer = topology
-        .join(instance_id, replicaset_id, advertise)
+        .join(instance_id, replicaset_id, advertise, failure_domains)
         .unwrap();
     peer.commit_index = 1;
     peer
@@ -166,6 +175,7 @@ mod tests {
 
     use crate::traft::instance_uuid;
     use crate::traft::replicaset_uuid;
+    use crate::traft::FailureDomains;
     use crate::traft::Health::{Offline, Online};
     use crate::traft::Peer;
     use pretty_assertions::assert_eq;
@@ -216,6 +226,7 @@ mod tests {
                 $instance_id.map(str::to_string),
                 $replicaset_id.map(str::to_string),
                 $advertise_address.into(),
+                FailureDomains::default(),
             )
         };
     }

@@ -179,7 +179,6 @@ impl Run {
         }
     }
 
-    #[allow(unused)]
     pub fn failure_domains(&self) -> HashMap<&str, &str> {
         let mut ret = HashMap::new();
         for (k, v) in &self.failure_domains {

@@ -590,8 +590,14 @@ fn raft_main_loop(
                             instance_id,
                             replicaset_id,
                             advertise_address,
+                            failure_domains,
                             ..
-                        }) => topology.join(instance_id, replicaset_id, advertise_address),
+                        }) => topology.join(
+                            instance_id,
+                            replicaset_id,
+                            advertise_address,
+                            failure_domains,
+                        ),
 
                         TopologyRequest::SetActive(SetActiveRequest {
                             instance_id, kind, ..

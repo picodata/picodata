@@ -13,6 +13,7 @@ use ::tarantool::tuple::AsTuple;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::any::Any;
+use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::fmt::Display;
 use uuid::Uuid;
@@ -26,6 +27,8 @@ pub use topology::Topology;
 pub type RaftId = u64;
 pub type InstanceId = String;
 pub type ReplicasetId = String;
+
+pub type FailureDomains = HashMap<String, String>;
 
 //////////////////////////////////////////////////////////////////////////////////////////
 /// Timestamps for raft entries.
@@ -407,6 +410,7 @@ pub struct JoinRequest {
     pub instance_id: Option<String>,
     pub replicaset_id: Option<String>,
     pub advertise_address: String,
+    pub failure_domains: FailureDomains,
 }
 impl AsTuple for JoinRequest {}
 
