@@ -1,6 +1,7 @@
 use clap::Parser;
 use std::{
     borrow::Cow,
+    collections::HashMap,
     ffi::{CStr, CString},
 };
 use tarantool::log::SayLevel;
@@ -93,6 +94,23 @@ pub struct Run {
     /// Address(es) of other instance(s)
     pub peers: Vec<String>,
 
+    #[clap(
+        long = "failure-domain",
+        value_name = "key=value",
+        require_value_delimiter = true,
+        use_value_delimiter = true,
+        parse(try_from_str = try_parse_kv),
+        env = "PICODATA_FAILURE_DOMAIN"
+    )]
+    /// Comma-separated list describing physical location of the server.
+    /// Each domain is a key-value pair. Until max replicaset count is
+    /// reached, picodata will avoid putting two instances into the same
+    /// replicaset if at least one key of their failure domains has the
+    /// same value. Instead, new replicasets will be created.
+    /// Replicasets will be populated with instances from different
+    /// failure domains until the desired replication factor is reached.
+    pub failure_domains: Vec<(String, String)>,
+
     #[clap(long, value_name = "name", env = "PICODATA_REPLICASET_ID")]
     /// Name of the replicaset
     pub replicaset_id: Option<String>,
@@ -159,6 +177,15 @@ impl Run {
             "" => None,
             any => Some(any.to_string()),
         }
+    }
+
+    #[allow(unused)]
+    pub fn failure_domains(&self) -> HashMap<&str, &str> {
+        let mut ret = HashMap::new();
+        for (k, v) in &self.failure_domains {
+            ret.insert(k.as_ref(), v.as_ref());
+        }
+        ret
     }
 }
 
@@ -237,6 +264,13 @@ fn try_parse_address(text: &str) -> Result<String, ParseAddressError> {
     Ok(format!("{host}:{port}"))
 }
 
+fn try_parse_kv(s: &str) -> Result<(String, String), String> {
+    let pos = s
+        .find('=')
+        .ok_or_else(|| format!("invalid KEY=value: no `=` found in `{}`", s))?;
+    Ok((s[..pos].into(), s[pos + 1..].into()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -300,6 +334,7 @@ mod tests {
             assert_eq!(parsed.listen, "localhost:3301"); // default
             assert_eq!(parsed.advertise_address(), "localhost:3301"); // default
             assert_eq!(parsed.log_level(), SayLevel::Info); // default
+            assert_eq!(parsed.failure_domains(), HashMap::new()); // default
 
             let parsed = parse![Run, "--instance-id", "instance-id-from-args"];
             assert_eq!(
@@ -321,6 +356,9 @@ mod tests {
 
             let parsed = parse![Run, "--peer", ":3302"];
             assert_eq!(parsed.peers.as_ref(), vec!["localhost:3302"]);
+
+            let parsed = parse![Run, "--peer", "p1", "--peer", "p2,p3"];
+            assert_eq!(parsed.peers.as_ref(), vec!["p1:3301", "p2:3301", "p3:3301"]);
         }
 
         std::env::set_var("PICODATA_INSTANCE_ID", "");
@@ -368,6 +406,33 @@ mod tests {
 
             let parsed = parse![Run, "--log-level", "warn"];
             assert_eq!(parsed.log_level(), SayLevel::Warn);
+        }
+
+        std::env::set_var("PICODATA_FAILURE_DOMAIN", "k1=env1,k2=env2");
+        {
+            let parsed = parse![Run,];
+            assert_eq!(
+                parsed.failure_domains(),
+                HashMap::from([("k1", "env1"), ("k2", "env2")])
+            );
+
+            let parsed = parse![Run, "--failure-domain", "k1=arg1,k1=arg1-again"];
+            assert_eq!(
+                parsed.failure_domains(),
+                HashMap::from([("k1", "arg1-again")])
+            );
+
+            let parsed = parse![
+                Run,
+                "--failure-domain",
+                "k2=arg2",
+                "--failure-domain",
+                "k3=arg3,k4=arg4"
+            ];
+            assert_eq!(
+                parsed.failure_domains(),
+                HashMap::from([("k2", "arg2"), ("k3", "arg3"), ("k4", "arg4")])
+            );
         }
     }
 }
