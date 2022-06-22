@@ -28,7 +28,7 @@
 //!
 //! ### Stored procedures
 //!
-//! There are several ways Tarantool can call a Rust code. It can use either a plugin, a Lua to Rust FFI code generator,
+//! There are several ways Tarantool can call Rust code. It can use either a plugin, a Lua FFI module,
 //! or a stored procedure. In this file we only cover the third option, namely Rust stored procedures.
 //! Even though Tarantool always treats Rust routines just as "C functions", we keep on using the "stored procedure" 
 //! term as an agreed convention and also for historical reasons.
@@ -42,7 +42,7 @@
 //!
 //! Our examples are a good starting point for users who want to confidently start writing their own stored procedures.
 //!
-//! #### Creating a Cargo project
+//! ### Example
 //!
 //! After getting the prerequisites installed, follow these steps:
 //!
@@ -81,7 +81,7 @@
 //! capi_connection = net_box:new(3306)
 //! ```
 //!
-//! Note: create a space named `capi_test` and establish the connection named `capi_connection` to yourself.
+//! Note: create a space named `capi_test` and establish the connection named `capi_connection` to the same instance.
 //!
 //! Leave the client running. It will be used to enter more requests later.
 //!
@@ -226,7 +226,7 @@ pub use tlua;
 ///
 /// # Returning custom types
 ///
-/// The return type of the stored procedure must have the [`Return`] trait which is
+/// The return type of the stored procedure must implement the [`Return`] trait which is
 /// implemented for most built-in types. To return an arbitrary type that
 /// implements [`serde::Serialize`] you can use the [`ReturnMsgpack`] wrapper
 /// type or the `custom_ret` attribute parameter.
