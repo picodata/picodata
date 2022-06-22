@@ -17,6 +17,11 @@ pytest-clarity = "*"
 python_version = "3.10"
 
 [scripts]
+fmt = """bash -c "
+set -e -x
+pipenv run black ./test
+"
+"""
 lint = """bash -c "
 set -e -x
 pipenv run flake8 ./test
