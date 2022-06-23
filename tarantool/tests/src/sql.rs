@@ -72,7 +72,7 @@ pub fn prepared_large_query() {
         sp.insert(&(i + 2, "three")).unwrap();
         sp.insert(&(i + 3, "four")).unwrap();
 
-        i = i + 4;
+        i += 4;
     }
     let sql = "SELECT * FROM SQL_TEST";
     let stmt = tarantool::sql::prepare(sql).unwrap();
@@ -84,7 +84,7 @@ pub fn prepared_large_query() {
         assert_eq!((i as u64 + 2, "two".to_string()), result[i + 1]);
         assert_eq!((i as u64 + 3, "three".to_string()), result[i + 2]);
         assert_eq!((i as u64 + 4, "four".to_string()), result[i + 3]);
-        i = i + 4;
+        i += 4;
     }
 
     drop_sql_test_space(sp).unwrap();

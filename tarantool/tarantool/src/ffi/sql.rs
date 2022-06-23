@@ -154,7 +154,7 @@ impl Read for ObufWrapper {
 
             let cp = unsafe {
                 std::slice::from_raw_parts(
-                    (self.inner.iov[self.read_iov_n].iov_base as *const u8).offset(self.read_iov_pos as isize),
+                    (self.inner.iov[self.read_iov_n].iov_base as *const u8).add(self.read_iov_pos),
                     read_len,
                 )
             };
