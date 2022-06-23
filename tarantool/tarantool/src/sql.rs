@@ -62,7 +62,7 @@ impl Statement {
         where IN: AsTuple,
               OUT: DeserializeOwned
     {
-        let port = Port::zeroed();
+        let mut port = Port::zeroed();
 
         let execute_result = if std::mem::size_of::<IN>() != 0 {
             let params = rmp_serde::to_vec_named(bind_params)?;
@@ -77,6 +77,9 @@ impl Statement {
             unsafe { ffi::sql::sql_execute_prepared_ext(self.id, std::ptr::null::<Bind>() as *const Bind, 0, &port as *const Port) }
         };
         if execute_result < 0 {
+            // Tarantool has already called `port_destroy()` and has possibly
+            // trashed `vtab` pointer. We need to reset it to avoid UB.
+            port.vtab = std::ptr::null();
             return Err(TarantoolError::last().into());
         }
 
