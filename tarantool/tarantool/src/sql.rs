@@ -51,12 +51,15 @@ impl Statement {
     /// Executes prepared statement with binding variables.
     ///
     /// Example:
-    /// ```rust
-    /// use tarantool::sql;
+    /// ```no_run
+    /// #[cfg(feature = "picodata")]
+    /// {
+    ///     use tarantool::sql;
     ///
-    /// let stmt = sql::prepare("SELECT * FROM S WHERE ID > ?").unwrap();
-    /// let result: Vec<(u8, String)> = stmt.execute(&(100,)).unwrap();
-    /// println!("SQL query result: {:?}", result);
+    ///     let stmt = sql::prepare("SELECT * FROM S WHERE ID > ?").unwrap();
+    ///     let result: Vec<(u8, String)> = stmt.execute(&(100,)).unwrap();
+    ///     println!("SQL query result: {:?}", result);
+    /// }
     /// ```
     pub fn execute<IN, OUT>(&self, bind_params: &IN) -> crate::Result<OUT>
         where IN: AsTuple,
