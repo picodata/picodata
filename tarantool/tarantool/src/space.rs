@@ -415,7 +415,7 @@ impl Space {
     /// Create a space.
     /// (for details see [box.schema.space.create()](https://www.tarantool.io/en/doc/latest/reference/reference_lua/box_schema/space_create/)).
     ///
-    /// - `name` -  name of space, which should conform to the rules for object names.
+    /// - `name` - name of space, which should conform to the rules for object names.
     /// - `opts` - see SpaceCreateOptions struct.
     ///
     /// Returns a new space.
@@ -451,8 +451,8 @@ impl Space {
 
     /// Memorized version of [`Space::find`] function.
     ///
-    /// Function performs SELECT request to `_vspace` system space only if
-    /// this function never called for target space.
+    /// The function performs SELECT request to `_vspace` system space only if
+    /// it was never called for target space.
     /// - `name` - space name
     ///
     /// Returns:
@@ -580,7 +580,7 @@ impl Space {
             .map(|t| t.expect("Returned tuple cannot be null"))
     }
 
-    /// Insert a tuple into a space. If a tuple with the same primary key already exists, replaces the existing tuple
+    /// Insert a tuple into a space. If a tuple with the same primary key already exists, it replaces the existing tuple
     /// with a new one. Alias for [space.replace()](#method.replace)
     #[inline(always)]
     pub fn put<T>(&mut self, value: &T) -> Result<Tuple, Error>
@@ -600,7 +600,7 @@ impl Space {
 
     /// Return the number of tuples in the space.
     ///
-    /// If compared with [space.count()](#method.count), this method works faster because [space.len()](#method.len)
+    /// Compared with [space.count()](#method.count), this method works faster because [space.len()](#method.len)
     /// does not scan the entire space to count the tuples.
     #[inline(always)]
     pub fn len(&self) -> Result<usize, Error> {
@@ -615,7 +615,7 @@ impl Space {
     /// Number of bytes in the space.
     ///
     /// This number, which is stored in Tarantool’s internal memory, represents the total number of bytes in all tuples,
-    /// not including index keys. For a measure of index size, see [index.bsize()](../index/struct.Index.html#method.bsize).
+    /// excluding index keys. For a measure of index size, see [index.bsize()](../index/struct.Index.html#method.bsize).
     #[inline(always)]
     pub fn bsize(&self) -> Result<usize, Error> {
         self.primary_key().bsize()
@@ -634,7 +634,7 @@ impl Space {
     /// (for details see [Сooperative multitasking](https://www.tarantool.io/en/doc/latest/book/box/atomic_index/#atomic-cooperative-multitasking)).
     ///
     /// - `type` - iterator type
-    /// - `key` - encoded key in MsgPack Array format (`[part1, part2, ...]`).
+    /// - `key` - encoded key in the MsgPack Array format (`[part1, part2, ...]`).
     #[inline(always)]
     pub fn select<K>(&self, iterator_type: IteratorType, key: &K) -> Result<IndexIterator, Error>
     where
@@ -643,11 +643,11 @@ impl Space {
         self.primary_key().select(iterator_type, key)
     }
 
-    /// Return the number of tuples. If compared with [space.len()](#method.len), this method works slower because
+    /// Return the number of tuples. Compared with [space.len()](#method.len), this method works slower because
     /// [space.count()](#method.count) scans the entire space to count the tuples.
     ///
     /// - `type` - iterator type
-    /// - `key` - encoded key in MsgPack Array format (`[part1, part2, ...]`).
+    /// - `key` - encoded key in the MsgPack Array format (`[part1, part2, ...]`).
     pub fn count<K>(&self, iterator_type: IteratorType, key: &K) -> Result<usize, Error>
     where
         K: AsTuple,
@@ -657,7 +657,7 @@ impl Space {
 
     /// Delete a tuple identified by a primary key.
     ///
-    /// - `key` - encoded key in MsgPack Array format (`[part1, part2, ...]`).
+    /// - `key` - encoded key in the MsgPack Array format (`[part1, part2, ...]`).
     ///
     /// Returns the deleted tuple
     #[inline(always)]
@@ -676,11 +676,11 @@ impl Space {
     /// requires specification of a field number. When multiple operations are present, the field number for each
     /// operation is assumed to be relative to the most recent state of the tuple, that is, as if all previous
     /// operations in a multi-operation update have already been applied.
-    /// In other words, it is always safe to merge multiple `update` invocations into a single invocation, with no
+    /// In other words, it is always safe to merge multiple `update` invocations into a single invocation with no
     /// change in semantics.
     ///
-    /// - `key` - encoded key in MsgPack Array format (`[part1, part2, ...]`).
-    /// - `ops` - encoded operations in MsgPack array format, e.g. `[['=', field_id, value], ['!', 2, 'xxx']]`
+    /// - `key` - encoded key in the MsgPack Array format (`[part1, part2, ...]`).
+    /// - `ops` - encoded operations in the MsgPack array format, e.g. `[['=', field_id, value], ['!', 2, 'xxx']]`
     ///
     /// Returns a new tuple.
     ///
@@ -694,7 +694,7 @@ impl Space {
         self.primary_key().update(key, ops)
     }
 
-    /// Update a tuple using `ops` already encoded in message pack format.
+    /// Update a tuple using `ops` already encoded in the message pack format.
     ///
     /// This function is similar to [`update`](#method.update) but instead
     /// of a generic type parameter `Op` it accepts preencoded message pack
@@ -712,16 +712,15 @@ impl Space {
 
     /// Update or insert a tuple.
     ///
-    /// If there is an existing tuple which matches the key fields of tuple, then the request has the same effect as
+    /// If there is an existing tuple which matches the tuple key fields, then the request has the same effect as
     /// [space.update()](#method.update) and the `{{operator, field_no, value}, ...}` parameter is used.
-    /// If there is no existing tuple which matches the key fields of tuple, then the request has the same effect as
+    /// If there is no existing tuple which matches the tuple key fields, then the request has the same effect as
     /// [space.insert()](#method.insert) and the `{tuple}` parameter is used.
     /// However, unlike `insert` or `update`, `upsert` will not read a tuple and perform error checks before
-    /// returning – this is a design feature which enhances throughput but requires more caution on the part of the
-    /// user.
+    /// returning – this is a design feature which enhances throughput but requires more cautious use.
     ///
-    /// - `value` - encoded tuple in MsgPack Array format (`[field1, field2, ...]`)
-    /// - `ops` - encoded operations in MsgPack array format, e.g. `[['=', field_id, value], ['!', 2, 'xxx']]`
+    /// - `value` - encoded tuple in the MsgPack Array format (`[field1, field2, ...]`)
+    /// - `ops` - encoded operations in the MsgPack array format, e.g. `[['=', field_id, value], ['!', 2, 'xxx']]`
     ///
     /// See also: [space.update()](#method.update)
     #[inline(always)]
@@ -733,7 +732,7 @@ impl Space {
         self.primary_key().upsert(value, ops)
     }
 
-    /// Upsert a tuple using `ops` already encoded in message pack format.
+    /// Upsert a tuple using `ops` already encoded in the message pack format.
     ///
     /// This function is similar to [`upsert`](#method.upsert) but instead
     /// of a generic type parameter `Op` it accepts preencoded message pack
@@ -807,12 +806,12 @@ impl<'a> Builder<'a> {
 
 /// Update a tuple or index.
 ///
-/// The helper macro with semantic same as `space.update()`/`index.update()` functions, but supports
+/// The helper macro with the same semantic as `space.update()`/`index.update()` functions, but supports
 /// different types in `ops` argument.
 ///
 /// - `target` - updated space or index.
-/// - `key` - encoded key in MsgPack Array format (`[part1, part2, ...]`).
-/// - `ops` - encoded operations in MsgPack array format, e.g. `[['=', field_id, 100], ['!', 2, 'xxx']]`
+/// - `key` - encoded key in the MsgPack Array format (`[part1, part2, ...]`).
+/// - `ops` - encoded operations in the MsgPack array format, e.g. `[['=', field_id, 100], ['!', 2, 'xxx']]`
 ///
 /// Returns a new tuple.
 ///
@@ -837,12 +836,12 @@ macro_rules! update {
 
 /// Upsert a tuple or index.
 ///
-/// The helper macro with semantic same as `space.upsert()`/`index.upsert()` functions, but supports
+/// The helper macro with the same semantic as `space.upsert()`/`index.upsert()` functions, but supports
 /// different types in `ops` argument.
 ///
 /// - `target` - updated space or index.
-/// - `value` - encoded tuple in MsgPack Array format (`[part1, part2, ...]`).
-/// - `ops` - encoded operations in MsgPack array format, e.g. `[['=', field_id, 100], ['!', 2, 'xxx']]`
+/// - `value` - encoded tuple in the MsgPack Array format (`[part1, part2, ...]`).
+/// - `ops` - encoded operations in the MsgPack array format, e.g. `[['=', field_id, 100], ['!', 2, 'xxx']]`
 ///
 /// See also: [space.update()](#method.update)
 #[macro_export]

@@ -4,7 +4,7 @@ use crate::ffi::tarantool as ffi;
 
 use nix::errno;
 
-/// Set a callback to be called on tarantool shutdown.
+/// Set a callback to be called on Tarantool shutdown.
 pub fn on_shutdown<F: FnOnce() + 'static>(cb: F) -> Result<(), TarantoolError> {
     let cb_ptr = Box::into_raw(Box::new(cb));
     if unsafe { ffi::box_on_shutdown(cb_ptr as _, Some(trampoline::<F>), None) } != 0 {

@@ -515,7 +515,7 @@ impl Index {
 
     /// Get a tuple from index by the key.
     ///
-    /// Please note that this function works much more faster than [select](#method.select)
+    /// Please note that this function works much faster than [select](#method.select)
     ///
     /// - `key` - encoded key in MsgPack Array format (`[part1, part2, ...]`).
     ///
@@ -573,7 +573,7 @@ impl Index {
 
     /// Delete a tuple identified by a key.
     ///
-    /// Same as [space.delete()](../space/struct.Space.html#method.delete), but key is searched in this index instead
+    /// Same as [space.delete()](../space/struct.Space.html#method.delete), but a key is searched in this index instead
     /// of in the primary-key index. This index ought to be unique.
     ///
     /// - `key` - encoded key in MsgPack Array format (`[part1, part2, ...]`).
@@ -598,7 +598,7 @@ impl Index {
 
     /// Update a tuple.
     ///
-    /// Same as [space.update()](../space/struct.Space.html#method.update), but key is searched in this index instead
+    /// Same as [space.update()](../space/struct.Space.html#method.update), but a key is searched in this index instead
     /// of primary key. This index ought to be unique.
     ///
     /// - `key` - encoded key in MsgPack Array format (`[part1, part2, ...]`).
@@ -736,7 +736,7 @@ impl Index {
         )
     }
 
-    /// Return a first (minimal) tuple matched the provided key.
+    /// Return a first (minimal) tuple that matched the provided key.
     ///
     /// - `key` - encoded key in MsgPack Array format (`[part1, part2, ...]`).
     ///
@@ -758,7 +758,7 @@ impl Index {
         )
     }
 
-    /// Return a last (maximal) tuple matched the provided key.
+    /// Return a last (maximal) tuple that matched the provided key.
     ///
     /// - `key` - encoded key in MsgPack Array format (`[part1, part2, ...]`).
     ///
@@ -780,7 +780,7 @@ impl Index {
         )
     }
 
-    /// Count the number of tuple matched the provided key.
+    /// Count the number of tuples that matched the provided key.
     ///
     /// - `type` - iterator type
     /// - `key` - encoded key in MsgPack Array format (`[part1, part2, ...]`).

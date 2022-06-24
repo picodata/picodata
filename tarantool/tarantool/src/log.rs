@@ -87,7 +87,7 @@ impl From<Level> for SayLevel {
     }
 }
 
-/// Format and print a message to Tarantool log file.
+/// Format and print a message to the Tarantool log file.
 #[inline]
 pub fn say(level: SayLevel, file: &str, line: i32, error: Option<&str>, message: &str) {
     let level = level.to_i32().unwrap();

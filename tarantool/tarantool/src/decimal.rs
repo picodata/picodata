@@ -71,7 +71,7 @@ impl Decimal {
         self.floor_to(0).unwrap()
     }
 
-    /// Round a given decimal to have not more than `scale` digits after the
+    /// Round a given decimal to have no more than `scale` digits after the
     /// decimal point.  If `scale` if greater than current `self.scale()`,
     /// return `self` unchanged. Scale must be in range `[0..=
     /// ffi::DECIMAL_MAX_DIGITS]`. Return `None` if `scale` if out of bounds.

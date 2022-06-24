@@ -74,7 +74,7 @@ impl CoIOStream {
         read(self.fd, buf, timeout)
     }
 
-    /// Write a buffer into this writer. Returning how many bytes were written or 0 on timeout.
+    /// Write a buffer into this writer. Returns how many bytes were written or 0 on timeout.
     pub fn write_with_timeout(
         &mut self,
         buf: &[u8],
@@ -304,7 +304,7 @@ pub fn channel<T>(capacity: usize) -> (Sender<T>, Receiver<T>) {
     (Sender(chan.clone()), Receiver(chan))
 }
 
-/// The sending-half of channel.
+/// The sending half of channel.
 ///
 /// Messages can be sent through this channel with `send`. Can be cloned.
 pub struct Sender<T>(Rc<Chan<T>>);

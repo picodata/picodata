@@ -2,7 +2,7 @@
 //! [CLOCK_GETTIME](http://pubs.opengroup.org/onlinepubs/9699919799/functions/clock_getres.html)
 //! function or equivalent.
 //!
-//! Most functions in the module return a number of seconds; functions whose names end in “64”
+//! Most functions in the module return a number of seconds; functions with names followed by “64”
 //! return a 64-bit number of nanoseconds.
 //!
 //! - [time()](fn.time.html) - Get the wall clock time in seconds
@@ -87,7 +87,7 @@ pub fn monotonic64() -> u64 {
 /// The processor time.
 ///
 /// Derived from C function `clock_gettime(CLOCK_PROCESS_CPUTIME_ID)`.
-/// This is the best function to use with benchmarks that need to calculate how much time has been spent within a CPU.
+/// This is the best function to use with benchmarks that need to calculate the amount of time for which CPU was used.
 ///
 /// Return: seconds or nanoseconds since processor start.
 /// Return type: `u64` or `f64`
@@ -112,8 +112,7 @@ pub fn process64() -> u64 {
 /// The thread time.
 ///
 /// Derived from C function `clock_gettime(CLOCK_THREAD_CPUTIME_ID)`.
-/// This is the best function to use with benchmarks that need to calculate how much time has been spent within a
-/// thread within a CPU.
+/// This is the best function to use with benchmarks that need to calculate hthe amount of time for which a CPU thread was used.
 ///
 /// Return: seconds or nanoseconds since the transaction processor thread started.
 /// Return type: `u64` or `f64`
