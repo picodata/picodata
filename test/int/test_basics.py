@@ -162,7 +162,7 @@ def test_propose_eval(instance: Instance):
     with pytest.raises(ReturnError, match="timeout"):
         instance.raft_propose_eval("return", timeout_seconds=0)
 
-    assert instance.raft_propose_eval("_G.success = true")
+    instance.raft_propose_eval("_G.success = true")
     assert instance.eval("return _G.success") is True
 
 

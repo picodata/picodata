@@ -11,6 +11,7 @@ use ::raft::prelude as raft;
 use ::tarantool::tuple::AsTuple;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
+use std::any::Any;
 use std::convert::TryFrom;
 use uuid::Uuid;
 
@@ -60,6 +61,51 @@ pub enum Op {
     Info { msg: String },
     /// Evaluate the code on every instance in cluster.
     EvalLua { code: String },
+    ///
+    ReturnOne(OpReturnOne),
+}
+
+impl Op {
+    pub fn on_commit(&self) -> Box<dyn Any> {
+        match self {
+            Self::Nop => Box::new(()),
+            Self::Info { msg } => {
+                crate::tlog!(Info, "{msg}");
+                Box::new(())
+            }
+            Self::EvalLua { code } => {
+                crate::tarantool::eval(code);
+                Box::new(())
+            }
+            Self::ReturnOne(op) => Box::new(op.result()),
+        }
+    }
+}
+
+impl OpResult for Op {
+    type Result = ();
+    fn result(&self) -> Self::Result {}
+}
+
+impl From<OpReturnOne> for Op {
+    fn from(op: OpReturnOne) -> Op {
+        Op::ReturnOne(op)
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct OpReturnOne;
+
+impl OpResult for OpReturnOne {
+    type Result = u64;
+    fn result(&self) -> Self::Result {
+        1
+    }
+}
+
+pub trait OpResult {
+    type Result: 'static;
+    fn result(&self) -> Self::Result;
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////

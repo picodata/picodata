@@ -73,7 +73,7 @@ def test_restart_leader(cluster2: Cluster):
     i1, _ = cluster2.instances
     i1.restart()
     i1.wait_ready()
-    assert i1.raft_propose_eval("return")
+    i1.raft_propose_eval("return")
 
 
 def test_restart_both(cluster2: Cluster):

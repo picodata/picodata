@@ -67,7 +67,7 @@ fn picolib_setup(args: &args::Run) {
     );
     luamod.set(
         "raft_propose_info",
-        tlua::function1(|x: String| -> Result<u64, traft::node::Error> {
+        tlua::function1(|x: String| -> Result<(), traft::node::Error> {
             traft::node::global()?.propose(traft::Op::Info { msg: x }, Duration::from_secs(1))
         }),
     );
@@ -81,13 +81,19 @@ fn picolib_setup(args: &args::Run) {
     luamod.set(
         "raft_propose_eval",
         tlua::function2(
-            |timeout: f64, x: String| -> Result<u64, traft::node::Error> {
+            |timeout: f64, x: String| -> Result<(), traft::node::Error> {
                 traft::node::global()?.propose(
                     traft::Op::EvalLua { code: x },
                     Duration::from_secs_f64(timeout),
                 )
             },
         ),
+    );
+    luamod.set(
+        "raft_return_one",
+        tlua::function1(|timeout: f64| -> Result<u64, traft::node::Error> {
+            traft::node::global()?.propose(traft::OpReturnOne, Duration::from_secs_f64(timeout))
+        }),
     );
     {
         l.exec(

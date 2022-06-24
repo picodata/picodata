@@ -14,6 +14,7 @@ use ::tarantool::fiber;
 use ::tarantool::proc;
 use ::tarantool::tlua;
 use ::tarantool::transaction::start_transaction;
+use std::any::Any;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::convert::TryFrom;
@@ -39,8 +40,10 @@ use crate::traft::Topology;
 use crate::traft::TopologyRequest;
 use crate::traft::{JoinRequest, JoinResponse};
 
+use super::OpResult;
+
 type RawNode = raft::RawNode<Storage>;
-type Notify = fiber::Channel<Result<u64, RaftError>>;
+type Notify = fiber::Channel<Result<Box<dyn Any>, RaftError>>;
 type TopologyMailbox = Mailbox<(TopologyRequest, Notify)>;
 
 #[derive(Debug, Error)]
@@ -51,6 +54,8 @@ pub enum Error {
     Timeout,
     #[error("{0}")]
     Raft(#[from] RaftError),
+    #[error("downcast error")]
+    DowncastError,
     /// cluster_id of the joining peer mismatches the cluster_id of the cluster
     #[error("cannot join the instance to the cluster: cluster_id mismatch: cluster_id of the instance = {instance_cluster_id:?}, cluster_id of the cluster = {cluster_cluster_id:?}")]
     ClusterIdMismatch {
@@ -183,7 +188,8 @@ impl Node {
             .send(NormalRequest::ReadIndex { notify: tx });
 
         match rx.recv_timeout(timeout) {
-            Ok(v) => v.map_err(|e| e.into()),
+            Ok(Ok(v)) => v.downcast().map(|v| *v).map_err(|_| Error::DowncastError),
+            Ok(Err(e)) => Err(e.into()),
             Err(_) => {
                 rx.close();
                 Err(Error::Timeout)
@@ -191,14 +197,21 @@ impl Node {
         }
     }
 
-    pub fn propose(&self, op: traft::Op, timeout: Duration) -> Result<u64, Error> {
+    pub fn propose<T: OpResult + Into<traft::Op>>(
+        &self,
+        op: T,
+        timeout: Duration,
+    ) -> Result<T::Result, Error> {
         let (rx, tx) = fiber::Channel::new(1).into_clones();
 
-        self.main_inbox
-            .send(NormalRequest::ProposeNormal { op, notify: tx });
+        self.main_inbox.send(NormalRequest::ProposeNormal {
+            op: op.into(),
+            notify: tx,
+        });
 
         match rx.recv_timeout(timeout) {
-            Ok(v) => v.map_err(|e| e.into()),
+            Ok(Ok(v)) => v.downcast().map(|v| *v).map_err(|_| Error::DowncastError),
+            Ok(Err(e)) => Err(e.into()),
             Err(_) => {
                 rx.close();
                 Err(Error::Timeout)
@@ -237,11 +250,15 @@ impl Node {
         })
     }
 
-    pub fn change_topology(&self, req: impl Into<TopologyRequest>) -> Result<u64, RaftError> {
+    pub fn change_topology(&self, req: impl Into<TopologyRequest>) -> Result<traft::RaftId, Error> {
         let (rx, tx) = fiber::Channel::new(1).into_clones();
 
         self.join_inbox.send((req.into(), tx));
-        rx.recv().expect("that's a bug")
+        match rx.recv() {
+            Some(Ok(v)) => v.downcast().map(|v| *v).map_err(|_| Error::DowncastError),
+            Some(Err(e)) => Err(e.into()),
+            None => unreachable!(),
+        }
     }
 }
 
@@ -407,7 +424,9 @@ fn raft_main_loop(
                 }
                 NormalRequest::Campaign { notify } => {
                     let res = raw_node.campaign().map(|_| 0);
-                    notify.try_send(res).expect("that's a bug");
+                    notify
+                        .try_send(res.map(|_| Box::new(()) as Box<dyn Any>))
+                        .expect("that's a bug");
                 }
                 NormalRequest::Step(msg) => {
                     if let Err(e) = raw_node.step(msg) {
@@ -418,7 +437,9 @@ fn raft_main_loop(
                     for _ in 0..n_times {
                         raw_node.tick();
                     }
-                    notify.try_send(Ok(0)).expect("that's a bug");
+                    notify
+                        .try_send(Ok(Box::new(()) as Box<dyn Any>))
+                        .expect("that's a bug");
                 }
             }
         }
@@ -445,7 +466,7 @@ fn raft_main_loop(
                     .expect("Abnormal entry in message context")
                 {
                     if let Some(notify) = notifications.remove(&ctx.lc) {
-                        notify.try_send(Ok(rs.index)).ok();
+                        notify.try_send(Ok(Box::new(rs.index) as Box<dyn Any>)).ok();
                     }
                 }
             }
@@ -473,20 +494,13 @@ fn raft_main_loop(
             {
                 match raft::EntryType::from_i32(entry.entry_type) {
                     Some(raft::EntryType::EntryNormal) => {
-                        use traft::Op::*;
-
-                        match entry.op() {
-                            None => (),
-                            Some(Nop) => (),
-                            Some(Info { msg }) => tlog!(Info, "{msg}"),
-                            Some(EvalLua { code }) => crate::tarantool::eval(code),
-                        }
+                        let result = entry.op().unwrap_or(&traft::Op::Nop).on_commit();
 
                         if let Some(lc) = entry.lc() {
                             if let Some(notify) = notifications.remove(lc) {
                                 // The notification may already have timed out.
                                 // Don't panic. Just ignore `try_send` error.
-                                notify.try_send(Ok(entry.index)).ok();
+                                notify.try_send(Ok(result)).ok();
                             }
                         }
 
@@ -536,7 +550,7 @@ fn raft_main_loop(
                                     if let Some(latch) = joint_state_latch {
                                         latch
                                             .notify
-                                            .try_send(Ok(entry.index))
+                                            .try_send(Ok(Box::new(entry.index) as Box<dyn Any>))
                                             .expect("that's a bug");
                                         *joint_state_latch = None;
                                         *config_changed = true;
@@ -720,7 +734,7 @@ fn raft_join_loop(inbox: TopologyMailbox, main_inbox: Mailbox<NormalRequest>) {
         tlog!(Info, "batch processed: {ids:?}, {res:?}");
         for (notify, peer) in topology_results {
             match &res {
-                Ok(_) => notify.try_send(Ok(peer.raft_id)).ok(),
+                Ok(_) => notify.try_send(Ok(Box::new(peer.raft_id))).ok(),
                 Err(e) => {
                     // RaftError doesn't implement the Clone trait,
                     // so we have to be creative.
