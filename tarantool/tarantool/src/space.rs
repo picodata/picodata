@@ -19,6 +19,7 @@ use serde_json::{Map, Value};
 use crate::error::{Error, TarantoolError};
 use crate::ffi::tarantool as ffi;
 use crate::index::{self, Index, IndexIterator, IteratorType};
+use crate::schema::space::SpaceMetadata;
 use crate::tuple::{AsTuple, Tuple};
 use crate::tuple_from_box_api;
 
@@ -744,6 +745,14 @@ impl Space {
             K: AsTuple,
     {
         self.primary_key().upsert_mp(key, ops)
+    }
+
+    // Return space metadata from system `_space` space.
+    #[cfg(feature = "schema")]
+    pub fn meta(&self) -> Result<SpaceMetadata, Error> {
+        let sys_space: Space = SystemSpace::Space.into();
+        let tuple = sys_space.get(&(self.id,))?.ok_or(Error::MetaNotFound)?;
+        tuple.as_struct::<SpaceMetadata>()
     }
 }
 

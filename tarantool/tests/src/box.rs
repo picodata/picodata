@@ -1,11 +1,13 @@
+use std::borrow::Cow;
 use std::collections::BTreeMap;
 use rand::Rng;
 
 use tarantool::index::{IndexFieldType, IndexOptions, IteratorType};
 use tarantool::sequence::Sequence;
-use tarantool::space::{Space, SpaceCreateOptions, SystemSpace};
+use tarantool::space::{Field, Space, SpaceCreateOptions, SpaceEngineType, SpaceFieldType, SystemSpace};
 use tarantool::tuple::Tuple;
 use tarantool::{update, upsert};
+use tarantool::util::Value;
 
 use crate::common::{QueryOperation, S1Record, S2Key, S2Record};
 
@@ -720,6 +722,74 @@ pub fn space_create_is_sync() {
     assert_eq!(info.flags.get("is_sync"), Some(&true));
 
     drop_space("new_space_8");
+}
+
+pub fn space_meta() {
+    fn assert_field(field: &BTreeMap<Cow<'_, str>, Value>, name: &str, r#type: &str, is_nullable: bool) {
+        assert!(matches!(field.get("is_nullable").unwrap(), Value::Bool(_)));
+        match field.get("is_nullable").unwrap() {
+            Value::Bool(nullable) => {
+                assert_eq!(*nullable, is_nullable);
+            }
+            _ => unreachable!()
+        }
+
+        assert!(matches!(field.get("name").unwrap(), Value::Str(_)));
+        match field.get("name").unwrap() {
+            Value::Str(n) => {
+                assert_eq!(n.to_string(), name.to_string());
+            }
+            _ => unreachable!()
+        }
+
+        assert!(matches!(field.get("type").unwrap(), Value::Str(_)));
+        match field.get("type").unwrap() {
+            Value::Str(t) => {
+                assert_eq!(t.to_string(), r#type.to_string());
+            }
+            _ => unreachable!()
+        }
+    }
+
+    let opts = SpaceCreateOptions {
+        engine: SpaceEngineType::Memtx,
+        is_local: true,
+        format: Some(vec![
+            Field::unsigned("f1"),
+            Field::boolean("f2"),
+            Field {
+                name: "f3".to_string(),
+                field_type: SpaceFieldType::String,
+                is_nullable: true,
+            },
+        ]),
+        ..Default::default()
+    };
+
+    let space = Space::create("new_space_9", &opts).expect("space new_space_9 should exists");
+    let meta = space.meta().expect("meta should exists");
+
+    assert_eq!(meta.name, "new_space_9");
+    assert_eq!(meta.engine, SpaceEngineType::Memtx);
+    assert!(matches!(meta.flags.get("group_id").unwrap(), Value::Num(1)));
+
+    assert_field(meta.format.get(0).unwrap(), "f1", "unsigned", false);
+    assert_field(meta.format.get(1).unwrap(), "f2", "boolean", false);
+    assert_field(meta.format.get(2).unwrap(), "f3", "string", true);
+
+    let opts = SpaceCreateOptions {
+        is_local: false,
+        is_temporary: true,
+        is_sync: true,
+        format: Some(vec![Field::unsigned("f1"), ]),
+        ..Default::default()
+    };
+    let space = Space::create("new_space_10", &opts).expect("space new_space_10 should exists");
+    let meta = space.meta().expect("meta should exists");
+
+    assert_eq!(meta.name, "new_space_10");
+    assert!(matches!(meta.flags.get("temporary").unwrap(), Value::Bool(true)));
+    assert!(matches!(meta.flags.get("is_sync").unwrap(), Value::Bool(true)));
 }
 
 pub fn drop_space(name: &str) {

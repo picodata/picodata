@@ -1,4 +1,5 @@
-use serde::{ Serialize, Deserialize };
+use std::borrow::Cow;
+use serde::{Serialize, Deserialize };
 use crate::error::Error;
 
 pub trait IntoClones<Tuple>: Clone {
@@ -80,11 +81,11 @@ impl<'a> From<&'a str> for NumOrStr {
     }
 }
 
-#[derive(Serialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(untagged)]
 pub enum Value<'a> {
     Num(u32),
-    Str(&'a str),
+    Str(Cow<'a, str>),
     Bool(bool),
 }
 

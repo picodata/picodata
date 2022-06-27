@@ -77,6 +77,10 @@ pub enum Error {
 
     #[error("Lua error: {0}")]
     LuaError(LuaError),
+
+    #[cfg(feature = "schema")]
+    #[error("Space metadata not found")]
+    MetaNotFound,
 }
 
 impl From<io::Error> for Error {

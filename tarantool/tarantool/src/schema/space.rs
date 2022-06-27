@@ -2,8 +2,9 @@ use std::{
     collections::BTreeMap,
     cmp::max
 };
+use std::borrow::Cow;
 
-use serde::Serialize;
+use serde::{Serialize, Deserialize};
 
 use crate::error::{Error, TarantoolError, TarantoolErrorCode};
 use crate::index::IteratorType;
@@ -52,17 +53,17 @@ pub fn create_space(name: &str, opts: &SpaceCreateOptions) -> Result<Space, Erro
     // Resolve ID of new space or use ID, specified in options.
     let id = opts.id.map(Ok).unwrap_or_else(resolve_new_space_id)?;
 
-    let flags = opts.is_local.then(|| ("group_id", Value::Num(1))).into_iter()
-        .chain(opts.is_temporary.then(|| ("temporary", Value::Bool(true))))
-        .chain(opts.is_sync.then(|| ("is_sync", Value::Bool(true))))
+    let flags = opts.is_local.then(|| ("group_id".into(), Value::Num(1))).into_iter()
+        .chain(opts.is_temporary.then(|| ("temporary".into(), Value::Bool(true))))
+        .chain(opts.is_sync.then(|| ("is_sync".into(), Value::Bool(true))))
         .collect();
 
     let format = opts.format.iter().flat_map(|f| f.iter())
         .map(|f|
             IntoIterator::into_iter([
-                ("name", Value::Str(&f.name)),
-                ("type", Value::Str(f.field_type.as_str())),
-                ("is_nullable", Value::Bool(f.is_nullable)),
+                ("name".into(), Value::Str(f.name.as_str().into())),
+                ("type".into(), Value::Str(f.field_type.as_str().into())),
+                ("is_nullable".into(), Value::Bool(f.is_nullable)),
             ]).collect()
         )
         .collect();
@@ -71,7 +72,7 @@ pub fn create_space(name: &str, opts: &SpaceCreateOptions) -> Result<Space, Erro
     sys_space.insert(&SpaceMetadata {
         id,
         user_id,
-        name,
+        name: name.into(),
         engine: opts.engine,
         field_count: opts.field_count,
         flags,
@@ -82,15 +83,15 @@ pub fn create_space(name: &str, opts: &SpaceCreateOptions) -> Result<Space, Erro
 }
 
 /// SpaceMetadata is tuple, holding space metadata in system `_space` space.
-#[derive(Serialize, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct SpaceMetadata<'a> {
     pub id: u32,
     pub user_id: u32,
-    pub name: &'a str,
+    pub name: Cow<'a, str>,
     pub engine: SpaceEngineType,
     pub field_count: u32,
-    pub flags: BTreeMap<&'a str, Value<'a>>,
-    pub format: Vec<BTreeMap<&'a str, Value<'a>>>,
+    pub flags: BTreeMap<Cow<'a, str>, Value<'a>>,
+    pub format: Vec<BTreeMap<Cow<'a, str>, Value<'a>>>,
 }
 
 impl AsTuple for SpaceMetadata<'_> {}
