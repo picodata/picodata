@@ -307,15 +307,6 @@ pub enum TopologyRequest {
     Deactivate(DeactivateRequest),
 }
 
-impl TopologyRequest {
-    pub fn instance_id(&self) -> &str {
-        match self {
-            Self::Join(JoinRequest { instance_id, .. })
-            | Self::Deactivate(DeactivateRequest { instance_id, .. }) => instance_id,
-        }
-    }
-}
-
 impl From<JoinRequest> for TopologyRequest {
     fn from(j: JoinRequest) -> Self {
         Self::Join(j)
@@ -333,7 +324,7 @@ impl From<DeactivateRequest> for TopologyRequest {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct JoinRequest {
     pub cluster_id: String,
-    pub instance_id: String,
+    pub instance_id: Option<String>,
     pub replicaset_id: Option<String>,
     pub advertise_address: String,
     pub voter: bool,

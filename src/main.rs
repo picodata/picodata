@@ -407,7 +407,7 @@ fn start_boot(args: &args::Run) {
 
     let peer = traft::topology::initial_peer(
         args.cluster_id.clone(),
-        args.instance_id.clone(),
+        args.instance_id(),
         args.replicaset_id.clone(),
         args.advertise_address(),
     );
@@ -475,7 +475,7 @@ fn start_join(args: &args::Run, leader_address: String) {
 
     let req = traft::JoinRequest {
         cluster_id: args.cluster_id.clone(),
-        instance_id: args.instance_id.clone(),
+        instance_id: args.instance_id(),
         replicaset_id: args.replicaset_id.clone(),
         voter: false,
         advertise_address: args.advertise_address(),
@@ -598,7 +598,7 @@ fn postjoin(args: &args::Run) {
         tlog!(Warning, "initiating self-promotion of {me:?}");
         let req = traft::JoinRequest {
             cluster_id: args.cluster_id.clone(),
-            instance_id: me.instance_id.clone(),
+            instance_id: Some(me.instance_id.clone()),
             replicaset_id: None, // TODO
             voter: true,
             advertise_address: args.advertise_address(),

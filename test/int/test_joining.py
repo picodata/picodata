@@ -277,3 +277,19 @@ def test_rebootstrap_follower(cluster3: Cluster):
     i3.restart(remove_data=True)
     i3.wait_ready()
     i3.assert_raft_status("Follower")
+
+
+def test_join_without_explicit_instance_id(cluster: Cluster):
+    # Scenario: bootstrap single instance without explicitly given instance id
+    #   Given no instances started
+    #   When two instances starts without instance_id given
+    #   Then the one of the instances became Leader with instance_id=1
+    #   And the second one of the became Follower with instance_id 2
+
+    cluster.deploy(instance_count=2, generate_instance_id=False)
+
+    i1, i2 = cluster.instances
+    i1.assert_raft_status("Leader")
+    assert i1.instance_id == "i1"
+    i2.assert_raft_status("Follower")
+    assert i2.instance_id == "i2"

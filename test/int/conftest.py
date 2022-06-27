@@ -149,6 +149,8 @@ assert color.intense_red("text") == "\x1b[31;1mtext\x1b[0m"
 
 OUT_LOCK = threading.Lock()
 
+POSITION_IN_SPACE_INSTANCE_ID = 3
+
 
 @dataclass
 class Instance:
@@ -332,6 +334,11 @@ class Instance:
         status = self._raft_status()
         assert status.is_ready
         self.raft_id = status.id
+        with self.connect(timeout=1) as conn:
+            self.instance_id = conn.space("raft_group").select((self.raft_id,))[0][
+                POSITION_IN_SPACE_INSTANCE_ID
+            ]
+            eprint(f"{self.instance_id=}")
         eprint(f"{self} is ready")
 
     @funcy.retry(tries=4, timeout=0.1, errors=AssertionError)
@@ -380,11 +387,15 @@ class Cluster:
     def __getitem__(self, item: int) -> Instance:
         return self.instances[item]
 
-    def deploy(self, *, instance_count: int) -> list[Instance]:
+    def deploy(
+        self, *, instance_count: int, generate_instance_id=True
+    ) -> list[Instance]:
         assert not self.instances, "Already deployed"
 
         for i in range(instance_count):
-            self.add_instance(wait_ready=False)
+            self.add_instance(
+                wait_ready=False, generate_instance_id=generate_instance_id
+            )
 
         for instance in self.instances:
             instance.start()
@@ -395,13 +406,15 @@ class Cluster:
         eprint(f" {self} deployed ".center(80, "="))
         return self.instances
 
-    def add_instance(self, wait_ready=True, peers=None) -> Instance:
+    def add_instance(
+        self, wait_ready=True, peers=None, generate_instance_id=True
+    ) -> Instance:
         i = 1 + len(self.instances)
 
         instance = Instance(
             binary_path=self.binary_path,
             cluster_id=self.id,
-            instance_id=f"i{i}",
+            instance_id=f"i{i}" if generate_instance_id else "",
             data_dir=f"{self.data_dir}/i{i}",
             host=self.base_host,
             port=self.base_port + i,

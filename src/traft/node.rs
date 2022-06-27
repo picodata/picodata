@@ -665,8 +665,6 @@ fn raft_main_loop(
 fn raft_join_loop(inbox: TopologyMailbox, main_inbox: Mailbox<NormalRequest>) {
     loop {
         let batch = inbox.receive_all(Duration::MAX);
-        let ids: Vec<_> = batch.iter().map(|(req, _)| req.instance_id()).collect();
-        tlog!(Info, "processing batch: {ids:?}");
 
         let term = Storage::term().unwrap().unwrap_or(0);
         let mut topology = match Storage::peers() {
@@ -680,18 +678,37 @@ fn raft_join_loop(inbox: TopologyMailbox, main_inbox: Mailbox<NormalRequest>) {
             }
         };
 
+        let mut topology_results = vec![];
+
         for (req, notify) in &batch {
-            if let Err(e) = topology.process(req) {
-                let e = RaftError::ConfChangeError(e);
-                notify.try_send(Err(e)).expect("that's a bug");
+            match topology.process(req) {
+                Ok(peer) => {
+                    topology_results.push((notify, peer));
+                }
+                Err(e) => {
+                    let e = RaftError::ConfChangeError(e);
+                    notify.try_send(Err(e)).expect("that's a bug");
+                }
             }
         }
+
+        let topology_diff = topology.diff();
+        let topology_to_replace = topology.to_replace();
+
+        let mut ids: Vec<String> = vec![];
+        for peer in &topology_diff {
+            ids.push(peer.instance_id.clone());
+        }
+        for (_, peer) in &topology_to_replace {
+            ids.push(peer.instance_id.clone());
+        }
+        tlog!(Info, "processing batch: {ids:?}");
 
         let (rx, tx) = fiber::Channel::new(1).into_clones();
         main_inbox.send(NormalRequest::ProposeConfChange {
             term,
-            peers: topology.diff(),
-            to_replace: topology.to_replace(),
+            peers: topology_diff,
+            to_replace: topology_to_replace,
             notify: tx,
         });
 
@@ -701,12 +718,12 @@ fn raft_join_loop(inbox: TopologyMailbox, main_inbox: Mailbox<NormalRequest>) {
         // after the node leaves the joint state.
         let res = rx.recv().expect("that's a bug");
         tlog!(Info, "batch processed: {ids:?}, {res:?}");
-        for (_, notify) in batch {
-            // RaftError doesn't implement the Clone trait,
-            // so we have to be creative.
+        for (notify, peer) in topology_results {
             match &res {
-                Ok(v) => notify.try_send(Ok(*v)).ok(),
+                Ok(_) => notify.try_send(Ok(peer.raft_id)).ok(),
                 Err(e) => {
+                    // RaftError doesn't implement the Clone trait,
+                    // so we have to be creative.
                     let e = RaftError::ConfChangeError(format!("{e}"));
                     notify.try_send(Err(e)).ok()
                 }
@@ -757,11 +774,9 @@ fn raft_join(req: JoinRequest) -> Result<JoinResponse, Box<dyn StdError>> {
         }));
     }
 
-    let instance_id = req.instance_id.clone();
-    node.change_topology(req)?;
+    let raft_id = node.change_topology(req)?;
 
-    let peer = Storage::peer_by_instance_id(&instance_id)?
-        .ok_or("the peer has misteriously disappeared")?;
+    let peer = Storage::peer_by_raft_id(raft_id)?.ok_or("the peer has misteriously disappeared")?;
     let raft_group = Storage::peers()?;
     let box_replication = Storage::box_replication(&peer.replicaset_id, Some(peer.commit_index))?;
 

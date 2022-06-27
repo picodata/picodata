@@ -58,9 +58,9 @@ impl Topology {
             .insert(peer.raft_id);
     }
 
-    fn peer_by_instance_id(&self, instance_id: &str) -> Option<&Peer> {
+    fn peer_by_instance_id(&self, instance_id: &str) -> Option<Peer> {
         let raft_id = self.instance_id_map.get(instance_id)?;
-        self.peers.get(raft_id)
+        self.peers.get(raft_id).cloned()
     }
 
     fn choose_replicaset_id(&self) -> String {
@@ -80,67 +80,83 @@ impl Topology {
         }
     }
 
-    pub fn join(&mut self, req: &JoinRequest) -> Result<(), String> {
-        if let Some(peer) = self.peer_by_instance_id(&req.instance_id) {
-            match &req.replicaset_id {
-                Some(replicaset_id) if replicaset_id != &peer.replicaset_id => {
-                    let e = format!(
-                        std::concat!(
-                            "{} already joined with a different replicaset_id,",
-                            " requested: {},",
-                            " existing: {}.",
-                        ),
-                        req.instance_id, replicaset_id, peer.replicaset_id
-                    );
-                    return Err(e);
-                }
-                _ => (),
-            }
-
-            let mut peer = peer.clone();
-            peer.peer_address = req.advertise_address.clone();
-            peer.voter = req.voter;
-            peer.is_active = true;
-
-            if req.voter {
-                self.diff.insert(peer.raft_id);
-            } else {
-                let old_raft_id = peer.raft_id;
-                peer.raft_id = self.max_raft_id + 1;
-
-                self.to_replace.insert(peer.raft_id, old_raft_id);
-            }
-            self.put_peer(peer);
-
-            return Ok(());
-        } else {
-            let raft_id = self.max_raft_id + 1;
-            let replicaset_id = match &req.replicaset_id {
-                Some(v) => v.clone(),
-                None => self.choose_replicaset_id(),
-            };
-            let replicaset_uuid = replicaset_uuid(&replicaset_id);
-
-            let peer = Peer {
-                raft_id,
-                instance_id: req.instance_id.clone(),
-                replicaset_id,
-                commit_index: INVALID_INDEX,
-                instance_uuid: instance_uuid(&req.instance_id),
-                replicaset_uuid,
-                peer_address: req.advertise_address.clone(),
-                voter: req.voter,
-                is_active: true,
-            };
-
-            self.diff.insert(raft_id);
-            self.put_peer(peer);
+    fn choose_instance_id(instance_id: Option<String>, raft_id: u64) -> String {
+        match instance_id {
+            Some(v) => v,
+            None => format!("i{raft_id}"),
         }
-
-        Ok(())
     }
 
-    pub fn deactivate(&mut self, req: &DeactivateRequest) -> Result<(), String> {
+    pub fn join(&mut self, req: &JoinRequest) -> Result<Peer, String> {
+        match &req.instance_id {
+            Some(instance_id) => match self.peer_by_instance_id(instance_id) {
+                Some(peer) => self.modify_existing_instance(peer, req),
+                None => self.join_new_instance(req),
+            },
+            None => self.join_new_instance(req),
+        }
+    }
+
+    fn modify_existing_instance(&mut self, peer: Peer, req: &JoinRequest) -> Result<Peer, String> {
+        match &req.replicaset_id {
+            Some(replicaset_id) if replicaset_id != &peer.replicaset_id => {
+                let e = format!(
+                    std::concat!(
+                        "{} already joined with a different replicaset_id,",
+                        " requested: {},",
+                        " existing: {}.",
+                    ),
+                    peer.instance_id, replicaset_id, peer.replicaset_id
+                );
+                return Err(e);
+            }
+            _ => (),
+        }
+
+        let mut peer = peer;
+        peer.peer_address = req.advertise_address.clone();
+        peer.voter = req.voter;
+        peer.is_active = true;
+
+        if req.voter {
+            self.diff.insert(peer.raft_id);
+        } else {
+            let old_raft_id = peer.raft_id;
+            peer.raft_id = self.max_raft_id + 1;
+
+            self.to_replace.insert(peer.raft_id, old_raft_id);
+        }
+        self.put_peer(peer.clone());
+        Ok(peer)
+    }
+
+    fn join_new_instance(&mut self, req: &JoinRequest) -> Result<Peer, String> {
+        let raft_id = self.max_raft_id + 1;
+        let replicaset_id = match &req.replicaset_id {
+            Some(v) => v.clone(),
+            None => self.choose_replicaset_id(),
+        };
+        let replicaset_uuid = replicaset_uuid(&replicaset_id);
+        let instance_id = Self::choose_instance_id(req.instance_id.clone(), raft_id);
+
+        let peer = Peer {
+            raft_id,
+            instance_id: instance_id.clone(),
+            replicaset_id,
+            commit_index: INVALID_INDEX,
+            instance_uuid: instance_uuid(&instance_id),
+            replicaset_uuid,
+            peer_address: req.advertise_address.clone(),
+            voter: req.voter,
+            is_active: true,
+        };
+
+        self.diff.insert(raft_id);
+        self.put_peer(peer.clone());
+        Ok(peer)
+    }
+
+    pub fn deactivate(&mut self, req: &DeactivateRequest) -> Result<Peer, String> {
         let peer = match self.peer_by_instance_id(&req.instance_id) {
             Some(peer) => peer,
             None => {
@@ -154,17 +170,17 @@ impl Topology {
         let peer = Peer {
             voter: false,
             is_active: false,
-            ..peer.clone()
+            ..peer
         };
 
         self.diff.insert(peer.raft_id);
         // no need to call put_peer, as the peer was already in the cluster
-        self.peers.insert(peer.raft_id, peer);
+        self.peers.insert(peer.raft_id, peer.clone());
 
-        Ok(())
+        Ok(peer)
     }
 
-    pub fn process(&mut self, req: &TopologyRequest) -> Result<(), String> {
+    pub fn process(&mut self, req: &TopologyRequest) -> Result<Peer, String> {
         match req {
             TopologyRequest::Join(join) => self.join(join),
             TopologyRequest::Deactivate(deactivate) => self.deactivate(deactivate),
@@ -197,7 +213,7 @@ impl Topology {
 // Create first peer in the cluster
 pub fn initial_peer(
     cluster_id: String,
-    instance_id: String,
+    instance_id: Option<String>,
     replicaset_id: Option<String>,
     advertise_address: String,
 ) -> Peer {
@@ -271,7 +287,7 @@ mod tests {
         ) => {
             &crate::traft::TopologyRequest::Join(crate::traft::JoinRequest {
                 cluster_id: "cluster1".into(),
-                instance_id: $instance_id.into(),
+                instance_id: Some($instance_id.into()),
                 replicaset_id: $replicaset_id.map(|v: &str| v.into()),
                 advertise_address: $advertise_address.into(),
                 voter: $voter,
