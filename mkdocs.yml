@@ -24,6 +24,9 @@ theme:
 
 extra:
     homepage: https://picodata.io/
+    analytics:
+     provider: google
+     property: G-6X8Z5N2CGR
 
 extra_css:
     - extra/style.css
