@@ -446,6 +446,14 @@ fn handle_read_states(
     }
 }
 
+fn handle_messages(messages: Vec<raft::Message>, pool: &ConnectionPool) {
+    for msg in messages {
+        if let Err(e) = pool.send(&msg) {
+            tlog!(Error, "{e}");
+        }
+    }
+}
+
 fn raft_main_loop(
     main_inbox: Mailbox<NormalRequest>,
     status: Rc<RefCell<Status>>,
@@ -631,15 +639,6 @@ fn raft_main_loop(
         }
 
         let mut ready: raft::Ready = raw_node.ready();
-
-        fn handle_messages(messages: Vec<raft::Message>, pool: &ConnectionPool) {
-            for msg in messages {
-                if let Err(e) = pool.send(&msg) {
-                    tlog!(Error, "{e}");
-                }
-            }
-        }
-
         let mut config_changed = false;
 
         start_transaction(|| -> Result<(), TransactionError> {
