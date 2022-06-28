@@ -10,13 +10,16 @@ use ::tarantool::fiber;
 use ::tarantool::tlua;
 use ::tarantool::transaction::start_transaction;
 use std::convert::TryFrom;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use clap::StructOpt as _;
 use protobuf::Message as _;
 
+use crate::traft::{EntryContextNormal, LogicalClock};
+
 mod app;
 mod args;
+mod cache;
 mod discovery;
 mod ipc;
 mod mailbox;
@@ -411,7 +414,6 @@ fn start_boot(args: &args::Run) {
     tlog!(Info, ">>>>> start_boot()");
 
     let peer = traft::topology::initial_peer(
-        args.cluster_id.clone(),
         args.instance_id(),
         args.replicaset_id.clone(),
         args.advertise_address(),
@@ -444,27 +446,42 @@ fn start_boot(args: &args::Run) {
             ..Default::default()
         };
 
-        let entry = {
+        let e1 = {
+            let ctx = traft::EntryContextNormal {
+                op: traft::Op::PersistPeer { peer },
+                lc: LogicalClock::new(raft_id, 0),
+            };
+            let e = traft::Entry {
+                entry_type: raft::EntryType::EntryNormal,
+                index: 1,
+                term: 1,
+                data: vec![],
+                context: Some(traft::EntryContext::Normal(ctx)),
+            };
+
+            raft::Entry::try_from(e).unwrap()
+        };
+
+        let e2 = {
             let conf_change = raft::ConfChange {
                 change_type: raft::ConfChangeType::AddNode,
                 node_id: raft_id,
                 ..Default::default()
             };
-            let ctx = traft::EntryContextConfChange { peers: vec![peer] };
             let e = traft::Entry {
                 entry_type: raft::EntryType::EntryConfChange,
-                index: 1,
+                index: 2,
                 term: 1,
                 data: conf_change.write_to_bytes().unwrap(),
-                context: Some(traft::EntryContext::ConfChange(ctx)),
+                context: None,
             };
 
             raft::Entry::try_from(e).unwrap()
         };
 
         traft::Storage::persist_conf_state(&cs).unwrap();
-        traft::Storage::persist_entries(&[entry]).unwrap();
-        traft::Storage::persist_commit(1).unwrap();
+        traft::Storage::persist_entries(&[e1, e2]).unwrap();
+        traft::Storage::persist_commit(2).unwrap();
         traft::Storage::persist_term(1).unwrap();
         traft::Storage::persist_id(raft_id).unwrap();
         traft::Storage::persist_cluster_id(&args.cluster_id).unwrap();
@@ -557,7 +574,7 @@ fn postjoin(args: &args::Run) {
         );
 
         node.tick(1); // apply configuration, if any
-        node.campaign(); // trigger election immediately
+        node.campaign().ok(); // trigger election immediately
         assert_eq!(node.status().raft_state, "Leader");
     }
 
@@ -589,42 +606,42 @@ fn postjoin(args: &args::Run) {
     box_cfg.replication = traft::Storage::box_replication(&peer.replicaset_id, None).unwrap();
     tarantool::set_cfg(&box_cfg);
 
-    loop {
-        let timeout = Duration::from_millis(220);
-        let me = traft::Storage::peer_by_raft_id(raft_id)
-            .unwrap()
-            .expect("peer not found");
+    // loop {
+    //     let timeout = Duration::from_millis(220);
+    //     let me = traft::Storage::peer_by_raft_id(raft_id)
+    //         .unwrap()
+    //         .expect("peer not found");
 
-        if me.voter && me.peer_address == args.advertise_address() {
-            // already ok
-            break;
-        }
+    //     if me.active && me.peer_address == args.advertise_address() {
+    //         // already ok
+    //         break;
+    //     }
 
-        tlog!(Warning, "initiating self-promotion of {me:?}");
-        let req = traft::JoinRequest {
-            cluster_id: args.cluster_id.clone(),
-            instance_id: Some(me.instance_id.clone()),
-            replicaset_id: None, // TODO
-            voter: true,
-            advertise_address: args.advertise_address(),
-        };
+    //     tlog!(Warning, "initiating self-promotion of {me:?}");
+    //     let req = traft::JoinRequest {
+    //         cluster_id: args.cluster_id.clone(),
+    //         instance_id: Some(me.instance_id.clone()),
+    //         replicaset_id: None, // TODO
+    //         voter: true,
+    //         advertise_address: args.advertise_address(),
+    //     };
 
-        let leader_id = node.status().leader_id.expect("leader_id deinitialized");
-        let leader = traft::Storage::peer_by_raft_id(leader_id).unwrap().unwrap();
+    //     let leader_id = node.status().leader_id.expect("leader_id deinitialized");
+    //     let leader = traft::Storage::peer_by_raft_id(leader_id).unwrap().unwrap();
 
-        let fn_name = stringify_cfunc!(traft::node::raft_join);
-        let now = Instant::now();
-        match tarantool::net_box_call(&leader.peer_address, fn_name, &req, timeout) {
-            Err(e) => {
-                tlog!(Error, "failed to promote myself: {e}");
-                fiber::sleep(timeout.saturating_sub(now.elapsed()));
-                continue;
-            }
-            Ok(traft::JoinResponse { .. }) => {
-                break;
-            }
-        };
-    }
+    //     let fn_name = stringify_cfunc!(traft::node::raft_join);
+    //     let now = Instant::now();
+    //     match tarantool::net_box_call(&leader.peer_address, fn_name, &req, timeout) {
+    //         Err(e) => {
+    //             tlog!(Error, "failed to promote myself: {e}");
+    //             fiber::sleep(timeout.saturating_sub(now.elapsed()));
+    //             continue;
+    //         }
+    //         Ok(traft::JoinResponse { .. }) => {
+    //             break;
+    //         }
+    //     };
+    // }
 
     node.mark_as_ready();
 }

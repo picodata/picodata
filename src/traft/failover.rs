@@ -7,7 +7,7 @@ use crate::{stringify_cfunc, tarantool, tlog};
 use crate::traft::node;
 use crate::traft::node::Error;
 use crate::traft::Storage;
-use crate::traft::{DeactivateRequest, DeactivateResponse};
+use crate::traft::{SetActiveRequest, SetActiveResponse};
 
 pub fn on_shutdown() {
     let voters = Storage::voters().expect("failed reading 'voters'");
@@ -19,11 +19,12 @@ pub fn on_shutdown() {
     }
 
     let peer = Storage::peer_by_raft_id(raft_id).unwrap().unwrap();
-    let req = DeactivateRequest {
+    let req = SetActiveRequest {
         instance_id: peer.instance_id,
         cluster_id: Storage::cluster_id()
             .unwrap()
             .expect("cluster_id must be present"),
+        active: false,
     };
 
     let fn_name = stringify_cfunc!(raft_deactivate);
@@ -42,7 +43,7 @@ pub fn on_shutdown() {
                 );
                 continue;
             }
-            Ok(DeactivateResponse { .. }) => {
+            Ok(SetActiveResponse { .. }) => {
                 break;
             }
         };
@@ -50,9 +51,7 @@ pub fn on_shutdown() {
 }
 
 #[proc(packed_args)]
-fn raft_deactivate(
-    req: DeactivateRequest,
-) -> Result<DeactivateResponse, Box<dyn std::error::Error>> {
+fn raft_deactivate(req: SetActiveRequest) -> Result<SetActiveResponse, Box<dyn std::error::Error>> {
     let node = node::global()?;
 
     let cluster_id = Storage::cluster_id()?.ok_or("cluster_id is not set yet")?;
@@ -64,7 +63,6 @@ fn raft_deactivate(
         }));
     }
 
-    node.change_topology(req)?;
-
-    Ok(DeactivateResponse {})
+    let peer = node.handle_topology_request(req.into())?;
+    Ok(SetActiveResponse { peer })
 }

@@ -22,6 +22,8 @@ pub use storage::Storage;
 pub use topology::Topology;
 
 pub type RaftId = u64;
+pub type InstanceId = String;
+pub type ReplicasetId = String;
 
 //////////////////////////////////////////////////////////////////////////////////////////
 /// Timestamps for raft entries.
@@ -57,11 +59,18 @@ pub enum Op {
     /// No operation.
     Nop,
     /// Print the message in tarantool log.
-    Info { msg: String },
+    Info {
+        msg: String,
+    },
     /// Evaluate the code on every instance in cluster.
-    EvalLua { code: String },
+    EvalLua {
+        code: String,
+    },
     ///
     ReturnOne(OpReturnOne),
+    PersistPeer {
+        peer: Peer,
+    },
 }
 
 impl Op {
@@ -77,6 +86,10 @@ impl Op {
                 Box::new(())
             }
             Self::ReturnOne(op) => Box::new(op.result()),
+            Self::PersistPeer { peer } => {
+                Storage::persist_peer(peer).unwrap();
+                Box::new(peer.clone())
+            }
         }
     }
 }
@@ -111,23 +124,27 @@ pub trait OpResult {
 /// Serializable struct representing a member of the raft group.
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 pub struct Peer {
+    /// Instances are identified by name.
+    pub instance_id: String,
+    pub instance_uuid: String,
+
     /// Used for identifying raft nodes.
     /// Must be unique in the raft group.
     pub raft_id: u64,
+
     /// Inbound address used for communication with the node.
     /// Not to be confused with listen address.
     pub peer_address: String,
-    /// Reflects the role of the node in the raft group.
-    /// Non-voters are also called learners in terms of raft.
-    pub voter: bool,
-    pub instance_id: String,
+
+    /// Name of a replicaset the instance belongs to.
     pub replicaset_id: String,
-    pub instance_uuid: String,
     pub replicaset_uuid: String,
-    /// `0` means it's not committed yet.
+
+    /// Index in the raft log. `0` means it's not committed yet.
     pub commit_index: u64,
+
     /// Is this instance active. Instances become inactive when they shut down.
-    pub is_active: bool,
+    pub active: bool,
 }
 impl AsTuple for Peer {}
 
@@ -369,7 +386,7 @@ pub trait ContextCoercion: Serialize + DeserializeOwned {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum TopologyRequest {
     Join(JoinRequest),
-    Deactivate(DeactivateRequest),
+    SetActive(SetActiveRequest),
 }
 
 impl From<JoinRequest> for TopologyRequest {
@@ -378,9 +395,9 @@ impl From<JoinRequest> for TopologyRequest {
     }
 }
 
-impl From<DeactivateRequest> for TopologyRequest {
-    fn from(d: DeactivateRequest) -> Self {
-        Self::Deactivate(d)
+impl From<SetActiveRequest> for TopologyRequest {
+    fn from(a: SetActiveRequest) -> Self {
+        Self::SetActive(a)
     }
 }
 
@@ -412,17 +429,20 @@ impl AsTuple for JoinResponse {}
 ///////////////////////////////////////////////////////////////////////////////
 /// Request to deactivate the instance.
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct DeactivateRequest {
-    pub instance_id: String,
+pub struct SetActiveRequest {
     pub cluster_id: String,
+    pub instance_id: String,
+    pub active: bool,
 }
-impl AsTuple for DeactivateRequest {}
+impl AsTuple for SetActiveRequest {}
 
 ///////////////////////////////////////////////////////////////////////////////
 /// Response to a [`DeactivateRequest`]
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct DeactivateResponse {}
-impl AsTuple for DeactivateResponse {}
+pub struct SetActiveResponse {
+    pub peer: Peer,
+}
+impl AsTuple for SetActiveResponse {}
 
 ///////////////////////////////////////////////////////////////////////////////
 lazy_static::lazy_static! {
