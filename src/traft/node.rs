@@ -426,6 +426,26 @@ fn handle_committed_conf_change(
     Storage::persist_conf_state(&conf_state).unwrap();
 }
 
+fn handle_read_states(
+    read_states: Vec<raft::ReadState>,
+    notifications: &mut HashMap<LogicalClock, Notify>,
+) {
+    for rs in read_states {
+        let ctx = match traft::EntryContextNormal::read_from_bytes(&rs.request_ctx) {
+            Ok(Some(v)) => v,
+            Ok(None) => continue,
+            Err(_) => {
+                tlog!(Error, "abnormal entry, read_state = {rs:?}");
+                continue;
+            }
+        };
+
+        if let Some(notify) = notifications.remove(&ctx.lc) {
+            notify.notify_ok(rs.index);
+        }
+    }
+}
+
 fn raft_main_loop(
     main_inbox: Mailbox<NormalRequest>,
     status: Rc<RefCell<Status>>,
@@ -611,21 +631,6 @@ fn raft_main_loop(
         }
 
         let mut ready: raft::Ready = raw_node.ready();
-
-        fn handle_read_states(
-            read_states: Vec<raft::ReadState>,
-            notifications: &mut HashMap<LogicalClock, Notify>,
-        ) {
-            for rs in read_states {
-                if let Some(ctx) = traft::EntryContextNormal::read_from_bytes(&rs.request_ctx)
-                    .expect("Abnormal entry in message context")
-                {
-                    if let Some(notify) = notifications.remove(&ctx.lc) {
-                        notify.notify_ok(rs.index);
-                    }
-                }
-            }
-        }
 
         fn handle_messages(messages: Vec<raft::Message>, pool: &ConnectionPool) {
             for msg in messages {
