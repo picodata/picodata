@@ -30,7 +30,6 @@ use crate::traft::Peer;
 use crate::traft::RaftId;
 use ::tarantool::util::IntoClones as _;
 use protobuf::Message as _;
-use protobuf::ProtobufEnum as _;
 use std::iter::FromIterator as _;
 
 use crate::mailbox::Mailbox;
@@ -157,7 +156,7 @@ pub struct Node {
     // join_inbox: TopologyMailbox,
     status: Rc<RefCell<Status>>,
     wake_up_status_observers: Rc<fiber::Cond>,
-    wake_up_join_loop: Rc<fiber::Cond>,
+    _wake_up_conf_change_loop: Rc<fiber::Cond>,
 }
 
 /// A request to the raft main loop.
@@ -229,7 +228,7 @@ impl Node {
 
     pub fn new(cfg: &raft::Config) -> Result<Self, RaftError> {
         let wake_up_status_observers = Rc::new(fiber::Cond::new());
-        let wake_up_join_loop = Rc::new(fiber::Cond::new());
+        let wake_up_conf_change_loop = Rc::new(fiber::Cond::new());
         let main_inbox = Mailbox::<NormalRequest>::new();
         let raw_node = RawNode::new(cfg, Storage, &tlog::root())?;
         let status = Rc::new(RefCell::new(Status {
@@ -242,20 +241,29 @@ impl Node {
         let main_loop_fn = {
             let status = status.clone();
             let wake_up_status_observers = wake_up_status_observers.clone();
+            let wake_up_conf_change_loop = wake_up_conf_change_loop.clone();
             let main_inbox = main_inbox.clone();
-            move || raft_main_loop(main_inbox, status, wake_up_status_observers, raw_node)
+            move || {
+                raft_main_loop(
+                    main_inbox,
+                    status,
+                    wake_up_status_observers,
+                    wake_up_conf_change_loop,
+                    raw_node,
+                )
+            }
         };
 
         let conf_change_loop_fn = {
             let status = status.clone();
             let wake_up_status_observers = wake_up_status_observers.clone();
-            let wake_up_join_loop = wake_up_join_loop.clone();
+            let wake_up_conf_change_loop = wake_up_conf_change_loop.clone();
             let main_inbox = main_inbox.clone();
             move || {
                 raft_conf_change_loop(
                     status,
                     wake_up_status_observers,
-                    wake_up_join_loop,
+                    wake_up_conf_change_loop,
                     main_inbox,
                 )
             }
@@ -266,7 +274,7 @@ impl Node {
             // join_inbox,
             status,
             wake_up_status_observers,
-            wake_up_join_loop,
+            _wake_up_conf_change_loop: wake_up_conf_change_loop,
             _main_loop: fiber::Builder::new()
                 .name("raft_main_loop")
                 .proc(main_loop_fn)
@@ -349,26 +357,24 @@ impl Node {
         })
     }
 
-    // pub fn change_topology(&self, req: impl Into<TopologyRequest>) -> Result<traft::RaftId, Error> {
-    //     let (rx, tx) = Notify::new().into_clones();
-
-    //     self.join_inbox.send((req.into(), tx));
-    //     rx.recv()
-    // }
-
     pub fn handle_topology_request(&self, req: TopologyRequest) -> Result<traft::Peer, Error> {
         let (rx, tx) = Notify::new().into_clones();
         let req = NormalRequest::HandleTopologyRequest { req, notify: tx };
 
         self.main_inbox.send(req);
-        let peer = rx.recv::<Peer>()?;
-        self.wake_up_join_loop.broadcast();
-        Ok(peer)
+        rx.recv::<Peer>()
     }
 }
 
+#[derive(Debug)]
 struct JointStateLatch {
+    /// Index of the latest ConfChange entry proposed.
+    /// Helps detecting when the entry is overridden
+    /// due to a re-election.
     index: u64,
+
+    /// Make a notification when the latch is unlocked.
+    /// Notification is a `Result<Box<()>>`.
     notify: Notify,
 }
 
@@ -378,7 +384,7 @@ fn handle_committed_entries(
     raw_node: &mut RawNode,
     pool: &mut ConnectionPool,
     joint_state_latch: &mut Option<JointStateLatch>,
-    config_changed: &mut bool,
+    topology_changed: &mut bool,
 ) {
     for entry in &entries {
         let entry = match traft::Entry::try_from(entry) {
@@ -393,16 +399,15 @@ fn handle_committed_entries(
         };
 
         match entry.entry_type {
-            raft::EntryType::EntryNormal => {
-                handle_committed_normal_entry(entry, notifications, pool, joint_state_latch)
-            }
+            raft::EntryType::EntryNormal => handle_committed_normal_entry(
+                entry,
+                notifications,
+                pool,
+                joint_state_latch,
+                topology_changed,
+            ),
             raft::EntryType::EntryConfChange | raft::EntryType::EntryConfChangeV2 => {
-                handle_committed_conf_change(
-                    entry,
-                    raw_node,
-                    joint_state_latch,
-                    config_changed,
-                )
+                handle_committed_conf_change(entry, raw_node, joint_state_latch)
             }
         }
     }
@@ -423,6 +428,7 @@ fn handle_committed_normal_entry(
     notifications: &mut HashMap<LogicalClock, Notify>,
     pool: &mut ConnectionPool,
     joint_state_latch: &mut Option<JointStateLatch>,
+    topology_changed: &mut bool,
 ) {
     assert_eq!(entry.entry_type, raft::EntryType::EntryNormal);
     let result = entry.op().unwrap_or(&traft::Op::Nop).on_commit();
@@ -435,7 +441,7 @@ fn handle_committed_normal_entry(
 
     if let Some(traft::Op::PersistPeer { peer }) = entry.op() {
         pool.connect(peer.raft_id, peer.peer_address.clone());
-        // TODO Wake up conf_change fiber
+        *topology_changed = true;
     }
 
     if let Some(latch) = joint_state_latch {
@@ -455,34 +461,42 @@ fn handle_committed_conf_change(
     entry: traft::Entry,
     raw_node: &mut RawNode,
     joint_state_latch: &mut Option<JointStateLatch>,
-    config_changed: &mut bool,
 ) {
-    // Beware: this tiny difference in type names
-    // (`V2` or not `V2`) makes a significant
-    // difference in `entry.data` binary layout
-    // and in joint state transitions.
+    let mut latch_unlock = || {
+        if let Some(latch) = joint_state_latch {
+            latch.notify.notify_ok(());
+            *joint_state_latch = None;
+        }
+    };
+
+    // Beware: a tiny difference in type names (`V2` or not `V2`)
+    // makes a significant difference in `entry.data` binary layout and
+    // in joint state transitions.
+
+    // `ConfChangeTransition::Auto` implies that `ConfChangeV2` may be
+    // applied in an instant without entering the joint state.
+
     let conf_state = match entry.entry_type {
         raft::EntryType::EntryConfChange => {
             let mut cc = raft::ConfChange::default();
             cc.merge_from_bytes(&entry.data).unwrap();
 
-            *config_changed = true;
+            latch_unlock();
+
             raw_node.apply_conf_change(&cc).unwrap()
         }
         raft::EntryType::EntryConfChangeV2 => {
             let mut cc = raft::ConfChangeV2::default();
             cc.merge_from_bytes(&entry.data).unwrap();
 
-            // Unlock the latch only when leaving the joint state
-            if cc.changes.is_empty() {
-                if let Some(latch) = joint_state_latch {
-                    latch.notify.notify_ok(entry.index);
-                    *joint_state_latch = None;
-                    *config_changed = true;
-                }
+            // Unlock the latch when either of conditions is met:
+            // - conf_change will leave the joint state;
+            // - or it will be applied without even entering one.
+            if cc.leave_joint() || cc.enter_joint().is_none() {
+                latch_unlock();
             }
 
-            // ConfChangeTransition::Implicit implies that at this
+            // ConfChangeTransition::Auto implies that at this
             // moment raft-rs will implicitly propose another empty
             // conf change that represents leaving the joint state.
             raw_node.apply_conf_change(&cc).unwrap()
@@ -525,6 +539,7 @@ fn raft_main_loop(
     main_inbox: Mailbox<NormalRequest>,
     status: Rc<RefCell<Status>>,
     wake_up_status_observers: Rc<fiber::Cond>,
+    wake_up_conf_change_loop: Rc<fiber::Cond>,
     mut raw_node: RawNode,
 ) {
     let mut next_tick = Instant::now() + Node::TICK;
@@ -704,7 +719,7 @@ fn raft_main_loop(
 
                     // let ctx = traft::EntryContextConfChange { peers: new_peers }.to_bytes();
 
-                    // let prev_index = raw_node.raft.raft_log.last_index();
+                    let prev_index = raw_node.raft.raft_log.last_index();
                     if let Err(e) = raw_node.propose_conf_change(vec![], conf_change) {
                         notify.notify_err(e);
                     } else {
@@ -714,6 +729,7 @@ fn raft_main_loop(
                         // to the raft network instead of appending it to the
                         // raft log.
                         let last_index = raw_node.raft.raft_log.last_index();
+                        assert_eq!(last_index, prev_index + 1);
 
                         joint_state_latch = Some(JointStateLatch {
                             index: last_index,
@@ -765,7 +781,7 @@ fn raft_main_loop(
         }
 
         let mut ready: raft::Ready = raw_node.ready();
-        let mut config_changed = false;
+        let mut topology_changed = false;
 
         start_transaction(|| -> Result<(), TransactionError> {
             if !ready.messages().is_empty() {
@@ -787,7 +803,7 @@ fn raft_main_loop(
                 &mut raw_node,
                 &mut pool,
                 &mut joint_state_latch,
-                &mut config_changed,
+                &mut topology_changed,
             );
 
             if !ready.entries().is_empty() {
@@ -846,7 +862,7 @@ fn raft_main_loop(
                 &mut raw_node,
                 &mut pool,
                 &mut joint_state_latch,
-                &mut config_changed,
+                &mut topology_changed,
             );
 
             // Advance the apply index.
@@ -855,7 +871,8 @@ fn raft_main_loop(
         })
         .unwrap();
 
-        if config_changed {
+        if topology_changed {
+            wake_up_conf_change_loop.broadcast();
             if let Some(peer) = traft::Storage::peer_by_raft_id(raw_node.raft.id).unwrap() {
                 let mut box_cfg = crate::tarantool::cfg().unwrap();
                 assert_eq!(box_cfg.replication_connect_quorum, 0);
@@ -870,7 +887,7 @@ fn raft_main_loop(
 fn raft_conf_change_loop(
     status: Rc<RefCell<Status>>,
     wake_up_status_observers: Rc<fiber::Cond>,
-    wake_up_join_loop: Rc<fiber::Cond>,
+    wake_up_conf_change_loop: Rc<fiber::Cond>,
     main_inbox: Mailbox<NormalRequest>,
 ) {
     loop {
@@ -897,18 +914,19 @@ fn raft_conf_change_loop(
             }
 
             changes.push(raft::ConfChangeSingle {
-                change_type: raft::ConfChangeType::AddLearnerNode,
+                change_type: raft::ConfChangeType::AddNode,
                 node_id,
                 ..Default::default()
             });
         }
 
         if changes.is_empty() {
-            wake_up_join_loop.wait();
+            wake_up_conf_change_loop.wait();
             continue;
         }
 
         let conf_change = raft::ConfChangeV2 {
+            transition: raft::ConfChangeTransition::Auto,
             changes: changes.into(),
             ..Default::default()
         };
@@ -925,7 +943,7 @@ fn raft_conf_change_loop(
         // It also guarantees that the notification will arrive only
         // after the node leaves the joint state.
         match rx.recv() {
-            Ok(()) => tlog!(Debug, "conf_change processed"),
+            Ok(()) => tlog!(Info, "conf_change processed"),
             Err(e) => tlog!(Warning, "conf_change failed: {e}"),
         }
     }

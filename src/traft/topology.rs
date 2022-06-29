@@ -4,12 +4,7 @@ use std::collections::BTreeSet;
 use crate::traft::instance_uuid;
 use crate::traft::replicaset_uuid;
 use crate::traft::Peer;
-use crate::traft::{
-    InstanceId,
-    // type aliases
-    RaftId,
-    ReplicasetId,
-};
+use crate::traft::{InstanceId, RaftId, ReplicasetId};
 
 use raft::INVALID_INDEX;
 
@@ -108,6 +103,9 @@ impl Topology {
             replicaset_id,
             replicaset_uuid,
             commit_index: INVALID_INDEX,
+            // Mark instance already active when it joins.
+            // It prevents a disruption in case of the
+            // instance_id collision.
             is_active: true,
         };
 
