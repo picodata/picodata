@@ -332,10 +332,19 @@ fn handle_committed_entries(
             }
         };
 
-        if entry.entry_type == raft::EntryType::EntryNormal {
-            handle_committed_normal_entry(entry, notifications, joint_state_latch)
-        } else {
-            handle_committed_conf_change(entry, raw_node, pool, joint_state_latch, config_changed)
+        match entry.entry_type {
+            raft::EntryType::EntryNormal => {
+                handle_committed_normal_entry(entry, notifications, joint_state_latch)
+            }
+            raft::EntryType::EntryConfChange | raft::EntryType::EntryConfChangeV2 => {
+                handle_committed_conf_change(
+                    entry,
+                    raw_node,
+                    pool,
+                    joint_state_latch,
+                    config_changed,
+                )
+            }
         }
     }
 
