@@ -406,33 +406,33 @@ fn handle_committed_conf_change(
     // (`V2` or not `V2`) makes a significant
     // difference in `entry.data` binary layout
     // and in joint state transitions.
-    let conf_state;
+    let conf_state = match entry.entry_type {
+        raft::EntryType::EntryConfChange => {
+            let mut cc = raft::ConfChange::default();
+            cc.merge_from_bytes(&entry.data).unwrap();
 
-    if entry.entry_type == raft::EntryType::EntryConfChange {
-        let mut cc = raft::ConfChange::default();
-        cc.merge_from_bytes(&entry.data).unwrap();
-
-        *config_changed = true;
-        conf_state = raw_node.apply_conf_change(&cc).unwrap();
-    } else if entry.entry_type == raft::EntryType::EntryConfChangeV2 {
-        let mut cc = raft::ConfChangeV2::default();
-        cc.merge_from_bytes(&entry.data).unwrap();
-
-        // Unlock the latch only when leaving the joint state
-        if cc.changes.is_empty() {
-            if let Some(latch) = joint_state_latch {
-                latch.notify.notify_ok(entry.index);
-                *joint_state_latch = None;
-                *config_changed = true;
-            }
+            *config_changed = true;
+            raw_node.apply_conf_change(&cc).unwrap()
         }
+        raft::EntryType::EntryConfChangeV2 => {
+            let mut cc = raft::ConfChangeV2::default();
+            cc.merge_from_bytes(&entry.data).unwrap();
 
-        // ConfChangeTransition::Implicit implies that at this
-        // moment raft-rs will implicitly propose another empty
-        // conf change that represents leaving the joint state.
-        conf_state = raw_node.apply_conf_change(&cc).unwrap()
-    } else {
-        unreachable!();
+            // Unlock the latch only when leaving the joint state
+            if cc.changes.is_empty() {
+                if let Some(latch) = joint_state_latch {
+                    latch.notify.notify_ok(entry.index);
+                    *joint_state_latch = None;
+                    *config_changed = true;
+                }
+            }
+
+            // ConfChangeTransition::Implicit implies that at this
+            // moment raft-rs will implicitly propose another empty
+            // conf change that represents leaving the joint state.
+            raw_node.apply_conf_change(&cc).unwrap()
+        }
+        _ => unreachable!(),
     };
 
     Storage::persist_conf_state(&conf_state).unwrap();
