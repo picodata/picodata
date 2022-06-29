@@ -13,6 +13,7 @@ use thiserror::Error;
 
 use crate::tlog;
 use crate::traft;
+use crate::traft::RaftId;
 
 pub struct Storage;
 
@@ -334,11 +335,11 @@ impl Storage {
         Ok(())
     }
 
-    pub fn voters() -> Result<Vec<u64>, StorageError> {
+    pub fn voters() -> Result<Vec<RaftId>, StorageError> {
         Ok(Storage::raft_state("voters")?.unwrap_or_default())
     }
 
-    pub fn learners() -> Result<Vec<u64>, StorageError> {
+    pub fn learners() -> Result<Vec<RaftId>, StorageError> {
         Ok(Storage::raft_state("learners")?.unwrap_or_default())
     }
 
