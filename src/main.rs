@@ -351,6 +351,14 @@ fn main_run(args: args::Run) -> ! {
     }
 }
 
+fn init_common(args: &args::Run, cfg: &tarantool::Cfg) {
+    std::fs::create_dir_all(&args.data_dir).unwrap();
+    tarantool::set_cfg(cfg);
+
+    traft::Storage::init_schema();
+    init_handlers();
+}
+
 fn start_discover(args: &args::Run, to_supervisor: ipc::Sender<IpcMessage>) {
     tlog!(Info, ">>>>> start_discover()");
 
@@ -368,12 +376,8 @@ fn start_discover(args: &args::Run, to_supervisor: ipc::Sender<IpcMessage>) {
         ..Default::default()
     };
 
-    std::fs::create_dir_all(&args.data_dir).unwrap();
-    tarantool::set_cfg(&cfg);
-
-    traft::Storage::init_schema();
+    init_common(args, &cfg);
     discovery::init_global(&args.peers);
-    init_handlers();
 
     cfg.listen = Some(args.listen.clone());
     tarantool::set_cfg(&cfg);
@@ -433,11 +437,7 @@ fn start_boot(args: &args::Run) {
         ..Default::default()
     };
 
-    std::fs::create_dir_all(&args.data_dir).unwrap();
-    tarantool::set_cfg(&cfg);
-
-    traft::Storage::init_schema();
-    init_handlers();
+    init_common(args, &cfg);
 
     start_transaction(|| -> Result<(), Error> {
         let cs = raft::ConfState {
@@ -521,11 +521,7 @@ fn start_join(args: &args::Run, leader_address: String) {
         ..Default::default()
     };
 
-    std::fs::create_dir_all(&args.data_dir).unwrap();
-    tarantool::set_cfg(&cfg);
-
-    traft::Storage::init_schema();
-    init_handlers();
+    init_common(args, &cfg);
 
     let raft_id = resp.peer.raft_id;
     start_transaction(|| -> Result<(), Error> {
