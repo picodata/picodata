@@ -651,8 +651,7 @@ fn raft_main_loop(
                         // is appended to the raft log immediately
                         // instead of sending `MsgPropose` over the
                         // network.
-                        let status = raw_node.status();
-                        if status.ss.raft_state != RaftStateRole::Leader {
+                        if raw_node.raft.state != RaftStateRole::Leader {
                             break Some("not a leader");
                         }
 
