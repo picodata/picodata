@@ -16,7 +16,6 @@ use std::convert::TryFrom;
 use uuid::Uuid;
 
 use protobuf::Message as _;
-use protobuf::ProtobufEnum as _;
 
 pub use network::ConnectionPool;
 pub use storage::Storage;
@@ -142,6 +141,9 @@ impl Peer {}
 ///
 #[derive(Clone, Serialize, Deserialize, PartialEq)]
 pub struct Entry {
+    /// See correspondig definition in `raft-rs`:
+    /// - <https://github.com/tikv/raft-rs/blob/v0.6.0/proto/proto/eraftpb.proto#L7>
+    ///
     /// ```
     /// enum EntryType {
     ///     EntryNormal = 0;
@@ -149,7 +151,8 @@ pub struct Entry {
     ///     EntryConfChangeV2 = 2;
     /// }
     /// ```
-    pub entry_type: i32,
+    #[serde(with = "entry_type_as_i32")]
+    pub entry_type: raft::EntryType,
     pub index: u64,
     pub term: u64,
 
@@ -161,13 +164,34 @@ pub struct Entry {
     pub context: Option<EntryContext>,
 }
 
+mod entry_type_as_i32 {
+    use super::error::CoercionError::UnknownEntryType;
+    use ::raft::prelude as raft;
+    use protobuf::ProtobufEnum as _;
+    use serde::{self, Deserialize, Deserializer, Serializer};
+
+    use serde::de::Error as _;
+
+    pub fn serialize<S>(t: &raft::EntryType, ser: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        ser.serialize_i32(t.value())
+    }
+
+    pub fn deserialize<'de, D>(de: D) -> Result<raft::EntryType, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let t = i32::deserialize(de)?;
+        raft::EntryType::from_i32(t).ok_or_else(|| D::Error::custom(UnknownEntryType(t)))
+    }
+}
+
 impl std::fmt::Debug for Entry {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         f.debug_struct("Entry")
-            .field(
-                "entry_type",
-                &raft::EntryType::from_i32(self.entry_type).ok_or(self.entry_type),
-            )
+            .field("entry_type", &self.entry_type)
             .field("index", &self.index)
             .field("term", &self.term)
             .field("data", &self.data)
@@ -258,7 +282,7 @@ impl TryFrom<&raft::Entry> for self::Entry {
 
     fn try_from(e: &raft::Entry) -> Result<Self, Self::Error> {
         let ret = Self {
-            entry_type: e.entry_type.value(),
+            entry_type: e.entry_type,
             index: e.index,
             term: e.term,
             data: Vec::from(e.get_data()),
@@ -274,21 +298,16 @@ impl TryFrom<&raft::Entry> for self::Entry {
     }
 }
 
-impl TryFrom<self::Entry> for raft::Entry {
-    type Error = error::CoercionError;
-
-    fn try_from(row: self::Entry) -> Result<raft::Entry, Self::Error> {
-        let ret = raft::Entry {
-            entry_type: raft::EntryType::from_i32(row.entry_type)
-                .ok_or(Self::Error::UnknownEntryType(row.entry_type))?,
+impl From<self::Entry> for raft::Entry {
+    fn from(row: self::Entry) -> raft::Entry {
+        raft::Entry {
+            entry_type: row.entry_type,
             index: row.index,
             term: row.term,
             data: row.data.into(),
             context: EntryContext::write_to_bytes(row.context.as_ref()).into(),
             ..Default::default()
-        };
-
-        Ok(ret)
+        }
     }
 }
 

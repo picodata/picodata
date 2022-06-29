@@ -306,8 +306,7 @@ impl Storage {
             if row.index >= high {
                 break;
             }
-            let entry = raft::Entry::try_from(row)?;
-            ret.push(entry);
+            ret.push(row.into());
         }
 
         Ok(ret)
@@ -467,7 +466,7 @@ inventory::submit!(crate::InnerTest {
         raft_log.put(&(1337, 99, 1, "", ())).unwrap();
         assert_err!(
             Storage.entries(1, 100, u64::MAX),
-            "unknown error unknown entry type (1337)"
+            "unknown error Failed to decode tuple: unknown entry type (1337)"
         );
 
         raft_log.put(&(0, 99, 1, "", false)).unwrap();

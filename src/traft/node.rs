@@ -332,7 +332,7 @@ fn handle_committed_entries(
             }
         };
 
-        if entry.entry_type == raft::EntryType::EntryNormal as i32 {
+        if entry.entry_type == raft::EntryType::EntryNormal {
             handle_committed_normal_entry(entry, notifications, joint_state_latch)
         } else {
             handle_committed_conf_change(entry, raw_node, pool, joint_state_latch, config_changed)
@@ -355,6 +355,7 @@ fn handle_committed_normal_entry(
     notifications: &mut HashMap<LogicalClock, Notify>,
     joint_state_latch: &mut Option<JointStateLatch>,
 ) {
+    assert_eq!(entry.entry_type, raft::EntryType::EntryNormal);
     let result = entry.op().unwrap_or(&traft::Op::Nop).on_commit();
 
     if let Some(lc) = entry.lc() {
@@ -398,13 +399,13 @@ fn handle_committed_conf_change(
     // and in joint state transitions.
     let conf_state;
 
-    if entry.entry_type == raft::EntryType::EntryConfChange as i32 {
+    if entry.entry_type == raft::EntryType::EntryConfChange {
         let mut cc = raft::ConfChange::default();
         cc.merge_from_bytes(&entry.data).unwrap();
 
         *config_changed = true;
         conf_state = raw_node.apply_conf_change(&cc).unwrap();
-    } else {
+    } else if entry.entry_type == raft::EntryType::EntryConfChangeV2 {
         let mut cc = raft::ConfChangeV2::default();
         cc.merge_from_bytes(&entry.data).unwrap();
 
@@ -421,6 +422,8 @@ fn handle_committed_conf_change(
         // moment raft-rs will implicitly propose another empty
         // conf change that represents leaving the joint state.
         conf_state = raw_node.apply_conf_change(&cc).unwrap()
+    } else {
+        unreachable!();
     };
 
     Storage::persist_conf_state(&conf_state).unwrap();

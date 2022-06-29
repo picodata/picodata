@@ -14,7 +14,6 @@ use std::time::{Duration, Instant};
 
 use clap::StructOpt as _;
 use protobuf::Message as _;
-use protobuf::ProtobufEnum as _;
 
 mod app;
 mod args;
@@ -453,7 +452,7 @@ fn start_boot(args: &args::Run) {
             };
             let ctx = traft::EntryContextConfChange { peers: vec![peer] };
             let e = traft::Entry {
-                entry_type: raft::EntryType::EntryConfChange.value(),
+                entry_type: raft::EntryType::EntryConfChange,
                 index: 1,
                 term: 1,
                 data: conf_change.write_to_bytes().unwrap(),
