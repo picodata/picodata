@@ -83,13 +83,14 @@ impl Storage {
                 }
             })
 
-            box.space.raft_group:create_index('pk', {
-                if_not_exists = true,
-                parts = {{'raft_id'}},
-            })
             box.space.raft_group:create_index('instance_id', {
                 if_not_exists = true,
                 parts = {{'instance_id'}},
+                unique = true,
+            })
+            box.space.raft_group:create_index('raft_id', {
+                if_not_exists = true,
+                parts = {{'raft_id'}},
                 unique = true,
             })
             box.space.raft_group:create_index('replicaset_id', {
@@ -130,7 +131,12 @@ impl Storage {
             unreachable!("peer_by_raft_id called with invalid id ({})", INVALID_ID);
         }
 
+        const IDX: &str = "raft_id";
+
         let tuple = Storage::space(RAFT_GROUP)?
+            .index(IDX)
+            .ok_or_else(|| Error::NoSuchIndex(RAFT_GROUP.into(), IDX.into()))
+            .map_err(box_err!())?
             .get(&(raft_id,))
             .map_err(box_err!())?;
 
@@ -276,13 +282,6 @@ impl Storage {
             .map_err(box_err!())?;
 
         Ok(())
-    }
-
-    pub fn persist_peer_by_instance_id(peer: &traft::Peer) -> Result<(), StorageError> {
-        if let Some(peer) = Self::peer_by_instance_id(&peer.instance_id)? {
-            Self::delete_peer(peer.raft_id)?;
-        }
-        Self::persist_peer(peer)
     }
 
     pub fn delete_peer(raft_id: u64) -> Result<(), StorageError> {
@@ -563,21 +562,13 @@ inventory::submit!(crate::InnerTest {
 
         for peer in vec![
             // r1
-            (
-                1u64, "addr:1", true, "i1", "r1", "i1-uuid", "r1-uuid", 1u64, true,
-            ),
-            (2, "addr:2", true, "i2", "r1", "i2-uuid", "r1-uuid", 2, true),
+            ("i1", "i1-uuid", 1u64, "addr:1", "r1", "r1-uuid", 1u64, true),
+            ("i2", "i2-uuid", 2u64, "addr:2", "r1", "r1-uuid", 2, true),
             // r2
-            (
-                3, "addr:3", true, "i3", "r2", "i3-uuid", "r2-uuid", 10, true,
-            ),
-            (
-                4, "addr:4", true, "i4", "r2", "i4-uuid", "r2-uuid", 10, true,
-            ),
+            ("i3", "i3-uuid", 3u64, "addr:3", "r2", "r2-uuid", 10, true),
+            ("i4", "i4-uuid", 4u64, "addr:4", "r2", "r2-uuid", 10, true),
             // r3
-            (
-                5, "addr:5", true, "i5", "r3", "i5-uuid", "r3-uuid", 10, true,
-            ),
+            ("i5", "i5-uuid", 5u64, "addr:5", "r3", "r3-uuid", 10, true),
         ] {
             raft_group.put(&peer).unwrap();
         }
@@ -590,20 +581,20 @@ inventory::submit!(crate::InnerTest {
 
         assert_err!(
             Storage::persist_peer(&traft::Peer {
-                raft_id: 99,
-                instance_id: "i1".into(),
+                raft_id: 1,
+                instance_id: "i99".into(),
                 ..Default::default()
             }),
             concat!(
                 "unknown error",
                 " Tarantool error:",
                 " TupleFound: Duplicate key exists",
-                " in unique index \"instance_id\"",
+                " in unique index \"raft_id\"",
                 " in space \"raft_group\"",
                 " with old tuple",
-                " - [1, \"addr:1\", true, \"i1\", \"r1\", \"i1-uuid\", \"r1-uuid\", 1, true]",
+                " - [\"i1\", \"i1-uuid\", 1, \"addr:1\", \"r1\", \"r1-uuid\", 1, true]",
                 " and new tuple",
-                " - [99, \"\", false, \"i1\", \"\", \"\", \"\", 0, false]"
+                " - [\"i99\", \"\", 1, \"\", \"\", \"\", 0, false]"
             )
         );
 
@@ -666,13 +657,13 @@ inventory::submit!(crate::InnerTest {
             assert_eq!(box_replication("r3", None), vec!["addr:5"]);
         }
 
-        raft_group.index("instance_id").unwrap().drop().unwrap();
+        raft_group.index("raft_id").unwrap().drop().unwrap();
 
         assert_err!(
-            Storage::peer_by_instance_id("i1"),
+            Storage::peer_by_raft_id(1),
             concat!(
                 "unknown error",
-                " no such index \"instance_id\"",
+                " no such index \"raft_id\"",
                 " in space \"raft_group\""
             )
         );
@@ -691,12 +682,11 @@ inventory::submit!(crate::InnerTest {
         raft_group.primary_key().drop().unwrap();
 
         assert_err!(
-            Storage::peer_by_raft_id(1),
+            Storage::peer_by_instance_id("i1"),
             concat!(
                 "unknown error",
-                " Tarantool error:",
-                " NoSuchIndexID:",
-                " No index #0 is defined in space 'raft_group'"
+                " no such index \"instance_id\"",
+                " in space \"raft_group\""
             )
         );
 
