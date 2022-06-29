@@ -87,7 +87,7 @@ impl Topology {
         if let Some(id) = instance_id.as_ref() {
             let existing_peer: Option<&Peer> = self.instance_map.get(id);
 
-            if matches!(existing_peer, Some(peer) if peer.active) {
+            if matches!(existing_peer, Some(peer) if peer.is_active) {
                 let e = format!("{} is already joined", id);
                 return Err(e);
             }
@@ -108,7 +108,7 @@ impl Topology {
             replicaset_id,
             replicaset_uuid,
             commit_index: INVALID_INDEX,
-            active: true,
+            is_active: true,
         };
 
         self.put_peer(peer.clone());
@@ -136,7 +136,7 @@ impl Topology {
             .get_mut(&instance_id)
             .ok_or_else(|| format!("unknown instance {}", instance_id))?;
 
-        peer.active = active;
+        peer.is_active = active;
         Ok(peer.clone())
     }
 }

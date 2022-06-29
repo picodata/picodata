@@ -24,7 +24,7 @@ pub fn on_shutdown() {
         cluster_id: Storage::cluster_id()
             .unwrap()
             .expect("cluster_id must be present"),
-        active: false,
+        is_active: false,
     };
 
     let fn_name = stringify_cfunc!(raft_deactivate);

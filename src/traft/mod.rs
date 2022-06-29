@@ -144,7 +144,7 @@ pub struct Peer {
     pub commit_index: u64,
 
     /// Is this instance active. Instances become inactive when they shut down.
-    pub active: bool,
+    pub is_active: bool,
 }
 impl AsTuple for Peer {}
 
@@ -432,7 +432,7 @@ impl AsTuple for JoinResponse {}
 pub struct SetActiveRequest {
     pub cluster_id: String,
     pub instance_id: String,
-    pub active: bool,
+    pub is_active: bool,
 }
 impl AsTuple for SetActiveRequest {}
 
