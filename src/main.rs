@@ -10,7 +10,7 @@ use ::tarantool::fiber;
 use ::tarantool::tlua;
 use ::tarantool::transaction::start_transaction;
 use std::convert::TryFrom;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use clap::StructOpt as _;
 use protobuf::Message as _;
@@ -604,42 +604,35 @@ fn postjoin(args: &args::Run) {
     box_cfg.replication = traft::Storage::box_replication(&peer.replicaset_id, None).unwrap();
     tarantool::set_cfg(&box_cfg);
 
-    // loop {
-    //     let timeout = Duration::from_millis(220);
-    //     let me = traft::Storage::peer_by_raft_id(raft_id)
-    //         .unwrap()
-    //         .expect("peer not found");
+    loop {
+        let instance_id = traft::Storage::peer_by_raft_id(raft_id)
+            .unwrap()
+            .expect("peer must be persisted at the time of postjoin")
+            .instance_id;
+        let cluster_id = traft::Storage::cluster_id()
+            .unwrap()
+            .expect("cluster_id must be persisted at the time of postjoin");
 
-    //     if me.active && me.peer_address == args.advertise_address() {
-    //         // already ok
-    //         break;
-    //     }
+        tlog!(Info, "initiating self-activation of {instance_id:?}");
+        let req = traft::SetActiveRequest::activate(instance_id, cluster_id);
 
-    //     tlog!(Warning, "initiating self-promotion of {me:?}");
-    //     let req = traft::JoinRequest {
-    //         cluster_id: args.cluster_id.clone(),
-    //         instance_id: Some(me.instance_id.clone()),
-    //         replicaset_id: None, // TODO
-    //         voter: true,
-    //         advertise_address: args.advertise_address(),
-    //     };
+        let leader_id = node.status().leader_id.expect("leader_id deinitialized");
+        let leader = traft::Storage::peer_by_raft_id(leader_id).unwrap().unwrap();
 
-    //     let leader_id = node.status().leader_id.expect("leader_id deinitialized");
-    //     let leader = traft::Storage::peer_by_raft_id(leader_id).unwrap().unwrap();
-
-    //     let fn_name = stringify_cfunc!(traft::node::raft_join);
-    //     let now = Instant::now();
-    //     match tarantool::net_box_call(&leader.peer_address, fn_name, &req, timeout) {
-    //         Err(e) => {
-    //             tlog!(Error, "failed to promote myself: {e}");
-    //             fiber::sleep(timeout.saturating_sub(now.elapsed()));
-    //             continue;
-    //         }
-    //         Ok(traft::JoinResponse { .. }) => {
-    //             break;
-    //         }
-    //     };
-    // }
+        let fn_name = stringify_cfunc!(traft::failover::raft_set_active);
+        let now = Instant::now();
+        let timeout = Duration::from_millis(220);
+        match tarantool::net_box_call(&leader.peer_address, fn_name, &req, timeout) {
+            Err(e) => {
+                tlog!(Warning, "failed to activate myself: {e}");
+                fiber::sleep(timeout.saturating_sub(now.elapsed()));
+                continue;
+            }
+            Ok(traft::SetActiveResponse { .. }) => {
+                break;
+            }
+        };
+    }
 
     node.mark_as_ready();
 }

@@ -1,21 +1,23 @@
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
-use ::tarantool::fiber;
+use ::tarantool::fiber::sleep;
 use ::tarantool::proc;
 
 use crate::{stringify_cfunc, tarantool, tlog};
 
+use crate::traft::event;
 use crate::traft::node;
 use crate::traft::node::Error;
 use crate::traft::Storage;
 use crate::traft::{SetActiveRequest, SetActiveResponse};
 
 pub fn on_shutdown() {
-    let voters = Storage::voters().expect("failed reading 'voters'");
+    let voters = Storage::voters().expect("failed reading voters");
+    let active_learners = Storage::active_learners().expect("failed reading active learners");
     let raft_id = node::global().unwrap().status().id;
-    // raft will not let us have a cluster with no voters anyway
-    if !voters.contains(&raft_id) || voters.len() == 1 {
-        tlog!(Info, "not demoting");
+
+    if voters == [raft_id] && active_learners.is_empty() {
+        tlog!(Warning, "the last active instance has shut down");
         return;
     }
 
@@ -34,6 +36,8 @@ pub fn on_shutdown() {
         let status = node::global().unwrap().status();
         let leader_id = status.leader_id.expect("leader_id deinitialized");
         let leader = Storage::peer_by_raft_id(leader_id).unwrap().unwrap();
+        let wait_before_retry = Duration::from_millis(300);
+        let now = Instant::now();
 
         match tarantool::net_box_call(&leader.peer_address, fn_name, &req, Duration::MAX) {
             Err(e) => {
@@ -41,13 +45,22 @@ pub fn on_shutdown() {
                     "peer" => &leader.peer_address,
                     "fn" => fn_name,
                 );
-                fiber::sleep(Duration::from_millis(100));
+                sleep(wait_before_retry.saturating_sub(now.elapsed()));
                 continue;
             }
             Ok(SetActiveResponse { .. }) => {
                 break;
             }
         };
+    }
+
+    // no need to wait for demotion if we weren't a voter
+    if !voters.contains(&raft_id) {
+        return;
+    }
+
+    if let Err(e) = event::wait(event::Event::Demoted) {
+        tlog!(Warning, "failed to wait for self demotion: {e}");
     }
 }
 
@@ -66,4 +79,30 @@ fn raft_set_active(req: SetActiveRequest) -> Result<SetActiveResponse, Box<dyn s
 
     let peer = node.handle_topology_request(req.into())?;
     Ok(SetActiveResponse { peer })
+}
+
+pub fn voters_needed(voters: usize, total: usize) -> i64 {
+    let voters_expected = match total {
+        1 => 1,
+        2 => 2,
+        3..=4 => 3,
+        5.. => 5,
+        _ => unreachable!(),
+    };
+    voters_expected - (voters as i64)
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn voters_needed() {
+        assert_eq!(super::voters_needed(0, 1), 1);
+        assert_eq!(super::voters_needed(1, 1), 0);
+        assert_eq!(super::voters_needed(2, 1), -1);
+        assert_eq!(super::voters_needed(0, 2), 2);
+        assert_eq!(super::voters_needed(2, 3), 1);
+        assert_eq!(super::voters_needed(6, 4), -3);
+        assert_eq!(super::voters_needed(1, 5), 4);
+        assert_eq!(super::voters_needed(1, 999), 4);
+    }
 }

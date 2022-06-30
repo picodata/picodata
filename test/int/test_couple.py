@@ -107,32 +107,47 @@ def test_restart_both(cluster2: Cluster):
 def test_deactivation(cluster2: Cluster):
     i1, i2 = cluster2.instances
 
-    def is_voter_is_active(instance: Instance):
-        code = """
-            function table_find(tbl, val)
-                for _, v in pairs(tbl) do
-                    if v == val then
-                        return true
+    def is_voter_is_active(instance: Instance, raft_id):
+        return tuple(
+            instance.eval(
+                """
+                    raft_id = ...
+                    health = box.space.raft_group.index.raft_id:get(raft_id).health
+                    is_active = health == 'Online'
+                    voters = box.space.raft_state:get('voters').value
+                    for _, voter in pairs(voters) do
+                        if voter == raft_id then
+                            return { true, is_active }
+                        end
                     end
-                end
-                return false
-            end
+                    return { false, is_active }
+                """,
+                raft_id,
+            )
+        )
 
-            local peer = box.space.raft_group:get(...)
-            local voters = box.space.raft_state:get("voters").value
-            return { table_find(voters, peer.raft_id), peer.is_active }
-        """
-        return tuple(instance.eval(code, instance.instance_id))
+    assert is_voter_is_active(i1, i1.raft_id) == (True, True)
+    assert is_voter_is_active(i2, i2.raft_id) == (True, True)
 
-    assert is_voter_is_active(i1) == (True, "Online")
-    assert is_voter_is_active(i2) == (True, "Online")
+    i2.terminate()
+
+    assert is_voter_is_active(i1, i1.raft_id) == (True, True)
+    assert is_voter_is_active(i1, i2.raft_id) == (False, False)
+
+    i2.start()
+    i2.wait_ready()
+
+    assert is_voter_is_active(i1, i1.raft_id) == (True, True)
+    assert is_voter_is_active(i2, i2.raft_id) == (True, True)
 
     i1.terminate()
 
-    pytest.xfail("Refactoring broke voters auto demotion")
+    assert is_voter_is_active(i2, i1.raft_id) == (False, False)
+    assert is_voter_is_active(i2, i2.raft_id) == (True, True)
 
-    assert is_voter_is_active(i2) == (False, "Offline")
-    assert is_voter_is_active(i2) == (True, "Online")
+    # wait until i2 is leader, so it has someone to send the deactivation
+    # request to
+    i2.promote_or_fail()
 
     i2.terminate()
 
@@ -142,12 +157,22 @@ def test_deactivation(cluster2: Cluster):
     i1.wait_ready()
     i2.wait_ready()
 
-    assert is_voter_is_active(i1) == (True, "Online")
-    assert is_voter_is_active(i2) == (True, "Online")
+    assert is_voter_is_active(i1, i1.raft_id) == (True, True)
+    assert is_voter_is_active(i2, i2.raft_id) == (True, True)
 
-    i1.promote_or_fail()
+    i1.terminate()
 
-    i2.terminate()
+    assert is_voter_is_active(i2, i1.raft_id) == (False, False)
+    assert is_voter_is_active(i2, i2.raft_id) == (True, True)
 
-    assert i1.call(".raft_deactivate", i2.instance_id, i2.cluster_id) == [{}]
-    assert i1.call(".raft_deactivate", i2.instance_id, i2.cluster_id) == [{}]
+    def raft_set_active(host: Instance, target: Instance, is_active: bool) -> list[bool]:
+        kind = "Online" if is_active else "Offline"
+        resps = host.call(".raft_set_active", kind, target.instance_id, target.cluster_id)
+        return [resp['peer']['health'] == 'Online' for resp in resps]
+
+    # check idempotency
+    assert raft_set_active(i2, target=i1, is_active=False) == [False]
+    assert raft_set_active(i2, target=i1, is_active=False) == [False]
+
+    assert raft_set_active(i2, target=i2, is_active=True) == [True]
+    assert raft_set_active(i2, target=i2, is_active=True) == [True]

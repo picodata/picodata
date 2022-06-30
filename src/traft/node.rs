@@ -36,6 +36,7 @@ use crate::tlog;
 use crate::traft;
 use crate::traft::event;
 use crate::traft::event::Event;
+use crate::traft::failover;
 use crate::traft::ConnectionPool;
 use crate::traft::LogicalClock;
 use crate::traft::Storage;
@@ -442,6 +443,7 @@ fn handle_committed_conf_change(
         if let Some(latch) = joint_state_latch {
             latch.notify.notify_ok(());
             *joint_state_latch = None;
+            event::broadcast(Event::LeaveJointState);
         }
     };
 
@@ -479,6 +481,12 @@ fn handle_committed_conf_change(
         }
         _ => unreachable!(),
     };
+
+    let raft_id = &raw_node.raft.id;
+    let voters_old = Storage::voters().unwrap();
+    if voters_old.contains(raft_id) && !conf_state.voters.contains(raft_id) {
+        event::postpone_until(Event::Demoted, Event::LeaveJointState).ok();
+    }
 
     Storage::persist_conf_state(&conf_state).unwrap();
 }
@@ -863,27 +871,80 @@ fn raft_conf_change_loop(status: Rc<RefCell<Status>>, main_inbox: Mailbox<Normal
         }
 
         let term = Storage::term().unwrap().unwrap_or(0);
-        let conf_state = Storage::conf_state().unwrap();
-        let voters: HashSet<RaftId> = HashSet::from_iter(conf_state.voters);
-        let learners: HashSet<RaftId> = HashSet::from_iter(conf_state.learners);
-        let everybody: HashSet<RaftId> = voters.union(&learners).cloned().collect();
-        let peers: HashMap<RaftId, bool> = Storage::peers()
+        let voter_ids: HashSet<RaftId> = HashSet::from_iter(Storage::voters().unwrap());
+        let learner_ids: HashSet<RaftId> = HashSet::from_iter(Storage::learners().unwrap());
+        let peer_is_active: HashMap<RaftId, bool> = Storage::peers()
             .unwrap()
-            .iter()
+            .into_iter()
             .map(|peer| (peer.raft_id, peer.is_active()))
             .collect();
+
+        let (active_voters, to_demote): (Vec<RaftId>, Vec<RaftId>) = voter_ids
+            .iter()
+            .partition(|id| peer_is_active.get(id).copied().unwrap_or(false));
+
+        let active_learners: Vec<RaftId> = learner_ids
+            .iter()
+            .copied()
+            .filter(|id| peer_is_active.get(id).copied().unwrap_or(false))
+            .collect();
+
+        let new_peers: Vec<RaftId> = peer_is_active
+            .iter()
+            .map(|(&id, _)| id)
+            .filter(|id| !voter_ids.contains(id) && !learner_ids.contains(id))
+            .collect();
+
         let mut changes: Vec<raft::ConfChangeSingle> = Vec::new();
 
-        for (node_id, _active) in peers {
-            if everybody.contains(&node_id) {
-                continue;
-            }
+        const VOTER: bool = true;
+        const LEARNER: bool = false;
 
-            changes.push(raft::ConfChangeSingle {
-                change_type: raft::ConfChangeType::AddNode,
-                node_id,
-                ..Default::default()
-            });
+        changes.extend(
+            to_demote
+                .into_iter()
+                .map(|id| conf_change_single(id, LEARNER)),
+        );
+
+        let total_active = active_voters.len() + active_learners.len() + new_peers.len();
+
+        let new_peers_to_promote;
+        match failover::voters_needed(active_voters.len(), total_active) {
+            0 => {
+                new_peers_to_promote = 0;
+            }
+            pos @ 1..=i64::MAX => {
+                let pos = pos as usize;
+                eprintln!("\x1b[35madd {pos} voters\x1b[0m");
+                if pos < active_learners.len() {
+                    for &raft_id in &active_learners[0..pos] {
+                        changes.push(conf_change_single(raft_id, VOTER))
+                    }
+                    new_peers_to_promote = 0;
+                } else {
+                    for &raft_id in &active_learners {
+                        changes.push(conf_change_single(raft_id, VOTER))
+                    }
+                    new_peers_to_promote = pos - active_learners.len();
+                    assert!(new_peers_to_promote <= new_peers.len());
+                    for &raft_id in &new_peers[0..new_peers_to_promote] {
+                        changes.push(conf_change_single(raft_id, VOTER))
+                    }
+                }
+            }
+            neg @ i64::MIN..=-1 => {
+                let neg = -neg as usize;
+                eprintln!("\x1b[35mremove {neg} voters\x1b[0m");
+                assert!(neg < active_voters.len());
+                for &raft_id in &active_voters[0..neg] {
+                    changes.push(conf_change_single(raft_id, LEARNER))
+                }
+                new_peers_to_promote = 0;
+            }
+        }
+
+        for &raft_id in &new_peers[new_peers_to_promote..] {
+            changes.push(conf_change_single(raft_id, LEARNER))
         }
 
         if changes.is_empty() {
@@ -912,6 +973,19 @@ fn raft_conf_change_loop(status: Rc<RefCell<Status>>, main_inbox: Mailbox<Normal
             Ok(()) => tlog!(Info, "conf_change processed"),
             Err(e) => tlog!(Warning, "conf_change failed: {e}"),
         }
+    }
+}
+
+fn conf_change_single(node_id: RaftId, is_voter: bool) -> raft::ConfChangeSingle {
+    let change_type = if is_voter {
+        raft::ConfChangeType::AddNode
+    } else {
+        raft::ConfChangeType::AddLearnerNode
+    };
+    raft::ConfChangeSingle {
+        change_type,
+        node_id,
+        ..Default::default()
     }
 }
 

@@ -56,6 +56,8 @@ macro_rules! define_events {
 }
 
 define_events! {
+    Demoted, "raft.demoted";
+    LeaveJointState, "raft.leave-joint-state";
     StatusChanged, "raft.status-changed";
     TopologyChanged, "raft.topology-changed";
 }
@@ -171,6 +173,31 @@ pub fn broadcast(event: impl Borrow<Event>) {
             "event" => event.borrow().as_str(),
         )
     }
+}
+
+/// Postpones the `postpone` event until the `until` event happens.
+///
+/// **NOTE**: the postponement is volatile, so if the instance restarts between
+/// the `postpone` and the `until` events happens, there will not be a
+/// notification.
+///
+/// Adds an event handler which will broadcast the `postpone` event when the
+/// `until` happens.
+///
+/// Returns an error if `EVENTS` is uninitialized
+pub fn postpone_until(postpone: Event, until: Event) -> Result<(), Error> {
+    let mut events = events()?;
+    let cond = events.regular_cond(postpone);
+    events.add_once_handler(
+        until,
+        handler(move || {
+            cond.broadcast();
+            Ok(())
+        }),
+    );
+    // events must be released before yielding
+    drop(events);
+    Ok(())
 }
 
 ////////////////////////////////////////////////////////////////////////////////

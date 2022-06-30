@@ -460,8 +460,8 @@ impl Default for Health {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SetActiveRequest {
     pub kind: Health,
-    pub cluster_id: String,
     pub instance_id: String,
+    pub cluster_id: String,
 }
 impl AsTuple for SetActiveRequest {}
 

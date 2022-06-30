@@ -21,12 +21,15 @@ const RAFT_GROUP: &str = "raft_group";
 const RAFT_STATE: &str = "raft_state";
 const RAFT_LOG: &str = "raft_log";
 
+#[allow(clippy::enum_variant_names)]
 #[derive(Debug, Error)]
 enum Error {
     #[error("no such space \"{0}\"")]
     NoSuchSpace(String),
     #[error("no such index \"{1}\" in space \"{0}\"")]
     NoSuchIndex(String, String),
+    #[error("no peer with id {0}")]
+    NoSuchPeer(RaftId),
 }
 
 macro_rules! box_err {
@@ -80,7 +83,7 @@ impl Storage {
                     {name = 'replicaset_id', type = 'string', is_nullable = false},
                     {name = 'replicaset_uuid', type = 'string', is_nullable = false},
                     {name = 'commit_index', type = 'unsigned', is_nullable = false},
-                    {name = 'is_active', type = 'string', is_nullable = false},
+                    {name = 'health', type = 'string', is_nullable = false},
                 }
             })
 
@@ -343,6 +346,21 @@ impl Storage {
 
     pub fn learners() -> Result<Vec<RaftId>, StorageError> {
         Ok(Storage::raft_state("learners")?.unwrap_or_default())
+    }
+
+    pub fn active_learners() -> Result<Vec<RaftId>, StorageError> {
+        let learners = Storage::learners()?;
+        let mut res = Vec::with_capacity(learners.len());
+        for raft_id in learners {
+            if Storage::peer_by_raft_id(raft_id)?
+                .ok_or(Error::NoSuchPeer(raft_id))
+                .map_err(box_err!())?
+                .is_active()
+            {
+                res.push(raft_id)
+            }
+        }
+        Ok(res)
     }
 
     pub fn conf_state() -> Result<raft::ConfState, StorageError> {
