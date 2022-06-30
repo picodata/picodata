@@ -266,14 +266,6 @@ impl Entry {
             None => None,
         }
     }
-
-    /// Returns the iterator over contained `Vec<Peer>` if it's an `EntryConfChange`.
-    fn iter_peers(&self) -> std::slice::Iter<'_, Peer> {
-        match &self.context {
-            Some(EntryContext::ConfChange(v)) => v.peers.iter(),
-            _ => (&[]).iter(),
-        }
-    }
 }
 
 impl EntryContext {
@@ -474,6 +466,7 @@ pub struct SetActiveRequest {
 impl AsTuple for SetActiveRequest {}
 
 impl SetActiveRequest {
+    #[allow(dead_code)]
     #[inline]
     pub fn activate(instance_id: impl Into<String>, cluster_id: impl Into<String>) -> Self {
         Self {

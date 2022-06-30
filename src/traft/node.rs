@@ -14,7 +14,6 @@ use ::tarantool::fiber;
 use ::tarantool::proc;
 use ::tarantool::tlua;
 use ::tarantool::transaction::start_transaction;
-use std::any::type_name;
 use std::any::Any;
 use std::cell::RefCell;
 use std::collections::HashMap;

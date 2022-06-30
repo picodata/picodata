@@ -212,6 +212,7 @@ impl Storage {
         Storage::raft_state("raft_id")
     }
 
+    #[allow(dead_code)]
     pub fn instance_id() -> Result<Option<String>, StorageError> {
         Storage::raft_state("instance_id")
     }
@@ -299,6 +300,7 @@ impl Storage {
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub fn delete_peer(raft_id: u64) -> Result<(), StorageError> {
         Storage::space(RAFT_GROUP)?
             .delete(&[raft_id])

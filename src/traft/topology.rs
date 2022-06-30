@@ -106,7 +106,7 @@ impl Topology {
             instance_id,
             instance_uuid,
             raft_id,
-            peer_address: advertise.into(),
+            peer_address: advertise,
             replicaset_id,
             replicaset_uuid,
             commit_index: INVALID_INDEX,
