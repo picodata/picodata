@@ -35,6 +35,8 @@ use std::iter::FromIterator as _;
 use crate::mailbox::Mailbox;
 use crate::tlog;
 use crate::traft;
+use crate::traft::event;
+use crate::traft::event::Event;
 use crate::traft::ConnectionPool;
 use crate::traft::LogicalClock;
 use crate::traft::Storage;
@@ -119,6 +121,8 @@ impl std::fmt::Debug for Notify {
 pub enum Error {
     #[error("uninitialized yet")]
     Uninitialized,
+    #[error("events system is uninitialized yet")]
+    EventsUninitialized,
     #[error("timeout")]
     Timeout,
     #[error("{0}")]
@@ -154,8 +158,6 @@ pub struct Node {
     main_inbox: Mailbox<NormalRequest>,
     // join_inbox: TopologyMailbox,
     status: Rc<RefCell<Status>>,
-    wake_up_status_observers: Rc<fiber::Cond>,
-    _wake_up_conf_change_loop: Rc<fiber::Cond>,
 }
 
 /// A request to the raft main loop.
@@ -226,8 +228,6 @@ impl Node {
     pub const TICK: Duration = Duration::from_millis(100);
 
     pub fn new(cfg: &raft::Config) -> Result<Self, RaftError> {
-        let wake_up_status_observers = Rc::new(fiber::Cond::new());
-        let wake_up_conf_change_loop = Rc::new(fiber::Cond::new());
         let main_inbox = Mailbox::<NormalRequest>::new();
         let raw_node = RawNode::new(cfg, Storage, &tlog::root())?;
         let status = Rc::new(RefCell::new(Status {
@@ -239,41 +239,19 @@ impl Node {
 
         let main_loop_fn = {
             let status = status.clone();
-            let wake_up_status_observers = wake_up_status_observers.clone();
-            let wake_up_conf_change_loop = wake_up_conf_change_loop.clone();
             let main_inbox = main_inbox.clone();
-            move || {
-                raft_main_loop(
-                    main_inbox,
-                    status,
-                    wake_up_status_observers,
-                    wake_up_conf_change_loop,
-                    raw_node,
-                )
-            }
+            move || raft_main_loop(main_inbox, status, raw_node)
         };
 
         let conf_change_loop_fn = {
             let status = status.clone();
-            let wake_up_status_observers = wake_up_status_observers.clone();
-            let wake_up_conf_change_loop = wake_up_conf_change_loop.clone();
             let main_inbox = main_inbox.clone();
-            move || {
-                raft_conf_change_loop(
-                    status,
-                    wake_up_status_observers,
-                    wake_up_conf_change_loop,
-                    main_inbox,
-                )
-            }
+            move || raft_conf_change_loop(status, main_inbox)
         };
 
         let node = Node {
             main_inbox,
-            // join_inbox,
             status,
-            wake_up_status_observers,
-            _wake_up_conf_change_loop: wake_up_conf_change_loop,
             _main_loop: fiber::Builder::new()
                 .name("raft_main_loop")
                 .proc(main_loop_fn)
@@ -297,11 +275,11 @@ impl Node {
 
     pub fn mark_as_ready(&self) {
         self.status.borrow_mut().is_ready = true;
-        self.wake_up_status_observers.broadcast();
+        event::broadcast(Event::StatusChanged);
     }
 
     pub fn wait_status(&self) {
-        self.wake_up_status_observers.wait();
+        event::wait(Event::StatusChanged).expect("Events system wasn't initialized");
     }
 
     pub fn read_index(&self, timeout: Duration) -> Result<u64, Error> {
@@ -537,8 +515,6 @@ fn handle_messages(messages: Vec<raft::Message>, pool: &ConnectionPool) {
 fn raft_main_loop(
     main_inbox: Mailbox<NormalRequest>,
     status: Rc<RefCell<Status>>,
-    wake_up_status_observers: Rc<fiber::Cond>,
-    wake_up_conf_change_loop: Rc<fiber::Cond>,
     mut raw_node: RawNode,
 ) {
     let mut next_tick = Instant::now() + Node::TICK;
@@ -821,7 +797,7 @@ fn raft_main_loop(
                     id => Some(id),
                 };
                 status.raft_state = format!("{:?}", ss.raft_state);
-                wake_up_status_observers.broadcast();
+                event::broadcast(Event::StatusChanged);
             }
 
             if !ready.persisted_messages().is_empty() {
@@ -868,7 +844,7 @@ fn raft_main_loop(
         .unwrap();
 
         if topology_changed {
-            wake_up_conf_change_loop.broadcast();
+            event::broadcast(Event::TopologyChanged);
             if let Some(peer) = traft::Storage::peer_by_raft_id(raw_node.raft.id).unwrap() {
                 let mut box_cfg = crate::tarantool::cfg().unwrap();
                 assert_eq!(box_cfg.replication_connect_quorum, 0);
@@ -880,15 +856,10 @@ fn raft_main_loop(
     }
 }
 
-fn raft_conf_change_loop(
-    status: Rc<RefCell<Status>>,
-    wake_up_status_observers: Rc<fiber::Cond>,
-    wake_up_conf_change_loop: Rc<fiber::Cond>,
-    main_inbox: Mailbox<NormalRequest>,
-) {
+fn raft_conf_change_loop(status: Rc<RefCell<Status>>, main_inbox: Mailbox<NormalRequest>) {
     loop {
         if status.borrow().raft_state != "Leader" {
-            wake_up_status_observers.wait();
+            event::wait(Event::StatusChanged).expect("Events system must be initialized");
             continue;
         }
 
@@ -917,7 +888,7 @@ fn raft_conf_change_loop(
         }
 
         if changes.is_empty() {
-            wake_up_conf_change_loop.wait();
+            event::wait(Event::TopologyChanged).expect("Events system must be initialized");
             continue;
         }
 

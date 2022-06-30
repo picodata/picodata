@@ -357,6 +357,7 @@ fn init_common(args: &args::Run, cfg: &tarantool::Cfg) {
 
     traft::Storage::init_schema();
     init_handlers();
+    traft::event::init();
 }
 
 fn start_discover(args: &args::Run, to_supervisor: ipc::Sender<IpcMessage>) {
