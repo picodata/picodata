@@ -13,6 +13,7 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::any::Any;
 use std::convert::TryFrom;
+use std::fmt::Display;
 use uuid::Uuid;
 
 use protobuf::Message as _;
@@ -143,12 +144,16 @@ pub struct Peer {
     /// Index in the raft log. `0` means it's not committed yet.
     pub commit_index: u64,
 
-    /// Is this instance active. Instances become inactive when they shut down.
-    pub is_active: bool,
+    /// The state of this instance's activity.
+    pub health: Health,
 }
 impl AsTuple for Peer {}
 
-impl Peer {}
+impl Peer {
+    pub fn is_active(&self) -> bool {
+        matches!(self.health, Health::Online)
+    }
+}
 
 //////////////////////////////////////////////////////////////////////////////////////////
 /// Serializable representation of `raft::prelude::Entry`.
@@ -427,17 +432,68 @@ pub struct JoinResponse {
 impl AsTuple for JoinResponse {}
 
 ///////////////////////////////////////////////////////////////////////////////
+/// [`SetActiveRequest`] kind tag
+#[derive(PartialEq, Eq, Clone, Debug, Deserialize, Serialize)]
+pub enum Health {
+    // Instance is active and is handling requests.
+    Online,
+    // Instance has gracefully shut down.
+    Offline,
+}
+
+impl Health {
+    const fn to_str(&self) -> &str {
+        match self {
+            Self::Online => "Online",
+            Self::Offline => "Offline",
+        }
+    }
+}
+
+impl Display for Health {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        f.write_str(self.to_str())
+    }
+}
+
+impl Default for Health {
+    fn default() -> Self {
+        Self::Offline
+    }
+}
+
+///////////////////////////////////////////////////////////////////////////////
 /// Request to deactivate the instance.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SetActiveRequest {
+    pub kind: Health,
     pub cluster_id: String,
     pub instance_id: String,
-    pub is_active: bool,
 }
 impl AsTuple for SetActiveRequest {}
 
+impl SetActiveRequest {
+    #[inline]
+    pub fn activate(instance_id: impl Into<String>, cluster_id: impl Into<String>) -> Self {
+        Self {
+            kind: Health::Online,
+            instance_id: instance_id.into(),
+            cluster_id: cluster_id.into(),
+        }
+    }
+
+    #[inline]
+    pub fn deactivate(instance_id: impl Into<String>, cluster_id: impl Into<String>) -> Self {
+        Self {
+            kind: Health::Offline,
+            instance_id: instance_id.into(),
+            cluster_id: cluster_id.into(),
+        }
+    }
+}
+
 ///////////////////////////////////////////////////////////////////////////////
-/// Response to a [`DeactivateRequest`]
+/// Response to a [`SetActiveRequest`]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SetActiveResponse {
     pub peer: Peer,

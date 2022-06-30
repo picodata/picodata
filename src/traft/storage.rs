@@ -79,7 +79,7 @@ impl Storage {
                     {name = 'replicaset_id', type = 'string', is_nullable = false},
                     {name = 'replicaset_uuid', type = 'string', is_nullable = false},
                     {name = 'commit_index', type = 'unsigned', is_nullable = false},
-                    {name = 'is_active', type = 'boolean', is_nullable = false},
+                    {name = 'is_active', type = 'string', is_nullable = false},
                 }
             })
 
@@ -545,8 +545,8 @@ inventory::submit!(crate::InnerTest {
                 " Tarantool error:",
                 " TupleFound:",
                 " Duplicate key exists in unique index \"pk\" in space \"raft_state\"",
-                " with old tuple - [\"id\", 16]",
-                " and new tuple - [\"id\", 32]"
+                " with old tuple - [\"raft_id\", 16]",
+                " and new tuple - [\"raft_id\", 32]"
             )
         );
 
@@ -572,17 +572,21 @@ inventory::submit!(crate::InnerTest {
 inventory::submit!(crate::InnerTest {
     name: "test_storage_peers",
     body: || {
+        use traft::Health::{Offline, Online};
+
         let mut raft_group = Storage::space(RAFT_GROUP).unwrap();
 
         for peer in vec![
             // r1
-            ("i1", "i1-uuid", 1u64, "addr:1", "r1", "r1-uuid", 1u64, true),
-            ("i2", "i2-uuid", 2u64, "addr:2", "r1", "r1-uuid", 2, true),
+            (
+                "i1", "i1-uuid", 1u64, "addr:1", "r1", "r1-uuid", 1u64, Online,
+            ),
+            ("i2", "i2-uuid", 2u64, "addr:2", "r1", "r1-uuid", 2, Online),
             // r2
-            ("i3", "i3-uuid", 3u64, "addr:3", "r2", "r2-uuid", 10, true),
-            ("i4", "i4-uuid", 4u64, "addr:4", "r2", "r2-uuid", 10, true),
+            ("i3", "i3-uuid", 3u64, "addr:3", "r2", "r2-uuid", 10, Online),
+            ("i4", "i4-uuid", 4u64, "addr:4", "r2", "r2-uuid", 10, Online),
             // r3
-            ("i5", "i5-uuid", 5u64, "addr:5", "r3", "r3-uuid", 10, true),
+            ("i5", "i5-uuid", 5u64, "addr:5", "r3", "r3-uuid", 10, Online),
         ] {
             raft_group.put(&peer).unwrap();
         }
@@ -599,16 +603,20 @@ inventory::submit!(crate::InnerTest {
                 instance_id: "i99".into(),
                 ..Default::default()
             }),
-            concat!(
-                "unknown error",
-                " Tarantool error:",
-                " TupleFound: Duplicate key exists",
-                " in unique index \"raft_id\"",
-                " in space \"raft_group\"",
-                " with old tuple",
-                " - [\"i1\", \"i1-uuid\", 1, \"addr:1\", \"r1\", \"r1-uuid\", 1, true]",
-                " and new tuple",
-                " - [\"i99\", \"\", 1, \"\", \"\", \"\", 0, false]"
+            format!(
+                concat!(
+                    "unknown error",
+                    " Tarantool error:",
+                    " TupleFound: Duplicate key exists",
+                    " in unique index \"raft_id\"",
+                    " in space \"raft_group\"",
+                    " with old tuple",
+                    r#" - ["i1", "i1-uuid", 1, "addr:1", "r1", "r1-uuid", 1, "{on}"]"#,
+                    " and new tuple",
+                    r#" - ["i99", "", 1, "", "", "", 0, "{off}"]"#,
+                ),
+                on = Online,
+                off = Offline,
             )
         );
 

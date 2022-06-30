@@ -3,6 +3,7 @@ use std::collections::BTreeSet;
 
 use crate::traft::instance_uuid;
 use crate::traft::replicaset_uuid;
+use crate::traft::Health;
 use crate::traft::Peer;
 use crate::traft::{InstanceId, RaftId, ReplicasetId};
 
@@ -88,7 +89,7 @@ impl Topology {
         if let Some(id) = instance_id.as_ref() {
             let existing_peer: Option<&Peer> = self.instance_map.get(id);
 
-            if matches!(existing_peer, Some(peer) if peer.is_active) {
+            if matches!(existing_peer, Some(peer) if peer.is_active()) {
                 let e = format!("{} is already joined", id);
                 return Err(e);
             }
@@ -112,7 +113,7 @@ impl Topology {
             // Mark instance already active when it joins.
             // It prevents a disruption in case of the
             // instance_id collision.
-            is_active: true,
+            health: Health::Online,
         };
 
         self.put_peer(peer.clone());
@@ -134,13 +135,13 @@ impl Topology {
         Ok(peer.clone())
     }
 
-    pub fn set_active(&mut self, instance_id: &str, active: bool) -> Result<Peer, String> {
+    pub fn set_active(&mut self, instance_id: &str, health: Health) -> Result<Peer, String> {
         let mut peer = self
             .instance_map
             .get_mut(instance_id)
             .ok_or_else(|| format!("unknown instance {}", instance_id))?;
 
-        peer.is_active = active;
+        peer.health = health;
         Ok(peer.clone())
     }
 }
@@ -165,11 +166,9 @@ mod tests {
 
     use crate::traft::instance_uuid;
     use crate::traft::replicaset_uuid;
+    use crate::traft::Health::{Offline, Online};
     use crate::traft::Peer;
     use pretty_assertions::assert_eq;
-
-    const INACTIVE: bool = false;
-    const ACTIVE: bool = true;
 
     macro_rules! peers {
         [ $( (
@@ -177,10 +176,10 @@ mod tests {
             $instance_id:literal,
             $replicaset_id:literal,
             $peer_address:literal,
-            $is_active:expr $(,)?
+            $health:expr $(,)?
         ) ),* $(,)? ] => {
             vec![$(
-                peer!($raft_id, $instance_id, $replicaset_id, $peer_address, $is_active)
+                peer!($raft_id, $instance_id, $replicaset_id, $peer_address, $health)
             ),*]
         };
     }
@@ -191,7 +190,7 @@ mod tests {
             $instance_id:literal,
             $replicaset_id:literal,
             $peer_address:literal,
-            $is_active:expr $(,)?
+            $health:expr $(,)?
         ) => {
             Peer {
                 raft_id: $raft_id,
@@ -201,7 +200,7 @@ mod tests {
                 instance_uuid: instance_uuid($instance_id),
                 replicaset_uuid: replicaset_uuid($replicaset_id),
                 commit_index: raft::INVALID_INDEX,
-                is_active: $is_active,
+                health: $health,
             }
         };
     }
@@ -227,38 +226,38 @@ mod tests {
 
         assert_eq!(
             join!(topology, None, None, "addr:1").unwrap(),
-            peer!(1, "i1", "r1", "addr:1", ACTIVE)
+            peer!(1, "i1", "r1", "addr:1", Online)
         );
 
         assert_eq!(
             join!(topology, None, None, "addr:1").unwrap(),
-            peer!(2, "i2", "r2", "addr:1", ACTIVE)
+            peer!(2, "i2", "r2", "addr:1", Online)
         );
 
         assert_eq!(
             join!(topology, None, Some("R3"), "addr:1").unwrap(),
-            peer!(3, "i3", "R3", "addr:1", ACTIVE)
+            peer!(3, "i3", "R3", "addr:1", Online)
         );
 
         assert_eq!(
             join!(topology, Some("I4"), None, "addr:1").unwrap(),
-            peer!(4, "I4", "r3", "addr:1", ACTIVE)
+            peer!(4, "I4", "r3", "addr:1", Online)
         );
 
-        let mut topology = Topology::from_peers(peers![(1, "i1", "r1", "addr:1", ACTIVE)])
+        let mut topology = Topology::from_peers(peers![(1, "i1", "r1", "addr:1", Online)])
             .with_replication_factor(1);
 
         assert_eq!(
             join!(topology, None, None, "addr:1").unwrap(),
-            peer!(2, "i2", "r2", "addr:1", ACTIVE)
+            peer!(2, "i2", "r2", "addr:1", Online)
         );
     }
 
     #[test]
     fn test_override_existing() {
         let mut topology = Topology::from_peers(peers![
-            (1, "i1", "R1", "active:1", ACTIVE),
-            (2, "i2", "R2", "inactive:1", INACTIVE),
+            (1, "i1", "R1", "active:1", Online),
+            (2, "i2", "R2", "inactive:1", Offline),
         ]);
 
         assert_eq!(
@@ -270,7 +269,7 @@ mod tests {
 
         assert_eq!(
             join!(topology, Some("i2"), None, "inactive:2").unwrap(),
-            peer!(3, "i2", "R1", "inactive:2", ACTIVE),
+            peer!(3, "i2", "R1", "inactive:2", Online),
         );
     }
 
@@ -280,7 +279,7 @@ mod tests {
 
         assert_eq!(
             join!(topology, Some("i1"), Some("R1"), "addr:1").unwrap(),
-            peer!(1, "i1", "R1", "addr:1", ACTIVE),
+            peer!(1, "i1", "R1", "addr:1", Online),
         );
 
         assert_eq!(
@@ -293,7 +292,7 @@ mod tests {
 
     #[test]
     fn test_replicaset_mismatch() {
-        let mut topology = Topology::from_peers(peers![(3, "i3", "R-A", "x:1", ACTIVE)]);
+        let mut topology = Topology::from_peers(peers![(3, "i3", "R-A", "x:1", Online)]);
         assert_eq!(
             join!(topology, Some("i3"), Some("R-B"), "x:2")
                 .unwrap_err()
@@ -301,10 +300,10 @@ mod tests {
             "i3 is already joined",
         );
 
-        let mut topology = Topology::from_peers(vec![peer!(2, "i2", "R-A", "nowhere", ACTIVE)]);
+        let mut topology = Topology::from_peers(vec![peer!(2, "i2", "R-A", "nowhere", Online)]);
         assert_eq!(
             join!(topology, Some("i3"), Some("R-A"), "y:1").unwrap(),
-            peer!(3, "i3", "R-A", "y:1", ACTIVE),
+            peer!(3, "i3", "R-A", "y:1", Online),
         );
         assert_eq!(
             join!(topology, Some("i3"), Some("R-B"), "y:2")
@@ -317,57 +316,57 @@ mod tests {
     #[test]
     fn test_replication_factor() {
         let mut topology = Topology::from_peers(peers![
-            (9, "i9", "r9", "nowhere", ACTIVE),
-            (10, "i10", "r9", "nowhere", ACTIVE),
+            (9, "i9", "r9", "nowhere", Online),
+            (10, "i10", "r9", "nowhere", Online),
         ])
         .with_replication_factor(2);
 
         assert_eq!(
             join!(topology, Some("i1"), None, "addr:1").unwrap(),
-            peer!(11, "i1", "r1", "addr:1", ACTIVE),
+            peer!(11, "i1", "r1", "addr:1", Online),
         );
         assert_eq!(
             join!(topology, Some("i2"), None, "addr:2").unwrap(),
-            peer!(12, "i2", "r1", "addr:2", ACTIVE),
+            peer!(12, "i2", "r1", "addr:2", Online),
         );
         assert_eq!(
             join!(topology, Some("i3"), None, "addr:3").unwrap(),
-            peer!(13, "i3", "r2", "addr:3", ACTIVE),
+            peer!(13, "i3", "r2", "addr:3", Online),
         );
         assert_eq!(
             join!(topology, Some("i4"), None, "addr:4").unwrap(),
-            peer!(14, "i4", "r2", "addr:4", ACTIVE),
+            peer!(14, "i4", "r2", "addr:4", Online),
         );
     }
 
     #[test]
     fn test_set_active() {
         let mut topology = Topology::from_peers(peers![
-            (1, "i1", "r1", "nowhere", ACTIVE),
-            (2, "i2", "r2", "nowhere", INACTIVE),
+            (1, "i1", "r1", "nowhere", Online),
+            (2, "i2", "r2", "nowhere", Offline),
         ])
         .with_replication_factor(1);
 
         assert_eq!(
-            topology.set_active("i1", INACTIVE).unwrap(),
-            peer!(1, "i1", "r1", "nowhere", INACTIVE),
+            topology.set_active("i1", Offline).unwrap(),
+            peer!(1, "i1", "r1", "nowhere", Offline),
         );
 
         // idempotency
         assert_eq!(
-            topology.set_active("i1", INACTIVE).unwrap(),
-            peer!(1, "i1", "r1", "nowhere", INACTIVE),
+            topology.set_active("i1", Offline).unwrap(),
+            peer!(1, "i1", "r1", "nowhere", Offline),
         );
 
         assert_eq!(
-            topology.set_active("i2", ACTIVE).unwrap(),
-            peer!(2, "i2", "r2", "nowhere", ACTIVE),
+            topology.set_active("i2", Online).unwrap(),
+            peer!(2, "i2", "r2", "nowhere", Online),
         );
 
         // idempotency
         assert_eq!(
-            topology.set_active("i2", ACTIVE).unwrap(),
-            peer!(2, "i2", "r2", "nowhere", ACTIVE),
+            topology.set_active("i2", Online).unwrap(),
+            peer!(2, "i2", "r2", "nowhere", Online),
         );
     }
 }

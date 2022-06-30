@@ -19,15 +19,14 @@ pub fn on_shutdown() {
     }
 
     let peer = Storage::peer_by_raft_id(raft_id).unwrap().unwrap();
-    let req = SetActiveRequest {
-        instance_id: peer.instance_id,
-        cluster_id: Storage::cluster_id()
+    let req = SetActiveRequest::deactivate(
+        peer.instance_id,
+        Storage::cluster_id()
             .unwrap()
             .expect("cluster_id must be present"),
-        is_active: false,
-    };
+    );
 
-    let fn_name = stringify_cfunc!(raft_deactivate);
+    let fn_name = stringify_cfunc!(raft_set_active);
     // will run until we get successfully deactivate or tarantool shuts down
     // the on_shutdown fiber (after 3 secs)
     loop {
@@ -51,7 +50,7 @@ pub fn on_shutdown() {
 }
 
 #[proc(packed_args)]
-fn raft_deactivate(req: SetActiveRequest) -> Result<SetActiveResponse, Box<dyn std::error::Error>> {
+fn raft_set_active(req: SetActiveRequest) -> Result<SetActiveResponse, Box<dyn std::error::Error>> {
     let node = node::global()?;
 
     let cluster_id = Storage::cluster_id()?.ok_or("cluster_id is not set yet")?;

@@ -608,10 +608,8 @@ fn raft_main_loop(
                         }) => topology.join(instance_id, replicaset_id, advertise_address),
 
                         TopologyRequest::SetActive(SetActiveRequest {
-                            instance_id,
-                            is_active: active,
-                            ..
-                        }) => topology.set_active(&instance_id, active),
+                            instance_id, kind, ..
+                        }) => topology.set_active(&instance_id, kind),
                     };
 
                     let mut peer = match peer_result {
@@ -904,7 +902,7 @@ fn raft_conf_change_loop(
         let peers: HashMap<RaftId, bool> = Storage::peers()
             .unwrap()
             .iter()
-            .map(|peer| (peer.raft_id, peer.is_active))
+            .map(|peer| (peer.raft_id, peer.is_active()))
             .collect();
         let mut changes: Vec<raft::ConfChangeSingle> = Vec::new();
 

@@ -137,7 +137,7 @@ fn init_handlers() {
     declare_cfunc!(discovery::proc_discover);
     declare_cfunc!(traft::node::raft_interact);
     declare_cfunc!(traft::node::raft_join);
-    declare_cfunc!(traft::failover::raft_deactivate);
+    declare_cfunc!(traft::failover::raft_set_active);
 }
 
 fn rm_tarantool_files(data_dir: &str) {
