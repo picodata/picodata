@@ -611,7 +611,7 @@ fn raft_main_loop(
                             instance_id,
                             is_active: active,
                             ..
-                        }) => topology.set_active(instance_id, active),
+                        }) => topology.set_active(&instance_id, active),
                     };
 
                     let mut peer = match peer_result {
