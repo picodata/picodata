@@ -15,8 +15,6 @@ use std::time::Duration;
 use clap::StructOpt as _;
 use protobuf::Message as _;
 
-use crate::traft::{EntryContextNormal, LogicalClock};
-
 mod app;
 mod args;
 mod cache;
@@ -382,7 +380,7 @@ fn start_discover(args: &args::Run, to_supervisor: ipc::Sender<IpcMessage>) {
     let role = discovery::wait_global();
 
     // TODO assert traft::Storage::instance_id == (null || args.instance_id)
-    if traft::Storage::id().unwrap().is_some() {
+    if traft::Storage::raft_id().unwrap().is_some() {
         return postjoin(args);
     }
 
@@ -419,6 +417,7 @@ fn start_boot(args: &args::Run) {
         args.advertise_address(),
     );
     let raft_id = peer.raft_id;
+    let instance_id = peer.instance_id.clone();
 
     picolib_setup(args);
     assert!(tarantool::cfg().is_none());
@@ -449,7 +448,7 @@ fn start_boot(args: &args::Run) {
         let e1 = {
             let ctx = traft::EntryContextNormal {
                 op: traft::Op::PersistPeer { peer },
-                lc: LogicalClock::new(raft_id, 0),
+                lc: traft::LogicalClock::new(raft_id, 0),
             };
             let e = traft::Entry {
                 entry_type: raft::EntryType::EntryNormal,
@@ -483,7 +482,8 @@ fn start_boot(args: &args::Run) {
         traft::Storage::persist_entries(&[e1, e2]).unwrap();
         traft::Storage::persist_commit(2).unwrap();
         traft::Storage::persist_term(1).unwrap();
-        traft::Storage::persist_id(raft_id).unwrap();
+        traft::Storage::persist_raft_id(raft_id).unwrap();
+        traft::Storage::persist_instance_id(&instance_id).unwrap();
         traft::Storage::persist_cluster_id(&args.cluster_id).unwrap();
         Ok(())
     })
@@ -532,7 +532,8 @@ fn start_join(args: &args::Run, leader_address: String) {
         for peer in resp.raft_group {
             traft::Storage::persist_peer(&peer).unwrap();
         }
-        traft::Storage::persist_id(raft_id).unwrap();
+        traft::Storage::persist_raft_id(raft_id).unwrap();
+        traft::Storage::persist_instance_id(&resp.peer.instance_id).unwrap();
         traft::Storage::persist_cluster_id(&args.cluster_id).unwrap();
         Ok(())
     })
@@ -551,7 +552,7 @@ fn postjoin(args: &args::Run) {
     box_cfg.replication_connect_quorum = 0;
     tarantool::set_cfg(&box_cfg);
 
-    let raft_id = traft::Storage::id().unwrap().unwrap();
+    let raft_id = traft::Storage::raft_id().unwrap().unwrap();
     let applied = traft::Storage::applied().unwrap().unwrap_or(0);
     let raft_cfg = raft::Config {
         id: raft_id,

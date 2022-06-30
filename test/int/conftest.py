@@ -335,10 +335,7 @@ class Instance:
         assert status.is_ready
         self.raft_id = status.id
         with self.connect(timeout=1) as conn:
-            self.instance_id = conn.space("raft_group").select((self.raft_id,))[0][
-                POSITION_IN_SPACE_INSTANCE_ID
-            ]
-            eprint(f"{self.instance_id=}")
+            self.instance_id = conn.space("raft_state").select(("instance_id",))[0][1]
         eprint(f"{self} is ready")
 
     @funcy.retry(tries=4, timeout=0.1, errors=AssertionError)

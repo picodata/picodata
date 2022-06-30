@@ -556,7 +556,7 @@ fn raft_main_loop(
 
     let mut notifications: HashMap<LogicalClock, Notify> = HashMap::new();
     let mut lc = {
-        let id = Storage::id().unwrap().unwrap();
+        let id = Storage::raft_id().unwrap().unwrap();
         let gen = Storage::gen().unwrap().unwrap_or(0) + 1;
         Storage::persist_gen(gen).unwrap();
         LogicalClock::new(id, gen)

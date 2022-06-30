@@ -207,8 +207,12 @@ impl Storage {
         Ok(ret)
     }
 
-    pub fn id() -> Result<Option<u64>, StorageError> {
-        Storage::raft_state("id")
+    pub fn raft_id() -> Result<Option<u64>, StorageError> {
+        Storage::raft_state("raft_id")
+    }
+
+    pub fn instance_id() -> Result<Option<String>, StorageError> {
+        Storage::raft_state("instance_id")
     }
 
     pub fn cluster_id() -> Result<Option<String>, StorageError> {
@@ -257,11 +261,21 @@ impl Storage {
         Storage::persist_raft_state("gen", gen)
     }
 
-    pub fn persist_id(id: u64) -> Result<(), StorageError> {
+    pub fn persist_raft_id(id: u64) -> Result<(), StorageError> {
         Storage::space(RAFT_STATE)?
             // We use `insert` instead of `replace` here
-            // because `id` can never be changed.
-            .insert(&("id", id))
+            // because `raft_id` can never be changed.
+            .insert(&("raft_id", id))
+            .map_err(box_err!())?;
+
+        Ok(())
+    }
+
+    pub fn persist_instance_id(id: &str) -> Result<(), StorageError> {
+        Storage::space(RAFT_STATE)?
+            // We use `insert` instead of `replace` here
+            // because `instance_id` can never be changed.
+            .insert(&("instance_id", id))
             .map_err(box_err!())?;
 
         Ok(())
@@ -521,11 +535,11 @@ inventory::submit!(crate::InnerTest {
         let mut raft_state = Storage::space("raft_state").unwrap();
 
         raft_state.delete(&("id",)).unwrap();
-        assert_eq!(Storage::id(), Ok(None));
+        assert_eq!(Storage::raft_id(), Ok(None));
 
-        Storage::persist_id(16).unwrap();
+        Storage::persist_raft_id(16).unwrap();
         assert_err!(
-            Storage::persist_id(32),
+            Storage::persist_raft_id(32),
             concat!(
                 "unknown error",
                 " Tarantool error:",
