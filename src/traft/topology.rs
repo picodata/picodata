@@ -43,7 +43,13 @@ impl Topology {
         let instance_id = peer.instance_id.clone();
         let replicaset_id = peer.replicaset_id.clone();
 
-        // FIXME remove old peer
+        if let Some(old_peer) = self.instance_map.remove(&instance_id) {
+            self.replicaset_map
+                .entry(old_peer.replicaset_id)
+                .or_default()
+                .remove(&old_peer.instance_id);
+        }
+
         self.instance_map.insert(instance_id.clone(), peer);
         self.replicaset_map
             .entry(replicaset_id)
@@ -153,275 +159,276 @@ pub fn initial_peer(
     peer
 }
 
-// #[cfg(test)]
-// mod tests {
-//     use super::Topology;
-//     use crate::traft::instance_uuid;
-//     use crate::traft::replicaset_uuid;
-//     use crate::traft::Peer;
+#[cfg(test)]
+mod tests {
+    use super::Topology;
 
-//     // macro_rules! peers {
-//     //     [ $( (
-//     //         $raft_id:expr,
-//     //         $instance_id:literal,
-//     //         $replicaset_id:literal,
-//     //         $peer_address:literal,
-//     //         $(, $is_active:literal)?
-//     //         $(,)?
-//     //     ) ),* $(,)? ] => {
-//     //         vec![$(
-//     //             peer!($raft_id, $instance_id, $replicaset_id, $peer_address $(, $is_active)?)
-//     //         ),*]
-//     //     };
-//     // }
+    use crate::traft::instance_uuid;
+    use crate::traft::replicaset_uuid;
+    use crate::traft::Peer;
 
-//     macro_rules! peer {
-//         (
-//             $raft_id:expr,
-//             $instance_id:literal,
-//             $replicaset_id:literal,
-//             $peer_address:literal,
-//             $(, $active:literal)?
-//             $(,)?
-//         ) => {{
-//             let peer = Peer {
-//                 raft_id: $raft_id,
-//                 peer_address: $peer_address,
-//                 instance_id: $instance_id.into(),
-//                 replicaset_id: $replicaset_id.into(),
-//                 instance_uuid: instance_uuid($instance_id),
-//                 replicaset_uuid: replicaset_uuid($replicaset_id),
-//                 commit_index: raft::INVALID_INDEX,
-//                 active: true,
-//             };
-//             $( let peer = Peer { active: $active, ..peer }; )?
-//             peer
-//         }};
-//     }
+    // macro_rules! peers {
+    //     [ $( (
+    //         $raft_id:expr,
+    //         $instance_id:literal,
+    //         $replicaset_id:literal,
+    //         $peer_address:literal,
+    //         $(, $is_active:literal)?
+    //         $(,)?
+    //     ) ),* $(,)? ] => {
+    //         vec![$(
+    //             peer!($raft_id, $instance_id, $replicaset_id, $peer_address $(, $is_active)?)
+    //         ),*]
+    //     };
+    // }
 
-//     // macro_rules! join {
-//     //     (
-//     //         $instance_id:literal,
-//     //         $replicaset_id:expr,
-//     //         $advertise_address:literal,
-//     //         $voter:literal
-//     //     ) => {
-//     //         &crate::traft::TopologyRequest::Join(crate::traft::JoinRequest {
-//     //             cluster_id: "cluster1".into(),
-//     //             instance_id: Some($instance_id.into()),
-//     //             replicaset_id: $replicaset_id.map(|v: &str| v.into()),
-//     //             advertise_address: $advertise_address.into(),
-//     //             voter: $voter,
-//     //         })
-//     //     };
-//     // }
+    macro_rules! peer {
+        (
+            $raft_id:expr,
+            $instance_id:literal,
+            $replicaset_id:literal,
+            $peer_address:literal
+            $(, $is_active:literal)?
+            $(,)?
+        ) => {{
+            let peer = Peer {
+                raft_id: $raft_id,
+                peer_address: $peer_address.into(),
+                instance_id: $instance_id.into(),
+                replicaset_id: $replicaset_id.into(),
+                instance_uuid: instance_uuid($instance_id),
+                replicaset_uuid: replicaset_uuid($replicaset_id),
+                commit_index: raft::INVALID_INDEX,
+                is_active: true,
+            };
+            $( let peer = Peer { is_active: $is_active, ..peer }; )?
+            peer
+        }};
+    }
 
-//     // macro_rules! deactivate {
-//     //     ($instance_id:literal) => {
-//     //         &crate::traft::TopologyRequest::Deactivate(crate::traft::DeactivateRequest {
-//     //             instance_id: $instance_id.into(),
-//     //             cluster_id: "cluster1".into(),
-//     //         })
-//     //     };
-//     // }
+    // macro_rules! join {
+    //     (
+    //         $instance_id:literal,
+    //         $replicaset_id:expr,
+    //         $advertise_address:literal,
+    //         $voter:literal
+    //     ) => {
+    //         &crate::traft::TopologyRequest::Join(crate::traft::JoinRequest {
+    //             cluster_id: "cluster1".into(),
+    //             instance_id: Some($instance_id.into()),
+    //             replicaset_id: $replicaset_id.map(|v: &str| v.into()),
+    //             advertise_address: $advertise_address.into(),
+    //             voter: $voter,
+    //         })
+    //     };
+    // }
 
-//     // macro_rules! test_reqs {
-//     //     (
-//     //         replication_factor: $replication_factor:literal,
-//     //         init: $peers:expr,
-//     //         req: [ $( $req:expr ),* $(,)?],
-//     //         expected_diff: $expected:expr,
-//     //         $( expected_to_replace: $expected_to_replace:expr, )?
-//     //     ) => {
-//     //         let mut t = Topology::from_peers($peers)
-//     //             .with_replication_factor($replication_factor);
-//     //         $( t.process($req).unwrap(); )*
+    // macro_rules! deactivate {
+    //     ($instance_id:literal) => {
+    //         &crate::traft::TopologyRequest::Deactivate(crate::traft::DeactivateRequest {
+    //             instance_id: $instance_id.into(),
+    //             cluster_id: "cluster1".into(),
+    //         })
+    //     };
+    // }
 
-//     //         pretty_assertions::assert_eq!(t.diff(), $expected);
-//     //         $( pretty_assertions::assert_eq!(t.to_replace(), $expected_to_replace); )?
-//     //     };
-//     // }
+    // macro_rules! test_reqs {
+    //     (
+    //         replication_factor: $replication_factor:literal,
+    //         init: $peers:expr,
+    //         req: [ $( $req:expr ),* $(,)?],
+    //         expected_diff: $expected:expr,
+    //         $( expected_to_replace: $expected_to_replace:expr, )?
+    //     ) => {
+    //         let mut t = Topology::from_peers($peers)
+    //             .with_replication_factor($replication_factor);
+    //         $( t.process($req).unwrap(); )*
 
-//     #[test]
-//     fn test_simple() {
-//         let mut topology = Topology::from_peers(vec![]);
+    //         pretty_assertions::assert_eq!(t.diff(), $expected);
+    //         $( pretty_assertions::assert_eq!(t.to_replace(), $expected_to_replace); )?
+    //     };
+    // }
 
-//         assert_eq!(
-//             topology.join(None, None, "addr:1".into()).unwrap(),
-//             peer!(1, "i1", "R1", "addr:1", true) // { Peer::default() }
-//         )
+    #[test]
+    fn test_simple() {
+        let mut topology = Topology::from_peers(vec![]);
 
-//         // assert_eq!(
-//         //     topology.join(None, Some("R2"), "addr:1").unwrap(),
-//         //     peer!(1, "i1", "R1", "addr:1", true)
-//         // )
+        assert_eq!(
+            topology.join(None, None, "addr:1".into()).unwrap(),
+            peer!(1, "i1", "r1", "addr:1") // { Peer::default() }
+        )
 
-//         // let peers = peers![(1, "i1", "R1", "addr:1", true)];
-//         // assert_eq!(Topology::from_peers(peers).diff(), vec![]);
+        // assert_eq!(
+        //     topology.join(None, Some("R2"), "addr:1").unwrap(),
+        //     peer!(1, "i1", "R1", "addr:1", true)
+        // )
 
-//         // test_reqs!(
-//         //     replication_factor: 1,
-//         //     init: peers![],
-//         //     req: [
-//         //         join!("i1", None, "nowhere", true),
-//         //         join!("i2", None, "nowhere", true),
-//         //     ],
-//         //     expected_diff: peers![
-//         //         (1, "i1", "r1", "nowhere", true),
-//         //         (2, "i2", "r2", "nowhere", true),
-//         //     ],
-//         // );
+        // let peers = peers![(1, "i1", "R1", "addr:1", true)];
+        // assert_eq!(Topology::from_peers(peers).diff(), vec![]);
 
-//         // test_reqs!(
-//         //     replication_factor: 1,
-//         //     init: peers![
-//         //         (1, "i1", "R1", "addr:1", true),
-//         //     ],
-//         //     req: [
-//         //         join!("i2", Some("R2"), "addr:2", false),
-//         //     ],
-//         //     expected_diff: peers![
-//         //         (2, "i2", "R2", "addr:2", false),
-//         //     ],
-//         // );
-//     }
+        // test_reqs!(
+        //     replication_factor: 1,
+        //     init: peers![],
+        //     req: [
+        //         join!("i1", None, "nowhere", true),
+        //         join!("i2", None, "nowhere", true),
+        //     ],
+        //     expected_diff: peers![
+        //         (1, "i1", "r1", "nowhere", true),
+        //         (2, "i2", "r2", "nowhere", true),
+        //     ],
+        // );
 
-//     // #[test]
-//     // fn test_override() {
-//     //     test_reqs!(
-//     //         replication_factor: 1,
-//     //         init: peers![
-//     //             (1, "i1", "R1", "addr:1", false),
-//     //         ],
-//     //         req: [
-//     //             join!("i1", None, "addr:2", true),
-//     //         ],
-//     //         expected_diff: peers![
-//     //             (1, "i1", "R1", "addr:2", true),
-//     //         ],
-//     //     );
-//     // }
+        // test_reqs!(
+        //     replication_factor: 1,
+        //     init: peers![
+        //         (1, "i1", "R1", "addr:1", true),
+        //     ],
+        //     req: [
+        //         join!("i2", Some("R2"), "addr:2", false),
+        //     ],
+        //     expected_diff: peers![
+        //         (2, "i2", "R2", "addr:2", false),
+        //     ],
+        // );
+    }
 
-//     // #[test]
-//     // fn test_batch_overlap() {
-//     //     test_reqs!(
-//     //         replication_factor: 1,
-//     //         init: peers![],
-//     //         req: [
-//     //             join!("i1", Some("R1"), "addr:1", false),
-//     //             join!("i1", None, "addr:2", true),
-//     //         ],
-//     //         expected_diff: peers![
-//     //             (1, "i1", "R1", "addr:2", true),
-//     //         ],
-//     //     );
-//     // }
+    // #[test]
+    // fn test_override() {
+    //     test_reqs!(
+    //         replication_factor: 1,
+    //         init: peers![
+    //             (1, "i1", "R1", "addr:1", false),
+    //         ],
+    //         req: [
+    //             join!("i1", None, "addr:2", true),
+    //         ],
+    //         expected_diff: peers![
+    //             (1, "i1", "R1", "addr:2", true),
+    //         ],
+    //     );
+    // }
 
-//     // #[test]
-//     // fn test_replicaset_mismatch() {
-//     //     let expected_error = concat!(
-//     //         "i3 already joined with a different replicaset_id,",
-//     //         " requested: R-B,",
-//     //         " existing: R-A.",
-//     //     );
+    // #[test]
+    // fn test_batch_overlap() {
+    //     test_reqs!(
+    //         replication_factor: 1,
+    //         init: peers![],
+    //         req: [
+    //             join!("i1", Some("R1"), "addr:1", false),
+    //             join!("i1", None, "addr:2", true),
+    //         ],
+    //         expected_diff: peers![
+    //             (1, "i1", "R1", "addr:2", true),
+    //         ],
+    //     );
+    // }
 
-//     //     let peers = peers![(3, "i3", "R-A", "x:1", false)];
-//     //     let mut topology = Topology::from_peers(peers);
-//     //     topology
-//     //         .process(join!("i3", Some("R-B"), "x:2", true))
-//     //         .map_err(|e| assert_eq!(e, expected_error))
-//     //         .unwrap_err();
-//     //     assert_eq!(topology.diff(), vec![]);
-//     //     assert_eq!(topology.to_replace(), vec![]);
+    // #[test]
+    // fn test_replicaset_mismatch() {
+    //     let expected_error = concat!(
+    //         "i3 already joined with a different replicaset_id,",
+    //         " requested: R-B,",
+    //         " existing: R-A.",
+    //     );
 
-//     //     let peers = peers![(2, "i2", "R-A", "nowhere", true)];
-//     //     let mut topology = Topology::from_peers(peers);
-//     //     topology
-//     //         .process(join!("i3", Some("R-A"), "y:1", false))
-//     //         .unwrap();
-//     //     topology
-//     //         .process(join!("i3", Some("R-B"), "y:2", true))
-//     //         .map_err(|e| assert_eq!(e, expected_error))
-//     //         .unwrap_err();
-//     //     assert_eq!(topology.diff(), peers![(3, "i3", "R-A", "y:1", false)]);
-//     //     assert_eq!(topology.to_replace(), vec![]);
-//     // }
+    //     let peers = peers![(3, "i3", "R-A", "x:1", false)];
+    //     let mut topology = Topology::from_peers(peers);
+    //     topology
+    //         .process(join!("i3", Some("R-B"), "x:2", true))
+    //         .map_err(|e| assert_eq!(e, expected_error))
+    //         .unwrap_err();
+    //     assert_eq!(topology.diff(), vec![]);
+    //     assert_eq!(topology.to_replace(), vec![]);
 
-//     // #[test]
-//     // fn test_replication_factor() {
-//     //     test_reqs!(
-//     //         replication_factor: 2,
-//     //         init: peers![
-//     //             (9, "i9", "r9", "nowhere", false),
-//     //             (10, "i9", "r9", "nowhere", false),
-//     //         ],
-//     //         req: [
-//     //             join!("i1", None, "addr:1", true),
-//     //             join!("i2", None, "addr:2", false),
-//     //             join!("i3", None, "addr:3", false),
-//     //             join!("i4", None, "addr:4", false),
-//     //         ],
-//     //         expected_diff: peers![
-//     //             (11, "i1", "r1", "addr:1", true),
-//     //             (12, "i2", "r1", "addr:2", false),
-//     //             (13, "i3", "r2", "addr:3", false),
-//     //             (14, "i4", "r2", "addr:4", false),
-//     //         ],
-//     //     );
-//     // }
+    //     let peers = peers![(2, "i2", "R-A", "nowhere", true)];
+    //     let mut topology = Topology::from_peers(peers);
+    //     topology
+    //         .process(join!("i3", Some("R-A"), "y:1", false))
+    //         .unwrap();
+    //     topology
+    //         .process(join!("i3", Some("R-B"), "y:2", true))
+    //         .map_err(|e| assert_eq!(e, expected_error))
+    //         .unwrap_err();
+    //     assert_eq!(topology.diff(), peers![(3, "i3", "R-A", "y:1", false)]);
+    //     assert_eq!(topology.to_replace(), vec![]);
+    // }
 
-//     // #[test]
-//     // fn test_replace() {
-//     //     test_reqs!(
-//     //         replication_factor: 2,
-//     //         init: peers![
-//     //             (1, "i1", "r1", "nowhere", false),
-//     //         ],
-//     //         req: [
-//     //             join!("i1", None, "addr:2", false),
-//     //         ],
-//     //         expected_diff: peers![],
-//     //         expected_to_replace: vec![
-//     //             (1, peer!(2, "i1", "r1", "addr:2", false)),
-//     //         ],
-//     //     );
-//     // }
+    // #[test]
+    // fn test_replication_factor() {
+    //     test_reqs!(
+    //         replication_factor: 2,
+    //         init: peers![
+    //             (9, "i9", "r9", "nowhere", false),
+    //             (10, "i9", "r9", "nowhere", false),
+    //         ],
+    //         req: [
+    //             join!("i1", None, "addr:1", true),
+    //             join!("i2", None, "addr:2", false),
+    //             join!("i3", None, "addr:3", false),
+    //             join!("i4", None, "addr:4", false),
+    //         ],
+    //         expected_diff: peers![
+    //             (11, "i1", "r1", "addr:1", true),
+    //             (12, "i2", "r1", "addr:2", false),
+    //             (13, "i3", "r2", "addr:3", false),
+    //             (14, "i4", "r2", "addr:4", false),
+    //         ],
+    //     );
+    // }
 
-//     // #[test]
-//     // fn test_deactivation() {
-//     //     test_reqs!(
-//     //         replication_factor: 1,
-//     //         init: peers![
-//     //             (1, "deactivate", "r1", "nowhere", true, true),
-//     //             (2, "activate_learner", "r2", "nowhere", false, false),
-//     //             (3, "activate_voter", "r3", "nowhere", false, false),
-//     //         ],
-//     //         req: [
-//     //             deactivate!("deactivate"),
-//     //             join!("activate_learner", None, "nowhere", false),
-//     //             join!("activate_voter", None, "nowhere", true),
-//     //         ],
-//     //         expected_diff: peers![
-//     //             (1, "deactivate", "r1", "nowhere", false, false),
-//     //             (3, "activate_voter", "r3", "nowhere", true, true),
-//     //         ],
-//     //         expected_to_replace: vec![
-//     //             (2, peer!(4, "activate_learner", "r2", "nowhere", false, true)),
-//     //         ],
-//     //     );
+    // #[test]
+    // fn test_replace() {
+    //     test_reqs!(
+    //         replication_factor: 2,
+    //         init: peers![
+    //             (1, "i1", "r1", "nowhere", false),
+    //         ],
+    //         req: [
+    //             join!("i1", None, "addr:2", false),
+    //         ],
+    //         expected_diff: peers![],
+    //         expected_to_replace: vec![
+    //             (1, peer!(2, "i1", "r1", "addr:2", false)),
+    //         ],
+    //     );
+    // }
 
-//     //     test_reqs!(
-//     //         replication_factor: 1,
-//     //         init: peers![],
-//     //         req: [
-//     //             join!("deactivate", Some("r1"), "nowhere", true),
-//     //             deactivate!("deactivate"),
-//     //             deactivate!("deactivate"),
-//     //             deactivate!("deactivate"),
-//     //         ],
-//     //         expected_diff: peers![
-//     //             (1, "deactivate", "r1", "nowhere", false, false),
-//     //         ],
-//     //     );
-//     // }
-// }
+    // #[test]
+    // fn test_deactivation() {
+    //     test_reqs!(
+    //         replication_factor: 1,
+    //         init: peers![
+    //             (1, "deactivate", "r1", "nowhere", true, true),
+    //             (2, "activate_learner", "r2", "nowhere", false, false),
+    //             (3, "activate_voter", "r3", "nowhere", false, false),
+    //         ],
+    //         req: [
+    //             deactivate!("deactivate"),
+    //             join!("activate_learner", None, "nowhere", false),
+    //             join!("activate_voter", None, "nowhere", true),
+    //         ],
+    //         expected_diff: peers![
+    //             (1, "deactivate", "r1", "nowhere", false, false),
+    //             (3, "activate_voter", "r3", "nowhere", true, true),
+    //         ],
+    //         expected_to_replace: vec![
+    //             (2, peer!(4, "activate_learner", "r2", "nowhere", false, true)),
+    //         ],
+    //     );
+
+    //     test_reqs!(
+    //         replication_factor: 1,
+    //         init: peers![],
+    //         req: [
+    //             join!("deactivate", Some("r1"), "nowhere", true),
+    //             deactivate!("deactivate"),
+    //             deactivate!("deactivate"),
+    //             deactivate!("deactivate"),
+    //         ],
+    //         expected_diff: peers![
+    //             (1, "deactivate", "r1", "nowhere", false, false),
+    //         ],
+    //     );
+    // }
+}
