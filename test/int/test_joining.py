@@ -49,6 +49,7 @@ def raft_join(
 
 
 def test_concurrency(cluster2: Cluster):
+    pytest.skip("There's no batching anymore")
     i1, i2 = cluster2.instances
     i1.promote_or_fail()
 
@@ -218,17 +219,22 @@ def test_replication(cluster2: Cluster):
 
     for instance in cluster2.instances:
         with instance.connect(1) as conn:
-            raft_peer = conn.select("raft_group", [instance.raft_id])[0]
+            raft_peer = conn.select("raft_group", [instance.instance_id])[0]
             space_cluster = conn.select("_cluster")
 
-        assert raft_peer[:7] == [
+        # Field 6 is commit_index.
+        # It's unperdictable - erase it before comparison.
+        raft_peer[6] = None
+
+        assert raft_peer == [
+            instance.instance_id,
+            instance.eval("return box.info.uuid"),
             instance.raft_id,
             instance.eval("return box.info.listen"),
-            True,  # voter
-            instance.instance_id,
             "r1",
-            instance.eval("return box.info.uuid"),
             instance.eval("return box.info.cluster.uuid"),
+            None,
+            "Online",
         ]
 
         assert list(space_cluster) == [
