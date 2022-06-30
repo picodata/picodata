@@ -1,5 +1,6 @@
 use std::time::Duration;
 
+use ::tarantool::fiber;
 use ::tarantool::proc;
 
 use crate::{stringify_cfunc, tarantool, tlog};
@@ -40,6 +41,7 @@ pub fn on_shutdown() {
                     "peer" => &leader.peer_address,
                     "fn" => fn_name,
                 );
+                fiber::sleep(Duration::from_millis(100));
                 continue;
             }
             Ok(SetActiveResponse { .. }) => {

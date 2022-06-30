@@ -263,7 +263,7 @@ mod tests {
                     }
                 }
             } else {
-                match dbg!(network.pop()) {
+                match network.pop() {
                     Some(Event::Request(src, request, dst)) => {
                         let peer = instances.get_mut(&dst).unwrap();
                         let response = peer.handle_request(request, dst.clone()).clone();

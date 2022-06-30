@@ -64,7 +64,6 @@ impl Notify {
     }
 
     fn notify_ok<T: Any>(&self, res: T) {
-        println!("notify_ok {}", type_name::<T>());
         self.notify_ok_any(Box::new(res));
     }
 

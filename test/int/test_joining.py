@@ -101,6 +101,14 @@ def test_request_follower(cluster2: Cluster):
 
 
 def test_uuids(cluster2: Cluster):
+    """
+    Этот тест подлежит полному удалению, я не знаю что отсюда можно оставить.
+    raft_join после рефакторинга стал всегда disruptive, да и то только если
+    предыдущий владелец этого instance_id сделал graceful shutdown.
+    Сама же ошибка "i1 is already joined" и так покрыта в юнит тестах
+    """
+    pytest.skip()
+
     i1, i2 = cluster2.instances
     i1.assert_raft_status("Leader")
 
