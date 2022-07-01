@@ -657,47 +657,6 @@ fn raft_main_loop(
                         continue;
                     }
 
-                    // let mut changes = Vec::with_capacity(peers.len());
-                    // let mut new_peers: Vec<Peer> = Vec::new();
-                    // for peer in &peers {
-                    //     let change_type = match peer.active {
-                    //         true => raft::ConfChangeType::AddNode,
-                    //         false => raft::ConfChangeType::AddLearnerNode,
-                    //     };
-                    //     changes.push(raft::ConfChangeSingle {
-                    //         change_type,
-                    //         node_id: peer.raft_id,
-                    //         ..Default::default()
-                    //     });
-                    //     new_peers.push(peer.clone());
-                    // }
-
-                    // for (old_raft_id, peer) in &to_replace {
-                    //     changes.push(raft::ConfChangeSingle {
-                    //         change_type: raft::ConfChangeType::RemoveNode,
-                    //         node_id: *old_raft_id,
-                    //         ..Default::default()
-                    //     });
-                    //     let change_type = match peer.active {
-                    //         true => raft::ConfChangeType::AddNode,
-                    //         false => raft::ConfChangeType::AddLearnerNode,
-                    //     };
-                    //     changes.push(raft::ConfChangeSingle {
-                    //         change_type,
-                    //         node_id: peer.raft_id,
-                    //         ..Default::default()
-                    //     });
-                    //     new_peers.push(peer.clone());
-                    // }
-
-                    // let cc = raft::ConfChangeV2 {
-                    //     changes: changes.into(),
-                    //     transition: raft::ConfChangeTransition::Implicit,
-                    //     ..Default::default()
-                    // };
-
-                    // let ctx = traft::EntryContextConfChange { peers: new_peers }.to_bytes();
-
                     let prev_index = raw_node.raft.raft_log.last_index();
                     if let Err(e) = raw_node.propose_conf_change(vec![], conf_change) {
                         notify.notify_err(e);
