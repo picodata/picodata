@@ -153,6 +153,7 @@ pub struct Status {
 /// The heart of `traft` module - the Node.
 #[derive(Debug)]
 pub struct Node {
+    raft_id: RaftId,
     _main_loop: fiber::UnitJoinHandle<'static>,
     _conf_change_loop: fiber::UnitJoinHandle<'static>,
     main_inbox: Mailbox<NormalRequest>,
@@ -250,6 +251,7 @@ impl Node {
         };
 
         let node = Node {
+            raft_id: cfg.id,
             main_inbox,
             status,
             _main_loop: fiber::Builder::new()
@@ -329,6 +331,8 @@ impl Node {
 
     pub fn timeout_now(&self) {
         self.step(raft::Message {
+            to: self.raft_id,
+            from: self.raft_id,
             msg_type: raft::MessageType::MsgTimeoutNow,
             ..Default::default()
         })
