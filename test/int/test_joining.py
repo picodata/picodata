@@ -1,15 +1,8 @@
-from functools import partial
-import os
-import errno
 import funcy  # type: ignore
 import re
-import signal
 import pytest
 
-from concurrent.futures import ThreadPoolExecutor
-
 from conftest import (
-    eprint,
     Cluster,
     Instance,
     TarantoolError,
@@ -48,48 +41,6 @@ def raft_join(
     )
 
 
-def test_concurrency(cluster2: Cluster):
-    pytest.skip("There's no batching anymore")
-    i1, i2 = cluster2.instances
-    i1.promote_or_fail()
-
-    assert i2.process is not None
-    # Sigstop the follower making quorum temporarily unavailable.
-    os.killpg(i2.process.pid, signal.SIGSTOP)
-    eprint(f"{i2} signalled with SIGSTOP")
-
-    # First request blocks the `join_loop` until i2 is resumed.
-    with pytest.raises(OSError) as e0:
-        raft_join(
-            peer=i1, cluster_id=cluster2.id, instance_id="fake-0", timeout_seconds=0.1
-        )
-    assert e0.value.errno == errno.ECONNRESET
-
-    # Subsequent requests get batched
-    executor = ThreadPoolExecutor()
-    submit_join = partial(executor.submit, raft_join, peer=i1, cluster_id=cluster2.id)
-
-    f1 = submit_join(instance_id="fake-1", timeout_seconds=5)
-    f2 = submit_join(instance_id="fake-2", timeout_seconds=5)
-    f3 = submit_join(instance_id="fake-3", timeout_seconds=0.1)
-
-    # Make sure all requests reach the server before resuming i2.
-    with pytest.raises(OSError) as e1:
-        f3.result()
-    assert e1.value.errno == errno.ECONNRESET
-
-    # Resume the follower.
-    os.killpg(i2.process.pid, signal.SIGCONT)
-    eprint(f"{i2} signalled with SIGCONT")
-
-    peer1 = f1.result()[0]["peer"]  # type: ignore
-    peer2 = f2.result()[0]["peer"]  # type: ignore
-    assert peer1["instance_id"] == "fake-1"
-    assert peer2["instance_id"] == "fake-2"
-    # Make sure the batching works as expected
-    assert peer1["commit_index"] == peer2["commit_index"]
-
-
 def test_request_follower(cluster2: Cluster):
     _, i2 = cluster2.instances
     i2.assert_raft_status("Follower")
@@ -99,60 +50,6 @@ def test_request_follower(cluster2: Cluster):
             peer=i2, cluster_id=cluster2.id, instance_id="fake-0", timeout_seconds=1
         )
     assert e.value.args == ("ER_PROC_C", "not a leader")
-
-
-def test_uuids(cluster2: Cluster):
-    """
-    Этот тест подлежит полному удалению, я не знаю что отсюда можно оставить.
-    raft_join после рефакторинга стал всегда disruptive, да и то только если
-    предыдущий владелец этого instance_id сделал graceful shutdown.
-    Сама же ошибка "i1 is already joined" и так покрыта в юнит тестах
-    """
-    pytest.skip()
-
-    i1, i2 = cluster2.instances
-    i1.assert_raft_status("Leader")
-
-    peer_1 = i1.call(
-        ".raft_join",
-        cluster2.id,
-        i1.instance_id,
-        None,  # replicaset_id
-        i1.listen,  # address
-        True,  # voter
-    )[0]["peer"]
-    assert peer_1["instance_id"] == i1.instance_id
-    assert peer_1["instance_uuid"] == i1.eval("return box.info.uuid")
-    assert peer_1["replicaset_uuid"] == i1.eval("return box.info.cluster.uuid")
-
-    peer_2 = i1.call(
-        ".raft_join",
-        cluster2.id,
-        i2.instance_id,
-        None,  # replicaset_id
-        i2.listen,  # address
-        True,  # voter
-    )[0]["peer"]
-    assert peer_2["instance_id"] == i2.instance_id
-    assert peer_2["instance_uuid"] == i2.eval("return box.info.uuid")
-    assert peer_2["replicaset_uuid"] == i2.eval("return box.info.cluster.uuid")
-
-    def join():
-        return raft_join(
-            peer=i1,
-            cluster_id=cluster2.id,
-            instance_id="fake",
-            timeout_seconds=1,
-        )
-
-    # Two consequent requests must obtain same instance_id but different raft_id
-    fake_peer_1 = join()[0]["peer"]
-    fake_peer_2 = join()[0]["peer"]
-
-    assert fake_peer_1["instance_id"] == "fake"
-    assert fake_peer_2["instance_id"] == "fake"
-    assert fake_peer_2["raft_id"] == fake_peer_1["raft_id"] + 1
-    assert fake_peer_1["instance_uuid"] == fake_peer_2["instance_uuid"]
 
 
 def test_discovery(cluster3: Cluster):
