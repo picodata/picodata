@@ -429,8 +429,8 @@ fn handle_committed_normal_entry(
             let e = RaftError::ConfChangeError("rolled back".into());
 
             latch.notify.notify_err(e);
+            *joint_state_latch = None;
         }
-        *joint_state_latch = None;
     }
 }
 
@@ -709,6 +709,8 @@ fn raft_main_loop(
                         // raft log.
                         let last_index = raw_node.raft.raft_log.last_index();
                         assert_eq!(last_index, prev_index + 1);
+
+                        assert!(joint_state_latch.is_none());
 
                         joint_state_latch = Some(JointStateLatch {
                             index: last_index,
