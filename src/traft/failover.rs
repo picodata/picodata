@@ -77,8 +77,8 @@ fn raft_set_active(req: SetActiveRequest) -> Result<SetActiveResponse, Box<dyn s
         }));
     }
 
-    let peer = node.handle_topology_request(req.into())?;
-    Ok(SetActiveResponse { peer })
+    node.handle_topology_request(req.into())?;
+    Ok(SetActiveResponse {})
 }
 
 pub fn voters_needed(voters: usize, total: usize) -> i64 {

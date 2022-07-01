@@ -169,14 +169,13 @@ def test_deactivation(cluster2: Cluster):
         host: Instance, target: Instance, is_active: bool
     ) -> list[bool]:
         kind = "Online" if is_active else "Offline"
-        resps = host.call(
+        return host.call(
             ".raft_set_active", kind, target.instance_id, target.cluster_id
         )
-        return [resp["peer"]["health"] == "Online" for resp in resps]
 
     # check idempotency
-    assert raft_set_active(i2, target=i1, is_active=False) == [False]
-    assert raft_set_active(i2, target=i1, is_active=False) == [False]
+    assert raft_set_active(i2, target=i1, is_active=False) == [{}]
+    assert raft_set_active(i2, target=i1, is_active=False) == [{}]
 
-    assert raft_set_active(i2, target=i2, is_active=True) == [True]
-    assert raft_set_active(i2, target=i2, is_active=True) == [True]
+    assert raft_set_active(i2, target=i2, is_active=True) == [{}]
+    assert raft_set_active(i2, target=i2, is_active=True) == [{}]

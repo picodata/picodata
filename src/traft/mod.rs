@@ -490,7 +490,7 @@ impl SetActiveRequest {
 /// Response to a [`SetActiveRequest`]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SetActiveResponse {
-    pub peer: Peer,
+    // It's empty now, but it may be extended in future
 }
 impl AsTuple for SetActiveResponse {}
 
