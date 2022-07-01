@@ -737,6 +737,9 @@ fn raft_main_loop(
                     Err(e) => notify.notify_err(e),
                 },
                 NormalRequest::Step(msg) => {
+                    if msg.to != raw_node.raft.id {
+                        continue;
+                    }
                     if let Err(e) = raw_node.step(msg) {
                         tlog!(Error, "{e}");
                     }
