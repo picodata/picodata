@@ -1,6 +1,7 @@
 #![cfg(any(feature = "picodata", doc))]
 
 use std::collections::HashMap;
+use std::io::Read;
 use std::ffi::CStr;
 use std::str;
 use std::os::raw::c_char;
@@ -48,22 +49,10 @@ impl Statement {
         }.to_str()
     }
 
-    /// Executes prepared statement with binding variables.
-    ///
-    /// Example:
-    /// ```no_run
-    /// #[cfg(feature = "picodata")]
-    /// {
-    ///     use tarantool::sql;
-    ///
-    ///     let stmt = sql::prepare("SELECT * FROM S WHERE ID > ?").unwrap();
-    ///     let result: Vec<(u8, String)> = stmt.execute(&(100,)).unwrap();
-    ///     println!("SQL query result: {:?}", result);
-    /// }
-    /// ```
-    pub fn execute<IN, OUT>(&self, bind_params: &IN) -> crate::Result<OUT>
-        where IN: AsTuple,
-              OUT: DeserializeOwned
+    /// Executes prepared statement and returns a wrapper over the raw msgpack bytes.
+    pub fn execute_raw<IN>(&self, bind_params: &IN) -> crate::Result<impl Read>
+    where
+        IN: AsTuple,
     {
         let mut port = Port::zeroed();
 
@@ -89,6 +78,28 @@ impl Statement {
         let buf = ObufWrapper::new(1024);
 
         unsafe { ((*port.vtab).dump_msgpack)(&port as *const Port, buf.obuf()); };
+        Ok(buf)
+    }
+
+
+    /// Executes a *returning data* prepared statement with binding variables.
+    ///
+    /// Example:
+    /// ```no_run
+    /// #[cfg(feature = "picodata")]
+    /// {
+    ///     use tarantool::sql;
+    ///
+    ///     let stmt = sql::prepare("SELECT * FROM S WHERE ID > ?").unwrap();
+    ///     let result: Vec<(u8, String)> = stmt.execute(&(100,)).unwrap();
+    ///     println!("SQL query result: {:?}", result);
+    /// }
+    /// ```
+    pub fn execute<IN, OUT>(&self, bind_params: &IN) -> crate::Result<OUT>
+        where IN: AsTuple,
+              OUT: DeserializeOwned
+    {
+        let buf = self.execute_raw(bind_params)?;
         let mut map = rmp_serde::decode::from_read::<_, HashMap<u32, rmpv::Value>>(buf)?;
         let data = map.remove(&ffi::sql::IPROTO_DATA)
             .ok_or_else(|| rmp_serde::decode::Error::Syntax("Invalid execution result format".to_string()))?;
