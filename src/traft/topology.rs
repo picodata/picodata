@@ -106,9 +106,6 @@ impl Topology {
             replicaset_id.unwrap_or_else(|| self.choose_replicaset_id(&failure_domains));
         let replicaset_uuid = replicaset_uuid(&replicaset_id);
 
-        // TODO: store it in peer
-        let _ = failure_domains;
-
         let peer = Peer {
             instance_id,
             instance_uuid,
@@ -121,6 +118,7 @@ impl Topology {
             // It prevents a disruption in case of the
             // instance_id collision.
             health: Health::Online,
+            failure_domains,
         };
 
         self.put_peer(peer.clone());
@@ -185,10 +183,12 @@ mod tests {
             $instance_id:literal,
             $replicaset_id:literal,
             $peer_address:literal,
-            $health:expr $(,)?
+            $health:expr
+            $(, $failure_domains:expr)?
+            $(,)?
         ) ),* $(,)? ] => {
             vec![$(
-                peer!($raft_id, $instance_id, $replicaset_id, $peer_address, $health)
+                peer!($raft_id, $instance_id, $replicaset_id, $peer_address, $health $(,$failure_domains)?)
             ),*]
         };
     }
@@ -199,7 +199,9 @@ mod tests {
             $instance_id:literal,
             $replicaset_id:literal,
             $peer_address:literal,
-            $health:expr $(,)?
+            $health:expr
+            $(, $failure_domains:expr)?
+            $(,)?
         ) => {
             Peer {
                 raft_id: $raft_id,
@@ -210,6 +212,11 @@ mod tests {
                 replicaset_uuid: replicaset_uuid($replicaset_id),
                 commit_index: raft::INVALID_INDEX,
                 health: $health,
+                failure_domains: {
+                    let _f = FailureDomains::default();
+                    $( let _f = $failure_domains; )?
+                    _f
+                },
             }
         };
     }
@@ -219,15 +226,27 @@ mod tests {
             $topology:expr,
             $instance_id:expr,
             $replicaset_id:expr,
-            $advertise_address:literal $(,)?
+            $advertise_address:literal
+            $(, $failure_domains:expr )?
+            $(,)?
         ) => {
             $topology.join(
                 $instance_id.map(str::to_string),
                 $replicaset_id.map(str::to_string),
                 $advertise_address.into(),
-                FailureDomains::default(),
+                {
+                    let _f = FailureDomains::default();
+                    $(let _f = $failure_domains; )?
+                    _f
+                },
             )
         };
+    }
+
+    macro_rules! faildoms {
+        ($($k:tt : $v:tt),* $(,)?) => {
+            FailureDomains::from([$((stringify!($k), stringify!($v))),*])
+        }
     }
 
     #[test]
@@ -377,6 +396,68 @@ mod tests {
         assert_eq!(
             topology.set_active("i2", Online).unwrap(),
             peer!(2, "i2", "r2", "nowhere", Online),
+        );
+    }
+
+    #[test]
+    #[should_panic]
+    fn failure_domains() {
+        let mut t = Topology::from_peers(peers![]).with_replication_factor(3);
+
+        assert_eq!(
+            join!(t, None, None, "-", faildoms! {planet: Earth})
+                .unwrap()
+                .replicaset_id,
+            "r1",
+        );
+
+        assert_eq!(
+            join!(t, None, None, "-", faildoms! {planet: Earth})
+                .unwrap()
+                .replicaset_id,
+            "r2",
+        );
+
+        assert_eq!(
+            join!(t, None, None, "-", faildoms! {planet: Mars})
+                .unwrap()
+                .replicaset_id,
+            "r1",
+        );
+
+        assert_eq!(
+            join!(t, None, None, "-", faildoms! {planet: Earth, os: BSD})
+                .unwrap()
+                .replicaset_id,
+            "r3",
+        );
+
+        assert_eq!(
+            join!(t, None, None, "-", faildoms! {planet: Mars, os: BSD})
+                .unwrap()
+                .replicaset_id,
+            "r2",
+        );
+
+        assert_eq!(
+            join!(t, None, None, "-", faildoms! {os: Arch})
+                .unwrap()
+                .replicaset_id,
+            "r2",
+        );
+
+        assert_eq!(
+            join!(t, None, None, "-", faildoms! {planet: Venus, os: Arch})
+                .unwrap()
+                .replicaset_id,
+            "r1",
+        );
+
+        assert_eq!(
+            join!(t, None, None, "-", faildoms! {os: Mac})
+                .unwrap()
+                .replicaset_id,
+            "r3",
         );
     }
 }

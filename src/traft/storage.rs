@@ -84,6 +84,7 @@ impl Storage {
                     {name = 'replicaset_uuid', type = 'string', is_nullable = false},
                     {name = 'commit_index', type = 'unsigned', is_nullable = false},
                     {name = 'health', type = 'string', is_nullable = false},
+                    {name = 'failure_domains', type = 'map', is_nullable = false},
                 }
             })
 
@@ -597,17 +598,27 @@ inventory::submit!(crate::InnerTest {
 
         let mut raft_group = Storage::space(RAFT_GROUP).unwrap();
 
+        let faildom = crate::traft::FailureDomains::from([("a", "b")]);
+
         for peer in vec![
             // r1
             (
-                "i1", "i1-uuid", 1u64, "addr:1", "r1", "r1-uuid", 1u64, Online,
+                "i1", "i1-uuid", 1u64, "addr:1", "r1", "r1-uuid", 1u64, Online, &faildom,
             ),
-            ("i2", "i2-uuid", 2u64, "addr:2", "r1", "r1-uuid", 2, Online),
+            (
+                "i2", "i2-uuid", 2u64, "addr:2", "r1", "r1-uuid", 2, Online, &faildom,
+            ),
             // r2
-            ("i3", "i3-uuid", 3u64, "addr:3", "r2", "r2-uuid", 10, Online),
-            ("i4", "i4-uuid", 4u64, "addr:4", "r2", "r2-uuid", 10, Online),
+            (
+                "i3", "i3-uuid", 3u64, "addr:3", "r2", "r2-uuid", 10, Online, &faildom,
+            ),
+            (
+                "i4", "i4-uuid", 4u64, "addr:4", "r2", "r2-uuid", 10, Online, &faildom,
+            ),
             // r3
-            ("i5", "i5-uuid", 5u64, "addr:5", "r3", "r3-uuid", 10, Online),
+            (
+                "i5", "i5-uuid", 5u64, "addr:5", "r3", "r3-uuid", 10, Online, &faildom,
+            ),
         ] {
             raft_group.put(&peer).unwrap();
         }
@@ -632,9 +643,9 @@ inventory::submit!(crate::InnerTest {
                     " in unique index \"raft_id\"",
                     " in space \"raft_group\"",
                     " with old tuple",
-                    r#" - ["i1", "i1-uuid", 1, "addr:1", "r1", "r1-uuid", 1, "{on}"]"#,
+                    r#" - ["i1", "i1-uuid", 1, "addr:1", "r1", "r1-uuid", 1, "{on}", {{"A": "B"}}]"#,
                     " and new tuple",
-                    r#" - ["i99", "", 1, "", "", "", 0, "{off}"]"#,
+                    r#" - ["i99", "", 1, "", "", "", 0, "{off}", {{}}]"#,
                 ),
                 on = Online,
                 off = Offline,

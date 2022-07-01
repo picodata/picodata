@@ -149,6 +149,12 @@ pub struct Peer {
 
     /// The state of this instance's activity.
     pub health: Health,
+
+    /// Instance failure domains. Instances with overlapping failure domains
+    /// must not be in the same replicaset.
+    // TODO: raft_group space is kinda bloated, maybe we should store some data
+    // in different spaces/not deserialize the whole tuple every time?
+    pub failure_domains: FailureDomains,
 }
 impl AsTuple for Peer {}
 
