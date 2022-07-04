@@ -95,6 +95,18 @@ impl std::ops::Deref for Uppercase {
     }
 }
 
+impl std::fmt::Display for Uppercase {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Display::fmt(&self.0, f)
+    }
+}
+
+impl std::borrow::Borrow<str> for Uppercase {
+    fn borrow(&self) -> &str {
+        &*self.0
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

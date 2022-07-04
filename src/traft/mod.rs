@@ -532,6 +532,28 @@ pub struct FailureDomains {
     data: HashMap<Uppercase, Uppercase>,
 }
 
+impl FailureDomains {
+    pub fn contains_name(&self, name: &Uppercase) -> bool {
+        self.data.contains_key(name)
+    }
+
+    pub fn names(&self) -> std::collections::hash_map::Keys<Uppercase, Uppercase> {
+        self.data.keys()
+    }
+
+    pub fn intersects(&self, other: &Self) -> bool {
+        for (name, value) in &self.data {
+            match other.data.get(name) {
+                Some(other_value) if value == other_value => {
+                    return true;
+                }
+                _ => {}
+            }
+        }
+        false
+    }
+}
+
 impl<I, K, V> From<I> for FailureDomains
 where
     I: IntoIterator<Item = (K, V)>,

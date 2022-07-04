@@ -6,6 +6,7 @@ use crate::traft::FailureDomains;
 use crate::traft::Health;
 use crate::traft::Peer;
 use crate::traft::{InstanceId, RaftId, ReplicasetId};
+use crate::util::Uppercase;
 
 use raft::INVALID_INDEX;
 
@@ -13,6 +14,7 @@ pub struct Topology {
     replication_factor: u8,
     max_raft_id: RaftId,
 
+    failure_domain_names: HashSet<Uppercase>,
     instance_map: HashMap<InstanceId, Peer>,
     replicaset_map: BTreeMap<ReplicasetId, HashSet<InstanceId>>,
 }
@@ -22,6 +24,7 @@ impl Topology {
         let mut ret = Self {
             replication_factor: 2,
             max_raft_id: 0,
+            failure_domain_names: Default::default(),
             instance_map: Default::default(),
             replicaset_map: Default::default(),
         };
@@ -51,6 +54,8 @@ impl Topology {
                 .remove(&old_peer.instance_id);
         }
 
+        self.failure_domain_names
+            .extend(peer.failure_domains.names().cloned());
         self.instance_map.insert(instance_id.clone(), peer);
         self.replicaset_map
             .entry(replicaset_id)
@@ -64,10 +69,14 @@ impl Topology {
     }
 
     fn choose_replicaset_id(&self, failure_domains: &FailureDomains) -> String {
-        // TODO: implement logic
-        let _ = failure_domains;
-        for (replicaset_id, peers) in self.replicaset_map.iter() {
+        'next_replicaset: for (replicaset_id, peers) in self.replicaset_map.iter() {
             if peers.len() < self.replication_factor as usize {
+                for peer_id in peers {
+                    let peer = self.instance_map.get(peer_id).unwrap();
+                    if peer.failure_domains.intersects(failure_domains) {
+                        continue 'next_replicaset;
+                    }
+                }
                 return replicaset_id.clone();
             }
         }
@@ -80,6 +89,22 @@ impl Topology {
                 return replicaset_id;
             }
         }
+    }
+
+    pub fn check_required_failure_domains(&self, fd: &FailureDomains) -> Result<(), String> {
+        let mut res = Vec::new();
+        for domain_name in &self.failure_domain_names {
+            if !fd.contains_name(domain_name) {
+                res.push(domain_name.to_string());
+            }
+        }
+
+        if res.is_empty() {
+            return Ok(());
+        }
+
+        res.sort();
+        Err(format!("missing failure domain names: {}", res.join(", ")))
     }
 
     pub fn join(
@@ -97,6 +122,8 @@ impl Topology {
                 return Err(e);
             }
         }
+
+        self.check_required_failure_domains(&failure_domains)?;
 
         // Anyway, `join` always produces a new raft_id.
         let raft_id = self.max_raft_id + 1;
@@ -244,8 +271,9 @@ mod tests {
     }
 
     macro_rules! faildoms {
-        ($($k:tt : $v:tt),* $(,)?) => {
-            FailureDomains::from([$((stringify!($k), stringify!($v))),*])
+        ($(,)?) => { FailureDomains::default() };
+        ($($k:tt : $v:tt),+ $(,)?) => {
+            FailureDomains::from([$((stringify!($k), stringify!($v))),+])
         }
     }
 
@@ -400,7 +428,6 @@ mod tests {
     }
 
     #[test]
-    #[should_panic]
     fn failure_domains() {
         let mut t = Topology::from_peers(peers![]).with_replication_factor(3);
 
@@ -441,9 +468,9 @@ mod tests {
 
         assert_eq!(
             join!(t, None, None, "-", faildoms! {os: Arch})
-                .unwrap()
-                .replicaset_id,
-            "r2",
+                .unwrap_err()
+                .to_string(),
+            "missing failure domain names: PLANET",
         );
 
         assert_eq!(
@@ -454,10 +481,24 @@ mod tests {
         );
 
         assert_eq!(
-            join!(t, None, None, "-", faildoms! {os: Mac})
+            join!(t, None, None, "-", faildoms! {planet: Venus, os: Mac})
+                .unwrap()
+                .replicaset_id,
+            "r2",
+        );
+
+        assert_eq!(
+            join!(t, None, None, "-", faildoms! {planet: Mars, os: Mac})
                 .unwrap()
                 .replicaset_id,
             "r3",
+        );
+
+        assert_eq!(
+            join!(t, None, None, "-", faildoms! {})
+                .unwrap_err()
+                .to_string(),
+            "missing failure domain names: OS, PLANET",
         );
     }
 }
