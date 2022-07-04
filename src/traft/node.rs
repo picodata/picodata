@@ -489,7 +489,7 @@ fn handle_committed_conf_change(
     let raft_id = &raw_node.raft.id;
     let voters_old = Storage::voters().unwrap();
     if voters_old.contains(raft_id) && !conf_state.voters.contains(raft_id) {
-        event::postpone_until(Event::Demoted, Event::LeaveJointState).ok();
+        event::broadcast_when(Event::Demoted, Event::LeaveJointState).ok();
     }
 
     Storage::persist_conf_state(&conf_state).unwrap();

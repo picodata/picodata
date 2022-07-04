@@ -175,21 +175,21 @@ pub fn broadcast(event: impl Borrow<Event>) {
     }
 }
 
-/// Postpones the `postpone` event until the `until` event happens.
+/// Sets the `target` event to be broadcast when the `when` event happens.
 ///
 /// **NOTE**: the postponement is volatile, so if the instance restarts between
-/// the `postpone` and the `until` events happens, there will not be a
+/// the `target` and the `when` events happen, there will not be a
 /// notification.
 ///
-/// Adds an event handler which will broadcast the `postpone` event when the
-/// `until` happens.
+/// Adds an event handler which will broadcast the `target` event when the
+/// `when` event happens.
 ///
 /// Returns an error if `EVENTS` is uninitialized
-pub fn postpone_until(postpone: Event, until: Event) -> Result<(), Error> {
+pub fn broadcast_when(target: Event, when: Event) -> Result<(), Error> {
     let mut events = events()?;
-    let cond = events.regular_cond(postpone);
+    let cond = events.regular_cond(target);
     events.add_once_handler(
-        until,
+        when,
         handler(move || {
             cond.broadcast();
             Ok(())
