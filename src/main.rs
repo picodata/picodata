@@ -525,6 +525,7 @@ fn start_join(args: &args::Run, leader_address: String) {
 
     let raft_id = resp.peer.raft_id;
     start_transaction(|| -> Result<(), Error> {
+        traft::Storage::persist_peer(&resp.peer).unwrap();
         for peer in resp.raft_group {
             traft::Storage::persist_peer(&peer).unwrap();
         }

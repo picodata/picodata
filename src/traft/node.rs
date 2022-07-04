@@ -1000,8 +1000,18 @@ fn raft_join(req: JoinRequest) -> Result<JoinResponse, Box<dyn std::error::Error
     }
 
     let peer = node.handle_topology_request(req.into())?;
-    let raft_group = Storage::peers()?;
     let box_replication = Storage::box_replication(&peer.replicaset_id, Some(peer.commit_index))?;
+
+    // A joined peer needs to communicate with other nodes.
+    // Provide it the list of raft voters in response.
+    let mut raft_group = vec![];
+    for raft_id in Storage::voters()?.into_iter() {
+        if let Some(peer) = Storage::peer_by_raft_id(raft_id)? {
+            raft_group.push(peer);
+        } else {
+            crate::warn_or_panic!("peer missing in storage, raft_id: {}", raft_id);
+        }
+    }
 
     Ok(JoinResponse {
         peer,
