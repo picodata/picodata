@@ -8,6 +8,7 @@ pub mod node;
 mod storage;
 pub mod topology;
 
+use crate::util::Uppercase;
 use ::raft::prelude as raft;
 use ::tarantool::tuple::AsTuple;
 use serde::de::DeserializeOwned;
@@ -27,8 +28,6 @@ pub use topology::Topology;
 pub type RaftId = u64;
 pub type InstanceId = String;
 pub type ReplicasetId = String;
-
-pub type FailureDomains = HashMap<String, String>;
 
 //////////////////////////////////////////////////////////////////////////////////////////
 /// Timestamps for raft entries.
@@ -517,4 +516,37 @@ pub fn instance_uuid(instance_id: &str) -> String {
 pub fn replicaset_uuid(replicaset_id: &str) -> String {
     let uuid = Uuid::new_v3(&NAMESPACE_REPLICASET_UUID, replicaset_id.as_bytes());
     uuid.hyphenated().to_string()
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// Failure domains of a given instance.
+#[derive(Default, Debug, PartialEq, Eq, Clone, serde::Deserialize, serde::Serialize)]
+pub struct FailureDomains {
+    #[serde(flatten)]
+    data: HashMap<Uppercase, Uppercase>,
+}
+
+impl<I, K, V> From<I> for FailureDomains
+where
+    I: IntoIterator<Item = (K, V)>,
+    Uppercase: From<K>,
+    Uppercase: From<V>,
+{
+    fn from(data: I) -> Self {
+        Self {
+            data: data
+                .into_iter()
+                .map(|(k, v)| (Uppercase::from(k), Uppercase::from(v)))
+                .collect(),
+        }
+    }
+}
+
+impl<'a> IntoIterator for &'a FailureDomains {
+    type IntoIter = <&'a HashMap<Uppercase, Uppercase> as IntoIterator>::IntoIter;
+    type Item = <&'a HashMap<Uppercase, Uppercase> as IntoIterator>::Item;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.data.iter()
+    }
 }

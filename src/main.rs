@@ -420,10 +420,7 @@ fn start_boot(args: &args::Run) {
         args.instance_id(),
         args.replicaset_id.clone(),
         args.advertise_address(),
-        args.failure_domains()
-            .into_iter()
-            .map(|(k, v)| (k.into(), v.into()))
-            .collect(),
+        args.failure_domains(),
     );
     let raft_id = peer.raft_id;
     let instance_id = peer.instance_id.clone();
@@ -505,11 +502,7 @@ fn start_join(args: &args::Run, leader_address: String) {
         instance_id: args.instance_id(),
         replicaset_id: args.replicaset_id.clone(),
         advertise_address: args.advertise_address(),
-        failure_domains: args
-            .failure_domains()
-            .into_iter()
-            .map(|(k, v)| (k.into(), v.into()))
-            .collect(),
+        failure_domains: args.failure_domains(),
     };
 
     let fn_name = stringify_cfunc!(traft::node::raft_join);

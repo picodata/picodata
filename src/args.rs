@@ -1,12 +1,14 @@
 use clap::Parser;
 use std::{
     borrow::Cow,
-    collections::HashMap,
     ffi::{CStr, CString},
 };
 use tarantool::log::SayLevel;
 use tarantool::tlua::{self, c_str};
 use thiserror::Error;
+
+use crate::traft::FailureDomains;
+use crate::util::Uppercase;
 
 #[derive(Debug, Parser)]
 #[clap(name = "picodata", version = env!("CARGO_PKG_VERSION"))]
@@ -99,7 +101,7 @@ pub struct Run {
         value_name = "key=value",
         require_value_delimiter = true,
         use_value_delimiter = true,
-        parse(try_from_str = try_parse_kv),
+        parse(try_from_str = try_parse_kv_uppercase),
         env = "PICODATA_FAILURE_DOMAIN"
     )]
     /// Comma-separated list describing physical location of the server.
@@ -109,7 +111,7 @@ pub struct Run {
     /// same value. Instead, new replicasets will be created.
     /// Replicasets will be populated with instances from different
     /// failure domains until the desired replication factor is reached.
-    pub failure_domains: Vec<(String, String)>,
+    pub failure_domains: Vec<(Uppercase, Uppercase)>,
 
     #[clap(long, value_name = "name", env = "PICODATA_REPLICASET_ID")]
     /// Name of the replicaset
@@ -179,12 +181,12 @@ impl Run {
         }
     }
 
-    pub fn failure_domains(&self) -> HashMap<&str, &str> {
-        let mut ret = HashMap::new();
-        for (k, v) in &self.failure_domains {
-            ret.insert(k.as_ref(), v.as_ref());
-        }
-        ret
+    pub fn failure_domains(&self) -> FailureDomains {
+        FailureDomains::from(
+            self.failure_domains
+                .iter()
+                .map(|(k, v)| (k.clone(), v.clone())),
+        )
     }
 }
 
@@ -263,11 +265,13 @@ fn try_parse_address(text: &str) -> Result<String, ParseAddressError> {
     Ok(format!("{host}:{port}"))
 }
 
-fn try_parse_kv(s: &str) -> Result<(String, String), String> {
-    let pos = s
-        .find('=')
+/// Parses a '=' sepparated string of key and value and converts both to
+/// uppercase.
+fn try_parse_kv_uppercase(s: &str) -> Result<(Uppercase, Uppercase), String> {
+    let (key, value) = s
+        .split_once('=')
         .ok_or_else(|| format!("invalid KEY=value: no `=` found in `{}`", s))?;
-    Ok((s[..pos].into(), s[pos + 1..].into()))
+    Ok((key.into(), value.into()))
 }
 
 #[cfg(test)]
@@ -333,7 +337,7 @@ mod tests {
             assert_eq!(parsed.listen, "localhost:3301"); // default
             assert_eq!(parsed.advertise_address(), "localhost:3301"); // default
             assert_eq!(parsed.log_level(), SayLevel::Info); // default
-            assert_eq!(parsed.failure_domains(), HashMap::new()); // default
+            assert_eq!(parsed.failure_domains(), FailureDomains::default()); // default
 
             let parsed = parse![Run, "--instance-id", "instance-id-from-args"];
             assert_eq!(
@@ -412,13 +416,13 @@ mod tests {
             let parsed = parse![Run,];
             assert_eq!(
                 parsed.failure_domains(),
-                HashMap::from([("k1", "env1"), ("k2", "env2")])
+                FailureDomains::from([("K1", "ENV1"), ("K2", "ENV2")])
             );
 
             let parsed = parse![Run, "--failure-domain", "k1=arg1,k1=arg1-again"];
             assert_eq!(
                 parsed.failure_domains(),
-                HashMap::from([("k1", "arg1-again")])
+                FailureDomains::from([("K1", "ARG1-AGAIN")])
             );
 
             let parsed = parse![
@@ -430,7 +434,7 @@ mod tests {
             ];
             assert_eq!(
                 parsed.failure_domains(),
-                HashMap::from([("k2", "arg2"), ("k3", "arg3"), ("k4", "arg4")])
+                FailureDomains::from([("K2", "ARG2"), ("K3", "ARG3"), ("K4", "ARG4")])
             );
         }
     }
