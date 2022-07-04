@@ -1,5 +1,4 @@
-use std::collections::BTreeMap;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use crate::traft::instance_uuid;
 use crate::traft::replicaset_uuid;
@@ -14,8 +13,8 @@ pub struct Topology {
     replication_factor: u8,
     max_raft_id: RaftId,
 
-    instance_map: BTreeMap<InstanceId, Peer>,
-    replicaset_map: BTreeMap<ReplicasetId, BTreeSet<InstanceId>>,
+    instance_map: HashMap<InstanceId, Peer>,
+    replicaset_map: BTreeMap<ReplicasetId, HashSet<InstanceId>>,
 }
 
 impl Topology {
