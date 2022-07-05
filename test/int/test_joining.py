@@ -35,6 +35,7 @@ def raft_join(
         instance_id,
         replicaset_id,
         address,
+        dict(), # failure_domains
         timeout=timeout_seconds,
     )
 
@@ -130,6 +131,7 @@ def test_replication(cluster2: Cluster):
             instance.eval("return box.info.cluster.uuid"),
             None,
             "Online",
+            dict(),
         ]
 
         assert list(space_cluster) == [
