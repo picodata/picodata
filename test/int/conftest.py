@@ -165,6 +165,7 @@ class Instance:
 
     color: Callable[[str], str]
 
+    failure_domain: dict[str, str] = field(default_factory=dict)
     env: dict[str, str] = field(default_factory=dict)
     process: subprocess.Popen | None = None
     raft_id: int = INVALID_RAFT_ID
@@ -188,7 +189,8 @@ class Instance:
             "--instance-id", self.instance_id,
             "--data-dir", self.data_dir,
             "--listen", self.listen,
-            "--peer", ','.join(self.peers)
+            "--peer", ','.join(self.peers),
+            *(f"--failure-domain={k}={v}" for k, v in self.failure_domain.items()),
         ]
         # fmt: on
 
@@ -393,10 +395,13 @@ class Cluster:
     ) -> list[Instance]:
         assert not self.instances, "Already deployed"
 
+        if not generate_instance_id:
+            args = dict(instance_id="")
+        else:
+            args = dict()
+
         for i in range(instance_count):
-            self.add_instance(
-                wait_ready=False, generate_instance_id=generate_instance_id
-            )
+            self.add_instance(wait_ready=False, **args)
 
         for instance in self.instances:
             instance.start()
@@ -408,19 +413,26 @@ class Cluster:
         return self.instances
 
     def add_instance(
-        self, wait_ready=True, peers=None, generate_instance_id=True
+        self,
+        wait_ready=True,
+        peers=None,
+        instance_id=None,
+        failure_domain=dict(),
     ) -> Instance:
         i = 1 + len(self.instances)
+
+        instance_id = instance_id if instance_id is not None else f"i{i}"
 
         instance = Instance(
             binary_path=self.binary_path,
             cluster_id=self.id,
-            instance_id=f"i{i}" if generate_instance_id else "",
+            instance_id=instance_id,
             data_dir=f"{self.data_dir}/i{i}",
             host=self.base_host,
             port=self.base_port + i,
             peers=peers or [f"{self.base_host}:{self.base_port + 1}"],
             color=CLUSTER_COLORS[len(self.instances) % len(CLUSTER_COLORS)],
+            failure_domain=failure_domain,
         )
 
         assert self.base_port <= instance.port <= self.max_port

@@ -22,7 +22,11 @@ def cluster3(cluster: Cluster):
 
 
 def raft_join(
-    peer: Instance, cluster_id: str, instance_id: str, timeout_seconds: float | int
+    peer: Instance,
+    cluster_id: str,
+    instance_id: str,
+    timeout_seconds: float | int,
+    failure_domain: dict[str, str] = dict(),
 ):
     replicaset_id = None
     # Workaround slow address resolving. Intentionally use
@@ -35,8 +39,14 @@ def raft_join(
         instance_id,
         replicaset_id,
         address,
-        dict(), # failure_domains
+        failure_domain,
         timeout=timeout_seconds,
+    )
+
+
+def replicaset_id(instance: Instance):
+    return instance.eval(
+        "return box.space.raft_group:get(...).replicaset_id", instance.instance_id
     )
 
 
@@ -204,3 +214,35 @@ def test_join_without_explicit_instance_id(cluster: Cluster):
     assert i1.instance_id == "i1"
     i2.assert_raft_status("Follower")
     assert i2.instance_id == "i2"
+
+
+def test_failure_domains(cluster: Cluster):
+    i1 = cluster.add_instance(failure_domain=dict(planet="Earth"))
+    i1.assert_raft_status("Leader")
+    assert replicaset_id(i1) == "r1"
+
+    with pytest.raises(TarantoolError, match="missing failure domain names: PLANET"):
+        raft_join(
+            peer=i1,
+            cluster_id=i1.cluster_id,
+            instance_id="x1",
+            failure_domain=dict(os="Arch"),
+            timeout_seconds=1,
+        )
+
+    i2 = cluster.add_instance(failure_domain=dict(planet="Mars", os="Arch"))
+    i2.assert_raft_status("Follower", leader_id=i1.raft_id)
+    assert replicaset_id(i2) == "r1"
+
+    with pytest.raises(TarantoolError, match="missing failure domain names: OS"):
+        raft_join(
+            peer=i1,
+            cluster_id=i1.cluster_id,
+            instance_id="x1",
+            failure_domain=dict(planet="Venus"),
+            timeout_seconds=1,
+        )
+
+    i3 = cluster.add_instance(failure_domain=dict(planet="Venus", os="BSD"))
+    i3.assert_raft_status("Follower", leader_id=i1.raft_id)
+    assert replicaset_id(i3) == "r2"
