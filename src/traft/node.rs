@@ -889,7 +889,6 @@ fn raft_conf_change_loop(status: Rc<RefCell<Status>>, main_inbox: Mailbox<Normal
             }
             pos @ 1..=i64::MAX => {
                 let pos = pos as usize;
-                eprintln!("\x1b[35madd {pos} voters\x1b[0m");
                 if pos < active_learners.len() {
                     for &raft_id in &active_learners[0..pos] {
                         changes.push(conf_change_single(raft_id, VOTER))
@@ -908,7 +907,6 @@ fn raft_conf_change_loop(status: Rc<RefCell<Status>>, main_inbox: Mailbox<Normal
             }
             neg @ i64::MIN..=-1 => {
                 let neg = -neg as usize;
-                eprintln!("\x1b[35mremove {neg} voters\x1b[0m");
                 assert!(neg < active_voters.len());
                 for &raft_id in &active_voters[0..neg] {
                     changes.push(conf_change_single(raft_id, LEARNER))
