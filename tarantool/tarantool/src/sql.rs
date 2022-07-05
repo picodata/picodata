@@ -49,6 +49,11 @@ impl Statement {
         }.to_str()
     }
 
+    /// Returns internal Tarantool id of the prepared statement.
+    pub fn id(&self) -> u32 {
+        self.id
+    }
+
     /// Executes prepared statement and returns a wrapper over the raw msgpack bytes.
     pub fn execute_raw<IN>(&self, bind_params: &IN) -> crate::Result<impl Read>
     where
