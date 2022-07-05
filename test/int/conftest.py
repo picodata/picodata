@@ -9,6 +9,7 @@ import pytest
 import signal
 import subprocess
 
+from datetime import datetime
 from shutil import rmtree
 from typing import Callable, Generator, Iterator
 from itertools import count
@@ -260,12 +261,15 @@ class Instance:
                 out.write(line)
                 out.flush()
 
-    def start(self):
+    def start(self, peers=[]):
         if self.process:
             # Be idempotent
             return
 
         eprint(f"{self} starting...")
+
+        if peers != []:
+            self.peers = map(lambda i: i.listen, peers)
 
         self.process = subprocess.Popen(
             self.command,
@@ -493,3 +497,16 @@ def cluster(
 def instance(cluster: Cluster) -> Generator[Instance, None, None]:
     cluster.deploy(instance_count=1)
     yield cluster[0]
+
+
+def retrying(fn, timeout=3):
+    # Usage example:
+    #   retrying(lambda: assert(value == 1))
+    #   retrying(lambda: assert(value == 1), timeout = 5)
+    start = datetime.now()
+    while True:
+        try:
+            return fn()
+        except AssertionError as ex:
+            if (datetime.now() - start).seconds > timeout:
+                raise ex from ex
