@@ -407,7 +407,6 @@ pub struct JoinRequest {
     pub instance_id: Option<String>,
     pub replicaset_id: Option<String>,
     pub advertise_address: String,
-    pub voter: bool,
 }
 impl AsTuple for JoinRequest {}
 

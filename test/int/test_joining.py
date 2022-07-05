@@ -29,14 +29,12 @@ def raft_join(
     # invalid address format to eliminate blocking DNS requests.
     # See https://git.picodata.io/picodata/picodata/tarantool-module/-/issues/81
     address = f"nowhere/{instance_id}"
-    is_voter = False
     return peer.call(
         ".raft_join",
         cluster_id,
         instance_id,
         replicaset_id,
         address,
-        is_voter,
         timeout=timeout_seconds,
     )
 

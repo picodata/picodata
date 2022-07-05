@@ -500,7 +500,6 @@ fn start_join(args: &args::Run, leader_address: String) {
         cluster_id: args.cluster_id.clone(),
         instance_id: args.instance_id(),
         replicaset_id: args.replicaset_id.clone(),
-        voter: false,
         advertise_address: args.advertise_address(),
     };
 
