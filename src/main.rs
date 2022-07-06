@@ -633,7 +633,7 @@ fn postjoin(args: &args::Run) {
     }
 
     loop {
-        let timeout = Duration::from_secs(1);
+        let timeout = Duration::from_secs(10);
         if let Err(e) = traft::node::global().unwrap().read_index(timeout) {
             tlog!(Warning, "unable to get a read barrier: {e}");
             continue;
@@ -667,7 +667,7 @@ fn postjoin(args: &args::Run) {
 
         let fn_name = stringify_cfunc!(traft::failover::raft_update_peer);
         let now = Instant::now();
-        let timeout = Duration::from_millis(220);
+        let timeout = Duration::from_secs(10);
         match tarantool::net_box_call(&leader.peer_address, fn_name, &req, timeout) {
             Err(Error::IO(e)) => {
                 tlog!(Warning, "failed to activate myself: {e}");
