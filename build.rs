@@ -25,17 +25,20 @@ fn patch_tarantool() {
         .collect::<Vec<_>>();
     patches.sort();
 
-    let status = std::process::Command::new("git")
-        .current_dir("tarantool-sys")
-        .arg("apply")
-        .arg("--3way")
-        .arg("--index")
-        .args(patches)
-        .status()
-        .expect("git couldn't be executed");
+    for patch in &patches {
+        dbg!(patch);
+        let status = std::process::Command::new("patch")
+            .current_dir("tarantool-sys")
+            .arg("--forward")
+            .arg("-p1")
+            .arg("-i")
+            .arg(patch)
+            .status()
+            .expect("`patch` couldn't be executed");
 
-    if !status.success() {
-        panic!("failed to apply tarantool patches")
+        if !status.success() {
+            panic!("failed to apply tarantool patches")
+        }
     }
 
     let _ = std::fs::File::create(&patch_check)
