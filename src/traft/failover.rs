@@ -9,7 +9,7 @@ use crate::traft::event;
 use crate::traft::node;
 use crate::traft::node::Error;
 use crate::traft::Storage;
-use crate::traft::{SetActiveRequest, SetActiveResponse};
+use crate::traft::{UpdatePeerRequest, UpdatePeerResponse};
 
 pub fn on_shutdown() {
     let voters = Storage::voters().expect("failed reading voters");
@@ -22,14 +22,14 @@ pub fn on_shutdown() {
     }
 
     let peer = Storage::peer_by_raft_id(raft_id).unwrap().unwrap();
-    let req = SetActiveRequest::deactivate(
+    let req = UpdatePeerRequest::set_offline(
         peer.instance_id,
         Storage::cluster_id()
             .unwrap()
             .expect("cluster_id must be present"),
     );
 
-    let fn_name = stringify_cfunc!(raft_set_active);
+    let fn_name = stringify_cfunc!(raft_update_peer);
     // will run until we get successfully deactivate or tarantool shuts down
     // the on_shutdown fiber (after 3 secs)
     loop {
@@ -48,7 +48,7 @@ pub fn on_shutdown() {
                 sleep(wait_before_retry.saturating_sub(now.elapsed()));
                 continue;
             }
-            Ok(SetActiveResponse { .. }) => {
+            Ok(UpdatePeerResponse { .. }) => {
                 break;
             }
         };
@@ -65,7 +65,9 @@ pub fn on_shutdown() {
 }
 
 #[proc(packed_args)]
-fn raft_set_active(req: SetActiveRequest) -> Result<SetActiveResponse, Box<dyn std::error::Error>> {
+fn raft_update_peer(
+    req: UpdatePeerRequest,
+) -> Result<UpdatePeerResponse, Box<dyn std::error::Error>> {
     let node = node::global()?;
 
     let cluster_id = Storage::cluster_id()?.ok_or("cluster_id is not set yet")?;
@@ -78,7 +80,7 @@ fn raft_set_active(req: SetActiveRequest) -> Result<SetActiveResponse, Box<dyn s
     }
 
     node.handle_topology_request(req.into())?;
-    Ok(SetActiveResponse {})
+    Ok(UpdatePeerResponse {})
 }
 
 pub fn voters_needed(voters: usize, total: usize) -> i64 {

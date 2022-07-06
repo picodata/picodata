@@ -139,7 +139,7 @@ fn init_handlers() {
     declare_cfunc!(discovery::proc_discover);
     declare_cfunc!(traft::node::raft_interact);
     declare_cfunc!(traft::node::raft_join);
-    declare_cfunc!(traft::failover::raft_set_active);
+    declare_cfunc!(traft::failover::raft_update_peer);
 }
 
 fn rm_tarantool_files(data_dir: &str) {
@@ -639,12 +639,12 @@ fn postjoin(args: &args::Run) {
             .expect("cluster_id must be persisted at the time of postjoin");
 
         tlog!(Info, "initiating self-activation of {instance_id:?}");
-        let req = traft::SetActiveRequest::activate(instance_id, cluster_id);
+        let req = traft::UpdatePeerRequest::set_online(instance_id, cluster_id);
 
         let leader_id = node.status().leader_id.expect("leader_id deinitialized");
         let leader = traft::Storage::peer_by_raft_id(leader_id).unwrap().unwrap();
 
-        let fn_name = stringify_cfunc!(traft::failover::raft_set_active);
+        let fn_name = stringify_cfunc!(traft::failover::raft_update_peer);
         let now = Instant::now();
         let timeout = Duration::from_millis(220);
         match tarantool::net_box_call(&leader.peer_address, fn_name, &req, timeout) {
@@ -653,7 +653,7 @@ fn postjoin(args: &args::Run) {
                 fiber::sleep(timeout.saturating_sub(now.elapsed()));
                 continue;
             }
-            Ok(traft::SetActiveResponse { .. }) => {
+            Ok(traft::UpdatePeerResponse { .. }) => {
                 break;
             }
         };

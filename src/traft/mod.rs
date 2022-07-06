@@ -401,7 +401,7 @@ pub trait ContextCoercion: Serialize + DeserializeOwned {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum TopologyRequest {
     Join(JoinRequest),
-    SetActive(SetActiveRequest),
+    UpdatePeer(UpdatePeerRequest),
 }
 
 impl From<JoinRequest> for TopologyRequest {
@@ -410,9 +410,9 @@ impl From<JoinRequest> for TopologyRequest {
     }
 }
 
-impl From<SetActiveRequest> for TopologyRequest {
-    fn from(a: SetActiveRequest) -> Self {
-        Self::SetActive(a)
+impl From<UpdatePeerRequest> for TopologyRequest {
+    fn from(a: UpdatePeerRequest) -> Self {
+        Self::UpdatePeer(a)
     }
 }
 
@@ -442,7 +442,7 @@ pub struct JoinResponse {
 impl AsTuple for JoinResponse {}
 
 ///////////////////////////////////////////////////////////////////////////////
-/// [`SetActiveRequest`] kind tag
+/// Activity state of an instance.
 #[derive(PartialEq, Eq, Clone, Debug, Deserialize, Serialize)]
 pub enum Health {
     // Instance is active and is handling requests.
@@ -475,28 +475,27 @@ impl Default for Health {
 ///////////////////////////////////////////////////////////////////////////////
 /// Request to deactivate the instance.
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct SetActiveRequest {
-    pub kind: Health,
+pub struct UpdatePeerRequest {
+    pub health: Health,
     pub instance_id: String,
     pub cluster_id: String,
 }
-impl AsTuple for SetActiveRequest {}
+impl AsTuple for UpdatePeerRequest {}
 
-impl SetActiveRequest {
-    #[allow(dead_code)]
+impl UpdatePeerRequest {
     #[inline]
-    pub fn activate(instance_id: impl Into<String>, cluster_id: impl Into<String>) -> Self {
+    pub fn set_online(instance_id: impl Into<String>, cluster_id: impl Into<String>) -> Self {
         Self {
-            kind: Health::Online,
+            health: Health::Online,
             instance_id: instance_id.into(),
             cluster_id: cluster_id.into(),
         }
     }
 
     #[inline]
-    pub fn deactivate(instance_id: impl Into<String>, cluster_id: impl Into<String>) -> Self {
+    pub fn set_offline(instance_id: impl Into<String>, cluster_id: impl Into<String>) -> Self {
         Self {
-            kind: Health::Offline,
+            health: Health::Offline,
             instance_id: instance_id.into(),
             cluster_id: cluster_id.into(),
         }
@@ -504,12 +503,12 @@ impl SetActiveRequest {
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-/// Response to a [`SetActiveRequest`]
+/// Response to a [`UpdatePeerRequest`]
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct SetActiveResponse {
+pub struct UpdatePeerResponse {
     // It's empty now, but it may be extended in future
 }
-impl AsTuple for SetActiveResponse {}
+impl AsTuple for UpdatePeerResponse {}
 
 ///////////////////////////////////////////////////////////////////////////////
 lazy_static::lazy_static! {

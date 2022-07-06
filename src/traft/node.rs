@@ -42,7 +42,7 @@ use crate::traft::LogicalClock;
 use crate::traft::Storage;
 use crate::traft::Topology;
 use crate::traft::TopologyRequest;
-use crate::traft::{JoinRequest, JoinResponse, SetActiveRequest};
+use crate::traft::{JoinRequest, JoinResponse, UpdatePeerRequest};
 
 use super::OpResult;
 
@@ -601,9 +601,11 @@ fn raft_main_loop(
                             failure_domains,
                         ),
 
-                        TopologyRequest::SetActive(SetActiveRequest {
-                            instance_id, kind, ..
-                        }) => topology.set_active(&instance_id, kind),
+                        TopologyRequest::UpdatePeer(UpdatePeerRequest {
+                            instance_id,
+                            health,
+                            ..
+                        }) => topology.set_active(&instance_id, health),
                     };
 
                     let mut peer = match peer_result {
