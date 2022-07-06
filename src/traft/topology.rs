@@ -64,8 +64,19 @@ impl Topology {
     }
 
     fn choose_instance_id(&self, raft_id: u64) -> String {
-        // FIXME: what if generated instance_id is already taken?
-        format!("i{raft_id}")
+        let mut suffix: Option<u64> = None;
+        loop {
+            let ret = match suffix {
+                None => format!("i{raft_id}"),
+                Some(x) => format!("i{raft_id}-{x}"),
+            };
+
+            if !self.instance_map.contains_key(&ret) {
+                return ret;
+            }
+
+            suffix = Some(suffix.map_or(2, |x| x + 1));
+        }
     }
 
     fn choose_replicaset_id(&self, failure_domains: &FailureDomains) -> String {
@@ -355,6 +366,20 @@ mod tests {
         // - If it's actually an impostor (instance_id collision),
         //   original instance (that didn't report it has finished
         //   bootstrapping yet) will be disrupted.
+    }
+
+    #[test]
+    fn test_instance_id_collision() {
+        let mut topology = Topology::from_peers(peers![
+            (1, "i1", "r1", "addr:1", Online),
+            (2, "i3", "r3", "addr:3", Online),
+            // Attention: i3 has raft_id=2
+        ]);
+
+        assert_eq!(
+            join!(topology, None, Some("r2"), "addr:2").unwrap(),
+            peer!(3, "i3-2", "r2", "addr:2", Online),
+        );
     }
 
     #[test]
