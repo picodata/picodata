@@ -382,13 +382,13 @@ fn start_discover(args: &args::Run, to_supervisor: ipc::Sender<IpcMessage>) {
 
     cfg.listen = Some(args.listen.clone());
     tarantool::set_cfg(&cfg);
-    let role = discovery::wait_global();
 
     // TODO assert traft::Storage::instance_id == (null || args.instance_id)
     if traft::Storage::raft_id().unwrap().is_some() {
         return postjoin(args);
     }
 
+    let role = discovery::wait_global();
     match role {
         discovery::Role::Leader { .. } => {
             let next_entrypoint = Entrypoint::StartBoot {};
