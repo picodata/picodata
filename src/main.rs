@@ -630,16 +630,20 @@ fn postjoin(args: &args::Run) {
     tarantool::set_cfg(&box_cfg);
 
     loop {
-        let instance_id = traft::Storage::peer_by_raft_id(raft_id)
+        let peer = traft::Storage::peer_by_raft_id(raft_id)
             .unwrap()
-            .expect("peer must be persisted at the time of postjoin")
-            .instance_id;
+            .expect("peer must be persisted at the time of postjoin");
+        let instance_id = peer.instance_id;
         let cluster_id = traft::Storage::cluster_id()
             .unwrap()
             .expect("cluster_id must be persisted at the time of postjoin");
 
         tlog!(Info, "initiating self-activation of {instance_id:?}");
-        let req = traft::UpdatePeerRequest::set_online(instance_id, cluster_id);
+        let mut req = traft::UpdatePeerRequest::set_online(instance_id, cluster_id);
+        let new_failure_domains = args.failure_domains();
+        if new_failure_domains != peer.failure_domains {
+            req.set_failure_domains(new_failure_domains);
+        }
 
         let leader_id = node.status().leader_id.expect("leader_id deinitialized");
         let leader = traft::Storage::peer_by_raft_id(leader_id).unwrap().unwrap();
@@ -648,10 +652,14 @@ fn postjoin(args: &args::Run) {
         let now = Instant::now();
         let timeout = Duration::from_millis(220);
         match tarantool::net_box_call(&leader.peer_address, fn_name, &req, timeout) {
-            Err(e) => {
+            Err(Error::IO(e)) => {
                 tlog!(Warning, "failed to activate myself: {e}");
                 fiber::sleep(timeout.saturating_sub(now.elapsed()));
                 continue;
+            }
+            Err(e) => {
+                tlog!(Error, "failed to activate myself: {e}");
+                std::process::exit(-1);
             }
             Ok(traft::UpdatePeerResponse { .. }) => {
                 break;

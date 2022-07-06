@@ -170,7 +170,7 @@ def test_deactivation(cluster2: Cluster):
     ) -> list[bool]:
         kind = "Online" if is_active else "Offline"
         return host.call(
-            ".raft_update_peer", kind, target.instance_id, target.cluster_id
+            ".raft_update_peer", kind, target.instance_id, target.cluster_id, None
         )
 
     # check idempotency

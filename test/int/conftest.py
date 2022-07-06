@@ -297,6 +297,13 @@ class Instance:
         # Assert a new process group is created
         assert os.getpgid(self.process.pid) == self.process.pid
 
+    def fail_to_start(self, timeout: int = 5):
+        assert self.process is None
+        self.start()
+        assert self.process
+        self.process.wait(timeout)
+        self.process = None
+
     def restart(self, kill: bool = False, remove_data: bool = False):
         if kill:
             self.kill()

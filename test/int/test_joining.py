@@ -286,3 +286,41 @@ def test_failure_domains(cluster: Cluster):
     i3 = cluster.add_instance(failure_domain=dict(planet="Venus", os="BSD"))
     i3.assert_raft_status("Follower", leader_id=i1.raft_id)
     assert replicaset_id(i3) == "r2"
+
+
+def test_reconfigure_failure_domains(cluster: Cluster):
+    i1 = cluster.add_instance(
+        failure_domain=dict(planet="Earth"), init_replication_factor=2
+    )
+    i1.assert_raft_status("Leader")
+    assert replicaset_id(i1) == "r1"
+
+    i2 = cluster.add_instance(
+        failure_domain=dict(planet="Mars"), init_replication_factor=2
+    )
+    assert replicaset_id(i2) == "r1"
+
+    i2.terminate()
+    i1.terminate()
+
+    # fail to start without needed domain subdivisions
+    i1.failure_domain = dict(owner="Bob")
+    i1.fail_to_start()
+
+    i1.failure_domain = dict(planet="Mars", owner="Bob")
+    i1.start()
+    i1.wait_ready()
+    # replicaset doesn't change automatically
+    assert replicaset_id(i1) == "r1"
+
+    i2.failure_domain = dict(planet="Earth", owner="Jon")
+    i2.start()
+    i2.wait_ready()
+    assert replicaset_id(i2) == "r1"
+
+    i2.terminate()
+    i1.terminate()
+
+    # fail to remove domain subdivision
+    i1.failure_domain = dict(planet="Mars")
+    i1.fail_to_start()

@@ -479,6 +479,7 @@ pub struct UpdatePeerRequest {
     pub health: Health,
     pub instance_id: String,
     pub cluster_id: String,
+    pub failure_domains: Option<FailureDomains>,
 }
 impl AsTuple for UpdatePeerRequest {}
 
@@ -489,6 +490,7 @@ impl UpdatePeerRequest {
             health: Health::Online,
             instance_id: instance_id.into(),
             cluster_id: cluster_id.into(),
+            failure_domains: None,
         }
     }
 
@@ -498,7 +500,13 @@ impl UpdatePeerRequest {
             health: Health::Offline,
             instance_id: instance_id.into(),
             cluster_id: cluster_id.into(),
+            failure_domains: None,
         }
+    }
+
+    #[inline]
+    pub fn set_failure_domains(&mut self, failure_domains: FailureDomains) {
+        self.failure_domains = Some(failure_domains);
     }
 }
 
@@ -549,6 +557,8 @@ impl FailureDomains {
         self.data.keys()
     }
 
+    /// Empty `FailureDomains` doesn't intersect with any other `FailureDomains`
+    /// even with another empty one.
     pub fn intersects(&self, other: &Self) -> bool {
         for (name, value) in &self.data {
             match other.data.get(name) {

@@ -604,8 +604,9 @@ fn raft_main_loop(
                         TopologyRequest::UpdatePeer(UpdatePeerRequest {
                             instance_id,
                             health,
+                            failure_domains,
                             ..
-                        }) => topology.set_active(&instance_id, health),
+                        }) => topology.update_peer(&instance_id, health, failure_domains),
                     };
 
                     let mut peer = match peer_result {

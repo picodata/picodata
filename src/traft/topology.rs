@@ -49,9 +49,8 @@ impl Topology {
 
         if let Some(old_peer) = self.instance_map.remove(&instance_id) {
             self.replicaset_map
-                .entry(old_peer.replicaset_id)
-                .or_default()
-                .remove(&old_peer.instance_id);
+                .get_mut(&old_peer.replicaset_id)
+                .map(|r| r.remove(&old_peer.instance_id));
         }
 
         self.failure_domain_names
@@ -178,11 +177,25 @@ impl Topology {
         Ok(peer.clone())
     }
 
-    pub fn set_active(&mut self, instance_id: &str, health: Health) -> Result<Peer, String> {
+    pub fn update_peer(
+        &mut self,
+        instance_id: &str,
+        health: Health,
+        failure_domains: Option<FailureDomains>,
+    ) -> Result<Peer, String> {
+        let this = self as *const Self;
+
         let mut peer = self
             .instance_map
             .get_mut(instance_id)
             .ok_or_else(|| format!("unknown instance {}", instance_id))?;
+
+        if let Some(fd) = failure_domains {
+            // SAFETY: this is safe, because rust doesn't complain if you inline
+            // the function
+            unsafe { &*this }.check_required_failure_domains(&fd)?;
+            peer.failure_domains = fd;
+        }
 
         peer.health = health;
         Ok(peer.clone())
@@ -278,6 +291,26 @@ mod tests {
                     _f
                 },
             )
+        };
+    }
+
+    macro_rules! set_active {
+        (
+            $topology:expr,
+            $instance_id:expr,
+            $health:expr $(,)?
+        ) => {
+            $topology.update_peer($instance_id, $health, None)
+        };
+    }
+
+    macro_rules! set_faildoms {
+        (
+            $topology:expr,
+            $instance_id:expr,
+            $failure_domains:expr $(,)?
+        ) => {
+            $topology.update_peer($instance_id, Online, Some($failure_domains))
         };
     }
 
@@ -444,24 +477,24 @@ mod tests {
         .with_replication_factor(1);
 
         assert_eq!(
-            topology.set_active("i1", Offline).unwrap(),
+            set_active!(topology, "i1", Offline).unwrap(),
             peer!(1, "i1", "r1", "nowhere", Offline),
         );
 
         // idempotency
         assert_eq!(
-            topology.set_active("i1", Offline).unwrap(),
+            set_active!(topology, "i1", Offline).unwrap(),
             peer!(1, "i1", "r1", "nowhere", Offline),
         );
 
         assert_eq!(
-            topology.set_active("i2", Online).unwrap(),
+            set_active!(topology, "i2", Online).unwrap(),
             peer!(2, "i2", "r2", "nowhere", Online),
         );
 
         // idempotency
         assert_eq!(
-            topology.set_active("i2", Online).unwrap(),
+            set_active!(topology, "i2", Online).unwrap(),
             peer!(2, "i2", "r2", "nowhere", Online),
         );
     }
@@ -538,6 +571,69 @@ mod tests {
                 .unwrap_err()
                 .to_string(),
             "missing failure domain names: OS, PLANET",
+        );
+    }
+
+    #[test]
+    fn reconfigure_failure_domains() {
+        let mut t = Topology::from_peers(peers![]).with_replication_factor(3);
+
+        // first instance
+        let peer = join!(t, Some("i1"), None, "-", faildoms! {planet: Earth}).unwrap();
+        assert_eq!(peer.failure_domains, faildoms! {planet: Earth});
+        assert_eq!(peer.replicaset_id, "r1");
+
+        // reconfigure single instance, fail
+        assert_eq!(
+            set_faildoms!(t, "i1", faildoms! {owner: Ivan})
+                .unwrap_err()
+                .to_string(),
+            "missing failure domain names: PLANET",
+        );
+
+        // reconfigure single instance, success
+        let peer = set_faildoms!(t, "i1", faildoms! {planet: Mars, owner: Ivan}).unwrap();
+        assert_eq!(peer.failure_domains, faildoms! {planet: Mars, owner: Ivan});
+        assert_eq!(peer.replicaset_id, "r1"); // same replicaset
+
+        // second instance
+        #[rustfmt::skip]
+        let peer = join!(t, Some("i2"), None, "-", faildoms! {planet: Mars, owner: Mike})
+            .unwrap();
+        assert_eq!(peer.failure_domains, faildoms! {planet: Mars, owner: Mike});
+        // doesn't fit into r1
+        assert_eq!(peer.replicaset_id, "r2");
+
+        // reconfigure second instance, success
+        let peer = set_faildoms!(t, "i2", faildoms! {planet: Earth, owner: Mike}).unwrap();
+        assert_eq!(peer.failure_domains, faildoms! {planet: Earth, owner: Mike});
+        // replicaset doesn't change automatically
+        assert_eq!(peer.replicaset_id, "r2");
+
+        // add instance with new subdivision
+        #[rustfmt::skip]
+        let peer = join!(t, Some("i3"), None, "-", faildoms! {planet: B, owner: V, dimension: C137})
+            .unwrap();
+        assert_eq!(
+            peer.failure_domains,
+            faildoms! {planet: B, owner: V, dimension: C137}
+        );
+        assert_eq!(peer.replicaset_id, "r1");
+
+        assert_eq!(
+            set_active!(t, "i3", Offline).unwrap().failure_domains,
+            faildoms! {planet: B, owner: V, dimension: C137},
+        );
+
+        // even though the only instance with failure domain subdivision of
+        // `DIMENSION` is inactive, we can't add an instance without that
+        // subdivision
+        #[rustfmt::skip]
+        assert_eq!(
+            join!(t, Some("i4"), None, "-", faildoms! {planet: Theia, owner: Me})
+                .unwrap_err()
+                .to_string(),
+            "missing failure domain names: DIMENSION",
         );
     }
 }
