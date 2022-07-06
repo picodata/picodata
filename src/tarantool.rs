@@ -122,6 +122,8 @@ pub struct Cfg {
     pub wal_dir: String,
     pub memtx_dir: String,
 
+    pub memtx_memory: u64,
+
     pub feedback_enabled: bool,
     pub log_level: u8,
 }
@@ -139,6 +141,8 @@ impl Default for Cfg {
 
             wal_dir: ".".into(),
             memtx_dir: ".".into(),
+
+            memtx_memory: 32 * 1024 * 1024,
 
             feedback_enabled: false,
             log_level: tarantool::log::SayLevel::Info as u8,
