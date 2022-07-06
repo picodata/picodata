@@ -311,12 +311,17 @@ mod tests {
     }
 
     #[test]
-    fn test_override_existing() {
+    fn test_override() {
         let mut topology = Topology::from_peers(peers![
             (1, "i1", "R1", "active:1", Online),
             (2, "i2", "R2", "inactive:1", Offline),
         ]);
 
+        // JoinRequest with a given instance_id online.
+        // - It must be an impostor, return an error.
+        // - Even if it's a fair rebootstrap, it will be marked as
+        //   unreachable soon (when we implement failover) an the error
+        //   will be gone.
         assert_eq!(
             join!(topology, Some("i1"), None, "active:2")
                 .unwrap_err()
@@ -324,27 +329,32 @@ mod tests {
             "i1 is already joined",
         );
 
+        // JoinRequest with a given instance_id offline (or unreachable).
+        // - Presumably it's a rebootstrap.
+        //   1. Perform auto-expel, unless it threatens data safety (TODO).
+        //   2. Assign new raft_id.
+        //   3. Assign new replicaset_id, unless specified explicitly. A
+        //      new replicaset_id might be the same as before, since
+        //      auto-expel provided a vacant place there. Or it might be
+        //      not, if replication_factor / failure_domains were edited.
+        // - Even if it's an impostor, rely on auto-expel policy.
+        //   Disruption isn't destructive if auto-expel allows (TODO).
         assert_eq!(
             join!(topology, Some("i2"), None, "inactive:2").unwrap(),
             peer!(3, "i2", "R1", "inactive:2", Online),
         );
-    }
 
-    #[test]
-    fn test_override_joined() {
-        let mut topology = Topology::from_peers(vec![]);
-
-        assert_eq!(
-            join!(topology, Some("i1"), Some("R1"), "addr:1").unwrap(),
-            peer!(1, "i1", "R1", "addr:1", Online),
-        );
-
-        assert_eq!(
-            join!(topology, Some("i1"), None, "addr:2")
-                .unwrap_err()
-                .to_string(),
-            "i1 is already joined",
-        );
+        // TODO
+        //
+        // JoinRequest with a given instance_id bootstrtapping.
+        // - Presumably it's a retry after tarantool bootstrap failure.
+        //   1. Perform auto-expel (it's always ok until bootstrap
+        //      finishes).
+        //   2. Assign a new raft_id.
+        //   3. Assign new replicaset_id. Same as above.
+        // - If it's actually an impostor (instance_id collision),
+        //   original instance (that didn't report it has finished
+        //   bootstrapping yet) will be disrupted.
     }
 
     #[test]
