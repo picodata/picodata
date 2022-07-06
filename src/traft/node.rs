@@ -948,7 +948,10 @@ fn raft_conf_change_loop(status: Rc<RefCell<Status>>, main_inbox: Mailbox<Normal
         // after the node leaves the joint state.
         match rx.recv() {
             Ok(()) => tlog!(Info, "conf_change processed"),
-            Err(e) => tlog!(Warning, "conf_change failed: {e}"),
+            Err(e) => {
+                tlog!(Warning, "conf_change failed: {e}");
+                fiber::sleep(Duration::from_secs(1));
+            }
         }
     }
 }
