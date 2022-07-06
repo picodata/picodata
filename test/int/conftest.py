@@ -390,18 +390,11 @@ class Cluster:
     def __getitem__(self, item: int) -> Instance:
         return self.instances[item]
 
-    def deploy(
-        self, *, instance_count: int, generate_instance_id=True
-    ) -> list[Instance]:
+    def deploy(self, *, instance_count: int) -> list[Instance]:
         assert not self.instances, "Already deployed"
 
-        if not generate_instance_id:
-            args = dict(instance_id="")
-        else:
-            args = dict()
-
-        for i in range(instance_count):
-            self.add_instance(wait_ready=False, **args)
+        for _ in range(instance_count):
+            self.add_instance(wait_ready=False)
 
         for instance in self.instances:
             instance.start()
@@ -416,12 +409,12 @@ class Cluster:
         self,
         wait_ready=True,
         peers=None,
-        instance_id=None,
+        generate_instance_id=True,
         failure_domain=dict(),
     ) -> Instance:
         i = 1 + len(self.instances)
 
-        instance_id = instance_id if instance_id is not None else f"i{i}"
+        instance_id = f"i{i}" if generate_instance_id else ""
 
         instance = Instance(
             binary_path=self.binary_path,

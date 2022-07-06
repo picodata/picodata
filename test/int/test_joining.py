@@ -207,9 +207,9 @@ def test_join_without_explicit_instance_id(cluster: Cluster):
     #   Then the one of the instances became Leader with instance_id=1
     #   And the second one of the became Follower with instance_id 2
 
-    cluster.deploy(instance_count=2, generate_instance_id=False)
+    i1 = cluster.add_instance(generate_instance_id=False)
+    i2 = cluster.add_instance(generate_instance_id=False)
 
-    i1, i2 = cluster.instances
     i1.assert_raft_status("Leader")
     assert i1.instance_id == "i1"
     i2.assert_raft_status("Follower")
