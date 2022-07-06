@@ -13,7 +13,6 @@ from datetime import datetime
 from shutil import rmtree
 from typing import Callable, Generator, Iterator
 from itertools import count
-from pathlib import Path
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass, field
 from tarantool.connection import Connection  # type: ignore
@@ -476,8 +475,8 @@ def compile() -> None:
 
 
 @pytest.fixture(scope="session")
-def binary_path(compile) -> str:
-    return os.path.realpath(Path(__file__) / "../../../target/debug/picodata")
+def binary_path(compile, pytestconfig) -> str:
+    return os.path.realpath(pytestconfig.rootpath / "target/debug/picodata")
 
 
 @pytest.fixture(scope="session")
@@ -496,9 +495,9 @@ def cluster(
     assert isinstance(n, int)
     assert n >= 0
 
-    # Provide each worker a dedicated pool of 100 listening ports
-    base_port = 3300 + n * 100
-    max_port = base_port + 99
+    # Provide each worker a dedicated pool of 200 listening ports
+    base_port = 3300 + n * 200
+    max_port = base_port + 199
     assert max_port <= 65535
 
     cluster = Cluster(
