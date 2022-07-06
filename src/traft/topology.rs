@@ -420,29 +420,6 @@ mod tests {
     }
 
     #[test]
-    fn test_replicaset_mismatch() {
-        let mut topology = Topology::from_peers(peers![(3, "i3", "R-A", "x:1", Online)]);
-        assert_eq!(
-            join!(topology, Some("i3"), Some("R-B"), "x:2")
-                .unwrap_err()
-                .to_string(),
-            "i3 is already joined",
-        );
-
-        let mut topology = Topology::from_peers(vec![peer!(2, "i2", "R-A", "nowhere", Online)]);
-        assert_eq!(
-            join!(topology, Some("i3"), Some("R-A"), "y:1").unwrap(),
-            peer!(3, "i3", "R-A", "y:1", Online),
-        );
-        assert_eq!(
-            join!(topology, Some("i3"), Some("R-B"), "y:2")
-                .unwrap_err()
-                .to_string(),
-            "i3 is already joined",
-        );
-    }
-
-    #[test]
     fn test_replication_factor() {
         let mut topology = Topology::from_peers(peers![
             (9, "i9", "r9", "nowhere", Online),
