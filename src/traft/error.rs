@@ -1,3 +1,4 @@
+use crate::traft::RaftId;
 use raft::StorageError;
 use rmp_serde::decode::Error as RmpDecodeError;
 use thiserror::Error;
@@ -18,6 +19,6 @@ impl From<CoercionError> for StorageError {
 
 #[derive(Debug, Error)]
 pub enum PoolSendError {
-    #[error("unknown recipient")]
-    UnknownRecipient,
+    #[error("unknown recipient ({0})")]
+    UnknownRecipient(RaftId),
 }

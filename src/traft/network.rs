@@ -222,7 +222,7 @@ impl ConnectionPool {
         let wrk = self
             .workers
             .get(&msg.to)
-            .ok_or(PoolSendError::UnknownRecipient)?;
+            .ok_or(PoolSendError::UnknownRecipient(msg.to))?;
         // let msg = Message::try_from(msg.clone())?;
         wrk.send(msg.clone())
     }
@@ -295,7 +295,7 @@ inventory::submit!(crate::InnerTest {
         // Assert unknown recepient error
         assert!(matches!(
             pool.send(&heartbeat_to_from(9999, 3)).unwrap_err(),
-            PoolSendError::UnknownRecipient
+            PoolSendError::UnknownRecipient(9999)
         ));
 
         // Set up on_disconnect trigger
