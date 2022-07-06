@@ -197,6 +197,7 @@ where
     tuple.into_struct::<((Res,),)>().map(|res| res.0 .0)
 }
 
+#[allow(dead_code)]
 pub fn net_box_call_retry<Args, Res, Addr>(address: Addr, fn_name: &str, args: &Args) -> Res
 where
     Args: AsTuple,

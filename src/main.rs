@@ -529,8 +529,24 @@ fn start_join(args: &args::Run, leader_address: String) {
         failure_domains: args.failure_domains(),
     };
 
+    // Arch memo.
+    // - There must be no timeouts. Retrying may lead to flooding the
+    //   topology with phantom instances. No worry, specifying a
+    //   particular `instance_id` for every instance protects from that
+    //   flood.
+    // - It's fine to retry "connection refused" errors.
+    // - TODO renew leader_address if the current one says it's not a
+    //   leader.
     let fn_name = stringify_cfunc!(traft::node::raft_join);
-    let resp: traft::JoinResponse = tarantool::net_box_call_retry(&leader_address, fn_name, &req);
+    let resp: traft::JoinResponse = loop {
+        match tarantool::net_box_call_or_log(&leader_address, fn_name, &req, Duration::MAX) {
+            Some(resp) => break resp,
+            None => {
+                fiber::sleep(Duration::from_secs(1));
+                continue;
+            }
+        }
+    };
 
     picolib_setup(args);
     assert!(tarantool::cfg().is_none());
