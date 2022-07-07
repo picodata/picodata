@@ -624,23 +624,31 @@ fn postjoin(args: &args::Run) {
     box_cfg.listen = Some(args.listen.clone());
     tarantool::set_cfg(&box_cfg);
 
-    while node.status().leader_id == None {
-        node.wait_status();
-    }
-
     if let Err(e) = tarantool::on_shutdown(traft::failover::on_shutdown) {
         tlog!(Error, "failed setting on_shutdown trigger: {e}");
     }
 
+    tlog!(Debug, "Getting a read barrier...");
     loop {
+        if node.status().leader_id == None {
+            // This check doesn't guarantee anything. It only eliminates
+            // unnecesary requests that will fail for sure. For example,
+            // re-election still may be abrupt while `node.read_index()`
+            // implicitly yields.
+            node.wait_status();
+            continue;
+        }
+
         let timeout = Duration::from_secs(10);
         if let Err(e) = traft::node::global().unwrap().read_index(timeout) {
-            tlog!(Warning, "unable to get a read barrier: {e}");
+            tlog!(Debug, "unable to get a read barrier: {e}");
+            fiber::sleep(Duration::from_millis(100));
             continue;
         } else {
             break;
         }
     }
+    tlog!(Info, "Read barrier aquired, raft is ready");
 
     let peer = traft::Storage::peer_by_raft_id(raft_id).unwrap().unwrap();
     box_cfg.replication = traft::Storage::box_replication(&peer.replicaset_id, None).unwrap();

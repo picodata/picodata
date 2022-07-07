@@ -695,6 +695,21 @@ fn raft_main_loop(
                 NormalRequest::ReadIndex { notify } => {
                     lc.inc();
 
+                    // In some states `raft-rs` ignores the ReadIndex request.
+                    // Check it preliminary, don't wait for the timeout.
+                    //
+                    // See for details:
+                    // - <https://github.com/tikv/raft-rs/blob/v0.6.0/src/raft.rs#L2058>
+                    // - <https://github.com/tikv/raft-rs/blob/v0.6.0/src/raft.rs#L2323>
+
+                    let leader_exists = raw_node.raft.leader_id == INVALID_ID;
+                    let term_just_started = raw_node.raft.state == RaftStateRole::Leader
+                        && !raw_node.raft.commit_to_current_term();
+                    if !leader_exists || term_just_started {
+                        notify.notify_err(RaftError::ProposalDropped);
+                        continue;
+                    }
+
                     // read_index puts this context into an Entry,
                     // so we've got to compose full EntryContext,
                     // despite single LogicalClock would be enough
