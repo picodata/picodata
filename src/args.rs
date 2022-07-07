@@ -122,7 +122,9 @@ pub struct Run {
     log_level: LogLevel,
 
     #[clap(long, default_value = "1", env = "PICODATA_INIT_REPLICATION_FACTOR")]
-    // Initial factor for Tarantool replication
+    /// Total number of replicas (copies of data) for each replicaset in
+    /// the cluster. It's only accounted upon the cluster initialization (when the first instance bootstraps), and
+    /// ignored aftwerwards.
     pub init_replication_factor: u8,
 }
 
