@@ -14,7 +14,6 @@ use ::tarantool::fiber;
 use ::tarantool::proc;
 use ::tarantool::tlua;
 use ::tarantool::transaction::start_transaction;
-use std::any::Any;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -37,6 +36,7 @@ use crate::traft::error::Error;
 use crate::traft::event;
 use crate::traft::event::Event;
 use crate::traft::failover;
+use crate::traft::notify::Notify;
 use crate::traft::ConnectionPool;
 use crate::traft::LogicalClock;
 use crate::traft::Storage;
@@ -47,75 +47,6 @@ use crate::traft::{JoinRequest, JoinResponse, UpdatePeerRequest};
 use super::OpResult;
 
 type RawNode = raft::RawNode<Storage>;
-// type TopologyMailbox = Mailbox<(TopologyRequest, Notify)>;
-
-#[derive(Clone)]
-struct Notify {
-    ch: fiber::Channel<Result<Box<dyn Any>, Error>>,
-}
-
-impl Notify {
-    fn new() -> Self {
-        Self {
-            ch: fiber::Channel::new(1),
-        }
-    }
-
-    fn notify_ok_any(&self, res: Box<dyn Any>) {
-        self.ch.try_send(Ok(res)).ok();
-    }
-
-    fn notify_ok<T: Any>(&self, res: T) {
-        self.notify_ok_any(Box::new(res));
-    }
-
-    fn notify_err<E: Into<Error>>(&self, err: E) {
-        self.ch.try_send(Err(err.into())).ok();
-    }
-
-    fn recv_any(self) -> Result<Box<dyn Any>, Error> {
-        match self.ch.recv() {
-            Some(v) => v,
-            None => {
-                self.ch.close();
-                Err(Error::Timeout)
-            }
-        }
-    }
-
-    fn recv_timeout_any(self, timeout: Duration) -> Result<Box<dyn Any>, Error> {
-        match self.ch.recv_timeout(timeout) {
-            Ok(v) => v,
-            Err(_) => {
-                self.ch.close();
-                Err(Error::Timeout)
-            }
-        }
-    }
-
-    fn recv_timeout<T: 'static>(self, timeout: Duration) -> Result<T, Error> {
-        let any: Box<dyn Any> = self.recv_timeout_any(timeout)?;
-        let boxed: Box<T> = any.downcast().map_err(|_| Error::DowncastError)?;
-        Ok(*boxed)
-    }
-
-    #[allow(unused)]
-    fn recv<T: 'static>(self) -> Result<T, Error> {
-        let any: Box<dyn Any> = self.recv_any()?;
-        let boxed: Box<T> = any.downcast().map_err(|_| Error::DowncastError)?;
-        Ok(*boxed)
-    }
-
-    fn is_closed(&self) -> bool {
-        self.ch.is_closed()
-    }
-}
-
-impl std::fmt::Debug for Notify {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        f.debug_struct("Notify").finish_non_exhaustive()
-    }
-}
 
 #[derive(Clone, Debug, tlua::Push, tlua::PushInto)]
 pub struct Status {

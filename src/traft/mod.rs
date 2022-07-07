@@ -5,6 +5,7 @@ pub mod event;
 pub mod failover;
 mod network;
 pub mod node;
+pub mod notify;
 mod storage;
 pub mod topology;
 
