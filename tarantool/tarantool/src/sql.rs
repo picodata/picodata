@@ -118,9 +118,7 @@ impl Statement {
 impl Drop for Statement {
     fn drop(&mut self) {
         unsafe {
-            if ffi::sql::sql_unprepare(self.id) >= 0 && ffi::sql::sql_stmt_finalize(self.inner) < 0 {
-                panic!("{}", TarantoolError::last())
-            }
+            ffi::sql::sql_unprepare(self.id);
         }
     }
 }

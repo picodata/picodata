@@ -20,7 +20,6 @@ extern "C" {
 
     pub(crate) fn sql_prepare(sql: *const c_char, len: u32, port: *const Port) -> c_int;
     pub(crate) fn sql_execute_prepared_ext(stmt_id: u32, bind: *const Bind, bind_count: u32, port: *const Port) -> c_int;
-    pub(crate) fn sql_stmt_finalize(sql_stmt: *const SqlStatement) -> c_int;
     pub(crate) fn sql_unprepare(stmt_id: u32) -> c_int;
     pub(crate) fn sql_stmt_query_str(stmt: *const SqlStatement) -> *const c_char;
     pub(crate) fn sql_stmt_calculate_id(sql_str: *const c_char, len: size_t) -> u32;
