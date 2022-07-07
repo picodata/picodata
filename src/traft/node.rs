@@ -14,7 +14,7 @@ use ::tarantool::fiber;
 use ::tarantool::proc;
 use ::tarantool::tlua;
 use ::tarantool::transaction::start_transaction;
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::convert::TryFrom;
@@ -271,12 +271,21 @@ struct JointStateLatch {
     notify: Notify,
 }
 
+fn with_joint_state_latch<F, R>(f: F) -> R
+where
+    F: FnOnce(&Cell<Option<JointStateLatch>>) -> R,
+{
+    thread_local! {
+        static JOINT_STATE_LATCH: Cell<Option<JointStateLatch>> = Cell::new(None);
+    }
+    JOINT_STATE_LATCH.with(f)
+}
+
 fn handle_committed_entries(
     entries: Vec<raft::Entry>,
     notifications: &mut HashMap<LogicalClock, Notify>,
     raw_node: &mut RawNode,
     pool: &mut ConnectionPool,
-    joint_state_latch: &mut Option<JointStateLatch>,
     topology_changed: &mut bool,
 ) {
     for entry in &entries {
@@ -292,15 +301,11 @@ fn handle_committed_entries(
         };
 
         match entry.entry_type {
-            raft::EntryType::EntryNormal => handle_committed_normal_entry(
-                entry,
-                notifications,
-                pool,
-                joint_state_latch,
-                topology_changed,
-            ),
+            raft::EntryType::EntryNormal => {
+                handle_committed_normal_entry(entry, notifications, pool, topology_changed)
+            }
             raft::EntryType::EntryConfChange | raft::EntryType::EntryConfChangeV2 => {
-                handle_committed_conf_change(entry, raw_node, joint_state_latch)
+                handle_committed_conf_change(entry, raw_node)
             }
         }
     }
@@ -320,7 +325,6 @@ fn handle_committed_normal_entry(
     entry: traft::Entry,
     notifications: &mut HashMap<LogicalClock, Notify>,
     pool: &mut ConnectionPool,
-    joint_state_latch: &mut Option<JointStateLatch>,
     topology_changed: &mut bool,
 ) {
     assert_eq!(entry.entry_type, raft::EntryType::EntryNormal);
@@ -337,30 +341,31 @@ fn handle_committed_normal_entry(
         *topology_changed = true;
     }
 
-    if let Some(latch) = joint_state_latch {
-        if entry.index == latch.index {
+    with_joint_state_latch(|joint_state_latch| {
+        if let Some(latch) = joint_state_latch.take() {
+            if entry.index != latch.index {
+                joint_state_latch.set(Some(latch));
+                return;
+            }
+
             // It was expected to be a ConfChange entry, but it's
             // normal. Raft must have overriden it, or there was
             // a re-election.
             let e = RaftError::ConfChangeError("rolled back".into());
 
             latch.notify.notify_err(e);
-            *joint_state_latch = None;
         }
-    }
+    });
 }
 
-fn handle_committed_conf_change(
-    entry: traft::Entry,
-    raw_node: &mut RawNode,
-    joint_state_latch: &mut Option<JointStateLatch>,
-) {
-    let mut latch_unlock = || {
-        if let Some(latch) = joint_state_latch {
-            latch.notify.notify_ok(());
-            *joint_state_latch = None;
-            event::broadcast(Event::LeaveJointState);
-        }
+fn handle_committed_conf_change(entry: traft::Entry, raw_node: &mut RawNode) {
+    let latch_unlock = || {
+        with_joint_state_latch(|joint_state_latch| {
+            if let Some(latch) = joint_state_latch.take() {
+                latch.notify.notify_ok(());
+                event::broadcast(Event::LeaveJointState);
+            }
+        });
     };
 
     // Beware: a tiny difference in type names (`V2` or not `V2`)
@@ -459,8 +464,6 @@ fn raft_main_loop(
         Storage::persist_gen(gen).unwrap();
         LogicalClock::new(id, gen)
     };
-
-    let mut joint_state_latch: Option<JointStateLatch> = None;
 
     let topology_cache = crate::cache::CachedCell::<u64, Topology>::new();
     // let mut topology: Option<(u64, Topology)> = None;
@@ -596,11 +599,12 @@ fn raft_main_loop(
                         let last_index = raw_node.raft.raft_log.last_index();
                         assert_eq!(last_index, prev_index + 1);
 
-                        assert!(joint_state_latch.is_none());
-
-                        joint_state_latch = Some(JointStateLatch {
-                            index: last_index,
-                            notify,
+                        with_joint_state_latch(|joint_state_latch| {
+                            assert!(joint_state_latch.take().is_none());
+                            joint_state_latch.set(Some(JointStateLatch {
+                                index: last_index,
+                                notify,
+                            }));
                         });
                     }
                 }
@@ -687,7 +691,6 @@ fn raft_main_loop(
                 &mut notifications,
                 &mut raw_node,
                 &mut pool,
-                &mut joint_state_latch,
                 &mut topology_changed,
             );
 
@@ -746,7 +749,6 @@ fn raft_main_loop(
                 &mut notifications,
                 &mut raw_node,
                 &mut pool,
-                &mut joint_state_latch,
                 &mut topology_changed,
             );
 
