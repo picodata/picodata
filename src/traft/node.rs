@@ -22,6 +22,7 @@ use std::rc::Rc;
 use std::time::Duration;
 use std::time::Instant;
 
+use crate::stringify_cfunc;
 use crate::traft::ContextCoercion as _;
 use crate::traft::Peer;
 use crate::traft::RaftId;
@@ -441,7 +442,7 @@ fn raft_main_loop(
 ) {
     let mut next_tick = Instant::now() + Node::TICK;
     let mut pool = ConnectionPool::builder()
-        .handler_name(".raft_interact")
+        .handler_name(stringify_cfunc!(raft_interact))
         .call_timeout(Node::TICK * 4)
         .connect_timeout(Node::TICK * 4)
         .inactivity_timeout(Duration::from_secs(60))
