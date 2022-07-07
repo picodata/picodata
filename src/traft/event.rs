@@ -9,7 +9,7 @@ use ::tarantool::fiber::{mutex::MutexGuard, Cond, Mutex};
 use ::tarantool::proc;
 use ::tarantool::unwrap_or;
 
-use crate::traft::node::Error;
+use crate::traft::error::Error;
 use crate::unwrap_ok_or;
 use thiserror::Error;
 

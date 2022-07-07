@@ -1,6 +1,6 @@
 //! Compatibility layer between Tarantool and `raft-rs`.
 
-mod error;
+pub mod error;
 pub mod event;
 pub mod failover;
 mod network;

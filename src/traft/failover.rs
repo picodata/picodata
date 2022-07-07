@@ -5,9 +5,9 @@ use ::tarantool::proc;
 
 use crate::{stringify_cfunc, tarantool, tlog};
 
+use crate::traft::error::Error;
 use crate::traft::event;
 use crate::traft::node;
-use crate::traft::node::Error;
 use crate::traft::Storage;
 use crate::traft::{UpdatePeerRequest, UpdatePeerResponse};
 

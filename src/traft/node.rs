@@ -22,7 +22,6 @@ use std::convert::TryFrom;
 use std::rc::Rc;
 use std::time::Duration;
 use std::time::Instant;
-use thiserror::Error;
 
 use crate::traft::ContextCoercion as _;
 use crate::traft::Peer;
@@ -34,6 +33,7 @@ use std::iter::FromIterator as _;
 use crate::mailbox::Mailbox;
 use crate::tlog;
 use crate::traft;
+use crate::traft::error::Error;
 use crate::traft::event;
 use crate::traft::event::Event;
 use crate::traft::failover;
@@ -115,26 +115,6 @@ impl std::fmt::Debug for Notify {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         f.debug_struct("Notify").finish_non_exhaustive()
     }
-}
-
-#[derive(Debug, Error)]
-pub enum Error {
-    #[error("uninitialized yet")]
-    Uninitialized,
-    #[error("events system is uninitialized yet")]
-    EventsUninitialized,
-    #[error("timeout")]
-    Timeout,
-    #[error("{0}")]
-    Raft(#[from] RaftError),
-    #[error("downcast error")]
-    DowncastError,
-    /// cluster_id of the joining peer mismatches the cluster_id of the cluster
-    #[error("cannot join the instance to the cluster: cluster_id mismatch: cluster_id of the instance = {instance_cluster_id:?}, cluster_id of the cluster = {cluster_cluster_id:?}")]
-    ClusterIdMismatch {
-        instance_cluster_id: String,
-        cluster_cluster_id: String,
-    },
 }
 
 #[derive(Clone, Debug, tlua::Push, tlua::PushInto)]

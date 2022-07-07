@@ -5,7 +5,7 @@ use nix::unistd::{self, fork, ForkResult};
 use serde::{Deserialize, Serialize};
 
 use ::raft::prelude as raft;
-use ::tarantool::error::Error;
+use ::tarantool::error::Error as TntError;
 use ::tarantool::fiber;
 use ::tarantool::tlua;
 use ::tarantool::transaction::start_transaction;
@@ -16,6 +16,7 @@ use clap::StructOpt as _;
 use protobuf::Message as _;
 
 use crate::traft::LogicalClock;
+use traft::error::Error;
 
 mod app;
 mod args;
@@ -56,44 +57,42 @@ fn picolib_setup(args: &args::Run) {
     );
     luamod.set(
         "raft_tick",
-        tlua::function1(|n_times: u32| -> Result<(), traft::node::Error> {
+        tlua::function1(|n_times: u32| -> Result<(), Error> {
             traft::node::global()?.tick(n_times);
             Ok(())
         }),
     );
     luamod.set(
         "raft_read_index",
-        tlua::function1(|timeout: f64| -> Result<u64, traft::node::Error> {
+        tlua::function1(|timeout: f64| -> Result<u64, Error> {
             traft::node::global()?.read_index(Duration::from_secs_f64(timeout))
         }),
     );
     luamod.set(
         "raft_propose_info",
-        tlua::function1(|x: String| -> Result<(), traft::node::Error> {
+        tlua::function1(|x: String| -> Result<(), Error> {
             traft::node::global()?.propose(traft::Op::Info { msg: x }, Duration::from_secs(1))
         }),
     );
     luamod.set(
         "raft_timeout_now",
-        tlua::function0(|| -> Result<(), traft::node::Error> {
+        tlua::function0(|| -> Result<(), Error> {
             traft::node::global()?.timeout_now();
             Ok(())
         }),
     );
     luamod.set(
         "raft_propose_eval",
-        tlua::function2(
-            |timeout: f64, x: String| -> Result<(), traft::node::Error> {
-                traft::node::global()?.propose(
-                    traft::Op::EvalLua { code: x },
-                    Duration::from_secs_f64(timeout),
-                )
-            },
-        ),
+        tlua::function2(|timeout: f64, x: String| -> Result<(), Error> {
+            traft::node::global()?.propose(
+                traft::Op::EvalLua { code: x },
+                Duration::from_secs_f64(timeout),
+            )
+        }),
     );
     luamod.set(
         "raft_return_one",
-        tlua::function1(|timeout: f64| -> Result<u64, traft::node::Error> {
+        tlua::function1(|timeout: f64| -> Result<u64, Error> {
             traft::node::global()?.propose(traft::OpReturnOne, Duration::from_secs_f64(timeout))
         }),
     );
@@ -443,7 +442,7 @@ fn start_boot(args: &args::Run) {
 
     init_common(args, &cfg);
 
-    start_transaction(|| -> Result<(), Error> {
+    start_transaction(|| -> Result<(), TntError> {
         let cs = raft::ConfState {
             voters: vec![raft_id],
             ..Default::default()
@@ -566,7 +565,7 @@ fn start_join(args: &args::Run, leader_address: String) {
     init_common(args, &cfg);
 
     let raft_id = resp.peer.raft_id;
-    start_transaction(|| -> Result<(), Error> {
+    start_transaction(|| -> Result<(), TntError> {
         traft::Storage::persist_peer(&resp.peer).unwrap();
         for peer in resp.raft_group {
             traft::Storage::persist_peer(&peer).unwrap();
@@ -677,7 +676,7 @@ fn postjoin(args: &args::Run) {
         let now = Instant::now();
         let timeout = Duration::from_secs(10);
         match tarantool::net_box_call(&leader.peer_address, fn_name, &req, timeout) {
-            Err(Error::IO(e)) => {
+            Err(TntError::IO(e)) => {
                 tlog!(Warning, "failed to activate myself: {e}");
                 fiber::sleep(timeout.saturating_sub(now.elapsed()));
                 continue;
