@@ -60,6 +60,7 @@ define_events! {
     LeaveJointState, "raft.leave-joint-state";
     StatusChanged, "raft.status-changed";
     TopologyChanged, "raft.topology-changed";
+    RaftLoopNeeded, "raft.loop-needed";
 }
 
 ////////////////////////////////////////////////////////////////////////////////

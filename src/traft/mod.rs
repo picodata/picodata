@@ -39,7 +39,7 @@ pub type ReplicasetId = String;
 /// - `count` is a simple in-memory counter. It's cheap to increment because it's volatile.
 /// - `gen` should be persisted upon LogicalClock initialization to ensure the uniqueness.
 /// - `id` corresponds to `raft_id` of the instance (that is already unique across nodes).
-#[derive(Clone, Debug, Default, Serialize, Deserialize, Hash, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, Default, Serialize, Deserialize, Hash, PartialEq, Eq)]
 pub struct LogicalClock {
     id: u64,
     gen: u64,

@@ -547,7 +547,7 @@ fn start_boot(args: &args::Run) {
         init_entries.push({
             let ctx = traft::EntryContextNormal {
                 op: traft::Op::PersistPeer { peer },
-                lc: lc.clone(),
+                lc,
             };
             let e = traft::Entry {
                 entry_type: raft::EntryType::EntryNormal,
@@ -704,6 +704,8 @@ fn postjoin(args: &args::Run) {
 
     let node = traft::node::Node::new(&raft_cfg);
     let node = node.expect("failed initializing raft node");
+    traft::node::set_global(node);
+    let node = traft::node::global().unwrap();
 
     let cs = traft::Storage::conf_state().unwrap();
     if cs.voters == [raft_cfg.id] {
@@ -717,11 +719,7 @@ fn postjoin(args: &args::Run) {
 
         node.tick(1); // apply configuration, if any
         node.campaign().ok(); // trigger election immediately
-        assert_eq!(node.status().raft_state, "Leader");
     }
-
-    traft::node::set_global(node);
-    let node = traft::node::global().unwrap();
 
     box_cfg.listen = Some(args.listen.clone());
     tarantool::set_cfg(&box_cfg);
@@ -742,7 +740,7 @@ fn postjoin(args: &args::Run) {
         }
 
         let timeout = Duration::from_secs(10);
-        if let Err(e) = traft::node::global().unwrap().read_index(timeout) {
+        if let Err(e) = node.read_index(timeout) {
             tlog!(Debug, "unable to get a read barrier: {e}");
             fiber::sleep(Duration::from_millis(100));
             continue;
