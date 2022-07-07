@@ -1,6 +1,8 @@
 stages:
   - prebuild
   - build
+  - pack
+  - deploy
 
 workflow:
   rules:
@@ -16,6 +18,8 @@ variables:
   CARGO_HOME: ${CI_PROJECT_DIR}/.cargo
   DOCKER_AUTH_CONFIG: $DOCKER_AUTH_RW
   REGISTRY_IMAGE: docker-public.binary.picodata.io
+  RAW_REGISTRY: https://binary.picodata.io/repository/raw-private/
+
 
   #
   # See also:
@@ -77,3 +81,79 @@ build:
       - target
       - .cargo
       - .venv
+
+build-package-centos-7:
+  stage: pack
+  tags:
+    - shell
+  only:
+    - web
+    - tags
+  before_script:
+    - git submodule update --init --recursive
+    - git clone https://github.com/packpack/packpack.git packpack
+    - echo "$GPG_KEY_KDY" | base64 -d > kdy.asc
+    - wget https://binary.picodata.io/repository/raw-private/tarantool/.rpmmacros
+    - wget https://binary.picodata.io/repository/raw-private/tarantool/rpmmk.patch
+    - patch -p0 -i rpmmk.patch
+    - sed -i "s/(id -u)/(id -u) -o/g" packpack/packpack
+  script:
+    - |
+      pushd tarantool-sys; export VER_TNT=$(git describe --long | sed -n 's/^\([0-9\.]*\)-\([0-9]*\)-\([a-z0-9]*\)/\1.\2/p'); popd
+      OS=centos DIST=7 PRESERVE_ENVVARS=VER_TNT packpack/packpack
+  artifacts:
+    paths:
+      - build/picodata*.rpm
+
+# build-package-ubuntu-jammy:
+#   tags:
+#     - shell
+#   stage: pack
+#   only:
+#     #- web
+#     - tags
+#   before_script:
+#     - git submodule update --init --recursive
+#     - git clone https://github.com/packpack/packpack.git packpack
+#     - git describe --long
+#   script:
+#     - |
+#       pushd tarantool-sys; export VER_TNT=$(git describe --long | sed -n 's/^\([0-9\.]*\)-\([0-9]*\)-\([a-z0-9]*\)/\1.\2/p'); popd
+#      OS=ubuntu DIST=jammy PRESERVE_ENVVARS=VER_TNT packpack/packpack
+#   artifacts:
+#     paths:
+#       - build/*.deb
+
+deploy-job-centos7:
+  stage: deploy
+  tags:
+    - shell
+  only:
+    - web
+    - tags
+  before_script:
+    - eval $(ssh-agent -s)
+    - echo "$DEPLOY_PROD_SSH_KEY" | base64 -d | ssh-add -
+  script:
+    - echo "Deploying rpm-centos7-packet..."
+    - scp -o stricthostkeychecking=no build/picodata*rpm ansible@94.26.239.246:/data/nginx/www/packrepo/tarantool-picodata/el/7/x86_64/
+    - ssh -o stricthostkeychecking=no ansible@94.26.239.246 "cd /data/nginx/www/packrepo/tarantool-picodata/el/7/ && createrepo --update x86_64 && gpg --no-tty --yes -u kdy@picodata.io --detach-sign --armor x86_64/repodata/repomd.xml"
+    - echo "rpm-centos7-packet successfully deployed."
+
+# deploy-job-ubuntu-jammy:
+#   stage: deploy
+#   tags:
+#     - shell
+#   only:
+#     - web
+#     - tags
+#   before_script:
+#     - eval $(ssh-agent -s)
+#     - echo "$DEPLOY_PROD_SSH_KEY" | base64 -d | ssh-add -
+#   script:
+#     - |
+#       echo "Deploying deb-packet..."
+#       for F in $(find build -name "picodata*deb"); do
+#         wget  --header "Authorization: Basic $RAW_AUTH_RW" --header="Content-type: multipart/form-data boundary=FILEUPLOAD" --post-file $F $RAW_REGISTRY/picodata/$F
+#       done
+#       echo "deb-packet successfully deployed."
