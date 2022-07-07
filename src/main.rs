@@ -451,7 +451,8 @@ fn start_boot(args: &args::Run) {
 
         let mut lc = LogicalClock::new(raft_id, 0);
 
-        let e1 = {
+        let mut init_entries = Vec::new();
+        init_entries.push({
             let ctx = traft::EntryContextNormal {
                 op: traft::Op::PersistPeer { peer },
                 lc: lc.clone(),
@@ -465,10 +466,10 @@ fn start_boot(args: &args::Run) {
             };
 
             raft::Entry::try_from(e).unwrap()
-        };
+        });
 
         lc.inc();
-        let e2 = {
+        init_entries.push({
             let ctx = traft::EntryContextNormal {
                 op: traft::Op::PersistReplicationFactor {
                     replication_factor: args.init_replication_factor,
@@ -484,9 +485,9 @@ fn start_boot(args: &args::Run) {
             };
 
             raft::Entry::try_from(e).unwrap()
-        };
+        });
 
-        let e3 = {
+        init_entries.push({
             let conf_change = raft::ConfChange {
                 change_type: raft::ConfChangeType::AddNode,
                 node_id: raft_id,
@@ -501,11 +502,11 @@ fn start_boot(args: &args::Run) {
             };
 
             raft::Entry::try_from(e).unwrap()
-        };
+        });
 
         traft::Storage::persist_conf_state(&cs).unwrap();
-        traft::Storage::persist_entries(&[e1, e2, e3]).unwrap();
-        traft::Storage::persist_commit(2).unwrap();
+        traft::Storage::persist_entries(&init_entries).unwrap();
+        traft::Storage::persist_commit(init_entries.len() as _).unwrap();
         traft::Storage::persist_term(1).unwrap();
         traft::Storage::persist_raft_id(raft_id).unwrap();
         traft::Storage::persist_instance_id(&instance_id).unwrap();
