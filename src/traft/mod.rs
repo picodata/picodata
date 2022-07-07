@@ -75,6 +75,11 @@ pub enum Op {
     PersistPeer {
         peer: Peer,
     },
+
+    #[serde(alias = "persist_replication_factor")]
+    PersistReplicationFactor {
+        replication_factor: u8,
+    },
 }
 
 impl Op {
@@ -93,6 +98,10 @@ impl Op {
             Self::PersistPeer { peer } => {
                 Storage::persist_peer(peer).unwrap();
                 Box::new(peer.clone())
+            }
+            Self::PersistReplicationFactor { replication_factor } => {
+                Storage::persist_replication_factor(*replication_factor).unwrap();
+                Box::new(())
             }
         }
     }

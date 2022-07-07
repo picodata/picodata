@@ -22,7 +22,7 @@ pub struct Topology {
 impl Topology {
     pub fn from_peers(mut peers: Vec<Peer>) -> Self {
         let mut ret = Self {
-            replication_factor: 2,
+            replication_factor: 1,
             max_raft_id: 0,
             failure_domain_names: Default::default(),
             instance_map: Default::default(),
@@ -324,9 +324,10 @@ mod tests {
     #[test]
     fn test_override() {
         let mut topology = Topology::from_peers(peers![
-            (1, "i1", "R1", "active:1", Online),
-            (2, "i2", "R2", "inactive:1", Offline),
-        ]);
+            (1, "i1", "r1", "active:1", Online),
+            (2, "i2", "r2-original", "inactive:1", Offline),
+        ])
+        .with_replication_factor(2);
 
         // JoinRequest with a given instance_id online.
         // - It must be an impostor, return an error.
@@ -352,7 +353,10 @@ mod tests {
         //   Disruption isn't destructive if auto-expel allows (TODO).
         assert_eq!(
             join!(topology, Some("i2"), None, "inactive:2").unwrap(),
-            peer!(3, "i2", "R1", "inactive:2", Online),
+            peer!(3, "i2", "r1", "inactive:2", Online),
+            // Attention: generated replicaset_id differs from the
+            // original one, as well as raft_id.
+            // That's a desired behavior.
         );
 
         // TODO

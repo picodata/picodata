@@ -120,6 +120,10 @@ pub struct Run {
     #[clap(long, arg_enum, default_value = "info", env = "PICODATA_LOG_LEVEL")]
     /// Log level
     log_level: LogLevel,
+
+    #[clap(long, default_value = "1", env = "PICODATA_INIT_REPLICATION_FACTOR")]
+    // Initial factor for Tarantool replication
+    pub init_replication_factor: u8,
 }
 
 // Copy enum because clap:ArgEnum can't be derived for the foreign SayLevel.
@@ -436,6 +440,18 @@ mod tests {
                 parsed.failure_domains(),
                 FailureDomains::from([("K2", "ARG2"), ("K3", "ARG3"), ("K4", "ARG4")])
             );
+        }
+
+        {
+            let parsed = parse![Run,];
+            assert_eq!(parsed.init_replication_factor, 1);
+
+            let parsed = parse![Run, "--init-replication-factor", "7"];
+            assert_eq!(parsed.init_replication_factor, 7);
+
+            std::env::set_var("PICODATA_INIT_REPLICATION_FACTOR", "9");
+            let parsed = parse![Run,];
+            assert_eq!(parsed.init_replication_factor, 9);
         }
     }
 }

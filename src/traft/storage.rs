@@ -246,6 +246,14 @@ impl Storage {
         Storage::raft_state("applied")
     }
 
+    pub fn replication_factor() -> Result<Option<u8>, StorageError> {
+        Storage::raft_state("replication_factor")
+    }
+
+    pub fn persist_replication_factor(replication_factor: u8) -> Result<(), StorageError> {
+        Storage::persist_raft_state("replication_factor", replication_factor)
+    }
+
     pub fn persist_commit(commit: u64) -> Result<(), StorageError> {
         // tlog!(Info, "++++++ persist commit {commit}");
         Storage::persist_raft_state("commit", commit)

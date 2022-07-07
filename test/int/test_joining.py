@@ -21,6 +21,16 @@ def cluster3(cluster: Cluster):
     return cluster
 
 
+def column_index(instance, space, name):
+    format = instance.eval(f"return box.space.{space}:format()")
+    i = 0
+    for field in format:
+        if field["name"] == name:
+            return i
+        i = i + 1
+    raise (f"Column {name} not found in space {space}")
+
+
 def raft_join(
     peer: Instance,
     cluster_id: str,
@@ -113,8 +123,9 @@ def test_parallel(cluster3: Cluster):
     i4.assert_raft_status("Follower", leader_id=i2.raft_id)
 
 
-def test_replication(cluster2: Cluster):
-    i1, i2 = cluster2.instances
+def test_replication(cluster: Cluster):
+    cluster.deploy(instance_count=2, init_replication_factor=2)
+    i1, i2 = cluster.instances
 
     assert i1.replicaset_uuid() == i2.replicaset_uuid()
 
@@ -123,7 +134,7 @@ def test_replication(cluster2: Cluster):
         box_replication = instance.eval("return box.cfg.replication")
         assert set(box_replication) == set([i1.listen, i2.listen]), instance
 
-    for instance in cluster2.instances:
+    for instance in cluster.instances:
         with instance.connect(1) as conn:
             raft_peer = conn.select("raft_group", [instance.instance_id])[0]
             space_cluster = conn.select("_cluster")
@@ -164,6 +175,33 @@ def test_replication(cluster2: Cluster):
     i1.assert_raft_status("Follower")
     i1.restart()
     wait_replicated(i1)
+
+
+def test_init_replication_factor(cluster: Cluster):
+    # Scenario: first instance shares --init-replication-factor to the whole cluster
+    #   Given an Leader instance with --init_replication_factor=2
+    #   When a new instances with different --init-replication-factor joins to the cluster
+    #   Then all of them have raft_state[replication_factor] equals to the Leader
+    #   And there are two replicasets in the cluster
+
+    i1 = cluster.add_instance(init_replication_factor=2)
+    i2 = cluster.add_instance(init_replication_factor=3)
+    i3 = cluster.add_instance(init_replication_factor=4)
+
+    def read_replication_factor(instance):
+        return instance.eval('return box.space.raft_state:get("replication_factor")')[1]
+
+    assert read_replication_factor(i1) == 2
+    assert read_replication_factor(i2) == 2
+    assert read_replication_factor(i3) == 2
+
+    INDEX_OF_REPLICASET_ID = column_index(i1, "raft_group", "replicaset_id")
+
+    def read_raft_groups(instance):
+        tuples = instance.eval("return box.space.raft_group:select()")
+        return set(map(lambda t: t[INDEX_OF_REPLICASET_ID], tuples))
+
+    assert read_raft_groups(i1) == {"r1", "r2"}
 
 
 def test_cluster_id_mismatch(instance: Instance):
@@ -217,7 +255,9 @@ def test_join_without_explicit_instance_id(cluster: Cluster):
 
 
 def test_failure_domains(cluster: Cluster):
-    i1 = cluster.add_instance(failure_domain=dict(planet="Earth"))
+    i1 = cluster.add_instance(
+        failure_domain=dict(planet="Earth"), init_replication_factor=2
+    )
     i1.assert_raft_status("Leader")
     assert replicaset_id(i1) == "r1"
 

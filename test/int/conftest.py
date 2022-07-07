@@ -162,6 +162,7 @@ class Instance:
     peers: list[str]
     host: str
     port: int
+    init_replication_factor: int
 
     color: Callable[[str], str]
 
@@ -191,6 +192,7 @@ class Instance:
             "--listen", self.listen,
             "--peer", ','.join(self.peers),
             *(f"--failure-domain={k}={v}" for k, v in self.failure_domain.items()),
+            "--init-replication-factor", f"{self.init_replication_factor}"
         ]
         # fmt: on
 
@@ -390,11 +392,15 @@ class Cluster:
     def __getitem__(self, item: int) -> Instance:
         return self.instances[item]
 
-    def deploy(self, *, instance_count: int) -> list[Instance]:
+    def deploy(
+        self, *, instance_count: int, init_replication_factor: int = 1
+    ) -> list[Instance]:
         assert not self.instances, "Already deployed"
 
         for _ in range(instance_count):
-            self.add_instance(wait_ready=False)
+            self.add_instance(
+                wait_ready=False, init_replication_factor=init_replication_factor
+            )
 
         for instance in self.instances:
             instance.start()
@@ -411,6 +417,7 @@ class Cluster:
         peers=None,
         generate_instance_id=True,
         failure_domain=dict(),
+        init_replication_factor=1,
     ) -> Instance:
         i = 1 + len(self.instances)
 
@@ -424,6 +431,7 @@ class Cluster:
             host=self.base_host,
             port=self.base_port + i,
             peers=peers or [f"{self.base_host}:{self.base_port + 1}"],
+            init_replication_factor=init_replication_factor,
             color=CLUSTER_COLORS[len(self.instances) % len(CLUSTER_COLORS)],
             failure_domain=failure_domain,
         )

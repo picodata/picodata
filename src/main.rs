@@ -15,6 +15,8 @@ use std::time::{Duration, Instant};
 use clap::StructOpt as _;
 use protobuf::Message as _;
 
+use crate::traft::LogicalClock;
+
 mod app;
 mod args;
 mod cache;
@@ -447,10 +449,12 @@ fn start_boot(args: &args::Run) {
             ..Default::default()
         };
 
+        let mut lc = LogicalClock::new(raft_id, 0);
+
         let e1 = {
             let ctx = traft::EntryContextNormal {
                 op: traft::Op::PersistPeer { peer },
-                lc: traft::LogicalClock::new(raft_id, 0),
+                lc: lc.clone(),
             };
             let e = traft::Entry {
                 entry_type: raft::EntryType::EntryNormal,
@@ -463,7 +467,26 @@ fn start_boot(args: &args::Run) {
             raft::Entry::try_from(e).unwrap()
         };
 
+        lc.inc();
         let e2 = {
+            let ctx = traft::EntryContextNormal {
+                op: traft::Op::PersistReplicationFactor {
+                    replication_factor: args.init_replication_factor,
+                },
+                lc,
+            };
+            let e = traft::Entry {
+                entry_type: raft::EntryType::EntryNormal,
+                index: 2,
+                term: 1,
+                data: vec![],
+                context: Some(traft::EntryContext::Normal(ctx)),
+            };
+
+            raft::Entry::try_from(e).unwrap()
+        };
+
+        let e3 = {
             let conf_change = raft::ConfChange {
                 change_type: raft::ConfChangeType::AddNode,
                 node_id: raft_id,
@@ -471,7 +494,7 @@ fn start_boot(args: &args::Run) {
             };
             let e = traft::Entry {
                 entry_type: raft::EntryType::EntryConfChange,
-                index: 2,
+                index: 3,
                 term: 1,
                 data: conf_change.write_to_bytes().unwrap(),
                 context: None,
@@ -481,7 +504,7 @@ fn start_boot(args: &args::Run) {
         };
 
         traft::Storage::persist_conf_state(&cs).unwrap();
-        traft::Storage::persist_entries(&[e1, e2]).unwrap();
+        traft::Storage::persist_entries(&[e1, e2, e3]).unwrap();
         traft::Storage::persist_commit(2).unwrap();
         traft::Storage::persist_term(1).unwrap();
         traft::Storage::persist_raft_id(raft_id).unwrap();

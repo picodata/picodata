@@ -582,7 +582,9 @@ fn raft_main_loop(
                     let mut topology =
                         topology_cache.pop(&raw_node.raft.term).unwrap_or_else(|| {
                             let peers = Storage::peers().unwrap();
-                            Topology::from_peers(peers).with_replication_factor(2)
+                            let replication_factor =
+                                Storage::replication_factor().unwrap().unwrap();
+                            Topology::from_peers(peers).with_replication_factor(replication_factor)
                         });
 
                     let peer_result = match req {
