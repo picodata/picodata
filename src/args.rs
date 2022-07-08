@@ -11,7 +11,7 @@ use crate::traft::FailureDomains;
 use crate::util::Uppercase;
 
 #[derive(Debug, Parser)]
-#[clap(name = "picodata", version = env!("CARGO_PKG_VERSION"))]
+#[clap(name = "picodata", version = "22.07.0")]
 pub enum Picodata {
     Run(Run),
     Tarantool(Tarantool),
