@@ -59,8 +59,8 @@ pub struct Run {
         default_value = "",
         env = "PICODATA_INSTANCE_ID"
     )]
-    /// Name of the instance
-    /// Empty value means that instance_id of a Follower will be generated on the Leader
+    /// Name of the instance.
+    /// If not defined, it'll be generated automatically.
     instance_id: String,
 
     #[clap(
@@ -105,8 +105,8 @@ pub struct Run {
         env = "PICODATA_FAILURE_DOMAIN"
     )]
     /// Comma-separated list describing physical location of the server.
-    /// Each domain is a key-value pair. Until max replicaset count is
-    /// reached, picodata will avoid putting two instances into the same
+    /// Each domain is a key-value pair.
+    /// Picodata will avoid putting two instances into the same
     /// replicaset if at least one key of their failure domains has the
     /// same value. Instead, new replicasets will be created.
     /// Replicasets will be populated with instances from different
@@ -123,8 +123,8 @@ pub struct Run {
 
     #[clap(long, default_value = "1", env = "PICODATA_INIT_REPLICATION_FACTOR")]
     /// Total number of replicas (copies of data) for each replicaset in
-    /// the cluster. It's only accounted upon the cluster initialization (when the first instance bootstraps), and
-    /// ignored aftwerwards.
+    /// the cluster. It's only accounted upon the cluster initialization
+    /// (when the first instance bootstraps), and ignored aftwerwards.
     pub init_replication_factor: u8,
 }
 
