@@ -235,11 +235,11 @@ class Instance:
             eprint(f"{self} killed")
         self.process = None
 
-    def terminate(self, kill_after_seconds=10):
+    def terminate(self, kill_after_seconds=10) -> int | None:
         """Terminate the instance gracefully with SIGTERM"""
         if self.process is None:
             # Be idempotent
-            return
+            return None
 
         with suppress(ProcessLookupError, PermissionError):
             os.killpg(self.process.pid, signal.SIGCONT)
@@ -247,8 +247,9 @@ class Instance:
         self.process.terminate()
 
         try:
-            self.process.wait(timeout=kill_after_seconds)
-            eprint(f"{self} terminated")
+            rc = self.process.wait(timeout=kill_after_seconds)
+            eprint(f"{self} terminated: rc = {rc}")
+            return rc
         finally:
             self.kill()
 

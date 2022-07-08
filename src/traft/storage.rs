@@ -7,6 +7,7 @@ use ::raft::INVALID_ID;
 use ::tarantool::index::IteratorType;
 use ::tarantool::space::Space;
 use ::tarantool::tuple::Tuple;
+use ::tarantool::unwrap_or;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use thiserror::Error;
@@ -28,8 +29,6 @@ enum Error {
     NoSuchSpace(String),
     #[error("no such index \"{1}\" in space \"{0}\"")]
     NoSuchIndex(String, String),
-    #[error("no peer with id {0}")]
-    NoSuchPeer(RaftId),
 }
 
 macro_rules! box_err {
@@ -361,11 +360,7 @@ impl Storage {
         let learners = Storage::learners()?;
         let mut res = Vec::with_capacity(learners.len());
         for raft_id in learners {
-            if Storage::peer_by_raft_id(raft_id)?
-                .ok_or(Error::NoSuchPeer(raft_id))
-                .map_err(box_err!())?
-                .is_active()
-            {
+            if unwrap_or!(Storage::peer_by_raft_id(raft_id)?, continue).is_active() {
                 res.push(raft_id)
             }
         }

@@ -237,6 +237,9 @@ def test_rebootstrap_follower(cluster3: Cluster):
     i3.wait_ready()
     i3.assert_raft_status("Follower")
 
+    # git.picodata.io: #114
+    assert i1.terminate() == 0
+
 
 def test_join_without_explicit_instance_id(cluster: Cluster):
     # Scenario: bootstrap single instance without explicitly given instance id
