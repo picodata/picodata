@@ -178,7 +178,8 @@ pub struct Peer {
     pub replicaset_id: String,
     pub replicaset_uuid: String,
 
-    /// Index in the raft log. `0` means it's not committed yet.
+    /// Index of the most recent raft log entry that persisted this peer.
+    /// `0` means it's not committed yet.
     pub commit_index: u64,
 
     /// The state of this instance's activity.
