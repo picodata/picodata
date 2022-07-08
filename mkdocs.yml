@@ -3,10 +3,12 @@ site_description: Picodata documentation site
 
 nav:
     - Главная: index.md
-    - Описание продукта: description.md
+    - Общее описание продукта: description.md
     - Преимущества Picodata: benefits.md
     - Преимущества языка Rust: benefits_rust.md
     - Установка и первые шаги: install.md
+    - Описание параметров запуска: cli.md
+    - Топология кластера: deploy.md
     - Управление версиями приложений: arch.md
 
 theme:
