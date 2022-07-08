@@ -1,58 +1,65 @@
 # Описание параметров запуска
+Picodata является консольным приложением, которое поддерживает различные параметры запуска в виде аргументов командной строки. 
+
+Полный список аргументов доступен с помощью следующей команды:
 
 ```console
 $ picodata run --help
-picodata-run
-Run the Picodata instance
-
-USAGE:
-    picodata run [OPTIONS]
-
-OPTIONS:
-        --advertise <[host][:port]>
-            Address the other instances should use to connect to this instance. Defaults to
-            `--listen` value [env: PICODATA_ADVERTISE=]
-
-        --cluster-id <name>
-            Name of the cluster. The instance will refuse to join a cluster with a different name
-            [env: PICODATA_CLUSTER_ID=] [default: demo]
-
-        --data-dir <path>
-            Here the instance persists all of its data [env: PICODATA_DATA_DIR=] [default: .]
-
-    -e, --tarantool-exec <expr>
-            Execute tarantool (Lua) script
-
-        --failure-domain <key=value>
-            Comma-separated list describing physical location of the server. Each domain is a key-
-            value pair. Until max replicaset count is reached, picodata will avoid putting two
-            instances into the same replicaset if at least one key of their failure domains has the
-            same value. Instead, new replicasets will be created. Replicasets will be populated with
-            instances from different failure domains until the desired replication factor is reached
-            [env: PICODATA_FAILURE_DOMAIN=]
-
-    -h, --help
-            Print help information
-
-        --init-replication-factor <INIT_REPLICATION_FACTOR>
-            Total number of replicas (copies of data) for each replicaset in the current group.
-            It's only accounted upon the group creation (adding the first instance in the group),
-            and ignored aftwerwards. [env: PICODATA_INIT_REPLICATION_FACTOR=] [default: 1]
-
-        --instance-id <name>
-            Name of the instance Empty value means that instance_id of a Follower will be generated
-            on the Leader [env: PICODATA_INSTANCE_ID=] [default: ]
-
-    -l, --listen <[host][:port]>
-            Socket bind address [env: PICODATA_LISTEN=] [default: localhost:3301]
-
-        --log-level <LOG_LEVEL>
-            Log level [env: PICODATA_LOG_LEVEL=] [default: info] [possible values: fatal, system,
-            error, crit, warn, info, verbose, debug]
-
-        --peer <[host][:port]>
-            Address(es) of other instance(s) [env: PICODATA_PEER=] [default: localhost:3301]
-
-        --replicaset-id <name>
-            Name of the replicaset [env: PICODATA_REPLICASET_ID=]
 ```
+Ниже приводится описание этих аргументов.
+
+`-advertise <[host][:port]>`<br>
+Адрес, по которому другие инстансы смогут подключиться к данному инстансу. По умолчанию используется значение из аргумента `--listen`.
+Аналогичная переменная окружения: `PICODATA_ADVERTISE`.
+
+`--cluster-id <name>`<br>
+Имя кластера. Инстанс не сможет стать частью кластера, если у него указано другое имя.
+Аналогичная переменная окружения: `PICODATA_CLUSTER_ID`.
+
+`--data-dir <path>`<br>
+Директория, в которой инстанс будет сохранять свои данные для постоянного хранения.
+Аналогичная переменная окружения: `PICODATA_DATA_DIR`.
+
+`-e, --tarantool-exec <expr>`<br>
+Данный аргумент позволяет выполнить Lua-скрипт на Tarantool
+
+`--failure-domain <key=value>`<br>
+Список параметров географического расположения сервера (через запятую). Также этот аргумент называется _зоной доступности_.
+Каждый параметр должен быть в формате КЛЮЧ=ЗНАЧЕНИЕ.
+До тех пор пока не достигнуто максимальное количество репликасетов в кластере, Picodata
+будет избегать помещения двух инстансов в один репликасет если хотя бы один параметр зоны доступности у них совпадает.
+Соответственно, инстансы будут формировать новые репликасеты. Picodata следит за тем, чтобы репликасеты наполнялись
+инстансами с разными зонами доступности до тех пор пока не достигнут заданный фактор репликации.
+Аналогичная переменная окружения: `PICODATA_FAILURE_DOMAIN`.
+
+`-h, --help`<br>
+Вывод справочной информации
+
+`--init-replication-factor <INIT_REPLICATION_FACTOR>`<br>
+Число реплик (инстансов с одинаковым набором хранимых данных) для каждого репликасета.
+Аргумент используется только при начальном создании кластера и в дальнейшем игнорируется. 
+Аналогичная переменная окружения: `PICODATA_INIT_REPLICATION_FACTOR`.
+
+`--instance-id <name>`<br>
+Название инстанса. Если этот аргумент не указать, то название будет сгенерировано автоматически.
+Аналогичная переменная окружения: `PICODATA_INSTANCE_ID`.
+
+`-l, --listen <[host][:port]>`<br>
+Адрес и порт привязки инстанса. По умолчанию используется localhost:3301
+Аналогичная переменная окружения: `PICODATA_LISTEN`.
+
+`--log-level <LOG_LEVEL>`<br>
+Уровень регистрации событий. Возможные значения:  fatal, system, error, crit, warn, info, verbose, debug.
+По умолчанию используется уровень info.
+Аналогичная переменная окружения: `PICODATA_LOG_LEVEL`.
+
+`--peer <[host][:port]>`<br>
+Адрес другого инстанса. В данному аргументе можно передавать несколько значение через запятую.
+По умолчанию используеься значение localhost:3301, т.е. без связывания с каким-либо другим инстансом.
+Указание порта опционально. Аналогичная переменная окружения: `PICODATA_PEER`.
+
+`--replicaset-id <name>`<br>
+Название целевого репликасета. Аналогичная переменная окружения: `PICODATA_REPLICASET_ID`
+
+
+Подробнее об устройстве кластера и репликасетов Picodata см. разделе [Топология кластера Picodata](../deploy)
