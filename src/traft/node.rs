@@ -702,10 +702,10 @@ fn raft_main_loop(
                     // - <https://github.com/tikv/raft-rs/blob/v0.6.0/src/raft.rs#L2058>
                     // - <https://github.com/tikv/raft-rs/blob/v0.6.0/src/raft.rs#L2323>
 
-                    let leader_exists = raw_node.raft.leader_id == INVALID_ID;
+                    let leader_doesnt_exist = raw_node.raft.leader_id == INVALID_ID;
                     let term_just_started = raw_node.raft.state == RaftStateRole::Leader
                         && !raw_node.raft.commit_to_current_term();
-                    if !leader_exists || term_just_started {
+                    if leader_doesnt_exist || term_just_started {
                         notify.notify_err(RaftError::ProposalDropped);
                         continue;
                     }
