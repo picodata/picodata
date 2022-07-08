@@ -4,7 +4,7 @@ use std::{
     ffi::{CStr, CString},
 };
 use tarantool::log::SayLevel;
-use tarantool::tlua::{self, c_str};
+use tarantool::tlua;
 use thiserror::Error;
 
 use crate::traft::FailureDomains;
@@ -43,15 +43,6 @@ pub struct Run {
     )]
     /// Here the instance persists all of its data
     pub data_dir: String,
-
-    #[clap(
-        short = 'e',
-        long = "tarantool-exec",
-        value_name = "expr",
-        parse(try_from_str = CString::new),
-    )]
-    /// Execute tarantool (Lua) script
-    pub tarantool_exec: Option<CString>,
 
     #[clap(
         long,
@@ -160,13 +151,7 @@ impl From<LogLevel> for SayLevel {
 impl Run {
     /// Get the arguments that will be passed to `tarantool_main`
     pub fn tt_args(&self) -> Result<Vec<CString>, String> {
-        let mut res = vec![current_exe()?];
-
-        if let Some(script) = &self.tarantool_exec {
-            res.extend([c_str!("-e").into(), script.clone()]);
-        }
-
-        Ok(res)
+        Ok(vec![current_exe()?])
     }
 
     pub fn advertise_address(&self) -> String {
