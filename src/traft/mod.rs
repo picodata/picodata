@@ -284,6 +284,13 @@ pub struct EntryContextNormal {
     pub op: Op,
 }
 
+impl EntryContextNormal {
+    #[inline]
+    pub fn new(lc: LogicalClock, op: impl Into<Op>) -> Self {
+        Self { lc, op: op.into() }
+    }
+}
+
 /// [`EntryContext`] of a conf change entry, either `EntryConfChange` or `EntryConfChangeV2`
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct EntryContextConfChange {
