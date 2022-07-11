@@ -83,7 +83,7 @@ impl Storage {
                     {name = 'replicaset_uuid', type = 'string', is_nullable = false},
                     {name = 'commit_index', type = 'unsigned', is_nullable = false},
                     {name = 'health', type = 'string', is_nullable = false},
-                    {name = 'failure_domains', type = 'map', is_nullable = false},
+                    {name = 'failure_domain', type = 'map', is_nullable = false},
                 }
             })
 
@@ -601,7 +601,7 @@ inventory::submit!(crate::InnerTest {
 
         let mut raft_group = Storage::space(RAFT_GROUP).unwrap();
 
-        let faildom = crate::traft::FailureDomains::from([("a", "b")]);
+        let faildom = crate::traft::FailureDomain::from([("a", "b")]);
 
         for peer in vec![
             // r1

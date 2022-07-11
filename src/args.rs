@@ -7,7 +7,7 @@ use tarantool::log::SayLevel;
 use tarantool::tlua;
 use thiserror::Error;
 
-use crate::traft::FailureDomains;
+use crate::traft::FailureDomain;
 use crate::util::Uppercase;
 
 #[derive(Debug, Parser)]
@@ -102,7 +102,7 @@ pub struct Run {
     /// same value. Instead, new replicasets will be created.
     /// Replicasets will be populated with instances from different
     /// failure domains until the desired replication factor is reached.
-    pub failure_domains: Vec<(Uppercase, Uppercase)>,
+    pub failure_domain: Vec<(Uppercase, Uppercase)>,
 
     #[clap(long, value_name = "name", env = "PICODATA_REPLICASET_ID")]
     /// Name of the replicaset
@@ -172,9 +172,9 @@ impl Run {
         }
     }
 
-    pub fn failure_domains(&self) -> FailureDomains {
-        FailureDomains::from(
-            self.failure_domains
+    pub fn failure_domain(&self) -> FailureDomain {
+        FailureDomain::from(
+            self.failure_domain
                 .iter()
                 .map(|(k, v)| (k.clone(), v.clone())),
         )
@@ -328,7 +328,7 @@ mod tests {
             assert_eq!(parsed.listen, "localhost:3301"); // default
             assert_eq!(parsed.advertise_address(), "localhost:3301"); // default
             assert_eq!(parsed.log_level(), SayLevel::Info); // default
-            assert_eq!(parsed.failure_domains(), FailureDomains::default()); // default
+            assert_eq!(parsed.failure_domain(), FailureDomain::default()); // default
 
             let parsed = parse![Run, "--instance-id", "instance-id-from-args"];
             assert_eq!(
@@ -406,14 +406,14 @@ mod tests {
         {
             let parsed = parse![Run,];
             assert_eq!(
-                parsed.failure_domains(),
-                FailureDomains::from([("K1", "ENV1"), ("K2", "ENV2")])
+                parsed.failure_domain(),
+                FailureDomain::from([("K1", "ENV1"), ("K2", "ENV2")])
             );
 
             let parsed = parse![Run, "--failure-domain", "k1=arg1,k1=arg1-again"];
             assert_eq!(
-                parsed.failure_domains(),
-                FailureDomains::from([("K1", "ARG1-AGAIN")])
+                parsed.failure_domain(),
+                FailureDomain::from([("K1", "ARG1-AGAIN")])
             );
 
             let parsed = parse![
@@ -424,8 +424,8 @@ mod tests {
                 "k3=arg3,k4=arg4"
             ];
             assert_eq!(
-                parsed.failure_domains(),
-                FailureDomains::from([("K2", "ARG2"), ("K3", "ARG3"), ("K4", "ARG4")])
+                parsed.failure_domain(),
+                FailureDomain::from([("K2", "ARG2"), ("K3", "ARG3"), ("K4", "ARG4")])
             );
         }
 

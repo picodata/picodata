@@ -164,7 +164,7 @@ pub struct Peer {
     /// must not be in the same replicaset.
     // TODO: raft_group space is kinda bloated, maybe we should store some data
     // in different spaces/not deserialize the whole tuple every time?
-    pub failure_domains: FailureDomains,
+    pub failure_domain: FailureDomain,
 }
 impl AsTuple for Peer {}
 
@@ -425,7 +425,7 @@ pub struct JoinRequest {
     pub instance_id: Option<String>,
     pub replicaset_id: Option<String>,
     pub advertise_address: String,
-    pub failure_domains: FailureDomains,
+    pub failure_domain: FailureDomain,
 }
 impl AsTuple for JoinRequest {}
 
@@ -480,7 +480,7 @@ pub struct UpdatePeerRequest {
     pub health: Health,
     pub instance_id: String,
     pub cluster_id: String,
-    pub failure_domains: Option<FailureDomains>,
+    pub failure_domain: Option<FailureDomain>,
 }
 impl AsTuple for UpdatePeerRequest {}
 
@@ -491,7 +491,7 @@ impl UpdatePeerRequest {
             health: Health::Online,
             instance_id: instance_id.into(),
             cluster_id: cluster_id.into(),
-            failure_domains: None,
+            failure_domain: None,
         }
     }
 
@@ -501,13 +501,13 @@ impl UpdatePeerRequest {
             health: Health::Offline,
             instance_id: instance_id.into(),
             cluster_id: cluster_id.into(),
-            failure_domains: None,
+            failure_domain: None,
         }
     }
 
     #[inline]
-    pub fn set_failure_domains(&mut self, failure_domains: FailureDomains) {
-        self.failure_domains = Some(failure_domains);
+    pub fn set_failure_domain(&mut self, failure_domain: FailureDomain) {
+        self.failure_domain = Some(failure_domain);
     }
 }
 
@@ -544,12 +544,12 @@ pub fn replicaset_uuid(replicaset_id: &str) -> String {
 ////////////////////////////////////////////////////////////////////////////////
 /// Failure domains of a given instance.
 #[derive(Default, Debug, PartialEq, Eq, Clone, serde::Deserialize, serde::Serialize)]
-pub struct FailureDomains {
+pub struct FailureDomain {
     #[serde(flatten)]
     data: HashMap<Uppercase, Uppercase>,
 }
 
-impl FailureDomains {
+impl FailureDomain {
     pub fn contains_name(&self, name: &Uppercase) -> bool {
         self.data.contains_key(name)
     }
@@ -558,7 +558,7 @@ impl FailureDomains {
         self.data.keys()
     }
 
-    /// Empty `FailureDomains` doesn't intersect with any other `FailureDomains`
+    /// Empty `FailureDomain` doesn't intersect with any other `FailureDomain`
     /// even with another empty one.
     pub fn intersects(&self, other: &Self) -> bool {
         for (name, value) in &self.data {
@@ -573,7 +573,7 @@ impl FailureDomains {
     }
 }
 
-impl<I, K, V> From<I> for FailureDomains
+impl<I, K, V> From<I> for FailureDomain
 where
     I: IntoIterator<Item = (K, V)>,
     Uppercase: From<K>,
@@ -589,7 +589,7 @@ where
     }
 }
 
-impl<'a> IntoIterator for &'a FailureDomains {
+impl<'a> IntoIterator for &'a FailureDomain {
     type IntoIter = <&'a HashMap<Uppercase, Uppercase> as IntoIterator>::IntoIter;
     type Item = <&'a HashMap<Uppercase, Uppercase> as IntoIterator>::Item;
 

@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 
 use crate::traft::instance_uuid;
 use crate::traft::replicaset_uuid;
-use crate::traft::FailureDomains;
+use crate::traft::FailureDomain;
 use crate::traft::Health;
 use crate::traft::Peer;
 use crate::traft::{InstanceId, RaftId, ReplicasetId};
@@ -54,7 +54,7 @@ impl Topology {
         }
 
         self.failure_domain_names
-            .extend(peer.failure_domains.names().cloned());
+            .extend(peer.failure_domain.names().cloned());
         self.instance_map.insert(instance_id.clone(), peer);
         self.replicaset_map
             .entry(replicaset_id)
@@ -78,12 +78,12 @@ impl Topology {
         }
     }
 
-    fn choose_replicaset_id(&self, failure_domains: &FailureDomains) -> String {
+    fn choose_replicaset_id(&self, failure_domain: &FailureDomain) -> String {
         'next_replicaset: for (replicaset_id, peers) in self.replicaset_map.iter() {
             if peers.len() < self.replication_factor as usize {
                 for peer_id in peers {
                     let peer = self.instance_map.get(peer_id).unwrap();
-                    if peer.failure_domains.intersects(failure_domains) {
+                    if peer.failure_domain.intersects(failure_domain) {
                         continue 'next_replicaset;
                     }
                 }
@@ -101,7 +101,7 @@ impl Topology {
         }
     }
 
-    pub fn check_required_failure_domains(&self, fd: &FailureDomains) -> Result<(), String> {
+    pub fn check_required_failure_domain(&self, fd: &FailureDomain) -> Result<(), String> {
         let mut res = Vec::new();
         for domain_name in &self.failure_domain_names {
             if !fd.contains_name(domain_name) {
@@ -122,7 +122,7 @@ impl Topology {
         instance_id: Option<String>,
         replicaset_id: Option<String>,
         advertise: String,
-        failure_domains: FailureDomains,
+        failure_domain: FailureDomain,
     ) -> Result<Peer, String> {
         if let Some(id) = instance_id.as_ref() {
             let existing_peer: Option<&Peer> = self.instance_map.get(id);
@@ -133,14 +133,14 @@ impl Topology {
             }
         }
 
-        self.check_required_failure_domains(&failure_domains)?;
+        self.check_required_failure_domain(&failure_domain)?;
 
         // Anyway, `join` always produces a new raft_id.
         let raft_id = self.max_raft_id + 1;
         let instance_id: String = instance_id.unwrap_or_else(|| self.choose_instance_id(raft_id));
         let instance_uuid = instance_uuid(&instance_id);
         let replicaset_id: String =
-            replicaset_id.unwrap_or_else(|| self.choose_replicaset_id(&failure_domains));
+            replicaset_id.unwrap_or_else(|| self.choose_replicaset_id(&failure_domain));
         let replicaset_uuid = replicaset_uuid(&replicaset_id);
 
         let peer = Peer {
@@ -155,7 +155,7 @@ impl Topology {
             // It prevents a disruption in case of the
             // instance_id collision.
             health: Health::Online,
-            failure_domains,
+            failure_domain,
         };
 
         self.put_peer(peer.clone());
@@ -181,7 +181,7 @@ impl Topology {
         &mut self,
         instance_id: &str,
         health: Health,
-        failure_domains: Option<FailureDomains>,
+        failure_domain: Option<FailureDomain>,
     ) -> Result<Peer, String> {
         let this = self as *const Self;
 
@@ -190,11 +190,11 @@ impl Topology {
             .get_mut(instance_id)
             .ok_or_else(|| format!("unknown instance {}", instance_id))?;
 
-        if let Some(fd) = failure_domains {
+        if let Some(fd) = failure_domain {
             // SAFETY: this is safe, because rust doesn't complain if you inline
             // the function
-            unsafe { &*this }.check_required_failure_domains(&fd)?;
-            peer.failure_domains = fd;
+            unsafe { &*this }.check_required_failure_domain(&fd)?;
+            peer.failure_domain = fd;
         }
 
         peer.health = health;
@@ -207,11 +207,11 @@ pub fn initial_peer(
     instance_id: Option<String>,
     replicaset_id: Option<String>,
     advertise: String,
-    failure_domains: FailureDomains,
+    failure_domain: FailureDomain,
 ) -> Peer {
     let mut topology = Topology::from_peers(vec![]);
     let mut peer = topology
-        .join(instance_id, replicaset_id, advertise, failure_domains)
+        .join(instance_id, replicaset_id, advertise, failure_domain)
         .unwrap();
     peer.commit_index = 1;
     peer
@@ -223,7 +223,7 @@ mod tests {
 
     use crate::traft::instance_uuid;
     use crate::traft::replicaset_uuid;
-    use crate::traft::FailureDomains;
+    use crate::traft::FailureDomain;
     use crate::traft::Health::{Offline, Online};
     use crate::traft::Peer;
     use pretty_assertions::assert_eq;
@@ -235,11 +235,11 @@ mod tests {
             $replicaset_id:literal,
             $peer_address:literal,
             $health:expr
-            $(, $failure_domains:expr)?
+            $(, $failure_domain:expr)?
             $(,)?
         ) ),* $(,)? ] => {
             vec![$(
-                peer!($raft_id, $instance_id, $replicaset_id, $peer_address, $health $(,$failure_domains)?)
+                peer!($raft_id, $instance_id, $replicaset_id, $peer_address, $health $(,$failure_domain)?)
             ),*]
         };
     }
@@ -251,7 +251,7 @@ mod tests {
             $replicaset_id:literal,
             $peer_address:literal,
             $health:expr
-            $(, $failure_domains:expr)?
+            $(, $failure_domain:expr)?
             $(,)?
         ) => {
             Peer {
@@ -263,9 +263,9 @@ mod tests {
                 replicaset_uuid: replicaset_uuid($replicaset_id),
                 commit_index: raft::INVALID_INDEX,
                 health: $health,
-                failure_domains: {
-                    let _f = FailureDomains::default();
-                    $( let _f = $failure_domains; )?
+                failure_domain: {
+                    let _f = FailureDomain::default();
+                    $( let _f = $failure_domain; )?
                     _f
                 },
             }
@@ -278,7 +278,7 @@ mod tests {
             $instance_id:expr,
             $replicaset_id:expr,
             $advertise_address:literal
-            $(, $failure_domains:expr )?
+            $(, $failure_domain:expr )?
             $(,)?
         ) => {
             $topology.join(
@@ -286,8 +286,8 @@ mod tests {
                 $replicaset_id.map(str::to_string),
                 $advertise_address.into(),
                 {
-                    let _f = FailureDomains::default();
-                    $(let _f = $failure_domains; )?
+                    let _f = FailureDomain::default();
+                    $(let _f = $failure_domain; )?
                     _f
                 },
             )
@@ -308,16 +308,16 @@ mod tests {
         (
             $topology:expr,
             $instance_id:expr,
-            $failure_domains:expr $(,)?
+            $failure_domain:expr $(,)?
         ) => {
-            $topology.update_peer($instance_id, Online, Some($failure_domains))
+            $topology.update_peer($instance_id, Online, Some($failure_domain))
         };
     }
 
     macro_rules! faildoms {
-        ($(,)?) => { FailureDomains::default() };
+        ($(,)?) => { FailureDomain::default() };
         ($($k:tt : $v:tt),+ $(,)?) => {
-            FailureDomains::from([$((stringify!($k), stringify!($v))),+])
+            FailureDomain::from([$((stringify!($k), stringify!($v))),+])
         }
     }
 
@@ -381,7 +381,7 @@ mod tests {
         //   3. Assign new replicaset_id, unless specified explicitly. A
         //      new replicaset_id might be the same as before, since
         //      auto-expel provided a vacant place there. Or it might be
-        //      not, if replication_factor / failure_domains were edited.
+        //      not, if replication_factor / failure_domain were edited.
         // - Even if it's an impostor, rely on auto-expel policy.
         //   Disruption isn't destructive if auto-expel allows (TODO).
         assert_eq!(
@@ -477,7 +477,7 @@ mod tests {
     }
 
     #[test]
-    fn failure_domains() {
+    fn failure_domain() {
         let mut t = Topology::from_peers(peers![]).with_replication_factor(3);
 
         assert_eq!(
@@ -552,12 +552,12 @@ mod tests {
     }
 
     #[test]
-    fn reconfigure_failure_domains() {
+    fn reconfigure_failure_domain() {
         let mut t = Topology::from_peers(peers![]).with_replication_factor(3);
 
         // first instance
         let peer = join!(t, Some("i1"), None, "-", faildoms! {planet: Earth}).unwrap();
-        assert_eq!(peer.failure_domains, faildoms! {planet: Earth});
+        assert_eq!(peer.failure_domain, faildoms! {planet: Earth});
         assert_eq!(peer.replicaset_id, "r1");
 
         // reconfigure single instance, fail
@@ -570,20 +570,20 @@ mod tests {
 
         // reconfigure single instance, success
         let peer = set_faildoms!(t, "i1", faildoms! {planet: Mars, owner: Ivan}).unwrap();
-        assert_eq!(peer.failure_domains, faildoms! {planet: Mars, owner: Ivan});
+        assert_eq!(peer.failure_domain, faildoms! {planet: Mars, owner: Ivan});
         assert_eq!(peer.replicaset_id, "r1"); // same replicaset
 
         // second instance
         #[rustfmt::skip]
         let peer = join!(t, Some("i2"), None, "-", faildoms! {planet: Mars, owner: Mike})
             .unwrap();
-        assert_eq!(peer.failure_domains, faildoms! {planet: Mars, owner: Mike});
+        assert_eq!(peer.failure_domain, faildoms! {planet: Mars, owner: Mike});
         // doesn't fit into r1
         assert_eq!(peer.replicaset_id, "r2");
 
         // reconfigure second instance, success
         let peer = set_faildoms!(t, "i2", faildoms! {planet: Earth, owner: Mike}).unwrap();
-        assert_eq!(peer.failure_domains, faildoms! {planet: Earth, owner: Mike});
+        assert_eq!(peer.failure_domain, faildoms! {planet: Earth, owner: Mike});
         // replicaset doesn't change automatically
         assert_eq!(peer.replicaset_id, "r2");
 
@@ -592,13 +592,13 @@ mod tests {
         let peer = join!(t, Some("i3"), None, "-", faildoms! {planet: B, owner: V, dimension: C137})
             .unwrap();
         assert_eq!(
-            peer.failure_domains,
+            peer.failure_domain,
             faildoms! {planet: B, owner: V, dimension: C137}
         );
         assert_eq!(peer.replicaset_id, "r1");
 
         assert_eq!(
-            set_active!(t, "i3", Offline).unwrap().failure_domains,
+            set_active!(t, "i3", Offline).unwrap().failure_domain,
             faildoms! {planet: B, owner: V, dimension: C137},
         );
 

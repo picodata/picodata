@@ -504,21 +504,21 @@ fn raft_main_loop(
                             instance_id,
                             replicaset_id,
                             advertise_address,
-                            failure_domains,
+                            failure_domain,
                             ..
                         }) => topology.join(
                             instance_id,
                             replicaset_id,
                             advertise_address,
-                            failure_domains,
+                            failure_domain,
                         ),
 
                         TopologyRequest::UpdatePeer(UpdatePeerRequest {
                             instance_id,
                             health,
-                            failure_domains,
+                            failure_domain,
                             ..
-                        }) => topology.update_peer(&instance_id, health, failure_domains),
+                        }) => topology.update_peer(&instance_id, health, failure_domain),
                     };
 
                     let mut peer = match peer_result {

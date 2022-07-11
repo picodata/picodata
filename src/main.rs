@@ -421,7 +421,7 @@ fn start_boot(args: &args::Run) {
         args.instance_id(),
         args.replicaset_id.clone(),
         args.advertise_address(),
-        args.failure_domains(),
+        args.failure_domain(),
     );
     let raft_id = peer.raft_id;
     let instance_id = peer.instance_id.clone();
@@ -525,7 +525,7 @@ fn start_join(args: &args::Run, leader_address: String) {
         instance_id: args.instance_id(),
         replicaset_id: args.replicaset_id.clone(),
         advertise_address: args.advertise_address(),
-        failure_domains: args.failure_domains(),
+        failure_domain: args.failure_domain(),
     };
 
     // Arch memo.
@@ -664,9 +664,9 @@ fn postjoin(args: &args::Run) {
 
         tlog!(Info, "initiating self-activation of {instance_id:?}");
         let mut req = traft::UpdatePeerRequest::set_online(instance_id, cluster_id);
-        let new_failure_domains = args.failure_domains();
-        if new_failure_domains != peer.failure_domains {
-            req.set_failure_domains(new_failure_domains);
+        let new_failure_domain = args.failure_domain();
+        if new_failure_domain != peer.failure_domain {
+            req.set_failure_domain(new_failure_domain);
         }
 
         let leader_id = node.status().leader_id.expect("leader_id deinitialized");
