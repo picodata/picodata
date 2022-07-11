@@ -8,8 +8,7 @@ nav:
     - Преимущества языка Rust: benefits_rust.md
     - Установка и первые шаги: install.md
     - Описание параметров запуска: cli.md
-    - Топология кластера: deploy.md
-    - Управление версиями приложений: arch.md
+    - Инструкция по развертыванию: deploy.md
 
 theme:
     name: material
@@ -23,6 +22,8 @@ theme:
     language: ru
     features:
         - tabs.navigation
+        - navigation.tracking
+        - navigation.sections
 
 extra:
     homepage: https://docs.picodata.io/
@@ -42,3 +43,6 @@ markdown_extensions:
   - attr_list
   - md_in_html
   - meta
+  - toc:
+        permalink: True
+  
