@@ -1,0 +1,11 @@
+Source: picodata
+Section: database
+Priority: optional
+Maintainer: Dmitry Kibirev <kdy@picodata.io>
+
+Package: picodata
+Section: database
+Homepage: https://picodata.io/
+Architecture: amd64
+Maintainer: Dmitry Kibirev <kdy@picodata.io>
+Description: In-memory database and Rust application server

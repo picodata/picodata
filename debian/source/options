@@ -1,0 +1,13 @@
+# don't pack some non-free and generated files for Debian
+extend-diff-ignore = ".*\.git$"
+extend-diff-ignore = ".*\.git/.*"
+extend-diff-ignore = "tarantool-sys/FreeBSD/"
+extend-diff-ignore = "tarantool-sys/test-run/lib/.*/debian/"
+extend-diff-ignore = "tarantool-sys/doc/www/"
+extend-diff-ignore = "tarantool-sys/doc/sphinx/"
+extend-diff-ignore = "tarantool-sys/src/lib/.*/debian/"
+extend-diff-ignore = "tarantool-sys/src/lib/.*/test.sh"
+extend-diff-ignore = "tarantool-sys/src/lib/small/test"
+extend-diff-ignore = "tarantool-sys/third_party/.*/debian/"
+extend-diff-ignore = "tarantool-sys/third_party/luajit/doc"
+extend-diff-ignore = "tarantool-sys/third_party/luafun/(tests|doc)"

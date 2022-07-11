@@ -1,0 +1,22 @@
+#!/usr/bin/make -f
+#export DH_VERBOSE = 1
+
+build_dir=debian/PKG_NAME
+PKG_PREFIX=/usr/bin/PKG_NAME
+
+override_dh_auto_build:
+	sudo mkdir -m 777 ~
+	make install-cargo 
+	make build
+
+override_dh_auto_test: ;
+
+# override_dh_fixperms:
+# 	dh_fixperms
+# 	find $(build_dir)/ -type f -exec chmod 644 {} \;
+# 	find $(build_dir)/ -type d -exec chmod 755 {} \;
+# 	chmod +x $(build_dir)/$(PKG_PREFIX)/*.sh
+# 	chown root:root -R $(build_dir)
+
+%:
+	dh $@
