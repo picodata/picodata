@@ -119,7 +119,7 @@ build-package-ubuntu-focal:
   script:
     - |
       pushd tarantool-sys; export VER_TNT=$(git describe --long | sed -n 's/^\([0-9\.]*\)-\([0-9]*\)-\([a-z0-9]*\)/\1.\2/p'); popd
-     OS=ubuntu DIST=focal PRESERVE_ENVVARS=VER_TNT packpack/packpack
+      OS=ubuntu DIST=focal PRESERVE_ENVVARS=VER_TNT packpack/packpack
   artifacts:
     paths:
       - build/*.deb
