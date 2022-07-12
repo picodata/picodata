@@ -194,6 +194,7 @@ impl Topology {
             // SAFETY: this is safe, because rust doesn't complain if you inline
             // the function
             unsafe { &*this }.check_required_failure_domain(&fd)?;
+            self.failure_domain_names.extend(fd.names().cloned());
             peer.failure_domain = fd;
         }
 
@@ -572,6 +573,15 @@ mod tests {
         let peer = set_faildoms!(t, "i1", faildoms! {planet: Mars, owner: Ivan}).unwrap();
         assert_eq!(peer.failure_domain, faildoms! {planet: Mars, owner: Ivan});
         assert_eq!(peer.replicaset_id, "r1"); // same replicaset
+
+        // second instance won't be joined without the newly added required
+        // failure domain subdivision of "OWNER"
+        assert_eq!(
+            join!(t, Some("i2"), None, "-", faildoms! {planet: Mars})
+                .unwrap_err()
+                .to_string(),
+            "missing failure domain names: OWNER",
+        );
 
         // second instance
         #[rustfmt::skip]
