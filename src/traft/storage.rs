@@ -338,6 +338,14 @@ impl Storage {
         Ok(ret)
     }
 
+    pub fn all_traft_entries() -> Result<Vec<traft::Entry>, StorageError> {
+        Storage::space(RAFT_LOG)?
+            .select(IteratorType::All, &())
+            .map_err(box_err!())?
+            .map(|tuple| tuple.into_struct().map_err(box_err!()))
+            .collect()
+    }
+
     pub fn persist_entries(entries: &[raft::Entry]) -> Result<(), StorageError> {
         let mut space = Storage::space(RAFT_LOG)?;
         for e in entries {

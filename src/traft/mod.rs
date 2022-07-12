@@ -9,6 +9,7 @@ pub mod notify;
 mod storage;
 pub mod topology;
 
+use crate::stringify_debug;
 use crate::util::Uppercase;
 use ::raft::prelude as raft;
 use ::tarantool::tuple::AsTuple;
@@ -17,7 +18,7 @@ use serde::{Deserialize, Serialize};
 use std::any::Any;
 use std::collections::HashMap;
 use std::convert::TryFrom;
-use std::fmt::Display;
+use std::fmt::{Debug, Display};
 use uuid::Uuid;
 
 use protobuf::Message as _;
@@ -55,6 +56,12 @@ impl LogicalClock {
     }
 }
 
+impl std::fmt::Display for LogicalClock {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{}.{}.{}", self.id, self.gen, self.count)
+    }
+}
+
 //////////////////////////////////////////////////////////////////////////////////////////
 /// The operation on the raft state machine.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -81,6 +88,23 @@ pub enum Op {
     PersistReplicationFactor {
         replication_factor: u8,
     },
+}
+
+impl std::fmt::Display for Op {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            Self::Nop => f.write_str("Nop"),
+            Self::Info { msg } => write!(f, "Info({msg:?})"),
+            Self::EvalLua { code } => write!(f, "EvalLua({code:?})"),
+            Self::ReturnOne(_) => write!(f, "ReturnOne"),
+            Self::PersistPeer { peer } => {
+                write!(f, "PersistPeer{}", peer)
+            }
+            Self::PersistReplicationFactor { replication_factor } => {
+                write!(f, "PersistReplicationFactor({replication_factor})")
+            }
+        }
+    }
 }
 
 impl Op {
@@ -174,13 +198,29 @@ impl Peer {
     }
 }
 
+impl std::fmt::Display for Peer {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(
+            f,
+            "({}, {}, {}, {}, {:?}, {}, {})",
+            self.instance_id,
+            self.raft_id,
+            self.replicaset_id,
+            self.peer_address,
+            self.health,
+            self.commit_index,
+            &self.failure_domain,
+        )
+    }
+}
+
 //////////////////////////////////////////////////////////////////////////////////////////
 /// Serializable representation of `raft::prelude::Entry`.
 ///
 /// See correspondig definition in `raft-rs`:
 /// - <https://github.com/tikv/raft-rs/blob/v0.6.0/proto/proto/eraftpb.proto#L23>
 ///
-#[derive(Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct Entry {
     /// See correspondig definition in `raft-rs`:
     /// - <https://github.com/tikv/raft-rs/blob/v0.6.0/proto/proto/eraftpb.proto#L7>
@@ -229,18 +269,6 @@ mod entry_type_as_i32 {
     }
 }
 
-impl std::fmt::Debug for Entry {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        f.debug_struct("Entry")
-            .field("entry_type", &self.entry_type)
-            .field("index", &self.index)
-            .field("term", &self.term)
-            .field("data", &self.data)
-            .field("context", &self.context)
-            .finish()
-    }
-}
-
 /// Raft entry payload specific to the Picodata.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(untagged)]
@@ -268,7 +296,7 @@ impl ContextCoercion for EntryContextConfChange {}
 
 impl Entry {
     /// Returns the logical clock value if it's an `EntryNormal`.
-    fn lc(&self) -> Option<&LogicalClock> {
+    pub fn lc(&self) -> Option<&LogicalClock> {
         match &self.context {
             Some(EntryContext::Normal(v)) => Some(&v.lc),
             Some(EntryContext::ConfChange(_)) => None,
@@ -282,6 +310,72 @@ impl Entry {
             Some(EntryContext::Normal(v)) => Some(&v.op),
             Some(EntryContext::ConfChange(_)) => None,
             None => None,
+        }
+    }
+
+    pub fn payload(&self) -> EntryPayload {
+        match (self.entry_type, &self.context) {
+            (raft::EntryType::EntryNormal, None) => {
+                debug_assert!(self.data.is_empty());
+                EntryPayload::NormalEmpty
+            }
+            (raft::EntryType::EntryNormal, Some(EntryContext::Normal(ctx))) => {
+                debug_assert!(self.data.is_empty());
+                EntryPayload::Normal(ctx)
+            }
+            (raft::EntryType::EntryConfChange, None) => {
+                let mut cc = raft::ConfChange::default();
+                cc.merge_from_bytes(&self.data).unwrap();
+                EntryPayload::ConfChange(cc)
+            }
+            (raft::EntryType::EntryConfChangeV2, None) => {
+                let mut cc = raft::ConfChangeV2::default();
+                cc.merge_from_bytes(&self.data).unwrap();
+                EntryPayload::ConfChangeV2(cc)
+            }
+            (e, c) => {
+                crate::warn_or_panic!("Unexpected context `{:?}` for entry `{:?}`", c, e);
+                EntryPayload::NormalEmpty
+            }
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum EntryPayload<'a> {
+    NormalEmpty,
+    Normal(&'a EntryContextNormal),
+    ConfChange(raft::ConfChange),
+    ConfChangeV2(raft::ConfChangeV2),
+}
+
+impl<'a> std::fmt::Display for EntryPayload<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        return match self {
+            EntryPayload::NormalEmpty => f.write_str("-"),
+            EntryPayload::Normal(norm) => write!(f, "{}", norm.op),
+            EntryPayload::ConfChange(cc) => {
+                write!(f, "{}({})", change_type(cc.change_type), cc.node_id)
+            }
+            EntryPayload::ConfChangeV2(ccv2) => {
+                write!(f, "{:?}(", ccv2.transition)?;
+                let mut iter = ccv2.changes.iter();
+                let cc = (&mut iter).next().unwrap();
+                write!(f, "{}({})", change_type(cc.change_type), cc.node_id)?;
+                for cc in iter.take(ccv2.changes.len() - 1) {
+                    write!(f, ", {}({})", change_type(cc.change_type), cc.node_id)?;
+                }
+                f.write_str(")")?;
+                Ok(())
+            }
+        };
+
+        const fn change_type(ct: raft::ConfChangeType) -> &'static str {
+            match ct {
+                raft::ConfChangeType::AddNode => "Promote",
+                raft::ConfChangeType::AddLearnerNode => "Demote",
+                raft::ConfChangeType::RemoveNode => "Remove",
+            }
         }
     }
 }
@@ -355,7 +449,8 @@ impl AsTuple for MessagePb {}
 
 impl ::std::fmt::Debug for MessagePb {
     fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
-        f.debug_struct("MessagePb").finish_non_exhaustive()
+        f.debug_struct(stringify_debug!(MessagePb))
+            .finish_non_exhaustive()
     }
 }
 
@@ -543,7 +638,7 @@ pub fn replicaset_uuid(replicaset_id: &str) -> String {
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Failure domains of a given instance.
-#[derive(Default, Debug, PartialEq, Eq, Clone, serde::Deserialize, serde::Serialize)]
+#[derive(Default, PartialEq, Eq, Clone, serde::Deserialize, serde::Serialize)]
 pub struct FailureDomain {
     #[serde(flatten)]
     data: HashMap<Uppercase, Uppercase>,
@@ -570,6 +665,31 @@ impl FailureDomain {
             }
         }
         false
+    }
+}
+
+impl std::fmt::Display for FailureDomain {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        f.write_str("{")?;
+        let mut iter = self.data.iter();
+        if let Some((k, v)) = (&mut iter).next() {
+            write!(f, "{k}: {v}")?;
+            for (k, v) in iter {
+                write!(f, ", {k}: {v}")?;
+            }
+        }
+        f.write_str("}")?;
+        Ok(())
+    }
+}
+
+impl std::fmt::Debug for FailureDomain {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        let mut ds = f.debug_struct(stringify_debug!(FailureDomain));
+        for (name, value) in &self.data {
+            ds.field(name, &**value);
+        }
+        ds.finish()
     }
 }
 

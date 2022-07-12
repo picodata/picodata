@@ -24,6 +24,15 @@ macro_rules! warn_or_panic {
     };
 }
 
+#[macro_export]
+macro_rules! stringify_debug {
+    ($t:ty) => {{
+        fn _check_debug<T: std::fmt::Debug>() {}
+        _check_debug::<$t>();
+        ::std::stringify!($t)
+    }};
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 /// A wrapper around `String` that garantees the string is uppercase by
 /// converting it to uppercase (if needed) on construction.
@@ -119,5 +128,21 @@ mod tests {
         assert_eq!(&*Uppercase::from("123-?!"), "123-?!");
         assert_eq!(&*Uppercase::from(String::from("hello")), "HELLO");
         assert_eq!(&*Uppercase::from(String::from("HELLO")), "HELLO");
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// Return terminal screen size in rows, columns.
+pub fn screen_size() -> (i32, i32) {
+    let mut rows = std::mem::MaybeUninit::uninit();
+    let mut cols = std::mem::MaybeUninit::uninit();
+    unsafe {
+        rl_get_screen_size(rows.as_mut_ptr(), cols.as_mut_ptr());
+        return (rows.assume_init() as _, cols.assume_init() as _);
+    }
+
+    use std::os::raw::c_int;
+    extern "C" {
+        pub fn rl_get_screen_size(rows: *mut c_int, cols: *mut c_int);
     }
 }
