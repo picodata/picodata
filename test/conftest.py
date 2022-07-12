@@ -422,13 +422,23 @@ class Cluster:
         self,
         wait_ready=True,
         peers=None,
-        generate_instance_id=True,
+        instance_id=None,
         failure_domain=dict(),
         init_replication_factor=1,
     ) -> Instance:
+        """Add an `Instance` into the list of instances of the cluster and wait
+        for it to start unless `wait_ready` is `False`.
+
+        If `instance_id` is not specified (or is set `None`), this function will
+        generate a value for it.
+        Otherwise `instance_id` is passed to the command as the `--instance-id`
+        parameter.
+        Passing an empty string (`instance_id = ""`) will force the cluster
+        leader to choose a value when the instance is joined.
+        """
         i = 1 + len(self.instances)
 
-        instance_id = f"i{i}" if generate_instance_id else ""
+        instance_id = f"i{i}" if instance_id is None else instance_id
 
         instance = Instance(
             binary_path=self.binary_path,
@@ -451,6 +461,23 @@ class Cluster:
             instance.wait_ready()
 
         return instance
+
+    def fail_to_add_instance(
+        self,
+        peers=None,
+        instance_id=None,
+        failure_domain=dict(),
+        init_replication_factor=1,
+    ):
+        instance = self.add_instance(
+            wait_ready=False,
+            peers=peers,
+            instance_id=instance_id,
+            failure_domain=failure_domain,
+            init_replication_factor=init_replication_factor,
+        )
+        self.instances.remove(instance)
+        instance.fail_to_start()
 
     def kill(self):
         for instance in self.instances:

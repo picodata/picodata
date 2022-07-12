@@ -631,11 +631,21 @@ fn start_join(args: &args::Run, leader_address: String) {
     //   leader.
     let fn_name = stringify_cfunc!(traft::node::raft_join);
     let resp: traft::JoinResponse = loop {
-        match tarantool::net_box_call_or_log(&leader_address, fn_name, &req, Duration::MAX) {
-            Some(resp) => break resp,
-            None => {
-                fiber::sleep(Duration::from_secs(1));
+        let now = Instant::now();
+        // TODO: exponential decay
+        let timeout = Duration::from_secs(1);
+        match tarantool::net_box_call(&leader_address, fn_name, &req, Duration::MAX) {
+            Err(TntError::IO(e)) => {
+                tlog!(Warning, "join request failed: {e}");
+                fiber::sleep(timeout.saturating_sub(now.elapsed()));
                 continue;
+            }
+            Err(e) => {
+                tlog!(Error, "join request failed: {e}");
+                std::process::exit(-1);
+            }
+            Ok(resp) => {
+                break resp;
             }
         }
     };

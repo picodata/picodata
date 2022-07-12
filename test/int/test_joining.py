@@ -248,8 +248,10 @@ def test_join_without_explicit_instance_id(cluster: Cluster):
     #   Then the one of the instances became Leader with instance_id=1
     #   And the second one of the became Follower with instance_id 2
 
-    i1 = cluster.add_instance(generate_instance_id=False)
-    i2 = cluster.add_instance(generate_instance_id=False)
+    # start the instances with empty instance_ids which will force the Leader to
+    # choose ones for them when they join
+    i1 = cluster.add_instance(instance_id="")
+    i2 = cluster.add_instance(instance_id="")
 
     i1.assert_raft_status("Leader")
     assert i1.instance_id == "i1"
@@ -327,3 +329,33 @@ def test_reconfigure_failure_domains(cluster: Cluster):
     # fail to remove domain subdivision
     i1.failure_domain = dict(planet="Mars")
     i1.fail_to_start()
+
+
+def test_fail_to_join(cluster: Cluster):
+    # Check scenarios in which instances fail to join the cluster for different
+    # reasons
+
+    i1 = cluster.add_instance(failure_domain=dict(owner="Tom"))
+
+    # Cluster has a required failure domain,
+    # so instance without the required failure domain cannot join
+    # and therefore exits with failure
+    cluster.fail_to_add_instance(failure_domain=dict())
+
+    # An instance with the given instance_id is already present in the cluster
+    # so this instance cannot join
+    # and therefore exits with failure
+    cluster.fail_to_add_instance(
+        instance_id=i1.instance_id, failure_domain=dict(owner="Jim")
+    )
+
+    joined_instances = i1.eval(
+        """
+        res = {}
+        for _, t in pairs(box.space.raft_group:select()) do
+            table.insert(res, { t.instance_id, t.raft_id })
+        end
+        return res
+    """
+    )
+    assert {tuple(i) for i in joined_instances} == {(i1.instance_id, i1.raft_id)}
