@@ -81,14 +81,21 @@ fn picolib_setup(args: &args::Run) {
             Ok(())
         }),
     );
+    #[derive(::tarantool::tlua::LuaRead)]
+    struct ProposeEvalOpts {
+        timeout: Option<f64>,
+    }
     luamod.set(
         "raft_propose_eval",
-        tlua::function2(|timeout: f64, x: String| -> Result<(), Error> {
-            traft::node::global()?.propose(
-                traft::Op::EvalLua { code: x },
-                Duration::from_secs_f64(timeout),
-            )
-        }),
+        tlua::function2(
+            |x: String, opts: Option<ProposeEvalOpts>| -> Result<(), Error> {
+                let timeout = opts.and_then(|opts| opts.timeout).unwrap_or(10.0);
+                traft::node::global()?.propose(
+                    traft::Op::EvalLua { code: x },
+                    Duration::from_secs_f64(timeout),
+                )
+            },
+        ),
     );
     luamod.set(
         "raft_return_one",

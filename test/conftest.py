@@ -326,8 +326,8 @@ class Instance:
     def raft_propose_eval(self, lua_code: str, timeout_seconds=2):
         return self.call(
             "picolib.raft_propose_eval",
-            timeout_seconds,
             lua_code,
+            dict(timeout=timeout_seconds),
         )
 
     def assert_raft_status(self, state, leader_id=None):
