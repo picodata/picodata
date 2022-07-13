@@ -230,3 +230,28 @@ pub fn pcall() {
     assert!(err_msg.ends_with(                     "> catch this"));
 }
 
+pub fn optional_params() {
+    let lua = Lua::new();
+    #[derive(tlua::LuaRead)]
+    struct Opts {
+        greeting: Option<String>,
+    }
+    lua.set("foo", Function::new(|sailor: Option<String>, opts: Option<Opts>| -> String {
+        let greeting = opts.and_then(|o| o.greeting).unwrap_or_else(|| "Hello".into());
+        let greetee = sailor.unwrap_or_else(|| "Sailor".into());
+        format!("{greeting}, {greetee}!")
+    }));
+    assert_eq!(lua.eval::<String>("return foo()").unwrap(), "Hello, Sailor!");
+    assert_eq!(lua.eval::<String>("return foo('World')").unwrap(), "Hello, World!");
+    assert_eq!(lua.eval::<String>("return foo('World', {})").unwrap(), "Hello, World!");
+    assert_eq!(
+        lua.eval::<String>("return foo('Partner', { greeting = 'Howdy' })").unwrap(),
+        "Howdy, Partner!"
+    );
+    assert_eq!(
+        lua.eval::<String>("return foo({ greeting = 'Sup' })")
+            .unwrap_err()
+            .to_string(),
+         "Execution error: Wrong type passed into rust callback: (core::option::Option<alloc::string::String>, core::option::Option<tarantool_module_test_runner::tlua::functions_write::optional_params::Opts>) expected, got table"
+    );
+}

@@ -89,6 +89,11 @@ macro_rules! tuple_impl {
             fn lua_read_at_position(lua: LU, index: NonZeroI32) -> Result<($ty,), LU> {
                 LuaRead::lua_read_at_position(lua, index).map(|v| (v,))
             }
+
+            #[inline]
+            fn lua_read_at_maybe_zero_position(lua: LU, index: i32) -> Result<($ty,), LU> {
+                LuaRead::lua_read_at_maybe_zero_position(lua, index).map(|v| (v,))
+            }
         }
 
         ////////////////////////////////////////////////////////////////////////
@@ -264,14 +269,20 @@ macro_rules! tuple_impl {
 
             #[inline]
             fn lua_read_at_position(lua: LU, index: NonZeroI32) -> Result<($first, $($other),+), LU> {
-                let $first: $first = match LuaRead::lua_read_at_position(&lua, index) {
+                LuaRead::lua_read_at_maybe_zero_position(lua, index.into())
+            }
+
+            #[inline]
+            fn lua_read_at_maybe_zero_position(lua: LU, index: i32) -> Result<($first, $($other),+), LU> {
+                let $first: $first = match LuaRead::lua_read_at_maybe_zero_position(&lua, index) {
                     Ok(v) => v,
                     Err(_) => return Err(lua)
                 };
 
-                let mut i: i32 = index.into();
+                let mut i = index;
                 // TODO(gmoshkin): + n_values_expected
-                i += 1;
+                // see comment below
+                i = if i == 0 { 0 } else { i + 1 };
 
                 $(
                     let $other: $other = match LuaRead::lua_read_at_maybe_zero_position(&lua, i) {
@@ -287,7 +298,6 @@ macro_rules! tuple_impl {
                 )+
 
                 Ok(($first, $($other),+))
-
             }
         }
 
