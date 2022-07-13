@@ -127,63 +127,90 @@ fn picolib_setup(args: &args::Run) {
         .unwrap();
     }
 
+    #[derive(::tarantool::tlua::LuaRead)]
+    struct RaftLogOpts {
+        return_string: Option<bool>,
+    }
     luamod.set(
         "raft_log",
-        tlua::function0(|| -> Result<(), ::raft::StorageError> {
-            let header = ["index", "term", "lc", "contents"];
-            let [index, term, lc, contents] = header;
-            let mut rows = vec![];
-            let mut col_widths = header.map(|h| h.len());
-            for entry in traft::Storage::all_traft_entries()? {
-                let row = [
-                    entry.index.to_string(),
-                    entry.term.to_string(),
-                    entry
-                        .lc()
-                        .map(ToString::to_string)
-                        .unwrap_or_else(String::new),
-                    entry.payload().to_string(),
-                ];
-                for i in 0..col_widths.len() {
-                    col_widths[i] = col_widths[i].max(row[i].len());
+        tlua::function1(
+            |opts: Option<RaftLogOpts>| -> Result<Option<String>, ::raft::StorageError> {
+                let header = ["index", "term", "lc", "contents"];
+                let [index, term, lc, contents] = header;
+                let mut rows = vec![];
+                let mut col_widths = header.map(|h| h.len());
+                for entry in traft::Storage::all_traft_entries()? {
+                    let row = [
+                        entry.index.to_string(),
+                        entry.term.to_string(),
+                        entry
+                            .lc()
+                            .map(ToString::to_string)
+                            .unwrap_or_else(String::new),
+                        entry.payload().to_string(),
+                    ];
+                    for i in 0..col_widths.len() {
+                        col_widths[i] = col_widths[i].max(row[i].len());
+                    }
+                    rows.push(row);
                 }
-                rows.push(row);
-            }
-            let [iw, tw, lw, mut cw] = col_widths;
+                let [iw, tw, lw, mut cw] = col_widths;
 
-            let total_width = 1 + header.len() + col_widths.iter().sum::<usize>();
-            let cols = util::screen_size().1 as usize;
-            if total_width > cols {
-                cw -= total_width - cols;
-            }
+                let total_width = 1 + header.len() + col_widths.iter().sum::<usize>();
+                let cols = util::screen_size().1 as usize;
+                if total_width > cols {
+                    cw -= total_width - cols;
+                }
 
-            let row_sep = || println!("+{0:-^iw$}+{0:-^tw$}+{0:-^lw$}+{0:-^cw$}+", "");
-            row_sep();
-            println!("|{index: ^iw$}|{term: ^tw$}|{lc: ^lw$}|{contents: ^cw$}|");
-            row_sep();
-            for [index, term, lc, contents] in rows {
-                if contents.len() <= cw {
-                    println!("|{index: ^iw$}|{term: ^tw$}|{lc: ^lw$}|{contents: ^cw$}|");
-                } else {
-                    println!(
-                        "|{index: ^iw$}|{term: ^tw$}|{lc: ^lw$}|{contents: ^cw$}|",
-                        contents = &contents[..cw],
-                    );
-                    let mut rest = &contents[cw..];
-                    while !rest.is_empty() {
-                        let clamped_cw = usize::min(rest.len(), cw);
-                        println!(
-                            "|{blank: ^iw$}|{blank: ^tw$}|{blank: ^lw$}|{contents: ^cw$}|",
-                            blank = "~",
-                            contents = &rest[..clamped_cw],
-                        );
-                        rest = &rest[clamped_cw..];
+                use std::io::Write;
+                let mut buf: Vec<u8> = Vec::with_capacity(512);
+                let row_sep = |buf: &mut Vec<u8>| {
+                    writeln!(buf, "+{0:-^iw$}+{0:-^tw$}+{0:-^lw$}+{0:-^cw$}+", "").unwrap()
+                };
+                row_sep(&mut buf);
+                writeln!(
+                    buf,
+                    "|{index: ^iw$}|{term: ^tw$}|{lc: ^lw$}|{contents: ^cw$}|"
+                )
+                .unwrap();
+                row_sep(&mut buf);
+                for [index, term, lc, contents] in rows {
+                    if contents.len() <= cw {
+                        writeln!(
+                            buf,
+                            "|{index: ^iw$}|{term: ^tw$}|{lc: ^lw$}|{contents: ^cw$}|"
+                        )
+                        .unwrap();
+                    } else {
+                        writeln!(
+                            buf,
+                            "|{index: ^iw$}|{term: ^tw$}|{lc: ^lw$}|{contents: ^cw$}|",
+                            contents = &contents[..cw],
+                        )
+                        .unwrap();
+                        let mut rest = &contents[cw..];
+                        while !rest.is_empty() {
+                            let clamped_cw = usize::min(rest.len(), cw);
+                            writeln!(
+                                buf,
+                                "|{blank: ^iw$}|{blank: ^tw$}|{blank: ^lw$}|{contents: ^cw$}|",
+                                blank = "~",
+                                contents = &rest[..clamped_cw],
+                            )
+                            .unwrap();
+                            rest = &rest[clamped_cw..];
+                        }
                     }
                 }
-            }
-            row_sep();
-            Ok(())
-        }),
+                row_sep(&mut buf);
+                if opts.and_then(|opts| opts.return_string).unwrap_or(false) {
+                    Ok(Some(String::from_utf8_lossy(&buf).into()))
+                } else {
+                    std::io::stdout().write_all(&buf).unwrap();
+                    Ok(None)
+                }
+            },
+        ),
     );
 }
 
