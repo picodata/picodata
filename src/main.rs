@@ -438,7 +438,7 @@ fn main_run(args: args::Run) -> ! {
                         rm_tarantool_files(&args.data_dir);
                     }
                 } else {
-                    std::process::exit(rc);
+                    std::process::exit(libc::WEXITSTATUS(rc));
                 }
             }
         };

@@ -301,8 +301,13 @@ class Instance:
         assert self.process is None
         self.start()
         assert self.process
-        self.process.wait(timeout)
-        self.process = None
+        try:
+            rc = self.process.wait(timeout)
+            self.process = None
+            assert rc != 0
+        except Exception as e:
+            self.kill()
+            raise e from e
 
     def restart(self, kill: bool = False, remove_data: bool = False):
         if kill:
