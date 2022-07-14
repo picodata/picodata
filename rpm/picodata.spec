@@ -16,6 +16,11 @@ Source0: %name-%version.tar.gz
 %if %use_cmake3
 BuildRequires: cmake3
 %endif
+
+%if %{?rhel} == 8
+BuildRequires: libstdc++-static
+%endif
+
 Requires: tarantool > 2.8
 
 %description

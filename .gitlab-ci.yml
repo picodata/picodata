@@ -2,6 +2,7 @@ stages:
   - prebuild
   - build
   - pack
+  - sign
   - deploy
 
 workflow:
@@ -82,7 +83,7 @@ build:
       - .cargo
       - .venv
 
-build-package-centos-7:
+build-package-centos:
   stage: pack
   tags:
     - shell
@@ -92,15 +93,12 @@ build-package-centos-7:
   before_script:
     - git submodule update --init --recursive
     - git clone https://github.com/packpack/packpack.git packpack
-    - echo "$GPG_KEY_KDY" | base64 -d > kdy.asc
-    - wget https://binary.picodata.io/repository/raw-private/tarantool/.rpmmacros
-    - wget https://binary.picodata.io/repository/raw-private/tarantool/rpmmk.patch
-    - patch -p0 -i rpmmk.patch
     - sed -i "s/(id -u)/(id -u) -o/g" packpack/packpack
   script:
     - |
       pushd tarantool-sys; export VER_TNT=$(git describe --long | sed -n 's/^\([0-9\.]*\)-\([0-9]*\)-\([a-z0-9]*\)/\1.\2/p'); popd
       OS=centos DIST=7 PRESERVE_ENVVARS=VER_TNT packpack/packpack
+      OS=centos DIST=8 PRESERVE_ENVVARS=VER_TNT packpack/packpack
   artifacts:
     paths:
       - build/picodata*.rpm
@@ -124,7 +122,26 @@ build-package-ubuntu-focal:
     paths:
       - build/*.deb
 
-deploy-job-centos7:
+sign-rpm-packages:
+  variables:
+    DOCKER_AUTH_CONFIG: $DOCKER_AUTH_RO
+  stage: sign
+  tags:
+    - shell
+  only:
+    - web
+    - tags
+  before_script:
+    - mkdir -p $CI_PROJECT_DIR/.docker
+    - echo $DOCKER_AUTH_RW > $CI_PROJECT_DIR/.docker/config.json
+    - echo "$GPG_KEY_KDY" | base64 -d > build/kdy.asc
+  script:
+    - docker run --rm -e KEY_FILE=kdy.asc -v $PWD/build:/build docker-picodata.binary.picodata.io/rpmsign:centos7
+  artifacts:
+    paths:
+      - build/picodata*.rpm
+
+deploy-job-centos:
   stage: deploy
   tags:
     - shell
@@ -136,9 +153,14 @@ deploy-job-centos7:
     - echo "$DEPLOY_PROD_SSH_KEY" | base64 -d | ssh-add -
   script:
     - echo "Deploying rpm-centos7-packet..."
-    - scp -o stricthostkeychecking=no build/picodata*rpm ansible@94.26.239.246:/data/nginx/www/packrepo/tarantool-picodata/el/7/x86_64/
+    - scp -o stricthostkeychecking=no build/picodata*.el7.*rpm ansible@94.26.239.246:/data/nginx/www/packrepo/tarantool-picodata/el/7/x86_64/
     - ssh -o stricthostkeychecking=no ansible@94.26.239.246 "cd /data/nginx/www/packrepo/tarantool-picodata/el/7/ && createrepo --update x86_64 && gpg --no-tty --yes -u kdy@picodata.io --detach-sign --armor x86_64/repodata/repomd.xml"
     - echo "rpm-centos7-packet successfully deployed."
+    - echo
+    - echo "Deploying rpm-centos8-packet..."
+    - scp -o stricthostkeychecking=no build/picodata*.el8.*rpm ansible@94.26.239.246:/data/nginx/www/packrepo/tarantool-picodata/el/8/x86_64/
+    - ssh -o stricthostkeychecking=no ansible@94.26.239.246 "cd /data/nginx/www/packrepo/tarantool-picodata/el/8/ && createrepo --update x86_64 && gpg --no-tty --yes -u kdy@picodata.io --detach-sign --armor x86_64/repodata/repomd.xml"
+    - echo "rpm-centos8-packet successfully deployed."
 
 deploy-job-ubuntu-focal:
   stage: deploy
