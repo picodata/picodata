@@ -1,21 +1,18 @@
-From 261ab204ea9e132426a7ce42549a4c6ca883ca66 Mon Sep 17 00:00:00 2001
+From 99f29bd6d03d166af8fb29564cd2781f397861ae Mon Sep 17 00:00:00 2001
 From: Georgy Moshkin <gmoshkin@picodata.io>
-Date: Thu, 17 Feb 2022 14:00:14 +0300
-Subject: [PATCH 3/3] picodata: add support for static stored procedures using
+Date: Thu, 14 Jul 2022 17:51:03 +0300
+Subject: [PATCH] picodata: add support for static stored procedures using
  ".foo" syntax
 
-box.schema.func.create(".func_name", {language = "C"}) will create a
-stored procedure which calls the function `func_name` from the current
-executable
 ---
- src/box/module_cache.c | 31 +++++++++++++++++++++++++++++++
- 1 file changed, 31 insertions(+)
+ src/box/module_cache.c | 26 ++++++++++++++++++++++++++
+ 1 file changed, 26 insertions(+)
 
 diff --git a/src/box/module_cache.c b/src/box/module_cache.c
-index 7f81902bd..a48c18ea0 100644
+index 76685ed86..eeaff73c2 100644
 --- a/src/box/module_cache.c
 +++ b/src/box/module_cache.c
-@@ -387,9 +387,37 @@ error:
+@@ -374,9 +374,32 @@ error:
  	return NULL;
  }
  
@@ -35,12 +32,7 @@ index 7f81902bd..a48c18ea0 100644
 +	memset(m, 0, size);
 +	m->handle = dlopen(0, RTLD_NOW);
 +	module_ref(m);
-+
-+	if (cache_put(m) != 0) {
-+		module_unload(m);
-+		return NULL;
-+	}
-+
++	cache_put(m);
 +	return m;
 +}
 +
@@ -53,7 +45,7 @@ index 7f81902bd..a48c18ea0 100644
  	char path[PATH_MAX];
  	size_t size = sizeof(path);
  
-@@ -416,6 +444,9 @@ module_load_force(const char *package, size_t package_len)
+@@ -400,6 +423,9 @@ module_load_force(const char *package, size_t package_len)
  struct module *
  module_load(const char *package, size_t package_len)
  {

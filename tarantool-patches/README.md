@@ -6,7 +6,7 @@ git checkout -b new-patch
 ```
 4. Add changes to `tarantool-sys` code and commit them with appropriate messages
 3. Run format-patch specifying the commit from which the changes branched off
-   (currently it's `01023dbc2`)
+   (currently it's `1ec2a9d15`)
 ```bash
 git format-patch <hash>
 ```

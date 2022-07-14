@@ -117,7 +117,6 @@ fn build_tarantool() {
         "msgpuck",
         "crypto",
         "vclock",
-        "uuid",
         "bit",
         "swim",
         "uri",
@@ -130,6 +129,7 @@ fn build_tarantool() {
         "coll",
         "fakesys",
         "salad",
+        "tzcode",
     ] {
         println!(
             "cargo:rustc-link-search=native={}/src/lib/{}",
@@ -149,12 +149,16 @@ fn build_tarantool() {
         "cargo:rustc-link-search=native={}/third_party/libyaml",
         build_disp
     );
+    println!("cargo:rustc-link-search=native={build_disp}/third_party/c-dt/build");
+    println!("cargo:rustc-link-search=native={build_disp}/build/nghttp2/dest/lib");
     for l in [
         "tarantool",
         "ev",
         "coro",
+        "cdt",
         "server",
         "misc",
+        "nghttp2",
         "zstd",
         "decNumber",
         "eio",
@@ -186,12 +190,12 @@ fn build_tarantool() {
         // duplicate symbols which is not allowed (by default) when linking with
         // via -l... option
         println!(
-            "cargo:rustc-link-arg={}/build/unwind-prefix/lib/libunwind-x86_64.a",
-            dst.display()
+            "cargo:rustc-link-arg={}/build/libunwind/dest/lib/libunwind-x86_64.a",
+            build_disp
         );
         println!(
-            "cargo:rustc-link-arg={}/build/unwind-prefix/lib/libunwind.a",
-            dst.display()
+            "cargo:rustc-link-arg={}/build/libunwind/dest/lib/libunwind.a",
+            build_disp
         );
     }
 
