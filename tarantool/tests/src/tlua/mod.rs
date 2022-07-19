@@ -1,3 +1,4 @@
+#![allow(clippy::let_unit_value)]
 pub mod any;
 pub mod functions_write;
 pub mod lua_functions;

@@ -450,7 +450,7 @@ pub fn upsert() {
     };
     space.insert(&original_input).unwrap();
 
-    let () = space
+    space
         .upsert(
             &S1Record {
                 id: 1,
@@ -464,7 +464,7 @@ pub fn upsert() {
         )
         .unwrap();
 
-    let () = space
+    space
         .upsert(
             &S1Record {
                 id: 2,
@@ -503,7 +503,7 @@ pub fn upsert_macro() {
     };
     space.insert(&original_input).unwrap();
 
-    let () = upsert!(
+    upsert!(
             space,
             &(S2Record {
                 id: 111,
@@ -517,7 +517,7 @@ pub fn upsert_macro() {
         )
         .unwrap();
 
-    let () = upsert!(
+    upsert!(
             space,
             &S2Record {
                 id: 112,

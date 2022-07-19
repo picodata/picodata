@@ -1,3 +1,4 @@
+#![allow(clippy::let_unit_value)]
 use std::{
     cell::{Cell, RefCell},
     rc::Rc,

@@ -136,7 +136,7 @@ pub struct RemoteIndexIterator {
     inner: IntoIter<Tuple>,
 }
 
-impl<'a> Iterator for RemoteIndexIterator {
+impl Iterator for RemoteIndexIterator {
     type Item = Tuple;
 
     fn next(&mut self) -> Option<Self::Item> {

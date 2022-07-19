@@ -349,7 +349,7 @@ where
     }
 }
 
-impl<'a, T, E> PushOneInto<InsideCallback> for Result<T, E>
+impl<T, E> PushOneInto<InsideCallback> for Result<T, E>
 where
     T: PushOneInto<InsideCallback>,
     E: Display

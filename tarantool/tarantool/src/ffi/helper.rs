@@ -10,6 +10,6 @@ macro_rules! c_str {
 #[macro_export]
 macro_rules! c_ptr {
     ($s:literal) => {
-        crate::c_str!($s).as_ptr()
+        $crate::c_str!($s).as_ptr()
     };
 }
