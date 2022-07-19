@@ -476,14 +476,23 @@ pub fn clear_error() {
 /// Set the last error.
 #[macro_export]
 macro_rules! set_error {
-    ($code:expr, $($msg_args:expr),+) => {{
-        let msg = std::fmt::format(format_args!($($msg_args),*));
+    ($code:expr, $msg:literal) => {
         unsafe {
-            let file = std::ffi::CString::new(file!()).unwrap().into_raw();
-            let msg = std::ffi::CString::new(msg).unwrap().into_raw();
-            $crate::ffi::tarantool::box_error_set(file, line!(), $code as u32, msg)
+            let file = std::concat!(file!(), "\0").as_ptr().cast();
+            let msg_ptr = std::concat!($msg, "\0").as_ptr().cast();
+            $crate::ffi::tarantool::box_error_set(file, line!(), $code as u32, msg_ptr)
         }
-    }};
+    };
+    ($code:expr, $($msg_args:expr),+) => {
+        unsafe {
+            let msg = std::fmt::format(format_args!($($msg_args),*));
+            let file = std::concat!(file!(), "\0").as_ptr().cast();
+            let msg: std::ffi::CString = std::ffi::CString::new(msg).unwrap();
+            // `msg` must outlive `msg_ptr`
+            let msg_ptr = msg.as_ptr().cast();
+            $crate::ffi::tarantool::box_error_set(file, line!(), $code as u32, msg_ptr)
+        }
+    };
 }
 
 /// Error that can happen when serializing a tuple

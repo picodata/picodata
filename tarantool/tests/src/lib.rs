@@ -467,6 +467,7 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 tuple::tuple_buffer_from_vec_fail,
 
                 error::error_last,
+                error::set_error,
                 coio::coio_accept,
                 coio::coio_read_write,
                 coio::coio_call,
