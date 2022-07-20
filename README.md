@@ -1,54 +1,20 @@
-## Integration testing with pytest
+## Picodata – Professional Data Management System for High Loads
+This repository contains the source code of Picodata, an in-memory distributed application server with a built-in database.
 
-### Installation
+### What is Picodata
+Picodata is a software for building professional data management systems. It provides a data storage system together with a development platform and a runtime for persistent applications written in Rust. Learn more about our software at the [picodata.io](picodata.io) web site.
 
-1. Install Python 3.10
+### Getting Picodata
+We provide pre-built Picodata packages for select Linux distributions including CentOS and Ubuntu. Head over to our [downloads page](https://picodata.io/download/) to find out installation details. 
 
-   **Ubuntu:**
-
-   ```
-   sudo add-apt-repository ppa:deadsnakes/ppa
-   sudo apt install python3.10 python3.10-distutils
-   curl -sSL https://bootstrap.pypa.io/get-pip.py -o get-pip.py
-   python3.10 get-pip.py
-   ```
-
-3. Install pipenv:
-
-    ```
-    python3.10 -m pip install pipenv==2022.4.8
-    ```
-
-4. Install dependencies
-
-    ```
-    python3.10 -m pipenv install --deploy
-    ```
-
-### Adding dependencies
+### Running Picodata
+Running a Picodata instance only takes one simple command: `picodata run`. Getting a basic distributed cluster made of two instances running on different hosts involves two commands, like this:
 
 ```bash
-python3.10 -m pipenv install <dependency-package-name>
+picodata run --listen 192.168.0.1:3301
+picodata run --listen 192.168.0.2:3301 --peer 192.168.0.1:3301 
 ```
+You can find out more about getting started procedures and first steps by heading to our [documentation site](https://docs.picodata.io/picodata/install/#_2).
 
-### Running
-
-```bash
-python3.10 -m pipenv run pytest
-python3.10 -m pipenv run lint
-```
-
-or
-
-```bash
-python3.10 -m pipenv shell
-# A new shell will be opened inside the pipenv environment
-pytest
-pipenv run lint
-```
-
-#### Running tests in parallel with pytest-xdist
-
-```bash
-python3.10 -m pipenv run pytest -n 20
-```
+### Building Picodata from source
+Our pre-built packages provide a statically linked `picodata` binary that have no extra dependencies other than a recent `glibc` library version. However, you may want or need to compile the software from the source. Please refer to the [CONTRIBUTING.md](CONTRIBUTING.md) document for compilation instructions and running integration tests.
