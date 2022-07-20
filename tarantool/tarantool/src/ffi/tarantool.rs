@@ -395,10 +395,10 @@ pub struct ipc_msg {
 
 pub type ev_tstamp = f64;
 
-extern "C" {
-    /// Infinity is roughly 100 years in seconds.
-    pub static TIMEOUT_INFINITY: ev_tstamp;
+/// Infinity is roughly 100 years in seconds.
+pub const TIMEOUT_INFINITY: ev_tstamp = 100.0 * 365.0 * 24.0 * 60.0 * 60.0;
 
+crate::define_dlsym_reloc! {
     /// Allocate and construct a channel.
     ///
     /// Uses `malloc()`.
@@ -513,7 +513,7 @@ pub struct ipc_value {
     pub data_union: ipc_data,
 }
 
-extern "C" {
+crate::define_dlsym_reloc! {
     pub fn ipc_value_new() -> *mut ipc_value;
     pub fn ipc_value_delete(msg: *mut ipc_msg);
 }
@@ -860,7 +860,9 @@ extern "C" {
         key_b: *const c_char,
         key_def: *mut BoxKeyDef,
     ) -> c_int;
+}
 
+crate::define_dlsym_reloc! {
     pub fn tuple_field_raw_by_full_path(
         format: *const BoxTupleFormat,
         tuple: *const c_char,

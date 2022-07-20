@@ -159,7 +159,6 @@ pub mod clock;
 pub mod coio;
 pub mod decimal;
 pub mod error;
-#[doc(hidden)]
 pub mod ffi;
 pub mod fiber;
 pub mod index;

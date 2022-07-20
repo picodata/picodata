@@ -99,3 +99,13 @@ macro_rules! unwrap_or {
         }
     }
 }
+
+#[macro_export]
+macro_rules! unwrap_ok_or {
+    ($o:expr, $err:pat => $($else:tt)+) => {
+        match $o {
+            Ok(v) => v,
+            $err => $($else)+,
+        }
+    }
+}

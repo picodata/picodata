@@ -183,12 +183,21 @@ impl Tuple {
     /// - `u32` - zero-based index in MsgPack array (See also [`Tuple::field`])
     /// - `&str` - JSON path for tuples with non default formats
     ///
+    /// **NOTE**: getting tuple fields by JSON paths is not supported in all
+    /// tarantool versions. Use [`tarantool::ffi::has_tuple_field_by_path`] to
+    /// check whether it's supported in your case.
+    /// If `has_tuple_field_by_path` returns `false` this function will always
+    /// return `Err`.
+    ///
     /// Returns:
     /// - `Ok(None)` if index wasn't found
-    /// - `Err(e)` if deserialization failed
+    /// - `Err(e)` if deserialization failed (or api not supported)
     /// - `Ok(Some(field value))` otherwise
     ///
     /// See also [`Tuple::get`].
+    ///
+    /// [`tarantool::ffi::has_tuple_field_by_path`]:
+    /// crate::ffi::has_tuple_field_by_path
     #[inline(always)]
     pub fn try_get<'a, I, T>(&'a self, key: I) -> Result<Option<T>>
     where
@@ -205,12 +214,21 @@ impl Tuple {
     /// - `u32` - zero-based index in MsgPack array (See also [`Tuple::field`])
     /// - `&str` - JSON path for tuples with non default formats
     ///
+    /// **NOTE**: getting tuple fields by JSON paths is not supported in all
+    /// tarantool versions. Use [`tarantool::ffi::has_tuple_field_by_path`] to
+    /// check whether it's supported in your case.
+    /// If `has_tuple_field_by_path` returns `false` this function will always
+    /// **panic**.
+    ///
     /// Returns:
     /// - `None` if index wasn't found
-    /// - **panics** if deserialization failed
+    /// - **panics** if deserialization failed (or api not supported)
     /// - `Some(field value)` otherwise
     ///
     /// See also [`Tuple::get`].
+    ///
+    /// [`tarantool::ffi::has_tuple_field_by_path`]:
+    /// crate::ffi::has_tuple_field_by_path
     #[inline(always)]
     pub fn get<'a, I, T>(&'a self, key: I) -> Option<T>
     where
@@ -263,9 +281,7 @@ impl Tuple {
         if field_ptr.is_null() {
             return Ok(None)
         }
-        let field_offset = field_ptr.offset_from(self.ptr.as_ref().data() as _);
-        let max_len = self.ptr.as_ref().bsize() - field_offset as usize;
-        let field_slice = std::slice::from_raw_parts(field_ptr, max_len as _);
+        let field_slice = std::slice::from_raw_parts(field_ptr, self.ptr.as_ref().bsize());
         Ok(Some(rmp_serde::from_slice(field_slice)?))
     }
 }
@@ -292,6 +308,16 @@ impl TupleIndex for &str {
     where
         T: Deserialize<'a>,
     {
+        use once_cell::sync::Lazy;
+        use std::io::{Error as IOError, ErrorKind};
+        static API_AWAILABLE: Lazy<std::result::Result<(), String>> = Lazy::new(||
+            crate::ffi::helper::check_symbol("tuple_field_raw_by_full_path")
+                .map_err(|e| e.to_string())
+        );
+
+        API_AWAILABLE.clone()
+            .map_err(|e| Error::IO(IOError::new(ErrorKind::Unsupported, e)))?;
+
         unsafe {
             let tuple_raw = tuple.ptr.as_ref();
             let field_ptr = ffi::tuple_field_raw_by_full_path(

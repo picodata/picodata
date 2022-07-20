@@ -183,7 +183,6 @@ pub fn tuple_get_field() {
 
     assert_eq!(tuple.field::<u32>(0).unwrap(), Some(1));
     assert_eq!(tuple.get(0), Some(1));
-    assert_eq!(tuple.get("id"), None::<()>);
     assert_eq!(tuple.field::<String>(1).unwrap(), Some("key".to_string()));
     assert_eq!(tuple.get(1), Some("key".to_string()));
     assert_eq!(tuple.field::<String>(2).unwrap(), Some("value".to_string()));

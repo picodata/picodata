@@ -2,6 +2,14 @@ use crate::ffi::decimal as ffi;
 
 use serde::{Serialize, Deserialize};
 
+/// A Decimal number implemented using the builtin tarantool api. **Note** that
+/// this api is not available in all versions of tarantool.
+/// Use [`tarantool::ffi::has_decimal`] to check if it is supported in your
+/// case.
+/// If `has_decimal` return `false`, using any function from this module
+/// will result in a **panic**.
+///
+/// [`tarantool::ffi::has_decimal`]: crate::ffi::has_decimal
 #[derive(Debug, Copy, Clone)]
 pub struct Decimal {
     pub(crate) inner: ffi::decNumber,
@@ -374,6 +382,17 @@ impl std::convert::TryFrom<&std::ffi::CStr> for Decimal {
 /// Lua
 ////////////////////////////////////////////////////////////////////////////////
 
+use once_cell::sync::Lazy;
+static CTID_DECIMAL: Lazy<u32> = Lazy::new(|| {
+    use tlua::AsLua;
+    let lua = crate::global_lua();
+    let ctid_decimal = unsafe {
+        tlua::ffi::luaL_ctypeid(lua.as_lua(), crate::c_ptr!("decimal_t"))
+    };
+    debug_assert!(ctid_decimal != 0);
+    ctid_decimal
+});
+
 impl<L> tlua::LuaRead<L> for Decimal
 where
     L: tlua::AsLua,
@@ -387,7 +406,7 @@ where
             }
             let mut ctypeid = std::mem::MaybeUninit::uninit();
             let cdata = tlua::ffi::luaL_checkcdata(raw_lua, index, ctypeid.as_mut_ptr());
-            if ctypeid.assume_init() != ffi::CTID_DECIMAL {
+            if ctypeid.assume_init() != *CTID_DECIMAL {
                 return Err(lua)
             }
 
@@ -399,7 +418,7 @@ where
 #[inline(always)]
 fn push_decimal<L: tlua::AsLua>(lua: L, d: ffi::decNumber) -> tlua::PushGuard<L> {
     unsafe {
-        let dec = tlua::ffi::luaL_pushcdata(lua.as_lua(), ffi::CTID_DECIMAL);
+        let dec = tlua::ffi::luaL_pushcdata(lua.as_lua(), *CTID_DECIMAL);
         std::ptr::write(dec.cast::<ffi::decNumber>(), d);
         tlua::PushGuard::new(lua, 1)
     }

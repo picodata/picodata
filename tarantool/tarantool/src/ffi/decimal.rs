@@ -24,16 +24,12 @@ impl Hash for decNumber {
     }
 }
 
-extern "C" {
-    pub static CTID_DECIMAL: u32;
-}
-
 pub const DECDPUN: usize = 3;
 pub const DECNUMUNITS: u32 = 13;
 pub const DECIMAL_MAX_DIGITS: u32 = 38;
 pub const MP_DECIMAL: c_char = 1;
 
-extern "C" {
+crate::define_dlsym_reloc! {
     /// Return decimal precision,
     /// i.e. the amount of decimal digits in
     /// its representation.
@@ -99,6 +95,7 @@ extern "C" {
     /// `string` must be at least `digits count + 14` characters long
     ///
     /// No error is possible, and no status can be set.
+    #[allow(non_snake_case)]
     pub fn decNumberToString(dn: *const decNumber, string: *mut c_char) -> *mut c_char;
 
     /// Convert a given decimal to `i64`.

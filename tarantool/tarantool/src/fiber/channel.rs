@@ -15,6 +15,15 @@ use crate::{
 // Channel
 ////////////////////////////////////////////////////////////////////////////////
 
+/// A channel for passing messages between fibers. This api is backed by the
+/// tarantool `fiber_channel` api which is not awailable in all versions of
+/// tarantool.
+/// Use [`tarantool::ffi::has_fiber_channel`] to check if it is supported in
+/// your case.
+/// If `has_fiber_channel` returns `false`, using any function from this module
+/// will result in a **panic**.
+///
+/// [`tarantool::ffi::has_fiber_channel`]: crate::ffi::has_fiber_channel
 pub struct Channel<T>(Rc<ChannelBox<T>>);
 
 impl<T> Clone for Channel<T> {

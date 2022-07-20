@@ -38,22 +38,29 @@ mod enums;
 mod sql;
 
 macro_rules! tests {
-    (@should_panic should_panic) => { ShouldPanic::Yes };
-    (@should_panic $( $_:tt )?)  => { ShouldPanic::No };
-    ($( $( #[ $attr:tt ] )? $func_name:path,)*) => {
+    (@should_panic should_panic) => { Some(ShouldPanic::Yes) };
+    (@should_panic $( $_:tt )?)  => { None };
+    ($([should_panic_if: $should_panic_if:expr])? $( $( #[ $attr:tt ] )? $func_name:path,)*) => {{
+        #[allow(unused_mut, unused_variables)]
+        let mut should_panic = ShouldPanic::No;
+        $(
+            if $should_panic_if {
+                should_panic = ShouldPanic::Yes
+            }
+        )?
         vec![
             $(TestDescAndFn{
                 desc: TestDesc{
                     name: TestName::StaticTestName(stringify!($func_name)),
                     ignore: false,
-                    should_panic: tests!(@should_panic $($attr)?),
+                    should_panic: tests!(@should_panic $($attr)?).unwrap_or(should_panic),
                     allow_fail: false,
                     test_type: TestType::IntegrationTest
                 },
                 testfn: TestFn::StaticTestFn($func_name)
             },)*
         ]
-    }
+    }}
 }
 
 #[derive(Clone, Deserialize)]
@@ -201,9 +208,11 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
             }]
         } else {
             #[allow(unused_mut)]
-            let mut tests = tests![
+            let mut tests = tests![];
+
+            tests.append(&mut tests![
+                [should_panic_if: !tarantool::ffi::has_decimal()]
                 decimal::from_lua,
-                decimal::to_lua,
                 decimal::from_string,
                 decimal::from_tuple,
                 decimal::to_tuple,
@@ -212,6 +221,10 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 decimal::cmp,
                 decimal::hash,
                 decimal::ops,
+            ]);
+
+            tests.append(&mut tests![
+                decimal::to_lua,
 
                 tlua::lua_functions::basic,
                 tlua::lua_functions::two_functions_at_the_same_time,
@@ -386,8 +399,12 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 #[should_panic] fiber::defer_proc_dont_join,
                 fiber::immediate_with_cond,
                 fiber::deferred_with_cond,
-                fiber::lua_thread,
                 fiber::lifetime,
+            ]);
+
+            tests.append(&mut tests![
+                [should_panic_if: !tarantool::ffi::has_fiber_channel()]
+                fiber::lua_thread,
 
                 fiber::channel::send_self,
                 fiber::channel::send_full,
@@ -408,10 +425,13 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 fiber::channel::into_clones,
                 fiber::channel::cannot_send_ref,
 
+                fiber::mutex::advanced,
+            ]);
+
+            tests.append(&mut tests![
                 fiber::mutex::simple,
                 fiber::mutex::try_lock,
                 fiber::mutex::debug,
-                fiber::mutex::advanced,
 
                 r#box::space_get_by_name,
                 r#box::space_get_by_name_cached,
@@ -459,7 +479,12 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 tuple::tuple_iterator_seek_rewind,
                 tuple::tuple_get_format,
                 tuple::tuple_get_field,
+            ]);
+            tests.append(&mut tests![
+                [should_panic_if: !tarantool::ffi::has_tuple_field_by_path()]
                 tuple::tuple_get_field_path,
+            ]);
+            tests.append(&mut tests![
                 tuple::tuple_compare,
                 tuple::tuple_compare_with_key,
                 tuple::to_and_from_lua,
@@ -533,7 +558,7 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 enums::index_type,
                 enums::index_field_type,
                 enums::rtree_index_distance_type,
-            ];
+            ]);
 
             #[cfg(feature = "picodata")] {
                 tests.append(&mut tests![

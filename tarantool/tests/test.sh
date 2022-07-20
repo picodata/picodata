@@ -2,6 +2,14 @@
 
 set -e
 
+case "$1" in
+    -t | --tarantool )
+        TARANTOOL_EXECUTABLE="$2"
+        shift
+        shift
+        ;;
+esac
+
 FILTER="$1"
 
 WORKSPACE_ROOT=$(
