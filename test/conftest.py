@@ -31,6 +31,17 @@ def eprint(*args, **kwargs):
     print(*args, file=sys.stderr, **kwargs)
 
 
+def pytest_addoption(parser):
+    parser.addoption(
+        "--seed", action="store", default=None, help="Seed for randomized tests"
+    )
+
+
+@pytest.fixture(scope="session")
+def seed(pytestconfig):
+    return pytestconfig.getoption("seed")
+
+
 @pytest.fixture(scope="session")
 def xdist_worker_number(worker_id: str) -> int:
     """
