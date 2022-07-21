@@ -35,7 +35,7 @@ source "$HOME/.cargo/env"
 ```bash
 git clone https://git.picodata.io/picodata/picodata/picodata.git
 cd picodata
-git submodule update --init
+git submodule update --init --recursive
 ```
 Compile the project:
 ```bash

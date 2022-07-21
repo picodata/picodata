@@ -1,5 +1,5 @@
 ## Picodata – Professional Data Management System for High Loads
-This repository contains the source code of Picodata, an in-memory distributed application server with a built-in database.
+This repository contains the source code of Picodata, a distributed application server with a built-in in-memory database.
 
 ### What is Picodata
 Picodata is a software for building professional data management systems. It provides a data storage system together with a development platform and a runtime for persistent applications written in Rust. Learn more about our software at the [picodata.io](picodata.io){:target="_blank"} web site.
