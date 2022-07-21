@@ -772,18 +772,38 @@ pub struct KeyDefItem {
     pub field_type: FieldType,
 }
 
+impl KeyDefItem {
+    pub fn new(field_id: u32, field_type: FieldType) -> Self {
+        Self {
+            field_id,
+            field_type,
+        }
+    }
+}
+
+impl From<(u32, FieldType)> for KeyDefItem {
+    fn from((field_id, field_type): (u32, FieldType)) -> Self {
+        Self {
+            field_id,
+            field_type,
+        }
+    }
+}
+
 impl KeyDef {
     /// Create key definition with key fields with passed typed on passed positions.
     /// May be used for tuple format creation and/or tuple comparison.
     ///
     /// - `items` - array with key field identifiers and key field types (see [FieldType](struct.FieldType.html))
-    pub fn new(items: Vec<KeyDefItem>) -> Self {
-        let size = items.len();
+    #[inline]
+    pub fn new(items: impl IntoIterator<Item=impl Into<KeyDefItem>>) -> Self {
+        let iter = items.into_iter();
+        let (size, _) = iter.size_hint();
         let mut ids = Vec::with_capacity(size);
         let mut types = Vec::with_capacity(size);
-        for item in items {
-            ids.push(item.field_id);
-            types.push(item.field_type.to_u32().unwrap());
+        for KeyDefItem { field_id, field_type } in iter.map(Into::into) {
+            ids.push(field_id);
+            types.push(field_type.to_u32().unwrap());
         }
 
         KeyDef {

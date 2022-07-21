@@ -296,6 +296,14 @@ pub fn tuple_compare_with_key() {
         },
     ]);
     assert_eq!(key_def.compare_with_key(&tuple, &key_value), Ordering::Less);
+
+    let tuple = Tuple::new(&S2Key { id: 3, a: 1, b: 4 }).unwrap();
+    let key_def = KeyDef::new([
+        (0, FieldType::Unsigned),
+        (1, FieldType::Integer),
+        (2, FieldType::Integer),
+    ]);
+    assert_eq!(key_def.compare_with_key(&tuple, &tuple), Ordering::Equal);
 }
 
 pub fn to_and_from_lua() {
