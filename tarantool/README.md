@@ -202,14 +202,14 @@ Create a new crate called "harder". Put these lines to `lib.rs`:
 ```rust
 use serde::{Deserialize, Serialize};
 use std::os::raw::c_int;
-use tarantool::tuple::{AsTuple, FunctionArgs, FunctionCtx, Tuple};
+use tarantool::tuple::{Encode, FunctionArgs, FunctionCtx, Tuple};
 
 #[derive(Serialize, Deserialize)]
 struct Args {
     pub fields: Vec<i32>,
 }
 
-impl AsTuple for Args {}
+impl Encode for Args {}
 
 #[no_mangle]
 pub extern "C" fn harder(_: FunctionCtx, args: FunctionArgs) -> c_int {
@@ -266,7 +266,7 @@ use std::os::raw::c_int;
 use serde::{Deserialize, Serialize};
 
 use tarantool::space::Space;
-use tarantool::tuple::{AsTuple, FunctionArgs, FunctionCtx};
+use tarantool::tuple::{Encode, FunctionArgs, FunctionCtx};
 
 #[derive(Serialize, Deserialize)]
 struct Row {
@@ -274,7 +274,7 @@ struct Row {
     pub str_field: String,
 }
 
-impl AsTuple for Row {}
+impl Encode for Row {}
 
 #[no_mangle]
 pub extern "C" fn hardest(ctx: FunctionCtx, _: FunctionArgs) -> c_int {
@@ -327,7 +327,7 @@ use std::os::raw::c_int;
 use serde::{Deserialize, Serialize};
 
 use tarantool::space::Space;
-use tarantool::tuple::{AsTuple, FunctionArgs, FunctionCtx};
+use tarantool::tuple::{Encode, FunctionArgs, FunctionCtx};
 
 #[derive(Serialize, Deserialize, Debug)]
 struct Row {
@@ -335,7 +335,7 @@ struct Row {
     pub str_field: String,
 }
 
-impl AsTuple for Row {}
+impl Encode for Row {}
 
 #[no_mangle]
 pub extern "C" fn read(_: FunctionCtx, _: FunctionArgs) -> c_int {

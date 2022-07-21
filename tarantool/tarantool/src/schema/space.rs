@@ -14,7 +14,7 @@ use crate::session;
 use crate::set_error;
 use crate::space::{Space, SystemSpace, SYSTEM_ID_MAX};
 use crate::space::{SpaceCreateOptions, SpaceEngineType};
-use crate::tuple::{AsTuple, Tuple};
+use crate::tuple::{Encode, Tuple};
 use crate::util::Value;
 
 /// Create a space.
@@ -94,7 +94,7 @@ pub struct SpaceMetadata<'a> {
     pub format: Vec<BTreeMap<Cow<'a, str>, Value<'a>>>,
 }
 
-impl AsTuple for SpaceMetadata<'_> {}
+impl Encode for SpaceMetadata<'_> {}
 
 fn resolve_new_space_id() -> Result<u32, Error> {
     let sys_space: Space = SystemSpace::Space.into();

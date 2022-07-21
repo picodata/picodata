@@ -5,11 +5,10 @@ use std::io::Read;
 use std::ffi::CStr;
 use std::str;
 use std::os::raw::c_char;
-use serde::de::DeserializeOwned;
+use serde::{Serialize, de::DeserializeOwned};
 use crate::error::TarantoolError;
 use crate::ffi;
 use crate::ffi::sql::{Bind, ObufWrapper, Port, PortSql, SqlStatement};
-use crate::tuple::AsTuple;
 
 /// Create new SQL prepared statement.
 /// query - SQL query.
@@ -57,7 +56,7 @@ impl Statement {
     /// Executes prepared statement and returns a wrapper over the raw msgpack bytes.
     pub fn execute_raw<IN>(&self, bind_params: &IN) -> crate::Result<impl Read>
     where
-        IN: AsTuple,
+        IN: Serialize,
     {
         let mut port = Port::zeroed();
 
@@ -101,8 +100,9 @@ impl Statement {
     /// }
     /// ```
     pub fn execute<IN, OUT>(&self, bind_params: &IN) -> crate::Result<OUT>
-        where IN: AsTuple,
-              OUT: DeserializeOwned
+    where
+        IN: Serialize,
+        OUT: DeserializeOwned,
     {
         let buf = self.execute_raw(bind_params)?;
         let mut map = rmp_serde::decode::from_read::<_, HashMap<u32, rmpv::Value>>(buf)?;

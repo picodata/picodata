@@ -48,7 +48,7 @@ pub fn from_tuple() {
 
 pub fn to_tuple() {
     let d = decimal!(-8.11);
-    let t = Tuple::from_struct(&(d,)).unwrap();
+    let t = Tuple::new(&[d]).unwrap();
     let lua = tarantool::lua_state();
     let f: tlua::LuaFunction<_> = lua.eval("return box.tuple.unpack").unwrap();
     let d: Decimal = f.call_with_args(&t).unwrap();

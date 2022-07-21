@@ -7,7 +7,7 @@ use serde::{Serialize, Deserialize};
 use crate::error::Error;
 use crate::session;
 use crate::space::{FuncMetadata, Privilege, Space, SystemSpace};
-use crate::tuple::AsTuple;
+use crate::tuple::Encode;
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "type")]
@@ -20,7 +20,7 @@ pub enum Request {
     Raft { data: Vec<u8> },
 }
 
-impl AsTuple for Request {}
+impl Encode for Request {}
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type")]
@@ -31,7 +31,7 @@ pub enum Response {
     Ack,
 }
 
-impl AsTuple for Response {}
+impl Encode for Response {}
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct BootstrapMsg {

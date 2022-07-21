@@ -2,7 +2,7 @@ use std::rc::Rc;
 
 use crate::error::Error;
 use crate::index::IteratorType;
-use crate::tuple::{AsTuple, Tuple};
+use crate::tuple::{Encode, ToTupleBuffer, Tuple};
 
 use super::index::{RemoteIndex, RemoteIndexIterator};
 use super::inner::ConnInner;
@@ -41,7 +41,7 @@ impl RemoteSpace {
     /// (see [details](../space/struct.Space.html#method.get)).
     pub fn get<K>(&self, key: &K, options: &Options) -> Result<Option<Tuple>, Error>
     where
-        K: AsTuple,
+        K: ToTupleBuffer,
     {
         self.primary_key().get(key, options)
     }
@@ -55,7 +55,7 @@ impl RemoteSpace {
         options: &Options,
     ) -> Result<RemoteIndexIterator, Error>
     where
-        K: AsTuple,
+        K: ToTupleBuffer,
     {
         self.primary_key().select(iterator_type, key, options)
     }
@@ -64,7 +64,7 @@ impl RemoteSpace {
     /// (see [details](../space/struct.Space.html#method.insert)).
     pub fn insert<T>(&mut self, value: &T, options: &Options) -> Result<Option<Tuple>, Error>
     where
-        T: AsTuple,
+        T: ToTupleBuffer,
     {
         self.conn_inner.request(
             |buf, sync| protocol::encode_insert(buf, sync, self.space_id, value),
@@ -77,7 +77,7 @@ impl RemoteSpace {
     /// (see [details](../space/struct.Space.html#method.replace)).
     pub fn replace<T>(&mut self, value: &T, options: &Options) -> Result<Option<Tuple>, Error>
     where
-        T: AsTuple,
+        T: ToTupleBuffer,
     {
         self.conn_inner.request(
             |buf, sync| protocol::encode_replace(buf, sync, self.space_id, value),
@@ -95,8 +95,8 @@ impl RemoteSpace {
         options: &Options,
     ) -> Result<Option<Tuple>, Error>
     where
-        K: AsTuple,
-        Op: AsTuple,
+        K: ToTupleBuffer,
+        Op: Encode,
     {
         self.primary_key().update(key, ops, options)
     }
@@ -110,8 +110,8 @@ impl RemoteSpace {
         options: &Options,
     ) -> Result<Option<Tuple>, Error>
     where
-        T: AsTuple,
-        Op: AsTuple,
+        T: ToTupleBuffer,
+        Op: Encode,
     {
         self.primary_key().upsert(value, ops, options)
     }
@@ -120,7 +120,7 @@ impl RemoteSpace {
     /// (see [details](../space/struct.Space.html#method.delete)).
     pub fn delete<K>(&mut self, key: &K, options: &Options) -> Result<Option<Tuple>, Error>
     where
-        K: AsTuple,
+        K: ToTupleBuffer,
     {
         self.primary_key().delete(key, options)
     }

@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use tarantool::{
     tlua::{self, AsLua, LuaState},
-    tuple::AsTuple,
+    tuple::Encode,
 };
 
 #[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -11,7 +11,7 @@ pub struct S1Record {
     pub text: String,
 }
 
-impl AsTuple for S1Record {}
+impl Encode for S1Record {}
 
 #[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct S2Record {
@@ -22,7 +22,7 @@ pub struct S2Record {
     pub b: i32,
 }
 
-impl AsTuple for S2Record {}
+impl Encode for S2Record {}
 
 #[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct S2Key {
@@ -31,7 +31,7 @@ pub struct S2Key {
     pub b: i32,
 }
 
-impl AsTuple for S2Key {}
+impl Encode for S2Key {}
 
 #[derive(Serialize)]
 pub struct QueryOperation {
@@ -40,7 +40,7 @@ pub struct QueryOperation {
     pub value: serde_json::Value,
 }
 
-impl AsTuple for QueryOperation {}
+impl Encode for QueryOperation {}
 
 #[derive(Clone, Debug)]
 pub(crate) struct DropCounter(pub(crate) std::rc::Rc<std::cell::Cell<usize>>);

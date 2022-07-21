@@ -51,7 +51,7 @@ use promise::Promise;
 pub use space::RemoteSpace;
 
 use crate::error::Error;
-use crate::tuple::{AsTuple, Decode, Tuple};
+use crate::tuple::{ToTupleBuffer, Decode, Tuple};
 
 mod index;
 mod inner;
@@ -137,7 +137,7 @@ impl Conn {
         options: &Options,
     ) -> Result<Option<Tuple>, Error>
     where
-        T: AsTuple,
+        T: ToTupleBuffer,
         T: ?Sized,
     {
         self.inner.request(
@@ -153,7 +153,7 @@ impl Conn {
     /// kept once a response is received.
     pub fn call_async<A, R>(&self, func: &str, args: A) -> crate::Result<Promise<R>>
     where
-        A: AsTuple,
+        A: ToTupleBuffer,
         R: Decode + 'static,
     {
         self.inner.request_async(protocol::Call(func, args))
@@ -173,7 +173,7 @@ impl Conn {
         options: &Options,
     ) -> Result<Option<Tuple>, Error>
     where
-        T: AsTuple,
+        T: ToTupleBuffer,
         T: ?Sized,
     {
         self.inner.request(
@@ -189,7 +189,7 @@ impl Conn {
     /// kept once a response is received.
     pub fn eval_async<A, R>(&self, expr: &str, args: A) -> crate::Result<Promise<R>>
     where
-        A: AsTuple,
+        A: ToTupleBuffer,
         R: Decode + 'static,
     {
         self.inner.request_async(protocol::Eval(expr, args))
@@ -204,7 +204,7 @@ impl Conn {
     }
 
     /// Remote execute of sql query.
-    pub fn execute(&self, sql: &str, bind_params: &impl AsTuple, options: &Options) -> Result<Vec<Tuple>, Error>
+    pub fn execute(&self, sql: &str, bind_params: &impl ToTupleBuffer, options: &Options) -> Result<Vec<Tuple>, Error>
     {
         self.inner.request(
             |buf, sync| protocol::encode_execute(buf, sync, sql, bind_params),

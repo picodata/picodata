@@ -18,7 +18,7 @@ use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::error::{Error, TarantoolError};
 use crate::ffi::tarantool as ffi;
-use crate::tuple::{AsTuple, Tuple, TupleBuffer};
+use crate::tuple::{ToTupleBuffer, Tuple, TupleBuffer};
 use crate::tuple_from_box_api;
 use crate::util::NumOrStr;
 
@@ -523,9 +523,9 @@ impl Index {
     /// Returns a tuple or `None` if index is empty
     pub fn get<K>(&self, key: &K) -> Result<Option<Tuple>, Error>
     where
-        K: AsTuple,
+        K: ToTupleBuffer,
     {
-        let key_buf = key.serialize_as_tuple().unwrap();
+        let key_buf = key.to_tuple_buffer().unwrap();
         let key_buf_ptr = key_buf.as_ptr() as *const c_char;
         tuple_from_box_api!(
             ffi::box_index_get[
@@ -547,9 +547,9 @@ impl Index {
     /// - `key` - encoded key in MsgPack Array format (`[part1, part2, ...]`).
     pub fn select<K>(&self, iterator_type: IteratorType, key: &K) -> Result<IndexIterator, Error>
     where
-        K: AsTuple,
+        K: ToTupleBuffer,
     {
-        let key_buf = key.serialize_as_tuple().unwrap();
+        let key_buf = key.to_tuple_buffer().unwrap();
         let key_buf_ptr = key_buf.as_ptr() as *const c_char;
 
         let ptr = unsafe {
@@ -582,9 +582,9 @@ impl Index {
     /// Returns the deleted tuple
     pub fn delete<K>(&mut self, key: &K) -> Result<Option<Tuple>, Error>
     where
-        K: AsTuple,
+        K: ToTupleBuffer,
     {
-        let key_buf = key.serialize_as_tuple().unwrap();
+        let key_buf = key.to_tuple_buffer().unwrap();
         let key_buf_ptr = key_buf.as_ptr() as *const c_char;
         tuple_from_box_api!(
             ffi::box_delete[
@@ -610,8 +610,8 @@ impl Index {
     /// See also: [index.upsert()](#method.upsert)
     pub fn update<K, Op>(&mut self, key: &K, ops: &[Op]) -> Result<Option<Tuple>, Error>
     where
-        K: AsTuple,
-        Op: AsTuple,
+        K: ToTupleBuffer,
+        Op: ToTupleBuffer,
     {
         let mp_encoded_ops = Self::encode_ops(ops)?;
         self.update_mp(key, &mp_encoded_ops)
@@ -619,9 +619,9 @@ impl Index {
 
     pub fn update_mp<K>(&mut self, key: &K, ops: &[Vec<u8>]) -> Result<Option<Tuple>, Error>
         where
-            K: AsTuple,
+            K: ToTupleBuffer,
     {
-        let key_buf = key.serialize_as_tuple().unwrap();
+        let key_buf = key.to_tuple_buffer().unwrap();
         let key_buf_ptr = key_buf.as_ptr() as *const c_char;
         let mut buf = Vec::with_capacity(128);
         rmp::encode::write_array_len(&mut buf, ops.len() as u32)?;
@@ -652,8 +652,8 @@ impl Index {
     /// See also: [index.update()](#method.update)
     pub fn upsert<T, Op>(&mut self, value: &T, ops: &[Op]) -> Result<(), Error>
     where
-        T: AsTuple,
-        Op: AsTuple,
+        T: ToTupleBuffer,
+        Op: ToTupleBuffer,
     {
         let mp_encoded_ops = Self::encode_ops(ops)?;
         self.upsert_mp(value, &mp_encoded_ops)
@@ -661,9 +661,9 @@ impl Index {
 
     pub fn upsert_mp<T>(&mut self, value: &T, ops: &[Vec<u8>]) -> Result<(), Error>
         where
-            T: AsTuple,
+            T: ToTupleBuffer,
     {
-        let value_buf = value.serialize_as_tuple().unwrap();
+        let value_buf = value.to_tuple_buffer().unwrap();
         let value_buf_ptr = value_buf.as_ptr() as *const c_char;
         let mut buf = Vec::with_capacity(128);
         rmp::encode::write_array_len(&mut buf, ops.len() as u32)?;
@@ -686,12 +686,15 @@ impl Index {
         })
     }
 
-    fn encode_ops<Op: AsTuple>(ops: &[Op]) -> crate::Result<Vec<Vec<u8>>> {
+    fn encode_ops<Op>(ops: &[Op]) -> crate::Result<Vec<Vec<u8>>>
+    where
+        Op: ToTupleBuffer,
+    {
         ops.iter().try_fold(
             Vec::with_capacity(ops.len()),
             |mut v, op| -> crate::Result<Vec<Vec<u8>>> {
-                let buf = rmp_serde::to_vec(&op)?;
-                v.push(buf);
+                let buf = op.to_tuple_buffer()?;
+                v.push(buf.into());
                 Ok(v)
             })
     }
@@ -744,9 +747,9 @@ impl Index {
     /// Returns a tuple or `None` if index is empty
     pub fn min<K>(&self, key: &K) -> Result<Option<Tuple>, Error>
     where
-        K: AsTuple,
+        K: ToTupleBuffer,
     {
-        let key_buf = key.serialize_as_tuple().unwrap();
+        let key_buf = key.to_tuple_buffer().unwrap();
         let key_buf_ptr = key_buf.as_ptr() as *const c_char;
         tuple_from_box_api!(
             ffi::box_index_min[
@@ -766,9 +769,9 @@ impl Index {
     /// Returns a tuple or `None` if index is empty
     pub fn max<K>(&self, key: &K) -> Result<Option<Tuple>, Error>
     where
-        K: AsTuple,
+        K: ToTupleBuffer,
     {
-        let key_buf = key.serialize_as_tuple().unwrap();
+        let key_buf = key.to_tuple_buffer().unwrap();
         let key_buf_ptr = key_buf.as_ptr() as *const c_char;
         tuple_from_box_api!(
             ffi::box_index_max[
@@ -787,9 +790,9 @@ impl Index {
     /// - `key` - encoded key in MsgPack Array format (`[part1, part2, ...]`).
     pub fn count<K>(&self, iterator_type: IteratorType, key: &K) -> Result<usize, Error>
     where
-        K: AsTuple,
+        K: ToTupleBuffer,
     {
-        let key_buf = key.serialize_as_tuple().unwrap();
+        let key_buf = key.to_tuple_buffer().unwrap();
         let key_buf_ptr = key_buf.as_ptr() as *const c_char;
 
         let result = unsafe {

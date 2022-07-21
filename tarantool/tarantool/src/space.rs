@@ -21,7 +21,7 @@ use crate::ffi::tarantool as ffi;
 use crate::index::{Index, IndexIterator, IteratorType};
 #[cfg(feature = "schema")]
 use crate::schema::space::SpaceMetadata;
-use crate::tuple::{AsTuple, Tuple};
+use crate::tuple::{Encode, ToTupleBuffer, Tuple};
 use crate::tuple_from_box_api;
 
 /// End of the reserved range of system spaces.
@@ -350,7 +350,7 @@ pub struct FuncMetadata {
     pub last_altered: String,
 }
 
-impl AsTuple for FuncMetadata {}
+impl Encode for FuncMetadata {}
 
 #[derive(Clone, Debug, Serialize)]
 pub struct Privilege {
@@ -361,7 +361,7 @@ pub struct Privilege {
     pub privilege: u32,
 }
 
-impl AsTuple for Privilege {}
+impl Encode for Privilege {}
 
 struct SpaceCache {
     spaces: RefCell<HashMap<String, Space>>,
@@ -541,9 +541,9 @@ impl Space {
     /// See also: `box.space[space_id]:insert(tuple)`
     pub fn insert<T>(&mut self, value: &T) -> Result<Tuple, Error>
     where
-        T: AsTuple,
+        T: ToTupleBuffer,
     {
-        let buf = value.serialize_as_tuple().unwrap();
+        let buf = value.to_tuple_buffer().unwrap();
         let buf_ptr = buf.as_ptr() as *const c_char;
         tuple_from_box_api!(
             ffi::box_insert[
@@ -567,9 +567,9 @@ impl Space {
     /// Returns a new tuple.
     pub fn replace<T>(&mut self, value: &T) -> Result<Tuple, Error>
     where
-        T: AsTuple,
+        T: ToTupleBuffer,
     {
-        let buf = value.serialize_as_tuple().unwrap();
+        let buf = value.to_tuple_buffer().unwrap();
         let buf_ptr = buf.as_ptr() as *const c_char;
         tuple_from_box_api!(
             ffi::box_replace[
@@ -587,7 +587,7 @@ impl Space {
     #[inline(always)]
     pub fn put<T>(&mut self, value: &T) -> Result<Tuple, Error>
     where
-        T: AsTuple,
+        T: ToTupleBuffer,
     {
         self.replace(value)
     }
@@ -627,7 +627,7 @@ impl Space {
     #[inline(always)]
     pub fn get<K>(&self, key: &K) -> Result<Option<Tuple>, Error>
     where
-        K: AsTuple,
+        K: ToTupleBuffer,
     {
         self.primary_key().get(key)
     }
@@ -640,7 +640,7 @@ impl Space {
     #[inline(always)]
     pub fn select<K>(&self, iterator_type: IteratorType, key: &K) -> Result<IndexIterator, Error>
     where
-        K: AsTuple,
+        K: ToTupleBuffer,
     {
         self.primary_key().select(iterator_type, key)
     }
@@ -652,7 +652,7 @@ impl Space {
     /// - `key` - encoded key in the MsgPack Array format (`[part1, part2, ...]`).
     pub fn count<K>(&self, iterator_type: IteratorType, key: &K) -> Result<usize, Error>
     where
-        K: AsTuple,
+        K: ToTupleBuffer,
     {
         self.primary_key().count(iterator_type, key)
     }
@@ -665,7 +665,7 @@ impl Space {
     #[inline(always)]
     pub fn delete<K>(&mut self, key: &K) -> Result<Option<Tuple>, Error>
     where
-        K: AsTuple,
+        K: ToTupleBuffer,
     {
         self.primary_key().delete(key)
     }
@@ -690,8 +690,8 @@ impl Space {
     #[inline(always)]
     pub fn update<K, Op>(&mut self, key: &K, ops: &[Op]) -> Result<Option<Tuple>, Error>
     where
-        K: AsTuple,
-        Op: AsTuple,
+        K: ToTupleBuffer,
+        Op: ToTupleBuffer,
     {
         self.primary_key().update(key, ops)
     }
@@ -707,7 +707,7 @@ impl Space {
     #[inline(always)]
     pub fn update_mp<K>(&mut self, key: &K, ops: &[Vec<u8>]) -> Result<Option<Tuple>, Error>
     where
-        K: AsTuple,
+        K: ToTupleBuffer,
     {
         self.primary_key().update_mp(key, ops)
     }
@@ -728,8 +728,8 @@ impl Space {
     #[inline(always)]
     pub fn upsert<T, Op>(&mut self, value: &T, ops: &[Op]) -> Result<(), Error>
     where
-        T: AsTuple,
-        Op: AsTuple,
+        T: ToTupleBuffer,
+        Op: ToTupleBuffer,
     {
         self.primary_key().upsert(value, ops)
     }
@@ -743,7 +743,7 @@ impl Space {
     #[inline(always)]
     pub fn upsert_mp<K>(&mut self, key: &K, ops: &[Vec<u8>]) -> Result<(), Error>
         where
-            K: AsTuple,
+            K: ToTupleBuffer,
     {
         self.primary_key().upsert_mp(key, ops)
     }

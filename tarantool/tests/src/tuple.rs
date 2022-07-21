@@ -1,7 +1,7 @@
 use std::cmp::Ordering;
 
 use tarantool::tlua::{Index, Indexable, Nil};
-use tarantool::tuple::{AsTuple, FieldType, KeyDef, KeyDefItem, Tuple, TupleBuffer};
+use tarantool::tuple::{Encode, FieldType, KeyDef, KeyDefItem, Tuple, TupleBuffer};
 use serde::Serialize;
 
 use crate::common::{S1Record, S2Key, S2Record};
@@ -11,7 +11,7 @@ pub fn tuple_new_from_struct() {
         id: 1,
         text: "text".to_string(),
     };
-    assert!(Tuple::from_struct(&input).is_ok());
+    assert!(Tuple::new(&input).is_ok());
 }
 
 pub fn new_tuple_from_flutten_struct() {
@@ -26,7 +26,7 @@ pub fn new_tuple_from_flutten_struct() {
         #[serde(flatten)]
         emb: Embedded,
     }
-    impl AsTuple for FlattenStruct{}
+    impl Encode for FlattenStruct{}
 
     let input = FlattenStruct {
         a: 1,
@@ -36,7 +36,7 @@ pub fn new_tuple_from_flutten_struct() {
         },
     };
     assert_eq!(
-        Tuple::from_struct(&input).unwrap_err().to_string(),
+        Tuple::new(&input).unwrap_err().to_string(),
         concat![
             "Failed to encode tuple: Invalid msgpack value (epxected array, found Map([",
             r#"(String(Utf8String { s: Ok("a") }), Integer(PosInt(1))), "#,
@@ -56,7 +56,7 @@ pub fn tuple_buffer_from_vec_fail() {
 
 pub fn tuple_field_count() {
     // struct -> tuple
-    let tuple = Tuple::from_struct(&S2Record {
+    let tuple = Tuple::new(&S2Record {
         id: 1,
         key: "key".to_string(),
         value: "value".to_string(),
@@ -67,21 +67,21 @@ pub fn tuple_field_count() {
     assert_eq!(tuple.len(), 5);
 
     // empty tuple
-    let tuple = Tuple::from_struct(&()).unwrap();
+    let tuple = Tuple::new(&()).unwrap();
     assert_eq!(tuple.len(), 0);
 
     // tuple w/ single field
-    let tuple = Tuple::from_struct(&(0,)).unwrap();
+    let tuple = Tuple::new(&(0,)).unwrap();
     assert_eq!(tuple.len(), 1);
 
     // very long tuple
     let tuple =
-        Tuple::from_struct(&(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16)).unwrap();
+        Tuple::new(&(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16)).unwrap();
     assert_eq!(tuple.len(), 16);
 }
 
 pub fn tuple_size() {
-    let tuple = Tuple::from_struct(&S2Record {
+    let tuple = Tuple::new(&S2Record {
         id: 1,
         key: "key".to_string(),
         value: "value".to_string(),
@@ -102,12 +102,12 @@ pub fn tuple_into_struct() {
     };
 
     // 1:1 decode
-    let tuple = Tuple::from_struct(&input).unwrap();
+    let tuple = Tuple::new(&input).unwrap();
     let output: S2Record = tuple.into_struct().unwrap();
     assert_eq!(output, input);
 
     // partial decode (with trimming trailing fields)
-    let tuple = Tuple::from_struct(&input).unwrap();
+    let tuple = Tuple::new(&input).unwrap();
     let output: S1Record = tuple.into_struct().unwrap();
     assert_eq!(
         output,
@@ -120,7 +120,7 @@ pub fn tuple_into_struct() {
 
 #[allow(clippy::redundant_clone)]
 pub fn tuple_clone() {
-    let tuple_2 = Tuple::from_struct(&S1Record {
+    let tuple_2 = Tuple::new(&S1Record {
         id: 1,
         text: "text".to_string(),
     })
@@ -130,7 +130,7 @@ pub fn tuple_clone() {
 }
 
 pub fn tuple_iterator() {
-    let tuple = Tuple::from_struct(&S1Record {
+    let tuple = Tuple::new(&S1Record {
         id: 1,
         text: "text".to_string(),
     })
@@ -143,7 +143,7 @@ pub fn tuple_iterator() {
 }
 
 pub fn tuple_iterator_seek_rewind() {
-    let tuple = Tuple::from_struct(&S2Record {
+    let tuple = Tuple::new(&S2Record {
         id: 1,
         key: "key".to_string(),
         value: "value".to_string(),
@@ -163,7 +163,7 @@ pub fn tuple_iterator_seek_rewind() {
 }
 
 pub fn tuple_get_format() {
-    let tuple = Tuple::from_struct(&S1Record {
+    let tuple = Tuple::new(&S1Record {
         id: 1,
         text: "text".to_string(),
     })
@@ -172,7 +172,7 @@ pub fn tuple_get_format() {
 }
 
 pub fn tuple_get_field() {
-    let tuple = Tuple::from_struct(&S2Record {
+    let tuple = Tuple::new(&S2Record {
         id: 1,
         key: "key".to_string(),
         value: "value".to_string(),
@@ -238,7 +238,7 @@ pub fn tuple_get_field_path() {
 }
 
 pub fn tuple_compare() {
-    let tuple_a = Tuple::from_struct(&S2Record {
+    let tuple_a = Tuple::new(&S2Record {
         id: 1,
         key: "key".to_string(),
         value: "value".to_string(),
@@ -247,7 +247,7 @@ pub fn tuple_compare() {
     })
     .unwrap();
 
-    let tuple_b = Tuple::from_struct(&S2Record {
+    let tuple_b = Tuple::new(&S2Record {
         id: 1,
         key: "key".to_string(),
         value: "value".to_string(),
@@ -270,7 +270,7 @@ pub fn tuple_compare() {
 }
 
 pub fn tuple_compare_with_key() {
-    let tuple = Tuple::from_struct(&S2Record {
+    let tuple = Tuple::new(&S2Record {
         id: 1,
         key: "key".to_string(),
         value: "value".to_string(),
@@ -299,7 +299,7 @@ pub fn tuple_compare_with_key() {
 }
 
 pub fn to_and_from_lua() {
-    let tuple = Tuple::from_struct(&S2Record {
+    let tuple = Tuple::new(&S2Record {
         id: 42,
         key: "hello".into(),
         value: "nice".into(),
@@ -332,7 +332,7 @@ pub fn to_and_from_lua() {
 }
 
 pub fn tuple_debug_fmt() {
-    let tuple = Tuple::from_struct(&S2Record {
+    let tuple = Tuple::new(&S2Record {
         id: 42,
         key: "hello".into(),
         value: "nice".into(),
@@ -344,7 +344,7 @@ pub fn tuple_debug_fmt() {
         r#"Tuple(Array([Integer(PosInt(42)), String(Utf8String { s: Ok("hello") }), String(Utf8String { s: Ok("nice") }), Integer(PosInt(420)), Integer(PosInt(69))]))"#
     );
 
-    let tuple = Tuple::from_struct(&(1, true, "foo")).unwrap();
+    let tuple = Tuple::new(&(1, true, "foo")).unwrap();
     let buf = TupleBuffer::from(tuple);
 
     assert_eq!(format!("{:?}", buf),

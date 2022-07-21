@@ -11,7 +11,7 @@ use num_derive::FromPrimitive;
 
 use crate::error::Error;
 use crate::index::IteratorType;
-use crate::tuple::{AsTuple, Tuple};
+use crate::tuple::{ToTupleBuffer, Tuple};
 
 const REQUEST_TYPE: u8 = 0x00;
 const SYNC: u8 = 0x01;
@@ -247,14 +247,14 @@ pub fn encode_ping(stream: &mut impl Write, sync: u64) -> Result<(), Error> {
     Ok(())
 }
 
-pub fn encode_execute(stream: &mut impl Write, sync: u64, sql: &str, bind_params: &impl AsTuple) -> Result<(), Error> {
+pub fn encode_execute(stream: &mut impl Write, sync: u64, sql: &str, bind_params: &impl ToTupleBuffer) -> Result<(), Error> {
     encode_header(stream, sync, IProtoType::Execute)?;
     rmp::encode::write_map_len(stream, 2)?;
     rmp::encode::write_pfix(stream, SQL_TEXT)?;
     rmp::encode::write_str(stream, sql)?;
 
     rmp::encode::write_pfix(stream, SQL_BIND)?;
-    bind_params.serialize_to(stream)?;
+    bind_params.write_tuple_data(stream)?;
     Ok(())
 }
 
@@ -265,7 +265,7 @@ pub fn encode_call<T>(
     args: &T,
 ) -> Result<(), Error>
 where
-    T: AsTuple,
+    T: ToTupleBuffer,
     T: ?Sized,
 {
     encode_header(stream, sync, IProtoType::Call)?;
@@ -273,13 +273,13 @@ where
     rmp::encode::write_pfix(stream, FUNCTION_NAME)?;
     rmp::encode::write_str(stream, function_name)?;
     rmp::encode::write_pfix(stream, TUPLE)?;
-    args.serialize_to(stream)?;
+    args.write_tuple_data(stream)?;
     Ok(())
 }
 
 pub(crate) struct Call<'a, A>(pub &'a str, pub A);
 
-impl<'a, A: AsTuple> Request for Call<'a, A> {
+impl<'a, A: ToTupleBuffer> Request for Call<'a, A> {
     const TYPE: IProtoType = IProtoType::Call;
 
     fn encode_body<W>(&self, out: &mut W) -> Result<(), Error>
@@ -291,7 +291,7 @@ impl<'a, A: AsTuple> Request for Call<'a, A> {
         rmp::encode::write_pfix(out, FUNCTION_NAME)?;
         rmp::encode::write_str(out, function_name)?;
         rmp::encode::write_pfix(out, TUPLE)?;
-        args.serialize_to(out)?;
+        args.write_tuple_data(out)?;
         Ok(())
     }
 }
@@ -303,7 +303,7 @@ pub fn encode_eval<T>(
     args: &T,
 ) -> Result<(), Error>
 where
-    T: AsTuple,
+    T: ToTupleBuffer,
     T: ?Sized,
 {
     encode_header(stream, sync, IProtoType::Eval)?;
@@ -311,13 +311,13 @@ where
     rmp::encode::write_pfix(stream, EXPR)?;
     rmp::encode::write_str(stream, expression)?;
     rmp::encode::write_pfix(stream, TUPLE)?;
-    args.serialize_to(stream)?;
+    args.write_tuple_data(stream)?;
     Ok(())
 }
 
 pub(crate) struct Eval<'a, A>(pub &'a str, pub A);
 
-impl<'a, A: AsTuple> Request for Eval<'a, A> {
+impl<'a, A: ToTupleBuffer> Request for Eval<'a, A> {
     const TYPE: IProtoType = IProtoType::Eval;
 
     fn encode_body<W>(&self, out: &mut W) -> Result<(), Error>
@@ -329,7 +329,7 @@ impl<'a, A: AsTuple> Request for Eval<'a, A> {
         rmp::encode::write_pfix(out, EXPR)?;
         rmp::encode::write_str(out, expr)?;
         rmp::encode::write_pfix(out, TUPLE)?;
-        args.serialize_to(out)?;
+        args.write_tuple_data(out)?;
         Ok(())
     }
 }
@@ -346,7 +346,7 @@ pub fn encode_select<K>(
     key: &K,
 ) -> Result<(), Error>
 where
-    K: AsTuple,
+    K: ToTupleBuffer,
     K: ?Sized,
 {
     encode_header(stream, sync, IProtoType::Select)?;
@@ -362,7 +362,7 @@ where
     rmp::encode::write_pfix(stream, ITERATOR)?;
     rmp::encode::write_u32(stream, iterator_type as u32)?;
     rmp::encode::write_pfix(stream, KEY)?;
-    key.serialize_to(stream)?;
+    key.write_tuple_data(stream)?;
     Ok(())
 }
 
@@ -373,7 +373,7 @@ pub fn encode_insert<T>(
     value: &T,
 ) -> Result<(), Error>
 where
-    T: AsTuple,
+    T: ToTupleBuffer,
     T: ?Sized,
 {
     encode_header(stream, sync, IProtoType::Insert)?;
@@ -381,7 +381,7 @@ where
     rmp::encode::write_pfix(stream, SPACE_ID)?;
     rmp::encode::write_u32(stream, space_id)?;
     rmp::encode::write_pfix(stream, TUPLE)?;
-    value.serialize_to(stream)?;
+    value.write_tuple_data(stream)?;
     Ok(())
 }
 
@@ -392,7 +392,7 @@ pub fn encode_replace<T>(
     value: &T,
 ) -> Result<(), Error>
 where
-    T: AsTuple,
+    T: ToTupleBuffer,
     T: ?Sized,
 {
     encode_header(stream, sync, IProtoType::Replace)?;
@@ -400,7 +400,7 @@ where
     rmp::encode::write_pfix(stream, SPACE_ID)?;
     rmp::encode::write_u32(stream, space_id)?;
     rmp::encode::write_pfix(stream, TUPLE)?;
-    value.serialize_to(stream)?;
+    value.write_tuple_data(stream)?;
     Ok(())
 }
 
@@ -413,8 +413,8 @@ pub fn encode_update<K, Op>(
     ops: &Op,
 ) -> Result<(), Error>
 where
-    K: AsTuple,
-    Op: AsTuple,
+    K: ToTupleBuffer,
+    Op: ToTupleBuffer,
     Op: ?Sized,
 {
     encode_header(stream, sync, IProtoType::Update)?;
@@ -424,9 +424,9 @@ where
     rmp::encode::write_pfix(stream, INDEX_ID)?;
     rmp::encode::write_u32(stream, index_id)?;
     rmp::encode::write_pfix(stream, KEY)?;
-    key.serialize_to(stream)?;
+    key.write_tuple_data(stream)?;
     rmp::encode::write_pfix(stream, TUPLE)?;
-    ops.serialize_to(stream)?;
+    ops.write_tuple_data(stream)?;
     Ok(())
 }
 
@@ -439,8 +439,8 @@ pub fn encode_upsert<T, Op>(
     ops: &Op,
 ) -> Result<(), Error>
 where
-    T: AsTuple,
-    Op: AsTuple,
+    T: ToTupleBuffer,
+    Op: ToTupleBuffer,
     Op: ?Sized,
 {
     encode_header(stream, sync, IProtoType::Upsert)?;
@@ -450,9 +450,9 @@ where
     rmp::encode::write_pfix(stream, INDEX_BASE)?;
     rmp::encode::write_u32(stream, index_id)?;
     rmp::encode::write_pfix(stream, OPS)?;
-    ops.serialize_to(stream)?;
+    ops.write_tuple_data(stream)?;
     rmp::encode::write_pfix(stream, TUPLE)?;
-    value.serialize_to(stream)?;
+    value.write_tuple_data(stream)?;
     Ok(())
 }
 
@@ -464,7 +464,7 @@ pub fn encode_delete<K>(
     key: &K,
 ) -> Result<(), Error>
 where
-    K: AsTuple,
+    K: ToTupleBuffer,
     K: ?Sized,
 {
     encode_header(stream, sync, IProtoType::Delete)?;
@@ -474,7 +474,7 @@ where
     rmp::encode::write_pfix(stream, INDEX_ID)?;
     rmp::encode::write_u32(stream, index_id)?;
     rmp::encode::write_pfix(stream, KEY)?;
-    key.serialize_to(stream)?;
+    key.write_tuple_data(stream)?;
     Ok(())
 }
 

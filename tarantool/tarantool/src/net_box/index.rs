@@ -3,7 +3,7 @@ use std::vec::IntoIter;
 
 use crate::error::Error;
 use crate::index::IteratorType;
-use crate::tuple::{AsTuple, Tuple};
+use crate::tuple::{Encode, ToTupleBuffer, Tuple};
 
 use super::inner::ConnInner;
 use super::protocol;
@@ -29,7 +29,7 @@ impl RemoteIndex {
     /// (see [details](../index/struct.Index.html#method.get)).
     pub fn get<K>(&self, key: &K, options: &Options) -> Result<Option<Tuple>, Error>
     where
-        K: AsTuple,
+        K: ToTupleBuffer,
     {
         Ok(self
             .select(
@@ -53,7 +53,7 @@ impl RemoteIndex {
         options: &Options,
     ) -> Result<RemoteIndexIterator, Error>
     where
-        K: AsTuple,
+        K: ToTupleBuffer,
     {
         self.conn_inner.request(
             |buf, sync| {
@@ -86,8 +86,8 @@ impl RemoteIndex {
         options: &Options,
     ) -> Result<Option<Tuple>, Error>
     where
-        K: AsTuple,
-        Op: AsTuple,
+        K: ToTupleBuffer,
+        Op: Encode,
     {
         self.conn_inner.request(
             |buf, sync| protocol::encode_update(buf, sync, self.space_id, self.index_id, key, ops),
@@ -105,8 +105,8 @@ impl RemoteIndex {
         options: &Options,
     ) -> Result<Option<Tuple>, Error>
     where
-        T: AsTuple,
-        Op: AsTuple,
+        T: ToTupleBuffer,
+        Op: Encode,
     {
         self.conn_inner.request(
             |buf, sync| {
@@ -121,7 +121,7 @@ impl RemoteIndex {
     /// (see [details](../index/struct.Index.html#method.delete)).
     pub fn delete<K>(&mut self, key: &K, options: &Options) -> Result<Option<Tuple>, Error>
     where
-        K: AsTuple,
+        K: ToTupleBuffer,
     {
         self.conn_inner.request(
             |buf, sync| protocol::encode_delete(buf, sync, self.space_id, self.index_id, key),

@@ -1,10 +1,7 @@
 //! Box: sequences
-use serde::{Serialize, Deserialize};
-
 use crate::error::{Error, TarantoolError};
 use crate::ffi::tarantool as ffi;
 use crate::space::{Space, SystemSpace};
-use crate::tuple::AsTuple;
 
 /// A sequence is a generator of ordered integer values.
 pub struct Sequence {
@@ -14,20 +11,13 @@ pub struct Sequence {
 impl Sequence {
     /// Find sequence by name.
     pub fn find(name: &str) -> Result<Option<Self>, Error> {
-        #[derive(Serialize, Deserialize)]
-        struct Row {
-            seq_id: u32,
-        }
-
-        impl AsTuple for Row {}
-
         let space: Space = SystemSpace::Sequence.into();
         let name_idx = space.index("name").unwrap();
 
         Ok(match name_idx.get(&(name,))? {
             None => None,
             Some(row_tuple) => Some(Sequence {
-                seq_id: row_tuple.into_struct::<Row>()?.seq_id,
+                seq_id: row_tuple.field(0)?.unwrap(),
             }),
         })
     }

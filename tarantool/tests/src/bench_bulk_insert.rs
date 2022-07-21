@@ -8,7 +8,7 @@ use tester::{Bencher, TDynBenchFn};
 
 use tarantool::fiber::Fiber;
 use tarantool::net_box::{Conn, ConnOptions, Options};
-use tarantool::tuple::AsTuple;
+use tarantool::tuple::Encode;
 
 pub struct BulkInsertBenchmark {
     pub test_size: usize,
@@ -22,7 +22,7 @@ pub struct S1Record<'a> {
     pub text: &'a str,
 }
 
-impl AsTuple for S1Record<'_> {}
+impl Encode for S1Record<'_> {}
 
 impl TDynBenchFn for BulkInsertBenchmark {
     fn run(&self, harness: &mut Bencher) {

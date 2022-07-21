@@ -242,7 +242,7 @@ pub fn extract_key() {
         b: 2,
     };
     assert_eq!(
-        idx.extract_key(Tuple::from_struct(&record).unwrap())
+        idx.extract_key(Tuple::new(&record).unwrap())
             .into_struct::<S2Key>()
             .unwrap(),
         S2Key { id: 11, a: 1, b: 2 }

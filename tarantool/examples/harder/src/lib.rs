@@ -2,14 +2,14 @@ use std::os::raw::c_int;
 
 use serde::{Deserialize, Serialize};
 
-use tarantool::tuple::{AsTuple, FunctionArgs, FunctionCtx, Tuple};
+use tarantool::tuple::{Encode, FunctionArgs, FunctionCtx, Tuple};
 
 #[derive(Serialize, Deserialize)]
 struct Args {
     pub fields: Vec<i32>,
 }
 
-impl AsTuple for Args {}
+impl Encode for Args {}
 
 #[no_mangle]
 pub extern "C" fn harder(_: FunctionCtx, args: FunctionArgs) -> c_int {

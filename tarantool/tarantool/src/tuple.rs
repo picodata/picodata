@@ -25,7 +25,7 @@ use serde::{
     Serialize,
 };
 
-use crate::error::{Encode, Error, Result, TarantoolError};
+use crate::error::{self, Error, Result, TarantoolError};
 use crate::ffi::tarantool as ffi;
 use crate::tlua as tlua;
 
@@ -46,17 +46,27 @@ impl Debug for Tuple {
 }
 
 impl Tuple {
+    /// Create a new tuple from `value` implementing [`ToTupleBuffer`].
+    #[inline]
+    pub fn new<T>(value: &T) -> Result<Self>
+    where
+        T: ToTupleBuffer,
+    {
+        Ok(Self::from(&value.to_tuple_buffer()?))
+    }
+
     /// Creates new tuple from `value`.
     ///
     /// This function will serialize structure instance `value` of type `T` into tuple internal representation
     ///
     /// See also: [AsTuple](trait.AsTuple.html)
+    #[deprecated = "Use `Tuple::new` instead."]
+    #[inline]
     pub fn from_struct<T>(value: &T) -> Result<Self>
     where
-        T: AsTuple,
+        T: ToTupleBuffer,
     {
-        let buf = value.serialize_as_tuple()?;
-        Ok(Self::from(&buf))
+        Self::new(value)
     }
 
     /// # Safety
@@ -286,6 +296,14 @@ impl Tuple {
     }
 }
 
+////////////////////////////////////////////////////////////////////////////////
+/// TupleIndex
+////////////////////////////////////////////////////////////////////////////////
+
+/// Types implementing this trait can be used as arguments for the
+/// [`Tuple::get`] method.
+///
+/// This is a helper trait, so you don't want to use it directly.
 pub trait TupleIndex {
     fn get_field<'a, T>(self, tuple: &'a Tuple) -> Result<Option<T>>
     where
@@ -354,6 +372,41 @@ impl Clone for Tuple {
     }
 }
 
+////////////////////////////////////////////////////////////////////////////////
+/// ToTupleBuffer
+////////////////////////////////////////////////////////////////////////////////
+
+/// Types implementing this trait can be converted to tarantool tuple (msgpack
+/// array).
+pub trait ToTupleBuffer {
+    fn to_tuple_buffer(&self) -> Result<TupleBuffer> {
+        let mut buf = Vec::with_capacity(128);
+        self.write_tuple_data(&mut buf)?;
+        TupleBuffer::try_from(buf)
+    }
+
+    fn write_tuple_data(&self, w: &mut impl Write) -> Result<()>;
+}
+
+#[allow(deprecated)]
+impl<T> ToTupleBuffer for T
+where
+    T: ?Sized,
+    T: AsTuple,
+{
+    #[inline]
+    fn write_tuple_data(&self, w: &mut impl Write) -> Result<()> {
+        self.serialize_to(w)
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// AsTuple
+////////////////////////////////////////////////////////////////////////////////
+
+#[deprecated = "This is a legacy trait which will be removed in future. \
+Implement `Encode` for custom types instead. \
+Use `ToTupleBuffer` if you need the tuple data instead."]
 /// Must be implemented for types, which will be used with box access methods as data
 pub trait AsTuple: Serialize {
     /// Describes how object can be converted to [Tuple](struct.Tuple.html).
@@ -380,29 +433,43 @@ pub trait AsTuple: Serialize {
     }
 }
 
-impl<'a, T> AsTuple for &'a T
-where
-    T: AsTuple,
-{
-    fn serialize_to(&self, w: &mut impl Write) -> Result<()> {
-        T::serialize_to(*self, w)
+////////////////////////////////////////////////////////////////////////////////
+/// Encode
+////////////////////////////////////////////////////////////////////////////////
+
+/// Types implementing this trait can be serialized into a valid tarantool tuple
+/// (msgpack array).
+// TODO: remove this trait when `specialization` feature is stabilized
+// https://github.com/rust-lang/rust/issues/31844
+pub trait Encode: Serialize {
+    fn encode(&self, w: &mut impl Write) -> Result<()> {
+        rmp_serde::encode::write(w, self).map_err(Into::into)
     }
 }
 
-impl AsTuple for () {
-    fn serialize_to(&self, w: &mut impl Write) -> Result<()> {
+impl<'a, T> Encode for &'a T
+where
+    T: Encode,
+{
+    fn encode(&self, w: &mut impl Write) -> Result<()> {
+        T::encode(*self, w)
+    }
+}
+
+impl Encode for () {
+    fn encode(&self, w: &mut impl Write) -> Result<()> {
         rmp_serde::encode::write(w, &Vec::<()>::new()).map_err(Into::into)
     }
 }
 
-impl<T> AsTuple for [T] where T: Serialize {}
-impl<T> AsTuple for Vec<T> where T: Serialize {}
+impl<T> Encode for [T] where T: Serialize {}
+impl<T> Encode for Vec<T> where T: Serialize {}
 
 macro_rules! impl_array {
     ($($n:literal)+) => {
         $(
             #[allow(clippy::zero_prefixed_literal)]
-            impl<T> AsTuple for [T; $n] where T: Serialize {}
+            impl<T> Encode for [T; $n] where T: Serialize {}
         )+
     }
 }
@@ -415,7 +482,7 @@ impl_array! {
 macro_rules! impl_tuple {
     () => {};
     ($h:ident $($t:ident)*) => {
-        impl<$h, $($t),*> AsTuple for ($h, $($t),*)
+        impl<$h, $($t),*> Encode for ($h, $($t),*)
         where
             $h: Serialize,
             $($t: Serialize,)*
@@ -426,6 +493,21 @@ macro_rules! impl_tuple {
 }
 
 impl_tuple! { A B C D E F G H I J K L M N O P }
+
+#[allow(deprecated)]
+impl<T> AsTuple for T
+where
+    T: ?Sized,
+    T: Encode,
+{
+    fn serialize_to(&self, w: &mut impl Write) -> Result<()> {
+        self.encode(w)
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// TupleBuffer
+////////////////////////////////////////////////////////////////////////////////
 
 /// Buffer containing tuple contents (MsgPack array)
 ///
@@ -492,6 +574,17 @@ impl AsRef<[u8]> for TupleBuffer {
     }
 }
 
+impl From<TupleBuffer> for Vec<u8> {
+    fn from(b: TupleBuffer) -> Self {
+        match b {
+            TupleBuffer::Vector(v) => v,
+            TupleBuffer::TransactionScoped { ptr, size } => unsafe {
+                std::slice::from_raw_parts(ptr.as_ptr(), size).into()
+            }
+        }
+    }
+}
+
 impl TryFrom<Vec<u8>> for TupleBuffer {
     type Error = Error;
 
@@ -519,6 +612,10 @@ impl Debug for TupleBuffer {
     }
 }
 
+////////////////////////////////////////////////////////////////////////////////
+/// TupleFormat
+////////////////////////////////////////////////////////////////////////////////
+
 /// Tuple format
 ///
 /// Each Tuple has associated format (class). Default format is used to
@@ -544,6 +641,10 @@ impl Debug for TupleFormat {
         }
     }
 }
+
+////////////////////////////////////////////////////////////////////////////////
+/// TupleIterator
+////////////////////////////////////////////////////////////////////////////////
 
 /// Tuple iterator
 pub struct TupleIterator {
@@ -622,6 +723,10 @@ impl Drop for TupleIterator {
 
 impl TupleIterator {}
 
+////////////////////////////////////////////////////////////////////////////////
+/// FieldType
+////////////////////////////////////////////////////////////////////////////////
+
 #[repr(u32)]
 #[derive(Debug, ToPrimitive, PartialEq, Eq, Hash)]
 pub enum FieldType {
@@ -639,6 +744,10 @@ pub enum FieldType {
     Array,
     Map,
 }
+
+////////////////////////////////////////////////////////////////////////////////
+/// KeyDef
+////////////////////////////////////////////////////////////////////////////////
 
 #[derive(Debug)]
 pub struct KeyDef {
@@ -699,9 +808,9 @@ impl KeyDef {
     /// - `Ordering::Greater` if `key_fields(tuple) > parts(key)`
     pub fn compare_with_key<K>(&self, tuple: &Tuple, key: &K) -> Ordering
     where
-        K: AsTuple,
+        K: ToTupleBuffer,
     {
-        let key_buf = key.serialize_as_tuple().unwrap();
+        let key_buf = key.to_tuple_buffer().unwrap();
         let key_buf_ptr = key_buf.as_ptr() as _;
         unsafe {
             ffi::box_tuple_compare_with_key(tuple.ptr.as_ptr(), key_buf_ptr, self.inner)
@@ -731,6 +840,10 @@ where
     let value_slice = std::slice::from_raw_parts(field_ptr, max_len as _);
     Ok(Some(rmp_serde::from_slice(value_slice)?))
 }
+
+////////////////////////////////////////////////////////////////////////////////
+/// FunctionCtx
+////////////////////////////////////////////////////////////////////////////////
 
 #[repr(C)]
 #[derive(Debug)]
@@ -780,6 +893,10 @@ impl FunctionCtx {
     }
 }
 
+////////////////////////////////////////////////////////////////////////////////
+/// FunctionArgs
+////////////////////////////////////////////////////////////////////////////////
+
 #[repr(C)]
 pub struct FunctionArgs {
     pub start: *const u8,
@@ -825,9 +942,9 @@ impl FunctionArgs {
 /// into the network. Just like with `write()`/`send()` system calls.
 pub fn session_push<T>(value: &T) -> Result<()>
 where
-    T: AsTuple,
+    T: ToTupleBuffer,
 {
-    let buf = value.serialize_as_tuple().unwrap();
+    let buf = value.to_tuple_buffer().unwrap();
     let buf_ptr = buf.as_ptr() as *const c_char;
     if unsafe { ffi::box_session_push(buf_ptr, buf_ptr.add(buf.len())) } < 0 {
         Err(TarantoolError::last().into())
@@ -843,7 +960,7 @@ where
     let mut slice = data.as_ref();
     let m = rmp::decode::read_marker(&mut slice)?;
     if !matches!(m, Marker::FixArray(_) | Marker::Array16 | Marker::Array32) {
-        return Err(Encode::InvalidMP(data.into()).into())
+        return Err(error::Encode::InvalidMP(data.into()).into())
     }
     Ok(data)
 }
