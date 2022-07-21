@@ -1,5 +1,5 @@
 ## Contributing to Picodata
-This document describes contributing to Picodata
+This document describes contributing to Picodata, primarily the ways you can build and test it.
 
 ### Building Picodata from source
 #### Required build tools
@@ -9,7 +9,7 @@ This document describes contributing to Picodata
 - libstc++-static
 
 #### Prerequisites for CentOS 8
-Use the following commands to install the required build prerequisites. Note that you'll need recent Rust and Cargo versions installed using the recommended way from [rustup.rs](rustup.rs){:target="_blank"}:
+Use the following commands to install the required build prerequisites. Note that you'll need recent Rust and Cargo versions installed using the recommended way from [rustup.rs](rustup.rs):
 ```bash
 sudo dnf config-manager --set-enabled powertools
 sudo dnf in -y gcc gcc-c++ make cmake git patch libstdc++-static
@@ -23,7 +23,7 @@ sudo apt-get install build-essential cargo git cmake -y
 ```
 
 #### Prerequisites for Alt Workstation p10
-Use the following commands to install the required build prerequisites. Note that you'll need recent Rust and Cargo versions installed using the recommended way from [rustup.rs](rustup.rs){:target="_blank"}:
+Use the following commands to install the required build prerequisites. Note that you'll need recent Rust and Cargo versions installed using the recommended way from [rustup.rs](rustup.rs):
 ```bash
 su -
 apt-get install gcc gcc-c++ cmake git patch libstdc++10-devel-static libgomp10-devel-static -y && exit
