@@ -6,14 +6,17 @@ use tarantool::space::{Field, Space};
 
 fn create_sql_test_space(name: &str) -> tarantool::Result<Space> {
     let space = Space::builder(name)
+        .if_not_exists(true)
         .field(Field::unsigned("ID"))
         .field(Field::string("VALUE"))
         .create()?;
     space.index_builder("primary")
+        .if_not_exists(true)
         .index_type(IndexType::Tree)
         .part(1)
         .create()?;
     space.index_builder("secondary")
+        .if_not_exists(true)
         .index_type(IndexType::Tree)
         .part(1)
         .part(2)
@@ -105,26 +108,26 @@ pub fn prepared_invalid_params() {
 pub fn prepared_with_unnamed_params() {
     let mut sp = create_sql_test_space("SQL_TEST").unwrap();
 
-    sp.insert(&(1, "one")).unwrap();
-    sp.insert(&(2, "two")).unwrap();
-    sp.insert(&(3, "three")).unwrap();
-    sp.insert(&(4, "four")).unwrap();
+    sp.insert(&(101, "one")).unwrap();
+    sp.insert(&(102, "two")).unwrap();
+    sp.insert(&(103, "three")).unwrap();
+    sp.insert(&(104, "four")).unwrap();
 
     let stmt = tarantool::sql::prepare("SELECT * FROM SQL_TEST WHERE ID > ?").unwrap();
 
-    let result = stmt.execute::<_, Vec<(u8, String)>>(&(2, )).unwrap();
+    let result = stmt.execute::<_, Vec<(u8, String)>>(&(102, )).unwrap();
     assert_eq!(2, result.len());
-    assert_eq!((3, "three".to_string()), result[0]);
-    assert_eq!((4, "four".to_string()), result[1]);
+    assert_eq!((103, "three".to_string()), result[0]);
+    assert_eq!((104, "four".to_string()), result[1]);
 
-    let result = stmt.execute::<_, Vec<(u8, String)>>(&(3, )).unwrap();
+    let result = stmt.execute::<_, Vec<(u8, String)>>(&(103, )).unwrap();
     assert_eq!(1, result.len());
-    assert_eq!((4, "four".to_string()), result[0]);
+    assert_eq!((104, "four".to_string()), result[0]);
 
     let stmt2 = tarantool::sql::prepare("SELECT * FROM SQL_TEST WHERE ID > ? AND VALUE = ?").unwrap();
-    let result = stmt2.execute::<_, Vec<(u8, String)>>(&(2, "three")).unwrap();
+    let result = stmt2.execute::<_, Vec<(u8, String)>>(&(102, "three")).unwrap();
     assert_eq!(1, result.len());
-    assert_eq!((3, "three".to_string()), result[0]);
+    assert_eq!((103, "three".to_string()), result[0]);
 
     drop_sql_test_space(sp).unwrap();
 }
