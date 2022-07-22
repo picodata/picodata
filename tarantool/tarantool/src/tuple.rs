@@ -388,6 +388,18 @@ pub trait ToTupleBuffer {
     fn write_tuple_data(&self, w: &mut impl Write) -> Result<()>;
 }
 
+impl ToTupleBuffer for Tuple {
+    #[inline]
+    fn to_tuple_buffer(&self) -> Result<TupleBuffer> {
+        Ok(TupleBuffer::Vector(self.as_buffer()))
+    }
+
+    #[inline]
+    fn write_tuple_data(&self, w: &mut impl Write) -> Result<()> {
+        w.write_all(&self.as_buffer()).map_err(Into::into)
+    }
+}
+
 #[allow(deprecated)]
 impl<T> ToTupleBuffer for T
 where

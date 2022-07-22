@@ -241,12 +241,13 @@ pub fn extract_key() {
         a: 1,
         b: 2,
     };
+    let key: Tuple = idx.extract_key(Tuple::new(&record).unwrap());
     assert_eq!(
-        idx.extract_key(Tuple::new(&record).unwrap())
-            .into_struct::<S2Key>()
-            .unwrap(),
+        key.as_struct::<S2Key>().unwrap(),
         S2Key { id: 11, a: 1, b: 2 }
     );
+    let tuple = idx.get(&key).unwrap().unwrap();
+    assert_eq!(tuple.as_struct::<S2Record>().unwrap(), record);
 }
 
 pub fn insert() {
