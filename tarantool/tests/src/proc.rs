@@ -5,6 +5,7 @@ use tarantool::{
         Call, PushGuard, LuaState, PushInto, LuaFunction, LuaThread,
         CallError, LuaRead, AsTable,
     },
+    tuple::{Tuple, TupleBuffer},
 };
 use crate::common::lib_name;
 use rmpv::Value;
@@ -37,6 +38,25 @@ pub fn simple() {
 
     assert_eq!(call_proc("proc_simple", 1).ok(), Some(2));
     assert_eq!(call_proc("proc_simple", 2).ok(), Some(3));
+}
+
+pub fn return_tuple() {
+    #[tarantool::proc]
+    fn proc_return_tuple(x: i32, y: String) -> tarantool::Result<Tuple> {
+        Tuple::new(&(x, y))
+    }
+
+    #[tarantool::proc]
+    fn proc_return_tuple_buf() -> tarantool::Result<TupleBuffer> {
+        TupleBuffer::try_from_vec((&b"\x92\xa5hello\xa6sailor"[..]).into())
+    }
+
+    let tuple: Tuple = call_proc("proc_return_tuple", (1998, "March")).unwrap();
+    let data: (u32, String) = tuple.into_struct().unwrap();
+    assert_eq!(data, (1998, "March".to_string()));
+
+    let data: [String; 2] = call_proc("proc_return_tuple_buf", ()).unwrap();
+    assert_eq!(data, ["hello", "sailor"]);
 }
 
 pub fn with_error() {

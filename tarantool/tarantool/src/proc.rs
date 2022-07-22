@@ -1,13 +1,25 @@
 use crate::{
     error::TarantoolErrorCode::ProcC,
     set_error,
-    tuple::FunctionCtx,
+    tuple::{FunctionCtx, Tuple, TupleBuffer},
 };
 use serde::Serialize;
 use std::{
     fmt::Display,
     os::raw::c_int,
 };
+
+macro_rules! unwrap_or_report_err {
+    ($res:expr) => {
+        match $res {
+            Ok(o) => o,
+            Err(e) => {
+                set_error!(ProcC, "{}", e);
+                -1
+            }
+        }
+    }
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 // ReturnMsgpack
@@ -62,18 +74,7 @@ pub struct ReturnMsgpack<T>(pub T);
 impl<T: Serialize> Return for ReturnMsgpack<T> {
     #[inline(always)]
     fn ret(self, ctx: FunctionCtx) -> c_int {
-        return_mp(self.0, ctx)
-    }
-}
-
-#[inline(always)]
-fn return_mp(v: impl Serialize, ctx: FunctionCtx) -> c_int {
-    match ctx.return_mp(&v) {
-        Ok(_) => 0,
-        Err(e) => {
-            set_error!(ProcC, "{}", e);
-            -1
-        }
+        unwrap_or_report_err!(ctx.return_mp(&self.0))
     }
 }
 
@@ -83,6 +84,42 @@ fn return_mp(v: impl Serialize, ctx: FunctionCtx) -> c_int {
 
 pub trait Return: Sized {
     fn ret(self, ctx: FunctionCtx) -> c_int;
+}
+
+impl Return for Tuple {
+    #[inline]
+    fn ret(self, ctx: FunctionCtx) -> c_int {
+        let res = ctx.return_tuple(&self);
+        unwrap_or_report_err!(res)
+    }
+}
+
+impl<E> Return for Result<Tuple, E>
+where
+    E: Display,
+{
+    #[inline(always)]
+    fn ret(self, ctx: FunctionCtx) -> c_int {
+        unwrap_or_report_err!(self.map(|t| t.ret(ctx)))
+    }
+}
+
+impl Return for TupleBuffer {
+    #[inline]
+    fn ret(self, ctx: FunctionCtx) -> c_int {
+        let res = ctx.return_bytes(self.as_ref());
+        unwrap_or_report_err!(res)
+    }
+}
+
+impl<E> Return for Result<TupleBuffer, E>
+where
+    E: Display,
+{
+    #[inline(always)]
+    fn ret(self, ctx: FunctionCtx) -> c_int {
+        unwrap_or_report_err!(self.map(|t| t.ret(ctx)))
+    }
 }
 
 impl Return for () {
@@ -123,7 +160,7 @@ macro_rules! impl_return {
         {
             #[inline(always)]
             fn ret(self, ctx: FunctionCtx) -> c_int {
-                return_mp(self, ctx)
+                unwrap_or_report_err!(ctx.return_mp(&self))
             }
         }
     };
@@ -157,7 +194,7 @@ macro_rules! impl_return_for_tuple {
         {
             #[inline(always)]
             fn ret(self, ctx: FunctionCtx) -> c_int {
-                return_mp(self, ctx)
+                unwrap_or_report_err!(ctx.return_mp(&self))
             }
         }
 

@@ -904,7 +904,33 @@ pub struct BoxFunctionCtx {
 }
 
 extern "C" {
+    /// Return a tuple from stored C procedure.
+    ///
+    /// Returned tuple is automatically reference counted by Tarantool.
+    ///
+    /// `ctx`: An opaque structure passed to the stored C procedure by
+    /// Tarantool
+    /// `tuple`: A tuple to return
+    /// Returns:
+    /// - `-1` on error (perhaps, out of memory; check box_error_last())
+    /// - `0` otherwise
     pub fn box_return_tuple(ctx: *mut BoxFunctionCtx, tuple: *mut BoxTuple) -> c_int;
+
+    /// Return MessagePack from a stored C procedure. The MessagePack
+    /// is copied, so it is safe to free/reuse the passed arguments
+    /// after the call.
+    /// MessagePack is not validated, for the sake of speed. It is
+    /// expected to be a single encoded object. An attempt to encode
+    /// and return multiple objects without wrapping them into an
+    /// MP_ARRAY or MP_MAP is undefined behaviour.
+    ///
+    /// `ctx`: An opaque structure passed to the stored C procedure by
+    /// Tarantool.
+    /// `mp`: Begin of MessagePack.
+    /// `mp_end`: End of MessagePack.
+    /// Returns:
+    /// - `-1` Error.
+    /// - `0` Success.
     pub fn box_return_mp(
         ctx: *mut BoxFunctionCtx,
         mp: *const c_char,

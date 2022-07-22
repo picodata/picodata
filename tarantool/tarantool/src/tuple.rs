@@ -877,11 +877,12 @@ pub struct FunctionCtx {
 }
 
 impl FunctionCtx {
-    /// Return a Tuple from stored C procedure.
+    /// Return a Tuple from stored procedure.
     ///
     /// Returned Tuple is automatically reference counted by Tarantool.
     ///
     /// - `tuple` - a Tuple to return
+    #[inline]
     pub fn return_tuple(&self, tuple: &Tuple) -> Result<c_int> {
         let result = unsafe { ffi::box_return_tuple(self.inner, tuple.ptr.as_ptr()) };
         if result < 0 {
@@ -891,9 +892,7 @@ impl FunctionCtx {
         }
     }
 
-    /// Return MessagePack from a stored C procedure. The MessagePack
-    /// is copied, so it is safe to free/reuse the passed arguments
-    /// after the call.
+    /// Return a value encoded as MessagePack from a stored procedure.
     ///
     /// MessagePack is not validated, for the sake of speed. It is
     /// expected to be a single encoded object. An attempt to encode
@@ -901,14 +900,30 @@ impl FunctionCtx {
     /// `MP_ARRAY` or `MP_MAP` is undefined behaviour.
     ///
     /// - `value` - value to be encoded to MessagePack
+    #[inline]
     pub fn return_mp<T>(&self, value: &T) -> Result<c_int>
     where
         T: Serialize,
     {
         let buf = rmp_serde::to_vec_named(value)?;
-        let buf_ptr = buf.as_ptr() as *const c_char;
-        let result =
-            unsafe { ffi::box_return_mp(self.inner, buf_ptr, buf_ptr.add(buf.len())) };
+        self.return_bytes(&buf)
+    }
+
+    /// Return raw bytes representing a MessagePack value from a stored
+    /// procedure.
+    ///
+    /// MessagePack is not validated, for the sake of speed. It is
+    /// expected to be a single encoded object. An attempt to encode
+    /// and return multiple objects without wrapping them into an
+    /// `MP_ARRAY` or `MP_MAP` is undefined behaviour.
+    ///
+    /// - `bytes` - raw msgpack bytes to be returned
+    #[inline]
+    pub fn return_bytes(&self, bytes: &[u8]) -> Result<c_int> {
+        let Range { start, end } = bytes.as_ptr_range();
+        let result = unsafe {
+            ffi::box_return_mp(self.inner, start as _, end as _)
+        };
 
         if result < 0 {
             Err(TarantoolError::last().into())

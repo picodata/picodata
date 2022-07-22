@@ -8,6 +8,8 @@
 - Tuple fields can now be read as raw bytes (without deserializing) using
     `&tarantool::tuple::RawBytes` (borrowed) or `tarantool::tuple::RawByteBuf`
     (owned)
+- Tuples can now be efficient returned from stored procedures defined with
+    `#[tarantool::proc]` macro attribute. (`impl Return for Tuple`)
 - `Tuple::new` function for creating tuples from anything that can be converted
     to one.
 - `impl From<TupleBuffer> for Vec<u8>`

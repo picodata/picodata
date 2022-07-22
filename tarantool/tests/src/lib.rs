@@ -547,6 +547,7 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 raft::bootstrap_2n,
 
                 proc::simple,
+                proc::return_tuple,
                 proc::with_error,
                 proc::packed,
                 proc::debug,
