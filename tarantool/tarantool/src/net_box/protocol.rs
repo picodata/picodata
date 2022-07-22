@@ -1,16 +1,16 @@
 use std::cmp::min;
 use std::convert::TryFrom;
 use std::fmt::{Display, Formatter};
-use std::io::{self, Cursor, Read, Seek, SeekFrom, Write};
+use std::io::{self, Cursor, Read, Seek, Write};
 use std::os::raw::c_char;
 use std::str::from_utf8;
 
-use byteorder::{BigEndian, ReadBytesExt};
 use sha1::{Digest, Sha1};
 use num_derive::FromPrimitive;
 
 use crate::error::Error;
 use crate::index::IteratorType;
+use crate::msgpack;
 use crate::tuple::{ToTupleBuffer, Tuple};
 
 const REQUEST_TYPE: u8 = 0x00;
@@ -502,7 +502,7 @@ pub fn decode_header(stream: &mut (impl Read + Seek)) -> Result<Header, Error> {
             0 => status_code = Some(rmp::decode::read_int(stream)?),
             SYNC => sync = Some(rmp::decode::read_int(stream)?),
             SCHEMA_VERSION => schema_version = Some(rmp::decode::read_int(stream)?),
-            _ => skip_msgpack(stream)?,
+            _ => msgpack::skip_value(stream)?,
         }
     }
 
@@ -551,7 +551,7 @@ pub fn decode_call(buffer: &mut Cursor<Vec<u8>>, _: &Header) -> Result<Option<Tu
                 return Ok(Some(decode_tuple(buffer)?));
             }
             _ => {
-                skip_msgpack(buffer)?;
+                msgpack::skip_value(buffer)?;
             }
         };
     }
@@ -580,7 +580,7 @@ pub fn decode_multiple_rows(
                 return Ok(result);
             }
             _ => {
-                skip_msgpack(buffer)?;
+                msgpack::skip_value(buffer)?;
             }
         };
     }
@@ -601,7 +601,7 @@ pub fn decode_single_row(buffer: &mut Cursor<Vec<u8>>, _: &Header) -> Result<Opt
                 });
             }
             _ => {
-                skip_msgpack(buffer)?;
+                msgpack::skip_value(buffer)?;
             }
         }
     }
@@ -610,7 +610,7 @@ pub fn decode_single_row(buffer: &mut Cursor<Vec<u8>>, _: &Header) -> Result<Opt
 
 pub fn decode_tuple(buffer: &mut Cursor<Vec<u8>>) -> Result<Tuple, Error> {
     let payload_offset = buffer.position();
-    skip_msgpack(buffer)?;
+    msgpack::skip_value(buffer)?;
     let payload_len = buffer.position() - payload_offset;
     let buf = buffer.get_mut();
     unsafe {
@@ -621,111 +621,10 @@ pub fn decode_tuple(buffer: &mut Cursor<Vec<u8>>) -> Result<Tuple, Error> {
     }
 }
 
-fn value_slice(cursor: &mut Cursor<impl AsRef<[u8]>>) -> crate::Result<&[u8]> {
+pub fn value_slice(cursor: &mut Cursor<impl AsRef<[u8]>>) -> crate::Result<&[u8]> {
     let start = cursor.position() as usize;
-    skip_msgpack(cursor)?;
+    msgpack::skip_value(cursor)?;
     Ok(&cursor.get_ref().as_ref()[start..(cursor.position() as usize)])
-}
-
-fn skip_msgpack(cur: &mut (impl Read + Seek)) -> Result<(), Error> {
-    use rmp::Marker;
-
-    match rmp::decode::read_marker(cur)? {
-        Marker::FixPos(_) | Marker::FixNeg(_) | Marker::Null | Marker::True | Marker::False => {}
-        Marker::U8 | Marker::I8 => {
-            cur.seek(SeekFrom::Current(1))?;
-        }
-        Marker::U16 | Marker::I16 => {
-            cur.seek(SeekFrom::Current(2))?;
-        }
-        Marker::U32 | Marker::I32 | Marker::F32 => {
-            cur.seek(SeekFrom::Current(4))?;
-        }
-        Marker::U64 | Marker::I64 | Marker::F64 => {
-            cur.seek(SeekFrom::Current(8))?;
-        }
-        Marker::FixStr(len) => {
-            cur.seek(SeekFrom::Current(len as i64))?;
-        }
-        Marker::Str8 | Marker::Bin8 => {
-            let len = cur.read_u8()?;
-            cur.seek(SeekFrom::Current(len as i64))?;
-        }
-        Marker::Str16 | Marker::Bin16 => {
-            let len = cur.read_u16::<BigEndian>()?;
-            cur.seek(SeekFrom::Current(len as i64))?;
-        }
-        Marker::Str32 | Marker::Bin32 => {
-            let len = cur.read_u32::<BigEndian>()?;
-            cur.seek(SeekFrom::Current(len as i64))?;
-        }
-        Marker::FixArray(len) => {
-            for _ in 0..len {
-                skip_msgpack(cur)?;
-            }
-        }
-        Marker::Array16 => {
-            let len = cur.read_u16::<BigEndian>()?;
-            for _ in 0..len {
-                skip_msgpack(cur)?;
-            }
-        }
-        Marker::Array32 => {
-            let len = cur.read_u32::<BigEndian>()?;
-            for _ in 0..len {
-                skip_msgpack(cur)?;
-            }
-        }
-        Marker::FixMap(len) => {
-            let len = len * 2;
-            for _ in 0..len {
-                skip_msgpack(cur)?;
-            }
-        }
-        Marker::Map16 => {
-            let len = cur.read_u16::<BigEndian>()? * 2;
-            for _ in 0..len {
-                skip_msgpack(cur)?;
-            }
-        }
-        Marker::Map32 => {
-            let len = cur.read_u32::<BigEndian>()? * 2;
-            for _ in 0..len {
-                skip_msgpack(cur)?;
-            }
-        }
-        Marker::FixExt1 => {
-            cur.seek(SeekFrom::Current(2))?;
-        }
-        Marker::FixExt2 => {
-            cur.seek(SeekFrom::Current(3))?;
-        }
-        Marker::FixExt4 => {
-            cur.seek(SeekFrom::Current(5))?;
-        }
-        Marker::FixExt8 => {
-            cur.seek(SeekFrom::Current(9))?;
-        }
-        Marker::FixExt16 => {
-            cur.seek(SeekFrom::Current(17))?;
-        }
-        Marker::Ext8 => {
-            let len = cur.read_u8()?;
-            cur.seek(SeekFrom::Current(len as i64 + 1))?;
-        }
-        Marker::Ext16 => {
-            let len = cur.read_u16::<BigEndian>()?;
-            cur.seek(SeekFrom::Current(len as i64 + 1))?;
-        }
-        Marker::Ext32 => {
-            let len = cur.read_u32::<BigEndian>()?;
-            cur.seek(SeekFrom::Current(len as i64 + 1))?;
-        }
-        Marker::Reserved => {
-            return Err(rmp::decode::ValueReadError::TypeMismatch(Marker::Reserved).into())
-        }
-    }
-    Ok(())
 }
 
 #[derive(Debug)]
