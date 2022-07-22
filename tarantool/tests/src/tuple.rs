@@ -1,7 +1,8 @@
 use std::cmp::Ordering;
+use std::collections::BTreeMap;
 
 use tarantool::tlua::{Index, Indexable, Nil};
-use tarantool::tuple::{Encode, FieldType, KeyDef, KeyDefItem, Tuple, TupleBuffer};
+use tarantool::tuple::{Encode, FieldType, KeyDef, KeyDefItem, RawBytes, RawByteBuf, Tuple, TupleBuffer};
 use serde::Serialize;
 
 use crate::common::{S1Record, S2Key, S2Record};
@@ -318,6 +319,12 @@ pub fn to_and_from_lua() {
     let lua = tarantool::lua_state();
     lua.set("to_and_from_lua", &tuple);
 
+    let tuple: Tuple = lua.eval("
+        return box.tuple.new{ 1, 3.14, 'hello', { 10, 20, 30 } }
+    ").unwrap();
+    let data: (u32, f64, String, [u32; 3]) = tuple.into_struct().unwrap();
+    assert_eq!(data, (1, 3.14, "hello".to_string(), [10, 20, 30]));
+
     let tuple_in_lua: Indexable<_> = lua.get("to_and_from_lua").unwrap();
     assert_eq!(tuple_in_lua.get(1), Some(42));
     assert_eq!(tuple_in_lua.get(2), Some("hello".to_string()));
@@ -358,5 +365,32 @@ pub fn tuple_debug_fmt() {
     assert_eq!(format!("{:?}", buf),
         r#"TupleBuffer::Vector(Tuple(Array([Integer(PosInt(1)), Boolean(true), String(Utf8String { s: Ok("foo") })])))"#
     );
+}
+
+pub fn raw_bytes() {
+    let tuple = Tuple::new(&(1, (2, ("test", [3, 1, 4])), 3)).unwrap();
+    let bytes: &RawBytes = tuple.field(1).unwrap().unwrap();
+    let field: (u32, (&str, [u32; 3])) = rmp_serde::from_slice(&**bytes).unwrap();
+    assert_eq!(field, (2, ("test", [3, 1, 4])));
+
+    let tuple2: Tuple = tuple.get(1).unwrap();
+    assert_eq!(tuple2.get(0), Some(2));
+    let tuple3: Tuple = tuple2.get(1).unwrap();
+    assert_eq!(tuple3.get(0), Some("test"));
+    let tuple4: Tuple = tuple3.get(1).unwrap();
+    assert_eq!(tuple4.get(0), Some(3));
+    assert_eq!(tuple4.get(1), Some(1));
+    assert_eq!(tuple4.get(2), Some(4));
+
+    let map = BTreeMap::from([("a", 10), ("b", 20)]);
+    let data = rmp_serde::to_vec(&(1, map, 3)).unwrap();
+    let tuple = Tuple::try_from_slice(&data).unwrap();
+    // Cannot read a field as Tuple, because it's not a messagepack array
+    let msg = tuple.try_get::<_, Tuple>(1).unwrap_err().to_string();
+    let epxected = "Failed to encode tuple: Invalid msgpack value (epxected array, found Map";
+    assert_eq!(msg.get(..epxected.len()), Some(epxected));
+    // No problem with RawByteBuf
+    let bytes: RawByteBuf = tuple.get(1).unwrap();
+    assert_eq!(&**bytes, b"\x82\xa1a\x0a\xa1b\x14");
 }
 

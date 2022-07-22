@@ -254,7 +254,7 @@ impl<T> InnerPromise<T> {
 
 impl<T> Consumer for InnerPromise<T>
 where
-    T: Decode,
+    T: for<'de> Decode<'de>,
 {
     fn handle_error(&self, error: Error) {
         self.data.set(Some(Err(error)));

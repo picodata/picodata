@@ -11,7 +11,7 @@
 use std::cmp::Ordering;
 use std::convert::TryFrom;
 use std::fmt::{self, Debug, Formatter};
-use std::io::{Cursor, Write};
+use std::io::Write;
 use std::os::raw::{c_char, c_int};
 use std::ops::Range;
 use std::ptr::{copy_nonoverlapping, NonNull};
@@ -19,11 +19,7 @@ use std::ptr::{copy_nonoverlapping, NonNull};
 use num_derive::ToPrimitive;
 use num_traits::ToPrimitive;
 use rmp::Marker;
-use serde::{
-    de::DeserializeOwned,
-    Deserialize,
-    Serialize,
-};
+use serde::Serialize;
 
 use crate::error::{self, Error, Result, TarantoolError};
 use crate::ffi::tarantool as ffi;
@@ -178,11 +174,11 @@ impl Tuple {
     /// See also [`Tuple::try_get`], [`Tuple::get`].
     pub fn field<'a, T>(&'a self, fieldno: u32) -> Result<Option<T>>
     where
-        T: Deserialize<'a>,
+        T: Decode<'a>,
     {
         unsafe {
             let field_ptr = ffi::box_tuple_field(self.ptr.as_ptr(), fieldno);
-            self.field_from_ptr(field_ptr as _)
+            field_value_from_ptr(field_ptr as _)
         }
     }
 
@@ -212,7 +208,7 @@ impl Tuple {
     pub fn try_get<'a, I, T>(&'a self, key: I) -> Result<Option<T>>
     where
         I: TupleIndex,
-        T: Deserialize<'a>,
+        T: Decode<'a>,
     {
         key.get_field(self)
     }
@@ -243,7 +239,7 @@ impl Tuple {
     pub fn get<'a, I, T>(&'a self, key: I) -> Option<T>
     where
         I: TupleIndex,
-        T: Deserialize<'a>,
+        T: Decode<'a>,
     {
         self.try_get(key).expect("Error during getting tuple field")
     }
@@ -251,10 +247,10 @@ impl Tuple {
     /// Deserializes tuple contents into structure of type `T`
     pub fn as_struct<T>(&self) -> Result<T>
     where
-        T: DeserializeOwned,
+        T: DecodeOwned,
     {
         let raw_data = self.as_buffer();
-        Ok(rmp_serde::from_read::<_, T>(Cursor::new(raw_data))?)
+        Decode::decode(&raw_data)
     }
 
     #[inline]
@@ -275,24 +271,13 @@ impl Tuple {
     /// Deserializes tuple contents into structure of type `T`
     pub fn into_struct<T>(self) -> Result<T>
     where
-        T: DeserializeOwned,
+        T: DecodeOwned,
     {
         self.as_struct()
     }
 
     pub(crate) fn into_ptr(self) -> *mut ffi::BoxTuple {
         self.ptr.as_ptr()
-    }
-
-    unsafe fn field_from_ptr<'a, T>(&'a self, field_ptr: *const u8) -> Result<Option<T>>
-    where
-        T: Deserialize<'a>,
-    {
-        if field_ptr.is_null() {
-            return Ok(None)
-        }
-        let field_slice = std::slice::from_raw_parts(field_ptr, self.ptr.as_ref().bsize());
-        Ok(Some(rmp_serde::from_slice(field_slice)?))
     }
 }
 
@@ -307,14 +292,14 @@ impl Tuple {
 pub trait TupleIndex {
     fn get_field<'a, T>(self, tuple: &'a Tuple) -> Result<Option<T>>
     where
-        T: Deserialize<'a>;
+        T: Decode<'a>;
 }
 
 impl TupleIndex for u32 {
     #[inline(always)]
     fn get_field<'a, T>(self, tuple: &'a Tuple) -> Result<Option<T>>
     where
-        T: Deserialize<'a>,
+        T: Decode<'a>,
     {
         tuple.field(self)
     }
@@ -324,7 +309,7 @@ impl TupleIndex for &str {
     #[inline(always)]
     fn get_field<'a, T>(self, tuple: &'a Tuple) -> Result<Option<T>>
     where
-        T: Deserialize<'a>,
+        T: Decode<'a>,
     {
         use once_cell::sync::Lazy;
         use std::io::{Error as IOError, ErrorKind};
@@ -346,7 +331,7 @@ impl TupleIndex for &str {
                 self.len() as _,
                 tlua::util::hash(self),
             );
-            tuple.field_from_ptr(field_ptr as _)
+            field_value_from_ptr(field_ptr as _)
         }
     }
 }
@@ -382,7 +367,7 @@ pub trait ToTupleBuffer {
     fn to_tuple_buffer(&self) -> Result<TupleBuffer> {
         let mut buf = Vec::with_capacity(128);
         self.write_tuple_data(&mut buf)?;
-        TupleBuffer::try_from(buf)
+        TupleBuffer::try_from_vec(buf)
     }
 
     fn write_tuple_data(&self, w: &mut impl Write) -> Result<()>;
@@ -696,9 +681,9 @@ impl TupleIterator {
     /// After call:
     /// - `box_tuple_position(it) == fieldno` if returned value is not `None`
     /// - `box_tuple_position(it) == box_tuple_field_count(Tuple)` if returned value is `None`.
-    pub fn seek<T>(&mut self, fieldno: u32) -> Result<Option<T>>
+    pub fn seek<'t, T>(&'t mut self, fieldno: u32) -> Result<Option<T>>
     where
-        T: DeserializeOwned,
+        T: Decode<'t>,
     {
         unsafe {
             field_value_from_ptr(ffi::box_tuple_seek(self.inner, fieldno) as _)
@@ -715,9 +700,9 @@ impl TupleIterator {
     /// - `box_tuple_position(it) == fieldno` if returned value is not `None`
     /// - `box_tuple_position(it) == box_tuple_field_count(Tuple)` if returned value is `None`.
     #[allow(clippy::should_implement_trait)]
-    pub fn next<T>(&mut self) -> Result<Option<T>>
+    pub fn next<'t, T>(&'t mut self) -> Result<Option<T>>
     where
-        T: DeserializeOwned,
+        T: Decode<'t>,
     {
         unsafe {
             field_value_from_ptr(ffi::box_tuple_next(self.inner) as _)
@@ -857,9 +842,9 @@ impl Drop for KeyDef {
     }
 }
 
-unsafe fn field_value_from_ptr<T>(field_ptr: *mut u8) -> Result<Option<T>>
+unsafe fn field_value_from_ptr<'de, T>(field_ptr: *mut u8) -> Result<Option<T>>
 where
-    T: DeserializeOwned,
+    T: Decode<'de>,
 {
     if field_ptr.is_null() {
         return Ok(None);
@@ -869,8 +854,16 @@ where
     // 2gigs of memory in case `value_ptr` happens to point to memory which
     // isn't a field of a tuple, but is a valid messagepack value
     let max_len = u32::MAX >> 1;
-    let value_slice = std::slice::from_raw_parts(field_ptr, max_len as _);
-    Ok(Some(rmp_serde::from_slice(value_slice)?))
+    let rough_slice = std::slice::from_raw_parts(field_ptr, max_len as _);
+    let mut cursor = std::io::Cursor::new(rough_slice);
+    let start = cursor.position() as usize;
+    // There's overhead for iterating over the whole msgpack value, but this is
+    // necessary.
+    crate::msgpack::skip_value(&mut cursor)?;
+    let value_range = start..(cursor.position() as usize);
+    let rough_slice = cursor.into_inner();
+    let value_slice = &rough_slice[value_range];
+    Ok(Some(T::decode(value_slice)?))
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -962,7 +955,7 @@ impl FunctionArgs {
     /// Deserialize a tuple reprsented by the function args as `T`.
     pub fn as_struct<T>(&self) -> Result<T>
     where
-        T: DeserializeOwned,
+        T: DecodeOwned,
     {
         Tuple::from(self).as_struct()
     }
@@ -985,6 +978,7 @@ where
     }
 }
 
+#[inline(always)]
 fn validate_msgpack<T>(data: T) -> Result<T>
 where
     T: AsRef<[u8]> + Into<Vec<u8>>,
@@ -1033,23 +1027,143 @@ where
 /// Decode
 ////////////////////////////////////////////////////////////////////////////////
 
-/// Generalization of [`serde::Deserialize`] which includes [`Tuple`]
-pub trait Decode: Sized {
-    fn decode(data: &[u8]) -> Result<Self>;
+/// Types implementing this trait can be decoded from msgpack.
+///
+/// [`Tuple`] also implements [`Decode`] with an implementation which just
+/// copies the bytes as is (and validates them).
+pub trait Decode<'de>: Sized {
+    fn decode(data: &'de [u8]) -> Result<Self>;
 }
 
-impl<T> Decode for T
+impl<'de, T> Decode<'de> for T
 where
-    T: for<'de> serde::Deserialize<'de>,
+    T: serde::Deserialize<'de>,
 {
-    fn decode(data: &[u8]) -> Result<Self> {
+    fn decode(data: &'de [u8]) -> Result<Self> {
         Ok(rmp_serde::from_slice(data)?)
     }
 }
 
-impl Decode for Tuple {
+impl Decode<'_> for Tuple {
     fn decode(data: &[u8]) -> Result<Self> {
         Self::try_from_slice(data)
+    }
+}
+
+/// Types implementing this trait can be decoded from msgpack by value.
+///
+/// `DecodeOwned` is to [`Decode`] what [`DeserializeOwned`] is to
+/// [`Deserialize`].
+///
+/// [`Deserialize`]: serde::Deserialize
+/// [`DeserializeOwned`]: serde::de::DeserializeOwned
+pub trait DecodeOwned: for<'de> Decode<'de> {}
+impl<T> DecodeOwned for T
+where
+    T: for<'de> Decode<'de>,
+{}
+
+////////////////////////////////////////////////////////////////////////////////
+/// RawBytes
+////////////////////////////////////////////////////////////////////////////////
+
+/// A wrapper type for reading raw bytes from a tuple.
+///
+/// Can be used to read a field of a tuple as raw bytes:
+/// ```no_run
+/// use tarantool::{tuple::Tuple, tuple::RawBytes};
+/// let tuple = Tuple::new(&(1, (2, 3, 4), 5)).unwrap();
+/// let second_field: &RawBytes = tuple.get(1).unwrap();
+/// assert_eq!(&**second_field, &[0x93, 2, 3, 4]);
+/// ```
+///
+/// This type also implements [`ToTupleBuffer`] such that `to_tuple_buffer`
+/// returns `Ok` only if the underlying bytes represent a valid tuple (msgpack
+/// array).
+#[derive(Debug)]
+#[repr(transparent)]
+pub struct RawBytes(pub [u8]);
+
+impl<'de> Decode<'de> for &'de RawBytes {
+    #[inline(always)]
+    fn decode(data: &'de [u8]) -> Result<Self> {
+        // TODO: only read msgpack bytes
+        unsafe { Ok(&*(data as *const [u8] as *const RawBytes)) }
+    }
+}
+
+impl ToTupleBuffer for RawBytes {
+    #[inline(always)]
+    fn write_tuple_data(&self, w: &mut impl Write) -> Result<()> {
+        let data = &**self;
+        validate_msgpack(data)?;
+        w.write_all(data).map_err(Into::into)
+    }
+}
+
+impl std::ops::Deref for RawBytes {
+    type Target = [u8];
+    #[inline(always)]
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// RawByteBuf
+////////////////////////////////////////////////////////////////////////////////
+
+/// A wrapper type for reading raw bytes from a tuple. The difference between
+/// [`Tuple`] and `RawByteBuf` is that the former involves tarantool built-in
+/// memory allocation, while the latter is based on a simple heap allocated
+/// `Vec<u8>`.
+///
+/// This type may seem similar to `TupleBuffer`, but the difference is that
+/// `TupleBuffer` always contains a valid tuple (msgpack array) whereas
+/// `RawByteBuf` may contain any sequnece of bytes, it may not be valid msgpack
+/// at all.
+///
+/// This type also implements [`ToTupleBuffer`] such that `to_tuple_buffer`
+/// returns `Ok` only if the underlying bytes represent a valid tuple.
+#[derive(Debug)]
+pub struct RawByteBuf(pub Vec<u8>);
+
+impl From<Vec<u8>> for RawByteBuf {
+    #[inline(always)]
+    fn from(b: Vec<u8>) -> Self {
+        Self(b)
+    }
+}
+
+impl Decode<'_> for RawByteBuf {
+    #[inline(always)]
+    fn decode(data: &[u8]) -> Result<Self> {
+        // TODO: only read msgpack bytes
+        Ok(Self(data.into()))
+    }
+}
+
+impl ToTupleBuffer for RawByteBuf {
+    #[inline(always)]
+    fn write_tuple_data(&self, w: &mut impl Write) -> Result<()> {
+        let data = self.as_slice();
+        validate_msgpack(data)?;
+        w.write_all(data).map_err(Into::into)
+    }
+}
+
+impl std::ops::Deref for RawByteBuf {
+    type Target = Vec<u8>;
+    #[inline(always)]
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl std::ops::DerefMut for RawByteBuf {
+    #[inline(always)]
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
     }
 }
 

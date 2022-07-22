@@ -154,7 +154,7 @@ impl Conn {
     pub fn call_async<A, R>(&self, func: &str, args: A) -> crate::Result<Promise<R>>
     where
         A: ToTupleBuffer,
-        R: Decode + 'static,
+        R: for<'de> Decode<'de> + 'static,
     {
         self.inner.request_async(protocol::Call(func, args))
     }
@@ -190,7 +190,7 @@ impl Conn {
     pub fn eval_async<A, R>(&self, expr: &str, args: A) -> crate::Result<Promise<R>>
     where
         A: ToTupleBuffer,
-        R: Decode + 'static,
+        R: for<'de> Decode<'de> + 'static,
     {
         self.inner.request_async(protocol::Eval(expr, args))
     }

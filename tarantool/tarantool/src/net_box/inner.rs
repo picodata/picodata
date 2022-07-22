@@ -163,7 +163,7 @@ impl ConnInner {
     pub(crate) fn request_async<I, O>(self: &Rc<Self>, request: I) -> crate::Result<Promise<O>>
     where
         I: Request,
-        O: Decode + 'static,
+        O: for<'de> Decode<'de> + 'static,
     {
         loop {
             match self.state.get() {

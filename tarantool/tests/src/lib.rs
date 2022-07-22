@@ -485,6 +485,7 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 tuple::tuple_iterator_seek_rewind,
                 tuple::tuple_get_format,
                 tuple::tuple_get_field,
+                tuple::raw_bytes,
             ]);
             tests.append(&mut tests![
                 [should_panic_if: !tarantool::ffi::has_tuple_field_by_path()]
