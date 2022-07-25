@@ -753,7 +753,7 @@ impl Space {
     pub fn meta(&self) -> Result<SpaceMetadata, Error> {
         let sys_space: Space = SystemSpace::Space.into();
         let tuple = sys_space.get(&(self.id,))?.ok_or(Error::MetaNotFound)?;
-        tuple.as_struct::<SpaceMetadata>()
+        tuple.decode::<SpaceMetadata>()
     }
 }
 

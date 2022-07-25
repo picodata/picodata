@@ -32,7 +32,7 @@ pub struct Tuple {
 
 impl Debug for Tuple {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        if let Ok(v) = self.as_struct::<rmpv::Value>() {
+        if let Ok(v) = self.decode::<rmpv::Value>() {
             f.debug_tuple("Tuple").field(&v).finish()
         } else {
             // Probably will never happen but better safe than sorry
@@ -244,13 +244,38 @@ impl Tuple {
         self.try_get(key).expect("Error during getting tuple field")
     }
 
-    /// Deserializes tuple contents into structure of type `T`
-    pub fn as_struct<T>(&self) -> Result<T>
+    /// Decode tuple contents as `T`.
+    ///
+    /// **NOTE**: Because [`Tuple`] implements [`DecodeOwned`], you can do
+    /// something like this
+    /// ```no_run
+    /// use tarantool::tuple::{Decode, Tuple};
+    /// let tuple: Tuple;
+    /// # tuple = Tuple::new(&[1, 2, 3]).unwrap();
+    /// let deep_copy: Tuple = tuple.decode().unwrap();
+    /// let inc_ref_count: Tuple = tuple.clone();
+    /// ```
+    /// "Decoding" a `Tuple` into a `Tuple` will basically perform a **deep
+    /// copy** of its contents, while `tuple.clone()` will just increase tuple's
+    /// reference count. There's probably no use case for deep copying the
+    /// tuple, because there's actully no way to move data out of it, so keep
+    /// this in mind.
+    #[inline]
+    pub fn decode<T>(&self) -> Result<T>
     where
         T: DecodeOwned,
     {
         let raw_data = self.as_buffer();
         Decode::decode(&raw_data)
+    }
+
+    /// Deserializes tuple contents into structure of type `T`
+    #[deprecated = "Use `Tuple::decode` instead"]
+    pub fn as_struct<T>(&self) -> Result<T>
+    where
+        T: DecodeOwned,
+    {
+        self.decode()
     }
 
     #[inline]
@@ -269,11 +294,12 @@ impl Tuple {
     }
 
     /// Deserializes tuple contents into structure of type `T`
+    #[deprecated = "Use `Tuple::decode` instead"]
     pub fn into_struct<T>(self) -> Result<T>
     where
         T: DecodeOwned,
     {
-        self.as_struct()
+        self.decode()
     }
 
     pub(crate) fn into_ptr(self) -> *mut ffi::BoxTuple {
@@ -968,11 +994,22 @@ impl From<&FunctionArgs> for Tuple {
 
 impl FunctionArgs {
     /// Deserialize a tuple reprsented by the function args as `T`.
+    #[inline(always)]
+    pub fn decode<T>(&self) -> Result<T>
+    where
+        T: DecodeOwned,
+    {
+        Tuple::from(self).decode()
+    }
+
+    /// Deserialize a tuple reprsented by the function args as `T`.
+    #[inline(always)]
+    #[deprecated = "Use `FunctionArgs::decode` instead."]
     pub fn as_struct<T>(&self) -> Result<T>
     where
         T: DecodeOwned,
     {
-        Tuple::from(self).as_struct()
+        self.decode()
     }
 }
 

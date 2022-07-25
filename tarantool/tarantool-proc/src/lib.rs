@@ -61,7 +61,7 @@ pub fn stored_proc(attr: TokenStream, item: TokenStream) -> TokenStream {
             let __tp_tuple = #tarantool::tuple::Tuple::from(__tp_args);
             #debug_tuple
             let #input_pattern =
-                match __tp_tuple.into_struct() {
+                match __tp_tuple.decode() {
                     ::std::result::Result::Ok(__tp_args) => __tp_args,
                     ::std::result::Result::Err(__tp_err) => {
                         #tarantool::set_error!(

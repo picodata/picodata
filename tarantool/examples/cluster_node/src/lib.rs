@@ -24,7 +24,7 @@ lazy_static! {
 #[no_mangle]
 pub extern "C" fn run_node(_: FunctionCtx, args: FunctionArgs) -> c_int {
     let args: Tuple = args.into();
-    let (bootstrap_addrs,) = args.into_struct::<(Vec<String>,)>().unwrap();
+    let (bootstrap_addrs,) = args.decode::<(Vec<String>,)>().unwrap();
 
     let node =
         Rc::new(Node::new("libcluster_node.rpc", bootstrap_addrs, Default::default()).unwrap());

@@ -14,7 +14,7 @@ impl Encode for Args {}
 #[no_mangle]
 pub extern "C" fn harder(_: FunctionCtx, args: FunctionArgs) -> c_int {
     let args: Tuple = args.into();
-    let args = args.into_struct::<Args>().unwrap();
+    let args = args.decode::<Args>().unwrap();
     println!("field_count = {}", args.fields.len());
 
     for val in args.fields {

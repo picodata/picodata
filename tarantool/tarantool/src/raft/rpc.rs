@@ -70,7 +70,7 @@ pub fn init_stored_proc(function_name: &str) -> Result<(), Error> {
         // resolve new func id: get max id + increment
         let id = match func_sys_space.primary_key().max(&())? {
             None => 1,
-            Some(t) => t.into_struct::<(u32,)>()?.0 + 1, // decode: Result -> Tuple[u32] -> (u32,) -> u32
+            Some(t) => t.decode::<(u32,)>()?.0 + 1, // decode: Result -> Tuple[u32] -> (u32,) -> u32
         };
 
         // create new func record

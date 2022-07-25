@@ -76,12 +76,12 @@ impl ConnSchema {
         self.is_updating.set(true);
         let (spaces_data, actual_schema_version) = self.fetch_schema_spaces(conn_inner)?;
         for row in spaces_data {
-            let (id, _, name) = row.into_struct::<(u32, u32, String)>()?;
+            let (id, _, name) = row.decode::<(u32, u32, String)>()?;
             self.space_ids.borrow_mut().insert(name, id);
         }
 
         for row in self.fetch_schema_indexes(conn_inner)? {
-            let (space_id, index_id, name) = row.into_struct::<(u32, u32, String)>()?;
+            let (space_id, index_id, name) = row.decode::<(u32, u32, String)>()?;
             self.index_ids
                 .borrow_mut()
                 .insert((space_id, name), index_id);

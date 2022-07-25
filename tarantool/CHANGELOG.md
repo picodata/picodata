@@ -12,6 +12,8 @@
     `#[tarantool::proc]` macro attribute. (`impl Return for Tuple`)
 - `Tuple::new` function for creating tuples from anything that can be converted
     to one.
+- `Tuple::decode` method for converting tuple into something that implements
+    `DecodeOwned`.
 - `impl From<TupleBuffer> for Vec<u8>`
 - `impl From<(u32, FieldType)> for KeyDefItem`
 
@@ -25,6 +27,8 @@
     `serde::Deserialize` now require `tuple::Decode`) e.g. `Tuple::get`,
     `TupleIterator::next`, etc. This coincidentally means that you can read a
     tuple's field into a `Tuple`, but you probably don't want that.
+- `Tuple::as_struct` & `Tuple::into_struct` are deprecated. Use `Tuple::decode`
+    instead.
 - `KeyDef::new` now accepts a generic `impl IntoIterator<Item=impl Into<KeyDefItem>>`
 
 

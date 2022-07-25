@@ -52,7 +52,7 @@ pub fn return_tuple() {
     }
 
     let tuple: Tuple = call_proc("proc_return_tuple", (1998, "March")).unwrap();
-    let data: (u32, String) = tuple.into_struct().unwrap();
+    let data: (u32, String) = tuple.decode().unwrap();
     assert_eq!(data, (1998, "March".to_string()));
 
     let data: [String; 2] = call_proc("proc_return_tuple_buf", ()).unwrap();

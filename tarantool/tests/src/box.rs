@@ -47,7 +47,7 @@ pub fn get() {
     let output = idx_1.get(&("key_16".to_string(),)).unwrap();
     assert!(output.is_some());
     assert_eq!(
-        output.unwrap().into_struct::<S2Record>().unwrap(),
+        output.unwrap().decode::<S2Record>().unwrap(),
         S2Record {
             id: 16,
             key: "key_16".to_string(),
@@ -61,7 +61,7 @@ pub fn get() {
     let output = idx_2.get(&S2Key { id: 17, a: 2, b: 3 }).unwrap();
     assert!(output.is_some());
     assert_eq!(
-        output.unwrap().into_struct::<S2Record>().unwrap(),
+        output.unwrap().decode::<S2Record>().unwrap(),
         S2Record {
             id: 17,
             key: "key_17".to_string(),
@@ -78,7 +78,7 @@ pub fn select() {
         .primary_key()
         .select(IteratorType::LE, &(5,))
         .unwrap()
-        .map(|x| x.into_struct().unwrap())
+        .map(|x| x.decode().unwrap())
         .collect();
     assert_eq!(
         result,
@@ -110,7 +110,7 @@ pub fn select() {
     let result: Vec<S2Record> = idx
         .select(IteratorType::Eq, &(3,))
         .unwrap()
-        .map(|x| x.into_struct().unwrap())
+        .map(|x| x.decode().unwrap())
         .collect();
     assert_eq!(
         result,
@@ -154,7 +154,7 @@ pub fn select_composite_key() {
     let result: Vec<S2Record> = idx
         .select(IteratorType::Eq, &(3, 3, 0))
         .unwrap()
-        .map(|x| x.into_struct().unwrap())
+        .map(|x| x.decode().unwrap())
         .collect();
     assert_eq!(
         result,
@@ -181,7 +181,7 @@ pub fn random() {
     let result = idx.random(rng.gen()).unwrap();
     assert!(result.is_some());
 
-    let output = result.unwrap().into_struct::<S2Record>().unwrap();
+    let output = result.unwrap().decode::<S2Record>().unwrap();
     assert_eq!(output.a, (output.id as i32) % 5);
     assert_eq!(output.b, (output.id as i32) / 5);
     assert_eq!(output.key, format!("key_{}", output.id));
@@ -195,7 +195,7 @@ pub fn min_max() {
     let result_min = idx.min(&(3,)).unwrap();
     assert!(result_min.is_some());
     assert_eq!(
-        result_min.unwrap().into_struct::<S2Record>().unwrap(),
+        result_min.unwrap().decode::<S2Record>().unwrap(),
         S2Record {
             id: 3,
             key: "key_3".to_string(),
@@ -208,7 +208,7 @@ pub fn min_max() {
     let result_max = idx.max(&(3,)).unwrap();
     assert!(result_max.is_some());
     assert_eq!(
-        result_max.unwrap().into_struct::<S2Record>().unwrap(),
+        result_max.unwrap().decode::<S2Record>().unwrap(),
         S2Record {
             id: 18,
             key: "key_18".to_string(),
@@ -243,11 +243,11 @@ pub fn extract_key() {
     };
     let key: Tuple = idx.extract_key(Tuple::new(&record).unwrap());
     assert_eq!(
-        key.as_struct::<S2Key>().unwrap(),
+        key.decode::<S2Key>().unwrap(),
         S2Key { id: 11, a: 1, b: 2 }
     );
     let tuple = idx.get(&key).unwrap().unwrap();
-    assert_eq!(tuple.as_struct::<S2Record>().unwrap(), record);
+    assert_eq!(tuple.decode::<S2Record>().unwrap(), record);
 }
 
 pub fn insert() {
@@ -260,13 +260,13 @@ pub fn insert() {
     };
     let insert_result = space.insert(&input).unwrap();
     assert_eq!(
-        insert_result.into_struct::<S1Record>().unwrap(),
+        insert_result.decode::<S1Record>().unwrap(),
         input
     );
 
     let output = space.get(&(input.id,)).unwrap();
     assert!(output.is_some());
-    assert_eq!(output.unwrap().into_struct::<S1Record>().unwrap(), input);
+    assert_eq!(output.unwrap().decode::<S1Record>().unwrap(), input);
 }
 
 pub fn replace() {
@@ -285,14 +285,14 @@ pub fn replace() {
     };
     let replace_result = space.replace(&new_input).unwrap();
     assert_eq!(
-        replace_result.into_struct::<S1Record>().unwrap(),
+        replace_result.decode::<S1Record>().unwrap(),
         new_input
     );
 
     let output = space.get(&(new_input.id,)).unwrap();
     assert!(output.is_some());
     assert_eq!(
-        output.unwrap().into_struct::<S1Record>().unwrap(),
+        output.unwrap().decode::<S1Record>().unwrap(),
         new_input
     );
 }
@@ -310,7 +310,7 @@ pub fn delete() {
     let delete_result = space.delete(&(input.id,)).unwrap();
     assert!(delete_result.is_some());
     assert_eq!(
-        delete_result.unwrap().into_struct::<S1Record>().unwrap(),
+        delete_result.unwrap().decode::<S1Record>().unwrap(),
         input
     );
 
@@ -342,7 +342,7 @@ pub fn update() {
     assert_eq!(
         update_result
             .unwrap()
-            .into_struct::<S1Record>()
+            .decode::<S1Record>()
             .unwrap()
             .text,
         "New"
@@ -350,7 +350,7 @@ pub fn update() {
 
     let output = space.get(&(input.id,)).unwrap();
     assert_eq!(
-        output.unwrap().into_struct::<S1Record>().unwrap().text,
+        output.unwrap().decode::<S1Record>().unwrap().text,
         "New"
     );
 }
@@ -380,7 +380,7 @@ pub fn update_macro() {
 
     let updated = update_result
         .unwrap()
-        .into_struct::<S2Record>().unwrap();
+        .decode::<S2Record>().unwrap();
     assert_eq!(updated.key, "New");
     assert_eq!(updated.value, "New");
     assert_eq!(updated.a, 1);
@@ -388,7 +388,7 @@ pub fn update_macro() {
 
     let output = space.get(&(input.id,))
         .unwrap().unwrap()
-        .into_struct::<S2Record>().unwrap();
+        .decode::<S2Record>().unwrap();
     assert_eq!(output.key, "New");
     assert_eq!(output.value, "New");
     assert_eq!(output.a, 1);
@@ -426,7 +426,7 @@ pub fn update_index_macro() {
 
     let updated = update_result
         .unwrap()
-        .into_struct::<S2Record>().unwrap();
+        .decode::<S2Record>().unwrap();
     assert_eq!(updated.key, "NewKey");
     assert_eq!(updated.value, "New");
     assert_eq!(updated.a, 1);
@@ -434,7 +434,7 @@ pub fn update_index_macro() {
 
     let output = space.get(&(input.id,))
         .unwrap().unwrap()
-        .into_struct::<S2Record>().unwrap();
+        .decode::<S2Record>().unwrap();
     assert_eq!(output.key, "NewKey");
     assert_eq!(output.value, "New");
     assert_eq!(output.a, 1);
@@ -481,13 +481,13 @@ pub fn upsert() {
 
     let output = space.get(&(1,)).unwrap();
     assert_eq!(
-        output.unwrap().into_struct::<S1Record>().unwrap().text,
+        output.unwrap().decode::<S1Record>().unwrap().text,
         "Test 1"
     );
 
     let output = space.get(&(2,)).unwrap();
     assert_eq!(
-        output.unwrap().into_struct::<S1Record>().unwrap().text,
+        output.unwrap().decode::<S1Record>().unwrap().text,
         "New"
     );
 }
@@ -531,12 +531,12 @@ pub fn upsert_macro() {
             ("=", "a", 1),
     ).unwrap();
 
-    let output = space.get(&(111, )).unwrap().unwrap().into_struct::<S2Record>().unwrap();
+    let output = space.get(&(111, )).unwrap().unwrap().decode::<S2Record>().unwrap();
     assert_eq!(output.key, "test_box_upsert_macro_1");
     assert_eq!(output.value, "UpsertUpdated");
     assert_eq!(output.a, 1);
 
-    let output = space.get(&(112, )).unwrap().unwrap().into_struct::<S2Record>().unwrap();
+    let output = space.get(&(112, )).unwrap().unwrap().decode::<S2Record>().unwrap();
     assert_eq!(output.key, "test_box_upsert_macro_2");
     assert_eq!(output.value, "UpsertNew");
     assert_eq!(output.a, 2);
@@ -719,7 +719,7 @@ pub fn space_create_is_sync() {
         flags: BTreeMap<String, bool>,
     }
 
-    let info = info.as_struct::<Info>().unwrap();
+    let info = info.decode::<Info>().unwrap();
     assert_eq!(info.flags.get("is_sync"), Some(&true));
 
     drop_space("new_space_8");
@@ -816,8 +816,8 @@ pub fn index_parts() {
     let mut iter = index.select(tarantool::index::IteratorType::All, &())
         .unwrap();
 
-    assert_eq!(iter.next().and_then(|t| t.as_struct().ok()), Some((1, 2, 3)));
-    assert_eq!(iter.next().and_then(|t| t.as_struct().ok()), Some((2, "foo".to_string())));
-    assert_eq!(iter.next().and_then(|t| t.as_struct().ok()), Some((3, 3.14, [3, 2, 1])));
+    assert_eq!(iter.next().and_then(|t| t.decode().ok()), Some((1, 2, 3)));
+    assert_eq!(iter.next().and_then(|t| t.decode().ok()), Some((2, "foo".to_string())));
+    assert_eq!(iter.next().and_then(|t| t.decode().ok()), Some((3, 3.14, [3, 2, 1])));
     assert!(iter.next().is_none());
 }

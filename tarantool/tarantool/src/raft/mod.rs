@@ -120,7 +120,7 @@ impl Node {
     pub fn handle_rpc(&self, ctx: FunctionCtx, args: FunctionArgs) -> i32 {
         let args: Tuple = args.into();
 
-        match args.into_struct::<rpc::Request>() {
+        match args.decode::<rpc::Request>() {
             Err(e) => set_error!(TarantoolErrorCode::Protocol, "{}", e),
             Ok(request) => {
                 match request {
@@ -165,7 +165,7 @@ impl Node {
             Ok(response) => match response {
                 None => Ok(None),
                 Some(response) => {
-                    let ((resp,),) = response.into_struct::<((rpc::Response,),)>()?;
+                    let ((resp,),) = response.decode::<((rpc::Response,),)>()?;
                     Ok(Some(resp))
                 }
             },

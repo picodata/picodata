@@ -93,7 +93,7 @@ pub fn tuple_size() {
     assert_eq!(tuple.bsize(), 14);
 }
 
-pub fn tuple_into_struct() {
+pub fn tuple_decode() {
     let input = S2Record {
         id: 1,
         key: "key".to_string(),
@@ -104,12 +104,12 @@ pub fn tuple_into_struct() {
 
     // 1:1 decode
     let tuple = Tuple::new(&input).unwrap();
-    let output: S2Record = tuple.into_struct().unwrap();
+    let output: S2Record = tuple.decode().unwrap();
     assert_eq!(output, input);
 
     // partial decode (with trimming trailing fields)
     let tuple = Tuple::new(&input).unwrap();
-    let output: S1Record = tuple.into_struct().unwrap();
+    let output: S1Record = tuple.decode().unwrap();
     assert_eq!(
         output,
         S1Record {
@@ -127,7 +127,7 @@ pub fn tuple_clone() {
     })
     .unwrap();
     let tuple_1 = tuple_2.clone();
-    assert!(tuple_1.into_struct::<S1Record>().is_ok());
+    assert!(tuple_1.decode::<S1Record>().is_ok());
 }
 
 pub fn tuple_iterator() {
@@ -322,7 +322,7 @@ pub fn to_and_from_lua() {
     let tuple: Tuple = lua.eval("
         return box.tuple.new{ 1, 3.14, 'hello', { 10, 20, 30 } }
     ").unwrap();
-    let data: (u32, f64, String, [u32; 3]) = tuple.into_struct().unwrap();
+    let data: (u32, f64, String, [u32; 3]) = tuple.decode().unwrap();
     assert_eq!(data, (1, 3.14, "hello".to_string(), [10, 20, 30]));
 
     let tuple_in_lua: Indexable<_> = lua.get("to_and_from_lua").unwrap();
@@ -334,7 +334,7 @@ pub fn to_and_from_lua() {
     drop(tuple_in_lua);
 
     let tuple: Tuple = lua.get("to_and_from_lua").unwrap();
-    let res = tuple.into_struct::<S2Record>().unwrap();
+    let res = tuple.decode::<S2Record>().unwrap();
     assert_eq!(res, S2Record {
         id: 42,
         key: "hello".into(),

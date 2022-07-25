@@ -42,7 +42,7 @@ pub fn from_string() {
 pub fn from_tuple() {
     let t: Tuple = tarantool::lua_state()
         .eval("return box.tuple.new(require('decimal').new('-8.11'))").unwrap();
-    let (d,): (Decimal,) = t.as_struct().unwrap();
+    let (d,): (Decimal,) = t.decode().unwrap();
     assert_eq!(d.to_string(), "-8.11");
 }
 

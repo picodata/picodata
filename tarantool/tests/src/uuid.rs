@@ -19,7 +19,7 @@ pub fn from_tuple() {
     let t: Tuple = tarantool::lua_state().eval(
         &format!("return box.tuple.new(require('uuid').fromstr('{}'))", UUID_STR)
     ).unwrap();
-    let (u,): (Uuid,) = t.as_struct().unwrap();
+    let (u,): (Uuid,) = t.decode().unwrap();
     assert_eq!(u.to_string(), UUID_STR);
 }
 

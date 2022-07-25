@@ -23,7 +23,7 @@ pub fn transaction_commit() {
 
     let output = space.get(&(1,)).unwrap();
     assert!(output.is_some());
-    assert_eq!(output.unwrap().into_struct::<S1Record>().unwrap(), input);
+    assert_eq!(output.unwrap().decode::<S1Record>().unwrap(), input);
 }
 
 pub fn transaction_rollback() {

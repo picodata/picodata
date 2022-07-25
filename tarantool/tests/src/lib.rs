@@ -479,7 +479,7 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 tuple::new_tuple_from_flutten_struct,
                 tuple::tuple_field_count,
                 tuple::tuple_size,
-                tuple::tuple_into_struct,
+                tuple::tuple_decode,
                 tuple::tuple_clone,
                 tuple::tuple_iterator,
                 tuple::tuple_iterator_seek_rewind,
