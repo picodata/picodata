@@ -130,6 +130,103 @@ numeric_impl!{u8, ffi::lua_pushinteger, ffi::lua_tointeger}
 numeric_impl!{f64, ffi::lua_pushnumber, ffi::lua_tonumber}
 numeric_impl!{f32, ffi::lua_pushnumber, ffi::lua_tonumber}
 
+macro_rules! strict_numeric_impl {
+    (@is_valid int $num:tt $t:ty) => {
+        $num.is_finite() && $num.fract() == 0.0 &&
+        $num >= <$t>::MIN as _ && $num <= <$t>::MAX as _
+    };
+    (@is_valid float $num:tt $t:ty) => {
+        !$num.is_finite() || $num >= <$t>::MIN as _ && $num <= <$t>::MAX as _
+    };
+    ($k:tt $t:ty) => {
+        impl<L> LuaRead<L> for Strict<$t>
+        where
+            L: AsLua,
+        {
+            #[inline(always)]
+            fn lua_read_at_position(lua: L, index: NonZeroI32) -> Result<Self, L> {
+                let l = lua.as_lua();
+                let idx = index.into();
+                let res = unsafe {
+                    match ffi::lua_type(l, idx) {
+                        ffi::LUA_TNUMBER => {
+                            let num = ffi::lua_tonumber(l, idx);
+                            let is_valid = strict_numeric_impl!(@is_valid $k num $t);
+                            if is_valid {
+                                Some(num as $t)
+                            } else {
+                                None
+                            }
+                        }
+                        _ => None,
+                    }
+                };
+                res.map(Strict).ok_or(lua)
+            }
+        }
+    }
+}
+
+/// A wrapper type for reading lua numbers of concrete precisions without
+/// implicit coercions.
+///
+/// By default when reading a numeric type (int or float) from a lua number
+/// (i.e. calling [`LuaRead::lua_read_at_position`]) the resulting number will
+/// be implicitly coerced into the target type. For example if the lua number
+/// has a non zero fractional part it will be discarded when reading the number
+/// as integer.
+/// ```no_run
+/// use tlua::Lua;
+/// let lua = tlua::Lua::new();
+/// let i: Option<i32> = lua.eval("return 3.14").ok();
+/// assert_eq!(i, Some(3));
+/// ```
+///
+/// If you don't want the implicit coercision, you can use the `Strict` wrapper:
+/// ```no_run
+/// # use tlua::Lua;
+/// use tlua::Strict;
+/// # let lua = Lua::new();
+/// let i: Option<Strict<i32>> = lua.eval("return 3.14").ok();
+/// assert_eq!(i, None); // would result in loss of data
+///
+/// let f: Option<Strict<f64>> = lua.eval("return 3.14").ok();
+/// assert_eq!(f, Some(Strict(3.14))); // ok
+/// ```
+///
+/// This *strictness* also applies in terms of number sizes:
+/// ```no_run
+/// # use tlua::{Lua, Strict};
+/// # let lua = Lua::new();
+/// let i: Option<u8> = lua.eval("return 256").ok();
+/// assert_eq!(i, Some(0)); // non-strict => data loss
+///
+/// let i: Option<Strict<u8>> = lua.eval("return 256").ok();
+/// assert_eq!(i, None); // strict => must not lose data
+///
+/// let i: Option<Strict<u16>> = lua.eval("return 256").ok();
+/// assert_eq!(i, Some(Strict(256))); // strict => no data loss
+/// ```
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
+pub struct Strict<T>(pub T);
+
+strict_numeric_impl!{int i8}
+strict_numeric_impl!{int i16}
+strict_numeric_impl!{int i32}
+strict_numeric_impl!{int i64}
+strict_numeric_impl!{int u8}
+strict_numeric_impl!{int u16}
+strict_numeric_impl!{int u32}
+strict_numeric_impl!{int u64}
+strict_numeric_impl!{float f32}
+strict_numeric_impl!{float f64}
+
+impl<T> From<T> for Strict<T> {
+    fn from(v: T) -> Self {
+        Self(v)
+    }
+}
+
 macro_rules! impl_push_read {
     (
         $t:ty,

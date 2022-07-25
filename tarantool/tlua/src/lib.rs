@@ -134,7 +134,7 @@ pub use rust_tables::{TableFromIter, PushIterError, PushIterErrorOf};
 pub use tuples::{AsTable, TuplePushError};
 pub use userdata::UserdataOnStack;
 pub use userdata::{push_userdata, read_userdata, push_some_userdata};
-pub use values::{StringInLua, Nil, Null, True, False, Typename, ToString};
+pub use values::{StringInLua, Nil, Null, True, False, Typename, ToString, Strict};
 pub use ::tlua_derive::*;
 
 #[deprecated = "Use `CallError` instead"]
