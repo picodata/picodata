@@ -12,11 +12,12 @@ esac
 
 FILTER="$1"
 
+TARANTOOL_EXECUTABLE=${TARANTOOL_EXECUTABLE:-tarantool}
+
 WORKSPACE_ROOT=$(
     cargo metadata --format-version=1 |
-        tarantool -e \
+        $TARANTOOL_EXECUTABLE -e \
             'print(require("json").decode(io.read("*l")).workspace_root)'
 )
 
-TARANTOOL_EXECUTABLE=${TARANTOOL_EXECUTABLE:-tarantool}
 "${TARANTOOL_EXECUTABLE}" "${WORKSPACE_ROOT}/tests/run_tests.lua" "${FILTER}"
