@@ -712,7 +712,7 @@ fn postjoin(args: &args::Run) {
         tlog!(
             Info,
             concat!(
-                "this is the only vorer in cluster, ",
+                "this is the only voter in cluster, ",
                 "triggering election immediately"
             )
         );
