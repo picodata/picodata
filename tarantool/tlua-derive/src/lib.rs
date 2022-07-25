@@ -1,32 +1,46 @@
 use proc_macro2::{TokenStream, Span};
 use quote::quote;
-use syn::{parse_macro_input, DeriveInput, Ident};
+use syn::{parse_macro_input, DeriveInput, Ident, Lifetime, Type};
 
-#[proc_macro_derive(Push)]
-pub fn proc_macro_derive_push(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+fn proc_macro_derive_push_impl(
+    input: proc_macro::TokenStream,
+    is_push_into: bool,
+) -> proc_macro::TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     // TODO(gmoshkin): add an attribute to specify path to tlua module (see serde)
-    // TODO(gmoshkin): add support for types with generic type parameters
+    // TODO(gmoshkin): add support for custom type param bounds
     let name = &input.ident;
-    let push_code = Info::new(&input).push();
+    let info = Info::new(&input);
+    let ctx = Context::with_generics(&input.generics)
+        .set_is_push_into(is_push_into);
+    let params = input.generics.params.iter().collect::<Vec<_>>();
+    let (_, generics, where_clause) = input.generics.split_for_impl();
+    let type_bounds = where_clause.map(|w| &w.predicates);
+    let as_lua_bounds = info.push_bounds(&ctx);
+    let push_code = info.push();
+    let PushVariant { push_fn, push, push_one } = ctx.push_variant();
+    let l = ctx.as_lua_type_param;
 
     let expanded = quote! {
-        impl<L> tlua::Push<L> for #name
+        #[automatically_derived]
+        impl<#(#params,)* #l> tlua::#push<#l> for #name #generics
         where
-            L: tlua::AsLua,
+            #l: tlua::AsLua,
+            #as_lua_bounds
+            #type_bounds
         {
             type Err = tlua::Void;
 
-            fn push_to_lua(&self, __lua: L)
-                -> ::std::result::Result<tlua::PushGuard<L>, (Self::Err, L)>
-            {
+            fn #push_fn -> ::std::result::Result<tlua::PushGuard<#l>, (Self::Err, #l)> {
                 Ok(#push_code)
             }
         }
 
-        impl<L> tlua::PushOne<L> for #name
+        impl<#(#params,)* #l> tlua::#push_one<#l> for #name #generics
         where
-            L: tlua::AsLua,
+            #l: tlua::AsLua,
+            #as_lua_bounds
+            #type_bounds
         {
         }
     };
@@ -34,34 +48,14 @@ pub fn proc_macro_derive_push(input: proc_macro::TokenStream) -> proc_macro::Tok
     expanded.into()
 }
 
+#[proc_macro_derive(Push)]
+pub fn proc_macro_derive_push(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    proc_macro_derive_push_impl(input, false)
+}
+
 #[proc_macro_derive(PushInto)]
 pub fn proc_macro_derive_push_into(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    let input = parse_macro_input!(input as DeriveInput);
-    let name = &input.ident;
-    let push_code = Info::new(&input).push();
-
-    let expanded = quote! {
-        impl<L> tlua::PushInto<L> for #name
-        where
-            L: tlua::AsLua,
-        {
-            type Err = tlua::Void;
-
-            fn push_into_lua(self, __lua: L)
-                -> ::std::result::Result<tlua::PushGuard<L>, (Self::Err, L)>
-            {
-                Ok(#push_code)
-            }
-        }
-
-        impl<L> tlua::PushOneInto<L> for #name
-        where
-            L: tlua::AsLua,
-        {
-        }
-    };
-
-    expanded.into()
+    proc_macro_derive_push_impl(input, true)
 }
 
 #[proc_macro_derive(LuaRead)]
@@ -69,21 +63,31 @@ pub fn proc_macro_derive_lua_read(input: proc_macro::TokenStream) -> proc_macro:
     let input = parse_macro_input!(input as DeriveInput);
     let name = &input.ident;
     let info = Info::new(&input);
+    let ctx = Context::with_generics(&input.generics);
+    let params = input.generics.params.iter();
+    let (_, generics, where_clause) = input.generics.split_for_impl();
+    let type_bounds = where_clause.map(|w| &w.predicates);
+    let as_lua_bounds = info.read_bounds(&ctx);
     let read_at_code = info.read();
-    let maybe_n_values_expected = info.n_values();
-    let maybe_lua_read = info.read_top();
+    let maybe_n_values_expected = info.n_values(&ctx);
+    let maybe_lua_read = info.read_top(&ctx);
+
+    let l = ctx.as_lua_type_param;
 
     let expanded = quote! {
-        impl<L> tlua::LuaRead<L> for #name
+        #[automatically_derived]
+        impl<#(#params,)* #l> tlua::LuaRead<#l> for #name #generics
         where
-            L: tlua::AsLua,
+            #l: tlua::AsLua,
+            #as_lua_bounds
+            #type_bounds
         {
             #maybe_n_values_expected
 
             #maybe_lua_read
 
-            fn lua_read_at_position(__lua: L, __index: ::std::num::NonZeroI32)
-                -> ::std::result::Result<Self, L>
+            fn lua_read_at_position(__lua: #l, __index: ::std::num::NonZeroI32)
+                -> ::std::result::Result<Self, #l>
             {
                 #read_at_code
             }
@@ -91,6 +95,15 @@ pub fn proc_macro_derive_lua_read(input: proc_macro::TokenStream) -> proc_macro:
     };
 
     expanded.into()
+}
+
+macro_rules! ident {
+    ($str:literal) => {
+        Ident::new($str, Span::call_site())
+    };
+    ($($args:tt)*) => {
+        Ident::new(&format!($($args)*), Span::call_site())
+    };
 }
 
 enum Info<'a> {
@@ -140,6 +153,49 @@ impl<'a> Info<'a> {
         }
     }
 
+    fn push_bounds(&self, ctx: &Context) -> TokenStream {
+        let l = &ctx.as_lua_type_param;
+        let PushVariant { push, push_one, .. } = ctx.push_variant();
+
+        let field_bounds = |info: &FieldsInfo| {
+            match info {
+                FieldsInfo::Named { field_types: ty, .. } => {
+                    let ty = ty.iter().filter(|ty| ctx.is_generic(ty));
+                    quote! {
+                        #(
+                            #ty: tlua::#push_one<tlua::LuaState>,
+                            tlua::Void: ::std::convert::From<<#ty as tlua::#push<tlua::LuaState>>::Err>,
+                        )*
+                    }
+                }
+                FieldsInfo::Unnamed { field_types: ty, .. }
+                    if ty.iter().any(|ty| ctx.is_generic(ty)) =>
+                {
+                    quote! {
+                        (#(#ty),*): tlua::#push<#l>,
+                        tlua::Void: ::std::convert::From<<(#(#ty),*) as tlua::#push<#l>>::Err>,
+                    }
+                }
+                FieldsInfo::Unnamed { .. } => {
+                    quote! {}
+                }
+            }
+        };
+        match self {
+            Self::Struct(f) => {
+                field_bounds(f)
+            }
+            Self::Enum(v) => {
+                let bound = v.variants.iter()
+                    .flat_map(|v| &v.info)
+                    .map(field_bounds);
+                quote! {
+                    #(#bound)*
+                }
+            }
+        }
+    }
+
     fn read(&self) -> TokenStream {
         match self {
             Self::Struct(f) => {
@@ -162,7 +218,52 @@ impl<'a> Info<'a> {
         }
     }
 
-    fn read_top(&self) -> TokenStream {
+    fn read_bounds(&self, ctx: &Context) -> TokenStream {
+        let l = &ctx.as_lua_type_param;
+        let lt = &ctx.as_lua_lifetime_param;
+
+        let field_bounds = |info: &FieldsInfo| {
+            match info {
+                FieldsInfo::Named { field_types: ty, .. } => {
+                    // Structs fields are read as values from the lua tables and
+                    // this is how `LuaTable::get` bounds it's return values
+                    let ty = ty.iter().filter(|ty| ctx.is_generic(ty));
+                    quote! {
+                        #( #ty: for<#lt> tlua::LuaRead<tlua::PushGuard<&#lt #l>>, )*
+                    }
+                }
+                FieldsInfo::Unnamed { field_types: ty, .. }
+                    if ty.iter().any(|ty| ctx.is_generic(ty)) =>
+                {
+                    // Tuple structs are read as tuples, so we bound they're
+                    // fields as if they were a tuple
+                    quote! {
+                        (#(#ty),*): tlua::LuaRead<#l>,
+                    }
+                }
+                FieldsInfo::Unnamed { .. } => {
+                    // Unit structs (as vairants of enums) are read as strings
+                    // so no need for type bounds
+                    quote! {}
+                }
+            }
+        };
+        match self {
+            Self::Struct(f) => {
+                field_bounds(f)
+            }
+            Self::Enum(v) => {
+                let bound = v.variants.iter()
+                    .flat_map(|v| &v.info)
+                    .map(field_bounds);
+                quote! {
+                    #(#bound)*
+                }
+            }
+        }
+    }
+
+    fn read_top(&self, ctx: &Context) -> TokenStream {
         match self {
             Self::Struct(_) => quote!{},
             Self::Enum(v) => {
@@ -171,15 +272,16 @@ impl<'a> Info<'a> {
                 for variant in &v.variants {
                     n_vals.push(
                         if let Some(ref fields) = variant.info {
-                            fields.n_values()
+                            fields.n_values(ctx)
                         } else {
                             quote! { 1 }
                         }
                     );
                     read_and_maybe_return.push(variant.read_and_maybe_return());
                 }
+                let l = &ctx.as_lua_type_param;
                 quote! {
-                    fn lua_read(__lua: L) -> ::std::result::Result<Self, L> {
+                    fn lua_read(__lua: #l) -> ::std::result::Result<Self, #l> {
                         let top = unsafe { tlua::ffi::lua_gettop(__lua.as_lua()) };
                         #(
                             let n_vals = #n_vals;
@@ -199,10 +301,10 @@ impl<'a> Info<'a> {
         }
     }
 
-    fn n_values(&self) -> TokenStream {
+    fn n_values(&self, ctx: &Context) -> TokenStream {
         match self {
             Self::Struct(fields) => {
-                let n_values = fields.n_values();
+                let n_values = fields.n_values(ctx);
                 quote! {
                     #[inline(always)]
                     fn n_values_expected() -> i32 {
@@ -222,6 +324,7 @@ enum FieldsInfo<'a> {
         n_rec: i32,
         field_names: Vec<String>,
         field_idents: Vec<&'a Ident>,
+        field_types: Vec<&'a Type>,
     },
     Unnamed {
         field_idents: Vec<Ident>,
@@ -236,14 +339,18 @@ impl<'a> FieldsInfo<'a> {
                 let n_fields = fields.named.len();
                 let mut field_names = Vec::with_capacity(n_fields);
                 let mut field_idents = Vec::with_capacity(n_fields);
-                for ident in fields.named.iter().filter_map(|f| f.ident.as_ref()) {
+                let mut field_types = Vec::with_capacity(n_fields);
+                for field in fields.named.iter() {
+                    let ident = field.ident.as_ref().unwrap();
                     field_names.push(ident.to_string().trim_start_matches("r#").into());
                     field_idents.push(ident);
+                    field_types.push(&field.ty);
                 }
 
                 Some(Self::Named {
                     field_names,
                     field_idents,
+                    field_types,
                     n_rec: n_fields as _,
                 })
             }
@@ -251,9 +358,7 @@ impl<'a> FieldsInfo<'a> {
                 let mut field_idents = Vec::with_capacity(fields.unnamed.len());
                 let mut field_types = Vec::with_capacity(fields.unnamed.len());
                 for (field, i) in fields.unnamed.iter().zip(0..) {
-                    field_idents.push(
-                        Ident::new(&format!("field_{}", i), Span::call_site())
-                    );
+                    field_idents.push(ident!("field_{}", i));
                     field_types.push(&field.ty);
                 }
 
@@ -347,19 +452,23 @@ impl<'a> FieldsInfo<'a> {
         }
     }
 
-    fn n_values(&self) -> TokenStream {
+    fn n_values(&self, ctx: &Context) -> TokenStream {
         match self {
             Self::Named { .. } => {
                 // Corresponds to a single lua table
                 quote! { 1 }
             }
-            Self::Unnamed { field_types, .. } => {
+            Self::Unnamed { field_types: ty, .. } if !ty.is_empty() => {
+                let l = &ctx.as_lua_type_param;
                 // Corresponds to multiple values on the stack (same as tuple)
                 quote! {
-                    #(
-                        <#field_types as tlua::LuaRead<L>>::n_values_expected()
-                    )+*
+                    <(#(#ty),*) as tlua::LuaRead<#l>>::n_values_expected()
                 }
+            }
+            Self::Unnamed { .. } => {
+                // Unit structs aren't supported yet, but when they are, they'll
+                // probably correspond to a single value
+                quote! { 1 }
             }
         }
     }
@@ -504,5 +613,91 @@ impl<'a> VariantInfo<'a> {
         } else {
             (quote! {}, quote! {})
         }
+    }
+}
+
+struct Context<'a> {
+    as_lua_type_param: Ident,
+    as_lua_lifetime_param: Lifetime,
+    type_params: Vec<&'a Ident>,
+    is_push_into: bool,
+}
+
+struct PushVariant {
+    push_fn: TokenStream,
+    push: syn::Path,
+    push_one: syn::Path,
+}
+impl<'a> Context<'a> {
+    fn new() -> Self {
+        Self {
+            as_lua_type_param: Ident::new("__AsLuaTypeParam", Span::call_site()),
+            as_lua_lifetime_param: Lifetime::new("'as_lua_life_time_param", Span::call_site()),
+            type_params: Vec::new(),
+            is_push_into: false,
+        }
+    }
+
+    fn with_generics(generics: &'a syn::Generics) -> Self {
+        Self {
+            type_params: generics.type_params().map(|tp| &tp.ident).collect(),
+            .. Self::new()
+        }
+    }
+
+    fn set_is_push_into(self, is_push_into: bool) -> Self {
+        Self { is_push_into, .. self }
+    }
+
+    fn push_variant(&self) -> PushVariant {
+        let l = &self.as_lua_type_param;
+        if self.is_push_into {
+            PushVariant {
+                push_fn: quote!{
+                    push_into_lua(self, __lua: #l)
+                },
+                push: ident!("PushInto").into(),
+                push_one: ident!("PushOneInto").into(),
+            }
+         } else {
+            PushVariant {
+                push_fn: quote!{
+                    push_to_lua(&self, __lua: #l)
+                },
+                push: ident!("Push").into(),
+                push_one: ident!("PushOne").into(),
+            }
+         }
+    }
+
+    fn is_generic(&self, ty: &Type) -> bool {
+        struct GenericTypeVisitor<'a> {
+            is_generic: bool,
+            type_params: &'a [&'a Ident],
+        }
+        impl<'a, 'ast> syn::visit::Visit<'ast> for GenericTypeVisitor<'a> {
+            // These cannot actually appear in struct/enum field types,
+            // but who cares
+            fn visit_type_impl_trait(&mut self, _: &'ast syn::TypeImplTrait) {
+                self.is_generic = true;
+            }
+
+            fn visit_type_path(&mut self, tp: &'ast syn::TypePath) {
+                for &typar in self.type_params {
+                    if tp.path.is_ident(typar) {
+                        self.is_generic = true;
+                        return
+                    }
+                }
+                syn::visit::visit_type_path(self, tp)
+            }
+        }
+
+        let mut visitor = GenericTypeVisitor {
+            is_generic: false,
+            type_params: &self.type_params,
+        };
+        syn::visit::visit_type(&mut visitor, ty);
+        visitor.is_generic
     }
 }

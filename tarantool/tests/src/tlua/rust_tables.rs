@@ -395,6 +395,50 @@ pub fn derive_struct_push() {
     assert_eq!(v.get::<f64, _>("x"), Some(3.14));
 }
 
+pub fn derive_generic_struct_push() {
+    #[derive(Push)]
+    struct S<A, B, C, K, V, const N: usize> {
+        a: A,
+        table: Vec<B>,
+        r#struct: T<C>,
+        array: [i32; N],
+        good_fruit: HashMap<K, V>,
+    }
+
+    #[derive(Push)]
+    struct T<C> {
+        x: C,
+    }
+
+    let lua = Lua::new();
+    let lua = lua.push(
+        &S {
+            a: 69,
+            table: vec![101, 102, 103],
+            r#struct: T { x: vec![("hello", 13), ("sailor", 37)] },
+            array: [3, 2, 1],
+            good_fruit: HashMap::from([("apple", true), ("pear", false)])
+        }
+    );
+    let s: LuaTable<_> = lua.read().unwrap();
+    assert_eq!(s.get::<i32, _>("a"), Some(69));
+    let t: LuaTable<_> = s.get("table").unwrap();
+    assert_eq!(t.get::<u8, _>(1), Some(101));
+    assert_eq!(t.get::<u8, _>(2), Some(102));
+    assert_eq!(t.get::<u8, _>(3), Some(103));
+    let t: LuaTable<_> = s.get("struct").unwrap();
+    let t: LuaTable<_> = t.get("x").unwrap();
+    assert_eq!(t.get::<u8, _>("hello"), Some(13));
+    assert_eq!(t.get::<u8, _>("sailor"), Some(37));
+    let t: LuaTable<_> = s.get("array").unwrap();
+    assert_eq!(t.get::<u8, _>(1), Some(3));
+    assert_eq!(t.get::<u8, _>(2), Some(2));
+    assert_eq!(t.get::<u8, _>(3), Some(1));
+    let t: LuaTable<_> = s.get("good_fruit").unwrap();
+    assert_eq!(t.get::<bool, _>("apple"), Some(true));
+    assert_eq!(t.get::<bool, _>("pear"), Some(false));
+}
+
 pub fn derive_struct_lua_read() {
     #[derive(Debug, PartialEq, Eq, LuaRead)]
     struct S { i: i32, s: String, boo: bool, o: Option<i32> }
@@ -409,6 +453,31 @@ pub fn derive_struct_lua_read() {
 
     let t: T = lua.get("t").unwrap();
     assert_eq!(t, T { i: 69, s: "booboo".into() });
+}
+
+pub fn derive_generic_struct_lua_read() {
+    #[derive(LuaRead)]
+    struct S<A, B, C, K, V>
+    where
+        K: std::hash::Hash,
+    {
+        a: A,
+        b: Vec<B>,
+        d: Option<C>,
+        is_prime: HashMap<K, V>,
+    }
+
+    let lua = Lua::new();
+    let s: S<String, f32, u32, u64, bool> = lua.eval("return {
+        a = 'hell yeah',
+        b = { 1, 2, 3 },
+        d = 420,
+        is_prime = { [479] = true, [439] = false }
+    }").unwrap();
+    assert_eq!(s.a, "hell yeah");
+    assert_eq!(s.b, [1.0, 2.0, 3.0]);
+    assert_eq!(s.d, Some(420));
+    assert_eq!(s.is_prime, HashMap::from([(479, true), (439, false)]));
 }
 
 pub fn derive_enum_push() {
@@ -443,6 +512,47 @@ pub fn derive_enum_push() {
     let t: LuaTable<_> = (&lua).read().unwrap();
     assert_eq!(t.get::<i32, _>("i").unwrap(), 420);
     assert_eq!(t.get::<String, _>("s").unwrap(), "blaze");
+}
+
+pub fn derive_generic_enum_push() {
+    #[derive(Push)]
+    enum E<'a, A, T, Foo, Bar, const N: usize> {
+        A(A),
+        B(Foo, Bar),
+        Tuple(T),
+        S(S<Foo, Bar>),
+        Struct {
+            i: Foo,
+            s: Bar,
+        },
+        Str(&'a str),
+        Array([A; N]),
+    }
+
+    #[derive(Push)]
+    #[derive(LuaRead)]
+    struct S<Foo, Bar> { foo: Foo, bar: Bar }
+
+    let lua = Lua::new();
+    type E1<'a> = E<'a, u32, (f32, f32, f32), i64, String, 6>;
+    let lua = lua.push(&E1::A(69));
+    assert_eq!((&lua).read::<i32>().unwrap(), 69);
+    let lua = lua.push(&E1::B(1337, "leet".into()));
+    assert_eq!((&lua).read::<(u32, String)>().unwrap(), (1337, "leet".into()));
+    let lua = lua.push(&E1::Tuple((2.71, 1.62, 3.14)));
+    assert_eq!((&lua).read::<(f32, f32, f32)>().unwrap(), (2.71, 1.62, 3.14));
+    let lua = lua.push(&E1::S(S { foo: 69, bar: "nice".into() }));
+    let s = (&lua).read::<S<i64, String>>().unwrap();
+    assert_eq!(s.foo, 69);
+    assert_eq!(s.bar, "nice");
+    let lua = lua.push(&E1::Struct { i: 420, s: "blaze".into() });
+    let t: LuaTable<_> = (&lua).read().unwrap();
+    assert_eq!(t.get::<i32, _>("i").unwrap(), 420);
+    assert_eq!(t.get::<String, _>("s").unwrap(), "blaze");
+    let lua = lua.push(&E1::Str("stupendous"));
+    assert_eq!((&lua).read::<String>().unwrap(), "stupendous");
+    let lua = lua.push(&E1::Array([4, 8, 15, 16, 23, 42]));
+    assert_eq!((&lua).read::<Vec<u8>>().unwrap(), [4, 8, 15, 16, 23, 42]);
 }
 
 pub fn derive_push_into() {
@@ -493,6 +603,53 @@ pub fn derive_push_into() {
     assert_eq!((&lua).read().ok(), Some("goodbye".to_string()));
 }
 
+pub fn derive_generic_push_into() {
+    #[derive(PushInto)]
+    enum E0<A, Foo, Bar, T> {
+        Num(A),
+        Vec(Foo, Bar),
+        Tuple(T),
+        S(S<Foo, Bar>),
+        Struct {
+            i: Foo,
+            s: Bar,
+        },
+        Hello,
+        Goodbye,
+    }
+
+    #[derive(PushInto, LuaRead)]
+    struct S<Foo, Bar> { foo: Foo, bar: Bar }
+
+    let lua = Lua::new();
+    type E = E0<u32, f32, String, (f32, f32, f32)>;
+
+    let lua = lua.push(E::Num(69));
+    assert_eq!((&lua).read().ok(), Some(69));
+
+    let lua = lua.push(E::Vec(3.14, "pi".into()));
+    assert_eq!((&lua).read().ok(), Some((3.14f32, "pi".to_string())));
+
+    let lua = lua.push(E::Tuple((2.71, 1.62, 3.14)));
+    assert_eq!((&lua).read().ok(), Some((2.71f32, 1.62f32, 3.14f32)));
+
+    let lua = lua.push(E::S(S { foo: 69.0, bar: "nice".into() }));
+    let t: LuaTable<_> = (&lua).read().unwrap();
+    assert_eq!(t.get("foo"), Some(69));
+    assert_eq!(t.get("bar"), Some("nice".to_string()));
+
+    let lua = lua.push(E::Struct { i: 420.0, s: "blaze".into() });
+    let t: LuaTable<_> = (&lua).read().unwrap();
+    assert_eq!(t.get("i"), Some(420));
+    assert_eq!(t.get("s"), Some("blaze".to_string()));
+
+    let lua = lua.push(E::Hello);
+    assert_eq!((&lua).read().ok(), Some("hello".to_string()));
+
+    let lua = lua.push(E::Goodbye);
+    assert_eq!((&lua).read().ok(), Some("goodbye".to_string()));
+}
+
 pub fn derive_enum_lua_read() {
     #[derive(LuaRead, Debug, PartialEq)]
     enum E {
@@ -525,6 +682,32 @@ pub fn derive_enum_lua_read() {
     assert_eq!((&lua).read::<E>().unwrap(), E::Vec(1., 2., 3.));
     let lua = lua.push(&S { foo: 314, bar: "pi".into() });
     assert_eq!((&lua).read::<E>().unwrap(), E::S(S { foo: 314, bar: "pi".into() }));
+}
+
+pub fn derive_generic_enum_lua_read() {
+    #[derive(Debug, PartialEq, Eq)]
+    #[derive(LuaRead)]
+    enum E<A, B, F, G, H, J, K, L, M> {
+        A(A),
+        B(Vec<B>),
+        D { f: F, g: Vec<G> },
+        H(H, Vec<J>, Option<K>),
+        L(S<L, M>),
+    }
+
+    #[derive(LuaRead, PartialEq, Eq, Debug)]
+    struct S<A, B> { foo: A, bar: B }
+
+    let lua = Lua::new();
+    type E1 = E<f64, String, String, u8, String, u8, u64, String, Vec<u8>>;
+    let e: E1 = lua.eval("return 3.14").unwrap();
+    assert_eq!(e, E::A(3.14));
+    let e: E1 = lua.eval("return {'apple', 'banana', 'cytrus'}").unwrap();
+    assert_eq!(e, E::B(vec!["apple".into(), "banana".into(), "cytrus".into()]));
+    let e: E1 = lua.eval("return { f = 'hi', g = { 1, 2, 3 } }").unwrap();
+    assert_eq!(e, E::D { f: "hi".into(), g: vec![1, 2, 3] });
+    let e: E1 = lua.eval("return { foo = 'foo', bar = { 0x62, 0x61, 0x72 } }").unwrap();
+    assert_eq!(e, E::L(S { foo: "foo".into(), bar: b"bar".as_slice().into() }));
 }
 
 pub fn enum_variants_order_matters() {
