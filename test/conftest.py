@@ -35,11 +35,22 @@ def pytest_addoption(parser):
     parser.addoption(
         "--seed", action="store", default=None, help="Seed for randomized tests"
     )
+    parser.addoption(
+        "--delay",
+        action="store",
+        default=None,
+        help="Delay between steps for fandomized tests",
+    )
 
 
 @pytest.fixture(scope="session")
 def seed(pytestconfig):
     return pytestconfig.getoption("seed")
+
+
+@pytest.fixture(scope="session")
+def delay(pytestconfig):
+    return pytestconfig.getoption("delay")
 
 
 @pytest.fixture(scope="session")
