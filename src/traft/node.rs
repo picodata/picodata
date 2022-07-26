@@ -89,6 +89,8 @@ impl std::fmt::Debug for Node {
 impl Node {
     pub const TICK: Duration = Duration::from_millis(100);
 
+    /// Initialize the raft node.
+    /// **This function yields**
     pub fn new(cfg: &raft::Config) -> Result<Self, RaftError> {
         let raw_node = RawNode::new(cfg, Storage, &tlog::root())?;
         let raw_node = Rc::new(Mutex::new(raw_node));
@@ -151,10 +153,13 @@ impl Node {
         event::broadcast(Event::StatusChanged);
     }
 
+    /// Wait for the status to be changed.
+    /// **This function yields**
     pub fn wait_status(&self) {
         event::wait(Event::StatusChanged).expect("Events system wasn't initialized");
     }
 
+    /// **This function yields**
     pub fn read_index(&self, timeout: Duration) -> Result<RaftIndex, Error> {
         self.raw_operation(|raw_node| {
             // In some states `raft-rs` ignores the ReadIndex request.
@@ -181,6 +186,8 @@ impl Node {
         .recv_timeout::<RaftIndex>(timeout)
     }
 
+    /// Propose an operation and wait for it's result.
+    /// **This function yields**
     pub fn propose<T: OpResult + Into<traft::Op>>(
         &self,
         op: T,
@@ -195,6 +202,9 @@ impl Node {
         .recv_timeout::<T::Result>(timeout)
     }
 
+    /// Become a candidate and wait for a main loop round so that there's a
+    /// chance we become the leader.
+    /// **This function yields**
     pub fn campaign(&self) -> Result<(), Error> {
         self.raw_operation(|raw_node| raw_node.campaign().map_err(Into::into))?;
         // Even though we don't expect a response, we still should let the
@@ -205,6 +215,7 @@ impl Node {
         Ok(())
     }
 
+    /// **This function yields**
     pub fn step(&self, msg: raft::Message) {
         self.raw_operation(|raw_node| {
             if msg.to != raw_node.raft.id {
@@ -221,6 +232,7 @@ impl Node {
         fiber::reschedule();
     }
 
+    /// **This function yields**
     pub fn tick(&self, n_times: u32) {
         self.raw_operation(|raw_node| {
             for _ in 0..n_times {
@@ -234,6 +246,7 @@ impl Node {
         fiber::reschedule();
     }
 
+    /// **This function yields**
     pub fn timeout_now(&self) {
         self.step(raft::Message {
             to: self.raft_id,
@@ -243,6 +256,9 @@ impl Node {
         })
     }
 
+    /// Process the topology request and propose [`PersistPeer`] entry if
+    /// appropriate.
+    /// **This function yields**
     pub fn handle_topology_request(&self, req: TopologyRequest) -> Result<traft::Peer, Error> {
         self.raw_operation(|raw_node| {
             if raw_node.raft.state != RaftStateRole::Leader {
@@ -296,6 +312,7 @@ impl Node {
         .recv::<Peer>()
     }
 
+    /// **This function yields**
     fn propose_conf_change(
         &self,
         term: RaftTerm,
@@ -359,6 +376,7 @@ impl Node {
         .recv()
     }
 
+    /// This function **may yield** if `self.raw_node` is acquired.
     #[inline]
     fn raw_operation<R>(
         &self,
