@@ -27,6 +27,8 @@ use crate::stringify_cfunc;
 use crate::traft::ContextCoercion as _;
 use crate::traft::Peer;
 use crate::traft::RaftId;
+use crate::traft::RaftIndex;
+use crate::traft::RaftTerm;
 use ::tarantool::util::IntoClones as _;
 use protobuf::Message as _;
 use std::iter::FromIterator as _;
@@ -54,9 +56,9 @@ type RawNode = raft::RawNode<Storage>;
 #[derive(Clone, Debug, tlua::Push, tlua::PushInto)]
 pub struct Status {
     /// `raft_id` of the current instance
-    pub id: u64,
+    pub id: RaftId,
     /// `raft_id` of the leader instance
-    pub leader_id: Option<u64>,
+    pub leader_id: Option<RaftId>,
     /// One of "Follower", "Candidate", "Leader", "PreCandidate"
     pub raft_state: String,
     /// Whether instance has finished its `postjoin`
@@ -72,7 +74,7 @@ pub struct Node {
     _conf_change_loop: fiber::UnitJoinHandle<'static>,
     status: Rc<RefCell<Status>>,
     notifications: Rc<RefCell<HashMap<LogicalClock, Notify>>>,
-    topology_cache: CachedCell<u64, Topology>,
+    topology_cache: CachedCell<RaftTerm, Topology>,
     lc: Cell<Option<LogicalClock>>,
 }
 
@@ -153,7 +155,7 @@ impl Node {
         event::wait(Event::StatusChanged).expect("Events system wasn't initialized");
     }
 
-    pub fn read_index(&self, timeout: Duration) -> Result<u64, Error> {
+    pub fn read_index(&self, timeout: Duration) -> Result<RaftIndex, Error> {
         self.raw_operation(|raw_node| {
             // In some states `raft-rs` ignores the ReadIndex request.
             // Check it preliminary, don't wait for the timeout.
@@ -176,7 +178,7 @@ impl Node {
             raw_node.read_index(ctx.to_bytes());
             Ok(notify)
         })?
-        .recv_timeout::<u64>(timeout)
+        .recv_timeout::<RaftIndex>(timeout)
     }
 
     pub fn propose<T: OpResult + Into<traft::Op>>(
@@ -292,7 +294,11 @@ impl Node {
         .recv::<Peer>()
     }
 
-    fn propose_conf_change(&self, term: u64, conf_change: raft::ConfChangeV2) -> Result<(), Error> {
+    fn propose_conf_change(
+        &self,
+        term: RaftTerm,
+        conf_change: raft::ConfChangeV2,
+    ) -> Result<(), Error> {
         self.raw_operation(|raw_node| {
             // In some states proposing a ConfChange is impossible.
             // Check if there's a reason to reject it.
@@ -385,7 +391,7 @@ struct JointStateLatch {
     /// Index of the latest ConfChange entry proposed.
     /// Helps detecting when the entry is overridden
     /// due to a re-election.
-    index: u64,
+    index: RaftIndex,
 
     /// Make a notification when the latch is unlocked.
     /// Notification is a `Result<Box<()>>`.

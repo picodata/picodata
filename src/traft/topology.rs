@@ -62,7 +62,7 @@ impl Topology {
             .insert(instance_id);
     }
 
-    fn choose_instance_id(&self, raft_id: u64) -> String {
+    fn choose_instance_id(&self, raft_id: RaftId) -> String {
         let mut suffix: Option<u64> = None;
         loop {
             let ret = match suffix {

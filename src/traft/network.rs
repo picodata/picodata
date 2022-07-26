@@ -274,7 +274,7 @@ inventory::submit!(crate::InnerTest {
         tlog!(Info, "TEST: connecting {listen}");
         pool.connect(1337, listen);
 
-        let heartbeat_to_from = |to: u64, from: u64| raft::Message {
+        let heartbeat_to_from = |to: RaftId, from: RaftId| raft::Message {
             msg_type: raft::MessageType::MsgHeartbeat,
             to,
             from,

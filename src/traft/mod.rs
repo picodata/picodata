@@ -28,6 +28,8 @@ pub use storage::Storage;
 pub use topology::Topology;
 
 pub type RaftId = u64;
+pub type RaftTerm = u64;
+pub type RaftIndex = u64;
 pub type InstanceId = String;
 pub type ReplicasetId = String;
 
@@ -147,7 +149,7 @@ impl From<OpReturnOne> for Op {
 pub struct OpReturnOne;
 
 impl OpResult for OpReturnOne {
-    type Result = u64;
+    type Result = u8;
     fn result(&self) -> Self::Result {
         1
     }
@@ -168,7 +170,7 @@ pub struct Peer {
 
     /// Used for identifying raft nodes.
     /// Must be unique in the raft group.
-    pub raft_id: u64,
+    pub raft_id: RaftId,
 
     /// Inbound address used for communication with the node.
     /// Not to be confused with listen address.
@@ -180,7 +182,7 @@ pub struct Peer {
 
     /// Index of the most recent raft log entry that persisted this peer.
     /// `0` means it's not committed yet.
-    pub commit_index: u64,
+    pub commit_index: RaftIndex,
 
     /// The state of this instance's activity.
     pub health: Health,
@@ -235,8 +237,8 @@ pub struct Entry {
     /// ```
     #[serde(with = "entry_type_as_i32")]
     pub entry_type: raft::EntryType,
-    pub index: u64,
-    pub term: u64,
+    pub index: RaftIndex,
+    pub term: RaftTerm,
 
     /// Corresponding `entry.data`. Solely managed by `raft-rs`.
     #[serde(with = "serde_bytes")]

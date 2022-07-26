@@ -15,7 +15,7 @@ use std::time::{Duration, Instant};
 use clap::StructOpt as _;
 use protobuf::Message as _;
 
-use crate::traft::LogicalClock;
+use crate::traft::{LogicalClock, RaftIndex};
 use traft::error::Error;
 
 mod app;
@@ -64,7 +64,7 @@ fn picolib_setup(args: &args::Run) {
     );
     luamod.set(
         "raft_read_index",
-        tlua::function1(|timeout: f64| -> Result<u64, Error> {
+        tlua::function1(|timeout: f64| -> Result<RaftIndex, Error> {
             traft::node::global()?.read_index(Duration::from_secs_f64(timeout))
         }),
     );
@@ -99,7 +99,7 @@ fn picolib_setup(args: &args::Run) {
     );
     luamod.set(
         "raft_return_one",
-        tlua::function1(|timeout: f64| -> Result<u64, Error> {
+        tlua::function1(|timeout: f64| -> Result<u8, Error> {
             traft::node::global()?.propose(traft::OpReturnOne, Duration::from_secs_f64(timeout))
         }),
     );

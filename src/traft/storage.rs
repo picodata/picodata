@@ -15,6 +15,8 @@ use thiserror::Error;
 use crate::tlog;
 use crate::traft;
 use crate::traft::RaftId;
+use crate::traft::RaftIndex;
+use crate::traft::RaftTerm;
 
 pub struct Storage;
 
@@ -130,7 +132,7 @@ impl Storage {
         }
     }
 
-    pub fn peer_by_raft_id(raft_id: u64) -> Result<Option<traft::Peer>, StorageError> {
+    pub fn peer_by_raft_id(raft_id: RaftId) -> Result<Option<traft::Peer>, StorageError> {
         if raft_id == INVALID_ID {
             unreachable!("peer_by_raft_id called with invalid id ({})", INVALID_ID);
         }
@@ -181,7 +183,7 @@ impl Storage {
 
     pub fn box_replication(
         replicaset_id: &str,
-        max_index: Option<u64>,
+        max_index: Option<RaftIndex>,
     ) -> Result<Vec<String>, StorageError> {
         let mut ret = Vec::new();
 
@@ -211,7 +213,7 @@ impl Storage {
         Ok(ret)
     }
 
-    pub fn raft_id() -> Result<Option<u64>, StorageError> {
+    pub fn raft_id() -> Result<Option<RaftId>, StorageError> {
         Storage::raft_state("raft_id")
     }
 
@@ -229,19 +231,19 @@ impl Storage {
         Storage::raft_state("gen")
     }
 
-    pub fn term() -> Result<Option<u64>, StorageError> {
+    pub fn term() -> Result<Option<RaftTerm>, StorageError> {
         Storage::raft_state("term")
     }
 
-    pub fn vote() -> Result<Option<u64>, StorageError> {
+    pub fn vote() -> Result<Option<RaftId>, StorageError> {
         Storage::raft_state("vote")
     }
 
-    pub fn commit() -> Result<Option<u64>, StorageError> {
+    pub fn commit() -> Result<Option<RaftIndex>, StorageError> {
         Storage::raft_state("commit")
     }
 
-    pub fn applied() -> Result<Option<u64>, StorageError> {
+    pub fn applied() -> Result<Option<RaftIndex>, StorageError> {
         Storage::raft_state("applied")
     }
 
@@ -253,20 +255,20 @@ impl Storage {
         Storage::persist_raft_state("replication_factor", replication_factor)
     }
 
-    pub fn persist_commit(commit: u64) -> Result<(), StorageError> {
+    pub fn persist_commit(commit: RaftIndex) -> Result<(), StorageError> {
         // tlog!(Info, "++++++ persist commit {commit}");
         Storage::persist_raft_state("commit", commit)
     }
 
-    pub fn persist_applied(applied: u64) -> Result<(), StorageError> {
+    pub fn persist_applied(applied: RaftIndex) -> Result<(), StorageError> {
         Storage::persist_raft_state("applied", applied)
     }
 
-    pub fn persist_term(term: u64) -> Result<(), StorageError> {
+    pub fn persist_term(term: RaftTerm) -> Result<(), StorageError> {
         Storage::persist_raft_state("term", term)
     }
 
-    pub fn persist_vote(vote: u64) -> Result<(), StorageError> {
+    pub fn persist_vote(vote: RaftId) -> Result<(), StorageError> {
         Storage::persist_raft_state("vote", vote)
     }
 
@@ -274,7 +276,7 @@ impl Storage {
         Storage::persist_raft_state("gen", gen)
     }
 
-    pub fn persist_raft_id(id: u64) -> Result<(), StorageError> {
+    pub fn persist_raft_id(id: RaftId) -> Result<(), StorageError> {
         Storage::space(RAFT_STATE)?
             // We use `insert` instead of `replace` here
             // because `raft_id` can never be changed.
@@ -312,7 +314,7 @@ impl Storage {
     }
 
     #[allow(dead_code)]
-    pub fn delete_peer(raft_id: u64) -> Result<(), StorageError> {
+    pub fn delete_peer(raft_id: RaftId) -> Result<(), StorageError> {
         Storage::space(RAFT_GROUP)?
             .delete(&[raft_id])
             .map_err(box_err!())?;
@@ -320,7 +322,7 @@ impl Storage {
         Ok(())
     }
 
-    pub fn entries(low: u64, high: u64) -> Result<Vec<raft::Entry>, StorageError> {
+    pub fn entries(low: RaftIndex, high: RaftIndex) -> Result<Vec<raft::Entry>, StorageError> {
         // idx \in [low, high)
         let mut ret: Vec<raft::Entry> = vec![];
         let iter = Storage::space(RAFT_LOG)?
@@ -430,15 +432,15 @@ impl raft::Storage for Storage {
 
     fn entries(
         &self,
-        low: u64,
-        high: u64,
+        low: RaftIndex,
+        high: RaftIndex,
         _max_size: impl Into<Option<u64>>,
     ) -> Result<Vec<raft::Entry>, RaftError> {
         // tlog!(Info, "++++++ entries {low} {high}");
         Ok(Storage::entries(low, high)?)
     }
 
-    fn term(&self, idx: u64) -> Result<u64, RaftError> {
+    fn term(&self, idx: RaftIndex) -> Result<RaftTerm, RaftError> {
         if idx == 0 {
             return Ok(0);
         }
@@ -453,12 +455,12 @@ impl raft::Storage for Storage {
         }
     }
 
-    fn first_index(&self) -> Result<u64, RaftError> {
+    fn first_index(&self) -> Result<RaftIndex, RaftError> {
         // tlog!(Info, "++++++ first_index");
         Ok(1)
     }
 
-    fn last_index(&self) -> Result<u64, RaftError> {
+    fn last_index(&self) -> Result<RaftIndex, RaftError> {
         let space: Space = Storage::space(RAFT_LOG)?;
         let tuple: Option<Tuple> = space.primary_key().max(&()).map_err(box_err!())?;
 
@@ -469,7 +471,7 @@ impl raft::Storage for Storage {
         }
     }
 
-    fn snapshot(&self, idx: u64) -> Result<raft::Snapshot, RaftError> {
+    fn snapshot(&self, idx: RaftIndex) -> Result<raft::Snapshot, RaftError> {
         tlog!(Critical, "snapshot"; "request_index" => idx);
         unimplemented!();
 
@@ -666,7 +668,7 @@ inventory::submit!(crate::InnerTest {
         {
             // Ensure traft storage doesn't impose restrictions
             // on peer_address uniqueness.
-            let peer = |id: u64, addr: &str| traft::Peer {
+            let peer = |id: RaftId, addr: &str| traft::Peer {
                 raft_id: id,
                 instance_id: format!("i{id}"),
                 peer_address: addr.into(),
@@ -677,7 +679,7 @@ inventory::submit!(crate::InnerTest {
             Storage::persist_peer(&peer(11, "addr:collision")).unwrap();
         }
 
-        let peer_by_raft_id = |id: u64| Storage::peer_by_raft_id(id).unwrap().unwrap();
+        let peer_by_raft_id = |id: RaftId| Storage::peer_by_raft_id(id).unwrap().unwrap();
         {
             assert_eq!(peer_by_raft_id(1).instance_id, "i1");
             assert_eq!(peer_by_raft_id(2).instance_id, "i2");
@@ -701,7 +703,7 @@ inventory::submit!(crate::InnerTest {
             assert_eq!(Storage::peer_by_instance_id("i6"), Ok(None));
         }
 
-        let box_replication = |replicaset_id: &str, max_index: Option<u64>| {
+        let box_replication = |replicaset_id: &str, max_index: Option<RaftIndex>| {
             Storage::box_replication(replicaset_id, max_index).unwrap()
         };
 
