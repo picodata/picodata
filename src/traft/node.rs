@@ -197,8 +197,10 @@ impl Node {
 
     pub fn campaign(&self) -> Result<(), Error> {
         self.raw_operation(|raw_node| raw_node.campaign().map_err(Into::into))?;
-        // even though we don't expect a response, we still should let the
-        // main_loop do an iteration
+        // Even though we don't expect a response, we still should let the
+        // main_loop do an iteration. Without rescheduling, the Ready state
+        // wouldn't be processed, the Status wouldn't be updated, and some
+        // assertions may fail (e.g. in `postjoin()` in `main.rs`).
         fiber::reschedule();
         Ok(())
     }
