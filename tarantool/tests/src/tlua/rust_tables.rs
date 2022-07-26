@@ -338,6 +338,8 @@ pub fn reading_heterogenous_hashmap_works() {
 
     let read: HashMap<_, _> = lua.get("v").unwrap();
     assert_eq!(read, orig);
+
+    assert_eq!(lua.get::<HashMap<i32, i32>, _>("v"), None);
 }
 
 pub fn reading_hashmap_set_from_lua_works() {

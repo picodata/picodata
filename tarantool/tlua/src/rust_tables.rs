@@ -399,7 +399,8 @@ where
 {
     fn lua_read_at_position(lua: L, index: NonZeroI32) -> Result<Self, L> {
         let table = LuaTable::lua_read_at_position(lua, index)?;
-        Ok(table.iter().flatten().collect())
+        let res: Result<_, ()> = table.iter().map(|kv| kv.ok_or(())).collect();
+        res.map_err(|_| table.into_inner())
     }
 }
 
