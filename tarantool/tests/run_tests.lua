@@ -62,8 +62,22 @@ function test_schema_cleanup()
     box.space.test_s_tmp:drop()
 end
 
+function proj_root()
+    local fun = require 'fun'
+    local source_path = debug.getinfo(1, "S").source:sub(2)
+    local path_parts = source_path:split('/')
+    local proj_root_parts = fun.take(#path_parts - 2, path_parts):totable()
+    local proj_root = table.concat(proj_root_parts, '/')
+    return proj_root
+end
+
 -- Add test runner library location to lua search path
-package.cpath = 'target/debug/?.so;target/debug/?.dylib;' .. package.cpath
+package.cpath = string.format(
+    '%s/target/debug/?.so;%s/target/debug/?.dylib;%s',
+    proj_root(),
+    proj_root(),
+    package.cpath
+)
 
 -- Prepare config
 json = require('json')
