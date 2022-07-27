@@ -13,7 +13,7 @@ fn proc_macro_derive_push_impl(
     let info = Info::new(&input);
     let ctx = Context::with_generics(&input.generics)
         .set_is_push_into(is_push_into);
-    let params = input.generics.params.iter().collect::<Vec<_>>();
+    let (lifetimes, types, consts) = split_generics(&input.generics);
     let (_, generics, where_clause) = input.generics.split_for_impl();
     let type_bounds = where_clause.map(|w| &w.predicates);
     let as_lua_bounds = info.push_bounds(&ctx);
@@ -23,7 +23,7 @@ fn proc_macro_derive_push_impl(
 
     let expanded = quote! {
         #[automatically_derived]
-        impl<#(#params,)* #l> tlua::#push<#l> for #name #generics
+        impl<#(#lifetimes,)* #(#types,)* #l, #(#consts,)*> tlua::#push<#l> for #name #generics
         where
             #l: tlua::AsLua,
             #as_lua_bounds
@@ -36,7 +36,7 @@ fn proc_macro_derive_push_impl(
             }
         }
 
-        impl<#(#params,)* #l> tlua::#push_one<#l> for #name #generics
+        impl<#(#lifetimes,)* #(#types,)* #l, #(#consts,)*> tlua::#push_one<#l> for #name #generics
         where
             #l: tlua::AsLua,
             #as_lua_bounds
@@ -64,7 +64,7 @@ pub fn proc_macro_derive_lua_read(input: proc_macro::TokenStream) -> proc_macro:
     let name = &input.ident;
     let info = Info::new(&input);
     let ctx = Context::with_generics(&input.generics);
-    let params = input.generics.params.iter();
+    let (lifetimes, types, consts) = split_generics(&input.generics);
     let (_, generics, where_clause) = input.generics.split_for_impl();
     let type_bounds = where_clause.map(|w| &w.predicates);
     let as_lua_bounds = info.read_bounds(&ctx);
@@ -76,7 +76,7 @@ pub fn proc_macro_derive_lua_read(input: proc_macro::TokenStream) -> proc_macro:
 
     let expanded = quote! {
         #[automatically_derived]
-        impl<#(#params,)* #l> tlua::LuaRead<#l> for #name #generics
+        impl<#(#lifetimes,)* #(#types,)* #l, #(#consts,)*> tlua::LuaRead<#l> for #name #generics
         where
             #l: tlua::AsLua,
             #as_lua_bounds
@@ -705,4 +705,18 @@ impl<'a> Context<'a> {
         syn::visit::visit_type(&mut visitor, ty);
         visitor.is_generic
     }
+}
+
+fn split_generics(
+    generics: &syn::Generics
+) -> (Vec<&syn::LifetimeDef>, Vec<&syn::TypeParam>, Vec<&syn::ConstParam>) {
+    let mut res = (vec![], vec![], vec![]);
+    for param in &generics.params {
+        match param {
+            syn::GenericParam::Lifetime(l) => res.0.push(l),
+            syn::GenericParam::Type(t) => res.1.push(t),
+            syn::GenericParam::Const(c) => res.2.push(c),
+        }
+    }
+    res
 }
