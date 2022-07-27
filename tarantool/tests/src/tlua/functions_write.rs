@@ -236,7 +236,16 @@ pub fn optional_params() {
     struct Opts {
         greeting: Option<String>,
     }
-    lua.set("foo", Function::new(|sailor: Option<String>, opts: Option<Opts>| -> String {
+    #[derive(tlua::LuaRead)]
+    enum Either<L, R> {
+        Left(L),
+        Right(R),
+    }
+    lua.set("foo", Function::new(|args: Either<(String, Option<Opts>), Option<Opts>>| -> String {
+        let (sailor, opts) = match args {
+            Either::Left((who, opts)) => (Some(who), opts),
+            Either::Right(opts) => (None, opts),
+        };
         let greeting = opts.and_then(|o| o.greeting).unwrap_or_else(|| "Hello".into());
         let greetee = sailor.unwrap_or_else(|| "Sailor".into());
         format!("{greeting}, {greetee}!")
@@ -249,9 +258,7 @@ pub fn optional_params() {
         "Howdy, Partner!"
     );
     assert_eq!(
-        lua.eval::<String>("return foo({ greeting = 'Sup' })")
-            .unwrap_err()
-            .to_string(),
-         "Execution error: Wrong type passed into rust callback: (core::option::Option<alloc::string::String>, core::option::Option<tarantool_module_test_runner::tlua::functions_write::optional_params::Opts>) expected, got table"
+        lua.eval::<String>("return foo({ greeting = 'Sup' })").unwrap(),
+        "Sup, Sailor!"
     );
 }

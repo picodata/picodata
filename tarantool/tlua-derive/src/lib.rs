@@ -86,7 +86,14 @@ pub fn proc_macro_derive_lua_read(input: proc_macro::TokenStream) -> proc_macro:
 
             #maybe_lua_read
 
+            #[inline(always)]
             fn lua_read_at_position(__lua: #l, __index: ::std::num::NonZeroI32)
+                -> ::std::result::Result<Self, #l>
+            {
+                Self::lua_read_at_maybe_zero_position(__lua, __index.into())
+            }
+
+            fn lua_read_at_maybe_zero_position(__lua: #l, __index: i32)
                 -> ::std::result::Result<Self, #l>
             {
                 #read_at_code
@@ -286,9 +293,7 @@ impl<'a> Info<'a> {
                         #(
                             let n_vals = #n_vals;
                             let __lua = if top >= n_vals {
-                                let __index = unsafe {
-                                    ::std::num::NonZeroI32::new_unchecked(top - n_vals + 1)
-                                };
+                                let __index = top - n_vals + 1;
                                 #read_and_maybe_return
                             } else {
                                 __lua
@@ -413,7 +418,7 @@ impl<'a> FieldsInfo<'a> {
         match self {
             FieldsInfo::Named { field_idents, field_names, .. } => {
                 quote! {
-                    let t: tlua::LuaTable<_> = tlua::AsLua::read_at_nz(__lua, __index)?;
+                    let t: tlua::LuaTable<_> = tlua::AsLua::read_at(__lua, __index)?;
                     Ok(
                         #name {
                             #(
@@ -428,7 +433,7 @@ impl<'a> FieldsInfo<'a> {
             }
             FieldsInfo::Unnamed { field_idents, .. } => {
                 quote! {
-                    let (#(#field_idents,)*) = tlua::AsLua::read_at_nz(__lua, __index)?;
+                    let (#(#field_idents,)*) = tlua::AsLua::read_at(__lua, __index)?;
                     Ok(
                         #name(#(#field_idents,)*)
                     )
@@ -545,12 +550,12 @@ impl<'a> VariantInfo<'a> {
             }
             Some(FieldsInfo::Unnamed { .. }) => {
                 quote! {
-                    tlua::AsLua::read_at_nz(__lua, __index)
+                    tlua::AsLua::read_at(__lua, __index)
                 }
             }
             None => {
                 quote! {
-                    tlua::AsLua::read_at_nz::<tlua::StringInLua<_>>(__lua, __index)
+                    tlua::AsLua::read_at::<tlua::StringInLua<_>>(__lua, __index)
                 }
             }
         }
