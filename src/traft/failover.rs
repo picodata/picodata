@@ -2,6 +2,7 @@ use std::time::{Duration, Instant};
 
 use ::tarantool::fiber::sleep;
 use ::tarantool::proc;
+use ::tarantool::unwrap_or;
 
 use crate::{stringify_cfunc, tarantool, tlog};
 
@@ -33,8 +34,11 @@ pub fn on_shutdown() {
     // will run until we get successfully deactivate or tarantool shuts down
     // the on_shutdown fiber (after 3 secs)
     loop {
-        let status = node::global().unwrap().status();
-        let leader_id = status.leader_id.expect("leader_id deinitialized");
+        let node = node::global().unwrap();
+        let leader_id = unwrap_or!(node.status().leader_id, {
+            node.wait_status();
+            continue;
+        });
         let leader = Storage::peer_by_raft_id(leader_id).unwrap().unwrap();
         let wait_before_retry = Duration::from_millis(300);
         let now = Instant::now();

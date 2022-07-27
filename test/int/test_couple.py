@@ -1,6 +1,7 @@
 import funcy  # type: ignore
 import pytest
 from conftest import Cluster, Instance
+from time import sleep
 
 
 @funcy.retry(tries=20, timeout=0.1)
@@ -179,3 +180,20 @@ def test_deactivation(cluster2: Cluster):
 
     assert raft_update_peer(i2, target=i2, is_active=True) == [{}]
     assert raft_update_peer(i2, target=i2, is_active=True) == [{}]
+
+
+def test_gl119_panic_in_on_shutdown(cluster2: Cluster):
+    i1, i2 = cluster2.instances
+
+    i2.call("picolib.raft_timeout_now", timeout=0.01)
+    assert i2.terminate() == 0
+
+    # second instance terminates first, so it becomes a follower
+    i2.terminate()
+    # terminate the leader, so the follower can't acquire the read barrier
+    i1.terminate()
+
+    i2.start()
+    # wait for the follower to start acquiring the read barrier
+    sleep(1)
+    assert i2.terminate() == 0

@@ -720,10 +720,6 @@ fn postjoin(args: &args::Run) {
     box_cfg.listen = Some(args.listen.clone());
     tarantool::set_cfg(&box_cfg);
 
-    if let Err(e) = tarantool::on_shutdown(traft::failover::on_shutdown) {
-        tlog!(Error, "failed setting on_shutdown trigger: {e}");
-    }
-
     tlog!(Debug, "Getting a read barrier...");
     loop {
         if node.status().leader_id == None {
@@ -745,6 +741,10 @@ fn postjoin(args: &args::Run) {
         }
     }
     tlog!(Info, "Read barrier aquired, raft is ready");
+
+    if let Err(e) = tarantool::on_shutdown(traft::failover::on_shutdown) {
+        tlog!(Error, "failed setting on_shutdown trigger: {e}");
+    }
 
     let peer = traft::Storage::peer_by_raft_id(raft_id).unwrap().unwrap();
     box_cfg.replication = traft::Storage::box_replication(&peer.replicaset_id, None).unwrap();
