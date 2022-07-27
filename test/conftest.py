@@ -8,6 +8,7 @@ import funcy  # type: ignore
 import pytest
 import signal
 import subprocess
+from rand.params import generate_seed
 
 from datetime import datetime
 from shutil import rmtree
@@ -45,7 +46,8 @@ def pytest_addoption(parser):
 
 @pytest.fixture(scope="session")
 def seed(pytestconfig):
-    return pytestconfig.getoption("seed")
+    seed = pytestconfig.getoption("seed")
+    return seed if seed else generate_seed()
 
 
 @pytest.fixture(scope="session")
