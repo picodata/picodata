@@ -1,6 +1,6 @@
 use nix::sys::signal;
 use nix::sys::termios::{tcgetattr, tcsetattr, SetArg::TCSADRAIN};
-use nix::sys::wait::WaitStatus;
+use nix::sys::wait::{waitpid, WaitStatus};
 use nix::unistd::{self, fork, ForkResult};
 use serde::{Deserialize, Serialize};
 
@@ -412,24 +412,14 @@ fn main_run(args: args::Run) -> ! {
 
                 let msg = from_child.recv().ok();
 
-                let mut rc: i32 = 0;
-                unsafe {
-                    libc::waitpid(
-                        child.into(),                // pid_t
-                        &mut rc as *mut libc::c_int, // int*
-                        0,                           // int options
-                    )
-                };
+                let status = waitpid(child, None);
 
                 // Restore termios configuration as planned
                 if let Some(tcattr) = tcattr.as_ref() {
                     tcsetattr(0, TCSADRAIN, tcattr).unwrap();
                 }
 
-                println!(
-                    "[supervisor:{parent}] subprocess finished: {:?}",
-                    WaitStatus::from_raw(child, rc)
-                );
+                println!("[supervisor:{parent}] subprocess finished: {status:?}");
 
                 if let Some(msg) = msg {
                     entrypoint = msg.next_entrypoint;
@@ -438,7 +428,12 @@ fn main_run(args: args::Run) -> ! {
                         rm_tarantool_files(&args.data_dir);
                     }
                 } else {
-                    std::process::exit(libc::WEXITSTATUS(rc));
+                    let rc = match status.unwrap() {
+                        WaitStatus::Exited(_, rc) => rc,
+                        WaitStatus::Signaled(_, sig, _) => sig as _,
+                        _ => unreachable!("unexpected exit status"),
+                    };
+                    std::process::exit(rc);
                 }
             }
         };
