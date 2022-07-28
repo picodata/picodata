@@ -217,6 +217,11 @@ macro_rules! strict_numeric_impl {
 /// let i: Option<Strict<u16>> = lua.eval("return 256").ok();
 /// assert_eq!(i, Some(Strict(256))); // strict => no data loss
 /// ```
+///
+/// # Reading cdata
+///
+/// This type only supports regular lua numbers. If you want to read a luajit
+/// cdata type, use the [`CData`](crate::CData) wrapper instead.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
 pub struct Strict<T>(pub T);
 

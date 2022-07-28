@@ -135,6 +135,7 @@ pub use tuples::{AsTable, TuplePushError};
 pub use userdata::UserdataOnStack;
 pub use userdata::{push_userdata, read_userdata, push_some_userdata};
 pub use values::{StringInLua, Nil, Null, True, False, Typename, ToString, Strict};
+pub use cdata::{CData, CDataOnStack, AsCData};
 pub use ::tlua_derive::*;
 
 #[deprecated = "Use `CallError` instead"]
@@ -143,6 +144,7 @@ pub type LuaTableMap = std::collections::HashMap<AnyHashableLuaValue, AnyLuaValu
 pub type LuaSequence = Vec<AnyLuaValue>;
 
 mod any;
+mod cdata;
 pub mod debug;
 pub mod ffi;
 mod functions_write;

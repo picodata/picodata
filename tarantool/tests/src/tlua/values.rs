@@ -1,11 +1,15 @@
 use tarantool::tlua::{
     c_str,
+    c_ptr,
+    ffi,
+    AsCData,
     AsLua,
     AsTable,
     AnyLuaValue,
     AnyLuaString,
     Lua,
     LuaTable,
+    LuaFunction,
     StringInLua,
     function0,
     Nil,
@@ -13,9 +17,13 @@ use tarantool::tlua::{
     True,
     False,
     Typename,
+    ToString,
     Strict,
+    CData,
+    CDataOnStack,
 };
 use std::ffi::CString;
+use std::os::raw::{c_char, c_void};
 
 pub fn read_i32s() {
     let lua = Lua::new();
@@ -85,6 +93,18 @@ pub fn int64() {
     assert_eq!((&lua).read::<Strict<usize>>().ok(), Some(Strict(3)));
     assert_eq!((&lua).read::<Strict<f32  >>().ok(), Some(Strict(3.0)));
     assert_eq!((&lua).read::<Strict<f64  >>().ok(), Some(Strict(3.0)));
+    assert_eq!((&lua).read::<CData< i8   >>().ok(), None);
+    assert_eq!((&lua).read::<CData< i16  >>().ok(), None);
+    assert_eq!((&lua).read::<CData< i32  >>().ok(), None);
+    assert_eq!((&lua).read::<CData< i64  >>().ok(), None);
+    assert_eq!((&lua).read::<CData< isize>>().ok(), None);
+    assert_eq!((&lua).read::<CData< u8   >>().ok(), None);
+    assert_eq!((&lua).read::<CData< u16  >>().ok(), None);
+    assert_eq!((&lua).read::<CData< u32  >>().ok(), None);
+    assert_eq!((&lua).read::<CData< u64  >>().ok(), None);
+    assert_eq!((&lua).read::<CData< usize>>().ok(), None);
+    assert_eq!((&lua).read::<CData< f32  >>().ok(), None);
+    assert_eq!((&lua).read::<CData< f64  >>().ok(), None);
 
     let lua = lua.push(-69);
     assert_eq!((&lua).read::<isize>().unwrap(), -69);
@@ -111,6 +131,18 @@ pub fn int64() {
     assert_eq!((&lua).read::<Strict<usize>>().ok(), None);
     assert_eq!((&lua).read::<Strict<f32  >>().ok(), Some(Strict(-69.0)));
     assert_eq!((&lua).read::<Strict<f64  >>().ok(), Some(Strict(-69.0)));
+    assert_eq!((&lua).read::<CData< i8   >>().ok(), None);
+    assert_eq!((&lua).read::<CData< i16  >>().ok(), None);
+    assert_eq!((&lua).read::<CData< i32  >>().ok(), None);
+    assert_eq!((&lua).read::<CData< i64  >>().ok(), None);
+    assert_eq!((&lua).read::<CData< isize>>().ok(), None);
+    assert_eq!((&lua).read::<CData< u8   >>().ok(), None);
+    assert_eq!((&lua).read::<CData< u16  >>().ok(), None);
+    assert_eq!((&lua).read::<CData< u32  >>().ok(), None);
+    assert_eq!((&lua).read::<CData< u64  >>().ok(), None);
+    assert_eq!((&lua).read::<CData< usize>>().ok(), None);
+    assert_eq!((&lua).read::<CData< f32  >>().ok(), None);
+    assert_eq!((&lua).read::<CData< f64  >>().ok(), None);
 
     let lua = lua.push(420);
     assert_eq!((&lua).read::<       isize >().ok(), Some(420));
@@ -137,6 +169,18 @@ pub fn int64() {
     assert_eq!((&lua).read::<Strict<usize>>().ok(), Some(Strict(420)));
     assert_eq!((&lua).read::<Strict<f32  >>().ok(), Some(Strict(420.0)));
     assert_eq!((&lua).read::<Strict<f64  >>().ok(), Some(Strict(420.0)));
+    assert_eq!((&lua).read::<CData< i8   >>().ok(), None);
+    assert_eq!((&lua).read::<CData< i16  >>().ok(), None);
+    assert_eq!((&lua).read::<CData< i32  >>().ok(), None);
+    assert_eq!((&lua).read::<CData< i64  >>().ok(), None);
+    assert_eq!((&lua).read::<CData< isize>>().ok(), None);
+    assert_eq!((&lua).read::<CData< u8   >>().ok(), None);
+    assert_eq!((&lua).read::<CData< u16  >>().ok(), None);
+    assert_eq!((&lua).read::<CData< u32  >>().ok(), None);
+    assert_eq!((&lua).read::<CData< u64  >>().ok(), None);
+    assert_eq!((&lua).read::<CData< usize>>().ok(), None);
+    assert_eq!((&lua).read::<CData< f32  >>().ok(), None);
+    assert_eq!((&lua).read::<CData< f64  >>().ok(), None);
 
     let lua = lua.into_inner().push(3.14);
     assert_eq!((&lua).read::<i64>().unwrap(), 3);
@@ -163,6 +207,18 @@ pub fn int64() {
     assert_eq!((&lua).read::<Strict<usize>>().ok(), None);
     assert_eq!((&lua).read::<Strict<f32  >>().ok(), Some(Strict(3.14)));
     assert_eq!((&lua).read::<Strict<f64  >>().ok(), Some(Strict(3.14)));
+    assert_eq!((&lua).read::<CData< i8   >>().ok(), None);
+    assert_eq!((&lua).read::<CData< i16  >>().ok(), None);
+    assert_eq!((&lua).read::<CData< i32  >>().ok(), None);
+    assert_eq!((&lua).read::<CData< i64  >>().ok(), None);
+    assert_eq!((&lua).read::<CData< isize>>().ok(), None);
+    assert_eq!((&lua).read::<CData< u8   >>().ok(), None);
+    assert_eq!((&lua).read::<CData< u16  >>().ok(), None);
+    assert_eq!((&lua).read::<CData< u32  >>().ok(), None);
+    assert_eq!((&lua).read::<CData< u64  >>().ok(), None);
+    assert_eq!((&lua).read::<CData< usize>>().ok(), None);
+    assert_eq!((&lua).read::<CData< f32  >>().ok(), None);
+    assert_eq!((&lua).read::<CData< f64  >>().ok(), None);
 
     let lua = lua.into_inner().push(-1.5);
     assert_eq!((&lua).read::<i64>().unwrap(), -1);
@@ -189,6 +245,18 @@ pub fn int64() {
     assert_eq!((&lua).read::<Strict<usize>>().ok(), None);
     assert_eq!((&lua).read::<Strict<f32  >>().ok(), Some(Strict(-1.5)));
     assert_eq!((&lua).read::<Strict<f64  >>().ok(), Some(Strict(-1.5)));
+    assert_eq!((&lua).read::<CData< i8   >>().ok(), None);
+    assert_eq!((&lua).read::<CData< i16  >>().ok(), None);
+    assert_eq!((&lua).read::<CData< i32  >>().ok(), None);
+    assert_eq!((&lua).read::<CData< i64  >>().ok(), None);
+    assert_eq!((&lua).read::<CData< isize>>().ok(), None);
+    assert_eq!((&lua).read::<CData< u8   >>().ok(), None);
+    assert_eq!((&lua).read::<CData< u16  >>().ok(), None);
+    assert_eq!((&lua).read::<CData< u32  >>().ok(), None);
+    assert_eq!((&lua).read::<CData< u64  >>().ok(), None);
+    assert_eq!((&lua).read::<CData< usize>>().ok(), None);
+    assert_eq!((&lua).read::<CData< f32  >>().ok(), None);
+    assert_eq!((&lua).read::<CData< f64  >>().ok(), None);
 
     let lua = lua.into_inner().push(0x77bbccddeeff0011i64);
     assert_eq!((&lua).read::<i64>().unwrap(), 0x77bbccddeeff0011i64);
@@ -215,6 +283,18 @@ pub fn int64() {
     assert_eq!((&lua).read::<Strict<usize>>().ok(), None);
     assert_eq!((&lua).read::<Strict<f32  >>().ok(), None);
     assert_eq!((&lua).read::<Strict<f64  >>().ok(), None);
+    assert_eq!((&lua).read::<CData< i8   >>().ok(), None);
+    assert_eq!((&lua).read::<CData< i16  >>().ok(), None);
+    assert_eq!((&lua).read::<CData< i32  >>().ok(), None);
+    assert_eq!((&lua).read::<CData< i64  >>().ok(), Some(CData(0x77bbccddeeff0011_i64)));
+    assert_eq!((&lua).read::<CData< isize>>().ok(), Some(CData(0x77bbccddeeff0011_isize)));
+    assert_eq!((&lua).read::<CData< u8   >>().ok(), None);
+    assert_eq!((&lua).read::<CData< u16  >>().ok(), None);
+    assert_eq!((&lua).read::<CData< u32  >>().ok(), None);
+    assert_eq!((&lua).read::<CData< u64  >>().ok(), None);
+    assert_eq!((&lua).read::<CData< usize>>().ok(), None);
+    assert_eq!((&lua).read::<CData< f32  >>().ok(), None);
+    assert_eq!((&lua).read::<CData< f64  >>().ok(), None);
 
     let lua = lua.into_inner().push(0xaabbccddeeff0011u64);
     assert_eq!((&lua).read::<i64>().unwrap(), 0xaabbccddeeff0011u64 as i64);
@@ -241,6 +321,18 @@ pub fn int64() {
     assert_eq!((&lua).read::<Strict<usize>>().ok(), None);
     assert_eq!((&lua).read::<Strict<f32  >>().ok(), None);
     assert_eq!((&lua).read::<Strict<f64  >>().ok(), None);
+    assert_eq!((&lua).read::<CData< i8   >>().ok(), None);
+    assert_eq!((&lua).read::<CData< i16  >>().ok(), None);
+    assert_eq!((&lua).read::<CData< i32  >>().ok(), None);
+    assert_eq!((&lua).read::<CData< i64  >>().ok(), None);
+    assert_eq!((&lua).read::<CData< isize>>().ok(), None);
+    assert_eq!((&lua).read::<CData< u8   >>().ok(), None);
+    assert_eq!((&lua).read::<CData< u16  >>().ok(), None);
+    assert_eq!((&lua).read::<CData< u32  >>().ok(), None);
+    assert_eq!((&lua).read::<CData< u64  >>().ok(), Some(CData(0xaabbccddeeff0011_u64)));
+    assert_eq!((&lua).read::<CData< usize>>().ok(), Some(CData(0xaabbccddeeff0011_usize)));
+    assert_eq!((&lua).read::<CData< f32  >>().ok(), None);
+    assert_eq!((&lua).read::<CData< f64  >>().ok(), None);
 
     let lua = lua.into_inner().push(f64::INFINITY);
     assert_eq!((&lua).read::<i64>().unwrap(), i64::MAX);
@@ -267,6 +359,18 @@ pub fn int64() {
     assert_eq!((&lua).read::<Strict<usize>>().ok(), None);
     assert_eq!((&lua).read::<Strict<f32  >>().ok(), Some(Strict(f32::INFINITY)));
     assert_eq!((&lua).read::<Strict<f64  >>().ok(), Some(Strict(f64::INFINITY)));
+    assert_eq!((&lua).read::<CData< i8   >>().ok(), None);
+    assert_eq!((&lua).read::<CData< i16  >>().ok(), None);
+    assert_eq!((&lua).read::<CData< i32  >>().ok(), None);
+    assert_eq!((&lua).read::<CData< i64  >>().ok(), None);
+    assert_eq!((&lua).read::<CData< isize>>().ok(), None);
+    assert_eq!((&lua).read::<CData< u8   >>().ok(), None);
+    assert_eq!((&lua).read::<CData< u16  >>().ok(), None);
+    assert_eq!((&lua).read::<CData< u32  >>().ok(), None);
+    assert_eq!((&lua).read::<CData< u64  >>().ok(), None);
+    assert_eq!((&lua).read::<CData< usize>>().ok(), None);
+    assert_eq!((&lua).read::<CData< f32  >>().ok(), None);
+    assert_eq!((&lua).read::<CData< f64  >>().ok(), None);
 
     let lua = lua.into_inner().push(f64::NEG_INFINITY);
     assert_eq!((&lua).read::<i64>().unwrap(), i64::MIN);
@@ -293,6 +397,18 @@ pub fn int64() {
     assert_eq!((&lua).read::<Strict<usize>>().ok(), None);
     assert_eq!((&lua).read::<Strict<f32  >>().ok(), Some(Strict(f32::NEG_INFINITY)));
     assert_eq!((&lua).read::<Strict<f64  >>().ok(), Some(Strict(f64::NEG_INFINITY)));
+    assert_eq!((&lua).read::<CData< i8   >>().ok(), None);
+    assert_eq!((&lua).read::<CData< i16  >>().ok(), None);
+    assert_eq!((&lua).read::<CData< i32  >>().ok(), None);
+    assert_eq!((&lua).read::<CData< i64  >>().ok(), None);
+    assert_eq!((&lua).read::<CData< isize>>().ok(), None);
+    assert_eq!((&lua).read::<CData< u8   >>().ok(), None);
+    assert_eq!((&lua).read::<CData< u16  >>().ok(), None);
+    assert_eq!((&lua).read::<CData< u32  >>().ok(), None);
+    assert_eq!((&lua).read::<CData< u64  >>().ok(), None);
+    assert_eq!((&lua).read::<CData< usize>>().ok(), None);
+    assert_eq!((&lua).read::<CData< f32  >>().ok(), None);
+    assert_eq!((&lua).read::<CData< f64  >>().ok(), None);
 
     let lua = lua.into_inner().push(f64::NAN);
     assert_eq!((&lua).read::<       isize >().ok(), Some(0));
@@ -319,6 +435,18 @@ pub fn int64() {
     assert_eq!((&lua).read::<Strict<usize>>().ok(), None);
     assert_eq!((&lua).read::<Strict<f32  >>().ok().map(|f| f.0.is_nan()), Some(true));
     assert_eq!((&lua).read::<Strict<f64  >>().ok().map(|f| f.0.is_nan()), Some(true));
+    assert_eq!((&lua).read::<CData< i8   >>().ok(), None);
+    assert_eq!((&lua).read::<CData< i16  >>().ok(), None);
+    assert_eq!((&lua).read::<CData< i32  >>().ok(), None);
+    assert_eq!((&lua).read::<CData< i64  >>().ok(), None);
+    assert_eq!((&lua).read::<CData< isize>>().ok(), None);
+    assert_eq!((&lua).read::<CData< u8   >>().ok(), None);
+    assert_eq!((&lua).read::<CData< u16  >>().ok(), None);
+    assert_eq!((&lua).read::<CData< u32  >>().ok(), None);
+    assert_eq!((&lua).read::<CData< u64  >>().ok(), None);
+    assert_eq!((&lua).read::<CData< usize>>().ok(), None);
+    assert_eq!((&lua).read::<CData< f32  >>().ok(), None);
+    assert_eq!((&lua).read::<CData< f64  >>().ok(), None);
 }
 
 pub fn cdata_numbers() {
@@ -349,6 +477,18 @@ pub fn cdata_numbers() {
     assert_eq!(lua.get::<Strict<usize>, _>("tmp"), None);
     assert_eq!(lua.get::<Strict<f32  >, _>("tmp"), None);
     assert_eq!(lua.get::<Strict<f64  >, _>("tmp"), None);
+    assert_eq!(lua.get::<CData< i8   >, _>("tmp"), None);
+    assert_eq!(lua.get::<CData< i16  >, _>("tmp"), None);
+    assert_eq!(lua.get::<CData< i32  >, _>("tmp"), None);
+    assert_eq!(lua.get::<CData< i64  >, _>("tmp"), None);
+    assert_eq!(lua.get::<CData< isize>, _>("tmp"), None);
+    assert_eq!(lua.get::<CData< u8   >, _>("tmp"), None);
+    assert_eq!(lua.get::<CData< u16  >, _>("tmp"), None);
+    assert_eq!(lua.get::<CData< u32  >, _>("tmp"), None);
+    assert_eq!(lua.get::<CData< u64  >, _>("tmp"), Some(CData(0)));
+    assert_eq!(lua.get::<CData< usize>, _>("tmp"), Some(CData(0)));
+    assert_eq!(lua.get::<CData< f32  >, _>("tmp"), None);
+    assert_eq!(lua.get::<CData< f64  >, _>("tmp"), None);
 
     lua.exec("tmp = require('ffi').new('double', 3.14)").unwrap();
     assert_eq!(lua.get::<i64, _>("tmp").unwrap(), 3);
@@ -375,6 +515,18 @@ pub fn cdata_numbers() {
     assert_eq!(lua.get::<Strict<usize>, _>("tmp"), None);
     assert_eq!(lua.get::<Strict<f32  >, _>("tmp"), None);
     assert_eq!(lua.get::<Strict<f64  >, _>("tmp"), None);
+    assert_eq!(lua.get::<CData< i8   >, _>("tmp"), None);
+    assert_eq!(lua.get::<CData< i16  >, _>("tmp"), None);
+    assert_eq!(lua.get::<CData< i32  >, _>("tmp"), None);
+    assert_eq!(lua.get::<CData< i64  >, _>("tmp"), None);
+    assert_eq!(lua.get::<CData< isize>, _>("tmp"), None);
+    assert_eq!(lua.get::<CData< u8   >, _>("tmp"), None);
+    assert_eq!(lua.get::<CData< u16  >, _>("tmp"), None);
+    assert_eq!(lua.get::<CData< u32  >, _>("tmp"), None);
+    assert_eq!(lua.get::<CData< u64  >, _>("tmp"), None);
+    assert_eq!(lua.get::<CData< usize>, _>("tmp"), None);
+    assert_eq!(lua.get::<CData< f32  >, _>("tmp"), None);
+    assert_eq!(lua.get::<CData< f64  >, _>("tmp"), Some(CData(3.14)));
 
     lua.exec("tmp = require('ffi').new('int8_t', 69)").unwrap();
     assert_eq!(lua.get::<i64, _>("tmp").unwrap(), 69);
@@ -401,6 +553,18 @@ pub fn cdata_numbers() {
     assert_eq!(lua.get::<Strict<usize>, _>("tmp"), None);
     assert_eq!(lua.get::<Strict<f32  >, _>("tmp"), None);
     assert_eq!(lua.get::<Strict<f64  >, _>("tmp"), None);
+    assert_eq!(lua.get::<CData< i8   >, _>("tmp"), Some(CData(69)));
+    assert_eq!(lua.get::<CData< i16  >, _>("tmp"), None);
+    assert_eq!(lua.get::<CData< i32  >, _>("tmp"), None);
+    assert_eq!(lua.get::<CData< i64  >, _>("tmp"), None);
+    assert_eq!(lua.get::<CData< isize>, _>("tmp"), None);
+    assert_eq!(lua.get::<CData< u8   >, _>("tmp"), None);
+    assert_eq!(lua.get::<CData< u16  >, _>("tmp"), None);
+    assert_eq!(lua.get::<CData< u32  >, _>("tmp"), None);
+    assert_eq!(lua.get::<CData< u64  >, _>("tmp"), None);
+    assert_eq!(lua.get::<CData< usize>, _>("tmp"), None);
+    assert_eq!(lua.get::<CData< f32  >, _>("tmp"), None);
+    assert_eq!(lua.get::<CData< f64  >, _>("tmp"), None);
 
     lua.exec("tmp = require('ffi').new('int16_t', 420)").unwrap();
     assert_eq!(lua.get::<i64, _>("tmp").unwrap(), 420);
@@ -427,6 +591,18 @@ pub fn cdata_numbers() {
     assert_eq!(lua.get::<Strict<usize>, _>("tmp"), None);
     assert_eq!(lua.get::<Strict<f32  >, _>("tmp"), None);
     assert_eq!(lua.get::<Strict<f64  >, _>("tmp"), None);
+    assert_eq!(lua.get::<CData< i8   >, _>("tmp"), None);
+    assert_eq!(lua.get::<CData< i16  >, _>("tmp"), Some(CData(420)));
+    assert_eq!(lua.get::<CData< i32  >, _>("tmp"), None);
+    assert_eq!(lua.get::<CData< i64  >, _>("tmp"), None);
+    assert_eq!(lua.get::<CData< isize>, _>("tmp"), None);
+    assert_eq!(lua.get::<CData< u8   >, _>("tmp"), None);
+    assert_eq!(lua.get::<CData< u16  >, _>("tmp"), None);
+    assert_eq!(lua.get::<CData< u32  >, _>("tmp"), None);
+    assert_eq!(lua.get::<CData< u64  >, _>("tmp"), None);
+    assert_eq!(lua.get::<CData< usize>, _>("tmp"), None);
+    assert_eq!(lua.get::<CData< f32  >, _>("tmp"), None);
+    assert_eq!(lua.get::<CData< f64  >, _>("tmp"), None);
 
     lua.exec("tmp = require('ffi').new('uint32_t', -1)").unwrap();
     assert_eq!(lua.get::<i64, _>("tmp").unwrap(), u32::MAX as i64);
@@ -453,6 +629,18 @@ pub fn cdata_numbers() {
     assert_eq!(lua.get::<Strict<usize>, _>("tmp"), None);
     assert_eq!(lua.get::<Strict<f32  >, _>("tmp"), None);
     assert_eq!(lua.get::<Strict<f64  >, _>("tmp"), None);
+    assert_eq!(lua.get::<CData< i8   >, _>("tmp"), None);
+    assert_eq!(lua.get::<CData< i16  >, _>("tmp"), None);
+    assert_eq!(lua.get::<CData< i32  >, _>("tmp"), None);
+    assert_eq!(lua.get::<CData< i64  >, _>("tmp"), None);
+    assert_eq!(lua.get::<CData< isize>, _>("tmp"), None);
+    assert_eq!(lua.get::<CData< u8   >, _>("tmp"), None);
+    assert_eq!(lua.get::<CData< u16  >, _>("tmp"), None);
+    assert_eq!(lua.get::<CData< u32  >, _>("tmp"), Some(CData(u32::MAX)));
+    assert_eq!(lua.get::<CData< u64  >, _>("tmp"), None);
+    assert_eq!(lua.get::<CData< usize>, _>("tmp"), None);
+    assert_eq!(lua.get::<CData< f32  >, _>("tmp"), None);
+    assert_eq!(lua.get::<CData< f64  >, _>("tmp"), None);
 
     lua.exec("tmp = require('ffi').new('char', 255)").unwrap();
     assert_eq!(lua.get::<Strict<i8   >, _>("tmp"), None);
@@ -467,6 +655,159 @@ pub fn cdata_numbers() {
     assert_eq!(lua.get::<Strict<usize>, _>("tmp"), None);
     assert_eq!(lua.get::<Strict<f32  >, _>("tmp"), None);
     assert_eq!(lua.get::<Strict<f64  >, _>("tmp"), None);
+    match <c_char>::MAX as i16 {
+        signed if signed == i8::MAX as i16 => {
+            assert_eq!(lua.get::<CData< i8>, _>("tmp"), Some(CData(-1)));
+            assert_eq!(lua.get::<CData< u8>, _>("tmp"), None);
+        }
+        unsigned if unsigned == u8::MAX as i16 => {
+            assert_eq!(lua.get::<CData< i8>, _>("tmp"), None);
+            assert_eq!(lua.get::<CData< u8>, _>("tmp"), Some(CData(255)));
+        }
+        _ => unreachable!(),
+    }
+    assert_eq!(lua.get::<CData< i16  >, _>("tmp"), None);
+    assert_eq!(lua.get::<CData< i32  >, _>("tmp"), None);
+    assert_eq!(lua.get::<CData< i64  >, _>("tmp"), None);
+    assert_eq!(lua.get::<CData< isize>, _>("tmp"), None);
+    assert_eq!(lua.get::<CData< u16  >, _>("tmp"), None);
+    assert_eq!(lua.get::<CData< u32  >, _>("tmp"), None);
+    assert_eq!(lua.get::<CData< u64  >, _>("tmp"), None);
+    assert_eq!(lua.get::<CData< usize>, _>("tmp"), None);
+    assert_eq!(lua.get::<CData< f32  >, _>("tmp"), None);
+    assert_eq!(lua.get::<CData< f64  >, _>("tmp"), None);
+}
+
+pub fn push_cdata() {
+    let lua = tarantool::lua_state();
+    lua.exec("ffi = require 'ffi'").unwrap();
+    let f = LuaFunction::load(lua, "return ffi.typeof(...), ...").unwrap();
+
+    let (ToString(ty), CData(num)): (_, CData<i8>) = f.call_with_args(CData(i8::MAX)).unwrap();
+    assert_eq!((ty.as_str(), num), ("ctype<char>", i8::MAX));
+
+    let (ToString(ty), CData(num)): (_, CData<i16>) = f.call_with_args(CData(i16::MAX)).unwrap();
+    assert_eq!((ty.as_str(), num), ("ctype<short>", i16::MAX));
+
+    let (ToString(ty), CData(num)): (_, CData<i32>) = f.call_with_args(CData(i32::MAX)).unwrap();
+    assert_eq!((ty.as_str(), num), ("ctype<int>", i32::MAX));
+
+    let (ToString(ty), CData(num)): (_, CData<i64>) = f.call_with_args(CData(i64::MAX)).unwrap();
+    assert_eq!((ty.as_str(), num), ("ctype<int64_t>", i64::MAX));
+
+    let (ToString(ty), CData(num)): (_, CData<isize>) = f.call_with_args(CData(isize::MAX)).unwrap();
+    assert_eq!((ty.as_str(), num), ("ctype<int64_t>", isize::MAX));
+
+    let (ToString(ty), CData(num)): (_, CData<u8>) = f.call_with_args(CData(u8::MAX)).unwrap();
+    assert_eq!((ty.as_str(), num), ("ctype<unsigned char>", u8::MAX));
+
+    let (ToString(ty), CData(num)): (_, CData<u16>) = f.call_with_args(CData(u16::MAX)).unwrap();
+    assert_eq!((ty.as_str(), num), ("ctype<unsigned short>", u16::MAX));
+
+    let (ToString(ty), CData(num)): (_, CData<u32>) = f.call_with_args(CData(u32::MAX)).unwrap();
+    assert_eq!((ty.as_str(), num), ("ctype<unsigned int>", u32::MAX));
+
+    let (ToString(ty), CData(num)): (_, CData<u64>) = f.call_with_args(CData(u64::MAX)).unwrap();
+    assert_eq!((ty.as_str(), num), ("ctype<uint64_t>", u64::MAX));
+
+    let (ToString(ty), CData(num)): (_, CData<usize>) = f.call_with_args(CData(usize::MAX)).unwrap();
+    assert_eq!((ty.as_str(), num), ("ctype<uint64_t>", usize::MAX));
+
+    let (ToString(ty), CData(num)): (_, CData<f32>) = f.call_with_args(CData(f32::MAX)).unwrap();
+    assert_eq!((ty.as_str(), num), ("ctype<float>", f32::MAX));
+
+    let (ToString(ty), CData(num)): (_, CData<f64>) = f.call_with_args(CData(f64::MAX)).unwrap();
+    assert_eq!((ty.as_str(), num), ("ctype<double>", f64::MAX));
+
+    let lua = f.into_inner().into_inner();
+
+    use tarantool::tlua;
+    #[repr(C)]
+    #[derive(Clone, Copy, PartialEq, Eq, Debug, tlua::LuaRead)]
+    struct S {
+        i: i32,
+        c: [u8; 4],
+    }
+
+    lua.exec("ffi.cdef[[ struct S { int i; char c[4]; }; ]]").unwrap();
+    static mut CTID_STRUCT_S: Option<ffi::CTypeID> = None;
+    unsafe {
+        let ctid = ffi::luaL_ctypeid(lua.as_lua(), c_ptr!("struct S"));
+        CTID_STRUCT_S = Some(ctid)
+    }
+    unsafe impl AsCData for S {
+        fn ctypeid() -> ffi::CTypeID {
+            unsafe { CTID_STRUCT_S.unwrap() }
+        }
+    }
+    let s = S { i: 69, c: [110, 105, 99, 101] };
+    lua.set("tmp", CData(s));
+
+    // use the value from within lua
+    let res: (i32, i8, i8, i8, i8) = lua.eval(
+        "return tmp.i, tmp.c[0], tmp.c[1], tmp.c[2], tmp.c[3]",
+    ).unwrap();
+    assert_eq!(res, (69, 110, 105, 99, 101));
+
+    // read the value directly into a rust value
+    let CData(res): CData<S> = lua.get("tmp").unwrap();
+    assert_eq!(res, s);
+
+    // use the value as an indexable lua value inside lua stack
+    let res: tlua::Indexable<_> = lua.get("tmp").unwrap();
+    use tlua::Index;
+    assert_eq!(res.get::<_, i32>("i").unwrap(), 69);
+    let c: tlua::Indexable<_> = res.get("c").unwrap();
+    assert_eq!(c.get::<_, u8>(0).unwrap(), 110);
+    assert_eq!(c.get::<_, u8>(1).unwrap(), 105);
+    assert_eq!(c.get::<_, u8>(2).unwrap(), 99);
+    assert_eq!(c.get::<_, u8>(3).unwrap(), 101);
+
+    // access raw cdata bytes
+    let cdata: CDataOnStack<_> = lua.get("tmp").unwrap();
+    assert_eq!(cdata.data(), b"\x45\x00\x00\x00nice");
+}
+
+pub fn as_cdata_wrong_size() {
+    #[derive(Debug)]
+    struct WrongSize(u64);
+    unsafe impl AsCData for WrongSize {
+        fn ctypeid() -> ffi::CTypeID {
+            ffi::CTID_UINT32
+        }
+    }
+    let lua = tarantool::lua_state();
+    let cdata: CDataOnStack<_> = lua.eval("return require'ffi'.new('uint32_t', 69)").unwrap();
+    // This will panic in debug build, because of the size mismatch. Expected
+    // size of cdata to be 8 bytes (u64) but actual is 4 bytes.
+    let _: Option<&WrongSize> = cdata.try_downcast::<WrongSize>();
+}
+
+pub fn cdata_on_stack() {
+    let lua = tarantool::lua_state();
+    let val = lua.eval("return require('ffi').new('uint32_t', 0x01020304)").unwrap();
+    let mut cdata: CDataOnStack<_> = val;
+    assert_eq!(cdata.ctypeid(), ffi::CTID_UINT32);
+    assert_eq!(cdata.data(), [4, 3, 2, 1]);
+    let n: u32 = lua.eval_with("return ... + 1", &cdata).unwrap();
+    assert_eq!(n, 0x01020305);
+    cdata.data_mut().sort_unstable();
+    assert_eq!(cdata.try_downcast::<u32>().unwrap(), &0x04030201_u32);
+
+    let cdata: CDataOnStack<_> = lua.eval(
+        "return require'ffi'.new('char[4]', 'abcd')"
+    ).unwrap();
+    assert_eq!(cdata.data(), b"abcd");
+    let cdata: CDataOnStack<_> = lua.eval_with(
+        "return require('ffi').cast('void const *', ...)",
+        &cdata,
+    ).unwrap();
+    assert!(cdata.try_downcast::<*mut c_void>().is_none());
+    let ptr = cdata.try_downcast::<*const c_void>().unwrap();
+    let s = unsafe {
+        std::str::from_utf8_unchecked(std::slice::from_raw_parts(ptr.cast(), 4))
+    };
+    assert_eq!(s, "abcd");
 }
 
 pub fn readwrite_floats() {
