@@ -109,11 +109,21 @@ macro_rules! numeric_impl {
     }
 }
 
+numeric_impl!{isize, ffi::luaL_pushint64, ffi::lua_tonumber}
 numeric_impl!{i64, ffi::luaL_pushint64, ffi::lua_tonumber}
 numeric_impl!{i32, ffi::lua_pushinteger, ffi::lua_tointeger}
 numeric_impl!{i16, ffi::lua_pushinteger, ffi::lua_tointeger}
 numeric_impl!{i8, ffi::lua_pushinteger, ffi::lua_tointeger}
 
+numeric_impl!{usize, ffi::luaL_pushuint64, ffi::lua_tonumber,
+    coerce: |n| {
+        if n >= 0. {
+            n as usize
+        } else {
+            n as isize as usize
+        }
+    }
+}
 numeric_impl!{u64, ffi::luaL_pushuint64, ffi::lua_tonumber,
     coerce: |n| {
         if n >= 0. {
@@ -164,7 +174,7 @@ macro_rules! strict_numeric_impl {
                 res.map(Strict).ok_or(lua)
             }
         }
-    }
+    };
 }
 
 /// A wrapper type for reading lua numbers of concrete precisions without
@@ -214,10 +224,12 @@ strict_numeric_impl!{int i8}
 strict_numeric_impl!{int i16}
 strict_numeric_impl!{int i32}
 strict_numeric_impl!{int i64}
+strict_numeric_impl!{int isize}
 strict_numeric_impl!{int u8}
 strict_numeric_impl!{int u16}
 strict_numeric_impl!{int u32}
 strict_numeric_impl!{int u64}
+strict_numeric_impl!{int usize}
 strict_numeric_impl!{float f32}
 strict_numeric_impl!{float f64}
 
