@@ -310,3 +310,12 @@ pub fn push_iter_no_err() {
     );
 }
 
+pub fn eval_with() {
+    let lua = Lua::new();
+    let res: i32 = lua.eval_with("a, b = ... ; return a + b", (33, 36)).unwrap();
+    assert_eq!(res, 69);
+    lua.exec_with("n = ...; function eval_with_helper(x) return x + n end", 20).unwrap();
+    let f: LuaFunction<_> = lua.get("eval_with_helper").unwrap();
+    let res: i32 = f.call_with_args(400).unwrap();
+    assert_eq!(res, 420);
+}

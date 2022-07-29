@@ -1054,6 +1054,27 @@ where
             .into_call()
     }
 
+    /// Executes some Lua code in the context
+    /// passing the arguments in place of `...`.
+    ///
+    /// ```no_run
+    /// use tlua::Lua;
+    /// let lua = Lua::new();
+    /// let two: i32 = lua.eval_with("return 1 + ...", 1).unwrap();
+    /// assert_eq!(two, 2);
+    /// ```
+    /// See also [`Lua::eval`]
+    #[inline(always)]
+    // TODO(gmoshkin): this method should be part of AsLua
+    pub fn eval_with<'lua, A, T>(&'lua self, code: &str, args: A) -> Result<T, CallError<A::Err>>
+    where
+        A: PushInto<LuaState>,
+        T: LuaRead<PushGuard<LuaFunction<PushGuard<&'lua Self>>>>,
+    {
+        LuaFunction::load(self, code)?
+            .into_call_with_args(args)
+    }
+
     /// Executes some Lua code in the context.
     ///
     /// The code will have access to all the global variables you set with
@@ -1073,6 +1094,29 @@ where
     pub fn exec(&self, code: &str) -> Result<(), LuaError> {
         LuaFunction::load(self, code)?
             .into_call()
+    }
+
+    /// Executes some Lua code in the context
+    /// passing the arguments in place of `...`.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use tlua::Lua;
+    /// let lua = Lua::new();
+    /// lua.exec_with("a, b = ...; c = a * b", (3, 4)).unwrap();
+    /// let c: i32 = lua.get("c").unwrap();
+    /// assert_eq!(c, 12);
+    /// ```
+    /// See also [`Lua::exec`]
+    #[inline(always)]
+    // TODO(gmoshkin): this method should be part of AsLua
+    pub fn exec_with<A>(&self, code: &str, args: A) -> Result<(), CallError<A::Err>>
+    where
+        A: PushInto<LuaState>,
+    {
+        LuaFunction::load(self, code)?
+            .into_call_with_args(args)
     }
 
     /// Executes some Lua code on the context.

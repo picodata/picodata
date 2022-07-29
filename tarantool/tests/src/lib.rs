@@ -246,6 +246,7 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 tlua::lua_functions::non_string_error,
                 tlua::lua_functions::push_function,
                 tlua::lua_functions::push_iter_no_err,
+                tlua::lua_functions::eval_with,
 
                 tlua::lua_tables::iterable,
                 tlua::lua_tables::iterable_multipletimes,
