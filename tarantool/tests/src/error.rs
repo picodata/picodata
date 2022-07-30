@@ -18,12 +18,14 @@ pub fn error_last() {
 }
 
 pub fn set_error() {
+    #[cfg(all(target_os = "linux", target_env = "gnu"))]
     fn uordblks() -> i32 {
-        if cfg!(all(target_os = "linux", target_env = "gnu")) {
-            unsafe { libc::mallinfo().uordblks }
-        } else {
-            0
-        }
+        unsafe { libc::mallinfo().uordblks }
+    }
+
+    #[cfg(not(all(target_os = "linux", target_env = "gnu")))]
+    fn uordblks() -> i32 {
+        0
     }
 
     // first call to box_set_error results in some memory allocation,
