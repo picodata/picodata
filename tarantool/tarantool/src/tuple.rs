@@ -236,6 +236,7 @@ impl Tuple {
     /// [`tarantool::ffi::has_tuple_field_by_path`]:
     /// crate::ffi::has_tuple_field_by_path
     #[inline(always)]
+    #[track_caller]
     pub fn get<'a, I, T>(&'a self, key: I) -> Option<T>
     where
         I: TupleIndex,
@@ -339,26 +340,61 @@ impl TupleIndex for &str {
     {
         use once_cell::sync::Lazy;
         use std::io::{Error as IOError, ErrorKind};
-        static API_AWAILABLE: Lazy<std::result::Result<(), String>> = Lazy::new(|| unsafe {
-            crate::ffi::helper::get_dyn_symbol::<*const ()>(crate::c_str!("tuple_field_raw_by_full_path"))
-                .map(|_| ())
-                .map_err(|e| e.to_string())
+        static API: Lazy<std::result::Result<Api, dlopen::Error>> = Lazy::new(|| unsafe {
+            let c_str = std::ffi::CStr::from_bytes_with_nul_unchecked;
+            let lib = dlopen::symbor::Library::open_self()?;
+            let err = match lib.symbol_cstr(c_str(ffi::TUPLE_FIELD_BY_PATH_NEW_API.as_bytes())) {
+                Ok(api) => return Ok(Api::New(*api)),
+                Err(e) => e,
+            };
+            if let Ok(api) = lib.symbol_cstr(c_str(ffi::TUPLE_FIELD_BY_PATH_OLD_API.as_bytes())) {
+                return Ok(Api::Old(*api));
+            }
+            Err(err)
         });
 
-        API_AWAILABLE.clone()
-            .map_err(|e| Error::IO(IOError::new(ErrorKind::Unsupported, e)))?;
+        return match API.as_ref() {
+            Ok(Api::New(api)) => unsafe {
+                let field_ptr = api(tuple.ptr.as_ptr(), self.as_ptr() as _, self.len() as _, 1);
+                field_value_from_ptr(field_ptr as _)
+            }
+            Ok(Api::Old(api)) => unsafe {
+                let data_offset = tuple.ptr.as_ref().data_offset() as _;
+                let data = tuple.ptr.as_ptr().cast::<c_char>().add(data_offset);
+                let field_ptr = api(
+                    tuple.format().inner,
+                    data,
+                    data as _,
+                    self.as_ptr() as _,
+                    self.len() as _,
+                    tlua::util::hash(self),
+                );
+                field_value_from_ptr(field_ptr as _)
+            }
+            Err(e) => Err(Error::IO(IOError::new(ErrorKind::Unsupported, e))),
+        };
 
-        unsafe {
-            let tuple_raw = tuple.ptr.as_ref();
-            let field_ptr = ffi::tuple_field_raw_by_full_path(
-                tuple.format().inner,
-                tuple_raw.data(),
-                tuple_raw.field_map(),
-                self.as_ptr() as _,
-                self.len() as _,
-                tlua::util::hash(self),
-            );
-            field_value_from_ptr(field_ptr as _)
+        enum Api {
+            /// Before 2.10 private api `tuple_field_raw_by_full_path`
+            Old(
+                extern "C" fn(
+                    format: *const ffi::BoxTupleFormat,
+                    tuple: *const c_char,
+                    field_map: *const u32,
+                    path: *const c_char,
+                    path_len: u32,
+                    path_hash: u32,
+                ) -> *const c_char
+            ),
+            /// After 2.10 public api `box_tuple_field_by_path`
+            New(
+                extern "C" fn(
+                    tuple: *const ffi::BoxTuple,
+                    path: *const c_char,
+                    path_len: u32,
+                    index_base: i32,
+                ) -> *const c_char
+            ),
         }
     }
 }
@@ -569,6 +605,7 @@ impl TupleBuffer {
 
     /// # Safety
     /// `buf` must be a valid message pack array
+    #[track_caller]
     pub unsafe fn from_vec_unchecked(buf: Vec<u8>) -> Self {
         if ffi::box_txn() {
             let size = buf.len();

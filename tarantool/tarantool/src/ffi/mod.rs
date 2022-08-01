@@ -42,7 +42,9 @@ pub fn has_fiber_channel() -> bool {
 /// [`Tuple::try_get`]: crate::tuple::Tuple::try_get
 /// [`Tuple::get`]: crate::tuple::Tuple::get
 pub fn has_tuple_field_by_path() -> bool {
+    let c_str = std::ffi::CStr::from_bytes_with_nul_unchecked;
     unsafe {
-        crate::ffi::helper::has_dyn_symbol(crate::c_str!("tuple_field_raw_by_full_path"))
+        helper::has_dyn_symbol(c_str(tarantool::TUPLE_FIELD_BY_PATH_NEW_API.as_bytes())) |
+        helper::has_dyn_symbol(c_str(tarantool::TUPLE_FIELD_BY_PATH_OLD_API.as_bytes()))
     }
 }

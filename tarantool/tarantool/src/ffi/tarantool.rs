@@ -804,22 +804,6 @@ impl BoxTuple {
     pub fn bsize(&self) -> usize {
         unsafe { box_tuple_bsize(self) }
     }
-
-    /// # Safety
-    /// Access to a field of a struct that can be changed in a future version of
-    /// tarantool. Valid for 2.9.0
-    #[inline(always)]
-    pub unsafe fn data(&self) -> *const c_char {
-        (self as *const Self).cast::<c_char>().add(self.data_offset() as _)
-    }
-
-    /// # Safety
-    /// Access to a field of a struct that can be changed in a future version of
-    /// tarantool. Valid for 2.9.0
-    #[inline(always)]
-    pub unsafe fn field_map(&self) -> *const u32 {
-        self.data() as _
-    }
 }
 
 #[repr(C)]
@@ -862,16 +846,8 @@ extern "C" {
     ) -> c_int;
 }
 
-crate::define_dlsym_reloc! {
-    pub fn tuple_field_raw_by_full_path(
-        format: *const BoxTupleFormat,
-        tuple: *const c_char,
-        field_map: *const u32,
-        path: *const c_char,
-        path_len: u32,
-        path_hash: u32,
-    ) -> *const c_char;
-}
+pub(crate) const TUPLE_FIELD_BY_PATH_OLD_API: &str = "tuple_field_raw_by_full_path\0";
+pub(crate) const TUPLE_FIELD_BY_PATH_NEW_API: &str = "box_tuple_field_by_path\0";
 
 #[repr(C)]
 pub struct BoxTupleIterator {
