@@ -1,4 +1,4 @@
-.PHONY: default fmt lint test check fat
+.PHONY: default fmt lint test check fat clean
 
 default: ;
 
@@ -48,3 +48,8 @@ fat:
 	@$(MAKE) fmt --no-print-directory
 	@$(MAKE) lint --no-print-directory
 	@$(MAKE) test --no-print-directory
+
+clean:
+	cargo clean
+	cd tarantool-sys && rm -f patches-applied && git reset --hard ; cd -
+	find . -type d -name __pycache__ | xargs -n 500 rm -rf
