@@ -1,4 +1,5 @@
 #!/usr/bin/env tarantool
+json = require('json')
 
 local fio = require('fio')
 local fiber = require('fiber')
@@ -62,25 +63,23 @@ function test_schema_cleanup()
     box.space.test_s_tmp:drop()
 end
 
-function proj_root()
-    local fun = require 'fun'
-    local source_path = debug.getinfo(1, "S").source:sub(2)
-    local path_parts = source_path:split('/')
-    local proj_root_parts = fun.take(#path_parts - 2, path_parts):totable()
-    local proj_root = table.concat(proj_root_parts, '/')
-    return proj_root
+function target_dir()
+    if rawget(_G, '_target_dir') == nil then
+        local data = io.popen('cargo metadata --format-version 1'):read('*l')
+        rawset(_G, '_target_dir', json.decode(data).target_directory)
+    end
+    return _target_dir
 end
 
 -- Add test runner library location to lua search path
 package.cpath = string.format(
-    '%s/target/debug/?.so;%s/target/debug/?.dylib;%s',
-    proj_root(),
-    proj_root(),
+    '%s/debug/?.so;%s/debug/?.dylib;%s',
+    target_dir(),
+    target_dir(),
     package.cpath
 )
 
 -- Prepare config
-json = require('json')
 cfg = json.encode {
     filter = arg[1] or "",
     listen = port,
