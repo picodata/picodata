@@ -94,11 +94,11 @@ pub fn from_num() {
     assert_eq!(Decimal::from(usize::MAX).to_string(), "18446744073709551615");
 
     assert_eq!(Decimal::try_from(0f32).unwrap(), Decimal::zero());
-    assert_eq!(Decimal::try_from(-8.11f32).unwrap().to_string(), "-8.10999965667725");
+    assert_eq!(Decimal::try_from(-8.11f32).unwrap().to_string(), "-8.11");
     assert_eq!(Decimal::try_from(f32::INFINITY).unwrap_err().to_string(), "float is infinite");
     assert_eq!(Decimal::try_from(f32::NEG_INFINITY).unwrap_err().to_string(), "float is infinite");
     assert_eq!(Decimal::try_from(f32::NAN).unwrap_err().to_string(), "float is NaN");
-    assert_eq!(Decimal::try_from(f32::EPSILON).unwrap().to_string(), "0.000000119209289550781");
+    assert_eq!(Decimal::try_from(f32::EPSILON).unwrap().to_string(), "1.1920929E-7");
     assert_eq!(Decimal::try_from(f32::MIN).unwrap_err().to_string(),
         "float `-340282350000000000000000000000000000000` cannot be represented using 38 digits"
     );
@@ -106,8 +106,9 @@ pub fn from_num() {
         "float `340282350000000000000000000000000000000` cannot be represented using 38 digits"
     );
     assert_eq!(Decimal::try_from(1.0e-40_f32).unwrap(), Decimal::zero());
-    assert_eq!(Decimal::try_from(1e38_f32).unwrap().to_string(),
-        "99999996802856900000000000000000000000"
+    assert_eq!(Decimal::try_from(1e37_f32).unwrap().to_string(), "10000000000000000000000000000000000000");
+    assert_eq!(Decimal::try_from(1e38_f32).unwrap_err().to_string(),
+        "float `100000000000000000000000000000000000000` cannot be represented using 38 digits"
     );
 
     assert_eq!(Decimal::try_from(0f64).unwrap(), Decimal::zero());
@@ -115,7 +116,7 @@ pub fn from_num() {
     assert_eq!(Decimal::try_from(f64::INFINITY).unwrap_err().to_string(), "float is infinite");
     assert_eq!(Decimal::try_from(f64::NEG_INFINITY).unwrap_err().to_string(), "float is infinite");
     assert_eq!(Decimal::try_from(f64::NAN).unwrap_err().to_string(), "float is NaN");
-    assert_eq!(Decimal::try_from(f64::EPSILON).unwrap().to_string(), "0.000000000000000222044604925031");
+    assert_eq!(Decimal::try_from(f64::EPSILON).unwrap().to_string(), "2.220446049250313E-16");
     assert_eq!(Decimal::try_from(f64::MIN).unwrap_err().to_string(),
         "float `-179769313486231570000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000` cannot be represented using 38 digits"
     );

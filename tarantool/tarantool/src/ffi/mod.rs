@@ -17,7 +17,7 @@ pub mod sql;
 ///
 /// [`tarantool::decimal`]: mod@crate::decimal
 pub fn has_decimal() -> bool {
-    crate::ffi::helper::has_symbol("decimal_zero")
+    true
 }
 
 /// Check whether the current tarantool executable supports fiber::channel api.
