@@ -1,5 +1,24 @@
 # Change Log
 
+# [0.6.3] Aug ?? 2022
+
+### Added
+- Tuples can now be used as parameters to functions like `Space::get`,
+    `Index::get`, etc. (`impl ToTupleBuffer for Tuple`)
+- `Tuple::new` function for creating tuples from anything that can be converted
+    to one.
+- `impl From<TupleBuffer> for Vec<u8>`
+- `impl From<(u32, FieldType)> for KeyDefItem`
+
+### Changed
+- `AsTuple` trait is now deprecated. User defined types should instead
+    implement the new `tarantool::tuple::Encode` trait. And most of the api
+    functions now require the parameters to implement
+    `tarantool::tuple::ToTupleBuffer` (implemented for `Encode` types by default).
+- `Tuple::from_struct` is deprecated. Use `Tuple::new` instead.
+- `KeyDef::new` now accepts a generic `impl IntoIterator<Item=impl Into<KeyDefItem>>`
+
+
 # [0.6.2] Jun 09 2022
 
 ### Added
