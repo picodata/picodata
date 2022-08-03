@@ -41,6 +41,13 @@
     `serde::Deserialize` now require `tuple::Decode`) e.g. `Tuple::get`,
     `TupleIterator::next`, etc. This coincidentally means that you can read a
     tuple's field into a `Tuple`, but you probably don't want that.
+- `tarantool::decimal::Decimal` is now implemented using the
+    [dec](https://crates.io/crates/dec) crate instead of tarantool built-in
+    decimals (which are based on a patched version of the same decNumber library
+    as the dec crate). This means there are minor changes in decimal's behavior
+    (e.g. they're printed with scientific notation now, etc.) but nothing major.
+- `Decimal::log10` & `Decimal::ln` now return `None` in case of invalid values
+    instead of panicking.
 - `KeyDef::new` now accepts a generic `impl IntoIterator<Item=impl Into<KeyDefItem>>`
 
 ### Deprecated
@@ -51,6 +58,7 @@
 - `Tuple::from_struct` is deprecated. Use `Tuple::new` instead.
 - `Tuple::as_struct` & `Tuple::into_struct` are deprecated. Use `Tuple::decode`
     instead.
+
 
 # [0.6.2] Jun 09 2022
 
