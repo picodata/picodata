@@ -208,22 +208,11 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
             }]
         } else {
             #[allow(unused_mut)]
-            let mut tests = tests![];
-
-            tests.append(&mut tests![
-                [should_panic_if: !tarantool::ffi::has_decimal()]
+            let mut tests = tests![
                 decimal::from_lua,
                 decimal::from_string,
                 decimal::from_tuple,
                 decimal::to_tuple,
-                decimal::from_num,
-                decimal::to_num,
-                decimal::cmp,
-                decimal::hash,
-                decimal::ops,
-            ]);
-
-            tests.append(&mut tests![
                 decimal::to_lua,
 
                 tlua::lua_functions::basic,
@@ -409,7 +398,7 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 fiber::immediate_with_cond,
                 fiber::deferred_with_cond,
                 fiber::lifetime,
-            ]);
+            ];
 
             tests.append(&mut tests![
                 [should_panic_if: !tarantool::ffi::has_fiber_channel()]
