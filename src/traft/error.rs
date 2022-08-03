@@ -1,4 +1,5 @@
 use crate::traft::RaftId;
+use ::tarantool::tlua::LuaError;
 use raft::StorageError;
 use rmp_serde::decode::Error as RmpDecodeError;
 use thiserror::Error;
@@ -21,6 +22,8 @@ pub enum Error {
         instance_cluster_id: String,
         cluster_cluster_id: String,
     },
+    #[error("error during execution of lua code: {0}")]
+    Lua(#[from] LuaError),
 }
 
 #[derive(Debug, Error)]

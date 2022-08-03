@@ -12,6 +12,7 @@ pub mod topology;
 use crate::stringify_debug;
 use crate::util::Uppercase;
 use ::raft::prelude as raft;
+use ::tarantool::tlua::LuaError;
 use ::tarantool::tuple::AsTuple;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -77,9 +78,7 @@ pub enum Op {
         msg: String,
     },
     /// Evaluate the code on every instance in cluster.
-    EvalLua {
-        code: String,
-    },
+    EvalLua(OpEvalLua),
     ///
     ReturnOne(OpReturnOne),
     PersistPeer {
@@ -97,7 +96,7 @@ impl std::fmt::Display for Op {
         match self {
             Self::Nop => f.write_str("Nop"),
             Self::Info { msg } => write!(f, "Info({msg:?})"),
-            Self::EvalLua { code } => write!(f, "EvalLua({code:?})"),
+            Self::EvalLua(OpEvalLua { code }) => write!(f, "EvalLua({code:?})"),
             Self::ReturnOne(_) => write!(f, "ReturnOne"),
             Self::PersistPeer { peer } => {
                 write!(f, "PersistPeer{}", peer)
@@ -117,10 +116,7 @@ impl Op {
                 crate::tlog!(Info, "{msg}");
                 Box::new(())
             }
-            Self::EvalLua { code } => {
-                crate::tarantool::eval(code);
-                Box::new(())
-            }
+            Self::EvalLua(op) => Box::new(op.result()),
             Self::ReturnOne(op) => Box::new(op.result()),
             Self::PersistPeer { peer } => {
                 Storage::persist_peer(peer).unwrap();
@@ -152,6 +148,24 @@ impl OpResult for OpReturnOne {
     type Result = u8;
     fn result(&self) -> Self::Result {
         1
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct OpEvalLua {
+    pub code: String,
+}
+
+impl OpResult for OpEvalLua {
+    type Result = Result<(), LuaError>;
+    fn result(&self) -> Self::Result {
+        crate::tarantool::eval(&self.code)
+    }
+}
+
+impl From<OpEvalLua> for Op {
+    fn from(op: OpEvalLua) -> Op {
+        Op::EvalLua(op)
     }
 }
 

@@ -97,10 +97,12 @@ fn picolib_setup(args: &args::Run) {
         tlua::function2(
             |x: String, opts: Option<ProposeEvalOpts>| -> Result<(), Error> {
                 let timeout = opts.and_then(|opts| opts.timeout).unwrap_or(10.0);
-                traft::node::global()?.propose(
-                    traft::Op::EvalLua { code: x },
-                    Duration::from_secs_f64(timeout),
-                )
+                traft::node::global()?
+                    .propose(
+                        traft::OpEvalLua { code: x },
+                        Duration::from_secs_f64(timeout),
+                    )
+                    .and_then(|res| res.map_err(Into::into))
             },
         ),
     );

@@ -5,7 +5,7 @@ use std::time::Instant;
 use ::tarantool::fiber;
 use ::tarantool::lua_state;
 use ::tarantool::net_box;
-use ::tarantool::tlua::{self, LuaFunction, LuaTable};
+use ::tarantool::tlua::{self, LuaError, LuaFunction, LuaTable};
 pub use ::tarantool::trigger::on_shutdown;
 use ::tarantool::tuple::AsTuple;
 
@@ -163,9 +163,9 @@ pub fn set_cfg(cfg: &Cfg) {
 }
 
 #[track_caller]
-pub fn eval(code: &str) {
+pub fn eval(code: &str) -> Result<(), LuaError> {
     let l = lua_state();
-    l.exec(code).unwrap()
+    l.exec(code)
 }
 
 // fn net_box_repeat_call_until_succeed<Args, Res, Addr>(
