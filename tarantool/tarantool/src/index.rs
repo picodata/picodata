@@ -90,6 +90,7 @@ pub enum IteratorType {
 // Builder
 ////////////////////////////////////////////////////////////////////////////////
 
+#[allow(dead_code)]
 pub struct Builder<'a> {
     space_id: u32,
     name: &'a str,

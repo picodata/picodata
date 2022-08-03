@@ -18,7 +18,8 @@ use serde_json::{Map, Value};
 
 use crate::error::{Error, TarantoolError};
 use crate::ffi::tarantool as ffi;
-use crate::index::{self, Index, IndexIterator, IteratorType};
+use crate::index::{Index, IndexIterator, IteratorType};
+#[cfg(feature = "schema")]
 use crate::schema::space::SpaceMetadata;
 use crate::tuple::{AsTuple, Tuple};
 use crate::tuple_from_box_api;
@@ -487,8 +488,8 @@ impl Space {
     ///
     /// - `name` - name of index to create, which should conform to the rules for object names.
     #[cfg(feature = "schema")]
-    pub fn index_builder<'a>(&self, name: &'a str) -> index::Builder<'a> {
-        index::Builder::new(self.id, name)
+    pub fn index_builder<'a>(&self, name: &'a str) -> crate::index::Builder<'a> {
+        crate::index::Builder::new(self.id, name)
     }
 
     /// Find index by name.
@@ -760,6 +761,7 @@ impl Space {
 // Builder
 ////////////////////////////////////////////////////////////////////////////////
 
+#[allow(dead_code)]
 pub struct Builder<'a> {
     name: &'a str,
     opts: SpaceCreateOptions,
