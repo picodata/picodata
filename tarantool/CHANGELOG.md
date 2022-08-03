@@ -5,6 +5,9 @@
 ### Added
 - Tuples can now be used as parameters to functions like `Space::get`,
     `Index::get`, etc. (`impl ToTupleBuffer for Tuple`)
+- Tuple fields can now be read as raw bytes (without deserializing) using
+    `&tarantool::tuple::RawBytes` (borrowed) or `tarantool::tuple::RawByteBuf`
+    (owned)
 - `Tuple::new` function for creating tuples from anything that can be converted
     to one.
 - `impl From<TupleBuffer> for Vec<u8>`
@@ -16,6 +19,10 @@
     functions now require the parameters to implement
     `tarantool::tuple::ToTupleBuffer` (implemented for `Encode` types by default).
 - `Tuple::from_struct` is deprecated. Use `Tuple::new` instead.
+- Most tuple accessor methods changed their bounds (used to require
+    `serde::Deserialize` now require `tuple::Decode`) e.g. `Tuple::get`,
+    `TupleIterator::next`, etc. This coincidentally means that you can read a
+    tuple's field into a `Tuple`, but you probably don't want that.
 - `KeyDef::new` now accepts a generic `impl IntoIterator<Item=impl Into<KeyDefItem>>`
 
 
