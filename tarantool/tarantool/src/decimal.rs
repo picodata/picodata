@@ -189,16 +189,16 @@ impl Decimal {
 
     /// Compute logarithm base 10.
     #[inline(always)]
-    pub fn log10(mut self) -> Self {
-        unsafe { &mut CONTEXT }.log10(&mut self.inner);
-        unsafe { Self::from_inner_unchecked(self.inner) }
+    pub fn log10(mut self) -> Option<Self> {
+        with_context(|ctx| ctx.log10(&mut self.inner))?;
+        Self::try_from(self.inner).ok()
     }
 
     /// Compute natural logarithm.
     #[inline(always)]
-    pub fn ln(mut self) -> Self {
-        unsafe { &mut CONTEXT }.ln(&mut self.inner);
-        unsafe { Self::from_inner_unchecked(self.inner) }
+    pub fn ln(mut self) -> Option<Self> {
+        with_context(|ctx| ctx.ln(&mut self.inner))?;
+        Self::try_from(self.inner).ok()
     }
 
     /// Exponentiate `self`. Return `None` if the result is out of range.
@@ -1078,8 +1078,10 @@ mod test {
         assert_eq!(x.precision(), 4);
         assert_eq!(x.scale(), 3);
 
-        assert_eq!(decimal!(100).log10(), decimal!(2));
-        assert_eq!(decimal!(.01).log10(), decimal!(-2));
+        assert_eq!(decimal!(-1).log10(), None);
+        assert_eq!(decimal!(0).log10(), None);
+        assert_eq!(decimal!(100).log10(), Some(decimal!(2)));
+        assert_eq!(decimal!(.01).log10(), Some(decimal!(-2)));
 
         let e = decimal!(1).exp().unwrap();
         assert_eq!(e, decimal!(2.7182818284590452353602874713526624978));
@@ -1099,8 +1101,10 @@ mod test {
         assert_eq!(e.round_to(40), None::<Decimal>);
         assert_eq!(e.floor_to(40), None::<Decimal>);
 
-        assert_eq!(decimal!(1).ln(), decimal!(0));
-        assert_eq!(e.ln(), decimal!(1));
+        assert_eq!(decimal!(-1).ln(), None);
+        assert_eq!(decimal!(0).ln(), None);
+        assert_eq!(decimal!(1).ln(), Some(decimal!(0)));
+        assert_eq!(e.ln(), Some(decimal!(1)));
 
         assert_eq!(decimal!(4).sqrt(), Some(decimal!(2)));
         assert_eq!(decimal!(-1).sqrt(), None::<Decimal>);
