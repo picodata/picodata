@@ -17,6 +17,16 @@
    { s.len() }` now compiles.
 - `FunctionArgs::decode` method for efficient decoding of the stored procedure
     arguments.
+- `tlua::Strict` wrapper for reading lua numbers without implicit conversions.
+- `tlua::CData` wrapper for reading/writing values as luajit cdata. Can be used
+    work with primitve cdata types like numbers and pointers and also user
+    defined structs.
+- `tlua::AsCData` trait for user defined types which can represented as luajit
+    cdata.
+- `tlua::CDataOnStack` for working with luajit cdata efficiently within the lua
+    stack. Can be used to read the raw cdata bytes or for passing cdata values
+    into lua functions.
+- Added support for reading/writing `isize` & `usize` in `tlua`.
 - `Tuple::new` function for creating tuples from anything that can be converted
     to one.
 - `Tuple::decode` method for converting tuple into something that implements
