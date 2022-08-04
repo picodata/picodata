@@ -18,19 +18,20 @@
 - `impl From<(u32, FieldType)> for KeyDefItem`
 
 ### Changed
+- Most tuple accessor methods changed their bounds (used to require
+    `serde::Deserialize` now require `tuple::Decode`) e.g. `Tuple::get`,
+    `TupleIterator::next`, etc. This coincidentally means that you can read a
+    tuple's field into a `Tuple`, but you probably don't want that.
+- `KeyDef::new` now accepts a generic `impl IntoIterator<Item=impl Into<KeyDefItem>>`
+
+### Deprecated
 - `AsTuple` trait is now deprecated. User defined types should instead
     implement the new `tarantool::tuple::Encode` trait. And most of the api
     functions now require the parameters to implement
     `tarantool::tuple::ToTupleBuffer` (implemented for `Encode` types by default).
 - `Tuple::from_struct` is deprecated. Use `Tuple::new` instead.
-- Most tuple accessor methods changed their bounds (used to require
-    `serde::Deserialize` now require `tuple::Decode`) e.g. `Tuple::get`,
-    `TupleIterator::next`, etc. This coincidentally means that you can read a
-    tuple's field into a `Tuple`, but you probably don't want that.
 - `Tuple::as_struct` & `Tuple::into_struct` are deprecated. Use `Tuple::decode`
     instead.
-- `KeyDef::new` now accepts a generic `impl IntoIterator<Item=impl Into<KeyDefItem>>`
-
 
 # [0.6.2] Jun 09 2022
 
