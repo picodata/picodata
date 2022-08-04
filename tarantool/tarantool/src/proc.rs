@@ -1,7 +1,7 @@
 use crate::{
     error::TarantoolErrorCode::ProcC,
     set_error,
-    tuple::{FunctionCtx, Tuple, TupleBuffer},
+    tuple::{FunctionCtx, Tuple, TupleBuffer, RawBytes, RawByteBuf},
 };
 use serde::Serialize;
 use std::{
@@ -113,6 +113,42 @@ impl Return for TupleBuffer {
 }
 
 impl<E> Return for Result<TupleBuffer, E>
+where
+    E: Display,
+{
+    #[inline(always)]
+    fn ret(self, ctx: FunctionCtx) -> c_int {
+        unwrap_or_report_err!(self.map(|t| t.ret(ctx)))
+    }
+}
+
+impl Return for &RawBytes {
+    #[inline]
+    fn ret(self, ctx: FunctionCtx) -> c_int {
+        let res = ctx.return_bytes(self);
+        unwrap_or_report_err!(res)
+    }
+}
+
+impl<E> Return for Result<&RawBytes, E>
+where
+    E: Display,
+{
+    #[inline(always)]
+    fn ret(self, ctx: FunctionCtx) -> c_int {
+        unwrap_or_report_err!(self.map(|t| t.ret(ctx)))
+    }
+}
+
+impl Return for RawByteBuf {
+    #[inline]
+    fn ret(self, ctx: FunctionCtx) -> c_int {
+        let res = ctx.return_bytes(&self);
+        unwrap_or_report_err!(res)
+    }
+}
+
+impl<E> Return for Result<RawByteBuf, E>
 where
     E: Display,
 {

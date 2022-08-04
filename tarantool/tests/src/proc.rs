@@ -5,7 +5,7 @@ use tarantool::{
         Call, PushGuard, LuaState, PushInto, LuaFunction, LuaThread,
         CallError, LuaRead, AsTable,
     },
-    tuple::{Tuple, TupleBuffer},
+    tuple::{Tuple, TupleBuffer, RawBytes, RawByteBuf},
 };
 use crate::common::lib_name;
 use rmpv::Value;
@@ -96,6 +96,34 @@ pub fn packed() {
     }
 
     assert_eq!(call_proc("proc_packed", (3, "X")).ok(), Some("XXX".to_string()));
+}
+
+pub fn return_raw_bytes() {
+    #[tarantool::proc(packed_args)]
+    fn proc_returns_raw_bytes(x: &RawBytes) -> &RawBytes {
+        x
+    }
+
+    assert_eq!(call_proc("proc_returns_raw_bytes", 1).ok(), Some([1]));
+    assert_eq!(call_proc("proc_returns_raw_bytes", "hi").ok(), Some(["hi".to_string()]));
+    assert_eq!(call_proc("proc_returns_raw_bytes", ("hello!", [1, 2, 3])).ok(),
+        Some(AsTable(("hello!".to_string(), [1, 2, 3])))
+    );
+
+    #[tarantool::proc(packed_args)]
+    fn proc_returns_raw_byte_buf(x: &RawBytes) -> RawByteBuf {
+        let mut res = vec![0x92];
+        res.extend(&x.0);
+        res.extend([0xa4, 0x70, 0x6f, 0x6e, 0x67]);
+        RawByteBuf(res)
+    }
+
+    assert_eq!(call_proc("proc_returns_raw_byte_buf", [1, 2, 3]).ok(),
+        Some(AsTable(([[1, 2, 3]], "pong".to_string())))
+    );
+    assert_eq!(call_proc("proc_returns_raw_byte_buf", "ping").ok(),
+        Some(AsTable((["ping".to_string()], "pong".to_string())))
+    );
 }
 
 pub fn debug() {

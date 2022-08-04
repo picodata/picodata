@@ -548,6 +548,7 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
 
                 proc::simple,
                 proc::return_tuple,
+                proc::return_raw_bytes,
                 proc::with_error,
                 proc::packed,
                 proc::debug,

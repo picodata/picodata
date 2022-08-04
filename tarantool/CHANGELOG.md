@@ -10,6 +10,8 @@
     (owned)
 - Tuples can now be efficiently returned from stored procedures defined with
     `#[proc]` macro attribute. (`impl Return for Tuple`)
+- Raw bytes can now be returned from stored procedures defined with `#[proc]`
+    macro attribute using `RawBytes` or `RawByteBuf`.
 - Stored procedures defined with `#[proc]` macro attribute can now accept
    borrowed arguments. For example `#[proc] fn strlen(s: &str) -> usize
    { s.len() }` now compiles.
