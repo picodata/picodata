@@ -38,6 +38,13 @@ pub fn simple() {
 
     assert_eq!(call_proc("proc_simple", 1).ok(), Some(2));
     assert_eq!(call_proc("proc_simple", 2).ok(), Some(3));
+
+    #[tarantool::proc]
+    fn proc_simple_str(s: &str) -> String {
+        format!("{s} pong")
+    }
+
+    assert_eq!(call_proc("proc_simple_str", "ping").ok(), Some("ping pong".to_string()));
 }
 
 pub fn return_tuple() {

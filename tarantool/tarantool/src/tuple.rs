@@ -993,13 +993,16 @@ impl From<&FunctionArgs> for Tuple {
 }
 
 impl FunctionArgs {
-    /// Deserialize a tuple reprsented by the function args as `T`.
+    /// Decode the msgpack value represented by the function args.
     #[inline(always)]
-    pub fn decode<T>(&self) -> Result<T>
+    pub fn decode<'a, T>(&'a self) -> Result<T>
     where
-        T: DecodeOwned,
+        T: Decode<'a>,
     {
-        Tuple::from(self).decode()
+        let slice = unsafe {
+            std::slice::from_raw_parts(self.start, self.end.offset_from(self.start) as _)
+        };
+        T::decode(slice)
     }
 
     /// Deserialize a tuple reprsented by the function args as `T`.
@@ -1009,7 +1012,7 @@ impl FunctionArgs {
     where
         T: DecodeOwned,
     {
-        self.decode()
+        Tuple::from(self).decode()
     }
 }
 

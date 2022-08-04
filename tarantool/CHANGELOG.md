@@ -8,8 +8,13 @@
 - Tuple fields can now be read as raw bytes (without deserializing) using
     `&tarantool::tuple::RawBytes` (borrowed) or `tarantool::tuple::RawByteBuf`
     (owned)
-- Tuples can now be efficient returned from stored procedures defined with
-    `#[tarantool::proc]` macro attribute. (`impl Return for Tuple`)
+- Tuples can now be efficiently returned from stored procedures defined with
+    `#[proc]` macro attribute. (`impl Return for Tuple`)
+- Stored procedures defined with `#[proc]` macro attribute can now accept
+   borrowed arguments. For example `#[proc] fn strlen(s: &str) -> usize
+   { s.len() }` now compiles.
+- `FunctionArgs::decode` method for efficient decoding of the stored procedure
+    arguments.
 - `Tuple::new` function for creating tuples from anything that can be converted
     to one.
 - `Tuple::decode` method for converting tuple into something that implements

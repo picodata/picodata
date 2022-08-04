@@ -58,10 +58,9 @@ pub fn stored_proc(attr: TokenStream, item: TokenStream) -> TokenStream {
             __tp_ctx: #tarantool::tuple::FunctionCtx,
             __tp_args: #tarantool::tuple::FunctionArgs,
         ) -> ::std::os::raw::c_int {
-            let __tp_tuple = #tarantool::tuple::Tuple::from(__tp_args);
             #debug_tuple
             let #input_pattern =
-                match __tp_tuple.decode() {
+                match __tp_args.decode() {
                     ::std::result::Result::Ok(__tp_args) => __tp_args,
                     ::std::result::Result::Err(__tp_err) => {
                         #tarantool::set_error!(
@@ -98,7 +97,7 @@ struct Context {
 impl Context {
     fn from_args(args: AttributeArgs) -> Self {
         let mut tarantool = quote! { ::tarantool };
-        let mut debug_tuple = quote! {};
+        let mut debug_tuple_needed = false;
         let mut is_packed = false;
         let mut wrap_ret = quote! {};
 
@@ -117,9 +116,7 @@ impl Context {
                     is_packed = true
                 }
                 NMMeta(Meta::Path(path)) if path.is_ident("debug") => {
-                    debug_tuple = quote! {
-                        let __tp_tuple = ::std::dbg!(__tp_tuple);
-                    }
+                    debug_tuple_needed = true
                 }
                 NMMeta(Meta::NameValue(MetaNameValue {
                     path,
@@ -142,6 +139,13 @@ impl Context {
             }
         }
 
+        let debug_tuple = if debug_tuple_needed {
+            quote! {
+                ::std::dbg!(#tarantool::tuple::Tuple::from(&__tp_args));
+            }
+        } else {
+            quote! {}
+        };
         Self {
             tarantool,
             debug_tuple,
