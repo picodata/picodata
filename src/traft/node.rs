@@ -221,6 +221,8 @@ impl Node {
             if msg.to != raw_node.raft.id {
                 return Ok(());
             }
+            // TODO check it's not a MsgPropose with op::PersistPeer.
+            // TODO check it's not a MsgPropose with ConfChange.
             if let Err(e) = raw_node.step(msg) {
                 tlog!(Error, "{e}");
             }
@@ -258,6 +260,9 @@ impl Node {
 
     /// Process the topology request and propose [`PersistPeer`] entry if
     /// appropriate.
+    ///
+    /// Returns an error if the callee node isn't a Raft leader.
+    ///
     /// **This function yields**
     pub fn handle_topology_request(&self, req: TopologyRequest) -> Result<traft::Peer, Error> {
         self.raw_operation(|raw_node| {

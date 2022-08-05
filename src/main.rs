@@ -769,6 +769,9 @@ fn postjoin(args: &args::Run) {
         let leader_id = node.status().leader_id.expect("leader_id deinitialized");
         let leader = traft::Storage::peer_by_raft_id(leader_id).unwrap().unwrap();
 
+        // It's necessary to call `raft_update_peer` remotely on a
+        // leader over net_box. It always fails otherwise. Only the
+        // leader is permitted to propose PersistPeer entries.
         let fn_name = stringify_cfunc!(traft::failover::raft_update_peer);
         let now = Instant::now();
         let timeout = Duration::from_secs(10);
