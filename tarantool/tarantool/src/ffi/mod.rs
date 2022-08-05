@@ -27,7 +27,9 @@ pub fn has_decimal() -> bool {
 /// [`tarantool::fiber::channel`]: crate::fiber::channel
 pub fn has_fiber_channel() -> bool {
     unsafe {
-        crate::ffi::helper::has_symbol(crate::c_str!("fiber_channel_new"))
+        let name = crate::c_str!("fiber_channel_new");
+        helper::tnt_internal_symbol::<*const ()>(name).is_some() ||
+        helper::has_dyn_symbol(name)
     }
 }
 
@@ -41,6 +43,6 @@ pub fn has_fiber_channel() -> bool {
 /// [`Tuple::get`]: crate::tuple::Tuple::get
 pub fn has_tuple_field_by_path() -> bool {
     unsafe {
-        crate::ffi::helper::has_symbol(crate::c_str!("tuple_field_raw_by_full_path"))
+        crate::ffi::helper::has_dyn_symbol(crate::c_str!("tuple_field_raw_by_full_path"))
     }
 }

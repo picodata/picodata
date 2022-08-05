@@ -1,6 +1,8 @@
 use dlopen::symbor::Library;
 
 use std::ffi::CStr;
+use std::os::raw::c_char;
+use std::ptr::NonNull;
 
 #[macro_export]
 macro_rules! c_str {
@@ -37,7 +39,7 @@ macro_rules! define_dlsym_reloc {
 
                 unsafe fn init($($args: $types),*) $(-> $ret)? {
                     let sym_name = $crate::c_str!(::std::stringify!($sym));
-                    let impl_fn: SymType = $crate::ffi::helper::get_symbol(sym_name)
+                    let impl_fn: SymType = $crate::ffi::helper::get_any_symbol(sym_name)
                         .unwrap();
                     RELOC_FN = impl_fn;
                     RELOC_FN($($args),*)
@@ -47,36 +49,59 @@ macro_rules! define_dlsym_reloc {
     };
 }
 
+/// Find a symbol using the `tnt_internal_symbol` api.
+///
+/// This function performs a slow search over all the exported internal
+/// tarantool symbols, so don't use it everytime you want to call a given
+/// function.
 #[inline]
-pub fn has_symbol(name: &CStr) -> bool {
-    check_symbol(name).is_ok()
+pub unsafe fn tnt_internal_symbol<T>(name: &CStr) -> Option<T> {
+    if std::mem::size_of::<T>() != std::mem::size_of::<*mut ()>() {
+        return None
+    }
+    let ptr = (RELOC_FN?)(name.as_ptr())?;
+    return Some(std::mem::transmute_copy(&ptr));
+
+    type SymType = unsafe fn(*const c_char) -> Option<NonNull<()>>;
+    static mut RELOC_FN: Option<SymType> = Some(init);
+
+    unsafe fn init(name: *const c_char) -> Option<NonNull<()>> {
+        let lib = Library::open_self().ok()?;
+        match lib.symbol_cstr(c_str!("tnt_internal_symbol")) {
+            Ok(sym) => {
+                RELOC_FN = Some(*sym);
+                (RELOC_FN.unwrap())(name)
+            }
+            Err(_) => {
+                RELOC_FN = None;
+                None
+            }
+        }
+    }
 }
 
+/// Check if symbol can be found in the current executable using dlsym.
 #[inline]
-pub fn check_symbol(name: &CStr) -> Result<(), dlopen::Error> {
-    let lib = Library::open_self()?;
-    let _sym = unsafe { lib.symbol_cstr::<*const ()>(name) }?;
-    Ok(())
+pub unsafe fn has_dyn_symbol(name: &CStr) -> bool {
+    get_dyn_symbol::<*const ()>(name).is_ok()
 }
 
+/// Find a sybmol in the current executable using dlsym.
 #[inline]
-pub fn get_symbol<T: Copy>(name: &CStr) -> Result<T, dlopen::Error> {
+pub unsafe fn get_dyn_symbol<T: Copy>(name: &CStr) -> Result<T, dlopen::Error> {
     let lib = Library::open_self()?;
-    let sym = unsafe { lib.symbol_cstr(name)? };
+    let sym = lib.symbol_cstr(name)?;
     Ok(*sym)
 }
 
+/// Find a symbol either using the `tnt_internal_symbol` api or using dlsym as a
+/// fallback.
 #[inline]
-pub fn get_symbol_or_warn<T: Copy>(name: &CStr) -> Option<T> {
-    get_symbol(name)
-        .map_err(|e|
-            crate::log::say(
-                crate::log::SayLevel::Warn,
-                file!(),
-                line!() as _,
-                Some(&e.to_string()),
-                &format!("call to {name:?} failed"),
-            )
-        )
-        .ok()
+pub unsafe fn get_any_symbol<T: Copy>(name: &CStr) -> Result<T, dlopen::Error> {
+    if let Some(sym) = tnt_internal_symbol(name) {
+        return Ok(sym)
+    }
+    let lib = Library::open_self()?;
+    let sym = lib.symbol_cstr(name)?;
+    Ok(*sym)
 }

@@ -36,6 +36,10 @@
 - `impl From<TupleBuffer> for Vec<u8>`
 - `impl From<(u32, FieldType)> for KeyDefItem`
 
+### Fixed
+- Load type failure on tarantool 2.9 and later related to missing access to some
+    internal symbols
+
 ### Changed
 - Most tuple accessor methods changed their bounds (used to require
     `serde::Deserialize` now require `tuple::Decode`) e.g. `Tuple::get`,

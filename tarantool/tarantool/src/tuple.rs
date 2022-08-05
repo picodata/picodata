@@ -340,7 +340,8 @@ impl TupleIndex for &str {
         use once_cell::sync::Lazy;
         use std::io::{Error as IOError, ErrorKind};
         static API_AWAILABLE: Lazy<std::result::Result<(), String>> = Lazy::new(|| unsafe {
-            crate::ffi::helper::check_symbol(crate::c_str!("tuple_field_raw_by_full_path"))
+            crate::ffi::helper::get_dyn_symbol::<*const ()>(crate::c_str!("tuple_field_raw_by_full_path"))
+                .map(|_| ())
                 .map_err(|e| e.to_string())
         });
 
