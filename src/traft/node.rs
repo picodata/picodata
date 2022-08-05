@@ -317,6 +317,8 @@ impl Node {
         .recv::<Peer>()
     }
 
+    /// Only the conf_change_loop on a leader is eligible to call this function.
+    ///
     /// **This function yields**
     fn propose_conf_change(
         &self,
