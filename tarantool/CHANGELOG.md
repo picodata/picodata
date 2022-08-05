@@ -31,6 +31,8 @@
     to one.
 - `Tuple::decode` method for converting tuple into something that implements
     `DecodeOwned`.
+- `tarantool::space::clear_cache` function for clearing the cache in case it was
+    invalidated.
 - `impl From<TupleBuffer> for Vec<u8>`
 - `impl From<(u32, FieldType)> for KeyDefItem`
 

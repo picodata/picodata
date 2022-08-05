@@ -22,6 +22,25 @@ pub fn space_get_by_name_cached() {
     assert!(Space::find_cached("test_s1_invalid").is_none());
 }
 
+pub fn space_cache_invalidated() {
+    const SPACE_NAME: &str = "test_space_cache_invalidated_space";
+    Space::builder(SPACE_NAME).create().unwrap();
+    let space = Space::find_cached(SPACE_NAME).unwrap();
+    space.drop().unwrap();
+
+    // `space` is invalid due to stale cache
+    let space = Space::find_cached(SPACE_NAME).unwrap();
+    let msg = space.get(&[1]).unwrap_err().to_string();
+    const HEAD: &str = "Tarantool error: NoSuchSpace: Space '";
+    const TAIL: &str = "' does not exist";
+    assert_eq!(&msg[..HEAD.len()], HEAD);
+    assert_eq!(&msg[msg.len() - TAIL.len()..], TAIL);
+
+    // refresh the cache
+    tarantool::space::clear_cache();
+    assert!(Space::find_cached(SPACE_NAME).is_none());
+}
+
 pub fn space_get_system() {
     let space: Space = SystemSpace::Space.into();
     assert!(space.len().is_ok());
@@ -38,6 +57,25 @@ pub fn index_get_by_name_cached() {
     assert!(space.index_cached("idx_1").is_some());
     assert!(space.index_cached("idx_1").is_some());
     assert!(space.index_cached("idx_1_invalid").is_none());
+}
+
+pub fn index_cache_invalidated() {
+    const INDEX_NAME: &str = "test_index_cache_invalidated_index";
+    const SPACE_NAME: &str = "test_index_cache_invalidated_space";
+    let space = Space::builder(SPACE_NAME).create().unwrap();
+    space.index_builder(INDEX_NAME).create().unwrap();
+    let index = space.index_cached(INDEX_NAME).unwrap();
+    index.drop().unwrap();
+
+    // `index` is invalid due to stale cache
+    let index = space.index_cached(INDEX_NAME).unwrap();
+    assert_eq!(index.get(&[1]).unwrap_err().to_string(),
+        format!("Tarantool error: NoSuchIndexID: No index #0 is defined in space '{SPACE_NAME}'")
+    );
+
+    // refresh the cache
+    tarantool::space::clear_cache();
+    assert!(space.index_cached(INDEX_NAME).is_none());
 }
 
 pub fn get() {

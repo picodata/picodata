@@ -376,6 +376,11 @@ impl SpaceCache {
         }
     }
 
+    fn clear(&self) {
+        self.spaces.borrow_mut().clear();
+        self.indexes.borrow_mut().clear();
+    }
+
     fn space(&self, name: &str) -> Option<Space> {
         let mut cache = self.spaces.borrow_mut();
         cache.get(name).cloned().or_else(|| {
@@ -399,6 +404,13 @@ impl SpaceCache {
 
 thread_local! {
     static SPACE_CACHE: SpaceCache = SpaceCache::new();
+}
+
+/// Clear the space and index cache so that the next call to
+/// [`Space::find_cached`] & [`Space::index_cached`] will have to update the
+/// cache.
+pub fn clear_cache() {
+    SPACE_CACHE.with(SpaceCache::clear)
 }
 
 #[derive(Clone, Debug)]
@@ -457,9 +469,16 @@ impl Space {
     /// it was never called for target space.
     /// - `name` - space name
     ///
+    /// **NOTE** the cache can become invalid for a number of reasons. If an
+    /// operation with a space returned from this function results in a
+    /// [`TarantoolError`] with code [`NoSuchSpace`], try calling [`clear_cache`]
+    /// before trying to find the space again.
+    ///
     /// Returns:
     /// - `None` if not found
     /// - `Some(space)` otherwise
+    ///
+    /// [`NoSuchSpace`]: crate::error::TarantoolErrorCode::NoSuchSpace
     pub fn find_cached(name: &str) -> Option<Self> {
         SPACE_CACHE.with(|cache| {
             cache.space(name)
@@ -517,9 +536,17 @@ impl Space {
     /// This function performs SELECT request to `_vindex` system space.
     /// - `name` - index name
     ///
+    /// **NOTE** the cache can become invalid for a number of reasons. If an
+    /// operation with an index returned from this function results in a
+    /// [`TarantoolError`] with code [`NoSuchSpace`] or [`NoSuchIndexID`], try
+    /// calling [`clear_cache`] before trying to get the index again.
+    ///
     /// Returns:
     /// - `None` if not found
     /// - `Some(index)` otherwise
+    ///
+    /// [`NoSuchSpace`]: crate::error::TarantoolErrorCode::NoSuchSpace
+    /// [`NoSuchIndexID`]: crate::error::TarantoolErrorCode::NoSuchIndexID
     pub fn index_cached(&self, name: &str) -> Option<Index> {
         SPACE_CACHE.with(|cache| {
             cache.index(self, name)
