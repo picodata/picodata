@@ -1,8 +1,10 @@
 use dlopen::symbor::Library;
 
+use std::ffi::CStr;
+
 #[macro_export]
 macro_rules! c_str {
-    ($s:literal) => {
+    ($s:expr) => {
         ::std::ffi::CStr::from_bytes_with_nul_unchecked(
             ::std::concat!($s, "\0").as_bytes()
         )
@@ -11,7 +13,7 @@ macro_rules! c_str {
 
 #[macro_export]
 macro_rules! c_ptr {
-    ($s:literal) => {
+    ($s:expr) => {
         $crate::c_str!($s).as_ptr()
     };
 }
@@ -30,17 +32,15 @@ macro_rules! define_dlsym_reloc {
             pub unsafe fn $sym($($args: $types),*) $(-> $ret)? {
                 return RELOC_FN($($args),*);
 
-                type SymType = fn($($args: $types),*) $(-> $ret)?;
+                type SymType = unsafe fn($($args: $types),*) $(-> $ret)?;
                 static mut RELOC_FN: SymType = init;
 
-                fn init($($args: $types),*) $(-> $ret)? {
-                    let sym_name = ::std::stringify!($sym);
+                unsafe fn init($($args: $types),*) $(-> $ret)? {
+                    let sym_name = $crate::c_str!(::std::stringify!($sym));
                     let impl_fn: SymType = $crate::ffi::helper::get_symbol(sym_name)
                         .unwrap();
-                    unsafe {
-                        RELOC_FN = impl_fn;
-                        RELOC_FN($($args),*)
-                    }
+                    RELOC_FN = impl_fn;
+                    RELOC_FN($($args),*)
                 }
             }
         )+
@@ -48,26 +48,26 @@ macro_rules! define_dlsym_reloc {
 }
 
 #[inline]
-pub fn has_symbol(name: &str) -> bool {
+pub fn has_symbol(name: &CStr) -> bool {
     check_symbol(name).is_ok()
 }
 
 #[inline]
-pub fn check_symbol(name: &str) -> Result<(), dlopen::Error> {
+pub fn check_symbol(name: &CStr) -> Result<(), dlopen::Error> {
     let lib = Library::open_self()?;
-    let _sym = unsafe { lib.symbol::<*const ()>(name) }?;
+    let _sym = unsafe { lib.symbol_cstr::<*const ()>(name) }?;
     Ok(())
 }
 
 #[inline]
-pub fn get_symbol<T: Copy>(name: &str) -> Result<T, dlopen::Error> {
+pub fn get_symbol<T: Copy>(name: &CStr) -> Result<T, dlopen::Error> {
     let lib = Library::open_self()?;
-    let sym = unsafe { lib.symbol(name)? };
+    let sym = unsafe { lib.symbol_cstr(name)? };
     Ok(*sym)
 }
 
 #[inline]
-pub fn get_symbol_or_warn<T: Copy>(name: &str) -> Option<T> {
+pub fn get_symbol_or_warn<T: Copy>(name: &CStr) -> Option<T> {
     get_symbol(name)
         .map_err(|e|
             crate::log::say(
@@ -75,7 +75,7 @@ pub fn get_symbol_or_warn<T: Copy>(name: &str) -> Option<T> {
                 file!(),
                 line!() as _,
                 Some(&e.to_string()),
-                &format!("call to `{name}` failed"),
+                &format!("call to {name:?} failed"),
             )
         )
         .ok()

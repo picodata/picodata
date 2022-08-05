@@ -26,7 +26,9 @@ pub fn has_decimal() -> bool {
 ///
 /// [`tarantool::fiber::channel`]: crate::fiber::channel
 pub fn has_fiber_channel() -> bool {
-    crate::ffi::helper::has_symbol("fiber_channel_new")
+    unsafe {
+        crate::ffi::helper::has_symbol(crate::c_str!("fiber_channel_new"))
+    }
 }
 
 /// Check whether the current tarantool executable supports getting tuple fields
@@ -38,5 +40,7 @@ pub fn has_fiber_channel() -> bool {
 /// [`Tuple::try_get`]: crate::tuple::Tuple::try_get
 /// [`Tuple::get`]: crate::tuple::Tuple::get
 pub fn has_tuple_field_by_path() -> bool {
-    crate::ffi::helper::has_symbol("tuple_field_raw_by_full_path")
+    unsafe {
+        crate::ffi::helper::has_symbol(crate::c_str!("tuple_field_raw_by_full_path"))
+    }
 }

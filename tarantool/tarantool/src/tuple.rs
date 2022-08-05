@@ -339,10 +339,10 @@ impl TupleIndex for &str {
     {
         use once_cell::sync::Lazy;
         use std::io::{Error as IOError, ErrorKind};
-        static API_AWAILABLE: Lazy<std::result::Result<(), String>> = Lazy::new(||
-            crate::ffi::helper::check_symbol("tuple_field_raw_by_full_path")
+        static API_AWAILABLE: Lazy<std::result::Result<(), String>> = Lazy::new(|| unsafe {
+            crate::ffi::helper::check_symbol(crate::c_str!("tuple_field_raw_by_full_path"))
                 .map_err(|e| e.to_string())
-        );
+        });
 
         API_AWAILABLE.clone()
             .map_err(|e| Error::IO(IOError::new(ErrorKind::Unsupported, e)))?;
