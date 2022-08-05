@@ -1,4 +1,5 @@
 import io
+import json
 import os
 import re
 import sys
@@ -533,7 +534,9 @@ def compile() -> None:
 
 @pytest.fixture(scope="session")
 def binary_path(compile, pytestconfig) -> str:
-    return os.path.realpath(pytestconfig.rootpath / "target/debug/picodata")
+    metadata = subprocess.check_output(["cargo", "metadata", "--format-version=1"])
+    target = json.loads(metadata)["target_directory"]
+    return os.path.realpath(os.path.join(target, "debug/picodata"))
 
 
 @pytest.fixture(scope="session")
