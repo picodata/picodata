@@ -1,5 +1,5 @@
 use proc_macro::TokenStream;
-use proc_macro2::{TokenStream as TokenStream2};
+use proc_macro2::TokenStream as TokenStream2;
 use syn::{
     AttributeArgs, parse_macro_input, FnArg, Item, ItemFn,
     Lit, Meta, MetaNameValue, NestedMeta, Signature,
