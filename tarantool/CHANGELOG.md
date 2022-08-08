@@ -17,6 +17,8 @@
    { s.len() }` now compiles.
 - `FunctionArgs::decode` method for efficient decoding of the stored procedure
     arguments.
+- `tlua::Lua::eval_with` & `tlua::Lua::exec_with` method for passing parameters
+    in place of `...` when evaluating lua code.
 - `tlua::Strict` wrapper for reading lua numbers without implicit conversions.
 - `tlua::CData` wrapper for reading/writing values as luajit cdata. Can be used
     work with primitve cdata types like numbers and pointers and also user
@@ -33,12 +35,26 @@
     `DecodeOwned`.
 - `tarantool::space::clear_cache` function for clearing the cache in case it was
     invalidated.
+- `tarantool::space::Space::meta` method for getting space metadata.
+- `tarantool::net_box::Conn::execute` for executing remote sql queries.
+- `tarantool::trigger::on_shutdown` function for setting a tarantool on_shutdown
+    trigger.
+- `tlua::LuaRead`, `tlua::Push` & `tlua::PushInto` derive macros now support
+    generic structs & enums.
+- `picodata` cfg feature for compatibility with [picodata's tarantool fork].
 - `impl From<TupleBuffer> for Vec<u8>`
 - `impl From<(u32, FieldType)> for KeyDefItem`
 
 ### Fixed
 - Load type failure on tarantool 2.9 and later related to missing access to some
     internal symbols
+- Rust callbacks of `Option<T>` failing when called from lua without arguments.
+- `tlua::LuaRead` implementation for `HashMap<K, V>` no longer ignores
+    conversion errors.
+- Memory leak in `tarantool::set_error!` macro.
+- `LuaRead` failing for some derived types related to enums with optional
+    variants.
+- `test/tests.sh` now supports custom cargo target directories.
 
 ### Changed
 - Most tuple accessor methods changed their bounds (used to require
@@ -146,3 +162,6 @@ Added
 # [0.5.1] Dec 24 2021
 
 **TODO**
+
+
+[picodata's tarantool fork]: https://git.picodata.io/picodata/tarantool
