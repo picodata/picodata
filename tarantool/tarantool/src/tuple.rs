@@ -1168,15 +1168,12 @@ impl std::ops::Deref for RawBytes {
 /// RawByteBuf
 ////////////////////////////////////////////////////////////////////////////////
 
-/// A wrapper type for reading raw bytes from a tuple. The difference between
-/// [`Tuple`] and `RawByteBuf` is that the former involves tarantool built-in
-/// memory allocation, while the latter is based on a simple heap allocated
-/// `Vec<u8>`.
+/// A wrapper type for reading raw bytes from a tuple.
 ///
-/// This type may seem similar to `TupleBuffer`, but the difference is that
-/// `TupleBuffer` always contains a valid tuple (msgpack array) whereas
-/// `RawByteBuf` may contain any sequnece of bytes, it may not be valid msgpack
-/// at all.
+/// The difference between [`TupleBuffer`] and `RawByteBuf` is that the former
+/// involves tarantool built-in memory allocation and can only contain a valid
+/// tarantool tuple (msgpack array), while the latter is based on a simple heap
+/// allocated `Vec<u8>` and can contain any sequence of bytes.
 ///
 /// This type also implements [`ToTupleBuffer`] such that `to_tuple_buffer`
 /// returns `Ok` only if the underlying bytes represent a valid tuple.
