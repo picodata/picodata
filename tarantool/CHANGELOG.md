@@ -1,6 +1,6 @@
 # Change Log
 
-# [0.6.3] Aug ?? 2022
+# [0.6.3] Aug 08 2022
 
 ### Added
 - Tuples can now be used as parameters to functions like `Space::get`,
