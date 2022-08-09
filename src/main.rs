@@ -81,6 +81,13 @@ fn picolib_setup(args: &args::Run) {
             Ok(())
         }),
     );
+    #[rustfmt::skip]
+    luamod.set(
+        "exit",
+        tlua::function1(|code: Option<i32>| {
+            tarantool::exit(code.unwrap_or(0))
+        }),
+    );
     #[derive(::tarantool::tlua::LuaRead)]
     struct ProposeEvalOpts {
         timeout: Option<f64>,

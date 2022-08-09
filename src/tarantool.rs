@@ -247,3 +247,20 @@ where
         }
     }
 }
+
+/// Analogue of tarantool's `os.exit(code)`. Use this function if tarantool's
+/// [`on_shutdown`] triggers must run. If instead you want to skip on_shutdown
+/// triggers, use [`std::process::exit`] instead.
+///
+/// [`on_shutdown`]: ::tarantool::trigger::on_shutdown
+pub fn exit(code: i32) -> ! {
+    unsafe { tarantool_exit(code) }
+
+    loop {
+        fiber::fiber_yield()
+    }
+
+    extern "C" {
+        fn tarantool_exit(code: i32);
+    }
+}
