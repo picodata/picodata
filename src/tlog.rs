@@ -56,7 +56,8 @@ struct StrSerializer {
 
 impl slog::Serializer for StrSerializer {
     fn emit_arguments(&mut self, key: slog::Key, val: &std::fmt::Arguments) -> slog::Result {
-        self.str.push_str(&format!(", {}: {}", key, val));
+        use std::fmt::Write;
+        write!(&mut self.str, ", {key}: {val}").unwrap();
         Ok(())
     }
 }

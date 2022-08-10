@@ -300,14 +300,11 @@ inventory::submit!(crate::InnerTest {
 
         // Set up on_disconnect trigger
         let on_disconnect_cond = Rc::new(fiber::Cond::new());
-        let on_disconnect: tlua::LuaFunction<_> =
-            l.eval("return box.session.on_disconnect").unwrap();
-        let () = on_disconnect
-            .call_with_args({
-                let cond = on_disconnect_cond.clone();
-                tlua::function0(move || cond.broadcast())
-            })
-            .unwrap();
+        l.exec_with("box.session.on_disconnect(...)", {
+            let cond = on_disconnect_cond.clone();
+            tlua::function0(move || cond.broadcast())
+        })
+        .unwrap();
 
         // Wait for it
         on_disconnect_cond
