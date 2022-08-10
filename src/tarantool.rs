@@ -7,7 +7,7 @@ use ::tarantool::lua_state;
 use ::tarantool::net_box;
 use ::tarantool::tlua::{self, LuaError, LuaFunction, LuaTable};
 pub use ::tarantool::trigger::on_shutdown;
-use ::tarantool::tuple::AsTuple;
+use ::tarantool::tuple::ToTupleBuffer;
 
 #[macro_export]
 macro_rules! stringify_last_token {
@@ -176,7 +176,7 @@ pub fn net_box_call<Args, Res, Addr>(
     timeout: Duration,
 ) -> Result<Res, ::tarantool::error::Error>
 where
-    Args: AsTuple,
+    Args: ToTupleBuffer,
     Addr: std::net::ToSocketAddrs + std::fmt::Display,
     Res: serde::de::DeserializeOwned,
 {
@@ -198,13 +198,13 @@ where
         .call(fn_name, args, &call_opts)?
         .expect("unexpected net_box result Ok(None)");
 
-    tuple.into_struct::<((Res,),)>().map(|res| res.0 .0)
+    tuple.decode().map(|((res,),)| res)
 }
 
 #[allow(dead_code)]
 pub fn net_box_call_retry<Args, Res, Addr>(address: Addr, fn_name: &str, args: &Args) -> Res
 where
-    Args: AsTuple,
+    Args: ToTupleBuffer,
     Addr: std::net::ToSocketAddrs + std::fmt::Display + slog::Value,
     Res: serde::de::DeserializeOwned,
 {
@@ -232,7 +232,7 @@ pub fn net_box_call_or_log<Args, Res, Addr>(
     timeout: Duration,
 ) -> Option<Res>
 where
-    Args: AsTuple,
+    Args: ToTupleBuffer,
     Addr: std::net::ToSocketAddrs + std::fmt::Display + slog::Value,
     Res: serde::de::DeserializeOwned,
 {

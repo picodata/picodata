@@ -13,7 +13,7 @@ use crate::stringify_debug;
 use crate::util::Uppercase;
 use ::raft::prelude as raft;
 use ::tarantool::tlua::LuaError;
-use ::tarantool::tuple::AsTuple;
+use ::tarantool::tuple::Encode;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::any::Any;
@@ -207,7 +207,7 @@ pub struct Peer {
     // in different spaces/not deserialize the whole tuple every time?
     pub failure_domain: FailureDomain,
 }
-impl AsTuple for Peer {}
+impl Encode for Peer {}
 
 impl Peer {
     pub fn is_active(&self) -> bool {
@@ -314,7 +314,7 @@ pub struct EntryContextConfChange {
     pub peers: Vec<Peer>,
 }
 
-impl AsTuple for Entry {}
+impl Encode for Entry {}
 impl ContextCoercion for EntryContextNormal {}
 impl ContextCoercion for EntryContextConfChange {}
 
@@ -469,7 +469,7 @@ impl From<self::Entry> for raft::Entry {
 /// over Tarantool binary protocol (`net_box`).
 #[derive(Clone, Deserialize, Serialize)]
 struct MessagePb(#[serde(with = "serde_bytes")] Vec<u8>);
-impl AsTuple for MessagePb {}
+impl Encode for MessagePb {}
 
 impl ::std::fmt::Debug for MessagePb {
     fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
@@ -546,7 +546,7 @@ pub struct JoinRequest {
     pub advertise_address: String,
     pub failure_domain: FailureDomain,
 }
-impl AsTuple for JoinRequest {}
+impl Encode for JoinRequest {}
 
 ///////////////////////////////////////////////////////////////////////////////
 /// Response to a JoinRequest
@@ -559,7 +559,7 @@ pub struct JoinResponse {
     // Other parameters necessary for box.cfg()
     // pub read_only: bool,
 }
-impl AsTuple for JoinResponse {}
+impl Encode for JoinResponse {}
 
 ///////////////////////////////////////////////////////////////////////////////
 /// Activity state of an instance.
@@ -601,7 +601,7 @@ pub struct UpdatePeerRequest {
     pub cluster_id: String,
     pub failure_domain: Option<FailureDomain>,
 }
-impl AsTuple for UpdatePeerRequest {}
+impl Encode for UpdatePeerRequest {}
 
 impl UpdatePeerRequest {
     #[inline]
@@ -636,7 +636,7 @@ impl UpdatePeerRequest {
 pub struct UpdatePeerResponse {
     // It's empty now, but it may be extended in future
 }
-impl AsTuple for UpdatePeerResponse {}
+impl Encode for UpdatePeerResponse {}
 
 ///////////////////////////////////////////////////////////////////////////////
 lazy_static::lazy_static! {

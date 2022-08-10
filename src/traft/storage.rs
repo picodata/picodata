@@ -148,7 +148,7 @@ impl Storage {
 
         match tuple {
             None => Ok(None),
-            Some(v) => Ok(Some(v.into_struct().map_err(box_err!())?)),
+            Some(v) => Ok(Some(v.decode().map_err(box_err!())?)),
         }
     }
 
@@ -163,7 +163,7 @@ impl Storage {
 
         match tuple {
             None => Ok(None),
-            Some(v) => Ok(Some(v.into_struct().map_err(box_err!())?)),
+            Some(v) => Ok(Some(v.decode().map_err(box_err!())?)),
         }
     }
 
@@ -175,7 +175,7 @@ impl Storage {
             .map_err(box_err!())?;
 
         for tuple in iter {
-            ret.push(tuple.into_struct().map_err(box_err!())?);
+            ret.push(tuple.decode().map_err(box_err!())?);
         }
 
         Ok(ret)
@@ -196,7 +196,7 @@ impl Storage {
             .map_err(box_err!())?;
 
         for tuple in iter {
-            let replica: traft::Peer = tuple.into_struct().map_err(box_err!())?;
+            let replica: traft::Peer = tuple.decode().map_err(box_err!())?;
 
             if replica.replicaset_id != replicaset_id {
                 // In Tarantool the iteration must be interrupted explicitly.
@@ -330,7 +330,7 @@ impl Storage {
             .map_err(box_err!())?;
 
         for tuple in iter {
-            let row: traft::Entry = tuple.into_struct().map_err(box_err!())?;
+            let row: traft::Entry = tuple.decode().map_err(box_err!())?;
             if row.index >= high {
                 break;
             }
@@ -344,7 +344,7 @@ impl Storage {
         Storage::space(RAFT_LOG)?
             .select(IteratorType::All, &())
             .map_err(box_err!())?
-            .map(|tuple| tuple.into_struct().map_err(box_err!()))
+            .map(|tuple| tuple.decode().map_err(box_err!()))
             .collect()
     }
 
