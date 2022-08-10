@@ -134,18 +134,16 @@ To learn more about the commands used above, look up their syntax and usage deta
 
 ```rust
 use std::os::raw::c_int;
-use tarantool::tuple::{FunctionArgs, FunctionCtx};
+use tarantool::proc;
 
-#[no_mangle]
-pub extern "C" fn easy(_: FunctionCtx, _: FunctionArgs) -> c_int {
+#[proc]
+fn easy() {
     println!("hello world");
-    0
 }
 
-#[no_mangle]
-pub extern "C" fn easy2(_: FunctionCtx, _: FunctionArgs) -> c_int {
+#[proc]
+fn easy2() {
     println!("hello world -- easy2");
-    0
 }
 
 #[no_mangle]
@@ -200,33 +198,16 @@ As you can see, calling a Rust function is as straightforward as it can be.
 Create a new crate called "harder". Put these lines to `lib.rs`:
 
 ```rust
-use serde::{Deserialize, Serialize};
-use std::os::raw::c_int;
-use tarantool::tuple::{Encode, FunctionArgs, FunctionCtx, Tuple};
+#[tarantool::proc]
+fn harder(fields: Vec<i32>) {
+    println!("field_count = {}", fields.len());
 
-#[derive(Serialize, Deserialize)]
-struct Args {
-    pub fields: Vec<i32>,
-}
-
-impl Encode for Args {}
-
-#[no_mangle]
-pub extern "C" fn harder(_: FunctionCtx, args: FunctionArgs) -> c_int {
-    let args: Tuple = args.into(); // (1)
-    let args = args.decode::<Args>().unwrap(); // (2)
-    println!("field_count = {}", args.fields.len());
-
-    for val in args.fields {
+    for val in fields {
         println!("val={}", val);
     }
-
-    0
 }
 ```
-The above code does the following:
-1. Extracts tuple from the `FunctionArgs` special structure
-1. Deserializes tuple into the Rust structure
+The above code defines a stored proc which accepts a sequence of integers.
 
 Compile the program into the `harder.so` library using `cargo build`.
 
@@ -261,12 +242,13 @@ As you can see, decoding parameter values passed to a Rust function may be trick
 
 Create a new crate called "hardest". Put these lines to `lib.rs`:
 ```rust
-use std::os::raw::c_int;
-
 use serde::{Deserialize, Serialize};
 
-use tarantool::space::Space;
-use tarantool::tuple::{Encode, FunctionArgs, FunctionCtx};
+use tarantool::{
+    proc,
+    space::Space,
+    tuple::{Encode, Tuple},
+};
 
 #[derive(Serialize, Deserialize)]
 struct Row {
@@ -276,20 +258,18 @@ struct Row {
 
 impl Encode for Row {}
 
-#[no_mangle]
-pub extern "C" fn hardest(ctx: FunctionCtx, _: FunctionArgs) -> c_int {
-    let mut space = Space::find("capi_test").unwrap(); // (1)
-    let result = space.insert( // (3)
-        &Row { // (2)
-            int_field: 10000,
-            str_field: "String 2".to_string(),
-        }
-    );
-    ctx.return_tuple(&result.unwrap().unwrap()).unwrap()
+#[proc]
+fn hardest() -> Tuple {
+    let mut space = Space::find("capi_test").unwrap();
+    let result = space.insert(&Row {
+        int_field: 10000,
+        str_field: "String 2".to_string(),
+    });
+    result.unwrap()
 }
 ```
 This time the Rust function does the following:
-1. Finds the `capi_test` space by calling the `Space::find_by_name()` method;
+1. Finds the `capi_test` space by calling the `Space::find()` method;
 1. Serializes the row structure to a tuple in auto mode;
 1. Inserts the tuple using `.insert()`.
 
@@ -322,12 +302,13 @@ The above proves that the `hardest()` function has succeeded.
 
 Create a new crate "read". Put these lines to `lib.rs`:
 ```rust
-use std::os::raw::c_int;
-
 use serde::{Deserialize, Serialize};
 
-use tarantool::space::Space;
-use tarantool::tuple::{Encode, FunctionArgs, FunctionCtx};
+use tarantool::{
+    proc,
+    space::Space,
+    tuple::Encode,
+};
 
 #[derive(Serialize, Deserialize, Debug)]
 struct Row {
@@ -337,18 +318,16 @@ struct Row {
 
 impl Encode for Row {}
 
-#[no_mangle]
-pub extern "C" fn read(_: FunctionCtx, _: FunctionArgs) -> c_int {
-    let space = Space::find("capi_test").unwrap(); // (1)
+#[proc]
+fn read() {
+    let space = Space::find("capi_test").unwrap();
 
     let key = 10000;
-    let result = space.get(&(key,)).unwrap(); // (2, 3)
+    let result = space.get(&(key,)).unwrap();
     assert!(result.is_some());
 
-    let result = result.unwrap().decode::<Row>().unwrap(); // (4)
+    let result = result.unwrap().decode::<Row>().unwrap();
     println!("value={:?}", result);
-
-    0
 }
 ```
 The above code does the following:
@@ -384,44 +363,40 @@ The above proves that the `read()` function has succeeded.
 
 Create a new crate called "write". Put these lines to `lib.rs`:
 ```rust
-use std::os::raw::c_int;
+use tarantool::{
+    proc,
+    error::Error,
+    fiber::sleep,
+    space::Space,
+    transaction::start_transaction,
+};
 
-use tarantool::error::{Error, TarantoolErrorCode};
-use tarantool::fiber::sleep;
-use tarantool::space::Space;
-use tarantool::transaction::start_transaction;
-use tarantool::tuple::{FunctionArgs, FunctionCtx};
+#[proc]
+fn write() -> Result<(i32, String), String> {
+    let mut space = Space::find("capi_test")
+        .ok_or_else(|| "Can't find space capi_test".to_string())?;
 
-#[no_mangle]
-pub extern "C" fn write(ctx: FunctionCtx, _: FunctionArgs) -> c_int {
-   let mut space = match Space::find("capi_test") {
-      None => {
-         return tarantool::set_error!(TarantoolErrorCode::ProcC, "Can't find space capi_test")
-      }
-      Some(space) => space,
-   };
+    let row = (1, "22".to_string());
 
-   let row = (1, "22".to_string());
+    start_transaction(|| -> Result<(), Error> {
+        space.replace(&row)?;
+        Ok(())
+    })
+    .unwrap();
 
-   start_transaction(|| -> Result<(), Error> {
-      space.replace(&row)?;
-      Ok(())
-   })
-           .unwrap();
-
-   sleep(std::time::Duration::from_millis(1));
-   ctx.return_mp(&row).unwrap()
+    sleep(std::time::Duration::from_millis(1));
+    Ok(row)
 }
 ```
 The above code does the following:
-1. Finds the `capi_test` space by calling `Space::find_by_name()`;
+1. Finds the `capi_test` space by calling `Space::find()`;
 1. Prepares the row value;
 1. Launches the transaction;
 1. Replaces the tuple in `box.space.capi_test`
-1. Finishes the transaction: 
+1. Finishes the transaction:
     - performs a commit upon receiving `Ok()` on closure
     - performs a rollback upon receiving `Error()`;
-1. Returns the entire tuple to the caller using the `.return_mp()` method and lets the caller display it.
+1. Returns the entire tuple to the caller and lets the caller display it.
 
 Compile the program into the `write.so` library using `cargo build`.
 
@@ -437,7 +412,7 @@ The result of `capi_connection:call('write')` should look like this:
 ```
 tarantool> capi_connection:call('write')
 ---
-- [[1, 22]]
+- [[1, '22']]
 ...
 ```
 

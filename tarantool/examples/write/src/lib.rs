@@ -1,21 +1,17 @@
-use std::os::raw::c_int;
+use tarantool::{
+    proc,
+    error::Error,
+    fiber::sleep,
+    space::Space,
+    transaction::start_transaction,
+};
 
-use tarantool::error::{Error, TarantoolErrorCode};
-use tarantool::fiber::sleep;
-use tarantool::space::Space;
-use tarantool::transaction::start_transaction;
-use tarantool::tuple::{FunctionArgs, FunctionCtx};
+#[proc]
+fn write() -> Result<(i32, String), String> {
+    let mut space = Space::find("capi_test")
+        .ok_or_else(|| "Can't find space capi_test".to_string())?;
 
-#[no_mangle]
-pub extern "C" fn hardest(ctx: FunctionCtx, _: FunctionArgs) -> c_int {
-    let mut space = match Space::find("capi_test") {
-        None => {
-            return tarantool::set_error!(TarantoolErrorCode::ProcC, "Can't find space capi_test")
-        }
-        Some(space) => space,
-    };
-
-    let row = (1, 22);
+    let row = (1, "22".to_string());
 
     start_transaction(|| -> Result<(), Error> {
         space.replace(&row)?;
@@ -24,5 +20,5 @@ pub extern "C" fn hardest(ctx: FunctionCtx, _: FunctionArgs) -> c_int {
     .unwrap();
 
     sleep(std::time::Duration::from_millis(1));
-    ctx.return_mp(&row).unwrap()
+    Ok(row)
 }

@@ -1,9 +1,10 @@
-use std::os::raw::c_int;
-
 use serde::{Deserialize, Serialize};
 
-use tarantool::space::Space;
-use tarantool::tuple::{Encode, FunctionArgs, FunctionCtx};
+use tarantool::{
+    proc,
+    space::Space,
+    tuple::{Encode, Tuple},
+};
 
 #[derive(Serialize, Deserialize)]
 struct Row {
@@ -13,12 +14,12 @@ struct Row {
 
 impl Encode for Row {}
 
-#[no_mangle]
-pub extern "C" fn hardest(ctx: FunctionCtx, _: FunctionArgs) -> c_int {
+#[proc]
+fn hardest() -> Tuple {
     let mut space = Space::find("capi_test").unwrap();
     let result = space.insert(&Row {
         int_field: 10000,
         str_field: "String 2".to_string(),
     });
-    ctx.return_tuple(&result.unwrap()).unwrap()
+    result.unwrap()
 }

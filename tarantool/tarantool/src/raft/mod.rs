@@ -17,7 +17,7 @@ use crate::fiber::Cond;
 use crate::net_box::{Conn, ConnOptions, Options};
 use crate::raft::inner::NodeEvent;
 use crate::set_error;
-use crate::tuple::{FunctionArgs, FunctionCtx, Tuple};
+use crate::tuple::{FunctionArgs, FunctionCtx};
 
 mod fsm;
 pub mod inner;
@@ -118,8 +118,6 @@ impl Node {
     }
 
     pub fn handle_rpc(&self, ctx: FunctionCtx, args: FunctionArgs) -> i32 {
-        let args: Tuple = args.into();
-
         match args.decode::<rpc::Request>() {
             Err(e) => set_error!(TarantoolErrorCode::Protocol, "{}", e),
             Ok(request) => {

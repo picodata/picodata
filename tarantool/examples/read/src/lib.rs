@@ -1,9 +1,10 @@
-use std::os::raw::c_int;
-
 use serde::{Deserialize, Serialize};
 
-use tarantool::space::Space;
-use tarantool::tuple::{Encode, FunctionArgs, FunctionCtx};
+use tarantool::{
+    proc,
+    space::Space,
+    tuple::Encode,
+};
 
 #[derive(Serialize, Deserialize, Debug)]
 struct Row {
@@ -13,8 +14,8 @@ struct Row {
 
 impl Encode for Row {}
 
-#[no_mangle]
-pub extern "C" fn read(_: FunctionCtx, _: FunctionArgs) -> c_int {
+#[proc]
+fn read() {
     let space = Space::find("capi_test").unwrap();
 
     let key = 10000;
@@ -23,6 +24,4 @@ pub extern "C" fn read(_: FunctionCtx, _: FunctionArgs) -> c_int {
 
     let result = result.unwrap().decode::<Row>().unwrap();
     println!("value={:?}", result);
-
-    0
 }
