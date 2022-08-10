@@ -19,7 +19,7 @@ unsafe impl Sync for Global {}
 #[allow(clippy::non_send_fields_in_send_ty)]
 unsafe impl Send for Global {}
 
-static GLOBAL: Lazy<Global> = Lazy::new(|| Default::default());
+static GLOBAL: Lazy<Global> = Lazy::new(Default::default);
 
 #[proc]
 fn run_node(bootstrap_addrs: Vec<&str>) {

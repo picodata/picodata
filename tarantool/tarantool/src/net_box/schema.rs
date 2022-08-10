@@ -1,4 +1,4 @@
-use lazy_static::lazy_static;
+use once_cell::unsync::Lazy;
 
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
@@ -25,12 +25,12 @@ pub struct ConnSchema {
 
 impl ConnSchema {
     pub fn acquire(addrs: &[SocketAddr]) -> Rc<ConnSchema> {
-        let mut cache = SCHEMA_CACHE.cache.borrow_mut();
-
-        for addr in addrs {
-            if let Some(schema) = cache.get(addr) {
-                return schema.clone();
-            }
+        let addr = SCHEMA_CACHE.with(|cache| {
+            let cache = cache.cache.borrow();
+            addrs.iter().find_map(|addr| cache.get(addr).cloned())
+        });
+        if let Some(addr) = addr {
+            return addr;
         }
 
         let schema = Rc::new(ConnSchema {
@@ -41,9 +41,12 @@ impl ConnSchema {
             lock: Latch::new(),
         });
 
-        for addr in addrs {
-            cache.insert(*addr, schema.clone());
-        }
+        SCHEMA_CACHE.with(|cache| {
+            let mut cache = cache.cache.borrow_mut();
+            for addr in addrs {
+                cache.insert(*addr, schema.clone());
+            }
+        });
 
         schema
     }
@@ -159,8 +162,10 @@ struct ConnSchemaCache {
 
 unsafe impl Sync for ConnSchemaCache {}
 
-lazy_static! {
-    static ref SCHEMA_CACHE: ConnSchemaCache = ConnSchemaCache {
-        cache: RefCell::new(HashMap::new()),
-    };
+thread_local! {
+    static SCHEMA_CACHE: Lazy<ConnSchemaCache> = Lazy::new(||
+        ConnSchemaCache {
+            cache: RefCell::new(HashMap::new()),
+        }
+    )
 }
