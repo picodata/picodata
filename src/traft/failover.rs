@@ -83,7 +83,7 @@ fn raft_update_peer(
         }));
     }
 
-    node.handle_topology_request(req.into())?;
+    node.handle_topology_request_and_wait(req.into())?;
     Ok(UpdatePeerResponse {})
 }
 

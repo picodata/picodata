@@ -140,7 +140,7 @@ impl Node {
         };
 
         // Wait for the node to enter the main loop
-        node.tick(0);
+        node.tick_and_yield(0);
         Ok(node)
     }
 
@@ -160,7 +160,7 @@ impl Node {
     }
 
     /// **This function yields**
-    pub fn read_index(&self, timeout: Duration) -> Result<RaftIndex, Error> {
+    pub fn wait_for_read_state(&self, timeout: Duration) -> Result<RaftIndex, Error> {
         self.raw_operation(|raw_node| {
             // In some states `raft-rs` ignores the ReadIndex request.
             // Check it preliminary, don't wait for the timeout.
@@ -188,7 +188,7 @@ impl Node {
 
     /// Propose an operation and wait for it's result.
     /// **This function yields**
-    pub fn propose<T: OpResult + Into<traft::Op>>(
+    pub fn propose_and_wait<T: OpResult + Into<traft::Op>>(
         &self,
         op: T,
         timeout: Duration,
@@ -205,7 +205,7 @@ impl Node {
     /// Become a candidate and wait for a main loop round so that there's a
     /// chance we become the leader.
     /// **This function yields**
-    pub fn campaign(&self) -> Result<(), Error> {
+    pub fn campaign_and_yield(&self) -> Result<(), Error> {
         self.raw_operation(|raw_node| raw_node.campaign().map_err(Into::into))?;
         // Even though we don't expect a response, we still should let the
         // main_loop do an iteration. Without rescheduling, the Ready state
@@ -216,7 +216,7 @@ impl Node {
     }
 
     /// **This function yields**
-    pub fn step(&self, msg: raft::Message) {
+    pub fn step_and_yield(&self, msg: raft::Message) {
         self.raw_operation(|raw_node| {
             if msg.to != raw_node.raft.id {
                 return Ok(());
@@ -235,7 +235,7 @@ impl Node {
     }
 
     /// **This function yields**
-    pub fn tick(&self, n_times: u32) {
+    pub fn tick_and_yield(&self, n_times: u32) {
         self.raw_operation(|raw_node| {
             for _ in 0..n_times {
                 raw_node.tick();
@@ -250,7 +250,7 @@ impl Node {
 
     /// **This function yields**
     pub fn timeout_now(&self) {
-        self.step(raft::Message {
+        self.step_and_yield(raft::Message {
             to: self.raft_id,
             from: self.raft_id,
             msg_type: raft::MessageType::MsgTimeoutNow,
@@ -264,7 +264,10 @@ impl Node {
     /// Returns an error if the callee node isn't a Raft leader.
     ///
     /// **This function yields**
-    pub fn handle_topology_request(&self, req: TopologyRequest) -> Result<traft::Peer, Error> {
+    pub fn handle_topology_request_and_wait(
+        &self,
+        req: TopologyRequest,
+    ) -> Result<traft::Peer, Error> {
         self.raw_operation(|raw_node| {
             if raw_node.raft.state != RaftStateRole::Leader {
                 return Err(RaftError::ConfChangeError("not a leader".into()).into());
@@ -320,7 +323,7 @@ impl Node {
     /// Only the conf_change_loop on a leader is eligible to call this function.
     ///
     /// **This function yields**
-    fn propose_conf_change(
+    fn propose_conf_change_and_wait(
         &self,
         term: RaftTerm,
         conf_change: raft::ConfChangeV2,
@@ -828,7 +831,7 @@ fn raft_conf_change_loop(status: Rc<RefCell<Status>>) {
         // will sometimes be handled and there's no need in timeout.
         // It also guarantees that the notification will arrive only
         // after the node leaves the joint state.
-        match node.propose_conf_change(term, conf_change) {
+        match node.propose_conf_change_and_wait(term, conf_change) {
             Ok(()) => tlog!(Info, "conf_change processed"),
             Err(e) => {
                 tlog!(Warning, "conf_change failed: {e}");
@@ -875,7 +878,7 @@ pub fn global() -> Result<&'static Node, Error> {
 fn raft_interact(pbs: Vec<traft::MessagePb>) -> Result<(), Box<dyn std::error::Error>> {
     let node = global()?;
     for pb in pbs {
-        node.step(raft::Message::try_from(pb)?);
+        node.step_and_yield(raft::Message::try_from(pb)?);
     }
     Ok(())
 }
@@ -893,7 +896,7 @@ fn raft_join(req: JoinRequest) -> Result<JoinResponse, Box<dyn std::error::Error
         }));
     }
 
-    let peer = node.handle_topology_request(req.into())?;
+    let peer = node.handle_topology_request_and_wait(req.into())?;
     let box_replication = Storage::box_replication(&peer.replicaset_id, Some(peer.commit_index))?;
 
     // A joined peer needs to communicate with other nodes.

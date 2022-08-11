@@ -58,20 +58,21 @@ fn picolib_setup(args: &args::Run) {
     luamod.set(
         "raft_tick",
         tlua::function1(|n_times: u32| -> Result<(), Error> {
-            traft::node::global()?.tick(n_times);
+            traft::node::global()?.tick_and_yield(n_times);
             Ok(())
         }),
     );
     luamod.set(
         "raft_read_index",
         tlua::function1(|timeout: f64| -> Result<RaftIndex, Error> {
-            traft::node::global()?.read_index(Duration::from_secs_f64(timeout))
+            traft::node::global()?.wait_for_read_state(Duration::from_secs_f64(timeout))
         }),
     );
     luamod.set(
         "raft_propose_info",
         tlua::function1(|x: String| -> Result<(), Error> {
-            traft::node::global()?.propose(traft::Op::Info { msg: x }, Duration::from_secs(1))
+            traft::node::global()?
+                .propose_and_wait(traft::Op::Info { msg: x }, Duration::from_secs(1))
         }),
     );
     luamod.set(
@@ -98,7 +99,7 @@ fn picolib_setup(args: &args::Run) {
             |x: String, opts: Option<ProposeEvalOpts>| -> Result<(), Error> {
                 let timeout = opts.and_then(|opts| opts.timeout).unwrap_or(10.0);
                 traft::node::global()?
-                    .propose(
+                    .propose_and_wait(
                         traft::OpEvalLua { code: x },
                         Duration::from_secs_f64(timeout),
                     )
@@ -109,7 +110,8 @@ fn picolib_setup(args: &args::Run) {
     luamod.set(
         "raft_return_one",
         tlua::function1(|timeout: f64| -> Result<u8, Error> {
-            traft::node::global()?.propose(traft::OpReturnOne, Duration::from_secs_f64(timeout))
+            traft::node::global()?
+                .propose_and_wait(traft::OpReturnOne, Duration::from_secs_f64(timeout))
         }),
     );
     {
@@ -721,8 +723,8 @@ fn postjoin(args: &args::Run) {
             )
         );
 
-        node.tick(1); // apply configuration, if any
-        node.campaign().ok(); // trigger election immediately
+        node.tick_and_yield(1); // apply configuration, if any
+        node.campaign_and_yield().ok(); // trigger election immediately
         assert_eq!(node.status().raft_state, "Leader");
     }
 
@@ -741,7 +743,7 @@ fn postjoin(args: &args::Run) {
         }
 
         let timeout = Duration::from_secs(10);
-        if let Err(e) = node.read_index(timeout) {
+        if let Err(e) = node.wait_for_read_state(timeout) {
             tlog!(Debug, "unable to get a read barrier: {e}");
             fiber::sleep(Duration::from_millis(100));
             continue;
