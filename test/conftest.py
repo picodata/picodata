@@ -181,7 +181,6 @@ POSITION_IN_SPACE_INSTANCE_ID = 3
 class Instance:
     binary_path: str
     cluster_id: str
-    instance_id: str
     data_dir: str
     peers: list[str]
     host: str
@@ -190,6 +189,7 @@ class Instance:
 
     color: Callable[[str], str]
 
+    instance_id: str | None = None
     failure_domain: dict[str, str] = field(default_factory=dict)
     env: dict[str, str] = field(default_factory=dict)
     process: subprocess.Popen | None = None
@@ -211,7 +211,7 @@ class Instance:
         return [
             self.binary_path, "run",
             "--cluster-id", self.cluster_id,
-            "--instance-id", self.instance_id,
+            *([f"--instance-id={self.instance_id}"] if self.instance_id else []),
             "--data-dir", self.data_dir,
             "--listen", self.listen,
             "--peer", ','.join(self.peers),
@@ -279,7 +279,8 @@ class Instance:
             self.kill()
 
     def _process_output(self, src, out):
-        prefix = f"{self.instance_id:<3} | "
+        id = self.instance_id or f":{self.port}"
+        prefix = f"{id:<3} | "
 
         if sys.stdout.isatty():
             prefix = self.color(prefix)
@@ -452,23 +453,34 @@ class Cluster:
         self,
         wait_ready=True,
         peers=None,
-        instance_id=None,
+        instance_id: str | bool | None = True,
         failure_domain=dict(),
         init_replication_factor=1,
     ) -> Instance:
         """Add an `Instance` into the list of instances of the cluster and wait
         for it to start unless `wait_ready` is `False`.
 
-        If `instance_id` is not specified (or is set `None`), this function will
-        generate a value for it.
-        Otherwise `instance_id` is passed to the command as the `--instance-id`
-        parameter.
-        Passing an empty string (`instance_id = ""`) will force the cluster
-        leader to choose a value when the instance is joined.
+        `instance_id` specifies how the instance's id is generated in the
+        following way:
+        - if `instance_id` is a string, it will be used as value for the
+          `--instance-id` command line option.
+        - If `instance_id` is `True` (default), this function will generate a
+          value for the `--instance-id` command line option.
+        - If `instance_id` is `False` or `None`, the instance will be started
+        without the `--instance-id` option, and the cluster will have to choose
+        the id.
         """
         i = 1 + len(self.instances)
 
-        instance_id = f"i{i}" if instance_id is None else instance_id
+        match instance_id:
+            case True:
+                instance_id = f"i{i}"
+            case False | None:
+                instance_id = None
+            case str() as iid:
+                instance_id = iid
+            case _:
+                raise Exception("unreachable")
 
         instance = Instance(
             binary_path=self.binary_path,

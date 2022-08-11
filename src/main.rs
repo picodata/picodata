@@ -513,7 +513,7 @@ fn start_boot(args: &args::Run) {
     tlog!(Info, ">>>>> start_boot()");
 
     let peer = traft::topology::initial_peer(
-        args.instance_id(),
+        args.instance_id.clone(),
         args.replicaset_id.clone(),
         args.advertise_address(),
         args.failure_domain(),
@@ -617,7 +617,7 @@ fn start_join(args: &args::Run, leader_address: String) {
 
     let req = traft::JoinRequest {
         cluster_id: args.cluster_id.clone(),
-        instance_id: args.instance_id(),
+        instance_id: args.instance_id.clone(),
         replicaset_id: args.replicaset_id.clone(),
         advertise_address: args.advertise_address(),
         failure_domain: args.failure_domain(),

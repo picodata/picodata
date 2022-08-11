@@ -44,15 +44,10 @@ pub struct Run {
     /// Here the instance persists all of its data
     pub data_dir: String,
 
-    #[clap(
-        long,
-        value_name = "name",
-        default_value = "",
-        env = "PICODATA_INSTANCE_ID"
-    )]
+    #[clap(long, value_name = "name", env = "PICODATA_INSTANCE_ID")]
     /// Name of the instance.
     /// If not defined, it'll be generated automatically.
-    instance_id: String,
+    pub instance_id: Option<String>,
 
     #[clap(
         long = "advertise",
@@ -163,13 +158,6 @@ impl Run {
 
     pub fn log_level(&self) -> SayLevel {
         self.log_level.into()
-    }
-
-    pub fn instance_id(&self) -> Option<String> {
-        match self.instance_id.as_str() {
-            "" => None,
-            any => Some(any.to_string()),
-        }
     }
 
     pub fn failure_domain(&self) -> FailureDomain {
@@ -319,11 +307,8 @@ mod tests {
         std::env::set_var("PICODATA_INSTANCE_ID", "instance-id-from-env");
         {
             let parsed = parse![Run,];
-            assert_eq!(parsed.instance_id, "instance-id-from-env");
-            assert_eq!(
-                parsed.instance_id(),
-                Some("instance-id-from-env".to_string())
-            );
+            assert_eq!(parsed.instance_id, Some("instance-id-from-env".into()));
+            assert_eq!(parsed.instance_id, Some("instance-id-from-env".to_string()));
             assert_eq!(parsed.peers.as_ref(), vec!["localhost:3301"]);
             assert_eq!(parsed.listen, "localhost:3301"); // default
             assert_eq!(parsed.advertise_address(), "localhost:3301"); // default
@@ -332,12 +317,12 @@ mod tests {
 
             let parsed = parse![Run, "--instance-id", "instance-id-from-args"];
             assert_eq!(
-                parsed.instance_id(),
+                parsed.instance_id,
                 Some("instance-id-from-args".to_string())
             );
 
             let parsed = parse![Run, "--instance-id", ""];
-            assert_eq!(parsed.instance_id(), None);
+            assert_eq!(parsed.instance_id, Some("".into()));
         }
 
         std::env::set_var("PICODATA_PEER", "peer-from-env");
@@ -358,13 +343,13 @@ mod tests {
         std::env::set_var("PICODATA_INSTANCE_ID", "");
         {
             let parsed = parse![Run,];
-            assert_eq!(parsed.instance_id(), None);
+            assert_eq!(parsed.instance_id, Some("".into()));
         }
 
         std::env::remove_var("PICODATA_INSTANCE_ID");
         {
             let parsed = parse![Run,];
-            assert_eq!(parsed.instance_id(), None);
+            assert_eq!(parsed.instance_id, None);
         }
 
         std::env::set_var("PICODATA_LISTEN", "listen-from-env");
