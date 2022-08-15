@@ -563,7 +563,17 @@ fn handle_committed_conf_change(entry: traft::Entry, raw_node: &mut RawNode) {
     let raft_id = &raw_node.raft.id;
     let voters_old = Storage::voters().unwrap();
     if voters_old.contains(raft_id) && !conf_state.voters.contains(raft_id) {
-        event::broadcast_when(Event::Demoted, Event::LeaveJointState).ok();
+        #[rustfmt::skip]
+        let is_joint_state = with_joint_state_latch(|latch| {
+            // joint_state_latch is stored in `Cell` so to check it's value
+            // we must take it out and put it back in
+            latch.take().map(|l| { latch.set(Some(l)); true }).unwrap_or(false)
+        });
+        if is_joint_state {
+            event::broadcast_when(Event::Demoted, Event::LeaveJointState).ok();
+        } else {
+            event::broadcast(Event::Demoted);
+        }
     }
 
     Storage::persist_conf_state(&conf_state).unwrap();
