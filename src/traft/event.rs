@@ -58,7 +58,9 @@ macro_rules! define_events {
 
 define_events! {
     Demoted, "raft.demoted";
-    LeaveJointState, "raft.leave-joint-state";
+    JointStateEnter, "raft.joint-state-enter";
+    JointStateLeave, "raft.joint-state-leave";
+    JointStateDrop, "raft.joint-state-drop";
     StatusChanged, "raft.status-changed";
     TopologyChanged, "raft.topology-changed";
     RaftLoopNeeded, "raft.loop-needed";

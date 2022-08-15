@@ -379,6 +379,7 @@ impl Node {
             let (rx, tx) = Notify::new().into_clones();
             with_joint_state_latch(|joint_state_latch| {
                 assert!(joint_state_latch.take().is_none());
+                event::broadcast(Event::JointStateEnter);
                 joint_state_latch.set(Some(JointStateLatch {
                     index: last_index,
                     notify: tx,
@@ -514,6 +515,7 @@ fn handle_committed_normal_entry(
             let e = RaftError::ConfChangeError("rolled back".into());
 
             latch.notify.notify_err(e);
+            event::broadcast(Event::JointStateDrop);
         }
     });
 }
@@ -523,7 +525,7 @@ fn handle_committed_conf_change(entry: traft::Entry, raw_node: &mut RawNode) {
         with_joint_state_latch(|joint_state_latch| {
             if let Some(latch) = joint_state_latch.take() {
                 latch.notify.notify_ok(());
-                event::broadcast(Event::LeaveJointState);
+                event::broadcast(Event::JointStateLeave);
             }
         });
     };
@@ -568,7 +570,7 @@ fn handle_committed_conf_change(entry: traft::Entry, raw_node: &mut RawNode) {
     let voters_old = Storage::voters().unwrap();
     if voters_old.contains(raft_id) && !conf_state.voters.contains(raft_id) {
         if is_joint {
-            event::broadcast_when(Event::Demoted, Event::LeaveJointState).ok();
+            event::broadcast_when(Event::Demoted, Event::JointStateLeave).ok();
         } else {
             event::broadcast(Event::Demoted);
         }
