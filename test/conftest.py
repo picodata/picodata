@@ -194,6 +194,7 @@ class Instance:
     env: dict[str, str] = field(default_factory=dict)
     process: subprocess.Popen | None = None
     raft_id: int = INVALID_RAFT_ID
+    _on_output_callbacks: list[Callable[[str], None]] = field(default_factory=list)
 
     @property
     def listen(self):
@@ -290,6 +291,11 @@ class Instance:
                 out.write(prefix)
                 out.write(line)
                 out.flush()
+                for cb in self._on_output_callbacks:
+                    cb(line)
+
+    def on_output_line(self, cb: Callable[[str], None]):
+        self._on_output_callbacks.append(cb)
 
     def start(self, peers=[]):
         if self.process:
