@@ -9,6 +9,7 @@ use ::tarantool::fiber::{mutex::MutexGuard, Cond, Mutex};
 use ::tarantool::proc;
 use ::tarantool::unwrap_or;
 
+use crate::tlog;
 use crate::traft::error::Error;
 use crate::unwrap_ok_or;
 use thiserror::Error;
@@ -166,12 +167,14 @@ pub fn wait_any(evs: &[Event]) -> Result<(), Error> {
 ///
 /// If `EVENTS` is uninitialized, nothing happens
 pub fn broadcast(event: impl Borrow<Event>) {
+    let event = event.borrow();
+    tlog!(Debug, "broadcast"; "event" => event.as_str());
     let mut events = unwrap_ok_or!(events(), Err(_) => return);
-    events.broadcast_repeated(event.borrow());
-    let handler = unwrap_or!(events.once_handler(event.borrow()), return);
+    events.broadcast_repeated(event);
+    let handler = unwrap_or!(events.once_handler(event), return);
     if let Err(e) = handler.handle() {
-        crate::tlog!(Warning, "error happened during handling of event: {e}";
-            "event" => event.borrow().as_str(),
+        tlog!(Warning, "error happened during handling of event: {e}";
+            "event" => event.as_str(),
         )
     }
 }
@@ -192,6 +195,7 @@ pub fn broadcast_when(target: Event, when: Event) -> Result<(), Error> {
     events.add_once_handler(
         when,
         handler(move || {
+            tlog!(Debug, "broadcast"; "event" => target.as_str());
             cond.broadcast();
             Ok(())
         }),
