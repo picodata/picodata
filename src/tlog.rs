@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 pub struct Drain;
 
 pub fn root() -> slog::Logger {
@@ -54,10 +56,49 @@ struct StrSerializer {
     pub str: String,
 }
 
+#[rustfmt::skip]
+#[repr(u8)]
+#[derive(Clone, Copy)]
+pub enum Color {
+    Red     = 1,
+    Green   = 2,
+    Blue    = 4,
+    Cyan    = 6,
+    Yellow  = 3,
+    Magenta = 5,
+    White   = 7,
+    Black   = 0,
+}
+
+pub static mut HIGHLIGHT: Option<HashMap<String, Color>> = None;
+
+#[inline]
+pub fn clear_highlight() {
+    unsafe {
+        HIGHLIGHT = None;
+    }
+}
+
+#[inline]
+pub fn highlight_key(key: impl Into<String> + AsRef<str>, color: Option<Color>) {
+    let hi = unsafe { HIGHLIGHT.get_or_insert_with(HashMap::new) };
+    if let Some(color) = color {
+        hi.insert(key.into(), color);
+    } else {
+        hi.remove(key.as_ref());
+    }
+}
+
 impl slog::Serializer for StrSerializer {
     fn emit_arguments(&mut self, key: slog::Key, val: &std::fmt::Arguments) -> slog::Result {
         use std::fmt::Write;
-        write!(&mut self.str, ", {key}: {val}").unwrap();
+        match unsafe { HIGHLIGHT.as_ref() }.and_then(|h| h.get(key)) {
+            Some(&color) => {
+                let color = color as u8;
+                write!(&mut self.str, ", \x1b[3{color}m{key}: {val}\x1b[0m").unwrap();
+            }
+            _ => write!(&mut self.str, ", {key}: {val}").unwrap(),
+        }
         Ok(())
     }
 }

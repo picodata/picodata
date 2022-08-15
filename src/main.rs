@@ -114,6 +114,35 @@ fn picolib_setup(args: &args::Run) {
                 .propose_and_wait(traft::OpReturnOne, Duration::from_secs_f64(timeout))
         }),
     );
+    luamod.set("log", &[()]);
+    #[rustfmt::skip]
+    l.exec_with(
+        "picolib.log.highlight_key = ...",
+        tlua::function2(|key: String, color: Option<String>| -> Result<(), String> {
+            let color = match color.as_deref() {
+                None            => None,
+                Some("red")     => Some(tlog::Color::Red),
+                Some("green")   => Some(tlog::Color::Green),
+                Some("blue")    => Some(tlog::Color::Blue),
+                Some("cyan")    => Some(tlog::Color::Cyan),
+                Some("yellow")  => Some(tlog::Color::Yellow),
+                Some("magenta") => Some(tlog::Color::Magenta),
+                Some("white")   => Some(tlog::Color::White),
+                Some("black")   => Some(tlog::Color::Black),
+                Some(other) => {
+                    return Err(format!("unknown color: {other:?}"))
+                }
+            };
+            tlog::highlight_key(key, color);
+            Ok(())
+        }),
+    )
+    .unwrap();
+    l.exec_with(
+        "picolib.log.clear_highlight = ...",
+        tlua::function0(tlog::clear_highlight),
+    )
+    .unwrap();
     {
         l.exec(
             r#"
