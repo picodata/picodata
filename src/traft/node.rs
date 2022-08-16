@@ -532,14 +532,14 @@ fn handle_committed_conf_change(entry: traft::Entry, raw_node: &mut RawNode) {
     // `ConfChangeTransition::Auto` implies that `ConfChangeV2` may be
     // applied in an instant without entering the joint state.
 
-    let conf_state = match entry.entry_type {
+    let (is_joint, conf_state) = match entry.entry_type {
         raft::EntryType::EntryConfChange => {
             let mut cc = raft::ConfChange::default();
             cc.merge_from_bytes(&entry.data).unwrap();
 
             latch_unlock();
 
-            raw_node.apply_conf_change(&cc).unwrap()
+            (false, raw_node.apply_conf_change(&cc).unwrap())
         }
         raft::EntryType::EntryConfChangeV2 => {
             let mut cc = raft::ConfChangeV2::default();
@@ -548,14 +548,15 @@ fn handle_committed_conf_change(entry: traft::Entry, raw_node: &mut RawNode) {
             // Unlock the latch when either of conditions is met:
             // - conf_change will leave the joint state;
             // - or it will be applied without even entering one.
-            if cc.leave_joint() || cc.enter_joint().is_none() {
+            let leave_joint = cc.leave_joint() || cc.enter_joint().is_none();
+            if leave_joint {
                 latch_unlock();
             }
 
             // ConfChangeTransition::Auto implies that at this
             // moment raft-rs will implicitly propose another empty
             // conf change that represents leaving the joint state.
-            raw_node.apply_conf_change(&cc).unwrap()
+            (!leave_joint, raw_node.apply_conf_change(&cc).unwrap())
         }
         _ => unreachable!(),
     };
@@ -563,13 +564,7 @@ fn handle_committed_conf_change(entry: traft::Entry, raw_node: &mut RawNode) {
     let raft_id = &raw_node.raft.id;
     let voters_old = Storage::voters().unwrap();
     if voters_old.contains(raft_id) && !conf_state.voters.contains(raft_id) {
-        #[rustfmt::skip]
-        let is_joint_state = with_joint_state_latch(|latch| {
-            // joint_state_latch is stored in `Cell` so to check it's value
-            // we must take it out and put it back in
-            latch.take().map(|l| { latch.set(Some(l)); true }).unwrap_or(false)
-        });
-        if is_joint_state {
+        if is_joint {
             event::broadcast_when(Event::Demoted, Event::LeaveJointState).ok();
         } else {
             event::broadcast(Event::Demoted);
