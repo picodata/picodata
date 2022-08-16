@@ -39,6 +39,12 @@ pub fn on_shutdown() {
             node.wait_status();
             continue;
         });
+        if leader_id == raft_id {
+            if let Err(e) = node.handle_topology_request_and_wait(req.into()) {
+                crate::warn_or_panic!("failed to deactivate myself: {}", e);
+            }
+            break;
+        }
         let leader = Storage::peer_by_raft_id(leader_id).unwrap().unwrap();
         let wait_before_retry = Duration::from_millis(300);
         let now = Instant::now();
