@@ -307,9 +307,13 @@ class Instance:
         if peers != []:
             self.peers = map(lambda i: i.listen, peers)
 
+        env = self.env
+        if not os.environ.get("PICODATA_LOG_LEVEL") and "PICODATA_LOG_LEVEL" not in env:
+            env.update(PICODATA_LOG_LEVEL="verbose")
+
         self.process = subprocess.Popen(
             self.command,
-            env=self.env or None,
+            env=env or None,
             stdin=subprocess.DEVNULL,
             start_new_session=True,
             stdout=subprocess.PIPE,
