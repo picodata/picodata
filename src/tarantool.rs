@@ -51,7 +51,7 @@ macro_rules! declare_cfunc {
                 language = 'C',
                 if_not_exists = true
             });"
-        ));
+        )).unwrap();
     }};
 }
 

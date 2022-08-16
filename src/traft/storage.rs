@@ -105,7 +105,8 @@ impl Storage {
                 unique = false,
             })
         "#,
-        );
+        )
+        .unwrap();
     }
 
     fn space(name: &str) -> Result<Space, StorageError> {

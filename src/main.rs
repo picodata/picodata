@@ -237,7 +237,8 @@ fn init_handlers() {
         r#"
         box.schema.user.grant('guest', 'super', nil, nil, {if_not_exists = true})
         "#,
-    );
+    )
+    .unwrap();
 
     declare_cfunc!(discovery::proc_discover);
     declare_cfunc!(traft::node::raft_interact);
@@ -936,7 +937,8 @@ fn test_one(t: &InnerTest) {
         r#"
         box.schema.user.grant('guest', 'super', nil, nil, {if_not_exists = true})
         "#,
-    );
+    )
+    .unwrap();
 
     (t.body)();
     std::process::exit(0i32);
