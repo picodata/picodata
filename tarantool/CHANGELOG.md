@@ -1,5 +1,16 @@
 # Change Log
 
+# [0.6.4] Oct ?? 2022
+
+### Changed
+- `TarantoolError::error_code` now returns a `u32` instead of `TarantoolErrorCode`.
+- `TarantoolError`'s `Dispaly` implementation will lookup the error code in lua
+  in case it's not found in `TarantoolErrorCode` enum.
+- `TarantoolErrorCode::NoSuchFieldName` is renamed
+  `TarantoolErrorCode::NoSuchFieldNameInSpace`.
+- `TarantoolErrorCode::BootstrapReadonly`'s value changed from 201 to 203.
+
+
 # [0.6.3] Aug 08 2022
 
 ### Added

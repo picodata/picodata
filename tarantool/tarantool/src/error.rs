@@ -181,7 +181,7 @@ impl From<TransactionError> for Error {
 #[derive(Derivative)]
 #[derivative(Debug)]
 pub struct TarantoolError {
-    code: TarantoolErrorCode,
+    code: u32,
     message: String,
     #[derivative(Debug = "ignore")]
     error_ptr: Box<ffi::BoxError>,
@@ -197,10 +197,6 @@ impl TarantoolError {
         }
 
         let code = unsafe { ffi::box_error_code(error_ptr) };
-        let code = match TarantoolErrorCode::from_u32(code) {
-            Some(code) => code,
-            None => TarantoolErrorCode::Unknown,
-        };
 
         let message = unsafe { CStr::from_ptr(ffi::box_error_message(error_ptr)) };
         let message = message.to_string_lossy().into_owned();
@@ -218,8 +214,8 @@ impl TarantoolError {
     }
 
     /// Return IPROTO error code
-    pub fn error_code(&self) -> TarantoolErrorCode {
-        self.code.clone()
+    pub fn error_code(&self) -> u32 {
+        self.code
     }
 
     /// Return the error type, e.g. "ClientError", "SocketError", etc.
@@ -233,7 +229,22 @@ impl TarantoolError {
 
 impl Display for TarantoolError {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}: {}", self.code, self.message)
+        if let Some(code) = TarantoolErrorCode::from_u32(self.code) {
+            return write!(f, "{:?}: {}", code, self.message);
+        }
+        let kind = crate::lua_state()
+            .eval_with::<_, String>(
+                "
+                for kind, code in pairs(box.error) do
+                    if code == ... then
+                        return kind
+                    end
+                end
+                ",
+                self.code,
+            );
+        let kind = kind.as_deref().unwrap_or("?");
+        write!(f, "{}: {}", kind, self.message)
     }
 }
 
@@ -400,7 +411,7 @@ pub enum TarantoolErrorCode {
     CantCreateCollation = 150,
     WrongCollationOptions = 151,
     NullablePrimary = 152,
-    NoSuchFieldName = 153,
+    NoSuchFieldNameInSpace = 153,
     TransactionYield = 154,
     NoSuchGroup = 155,
     SqlBindValue = 156,
@@ -448,7 +459,50 @@ pub enum TarantoolErrorCode {
     FuncIndexFunc = 198,
     FuncIndexFormat = 199,
     FuncIndexParts = 200,
-    BootstrapReadonly = 201,
+    NoSuchFieldNameInTuple = 201,
+    FuncWrongArgCount = 202,
+    BootstrapReadonly = 203,
+    SqlFuncWrongRetCount = 204,
+    FuncInvalidReturnType = 205,
+    SqlParserGenericWithPos = 206,
+    ReplicaNotAnon = 207,
+    CannotRegister = 208,
+    SessionSettingInvalidValue = 209,
+    SqlPrepare = 210,
+    WrongQueryId = 211,
+    SequenceNotStarted = 212,
+    NoSuchSessionSetting = 213,
+    UncommittedForeignSyncTxns = 214,
+    SyncMasterMismatch = 215,
+    SyncQuorumTimeout = 216,
+    SyncRollback = 217,
+    TupleMetadataIsTooBig = 218,
+    XlogGap = 219,
+    TooEarlySubscribe = 220,
+    SqlCantAddAutoinc = 221,
+    QuorumWait = 222,
+    InterferingPromote = 223,
+    ElectionDisabled = 224,
+    TxnRollback = 225,
+    NotLeader = 226,
+    SyncQueueUnclaimed = 227,
+    SyncQueueForeign = 228,
+    UnableToProcessInStream = 229,
+    UnableToProcessOutOfStream = 230,
+    TransactionTimeout = 231,
+    ActiveTimer = 232,
+    TupleFieldCountLimit = 233,
+    CreateConstraint = 234,
+    FieldConstraintFailed = 235,
+    TupleConstraintFailed = 236,
+    CreateForeignKey = 237,
+    ForeignKeyIntegrity = 238,
+    FieldForeignKeyFailed = 239,
+    ComplexForeignKeyFailed = 240,
+    WrongSpaceUpgradeOptions = 241,
+    NoElectionQuorum = 242,
+    Ssl = 243,
+    SplitBrain = 244,
 }
 
 impl TarantoolErrorCode {
