@@ -47,8 +47,9 @@ use crate::traft::Op;
 use crate::traft::Storage;
 use crate::traft::Topology;
 use crate::traft::TopologyRequest;
-use crate::traft::{JoinRequest, JoinResponse, UpdatePeerRequest};
+use crate::traft::{ExpelRequest, ExpelResponse, JoinRequest, JoinResponse, UpdatePeerRequest};
 
+use super::Health;
 use super::OpResult;
 
 type RawNode = raft::RawNode<Storage>;
@@ -298,7 +299,6 @@ impl Node {
                     advertise_address,
                     failure_domain,
                 ),
-
                 TopologyRequest::UpdatePeer(UpdatePeerRequest {
                     instance_id,
                     health,
@@ -462,9 +462,13 @@ fn handle_committed_entries(
         };
 
         match entry.entry_type {
-            raft::EntryType::EntryNormal => {
-                handle_committed_normal_entry(entry, notifications, pool, topology_changed)
-            }
+            raft::EntryType::EntryNormal => handle_committed_normal_entry(
+                entry,
+                notifications,
+                pool,
+                topology_changed,
+                raw_node,
+            ),
             raft::EntryType::EntryConfChange | raft::EntryType::EntryConfChangeV2 => {
                 handle_committed_conf_change(entry, raw_node)
             }
@@ -487,6 +491,7 @@ fn handle_committed_normal_entry(
     notifications: &mut HashMap<LogicalClock, Notify>,
     pool: &mut ConnectionPool,
     topology_changed: &mut bool,
+    raw_node: &mut RawNode,
 ) {
     assert_eq!(entry.entry_type, raft::EntryType::EntryNormal);
     let result = entry.op().unwrap_or(&traft::Op::Nop).on_commit();
@@ -500,6 +505,9 @@ fn handle_committed_normal_entry(
     if let Some(traft::Op::PersistPeer { peer }) = entry.op() {
         pool.connect(peer.raft_id, peer.peer_address.clone());
         *topology_changed = true;
+        if peer.health == Health::Expelled && peer.raft_id == raw_node.raft.id {
+            crate::tarantool::exit(0);
+        }
     }
 
     with_joint_state_latch(|joint_state_latch| {
@@ -926,4 +934,71 @@ fn raft_join(req: JoinRequest) -> Result<JoinResponse, Box<dyn std::error::Error
         raft_group,
         box_replication,
     })
+}
+
+// Lua API entrypoint, run on any node.
+pub fn expel_wrapper(instance_id: String) -> Result<(), traft::error::Error> {
+    match expel_by_instance_id(instance_id) {
+        Ok(ExpelResponse {}) => Ok(()),
+        Err(e) => Err(traft::error::Error::Other(e)),
+    }
+}
+
+fn expel_by_instance_id(instance_id: String) -> Result<ExpelResponse, Box<dyn std::error::Error>> {
+    let cluster_id = Storage::cluster_id()?.ok_or("cluster_id is not set yet")?;
+
+    expel(ExpelRequest {
+        instance_id,
+        cluster_id,
+    })
+}
+
+// NetBox entrypoint. Run on any node.
+#[proc(packed_args)]
+fn raft_expel(req: ExpelRequest) -> Result<ExpelResponse, Box<dyn std::error::Error>> {
+    expel(req)
+}
+
+// Netbox entrypoint. For run on Leader only. Don't call directly, use `raft_expel` instead.
+#[proc(packed_args)]
+fn raft_expel_on_leader(req: ExpelRequest) -> Result<ExpelResponse, Box<dyn std::error::Error>> {
+    expel_on_leader(req)
+}
+
+fn expel(req: ExpelRequest) -> Result<ExpelResponse, Box<dyn std::error::Error>> {
+    let node = global()?;
+    let leader_id = node.status().leader_id.ok_or("leader_id not found")?;
+    let leader = Storage::peer_by_raft_id(leader_id).unwrap().unwrap();
+    let leader_address = leader.peer_address;
+
+    let fn_name = stringify_cfunc!(traft::node::raft_expel_on_leader);
+
+    match crate::tarantool::net_box_call(&leader_address, fn_name, &req, Duration::MAX) {
+        Ok::<traft::ExpelResponse, _>(_resp) => Ok(ExpelResponse {}),
+        Err(e) => Err(Box::new(e)),
+    }
+}
+
+fn expel_on_leader(req: ExpelRequest) -> Result<ExpelResponse, Box<dyn std::error::Error>> {
+    let cluster_id = Storage::cluster_id()?.ok_or("cluster_id is not set yet")?;
+
+    if req.cluster_id != cluster_id {
+        return Err(Box::new(Error::ClusterIdMismatch {
+            instance_cluster_id: req.cluster_id,
+            cluster_cluster_id: cluster_id,
+        }));
+    }
+
+    let node = global()?;
+
+    let leader_id = node.status().leader_id.ok_or("leader_id not found")?;
+
+    if node.raft_id != leader_id {
+        return Err(Box::from("not a leader"));
+    }
+
+    let req = UpdatePeerRequest::set_expelled(req.instance_id, req.cluster_id);
+    node.handle_topology_request_and_wait(req.into())?;
+
+    Ok(ExpelResponse {})
 }

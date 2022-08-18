@@ -12,19 +12,25 @@ def create(c: Cluster, istate):
     return i, istate
 
 
-def stop(i: Instance, istate):
+def stop(_: Cluster, i: Instance, istate):
     istate[i.instance_id]["started"] = False
     return i.terminate(), istate
 
 
-def start(i: Instance, istate):
+def start(_: Cluster, i: Instance, istate):
     istate[i.instance_id]["started"] = True
     return i.start(), istate
+
+
+def expel(c: Cluster, i: Instance, istate):
+    istate[i.instance_id]["started"] = False
+    return c.expel(i)
 
 
 ADD = "add"
 STOP = "stop"
 START = "start"
+EXPEL = "expel"
 ACTIONS = {
     ADD: {
         "name": ADD,
@@ -41,6 +47,11 @@ ACTIONS = {
         "name": START,
         "repr_fn": lambda i: f"Start {i}",
         "exec_fn": start,
+    },
+    EXPEL: {
+        "name": EXPEL,
+        "repr_fn": lambda i: f"Expel {i}",
+        "exec_fn": expel,
     },
 }
 BASE = len(ACTIONS)
@@ -103,7 +114,7 @@ def test_randomized(cluster: Cluster, seed: str, delay: int, capsys):
         if "pre_fn" in a.keys():
             i, istate = a["pre_fn"](cluster, istate)
         print(step_msg(step + 1, a, i))
-        _, istate = a["exec_fn"](i, istate)
+        _, istate = a["exec_fn"](cluster, i, istate)
         time.sleep(delay / 1000)
 
     for instance_id in istate:

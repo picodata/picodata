@@ -15,6 +15,7 @@ use crate::util::Uppercase;
 pub enum Picodata {
     Run(Run),
     Tarantool(Tarantool),
+    Expel(Expel),
     Test(Test),
 }
 
@@ -186,6 +187,38 @@ impl Tarantool {
         Ok(std::iter::once(current_exe()?.into())
             .chain(self.args.iter().map(AsRef::as_ref).map(Cow::from))
             .collect())
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// Expel
+////////////////////////////////////////////////////////////////////////////////
+
+#[derive(Debug, Parser, tlua::Push)]
+#[clap(about = "Expel node from cluster")]
+pub struct Expel {
+    #[clap(long, value_name = "name", default_value = "demo")]
+    /// Name of the cluster from instance should be expelled.
+    pub cluster_id: String,
+
+    #[clap(long, value_name = "name", default_value = "")]
+    /// Name of the instance to expel.
+    pub instance_id: String,
+
+    #[clap(
+        long = "peer",
+        value_name = "[host][:port]",
+        parse(try_from_str = try_parse_address),
+        default_value = "localhost:3301",
+    )]
+    /// Address of any instance from the cluster.
+    pub peer: String,
+}
+
+impl Expel {
+    // Get the arguments that will be passed to `tarantool_main`
+    pub fn tt_args(&self) -> Result<Vec<CString>, String> {
+        Ok(vec![current_exe()?])
     }
 }
 

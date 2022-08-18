@@ -8,6 +8,12 @@ with the `YY.0M.MICRO` scheme.
 
 <img src="https://img.shields.io/badge/calver-YY.0M.MICRO-22bfda.svg">
 
+## HEAD
+
+### Features
+
+- Add Expel Node feature
+
 ## [22.07.0] - 2022-07-08
 
 ### Basic functionality

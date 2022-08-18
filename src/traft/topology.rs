@@ -41,6 +41,15 @@ impl Topology {
         self
     }
 
+    pub fn get_peer(&mut self, instance_id: &str) -> Result<Peer, String> {
+        let peer = self
+            .instance_map
+            .get_mut(instance_id)
+            .ok_or_else(|| format!("unknown instance {}", instance_id))?;
+
+        Ok(peer.clone())
+    }
+
     fn put_peer(&mut self, peer: Peer) {
         self.max_raft_id = std::cmp::max(self.max_raft_id, peer.raft_id);
 
@@ -183,6 +192,12 @@ impl Topology {
         health: Health,
         failure_domain: Option<FailureDomain>,
     ) -> Result<Peer, String> {
+        let current_peer = self.get_peer(instance_id).unwrap();
+        let health = match current_peer.health {
+            Health::Expelled => Health::Expelled,
+            _ => health,
+        };
+
         let this = self as *const Self;
 
         let mut peer = self

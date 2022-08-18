@@ -548,6 +548,26 @@ class Cluster:
     def remove_data(self):
         rmtree(self.data_dir)
 
+    def expel(self, target: Instance, peer: Instance = None):
+        peer = peer if peer else target
+
+        # fmt: off
+        command = [
+            self.binary_path, "expel",
+            "--peer", peer.listen,
+            "--cluster-id", target.cluster_id,
+            "--instance-id", target.instance_id,
+        ]
+        # fmt: on
+
+        subprocess.Popen(
+            command,
+            stdin=subprocess.DEVNULL,
+            start_new_session=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+
 
 @pytest.fixture(scope="session")
 def compile() -> None:
@@ -611,3 +631,13 @@ def retrying(fn, timeout=3):
         except AssertionError as ex:
             if (datetime.now() - start).seconds > timeout:
                 raise ex from ex
+
+
+def pid_alive(pid):
+    """Check For the existence of a unix pid."""
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return False
+    else:
+        return True

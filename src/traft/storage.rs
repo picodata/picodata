@@ -59,6 +59,7 @@ impl Storage {
                 parts = {{'index'}},
             })
 
+
             box.schema.space.create('raft_state', {
                 if_not_exists = true,
                 is_local = true,
@@ -67,11 +68,11 @@ impl Storage {
                     {name = 'value', type = 'any', is_nullable = false},
                 }
             })
-
             box.space.raft_state:create_index('pk', {
                 if_not_exists = true,
                 parts = {{'key'}},
             })
+
 
             box.schema.space.create('raft_group', {
                 if_not_exists = true,
@@ -88,7 +89,6 @@ impl Storage {
                     {name = 'failure_domain', type = 'map', is_nullable = false},
                 }
             })
-
             box.space.raft_group:create_index('instance_id', {
                 if_not_exists = true,
                 parts = {{'instance_id'}},
@@ -315,9 +315,9 @@ impl Storage {
     }
 
     #[allow(dead_code)]
-    pub fn delete_peer(raft_id: RaftId) -> Result<(), StorageError> {
+    pub fn delete_peer(instance_id: &str) -> Result<(), StorageError> {
         Storage::space(RAFT_GROUP)?
-            .delete(&[raft_id])
+            .delete(&[instance_id])
             .map_err(box_err!())?;
 
         Ok(())

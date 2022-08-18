@@ -11,6 +11,7 @@ use ::tarantool::tlua;
 use ::tarantool::transaction::start_transaction;
 use std::convert::TryFrom;
 use std::time::{Duration, Instant};
+use traft::ExpelRequest;
 
 use clap::StructOpt as _;
 use protobuf::Message as _;
@@ -87,6 +88,12 @@ fn picolib_setup(args: &args::Run) {
         "exit",
         tlua::function1(|code: Option<i32>| {
             tarantool::exit(code.unwrap_or(0))
+        }),
+    );
+    luamod.set(
+        "expel",
+        tlua::function1(|instance_id: String| -> Result<(), Error> {
+            traft::node::expel_wrapper(instance_id)
         }),
     );
     #[derive(::tarantool::tlua::LuaRead)]
@@ -272,6 +279,8 @@ fn init_handlers() {
     declare_cfunc!(discovery::proc_discover);
     declare_cfunc!(traft::node::raft_interact);
     declare_cfunc!(traft::node::raft_join);
+    declare_cfunc!(traft::node::raft_expel_on_leader);
+    declare_cfunc!(traft::node::raft_expel);
     declare_cfunc!(traft::failover::raft_update_peer);
 }
 
@@ -297,6 +306,7 @@ fn main() -> ! {
         args::Picodata::Run(args) => main_run(args),
         args::Picodata::Test(args) => main_test(args),
         args::Picodata::Tarantool(args) => main_tarantool(args),
+        args::Picodata::Expel(args) => main_expel(args),
     }
 }
 
@@ -852,6 +862,36 @@ fn main_tarantool(args: args::Tarantool) -> ! {
     };
 
     std::process::exit(rc);
+}
+
+fn main_expel(args: args::Expel) -> ! {
+    let rc = tarantool_main!(
+        args.tt_args().unwrap(),
+        callback_data: (args,),
+        callback_data_type: (args::Expel,),
+        callback_body: {
+            tt_expel(args)
+        }
+    );
+    std::process::exit(rc);
+}
+
+fn tt_expel(args: args::Expel) {
+    let fn_name = stringify_cfunc!(traft::node::raft_expel);
+    let req = ExpelRequest {
+        cluster_id: args.cluster_id,
+        instance_id: args.instance_id,
+    };
+    match tarantool::net_box_call(&args.peer, fn_name, &req, Duration::MAX) {
+        Ok::<traft::ExpelResponse, _>(_resp) => {
+            tlog!(Info, "Success expel call");
+            std::process::exit(0);
+        }
+        Err(e) => {
+            tlog!(Error, "Failed to expel instance: {e}");
+            std::process::exit(-1);
+        }
+    }
 }
 
 macro_rules! color {

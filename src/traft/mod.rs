@@ -561,6 +561,17 @@ pub struct JoinResponse {
 }
 impl Encode for JoinResponse {}
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ExpelRequest {
+    pub cluster_id: String,
+    pub instance_id: String,
+}
+impl Encode for ExpelRequest {}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ExpelResponse {}
+impl Encode for ExpelResponse {}
+
 ///////////////////////////////////////////////////////////////////////////////
 /// Activity state of an instance.
 #[derive(PartialEq, Eq, Clone, Debug, Deserialize, Serialize)]
@@ -569,6 +580,8 @@ pub enum Health {
     Online,
     // Instance has gracefully shut down.
     Offline,
+    // Instance has permanently removed from cluster.
+    Expelled,
 }
 
 impl Health {
@@ -576,6 +589,7 @@ impl Health {
         match self {
             Self::Online => "Online",
             Self::Offline => "Offline",
+            Self::Expelled => "Expelled",
         }
     }
 }
@@ -618,6 +632,16 @@ impl UpdatePeerRequest {
     pub fn set_offline(instance_id: impl Into<String>, cluster_id: impl Into<String>) -> Self {
         Self {
             health: Health::Offline,
+            instance_id: instance_id.into(),
+            cluster_id: cluster_id.into(),
+            failure_domain: None,
+        }
+    }
+
+    #[inline]
+    pub fn set_expelled(instance_id: impl Into<String>, cluster_id: impl Into<String>) -> Self {
+        Self {
+            health: Health::Expelled,
             instance_id: instance_id.into(),
             cluster_id: cluster_id.into(),
             failure_domain: None,

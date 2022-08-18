@@ -8,6 +8,7 @@ from conftest import (
     Cluster,
     Instance,
     retrying,
+    pid_alive,
 )
 from functools import reduce
 
@@ -30,16 +31,6 @@ def pgrep_tree(pid):
         return [pid, *subps]
     except subprocess.SubprocessError:
         return [pid]
-
-
-def pid_alive(pid):
-    """Check For the existence of a unix pid."""
-    try:
-        os.kill(pid, 0)
-    except OSError:
-        return False
-    else:
-        return True
 
 
 def assert_all_pids_down(pids):

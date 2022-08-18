@@ -24,6 +24,8 @@ pub enum Error {
     },
     #[error("error during execution of lua code: {0}")]
     Lua(#[from] LuaError),
+    #[error("other error")]
+    Other(Box<dyn std::error::Error>),
 }
 
 #[derive(Debug, Error)]
