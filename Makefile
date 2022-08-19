@@ -50,6 +50,6 @@ fat:
 	@$(MAKE) test --no-print-directory
 
 clean:
-	cargo clean
+	cargo clean || true
 	cd tarantool-sys && rm -f patches-applied && git reset --hard ; cd -
 	find . -type d -name __pycache__ | xargs -n 500 rm -rf

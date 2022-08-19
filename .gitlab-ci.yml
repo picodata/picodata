@@ -1,7 +1,9 @@
 stages:
   - prebuild
   - build
-  - pack
+  - pack-centos
+  - pack-ubuntu
+  - pack-debian
   - sign
   - deploy
 
@@ -84,7 +86,7 @@ build:
       - .venv
 
 build-package-centos:
-  stage: pack
+  stage: pack-centos
   tags:
     - shell
   only:
@@ -103,10 +105,10 @@ build-package-centos:
     paths:
       - build/picodata*.rpm
 
-build-package-ubuntu-focal:
+build-package-ubuntu:
   tags:
     - shell
-  stage: pack
+  stage: pack-ubuntu
   only:
     - web
     - tags
@@ -117,10 +119,29 @@ build-package-ubuntu-focal:
   script:
     - |
       pushd tarantool-sys; export VER_TNT=$(git describe --long | sed -n 's/^\([0-9\.]*\)-\([0-9]*\)-\([a-z0-9]*\)/\1.\2/p'); popd
-      OS=ubuntu DIST=focal PRESERVE_ENVVARS=VER_TNT packpack/packpack
+      OS=ubuntu DIST=focal PRESERVE_ENVVARS=VER_TNT BUILDDIR=$PWD/build_ubuntu/ RELEASE=${DIST} packpack/packpack
   artifacts:
     paths:
-      - build/*.deb
+      - build_ubuntu/*.deb
+
+build-package-debian:
+  tags:
+    - shell
+  stage: pack-debian
+  only:
+    - web
+    - tags
+  before_script:
+    - git submodule update --init --recursive
+    - git clone https://github.com/packpack/packpack.git packpack
+    - git describe --long
+  script:
+    - |
+      pushd tarantool-sys; export VER_TNT=$(git describe --long | sed -n 's/^\([0-9\.]*\)-\([0-9]*\)-\([a-z0-9]*\)/\1.\2/p'); popd
+      OS=debian DIST=bullseye PRESERVE_ENVVARS=VER_TNT BUILDDIR=$PWD/build_debian/ RELEASE=${DIST} packpack/packpack
+  artifacts:
+    paths:
+      - build_debian/*.deb
 
 sign-rpm-packages:
   variables:
@@ -141,7 +162,7 @@ sign-rpm-packages:
     paths:
       - build/picodata*.rpm
 
-deploy-job-centos:
+deploy-job:
   stage: deploy
   tags:
     - shell
@@ -152,29 +173,28 @@ deploy-job-centos:
     - eval $(ssh-agent -s)
     - echo "$DEPLOY_PROD_SSH_KEY" | base64 -d | ssh-add -
   script:
+    # CentOS 7
     - echo "Deploying rpm-centos7-packet..."
     - scp -o stricthostkeychecking=no build/picodata*.el7.*rpm ansible@94.26.239.246:/data/nginx/www/packrepo/tarantool-picodata/el/7/x86_64/
     - ssh -o stricthostkeychecking=no ansible@94.26.239.246 "cd /data/nginx/www/packrepo/tarantool-picodata/el/7/ && createrepo --update x86_64 && gpg --no-tty --yes -u kdy@picodata.io --detach-sign --armor x86_64/repodata/repomd.xml"
-    - echo "rpm-centos7-packet successfully deployed."
-    - echo
+    -  echo "rpm-centos7-packet successfully deployed."
+    -  echo
+    # CentOS 8
     - echo "Deploying rpm-centos8-packet..."
     - scp -o stricthostkeychecking=no build/picodata*.el8.*rpm ansible@94.26.239.246:/data/nginx/www/packrepo/tarantool-picodata/el/8/x86_64/
     - ssh -o stricthostkeychecking=no ansible@94.26.239.246 "cd /data/nginx/www/packrepo/tarantool-picodata/el/8/ && createrepo --update x86_64 && gpg --no-tty --yes -u kdy@picodata.io --detach-sign --armor x86_64/repodata/repomd.xml"
     - echo "rpm-centos8-packet successfully deployed."
-
-deploy-job-ubuntu-focal:
-  stage: deploy
-  tags:
-    - shell
-  only:
-    - web
-    - tags
-  before_script:
-    - eval $(ssh-agent -s)
-    - echo "$DEPLOY_PROD_SSH_KEY" | base64 -d | ssh-add -
-  script:
-    - echo "Deploying deb-packet..."
-    - ssh -o stricthostkeychecking=no ansible@94.26.239.246 "mkdir -p ~/.deb"
-    - scp -o stricthostkeychecking=no build/picodata*deb ansible@94.26.239.246:.deb/
-    - ssh -o stricthostkeychecking=no ansible@94.26.239.246 "reprepro -b /data/nginx/www/packrepo/tarantool-picodata/ubuntu/ -C main includedeb focal ~/.deb/picodata*deb; rm ~/.deb/picodata*deb"
-    - echo "deb-packet successfully deployed."
+    - echo
+    # Ubuntu
+    - echo "Deploying ubuntu deb-packets..."
+    - ssh -o stricthostkeychecking=no ansible@94.26.239.246 "mkdir -p ~/.deb/ubuntu"
+    - scp -o stricthostkeychecking=no build_ubuntu/picodata*deb ansible@94.26.239.246:.deb/ubuntu/
+    - ssh -o stricthostkeychecking=no ansible@94.26.239.246 "reprepro -b /data/nginx/www/packrepo/tarantool-picodata/ubuntu/ -C main includedeb focal ~/.deb/ubuntu/picodata*focal*deb; rm ~/.deb/ubuntu/picodata*focal*deb"
+    - echo "ubuntu deb-packets successfully deployed."
+    - echo
+    # Debian
+    - echo "Deploying debian packets..."
+    - ssh -o stricthostkeychecking=no ansible@94.26.239.246 "mkdir -p ~/.deb/debian"
+    - scp -o stricthostkeychecking=no build_debian/picodata*deb ansible@94.26.239.246:.deb/debian/
+    - ssh -o stricthostkeychecking=no ansible@94.26.239.246 "reprepro -b /data/nginx/www/packrepo/tarantool-picodata/debian/ -C main includedeb bullseye ~/.deb/debian/picodata*bullseye*deb; rm ~/.deb/debian/picodata*bullseye*deb"
+    - echo "debian packets successfully deployed."
