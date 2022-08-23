@@ -281,6 +281,7 @@ fn init_handlers() {
     declare_cfunc!(traft::node::raft_join);
     declare_cfunc!(traft::node::raft_expel_on_leader);
     declare_cfunc!(traft::node::raft_expel);
+    declare_cfunc!(traft::node::raft_sync_raft);
     declare_cfunc!(traft::failover::raft_update_peer);
 }
 

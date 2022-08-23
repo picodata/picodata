@@ -64,6 +64,7 @@ define_events! {
     StatusChanged, "raft.status-changed";
     TopologyChanged, "raft.topology-changed";
     RaftLoopNeeded, "raft.loop-needed";
+    RaftEntryApplied, "raft.entry-applied";
 }
 
 ////////////////////////////////////////////////////////////////////////////////

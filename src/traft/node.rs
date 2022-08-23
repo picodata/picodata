@@ -47,7 +47,9 @@ use crate::traft::Op;
 use crate::traft::Storage;
 use crate::traft::Topology;
 use crate::traft::TopologyRequest;
-use crate::traft::{ExpelRequest, ExpelResponse, JoinRequest, JoinResponse, UpdatePeerRequest};
+use crate::traft::{
+    ExpelRequest, ExpelResponse, JoinRequest, JoinResponse, SyncRaftRequest, UpdatePeerRequest,
+};
 
 use super::Grade;
 use super::OpResult;
@@ -477,7 +479,9 @@ fn handle_committed_entries(
                 "error persisting applied index: {e}";
                 "index" => last_entry.index
             );
-        };
+        } else {
+            event::broadcast(Event::RaftEntryApplied);
+        }
     }
 }
 
@@ -996,4 +1000,63 @@ fn expel_on_leader(req: ExpelRequest) -> Result<ExpelResponse, Box<dyn std::erro
     node.handle_topology_request_and_wait(req2.into())?;
 
     Ok(ExpelResponse {})
+}
+
+// NetBox entrypoint. Run on any node.
+#[proc(packed_args)]
+fn raft_sync_raft(req: SyncRaftRequest) -> Result<(), Box<dyn std::error::Error>> {
+    let deadline = Instant::now() + req.timeout;
+    loop {
+        if Storage::commit().unwrap().unwrap() >= req.commit {
+            return Ok(());
+        }
+
+        let now = Instant::now();
+        if now > deadline {
+            return Err(Box::new(Error::Timeout));
+        }
+
+        event::wait_timeout(Event::RaftEntryApplied, deadline - now)?;
+    }
+}
+
+// Run on Leader
+fn call_raft_sync_raft(promotee: &Peer, commit: u64) -> Result<(), Box<dyn std::error::Error>> {
+    let fn_name = stringify_cfunc!(traft::node::raft_sync_raft);
+    let req = SyncRaftRequest {
+        commit,
+        timeout: Duration::from_secs(10),
+    };
+
+    match crate::tarantool::net_box_call(&promotee.peer_address, fn_name, &req, Duration::MAX) {
+        Ok::<(), _>(_) => Ok(()),
+        Err(e) => Err(Box::new(e)),
+    }
+}
+
+// Run on Leader by topology governor
+fn sync_raft(promotee: &Peer) -> Result<(), Box<dyn std::error::Error>> {
+    let commit = Storage::commit().unwrap().unwrap();
+
+    match call_raft_sync_raft(promotee, commit) {
+        Ok(_) => {
+            let node = global()?;
+
+            let leader_id = node.status().leader_id.ok_or("leader_id not found")?;
+
+            if node.raft_id != leader_id {
+                return Err(Box::from("not a leader"));
+            }
+
+            let instance_id = promotee.instance_id.clone();
+            let cluster_id = Storage::cluster_id()?.ok_or("cluster_id is not set yet")?;
+
+            let req = UpdatePeerRequest::new(instance_id, cluster_id).with_grade(Grade::RaftSynced);
+
+            node.handle_topology_request_and_wait(req.into())?;
+
+            Ok(())
+        }
+        Err(e) => Err(e),
+    }
 }

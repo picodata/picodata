@@ -20,6 +20,7 @@ use std::any::Any;
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::fmt::{Debug, Display};
+use std::time::Duration;
 use uuid::Uuid;
 
 use protobuf::Message as _;
@@ -574,12 +575,21 @@ impl Encode for ExpelRequest {}
 pub struct ExpelResponse {}
 impl Encode for ExpelResponse {}
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SyncRaftRequest {
+    pub commit: u64,
+    pub timeout: Duration,
+}
+impl Encode for SyncRaftRequest {}
+
 ///////////////////////////////////////////////////////////////////////////////
 /// Activity state of an instance.
 #[derive(PartialEq, Eq, Clone, Debug, Deserialize, Serialize)]
 pub enum Grade {
-    // Instance has gracefully shut down.
+    // Instance has gracefully shut down or has not been started yet.
     Offline,
+    // Instance has synced by commit index.
+    RaftSynced,
     // Instance is active and is handling requests.
     Online,
     // Instance has permanently removed from cluster.
@@ -590,6 +600,7 @@ impl Grade {
     const fn to_str(&self) -> &str {
         match self {
             Self::Offline => "Offline",
+            Self::RaftSynced => "RaftSynced",
             Self::Online => "Online",
             Self::Expelled => "Expelled",
         }
