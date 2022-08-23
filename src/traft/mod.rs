@@ -67,7 +67,7 @@ impl std::fmt::Display for LogicalClock {
 
 //////////////////////////////////////////////////////////////////////////////////////////
 /// The operation on the raft state machine.
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 #[serde(tag = "kind")]
 pub enum Op {
@@ -141,7 +141,7 @@ impl From<OpReturnOne> for Op {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct OpReturnOne;
 
 impl OpResult for OpReturnOne {
@@ -151,7 +151,7 @@ impl OpResult for OpReturnOne {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct OpEvalLua {
     pub code: String,
 }
@@ -176,7 +176,7 @@ pub trait OpResult {
 
 //////////////////////////////////////////////////////////////////////////////////////////
 /// Serializable struct representing a member of the raft group.
-#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Peer {
     /// Instances are identified by name.
     pub instance_id: String,
@@ -237,7 +237,7 @@ impl std::fmt::Display for Peer {
 /// See correspondig definition in `raft-rs`:
 /// - <https://github.com/tikv/raft-rs/blob/v0.6.0/proto/proto/eraftpb.proto#L23>
 ///
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Entry {
     /// See correspondig definition in `raft-rs`:
     /// - <https://github.com/tikv/raft-rs/blob/v0.6.0/proto/proto/eraftpb.proto#L7>
@@ -287,7 +287,7 @@ mod entry_type_as_i32 {
 }
 
 /// Raft entry payload specific to the Picodata.
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(untagged)]
 pub enum EntryContext {
     Normal(EntryContextNormal),
@@ -295,7 +295,7 @@ pub enum EntryContext {
 }
 
 /// [`EntryContext`] of a normal entry.
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct EntryContextNormal {
     pub lc: LogicalClock,
     pub op: Op,
@@ -309,7 +309,7 @@ impl EntryContextNormal {
 }
 
 /// [`EntryContext`] of a conf change entry, either `EntryConfChange` or `EntryConfChangeV2`
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct EntryContextConfChange {
     pub peers: Vec<Peer>,
 }

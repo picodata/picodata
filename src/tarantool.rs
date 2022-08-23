@@ -109,7 +109,7 @@ inventory::submit!(crate::InnerTest {
     }
 });
 
-#[derive(Clone, Debug, tlua::Push, tlua::LuaRead, PartialEq)]
+#[derive(Clone, Debug, tlua::Push, tlua::LuaRead, PartialEq, Eq)]
 pub struct Cfg {
     pub listen: Option<String>,
     pub read_only: bool,
