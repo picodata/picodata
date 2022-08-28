@@ -3,7 +3,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use crate::traft::instance_uuid;
 use crate::traft::replicaset_uuid;
 use crate::traft::FailureDomain;
-use crate::traft::Health;
+use crate::traft::Grade;
 use crate::traft::Peer;
 use crate::traft::{InstanceId, RaftId, ReplicasetId};
 use crate::util::Uppercase;
@@ -163,7 +163,7 @@ impl Topology {
             // Mark instance already active when it joins.
             // It prevents a disruption in case of the
             // instance_id collision.
-            health: Health::Online,
+            grade: Grade::Online,
             failure_domain,
         };
 
@@ -189,13 +189,13 @@ impl Topology {
     pub fn update_peer(
         &mut self,
         instance_id: &str,
-        health: Health,
+        grade: Grade,
         failure_domain: Option<FailureDomain>,
     ) -> Result<Peer, String> {
         let current_peer = self.get_peer(instance_id).unwrap();
-        let health = match current_peer.health {
-            Health::Expelled => Health::Expelled,
-            _ => health,
+        let grade = match current_peer.grade {
+            Grade::Expelled => Grade::Expelled,
+            _ => grade,
         };
 
         let this = self as *const Self;
@@ -213,7 +213,7 @@ impl Topology {
             peer.failure_domain = fd;
         }
 
-        peer.health = health;
+        peer.grade = grade;
         Ok(peer.clone())
     }
 }
@@ -240,7 +240,7 @@ mod tests {
     use crate::traft::instance_uuid;
     use crate::traft::replicaset_uuid;
     use crate::traft::FailureDomain;
-    use crate::traft::Health::{Offline, Online};
+    use crate::traft::Grade::{Offline, Online};
     use crate::traft::Peer;
     use pretty_assertions::assert_eq;
 
@@ -250,12 +250,12 @@ mod tests {
             $instance_id:literal,
             $replicaset_id:literal,
             $peer_address:literal,
-            $health:expr
+            $grade:expr
             $(, $failure_domain:expr)?
             $(,)?
         ) ),* $(,)? ] => {
             vec![$(
-                peer!($raft_id, $instance_id, $replicaset_id, $peer_address, $health $(,$failure_domain)?)
+                peer!($raft_id, $instance_id, $replicaset_id, $peer_address, $grade $(,$failure_domain)?)
             ),*]
         };
     }
@@ -266,7 +266,7 @@ mod tests {
             $instance_id:literal,
             $replicaset_id:literal,
             $peer_address:literal,
-            $health:expr
+            $grade:expr
             $(, $failure_domain:expr)?
             $(,)?
         ) => {
@@ -278,7 +278,7 @@ mod tests {
                 instance_uuid: instance_uuid($instance_id),
                 replicaset_uuid: replicaset_uuid($replicaset_id),
                 commit_index: raft::INVALID_INDEX,
-                health: $health,
+                grade: $grade,
                 failure_domain: {
                     let _f = FailureDomain::default();
                     $( let _f = $failure_domain; )?
@@ -314,9 +314,9 @@ mod tests {
         (
             $topology:expr,
             $instance_id:expr,
-            $health:expr $(,)?
+            $grade:expr $(,)?
         ) => {
-            $topology.update_peer($instance_id, $health, None)
+            $topology.update_peer($instance_id, $grade, None)
         };
     }
 

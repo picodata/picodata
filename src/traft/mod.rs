@@ -199,7 +199,7 @@ pub struct Peer {
     pub commit_index: RaftIndex,
 
     /// The state of this instance's activity.
-    pub health: Health,
+    pub grade: Grade,
 
     /// Instance failure domains. Instances with overlapping failure domains
     /// must not be in the same replicaset.
@@ -211,7 +211,7 @@ impl Encode for Peer {}
 
 impl Peer {
     pub fn is_active(&self) -> bool {
-        matches!(self.health, Health::Online)
+        matches!(self.grade, Grade::Online)
     }
 }
 
@@ -224,7 +224,7 @@ impl std::fmt::Display for Peer {
             self.raft_id,
             self.replicaset_id,
             self.peer_address,
-            self.health,
+            self.grade,
             self.commit_index,
             &self.failure_domain,
         )
@@ -575,32 +575,32 @@ impl Encode for ExpelResponse {}
 ///////////////////////////////////////////////////////////////////////////////
 /// Activity state of an instance.
 #[derive(PartialEq, Eq, Clone, Debug, Deserialize, Serialize)]
-pub enum Health {
-    // Instance is active and is handling requests.
-    Online,
+pub enum Grade {
     // Instance has gracefully shut down.
     Offline,
+    // Instance is active and is handling requests.
+    Online,
     // Instance has permanently removed from cluster.
     Expelled,
 }
 
-impl Health {
+impl Grade {
     const fn to_str(&self) -> &str {
         match self {
-            Self::Online => "Online",
             Self::Offline => "Offline",
+            Self::Online => "Online",
             Self::Expelled => "Expelled",
         }
     }
 }
 
-impl Display for Health {
+impl Display for Grade {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         f.write_str(self.to_str())
     }
 }
 
-impl Default for Health {
+impl Default for Grade {
     fn default() -> Self {
         Self::Offline
     }
@@ -610,7 +610,7 @@ impl Default for Health {
 /// Request to deactivate the instance.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct UpdatePeerRequest {
-    pub health: Health,
+    pub grade: Grade,
     pub instance_id: String,
     pub cluster_id: String,
     pub failure_domain: Option<FailureDomain>,
@@ -621,7 +621,7 @@ impl UpdatePeerRequest {
     #[inline]
     pub fn set_online(instance_id: impl Into<String>, cluster_id: impl Into<String>) -> Self {
         Self {
-            health: Health::Online,
+            grade: Grade::Online,
             instance_id: instance_id.into(),
             cluster_id: cluster_id.into(),
             failure_domain: None,
@@ -631,7 +631,7 @@ impl UpdatePeerRequest {
     #[inline]
     pub fn set_offline(instance_id: impl Into<String>, cluster_id: impl Into<String>) -> Self {
         Self {
-            health: Health::Offline,
+            grade: Grade::Offline,
             instance_id: instance_id.into(),
             cluster_id: cluster_id.into(),
             failure_domain: None,
@@ -641,7 +641,7 @@ impl UpdatePeerRequest {
     #[inline]
     pub fn set_expelled(instance_id: impl Into<String>, cluster_id: impl Into<String>) -> Self {
         Self {
-            health: Health::Expelled,
+            grade: Grade::Expelled,
             instance_id: instance_id.into(),
             cluster_id: cluster_id.into(),
             failure_domain: None,

@@ -113,8 +113,8 @@ def test_deactivation(cluster2: Cluster):
             instance.eval(
                 """
                     raft_id = ...
-                    health = box.space.raft_group.index.raft_id:get(raft_id).health
-                    is_active = health == 'Online'
+                    grade = box.space.raft_group.index.raft_id:get(raft_id).grade
+                    is_active = grade == 'Online'
                     voters = box.space.raft_state:get('voters').value
                     for _, voter in pairs(voters) do
                         if voter == raft_id then

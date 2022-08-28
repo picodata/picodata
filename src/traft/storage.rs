@@ -85,7 +85,7 @@ impl Storage {
                     {name = 'replicaset_id', type = 'string', is_nullable = false},
                     {name = 'replicaset_uuid', type = 'string', is_nullable = false},
                     {name = 'commit_index', type = 'unsigned', is_nullable = false},
-                    {name = 'health', type = 'string', is_nullable = false},
+                    {name = 'grade', type = 'string', is_nullable = false},
                     {name = 'failure_domain', type = 'map', is_nullable = false},
                 }
             })
@@ -608,7 +608,7 @@ inventory::submit!(crate::InnerTest {
 inventory::submit!(crate::InnerTest {
     name: "test_storage_peers",
     body: || {
-        use traft::Health::{Offline, Online};
+        use traft::Grade::{Offline, Online};
 
         let mut raft_group = Storage::space(RAFT_GROUP).unwrap();
 

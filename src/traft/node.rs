@@ -49,7 +49,7 @@ use crate::traft::Topology;
 use crate::traft::TopologyRequest;
 use crate::traft::{ExpelRequest, ExpelResponse, JoinRequest, JoinResponse, UpdatePeerRequest};
 
-use super::Health;
+use super::Grade;
 use super::OpResult;
 
 type RawNode = raft::RawNode<Storage>;
@@ -301,10 +301,10 @@ impl Node {
                 ),
                 TopologyRequest::UpdatePeer(UpdatePeerRequest {
                     instance_id,
-                    health,
+                    grade,
                     failure_domain,
                     ..
-                }) => topology.update_peer(&instance_id, health, failure_domain),
+                }) => topology.update_peer(&instance_id, grade, failure_domain),
             };
 
             let mut peer = crate::unwrap_ok_or!(peer_result, Err(e) => {
@@ -505,7 +505,7 @@ fn handle_committed_normal_entry(
     if let Some(traft::Op::PersistPeer { peer }) = entry.op() {
         pool.connect(peer.raft_id, peer.peer_address.clone());
         *topology_changed = true;
-        if peer.health == Health::Expelled && peer.raft_id == raw_node.raft.id {
+        if peer.grade == Grade::Expelled && peer.raft_id == raw_node.raft.id {
             crate::tarantool::exit(0);
         }
     }
