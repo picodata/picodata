@@ -39,7 +39,7 @@ RUN set -e; \
 
 ################ Python ###############################################################
 ENV GPG_KEY A035C8C19219BA821ECEA86B64E628F8D684696D
-ENV PYTHON_VERSION 3.10.4
+ENV PYTHON_VERSION 3.10.6
 
 RUN set -e; \
     wget -q  -O python.tar.xz "https://www.python.org/ftp/python/${PYTHON_VERSION%%[a-z]*}/Python-$PYTHON_VERSION.tar.xz"; \
