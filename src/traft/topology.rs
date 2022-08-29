@@ -6,6 +6,7 @@ use crate::traft::FailureDomain;
 use crate::traft::Grade;
 use crate::traft::Peer;
 use crate::traft::{InstanceId, RaftId, ReplicasetId};
+use crate::traft::{PeerChange, UpdatePeerRequest};
 use crate::util::Uppercase;
 
 use raft::INVALID_INDEX;
@@ -41,6 +42,7 @@ impl Topology {
         self
     }
 
+    #[allow(dead_code)]
     pub fn get_peer(&mut self, instance_id: &str) -> Result<Peer, String> {
         let peer = self
             .instance_map
@@ -186,34 +188,31 @@ impl Topology {
         Ok(peer.clone())
     }
 
-    pub fn update_peer(
-        &mut self,
-        instance_id: &str,
-        grade: Grade,
-        failure_domain: Option<FailureDomain>,
-    ) -> Result<Peer, String> {
-        let current_peer = self.get_peer(instance_id).unwrap();
-        let grade = match current_peer.grade {
-            Grade::Expelled => Grade::Expelled,
-            _ => grade,
-        };
-
+    pub fn update_peer(&mut self, req: UpdatePeerRequest) -> Result<Peer, String> {
         let this = self as *const Self;
 
         let mut peer = self
             .instance_map
-            .get_mut(instance_id)
-            .ok_or_else(|| format!("unknown instance {}", instance_id))?;
+            .get_mut(&req.instance_id)
+            .ok_or_else(|| format!("unknown instance {}", req.instance_id))?;
 
-        if let Some(fd) = failure_domain {
-            // SAFETY: this is safe, because rust doesn't complain if you inline
-            // the function
-            unsafe { &*this }.check_required_failure_domain(&fd)?;
-            self.failure_domain_names.extend(fd.names().cloned());
-            peer.failure_domain = fd;
+        for change in req.changes {
+            match change {
+                PeerChange::Grade(grade) => {
+                    if peer.grade != Grade::Expelled {
+                        peer.grade = grade;
+                    }
+                }
+                PeerChange::FailureDomain(fd) => {
+                    // SAFETY: this is safe, because rust doesn't complain if you inline
+                    // the function
+                    unsafe { &*this }.check_required_failure_domain(&fd)?;
+                    self.failure_domain_names.extend(fd.names().cloned());
+                    peer.failure_domain = fd;
+                }
+            }
         }
 
-        peer.grade = grade;
         Ok(peer.clone())
     }
 }
@@ -242,6 +241,7 @@ mod tests {
     use crate::traft::FailureDomain;
     use crate::traft::Grade::{Offline, Online};
     use crate::traft::Peer;
+    use crate::traft::UpdatePeerRequest;
     use pretty_assertions::assert_eq;
 
     macro_rules! peers {
@@ -310,13 +310,15 @@ mod tests {
         };
     }
 
-    macro_rules! set_active {
+    macro_rules! set_grade {
         (
             $topology:expr,
             $instance_id:expr,
             $grade:expr $(,)?
         ) => {
-            $topology.update_peer($instance_id, $grade, None)
+            $topology.update_peer(
+                UpdatePeerRequest::new($instance_id.into(), "".into()).with_grade($grade),
+            )
         };
     }
 
@@ -326,7 +328,11 @@ mod tests {
             $instance_id:expr,
             $failure_domain:expr $(,)?
         ) => {
-            $topology.update_peer($instance_id, Online, Some($failure_domain))
+            $topology.update_peer(
+                UpdatePeerRequest::new($instance_id.into(), "".into())
+                    .with_grade(Online)
+                    .with_failure_domain($failure_domain),
+            )
         };
     }
 
@@ -470,24 +476,24 @@ mod tests {
         .with_replication_factor(1);
 
         assert_eq!(
-            set_active!(topology, "i1", Offline).unwrap(),
+            set_grade!(topology, "i1", Offline).unwrap(),
             peer!(1, "i1", "r1", "nowhere", Offline),
         );
 
         // idempotency
         assert_eq!(
-            set_active!(topology, "i1", Offline).unwrap(),
+            set_grade!(topology, "i1", Offline).unwrap(),
             peer!(1, "i1", "r1", "nowhere", Offline),
         );
 
         assert_eq!(
-            set_active!(topology, "i2", Online).unwrap(),
+            set_grade!(topology, "i2", Online).unwrap(),
             peer!(2, "i2", "r2", "nowhere", Online),
         );
 
         // idempotency
         assert_eq!(
-            set_active!(topology, "i2", Online).unwrap(),
+            set_grade!(topology, "i2", Online).unwrap(),
             peer!(2, "i2", "r2", "nowhere", Online),
         );
     }
@@ -623,7 +629,7 @@ mod tests {
         assert_eq!(peer.replicaset_id, "r1");
 
         assert_eq!(
-            set_active!(t, "i3", Offline).unwrap().failure_domain,
+            set_grade!(t, "i3", Offline).unwrap().failure_domain,
             faildoms! {planet: B, owner: V, dimension: C137},
         );
 

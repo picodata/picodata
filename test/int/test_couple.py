@@ -169,9 +169,12 @@ def test_deactivation(cluster2: Cluster):
     def raft_update_peer(
         host: Instance, target: Instance, is_active: bool
     ) -> list[bool]:
-        kind = "Online" if is_active else "Offline"
+        grade = "Online" if is_active else "Offline"
         return host.call(
-            ".raft_update_peer", kind, target.instance_id, target.cluster_id, None
+            ".raft_update_peer",
+            target.instance_id,
+            target.cluster_id,
+            [{"Grade": grade}],
         )
 
     # check idempotency

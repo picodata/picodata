@@ -299,12 +299,7 @@ impl Node {
                     advertise_address,
                     failure_domain,
                 ),
-                TopologyRequest::UpdatePeer(UpdatePeerRequest {
-                    instance_id,
-                    grade,
-                    failure_domain,
-                    ..
-                }) => topology.update_peer(&instance_id, grade, failure_domain),
+                TopologyRequest::UpdatePeer(req) => topology.update_peer(req),
             };
 
             let mut peer = crate::unwrap_ok_or!(peer_result, Err(e) => {
@@ -997,8 +992,8 @@ fn expel_on_leader(req: ExpelRequest) -> Result<ExpelResponse, Box<dyn std::erro
         return Err(Box::from("not a leader"));
     }
 
-    let req = UpdatePeerRequest::set_expelled(req.instance_id, req.cluster_id);
-    node.handle_topology_request_and_wait(req.into())?;
+    let req2 = UpdatePeerRequest::new(req.instance_id, req.cluster_id).with_grade(Grade::Expelled);
+    node.handle_topology_request_and_wait(req2.into())?;
 
     Ok(ExpelResponse {})
 }

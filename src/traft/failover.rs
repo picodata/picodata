@@ -9,6 +9,7 @@ use crate::{stringify_cfunc, tarantool, tlog};
 use crate::traft::error::Error;
 use crate::traft::event;
 use crate::traft::node;
+use crate::traft::Grade;
 use crate::traft::Storage;
 use crate::traft::{UpdatePeerRequest, UpdatePeerResponse};
 
@@ -23,12 +24,10 @@ pub fn on_shutdown() {
     }
 
     let peer = Storage::peer_by_raft_id(raft_id).unwrap().unwrap();
-    let req = UpdatePeerRequest::set_offline(
-        peer.instance_id,
-        Storage::cluster_id()
-            .unwrap()
-            .expect("cluster_id must be present"),
-    );
+    let cluster_id = Storage::cluster_id()
+        .unwrap()
+        .expect("cluster_id must be present");
+    let req = UpdatePeerRequest::new(peer.instance_id, cluster_id).with_grade(Grade::Offline);
 
     let fn_name = stringify_cfunc!(raft_update_peer);
     // will run until we get successfully deactivate or tarantool shuts down

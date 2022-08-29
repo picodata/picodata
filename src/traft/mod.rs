@@ -607,50 +607,39 @@ impl Default for Grade {
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-/// Request to deactivate the instance.
+/// Request to update the instance in the storage.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct UpdatePeerRequest {
-    pub grade: Grade,
     pub instance_id: String,
     pub cluster_id: String,
-    pub failure_domain: Option<FailureDomain>,
+    pub changes: Vec<PeerChange>,
 }
-impl Encode for UpdatePeerRequest {}
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum PeerChange {
+    Grade(Grade),
+    FailureDomain(FailureDomain),
+}
+
+impl Encode for UpdatePeerRequest {}
 impl UpdatePeerRequest {
     #[inline]
-    pub fn set_online(instance_id: impl Into<String>, cluster_id: impl Into<String>) -> Self {
+    pub fn new(instance_id: String, cluster_id: String) -> Self {
         Self {
-            grade: Grade::Online,
-            instance_id: instance_id.into(),
-            cluster_id: cluster_id.into(),
-            failure_domain: None,
+            instance_id,
+            cluster_id,
+            changes: vec![],
         }
     }
-
     #[inline]
-    pub fn set_offline(instance_id: impl Into<String>, cluster_id: impl Into<String>) -> Self {
-        Self {
-            grade: Grade::Offline,
-            instance_id: instance_id.into(),
-            cluster_id: cluster_id.into(),
-            failure_domain: None,
-        }
+    pub fn with_grade(mut self, grade: Grade) -> Self {
+        self.changes.push(PeerChange::Grade(grade));
+        self
     }
-
     #[inline]
-    pub fn set_expelled(instance_id: impl Into<String>, cluster_id: impl Into<String>) -> Self {
-        Self {
-            grade: Grade::Expelled,
-            instance_id: instance_id.into(),
-            cluster_id: cluster_id.into(),
-            failure_domain: None,
-        }
-    }
-
-    #[inline]
-    pub fn set_failure_domain(&mut self, failure_domain: FailureDomain) {
-        self.failure_domain = Some(failure_domain);
+    pub fn with_failure_domain(mut self, failure_domain: FailureDomain) -> Self {
+        self.changes.push(PeerChange::FailureDomain(failure_domain));
+        self
     }
 }
 

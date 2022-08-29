@@ -16,7 +16,7 @@ use traft::ExpelRequest;
 use clap::StructOpt as _;
 use protobuf::Message as _;
 
-use crate::traft::{LogicalClock, RaftIndex};
+use crate::traft::{Grade, LogicalClock, RaftIndex, UpdatePeerRequest};
 use traft::error::Error;
 
 mod app;
@@ -805,17 +805,14 @@ fn postjoin(args: &args::Run) {
         let peer = traft::Storage::peer_by_raft_id(raft_id)
             .unwrap()
             .expect("peer must be persisted at the time of postjoin");
-        let instance_id = peer.instance_id;
         let cluster_id = traft::Storage::cluster_id()
             .unwrap()
             .expect("cluster_id must be persisted at the time of postjoin");
 
-        tlog!(Info, "initiating self-activation of {instance_id:?}");
-        let mut req = traft::UpdatePeerRequest::set_online(instance_id, cluster_id);
-        let new_failure_domain = args.failure_domain();
-        if new_failure_domain != peer.failure_domain {
-            req.set_failure_domain(new_failure_domain);
-        }
+        tlog!(Info, "initiating self-activation of {}", peer.instance_id);
+        let req = UpdatePeerRequest::new(peer.instance_id, cluster_id)
+            .with_grade(Grade::Online)
+            .with_failure_domain(args.failure_domain());
 
         let leader_id = node.status().leader_id.expect("leader_id deinitialized");
         let leader = traft::Storage::peer_by_raft_id(leader_id).unwrap().unwrap();
