@@ -152,6 +152,7 @@ def test_replication(cluster: Cluster):
             instance.eval("return box.info.cluster.uuid"),
             None,
             "Online",
+            "Online",
             dict(),
         ]
 

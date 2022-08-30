@@ -174,7 +174,7 @@ def test_deactivation(cluster2: Cluster):
             ".raft_update_peer",
             target.instance_id,
             target.cluster_id,
-            [{"Grade": grade}],
+            [{"Grade": grade}, {"TargetGrade": "Online"}],
         )
 
     # check idempotency

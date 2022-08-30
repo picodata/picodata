@@ -198,8 +198,10 @@ pub struct Peer {
     /// `0` means it's not committed yet.
     pub commit_index: RaftIndex,
 
-    /// The state of this instance's activity.
+    /// The cluster's mind about actual state of this instance's activity.
     pub grade: Grade,
+    /// The desired state of this instance
+    pub target_grade: TargetGrade,
 
     /// Instance failure domains. Instances with overlapping failure domains
     /// must not be in the same replicaset.
@@ -606,6 +608,35 @@ impl Default for Grade {
     }
 }
 
+#[derive(PartialEq, Eq, Clone, Debug, Deserialize, Serialize)]
+pub enum TargetGrade {
+    // Instance should be configured up
+    Online,
+    // Instance should be gracefully shut down
+    Offline,
+    // Instance should be removed from cluster
+    Expelled,
+}
+impl TargetGrade {
+    const fn to_str(&self) -> &str {
+        match self {
+            Self::Online => "Online",
+            Self::Offline => "Offline",
+            Self::Expelled => "Expelled",
+        }
+    }
+}
+impl Display for TargetGrade {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        f.write_str(self.to_str())
+    }
+}
+impl Default for TargetGrade {
+    fn default() -> Self {
+        Self::Online
+    }
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 /// Request to update the instance in the storage.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -618,6 +649,7 @@ pub struct UpdatePeerRequest {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum PeerChange {
     Grade(Grade),
+    TargetGrade(TargetGrade),
     FailureDomain(FailureDomain),
 }
 
@@ -634,6 +666,11 @@ impl UpdatePeerRequest {
     #[inline]
     pub fn with_grade(mut self, grade: Grade) -> Self {
         self.changes.push(PeerChange::Grade(grade));
+        self
+    }
+    #[inline]
+    pub fn with_target_grade(mut self, target_grade: TargetGrade) -> Self {
+        self.changes.push(PeerChange::TargetGrade(target_grade));
         self
     }
     #[inline]
