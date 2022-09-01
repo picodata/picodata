@@ -11,6 +11,7 @@ keywords = ["lua"]
 repository = "https://github.com/picodata/tarantool-module"
 documentation = "http://docs.rs/tlua"
 license = "MIT"
+rust-version = "1.59"
 
 [dependencies]
 libc = "0.2"

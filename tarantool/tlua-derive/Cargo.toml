@@ -9,6 +9,7 @@ edition = "2018"
 license = "BSD-2-Clause"
 documentation = "https://docs.rs/tlua-derive/"
 repository = "https://github.com/picodata/tarantool-module"
+rust-version = "1.59"
 
 [lib]
 proc-macro = true
