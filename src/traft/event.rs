@@ -122,8 +122,11 @@ pub fn wait_timeout(event: Event, timeout: Duration) -> Result<(), Error> {
     let cond = events.regular_cond(event);
     // events must be released before yielding
     drop(events);
-    cond.wait_timeout(timeout);
-    Ok(())
+    if cond.wait_timeout(timeout) {
+        Ok(())
+    } else {
+        Err(Error::Timeout)
+    }
 }
 
 /// Waits for the event to happen.
