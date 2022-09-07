@@ -3,6 +3,7 @@ use std::io::{Read, Seek, SeekFrom};
 use byteorder::{BigEndian, ReadBytesExt};
 
 use crate::Result;
+use super::tuple::ToTupleBuffer;
 
 pub fn skip_value(cur: &mut (impl Read + Seek)) -> Result<()> {
     use rmp::Marker;
@@ -102,6 +103,24 @@ pub fn skip_value(cur: &mut (impl Read + Seek)) -> Result<()> {
             return Err(rmp::decode::ValueReadError::TypeMismatch(Marker::Reserved).into())
         }
     }
+    Ok(())
+}
+
+/// Write to `w` a msgpack array with values from `arr`.
+pub fn write_array<T>(w: &mut impl std::io::Write, arr: &[T]) -> Result<()>
+where
+    T: ToTupleBuffer,
+{
+    rmp::encode::write_array_len(w, arr.len() as _)?;
+    for elem in arr {
+        elem.write_tuple_data(w)?;
+    }
+    Ok(())
+}
+
+/// Initiate a msgpack array of `len`
+pub fn write_array_len(w: &mut impl std::io::Write, len: u32) -> std::result::Result<(), rmp::encode::ValueWriteError> {
+    rmp::encode::write_array_len(w, len)?;
     Ok(())
 }
 

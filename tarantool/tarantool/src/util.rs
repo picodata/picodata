@@ -34,6 +34,7 @@ macro_rules! tuple_from_box_api {
     ($f:path [ $($args:expr),* , @out ]) => {
         {
             let mut result = ::std::mem::MaybeUninit::uninit();
+            #[allow(unused_unsafe)]
             unsafe {
                 if $f($($args),*, result.as_mut_ptr()) < 0 {
                     return Err($crate::error::TarantoolError::last().into());
@@ -42,6 +43,12 @@ macro_rules! tuple_from_box_api {
             }
         }
     }
+}
+
+#[macro_export]
+macro_rules! expr_count {
+    () => { 0 };
+    ($head:expr $(, $tail:expr)*) => { 1 + $crate::expr_count!($($tail),*) }
 }
 
 #[inline]

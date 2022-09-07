@@ -6,6 +6,8 @@
 - `impl ToTupleBuffer for TupleBuffer`
 - serde_bytes::[Des|S]erialize implementations for `TupleBuffer` & `RawByteBuf`
 - `#[derive(Clone, PartialEq, Eq)]` for `TupleBuffer` & `RawByteBuf`
+- `Space` & `Index` now have `update_raw` & `upsert_raw` methods that accept
+    serialized arguments.
 
 ### Fixed
 - `TupleBuffer` no longer copies data into tarantool's transaction memory pool
@@ -19,7 +21,12 @@
 - `TarantoolErrorCode::NoSuchFieldName` is renamed
   `TarantoolErrorCode::NoSuchFieldNameInSpace`.
 - `TarantoolErrorCode::BootstrapReadonly`'s value changed from 201 to 203.
+- `update!` & `upsert!` macros are now more efficient due to the use of
+    `update_raw` & `upsert_raw`.
 
+### Deprecated
+- `update_ops` & `upsert_ops` methods of `Space` & `Index` are deprecated in
+    favour of `update_raw` & `upsert_raw`.
 
 # [0.6.3] Aug 08 2022
 

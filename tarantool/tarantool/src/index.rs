@@ -7,7 +7,6 @@
 //! See also:
 //! - [Indexes](https://www.tarantool.io/en/doc/latest/book/box/data_model/#indexes)
 //! - [Lua reference: Submodule box.index](https://www.tarantool.io/en/doc/latest/reference/reference_lua/box_index/)
-use std::io::Write;
 use std::os::raw::c_char;
 use std::ptr::null_mut;
 use std::mem::MaybeUninit;
@@ -21,6 +20,7 @@ use crate::ffi::tarantool as ffi;
 use crate::tuple::{ToTupleBuffer, Tuple, TupleBuffer};
 use crate::tuple_from_box_api;
 use crate::util::NumOrStr;
+use crate::msgpack;
 
 /// An index is a group of key values and pointers.
 #[derive(Clone)]
@@ -608,34 +608,46 @@ impl Index {
     /// Returns a new tuple.
     ///
     /// See also: [index.upsert()](#method.upsert)
-    pub fn update<K, Op>(&mut self, key: &K, ops: &[Op]) -> Result<Option<Tuple>, Error>
+    // TODO(gmoshkin): accept a single Ops argument instead of a slice of ops
+    #[inline]
+    pub fn update<K, Op>(&mut self, key: &K, ops: impl AsRef<[Op]>) -> Result<Option<Tuple>, Error>
     where
         K: ToTupleBuffer,
         Op: ToTupleBuffer,
     {
-        let mp_encoded_ops = Self::encode_ops(ops)?;
-        self.update_mp(key, &mp_encoded_ops)
+        let key_buf = key.to_tuple_buffer().unwrap();
+        let mut ops_buf = Vec::with_capacity(4 + ops.as_ref().len() * 4);
+        msgpack::write_array(&mut ops_buf, ops.as_ref())?;
+        unsafe {
+            self.update_raw(key_buf.as_ref(), ops_buf.as_ref())
+        }
     }
 
-    pub fn update_mp<K>(&mut self, key: &K, ops: &[Vec<u8>]) -> Result<Option<Tuple>, Error>
-        where
-            K: ToTupleBuffer,
+    /// # Safety
+    /// `ops` must be a slice of valid msgpack arrays.
+    #[deprecated = "use update_raw instead"]
+    pub unsafe fn update_mp<K>(&mut self, key: &K, ops: &[Vec<u8>]) -> Result<Option<Tuple>, Error>
+    where
+        K: ToTupleBuffer,
     {
         let key_buf = key.to_tuple_buffer().unwrap();
-        let key_buf_ptr = key_buf.as_ptr() as *const c_char;
         let mut buf = Vec::with_capacity(128);
-        rmp::encode::write_array_len(&mut buf, ops.len() as u32)?;
-        ops.iter().try_for_each(|op_buf| buf.write_all(op_buf))?;
-        let ops_buf = unsafe { TupleBuffer::from_vec_unchecked(buf) };
-        let ops_buf_ptr = ops_buf.as_ptr() as *const c_char;
+        msgpack::write_array(&mut buf, ops)?;
+        self.update_raw(key_buf.as_ref(), buf.as_ref())
+    }
+
+    /// # Safety
+    /// `key` must be a valid msgpack array.
+    /// `ops` must be a valid msgpack array of msgpack arrays.
+    pub unsafe fn update_raw(&mut self, key: &[u8], ops: &[u8]) -> Result<Option<Tuple>, Error> {
+        let key = key.as_ptr_range();
+        let ops = ops.as_ptr_range();
         tuple_from_box_api!(
             ffi::box_update[
                 self.space_id,
                 self.index_id,
-                key_buf_ptr,
-                key_buf_ptr.add(key_buf.len()),
-                ops_buf_ptr,
-                ops_buf_ptr.add(ops_buf.len()),
+                key.start.cast(), key.end.cast(),
+                ops.start.cast(), ops.end.cast(),
                 0,
                 @out
             ]
@@ -650,53 +662,51 @@ impl Index {
     /// - `ops` - encoded operations in MsgPack array format, e.g. `[['=', field_id, value], ['!', 2, 'xxx']]`
     ///
     /// See also: [index.update()](#method.update)
-    pub fn upsert<T, Op>(&mut self, value: &T, ops: &[Op]) -> Result<(), Error>
+    #[inline]
+    pub fn upsert<T, Op>(&mut self, value: &T, ops: impl AsRef<[Op]>) -> Result<(), Error>
     where
         T: ToTupleBuffer,
         Op: ToTupleBuffer,
     {
-        let mp_encoded_ops = Self::encode_ops(ops)?;
-        self.upsert_mp(value, &mp_encoded_ops)
+        let value_buf = value.to_tuple_buffer().unwrap();
+        let mut ops_buf = Vec::with_capacity(4 + ops.as_ref().len() * 4);
+        msgpack::write_array(&mut ops_buf, ops.as_ref())?;
+        unsafe {
+            self.upsert_raw(value_buf.as_ref(), ops_buf.as_ref())
+        }
     }
 
-    pub fn upsert_mp<T>(&mut self, value: &T, ops: &[Vec<u8>]) -> Result<(), Error>
-        where
-            T: ToTupleBuffer,
+    /// # Safety
+    /// `ops` must be a slice of valid msgpack arrays.
+    #[deprecated = "use upsert_raw instead"]
+    pub unsafe fn upsert_mp<T>(&mut self, value: &T, ops: &[Vec<u8>]) -> Result<(), Error>
+    where
+        T: ToTupleBuffer,
     {
         let value_buf = value.to_tuple_buffer().unwrap();
-        let value_buf_ptr = value_buf.as_ptr() as *const c_char;
         let mut buf = Vec::with_capacity(128);
-        rmp::encode::write_array_len(&mut buf, ops.len() as u32)?;
-        ops.iter().try_for_each(|op_buf| buf.write_all(op_buf))?;
-        let ops_buf = unsafe { TupleBuffer::from_vec_unchecked(buf) };
-        let ops_buf_ptr = ops_buf.as_ptr() as *const c_char;
+        msgpack::write_array(&mut buf, ops)?;
+        self.upsert_raw(value_buf.as_ref(), buf.as_ref())
+    }
+
+    /// # Safety
+    /// `value` must be a valid msgpack array.
+    /// `ops` must be a valid msgpack array of msgpack arrays.
+    pub unsafe fn upsert_raw(&mut self, value: &[u8], ops: &[u8]) -> Result<(), Error> {
+        let value = value.as_ptr_range();
+        let ops = ops.as_ptr_range();
         tuple_from_box_api!(
             ffi::box_upsert[
                 self.space_id,
                 self.index_id,
-                value_buf_ptr,
-                value_buf_ptr.add(value_buf.len()),
-                ops_buf_ptr,
-                ops_buf_ptr.add(ops_buf.len()),
+                value.start.cast(), value.end.cast(),
+                ops.start.cast(), ops.end.cast(),
                 0,
                 @out
             ]
         ).map(|t| if t.is_some() {
             unreachable!("Upsert doesn't return a tuple")
         })
-    }
-
-    fn encode_ops<Op>(ops: &[Op]) -> crate::Result<Vec<Vec<u8>>>
-    where
-        Op: ToTupleBuffer,
-    {
-        ops.iter().try_fold(
-            Vec::with_capacity(ops.len()),
-            |mut v, op| -> crate::Result<Vec<Vec<u8>>> {
-                let buf = op.to_tuple_buffer()?;
-                v.push(buf.into());
-                Ok(v)
-            })
     }
 
     /// Return the number of elements in the index.

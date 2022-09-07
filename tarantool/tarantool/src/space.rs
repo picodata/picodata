@@ -715,7 +715,7 @@ impl Space {
     ///
     /// See also: [space.upsert()](#method.upsert)
     #[inline(always)]
-    pub fn update<K, Op>(&mut self, key: &K, ops: &[Op]) -> Result<Option<Tuple>, Error>
+    pub fn update<K, Op>(&mut self, key: &K, ops: impl AsRef<[Op]>) -> Result<Option<Tuple>, Error>
     where
         K: ToTupleBuffer,
         Op: ToTupleBuffer,
@@ -731,12 +731,32 @@ impl Space {
     /// types.
     ///
     /// Returns a new tuple.
+    ///
+    /// # Safety
+    /// `ops` must be a slice of valid msgpack arrays.
     #[inline(always)]
-    pub fn update_mp<K>(&mut self, key: &K, ops: &[Vec<u8>]) -> Result<Option<Tuple>, Error>
+    #[deprecated = "use update_raw instead"]
+    pub unsafe fn update_mp<K>(&mut self, key: &K, ops: &[Vec<u8>]) -> Result<Option<Tuple>, Error>
     where
         K: ToTupleBuffer,
     {
+        #[allow(deprecated)]
         self.primary_key().update_mp(key, ops)
+    }
+
+    /// Update a tuple using already encoded arguments.
+    ///
+    /// This function is similar to [`update`](#method.update) but instead
+    /// of generic type parameters `T` & `Op` it accepts preencoded message
+    /// pack arrays. This is usefull when the operations have values of
+    /// different types.
+    ///
+    /// # Safety
+    /// `key` must be a valid msgpack array.
+    /// `ops` must be a valid msgpack array of msgpack arrays.
+    #[inline(always)]
+    pub unsafe fn update_raw(&mut self, key: &[u8], ops: &[u8]) -> Result<Option<Tuple>, Error> {
+        self.primary_key().update_raw(key, ops)
     }
 
     /// Update or insert a tuple.
@@ -753,7 +773,7 @@ impl Space {
     ///
     /// See also: [space.update()](#method.update)
     #[inline(always)]
-    pub fn upsert<T, Op>(&mut self, value: &T, ops: &[Op]) -> Result<(), Error>
+    pub fn upsert<T, Op>(&mut self, value: &T, ops: impl AsRef<[Op]>) -> Result<(), Error>
     where
         T: ToTupleBuffer,
         Op: ToTupleBuffer,
@@ -767,12 +787,32 @@ impl Space {
     /// of a generic type parameter `Op` it accepts preencoded message pack
     /// values. This is usefull when the operations have values of different
     /// types.
+    ///
+    /// # Safety
+    /// `ops` must be a slice of valid msgpack arrays.
     #[inline(always)]
-    pub fn upsert_mp<K>(&mut self, key: &K, ops: &[Vec<u8>]) -> Result<(), Error>
-        where
-            K: ToTupleBuffer,
+    #[deprecated = "use upsert_raw instead"]
+    pub unsafe fn upsert_mp<K>(&mut self, key: &K, ops: &[Vec<u8>]) -> Result<(), Error>
+    where
+        K: ToTupleBuffer,
     {
+        #[allow(deprecated)]
         self.primary_key().upsert_mp(key, ops)
+    }
+
+    /// Upsert a tuple using already encoded arguments.
+    ///
+    /// This function is similar to [`upsert`](#method.upsert) but instead
+    /// of generic type parameters `T` & `Op` it accepts preencoded message
+    /// pack arrays. This is usefull when the operations have values of
+    /// different types.
+    ///
+    /// # Safety
+    /// `value` must be a valid msgpack array.
+    /// `ops` must be a valid msgpack array of msgpack arrays.
+    #[inline(always)]
+    pub unsafe fn upsert_raw(&mut self, value: &[u8], ops: &[u8]) -> Result<(), Error> {
+        self.primary_key().upsert_raw(value, ops)
     }
 
     // Return space metadata from system `_space` space.
@@ -856,21 +896,22 @@ impl<'a> Builder<'a> {
 /// See also: [space.update()](#method.update)
 #[macro_export]
 macro_rules! update {
-        ($target:expr, $key: expr, $($op:expr),+ $(,)?) => {
-            {
-                use std::borrow::Borrow;
-                let mut f = || -> $crate::Result<::std::option::Option<$crate::tuple::Tuple>> {
-                    let ops = [
-                        $(
-                            $crate::util::rmp_to_vec($op.borrow())?,
-                        )+
-                    ];
-                    $target.update_mp($key.borrow(), &ops)
-                };
-                f()
+    ($target:expr, $key:expr, $($op:expr),+ $(,)?) => {{
+        use $crate::tuple::ToTupleBuffer;
+        let mut f = || -> $crate::Result<Option<$crate::tuple::Tuple>> {
+            let key_buf = $key.to_tuple_buffer()?;
+            const len: u32 = $crate::expr_count!($($op),+);
+            let mut ops_buf = Vec::with_capacity((4 + len * 4) as _);
+            $crate::msgpack::write_array_len(&mut ops_buf, len)?;
+            $( $op.write_tuple_data(&mut ops_buf)?; )+
+            #[allow(unused_unsafe)]
+            unsafe {
+                $target.update_raw(key_buf.as_ref(), ops_buf.as_ref())
             }
         };
-    }
+        f()
+    }};
+}
 
 /// Upsert a tuple or index.
 ///
@@ -884,18 +925,19 @@ macro_rules! update {
 /// See also: [space.update()](#method.update)
 #[macro_export]
 macro_rules! upsert {
-        ($target:expr, $value: expr, $($op:expr),+ $(,)?) => {
-            {
-                use std::borrow::Borrow;
-                let mut f = || -> $crate::Result<()> {
-                    let ops = [
-                        $(
-                            $crate::util::rmp_to_vec($op.borrow())?,
-                        )+
-                    ];
-                    $target.upsert_mp($value.borrow(), &ops)
-                };
-                f()
+    ($target:expr, $value: expr, $($op:expr),+ $(,)?) => {{
+        use $crate::tuple::ToTupleBuffer;
+        let mut f = || -> $crate::Result<()> {
+            let value_buf = $value.to_tuple_buffer()?;
+            const len: u32 = $crate::expr_count!($($op),+);
+            let mut ops_buf = Vec::with_capacity((4 + len * 4) as _);
+            $crate::msgpack::write_array_len(&mut ops_buf, len)?;
+            $( $op.write_tuple_data(&mut ops_buf)?; )+
+            #[allow(unused_unsafe)]
+            unsafe {
+                $target.upsert_raw(value_buf.as_ref(), ops_buf.as_ref())
             }
         };
-    }
+        f()
+    }};
+}
