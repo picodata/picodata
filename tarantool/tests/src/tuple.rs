@@ -363,7 +363,7 @@ pub fn tuple_debug_fmt() {
     let buf = TupleBuffer::from(tuple);
 
     assert_eq!(format!("{:?}", buf),
-        r#"TupleBuffer::Vector(Tuple(Array([Integer(PosInt(1)), Boolean(true), String(Utf8String { s: Ok("foo") })])))"#
+        r#"TupleBuffer(Array([Integer(PosInt(1)), Boolean(true), String(Utf8String { s: Ok("foo") })]))"#
     );
 }
 

@@ -2,6 +2,11 @@
 
 # [0.6.4] Oct ?? 2022
 
+### Fixed
+- `TupleBuffer` no longer copies data into tarantool's transaction memory pool
+    in `TupleBuffer::from_vec_unchecked`, which previously would result in a use
+    after free in some cases.
+
 ### Changed
 - `TarantoolError::error_code` now returns a `u32` instead of `TarantoolErrorCode`.
 - `TarantoolError`'s `Dispaly` implementation will lookup the error code in lua

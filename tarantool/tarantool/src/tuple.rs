@@ -14,7 +14,7 @@ use std::fmt::{self, Debug, Formatter};
 use std::io::Write;
 use std::os::raw::{c_char, c_int};
 use std::ops::Range;
-use std::ptr::{copy_nonoverlapping, NonNull};
+use std::ptr::NonNull;
 
 use num_derive::ToPrimitive;
 use num_traits::ToPrimitive;
@@ -439,7 +439,7 @@ pub trait ToTupleBuffer {
 impl ToTupleBuffer for Tuple {
     #[inline]
     fn to_tuple_buffer(&self) -> Result<TupleBuffer> {
-        Ok(TupleBuffer::Vector(self.as_buffer()))
+        Ok(TupleBuffer::from(self))
     }
 
     #[inline]
@@ -573,51 +573,50 @@ where
 ///
 /// If buffer is allocated within transaction: will be disposed after transaction ended (committed or dropped).
 /// If not: will act as a regular rust `Vec<u8>`
-pub enum TupleBuffer {
+#[derive(Clone, PartialEq, Eq)]
+pub struct TupleBuffer(
+    // TODO(gmoshkin): previously TupleBuffer would use tarantool's transaction
+    // scoped memory allocator, but it would do so in a confusingly inefficient
+    // and error prone manner (redundant copies and use after free).
+    //
+    // This doesn't mean however that there's no point in using box_txn_alloc,
+    // but at this time I don't see an easy way to leave it within the current
+    // state of TupleBuffer.
+    //
+    // There might be a use for box_txn_alloc from within
+    // transaction::start_transaction, but a well thought through api is needed.
+    //
     // TODO(gmoshkin): use smallvec::SmallVec instead
-    Vector(Vec<u8>),
-    TransactionScoped { ptr: NonNull<u8>, size: usize },
-}
+    Vec<u8>,
+);
 
 impl TupleBuffer {
     /// Get raw pointer to buffer.
+    #[inline]
     pub fn as_ptr(&self) -> *const u8 {
-        match self {
-            TupleBuffer::Vector(vec) => vec.as_ptr(),
-            TupleBuffer::TransactionScoped { ptr, .. } => ptr.as_ptr(),
-        }
+        self.0.as_ptr()
     }
 
     /// Return the number of bytes used in memory by the tuple.
+    #[inline]
     pub fn len(&self) -> usize {
-        match self {
-            TupleBuffer::Vector(vec) => vec.len(),
-            TupleBuffer::TransactionScoped { size, .. } => *size,
-        }
+        self.0.len()
     }
 
+    #[inline]
     pub fn is_empty(&self) -> bool {
-        match self {
-            TupleBuffer::Vector(vec) => vec.is_empty(),
-            TupleBuffer::TransactionScoped { size, .. } => *size == 0,
-        }
+        self.0.is_empty()
     }
 
     /// # Safety
     /// `buf` must be a valid message pack array
     #[track_caller]
+    #[inline]
     pub unsafe fn from_vec_unchecked(buf: Vec<u8>) -> Self {
-        if ffi::box_txn() {
-            let size = buf.len();
-            let ptr = ffi::box_txn_alloc(size) as _;
-            copy_nonoverlapping(buf.as_ptr(), ptr, size);
-            let ptr = NonNull::new(ptr).expect("tarantool allocation failed");
-            Self::TransactionScoped { ptr, size }
-        } else {
-            Self::Vector(buf)
-        }
+        Self(buf)
     }
 
+    #[inline]
     pub fn try_from_vec(data: Vec<u8>) -> Result<Self> {
         let data = validate_msgpack(data)?;
         unsafe { Ok(Self::from_vec_unchecked(data)) }
@@ -625,51 +624,49 @@ impl TupleBuffer {
 }
 
 impl AsRef<[u8]> for TupleBuffer {
+    #[inline]
     fn as_ref(&self) -> &[u8] {
-        match self {
-            Self::Vector(v) => v.as_ref(),
-            Self::TransactionScoped { ptr, size } => unsafe {
-                std::slice::from_raw_parts(ptr.as_ptr(), *size)
-            }
-        }
+        self.0.as_ref()
     }
 }
 
 impl From<TupleBuffer> for Vec<u8> {
+    #[inline]
     fn from(b: TupleBuffer) -> Self {
-        match b {
-            TupleBuffer::Vector(v) => v,
-            TupleBuffer::TransactionScoped { ptr, size } => unsafe {
-                std::slice::from_raw_parts(ptr.as_ptr(), size).into()
-            }
-        }
+        b.0
     }
 }
 
 impl TryFrom<Vec<u8>> for TupleBuffer {
     type Error = Error;
 
+    #[inline]
     fn try_from(data: Vec<u8>) -> Result<Self> {
         Self::try_from_vec(data)
     }
 }
 
 impl From<Tuple> for TupleBuffer {
+    #[inline]
     fn from(t: Tuple) -> Self {
-        Self::Vector(t.as_buffer())
+        Self(t.as_buffer())
+    }
+}
+
+impl From<&Tuple> for TupleBuffer {
+    #[inline]
+    fn from(t: &Tuple) -> Self {
+        Self(t.as_buffer())
     }
 }
 
 impl Debug for TupleBuffer {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        f.debug_tuple(
-            match self {
-                Self::Vector(_) => "TupleBuffer::Vector",
-                Self::TransactionScoped { .. } => "TupleBuffer::TransactionScoped",
-            }
-        )
-            .field(&Tuple::from(self))
-            .finish()
+        if let Ok(v) = rmpv::Value::decode(&self.0) {
+            f.debug_tuple("TupleBuffer").field(&v).finish()
+        } else {
+            f.debug_tuple("TupleBuffer").field(&self.0).finish()
+        }
     }
 }
 
