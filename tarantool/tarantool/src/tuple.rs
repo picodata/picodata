@@ -670,6 +670,38 @@ impl Debug for TupleBuffer {
     }
 }
 
+impl ToTupleBuffer for TupleBuffer {
+    #[inline]
+    fn to_tuple_buffer(&self) -> Result<TupleBuffer> {
+        Ok(self.clone())
+    }
+
+    #[inline]
+    fn write_tuple_data(&self, w: &mut impl Write) -> Result<()> {
+        w.write_all(self.as_ref()).map_err(Into::into)
+    }
+}
+
+impl serde_bytes::Serialize for TupleBuffer {
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer
+    {
+        serde_bytes::Serialize::serialize(&self.0, serializer)
+    }
+}
+
+impl<'de> serde_bytes::Deserialize<'de> for TupleBuffer {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>
+    {
+        let tmp: Vec<u8> = serde_bytes::Deserialize::deserialize(deserializer)?;
+        Self::try_from(tmp)
+            .map_err(serde::de::Error::custom)
+    }
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 /// TupleFormat
 ////////////////////////////////////////////////////////////////////////////////
@@ -1212,8 +1244,26 @@ impl std::ops::Deref for RawBytes {
 ///
 /// This type also implements [`ToTupleBuffer`] such that `to_tuple_buffer`
 /// returns `Ok` only if the underlying bytes represent a valid tuple.
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct RawByteBuf(pub Vec<u8>);
+
+impl serde_bytes::Serialize for RawByteBuf {
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer
+    {
+        serde_bytes::Serialize::serialize(&self.0, serializer)
+    }
+}
+
+impl<'de> serde_bytes::Deserialize<'de> for RawByteBuf {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>
+    {
+        serde_bytes::Deserialize::deserialize(deserializer).map(Self)
+    }
+}
 
 impl From<Vec<u8>> for RawByteBuf {
     #[inline(always)]

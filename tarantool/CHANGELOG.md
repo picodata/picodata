@@ -2,6 +2,11 @@
 
 # [0.6.4] Oct ?? 2022
 
+### Added
+- `impl ToTupleBuffer for TupleBuffer`
+- serde_bytes::[Des|S]erialize implementations for `TupleBuffer` & `RawByteBuf`
+- `#[derive(Clone, PartialEq, Eq)]` for `TupleBuffer` & `RawByteBuf`
+
 ### Fixed
 - `TupleBuffer` no longer copies data into tarantool's transaction memory pool
     in `TupleBuffer::from_vec_unchecked`, which previously would result in a use
