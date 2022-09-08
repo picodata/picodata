@@ -35,7 +35,7 @@ impl TDynBenchFn for BulkInsertBenchmark {
 
         let conn = Rc::new(
             Conn::new(
-                "localhost:3301",
+                ("localhost", unsafe { crate::LISTEN }),
                 ConnOptions {
                     user: "bench_user".to_string(),
                     password: "password".to_string(),

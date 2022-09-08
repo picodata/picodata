@@ -15,6 +15,7 @@
 - `TupleBuffer` no longer copies data into tarantool's transaction memory pool
     in `TupleBuffer::from_vec_unchecked`, which previously would result in a use
     after free in some cases.
+- `tests/run_benchmarks.lua` now works again.
 
 ### Changed
 - `TarantoolError::error_code` now returns a `u32` instead of `TarantoolErrorCode`.
