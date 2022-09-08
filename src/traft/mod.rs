@@ -87,11 +87,6 @@ pub enum Op {
     PersistPeer {
         peer: Peer,
     },
-
-    #[serde(alias = "persist_replication_factor")]
-    PersistReplicationFactor {
-        replication_factor: u8,
-    },
     /// Cluster-wide data modification operation.
     /// Should be used to manipulate the cluster-wide configuration.
     Dml(OpDML),
@@ -106,9 +101,6 @@ impl std::fmt::Display for Op {
             Self::ReturnOne(_) => write!(f, "ReturnOne"),
             Self::PersistPeer { peer } => {
                 write!(f, "PersistPeer{}", peer)
-            }
-            Self::PersistReplicationFactor { replication_factor } => {
-                write!(f, "PersistReplicationFactor({replication_factor})")
             }
             Self::Dml(OpDML::Insert { space, tuple }) => {
                 write!(f, "Insert({space}, {})", DisplayAsJson(tuple))
@@ -169,10 +161,6 @@ impl Op {
             Self::PersistPeer { peer } => {
                 Storage::persist_peer(peer).unwrap();
                 Box::new(peer.clone())
-            }
-            Self::PersistReplicationFactor { replication_factor } => {
-                Storage::persist_replication_factor(*replication_factor).unwrap();
-                Box::new(())
             }
             Self::Dml(op) => Box::new(op.result()),
         }

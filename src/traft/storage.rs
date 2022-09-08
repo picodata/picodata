@@ -46,6 +46,33 @@ const RAFT_STATE: &str = RaftSpace::State.as_str();
 const RAFT_LOG: &str = RaftSpace::Log.as_str();
 
 ////////////////////////////////////////////////////////////////////////////////
+// RaftStateKey
+////////////////////////////////////////////////////////////////////////////////
+
+define_str_enum! {
+    /// An enumeration of builtin raft spaces
+    pub enum RaftStateKey {
+        ReplicationFactor = "replication_factor",
+        Commit = "commit",
+        Applied = "applied",
+        Term = "term",
+        Vote = "vote",
+        Gen = "gen",
+        Voters = "voters",
+        Learners = "learners",
+        VotersOutgoing = "voters_outgoing",
+        LearnersNext = "learners_next",
+        AutoLeave = "auto_leave",
+    }
+
+    FromStr::Err = UnknownRaftStateKey;
+}
+
+#[derive(Error, Debug)]
+#[error("unknown raft state key {0}")]
+pub struct UnknownRaftStateKey(pub String);
+
+////////////////////////////////////////////////////////////////////////////////
 // Error
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -271,11 +298,7 @@ impl Storage {
     }
 
     pub fn replication_factor() -> Result<Option<u8>, StorageError> {
-        Storage::raft_state("replication_factor")
-    }
-
-    pub fn persist_replication_factor(replication_factor: u8) -> Result<(), StorageError> {
-        Storage::persist_raft_state("replication_factor", replication_factor)
+        Storage::raft_state(RaftStateKey::ReplicationFactor.as_str())
     }
 
     pub fn persist_commit(commit: RaftIndex) -> Result<(), StorageError> {
