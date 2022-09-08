@@ -9,6 +9,7 @@ use ::tarantool::fiber::{mutex::MutexGuard, Cond, Mutex};
 use ::tarantool::proc;
 use ::tarantool::unwrap_or;
 
+use crate::define_str_enum;
 use crate::tlog;
 use crate::traft::error::Error;
 use crate::unwrap_ok_or;
@@ -17,54 +18,24 @@ use thiserror::Error;
 pub type BoxResult<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
 #[derive(Error, Debug)]
-#[error("unknown event")]
-pub struct EventFromStrError;
+#[error("unknown event {0}")]
+pub struct EventFromStrError(pub String);
 
-macro_rules! define_events {
-    ($($event:tt, $str:literal;)+) => {
-        ////////////////////////////////////////////////////////////////////////
-        /// An enumeration of builtin events
-        #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash, PartialOrd, Ord)]
-        pub enum Event {
-            $( $event, )+
-        }
-
-        impl Event {
-            pub const fn as_str(&self) -> &str {
-                match self {
-                    $( Self::$event => $str, )+
-                }
-            }
-        }
-
-        impl std::fmt::Display for Event {
-            fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-                f.write_str(self.as_str())
-            }
-        }
-
-        impl FromStr for Event {
-            type Err = EventFromStrError;
-
-            fn from_str(s: &str) -> Result<Self, Self::Err> {
-                match s {
-                    $( $str => Ok(Self::$event), )+
-                    _ => Err(EventFromStrError),
-                }
-            }
-        }
+define_str_enum! {
+    ////////////////////////////////////////////////////////////////////////////
+    /// An enumeration of builtin events
+    pub enum Event {
+        Demoted = "raft.demoted",
+        JointStateEnter = "raft.joint-state-enter",
+        JointStateLeave = "raft.joint-state-leave",
+        JointStateDrop = "raft.joint-state-drop",
+        StatusChanged = "raft.status-changed",
+        TopologyChanged = "raft.topology-changed",
+        RaftLoopNeeded = "raft.loop-needed",
+        RaftEntryApplied = "raft.entry-applied",
     }
-}
 
-define_events! {
-    Demoted, "raft.demoted";
-    JointStateEnter, "raft.joint-state-enter";
-    JointStateLeave, "raft.joint-state-leave";
-    JointStateDrop, "raft.joint-state-drop";
-    StatusChanged, "raft.status-changed";
-    TopologyChanged, "raft.topology-changed";
-    RaftLoopNeeded, "raft.loop-needed";
-    RaftEntryApplied, "raft.entry-applied";
+    FromStr::Err = EventFromStrError;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

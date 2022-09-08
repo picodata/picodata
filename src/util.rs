@@ -33,6 +33,68 @@ macro_rules! stringify_debug {
     }};
 }
 
+#[macro_export]
+macro_rules! define_str_enum {
+    (
+        $(#[$meta:meta])*
+        pub enum $enum:ident { $($space:tt = $str:literal,)+ }
+        FromStr::Err = $err:ident;
+    ) => {
+        $(#[$meta])*
+        #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash, PartialOrd, Ord)]
+        pub enum $enum {
+            $( #[doc = $str] $space, )+
+        }
+
+        impl $enum {
+            pub const fn as_str(&self) -> &str {
+                match self {
+                    $( Self::$space => $str, )+
+                }
+            }
+        }
+
+        impl std::str::FromStr for $enum {
+            type Err = $err;
+
+            fn from_str(s: &str) -> Result<Self, Self::Err> {
+                match s {
+                    $( $str => Ok(Self::$space), )+
+                    _ => Err($err(s.into())),
+                }
+            }
+        }
+
+        impl std::fmt::Display for $enum {
+            fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+                f.write_str(self.as_str())
+            }
+        }
+
+        impl serde::Serialize for $enum {
+            #[inline]
+            fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+            where
+                S: serde::Serializer,
+            {
+                serializer.serialize_str(self.as_str())
+            }
+        }
+
+        impl<'de> serde::Deserialize<'de> for $enum {
+            fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                use serde::de::Error;
+                let tmp = <&str>::deserialize(deserializer)?;
+                let res = tmp.parse().map_err(|e| D::Error::custom(e))?;
+                Ok(res)
+            }
+        }
+    }
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 /// A wrapper around `String` that garantees the string is uppercase by
 /// converting it to uppercase (if needed) on construction.
