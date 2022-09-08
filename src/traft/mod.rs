@@ -6,14 +6,15 @@ pub mod failover;
 mod network;
 pub mod node;
 pub mod notify;
-mod storage;
+pub mod storage;
 pub mod topology;
 
 use crate::stringify_debug;
 use crate::util::Uppercase;
 use ::raft::prelude as raft;
+use ::tarantool::error::Error as TntError;
 use ::tarantool::tlua::LuaError;
-use ::tarantool::tuple::Encode;
+use ::tarantool::tuple::{Encode, ToTupleBuffer, Tuple, TupleBuffer};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::any::Any;
@@ -26,6 +27,7 @@ use uuid::Uuid;
 use protobuf::Message as _;
 
 pub use network::ConnectionPool;
+use storage::RaftSpace;
 pub use storage::Storage;
 pub use topology::Topology;
 
@@ -90,11 +92,14 @@ pub enum Op {
     PersistReplicationFactor {
         replication_factor: u8,
     },
+    /// Cluster-wide data modification operation.
+    /// Should be used to manipulate the cluster-wide configuration.
+    Dml(OpDML),
 }
 
 impl std::fmt::Display for Op {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        match self {
+        return match self {
             Self::Nop => f.write_str("Nop"),
             Self::Info { msg } => write!(f, "Info({msg:?})"),
             Self::EvalLua(OpEvalLua { code }) => write!(f, "EvalLua({code:?})"),
@@ -104,6 +109,48 @@ impl std::fmt::Display for Op {
             }
             Self::PersistReplicationFactor { replication_factor } => {
                 write!(f, "PersistReplicationFactor({replication_factor})")
+            }
+            Self::Dml(OpDML::Insert { space, tuple }) => {
+                write!(f, "Insert({space}, {})", DisplayAsJson(tuple))
+            }
+            Self::Dml(OpDML::Replace { space, tuple }) => {
+                write!(f, "Replace({space}, {})", DisplayAsJson(tuple))
+            }
+            Self::Dml(OpDML::Update { space, key, ops }) => {
+                let key = DisplayAsJson(key);
+                let ops = DisplayAsJson(&**ops);
+                write!(f, "Update({space}, {key}, {ops})")
+            }
+            Self::Dml(OpDML::Delete { space, key }) => {
+                write!(f, "Delete({space}, {})", DisplayAsJson(key))
+            }
+        };
+
+        struct DisplayAsJson<T>(pub T);
+
+        impl std::fmt::Display for DisplayAsJson<&TupleBuffer> {
+            fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+                if let Some(data) = rmp_serde::from_slice::<serde_json::Value>(self.0.as_ref())
+                    .ok()
+                    .and_then(|v| serde_json::to_string(&v).ok())
+                {
+                    return write!(f, "{data}");
+                }
+
+                write!(f, "{:?}", self.0)
+            }
+        }
+
+        impl std::fmt::Display for DisplayAsJson<&[TupleBuffer]> {
+            fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+                write!(f, "[")?;
+                if let Some(elem) = self.0.first() {
+                    write!(f, "{}", DisplayAsJson(elem))?;
+                }
+                for elem in self.0.iter().skip(1) {
+                    write!(f, ", {}", DisplayAsJson(elem))?;
+                }
+                write!(f, "]")
             }
         }
     }
@@ -127,6 +174,7 @@ impl Op {
                 Storage::persist_replication_factor(*replication_factor).unwrap();
                 Box::new(())
             }
+            Self::Dml(op) => Box::new(op.result()),
         }
     }
 }
@@ -173,6 +221,135 @@ impl From<OpEvalLua> for Op {
 pub trait OpResult {
     type Result: 'static;
     fn result(&self) -> Self::Result;
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////
+// OpDML
+
+/// Cluster-wide data modification operation.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum OpDML {
+    Insert {
+        space: RaftSpace,
+        #[serde(with = "serde_bytes")]
+        tuple: TupleBuffer,
+    },
+    Replace {
+        space: RaftSpace,
+        #[serde(with = "serde_bytes")]
+        tuple: TupleBuffer,
+    },
+    Update {
+        space: RaftSpace,
+        #[serde(with = "serde_bytes")]
+        key: TupleBuffer,
+        #[serde(with = "vec_of_raw_byte_buf")]
+        ops: Vec<TupleBuffer>,
+    },
+    Delete {
+        space: RaftSpace,
+        #[serde(with = "serde_bytes")]
+        key: TupleBuffer,
+    },
+}
+
+impl OpResult for OpDML {
+    type Result = Result<Option<Tuple>, ::raft::StorageError>;
+    fn result(&self) -> Self::Result {
+        match self {
+            Self::Insert { space, tuple } => Storage::insert(*space, tuple).map(Some),
+            Self::Replace { space, tuple } => Storage::replace(*space, tuple).map(Some),
+            Self::Update { space, key, ops } => Storage::update(*space, key, ops),
+            Self::Delete { space, key } => Storage::delete(*space, key),
+        }
+    }
+}
+
+impl From<OpDML> for Op {
+    fn from(op: OpDML) -> Op {
+        Op::Dml(op)
+    }
+}
+
+impl OpDML {
+    /// Serializes `tuple` and returns an [`OpDML::Insert`] in case of success.
+    pub fn insert(space: RaftSpace, tuple: &impl ToTupleBuffer) -> Result<Self, TntError> {
+        let res = Self::Insert {
+            space,
+            tuple: tuple.to_tuple_buffer()?,
+        };
+        Ok(res)
+    }
+
+    /// Serializes `tuple` and returns an [`OpDML::Replace`] in case of success.
+    pub fn replace(space: RaftSpace, tuple: &impl ToTupleBuffer) -> Result<Self, TntError> {
+        let res = Self::Replace {
+            space,
+            tuple: tuple.to_tuple_buffer()?,
+        };
+        Ok(res)
+    }
+
+    /// Serializes `key` and returns an [`OpDML::Update`] in case of success.
+    pub fn update(
+        space: RaftSpace,
+        key: &impl ToTupleBuffer,
+        ops: Vec<TupleBuffer>,
+    ) -> Result<Self, TntError> {
+        let res = Self::Update {
+            space,
+            key: key.to_tuple_buffer()?,
+            ops,
+        };
+        Ok(res)
+    }
+
+    /// Serializes `key` and returns an [`OpDML::Delete`] in case of success.
+    pub fn delete(space: RaftSpace, key: &impl ToTupleBuffer) -> Result<Self, TntError> {
+        let res = Self::Delete {
+            space,
+            key: key.to_tuple_buffer()?,
+        };
+        Ok(res)
+    }
+}
+
+mod vec_of_raw_byte_buf {
+    use super::TupleBuffer;
+    use ::tarantool::error::Error as TntError;
+    use serde::de::Error as _;
+    use serde::ser::SerializeSeq;
+    use serde::{self, Deserialize, Deserializer, Serializer};
+    use serde_bytes::{ByteBuf, Bytes};
+    use std::convert::TryFrom;
+
+    pub fn serialize<S>(v: &[TupleBuffer], ser: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut seq = ser.serialize_seq(Some(v.len()))?;
+        for buf in v {
+            seq.serialize_element(Bytes::new(buf.as_ref()))?;
+        }
+        seq.end()
+    }
+
+    pub fn deserialize<'de, D>(de: D) -> Result<Vec<TupleBuffer>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let tmp = Vec::<ByteBuf>::deserialize(de)?;
+        // FIXME(gmoshkin): redundant copy happens here,
+        // because ByteBuf and TupleBuffer are essentially the same struct,
+        // but there's no easy foolproof way
+        // to convert a Vec<ByteBuf> to Vec<TupleBuffer>
+        // because of borrow and drop checkers
+        let res: Result<_, TntError> = tmp
+            .into_iter()
+            .map(|bb| TupleBuffer::try_from(bb.into_vec()))
+            .collect();
+        res.map_err(D::Error::custom)
+    }
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////

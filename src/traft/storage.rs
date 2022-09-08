@@ -6,12 +6,13 @@ use ::raft::StorageError;
 use ::raft::INVALID_ID;
 use ::tarantool::index::IteratorType;
 use ::tarantool::space::Space;
-use ::tarantool::tuple::Tuple;
+use ::tarantool::tuple::{ToTupleBuffer, Tuple};
 use ::tarantool::unwrap_or;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use thiserror::Error;
 
+use crate::define_str_enum;
 use crate::tlog;
 use crate::traft;
 use crate::traft::RaftId;
@@ -20,9 +21,33 @@ use crate::traft::RaftTerm;
 
 pub struct Storage;
 
-const RAFT_GROUP: &str = "raft_group";
-const RAFT_STATE: &str = "raft_state";
-const RAFT_LOG: &str = "raft_log";
+////////////////////////////////////////////////////////////////////////////////
+// RaftSpace
+////////////////////////////////////////////////////////////////////////////////
+
+define_str_enum! {
+    /// An enumeration of builtin raft spaces
+    pub enum RaftSpace {
+        Group = "raft_group",
+        State = "raft_state",
+        Log = "raft_log",
+    }
+
+    FromStr::Err = UnknownRaftSpace;
+}
+
+#[derive(Error, Debug)]
+#[error("unknown raft space {0}")]
+pub struct UnknownRaftSpace(pub String);
+
+// TODO(gmoshkin): remove this
+const RAFT_GROUP: &str = RaftSpace::Group.as_str();
+const RAFT_STATE: &str = RaftSpace::State.as_str();
+const RAFT_LOG: &str = RaftSpace::Log.as_str();
+
+////////////////////////////////////////////////////////////////////////////////
+// Error
+////////////////////////////////////////////////////////////////////////////////
 
 #[allow(clippy::enum_variant_names)]
 #[derive(Debug, Error)]
@@ -413,6 +438,38 @@ impl Storage {
         Storage::persist_vote(hs.vote)?;
         Storage::persist_commit(hs.commit)?;
         Ok(())
+    }
+
+    pub fn insert(space: RaftSpace, tuple: &impl ToTupleBuffer) -> Result<Tuple, StorageError> {
+        Storage::space(space.as_str())?
+            .insert(tuple)
+            .map_err(box_err)
+    }
+
+    pub fn replace(space: RaftSpace, tuple: &impl ToTupleBuffer) -> Result<Tuple, StorageError> {
+        Storage::space(space.as_str())?
+            .replace(tuple)
+            .map_err(box_err)
+    }
+
+    pub fn update(
+        space: RaftSpace,
+        key: &impl ToTupleBuffer,
+        ops: &[impl ToTupleBuffer],
+    ) -> Result<Option<Tuple>, StorageError> {
+        Storage::space(space.as_str())?
+            .update(key, ops)
+            .map_err(box_err)
+    }
+
+    #[rustfmt::skip]
+    pub fn delete(
+        space: RaftSpace,
+        key: &impl ToTupleBuffer,
+    ) -> Result<Option<Tuple>, StorageError> {
+        Storage::space(space.as_str())?
+            .delete(key)
+            .map_err(box_err)
     }
 }
 
