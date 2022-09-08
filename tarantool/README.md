@@ -41,7 +41,7 @@ For deployment check out the deployment notes at the end of this file.
 
 ### Prerequisites
 
-- Rust 1.58 or newer + Cargo
+- Rust 1.59 or newer + Cargo
 - Tarantool 2.2
 
 #### Linking issues in macOS
