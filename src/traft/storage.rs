@@ -33,10 +33,8 @@ enum Error {
     NoSuchIndex(String, String),
 }
 
-macro_rules! box_err {
-    () => {
-        |e| StorageError::Other(Box::new(e))
-    };
+fn box_err(e: impl std::error::Error + Sync + Send + 'static) -> StorageError {
+    StorageError::Other(Box::new(e))
 }
 
 impl Storage {
@@ -113,23 +111,21 @@ impl Storage {
     fn space(name: &str) -> Result<Space, StorageError> {
         Space::find(name)
             .ok_or_else(|| Error::NoSuchSpace(name.into()))
-            .map_err(box_err!())
+            .map_err(box_err)
     }
 
     fn persist_raft_state<T: Serialize>(key: &str, value: T) -> Result<(), StorageError> {
         Storage::space(RAFT_STATE)?
             .put(&(key, value))
-            .map_err(box_err!())?;
+            .map_err(box_err)?;
         Ok(())
     }
 
     fn raft_state<T: DeserializeOwned>(key: &str) -> Result<Option<T>, StorageError> {
-        let tuple: Option<Tuple> = Storage::space(RAFT_STATE)?
-            .get(&(key,))
-            .map_err(box_err!())?;
+        let tuple: Option<Tuple> = Storage::space(RAFT_STATE)?.get(&(key,)).map_err(box_err)?;
 
         match tuple {
-            Some(t) => t.field(1).map_err(box_err!()),
+            Some(t) => t.field(1).map_err(box_err),
             None => Ok(None),
         }
     }
@@ -144,13 +140,13 @@ impl Storage {
         let tuple = Storage::space(RAFT_GROUP)?
             .index(IDX)
             .ok_or_else(|| Error::NoSuchIndex(RAFT_GROUP.into(), IDX.into()))
-            .map_err(box_err!())?
+            .map_err(box_err)?
             .get(&(raft_id,))
-            .map_err(box_err!())?;
+            .map_err(box_err)?;
 
         match tuple {
             None => Ok(None),
-            Some(v) => Ok(Some(v.decode().map_err(box_err!())?)),
+            Some(v) => Ok(Some(v.decode().map_err(box_err)?)),
         }
     }
 
@@ -159,13 +155,13 @@ impl Storage {
         let tuple = Storage::space(RAFT_GROUP)?
             .index(IDX)
             .ok_or_else(|| Error::NoSuchIndex(RAFT_GROUP.into(), IDX.into()))
-            .map_err(box_err!())?
+            .map_err(box_err)?
             .get(&(instance_id,))
-            .map_err(box_err!())?;
+            .map_err(box_err)?;
 
         match tuple {
             None => Ok(None),
-            Some(v) => Ok(Some(v.decode().map_err(box_err!())?)),
+            Some(v) => Ok(Some(v.decode().map_err(box_err)?)),
         }
     }
 
@@ -174,10 +170,10 @@ impl Storage {
 
         let iter = Storage::space(RAFT_GROUP)?
             .select(IteratorType::All, &())
-            .map_err(box_err!())?;
+            .map_err(box_err)?;
 
         for tuple in iter {
-            ret.push(tuple.decode().map_err(box_err!())?);
+            ret.push(tuple.decode().map_err(box_err)?);
         }
 
         Ok(ret)
@@ -193,12 +189,12 @@ impl Storage {
         let iter = Storage::space(RAFT_GROUP)?
             .index(IDX)
             .ok_or_else(|| Error::NoSuchIndex(RAFT_GROUP.into(), IDX.into()))
-            .map_err(box_err!())?
+            .map_err(box_err)?
             .select(IteratorType::GE, &(replicaset_id,))
-            .map_err(box_err!())?;
+            .map_err(box_err)?;
 
         for tuple in iter {
-            let replica: traft::Peer = tuple.decode().map_err(box_err!())?;
+            let replica: traft::Peer = tuple.decode().map_err(box_err)?;
 
             if replica.replicaset_id != replicaset_id {
                 // In Tarantool the iteration must be interrupted explicitly.
@@ -283,7 +279,7 @@ impl Storage {
             // We use `insert` instead of `replace` here
             // because `raft_id` can never be changed.
             .insert(&("raft_id", id))
-            .map_err(box_err!())?;
+            .map_err(box_err)?;
 
         Ok(())
     }
@@ -293,7 +289,7 @@ impl Storage {
             // We use `insert` instead of `replace` here
             // because `instance_id` can never be changed.
             .insert(&("instance_id", id))
-            .map_err(box_err!())?;
+            .map_err(box_err)?;
 
         Ok(())
     }
@@ -303,14 +299,12 @@ impl Storage {
             // We use `insert` instead of `replace` here
             // because `cluster_id` should never be changed.
             .insert(&("cluster_id", id))
-            .map_err(box_err!())?;
+            .map_err(box_err)?;
         Ok(())
     }
 
     pub fn persist_peer(peer: &traft::Peer) -> Result<(), StorageError> {
-        Storage::space(RAFT_GROUP)?
-            .replace(peer)
-            .map_err(box_err!())?;
+        Storage::space(RAFT_GROUP)?.replace(peer).map_err(box_err)?;
 
         Ok(())
     }
@@ -319,7 +313,7 @@ impl Storage {
     pub fn delete_peer(instance_id: &str) -> Result<(), StorageError> {
         Storage::space(RAFT_GROUP)?
             .delete(&[instance_id])
-            .map_err(box_err!())?;
+            .map_err(box_err)?;
 
         Ok(())
     }
@@ -329,10 +323,10 @@ impl Storage {
         let mut ret: Vec<raft::Entry> = vec![];
         let iter = Storage::space(RAFT_LOG)?
             .select(IteratorType::GE, &(low,))
-            .map_err(box_err!())?;
+            .map_err(box_err)?;
 
         for tuple in iter {
-            let row: traft::Entry = tuple.decode().map_err(box_err!())?;
+            let row: traft::Entry = tuple.decode().map_err(box_err)?;
             if row.index >= high {
                 break;
             }
@@ -345,8 +339,8 @@ impl Storage {
     pub fn all_traft_entries() -> Result<Vec<traft::Entry>, StorageError> {
         Storage::space(RAFT_LOG)?
             .select(IteratorType::All, &())
-            .map_err(box_err!())?
-            .map(|tuple| tuple.decode().map_err(box_err!()))
+            .map_err(box_err)?
+            .map(|tuple| tuple.decode().map_err(box_err))
             .collect()
     }
 
@@ -354,7 +348,7 @@ impl Storage {
         let mut space = Storage::space(RAFT_LOG)?;
         for e in entries {
             let row = traft::Entry::try_from(e).unwrap();
-            space.replace(&row).map_err(box_err!())?;
+            space.replace(&row).map_err(box_err)?;
         }
 
         Ok(())
@@ -448,10 +442,10 @@ impl raft::Storage for Storage {
         }
         // tlog!(Info, "++++++ term {idx}");
 
-        let tuple = Storage::space(RAFT_LOG)?.get(&(idx,)).map_err(box_err!())?;
+        let tuple = Storage::space(RAFT_LOG)?.get(&(idx,)).map_err(box_err)?;
 
         if let Some(tuple) = tuple {
-            Ok(tuple.field(2).map_err(box_err!())?.unwrap())
+            Ok(tuple.field(2).map_err(box_err)?.unwrap())
         } else {
             Err(RaftError::Store(StorageError::Unavailable))
         }
@@ -464,10 +458,10 @@ impl raft::Storage for Storage {
 
     fn last_index(&self) -> Result<RaftIndex, RaftError> {
         let space: Space = Storage::space(RAFT_LOG)?;
-        let tuple: Option<Tuple> = space.primary_key().max(&()).map_err(box_err!())?;
+        let tuple: Option<Tuple> = space.primary_key().max(&()).map_err(box_err)?;
 
         if let Some(t) = tuple {
-            Ok(t.field(1).map_err(box_err!())?.unwrap())
+            Ok(t.field(1).map_err(box_err)?.unwrap())
         } else {
             Ok(0)
         }
