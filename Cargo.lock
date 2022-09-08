@@ -1127,7 +1127,7 @@ checksum = "f764005d11ee5f36500a149ace24e00e3da98b0158b3e2d53a7495660d3f4d60"
 
 [[package]]
 name = "tarantool"
-version = "0.6.3"
+version = "0.6.4"
 dependencies = [
  "base64",
  "bitflags",
@@ -1135,7 +1135,6 @@ dependencies = [
  "dec",
  "derivative",
  "dlopen",
- "lazy_static",
  "libc",
  "log",
  "nix 0.24.1",
