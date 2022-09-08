@@ -598,7 +598,7 @@ fn start_boot(args: &args::Run) {
             };
             let e = traft::Entry {
                 entry_type: raft::EntryType::EntryNormal,
-                index: 1,
+                index: (init_entries.len() + 1) as _,
                 term: 1,
                 data: vec![],
                 context: Some(traft::EntryContext::Normal(ctx)),
@@ -617,7 +617,7 @@ fn start_boot(args: &args::Run) {
             };
             let e = traft::Entry {
                 entry_type: raft::EntryType::EntryNormal,
-                index: 2,
+                index: (init_entries.len() + 1) as _,
                 term: 1,
                 data: vec![],
                 context: Some(traft::EntryContext::Normal(ctx)),
@@ -634,7 +634,7 @@ fn start_boot(args: &args::Run) {
             };
             let e = traft::Entry {
                 entry_type: raft::EntryType::EntryConfChange,
-                index: 3,
+                index: (init_entries.len() + 1) as _,
                 term: 1,
                 data: conf_change.write_to_bytes().unwrap(),
                 context: None,
