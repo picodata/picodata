@@ -3,6 +3,8 @@
 # [0.6.4] Oct ?? 2022
 
 ### Added
+- `tarantool::space::UpdateOps` helper struct for use with `update` & `upsert`
+    methods of `Space` & `Index`.
 - `impl ToTupleBuffer for TupleBuffer`
 - serde_bytes::[Des|S]erialize implementations for `TupleBuffer` & `RawByteBuf`
 - `#[derive(Clone, PartialEq, Eq)]` for `TupleBuffer` & `RawByteBuf`

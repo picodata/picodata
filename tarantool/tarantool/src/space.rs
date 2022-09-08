@@ -21,7 +21,7 @@ use crate::ffi::tarantool as ffi;
 use crate::index::{Index, IndexIterator, IteratorType};
 #[cfg(feature = "schema")]
 use crate::schema::space::SpaceMetadata;
-use crate::tuple::{Encode, ToTupleBuffer, Tuple};
+use crate::tuple::{Encode, ToTupleBuffer, Tuple, TupleBuffer};
 use crate::tuple_from_box_api;
 
 /// End of the reserved range of system spaces.
@@ -875,6 +875,208 @@ impl<'a> Builder<'a> {
     #[cfg(feature = "schema")]
     pub fn create(self) -> crate::Result<Space> {
         crate::schema::space::create_space(self.name, &self.opts)
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// UpdateOps
+////////////////////////////////////////////////////////////////////////////////
+
+/// A builder-style helper struct for [`Space::update`], [`Space::upsert`],
+/// [`Index::update`], [`Index::upsert`] methods.
+///
+/// Start by calling the [`new`] function, then chain as many operations as
+/// needed ([`add`], [`assign`], [`insert`], etc.) after that you can either
+/// pass the resulting expression directly into one of the supported methods,
+/// or use the data directly after calling [`encode`] or [`into_inner`].
+///
+/// # Examples
+/// ```no_run
+/// use tarantool::space::{Space, UpdateOps};
+/// let mut space = Space::find("employee").unwrap();
+/// space.update(
+///     &[1337],
+///     UpdateOps::new()
+///         .add("strikes", 1).unwrap()
+///         .assign("days-since-last-mistake", 0).unwrap(),
+/// )
+/// .unwrap();
+/// ```
+///
+/// [`new`]: UpdateOps::new
+/// [`add`]: UpdateOps::add
+/// [`assign`]: UpdateOps::assign
+/// [`insert`]: UpdateOps::insert
+/// [`encode`]: UpdateOps::encode
+/// [`into_inner`]: UpdateOps::into_inner
+pub struct UpdateOps {
+    ops: Vec<TupleBuffer>,
+}
+
+macro_rules! define_bin_ops {
+    ($( $(#[$meta:meta])* $op_name:ident, $op_code:literal; )+) => {
+        $(
+            $(#[$meta])*
+            #[inline]
+            pub fn $op_name<K, V>(&mut self, field: K, value: V) -> crate::Result<&mut Self>
+            where
+                K: Serialize,
+                V: Serialize,
+            {
+                self.ops.push(($op_code, field, value).to_tuple_buffer()?);
+                Ok(self)
+            }
+        )+
+    }
+}
+
+impl UpdateOps {
+    #[inline]
+    pub fn new() -> Self {
+        Self {
+            ops: Vec::new(),
+        }
+    }
+
+    #[inline]
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self {
+            ops: Vec::with_capacity(capacity),
+        }
+    }
+
+    define_bin_ops! {
+        /// Assignment operation.
+        /// Corresponds to tarantool's `{'=', field, value}`.
+        ///
+        /// Field indexing is zero based (first field has index 0).
+        /// Negative indexes are offset from array's end (last field has index -1).
+        assign, '=';
+
+        /// Insertion operation.
+        /// Corresponds to tarantool's `{'!', field, value}`.
+        ///
+        /// Field indexing is zero based (first field has index 0).
+        /// Negative indexes are offset from array's end (last field has index -1).
+        insert, '!';
+
+        /// Numeric addition operation.
+        /// Corresponds to tarantool's `{'+', field, value}`.
+        ///
+        /// Field indexing is zero based (first field has index 0).
+        /// Negative indexes are offset from array's end (last field has index -1).
+        add, '+';
+
+        /// Numeric subtraction operation.
+        /// Corresponds to tarantool's `{'-', field, value}`.
+        ///
+        /// Field indexing is zero based (first field has index 0).
+        /// Negative indexes are offset from array's end (last field has index -1).
+        sub, '-';
+
+        /// Bitwise AND operation.
+        /// Corresponds to tarantool's `{'&', field, value}`.
+        ///
+        /// Field indexing is zero based (first field has index 0).
+        /// Negative indexes are offset from array's end (last field has index -1).
+        and, '&';
+
+        /// Bitwise OR operation.
+        /// Corresponds to tarantool's `{'|', field, value}`.
+        ///
+        /// Field indexing is zero based (first field has index 0).
+        /// Negative indexes are offset from array's end (last field has index -1).
+        or, '|';
+
+        /// Bitwise XOR operation.
+        /// Corresponds to tarantool's `{'^', field, value}`.
+        ///
+        /// Field indexing is zero based (first field has index 0).
+        /// Negative indexes are offset from array's end (last field has index -1).
+        xor, '^';
+    }
+
+    /// Deletion operation.
+    /// Corresponds to tarantool's `{'#', field, count}`.
+    ///
+    /// Field indexing is zero based (first field has index 0).
+    /// Negative indexes are offset from array's end (last field has index -1).
+    #[inline]
+    pub fn delete<K>(&mut self, field: K, count: usize) -> crate::Result<&mut Self>
+    where
+        K: Serialize,
+    {
+        self.ops.push(('#', field, count).to_tuple_buffer()?);
+        Ok(self)
+    }
+
+    /// String splicing operation.
+    /// Corresponds to tarantool's `{':', field, start, count, value}`.
+    ///
+    /// Field indexing is zero based (first field has index 0).
+    /// Negative indexes are offset from array's end (last field has index -1).
+    #[inline]
+    pub fn splice<K>(&mut self, field: K, start: isize, count: usize, value: &str) -> crate::Result<&mut Self>
+    where
+        K: Serialize,
+    {
+        self.ops.push((':', field, start, count, value).to_tuple_buffer()?);
+        Ok(self)
+    }
+
+    #[inline]
+    pub fn as_slice(&self) -> &[TupleBuffer] {
+        &self.ops
+    }
+
+    #[inline]
+    pub fn into_inner(self) -> Vec<TupleBuffer> {
+        self.ops
+    }
+
+    #[inline]
+    pub fn encode(&self) -> Vec<u8> {
+        let mut res = Vec::with_capacity(4 + 4 * self.ops.len());
+        self.encode_to(&mut res).expect("memory allocation failed");
+        res
+    }
+
+    #[inline]
+    pub fn encode_to(&self, w: &mut impl std::io::Write) -> crate::Result<()> {
+        crate::msgpack::write_array_len(w, self.ops.len() as _)?;
+        for op in &self.ops {
+            op.write_tuple_data(w)?;
+        }
+        Ok(())
+    }
+}
+
+impl Default for UpdateOps {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl AsRef<[TupleBuffer]> for UpdateOps {
+    #[inline]
+    fn as_ref(&self) -> &[TupleBuffer] {
+        &self.ops
+    }
+}
+
+impl From<UpdateOps> for Vec<TupleBuffer> {
+    #[inline]
+    fn from(ops: UpdateOps) -> Vec<TupleBuffer> {
+        ops.ops
+    }
+}
+
+impl IntoIterator for UpdateOps {
+    type Item = TupleBuffer;
+    type IntoIter = std::vec::IntoIter<TupleBuffer>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.ops.into_iter()
     }
 }
 

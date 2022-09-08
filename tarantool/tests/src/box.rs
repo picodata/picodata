@@ -5,6 +5,7 @@ use rand::Rng;
 use tarantool::index::{IndexFieldType, IndexOptions, IteratorType};
 use tarantool::sequence::Sequence;
 use tarantool::space::{Field, Space, SpaceCreateOptions, SpaceEngineType, SpaceFieldType, SystemSpace};
+use tarantool::space::UpdateOps;
 use tarantool::tuple::Tuple;
 use tarantool::{update, upsert};
 use tarantool::util::Value;
@@ -477,6 +478,94 @@ pub fn update_index_macro() {
     assert_eq!(output.value, "New");
     assert_eq!(output.a, 1);
     assert_eq!(output.b, 2);
+}
+
+pub fn update_ops() {
+    let mut space = Space::builder("update_ops_test_space").create().unwrap();
+    space.index_builder("pk").create().unwrap();
+
+    space.insert(&(1, 0)).unwrap();
+
+    assert_eq!(
+        space.get(&[1]).unwrap().unwrap()
+            .decode::<(i32, i32)>().unwrap(),
+        (1, 0),
+    );
+
+    space.update(
+        &[1],
+        UpdateOps::new()
+            .add(1, 13).unwrap()
+    )
+        .unwrap();
+
+    assert_eq!(
+        space.get(&[1]).unwrap().unwrap()
+            .decode::<(i32, i32)>().unwrap(),
+        (1, 13),
+    );
+
+    space.update(
+        &[1],
+        UpdateOps::new()
+            .insert(-1, 69).unwrap()
+            .sub(1, 8).unwrap()
+    )
+        .unwrap();
+
+    assert_eq!(
+        space.get(&[1]).unwrap().unwrap()
+            .decode::<(i32, i32, i32)>().unwrap(),
+        (1, 5, 69),
+    );
+
+    space.update(
+        &[1],
+        UpdateOps::new()
+            .insert(-1, "hello").unwrap()
+            .insert(-1, "there").unwrap()
+            .insert(-1, "pal").unwrap()
+            .delete(-2, 2).unwrap()
+            .insert(-1, "world").unwrap()
+    )
+        .unwrap();
+
+    assert_eq!(
+        space.get(&[1]).unwrap().unwrap()
+            .decode::<(i32, i32, i32, String, String)>().unwrap(),
+        (1, 5, 69, "hello".to_string(), "world".to_string()),
+    );
+
+    space.update(
+        &[1],
+        UpdateOps::new()
+            .and(1, 0b100).unwrap()
+            .xor(2, 0b101).unwrap()
+            .assign(3, 0).unwrap()
+            .splice(4, 1, 2, "i").unwrap()
+    )
+        .unwrap();
+
+    assert_eq!(
+        space.get(&[1]).unwrap().unwrap()
+            .decode::<(i32, i32, i32, i32, String)>().unwrap(),
+        (1, 4, 64, 0, "wild".to_string()),
+    );
+
+    space.update(
+        &[1],
+        UpdateOps::new()
+            .delete(1, 2).unwrap()
+            .or(1, 420).unwrap()
+            .delete(2, 9999).unwrap()
+    )
+        .unwrap();
+
+    assert_eq!(
+        space.get(&[1]).unwrap().unwrap()
+            .decode::<(i32, i32)>().unwrap(),
+        (1, 420),
+    );
 }
 
 pub fn upsert() {
