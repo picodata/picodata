@@ -47,8 +47,8 @@ docker-build-base:
       changes:
         - docker-build-base/Dockerfile
   before_script:
-    - mkdir -p $HOME/.docker
-    - echo $DOCKER_AUTH_RW > $HOME/.docker/config.json
+    - mkdir -p $CI_PROJECT_DIR/.docker
+    - echo $DOCKER_AUTH_RW > $CI_PROJECT_DIR/.docker/config.json
   script:
     - docker pull ${REGISTRY_IMAGE}/${BASE_IMAGE} || true
     - >
@@ -59,7 +59,7 @@ docker-build-base:
       -t ${REGISTRY_IMAGE}/${BASE_IMAGE}
       -f ./docker-build-base/Dockerfile
       ./docker-build-base
-    - docker push ${REGISTRY_IMAGE}/${BASE_IMAGE}
+    - docker --config $CI_PROJECT_DIR/.docker/ push ${REGISTRY_IMAGE}/${BASE_IMAGE}
 
 build:
   image: ${REGISTRY_IMAGE}/${BASE_IMAGE}
