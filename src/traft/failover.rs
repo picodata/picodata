@@ -14,17 +14,34 @@ use crate::traft::Storage;
 use crate::traft::{UpdatePeerRequest, UpdatePeerResponse};
 
 pub fn on_shutdown() {
-    let voters = Storage::voters().expect("failed reading voters");
-    let active_learners = Storage::active_learners().expect("failed reading active learners");
-    let raft_id = node::global().unwrap().status().id;
+    let node = node::global().unwrap();
+    let voters = node
+        .storage
+        .voters()
+        .expect("failed reading voters")
+        .unwrap_or_default();
+    let learners = node
+        .storage
+        .learners()
+        .expect("failed reading learners")
+        .unwrap_or_default();
+    let have_active_learners = learners.into_iter().any(|raft_id| {
+        Storage::peer_by_raft_id(raft_id)
+            .expect("failed reading peer")
+            .map(|peer| peer.is_active())
+            .unwrap_or(false)
+    });
+    let raft_id = node.status().id;
 
-    if voters == [raft_id] && active_learners.is_empty() {
+    if voters == [raft_id] && !have_active_learners {
         tlog!(Warning, "the last active instance has shut down");
         return;
     }
 
     let peer = Storage::peer_by_raft_id(raft_id).unwrap().unwrap();
-    let cluster_id = Storage::cluster_id()
+    let cluster_id = node
+        .storage
+        .cluster_id()
         .unwrap()
         .expect("cluster_id must be present");
     let req = UpdatePeerRequest::new(peer.instance_id, cluster_id).with_grade(Grade::Offline);
@@ -79,7 +96,10 @@ fn raft_update_peer(
 ) -> Result<UpdatePeerResponse, Box<dyn std::error::Error>> {
     let node = node::global()?;
 
-    let cluster_id = Storage::cluster_id()?.ok_or("cluster_id is not set yet")?;
+    let cluster_id = node
+        .storage
+        .cluster_id()?
+        .ok_or("cluster_id is not set yet")?;
 
     if req.cluster_id != cluster_id {
         return Err(Box::new(Error::ClusterIdMismatch {
@@ -94,11 +114,19 @@ fn raft_update_peer(
 
 pub fn voters_needed(voters: usize, total: usize) -> i64 {
     let voters_expected = match total {
+        0 => {
+            crate::warn_or_panic!("`voters_needed` was called with `total` = 0");
+            0
+        }
         1 => 1,
         2 => 2,
         3..=4 => 3,
         5.. => 5,
-        _ => unreachable!(),
+        _ => unreachable!(
+            "just another thing rust is garbage at:
+             `5..` covers all the rest of the values,
+             but rust can't figure this out"
+        ),
     };
     voters_expected - (voters as i64)
 }
@@ -115,5 +143,7 @@ mod tests {
         assert_eq!(super::voters_needed(6, 4), -3);
         assert_eq!(super::voters_needed(1, 5), 4);
         assert_eq!(super::voters_needed(1, 999), 4);
+        assert_eq!(super::voters_needed(0, usize::MAX), 5);
+        assert_eq!(super::voters_needed(0, u64::MAX as _), 5);
     }
 }

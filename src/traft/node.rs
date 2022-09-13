@@ -44,17 +44,17 @@ use crate::traft::notify::Notify;
 use crate::traft::ConnectionPool;
 use crate::traft::LogicalClock;
 use crate::traft::Op;
-use crate::traft::Storage;
 use crate::traft::Topology;
 use crate::traft::TopologyRequest;
 use crate::traft::{
     ExpelRequest, ExpelResponse, JoinRequest, JoinResponse, SyncRaftRequest, UpdatePeerRequest,
 };
+use crate::traft::{RaftSpaceAccess, Storage};
 
 use super::Grade;
 use super::OpResult;
 
-type RawNode = raft::RawNode<Storage>;
+type RawNode = raft::RawNode<RaftSpaceAccess>;
 
 #[derive(Clone, Debug, tlua::Push, tlua::PushInto)]
 pub struct Status {
@@ -73,6 +73,7 @@ pub struct Status {
 pub struct Node {
     raw_node: Rc<Mutex<RawNode>>,
     raft_id: RaftId,
+    pub(super) storage: RaftSpaceAccess,
     _main_loop: fiber::UnitJoinHandle<'static>,
     _conf_change_loop: fiber::UnitJoinHandle<'static>,
     status: Rc<RefCell<Status>>,
@@ -95,8 +96,8 @@ impl Node {
 
     /// Initialize the raft node.
     /// **This function yields**
-    pub fn new(cfg: &raft::Config) -> Result<Self, RaftError> {
-        let raw_node = RawNode::new(cfg, Storage, &tlog::root())?;
+    pub fn new(cfg: &raft::Config, mut storage: RaftSpaceAccess) -> Result<Self, RaftError> {
+        let raw_node = RawNode::new(cfg, storage.clone(), &tlog::root())?;
         let raw_node = Rc::new(Mutex::new(raw_node));
         let status = Rc::new(RefCell::new(Status {
             id: cfg.id,
@@ -110,14 +111,16 @@ impl Node {
         let main_loop_fn = {
             let status = status.clone();
             let raw_node = raw_node.clone();
+            let storage = storage.clone();
             let raft_loop_cond = raft_loop_cond.clone();
             let notifications = notifications.clone();
-            move || raft_main_loop(status, raw_node, raft_loop_cond, notifications)
+            move || raft_main_loop(status, raw_node, storage, raft_loop_cond, notifications)
         };
 
         let conf_change_loop_fn = {
             let status = status.clone();
-            move || raft_conf_change_loop(status)
+            let storage = storage.clone();
+            move || raft_conf_change_loop(status, storage)
         };
 
         let node = Node {
@@ -138,11 +141,12 @@ impl Node {
                 .unwrap(),
             topology_cache: CachedCell::new(),
             lc: {
-                let id = Storage::raft_id().unwrap().unwrap();
-                let gen = Storage::gen().unwrap().unwrap_or(0) + 1;
-                Storage::persist_gen(gen).unwrap();
+                let id = storage.raft_id().unwrap().unwrap();
+                let gen = storage.gen().unwrap().unwrap_or(0) + 1;
+                storage.persist_gen(gen).unwrap();
                 Cell::new(Some(LogicalClock::new(id, gen)))
             },
+            storage,
         };
 
         // Wait for the node to enter the main loop
@@ -415,6 +419,11 @@ impl Node {
         self.notifications.borrow_mut().insert(lc, tx);
         (lc, rx)
     }
+
+    #[inline]
+    pub fn all_traft_entries(&self) -> ::tarantool::Result<Vec<traft::Entry>> {
+        self.storage.all_traft_entries()
+    }
 }
 
 #[derive(Debug)]
@@ -443,6 +452,7 @@ fn handle_committed_entries(
     entries: Vec<raft::Entry>,
     notifications: &mut HashMap<LogicalClock, Notify>,
     raw_node: &mut RawNode,
+    storage: &mut RaftSpaceAccess,
     pool: &mut ConnectionPool,
     topology_changed: &mut bool,
 ) {
@@ -467,13 +477,13 @@ fn handle_committed_entries(
                 raw_node,
             ),
             raft::EntryType::EntryConfChange | raft::EntryType::EntryConfChangeV2 => {
-                handle_committed_conf_change(entry, raw_node)
+                handle_committed_conf_change(entry, raw_node, storage)
             }
         }
     }
 
     if let Some(last_entry) = entries.last() {
-        if let Err(e) = Storage::persist_applied(last_entry.index) {
+        if let Err(e) = storage.persist_applied(last_entry.index) {
             tlog!(
                 Error,
                 "error persisting applied index: {e}";
@@ -527,7 +537,11 @@ fn handle_committed_normal_entry(
     });
 }
 
-fn handle_committed_conf_change(entry: traft::Entry, raw_node: &mut RawNode) {
+fn handle_committed_conf_change(
+    entry: traft::Entry,
+    raw_node: &mut RawNode,
+    storage: &mut RaftSpaceAccess,
+) {
     let latch_unlock = || {
         with_joint_state_latch(|joint_state_latch| {
             if let Some(latch) = joint_state_latch.take() {
@@ -574,7 +588,7 @@ fn handle_committed_conf_change(entry: traft::Entry, raw_node: &mut RawNode) {
     };
 
     let raft_id = &raw_node.raft.id;
-    let voters_old = Storage::voters().unwrap();
+    let voters_old = storage.voters().unwrap().unwrap_or_default();
     if voters_old.contains(raft_id) && !conf_state.voters.contains(raft_id) {
         if is_joint {
             event::broadcast_when(Event::Demoted, Event::JointStateLeave).ok();
@@ -583,7 +597,7 @@ fn handle_committed_conf_change(entry: traft::Entry, raw_node: &mut RawNode) {
         }
     }
 
-    Storage::persist_conf_state(&conf_state).unwrap();
+    storage.persist_conf_state(&conf_state).unwrap();
 }
 
 fn handle_read_states(
@@ -617,6 +631,7 @@ fn handle_messages(messages: Vec<raft::Message>, pool: &ConnectionPool) {
 fn raft_main_loop(
     status: Rc<RefCell<Status>>,
     raw_node: Rc<Mutex<RawNode>>,
+    mut storage: RaftSpaceAccess,
     raft_loop_cond: Rc<Cond>,
     notifications: Rc<RefCell<HashMap<LogicalClock, Notify>>>,
 ) {
@@ -673,6 +688,7 @@ fn raft_main_loop(
                 committed_entries,
                 &mut *notifications.borrow_mut(),
                 &mut raw_node,
+                &mut storage,
                 &mut pool,
                 &mut topology_changed,
             );
@@ -680,13 +696,13 @@ fn raft_main_loop(
             if !ready.entries().is_empty() {
                 let e = ready.entries();
                 // Append entries to the Raft log.
-                Storage::persist_entries(e).unwrap();
+                storage.persist_entries(e).unwrap();
             }
 
             if let Some(hs) = ready.hs() {
                 // Raft HardState changed, and we need to persist it.
                 // let hs = hs.clone();
-                Storage::persist_hard_state(hs).unwrap();
+                storage.persist_hard_state(hs).unwrap();
             }
 
             if let Some(ss) = ready.ss() {
@@ -715,7 +731,7 @@ fn raft_main_loop(
         // Update commit index.
         start_transaction(|| -> Result<(), TransactionError> {
             if let Some(commit) = light_rd.commit_index() {
-                Storage::persist_commit(commit).unwrap();
+                storage.persist_commit(commit).unwrap();
             }
 
             // Send out the messages.
@@ -728,6 +744,7 @@ fn raft_main_loop(
                 committed_entries,
                 &mut *notifications.borrow_mut(),
                 &mut raw_node,
+                &mut storage,
                 &mut pool,
                 &mut topology_changed,
             );
@@ -751,16 +768,18 @@ fn raft_main_loop(
     }
 }
 
-fn raft_conf_change_loop(status: Rc<RefCell<Status>>) {
+fn raft_conf_change_loop(status: Rc<RefCell<Status>>, storage: RaftSpaceAccess) {
     loop {
         if status.borrow().raft_state != "Leader" {
             event::wait(Event::StatusChanged).expect("Events system must be initialized");
             continue;
         }
 
-        let term = Storage::term().unwrap().unwrap_or(0);
-        let voter_ids: HashSet<RaftId> = HashSet::from_iter(Storage::voters().unwrap());
-        let learner_ids: HashSet<RaftId> = HashSet::from_iter(Storage::learners().unwrap());
+        let term = storage.term().unwrap().unwrap_or(0);
+        let voter_ids: HashSet<RaftId> =
+            HashSet::from_iter(storage.voters().unwrap().unwrap_or_default());
+        let learner_ids: HashSet<RaftId> =
+            HashSet::from_iter(storage.learners().unwrap().unwrap_or_default());
         let peer_is_active: HashMap<RaftId, bool> = Storage::peers()
             .unwrap()
             .into_iter()
@@ -905,7 +924,10 @@ fn raft_interact(pbs: Vec<traft::MessagePb>) -> Result<(), Box<dyn std::error::E
 fn raft_join(req: JoinRequest) -> Result<JoinResponse, Box<dyn std::error::Error>> {
     let node = global()?;
 
-    let cluster_id = Storage::cluster_id()?.ok_or("cluster_id is not set yet")?;
+    let cluster_id = node
+        .storage
+        .cluster_id()?
+        .ok_or("cluster_id is not set yet")?;
 
     if req.cluster_id != cluster_id {
         return Err(Box::new(Error::ClusterIdMismatch {
@@ -920,7 +942,7 @@ fn raft_join(req: JoinRequest) -> Result<JoinResponse, Box<dyn std::error::Error
     // A joined peer needs to communicate with other nodes.
     // Provide it the list of raft voters in response.
     let mut raft_group = vec![];
-    for raft_id in Storage::voters()?.into_iter() {
+    for raft_id in node.storage.voters()?.unwrap_or_default().into_iter() {
         if let Some(peer) = Storage::peer_by_raft_id(raft_id)? {
             raft_group.push(peer);
         } else {
@@ -944,7 +966,10 @@ pub fn expel_wrapper(instance_id: String) -> Result<(), traft::error::Error> {
 }
 
 fn expel_by_instance_id(instance_id: String) -> Result<ExpelResponse, Box<dyn std::error::Error>> {
-    let cluster_id = Storage::cluster_id()?.ok_or("cluster_id is not set yet")?;
+    let cluster_id = global()?
+        .storage
+        .cluster_id()?
+        .ok_or("cluster_id is not set yet")?;
 
     expel(ExpelRequest {
         instance_id,
@@ -979,7 +1004,10 @@ fn expel(req: ExpelRequest) -> Result<ExpelResponse, Box<dyn std::error::Error>>
 }
 
 fn expel_on_leader(req: ExpelRequest) -> Result<ExpelResponse, Box<dyn std::error::Error>> {
-    let cluster_id = Storage::cluster_id()?.ok_or("cluster_id is not set yet")?;
+    let cluster_id = global()?
+        .storage
+        .cluster_id()?
+        .ok_or("cluster_id is not set yet")?;
 
     if req.cluster_id != cluster_id {
         return Err(Box::new(Error::ClusterIdMismatch {
@@ -1007,7 +1035,7 @@ fn expel_on_leader(req: ExpelRequest) -> Result<ExpelResponse, Box<dyn std::erro
 fn raft_sync_raft(req: SyncRaftRequest) -> Result<(), Box<dyn std::error::Error>> {
     let deadline = Instant::now() + req.timeout;
     loop {
-        if Storage::commit().unwrap().unwrap() >= req.commit {
+        if global()?.storage.commit().unwrap().unwrap() >= req.commit {
             return Ok(());
         }
 
@@ -1036,7 +1064,7 @@ fn call_raft_sync_raft(promotee: &Peer, commit: u64) -> Result<(), Box<dyn std::
 
 // Run on Leader by topology governor
 fn sync_raft(promotee: &Peer) -> Result<(), Box<dyn std::error::Error>> {
-    let commit = Storage::commit().unwrap().unwrap();
+    let commit = global()?.storage.commit().unwrap().unwrap();
 
     match call_raft_sync_raft(promotee, commit) {
         Ok(_) => {
@@ -1049,7 +1077,10 @@ fn sync_raft(promotee: &Peer) -> Result<(), Box<dyn std::error::Error>> {
             }
 
             let instance_id = promotee.instance_id.clone();
-            let cluster_id = Storage::cluster_id()?.ok_or("cluster_id is not set yet")?;
+            let cluster_id = node
+                .storage
+                .cluster_id()?
+                .ok_or("cluster_id is not set yet")?;
 
             let req = UpdatePeerRequest::new(instance_id, cluster_id).with_grade(Grade::RaftSynced);
 

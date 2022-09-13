@@ -13,6 +13,7 @@ use std::convert::TryFrom;
 use std::time::{Duration, Instant};
 use traft::storage::{RaftSpace, RaftStateKey};
 use traft::ExpelRequest;
+use traft::RaftSpaceAccess;
 
 use clap::StructOpt as _;
 use protobuf::Message as _;
@@ -189,12 +190,16 @@ fn picolib_setup(args: &args::Run) {
     luamod.set(
         "raft_log",
         tlua::function1(
-            |opts: Option<RaftLogOpts>| -> Result<Option<String>, ::raft::StorageError> {
+            |opts: Option<RaftLogOpts>| -> Result<Option<String>, Error> {
                 let header = ["index", "term", "lc", "contents"];
                 let [index, term, lc, contents] = header;
                 let mut rows = vec![];
                 let mut col_widths = header.map(|h| h.len());
-                for entry in traft::Storage::all_traft_entries()? {
+                let node = traft::node::global()?;
+                let entries = node
+                    .all_traft_entries()
+                    .map_err(|e| Error::Other(Box::new(e)))?;
+                for entry in entries {
                     let row = [
                         entry.index.to_string(),
                         entry.term.to_string(),
@@ -493,13 +498,15 @@ fn main_run(args: args::Run) -> ! {
     }
 }
 
-fn init_common(args: &args::Run, cfg: &tarantool::Cfg) {
+fn init_common(args: &args::Run, cfg: &tarantool::Cfg) -> RaftSpaceAccess {
     std::fs::create_dir_all(&args.data_dir).unwrap();
     tarantool::set_cfg(cfg);
 
     traft::Storage::init_schema();
+    let storage = RaftSpaceAccess::new().expect("RaftSpaceAccess initialization failed");
     init_handlers();
     traft::event::init();
+    storage
 }
 
 fn start_discover(args: &args::Run, to_supervisor: ipc::Sender<IpcMessage>) {
@@ -519,15 +526,15 @@ fn start_discover(args: &args::Run, to_supervisor: ipc::Sender<IpcMessage>) {
         ..Default::default()
     };
 
-    init_common(args, &cfg);
+    let storage = init_common(args, &cfg);
     discovery::init_global(&args.peers);
 
     cfg.listen = Some(args.listen.clone());
     tarantool::set_cfg(&cfg);
 
     // TODO assert traft::Storage::instance_id == (null || args.instance_id)
-    if traft::Storage::raft_id().unwrap().is_some() {
-        return postjoin(args);
+    if storage.raft_id().unwrap().is_some() {
+        return postjoin(args, storage);
     }
 
     let role = discovery::wait_global();
@@ -581,7 +588,7 @@ fn start_boot(args: &args::Run) {
         ..Default::default()
     };
 
-    init_common(args, &cfg);
+    let mut storage = init_common(args, &cfg);
 
     start_transaction(|| -> Result<(), TntError> {
         let cs = raft::ConfState {
@@ -650,18 +657,21 @@ fn start_boot(args: &args::Run) {
             raft::Entry::try_from(e).unwrap()
         });
 
-        traft::Storage::persist_conf_state(&cs).unwrap();
-        traft::Storage::persist_entries(&init_entries).unwrap();
-        traft::Storage::persist_commit(init_entries.len() as _).unwrap();
-        traft::Storage::persist_term(1).unwrap();
-        traft::Storage::persist_raft_id(raft_id).unwrap();
-        traft::Storage::persist_instance_id(&instance_id).unwrap();
-        traft::Storage::persist_cluster_id(&args.cluster_id).unwrap();
+        storage.persist_conf_state(&cs).unwrap();
+        storage.persist_entries(&init_entries).unwrap();
+        storage.persist_raft_id(raft_id).unwrap();
+        storage.persist_instance_id(&instance_id).unwrap();
+        storage.persist_cluster_id(&args.cluster_id).unwrap();
+
+        let mut hs = raft::HardState::default();
+        hs.set_commit(init_entries.len() as _);
+        hs.set_term(1);
+        storage.persist_hard_state(&hs).unwrap();
         Ok(())
     })
     .unwrap();
 
-    postjoin(args)
+    postjoin(args, storage)
 }
 
 fn start_join(args: &args::Run, leader_address: String) {
@@ -719,7 +729,7 @@ fn start_join(args: &args::Run, leader_address: String) {
         ..Default::default()
     };
 
-    init_common(args, &cfg);
+    let mut storage = init_common(args, &cfg);
 
     let raft_id = resp.peer.raft_id;
     start_transaction(|| -> Result<(), TntError> {
@@ -727,17 +737,17 @@ fn start_join(args: &args::Run, leader_address: String) {
         for peer in resp.raft_group {
             traft::Storage::persist_peer(&peer).unwrap();
         }
-        traft::Storage::persist_raft_id(raft_id).unwrap();
-        traft::Storage::persist_instance_id(&resp.peer.instance_id).unwrap();
-        traft::Storage::persist_cluster_id(&args.cluster_id).unwrap();
+        storage.persist_raft_id(raft_id).unwrap();
+        storage.persist_instance_id(&resp.peer.instance_id).unwrap();
+        storage.persist_cluster_id(&args.cluster_id).unwrap();
         Ok(())
     })
     .unwrap();
 
-    postjoin(args)
+    postjoin(args, storage)
 }
 
-fn postjoin(args: &args::Run) {
+fn postjoin(args: &args::Run, storage: RaftSpaceAccess) {
     tlog!(Info, ">>>>> postjoin()");
 
     let mut box_cfg = tarantool::cfg().unwrap();
@@ -747,8 +757,8 @@ fn postjoin(args: &args::Run) {
     box_cfg.replication_connect_quorum = 0;
     tarantool::set_cfg(&box_cfg);
 
-    let raft_id = traft::Storage::raft_id().unwrap().unwrap();
-    let applied = traft::Storage::applied().unwrap().unwrap_or(0);
+    let raft_id = storage.raft_id().unwrap().unwrap();
+    let applied = storage.applied().unwrap().unwrap_or(0);
     let raft_cfg = raft::Config {
         id: raft_id,
         applied,
@@ -756,12 +766,12 @@ fn postjoin(args: &args::Run) {
         ..Default::default()
     };
 
-    let node = traft::node::Node::new(&raft_cfg);
+    let node = traft::node::Node::new(&raft_cfg, storage.clone());
     let node = node.expect("failed initializing raft node");
     traft::node::set_global(node);
     let node = traft::node::global().unwrap();
 
-    let cs = traft::Storage::conf_state().unwrap();
+    let cs = storage.conf_state().unwrap();
     if cs.voters == [raft_cfg.id] {
         tlog!(
             Info,
@@ -813,7 +823,8 @@ fn postjoin(args: &args::Run) {
         let peer = traft::Storage::peer_by_raft_id(raft_id)
             .unwrap()
             .expect("peer must be persisted at the time of postjoin");
-        let cluster_id = traft::Storage::cluster_id()
+        let cluster_id = storage
+            .cluster_id()
             .unwrap()
             .expect("cluster_id must be persisted at the time of postjoin");
 

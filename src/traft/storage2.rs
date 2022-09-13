@@ -23,27 +23,32 @@ pub struct RaftSpaceAccess {
 }
 
 macro_rules! state_impl {
-    ($vis:vis getter, $fn_name:ident, $value_type:ty) => {
-        $vis fn $fn_name(&self) -> tarantool::Result<Option<$value_type>> {
-            let key: &str = stringify!($fn_name);
-            let tuple: Option<Tuple> = self.space_raft_state.get(&(key,))?;
+    (
+        $(
+            $(#[$get_meta:meta])* $get_vis:vis $property:ident: $get_ty:ty;
+            $(#[$set_meta:meta])* $set_vis:vis $setter:ident: $mod:ident, $set_ty:ty;
+        )+
+    ) => {
+        $(
+            $(#[$get_meta])*
+            $get_vis fn $property(&self) -> tarantool::Result<Option<$get_ty>> {
+                let key: &str = stringify!($property);
+                let tuple: Option<Tuple> = self.space_raft_state.get(&(key,))?;
 
-            match tuple {
-                Some(t) => t.field(Self::FIELD_STATE_VALUE),
-                None => Ok(None),
+                match tuple {
+                    Some(t) => t.field(Self::FIELD_STATE_VALUE),
+                    None => Ok(None),
+                }
             }
-        }
-    };
 
-    // Q: Why passing `fn_name` and `key` separately instead of using `concat!()`?
-    // A: It doesn't work. See https://github.com/rust-lang/rust/issues/12249.
-    //    Also, it's easier to grep full names.
-    ($vis:vis setter, $fn_name: ident, $key:literal, $modifier:ident, $value_type: ty) => {
-        $vis fn $fn_name(&mut self, value: $value_type) -> tarantool::Result<()> {
-            self.space_raft_state.$modifier(&($key, value))?;
-            Ok(())
-        }
-    };
+            $(#[$set_meta])*
+            $set_vis fn $setter(&mut self, value: $set_ty) -> tarantool::Result<()> {
+                let key: &str = stringify!($property);
+                self.space_raft_state.$mod(&(key, value))?;
+                Ok(())
+            }
+        )+
+    }
 }
 
 impl RaftSpaceAccess {
@@ -58,6 +63,7 @@ impl RaftSpaceAccess {
 
         let space_raft_log = Space::builder(Self::SPACE_RAFT_LOG)
             .is_local(true)
+            .is_temporary(false)
             .field(Field::unsigned("entry_type"))
             .field(Field::unsigned("index"))
             .field(Field::unsigned("term"))
@@ -75,6 +81,7 @@ impl RaftSpaceAccess {
 
         let space_raft_state = Space::builder(Self::SPACE_RAFT_STATE)
             .is_local(true)
+            .is_temporary(false)
             .field(Field::string("key"))
             .field(Field::any("value"))
             .if_not_exists(true)
@@ -96,18 +103,48 @@ impl RaftSpaceAccess {
     // Find the meaning of the fields here:
     // https://github.com/etcd-io/etcd/blob/main/raft/raftpb/raft.pb.go
 
-    state_impl!(pub getter, raft_id, u64);
-    state_impl!(pub getter, cluster_id, String);
-    // state_impl!(pub getter, gen, u64); // Node generation i.e. the number of restarts.
-    state_impl!(getter, term, RaftTerm);
-    state_impl!(getter, vote, RaftId);
-    state_impl!(getter, commit, RaftIndex);
-    // state_impl!(pub getter, applied, RaftIndex);
-    state_impl!(getter, voters, Vec<RaftId>);
-    state_impl!(getter, learners, Vec<RaftId>);
-    state_impl!(getter, voters_outgoing, Vec<RaftId>);
-    state_impl!(getter, learners_next, Vec<RaftId>);
-    state_impl!(getter, auto_leave, bool);
+    state_impl! {
+        pub raft_id: u64;
+        pub persist_raft_id: insert, u64;
+
+        #[allow(dead_code)]
+        pub instance_id: String;
+        pub persist_instance_id: insert, &str;
+
+        pub cluster_id: String;
+        pub persist_cluster_id: insert, &str;
+
+        /// Node generation i.e. the number of restarts.
+        pub gen: u64;
+        pub persist_gen: replace, u64;
+
+        pub(super) term: RaftTerm;
+        persist_term: replace, RaftTerm;
+
+        vote: RaftId;
+        persist_vote: replace, RaftId;
+
+        pub(super) commit: RaftIndex;
+        pub persist_commit: replace, RaftIndex;
+
+        pub applied: RaftIndex;
+        pub persist_applied: replace, RaftIndex;
+
+        pub(super) voters: Vec<RaftId>;
+        persist_voters: replace, &[RaftId];
+
+        pub(super) learners: Vec<RaftId>;
+        persist_learners: replace, &[RaftId];
+
+        voters_outgoing: Vec<RaftId>;
+        persist_voters_outgoing: replace, &[RaftId];
+
+        learners_next: Vec<RaftId>;
+        persist_learners_next: replace, &[RaftId];
+
+        auto_leave: bool;
+        persist_auto_leave: replace, bool;
+    }
 
     pub fn conf_state(&self) -> tarantool::Result<raft::ConfState> {
         Ok(raft::ConfState {
@@ -145,31 +182,12 @@ impl RaftSpaceAccess {
         Ok(ret)
     }
 
-    state_impl!(pub setter, persist_raft_id, "raft_id", insert, u64);
-    state_impl!(pub setter, persist_cluster_id, "cluster_id", insert, &str);
-    // state_impl!(pub setter, persist_gen, "gen", replace, u64);
-    state_impl!(setter, persist_term, "term", replace, RaftTerm);
-    state_impl!(setter, persist_vote, "vote", replace, RaftId);
-    state_impl!(setter, persist_commit, "commit", replace, RaftIndex);
-    // state_impl!(pub setter, persist_applied, "applied", replace, RaftIndex);
-
-    state_impl!(setter, persist_voters, "voters", replace, &Vec<RaftId>);
-    state_impl!(setter, persist_learners, "learners", replace, &Vec<RaftId>);
-    state_impl!(
-        setter,
-        persist_voters_outgoing,
-        "voters_outgoing",
-        replace,
-        &Vec<RaftId>
-    );
-    state_impl!(
-        setter,
-        persist_learners_next,
-        "learners_next",
-        replace,
-        &Vec<RaftId>
-    );
-    state_impl!(setter, persist_auto_leave, "auto_leave", replace, bool);
+    pub fn all_traft_entries(&self) -> tarantool::Result<Vec<traft::Entry>> {
+        self.space_raft_log
+            .select(IteratorType::All, &())?
+            .map(|tuple| tuple.decode())
+            .collect()
+    }
 
     pub fn persist_conf_state(&mut self, cs: &raft::ConfState) -> tarantool::Result<()> {
         self.persist_voters(&cs.voters)?;
