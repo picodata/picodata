@@ -26,6 +26,7 @@
 - `TarantoolErrorCode::BootstrapReadonly`'s value changed from 201 to 203.
 - `update!` & `upsert!` macros are now more efficient due to the use of
     `update_raw` & `upsert_raw`.
+- `SpaceCreateOptions::default` now sets `is_local` & `is_temporary` to `false`.
 
 ### Deprecated
 - `update_ops` & `upsert_ops` methods of `Space` & `Index` are deprecated in

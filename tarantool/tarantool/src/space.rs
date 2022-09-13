@@ -154,8 +154,8 @@ impl Default for SpaceCreateOptions {
             id: None,
             field_count: 0,
             user: None,
-            is_local: true,
-            is_temporary: true,
+            is_local: false,
+            is_temporary: false,
             is_sync: false,
             format: None,
         }
