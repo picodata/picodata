@@ -6,8 +6,8 @@ pub mod failover;
 mod network;
 pub mod node;
 pub mod notify;
+mod raft_storage;
 pub mod storage;
-mod storage2;
 pub mod topology;
 
 use crate::stringify_debug;
@@ -28,9 +28,9 @@ use uuid::Uuid;
 use protobuf::Message as _;
 
 pub use network::ConnectionPool;
+pub use raft_storage::RaftSpaceAccess;
 use storage::RaftSpace;
 pub use storage::Storage;
-pub use storage2::RaftSpaceAccess;
 pub use topology::Topology;
 
 pub type RaftId = u64;
