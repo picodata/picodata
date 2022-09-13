@@ -13,7 +13,7 @@ use std::mem::MaybeUninit;
 
 use num_derive::ToPrimitive;
 use num_traits::ToPrimitive;
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Serialize};
 
 use crate::error::{Error, TarantoolError};
 use crate::ffi::tarantool as ffi;
@@ -277,105 +277,48 @@ impl SeqSpec {
 // IndexType
 ////////////////////////////////////////////////////////////////////////////////
 
-/// Type of index.
-#[derive(Copy, Clone, Debug, Serialize, PartialEq, tlua::Push)]
-#[serde(rename_all = "lowercase")]
-pub enum IndexType {
-    Hash,
-    Tree,
-    Bitset,
-    Rtree,
-}
-
-impl<'de> Deserialize<'de> for IndexType {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-        where
-            D: Deserializer<'de>,
-    {
-        let str = String::deserialize(deserializer)?.trim().to_lowercase();
-
-        const HASH: &str = "hash";
-        const TREE: &str = "tree";
-        const BITSET: &str = "bitset";
-        const RTREE: &str = "rtree";
-
-        Ok(match str.as_str() {
-            HASH => Self::Hash,
-            TREE => Self::Tree,
-            BITSET => Self::Bitset,
-            RTREE => Self::Rtree,
-            _ => {
-                return Err(serde::de::Error::unknown_variant(
-                    &str,
-                    &[
-                        HASH, TREE, BITSET, RTREE,
-                    ],
-                ));
-            }
-        })
+crate::define_str_enum!{
+    /// Type of index.
+    #[derive(Copy, Clone, Debug, PartialEq)]
+    pub enum IndexType {
+        Hash = "hash",
+        Tree = "tree",
+        Bitset = "bitset",
+        Rtree = "rtree",
     }
+
+    FromStr::Err = UnknownIndexType;
 }
 
-/// Type of index part.
-#[derive(Copy, Clone, Debug, Serialize, PartialEq, tlua::Push)]
-#[serde(rename_all = "lowercase")]
-pub enum IndexFieldType {
-    Unsigned,
-    String,
-    Integer,
-    Number,
-    Double,
-    Decimal,
-    Boolean,
-    Varbinary,
-    Uuid,
-    Array,
-    Scalar,
-}
+#[derive(thiserror::Error, Debug)]
+#[error("unknown index type {0}")]
+pub struct UnknownIndexType(pub String);
 
-impl<'de> Deserialize<'de> for IndexFieldType {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let str = String::deserialize(deserializer)?.trim().to_lowercase();
 
-        const UNSIGNED: &str = "unsigned";
-        const STRING: &str = "string";
-        const INTEGER: &str = "integer";
-        const NUMBER: &str = "number";
-        const DOUBLE: &str = "double";
-        const DECIMAL: &str = "decimal";
-        const BOOLEAN: &str = "boolean";
-        const VARBINARY: &str = "varbinary";
-        const UUID: &str = "uuid";
-        const ARRAY: &str = "array";
-        const SCALAR: &str = "scalar";
-
-        Ok(match str.as_str() {
-            UNSIGNED => Self::Unsigned,
-            STRING => Self::String,
-            INTEGER => Self::Integer,
-            NUMBER => Self::Number,
-            DOUBLE => Self::Double,
-            DECIMAL => Self::Decimal,
-            BOOLEAN => Self::Boolean,
-            VARBINARY => Self::Varbinary,
-            UUID => Self::Uuid,
-            ARRAY => Self::Array,
-            SCALAR => Self::Scalar,
-            _ => {
-                return Err(serde::de::Error::unknown_variant(
-                    &str,
-                    &[
-                        UNSIGNED, STRING, INTEGER, NUMBER, DOUBLE, DECIMAL, BOOLEAN, VARBINARY,
-                        UUID, ARRAY, SCALAR,
-                    ],
-                ));
-            }
-        })
+crate::define_str_enum!{
+    /// Type of index part.
+    #[derive(Copy, Clone, Debug, PartialEq)]
+    pub enum IndexFieldType {
+        Unsigned  = "unsigned",
+        String    = "string",
+        Number    = "number",
+        Double    = "double",
+        Integer   = "integer",
+        Boolean   = "boolean",
+        Varbinary = "varbinary",
+        Scalar    = "scalar",
+        Decimal   = "decimal",
+        Uuid      = "uuid",
+        Datetime  = "datetime",
+        Array     = "array",
     }
+
+    FromStr::Err = UnknownIndexFieldType;
 }
+
+#[derive(thiserror::Error, Debug)]
+#[error("unknown index field type {0}")]
+pub struct UnknownIndexFieldType(pub String);
 
 ////////////////////////////////////////////////////////////////////////////////
 // IndexPart
@@ -475,33 +418,20 @@ impl From<(&str, IndexFieldType)> for Part {
 // ...
 ////////////////////////////////////////////////////////////////////////////////
 
-/// Type of distance for retree index.
-#[derive(Copy, Clone, Debug, Serialize, PartialEq, tlua::Push)]
-#[serde(rename_all = "lowercase")]
-pub enum RtreeIndexDistanceType {
-    Euclid,
-    Manhattan,
-}
-
-impl<'de> Deserialize<'de> for RtreeIndexDistanceType {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-        where
-            D: Deserializer<'de>,
-    {
-        let str = String::deserialize(deserializer)?.trim().to_lowercase();
-
-        const EUCLID: &str = "euclid";
-        const MANHATTAN: &str = "manhattan";
-
-        Ok(match str.as_str() {
-            EUCLID => Self::Euclid,
-            MANHATTAN => Self::Manhattan,
-            _ => {
-                return Err(serde::de::Error::unknown_variant(&str, &[EUCLID, MANHATTAN]));
-            }
-        })
+crate::define_str_enum!{
+    /// Type of distance for retree index.
+    #[derive(Copy, Clone, Debug, PartialEq)]
+    pub enum RtreeIndexDistanceType {
+        Euclid = "euclid",
+        Manhattan = "manhattan",
     }
+
+    FromStr::Err = UnknownRtreeDistanceType;
 }
+
+#[derive(thiserror::Error, Debug)]
+#[error("unknown rtree distance type {0}")]
+pub struct UnknownRtreeDistanceType(pub String);
 
 impl Index {
     pub(crate) fn new(space_id: u32, index_id: u32) -> Self {

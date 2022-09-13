@@ -10,6 +10,11 @@
 - `#[derive(Clone, PartialEq, Eq)]` for `TupleBuffer` & `RawByteBuf`
 - `Space` & `Index` now have `update_raw` & `upsert_raw` methods that accept
     serialized arguments.
+- `SpaceFieldType::Varbinary`, `SpaceFieldType::Datetime`,
+    `SpaceFieldType::Interval`, `SpaceFieldType::Map`.
+- `tarantool::Space::Field::varbinary`, `tarantool::Space::Field::datetime`,
+    `tarantool::Space::Field::interval`, `tarantool::Space::Field::map`.
+- `IndexFieldType::Datetime`.
 
 ### Fixed
 - `TupleBuffer` no longer copies data into tarantool's transaction memory pool
@@ -19,7 +24,7 @@
 
 ### Changed
 - `TarantoolError::error_code` now returns a `u32` instead of `TarantoolErrorCode`.
-- `TarantoolError`'s `Dispaly` implementation will lookup the error code in lua
+- `TarantoolError`'s `Display` implementation will lookup the error code in lua
   in case it's not found in `TarantoolErrorCode` enum.
 - `TarantoolErrorCode::NoSuchFieldName` is renamed
   `TarantoolErrorCode::NoSuchFieldNameInSpace`.
@@ -27,6 +32,13 @@
 - `update!` & `upsert!` macros are now more efficient due to the use of
     `update_raw` & `upsert_raw`.
 - `SpaceCreateOptions::default` now sets `is_local` & `is_temporary` to `false`.
+- enums `SpaceEngineType`, `SpaceFieldType`, `IndexType`, `IndexFieldType` &
+    `RtreeIndexDistanceType` now all
+  * implement `Display`,
+  * implement `std::convert::AsRef<str>` & `std::convert::Into<String>`,
+  * implement `std::str::FromStr`,
+  * implement `tlua::Push`, `tlua::PushInto`, `tlua::LuaRead`.
+  * have a `const fn as_str`.
 
 ### Deprecated
 - `update_ops` & `upsert_ops` methods of `Space` & `Index` are deprecated in

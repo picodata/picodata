@@ -8,12 +8,11 @@
 //! - [C API reference: Module box](https://www.tarantool.io/en/doc/latest/dev_guide/reference_capi/box/)
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::fmt;
 use std::os::raw::c_char;
 
 use num_derive::ToPrimitive;
 use num_traits::ToPrimitive;
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::Serialize;
 use serde_json::{Map, Value};
 
 use crate::error::{Error, TarantoolError};
@@ -98,36 +97,21 @@ impl From<SystemSpace> for Space {
     }
 }
 
-/// Type of engine, used by space.
-#[derive(Copy, Clone, Debug, Serialize, PartialEq, Eq)]
-#[serde(rename_all = "lowercase")]
-pub enum SpaceEngineType {
-    Memtx,
-    Vinyl,
-}
-
-impl<'de> Deserialize<'de> for SpaceEngineType {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let str = String::deserialize(deserializer)?.trim().to_lowercase();
-
-        const MEMTX: &str = "memtx";
-        const VINYL: &str = "vinyl";
-
-        Ok(match str.as_str() {
-            MEMTX => Self::Memtx,
-            VINYL => Self::Vinyl,
-            _ => {
-                return Err(serde::de::Error::unknown_variant(
-                    &str,
-                    &[MEMTX, VINYL],
-                ));
-            }
-        })
+crate::define_str_enum!{
+    /// Type of engine, used by space.
+    #[derive(Copy, Clone, Debug, PartialEq, Eq)]
+    pub enum SpaceEngineType {
+        Memtx = "memtx",
+        Vinyl = "vinyl",
     }
+
+    FromStr::Err = UnknownEngineType;
 }
+
+#[derive(thiserror::Error, Debug)]
+#[error("unknown engine type {0}")]
+pub struct UnknownEngineType(pub String);
+
 
 /// Options for new space, used by Space::create.
 /// (for details see [Options for box.schema.space.create](https://www.tarantool.io/en/doc/latest/reference/reference_lua/box_schema/space_create/)).
@@ -228,104 +212,43 @@ impl Field {
         double(SpaceFieldType::Double)
         integer(SpaceFieldType::Integer)
         boolean(SpaceFieldType::Boolean)
+        varbinary(SpaceFieldType::Varbinary)
+        scalar(SpaceFieldType::Scalar)
         decimal(SpaceFieldType::Decimal)
         uuid(SpaceFieldType::Uuid)
+        datetime(SpaceFieldType::Datetime)
+        interval(SpaceFieldType::Interval)
         array(SpaceFieldType::Array)
-        scalar(SpaceFieldType::Scalar)
+        map(SpaceFieldType::Map)
     }
 }
 
-#[derive(Copy, Clone, Debug, Serialize, PartialEq)]
-#[serde(rename_all = "lowercase")]
-pub enum SpaceFieldType {
-    Any,
-    Unsigned,
-    String,
-    Number,
-    Double,
-    Integer,
-    Boolean,
-    Decimal,
-    Uuid,
-    Array,
-    Scalar,
-}
-
-const SPACE_FIELD_TYPE_ANY: &str = "any";
-const SPACE_FIELD_TYPE_UNSIGNED: &str = "unsigned";
-const SPACE_FIELD_TYPE_STRING: &str = "string";
-const SPACE_FIELD_TYPE_NUMBER: &str = "number";
-const SPACE_FIELD_TYPE_DOUBLE: &str = "double";
-const SPACE_FIELD_TYPE_INTEGER: &str = "integer";
-const SPACE_FIELD_TYPE_BOOLEAN: &str = "boolean";
-const SPACE_FIELD_TYPE_DECIMAL: &str = "decimal";
-const SPACE_FIELD_TYPE_UUID: &str = "uuid";
-const SPACE_FIELD_TYPE_ARRAY: &str = "array";
-const SPACE_FIELD_TYPE_SCALAR: &str = "scalar";
-
-impl SpaceFieldType {
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            Self::Any => SPACE_FIELD_TYPE_ANY,
-            Self::Unsigned => SPACE_FIELD_TYPE_UNSIGNED,
-            Self::String => SPACE_FIELD_TYPE_STRING,
-            Self::Number => SPACE_FIELD_TYPE_NUMBER,
-            Self::Double => SPACE_FIELD_TYPE_DOUBLE,
-            Self::Integer => SPACE_FIELD_TYPE_INTEGER,
-            Self::Boolean => SPACE_FIELD_TYPE_BOOLEAN,
-            Self::Decimal => SPACE_FIELD_TYPE_DECIMAL,
-            Self::Uuid => SPACE_FIELD_TYPE_UUID,
-            Self::Array => SPACE_FIELD_TYPE_ARRAY,
-            Self::Scalar => SPACE_FIELD_TYPE_SCALAR,
-        }
+crate::define_str_enum!{
+    #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
+    pub enum SpaceFieldType {
+        Any       = "any",
+        Unsigned  = "unsigned",
+        String    = "string",
+        Number    = "number",
+        Double    = "double",
+        Integer   = "integer",
+        Boolean   = "boolean",
+        Varbinary = "varbinary",
+        Scalar    = "scalar",
+        Decimal   = "decimal",
+        Uuid      = "uuid",
+        Datetime  = "datetime",
+        Interval  = "interval",
+        Array     = "array",
+        Map       = "map",
     }
-}
-impl<'de> Deserialize<'de> for SpaceFieldType {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let str = String::deserialize(deserializer)?.trim().to_lowercase();
 
-        Ok(match str.as_str() {
-            SPACE_FIELD_TYPE_ANY => Self::Any,
-            SPACE_FIELD_TYPE_UNSIGNED => Self::Unsigned,
-            SPACE_FIELD_TYPE_STRING => Self::String,
-            SPACE_FIELD_TYPE_NUMBER => Self::Number,
-            SPACE_FIELD_TYPE_DOUBLE => Self::Double,
-            SPACE_FIELD_TYPE_INTEGER => Self::Integer,
-            SPACE_FIELD_TYPE_BOOLEAN => Self::Boolean,
-            SPACE_FIELD_TYPE_DECIMAL => Self::Decimal,
-            SPACE_FIELD_TYPE_UUID => Self::Uuid,
-            SPACE_FIELD_TYPE_ARRAY => Self::Array,
-            SPACE_FIELD_TYPE_SCALAR => Self::Scalar,
-            _ => {
-                return Err(serde::de::Error::unknown_variant(
-                    &str,
-                    &[
-                        SPACE_FIELD_TYPE_ANY,
-                        SPACE_FIELD_TYPE_UNSIGNED,
-                        SPACE_FIELD_TYPE_STRING,
-                        SPACE_FIELD_TYPE_NUMBER,
-                        SPACE_FIELD_TYPE_DOUBLE,
-                        SPACE_FIELD_TYPE_INTEGER,
-                        SPACE_FIELD_TYPE_BOOLEAN,
-                        SPACE_FIELD_TYPE_DECIMAL,
-                        SPACE_FIELD_TYPE_UUID,
-                        SPACE_FIELD_TYPE_ARRAY,
-                        SPACE_FIELD_TYPE_SCALAR,
-                    ],
-                ));
-            }
-        })
-    }
+    FromStr::Err = UnknownFieldType;
 }
 
-impl fmt::Display for SpaceFieldType {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.write_str(self.as_str())
-    }
-}
+#[derive(thiserror::Error, Debug)]
+#[error("unknown field type {0}")]
+pub struct UnknownFieldType(pub String);
 
 #[derive(Clone, Debug, Serialize)]
 pub struct FuncMetadata {
