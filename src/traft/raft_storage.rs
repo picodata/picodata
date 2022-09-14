@@ -22,17 +22,18 @@ pub struct RaftSpaceAccess {
     space_raft_state: Space,
 }
 
-macro_rules! state_impl {
+macro_rules! auto_impl {
     (
+        // getters
         $(
-            $(#[$get_meta:meta])* $get_vis:vis $property:ident: $get_ty:ty;
-            $(#[$set_meta:meta])* $set_vis:vis $setter:ident: $mod:ident, $set_ty:ty;
+            $(#[$meta:meta])*
+            $vis:vis fn $getter:ident(&self) -> _<$ty:ty>;
         )+
     ) => {
         $(
-            $(#[$get_meta])*
-            $get_vis fn $property(&self) -> tarantool::Result<Option<$get_ty>> {
-                let key: &str = stringify!($property);
+            $(#[$meta])*
+            $vis fn $getter(&self) -> tarantool::Result<Option<$ty>> {
+                let key: &str = stringify!($getter);
                 let tuple: Option<Tuple> = self.space_raft_state.get(&(key,))?;
 
                 match tuple {
@@ -40,15 +41,28 @@ macro_rules! state_impl {
                     None => Ok(None),
                 }
             }
+        )+
+    };
 
-            $(#[$set_meta])*
-            $set_vis fn $setter(&mut self, value: $set_ty) -> tarantool::Result<()> {
-                let key: &str = stringify!($property);
+    (
+        // setters
+        $(
+            $(#[$meta:meta])*
+            $vis:vis fn $setter:ident(
+                &mut self,
+                $mod:ident $key:ident: $ty:ty
+            ) -> _;
+        )+
+    ) => {
+        $(
+            $(#[$meta])*
+            $vis fn $setter(&mut self, value: $ty) -> tarantool::Result<()> {
+                let key: &str = stringify!($key);
                 self.space_raft_state.$mod(&(key, value))?;
                 Ok(())
             }
         )+
-    }
+    };
 }
 
 impl RaftSpaceAccess {
@@ -103,47 +117,24 @@ impl RaftSpaceAccess {
     // Find the meaning of the fields here:
     // https://github.com/etcd-io/etcd/blob/main/raft/raftpb/raft.pb.go
 
-    state_impl! {
-        pub raft_id: u64;
-        pub persist_raft_id: insert, u64;
-
+    auto_impl! {
+        pub fn raft_id(&self) -> _<RaftId>;
         #[allow(dead_code)]
-        pub instance_id: String;
-        pub persist_instance_id: insert, &str;
-
-        pub cluster_id: String;
-        pub persist_cluster_id: insert, &str;
+        pub fn instance_id(&self) -> _<String>;
+        pub fn cluster_id(&self) -> _<String>;
 
         /// Node generation i.e. the number of restarts.
-        pub gen: u64;
-        pub persist_gen: replace, u64;
+        pub fn gen(&self) -> _<u64>;
+        pub(super) fn term(&self) -> _<RaftTerm>;
+        fn vote(&self) -> _<RaftId>;
+        pub(super) fn commit(&self) -> _<RaftIndex>;
+        pub fn applied(&self) -> _<RaftIndex>;
 
-        pub(super) term: RaftTerm;
-        persist_term: replace, RaftTerm;
-
-        vote: RaftId;
-        persist_vote: replace, RaftId;
-
-        pub(super) commit: RaftIndex;
-        pub persist_commit: replace, RaftIndex;
-
-        pub applied: RaftIndex;
-        pub persist_applied: replace, RaftIndex;
-
-        pub(super) voters: Vec<RaftId>;
-        persist_voters: replace, &[RaftId];
-
-        pub(super) learners: Vec<RaftId>;
-        persist_learners: replace, &[RaftId];
-
-        voters_outgoing: Vec<RaftId>;
-        persist_voters_outgoing: replace, &[RaftId];
-
-        learners_next: Vec<RaftId>;
-        persist_learners_next: replace, &[RaftId];
-
-        auto_leave: bool;
-        persist_auto_leave: replace, bool;
+        pub(super) fn voters(&self) -> _<Vec<RaftId>>;
+        pub(super) fn learners(&self) -> _<Vec<RaftId>>;
+        fn voters_outgoing(&self) -> _<Vec<RaftId>>;
+        fn learners_next(&self) -> _<Vec<RaftId>>;
+        fn auto_leave(&self) -> _<bool>;
     }
 
     pub fn conf_state(&self) -> tarantool::Result<raft::ConfState> {
@@ -187,6 +178,24 @@ impl RaftSpaceAccess {
             .select(IteratorType::All, &())?
             .map(|tuple| tuple.decode())
             .collect()
+    }
+
+    auto_impl! {
+        pub fn persist_raft_id(&mut self, insert raft_id: RaftId) -> _;
+        pub fn persist_instance_id(&mut self, insert instance_id: &str) -> _;
+        pub fn persist_cluster_id(&mut self, insert cluster_id: &str) -> _;
+
+        pub fn persist_gen(&mut self, replace gen: u64) -> _;
+        fn persist_term(&mut self, replace term: RaftTerm) -> _;
+        fn persist_vote(&mut self, replace vote: RaftId) -> _;
+        pub fn persist_commit(&mut self, replace commit: RaftIndex) -> _;
+        pub fn persist_applied(&mut self, replace applied: RaftIndex) -> _;
+
+        fn persist_voters(&mut self, replace voters: &[RaftId]) -> _;
+        fn persist_learners(&mut self, replace learners: &[RaftId]) -> _;
+        fn persist_voters_outgoing(&mut self, replace voters_outgoing: &[RaftId]) -> _;
+        fn persist_learners_next(&mut self, replace learners_next: &[RaftId]) -> _;
+        fn persist_auto_leave(&mut self, replace auto_leave: bool) -> _;
     }
 
     pub fn persist_conf_state(&mut self, cs: &raft::ConfState) -> tarantool::Result<()> {
