@@ -27,7 +27,7 @@ def test_log_rollback(cluster3: Cluster):
     i3.assert_raft_status("Follower")
 
     def propose_state_change(srv: Instance, value):
-        code = 'box.space.raft_state:put({"test-timeline", "%s"})' % value
+        code = 'box.space.cluster_state:put({"test-timeline", "%s"})' % value
         return srv.raft_propose_eval(code, 0.1)
 
     propose_state_change(i1, "i1 is a leader")

@@ -182,7 +182,7 @@ def test_init_replication_factor(cluster: Cluster):
     # Scenario: first instance shares --init-replication-factor to the whole cluster
     #   Given an Leader instance with --init_replication_factor=2
     #   When a new instances with different --init-replication-factor joins to the cluster
-    #   Then all of them have raft_state[replication_factor] equals to the Leader
+    #   Then all of them have cluster_state[replication_factor] equals to the Leader
     #   And there are two replicasets in the cluster
 
     i1 = cluster.add_instance(init_replication_factor=2)
@@ -190,7 +190,9 @@ def test_init_replication_factor(cluster: Cluster):
     i3 = cluster.add_instance(init_replication_factor=4)
 
     def read_replication_factor(instance):
-        return instance.eval('return box.space.raft_state:get("replication_factor")')[1]
+        return instance.eval(
+            'return box.space.cluster_state:get("replication_factor")'
+        )[1]
 
     assert read_replication_factor(i1) == 2
     assert read_replication_factor(i2) == 2

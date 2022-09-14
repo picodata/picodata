@@ -11,7 +11,7 @@ use ::tarantool::tlua;
 use ::tarantool::transaction::start_transaction;
 use std::convert::TryFrom;
 use std::time::{Duration, Instant};
-use traft::storage::{RaftSpace, RaftStateKey};
+use traft::storage::{ClusterSpace, StateKey};
 use traft::ExpelRequest;
 use traft::RaftSpaceAccess;
 
@@ -619,11 +619,8 @@ fn start_boot(args: &args::Run) {
         init_entries.push({
             let ctx = traft::EntryContextNormal {
                 op: traft::OpDML::insert(
-                    RaftSpace::State,
-                    &(
-                        RaftStateKey::ReplicationFactor,
-                        args.init_replication_factor,
-                    ),
+                    ClusterSpace::State,
+                    &(StateKey::ReplicationFactor, args.init_replication_factor),
                 )
                 .expect("cannot fail")
                 .into(),

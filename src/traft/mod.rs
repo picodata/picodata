@@ -29,7 +29,7 @@ use protobuf::Message as _;
 
 pub use network::ConnectionPool;
 pub use raft_storage::RaftSpaceAccess;
-use storage::RaftSpace;
+use storage::ClusterSpace;
 pub use storage::Storage;
 pub use topology::Topology;
 
@@ -220,24 +220,24 @@ pub trait OpResult {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub enum OpDML {
     Insert {
-        space: RaftSpace,
+        space: ClusterSpace,
         #[serde(with = "serde_bytes")]
         tuple: TupleBuffer,
     },
     Replace {
-        space: RaftSpace,
+        space: ClusterSpace,
         #[serde(with = "serde_bytes")]
         tuple: TupleBuffer,
     },
     Update {
-        space: RaftSpace,
+        space: ClusterSpace,
         #[serde(with = "serde_bytes")]
         key: TupleBuffer,
         #[serde(with = "vec_of_raw_byte_buf")]
         ops: Vec<TupleBuffer>,
     },
     Delete {
-        space: RaftSpace,
+        space: ClusterSpace,
         #[serde(with = "serde_bytes")]
         key: TupleBuffer,
     },
@@ -263,7 +263,7 @@ impl From<OpDML> for Op {
 
 impl OpDML {
     /// Serializes `tuple` and returns an [`OpDML::Insert`] in case of success.
-    pub fn insert(space: RaftSpace, tuple: &impl ToTupleBuffer) -> Result<Self, TntError> {
+    pub fn insert(space: ClusterSpace, tuple: &impl ToTupleBuffer) -> Result<Self, TntError> {
         let res = Self::Insert {
             space,
             tuple: tuple.to_tuple_buffer()?,
@@ -272,7 +272,7 @@ impl OpDML {
     }
 
     /// Serializes `tuple` and returns an [`OpDML::Replace`] in case of success.
-    pub fn replace(space: RaftSpace, tuple: &impl ToTupleBuffer) -> Result<Self, TntError> {
+    pub fn replace(space: ClusterSpace, tuple: &impl ToTupleBuffer) -> Result<Self, TntError> {
         let res = Self::Replace {
             space,
             tuple: tuple.to_tuple_buffer()?,
@@ -282,7 +282,7 @@ impl OpDML {
 
     /// Serializes `key` and returns an [`OpDML::Update`] in case of success.
     pub fn update(
-        space: RaftSpace,
+        space: ClusterSpace,
         key: &impl ToTupleBuffer,
         ops: Vec<TupleBuffer>,
     ) -> Result<Self, TntError> {
@@ -295,7 +295,7 @@ impl OpDML {
     }
 
     /// Serializes `key` and returns an [`OpDML::Delete`] in case of success.
-    pub fn delete(space: RaftSpace, key: &impl ToTupleBuffer) -> Result<Self, TntError> {
+    pub fn delete(space: ClusterSpace, key: &impl ToTupleBuffer) -> Result<Self, TntError> {
         let res = Self::Delete {
             space,
             key: key.to_tuple_buffer()?,

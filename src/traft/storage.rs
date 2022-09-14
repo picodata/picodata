@@ -2,8 +2,7 @@ use ::raft::StorageError;
 use ::raft::INVALID_ID;
 use ::tarantool::index::IteratorType;
 use ::tarantool::space::Space;
-use ::tarantool::tuple::{ToTupleBuffer, Tuple};
-use serde::de::DeserializeOwned;
+use ::tarantool::tuple::{DecodeOwned, ToTupleBuffer, Tuple};
 use thiserror::Error;
 
 use crate::define_str_enum;
@@ -14,54 +13,42 @@ use crate::traft::RaftIndex;
 pub struct Storage;
 
 ////////////////////////////////////////////////////////////////////////////////
-// RaftSpace
+// ClusterSpace
 ////////////////////////////////////////////////////////////////////////////////
 
 define_str_enum! {
-    /// An enumeration of builtin raft spaces
-    pub enum RaftSpace {
+    /// An enumeration of builtin cluster-wide spaces
+    pub enum ClusterSpace {
         Group = "raft_group",
-        State = "raft_state",
-        Log = "raft_log",
+        State = "cluster_state",
     }
 
-    FromStr::Err = UnknownRaftSpace;
+    FromStr::Err = UnknownClusterSpace;
 }
 
 #[derive(Error, Debug)]
-#[error("unknown raft space {0}")]
-pub struct UnknownRaftSpace(pub String);
+#[error("unknown cluster space {0}")]
+pub struct UnknownClusterSpace(pub String);
 
 // TODO(gmoshkin): remove this
-const RAFT_GROUP: &str = RaftSpace::Group.as_str();
-const RAFT_STATE: &str = RaftSpace::State.as_str();
+const RAFT_GROUP: &str = ClusterSpace::Group.as_str();
 
 ////////////////////////////////////////////////////////////////////////////////
-// RaftStateKey
+// StateKey
 ////////////////////////////////////////////////////////////////////////////////
 
 define_str_enum! {
     /// An enumeration of builtin raft spaces
-    pub enum RaftStateKey {
+    pub enum StateKey {
         ReplicationFactor = "replication_factor",
-        Commit = "commit",
-        Applied = "applied",
-        Term = "term",
-        Vote = "vote",
-        Gen = "gen",
-        Voters = "voters",
-        Learners = "learners",
-        VotersOutgoing = "voters_outgoing",
-        LearnersNext = "learners_next",
-        AutoLeave = "auto_leave",
     }
 
-    FromStr::Err = UnknownRaftStateKey;
+    FromStr::Err = UnknownStateKey;
 }
 
 #[derive(Error, Debug)]
-#[error("unknown raft state key {0}")]
-pub struct UnknownRaftStateKey(pub String);
+#[error("unknown state key {0}")]
+pub struct UnknownStateKey(pub String);
 
 ////////////////////////////////////////////////////////////////////////////////
 // Error
@@ -82,9 +69,26 @@ fn box_err(e: impl std::error::Error + Sync + Send + 'static) -> StorageError {
 
 impl Storage {
     pub fn init_schema() {
-        crate::tarantool::eval(
-            r#"
-            box.schema.space.create('raft_group', {
+        ::tarantool::lua_state()
+            .exec_with(
+                r#"
+            local STATE, GROUP = ...
+
+            box.schema.space.create(STATE, {
+                if_not_exists = true,
+                is_local = true,
+                format = {
+                    {name = 'key', type = 'string', is_nullable = false},
+                    {name = 'value', type = 'any', is_nullable = false},
+                }
+            })
+            box.space[STATE]:create_index('pk', {
+                if_not_exists = true,
+                parts = {{'key'}},
+                unique = true,
+            })
+
+            box.schema.space.create(GROUP, {
                 if_not_exists = true,
                 is_local = true,
                 format = {
@@ -100,34 +104,40 @@ impl Storage {
                     {name = 'failure_domain', type = 'map', is_nullable = false},
                 }
             })
-            box.space.raft_group:create_index('instance_id', {
+            box.space[GROUP]:create_index('instance_id', {
                 if_not_exists = true,
                 parts = {{'instance_id'}},
                 unique = true,
             })
-            box.space.raft_group:create_index('raft_id', {
+            box.space[GROUP]:create_index('raft_id', {
                 if_not_exists = true,
                 parts = {{'raft_id'}},
                 unique = true,
             })
-            box.space.raft_group:create_index('replicaset_id', {
+            box.space[GROUP]:create_index('replicaset_id', {
                 if_not_exists = true,
                 parts = {{'replicaset_id'}, {'commit_index'}},
                 unique = false,
             })
         "#,
-        )
-        .unwrap();
+                (ClusterSpace::State, RAFT_GROUP),
+            )
+            .unwrap();
     }
 
-    fn space(name: &str) -> Result<Space, StorageError> {
-        Space::find(name)
+    fn space(name: impl AsRef<str> + Into<String>) -> Result<Space, StorageError> {
+        Space::find(name.as_ref())
             .ok_or_else(|| Error::NoSuchSpace(name.into()))
             .map_err(box_err)
     }
 
-    fn raft_state<T: DeserializeOwned>(key: &str) -> Result<Option<T>, StorageError> {
-        let tuple: Option<Tuple> = Storage::space(RAFT_STATE)?.get(&(key,)).map_err(box_err)?;
+    fn cluster_state<T>(key: StateKey) -> Result<Option<T>, StorageError>
+    where
+        T: DecodeOwned,
+    {
+        let tuple: Option<Tuple> = Storage::space(ClusterSpace::State)?
+            .get(&(key,))
+            .map_err(box_err)?;
 
         match tuple {
             Some(t) => t.field(1).map_err(box_err),
@@ -216,8 +226,9 @@ impl Storage {
         Ok(ret)
     }
 
+    #[inline]
     pub fn replication_factor() -> Result<Option<u8>, StorageError> {
-        Storage::raft_state(RaftStateKey::ReplicationFactor.as_str())
+        Storage::cluster_state(StateKey::ReplicationFactor)
     }
 
     pub fn persist_peer(peer: &traft::Peer) -> Result<(), StorageError> {
@@ -235,20 +246,20 @@ impl Storage {
         Ok(())
     }
 
-    pub fn insert(space: RaftSpace, tuple: &impl ToTupleBuffer) -> Result<Tuple, StorageError> {
+    pub fn insert(space: ClusterSpace, tuple: &impl ToTupleBuffer) -> Result<Tuple, StorageError> {
         Storage::space(space.as_str())?
             .insert(tuple)
             .map_err(box_err)
     }
 
-    pub fn replace(space: RaftSpace, tuple: &impl ToTupleBuffer) -> Result<Tuple, StorageError> {
+    pub fn replace(space: ClusterSpace, tuple: &impl ToTupleBuffer) -> Result<Tuple, StorageError> {
         Storage::space(space.as_str())?
             .replace(tuple)
             .map_err(box_err)
     }
 
     pub fn update(
-        space: RaftSpace,
+        space: ClusterSpace,
         key: &impl ToTupleBuffer,
         ops: &[impl ToTupleBuffer],
     ) -> Result<Option<Tuple>, StorageError> {
@@ -259,7 +270,7 @@ impl Storage {
 
     #[rustfmt::skip]
     pub fn delete(
-        space: RaftSpace,
+        space: ClusterSpace,
         key: &impl ToTupleBuffer,
     ) -> Result<Option<Tuple>, StorageError> {
         Storage::space(space.as_str())?

@@ -54,6 +54,18 @@ macro_rules! define_str_enum {
             }
         }
 
+        impl AsRef<str> for $enum {
+            fn as_ref(&self) -> &str {
+                self.as_str()
+            }
+        }
+
+        impl From<$enum> for String {
+            fn from(e: $enum) -> Self {
+                e.as_str().into()
+            }
+        }
+
         impl std::str::FromStr for $enum {
             type Err = $err;
 
@@ -88,8 +100,32 @@ macro_rules! define_str_enum {
             {
                 use serde::de::Error;
                 let tmp = <&str>::deserialize(deserializer)?;
-                let res = tmp.parse().map_err(|e| D::Error::custom(e))?;
+                let res = tmp.parse().map_err(|_| Error::unknown_variant(tmp, &[$($str),+]))?;
                 Ok(res)
+            }
+        }
+
+        impl<L: ::tarantool::tlua::AsLua> ::tarantool::tlua::Push<L> for $enum {
+            type Err = ::tarantool::tlua::Void;
+            fn push_to_lua(&self, lua: L) -> ::tarantool::tlua::PushResult<L, Self> {
+                ::tarantool::tlua::PushInto::push_into_lua(self.as_str(), lua)
+            }
+        }
+        impl<L: ::tarantool::tlua::AsLua> ::tarantool::tlua::PushOne<L> for $enum {}
+
+        impl<L: ::tarantool::tlua::AsLua> ::tarantool::tlua::PushInto<L> for $enum {
+            type Err = ::tarantool::tlua::Void;
+            fn push_into_lua(self, lua: L) -> ::tarantool::tlua::PushIntoResult<L, Self> {
+                ::tarantool::tlua::PushInto::push_into_lua(self.as_str(), lua)
+            }
+        }
+        impl<L: ::tarantool::tlua::AsLua> ::tarantool::tlua::PushOneInto<L> for $enum {}
+
+        impl<L: ::tarantool::tlua::AsLua> ::tarantool::tlua::LuaRead<L> for $enum {
+            fn lua_read_at_position(lua: L, index: std::num::NonZeroI32) -> Result<Self, L> {
+                ::tarantool::tlua::StringInLua::lua_read_at_position(&lua, index).ok()
+                    .and_then(|s| s.parse().ok())
+                    .ok_or(lua)
             }
         }
     }
