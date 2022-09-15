@@ -10,15 +10,15 @@
 - `#[derive(Clone, PartialEq, Eq)]` for `TupleBuffer` & `RawByteBuf`
 - `Space` & `Index` now have `update_raw` & `upsert_raw` methods that accept
     serialized arguments.
-- `SpaceFieldType::Varbinary`, `SpaceFieldType::Datetime`,
-    `SpaceFieldType::Interval`, `SpaceFieldType::Map`.
+- `space::FieldType::Varbinary`, `space::FieldType::Datetime`,
+    `space::FieldType::Interval`, `space::FieldType::Map`.
 - `tarantool::Space::Field::varbinary`, `tarantool::Space::Field::datetime`,
     `tarantool::Space::Field::interval`, `tarantool::Space::Field::map`.
 - `IndexFieldType::Datetime`.
 - `impl Debug for Index`.
-- `space::Field` now implements `From<(S, SpaceFieldType)>` & `From<(S,
-    SpaceFieldType, IsNullable)>` where `S: Into<String>`, which can be used in
-    the `space::Builder::field` and `space::Builder::format` methods.
+- `space::Field` now implements `From<(S, space::FieldType)>` &
+    `From<(S, space::FieldType, IsNullable)>` where `S: Into<String>`, which can
+    be used in the `space::Builder::field` and `space::Builder::format` methods.
 - `space::IsNullable` helper enum.
 - `space::Builder::into_parts` & `index::Builder::into_parts`  for accessing
     inner structs.
@@ -40,7 +40,9 @@
 - `update!` & `upsert!` macros are now more efficient due to the use of
     `update_raw` & `upsert_raw`.
 - `SpaceCreateOptions::default` now sets `is_local` & `is_temporary` to `false`.
-- enums `SpaceEngineType`, `SpaceFieldType`, `IndexType`, `IndexFieldType` &
+- `space::SpaceFieldType` is renamed `space::FieldType`. And
+    `space::SpaceFieldType` is now a deprecated type alias.
+- enums `SpaceEngineType`, `space::FieldType`, `IndexType`, `IndexFieldType` &
     `RtreeIndexDistanceType` now all
   * implement `Display`,
   * implement `std::convert::AsRef<str>` & `std::convert::Into<String>`,

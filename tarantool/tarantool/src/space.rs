@@ -157,15 +157,15 @@ pub type SpaceFieldFormat = Field;
 pub struct Field {
     pub name: String, // TODO(gmoshkin): &str
     #[serde(alias = "type")]
-    pub field_type: SpaceFieldType,
+    pub field_type: FieldType,
     pub is_nullable: bool,
 }
 
-impl<S> From<(S, SpaceFieldType, IsNullable)> for Field
+impl<S> From<(S, FieldType, IsNullable)> for Field
 where
     String: From<S>,
 {
-    fn from(args: (S, SpaceFieldType, IsNullable)) -> Self {
+    fn from(args: (S, FieldType, IsNullable)) -> Self {
         let (name, field_type, is_nullable) = args;
         let name = name.into();
         let is_nullable = is_nullable.is_nullable();
@@ -173,11 +173,11 @@ where
     }
 }
 
-impl<S> From<(S, SpaceFieldType)> for Field
+impl<S> From<(S, FieldType)> for Field
 where
     String: From<S>,
 {
-    fn from(args: (S, SpaceFieldType)) -> Self {
+    fn from(args: (S, FieldType)) -> Self {
         let (name, field_type) = args;
         let name = name.into();
         let is_nullable = false;
@@ -208,7 +208,7 @@ impl Field {
     /// Create a new field format specifier.
     ///
     /// You should use one of the other constructors instead
-    pub fn new(name: &str, ft: SpaceFieldType) -> Self {
+    pub fn new(name: &str, ft: FieldType) -> Self {
         Self {
             name: name.to_string(),
             field_type: ft,
@@ -229,27 +229,35 @@ impl Field {
     }
 
     define_constructors!{
-        any(SpaceFieldType::Any)
-        unsigned(SpaceFieldType::Unsigned)
-        string(SpaceFieldType::String)
-        number(SpaceFieldType::Number)
-        double(SpaceFieldType::Double)
-        integer(SpaceFieldType::Integer)
-        boolean(SpaceFieldType::Boolean)
-        varbinary(SpaceFieldType::Varbinary)
-        scalar(SpaceFieldType::Scalar)
-        decimal(SpaceFieldType::Decimal)
-        uuid(SpaceFieldType::Uuid)
-        datetime(SpaceFieldType::Datetime)
-        interval(SpaceFieldType::Interval)
-        array(SpaceFieldType::Array)
-        map(SpaceFieldType::Map)
+        any(FieldType::Any)
+        unsigned(FieldType::Unsigned)
+        string(FieldType::String)
+        number(FieldType::Number)
+        double(FieldType::Double)
+        integer(FieldType::Integer)
+        boolean(FieldType::Boolean)
+        varbinary(FieldType::Varbinary)
+        scalar(FieldType::Scalar)
+        decimal(FieldType::Decimal)
+        uuid(FieldType::Uuid)
+        datetime(FieldType::Datetime)
+        interval(FieldType::Interval)
+        array(FieldType::Array)
+        map(FieldType::Map)
     }
 }
 
+////////////////////////////////////////////////////////////////////////////////
+// FieldType
+////////////////////////////////////////////////////////////////////////////////
+
+#[deprecated = "use space::FieldType instead"]
+pub type SpaceFieldType = FieldType;
+
 crate::define_str_enum!{
+    /// Type of a field in the space format definition.
     #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
-    pub enum SpaceFieldType {
+    pub enum FieldType {
         Any       = "any",
         Unsigned  = "unsigned",
         String    = "string",
@@ -852,7 +860,7 @@ impl<'a> Builder<'a> {
     /// each field individually. The difference is purely syntactical.
     ///
     /// ```no_run
-    /// use tarantool::space::{Space, SpaceFieldType as FT, IsNullable};
+    /// use tarantool::space::{Space, FieldType as FT, IsNullable};
     ///
     /// let space = Space::builder("user_names")
     ///     .format([

@@ -15,7 +15,7 @@ use tester::{
 use tarantool::error::Error;
 use tarantool::ffi::lua as ffi_lua;
 use tarantool::index::IndexType;
-use tarantool::space::{Space, Field, SpaceFieldType as FieldType};
+use tarantool::space::{Space, Field, FieldType};
 
 mod bench_bulk_insert;
 mod common;

@@ -4,7 +4,7 @@ use rand::Rng;
 
 use tarantool::index::{IndexFieldType, IndexOptions, IteratorType};
 use tarantool::sequence::Sequence;
-use tarantool::space::{Field, Space, SpaceCreateOptions, SpaceEngineType, SpaceFieldType, SystemSpace};
+use tarantool::space::{self, Field, Space, SpaceCreateOptions, SpaceEngineType, SystemSpace};
 use tarantool::space::UpdateOps;
 use tarantool::tuple::Tuple;
 use tarantool::{update, upsert};
@@ -887,7 +887,7 @@ pub fn space_meta() {
             Field::boolean("f2"),
             Field {
                 name: "f3".to_string(),
-                field_type: SpaceFieldType::String,
+                field_type: space::FieldType::String,
                 is_nullable: true,
             },
         ]),

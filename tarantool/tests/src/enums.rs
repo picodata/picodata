@@ -1,5 +1,5 @@
 use tarantool::{
-    space::{SpaceEngineType, SpaceFieldType},
+    space::{self, SpaceEngineType},
     index::{IndexType, IndexFieldType, RtreeIndexDistanceType}
 };
 
@@ -21,7 +21,7 @@ pub fn space_engine_type() {
 }
 
 pub fn space_field_type() {
-    type T = SpaceFieldType;
+    type T = space::FieldType;
     assert_eq!(to_string(&T::Any).unwrap(), "any");
     assert_eq!(from_str::<T>("any").unwrap(), T::Any);
     assert_eq!(from_str::<T>("Any  ").unwrap(), T::Any);
