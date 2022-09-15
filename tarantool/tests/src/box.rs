@@ -2,7 +2,7 @@ use std::borrow::Cow;
 use std::collections::BTreeMap;
 use rand::Rng;
 
-use tarantool::index::{IndexFieldType, IndexOptions, IteratorType};
+use tarantool::index::{self, IndexOptions, IteratorType};
 use tarantool::sequence::Sequence;
 use tarantool::space::{self, Field, Space, SpaceCreateOptions, SpaceEngineType, SystemSpace};
 use tarantool::space::UpdateOps;
@@ -930,7 +930,7 @@ pub fn index_parts() {
         .create().unwrap();
 
     let index = space.index_builder("pk")
-        .part((1, IndexFieldType::Unsigned))
+        .part((1, index::FieldType::Unsigned))
         .part(2)
         .create().unwrap();
 

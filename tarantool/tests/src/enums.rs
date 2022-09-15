@@ -1,6 +1,6 @@
 use tarantool::{
     space::{self, SpaceEngineType},
-    index::{IndexType, IndexFieldType, RtreeIndexDistanceType}
+    index::{self, IndexType, RtreeIndexDistanceType}
 };
 
 use serde_plain::{to_string, from_str};
@@ -133,7 +133,7 @@ pub fn index_type() {
 }
 
 pub fn index_field_type() {
-    type T = IndexFieldType;
+    type T = index::FieldType;
     assert_eq!(to_string(&T::Unsigned).unwrap(), "unsigned");
     assert_eq!(from_str::<T>("unsigned").unwrap(), T::Unsigned);
     assert_eq!(from_str::<T>(" Unsigned  ").unwrap(), T::Unsigned);

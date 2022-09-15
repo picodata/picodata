@@ -155,7 +155,7 @@ impl<'a> Builder<'a> {
     /// each part individually. The difference is purely syntactical.
     ///
     /// ```no_run
-    /// use tarantool::{space::Space, index::IndexFieldType as FT};
+    /// use tarantool::{space::Space, index::FieldType as FT};
     ///
     /// Space::find("t").unwrap()
     ///     .index_builder("by_index_and_type")
@@ -335,11 +335,17 @@ crate::define_str_enum!{
 #[error("unknown index type {0}")]
 pub struct UnknownIndexType(pub String);
 
+////////////////////////////////////////////////////////////////////////////////
+// FieldType
+////////////////////////////////////////////////////////////////////////////////
+
+#[deprecated = "use index::FieldType instead"]
+pub type IndexFieldType = FieldType;
 
 crate::define_str_enum!{
     /// Type of index part.
     #[derive(Copy, Clone, Debug, PartialEq)]
-    pub enum IndexFieldType {
+    pub enum FieldType {
         Unsigned  = "unsigned",
         String    = "string",
         Number    = "number",
@@ -354,12 +360,12 @@ crate::define_str_enum!{
         Array     = "array",
     }
 
-    FromStr::Err = UnknownIndexFieldType;
+    FromStr::Err = UnknownFieldType;
 }
 
 #[derive(thiserror::Error, Debug)]
 #[error("unknown index field type {0}")]
-pub struct UnknownIndexFieldType(pub String);
+pub struct UnknownFieldType(pub String);
 
 ////////////////////////////////////////////////////////////////////////////////
 // IndexPart
@@ -372,7 +378,7 @@ pub type IndexPart = Part;
 #[derive(Clone, Debug, Serialize, Deserialize, tlua::Push)]
 pub struct Part {
     pub field: NumOrStr,
-    pub r#type: Option<IndexFieldType>,
+    pub r#type: Option<FieldType>,
     pub collation: Option<String>,
     pub is_nullable: Option<bool>,
     pub path: Option<String>,
@@ -402,13 +408,13 @@ impl Part {
     }
 
     define_setters!{
-        field_type(r#type: IndexFieldType)
+        field_type(r#type: FieldType)
         collation(collation: String)
         is_nullable(is_nullable: bool)
         path(path: String)
     }
 
-    pub fn new(fi: impl Into<NumOrStr>, ft: IndexFieldType) -> Self {
+    pub fn new(fi: impl Into<NumOrStr>, ft: FieldType) -> Self {
         Self::field(fi).field_type(ft)
     }
 }
@@ -434,23 +440,23 @@ impl From<u32> for Part {
     }
 }
 
-impl From<(u32, IndexFieldType)> for Part {
+impl From<(u32, FieldType)> for Part {
     #[inline(always)]
-    fn from((f, t): (u32, IndexFieldType)) -> Self {
+    fn from((f, t): (u32, FieldType)) -> Self {
         Self::field(f).field_type(t)
     }
 }
 
-impl From<(String, IndexFieldType)> for Part {
+impl From<(String, FieldType)> for Part {
     #[inline(always)]
-    fn from((f, t): (String, IndexFieldType)) -> Self {
+    fn from((f, t): (String, FieldType)) -> Self {
         Self::field(f).field_type(t)
     }
 }
 
-impl From<(&str, IndexFieldType)> for Part {
+impl From<(&str, FieldType)> for Part {
     #[inline(always)]
-    fn from((f, t): (&str, IndexFieldType)) -> Self {
+    fn from((f, t): (&str, FieldType)) -> Self {
         Self::field(f.to_string()).field_type(t)
     }
 }

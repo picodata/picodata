@@ -14,7 +14,7 @@
     `space::FieldType::Interval`, `space::FieldType::Map`.
 - `tarantool::Space::Field::varbinary`, `tarantool::Space::Field::datetime`,
     `tarantool::Space::Field::interval`, `tarantool::Space::Field::map`.
-- `IndexFieldType::Datetime`.
+- `index::FieldType::Datetime`.
 - `impl Debug for Index`.
 - `space::Field` now implements `From<(S, space::FieldType)>` &
     `From<(S, space::FieldType, IsNullable)>` where `S: Into<String>`, which can
@@ -40,9 +40,11 @@
 - `update!` & `upsert!` macros are now more efficient due to the use of
     `update_raw` & `upsert_raw`.
 - `SpaceCreateOptions::default` now sets `is_local` & `is_temporary` to `false`.
-- `space::SpaceFieldType` is renamed `space::FieldType`. And
-    `space::SpaceFieldType` is now a deprecated type alias.
-- enums `SpaceEngineType`, `space::FieldType`, `IndexType`, `IndexFieldType` &
+- `space::SpaceFieldType` is renamed `space::FieldType`.
+    And `space::SpaceFieldType` is now a deprecated type alias.
+- `index::IndexFieldType` is renamed `index::FieldType`.
+    And `index::IndexFieldType` is now a deprecated type alias.
+- enums `SpaceEngineType`, `space::FieldType`, `IndexType`, `index::FieldType` &
     `RtreeIndexDistanceType` now all
   * implement `Display`,
   * implement `std::convert::AsRef<str>` & `std::convert::Into<String>`,
