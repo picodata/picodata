@@ -26,6 +26,7 @@ mod args;
 mod cache;
 mod discovery;
 mod ipc;
+mod kvcell;
 mod mailbox;
 mod tarantool;
 mod tlog;
