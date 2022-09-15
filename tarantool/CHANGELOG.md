@@ -16,6 +16,13 @@
     `tarantool::Space::Field::interval`, `tarantool::Space::Field::map`.
 - `IndexFieldType::Datetime`.
 - `impl Debug for Index`.
+- `space::Field` now implements `From<(S, SpaceFieldType)>` & `From<(S,
+    SpaceFieldType, IsNullable)>` where `S: Into<String>`, which can be used in
+    the `space::Builder::field` and `space::Builder::format` methods.
+- `space::IsNullable` helper enum.
+- `space::Builder::into_parts` & `index::Builder::into_parts`  for accessing
+    inner structs.
+- Doc-comments here and there.
 
 ### Fixed
 - `TupleBuffer` no longer copies data into tarantool's transaction memory pool
@@ -40,6 +47,10 @@
   * implement `std::str::FromStr`,
   * implement `tlua::Push`, `tlua::PushInto`, `tlua::LuaRead`.
   * have a `const fn as_str`.
+- `space::Builder::field` now accepts `impl Into<Field>`.
+- `space::Builder::format` now accepts `impl IntoIterator<Item = impl Into<Field>>`.
+- `index::Builder::parts` now accepts `impl IntoIterator<Item = impl Into<Part>>`.
+- `space::Field` constructors accept `impl Into<String>`.
 
 ### Deprecated
 - `update_ops` & `upsert_ops` methods of `Space` & `Index` are deprecated in

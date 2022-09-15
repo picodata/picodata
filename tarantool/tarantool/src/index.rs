@@ -125,7 +125,6 @@ impl<'a> Builder<'a> {
         id(id: u32)
         unique(unique: bool)
         if_not_exists(if_not_exists: bool)
-        parts(parts: Vec<Part>)
         dimension(dimension: u32)
         distance(distance: RtreeIndexDistanceType)
         bloom_fpr(bloom_fpr: f32)
@@ -137,10 +136,41 @@ impl<'a> Builder<'a> {
         func(func: String)
     }
 
+    /// Add a part to the index's parts list.
+    ///
+    /// Use this method to set each part individually or use [`parts`] to set
+    /// parts in bulk. The difference is purely syntactical.
     #[inline(always)]
     pub fn part(mut self, part: impl Into<Part>) -> Self {
         self.opts.parts.get_or_insert_with(|| Vec::with_capacity(8))
             .push(part.into());
+        self
+    }
+
+    /// Add parts to the index's parts list.
+    ///
+    /// Use this method to set parts in bulk or use [`part`] to set
+    /// each part individually. The difference is purely syntactical.
+    ///
+    /// ```no_run
+    /// use tarantool::{space::Space, index::IndexFieldType as FT};
+    ///
+    /// Space::find("t").unwrap()
+    ///     .index_builder("by_index_and_type")
+    ///     .parts([(0, FT::Unsigned), (1, FT::String)])
+    ///     .create();
+    ///
+    /// Space::find("t").unwrap()
+    ///     .index_builder("by_name")
+    ///     .parts(["foo", "bar", "baz"])
+    ///     .create();
+    /// ```
+    #[inline(always)]
+    pub fn parts(mut self, parts: impl IntoIterator<Item = impl Into<Part>>) -> Self {
+        let iter = parts.into_iter();
+        let (size, _) = iter.size_hint();
+        self.opts.parts.get_or_insert_with(|| Vec::with_capacity(size))
+            .extend(iter.map(Into::into));
         self
     }
 
@@ -149,6 +179,13 @@ impl<'a> Builder<'a> {
     #[inline(always)]
     pub fn create(self) -> crate::Result<Index> {
         crate::schema::index::create_index(self.space_id, self.name, &self.opts)
+    }
+
+    /// Destructure the builder struct into a tuple of space_id, name and index
+    /// options.
+    #[inline(always)]
+    pub fn into_parts(self) -> (u32, &'a str, IndexOptions) {
+        (self.space_id, self.name, self.opts)
     }
 }
 

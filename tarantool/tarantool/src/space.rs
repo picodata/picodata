@@ -161,6 +161,30 @@ pub struct Field {
     pub is_nullable: bool,
 }
 
+impl<S> From<(S, SpaceFieldType, IsNullable)> for Field
+where
+    String: From<S>,
+{
+    fn from(args: (S, SpaceFieldType, IsNullable)) -> Self {
+        let (name, field_type, is_nullable) = args;
+        let name = name.into();
+        let is_nullable = is_nullable.is_nullable();
+        Self { name, field_type, is_nullable }
+    }
+}
+
+impl<S> From<(S, SpaceFieldType)> for Field
+where
+    String: From<S>,
+{
+    fn from(args: (S, SpaceFieldType)) -> Self {
+        let (name, field_type) = args;
+        let name = name.into();
+        let is_nullable = false;
+        Self { name, field_type, is_nullable }
+    }
+}
+
 macro_rules! define_constructors {
     ($($constructor:ident ($type:path))+) => {
         $(
@@ -168,7 +192,7 @@ macro_rules! define_constructors {
                 "Create a new field format specifier with the given `name` and ",
                 "type \"", ::std::stringify!($constructor), "\""
             )]
-            pub fn $constructor(name: &str) -> Self {
+            pub fn $constructor(name: impl Into<String>) -> Self {
                 Self {
                     name: name.into(),
                     field_type: $type,
@@ -249,6 +273,27 @@ crate::define_str_enum!{
 #[derive(thiserror::Error, Debug)]
 #[error("unknown field type {0}")]
 pub struct UnknownFieldType(pub String);
+
+////////////////////////////////////////////////////////////////////////////////
+// IsNullable
+////////////////////////////////////////////////////////////////////////////////
+
+/// An enum specifying whether or not the given space field can be null.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub enum IsNullable {
+    NonNullalbe,
+    Nullable,
+}
+
+impl IsNullable {
+    const fn is_nullable(&self) -> bool {
+        matches!(self, Self::Nullable)
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// ...
+////////////////////////////////////////////////////////////////////////////////
 
 #[derive(Clone, Debug, Serialize)]
 pub struct FuncMetadata {
@@ -786,18 +831,53 @@ impl<'a> Builder<'a> {
         is_local(is_local: bool)
         is_temporary(is_temporary: bool)
         is_sync(is_sync: bool)
-        format(format: Vec<Field>)
     }
 
-    pub fn field(mut self, field: Field) -> Self {
+    /// Add a field to the space's format.
+    ///
+    /// Use this method to set each field individually or use [`format`] to set
+    /// fields in bulk. The difference is purely syntactical.
+    #[inline]
+    pub fn field(mut self, field: impl Into<Field>) -> Self {
         self.opts.format.get_or_insert_with(|| Vec::with_capacity(16))
-            .push(field);
+            .push(field.into());
+        self
+    }
+
+    /// Add fields to the space's format.
+    ///
+    /// Use this method to set fields in bulk or use [`field`] to set
+    /// each field individually. The difference is purely syntactical.
+    ///
+    /// ```no_run
+    /// use tarantool::space::{Space, SpaceFieldType as FT, IsNullable};
+    ///
+    /// let space = Space::builder("user_names")
+    ///     .format([
+    ///         ("id", FT::Unsigned),
+    ///         ("name", FT::String),
+    ///     ])
+    ///     .field(("nickname", FT::String, IsNullable::Nullable))
+    ///     .create();
+    /// ```
+    #[inline]
+    pub fn format(mut self, format: impl IntoIterator<Item = impl Into<Field>>) -> Self {
+        let iter = format.into_iter();
+        let (size, _) = iter.size_hint();
+        self.opts.format.get_or_insert_with(|| Vec::with_capacity(size))
+            .extend(iter.map(Into::into));
         self
     }
 
     #[cfg(feature = "schema")]
     pub fn create(self) -> crate::Result<Space> {
         crate::schema::space::create_space(self.name, &self.opts)
+    }
+
+    /// Destructure the builder struct into a tuple of name and space options.
+    #[inline(always)]
+    pub fn into_parts(self) -> (&'a str, SpaceCreateOptions) {
+        (self.name, self.opts)
     }
 }
 

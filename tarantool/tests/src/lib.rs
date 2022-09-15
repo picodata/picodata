@@ -15,7 +15,7 @@ use tester::{
 use tarantool::error::Error;
 use tarantool::ffi::lua as ffi_lua;
 use tarantool::index::IndexType;
-use tarantool::space::{Space, Field};
+use tarantool::space::{Space, Field, SpaceFieldType as FieldType};
 
 mod bench_bulk_insert;
 mod common;
@@ -93,11 +93,13 @@ fn create_test_spaces() -> Result<(), Error> {
 
     // space.test_s2
     let mut test_s2 = Space::builder("test_s2")
-        .field(Field::unsigned("id"))
-        .field(Field::string("key"))
-        .field(Field::string("value"))
-        .field(Field::integer("a"))
-        .field(Field::integer("b"))
+        .format([
+            ("id", FieldType::Unsigned),
+            ("key", FieldType::String),
+            ("value", FieldType::String),
+            ("a", FieldType::Integer),
+            ("b", FieldType::Integer),
+        ])
         .create()?;
 
     // space.test_s2.index.primary
@@ -115,9 +117,7 @@ fn create_test_spaces() -> Result<(), Error> {
     // space.test_s2.index.idx_2
     test_s2.index_builder("idx_2")
         .index_type(IndexType::Tree)
-        .part("id")
-        .part("a")
-        .part("b")
+        .parts(["id", "a", "b"])
         .create()?;
 
     // space.test_s2.index.idx_3
