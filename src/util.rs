@@ -214,18 +214,56 @@ impl std::borrow::Borrow<str> for Uppercase {
     }
 }
 
+////////////////////////////////////////////////////////////////////////////////
+/// Compare string literals at compile time.
+
+#[allow(dead_code)] // suppress the warning since it's only used at compile time
+pub const fn str_eq(lhs: &str, rhs: &str) -> bool {
+    let lhs = lhs.as_bytes();
+    let rhs = rhs.as_bytes();
+    if lhs.len() != rhs.len() {
+        return false;
+    }
+    let mut i = 0;
+    loop {
+        if i == lhs.len() {
+            return true;
+        }
+        if lhs[i] != rhs[i] {
+            return false;
+        }
+        i += 1;
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     #[test]
     fn uppercase() {
+        use super::Uppercase;
         assert_eq!(&*Uppercase::from(""), "");
         assert_eq!(&*Uppercase::from("hello"), "HELLO");
         assert_eq!(&*Uppercase::from("HELLO"), "HELLO");
         assert_eq!(&*Uppercase::from("123-?!"), "123-?!");
         assert_eq!(&*Uppercase::from(String::from("hello")), "HELLO");
         assert_eq!(&*Uppercase::from(String::from("HELLO")), "HELLO");
+    }
+
+    #[test]
+    fn str_eq() {
+        use super::str_eq;
+        assert!(str_eq("", ""));
+        assert!(str_eq("a", "a"));
+        assert!(str_eq("\0b", "\0b"));
+        assert!(str_eq("foobar", concat!("foo", "bar")));
+
+        assert!(!str_eq("", "x"));
+        assert!(!str_eq("x", ""));
+        assert!(!str_eq("x", "y"));
+        assert!(!str_eq("ы", "Ы"));
+        assert!(!str_eq("\0x", "\0y"));
+        assert!(!str_eq("foo1", "bar1"));
+        assert!(!str_eq("foo1", "foo2"));
     }
 }
 

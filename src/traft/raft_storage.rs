@@ -11,6 +11,7 @@ use crate::traft;
 use crate::traft::RaftId;
 use crate::traft::RaftIndex;
 use crate::traft::RaftTerm;
+use crate::util::str_eq;
 
 fn box_err(e: impl std::error::Error + Sync + Send + 'static) -> StorageError {
     StorageError::Other(Box::new(e))
@@ -57,6 +58,10 @@ macro_rules! auto_impl {
         $(
             $(#[$meta])*
             $vis fn $setter(&mut self, value: $ty) -> tarantool::Result<()> {
+                const _: () = assert!(str_eq(
+                    stringify!($setter),
+                    concat!("persist_", stringify!($key))
+                ));
                 let key: &str = stringify!($key);
                 self.space_raft_state.$mod(&(key, value))?;
                 Ok(())
