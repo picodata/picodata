@@ -30,7 +30,7 @@ use protobuf::Message as _;
 pub use network::ConnectionPool;
 pub use raft_storage::RaftSpaceAccess;
 use storage::ClusterSpace;
-pub use storage::Storage;
+pub use storage::{Peers as PeerStorage, Storage};
 pub use topology::Topology;
 
 pub type RaftId = u64;

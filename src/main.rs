@@ -13,7 +13,7 @@ use std::convert::TryFrom;
 use std::time::{Duration, Instant};
 use traft::storage::{ClusterSpace, StateKey};
 use traft::ExpelRequest;
-use traft::RaftSpaceAccess;
+use traft::{PeerStorage, RaftSpaceAccess};
 
 use clap::StructOpt as _;
 use protobuf::Message as _;
@@ -503,7 +503,8 @@ fn init_common(args: &args::Run, cfg: &tarantool::Cfg) -> RaftSpaceAccess {
     std::fs::create_dir_all(&args.data_dir).unwrap();
     tarantool::set_cfg(cfg);
 
-    traft::Storage::init_schema();
+    let peer_storage = PeerStorage::new().expect("RaftSpaceAccess initialization failed");
+    traft::Storage::init_schema(peer_storage);
     let storage = RaftSpaceAccess::new().expect("RaftSpaceAccess initialization failed");
     init_handlers();
     traft::event::init();
@@ -1024,7 +1025,7 @@ fn test_one(t: &InnerTest) {
     };
 
     tarantool::set_cfg(&cfg);
-    traft::Storage::init_schema();
+    traft::Storage::init_schema(traft::PeerStorage::new().unwrap());
     tarantool::eval(
         r#"
         box.schema.user.grant('guest', 'super', nil, nil, {if_not_exists = true})
