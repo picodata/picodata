@@ -23,7 +23,7 @@ use crate::util::NumOrStr;
 use crate::msgpack;
 
 /// An index is a group of key values and pointers.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Index {
     space_id: u32,
     index_id: u32,

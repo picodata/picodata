@@ -15,6 +15,7 @@
 - `tarantool::Space::Field::varbinary`, `tarantool::Space::Field::datetime`,
     `tarantool::Space::Field::interval`, `tarantool::Space::Field::map`.
 - `IndexFieldType::Datetime`.
+- `impl Debug for Index`.
 
 ### Fixed
 - `TupleBuffer` no longer copies data into tarantool's transaction memory pool
