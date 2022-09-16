@@ -8,6 +8,7 @@
 use ::raft::prelude as raft;
 use ::raft::Error as RaftError;
 use ::raft::StateRole as RaftStateRole;
+use ::raft::StorageError;
 use ::raft::INVALID_ID;
 use ::tarantool::error::TransactionError;
 use ::tarantool::fiber;
@@ -71,7 +72,6 @@ pub struct Status {
 
 /// The heart of `traft` module - the Node.
 pub struct Node {
-    raft_id: RaftId,
     inner_node: Rc<Mutex<InnerNode>>,
     pub(super) storage: RaftSpaceAccess,
     _main_loop: fiber::UnitJoinHandle<'static>,
@@ -84,7 +84,7 @@ pub struct Node {
 impl std::fmt::Debug for Node {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Node")
-            .field("raft_id", &self.raft_id)
+            .field("raft_id", &self.raft_id())
             .finish_non_exhaustive()
     }
 }
@@ -94,27 +94,17 @@ impl Node {
 
     /// Initialize the raft node.
     /// **This function yields**
-    pub fn new(cfg: &raft::Config, mut storage: RaftSpaceAccess) -> Result<Self, RaftError> {
-        let raw_node = RawNode::new(cfg, storage.clone(), &tlog::root())?;
-
-        let inner_node = InnerNode {
-            raw_node,
-            notifications: Default::default(),
-            lc: {
-                let gen = storage.gen().unwrap().unwrap_or(0) + 1;
-                storage.persist_gen(gen).unwrap();
-                LogicalClock::new(cfg.id, gen)
-            },
-        };
-
-        let inner_node = Rc::new(Mutex::new(inner_node));
+    pub fn new(storage: RaftSpaceAccess) -> Result<Self, RaftError> {
+        let inner_node = InnerNode::new(storage.clone())?;
 
         let status = Rc::new(RefCell::new(Status {
-            id: cfg.id,
+            id: inner_node.raft_id(),
             leader_id: None,
             raft_state: "Follower".into(),
             is_ready: false,
         }));
+
+        let inner_node = Rc::new(Mutex::new(inner_node));
         let raft_loop_cond = Rc::new(Cond::new());
 
         let main_loop_fn = {
@@ -132,7 +122,6 @@ impl Node {
         };
 
         let node = Node {
-            raft_id: cfg.id,
             inner_node,
             status,
             raft_loop_cond,
@@ -153,6 +142,10 @@ impl Node {
         // Wait for the node to enter the main loop
         node.tick_and_yield(0);
         Ok(node)
+    }
+
+    pub fn raft_id(&self) -> RaftId {
+        self.status.borrow().id
     }
 
     pub fn status(&self) -> Status {
@@ -261,9 +254,10 @@ impl Node {
 
     /// **This function yields**
     pub fn timeout_now(&self) {
+        let raft_id = self.raft_id();
         self.step_and_yield(raft::Message {
-            to: self.raft_id,
-            from: self.raft_id,
+            to: raft_id,
+            from: raft_id,
             msg_type: raft::MessageType::MsgTimeoutNow,
             ..Default::default()
         })
@@ -421,6 +415,38 @@ struct InnerNode {
 }
 
 impl InnerNode {
+    fn new(
+        mut storage: RaftSpaceAccess,
+        // TODO: provide clusterwide space access
+    ) -> Result<Self, RaftError> {
+        let box_err = |e| StorageError::Other(Box::new(e));
+
+        let raft_id: RaftId = storage.raft_id().map_err(box_err)?.unwrap();
+        let applied: RaftIndex = storage.applied().map_err(box_err)?.unwrap_or(0);
+        let cfg = raft::Config {
+            id: raft_id,
+            applied,
+            pre_vote: true,
+            ..Default::default()
+        };
+
+        let raw_node = RawNode::new(&cfg, storage.clone(), &tlog::root())?;
+
+        Ok(Self {
+            raw_node,
+            notifications: Default::default(),
+            lc: {
+                let gen = storage.gen().unwrap().unwrap_or(0) + 1;
+                storage.persist_gen(gen).unwrap();
+                LogicalClock::new(cfg.id, gen)
+            },
+        })
+    }
+
+    fn raft_id(&self) -> RaftId {
+        self.raw_node.raft.id
+    }
+
     #[inline]
     fn cleanup_notifications(&mut self) {
         self.notifications
@@ -1062,7 +1088,7 @@ fn expel_on_leader(req: ExpelRequest) -> Result<ExpelResponse, Box<dyn std::erro
 
     let leader_id = node.status().leader_id.ok_or("leader_id not found")?;
 
-    if node.raft_id != leader_id {
+    if node.raft_id() != leader_id {
         return Err(Box::from("not a leader"));
     }
 
@@ -1114,7 +1140,7 @@ fn sync_raft(promotee: &Peer) -> Result<(), Box<dyn std::error::Error>> {
 
             let leader_id = node.status().leader_id.ok_or("leader_id not found")?;
 
-            if node.raft_id != leader_id {
+            if node.raft_id() != leader_id {
                 return Err(Box::from("not a leader"));
             }
 

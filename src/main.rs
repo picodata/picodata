@@ -755,22 +755,14 @@ fn postjoin(args: &args::Run, storage: RaftSpaceAccess) {
     box_cfg.replication_connect_quorum = 0;
     tarantool::set_cfg(&box_cfg);
 
-    let raft_id = storage.raft_id().unwrap().unwrap();
-    let applied = storage.applied().unwrap().unwrap_or(0);
-    let raft_cfg = raft::Config {
-        id: raft_id,
-        applied,
-        pre_vote: true,
-        ..Default::default()
-    };
-
-    let node = traft::node::Node::new(&raft_cfg, storage.clone());
+    let node = traft::node::Node::new(storage.clone());
     let node = node.expect("failed initializing raft node");
     traft::node::set_global(node);
     let node = traft::node::global().unwrap();
+    let raft_id = node.raft_id();
 
     let cs = storage.conf_state().unwrap();
-    if cs.voters == [raft_cfg.id] {
+    if cs.voters == [raft_id] {
         tlog!(
             Info,
             concat!(
