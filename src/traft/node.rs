@@ -268,6 +268,8 @@ struct InnerNode {
     pub raw_node: RawNode,
     pub notifications: HashMap<LogicalClock, Notify>,
     topology_cache: CachedCell<RaftTerm, Topology>,
+    #[allow(dead_code)]
+    storage: RaftSpaceAccess,
     lc: LogicalClock,
 }
 
@@ -280,6 +282,12 @@ impl InnerNode {
 
         let raft_id: RaftId = storage.raft_id().map_err(box_err)?.unwrap();
         let applied: RaftIndex = storage.applied().map_err(box_err)?.unwrap_or(0);
+        let lc = {
+            let gen = storage.gen().unwrap().unwrap_or(0) + 1;
+            storage.persist_gen(gen).unwrap();
+            LogicalClock::new(raft_id, gen)
+        };
+
         let cfg = raft::Config {
             id: raft_id,
             applied,
@@ -293,11 +301,8 @@ impl InnerNode {
             raw_node,
             notifications: Default::default(),
             topology_cache: CachedCell::new(),
-            lc: {
-                let gen = storage.gen().unwrap().unwrap_or(0) + 1;
-                storage.persist_gen(gen).unwrap();
-                LogicalClock::new(cfg.id, gen)
-            },
+            storage,
+            lc,
         })
     }
 
