@@ -78,9 +78,7 @@ pub struct Node {
     _conf_change_loop: fiber::UnitJoinHandle<'static>,
     status: Rc<RefCell<Status>>,
     raft_loop_cond: Rc<Cond>,
-    notifications: Rc<RefCell<HashMap<LogicalClock, Notify>>>,
     topology_cache: CachedCell<RaftTerm, Topology>,
-    lc: Cell<Option<LogicalClock>>,
 }
 
 impl std::fmt::Debug for Node {
@@ -99,7 +97,16 @@ impl Node {
     pub fn new(cfg: &raft::Config, mut storage: RaftSpaceAccess) -> Result<Self, RaftError> {
         let raw_node = RawNode::new(cfg, storage.clone(), &tlog::root())?;
 
-        let inner_node = InnerNode { raw_node };
+        let inner_node = InnerNode {
+            raw_node,
+            notifications: Default::default(),
+            lc: {
+                let gen = storage.gen().unwrap().unwrap_or(0) + 1;
+                storage.persist_gen(gen).unwrap();
+                LogicalClock::new(cfg.id, gen)
+            },
+        };
+
         let inner_node = Rc::new(Mutex::new(inner_node));
 
         let status = Rc::new(RefCell::new(Status {
@@ -109,15 +116,13 @@ impl Node {
             is_ready: false,
         }));
         let raft_loop_cond = Rc::new(Cond::new());
-        let notifications = Rc::new(RefCell::new(HashMap::new()));
 
         let main_loop_fn = {
             let status = status.clone();
             let inner_node = inner_node.clone();
             let storage = storage.clone();
             let raft_loop_cond = raft_loop_cond.clone();
-            let notifications = notifications.clone();
-            move || raft_main_loop(status, inner_node, storage, raft_loop_cond, notifications)
+            move || raft_main_loop(status, inner_node, storage, raft_loop_cond)
         };
 
         let conf_change_loop_fn = {
@@ -129,7 +134,6 @@ impl Node {
         let node = Node {
             raft_id: cfg.id,
             inner_node,
-            notifications,
             status,
             raft_loop_cond,
             _main_loop: fiber::Builder::new()
@@ -143,12 +147,6 @@ impl Node {
                 .start()
                 .unwrap(),
             topology_cache: CachedCell::new(),
-            lc: {
-                let id = storage.raft_id().unwrap().unwrap();
-                let gen = storage.gen().unwrap().unwrap_or(0) + 1;
-                storage.persist_gen(gen).unwrap();
-                Cell::new(Some(LogicalClock::new(id, gen)))
-            },
             storage,
         };
 
@@ -188,7 +186,7 @@ impl Node {
                 return Err(RaftError::ProposalDropped.into());
             }
 
-            let (lc, notify) = self.add_notify();
+            let (lc, notify) = inner_node.schedule_notification();
             // read_index puts this context into an Entry,
             // so we've got to compose full EntryContext,
             // despite single LogicalClock would be enough
@@ -207,7 +205,7 @@ impl Node {
         timeout: Duration,
     ) -> Result<T::Result, Error> {
         self.raw_operation(|inner_node| {
-            let (lc, notify) = self.add_notify();
+            let (lc, notify) = inner_node.schedule_notification();
             let ctx = traft::EntryContextNormal::new(lc, op);
             inner_node.raw_node.propose(ctx.to_bytes(), vec![])?;
             Ok(notify)
@@ -318,7 +316,7 @@ impl Node {
 
             peer.commit_index = inner_node.raw_node.raft.raft_log.last_index() + 1;
 
-            let (lc, notify) = self.add_notify();
+            let (lc, notify) = inner_node.schedule_notification();
             let ctx = traft::EntryContextNormal::new(lc, Op::PersistPeer { peer });
             inner_node.raw_node.propose(ctx.to_bytes(), vec![])?;
             self.topology_cache
@@ -411,22 +409,6 @@ impl Node {
     }
 
     #[inline]
-    fn next_lc(&self) -> LogicalClock {
-        let mut lc = self.lc.get().expect("it's always Some");
-        lc.inc();
-        self.lc.set(Some(lc));
-        lc
-    }
-
-    #[inline]
-    fn add_notify(&self) -> (LogicalClock, Notify) {
-        let (rx, tx) = Notify::new().into_clones();
-        let lc = self.next_lc();
-        self.notifications.borrow_mut().insert(lc, tx);
-        (lc, rx)
-    }
-
-    #[inline]
     pub fn all_traft_entries(&self) -> ::tarantool::Result<Vec<traft::Entry>> {
         self.storage.all_traft_entries()
     }
@@ -434,6 +416,31 @@ impl Node {
 
 struct InnerNode {
     pub raw_node: RawNode,
+    pub notifications: HashMap<LogicalClock, Notify>,
+    lc: LogicalClock,
+}
+
+impl InnerNode {
+    #[inline]
+    fn cleanup_notifications(&mut self) {
+        self.notifications
+            .retain(|_, notify: &mut Notify| !notify.is_closed());
+    }
+
+    /// Generates a pair of logical clock and a notification channel.
+    /// Logical clock is a unique identifier suitable for tagging
+    /// entries in raft log. Notification is broadcasted when the
+    /// corresponding entry is committed.
+    #[inline]
+    fn schedule_notification(&mut self) -> (LogicalClock, Notify) {
+        let (rx, tx) = Notify::new().into_clones();
+        let lc = {
+            self.lc.inc();
+            self.lc
+        };
+        self.notifications.insert(lc, tx);
+        (lc, rx)
+    }
 }
 
 #[derive(Debug)]
@@ -461,8 +468,7 @@ where
 /// Is called during a transaction
 fn handle_committed_entries(
     entries: Vec<raft::Entry>,
-    notifications: &mut HashMap<LogicalClock, Notify>,
-    raw_node: &mut RawNode,
+    inner_node: &mut InnerNode,
     storage: &mut RaftSpaceAccess,
     pool: &mut ConnectionPool,
     topology_changed: &mut bool,
@@ -481,16 +487,11 @@ fn handle_committed_entries(
         };
 
         match entry.entry_type {
-            raft::EntryType::EntryNormal => handle_committed_normal_entry(
-                entry,
-                notifications,
-                pool,
-                topology_changed,
-                expelled,
-                raw_node,
-            ),
+            raft::EntryType::EntryNormal => {
+                handle_committed_normal_entry(entry, pool, topology_changed, expelled, inner_node)
+            }
             raft::EntryType::EntryConfChange | raft::EntryType::EntryConfChangeV2 => {
-                handle_committed_conf_change(entry, raw_node, storage)
+                handle_committed_conf_change(entry, inner_node, storage)
             }
         }
     }
@@ -511,17 +512,16 @@ fn handle_committed_entries(
 /// Is called during a transaction
 fn handle_committed_normal_entry(
     entry: traft::Entry,
-    notifications: &mut HashMap<LogicalClock, Notify>,
     pool: &mut ConnectionPool,
     topology_changed: &mut bool,
     expelled: &mut bool,
-    raw_node: &mut RawNode,
+    inner_node: &mut InnerNode,
 ) {
     assert_eq!(entry.entry_type, raft::EntryType::EntryNormal);
     let result = entry.op().unwrap_or(&traft::Op::Nop).on_commit();
 
     if let Some(lc) = entry.lc() {
-        if let Some(notify) = notifications.remove(lc) {
+        if let Some(notify) = inner_node.notifications.remove(lc) {
             notify.notify_ok_any(result);
         }
     }
@@ -529,7 +529,7 @@ fn handle_committed_normal_entry(
     if let Some(traft::Op::PersistPeer { peer }) = entry.op() {
         pool.connect(peer.raft_id, peer.peer_address.clone());
         *topology_changed = true;
-        if peer.grade == Grade::Expelled && peer.raft_id == raw_node.raft.id {
+        if peer.grade == Grade::Expelled && peer.raft_id == inner_node.raw_node.raft.id {
             // cannot exit during a transaction
             *expelled = true;
         }
@@ -556,7 +556,7 @@ fn handle_committed_normal_entry(
 /// Is called during a transaction
 fn handle_committed_conf_change(
     entry: traft::Entry,
-    raw_node: &mut RawNode,
+    inner_node: &mut InnerNode,
     storage: &mut RaftSpaceAccess,
 ) {
     let latch_unlock = || {
@@ -582,7 +582,7 @@ fn handle_committed_conf_change(
 
             latch_unlock();
 
-            (false, raw_node.apply_conf_change(&cc).unwrap())
+            (false, inner_node.raw_node.apply_conf_change(&cc).unwrap())
         }
         raft::EntryType::EntryConfChangeV2 => {
             let mut cc = raft::ConfChangeV2::default();
@@ -599,12 +599,15 @@ fn handle_committed_conf_change(
             // ConfChangeTransition::Auto implies that at this
             // moment raft-rs will implicitly propose another empty
             // conf change that represents leaving the joint state.
-            (!leave_joint, raw_node.apply_conf_change(&cc).unwrap())
+            (
+                !leave_joint,
+                inner_node.raw_node.apply_conf_change(&cc).unwrap(),
+            )
         }
         _ => unreachable!(),
     };
 
-    let raft_id = &raw_node.raft.id;
+    let raft_id = &inner_node.raw_node.raft.id;
     let voters_old = storage.voters().unwrap().unwrap_or_default();
     if voters_old.contains(raft_id) && !conf_state.voters.contains(raft_id) {
         if is_joint {
@@ -652,7 +655,6 @@ fn raft_main_loop(
     inner_node: Rc<Mutex<InnerNode>>,
     mut storage: RaftSpaceAccess,
     raft_loop_cond: Rc<Cond>,
-    notifications: Rc<RefCell<HashMap<LogicalClock, Notify>>>,
 ) {
     let mut next_tick = Instant::now() + Node::TICK;
     let mut pool = ConnectionPool::builder()
@@ -667,26 +669,23 @@ fn raft_main_loop(
     }
 
     loop {
-        // Clean up obsolete notifications
-        notifications
-            .borrow_mut()
-            .retain(|_, notify: &mut Notify| !notify.is_closed());
-
         raft_loop_cond.wait_timeout(Node::TICK);
 
-        let raw_node: &mut RawNode = &mut inner_node.lock().raw_node;
+        let mut inner_node = inner_node.lock();
+        inner_node.cleanup_notifications();
+
         let now = Instant::now();
         if now > next_tick {
             next_tick = now + Node::TICK;
-            raw_node.tick();
+            inner_node.raw_node.tick();
         }
 
         // Get the `Ready` with `RawNode::ready` interface.
-        if !raw_node.has_ready() {
+        if !inner_node.raw_node.has_ready() {
             continue;
         }
 
-        let mut ready: raft::Ready = raw_node.ready();
+        let mut ready: raft::Ready = inner_node.raw_node.ready();
         let mut topology_changed = false;
         let mut expelled = false;
 
@@ -706,8 +705,7 @@ fn raft_main_loop(
             let committed_entries = ready.take_committed_entries();
             handle_committed_entries(
                 committed_entries,
-                &mut *notifications.borrow_mut(),
-                raw_node,
+                &mut *inner_node,
                 &mut storage,
                 &mut pool,
                 &mut topology_changed,
@@ -740,7 +738,7 @@ fn raft_main_loop(
             }
 
             let read_states = ready.take_read_states();
-            handle_read_states(read_states, &mut *notifications.borrow_mut());
+            handle_read_states(read_states, &mut inner_node.notifications);
 
             Ok(())
         })
@@ -751,7 +749,7 @@ fn raft_main_loop(
         }
 
         // Advance the Raft.
-        let mut light_rd = raw_node.advance(ready);
+        let mut light_rd = inner_node.raw_node.advance(ready);
 
         // Update commit index.
         start_transaction(|| -> Result<(), TransactionError> {
@@ -767,8 +765,7 @@ fn raft_main_loop(
             let committed_entries = light_rd.take_committed_entries();
             handle_committed_entries(
                 committed_entries,
-                &mut *notifications.borrow_mut(),
-                raw_node,
+                &mut *inner_node,
                 &mut storage,
                 &mut pool,
                 &mut topology_changed,
@@ -776,7 +773,7 @@ fn raft_main_loop(
             );
 
             // Advance the apply index.
-            raw_node.advance_apply();
+            inner_node.raw_node.advance_apply();
             Ok(())
         })
         .unwrap();
@@ -787,7 +784,9 @@ fn raft_main_loop(
 
         if topology_changed {
             event::broadcast(Event::TopologyChanged);
-            if let Some(peer) = traft::Storage::peer_by_raft_id(raw_node.raft.id).unwrap() {
+            if let Some(peer) =
+                traft::Storage::peer_by_raft_id(inner_node.raw_node.raft.id).unwrap()
+            {
                 let mut box_cfg = crate::tarantool::cfg().unwrap();
                 assert_eq!(box_cfg.replication_connect_quorum, 0);
                 box_cfg.replication =
