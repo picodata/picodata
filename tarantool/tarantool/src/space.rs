@@ -837,6 +837,8 @@ impl<'a> Builder<'a> {
     ///
     /// Use this method to set each field individually or use [`format`] to set
     /// fields in bulk. The difference is purely syntactical.
+    ///
+    /// [`format`]: Self::format
     #[inline]
     pub fn field(mut self, field: impl Into<Field>) -> Self {
         self.opts.format.get_or_insert_with(|| Vec::with_capacity(16))
@@ -860,6 +862,8 @@ impl<'a> Builder<'a> {
     ///     .field(("nickname", FT::String, IsNullable::Nullable))
     ///     .create();
     /// ```
+    ///
+    /// [`field`]: Self::field
     #[inline]
     pub fn format(mut self, format: impl IntoIterator<Item = impl Into<Field>>) -> Self {
         let iter = format.into_iter();

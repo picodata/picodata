@@ -140,6 +140,8 @@ impl<'a> Builder<'a> {
     ///
     /// Use this method to set each part individually or use [`parts`] to set
     /// parts in bulk. The difference is purely syntactical.
+    ///
+    /// [`parts`]: Self::parts
     #[inline(always)]
     pub fn part(mut self, part: impl Into<Part>) -> Self {
         self.opts.parts.get_or_insert_with(|| Vec::with_capacity(8))
@@ -165,6 +167,8 @@ impl<'a> Builder<'a> {
     ///     .parts(["foo", "bar", "baz"])
     ///     .create();
     /// ```
+    ///
+    /// [`part`]: Self::part
     #[inline(always)]
     pub fn parts(mut self, parts: impl IntoIterator<Item = impl Into<Part>>) -> Self {
         let iter = parts.into_iter();
