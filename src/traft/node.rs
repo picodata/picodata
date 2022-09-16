@@ -536,10 +536,7 @@ fn handle_committed_entries(
         let entry = match traft::Entry::try_from(entry) {
             Ok(v) => v,
             Err(e) => {
-                tlog!(
-                    Error,
-                    "error parsing (and applying) an entry: {e}, entry = {entry:?}"
-                );
+                tlog!(Error, "abnormal entry: {e}, entry = {entry:?}");
                 continue;
             }
         };
@@ -687,8 +684,8 @@ fn handle_read_states(
         let ctx = match traft::EntryContextNormal::read_from_bytes(&rs.request_ctx) {
             Ok(Some(v)) => v,
             Ok(None) => continue,
-            Err(_) => {
-                tlog!(Error, "abnormal entry, read_state = {rs:?}");
+            Err(e) => {
+                tlog!(Error, "abnormal read_state: {e}, read_state = {rs:?}");
                 continue;
             }
         };
