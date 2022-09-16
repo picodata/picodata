@@ -1,12 +1,13 @@
 use ::raft::StorageError;
 use ::raft::INVALID_ID;
 use ::tarantool::index::{Index, IteratorType};
-use ::tarantool::space::Space;
+use ::tarantool::space::{FieldType, Space};
 use ::tarantool::tuple::{DecodeOwned, ToTupleBuffer, Tuple};
 use thiserror::Error;
 
 use crate::define_str_enum;
 use crate::traft;
+use crate::traft::error::Error as TraftError;
 use crate::traft::RaftId;
 use crate::traft::RaftIndex;
 
@@ -54,6 +55,7 @@ pub struct UnknownStateKey(pub String);
 // Error
 ////////////////////////////////////////////////////////////////////////////////
 
+// TODO: remove this type, use traft::error::Error instead
 #[allow(clippy::enum_variant_names)]
 #[derive(Debug, Error)]
 enum Error {
@@ -230,44 +232,32 @@ impl Peers {
     const INDEX_REPLICASET_ID: &'static str = "replicaset_id";
 
     pub fn new() -> tarantool::Result<Self> {
-        use tarantool::space::Field;
-        use PeerField::*;
-
         let space_peers = Space::builder(Self::SPACE_NAME)
             .is_local(true)
             .is_temporary(false)
-            .field(Field::string(InstanceId.as_str()))
-            .field(Field::string(InstanceUuid.as_str()))
-            .field(Field::unsigned(RaftId.as_str()))
-            .field(Field::string(PeerAddress.as_str()))
-            .field(Field::string(ReplicasetId.as_str()))
-            .field(Field::string(ReplicasetUuid.as_str()))
-            .field(Field::unsigned(CommitIndex.as_str()))
-            .field(Field::string(Grade.as_str()))
-            .field(Field::string(TargetGrade.as_str()))
-            .field(Field::map(FailureDomain.as_str()))
+            .format(peer_format())
             .if_not_exists(true)
             .create()?;
 
         let index_instance_id = space_peers
             .index_builder(Self::INDEX_INSTANCE_ID)
             .unique(true)
-            .part(InstanceId.as_str())
+            .part(peer_field::InstanceId)
             .if_not_exists(true)
             .create()?;
 
         let index_raft_id = space_peers
             .index_builder(Self::INDEX_RAFT_ID)
             .unique(true)
-            .part(RaftId.as_str())
+            .part(peer_field::RaftId)
             .if_not_exists(true)
             .create()?;
 
         let index_replicaset_id = space_peers
             .index_builder(Self::INDEX_REPLICASET_ID)
             .unique(false)
-            .part(ReplicasetId.as_str())
-            .part(CommitIndex.as_str())
+            .part(peer_field::ReplicasetId)
+            .part(peer_field::CommitIndex)
             .if_not_exists(true)
             .create()?;
 
@@ -303,6 +293,26 @@ impl Peers {
             None => Ok(None),
             Some(v) => Ok(Some(v.decode()?)),
         }
+    }
+
+    /// Find a peer by `raft_id` and return a single field specified by `F`
+    /// (see `PeerFieldDef` & `peer_field` module).
+    #[inline]
+    pub fn field_by_raft_id<F>(&self, raft_id: RaftId) -> Result<F::Type, TraftError>
+    where
+        F: PeerFieldDef,
+    {
+        if raft_id == INVALID_ID {
+            unreachable!("peer_by_raft_id called with invalid id ({})", INVALID_ID);
+        }
+
+        let res = self
+            .index_raft_id
+            .get(&[raft_id])?
+            .ok_or(TraftError::NoPeerWithRaftId(raft_id))?
+            .get(F::NAME)
+            .expect("peer fields are not nullable");
+        Ok(res)
     }
 
     #[inline]
@@ -356,22 +366,81 @@ impl Peers {
 // PeerField
 ////////////////////////////////////////////////////////////////////////////////
 
-crate::define_str_enum! {
-    /// An enumeration of raft_space field names
-    pub enum PeerField {
-        InstanceId = "instance_id",
-        InstanceUuid = "instance_uuid",
-        RaftId = "raft_id",
-        PeerAddress = "peer_address",
-        ReplicasetId = "replicaset_id",
-        ReplicasetUuid = "replicaset_uuid",
-        CommitIndex = "commit_index",
-        Grade = "grade",
-        TargetGrade = "target_grade",
-        FailureDomain = "failure_domain",
-    }
+macro_rules! define_peer_fields {
+    ($($field:ident: $ty:ty = ($name:literal, $tt_ty:path))+) => {
+        crate::define_str_enum! {
+            /// An enumeration of raft_space field names
+            pub enum PeerField {
+                $($field = $name,)+
+            }
 
-    FromStr::Err = UnknownPeerField;
+            FromStr::Err = UnknownPeerField;
+        }
+
+        pub mod peer_field {
+            use super::*;
+            $(
+                /// Helper struct that represents
+                #[doc = stringify!($name)]
+                /// field of `Peer`.
+                ///
+                /// It's rust type is
+                #[doc = concat!("`", stringify!($ty), "`")]
+                /// and it's tarantool type is
+                #[doc = concat!("`", stringify!($tt_ty), "`")]
+                pub struct $field;
+
+                impl PeerFieldDef for $field {
+                    type Type = $ty;
+                    const NAME: &'static str = $name;
+                    const TYPE: ::tarantool::space::FieldType = $tt_ty;
+                }
+
+                impl From<$field> for ::tarantool::index::Part {
+                    #[inline(always)]
+                    fn from(_: $field) -> ::tarantool::index::Part {
+                        $field::NAME.into()
+                    }
+                }
+
+                impl From<$field> for ::tarantool::space::Field {
+                    #[inline(always)]
+                    fn from(_: $field) -> ::tarantool::space::Field {
+                        ($field::NAME, $field::TYPE).into()
+                    }
+                }
+
+                impl ::tarantool::tuple::TupleIndex for $field {
+                    #[inline(always)]
+                    fn get_field<'a, T>(self, tuple: &'a Tuple) -> ::tarantool::Result<Option<T>>
+                    where
+                        T: ::tarantool::tuple::Decode<'a>,
+                    {
+                        Self::NAME.get_field(tuple)
+                    }
+                }
+            )+
+        }
+
+        fn peer_format() -> Vec<::tarantool::space::Field> {
+            vec![
+                $( ::tarantool::space::Field::from(($name, $tt_ty)), )+
+            ]
+        }
+    };
+}
+
+define_peer_fields! {
+    InstanceId     : String               = ("instance_id",     FieldType::String)
+    InstanceUuid   : String               = ("instance_uuid",   FieldType::String)
+    RaftId         : traft::RaftId        = ("raft_id",         FieldType::Unsigned)
+    PeerAddress    : String               = ("peer_address",    FieldType::String)
+    ReplicasetId   : String               = ("replicaset_id",   FieldType::String)
+    ReplicasetUuid : String               = ("replicaset_uuid", FieldType::String)
+    CommitIndex    : RaftIndex            = ("commit_index",    FieldType::Unsigned)
+    Grade          : traft::Grade         = ("grade",           FieldType::String)
+    TargetGrade    : traft::TargetGrade   = ("target_grade",    FieldType::String)
+    FailureDomain  : traft::FailureDomain = ("failure_domain",  FieldType::Map)
 }
 
 #[derive(Error, Debug)]
@@ -385,6 +454,27 @@ impl tarantool::tuple::TupleIndex for PeerField {
     {
         self.as_str().get_field(tuple)
     }
+}
+
+/// A helper trait for type-safe and efficient access to a Peer's fields
+/// without deserializing the whole tuple.
+///
+/// This trait contains information needed to define and use a given tuple field.
+pub trait PeerFieldDef {
+    /// Rust type of the field.
+    ///
+    /// Used when decoding the field.
+    type Type: tarantool::tuple::DecodeOwned;
+
+    /// Field name in the format of the space.
+    ///
+    /// Used for accessing the field.
+    const NAME: &'static str;
+
+    /// Tarantool type of the field in the format of the space.
+    ///
+    /// Used for format definition.
+    const TYPE: tarantool::space::FieldType;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

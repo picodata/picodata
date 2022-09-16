@@ -24,6 +24,10 @@ pub enum Error {
     },
     #[error("error during execution of lua code: {0}")]
     Lua(#[from] LuaError),
+    #[error("{0}")]
+    Tarantool(#[from] ::tarantool::error::Error),
+    #[error("peer with id {0} not found")]
+    NoPeerWithRaftId(RaftId),
     #[error("other error")]
     Other(Box<dyn std::error::Error>),
 }
