@@ -785,10 +785,6 @@ fn raft_main_loop(
         })
         .unwrap();
 
-        if expelled {
-            crate::tarantool::exit(0);
-        }
-
         // Advance the Raft.
         let mut light_rd = inner_node.raw_node.advance(ready);
 
