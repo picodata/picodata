@@ -14,6 +14,7 @@ use crate::stringify_debug;
 use crate::util::Uppercase;
 use ::raft::prelude as raft;
 use ::tarantool::error::Error as TntError;
+use ::tarantool::tlua;
 use ::tarantool::tlua::LuaError;
 use ::tarantool::tuple::{Encode, ToTupleBuffer, Tuple, TupleBuffer};
 use serde::de::DeserializeOwned;
@@ -36,8 +37,79 @@ pub use topology::Topology;
 pub type RaftId = u64;
 pub type RaftTerm = u64;
 pub type RaftIndex = u64;
-pub type InstanceId = String;
 pub type ReplicasetId = String;
+
+////////////////////////////////////////////////////////////////////////////////
+/// Unique id of a cluster instance.
+///
+/// This is a new-type style wrapper around String, to distinguish it from other
+/// strings.
+#[rustfmt::skip]
+#[derive(Default, Debug, Eq, Clone, Hash)]
+#[derive(tlua::LuaRead, tlua::Push, tlua::PushInto)]
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct InstanceId(pub String);
+
+impl std::fmt::Display for InstanceId {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        std::fmt::Display::fmt(&self.0, f)
+    }
+}
+
+impl From<String> for InstanceId {
+    fn from(s: String) -> Self {
+        Self(s)
+    }
+}
+
+impl From<&str> for InstanceId {
+    fn from(s: &str) -> Self {
+        Self(s.into())
+    }
+}
+
+impl From<InstanceId> for String {
+    fn from(i: InstanceId) -> Self {
+        i.0
+    }
+}
+
+impl AsRef<str> for InstanceId {
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+
+impl std::borrow::Borrow<str> for InstanceId {
+    fn borrow(&self) -> &str {
+        &self.0
+    }
+}
+
+impl std::ops::Deref for InstanceId {
+    type Target = str;
+    fn deref(&self) -> &str {
+        &self.0
+    }
+}
+
+impl<T> std::cmp::PartialEq<T> for InstanceId
+where
+    T: ?Sized,
+    T: AsRef<str>,
+{
+    fn eq(&self, rhs: &T) -> bool {
+        self.0 == rhs.as_ref()
+    }
+}
+
+impl std::str::FromStr for InstanceId {
+    type Err = std::convert::Infallible;
+
+    fn from_str(s: &str) -> Result<Self, std::convert::Infallible> {
+        Ok(Self(s.into()))
+    }
+}
 
 //////////////////////////////////////////////////////////////////////////////////////////
 /// Timestamps for raft entries.
@@ -347,7 +419,7 @@ mod vec_of_raw_byte_buf {
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Peer {
     /// Instances are identified by name.
-    pub instance_id: String,
+    pub instance_id: InstanceId,
     pub instance_uuid: String,
 
     /// Used for identifying raft nodes.
@@ -711,7 +783,7 @@ impl From<UpdatePeerRequest> for TopologyRequest {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct JoinRequest {
     pub cluster_id: String,
-    pub instance_id: Option<String>,
+    pub instance_id: Option<InstanceId>,
     pub replicaset_id: Option<String>,
     pub advertise_address: String,
     pub failure_domain: FailureDomain,
@@ -734,7 +806,7 @@ impl Encode for JoinResponse {}
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ExpelRequest {
     pub cluster_id: String,
-    pub instance_id: String,
+    pub instance_id: InstanceId,
 }
 impl Encode for ExpelRequest {}
 
@@ -819,7 +891,7 @@ impl Default for TargetGrade {
 /// Request to update the instance in the storage.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct UpdatePeerRequest {
-    pub instance_id: String,
+    pub instance_id: InstanceId,
     pub cluster_id: String,
     pub changes: Vec<PeerChange>,
 }
@@ -834,7 +906,7 @@ pub enum PeerChange {
 impl Encode for UpdatePeerRequest {}
 impl UpdatePeerRequest {
     #[inline]
-    pub fn new(instance_id: String, cluster_id: String) -> Self {
+    pub fn new(instance_id: InstanceId, cluster_id: String) -> Self {
         Self {
             instance_id,
             cluster_id,

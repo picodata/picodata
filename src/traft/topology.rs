@@ -75,13 +75,14 @@ impl Topology {
             .insert(instance_id);
     }
 
-    fn choose_instance_id(&self, raft_id: RaftId) -> String {
+    fn choose_instance_id(&self, raft_id: RaftId) -> InstanceId {
         let mut suffix: Option<u64> = None;
         loop {
             let ret = match suffix {
                 None => format!("i{raft_id}"),
                 Some(x) => format!("i{raft_id}-{x}"),
-            };
+            }
+            .into();
 
             if !self.instance_map.contains_key(&ret) {
                 return ret;
@@ -132,7 +133,7 @@ impl Topology {
 
     pub fn join(
         &mut self,
-        instance_id: Option<String>,
+        instance_id: Option<InstanceId>,
         replicaset_id: Option<String>,
         advertise: String,
         failure_domain: FailureDomain,
@@ -150,7 +151,7 @@ impl Topology {
 
         // Anyway, `join` always produces a new raft_id.
         let raft_id = self.max_raft_id + 1;
-        let instance_id: String = instance_id.unwrap_or_else(|| self.choose_instance_id(raft_id));
+        let instance_id = instance_id.unwrap_or_else(|| self.choose_instance_id(raft_id));
         let instance_uuid = instance_uuid(&instance_id);
         let replicaset_id: String =
             replicaset_id.unwrap_or_else(|| self.choose_replicaset_id(&failure_domain));
@@ -179,7 +180,7 @@ impl Topology {
     #[allow(unused)]
     pub fn set_advertise(
         &mut self,
-        instance_id: String,
+        instance_id: InstanceId,
         peer_address: String,
     ) -> Result<Peer, String> {
         let mut peer = self
@@ -227,7 +228,7 @@ impl Topology {
 
 // Create first peer in the cluster
 pub fn initial_peer(
-    instance_id: Option<String>,
+    instance_id: Option<InstanceId>,
     replicaset_id: Option<String>,
     advertise: String,
     failure_domain: FailureDomain,
@@ -307,7 +308,7 @@ mod tests {
             $(,)?
         ) => {
             $topology.join(
-                $instance_id.map(str::to_string),
+                $instance_id.map(<&str>::into),
                 $replicaset_id.map(str::to_string),
                 $advertise_address.into(),
                 {

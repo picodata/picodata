@@ -18,6 +18,7 @@ use traft::{PeerStorage, RaftSpaceAccess};
 use clap::StructOpt as _;
 use protobuf::Message as _;
 
+use crate::traft::InstanceId;
 use crate::traft::{Grade, LogicalClock, RaftIndex, TargetGrade, UpdatePeerRequest};
 use traft::error::Error;
 
@@ -95,7 +96,7 @@ fn picolib_setup(args: &args::Run) {
     );
     luamod.set(
         "expel",
-        tlua::function1(|instance_id: String| -> Result<(), Error> {
+        tlua::function1(|instance_id: InstanceId| -> Result<(), Error> {
             traft::node::expel_wrapper(instance_id)
         }),
     );

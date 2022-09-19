@@ -431,7 +431,7 @@ macro_rules! define_peer_fields {
 }
 
 define_peer_fields! {
-    InstanceId     : String               = ("instance_id",     FieldType::String)
+    InstanceId     : traft::InstanceId    = ("instance_id",     FieldType::String)
     InstanceUuid   : String               = ("instance_uuid",   FieldType::String)
     RaftId         : traft::RaftId        = ("raft_id",         FieldType::Unsigned)
     PeerAddress    : String               = ("peer_address",    FieldType::String)
@@ -545,7 +545,7 @@ inventory::submit!(crate::InnerTest {
             // on peer_address uniqueness.
             let peer = |id: RaftId, addr: &str| traft::Peer {
                 raft_id: id,
-                instance_id: format!("i{id}"),
+                instance_id: format!("i{id}").into(),
                 peer_address: addr.into(),
                 ..Default::default()
             };

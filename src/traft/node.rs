@@ -26,6 +26,7 @@ use std::time::Instant;
 
 use crate::stringify_cfunc;
 use crate::traft::ContextCoercion as _;
+use crate::traft::InstanceId;
 use crate::traft::Peer;
 use crate::traft::RaftId;
 use crate::traft::RaftIndex;
@@ -1037,14 +1038,16 @@ fn raft_join(req: JoinRequest) -> Result<JoinResponse, Box<dyn std::error::Error
 }
 
 // Lua API entrypoint, run on any node.
-pub fn expel_wrapper(instance_id: String) -> Result<(), traft::error::Error> {
+pub fn expel_wrapper(instance_id: InstanceId) -> Result<(), traft::error::Error> {
     match expel_by_instance_id(instance_id) {
         Ok(ExpelResponse {}) => Ok(()),
         Err(e) => Err(traft::error::Error::Other(e)),
     }
 }
 
-fn expel_by_instance_id(instance_id: String) -> Result<ExpelResponse, Box<dyn std::error::Error>> {
+fn expel_by_instance_id(
+    instance_id: InstanceId,
+) -> Result<ExpelResponse, Box<dyn std::error::Error>> {
     let cluster_id = global()?
         .storage
         .cluster_id()?

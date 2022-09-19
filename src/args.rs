@@ -7,7 +7,7 @@ use tarantool::log::SayLevel;
 use tarantool::tlua;
 use thiserror::Error;
 
-use crate::traft::FailureDomain;
+use crate::traft::{FailureDomain, InstanceId};
 use crate::util::Uppercase;
 
 #[derive(Debug, Parser)]
@@ -48,7 +48,7 @@ pub struct Run {
     #[clap(long, value_name = "name", env = "PICODATA_INSTANCE_ID")]
     /// Name of the instance.
     /// If not defined, it'll be generated automatically.
-    pub instance_id: Option<String>,
+    pub instance_id: Option<InstanceId>,
 
     #[clap(
         long = "advertise",
@@ -203,7 +203,7 @@ pub struct Expel {
 
     #[clap(long, value_name = "name", default_value = "")]
     /// Name of the instance to expel.
-    pub instance_id: String,
+    pub instance_id: InstanceId,
 
     #[clap(
         long = "peer",
@@ -349,7 +349,6 @@ mod tests {
         {
             let parsed = parse![Run,];
             assert_eq!(parsed.instance_id, Some("instance-id-from-env".into()));
-            assert_eq!(parsed.instance_id, Some("instance-id-from-env".to_string()));
             assert_eq!(parsed.peers.as_ref(), vec!["localhost:3301"]);
             assert_eq!(parsed.listen, "localhost:3301"); // default
             assert_eq!(parsed.advertise_address(), "localhost:3301"); // default
@@ -357,10 +356,7 @@ mod tests {
             assert_eq!(parsed.failure_domain(), FailureDomain::default()); // default
 
             let parsed = parse![Run, "--instance-id", "instance-id-from-args"];
-            assert_eq!(
-                parsed.instance_id,
-                Some("instance-id-from-args".to_string())
-            );
+            assert_eq!(parsed.instance_id, Some("instance-id-from-args".into()));
 
             let parsed = parse![Run, "--instance-id", ""];
             assert_eq!(parsed.instance_id, Some("".into()));
