@@ -136,9 +136,6 @@ impl<'a> Info<'a> {
     fn push(&self) -> TokenStream {
         match self {
             Self::Struct(f) => {
-                if matches!(f, FieldsInfo::Unnamed { .. }) {
-                    unimplemented!("tuple structs are not supported")
-                }
                 let fields = f.pattern();
                 let push_fields = f.push();
                 quote! {
@@ -206,9 +203,6 @@ impl<'a> Info<'a> {
     fn read(&self) -> TokenStream {
         match self {
             Self::Struct(f) => {
-                if matches!(f, FieldsInfo::Unnamed { .. }) {
-                    unimplemented!("tuple structs are not supported")
-                }
                 f.read_as(quote! { Self })
             }
             Self::Enum(v) => {

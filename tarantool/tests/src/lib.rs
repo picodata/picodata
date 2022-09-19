@@ -346,6 +346,7 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 tlua::rust_tables::push_custom_collection,
                 tlua::rust_tables::table_from_iter,
                 tlua::rust_tables::push_struct_of_nones,
+                tlua::rust_tables::derive_tuple_structs,
 
                 tlua::values::read_i32s,
                 tlua::values::write_i32s,

@@ -22,6 +22,8 @@
 - `space::IsNullable` helper enum.
 - `space::Builder::into_parts` & `index::Builder::into_parts`  for accessing
     inner structs.
+- `tlua::LuaRead`, `tlua::Push` & `tlua::PushInto` derive macros now support
+    new-type style tuple structs: they are treated as the inner type.
 - Doc-comments here and there.
 
 ### Fixed

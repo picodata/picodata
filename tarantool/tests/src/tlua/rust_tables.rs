@@ -1087,3 +1087,22 @@ pub fn push_struct_of_nones() {
     assert_eq!(t.get("b"), None::<String>);
 }
 
+pub fn derive_tuple_structs() {
+    #[derive(Debug, PartialEq)]
+    #[derive(Push, PushInto, LuaRead)]
+    struct Int(i32);
+
+    let lua = Lua::new();
+
+    // LuaRead
+    lua.set("derive_tuple_structs", 1337);
+    assert_eq!(lua.get("derive_tuple_structs"), Some(Int(1337)));
+
+    // PushInto
+    lua.set("derive_tuple_structs", Int(420));
+    assert_eq!(lua.get("derive_tuple_structs"), Some(420));
+
+    // Push
+    lua.set("derive_tuple_structs", &Int(69));
+    assert_eq!(lua.get("derive_tuple_structs"), Some(69));
+}
