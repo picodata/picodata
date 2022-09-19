@@ -27,6 +27,7 @@ mod args;
 mod discovery;
 mod ipc;
 mod kvcell;
+mod r#loop;
 mod mailbox;
 mod tarantool;
 mod tlog;
