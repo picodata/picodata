@@ -10,6 +10,10 @@ centos7-cmake3:
 	[ -f /usr/bin/cmake ] && sudo rm /usr/bin/cmake
 	sudo ln -s /usr/bin/cmake3 /usr/bin/cmake
 
+reset-submodules:
+	git submodule foreach --recursive 'git clean -dxf && git reset --hard'
+	git submodule update --recursive
+
 tarantool-patch:
 	cd tarantool-sys && \
 	echo "${VER_TNT}" > VERSION
@@ -51,5 +55,5 @@ fat:
 
 clean:
 	cargo clean || true
-	cd tarantool-sys && rm -f patches-applied && git reset --hard ; cd -
+	git submodule foreach --recursive 'git clean -dxf && git reset --hard'
 	find . -type d -name __pycache__ | xargs -n 500 rm -rf
