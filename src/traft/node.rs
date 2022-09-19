@@ -501,7 +501,7 @@ impl InnerNode {
             let entry = match traft::Entry::try_from(entry) {
                 Ok(v) => v,
                 Err(e) => {
-                    tlog!(Error, "abnormal entry: {e}, entry = {entry:?}");
+                    tlog!(Error, "abnormal entry: {e}"; "entry" => ?entry);
                     continue;
                 }
             };
@@ -639,7 +639,7 @@ impl InnerNode {
                 Ok(Some(v)) => v,
                 Ok(None) => continue,
                 Err(e) => {
-                    tlog!(Error, "abnormal read_state: {e}, read_state = {rs:?}");
+                    tlog!(Error, "abnormal read_state: {e}"; "read_state" => ?rs);
                     continue;
                 }
             };
