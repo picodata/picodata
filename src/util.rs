@@ -112,6 +112,16 @@ impl<L, R> From<Either<L, R>> for Result<L, R> {
 ////////////////////////////////////////////////////////////////////////////////
 
 #[macro_export]
+macro_rules! unwrap_some_or {
+    ($o:expr, $($else:tt)+) => {
+        match $o {
+            Some(v) => v,
+            None => $($else)+,
+        }
+    }
+}
+
+#[macro_export]
 macro_rules! unwrap_ok_or {
     ($o:expr, $err:pat => $($else:tt)+) => {
         match $o {

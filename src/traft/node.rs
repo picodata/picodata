@@ -24,6 +24,7 @@ use std::rc::Rc;
 use std::time::Duration;
 use std::time::Instant;
 
+use crate::kvcell::KVCell;
 use crate::stringify_cfunc;
 use crate::traft::ContextCoercion as _;
 use crate::traft::InstanceId;
@@ -31,11 +32,11 @@ use crate::traft::Peer;
 use crate::traft::RaftId;
 use crate::traft::RaftIndex;
 use crate::traft::RaftTerm;
+use crate::unwrap_some_or;
 use ::tarantool::util::IntoClones as _;
 use protobuf::Message as _;
 use std::iter::FromIterator as _;
 
-use crate::cache::CachedCell;
 use crate::tlog;
 use crate::traft;
 use crate::traft::error::Error;
@@ -277,7 +278,7 @@ impl Node {
 struct NodeImpl {
     pub raw_node: RawNode,
     pub notifications: HashMap<LogicalClock, Notify>,
-    topology_cache: CachedCell<RaftTerm, Topology>,
+    topology_cache: KVCell<RaftTerm, Topology>,
     storage: RaftSpaceAccess,
     pool: ConnectionPool,
     lc: LogicalClock,
@@ -318,7 +319,7 @@ impl NodeImpl {
         Ok(Self {
             raw_node,
             notifications: Default::default(),
-            topology_cache: CachedCell::new(),
+            topology_cache: KVCell::new(),
             storage,
             pool,
             lc,
@@ -327,6 +328,35 @@ impl NodeImpl {
 
     fn raft_id(&self) -> RaftId {
         self.raw_node.raft.id
+    }
+
+    /// Provides mutable access to the Topology struct which reflects
+    /// uncommitted state of the cluster. Ensures the node is a leader.
+    /// In case it's not — returns an error.
+    ///
+    /// It's important to access topology through this function so that
+    /// new changes are consistent with uncommitted ones.
+    fn topology_mut(&mut self) -> Result<&mut Topology, RaftError> {
+        let box_err = |e| StorageError::Other(Box::new(e));
+
+        if self.raw_node.raft.state != RaftStateRole::Leader {
+            let e = RaftError::ConfChangeError("not a leader".into());
+            self.topology_cache.take(); // invalidate the cache
+            return Err(e);
+        }
+
+        let current_term = self.raw_node.raft.term;
+
+        let topology: Topology = unwrap_some_or! {
+            self.topology_cache.take_or_drop(&current_term),
+            {
+                let peers = Storage::peers().map_err(box_err)?;
+                let replication_factor = Storage::replication_factor().map_err(box_err)?.unwrap();
+                Topology::from_peers(peers).with_replication_factor(replication_factor)
+            }
+        };
+
+        Ok(self.topology_cache.insert(current_term, topology))
     }
 
     pub fn read_state_async(&mut self) -> Result<Notify, RaftError> {
@@ -394,19 +424,7 @@ impl NodeImpl {
         &mut self,
         req: TopologyRequest,
     ) -> Result<Notify, RaftError> {
-        if self.raw_node.raft.state != RaftStateRole::Leader {
-            return Err(RaftError::ConfChangeError("not a leader".into()));
-        }
-
-        let mut topology = self
-            .topology_cache
-            .pop(&self.raw_node.raft.term)
-            .unwrap_or_else(|| {
-                let peers = Storage::peers().unwrap();
-                let replication_factor = Storage::replication_factor().unwrap().unwrap();
-                Topology::from_peers(peers).with_replication_factor(replication_factor)
-            });
-
+        let topology = self.topology_mut()?;
         let peer_result = match req {
             TopologyRequest::Join(JoinRequest {
                 instance_id,
@@ -423,17 +441,29 @@ impl NodeImpl {
             TopologyRequest::UpdatePeer(req) => topology.update_peer(req),
         };
 
-        let mut peer = crate::unwrap_ok_or!(peer_result, Err(e) => {
-            self.topology_cache.put(self.raw_node.raft.term, topology);
-            return Err(RaftError::ConfChangeError(e));
-        });
-
+        let mut peer = peer_result.map_err(RaftError::ConfChangeError)?;
         peer.commit_index = self.raw_node.raft.raft_log.last_index() + 1;
 
         let (lc, notify) = self.schedule_notification();
         let ctx = traft::EntryContextNormal::new(lc, Op::PersistPeer { peer });
+
+        // Important! Calling `raw_node.propose()` may result in
+        // `ProposalDropped` error, but the topology has already been
+        // modified. The correct handling of this case should be the
+        // following.
+        //
+        // The `topology_cache` should be preserved. It won't be fully
+        // consistent anymore, but that's bearable. (TODO: examine how
+        // the particular requests are handled). At least it doesn't
+        // much differ from the case of overriding the entry due to a
+        // re-election.
+        //
+        // On the other hand, dropping topology_cache may be much more
+        // harmful. Loss of the uncommitted entries could result in
+        // assigning the same `raft_id` to a two different nodes.
+        //
         self.raw_node.propose(ctx.to_bytes(), vec![])?;
-        self.topology_cache.put(self.raw_node.raft.term, topology);
+
         Ok(notify)
     }
 

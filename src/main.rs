@@ -24,7 +24,6 @@ use traft::error::Error;
 
 mod app;
 mod args;
-mod cache;
 mod discovery;
 mod ipc;
 mod kvcell;
