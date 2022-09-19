@@ -507,13 +507,13 @@ impl NodeImpl {
 
         let prev_index = self.raw_node.raft.raft_log.last_index();
         self.raw_node.propose_conf_change(vec![], conf_change)?;
-        let last_index = self.raw_node.raft.raft_log.last_index();
 
-        // oops, current instance isn't actually a leader
-        // (which is impossible in theory, but we're not
-        // sure in practice) and sent the ConfChange message
-        // to the raft network instead of appending it to the
-        // raft log.
+        // Ensure the ConfChange was actually appended to the log.
+        // Otherwise it's a problem: current instance isn't actually a
+        // leader (which is impossible in theory, but we're not sure in
+        // practice) and sent the message to the raft network. It may
+        // lead to an inconsistency.
+        let last_index = self.raw_node.raft.raft_log.last_index();
         assert_eq!(last_index, prev_index + 1);
 
         let (rx, tx) = Notify::new().into_clones();
