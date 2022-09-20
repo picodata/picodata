@@ -80,7 +80,7 @@ pub struct Node {
     // `self.status()` is mostly useful in Lua API.
     raft_id: RaftId,
 
-    inner_node: Rc<Mutex<InnerNode>>,
+    node_impl: Rc<Mutex<NodeImpl>>,
     pub(super) storage: RaftSpaceAccess,
     _main_loop: fiber::UnitJoinHandle<'static>,
     _conf_change_loop: fiber::UnitJoinHandle<'static>,
@@ -102,9 +102,9 @@ impl Node {
     /// Initialize the raft node.
     /// **This function yields**
     pub fn new(storage: RaftSpaceAccess) -> Result<Self, RaftError> {
-        let inner_node = InnerNode::new(storage.clone())?;
+        let node_impl = NodeImpl::new(storage.clone())?;
 
-        let raft_id = inner_node.raft_id();
+        let raft_id = node_impl.raft_id();
         let status = Rc::new(RefCell::new(Status {
             id: raft_id,
             leader_id: None,
@@ -112,14 +112,14 @@ impl Node {
             is_ready: false,
         }));
 
-        let inner_node = Rc::new(Mutex::new(inner_node));
+        let node_impl = Rc::new(Mutex::new(node_impl));
         let raft_loop_cond = Rc::new(Cond::new());
 
         let main_loop_fn = {
             let status = status.clone();
-            let inner_node = inner_node.clone();
+            let node_impl = node_impl.clone();
             let raft_loop_cond = raft_loop_cond.clone();
-            move || raft_main_loop(status, inner_node, raft_loop_cond)
+            move || raft_main_loop(status, node_impl, raft_loop_cond)
         };
 
         let conf_change_loop_fn = {
@@ -130,7 +130,7 @@ impl Node {
 
         let node = Node {
             raft_id,
-            inner_node,
+            node_impl,
             status,
             raft_loop_cond,
             _main_loop: fiber::Builder::new()
@@ -172,7 +172,7 @@ impl Node {
 
     /// **This function yields**
     pub fn wait_for_read_state(&self, timeout: Duration) -> Result<RaftIndex, Error> {
-        let notify = self.raw_operation(|inner_node| inner_node.read_state_async())?;
+        let notify = self.raw_operation(|node_impl| node_impl.read_state_async())?;
         notify.recv_timeout::<RaftIndex>(timeout)
     }
 
@@ -183,7 +183,7 @@ impl Node {
         op: T,
         timeout: Duration,
     ) -> Result<T::Result, Error> {
-        let notify = self.raw_operation(|inner_node| inner_node.propose_async(op))?;
+        let notify = self.raw_operation(|node_impl| node_impl.propose_async(op))?;
         notify.recv_timeout::<T::Result>(timeout)
     }
 
@@ -191,7 +191,7 @@ impl Node {
     /// chance we become the leader.
     /// **This function yields**
     pub fn campaign_and_yield(&self) -> Result<(), Error> {
-        self.raw_operation(|inner_node| inner_node.campaign())?;
+        self.raw_operation(|node_impl| node_impl.campaign())?;
         // Even though we don't expect a response, we still should let the
         // main_loop do an iteration. Without rescheduling, the Ready state
         // wouldn't be processed, the Status wouldn't be updated, and some
@@ -202,7 +202,7 @@ impl Node {
 
     /// **This function yields**
     pub fn step_and_yield(&self, msg: raft::Message) {
-        self.raw_operation(|inner_node| inner_node.step(msg))
+        self.raw_operation(|node_impl| node_impl.step(msg))
             .map_err(|e| tlog!(Error, "{e}"))
             .ok();
         // even though we don't expect a response, we still should let the
@@ -212,7 +212,7 @@ impl Node {
 
     /// **This function yields**
     pub fn tick_and_yield(&self, n_times: u32) {
-        self.raw_operation(|inner_node| inner_node.tick(n_times));
+        self.raw_operation(|node_impl| node_impl.tick(n_times));
         // even though we don't expect a response, we still should let the
         // main_loop do an iteration
         fiber::reschedule();
@@ -240,7 +240,7 @@ impl Node {
         req: TopologyRequest,
     ) -> Result<traft::Peer, Error> {
         let notify =
-            self.raw_operation(|inner_node| inner_node.process_topology_request_async(req))?;
+            self.raw_operation(|node_impl| node_impl.process_topology_request_async(req))?;
         notify.recv::<Peer>()
     }
 
@@ -252,17 +252,17 @@ impl Node {
         term: RaftTerm,
         conf_change: raft::ConfChangeV2,
     ) -> Result<(), Error> {
-        let notify = self
-            .raw_operation(|inner_node| inner_node.propose_conf_change_async(term, conf_change))?;
+        let notify =
+            self.raw_operation(|node_impl| node_impl.propose_conf_change_async(term, conf_change))?;
         notify.recv()
     }
 
-    /// This function **may yield** if `self.raw_node` is acquired.
+    /// This function **may yield** if `self.node_impl` mutex is acquired.
     #[inline]
-    fn raw_operation<R>(&self, f: impl FnOnce(&mut InnerNode) -> R) -> R {
-        let mut inner_node = self.inner_node.lock();
-        let res = f(&mut *inner_node);
-        drop(inner_node);
+    fn raw_operation<R>(&self, f: impl FnOnce(&mut NodeImpl) -> R) -> R {
+        let mut node_impl = self.node_impl.lock();
+        let res = f(&mut *node_impl);
+        drop(node_impl);
         self.raft_loop_cond.broadcast();
         res
     }
@@ -273,7 +273,7 @@ impl Node {
     }
 }
 
-struct InnerNode {
+struct NodeImpl {
     pub raw_node: RawNode,
     pub notifications: HashMap<LogicalClock, Notify>,
     topology_cache: CachedCell<RaftTerm, Topology>,
@@ -282,7 +282,7 @@ struct InnerNode {
     lc: LogicalClock,
 }
 
-impl InnerNode {
+impl NodeImpl {
     fn new(
         mut storage: RaftSpaceAccess,
         // TODO: provide clusterwide space access
@@ -799,7 +799,7 @@ where
 
 fn raft_main_loop(
     status: Rc<RefCell<Status>>,
-    inner_node: Rc<Mutex<InnerNode>>,
+    node_impl: Rc<Mutex<NodeImpl>>,
     raft_loop_cond: Rc<Cond>,
 ) {
     let mut next_tick = Instant::now() + Node::TICK;
@@ -807,18 +807,18 @@ fn raft_main_loop(
     loop {
         raft_loop_cond.wait_timeout(Node::TICK);
 
-        let mut inner_node = inner_node.lock();
-        inner_node.cleanup_notifications();
+        let mut node_impl = node_impl.lock();
+        node_impl.cleanup_notifications();
 
         let now = Instant::now();
         if now > next_tick {
             next_tick = now + Node::TICK;
-            inner_node.raw_node.tick();
+            node_impl.raw_node.tick();
         }
 
         let mut topology_changed = false;
         let mut expelled = false;
-        inner_node.advance(&status, &mut topology_changed, &mut expelled);
+        node_impl.advance(&status, &mut topology_changed, &mut expelled);
 
         if expelled {
             crate::tarantool::exit(0);
@@ -826,8 +826,7 @@ fn raft_main_loop(
 
         if topology_changed {
             event::broadcast(Event::TopologyChanged);
-            if let Some(peer) =
-                traft::Storage::peer_by_raft_id(inner_node.raw_node.raft.id).unwrap()
+            if let Some(peer) = traft::Storage::peer_by_raft_id(node_impl.raw_node.raft.id).unwrap()
             {
                 let mut box_cfg = crate::tarantool::cfg().unwrap();
                 assert_eq!(box_cfg.replication_connect_quorum, 0);
