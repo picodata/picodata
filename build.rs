@@ -95,6 +95,7 @@ fn build_tarantool() {
 
     std::fs::create_dir_all(&build_dir).expect("failed creating build directory");
     let dst = cmake::Config::new("tarantool-sys/static-build")
+        .define("CMAKE_TARANTOOL_ARGS", "-DCMAKE_BUILD_TYPE=RelWithDebInfo")
         .build_target("tarantool")
         .out_dir(build_dir)
         .build();
