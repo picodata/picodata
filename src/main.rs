@@ -942,8 +942,10 @@ fn main_test(args: args::Test) -> ! {
             ForkResult::Child => {
                 drop(rx);
                 unistd::close(0).ok(); // stdin
-                unistd::dup2(*tx, 1).ok(); // stdout
-                unistd::dup2(*tx, 2).ok(); // stderr
+                if !args.nocapture {
+                    unistd::dup2(*tx, 1).ok(); // stdout
+                    unistd::dup2(*tx, 2).ok(); // stderr
+                }
                 drop(tx);
 
                 let rc = tarantool_main!(
@@ -959,9 +961,11 @@ fn main_test(args: args::Test) -> ! {
                 let log = {
                     let mut buf = Vec::new();
                     use std::io::Read;
-                    rx.read_to_end(&mut buf)
-                        .map_err(|e| println!("error reading ipc pipe: {e}"))
-                        .ok();
+                    if !args.nocapture {
+                        rx.read_to_end(&mut buf)
+                            .map_err(|e| println!("error reading ipc pipe: {e}"))
+                            .ok();
+                    }
                     buf
                 };
 
@@ -980,6 +984,10 @@ fn main_test(args: args::Test) -> ! {
                 } else {
                     println!("{FAILED}");
                     cnt_failed += 1;
+
+                    if args.nocapture {
+                        continue;
+                    }
 
                     use std::io::Write;
                     println!();

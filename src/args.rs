@@ -229,9 +229,13 @@ impl Expel {
 #[derive(Debug, Parser, tlua::Push)]
 #[clap(about = "Run picodata integration tests")]
 pub struct Test {
-    #[clap()]
+    #[clap(env = "PICODATA_TEST_FILTER")]
     /// Only run tests matching the filter.
     pub filter: Option<String>,
+
+    #[clap(long = "nocapture", env = "PICODATA_TEST_NOCAPTURE")]
+    /// Do not capture test output.
+    pub nocapture: bool,
 }
 
 impl Test {
