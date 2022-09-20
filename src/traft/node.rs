@@ -72,6 +72,14 @@ pub struct Status {
 
 /// The heart of `traft` module - the Node.
 pub struct Node {
+    /// RaftId of the Node.
+    //
+    // It appears twice in the Node: here and in `status.id`.
+    // This is a concious decision.
+    // `self.raft_id()` is used in Rust API, and
+    // `self.status()` is mostly useful in Lua API.
+    raft_id: RaftId,
+
     inner_node: Rc<Mutex<InnerNode>>,
     pub(super) storage: RaftSpaceAccess,
     _main_loop: fiber::UnitJoinHandle<'static>,
@@ -83,7 +91,7 @@ pub struct Node {
 impl std::fmt::Debug for Node {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Node")
-            .field("raft_id", &self.raft_id())
+            .field("raft_id", &self.raft_id)
             .finish_non_exhaustive()
     }
 }
@@ -96,8 +104,9 @@ impl Node {
     pub fn new(storage: RaftSpaceAccess) -> Result<Self, RaftError> {
         let inner_node = InnerNode::new(storage.clone())?;
 
+        let raft_id = inner_node.raft_id();
         let status = Rc::new(RefCell::new(Status {
-            id: inner_node.raft_id(),
+            id: raft_id,
             leader_id: None,
             raft_state: "Follower".into(),
             is_ready: false,
@@ -120,6 +129,7 @@ impl Node {
         };
 
         let node = Node {
+            raft_id,
             inner_node,
             status,
             raft_loop_cond,
@@ -142,7 +152,7 @@ impl Node {
     }
 
     pub fn raft_id(&self) -> RaftId {
-        self.status.borrow().id
+        self.raft_id
     }
 
     pub fn status(&self) -> Status {
