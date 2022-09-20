@@ -228,7 +228,11 @@ impl Expel {
 
 #[derive(Debug, Parser, tlua::Push)]
 #[clap(about = "Run picodata integration tests")]
-pub struct Test {}
+pub struct Test {
+    #[clap()]
+    /// Only run tests matching the filter.
+    pub filter: Option<String>,
+}
 
 impl Test {
     pub fn tt_args(&self) -> Result<Vec<CString>, String> {

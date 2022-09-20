@@ -918,15 +918,22 @@ fn main_test(args: args::Test) -> ! {
     const FAILED: &str = color![red "FAILED" clear];
     let mut cnt_passed = 0u32;
     let mut cnt_failed = 0u32;
+    let mut cnt_skipped = 0u32;
 
     let now = std::time::Instant::now();
 
     println!();
     println!(
-        "running {} tests",
+        "total {} tests",
         inventory::iter::<InnerTest>.into_iter().count()
     );
     for t in inventory::iter::<InnerTest> {
+        if let Some(filter) = args.filter.as_ref() {
+            if !t.name.contains(filter) {
+                cnt_skipped += 1;
+                continue;
+            }
+        }
         print!("test {} ... ", t.name);
 
         let (mut rx, tx) = ipc::pipe().expect("pipe creation failed");
@@ -991,6 +998,7 @@ fn main_test(args: args::Test) -> ! {
     print!("test result: {}.", if ok { PASSED } else { FAILED });
     print!(" {cnt_passed} passed;");
     print!(" {cnt_failed} failed;");
+    print!(" {cnt_skipped} skipped;");
     println!(" finished in {:.2}s", now.elapsed().as_secs_f32());
     println!();
 
