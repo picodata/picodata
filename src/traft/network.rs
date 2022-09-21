@@ -1,24 +1,32 @@
 use ::raft::prelude as raft;
+use ::tarantool::error::Error as TntError;
 use ::tarantool::fiber;
+use ::tarantool::net_box::promise::Promise;
+use ::tarantool::net_box::promise::TryGet;
 use ::tarantool::net_box::Conn;
 use ::tarantool::net_box::ConnOptions;
-use ::tarantool::net_box::Options;
+use ::tarantool::tuple::Decode;
+use ::tarantool::tuple::{RawByteBuf, ToTupleBuffer, TupleBuffer};
 use ::tarantool::util::IntoClones;
 use std::cell::Cell;
-use std::collections::HashMap;
+use std::collections::{hash_map::Entry, HashMap};
+use std::io;
 use std::rc::Rc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crate::mailbox::Mailbox;
 use crate::tlog;
 use crate::traft;
-use crate::traft::error::PoolSendError;
+use crate::traft::error::Error;
+use crate::traft::rpc::Request;
 use crate::traft::storage::peer_field::{self, PeerAddress};
-use crate::traft::RaftId;
+use crate::traft::{InstanceId, RaftId};
 use crate::traft::{PeerStorage, Storage};
+use crate::unwrap_ok_or;
+use crate::util::Either::{self, Left, Right};
 
 #[derive(Clone, Debug)]
-struct WorkerOptions {
+pub struct WorkerOptions {
     handler_name: &'static str,
     call_timeout: Duration,
     connect_timeout: Duration,
@@ -40,21 +48,28 @@ impl Default for WorkerOptions {
 // PoolWorker
 ////////////////////////////////////////////////////////////////////////////////
 
-struct PoolWorker {
+type Notify = fiber::Channel<Result<RawByteBuf, TntError>>;
+type Callback = Box<dyn FnOnce(Result<RawByteBuf, TntError>)>;
+type Queue = Mailbox<(Callback, &'static str, TupleBuffer)>;
+
+pub struct PoolWorker {
     id: RaftId,
-    inbox: Mailbox<traft::MessagePb>,
+    inbox: Queue,
     fiber: fiber::LuaUnitJoinHandle<'static>,
-    stop_flag: Rc<Cell<Option<()>>>,
+    stop_flag: Rc<Cell<bool>>,
+    handler_name: &'static str,
 }
 
 impl PoolWorker {
     pub fn run(id: RaftId, storage: PeerStorage, opts: WorkerOptions) -> PoolWorker {
-        let inbox = Mailbox::new();
-        let stop_flag: Rc<Cell<Option<()>>> = Default::default();
+        let cond = Rc::new(fiber::Cond::new());
+        let inbox = Mailbox::with_cond(cond.clone());
+        let stop_flag = Rc::new(Cell::default());
+        let handler_name = opts.handler_name;
         let fiber = fiber::defer_proc({
             let inbox = inbox.clone();
             let stop_flag = stop_flag.clone();
-            move || Self::worker_loop(id, storage, inbox, stop_flag, &opts)
+            move || Self::worker_loop(id, storage, cond, inbox, stop_flag, &opts)
         });
 
         Self {
@@ -62,14 +77,18 @@ impl PoolWorker {
             fiber,
             inbox,
             stop_flag,
+            handler_name,
         }
     }
 
+    /// `cond` is a single shared conditional variable that can be signaled by
+    /// `inbox` or `promises`.
     fn worker_loop(
         raft_id: RaftId,
         storage: PeerStorage,
-        inbox: Mailbox<traft::MessagePb>,
-        stop_flag: Rc<Cell<Option<()>>>,
+        cond: Rc<fiber::Cond>,
+        inbox: Queue,
+        stop_flag: Rc<Cell<bool>>,
         opts: &WorkerOptions,
     ) {
         struct ConnCache {
@@ -78,26 +97,54 @@ impl PoolWorker {
         }
         let cache: Cell<Option<ConnCache>> = Cell::default();
 
-        loop {
-            // implicit yield
-            let messages = inbox.receive_all(opts.inactivity_timeout);
-            if stop_flag.take().is_some() {
-                return;
-            }
+        let mut promises: Vec<(Promise<RawByteBuf>, Callback, Instant)> = vec![];
+        while !stop_flag.get() {
+            let mut had_errors = false;
+            let iter_start = Instant::now();
+            let mut closest_promise_deadline = None;
+            // Process existing promises
+            promises = promises
+                .into_iter()
+                .filter_map(|(promise, callback, deadline)| match into_either(promise) {
+                    Left(res) => {
+                        // had_errors = true if res.is_err()
+                        callback(res);
+                        None
+                    }
+                    _ if deadline <= iter_start => {
+                        had_errors = true;
+                        callback(Err(From::from(io::Error::new(
+                            io::ErrorKind::TimedOut,
+                            "response didn't arive in time",
+                        ))));
+                        None
+                    }
+                    Right(promise) => {
+                        if &deadline < closest_promise_deadline.get_or_insert(deadline) {
+                            closest_promise_deadline = Some(deadline);
+                        }
+                        Some((promise, callback, deadline))
+                    }
+                })
+                .collect();
 
-            if messages.is_empty() {
-                // Connection has long been unused. Close it.
-                cache.take();
-                continue;
-            }
+            let closest_promise_timeout_or = |timeout| {
+                if let Some(closest_promise_deadline) = closest_promise_deadline {
+                    closest_promise_deadline.saturating_duration_since(Instant::now())
+                } else {
+                    timeout
+                }
+            };
 
+            // Make a connection, if not already connected
             let ConnCache { address, conn } = ::tarantool::unwrap_or!(cache.take(), {
-                let address = storage.field_by_raft_id::<PeerAddress>(raft_id);
+                let address = storage.peer_field::<PeerAddress>(&raft_id);
                 let address = crate::unwrap_ok_or!(address,
                     Err(e) => {
                         tlog!(Warning, "failed getting peer address: {e}";
                             "raft_id" => raft_id,
                         );
+                        cond.wait_timeout(closest_promise_timeout_or(opts.connect_timeout));
                         continue
                     }
                 );
@@ -113,38 +160,137 @@ impl PoolWorker {
                             "peer" => address,
                             "raft_id" => raft_id,
                         );
+                        cond.wait_timeout(
+                            closest_promise_timeout_or(opts.connect_timeout - iter_start.elapsed())
+                        );
                         continue
                     }
+                );
+                tlog!(Debug, "established connection to peer";
+                    "peer" => &address,
+                    "raft_id" => raft_id,
                 );
                 ConnCache { address, conn }
             });
 
-            let call_opts = Options {
-                timeout: Some(opts.call_timeout),
-                ..Default::default()
-            };
+            // Process incomming requests
+            let requests = inbox.try_receive_all();
+            let mut new_promises = false;
+            for (callback, proc, req) in requests {
+                let mut promise = unwrap_ok_or!(conn.call_async(proc, req),
+                    Err(e) => {
+                        tlog!(Debug, "failed sending request to peer: {e}";
+                            "peer" => &address,
+                            "proc" => proc,
+                        );
+                        callback(Err(e));
+                        had_errors = true;
+                        continue
+                    }
+                );
+                // Put our `cond` into the promise,
+                // so that we are signalled once the result is awailable
+                promise.replace_cond(cond.clone());
+                let deadline = Instant::now() + opts.call_timeout;
+                promises.push((promise, callback, deadline));
+                new_promises = true;
+            }
+            cache.set(Some(ConnCache { address, conn }));
 
-            // implicit yield
-            match conn.call(opts.handler_name, &messages, &call_opts) {
-                Ok(_) => cache.set(Some(ConnCache { address, conn })),
-                Err(e) => tlog!(Debug, "failed sending messages to peer: {e}";
-                    "peer" => address,
-                ),
+            // Should check deadlines of new promises
+            if new_promises {
+                continue;
             }
 
-            if stop_flag.take().is_some() {
-                return;
+            // There were some errors and there are no pending promises,
+            // so we try reconnecting
+            if had_errors && promises.is_empty() {
+                let ConnCache { conn, address } = cache.take().expect("was just set");
+                tlog!(Debug, "some requests to peer failed, will attempt to reconnect";
+                    "peer" => address,
+                    "raft_id" => raft_id,
+                );
+                drop(conn);
+                cond.wait_timeout(opts.connect_timeout - iter_start.elapsed());
+                continue;
+            }
+
+            // Wait for new activity (new requests or kept promises)
+            if let Some(deadline) = closest_promise_deadline {
+                cond.wait_timeout(deadline.saturating_duration_since(Instant::now()));
+            } else {
+                // We couldn't get here if there were new_promises
+                // And if there were old promises
+                // then closest_promise_deadline wouldn't be None
+                assert!(promises.is_empty());
+                let timed_out = !cond.wait_timeout(opts.inactivity_timeout);
+                if timed_out {
+                    // Connection has long been unused. Close it.
+                    let ConnCache { conn, address } = cache.take().expect("was just set");
+                    tlog!(Debug, "connection to peer has long been inactive";
+                        "peer" => address,
+                        "raft_id" => raft_id,
+                    );
+                    drop(conn);
+                }
+            }
+        }
+
+        // Notify the remaining waiters
+        for (promise, callback, _) in promises {
+            match into_either(promise) {
+                Left(res) => callback(res),
+                Right(_) => callback(Err(From::from(io::Error::new(
+                    io::ErrorKind::NotConnected,
+                    "connection pool worker stopped",
+                )))),
             }
         }
     }
 
-    pub fn send(&self, msg: raft::Message) -> Result<(), PoolSendError> {
-        self.inbox.send(msg.into());
+    pub fn send(&self, msg: raft::Message) -> Result<(), Error> {
+        let raft_id = msg.to;
+        let msg = traft::MessagePb::from(msg);
+        let args = [msg].to_tuple_buffer()?;
+        let on_result = move |res| match res {
+            Ok(_) => tlog!(Debug, "received response"; "peer" => raft_id),
+            Err(e) => tlog!(Debug, "error when sending message to peer: {e}";
+                "peer" => raft_id
+            ),
+        };
+        self.inbox
+            .send((Box::new(on_result), self.handler_name, args));
         Ok(())
     }
 
+    /// Send an RPC `request` and invoke `cb` whenever the result is ready.
+    ///
+    /// An error will be passed to `cb` in one of the following situations:
+    /// - in case `request` failed to serialize
+    /// - in case peer was disconnected
+    /// - in case response failed to deserialize
+    /// - in case peer responded with an error
+    pub fn rpc<R>(&mut self, request: R, cb: impl FnOnce(Result<R::Response, Error>) + 'static)
+    where
+        R: Request,
+    {
+        let args = unwrap_ok_or!(request.to_tuple_buffer(),
+            Err(e) => { return cb(Err(e.into())) }
+        );
+        let convert_result = |bytes| {
+            let bytes: RawByteBuf = bytes?;
+            let res = Decode::decode(&bytes)?;
+            Ok(res)
+        };
+        self.inbox.send((
+            Box::new(move |res| cb(convert_result(res))),
+            R::PROC_NAME,
+            args,
+        ));
+    }
+
     fn stop(self) {
-        self.stop_flag.set(Some(()));
+        self.stop_flag.set(true);
         self.fiber.join();
     }
 }
@@ -152,6 +298,14 @@ impl PoolWorker {
 impl std::fmt::Debug for PoolWorker {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("PoolWorker").field("id", &self.id).finish()
+    }
+}
+
+fn into_either<T>(p: Promise<T>) -> Either<Result<T, TntError>, Promise<T>> {
+    match p.try_get() {
+        TryGet::Ok(res) => Left(Ok(res)),
+        TryGet::Err(e) => Left(Err(e)),
+        TryGet::Pending(p) => Right(p),
     }
 }
 
@@ -183,6 +337,7 @@ impl ConnectionPoolBuilder {
         ConnectionPool {
             worker_options: self.worker_options,
             workers: HashMap::new(),
+            raft_ids: HashMap::new(),
             storage: self.storage,
         }
     }
@@ -196,6 +351,7 @@ impl ConnectionPoolBuilder {
 pub struct ConnectionPool {
     worker_options: WorkerOptions,
     workers: HashMap<RaftId, PoolWorker>,
+    raft_ids: HashMap<InstanceId, RaftId>,
     storage: PeerStorage,
 }
 
@@ -213,26 +369,111 @@ impl ConnectionPool {
         panic!("not implemented yet");
     }
 
+    fn get_or_create_by_raft_id(&mut self, raft_id: RaftId) -> Result<&mut PoolWorker, Error> {
+        match self.workers.entry(raft_id) {
+            Entry::Occupied(entry) => Ok(entry.into_mut()),
+            Entry::Vacant(entry) => {
+                let instance_id = self
+                    .storage
+                    .peer_field::<peer_field::InstanceId>(&raft_id)
+                    .map_err(|_| Error::NoPeerWithRaftId(raft_id))?;
+                let storage = self.storage.clone();
+                let worker_options = self.worker_options.clone();
+                let worker = PoolWorker::run(raft_id, storage, worker_options);
+                self.raft_ids.insert(instance_id, raft_id);
+                Ok(entry.insert(worker))
+            }
+        }
+    }
+
+    fn get_or_create_by_instance_id(
+        &mut self,
+        instance_id: &str,
+    ) -> Result<&mut PoolWorker, Error> {
+        match self.raft_ids.entry(InstanceId(instance_id.into())) {
+            Entry::Occupied(entry) => {
+                let worker = self
+                    .workers
+                    .get_mut(entry.get())
+                    .expect("instance_id is present, but the worker isn't");
+                Ok(worker)
+            }
+            Entry::Vacant(entry) => {
+                let instance_id = entry.key();
+                let raft_id = self
+                    .storage
+                    .peer_field::<peer_field::RaftId>(instance_id)
+                    .map_err(|_| Error::NoPeerWithInstanceId(instance_id.clone()))?;
+                let worker =
+                    PoolWorker::run(raft_id, self.storage.clone(), self.worker_options.clone());
+                entry.insert(raft_id);
+                Ok(self.workers.entry(raft_id).or_insert(worker))
+            }
+        }
+    }
+
     /// Send a message to `msg.to` asynchronously.
     /// If the massage can't be sent, it's a responsibility
     /// of the raft node to re-send it later.
     ///
     /// This function never yields.
-    pub fn send(&mut self, msg: raft::Message) -> Result<(), PoolSendError> {
-        let raft_id = msg.to;
-        if !self.workers.contains_key(&msg.to) {
-            let storage = self.storage.clone();
-            let worker_options = self.worker_options.clone();
-            // check that peer exists
-            storage
-                .field_by_raft_id::<peer_field::RaftId>(raft_id)
-                .map_err(|_| PoolSendError::UnknownRecipient(raft_id))?;
-            let wrk = PoolWorker::run(raft_id, storage, worker_options);
-            self.workers.insert(raft_id, wrk);
-        }
+    #[inline]
+    pub fn send(&mut self, msg: raft::Message) -> Result<(), Error> {
+        self.get_or_create_by_raft_id(msg.to)?.send(msg)
+    }
 
-        let wrk = self.workers.get(&raft_id).expect("just inserted it");
-        wrk.send(msg)
+    /// Send a request to peer with `id` (see `PeerId`) and wait for the result.
+    ///
+    /// If the request failed, it's a responsibility of the caller
+    /// to re-send it later.
+    ///
+    /// **This function yields.**
+    pub fn call_and_wait_timeout<R>(
+        &mut self,
+        id: &impl PeerId,
+        req: R,
+        timeout: Duration,
+    ) -> Result<R::Response, Error>
+    where
+        R: Request,
+    {
+        let (rx, tx) = fiber::Channel::new(1).into_clones();
+        id.get_or_create_in(self)?
+            .rpc(req, move |res| tx.send(res).unwrap());
+        rx.recv_timeout(timeout).map_err(|_| Error::Timeout)?
+    }
+
+    /// Send a request to peer with `id` (see `PeerId`) and wait for the result.
+    ///
+    /// If the request failed, it's a responsibility of the caller
+    /// to re-send it later.
+    ///
+    /// **This function yields.**
+    #[inline(always)]
+    pub fn call_and_wait<R>(&mut self, id: &impl PeerId, req: R) -> Result<R::Response, Error>
+    where
+        R: Request,
+    {
+        self.call_and_wait_timeout(id, req, Duration::MAX)
+    }
+
+    /// Send a request to peer with `id` (see `PeerId`) and wait for the result.
+    ///
+    /// If the request failed, it's a responsibility of the caller
+    /// to re-send it later.
+    ///
+    /// **This function never yields.**
+    pub fn call<R>(
+        &mut self,
+        id: &impl PeerId,
+        req: R,
+        cb: impl FnOnce(Result<R::Response, Error>) + 'static,
+    ) -> Result<(), Error>
+    where
+        R: Request,
+    {
+        id.get_or_create_in(self)?.rpc(req, cb);
+        Ok(())
     }
 }
 
@@ -241,6 +482,39 @@ impl Drop for ConnectionPool {
         for (_, worker) in self.workers.drain() {
             worker.stop();
         }
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// PeerId
+////////////////////////////////////////////////////////////////////////////////
+
+/// Types implementing this trait can be used to identify a `Peer` when
+/// accessing ConnectionPool.
+pub trait PeerId: std::hash::Hash {
+    fn get_or_create_in<'p>(
+        &self,
+        pool: &'p mut ConnectionPool,
+    ) -> Result<&'p mut PoolWorker, Error>;
+}
+
+impl PeerId for RaftId {
+    #[inline(always)]
+    fn get_or_create_in<'p>(
+        &self,
+        pool: &'p mut ConnectionPool,
+    ) -> Result<&'p mut PoolWorker, Error> {
+        pool.get_or_create_by_raft_id(*self)
+    }
+}
+
+impl PeerId for InstanceId {
+    #[inline(always)]
+    fn get_or_create_in<'p>(
+        &self,
+        pool: &'p mut ConnectionPool,
+    ) -> Result<&'p mut PoolWorker, Error> {
+        pool.get_or_create_by_instance_id(self)
     }
 }
 
@@ -316,7 +590,7 @@ inventory::submit!(crate::InnerTest {
         // Assert unknown recepient error
         assert!(matches!(
             pool.send(heartbeat_to_from(9999, 3)).unwrap_err(),
-            PoolSendError::UnknownRecipient(9999)
+            Error::NoPeerWithRaftId(9999)
         ));
 
         // Set up on_disconnect trigger

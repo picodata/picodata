@@ -4,12 +4,17 @@ use std::rc::Rc;
 use std::time::Duration;
 
 struct Inner<T> {
-    cond: fiber::Cond,
+    cond: Rc<fiber::Cond>,
     content: RefCell<Vec<T>>,
 }
 
-#[derive(Clone)]
 pub struct Mailbox<T>(Rc<Inner<T>>);
+
+impl<T> Clone for Mailbox<T> {
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
+    }
+}
 
 impl<T> ::std::fmt::Debug for Mailbox<T> {
     fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
@@ -21,14 +26,25 @@ impl<T> ::std::fmt::Debug for Mailbox<T> {
 impl<T> Mailbox<T> {
     pub fn new() -> Self {
         Self(Rc::new(Inner {
-            cond: fiber::Cond::new(),
+            cond: Rc::default(),
             content: RefCell::new(Vec::new()),
+        }))
+    }
+
+    pub fn with_cond(cond: Rc<fiber::Cond>) -> Self {
+        Self(Rc::new(Inner {
+            cond,
+            content: RefCell::default(),
         }))
     }
 
     pub fn send(&self, v: T) {
         self.0.content.borrow_mut().push(v);
         self.0.cond.signal();
+    }
+
+    pub fn try_receive_all(&self) -> Vec<T> {
+        self.0.content.take()
     }
 
     pub fn receive_all(&self, timeout: Duration) -> Vec<T> {
@@ -45,6 +61,7 @@ inventory::submit!(crate::InnerTest {
     body: || {
         let mailbox = Mailbox::<u8>::new();
         assert_eq!(mailbox.receive_all(Duration::ZERO), Vec::<u8>::new());
+        assert_eq!(mailbox.try_receive_all(), Vec::<u8>::new());
 
         mailbox.send(1);
         assert_eq!(mailbox.receive_all(Duration::ZERO), vec![1]);
@@ -52,6 +69,11 @@ inventory::submit!(crate::InnerTest {
         mailbox.send(2);
         mailbox.send(3);
         assert_eq!(mailbox.receive_all(Duration::ZERO), vec![2, 3]);
+
+        assert_eq!(mailbox.try_receive_all(), Vec::<u8>::new());
+        mailbox.send(4);
+        mailbox.send(5);
+        assert_eq!(mailbox.try_receive_all(), vec![4, 5]);
 
         assert_eq!(format!("{mailbox:?}"), "Mailbox<u8> { .. }")
     }

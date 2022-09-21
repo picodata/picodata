@@ -57,9 +57,3 @@ impl From<CoercionError> for StorageError {
         StorageError::Other(Box::new(err))
     }
 }
-
-#[derive(Debug, Error)]
-pub enum PoolSendError {
-    #[error("unknown recipient ({0})")]
-    UnknownRecipient(RaftId),
-}
