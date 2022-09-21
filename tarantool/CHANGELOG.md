@@ -24,6 +24,7 @@
     inner structs.
 - `tlua::LuaRead`, `tlua::Push` & `tlua::PushInto` derive macros now support
     new-type style tuple structs: they are treated as the inner type.
+- `impl tlua::PushInto for Tuple`.
 - Doc-comments here and there.
 
 ### Fixed

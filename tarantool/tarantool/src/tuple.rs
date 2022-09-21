@@ -1133,6 +1133,26 @@ where
 {
 }
 
+impl<L> tlua::PushInto<L> for Tuple
+where
+    L: tlua::AsLua,
+{
+    type Err = tlua::Void;
+
+    fn push_into_lua(self, lua: L) -> tlua::PushResult<L, Self> {
+        unsafe {
+            ffi::luaT_pushtuple(tlua::AsLua::as_lua(&lua), self.ptr.as_ptr());
+            Ok(tlua::PushGuard::new(lua, 1))
+        }
+    }
+}
+
+impl<L> tlua::PushOneInto<L> for Tuple
+where
+    L: tlua::AsLua,
+{
+}
+
 impl<L> tlua::LuaRead<L> for Tuple
 where
     L: tlua::AsLua,

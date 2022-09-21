@@ -343,6 +343,13 @@ pub fn to_and_from_lua() {
         b: 69,
     });
 
+    // check PushInto
+    lua.set("to_and_from_lua", Tuple::new(&[420, 69, 1337]).unwrap());
+    let res: Indexable<_> = lua.get("to_and_from_lua").unwrap();
+    assert_eq!(res.get(1), Some(420));
+    assert_eq!(res.get(2), Some(69));
+    assert_eq!(res.get(3), Some(1337));
+
     lua.set("to_and_from_lua", Nil);
 }
 
