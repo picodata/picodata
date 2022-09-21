@@ -297,16 +297,13 @@ impl NodeImpl {
             LogicalClock::new(raft_id, gen)
         };
 
-        let mut pool = ConnectionPool::builder()
+        let peer_storage = Storage::peers_access().clone();
+        let pool = ConnectionPool::builder(peer_storage)
             .handler_name(stringify_cfunc!(raft_interact))
             .call_timeout(Node::TICK * 4)
             .connect_timeout(Node::TICK * 4)
             .inactivity_timeout(Duration::from_secs(60))
             .build();
-
-        for peer in Storage::peers()? {
-            pool.connect(peer.raft_id, peer.peer_address);
-        }
 
         let cfg = raft::Config {
             id: raft_id,
@@ -556,7 +553,6 @@ impl NodeImpl {
         }
 
         if let Some(traft::Op::PersistPeer { peer }) = entry.op() {
-            self.pool.connect(peer.raft_id, peer.peer_address.clone());
             *topology_changed = true;
             if peer.grade == Grade::Expelled && peer.raft_id == self.raft_id() {
                 // cannot exit during a transaction
@@ -661,9 +657,9 @@ impl NodeImpl {
     }
 
     /// Is called during a transaction
-    fn handle_messages(&self, messages: Vec<raft::Message>) {
+    fn handle_messages(&mut self, messages: Vec<raft::Message>) {
         for msg in messages {
-            if let Err(e) = self.pool.send(&msg) {
+            if let Err(e) = self.pool.send(msg) {
                 tlog!(Error, "{e}");
             }
         }
