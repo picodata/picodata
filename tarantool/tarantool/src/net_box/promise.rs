@@ -194,8 +194,11 @@ pub enum State {
 /// or [`Promise::wait_timeout`] methods.
 #[derive(Debug)]
 pub enum TryGet<T, E> {
+    /// Promise was kept successfully.
     Ok(T),
+    /// Promise will never be kept due to an error.
     Err(E),
+    /// Promise yet is unresolved.
     Pending(Promise<T>),
 }
 
@@ -220,6 +223,26 @@ impl<T, E> TryGet<T, E> {
             _ => None,
         }
     }
+
+    /// Converts `self` into a nested [`Result`].
+    ///
+    /// Returns
+    /// - `Ok(Ok(value))` in case of [`TryGet::Ok`]`(value)`.
+    /// - `Ok(Err(error))` in case of [`TryGet::Err`]`(error)`.
+    /// - `Err(promise)` in case of [`TryGet::Pending`]`(promise)`.
+    ///
+    /// This function basically checks if the promise is resolved (`Ok`) or not
+    /// yet (`Err`).
+    ///
+    /// [`Result`]: std::result::Result
+    #[inline(always)]
+    pub fn into_res(self) -> StdResult<StdResult<T, E>, Promise<T>> {
+        match self {
+            Self::Ok(v) => Ok(Ok(v)),
+            Self::Err(e) => Ok(Err(e)),
+            Self::Pending(p) => Err(p),
+        }
+    }
 }
 
 impl<T, E> From<StdResult<T, E>> for TryGet<T, E> {
@@ -228,6 +251,13 @@ impl<T, E> From<StdResult<T, E>> for TryGet<T, E> {
             Ok(v) => Self::Ok(v),
             Err(e) => Self::Err(e),
         }
+    }
+}
+
+impl<T, E> From<TryGet<T, E>> for StdResult<StdResult<T, E>, Promise<T>> {
+    #[inline(always)]
+    fn from(r: TryGet<T, E>) -> Self {
+        r.into_res()
     }
 }
 
