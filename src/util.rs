@@ -1,8 +1,115 @@
+pub use Either::{Left, Right};
+
+////////////////////////////////////////////////////////////////////////////////
+/// A generic enum that contains exactly one of two possible types. Equivalent
+/// to `std::result::Result`, but is more intuitive in some cases.
 #[derive(Debug, PartialEq, Eq, Hash)]
 pub enum Either<L, R> {
     Left(L),
     Right(R),
 }
+
+impl<L, R> Either<L, R> {
+    #[inline(always)]
+    pub fn map_left<F, T>(self, f: F) -> Either<T, R>
+    where
+        F: FnOnce(L) -> T,
+    {
+        match self {
+            Left(l) => Left(f(l)),
+            Right(r) => Right(r),
+        }
+    }
+
+    #[inline(always)]
+    pub fn left(self) -> Option<L> {
+        match self {
+            Left(l) => Some(l),
+            _ => None,
+        }
+    }
+
+    #[inline(always)]
+    pub fn unwrap_left_or(self, default: L) -> L {
+        match self {
+            Left(l) => l,
+            _ => default,
+        }
+    }
+
+    #[inline(always)]
+    pub fn unwrap_left_or_else(self, f: impl FnOnce(R) -> L) -> L {
+        match self {
+            Left(l) => l,
+            Right(r) => f(r),
+        }
+    }
+
+    #[inline(always)]
+    pub fn map_right<F, T>(self, f: F) -> Either<L, T>
+    where
+        F: FnOnce(R) -> T,
+    {
+        match self {
+            Left(l) => Left(l),
+            Right(r) => Right(f(r)),
+        }
+    }
+
+    #[inline(always)]
+    pub fn right(self) -> Option<R> {
+        match self {
+            Right(r) => Some(r),
+            _ => None,
+        }
+    }
+
+    #[inline(always)]
+    pub fn unwrap_right_or(self, default: R) -> R {
+        match self {
+            Right(r) => r,
+            _ => default,
+        }
+    }
+
+    #[inline(always)]
+    pub fn unwrap_right_or_else(self, f: impl FnOnce(L) -> R) -> R {
+        match self {
+            Left(l) => f(l),
+            Right(r) => r,
+        }
+    }
+
+    #[inline(always)]
+    pub fn as_ref(&self) -> Either<&L, &R> {
+        match self {
+            Left(l) => Left(l),
+            Right(r) => Right(r),
+        }
+    }
+}
+
+impl<L, R> From<Result<L, R>> for Either<L, R> {
+    fn from(r: Result<L, R>) -> Self {
+        match r {
+            Ok(l) => Left(l),
+            Err(r) => Right(r),
+        }
+    }
+}
+
+impl<L, R> From<Either<L, R>> for Result<L, R> {
+    fn from(e: Either<L, R>) -> Self {
+        match e {
+            Left(l) => Ok(l),
+            Right(r) => Err(r),
+        }
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// macros
+////////////////////////////////////////////////////////////////////////////////
 
 #[macro_export]
 macro_rules! unwrap_ok_or {
