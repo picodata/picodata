@@ -7,6 +7,7 @@ mod network;
 pub mod node;
 pub mod notify;
 mod raft_storage;
+pub mod rpc;
 pub mod storage;
 pub mod topology;
 

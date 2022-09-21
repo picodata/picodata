@@ -26,7 +26,7 @@ macro_rules! stringify_cfunc {
         use ::tarantool::tuple::FunctionCtx;
         use libc::c_int;
 
-        let _: unsafe extern "C" fn(FunctionCtx, FunctionArgs) -> c_int = $($func_name)+;
+        const _: unsafe extern "C" fn(FunctionCtx, FunctionArgs) -> c_int = $($func_name)+;
         concat!(".", $crate::stringify_last_token!($($func_name)+))
     }};
 }
