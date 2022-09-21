@@ -35,6 +35,15 @@ pub enum Error {
     Other(Box<dyn std::error::Error>),
 }
 
+impl Error {
+    pub fn other<E>(error: E) -> Self
+    where
+        E: Into<Box<dyn std::error::Error>>,
+    {
+        Self::Other(error.into())
+    }
+}
+
 #[derive(Debug, Error)]
 pub enum CoercionError {
     #[error("unknown entry type ({0})")]
