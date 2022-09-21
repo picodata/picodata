@@ -1021,6 +1021,7 @@ fn test_one(t: &InnerTest) {
     let cfg = tarantool::Cfg {
         listen: Some("127.0.0.1:0".into()),
         read_only: false,
+        log_level: ::tarantool::log::SayLevel::Verbose as u8,
         ..Default::default()
     };
 
