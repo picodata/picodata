@@ -716,8 +716,9 @@ impl Encode for MessagePb {}
 
 impl ::std::fmt::Debug for MessagePb {
     fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
-        f.debug_struct(stringify_debug!(MessagePb))
-            .finish_non_exhaustive()
+        f.debug_tuple(stringify_debug!(MessagePb))
+            .field(&self.0)
+            .finish()
     }
 }
 
