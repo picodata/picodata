@@ -297,19 +297,25 @@ impl Peers {
 
     /// Find a peer by `raft_id` and return a single field specified by `F`
     /// (see `PeerFieldDef` & `peer_field` module).
-    #[inline]
-    pub fn field_by_raft_id<F>(&self, raft_id: RaftId) -> Result<F::Type, TraftError>
+    #[inline(always)]
+    #[allow(dead_code)]
+    pub fn peer<F>(&self, id: &impl PeerId) -> Result<F::Type, TraftError>
     where
         F: PeerFieldDef,
     {
-        if raft_id == INVALID_ID {
-            unreachable!("peer_by_raft_id called with invalid id ({})", INVALID_ID);
-        }
+        let res = id.find_in(self)?.decode().expect("failed to decode peer");
+        Ok(res)
+    }
 
-        let res = self
-            .index_raft_id
-            .get(&[raft_id])?
-            .ok_or(TraftError::NoPeerWithRaftId(raft_id))?
+    /// Find a peer by `id` (see `PeerId`) and return a single field
+    /// specified by `F` (see `PeerFieldDef` & `peer_field` module).
+    #[inline(always)]
+    pub fn peer_field<F>(&self, id: &impl PeerId) -> Result<F::Type, TraftError>
+    where
+        F: PeerFieldDef,
+    {
+        let res = id
+            .find_in(self)?
             .get(F::NAME)
             .expect("peer fields are not nullable");
         Ok(res)
@@ -475,6 +481,36 @@ pub trait PeerFieldDef {
     ///
     /// Used for format definition.
     const TYPE: tarantool::space::FieldType;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// PeerId
+////////////////////////////////////////////////////////////////////////////////
+
+/// Types implementing this trait can be used to identify a `Peer` when
+/// accessing storage.
+pub trait PeerId: serde::Serialize {
+    fn find_in(&self, peers: &Peers) -> Result<Tuple, TraftError>;
+}
+
+impl PeerId for RaftId {
+    #[inline(always)]
+    fn find_in(&self, peers: &Peers) -> Result<Tuple, TraftError> {
+        peers
+            .index_raft_id
+            .get(&[self])?
+            .ok_or(TraftError::NoPeerWithRaftId(*self))
+    }
+}
+
+impl PeerId for traft::InstanceId {
+    #[inline(always)]
+    fn find_in(&self, peers: &Peers) -> Result<Tuple, TraftError> {
+        peers
+            .index_instance_id
+            .get(&[self])?
+            .ok_or_else(|| TraftError::NoPeerWithInstanceId(self.clone()))
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
