@@ -218,10 +218,12 @@ impl Node {
         })
     }
 
-    /// Process the topology request and propose [`PersistPeer`] entry if
-    /// appropriate.
+    /// Processes the topology request and appends [`Op::PersistPeer`]
+    /// entry to the raft log (if successful).
     ///
-    /// Returns an error if the callee node isn't a Raft leader.
+    /// Returns the resulting peer when the entry is committed.
+    ///
+    /// Returns an error if the callee node isn't a raft leader.
     ///
     /// **This function yields**
     pub fn handle_topology_request_and_wait(
@@ -403,8 +405,8 @@ impl NodeImpl {
         }
     }
 
-    /// Process the topology request and propose [`PersistPeer`] entry if
-    /// appropriate.
+    /// Processes the topology request and appends [`Op::PersistPeer`]
+    /// entry to the raft log (if successful).
     ///
     /// Returns an error if the callee node isn't a Raft leader.
     ///
@@ -675,6 +677,21 @@ impl NodeImpl {
         }
     }
 
+    /// Processes a so-called "ready state" of the [`raft::RawNode`].
+    ///
+    /// This includes:
+    /// - Sending messages to other instances (raft nodes);
+    /// - Applying committed entries;
+    /// - Persisting uncommitted entries;
+    /// - Persisting hard state (term, vote, commit);
+    /// - Notifying pending fibers;
+    ///
+    /// See also:
+    ///
+    /// - <https://github.com/tikv/raft-rs/blob/v0.6.0/src/raw_node.rs#L85>
+    /// - or better <https://github.com/etcd-io/etcd/blob/v3.5.5/raft/node.go#L49>
+    ///
+    /// This function yields.
     fn advance(
         &mut self,
         status: &RefCell<Status>,
