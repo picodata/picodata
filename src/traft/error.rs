@@ -29,7 +29,7 @@ pub enum Error {
     Tarantool(#[from] ::tarantool::error::Error),
     #[error("peer with id {0} not found")]
     NoPeerWithRaftId(RaftId),
-    #[error(r#"peer with id "{0}" not found"#)]
+    #[error("peer with id {0:?} not found")]
     NoPeerWithInstanceId(InstanceId),
     #[error("other error: {0}")]
     Other(Box<dyn std::error::Error>),

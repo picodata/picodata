@@ -388,12 +388,14 @@ macro_rules! define_peer_fields {
             $(
                 /// Helper struct that represents
                 #[doc = stringify!($name)]
-                /// field of `Peer`.
+                /// field of [`Peer`].
                 ///
                 /// It's rust type is
                 #[doc = concat!("`", stringify!($ty), "`")]
                 /// and it's tarantool type is
                 #[doc = concat!("`", stringify!($tt_ty), "`")]
+                ///
+                /// [`Peer`]: crate::traft::Peer
                 pub struct $field;
 
                 impl PeerFieldDef for $field {
