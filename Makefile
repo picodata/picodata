@@ -1,4 +1,4 @@
-.PHONY: default fmt lint test check fat clean
+.PHONY: default fmt lint test check fat clean benchmark
 
 default: ;
 
@@ -57,3 +57,6 @@ clean:
 	cargo clean || true
 	git submodule foreach --recursive 'git clean -dxf && git reset --hard'
 	find . -type d -name __pycache__ | xargs -n 500 rm -rf
+
+benchmark:
+	pytest test/manual/test_benchmark.py

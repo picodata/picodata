@@ -12,6 +12,7 @@ tarantool = "*"
 funcy = "*"
 mypy = "*"
 pytest-clarity = "*"
+prettytable = "*"
 
 [requires]
 python_version = "3.10"
