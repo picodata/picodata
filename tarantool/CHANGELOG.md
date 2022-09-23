@@ -26,6 +26,7 @@
     new-type style tuple structs: they are treated as the inner type.
 - `impl tlua::PushInto for Tuple`.
 - `net_box::promise::TryGet::into_res` and `From<TryGet<_, _>> for Result<_, _>`.
+- `impl [tlua::LuaRead|tlua::Push|tlua::PushOne] for tlua::Object`.
 - Doc-comments here and there.
 
 ### Fixed

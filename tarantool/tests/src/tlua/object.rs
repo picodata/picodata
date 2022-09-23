@@ -1,4 +1,5 @@
 use tarantool::tlua::{
+    AnyLuaString,
     Call,
     Callable,
     Index,
@@ -149,3 +150,9 @@ pub fn indexable_rw_meta() {
     assert_eq!(i.get(3), None::<String>);
 }
 
+pub fn anything_to_msgpack() {
+    let lua = tarantool::lua_state();
+    let o: Object<_> = lua.eval("return {69, foo='bar'}").unwrap();
+    let mp: AnyLuaString = lua.eval_with("return require'msgpack'.encode(...)", &o).unwrap();
+    assert_eq!(mp.as_bytes(), b"\x82\x01\x45\xa3foo\xa3bar");
+}

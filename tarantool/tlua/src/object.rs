@@ -87,6 +87,49 @@ where
     }
 }
 
+impl<L> LuaRead<L> for Object<L>
+where
+    L: AsLua,
+{
+    fn lua_read_at_position(lua: L, index: NonZeroI32) -> Result<Self, L> {
+        Ok(Self::new(lua, index))
+    }
+}
+
+impl<L, K> Push<L> for Object<K>
+where
+    L: AsLua,
+{
+    type Err = Void;
+    fn push_to_lua(&self, lua: L) -> crate::PushResult<L, Self> {
+        unsafe {
+            crate::ffi::lua_pushvalue(lua.as_lua(), self.index.into());
+            Ok(PushGuard::new(lua, 1))
+        }
+    }
+}
+impl<L> crate::PushOne<L> for Object<L>
+where
+    L: AsLua,
+{}
+
+impl<L, K> PushInto<L> for Object<K>
+where
+    L: AsLua,
+{
+    type Err = Void;
+    fn push_into_lua(self, lua: L) -> crate::PushIntoResult<L, Self> {
+        unsafe {
+            crate::ffi::lua_pushvalue(lua.as_lua(), self.index.into());
+            Ok(PushGuard::new(lua, 1))
+        }
+    }
+}
+impl<L> crate::PushOneInto<L> for Object<L>
+where
+    L: AsLua,
+{}
+
 /// Types implementing this trait represent a single value stored on the lua
 /// stack. Type parameter `L` represents a value guarding the state of the lua
 /// stack (see [`PushGuard`]).

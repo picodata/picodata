@@ -299,6 +299,7 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 tlua::object::cannot_get_mutltiple_values,
                 tlua::object::indexable_rw_builtin,
                 tlua::object::indexable_rw_meta,
+                tlua::object::anything_to_msgpack,
 
                 tlua::userdata::readwrite,
                 tlua::userdata::destructor_called,
