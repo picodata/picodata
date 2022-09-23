@@ -56,6 +56,7 @@ pub struct PoolWorker {
     id: RaftId,
     inbox: Queue,
     fiber: fiber::LuaUnitJoinHandle<'static>,
+    cond: Rc<fiber::Cond>,
     stop_flag: Rc<Cell<bool>>,
     handler_name: &'static str,
 }
@@ -67,6 +68,7 @@ impl PoolWorker {
         let stop_flag = Rc::new(Cell::default());
         let handler_name = opts.handler_name;
         let fiber = fiber::defer_proc({
+            let cond = cond.clone();
             let inbox = inbox.clone();
             let stop_flag = stop_flag.clone();
             move || Self::worker_loop(id, storage, cond, inbox, stop_flag, &opts)
@@ -75,6 +77,7 @@ impl PoolWorker {
         Self {
             id,
             fiber,
+            cond,
             inbox,
             stop_flag,
             handler_name,
@@ -82,7 +85,7 @@ impl PoolWorker {
     }
 
     /// `cond` is a single shared conditional variable that can be signaled by
-    /// `inbox` or `promises`.
+    /// `inbox`, `promises`, or [`Self::stop`].
     fn worker_loop(
         raft_id: RaftId,
         storage: PeerStorage,
@@ -291,6 +294,7 @@ impl PoolWorker {
 
     fn stop(self) {
         self.stop_flag.set(true);
+        self.cond.signal();
         self.fiber.join();
     }
 }
