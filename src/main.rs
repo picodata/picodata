@@ -74,6 +74,12 @@ fn picolib_setup(args: &args::Run) {
         }),
     );
     luamod.set(
+        "raft_propose_nop",
+        tlua::function0(|| {
+            traft::node::global()?.propose_and_wait(traft::Op::Nop, Duration::from_secs(1))
+        }),
+    );
+    luamod.set(
         "raft_propose_info",
         tlua::function1(|x: String| -> Result<(), Error> {
             traft::node::global()?

@@ -390,7 +390,7 @@ class Instance:
         status = self._raft_status()
         assert status.is_ready
         self.raft_id = status.id
-        with self.connect(timeout=1) as conn:
+        with self.connect(timeout=2) as conn:
             self.instance_id = conn.space("raft_state").select(("instance_id",))[0][1]
         eprint(f"{self} is ready")
 
