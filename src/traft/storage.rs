@@ -299,10 +299,7 @@ impl Peers {
     /// (see `PeerFieldDef` & `peer_field` module).
     #[inline(always)]
     #[allow(dead_code)]
-    pub fn peer<F>(&self, id: &impl PeerId) -> Result<F::Type, TraftError>
-    where
-        F: PeerFieldDef,
-    {
+    pub fn get(&self, id: &impl PeerId) -> Result<traft::Peer, TraftError> {
         let res = id.find_in(self)?.decode().expect("failed to decode peer");
         Ok(res)
     }
