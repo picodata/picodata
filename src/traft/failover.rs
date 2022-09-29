@@ -9,8 +9,8 @@ use crate::{stringify_cfunc, tarantool, tlog};
 use crate::traft::error::Error;
 use crate::traft::event;
 use crate::traft::node;
-use crate::traft::Grade;
 use crate::traft::Storage;
+use crate::traft::TargetGrade;
 use crate::traft::{UpdatePeerRequest, UpdatePeerResponse};
 
 pub fn on_shutdown() {
@@ -44,7 +44,8 @@ pub fn on_shutdown() {
         .cluster_id()
         .unwrap()
         .expect("cluster_id must be present");
-    let req = UpdatePeerRequest::new(peer.instance_id, cluster_id).with_grade(Grade::Offline);
+    let req = UpdatePeerRequest::new(peer.instance_id, cluster_id)
+        .with_target_grade(TargetGrade::Offline);
 
     let fn_name = stringify_cfunc!(raft_update_peer);
     // will run until we get successfully deactivate or tarantool shuts down
@@ -108,6 +109,18 @@ fn raft_update_peer(
         }));
     }
 
+    let mut req = req;
+    let instance_id = &*req.instance_id;
+    req.changes.retain(|ch| match ch {
+        super::PeerChange::Grade(grade) => {
+            tlog!(Warning, "attempt to change grade by peer";
+                "instance_id" => instance_id,
+                "grade" => grade.to_str(),
+            );
+            false
+        }
+        _ => true,
+    });
     node.handle_topology_request_and_wait(req.into())?;
     Ok(UpdatePeerResponse {})
 }

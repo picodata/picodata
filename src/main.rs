@@ -19,7 +19,7 @@ use clap::StructOpt as _;
 use protobuf::Message as _;
 
 use crate::traft::InstanceId;
-use crate::traft::{Grade, LogicalClock, RaftIndex, TargetGrade, UpdatePeerRequest};
+use crate::traft::{LogicalClock, RaftIndex, TargetGrade, UpdatePeerRequest};
 use traft::error::Error;
 
 mod app;
@@ -828,7 +828,6 @@ fn postjoin(args: &args::Run, storage: RaftSpaceAccess, peer_storage: PeerStorag
 
         tlog!(Info, "initiating self-activation of {}", peer.instance_id);
         let req = UpdatePeerRequest::new(peer.instance_id, cluster_id)
-            .with_grade(Grade::Online)
             .with_target_grade(TargetGrade::Online)
             .with_failure_domain(args.failure_domain());
 
