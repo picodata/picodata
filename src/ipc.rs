@@ -5,7 +5,7 @@ use serde::ser::Serialize;
 use std::marker::PhantomData;
 
 #[derive(Debug)]
-pub struct Fd(pub libc::c_int);
+pub struct Fd(libc::c_int);
 
 #[derive(Debug)]
 pub struct Sender<T> {

@@ -460,7 +460,7 @@ fn main_run(args: args::Run) -> ! {
                             .func(move || {
                                 use ::tarantool::ffi::tarantool::CoIOFlags;
                                 use ::tarantool::coio::coio_wait;
-                                coio_wait(from_parent.0, CoIOFlags::READ, f64::INFINITY).ok();
+                                coio_wait(*from_parent, CoIOFlags::READ, f64::INFINITY).ok();
                                 tlog!(Warning, "Supervisor terminated, exiting");
                                 std::process::exit(0);
                         });
