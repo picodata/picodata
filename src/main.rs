@@ -506,16 +506,16 @@ fn main_run(args: args::Run) -> ! {
     }
 }
 
-fn init_common(args: &args::Run, cfg: &tarantool::Cfg) -> RaftSpaceAccess {
+fn init_common(args: &args::Run, cfg: &tarantool::Cfg) -> (RaftSpaceAccess, PeerStorage) {
     std::fs::create_dir_all(&args.data_dir).unwrap();
     tarantool::set_cfg(cfg);
 
     let peer_storage = PeerStorage::new().expect("RaftSpaceAccess initialization failed");
-    traft::Storage::init_schema(peer_storage);
+    traft::Storage::init_schema(peer_storage.clone());
     let storage = RaftSpaceAccess::new().expect("RaftSpaceAccess initialization failed");
     init_handlers();
     traft::event::init();
-    storage
+    (storage, peer_storage)
 }
 
 fn start_discover(args: &args::Run, to_supervisor: ipc::Sender<IpcMessage>) {
@@ -535,7 +535,7 @@ fn start_discover(args: &args::Run, to_supervisor: ipc::Sender<IpcMessage>) {
         ..Default::default()
     };
 
-    let storage = init_common(args, &cfg);
+    let (storage, peer_storage) = init_common(args, &cfg);
     discovery::init_global(&args.peers);
 
     cfg.listen = Some(args.listen.clone());
@@ -543,7 +543,7 @@ fn start_discover(args: &args::Run, to_supervisor: ipc::Sender<IpcMessage>) {
 
     // TODO assert traft::Storage::instance_id == (null || args.instance_id)
     if storage.raft_id().unwrap().is_some() {
-        return postjoin(args, storage);
+        return postjoin(args, storage, peer_storage);
     }
 
     let role = discovery::wait_global();
@@ -597,7 +597,7 @@ fn start_boot(args: &args::Run) {
         ..Default::default()
     };
 
-    let mut storage = init_common(args, &cfg);
+    let (mut storage, peer_storage) = init_common(args, &cfg);
 
     start_transaction(|| -> Result<(), TntError> {
         let cs = raft::ConfState {
@@ -677,7 +677,7 @@ fn start_boot(args: &args::Run) {
     })
     .unwrap();
 
-    postjoin(args, storage)
+    postjoin(args, storage, peer_storage)
 }
 
 fn start_join(args: &args::Run, leader_address: String) {
@@ -735,7 +735,7 @@ fn start_join(args: &args::Run, leader_address: String) {
         ..Default::default()
     };
 
-    let mut storage = init_common(args, &cfg);
+    let (mut storage, peer_storage) = init_common(args, &cfg);
 
     let raft_id = resp.peer.raft_id;
     start_transaction(|| -> Result<(), TntError> {
@@ -750,10 +750,10 @@ fn start_join(args: &args::Run, leader_address: String) {
     })
     .unwrap();
 
-    postjoin(args, storage)
+    postjoin(args, storage, peer_storage)
 }
 
-fn postjoin(args: &args::Run, storage: RaftSpaceAccess) {
+fn postjoin(args: &args::Run, storage: RaftSpaceAccess, peer_storage: PeerStorage) {
     tlog!(Info, ">>>>> postjoin()");
 
     let mut box_cfg = tarantool::cfg().unwrap();
@@ -763,7 +763,7 @@ fn postjoin(args: &args::Run, storage: RaftSpaceAccess) {
     box_cfg.replication_connect_quorum = 0;
     tarantool::set_cfg(&box_cfg);
 
-    let node = traft::node::Node::new(storage.clone());
+    let node = traft::node::Node::new(storage.clone(), peer_storage);
     let node = node.expect("failed initializing raft node");
     traft::node::set_global(node);
     let node = traft::node::global().unwrap();
