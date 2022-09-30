@@ -10,11 +10,6 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::time::Duration;
 
-struct Inner<T> {
-    cond: Rc<fiber::Cond>,
-    content: RefCell<Vec<T>>,
-}
-
 /// An inter-fiber communication channel based on `Vec<T>`.
 ///
 /// One can send messages one by one, transferring the ownership.
@@ -53,8 +48,13 @@ struct Inner<T> {
 /// // Won't ever yield.
 /// assert_eq!(mailbox.try_receive_all(), vec![]);
 /// ```
-///
+
 pub struct Mailbox<T>(Rc<Inner<T>>);
+
+struct Inner<T> {
+    cond: Rc<fiber::Cond>,
+    content: RefCell<Vec<T>>,
+}
 
 impl<T> Clone for Mailbox<T> {
     fn clone(&self) -> Self {
