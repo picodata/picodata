@@ -57,6 +57,17 @@ struct Inner<T> {
 }
 
 impl<T> Clone for Mailbox<T> {
+    /// Shares access to the existing mailbox, thereby enabling
+    /// inter-fiber communication. The conent itself isn't cloned.
+    ///
+    /// # Example
+    /// ```
+    /// let original: Mailbox<i32> = Mailbox::new();
+    /// let cloned: Mailbox<i32> = original.clone();
+    /// cloned.send(55);
+    /// assert_eq!(original.try_receive_all(), vec![55]);
+    /// ```
+    ///
     fn clone(&self) -> Self {
         Self(self.0.clone())
     }
