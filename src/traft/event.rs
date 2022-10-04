@@ -82,6 +82,15 @@ impl Events {
     }
 }
 
+/// Result returned from [`wait_timeout`]. Specifies whether the call resulted
+/// in a signal or a timeout.
+pub enum WaitTimeout {
+    /// Event was signaled.
+    Signal,
+    /// Timeout exceeded before event could be signaled.
+    Timeout,
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // functions
 
@@ -89,23 +98,26 @@ impl Events {
 /// Waits for the event to happen or timeout to end.
 ///
 /// Returns an error if the `EVENTS` is uninitialized.
-pub fn wait_timeout(event: Event, timeout: Duration) -> Result<(), Error> {
+pub fn wait_timeout(event: Event, timeout: Duration) -> Result<WaitTimeout, Error> {
     let mut events = events()?;
     let cond = events.regular_cond(event);
     // events must be released before yielding
     drop(events);
-    if cond.wait_timeout(timeout) {
-        Ok(())
+    Ok(if cond.wait_timeout(timeout) {
+        WaitTimeout::Signal
     } else {
-        Err(Error::Timeout)
-    }
+        WaitTimeout::Timeout
+    })
 }
 
 /// Waits for the event to happen.
 ///
 /// Returns an error if the `EVENTS` is uninitialized.
 pub fn wait(event: Event) -> Result<(), Error> {
-    wait_timeout(event, Duration::MAX)
+    match wait_timeout(event, Duration::MAX)? {
+        WaitTimeout::Signal => Ok(()),
+        WaitTimeout::Timeout => Err(Error::Timeout),
+    }
 }
 
 #[allow(dead_code)]
