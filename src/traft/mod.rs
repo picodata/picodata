@@ -456,6 +456,10 @@ impl Peer {
     pub fn is_active(&self) -> bool {
         matches!(self.grade, Grade::Online)
     }
+
+    pub fn has_grades(&self, current: Grade, target: TargetGrade) -> bool {
+        self.grade == current && self.target_grade == target
+    }
 }
 
 impl std::fmt::Display for Peer {
@@ -822,6 +826,12 @@ pub struct SyncRaftRequest {
     pub timeout: Duration,
 }
 impl Encode for SyncRaftRequest {}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SyncRaftResponse {
+    pub commit: u64,
+}
+impl Encode for SyncRaftResponse {}
 
 ///////////////////////////////////////////////////////////////////////////////
 /// Activity state of an instance.

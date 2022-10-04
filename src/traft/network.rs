@@ -282,7 +282,7 @@ impl PoolWorker {
         );
         let convert_result = |bytes| {
             let bytes: RawByteBuf = bytes?;
-            let res = Decode::decode(&bytes)?;
+            let ((res,),) = Decode::decode(&bytes)?;
             Ok(res)
         };
         self.inbox.send((

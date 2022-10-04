@@ -2,6 +2,8 @@ use ::tarantool::tuple::{DecodeOwned, Encode};
 
 use std::fmt::Debug;
 
+use serde::de::DeserializeOwned;
+
 /// Types implementing this trait represent an RPC's (remote procedure call)
 /// arguments. This trait contains information about the request.
 pub trait Request: Encode + DecodeOwned {
@@ -9,7 +11,7 @@ pub trait Request: Encode + DecodeOwned {
     const PROC_NAME: &'static str;
 
     /// Describes data returned from a successful RPC request.
-    type Response: Encode + DecodeOwned + Debug + 'static;
+    type Response: Encode + DeserializeOwned + Debug + 'static;
 }
 
 impl Request for super::JoinRequest {
@@ -29,5 +31,5 @@ impl Request for super::ExpelRequest {
 
 impl Request for super::SyncRaftRequest {
     const PROC_NAME: &'static str = crate::stringify_cfunc!(super::node::raft_sync_raft);
-    type Response = ();
+    type Response = super::SyncRaftResponse;
 }
