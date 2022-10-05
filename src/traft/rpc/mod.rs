@@ -4,6 +4,8 @@ use std::fmt::Debug;
 
 use serde::de::DeserializeOwned;
 
+pub mod replication;
+
 /// Types implementing this trait represent an RPC's (remote procedure call)
 /// arguments. This trait contains information about the request.
 pub trait Request: Encode + DecodeOwned {

@@ -23,6 +23,12 @@ pub enum Error {
         instance_cluster_id: String,
         cluster_cluster_id: String,
     },
+    /// Peer was requested to configure replication with different replicaset.
+    #[error("cannot replicate with different replicaset: expected {instance_rsid:?}, requested {requested_rsid:?}")]
+    ReplicasetIdMismatch {
+        instance_rsid: String,
+        requested_rsid: String,
+    },
     #[error("error during execution of lua code: {0}")]
     Lua(#[from] LuaError),
     #[error("{0}")]

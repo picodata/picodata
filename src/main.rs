@@ -297,6 +297,7 @@ fn init_handlers() {
     declare_cfunc!(traft::node::raft_expel);
     declare_cfunc!(traft::node::raft_sync_raft);
     declare_cfunc!(traft::failover::raft_update_peer);
+    declare_cfunc!(traft::rpc::replication::proc_replication);
 }
 
 fn rm_tarantool_files(data_dir: &str) {
