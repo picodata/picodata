@@ -311,10 +311,8 @@ impl Peers {
     where
         F: PeerFieldDef,
     {
-        let res = id
-            .find_in(self)?
-            .get(F::NAME)
-            .expect("peer fields are not nullable");
+        let tuple = id.find_in(self)?;
+        let res = F::get_in(&tuple)?;
         Ok(res)
     }
 
@@ -348,18 +346,18 @@ impl Peers {
             .index_replicaset_id
             .select(IteratorType::GE, &[replicaset_id])?;
         for tuple in iter {
-            let cur_replicaset_id: &str = tuple.get(PeerField::ReplicasetId).unwrap();
+            let cur_replicaset_id: &str = tuple.get(peer_field::ReplicasetId).unwrap();
             if cur_replicaset_id != replicaset_id {
                 // In Tarantool the iteration must be interrupted explicitly.
                 break;
             }
 
-            let commit_index: RaftIndex = tuple.get(PeerField::CommitIndex).unwrap();
+            let commit_index: RaftIndex = tuple.get(peer_field::CommitIndex).unwrap();
             if matches!(max_index, Some(idx) if commit_index > idx) {
                 break;
             }
 
-            ret.push(tuple.get(PeerField::PeerAddress).unwrap());
+            ret.push(tuple.get(peer_field::PeerAddress).unwrap());
         }
         Ok(ret)
     }
@@ -397,21 +395,23 @@ macro_rules! define_peer_fields {
 
                 impl PeerFieldDef for $field {
                     type Type = $ty;
-                    const NAME: &'static str = $name;
-                    const TYPE: ::tarantool::space::FieldType = $tt_ty;
+
+                    fn get_in(tuple: &Tuple) -> tarantool::Result<Self::Type> {
+                        Ok(tuple.try_get($name)?.expect("peer fields aren't nullable"))
+                    }
                 }
 
                 impl From<$field> for ::tarantool::index::Part {
                     #[inline(always)]
                     fn from(_: $field) -> ::tarantool::index::Part {
-                        $field::NAME.into()
+                        $name.into()
                     }
                 }
 
                 impl From<$field> for ::tarantool::space::Field {
                     #[inline(always)]
                     fn from(_: $field) -> ::tarantool::space::Field {
-                        ($field::NAME, $field::TYPE).into()
+                        ($name, $tt_ty).into()
                     }
                 }
 
@@ -421,7 +421,7 @@ macro_rules! define_peer_fields {
                     where
                         T: ::tarantool::tuple::Decode<'a>,
                     {
-                        Self::NAME.get_field(tuple)
+                        $name.get_field(tuple)
                     }
                 }
             )+
@@ -471,15 +471,35 @@ pub trait PeerFieldDef {
     /// Used when decoding the field.
     type Type: tarantool::tuple::DecodeOwned;
 
-    /// Field name in the format of the space.
-    ///
-    /// Used for accessing the field.
-    const NAME: &'static str;
+    /// Get the field in `tuple`.
+    fn get_in(tuple: &Tuple) -> tarantool::Result<Self::Type>;
+}
 
-    /// Tarantool type of the field in the format of the space.
-    ///
-    /// Used for format definition.
-    const TYPE: tarantool::space::FieldType;
+macro_rules! define_peer_field_def_for_tuples {
+    () => {};
+    ($h:ident $($t:ident)*) => {
+        impl<$h, $($t),*> PeerFieldDef for ($h, $($t),*)
+        where
+            $h: PeerFieldDef,
+            $h::Type: serde::de::DeserializeOwned,
+            $(
+                $t: PeerFieldDef,
+                $t::Type: serde::de::DeserializeOwned,
+            )*
+        {
+            type Type = ($h::Type, $($t::Type),*);
+
+            fn get_in(tuple: &Tuple) -> tarantool::Result<Self::Type> {
+                Ok(($h::get_in(&tuple)?, $($t::get_in(&tuple)?,)*))
+            }
+        }
+
+        define_peer_field_def_for_tuples!{ $($t)* }
+    };
+}
+
+define_peer_field_def_for_tuples! {
+    T0 T1 T2 T3 T4 T5 T6 T7 T8 T9 T10 T11 T12 T13 T14 T15
 }
 
 ////////////////////////////////////////////////////////////////////////////////
