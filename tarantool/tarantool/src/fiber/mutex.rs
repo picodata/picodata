@@ -6,12 +6,17 @@ use std::{
 
 use crate::fiber::{Latch, LatchGuard};
 
+#[cfg(debug_assertions)]
+use std::{cell::Cell, panic::Location};
+
 ////////////////////////////////////////////////////////////////////////////////
 // Mutex
 ////////////////////////////////////////////////////////////////////////////////
 
 pub struct Mutex<T: ?Sized> {
     latch: Latch,
+    #[cfg(debug_assertions)]
+    lock_location: Cell<Option<&'static Location<'static>>>,
     data: UnsafeCell<T>,
 }
 
@@ -31,6 +36,8 @@ impl<T: ?Sized> Mutex<T> {
     {
         Mutex {
             latch: Latch::new(),
+            #[cfg(debug_assertions)]
+            lock_location: Cell::default(),
             data: UnsafeCell::new(t),
         }
     }
@@ -63,10 +70,18 @@ impl<T: ?Sized> Mutex<T> {
     /// }).join();
     /// assert_eq!(*mutex.lock(), 10);
     /// ```
+    #[track_caller]
     pub fn lock(&self) -> MutexGuard<'_, T> {
-        unsafe {
-            MutexGuard::new(self, self.latch.lock())
-        }
+        #[cfg(debug_assertions)]
+        let guard = self.latch.try_lock().unwrap_or_else(|| {
+            self.log_lock_location();
+            self.latch.lock()
+        });
+
+        #[cfg(not(debug_assertions))]
+        let guard = self.latch.lock();
+
+        unsafe { MutexGuard::new(self, guard) }
     }
 
     /// Attempts to acquire this lock.
@@ -101,9 +116,15 @@ impl<T: ?Sized> Mutex<T> {
     /// }).join();
     /// assert_eq!(*mutex.lock(), 10);
     /// ```
+    #[track_caller]
     pub fn try_lock(&self) -> Option<MutexGuard<'_, T>> {
-        unsafe {
-            self.latch.try_lock().map(|guard| MutexGuard::new(self, guard))
+        match self.latch.try_lock() {
+            Some(guard) => unsafe { Some(MutexGuard::new(self, guard)) }
+            None => {
+                #[cfg(debug_assertions)]
+                self.log_lock_location();
+                None
+            }
         }
     }
 
@@ -159,6 +180,20 @@ impl<T: ?Sized> Mutex<T> {
     pub fn get_mut(&mut self) -> &mut T {
         self.data.get_mut()
     }
+
+    #[cfg(debug_assertions)]
+    #[inline]
+    fn log_lock_location(&self) {
+        use std::borrow::Cow;
+        use crate::log::{say, SayLevel};
+
+        let msg: Cow<str> = if let Some(loc) = self.lock_location.get() {
+            format!("mutex was locked at {loc}").into()
+        } else {
+            "mutex was locked at unknown location".into()
+        };
+        say(SayLevel::Verbose, std::file!(), std::line!() as _, None, &msg);
+    }
 }
 
 impl<T> From<T> for Mutex<T> {
@@ -183,6 +218,21 @@ impl<T: ?Sized + fmt::Debug> fmt::Debug for Mutex<T> {
             Some(guard) => {
                 d.field("data", &&*guard);
             }
+            #[cfg(debug_assertions)]
+            None => {
+                struct LockedPlaceholder(Option<&'static Location<'static>>);
+                impl fmt::Debug for LockedPlaceholder {
+                    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                        if let Some(loc) = self.0 {
+                            write!(f, "<locked at {loc}>")
+                        } else {
+                            f.write_str("<locked>")
+                        }
+                    }
+                }
+                d.field("data", &LockedPlaceholder(self.lock_location.get()));
+            }
+            #[cfg(not(debug_assertions))]
             None => {
                 struct LockedPlaceholder;
                 impl fmt::Debug for LockedPlaceholder {
@@ -207,8 +257,18 @@ pub struct MutexGuard<'a, T: ?Sized + 'a> {
 }
 
 impl<'mutex, T: ?Sized> MutexGuard<'mutex, T> {
+    #[track_caller]
     unsafe fn new(lock: &'mutex Mutex<T>, _latch_guard: LatchGuard) -> Self {
+        #[cfg(debug_assertions)]
+        lock.lock_location.set(Some(Location::caller()));
         Self { lock, _latch_guard }
+    }
+}
+
+impl<'a, T: ?Sized + 'a> Drop for MutexGuard<'a, T> {
+    fn drop(&mut self) {
+        #[cfg(debug_assertions)]
+        self.lock.lock_location.set(None);
     }
 }
 

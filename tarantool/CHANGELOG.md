@@ -27,6 +27,8 @@
 - `impl tlua::PushInto for Tuple`.
 - `net_box::promise::TryGet::into_res` and `From<TryGet<_, _>> for Result<_, _>`.
 - `impl [tlua::LuaRead|tlua::Push|tlua::PushOne] for tlua::Object`.
+- `fiber::Mutex`'s methods `lock` & `try_lock` now will log the location of
+    last successful lock when built with `debug_assertions`.
 - Doc-comments here and there.
 - `tests/test.sh` now supports `TARANTOOL_MODULE_BUILD_MODE` environment
     variable to select which build mode is tested (debug, release, etc.)

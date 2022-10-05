@@ -31,7 +31,8 @@ pub fn debug() {
     let m = Mutex::new(0);
     let mut guard = m.lock();
     let s = start(|| format!("{:?}", m)).join();
-    assert_eq!(s, "Mutex { data: <locked>, .. }");
+    assert_eq!(&s[..21], "Mutex { data: <locked");
+    assert_eq!(&s[s.len()-7..], ">, .. }");
     *guard = 13;
     Mutex::unlock(guard);
     let s = start(|| format!("{:?}", m)).join();
