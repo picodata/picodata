@@ -164,7 +164,6 @@ pub mod net_box;
 #[doc(hidden)]
 pub mod msgpack;
 pub mod proc;
-pub mod raft;
 pub mod schema;
 pub mod sequence;
 pub mod session;

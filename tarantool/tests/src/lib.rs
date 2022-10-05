@@ -28,7 +28,6 @@ mod fiber;
 mod latch;
 mod log;
 mod net_box;
-mod raft;
 mod session;
 mod transaction;
 mod tuple;
@@ -543,8 +542,6 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 net_box::execute,
                 session::uid,
                 session::euid,
-                raft::bootstrap_solo,
-                raft::bootstrap_2n,
 
                 proc::simple,
                 proc::return_tuple,

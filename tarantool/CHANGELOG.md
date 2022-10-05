@@ -40,6 +40,10 @@
     variable to select which build mode is tested (debug, release, etc.)
 - `fiber::r#yield` function for yielding fibers likewise tarantool LUA api.
 
+### Removed
+
+- `raft` cfg feature that wasn't finished an will never be.
+
 ### Fixed
 - `TupleBuffer` no longer copies data into tarantool's transaction memory pool
     in `TupleBuffer::from_vec_unchecked`, which previously would result in a use
