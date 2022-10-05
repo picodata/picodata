@@ -71,11 +71,19 @@ function target_dir()
     return _target_dir
 end
 
+function build_mode()
+    local build_mode_env = os.getenv('TARANTOOL_MODULE_BUILD_MODE')
+    if not build_mode_env then
+        build_mode_env = 'debug'
+    end
+    return build_mode_env
+end
+
 -- Add test runner library location to lua search path
 package.cpath = string.format(
-    '%s/debug/?.so;%s/debug/?.dylib;%s',
-    target_dir(),
-    target_dir(),
+    '%s/%s/?.so;%s/%s/?.dylib;%s',
+    target_dir(), build_mode(),
+    target_dir(), build_mode(),
     package.cpath
 )
 

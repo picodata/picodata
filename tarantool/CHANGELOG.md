@@ -28,6 +28,8 @@
 - `net_box::promise::TryGet::into_res` and `From<TryGet<_, _>> for Result<_, _>`.
 - `impl [tlua::LuaRead|tlua::Push|tlua::PushOne] for tlua::Object`.
 - Doc-comments here and there.
+- `tests/test.sh` now supports `TARANTOOL_MODULE_BUILD_MODE` environment
+    variable to select which build mode is tested (debug, release, etc.)
 
 ### Fixed
 - `TupleBuffer` no longer copies data into tarantool's transaction memory pool
