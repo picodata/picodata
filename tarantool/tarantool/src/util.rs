@@ -158,3 +158,26 @@ macro_rules! unwrap_ok_or {
         }
     }
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// DisplayAsHexBytes
+////////////////////////////////////////////////////////////////////////////////
+
+/// A wrapper for displaying byte slices as hexadecimal byte slice literals.
+/// ```
+/// # use tarantool::util::DisplayAsHexBytes;
+/// let s = format!("{}", DisplayAsHexBytes(&[1, 2, 3]));
+/// assert_eq!(s, r#"b"\x01\x02\x03""#);
+/// ```
+pub struct DisplayAsHexBytes<'a>(pub &'a [u8]);
+
+impl std::fmt::Display for DisplayAsHexBytes<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "b\"")?;
+        for byte in self.0 {
+            write!(f, "\\x{byte:02x}")?;
+        }
+        write!(f, "\"")?;
+        Ok(())
+    }
+}

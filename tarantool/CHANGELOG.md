@@ -28,6 +28,10 @@ and support of the `fiber_clock` API.
 - `fiber::time` and `fiber::time64` returning non-monotonic time removed. If
     calendar time is needed, use `std::time::SystemTime`.
 - `fiber::clock64` removed in favor of a new `Instant` based `fiber::clock` API
+- `Error::Decode` now contains expected rust type and actual incorrect msgpack
+    contents.
+- `sql::Statement::execute` now returns `Error::DecodeRmpValue`.
+
 
 
 # [1.1.0] June 16 2023
