@@ -168,6 +168,15 @@ pub fn exec(code: &str) -> Result<(), LuaError> {
     l.exec(code)
 }
 
+#[track_caller]
+pub fn eval<T>(code: &str) -> Result<T, LuaError>
+where
+    T: for<'l> LuaRead<PushGuard<LuaFunction<PushGuard<&'l LuaThread>>>>,
+{
+    let l = lua_state();
+    l.eval(code)
+}
+
 // fn net_box_repeat_call_until_succeed<Args, Res, Addr>(
 pub fn net_box_call<Args, Res, Addr>(
     address: Addr,
