@@ -5,7 +5,7 @@ use std::time::Instant;
 use ::tarantool::fiber;
 use ::tarantool::lua_state;
 use ::tarantool::net_box;
-use ::tarantool::tlua::{self, LuaError, LuaFunction, LuaTable};
+use ::tarantool::tlua::{self, LuaError, LuaFunction, LuaRead, LuaTable, LuaThread, PushGuard};
 pub use ::tarantool::trigger::on_shutdown;
 use ::tarantool::tuple::ToTupleBuffer;
 
@@ -160,6 +160,33 @@ pub fn set_cfg(cfg: &Cfg) {
     let l = lua_state();
     let box_cfg = LuaFunction::load(l, "return box.cfg(...)").unwrap();
     box_cfg.call_with_args(cfg).unwrap()
+}
+
+#[allow(dead_code)]
+pub fn cfg_field<T>(field: &str) -> Option<T>
+where
+    T: LuaRead<PushGuard<LuaTable<PushGuard<LuaTable<PushGuard<LuaThread>>>>>>,
+{
+    let l = lua_state();
+    let b: LuaTable<_> = l.into_get("box").ok()?;
+    let cfg: LuaTable<_> = b.into_get("cfg").ok()?;
+    cfg.into_get(field).ok()
+}
+
+pub fn set_cfg_field<T>(field: &str, value: T) -> Result<(), tlua::LuaError>
+where
+    T: tlua::PushOneInto<tlua::LuaState>,
+    tlua::Void: From<T::Err>,
+{
+    use tlua::{Call, CallError};
+
+    let l = lua_state();
+    let b: LuaTable<_> = l.get("box").expect("can't fail under tarantool");
+    let cfg: tlua::Callable<_> = b.get("cfg").expect("can't fail under tarantool");
+    cfg.call_with([(field, value)]).map_err(|e| match e {
+        CallError::PushError(_) => unreachable!("cannot fail during push"),
+        CallError::LuaError(e) => e,
+    })
 }
 
 #[track_caller]
