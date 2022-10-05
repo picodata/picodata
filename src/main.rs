@@ -283,7 +283,7 @@ fn picolib_setup(args: &args::Run) {
 }
 
 fn init_handlers() {
-    tarantool::eval(
+    tarantool::exec(
         r#"
         box.schema.user.grant('guest', 'super', nil, nil, {if_not_exists = true})
         "#,
@@ -1033,7 +1033,7 @@ fn test_one(t: &InnerTest) {
 
     tarantool::set_cfg(&cfg);
     traft::Storage::init_schema(traft::PeerStorage::new().unwrap());
-    tarantool::eval(
+    tarantool::exec(
         r#"
         box.schema.user.grant('guest', 'super', nil, nil, {if_not_exists = true})
         "#,

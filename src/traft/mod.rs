@@ -271,7 +271,7 @@ pub struct OpEvalLua {
 impl OpResult for OpEvalLua {
     type Result = Result<(), LuaError>;
     fn result(&self) -> Self::Result {
-        crate::tarantool::eval(&self.code)
+        crate::tarantool::exec(&self.code)
     }
 }
 

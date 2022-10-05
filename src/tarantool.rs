@@ -44,7 +44,7 @@ macro_rules! declare_cfunc {
         fn used(_: unsafe extern "C" fn(FunctionCtx, FunctionArgs) -> c_int) {}
 
         used($($func_name)+);
-        $crate::tarantool::eval(concat!(
+        $crate::tarantool::exec(concat!(
             "box.schema.func.create('.",
             $crate::stringify_last_token!($($func_name)+),
             "', {
@@ -163,7 +163,7 @@ pub fn set_cfg(cfg: &Cfg) {
 }
 
 #[track_caller]
-pub fn eval(code: &str) -> Result<(), LuaError> {
+pub fn exec(code: &str) -> Result<(), LuaError> {
     let l = lua_state();
     l.exec(code)
 }
