@@ -28,6 +28,7 @@ end
 local port = free_port()
 
 box.cfg{
+    log_level = 'verbose',
     listen = port,
     wal_mode = 'none',
     memtx_dir = tmpdir,
