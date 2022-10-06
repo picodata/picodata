@@ -876,14 +876,6 @@ impl MainLoop {
 
         if topology_changed {
             event::broadcast(Event::TopologyChanged);
-            if let Some(peer) = traft::Storage::peer_by_raft_id(node_impl.raw_node.raft.id).unwrap()
-            {
-                let mut box_cfg = crate::tarantool::cfg().unwrap();
-                assert_eq!(box_cfg.replication_connect_quorum, 0);
-                box_cfg.replication =
-                    traft::Storage::box_replication(&peer.replicaset_id, None).unwrap();
-                crate::tarantool::set_cfg(&box_cfg);
-            }
         }
 
         FlowControl::Continue

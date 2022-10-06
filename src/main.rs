@@ -814,10 +814,6 @@ fn postjoin(args: &args::Run, storage: RaftSpaceAccess, peer_storage: PeerStorag
         tlog!(Error, "failed setting on_shutdown trigger: {e}");
     }
 
-    let peer = traft::Storage::peer_by_raft_id(raft_id).unwrap().unwrap();
-    box_cfg.replication = traft::Storage::box_replication(&peer.replicaset_id, None).unwrap();
-    tarantool::set_cfg(&box_cfg);
-
     loop {
         let peer = traft::Storage::peer_by_raft_id(raft_id)
             .unwrap()
