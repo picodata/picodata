@@ -315,9 +315,23 @@ class Instance:
             self.command,
             env=env or None,
             stdin=subprocess.DEVNULL,
-            start_new_session=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
+            # Picodata instance consists of two processes: a supervisor
+            # and a child. Pytest manages it at the level of linux
+            # process groups that is a collection of related processes
+            # which can all be signalled at once.
+            #
+            # According to `man 2 kill`:
+            # > If `pid` is less than -1, then `sig` is sent to every
+            # > process in the process group whose ID is `-pid`.
+            #
+            # For `os.killpg()` to work properly (killing this
+            # particular instance and not others) we want each instance
+            # to form it's own process group. The easiest way to
+            # accomplish it is to start a new session. With this flag
+            # pytest implicitly calls `setsid()`.
+            start_new_session=True,
         )
 
         for src, out in [
@@ -563,7 +577,6 @@ class Cluster:
         subprocess.Popen(
             command,
             stdin=subprocess.DEVNULL,
-            start_new_session=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
