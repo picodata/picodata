@@ -841,6 +841,8 @@ crate::define_str_enum! {
         Offline = "Offline",
         // Instance has synced by commit index.
         RaftSynced = "RaftSynced",
+        // Instance has configured replication.
+        Replicated = "Replicated",
         // Instance is active and is handling requests.
         Online = "Online",
         // Instance has permanently removed from cluster.

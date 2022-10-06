@@ -361,6 +361,16 @@ impl Peers {
         }
         Ok(ret)
     }
+
+    pub fn replicaset_fields<T>(&self, replicaset_id: &str) -> tarantool::Result<Vec<T::Type>>
+    where
+        T: PeerFieldDef,
+    {
+        self.index_replicaset_id
+            .select(IteratorType::Eq, &[replicaset_id])?
+            .map(|tuple| T::get_in(&tuple))
+            .collect()
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////

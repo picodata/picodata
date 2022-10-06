@@ -34,8 +34,8 @@ use crate::traft::Peer;
 use crate::traft::RaftId;
 use crate::traft::RaftIndex;
 use crate::traft::RaftTerm;
-use crate::unwrap_some_or;
 use crate::warn_or_panic;
+use crate::{unwrap_ok_or, unwrap_some_or};
 use ::tarantool::util::IntoClones as _;
 use protobuf::Message as _;
 use std::iter::FromIterator as _;
@@ -47,6 +47,8 @@ use crate::traft::event;
 use crate::traft::event::Event;
 use crate::traft::failover;
 use crate::traft::notify::Notify;
+use crate::traft::rpc::replication;
+use crate::traft::storage::peer_field;
 use crate::traft::ConnectionPool;
 use crate::traft::LogicalClock;
 use crate::traft::Op;
@@ -1101,7 +1103,95 @@ fn raft_conf_change_loop(
 
         ////////////////////////////////////////////////////////////////////////
         // replication
-        // TODO
+        let to_replicate = peers
+            .iter()
+            .find(|peer| peer.has_grades(Grade::RaftSynced, TargetGrade::Online));
+        if let Some(peer) = to_replicate {
+            let replicaset_id = &peer.replicaset_id;
+            let replicaset_iids = unwrap_ok_or!(
+                peer_storage.replicaset_fields::<peer_field::InstanceId>(replicaset_id),
+                Err(e) => {
+                    tlog!(Warning, "failed reading replicaset instances: {e}";
+                        "replicaset_id" => replicaset_id,
+                    );
+
+                    // TODO: don't hard code timeout
+                    event::wait_timeout(Event::TopologyChanged, Duration::from_millis(300))
+                        .unwrap();
+                    continue;
+                }
+            );
+
+            // TODO: this crap is only needed to wait until results of all
+            // the calls are ready. There are several ways to rafactor this:
+            // - we could use a std-style channel that unblocks the reading end
+            //   once all the writing ends have dropped
+            //   (fiber::Channel cannot do that for now)
+            // - using the std Futures we could use futures::join!
+            //
+            // Those things aren't implemented yet, so this is what we do
+            static mut SENT_COUNT: usize = 0;
+            unsafe { SENT_COUNT = 0 };
+            let (cond_rx, cond_tx) = Rc::new(fiber::Cond::new()).into_clones();
+            let replicaset_size = replicaset_iids.len();
+            let (rx, tx) = fiber::Channel::new(replicaset_size as _).into_clones();
+            for peer_instance_id in &replicaset_iids {
+                let tx = tx.clone();
+                let cond_tx = cond_tx.clone();
+                let peer_iid = peer_instance_id.clone();
+                pool.call(
+                    peer_instance_id,
+                    replication::Request {
+                        replicaset_instances: replicaset_iids.clone(),
+                        replicaset_id: replicaset_id.clone(),
+                    },
+                    move |res| {
+                        tx.send((peer_iid, res)).expect("mustn't fail");
+                        unsafe { SENT_COUNT += 1 };
+                        if unsafe { SENT_COUNT } == replicaset_size {
+                            cond_tx.signal()
+                        }
+                    },
+                )
+                .expect("shouldn't fail");
+            }
+            // TODO: don't hard code timeout
+            if !cond_rx.wait_timeout(Duration::from_secs(3)) {
+                tlog!(Warning, "failed to configure replication: timed out");
+                continue;
+            }
+
+            let cluster_id = node.storage.cluster_id().unwrap().unwrap();
+            for (peer_iid, resp) in rx.into_iter().take(replicaset_size) {
+                let cluster_id = cluster_id.clone();
+                let peer_iid_2 = peer_iid.clone();
+                let res = resp.and_then(move |replication::Response { lsn }| {
+                    let req = UpdatePeerRequest::new(peer_iid_2, cluster_id)
+                        .with_grade(Grade::Replicated);
+                    node.handle_topology_request_and_wait(req.into())
+                        .map(|_| lsn)
+                });
+                match res {
+                    Ok(lsn) => {
+                        // TODO: change `Info` to `Debug`
+                        tlog!(Info, "configured replication with peer";
+                            "instance_id" => &*peer_iid,
+                            "lsn" => lsn,
+                        );
+                    }
+                    Err(e) => {
+                        tlog!(Warning, "failed to configure replication: {e}";
+                            "instance_id" => &*peer_iid,
+                        );
+                        continue;
+                    }
+                }
+            }
+
+            tlog!(Info, "configured replication"; "replicaset_id" => replicaset_id);
+
+            continue;
+        }
 
         ////////////////////////////////////////////////////////////////////////
         // sharding
@@ -1109,7 +1199,7 @@ fn raft_conf_change_loop(
 
         let to_online = peers
             .iter()
-            .find(|peer| peer.has_grades(Grade::RaftSynced, TargetGrade::Online));
+            .find(|peer| peer.has_grades(Grade::Replicated, TargetGrade::Online));
         if let Some(peer) = to_online {
             let instance_id = peer.instance_id.clone();
             let cluster_id = node.storage.cluster_id().unwrap().unwrap();
