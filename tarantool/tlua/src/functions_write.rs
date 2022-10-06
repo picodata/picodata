@@ -396,6 +396,7 @@ where
 }
 
 /// See [`AsLua::pcall`].
+#[track_caller]
 pub fn protected_call<L, F, R>(lua: L, f: F) -> Result<R, LuaError>
 where
     L: AsLua,

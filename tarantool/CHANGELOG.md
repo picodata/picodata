@@ -29,6 +29,7 @@
 - `impl [tlua::LuaRead|tlua::Push|tlua::PushOne] for tlua::Object`.
 - `fiber::Mutex`'s methods `lock` & `try_lock` now will log the location of
     last successful lock when built with `debug_assertions`.
+- `#[track_caller]` added to tlua functions that can panic.
 - Doc-comments here and there.
 - `tests/test.sh` now supports `TARANTOOL_MODULE_BUILD_MODE` environment
     variable to select which build mode is tested (debug, release, etc.)

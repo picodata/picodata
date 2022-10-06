@@ -498,6 +498,7 @@ pub trait AsLua {
     ///
     /// This can also be sometimes used to catch other C++ exceptions although
     /// be careful with that.
+    #[track_caller]
     #[inline(always)]
     fn pcall<F, R>(&self, f: F) -> Result<R, LuaError>
     where
@@ -849,6 +850,7 @@ impl TempLua {
     ///
     /// The function panics if the underlying call to `lua_newstate` fails
     /// (which indicates lack of memory).
+    #[track_caller]
     #[inline]
     pub fn new() -> Self {
         let lua = unsafe { ffi::luaL_newstate() };

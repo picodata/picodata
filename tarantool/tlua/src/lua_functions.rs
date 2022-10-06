@@ -231,6 +231,7 @@ where
     /// returns an error), or if the requested return type doesn't match the actual return type.
     ///
     /// > **Note**: In order to pass parameters, see `call_with_args` instead.
+    #[track_caller]
     #[inline]
     pub fn call<V>(&'lua self) -> Result<V, LuaError>
     where
@@ -249,6 +250,7 @@ where
     ///
     /// > **Note**: In order to pass parameters, see `into_call_with_args`
     /// instead.
+    #[track_caller]
     #[inline]
     pub fn into_call<V>(self) -> Result<V, LuaError>
     where
@@ -305,6 +307,7 @@ where
     /// let excess_results: (i32, i32, Option<i32>) = foo.call_with_args((18, 4)).unwrap();
     /// assert_eq!(excess_results, (4, 2, None));
     /// ```
+    #[track_caller]
     #[inline]
     pub fn call_with_args<V, A>(&'lua self, args: A) -> Result<V, CallError<A::Err>>
     where
@@ -357,6 +360,7 @@ where
     /// let all_result: (i32, i32) = foo.into_call_with_args((18, 4)).unwrap();
     /// assert_eq!(all_result, (4, 2));
     /// ```
+    #[track_caller]
     #[inline]
     pub fn into_call_with_args<V, A>(self, args: A) -> Result<V, CallError<A::Err>>
     where

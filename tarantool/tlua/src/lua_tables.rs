@@ -116,6 +116,7 @@ where
     /// }
     /// ```
     ///
+    #[track_caller]
     #[inline]
     pub fn get<R, I>(&'lua self, index: I) -> Option<R>
     where
@@ -128,6 +129,7 @@ where
     /// Loads a value in the table, with the result capturing the table by value.
     ///
     /// See also [`LuaTable::get`]
+    #[track_caller]
     #[inline]
     pub fn into_get<R, I>(self, index: I) -> Result<R, Self>
     where
@@ -146,6 +148,7 @@ where
     /// [the documentation at the crate root](index.html#pushing-and-loading-values) for more
     /// information.
     // TODO: doc
+    #[track_caller]
     #[inline(always)]
     pub fn set<I, V>(&self, index: I, value: V)
     where
@@ -164,6 +167,7 @@ where
     /// Returns an error if we failed to write the key and the value. This can only happen for a
     /// limited set of types. You are encouraged to use the `set` method if writing cannot fail.
     // TODO: doc
+    #[track_caller]
     #[inline]
     pub fn checked_set<I, V>(
         &self,

@@ -170,6 +170,7 @@ where
     /// The index must implement the [`PushOneInto`] trait and the return type
     /// must implement the [`LuaRead`] trait. See [the documentation at the
     /// crate root](index.html#pushing-and-loading-values) for more information.
+    #[track_caller]
     #[inline(always)]
     fn get<'lua, K, R>(&'lua self, key: K) -> Option<R>
     where
@@ -193,6 +194,7 @@ where
     /// The index must implement the [`PushOneInto`] trait and the return type
     /// must implement the [`LuaRead`] trait. See [the documentation at the
     /// crate root](index.html#pushing-and-loading-values) for more information.
+    #[track_caller]
     #[inline]
     fn try_get<'lua, K, R>(&'lua self, key: K) -> Result<R, LuaError>
     where
@@ -210,6 +212,7 @@ where
     /// value.
     ///
     /// See also [`Index::get`]
+    #[track_caller]
     #[inline(always)]
     fn into_get<K, R>(self, key: K) -> Result<R, Self>
     where
@@ -232,6 +235,7 @@ where
     ///     expected rust type
     ///
     /// See also [`Index::get`]
+    #[track_caller]
     #[inline]
     fn try_into_get<K, R>(self, key: K) -> Result<R, (Self, LuaError)>
     where
@@ -251,6 +255,7 @@ where
     /// - `MethodCallError::NoSuchMethod` in case `self[name]` is `nil`
     /// - `MethodCallError::PushError` if pushing `args` failed
     /// - `MethodCallError::LuaError` if error happened during the function call
+    #[track_caller]
     #[inline]
     fn call_method<'lua, A, R>(
         &'lua self,
@@ -381,6 +386,7 @@ where
     /// The index must implement the [`PushOneInto`] trait and the return type
     /// must implement the [`LuaRead`] trait. See [the documentation at the
     /// crate root](index.html#pushing-and-loading-values) for more information.
+    #[track_caller]
     #[inline(always)]
     fn set<K, V>(&self, key: K, value: V)
     where
@@ -405,6 +411,7 @@ where
     /// The index must implement the [`PushOneInto`] trait and the return type
     /// must implement the [`LuaRead`] trait. See [the documentation at the
     /// crate root](index.html#pushing-and-loading-values) for more information.
+    #[track_caller]
     #[inline]
     fn try_set<K, V>(&self, key: K, value: V) -> Result<(), LuaError>
     where
@@ -434,6 +441,7 @@ where
     /// Will panic if an error happens during attempt to set value. Can happen
     /// if `__index` or `__newindex` throws an error. Use
     /// [`NewIndex::try_checked_set`] if this is a possibility in your case.
+    #[track_caller]
     #[inline(always)]
     fn checked_set<K, V>(
         &self,
@@ -457,6 +465,7 @@ where
     /// [`NewIndex::set`] method if pushing cannot fail.
     /// - Returns a `LuaError::ExecutionError` in case an error happened during
     /// an attempt to set value.
+    #[track_caller]
     #[inline(always)]
     fn try_checked_set<K, V>(
         &self,
@@ -514,6 +523,7 @@ pub trait Call<L>: AsRef<Object<L>>
 where
     L: AsLua,
 {
+    #[track_caller]
     #[inline]
     fn call<'lua, R>(&'lua self) -> Result<R, LuaError>
     where
@@ -523,6 +533,7 @@ where
         Ok(self.call_with(())?)
     }
 
+    #[track_caller]
     #[inline]
     fn call_with<'lua, A, R>(&'lua self, args: A) -> Result<R, CallError<A::Err>>
     where
@@ -534,6 +545,7 @@ where
         imp::call(guard, *index, args)
     }
 
+    #[track_caller]
     #[inline]
     fn into_call<R>(self) -> Result<R, LuaError>
     where
@@ -543,6 +555,7 @@ where
         Ok(self.into_call_with(())?)
     }
 
+    #[track_caller]
     #[inline]
     fn into_call_with<A, R>(self, args: A) -> Result<R, CallError<A::Err>>
     where
@@ -682,6 +695,7 @@ mod imp {
     // try_get
     ////////////////////////////////////////////////////////////////////////////
 
+    #[track_caller]
     pub(super) unsafe fn try_get<T, K, R>(
         this: T,
         this_index: AbsoluteIndex,
@@ -750,6 +764,7 @@ mod imp {
     // try_checked_set
     ////////////////////////////////////////////////////////////////////////////
 
+    #[track_caller]
     pub(super) unsafe fn try_checked_set<T, K, V>(
         this: T,
         this_index: AbsoluteIndex,
@@ -823,6 +838,7 @@ mod imp {
     // call
     ////////////////////////////////////////////////////////////////////////////
 
+    #[track_caller]
     #[inline]
     pub(super) fn call<T, A, R>(
         this: T,
