@@ -115,7 +115,7 @@ fn raft_update_peer(
         super::PeerChange::Grade(grade) => {
             tlog!(Warning, "attempt to change grade by peer";
                 "instance_id" => instance_id,
-                "grade" => grade.to_str(),
+                "grade" => grade.as_str(),
             );
             false
         }

@@ -23,7 +23,7 @@ use serde::{Deserialize, Serialize};
 use std::any::Any;
 use std::collections::HashMap;
 use std::convert::TryFrom;
-use std::fmt::{Debug, Display};
+use std::fmt::Debug;
 use std::time::Duration;
 use uuid::Uuid;
 
@@ -834,35 +834,24 @@ pub struct SyncRaftResponse {
 impl Encode for SyncRaftResponse {}
 
 ///////////////////////////////////////////////////////////////////////////////
-/// Activity state of an instance.
-#[derive(PartialEq, Eq, Clone, Debug, Deserialize, Serialize)]
-pub enum Grade {
-    // Instance has gracefully shut down or has not been started yet.
-    Offline,
-    // Instance has synced by commit index.
-    RaftSynced,
-    // Instance is active and is handling requests.
-    Online,
-    // Instance has permanently removed from cluster.
-    Expelled,
+crate::define_str_enum! {
+    /// Activity state of an instance.
+    pub enum Grade {
+        // Instance has gracefully shut down or has not been started yet.
+        Offline = "Offline",
+        // Instance has synced by commit index.
+        RaftSynced = "RaftSynced",
+        // Instance is active and is handling requests.
+        Online = "Online",
+        // Instance has permanently removed from cluster.
+        Expelled = "Expelled",
+    }
+    FromStr::Err = UnknownGrade;
 }
 
-impl Grade {
-    const fn to_str(&self) -> &str {
-        match self {
-            Self::Offline => "Offline",
-            Self::RaftSynced => "RaftSynced",
-            Self::Online => "Online",
-            Self::Expelled => "Expelled",
-        }
-    }
-}
-
-impl Display for Grade {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        f.write_str(self.to_str())
-    }
-}
+#[derive(thiserror::Error, Debug)]
+#[error("unknown grade {0:?}")]
+pub struct UnknownGrade(pub String);
 
 impl Default for Grade {
     fn default() -> Self {
@@ -870,29 +859,22 @@ impl Default for Grade {
     }
 }
 
-#[derive(PartialEq, Eq, Clone, Debug, Deserialize, Serialize)]
-pub enum TargetGrade {
-    // Instance should be configured up
-    Online,
-    // Instance should be gracefully shut down
-    Offline,
-    // Instance should be removed from cluster
-    Expelled,
-}
-impl TargetGrade {
-    const fn to_str(&self) -> &str {
-        match self {
-            Self::Online => "Online",
-            Self::Offline => "Offline",
-            Self::Expelled => "Expelled",
-        }
+crate::define_str_enum! {
+    pub enum TargetGrade {
+        // Instance should be configured up
+        Online = "Online",
+        // Instance should be gracefully shut down
+        Offline = "Offline",
+        // Instance should be removed from cluster
+        Expelled = "Expelled",
     }
+    FromStr::Err = UnknownTargetGrade;
 }
-impl Display for TargetGrade {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        f.write_str(self.to_str())
-    }
-}
+
+#[derive(thiserror::Error, Debug)]
+#[error("unknown target grade {0:?}")]
+pub struct UnknownTargetGrade(pub String);
+
 impl Default for TargetGrade {
     fn default() -> Self {
         Self::Online
