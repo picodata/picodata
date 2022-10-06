@@ -127,6 +127,10 @@ def test_deactivation(cluster2: Cluster):
             )
         )
 
+    @funcy.retry(tries=20, timeout=0.3)
+    def assert_is_voter_is_online(instance: Instance, raft_id, is_voter, is_online):
+        assert is_voter_is_online(instance, raft_id) == (is_voter, is_online)
+
     assert is_voter_is_online(i1, i1.raft_id) == (True, True)
     assert is_voter_is_online(i2, i2.raft_id) == (True, True)
 
@@ -139,7 +143,7 @@ def test_deactivation(cluster2: Cluster):
     i2.wait_ready()
 
     assert is_voter_is_online(i1, i1.raft_id) == (True, True)
-    assert is_voter_is_online(i2, i2.raft_id) == (True, True)
+    assert_is_voter_is_online(i2, i2.raft_id, True, True)
 
     i1.terminate()
 
