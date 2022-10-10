@@ -995,5 +995,10 @@ pub fn tuple_as_table() {
         e.to_string(),
         "Can only push 1 or 2 values as lua table item"
     );
+
+    lua.set("test_tuple_as_table", AsTable((("nice", 69), ("list", [3, 2, 1]))));
+    let table: LuaTable<_> = lua.get("test_tuple_as_table").unwrap();
+    assert_eq!(table.get("nice"), Some(69));
+    assert_eq!(table.get("list"), Some([3, 2, 1]));
 }
 

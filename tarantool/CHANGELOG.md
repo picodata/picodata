@@ -38,6 +38,8 @@
 - `TupleBuffer` no longer copies data into tarantool's transaction memory pool
     in `TupleBuffer::from_vec_unchecked`, which previously would result in a use
     after free in some cases.
+- `impl<_> From<tlua::PushIterError<_>> for tlua::Void` is now more general
+    which allows more types to be used in contexts like `tlua::Lua::set`, etc.
 - `tests/run_benchmarks.lua` now works again.
 
 ### Changed

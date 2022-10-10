@@ -105,6 +105,7 @@ where
 //       don't add other ones!
 
 // T::Err: Void => no error possible
+// NOTE: making this one generic would conflict with the below implementations.
 impl From<PushIterError<Void>> for Void {
     fn from(_: PushIterError<Void>) -> Self {
         unreachable!("no way to create instance of Void")
@@ -112,15 +113,22 @@ impl From<PushIterError<Void>> for Void {
 }
 
 // T::Err: Void; (T,) => no error possible
-impl From<PushIterError<TuplePushError<Void, Void>>> for Void {
-    fn from(_: PushIterError<TuplePushError<Void, Void>>) -> Self {
+impl<T> From<PushIterError<TuplePushError<T, Void>>> for Void
+where
+    T: Into<Void>,
+{
+    fn from(_: PushIterError<TuplePushError<T, Void>>) -> Self {
         unreachable!("no way to create instance of Void")
     }
 }
 
-// T::Err: Void; U::Err: Void; (T, U) => no error possible
-impl From<PushIterError<TuplePushError<Void, TuplePushError<Void, Void>>>> for Void {
-    fn from(_: PushIterError<TuplePushError<Void, TuplePushError<Void, Void>>>) -> Self {
+// K::Err: Void; V::Err: Void; (K, V) => no error possible
+impl<K, V> From<PushIterError<TuplePushError<K, TuplePushError<V, Void>>>> for Void
+where
+    K: Into<Void>,
+    V: Into<Void>,
+{
+    fn from(_: PushIterError<TuplePushError<K, TuplePushError<V, Void>>>) -> Self {
         unreachable!("no way to create instance of Void")
     }
 }
