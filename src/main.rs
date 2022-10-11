@@ -312,7 +312,7 @@ fn rm_tarantool_files(data_dir: &str) {
                 .unwrap_or(false)
         })
         .for_each(|f| {
-            println!("[supervisor] removing file: {}", (&f).to_string_lossy());
+            println!("[supervisor] removing file: {}", f.to_string_lossy());
             std::fs::remove_file(f).unwrap();
         });
 }

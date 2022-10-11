@@ -632,7 +632,7 @@ impl<'a> std::fmt::Display for EntryPayload<'a> {
             EntryPayload::ConfChangeV2(ccv2) => {
                 write!(f, "{:?}(", ccv2.transition)?;
                 let mut iter = ccv2.changes.iter();
-                let cc = (&mut iter).next().unwrap();
+                let cc = iter.next().unwrap();
                 write!(f, "{}({})", change_type(cc.change_type), cc.node_id)?;
                 for cc in iter.take(ccv2.changes.len() - 1) {
                     write!(f, ", {}({})", change_type(cc.change_type), cc.node_id)?;
@@ -993,7 +993,7 @@ impl std::fmt::Display for FailureDomain {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         f.write_str("{")?;
         let mut iter = self.data.iter();
-        if let Some((k, v)) = (&mut iter).next() {
+        if let Some((k, v)) = iter.next() {
             write!(f, "{k}: {v}")?;
             for (k, v) in iter {
                 write!(f, ", {k}: {v}")?;

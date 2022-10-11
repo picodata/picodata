@@ -723,7 +723,7 @@ impl NodeImpl {
 
         if let Some(ss) = ready.ss() {
             let mut status = status.borrow_mut();
-            status.leader_id = (ss.leader_id != INVALID_ID).then(|| ss.leader_id);
+            status.leader_id = (ss.leader_id != INVALID_ID).then_some(ss.leader_id);
             status.raft_state = format!("{:?}", ss.raft_state);
             event::broadcast(Event::StatusChanged);
         }
