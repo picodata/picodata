@@ -4,7 +4,7 @@ default: ;
 
 install-cargo:
 	curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs |\
-		sh -s -- -y --profile default --default-toolchain 1.63.0
+		sh -s -- -y --profile default --default-toolchain 1.64.0
 
 centos7-cmake3:
 	[ -f /usr/bin/cmake ] && sudo rm /usr/bin/cmake
