@@ -112,7 +112,7 @@ fn raft_update_peer(
     let mut req = req;
     let instance_id = &*req.instance_id;
     req.changes.retain(|ch| match ch {
-        super::PeerChange::Grade(grade) => {
+        super::PeerChange::CurrentGrade(grade) => {
             tlog!(Warning, "attempt to change grade by peer";
                 "instance_id" => instance_id,
                 "grade" => grade.as_str(),

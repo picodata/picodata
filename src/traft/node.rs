@@ -61,7 +61,7 @@ use crate::traft::{
 use crate::traft::{PeerStorage, RaftSpaceAccess, Storage};
 
 use super::OpResult;
-use super::{Grade, TargetGrade};
+use super::{CurrentGrade, TargetGrade};
 
 type RawNode = raft::RawNode<RaftSpaceAccess>;
 
@@ -583,7 +583,7 @@ impl NodeImpl {
 
         if let Some(traft::Op::PersistPeer { peer }) = entry.op() {
             *topology_changed = true;
-            if peer.grade == Grade::Expelled && peer.raft_id == self.raft_id() {
+            if peer.current_grade == CurrentGrade::Expelled && peer.raft_id == self.raft_id() {
                 // cannot exit during a transaction
                 *expelled = true;
             }
@@ -1025,12 +1025,13 @@ fn raft_conf_change_loop(
         // offline
         let to_offline = peers
             .iter()
-            .filter(|peer| peer.grade != Grade::Offline)
+            .filter(|peer| peer.current_grade != CurrentGrade::Offline)
             .find(|peer| peer.target_grade == TargetGrade::Offline);
         if let Some(peer) = to_offline {
             let instance_id = peer.instance_id.clone();
             let cluster_id = storage.cluster_id().unwrap().unwrap();
-            let req = UpdatePeerRequest::new(instance_id, cluster_id).with_grade(Grade::Offline);
+            let req = UpdatePeerRequest::new(instance_id, cluster_id)
+                .with_current_grade(CurrentGrade::Offline);
             let res = node.handle_topology_request_and_wait(req.into());
             if let Err(e) = res {
                 tlog!(Warning, "failed to set peer offline: {e}";
@@ -1044,7 +1045,7 @@ fn raft_conf_change_loop(
         // raft sync
         let to_sync = peers
             .iter()
-            .find(|peer| peer.has_grades(Grade::Offline, TargetGrade::Online));
+            .find(|peer| peer.has_grades(CurrentGrade::Offline, TargetGrade::Online));
         if let Some(peer) = to_sync {
             let commit = storage.commit().unwrap().unwrap();
 
@@ -1068,7 +1069,7 @@ fn raft_conf_change_loop(
                 let cluster_id = storage.cluster_id().unwrap().unwrap();
 
                 let req = UpdatePeerRequest::new(peer.instance_id.clone(), cluster_id)
-                    .with_grade(Grade::RaftSynced);
+                    .with_current_grade(CurrentGrade::RaftSynced);
                 global()
                     .expect("can't be deinitialized")
                     .handle_topology_request_and_wait(req.into())
@@ -1076,7 +1077,7 @@ fn raft_conf_change_loop(
             match res {
                 Ok(peer) => {
                     tlog!(Info, "raft sync processed");
-                    debug_assert!(peer.grade == Grade::RaftSynced);
+                    debug_assert!(peer.current_grade == CurrentGrade::RaftSynced);
                 }
                 Err(e) => {
                     tlog!(Warning, "raft sync failed: {e}";
@@ -1097,7 +1098,7 @@ fn raft_conf_change_loop(
         // replication
         let to_replicate = peers
             .iter()
-            .find(|peer| peer.has_grades(Grade::RaftSynced, TargetGrade::Online));
+            .find(|peer| peer.has_grades(CurrentGrade::RaftSynced, TargetGrade::Online));
         if let Some(peer) = to_replicate {
             let replicaset_id = &peer.replicaset_id;
             let replicaset_iids = unwrap_ok_or!(
@@ -1159,7 +1160,7 @@ fn raft_conf_change_loop(
                 let peer_iid_2 = peer_iid.clone();
                 let res = resp.and_then(move |replication::Response { lsn }| {
                     let req = UpdatePeerRequest::new(peer_iid_2, cluster_id)
-                        .with_grade(Grade::Replicated);
+                        .with_current_grade(CurrentGrade::Replicated);
                     node.handle_topology_request_and_wait(req.into())
                         .map(|_| lsn)
                 });
@@ -1191,11 +1192,12 @@ fn raft_conf_change_loop(
 
         let to_online = peers
             .iter()
-            .find(|peer| peer.has_grades(Grade::Replicated, TargetGrade::Online));
+            .find(|peer| peer.has_grades(CurrentGrade::Replicated, TargetGrade::Online));
         if let Some(peer) = to_online {
             let instance_id = peer.instance_id.clone();
             let cluster_id = node.storage.cluster_id().unwrap().unwrap();
-            let req = UpdatePeerRequest::new(instance_id, cluster_id).with_grade(Grade::Online);
+            let req = UpdatePeerRequest::new(instance_id, cluster_id)
+                .with_current_grade(CurrentGrade::Online);
             let res = node.handle_topology_request_and_wait(req.into());
             if let Err(e) = res {
                 tlog!(Warning, "failed to set peer online: {e}";
@@ -1360,7 +1362,8 @@ fn expel_on_leader(req: ExpelRequest) -> Result<ExpelResponse, Box<dyn std::erro
         return Err(Box::from("not a leader"));
     }
 
-    let req2 = UpdatePeerRequest::new(req.instance_id, req.cluster_id).with_grade(Grade::Expelled);
+    let req2 = UpdatePeerRequest::new(req.instance_id, req.cluster_id)
+        .with_current_grade(CurrentGrade::Expelled);
     node.handle_topology_request_and_wait(req2.into())?;
 
     Ok(ExpelResponse {})

@@ -441,7 +441,7 @@ pub struct Peer {
     pub commit_index: RaftIndex,
 
     /// The cluster's mind about actual state of this instance's activity.
-    pub grade: Grade,
+    pub current_grade: CurrentGrade,
     /// The desired state of this instance
     pub target_grade: TargetGrade,
 
@@ -455,11 +455,11 @@ impl Encode for Peer {}
 
 impl Peer {
     pub fn is_active(&self) -> bool {
-        matches!(self.grade, Grade::Online)
+        matches!(self.current_grade, CurrentGrade::Online)
     }
 
-    pub fn has_grades(&self, current: Grade, target: TargetGrade) -> bool {
-        self.grade == current && self.target_grade == target
+    pub fn has_grades(&self, current: CurrentGrade, target: TargetGrade) -> bool {
+        self.current_grade == current && self.target_grade == target
     }
 }
 
@@ -472,7 +472,7 @@ impl std::fmt::Display for Peer {
             self.raft_id,
             self.replicaset_id,
             self.peer_address,
-            self.grade,
+            self.current_grade,
             self.commit_index,
             &self.failure_domain,
         )
@@ -837,7 +837,7 @@ impl Encode for SyncRaftResponse {}
 ///////////////////////////////////////////////////////////////////////////////
 crate::define_str_enum! {
     /// Activity state of an instance.
-    pub enum Grade {
+    pub enum CurrentGrade {
         // Instance has gracefully shut down or has not been started yet.
         Offline = "Offline",
         // Instance has synced by commit index.
@@ -856,7 +856,7 @@ crate::define_str_enum! {
 #[error("unknown grade {0:?}")]
 pub struct UnknownGrade(pub String);
 
-impl Default for Grade {
+impl Default for CurrentGrade {
     fn default() -> Self {
         Self::Offline
     }
@@ -895,7 +895,7 @@ pub struct UpdatePeerRequest {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum PeerChange {
-    Grade(Grade),
+    CurrentGrade(CurrentGrade),
     TargetGrade(TargetGrade),
     FailureDomain(FailureDomain),
 }
@@ -911,8 +911,8 @@ impl UpdatePeerRequest {
         }
     }
     #[inline]
-    pub fn with_grade(mut self, grade: Grade) -> Self {
-        self.changes.push(PeerChange::Grade(grade));
+    pub fn with_current_grade(mut self, current_grade: CurrentGrade) -> Self {
+        self.changes.push(PeerChange::CurrentGrade(current_grade));
         self
     }
     #[inline]

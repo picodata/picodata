@@ -9,11 +9,11 @@ def cluster3(cluster: Cluster):
 
 
 def assert_peer_expelled(expelled_peer: Instance, instance: Instance):
-    grade = instance.eval(
-        "return box.space.raft_group.index.instance_id:get(...).grade",
+    current_grade = instance.eval(
+        "return box.space.raft_group.index.instance_id:get(...).current_grade",
         expelled_peer.instance_id,
     )
-    assert grade == "Expelled"
+    assert current_grade == "Expelled"
 
 
 def assert_voters(voters: list[Instance], instance: Instance):

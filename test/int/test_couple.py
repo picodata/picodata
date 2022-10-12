@@ -113,8 +113,8 @@ def test_deactivation(cluster2: Cluster):
             instance.eval(
                 """
                     raft_id = ...
-                    grade = box.space.raft_group.index.raft_id:get(raft_id).grade
-                    is_online = grade == 'Online'
+                    current_grade = box.space.raft_group.index.raft_id:get(raft_id).current_grade
+                    is_online = current_grade == 'Online'
                     voters = box.space.raft_state:get('voters').value
                     for _, voter in pairs(voters) do
                         if voter == raft_id then
@@ -173,12 +173,12 @@ def test_deactivation(cluster2: Cluster):
     def raft_update_peer(
         host: Instance, target: Instance, is_online: bool
     ) -> list[bool]:
-        grade = "Online" if is_online else "Offline"
+        current_grade = "Online" if is_online else "Offline"
         return host.call(
             ".raft_update_peer",
             target.instance_id,
             target.cluster_id,
-            [{"Grade": grade}, {"TargetGrade": "Online"}],
+            [{"CurrentGrade": current_grade}, {"TargetGrade": "Online"}],
         )
 
     # check idempotency
