@@ -29,7 +29,7 @@
 //! ### Stored procedures
 //!
 //! There are several ways Tarantool can call Rust code. It can use either a plugin, a Lua FFI module,
-//! or a stored procedure. In this file we only cover the third option, namely Rust stored procedures.
+//! or a [stored procedure]. In this file we only cover the third option, namely Rust stored procedures.
 //! Even though Tarantool always treats Rust routines just as "C functions", we keep on using the "stored procedure" 
 //! term as an agreed convention and also for historical reasons.
 //!
@@ -87,19 +87,14 @@
 //!
 //! Edit the `lib.rs` file and add the following lines:
 //! ```rust
-//! use std::os::raw::c_int;
-//! use tarantool::tuple::{FunctionArgs, FunctionCtx};
-//!
-//! #[no_mangle]
-//! pub extern "C" fn easy(_: FunctionCtx, _: FunctionArgs) -> c_int {
+//! #[tarantool::proc]
+//! fn easy() {
 //!     println!("hello world");
-//!     0
 //! }
 //!
-//! #[no_mangle]
-//! pub extern "C" fn easy2(_: FunctionCtx, _: FunctionArgs) -> c_int {
+//! #[tarantool::proc]
+//! fn easy2() {
 //!     println!("hello world -- easy2");
-//!     0
 //! }
 //! ```
 //!
@@ -155,6 +150,8 @@
 //! ... and this time the result will be `hello world -- easy2`.
 //!
 //! As you can see, calling a Rust function is as straightforward as it can be.
+//!
+//! [stored procedure]: macro@crate::proc
 pub mod clock;
 pub mod coio;
 pub mod decimal;
