@@ -197,6 +197,51 @@ pub use tlua;
 /// assert(box.func['libname.add']:call({ 1, 2 }) == 3)
 /// ```
 ///
+/// # Accepting borrowed arguments
+///
+/// It can sometimes be more efficient to borrow the procedure's arguments
+/// rather than copying them. This usecase is supported, however it is not
+/// entirely safe. Due to how stored procedures are implemented in tarantool,
+/// the arguments are allocated in a volatile region of memory, which can be
+/// overwritten by some tarantool operations. Therefore you cannot rely on the
+/// borrowed arguments being valid for the lifetime of the procedure call.
+///
+/// This proc is safe, because the data is accessed before any other calls to
+/// tarantool api:
+/// ```no_run
+/// #[tarantool::proc]
+/// fn strlen(s: &str) -> usize {
+///     s.len()
+/// }
+/// ```
+///
+/// This one however is unsafe:
+/// ```no_run
+/// use tarantool::{error::Error, index::IteratorType::Eq, space::Space};
+/// use std::collections::HashSet;
+///
+/// #[tarantool::proc]
+/// fn count_common_friends(user1: &str, user2: String) -> Result<usize, Error> {
+///     // A call to tarantool api.
+///     let space = Space::find("friends_with").unwrap();
+///
+///     // This call is unsafe, because borrowed data `user1` is accessed
+///     // after a call to tarantool api.
+///     let iter = space.select(Eq, &[user1])?;
+///     let user1_friends: HashSet<String> = iter
+///         .map(|tuple| tuple.get(1).unwrap())
+///         .collect();
+///
+///     // This call is safe, because `user2` is owned.
+///     let iter = space.select(Eq, &[user2])?;
+///     let user2_friends: HashSet<String> = iter
+///         .map(|tuple| tuple.get(1).unwrap())
+///         .collect();
+///
+///     Ok(user1_friends.intersection(&user2_friends).count())
+/// }
+/// ```
+///
 /// # Returning errors
 ///
 /// Assuming the function's return type is [`Result`]`<T, E>` (where `E` implements
