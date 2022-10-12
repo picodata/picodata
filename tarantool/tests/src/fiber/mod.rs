@@ -9,6 +9,7 @@ use crate::common::{
     DropCounter, capture_value, fiber_csw, LuaStackIntegrityGuard, LuaContextSpoiler,
 };
 use tarantool::fiber;
+use tarantool::fiber::Fiber;
 use tarantool::tlua::AsLua;
 use tarantool::util::IntoClones;
 
@@ -469,3 +470,27 @@ pub fn lifetime() {
     // }.join();
 }
 
+pub fn r#yield() {
+    //if fiber doesnt yield than test will be running forever
+    let mut fiber = Fiber::new("test_fiber", &mut |_| {
+        loop {
+            // ignore fiber is canceled error
+            fiber::r#yield().unwrap_or(());
+        }
+    });
+    fiber.set_joinable(true);
+    fiber.start(());
+    fiber.cancel();
+}
+
+pub fn yield_canceled() {
+    let mut fiber = Fiber::new("test_fiber", &mut |_| {
+        fiber::sleep(Duration::from_millis(10));
+        assert!(fiber::r#yield().is_err());
+        0
+    });
+    fiber.set_joinable(true);
+    fiber.start(());
+    fiber.cancel();
+    fiber::sleep(Duration::from_millis(20));
+}

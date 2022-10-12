@@ -400,6 +400,8 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 fiber::immediate_with_cond,
                 fiber::deferred_with_cond,
                 fiber::lifetime,
+                fiber::r#yield,
+                fiber::yield_canceled,
             ];
 
             tests.append(&mut tests![

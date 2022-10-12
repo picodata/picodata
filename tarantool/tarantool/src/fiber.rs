@@ -24,8 +24,8 @@ use ::va_list::{VaList, VaPrimitive};
 #[cfg(all(target_arch = "aarch64", target_os = "macos"))]
 use crate::va_list::{VaList, VaPrimitive};
 
-use crate::c_ptr;
-use crate::error::TarantoolError;
+use crate::{c_ptr, set_error};
+use crate::error::{TarantoolError, TarantoolErrorCode};
 use crate::ffi::{tarantool as ffi, lua};
 use crate::Result;
 
@@ -37,6 +37,7 @@ pub use channel::{
 
 pub mod mutex;
 pub use mutex::Mutex;
+use crate::ffi::tarantool::fiber_sleep;
 
 macro_rules! impl_debug_stub {
     ($t:ident $($p:tt)*) => {
@@ -1292,14 +1293,28 @@ pub fn clock64() -> u64 {
 /// Return control to another fiber and wait until it'll be explicitly awoken by
 /// another fiber.
 ///
-/// Consider using [`fiber::sleep`]`(Duration::ZERO)` instead, that way the
+/// Consider using [`fiber::sleep`]`(Duration::ZERO)` or [`fiber::yield`] instead, that way the
 /// fiber will be automatically awoken and will resume execution shortly.
 ///
 /// [`fiber::sleep`]: crate::fiber::sleep
 /// [`fiber::start`]: crate::fiber::start
 /// [`fiber::defer`]: crate::fiber::defer
+/// [`fiber::yield`]: crate::fiber::yield
 pub fn fiber_yield() {
     unsafe { ffi::fiber_yield() }
+}
+
+/// Returns control to the scheduler.
+/// Works likewise [`fiber::sleep`]`(Duration::ZERO)` but return error if fiber was canceled by another routine.
+///
+/// [`fiber::sleep`]: crate::fiber::sleep
+pub fn r#yield() -> Result<()> {
+    unsafe { fiber_sleep(0f64) };
+    if is_cancelled() {
+        set_error!(TarantoolErrorCode::ProcLua, "fiber is cancelled");
+        return Err(TarantoolError::last().into())
+    }
+    Ok(())
 }
 
 /// Reschedule fiber to end of event loop cycle.

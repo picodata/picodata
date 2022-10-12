@@ -33,6 +33,7 @@
 - Doc-comments here and there.
 - `tests/test.sh` now supports `TARANTOOL_MODULE_BUILD_MODE` environment
     variable to select which build mode is tested (debug, release, etc.)
+- `fiber::r#yield` function for yielding fibers likewise tarantool LUA api.
 
 ### Fixed
 - `TupleBuffer` no longer copies data into tarantool's transaction memory pool
