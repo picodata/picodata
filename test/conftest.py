@@ -41,12 +41,15 @@ def pytest_addoption(parser):
         "--delay",
         action="store",
         default=None,
-        help="Delay between steps for fandomized tests",
+        help="Delay between steps for randomized tests",
     )
 
 
 @pytest.fixture(scope="session")
 def seed(pytestconfig):
+    """Return a seed for randomized tests. Unless passed via
+    command-line options it is generated automatically.
+    """
     seed = pytestconfig.getoption("seed")
     return seed if seed else generate_seed()
 
@@ -584,11 +587,14 @@ class Cluster:
 
 @pytest.fixture(scope="session")
 def compile() -> None:
+    """Run `cargo build` before tests."""
+
     assert subprocess.call(["cargo", "build"]) == 0, "cargo build failed"
 
 
 @pytest.fixture(scope="session")
-def binary_path(compile, pytestconfig) -> str:
+def binary_path(compile) -> str:
+    """Path to the picodata binary, e.g. "./target/debug/picodata"."""
     metadata = subprocess.check_output(["cargo", "metadata", "--format-version=1"])
     target = json.loads(metadata)["target_directory"]
     return os.path.realpath(os.path.join(target, "debug/picodata"))
@@ -596,6 +602,7 @@ def binary_path(compile, pytestconfig) -> str:
 
 @pytest.fixture(scope="session")
 def cluster_ids(xdist_worker_number) -> Iterator[str]:
+    """Unique `clister_id` generator."""
     return (f"cluster-{xdist_worker_number}-{i}" for i in count())
 
 
@@ -606,6 +613,7 @@ def cluster(
     xdist_worker_number,
     cluster_ids,
 ) -> Generator[Cluster, None, None]:
+    """Return a `Cluster` object capable of deploying test clusters."""
     n = xdist_worker_number
     assert isinstance(n, int)
     assert n >= 0
@@ -629,6 +637,7 @@ def cluster(
 
 @pytest.fixture
 def instance(cluster: Cluster) -> Generator[Instance, None, None]:
+    """Returns a deployed instance forming a single-node cluster."""
     cluster.deploy(instance_count=1)
     yield cluster[0]
 
@@ -647,7 +656,7 @@ def retrying(fn, timeout=3):
 
 
 def pid_alive(pid):
-    """Check For the existence of a unix pid."""
+    """Check for the existence of a unix pid."""
     try:
         os.kill(pid, 0)
     except OSError:
