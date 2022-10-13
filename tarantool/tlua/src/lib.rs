@@ -714,6 +714,16 @@ pub trait LuaRead<L>: Sized {
     fn lua_read_at_position(lua: L, index: NonZeroI32) -> Result<Self, L>;
 }
 
+impl<L: AsLua> LuaRead<L> for LuaState {
+    fn lua_read_at_maybe_zero_position(lua: L, _: i32) -> Result<Self, L> {
+        Ok(lua.as_lua())
+    }
+
+    fn lua_read_at_position(lua: L, _: NonZeroI32) -> Result<Self, L> {
+        Ok(lua.as_lua())
+    }
+}
+
 /// Error that can happen when executing Lua code.
 #[derive(Debug)]
 pub enum LuaError {

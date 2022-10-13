@@ -230,6 +230,24 @@ pub fn pcall() {
     assert!(err_msg.ends_with(                     "> catch this"));
 }
 
+#[rustfmt::skip]
+pub fn error() {
+    let lua = tarantool::lua_state();
+    lua.set("error_callback",
+        tlua::function1(|lua: tlua::LuaState| tlua::error!(lua, "but it compiled :("))
+    );
+    let msg = lua.exec("error_callback()").unwrap_err().to_string();
+    // assert_eq!(msg, r#"Execution error: [string "chunk"]:1: tests/src/tlua/functions_write.rs:237:47> but it compiled :("#);
+    assert!(msg.starts_with(r#"Execution error: [string "chunk"]:1:"#                      ));
+    assert!(msg.ends_with(                                           "> but it compiled :("));
+
+    lua.set("error_callback_2",
+        tlua::function2(|msg: String, lua: tlua::LuaState| tlua::error!(lua, "your message: {}", msg))
+    );
+    let msg = lua.exec("error_callback_2('my message')").unwrap_err().to_string();
+    assert_eq!(msg, r#"Execution error: [string "chunk"]:1: your message: my message"#);
+}
+
 pub fn optional_params() {
     let lua = Lua::new();
     #[derive(tlua::LuaRead)]

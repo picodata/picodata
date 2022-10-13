@@ -32,6 +32,9 @@
 - `#[track_caller]` added to tlua functions that can panic.
 - A clarification in `tarantool::proc` documentation about the safety of using
     borrowed arguments.
+- `impl LuaRead for LuaState`: this is mainly useful for capturing the lua
+    context passed to rust-callbacks for example for use with `tlua::error!`.
+    See test `error` in `tests/src/tlua/functions_write.rs` for examples.
 - Doc-comments here and there.
 - `tests/test.sh` now supports `TARANTOOL_MODULE_BUILD_MODE` environment
     variable to select which build mode is tested (debug, release, etc.)
