@@ -1,4 +1,4 @@
-use ::tarantool::index::{Index, IteratorType};
+use ::tarantool::index::{Index, IndexIterator, IteratorType};
 use ::tarantool::space::{FieldType, Space};
 use ::tarantool::tuple::{DecodeOwned, ToTupleBuffer, Tuple};
 use thiserror::Error;
@@ -10,6 +10,7 @@ use crate::traft::RaftId;
 use crate::traft::RaftIndex;
 
 use std::cell::UnsafeCell;
+use std::marker::PhantomData;
 
 use super::RaftSpaceAccess;
 
@@ -287,6 +288,17 @@ impl Peers {
         Ok(res)
     }
 
+    /// Return an iterator over all peers. Items of the iterator are
+    /// specified by `F` (see `PeerFieldDef` & `peer_field` module).
+    #[inline(always)]
+    pub fn peers_fields<F>(&self) -> Result<PeersFields<F>, TraftError>
+    where
+        F: PeerFieldDef,
+    {
+        let iter = self.space().select(IteratorType::All, &())?;
+        Ok(PeersFields::new(iter))
+    }
+
     #[inline]
     pub fn all_peers(&self) -> tarantool::Result<Vec<traft::Peer>> {
         self.space()
@@ -512,6 +524,35 @@ impl PeerId for traft::InstanceId {
             .index_instance_id
             .get(&[self])?
             .ok_or_else(|| TraftError::NoPeerWithInstanceId(self.clone()))
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// PeersFields
+////////////////////////////////////////////////////////////////////////////////
+
+pub struct PeersFields<F> {
+    iter: IndexIterator,
+    marker: PhantomData<F>,
+}
+
+impl<F> PeersFields<F> {
+    fn new(iter: IndexIterator) -> Self {
+        Self {
+            iter,
+            marker: PhantomData,
+        }
+    }
+}
+
+impl<F> Iterator for PeersFields<F>
+where
+    F: PeerFieldDef,
+{
+    type Item = F::Type;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.iter.next().as_ref().map(F::get_in).map(Result::unwrap)
     }
 }
 
