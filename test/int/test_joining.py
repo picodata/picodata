@@ -348,6 +348,7 @@ def test_fail_to_join(cluster: Cluster):
     # An instance with the given instance_id is already present in the cluster
     # so this instance cannot join
     # and therefore exits with failure
+    assert i1.instance_id is not None
     cluster.fail_to_add_instance(
         instance_id=i1.instance_id, failure_domain=dict(owner="Jim")
     )
