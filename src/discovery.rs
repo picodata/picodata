@@ -2,7 +2,6 @@ use ::tarantool::fiber::{mutex::MutexGuard, sleep, Mutex};
 use ::tarantool::proc;
 use ::tarantool::uuid::Uuid;
 use serde::{Deserialize, Serialize};
-use std::borrow::Cow;
 use std::collections::BTreeSet;
 use std::error::Error as StdError;
 use std::time::{Duration, Instant};
@@ -194,11 +193,7 @@ pub fn wait_global() -> Role {
 }
 
 #[proc]
-fn proc_discover<'a>(
-    #[inject(&mut discovery())] discovery: &'a mut Option<MutexGuard<'a, Discovery>>,
-    request: Request,
-    request_to: Address,
-) -> Result<Cow<'a, Response>, Box<dyn StdError>> {
+fn proc_discover<'a>(request: Request, request_to: Address) -> Result<Response, Box<dyn StdError>> {
     let ready_ids = traft::node::global().ok().and_then(|node| {
         let status = node.status();
         status.leader_id.map(|leader_id| (leader_id, status.id))
@@ -207,13 +202,14 @@ fn proc_discover<'a>(
         let leader = traft::Storage::peer_by_raft_id(leader_id)?.ok_or_else(|| {
             format!("leader_id is present ({leader_id}) but it's address is unknown for node {id}")
         })?;
-        Ok(Cow::Owned(Response::Done(Role::new(
+        Ok(Response::Done(Role::new(
             leader.peer_address,
             leader_id == id,
-        ))))
+        )))
     } else {
+        let mut discovery = discovery();
         let discovery = discovery.as_mut().ok_or("discovery uninitialized")?;
-        Ok(Cow::Borrowed(discovery.handle_request(request, request_to)))
+        Ok(discovery.handle_request(request, request_to).clone())
     }
 }
 
