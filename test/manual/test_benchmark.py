@@ -1,16 +1,18 @@
+import os
+import subprocess
 from dataclasses import field
-from itertools import count
 from multiprocessing.pool import ThreadPool
 from typing import Callable
-from conftest import Cluster, Instance, pgrep_tree, pid_alive, retrying
-from prettytable import PrettyTable  # type: ignore
-import os
 import funcy  # type: ignore
-import subprocess
+import pytest
+from conftest import Cluster, Instance, pgrep_tree, pid_alive
+from prettytable import PrettyTable  # type: ignore
+from pytest_harvest import saved_fixture
 
 
-def test_benchmark_replace(cluster: Cluster, tmpdir, with_flamegraph, capsys):
-    FIBERS = [1, 2, 3, 5, 10, 60, 70, 100, 200, 300, 400, 500, 600, 700, 800]
+@pytest.mark.parametrize("fibers", [1, 2, 3, 5, 10, 50, 100])
+@saved_fixture
+def test_benchmark_replace(cluster: Cluster, tmpdir, with_flamegraph, fibers):
     DURATION = 2
     FLAMEGRAPH_TMP_DIR = tmpdir
     FLAMEGRAPH_OUT_DIR = "tmp/flamegraph/replace"
@@ -65,96 +67,58 @@ def test_benchmark_replace(cluster: Cluster, tmpdir, with_flamegraph, capsys):
 
     def benchmark():
         i = i1
-        stats = []
         pid = child_pid(i)
         acc = []
-        for c in FIBERS:
+        c = fibers
 
-            def f(i, t, c):
-                return i.eval("return benchmark_replace(...)", t, c, timeout=60)
-
-            if with_flamegraph:
-                f = flamegraph_decorator(
-                    f,
-                    f"f{str(c).zfill(3)}",
-                    pid,
-                    FLAMEGRAPH_TMP_DIR,
-                    FLAMEGRAPH_OUT_DIR,
-                    DURATION,
-                    acc,
-                )
-            stat = f(i, DURATION, c)
-            stats.append((c, stat))
+        def f(i, t, c):
+            return i.eval("return benchmark_replace(...)", t, c, timeout=60)
 
         if with_flamegraph:
-            gather_flamegraphs(acc)
+            f = flamegraph_decorator(
+                f,
+                f"f{str(c).zfill(3)}",
+                pid,
+                FLAMEGRAPH_TMP_DIR,
+                FLAMEGRAPH_OUT_DIR,
+                DURATION,
+                acc,
+            )
+        stat = f(i, DURATION, c)
 
-        return stats
+        return ((c, stat), acc[0] if len(acc) > 0 else None)
 
-    def report(stats):
-        t = PrettyTable()
-        t.title = "tarantool replace/sec"
-        t.field_names = ["fibers", "rps"]
-        for (c, stat) in stats:
-            t.add_row([c, int(stat["rps"])])
-        t.align = "r"
-        return t
-
-    with capsys.disabled():
-        print("")
-        print(report(benchmark()))
+    return benchmark()
 
 
-def test_benchmark_nop(
-    binary_path, xdist_worker_number, tmpdir, with_flamegraph, capsys
-):
+# fmt: off
+@pytest.mark.parametrize("cluster_size,fibers", [
+    (1, 1), (1, 10), (1, 20),
+    (2, 1), (2, 10), (2, 20),
+    (3, 1), (3, 10), (3, 20),
+    (10, 1), (10, 10), (10, 20),
+    (20, 1), (20, 10), (20, 20)
+])
+# fmt: on
+@saved_fixture
+def test_benchmark_nop(cluster, tmpdir, cluster_size, fibers, with_flamegraph):
     """
     For adequate flamegraphs don't forget to set kernel options:
     $ sudo echo 0 > /proc/sys/kernel/perf_event_paranoid
     $ sudo echo 0 > /proc/sys/kernel/kptr_restrict
     """
-    SIZES = [1, 2, 3, 10, 25, 50]
-    FIBERS = [1, 10, 30, 40, 50, 75]
     DURATION = 2
     FLAMEGRAPH_OUT_DIR = "tmp/flamegraph/nop"
-    FLAMEGRAPH_TMP_DIR = os.path.join(tmpdir, "flamegraph")
-    CLUSTER_DATA_DIR = os.path.join(tmpdir, "cluster")
-
-    def new_cluster():
-        n = xdist_worker_number
-        assert isinstance(n, int)
-        assert n >= 0
-
-        # Provide each worker a dedicated pool of 200 listening ports
-        base_port = 3300 + n * 200
-        max_port = base_port + 199
-        assert max_port <= 65535
-
-        cluster_ids = (f"cluster-{xdist_worker_number}-{i}" for i in count())
-
-        cluster = Cluster(
-            binary_path=binary_path,
-            id=next(cluster_ids),
-            data_dir=CLUSTER_DATA_DIR,
-            base_host="127.0.0.1",
-            base_port=base_port,
-            max_port=max_port,
-        )
-        return cluster
+    FLAMEGRAPH_TMP_DIR = tmpdir
 
     def expand_cluster(cluster: Cluster, size: int):
         c = 0
         while len(cluster.instances) < size:
             cluster.add_instance(wait_ready=False).start()
             c += 1
-            if c % 3 == 0:
+            if c % 5 == 0:
                 wait_longer(cluster)
         wait_longer(cluster)
-
-    def make_cluster(size: int):
-        cluster = new_cluster()
-        expand_cluster(cluster, size)
-        return cluster
 
     def init(i: Instance):
         init_code = """
@@ -200,108 +164,90 @@ def test_benchmark_nop(
     def state(i: Instance):
         return i.eval("return picolib.raft_status()")
 
-    def instance_to_pid(i: Instance):
-        assert i.process
-        return i.process.pid
-
     def benchmark():
-        stats = []
-        sizes = list(set(SIZES))
-        sizes.sort()
+        print(f"===== Cluster size = {cluster_size}, fibers = {fibers} =====")
         acc = []
-        for s in sizes:
-            print(f"===== Cluster size = {s} =====")
-            cluster = make_cluster(s)
-            pids = list(map(instance_to_pid, cluster.instances))
-            i = find_leader(cluster)
-            init(i)
-            pid = child_pid(i)
+        expand_cluster(cluster, cluster_size)
+        i = find_leader(cluster)
+        init(i)
+        pid = child_pid(i)
 
-            for c in FIBERS:
-                print(f"===== Cluster size = {s}, fibers = {c} =====")
-
-                def f(i, t, c):
-                    return [i.eval("return benchmark_nop(...)", t, c, timeout=300)]
-
-                if with_flamegraph:
-                    f = flamegraph_decorator(
-                        f,
-                        f"s{str(s).zfill(3)}f{str(c).zfill(3)}",
-                        pid,
-                        FLAMEGRAPH_TMP_DIR,
-                        FLAMEGRAPH_OUT_DIR,
-                        DURATION,
-                        acc,
-                    )
-                stat = f(i, DURATION, c)
-                stats.append((s, c, stat))
-
-            cluster.kill()
-            cluster.remove_data()
-            retrying(lambda: assert_all_pids_down(pids))
+        def f(instance, duration, fiber_count):
+            return instance.eval("return benchmark_nop(...)", duration, fiber_count, timeout=300)
 
         if with_flamegraph:
-            gather_flamegraphs(acc)
+            f = flamegraph_decorator(
+                f,
+                f"s{str(cluster_size).zfill(3)}f{str(fibers).zfill(3)}",
+                pid,
+                FLAMEGRAPH_TMP_DIR,
+                FLAMEGRAPH_OUT_DIR,
+                DURATION,
+                acc,
+            )
+        stat = f(i, DURATION, fibers)
 
-        return stats
+        return ((cluster_size, fibers, stat), acc[0] if len(acc) > 0 else None)
 
-    def report_vertical(stats):
+    return benchmark()
+
+
+@funcy.retry(tries=30, timeout=10)  # type: ignore
+def wait_longer(cluster):
+    for instance in cluster.instances:
+        instance.wait_ready()
+
+
+def test_summarize_replace_and_nop(fixture_store, with_flamegraph, capsys):
+    def report_replace(stats):
         t = PrettyTable()
-        t.field_names = ["cluster size", "fibers", "rps"]
+        t.title = "tarantool replace/sec"
+        t.field_names = ["fibers", "rps"]
+        for (c, stat) in stats:
+            t.add_row([c, int(stat["rps"])])
         t.align = "r"
-        for (s, c, stat) in stats:
-            t.add_row([s, c, int(avg(rps(stat)))])
         return t
 
-    def report_table(stats):
-        def index_exist(lis: list, i: int):
-            try:
-                lis[i]
-            except IndexError:
-                return False
-            return True
+    def report_nop(stats):
+        sizes = list(set(d[0] for d in stats))
+        fibers = list(set(d[1] for d in stats))
 
-        data = []
+        data = [[""] * len(fibers) for _ in sizes]
         for (s, c, stat) in stats:
-            size_index = SIZES.index(s)
-            fiber_index = FIBERS.index(c)
-            val = int(avg(rps(stat)))
-            if not index_exist(data, size_index):
-                data.insert(size_index, [])
-            if not index_exist(data[size_index], fiber_index):
-                data[size_index].insert(fiber_index, val)
+            size_index = sizes.index(s)
+            fiber_index = fibers.index(c)
+            val = int(stat["rps"])
+            data[size_index][fiber_index] = val  # type: ignore
 
         t = PrettyTable()
         t.title = "Nop/s"
-        t.field_names = ["Cluster size \\ fibers", *FIBERS]
+        t.field_names = ["Cluster size \\ fibers", *fibers]
         t.align = "r"
 
         index = 0
         for d in data:
-            row = [SIZES[index], *d]
+            row = [sizes[index], *d]
             t.add_row(row)
             index += 1
 
         return t
 
-    def rps(stat):
-        return list(map(lambda s: s["rps"], stat))
-
-    def avg(x):
-        return sum(x) / len(x)
-
-    def assert_all_pids_down(pids):
-        assert all(map(lambda pid: not pid_alive(pid), pids))
-
     with capsys.disabled():
-        stats = benchmark()
-        print(report_table(stats))
+        print()
+        if "test_benchmark_replace" in fixture_store:
+            stats1 = [d[1][0] for d in fixture_store["test_benchmark_replace"].items()]
+            print(report_replace(stats1))
+        if "test_benchmark_nop" in fixture_store:
+            stats2 = [d[1][0] for d in fixture_store["test_benchmark_nop"].items()]
+            print(report_nop(stats2))
 
-
-@funcy.retry(tries=30, timeout=10)
-def wait_longer(cluster):
-    for instance in cluster.instances:
-        instance.wait_ready()
+    if with_flamegraph:
+        acc = []
+        for d in fixture_store["test_benchmark_replace"].items():
+            acc.append(d[1][1])
+        for d in fixture_store["test_benchmark_nop"].items():
+            acc.append(d[1][1])
+        gather_flamegraphs(acc)
 
 
 class Flamegraph:
@@ -409,7 +355,7 @@ def flamegraph_decorator(
         flamegraph.start()
         result = f(*args, **kwargs)
         flamegraph.wait()
-        acc.append(flamegraph)
+        acc.insert(0, flamegraph)
         return result
 
     return inner
