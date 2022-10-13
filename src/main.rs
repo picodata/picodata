@@ -174,6 +174,23 @@ fn picolib_setup(args: &args::Run) {
                 Ok(())
             }),
         );
+        luamod.set(
+            "vshard_cfg",
+            tlua::function0(|| -> Result<traft::rpc::sharding::cfg::Cfg, Error> {
+                let node = traft::node::global()?;
+                traft::rpc::sharding::cfg::Cfg::from_storage(&node.storage.peers)
+            }),
+        );
+        l.exec(
+            "
+            picolib.test_space = function(name)
+                local s = box.schema.space.create(name, {is_sync = true, if_not_exists = true})
+                s:create_index('pk', {if_not_exists = true})
+                return s
+            end
+        ",
+        )
+        .unwrap();
     }
     luamod.set("log", &[()]);
     #[rustfmt::skip]
