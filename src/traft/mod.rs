@@ -235,7 +235,7 @@ impl Op {
             Self::EvalLua(op) => Box::new(op.result()),
             Self::ReturnOne(op) => Box::new(op.result()),
             Self::PersistPeer { peer } => {
-                peers.persist_peer(peer).unwrap();
+                peers.put(peer).unwrap();
                 Box::new(peer.clone())
             }
             Self::Dml(op) => Box::new(op.result()),

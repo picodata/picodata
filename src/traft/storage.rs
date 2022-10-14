@@ -256,14 +256,14 @@ impl Peers {
     }
 
     #[inline]
-    pub fn persist_peer(&self, peer: &traft::Peer) -> tarantool::Result<()> {
+    pub fn put(&self, peer: &traft::Peer) -> tarantool::Result<()> {
         self.space_mut().replace(peer)?;
         Ok(())
     }
 
     #[allow(dead_code)]
     #[inline]
-    pub fn delete_peer(&self, instance_id: &str) -> tarantool::Result<()> {
+    pub fn delete(&self, instance_id: &str) -> tarantool::Result<()> {
         self.space_mut().delete(&[instance_id])?;
         Ok(())
     }
@@ -579,7 +579,7 @@ inventory::submit!(crate::InnerTest {
         );
 
         assert_err!(
-            storage_peers.persist_peer(&traft::Peer {
+            storage_peers.put(&traft::Peer {
                 raft_id: 1,
                 instance_id: "i99".into(),
                 ..Default::default()
@@ -611,8 +611,8 @@ inventory::submit!(crate::InnerTest {
                 ..Default::default()
             };
 
-            storage_peers.persist_peer(&peer(10, "addr:collision")).unwrap();
-            storage_peers.persist_peer(&peer(11, "addr:collision")).unwrap();
+            storage_peers.put(&peer(10, "addr:collision")).unwrap();
+            storage_peers.put(&peer(11, "addr:collision")).unwrap();
         }
 
         let peer_by_raft_id = |id: RaftId| storage_peers.get(&id).unwrap();

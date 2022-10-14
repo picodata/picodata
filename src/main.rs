@@ -737,9 +737,9 @@ fn start_join(args: &args::Run, leader_address: String) {
 
     let raft_id = resp.peer.raft_id;
     start_transaction(|| -> Result<(), TntError> {
-        storage.peers.persist_peer(&resp.peer).unwrap();
+        storage.peers.put(&resp.peer).unwrap();
         for peer in resp.raft_group {
-            storage.peers.persist_peer(&peer).unwrap();
+            storage.peers.put(&peer).unwrap();
         }
         storage.raft.persist_raft_id(raft_id).unwrap();
         storage

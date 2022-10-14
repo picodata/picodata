@@ -564,7 +564,7 @@ inventory::submit!(crate::InnerTest {
         let listen: String = l.eval("return box.info.listen").unwrap();
 
         storage
-            .persist_peer(&traft::Peer {
+            .put(&traft::Peer {
                 raft_id: 1337,
                 peer_address: listen.clone(),
                 ..Default::default()
