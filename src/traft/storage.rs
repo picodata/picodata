@@ -33,9 +33,6 @@ define_str_enum! {
 #[error("unknown cluster space {0}")]
 pub struct UnknownClusterSpace(pub String);
 
-// TODO(gmoshkin): remove this
-const RAFT_GROUP: &str = ClusterSpace::Group.as_str();
-
 ////////////////////////////////////////////////////////////////////////////////
 // StateKey
 ////////////////////////////////////////////////////////////////////////////////
@@ -79,62 +76,10 @@ fn box_err(e: impl std::error::Error + Sync + Send + 'static) -> StorageError {
 
 pub struct Storage;
 
-// TODO: this should be a field in `Storage`. This is static for now, because
-// the refactoring will block development.
-static mut PEERS_ACCESS: Option<Peers> = None;
-
 impl Storage {
-    pub fn init_schema(peers: Peers) {
-        if unsafe { PEERS_ACCESS.is_some() } {
-            crate::warn_or_panic!("schema reinitialized");
-        }
-
-        unsafe { PEERS_ACCESS = Some(peers) };
-    }
-
-    pub fn peers_access() -> &'static Peers {
-        unsafe { PEERS_ACCESS.as_ref().unwrap() }
-    }
-
     fn space(name: impl AsRef<str> + Into<String>) -> Result<Space, StorageError> {
         Space::find(name.as_ref())
             .ok_or_else(|| Error::NoSuchSpace(name.into()))
-            .map_err(box_err)
-    }
-
-    pub fn peer_by_raft_id(raft_id: RaftId) -> Result<Option<traft::Peer>, StorageError> {
-        Self::peers_access()
-            .peer_by_raft_id(raft_id)
-            .map_err(box_err)
-    }
-
-    pub fn peer_by_instance_id(instance_id: &str) -> Result<Option<traft::Peer>, StorageError> {
-        Self::peers_access()
-            .peer_by_instance_id(instance_id)
-            .map_err(box_err)
-    }
-
-    pub fn peers() -> Result<Vec<traft::Peer>, StorageError> {
-        Self::peers_access().all_peers().map_err(box_err)
-    }
-
-    pub fn box_replication(
-        replicaset_id: &str,
-        max_index: Option<RaftIndex>,
-    ) -> Result<Vec<String>, StorageError> {
-        Self::peers_access()
-            .replicaset_peer_addresses(replicaset_id, max_index)
-            .map_err(box_err)
-    }
-
-    pub fn persist_peer(peer: &traft::Peer) -> Result<(), StorageError> {
-        Self::peers_access().persist_peer(peer).map_err(box_err)
-    }
-
-    #[allow(dead_code)]
-    pub fn delete_peer(instance_id: &str) -> Result<(), StorageError> {
-        Self::peers_access()
-            .delete_peer(instance_id)
             .map_err(box_err)
     }
 
@@ -388,20 +333,6 @@ impl Peers {
         Ok(res)
     }
 
-<<<<<<< HEAD
-=======
-    /// Return an iterator over all peers. Items of the iterator are
-    /// specified by `F` (see `PeerFieldDef` & `peer_field` module).
-    #[inline(always)]
-    pub fn peers_fields<F>(&self) -> Result<PeersFields<F>, TraftError>
-    where
-        F: PeerFieldDef,
-    {
-        let iter = self.space().select(IteratorType::All, &())?;
-        Ok(PeersFields::new(iter))
-    }
-
->>>>>>> refactor(storage): use UnsafeCell for space_peers in Peers
     #[inline]
     pub fn peer_by_instance_id(&self, instance_id: &str) -> tarantool::Result<Option<traft::Peer>> {
         let tuple = self.index_instance_id.get(&(instance_id,))?;
@@ -652,9 +583,10 @@ macro_rules! assert_err {
 inventory::submit!(crate::InnerTest {
     name: "test_storage_peers",
     body: || {
-        use traft::{CurrentGrade, TargetGrade};
+        use traft::{CurrentGrade, TargetGrade, InstanceId};
 
-        let mut raft_group = Storage::space(RAFT_GROUP).unwrap();
+        let storage_peers = Peers::new().unwrap();
+        let mut raft_group = storage_peers.space().clone();
 
         let faildom = crate::traft::FailureDomain::from([("a", "b")]);
 
@@ -671,22 +603,21 @@ inventory::submit!(crate::InnerTest {
             raft_group.put(&peer).unwrap();
         }
 
-        let peers = Storage::peers().unwrap();
+        let peers = storage_peers.all_peers().unwrap();
         assert_eq!(
             peers.iter().map(|p| &p.instance_id).collect::<Vec<_>>(),
             vec!["i1", "i2", "i3", "i4", "i5"]
         );
 
         assert_err!(
-            Storage::persist_peer(&traft::Peer {
+            storage_peers.persist_peer(&traft::Peer {
                 raft_id: 1,
                 instance_id: "i99".into(),
                 ..Default::default()
             }),
             format!(
                 concat!(
-                    "unknown error",
-                    " Tarantool error:",
+                    "Tarantool error:",
                     " TupleFound: Duplicate key exists",
                     " in unique index \"raft_id\"",
                     " in space \"raft_group\"",
@@ -711,21 +642,21 @@ inventory::submit!(crate::InnerTest {
                 ..Default::default()
             };
 
-            Storage::persist_peer(&peer(10, "addr:collision")).unwrap();
-            Storage::persist_peer(&peer(11, "addr:collision")).unwrap();
+            storage_peers.persist_peer(&peer(10, "addr:collision")).unwrap();
+            storage_peers.persist_peer(&peer(11, "addr:collision")).unwrap();
         }
 
-        let peer_by_raft_id = |id: RaftId| Storage::peer_by_raft_id(id).unwrap().unwrap();
+        let peer_by_raft_id = |id: RaftId| storage_peers.get(&id).unwrap();
         {
             assert_eq!(peer_by_raft_id(1).instance_id, "i1");
             assert_eq!(peer_by_raft_id(2).instance_id, "i2");
             assert_eq!(peer_by_raft_id(3).instance_id, "i3");
             assert_eq!(peer_by_raft_id(4).instance_id, "i4");
             assert_eq!(peer_by_raft_id(5).instance_id, "i5");
-            assert_eq!(Storage::peer_by_raft_id(6), Ok(None));
+            assert_err!(storage_peers.get(&6), "peer with id 6 not found");
         }
 
-        let peer_by_instance_id = |iid| Storage::peer_by_instance_id(iid).unwrap().unwrap();
+        let peer_by_instance_id = |iid: &str| storage_peers.get(&InstanceId::from(iid)).unwrap();
         {
             assert_eq!(peer_by_instance_id("i1").peer_address, "addr:1");
             assert_eq!(peer_by_instance_id("i2").peer_address, "addr:2");
@@ -736,11 +667,14 @@ inventory::submit!(crate::InnerTest {
                 peer_by_instance_id("i10").peer_address,
                 peer_by_instance_id("i11").peer_address
             );
-            assert_eq!(Storage::peer_by_instance_id("i6"), Ok(None));
+            assert_err!(
+                storage_peers.get(&InstanceId::from("i6")),
+                "peer with id \"i6\" not found"
+            );
         }
 
         let box_replication = |replicaset_id: &str, max_index: Option<RaftIndex>| {
-            Storage::box_replication(replicaset_id, max_index).unwrap()
+            storage_peers.replicaset_peer_addresses(replicaset_id, max_index).unwrap()
         };
 
         {
@@ -763,10 +697,9 @@ inventory::submit!(crate::InnerTest {
         raft_group.index("raft_id").unwrap().drop().unwrap();
 
         assert_err!(
-            Storage::peer_by_raft_id(1),
+            storage_peers.get(&1),
             concat!(
-                "unknown error",
-                " Tarantool error: NoSuchIndexID: No index #1 is defined",
+                "Tarantool error: NoSuchIndexID: No index #1 is defined",
                 " in space 'raft_group'",
             )
         );
@@ -774,10 +707,9 @@ inventory::submit!(crate::InnerTest {
         raft_group.index("replicaset_id").unwrap().drop().unwrap();
 
         assert_err!(
-            Storage::box_replication("", None),
+            storage_peers.replicaset_peer_addresses("", None),
             concat!(
-                "unknown error",
-                " Tarantool error: NoSuchIndexID: No index #2 is defined",
+                "Tarantool error: NoSuchIndexID: No index #2 is defined",
                 " in space 'raft_group'",
             )
         );
@@ -785,10 +717,9 @@ inventory::submit!(crate::InnerTest {
         raft_group.primary_key().drop().unwrap();
 
         assert_err!(
-            Storage::peer_by_instance_id("i1"),
+            storage_peers.get(&InstanceId::from("i1")),
             concat!(
-                "unknown error",
-                " Tarantool error: NoSuchIndexID: No index #0 is defined",
+                "Tarantool error: NoSuchIndexID: No index #0 is defined",
                 " in space 'raft_group'",
             )
         );
@@ -796,9 +727,9 @@ inventory::submit!(crate::InnerTest {
         raft_group.drop().unwrap();
 
         assert_err!(
-            Storage::peers(),
+            storage_peers.all_peers(),
             format!(
-                "unknown error Tarantool error: NoSuchSpace: Space '{}' does not exist",
+                "Tarantool error: NoSuchSpace: Space '{}' does not exist",
                 raft_group.id(),
             )
         );

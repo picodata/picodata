@@ -566,7 +566,7 @@ impl NodeImpl {
         expelled: &mut bool,
     ) {
         assert_eq!(entry.entry_type, raft::EntryType::EntryNormal);
-        let result = entry.op().unwrap_or(&traft::Op::Nop).on_commit();
+        let result = entry.op().unwrap_or(&traft::Op::Nop).on_commit(&self.storage.peers);
 
         if let Some(lc) = entry.lc() {
             if let Some(notify) = self.notifications.remove(lc) {

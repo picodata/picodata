@@ -9,7 +9,6 @@ use crate::{stringify_cfunc, tarantool, tlog};
 use crate::traft::error::Error;
 use crate::traft::event;
 use crate::traft::node;
-use crate::traft::StorageOld;
 use crate::traft::TargetGrade;
 use crate::traft::{UpdatePeerRequest, UpdatePeerResponse};
 
@@ -41,7 +40,7 @@ pub fn on_shutdown() {
         return;
     }
 
-    let peer = StorageOld::peer_by_raft_id(raft_id).unwrap().unwrap();
+    let peer = node.storage.peers.get(&raft_id).unwrap();
     let cluster_id = node
         .storage
         .raft

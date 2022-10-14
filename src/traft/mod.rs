@@ -225,7 +225,7 @@ impl std::fmt::Display for Op {
 }
 
 impl Op {
-    pub fn on_commit(&self) -> Box<dyn Any> {
+    pub fn on_commit(&self, peers: &storage::Peers) -> Box<dyn Any> {
         match self {
             Self::Nop => Box::new(()),
             Self::Info { msg } => {
@@ -235,7 +235,7 @@ impl Op {
             Self::EvalLua(op) => Box::new(op.result()),
             Self::ReturnOne(op) => Box::new(op.result()),
             Self::PersistPeer { peer } => {
-                StorageOld::persist_peer(peer).unwrap();
+                peers.persist_peer(peer).unwrap();
                 Box::new(peer.clone())
             }
             Self::Dml(op) => Box::new(op.result()),

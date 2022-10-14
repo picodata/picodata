@@ -511,12 +511,9 @@ fn init_common(args: &args::Run, cfg: &tarantool::Cfg) -> Storage {
     std::fs::create_dir_all(&args.data_dir).unwrap();
     tarantool::set_cfg(cfg);
 
-    let storage = Storage::new().expect("Storage initialization failed");
-    // TODO: don't use global Storage anywhere
-    traft::storage::Storage::init_schema(storage.peers.clone());
     init_handlers();
     traft::event::init();
-    storage
+    Storage::new().expect("Storage initialization failed")
 }
 
 fn start_discover(args: &args::Run, to_supervisor: ipc::Sender<IpcMessage>) {
@@ -740,9 +737,9 @@ fn start_join(args: &args::Run, leader_address: String) {
 
     let raft_id = resp.peer.raft_id;
     start_transaction(|| -> Result<(), TntError> {
-        traft::StorageOld::persist_peer(&resp.peer).unwrap();
+        storage.peers.persist_peer(&resp.peer).unwrap();
         for peer in resp.raft_group {
-            traft::StorageOld::persist_peer(&peer).unwrap();
+            storage.peers.persist_peer(&peer).unwrap();
         }
         storage.raft.persist_raft_id(raft_id).unwrap();
         storage
@@ -767,14 +764,13 @@ fn postjoin(args: &args::Run, storage: Storage) {
     box_cfg.replication_connect_quorum = 0;
     tarantool::set_cfg(&box_cfg);
 
-    let raft_storage = storage.raft.clone();
-    let node = traft::node::Node::new(storage);
+    let node = traft::node::Node::new(storage.clone());
     let node = node.expect("failed initializing raft node");
     traft::node::set_global(node);
     let node = traft::node::global().unwrap();
     let raft_id = node.raft_id();
 
-    let cs = raft_storage.conf_state().unwrap();
+    let cs = storage.raft.conf_state().unwrap();
     if cs.voters == [raft_id] {
         tlog!(
             Info,
@@ -819,10 +815,9 @@ fn postjoin(args: &args::Run, storage: Storage) {
     }
 
     loop {
-        let peer = traft::StorageOld::peer_by_raft_id(raft_id)
-            .unwrap()
+        let peer = storage.peers.get(&raft_id)
             .expect("peer must be persisted at the time of postjoin");
-        let cluster_id = raft_storage
+        let cluster_id = storage.raft
             .cluster_id()
             .unwrap()
             .expect("cluster_id must be persisted at the time of postjoin");
@@ -833,9 +828,7 @@ fn postjoin(args: &args::Run, storage: Storage) {
             .with_failure_domain(args.failure_domain());
 
         let leader_id = node.status().leader_id.expect("leader_id deinitialized");
-        let leader = traft::StorageOld::peer_by_raft_id(leader_id)
-            .unwrap()
-            .unwrap();
+        let leader = storage.peers.get(&leader_id).unwrap();
 
         // It's necessary to call `raft_update_peer` remotely on a
         // leader over net_box. It always fails otherwise. Only the
@@ -1035,8 +1028,6 @@ fn test_one(t: &InnerTest) {
     };
 
     tarantool::set_cfg(&cfg);
-    // TODO: don't use global Storage in tests
-    traft::StorageOld::init_schema(traft::storage::Peers::new().unwrap());
     tarantool::exec(
         r#"
         box.schema.user.grant('guest', 'super', nil, nil, {if_not_exists = true})
