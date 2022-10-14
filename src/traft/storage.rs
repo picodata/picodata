@@ -11,7 +11,7 @@ use crate::traft::error::Error as TraftError;
 use crate::traft::RaftId;
 use crate::traft::RaftIndex;
 
-use std::cell::{RefCell, UnsafeCell};
+use std::cell::UnsafeCell;
 
 use super::RaftSpaceAccess;
 
@@ -276,9 +276,9 @@ impl Clone for State {
 
 /// A struct for accessing storage of all the cluster peers
 /// (currently raft_group).
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct Peers {
-    space_peers: RefCell<Space>,
+    space_peers: UnsafeCell<Space>,
     index_instance_id: Index,
     index_raft_id: Index,
     index_replicaset_id: Index,
@@ -321,23 +321,36 @@ impl Peers {
             .create()?;
 
         Ok(Self {
-            space_peers: RefCell::new(space_peers),
+            space_peers: UnsafeCell::new(space_peers),
             index_instance_id,
             index_raft_id,
             index_replicaset_id,
         })
     }
 
+    #[inline(always)]
+    fn space(&self) -> &Space {
+        // This is safe, because data inside Space struct itself never changes.
+        unsafe { &*self.space_peers.get() }
+    }
+
+    #[allow(clippy::mut_from_ref)]
+    #[inline(always)]
+    fn space_mut(&self) -> &mut Space {
+        // This is safe, because data inside Space struct itself never changes.
+        unsafe { &mut *self.space_peers.get() }
+    }
+
     #[inline]
     pub fn persist_peer(&self, peer: &traft::Peer) -> tarantool::Result<()> {
-        self.space_peers.borrow_mut().replace(peer)?;
+        self.space_mut().replace(peer)?;
         Ok(())
     }
 
     #[allow(dead_code)]
     #[inline]
     pub fn delete_peer(&self, instance_id: &str) -> tarantool::Result<()> {
-        self.space_peers.borrow_mut().delete(&[instance_id])?;
+        self.space_mut().delete(&[instance_id])?;
         Ok(())
     }
 
@@ -375,6 +388,20 @@ impl Peers {
         Ok(res)
     }
 
+<<<<<<< HEAD
+=======
+    /// Return an iterator over all peers. Items of the iterator are
+    /// specified by `F` (see `PeerFieldDef` & `peer_field` module).
+    #[inline(always)]
+    pub fn peers_fields<F>(&self) -> Result<PeersFields<F>, TraftError>
+    where
+        F: PeerFieldDef,
+    {
+        let iter = self.space().select(IteratorType::All, &())?;
+        Ok(PeersFields::new(iter))
+    }
+
+>>>>>>> refactor(storage): use UnsafeCell for space_peers in Peers
     #[inline]
     pub fn peer_by_instance_id(&self, instance_id: &str) -> tarantool::Result<Option<traft::Peer>> {
         let tuple = self.index_instance_id.get(&(instance_id,))?;
@@ -386,8 +413,7 @@ impl Peers {
 
     #[inline]
     pub fn all_peers(&self) -> tarantool::Result<Vec<traft::Peer>> {
-        self.space_peers
-            .borrow()
+        self.space()
             .select(IteratorType::All, &())?
             .map(|tuple| tuple.decode())
             .collect()
@@ -429,6 +455,17 @@ impl Peers {
             .select(IteratorType::Eq, &[replicaset_id])?
             .map(|tuple| T::get_in(&tuple))
             .collect()
+    }
+}
+
+impl Clone for Peers {
+    fn clone(&self) -> Self {
+        Self {
+            space_peers: UnsafeCell::new(self.space().clone()),
+            index_instance_id: self.index_instance_id.clone(),
+            index_raft_id: self.index_raft_id.clone(),
+            index_replicaset_id: self.index_replicaset_id.clone(),
+        }
     }
 }
 
