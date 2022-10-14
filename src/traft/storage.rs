@@ -1,4 +1,3 @@
-use ::raft::StorageError;
 use ::raft::INVALID_ID;
 use ::tarantool::index::{Index, IteratorType};
 use ::tarantool::space::{FieldType, Space};
@@ -33,6 +32,43 @@ define_str_enum! {
 #[error("unknown cluster space {0}")]
 pub struct UnknownClusterSpace(pub String);
 
+impl ClusterSpace {
+    #[inline]
+    fn get(&self) -> tarantool::Result<Space> {
+        Space::find(self.as_str()).ok_or_else(|| {
+            tarantool::set_error!(
+                tarantool::error::TarantoolErrorCode::NoSuchSpace,
+                "no such space \"{self}\""
+            );
+            tarantool::error::TarantoolError::last().into()
+        })
+    }
+
+    #[inline]
+    pub fn insert(&self, tuple: &impl ToTupleBuffer) -> tarantool::Result<Tuple> {
+        self.get()?.insert(tuple)
+    }
+
+    #[inline]
+    pub fn replace(&self, tuple: &impl ToTupleBuffer) -> tarantool::Result<Tuple> {
+        self.get()?.replace(tuple)
+    }
+
+    #[inline]
+    pub fn update(
+        &self,
+        key: &impl ToTupleBuffer,
+        ops: &[impl ToTupleBuffer],
+    ) -> tarantool::Result<Option<Tuple>> {
+        self.get()?.update(key, ops)
+    }
+
+    #[inline]
+    pub fn delete(&self, key: &impl ToTupleBuffer) -> tarantool::Result<Option<Tuple>> {
+        self.get()?.delete(key)
+    }
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // StateKey
 ////////////////////////////////////////////////////////////////////////////////
@@ -51,84 +87,17 @@ define_str_enum! {
 pub struct UnknownStateKey(pub String);
 
 ////////////////////////////////////////////////////////////////////////////////
-// Error
-////////////////////////////////////////////////////////////////////////////////
-
-// TODO: remove this type, use traft::error::Error instead
-#[allow(clippy::enum_variant_names)]
-#[derive(Debug, Error)]
-enum Error {
-    #[error("no such space \"{0}\"")]
-    NoSuchSpace(String),
-
-    #[allow(dead_code)]
-    #[error("no such index \"{1}\" in space \"{0}\"")]
-    NoSuchIndex(String, String),
-}
-
-fn box_err(e: impl std::error::Error + Sync + Send + 'static) -> StorageError {
-    StorageError::Other(Box::new(e))
-}
-
-////////////////////////////////////////////////////////////////////////////////
 // Storage
 ////////////////////////////////////////////////////////////////////////////////
 
-pub struct Storage;
-
-impl Storage {
-    fn space(name: impl AsRef<str> + Into<String>) -> Result<Space, StorageError> {
-        Space::find(name.as_ref())
-            .ok_or_else(|| Error::NoSuchSpace(name.into()))
-            .map_err(box_err)
-    }
-
-    pub fn insert(space: ClusterSpace, tuple: &impl ToTupleBuffer) -> Result<Tuple, StorageError> {
-        Storage::space(space.as_str())?
-            .insert(tuple)
-            .map_err(box_err)
-    }
-
-    pub fn replace(space: ClusterSpace, tuple: &impl ToTupleBuffer) -> Result<Tuple, StorageError> {
-        Storage::space(space.as_str())?
-            .replace(tuple)
-            .map_err(box_err)
-    }
-
-    pub fn update(
-        space: ClusterSpace,
-        key: &impl ToTupleBuffer,
-        ops: &[impl ToTupleBuffer],
-    ) -> Result<Option<Tuple>, StorageError> {
-        Storage::space(space.as_str())?
-            .update(key, ops)
-            .map_err(box_err)
-    }
-
-    #[rustfmt::skip]
-    pub fn delete(
-        space: ClusterSpace,
-        key: &impl ToTupleBuffer,
-    ) -> Result<Option<Tuple>, StorageError> {
-        Storage::space(space.as_str())?
-            .delete(key)
-            .map_err(box_err)
-    }
-}
-
-////////////////////////////////////////////////////////////////////////////////
-// Storage
-////////////////////////////////////////////////////////////////////////////////
-
-// TODO: get rid of old `Storage`, and rename this to `Storage`
 #[derive(Clone, Debug)]
-pub struct StorageNew {
+pub struct Storage {
     pub state: State,
     pub peers: Peers,
     pub raft: RaftSpaceAccess,
 }
 
-impl StorageNew {
+impl Storage {
     pub fn new() -> tarantool::Result<Self> {
         Ok(Self {
             state: State::new()?,

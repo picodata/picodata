@@ -815,9 +815,12 @@ fn postjoin(args: &args::Run, storage: Storage) {
     }
 
     loop {
-        let peer = storage.peers.get(&raft_id)
+        let peer = storage
+            .peers
+            .get(&raft_id)
             .expect("peer must be persisted at the time of postjoin");
-        let cluster_id = storage.raft
+        let cluster_id = storage
+            .raft
             .cluster_id()
             .unwrap()
             .expect("cluster_id must be persisted at the time of postjoin");

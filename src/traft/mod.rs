@@ -33,7 +33,7 @@ use protobuf::Message as _;
 pub use network::ConnectionPool;
 pub use raft_storage::RaftSpaceAccess;
 use storage::ClusterSpace;
-pub use storage::{Storage as StorageOld, StorageNew as Storage};
+pub use storage::Storage;
 pub use topology::Topology;
 
 pub type RaftId = u64;
@@ -318,13 +318,13 @@ pub enum OpDML {
 }
 
 impl OpResult for OpDML {
-    type Result = Result<Option<Tuple>, ::raft::StorageError>;
+    type Result = tarantool::Result<Option<Tuple>>;
     fn result(&self) -> Self::Result {
         match self {
-            Self::Insert { space, tuple } => StorageOld::insert(*space, tuple).map(Some),
-            Self::Replace { space, tuple } => StorageOld::replace(*space, tuple).map(Some),
-            Self::Update { space, key, ops } => StorageOld::update(*space, key, ops),
-            Self::Delete { space, key } => StorageOld::delete(*space, key),
+            Self::Insert { space, tuple } => space.insert(tuple).map(Some),
+            Self::Replace { space, tuple } => space.replace(tuple).map(Some),
+            Self::Update { space, key, ops } => space.update(key, ops),
+            Self::Delete { space, key } => space.delete(key),
         }
     }
 }
