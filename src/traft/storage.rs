@@ -11,7 +11,9 @@ use crate::traft::error::Error as TraftError;
 use crate::traft::RaftId;
 use crate::traft::RaftIndex;
 
-use std::cell::RefCell;
+use std::cell::{RefCell, UnsafeCell};
+
+use super::RaftSpaceAccess;
 
 ////////////////////////////////////////////////////////////////////////////////
 // ClusterSpace
@@ -83,29 +85,6 @@ static mut PEERS_ACCESS: Option<Peers> = None;
 
 impl Storage {
     pub fn init_schema(peers: Peers) {
-        ::tarantool::lua_state()
-            .exec_with(
-                r#"
-            local STATE, GROUP = ...
-
-            box.schema.space.create(STATE, {
-                if_not_exists = true,
-                is_local = true,
-                format = {
-                    {name = 'key', type = 'string', is_nullable = false},
-                    {name = 'value', type = 'any', is_nullable = false},
-                }
-            })
-            box.space[STATE]:create_index('pk', {
-                if_not_exists = true,
-                parts = {{'key'}},
-                unique = true,
-            })
-        "#,
-                ClusterSpace::State,
-            )
-            .unwrap();
-
         if unsafe { PEERS_ACCESS.is_some() } {
             crate::warn_or_panic!("schema reinitialized");
         }
@@ -121,20 +100,6 @@ impl Storage {
         Space::find(name.as_ref())
             .ok_or_else(|| Error::NoSuchSpace(name.into()))
             .map_err(box_err)
-    }
-
-    fn cluster_state<T>(key: StateKey) -> Result<Option<T>, StorageError>
-    where
-        T: DecodeOwned,
-    {
-        let tuple: Option<Tuple> = Storage::space(ClusterSpace::State)?
-            .get(&(key,))
-            .map_err(box_err)?;
-
-        match tuple {
-            Some(t) => t.field(1).map_err(box_err),
-            None => Ok(None),
-        }
     }
 
     pub fn peer_by_raft_id(raft_id: RaftId) -> Result<Option<traft::Peer>, StorageError> {
@@ -160,11 +125,6 @@ impl Storage {
         Self::peers_access()
             .replicaset_peer_addresses(replicaset_id, max_index)
             .map_err(box_err)
-    }
-
-    #[inline]
-    pub fn replication_factor() -> Result<Option<u8>, StorageError> {
-        Storage::cluster_state(StateKey::ReplicationFactor)
     }
 
     pub fn persist_peer(peer: &traft::Peer) -> Result<(), StorageError> {
@@ -208,6 +168,105 @@ impl Storage {
         Storage::space(space.as_str())?
             .delete(key)
             .map_err(box_err)
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Storage
+////////////////////////////////////////////////////////////////////////////////
+
+// TODO: get rid of old `Storage`, and rename this to `Storage`
+#[derive(Clone, Debug)]
+pub struct StorageNew {
+    pub state: State,
+    pub peers: Peers,
+    pub raft: RaftSpaceAccess,
+}
+
+impl StorageNew {
+    pub fn new() -> tarantool::Result<Self> {
+        Ok(Self {
+            state: State::new()?,
+            peers: Peers::new()?,
+            raft: RaftSpaceAccess::new()?,
+        })
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// State
+////////////////////////////////////////////////////////////////////////////////
+
+/// A struct for accessing storage of the cluster-wide key-value state
+/// (currently cluster_state).
+#[derive(Debug)]
+pub struct State {
+    space: UnsafeCell<Space>,
+    index_primary: Index,
+}
+
+impl State {
+    const SPACE_NAME: &'static str = ClusterSpace::State.as_str();
+    const INDEX_PRIMARY: &'static str = "pk";
+
+    pub fn new() -> tarantool::Result<Self> {
+        let space = Space::builder(Self::SPACE_NAME)
+            .is_local(true)
+            .is_temporary(false)
+            .field(("key", FieldType::String))
+            .field(("value", FieldType::Any))
+            .if_not_exists(true)
+            .create()?;
+
+        let index_primary = space
+            .index_builder(Self::INDEX_PRIMARY)
+            .unique(true)
+            .part("key")
+            .if_not_exists(true)
+            .create()?;
+
+        Ok(Self {
+            space: UnsafeCell::new(space),
+            index_primary,
+        })
+    }
+
+    #[inline(always)]
+    fn space(&self) -> &Space {
+        unsafe { &*self.space.get() }
+    }
+
+    #[allow(clippy::mut_from_ref)]
+    #[inline(always)]
+    fn space_mut(&self) -> &mut Space {
+        unsafe { &mut *self.space.get() }
+    }
+
+    #[inline]
+    pub fn get<T>(&self, key: StateKey) -> tarantool::Result<Option<T>>
+    where
+        T: DecodeOwned,
+    {
+        match self.space().get(&[key])? {
+            Some(t) => t.field(1),
+            None => Ok(None),
+        }
+    }
+
+    #[allow(dead_code)]
+    #[inline]
+    pub fn put(&self, key: StateKey, value: &impl serde::Serialize) -> tarantool::Result<()> {
+        self.space_mut().put(&(key, value))?;
+        Ok(())
+    }
+}
+
+impl Clone for State {
+    fn clone(&self) -> Self {
+        Self {
+            space: UnsafeCell::new(self.space().clone()),
+            index_primary: self.index_primary.clone(),
+        }
     }
 }
 

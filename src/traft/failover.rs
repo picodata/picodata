@@ -9,7 +9,7 @@ use crate::{stringify_cfunc, tarantool, tlog};
 use crate::traft::error::Error;
 use crate::traft::event;
 use crate::traft::node;
-use crate::traft::Storage;
+use crate::traft::StorageOld;
 use crate::traft::TargetGrade;
 use crate::traft::{UpdatePeerRequest, UpdatePeerResponse};
 
@@ -17,17 +17,20 @@ pub fn on_shutdown() {
     let node = node::global().unwrap();
     let voters = node
         .storage
+        .raft
         .voters()
         .expect("failed reading voters")
         .unwrap_or_default();
     let learners = node
         .storage
+        .raft
         .learners()
         .expect("failed reading learners")
         .unwrap_or_default();
     let have_active_learners = learners.into_iter().any(|raft_id| {
-        Storage::peer_by_raft_id(raft_id)
-            .expect("failed reading peer")
+        node.storage
+            .peers
+            .get(&raft_id)
             .map(|peer| peer.is_active())
             .unwrap_or(false)
     });
@@ -38,9 +41,10 @@ pub fn on_shutdown() {
         return;
     }
 
-    let peer = Storage::peer_by_raft_id(raft_id).unwrap().unwrap();
+    let peer = StorageOld::peer_by_raft_id(raft_id).unwrap().unwrap();
     let cluster_id = node
         .storage
+        .raft
         .cluster_id()
         .unwrap()
         .expect("cluster_id must be present");
@@ -62,7 +66,7 @@ pub fn on_shutdown() {
             }
             break;
         }
-        let leader = Storage::peer_by_raft_id(leader_id).unwrap().unwrap();
+        let leader = node.storage.peers.get(&leader_id).unwrap();
         let wait_before_retry = Duration::from_millis(300);
         let now = Instant::now();
 
@@ -99,6 +103,7 @@ fn raft_update_peer(
 
     let cluster_id = node
         .storage
+        .raft
         .cluster_id()?
         .ok_or("cluster_id is not set yet")?;
 

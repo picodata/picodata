@@ -11,7 +11,7 @@ use crate::InstanceId;
 #[proc(packed_args)]
 fn proc_replication(req: Request) -> Result<Response, Error> {
     let node = node::global()?;
-    let peer_storage = &node.peer_storage;
+    let peer_storage = &node.storage.peers;
     let this_rsid = peer_storage.peer_field::<ReplicasetId>(&node.raft_id())?;
     let mut peer_addresses = Vec::with_capacity(req.replicaset_instances.len());
     for id in &req.replicaset_instances {

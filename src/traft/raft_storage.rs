@@ -17,7 +17,7 @@ fn box_err(e: impl std::error::Error + Sync + Send + 'static) -> StorageError {
     StorageError::Other(Box::new(e))
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct RaftSpaceAccess {
     space_raft_log: Space,
     space_raft_state: Space,

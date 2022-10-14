@@ -33,7 +33,7 @@ use protobuf::Message as _;
 pub use network::ConnectionPool;
 pub use raft_storage::RaftSpaceAccess;
 use storage::ClusterSpace;
-pub use storage::{Peers as PeerStorage, Storage};
+pub use storage::{Storage as StorageOld, StorageNew as Storage};
 pub use topology::Topology;
 
 pub type RaftId = u64;
@@ -235,7 +235,7 @@ impl Op {
             Self::EvalLua(op) => Box::new(op.result()),
             Self::ReturnOne(op) => Box::new(op.result()),
             Self::PersistPeer { peer } => {
-                Storage::persist_peer(peer).unwrap();
+                StorageOld::persist_peer(peer).unwrap();
                 Box::new(peer.clone())
             }
             Self::Dml(op) => Box::new(op.result()),
@@ -321,10 +321,10 @@ impl OpResult for OpDML {
     type Result = Result<Option<Tuple>, ::raft::StorageError>;
     fn result(&self) -> Self::Result {
         match self {
-            Self::Insert { space, tuple } => Storage::insert(*space, tuple).map(Some),
-            Self::Replace { space, tuple } => Storage::replace(*space, tuple).map(Some),
-            Self::Update { space, key, ops } => Storage::update(*space, key, ops),
-            Self::Delete { space, key } => Storage::delete(*space, key),
+            Self::Insert { space, tuple } => StorageOld::insert(*space, tuple).map(Some),
+            Self::Replace { space, tuple } => StorageOld::replace(*space, tuple).map(Some),
+            Self::Update { space, key, ops } => StorageOld::update(*space, key, ops),
+            Self::Delete { space, key } => StorageOld::delete(*space, key),
         }
     }
 }

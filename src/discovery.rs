@@ -196,12 +196,12 @@ pub fn wait_global() -> Role {
 fn proc_discover<'a>(request: Request, request_to: Address) -> Result<Response, Box<dyn StdError>> {
     let ready_ids = traft::node::global().ok().and_then(|node| {
         let status = node.status();
-        status.leader_id.map(|leader_id| (leader_id, status.id))
+        status
+            .leader_id
+            .map(|leader_id| (&node.storage.peers, leader_id, status.id))
     });
-    if let Some((leader_id, id)) = ready_ids {
-        let leader = traft::Storage::peer_by_raft_id(leader_id)?.ok_or_else(|| {
-            format!("leader_id is present ({leader_id}) but it's address is unknown for node {id}")
-        })?;
+    if let Some((peers, leader_id, id)) = ready_ids {
+        let leader = peers.get(&leader_id)?;
         Ok(Response::Done(Role::new(
             leader.peer_address,
             leader_id == id,

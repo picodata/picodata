@@ -20,8 +20,8 @@ use crate::traft;
 use crate::traft::error::Error;
 use crate::traft::rpc::Request;
 use crate::traft::storage::peer_field::{self, PeerAddress};
+use crate::traft::storage::Peers as PeerStorage;
 use crate::traft::{InstanceId, RaftId};
-use crate::traft::{PeerStorage, Storage};
 use crate::unwrap_ok_or;
 use crate::util::Either::{self, Left, Right};
 
@@ -554,7 +554,7 @@ inventory::submit!(crate::InnerTest {
             }),
         );
 
-        let storage = Storage::peers_access();
+        let storage = PeerStorage::new().unwrap();
         // Connect to the current Tarantool instance
         let mut pool = ConnectionPool::builder(storage.clone())
             .handler_name("test_interact")

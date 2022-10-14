@@ -49,6 +49,7 @@ use crate::traft::failover;
 use crate::traft::notify::Notify;
 use crate::traft::rpc::replication;
 use crate::traft::storage::peer_field;
+use crate::traft::storage::StateKey;
 use crate::traft::ConnectionPool;
 use crate::traft::LogicalClock;
 use crate::traft::Op;
@@ -58,7 +59,7 @@ use crate::traft::{
     ExpelRequest, ExpelResponse, JoinRequest, JoinResponse, SyncRaftRequest, SyncRaftResponse,
     UpdatePeerRequest,
 };
-use crate::traft::{PeerStorage, RaftSpaceAccess, Storage};
+use crate::traft::{RaftSpaceAccess, Storage};
 
 use super::OpResult;
 use super::{CurrentGrade, TargetGrade};
@@ -89,8 +90,7 @@ pub struct Node {
     raft_id: RaftId,
 
     node_impl: Rc<Mutex<NodeImpl>>,
-    pub(super) storage: RaftSpaceAccess,
-    pub(super) peer_storage: PeerStorage,
+    pub(crate) storage: Storage,
     main_loop: MainLoop,
     _conf_change_loop: fiber::UnitJoinHandle<'static>,
     status: Rc<RefCell<Status>>,
@@ -107,8 +107,8 @@ impl std::fmt::Debug for Node {
 impl Node {
     /// Initialize the raft node.
     /// **This function yields**
-    pub fn new(storage: RaftSpaceAccess, peer_storage: PeerStorage) -> Result<Self, RaftError> {
-        let node_impl = NodeImpl::new(storage.clone(), peer_storage.clone())?;
+    pub fn new(storage: Storage) -> Result<Self, RaftError> {
+        let node_impl = NodeImpl::new(storage.clone())?;
 
         let raft_id = node_impl.raft_id();
         let status = Rc::new(RefCell::new(Status {
@@ -123,8 +123,7 @@ impl Node {
         let conf_change_loop_fn = {
             let status = status.clone();
             let storage = storage.clone();
-            let peer_storage = peer_storage.clone();
-            move || raft_conf_change_loop(status, storage, peer_storage)
+            move || raft_conf_change_loop(status, storage)
         };
 
         let node = Node {
@@ -137,7 +136,6 @@ impl Node {
                 .unwrap(),
             node_impl,
             storage,
-            peer_storage,
             status,
         };
 
@@ -266,7 +264,7 @@ impl Node {
 
     #[inline]
     pub fn all_traft_entries(&self) -> ::tarantool::Result<Vec<traft::Entry>> {
-        self.storage.all_traft_entries()
+        self.storage.raft.all_traft_entries()
     }
 }
 
@@ -275,29 +273,24 @@ struct NodeImpl {
     pub notifications: HashMap<LogicalClock, Notify>,
     topology_cache: KVCell<RaftTerm, Topology>,
     joint_state_latch: KVCell<RaftIndex, Notify>,
-    storage: RaftSpaceAccess,
-    peer_storage: PeerStorage,
+    storage: Storage,
     pool: ConnectionPool,
     lc: LogicalClock,
 }
 
 impl NodeImpl {
-    fn new(
-        mut storage: RaftSpaceAccess,
-        peer_storage: PeerStorage,
-        // TODO: provide clusterwide space access
-    ) -> Result<Self, RaftError> {
+    fn new(mut storage: Storage) -> Result<Self, RaftError> {
         let box_err = |e| StorageError::Other(Box::new(e));
 
-        let raft_id: RaftId = storage.raft_id().map_err(box_err)?.unwrap();
-        let applied: RaftIndex = storage.applied().map_err(box_err)?.unwrap_or(0);
+        let raft_id: RaftId = storage.raft.raft_id().map_err(box_err)?.unwrap();
+        let applied: RaftIndex = storage.raft.applied().map_err(box_err)?.unwrap_or(0);
         let lc = {
-            let gen = storage.gen().unwrap().unwrap_or(0) + 1;
-            storage.persist_gen(gen).unwrap();
+            let gen = storage.raft.gen().unwrap().unwrap_or(0) + 1;
+            storage.raft.persist_gen(gen).unwrap();
             LogicalClock::new(raft_id, gen)
         };
 
-        let pool = ConnectionPool::builder(peer_storage.clone())
+        let pool = ConnectionPool::builder(storage.peers.clone())
             .handler_name(stringify_cfunc!(raft_interact))
             .call_timeout(MainLoop::TICK * 4)
             .connect_timeout(MainLoop::TICK * 4)
@@ -311,7 +304,7 @@ impl NodeImpl {
             ..Default::default()
         };
 
-        let raw_node = RawNode::new(&cfg, storage.clone(), &tlog::root())?;
+        let raw_node = RawNode::new(&cfg, storage.raft.clone(), &tlog::root())?;
 
         Ok(Self {
             raw_node,
@@ -319,7 +312,6 @@ impl NodeImpl {
             topology_cache: KVCell::new(),
             joint_state_latch: KVCell::new(),
             storage,
-            peer_storage,
             pool,
             lc,
         })
@@ -349,8 +341,9 @@ impl NodeImpl {
         let topology: Topology = unwrap_some_or! {
             self.topology_cache.take_or_drop(&current_term),
             {
-                let peers = self.peer_storage.all_peers().map_err(box_err)?;
-                let replication_factor = Storage::replication_factor()?.unwrap();
+                let peers = self.storage.peers.all_peers().map_err(box_err)?;
+                let replication_factor = self.storage.state.get(StateKey::ReplicationFactor)
+                    .map_err(box_err)?.unwrap();
                 Topology::from_peers(peers).with_replication_factor(replication_factor)
             }
         };
@@ -422,7 +415,7 @@ impl NodeImpl {
     pub fn process_topology_request_async(
         &mut self,
         req: TopologyRequest,
-    ) -> Result<Notify, RaftError> {
+    ) -> Result<Notify, Error> {
         let topology = self.topology_mut()?;
         let peer_result = match req {
             TopologyRequest::Join(JoinRequest {
@@ -553,7 +546,7 @@ impl NodeImpl {
         }
 
         if let Some(last_entry) = entries.last() {
-            if let Err(e) = self.storage.persist_applied(last_entry.index) {
+            if let Err(e) = self.storage.raft.persist_applied(last_entry.index) {
                 tlog!(
                     Error,
                     "error persisting applied index: {e}";
@@ -646,7 +639,7 @@ impl NodeImpl {
         };
 
         let raft_id = &self.raft_id();
-        let voters_old = self.storage.voters().unwrap().unwrap_or_default();
+        let voters_old = self.storage.raft.voters().unwrap().unwrap_or_default();
         if voters_old.contains(raft_id) && !conf_state.voters.contains(raft_id) {
             if is_joint {
                 event::broadcast_when(Event::Demoted, Event::JointStateLeave).ok();
@@ -655,7 +648,7 @@ impl NodeImpl {
             }
         }
 
-        self.storage.persist_conf_state(&conf_state).unwrap();
+        self.storage.raft.persist_conf_state(&conf_state).unwrap();
     }
 
     /// Is called during a transaction
@@ -735,11 +728,11 @@ impl NodeImpl {
             self.handle_committed_entries(ready.committed_entries(), topology_changed, expelled);
 
             // Persist uncommitted entries in the raft log.
-            self.storage.persist_entries(ready.entries()).unwrap();
+            self.storage.raft.persist_entries(ready.entries()).unwrap();
 
             // Raft HardState changed, and we need to persist it.
             if let Some(hs) = ready.hs() {
-                self.storage.persist_hard_state(hs).unwrap();
+                self.storage.raft.persist_hard_state(hs).unwrap();
             }
 
             Ok(())
@@ -760,7 +753,7 @@ impl NodeImpl {
         start_transaction(|| -> Result<(), TransactionError> {
             // Update commit index.
             if let Some(commit) = light_rd.commit_index() {
-                self.storage.persist_commit(commit).unwrap();
+                self.storage.raft.persist_commit(commit).unwrap();
             }
 
             // Apply committed entries.
@@ -983,12 +976,8 @@ fn raft_conf_change(storage: &RaftSpaceAccess, peers: &[Peer]) -> Option<raft::C
     Some(conf_change)
 }
 
-fn raft_conf_change_loop(
-    status: Rc<RefCell<Status>>,
-    storage: RaftSpaceAccess,
-    peer_storage: PeerStorage,
-) {
-    let mut pool = ConnectionPool::builder(peer_storage.clone())
+fn raft_conf_change_loop(status: Rc<RefCell<Status>>, storage: Storage) {
+    let mut pool = ConnectionPool::builder(storage.peers.clone())
         .call_timeout(Duration::from_secs(1))
         .connect_timeout(Duration::from_millis(500))
         .inactivity_timeout(Duration::from_secs(60))
@@ -1000,13 +989,13 @@ fn raft_conf_change_loop(
             continue;
         }
 
-        let peers = peer_storage.all_peers().unwrap();
-        let term = storage.term().unwrap().unwrap_or(0);
+        let peers = storage.peers.all_peers().unwrap();
+        let term = storage.raft.term().unwrap().unwrap_or(0);
         let node = global().expect("must be initialized");
 
         ////////////////////////////////////////////////////////////////////////
         // conf change
-        if let Some(conf_change) = raft_conf_change(&storage, &peers) {
+        if let Some(conf_change) = raft_conf_change(&storage.raft, &peers) {
             // main_loop gives the warranty that every ProposeConfChange
             // will sometimes be handled and there's no need in timeout.
             // It also guarantees that the notification will arrive only
@@ -1029,7 +1018,7 @@ fn raft_conf_change_loop(
             .find(|peer| peer.target_grade == TargetGrade::Offline);
         if let Some(peer) = to_offline {
             let instance_id = peer.instance_id.clone();
-            let cluster_id = storage.cluster_id().unwrap().unwrap();
+            let cluster_id = storage.raft.cluster_id().unwrap().unwrap();
             let req = UpdatePeerRequest::new(instance_id, cluster_id)
                 .with_current_grade(CurrentGrade::Offline);
             let res = node.handle_topology_request_and_wait(req.into());
@@ -1047,7 +1036,7 @@ fn raft_conf_change_loop(
             .iter()
             .find(|peer| peer.has_grades(CurrentGrade::Offline, TargetGrade::Online));
         if let Some(peer) = to_sync {
-            let commit = storage.commit().unwrap().unwrap();
+            let commit = storage.raft.commit().unwrap().unwrap();
 
             let (rx, tx) = fiber::Channel::new(1).into_clones();
             pool.call(
@@ -1066,7 +1055,7 @@ fn raft_conf_change_loop(
                     "commit" => commit,
                     "instance_id" => &*peer.instance_id,
                 );
-                let cluster_id = storage.cluster_id().unwrap().unwrap();
+                let cluster_id = storage.raft.cluster_id().unwrap().unwrap();
 
                 let req = UpdatePeerRequest::new(peer.instance_id.clone(), cluster_id)
                     .with_current_grade(CurrentGrade::RaftSynced);
@@ -1102,7 +1091,7 @@ fn raft_conf_change_loop(
         if let Some(peer) = to_replicate {
             let replicaset_id = &peer.replicaset_id;
             let replicaset_iids = unwrap_ok_or!(
-                peer_storage.replicaset_fields::<peer_field::InstanceId>(replicaset_id),
+                storage.peers.replicaset_fields::<peer_field::InstanceId>(replicaset_id),
                 Err(e) => {
                     tlog!(Warning, "failed reading replicaset instances: {e}";
                         "replicaset_id" => replicaset_id,
@@ -1154,7 +1143,7 @@ fn raft_conf_change_loop(
                 continue;
             }
 
-            let cluster_id = node.storage.cluster_id().unwrap().unwrap();
+            let cluster_id = storage.raft.cluster_id().unwrap().unwrap();
             for (peer_iid, resp) in rx.into_iter().take(replicaset_size) {
                 let cluster_id = cluster_id.clone();
                 let peer_iid_2 = peer_iid.clone();
@@ -1195,7 +1184,7 @@ fn raft_conf_change_loop(
             .find(|peer| peer.has_grades(CurrentGrade::Replicated, TargetGrade::Online));
         if let Some(peer) = to_online {
             let instance_id = peer.instance_id.clone();
-            let cluster_id = node.storage.cluster_id().unwrap().unwrap();
+            let cluster_id = storage.raft.cluster_id().unwrap().unwrap();
             let req = UpdatePeerRequest::new(instance_id, cluster_id)
                 .with_current_grade(CurrentGrade::Online);
             let res = node.handle_topology_request_and_wait(req.into());
@@ -1259,6 +1248,7 @@ fn raft_join(req: JoinRequest) -> Result<JoinResponse, Box<dyn std::error::Error
 
     let cluster_id = node
         .storage
+        .raft
         .cluster_id()?
         .ok_or("cluster_id is not set yet")?;
 
@@ -1271,14 +1261,15 @@ fn raft_join(req: JoinRequest) -> Result<JoinResponse, Box<dyn std::error::Error
 
     let peer = node.handle_topology_request_and_wait(req.into())?;
     let box_replication = node
-        .peer_storage
+        .storage
+        .peers
         .replicaset_peer_addresses(&peer.replicaset_id, Some(peer.commit_index))?;
 
     // A joined peer needs to communicate with other nodes.
     // Provide it the list of raft voters in response.
     let mut raft_group = vec![];
-    for raft_id in node.storage.voters()?.unwrap_or_default().into_iter() {
-        match node.peer_storage.get(&raft_id) {
+    for raft_id in node.storage.raft.voters()?.unwrap_or_default().into_iter() {
+        match node.storage.peers.get(&raft_id) {
             Err(e) => {
                 crate::warn_or_panic!("failed reading peer with id `{}`: {}", raft_id, e);
             }
@@ -1306,6 +1297,7 @@ fn expel_by_instance_id(
 ) -> Result<ExpelResponse, Box<dyn std::error::Error>> {
     let cluster_id = global()?
         .storage
+        .raft
         .cluster_id()?
         .ok_or("cluster_id is not set yet")?;
 
@@ -1330,7 +1322,7 @@ fn raft_expel_on_leader(req: ExpelRequest) -> Result<ExpelResponse, Box<dyn std:
 fn expel(req: ExpelRequest) -> Result<ExpelResponse, Box<dyn std::error::Error>> {
     let node = global()?;
     let leader_id = node.status().leader_id.ok_or("leader_id not found")?;
-    let leader = node.peer_storage.get(&leader_id).unwrap();
+    let leader = node.storage.peers.get(&leader_id).unwrap();
     let leader_address = leader.peer_address;
 
     let fn_name = stringify_cfunc!(traft::node::raft_expel_on_leader);
@@ -1344,6 +1336,7 @@ fn expel(req: ExpelRequest) -> Result<ExpelResponse, Box<dyn std::error::Error>>
 fn expel_on_leader(req: ExpelRequest) -> Result<ExpelResponse, Box<dyn std::error::Error>> {
     let cluster_id = global()?
         .storage
+        .raft
         .cluster_id()?
         .ok_or("cluster_id is not set yet")?;
 
@@ -1374,7 +1367,7 @@ fn expel_on_leader(req: ExpelRequest) -> Result<ExpelResponse, Box<dyn std::erro
 fn raft_sync_raft(req: SyncRaftRequest) -> Result<SyncRaftResponse, Box<dyn std::error::Error>> {
     let deadline = Instant::now() + req.timeout;
     loop {
-        let commit = global()?.storage.commit().unwrap().unwrap();
+        let commit = global()?.storage.raft.commit().unwrap().unwrap();
         if commit >= req.commit {
             return Ok(SyncRaftResponse { commit });
         }
