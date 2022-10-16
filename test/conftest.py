@@ -10,7 +10,7 @@ import pytest
 import signal
 import subprocess
 from rand.params import generate_seed
-
+from functools import reduce
 from datetime import datetime
 from shutil import rmtree
 from typing import Callable, Generator, Iterator
@@ -33,7 +33,7 @@ def eprint(*args, **kwargs):
     print(*args, file=sys.stderr, **kwargs)
 
 
-def pytest_addoption(parser):
+def pytest_addoption(parser: pytest.Parser):
     parser.addoption(
         "--seed", action="store", default=None, help="Seed for randomized tests"
     )
@@ -42,6 +42,12 @@ def pytest_addoption(parser):
         action="store",
         default=None,
         help="Delay between steps for randomized tests",
+    )
+    parser.addoption(
+        "--with-flamegraph",
+        action="store_true",
+        default=False,
+        help="Whether gather flamegraphs or not (for benchmarks only)",
     )
 
 
@@ -57,6 +63,11 @@ def seed(pytestconfig):
 @pytest.fixture(scope="session")
 def delay(pytestconfig):
     return pytestconfig.getoption("delay")
+
+
+@pytest.fixture(scope="session")
+def with_flamegraph(pytestconfig):
+    return bool(pytestconfig.getoption("with_flamegraph"))
 
 
 @pytest.fixture(scope="session")
@@ -668,3 +679,16 @@ def pid_alive(pid):
         return False
     else:
         return True
+
+
+def pgrep_tree(pid):
+    command = f"exec pgrep -P{pid}"
+    try:
+        ps = subprocess.check_output(command, shell=True)
+        ps = ps.strip().split()
+        ps = [int(p) for p in ps]
+        subps = map(lambda p: pgrep_tree(p), ps)  # list of lists of pids
+        subps = reduce(lambda acc, p: [*acc, *p], subps, [])  # list of pids
+        return [pid, *subps]
+    except subprocess.SubprocessError:
+        return [pid]

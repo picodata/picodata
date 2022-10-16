@@ -1,5 +1,4 @@
 import signal
-import subprocess
 import os
 import time
 import pytest
@@ -9,8 +8,8 @@ from conftest import (
     Instance,
     retrying,
     pid_alive,
+    pgrep_tree,
 )
-from functools import reduce
 
 
 @pytest.fixture
@@ -18,19 +17,6 @@ def instance(cluster: Cluster):
     cluster.deploy(instance_count=1)
     [i1] = cluster.instances
     return i1
-
-
-def pgrep_tree(pid):
-    command = f"exec pgrep -P{pid}"
-    try:
-        ps = subprocess.check_output(command, shell=True)
-        ps = ps.strip().split()
-        ps = list(map(lambda p: int(p), ps))
-        subps = map(lambda p: pgrep_tree(p), ps)  # list of lists of pids
-        subps = reduce(lambda acc, p: [*acc, *p], subps, [])  # list of pids
-        return [pid, *subps]
-    except subprocess.SubprocessError:
-        return [pid]
 
 
 def assert_all_pids_down(pids):

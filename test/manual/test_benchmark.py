@@ -1,12 +1,19 @@
+from dataclasses import field
 from itertools import count
-from conftest import Cluster, Instance, pid_alive, retrying
+from multiprocessing.pool import ThreadPool
+from typing import Callable
+from conftest import Cluster, Instance, pgrep_tree, pid_alive, retrying
 from prettytable import PrettyTable  # type: ignore
+import os
 import funcy  # type: ignore
+import subprocess
 
 
-def test_benchmark_replace(cluster: Cluster, capsys):
-    ITERATIONS = 99999
-    FIBERS = [1, 2, 3, 5, 10, 50, 60, 70, 100, 200, 300, 400, 500, 600, 700, 800]
+def test_benchmark_replace(cluster: Cluster, tmpdir, with_flamegraph, capsys):
+    FIBERS = [1, 2, 3, 5, 10, 60, 70, 100, 200, 300, 400, 500, 600, 700, 800]
+    DURATION = 2
+    FLAMEGRAPH_TMP_DIR = tmpdir
+    FLAMEGRAPH_OUT_DIR = "tmp/flamegraph/replace"
     cluster.deploy(instance_count=1)
     [i1] = cluster.instances
 
@@ -23,25 +30,32 @@ def test_benchmark_replace(cluster: Cluster, capsys):
         if_not_exists = true,
         parts = {{'id'}}
     })
-    clock=require('clock')
     fiber=require('fiber')
-    function f(n)
-        for i=1, n do
-            box.space.bench:replace({1, i})
+    function f(deadline)
+        local result = 0
+        while deadline > fiber.clock() do
+            for i=1, 1000 do
+                box.space.bench:replace({1, i})
+            end
+            result = result + 1000
         end
+        return result
     end
-    function benchmark_replace(n, c)
+    function benchmark_replace(t, c)
         local fibers = {}
-        local t1 = clock.monotonic()
+        local t1 = fiber.clock()
+        local deadline = t1 + t
         for i=1, c do
-            fibers[i] = fiber.new(f, n)
+            fibers[i] = fiber.new(f, deadline)
             fibers[i]:set_joinable(true)
         end
+        local total = 0
         for i=1, c do
-            fibers[i]:join()
+            local _, ret = fibers[i]:join()
+            total = total + ret
         end
-        local t2 = clock.monotonic();
-        return {c=c, nc = n*c, time = t2-t1, rps = n*c/(t2-t1)}
+        local t2 = fiber.clock()
+        return {c = c, total = total, time = t2-t1, rps = total/(t2-t1)}
     end
     """
 
@@ -49,14 +63,32 @@ def test_benchmark_replace(cluster: Cluster, capsys):
 
     i1.eval(luacode_init)
 
-    def benchmark_one(n: int, c: int):
-        return i1.eval("return benchmark_replace(...)", n, c, timeout=60)
-
     def benchmark():
+        i = i1
         stats = []
+        pid = child_pid(i)
+        acc = []
         for c in FIBERS:
-            result = benchmark_one(int(ITERATIONS / c), c)
-            stats.append((c, result))
+
+            def f(i, t, c):
+                return i.eval("return benchmark_replace(...)", t, c, timeout=60)
+
+            if with_flamegraph:
+                f = flamegraph_decorator(
+                    f,
+                    f"f{str(c).zfill(3)}",
+                    pid,
+                    FLAMEGRAPH_TMP_DIR,
+                    FLAMEGRAPH_OUT_DIR,
+                    DURATION,
+                    acc,
+                )
+            stat = f(i, DURATION, c)
+            stats.append((c, stat))
+
+        if with_flamegraph:
+            gather_flamegraphs(acc)
+
         return stats
 
     def report(stats):
@@ -73,11 +105,20 @@ def test_benchmark_replace(cluster: Cluster, capsys):
         print(report(benchmark()))
 
 
-def test_benchmark_nop(binary_path, xdist_worker_number, tmpdir, capsys):
-    SIZES = [1, 2, 3, 5, 10, 20, 30, 40, 50]
-    FIBERS = [1, 5, 10, 15, 20, 25]
-
-    data_dir = tmpdir
+def test_benchmark_nop(
+    binary_path, xdist_worker_number, tmpdir, with_flamegraph, capsys
+):
+    """
+    For adequate flamegraphs don't forget to set kernel options:
+    $ sudo echo 0 > /proc/sys/kernel/perf_event_paranoid
+    $ sudo echo 0 > /proc/sys/kernel/kptr_restrict
+    """
+    SIZES = [1, 2, 3, 10, 25, 50]
+    FIBERS = [1, 10, 30, 40, 50, 75]
+    DURATION = 2
+    FLAMEGRAPH_OUT_DIR = "tmp/flamegraph/nop"
+    FLAMEGRAPH_TMP_DIR = os.path.join(tmpdir, "flamegraph")
+    CLUSTER_DATA_DIR = os.path.join(tmpdir, "cluster")
 
     def new_cluster():
         n = xdist_worker_number
@@ -94,7 +135,7 @@ def test_benchmark_nop(binary_path, xdist_worker_number, tmpdir, capsys):
         cluster = Cluster(
             binary_path=binary_path,
             id=next(cluster_ids),
-            data_dir=data_dir,
+            data_dir=CLUSTER_DATA_DIR,
             base_host="127.0.0.1",
             base_port=base_port,
             max_port=max_port,
@@ -109,7 +150,6 @@ def test_benchmark_nop(binary_path, xdist_worker_number, tmpdir, capsys):
             if c % 3 == 0:
                 wait_longer(cluster)
         wait_longer(cluster)
-        return cluster
 
     def make_cluster(size: int):
         cluster = new_cluster()
@@ -118,25 +158,32 @@ def test_benchmark_nop(binary_path, xdist_worker_number, tmpdir, capsys):
 
     def init(i: Instance):
         init_code = """
-        clock=require('clock')
         fiber=require('fiber')
-        function f(n)
-            for i=1, n do
-                picolib.raft_propose_nop()
+        function f(deadline)
+            local result = 0
+            while deadline > fiber.clock() do
+                for i=1, 5 do
+                    picolib.raft_propose_nop()
+                end
+                result = result + 5
             end
+            return result
         end
-        function benchmark_nop(n, c)
-            local fibers = {};
-            local t1 = clock.monotonic();
+        function benchmark_nop(t, c)
+            local fibers = {}
+            local t1 = fiber.clock()
+            local deadline = t1 + t
             for i=1, c do
-                fibers[i] = fiber.new(f, n)
+                fibers[i] = fiber.new(f, deadline)
                 fibers[i]:set_joinable(true)
             end
+            local total = 0
             for i=1, c do
-                fibers[i]:join()
+                local _, ret = fibers[i]:join()
+                total = total + ret
             end
-            local t2 = clock.monotonic();
-            return {c=c, nc = n*c, time = t2-t1, rps = n*c/(t2-t1)}
+            local t2 = fiber.clock();
+            return {c = c, total = total, time = t2-t1, rps = total/(t2-t1)}
         end
         """
         i.eval(init_code)
@@ -161,19 +208,41 @@ def test_benchmark_nop(binary_path, xdist_worker_number, tmpdir, capsys):
         stats = []
         sizes = list(set(SIZES))
         sizes.sort()
+        acc = []
         for s in sizes:
+            print(f"===== Cluster size = {s} =====")
             cluster = make_cluster(s)
             pids = list(map(instance_to_pid, cluster.instances))
             i = find_leader(cluster)
             init(i)
+            pid = child_pid(i)
 
             for c in FIBERS:
-                stat = [i.eval("return benchmark_nop(...)", 10, c, timeout=60)]
+                print(f"===== Cluster size = {s}, fibers = {c} =====")
+
+                def f(i, t, c):
+                    return [i.eval("return benchmark_nop(...)", t, c, timeout=300)]
+
+                if with_flamegraph:
+                    f = flamegraph_decorator(
+                        f,
+                        f"s{str(s).zfill(3)}f{str(c).zfill(3)}",
+                        pid,
+                        FLAMEGRAPH_TMP_DIR,
+                        FLAMEGRAPH_OUT_DIR,
+                        DURATION,
+                        acc,
+                    )
+                stat = f(i, DURATION, c)
                 stats.append((s, c, stat))
 
             cluster.kill()
             cluster.remove_data()
             retrying(lambda: assert_all_pids_down(pids))
+
+        if with_flamegraph:
+            gather_flamegraphs(acc)
+
         return stats
 
     def report_vertical(stats):
@@ -204,7 +273,7 @@ def test_benchmark_nop(binary_path, xdist_worker_number, tmpdir, capsys):
 
         t = PrettyTable()
         t.title = "Nop/s"
-        t.field_names = ["cluster size \\ fibers", *FIBERS]
+        t.field_names = ["Cluster size \\ fibers", *FIBERS]
         t.align = "r"
 
         index = 0
@@ -233,3 +302,128 @@ def test_benchmark_nop(binary_path, xdist_worker_number, tmpdir, capsys):
 def wait_longer(cluster):
     for instance in cluster.instances:
         instance.wait_ready()
+
+
+class Flamegraph:
+    flamegraph_dir: str
+    tmp_dir: str
+    out_dir: str
+    name: str
+    watchpid: int
+    duration: int
+    process: subprocess.Popen | None = None
+    env: dict[str, str] = field(default_factory=dict)
+
+    def __init__(
+        self,
+        tmp_dir: str,
+        out_dir: str,
+        name: str,
+        watchpid: int,
+        duration: int,
+    ):
+        self.flamegraph_dir = os.environ.get("FLAMEGRAPH_DIR", "../FlameGraph")
+        self.tmp_dir = tmp_dir
+        self.out_dir = out_dir
+        self.name = name
+        self.watchpid = watchpid
+        self.duration = duration
+
+    @property
+    def perf_data(self):
+        return os.path.join(self.tmp_dir, f"{self.name}-perf.data")
+
+    @property
+    def perf_out(self):
+        return os.path.join(self.tmp_dir, f"{self.name}-perf.out")
+
+    @property
+    def perf_folded(self):
+        return os.path.join(self.tmp_dir, f"{self.name}-perf.folded")
+
+    @property
+    def perf_svg(self):
+        return os.path.join(self.out_dir, f"{self.name}-perf.svg")
+
+    @property
+    def stackcollapse_perf_pl(self):
+        return os.path.join(self.flamegraph_dir, "stackcollapse-perf.pl")
+
+    @property
+    def flamegraph_pl(self):
+        return os.path.join(self.flamegraph_dir, "flamegraph.pl")
+
+    @property
+    def record_command(self):
+        # fmt: off
+        return [
+            "perf", "record",
+            "-p", f"{self.watchpid}",
+            "-F", "99",
+            "-a",
+            "--call-graph", "dwarf",
+            "-o", self.perf_data,
+            "--",
+            "sleep", f"{self.duration}",
+        ]
+        # fmt: on
+
+    def start(self):
+        os.makedirs(self.tmp_dir, exist_ok=True)
+        os.makedirs(self.out_dir, exist_ok=True)
+        self.process = subprocess.Popen(self.record_command)
+
+    def wait(self):
+        self.process.wait()
+
+    def gather_data(self):
+        subprocess.run(
+            ["perf", "script", "-i", self.perf_data], stdout=open(self.perf_out, "wb")
+        )
+        subprocess.run(
+            [self.stackcollapse_perf_pl, self.perf_out],
+            stdout=open(self.perf_folded, "wb"),
+        )
+        subprocess.run(
+            [self.flamegraph_pl, self.perf_folded], stdout=open(self.perf_svg, "wb")
+        )
+
+
+def flamegraph_decorator(
+    f: Callable,
+    name: str,
+    pid: int,
+    tmp_dir: str,
+    out_dir: str,
+    duration: int,
+    acc: list[Flamegraph],
+):
+    def inner(*args, **kwargs):
+        flamegraph = Flamegraph(
+            tmp_dir,
+            out_dir,
+            name,
+            pid,
+            duration,
+        )
+        flamegraph.start()
+        result = f(*args, **kwargs)
+        flamegraph.wait()
+        acc.append(flamegraph)
+        return result
+
+    return inner
+
+
+def gather_flamegraphs(acc: list[Flamegraph]):
+    with ThreadPool() as pool:
+        pool.map(lambda flamegraph: flamegraph.gather_data(), acc)
+
+
+def child_pid(i: Instance):
+    assert i.process
+    assert i.process.pid
+    assert pid_alive(i.process.pid)
+    pids = pgrep_tree(i.process.pid)
+    assert pid_alive(pids[1])
+    return pids[1]

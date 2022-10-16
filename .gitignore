@@ -3,3 +3,4 @@
 *.snap
 *.xlog
 __pycache__/
+tmp/
