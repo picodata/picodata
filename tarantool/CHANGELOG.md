@@ -32,7 +32,7 @@
 - `#[track_caller]` added to tlua functions that can panic.
 - A clarification in `tarantool::proc` documentation about the safety of using
     borrowed arguments.
-- `impl LuaRead for LuaState`: this is mainly useful for capturing the lua
+- `impl LuaRead for StaticLua`: this is mainly useful for capturing the lua
     context passed to rust-callbacks for example for use with `tlua::error!`.
     See test `error` in `tests/src/tlua/functions_write.rs` for examples.
 - Doc-comments here and there.

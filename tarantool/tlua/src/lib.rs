@@ -927,6 +927,16 @@ impl StaticLua {
     }
 }
 
+impl<L: AsLua> LuaRead<L> for StaticLua {
+    fn lua_read_at_maybe_zero_position(lua: L, _: i32) -> Result<Self, L> {
+        Ok(Self { lua: lua.as_lua(), on_drop: on_drop::Ignore })
+    }
+
+    fn lua_read_at_position(lua: L, _: NonZeroI32) -> Result<Self, L> {
+        Ok(Self { lua: lua.as_lua(), on_drop: on_drop::Ignore })
+    }
+}
+
 impl<OnDrop> Lua<OnDrop>
 where
     OnDrop: on_drop::OnDrop,

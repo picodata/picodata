@@ -246,6 +246,16 @@ pub fn error() {
     );
     let msg = lua.exec("error_callback_2('my message')").unwrap_err().to_string();
     assert_eq!(msg, r#"Execution error: [string "chunk"]:1: your message: my message"#);
+
+    lua.set("error_callback_3",
+        tlua::Function::new(
+            |qualifier: String, lua: tlua::StaticLua| {
+                tlua::error!(lua, "this way is {}", qualifier)
+            }
+        )
+    );
+    let msg = lua.exec("error_callback_3('better')").unwrap_err().to_string();
+    assert_eq!(msg, r#"Execution error: [string "chunk"]:1: this way is better"#);
 }
 
 pub fn optional_params() {
