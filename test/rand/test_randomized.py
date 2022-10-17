@@ -7,7 +7,7 @@ STEP_DELAY = 500  # ms
 
 
 def create(c: Cluster, istate):
-    i = c.add_instance(wait_ready=False)
+    i = c.add_instance(wait_online=False)
     istate[i.instance_id] = {"instance": i, "started": False}
     return i, istate
 
@@ -120,4 +120,4 @@ def test_randomized(cluster: Cluster, seed: str, delay: int, capsys):
     for instance_id in istate:
         ist = istate[instance_id]
         if ist["started"]:
-            ist["instance"].wait_ready()
+            ist["instance"].wait_online()

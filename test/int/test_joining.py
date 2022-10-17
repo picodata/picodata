@@ -237,7 +237,7 @@ def test_rebootstrap_follower(cluster3: Cluster):
 
     i1, i2, i3 = cluster3.instances
     i3.restart(remove_data=True)
-    i3.wait_ready()
+    i3.wait_online()
     i3.assert_raft_status("Follower")
 
     # git.picodata.io: #114
@@ -317,13 +317,13 @@ def test_reconfigure_failure_domains(cluster: Cluster):
 
     i1.failure_domain = dict(planet="Mars", owner="Bob")
     i1.start()
-    i1.wait_ready()
+    i1.wait_online()
     # replicaset doesn't change automatically
     assert replicaset_id(i1) == "r1"
 
     i2.failure_domain = dict(planet="Earth", owner="Jon")
     i2.start()
-    i2.wait_ready()
+    i2.wait_online()
     assert replicaset_id(i2) == "r1"
 
     i2.terminate()

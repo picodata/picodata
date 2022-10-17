@@ -10,14 +10,14 @@ from conftest import (
 @funcy.retry(tries=30, timeout=10)
 def wait_longer(cluster):
     for instance in cluster.instances:
-        instance.wait_ready()
+        instance.wait_online()
 
 
 def test_instant(cluster: Cluster):
     t1 = time.time()
     cluster.deploy(instance_count=5)
     for i in range(60):
-        cluster.add_instance(wait_ready=False).start()
+        cluster.add_instance(wait_online=False).start()
     wait_longer(cluster)
     t2 = time.time()
 
@@ -42,7 +42,7 @@ def test_chunked(cluster: Cluster):
     total_size -= len(cluster.instances)
     for j in range(int(total_size / chunk_size)):
         for i in range(chunk_size):
-            cluster.add_instance(wait_ready=False).start()
+            cluster.add_instance(wait_online=False).start()
 
         wait_longer(cluster)
 

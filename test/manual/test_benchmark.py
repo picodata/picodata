@@ -114,7 +114,7 @@ def test_benchmark_nop(cluster, tmpdir, cluster_size, fibers, with_flamegraph):
     def expand_cluster(cluster: Cluster, size: int):
         c = 0
         while len(cluster.instances) < size:
-            cluster.add_instance(wait_ready=False).start()
+            cluster.add_instance(wait_online=False).start()
             c += 1
             if c % 5 == 0:
                 wait_longer(cluster)
@@ -195,7 +195,7 @@ def test_benchmark_nop(cluster, tmpdir, cluster_size, fibers, with_flamegraph):
 @funcy.retry(tries=30, timeout=10)  # type: ignore
 def wait_longer(cluster):
     for instance in cluster.instances:
-        instance.wait_ready()
+        instance.wait_online()
 
 
 def test_summarize_replace_and_nop(fixture_store, with_flamegraph, capsys):

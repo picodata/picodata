@@ -44,8 +44,8 @@ def test_log_rollback(cluster3: Cluster):
     i1.terminate()
     i2.start(peers=[i3])
     i3.start(peers=[i2])
-    i2.wait_ready()
-    i3.wait_ready()
+    i2.wait_online()
+    i3.wait_online()
 
     # Help i2 to become a new leader
     i2.promote_or_fail()
@@ -55,7 +55,7 @@ def test_log_rollback(cluster3: Cluster):
 
     # Now i1 has an uncommitted, but persisted entry that should be rolled back.
     i1.start(peers=[i2, i3])
-    i1.wait_ready()
+    i1.wait_online()
     retrying(lambda: i1.assert_raft_status("Follower", i2.raft_id))
 
     propose_state_change(i1, "i1 is alive again")

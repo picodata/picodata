@@ -60,7 +60,7 @@ def test_restart_follower(cluster2: Cluster):
 
     i1, i2 = cluster2.instances
     i2.restart()
-    i2.wait_ready()
+    i2.wait_online()
     i1.assert_raft_status("Leader")
     i2.assert_raft_status("Follower")
 
@@ -73,7 +73,7 @@ def test_restart_leader(cluster2: Cluster):
 
     i1, _ = cluster2.instances
     i1.restart()
-    i1.wait_ready()
+    i1.wait_online()
     i1.raft_propose_eval("return")
 
 
@@ -87,8 +87,8 @@ def test_restart_both(cluster2: Cluster):
     i2.terminate()
 
     @funcy.retry(tries=20, timeout=0.1)
-    def wait_alive(instance):
-        assert instance._raft_status().is_ready is False
+    def wait_alive(instance: Instance):
+        assert instance._raft_status().leader_id is None
 
     i1.start()
     # This synchronization is necessary for proper test case reproducing.
@@ -97,8 +97,8 @@ def test_restart_both(cluster2: Cluster):
     wait_alive(i1)
     i2.start()
 
-    i1.wait_ready()
-    i2.wait_ready()
+    i1.wait_online()
+    i2.wait_online()
 
     i1.raft_propose_eval("rawset(_G, 'check', true)")
     assert i1.eval("return check") is True
@@ -140,7 +140,7 @@ def test_deactivation(cluster2: Cluster):
     assert is_voter_is_online(i1, i2.raft_id) == (False, False)
 
     i2.start()
-    i2.wait_ready()
+    i2.wait_online()
 
     assert is_voter_is_online(i1, i1.raft_id) == (True, True)
     assert_is_voter_is_online(i2, i2.raft_id, True, True)
@@ -159,8 +159,8 @@ def test_deactivation(cluster2: Cluster):
     i1.start()
     i2.start()
 
-    i1.wait_ready()
-    i2.wait_ready()
+    i1.wait_online()
+    i2.wait_online()
 
     assert is_voter_is_online(i1, i1.raft_id) == (True, True)
     assert is_voter_is_online(i2, i2.raft_id) == (True, True)
@@ -215,7 +215,7 @@ def test_gl127_graceul_shutdown(cluster2: Cluster):
 
     # make sure i1 is leader
     i1.promote_or_fail()
-    i2.wait_ready()
+    i2.wait_online()
 
     global on_shutdown_timed_out
     on_shutdown_timed_out = False

@@ -159,7 +159,6 @@ def normalize_net_box_result(func):
 class RaftStatus:
     id: int
     raft_state: str
-    is_ready: bool
     leader_id: int | None = None
 
 
@@ -417,13 +416,25 @@ class Instance:
         assert want == have
 
     @funcy.retry(tries=30, timeout=0.2)
-    def wait_ready(self):
-        status = self._raft_status()
-        assert status.is_ready
-        self.raft_id = status.id
-        with self.connect(timeout=2) as conn:
-            self.instance_id = conn.space("raft_state").select(("instance_id",))[0][1]
-        eprint(f"{self} is ready")
+    def wait_online(self):
+        """Wait until instance attains Online grade
+
+        Raises:
+            AssertionError: if doesn't succeed
+        """
+
+        whoami = self.call("picolib.whoami")
+        assert isinstance(whoami, dict)
+        assert isinstance(whoami["raft_id"], int)
+        assert isinstance(whoami["instance_id"], str)
+        self.raft_id = whoami["raft_id"]
+        self.instance_id = whoami["instance_id"]
+
+        myself = self.call("picolib.peer_info", self.instance_id)
+        assert isinstance(myself, dict)
+        assert myself["current_grade"] == "Online"
+
+        eprint(f"{self} is online")
 
     @funcy.retry(tries=4, timeout=0.1, errors=AssertionError)
     def promote_or_fail(self):
@@ -478,28 +489,28 @@ class Cluster:
 
         for _ in range(instance_count):
             self.add_instance(
-                wait_ready=False, init_replication_factor=init_replication_factor
+                wait_online=False, init_replication_factor=init_replication_factor
             )
 
         for instance in self.instances:
             instance.start()
 
         for instance in self.instances:
-            instance.wait_ready()
+            instance.wait_online()
 
         eprint(f" {self} deployed ".center(80, "="))
         return self.instances
 
     def add_instance(
         self,
-        wait_ready=True,
+        wait_online=True,
         peers=None,
         instance_id: str | bool = True,
         failure_domain=dict(),
         init_replication_factor=1,
     ) -> Instance:
         """Add an `Instance` into the list of instances of the cluster and wait
-        for it to start unless `wait_ready` is `False`.
+        for it to attain Online grade unless `wait_online` is `False`.
 
         `instance_id` specifies how the instance's id is generated in the
         following way:
@@ -544,9 +555,9 @@ class Cluster:
         assert self.base_port <= instance.port <= self.max_port
         self.instances.append(instance)
 
-        if wait_ready:
+        if wait_online:
             instance.start()
-            instance.wait_ready()
+            instance.wait_online()
 
         return instance
 
@@ -558,7 +569,7 @@ class Cluster:
         init_replication_factor=1,
     ):
         instance = self.add_instance(
-            wait_ready=False,
+            wait_online=False,
             peers=peers,
             instance_id=instance_id,
             failure_domain=failure_domain,

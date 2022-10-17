@@ -103,9 +103,6 @@ pub struct Status {
     pub leader_id: Option<RaftId>,
     /// Current raft state
     pub raft_state: RaftState,
-    /// Whether instance has finished its `postjoin`
-    /// initialization stage
-    pub is_ready: bool,
 }
 
 /// The heart of `traft` module - the Node.
@@ -144,7 +141,6 @@ impl Node {
             id: raft_id,
             leader_id: None,
             raft_state: RaftState::Follower,
-            is_ready: false,
         }));
 
         let node_impl = Rc::new(Mutex::new(node_impl));
@@ -179,13 +175,6 @@ impl Node {
 
     pub fn status(&self) -> Status {
         self.status.get()
-    }
-
-    pub fn mark_as_ready(&self) {
-        let mut status = self.status.get();
-        status.is_ready = true;
-        self.status.set(status);
-        event::broadcast(Event::StatusChanged);
     }
 
     /// Wait for the status to be changed.
