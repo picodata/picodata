@@ -17,7 +17,6 @@ use ::tarantool::proc;
 use ::tarantool::tlua;
 use ::tarantool::transaction::start_transaction;
 use std::cell::Cell;
-use std::cell::RefCell;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::convert::TryFrom;
@@ -66,14 +65,44 @@ use super::{CurrentGrade, TargetGrade};
 
 type RawNode = raft::RawNode<RaftSpaceAccess>;
 
-#[derive(Clone, Debug, tlua::Push, tlua::PushInto)]
+crate::define_str_enum! {
+    pub enum RaftState {
+        Follower = "Follower",
+        Candidate = "Candidate",
+        Leader = "Leader",
+        PreCandidate = "PreCandidate",
+    }
+    FromStr::Err = UnknownRaftState;
+}
+#[derive(thiserror::Error, Debug)]
+#[error("unknown raft state {0}")]
+pub struct UnknownRaftState(pub String);
+
+impl RaftState {
+    pub fn is_leader(&self) -> bool {
+        matches!(self, Self::Leader)
+    }
+}
+
+impl From<RaftStateRole> for RaftState {
+    fn from(role: RaftStateRole) -> Self {
+        match role {
+            RaftStateRole::Follower => Self::Follower,
+            RaftStateRole::Candidate => Self::Candidate,
+            RaftStateRole::Leader => Self::Leader,
+            RaftStateRole::PreCandidate => Self::PreCandidate,
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug, tlua::Push, tlua::PushInto)]
 pub struct Status {
     /// `raft_id` of the current instance
     pub id: RaftId,
     /// `raft_id` of the leader instance
     pub leader_id: Option<RaftId>,
-    /// One of "Follower", "Candidate", "Leader", "PreCandidate"
-    pub raft_state: String,
+    /// Current raft state
+    pub raft_state: RaftState,
     /// Whether instance has finished its `postjoin`
     /// initialization stage
     pub is_ready: bool,
@@ -93,7 +122,7 @@ pub struct Node {
     pub(crate) storage: Storage,
     main_loop: MainLoop,
     _conf_change_loop: fiber::UnitJoinHandle<'static>,
-    status: Rc<RefCell<Status>>,
+    status: Rc<Cell<Status>>,
 }
 
 impl std::fmt::Debug for Node {
@@ -111,10 +140,10 @@ impl Node {
         let node_impl = NodeImpl::new(storage.clone())?;
 
         let raft_id = node_impl.raft_id();
-        let status = Rc::new(RefCell::new(Status {
+        let status = Rc::new(Cell::new(Status {
             id: raft_id,
             leader_id: None,
-            raft_state: "Follower".into(),
+            raft_state: RaftState::Follower,
             is_ready: false,
         }));
 
@@ -149,11 +178,13 @@ impl Node {
     }
 
     pub fn status(&self) -> Status {
-        self.status.borrow().clone()
+        self.status.get()
     }
 
     pub fn mark_as_ready(&self) {
-        self.status.borrow_mut().is_ready = true;
+        let mut status = self.status.get();
+        status.is_ready = true;
+        self.status.set(status);
         event::broadcast(Event::StatusChanged);
     }
 
@@ -696,12 +727,7 @@ impl NodeImpl {
     /// - or better <https://github.com/etcd-io/etcd/blob/v3.5.5/raft/node.go#L49>
     ///
     /// This function yields.
-    fn advance(
-        &mut self,
-        status: &RefCell<Status>,
-        topology_changed: &mut bool,
-        expelled: &mut bool,
-    ) {
+    fn advance(&mut self, status: &Cell<Status>, topology_changed: &mut bool, expelled: &mut bool) {
         // Get the `Ready` with `RawNode::ready` interface.
         if !self.raw_node.has_ready() {
             return;
@@ -718,9 +744,10 @@ impl NodeImpl {
         }
 
         if let Some(ss) = ready.ss() {
-            let mut status = status.borrow_mut();
-            status.leader_id = (ss.leader_id != INVALID_ID).then_some(ss.leader_id);
-            status.raft_state = format!("{:?}", ss.raft_state);
+            let mut s = status.get();
+            s.leader_id = (ss.leader_id != INVALID_ID).then_some(ss.leader_id);
+            s.raft_state = ss.raft_state.into();
+            status.set(s);
             event::broadcast(Event::StatusChanged);
         }
 
@@ -799,7 +826,7 @@ struct MainLoop {
 }
 
 struct MainLoopArgs {
-    status: Rc<RefCell<Status>>,
+    status: Rc<Cell<Status>>,
     node_impl: Rc<Mutex<NodeImpl>>,
 }
 
@@ -812,7 +839,7 @@ struct MainLoopState {
 impl MainLoop {
     pub const TICK: Duration = Duration::from_millis(100);
 
-    fn start(status: Rc<RefCell<Status>>, node_impl: Rc<Mutex<NodeImpl>>) -> Self {
+    fn start(status: Rc<Cell<Status>>, node_impl: Rc<Mutex<NodeImpl>>) -> Self {
         let loop_cond: Rc<Cond> = Default::default();
         let stop_flag: Rc<Cell<bool>> = Default::default();
 
@@ -979,7 +1006,7 @@ fn raft_conf_change(storage: &RaftSpaceAccess, peers: &[Peer]) -> Option<raft::C
     Some(conf_change)
 }
 
-fn raft_conf_change_loop(status: Rc<RefCell<Status>>, storage: Storage) {
+fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
     let mut pool = ConnectionPool::builder(storage.peers.clone())
         .call_timeout(Duration::from_secs(1))
         .connect_timeout(Duration::from_millis(500))
@@ -987,7 +1014,7 @@ fn raft_conf_change_loop(status: Rc<RefCell<Status>>, storage: Storage) {
         .build();
 
     loop {
-        if status.borrow().raft_state != "Leader" {
+        if !status.get().raft_state.is_leader() {
             event::wait(Event::StatusChanged).expect("Events system must be initialized");
             continue;
         }

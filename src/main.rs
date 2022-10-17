@@ -782,7 +782,7 @@ fn postjoin(args: &args::Run, storage: Storage) {
 
         node.tick_and_yield(1); // apply configuration, if any
         node.campaign_and_yield().ok(); // trigger election immediately
-        assert_eq!(node.status().raft_state, "Leader");
+        assert!(node.status().raft_state.is_leader());
     }
 
     box_cfg.listen = Some(args.listen.clone());
