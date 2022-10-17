@@ -57,6 +57,39 @@ fn picolib_setup(args: &args::Run) {
     luamod.set("args", args);
 
     luamod.set(
+        "whoami",
+        tlua::function0(|| -> Result<_, Error> {
+            let node = traft::node::global()?;
+            let raft_storage = &node.storage.raft;
+
+            Ok(tlua::AsTable((
+                ("raft_id", raft_storage.raft_id()?),
+                ("cluster_id", raft_storage.cluster_id()?),
+                ("instance_id", raft_storage.instance_id()?),
+            )))
+        }),
+    );
+
+    luamod.set(
+        "peer_info",
+        tlua::function1(|iid: String| -> Result<_, Error> {
+            let node = traft::node::global()?;
+            let peer = node.storage.peers.get(&InstanceId::from(iid))?;
+
+            Ok(tlua::AsTable((
+                ("raft_id", peer.raft_id),
+                ("advertise_address", peer.peer_address),
+                ("instance_id", peer.instance_id.0),
+                ("instance_uuid", peer.instance_uuid),
+                ("replicaset_id", peer.replicaset_id),
+                ("replicaset_uuid", peer.replicaset_uuid),
+                ("current_grade", peer.current_grade),
+                ("target_grade", peer.target_grade),
+            )))
+        }),
+    );
+
+    luamod.set(
         "raft_status",
         tlua::function0(|| traft::node::global().map(|n| n.status())),
     );

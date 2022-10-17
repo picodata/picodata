@@ -173,3 +173,26 @@ def test_graceful_stop(instance: Instance):
     )
     with open(os.path.join(instance.data_dir, last_xlog), "rb") as f:
         assert f.read()[-4:] == b"\xd5\x10\xad\xed"
+
+
+def test_whoami(instance: Instance):
+    assert instance.call("picolib.whoami") == {
+        "raft_id": 1,
+        "instance_id": "i1",
+        "cluster_id": instance.cluster_id,
+    }
+
+
+def test_peer_info(instance: Instance):
+    def peer_info(iid: str):
+        return instance.call("picolib.peer_info", iid)
+
+    # Don't compare entire structure, a couple of fields is enough
+    myself = peer_info("i1")
+    assert myself["raft_id"] == 1
+    assert myself["instance_id"] == "i1"
+    assert myself["replicaset_id"] == "r1"
+
+    with pytest.raises(ReturnError) as e:
+        peer_info("i2")
+    assert e.value.args == ('peer with id "i2" not found',)
