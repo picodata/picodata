@@ -29,6 +29,8 @@ pub enum Error {
         instance_rsid: String,
         requested_rsid: String,
     },
+    #[error("operation request from non leader {actual}, current leader is {expected}")]
+    LeaderIdMismatch { expected: RaftId, actual: RaftId },
     #[error("error during execution of lua code: {0}")]
     Lua(#[from] LuaError),
     #[error("{0}")]
@@ -37,6 +39,8 @@ pub enum Error {
     NoPeerWithRaftId(RaftId),
     #[error("peer with id \"{0}\" not found")]
     NoPeerWithInstanceId(InstanceId),
+    #[error("leader is uknown yet")]
+    LeaderUnknown,
     #[error("other error: {0}")]
     Other(Box<dyn std::error::Error>),
 }

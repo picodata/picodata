@@ -77,6 +77,7 @@ define_str_enum! {
     /// An enumeration of builtin raft spaces
     pub enum StateKey {
         ReplicationFactor = "replication_factor",
+        VshardBootstrapped = "vshard_bootstrapped",
     }
 
     FromStr::Err = UnknownStateKey;
