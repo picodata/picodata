@@ -1,4 +1,3 @@
-use ::raft::INVALID_ID;
 use ::tarantool::index::{Index, IteratorType};
 use ::tarantool::space::{FieldType, Space};
 use ::tarantool::tuple::{DecodeOwned, ToTupleBuffer, Tuple};
@@ -268,23 +267,9 @@ impl Peers {
         Ok(())
     }
 
-    #[inline]
-    pub fn peer_by_raft_id(&self, raft_id: RaftId) -> tarantool::Result<Option<traft::Peer>> {
-        if raft_id == INVALID_ID {
-            unreachable!("peer_by_raft_id called with invalid id ({})", INVALID_ID);
-        }
-
-        let tuple = self.index_raft_id.get(&(raft_id,))?;
-        match tuple {
-            None => Ok(None),
-            Some(v) => Ok(Some(v.decode()?)),
-        }
-    }
-
     /// Find a peer by `raft_id` and return a single field specified by `F`
     /// (see `PeerFieldDef` & `peer_field` module).
     #[inline(always)]
-    #[allow(dead_code)]
     pub fn get(&self, id: &impl PeerId) -> Result<traft::Peer, TraftError> {
         let res = id.find_in(self)?.decode().expect("failed to decode peer");
         Ok(res)
@@ -300,15 +285,6 @@ impl Peers {
         let tuple = id.find_in(self)?;
         let res = F::get_in(&tuple)?;
         Ok(res)
-    }
-
-    #[inline]
-    pub fn peer_by_instance_id(&self, instance_id: &str) -> tarantool::Result<Option<traft::Peer>> {
-        let tuple = self.index_instance_id.get(&(instance_id,))?;
-        match tuple {
-            None => Ok(None),
-            Some(v) => Ok(Some(v.decode()?)),
-        }
     }
 
     #[inline]
