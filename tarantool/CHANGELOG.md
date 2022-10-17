@@ -35,6 +35,8 @@
 - `impl LuaRead for StaticLua`: this is mainly useful for capturing the lua
     context passed to rust-callbacks for example for use with `tlua::error!`.
     See test `error` in `tests/src/tlua/functions_write.rs` for examples.
+- Add `tlua::Throw` wrapper type for throwing lua errors from an error returned
+    by rust callback.
 - Doc-comments here and there.
 - `tests/test.sh` now supports `TARANTOOL_MODULE_BUILD_MODE` environment
     variable to select which build mode is tested (debug, release, etc.)

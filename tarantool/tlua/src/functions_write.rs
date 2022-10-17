@@ -349,6 +349,50 @@ where
     }
 }
 
+/// A wrapper type for throwing lua errors from a rust callback's result.
+///
+/// # Example
+/// ```no_run
+/// use tlua::{Function, Lua, Throw};
+///
+/// fn may_fail() -> Result<String, String> {
+///     Err("failed".into())
+/// }
+///
+/// let lua = Lua::new();
+/// lua.set("callback", Function::new(|| -> Result<String, Throw<String>> {
+///     let foo = may_fail()?;
+///     Ok(format!("bar{}", foo))
+/// }));
+/// assert!(lua.exec("callback()").is_err())
+/// ```
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Throw<E>(pub E);
+
+impl<E> From<E> for Throw<E> {
+    fn from(err: E) -> Self {
+        Self(err)
+    }
+}
+
+impl<T, E> PushInto<InsideCallback> for Result<T, Throw<E>>
+where
+    T: PushInto<InsideCallback>,
+    E: Display,
+{
+    type Err = T::Err;
+
+    #[inline]
+    fn push_into_lua(self, lua: InsideCallback)
+        -> Result<PushGuard<InsideCallback>, (T::Err, InsideCallback)>
+    {
+        match self {
+            Ok(ok) => ok.push_into_lua(lua),
+            Err(Throw(err)) => crate::error!(lua, "{}", err),
+        }
+    }
+}
+
 impl<T, E> PushOneInto<InsideCallback> for Result<T, E>
 where
     T: PushOneInto<InsideCallback>,

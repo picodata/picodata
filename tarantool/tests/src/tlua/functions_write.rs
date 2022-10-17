@@ -256,6 +256,17 @@ pub fn error() {
     );
     let msg = lua.exec("error_callback_3('better')").unwrap_err().to_string();
     assert_eq!(msg, r#"Execution error: [string "chunk"]:1: this way is better"#);
+
+    lua.set("error_callback_4",
+        tlua::Function::new(
+            #[allow(clippy::try_err)]
+            |qualifier: String| -> Result<(), tlua::Throw<String>> {
+                Err(format!("but this way is {}", qualifier))?
+            }
+        )
+    );
+    let msg = lua.exec("error_callback_4('the best')").unwrap_err().to_string();
+    assert_eq!(msg, r#"Execution error: [string "chunk"]:1: but this way is the best"#);
 }
 
 pub fn optional_params() {

@@ -117,7 +117,7 @@ use std::io::{self, Write};
 
 pub use any::{AnyHashableLuaValue, AnyLuaString, AnyLuaValue};
 pub use functions_write::{
-    Function, InsideCallback,
+    Function, InsideCallback, Throw,
     function0, function1, function2, function3, function4, function5,
     function6, function7, function8, function9, function10,
     protected_call,
