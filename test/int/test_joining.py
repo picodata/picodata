@@ -132,7 +132,9 @@ def test_replication(cluster: Cluster):
     @funcy.retry(tries=20, timeout=0.1)
     def wait_replicated(instance):
         box_replication = instance.eval("return box.cfg.replication")
-        assert set(box_replication) == set([i1.listen, i2.listen]), instance
+        assert set(box_replication) == set(
+            (f"guest:@{addr}" for addr in [i1.listen, i2.listen])
+        ), instance
 
     for instance in cluster.instances:
         with instance.connect(1) as conn:
