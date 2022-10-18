@@ -436,6 +436,9 @@ pub struct Peer {
     pub replicaset_id: String,
     pub replicaset_uuid: String,
 
+    /// Signifies whether this instance is a master of it's replicaset or not.
+    pub is_master: bool,
+
     /// Index of the most recent raft log entry that persisted this peer.
     /// `0` means it's not committed yet.
     pub commit_index: RaftIndex,
@@ -937,6 +940,8 @@ define_peer_change! {
         TargetGrade(TargetGrade),
         #[setter = with_failure_domain, field = failure_domain]
         FailureDomain(FailureDomain),
+        #[setter = with_is_master, field = is_master]
+        IsMaster(bool),
     }
 }
 

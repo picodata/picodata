@@ -136,25 +136,24 @@ def test_replication(cluster: Cluster):
 
     for instance in cluster.instances:
         with instance.connect(1) as conn:
-            raft_peer = conn.select("raft_group", [instance.instance_id])[0]
+            raft_peer = conn.eval(
+                "return box.space.raft_group:get(...):tomap()",
+                instance.instance_id,
+            )[0]
             space_cluster = conn.select("_cluster")
 
-        # Field 6 is commit_index.
-        # It's unperdictable - erase it before comparison.
-        raft_peer[6] = None
-
-        assert raft_peer == [
-            instance.instance_id,
-            instance.eval("return box.info.uuid"),
-            instance.raft_id,
-            instance.eval("return box.info.listen"),
-            "r1",
-            instance.eval("return box.info.cluster.uuid"),
-            None,
-            "Online",
-            "Online",
-            dict(),
-        ]
+        expected = {
+            "instance_id": instance.instance_id,
+            "instance_uuid": instance.eval("return box.info.uuid"),
+            "raft_id": instance.raft_id,
+            "peer_address": instance.eval("return box.info.listen"),
+            "replicaset_id": "r1",
+            "replicaset_uuid": instance.eval("return box.info.cluster.uuid"),
+            "current_grade": "Online",
+            "target_grade": "Online",
+            "failure_domain": dict(),
+        }
+        assert {k: v for k, v in raft_peer.items() if k in expected} == expected
 
         assert list(space_cluster) == [
             [1, i1.instance_uuid()],

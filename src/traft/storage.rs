@@ -424,6 +424,7 @@ define_peer_fields! {
     PeerAddress    : String               = ("peer_address",    FieldType::String)
     ReplicasetId   : String               = ("replicaset_id",   FieldType::String)
     ReplicasetUuid : String               = ("replicaset_uuid", FieldType::String)
+    IsMaster       : bool                 = ("is_master",       FieldType::Boolean)
     CommitIndex    : RaftIndex            = ("commit_index",    FieldType::Unsigned)
     CurrentGrade   : traft::CurrentGrade  = ("current_grade",   FieldType::String)
     TargetGrade    : traft::TargetGrade   = ("target_grade",    FieldType::String)
@@ -537,13 +538,13 @@ inventory::submit!(crate::InnerTest {
 
         for peer in vec![
             // r1
-            ("i1", "i1-uuid", 1u64, "addr:1", "r1", "r1-uuid", 1u64, CurrentGrade::Online, TargetGrade::Online, &faildom,),
-            ("i2", "i2-uuid", 2u64, "addr:2", "r1", "r1-uuid",    2, CurrentGrade::Online, TargetGrade::Online, &faildom,),
+            ("i1", "i1-uuid", 1u64, "addr:1", "r1", "r1-uuid", false, 1u64, CurrentGrade::Online, TargetGrade::Online, &faildom,),
+            ("i2", "i2-uuid", 2u64, "addr:2", "r1", "r1-uuid", false,    2, CurrentGrade::Online, TargetGrade::Online, &faildom,),
             // r2
-            ("i3", "i3-uuid", 3u64, "addr:3", "r2", "r2-uuid",   10, CurrentGrade::Online, TargetGrade::Online, &faildom,),
-            ("i4", "i4-uuid", 4u64, "addr:4", "r2", "r2-uuid",   10, CurrentGrade::Online, TargetGrade::Online, &faildom,),
+            ("i3", "i3-uuid", 3u64, "addr:3", "r2", "r2-uuid", false,   10, CurrentGrade::Online, TargetGrade::Online, &faildom,),
+            ("i4", "i4-uuid", 4u64, "addr:4", "r2", "r2-uuid", false,   10, CurrentGrade::Online, TargetGrade::Online, &faildom,),
             // r3
-            ("i5", "i5-uuid", 5u64, "addr:5", "r3", "r3-uuid",   10, CurrentGrade::Online, TargetGrade::Online, &faildom,),
+            ("i5", "i5-uuid", 5u64, "addr:5", "r3", "r3-uuid", false,   10, CurrentGrade::Online, TargetGrade::Online, &faildom,),
         ] {
             raft_group.put(&peer).unwrap();
         }
@@ -567,9 +568,9 @@ inventory::submit!(crate::InnerTest {
                     " in unique index \"raft_id\"",
                     " in space \"raft_group\"",
                     " with old tuple",
-                    r#" - ["i1", "i1-uuid", 1, "addr:1", "r1", "r1-uuid", 1, "{gon}", "{tgon}", {{"A": "B"}}]"#,
+                    r#" - ["i1", "i1-uuid", 1, "addr:1", "r1", "r1-uuid", false, 1, "{gon}", "{tgon}", {{"A": "B"}}]"#,
                     " and new tuple",
-                    r#" - ["i99", "", 1, "", "", "", 0, "{goff}", "{tgon}", {{}}]"#,
+                    r#" - ["i99", "", 1, "", "", "", false, 0, "{goff}", "{tgon}", {{}}]"#,
                 ),
                 gon = CurrentGrade::Online,
                 goff = CurrentGrade::Offline,

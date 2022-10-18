@@ -169,6 +169,7 @@ impl Topology {
             current_grade: CurrentGrade::Offline,
             target_grade: TargetGrade::Offline,
             failure_domain,
+            ..Peer::default()
         };
 
         self.put_peer(peer.clone());
@@ -290,6 +291,7 @@ mod tests {
                     $( let _f = $failure_domain; )?
                     _f
                 },
+                .. Peer::default()
             }
         };
     }

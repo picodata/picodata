@@ -1162,8 +1162,13 @@ fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
                 let cluster_id = cluster_id.clone();
                 let peer_iid_2 = peer_iid.clone();
                 let res = resp.and_then(move |replication::Response { lsn }| {
-                    let req = UpdatePeerRequest::new(peer_iid_2, cluster_id)
+                    let mut req = UpdatePeerRequest::new(peer_iid_2, cluster_id)
                         .with_current_grade(CurrentGrade::Replicated);
+                    if replicaset_size == 1 {
+                        // TODO: ignore expelled peers
+                        // TODO: ignore offline peers
+                        req = req.with_is_master(true);
+                    }
                     node.handle_topology_request_and_wait(req.into())
                         .map(|_| lsn)
                 });
