@@ -48,7 +48,6 @@ impl Default for WorkerOptions {
 // PoolWorker
 ////////////////////////////////////////////////////////////////////////////////
 
-type Notify = fiber::Channel<Result<RawByteBuf, TntError>>;
 type Callback = Box<dyn FnOnce(Result<RawByteBuf, TntError>)>;
 type Queue = Mailbox<(Callback, &'static str, TupleBuffer)>;
 
@@ -432,6 +431,7 @@ impl ConnectionPool {
     /// to re-send it later.
     ///
     /// **This function yields.**
+    #[allow(dead_code)]
     pub fn call_and_wait_timeout<R>(
         &mut self,
         id: &impl PeerId,
@@ -453,6 +453,7 @@ impl ConnectionPool {
     /// to re-send it later.
     ///
     /// **This function yields.**
+    #[allow(dead_code)]
     #[inline(always)]
     pub fn call_and_wait<R>(&mut self, id: &impl PeerId, req: R) -> Result<R::Response, Error>
     where
