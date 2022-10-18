@@ -164,7 +164,7 @@ macro_rules! define_str_enum {
         }
 
         impl $enum {
-            pub const fn as_str(&self) -> &str {
+            pub const fn as_str(&self) -> &'static str {
                 match self {
                     $( Self::$space => $str, )+
                 }
