@@ -50,8 +50,35 @@ cargo build
 ```bash
 cargo build --release
 ```
-Бинарные файлы приложения Picodata появятся в директории  `target`.
+Бинарные файлы приложения Picodata появятся в директории `target/debug` или `target/release`.
 
+### Проверка установки
+Когда программное обеспечение Picodata установлено, то можно проверить наличие в системе основного исполняемого файла `picodata`, используя следующую команду:
+```bash
+which picodata
+```
+Ответом на неё должно быть значение `/usr/bin/picodata`, либо — если вы устанавливали ПО вручную с другим префиксом — иное расположение, включенное в `$PATH`.
+Чтобы убедиться в работоспособности ПО, а также посмотреть его версию, используйте следующую команду:
+```bash
+picodata --help
+```
+
+В состав ПО также включены юнит-тесты, позволяющие проверить работоспособность основных функций. Юнит-тесты можно запустить следующей командой:
+```bash
+picodata test
+```
+Пример вывода команды:
+```bash
+running 6 tests
+test test_traft_pool ... ok
+test test_storage_peers ... ok
+test test_storage_state ... ok
+test test_storage_log ... ok
+test test_mailbox ... ok
+test test_version ... ok
+
+test result: ok. 6 passed; 0 failed; finished in 0.88s
+```
 
 <!--
 ## Создание приложения
