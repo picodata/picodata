@@ -1138,6 +1138,8 @@ fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
                     replication::Request {
                         replicaset_instances: replicaset_iids.clone(),
                         replicaset_id: replicaset_id.clone(),
+                        // TODO: what if someone goes offline/expelled?
+                        promote: replicaset_size == 1,
                     },
                     move |res| {
                         tx.send((peer_iid, res)).expect("mustn't fail");

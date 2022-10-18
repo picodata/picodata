@@ -118,6 +118,7 @@ pub struct Cfg {
     pub replicaset_uuid: Option<String>,
     pub replication: Vec<String>,
     pub replication_connect_quorum: u8,
+    pub election_mode: CfgElectionMode,
 
     pub wal_dir: String,
     pub memtx_dir: String,
@@ -126,6 +127,14 @@ pub struct Cfg {
 
     pub feedback_enabled: bool,
     pub log_level: u8,
+}
+
+#[derive(Clone, Debug, tlua::Push, tlua::LuaRead, PartialEq, Eq)]
+pub enum CfgElectionMode {
+    Off,
+    Voter,
+    Candidate,
+    Manual,
 }
 
 impl Default for Cfg {
@@ -138,6 +147,7 @@ impl Default for Cfg {
             replicaset_uuid: None,
             replication: vec![],
             replication_connect_quorum: 32,
+            election_mode: CfgElectionMode::Manual,
 
             wal_dir: ".".into(),
             memtx_dir: ".".into(),

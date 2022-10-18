@@ -27,6 +27,9 @@ fn proc_replication(req: Request) -> Result<Response, Error> {
     // box.cfg checks if the replication is already the same
     // and ignores it if nothing changed
     set_cfg_field("replication", peer_addresses)?;
+    if req.promote {
+        crate::tarantool::exec("box.ctl.promote()")?;
+    }
     let lsn = crate::tarantool::eval("return box.info.lsn")?;
     Ok(Response { lsn })
 }
@@ -36,6 +39,7 @@ fn proc_replication(req: Request) -> Result<Response, Error> {
 pub struct Request {
     pub replicaset_instances: Vec<InstanceId>,
     pub replicaset_id: String,
+    pub promote: bool,
 }
 impl ::tarantool::tuple::Encode for Request {}
 
