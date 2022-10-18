@@ -164,6 +164,17 @@ fn picolib_setup(args: &args::Run) {
                 .propose_and_wait(traft::OpReturnOne, Duration::from_secs_f64(timeout))
         }),
     );
+    // TODO: remove this
+    if cfg!(debug_assertions) {
+        luamod.set(
+            "emit",
+            tlua::Function::new(|event: String| -> Result<(), Error> {
+                let event: traft::event::Event = event.parse().map_err(Error::other)?;
+                traft::event::broadcast(event);
+                Ok(())
+            }),
+        );
+    }
     luamod.set("log", &[()]);
     #[rustfmt::skip]
     l.exec_with(
