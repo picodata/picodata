@@ -1013,10 +1013,10 @@ fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
         .inactivity_timeout(Duration::from_secs(60))
         .build();
 
-    loop {
+    'governor: loop {
         if !status.get().raft_state.is_leader() {
             event::wait(Event::StatusChanged).expect("Events system must be initialized");
-            continue;
+            continue 'governor;
         }
 
         let peers = storage.peers.all_peers().unwrap();
@@ -1037,7 +1037,7 @@ fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
                     fiber::sleep(Duration::from_secs(1));
                 }
             }
-            continue;
+            continue 'governor;
         }
 
         ////////////////////////////////////////////////////////////////////////
@@ -1057,7 +1057,7 @@ fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
                     "instance_id" => &*peer.instance_id,
                 );
             }
-            continue;
+            continue 'governor;
         }
 
         ////////////////////////////////////////////////////////////////////////
@@ -1110,7 +1110,7 @@ fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
                 }
             }
 
-            continue;
+            continue 'governor;
         }
 
         ////////////////////////////////////////////////////////////////////////
@@ -1130,7 +1130,7 @@ fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
                     // TODO: don't hard code timeout
                     event::wait_timeout(Event::TopologyChanged, Duration::from_millis(300))
                         .unwrap();
-                    continue;
+                    continue 'governor;
                 }
             );
 
@@ -1170,7 +1170,7 @@ fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
             // TODO: don't hard code timeout
             if !cond_rx.wait_timeout(Duration::from_secs(3)) {
                 tlog!(Warning, "failed to configure replication: timed out");
-                continue;
+                continue 'governor;
             }
 
             let cluster_id = storage.raft.cluster_id().unwrap().unwrap();
@@ -1195,14 +1195,18 @@ fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
                         tlog!(Warning, "failed to configure replication: {e}";
                             "instance_id" => &*peer_iid,
                         );
-                        continue;
+
+                        // TODO: don't hard code timeout
+                        event::wait_timeout(Event::TopologyChanged, Duration::from_secs(1))
+                            .unwrap();
+                        continue 'governor;
                     }
                 }
             }
 
             tlog!(Info, "configured replication"; "replicaset_id" => replicaset_id);
 
-            continue;
+            continue 'governor;
         }
 
         ////////////////////////////////////////////////////////////////////////
@@ -1223,7 +1227,7 @@ fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
                     "instance_id" => &*peer.instance_id,
                 );
             }
-            continue;
+            continue 'governor;
         }
 
         event::wait(Event::TopologyChanged).expect("Events system must be initialized");
