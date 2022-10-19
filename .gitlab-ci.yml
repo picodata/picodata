@@ -6,6 +6,7 @@ stages:
   - pack-debian
   - sign
   - deploy
+  - test_rpm
 
 #workflow:
 #  rules:
@@ -103,6 +104,7 @@ build-package-centos:
   artifacts:
     paths:
       - build/picodata*.rpm
+  dependencies: []
 
 build-package-ubuntu:
   tags:
@@ -122,6 +124,7 @@ build-package-ubuntu:
   artifacts:
     paths:
       - build_ubuntu/*.deb
+  dependencies: []
 
 build-package-debian:
   tags:
@@ -141,6 +144,7 @@ build-package-debian:
   artifacts:
     paths:
       - build_debian/*.deb
+  dependencies: []
 
 sign-rpm-packages:
   variables:
@@ -160,6 +164,8 @@ sign-rpm-packages:
   artifacts:
     paths:
       - build/picodata*.rpm
+  dependencies:
+    - build-package-centos
 
 deploy-job:
   stage: deploy
@@ -197,3 +203,33 @@ deploy-job:
     - scp -o stricthostkeychecking=no build_debian/picodata*deb ansible@94.26.239.246:.deb/debian/
     - ssh -o stricthostkeychecking=no ansible@94.26.239.246 "reprepro -b /data/nginx/www/packrepo/tarantool-picodata/debian/ -C main includedeb bullseye ~/.deb/debian/picodata*bullseye*deb; rm ~/.deb/debian/picodata*bullseye*deb"
     - echo "debian packets successfully deployed."
+  dependencies:
+    - build-package-ubuntu
+    - build-package-debian
+    - sign-rpm-packages
+
+test_el7:
+    stage: test_rpm
+    only:
+      - web
+      - tags
+    tags: [docker]
+    image: centos:7
+    before_script:
+      - rpm --import https://download.picodata.io/tarantool-picodata/el/RPM-GPG-KEY-kdy
+      - yum install -y https://download.picodata.io/tarantool-picodata/el/7/x86_64/picodata-release-1.1.0.11-1.el7.x86_64.rpm
+    script:
+      - yum install -y picodata
+
+test_el8:
+    stage: test_rpm
+    only:
+      - web
+      - tags
+    tags: [docker]
+    image: rockylinux:8
+    before_script:
+      - rpm --import https://download.picodata.io/tarantool-picodata/el/RPM-GPG-KEY-kdy
+      - yum install -y https://download.picodata.io/tarantool-picodata/el/8/x86_64/picodata-release-1.1.0.11-1.el8.x86_64.rpm
+    script:
+      - yum install -y picodata
