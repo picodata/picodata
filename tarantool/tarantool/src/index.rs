@@ -320,7 +320,7 @@ impl SeqSpec {
 
 crate::define_str_enum!{
     /// Type of index.
-    #[derive(Copy, Clone, Debug, PartialEq)]
+    #[derive(Copy, Clone, Debug, PartialEq, Eq)]
     pub enum IndexType {
         Hash = "hash",
         Tree = "tree",
@@ -344,7 +344,7 @@ pub type IndexFieldType = FieldType;
 
 crate::define_str_enum!{
     /// Type of index part.
-    #[derive(Copy, Clone, Debug, PartialEq)]
+    #[derive(Copy, Clone, Debug, PartialEq, Eq)]
     pub enum FieldType {
         Unsigned  = "unsigned",
         String    = "string",
@@ -467,7 +467,7 @@ impl From<(&str, FieldType)> for Part {
 
 crate::define_str_enum!{
     /// Type of distance for retree index.
-    #[derive(Copy, Clone, Debug, PartialEq)]
+    #[derive(Copy, Clone, Debug, PartialEq, Eq)]
     pub enum RtreeIndexDistanceType {
         Euclid = "euclid",
         Manhattan = "manhattan",

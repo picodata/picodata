@@ -220,7 +220,7 @@ pub fn getaddrinfo(
         ffi::coio_getaddrinfo(
             host.as_ptr() as *const c_char,
             port.as_ptr() as *const c_char,
-            &*hints,
+            hints,
             &mut result,
             timeout,
         )

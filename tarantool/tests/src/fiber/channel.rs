@@ -184,7 +184,7 @@ pub fn as_mutex() {
         lock1.send(()).unwrap();            // Capture the lock
         log1.send("f1:critical").unwrap();
         fiber::sleep(Duration::ZERO);       // Tease the other fibers
-        unsafe { (&mut *sr).push(1); }      // Access the critical section
+        unsafe { (*sr).push(1); }           // Access the critical section
         let () = lock1.recv().unwrap();     // Release the lock
         log1.send("f1:release").unwrap();
     });
@@ -194,7 +194,7 @@ pub fn as_mutex() {
         lock2.send(()).unwrap();            // Capture the lock
         log2.send("f2:critical").unwrap();
         fiber::sleep(Duration::ZERO);       // Tease the other fibers
-        unsafe { (&mut *sr).push(2); }      // Access the critical section
+        unsafe { (*sr).push(2); }           // Access the critical section
         let () = lock2.recv().unwrap();     // Release the lock
         log2.send("f2:release").unwrap();
     });
@@ -204,7 +204,7 @@ pub fn as_mutex() {
         lock3.send(()).unwrap();            // Capture the lock
         log3.send("f3:critical").unwrap();
         fiber::sleep(Duration::ZERO);       // Tease the other fibers
-        unsafe { (&mut *sr).push(3); }      // Access the critical section
+        unsafe { (*sr).push(3); }           // Access the critical section
         let () = lock3.recv().unwrap();     // Release the lock
         log3.send("f3:release").unwrap();
     });

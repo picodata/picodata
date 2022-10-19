@@ -93,7 +93,7 @@ impl RecvQueue {
     }
 
     pub fn add_consumer(&self, sync: Sync, consumer: Weak<dyn Consumer>) {
-        unsafe { (&mut *self.async_consumers.get()).insert(sync, consumer) };
+        unsafe { (*self.async_consumers.get()).insert(sync, consumer) };
     }
 
     pub fn get_consumer(&self, sync: Sync) -> Option<Rc<dyn Consumer>> {
