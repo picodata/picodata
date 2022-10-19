@@ -358,12 +358,12 @@ impl OpDML {
     pub fn update(
         space: ClusterSpace,
         key: &impl ToTupleBuffer,
-        ops: Vec<TupleBuffer>,
+        ops: impl Into<Vec<TupleBuffer>>,
     ) -> Result<Self, TntError> {
         let res = Self::Update {
             space,
             key: key.to_tuple_buffer()?,
-            ops,
+            ops: ops.into(),
         };
         Ok(res)
     }

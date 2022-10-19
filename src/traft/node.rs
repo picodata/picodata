@@ -14,6 +14,7 @@ use ::tarantool::error::TransactionError;
 use ::tarantool::fiber;
 use ::tarantool::fiber::{Cond, Mutex};
 use ::tarantool::proc;
+use tarantool::space::UpdateOps;
 use ::tarantool::tlua;
 use ::tarantool::transaction::start_transaction;
 use std::cell::Cell;
@@ -33,6 +34,7 @@ use crate::traft::Peer;
 use crate::traft::RaftId;
 use crate::traft::RaftIndex;
 use crate::traft::RaftTerm;
+use crate::traft::storage::ClusterSpace;
 use crate::warn_or_panic;
 use crate::{unwrap_ok_or, unwrap_some_or};
 use ::tarantool::util::IntoClones as _;
@@ -1171,6 +1173,37 @@ fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
                             .unwrap();
                         continue 'governor;
                     }
+                }
+            }
+            let replicaset_weight = storage
+                .state
+                .replicaset_weight(replicaset_id)
+                .expect("storage error");
+            if replicaset_weight.is_none() {
+                if let Err(e) = (|| -> Result<(), Error> {
+                    let vshard_bootstrapped = storage.state.vshard_bootstrapped()?;
+                    let weight = if vshard_bootstrapped { 0. } else { 1. };
+                    let mut ops = UpdateOps::new();
+                    ops.assign(format!("['value']['{replicaset_id}']"), weight)?;
+                    let req = traft::OpDML::update(
+                        ClusterSpace::State,
+                        &[StateKey::ReplicasetWeights],
+                        ops,
+                    )?;
+                    // TODO: don't hard code the timeout
+                    node.propose_and_wait(req, Duration::from_secs(3))??;
+                    Ok(())
+                })() {
+                    // TODO: what if all replicas have changed their grade
+                    // successfully, but the replicaset_weight failed to set?
+                    tlog!(Warning, "failed to set replicaset weight: {e}";
+                        "replicaset_id" => replicaset_id,
+                    );
+
+                    // TODO: don't hard code timeout
+                    event::wait_timeout(Event::TopologyChanged, Duration::from_secs(1))
+                        .unwrap();
+                    continue 'governor;
                 }
             }
 

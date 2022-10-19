@@ -17,7 +17,7 @@ fn proc_sharding(req: Request) -> Result<Response, Error> {
     let _ = req.term;
 
     let storage = &node.storage;
-    let cfg = cfg::Cfg::from_storage(&storage.peers)?;
+    let cfg = cfg::Cfg::from_storage(&storage)?;
 
     let lua = ::tarantool::lua_state();
     // TODO: fix user's permissions
@@ -67,23 +67,34 @@ impl super::Request for Request {
 pub mod cfg {
     use crate::traft::error::Error;
     use crate::traft::storage::peer_field;
-    use crate::traft::storage::Peers;
+    use crate::traft::storage::Storage;
 
     use ::tarantool::tlua;
 
     use std::collections::HashMap;
 
-    #[derive(Default, Clone, Debug, PartialEq, Eq)]
+    #[derive(Default, Clone, Debug, PartialEq)]
     #[derive(tlua::PushInto, tlua::Push, tlua::LuaRead)]
     pub struct Cfg {
         sharding: HashMap<String, Replicaset>,
         discovery_mode: DiscoveryMode,
     }
 
-    #[derive(Default, Clone, Debug, PartialEq, Eq)]
+    #[derive(Default, Clone, Debug, PartialEq)]
     #[derive(tlua::PushInto, tlua::Push, tlua::LuaRead)]
     struct Replicaset {
         replicas: HashMap<String, Replica>,
+        weight: Option<Weight>,
+    }
+
+    impl Replicaset {
+        #[inline]
+        pub fn with_weight(weight: impl Into<Option<Weight>>) -> Self {
+            Self {
+                weight: weight.into(),
+                ..Default::default()
+            }
+        }
     }
 
     #[derive(Default, Clone, Debug, PartialEq, Eq)]
@@ -103,13 +114,19 @@ pub mod cfg {
         Once,
     }
 
+    pub type ReplicasetWeights = HashMap<String, Weight>;
+    pub type Weight = f64;
+
     impl Cfg {
-        pub fn from_storage(peers: &Peers) -> Result<Self, Error> {
-            use peer_field::{InstanceId, InstanceUuid, PeerAddress, ReplicasetUuid, IsMaster};
-            type Fields = (InstanceId, InstanceUuid, PeerAddress, ReplicasetUuid, IsMaster);
+        pub fn from_storage(storage: &Storage) -> Result<Self, Error> {
+            use peer_field::{InstanceId, InstanceUuid, PeerAddress, ReplicasetUuid, ReplicasetId, IsMaster};
+            type Fields = (InstanceId, InstanceUuid, PeerAddress, ReplicasetUuid, ReplicasetId, IsMaster);
+            let replicaset_weights = storage.state.replicaset_weights()?;
             let mut sharding: HashMap<String, Replicaset> = HashMap::new();
-            for (id, uuid, addr, rset, is_master) in peers.peers_fields::<Fields>()? {
-                let replicaset = sharding.entry(rset).or_default();
+            for (id, uuid, addr, rset, rset_id, is_master) in storage.peers.peers_fields::<Fields>()? {
+                let replicaset = sharding.entry(rset).or_insert_with(||
+                    Replicaset::with_weight(replicaset_weights.get(&rset_id).copied())
+                );
                 replicaset.replicas.insert(
                     uuid,
                     Replica {

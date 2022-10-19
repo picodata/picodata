@@ -6,6 +6,7 @@ use thiserror::Error;
 use crate::define_str_enum;
 use crate::traft;
 use crate::traft::error::Error as TraftError;
+use crate::traft::rpc::sharding::cfg::{ReplicasetWeights, Weight};
 use crate::traft::RaftId;
 use crate::traft::RaftIndex;
 
@@ -78,6 +79,7 @@ define_str_enum! {
     pub enum StateKey {
         ReplicationFactor = "replication_factor",
         VshardBootstrapped = "vshard_bootstrapped",
+        ReplicasetWeights = "replicaset_weights",
     }
 
     FromStr::Err = UnknownStateKey;
@@ -173,6 +175,23 @@ impl State {
     pub fn put(&self, key: StateKey, value: &impl serde::Serialize) -> tarantool::Result<()> {
         self.space_mut().put(&(key, value))?;
         Ok(())
+    }
+
+    #[inline]
+    pub fn replicaset_weight(&self, replicaset_id: &str) -> tarantool::Result<Option<Weight>> {
+        // I tried doing tuple.try_get(format!("[1]['{replicaset_id}']").as_str())
+        // but it doesn't work :(
+        Ok(self.replicaset_weights()?.get(replicaset_id).copied())
+    }
+
+    #[inline]
+    pub fn replicaset_weights(&self) -> tarantool::Result<ReplicasetWeights> {
+        Ok(self.get(StateKey::ReplicasetWeights)?.unwrap_or_default())
+    }
+
+    #[inline]
+    pub fn vshard_bootstrapped(&self) -> tarantool::Result<bool> {
+        Ok(self.get(StateKey::VshardBootstrapped)?.unwrap_or_default())
     }
 }
 

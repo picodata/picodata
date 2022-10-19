@@ -18,6 +18,7 @@ use traft::Storage;
 use clap::StructOpt as _;
 use protobuf::Message as _;
 
+use crate::traft::rpc::sharding::cfg::ReplicasetWeights;
 use crate::traft::InstanceId;
 use crate::traft::{LogicalClock, RaftIndex, TargetGrade, UpdatePeerRequest};
 use traft::error::Error;
@@ -178,7 +179,7 @@ fn picolib_setup(args: &args::Run) {
             "vshard_cfg",
             tlua::function0(|| -> Result<traft::rpc::sharding::cfg::Cfg, Error> {
                 let node = traft::node::global()?;
-                traft::rpc::sharding::cfg::Cfg::from_storage(&node.storage.peers)
+                traft::rpc::sharding::cfg::Cfg::from_storage(&node.storage)
             }),
         );
         l.exec(
@@ -728,6 +729,28 @@ fn start_boot(args: &args::Run) {
                 op: traft::OpDML::insert(
                     ClusterSpace::State,
                     &(StateKey::ReplicationFactor, args.init_replication_factor),
+                )
+                .expect("cannot fail")
+                .into(),
+                lc,
+            };
+            let e = traft::Entry {
+                entry_type: raft::EntryType::EntryNormal,
+                index: (init_entries.len() + 1) as _,
+                term: 1,
+                data: vec![],
+                context: Some(traft::EntryContext::Normal(ctx)),
+            };
+
+            raft::Entry::try_from(e).unwrap()
+        });
+
+        lc.inc();
+        init_entries.push({
+            let ctx = traft::EntryContextNormal {
+                op: traft::OpDML::insert(
+                    ClusterSpace::State,
+                    &(StateKey::ReplicasetWeights, ReplicasetWeights::new()),
                 )
                 .expect("cannot fail")
                 .into(),
