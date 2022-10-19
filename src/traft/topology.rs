@@ -193,31 +193,26 @@ impl Topology {
     pub fn update_peer(&mut self, req: UpdatePeerRequest) -> Result<Peer, String> {
         let this = self as *const Self;
 
-        let mut peer = self
+        let peer = self
             .instance_map
             .get_mut(&req.instance_id)
             .ok_or_else(|| format!("unknown instance {}", req.instance_id))?;
 
+        if peer.current_grade == CurrentGrade::Expelled {
+            return Err(format!(
+                "cannot update expelled peer \"{}\"",
+                peer.instance_id
+            ));
+        }
+
         for change in req.changes {
-            match change {
-                PeerChange::CurrentGrade(grade) => {
-                    if peer.current_grade != CurrentGrade::Expelled {
-                        peer.current_grade = grade;
-                    }
-                }
-                PeerChange::TargetGrade(target_grade) => {
-                    if peer.target_grade != TargetGrade::Expelled {
-                        peer.target_grade = target_grade;
-                    }
-                }
-                PeerChange::FailureDomain(fd) => {
-                    // SAFETY: this is safe, because rust doesn't complain if you inline
-                    // the function
-                    unsafe { &*this }.check_required_failure_domain(&fd)?;
-                    self.failure_domain_names.extend(fd.names().cloned());
-                    peer.failure_domain = fd;
-                }
+            if let PeerChange::FailureDomain(fd) = &change {
+                // SAFETY: this is safe, because rust doesn't complain if you inline
+                // the function
+                unsafe { &*this }.check_required_failure_domain(fd)?;
+                self.failure_domain_names.extend(fd.names().cloned());
             }
+            change.apply(peer);
         }
 
         Ok(peer.clone())

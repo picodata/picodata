@@ -893,11 +893,51 @@ pub struct UpdatePeerRequest {
     pub changes: Vec<PeerChange>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum PeerChange {
-    CurrentGrade(CurrentGrade),
-    TargetGrade(TargetGrade),
-    FailureDomain(FailureDomain),
+macro_rules! define_peer_change {
+    (
+        $(#[$meta:meta])*
+        pub enum $enum:ident {
+            $(
+                #[setter = $setter:ident, field = $field:ident]
+                $variant:ident($type:ty),
+            )*
+        }
+    ) => {
+        $(#[$meta])*
+        pub enum $enum {
+            $( $variant($type), )*
+        }
+
+        impl $enum {
+            pub fn apply(self, peer: &mut Peer) {
+                match self {
+                    $( Self::$variant(value) => peer.$field = value, )*
+                }
+            }
+        }
+
+        impl UpdatePeerRequest {
+            $(
+                #[inline]
+                pub fn $setter(mut self, value: $type) -> Self {
+                    self.changes.push($enum::$variant(value));
+                    self
+                }
+            )*
+        }
+    }
+}
+
+define_peer_change! {
+    #[derive(Clone, Debug, Serialize, Deserialize)]
+    pub enum PeerChange {
+        #[setter = with_current_grade, field = current_grade]
+        CurrentGrade(CurrentGrade),
+        #[setter = with_target_grade, field = target_grade]
+        TargetGrade(TargetGrade),
+        #[setter = with_failure_domain, field = failure_domain]
+        FailureDomain(FailureDomain),
+    }
 }
 
 impl Encode for UpdatePeerRequest {}
@@ -909,21 +949,6 @@ impl UpdatePeerRequest {
             cluster_id,
             changes: vec![],
         }
-    }
-    #[inline]
-    pub fn with_current_grade(mut self, current_grade: CurrentGrade) -> Self {
-        self.changes.push(PeerChange::CurrentGrade(current_grade));
-        self
-    }
-    #[inline]
-    pub fn with_target_grade(mut self, target_grade: TargetGrade) -> Self {
-        self.changes.push(PeerChange::TargetGrade(target_grade));
-        self
-    }
-    #[inline]
-    pub fn with_failure_domain(mut self, failure_domain: FailureDomain) -> Self {
-        self.changes.push(PeerChange::FailureDomain(failure_domain));
-        self
     }
 }
 
