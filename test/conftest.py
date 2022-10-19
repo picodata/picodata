@@ -325,6 +325,9 @@ class Instance:
         if not os.environ.get("PICODATA_LOG_LEVEL") and "PICODATA_LOG_LEVEL" not in env:
             env.update(PICODATA_LOG_LEVEL="verbose")
 
+        if os.environ.get("RUST_BACKTRACE") is not None:
+            env.update(RUST_BACKTRACE=str(os.environ.get("RUST_BACKTRACE")))
+
         self.process = subprocess.Popen(
             self.command,
             env=env or None,
