@@ -806,6 +806,44 @@ impl BoxTuple {
     }
 }
 
+#[cfg(feature = "picodata")]
+#[repr(C)]
+pub(crate) struct FormatVTable {
+    _tuple_delete: unsafe extern "C" fn(tuple_format: *const c_void, tuple: *const c_void),
+    _tuple_new: unsafe extern "C" fn(tuple_format: *const c_void, data: *const c_void, end: *const c_void),
+}
+
+#[cfg(feature = "picodata")]
+#[repr(C)]
+pub(crate) struct TupleDictionary {
+    _hash: *const c_void,
+    pub(crate) names: *const *const c_char,
+    pub(crate) name_count: u32,
+    _refs: c_int,
+}
+
+#[cfg(feature = "picodata")]
+#[repr(C)]
+pub struct BoxTupleFormat {
+    _vtab: FormatVTable,
+    _engine: *const c_void,
+    _id: u16,
+    _hash: u32,
+    _epoch: u64,
+    _refs: c_int,
+    _is_temporary: bool,
+    _is_reusable: bool,
+    _is_compressed: bool,
+    _field_map_size: u16,
+    _exact_field_count: u32,
+    _index_field_count: u32,
+    _min_field_count: u32,
+    _total_field_count: u32,
+    _required_fields: *const c_void,
+    pub(crate) dict: *const TupleDictionary,
+}
+
+#[cfg(not(feature = "picodata"))]
 #[repr(C)]
 pub struct BoxTupleFormat {
     _unused: [u8; 0],

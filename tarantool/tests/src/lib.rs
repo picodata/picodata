@@ -35,6 +35,7 @@ mod tlua;
 mod uuid;
 mod enums;
 mod sql;
+mod tuple_picodata;
 
 macro_rules! tests {
     (@should_panic should_panic) => { Some(ShouldPanic::Yes) };
@@ -575,6 +576,9 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                     sql::prepared_with_unnamed_params,
                     sql::prepared_with_named_params,
                     sql::prepared_invalid_params,
+
+                    tuple_picodata::tuple_format_get_names,
+                    tuple_picodata::tuple_as_named_buffer,
                 ])
             }
 

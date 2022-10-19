@@ -1324,3 +1324,96 @@ impl std::ops::DerefMut for RawByteBuf {
     }
 }
 
+#[cfg(feature = "picodata")]
+mod picodata {
+    use std::ffi::CStr;
+    use std::io::{Cursor, Write};
+    use std::marker::PhantomData;
+    use std::os::raw::c_char;
+    use crate::tuple::{Tuple, TupleFormat};
+    use crate::Result;
+
+    impl Tuple {
+        /// Returns messagepack encoded tuple with named fields (messagepack map).
+        ///
+        /// Returned map has only numeric keys if tuple has default tuple format (see [TupleFormat](struct.TupleFormat.html)),
+        /// for example when tuple dont belongs to any space. If tuple has greater fields than named
+        /// fields in tuple format - then additional fields are  presents in the map with numeric keys.
+        ///
+        /// This function is useful if there is no information about tuple fields in program runtime.
+        pub fn as_named_buffer(&self) -> Result<Vec<u8>> {
+            let format = self.format();
+            let buff = self.as_buffer();
+
+            let field_count = self.len();
+            let mut named_buffer = Vec::with_capacity(buff.len());
+
+            let mut cursor = Cursor::new(&buff);
+
+            rmp::encode::write_map_len(&mut named_buffer, field_count)?;
+            rmp::decode::read_array_len(&mut cursor)?;
+            format.names().try_for_each(|field_name| -> Result<()> {
+                let value_start = cursor.position() as usize;
+                crate::msgpack::skip_value(&mut cursor)?;
+                let value_end = cursor.position() as usize;
+
+                rmp::encode::write_str(&mut named_buffer, field_name)?;
+                Ok(named_buffer.write_all(&buff[value_start..value_end])?)
+            })?;
+
+            for i in 0..field_count - format.name_count() {
+                let value_start = cursor.position() as usize;
+                crate::msgpack::skip_value(&mut cursor)?;
+                let value_end = cursor.position() as usize;
+
+                rmp::encode::write_u32(&mut named_buffer, i)?;
+                named_buffer.write_all(&buff[value_start..value_end])?;
+            }
+
+            Ok(named_buffer)
+        }
+    }
+
+    impl TupleFormat {
+        /// Return tuple field names count.
+        pub fn name_count(&self) -> u32 {
+            unsafe { (*(*self.inner).dict).name_count }
+        }
+
+        /// Return tuple field names.
+        pub fn names(&self) -> impl Iterator<Item=&str> {
+            let ptr = unsafe { (*(*self.inner).dict).names };
+            NameIterator {
+                ptr,
+                len: self.name_count() as usize,
+                pos: 0,
+                _p: PhantomData,
+            }
+        }
+    }
+
+    pub(crate) struct NameIterator<'a> {
+        ptr: *const *const c_char,
+        len: usize,
+        pos: usize,
+        _p: PhantomData<&'a ()>,
+    }
+
+    impl<'a> Iterator for NameIterator<'a> {
+        type Item = &'a str;
+
+        #[track_caller]
+        fn next(&mut self) -> Option<Self::Item> {
+            if self.pos >= self.len {
+                return None;
+            }
+
+            unsafe {
+                let str_ptr = self.ptr.add(self.pos);
+                self.pos += 1;
+
+                Some(CStr::from_ptr(*str_ptr).to_str().expect("invalid utf-8 string"))
+            }
+        }
+    }
+}
