@@ -328,6 +328,12 @@ impl Peers {
     }
 
     #[inline]
+    pub fn iter(&self) -> tarantool::Result<PeerIter> {
+        let iter = self.space().select(IteratorType::All, &())?;
+        Ok(PeerIter::new(iter))
+    }
+
+    #[inline]
     pub fn all_peers(&self) -> tarantool::Result<Vec<traft::Peer>> {
         self.space()
             .select(IteratorType::All, &())?
@@ -552,6 +558,31 @@ impl PeerId for traft::InstanceId {
             .index_instance_id
             .get(&[self])?
             .ok_or_else(|| TraftError::NoPeerWithInstanceId(self.clone()))
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// PeerIter
+////////////////////////////////////////////////////////////////////////////////
+
+pub struct PeerIter {
+    iter: IndexIterator,
+}
+
+impl PeerIter {
+    fn new(iter: IndexIterator) -> Self {
+        Self { iter }
+    }
+}
+
+impl Iterator for PeerIter {
+    type Item = traft::Peer;
+    fn next(&mut self) -> Option<Self::Item> {
+        self.iter
+            .next()
+            .as_ref()
+            .map(Tuple::decode)
+            .map(Result::unwrap)
     }
 }
 

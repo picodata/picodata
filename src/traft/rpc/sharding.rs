@@ -64,7 +64,6 @@ impl super::Request for Request {
 #[rustfmt::skip]
 pub mod cfg {
     use crate::traft::error::Error;
-    use crate::traft::storage::peer_field;
     use crate::traft::storage::{Peers, Storage};
 
     use ::tarantool::tlua;
@@ -123,19 +122,18 @@ pub mod cfg {
         }
 
         pub fn new(peers: &Peers, replicaset_weights: ReplicasetWeights) -> Result<Self, Error> {
-            use peer_field::{InstanceId, InstanceUuid, PeerAddress, ReplicasetUuid, ReplicasetId, IsMaster};
-            type Fields = (InstanceId, InstanceUuid, PeerAddress, ReplicasetUuid, ReplicasetId, IsMaster);
             let mut sharding: HashMap<String, Replicaset> = HashMap::new();
-            for (id, uuid, addr, rset, rset_id, is_master) in peers.peers_fields::<Fields>()? {
-                let replicaset = sharding.entry(rset).or_insert_with(||
-                    Replicaset::with_weight(replicaset_weights.get(&rset_id).copied())
+            for peer in peers.iter()? {
+                let replicaset_id = peer.replicaset_id;
+                let replicaset = sharding.entry(peer.replicaset_uuid).or_insert_with(||
+                    Replicaset::with_weight(replicaset_weights.get(&replicaset_id).copied())
                 );
                 replicaset.replicas.insert(
-                    uuid,
+                    peer.instance_uuid,
                     Replica {
-                        uri: format!("guest:@{addr}"),
-                        name: id.into(),
-                        master: is_master,
+                        uri: format!("guest:@{}", peer.peer_address),
+                        name: peer.instance_id.into(),
+                        master: peer.is_master,
                     },
                 );
             }
