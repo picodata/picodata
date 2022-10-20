@@ -9,6 +9,7 @@ nav:
     - Установка Picodata: install.md
     - Описание параметров запуска: cli.md
     - Инструкция по развертыванию: deploy.md
+    - Общая схема инициализации кластера: clustering.md
 
 theme:
     name: material
