@@ -48,7 +48,7 @@ fn proc_sharding(req: Request) -> Result<Response, Error> {
 }
 
 /// Request to configure vshard.
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Default, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Request {
     pub leader_id: RaftId,
     pub term: RaftTerm,
