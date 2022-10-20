@@ -635,10 +635,11 @@ impl<'a> std::fmt::Display for EntryPayload<'a> {
             EntryPayload::ConfChangeV2(ccv2) => {
                 write!(f, "{:?}(", ccv2.transition)?;
                 let mut iter = ccv2.changes.iter();
-                let cc = iter.next().unwrap();
-                write!(f, "{}({})", change_type(cc.change_type), cc.node_id)?;
-                for cc in iter.take(ccv2.changes.len() - 1) {
-                    write!(f, ", {}({})", change_type(cc.change_type), cc.node_id)?;
+                if let Some(cc) = iter.next() {
+                    write!(f, "{}({})", change_type(cc.change_type), cc.node_id)?;
+                    for cc in iter.take(ccv2.changes.len() - 1) {
+                        write!(f, ", {}({})", change_type(cc.change_type), cc.node_id)?;
+                    }
                 }
                 f.write_str(")")?;
                 Ok(())
