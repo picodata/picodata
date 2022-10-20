@@ -193,6 +193,14 @@ impl State {
     pub fn vshard_bootstrapped(&self) -> tarantool::Result<bool> {
         Ok(self.get(StateKey::VshardBootstrapped)?.unwrap_or_default())
     }
+
+    #[inline]
+    pub fn replication_factor(&self) -> tarantool::Result<usize> {
+        let res = self
+            .get(StateKey::ReplicationFactor)?
+            .expect("replication_factor must be set at boot");
+        Ok(res)
+    }
 }
 
 impl Clone for State {

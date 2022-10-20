@@ -17,7 +17,11 @@ fn proc_sharding(req: Request) -> Result<Response, Error> {
     let _ = req.term;
 
     let storage = &node.storage;
-    let cfg = cfg::Cfg::from_storage(&storage)?;
+    let cfg = if let Some(weights) = req.weights {
+        cfg::Cfg::new(&storage.peers, weights)?
+    } else {
+        cfg::Cfg::from_storage(storage)?
+    };
 
     let lua = ::tarantool::lua_state();
     // TODO: fix user's permissions
@@ -48,6 +52,7 @@ fn proc_sharding(req: Request) -> Result<Response, Error> {
 pub struct Request {
     pub leader_id: RaftId,
     pub term: RaftTerm,
+    pub weights: Option<cfg::ReplicasetWeights>,
 }
 impl ::tarantool::tuple::Encode for Request {}
 
@@ -67,7 +72,7 @@ impl super::Request for Request {
 pub mod cfg {
     use crate::traft::error::Error;
     use crate::traft::storage::peer_field;
-    use crate::traft::storage::Storage;
+    use crate::traft::storage::{Peers, Storage};
 
     use ::tarantool::tlua;
 
@@ -118,12 +123,17 @@ pub mod cfg {
     pub type Weight = f64;
 
     impl Cfg {
+        #[inline]
         pub fn from_storage(storage: &Storage) -> Result<Self, Error> {
+            let replicaset_weights = storage.state.replicaset_weights()?;
+            Self::new(&storage.peers, replicaset_weights)
+        }
+
+        pub fn new(peers: &Peers, replicaset_weights: ReplicasetWeights) -> Result<Self, Error> {
             use peer_field::{InstanceId, InstanceUuid, PeerAddress, ReplicasetUuid, ReplicasetId, IsMaster};
             type Fields = (InstanceId, InstanceUuid, PeerAddress, ReplicasetUuid, ReplicasetId, IsMaster);
-            let replicaset_weights = storage.state.replicaset_weights()?;
             let mut sharding: HashMap<String, Replicaset> = HashMap::new();
-            for (id, uuid, addr, rset, rset_id, is_master) in storage.peers.peers_fields::<Fields>()? {
+            for (id, uuid, addr, rset, rset_id, is_master) in peers.peers_fields::<Fields>()? {
                 let replicaset = sharding.entry(rset).or_insert_with(||
                     Replicaset::with_weight(replicaset_weights.get(&rset_id).copied())
                 );
