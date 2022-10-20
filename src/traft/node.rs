@@ -1219,72 +1219,48 @@ fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
         }
 
         ////////////////////////////////////////////////////////////////////////
-        // sharding
-        // TODO: putting each stage in a different function
-        // will make error handling much easier
+        // init sharding
         let need_sharding = peers
             .iter()
             .any(|peer| peer.has_grades(CurrentGrade::Replicated, TargetGrade::Online));
         if need_sharding {
-            let peer_ids = unwrap_ok_or!(
+            let res = (|| -> Result<(), Error> {
                 // TODO: filter out Offline & Expelled peers
-                // TODO: use `peers` instead
-                storage.peers.peers_fields::<peer_field::InstanceId>(),
-                Err(e) => {
-                    tlog!(Warning, "failed reading peer instances: {e}");
-
+                let peer_ids = peers.iter().map(|peer| peer.instance_id.clone());
+                let res = call_all(
+                    &mut pool,
+                    peer_ids,
+                    sharding::Request {
+                        leader_id: raft_id,
+                        term,
+                        weights: None,
+                    },
                     // TODO: don't hard code timeout
-                    event::wait_timeout(Event::TopologyChanged, Duration::from_millis(300))
-                        .unwrap();
-                    continue 'governor;
-                }
-            );
+                    Duration::from_secs(3),
+                )?;
 
-            let res = call_all(
-                &mut pool,
-                peer_ids,
-                sharding::Request {
-                    leader_id: raft_id,
-                    term,
-                    weights: None,
-                },
-                // TODO: don't hard code timeout
-                Duration::from_secs(3),
-            );
-            let res = unwrap_ok_or!(res,
-                Err(e) => {
-                    tlog!(Warning, "failed to initialize sharding: {e}");
-                    continue 'governor;
-                }
-            );
-
-            let cluster_id = storage.raft.cluster_id().unwrap().unwrap();
-            for (peer_iid, resp) in res {
-                let cluster_id = cluster_id.clone();
-                let peer_iid_2 = peer_iid.clone();
-                let res = resp.and_then(move |sharding::Response {}| {
-                    let req = UpdatePeerRequest::new(peer_iid_2, cluster_id)
+                let cluster_id = storage
+                    .raft
+                    .cluster_id()?
+                    .expect("no cluster_id in storage");
+                for (peer_iid, resp) in res {
+                    let sharding::Response {} = resp?;
+                    let req = UpdatePeerRequest::new(peer_iid.clone(), cluster_id.clone())
                         .with_current_grade(CurrentGrade::ShardingInitialized);
-                    node.handle_topology_request_and_wait(req.into())
-                });
-                match res {
-                    Ok(_) => {
-                        // TODO: change `Info` to `Debug`
-                        tlog!(Info, "configured sharding with peer";
-                            "instance_id" => &*peer_iid,
-                        );
-                    }
-                    Err(e) => {
-                        tlog!(Warning, "failed to initialize sharding: {e}";
-                            "instance_id" => &*peer_iid,
-                        );
+                    node.handle_topology_request_and_wait(req.into())?;
 
-                        // TODO: don't hard code timeout
-                        event::wait_timeout(Event::TopologyChanged, Duration::from_secs(10))
-                            .unwrap();
-                        continue 'governor;
-                    }
+                    // TODO: change `Info` to `Debug`
+                    tlog!(Info, "initialized sharding with peer";
+                        "instance_id" => &*peer_iid,
+                    );
                 }
+                Ok(())
+            })();
+            if let Err(e) = res {
+                tlog!(Warning, "failed to initialize sharding: {e}");
+                // TODO: don't hard code timeout
+                event::wait_timeout(Event::TopologyChanged, Duration::from_secs(1)).unwrap();
+                continue 'governor;
             }
 
             tlog!(Info, "sharding is initialized");
