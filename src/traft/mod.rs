@@ -467,18 +467,30 @@ impl Peer {
 }
 
 impl std::fmt::Display for Peer {
+    #[rustfmt::skip]
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(
-            f,
-            "({}, {}, {}, {}, {:?}, {}, {})",
+        return write!(f,
+            "({}, {}, {}, {}, {}, {}, {})",
             self.instance_id,
             self.raft_id,
             self.replicaset_id,
             self.peer_address,
-            self.current_grade,
+            GradeTransition { from: self.current_grade, to: self.target_grade },
             self.commit_index,
             &self.failure_domain,
-        )
+        );
+
+        struct GradeTransition { from: CurrentGrade, to: TargetGrade }
+        impl std::fmt::Display for GradeTransition {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                let (from, to) = (self.from.as_str(), self.to.as_str());
+                if from == to {
+                    f.write_str(to)
+                } else {
+                    write!(f, "{from} -> {to}")
+                }
+            }
+        }
     }
 }
 
