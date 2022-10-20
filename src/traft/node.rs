@@ -487,34 +487,27 @@ impl NodeImpl {
         // In some states proposing a ConfChange is impossible.
         // Check if there's a reason to reject it.
 
-        #[allow(clippy::never_loop)]
-        let reason: Option<&str> = loop {
-            // Checking leadership is only needed for the
-            // correct latch management. It doesn't affect
-            // raft correctness. Checking the instance is a
-            // leader makes sure the proposed `ConfChange`
-            // is appended to the raft log immediately
-            // instead of sending `MsgPropose` over the
-            // network.
-            if self.raw_node.raft.state != RaftStateRole::Leader {
-                break Some("not a leader");
-            }
+        // Checking leadership is only needed for the
+        // correct latch management. It doesn't affect
+        // raft correctness. Checking the instance is a
+        // leader makes sure the proposed `ConfChange`
+        // is appended to the raft log immediately
+        // instead of sending `MsgPropose` over the
+        // network.
+        if self.raw_node.raft.state != RaftStateRole::Leader {
+            return Err(RaftError::ConfChangeError("not a leader".into()));
+        }
 
-            if term != self.raw_node.raft.term {
-                break Some("raft term mismatch");
-            }
+        if term != self.raw_node.raft.term {
+            return Err(RaftError::ConfChangeError("raft term mismatch".into()));
+        }
 
-            // Without this check the node would silently ignore the conf change.
-            // See https://github.com/tikv/raft-rs/blob/v0.6.0/src/raft.rs#L2014-L2026
-            if self.raw_node.raft.has_pending_conf() {
-                break Some("already has pending confchange");
-            }
-
-            break None;
-        };
-
-        if let Some(e) = reason {
-            return Err(RaftError::ConfChangeError(e.into()));
+        // Without this check the node would silently ignore the conf change.
+        // See https://github.com/tikv/raft-rs/blob/v0.6.0/src/raft.rs#L2014-L2026
+        if self.raw_node.raft.has_pending_conf() {
+            return Err(RaftError::ConfChangeError(
+                "already has pending confchange".into(),
+            ));
         }
 
         let prev_index = self.raw_node.raft.raft_log.last_index();
