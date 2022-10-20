@@ -461,6 +461,12 @@ impl Peer {
         matches!(self.current_grade, CurrentGrade::Online)
     }
 
+    /// Peer has a grade that implies it may cooperate.
+    /// Currently this means that target_grade is neither Offline or Expelled.
+    pub fn may_respond(&self) -> bool {
+        self.target_grade != TargetGrade::Offline && self.target_grade != TargetGrade::Expelled
+    }
+
     pub fn has_grades(&self, current: CurrentGrade, target: TargetGrade) -> bool {
         self.current_grade == current && self.target_grade == target
     }

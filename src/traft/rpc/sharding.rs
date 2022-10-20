@@ -36,6 +36,10 @@ fn proc_sharding(req: Request) -> Result<Response, Error> {
         lua.exec("vshard.router.bootstrap()")?;
     }
 
+    // After reconfiguring vshard leaves behind net.box.connection objects,
+    // which try reconnecting every 0.5 seconds. Garbage collecting them helps
+    lua.exec("collectgarbage()")?;
+
     Ok(Response {})
 }
 
@@ -124,6 +128,9 @@ pub mod cfg {
         pub fn new(peers: &Peers, replicaset_weights: ReplicasetWeights) -> Result<Self, Error> {
             let mut sharding: HashMap<String, Replicaset> = HashMap::new();
             for peer in peers.iter()? {
+                if !peer.may_respond() {
+                    continue;
+                }
                 let replicaset_id = peer.replicaset_id;
                 let replicaset = sharding.entry(peer.replicaset_uuid).or_insert_with(||
                     Replicaset::with_weight(replicaset_weights.get(&replicaset_id).copied())
