@@ -1,6 +1,5 @@
 use ::tarantool::{proc, tlua};
 
-use crate::traft::storage::StateKey;
 use crate::traft::{error::Error, node, RaftId, RaftTerm};
 
 #[proc(packed_args)]
@@ -33,15 +32,8 @@ fn proc_sharding(req: Request) -> Result<Response, Error> {
     lua.exec_with("vshard.router.cfg(...)", &cfg)
         .map_err(tlua::LuaError::from)?;
 
-    // TODO: governor should decide who does this, and propose a OpDML entry
-    // afterwards
-    if !storage
-        .state
-        .get(StateKey::VshardBootstrapped)?
-        .unwrap_or(false)
-    {
+    if req.bootstrap {
         lua.exec("vshard.router.bootstrap()")?;
-        storage.state.put(StateKey::VshardBootstrapped, &true)?;
     }
 
     Ok(Response {})
@@ -53,6 +45,7 @@ pub struct Request {
     pub leader_id: RaftId,
     pub term: RaftTerm,
     pub weights: Option<cfg::ReplicasetWeights>,
+    pub bootstrap: bool,
 }
 impl ::tarantool::tuple::Encode for Request {}
 

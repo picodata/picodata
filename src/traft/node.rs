@@ -1225,6 +1225,7 @@ fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
             .any(|peer| peer.has_grades(CurrentGrade::Replicated, TargetGrade::Online));
         if need_sharding {
             let res = (|| -> Result<(), Error> {
+                let vshard_bootstrapped = storage.state.vshard_bootstrapped()?;
                 // TODO: filter out Offline & Expelled peers
                 let reqs = peers.iter().map(|peer| {
                     (
@@ -1232,6 +1233,7 @@ fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
                         sharding::Request {
                             leader_id,
                             term,
+                            bootstrap: !vshard_bootstrapped && peer.raft_id == leader_id,
                             ..Default::default()
                         },
                     )
@@ -1254,6 +1256,18 @@ fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
                         "instance_id" => &*peer_iid,
                     );
                 }
+
+                if !vshard_bootstrapped {
+                    node.propose_and_wait(
+                        traft::OpDML::replace(
+                            ClusterSpace::State,
+                            &(StateKey::VshardBootstrapped, true),
+                        )?,
+                        // TODO: don't hard code the timeout
+                        Duration::from_secs(3),
+                    )??;
+                }
+
                 Ok(())
             })();
             if let Err(e) = res {
