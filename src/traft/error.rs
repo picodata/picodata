@@ -1,5 +1,5 @@
 use crate::traft::InstanceId;
-use crate::traft::RaftId;
+use crate::traft::{RaftId, RaftTerm};
 use ::tarantool::tlua::LuaError;
 use raft::StorageError;
 use rmp_serde::decode::Error as RmpDecodeError;
@@ -29,8 +29,13 @@ pub enum Error {
         instance_rsid: String,
         requested_rsid: String,
     },
-    #[error("operation request from non leader {actual}, current leader is {expected}")]
-    LeaderIdMismatch { expected: RaftId, actual: RaftId },
+    #[error("operation request from non leader {requested}, current leader is {current}")]
+    LeaderIdMismatch { requested: RaftId, current: RaftId },
+    #[error("operation request from different term {requested}, current term is {current}")]
+    TermMismatch {
+        requested: RaftTerm,
+        current: RaftTerm,
+    },
     #[error("error during execution of lua code: {0}")]
     Lua(#[from] LuaError),
     #[error("{0}")]

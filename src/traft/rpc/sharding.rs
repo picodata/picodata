@@ -1,19 +1,11 @@
 use ::tarantool::{proc, tlua};
 
-use crate::traft::{error::Error, node, RaftId, RaftTerm};
+use crate::traft::{error::Error, node};
 
 #[proc(packed_args)]
 fn proc_sharding(req: Request) -> Result<Response, Error> {
     let node = node::global()?;
-    let leader_id = node.status().leader_id.ok_or(Error::LeaderUnknown)?;
-    if req.leader_id != leader_id {
-        return Err(Error::LeaderIdMismatch {
-            expected: leader_id,
-            actual: req.leader_id,
-        });
-    }
-    // TODO: check term matches
-    let _ = req.term;
+    req.leader_and_term.check(&node.status())?;
 
     let storage = &node.storage;
     let cfg = if let Some(weights) = req.weights {
@@ -46,8 +38,7 @@ fn proc_sharding(req: Request) -> Result<Response, Error> {
 /// Request to configure vshard.
 #[derive(Clone, Default, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Request {
-    pub leader_id: RaftId,
-    pub term: RaftTerm,
+    pub leader_and_term: super::LeaderWithTerm,
     pub weights: Option<cfg::ReplicasetWeights>,
     pub bootstrap: bool,
 }

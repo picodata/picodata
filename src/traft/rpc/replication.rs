@@ -11,6 +11,7 @@ use crate::InstanceId;
 #[proc(packed_args)]
 fn proc_replication(req: Request) -> Result<Response, Error> {
     let node = node::global()?;
+    req.leader_and_term.check(&node.status())?;
     let peer_storage = &node.storage.peers;
     let this_rsid = peer_storage.peer_field::<ReplicasetId>(&node.raft_id())?;
     let mut peer_addresses = Vec::with_capacity(req.replicaset_instances.len());
@@ -37,6 +38,7 @@ fn proc_replication(req: Request) -> Result<Response, Error> {
 /// Request to configure tarantool replication.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Request {
+    pub leader_and_term: super::LeaderWithTerm,
     pub replicaset_instances: Vec<InstanceId>,
     pub replicaset_id: String,
     pub promote: bool,

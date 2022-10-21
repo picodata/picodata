@@ -50,6 +50,7 @@ use crate::traft::event::Event;
 use crate::traft::failover;
 use crate::traft::notify::Notify;
 use crate::traft::rpc::sharding::cfg::ReplicasetWeights;
+use crate::traft::rpc::LeaderWithTerm;
 use crate::traft::rpc::{replication, sharding};
 use crate::traft::storage::{State, StateKey};
 use crate::traft::ConnectionPool;
@@ -1125,6 +1126,7 @@ fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
                 .iter()
                 .cloned()
                 .zip(repeat(replication::Request {
+                    leader_and_term: LeaderWithTerm { leader_id, term },
                     replicaset_instances: replicaset_iids.clone(),
                     replicaset_id: replicaset_id.clone(),
                     // TODO: what if someone goes offline/expelled?
@@ -1221,8 +1223,7 @@ fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
                     (
                         peer.instance_id.clone(),
                         sharding::Request {
-                            leader_id,
-                            term,
+                            leader_and_term: LeaderWithTerm { leader_id, term },
                             bootstrap: !vshard_bootstrapped && peer.raft_id == leader_id,
                             ..Default::default()
                         },
@@ -1282,8 +1283,7 @@ fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
                 (|| -> Result<(), Error> {
                     let peer_ids = maybe_responding(&peers).map(|peer| peer.instance_id.clone());
                     let reqs = peer_ids.zip(repeat(sharding::Request {
-                        leader_id,
-                        term,
+                        leader_and_term: LeaderWithTerm { leader_id, term },
                         weights: Some(new_weights.clone()),
                         ..Default::default()
                     }));
