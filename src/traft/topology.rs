@@ -139,7 +139,7 @@ impl Topology {
         if let Some(id) = instance_id.as_ref() {
             let existing_peer: Option<&Peer> = self.instance_map.get(id);
 
-            if matches!(existing_peer, Some(peer) if peer.is_active()) {
+            if matches!(existing_peer, Some(peer) if peer.is_online()) {
                 let e = format!("{} is already joined", id);
                 return Err(e);
             }

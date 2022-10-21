@@ -457,7 +457,7 @@ pub struct Peer {
 impl Encode for Peer {}
 
 impl Peer {
-    pub fn is_active(&self) -> bool {
+    pub fn is_online(&self) -> bool {
         matches!(self.current_grade, CurrentGrade::Online)
     }
 

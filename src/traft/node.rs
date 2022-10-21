@@ -906,7 +906,7 @@ fn raft_conf_change(storage: &RaftSpaceAccess, peers: &[Peer]) -> Option<raft::C
         HashSet::from_iter(storage.learners().unwrap().unwrap_or_default());
     let peer_is_active: HashMap<RaftId, bool> = peers
         .iter()
-        .map(|peer| (peer.raft_id, peer.is_active()))
+        .map(|peer| (peer.raft_id, peer.is_online()))
         .collect();
 
     let (active_voters, to_demote): (Vec<RaftId>, Vec<RaftId>) = voter_ids

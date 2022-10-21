@@ -30,7 +30,7 @@ pub fn on_shutdown() {
         node.storage
             .peers
             .get(&raft_id)
-            .map(|peer| peer.is_active())
+            .map(|peer| peer.is_online())
             .unwrap_or(false)
     });
     let raft_id = node.status().id;
