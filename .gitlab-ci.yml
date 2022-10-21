@@ -70,6 +70,7 @@ build:
     # - git submodule foreach --recursive 'git fetch --tags; git describe --always'
     - pushd tarantool-sys; git describe; popd
     - pushd tarantool-sys/third_party/luajit; git describe; popd
+    - export RUST_BACKTRACE=1
     - cargo -V
     - cargo build --locked
     - cargo test --locked
