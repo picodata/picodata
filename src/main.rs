@@ -260,7 +260,12 @@ fn picolib_setup(args: &args::Run) {
                 let total_width = 1 + header.len() + col_widths.iter().sum::<usize>();
                 let cols = util::screen_size().1 as usize;
                 if total_width > cols {
-                    cw -= total_width - cols;
+                    match cw.checked_sub(total_width - cols) {
+                        Some(new_cw) if new_cw > 0 => cw = new_cw,
+                        _ => {
+                            return Err(Error::other("screen too small"));
+                        }
+                    }
                 }
 
                 use std::io::Write;
