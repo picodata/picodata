@@ -320,6 +320,38 @@ fn picolib_setup(args: &args::Run) {
     );
 }
 
+#[rustfmt::skip]
+#[allow(clippy::let_unit_value)]
+fn init_vshard() {
+    let lua = ::tarantool::lua_state();
+    let preload = ::tarantool::tlua::LuaFunction::load(
+        &lua,
+        "local module, source = ...; package.preload[module] = loadstring(source)",
+    )
+    .unwrap();
+    for (module, source) in [
+        ("vshard", include_str!("../vshard/vshard/init.lua")),
+        ("vshard.cfg", include_str!("../vshard/vshard/cfg.lua")),
+        ("vshard.consts", include_str!("../vshard/vshard/consts.lua")),
+        ("vshard.error", include_str!("../vshard/vshard/error.lua")),
+        ("vshard.hash", include_str!("../vshard/vshard/hash.lua")),
+        ("vshard.heap", include_str!("../vshard/vshard/heap.lua")),
+        ("vshard.registry", include_str!("../vshard/vshard/registry.lua")),
+        ("vshard.replicaset", include_str!("../vshard/vshard/replicaset.lua")),
+        ("vshard.rlist", include_str!("../vshard/vshard/rlist.lua")),
+        ("vshard.router", include_str!("../vshard/vshard/router/init.lua")),
+        ("vshard.storage", include_str!("../vshard/vshard/storage/init.lua")),
+        ("vshard.storage.ref", include_str!("../vshard/vshard/storage/ref.lua")),
+        ("vshard.storage.reload_evolution", include_str!("../vshard/vshard/storage/reload_evolution.lua")),
+        ("vshard.storage.sched", include_str!("../vshard/vshard/storage/sched.lua")),
+        ("vshard.util", include_str!("../vshard/vshard/util.lua")),
+        ("vshard.version", include_str!("../vshard/vshard/version.lua")),
+    ] {
+        let () = preload.call_with_args((module, source)).unwrap();
+    }
+    lua.exec("vshard = require 'vshard'").unwrap();
+}
+
 fn init_handlers() {
     tarantool::exec(
         r#"
@@ -549,6 +581,7 @@ fn init_common(args: &args::Run, cfg: &tarantool::Cfg) -> Storage {
     std::fs::create_dir_all(&args.data_dir).unwrap();
     tarantool::set_cfg(cfg);
 
+    init_vshard();
     init_handlers();
     traft::event::init();
     Storage::new().expect("Storage initialization failed")

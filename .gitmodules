@@ -5,3 +5,6 @@
 	path = tarantool-sys
 	url = ../../tarantool.git
 	ignore = dirty
+[submodule "vshard"]
+	path = vshard
+	url = https://github.com/tarantool/vshard
