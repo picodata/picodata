@@ -1040,8 +1040,42 @@ fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
         let to_offline = peers
             .iter()
             .filter(|peer| peer.current_grade != CurrentGrade::Offline)
+            // TODO: process them all, not just the first one
             .find(|peer| peer.target_grade == TargetGrade::Offline);
         if let Some(peer) = to_offline {
+            let res = (|| -> Result<_, Error> {
+                let reqs = maybe_responding(&peers)
+                    .filter(|peer| {
+                        peer.current_grade == CurrentGrade::ShardingInitialized
+                            || peer.current_grade == CurrentGrade::Online
+                    })
+                    .map(|peer| {
+                        (
+                            peer.instance_id.clone(),
+                            sharding::Request {
+                                leader_and_term: LeaderWithTerm { leader_id, term },
+                                ..Default::default()
+                            },
+                        )
+                    });
+                // TODO: don't hard code timeout
+                let res = call_all(&mut pool, reqs, Duration::from_secs(3))?;
+                for (peer_iid, resp) in res {
+                    let sharding::Response {} = resp?;
+                    // TODO: change `Info` to `Debug`
+                    tlog!(Info, "sharding reconfigured on peer";
+                        "instance_id" => &*peer_iid,
+                    );
+                }
+                Ok(())
+            })();
+            if let Err(e) = res {
+                tlog!(Warning, "failed to reconfigure sharding: {e}");
+                // TODO: don't hard code timeout
+                event::wait_timeout(Event::TopologyChanged, Duration::from_secs(1)).unwrap();
+                continue 'governor;
+            }
+
             let instance_id = peer.instance_id.clone();
             let req = UpdatePeerRequest::new(instance_id, cluster_id.clone())
                 .with_current_grade(CurrentGrade::Offline);
