@@ -41,6 +41,8 @@ pub type RaftTerm = u64;
 pub type RaftIndex = u64;
 pub type ReplicasetId = String;
 
+pub const INIT_RAFT_TERM: RaftTerm = 1;
+
 ////////////////////////////////////////////////////////////////////////////////
 /// Unique id of a cluster instance.
 ///

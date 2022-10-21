@@ -104,6 +104,8 @@ pub struct Status {
     pub id: RaftId,
     /// `raft_id` of the leader instance
     pub leader_id: Option<RaftId>,
+    /// Current term number
+    pub term: RaftTerm,
     /// Current raft state
     pub raft_state: RaftState,
 }
@@ -143,6 +145,7 @@ impl Node {
         let status = Rc::new(Cell::new(Status {
             id: raft_id,
             leader_id: None,
+            term: traft::INIT_RAFT_TERM,
             raft_state: RaftState::Follower,
         }));
 
@@ -748,6 +751,10 @@ impl NodeImpl {
             // Raft HardState changed, and we need to persist it.
             if let Some(hs) = ready.hs() {
                 self.storage.raft.persist_hard_state(hs).unwrap();
+
+                let mut s = status.get();
+                s.term = hs.term;
+                status.set(s);
             }
 
             Ok(())
@@ -1006,7 +1013,7 @@ fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
 
         let leader_id = status.get().id;
         let peers = storage.peers.all_peers().unwrap();
-        let term = storage.raft.term().unwrap().unwrap_or(0);
+        let term = status.get().term;
         let cluster_id = storage.raft.cluster_id().unwrap().unwrap();
         let node = global().expect("must be initialized");
 

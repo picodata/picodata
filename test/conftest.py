@@ -159,6 +159,7 @@ def normalize_net_box_result(func):
 class RaftStatus:
     id: int
     raft_state: str
+    term: int
     leader_id: int | None = None
 
 

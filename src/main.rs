@@ -792,7 +792,7 @@ fn start_boot(args: &args::Run) {
 
         let mut hs = raft::HardState::default();
         hs.set_commit(init_entries.len() as _);
-        hs.set_term(1);
+        hs.set_term(traft::INIT_RAFT_TERM);
         storage.raft.persist_hard_state(&hs).unwrap();
         Ok(())
     })
