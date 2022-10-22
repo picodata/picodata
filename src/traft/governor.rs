@@ -4,10 +4,10 @@ use ::raft::prelude::ConfChangeType::*;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 
-use crate::traft::CurrentGrade;
+use crate::traft::CurrentGradeVariant;
 use crate::traft::Peer;
 use crate::traft::RaftId;
-use crate::traft::TargetGrade;
+use crate::traft::TargetGradeVariant;
 
 struct RaftConf<'a> {
     all: BTreeMap<RaftId, &'a Peer>,
@@ -60,8 +60,8 @@ pub(crate) fn raft_conf_change(
     let mut changes: Vec<raft::ConfChangeSingle> = vec![];
 
     let not_expelled = |peer: &&Peer| !peer.is_expelled();
-    let target_online = |peer: &&Peer| peer.target_grade == TargetGrade::Online;
-    let current_online = |peer: &&Peer| peer.current_grade == CurrentGrade::Online;
+    let target_online = |peer: &&Peer| peer.target_grade == TargetGradeVariant::Online;
+    let current_online = |peer: &&Peer| peer.current_grade == CurrentGradeVariant::Online;
 
     let cluster_size = peers.iter().filter(not_expelled).count();
     let voters_needed = match cluster_size {
@@ -83,15 +83,15 @@ pub(crate) fn raft_conf_change(
             changes.push(ccs);
             continue;
         };
-        match peer.target_grade {
-            TargetGrade::Online => {
+        match peer.target_grade.variant {
+            TargetGradeVariant::Online => {
                 // Do nothing
             }
-            TargetGrade::Offline => {
+            TargetGradeVariant::Offline => {
                 // A voter goes offline. Replace it with
                 // another online instance if possible.
                 let Some(replacement) = peers.iter().find(|peer| {
-                    peer.has_grades(CurrentGrade::Online, TargetGrade::Online)
+                    peer.has_grades(CurrentGradeVariant::Online, TargetGradeVariant::Online)
                     && !raft_conf.voters.contains(&peer.raft_id)
                 }) else { continue };
 
@@ -99,7 +99,7 @@ pub(crate) fn raft_conf_change(
                 let ccs2 = raft_conf.change_single(AddNode, replacement.raft_id);
                 changes.extend_from_slice(&[ccs1, ccs2]);
             }
-            TargetGrade::Expelled => {
+            TargetGradeVariant::Expelled => {
                 // Expelled instance is removed unconditionally.
                 let ccs = raft_conf.change_single(RemoveNode, peer.raft_id);
                 changes.push(ccs);
@@ -122,11 +122,11 @@ pub(crate) fn raft_conf_change(
             changes.push(ccs);
             continue;
         };
-        match peer.target_grade {
-            TargetGrade::Online | TargetGrade::Offline => {
+        match peer.target_grade.variant {
+            TargetGradeVariant::Online | TargetGradeVariant::Offline => {
                 // Do nothing
             }
-            TargetGrade::Expelled => {
+            TargetGradeVariant::Expelled => {
                 // Expelled instance is removed unconditionally.
                 let ccs = raft_conf.change_single(RemoveNode, peer.raft_id);
                 changes.push(ccs);
@@ -172,10 +172,11 @@ pub(crate) fn raft_conf_change(
 mod tests {
     use ::raft::prelude as raft;
 
-    use crate::traft::CurrentGrade;
+    use crate::traft::CurrentGradeVariant;
+    use crate::traft::Grade;
     use crate::traft::Peer;
     use crate::traft::RaftId;
-    use crate::traft::TargetGrade;
+    use crate::traft::TargetGradeVariant;
 
     macro_rules! p {
         (
@@ -185,8 +186,16 @@ mod tests {
         ) => {
             Peer {
                 raft_id: $raft_id,
-                current_grade: CurrentGrade::$current_grade,
-                target_grade: TargetGrade::$target_grade,
+                current_grade: Grade {
+                    variant: CurrentGradeVariant::$current_grade,
+                    // raft_conf_change doesn't care about incarnations
+                    incarnation: 0,
+                },
+                target_grade: Grade {
+                    variant: TargetGradeVariant::$target_grade,
+                    // raft_conf_change doesn't care about incarnations
+                    incarnation: 0,
+                },
                 ..Peer::default()
             }
         };

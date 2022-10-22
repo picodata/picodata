@@ -137,12 +137,12 @@ macro_rules! unwrap_ok_or {
 
 #[macro_export]
 macro_rules! warn_or_panic {
-    ($($arg:tt)*) => {
+    ($($arg:tt)*) => {{
         $crate::tlog!(Warning, $($arg)*);
         if cfg!(debug_assertions) {
             panic!($($arg)*);
         }
-    };
+    }};
 }
 
 #[macro_export]

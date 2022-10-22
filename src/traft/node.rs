@@ -61,7 +61,7 @@ use crate::traft::{JoinRequest, JoinResponse, UpdatePeerRequest};
 use crate::traft::{RaftSpaceAccess, Storage};
 
 use super::OpResult;
-use super::{CurrentGrade, TargetGrade};
+use super::{CurrentGrade, CurrentGradeVariant, TargetGradeVariant};
 
 type RawNode = raft::RawNode<RaftSpaceAccess>;
 
@@ -607,7 +607,8 @@ impl NodeImpl {
 
         if let Some(traft::Op::PersistPeer { peer }) = entry.op() {
             *topology_changed = true;
-            if peer.current_grade == CurrentGrade::Expelled && peer.raft_id == self.raft_id() {
+            if peer.current_grade == CurrentGradeVariant::Expelled && peer.raft_id == self.raft_id()
+            {
                 // cannot exit during a transaction
                 *expelled = true;
             }
@@ -964,9 +965,9 @@ fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
         // offline
         let to_offline = peers
             .iter()
-            .filter(|peer| peer.current_grade != CurrentGrade::Offline)
+            .filter(|peer| peer.current_grade != CurrentGradeVariant::Offline)
             // TODO: process them all, not just the first one
-            .find(|peer| peer.target_grade == TargetGrade::Offline);
+            .find(|peer| peer.target_grade == TargetGradeVariant::Offline);
         if let Some(peer) = to_offline {
             let replicaset_id = &peer.replicaset_id;
             let res = (|| -> traft::Result<_> {
@@ -996,8 +997,8 @@ fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
 
                 let reqs = maybe_responding(&peers)
                     .filter(|peer| {
-                        peer.current_grade == CurrentGrade::ShardingInitialized
-                            || peer.current_grade == CurrentGrade::Online
+                        peer.current_grade == CurrentGradeVariant::ShardingInitialized
+                            || peer.current_grade == CurrentGradeVariant::Online
                     })
                     .map(|peer| {
                         (
@@ -1030,7 +1031,7 @@ fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
 
             let instance_id = peer.instance_id.clone();
             let req = UpdatePeerRequest::new(instance_id, cluster_id.clone())
-                .with_current_grade(CurrentGrade::Offline);
+                .with_current_grade(CurrentGrade::offline(peer.target_grade.incarnation));
             let res = node.handle_topology_request_and_wait(req.into());
             if let Err(e) = res {
                 tlog!(Warning, "failed to set peer offline: {e}";
@@ -1071,6 +1072,10 @@ fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
                         // TODO: don't hard code timeout
                         Duration::from_secs(3),
                     )?;
+                    tlog!(Debug, "promoted replicaset master";
+                        "instance_id" => %replicaset.master_id,
+                        "replicaset_id" => %replicaset_id,
+                    );
                 }
                 Ok(())
             })();
@@ -1087,9 +1092,10 @@ fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
         // raft sync
         // TODO: putting each stage in a different function
         // will make the control flow more readable
-        let to_sync = peers
-            .iter()
-            .find(|peer| peer.has_grades(CurrentGrade::Offline, TargetGrade::Online));
+        let to_sync = peers.iter().find(|peer| {
+            peer.has_grades(CurrentGradeVariant::Offline, TargetGradeVariant::Online)
+                || peer.is_reincarnated()
+        });
         if let Some(peer) = to_sync {
             let (rx, tx) = fiber::Channel::new(1).into_clones();
             pool.call(
@@ -1110,7 +1116,7 @@ fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
                 );
 
                 let req = UpdatePeerRequest::new(peer.instance_id.clone(), cluster_id)
-                    .with_current_grade(CurrentGrade::RaftSynced);
+                    .with_current_grade(CurrentGrade::raft_synced(peer.target_grade.incarnation));
                 global()
                     .expect("can't be deinitialized")
                     .handle_topology_request_and_wait(req.into())
@@ -1118,7 +1124,7 @@ fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
             match res {
                 Ok(peer) => {
                     tlog!(Info, "raft sync processed");
-                    debug_assert!(peer.current_grade == CurrentGrade::RaftSynced);
+                    debug_assert!(peer.current_grade == CurrentGradeVariant::RaftSynced);
                 }
                 Err(e) => {
                     tlog!(Warning, "raft sync failed: {e}";
@@ -1141,7 +1147,9 @@ fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
             .iter()
             // TODO: find all such peers in a given replicaset,
             // not just the first one
-            .find(|peer| peer.has_grades(CurrentGrade::RaftSynced, TargetGrade::Online));
+            .find(|peer| {
+                peer.has_grades(CurrentGradeVariant::RaftSynced, TargetGradeVariant::Online)
+            });
         if let Some(peer) = to_replicate {
             let replicaset_id = &peer.replicaset_id;
             let replicaset_iids = maybe_responding(&peers)
@@ -1173,7 +1181,7 @@ fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
                 }
 
                 let req = UpdatePeerRequest::new(peer.instance_id.clone(), cluster_id)
-                    .with_current_grade(CurrentGrade::Replicated);
+                    .with_current_grade(CurrentGrade::replicated(peer.target_grade.incarnation));
                 node.handle_topology_request_and_wait(req.into())?;
 
                 Ok(())
@@ -1216,7 +1224,10 @@ fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
                     // TODO: don't hard code timeout
                     Duration::from_secs(3),
                 )?;
-                tlog!(Debug, "promoted replicaset master"; "instance_id" => %master_id);
+                tlog!(Debug, "promoted replicaset master";
+                    "instance_id" => %master_id,
+                    "replicaset_id" => %peer.replicaset_id,
+                );
                 Ok(())
             })();
             if let Err(e) = res {
@@ -1232,9 +1243,9 @@ fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
 
         ////////////////////////////////////////////////////////////////////////
         // init sharding
-        let to_shard = peers
-            .iter()
-            .find(|peer| peer.has_grades(CurrentGrade::Replicated, TargetGrade::Online));
+        let to_shard = peers.iter().find(|peer| {
+            peer.has_grades(CurrentGradeVariant::Replicated, TargetGradeVariant::Online)
+        });
         if let Some(peer) = to_shard {
             let res = (|| -> traft::Result<()> {
                 let vshard_bootstrapped = storage.state.vshard_bootstrapped()?;
@@ -1262,7 +1273,9 @@ fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
                 }
 
                 let req = UpdatePeerRequest::new(peer.instance_id.clone(), cluster_id)
-                    .with_current_grade(CurrentGrade::ShardingInitialized);
+                    .with_current_grade(CurrentGrade::sharding_initialized(
+                        peer.target_grade.incarnation,
+                    ));
                 node.handle_topology_request_and_wait(req.into())?;
 
                 if !vshard_bootstrapped {
@@ -1319,9 +1332,12 @@ fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
 
         ////////////////////////////////////////////////////////////////////////
         // sharding weights
-        let to_update_weights = peers
-            .iter()
-            .find(|peer| peer.has_grades(CurrentGrade::ShardingInitialized, TargetGrade::Online));
+        let to_update_weights = peers.iter().find(|peer| {
+            peer.has_grades(
+                CurrentGradeVariant::ShardingInitialized,
+                TargetGradeVariant::Online,
+            )
+        });
         if let Some(peer) = to_update_weights {
             let res = if let Some(added_weights) =
                 get_weight_changes(maybe_responding(&peers), &storage)
@@ -1354,19 +1370,27 @@ fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
                     }
 
                     let req = UpdatePeerRequest::new(peer.instance_id.clone(), cluster_id)
-                        .with_current_grade(CurrentGrade::Online);
+                        .with_current_grade(CurrentGrade::online(peer.target_grade.incarnation));
                     node.handle_topology_request_and_wait(req.into())?;
                     Ok(())
                 })()
             } else {
                 (|| -> traft::Result<()> {
                     let to_online = peers.iter().filter(|peer| {
-                        peer.has_grades(CurrentGrade::ShardingInitialized, TargetGrade::Online)
+                        peer.has_grades(
+                            CurrentGradeVariant::ShardingInitialized,
+                            TargetGradeVariant::Online,
+                        )
                     });
-                    for Peer { instance_id, .. } in to_online {
+                    for Peer {
+                        instance_id,
+                        target_grade,
+                        ..
+                    } in to_online
+                    {
                         let cluster_id = cluster_id.clone();
                         let req = UpdatePeerRequest::new(instance_id.clone(), cluster_id)
-                            .with_current_grade(CurrentGrade::Online);
+                            .with_current_grade(CurrentGrade::online(target_grade.incarnation));
                         node.handle_topology_request_and_wait(req.into())?;
                         // TODO: change `Info` to `Debug`
                         tlog!(Info, "peer is online"; "instance_id" => &**instance_id);

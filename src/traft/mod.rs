@@ -407,21 +407,32 @@ impl Encode for Peer {}
 
 impl Peer {
     pub fn is_online(&self) -> bool {
-        matches!(self.current_grade, CurrentGrade::Online)
+        // FIXME: this is probably not what we want anymore
+        matches!(self.current_grade.variant, CurrentGradeVariant::Online)
     }
 
     pub fn is_expelled(&self) -> bool {
-        self.target_grade == TargetGrade::Expelled
+        matches!(self.target_grade.variant, TargetGradeVariant::Expelled)
     }
 
     /// Peer has a grade that implies it may cooperate.
     /// Currently this means that target_grade is neither Offline or Expelled.
+    #[inline]
     pub fn may_respond(&self) -> bool {
-        self.target_grade != TargetGrade::Offline && self.target_grade != TargetGrade::Expelled
+        !matches!(
+            self.target_grade.variant,
+            TargetGradeVariant::Offline | TargetGradeVariant::Expelled
+        )
     }
 
-    pub fn has_grades(&self, current: CurrentGrade, target: TargetGrade) -> bool {
+    #[inline]
+    pub fn has_grades(&self, current: CurrentGradeVariant, target: TargetGradeVariant) -> bool {
         self.current_grade == current && self.target_grade == target
+    }
+
+    #[inline]
+    pub fn is_reincarnated(&self) -> bool {
+        self.current_grade.incarnation < self.target_grade.incarnation
     }
 
     /// Only used for testing.
@@ -458,11 +469,10 @@ impl std::fmt::Display for Peer {
         struct GradeTransition { from: CurrentGrade, to: TargetGrade }
         impl std::fmt::Display for GradeTransition {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                let (from, to) = (self.from.as_str(), self.to.as_str());
-                if from == to {
-                    f.write_str(to)
+                if self.from == self.to {
+                    write!(f, "{}", self.to)
                 } else {
-                    write!(f, "{from} -> {to}")
+                    write!(f, "{} -> {}", self.from, self.to)
                 }
             }
         }
@@ -833,9 +843,10 @@ pub struct JoinResponse {
 impl Encode for JoinResponse {}
 
 ///////////////////////////////////////////////////////////////////////////////
+
 crate::define_str_enum! {
     /// Activity state of an instance.
-    pub enum CurrentGrade {
+    pub enum CurrentGradeVariant {
         // Instance has gracefully shut down or has not been started yet.
         Offline = "Offline",
         // Instance has synced by commit index.
@@ -856,14 +867,14 @@ crate::define_str_enum! {
 #[error("unknown grade {0:?}")]
 pub struct UnknownGrade(pub String);
 
-impl Default for CurrentGrade {
+impl Default for CurrentGradeVariant {
     fn default() -> Self {
         Self::Offline
     }
 }
 
 crate::define_str_enum! {
-    pub enum TargetGrade {
+    pub enum TargetGradeVariant {
         // Instance should be configured up
         Online = "Online",
         // Instance should be gracefully shut down
@@ -878,9 +889,117 @@ crate::define_str_enum! {
 #[error("unknown target grade {0:?}")]
 pub struct UnknownTargetGrade(pub String);
 
-impl Default for TargetGrade {
+impl Default for TargetGradeVariant {
     fn default() -> Self {
-        Self::Online
+        Self::Offline
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+macro_rules! impl_constructors {
+    (
+        $(
+            #[variant = $variant:expr]
+            $(#[$meta:meta])*
+            $vis:vis fn $constructor:ident(incarnation: u64) -> Self;
+        )+
+    ) => {
+        $(
+            $(#[$meta])*
+            $vis fn $constructor(incarnation: u64) -> Self {
+                Self { variant: $variant, incarnation }
+            }
+        )+
+    };
+}
+
+/// A grade (current or target) associated with an incarnation (a monotonically
+/// increasing number).
+#[rustfmt::skip]
+#[derive(Copy, Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(tlua::LuaRead, tlua::Push, tlua::PushInto)]
+pub struct Grade<V> {
+    pub variant: V,
+    pub incarnation: u64,
+}
+
+pub type TargetGrade = Grade<TargetGradeVariant>;
+
+impl TargetGrade {
+    impl_constructors! {
+        #[variant = TargetGradeVariant::Offline]
+        pub fn offline(incarnation: u64) -> Self;
+
+        #[variant = TargetGradeVariant::Online]
+        pub fn online(incarnation: u64) -> Self;
+
+        #[variant = TargetGradeVariant::Expelled]
+        pub fn expelled(incarnation: u64) -> Self;
+    }
+}
+
+pub type CurrentGrade = Grade<CurrentGradeVariant>;
+
+impl CurrentGrade {
+    impl_constructors! {
+        #[variant = CurrentGradeVariant::Offline]
+        pub fn offline(incarnation: u64) -> Self;
+
+        #[variant = CurrentGradeVariant::RaftSynced]
+        pub fn raft_synced(incarnation: u64) -> Self;
+
+        #[variant = CurrentGradeVariant::Replicated]
+        pub fn replicated(incarnation: u64) -> Self;
+
+        #[variant = CurrentGradeVariant::ShardingInitialized]
+        pub fn sharding_initialized(incarnation: u64) -> Self;
+
+        #[variant = CurrentGradeVariant::Online]
+        pub fn online(incarnation: u64) -> Self;
+
+        #[variant = CurrentGradeVariant::Expelled]
+        pub fn expelled(incarnation: u64) -> Self;
+    }
+}
+
+impl<G: PartialEq> PartialEq<G> for Grade<G> {
+    fn eq(&self, other: &G) -> bool {
+        &self.variant == other
+    }
+}
+
+impl<G: std::fmt::Display> std::fmt::Display for Grade<G> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let Self {
+            variant,
+            incarnation,
+        } = self;
+        write!(f, "{variant}({incarnation})")
+    }
+}
+
+impl PartialEq<TargetGrade> for CurrentGrade {
+    fn eq(&self, other: &TargetGrade) -> bool {
+        self.incarnation == other.incarnation && self.variant.as_str() == other.variant.as_str()
+    }
+}
+
+impl From<TargetGrade> for CurrentGrade {
+    fn from(target_grade: TargetGrade) -> Self {
+        let TargetGrade {
+            variant,
+            incarnation,
+        } = target_grade;
+        let variant = match variant {
+            TargetGradeVariant::Online => CurrentGradeVariant::Online,
+            TargetGradeVariant::Offline => CurrentGradeVariant::Offline,
+            TargetGradeVariant::Expelled => CurrentGradeVariant::Expelled,
+        };
+        Self {
+            variant,
+            incarnation,
+        }
     }
 }
 

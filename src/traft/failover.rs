@@ -9,7 +9,7 @@ use crate::traft::error::Error;
 use crate::traft::event;
 use crate::traft::node;
 use crate::traft::rpc;
-use crate::traft::TargetGrade;
+use crate::traft::TargetGradeVariant;
 use crate::traft::{UpdatePeerRequest, UpdatePeerResponse};
 
 pub fn on_shutdown() {
@@ -49,7 +49,7 @@ pub fn on_shutdown() {
         .unwrap()
         .expect("cluster_id must be present");
     let req = UpdatePeerRequest::new(peer.instance_id, cluster_id)
-        .with_target_grade(TargetGrade::Offline);
+        .with_target_grade(TargetGradeVariant::Offline);
 
     // will run until we get successfully deactivate or tarantool shuts down
     // the on_shutdown fiber (after 3 secs)

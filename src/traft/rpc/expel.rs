@@ -23,8 +23,9 @@ crate::define_rpc_request! {
         }
 
         let req2 = UpdatePeerRequest::new(req.instance_id, req.cluster_id)
-            .with_target_grade(traft::TargetGrade::Expelled)
-            .with_current_grade(traft::CurrentGrade::Expelled);
+            .with_target_grade(traft::TargetGradeVariant::Expelled)
+            // TODO: only change target grade
+            .with_current_grade(traft::CurrentGrade::expelled(0));
         node.handle_topology_request_and_wait(req2.into())?;
 
         Ok(Response {})

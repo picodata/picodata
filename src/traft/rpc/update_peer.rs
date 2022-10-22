@@ -1,8 +1,8 @@
 use crate::tlog;
-use crate::traft::Peer;
+use crate::traft::FailureDomain;
 use crate::traft::Result;
 use crate::traft::{error::Error, node, InstanceId};
-use crate::traft::{CurrentGrade, FailureDomain, TargetGrade};
+use crate::traft::{CurrentGrade, TargetGradeVariant};
 
 crate::define_rpc_request! {
     fn proc_update_peer(req: Request) -> Result<Response> {
@@ -23,16 +23,12 @@ crate::define_rpc_request! {
 
         let mut req = req;
         let instance_id = &*req.instance_id;
-        req.changes.retain(|ch| match ch {
-            PeerChange::CurrentGrade(grade) => {
-                tlog!(Warning, "attempt to change grade by peer";
-                    "instance_id" => instance_id,
-                    "grade" => grade.as_str(),
-                );
-                false
-            }
-            _ => true,
-        });
+        if let Some(current_grade) = req.current_grade.take() {
+            tlog!(Warning, "attempt to change current_grade by peer";
+                "instance_id" => instance_id,
+                "current_grade" => %current_grade,
+            );
+        }
         match node.handle_topology_request_and_wait(req.into()) {
             Ok(_) => Ok(Response::Ok {}),
             Err(Error::NotALeader) => Ok(Response::ErrNotALeader),
@@ -41,10 +37,15 @@ crate::define_rpc_request! {
     }
 
     /// Request to update the instance in the storage.
+    #[derive(Default)]
     pub struct Request {
         pub instance_id: InstanceId,
         pub cluster_id: String,
-        pub changes: Vec<PeerChange>,
+        /// Only allowed to be set by leader
+        pub current_grade: Option<CurrentGrade>,
+        /// Can be set by peer
+        pub target_grade: Option<TargetGradeVariant>,
+        pub failure_domain: Option<FailureDomain>,
     }
 
     /// Response to a [`Request`]
@@ -54,45 +55,28 @@ crate::define_rpc_request! {
     }
 }
 
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
-pub enum PeerChange {
-    CurrentGrade(CurrentGrade),
-    TargetGrade(TargetGrade),
-    FailureDomain(FailureDomain),
-}
-
-impl PeerChange {
-    pub fn apply(self, peer: &mut Peer) {
-        match self {
-            Self::CurrentGrade(value) => peer.current_grade = value,
-            Self::TargetGrade(value) => peer.target_grade = value,
-            Self::FailureDomain(value) => peer.failure_domain = value,
-        }
-    }
-}
-
 impl Request {
     #[inline]
     pub fn new(instance_id: InstanceId, cluster_id: String) -> Self {
         Self {
             instance_id,
             cluster_id,
-            changes: vec![],
+            ..Request::default()
         }
     }
     #[inline]
     pub fn with_current_grade(mut self, value: CurrentGrade) -> Self {
-        self.changes.push(PeerChange::CurrentGrade(value));
+        self.current_grade = Some(value);
         self
     }
     #[inline]
-    pub fn with_target_grade(mut self, value: TargetGrade) -> Self {
-        self.changes.push(PeerChange::TargetGrade(value));
+    pub fn with_target_grade(mut self, value: TargetGradeVariant) -> Self {
+        self.target_grade = Some(value);
         self
     }
     #[inline]
     pub fn with_failure_domain(mut self, value: FailureDomain) -> Self {
-        self.changes.push(PeerChange::FailureDomain(value));
+        self.failure_domain = Some(value);
         self
     }
 }

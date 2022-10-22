@@ -20,7 +20,7 @@ use protobuf::Message as _;
 
 use crate::tlog::set_log_level;
 use crate::traft::{node, InstanceId, Migration, OpDML};
-use crate::traft::{LogicalClock, RaftIndex, TargetGrade};
+use crate::traft::{LogicalClock, RaftIndex, TargetGradeVariant};
 use crate::traft::{UpdatePeerRequest, UpdatePeerResponse};
 use traft::error::Error;
 
@@ -996,7 +996,7 @@ fn postjoin(args: &args::Run, storage: Storage) {
 
         tlog!(Info, "initiating self-activation of {}", peer.instance_id);
         let req = UpdatePeerRequest::new(peer.instance_id, cluster_id)
-            .with_target_grade(TargetGrade::Online)
+            .with_target_grade(TargetGradeVariant::Online)
             .with_failure_domain(args.failure_domain());
 
         let Some(leader_id) = node.status().leader_id else { continue };
