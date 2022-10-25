@@ -349,35 +349,40 @@ fn picolib_setup(args: &args::Run) {
     );
 }
 
-#[rustfmt::skip]
-#[allow(clippy::let_unit_value)]
 fn init_vshard() {
     let lua = ::tarantool::lua_state();
-    let preload = ::tarantool::tlua::LuaFunction::load(
-        &lua,
-        "local module, source = ...; package.preload[module] = loadstring(source)",
-    )
-    .unwrap();
-    for (module, source) in [
-        ("vshard", include_str!("../vshard/vshard/init.lua")),
-        ("vshard.cfg", include_str!("../vshard/vshard/cfg.lua")),
-        ("vshard.consts", include_str!("../vshard/vshard/consts.lua")),
-        ("vshard.error", include_str!("../vshard/vshard/error.lua")),
-        ("vshard.hash", include_str!("../vshard/vshard/hash.lua")),
-        ("vshard.heap", include_str!("../vshard/vshard/heap.lua")),
-        ("vshard.registry", include_str!("../vshard/vshard/registry.lua")),
-        ("vshard.replicaset", include_str!("../vshard/vshard/replicaset.lua")),
-        ("vshard.rlist", include_str!("../vshard/vshard/rlist.lua")),
-        ("vshard.router", include_str!("../vshard/vshard/router/init.lua")),
-        ("vshard.storage", include_str!("../vshard/vshard/storage/init.lua")),
-        ("vshard.storage.ref", include_str!("../vshard/vshard/storage/ref.lua")),
-        ("vshard.storage.reload_evolution", include_str!("../vshard/vshard/storage/reload_evolution.lua")),
-        ("vshard.storage.sched", include_str!("../vshard/vshard/storage/sched.lua")),
-        ("vshard.util", include_str!("../vshard/vshard/util.lua")),
-        ("vshard.version", include_str!("../vshard/vshard/version.lua")),
-    ] {
-        let () = preload.call_with_args((module, source)).unwrap();
+
+    macro_rules! preload {
+        ($module:literal, $path:literal) => {
+            lua.exec_with(
+                "local module, source, path = ...; \
+                package.preload[module] = load(source, '@'..path)",
+                ($module, include_str!(concat!("../vshard/", $path)), $path),
+            )
+            .unwrap();
+        };
     }
+
+    preload!("vshard", "vshard/init.lua");
+    preload!("vshard.cfg", "vshard/cfg.lua");
+    preload!("vshard.consts", "vshard/consts.lua");
+    preload!("vshard.error", "vshard/error.lua");
+    preload!("vshard.hash", "vshard/hash.lua");
+    preload!("vshard.heap", "vshard/heap.lua");
+    preload!("vshard.registry", "vshard/registry.lua");
+    preload!("vshard.replicaset", "vshard/replicaset.lua");
+    preload!("vshard.rlist", "vshard/rlist.lua");
+    preload!("vshard.router", "vshard/router/init.lua");
+    preload!("vshard.storage", "vshard/storage/init.lua");
+    preload!("vshard.storage.ref", "vshard/storage/ref.lua");
+    preload!(
+        "vshard.storage.reload_evolution",
+        "vshard/storage/reload_evolution.lua"
+    );
+    preload!("vshard.storage.sched", "vshard/storage/sched.lua");
+    preload!("vshard.util", "vshard/util.lua");
+    preload!("vshard.version", "vshard/version.lua");
+
     lua.exec("vshard = require 'vshard'").unwrap();
 }
 
