@@ -10,7 +10,7 @@ def cluster3(cluster: Cluster):
 
 def assert_peer_expelled(expelled_peer: Instance, instance: Instance):
     current_grade = instance.eval(
-        "return box.space.raft_group.index.instance_id:get(...).current_grade",
+        "return picolib.peer_info(...).current_grade.variant",
         expelled_peer.instance_id,
     )
     assert current_grade == "Expelled"

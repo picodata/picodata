@@ -433,7 +433,8 @@ class Instance:
 
         myself = self.call("picolib.peer_info", self.instance_id)
         assert isinstance(myself, dict)
-        assert myself["current_grade"] == "Online"
+        assert isinstance(myself["current_grade"], dict)
+        assert myself["current_grade"]["variant"] == "Online"
 
         eprint(f"{self} is online")
 

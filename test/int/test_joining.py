@@ -152,8 +152,8 @@ def test_replication(cluster: Cluster):
             "peer_address": instance.eval("return box.info.listen"),
             "replicaset_id": "r1",
             "replicaset_uuid": instance.eval("return box.info.cluster.uuid"),
-            "current_grade": "Online",
-            "target_grade": "Online",
+            "current_grade": ["Online", 1],
+            "target_grade": ["Online", 1],
             "failure_domain": dict(),
         }
         assert {k: v for k, v in raft_peer.items() if k in expected} == expected
