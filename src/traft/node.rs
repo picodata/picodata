@@ -269,10 +269,10 @@ impl Node {
     pub fn handle_topology_request_and_wait(
         &self,
         req: TopologyRequest,
-    ) -> traft::Result<traft::Peer> {
+    ) -> traft::Result<Box<traft::Peer>> {
         let notify =
             self.raw_operation(|node_impl| node_impl.process_topology_request_async(req))?;
-        notify.recv::<Peer>()
+        notify.recv()
     }
 
     /// Only the conf_change_loop on a leader is eligible to call this function.
@@ -469,7 +469,7 @@ impl NodeImpl {
         peer.commit_index = self.raw_node.raft.raft_log.last_index() + 1;
 
         let (lc, notify) = self.schedule_notification();
-        let ctx = traft::EntryContextNormal::new(lc, Op::PersistPeer { peer });
+        let ctx = traft::EntryContextNormal::new(lc, Op::persist_peer(peer));
 
         // Important! Calling `raw_node.propose()` may result in
         // `ProposalDropped` error, but the topology has already been

@@ -744,7 +744,7 @@ fn start_boot(args: &args::Run) {
             init_entries.push(raft::Entry::try_from(e).unwrap());
         };
 
-        init_entries_push_op(traft::Op::PersistPeer { peer });
+        init_entries_push_op(traft::Op::persist_peer(peer));
         init_entries_push_op(
             traft::OpDML::insert(
                 ClusterSpace::State,

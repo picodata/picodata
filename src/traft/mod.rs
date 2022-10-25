@@ -108,7 +108,7 @@ pub enum Op {
     ///
     ReturnOne(OpReturnOne),
     PersistPeer {
-        peer: Peer,
+        peer: Box<Peer>,
     },
     /// Cluster-wide data modification operation.
     /// Should be used to manipulate the cluster-wide configuration.
@@ -186,6 +186,12 @@ impl Op {
                 Box::new(peer.clone())
             }
             Self::Dml(op) => Box::new(op.result()),
+        }
+    }
+
+    pub fn persist_peer(peer: Peer) -> Self {
+        Self::PersistPeer {
+            peer: Box::new(peer),
         }
     }
 }
@@ -814,7 +820,7 @@ impl Encode for JoinRequest {}
 /// Response to a JoinRequest
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct JoinResponse {
-    pub peer: Peer,
+    pub peer: Box<Peer>,
     pub raft_group: Vec<Peer>,
     pub box_replication: Vec<String>,
     // TODO add later:
