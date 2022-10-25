@@ -18,11 +18,19 @@ fn proc_sharding(req: Request) -> Result<Response, Error> {
     // TODO: fix user's permissions
     lua.exec("box.session.su('admin')")?;
     // TODO: only done on instances with corresponding roles
-    lua.exec_with("vshard.storage.cfg(..., box.info.uuid)", &cfg)
-        .map_err(tlua::LuaError::from)?;
+    lua.exec_with(
+        "vshard = require('vshard')
+        vshard.storage.cfg(..., box.info.uuid)",
+        &cfg,
+    )
+    .map_err(tlua::LuaError::from)?;
     // TODO: only done on instances with corresponding roles
-    lua.exec_with("vshard.router.cfg(...)", &cfg)
-        .map_err(tlua::LuaError::from)?;
+    lua.exec_with(
+        "vshard = require('vshard')
+        vshard.router.cfg(...)",
+        &cfg,
+    )
+    .map_err(tlua::LuaError::from)?;
 
     if req.bootstrap {
         lua.exec("vshard.router.bootstrap()")?;

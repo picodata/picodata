@@ -349,7 +349,7 @@ fn picolib_setup(args: &args::Run) {
     );
 }
 
-fn init_vshard() {
+fn preload_vshard() {
     let lua = ::tarantool::lua_state();
 
     macro_rules! preload {
@@ -382,8 +382,6 @@ fn init_vshard() {
     preload!("vshard.storage.sched", "vshard/storage/sched.lua");
     preload!("vshard.util", "vshard/util.lua");
     preload!("vshard.version", "vshard/version.lua");
-
-    lua.exec("vshard = require 'vshard'").unwrap();
 }
 
 fn init_handlers() {
@@ -616,7 +614,7 @@ fn init_common(args: &args::Run, cfg: &tarantool::Cfg) -> Storage {
     std::fs::create_dir_all(&args.data_dir).unwrap();
     tarantool::set_cfg(cfg);
 
-    init_vshard();
+    preload_vshard();
     init_handlers();
     traft::event::init();
     Storage::new().expect("Storage initialization failed")
