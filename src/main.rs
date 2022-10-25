@@ -701,74 +701,47 @@ fn start_boot(args: &args::Run) {
 
     let mut storage = init_common(args, &cfg);
 
-    start_transaction(|| -> Result<(), TntError> {
-        let cs = raft::ConfState {
-            voters: vec![raft_id],
-            ..Default::default()
+    let cs = raft::ConfState {
+        voters: vec![raft_id],
+        ..Default::default()
+    };
+
+    let init_entries: Vec<raft::Entry> = {
+        let mut lc = LogicalClock::new(raft_id, 0);
+        let mut init_entries = Vec::new();
+
+        let mut init_entries_push_op = |op| {
+            lc.inc();
+
+            let ctx = traft::EntryContextNormal { op, lc };
+            let e = traft::Entry {
+                entry_type: raft::EntryType::EntryNormal,
+                index: (init_entries.len() + 1) as _,
+                term: traft::INIT_RAFT_TERM,
+                data: vec![],
+                context: Some(traft::EntryContext::Normal(ctx)),
+            };
+
+            init_entries.push(raft::Entry::try_from(e).unwrap());
         };
 
-        let mut lc = LogicalClock::new(raft_id, 0);
-
-        let mut init_entries = Vec::new();
-        init_entries.push({
-            let ctx = traft::EntryContextNormal {
-                op: traft::Op::PersistPeer { peer },
-                lc,
-            };
-            let e = traft::Entry {
-                entry_type: raft::EntryType::EntryNormal,
-                index: (init_entries.len() + 1) as _,
-                term: 1,
-                data: vec![],
-                context: Some(traft::EntryContext::Normal(ctx)),
-            };
-
-            raft::Entry::try_from(e).unwrap()
-        });
-
-        lc.inc();
-        init_entries.push({
-            let ctx = traft::EntryContextNormal {
-                op: traft::OpDML::insert(
-                    ClusterSpace::State,
-                    &(StateKey::ReplicationFactor, args.init_replication_factor),
-                )
-                .expect("cannot fail")
-                .into(),
-                lc,
-            };
-            let e = traft::Entry {
-                entry_type: raft::EntryType::EntryNormal,
-                index: (init_entries.len() + 1) as _,
-                term: 1,
-                data: vec![],
-                context: Some(traft::EntryContext::Normal(ctx)),
-            };
-
-            raft::Entry::try_from(e).unwrap()
-        });
-
-        lc.inc();
-        init_entries.push({
-            let ctx = traft::EntryContextNormal {
-                op: traft::OpDML::insert(
-                    ClusterSpace::State,
-                    &(StateKey::ReplicasetWeights, ReplicasetWeights::new()),
-                )
-                .expect("cannot fail")
-                .into(),
-                lc,
-            };
-            let e = traft::Entry {
-                entry_type: raft::EntryType::EntryNormal,
-                index: (init_entries.len() + 1) as _,
-                term: 1,
-                data: vec![],
-                context: Some(traft::EntryContext::Normal(ctx)),
-            };
-
-            raft::Entry::try_from(e).unwrap()
-        });
+        init_entries_push_op(traft::Op::PersistPeer { peer });
+        init_entries_push_op(
+            traft::OpDML::insert(
+                ClusterSpace::State,
+                &(StateKey::ReplicationFactor, args.init_replication_factor),
+            )
+            .expect("cannot fail")
+            .into(),
+        );
+        init_entries_push_op(
+            traft::OpDML::insert(
+                ClusterSpace::State,
+                &(StateKey::ReplicasetWeights, ReplicasetWeights::new()),
+            )
+            .expect("cannot fail")
+            .into(),
+        );
 
         init_entries.push({
             let conf_change = raft::ConfChange {
@@ -779,7 +752,7 @@ fn start_boot(args: &args::Run) {
             let e = traft::Entry {
                 entry_type: raft::EntryType::EntryConfChange,
                 index: (init_entries.len() + 1) as _,
-                term: 1,
+                term: traft::INIT_RAFT_TERM,
                 data: conf_change.write_to_bytes().unwrap(),
                 context: None,
             };
@@ -787,15 +760,21 @@ fn start_boot(args: &args::Run) {
             raft::Entry::try_from(e).unwrap()
         });
 
-        storage.raft.persist_conf_state(&cs).unwrap();
-        storage.raft.persist_entries(&init_entries).unwrap();
+        init_entries
+    };
+
+    let hs = raft::HardState {
+        term: traft::INIT_RAFT_TERM,
+        commit: init_entries.len() as _,
+        ..Default::default()
+    };
+
+    start_transaction(|| -> Result<(), TntError> {
         storage.raft.persist_raft_id(raft_id).unwrap();
         storage.raft.persist_instance_id(&instance_id).unwrap();
         storage.raft.persist_cluster_id(&args.cluster_id).unwrap();
-
-        let mut hs = raft::HardState::default();
-        hs.set_commit(init_entries.len() as _);
-        hs.set_term(traft::INIT_RAFT_TERM);
+        storage.raft.persist_entries(&init_entries).unwrap();
+        storage.raft.persist_conf_state(&cs).unwrap();
         storage.raft.persist_hard_state(&hs).unwrap();
         Ok(())
     })
