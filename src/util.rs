@@ -1,5 +1,9 @@
 pub use Either::{Left, Right};
 
+use crate::traft::error::Error;
+
+use std::any::{Any, TypeId};
+
 ////////////////////////////////////////////////////////////////////////////////
 /// A generic enum that contains exactly one of two possible types. Equivalent
 /// to `std::result::Result`, but is more intuitive in some cases.
@@ -369,6 +373,35 @@ pub fn screen_size() -> (i32, i32) {
     }
 }
 
+////////////////////////////////////////////////////////////////////////////////
+/// An extention for [`std::any::Any`] that includes a `type_name` method for
+/// getting the type name from a `dyn AnyWithTypeName`.
+pub trait AnyWithTypeName: Any {
+    fn type_name(&self) -> &'static str;
+}
+
+impl<T: Any> AnyWithTypeName for T {
+    #[inline]
+    fn type_name(&self) -> &'static str {
+        std::any::type_name::<T>()
+    }
+}
+
+#[inline]
+pub fn downcast<T: 'static>(any: Box<dyn AnyWithTypeName>) -> Result<T, Error> {
+    if TypeId::of::<T>() != (*any).type_id() {
+        return Err(Error::DowncastError {
+            expected: std::any::type_name::<T>(),
+            actual: (*any).type_name(),
+        });
+    }
+
+    unsafe {
+        let raw: *mut dyn AnyWithTypeName = Box::into_raw(any);
+        Ok(*Box::from_raw(raw as *mut T))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     #[test]
@@ -397,5 +430,15 @@ mod tests {
         assert!(!str_eq("\0x", "\0y"));
         assert!(!str_eq("foo1", "bar1"));
         assert!(!str_eq("foo1", "foo2"));
+    }
+
+    #[test]
+    fn downcast() {
+        assert_eq!(super::downcast::<u8>(Box::new(13_u8)).unwrap(), 13);
+        let err = super::downcast::<i8>(Box::new(13_u8)).unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            r#"downcast error: expected "i8", actual: "u8""#
+        );
     }
 }

@@ -15,8 +15,11 @@ pub enum Error {
     Timeout,
     #[error("{0}")]
     Raft(#[from] raft::Error),
-    #[error("downcast error")]
-    DowncastError,
+    #[error("downcast error: expected {expected:?}, actual: {actual:?}")]
+    DowncastError {
+        expected: &'static str,
+        actual: &'static str,
+    },
     /// cluster_id of the joining peer mismatches the cluster_id of the cluster
     #[error("cannot join the instance to the cluster: cluster_id mismatch: cluster_id of the instance = {instance_cluster_id:?}, cluster_id of the cluster = {cluster_cluster_id:?}")]
     ClusterIdMismatch {

@@ -13,7 +13,7 @@ pub mod storage;
 pub mod topology;
 
 use crate::stringify_debug;
-use crate::util::Uppercase;
+use crate::util::{AnyWithTypeName, Uppercase};
 use ::raft::prelude as raft;
 use ::tarantool::error::Error as TntError;
 use ::tarantool::tlua;
@@ -21,7 +21,6 @@ use ::tarantool::tlua::LuaError;
 use ::tarantool::tuple::{Encode, ToTupleBuffer, Tuple, TupleBuffer};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
-use std::any::Any;
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::fmt::Debug;
@@ -226,7 +225,7 @@ impl std::fmt::Display for Op {
 }
 
 impl Op {
-    pub fn on_commit(&self, peers: &storage::Peers) -> Box<dyn Any> {
+    pub fn on_commit(&self, peers: &storage::Peers) -> Box<dyn AnyWithTypeName> {
         match self {
             Self::Nop => Box::new(()),
             Self::Info { msg } => {
