@@ -163,9 +163,6 @@ impl Topology {
             replicaset_id,
             replicaset_uuid,
             commit_index: INVALID_INDEX,
-            // Mark instance already active when it joins.
-            // It prevents a disruption in case of the
-            // instance_id collision.
             current_grade: CurrentGrade::Offline,
             target_grade: TargetGrade::Offline,
             failure_domain,
