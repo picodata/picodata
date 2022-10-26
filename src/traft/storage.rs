@@ -179,9 +179,11 @@ impl State {
 
     #[inline]
     pub fn replicaset_weight(&self, replicaset_id: &str) -> tarantool::Result<Option<Weight>> {
-        // I tried doing tuple.try_get(format!("[1]['{replicaset_id}']").as_str())
-        // but it doesn't work :(
-        Ok(self.replicaset_weights()?.get(replicaset_id).copied())
+        let tuple = self.space().get(&[StateKey::ReplicasetWeights])?;
+        match tuple {
+            Some(tuple) => tuple.try_get(format!("value['{replicaset_id}']").as_str()),
+            None => Ok(None),
+        }
     }
 
     #[inline]
