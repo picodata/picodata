@@ -169,7 +169,7 @@ impl Topology {
             current_grade: CurrentGrade::Offline,
             target_grade: TargetGrade::Offline,
             failure_domain,
-            ..Peer::default()
+            is_master: false,
         };
 
         self.put_peer(peer.clone());
