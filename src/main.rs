@@ -504,22 +504,23 @@ fn main_run(args: args::Run) -> ! {
     // Intercept and forward signals to the child. As for the child
     // itself, one shouldn't worry about setting up signal handlers -
     // Tarantool does that implicitly.
-    // See also: man 7 signal-safety
     static mut CHILD_PID: Option<libc::c_int> = None;
+    static mut SIGNALLED: Option<libc::c_int> = None;
     extern "C" fn sigh(sig: libc::c_int) {
-        println!("[supervisor:{}] got signal {sig}", unistd::getpid());
         unsafe {
-            match CHILD_PID {
-                Some(pid) => match libc::kill(pid, sig) {
-                    0 => (),
-                    _ => std::process::exit(0),
-                },
-                None => std::process::exit(0),
-            };
+            // Only a few functions are allowed in signal handlers.
+            // Read twice `man 7 signal-safety`.
+            if let Some(pid) = CHILD_PID {
+                libc::kill(pid, sig);
+            }
+            SIGNALLED = Some(sig);
         }
     }
     let sigaction = signal::SigAction::new(
         signal::SigHandler::Handler(sigh),
+        // It's important to use SA_RESTART flag here.
+        // Otherwise, waitpid() could return EINTR,
+        // but we don't want dealing with it.
         signal::SaFlags::SA_RESTART,
         signal::SigSet::empty(),
     );
@@ -589,19 +590,25 @@ fn main_run(args: args::Run) -> ! {
                     tcsetattr(0, TCSADRAIN, tcattr).unwrap();
                 }
 
+                if let Some(sig) = unsafe { SIGNALLED } {
+                    println!("[supervisor:{parent}] got signal {sig}");
+                }
+
+                println!("[supervisor:{parent}] ipc message from child: {msg:?}");
+
+                let status = status.unwrap();
                 println!("[supervisor:{parent}] subprocess finished: {status:?}");
 
                 if let Some(msg) = msg {
                     entrypoint = msg.next_entrypoint;
                     if msg.drop_db {
-                        println!("[supervisor:{parent}] subprocess requested rebootstrap");
                         rm_tarantool_files(&args.data_dir);
                     }
                 } else {
-                    let rc = match status.unwrap() {
+                    let rc = match status {
                         WaitStatus::Exited(_, rc) => rc,
                         WaitStatus::Signaled(_, sig, _) => sig as _,
-                        _ => unreachable!("unexpected exit status"),
+                        s => unreachable!("unexpected exit status {:?}", s),
                     };
                     std::process::exit(rc);
                 }

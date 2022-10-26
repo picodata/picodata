@@ -23,8 +23,8 @@ def assert_all_pids_down(pids):
     assert all(map(lambda pid: not pid_alive(pid), pids))
 
 
-def test_sigkill(instance: Instance):
-    # Scenario: terminating process should terminate all child processes
+def test_instance_kill(instance: Instance):
+    # Scenario: instance.kill() should kill all child processes
     #   Given an instance
     #   When the process terminated
     #   Then all subprocesses are teminated too
@@ -38,7 +38,7 @@ def test_sigkill(instance: Instance):
     retrying(lambda: assert_all_pids_down(pids))
 
 
-def test_sigint(instance: Instance):
+def test_sigint_parent(instance: Instance):
     # Scenario: suspending of child process prevents the parent process from interrupting
     #   Given an instance
     #   When child process is stopped
@@ -67,6 +67,26 @@ def test_sigint(instance: Instance):
     assert pid_alive(instance.process.pid)
 
     os.kill(child_pid, signal.SIGCONT)
-    instance.process.wait(timeout=1)
+    assert instance.process.wait(timeout=1) == 0
+
+    retrying(lambda: assert_all_pids_down(pids))
+
+
+def test_sigsegv_child(instance: Instance):
+    # Scenario: sipervisor terminates when the child segfaults
+    #   Given an instance
+    #   When the child process segfaults
+    #   Then the supervisor is teminated too
+
+    assert instance.process
+    pids = pgrep_tree(instance.process.pid)
+    child_pid = pids[1]
+
+    os.kill(child_pid, signal.SIGSEGV)
+
+    # Upon segmentation fault tarantool calls `crash_signal_cb` handler
+    # which ends with `abort()`. That's why the exit status is SIGABRT
+    # and not SIGSEGV.
+    assert instance.process.wait(timeout=1) == signal.SIGABRT
 
     retrying(lambda: assert_all_pids_down(pids))

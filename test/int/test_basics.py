@@ -3,7 +3,6 @@ import os
 import funcy  # type: ignore
 import pytest
 import signal
-import time
 
 from conftest import (
     Instance,
@@ -47,10 +46,6 @@ def test_call_normalization(instance: Instance):
     with pytest.raises(OSError) as e6:
         instance.call("os.exit", 0)
     assert e6.value.errno == errno.ECONNRESET
-
-    # After adding vshard this test started failing for some reason and adding
-    # this sleep seems to solve the problem ¯\_(ツ)_/¯
-    time.sleep(0.5)
 
     instance.terminate()
     with pytest.raises(OSError) as e7:
@@ -132,7 +127,7 @@ def test_process_management(instance: Instance):
         waitpg(pgrp)
     print(f"{instance} is still alive")
 
-    # Kill the remaining child in the process group
+    # Kill the remaining child in the process group using conftest API
     instance.kill()
 
     # When the supervisor is killed, the orphaned child is reparented
@@ -142,7 +137,7 @@ def test_process_management(instance: Instance):
     #
     # Also, note, that after the child is killed, it remains
     # a zombie for a while. The child is removed from the process
-    # table when a supreaper calls `waitpid`.
+    # table when a subreaper calls `waitpid`.
     #
     waitpg(pgrp)
     print(f"{instance} is finally dead")
