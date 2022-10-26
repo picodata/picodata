@@ -162,9 +162,8 @@ impl PoolWorker {
                             "peer" => address,
                             "raft_id" => raft_id,
                         );
-                        cond.wait_timeout(
-                            closest_promise_timeout_or(opts.connect_timeout - iter_start.elapsed())
-                        );
+                        let timeout = opts.connect_timeout.saturating_sub(iter_start.elapsed());
+                        cond.wait_timeout(closest_promise_timeout_or(timeout));
                         continue
                     }
                 );
