@@ -11,11 +11,7 @@ fn proc_sharding(req: Request) -> Result<Response, Error> {
     super::sync::wait_for_index_timeout(req.commit, &node.storage.raft, req.timeout)?;
 
     let storage = &node.storage;
-    let cfg = if let Some(weights) = req.weights {
-        cfg::Cfg::new(&storage.peers, weights)?
-    } else {
-        cfg::Cfg::from_storage(storage)?
-    };
+    let cfg = cfg::Cfg::from_storage(storage)?;
 
     let lua = ::tarantool::lua_state();
     // TODO: fix user's permissions
@@ -52,7 +48,6 @@ pub struct Request {
     pub term: RaftTerm,
     pub commit: RaftIndex,
     pub timeout: Duration,
-    pub weights: Option<cfg::ReplicasetWeights>,
     pub bootstrap: bool,
 }
 impl ::tarantool::tuple::Encode for Request {}
@@ -72,7 +67,7 @@ impl super::Request for Request {
 #[rustfmt::skip]
 pub mod cfg {
     use crate::traft::error::Error;
-    use crate::traft::storage::{Peers, Storage};
+    use crate::traft::storage::Storage;
 
     use ::tarantool::tlua;
 
@@ -132,12 +127,8 @@ pub mod cfg {
         #[inline]
         pub fn from_storage(storage: &Storage) -> Result<Self, Error> {
             let replicaset_weights = storage.state.replicaset_weights()?;
-            Self::new(&storage.peers, replicaset_weights)
-        }
-
-        pub fn new(peers: &Peers, replicaset_weights: ReplicasetWeights) -> Result<Self, Error> {
             let mut sharding: HashMap<String, Replicaset> = HashMap::new();
-            for peer in peers.iter()? {
+            for peer in storage.peers.iter()? {
                 if !peer.may_respond() {
                     continue;
                 }

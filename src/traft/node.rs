@@ -1257,7 +1257,6 @@ fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
                             commit,
                             timeout: SYNC_TIMEOUT,
                             bootstrap: !vshard_bootstrapped && peer.raft_id == leader_id,
-                            ..Default::default()
                         },
                     )
                 });
@@ -1314,12 +1313,21 @@ fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
                 get_new_weights(maybe_responding(&peers), &storage.state)
             {
                 (|| -> Result<(), Error> {
+                    node.propose_and_wait(
+                        // TODO: OpDML::update with just the changes
+                        traft::OpDML::replace(
+                            ClusterSpace::State,
+                            &(StateKey::ReplicasetWeights, new_weights),
+                        )?,
+                        // TODO: don't hard code the timeout
+                        Duration::from_secs(3),
+                    )??;
+
                     let peer_ids = maybe_responding(&peers).map(|peer| peer.instance_id.clone());
                     let reqs = peer_ids.zip(repeat(sharding::Request {
                         term,
                         commit,
                         timeout: SYNC_TIMEOUT,
-                        weights: Some(new_weights.clone()),
                         ..Default::default()
                     }));
                     // TODO: don't hard code timeout
@@ -1334,18 +1342,6 @@ fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
                     let req = UpdatePeerRequest::new(peer.instance_id.clone(), cluster_id)
                         .with_current_grade(CurrentGrade::Online);
                     node.handle_topology_request_and_wait(req.into())?;
-
-                    // TODO: if this fails, it will only rerun next time vshard
-                    // gets reconfigured
-                    node.propose_and_wait(
-                        // TODO: OpDML::update with just the changes
-                        traft::OpDML::replace(
-                            ClusterSpace::State,
-                            &(StateKey::ReplicasetWeights, new_weights),
-                        )?,
-                        // TODO: don't hard code the timeout
-                        Duration::from_secs(3),
-                    )??;
                     Ok(())
                 })()
             } else {
