@@ -400,6 +400,7 @@ fn init_handlers() {
     declare_cfunc!(traft::rpc::sync::proc_sync_raft);
     declare_cfunc!(traft::failover::raft_update_peer);
     declare_cfunc!(traft::rpc::replication::proc_replication);
+    declare_cfunc!(traft::rpc::replication::promote::proc_replication_promote);
     declare_cfunc!(traft::rpc::sharding::proc_sharding);
 }
 

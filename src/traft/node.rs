@@ -16,6 +16,7 @@ use ::tarantool::fiber::{Cond, Mutex};
 use ::tarantool::proc;
 use ::tarantool::tlua;
 use ::tarantool::transaction::start_transaction;
+use std::borrow::Cow;
 use std::cell::Cell;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -32,6 +33,7 @@ use crate::stringify_cfunc;
 use crate::traft::storage::ClusterSpace;
 use crate::traft::ContextCoercion as _;
 use crate::traft::InstanceId;
+use crate::traft::OpDML;
 use crate::traft::Peer;
 use crate::traft::RaftId;
 use crate::traft::RaftIndex;
@@ -1051,7 +1053,32 @@ fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
             // TODO: process them all, not just the first one
             .find(|peer| peer.target_grade == TargetGrade::Offline);
         if let Some(peer) = to_offline {
+            let replicaset_id = &peer.replicaset_id;
             let res = (|| -> Result<_, Error> {
+                let replicaset = storage.replicasets.get(replicaset_id)?;
+                if replicaset
+                    .map(|r| r.master_id == peer.instance_id)
+                    .unwrap_or(false)
+                {
+                    let new_master =
+                        maybe_responding(&peers).find(|p| p.replicaset_id == replicaset_id);
+                    if let Some(peer) = new_master {
+                        let mut ops = UpdateOps::new();
+                        ops.assign("master_id", &peer.instance_id)?;
+                        node.propose_and_wait(
+                            OpDML::update(ClusterSpace::Replicasets, &[replicaset_id], ops)?,
+                            // TODO: don't hard code the timeout
+                            Duration::from_secs(3),
+                            // TODO: these `?` will be processed in the wrong place
+                        )??;
+                    } else {
+                        tlog!(Warning, "the last replica has gone offline";
+                            "replicaset_id" => %replicaset_id,
+                            "instance_id" => %peer.instance_id,
+                        );
+                    }
+                }
+
                 let reqs = maybe_responding(&peers)
                     .filter(|peer| {
                         peer.current_grade == CurrentGrade::ShardingInitialized
@@ -1094,7 +1121,51 @@ fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
                 tlog!(Warning, "failed to set peer offline: {e}";
                     "instance_id" => &*peer.instance_id,
                 );
+                // TODO: don't hard code timeout
+                event::wait_timeout(Event::TopologyChanged, Duration::from_secs(1)).unwrap();
+                continue 'governor;
             }
+
+            let replicaset_peers = storage
+                .peers
+                .replicaset_peers(replicaset_id)
+                .expect("storage error")
+                .filter(|peer| !peer.is_expelled())
+                .collect::<Vec<_>>();
+            let may_respond = replicaset_peers.iter().filter(|peer| peer.may_respond());
+            // Check if it makes sense to call box.ctl.promote,
+            // otherwise we risk unpredictable delays
+            if replicaset_peers.len() / 2 + 1 > may_respond.count() {
+                tlog!(Critical, "replicaset lost quorum";
+                    "replicaset_id" => %replicaset_id,
+                );
+                continue 'governor;
+            }
+
+            let res = (|| -> Result<_, Error> {
+                // Promote the replication leader again
+                // because of tarantool bugs
+                if let Some(replicaset) = storage.replicasets.get(replicaset_id)? {
+                    pool.call_and_wait_timeout(
+                        &replicaset.master_id,
+                        replication::promote::Request {
+                            term,
+                            commit,
+                            timeout: SYNC_TIMEOUT,
+                        },
+                        // TODO: don't hard code timeout
+                        Duration::from_secs(3),
+                    )?;
+                }
+                Ok(())
+            })();
+            if let Err(e) = res {
+                tlog!(Warning, "failed to promote replicaset master: {e}";
+                    "replicaset_id" => %replicaset_id,
+                );
+            }
+
+            continue 'governor;
         }
 
         ////////////////////////////////////////////////////////////////////////
@@ -1163,7 +1234,6 @@ fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
                 .map(|peer| peer.instance_id.clone())
                 .collect::<Vec<_>>();
 
-            let replicaset_size = replicaset_iids.len();
             let res = (|| -> Result<_, Error> {
                 let reqs = replicaset_iids
                     .iter()
@@ -1174,8 +1244,6 @@ fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
                         timeout: SYNC_TIMEOUT,
                         replicaset_instances: replicaset_iids.clone(),
                         replicaset_id: replicaset_id.clone(),
-                        // TODO: what if someone goes offline/expelled?
-                        promote: replicaset_size == 1,
                     }));
                 // TODO: don't hard code timeout
                 let res = call_all(&mut pool, reqs, Duration::from_secs(3))?;
@@ -1189,21 +1257,6 @@ fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
                     );
                 }
 
-                if replicaset_size == 1 && !storage.replicasets.exists(&peer.replicaset_id)? {
-                    let vshard_bootstrapped = storage.state.vshard_bootstrapped()?;
-                    let req = traft::OpDML::insert(
-                        ClusterSpace::Replicasets,
-                        &traft::Replicaset {
-                            replicaset_id: peer.replicaset_id.clone(),
-                            replicaset_uuid: peer.replicaset_uuid.clone(),
-                            master_id: peer.instance_id.clone(),
-                            weight: if vshard_bootstrapped { 0. } else { 1. },
-                        },
-                    )?;
-                    // TODO: don't hard code the timeout
-                    node.propose_and_wait(req, Duration::from_secs(3))??;
-                }
-
                 let req = UpdatePeerRequest::new(peer.instance_id.clone(), cluster_id)
                     .with_current_grade(CurrentGrade::Replicated);
                 node.handle_topology_request_and_wait(req.into())?;
@@ -1215,6 +1268,45 @@ fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
                 // TODO: don't hard code timeout
                 event::wait_timeout(Event::TopologyChanged, Duration::from_secs(1)).unwrap();
                 continue 'governor;
+            }
+
+            let res = (|| -> Result<_, Error> {
+                let master_id =
+                    if let Some(replicaset) = storage.replicasets.get(&peer.replicaset_id)? {
+                        Cow::Owned(replicaset.master_id)
+                    } else {
+                        let vshard_bootstrapped = storage.state.vshard_bootstrapped()?;
+                        let req = traft::OpDML::insert(
+                            ClusterSpace::Replicasets,
+                            &traft::Replicaset {
+                                replicaset_id: peer.replicaset_id.clone(),
+                                replicaset_uuid: peer.replicaset_uuid.clone(),
+                                master_id: peer.instance_id.clone(),
+                                weight: if vshard_bootstrapped { 0. } else { 1. },
+                            },
+                        )?;
+                        // TODO: don't hard code the timeout
+                        node.propose_and_wait(req, Duration::from_secs(3))??;
+                        Cow::Borrowed(&peer.instance_id)
+                    };
+
+                pool.call_and_wait_timeout(
+                    &*master_id,
+                    replication::promote::Request {
+                        term,
+                        commit,
+                        timeout: SYNC_TIMEOUT,
+                    },
+                    // TODO: don't hard code timeout
+                    Duration::from_secs(3),
+                )?;
+                tlog!(Debug, "promoted replicaset master"; "instance_id" => %master_id);
+                Ok(())
+            })();
+            if let Err(e) = res {
+                tlog!(Warning, "failed to promote replicaset master: {e}";
+                    "replicaset_id" => %replicaset_id,
+                );
             }
 
             tlog!(Info, "configured replication"; "replicaset_id" => %replicaset_id);
@@ -1277,6 +1369,31 @@ fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
                 // TODO: don't hard code timeout
                 event::wait_timeout(Event::TopologyChanged, Duration::from_secs(1)).unwrap();
                 continue 'governor;
+            }
+
+            let res = (|| -> Result<(), Error> {
+                // Promote the replication leaders again
+                // because of tarantool bugs
+                let replicasets = storage.replicasets.iter()?;
+                let masters = replicasets.map(|r| r.master_id).collect::<HashSet<_>>();
+                let reqs = maybe_responding(&peers)
+                    .filter(|peer| masters.contains(&peer.instance_id))
+                    .map(|peer| peer.instance_id.clone())
+                    .zip(repeat(replication::promote::Request {
+                        term,
+                        commit,
+                        timeout: SYNC_TIMEOUT,
+                    }));
+                // TODO: don't hard code timeout
+                let res = call_all(&mut pool, reqs, Duration::from_secs(3))?;
+                for (peer_iid, resp) in res {
+                    resp?;
+                    tlog!(Debug, "promoted replicaset master"; "instance_id" => %peer_iid);
+                }
+                Ok(())
+            })();
+            if let Err(e) = res {
+                tlog!(Warning, "failed to promote replicaset masters: {e}");
             }
 
             tlog!(Info, "sharding is initialized");

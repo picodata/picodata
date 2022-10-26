@@ -30,6 +30,7 @@ pub fn on_shutdown() {
         node.storage
             .peers
             .get(&raft_id)
+            // TODO: change to peer.may_respond()
             .map(|peer| peer.is_online())
             .unwrap_or(false)
     });
@@ -97,6 +98,7 @@ pub fn on_shutdown() {
         return;
     }
 
+    tlog!(Debug, "waiting for demotion");
     if let Err(e) = event::wait(event::Event::Demoted) {
         tlog!(Warning, "failed to wait for self demotion: {e}");
     }

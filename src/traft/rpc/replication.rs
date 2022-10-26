@@ -34,9 +34,6 @@ fn proc_replication(req: Request) -> Result<Response, Error> {
     // box.cfg checks if the replication is already the same
     // and ignores it if nothing changed
     set_cfg_field("replication", peer_addresses)?;
-    if req.promote {
-        crate::tarantool::exec("box.ctl.promote()")?;
-    }
     let lsn = crate::tarantool::eval("return box.info.lsn")?;
     Ok(Response { lsn })
 }
@@ -49,7 +46,6 @@ pub struct Request {
     pub timeout: Duration,
     pub replicaset_instances: Vec<InstanceId>,
     pub replicaset_id: traft::ReplicasetId,
-    pub promote: bool,
 }
 impl ::tarantool::tuple::Encode for Request {}
 
@@ -65,4 +61,43 @@ impl ::tarantool::tuple::Encode for Response {}
 impl super::Request for Request {
     const PROC_NAME: &'static str = crate::stringify_cfunc!(proc_replication);
     type Response = Response;
+}
+
+pub mod promote {
+    use crate::traft::{error::Error, node, rpc, RaftIndex, RaftTerm};
+    use ::tarantool::proc;
+    use std::time::Duration;
+
+    #[proc(packed_args)]
+    fn proc_replication_promote(req: Request) -> Result<Response, Error> {
+        let node = node::global()?;
+        node.status().check_term(req.term)?;
+        rpc::sync::wait_for_index_timeout(req.commit, &node.storage.raft, req.timeout)?;
+        crate::tarantool::exec(
+            "box.cfg { read_only = false }
+            box.ctl.promote()",
+        )?;
+        Ok(Response {})
+    }
+
+    /// Request to promote peer to tarantool replication leader.
+    #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+    pub struct Request {
+        pub term: RaftTerm,
+        pub commit: RaftIndex,
+        pub timeout: Duration,
+    }
+    impl ::tarantool::tuple::Encode for Request {}
+
+    /// Response to [`replication::promote::Request`].
+    ///
+    /// [`replication::promote::Request`]: Request
+    #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+    pub struct Response {}
+    impl ::tarantool::tuple::Encode for Response {}
+
+    impl rpc::Request for Request {
+        const PROC_NAME: &'static str = crate::stringify_cfunc!(proc_replication_promote);
+        type Response = Response;
+    }
 }

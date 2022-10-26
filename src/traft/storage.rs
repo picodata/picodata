@@ -9,6 +9,7 @@ use crate::traft::error::Error as TraftError;
 use crate::traft::rpc::sharding::cfg::ReplicasetWeights;
 use crate::traft::RaftId;
 use crate::traft::RaftIndex;
+use crate::traft::Replicaset;
 
 use std::marker::PhantomData;
 
@@ -219,8 +220,11 @@ impl Replicasets {
     }
 
     #[inline]
-    pub fn exists(&self, replicaset_id: &str) -> tarantool::Result<bool> {
-        Ok(self.space.get(&[replicaset_id])?.is_some())
+    pub fn get(&self, replicaset_id: &str) -> tarantool::Result<Option<Replicaset>> {
+        match self.space.get(&[replicaset_id])? {
+            Some(tuple) => tuple.decode().map(Some),
+            None => Ok(None),
+        }
     }
 
     #[inline]
@@ -397,6 +401,13 @@ impl Peers {
             ret.push(tuple.get(peer_field::PeerAddress).unwrap());
         }
         Ok(ret)
+    }
+
+    pub fn replicaset_peers(&self, replicaset_id: &str) -> tarantool::Result<PeerIter> {
+        let iter = self
+            .index_replicaset_id
+            .select(IteratorType::Eq, &[replicaset_id])?;
+        Ok(PeerIter::new(iter))
     }
 
     pub fn replicaset_fields<T>(&self, replicaset_id: &str) -> tarantool::Result<Vec<T::Type>>
