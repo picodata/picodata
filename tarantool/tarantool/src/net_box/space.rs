@@ -62,7 +62,7 @@ impl RemoteSpace {
 
     /// The remote-call equivalent of the local call `Space::insert(...)`
     /// (see [details](../space/struct.Space.html#method.insert)).
-    pub fn insert<T>(&mut self, value: &T, options: &Options) -> Result<Option<Tuple>, Error>
+    pub fn insert<T>(&self, value: &T, options: &Options) -> Result<Option<Tuple>, Error>
     where
         T: ToTupleBuffer,
     {
@@ -75,7 +75,7 @@ impl RemoteSpace {
 
     /// The remote-call equivalent of the local call `Space::replace(...)`
     /// (see [details](../space/struct.Space.html#method.replace)).
-    pub fn replace<T>(&mut self, value: &T, options: &Options) -> Result<Option<Tuple>, Error>
+    pub fn replace<T>(&self, value: &T, options: &Options) -> Result<Option<Tuple>, Error>
     where
         T: ToTupleBuffer,
     {
@@ -89,7 +89,7 @@ impl RemoteSpace {
     /// The remote-call equivalent of the local call `Space::update(...)`
     /// (see [details](../space/struct.Space.html#method.update)).
     pub fn update<K, Op>(
-        &mut self,
+        &self,
         key: &K,
         ops: &[Op],
         options: &Options,
@@ -104,7 +104,7 @@ impl RemoteSpace {
     /// The remote-call equivalent of the local call `Space::upsert(...)`
     /// (see [details](../space/struct.Space.html#method.upsert)).
     pub fn upsert<T, Op>(
-        &mut self,
+        &self,
         value: &T,
         ops: &[Op],
         options: &Options,
@@ -118,7 +118,7 @@ impl RemoteSpace {
 
     /// The remote-call equivalent of the local call `Space::delete(...)`
     /// (see [details](../space/struct.Space.html#method.delete)).
-    pub fn delete<K>(&mut self, key: &K, options: &Options) -> Result<Option<Tuple>, Error>
+    pub fn delete<K>(&self, key: &K, options: &Options) -> Result<Option<Tuple>, Error>
     where
         K: ToTupleBuffer,
     {

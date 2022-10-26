@@ -557,7 +557,7 @@ impl Index {
     /// - `key` - encoded key in MsgPack Array format (`[part1, part2, ...]`).
     ///
     /// Returns the deleted tuple
-    pub fn delete<K>(&mut self, key: &K) -> Result<Option<Tuple>, Error>
+    pub fn delete<K>(&self, key: &K) -> Result<Option<Tuple>, Error>
     where
         K: ToTupleBuffer,
     {
@@ -587,7 +587,7 @@ impl Index {
     /// See also: [index.upsert()](#method.upsert)
     // TODO(gmoshkin): accept a single Ops argument instead of a slice of ops
     #[inline]
-    pub fn update<K, Op>(&mut self, key: &K, ops: impl AsRef<[Op]>) -> Result<Option<Tuple>, Error>
+    pub fn update<K, Op>(&self, key: &K, ops: impl AsRef<[Op]>) -> Result<Option<Tuple>, Error>
     where
         K: ToTupleBuffer,
         Op: ToTupleBuffer,
@@ -603,7 +603,7 @@ impl Index {
     /// # Safety
     /// `ops` must be a slice of valid msgpack arrays.
     #[deprecated = "use update_raw instead"]
-    pub unsafe fn update_mp<K>(&mut self, key: &K, ops: &[Vec<u8>]) -> Result<Option<Tuple>, Error>
+    pub unsafe fn update_mp<K>(&self, key: &K, ops: &[Vec<u8>]) -> Result<Option<Tuple>, Error>
     where
         K: ToTupleBuffer,
     {
@@ -616,7 +616,7 @@ impl Index {
     /// # Safety
     /// `key` must be a valid msgpack array.
     /// `ops` must be a valid msgpack array of msgpack arrays.
-    pub unsafe fn update_raw(&mut self, key: &[u8], ops: &[u8]) -> Result<Option<Tuple>, Error> {
+    pub unsafe fn update_raw(&self, key: &[u8], ops: &[u8]) -> Result<Option<Tuple>, Error> {
         let key = key.as_ptr_range();
         let ops = ops.as_ptr_range();
         tuple_from_box_api!(
@@ -640,7 +640,7 @@ impl Index {
     ///
     /// See also: [index.update()](#method.update)
     #[inline]
-    pub fn upsert<T, Op>(&mut self, value: &T, ops: impl AsRef<[Op]>) -> Result<(), Error>
+    pub fn upsert<T, Op>(&self, value: &T, ops: impl AsRef<[Op]>) -> Result<(), Error>
     where
         T: ToTupleBuffer,
         Op: ToTupleBuffer,
@@ -656,7 +656,7 @@ impl Index {
     /// # Safety
     /// `ops` must be a slice of valid msgpack arrays.
     #[deprecated = "use upsert_raw instead"]
-    pub unsafe fn upsert_mp<T>(&mut self, value: &T, ops: &[Vec<u8>]) -> Result<(), Error>
+    pub unsafe fn upsert_mp<T>(&self, value: &T, ops: &[Vec<u8>]) -> Result<(), Error>
     where
         T: ToTupleBuffer,
     {
@@ -669,7 +669,7 @@ impl Index {
     /// # Safety
     /// `value` must be a valid msgpack array.
     /// `ops` must be a valid msgpack array of msgpack arrays.
-    pub unsafe fn upsert_raw(&mut self, value: &[u8], ops: &[u8]) -> Result<(), Error> {
+    pub unsafe fn upsert_raw(&self, value: &[u8], ops: &[u8]) -> Result<(), Error> {
         let value = value.as_ptr_range();
         let ops = ops.as_ptr_range();
         tuple_from_box_api!(

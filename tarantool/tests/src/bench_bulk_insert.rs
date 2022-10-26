@@ -59,7 +59,7 @@ impl TDynBenchFn for BulkInsertBenchmark {
                         text: &*text.borrow(),
                     };
 
-                    let mut remote_space = conn.space("bench_s1").unwrap().unwrap();
+                    let remote_space = conn.space("bench_s1").unwrap().unwrap();
                     let insert_options = Options {
                         ..Options::default()
                     };

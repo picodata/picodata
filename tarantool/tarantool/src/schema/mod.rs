@@ -24,7 +24,7 @@ fn resolve_user_or_role(user: &str) -> Result<Option<u32>, Error> {
 /// - `obj_id` - object's ID
 fn revoke_object_privileges(obj_type: &str, obj_id: u32) -> Result<(), Error> {
     let sys_vpriv: Space = SystemSpace::VPriv.into();
-    let mut sys_priv: Space = SystemSpace::Priv.into();
+    let sys_priv: Space = SystemSpace::Priv.into();
 
     let index_obj = sys_vpriv.index("object").unwrap();
     let privs: Vec<Tuple> = index_obj

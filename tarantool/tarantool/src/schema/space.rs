@@ -68,7 +68,7 @@ pub fn create_space(name: &str, opts: &SpaceCreateOptions) -> Result<Space, Erro
         )
         .collect();
 
-    let mut sys_space: Space = SystemSpace::Space.into();
+    let sys_space: Space = SystemSpace::Space.into();
     sys_space.insert(&SpaceMetadata {
         id,
         user_id,
@@ -98,7 +98,7 @@ impl Encode for SpaceMetadata<'_> {}
 
 fn resolve_new_space_id() -> Result<u32, Error> {
     let sys_space: Space = SystemSpace::Space.into();
-    let mut sys_schema: Space = SystemSpace::Schema.into();
+    let sys_schema: Space = SystemSpace::Schema.into();
 
     // Try to update max_id in _schema space.
     let new_max_id = sys_schema.update(&("max_id",), &[("+", 1, 1)])?;
@@ -123,7 +123,7 @@ fn resolve_new_space_id() -> Result<u32, Error> {
 /// Drop a space.
 pub fn drop_space(space_id: u32) -> Result<(), Error> {
     // Delete automatically generated sequence.
-    let mut sys_space_sequence: Space = SystemSpace::SpaceSequence.into();
+    let sys_space_sequence: Space = SystemSpace::SpaceSequence.into();
     let seq_tuple = sys_space_sequence.delete(&(space_id,))?;
     match seq_tuple {
         None => (),
@@ -137,7 +137,7 @@ pub fn drop_space(space_id: u32) -> Result<(), Error> {
     }
 
     // Remove from _trigger.
-    let mut sys_trigger: Space = SystemSpace::Trigger.into();
+    let sys_trigger: Space = SystemSpace::Trigger.into();
     let sys_space_idx = sys_trigger.index("space_id").unwrap();
     for t in sys_space_idx
         .select(IteratorType::Eq, &(space_id,))?
@@ -148,7 +148,7 @@ pub fn drop_space(space_id: u32) -> Result<(), Error> {
     }
 
     // Remove from _fk_constraint.
-    let mut sys_fk_constraint: Space = SystemSpace::FkConstraint.into();
+    let sys_fk_constraint: Space = SystemSpace::FkConstraint.into();
     let sys_space_idx = sys_fk_constraint.index("child_id").unwrap();
     for t in sys_space_idx
         .select(IteratorType::Eq, &(space_id,))?
@@ -159,7 +159,7 @@ pub fn drop_space(space_id: u32) -> Result<(), Error> {
     }
 
     // CRemove from _ck_constraint.
-    let mut sys_ck_constraint: Space = SystemSpace::CkConstraint.into();
+    let sys_ck_constraint: Space = SystemSpace::CkConstraint.into();
     let sys_space_idx = sys_ck_constraint.index("primary").unwrap();
     for t in sys_space_idx
         .select(IteratorType::Eq, &(space_id,))?
@@ -170,7 +170,7 @@ pub fn drop_space(space_id: u32) -> Result<(), Error> {
     }
 
     // Remove from _func_index.
-    let mut sys_func_index: Space = SystemSpace::FuncIndex.into();
+    let sys_func_index: Space = SystemSpace::FuncIndex.into();
     let sys_space_idx = sys_func_index.index("primary").unwrap();
     for t in sys_space_idx
         .select(IteratorType::Eq, &(space_id,))?
@@ -182,7 +182,7 @@ pub fn drop_space(space_id: u32) -> Result<(), Error> {
 
     // Remove from _index.
     let sys_vindex: Space = SystemSpace::VIndex.into();
-    let mut sys_index: Space = SystemSpace::Index.into();
+    let sys_index: Space = SystemSpace::Index.into();
     let keys = sys_vindex
         .select(IteratorType::Eq, &(space_id,))?
         .collect::<Vec<Tuple>>();
@@ -198,11 +198,11 @@ pub fn drop_space(space_id: u32) -> Result<(), Error> {
     schema::revoke_object_privileges("space", space_id)?;
 
     // Remove from _truncate.
-    let mut sys_truncate: Space = SystemSpace::Truncate.into();
+    let sys_truncate: Space = SystemSpace::Truncate.into();
     sys_truncate.delete(&(space_id,))?;
 
     // Remove from _space.
-    let mut sys_space: Space = SystemSpace::Space.into();
+    let sys_space: Space = SystemSpace::Space.into();
     sys_space.delete(&(space_id,))?;
 
     Ok(())

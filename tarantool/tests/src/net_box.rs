@@ -319,11 +319,11 @@ pub fn select() {
 }
 
 pub fn insert() {
-    let mut local_space = Space::find("test_s1").unwrap();
+    let local_space = Space::find("test_s1").unwrap();
     local_space.truncate().unwrap();
 
     let conn = test_user_conn();
-    let mut remote_space = conn.space("test_s1").unwrap().unwrap();
+    let remote_space = conn.space("test_s1").unwrap().unwrap();
 
     let input = S1Record {
         id: 1,
@@ -342,7 +342,7 @@ pub fn insert() {
 }
 
 pub fn replace() {
-    let mut local_space = Space::find("test_s1").unwrap();
+    let local_space = Space::find("test_s1").unwrap();
     local_space.truncate().unwrap();
 
     let original_input = S1Record {
@@ -352,7 +352,7 @@ pub fn replace() {
     local_space.insert(&original_input).unwrap();
 
     let conn = test_user_conn();
-    let mut remote_space = conn.space("test_s1").unwrap().unwrap();
+    let remote_space = conn.space("test_s1").unwrap().unwrap();
 
     let new_input = S1Record {
         id: original_input.id,
@@ -376,7 +376,7 @@ pub fn replace() {
 }
 
 pub fn update() {
-    let mut local_space = Space::find("test_s1").unwrap();
+    let local_space = Space::find("test_s1").unwrap();
     local_space.truncate().unwrap();
 
     let input = S1Record {
@@ -386,7 +386,7 @@ pub fn update() {
     local_space.insert(&input).unwrap();
 
     let conn = test_user_conn();
-    let mut remote_space = conn.space("test_s1").unwrap().unwrap();
+    let remote_space = conn.space("test_s1").unwrap().unwrap();
 
     let update_result = remote_space
         .update(
@@ -417,7 +417,7 @@ pub fn update() {
 }
 
 pub fn upsert() {
-    let mut local_space = Space::find("test_s1").unwrap();
+    let local_space = Space::find("test_s1").unwrap();
     local_space.truncate().unwrap();
 
     let original_input = S1Record {
@@ -427,7 +427,7 @@ pub fn upsert() {
     local_space.insert(&original_input).unwrap();
 
     let conn = test_user_conn();
-    let mut remote_space = conn.space("test_s1").unwrap().unwrap();
+    let remote_space = conn.space("test_s1").unwrap().unwrap();
 
     remote_space
         .upsert(
@@ -473,7 +473,7 @@ pub fn upsert() {
 }
 
 pub fn delete() {
-    let mut local_space = Space::find("test_s1").unwrap();
+    let local_space = Space::find("test_s1").unwrap();
     local_space.truncate().unwrap();
 
     let input = S1Record {
@@ -483,7 +483,7 @@ pub fn delete() {
     local_space.insert(&input).unwrap();
 
     let conn = test_user_conn();
-    let mut remote_space = conn.space("test_s1").unwrap().unwrap();
+    let remote_space = conn.space("test_s1").unwrap().unwrap();
 
     let delete_result = remote_space
         .delete(&(input.id,), &Options::default())

@@ -44,7 +44,7 @@ pub fn prepared_source_query() {
 }
 
 pub fn prepared_no_params() {
-    let mut sp = create_sql_test_space("SQL_TEST").unwrap();
+    let sp = create_sql_test_space("SQL_TEST").unwrap();
 
     sp.insert(&(1, "one")).unwrap();
     sp.insert(&(2, "two")).unwrap();
@@ -66,7 +66,7 @@ pub fn prepared_no_params() {
 }
 
 pub fn prepared_large_query() {
-    let mut sp = create_sql_test_space("SQL_TEST").unwrap();
+    let sp = create_sql_test_space("SQL_TEST").unwrap();
 
     let mut i = 1;
     while i < 10000 {
@@ -106,7 +106,7 @@ pub fn prepared_invalid_params() {
 }
 
 pub fn prepared_with_unnamed_params() {
-    let mut sp = create_sql_test_space("SQL_TEST").unwrap();
+    let sp = create_sql_test_space("SQL_TEST").unwrap();
 
     sp.insert(&(101, "one")).unwrap();
     sp.insert(&(102, "two")).unwrap();
@@ -133,7 +133,7 @@ pub fn prepared_with_unnamed_params() {
 }
 
 pub fn prepared_with_named_params() {
-    let mut sp = create_sql_test_space("SQL_TEST").unwrap();
+    let sp = create_sql_test_space("SQL_TEST").unwrap();
 
     sp.insert(&(1, "one")).unwrap();
     sp.insert(&(2, "two")).unwrap();

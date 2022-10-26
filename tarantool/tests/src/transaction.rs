@@ -7,7 +7,7 @@ use tarantool::transaction::start_transaction;
 use crate::common::S1Record;
 
 pub fn transaction_commit() {
-    let mut space = Space::find("test_s1").unwrap();
+    let space = Space::find("test_s1").unwrap();
     space.truncate().unwrap();
 
     let input = S1Record {
@@ -27,7 +27,7 @@ pub fn transaction_commit() {
 }
 
 pub fn transaction_rollback() {
-    let mut space = Space::find("test_s1").unwrap();
+    let space = Space::find("test_s1").unwrap();
     space.truncate().unwrap();
 
     let result = start_transaction(|| -> Result<(), Error> {

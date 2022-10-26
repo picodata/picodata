@@ -79,6 +79,14 @@
 - `space::Builder::format` now accepts `impl IntoIterator<Item = impl Into<Field>>`.
 - `index::Builder::parts` now accepts `impl IntoIterator<Item = impl Into<Part>>`.
 - `space::Field` constructors accept `impl Into<String>`.
+- `Space`, `Index`, `RemoteSpace` & `RemoteIndex` mutating methods now don't
+    require `self` to be borrowed mutably. This is safe, because the only
+    mutation those methods do is confined in the tarantool api, which is robust
+    with respect to what rust mutability rules are supposed to protect from
+    (except for thread safety, which is not supported by any of tarantool apis).
+    Relaxing the `&mut self` requirement greatly increases the api's ease of use
+    with the only downside of added compile warning of "variable does not need
+    to be mutable" which is a small price to pay.
 
 ### Deprecated
 - `update_ops` & `upsert_ops` methods of `Space` & `Index` are deprecated in

@@ -290,7 +290,7 @@ pub fn extract_key() {
 }
 
 pub fn insert() {
-    let mut space = Space::find("test_s1").unwrap();
+    let space = Space::find("test_s1").unwrap();
     space.truncate().unwrap();
 
     let input = S1Record {
@@ -309,7 +309,7 @@ pub fn insert() {
 }
 
 pub fn replace() {
-    let mut space = Space::find("test_s1").unwrap();
+    let space = Space::find("test_s1").unwrap();
     space.truncate().unwrap();
 
     let original_input = S1Record {
@@ -337,7 +337,7 @@ pub fn replace() {
 }
 
 pub fn delete() {
-    let mut space = Space::find("test_s1").unwrap();
+    let space = Space::find("test_s1").unwrap();
     space.truncate().unwrap();
 
     let input = S1Record {
@@ -358,7 +358,7 @@ pub fn delete() {
 }
 
 pub fn update() {
-    let mut space = Space::find("test_s1").unwrap();
+    let space = Space::find("test_s1").unwrap();
     space.truncate().unwrap();
 
     let input = S1Record {
@@ -395,7 +395,7 @@ pub fn update() {
 }
 
 pub fn update_macro() {
-    let mut space = Space::find("test_s2").unwrap();
+    let space = Space::find("test_s2").unwrap();
 
     let input = S2Record {
         id: 100,
@@ -435,7 +435,7 @@ pub fn update_macro() {
 }
 
 pub fn update_index_macro() {
-    let mut space = Space::find("test_s2").unwrap();
+    let space = Space::find("test_s2").unwrap();
 
     let input = S2Record {
         id: 101,
@@ -481,7 +481,7 @@ pub fn update_index_macro() {
 }
 
 pub fn update_ops() {
-    let mut space = Space::builder("update_ops_test_space").create().unwrap();
+    let space = Space::builder("update_ops_test_space").create().unwrap();
     space.index_builder("pk").create().unwrap();
 
     space.insert(&(1, 0)).unwrap();
@@ -569,7 +569,7 @@ pub fn update_ops() {
 }
 
 pub fn upsert() {
-    let mut space = Space::find("test_s1").unwrap();
+    let space = Space::find("test_s1").unwrap();
     space.truncate().unwrap();
 
     let original_input = S1Record {
@@ -620,7 +620,7 @@ pub fn upsert() {
 }
 
 pub fn upsert_macro() {
-    let mut space = Space::find("test_s2").unwrap();
+    let space = Space::find("test_s2").unwrap();
 
     let original_input = S2Record {
         id: 111,
@@ -670,7 +670,7 @@ pub fn upsert_macro() {
 }
 
 pub fn truncate() {
-    let mut space = Space::find("test_s1").unwrap();
+    let space = Space::find("test_s1").unwrap();
     space.truncate().unwrap();
 
     assert_eq!(space.len().unwrap(), 0_usize);
@@ -926,7 +926,7 @@ pub fn drop_space(name: &str) {
 }
 
 pub fn index_parts() {
-    let mut space = Space::builder("index_parts_test")
+    let space = Space::builder("index_parts_test")
         .create().unwrap();
 
     let index = space.index_builder("pk")

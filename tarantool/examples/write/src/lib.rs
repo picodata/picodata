@@ -8,7 +8,7 @@ use tarantool::{
 
 #[proc]
 fn write() -> Result<(i32, String), String> {
-    let mut space = Space::find("capi_test")
+    let space = Space::find("capi_test")
         .ok_or_else(|| "Can't find space capi_test".to_string())?;
 
     let row = (1, "22".to_string());

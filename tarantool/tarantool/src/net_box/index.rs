@@ -80,7 +80,7 @@ impl RemoteIndex {
     /// The remote-call equivalent of the local call `Space::update(...)`
     /// (see [details](../index/struct.Index.html#method.update)).
     pub fn update<K, Op>(
-        &mut self,
+        &self,
         key: &K,
         ops: &[Op],
         options: &Options,
@@ -99,7 +99,7 @@ impl RemoteIndex {
     /// The remote-call equivalent of the local call `Space::upsert(...)`
     /// (see [details](../index/struct.Index.html#method.upsert)).
     pub fn upsert<T, Op>(
-        &mut self,
+        &self,
         value: &T,
         ops: &[Op],
         options: &Options,
@@ -119,7 +119,7 @@ impl RemoteIndex {
 
     /// The remote-call equivalent of the local call `Space::delete(...)`
     /// (see [details](../index/struct.Index.html#method.delete)).
-    pub fn delete<K>(&mut self, key: &K, options: &Options) -> Result<Option<Tuple>, Error>
+    pub fn delete<K>(&self, key: &K, options: &Options) -> Result<Option<Tuple>, Error>
     where
         K: ToTupleBuffer,
     {

@@ -92,7 +92,7 @@ fn create_test_spaces() -> Result<(), Error> {
         .create()?;
 
     // space.test_s2
-    let mut test_s2 = Space::builder("test_s2")
+    let test_s2 = Space::builder("test_s2")
         .format([
             ("id", FieldType::Unsigned),
             ("key", FieldType::String),
@@ -140,7 +140,7 @@ fn create_test_spaces() -> Result<(), Error> {
     }
 
     // space.with_array
-    let mut with_array = Space::builder("with_array")
+    let with_array = Space::builder("with_array")
         .field(Field::unsigned("id"))
         .field(Field::array("array"))
         .create()?;

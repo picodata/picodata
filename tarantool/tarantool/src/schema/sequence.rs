@@ -8,10 +8,10 @@ use crate::space::{Space, SystemSpace};
 pub fn drop_sequence(seq_id: u32) -> Result<(), Error> {
     schema::revoke_object_privileges("sequence", seq_id)?;
 
-    let mut sys_sequence: Space = SystemSpace::Sequence.into();
+    let sys_sequence: Space = SystemSpace::Sequence.into();
     sys_sequence.delete(&(seq_id,))?;
 
-    let mut sys_sequence_data: Space = SystemSpace::SequenceData.into();
+    let sys_sequence_data: Space = SystemSpace::SequenceData.into();
     sys_sequence_data.delete(&(seq_id,))?;
 
     Ok(())
