@@ -12,7 +12,7 @@ centos7-cmake3:
 
 reset-submodules:
 	git submodule foreach --recursive 'git clean -dxf && git reset --hard'
-	git submodule update --recursive
+	git submodule update --init --recursive
 
 tarantool-patch:
 	cd tarantool-sys && \
