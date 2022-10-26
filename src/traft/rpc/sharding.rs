@@ -1,11 +1,11 @@
 use ::tarantool::{proc, tlua};
 
-use crate::traft::{error::Error, node};
+use crate::traft::{error::Error, node, RaftTerm};
 
 #[proc(packed_args)]
 fn proc_sharding(req: Request) -> Result<Response, Error> {
     let node = node::global()?;
-    req.leader_and_term.check(&node.status())?;
+    node.status().check_term(req.term)?;
 
     let storage = &node.storage;
     let cfg = if let Some(weights) = req.weights {
@@ -38,7 +38,7 @@ fn proc_sharding(req: Request) -> Result<Response, Error> {
 /// Request to configure vshard.
 #[derive(Clone, Default, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Request {
-    pub leader_and_term: super::LeaderWithTerm,
+    pub term: RaftTerm,
     pub weights: Option<cfg::ReplicasetWeights>,
     pub bootstrap: bool,
 }

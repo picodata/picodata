@@ -29,8 +29,6 @@ pub enum Error {
         instance_rsid: String,
         requested_rsid: String,
     },
-    #[error("operation request from non leader {requested}, current leader is {current}")]
-    LeaderIdMismatch { requested: RaftId, current: RaftId },
     #[error("operation request from different term {requested}, current term is {current}")]
     TermMismatch {
         requested: RaftTerm,

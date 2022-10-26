@@ -50,7 +50,6 @@ use crate::traft::event::Event;
 use crate::traft::failover;
 use crate::traft::notify::Notify;
 use crate::traft::rpc::sharding::cfg::ReplicasetWeights;
-use crate::traft::rpc::LeaderWithTerm;
 use crate::traft::rpc::{replication, sharding};
 use crate::traft::storage::{State, StateKey};
 use crate::traft::ConnectionPool;
@@ -109,6 +108,18 @@ pub struct Status {
     pub term: RaftTerm,
     /// Current raft state
     pub raft_state: RaftState,
+}
+
+impl Status {
+    pub fn check_term(&self, requested_term: RaftTerm) -> Result<(), Error> {
+        if requested_term != self.term {
+            return Err(Error::TermMismatch {
+                requested: requested_term,
+                current: self.term,
+            });
+        }
+        Ok(())
+    }
 }
 
 /// The heart of `traft` module - the Node.
@@ -1053,7 +1064,7 @@ fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
                         (
                             peer.instance_id.clone(),
                             sharding::Request {
-                                leader_and_term: LeaderWithTerm { leader_id, term },
+                                term,
                                 ..Default::default()
                             },
                         )
@@ -1161,7 +1172,7 @@ fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
                     .iter()
                     .cloned()
                     .zip(repeat(replication::Request {
-                        leader_and_term: LeaderWithTerm { leader_id, term },
+                        term,
                         replicaset_instances: replicaset_iids.clone(),
                         replicaset_id: replicaset_id.clone(),
                         // TODO: what if someone goes offline/expelled?
@@ -1245,7 +1256,7 @@ fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
                     (
                         peer.instance_id.clone(),
                         sharding::Request {
-                            leader_and_term: LeaderWithTerm { leader_id, term },
+                            term,
                             bootstrap: !vshard_bootstrapped && peer.raft_id == leader_id,
                             ..Default::default()
                         },
@@ -1306,7 +1317,7 @@ fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
                 (|| -> Result<(), Error> {
                     let peer_ids = maybe_responding(&peers).map(|peer| peer.instance_id.clone());
                     let reqs = peer_ids.zip(repeat(sharding::Request {
-                        leader_and_term: LeaderWithTerm { leader_id, term },
+                        term,
                         weights: Some(new_weights.clone()),
                         ..Default::default()
                     }));

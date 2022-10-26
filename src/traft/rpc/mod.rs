@@ -1,7 +1,3 @@
-use crate::traft::error::Error;
-use crate::traft::node::Status;
-use crate::traft::{RaftId, RaftTerm};
-
 use ::tarantool::tuple::{DecodeOwned, Encode};
 
 use std::fmt::Debug;
@@ -10,33 +6,6 @@ use serde::de::DeserializeOwned;
 
 pub mod replication;
 pub mod sharding;
-
-#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct LeaderWithTerm {
-    pub leader_id: RaftId,
-    pub term: RaftTerm,
-}
-
-impl LeaderWithTerm {
-    /// Check if requested `self.leader_id` and `self.term`
-    /// match the current ones from `status`.
-    pub fn check(&self, status: &Status) -> Result<(), Error> {
-        let status_leader_id = status.leader_id.ok_or(Error::LeaderUnknown)?;
-        if self.leader_id != status_leader_id {
-            return Err(Error::LeaderIdMismatch {
-                requested: self.leader_id,
-                current: status_leader_id,
-            });
-        }
-        if self.term != status.term {
-            return Err(Error::TermMismatch {
-                requested: self.term,
-                current: status.term,
-            });
-        }
-        Ok(())
-    }
-}
 
 /// Types implementing this trait represent an RPC's (remote procedure call)
 /// arguments. This trait contains information about the request.
