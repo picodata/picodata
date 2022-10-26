@@ -99,9 +99,15 @@ pub mod cfg {
 
     #[derive(Default, Copy, Clone, Debug, PartialEq, Eq)]
     #[derive(tlua::PushInto, tlua::Push, tlua::LuaRead)]
+    /// Specifies the mode of operation for the bucket discovery fiber of vshard
+    /// router.
+    ///
+    /// See [`vshard.router.discovery_set`] for more details.
+    ///
+    /// [`vshard.router.discovery_set`]: https://www.tarantool.io/en/doc/latest/reference/reference_rock/vshard/vshard_router/#router-api-discovery-set
     pub enum DiscoveryMode {
-        #[default]
         Off,
+        #[default]
         On,
         Once,
     }
