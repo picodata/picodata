@@ -353,6 +353,22 @@ pub const fn str_eq(lhs: &str, rhs: &str) -> bool {
     }
 }
 
+////////////////////////////////////////////////////////////////////////////////
+/// Return terminal screen size in rows, columns.
+pub fn screen_size() -> (i32, i32) {
+    let mut rows = std::mem::MaybeUninit::uninit();
+    let mut cols = std::mem::MaybeUninit::uninit();
+    unsafe {
+        rl_get_screen_size(rows.as_mut_ptr(), cols.as_mut_ptr());
+        return (rows.assume_init() as _, cols.assume_init() as _);
+    }
+
+    use std::os::raw::c_int;
+    extern "C" {
+        pub fn rl_get_screen_size(rows: *mut c_int, cols: *mut c_int);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     #[test]
@@ -381,21 +397,5 @@ mod tests {
         assert!(!str_eq("\0x", "\0y"));
         assert!(!str_eq("foo1", "bar1"));
         assert!(!str_eq("foo1", "foo2"));
-    }
-}
-
-////////////////////////////////////////////////////////////////////////////////
-/// Return terminal screen size in rows, columns.
-pub fn screen_size() -> (i32, i32) {
-    let mut rows = std::mem::MaybeUninit::uninit();
-    let mut cols = std::mem::MaybeUninit::uninit();
-    unsafe {
-        rl_get_screen_size(rows.as_mut_ptr(), cols.as_mut_ptr());
-        return (rows.assume_init() as _, cols.assume_init() as _);
-    }
-
-    use std::os::raw::c_int;
-    extern "C" {
-        pub fn rl_get_screen_size(rows: *mut c_int, cols: *mut c_int);
     }
 }
