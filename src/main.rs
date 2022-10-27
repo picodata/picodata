@@ -20,7 +20,8 @@ use protobuf::Message as _;
 
 use crate::traft::rpc::sharding::cfg::ReplicasetWeights;
 use crate::traft::InstanceId;
-use crate::traft::{LogicalClock, RaftIndex, TargetGrade, UpdatePeerRequest};
+use crate::traft::{LogicalClock, RaftIndex, TargetGrade};
+use crate::traft::{UpdatePeerRequest, UpdatePeerResponse};
 use traft::error::Error;
 
 mod app;
@@ -952,17 +953,22 @@ fn postjoin(args: &args::Run, storage: Storage) {
         let now = Instant::now();
         let timeout = Duration::from_secs(10);
         match tarantool::net_box_call(&leader.peer_address, fn_name, &req, timeout) {
+            Ok(UpdatePeerResponse::Ok) => {
+                break;
+            }
+            Ok(UpdatePeerResponse::ErrNotALeader) => {
+                tlog!(Warning, "failed to activate myself: not a leader, retry...");
+                fiber::sleep(Duration::from_millis(100));
+                continue;
+            }
             Err(TntError::IO(e)) => {
-                tlog!(Warning, "failed to activate myself: {e}");
+                tlog!(Warning, "failed to activate myself: {e}, retry...");
                 fiber::sleep(timeout.saturating_sub(now.elapsed()));
                 continue;
             }
             Err(e) => {
                 tlog!(Error, "failed to activate myself: {e}");
                 std::process::exit(-1);
-            }
-            Ok(traft::UpdatePeerResponse { .. }) => {
-                break;
             }
         };
     }

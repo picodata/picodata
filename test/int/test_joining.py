@@ -1,6 +1,7 @@
 import funcy  # type: ignore
 import re
 import pytest
+from string import Template
 
 from conftest import (
     Cluster,
@@ -364,3 +365,33 @@ def test_fail_to_join(cluster: Cluster):
     """
     )
     assert {tuple(i) for i in joined_instances} == {(i1.instance_id, i1.raft_id)}
+
+
+def test_not_a_leader(cluster: Cluster):
+    # Scenario: join instance even if leader changed
+    #   Given a cluster
+    #   When new instance join the leader
+    #   And leader has been changed moment before
+    #   Then the joining instance does not fall
+    #   And the joining instance joined to new leader
+
+    cluster.deploy(instance_count=2)
+    i1, i2 = cluster.instances
+    i1.assert_raft_status("Leader")
+    i1.eval(
+        Template(
+            """
+        box.schema.func.drop(".raft_update_peer")
+        _G[""] = { raft_update_peer = function()
+            box.schema.func.create(".raft_update_peer", {language="C", if_not_exists=true})
+            require("net.box").connect("$i2_addr"):call("picolib.raft_timeout_now")
+            return {'ErrNotALeader'}
+        end }
+        """
+        ).substitute(i2_addr=i2.listen)
+    )
+    i3 = cluster.add_instance()
+
+    i1.assert_raft_status("Follower")
+    i2.assert_raft_status("Leader")
+    i3.assert_raft_status("Follower")

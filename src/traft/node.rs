@@ -362,13 +362,10 @@ impl NodeImpl {
     ///
     /// It's important to access topology through this function so that
     /// new changes are consistent with uncommitted ones.
-    fn topology_mut(&mut self) -> Result<&mut Topology, RaftError> {
-        let box_err = |e| StorageError::Other(Box::new(e));
-
+    fn topology_mut(&mut self) -> Result<&mut Topology, Error> {
         if self.raw_node.raft.state != RaftStateRole::Leader {
-            let e = RaftError::ConfChangeError("not a leader".into());
             self.topology_cache.take(); // invalidate the cache
-            return Err(e);
+            return Err(Error::NotALeader);
         }
 
         let current_term = self.raw_node.raft.term;
@@ -376,9 +373,8 @@ impl NodeImpl {
         let topology: Topology = unwrap_some_or! {
             self.topology_cache.take_or_drop(&current_term),
             {
-                let peers = self.storage.peers.all_peers().map_err(box_err)?;
-                let replication_factor = self.storage.state.get(StateKey::ReplicationFactor)
-                    .map_err(box_err)?.unwrap();
+                let peers = self.storage.peers.all_peers()?;
+                let replication_factor = self.storage.state.get(StateKey::ReplicationFactor)?.unwrap();
                 Topology::from_peers(peers).with_replication_factor(replication_factor)
             }
         };

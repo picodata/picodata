@@ -182,11 +182,11 @@ def test_deactivation(cluster2: Cluster):
         )
 
     # check idempotency
-    assert raft_update_peer(i2, target=i1, is_online=False) == [{}]
-    assert raft_update_peer(i2, target=i1, is_online=False) == [{}]
+    assert raft_update_peer(i2, target=i1, is_online=False) == ["Ok"]
+    assert raft_update_peer(i2, target=i1, is_online=False) == ["Ok"]
 
-    assert raft_update_peer(i2, target=i2, is_online=True) == [{}]
-    assert raft_update_peer(i2, target=i2, is_online=True) == [{}]
+    assert raft_update_peer(i2, target=i2, is_online=True) == ["Ok"]
+    assert raft_update_peer(i2, target=i2, is_online=True) == ["Ok"]
 
 
 def test_gl119_panic_in_on_shutdown(cluster2: Cluster):

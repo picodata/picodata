@@ -14,6 +14,10 @@ with the `YY.0M.MICRO` scheme.
 
 - Add Expel Node feature
 
+### Fixes
+
+- Fix bug when the leader changes during a new instance joins
+
 ## [22.07.0] - 2022-07-08
 
 ### Basic functionality

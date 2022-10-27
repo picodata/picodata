@@ -958,8 +958,9 @@ impl UpdatePeerRequest {
 ///////////////////////////////////////////////////////////////////////////////
 /// Response to a [`UpdatePeerRequest`]
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct UpdatePeerResponse {
-    // It's empty now, but it may be extended in future
+pub enum UpdatePeerResponse {
+    Ok,
+    ErrNotALeader,
 }
 impl Encode for UpdatePeerResponse {}
 

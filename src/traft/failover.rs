@@ -70,16 +70,24 @@ pub fn on_shutdown() {
         let now = Instant::now();
 
         match tarantool::net_box_call(&leader.peer_address, fn_name, &req, Duration::MAX) {
+            Ok(UpdatePeerResponse::Ok) => {
+                break;
+            }
+            Ok(UpdatePeerResponse::ErrNotALeader) => {
+                tlog!(Warning, "failed to deactivate myself: not a leader, retry...";
+                    "peer" => &leader.peer_address,
+                    "fn" => fn_name,
+                );
+                sleep(Duration::from_millis(100));
+                continue;
+            }
             Err(e) => {
-                tlog!(Warning, "failed to deactivate myself: {e}";
+                tlog!(Warning, "failed to deactivate myself: {e}, retry...";
                     "peer" => &leader.peer_address,
                     "fn" => fn_name,
                 );
                 sleep(wait_before_retry.saturating_sub(now.elapsed()));
                 continue;
-            }
-            Ok(UpdatePeerResponse { .. }) => {
-                break;
             }
         };
     }
@@ -125,8 +133,11 @@ fn raft_update_peer(
         }
         _ => true,
     });
-    node.handle_topology_request_and_wait(req.into())?;
-    Ok(UpdatePeerResponse {})
+    match node.handle_topology_request_and_wait(req.into()) {
+        Ok(_) => Ok(UpdatePeerResponse::Ok {}),
+        Err(Error::NotALeader) => Ok(UpdatePeerResponse::ErrNotALeader),
+        Err(e) => Err(Box::new(e)),
+    }
 }
 
 pub fn voters_needed(voters: usize, total: usize) -> i64 {

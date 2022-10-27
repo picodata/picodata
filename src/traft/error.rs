@@ -37,6 +37,8 @@ pub enum Error {
         requested: RaftTerm,
         current: RaftTerm,
     },
+    #[error("not a leader")]
+    NotALeader,
     #[error("error during execution of lua code: {0}")]
     Lua(#[from] LuaError),
     #[error("{0}")]
