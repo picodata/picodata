@@ -126,22 +126,26 @@ pub mod cfg {
     impl Cfg {
         #[inline]
         pub fn from_storage(storage: &Storage) -> Result<Self, Error> {
-            let replicaset_weights = storage.state.replicaset_weights()?;
+            let replicasets: HashMap<_, _> = storage.replicasets.iter()?
+                .map(|r| (r.replicaset_id.clone(), r))
+                .collect();
             let mut sharding: HashMap<String, Replicaset> = HashMap::new();
             for peer in storage.peers.iter()? {
                 if !peer.may_respond() {
                     continue;
                 }
-                let replicaset_id = peer.replicaset_id;
-                let replicaset = sharding.entry(peer.replicaset_uuid).or_insert_with(||
-                    Replicaset::with_weight(replicaset_weights.get(&replicaset_id).copied())
-                );
+                let (weight, is_master) = match replicasets.get(&peer.replicaset_id) {
+                    Some(r) => (Some(r.weight), r.master_id == peer.instance_id),
+                    None => (None, false),
+                };
+                let replicaset = sharding.entry(peer.replicaset_uuid)
+                    .or_insert_with(|| Replicaset::with_weight(weight));
                 replicaset.replicas.insert(
                     peer.instance_uuid,
                     Replica {
                         uri: format!("guest:@{}", peer.peer_address),
                         name: peer.instance_id.into(),
-                        master: peer.is_master,
+                        master: is_master,
                     },
                 );
             }

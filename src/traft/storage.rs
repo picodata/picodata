@@ -6,7 +6,7 @@ use thiserror::Error;
 use crate::define_str_enum;
 use crate::traft;
 use crate::traft::error::Error as TraftError;
-use crate::traft::rpc::sharding::cfg::{ReplicasetWeights, Weight};
+use crate::traft::rpc::sharding::cfg::ReplicasetWeights;
 use crate::traft::RaftId;
 use crate::traft::RaftIndex;
 
@@ -23,6 +23,7 @@ define_str_enum! {
     pub enum ClusterSpace {
         Group = "raft_group",
         State = "cluster_state",
+        Replicasets = "replicasets",
     }
 
     FromStr::Err = UnknownClusterSpace;
@@ -78,7 +79,6 @@ define_str_enum! {
     pub enum StateKey {
         ReplicationFactor = "replication_factor",
         VshardBootstrapped = "vshard_bootstrapped",
-        ReplicasetWeights = "replicaset_weights",
     }
 
     FromStr::Err = UnknownStateKey;
@@ -96,6 +96,7 @@ pub struct UnknownStateKey(pub String);
 pub struct Storage {
     pub state: State,
     pub peers: Peers,
+    pub replicasets: Replicasets,
     pub raft: RaftSpaceAccess,
 }
 
@@ -104,6 +105,7 @@ impl Storage {
         Ok(Self {
             state: State::new()?,
             peers: Peers::new()?,
+            replicasets: Replicasets::new()?,
             raft: RaftSpaceAccess::new()?,
         })
     }
@@ -162,20 +164,6 @@ impl State {
     }
 
     #[inline]
-    pub fn replicaset_weight(&self, replicaset_id: &str) -> tarantool::Result<Option<Weight>> {
-        let tuple = self.space.get(&[StateKey::ReplicasetWeights])?;
-        match tuple {
-            Some(tuple) => tuple.try_get(format!("value['{replicaset_id}']").as_str()),
-            None => Ok(None),
-        }
-    }
-
-    #[inline]
-    pub fn replicaset_weights(&self) -> tarantool::Result<ReplicasetWeights> {
-        Ok(self.get(StateKey::ReplicasetWeights)?.unwrap_or_default())
-    }
-
-    #[inline]
     pub fn vshard_bootstrapped(&self) -> tarantool::Result<bool> {
         Ok(self.get(StateKey::VshardBootstrapped)?.unwrap_or_default())
     }
@@ -186,6 +174,84 @@ impl State {
             .get(StateKey::ReplicationFactor)?
             .expect("replication_factor must be set at boot");
         Ok(res)
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Replicasets
+////////////////////////////////////////////////////////////////////////////////
+
+/// A struct for accessing storage of the cluster-wide key-value state
+/// (currently cluster_state).
+#[derive(Clone, Debug)]
+pub struct Replicasets {
+    space: Space,
+}
+
+impl Replicasets {
+    const SPACE_NAME: &'static str = ClusterSpace::Replicasets.as_str();
+    const INDEX_PRIMARY: &'static str = "pk";
+
+    pub fn new() -> tarantool::Result<Self> {
+        let space = Space::builder(Self::SPACE_NAME)
+            .is_local(true)
+            .is_temporary(false)
+            .field(("replicaset_id", FieldType::String))
+            .field(("replicaset_uuid", FieldType::String))
+            .field(("master_id", FieldType::String))
+            .field(("weight", FieldType::Double))
+            .if_not_exists(true)
+            .create()?;
+
+        space
+            .index_builder(Self::INDEX_PRIMARY)
+            .unique(true)
+            .part("replicaset_id")
+            .if_not_exists(true)
+            .create()?;
+
+        Ok(Self { space })
+    }
+
+    #[inline]
+    pub fn weights(&self) -> Result<ReplicasetWeights, TraftError> {
+        Ok(self.iter()?.map(|r| (r.replicaset_id, r.weight)).collect())
+    }
+
+    #[inline]
+    pub fn exists(&self, replicaset_id: &str) -> tarantool::Result<bool> {
+        Ok(self.space.get(&[replicaset_id])?.is_some())
+    }
+
+    #[inline]
+    pub fn iter(&self) -> Result<ReplicasetIter, TraftError> {
+        let iter = self.space.select(IteratorType::All, &())?;
+        Ok(iter.into())
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// ReplicasetIter
+////////////////////////////////////////////////////////////////////////////////
+
+pub struct ReplicasetIter {
+    iter: IndexIterator,
+}
+
+impl From<IndexIterator> for ReplicasetIter {
+    fn from(iter: IndexIterator) -> Self {
+        Self { iter }
+    }
+}
+
+impl Iterator for ReplicasetIter {
+    type Item = traft::Replicaset;
+    fn next(&mut self) -> Option<Self::Item> {
+        self.iter
+            .next()
+            .as_ref()
+            .map(Tuple::decode)
+            .map(Result::unwrap)
     }
 }
 
@@ -423,7 +489,6 @@ define_peer_fields! {
     PeerAddress    : String               = ("peer_address",    FieldType::String)
     ReplicasetId   : String               = ("replicaset_id",   FieldType::String)
     ReplicasetUuid : String               = ("replicaset_uuid", FieldType::String)
-    IsMaster       : bool                 = ("is_master",       FieldType::Boolean)
     CommitIndex    : RaftIndex            = ("commit_index",    FieldType::Unsigned)
     CurrentGrade   : traft::CurrentGrade  = ("current_grade",   FieldType::String)
     TargetGrade    : traft::TargetGrade   = ("target_grade",    FieldType::String)
@@ -591,13 +656,13 @@ inventory::submit!(crate::InnerTest {
 
         for peer in vec![
             // r1
-            ("i1", "i1-uuid", 1u64, "addr:1", "r1", "r1-uuid", false, 1u64, CurrentGrade::Online, TargetGrade::Online, &faildom,),
-            ("i2", "i2-uuid", 2u64, "addr:2", "r1", "r1-uuid", false,    2, CurrentGrade::Online, TargetGrade::Online, &faildom,),
+            ("i1", "i1-uuid", 1u64, "addr:1", "r1", "r1-uuid", 1u64, CurrentGrade::Online, TargetGrade::Online, &faildom,),
+            ("i2", "i2-uuid", 2u64, "addr:2", "r1", "r1-uuid",    2, CurrentGrade::Online, TargetGrade::Online, &faildom,),
             // r2
-            ("i3", "i3-uuid", 3u64, "addr:3", "r2", "r2-uuid", false,   10, CurrentGrade::Online, TargetGrade::Online, &faildom,),
-            ("i4", "i4-uuid", 4u64, "addr:4", "r2", "r2-uuid", false,   10, CurrentGrade::Online, TargetGrade::Online, &faildom,),
+            ("i3", "i3-uuid", 3u64, "addr:3", "r2", "r2-uuid",   10, CurrentGrade::Online, TargetGrade::Online, &faildom,),
+            ("i4", "i4-uuid", 4u64, "addr:4", "r2", "r2-uuid",   10, CurrentGrade::Online, TargetGrade::Online, &faildom,),
             // r3
-            ("i5", "i5-uuid", 5u64, "addr:5", "r3", "r3-uuid", false,   10, CurrentGrade::Online, TargetGrade::Online, &faildom,),
+            ("i5", "i5-uuid", 5u64, "addr:5", "r3", "r3-uuid",   10, CurrentGrade::Online, TargetGrade::Online, &faildom,),
         ] {
             raft_group.put(&peer).unwrap();
         }
@@ -621,9 +686,9 @@ inventory::submit!(crate::InnerTest {
                     " in unique index \"raft_id\"",
                     " in space \"raft_group\"",
                     " with old tuple",
-                    r#" - ["i1", "i1-uuid", 1, "addr:1", "r1", "r1-uuid", false, 1, "{gon}", "{tgon}", {{"A": "B"}}]"#,
+                    r#" - ["i1", "i1-uuid", 1, "addr:1", "r1", "r1-uuid", 1, "{gon}", "{tgon}", {{"A": "B"}}]"#,
                     " and new tuple",
-                    r#" - ["i99", "", 1, "", "", "", false, 0, "{goff}", "{tgon}", {{}}]"#,
+                    r#" - ["i99", "", 1, "", "", "", 0, "{goff}", "{tgon}", {{}}]"#,
                 ),
                 gon = CurrentGrade::Online,
                 goff = CurrentGrade::Offline,

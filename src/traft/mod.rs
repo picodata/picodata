@@ -436,9 +436,6 @@ pub struct Peer {
     pub replicaset_id: String,
     pub replicaset_uuid: String,
 
-    /// Signifies whether this instance is a master of it's replicaset or not.
-    pub is_master: bool,
-
     /// Index of the most recent raft log entry that persisted this peer.
     /// `0` means it's not committed yet.
     pub commit_index: RaftIndex,
@@ -497,6 +494,34 @@ impl std::fmt::Display for Peer {
                 }
             }
         }
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// Replicaset info
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+pub struct Replicaset {
+    /// Primary identifier.
+    pub replicaset_id: String,
+
+    /// UUID used to identify replicasets by tarantool's subsystems.
+    pub replicaset_uuid: String,
+
+    /// Instance id of the current replication leader.
+    pub master_id: InstanceId,
+
+    /// Sharding weight of the replicaset.
+    pub weight: rpc::sharding::cfg::Weight,
+}
+impl Encode for Replicaset {}
+
+impl std::fmt::Display for Replicaset {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(
+            f,
+            "({}, master: {}, weight: {})",
+            self.replicaset_id, self.master_id, self.weight,
+        )
     }
 }
 
@@ -909,7 +934,6 @@ pub enum PeerChange {
     CurrentGrade(CurrentGrade),
     TargetGrade(TargetGrade),
     FailureDomain(FailureDomain),
-    IsMaster(bool),
 }
 
 impl PeerChange {
@@ -918,7 +942,6 @@ impl PeerChange {
             Self::CurrentGrade(value) => peer.current_grade = value,
             Self::TargetGrade(value) => peer.target_grade = value,
             Self::FailureDomain(value) => peer.failure_domain = value,
-            Self::IsMaster(value) => peer.is_master = value,
         }
     }
 }
@@ -946,11 +969,6 @@ impl UpdatePeerRequest {
     #[inline]
     pub fn with_failure_domain(mut self, value: FailureDomain) -> Self {
         self.changes.push(PeerChange::FailureDomain(value));
-        self
-    }
-    #[inline]
-    pub fn with_is_master(mut self, value: bool) -> Self {
-        self.changes.push(PeerChange::IsMaster(value));
         self
     }
 }

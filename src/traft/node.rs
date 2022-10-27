@@ -51,7 +51,7 @@ use crate::traft::failover;
 use crate::traft::notify::Notify;
 use crate::traft::rpc::sharding::cfg::ReplicasetWeights;
 use crate::traft::rpc::{replication, sharding, sync};
-use crate::traft::storage::{State, StateKey};
+use crate::traft::storage::StateKey;
 use crate::traft::ConnectionPool;
 use crate::traft::LogicalClock;
 use crate::traft::Op;
@@ -1189,13 +1189,23 @@ fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
                     );
                 }
 
-                let mut req = UpdatePeerRequest::new(peer.instance_id.clone(), cluster_id)
-                    .with_current_grade(CurrentGrade::Replicated);
-                if replicaset_size == 1 {
-                    // TODO: ignore expelled peers
-                    // TODO: ignore offline peers
-                    req = req.with_is_master(true);
+                if replicaset_size == 1 && !storage.replicasets.exists(&peer.replicaset_id)? {
+                    let vshard_bootstrapped = storage.state.vshard_bootstrapped()?;
+                    let req = traft::OpDML::insert(
+                        ClusterSpace::Replicasets,
+                        &traft::Replicaset {
+                            replicaset_id: peer.replicaset_id.clone(),
+                            replicaset_uuid: peer.replicaset_uuid.clone(),
+                            master_id: peer.instance_id.clone(),
+                            weight: if vshard_bootstrapped { 0. } else { 1. },
+                        },
+                    )?;
+                    // TODO: don't hard code the timeout
+                    node.propose_and_wait(req, Duration::from_secs(3))??;
                 }
+
+                let req = UpdatePeerRequest::new(peer.instance_id.clone(), cluster_id)
+                    .with_current_grade(CurrentGrade::Replicated);
                 node.handle_topology_request_and_wait(req.into())?;
 
                 Ok(())
@@ -1205,37 +1215,6 @@ fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
                 // TODO: don't hard code timeout
                 event::wait_timeout(Event::TopologyChanged, Duration::from_secs(1)).unwrap();
                 continue 'governor;
-            }
-
-            let replicaset_weight = storage
-                .state
-                .replicaset_weight(replicaset_id)
-                .expect("storage error");
-            if replicaset_weight.is_none() {
-                if let Err(e) = (|| -> Result<(), Error> {
-                    let vshard_bootstrapped = storage.state.vshard_bootstrapped()?;
-                    let weight = if vshard_bootstrapped { 0. } else { 1. };
-                    let mut ops = UpdateOps::new();
-                    ops.assign(format!("['value']['{replicaset_id}']"), weight)?;
-                    let req = traft::OpDML::update(
-                        ClusterSpace::State,
-                        &[StateKey::ReplicasetWeights],
-                        ops,
-                    )?;
-                    // TODO: don't hard code the timeout
-                    node.propose_and_wait(req, Duration::from_secs(3))??;
-                    Ok(())
-                })() {
-                    // TODO: what if all replicas have changed their grade
-                    // successfully, but the replicaset_weight failed to set?
-                    tlog!(Warning, "failed to set replicaset weight: {e}";
-                        "replicaset_id" => replicaset_id,
-                    );
-
-                    // TODO: don't hard code timeout
-                    event::wait_timeout(Event::TopologyChanged, Duration::from_secs(1)).unwrap();
-                    continue 'governor;
-                }
             }
 
             tlog!(Info, "configured replication"; "replicaset_id" => replicaset_id);
@@ -1311,19 +1290,19 @@ fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
             .iter()
             .find(|peer| peer.has_grades(CurrentGrade::ShardingInitialized, TargetGrade::Online));
         if let Some(peer) = to_update_weights {
-            let res = if let Some(new_weights) =
-                get_new_weights(maybe_responding(&peers), &storage.state)
+            let res = if let Some(added_weights) =
+                get_weight_changes(maybe_responding(&peers), &storage)
             {
                 (|| -> Result<(), Error> {
-                    node.propose_and_wait(
-                        // TODO: OpDML::update with just the changes
-                        traft::OpDML::replace(
-                            ClusterSpace::State,
-                            &(StateKey::ReplicasetWeights, new_weights),
-                        )?,
-                        // TODO: don't hard code the timeout
-                        Duration::from_secs(3),
-                    )??;
+                    for (replicaset_id, weight) in added_weights {
+                        let mut ops = UpdateOps::new();
+                        ops.assign("weight", weight)?;
+                        node.propose_and_wait(
+                            traft::OpDML::update(ClusterSpace::Replicasets, &[replicaset_id], ops)?,
+                            // TODO: don't hard code the timeout
+                            Duration::from_secs(3),
+                        )??;
+                    }
 
                     let peer_ids = maybe_responding(&peers).map(|peer| peer.instance_id.clone());
                     let reqs = peer_ids.zip(repeat(sharding::Request {
@@ -1424,14 +1403,14 @@ fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
     }
 
     #[inline(always)]
-    fn get_new_weights<'p>(
+    fn get_weight_changes<'p>(
         peers: impl IntoIterator<Item = &'p Peer>,
-        state: &State,
+        storage: &Storage,
     ) -> Option<ReplicasetWeights> {
-        let replication_factor = state.replication_factor().expect("storage error");
-        let mut replicaset_weights = state.replicaset_weights().expect("storage error");
+        let replication_factor = storage.state.replication_factor().expect("storage error");
+        let replicaset_weights = storage.replicasets.weights().expect("storage error");
         let mut replicaset_sizes = HashMap::new();
-        let mut weights_changed = false;
+        let mut weight_changes = HashMap::new();
         for peer @ Peer { replicaset_id, .. } in peers {
             if !peer.may_respond() {
                 continue;
@@ -1439,11 +1418,10 @@ fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
             let replicaset_size = replicaset_sizes.entry(replicaset_id.clone()).or_insert(0);
             *replicaset_size += 1;
             if *replicaset_size >= replication_factor && replicaset_weights[replicaset_id] == 0. {
-                weights_changed = true;
-                *replicaset_weights.get_mut(replicaset_id).unwrap() = 1.;
+                weight_changes.entry(replicaset_id.clone()).or_insert(1.);
             }
         }
-        weights_changed.then_some(replicaset_weights)
+        (!weight_changes.is_empty()).then_some(weight_changes)
     }
 
     #[inline(always)]

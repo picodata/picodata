@@ -18,7 +18,6 @@ use traft::Storage;
 use clap::StructOpt as _;
 use protobuf::Message as _;
 
-use crate::traft::rpc::sharding::cfg::ReplicasetWeights;
 use crate::traft::InstanceId;
 use crate::traft::{LogicalClock, RaftIndex, TargetGrade};
 use crate::traft::{UpdatePeerRequest, UpdatePeerResponse};
@@ -738,14 +737,6 @@ fn start_boot(args: &args::Run) {
             traft::OpDML::insert(
                 ClusterSpace::State,
                 &(StateKey::ReplicationFactor, args.init_replication_factor),
-            )
-            .expect("cannot fail")
-            .into(),
-        );
-        init_entries_push_op(
-            traft::OpDML::insert(
-                ClusterSpace::State,
-                &(StateKey::ReplicasetWeights, ReplicasetWeights::new()),
             )
             .expect("cannot fail")
             .into(),
