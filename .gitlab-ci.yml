@@ -1,6 +1,7 @@
 stages:
-  - prebuild
-  - build
+  - build-base-image
+  - test
+  - push-base-image
   - pack-centos
   - pack-ubuntu
   - pack-debian
@@ -8,85 +9,148 @@ stages:
   - deploy
   - test_rpm
 
-#workflow:
-#  rules:
-#    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-#    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-#    - if: $CI_PIPELINE_SOURCE == "web"
+workflow:
+  # See https://docs.gitlab.com/ee/ci/jobs/job_control.html#avoid-duplicate-pipelines
+  rules:
+    # To avoid duplicate pipelines we disable merge request events,
+    # leaving only pushes and manual triggering.
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      when: never
+    - if: $CI_PIPELINE_SOURCE == "push"
+    - if: $CI_PIPELINE_SOURCE == "web"
 
 variables:
-  GIT_DEPTH: 0
-  GIT_SUBMODULE_STRATEGY: recursive
-  BASE_IMAGE: build-base:latest
-  CARGO_INCREMENTAL: 0
-  CARGO_HOME: ${CI_PROJECT_DIR}/.cargo
-  REGISTRY_IMAGE: docker-public.binary.picodata.io
-  RAW_REGISTRY: https://binary.picodata.io/repository/raw-private/
+  BASE_IMAGE: docker-public.binary.picodata.io/picodata-build-base
+  CARGO_HOME: /cache/.cargo
+  CACHE_PATHS: target .venv
+  CACHE_ARCHIVE: /cache/picodata.tar
 
-
-  #
-  # See also:
-  #   GitLab CI/CD predefined variables
-  #   https://docs.gitlab.com/ee/ci/variables/predefined_variables.html
-  #
-  # CI_COMMIT_SHA: The commit revision the project is built for
-  # CI_REGISTRY: The address of the GitLab Container Registry
-  # CI_REGISTRY_USER: The username to push containers to the project’s
-  #   GitLab Container Registry
-  # CI_REGISTRY_PASSWORD: The password to push containers to the project’s
-  #   GitLab Container Registry
-  # CI_REGISTRY_IMAGE: The address of the project’s Container Registry
-
-docker-build-base:
-  stage: prebuild
-  image: docker:20
+build-base-image:
+  stage: build-base-image
   tags:
-    - dind
+    - shell
   rules:
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-      changes:
-        - docker-build-base/Dockerfile
+    - changes: &build-base-changes
+        paths:
+          - docker-build-base/**
+          - .gitlab-ci.yml
+        compare_to: master
+  variables:
+    GIT_DEPTH: 1
+    GIT_STRATEGY: fetch
+    GIT_SUBMODULE_STRATEGY: none
+  script:
+    - docker pull ${BASE_IMAGE}:latest || true
+    - >
+      docker build
+      --cache-from ${BASE_IMAGE}:latest
+      --label GIT_COMMIT=${CI_COMMIT_SHA}
+      -t ${BASE_IMAGE}:${CI_COMMIT_SHA}
+      -f ./docker-build-base/Dockerfile
+      ./docker-build-base
+
+push-base-image:
+  stage: push-base-image
+  tags:
+    - shell
+  rules:
+    - changes: *build-base-changes
+      if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
   before_script:
     - mkdir -p $CI_PROJECT_DIR/.docker
     - echo $DOCKER_AUTH_RW > $CI_PROJECT_DIR/.docker/config.json
   script:
-    - docker pull ${REGISTRY_IMAGE}/${BASE_IMAGE} || true
-    - >
-      docker build
-      --pull
-      --label GIT_COMMIT=${CI_COMMIT_SHA}
-      --cache-from ${REGISTRY_IMAGE}/${BASE_IMAGE}
-      -t ${REGISTRY_IMAGE}/${BASE_IMAGE}
-      -f ./docker-build-base/Dockerfile
-      ./docker-build-base
-    - docker --config $CI_PROJECT_DIR/.docker/ push ${REGISTRY_IMAGE}/${BASE_IMAGE}
+    - docker image tag ${BASE_IMAGE}:${CI_COMMIT_SHA} ${BASE_IMAGE}:latest
+    - docker --config $CI_PROJECT_DIR/.docker/ push ${BASE_IMAGE}:latest
 
-build:
-  image: ${REGISTRY_IMAGE}/${BASE_IMAGE}
-  stage: build
+test:
+  extends: .test
+  rules:
+    # If some of docker files changed,
+    # then skip this job (and run
+    # test-base-image instead).
+    - changes: *build-base-changes
+      when: never
+    # else
+    - when: on_success
+  image:
+    name: ${BASE_IMAGE}:latest
+    pull_policy: if-not-present
+
+test-base-image:
+  extends: .test
+  rules:
+    - changes: *build-base-changes
+  image:
+    name: ${BASE_IMAGE}:${CI_COMMIT_SHA}
+    pull_policy: never
+
+.test:
+  stage: test
   tags:
     - docker
+  variables:
+    GIT_DEPTH: 100
+    GIT_SUBMODULE_STRATEGY: recursive
+    RUST_BACKTRACE: 1
+  before_script:
+    # Gitlab CI implicitly clones specific refs (e.g. `refs/pipelines/xxxxxxx`),
+    # but it doesn't imply fetching tags. We clone them manually with the
+    # `git fetch` command.
+    #
+    # Tags in `tarantool-sys` and `luajit` submodules are necessary for
+    # the build scripts. Without them the job fails.
+    - |
+      # Fetch tags
+      ci-log-section start "fetch-submodule-tags" Fetching tags for submodules
+      for s in tarantool-sys tarantool-sys/third_party/luajit; do
+        echo "Fetching tag for $s"
+        pushd $s
+        until git describe; do git fetch --deepen 100; done
+        popd
+      done
+      ci-log-section end "fetch-submodule-tags"
+
+    # Gitlab CI caching is shit. So we implement it manually
+    - |
+      # Restore cache
+      if [ -f "${CACHE_ARCHIVE}" ]; then
+        ci-log-section start "restore-cache" Restoring cache from ${CACHE_ARCHIVE} ...
+        tar -xf ${CACHE_ARCHIVE}
+        echo "Ok"
+        du -sh ${CACHE_PATHS} || true
+        ci-log-section end "restore-cache"
+      else
+        echo "No cache found"
+      fi
   script:
-    # - git submodule foreach --recursive 'git fetch --tags; git describe --always'
-    - pushd tarantool-sys; git describe; popd
-    - pushd tarantool-sys/third_party/luajit; git describe; popd
-    - export RUST_BACKTRACE=1
     - cargo -V
     - cargo build --locked
     - cargo test --locked
     - cargo fmt -- -v --check
     - cargo clippy --version
     - cargo clippy -- --deny clippy::all
-    - PIPENV_VENV_IN_PROJECT=1 PIP_NO_CACHE_DIR=true python3.10 -m pipenv install --deploy
+    - |
+      # Pipenv install
+      ci-log-section start "pipenv-install" Installing pip dependencies ...
+      PIPENV_VENV_IN_PROJECT=1 PIP_NO_CACHE_DIR=true python3.10 -m pipenv install --deploy
+      ci-log-section end "pipenv-install"
     - pipenv run pytest --numprocesses 2 -v
     - pipenv run lint
-  cache:
-    paths:
-      - target
-      - .cargo
-      - .venv
+    - |
+      # Save cache
+      if [ "$CI_COMMIT_BRANCH" == "$CI_DEFAULT_BRANCH" ]; then
+        ci-log-section start "save-cache" Saving cache to ${CACHE_ARCHIVE} ...
+        du -sh ${CACHE_PATHS} || true
+        tar -cf "${CACHE_ARCHIVE}" ${CACHE_PATHS}
+        echo Ok
+        du -sh ${CACHE_ARCHIVE}
+        ci-log-section end "save-cache"
+      else
+        echo "Skip saving cache on a non-master branch"
+      fi
 
-build-package-centos:
+pack-centos:
   stage: pack-centos
   tags:
     - shell
@@ -107,7 +171,7 @@ build-package-centos:
       - build/picodata*.rpm
   dependencies: []
 
-build-package-ubuntu:
+pack-ubuntu:
   tags:
     - shell
   stage: pack-ubuntu
@@ -127,7 +191,7 @@ build-package-ubuntu:
       - build_ubuntu/*.deb
   dependencies: []
 
-build-package-debian:
+pack-debian:
   tags:
     - shell
   stage: pack-debian
@@ -166,7 +230,7 @@ sign-rpm-packages:
     paths:
       - build/picodata*.rpm
   dependencies:
-    - build-package-centos
+    - pack-centos
 
 deploy-job:
   stage: deploy
@@ -205,8 +269,8 @@ deploy-job:
     - ssh -o stricthostkeychecking=no ansible@94.26.239.246 "reprepro -b /data/nginx/www/packrepo/tarantool-picodata/debian/ -C main includedeb bullseye ~/.deb/debian/picodata*bullseye*deb; rm ~/.deb/debian/picodata*bullseye*deb"
     - echo "debian packets successfully deployed."
   dependencies:
-    - build-package-ubuntu
-    - build-package-debian
+    - pack-ubuntu
+    - pack-debian
     - sign-rpm-packages
 
 test_el7:

@@ -1,0 +1,26 @@
+#!/bin/bash
+
+usage() {
+    echo "Usage:"
+    echo "   ci-log-section start SECTION_NAME SECTION_HEADER"
+    echo "   ci-log-section end SECTION_NAME"
+    exit -1
+}
+
+# See: https://docs.gitlab.com/ee/ci/jobs/#custom-collapsible-sections
+
+if [ "$1" == "start" ]; then
+    [ -n "$2" ] || usage
+    echo -en "\e[0K"
+    echo -en "section_start:$(date +%s):$2[collapsed=true]"
+    echo -en "\r\e[0K"
+    echo "${@:3}"
+elif [ "$1" == "end" ]; then
+    [ -n "$2" ] || usage
+    echo -en "\e[0K"
+    echo -en "section_end:$(date +%s):$2"
+    echo -en "\r\e[0K"
+    echo
+else
+    usage
+fi
