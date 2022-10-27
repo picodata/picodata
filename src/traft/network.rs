@@ -212,7 +212,7 @@ impl PoolWorker {
                     "raft_id" => raft_id,
                 );
                 drop(conn);
-                cond.wait_timeout(opts.connect_timeout - iter_start.elapsed());
+                cond.wait_timeout(opts.connect_timeout.saturating_sub(iter_start.elapsed()));
                 continue;
             }
 
