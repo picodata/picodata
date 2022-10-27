@@ -50,14 +50,14 @@ macro_rules! auto_impl {
         $(
             $(#[$meta:meta])*
             $vis:vis fn $setter:ident(
-                &mut self,
+                &self,
                 $mod:ident $key:ident: $ty:ty
             ) -> _;
         )+
     ) => {
         $(
             $(#[$meta])*
-            $vis fn $setter(&mut self, value: $ty) -> tarantool::Result<()> {
+            $vis fn $setter(&self, value: $ty) -> tarantool::Result<()> {
                 const _: () = assert!(str_eq(
                     stringify!($setter),
                     concat!("persist_", stringify!($key))
@@ -186,24 +186,24 @@ impl RaftSpaceAccess {
     }
 
     auto_impl! {
-        pub fn persist_raft_id(&mut self, insert raft_id: RaftId) -> _;
-        pub fn persist_instance_id(&mut self, insert instance_id: &str) -> _;
-        pub fn persist_cluster_id(&mut self, insert cluster_id: &str) -> _;
+        pub fn persist_raft_id(&self, insert raft_id: RaftId) -> _;
+        pub fn persist_instance_id(&self, insert instance_id: &str) -> _;
+        pub fn persist_cluster_id(&self, insert cluster_id: &str) -> _;
 
-        pub fn persist_gen(&mut self, replace gen: u64) -> _;
-        fn persist_term(&mut self, replace term: RaftTerm) -> _;
-        fn persist_vote(&mut self, replace vote: RaftId) -> _;
-        pub fn persist_commit(&mut self, replace commit: RaftIndex) -> _;
-        pub fn persist_applied(&mut self, replace applied: RaftIndex) -> _;
+        pub fn persist_gen(&self, replace gen: u64) -> _;
+        fn persist_term(&self, replace term: RaftTerm) -> _;
+        fn persist_vote(&self, replace vote: RaftId) -> _;
+        pub fn persist_commit(&self, replace commit: RaftIndex) -> _;
+        pub fn persist_applied(&self, replace applied: RaftIndex) -> _;
 
-        fn persist_voters(&mut self, replace voters: &[RaftId]) -> _;
-        fn persist_learners(&mut self, replace learners: &[RaftId]) -> _;
-        fn persist_voters_outgoing(&mut self, replace voters_outgoing: &[RaftId]) -> _;
-        fn persist_learners_next(&mut self, replace learners_next: &[RaftId]) -> _;
-        fn persist_auto_leave(&mut self, replace auto_leave: bool) -> _;
+        fn persist_voters(&self, replace voters: &[RaftId]) -> _;
+        fn persist_learners(&self, replace learners: &[RaftId]) -> _;
+        fn persist_voters_outgoing(&self, replace voters_outgoing: &[RaftId]) -> _;
+        fn persist_learners_next(&self, replace learners_next: &[RaftId]) -> _;
+        fn persist_auto_leave(&self, replace auto_leave: bool) -> _;
     }
 
-    pub fn persist_conf_state(&mut self, cs: &raft::ConfState) -> tarantool::Result<()> {
+    pub fn persist_conf_state(&self, cs: &raft::ConfState) -> tarantool::Result<()> {
         self.persist_voters(&cs.voters)?;
         self.persist_learners(&cs.learners)?;
         self.persist_voters_outgoing(&cs.voters_outgoing)?;
@@ -212,7 +212,7 @@ impl RaftSpaceAccess {
         Ok(())
     }
 
-    pub fn persist_hard_state(&mut self, hs: &raft::HardState) -> tarantool::Result<()> {
+    pub fn persist_hard_state(&self, hs: &raft::HardState) -> tarantool::Result<()> {
         self.persist_term(hs.term)?;
         self.persist_vote(hs.vote)?;
         self.persist_commit(hs.commit)?;
@@ -338,7 +338,7 @@ inventory::submit!(crate::InnerTest {
             Err("log unavailable".into())
         );
 
-        let mut raft_log = Space::find(RaftSpaceAccess::SPACE_RAFT_LOG).unwrap();
+        let raft_log = Space::find(RaftSpaceAccess::SPACE_RAFT_LOG).unwrap();
 
         raft_log.put(&(1337, 99, 1, "", ())).unwrap();
         assert_err!(
@@ -389,7 +389,7 @@ inventory::submit!(crate::InnerTest {
     body: || {
         use ::raft::Storage as S;
 
-        let mut storage = RaftSpaceAccess::new().unwrap();
+        let storage = RaftSpaceAccess::new().unwrap();
 
         assert_eq!(
             S::initial_state(&storage).unwrap().hard_state,
@@ -412,7 +412,7 @@ inventory::submit!(crate::InnerTest {
     body: || {
         use ::raft::Storage as S;
 
-        let mut storage = RaftSpaceAccess::new().unwrap();
+        let storage = RaftSpaceAccess::new().unwrap();
 
         assert_eq!(
             S::initial_state(&storage).unwrap().conf_state,
@@ -436,8 +436,8 @@ inventory::submit!(crate::InnerTest {
 inventory::submit!(crate::InnerTest {
     name: "test_storage2_other_state",
     body: || {
-        let mut storage = RaftSpaceAccess::new().unwrap();
-        let mut raft_state = Space::find(RaftSpaceAccess::SPACE_RAFT_STATE).unwrap();
+        let storage = RaftSpaceAccess::new().unwrap();
+        let raft_state = Space::find(RaftSpaceAccess::SPACE_RAFT_STATE).unwrap();
 
         assert_eq!(storage.cluster_id().unwrap(), None);
 

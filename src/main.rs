@@ -845,7 +845,7 @@ fn start_join(args: &args::Run, leader_address: String) {
         ..Default::default()
     };
 
-    let mut storage = init_common(args, &cfg);
+    let storage = init_common(args, &cfg);
 
     let raft_id = resp.peer.raft_id;
     start_transaction(|| -> Result<(), TntError> {

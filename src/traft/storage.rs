@@ -10,7 +10,6 @@ use crate::traft::rpc::sharding::cfg::{ReplicasetWeights, Weight};
 use crate::traft::RaftId;
 use crate::traft::RaftIndex;
 
-use std::cell::UnsafeCell;
 use std::marker::PhantomData;
 
 use super::RaftSpaceAccess;
@@ -116,10 +115,9 @@ impl Storage {
 
 /// A struct for accessing storage of the cluster-wide key-value state
 /// (currently cluster_state).
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct State {
-    space: UnsafeCell<Space>,
-    index_primary: Index,
+    space: Space,
 }
 
 impl State {
@@ -135,28 +133,14 @@ impl State {
             .if_not_exists(true)
             .create()?;
 
-        let index_primary = space
+        space
             .index_builder(Self::INDEX_PRIMARY)
             .unique(true)
             .part("key")
             .if_not_exists(true)
             .create()?;
 
-        Ok(Self {
-            space: UnsafeCell::new(space),
-            index_primary,
-        })
-    }
-
-    #[inline(always)]
-    fn space(&self) -> &Space {
-        unsafe { &*self.space.get() }
-    }
-
-    #[allow(clippy::mut_from_ref)]
-    #[inline(always)]
-    fn space_mut(&self) -> &mut Space {
-        unsafe { &mut *self.space.get() }
+        Ok(Self { space })
     }
 
     #[inline]
@@ -164,7 +148,7 @@ impl State {
     where
         T: DecodeOwned,
     {
-        match self.space().get(&[key])? {
+        match self.space.get(&[key])? {
             Some(t) => t.field(1),
             None => Ok(None),
         }
@@ -173,13 +157,13 @@ impl State {
     #[allow(dead_code)]
     #[inline]
     pub fn put(&self, key: StateKey, value: &impl serde::Serialize) -> tarantool::Result<()> {
-        self.space_mut().put(&(key, value))?;
+        self.space.put(&(key, value))?;
         Ok(())
     }
 
     #[inline]
     pub fn replicaset_weight(&self, replicaset_id: &str) -> tarantool::Result<Option<Weight>> {
-        let tuple = self.space().get(&[StateKey::ReplicasetWeights])?;
+        let tuple = self.space.get(&[StateKey::ReplicasetWeights])?;
         match tuple {
             Some(tuple) => tuple.try_get(format!("value['{replicaset_id}']").as_str()),
             None => Ok(None),
@@ -205,24 +189,15 @@ impl State {
     }
 }
 
-impl Clone for State {
-    fn clone(&self) -> Self {
-        Self {
-            space: UnsafeCell::new(self.space().clone()),
-            index_primary: self.index_primary.clone(),
-        }
-    }
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 // Peers
 ////////////////////////////////////////////////////////////////////////////////
 
 /// A struct for accessing storage of all the cluster peers
 /// (currently raft_group).
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Peers {
-    space_peers: UnsafeCell<Space>,
+    space: Space,
     index_instance_id: Index,
     index_raft_id: Index,
     index_replicaset_id: Index,
@@ -265,36 +240,23 @@ impl Peers {
             .create()?;
 
         Ok(Self {
-            space_peers: UnsafeCell::new(space_peers),
+            space: space_peers,
             index_instance_id,
             index_raft_id,
             index_replicaset_id,
         })
     }
 
-    #[inline(always)]
-    fn space(&self) -> &Space {
-        // This is safe, because data inside Space struct itself never changes.
-        unsafe { &*self.space_peers.get() }
-    }
-
-    #[allow(clippy::mut_from_ref)]
-    #[inline(always)]
-    fn space_mut(&self) -> &mut Space {
-        // This is safe, because data inside Space struct itself never changes.
-        unsafe { &mut *self.space_peers.get() }
-    }
-
     #[inline]
     pub fn put(&self, peer: &traft::Peer) -> tarantool::Result<()> {
-        self.space_mut().replace(peer)?;
+        self.space.replace(peer)?;
         Ok(())
     }
 
     #[allow(dead_code)]
     #[inline]
     pub fn delete(&self, instance_id: &str) -> tarantool::Result<()> {
-        self.space_mut().delete(&[instance_id])?;
+        self.space.delete(&[instance_id])?;
         Ok(())
     }
 
@@ -325,19 +287,19 @@ impl Peers {
     where
         F: PeerFieldDef,
     {
-        let iter = self.space().select(IteratorType::All, &())?;
+        let iter = self.space.select(IteratorType::All, &())?;
         Ok(PeersFields::new(iter))
     }
 
     #[inline]
     pub fn iter(&self) -> tarantool::Result<PeerIter> {
-        let iter = self.space().select(IteratorType::All, &())?;
+        let iter = self.space.select(IteratorType::All, &())?;
         Ok(PeerIter::new(iter))
     }
 
     #[inline]
     pub fn all_peers(&self) -> tarantool::Result<Vec<traft::Peer>> {
-        self.space()
+        self.space
             .select(IteratorType::All, &())?
             .map(|tuple| tuple.decode())
             .collect()
@@ -379,17 +341,6 @@ impl Peers {
             .select(IteratorType::Eq, &[replicaset_id])?
             .map(|tuple| T::get_in(&tuple))
             .collect()
-    }
-}
-
-impl Clone for Peers {
-    fn clone(&self) -> Self {
-        Self {
-            space_peers: UnsafeCell::new(self.space().clone()),
-            index_instance_id: self.index_instance_id.clone(),
-            index_raft_id: self.index_raft_id.clone(),
-            index_replicaset_id: self.index_replicaset_id.clone(),
-        }
     }
 }
 
@@ -634,7 +585,7 @@ inventory::submit!(crate::InnerTest {
         use traft::{CurrentGrade, TargetGrade, InstanceId};
 
         let storage_peers = Peers::new().unwrap();
-        let mut raft_group = storage_peers.space().clone();
+        let raft_group = storage_peers.space.clone();
 
         let faildom = crate::traft::FailureDomain::from([("a", "b")]);
 

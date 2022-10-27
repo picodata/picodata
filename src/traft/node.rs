@@ -314,7 +314,7 @@ struct NodeImpl {
 }
 
 impl NodeImpl {
-    fn new(mut storage: Storage) -> Result<Self, RaftError> {
+    fn new(storage: Storage) -> Result<Self, RaftError> {
         let box_err = |e| StorageError::Other(Box::new(e));
 
         let raft_id: RaftId = storage.raft.raft_id().map_err(box_err)?.unwrap();
