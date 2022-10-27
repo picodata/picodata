@@ -25,7 +25,6 @@ use std::any::Any;
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::fmt::Debug;
-use std::time::Duration;
 use uuid::Uuid;
 
 use protobuf::Message as _;
@@ -844,19 +843,6 @@ impl Encode for ExpelRequest {}
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ExpelResponse {}
 impl Encode for ExpelResponse {}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct SyncRaftRequest {
-    pub commit: u64,
-    pub timeout: Duration,
-}
-impl Encode for SyncRaftRequest {}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct SyncRaftResponse {
-    pub commit: u64,
-}
-impl Encode for SyncRaftResponse {}
 
 ///////////////////////////////////////////////////////////////////////////////
 crate::define_str_enum! {

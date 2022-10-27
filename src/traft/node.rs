@@ -50,17 +50,14 @@ use crate::traft::event::Event;
 use crate::traft::failover;
 use crate::traft::notify::Notify;
 use crate::traft::rpc::sharding::cfg::ReplicasetWeights;
-use crate::traft::rpc::{replication, sharding};
+use crate::traft::rpc::{replication, sharding, sync};
 use crate::traft::storage::{State, StateKey};
 use crate::traft::ConnectionPool;
 use crate::traft::LogicalClock;
 use crate::traft::Op;
 use crate::traft::Topology;
 use crate::traft::TopologyRequest;
-use crate::traft::{
-    ExpelRequest, ExpelResponse, JoinRequest, JoinResponse, SyncRaftRequest, SyncRaftResponse,
-    UpdatePeerRequest,
-};
+use crate::traft::{ExpelRequest, ExpelResponse, JoinRequest, JoinResponse, UpdatePeerRequest};
 use crate::traft::{RaftSpaceAccess, Storage};
 
 use super::OpResult;
@@ -1111,7 +1108,7 @@ fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
             let (rx, tx) = fiber::Channel::new(1).into_clones();
             pool.call(
                 &peer.raft_id,
-                SyncRaftRequest {
+                sync::Request {
                     commit,
                     timeout: Duration::from_secs(10),
                 },
@@ -1119,7 +1116,7 @@ fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
             )
             .expect("shouldn't fail");
             let res = rx.recv().expect("ought not fail");
-            let res = res.and_then(|SyncRaftResponse { commit }| {
+            let res = res.and_then(|sync::Response { commit }| {
                 // TODO: change `Info` to `Debug`
                 tlog!(Info, "peer synced";
                     "commit" => commit,
@@ -1613,23 +1610,4 @@ fn expel_on_leader(req: ExpelRequest) -> Result<ExpelResponse, Box<dyn std::erro
     node.handle_topology_request_and_wait(req2.into())?;
 
     Ok(ExpelResponse {})
-}
-
-// NetBox entrypoint. Run on any node.
-#[proc(packed_args)]
-fn raft_sync_raft(req: SyncRaftRequest) -> Result<SyncRaftResponse, Box<dyn std::error::Error>> {
-    let deadline = Instant::now() + req.timeout;
-    loop {
-        let commit = global()?.storage.raft.commit().unwrap().unwrap();
-        if commit >= req.commit {
-            return Ok(SyncRaftResponse { commit });
-        }
-
-        let now = Instant::now();
-        if now > deadline {
-            return Err(Box::new(Error::Timeout));
-        }
-
-        event::wait_timeout(Event::RaftEntryApplied, deadline - now)?;
-    }
 }

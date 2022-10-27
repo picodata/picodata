@@ -6,6 +6,7 @@ use serde::de::DeserializeOwned;
 
 pub mod replication;
 pub mod sharding;
+pub mod sync;
 
 /// Types implementing this trait represent an RPC's (remote procedure call)
 /// arguments. This trait contains information about the request.
@@ -30,9 +31,4 @@ impl Request for super::UpdatePeerRequest {
 impl Request for super::ExpelRequest {
     const PROC_NAME: &'static str = crate::stringify_cfunc!(super::node::raft_expel);
     type Response = super::ExpelResponse;
-}
-
-impl Request for super::SyncRaftRequest {
-    const PROC_NAME: &'static str = crate::stringify_cfunc!(super::node::raft_sync_raft);
-    type Response = super::SyncRaftResponse;
 }
