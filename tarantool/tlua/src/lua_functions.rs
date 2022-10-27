@@ -1,11 +1,12 @@
+use std::ffi::CString;
 use std::io::Cursor;
 use std::io::Read;
 use std::io::Error as IoError;
 use std::num::NonZeroI32;
+use std::panic::Location;
 
 use crate::{
     ffi,
-    c_ptr,
     AsLua,
     impl_object,
     LuaState,
@@ -48,9 +49,11 @@ where
 {
     type Err = LuaError;
 
+    #[track_caller]
     #[inline]
     fn push_to_lua(&self, lua: L) -> Result<PushGuard<L>, (LuaError, L)> {
-        LuaCodeFromReader(Cursor::new(self.0.as_bytes())).push_into_lua(lua)
+        let reader = Cursor::new(self.0.as_bytes());
+        LuaCodeFromReader::new(reader).push_into_lua(lua)
     }
 }
 
@@ -75,14 +78,24 @@ where
 ///
 /// lua.set("call_rust", tlua::function0(|| -> tlua::LuaCodeFromReader<Cursor<String>> {
 ///     let lua_code = "return 18;";
-///     return tlua::LuaCodeFromReader(Cursor::new(lua_code.to_owned()));
+///     return tlua::LuaCodeFromReader::new(Cursor::new(lua_code.to_owned()));
 /// }));
 ///
 /// let r: i32 = lua.eval("local lua_func = call_rust(); return lua_func();").unwrap();
 /// assert_eq!(r, 18);
 /// ```
 #[derive(Debug)]
-pub struct LuaCodeFromReader<R>(pub R);
+pub struct LuaCodeFromReader<R> {
+    reader: R,
+    location: &'static Location<'static>,
+}
+
+impl<R> LuaCodeFromReader<R> {
+    #[track_caller]
+    pub fn new(reader: R) -> Self {
+        Self { reader, location: Location::caller() }
+    }
+}
 
 impl<L, R> PushInto<L> for LuaCodeFromReader<R>
 where
@@ -101,7 +114,7 @@ where
             }
 
             let mut read_data = ReadData {
-                reader: self.0,
+                reader: self.reader,
                 buffer: [0; 128],
                 triggered_error: None,
             };
@@ -134,11 +147,13 @@ where
             }
 
             let (load_return_value, pushed_value) = {
+                let location = format!("=[{}:{}]\0", self.location.file(), self.location.line());
+                let location = CString::from_vec_with_nul_unchecked(location.into());
                 let code = ffi::lua_load(
                     lua.as_lua(),
                     reader::<R>,
                     &mut read_data as *mut ReadData<_> as *mut _,
-                    c_ptr!("chunk"),
+                    location.as_ptr(),
                 );
                 (code, PushGuard::new(lua, 1))
             };
@@ -391,9 +406,10 @@ where
     /// let ret: i32 = f.call().unwrap();
     /// assert_eq!(ret, 8);
     /// ```
+    #[track_caller]
     #[inline]
     pub fn load_from_reader(lua: L, code: impl Read) -> Result<Self, LuaError> {
-        match LuaCodeFromReader(code).push_into_lua(lua) {
+        match LuaCodeFromReader::new(code).push_into_lua(lua) {
             Ok(pushed) => unsafe { Ok(Self::new(pushed, nzi32!(-1))) }
             Err((err, _)) => Err(err),
         }
@@ -404,6 +420,7 @@ where
     /// > **Note**: This is just a wrapper around `load_from_reader`. There is no advantage in
     /// > using `load` except that it is more convenient.
     // TODO: remove this function? it's only a thin wrapper and it's for a very niche situation
+    #[track_caller]
     #[inline(always)]
     pub fn load(lua: L, code: &str) -> Result<Self, LuaError> {
         let reader = Cursor::new(code.as_bytes());

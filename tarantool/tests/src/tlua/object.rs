@@ -55,14 +55,25 @@ pub fn indexable_builtin() {
     );
 }
 
+#[rustfmt::skip]
 pub fn indexable_ffi() {
     let lua = tarantool::lua_state();
     let _stack_integrity_guard = LuaStackIntegrityGuard::new("indexable stack check", &lua);
     {
         let i: Indexable<_> = lua.eval("
-            return require 'ffi'.new(
-                'struct { int nice; int array[3]; }',
-                { nice = 69, array = { 1, 2, 3 } }
+            local ffi = require('ffi')
+            ffi.cdef([[
+                struct bigfoo_t {
+                    int nice;
+                    int array[3];
+                }
+            ]])
+            return ffi.new(
+                'struct bigfoo_t',
+                {
+                    nice = 69,
+                    array = { 1, 2, 3 }
+                }
             )
         ").unwrap();
         assert_eq!(i.get("nice"), Some(69));
@@ -71,15 +82,17 @@ pub fn indexable_ffi() {
         assert_eq!(array.get(1), Some(2));
         assert_eq!(array.get(2), Some(3));
         assert_eq!(i.get("no such member"), None::<()>);
-        let err_msg = i.try_get::<_, ()>("no such member").unwrap_err().to_string();
-        // dbg!(&err_msg);
-        assert!(err_msg.starts_with("Execution error: 'struct "));
-        assert!(err_msg.ends_with("' has no member named 'no such member'"));
+        assert_eq!(
+            i.try_get::<_, ()>("no such member").unwrap_err().to_string(),
+            "Execution error: 'struct bigfoo_t' has no member named 'no such member'"
+        );
     }
 }
 
+#[rustfmt::skip]
 pub fn indexable_meta() {
     let lua = tarantool::lua_state();
+    let (file, line) = (file!(), line!() + 1); // should point `lua.eval` next line
     let i: Indexable<_> = lua.eval("
         return setmetatable(
             { 1 },
@@ -98,12 +111,15 @@ pub fn indexable_meta() {
     assert_eq!(i.get(2), Some([2, 3]));
     assert_eq!(i.get(3), Some([2, 3, 4]));
     assert_eq!(i.get("hello"), None::<()>);
-    assert_eq!(i.try_get::<_, u8>("hello").unwrap_err().to_string(),
-        r#"Execution error: [string "chunk"]:7: 'for' limit must be a number"#
+    assert_eq!(
+        i.try_get::<_, u8>("hello").unwrap_err().to_string(),
+        format!("Execution error: [{file}:{line}]:7: 'for' limit must be a number")
     );
+
     let t = LuaTable::try_from(Object::from(i)).unwrap();
-    assert_eq!(t.try_get::<_, u8>("hello").unwrap_err().to_string(),
-        r#"Execution error: [string "chunk"]:7: 'for' limit must be a number"#
+    assert_eq!(
+        t.try_get::<_, u8>("hello").unwrap_err().to_string(),
+        format!("Execution error: [{file}:{line}]:7: 'for' limit must be a number")
     );
 }
 
@@ -129,8 +145,10 @@ pub fn indexable_rw_builtin() {
     assert_eq!(i.get("nice"), Some(69));
 }
 
+#[rustfmt::skip]
 pub fn indexable_rw_meta() {
     let lua = tarantool::lua_state();
+    let (file, line) = (file!(), line!() + 1); // should point `lua.eval` next line
     let i: IndexableRW<_> = lua.eval("
         return setmetatable({}, { __newindex =
             function(self, k, v)
@@ -144,8 +162,12 @@ pub fn indexable_rw_meta() {
     assert_eq!(i.get(2), Some("super_69".to_string()));
     i.set(1, "foo");
     assert_eq!(i.get(1), Some("foo".to_string()));
-    assert_eq!(i.try_set(3, [1, 2, 3]).unwrap_err().to_string(),
-        r#"Execution error: [string "chunk"]:4: attempt to concatenate local 'v' (a table value)"#
+    assert_eq!(
+        i.try_set(3, [1, 2, 3]).unwrap_err().to_string(),
+        format!(
+            "Execution error: [{file}:{line}]:4: \
+            attempt to concatenate local 'v' (a table value)"
+        )
     );
     assert_eq!(i.get(3), None::<String>);
 }

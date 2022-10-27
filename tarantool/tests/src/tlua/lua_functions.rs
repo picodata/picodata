@@ -155,16 +155,86 @@ pub fn lua_function_returns_function() {
     assert_eq!(val, 5);
 }
 
-pub fn error() {
+pub fn error_location() {
     let lua = tarantool::lua_state();
-    lua.exec("function foo() error('oops'); end").unwrap();
-    let foo: LuaFunction<_> = lua.get("foo").unwrap();
-    let res: Result<(), _> = foo.call();
+    eprintln!();
 
-    assert!(res.is_err());
-    if let Err(LuaError::ExecutionError(msg)) = res {
-        assert_eq!(msg, "[string \"chunk\"]:1: oops");
-    }
+    let file = file!();
+
+    // Trivial exec
+    let code = "error('exec failed')";
+    let (line, res) = (line!(), lua.exec(code).unwrap_err());
+    assert_eq!(
+        res.to_string(),
+        format!("Execution error: [{file}:{line}]:1: exec failed")
+    );
+    eprintln!("  {res}");
+
+    // Trivial eval
+    let code = "error('eval failed')";
+    let (line, res) = (line!(), lua.eval::<()>(code).unwrap_err());
+    assert_eq!(
+        res.to_string(),
+        format!("Execution error: [{file}:{line}]:1: eval failed")
+    );
+    eprintln!("  {res}");
+
+    // Trivial exec_with
+    let (code, arg) = ("error(...)", "exec_with failed");
+    let (line, res) = (line!(), lua.exec_with(code, arg).unwrap_err());
+    assert_eq!(
+        res.to_string(),
+        format!("Lua error: Execution error: [{file}:{line}]:1: exec_with failed")
+    );
+    eprintln!("  {res}");
+
+    // Trivial eval_with
+    let (code, arg) = ("error(...)", "eval_with failed");
+    let (line, res) = (line!(), lua.eval_with::<_, ()>(code, arg).unwrap_err());
+    assert_eq!(
+        res.to_string(),
+        format!("Lua error: Execution error: [{file}:{line}]:1: eval_with failed")
+    );
+    eprintln!("  {res}");
+
+    // We skip testing `exec_from` and `eval_from` as they're already
+    // called inside `exec` and `eval` implicitly.
+
+    // One stack frame above
+    let res = lua.exec("error('error(2)', 2)").unwrap_err();
+    assert_eq!(res.to_string(), "Execution error: error(2)");
+    eprintln!("  {res}");
+
+    // One plus one minus
+    let code = "
+        function foo()
+            error('oops', 2)
+        end
+
+        foo() -- < location points here
+    ";
+    let (line, res) = (line!(), lua.exec(code).unwrap_err());
+    assert_eq!(
+        res.to_string(),
+        format!("Execution error: [{}:{}]:6: oops", file!(), line)
+    );
+    eprintln!("  {res}");
+
+    // Exec doesn't raise, but the call does
+    let code = "
+        function foo()
+            error('oops'); -- < location points here
+        end
+    ";
+    let (line, _) = (line!(), lua.exec(code).unwrap());
+    let foo: LuaFunction<_> = lua.get("foo").unwrap();
+    let res = foo.call::<()>().unwrap_err();
+
+    assert_eq!(
+        res.to_string(),
+        format!("Execution error: [{file}:{line}]:3: oops")
+    );
+    eprintln!("  {res}");
 }
 
 pub fn either_or() {
@@ -294,6 +364,7 @@ pub fn push_function() {
 #[rustfmt::skip]
 pub fn push_iter_no_err() {
     let lua = tarantool::lua_state();
+    let (file, line) = (file!(), line!() + 1); // should point `lua.eval` next line
     let call: LuaFunction<_> = lua.eval("return
         function(a, b, c)
             if b[1] == 1 then
@@ -306,7 +377,7 @@ pub fn push_iter_no_err() {
     };
     assert_eq!(
         f().unwrap_err().to_string(),
-        r#"Execution error: [string "chunk"]:4: oopsie"#
+        format!("Execution error: [{file}:{line}]:4: oopsie")
     );
 }
 

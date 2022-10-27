@@ -226,7 +226,7 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 tlua::lua_functions::table_as_args,
                 tlua::lua_functions::table_method_call,
                 tlua::lua_functions::lua_function_returns_function,
-                tlua::lua_functions::error,
+                tlua::lua_functions::error_location,
                 tlua::lua_functions::either_or,
                 tlua::lua_functions::multiple_return_values,
                 tlua::lua_functions::multiple_return_values_fail,

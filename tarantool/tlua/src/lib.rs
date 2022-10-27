@@ -1068,6 +1068,7 @@ where
     /// let twelve: i32 = lua.eval("return 3 * 4;").unwrap();
     /// let sixty = lua.eval::<i32>("return 6 * 10;").unwrap();
     /// ```
+    #[track_caller]
     #[inline(always)]
     // TODO(gmoshkin): this method should be part of AsLua
     pub fn eval<'lua, T>(&'lua self, code: &str) -> Result<T, LuaError>
@@ -1088,6 +1089,7 @@ where
     /// assert_eq!(two, 2);
     /// ```
     /// See also [`Lua::eval`]
+    #[track_caller]
     #[inline(always)]
     // TODO(gmoshkin): this method should be part of AsLua
     pub fn eval_with<'lua, A, T>(&'lua self, code: &str, args: A) -> Result<T, CallError<A::Err>>
@@ -1113,6 +1115,7 @@ where
     /// lua.exec("function multiply_by_two(a) return a * 2 end").unwrap();
     /// lua.exec("twelve = multiply_by_two(6)").unwrap();
     /// ```
+    #[track_caller]
     #[inline(always)]
     // TODO(gmoshkin): this method should be part of AsLua
     pub fn exec(&self, code: &str) -> Result<(), LuaError> {
@@ -1133,6 +1136,7 @@ where
     /// assert_eq!(c, 12);
     /// ```
     /// See also [`Lua::exec`]
+    #[track_caller]
     #[inline(always)]
     // TODO(gmoshkin): this method should be part of AsLua
     pub fn exec_with<A>(&self, code: &str, args: A) -> Result<(), CallError<A::Err>>
@@ -1162,6 +1166,7 @@ where
     /// let script = File::open("script.lua").unwrap();
     /// let res: u32 = lua.eval_from(script).unwrap();
     /// ```
+    #[track_caller]
     #[inline(always)]
     // TODO(gmoshkin): this method should be part of AsLua
     pub fn eval_from<'lua, T>(&'lua self, code: impl Read) -> Result<T, LuaError>
@@ -1191,6 +1196,7 @@ where
     /// let script = File::open("script.lua").unwrap();
     /// lua.exec_from(script).unwrap();
     /// ```
+    #[track_caller]
     #[inline(always)]
     // TODO(gmoshkin): this method should be part of AsLua
     pub fn exec_from(&self, code: impl Read) -> Result<(), LuaError> {
@@ -1466,4 +1472,3 @@ impl From<AbsoluteIndex> for i32 {
         index.0.get()
     }
 }
-
