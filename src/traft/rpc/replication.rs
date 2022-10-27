@@ -5,14 +5,18 @@ use crate::traft::{
     error::Error,
     node,
     storage::peer_field::{PeerAddress, ReplicasetId},
-    RaftTerm,
+    RaftIndex, RaftTerm,
 };
 use crate::InstanceId;
+
+use std::time::Duration;
 
 #[proc(packed_args)]
 fn proc_replication(req: Request) -> Result<Response, Error> {
     let node = node::global()?;
     node.status().check_term(req.term)?;
+    super::sync::wait_for_index_timeout(req.commit, &node.storage.raft, req.timeout)?;
+
     let peer_storage = &node.storage.peers;
     let this_rsid = peer_storage.peer_field::<ReplicasetId>(&node.raft_id())?;
     let mut peer_addresses = Vec::with_capacity(req.replicaset_instances.len());
@@ -40,6 +44,8 @@ fn proc_replication(req: Request) -> Result<Response, Error> {
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Request {
     pub term: RaftTerm,
+    pub commit: RaftIndex,
+    pub timeout: Duration,
     pub replicaset_instances: Vec<InstanceId>,
     pub replicaset_id: String,
     pub promote: bool,

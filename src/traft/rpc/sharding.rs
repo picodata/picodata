@@ -1,11 +1,14 @@
 use ::tarantool::{proc, tlua};
 
-use crate::traft::{error::Error, node, RaftTerm};
+use crate::traft::{error::Error, node, RaftIndex, RaftTerm};
+
+use std::time::Duration;
 
 #[proc(packed_args)]
 fn proc_sharding(req: Request) -> Result<Response, Error> {
     let node = node::global()?;
     node.status().check_term(req.term)?;
+    super::sync::wait_for_index_timeout(req.commit, &node.storage.raft, req.timeout)?;
 
     let storage = &node.storage;
     let cfg = if let Some(weights) = req.weights {
@@ -47,6 +50,8 @@ fn proc_sharding(req: Request) -> Result<Response, Error> {
 #[derive(Clone, Default, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Request {
     pub term: RaftTerm,
+    pub commit: RaftIndex,
+    pub timeout: Duration,
     pub weights: Option<cfg::ReplicasetWeights>,
     pub bootstrap: bool,
 }

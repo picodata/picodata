@@ -1014,6 +1014,9 @@ fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
         .inactivity_timeout(Duration::from_secs(60))
         .build();
 
+    // TODO: don't hardcode this
+    const SYNC_TIMEOUT: Duration = Duration::from_secs(10);
+
     'governor: loop {
         if !status.get().raft_state.is_leader() {
             event::wait(Event::StatusChanged).expect("Events system must be initialized");
@@ -1024,6 +1027,7 @@ fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
         let peers = storage.peers.all_peers().unwrap();
         let term = status.get().term;
         let cluster_id = storage.raft.cluster_id().unwrap().unwrap();
+        let commit = storage.raft.commit().unwrap().unwrap();
         let node = global().expect("must be initialized");
 
         ////////////////////////////////////////////////////////////////////////
@@ -1103,14 +1107,12 @@ fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
             .iter()
             .find(|peer| peer.has_grades(CurrentGrade::Offline, TargetGrade::Online));
         if let Some(peer) = to_sync {
-            let commit = storage.raft.commit().unwrap().unwrap();
-
             let (rx, tx) = fiber::Channel::new(1).into_clones();
             pool.call(
                 &peer.raft_id,
                 sync::Request {
                     commit,
-                    timeout: Duration::from_secs(10),
+                    timeout: SYNC_TIMEOUT,
                 },
                 move |res| tx.send(res).expect("mustn't fail"),
             )
@@ -1170,6 +1172,8 @@ fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
                     .cloned()
                     .zip(repeat(replication::Request {
                         term,
+                        commit,
+                        timeout: SYNC_TIMEOUT,
                         replicaset_instances: replicaset_iids.clone(),
                         replicaset_id: replicaset_id.clone(),
                         // TODO: what if someone goes offline/expelled?
@@ -1254,6 +1258,8 @@ fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
                         peer.instance_id.clone(),
                         sharding::Request {
                             term,
+                            commit,
+                            timeout: SYNC_TIMEOUT,
                             bootstrap: !vshard_bootstrapped && peer.raft_id == leader_id,
                             ..Default::default()
                         },
@@ -1315,6 +1321,8 @@ fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
                     let peer_ids = maybe_responding(&peers).map(|peer| peer.instance_id.clone());
                     let reqs = peer_ids.zip(repeat(sharding::Request {
                         term,
+                        commit,
+                        timeout: SYNC_TIMEOUT,
                         weights: Some(new_weights.clone()),
                         ..Default::default()
                     }));
