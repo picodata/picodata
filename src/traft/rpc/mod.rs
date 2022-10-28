@@ -54,3 +54,48 @@ where
     let resp = net_box_call(&leader.peer_address, request, timeout)?;
     Ok(resp)
 }
+
+#[macro_export]
+macro_rules! define_rpc_request {
+    (
+        $(#[$proc_meta:meta])*
+        fn $proc:ident($_r:ident: $_request:ty) -> $result:ty {
+            $($proc_body:tt)*
+        }
+
+        $(#[$req_meta:meta])*
+        pub $req_record:tt $request:ident
+        $({ $($req_named_fields:tt)* })?
+        $(( $($req_unnamed_fields:tt)* );)?
+
+        $(#[$res_meta:meta])*
+        pub $res_record:tt  $response:ident
+        $({ $($res_named_fields:tt)* })?
+        $(( $($res_unnamed_fields:tt)* );)?
+    ) => {
+        $(#[$proc_meta])*
+        #[::tarantool::proc(packed_args)]
+        fn $proc($_r: $_request) -> $result {
+            $($proc_body)*
+        }
+
+        impl ::tarantool::tuple::Encode for $request {}
+        #[derive(Clone, Debug, ::serde::Serialize, ::serde::Deserialize)]
+        $(#[$req_meta])*
+        pub $req_record $request
+        $({ $($req_named_fields)* })?
+        $(( $($req_unnamed_fields)* );)?
+
+        impl ::tarantool::tuple::Encode for $response {}
+        #[derive(Clone, Debug, ::serde::Serialize, ::serde::Deserialize)]
+        $(#[$res_meta])*
+        pub $res_record $response
+        $({ $($res_named_fields)* })?
+        $(( $($res_unnamed_fields)* );)?
+
+        impl $crate::traft::rpc::Request for $request {
+            const PROC_NAME: &'static str = $crate::stringify_cfunc!($proc);
+            type Response = $response;
+        }
+    }
+}

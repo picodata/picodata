@@ -1,15 +1,23 @@
-use ::tarantool::proc;
-
 use crate::traft::Result;
 use crate::traft::{error::Error, event, node, RaftIndex, RaftSpaceAccess};
 
 use std::time::{Duration, Instant};
 
-#[proc(packed_args)]
-fn proc_sync_raft(req: Request) -> Result<Response> {
-    let storage = &node::global()?.storage;
-    let commit = wait_for_index_timeout(req.commit, &storage.raft, req.timeout)?;
-    Ok(Response { commit })
+crate::define_rpc_request! {
+    fn proc_sync_raft(req: Request) -> Result<Response> {
+        let storage = &node::global()?.storage;
+        let commit = wait_for_index_timeout(req.commit, &storage.raft, req.timeout)?;
+        Ok(Response { commit })
+    }
+
+    pub struct Request {
+        pub commit: RaftIndex,
+        pub timeout: Duration,
+    }
+
+    pub struct Response {
+        pub commit: RaftIndex,
+    }
 }
 
 #[inline]
@@ -31,22 +39,4 @@ pub fn wait_for_index_timeout(
             return Err(Error::Timeout);
         }
     }
-}
-
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
-pub struct Request {
-    pub commit: RaftIndex,
-    pub timeout: Duration,
-}
-impl ::tarantool::tuple::Encode for Request {}
-
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
-pub struct Response {
-    pub commit: RaftIndex,
-}
-impl ::tarantool::tuple::Encode for Response {}
-
-impl super::Request for Request {
-    const PROC_NAME: &'static str = crate::stringify_cfunc!(proc_sync_raft);
-    type Response = Response;
 }

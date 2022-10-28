@@ -1,68 +1,61 @@
-use ::tarantool::{proc, tlua};
+use ::tarantool::tlua;
 
 use crate::traft::Result;
 use crate::traft::{node, RaftIndex, RaftTerm};
 
 use std::time::Duration;
 
-#[proc(packed_args)]
-fn proc_sharding(req: Request) -> Result<Response> {
-    let node = node::global()?;
-    node.status().check_term(req.term)?;
-    super::sync::wait_for_index_timeout(req.commit, &node.storage.raft, req.timeout)?;
+crate::define_rpc_request! {
+    fn proc_sharding(req: Request) -> Result<Response> {
+        let node = node::global()?;
+        node.status().check_term(req.term)?;
+        super::sync::wait_for_index_timeout(req.commit, &node.storage.raft, req.timeout)?;
 
-    let storage = &node.storage;
-    let cfg = cfg::Cfg::from_storage(storage)?;
+        let storage = &node.storage;
+        let cfg = cfg::Cfg::from_storage(storage)?;
 
-    let lua = ::tarantool::lua_state();
-    // TODO: fix user's permissions
-    lua.exec("box.session.su('admin')")?;
-    // TODO: only done on instances with corresponding roles
-    lua.exec_with(
-        "vshard = require('vshard')
-        vshard.storage.cfg(..., box.info.uuid)",
-        &cfg,
-    )
-    .map_err(tlua::LuaError::from)?;
-    // TODO: only done on instances with corresponding roles
-    lua.exec_with(
-        "vshard = require('vshard')
-        vshard.router.cfg(...)",
-        &cfg,
-    )
-    .map_err(tlua::LuaError::from)?;
+        let lua = ::tarantool::lua_state();
+        // TODO: fix user's permissions
+        lua.exec("box.session.su('admin')")?;
+        // TODO: only done on instances with corresponding roles
+        lua.exec_with(
+            "vshard = require('vshard')
+            vshard.storage.cfg(..., box.info.uuid)",
+            &cfg,
+        )
+        .map_err(tlua::LuaError::from)?;
+        // TODO: only done on instances with corresponding roles
+        lua.exec_with(
+            "vshard = require('vshard')
+            vshard.router.cfg(...)",
+            &cfg,
+        )
+        .map_err(tlua::LuaError::from)?;
 
-    if req.bootstrap {
-        lua.exec("vshard.router.bootstrap()")?;
+        if req.bootstrap {
+            lua.exec("vshard.router.bootstrap()")?;
+        }
+
+        // After reconfiguring vshard leaves behind net.box.connection objects,
+        // which try reconnecting every 0.5 seconds. Garbage collecting them helps
+        lua.exec("collectgarbage()")?;
+
+        Ok(Response {})
     }
 
-    // After reconfiguring vshard leaves behind net.box.connection objects,
-    // which try reconnecting every 0.5 seconds. Garbage collecting them helps
-    lua.exec("collectgarbage()")?;
+    /// Request to configure vshard.
+    #[derive(Default)]
+    pub struct Request {
+        pub term: RaftTerm,
+        pub commit: RaftIndex,
+        pub timeout: Duration,
+        pub bootstrap: bool,
+    }
 
-    Ok(Response {})
-}
-
-/// Request to configure vshard.
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
-pub struct Request {
-    pub term: RaftTerm,
-    pub commit: RaftIndex,
-    pub timeout: Duration,
-    pub bootstrap: bool,
-}
-impl ::tarantool::tuple::Encode for Request {}
-
-/// Response to [`sharding::Request`].
-///
-/// [`sharding::Request`]: Request
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
-pub struct Response {}
-impl ::tarantool::tuple::Encode for Response {}
-
-impl super::Request for Request {
-    const PROC_NAME: &'static str = crate::stringify_cfunc!(proc_sharding);
-    type Response = Response;
+    /// Response to [`sharding::Request`].
+    ///
+    /// [`sharding::Request`]: Request
+    pub struct Response {}
 }
 
 #[rustfmt::skip]
