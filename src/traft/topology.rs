@@ -2,11 +2,12 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 
 use crate::traft::instance_uuid;
 use crate::traft::replicaset_uuid;
+use crate::traft::rpc::update_peer::PeerChange;
 use crate::traft::FailureDomain;
 use crate::traft::Peer;
+use crate::traft::UpdatePeerRequest;
 use crate::traft::{CurrentGrade, TargetGrade};
 use crate::traft::{InstanceId, RaftId, ReplicasetId};
-use crate::traft::{PeerChange, UpdatePeerRequest};
 use crate::util::Uppercase;
 
 use raft::INVALID_INDEX;

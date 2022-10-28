@@ -30,6 +30,8 @@ use protobuf::Message as _;
 
 pub use network::ConnectionPool;
 pub use raft_storage::RaftSpaceAccess;
+pub use rpc::update_peer::Request as UpdatePeerRequest;
+pub use rpc::update_peer::Response as UpdatePeerResponse;
 use storage::ClusterSpace;
 pub use storage::Storage;
 pub use topology::Topology;
@@ -872,68 +874,6 @@ impl Default for TargetGrade {
         Self::Online
     }
 }
-
-///////////////////////////////////////////////////////////////////////////////
-/// Request to update the instance in the storage.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct UpdatePeerRequest {
-    pub instance_id: InstanceId,
-    pub cluster_id: String,
-    pub changes: Vec<PeerChange>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum PeerChange {
-    CurrentGrade(CurrentGrade),
-    TargetGrade(TargetGrade),
-    FailureDomain(FailureDomain),
-}
-
-impl PeerChange {
-    pub fn apply(self, peer: &mut Peer) {
-        match self {
-            Self::CurrentGrade(value) => peer.current_grade = value,
-            Self::TargetGrade(value) => peer.target_grade = value,
-            Self::FailureDomain(value) => peer.failure_domain = value,
-        }
-    }
-}
-
-impl Encode for UpdatePeerRequest {}
-impl UpdatePeerRequest {
-    #[inline]
-    pub fn new(instance_id: InstanceId, cluster_id: String) -> Self {
-        Self {
-            instance_id,
-            cluster_id,
-            changes: vec![],
-        }
-    }
-    #[inline]
-    pub fn with_current_grade(mut self, value: CurrentGrade) -> Self {
-        self.changes.push(PeerChange::CurrentGrade(value));
-        self
-    }
-    #[inline]
-    pub fn with_target_grade(mut self, value: TargetGrade) -> Self {
-        self.changes.push(PeerChange::TargetGrade(value));
-        self
-    }
-    #[inline]
-    pub fn with_failure_domain(mut self, value: FailureDomain) -> Self {
-        self.changes.push(PeerChange::FailureDomain(value));
-        self
-    }
-}
-
-///////////////////////////////////////////////////////////////////////////////
-/// Response to a [`UpdatePeerRequest`]
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum UpdatePeerResponse {
-    Ok,
-    ErrNotALeader,
-}
-impl Encode for UpdatePeerResponse {}
 
 ///////////////////////////////////////////////////////////////////////////////
 lazy_static::lazy_static! {

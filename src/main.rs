@@ -409,7 +409,7 @@ fn init_handlers() {
     declare_cfunc!(traft::rpc::expel::proc_expel_on_leader);
     declare_cfunc!(traft::rpc::expel::redirect::proc_expel_redirect);
     declare_cfunc!(traft::rpc::sync::proc_sync_raft);
-    declare_cfunc!(traft::failover::raft_update_peer);
+    declare_cfunc!(traft::rpc::update_peer::proc_update_peer);
     declare_cfunc!(traft::rpc::replication::proc_replication);
     declare_cfunc!(traft::rpc::replication::promote::proc_replication_promote);
     declare_cfunc!(traft::rpc::sharding::proc_sharding);
@@ -948,7 +948,7 @@ fn postjoin(args: &args::Run, storage: Storage) {
         let leader_id = node.status().leader_id.expect("leader_id deinitialized");
         let leader = storage.peers.get(&leader_id).unwrap();
 
-        // It's necessary to call `raft_update_peer` remotely on a
+        // It's necessary to call `proc_update_peer` remotely on a
         // leader over net_box. It always fails otherwise. Only the
         // leader is permitted to propose PersistPeer entries.
         let now = Instant::now();

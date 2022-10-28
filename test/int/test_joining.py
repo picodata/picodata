@@ -381,9 +381,9 @@ def test_not_a_leader(cluster: Cluster):
     i1.eval(
         Template(
             """
-        box.schema.func.drop(".raft_update_peer")
-        _G[""] = { raft_update_peer = function()
-            box.schema.func.create(".raft_update_peer", {language="C", if_not_exists=true})
+        box.schema.func.drop(".proc_update_peer")
+        _G[""] = { proc_update_peer = function()
+            box.schema.func.create(".proc_update_peer", {language="C", if_not_exists=true})
             require("net.box").connect("$i2_addr"):call("picolib.raft_timeout_now")
             return {'ErrNotALeader'}
         end }

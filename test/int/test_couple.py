@@ -170,23 +170,23 @@ def test_deactivation(cluster2: Cluster):
     assert is_voter_is_online(i2, i1.raft_id) == (False, False)
     assert is_voter_is_online(i2, i2.raft_id) == (True, True)
 
-    def raft_update_peer(
+    def proc_update_peer(
         host: Instance, target: Instance, is_online: bool
     ) -> list[bool]:
         current_grade = "Online" if is_online else "Offline"
         return host.call(
-            ".raft_update_peer",
+            ".proc_update_peer",
             target.instance_id,
             target.cluster_id,
             [{"CurrentGrade": current_grade}, {"TargetGrade": "Online"}],
         )
 
     # check idempotency
-    assert raft_update_peer(i2, target=i1, is_online=False) == ["Ok"]
-    assert raft_update_peer(i2, target=i1, is_online=False) == ["Ok"]
+    assert proc_update_peer(i2, target=i1, is_online=False) == ["Ok"]
+    assert proc_update_peer(i2, target=i1, is_online=False) == ["Ok"]
 
-    assert raft_update_peer(i2, target=i2, is_online=True) == ["Ok"]
-    assert raft_update_peer(i2, target=i2, is_online=True) == ["Ok"]
+    assert proc_update_peer(i2, target=i2, is_online=True) == ["Ok"]
+    assert proc_update_peer(i2, target=i2, is_online=True) == ["Ok"]
 
 
 def test_gl119_panic_in_on_shutdown(cluster2: Cluster):

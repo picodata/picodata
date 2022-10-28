@@ -1,7 +1,6 @@
 use std::time::{Duration, Instant};
 
 use ::tarantool::fiber::sleep;
-use ::tarantool::proc;
 use ::tarantool::unwrap_or;
 
 use crate::tlog;
@@ -10,7 +9,6 @@ use crate::traft::error::Error;
 use crate::traft::event;
 use crate::traft::node;
 use crate::traft::rpc;
-use crate::traft::Result;
 use crate::traft::TargetGrade;
 use crate::traft::{UpdatePeerRequest, UpdatePeerResponse};
 
@@ -99,42 +97,6 @@ pub fn on_shutdown() {
     tlog!(Debug, "waiting for demotion");
     if let Err(e) = event::wait(event::Event::Demoted) {
         tlog!(Warning, "failed to wait for self demotion: {e}");
-    }
-}
-
-#[proc(packed_args)]
-fn raft_update_peer(req: UpdatePeerRequest) -> Result<UpdatePeerResponse> {
-    let node = node::global()?;
-
-    let cluster_id = node
-        .storage
-        .raft
-        .cluster_id()?
-        .expect("cluster_id is set at boot");
-
-    if req.cluster_id != cluster_id {
-        return Err(Error::ClusterIdMismatch {
-            instance_cluster_id: req.cluster_id,
-            cluster_cluster_id: cluster_id,
-        });
-    }
-
-    let mut req = req;
-    let instance_id = &*req.instance_id;
-    req.changes.retain(|ch| match ch {
-        super::PeerChange::CurrentGrade(grade) => {
-            tlog!(Warning, "attempt to change grade by peer";
-                "instance_id" => instance_id,
-                "grade" => grade.as_str(),
-            );
-            false
-        }
-        _ => true,
-    });
-    match node.handle_topology_request_and_wait(req.into()) {
-        Ok(_) => Ok(UpdatePeerResponse::Ok {}),
-        Err(Error::NotALeader) => Ok(UpdatePeerResponse::ErrNotALeader),
-        Err(e) => Err(e),
     }
 }
 
