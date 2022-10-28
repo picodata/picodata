@@ -1,6 +1,7 @@
 use ::tarantool::proc;
 
-use crate::traft::{error::Error, node, CurrentGrade, InstanceId, UpdatePeerRequest};
+use crate::traft;
+use crate::traft::{error::Error, node, InstanceId, UpdatePeerRequest};
 
 // Netbox entrypoint. For run on Leader only. Don't call directly, use `raft_expel` instead.
 #[proc(packed_args)]
@@ -24,7 +25,8 @@ fn proc_expel_on_leader(req: Request) -> Result<Response, Error> {
     }
 
     let req2 = UpdatePeerRequest::new(req.instance_id, req.cluster_id)
-        .with_current_grade(CurrentGrade::Expelled);
+        .with_target_grade(traft::TargetGrade::Expelled)
+        .with_current_grade(traft::CurrentGrade::Expelled);
     node.handle_topology_request_and_wait(req2.into())?;
 
     Ok(Response {})
