@@ -87,6 +87,9 @@
     Relaxing the `&mut self` requirement greatly increases the api's ease of use
     with the only downside of added compile warning of "variable does not need
     to be mutable" which is a small price to pay.
+- In `tlua` if a lua error happens during code evaluation the location in the
+    rust program where the code was created is now displayed in the error, i.e.
+    the location of a call to `Lua::eval`, `Lua::exec`, etc. will be displayed.
 
 ### Deprecated
 - `update_ops` & `upsert_ops` methods of `Space` & `Index` are deprecated in
