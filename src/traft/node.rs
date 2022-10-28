@@ -1062,7 +1062,9 @@ fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
                             peer.instance_id.clone(),
                             sharding::Request {
                                 term,
-                                ..Default::default()
+                                commit,
+                                timeout: SYNC_TIMEOUT,
+                                bootstrap: false,
                             },
                         )
                     });
@@ -1328,7 +1330,7 @@ fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
                         term,
                         commit,
                         timeout: SYNC_TIMEOUT,
-                        ..Default::default()
+                        bootstrap: false,
                     }));
                     // TODO: don't hard code timeout
                     let res = call_all(&mut pool, reqs, Duration::from_secs(3))?;
