@@ -255,29 +255,6 @@ where
     tuple.decode().map(|((res,),)| res)
 }
 
-#[allow(dead_code)]
-pub fn net_box_call_retry<Args, Res, Addr>(address: Addr, fn_name: &str, args: &Args) -> Res
-where
-    Args: ToTupleBuffer,
-    Addr: std::net::ToSocketAddrs + std::fmt::Display + slog::Value,
-    Res: serde::de::DeserializeOwned,
-{
-    loop {
-        let timeout = Duration::from_millis(500);
-        let now = Instant::now();
-        match net_box_call(&address, fn_name, args, timeout) {
-            Ok(v) => break v,
-            Err(e) => {
-                crate::tlog!(Warning, "net_box_call failed: {e}";
-                    "peer" => &address,
-                    "fn" => fn_name,
-                );
-                fiber::sleep(timeout.saturating_sub(now.elapsed()))
-            }
-        }
-    }
-}
-
 #[inline]
 pub fn net_box_call_or_log<Args, Res, Addr>(
     address: Addr,

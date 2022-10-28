@@ -4,11 +4,12 @@ use ::tarantool::fiber::sleep;
 use ::tarantool::proc;
 use ::tarantool::unwrap_or;
 
-use crate::{stringify_cfunc, tarantool, tlog};
+use crate::tlog;
 
 use crate::traft::error::Error;
 use crate::traft::event;
 use crate::traft::node;
+use crate::traft::rpc;
 use crate::traft::Result;
 use crate::traft::TargetGrade;
 use crate::traft::{UpdatePeerRequest, UpdatePeerResponse};
@@ -52,7 +53,6 @@ pub fn on_shutdown() {
     let req = UpdatePeerRequest::new(peer.instance_id, cluster_id)
         .with_target_grade(TargetGrade::Offline);
 
-    let fn_name = stringify_cfunc!(raft_update_peer);
     // will run until we get successfully deactivate or tarantool shuts down
     // the on_shutdown fiber (after 3 secs)
     loop {
@@ -71,22 +71,19 @@ pub fn on_shutdown() {
         let wait_before_retry = Duration::from_millis(300);
         let now = Instant::now();
 
-        match tarantool::net_box_call(&leader.peer_address, fn_name, &req, Duration::MAX) {
-            Ok(UpdatePeerResponse::Ok) => {
+        let res = rpc::net_box_call(&leader.peer_address, &req, Duration::MAX);
+        let res = match res {
+            Ok(UpdatePeerResponse::Ok) => Ok(()),
+            Ok(UpdatePeerResponse::ErrNotALeader) => Err(Error::NotALeader),
+            Err(e) => Err(e.into()),
+        };
+        match res {
+            Ok(()) => {
                 break;
-            }
-            Ok(UpdatePeerResponse::ErrNotALeader) => {
-                tlog!(Warning, "failed to deactivate myself: not a leader, retry...";
-                    "peer" => &leader.peer_address,
-                    "fn" => fn_name,
-                );
-                sleep(Duration::from_millis(100));
-                continue;
             }
             Err(e) => {
                 tlog!(Warning, "failed to deactivate myself: {e}, retry...";
                     "peer" => &leader.peer_address,
-                    "fn" => fn_name,
                 );
                 sleep(wait_before_retry.saturating_sub(now.elapsed()));
                 continue;

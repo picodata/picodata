@@ -813,12 +813,11 @@ fn start_join(args: &args::Run, leader_address: String) {
     // - It's fine to retry "connection refused" errors.
     // - TODO renew leader_address if the current one says it's not a
     //   leader.
-    let fn_name = stringify_cfunc!(traft::node::raft_join);
     let resp: traft::JoinResponse = loop {
         let now = Instant::now();
         // TODO: exponential decay
         let timeout = Duration::from_secs(1);
-        match tarantool::net_box_call(&leader_address, fn_name, &req, Duration::MAX) {
+        match rpc::net_box_call(&leader_address, &req, Duration::MAX) {
             Err(TntError::IO(e)) => {
                 tlog!(Warning, "join request failed: {e}");
                 fiber::sleep(timeout.saturating_sub(now.elapsed()));
@@ -952,10 +951,9 @@ fn postjoin(args: &args::Run, storage: Storage) {
         // It's necessary to call `raft_update_peer` remotely on a
         // leader over net_box. It always fails otherwise. Only the
         // leader is permitted to propose PersistPeer entries.
-        let fn_name = stringify_cfunc!(traft::failover::raft_update_peer);
         let now = Instant::now();
         let timeout = Duration::from_secs(10);
-        match tarantool::net_box_call(&leader.peer_address, fn_name, &req, timeout) {
+        match rpc::net_box_call(&leader.peer_address, &req, timeout) {
             Ok(UpdatePeerResponse::Ok) => {
                 break;
             }
