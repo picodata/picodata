@@ -11,8 +11,8 @@ use ::tarantool::tlua;
 use ::tarantool::transaction::start_transaction;
 use std::convert::TryFrom;
 use std::time::{Duration, Instant};
+use traft::rpc;
 use traft::storage::{ClusterSpace, StateKey};
-use traft::ExpelRequest;
 use traft::Storage;
 
 use clap::StructOpt as _;
@@ -137,7 +137,18 @@ fn picolib_setup(args: &args::Run) {
     luamod.set(
         "expel",
         tlua::function1(|instance_id: InstanceId| -> Result<(), Error> {
-            traft::node::expel_wrapper(instance_id)
+            let raft_storage = &traft::node::global()?.storage.raft;
+            let cluster_id = raft_storage
+                .cluster_id()?
+                .expect("cluster_id is set on boot");
+            rpc::net_box_call_to_leader(
+                &rpc::expel::Request {
+                    instance_id,
+                    cluster_id,
+                },
+                Duration::MAX,
+            )?;
+            Ok(())
         }),
     );
     #[derive(::tarantool::tlua::LuaRead)]
@@ -395,8 +406,8 @@ fn init_handlers() {
     declare_cfunc!(discovery::proc_discover);
     declare_cfunc!(traft::node::raft_interact);
     declare_cfunc!(traft::node::raft_join);
-    declare_cfunc!(traft::node::raft_expel_on_leader);
-    declare_cfunc!(traft::node::raft_expel);
+    declare_cfunc!(traft::rpc::expel::proc_expel_on_leader);
+    declare_cfunc!(traft::rpc::expel::redirect::proc_expel_redirect);
     declare_cfunc!(traft::rpc::sync::proc_sync_raft);
     declare_cfunc!(traft::failover::raft_update_peer);
     declare_cfunc!(traft::rpc::replication::proc_replication);
@@ -998,13 +1009,17 @@ fn main_expel(args: args::Expel) -> ! {
 }
 
 fn tt_expel(args: args::Expel) {
-    let fn_name = stringify_cfunc!(traft::node::raft_expel);
-    let req = ExpelRequest {
+    let req = rpc::expel::Request {
         cluster_id: args.cluster_id,
         instance_id: args.instance_id,
     };
-    match tarantool::net_box_call(&args.peer, fn_name, &req, Duration::MAX) {
-        Ok::<traft::ExpelResponse, _>(_resp) => {
+    let res = rpc::net_box_call(
+        &args.peer_address,
+        &rpc::expel::redirect::Request(req),
+        Duration::MAX,
+    );
+    match res {
+        Ok(_) => {
             tlog!(Info, "Success expel call");
             std::process::exit(0);
         }

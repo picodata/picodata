@@ -32,7 +32,6 @@ use crate::r#loop::{FlowControl, Loop};
 use crate::stringify_cfunc;
 use crate::traft::storage::ClusterSpace;
 use crate::traft::ContextCoercion as _;
-use crate::traft::InstanceId;
 use crate::traft::OpDML;
 use crate::traft::Peer;
 use crate::traft::RaftId;
@@ -59,7 +58,7 @@ use crate::traft::LogicalClock;
 use crate::traft::Op;
 use crate::traft::Topology;
 use crate::traft::TopologyRequest;
-use crate::traft::{ExpelRequest, ExpelResponse, JoinRequest, JoinResponse, UpdatePeerRequest};
+use crate::traft::{JoinRequest, JoinResponse, UpdatePeerRequest};
 use crate::traft::{RaftSpaceAccess, Storage};
 
 use super::OpResult;
@@ -1629,82 +1628,4 @@ fn raft_join(req: JoinRequest) -> Result<JoinResponse, Box<dyn std::error::Error
         raft_group,
         box_replication,
     })
-}
-
-// Lua API entrypoint, run on any node.
-pub fn expel_wrapper(instance_id: InstanceId) -> Result<(), traft::error::Error> {
-    match expel_by_instance_id(instance_id) {
-        Ok(ExpelResponse {}) => Ok(()),
-        Err(e) => Err(traft::error::Error::Other(e)),
-    }
-}
-
-fn expel_by_instance_id(
-    instance_id: InstanceId,
-) -> Result<ExpelResponse, Box<dyn std::error::Error>> {
-    let cluster_id = global()?
-        .storage
-        .raft
-        .cluster_id()?
-        .ok_or("cluster_id is not set yet")?;
-
-    expel(ExpelRequest {
-        instance_id,
-        cluster_id,
-    })
-}
-
-// NetBox entrypoint. Run on any node.
-#[proc(packed_args)]
-fn raft_expel(req: ExpelRequest) -> Result<ExpelResponse, Box<dyn std::error::Error>> {
-    expel(req)
-}
-
-// Netbox entrypoint. For run on Leader only. Don't call directly, use `raft_expel` instead.
-#[proc(packed_args)]
-fn raft_expel_on_leader(req: ExpelRequest) -> Result<ExpelResponse, Box<dyn std::error::Error>> {
-    expel_on_leader(req)
-}
-
-fn expel(req: ExpelRequest) -> Result<ExpelResponse, Box<dyn std::error::Error>> {
-    let node = global()?;
-    let leader_id = node.status().leader_id.ok_or("leader_id not found")?;
-    let leader = node.storage.peers.get(&leader_id).unwrap();
-    let leader_address = leader.peer_address;
-
-    let fn_name = stringify_cfunc!(traft::node::raft_expel_on_leader);
-
-    match crate::tarantool::net_box_call(&leader_address, fn_name, &req, Duration::MAX) {
-        Ok::<traft::ExpelResponse, _>(_resp) => Ok(ExpelResponse {}),
-        Err(e) => Err(Box::new(e)),
-    }
-}
-
-fn expel_on_leader(req: ExpelRequest) -> Result<ExpelResponse, Box<dyn std::error::Error>> {
-    let cluster_id = global()?
-        .storage
-        .raft
-        .cluster_id()?
-        .ok_or("cluster_id is not set yet")?;
-
-    if req.cluster_id != cluster_id {
-        return Err(Box::new(Error::ClusterIdMismatch {
-            instance_cluster_id: req.cluster_id,
-            cluster_cluster_id: cluster_id,
-        }));
-    }
-
-    let node = global()?;
-
-    let leader_id = node.status().leader_id.ok_or("leader_id not found")?;
-
-    if node.raft_id() != leader_id {
-        return Err(Box::from("not a leader"));
-    }
-
-    let req2 = UpdatePeerRequest::new(req.instance_id, req.cluster_id)
-        .with_current_grade(CurrentGrade::Expelled);
-    node.handle_topology_request_and_wait(req2.into())?;
-
-    Ok(ExpelResponse {})
 }

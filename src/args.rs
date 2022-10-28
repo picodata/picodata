@@ -212,7 +212,7 @@ pub struct Expel {
         default_value = "localhost:3301",
     )]
     /// Address of any instance from the cluster.
-    pub peer: String,
+    pub peer_address: String,
 }
 
 impl Expel {

@@ -1,9 +1,15 @@
 use ::tarantool::tuple::{DecodeOwned, Encode};
 
-use std::fmt::Debug;
+use crate::traft::error::Error;
+use crate::traft::node;
+
+use std::fmt::{Debug, Display};
+use std::net::ToSocketAddrs;
+use std::time::Duration;
 
 use serde::de::DeserializeOwned;
 
+pub mod expel;
 pub mod replication;
 pub mod sharding;
 pub mod sync;
@@ -28,7 +34,26 @@ impl Request for super::UpdatePeerRequest {
     type Response = super::UpdatePeerResponse;
 }
 
-impl Request for super::ExpelRequest {
-    const PROC_NAME: &'static str = crate::stringify_cfunc!(super::node::raft_expel);
-    type Response = super::ExpelResponse;
+#[inline(always)]
+pub fn net_box_call<R>(
+    address: impl ToSocketAddrs + Display,
+    request: &R,
+    timeout: Duration,
+) -> ::tarantool::Result<R::Response>
+where
+    R: Request,
+{
+    crate::tarantool::net_box_call(&address, R::PROC_NAME, request, timeout)
+}
+
+#[inline]
+pub fn net_box_call_to_leader<R>(request: &R, timeout: Duration) -> Result<R::Response, Error>
+where
+    R: Request,
+{
+    let node = node::global()?;
+    let leader_id = node.status().leader_id.ok_or(Error::LeaderUnknown)?;
+    let leader = node.storage.peers.get(&leader_id)?;
+    let resp = net_box_call(&leader.peer_address, request, timeout)?;
+    Ok(resp)
 }
