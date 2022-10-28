@@ -1,11 +1,12 @@
 use ::tarantool::proc;
 
 use crate::traft;
+use crate::traft::Result;
 use crate::traft::{error::Error, node, InstanceId, UpdatePeerRequest};
 
 // Netbox entrypoint. For run on Leader only. Don't call directly, use `raft_expel` instead.
 #[proc(packed_args)]
-fn proc_expel_on_leader(req: Request) -> Result<Response, Error> {
+fn proc_expel_on_leader(req: Request) -> Result<Response> {
     let node = node::global()?;
     let raft_storage = &node.storage.raft;
     let cluster_id = raft_storage
@@ -51,14 +52,14 @@ impl super::Request for Request {
 pub mod redirect {
     use ::tarantool::proc;
 
-    use crate::traft::error::Error;
     use crate::traft::rpc::{expel::redirect, net_box_call_to_leader};
+    use crate::traft::Result;
 
     use std::time::Duration;
 
     // NetBox entrypoint. Run on any node.
     #[proc(packed_args)]
-    fn proc_expel_redirect(req: redirect::Request) -> Result<redirect::Response, Error> {
+    fn proc_expel_redirect(req: redirect::Request) -> Result<redirect::Response> {
         let redirect::Request(req_to_leader) = req;
         net_box_call_to_leader(&req_to_leader, Duration::MAX)?;
         Ok(redirect::Response {})

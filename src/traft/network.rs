@@ -1,5 +1,4 @@
 use ::raft::prelude as raft;
-use ::tarantool::error::Error as TntError;
 use ::tarantool::fiber;
 use ::tarantool::net_box::promise::Promise;
 use ::tarantool::net_box::promise::TryGet;
@@ -21,6 +20,7 @@ use crate::traft::error::Error;
 use crate::traft::rpc::Request;
 use crate::traft::storage::peer_field::{self, PeerAddress};
 use crate::traft::storage::Peers as PeerStorage;
+use crate::traft::Result;
 use crate::traft::{InstanceId, RaftId};
 use crate::unwrap_ok_or;
 use crate::util::Either::{self, Left, Right};
@@ -48,7 +48,7 @@ impl Default for WorkerOptions {
 // PoolWorker
 ////////////////////////////////////////////////////////////////////////////////
 
-type Callback = Box<dyn FnOnce(Result<RawByteBuf, TntError>)>;
+type Callback = Box<dyn FnOnce(::tarantool::Result<RawByteBuf>)>;
 type Queue = Mailbox<(Callback, &'static str, TupleBuffer)>;
 
 pub struct PoolWorker {
@@ -249,7 +249,7 @@ impl PoolWorker {
         }
     }
 
-    pub fn send(&self, msg: raft::Message) -> Result<(), Error> {
+    pub fn send(&self, msg: raft::Message) -> Result<()> {
         let raft_id = msg.to;
         let msg = traft::MessagePb::from(msg);
         let args = [msg].to_tuple_buffer()?;
@@ -271,7 +271,7 @@ impl PoolWorker {
     /// - in case peer was disconnected
     /// - in case response failed to deserialize
     /// - in case peer responded with an error
-    pub fn rpc<R>(&mut self, request: R, cb: impl FnOnce(Result<R::Response, Error>) + 'static)
+    pub fn rpc<R>(&mut self, request: R, cb: impl FnOnce(Result<R::Response>) + 'static)
     where
         R: Request,
     {
@@ -303,7 +303,7 @@ impl std::fmt::Debug for PoolWorker {
     }
 }
 
-fn into_either<T>(p: Promise<T>) -> Either<Result<T, TntError>, Promise<T>> {
+fn into_either<T>(p: Promise<T>) -> Either<::tarantool::Result<T>, Promise<T>> {
     match p.try_get() {
         TryGet::Ok(res) => Left(Ok(res)),
         TryGet::Err(e) => Left(Err(e)),
@@ -371,7 +371,7 @@ impl ConnectionPool {
         panic!("not implemented yet");
     }
 
-    fn get_or_create_by_raft_id(&mut self, raft_id: RaftId) -> Result<&mut PoolWorker, Error> {
+    fn get_or_create_by_raft_id(&mut self, raft_id: RaftId) -> Result<&mut PoolWorker> {
         match self.workers.entry(raft_id) {
             Entry::Occupied(entry) => Ok(entry.into_mut()),
             Entry::Vacant(entry) => {
@@ -388,10 +388,7 @@ impl ConnectionPool {
         }
     }
 
-    fn get_or_create_by_instance_id(
-        &mut self,
-        instance_id: &str,
-    ) -> Result<&mut PoolWorker, Error> {
+    fn get_or_create_by_instance_id(&mut self, instance_id: &str) -> Result<&mut PoolWorker> {
         match self.raft_ids.entry(InstanceId(instance_id.into())) {
             Entry::Occupied(entry) => {
                 let worker = self
@@ -420,7 +417,7 @@ impl ConnectionPool {
     ///
     /// This function never yields.
     #[inline]
-    pub fn send(&mut self, msg: raft::Message) -> Result<(), Error> {
+    pub fn send(&mut self, msg: raft::Message) -> Result<()> {
         self.get_or_create_by_raft_id(msg.to)?.send(msg)
     }
 
@@ -436,7 +433,7 @@ impl ConnectionPool {
         id: &impl PeerId,
         req: R,
         timeout: Duration,
-    ) -> Result<R::Response, Error>
+    ) -> Result<R::Response>
     where
         R: Request,
     {
@@ -454,7 +451,7 @@ impl ConnectionPool {
     /// **This function yields.**
     #[allow(dead_code)]
     #[inline(always)]
-    pub fn call_and_wait<R>(&mut self, id: &impl PeerId, req: R) -> Result<R::Response, Error>
+    pub fn call_and_wait<R>(&mut self, id: &impl PeerId, req: R) -> Result<R::Response>
     where
         R: Request,
     {
@@ -471,8 +468,8 @@ impl ConnectionPool {
         &mut self,
         id: &impl PeerId,
         req: R,
-        cb: impl FnOnce(Result<R::Response, Error>) + 'static,
-    ) -> Result<(), Error>
+        cb: impl FnOnce(Result<R::Response>) + 'static,
+    ) -> Result<()>
     where
         R: Request,
     {
@@ -496,28 +493,19 @@ impl Drop for ConnectionPool {
 /// Types implementing this trait can be used to identify a `Peer` when
 /// accessing ConnectionPool.
 pub trait PeerId: std::hash::Hash {
-    fn get_or_create_in<'p>(
-        &self,
-        pool: &'p mut ConnectionPool,
-    ) -> Result<&'p mut PoolWorker, Error>;
+    fn get_or_create_in<'p>(&self, pool: &'p mut ConnectionPool) -> Result<&'p mut PoolWorker>;
 }
 
 impl PeerId for RaftId {
     #[inline(always)]
-    fn get_or_create_in<'p>(
-        &self,
-        pool: &'p mut ConnectionPool,
-    ) -> Result<&'p mut PoolWorker, Error> {
+    fn get_or_create_in<'p>(&self, pool: &'p mut ConnectionPool) -> Result<&'p mut PoolWorker> {
         pool.get_or_create_by_raft_id(*self)
     }
 }
 
 impl PeerId for InstanceId {
     #[inline(always)]
-    fn get_or_create_in<'p>(
-        &self,
-        pool: &'p mut ConnectionPool,
-    ) -> Result<&'p mut PoolWorker, Error> {
+    fn get_or_create_in<'p>(&self, pool: &'p mut ConnectionPool) -> Result<&'p mut PoolWorker> {
         pool.get_or_create_by_instance_id(self)
     }
 }

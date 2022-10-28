@@ -6,14 +6,14 @@ use crate::traft::{
     error::Error,
     node,
     storage::peer_field::{PeerAddress, ReplicasetId},
-    RaftIndex, RaftTerm,
+    RaftIndex, RaftTerm, Result,
 };
 use crate::InstanceId;
 
 use std::time::Duration;
 
 #[proc(packed_args)]
-fn proc_replication(req: Request) -> Result<Response, Error> {
+fn proc_replication(req: Request) -> Result<Response> {
     let node = node::global()?;
     node.status().check_term(req.term)?;
     super::sync::wait_for_index_timeout(req.commit, &node.storage.raft, req.timeout)?;
@@ -64,12 +64,12 @@ impl super::Request for Request {
 }
 
 pub mod promote {
-    use crate::traft::{error::Error, node, rpc, RaftIndex, RaftTerm};
+    use crate::traft::{node, rpc, RaftIndex, RaftTerm, Result};
     use ::tarantool::proc;
     use std::time::Duration;
 
     #[proc(packed_args)]
-    fn proc_replication_promote(req: Request) -> Result<Response, Error> {
+    fn proc_replication_promote(req: Request) -> Result<Response> {
         let node = node::global()?;
         node.status().check_term(req.term)?;
         rpc::sync::wait_for_index_timeout(req.commit, &node.storage.raft, req.timeout)?;

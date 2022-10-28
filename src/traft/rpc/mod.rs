@@ -2,6 +2,7 @@ use ::tarantool::tuple::{DecodeOwned, Encode};
 
 use crate::traft::error::Error;
 use crate::traft::node;
+use crate::traft::Result;
 
 use std::fmt::{Debug, Display};
 use std::net::ToSocketAddrs;
@@ -47,7 +48,7 @@ where
 }
 
 #[inline]
-pub fn net_box_call_to_leader<R>(request: &R, timeout: Duration) -> Result<R::Response, Error>
+pub fn net_box_call_to_leader<R>(request: &R, timeout: Duration) -> Result<R::Response>
 where
     R: Request,
 {

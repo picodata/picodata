@@ -1,11 +1,12 @@
 use ::tarantool::{proc, tlua};
 
-use crate::traft::{error::Error, node, RaftIndex, RaftTerm};
+use crate::traft::Result;
+use crate::traft::{node, RaftIndex, RaftTerm};
 
 use std::time::Duration;
 
 #[proc(packed_args)]
-fn proc_sharding(req: Request) -> Result<Response, Error> {
+fn proc_sharding(req: Request) -> Result<Response> {
     let node = node::global()?;
     node.status().check_term(req.term)?;
     super::sync::wait_for_index_timeout(req.commit, &node.storage.raft, req.timeout)?;
@@ -66,7 +67,7 @@ impl super::Request for Request {
 
 #[rustfmt::skip]
 pub mod cfg {
-    use crate::traft::error::Error;
+    use crate::traft::Result;
     use crate::traft::storage::Storage;
     use crate::traft::ReplicasetId;
 
@@ -126,7 +127,7 @@ pub mod cfg {
 
     impl Cfg {
         #[inline]
-        pub fn from_storage(storage: &Storage) -> Result<Self, Error> {
+        pub fn from_storage(storage: &Storage) -> Result<Self> {
             let replicasets: HashMap<_, _> = storage.replicasets.iter()?
                 .map(|r| (r.replicaset_id.clone(), r))
                 .collect();

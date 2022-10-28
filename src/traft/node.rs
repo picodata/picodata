@@ -109,7 +109,7 @@ pub struct Status {
 }
 
 impl Status {
-    pub fn check_term(&self, requested_term: RaftTerm) -> Result<(), Error> {
+    pub fn check_term(&self, requested_term: RaftTerm) -> traft::Result<()> {
         if requested_term != self.term {
             return Err(Error::TermMismatch {
                 requested: requested_term,
@@ -200,7 +200,7 @@ impl Node {
     }
 
     /// **This function yields**
-    pub fn wait_for_read_state(&self, timeout: Duration) -> Result<RaftIndex, Error> {
+    pub fn wait_for_read_state(&self, timeout: Duration) -> traft::Result<RaftIndex> {
         let notify = self.raw_operation(|node_impl| node_impl.read_state_async())?;
         notify.recv_timeout::<RaftIndex>(timeout)
     }
@@ -211,7 +211,7 @@ impl Node {
         &self,
         op: T,
         timeout: Duration,
-    ) -> Result<T::Result, Error> {
+    ) -> traft::Result<T::Result> {
         let notify = self.raw_operation(|node_impl| node_impl.propose_async(op))?;
         notify.recv_timeout::<T::Result>(timeout)
     }
@@ -219,7 +219,7 @@ impl Node {
     /// Become a candidate and wait for a main loop round so that there's a
     /// chance we become the leader.
     /// **This function yields**
-    pub fn campaign_and_yield(&self) -> Result<(), Error> {
+    pub fn campaign_and_yield(&self) -> traft::Result<()> {
         self.raw_operation(|node_impl| node_impl.campaign())?;
         // Even though we don't expect a response, we still should let the
         // main_loop do an iteration. Without rescheduling, the Ready state
@@ -269,7 +269,7 @@ impl Node {
     pub fn handle_topology_request_and_wait(
         &self,
         req: TopologyRequest,
-    ) -> Result<traft::Peer, Error> {
+    ) -> traft::Result<traft::Peer> {
         let notify =
             self.raw_operation(|node_impl| node_impl.process_topology_request_async(req))?;
         notify.recv::<Peer>()
@@ -282,7 +282,7 @@ impl Node {
         &self,
         term: RaftTerm,
         conf_change: raft::ConfChangeV2,
-    ) -> Result<(), Error> {
+    ) -> traft::Result<()> {
         let notify =
             self.raw_operation(|node_impl| node_impl.propose_conf_change_async(term, conf_change))?;
         notify.recv()
@@ -447,7 +447,7 @@ impl NodeImpl {
     pub fn process_topology_request_async(
         &mut self,
         req: TopologyRequest,
-    ) -> Result<Notify, Error> {
+    ) -> traft::Result<Notify> {
         let topology = self.topology_mut()?;
         let peer_result = match req {
             TopologyRequest::Join(JoinRequest {
@@ -1053,7 +1053,7 @@ fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
             .find(|peer| peer.target_grade == TargetGrade::Offline);
         if let Some(peer) = to_offline {
             let replicaset_id = &peer.replicaset_id;
-            let res = (|| -> Result<_, Error> {
+            let res = (|| -> traft::Result<_> {
                 let replicaset = storage.replicasets.get(replicaset_id)?;
                 if replicaset
                     .map(|r| r.master_id == peer.instance_id)
@@ -1141,7 +1141,7 @@ fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
                 continue 'governor;
             }
 
-            let res = (|| -> Result<_, Error> {
+            let res = (|| -> traft::Result<_> {
                 // Promote the replication leader again
                 // because of tarantool bugs
                 if let Some(replicaset) = storage.replicasets.get(replicaset_id)? {
@@ -1233,7 +1233,7 @@ fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
                 .map(|peer| peer.instance_id.clone())
                 .collect::<Vec<_>>();
 
-            let res = (|| -> Result<_, Error> {
+            let res = (|| -> traft::Result<_> {
                 let reqs = replicaset_iids
                     .iter()
                     .cloned()
@@ -1319,7 +1319,7 @@ fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
             .iter()
             .find(|peer| peer.has_grades(CurrentGrade::Replicated, TargetGrade::Online));
         if let Some(peer) = to_shard {
-            let res = (|| -> Result<(), Error> {
+            let res = (|| -> traft::Result<()> {
                 let vshard_bootstrapped = storage.state.vshard_bootstrapped()?;
                 let reqs = maybe_responding(&peers).map(|peer| {
                     (
@@ -1409,7 +1409,7 @@ fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
             let res = if let Some(added_weights) =
                 get_weight_changes(maybe_responding(&peers), &storage)
             {
-                (|| -> Result<(), Error> {
+                (|| -> traft::Result<()> {
                     for (replicaset_id, weight) in added_weights {
                         let mut ops = UpdateOps::new();
                         ops.assign("weight", weight)?;
@@ -1442,7 +1442,7 @@ fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
                     Ok(())
                 })()
             } else {
-                (|| -> Result<(), Error> {
+                (|| -> traft::Result<()> {
                     let to_online = peers.iter().filter(|peer| {
                         peer.has_grades(CurrentGrade::ShardingInitialized, TargetGrade::Online)
                     });
@@ -1478,7 +1478,7 @@ fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
         pool: &mut ConnectionPool,
         reqs: impl IntoIterator<Item = (I, R)>,
         timeout: Duration,
-    ) -> Result<Vec<(I, Result<R::Response, Error>)>, Error>
+    ) -> traft::Result<Vec<(I, traft::Result<R::Response>)>>
     where
         R: traft::rpc::Request,
         I: traft::network::PeerId + Clone + std::fmt::Debug + 'static,
@@ -1571,7 +1571,7 @@ pub fn set_global(node: Node) {
     }
 }
 
-pub fn global() -> Result<&'static Node, Error> {
+pub fn global() -> traft::Result<&'static Node> {
     // Uninitialized raft node is a regular case. This case may take
     // place while the instance is executing `start_discover()` function.
     // It has already started listening, but the node is only initialized
@@ -1580,29 +1580,29 @@ pub fn global() -> Result<&'static Node, Error> {
 }
 
 #[proc(packed_args)]
-fn raft_interact(pbs: Vec<traft::MessagePb>) -> Result<(), Box<dyn std::error::Error>> {
+fn raft_interact(pbs: Vec<traft::MessagePb>) -> traft::Result<()> {
     let node = global()?;
     for pb in pbs {
-        node.step_and_yield(raft::Message::try_from(pb)?);
+        node.step_and_yield(raft::Message::try_from(pb).map_err(Error::other)?);
     }
     Ok(())
 }
 
 #[proc(packed_args)]
-fn raft_join(req: JoinRequest) -> Result<JoinResponse, Box<dyn std::error::Error>> {
+fn raft_join(req: JoinRequest) -> traft::Result<JoinResponse> {
     let node = global()?;
 
     let cluster_id = node
         .storage
         .raft
         .cluster_id()?
-        .ok_or("cluster_id is not set yet")?;
+        .expect("cluster_id is set on boot");
 
     if req.cluster_id != cluster_id {
-        return Err(Box::new(Error::ClusterIdMismatch {
+        return Err(Error::ClusterIdMismatch {
             instance_cluster_id: req.cluster_id,
             cluster_cluster_id: cluster_id,
-        }));
+        });
     }
 
     let peer = node.handle_topology_request_and_wait(req.into())?;

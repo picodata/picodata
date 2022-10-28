@@ -12,6 +12,7 @@ use ::tarantool::unwrap_or;
 use crate::define_str_enum;
 use crate::tlog;
 use crate::traft::error::Error;
+use crate::traft::Result;
 use crate::unwrap_ok_or;
 use thiserror::Error;
 
@@ -98,7 +99,7 @@ pub enum WaitTimeout {
 /// Waits for the event to happen or timeout to end.
 ///
 /// Returns an error if the `EVENTS` is uninitialized.
-pub fn wait_timeout(event: Event, timeout: Duration) -> Result<WaitTimeout, Error> {
+pub fn wait_timeout(event: Event, timeout: Duration) -> Result<WaitTimeout> {
     let mut events = events()?;
     let cond = events.regular_cond(event);
     // events must be released before yielding
@@ -113,7 +114,7 @@ pub fn wait_timeout(event: Event, timeout: Duration) -> Result<WaitTimeout, Erro
 /// Waits for the event to happen.
 ///
 /// Returns an error if the `EVENTS` is uninitialized.
-pub fn wait(event: Event) -> Result<(), Error> {
+pub fn wait(event: Event) -> Result<()> {
     match wait_timeout(event, Duration::MAX)? {
         WaitTimeout::Signal => Ok(()),
         WaitTimeout::Timeout => Err(Error::Timeout),
@@ -124,7 +125,7 @@ pub fn wait(event: Event) -> Result<(), Error> {
 /// Waits for any of the specified events to happen.
 ///
 /// Returns an error if the `EVENTS` is uninitialized.
-pub fn wait_any_timeout(evs: &[Event], timeout: Duration) -> Result<(), Error> {
+pub fn wait_any_timeout(evs: &[Event], timeout: Duration) -> Result<()> {
     let mut events = events()?;
     let cond = Rc::new(Cond::new());
     for &event in evs {
@@ -147,7 +148,7 @@ pub fn wait_any_timeout(evs: &[Event], timeout: Duration) -> Result<(), Error> {
 /// Waits for any of the specified events to happen.
 ///
 /// Returns an error if the `EVENTS` is uninitialized.
-pub fn wait_any(evs: &[Event]) -> Result<(), Error> {
+pub fn wait_any(evs: &[Event]) -> Result<()> {
     wait_any_timeout(evs, Duration::MAX)
 }
 
@@ -178,7 +179,7 @@ pub fn broadcast(event: impl Borrow<Event>) {
 /// `when` event happens.
 ///
 /// Returns an error if `EVENTS` is uninitialized
-pub fn broadcast_when(target: Event, when: Event) -> Result<(), Error> {
+pub fn broadcast_when(target: Event, when: Event) -> Result<()> {
     let mut events = events()?;
     let cond = events.regular_cond(target);
     events.add_once_handler(
@@ -266,7 +267,7 @@ pub fn init() {
 }
 
 /// Acquire the global [`Events`] singleton.
-pub fn events() -> Result<MutexGuard<'static, Events>, Error> {
+pub fn events() -> Result<MutexGuard<'static, Events>> {
     if let Some(events) = unsafe { EVENTS.as_ref() } {
         Ok(events.lock())
     } else {

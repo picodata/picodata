@@ -9,6 +9,7 @@ use crate::{stringify_cfunc, tarantool, tlog};
 use crate::traft::error::Error;
 use crate::traft::event;
 use crate::traft::node;
+use crate::traft::Result;
 use crate::traft::TargetGrade;
 use crate::traft::{UpdatePeerRequest, UpdatePeerResponse};
 
@@ -105,22 +106,20 @@ pub fn on_shutdown() {
 }
 
 #[proc(packed_args)]
-fn raft_update_peer(
-    req: UpdatePeerRequest,
-) -> Result<UpdatePeerResponse, Box<dyn std::error::Error>> {
+fn raft_update_peer(req: UpdatePeerRequest) -> Result<UpdatePeerResponse> {
     let node = node::global()?;
 
     let cluster_id = node
         .storage
         .raft
         .cluster_id()?
-        .ok_or("cluster_id is not set yet")?;
+        .expect("cluster_id is set at boot");
 
     if req.cluster_id != cluster_id {
-        return Err(Box::new(Error::ClusterIdMismatch {
+        return Err(Error::ClusterIdMismatch {
             instance_cluster_id: req.cluster_id,
             cluster_cluster_id: cluster_id,
-        }));
+        });
     }
 
     let mut req = req;
@@ -138,7 +137,7 @@ fn raft_update_peer(
     match node.handle_topology_request_and_wait(req.into()) {
         Ok(_) => Ok(UpdatePeerResponse::Ok {}),
         Err(Error::NotALeader) => Ok(UpdatePeerResponse::ErrNotALeader),
-        Err(e) => Err(Box::new(e)),
+        Err(e) => Err(e),
     }
 }
 

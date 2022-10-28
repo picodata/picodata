@@ -1,11 +1,12 @@
 use ::tarantool::proc;
 
+use crate::traft::Result;
 use crate::traft::{error::Error, event, node, RaftIndex, RaftSpaceAccess};
 
 use std::time::{Duration, Instant};
 
 #[proc(packed_args)]
-fn proc_sync_raft(req: Request) -> Result<Response, Error> {
+fn proc_sync_raft(req: Request) -> Result<Response> {
     let storage = &node::global()?.storage;
     let commit = wait_for_index_timeout(req.commit, &storage.raft, req.timeout)?;
     Ok(Response { commit })
@@ -16,7 +17,7 @@ pub fn wait_for_index_timeout(
     commit: RaftIndex,
     raft_storage: &RaftSpaceAccess,
     timeout: Duration,
-) -> Result<RaftIndex, Error> {
+) -> Result<RaftIndex> {
     let deadline = Instant::now() + timeout;
     loop {
         let cur_commit = raft_storage.commit()?.expect("commit is always persisted");

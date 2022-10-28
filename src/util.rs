@@ -190,7 +190,7 @@ macro_rules! define_str_enum {
         impl std::str::FromStr for $enum {
             type Err = $err;
 
-            fn from_str(s: &str) -> Result<Self, Self::Err> {
+            fn from_str(s: &str) -> ::std::result::Result<Self, Self::Err> {
                 match s {
                     $( $str => Ok(Self::$space), )+
                     _ => Err($err(s.into())),
@@ -206,7 +206,7 @@ macro_rules! define_str_enum {
 
         impl serde::Serialize for $enum {
             #[inline]
-            fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+            fn serialize<S>(&self, serializer: S) -> ::std::result::Result<S::Ok, S::Error>
             where
                 S: serde::Serializer,
             {
@@ -215,7 +215,7 @@ macro_rules! define_str_enum {
         }
 
         impl<'de> serde::Deserialize<'de> for $enum {
-            fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+            fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
             where
                 D: serde::Deserializer<'de>,
             {
@@ -243,7 +243,7 @@ macro_rules! define_str_enum {
         impl<L: ::tarantool::tlua::AsLua> ::tarantool::tlua::PushOneInto<L> for $enum {}
 
         impl<L: ::tarantool::tlua::AsLua> ::tarantool::tlua::LuaRead<L> for $enum {
-            fn lua_read_at_position(lua: L, index: std::num::NonZeroI32) -> Result<Self, L> {
+            fn lua_read_at_position(lua: L, index: std::num::NonZeroI32) -> ::std::result::Result<Self, L> {
                 ::tarantool::tlua::StringInLua::lua_read_at_position(&lua, index).ok()
                     .and_then(|s| s.parse().ok())
                     .ok_or(lua)
@@ -339,7 +339,7 @@ macro_rules! define_string_newtype {
         impl ::std::str::FromStr for $type {
             type Err = ::std::convert::Infallible;
 
-            fn from_str(s: &str) -> Result<Self, ::std::convert::Infallible> {
+            fn from_str(s: &str) -> ::std::result::Result<Self, ::std::convert::Infallible> {
                 Ok(Self(s.into()))
             }
         }

@@ -5,11 +5,12 @@ use thiserror::Error;
 
 use crate::define_str_enum;
 use crate::traft;
-use crate::traft::error::Error as TraftError;
+use crate::traft::error::Error;
 use crate::traft::rpc::sharding::cfg::ReplicasetWeights;
 use crate::traft::RaftId;
 use crate::traft::RaftIndex;
 use crate::traft::Replicaset;
+use crate::traft::Result;
 
 use std::marker::PhantomData;
 
@@ -215,7 +216,7 @@ impl Replicasets {
     }
 
     #[inline]
-    pub fn weights(&self) -> Result<ReplicasetWeights, TraftError> {
+    pub fn weights(&self) -> Result<ReplicasetWeights> {
         Ok(self.iter()?.map(|r| (r.replicaset_id, r.weight)).collect())
     }
 
@@ -228,7 +229,7 @@ impl Replicasets {
     }
 
     #[inline]
-    pub fn iter(&self) -> Result<ReplicasetIter, TraftError> {
+    pub fn iter(&self) -> Result<ReplicasetIter> {
         let iter = self.space.select(IteratorType::All, &())?;
         Ok(iter.into())
     }
@@ -251,11 +252,8 @@ impl From<IndexIterator> for ReplicasetIter {
 impl Iterator for ReplicasetIter {
     type Item = traft::Replicaset;
     fn next(&mut self) -> Option<Self::Item> {
-        self.iter
-            .next()
-            .as_ref()
-            .map(Tuple::decode)
-            .map(Result::unwrap)
+        let res = self.iter.next().as_ref().map(Tuple::decode);
+        res.map(|res| res.expect("replicaset should decode correctly"))
     }
 }
 
@@ -333,7 +331,7 @@ impl Peers {
     /// Find a peer by `raft_id` and return a single field specified by `F`
     /// (see `PeerFieldDef` & `peer_field` module).
     #[inline(always)]
-    pub fn get(&self, id: &impl PeerId) -> Result<traft::Peer, TraftError> {
+    pub fn get(&self, id: &impl PeerId) -> Result<traft::Peer> {
         let res = id.find_in(self)?.decode().expect("failed to decode peer");
         Ok(res)
     }
@@ -341,7 +339,7 @@ impl Peers {
     /// Find a peer by `id` (see `PeerId`) and return a single field
     /// specified by `F` (see `PeerFieldDef` & `peer_field` module).
     #[inline(always)]
-    pub fn peer_field<F>(&self, id: &impl PeerId) -> Result<F::Type, TraftError>
+    pub fn peer_field<F>(&self, id: &impl PeerId) -> Result<F::Type>
     where
         F: PeerFieldDef,
     {
@@ -353,7 +351,7 @@ impl Peers {
     /// Return an iterator over all peers. Items of the iterator are
     /// specified by `F` (see `PeerFieldDef` & `peer_field` module).
     #[inline(always)]
-    pub fn peers_fields<F>(&self) -> Result<PeersFields<F>, TraftError>
+    pub fn peers_fields<F>(&self) -> Result<PeersFields<F>>
     where
         F: PeerFieldDef,
     {
@@ -567,26 +565,26 @@ define_peer_field_def_for_tuples! {
 /// Types implementing this trait can be used to identify a `Peer` when
 /// accessing storage.
 pub trait PeerId: serde::Serialize {
-    fn find_in(&self, peers: &Peers) -> Result<Tuple, TraftError>;
+    fn find_in(&self, peers: &Peers) -> Result<Tuple>;
 }
 
 impl PeerId for RaftId {
     #[inline(always)]
-    fn find_in(&self, peers: &Peers) -> Result<Tuple, TraftError> {
+    fn find_in(&self, peers: &Peers) -> Result<Tuple> {
         peers
             .index_raft_id
             .get(&[self])?
-            .ok_or(TraftError::NoPeerWithRaftId(*self))
+            .ok_or(Error::NoPeerWithRaftId(*self))
     }
 }
 
 impl PeerId for traft::InstanceId {
     #[inline(always)]
-    fn find_in(&self, peers: &Peers) -> Result<Tuple, TraftError> {
+    fn find_in(&self, peers: &Peers) -> Result<Tuple> {
         peers
             .index_instance_id
             .get(&[self])?
-            .ok_or_else(|| TraftError::NoPeerWithInstanceId(self.clone()))
+            .ok_or_else(|| Error::NoPeerWithInstanceId(self.clone()))
     }
 }
 
@@ -607,11 +605,8 @@ impl PeerIter {
 impl Iterator for PeerIter {
     type Item = traft::Peer;
     fn next(&mut self) -> Option<Self::Item> {
-        self.iter
-            .next()
-            .as_ref()
-            .map(Tuple::decode)
-            .map(Result::unwrap)
+        let res = self.iter.next().as_ref().map(Tuple::decode);
+        res.map(|res| res.expect("peer should decode correctly"))
     }
 }
 
@@ -640,7 +635,8 @@ where
     type Item = F::Type;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.iter.next().as_ref().map(F::get_in).map(Result::unwrap)
+        let res = self.iter.next().as_ref().map(F::get_in);
+        res.map(|res| res.expect("peer should decode correctly"))
     }
 }
 

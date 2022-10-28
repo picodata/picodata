@@ -59,7 +59,7 @@ fn picolib_setup(args: &args::Run) {
 
     luamod.set(
         "whoami",
-        tlua::function0(|| -> Result<_, Error> {
+        tlua::function0(|| -> traft::Result<_> {
             let node = traft::node::global()?;
             let raft_storage = &node.storage.raft;
 
@@ -73,7 +73,7 @@ fn picolib_setup(args: &args::Run) {
 
     luamod.set(
         "peer_info",
-        tlua::function1(|iid: String| -> Result<_, Error> {
+        tlua::function1(|iid: String| -> traft::Result<_> {
             let node = traft::node::global()?;
             let peer = node.storage.peers.get(&InstanceId::from(iid))?;
 
@@ -96,14 +96,14 @@ fn picolib_setup(args: &args::Run) {
     );
     luamod.set(
         "raft_tick",
-        tlua::function1(|n_times: u32| -> Result<(), Error> {
+        tlua::function1(|n_times: u32| -> traft::Result<()> {
             traft::node::global()?.tick_and_yield(n_times);
             Ok(())
         }),
     );
     luamod.set(
         "raft_read_index",
-        tlua::function1(|timeout: f64| -> Result<RaftIndex, Error> {
+        tlua::function1(|timeout: f64| -> traft::Result<RaftIndex> {
             traft::node::global()?.wait_for_read_state(Duration::from_secs_f64(timeout))
         }),
     );
@@ -115,14 +115,14 @@ fn picolib_setup(args: &args::Run) {
     );
     luamod.set(
         "raft_propose_info",
-        tlua::function1(|x: String| -> Result<(), Error> {
+        tlua::function1(|x: String| -> traft::Result<()> {
             traft::node::global()?
                 .propose_and_wait(traft::Op::Info { msg: x }, Duration::from_secs(1))
         }),
     );
     luamod.set(
         "raft_timeout_now",
-        tlua::function0(|| -> Result<(), Error> {
+        tlua::function0(|| -> traft::Result<()> {
             traft::node::global()?.timeout_now();
             Ok(())
         }),
@@ -136,7 +136,7 @@ fn picolib_setup(args: &args::Run) {
     );
     luamod.set(
         "expel",
-        tlua::function1(|instance_id: InstanceId| -> Result<(), Error> {
+        tlua::function1(|instance_id: InstanceId| -> traft::Result<()> {
             let raft_storage = &traft::node::global()?.storage.raft;
             let cluster_id = raft_storage
                 .cluster_id()?
@@ -158,7 +158,7 @@ fn picolib_setup(args: &args::Run) {
     luamod.set(
         "raft_propose_eval",
         tlua::function2(
-            |x: String, opts: Option<ProposeEvalOpts>| -> Result<(), Error> {
+            |x: String, opts: Option<ProposeEvalOpts>| -> traft::Result<()> {
                 let timeout = opts.and_then(|opts| opts.timeout).unwrap_or(10.0);
                 traft::node::global()?
                     .propose_and_wait(
@@ -171,7 +171,7 @@ fn picolib_setup(args: &args::Run) {
     );
     luamod.set(
         "raft_return_one",
-        tlua::function1(|timeout: f64| -> Result<u8, Error> {
+        tlua::function1(|timeout: f64| -> traft::Result<u8> {
             traft::node::global()?
                 .propose_and_wait(traft::OpReturnOne, Duration::from_secs_f64(timeout))
         }),
@@ -180,7 +180,7 @@ fn picolib_setup(args: &args::Run) {
     if cfg!(debug_assertions) {
         luamod.set(
             "emit",
-            tlua::Function::new(|event: String| -> Result<(), Error> {
+            tlua::Function::new(|event: String| -> traft::Result<()> {
                 let event: traft::event::Event = event.parse().map_err(Error::other)?;
                 traft::event::broadcast(event);
                 Ok(())
@@ -188,7 +188,7 @@ fn picolib_setup(args: &args::Run) {
         );
         luamod.set(
             "vshard_cfg",
-            tlua::function0(|| -> Result<traft::rpc::sharding::cfg::Cfg, Error> {
+            tlua::function0(|| -> traft::Result<traft::rpc::sharding::cfg::Cfg> {
                 let node = traft::node::global()?;
                 traft::rpc::sharding::cfg::Cfg::from_storage(&node.storage)
             }),
@@ -271,7 +271,7 @@ fn picolib_setup(args: &args::Run) {
     luamod.set(
         "raft_log",
         tlua::function1(
-            |opts: Option<RaftLogOpts>| -> Result<Option<String>, Error> {
+            |opts: Option<RaftLogOpts>| -> traft::Result<Option<String>> {
                 let header = ["index", "term", "lc", "contents"];
                 let [index, term, lc, contents] = header;
                 let mut rows = vec![];

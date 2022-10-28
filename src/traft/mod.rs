@@ -15,7 +15,6 @@ pub mod topology;
 use crate::stringify_debug;
 use crate::util::{AnyWithTypeName, Uppercase};
 use ::raft::prelude as raft;
-use ::tarantool::error::Error as TntError;
 use ::tarantool::tlua;
 use ::tarantool::tlua::LuaError;
 use ::tarantool::tuple::{Encode, ToTupleBuffer, Tuple, TupleBuffer};
@@ -24,6 +23,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::fmt::Debug;
+use std::result::Result as StdResult;
 use uuid::Uuid;
 
 use protobuf::Message as _;
@@ -55,6 +55,8 @@ crate::define_string_newtype! {
     /// to distinguish it from other strings.
     pub struct ReplicasetId(pub String);
 }
+
+pub type Result<T> = std::result::Result<T, error::Error>;
 
 //////////////////////////////////////////////////////////////////////////////////////////
 /// Timestamps for raft entries.
@@ -213,7 +215,7 @@ pub struct OpEvalLua {
 }
 
 impl OpResult for OpEvalLua {
-    type Result = Result<(), LuaError>;
+    type Result = StdResult<(), LuaError>;
     fn result(&self) -> Self::Result {
         crate::tarantool::exec(&self.code)
     }
@@ -280,7 +282,7 @@ impl From<OpDML> for Op {
 
 impl OpDML {
     /// Serializes `tuple` and returns an [`OpDML::Insert`] in case of success.
-    pub fn insert(space: ClusterSpace, tuple: &impl ToTupleBuffer) -> Result<Self, TntError> {
+    pub fn insert(space: ClusterSpace, tuple: &impl ToTupleBuffer) -> tarantool::Result<Self> {
         let res = Self::Insert {
             space,
             tuple: tuple.to_tuple_buffer()?,
@@ -289,7 +291,7 @@ impl OpDML {
     }
 
     /// Serializes `tuple` and returns an [`OpDML::Replace`] in case of success.
-    pub fn replace(space: ClusterSpace, tuple: &impl ToTupleBuffer) -> Result<Self, TntError> {
+    pub fn replace(space: ClusterSpace, tuple: &impl ToTupleBuffer) -> tarantool::Result<Self> {
         let res = Self::Replace {
             space,
             tuple: tuple.to_tuple_buffer()?,
@@ -302,7 +304,7 @@ impl OpDML {
         space: ClusterSpace,
         key: &impl ToTupleBuffer,
         ops: impl Into<Vec<TupleBuffer>>,
-    ) -> Result<Self, TntError> {
+    ) -> tarantool::Result<Self> {
         let res = Self::Update {
             space,
             key: key.to_tuple_buffer()?,
@@ -312,7 +314,7 @@ impl OpDML {
     }
 
     /// Serializes `key` and returns an [`OpDML::Delete`] in case of success.
-    pub fn delete(space: ClusterSpace, key: &impl ToTupleBuffer) -> Result<Self, TntError> {
+    pub fn delete(space: ClusterSpace, key: &impl ToTupleBuffer) -> tarantool::Result<Self> {
         let res = Self::Delete {
             space,
             key: key.to_tuple_buffer()?,
@@ -323,7 +325,6 @@ impl OpDML {
 
 mod vec_of_raw_byte_buf {
     use super::TupleBuffer;
-    use ::tarantool::error::Error as TntError;
     use serde::de::Error as _;
     use serde::ser::SerializeSeq;
     use serde::{self, Deserialize, Deserializer, Serializer};
@@ -351,7 +352,7 @@ mod vec_of_raw_byte_buf {
         // but there's no easy foolproof way
         // to convert a Vec<ByteBuf> to Vec<TupleBuffer>
         // because of borrow and drop checkers
-        let res: Result<_, TntError> = tmp
+        let res: tarantool::Result<_> = tmp
             .into_iter()
             .map(|bb| TupleBuffer::try_from(bb.into_vec()))
             .collect();
@@ -663,14 +664,14 @@ impl<'a> std::fmt::Display for EntryPayload<'a> {
 }
 
 impl EntryContext {
-    fn from_bytes_normal(bytes: &[u8]) -> Result<Option<Self>, error::CoercionError> {
+    fn from_bytes_normal(bytes: &[u8]) -> StdResult<Option<Self>, error::CoercionError> {
         match EntryContextNormal::read_from_bytes(bytes)? {
             Some(v) => Ok(Some(Self::Normal(v))),
             None => Ok(None),
         }
     }
 
-    fn from_bytes_conf_change(bytes: &[u8]) -> Result<Option<Self>, error::CoercionError> {
+    fn from_bytes_conf_change(bytes: &[u8]) -> StdResult<Option<Self>, error::CoercionError> {
         match EntryContextConfChange::read_from_bytes(bytes)? {
             Some(v) => Ok(Some(Self::ConfChange(v))),
             None => Ok(None),
@@ -689,7 +690,7 @@ impl EntryContext {
 impl TryFrom<&raft::Entry> for self::Entry {
     type Error = error::CoercionError;
 
-    fn try_from(e: &raft::Entry) -> Result<Self, Self::Error> {
+    fn try_from(e: &raft::Entry) -> StdResult<Self, Self::Error> {
         let ret = Self {
             entry_type: e.entry_type,
             index: e.index,
@@ -746,7 +747,7 @@ impl From<raft::Message> for self::MessagePb {
 impl TryFrom<self::MessagePb> for raft::Message {
     type Error = protobuf::ProtobufError;
 
-    fn try_from(pb: self::MessagePb) -> Result<raft::Message, Self::Error> {
+    fn try_from(pb: self::MessagePb) -> StdResult<raft::Message, Self::Error> {
         let mut ret = raft::Message::default();
         ret.merge_from_bytes(&pb.0)?;
         Ok(ret)
@@ -756,7 +757,7 @@ impl TryFrom<self::MessagePb> for raft::Message {
 ///////////////////////////////////////////////////////////////////////////////
 /// This trait allows converting `EntryContext` to / from `Vec<u8>`.
 pub trait ContextCoercion: Serialize + DeserializeOwned {
-    fn read_from_bytes(bytes: &[u8]) -> Result<Option<Self>, error::CoercionError> {
+    fn read_from_bytes(bytes: &[u8]) -> StdResult<Option<Self>, error::CoercionError> {
         match bytes {
             bytes if bytes.is_empty() => Ok(None),
             bytes => Ok(Some(rmp_serde::from_read_ref(bytes)?)),
@@ -819,17 +820,6 @@ pub struct JoinResponse {
     // pub read_only: bool,
 }
 impl Encode for JoinResponse {}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct ExpelRequest {
-    pub cluster_id: String,
-    pub instance_id: InstanceId,
-}
-impl Encode for ExpelRequest {}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct ExpelResponse {}
-impl Encode for ExpelResponse {}
 
 ///////////////////////////////////////////////////////////////////////////////
 crate::define_str_enum! {

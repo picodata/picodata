@@ -2,13 +2,13 @@ use ::tarantool::fiber;
 
 use std::time::Duration;
 
-use super::error::Error;
-
+use crate::traft::error::Error;
+use crate::traft::Result;
 use crate::util::{downcast, AnyWithTypeName};
 
 #[derive(Clone)]
 pub struct Notify {
-    ch: fiber::Channel<Result<Box<dyn AnyWithTypeName>, Error>>,
+    ch: fiber::Channel<Result<Box<dyn AnyWithTypeName>>>,
 }
 
 impl Notify {
@@ -35,7 +35,7 @@ impl Notify {
     }
 
     #[inline]
-    pub fn recv_any(self) -> Result<Box<dyn AnyWithTypeName>, Error> {
+    pub fn recv_any(self) -> Result<Box<dyn AnyWithTypeName>> {
         match self.ch.recv() {
             Some(v) => v,
             None => {
@@ -46,7 +46,7 @@ impl Notify {
     }
 
     #[inline]
-    pub fn recv_timeout_any(self, timeout: Duration) -> Result<Box<dyn AnyWithTypeName>, Error> {
+    pub fn recv_timeout_any(self, timeout: Duration) -> Result<Box<dyn AnyWithTypeName>> {
         match self.ch.recv_timeout(timeout) {
             Ok(v) => v,
             Err(_) => {
@@ -57,13 +57,13 @@ impl Notify {
     }
 
     #[inline]
-    pub fn recv_timeout<T: 'static>(self, timeout: Duration) -> Result<T, Error> {
+    pub fn recv_timeout<T: 'static>(self, timeout: Duration) -> Result<T> {
         downcast(self.recv_timeout_any(timeout)?)
     }
 
     #[inline]
     #[allow(unused)]
-    pub fn recv<T: 'static>(self) -> Result<T, Error> {
+    pub fn recv<T: 'static>(self) -> Result<T> {
         downcast(self.recv_any()?)
     }
 
