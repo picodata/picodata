@@ -252,6 +252,100 @@ macro_rules! define_str_enum {
     }
 }
 
+#[macro_export]
+macro_rules! define_string_newtype {
+    (
+        $(#[$meta:meta])*
+        pub struct $type:ident ( pub String );
+    ) => {
+        #[derive(
+            Default,
+            Debug,
+            Eq,
+            Clone,
+            Hash,
+            Ord,
+            ::tarantool::tlua::LuaRead,
+            ::tarantool::tlua::Push,
+            ::tarantool::tlua::PushInto,
+            serde::Serialize,
+            serde::Deserialize,
+        )]
+        pub struct $type(pub String);
+
+        impl ::std::fmt::Display for $type {
+            fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+                ::std::fmt::Display::fmt(&self.0, f)
+            }
+        }
+
+        impl From<String> for $type {
+            fn from(s: String) -> Self {
+                Self(s)
+            }
+        }
+
+        impl From<&str> for $type {
+            fn from(s: &str) -> Self {
+                Self(s.into())
+            }
+        }
+
+        impl From<$type> for String {
+            fn from(i: $type) -> Self {
+                i.0
+            }
+        }
+
+        impl AsRef<str> for $type {
+            fn as_ref(&self) -> &str {
+                &self.0
+            }
+        }
+
+        impl ::std::borrow::Borrow<str> for $type {
+            fn borrow(&self) -> &str {
+                &self.0
+            }
+        }
+
+        impl ::std::ops::Deref for $type {
+            type Target = str;
+            fn deref(&self) -> &str {
+                &self.0
+            }
+        }
+
+        impl<T> ::std::cmp::PartialEq<T> for $type
+        where
+            T: ?Sized,
+            T: AsRef<str>,
+        {
+            fn eq(&self, rhs: &T) -> bool {
+                self.0 == rhs.as_ref()
+            }
+        }
+
+        impl<T> ::std::cmp::PartialOrd<T> for $type
+        where
+            T: ?Sized,
+            T: AsRef<str>,
+        {
+            fn partial_cmp(&self, rhs: &T) -> Option<::std::cmp::Ordering> {
+                (*self.0).partial_cmp(rhs.as_ref())
+            }
+        }
+
+        impl ::std::str::FromStr for $type {
+            type Err = ::std::convert::Infallible;
+
+            fn from_str(s: &str) -> Result<Self, ::std::convert::Infallible> {
+                Ok(Self(s.into()))
+            }
+        }
+    };
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 /// A wrapper around `String` that garantees the string is uppercase by
 /// converting it to uppercase (if needed) on construction.

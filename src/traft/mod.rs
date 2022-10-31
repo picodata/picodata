@@ -37,80 +37,23 @@ pub use topology::Topology;
 pub type RaftId = u64;
 pub type RaftTerm = u64;
 pub type RaftIndex = u64;
-pub type ReplicasetId = String;
 
 pub const INIT_RAFT_TERM: RaftTerm = 1;
 
-////////////////////////////////////////////////////////////////////////////////
-/// Unique id of a cluster instance.
-///
-/// This is a new-type style wrapper around String, to distinguish it from other
-/// strings.
-#[rustfmt::skip]
-#[derive(Default, Debug, Eq, Clone, Hash)]
-#[derive(tlua::LuaRead, tlua::Push, tlua::PushInto)]
-#[derive(serde::Serialize, serde::Deserialize)]
-pub struct InstanceId(pub String);
-
-impl std::fmt::Display for InstanceId {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        std::fmt::Display::fmt(&self.0, f)
-    }
+crate::define_string_newtype! {
+    /// Unique id of a cluster instance.
+    ///
+    /// This is a new-type style wrapper around String,
+    /// to distinguish it from other strings.
+    pub struct InstanceId(pub String);
 }
 
-impl From<String> for InstanceId {
-    fn from(s: String) -> Self {
-        Self(s)
-    }
-}
-
-impl From<&str> for InstanceId {
-    fn from(s: &str) -> Self {
-        Self(s.into())
-    }
-}
-
-impl From<InstanceId> for String {
-    fn from(i: InstanceId) -> Self {
-        i.0
-    }
-}
-
-impl AsRef<str> for InstanceId {
-    fn as_ref(&self) -> &str {
-        &self.0
-    }
-}
-
-impl std::borrow::Borrow<str> for InstanceId {
-    fn borrow(&self) -> &str {
-        &self.0
-    }
-}
-
-impl std::ops::Deref for InstanceId {
-    type Target = str;
-    fn deref(&self) -> &str {
-        &self.0
-    }
-}
-
-impl<T> std::cmp::PartialEq<T> for InstanceId
-where
-    T: ?Sized,
-    T: AsRef<str>,
-{
-    fn eq(&self, rhs: &T) -> bool {
-        self.0 == rhs.as_ref()
-    }
-}
-
-impl std::str::FromStr for InstanceId {
-    type Err = std::convert::Infallible;
-
-    fn from_str(s: &str) -> Result<Self, std::convert::Infallible> {
-        Ok(Self(s.into()))
-    }
+crate::define_string_newtype! {
+    /// Unique id of a replicaset.
+    ///
+    /// This is a new-type style wrapper around String,
+    /// to distinguish it from other strings.
+    pub struct ReplicasetId(pub String);
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////
@@ -433,7 +376,7 @@ pub struct Peer {
     pub peer_address: String,
 
     /// Name of a replicaset the instance belongs to.
-    pub replicaset_id: String,
+    pub replicaset_id: ReplicasetId,
     pub replicaset_uuid: String,
 
     /// Index of the most recent raft log entry that persisted this peer.
@@ -502,7 +445,7 @@ impl std::fmt::Display for Peer {
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 pub struct Replicaset {
     /// Primary identifier.
-    pub replicaset_id: String,
+    pub replicaset_id: ReplicasetId,
 
     /// UUID used to identify replicasets by tarantool's subsystems.
     pub replicaset_uuid: String,
@@ -838,7 +781,7 @@ impl From<UpdatePeerRequest> for TopologyRequest {
 pub struct JoinRequest {
     pub cluster_id: String,
     pub instance_id: Option<InstanceId>,
-    pub replicaset_id: Option<String>,
+    pub replicaset_id: Option<ReplicasetId>,
     pub advertise_address: String,
     pub failure_domain: FailureDomain,
 }

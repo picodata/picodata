@@ -7,7 +7,7 @@ use tarantool::log::SayLevel;
 use tarantool::tlua;
 use thiserror::Error;
 
-use crate::traft::{FailureDomain, InstanceId};
+use crate::traft::{FailureDomain, InstanceId, ReplicasetId};
 use crate::util::Uppercase;
 
 #[derive(Debug, Parser)]
@@ -102,7 +102,7 @@ pub struct Run {
 
     #[clap(long, value_name = "name", env = "PICODATA_REPLICASET_ID")]
     /// Name of the replicaset
-    pub replicaset_id: Option<String>,
+    pub replicaset_id: Option<ReplicasetId>,
 
     #[clap(long, arg_enum, default_value = "info", env = "PICODATA_LOG_LEVEL")]
     /// Log level

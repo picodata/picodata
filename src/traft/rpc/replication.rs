@@ -2,6 +2,7 @@ use ::tarantool::proc;
 
 use crate::tarantool::set_cfg_field;
 use crate::traft::{
+    self,
     error::Error,
     node,
     storage::peer_field::{PeerAddress, ReplicasetId},
@@ -47,7 +48,7 @@ pub struct Request {
     pub commit: RaftIndex,
     pub timeout: Duration,
     pub replicaset_instances: Vec<InstanceId>,
-    pub replicaset_id: String,
+    pub replicaset_id: traft::ReplicasetId,
     pub promote: bool,
 }
 impl ::tarantool::tuple::Encode for Request {}

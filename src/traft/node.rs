@@ -1159,7 +1159,7 @@ fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
         if let Some(peer) = to_replicate {
             let replicaset_id = &peer.replicaset_id;
             let replicaset_iids = maybe_responding(&peers)
-                .filter(|peer| &peer.replicaset_id == replicaset_id)
+                .filter(|peer| peer.replicaset_id == replicaset_id)
                 .map(|peer| peer.instance_id.clone())
                 .collect::<Vec<_>>();
 
@@ -1217,7 +1217,7 @@ fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
                 continue 'governor;
             }
 
-            tlog!(Info, "configured replication"; "replicaset_id" => replicaset_id);
+            tlog!(Info, "configured replication"; "replicaset_id" => %replicaset_id);
 
             continue 'governor;
         }

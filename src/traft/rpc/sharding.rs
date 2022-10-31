@@ -68,6 +68,7 @@ impl super::Request for Request {
 pub mod cfg {
     use crate::traft::error::Error;
     use crate::traft::storage::Storage;
+    use crate::traft::ReplicasetId;
 
     use ::tarantool::tlua;
 
@@ -120,7 +121,7 @@ pub mod cfg {
         Once,
     }
 
-    pub type ReplicasetWeights = HashMap<String, Weight>;
+    pub type ReplicasetWeights = HashMap<ReplicasetId, Weight>;
     pub type Weight = f64;
 
     impl Cfg {

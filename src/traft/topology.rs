@@ -90,7 +90,7 @@ impl Topology {
         }
     }
 
-    fn choose_replicaset_id(&self, failure_domain: &FailureDomain) -> String {
+    fn choose_replicaset_id(&self, failure_domain: &FailureDomain) -> ReplicasetId {
         'next_replicaset: for (replicaset_id, peers) in self.replicaset_map.iter() {
             if peers.len() < self.replication_factor as usize {
                 for peer_id in peers {
@@ -106,7 +106,7 @@ impl Topology {
         let mut i = 0u64;
         loop {
             i += 1;
-            let replicaset_id = format!("r{i}");
+            let replicaset_id = ReplicasetId(format!("r{i}"));
             if self.replicaset_map.get(&replicaset_id).is_none() {
                 return replicaset_id;
             }
@@ -132,7 +132,7 @@ impl Topology {
     pub fn join(
         &mut self,
         instance_id: Option<InstanceId>,
-        replicaset_id: Option<String>,
+        replicaset_id: Option<ReplicasetId>,
         advertise: String,
         failure_domain: FailureDomain,
     ) -> Result<Peer, String> {
@@ -151,7 +151,7 @@ impl Topology {
         let raft_id = self.max_raft_id + 1;
         let instance_id = instance_id.unwrap_or_else(|| self.choose_instance_id(raft_id));
         let instance_uuid = instance_uuid(&instance_id);
-        let replicaset_id: String =
+        let replicaset_id =
             replicaset_id.unwrap_or_else(|| self.choose_replicaset_id(&failure_domain));
         let replicaset_uuid = replicaset_uuid(&replicaset_id);
 
@@ -219,7 +219,7 @@ impl Topology {
 // Create first peer in the cluster
 pub fn initial_peer(
     instance_id: Option<InstanceId>,
-    replicaset_id: Option<String>,
+    replicaset_id: Option<ReplicasetId>,
     advertise: String,
     failure_domain: FailureDomain,
 ) -> Peer {
@@ -303,7 +303,7 @@ mod tests {
         ) => {
             $topology.join(
                 $instance_id.map(<&str>::into),
-                $replicaset_id.map(str::to_string),
+                $replicaset_id.map(<&str>::into),
                 $advertise_address.into(),
                 {
                     let _f = FailureDomain::default();
