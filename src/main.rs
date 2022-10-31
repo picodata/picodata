@@ -18,6 +18,8 @@ use traft::Storage;
 use clap::StructOpt as _;
 use protobuf::Message as _;
 
+use crate::tlog::set_log_level;
+use crate::traft::rpc::sharding::cfg::ReplicasetWeights;
 use crate::traft::InstanceId;
 use crate::traft::{LogicalClock, RaftIndex, TargetGrade};
 use crate::traft::{UpdatePeerRequest, UpdatePeerResponse};
@@ -43,6 +45,7 @@ pub struct InnerTest {
 }
 
 fn picolib_setup(args: &args::Run) {
+    set_log_level(args.log_level());
     let l = ::tarantool::lua_state();
     let package: tlua::LuaTable<_> = l.get("package").expect("package == nil");
     let loaded: tlua::LuaTable<_> = package.get("loaded").expect("package.loaded == nil");

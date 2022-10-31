@@ -18,6 +18,10 @@ with the `YY.0M.MICRO` scheme.
 
 - Fix bug when the leader changes during a new instance joins
 
+### Chore
+
+- No longer generated logs higher than the PICODATA_LOG_LEVEL set (led to an overall performance improvement)
+
 ## [22.07.0] - 2022-07-08
 
 ### Basic functionality

@@ -1,4 +1,15 @@
+use ::tarantool::log::say;
+use ::tarantool::log::SayLevel;
 use std::collections::HashMap;
+
+static mut LOG_LEVEL: SayLevel = SayLevel::Info;
+
+pub fn set_log_level(lvl: SayLevel) {
+    // Used in single thread
+    unsafe {
+        LOG_LEVEL = lvl;
+    }
+}
 
 pub struct Drain;
 
@@ -22,9 +33,6 @@ impl slog::Drain for Drain {
         record: &slog::Record,
         values: &slog::OwnedKVList,
     ) -> Result<Self::Ok, Self::Err> {
-        use ::tarantool::log::say;
-        use ::tarantool::log::SayLevel;
-
         // Max level is constant = trace
         // It's hardcoded in Cargo.toml dependency features
         // In runtime it's managed by tarantool box.cfg.log_level
@@ -36,6 +44,12 @@ impl slog::Drain for Drain {
             slog::Level::Debug => SayLevel::Verbose,
             slog::Level::Trace => SayLevel::Debug,
         };
+
+        unsafe {
+            if lvl > LOG_LEVEL {
+                return Ok(());
+            }
+        }
 
         let mut s = StrSerializer {
             str: format!("{}", record.msg()),
