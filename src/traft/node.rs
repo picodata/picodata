@@ -10,7 +10,7 @@ use ::raft::Error as RaftError;
 use ::raft::StateRole as RaftStateRole;
 use ::raft::StorageError;
 use ::raft::INVALID_ID;
-use ::tarantool::error::TransactionError;
+use ::tarantool::error::{TarantoolError, TransactionError};
 use ::tarantool::fiber;
 use ::tarantool::fiber::{Cond, Mutex};
 use ::tarantool::proc;
@@ -746,7 +746,7 @@ impl NodeImpl {
 
         self.handle_read_states(ready.read_states());
 
-        start_transaction(|| -> Result<(), TransactionError> {
+        if let Err(e) = start_transaction(|| -> Result<(), TransactionError> {
             // Apply committed entries.
             self.handle_committed_entries(ready.committed_entries(), topology_changed, expelled);
 
@@ -763,8 +763,11 @@ impl NodeImpl {
             }
 
             Ok(())
-        })
-        .unwrap();
+        }) {
+            tlog!(Error, "transaction failed: {e}, {}", TarantoolError::last());
+            tlog!(Warning, "raft ready dropped: {ready:#?}");
+            panic!("no good");
+        }
 
         // This bunch of messages is special. It must be sent only
         // AFTER the HardState, Entries and Snapshot are persisted
@@ -777,7 +780,7 @@ impl NodeImpl {
         // Send out messages to the other nodes.
         self.handle_messages(light_rd.take_messages());
 
-        start_transaction(|| -> Result<(), TransactionError> {
+        if let Err(e) = start_transaction(|| -> Result<(), TransactionError> {
             // Update commit index.
             if let Some(commit) = light_rd.commit_index() {
                 self.storage.raft.persist_commit(commit).unwrap();
@@ -787,8 +790,11 @@ impl NodeImpl {
             self.handle_committed_entries(light_rd.committed_entries(), topology_changed, expelled);
 
             Ok(())
-        })
-        .unwrap();
+        }) {
+            tlog!(Error, "transaction failed: {e}, {}", TarantoolError::last());
+            tlog!(Warning, "raft light ready dropped: {light_rd:#?}");
+            panic!("no good");
+        }
 
         // Advance the apply index.
         self.raw_node.advance_apply();
