@@ -567,7 +567,7 @@ inventory::submit!(crate::InnerTest {
             .put(&traft::Peer {
                 raft_id: 1337,
                 peer_address: listen.clone(),
-                ..Default::default()
+                ..traft::Peer::default()
             })
             .unwrap();
         tlog!(Info, "TEST: connecting {listen}");

@@ -361,7 +361,7 @@ mod vec_of_raw_byte_buf {
 
 //////////////////////////////////////////////////////////////////////////////////////////
 /// Serializable struct representing a member of the raft group.
-#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Peer {
     /// Instances are identified by name.
     pub instance_id: InstanceId,
@@ -410,6 +410,22 @@ impl Peer {
     pub fn has_grades(&self, current: CurrentGrade, target: TargetGrade) -> bool {
         self.current_grade == current && self.target_grade == target
     }
+
+    /// Only used for testing.
+    pub(crate) fn default() -> Self {
+        Self {
+            instance_id: Default::default(),
+            instance_uuid: Default::default(),
+            raft_id: Default::default(),
+            peer_address: Default::default(),
+            replicaset_id: Default::default(),
+            replicaset_uuid: Default::default(),
+            commit_index: Default::default(),
+            current_grade: Default::default(),
+            target_grade: Default::default(),
+            failure_domain: Default::default(),
+        }
+    }
 }
 
 impl std::fmt::Display for Peer {
@@ -442,7 +458,7 @@ impl std::fmt::Display for Peer {
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Replicaset info
-#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct Replicaset {
     /// Primary identifier.
     pub replicaset_id: ReplicasetId,

@@ -677,7 +677,7 @@ inventory::submit!(crate::InnerTest {
             storage_peers.put(&traft::Peer {
                 raft_id: 1,
                 instance_id: "i99".into(),
-                ..Default::default()
+                ..traft::Peer::default()
             }),
             format!(
                 concat!(
@@ -703,7 +703,7 @@ inventory::submit!(crate::InnerTest {
                 raft_id: id,
                 instance_id: format!("i{id}").into(),
                 peer_address: addr.into(),
-                ..Default::default()
+                ..traft::Peer::default()
             };
 
             storage_peers.put(&peer(10, "addr:collision")).unwrap();
