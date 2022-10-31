@@ -196,3 +196,33 @@ def test_peer_info(instance: Instance):
     with pytest.raises(ReturnError) as e:
         peer_info("i2")
     assert e.value.args == ('peer with id "i2" not found',)
+
+
+def test_raft_log(instance: Instance):
+    # fails due to screen size calculation
+    with pytest.raises(ReturnError) as _:
+        instance.call("picolib.raft_log")
+
+    raft_log = instance.call("picolib.raft_log", dict(return_string=True))
+    assert (
+        raft_log
+        == """\
++-----+----+-----+----------------------------------------------------------------------------+
+|index|term| lc  |                                  contents                                  |
++-----+----+-----+----------------------------------------------------------------------------+
+|  1  | 1  |1.0.1|           PersistPeer(i1, 1, r1, 127.0.0.1:{p}, Offline, 1, {b})           |
+|  2  | 1  |1.0.2|              Insert(cluster_state, ["replication_factor",1])               |
+|  3  | 1  |     |                                 Promote(1)                                 |
+|  4  | 2  |     |                                     -                                      |
+|  5  | 2  |1.1.2|      PersistPeer(i1, 1, r1, 127.0.0.1:{p}, Offline -> Online, 5, {b})      |
+|  6  | 2  |1.1.3|    PersistPeer(i1, 1, r1, 127.0.0.1:{p}, RaftSynced -> Online, 6, {b})     |
+|  7  | 2  |1.1.4|    PersistPeer(i1, 1, r1, 127.0.0.1:{p}, Replicated -> Online, 7, {b})     |
+|  8  | 2  |1.1.5|Insert(replicasets, ["r1","e0df68c5-e7f9-395f-86b3-30ad9e1b7b07","i1",1.0]) |
+|  9  | 2  |1.1.6|PersistPeer(i1, 1, r1, 127.0.0.1:{p}, ShardingInitialized -> Online, 9, {b})|
+| 10  | 2  |1.1.7|            Replace(cluster_state, ["vshard_bootstrapped",true])            |
+| 11  | 2  |1.1.8|           PersistPeer(i1, 1, r1, 127.0.0.1:{p}, Online, 11, {b})           |
++-----+----+-----+----------------------------------------------------------------------------+
+""".format(
+            p=instance.port, b="{}"
+        )
+    )
