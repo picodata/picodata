@@ -256,7 +256,7 @@ impl From<TarantoolError> for Error {
 
 /// Codes of Tarantool errors
 #[repr(u32)]
-#[derive(Debug, Clone, PartialEq, Eq, ToPrimitive, FromPrimitive)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, ToPrimitive, FromPrimitive)]
 pub enum TarantoolErrorCode {
     Unknown = 0,
     IllegalParams = 1,

@@ -818,7 +818,7 @@ impl TupleIterator {}
 ////////////////////////////////////////////////////////////////////////////////
 
 #[repr(u32)]
-#[derive(Debug, ToPrimitive, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, Debug, ToPrimitive, PartialEq, Eq, Hash)]
 pub enum FieldType {
     Any = 0,
     Unsigned,

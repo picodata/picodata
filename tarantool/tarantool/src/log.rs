@@ -63,7 +63,7 @@ impl Log for TarantoolLogger {
 
 /// Tarantool-native logging levels (use it with [say()](fn.say.html))
 #[repr(u32)]
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, ToPrimitive, FromPrimitive)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, ToPrimitive, FromPrimitive)]
 pub enum SayLevel {
     Fatal = 0,
     System = 1,

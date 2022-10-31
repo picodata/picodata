@@ -241,7 +241,7 @@ impl Decimal {
 
 type DecimalImpl = dec::Decimal<{ffi::DECNUMUNITS as _}>;
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, Copy, Clone, PartialEq, thiserror::Error)]
 pub enum ToDecimalError {
     #[error("Infinite decimals are not supported")]
     Infinite,

@@ -41,6 +41,8 @@
 - `tests/test.sh` now supports `TARANTOOL_MODULE_BUILD_MODE` environment
     variable to select which build mode is tested (debug, release, etc.)
 - `fiber::r#yield` function for yielding fibers likewise tarantool LUA api.
+- `#[derive(Copy)]` for a bunch of light enums including `TarantoolErrorCode`,
+    `SayLevel`, `SystemSpace`, `FieldType`.
 
 ### Removed
 

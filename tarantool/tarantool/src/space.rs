@@ -35,7 +35,7 @@ pub const SYSTEM_ID_MAX: u32 = 511;
 /// assert_eq!(SystemSpace::Schema.to_u32(), Some(272))
 /// ```
 #[repr(u32)]
-#[derive(Clone, Debug, PartialEq, Eq, ToPrimitive)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, ToPrimitive)]
 pub enum SystemSpace {
     /// Space if of _vinyl_deferred_delete.
     VinylDeferredDelete = 257,
