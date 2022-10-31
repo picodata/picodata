@@ -275,6 +275,7 @@ fn picolib_setup(args: &args::Run) {
         "raft_log",
         tlua::function1(
             |opts: Option<RaftLogOpts>| -> traft::Result<Option<String>> {
+                let return_string = opts.and_then(|o| o.return_string).unwrap_or(false);
                 let header = ["index", "term", "lc", "contents"];
                 let [index, term, lc, contents] = header;
                 let mut rows = vec![];
@@ -301,7 +302,11 @@ fn picolib_setup(args: &args::Run) {
                 let [iw, tw, lw, mut cw] = col_widths;
 
                 let total_width = 1 + header.len() + col_widths.iter().sum::<usize>();
-                let cols = util::screen_size().1 as usize;
+                let cols = if return_string {
+                    256
+                } else {
+                    util::screen_size().1 as usize
+                };
                 if total_width > cols {
                     match cw.checked_sub(total_width - cols) {
                         Some(new_cw) if new_cw > 0 => cw = new_cw,
@@ -352,7 +357,7 @@ fn picolib_setup(args: &args::Run) {
                     }
                 }
                 row_sep(&mut buf);
-                if opts.and_then(|opts| opts.return_string).unwrap_or(false) {
+                if return_string {
                     Ok(Some(String::from_utf8_lossy(&buf).into()))
                 } else {
                     std::io::stdout().write_all(&buf).unwrap();
