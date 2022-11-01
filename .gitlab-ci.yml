@@ -20,7 +20,6 @@ workflow:
 
 variables:
   BASE_IMAGE: docker-public.binary.picodata.io/picodata-build-base
-  BASE_IMAGE_TAG: latest
   CARGO_HOME: /shared-storage/picodata/.cargo
   CACHE_PATHS: target .venv
   CACHE_ARCHIVE: /shared-storage/picodata/cache.tar
@@ -33,30 +32,43 @@ variables:
 # - if build-base changes on development branch (compared to master)
 #     * build-base-image (with tag sha)
 #     * test (on base-image:sha)
-# - if build-base doesn't change
+# - else (if build-base doesn't change)
+#     * skip build-base-image
 #     * just test (on base-image:latest)
 #
+# Anchor syntax explained here:
+# https://docs.gitlab.com/ee/ci/yaml/yaml_optimization.html
+#
+.rules:
+  - &if-build-base-changes-on-master-branch
+    if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    changes:
+      # implies compare_to HEAD~1
+      paths: &build-base-changes-paths
+        - docker-build-base/**
+        - .gitlab-ci.yml
+
+  - &if-build-base-changes-on-dev-branch
+    if: $CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH
+    changes:
+      compare_to: master
+      paths: *build-base-changes-paths
+
+  - &else {}
+
 build-base-image:
   stage: build-base-image
   tags:
     - shell
-  # Anchor syntax explained here:
-  # https://docs.gitlab.com/ee/ci/yaml/yaml_optimization.html
-  rules: &if-build-base-changes
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-      changes:
-        paths:
-          - docker-build-base/**
-          - .gitlab-ci.yml
-
-    - if: $CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH
-      changes:
-        paths:
-          - docker-build-base/**
-          - .gitlab-ci.yml
-        compare_to: master
+  rules:
+    - <<: *if-build-base-changes-on-master-branch
+      variables:
+        BASE_IMAGE_TAG: latest
+    - <<: *if-build-base-changes-on-dev-branch
       variables:
         BASE_IMAGE_TAG: ${CI_COMMIT_SHA}
+    - <<: *else
+      when: never
   variables:
     GIT_DEPTH: 1
     GIT_STRATEGY: fetch
@@ -77,6 +89,8 @@ build-base-image:
         mkdir -p $CI_PROJECT_DIR/.docker
         echo $DOCKER_AUTH_RW > $CI_PROJECT_DIR/.docker/config.json
         docker --config $CI_PROJECT_DIR/.docker/ push ${BASE_IMAGE}:${BASE_IMAGE_TAG}
+      else
+        echo "Skip pushing image on a non-master branch"
       fi
 
 test:
@@ -84,9 +98,15 @@ test:
   tags:
     - docker
   rules:
-    - *if-build-base-changes
-    # else
-    - when: on_success
+    - <<: *if-build-base-changes-on-master-branch
+      variables:
+        BASE_IMAGE_TAG: latest
+    - <<: *if-build-base-changes-on-dev-branch
+      variables:
+        BASE_IMAGE_TAG: ${CI_COMMIT_SHA}
+    - <<: *else
+      variables:
+        BASE_IMAGE_TAG: latest
   image:
     name: ${BASE_IMAGE}:${BASE_IMAGE_TAG}
     pull_policy: if-not-present
