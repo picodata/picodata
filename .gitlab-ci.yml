@@ -1,7 +1,6 @@
 stages:
   - build-base-image
   - test
-  - push-base-image
   - pack-centos
   - pack-ubuntu
   - pack-debian
@@ -21,20 +20,43 @@ workflow:
 
 variables:
   BASE_IMAGE: docker-public.binary.picodata.io/picodata-build-base
+  BASE_IMAGE_TAG: latest
   CARGO_HOME: /cache/.cargo
   CACHE_PATHS: target .venv
   CACHE_ARCHIVE: /cache/picodata.tar
 
+# job:rules explained:
+#
+# - if build-base changes on master branch (compared to HEAD~1)
+#     * build-base-image (with tag latest) and push
+#     * test (on base-image:latest)
+# - if build-base changes on development branch (compared to master)
+#     * build-base-image (with tag sha)
+#     * test (on base-image:sha)
+# - if build-base doesn't change
+#     * just test (on base-image:latest)
+#
 build-base-image:
   stage: build-base-image
   tags:
     - shell
-  rules:
-    - changes: &build-base-changes
+  # Anchor syntax explained here:
+  # https://docs.gitlab.com/ee/ci/yaml/yaml_optimization.html
+  rules: &if-build-base-changes
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      changes:
+        paths:
+          - docker-build-base/**
+          - .gitlab-ci.yml
+
+    - if: $CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH
+      changes:
         paths:
           - docker-build-base/**
           - .gitlab-ci.yml
         compare_to: master
+      variables:
+        BASE_IMAGE_TAG: ${CI_COMMIT_SHA}
   variables:
     GIT_DEPTH: 1
     GIT_STRATEGY: fetch
@@ -45,50 +67,29 @@ build-base-image:
       docker build
       --cache-from ${BASE_IMAGE}:latest
       --label GIT_COMMIT=${CI_COMMIT_SHA}
-      -t ${BASE_IMAGE}:${CI_COMMIT_SHA}
+      -t ${BASE_IMAGE}:${BASE_IMAGE_TAG}
       -f ./docker-build-base/Dockerfile
       ./docker-build-base
-
-push-base-image:
-  stage: push-base-image
-  tags:
-    - shell
-  rules:
-    - changes: *build-base-changes
-      if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-  before_script:
-    - mkdir -p $CI_PROJECT_DIR/.docker
-    - echo $DOCKER_AUTH_RW > $CI_PROJECT_DIR/.docker/config.json
-  script:
-    - docker image tag ${BASE_IMAGE}:${CI_COMMIT_SHA} ${BASE_IMAGE}:latest
-    - docker --config $CI_PROJECT_DIR/.docker/ push ${BASE_IMAGE}:latest
+    - |
+      # Push image to registry
+      if [ "${CI_COMMIT_BRANCH}" == "${CI_DEFAULT_BRANCH}" ]; then
+        echo "Pushing ${BASE_IMAGE}:${BASE_IMAGE_TAG}"
+        mkdir -p $CI_PROJECT_DIR/.docker
+        echo $DOCKER_AUTH_RW > $CI_PROJECT_DIR/.docker/config.json
+        docker --config $CI_PROJECT_DIR/.docker/ push ${BASE_IMAGE}:${BASE_IMAGE_TAG}
+      fi
 
 test:
-  extends: .test
-  rules:
-    # If some of docker files changed,
-    # then skip this job (and run
-    # test-base-image instead).
-    - changes: *build-base-changes
-      when: never
-    # else
-    - when: on_success
-  image:
-    name: ${BASE_IMAGE}:latest
-    pull_policy: if-not-present
-
-test-base-image:
-  extends: .test
-  rules:
-    - changes: *build-base-changes
-  image:
-    name: ${BASE_IMAGE}:${CI_COMMIT_SHA}
-    pull_policy: never
-
-.test:
   stage: test
   tags:
     - docker
+  rules:
+    - *if-build-base-changes
+    # else
+    - when: on_success
+  image:
+    name: ${BASE_IMAGE}:${BASE_IMAGE_TAG}
+    pull_policy: if-not-present
   variables:
     GIT_DEPTH: 100
     GIT_SUBMODULE_STRATEGY: recursive
