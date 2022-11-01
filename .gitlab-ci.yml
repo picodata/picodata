@@ -21,9 +21,9 @@ workflow:
 variables:
   BASE_IMAGE: docker-public.binary.picodata.io/picodata-build-base
   BASE_IMAGE_TAG: latest
-  CARGO_HOME: /cache/.cargo
+  CARGO_HOME: /shared-storage/picodata/.cargo
   CACHE_PATHS: target .venv
-  CACHE_ARCHIVE: /cache/picodata.tar
+  CACHE_ARCHIVE: /shared-storage/picodata/cache.tar
 
 # job:rules explained:
 #
