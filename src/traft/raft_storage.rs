@@ -219,7 +219,7 @@ impl RaftSpaceAccess {
         Ok(())
     }
 
-    pub fn persist_entries(&mut self, entries: &[raft::Entry]) -> tarantool::Result<()> {
+    pub fn persist_entries(&self, entries: &[raft::Entry]) -> tarantool::Result<()> {
         for e in entries {
             let row = traft::Entry::try_from(e).unwrap();
             self.space_raft_log.replace(&row)?;
@@ -324,7 +324,7 @@ inventory::submit!(crate::InnerTest {
             ..Default::default()
         }];
 
-        let mut storage = RaftSpaceAccess::new().unwrap();
+        let storage = RaftSpaceAccess::new().unwrap();
         storage.persist_entries(&test_entries).unwrap();
 
         assert_eq!(S::first_index(&storage), Ok(1));

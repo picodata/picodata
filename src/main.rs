@@ -725,7 +725,7 @@ fn start_boot(args: &args::Run) {
         ..Default::default()
     };
 
-    let mut storage = init_common(args, &cfg);
+    let storage = init_common(args, &cfg);
 
     let cs = raft::ConfState {
         voters: vec![raft_id],
