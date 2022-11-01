@@ -75,8 +75,9 @@ fn picolib_setup(args: &args::Run) {
 
     luamod.set(
         "peer_info",
-        tlua::function1(|iid: String| -> traft::Result<_> {
+        tlua::function1(|iid: Option<String>| -> traft::Result<_> {
             let node = traft::node::global()?;
+            let iid = iid.unwrap_or(node.storage.raft.instance_id()?.unwrap());
             let peer = node.storage.peers.get(&InstanceId::from(iid))?;
 
             Ok(tlua::AsTable((

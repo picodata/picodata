@@ -184,7 +184,7 @@ def test_whoami(instance: Instance):
 
 
 def test_peer_info(instance: Instance):
-    def peer_info(iid: str):
+    def peer_info(iid: str | None = None):
         return instance.call("picolib.peer_info", iid)
 
     # Don't compare entire structure, a couple of fields is enough
@@ -196,6 +196,8 @@ def test_peer_info(instance: Instance):
     with pytest.raises(ReturnError) as e:
         peer_info("i2")
     assert e.value.args == ('peer with id "i2" not found',)
+
+    assert peer_info() == myself
 
 
 def test_raft_log(instance: Instance):
