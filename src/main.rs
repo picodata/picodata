@@ -19,7 +19,6 @@ use clap::StructOpt as _;
 use protobuf::Message as _;
 
 use crate::tlog::set_log_level;
-use crate::traft::rpc::sharding::cfg::ReplicasetWeights;
 use crate::traft::InstanceId;
 use crate::traft::{LogicalClock, RaftIndex, TargetGrade};
 use crate::traft::{UpdatePeerRequest, UpdatePeerResponse};
