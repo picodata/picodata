@@ -206,10 +206,12 @@ pack-ubuntu:
   script:
     - |
       pushd tarantool-sys; export VER_TNT=$(git describe --long | sed -n 's/^\([0-9\.]*\)-\([0-9]*\)-\([a-z0-9]*\)/\1.\2/p'); popd
-      OS=ubuntu DIST=focal PRESERVE_ENVVARS=VER_TNT BUILDDIR=$PWD/build_ubuntu/ RELEASE=${DIST} packpack/packpack
+      OS=ubuntu DIST=focal PRESERVE_ENVVARS=VER_TNT BUILDDIR=$PWD/build_${DIST}/ RELEASE=${DIST} packpack/packpack
+      OS=ubuntu DIST=jammy PRESERVE_ENVVARS=VER_TNT BUILDDIR=$PWD/build_${DIST}/ RELEASE=${DIST} packpack/packpack
   artifacts:
     paths:
-      - build_ubuntu/*.deb
+      - build_focal/*.deb
+      - build_jammy/*.deb
   dependencies: []
 
 pack-debian:
@@ -276,12 +278,19 @@ deploy-job:
     - ssh -o stricthostkeychecking=no ansible@94.26.239.246 "cd /data/nginx/www/packrepo/tarantool-picodata/el/8/ && createrepo --update x86_64 && gpg --no-tty --yes -u kdy@picodata.io --detach-sign --armor x86_64/repodata/repomd.xml"
     - echo "rpm-centos8-packet successfully deployed."
     - echo
-    # Ubuntu
-    - echo "Deploying ubuntu deb-packets..."
+    # Ubuntu focal
+    - echo "Deploying ubuntu focal deb-packets..."
     - ssh -o stricthostkeychecking=no ansible@94.26.239.246 "mkdir -p ~/.deb/ubuntu"
-    - scp -o stricthostkeychecking=no build_ubuntu/picodata*deb ansible@94.26.239.246:.deb/ubuntu/
+    - scp -o stricthostkeychecking=no build_focal/picodata*deb ansible@94.26.239.246:.deb/ubuntu/
     - ssh -o stricthostkeychecking=no ansible@94.26.239.246 "reprepro -b /data/nginx/www/packrepo/tarantool-picodata/ubuntu/ -C main includedeb focal ~/.deb/ubuntu/picodata*focal*deb; rm ~/.deb/ubuntu/picodata*focal*deb"
-    - echo "ubuntu deb-packets successfully deployed."
+    - echo "ubuntu focal deb-packets successfully deployed."
+    - echo
+    # Ubuntu jammy
+    - echo "Deploying ubuntu jammy deb-packets..."
+    - ssh -o stricthostkeychecking=no ansible@94.26.239.246 "mkdir -p ~/.deb/ubuntu"
+    - scp -o stricthostkeychecking=no build_jammy/picodata*deb ansible@94.26.239.246:.deb/ubuntu/
+    - ssh -o stricthostkeychecking=no ansible@94.26.239.246 "reprepro -b /data/nginx/www/packrepo/tarantool-picodata/ubuntu/ -C main includedeb jammy ~/.deb/ubuntu/picodata*jammy*deb; rm ~/.deb/ubuntu/picodata*jammy*deb"
+    - echo "ubuntu jammy deb-packets successfully deployed."
     - echo
     # Debian
     - echo "Deploying debian packets..."

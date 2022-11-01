@@ -4,9 +4,12 @@
 build_dir=debian/PKG_NAME
 PKG_PREFIX=/usr/bin/PKG_NAME
 
+override_dh_auto_clean:
+	echo "Nothing to clean on build"
+
 override_dh_auto_build:
 	sudo mkdir -m 777 ~
-	make install-cargo 
+	make install-cargo
 	make build
 
 override_dh_auto_test: ;
