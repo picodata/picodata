@@ -1,9 +1,4 @@
-use tarantool::tlua::{
-    Lua,
-    AnyLuaValue,
-    AnyHashableLuaValue,
-    AnyLuaString,
-};
+use tarantool::tlua::{AnyHashableLuaValue, AnyLuaString, AnyLuaValue, Lua};
 
 pub fn read_numbers() {
     let lua = Lua::new();
@@ -101,20 +96,26 @@ pub fn read_hashable_booleans() {
 
 pub fn read_tables() {
     let lua = Lua::new();
-    lua.exec("
+    lua.exec(
+        "
     a = {x = 12, y = 19}
     b = {z = a, w = 'test string'}
     c = {'first', 'second'}
-    ").unwrap();
+    ",
+    )
+    .unwrap();
 
     fn get<'a>(table: &'a AnyLuaValue, key: &str) -> &'a AnyLuaValue {
         let test_key = AnyLuaValue::LuaString(key.to_owned());
         match *table {
             AnyLuaValue::LuaArray(ref vec) => {
-                let &(_, ref value) = vec.iter().find(|&&(ref key, _)| key == &test_key).expect("key not found");
+                let &(_, ref value) = vec
+                    .iter()
+                    .find(|&&(ref key, _)| key == &test_key)
+                    .expect("key not found");
                 value
-            },
-            _ => panic!("not a table")
+            }
+            _ => panic!("not a table"),
         }
     }
 
@@ -122,10 +123,13 @@ pub fn read_tables() {
         let test_key = AnyLuaValue::LuaNumber(key as f64);
         match *table {
             AnyLuaValue::LuaArray(ref vec) => {
-                let &(_, ref value) = vec.iter().find(|&&(ref key, _)| key == &test_key).expect("key not found");
+                let &(_, ref value) = vec
+                    .iter()
+                    .find(|&&(ref key, _)| key == &test_key)
+                    .expect("key not found");
                 value
-            },
-            _ => panic!("not a table")
+            }
+            _ => panic!("not a table"),
         }
     }
 
@@ -138,26 +142,38 @@ pub fn read_tables() {
     assert_eq!(get(get(&b, "z"), "y"), get(&a, "y"));
 
     let c: AnyLuaValue = lua.get("c").unwrap();
-    assert_eq!(get_numeric(&c, 1), &AnyLuaValue::LuaString("first".to_owned()));
-    assert_eq!(get_numeric(&c, 2), &AnyLuaValue::LuaString("second".to_owned()));
+    assert_eq!(
+        get_numeric(&c, 1),
+        &AnyLuaValue::LuaString("first".to_owned())
+    );
+    assert_eq!(
+        get_numeric(&c, 2),
+        &AnyLuaValue::LuaString("second".to_owned())
+    );
 }
 
 pub fn read_hashable_tables() {
     let lua = Lua::new();
-    lua.exec("
+    lua.exec(
+        "
     a = {x = 12, y = 19}
     b = {z = a, w = 'test string'}
     c = {'first', 'second'}
-    ").unwrap();
+    ",
+    )
+    .unwrap();
 
     fn get<'a>(table: &'a AnyHashableLuaValue, key: &str) -> &'a AnyHashableLuaValue {
         let test_key = AnyHashableLuaValue::LuaString(key.to_owned());
         match *table {
             AnyHashableLuaValue::LuaArray(ref vec) => {
-                let &(_, ref value) = vec.iter().find(|&&(ref key, _)| key == &test_key).expect("key not found");
+                let &(_, ref value) = vec
+                    .iter()
+                    .find(|&&(ref key, _)| key == &test_key)
+                    .expect("key not found");
                 value
-            },
-            _ => panic!("not a table")
+            }
+            _ => panic!("not a table"),
         }
     }
 
@@ -165,10 +181,13 @@ pub fn read_hashable_tables() {
         let test_key = AnyHashableLuaValue::LuaNumber(key as i32);
         match *table {
             AnyHashableLuaValue::LuaArray(ref vec) => {
-                let &(_, ref value) = vec.iter().find(|&&(ref key, _)| key == &test_key).expect("key not found");
+                let &(_, ref value) = vec
+                    .iter()
+                    .find(|&&(ref key, _)| key == &test_key)
+                    .expect("key not found");
                 value
-            },
-            _ => panic!("not a table")
+            }
+            _ => panic!("not a table"),
         }
     }
 
@@ -181,8 +200,14 @@ pub fn read_hashable_tables() {
     assert_eq!(get(get(&b, "z"), "y"), get(&a, "y"));
 
     let c: AnyHashableLuaValue = lua.get("c").unwrap();
-    assert_eq!(get_numeric(&c, 1), &AnyHashableLuaValue::LuaString("first".to_owned()));
-    assert_eq!(get_numeric(&c, 2), &AnyHashableLuaValue::LuaString("second".to_owned()));
+    assert_eq!(
+        get_numeric(&c, 1),
+        &AnyHashableLuaValue::LuaString("first".to_owned())
+    );
+    assert_eq!(
+        get_numeric(&c, 2),
+        &AnyHashableLuaValue::LuaString("second".to_owned())
+    );
 }
 
 pub fn push_numbers() {
@@ -245,9 +270,11 @@ pub fn push_nil() {
     lua.set("a", AnyLuaValue::LuaNil);
 
     let x: Option<i32> = lua.get("a");
-    assert!(x.is_none(),
-            "x is a Some value when it should be a None value. X: {:?}",
-            x);
+    assert!(
+        x.is_none(),
+        "x is a Some value when it should be a None value. X: {:?}",
+        x
+    );
 }
 
 pub fn push_hashable_nil() {
@@ -256,18 +283,22 @@ pub fn push_hashable_nil() {
     lua.set("a", AnyHashableLuaValue::LuaNil);
 
     let x: Option<i32> = lua.get("a");
-    assert!(x.is_none(),
-            "x is a Some value when it should be a None value. X: {:?}",
-            x);
+    assert!(
+        x.is_none(),
+        "x is a Some value when it should be a None value. X: {:?}",
+        x
+    );
 }
 
 pub fn non_utf_8_string() {
     let lua = Lua::new();
-    let a = lua.eval::<AnyLuaValue>(r"return '\xff\xfe\xff\xfe'").unwrap();
+    let a = lua
+        .eval::<AnyLuaValue>(r"return '\xff\xfe\xff\xfe'")
+        .unwrap();
     match a {
         AnyLuaValue::LuaAnyString(AnyLuaString(v)) => {
             assert_eq!(Vec::from(&b"\xff\xfe\xff\xfe"[..]), v);
-        },
+        }
         _ => panic!("Decoded to wrong variant"),
     }
 }

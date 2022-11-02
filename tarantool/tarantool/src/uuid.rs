@@ -1,11 +1,8 @@
 use crate::ffi::uuid as ffi;
 use std::os::raw::c_char;
 
-use serde::{Serialize, Deserialize};
-pub use ::uuid::{
-    adapter,
-    Error,
-};
+pub use ::uuid::{adapter, Error};
+use serde::{Deserialize, Serialize};
 
 type Inner = ::uuid::Uuid;
 
@@ -44,7 +41,9 @@ impl Uuid {
     /// `None` if there's not enough bytes in the slice.
     #[inline(always)]
     pub fn try_from_slice(bytes: &[u8]) -> Option<Self> {
-        std::convert::TryInto::try_into(bytes).ok().map(Self::from_bytes)
+        std::convert::TryInto::try_into(bytes)
+            .ok()
+            .map(Self::from_bytes)
     }
 
     /// Convert the tarantool native (little endian) uuid representation into a
@@ -221,8 +220,7 @@ impl serde::Serialize for Uuid {
         struct _ExtStruct((c_char, serde_bytes::ByteBuf));
 
         let data = self.as_bytes();
-        _ExtStruct((ffi::MP_UUID, serde_bytes::ByteBuf::from(data as &[_])))
-            .serialize(serializer)
+        _ExtStruct((ffi::MP_UUID, serde_bytes::ByteBuf::from(data as &[_]))).serialize(serializer)
     }
 }
 
@@ -237,19 +235,19 @@ impl<'de> serde::Deserialize<'de> for Uuid {
         let _ExtStruct((kind, bytes)) = serde::Deserialize::deserialize(deserializer)?;
 
         if kind != ffi::MP_UUID {
-            return Err(serde::de::Error::custom(
-                format!("Expected UUID, found msgpack ext #{}", kind)
-            ))
+            return Err(serde::de::Error::custom(format!(
+                "Expected UUID, found msgpack ext #{}",
+                kind
+            )));
         }
 
         let data = bytes.into_vec();
-        Self::try_from_slice(&data)
-            .ok_or_else(|| serde::de::Error::custom(
-                format!(
-                    "Not enough bytes for UUID: expected 16, got {}",
-                    data.len()
-                )
+        Self::try_from_slice(&data).ok_or_else(|| {
+            serde::de::Error::custom(format!(
+                "Not enough bytes for UUID: expected 16, got {}",
+                data.len()
             ))
+        })
     }
 }
 
@@ -263,10 +261,8 @@ fn ctid_uuid() -> u32 {
     unsafe {
         if CTID_UUID.is_none() {
             let lua = crate::global_lua();
-            let ctid_uuid = tlua::ffi::luaL_ctypeid(
-                tlua::AsLua::as_lua(&lua),
-                crate::c_ptr!("struct tt_uuid"),
-            );
+            let ctid_uuid =
+                tlua::ffi::luaL_ctypeid(tlua::AsLua::as_lua(&lua), crate::c_ptr!("struct tt_uuid"));
             assert!(ctid_uuid != 0);
             CTID_UUID = Some(ctid_uuid)
         }
@@ -283,12 +279,12 @@ where
         let index = index.get();
         unsafe {
             if tlua::ffi::lua_type(raw_lua, index) != tlua::ffi::LUA_TCDATA {
-                return Err(lua)
+                return Err(lua);
             }
             let mut ctypeid = std::mem::MaybeUninit::uninit();
             let cdata = tlua::ffi::luaL_checkcdata(raw_lua, index, ctypeid.as_mut_ptr());
             if ctypeid.assume_init() != ctid_uuid() {
-                return Err(lua)
+                return Err(lua);
             }
             Ok(Self::from_tt_uuid(*cdata.cast()))
         }
@@ -319,4 +315,3 @@ impl<L: tlua::AsLua> tlua::PushInto<L> for Uuid {
 }
 
 impl<L: tlua::AsLua> tlua::PushOneInto<L> for Uuid {}
-

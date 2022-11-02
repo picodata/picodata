@@ -2,8 +2,8 @@ use std::io::{Read, Seek, SeekFrom};
 
 use byteorder::{BigEndian, ReadBytesExt};
 
-use crate::Result;
 use super::tuple::ToTupleBuffer;
+use crate::Result;
 
 pub fn skip_value(cur: &mut (impl Read + Seek)) -> Result<()> {
     use rmp::Marker;
@@ -119,8 +119,10 @@ where
 }
 
 /// Initiate a msgpack array of `len`
-pub fn write_array_len(w: &mut impl std::io::Write, len: u32) -> std::result::Result<(), rmp::encode::ValueWriteError> {
+pub fn write_array_len(
+    w: &mut impl std::io::Write,
+    len: u32,
+) -> std::result::Result<(), rmp::encode::ValueWriteError> {
     rmp::encode::write_array_len(w, len)?;
     Ok(())
 }
-

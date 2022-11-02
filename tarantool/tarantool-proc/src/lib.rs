@@ -1,11 +1,10 @@
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
-use syn::{
-    AttributeArgs, parse_macro_input, FnArg, Item, ItemFn,
-    Lit, Meta, MetaNameValue, NestedMeta, Signature,
-    punctuated::Punctuated, Token,
-};
 use quote::quote;
+use syn::{
+    parse_macro_input, punctuated::Punctuated, AttributeArgs, FnArg, Item, ItemFn, Lit, Meta,
+    MetaNameValue, NestedMeta, Signature, Token,
+};
 
 #[proc_macro_attribute]
 pub fn stored_proc(attr: TokenStream, item: TokenStream) -> TokenStream {
@@ -20,15 +19,23 @@ pub fn stored_proc(attr: TokenStream, item: TokenStream) -> TokenStream {
     };
 
     let (ident, inputs, output, generics) = match sig {
-        Signature { asyncness: Some(_), .. } => {
+        Signature {
+            asyncness: Some(_), ..
+        } => {
             panic!("async stored procedures are not supported yet")
         }
-        Signature { variadic: Some(_), .. } => {
+        Signature {
+            variadic: Some(_), ..
+        } => {
             panic!("variadic stored procedures are not supported yet")
         }
-        Signature { ident, inputs, output, generics, .. } => {
-            (ident, inputs, output, generics)
-        }
+        Signature {
+            ident,
+            inputs,
+            output,
+            generics,
+            ..
+        } => (ident, inputs, output, generics),
     };
 
     let Inputs {
@@ -84,7 +91,8 @@ pub fn stored_proc(attr: TokenStream, item: TokenStream) -> TokenStream {
 
             #tarantool::proc::Return::ret(__tp_res, __tp_ctx)
         }
-    }.into()
+    }
+    .into()
 }
 
 struct Context {
@@ -112,19 +120,11 @@ impl Context {
                         let __tp_res = #tarantool::proc::ReturnMsgpack(__tp_res);
                     }
                 }
-                NMMeta(Meta::Path(path)) if path.is_ident("packed_args") => {
-                    is_packed = true
-                }
-                NMMeta(Meta::Path(path)) if path.is_ident("debug") => {
-                    debug_tuple_needed = true
-                }
-                NMMeta(Meta::NameValue(MetaNameValue {
-                    path,
-                    lit,
-                    ..
-                })) if path.get_ident()
-                        .map(|p| p == "tarantool")
-                        .unwrap_or(false) => {
+                NMMeta(Meta::Path(path)) if path.is_ident("packed_args") => is_packed = true,
+                NMMeta(Meta::Path(path)) if path.is_ident("debug") => debug_tuple_needed = true,
+                NMMeta(Meta::NameValue(MetaNameValue { path, lit, .. }))
+                    if path.get_ident().map(|p| p == "tarantool").unwrap_or(false) =>
+                {
                     match &lit {
                         Lit::Str(s) => {
                             let tp: syn::Path = imp::parse_lit_str(s).unwrap();
@@ -170,26 +170,30 @@ impl Inputs {
         let mut injected_inputs = vec![];
         let mut injected_exprs = vec![];
         for i in &mut inputs {
-            let syn::PatType { ref pat, ref mut attrs, .. } = match i {
+            let syn::PatType {
+                ref pat,
+                ref mut attrs,
+                ..
+            } = match i {
                 FnArg::Receiver(_) => {
                     panic!("`self` receivers aren't supported in stored procedures")
                 }
                 FnArg::Typed(pat_ty) => pat_ty,
             };
             let mut inject_expr = None;
-            attrs.retain(|attr|
+            attrs.retain(|attr| {
                 if attr.path.is_ident("inject") {
                     match attr.parse_args() {
-                        Ok(AttrInject { expr, .. }) =>  {
+                        Ok(AttrInject { expr, .. }) => {
                             inject_expr = Some(expr);
                             false
                         }
-                        Err(e) => panic!("attribute argument error: {}", e)
+                        Err(e) => panic!("attribute argument error: {}", e),
                     }
                 } else {
                     true
                 }
-            );
+            });
             if let Some(expr) = inject_expr {
                 injected_inputs.push(pat.clone());
                 injected_exprs.push(expr);
@@ -200,11 +204,11 @@ impl Inputs {
         }
 
         let input_pattern = if inputs.is_empty() {
-            quote!{ []: [(); 0] }
+            quote! { []: [(); 0] }
         } else if ctx.is_packed {
-            quote!{ #(#actual_inputs)* }
+            quote! { #(#actual_inputs)* }
         } else {
-            quote!{ ( #(#actual_inputs,)* ) }
+            quote! { ( #(#actual_inputs,)* ) }
         };
 
         let inject_inputs = quote! {
@@ -235,7 +239,7 @@ impl syn::parse::Parse for AttrInject {
 }
 
 mod kw {
-    syn::custom_keyword!{inject}
+    syn::custom_keyword! {inject}
 }
 
 mod imp {
@@ -272,4 +276,3 @@ mod imp {
         token
     }
 }
-

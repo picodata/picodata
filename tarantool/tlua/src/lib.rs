@@ -106,37 +106,33 @@
 //!   the return type of [`eval`](struct.Lua.html#method.eval).
 //! - TODO: userdata
 //!
-use std::ffi::{CStr, CString};
-use std::io::Read;
-use std::io::Error as IoError;
 use std::borrow::{Borrow, Cow};
-use std::num::NonZeroI32;
 use std::error::Error;
+use std::ffi::{CStr, CString};
 use std::fmt;
+use std::io::Error as IoError;
+use std::io::Read;
 use std::io::{self, Write};
+use std::num::NonZeroI32;
 
+pub use ::tlua_derive::*;
 pub use any::{AnyHashableLuaValue, AnyLuaString, AnyLuaValue};
+pub use cdata::{AsCData, CData, CDataOnStack};
 pub use functions_write::{
-    Function, InsideCallback, Throw,
-    function0, function1, function2, function3, function4, function5,
-    function6, function7, function8, function9, function10,
-    protected_call,
+    function0, function1, function10, function2, function3, function4, function5, function6,
+    function7, function8, function9, protected_call, Function, InsideCallback, Throw,
 };
 pub use lua_functions::LuaFunction;
 pub use lua_functions::{LuaCode, LuaCodeFromReader};
 pub use lua_tables::{LuaTable, LuaTableIterator};
 pub use object::{
-    Call, Callable, CallError,
-    Index, Indexable, IndexableRW, MethodCallError, NewIndex,
-    Object,
+    Call, CallError, Callable, Index, Indexable, IndexableRW, MethodCallError, NewIndex, Object,
 };
-pub use rust_tables::{TableFromIter, PushIterError, PushIterErrorOf};
+pub use rust_tables::{PushIterError, PushIterErrorOf, TableFromIter};
 pub use tuples::{AsTable, TuplePushError};
 pub use userdata::UserdataOnStack;
-pub use userdata::{push_userdata, read_userdata, push_some_userdata};
-pub use values::{StringInLua, Nil, Null, True, False, Typename, ToString, Strict};
-pub use cdata::{CData, CDataOnStack, AsCData};
-pub use ::tlua_derive::*;
+pub use userdata::{push_some_userdata, push_userdata, read_userdata};
+pub use values::{False, Nil, Null, Strict, StringInLua, ToString, True, Typename};
 
 #[deprecated = "Use `CallError` instead"]
 pub type LuaFunctionCallError<E> = CallError<E>;
@@ -153,10 +149,10 @@ mod lua_tables;
 mod macros;
 mod object;
 mod rust_tables;
+mod tuples;
 mod userdata;
 pub mod util;
 mod values;
-mod tuples;
 
 pub type LuaState = *mut ffi::lua_State;
 
@@ -198,7 +194,7 @@ where
 }
 
 mod on_drop {
-    use crate::{LuaState, ffi};
+    use crate::{ffi, LuaState};
 
     pub trait OnDrop {
         fn on_drop(&mut self, l: LuaState);
@@ -253,14 +249,15 @@ where
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let start = unsafe {
-            AbsoluteIndex::new_unchecked(
-                NonZeroI32::new(self.top - self.size + 1).unwrap()
-            )
+            AbsoluteIndex::new_unchecked(NonZeroI32::new(self.top - self.size + 1).unwrap())
         };
         f.debug_struct("PushGuard")
             .field("lua", &self.lua)
             .field("size", &self.size)
-            .field("lua_type", &typenames(self.lua.as_lua(), start, self.size as _))
+            .field(
+                "lua_type",
+                &typenames(self.lua.as_lua(), start, self.size as _),
+            )
             .finish()
     }
 }
@@ -317,7 +314,10 @@ impl<L: AsLua> PushGuard<L> {
     /// which returns access when using by-value capture.
     #[inline]
     pub fn into_inner(self) -> L {
-        use std::{mem::{self, MaybeUninit}, ptr};
+        use std::{
+            mem::{self, MaybeUninit},
+            ptr,
+        };
 
         let mut res = MaybeUninit::uninit();
         unsafe {
@@ -456,8 +456,7 @@ pub trait AsLua {
     /// Returns a `PushGuard` which captures `self` by value and stores the
     /// amount of values pushed onto the stack (exactly 1 -- lua table).
     #[inline(always)]
-    fn try_push_iter<I>(self, iterator: I)
-        -> Result<PushGuard<Self>, (PushIterErrorOf<I>, Self)>
+    fn try_push_iter<I>(self, iterator: I) -> Result<PushGuard<Self>, (PushIterErrorOf<I>, Self)>
     where
         Self: Sized,
         I: Iterator,
@@ -738,7 +737,7 @@ pub enum LuaError {
     ReadError(IoError),
 
     /// The call to `eval` has requested the wrong type of data.
-    WrongType{
+    WrongType {
         when: &'static str,
         rust_expected: String,
         lua_actual: String,
@@ -803,8 +802,16 @@ impl fmt::Display for LuaError {
             SyntaxError(s) => write!(f, "Syntax error: {}", s),
             ExecutionError(s) => write!(f, "Execution error: {}", s),
             ReadError(e) => write!(f, "Read error: {}", e),
-            WrongType { when, rust_expected, lua_actual } => {
-                write!(f, "{}: {} expected, got {}", when, rust_expected, lua_actual)
+            WrongType {
+                when,
+                rust_expected,
+                lua_actual,
+            } => {
+                write!(
+                    f,
+                    "{}: {} expected, got {}",
+                    when, rust_expected, lua_actual
+                )
             }
         }
     }
@@ -921,7 +928,7 @@ impl StaticLua {
             let r = ffi::luaL_ref(self.as_lua(), ffi::LUA_REGISTRYINDEX);
             LuaThread {
                 lua,
-                on_drop: on_drop::Unref(r)
+                on_drop: on_drop::Unref(r),
             }
         }
     }
@@ -929,11 +936,17 @@ impl StaticLua {
 
 impl<L: AsLua> LuaRead<L> for StaticLua {
     fn lua_read_at_maybe_zero_position(lua: L, _: i32) -> Result<Self, L> {
-        Ok(Self { lua: lua.as_lua(), on_drop: on_drop::Ignore })
+        Ok(Self {
+            lua: lua.as_lua(),
+            on_drop: on_drop::Ignore,
+        })
     }
 
     fn lua_read_at_position(lua: L, _: NonZeroI32) -> Result<Self, L> {
-        Ok(Self { lua: lua.as_lua(), on_drop: on_drop::Ignore })
+        Ok(Self {
+            lua: lua.as_lua(),
+            on_drop: on_drop::Ignore,
+        })
     }
 }
 
@@ -1075,8 +1088,7 @@ where
     where
         T: LuaRead<PushGuard<LuaFunction<PushGuard<&'lua Self>>>>,
     {
-        LuaFunction::load(self, code)?
-            .into_call()
+        LuaFunction::load(self, code)?.into_call()
     }
 
     /// Executes some Lua code in the context
@@ -1097,8 +1109,7 @@ where
         A: PushInto<LuaState>,
         T: LuaRead<PushGuard<LuaFunction<PushGuard<&'lua Self>>>>,
     {
-        LuaFunction::load(self, code)?
-            .into_call_with_args(args)
+        LuaFunction::load(self, code)?.into_call_with_args(args)
     }
 
     /// Executes some Lua code in the context.
@@ -1119,8 +1130,7 @@ where
     #[inline(always)]
     // TODO(gmoshkin): this method should be part of AsLua
     pub fn exec(&self, code: &str) -> Result<(), LuaError> {
-        LuaFunction::load(self, code)?
-            .into_call()
+        LuaFunction::load(self, code)?.into_call()
     }
 
     /// Executes some Lua code in the context
@@ -1143,8 +1153,7 @@ where
     where
         A: PushInto<LuaState>,
     {
-        LuaFunction::load(self, code)?
-            .into_call_with_args(args)
+        LuaFunction::load(self, code)?.into_call_with_args(args)
     }
 
     /// Executes some Lua code on the context.
@@ -1173,8 +1182,7 @@ where
     where
         T: LuaRead<PushGuard<LuaFunction<PushGuard<&'lua Self>>>>,
     {
-        LuaFunction::load_from_reader(self, code)?
-            .into_call()
+        LuaFunction::load_from_reader(self, code)?.into_call()
     }
 
     /// Executes some Lua code on the context.
@@ -1200,8 +1208,7 @@ where
     #[inline(always)]
     // TODO(gmoshkin): this method should be part of AsLua
     pub fn exec_from(&self, code: impl Read) -> Result<(), LuaError> {
-        LuaFunction::load_from_reader(self, code)?
-            .into_call()
+        LuaFunction::load_from_reader(self, code)?.into_call()
     }
 
     /// Reads the value of a global variable.
@@ -1287,8 +1294,11 @@ where
     // TODO: docs
     #[inline]
     // TODO(gmoshkin): this method should be part of AsLua
-    pub fn checked_set<'lua, I, V>(&'lua self, index: I, value: V)
-        -> Result<(), <V as PushInto<&'lua Self>>::Err>
+    pub fn checked_set<'lua, I, V>(
+        &'lua self,
+        index: I,
+        value: V,
+    ) -> Result<(), <V as PushInto<&'lua Self>>::Err>
     where
         I: Borrow<str>,
         V: PushOneInto<&'lua Self>,

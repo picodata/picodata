@@ -21,8 +21,8 @@ pub trait VaPrimitive: 'static {
 }
 
 mod imp {
-    use std::ffi::c_void;
     use super::VaPrimitive;
+    use std::ffi::c_void;
 
     #[repr(transparent)]
     pub struct VaList(VaListInner);
@@ -58,5 +58,5 @@ mod imp {
         };
     }
 
-    impl_va_prim!{ usize, isize, u64, i64, u32, i32, f64, f32 }
+    impl_va_prim! { usize, isize, u64, i64, u32, i32, f64, f32 }
 }

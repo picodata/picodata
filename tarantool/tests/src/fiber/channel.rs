@@ -1,10 +1,9 @@
-use std::{
-    cell::Cell,
-    rc::Rc,
-    time::Duration,
-};
+use std::{cell::Cell, rc::Rc, time::Duration};
 
-use crate::common::{DropCounter, check_yield, YieldResult::{Yields, DoesntYield}};
+use crate::common::{
+    check_yield, DropCounter,
+    YieldResult::{DoesntYield, Yields},
+};
 use tarantool::fiber;
 use tarantool::util::IntoClones;
 
@@ -20,8 +19,9 @@ pub fn send_full() {
     let ch = fiber::Channel::new(0);
 
     assert_eq!(
-        check_yield(||
-            ch.send_timeout("echo1", Duration::from_micros(1)).unwrap_err()),
+        check_yield(|| ch
+            .send_timeout("echo1", Duration::from_micros(1))
+            .unwrap_err()),
         Yields(fiber::SendError::Timeout("echo1"))
     );
 
@@ -50,10 +50,7 @@ pub fn unbuffered() {
 
     let f = fiber::defer(move || rx.recv().unwrap());
 
-    assert_eq!(
-        check_yield(|| tx.send("hello").unwrap()),
-        Yields(())
-    );
+    assert_eq!(check_yield(|| tx.send("hello").unwrap()), Yields(()));
 
     assert_eq!(f.join(), "hello")
 }
@@ -141,7 +138,9 @@ pub fn iter() {
     for msg in &rx {
         i += 1;
         assert_eq!(msg, i);
-        if i == 3 { break }
+        if i == 3 {
+            break;
+        }
     }
     f1.join();
     f2.join();
@@ -157,7 +156,9 @@ pub fn into_iter() {
     for msg in rx {
         i += 1;
         assert_eq!(msg, i);
-        if i == 3 { break }
+        if i == 3 {
+            break;
+        }
     }
     f1.join();
     f2.join();
@@ -265,7 +266,8 @@ pub fn demo() {
     f.join();
 
     assert_eq!(
-        flog.join(), &[
+        flog.join(),
+        &[
             "job started".to_string(),
             "job got data: 1".to_string(),
             "job done".to_string(),

@@ -1,21 +1,8 @@
 use crate::{
-    AbsoluteIndex,
-    AsLua,
-    impl_object,
-    Push,
-    PushOneInto,
-    PushGuard,
-    PushInto,
-    LuaError,
-    LuaState,
-    LuaRead,
-    Void,
+    impl_object, AbsoluteIndex, AsLua, LuaError, LuaRead, LuaState, Push, PushGuard, PushInto,
+    PushOneInto, Void,
 };
-use std::{
-    error::Error,
-    fmt,
-    num::NonZeroI32,
-};
+use std::{error::Error, fmt, num::NonZeroI32};
 
 ////////////////////////////////////////////////////////////////////////////////
 // Object
@@ -70,11 +57,10 @@ impl<L> Object<L> {
     #[inline(always)]
     pub unsafe fn try_downcast<T>(self) -> Result<T, Self>
     where
-        T: LuaRead<L>
+        T: LuaRead<L>,
     {
         let Self { guard, index } = self;
-        T::lua_read_at_position(guard, index.0)
-            .map_err(|guard| Self { guard, index })
+        T::lua_read_at_position(guard, index.0).map_err(|guard| Self { guard, index })
     }
 }
 
@@ -108,10 +94,7 @@ where
         }
     }
 }
-impl<L> crate::PushOne<L> for Object<L>
-where
-    L: AsLua,
-{}
+impl<L> crate::PushOne<L> for Object<L> where L: AsLua {}
 
 impl<L, K> PushInto<L> for Object<K>
 where
@@ -125,10 +108,7 @@ where
         }
     }
 }
-impl<L> crate::PushOneInto<L> for Object<L>
-where
-    L: AsLua,
-{}
+impl<L> crate::PushOneInto<L> for Object<L> where L: AsLua {}
 
 /// Types implementing this trait represent a single value stored on the lua
 /// stack. Type parameter `L` represents a value guarding the state of the lua
@@ -269,17 +249,15 @@ where
         A: PushInto<LuaState>,
         R: LuaRead<PushGuard<Callable<PushGuard<&'lua L>>>>,
     {
-        use MethodCallError::{NoSuchMethod, LuaError, PushError};
+        use MethodCallError::{LuaError, NoSuchMethod, PushError};
 
         self.get::<_, Callable<_>>(name)
             .ok_or(NoSuchMethod)?
             .into_call_with((self, args))
-            .map_err(|e|
-                match e {
-                    CallError::LuaError(e) => LuaError(e),
-                    CallError::PushError(e) => PushError(e.other().first()),
-                }
-            )
+            .map_err(|e| match e {
+                CallError::LuaError(e) => LuaError(e),
+                CallError::PushError(e) => PushError(e.other().first()),
+            })
     }
 }
 
@@ -353,7 +331,7 @@ pub struct Indexable<L> {
     inner: Object<L>,
 }
 
-impl_object!{ Indexable,
+impl_object! { Indexable,
     check(lua, index) {
         imp::is_indexable(&lua, index)
     }
@@ -390,8 +368,10 @@ where
     #[inline(always)]
     fn set<K, V>(&self, key: K, value: V)
     where
-        K: PushOneInto<LuaState>, K::Err: Into<Void>,
-        V: PushOneInto<LuaState>, V::Err: Into<Void>,
+        K: PushOneInto<LuaState>,
+        K::Err: Into<Void>,
+        V: PushOneInto<LuaState>,
+        V::Err: Into<Void>,
     {
         if let Err(e) = self.try_set(key, value) {
             panic!("Setting value failed: {}", e)
@@ -415,17 +395,16 @@ where
     #[inline]
     fn try_set<K, V>(&self, key: K, value: V) -> Result<(), LuaError>
     where
-        K: PushOneInto<LuaState>, K::Err: Into<Void>,
-        V: PushOneInto<LuaState>, V::Err: Into<Void>,
+        K: PushOneInto<LuaState>,
+        K::Err: Into<Void>,
+        V: PushOneInto<LuaState>,
+        V::Err: Into<Void>,
     {
         let Object { guard, index } = self.as_ref();
-        unsafe { imp::try_checked_set(guard, *index, key, value) }
-            .map_err(|e|
-                match e {
-                    Ok(_) => unreachable!("Void is uninstantiatable"),
-                    Err(e) => e,
-                }
-            )
+        unsafe { imp::try_checked_set(guard, *index, key, value) }.map_err(|e| match e {
+            Ok(_) => unreachable!("Void is uninstantiatable"),
+            Err(e) => e,
+        })
     }
 
     /// Inserts or modifies a `value` of the table (or other object using the
@@ -443,11 +422,7 @@ where
     /// [`NewIndex::try_checked_set`] if this is a possibility in your case.
     #[track_caller]
     #[inline(always)]
-    fn checked_set<K, V>(
-        &self,
-        key: K,
-        value: V,
-    ) -> Result<(), CheckedSetError<K::Err, V::Err>>
+    fn checked_set<K, V>(&self, key: K, value: V) -> Result<(), CheckedSetError<K::Err, V::Err>>
     where
         K: PushOneInto<LuaState>,
         V: PushOneInto<LuaState>,
@@ -507,7 +482,7 @@ pub struct IndexableRW<L> {
     inner: Object<L>,
 }
 
-impl_object!{ IndexableRW,
+impl_object! { IndexableRW,
     check(lua, index) {
         imp::is_rw_indexable(&lua, index)
     }
@@ -657,7 +632,7 @@ pub struct Callable<L> {
     inner: Object<L>,
 }
 
-impl_object!{ Callable,
+impl_object! { Callable,
     check(lua, index) {
         imp::is_callable(&lua, index)
     }
@@ -669,25 +644,10 @@ impl_object!{ Callable,
 ////////////////////////////////////////////////////////////////////////////////
 
 mod imp {
+    use super::{CallError, CheckedSetError, TryCheckedSetError};
     use crate::{
-        AbsoluteIndex,
-        AsLua,
-        c_ptr,
-        ffi,
-        PushGuard,
-        PushInto,
-        PushOneInto,
-        LuaError,
-        LuaState,
-        LuaRead,
-        nzi32,
-        ToString,
-        Void,
-    };
-    use super::{
-        CallError,
-        CheckedSetError,
-        TryCheckedSetError,
+        c_ptr, ffi, nzi32, AbsoluteIndex, AsLua, LuaError, LuaRead, LuaState, PushGuard, PushInto,
+        PushOneInto, ToString, Void,
     };
     use std::num::NonZeroI32;
 
@@ -710,8 +670,8 @@ mod imp {
         let raw_lua = this.as_lua();
         let this_index = this_index.into();
 
-        if ffi::lua_istable(raw_lua, this_index) &&
-            !ffi::luaL_hasmetafield(raw_lua, this_index, c_ptr!("__index"))
+        if ffi::lua_istable(raw_lua, this_index)
+            && !ffi::luaL_hasmetafield(raw_lua, this_index, c_ptr!("__index"))
         {
             // push key
             raw_lua.push_one(key).assert_one_and_forget();
@@ -753,11 +713,10 @@ mod imp {
             ffi::luaL_unref(raw_lua, ffi::LUA_REGISTRYINDEX, table_ref);
         }
 
-        R::lua_read_at_position(PushGuard::new(this, 1), nzi32!(-1))
-            .map_err(|g| {
-                let e = LuaError::wrong_type_returned::<R, _>(raw_lua, 1);
-                (g.into_inner(), e)
-            })
+        R::lua_read_at_position(PushGuard::new(this, 1), nzi32!(-1)).map_err(|g| {
+            let e = LuaError::wrong_type_returned::<R, _>(raw_lua, 1);
+            (g.into_inner(), e)
+        })
     }
 
     ////////////////////////////////////////////////////////////////////////////
@@ -778,30 +737,34 @@ mod imp {
     {
         let raw_lua = this.as_lua();
         let this_index = this_index.into();
-        if ffi::lua_istable(raw_lua, this_index) &&
-            !ffi::luaL_hasmetafield(raw_lua, this_index, c_ptr!("__index")) &&
-            !ffi::luaL_hasmetafield(raw_lua, this_index, c_ptr!("__newindex"))
+        if ffi::lua_istable(raw_lua, this_index)
+            && !ffi::luaL_hasmetafield(raw_lua, this_index, c_ptr!("__index"))
+            && !ffi::luaL_hasmetafield(raw_lua, this_index, c_ptr!("__newindex"))
         {
             // push key
-            raw_lua.try_push_one(key)
+            raw_lua
+                .try_push_one(key)
                 .map_err(|(e, _)| Ok(CheckedSetError::KeyPushError(e)))?
                 .assert_one_and_forget();
             // push value
-            raw_lua.try_push_one(value)
+            raw_lua
+                .try_push_one(value)
                 .map_err(|(e, _)| Ok(CheckedSetError::ValuePushError(e)))?
                 .assert_one_and_forget();
             // remove key and value
             ffi::lua_rawset(raw_lua, this_index);
         } else {
             // push value onto the stack
-            raw_lua.try_push_one(value)
+            raw_lua
+                .try_push_one(value)
                 .map_err(|(e, _)| Ok(CheckedSetError::ValuePushError(e)))?
                 .assert_one_and_forget();
             // move value into registry
             let value_ref = ffi::luaL_ref(raw_lua, ffi::LUA_REGISTRYINDEX);
 
             // push index onto the stack
-            raw_lua.try_push_one(key)
+            raw_lua
+                .try_push_one(key)
                 .map_err(|(e, _)| Ok(CheckedSetError::KeyPushError(e)))?
                 .assert_one_and_forget();
             // move index into registry
@@ -812,19 +775,20 @@ mod imp {
             // move indexable into registry
             let table_ref = ffi::luaL_ref(raw_lua, ffi::LUA_REGISTRYINDEX);
 
-            raw_lua.pcall(|l| {
-                let raw_lua = l.as_lua();
-                // push indexable
-                ffi::lua_rawgeti(raw_lua, ffi::LUA_REGISTRYINDEX, table_ref);
-                // push index
-                ffi::lua_rawgeti(raw_lua, ffi::LUA_REGISTRYINDEX, index_ref);
-                // push value
-                ffi::lua_rawgeti(raw_lua, ffi::LUA_REGISTRYINDEX, value_ref);
-                // pop index, push value
-                ffi::lua_settable(raw_lua, -3);
-                // stack is temporary so indexable is discarded after return
-            })
-            .map_err(Err)?;
+            raw_lua
+                .pcall(|l| {
+                    let raw_lua = l.as_lua();
+                    // push indexable
+                    ffi::lua_rawgeti(raw_lua, ffi::LUA_REGISTRYINDEX, table_ref);
+                    // push index
+                    ffi::lua_rawgeti(raw_lua, ffi::LUA_REGISTRYINDEX, index_ref);
+                    // push value
+                    ffi::lua_rawgeti(raw_lua, ffi::LUA_REGISTRYINDEX, value_ref);
+                    // pop index, push value
+                    ffi::lua_settable(raw_lua, -3);
+                    // stack is temporary so indexable is discarded after return
+                })
+                .map_err(Err)?;
 
             // unref temporaries
             ffi::luaL_unref(raw_lua, ffi::LUA_REGISTRYINDEX, value_ref);
@@ -860,12 +824,7 @@ mod imp {
                 Ok(g) => g.forget_internal(),
                 Err((err, _)) => return Err(CallError::PushError(err)),
             };
-            let pcall_return_value = ffi::lua_pcall(
-                raw_lua,
-                num_pushed,
-                ffi::LUA_MULTRET,
-                0,
-            );
+            let pcall_return_value = ffi::lua_pcall(raw_lua, num_pushed, ffi::LUA_MULTRET, 0);
             let n_results = ffi::lua_gettop(raw_lua) - old_top;
             (pcall_return_value, PushGuard::new(this, n_results))
         };
@@ -876,10 +835,13 @@ mod imp {
                 let error_msg = ToString::lua_read(pushed_value)
                     .ok()
                     .expect("can't find error message at the top of the Lua stack");
-                return Err(LuaError::ExecutionError(error_msg.into()).into())
+                return Err(LuaError::ExecutionError(error_msg.into()).into());
             }
             0 => {}
-            _ => panic!("Unknown error code returned by lua_pcall: {}", pcall_return_value),
+            _ => panic!(
+                "Unknown error code returned by lua_pcall: {}",
+                pcall_return_value
+            ),
         }
 
         let n_results = pushed_value.size;
@@ -897,8 +859,7 @@ mod imp {
         let i = index.into();
         unsafe {
             // luaL_iscallable doesn't work for `ffi`
-            ffi::lua_isfunction(raw_lua, i) ||
-                ffi::luaL_hasmetafield(raw_lua, i, c_ptr!("__call"))
+            ffi::lua_isfunction(raw_lua, i) || ffi::luaL_hasmetafield(raw_lua, i, c_ptr!("__call"))
         }
     }
 
@@ -907,8 +868,7 @@ mod imp {
         let raw_lua = lua.as_lua();
         let i = index.into();
         unsafe {
-            ffi::lua_istable(raw_lua, i) ||
-                ffi::luaL_hasmetafield(raw_lua, i, c_ptr!("__index"))
+            ffi::lua_istable(raw_lua, i) || ffi::luaL_hasmetafield(raw_lua, i, c_ptr!("__index"))
         }
     }
 
@@ -917,9 +877,9 @@ mod imp {
         let raw_lua = lua.as_lua();
         let i = index.into();
         unsafe {
-            ffi::lua_istable(raw_lua, i) ||
-                ffi::luaL_hasmetafield(raw_lua, i, c_ptr!("__index")) &&
-                ffi::luaL_hasmetafield(raw_lua, i, c_ptr!("__newindex"))
+            ffi::lua_istable(raw_lua, i)
+                || ffi::luaL_hasmetafield(raw_lua, i, c_ptr!("__index"))
+                    && ffi::luaL_hasmetafield(raw_lua, i, c_ptr!("__newindex"))
         }
     }
 }
@@ -1036,4 +996,3 @@ macro_rules! impl_object {
         {}
     }
 }
-

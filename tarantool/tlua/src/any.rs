@@ -1,17 +1,6 @@
 use std::num::NonZeroI32;
 
-use crate::{
-    AsLua,
-    Push,
-    PushInto,
-    PushGuard,
-    PushOne,
-    PushOneInto,
-    LuaRead,
-    LuaTable,
-    Nil,
-    Void,
-};
+use crate::{AsLua, LuaRead, LuaTable, Nil, Push, PushGuard, PushInto, PushOne, PushOneInto, Void};
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct AnyLuaString(pub Vec<u8>);
@@ -142,6 +131,5 @@ macro_rules! impl_any_lua_value {
     }
 }
 
-impl_any_lua_value!{AnyLuaValue}
-impl_any_lua_value!{AnyHashableLuaValue}
-
+impl_any_lua_value! {AnyLuaValue}
+impl_any_lua_value! {AnyHashableLuaValue}

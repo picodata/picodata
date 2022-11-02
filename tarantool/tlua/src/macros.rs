@@ -1,16 +1,18 @@
 #[macro_export]
 macro_rules! implement_lua_push {
     ($ty:ty, $cb:expr) => {
-        impl<'lua, L> $crate::Push<L> for $ty where L: $crate::AsLua<'lua> {
-            type Err = $crate::Void;      // TODO: use ! instead
+        impl<'lua, L> $crate::Push<L> for $ty
+        where
+            L: $crate::AsLua<'lua>,
+        {
+            type Err = $crate::Void; // TODO: use ! instead
             #[inline]
             fn push_to_lua(&self, lua: L) -> Result<$crate::PushGuard<L>, ($crate::Void, L)> {
                 Ok($crate::push_userdata(self, lua, $cb))
             }
         }
-        
-        impl<'lua, L> $crate::PushOne<L> for $ty where L: $crate::AsLua<'lua> {
-        }
+
+        impl<'lua, L> $crate::PushOne<L> for $ty where L: $crate::AsLua<'lua> {}
     };
 }
 
@@ -19,7 +21,10 @@ macro_rules! implement_lua_read {
     ($ty:ty) => {
         impl<'s, 'c> tlua::LuaRead<&'c mut tlua::InsideCallback> for &'s mut $ty {
             #[inline]
-            fn lua_read_at_position(lua: &'c mut tlua::InsideCallback, index: i32) -> Result<&'s mut $ty, &'c mut tlua::InsideCallback> {
+            fn lua_read_at_position(
+                lua: &'c mut tlua::InsideCallback,
+                index: i32,
+            ) -> Result<&'s mut $ty, &'c mut tlua::InsideCallback> {
                 // FIXME:
                 unsafe { ::std::mem::transmute($crate::read_userdata::<$ty>(lua, index)) }
             }
@@ -27,7 +32,10 @@ macro_rules! implement_lua_read {
 
         impl<'s, 'c> tlua::LuaRead<&'c mut tlua::InsideCallback> for &'s $ty {
             #[inline]
-            fn lua_read_at_position(lua: &'c mut tlua::InsideCallback, index: i32) -> Result<&'s $ty, &'c mut tlua::InsideCallback> {
+            fn lua_read_at_position(
+                lua: &'c mut tlua::InsideCallback,
+                index: i32,
+            ) -> Result<&'s $ty, &'c mut tlua::InsideCallback> {
                 // FIXME:
                 unsafe { ::std::mem::transmute($crate::read_userdata::<$ty>(lua, index)) }
             }
@@ -35,26 +43,32 @@ macro_rules! implement_lua_read {
 
         impl<'s, 'b, 'c> tlua::LuaRead<&'b mut &'c mut tlua::InsideCallback> for &'s mut $ty {
             #[inline]
-            fn lua_read_at_position(lua: &'b mut &'c mut tlua::InsideCallback, index: i32) -> Result<&'s mut $ty, &'b mut &'c mut tlua::InsideCallback> {
+            fn lua_read_at_position(
+                lua: &'b mut &'c mut tlua::InsideCallback,
+                index: i32,
+            ) -> Result<&'s mut $ty, &'b mut &'c mut tlua::InsideCallback> {
                 let ptr_lua = lua as *mut &mut tlua::InsideCallback;
                 let deref_lua = unsafe { ::std::ptr::read(ptr_lua) };
                 let res = Self::lua_read_at_position(deref_lua, index);
                 match res {
                     Ok(x) => Ok(x),
-                    _ => Err(lua)
+                    _ => Err(lua),
                 }
             }
         }
 
         impl<'s, 'b, 'c> tlua::LuaRead<&'b mut &'c mut tlua::InsideCallback> for &'s $ty {
             #[inline]
-            fn lua_read_at_position(lua: &'b mut &'c mut tlua::InsideCallback, index: i32) -> Result<&'s $ty, &'b mut &'c mut tlua::InsideCallback> {
+            fn lua_read_at_position(
+                lua: &'b mut &'c mut tlua::InsideCallback,
+                index: i32,
+            ) -> Result<&'s $ty, &'b mut &'c mut tlua::InsideCallback> {
                 let ptr_lua = lua as *mut &mut tlua::InsideCallback;
                 let deref_lua = unsafe { ::std::ptr::read(ptr_lua) };
                 let res = Self::lua_read_at_position(deref_lua, index);
                 match res {
                     Ok(x) => Ok(x),
-                    _ => Err(lua)
+                    _ => Err(lua),
                 }
             }
         }
@@ -63,14 +77,12 @@ macro_rules! implement_lua_read {
 
 #[macro_export]
 macro_rules! c_str {
-    ($s:literal) => {
-        {
-            fn f(b: &[u8]) -> &::std::ffi::CStr {
-                unsafe { ::std::ffi::CStr::from_bytes_with_nul_unchecked(b) }
-            }
-            f(::std::concat!($s, "\0").as_bytes())
+    ($s:literal) => {{
+        fn f(b: &[u8]) -> &::std::ffi::CStr {
+            unsafe { ::std::ffi::CStr::from_bytes_with_nul_unchecked(b) }
         }
-    };
+        f(::std::concat!($s, "\0").as_bytes())
+    }};
 }
 
 #[macro_export]
@@ -126,6 +138,5 @@ macro_rules! nzi32 {
             const _: () = assert!($i != 0, "NonZeroI32 cannot be equal to 0");
             unsafe { ::std::num::NonZeroI32::new_unchecked($i) }
         }
-    }
+    };
 }
-

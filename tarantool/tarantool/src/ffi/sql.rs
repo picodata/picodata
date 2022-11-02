@@ -1,12 +1,12 @@
 #![cfg(any(feature = "picodata", doc))]
 
+use crate::ffi::tarantool::BoxTuple;
+use libc::{iovec, size_t};
 use std::cmp;
 use std::io::Read;
 use std::os::raw::{c_char, c_int, c_void};
 use std::ptr::NonNull;
-use libc::{iovec, size_t};
 use tlua::LuaState;
-use crate::ffi::tarantool::BoxTuple;
 
 pub(crate) const IPROTO_DATA: u32 = 0x30;
 
@@ -19,7 +19,12 @@ extern "C" {
     fn obuf_destroy(obuf: *mut Obuf);
 
     pub(crate) fn sql_prepare(sql: *const c_char, len: u32, port: *const Port) -> c_int;
-    pub(crate) fn sql_execute_prepared_ext(stmt_id: u32, bind: *const Bind, bind_count: u32, port: *const Port) -> c_int;
+    pub(crate) fn sql_execute_prepared_ext(
+        stmt_id: u32,
+        bind: *const Bind,
+        bind_count: u32,
+        port: *const Port,
+    ) -> c_int;
     pub(crate) fn sql_unprepare(stmt_id: u32) -> c_int;
     pub(crate) fn sql_stmt_query_str(stmt: *const SqlStatement) -> *const c_char;
     pub(crate) fn sql_stmt_calculate_id(sql_str: *const c_char, len: size_t) -> u32;
@@ -51,7 +56,10 @@ pub(crate) struct Port {
 impl Port {
     pub(crate) fn zeroed() -> Self {
         unsafe {
-            Self { vtab: std::ptr::null(), _unused: std::mem::zeroed() }
+            Self {
+                vtab: std::ptr::null(),
+                _unused: std::mem::zeroed(),
+            }
         }
     }
 }

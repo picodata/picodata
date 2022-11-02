@@ -1,15 +1,7 @@
-use tarantool::tlua::{
-    self,
-    function,
-    AsLua,
-    Lua,
-    LuaFunction,
-    Function,
-    function0,
-    function1,
-    function2,
-};
 use std::sync::Arc;
+use tarantool::tlua::{
+    self, function, function0, function1, function2, AsLua, Function, Lua, LuaFunction,
+};
 
 pub fn simple_function() {
     let lua = Lua::new();
@@ -75,11 +67,13 @@ pub fn return_result() {
     let f: function![() -> Result<i32, &'static str>] = function0(always_fails);
     lua.set("always_fails", &f);
 
-    match lua.exec(r#"
+    match lua.exec(
+        r#"
         local res, err = always_fails();
         assert(res == nil);
         assert(err == "oops, problem");
-    "#) {
+    "#,
+    ) {
         Ok(()) => {}
         Err(e) => panic!("{:?}", e),
     }
@@ -100,7 +94,8 @@ pub fn closures() {
 
 pub fn closures_lifetime() {
     fn t<F: 'static>(f: F)
-        where F: Fn(i32, i32) -> i32
+    where
+        F: Fn(i32, i32) -> i32,
     {
         let lua = Lua::new();
 
@@ -120,10 +115,13 @@ pub fn closures_extern_access() {
         let lua = Lua::new();
 
         let a = a.clone();
-        lua.set("inc", function0(move || {
-            let old = a.get();
-            a.set(old + 1);
-        }));
+        lua.set(
+            "inc",
+            function0(move || {
+                let old = a.get();
+                a.set(old + 1);
+            }),
+        );
         for _ in 0..15 {
             lua.exec("inc()").unwrap();
         }
@@ -136,7 +134,7 @@ pub fn closures_drop_env() {
     static mut DID_DESTRUCTOR_RUN: bool = false;
 
     #[derive(Debug)]
-    struct Foo { }
+    struct Foo {}
     impl Drop for Foo {
         fn drop(&mut self) {
             unsafe {
@@ -145,7 +143,7 @@ pub fn closures_drop_env() {
         }
     }
     {
-        let foo = Arc::new(Foo { });
+        let foo = Arc::new(Foo {});
 
         {
             let lua = Lua::new();
@@ -168,9 +166,7 @@ pub fn global_data() {
     assert_eq!(unsafe { GLOBAL_DATA }, 2);
 
     fn access_global_state() {
-        unsafe {
-            GLOBAL_DATA += 1
-        }
+        unsafe { GLOBAL_DATA += 1 }
     }
 }
 
@@ -190,7 +186,10 @@ pub fn push_callback_by_ref() {
     // Doesn't compile, because the closure isn't Copy and cannot be moved from
     // a reference
     // let f: LuaFunction<_> = lua.push(&function0(move || data[0] + data[1] + data[2])).read().unwrap();
-    let f: LuaFunction<_> = lua.push(function0(move || data[0] + data[1] + data[2])).read().unwrap();
+    let f: LuaFunction<_> = lua
+        .push(function0(move || data[0] + data[1] + data[2]))
+        .read()
+        .unwrap();
     assert_eq!(f.call().ok(), Some(6_i32));
     let lua = f.into_inner();
 
@@ -199,7 +198,9 @@ pub fn push_callback_by_ref() {
         callback: function![() -> i32],
     }
 
-    let s = S { callback: Function::new(|| 42) };
+    let s = S {
+        callback: Function::new(|| 42),
+    };
 
     let t: tlua::LuaTable<_> = lua.push(&s).read().unwrap();
     assert_eq!(t.call_method("callback", ()).ok(), Some(42_i32));
@@ -224,10 +225,13 @@ pub fn closures_must_be_static() {
 pub fn pcall() {
     let lua = tarantool::lua_state();
     assert_eq!(lua.pcall(|_| "ok").ok(), Some("ok"));
-    let err_msg = lua.pcall(|l| tlua::error!(l, "catch this")).unwrap_err().to_string();
+    let err_msg = lua
+        .pcall(|l| tlua::error!(l, "catch this"))
+        .unwrap_err()
+        .to_string();
     // assert_eq!(err_msg, "Execution error: tests/src/tlua/functions_write.rs:227:33> catch this");
-    assert!(err_msg.starts_with("Execution error: "              ));
-    assert!(err_msg.ends_with(                     "> catch this"));
+    assert!(err_msg.starts_with("Execution error: "));
+    assert!(err_msg.ends_with("> catch this"));
 }
 
 #[rustfmt::skip]
@@ -279,24 +283,42 @@ pub fn optional_params() {
         Left(L),
         Right(R),
     }
-    lua.set("foo", Function::new(|args: Either<(String, Option<Opts>), Option<Opts>>| -> String {
-        let (sailor, opts) = match args {
-            Either::Left((who, opts)) => (Some(who), opts),
-            Either::Right(opts) => (None, opts),
-        };
-        let greeting = opts.and_then(|o| o.greeting).unwrap_or_else(|| "Hello".into());
-        let greetee = sailor.unwrap_or_else(|| "Sailor".into());
-        format!("{greeting}, {greetee}!")
-    }));
-    assert_eq!(lua.eval::<String>("return foo()").unwrap(), "Hello, Sailor!");
-    assert_eq!(lua.eval::<String>("return foo('World')").unwrap(), "Hello, World!");
-    assert_eq!(lua.eval::<String>("return foo('World', {})").unwrap(), "Hello, World!");
+    lua.set(
+        "foo",
+        Function::new(
+            |args: Either<(String, Option<Opts>), Option<Opts>>| -> String {
+                let (sailor, opts) = match args {
+                    Either::Left((who, opts)) => (Some(who), opts),
+                    Either::Right(opts) => (None, opts),
+                };
+                let greeting = opts
+                    .and_then(|o| o.greeting)
+                    .unwrap_or_else(|| "Hello".into());
+                let greetee = sailor.unwrap_or_else(|| "Sailor".into());
+                format!("{greeting}, {greetee}!")
+            },
+        ),
+    );
     assert_eq!(
-        lua.eval::<String>("return foo('Partner', { greeting = 'Howdy' })").unwrap(),
+        lua.eval::<String>("return foo()").unwrap(),
+        "Hello, Sailor!"
+    );
+    assert_eq!(
+        lua.eval::<String>("return foo('World')").unwrap(),
+        "Hello, World!"
+    );
+    assert_eq!(
+        lua.eval::<String>("return foo('World', {})").unwrap(),
+        "Hello, World!"
+    );
+    assert_eq!(
+        lua.eval::<String>("return foo('Partner', { greeting = 'Howdy' })")
+            .unwrap(),
         "Howdy, Partner!"
     );
     assert_eq!(
-        lua.eval::<String>("return foo({ greeting = 'Sup' })").unwrap(),
+        lua.eval::<String>("return foo({ greeting = 'Sup' })")
+            .unwrap(),
         "Sup, Sailor!"
     );
 }

@@ -1,12 +1,11 @@
-use crate::error::{Error, TarantoolError};
 use crate::c_ptr;
+use crate::error::{Error, TarantoolError};
 use crate::ffi::lua;
-use crate::ffi::tarantool::{luaT_state, luaT_call};
+use crate::ffi::tarantool::{luaT_call, luaT_state};
 use crate::index::{Index, IndexOptions};
 use tlua::{
-    LuaFunction,
-    LuaTable,
     LuaError::{self, ExecutionError},
+    LuaFunction, LuaTable,
 };
 
 /// Create new index for space.
@@ -18,21 +17,24 @@ use tlua::{
 /// For details see [space_object:create_index](https://www.tarantool.io/en/doc/latest/reference/reference_lua/box_space/create_index/)
 pub fn create_index(space_id: u32, index_name: &str, opts: &IndexOptions) -> Result<Index, Error> {
     let lua = crate::lua_state();
-    let b: LuaTable<_> = lua.get("box")
+    let b: LuaTable<_> = lua
+        .get("box")
         .ok_or_else(|| ExecutionError("box == nil".into()))?;
-    let b_schema: LuaTable<_> = b.get("schema")
+    let b_schema: LuaTable<_> = b
+        .get("schema")
         .ok_or_else(|| ExecutionError("box.schema == nil".into()))?;
-    let b_s_index: LuaTable<_> = b_schema.get("index")
+    let b_s_index: LuaTable<_> = b_schema
+        .get("index")
         .ok_or_else(|| ExecutionError("box.schema.index == nil".into()))?;
-    let index_create: LuaFunction<_> = b_s_index.get("create")
+    let index_create: LuaFunction<_> = b_s_index
+        .get("create")
         .ok_or_else(|| ExecutionError("box.schema.index.create == nil".into()))?;
-    let new_index: LuaTable<_> = index_create.call_with_args((space_id, index_name, opts))
+    let new_index: LuaTable<_> = index_create
+        .call_with_args((space_id, index_name, opts))
         .map_err(LuaError::from)?;
-    let index_id: u32 = new_index.get("id")
-        .ok_or_else(|| ExecutionError(
-                format!("box.space[{}].index['{}'] == nil", space_id, index_name)
-                    .into()
-        ))?;
+    let index_id: u32 = new_index.get("id").ok_or_else(|| {
+        ExecutionError(format!("box.space[{}].index['{}'] == nil", space_id, index_name).into())
+    })?;
     Ok(Index::new(space_id, index_id))
 }
 

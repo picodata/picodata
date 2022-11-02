@@ -1,13 +1,9 @@
-use tarantool::{
-    decimal,
-    decimal::Decimal,
-    tlua,
-    tuple::Tuple,
-};
+use tarantool::{decimal, decimal::Decimal, tlua, tuple::Tuple};
 
 pub fn from_lua() {
     let d: Decimal = tarantool::lua_state()
-        .eval("return require('decimal').new('-8.11')").unwrap();
+        .eval("return require('decimal').new('-8.11')")
+        .unwrap();
     assert_eq!(d.to_string(), "-8.11");
 }
 
@@ -35,7 +31,8 @@ pub fn from_string() {
 
 pub fn from_tuple() {
     let t: Tuple = tarantool::lua_state()
-        .eval("return box.tuple.new(require('decimal').new('-8.11'))").unwrap();
+        .eval("return box.tuple.new(require('decimal').new('-8.11'))")
+        .unwrap();
     let (d,): (Decimal,) = t.decode().unwrap();
     assert_eq!(d.to_string(), "-8.11");
 }
@@ -48,4 +45,3 @@ pub fn to_tuple() {
     let d: Decimal = f.call_with_args(&t).unwrap();
     assert_eq!(d.to_string(), "-8.11");
 }
-

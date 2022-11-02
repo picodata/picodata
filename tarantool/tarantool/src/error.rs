@@ -18,11 +18,11 @@
 
 use std::ffi::CStr;
 use std::fmt::{self, Display, Formatter};
-use std::str::Utf8Error;
 use std::io;
+use std::str::Utf8Error;
 
 use derivative::Derivative;
-use num_derive::{ToPrimitive, FromPrimitive};
+use num_derive::{FromPrimitive, ToPrimitive};
 use num_traits::FromPrimitive;
 use rmp::decode::{MarkerReadError, NumValueReadError, ValueReadError};
 use rmp::encode::ValueWriteError;
@@ -232,17 +232,16 @@ impl Display for TarantoolError {
         if let Some(code) = TarantoolErrorCode::from_u32(self.code) {
             return write!(f, "{:?}: {}", code, self.message);
         }
-        let kind = crate::lua_state()
-            .eval_with::<_, String>(
-                "
+        let kind = crate::lua_state().eval_with::<_, String>(
+            "
                 for kind, code in pairs(box.error) do
                     if code == ... then
                         return kind
                     end
                 end
                 ",
-                self.code,
-            );
+            self.code,
+        );
         let kind = kind.as_deref().unwrap_or("?");
         write!(f, "{}: {}", kind, self.message)
     }
@@ -510,7 +509,7 @@ impl TarantoolErrorCode {
         unsafe {
             let e_ptr = ffi::box_error_last();
             if e_ptr.is_null() {
-                return None
+                return None;
             }
             let u32_code = ffi::box_error_code(e_ptr);
             TarantoolErrorCode::from_u32(u32_code)
@@ -570,4 +569,3 @@ impl std::fmt::Debug for DebugAsMPValue<'_> {
         }
     }
 }
-

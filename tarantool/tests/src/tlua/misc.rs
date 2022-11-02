@@ -1,13 +1,8 @@
+use crate::common::LuaStackIntegrityGuard;
 use tarantool::tlua::{
-    self,
-    AsLua,
-    Lua,
-    LuaFunction,
-    LuaTable,
-    PushGuard,
+    self, AsLua, Lua, LuaFunction, LuaTable, PushGuard,
     TuplePushError::{First, Other},
 };
-use crate::common::LuaStackIntegrityGuard;
 
 pub fn print() {
     let lua = tarantool::lua_state();
@@ -152,9 +147,8 @@ Facilisi cras fermentum odio eu feugiat. Id cursus metus aliquam eleifend mi in.
     // assert_eq!(tlua::util::hash(s), lj_hash(s));
     // let s = "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Laoreet suspendisse interdum consectetur libero id faucibus nisl tincidunt. Mattis ullamcorper velit sed ullamcorper morbi tincidunt ornare massa eget. Suspendisse ultrices gravida dictum fusce ut placerat orci nulla pellentesque. Iaculis at erat pellentesque adipiscing commodo elit. Pellentesque id nibh tortor id aliquet lectus proin. Velit laoreet id donec ultrices tincidunt arcu non sodales. Sollicitudin nibh sit amet commodo nulla facilisi nullam. Donec ac odio tempor orci dapibus ultrices in iaculis nunc. Lectus nulla at volutpat diam ut venenatis tellus. Nascetur ridiculus mus mauris vitae ultricies. Elit scelerisque mauris pellentesque pulvinar pellentesque. Mauris cursus mattis molestie a iaculis at erat. Vitae turpis massa sed elementum tempus egestas sed sed risus. Arcu cursus vitae congue mauris rhoncus aenean.
 
-// Facilisi cras fermentum odio eu feugiat. Id cursus metus aliquam eleifend mi in. Mauris sit amet massa vitae tortor condimentum lacinia quis vel. Gravida in fermentum et sollicitudin ac orci phasellus. Mattis pellentesque id nibh tortor id aliquet lectus. Integer malesuada nunc vel risus. Semper risus in hendrerit gravida rutrum quisque. Et netus et malesuada fames ac. Ultrices eros in cursus turpis. Feugiat nisl pretium fusce id velit ut tortor. Dictum at tempor commodo ullamcorper. Accumsan lacus vel facilisis volutpat est velit egestas dui. Eget nunc scelerisque viverra mauris in aliquam sem. Massa placerat duis ultricies lacus sed turpis tincidunt.
+    // Facilisi cras fermentum odio eu feugiat. Id cursus metus aliquam eleifend mi in. Mauris sit amet massa vitae tortor condimentum lacinia quis vel. Gravida in fermentum et sollicitudin ac orci phasellus. Mattis pellentesque id nibh tortor id aliquet lectus. Integer malesuada nunc vel risus. Semper risus in hendrerit gravida rutrum quisque. Et netus et malesuada fames ac. Ultrices eros in cursus turpis. Feugiat nisl pretium fusce id velit ut tortor. Dictum at tempor commodo ullamcorper. Accumsan lacus vel facilisis volutpat est velit egestas dui. Eget nunc scelerisque viverra mauris in aliquam sem. Massa placerat duis ultricies lacus sed turpis tincidunt.
 
-// ";
+    // ";
     // assert_eq!(tlua::util::hash(s), lj_hash(s));
 }
-

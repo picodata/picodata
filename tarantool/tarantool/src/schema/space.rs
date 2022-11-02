@@ -1,10 +1,7 @@
-use std::{
-    collections::BTreeMap,
-    cmp::max
-};
 use std::borrow::Cow;
+use std::{cmp::max, collections::BTreeMap};
 
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 use crate::error::{Error, TarantoolError, TarantoolErrorCode};
 use crate::index::IteratorType;
@@ -53,19 +50,29 @@ pub fn create_space(name: &str, opts: &SpaceCreateOptions) -> Result<Space, Erro
     // Resolve ID of new space or use ID, specified in options.
     let id = opts.id.map(Ok).unwrap_or_else(resolve_new_space_id)?;
 
-    let flags = opts.is_local.then(|| ("group_id".into(), Value::Num(1))).into_iter()
-        .chain(opts.is_temporary.then(|| ("temporary".into(), Value::Bool(true))))
+    let flags = opts
+        .is_local
+        .then(|| ("group_id".into(), Value::Num(1)))
+        .into_iter()
+        .chain(
+            opts.is_temporary
+                .then(|| ("temporary".into(), Value::Bool(true))),
+        )
         .chain(opts.is_sync.then(|| ("is_sync".into(), Value::Bool(true))))
         .collect();
 
-    let format = opts.format.iter().flat_map(|f| f.iter())
-        .map(|f|
+    let format = opts
+        .format
+        .iter()
+        .flat_map(|f| f.iter())
+        .map(|f| {
             IntoIterator::into_iter([
                 ("name".into(), Value::Str(f.name.as_str().into())),
                 ("type".into(), Value::Str(f.field_type.as_str().into())),
                 ("is_nullable".into(), Value::Bool(f.is_nullable)),
-            ]).collect()
-        )
+            ])
+            .collect()
+        })
         .collect();
 
     let sys_space: Space = SystemSpace::Space.into();
@@ -112,8 +119,7 @@ fn resolve_new_space_id() -> Result<u32, Error> {
         let max_tuple_id = max_tuple.field::<u32>(0)?.unwrap();
         let max_id_val = max(max_tuple_id, SYSTEM_ID_MAX);
         // Insert max_id into _schema space.
-        let created_max_id = sys_schema
-            .insert(&("max_id".to_string(), max_id_val + 1))?;
+        let created_max_id = sys_schema.insert(&("max_id".to_string(), max_id_val + 1))?;
         created_max_id.field::<u32>(1)?.unwrap()
     };
 

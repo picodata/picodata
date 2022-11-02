@@ -1,25 +1,16 @@
-use std::convert::TryFrom;
 use std::borrow::Cow;
+use std::convert::TryFrom;
 use std::ffi::{CStr, CString};
 use std::mem::MaybeUninit;
 use std::num::NonZeroI32;
-use std::slice;
-use std::str;
 use std::ops::Deref;
 use std::os::raw::{c_int, c_void};
 use std::ptr::null_mut;
+use std::slice;
+use std::str;
 
 use crate::{
-    ffi,
-    AnyLuaString,
-    AsLua,
-    LuaRead,
-    Push,
-    PushInto,
-    PushGuard,
-    PushOne,
-    PushOneInto,
-    Void,
+    ffi, AnyLuaString, AsLua, LuaRead, Push, PushGuard, PushInto, PushOne, PushOneInto, Void,
 };
 
 macro_rules! numeric_impl {
@@ -109,13 +100,13 @@ macro_rules! numeric_impl {
     }
 }
 
-numeric_impl!{isize, ffi::luaL_pushint64, ffi::lua_tonumber}
-numeric_impl!{i64, ffi::luaL_pushint64, ffi::lua_tonumber}
-numeric_impl!{i32, ffi::lua_pushinteger, ffi::lua_tointeger}
-numeric_impl!{i16, ffi::lua_pushinteger, ffi::lua_tointeger}
-numeric_impl!{i8, ffi::lua_pushinteger, ffi::lua_tointeger}
+numeric_impl! {isize, ffi::luaL_pushint64, ffi::lua_tonumber}
+numeric_impl! {i64, ffi::luaL_pushint64, ffi::lua_tonumber}
+numeric_impl! {i32, ffi::lua_pushinteger, ffi::lua_tointeger}
+numeric_impl! {i16, ffi::lua_pushinteger, ffi::lua_tointeger}
+numeric_impl! {i8, ffi::lua_pushinteger, ffi::lua_tointeger}
 
-numeric_impl!{usize, ffi::luaL_pushuint64, ffi::lua_tonumber,
+numeric_impl! {usize, ffi::luaL_pushuint64, ffi::lua_tonumber,
     coerce: |n| {
         if n >= 0. {
             n as usize
@@ -124,7 +115,7 @@ numeric_impl!{usize, ffi::luaL_pushuint64, ffi::lua_tonumber,
         }
     }
 }
-numeric_impl!{u64, ffi::luaL_pushuint64, ffi::lua_tonumber,
+numeric_impl! {u64, ffi::luaL_pushuint64, ffi::lua_tonumber,
     coerce: |n| {
         if n >= 0. {
             n as u64
@@ -133,12 +124,12 @@ numeric_impl!{u64, ffi::luaL_pushuint64, ffi::lua_tonumber,
         }
     }
 }
-numeric_impl!{u32, ffi::lua_pushinteger, ffi::lua_tointeger}
-numeric_impl!{u16, ffi::lua_pushinteger, ffi::lua_tointeger}
-numeric_impl!{u8, ffi::lua_pushinteger, ffi::lua_tointeger}
+numeric_impl! {u32, ffi::lua_pushinteger, ffi::lua_tointeger}
+numeric_impl! {u16, ffi::lua_pushinteger, ffi::lua_tointeger}
+numeric_impl! {u8, ffi::lua_pushinteger, ffi::lua_tointeger}
 
-numeric_impl!{f64, ffi::lua_pushnumber, ffi::lua_tonumber}
-numeric_impl!{f32, ffi::lua_pushnumber, ffi::lua_tonumber}
+numeric_impl! {f64, ffi::lua_pushnumber, ffi::lua_tonumber}
+numeric_impl! {f32, ffi::lua_pushnumber, ffi::lua_tonumber}
 
 macro_rules! strict_numeric_impl {
     (@is_valid int $num:tt $t:ty) => {
@@ -225,18 +216,18 @@ macro_rules! strict_numeric_impl {
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
 pub struct Strict<T>(pub T);
 
-strict_numeric_impl!{int i8}
-strict_numeric_impl!{int i16}
-strict_numeric_impl!{int i32}
-strict_numeric_impl!{int i64}
-strict_numeric_impl!{int isize}
-strict_numeric_impl!{int u8}
-strict_numeric_impl!{int u16}
-strict_numeric_impl!{int u32}
-strict_numeric_impl!{int u64}
-strict_numeric_impl!{int usize}
-strict_numeric_impl!{float f32}
-strict_numeric_impl!{float f64}
+strict_numeric_impl! {int i8}
+strict_numeric_impl! {int i16}
+strict_numeric_impl! {int i32}
+strict_numeric_impl! {int i64}
+strict_numeric_impl! {int isize}
+strict_numeric_impl! {int u8}
+strict_numeric_impl! {int u16}
+strict_numeric_impl! {int u32}
+strict_numeric_impl! {int u64}
+strict_numeric_impl! {int usize}
+strict_numeric_impl! {float f32}
+strict_numeric_impl! {float f64}
 
 impl<T> From<T> for Strict<T> {
     fn from(v: T) -> Self {
@@ -321,11 +312,11 @@ macro_rules! push_string_impl {
             ffi::lua_pushlstring(
                 $lua.as_lua(),
                 $self.as_bytes().as_ptr() as _,
-                $self.as_bytes().len() as _
+                $self.as_bytes().len() as _,
             );
             Ok(PushGuard::new($lua, 1))
         }
-    }
+    };
 }
 
 macro_rules! lua_read_string_impl {
@@ -338,21 +329,19 @@ macro_rules! lua_read_string_impl {
             // stack. So no number to string conversions are supported
             // anymore
             if type_code != ffi::LUA_TSTRING {
-                return Err($lua)
+                return Err($lua);
             }
-            let c_ptr = ffi::lua_tolstring(
-                $lua.as_lua(), $index.into(), size.as_mut_ptr()
-            );
+            let c_ptr = ffi::lua_tolstring($lua.as_lua(), $index.into(), size.as_mut_ptr());
             if c_ptr.is_null() {
-                return Err($lua)
+                return Err($lua);
             }
             let slice = slice::from_raw_parts(c_ptr as _, size.assume_init());
             $from_slice(slice, $lua)
         }
-    }
+    };
 }
 
-impl_push_read!{ String,
+impl_push_read! { String,
     push_to_lua(&self, lua) {
         push_string_impl!(self, lua)
     }
@@ -366,7 +355,7 @@ impl_push_read!{ String,
     }
 }
 
-impl_push_read!{ CString,
+impl_push_read! { CString,
     push_to_lua(&self, lua) {
         push_string_impl!(self, lua)
     }
@@ -380,7 +369,7 @@ impl_push_read!{ CString,
     }
 }
 
-impl_push_read!{ AnyLuaString,
+impl_push_read! { AnyLuaString,
     push_to_lua(&self, lua) {
         push_string_impl!(self, lua)
     }
@@ -394,13 +383,13 @@ impl_push_read!{ AnyLuaString,
     }
 }
 
-impl_push_read!{ str,
+impl_push_read! { str,
     push_to_lua(&self, lua) {
         push_string_impl!(self, lua)
     }
 }
 
-impl_push_read!{ CStr,
+impl_push_read! { CStr,
     push_to_lua(&self, lua) {
         unsafe {
             ffi::lua_pushlstring(
@@ -464,12 +453,13 @@ where
     L: 'a + AsLua,
 {
     fn lua_read_at_position(lua: L, index: NonZeroI32) -> Result<Self, L> {
-        lua_read_string_impl!(lua, index,
-            |slice: &'a [u8], lua|
-                match str::from_utf8(slice) {
-                    Ok(str_ref) => Ok(StringInLua { lua, str_ref }),
-                    Err(_) => Err(lua)
-                }
+        lua_read_string_impl!(
+            lua,
+            index,
+            |slice: &'a [u8], lua| match str::from_utf8(slice) {
+                Ok(str_ref) => Ok(StringInLua { lua, str_ref }),
+                Err(_) => Err(lua),
+            }
         )
     }
 }
@@ -483,7 +473,7 @@ impl<'a, L> Deref for StringInLua<'a, L> {
     }
 }
 
-impl_push_read!{ bool,
+impl_push_read! { bool,
     push_to_lua(&self, lua) {
         Self::push_into_lua(*self, lua)
     }
@@ -502,7 +492,7 @@ impl_push_read!{ bool,
     }
 }
 
-impl_push_read!{ (),
+impl_push_read! { (),
     push_to_lua(&self, lua) {
         ().push_into_lua(lua)
     }
@@ -578,7 +568,7 @@ where
 
     fn lua_read_at_position(lua: L, index: NonZeroI32) -> Result<Option<T>, L> {
         if unsafe { is_null_or_nil(lua.as_lua(), index.get()) } {
-            return Ok(None)
+            return Ok(None);
         }
         T::lua_read_at_position(lua, index).map(Some)
     }
@@ -592,10 +582,10 @@ where
 {
     fn lua_read_at_position(lua: L, index: NonZeroI32) -> Result<Result<A, B>, L> {
         if let Ok(a) = A::lua_read_at_position(&lua, index) {
-            return Ok(Ok(a))
+            return Ok(Ok(a));
         }
         if let Ok(b) = B::lua_read_at_position(&lua, index) {
-            return Ok(Err(b))
+            return Ok(Err(b));
         }
         Err(lua)
     }
@@ -604,7 +594,7 @@ where
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Nil;
 
-impl_push_read!{Nil,
+impl_push_read! {Nil,
     push_to_lua(&self, lua) {
         Self::push_into_lua(*self, lua)
     }
@@ -639,7 +629,7 @@ impl Null {
             let mut ctypeid = MaybeUninit::uninit();
             let cdata = ffi::luaL_checkcdata(lua, index, ctypeid.as_mut_ptr());
             if ctypeid.assume_init() == ffi::CTID_P_VOID {
-                return (*cdata.cast::<*const c_void>()).is_null()
+                return (*cdata.cast::<*const c_void>()).is_null();
             }
         }
         false
@@ -650,7 +640,7 @@ pub unsafe fn is_null_or_nil(lua: crate::LuaState, index: i32) -> bool {
     ffi::lua_isnil(lua, index) || Null::is_null(lua, index)
 }
 
-impl_push_read!{Null,
+impl_push_read! {Null,
     push_to_lua(&self, lua) {
         Self::push_into_lua(*self, lua)
     }
@@ -677,8 +667,9 @@ impl_push_read!{Null,
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(
+    Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 #[serde(try_from = "bool", into = "bool")]
 pub struct True;
 
@@ -699,7 +690,7 @@ impl TryFrom<bool> for True {
     }
 }
 
-impl_push_read!{True,
+impl_push_read! {True,
     push_to_lua(&self, lua) {
         Self::push_into_lua(*self, lua)
     }
@@ -721,8 +712,9 @@ impl std::fmt::Display for True {
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(
+    Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 #[serde(try_from = "bool", into = "bool")]
 pub struct False;
 
@@ -743,7 +735,7 @@ impl TryFrom<bool> for False {
     }
 }
 
-impl_push_read!{False,
+impl_push_read! {False,
     push_to_lua(&self, lua) {
         Self::push_into_lua(*self, lua)
     }
@@ -774,7 +766,7 @@ impl Typename {
     }
 }
 
-impl_push_read!{Typename,
+impl_push_read! {Typename,
     read_at_position(lua, index) {
         Ok(Self(
             match crate::typename(lua.as_lua(), index.into()).to_string_lossy() {
@@ -808,7 +800,7 @@ impl std::fmt::Display for ToString {
     }
 }
 
-impl_push_read!{ToString,
+impl_push_read! {ToString,
     read_at_position(lua, index) {
         unsafe {
             let mut size = MaybeUninit::uninit();
@@ -825,4 +817,3 @@ impl_push_read!{ToString,
         }
     }
 }
-

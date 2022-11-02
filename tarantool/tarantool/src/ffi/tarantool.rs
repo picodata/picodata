@@ -51,10 +51,10 @@ extern "C" {
     /// bit flags.
     pub fn coio_wait(fd: c_int, event: c_int, timeout: f64) -> c_int;
 
-/**
- * Close the fd and wake any fiber blocked in
- * coio_wait() call on this fd.
- */
+    /**
+     * Close the fd and wake any fiber blocked in
+     * coio_wait() call on this fd.
+     */
     pub fn coio_close(fd: c_int) -> c_int;
 
     /// Fiber-friendly version of getaddrinfo(3).
@@ -810,7 +810,8 @@ impl BoxTuple {
 #[repr(C)]
 pub(crate) struct FormatVTable {
     _tuple_delete: unsafe extern "C" fn(tuple_format: *const c_void, tuple: *const c_void),
-    _tuple_new: unsafe extern "C" fn(tuple_format: *const c_void, data: *const c_void, end: *const c_void),
+    _tuple_new:
+        unsafe extern "C" fn(tuple_format: *const c_void, data: *const c_void, end: *const c_void),
 }
 
 #[cfg(feature = "picodata")]

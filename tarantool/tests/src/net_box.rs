@@ -4,9 +4,9 @@ use std::rc::Rc;
 use std::time::Duration;
 
 use tarantool::error::Error;
-use tarantool::fiber::{Cond, Fiber, reschedule, sleep, start_proc};
+use tarantool::fiber::{reschedule, sleep, start_proc, Cond, Fiber};
 use tarantool::index::IteratorType;
-use tarantool::net_box::{Conn, ConnOptions, ConnTriggers, Options, promise::State};
+use tarantool::net_box::{promise::State, Conn, ConnOptions, ConnTriggers, Options};
 use tarantool::space::Space;
 use tarantool::tuple::Tuple;
 
@@ -17,8 +17,12 @@ use crate::{
 use std::cell::{Cell, RefCell};
 
 fn default_conn() -> Conn {
-    Conn::new(("localhost", unsafe { LISTEN }), ConnOptions::default(), None)
-        .unwrap()
+    Conn::new(
+        ("localhost", unsafe { LISTEN }),
+        ConnOptions::default(),
+        None,
+    )
+    .unwrap()
 }
 
 fn test_user_conn() -> Conn {
@@ -30,7 +34,8 @@ fn test_user_conn() -> Conn {
             ..ConnOptions::default()
         },
         None,
-    ).unwrap()
+    )
+    .unwrap()
 }
 
 pub fn immediate_close() {
@@ -44,22 +49,35 @@ pub fn ping() {
 }
 
 pub fn execute() {
-    Space::find("test_s1").unwrap().insert(&(6001, "6001")).unwrap();
-    Space::find("test_s1").unwrap().insert(&(6002, "6002")).unwrap();
+    Space::find("test_s1")
+        .unwrap()
+        .insert(&(6001, "6001"))
+        .unwrap();
+    Space::find("test_s1")
+        .unwrap()
+        .insert(&(6002, "6002"))
+        .unwrap();
 
     let conn: Conn = test_user_conn();
 
     let result = conn
-        .execute( r#"SELECT * FROM "test_s1""#, &(), &Options::default())
+        .execute(r#"SELECT * FROM "test_s1""#, &(), &Options::default())
         .expect("IPROTO execute sql request fail");
     assert!(result.len() >= 2);
 
     let result = conn
-        .execute( r#"SELECT * FROM "test_s1" WHERE "id" = ?"#, &(6002,), &Options::default())
+        .execute(
+            r#"SELECT * FROM "test_s1" WHERE "id" = ?"#,
+            &(6002,),
+            &Options::default(),
+        )
         .expect("IPROTO execute sql request fail");
 
     assert_eq!(result.len(), 1);
-    assert_eq!(result.get(0).unwrap().decode::<(u64, String)>().unwrap(), (6002, "6002".to_string()));
+    assert_eq!(
+        result.get(0).unwrap().decode::<(u64, String)>().unwrap(),
+        (6002, "6002".to_string())
+    );
 }
 
 pub fn ping_timeout() {
@@ -110,8 +128,12 @@ pub fn call() {
 
 pub fn call_async() {
     let conn = test_user_conn();
-    let p1 = conn.call_async::<_, Tuple>("test_stored_proc", (69, 420)).unwrap();
-    let p2 = conn.call_async::<_, (i32,)>("test_stored_proc", (13, 37)).unwrap();
+    let p1 = conn
+        .call_async::<_, Tuple>("test_stored_proc", (69, 420))
+        .unwrap();
+    let p2 = conn
+        .call_async::<_, (i32,)>("test_stored_proc", (13, 37))
+        .unwrap();
     assert_eq!(p1.state(), State::Pending);
     assert_eq!(p2.state(), State::Pending);
     assert_eq!(p2.wait().unwrap(), (50,));
@@ -122,10 +144,17 @@ pub fn call_async() {
 
 pub fn call_async_error() {
     let conn = test_user_conn();
-    let p = conn.call_async::<_, ()>("Procedure is not defined", ()).unwrap();
-    assert_eq!(p.wait().unwrap_err().to_string(), "Server responded with error: Procedure 'Procedure is not defined' is not defined");
+    let p = conn
+        .call_async::<_, ()>("Procedure is not defined", ())
+        .unwrap();
+    assert_eq!(
+        p.wait().unwrap_err().to_string(),
+        "Server responded with error: Procedure 'Procedure is not defined' is not defined"
+    );
 
-    let mut p = conn.call_async::<_, ()>("Procedure is not defined", ()).unwrap();
+    let mut p = conn
+        .call_async::<_, ()>("Procedure is not defined", ())
+        .unwrap();
     let cond = Rc::new(Cond::new());
     p.replace_cond(cond.clone());
     cond.wait();
@@ -134,7 +163,9 @@ pub fn call_async_error() {
 
 pub fn call_async_disconnected() {
     let conn = test_user_conn();
-    let p = conn.call_async::<_, (i32,)>("test_stored_proc", (1, 1)).unwrap();
+    let p = conn
+        .call_async::<_, (i32,)>("test_stored_proc", (1, 1))
+        .unwrap();
     assert_eq!(p.state(), State::Pending);
     let p = p.try_get().pending().unwrap();
     drop(conn);
@@ -142,7 +173,9 @@ pub fn call_async_disconnected() {
     assert_eq!(p.wait().unwrap_err().to_string(), "IO error: not connected");
 
     let conn = test_user_conn();
-    let p = conn.call_async::<_, (i32,)>("test_stored_proc", (1, 1)).unwrap();
+    let p = conn
+        .call_async::<_, (i32,)>("test_stored_proc", (1, 1))
+        .unwrap();
     sleep(Duration::from_millis(100));
     drop(conn);
     assert_eq!(p.state(), State::Kept);
@@ -166,13 +199,19 @@ pub fn call_async_timeout() {
     let conn = test_user_conn();
     let p = conn.call_async::<_, ()>("test_timeout", ()).unwrap();
     assert_eq!(p.state(), State::Pending);
-    let _ = p.wait_timeout(Duration::from_millis(100)).pending().unwrap();
+    let _ = p
+        .wait_timeout(Duration::from_millis(100))
+        .pending()
+        .unwrap();
 }
 
 pub fn call_async_wait_disconnected() {
     let conn = test_user_conn();
     let p = conn.call_async::<_, ()>("test_timeout", ()).unwrap();
-    let jh = start_proc(|| { reschedule(); drop(conn); });
+    let jh = start_proc(|| {
+        reschedule();
+        drop(conn);
+    });
     assert_eq!(p.wait().unwrap_err().to_string(), "IO error: not connected");
     jh.join();
 }
@@ -195,18 +234,28 @@ pub fn eval_async() {
 }
 
 pub fn async_common_cond() {
-    tarantool::lua_state().exec("
+    tarantool::lua_state()
+        .exec(
+            "
         box.schema.func.create('async_common_cond_proc', {body = [[
             function(timeout, value)
                 require'fiber'.sleep(timeout)
                 return value
             end
         ]]})
-    ").unwrap();
+    ",
+        )
+        .unwrap();
     let conn = test_user_conn();
-    let mut p1 = conn.call_async("async_common_cond_proc", (0.300, "one")).unwrap();
-    let mut p2 = conn.call_async("async_common_cond_proc", (0.100, "two")).unwrap();
-    let mut p3 = conn.call_async("async_common_cond_proc", (0.200, "three")).unwrap();
+    let mut p1 = conn
+        .call_async("async_common_cond_proc", (0.300, "one"))
+        .unwrap();
+    let mut p2 = conn
+        .call_async("async_common_cond_proc", (0.100, "two"))
+        .unwrap();
+    let mut p3 = conn
+        .call_async("async_common_cond_proc", (0.200, "three"))
+        .unwrap();
     let cond = Rc::new(Cond::new());
     p1.replace_cond(cond.clone());
     p2.replace_cond(cond.clone());
@@ -260,8 +309,12 @@ pub fn schema_sync() {
     assert!(conn.space("test_s2").unwrap().is_some());
     assert!(conn.space("test_s_tmp").unwrap().is_none());
 
-    conn.call("test_schema_update", Vec::<()>::new().as_slice(), &Options::default())
-        .unwrap();
+    conn.call(
+        "test_schema_update",
+        Vec::<()>::new().as_slice(),
+        &Options::default(),
+    )
+    .unwrap();
     assert!(conn.space("test_s_tmp").unwrap().is_some());
 
     conn.call(
@@ -331,10 +384,7 @@ pub fn insert() {
     };
     let insert_result = remote_space.insert(&input, &Options::default()).unwrap();
     assert!(insert_result.is_some());
-    assert_eq!(
-        insert_result.unwrap().decode::<S1Record>().unwrap(),
-        input
-    );
+    assert_eq!(insert_result.unwrap().decode::<S1Record>().unwrap(), input);
 
     let output = local_space.get(&(input.id,)).unwrap();
     assert!(output.is_some());
@@ -369,10 +419,7 @@ pub fn replace() {
 
     let output = local_space.get(&(new_input.id,)).unwrap();
     assert!(output.is_some());
-    assert_eq!(
-        output.unwrap().decode::<S1Record>().unwrap(),
-        new_input
-    );
+    assert_eq!(output.unwrap().decode::<S1Record>().unwrap(), new_input);
 }
 
 pub fn update() {
@@ -401,19 +448,12 @@ pub fn update() {
         .unwrap();
     assert!(update_result.is_some());
     assert_eq!(
-        update_result
-            .unwrap()
-            .decode::<S1Record>()
-            .unwrap()
-            .text,
+        update_result.unwrap().decode::<S1Record>().unwrap().text,
         "New"
     );
 
     let output = local_space.get(&(input.id,)).unwrap();
-    assert_eq!(
-        output.unwrap().decode::<S1Record>().unwrap().text,
-        "New"
-    );
+    assert_eq!(output.unwrap().decode::<S1Record>().unwrap().text, "New");
 }
 
 pub fn upsert() {
@@ -460,16 +500,10 @@ pub fn upsert() {
         .unwrap();
 
     let output = local_space.get(&(1,)).unwrap();
-    assert_eq!(
-        output.unwrap().decode::<S1Record>().unwrap().text,
-        "Test 1"
-    );
+    assert_eq!(output.unwrap().decode::<S1Record>().unwrap().text, "Test 1");
 
     let output = local_space.get(&(2,)).unwrap();
-    assert_eq!(
-        output.unwrap().decode::<S1Record>().unwrap().text,
-        "New"
-    );
+    assert_eq!(output.unwrap().decode::<S1Record>().unwrap().text, "New");
 }
 
 pub fn delete() {
@@ -489,10 +523,7 @@ pub fn delete() {
         .delete(&(input.id,), &Options::default())
         .unwrap();
     assert!(delete_result.is_some());
-    assert_eq!(
-        delete_result.unwrap().decode::<S1Record>().unwrap(),
-        input
-    );
+    assert_eq!(delete_result.unwrap().decode::<S1Record>().unwrap(), input);
 
     let output = local_space.get(&(input.id,)).unwrap();
     assert!(output.is_none());

@@ -4,7 +4,7 @@
 #![allow(clippy::upper_case_acronyms)]
 use std::ffi::CStr;
 use std::io;
-use std::os::raw::{c_int, c_char};
+use std::os::raw::{c_char, c_int};
 
 use serde::Deserialize;
 use tester::{
@@ -15,27 +15,27 @@ use tester::{
 use tarantool::error::Error;
 use tarantool::ffi::lua as ffi_lua;
 use tarantool::index::IndexType;
-use tarantool::space::{Space, Field, FieldType};
+use tarantool::space::{Field, FieldType, Space};
 
 mod bench_bulk_insert;
-mod common;
-mod decimal;
-mod proc;
 mod r#box;
 mod coio;
+mod common;
+mod decimal;
+mod enums;
 mod error;
 mod fiber;
 mod latch;
 mod log;
 mod net_box;
+mod proc;
 mod session;
+mod sql;
+mod tlua;
 mod transaction;
 mod tuple;
-mod tlua;
-mod uuid;
-mod enums;
-mod sql;
 mod tuple_picodata;
+mod uuid;
 
 macro_rules! tests {
     (@should_panic should_panic) => { Some(ShouldPanic::Yes) };
@@ -86,7 +86,8 @@ fn create_test_spaces() -> Result<(), Error> {
         .create()?;
 
     // space.test_s1.index.primary
-    test_s1.index_builder("primary")
+    test_s1
+        .index_builder("primary")
         .index_type(IndexType::Tree)
         .part(1)
         .create()?;
@@ -103,25 +104,29 @@ fn create_test_spaces() -> Result<(), Error> {
         .create()?;
 
     // space.test_s2.index.primary
-    test_s2.index_builder("primary")
+    test_s2
+        .index_builder("primary")
         .index_type(IndexType::Tree)
         .part(1)
         .create()?;
 
     // space.test_s2.index.idx_1
-    test_s2.index_builder("idx_1")
+    test_s2
+        .index_builder("idx_1")
         .index_type(IndexType::Hash)
         .part(2)
         .create()?;
 
     // space.test_s2.index.idx_2
-    test_s2.index_builder("idx_2")
+    test_s2
+        .index_builder("idx_2")
         .index_type(IndexType::Tree)
         .parts(["id", "a", "b"])
         .create()?;
 
     // space.test_s2.index.idx_3
-    test_s2.index_builder("idx_3")
+    test_s2
+        .index_builder("idx_3")
         .index_type(IndexType::Tree)
         .unique(false)
         .part("a")
@@ -146,9 +151,7 @@ fn create_test_spaces() -> Result<(), Error> {
         .create()?;
 
     // space.with_array.index.pk
-    with_array.index_builder("pk")
-        .part("id")
-        .create()?;
+    with_array.index_builder("pk").part("id").create()?;
 
     with_array.insert(&(1, vec![1, 2, 3]))?;
     with_array.insert(&(2, ("foo", ("bar", [69, 420]), 3.14)))?;
@@ -214,7 +217,6 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 decimal::from_tuple,
                 decimal::to_tuple,
                 decimal::to_lua,
-
                 tlua::lua_functions::basic,
                 tlua::lua_functions::two_functions_at_the_same_time,
                 tlua::lua_functions::args,
@@ -236,7 +238,6 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 tlua::lua_functions::push_function,
                 tlua::lua_functions::push_iter_no_err,
                 tlua::lua_functions::eval_with,
-
                 tlua::lua_tables::iterable,
                 tlua::lua_tables::iterable_multipletimes,
                 tlua::lua_tables::get_set,
@@ -247,9 +248,9 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 tlua::lua_tables::by_value,
                 tlua::lua_tables::registry,
                 tlua::lua_tables::registry_metatable,
-                #[should_panic] tlua::lua_tables::table_iter_stack_invariance,
+                #[should_panic]
+                tlua::lua_tables::table_iter_stack_invariance,
                 tlua::lua_tables::iter_table_of_tables,
-
                 tlua::functions_write::simple_function,
                 tlua::functions_write::one_argument,
                 tlua::functions_write::two_arguments,
@@ -265,7 +266,6 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 tlua::functions_write::pcall,
                 tlua::functions_write::error,
                 tlua::functions_write::optional_params,
-
                 tlua::any::read_numbers,
                 tlua::any::read_hashable_numbers,
                 tlua::any::read_strings,
@@ -283,14 +283,12 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 tlua::any::push_nil,
                 tlua::any::push_hashable_nil,
                 tlua::any::non_utf_8_string,
-
                 tlua::misc::print,
                 tlua::misc::json,
                 tlua::misc::dump_stack,
                 tlua::misc::dump_stack_raw,
                 tlua::misc::error_during_push_tuple,
                 tlua::misc::hash,
-
                 tlua::object::callable_builtin,
                 tlua::object::callable_ffi,
                 tlua::object::callable_meta,
@@ -301,13 +299,11 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 tlua::object::indexable_rw_builtin,
                 tlua::object::indexable_rw_meta,
                 tlua::object::anything_to_msgpack,
-
                 tlua::userdata::readwrite,
                 tlua::userdata::destructor_called,
                 tlua::userdata::type_check,
                 tlua::userdata::metatables,
                 tlua::userdata::multiple_userdata,
-
                 tlua::rust_tables::push_array,
                 tlua::rust_tables::push_vec,
                 tlua::rust_tables::push_hashmap,
@@ -349,14 +345,14 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 tlua::rust_tables::table_from_iter,
                 tlua::rust_tables::push_struct_of_nones,
                 tlua::rust_tables::derive_tuple_structs,
-
                 tlua::values::read_i32s,
                 tlua::values::write_i32s,
                 tlua::values::int64,
                 tlua::values::cdata_numbers,
                 tlua::values::push_cdata,
                 tlua::values::cdata_on_stack,
-                #[should_panic] tlua::values::as_cdata_wrong_size,
+                #[should_panic]
+                tlua::values::as_cdata_wrong_size,
                 tlua::values::readwrite_floats,
                 tlua::values::readwrite_bools,
                 tlua::values::readwrite_strings,
@@ -367,7 +363,6 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 tlua::values::read_nil,
                 tlua::values::typename,
                 tlua::values::tuple_as_table,
-
                 fiber::old::fiber_new,
                 fiber::old::fiber_new_with_attr,
                 fiber::old::fiber_arg,
@@ -377,7 +372,6 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 fiber::old::fiber_cond_signal,
                 fiber::old::fiber_cond_broadcast,
                 fiber::old::fiber_cond_timeout,
-
                 fiber::immediate,
                 fiber::immediate_with_attrs,
                 fiber::multiple_immediate,
@@ -394,10 +388,14 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 fiber::immediate_yields,
                 fiber::start_error,
                 fiber::require_error,
-                #[should_panic] fiber::start_dont_join,
-                #[should_panic] fiber::start_proc_dont_join,
-                #[should_panic] fiber::defer_dont_join,
-                #[should_panic] fiber::defer_proc_dont_join,
+                #[should_panic]
+                fiber::start_dont_join,
+                #[should_panic]
+                fiber::start_proc_dont_join,
+                #[should_panic]
+                fiber::defer_dont_join,
+                #[should_panic]
+                fiber::defer_proc_dont_join,
                 fiber::immediate_with_cond,
                 fiber::deferred_with_cond,
                 fiber::lifetime,
@@ -435,7 +433,6 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 fiber::mutex::simple,
                 fiber::mutex::try_lock,
                 fiber::mutex::debug,
-
                 r#box::space_get_by_name,
                 r#box::space_get_by_name_cached,
                 r#box::space_cache_invalidated,
@@ -474,7 +471,6 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 r#box::space_drop,
                 r#box::index_create_drop,
                 r#box::index_parts,
-
                 tuple::tuple_new_from_struct,
                 tuple::new_tuple_from_flutten_struct,
                 tuple::tuple_field_count,
@@ -497,7 +493,6 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 tuple::to_and_from_lua,
                 tuple::tuple_debug_fmt,
                 tuple::tuple_buffer_from_vec_fail,
-
                 error::error_last,
                 error::set_error,
                 coio::coio_accept,
@@ -509,7 +504,8 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 transaction::transaction_commit,
                 transaction::transaction_rollback,
                 log::log_with_user_defined_mapping,
-                #[should_panic] log::zlog,
+                #[should_panic]
+                log::zlog,
                 latch::latch_lock,
                 latch::latch_try_lock,
                 net_box::immediate_close,
@@ -543,7 +539,6 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 net_box::execute,
                 session::uid,
                 session::euid,
-
                 proc::simple,
                 proc::return_tuple,
                 proc::return_raw_bytes,
@@ -554,12 +549,10 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 proc::custom_ret,
                 proc::inject,
                 proc::inject_with_packed,
-
                 uuid::to_tuple,
                 uuid::from_tuple,
                 uuid::to_lua,
                 uuid::from_lua,
-
                 enums::space_engine_type,
                 enums::space_field_type,
                 enums::index_type,
@@ -567,7 +560,8 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 enums::rtree_index_distance_type,
             ]);
 
-            #[cfg(feature = "picodata")] {
+            #[cfg(feature = "picodata")]
+            {
                 tests.append(&mut tests![
                     sql::prepared_source_query,
                     sql::prepared_invalid_query,
@@ -576,7 +570,6 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                     sql::prepared_with_unnamed_params,
                     sql::prepared_with_named_params,
                     sql::prepared_invalid_params,
-
                     tuple_picodata::tuple_format_get_names,
                     tuple_picodata::tuple_as_named_buffer,
                 ])
@@ -623,7 +616,9 @@ pub unsafe extern "C" fn start(l: *mut ffi_lua::lua_State) -> c_int {
 
 #[allow(clippy::missing_safety_doc)]
 #[no_mangle]
-pub unsafe extern "C" fn luaopen_libtarantool_module_test_runner(l: *mut ffi_lua::lua_State) -> c_int {
+pub unsafe extern "C" fn luaopen_libtarantool_module_test_runner(
+    l: *mut ffi_lua::lua_State,
+) -> c_int {
     ffi_lua::lua_pushcfunction(l, start);
     1
 }

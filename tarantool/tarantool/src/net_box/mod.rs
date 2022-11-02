@@ -46,12 +46,12 @@ use std::rc::Rc;
 pub use index::{RemoteIndex, RemoteIndexIterator};
 use inner::ConnInner;
 pub use options::{ConnOptions, ConnTriggers, Options};
-pub(crate) use protocol::ResponseError;
 use promise::Promise;
+pub(crate) use protocol::ResponseError;
 pub use space::RemoteSpace;
 
 use crate::error::Error;
-use crate::tuple::{ToTupleBuffer, Decode, Tuple};
+use crate::tuple::{Decode, ToTupleBuffer, Tuple};
 
 mod index;
 mod inner;
@@ -204,8 +204,12 @@ impl Conn {
     }
 
     /// Remote execute of sql query.
-    pub fn execute(&self, sql: &str, bind_params: &impl ToTupleBuffer, options: &Options) -> Result<Vec<Tuple>, Error>
-    {
+    pub fn execute(
+        &self,
+        sql: &str,
+        bind_params: &impl ToTupleBuffer,
+        options: &Options,
+    ) -> Result<Vec<Tuple>, Error> {
         self.inner.request(
             |buf, sync| protocol::encode_execute(buf, sync, sql, bind_params),
             |buf, _| protocol::decode_multiple_rows(buf, None),

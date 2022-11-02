@@ -97,7 +97,7 @@ impl From<SystemSpace> for Space {
     }
 }
 
-crate::define_str_enum!{
+crate::define_str_enum! {
     /// Type of engine, used by space.
     #[derive(Copy, Clone, Debug, PartialEq, Eq)]
     pub enum SpaceEngineType {
@@ -111,7 +111,6 @@ crate::define_str_enum!{
 #[derive(thiserror::Error, Debug)]
 #[error("unknown engine type {0}")]
 pub struct UnknownEngineType(pub String);
-
 
 /// Options for new space, used by Space::create.
 /// (for details see [Options for box.schema.space.create](https://www.tarantool.io/en/doc/latest/reference/reference_lua/box_schema/space_create/)).
@@ -169,7 +168,11 @@ where
         let (name, field_type, is_nullable) = args;
         let name = name.into();
         let is_nullable = is_nullable.is_nullable();
-        Self { name, field_type, is_nullable }
+        Self {
+            name,
+            field_type,
+            is_nullable,
+        }
     }
 }
 
@@ -181,7 +184,11 @@ where
         let (name, field_type) = args;
         let name = name.into();
         let is_nullable = false;
-        Self { name, field_type, is_nullable }
+        Self {
+            name,
+            field_type,
+            is_nullable,
+        }
     }
 }
 
@@ -228,7 +235,7 @@ impl Field {
         self
     }
 
-    define_constructors!{
+    define_constructors! {
         any(FieldType::Any)
         unsigned(FieldType::Unsigned)
         string(FieldType::String)
@@ -254,7 +261,7 @@ impl Field {
 #[deprecated = "use space::FieldType instead"]
 pub type SpaceFieldType = FieldType;
 
-crate::define_str_enum!{
+crate::define_str_enum! {
     /// Type of a field in the space format definition.
     #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
     pub enum FieldType {
@@ -369,12 +376,15 @@ impl SpaceCache {
 
     fn index(&self, space: &Space, name: &str) -> Option<Index> {
         let mut cache = self.indexes.borrow_mut();
-        cache.get(&(space.id, name.to_string())).cloned().or_else(|| {
-            space.index(name).map(|index| {
-                cache.insert((space.id, name.to_string()), index.clone());
-                index
+        cache
+            .get(&(space.id, name.to_string()))
+            .cloned()
+            .or_else(|| {
+                space.index(name).map(|index| {
+                    cache.insert((space.id, name.to_string()), index.clone());
+                    index
+                })
             })
-        })
     }
 }
 
@@ -456,9 +466,7 @@ impl Space {
     ///
     /// [`NoSuchSpace`]: crate::error::TarantoolErrorCode::NoSuchSpace
     pub fn find_cached(name: &str) -> Option<Self> {
-        SPACE_CACHE.with(|cache| {
-            cache.space(name)
-        })
+        SPACE_CACHE.with(|cache| cache.space(name))
     }
 
     /// Get space ID.
@@ -524,9 +532,7 @@ impl Space {
     /// [`NoSuchSpace`]: crate::error::TarantoolErrorCode::NoSuchSpace
     /// [`NoSuchIndexID`]: crate::error::TarantoolErrorCode::NoSuchIndexID
     pub fn index_cached(&self, name: &str) -> Option<Index> {
-        SPACE_CACHE.with(|cache| {
-            cache.index(self, name)
-        })
+        SPACE_CACHE.with(|cache| cache.index(self, name))
     }
 
     /// Returns index with id = 0
@@ -556,7 +562,7 @@ impl Space {
                 @out
             ]
         )
-            .map(|t| t.expect("Returned tuple cannot be null"))
+        .map(|t| t.expect("Returned tuple cannot be null"))
     }
 
     /// Insert a tuple into a space.
@@ -582,7 +588,7 @@ impl Space {
                 @out
             ]
         )
-            .map(|t| t.expect("Returned tuple cannot be null"))
+        .map(|t| t.expect("Returned tuple cannot be null"))
     }
 
     /// Insert a tuple into a space. If a tuple with the same primary key already exists, it replaces the existing tuple
@@ -830,7 +836,7 @@ impl<'a> Builder<'a> {
         }
     }
 
-    define_setters!{
+    define_setters! {
         if_not_exists(if_not_exists: bool)
         engine(engine: SpaceEngineType)
         id(id: u32)
@@ -849,7 +855,9 @@ impl<'a> Builder<'a> {
     /// [`format`]: Self::format
     #[inline]
     pub fn field(mut self, field: impl Into<Field>) -> Self {
-        self.opts.format.get_or_insert_with(|| Vec::with_capacity(16))
+        self.opts
+            .format
+            .get_or_insert_with(|| Vec::with_capacity(16))
             .push(field.into());
         self
     }
@@ -876,7 +884,9 @@ impl<'a> Builder<'a> {
     pub fn format(mut self, format: impl IntoIterator<Item = impl Into<Field>>) -> Self {
         let iter = format.into_iter();
         let (size, _) = iter.size_hint();
-        self.opts.format.get_or_insert_with(|| Vec::with_capacity(size))
+        self.opts
+            .format
+            .get_or_insert_with(|| Vec::with_capacity(size))
             .extend(iter.map(Into::into));
         self
     }
@@ -948,9 +958,7 @@ macro_rules! define_bin_ops {
 impl UpdateOps {
     #[inline]
     pub fn new() -> Self {
-        Self {
-            ops: Vec::new(),
-        }
+        Self { ops: Vec::new() }
     }
 
     #[inline]
@@ -1031,11 +1039,18 @@ impl UpdateOps {
     /// Field indexing is zero based (first field has index 0).
     /// Negative indexes are offset from array's end (last field has index -1).
     #[inline]
-    pub fn splice<K>(&mut self, field: K, start: isize, count: usize, value: &str) -> crate::Result<&mut Self>
+    pub fn splice<K>(
+        &mut self,
+        field: K,
+        start: isize,
+        count: usize,
+        value: &str,
+    ) -> crate::Result<&mut Self>
     where
         K: Serialize,
     {
-        self.ops.push((':', field, start, count, value).to_tuple_buffer()?);
+        self.ops
+            .push((':', field, start, count, value).to_tuple_buffer()?);
         Ok(self)
     }
 

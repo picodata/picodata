@@ -1,9 +1,11 @@
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
 
-use tarantool::tlua::{Index, Indexable, Nil};
-use tarantool::tuple::{Encode, FieldType, KeyDef, KeyDefItem, RawBytes, RawByteBuf, Tuple, TupleBuffer};
 use serde::Serialize;
+use tarantool::tlua::{Index, Indexable, Nil};
+use tarantool::tuple::{
+    Encode, FieldType, KeyDef, KeyDefItem, RawByteBuf, RawBytes, Tuple, TupleBuffer,
+};
 
 use crate::common::{S1Record, S2Key, S2Record};
 
@@ -27,14 +29,11 @@ pub fn new_tuple_from_flutten_struct() {
         #[serde(flatten)]
         emb: Embedded,
     }
-    impl Encode for FlattenStruct{}
+    impl Encode for FlattenStruct {}
 
     let input = FlattenStruct {
         a: 1,
-        emb: Embedded {
-            b: 2,
-            c: 3,
-        },
+        emb: Embedded { b: 2, c: 3 },
     };
     assert_eq!(
         Tuple::new(&input).unwrap_err().to_string(),
@@ -50,7 +49,9 @@ pub fn new_tuple_from_flutten_struct() {
 
 pub fn tuple_buffer_from_vec_fail() {
     assert_eq!(
-        TupleBuffer::try_from_vec(vec![1, 2, 3]).unwrap_err().to_string(),
+        TupleBuffer::try_from_vec(vec![1, 2, 3])
+            .unwrap_err()
+            .to_string(),
         "Failed to encode tuple: Invalid msgpack value (epxected array, found Integer(PosInt(1)))"
     )
 }
@@ -76,8 +77,7 @@ pub fn tuple_field_count() {
     assert_eq!(tuple.len(), 1);
 
     // very long tuple
-    let tuple =
-        Tuple::new(&(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16)).unwrap();
+    let tuple = Tuple::new(&(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16)).unwrap();
     assert_eq!(tuple.len(), 16);
 }
 
@@ -223,9 +223,10 @@ pub fn tuple_get_field_path() {
     assert_eq!(tuple.get("array[2][2][1]"), Some(69));
     assert_eq!(tuple.get("array[2][2][2]"), Some(420));
     assert_eq!(tuple.get("array[3]"), Some(3.14));
-    assert_eq!(tuple.get("array"), Some(
-            ("foo".to_string(), ("bar".to_string(), (69, 420)), 3.14)
-    ));
+    assert_eq!(
+        tuple.get("array"),
+        Some(("foo".to_string(), ("bar".to_string(), (69, 420)), 3.14))
+    );
 
     let lua = tarantool::lua_state();
     lua.set("tuple_get_field_path", &tuple);
@@ -314,14 +315,19 @@ pub fn to_and_from_lua() {
         value: "nice".into(),
         a: 420,
         b: 69,
-    }).unwrap();
+    })
+    .unwrap();
 
     let lua = tarantool::lua_state();
     lua.set("to_and_from_lua", &tuple);
 
-    let tuple: Tuple = lua.eval("
+    let tuple: Tuple = lua
+        .eval(
+            "
         return box.tuple.new{ 1, 3.14, 'hello', { 10, 20, 30 } }
-    ").unwrap();
+    ",
+        )
+        .unwrap();
     let data: (u32, f64, String, [u32; 3]) = tuple.decode().unwrap();
     assert_eq!(data, (1, 3.14, "hello".to_string(), [10, 20, 30]));
 
@@ -335,13 +341,16 @@ pub fn to_and_from_lua() {
 
     let tuple: Tuple = lua.get("to_and_from_lua").unwrap();
     let res = tuple.decode::<S2Record>().unwrap();
-    assert_eq!(res, S2Record {
-        id: 42,
-        key: "hello".into(),
-        value: "nice".into(),
-        a: 420,
-        b: 69,
-    });
+    assert_eq!(
+        res,
+        S2Record {
+            id: 42,
+            key: "hello".into(),
+            value: "nice".into(),
+            a: 420,
+            b: 69,
+        }
+    );
 
     // check PushInto
     lua.set("to_and_from_lua", Tuple::new(&[420, 69, 1337]).unwrap());
@@ -360,16 +369,19 @@ pub fn tuple_debug_fmt() {
         value: "nice".into(),
         a: 420,
         b: 69,
-    }).unwrap();
+    })
+    .unwrap();
 
-    assert_eq!(format!("{:?}", tuple),
+    assert_eq!(
+        format!("{:?}", tuple),
         r#"Tuple(Array([Integer(PosInt(42)), String(Utf8String { s: Ok("hello") }), String(Utf8String { s: Ok("nice") }), Integer(PosInt(420)), Integer(PosInt(69))]))"#
     );
 
     let tuple = Tuple::new(&(1, true, "foo")).unwrap();
     let buf = TupleBuffer::from(tuple);
 
-    assert_eq!(format!("{:?}", buf),
+    assert_eq!(
+        format!("{:?}", buf),
         r#"TupleBuffer(Array([Integer(PosInt(1)), Boolean(true), String(Utf8String { s: Ok("foo") })]))"#
     );
 }
@@ -400,4 +412,3 @@ pub fn raw_bytes() {
     let bytes: RawByteBuf = tuple.get(1).unwrap();
     assert_eq!(&**bytes, b"\x82\xa1a\x0a\xa1b\x14");
 }
-

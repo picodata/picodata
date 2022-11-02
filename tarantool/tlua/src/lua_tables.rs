@@ -2,18 +2,9 @@ use std::marker::PhantomData;
 use std::num::NonZeroI32;
 
 use crate::{
-    ffi,
-    AsLua,
-    impl_object,
-    PushInto,
-    PushGuard,
-    PushOne,
-    PushOneInto,
-    LuaRead,
-    LuaState,
-    nzi32,
-    object::{Callable, CheckedSetError, FromObject, Index, Object, MethodCallError, NewIndex},
-    Void,
+    ffi, impl_object, nzi32,
+    object::{Callable, CheckedSetError, FromObject, Index, MethodCallError, NewIndex, Object},
+    AsLua, LuaRead, LuaState, PushGuard, PushInto, PushOne, PushOneInto, Void,
 };
 
 /// Represents a table stored in the Lua context.
@@ -55,7 +46,7 @@ where
     }
 }
 
-impl_object!{ LuaTable,
+impl_object! { LuaTable,
     check(lua, index) {
         ffi::lua_istable(lua.as_lua(), index.into())
     }
@@ -181,8 +172,7 @@ where
         NewIndex::checked_set(self, index, value)
     }
 
-    pub fn call_method<R, A>(&'lua self, name: &str, args: A)
-        -> Result<R, MethodCallError<A::Err>>
+    pub fn call_method<R, A>(&'lua self, name: &str, args: A) -> Result<R, MethodCallError<A::Err>>
     where
         L: std::fmt::Debug,
         A: PushInto<LuaState>,
@@ -288,9 +278,7 @@ where
     /// ```
     #[inline]
     pub fn registry(lua: L) -> LuaTable<L> {
-        unsafe {
-            LuaTable::new(lua, nzi32!(ffi::LUA_REGISTRYINDEX))
-        }
+        unsafe { LuaTable::new(lua, nzi32!(ffi::LUA_REGISTRYINDEX)) }
     }
 }
 
@@ -330,7 +318,9 @@ where
             // by value and the caller will be responsibe for dropping the stack
             // values, we need to make sure the stack is in the correct
             // configuration before invoking `lua_next`.
-            assert_eq!(self.last_top, ffi::lua_gettop(self.table.as_lua()),
+            assert_eq!(
+                self.last_top,
+                ffi::lua_gettop(self.table.as_lua()),
                 "lua stack is corrupt"
             );
             // This call pops the current key and pushes the next key and value at the top.
@@ -349,12 +339,10 @@ where
             let key = K::lua_read_at_position(self.table, crate::NEGATIVE_TWO).ok();
             let value = V::lua_read_at_position(guard, crate::NEGATIVE_ONE).ok();
 
-            Some(
-                match (key, value) {
-                    (Some(key), Some(value)) => Some((key, value)),
-                    _ => None
-                }
-            )
+            Some(match (key, value) {
+                (Some(key), Some(value)) => Some((key, value)),
+                _ => None,
+            })
         }
     }
 }
@@ -372,4 +360,3 @@ where
         }
     }
 }
-

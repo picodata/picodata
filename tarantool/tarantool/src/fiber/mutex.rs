@@ -119,7 +119,7 @@ impl<T: ?Sized> Mutex<T> {
     #[track_caller]
     pub fn try_lock(&self) -> Option<MutexGuard<'_, T>> {
         match self.latch.try_lock() {
-            Some(guard) => unsafe { Some(MutexGuard::new(self, guard)) }
+            Some(guard) => unsafe { Some(MutexGuard::new(self, guard)) },
             None => {
                 #[cfg(debug_assertions)]
                 self.log_lock_location();
@@ -184,15 +184,21 @@ impl<T: ?Sized> Mutex<T> {
     #[cfg(debug_assertions)]
     #[inline]
     fn log_lock_location(&self) {
-        use std::borrow::Cow;
         use crate::log::{say, SayLevel};
+        use std::borrow::Cow;
 
         let msg: Cow<str> = if let Some(loc) = self.lock_location.get() {
             format!("mutex was locked at {loc}").into()
         } else {
             "mutex was locked at unknown location".into()
         };
-        say(SayLevel::Verbose, std::file!(), std::line!() as _, None, &msg);
+        say(
+            SayLevel::Verbose,
+            std::file!(),
+            std::line!() as _,
+            None,
+            &msg,
+        );
     }
 }
 
@@ -297,4 +303,3 @@ impl<T: ?Sized + fmt::Display> fmt::Display for MutexGuard<'_, T> {
         fmt::Display::fmt(&**self, f)
     }
 }
-

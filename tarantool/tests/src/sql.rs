@@ -10,12 +10,14 @@ fn create_sql_test_space(name: &str) -> tarantool::Result<Space> {
         .field(Field::unsigned("ID"))
         .field(Field::string("VALUE"))
         .create()?;
-    space.index_builder("primary")
+    space
+        .index_builder("primary")
         .if_not_exists(true)
         .index_type(IndexType::Tree)
         .part(1)
         .create()?;
-    space.index_builder("secondary")
+    space
+        .index_builder("secondary")
         .if_not_exists(true)
         .index_type(IndexType::Tree)
         .part(1)
@@ -31,7 +33,10 @@ fn drop_sql_test_space(space: Space) -> tarantool::Result<()> {
 pub fn prepared_invalid_query() {
     let maybe_stmt = tarantool::sql::prepare("SELECT * FROM UNKNOWN_SPACE");
     assert!(maybe_stmt.is_err());
-    assert!(matches!(maybe_stmt.err().unwrap(), Error::Tarantool(TarantoolError { .. })));
+    assert!(matches!(
+        maybe_stmt.err().unwrap(),
+        Error::Tarantool(TarantoolError { .. })
+    ));
 }
 
 pub fn prepared_source_query() {
@@ -60,7 +65,6 @@ pub fn prepared_no_params() {
     assert_eq!((2, "two".to_string()), vec[1]);
     assert_eq!((3, "three".to_string()), vec[2]);
     assert_eq!((4, "four".to_string()), vec[3]);
-
 
     drop_sql_test_space(sp).unwrap();
 }
@@ -97,10 +101,13 @@ pub fn prepared_invalid_params() {
     let sp = create_sql_test_space("SQL_TEST").unwrap();
 
     let stmt = tarantool::sql::prepare("SELECT * FROM SQL_TEST WHERE ID > ?").unwrap();
-    let result = stmt.execute::<_, Vec<(u8, String)>>(&("not uint value", ));
+    let result = stmt.execute::<_, Vec<(u8, String)>>(&("not uint value",));
 
     assert!(result.is_err());
-    assert!(matches!(result.err().unwrap(), Error::Tarantool(TarantoolError { .. })));
+    assert!(matches!(
+        result.err().unwrap(),
+        Error::Tarantool(TarantoolError { .. })
+    ));
 
     drop_sql_test_space(sp).unwrap();
 }
@@ -115,17 +122,20 @@ pub fn prepared_with_unnamed_params() {
 
     let stmt = tarantool::sql::prepare("SELECT * FROM SQL_TEST WHERE ID > ?").unwrap();
 
-    let result = stmt.execute::<_, Vec<(u8, String)>>(&(102, )).unwrap();
+    let result = stmt.execute::<_, Vec<(u8, String)>>(&(102,)).unwrap();
     assert_eq!(2, result.len());
     assert_eq!((103, "three".to_string()), result[0]);
     assert_eq!((104, "four".to_string()), result[1]);
 
-    let result = stmt.execute::<_, Vec<(u8, String)>>(&(103, )).unwrap();
+    let result = stmt.execute::<_, Vec<(u8, String)>>(&(103,)).unwrap();
     assert_eq!(1, result.len());
     assert_eq!((104, "four".to_string()), result[0]);
 
-    let stmt2 = tarantool::sql::prepare("SELECT * FROM SQL_TEST WHERE ID > ? AND VALUE = ?").unwrap();
-    let result = stmt2.execute::<_, Vec<(u8, String)>>(&(102, "three")).unwrap();
+    let stmt2 =
+        tarantool::sql::prepare("SELECT * FROM SQL_TEST WHERE ID > ? AND VALUE = ?").unwrap();
+    let result = stmt2
+        .execute::<_, Vec<(u8, String)>>(&(102, "three"))
+        .unwrap();
     assert_eq!(1, result.len());
     assert_eq!((103, "three".to_string()), result[0]);
 
@@ -154,20 +164,27 @@ pub fn prepared_with_named_params() {
 
     let stmt = tarantool::sql::prepare("SELECT * FROM SQL_TEST WHERE ID > :ID").unwrap();
 
-    let result: Vec<(u8, String)> = stmt.execute(&(IdBind { id: 2 }, )).unwrap();
+    let result: Vec<(u8, String)> = stmt.execute(&(IdBind { id: 2 },)).unwrap();
     assert_eq!(2, result.len());
     assert_eq!((3, "three".to_string()), result[0]);
     assert_eq!((4, "four".to_string()), result[1]);
 
-    let result = stmt.execute::<_, Vec<(u8, String)>>(&(IdBind { id: 3 }, )).unwrap();
+    let result = stmt
+        .execute::<_, Vec<(u8, String)>>(&(IdBind { id: 3 },))
+        .unwrap();
     assert_eq!(1, result.len());
     assert_eq!((4, "four".to_string()), result[0]);
 
-    let stmt2 = tarantool::sql::prepare("SELECT * FROM SQL_TEST WHERE ID > :ID AND VALUE = :NAME").unwrap();
-    let result = stmt2.execute::<_, Vec<(u8, String)>>(&(
-        IdBind { id: 2 },
-        NameBind { name: "three".to_string() }
-    )).unwrap();
+    let stmt2 =
+        tarantool::sql::prepare("SELECT * FROM SQL_TEST WHERE ID > :ID AND VALUE = :NAME").unwrap();
+    let result = stmt2
+        .execute::<_, Vec<(u8, String)>>(&(
+            IdBind { id: 2 },
+            NameBind {
+                name: "three".to_string(),
+            },
+        ))
+        .unwrap();
     assert_eq!(1, result.len());
     assert_eq!((3, "three".to_string()), result[0]);
 

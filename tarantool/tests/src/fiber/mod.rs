@@ -6,22 +6,19 @@ use std::{
 };
 
 use crate::common::{
-    DropCounter, capture_value, fiber_csw, LuaStackIntegrityGuard, LuaContextSpoiler,
+    capture_value, fiber_csw, DropCounter, LuaContextSpoiler, LuaStackIntegrityGuard,
 };
 use tarantool::fiber;
 use tarantool::fiber::Fiber;
 use tarantool::tlua::AsLua;
 use tarantool::util::IntoClones;
 
-pub mod old;
 pub mod channel;
 pub mod mutex;
+pub mod old;
 
 pub fn immediate() {
-    let jh = fiber::Builder::new()
-        .func(|| 69)
-        .start()
-        .unwrap();
+    let jh = fiber::Builder::new().func(|| 69).start().unwrap();
     let res = jh.join();
     assert_eq!(res, 69);
 
@@ -33,7 +30,8 @@ pub fn immediate() {
 pub fn immediate_with_attrs() {
     let jh = fiber::Builder::new()
         .name("boo")
-        .stack_size(100_000).unwrap()
+        .stack_size(100_000)
+        .unwrap()
         .func(|| 42)
         .start()
         .unwrap();
@@ -46,26 +44,16 @@ pub fn multiple_immediate() {
     let mut res = vec![];
     let fibers = vec![vec![1, 2], vec![3, 4], vec![5, 6]]
         .into_iter()
-        .map(|v|
-            fiber::start(move || {
-                v.into_iter().map(|e| e + 1).collect::<Vec::<_>>()
-            })
-        )
+        .map(|v| fiber::start(move || v.into_iter().map(|e| e + 1).collect::<Vec<_>>()))
         .collect::<Vec<_>>();
     res.push(1);
-    res.extend(
-        fibers.into_iter()
-            .flat_map(fiber::JoinHandle::join)
-    );
+    res.extend(fibers.into_iter().flat_map(fiber::JoinHandle::join));
     res.push(8);
     assert_eq!(res, vec![1, 2, 3, 4, 5, 6, 7, 8]);
 }
 
 pub fn unit_immediate() {
-    let jh = fiber::Builder::new()
-        .func(|| ())
-        .start()
-        .unwrap();
+    let jh = fiber::Builder::new().func(|| ()).start().unwrap();
     let () = jh.join();
 
     let () = fiber::start_proc(|| ()).join();
@@ -74,7 +62,8 @@ pub fn unit_immediate() {
 pub fn unit_immediate_with_attrs() {
     let jh = fiber::Builder::new()
         .name("boo")
-        .stack_size(100_000).unwrap()
+        .stack_size(100_000)
+        .unwrap()
         .proc(|| ())
         .start()
         .unwrap();
@@ -88,9 +77,9 @@ pub fn multiple_unit_immediate() {
         .map(|v| {
             let res_ref = res.clone();
             fiber::start_proc(move || {
-                res_ref.borrow_mut().extend(
-                    v.into_iter().map(|e| e + 1).collect::<Vec::<_>>()
-                )
+                res_ref
+                    .borrow_mut()
+                    .extend(v.into_iter().map(|e| e + 1).collect::<Vec<_>>())
             })
         })
         .collect::<Vec<_>>();
@@ -104,10 +93,7 @@ pub fn multiple_unit_immediate() {
 }
 
 pub fn deferred() {
-    let jh = fiber::Builder::new()
-        .func(|| 13)
-        .defer()
-        .unwrap();
+    let jh = fiber::Builder::new().func(|| 13).defer().unwrap();
     assert_eq!(jh.join(), 13);
 
     let jh = fiber::defer(|| 42);
@@ -117,7 +103,8 @@ pub fn deferred() {
 pub fn deferred_with_attrs() {
     let res = fiber::Builder::new()
         .name("boo")
-        .stack_size(100_000).unwrap()
+        .stack_size(100_000)
+        .unwrap()
         .func(|| 15)
         .defer()
         .unwrap()
@@ -130,26 +117,16 @@ pub fn multiple_deferred() {
     let mut res = vec![];
     let fibers = vec![vec![1, 2], vec![3, 4], vec![5, 6]]
         .into_iter()
-        .map(|v|
-            fiber::defer(move || {
-                v.into_iter().map(|e| e + 1).collect::<Vec::<_>>()
-            })
-        )
+        .map(|v| fiber::defer(move || v.into_iter().map(|e| e + 1).collect::<Vec<_>>()))
         .collect::<Vec<_>>();
     res.push(1);
-    res.extend(
-        fibers.into_iter()
-            .flat_map(fiber::LuaJoinHandle::join)
-    );
+    res.extend(fibers.into_iter().flat_map(fiber::LuaJoinHandle::join));
     res.push(8);
     assert_eq!(res, vec![1, 2, 3, 4, 5, 6, 7, 8]);
 }
 
 pub fn unit_deferred() {
-    let jh = fiber::Builder::new()
-        .proc(|| ())
-        .defer()
-        .unwrap();
+    let jh = fiber::Builder::new().proc(|| ()).defer().unwrap();
     let () = jh.join();
 
     let res = Rc::new(Cell::new(0));
@@ -165,7 +142,8 @@ pub fn unit_deferred() {
 pub fn unit_deferred_with_attrs() {
     let () = fiber::Builder::new()
         .name("boo")
-        .stack_size(100_000).unwrap()
+        .stack_size(100_000)
+        .unwrap()
         .proc(|| ())
         .defer()
         .unwrap()
@@ -178,11 +156,11 @@ pub fn multiple_unit_deferred() {
         .into_iter()
         .map(|v| {
             let res_ref = res.clone();
-            fiber::defer_proc(move ||
-                res_ref.borrow_mut().extend(
-                    v.into_iter().map(|e| e + 1).collect::<Vec::<_>>()
-                )
-            )
+            fiber::defer_proc(move || {
+                res_ref
+                    .borrow_mut()
+                    .extend(v.into_iter().map(|e| e + 1).collect::<Vec<_>>())
+            })
         })
         .collect::<Vec<_>>();
     res.borrow_mut().push(1);
@@ -203,7 +181,7 @@ pub fn immediate_yields() {
     let csw2 = fiber_csw();
 
     assert_eq!(rx.get(), 69);
-    assert_eq!(csw2, csw1+1);
+    assert_eq!(csw2, csw1 + 1);
 
     f.join();
 }
@@ -238,7 +216,7 @@ pub fn start_error() {
         r#"
             package.loaded.fiber.new = _fiber_new_backup
             _fiber_new_backup = nil
-        "#
+        "#,
     );
 
     match fiber::LuaFiber::new(fiber::LuaFiberFunc::new(|| ())).spawn() {
@@ -265,7 +243,7 @@ pub fn require_error() {
             package.preload.fiber = nil
             package.loaded.fiber = _fiber_backup
             _fiber_backup = nil
-        "#
+        "#,
     );
 
     match fiber::LuaFiber::new(fiber::LuaFiberFunc::new(|| ())).spawn() {
@@ -334,15 +312,16 @@ pub fn immediate_with_cond() {
     let msgs = Rc::new(RefCell::new(vec![]));
     let cond = Rc::new(fiber::Cond::new());
 
-    let fibers = (1..=3).map(|i| {
-        let msgs = msgs.clone();
-        let cond = cond.clone();
-        fiber::start_proc(move || {
-            msgs.borrow_mut().push(i);
-            cond.wait();
-            msgs.borrow_mut().push(i + 3);
+    let fibers = (1..=3)
+        .map(|i| {
+            let msgs = msgs.clone();
+            let cond = cond.clone();
+            fiber::start_proc(move || {
+                msgs.borrow_mut().push(i);
+                cond.wait();
+                msgs.borrow_mut().push(i + 3);
+            })
         })
-    })
         .collect::<Vec<_>>();
 
     assert_eq!(*msgs.borrow(), vec![1, 2, 3]);
@@ -361,15 +340,16 @@ pub fn deferred_with_cond() {
     let msgs = Rc::new(RefCell::new(vec![]));
     let cond = Rc::new(fiber::Cond::new());
 
-    let fibers = (1..=3).map(|i| {
-        let msgs = msgs.clone();
-        let cond = cond.clone();
-        fiber::defer_proc(move || {
-            msgs.borrow_mut().push(i);
-            cond.wait();
-            msgs.borrow_mut().push(i + 3);
+    let fibers = (1..=3)
+        .map(|i| {
+            let msgs = msgs.clone();
+            let cond = cond.clone();
+            fiber::defer_proc(move || {
+                msgs.borrow_mut().push(i);
+                cond.wait();
+                msgs.borrow_mut().push(i + 3);
+            })
         })
-    })
         .collect::<Vec<_>>();
 
     assert!(msgs.borrow().is_empty());
@@ -410,7 +390,8 @@ pub fn lua_thread() {
 
     assert_eq!(v1.join(), 42);
     assert_eq!(v2.join(), "hello");
-    assert_eq!(log_out.try_iter().collect::<Vec<_>>(),
+    assert_eq!(
+        log_out.try_iter().collect::<Vec<_>>(),
         vec!["t1:push", "t2:push", "t1:read", "t2:read"]
     );
 

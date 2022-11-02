@@ -1,14 +1,5 @@
 use tarantool::tlua::{
-    AnyLuaString,
-    Call,
-    Callable,
-    Index,
-    Indexable,
-    IndexableRW,
-    LuaTable,
-    NewIndex,
-    Nil,
-    Object,
+    AnyLuaString, Call, Callable, Index, Indexable, IndexableRW, LuaTable, NewIndex, Nil, Object,
 };
 
 use crate::common::LuaStackIntegrityGuard;
@@ -23,21 +14,29 @@ pub fn callable_builtin() {
 
 pub fn callable_ffi() {
     let lua = tarantool::lua_state();
-    let c: Callable<_> = lua.eval("
+    let c: Callable<_> = lua
+        .eval(
+            "
         require 'ffi'.cdef[[ int atoi(const char *); ]]
         return require 'ffi'.C.atoi
-    ").unwrap();
+    ",
+        )
+        .unwrap();
     assert_eq!(c.call_with("420").ok(), Some(420));
 }
 
 pub fn callable_meta() {
     let lua = tarantool::lua_state();
-    let c: Callable<_> = lua.eval("
+    let c: Callable<_> = lua
+        .eval(
+            "
         return setmetatable(
             { a = 1, b = 'hello' },
             { __call = function(self, key) return self[key] end }
         )
-    ").unwrap();
+    ",
+        )
+        .unwrap();
     assert_eq!(c.call_with("a").ok(), Some(1));
     assert_eq!(c.call_with("b").ok(), Some("hello".to_string()));
     assert_eq!(c.call().ok(), Some(Nil));
@@ -50,7 +49,8 @@ pub fn indexable_builtin() {
     assert_eq!(i.get("one"), Some(1));
     assert_eq!(i.get(2), Some(Nil));
     assert_eq!(i.get(2), None::<i32>);
-    assert_eq!(i.try_get::<_, i32>(2).unwrap_err().to_string(),
+    assert_eq!(
+        i.try_get::<_, i32>(2).unwrap_err().to_string(),
         "Wrong type returned by Lua: i32 expected, got nil"
     );
 }
@@ -128,10 +128,12 @@ pub fn cannot_get_mutltiple_values() {
     let i: Indexable<_> = lua.eval("return { 'one' };").unwrap();
     assert_eq!(i.get::<_, String>(1), Some("one".to_string()));
     assert_eq!(i.get::<_, (String,)>(1), Some(("one".to_string(),)));
-    assert_eq!(i.try_get::<_, (String, i32)>(1).unwrap_err().to_string(),
+    assert_eq!(
+        i.try_get::<_, (String, i32)>(1).unwrap_err().to_string(),
         "Wrong type returned by Lua: (alloc::string::String, i32) expected, got string"
     );
-    assert_eq!(i.try_get::<_, (i32, i32)>(2).unwrap_err().to_string(),
+    assert_eq!(
+        i.try_get::<_, (i32, i32)>(2).unwrap_err().to_string(),
         "Wrong type returned by Lua: (i32, i32) expected, got nil"
     );
 }
@@ -175,6 +177,8 @@ pub fn indexable_rw_meta() {
 pub fn anything_to_msgpack() {
     let lua = tarantool::lua_state();
     let o: Object<_> = lua.eval("return {69, foo='bar'}").unwrap();
-    let mp: AnyLuaString = lua.eval_with("return require'msgpack'.encode(...)", &o).unwrap();
+    let mp: AnyLuaString = lua
+        .eval_with("return require'msgpack'.encode(...)", &o)
+        .unwrap();
     assert_eq!(mp.as_bytes(), b"\x82\x01\x45\xa3foo\xa3bar");
 }

@@ -74,11 +74,12 @@ build-vanila:
     image: ${VANILA_IMAGE}
     script:
         - cargo -V
+        - cargo fmt --all --check
+        - cargo clippy --version
+        - cargo clippy --workspace -- --deny warnings
         - cargo build --all
         - cargo test
         - ./tests/test.sh
-        - cargo clippy --version
-        - cargo clippy -- --deny warnings
 
 build-picodata:
     stage: build
@@ -88,11 +89,12 @@ build-picodata:
     image: ${PICODATA_IMAGE}
     script:
         - cargo -V
+        - cargo fmt --all --check
+        - cargo clippy --version
+        - cargo clippy --features=picodata --workspace -- --deny warnings
         - cargo build --all --features=picodata
         - cargo test --features=picodata
         - ./tests/test.sh
-        - cargo clippy --version
-        - cargo clippy --features=picodata -- --deny warnings
 
 pages:
   image: ${VANILA_IMAGE}

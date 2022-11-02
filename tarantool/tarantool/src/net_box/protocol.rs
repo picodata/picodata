@@ -5,8 +5,8 @@ use std::io::{self, Cursor, Read, Seek, Write};
 use std::os::raw::c_char;
 use std::str::from_utf8;
 
-use sha1::{Digest, Sha1};
 use num_derive::FromPrimitive;
+use sha1::{Digest, Sha1};
 
 use crate::error::Error;
 use crate::index::IteratorType;
@@ -101,8 +101,9 @@ pub(crate) trait Request {
         W: Write;
 }
 
-
-pub(crate) fn request_producer<R>(request: R) -> impl FnOnce(&mut Cursor<Vec<u8>>, Sync) -> crate::Result<()>
+pub(crate) fn request_producer<R>(
+    request: R,
+) -> impl FnOnce(&mut Cursor<Vec<u8>>, Sync) -> crate::Result<()>
 where
     R: Request,
 {
@@ -247,7 +248,12 @@ pub fn encode_ping(stream: &mut impl Write, sync: u64) -> Result<(), Error> {
     Ok(())
 }
 
-pub fn encode_execute(stream: &mut impl Write, sync: u64, sql: &str, bind_params: &impl ToTupleBuffer) -> Result<(), Error> {
+pub fn encode_execute(
+    stream: &mut impl Write,
+    sync: u64,
+    sql: &str,
+    bind_params: &impl ToTupleBuffer,
+) -> Result<(), Error> {
     encode_header(stream, sync, IProtoType::Execute)?;
     rmp::encode::write_map_len(stream, 2)?;
     rmp::encode::write_pfix(stream, SQL_TEXT)?;

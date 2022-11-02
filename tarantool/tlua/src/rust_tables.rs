@@ -1,16 +1,8 @@
 use crate::{
     ffi,
-    Push,
-    PushInto,
-    PushGuard,
-    PushOne,
-    PushOneInto,
-    AsLua,
-    tuples::TuplePushError::{self, First, Other},
-    LuaRead,
-    LuaState,
     lua_tables::LuaTable,
-    Void,
+    tuples::TuplePushError::{self, First, Other},
+    AsLua, LuaRead, LuaState, Push, PushGuard, PushInto, PushOne, PushOneInto, Void,
 };
 
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -20,12 +12,11 @@ use std::iter;
 use std::num::NonZeroI32;
 
 #[inline]
-pub(crate) fn push_iter<L, I>(lua: L, iterator: I)
-    -> Result<PushGuard<L>, (PushIterErrorOf<I>, L)>
+pub(crate) fn push_iter<L, I>(lua: L, iterator: I) -> Result<PushGuard<L>, (PushIterErrorOf<I>, L)>
 where
     L: AsLua,
     I: Iterator,
-    <I as Iterator>::Item: PushInto<LuaState>
+    <I as Iterator>::Item: PushInto<LuaState>,
 {
     // creating empty table
     unsafe { ffi::lua_newtable(lua.as_lua()) };
@@ -37,8 +28,8 @@ where
                 // TODO(gmoshkin): return an error capturing this push guard
                 // drop the lua table
                 drop(PushGuard::new(lua.as_lua(), 1));
-                return Err((PushIterError::ValuePushError(err), lua))
-            }
+                return Err((PushIterError::ValuePushError(err), lua));
+            },
         };
 
         match size {
@@ -53,14 +44,12 @@ where
                 // TODO(gmoshkin): return an error capturing this push guard
                 // n + 1 == n values from the recent push + lua table
                 drop(PushGuard::new(lua.as_lua(), n + 1));
-                return Err((PushIterError::TooManyValues, lua))
-            }
+                return Err((PushIterError::TooManyValues, lua));
+            },
         }
     }
 
-    unsafe {
-        Ok(PushGuard::new(lua, 1))
-    }
+    unsafe { Ok(PushGuard::new(lua, 1)) }
 }
 
 pub type PushIterErrorOf<I> = PushIterError<<<I as Iterator>::Item as PushInto<LuaState>>::Err>;
@@ -90,9 +79,7 @@ where
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Self::TooManyValues => {
-                write!(fmt,
-                    "Can only push 1 or 2 values as lua table item",
-                )
+                write!(fmt, "Can only push 1 or 2 values as lua table item",)
             }
             Self::ValuePushError(e) => {
                 write!(fmt, "Pushing iterable item failed: {}", e)
@@ -170,7 +157,8 @@ where
     L: AsLua,
     I: Iterator,
     <I as Iterator>::Item: PushInto<LuaState>,
-{}
+{
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Vec
@@ -238,7 +226,7 @@ where
         {
             let mut iter = table.iter::<i32, T>();
             while let Some(maybe_kv) = iter.next() {
-                let (key, value) = crate::unwrap_or!{maybe_kv,
+                let (key, value) = crate::unwrap_or! {maybe_kv,
                     drop(iter);
                     return Err(table.into_inner())
                 };
@@ -249,7 +237,7 @@ where
         }
 
         if dict.is_empty() {
-            return Ok(vec![])
+            return Ok(vec![]);
         }
 
         if min_key != 1 {
@@ -268,7 +256,7 @@ where
         // and check that table represented non-sparse 1-indexed array
         for (k, v) in dict {
             if previous_key + 1 != k {
-                return Err(table.into_inner())
+                return Err(table.into_inner());
             } else {
                 // We just push, thus converting Lua 1-based indexing
                 // to Rust 0-based indexing
@@ -375,18 +363,19 @@ where
                 }
                 _ => {
                     err = true;
-                    break
+                    break;
                 }
             }
         }
 
         if err || was_assigned.iter().any(|&was_assigned| !was_assigned) {
-            for i in IntoIterator::into_iter(was_assigned).enumerate()
+            for i in IntoIterator::into_iter(was_assigned)
+                .enumerate()
                 .flat_map(|(i, was_assigned)| was_assigned.then(|| i))
             {
                 unsafe { std::ptr::drop_in_place(ptr.add(i)) }
             }
-            return Err(table.into_inner())
+            return Err(table.into_inner());
         }
 
         Ok(unsafe { res.assume_init() })
@@ -414,13 +403,12 @@ where
 
 macro_rules! push_hashmap_impl {
     ($self:expr, $lua:expr) => {
-        push_iter($lua, $self.into_iter())
-            .map_err(|(e, lua)| match e {
-                PushIterError::TooManyValues => unreachable!("K and V implement PushOne"),
-                PushIterError::ValuePushError(First(e)) => (First(e), lua),
-                PushIterError::ValuePushError(Other(e)) => (Other(e.first()), lua),
-            })
-    }
+        push_iter($lua, $self.into_iter()).map_err(|(e, lua)| match e {
+            PushIterError::TooManyValues => unreachable!("K and V implement PushOne"),
+            PushIterError::ValuePushError(First(e)) => (First(e), lua),
+            PushIterError::ValuePushError(Other(e)) => (Other(e.first()), lua),
+        })
+    };
 }
 
 impl<L, K, V> Push<L> for HashMap<K, V>
@@ -473,15 +461,14 @@ where
 
 macro_rules! push_hashset_impl {
     ($self:expr, $lua:expr) => {
-        push_iter($lua, $self.into_iter().zip(iter::repeat(true)))
-            .map_err(|(e, lua)| match e {
-                PushIterError::TooManyValues => unreachable!("K implements PushOne"),
-                PushIterError::ValuePushError(First(e)) => (e, lua),
-                PushIterError::ValuePushError(Other(_)) => {
-                    unreachable!("no way to create instance of Void")
-                }
-            })
-    }
+        push_iter($lua, $self.into_iter().zip(iter::repeat(true))).map_err(|(e, lua)| match e {
+            PushIterError::TooManyValues => unreachable!("K implements PushOne"),
+            PushIterError::ValuePushError(First(e)) => (e, lua),
+            PushIterError::ValuePushError(Other(_)) => {
+                unreachable!("no way to create instance of Void")
+            }
+        })
+    };
 }
 
 impl<L, K> Push<L> for HashSet<K>
@@ -523,4 +510,3 @@ where
     K: PushOneInto<LuaState> + Eq + Hash + Debug,
 {
 }
-

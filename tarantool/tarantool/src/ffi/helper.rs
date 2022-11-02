@@ -7,9 +7,7 @@ use std::ptr::NonNull;
 #[macro_export]
 macro_rules! c_str {
     ($s:expr) => {
-        ::std::ffi::CStr::from_bytes_with_nul_unchecked(
-            ::std::concat!($s, "\0").as_bytes()
-        )
+        ::std::ffi::CStr::from_bytes_with_nul_unchecked(::std::concat!($s, "\0").as_bytes())
     };
 }
 
@@ -57,7 +55,7 @@ macro_rules! define_dlsym_reloc {
 #[inline]
 pub unsafe fn tnt_internal_symbol<T>(name: &CStr) -> Option<T> {
     if std::mem::size_of::<T>() != std::mem::size_of::<*mut ()>() {
-        return None
+        return None;
     }
     let ptr = (RELOC_FN?)(name.as_ptr())?;
     return Some(std::mem::transmute_copy(&ptr));
@@ -99,7 +97,7 @@ pub unsafe fn get_dyn_symbol<T: Copy>(name: &CStr) -> Result<T, dlopen::Error> {
 #[inline]
 pub unsafe fn get_any_symbol<T: Copy>(name: &CStr) -> Result<T, dlopen::Error> {
     if let Some(sym) = tnt_internal_symbol(name) {
-        return Ok(sym)
+        return Ok(sym);
     }
     let lib = Library::open_self()?;
     let sym = lib.symbol_cstr(name)?;

@@ -1,21 +1,14 @@
 use std::any::{Any, TypeId};
 use std::convert::TryFrom;
+use std::mem;
 use std::num::NonZeroI32;
 use std::ops::{Deref, DerefMut};
-use std::mem;
 use std::ptr;
 
 use crate::{
-    ffi,
-    AsLua,
-    Push,
-    PushGuard,
-    LuaRead,
-    LuaState,
-    InsideCallback,
-    LuaTable,
+    c_ptr, ffi,
     object::{FromObject, Object},
-    c_ptr,
+    AsLua, InsideCallback, LuaRead, LuaState, LuaTable, Push, PushGuard,
 };
 
 /// Pushes `value` of type `T` onto the stack as a userdata. The value is
@@ -51,7 +44,8 @@ where
     /// and if not it drops the value.
     unsafe extern "C" fn wrap_gc<T>(lua: *mut ffi::lua_State) -> i32 {
         let ud_ptr = ffi::lua_touserdata(lua, 1);
-        let ud = ud_ptr.cast::<UDBox<T>>()
+        let ud = ud_ptr
+            .cast::<UDBox<T>>()
             .as_mut()
             .expect("__gc called with userdata pointing to NULL");
         drop(ud.take());
@@ -59,7 +53,6 @@ where
         0
     }
 }
-
 
 // Called when an object inside Lua is being dropped.
 #[inline]
@@ -152,8 +145,10 @@ where
 }
 
 #[inline]
-pub fn read_userdata<'t, 'c, T>(lua: &'c InsideCallback, index: i32)
-    -> Result<&'t mut T, &'c InsideCallback>
+pub fn read_userdata<'t, 'c, T>(
+    lua: &'c InsideCallback,
+    index: i32,
+) -> Result<&'t mut T, &'c InsideCallback>
 where
     T: 'static + Any,
 {
@@ -168,7 +163,10 @@ where
             return Err(lua);
         }
 
-        let data = data_ptr.cast::<u8>().add(mem::size_of::<TypeId>()).cast::<T>();
+        let data = data_ptr
+            .cast::<u8>()
+            .add(mem::size_of::<TypeId>())
+            .cast::<T>();
         Ok(&mut *data)
     }
 }
@@ -231,8 +229,7 @@ where
 {
     #[inline]
     fn lua_read_at_position(lua: L, index: NonZeroI32) -> Result<Self, L> {
-        Self::try_from_obj(Object::new(lua, index))
-            .map_err(Object::into_guard)
+        Self::try_from_obj(Object::new(lua, index)).map_err(Object::into_guard)
     }
 }
 

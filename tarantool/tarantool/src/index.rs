@@ -7,9 +7,9 @@
 //! See also:
 //! - [Indexes](https://www.tarantool.io/en/doc/latest/book/box/data_model/#indexes)
 //! - [Lua reference: Submodule box.index](https://www.tarantool.io/en/doc/latest/reference/reference_lua/box_index/)
+use std::mem::MaybeUninit;
 use std::os::raw::c_char;
 use std::ptr::null_mut;
-use std::mem::MaybeUninit;
 
 use num_derive::ToPrimitive;
 use num_traits::ToPrimitive;
@@ -17,10 +17,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::{Error, TarantoolError};
 use crate::ffi::tarantool as ffi;
+use crate::msgpack;
 use crate::tuple::{ToTupleBuffer, Tuple, TupleBuffer};
 use crate::tuple_from_box_api;
 use crate::util::NumOrStr;
-use crate::msgpack;
 
 /// An index is a group of key values and pointers.
 #[derive(Clone, Debug)]
@@ -116,11 +116,11 @@ impl<'a> Builder<'a> {
         Self {
             space_id,
             name,
-            opts: IndexOptions::default()
+            opts: IndexOptions::default(),
         }
     }
 
-    define_setters!{
+    define_setters! {
         index_type(r#type: IndexType)
         id(id: u32)
         unique(unique: bool)
@@ -144,7 +144,9 @@ impl<'a> Builder<'a> {
     /// [`parts`]: Self::parts
     #[inline(always)]
     pub fn part(mut self, part: impl Into<Part>) -> Self {
-        self.opts.parts.get_or_insert_with(|| Vec::with_capacity(8))
+        self.opts
+            .parts
+            .get_or_insert_with(|| Vec::with_capacity(8))
             .push(part.into());
         self
     }
@@ -173,7 +175,9 @@ impl<'a> Builder<'a> {
     pub fn parts(mut self, parts: impl IntoIterator<Item = impl Into<Part>>) -> Self {
         let iter = parts.into_iter();
         let (size, _) = iter.size_hint();
-        self.opts.parts.get_or_insert_with(|| Vec::with_capacity(size))
+        self.opts
+            .parts
+            .get_or_insert_with(|| Vec::with_capacity(size))
             .extend(iter.map(Into::into));
         self
     }
@@ -318,7 +322,7 @@ impl SeqSpec {
 // IndexType
 ////////////////////////////////////////////////////////////////////////////////
 
-crate::define_str_enum!{
+crate::define_str_enum! {
     /// Type of index.
     #[derive(Copy, Clone, Debug, PartialEq, Eq)]
     pub enum IndexType {
@@ -342,7 +346,7 @@ pub struct UnknownIndexType(pub String);
 #[deprecated = "use index::FieldType instead"]
 pub type IndexFieldType = FieldType;
 
-crate::define_str_enum!{
+crate::define_str_enum! {
     /// Type of index part.
     #[derive(Copy, Clone, Debug, PartialEq, Eq)]
     pub enum FieldType {
@@ -407,7 +411,7 @@ impl Part {
         }
     }
 
-    define_setters!{
+    define_setters! {
         field_type(r#type: FieldType)
         collation(collation: String)
         is_nullable(is_nullable: bool)
@@ -465,7 +469,7 @@ impl From<(&str, FieldType)> for Part {
 // ...
 ////////////////////////////////////////////////////////////////////////////////
 
-crate::define_str_enum!{
+crate::define_str_enum! {
     /// Type of distance for retree index.
     #[derive(Copy, Clone, Debug, PartialEq, Eq)]
     pub enum RtreeIndexDistanceType {
@@ -595,9 +599,7 @@ impl Index {
         let key_buf = key.to_tuple_buffer().unwrap();
         let mut ops_buf = Vec::with_capacity(4 + ops.as_ref().len() * 4);
         msgpack::write_array(&mut ops_buf, ops.as_ref())?;
-        unsafe {
-            self.update_raw(key_buf.as_ref(), ops_buf.as_ref())
-        }
+        unsafe { self.update_raw(key_buf.as_ref(), ops_buf.as_ref()) }
     }
 
     /// # Safety
@@ -648,9 +650,7 @@ impl Index {
         let value_buf = value.to_tuple_buffer().unwrap();
         let mut ops_buf = Vec::with_capacity(4 + ops.as_ref().len() * 4);
         msgpack::write_array(&mut ops_buf, ops.as_ref())?;
-        unsafe {
-            self.upsert_raw(value_buf.as_ref(), ops_buf.as_ref())
-        }
+        unsafe { self.upsert_raw(value_buf.as_ref(), ops_buf.as_ref()) }
     }
 
     /// # Safety
@@ -681,8 +681,11 @@ impl Index {
                 0,
                 @out
             ]
-        ).map(|t| if t.is_some() {
-            unreachable!("Upsert doesn't return a tuple")
+        )
+        .map(|t| {
+            if t.is_some() {
+                unreachable!("Upsert doesn't return a tuple")
+            }
         })
     }
 

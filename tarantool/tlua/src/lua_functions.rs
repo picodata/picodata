@@ -1,24 +1,14 @@
 use std::ffi::CString;
 use std::io::Cursor;
-use std::io::Read;
 use std::io::Error as IoError;
+use std::io::Read;
 use std::num::NonZeroI32;
 use std::panic::Location;
 
 use crate::{
-    ffi,
-    AsLua,
-    impl_object,
-    LuaState,
-    LuaRead,
-    LuaError,
+    ffi, impl_object, nzi32,
     object::{Call, CallError, FromObject, Object},
-    nzi32,
-    Push,
-    PushInto,
-    PushGuard,
-    PushOne,
-    PushOneInto,
+    AsLua, LuaError, LuaRead, LuaState, Push, PushGuard, PushInto, PushOne, PushOneInto,
 };
 
 /// Wrapper around a `&str`. When pushed, the content will be parsed as Lua code and turned into a
@@ -57,11 +47,7 @@ where
     }
 }
 
-impl<'c, L> PushOne<L> for LuaCode<'c>
-where
-    L: AsLua,
-{
-}
+impl<'c, L> PushOne<L> for LuaCode<'c> where L: AsLua {}
 
 /// Wrapper around a `Read` object. When pushed, the content will be parsed as Lua code and turned
 /// into a function.
@@ -93,7 +79,10 @@ pub struct LuaCodeFromReader<R> {
 impl<R> LuaCodeFromReader<R> {
     #[track_caller]
     pub fn new(reader: R) -> Self {
-        Self { reader, location: Location::caller() }
+        Self {
+            reader,
+            location: Location::caller(),
+        }
     }
 }
 
@@ -119,11 +108,13 @@ where
                 triggered_error: None,
             };
 
-            extern "C" fn reader<R>(_: LuaState,
-                                    data: *mut libc::c_void,
-                                    size: *mut libc::size_t)
-                                    -> *const libc::c_char
-                where R: Read
+            extern "C" fn reader<R>(
+                _: LuaState,
+                data: *mut libc::c_void,
+                size: *mut libc::size_t,
+            ) -> *const libc::c_char
+            where
+                R: Read,
             {
                 unsafe {
                     let data: *mut ReadData<R> = data as *mut _;
@@ -226,7 +217,7 @@ where
     }
 }
 
-impl_object!{ LuaFunction,
+impl_object! { LuaFunction,
     check(lua, index) {
         ffi::lua_isfunction(lua.as_lua(), index.into())
     }
@@ -410,7 +401,7 @@ where
     #[inline]
     pub fn load_from_reader(lua: L, code: impl Read) -> Result<Self, LuaError> {
         match LuaCodeFromReader::new(code).push_into_lua(lua) {
-            Ok(pushed) => unsafe { Ok(Self::new(pushed, nzi32!(-1))) }
+            Ok(pushed) => unsafe { Ok(Self::new(pushed, nzi32!(-1))) },
             Err((err, _)) => Err(err),
         }
     }

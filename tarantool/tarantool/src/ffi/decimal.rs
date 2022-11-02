@@ -1,6 +1,6 @@
 use std::{
-    os::raw::c_char,
     hash::{Hash, Hasher},
+    os::raw::c_char,
 };
 
 #[repr(C)]

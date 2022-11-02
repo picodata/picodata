@@ -1,14 +1,14 @@
+use rand::Rng;
 use std::borrow::Cow;
 use std::collections::BTreeMap;
-use rand::Rng;
 
 use tarantool::index::{self, IndexOptions, IteratorType};
 use tarantool::sequence::Sequence;
-use tarantool::space::{self, Field, Space, SpaceCreateOptions, SpaceEngineType, SystemSpace};
 use tarantool::space::UpdateOps;
+use tarantool::space::{self, Field, Space, SpaceCreateOptions, SpaceEngineType, SystemSpace};
 use tarantool::tuple::Tuple;
-use tarantool::{update, upsert};
 use tarantool::util::Value;
+use tarantool::{update, upsert};
 
 use crate::common::{QueryOperation, S1Record, S2Key, S2Record};
 
@@ -70,7 +70,8 @@ pub fn index_cache_invalidated() {
 
     // `index` is invalid due to stale cache
     let index = space.index_cached(INDEX_NAME).unwrap();
-    assert_eq!(index.get(&[1]).unwrap_err().to_string(),
+    assert_eq!(
+        index.get(&[1]).unwrap_err().to_string(),
         format!("Tarantool error: NoSuchIndexID: No index #0 is defined in space '{SPACE_NAME}'")
     );
 
@@ -281,10 +282,7 @@ pub fn extract_key() {
         b: 2,
     };
     let key: Tuple = idx.extract_key(Tuple::new(&record).unwrap());
-    assert_eq!(
-        key.decode::<S2Key>().unwrap(),
-        S2Key { id: 11, a: 1, b: 2 }
-    );
+    assert_eq!(key.decode::<S2Key>().unwrap(), S2Key { id: 11, a: 1, b: 2 });
     let tuple = idx.get(&key).unwrap().unwrap();
     assert_eq!(tuple.decode::<S2Record>().unwrap(), record);
 }
@@ -298,10 +296,7 @@ pub fn insert() {
         text: "Test".to_string(),
     };
     let insert_result = space.insert(&input).unwrap();
-    assert_eq!(
-        insert_result.decode::<S1Record>().unwrap(),
-        input
-    );
+    assert_eq!(insert_result.decode::<S1Record>().unwrap(), input);
 
     let output = space.get(&(input.id,)).unwrap();
     assert!(output.is_some());
@@ -323,17 +318,11 @@ pub fn replace() {
         text: "New".to_string(),
     };
     let replace_result = space.replace(&new_input).unwrap();
-    assert_eq!(
-        replace_result.decode::<S1Record>().unwrap(),
-        new_input
-    );
+    assert_eq!(replace_result.decode::<S1Record>().unwrap(), new_input);
 
     let output = space.get(&(new_input.id,)).unwrap();
     assert!(output.is_some());
-    assert_eq!(
-        output.unwrap().decode::<S1Record>().unwrap(),
-        new_input
-    );
+    assert_eq!(output.unwrap().decode::<S1Record>().unwrap(), new_input);
 }
 
 pub fn delete() {
@@ -348,10 +337,7 @@ pub fn delete() {
 
     let delete_result = space.delete(&(input.id,)).unwrap();
     assert!(delete_result.is_some());
-    assert_eq!(
-        delete_result.unwrap().decode::<S1Record>().unwrap(),
-        input
-    );
+    assert_eq!(delete_result.unwrap().decode::<S1Record>().unwrap(), input);
 
     let output = space.get(&(input.id,)).unwrap();
     assert!(output.is_none());
@@ -379,19 +365,12 @@ pub fn update() {
         .unwrap();
     assert!(update_result.is_some());
     assert_eq!(
-        update_result
-            .unwrap()
-            .decode::<S1Record>()
-            .unwrap()
-            .text,
+        update_result.unwrap().decode::<S1Record>().unwrap().text,
         "New"
     );
 
     let output = space.get(&(input.id,)).unwrap();
-    assert_eq!(
-        output.unwrap().decode::<S1Record>().unwrap().text,
-        "New"
-    );
+    assert_eq!(output.unwrap().decode::<S1Record>().unwrap().text, "New");
 }
 
 pub fn update_macro() {
@@ -402,32 +381,33 @@ pub fn update_macro() {
         key: "Original".to_string(),
         value: "Original".to_string(),
         a: 0,
-        b: 0
+        b: 0,
     };
     space.put(&input).unwrap();
 
     let update_result = update!(
-            space,
-            (input.id,),
-            &("=", "key", "New"),
-            ("=", "value", "New"),
-            ("=", "a", 1),
-            &("=", "b", 2),
-        )
-        .unwrap();
+        space,
+        (input.id,),
+        &("=", "key", "New"),
+        ("=", "value", "New"),
+        ("=", "a", 1),
+        &("=", "b", 2),
+    )
+    .unwrap();
     assert!(update_result.is_some());
 
-    let updated = update_result
-        .unwrap()
-        .decode::<S2Record>().unwrap();
+    let updated = update_result.unwrap().decode::<S2Record>().unwrap();
     assert_eq!(updated.key, "New");
     assert_eq!(updated.value, "New");
     assert_eq!(updated.a, 1);
     assert_eq!(updated.b, 2);
 
-    let output = space.get(&(input.id,))
-        .unwrap().unwrap()
-        .decode::<S2Record>().unwrap();
+    let output = space
+        .get(&(input.id,))
+        .unwrap()
+        .unwrap()
+        .decode::<S2Record>()
+        .unwrap();
     assert_eq!(output.key, "New");
     assert_eq!(output.value, "New");
     assert_eq!(output.a, 1);
@@ -442,38 +422,39 @@ pub fn update_index_macro() {
         key: "Original".to_string(),
         value: "Original".to_string(),
         a: 0,
-        b: 0
+        b: 0,
     };
     space.put(&input).unwrap();
 
     let update_result = update!(
-            space.index("primary").unwrap(),
-            (input.id,),
-            ("=", "key", "NewKey"),
-            ("=", "a", 1),
-        )
-        .unwrap();
+        space.index("primary").unwrap(),
+        (input.id,),
+        ("=", "key", "NewKey"),
+        ("=", "a", 1),
+    )
+    .unwrap();
     assert!(update_result.is_some());
     let update_result = update!(
-            space.index("idx_1").unwrap(),
-            ("NewKey",),
-            ("=", "value", "New"),
-            ("=", "b", 2),
-        )
-        .unwrap();
+        space.index("idx_1").unwrap(),
+        ("NewKey",),
+        ("=", "value", "New"),
+        ("=", "b", 2),
+    )
+    .unwrap();
     assert!(update_result.is_some());
 
-    let updated = update_result
-        .unwrap()
-        .decode::<S2Record>().unwrap();
+    let updated = update_result.unwrap().decode::<S2Record>().unwrap();
     assert_eq!(updated.key, "NewKey");
     assert_eq!(updated.value, "New");
     assert_eq!(updated.a, 1);
     assert_eq!(updated.b, 2);
 
-    let output = space.get(&(input.id,))
-        .unwrap().unwrap()
-        .decode::<S2Record>().unwrap();
+    let output = space
+        .get(&(input.id,))
+        .unwrap()
+        .unwrap()
+        .decode::<S2Record>()
+        .unwrap();
     assert_eq!(output.key, "NewKey");
     assert_eq!(output.value, "New");
     assert_eq!(output.a, 1);
@@ -487,83 +468,118 @@ pub fn update_ops() {
     space.insert(&(1, 0)).unwrap();
 
     assert_eq!(
-        space.get(&[1]).unwrap().unwrap()
-            .decode::<(i32, i32)>().unwrap(),
+        space
+            .get(&[1])
+            .unwrap()
+            .unwrap()
+            .decode::<(i32, i32)>()
+            .unwrap(),
         (1, 0),
     );
 
-    space.update(
-        &[1],
-        UpdateOps::new()
-            .add(1, 13).unwrap()
-    )
+    space
+        .update(&[1], UpdateOps::new().add(1, 13).unwrap())
         .unwrap();
 
     assert_eq!(
-        space.get(&[1]).unwrap().unwrap()
-            .decode::<(i32, i32)>().unwrap(),
+        space
+            .get(&[1])
+            .unwrap()
+            .unwrap()
+            .decode::<(i32, i32)>()
+            .unwrap(),
         (1, 13),
     );
 
-    space.update(
-        &[1],
-        UpdateOps::new()
-            .insert(-1, 69).unwrap()
-            .sub(1, 8).unwrap()
-    )
+    space
+        .update(
+            &[1],
+            UpdateOps::new().insert(-1, 69).unwrap().sub(1, 8).unwrap(),
+        )
         .unwrap();
 
     assert_eq!(
-        space.get(&[1]).unwrap().unwrap()
-            .decode::<(i32, i32, i32)>().unwrap(),
+        space
+            .get(&[1])
+            .unwrap()
+            .unwrap()
+            .decode::<(i32, i32, i32)>()
+            .unwrap(),
         (1, 5, 69),
     );
 
-    space.update(
-        &[1],
-        UpdateOps::new()
-            .insert(-1, "hello").unwrap()
-            .insert(-1, "there").unwrap()
-            .insert(-1, "pal").unwrap()
-            .delete(-2, 2).unwrap()
-            .insert(-1, "world").unwrap()
-    )
+    space
+        .update(
+            &[1],
+            UpdateOps::new()
+                .insert(-1, "hello")
+                .unwrap()
+                .insert(-1, "there")
+                .unwrap()
+                .insert(-1, "pal")
+                .unwrap()
+                .delete(-2, 2)
+                .unwrap()
+                .insert(-1, "world")
+                .unwrap(),
+        )
         .unwrap();
 
     assert_eq!(
-        space.get(&[1]).unwrap().unwrap()
-            .decode::<(i32, i32, i32, String, String)>().unwrap(),
+        space
+            .get(&[1])
+            .unwrap()
+            .unwrap()
+            .decode::<(i32, i32, i32, String, String)>()
+            .unwrap(),
         (1, 5, 69, "hello".to_string(), "world".to_string()),
     );
 
-    space.update(
-        &[1],
-        UpdateOps::new()
-            .and(1, 0b100).unwrap()
-            .xor(2, 0b101).unwrap()
-            .assign(3, 0).unwrap()
-            .splice(4, 1, 2, "i").unwrap()
-    )
+    space
+        .update(
+            &[1],
+            UpdateOps::new()
+                .and(1, 0b100)
+                .unwrap()
+                .xor(2, 0b101)
+                .unwrap()
+                .assign(3, 0)
+                .unwrap()
+                .splice(4, 1, 2, "i")
+                .unwrap(),
+        )
         .unwrap();
 
     assert_eq!(
-        space.get(&[1]).unwrap().unwrap()
-            .decode::<(i32, i32, i32, i32, String)>().unwrap(),
+        space
+            .get(&[1])
+            .unwrap()
+            .unwrap()
+            .decode::<(i32, i32, i32, i32, String)>()
+            .unwrap(),
         (1, 4, 64, 0, "wild".to_string()),
     );
 
-    space.update(
-        &[1],
-        UpdateOps::new()
-            .delete(1, 2).unwrap()
-            .or(1, 420).unwrap()
-            .delete(2, 9999).unwrap()
-    )
+    space
+        .update(
+            &[1],
+            UpdateOps::new()
+                .delete(1, 2)
+                .unwrap()
+                .or(1, 420)
+                .unwrap()
+                .delete(2, 9999)
+                .unwrap(),
+        )
         .unwrap();
 
     assert_eq!(
-        space.get(&[1]).unwrap().unwrap()
-            .decode::<(i32, i32)>().unwrap(),
+        space
+            .get(&[1])
+            .unwrap()
+            .unwrap()
+            .decode::<(i32, i32)>()
+            .unwrap(),
         (1, 420),
     );
 }
@@ -607,16 +623,10 @@ pub fn upsert() {
         .unwrap();
 
     let output = space.get(&(1,)).unwrap();
-    assert_eq!(
-        output.unwrap().decode::<S1Record>().unwrap().text,
-        "Test 1"
-    );
+    assert_eq!(output.unwrap().decode::<S1Record>().unwrap().text, "Test 1");
 
     let output = space.get(&(2,)).unwrap();
-    assert_eq!(
-        output.unwrap().decode::<S1Record>().unwrap().text,
-        "New"
-    );
+    assert_eq!(output.unwrap().decode::<S1Record>().unwrap().text, "New");
 }
 
 pub fn upsert_macro() {
@@ -632,38 +642,49 @@ pub fn upsert_macro() {
     space.insert(&original_input).unwrap();
 
     upsert!(
-            space,
-            &(S2Record {
-                id: 111,
-                key: "does not matter".to_string(),
-                value: "UpsertNew".to_string(),
-                a: 2,
-                b: 2
-            }),
-            ("=", "value", "UpsertUpdated"),
-            ("=", "a", 1),
-        )
-        .unwrap();
+        space,
+        &(S2Record {
+            id: 111,
+            key: "does not matter".to_string(),
+            value: "UpsertNew".to_string(),
+            a: 2,
+            b: 2
+        }),
+        ("=", "value", "UpsertUpdated"),
+        ("=", "a", 1),
+    )
+    .unwrap();
 
     upsert!(
-            space,
-            &S2Record {
-                id: 112,
-                key: "test_box_upsert_macro_2".to_string(),
-                value: "UpsertNew".to_string(),
-                a: 2,
-                b: 2
-            },
-            ("=", "key", "UpsertUpdated"),
-            ("=", "a", 1),
-    ).unwrap();
+        space,
+        &S2Record {
+            id: 112,
+            key: "test_box_upsert_macro_2".to_string(),
+            value: "UpsertNew".to_string(),
+            a: 2,
+            b: 2
+        },
+        ("=", "key", "UpsertUpdated"),
+        ("=", "a", 1),
+    )
+    .unwrap();
 
-    let output = space.get(&(111, )).unwrap().unwrap().decode::<S2Record>().unwrap();
+    let output = space
+        .get(&(111,))
+        .unwrap()
+        .unwrap()
+        .decode::<S2Record>()
+        .unwrap();
     assert_eq!(output.key, "test_box_upsert_macro_1");
     assert_eq!(output.value, "UpsertUpdated");
     assert_eq!(output.a, 1);
 
-    let output = space.get(&(112, )).unwrap().unwrap().decode::<S2Record>().unwrap();
+    let output = space
+        .get(&(112,))
+        .unwrap()
+        .unwrap()
+        .decode::<S2Record>()
+        .unwrap();
     assert_eq!(output.key, "test_box_upsert_macro_2");
     assert_eq!(output.value, "UpsertNew");
     assert_eq!(output.a, 2);
@@ -773,7 +794,7 @@ pub fn space_create_opt_user() {
 pub fn space_create_opt_id() {
     let opts = SpaceCreateOptions {
         id: Some(10000),
-        .. Default::default()
+        ..Default::default()
     };
 
     let result_1 = Space::create("new_space_6", &opts);
@@ -825,16 +846,19 @@ pub fn space_create_is_sync() {
     let opts = SpaceCreateOptions {
         is_local: false,
         is_sync: true,
-        .. Default::default()
+        ..Default::default()
     };
 
     let result = Space::create("new_space_8", &opts);
     assert_eq!(result.is_ok(), true);
 
     let info = Space::from(SystemSpace::Space)
-        .index("name").unwrap()
-        .select(IteratorType::Eq, &("new_space_8", )).unwrap()
-        .next().expect("space info not found");
+        .index("name")
+        .unwrap()
+        .select(IteratorType::Eq, &("new_space_8",))
+        .unwrap()
+        .next()
+        .expect("space info not found");
 
     #[derive(serde::Deserialize)]
     pub struct Info {
@@ -853,13 +877,18 @@ pub fn space_create_is_sync() {
 }
 
 pub fn space_meta() {
-    fn assert_field(field: &BTreeMap<Cow<'_, str>, Value>, name: &str, r#type: &str, is_nullable: bool) {
+    fn assert_field(
+        field: &BTreeMap<Cow<'_, str>, Value>,
+        name: &str,
+        r#type: &str,
+        is_nullable: bool,
+    ) {
         assert!(matches!(field.get("is_nullable").unwrap(), Value::Bool(_)));
         match field.get("is_nullable").unwrap() {
             Value::Bool(nullable) => {
                 assert_eq!(*nullable, is_nullable);
             }
-            _ => unreachable!()
+            _ => unreachable!(),
         }
 
         assert!(matches!(field.get("name").unwrap(), Value::Str(_)));
@@ -867,7 +896,7 @@ pub fn space_meta() {
             Value::Str(n) => {
                 assert_eq!(n.to_string(), name.to_string());
             }
-            _ => unreachable!()
+            _ => unreachable!(),
         }
 
         assert!(matches!(field.get("type").unwrap(), Value::Str(_)));
@@ -875,7 +904,7 @@ pub fn space_meta() {
             Value::Str(t) => {
                 assert_eq!(t.to_string(), r#type.to_string());
             }
-            _ => unreachable!()
+            _ => unreachable!(),
         }
     }
 
@@ -909,15 +938,21 @@ pub fn space_meta() {
         is_local: false,
         is_temporary: true,
         is_sync: true,
-        format: Some(vec![Field::unsigned("f1"), ]),
+        format: Some(vec![Field::unsigned("f1")]),
         ..Default::default()
     };
     let space = Space::create("new_space_10", &opts).expect("space new_space_10 should exists");
     let meta = space.meta().expect("meta should exists");
 
     assert_eq!(meta.name, "new_space_10");
-    assert!(matches!(meta.flags.get("temporary").unwrap(), Value::Bool(true)));
-    assert!(matches!(meta.flags.get("is_sync").unwrap(), Value::Bool(true)));
+    assert!(matches!(
+        meta.flags.get("temporary").unwrap(),
+        Value::Bool(true)
+    ));
+    assert!(matches!(
+        meta.flags.get("is_sync").unwrap(),
+        Value::Bool(true)
+    ));
 }
 
 pub fn drop_space(name: &str) {
@@ -926,13 +961,14 @@ pub fn drop_space(name: &str) {
 }
 
 pub fn index_parts() {
-    let space = Space::builder("index_parts_test")
-        .create().unwrap();
+    let space = Space::builder("index_parts_test").create().unwrap();
 
-    let index = space.index_builder("pk")
+    let index = space
+        .index_builder("pk")
         .part((1, index::FieldType::Unsigned))
         .part(2)
-        .create().unwrap();
+        .create()
+        .unwrap();
 
     space.insert(&(1, 2, 3)).unwrap();
     space.insert(&(2, "foo")).unwrap();
@@ -940,11 +976,18 @@ pub fn index_parts() {
     space.insert(&(4,)).unwrap_err();
     space.insert(&("5", 1)).unwrap_err();
 
-    let mut iter = index.select(tarantool::index::IteratorType::All, &())
+    let mut iter = index
+        .select(tarantool::index::IteratorType::All, &())
         .unwrap();
 
     assert_eq!(iter.next().and_then(|t| t.decode().ok()), Some((1, 2, 3)));
-    assert_eq!(iter.next().and_then(|t| t.decode().ok()), Some((2, "foo".to_string())));
-    assert_eq!(iter.next().and_then(|t| t.decode().ok()), Some((3, 3.14, [3, 2, 1])));
+    assert_eq!(
+        iter.next().and_then(|t| t.decode().ok()),
+        Some((2, "foo".to_string()))
+    );
+    assert_eq!(
+        iter.next().and_then(|t| t.decode().ok()),
+        Some((3, 3.14, [3, 2, 1]))
+    );
     assert!(iter.next().is_none());
 }

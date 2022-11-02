@@ -1,9 +1,4 @@
-use tarantool::tlua::{
-    Lua,
-    LuaTable,
-    PushGuard,
-    function0,
-};
+use tarantool::tlua::{function0, Lua, LuaTable, PushGuard};
 
 pub fn iterable() {
     let lua = Lua::new();
@@ -32,8 +27,10 @@ pub fn iterable_multipletimes() {
 
     for _ in 0..10 {
         let table_content: Vec<Option<(u32, u32)>> = table.iter().collect();
-        assert_eq!(table_content,
-                vec![Some((1, 9)), Some((2, 8)), Some((3, 7))]);
+        assert_eq!(
+            table_content,
+            vec![Some((1, 9)), Some((2, 8)), Some((3, 7))]
+        );
     }
 }
 
@@ -129,13 +126,11 @@ pub fn by_value() {
 
     type Lua = tarantool::tlua::TempLua;
     let table: LuaTable<PushGuard<Lua>> = lua.into_get("a").ok().unwrap();
-    let table2: LuaTable<PushGuard<LuaTable<PushGuard<Lua>>>> =
-        table.into_get("b").ok().unwrap();
+    let table2: LuaTable<PushGuard<LuaTable<PushGuard<Lua>>>> = table.into_get("b").ok().unwrap();
     assert_eq!(3, table2.get::<i32, _>("c").unwrap());
     let table: LuaTable<PushGuard<Lua>> = table2.into_inner().into_inner();
     // do it again to make sure the stack is still sane
-    let table2: LuaTable<PushGuard<LuaTable<PushGuard<Lua>>>> =
-        table.into_get("b").ok().unwrap();
+    let table2: LuaTable<PushGuard<LuaTable<PushGuard<Lua>>>> = table.into_get("b").ok().unwrap();
     assert_eq!(3, table2.get::<i32, _>("c").unwrap());
     let table: LuaTable<PushGuard<Lua>> = table2.into_inner().into_inner();
     let _lua: Lua = table.into_inner().into_inner();
@@ -170,7 +165,8 @@ pub fn table_iter_stack_invariance() {
     // table to stay on the stack for it's lifetime, which means that it must be
     // dropped before next iteration. And if we try to collect the LuaTable
     // instances created during iteration, this will break the stack invariance.
-    let _vec_of_tables = table_of_tables.iter::<i32, LuaTable<_>>()
+    let _vec_of_tables = table_of_tables
+        .iter::<i32, LuaTable<_>>()
         .flatten()
         .map(|(_, t)| t)
         .collect::<Vec<_>>();
@@ -179,17 +175,25 @@ pub fn table_iter_stack_invariance() {
 pub fn iter_table_of_tables() {
     let lua = Lua::new();
 
-    let t: LuaTable<_> = lua.eval("return {
+    let t: LuaTable<_> = lua
+        .eval(
+            "return {
         { f = function(self) return 'hello ' .. self.x end, x = 'world' },
         { f = function() return 'goodbye' end },
         { f = function(self) return '' .. self.v end, v = 69 }
-    }").unwrap();
+    }",
+        )
+        .unwrap();
     let mut res = Vec::<String>::new();
     for (_, t) in t.iter::<i32, LuaTable<_>>().flatten() {
         res.push(t.call_method("f", ()).unwrap());
     }
-    assert_eq!(res,
-        vec!["hello world".to_string(), "goodbye".to_string(), "69".to_string()]
+    assert_eq!(
+        res,
+        vec![
+            "hello world".to_string(),
+            "goodbye".to_string(),
+            "69".to_string()
+        ]
     );
 }
-

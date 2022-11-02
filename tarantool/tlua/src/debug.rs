@@ -1,15 +1,6 @@
 use std::io::Write;
 
-use crate::{
-    ffi,
-    c_ptr,
-    AsLua,
-    LuaState,
-    Push,
-    PushGuard,
-    PushOne,
-    Void,
-};
+use crate::{c_ptr, ffi, AsLua, LuaState, Push, PushGuard, PushOne, Void};
 
 #[allow(dead_code)]
 #[derive(Debug)]
@@ -65,4 +56,3 @@ pub unsafe fn dump_stack_raw_to(lua: LuaState, mut out: impl Write) -> std::io::
 pub unsafe fn dump_stack_raw(lua: LuaState) {
     dump_stack_raw_to(lua, std::io::stderr()).unwrap()
 }
-

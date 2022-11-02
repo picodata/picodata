@@ -5,7 +5,7 @@ use std::os::unix::io::{AsRawFd, FromRawFd};
 use std::os::unix::net::UnixStream;
 use std::time::Duration;
 
-use tarantool::coio::{channel, self, CoIOListener, CoIOStream, Receiver, Sender};
+use tarantool::coio::{self, channel, CoIOListener, CoIOStream, Receiver, Sender};
 use tarantool::fiber::{sleep, Fiber};
 
 pub fn coio_accept() {

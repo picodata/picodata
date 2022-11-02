@@ -1,19 +1,11 @@
-use std::num::NonZeroI32;
 use std::fmt::{self, Debug};
+use std::num::NonZeroI32;
 
 use crate::{
     ffi,
-    AsLua,
-    Push,
-    PushInto,
-    PushOne,
-    PushOneInto,
-    PushGuard,
-    LuaRead,
-    LuaState,
-    Void,
-    object::{Object, Indexable, Index},
+    object::{Index, Indexable, Object},
     rust_tables::{push_iter, PushIterError},
+    AsLua, LuaRead, LuaState, Push, PushGuard, PushInto, PushOne, PushOneInto, Void,
 };
 
 macro_rules! tuple_impl {
@@ -485,7 +477,8 @@ where
     T: fmt::Display,
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f,
+        write!(
+            f,
             "Error during attempt to push multiple values: ({}, ...)",
             TuplePushErrorDisplayHelper(self),
         )
@@ -526,7 +519,7 @@ macro_rules! impl_tuple_push_error {
     };
 }
 
-impl_tuple_push_error!{A B C D E F G H I J K L M}
+impl_tuple_push_error! {A B C D E F G H I J K L M}
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 /// A wrapper type for pushing and reading rust tuples as lua tables.
@@ -546,11 +539,7 @@ impl_tuple_push_error!{A B C D E F G H I J K L M}
 /// ```
 pub struct AsTable<T>(pub T);
 
-fn push_table_entry<T>(
-    raw_lua: LuaState,
-    i: i32,
-    v: T,
-) -> Result<(), PushIterError<T::Err>>
+fn push_table_entry<T>(raw_lua: LuaState, i: i32, v: T) -> Result<(), PushIterError<T::Err>>
 where
     T: PushInto<LuaState>,
 {
@@ -565,14 +554,14 @@ where
             // swap index and value
             ffi::lua_insert(raw_lua, -2);
             ffi::lua_settable(raw_lua, -3);
-        }
+        },
         2 => unsafe {
             ffi::lua_settable(raw_lua, -3);
-        }
+        },
         n => unsafe {
             drop(PushGuard::new(raw_lua, n));
             return Err(PushIterError::TooManyValues);
-        }
+        },
     }
     Ok(())
 }

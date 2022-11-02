@@ -4,7 +4,7 @@ use std::convert::{TryFrom, TryInto};
 use std::mem::size_of;
 
 use once_cell::sync::Lazy;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 /// A Decimal number implemented using the builtin tarantool api. **Note** that
 /// this api is not available in all versions of tarantool.
@@ -85,11 +85,12 @@ impl Decimal {
             uit += 1;
         }
         if count == 0 {
-            return true;             // [a multiple of DECDPUN]
-        } else {                     // [not multiple of DECDPUN]
-            const POWERS: [u16; ffi::DECDPUN] = [ 1, 10, 100 ];
+            return true; // [a multiple of DECDPUN]
+        } else {
+            // [not multiple of DECDPUN]
+            const POWERS: [u16; ffi::DECDPUN] = [1, 10, 100];
             // slice off fraction digits and check for non-zero
-            let rem = lsu[uit] % POWERS[count];          // slice off discards
+            let rem = lsu[uit] % POWERS[count]; // slice off discards
             if rem != 0 {
                 return false;
             }
@@ -120,7 +121,8 @@ impl Decimal {
         let mut ctx: Context = unsafe { &*CONTEXT }.clone();
         ctx.set_precision(ndig as _).unwrap();
         ctx.set_max_exponent(ndig as _).unwrap();
-        ctx.set_min_exponent(if scale != 0 { -1 } else { 0 }).unwrap();
+        ctx.set_min_exponent(if scale != 0 { -1 } else { 0 })
+            .unwrap();
         ctx.set_rounding(mode);
 
         ctx.plus(&mut self.inner);
@@ -239,9 +241,9 @@ impl Decimal {
     }
 }
 
-type DecimalImpl = dec::Decimal<{ffi::DECNUMUNITS as _}>;
+type DecimalImpl = dec::Decimal<{ ffi::DECNUMUNITS as _ }>;
 
-#[derive(Debug, Copy, Clone, PartialEq, thiserror::Error)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum ToDecimalError {
     #[error("Infinite decimals are not supported")]
     Infinite,
@@ -276,7 +278,8 @@ static mut CONTEXT: Lazy<Context> = Lazy::new(|| {
     ctx.set_rounding(dec::Rounding::HalfUp);
     ctx.set_precision(ffi::DECIMAL_MAX_DIGITS as _).unwrap();
     ctx.set_clamp(false);
-    ctx.set_max_exponent((ffi::DECIMAL_MAX_DIGITS - 1) as _).unwrap();
+    ctx.set_max_exponent((ffi::DECIMAL_MAX_DIGITS - 1) as _)
+        .unwrap();
     ctx.set_min_exponent(-1).unwrap();
     ctx
 });
@@ -319,8 +322,8 @@ where
 ////////////////////////////////////////////////////////////////////////////////
 
 const _: () = {
-    if size_of::<dec::Status>() != size_of::<u32>() ||
-        size_of::<dec::Status>() != size_of::<Status>()
+    if size_of::<dec::Status>() != size_of::<u32>()
+        || size_of::<dec::Status>() != size_of::<Status>()
     {
         panic!("unsupported layout")
     }
@@ -347,19 +350,45 @@ impl std::fmt::Debug for Status {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let status = dec::Status::from(*self);
         let mut s = f.debug_struct("Status");
-        if status.conversion_syntax()    { s.field("conversion_syntax",     &true); }
-        if status.division_by_zero()     { s.field("division_by_zero",      &true); }
-        if status.division_impossible()  { s.field("division_impossible",   &true); }
-        if status.division_undefined()   { s.field("division_undefined",    &true); }
-        if status.insufficient_storage() { s.field("insufficient_storage",  &true); }
-        if status.inexact()              { s.field("inexact",               &true); }
-        if status.invalid_context()      { s.field("invalid_context",       &true); }
-        if status.invalid_operation()    { s.field("invalid_operation",     &true); }
-        if status.overflow()             { s.field("overflow",              &true); }
-        if status.clamped()              { s.field("clamped",               &true); }
-        if status.rounded()              { s.field("rounded",               &true); }
-        if status.subnormal()            { s.field("subnormal",             &true); }
-        if status.underflow()            { s.field("underflow",             &true); }
+        if status.conversion_syntax() {
+            s.field("conversion_syntax", &true);
+        }
+        if status.division_by_zero() {
+            s.field("division_by_zero", &true);
+        }
+        if status.division_impossible() {
+            s.field("division_impossible", &true);
+        }
+        if status.division_undefined() {
+            s.field("division_undefined", &true);
+        }
+        if status.insufficient_storage() {
+            s.field("insufficient_storage", &true);
+        }
+        if status.inexact() {
+            s.field("inexact", &true);
+        }
+        if status.invalid_context() {
+            s.field("invalid_context", &true);
+        }
+        if status.invalid_operation() {
+            s.field("invalid_operation", &true);
+        }
+        if status.overflow() {
+            s.field("overflow", &true);
+        }
+        if status.clamped() {
+            s.field("clamped", &true);
+        }
+        if status.rounded() {
+            s.field("rounded", &true);
+        }
+        if status.subnormal() {
+            s.field("subnormal", &true);
+        }
+        if status.underflow() {
+            s.field("underflow", &true);
+        }
         s.finish()
     }
 }
@@ -387,8 +416,7 @@ impl std::cmp::PartialOrd for Decimal {
     #[inline(always)]
     #[track_caller]
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        with_context(|ctx| ctx.partial_cmp(&self.inner, &other.inner))
-            .flatten()
+        with_context(|ctx| ctx.partial_cmp(&self.inner, &other.inner)).flatten()
     }
 }
 
@@ -396,7 +424,8 @@ impl std::cmp::Ord for Decimal {
     #[inline(always)]
     #[track_caller]
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.partial_cmp(other).expect("special numbers aren't supported")
+        self.partial_cmp(other)
+            .expect("special numbers aren't supported")
     }
 }
 
@@ -423,7 +452,7 @@ macro_rules! impl_cmp_int {
     }
 }
 
-impl_cmp_int!{i8 i16 i32 i64 isize u8 u16 u32 u64 usize}
+impl_cmp_int! {i8 i16 i32 i64 isize u8 u16 u32 u64 usize}
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Hash
@@ -474,14 +503,14 @@ macro_rules! impl_bin_op {
                 *self = self.$m(rhs).expect("overlow")
             }
         }
-    }
+    };
 }
 
-impl_bin_op!{checked_add, Add, add, AddAssign, add_assign}
-impl_bin_op!{checked_sub, Sub, sub, SubAssign, sub_assign}
-impl_bin_op!{checked_mul, Mul, mul, MulAssign, mul_assign}
-impl_bin_op!{checked_div, Div, div, DivAssign, div_assign}
-impl_bin_op!{checked_rem, Rem, rem, RemAssign, rem_assign}
+impl_bin_op! {checked_add, Add, add, AddAssign, add_assign}
+impl_bin_op! {checked_sub, Sub, sub, SubAssign, sub_assign}
+impl_bin_op! {checked_mul, Mul, mul, MulAssign, mul_assign}
+impl_bin_op! {checked_div, Div, div, DivAssign, div_assign}
+impl_bin_op! {checked_rem, Rem, rem, RemAssign, rem_assign}
 
 impl std::ops::Neg for Decimal {
     type Output = Self;
@@ -532,7 +561,9 @@ impl std::convert::TryFrom<&std::ffi::CStr> for Decimal {
 
     #[inline(always)]
     fn try_from(s: &std::ffi::CStr) -> Result<Self, Self::Error> {
-        s.to_str().map_err(|_| DecimalFromStrError).and_then(str::parse)
+        s.to_str()
+            .map_err(|_| DecimalFromStrError)
+            .and_then(str::parse)
     }
 }
 
@@ -543,9 +574,7 @@ impl std::convert::TryFrom<&std::ffi::CStr> for Decimal {
 static CTID_DECIMAL: Lazy<u32> = Lazy::new(|| {
     use tlua::AsLua;
     let lua = crate::global_lua();
-    let ctid_decimal = unsafe {
-        tlua::ffi::luaL_ctypeid(lua.as_lua(), crate::c_ptr!("decimal_t"))
-    };
+    let ctid_decimal = unsafe { tlua::ffi::luaL_ctypeid(lua.as_lua(), crate::c_ptr!("decimal_t")) };
     debug_assert!(ctid_decimal != 0);
     ctid_decimal
 });
@@ -559,12 +588,12 @@ where
         let index = index.get();
         unsafe {
             if tlua::ffi::lua_type(raw_lua, index) != tlua::ffi::LUA_TCDATA {
-                return Err(lua)
+                return Err(lua);
             }
             let mut ctypeid = std::mem::MaybeUninit::uninit();
             let cdata = tlua::ffi::luaL_checkcdata(raw_lua, index, ctypeid.as_mut_ptr());
             if ctypeid.assume_init() != *CTID_DECIMAL {
-                return Err(lua)
+                return Err(lua);
             }
 
             Ok(Self::from_raw(*cdata.cast::<ffi::decNumber>()))
@@ -587,7 +616,15 @@ impl<L: tlua::AsLua> tlua::Push<L> for Decimal {
     fn push_to_lua(&self, lua: L) -> Result<tlua::PushGuard<L>, (Self::Err, L)> {
         let (digits, exponent, bits, lsu) = self.inner.to_raw_parts();
         let digits = digits as i32;
-        Ok(push_decimal(lua, ffi::decNumber { digits, exponent, bits, lsu }))
+        Ok(push_decimal(
+            lua,
+            ffi::decNumber {
+                digits,
+                exponent,
+                bits,
+                lsu,
+            },
+        ))
     }
 }
 
@@ -599,7 +636,15 @@ impl<L: tlua::AsLua> tlua::PushInto<L> for Decimal {
     fn push_into_lua(self, lua: L) -> Result<tlua::PushGuard<L>, (Self::Err, L)> {
         let (digits, exponent, bits, lsu) = self.inner.to_raw_parts();
         let digits = digits as i32;
-        Ok(push_decimal(lua, ffi::decNumber { digits, exponent, bits, lsu }))
+        Ok(push_decimal(
+            lua,
+            ffi::decNumber {
+                digits,
+                exponent,
+                bits,
+                lsu,
+            },
+        ))
     }
 }
 
@@ -624,9 +669,9 @@ macro_rules! impl_from_int {
     }
 }
 
-impl_from_int!{i8 i16 i32 u8 u16 u32 => DecimalImpl::from}
-impl_from_int!{i64 isize => |num| CONTEXT.from_i64(num as _)}
-impl_from_int!{u64 usize => |num| CONTEXT.from_u64(num as _)}
+impl_from_int! {i8 i16 i32 u8 u16 u32 => DecimalImpl::from}
+impl_from_int! {i64 isize => |num| CONTEXT.from_i64(num as _)}
+impl_from_int! {u64 usize => |num| CONTEXT.from_u64(num as _)}
 
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
 pub enum DecimalFromfloatError<T> {
@@ -639,12 +684,13 @@ impl<T: std::fmt::Display> std::fmt::Display for DecimalFromfloatError<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::OutOfRange(num) => {
-                write!(f,
+                write!(
+                    f,
                     "float `{}` cannot be represented using {} digits",
                     num,
                     ffi::DECIMAL_MAX_DIGITS,
                 )
-            },
+            }
             Self::Infinite => f.write_str("float is infinite"),
             Self::Nan => f.write_str("float is NaN"),
         }
@@ -698,7 +744,7 @@ macro_rules! impl_tryfrom_float {
     }
 }
 
-impl_tryfrom_float!{
+impl_tryfrom_float! {
     f32 => from_f32
     f64 => from_f64
 }
@@ -747,7 +793,7 @@ macro_rules! impl_try_into_int {
     }
 }
 
-impl_try_into_int!{
+impl_try_into_int! {
     i64   => try_into_i64
     isize => try_into_isize
     u64   => try_into_u64
@@ -773,8 +819,7 @@ impl serde::Serialize for Decimal {
             data.extend(bcd);
             data
         };
-        _ExtStruct((ffi::MP_DECIMAL, serde_bytes::ByteBuf::from(data)))
-            .serialize(serializer)
+        _ExtStruct((ffi::MP_DECIMAL, serde_bytes::ByteBuf::from(data))).serialize(serializer)
     }
 }
 
@@ -797,11 +842,10 @@ impl<'de> serde::Deserialize<'de> for Decimal {
                     .try_into()
                     .map_err(|e| Error::custom(format!("Failed to unpack decimal: {e}")))
             }
-            _ExtStruct((kind, _)) => {
-                Err(serde::de::Error::custom(
-                    format!("Expected Decimal, found msgpack ext #{}", kind)
-                ))
-            }
+            _ExtStruct((kind, _)) => Err(serde::de::Error::custom(format!(
+                "Expected Decimal, found msgpack ext #{}",
+                kind
+            ))),
         }
     }
 }
@@ -835,9 +879,9 @@ macro_rules! decimal {
 #[cfg(test)]
 mod test {
     use super::Decimal;
+    use once_cell::sync::Lazy;
     use std::convert::TryFrom;
     use std::sync::Mutex;
-    use once_cell::sync::Lazy;
     static DECIMALS_ARENT_THREAD_SAFE: Lazy<Mutex<()>> = Lazy::new(Default::default);
 
     #[test]
@@ -862,7 +906,10 @@ mod test {
         assert_eq!(Decimal::from(0isize), Decimal::zero());
         assert_eq!(Decimal::from(42isize).to_string(), "42");
         assert_eq!(Decimal::from(isize::MAX).to_string(), "9223372036854775807");
-        assert_eq!(Decimal::from(isize::MIN).to_string(), "-9223372036854775808");
+        assert_eq!(
+            Decimal::from(isize::MIN).to_string(),
+            "-9223372036854775808"
+        );
 
         assert_eq!(Decimal::from(0u8), Decimal::zero());
         assert_eq!(Decimal::from(42u8).to_string(), "42");
@@ -878,38 +925,68 @@ mod test {
         assert_eq!(Decimal::from(u64::MAX).to_string(), "18446744073709551615");
         assert_eq!(Decimal::from(0usize), Decimal::zero());
         assert_eq!(Decimal::from(42usize).to_string(), "42");
-        assert_eq!(Decimal::from(usize::MAX).to_string(), "18446744073709551615");
+        assert_eq!(
+            Decimal::from(usize::MAX).to_string(),
+            "18446744073709551615"
+        );
 
         assert_eq!(Decimal::try_from(0f32).unwrap(), Decimal::zero());
         assert_eq!(Decimal::try_from(-8.11f32).unwrap().to_string(), "-8.11");
-        assert_eq!(Decimal::try_from(f32::INFINITY).unwrap_err().to_string(), "float is infinite");
-        assert_eq!(Decimal::try_from(f32::NEG_INFINITY).unwrap_err().to_string(),
+        assert_eq!(
+            Decimal::try_from(f32::INFINITY).unwrap_err().to_string(),
             "float is infinite"
         );
-        assert_eq!(Decimal::try_from(f32::NAN).unwrap_err().to_string(), "float is NaN");
-        assert_eq!(Decimal::try_from(f32::EPSILON).unwrap().to_string(), "1.1920929E-7");
+        assert_eq!(
+            Decimal::try_from(f32::NEG_INFINITY)
+                .unwrap_err()
+                .to_string(),
+            "float is infinite"
+        );
+        assert_eq!(
+            Decimal::try_from(f32::NAN).unwrap_err().to_string(),
+            "float is NaN"
+        );
+        assert_eq!(
+            Decimal::try_from(f32::EPSILON).unwrap().to_string(),
+            "1.1920929E-7"
+        );
         assert_eq!(Decimal::try_from(f32::MIN).unwrap_err().to_string(),
             "float `-340282350000000000000000000000000000000` cannot be represented using 38 digits"
         );
-        assert_eq!(Decimal::try_from(f32::MAX).unwrap_err().to_string(),
+        assert_eq!(
+            Decimal::try_from(f32::MAX).unwrap_err().to_string(),
             "float `340282350000000000000000000000000000000` cannot be represented using 38 digits"
         );
         assert_eq!(Decimal::try_from(1.0e-40_f32).unwrap(), Decimal::zero());
-        assert_eq!(Decimal::try_from(1e37_f32).unwrap().to_string(),
+        assert_eq!(
+            Decimal::try_from(1e37_f32).unwrap().to_string(),
             "10000000000000000000000000000000000000"
         );
-        assert_eq!(Decimal::try_from(1e38_f32).unwrap_err().to_string(),
+        assert_eq!(
+            Decimal::try_from(1e38_f32).unwrap_err().to_string(),
             "float `100000000000000000000000000000000000000` cannot be represented using 38 digits"
         );
 
         assert_eq!(Decimal::try_from(0f64).unwrap(), Decimal::zero());
         assert_eq!(Decimal::try_from(-8.11f64).unwrap().to_string(), "-8.11");
-        assert_eq!(Decimal::try_from(f64::INFINITY).unwrap_err().to_string(), "float is infinite");
-        assert_eq!(Decimal::try_from(f64::NEG_INFINITY).unwrap_err().to_string(),
+        assert_eq!(
+            Decimal::try_from(f64::INFINITY).unwrap_err().to_string(),
             "float is infinite"
         );
-        assert_eq!(Decimal::try_from(f64::NAN).unwrap_err().to_string(), "float is NaN");
-        assert_eq!(Decimal::try_from(f64::EPSILON).unwrap().to_string(), "2.220446049250313E-16");
+        assert_eq!(
+            Decimal::try_from(f64::NEG_INFINITY)
+                .unwrap_err()
+                .to_string(),
+            "float is infinite"
+        );
+        assert_eq!(
+            Decimal::try_from(f64::NAN).unwrap_err().to_string(),
+            "float is NaN"
+        );
+        assert_eq!(
+            Decimal::try_from(f64::EPSILON).unwrap().to_string(),
+            "2.220446049250313E-16"
+        );
         assert_eq!(Decimal::try_from(f64::MIN).unwrap_err().to_string(),
             "float `-179769313486231570000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000` cannot be represented using 38 digits"
         );
@@ -917,7 +994,8 @@ mod test {
             "float `179769313486231570000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000` cannot be represented using 38 digits"
         );
         assert_eq!(Decimal::try_from(1.0e-40_f64).unwrap(), Decimal::zero());
-        assert_eq!(Decimal::try_from(1e38_f64).unwrap_err().to_string(),
+        assert_eq!(
+            Decimal::try_from(1e38_f64).unwrap_err().to_string(),
             "float `100000000000000000000000000000000000000` cannot be represented using 38 digits"
         );
     }
@@ -926,55 +1004,96 @@ mod test {
     pub fn to_num() {
         let _lock = DECIMALS_ARENT_THREAD_SAFE.lock().unwrap();
         assert_eq!(i64::try_from(decimal!(420)).unwrap(), 420);
-        assert_eq!(i64::try_from(decimal!(9223372036854775807)).unwrap(), i64::MAX);
-        assert_eq!(i64::try_from(decimal!(9223372036854775808)).unwrap_err().to_string(),
+        assert_eq!(
+            i64::try_from(decimal!(9223372036854775807)).unwrap(),
+            i64::MAX
+        );
+        assert_eq!(
+            i64::try_from(decimal!(9223372036854775808))
+                .unwrap_err()
+                .to_string(),
             "decimal is out of range"
         );
-        assert_eq!(i64::try_from(decimal!(-9223372036854775808)).unwrap(), i64::MIN);
-        assert_eq!(i64::try_from(decimal!(-9223372036854775809)).unwrap_err().to_string(),
+        assert_eq!(
+            i64::try_from(decimal!(-9223372036854775808)).unwrap(),
+            i64::MIN
+        );
+        assert_eq!(
+            i64::try_from(decimal!(-9223372036854775809))
+                .unwrap_err()
+                .to_string(),
             "decimal is out of range"
         );
-        assert_eq!(i64::try_from(decimal!(3.14)).unwrap_err().to_string(),
+        assert_eq!(
+            i64::try_from(decimal!(3.14)).unwrap_err().to_string(),
             "decimal is not an integer"
         );
 
         assert_eq!(isize::try_from(decimal!(420)).unwrap(), 420);
-        assert_eq!(isize::try_from(decimal!(9223372036854775807)).unwrap(), isize::MAX);
-        assert_eq!(isize::try_from(decimal!(9223372036854775808)).unwrap_err().to_string(),
+        assert_eq!(
+            isize::try_from(decimal!(9223372036854775807)).unwrap(),
+            isize::MAX
+        );
+        assert_eq!(
+            isize::try_from(decimal!(9223372036854775808))
+                .unwrap_err()
+                .to_string(),
             "decimal is out of range"
         );
-        assert_eq!(isize::try_from(decimal!(-9223372036854775808)).unwrap(), isize::MIN);
-        assert_eq!(isize::try_from(decimal!(-9223372036854775809)).unwrap_err().to_string(),
+        assert_eq!(
+            isize::try_from(decimal!(-9223372036854775808)).unwrap(),
+            isize::MIN
+        );
+        assert_eq!(
+            isize::try_from(decimal!(-9223372036854775809))
+                .unwrap_err()
+                .to_string(),
             "decimal is out of range"
         );
-        assert_eq!(isize::try_from(decimal!(3.14)).unwrap_err().to_string(),
+        assert_eq!(
+            isize::try_from(decimal!(3.14)).unwrap_err().to_string(),
             "decimal is not an integer"
         );
 
         assert_eq!(u64::try_from(decimal!(420)).unwrap(), 420);
-        assert_eq!(u64::try_from(decimal!(18446744073709551615)).unwrap(), u64::MAX);
-        assert_eq!(u64::try_from(decimal!(18446744073709551616)).unwrap_err().to_string(),
+        assert_eq!(
+            u64::try_from(decimal!(18446744073709551615)).unwrap(),
+            u64::MAX
+        );
+        assert_eq!(
+            u64::try_from(decimal!(18446744073709551616))
+                .unwrap_err()
+                .to_string(),
             "decimal is out of range"
         );
-        assert_eq!(u64::try_from(decimal!(-1)).unwrap_err().to_string(),
+        assert_eq!(
+            u64::try_from(decimal!(-1)).unwrap_err().to_string(),
             "decimal is out of range"
         );
-        assert_eq!(u64::try_from(decimal!(3.14)).unwrap_err().to_string(),
+        assert_eq!(
+            u64::try_from(decimal!(3.14)).unwrap_err().to_string(),
             "decimal is not an integer"
         );
 
         assert_eq!(usize::try_from(decimal!(420)).unwrap(), 420);
-        assert_eq!(usize::try_from(decimal!(18446744073709551615)).unwrap(), usize::MAX);
-        assert_eq!(usize::try_from(decimal!(18446744073709551616)).unwrap_err().to_string(),
+        assert_eq!(
+            usize::try_from(decimal!(18446744073709551615)).unwrap(),
+            usize::MAX
+        );
+        assert_eq!(
+            usize::try_from(decimal!(18446744073709551616))
+                .unwrap_err()
+                .to_string(),
             "decimal is out of range"
         );
-        assert_eq!(usize::try_from(decimal!(-1)).unwrap_err().to_string(),
+        assert_eq!(
+            usize::try_from(decimal!(-1)).unwrap_err().to_string(),
             "decimal is out of range"
         );
-        assert_eq!(usize::try_from(decimal!(3.14)).unwrap_err().to_string(),
+        assert_eq!(
+            usize::try_from(decimal!(3.14)).unwrap_err().to_string(),
             "decimal is not an integer"
         );
-
     }
 
     #[test]
@@ -1005,8 +1124,14 @@ mod test {
         assert_eq!(to_hash(&decimal!(1)), to_hash(&decimal!(1)));
         assert_eq!(to_hash(&decimal!(1.000000)), to_hash(&decimal!(1.0)));
         assert_eq!(to_hash(&decimal!(1.000000000000000)), to_hash(&decimal!(1)));
-        assert_ne!(to_hash(&decimal!(1.000000000000000)), to_hash(&decimal!(1.000000000000001)));
-        assert_ne!(to_hash(&decimal!(1.000000000000000)), to_hash(&decimal!(0.999999999999999)));
+        assert_ne!(
+            to_hash(&decimal!(1.000000000000000)),
+            to_hash(&decimal!(1.000000000000001))
+        );
+        assert_ne!(
+            to_hash(&decimal!(1.000000000000000)),
+            to_hash(&decimal!(0.999999999999999))
+        );
         assert_eq!(
             to_hash(&decimal!(99999999999999999999999999999999999999)),
             to_hash(&decimal!(99999999999999999999999999999999999999))
@@ -1021,7 +1146,10 @@ mod test {
             to_hash(&decimal!(-99999999999999999999999999999999999999))
         );
         assert_eq!(to_hash(&decimal!(-1)), to_hash(&decimal!(-1.000)));
-        assert_ne!(to_hash(&decimal!(-1.000)), to_hash(&decimal!(-0.9999999999999999999999999999999999999)));
+        assert_ne!(
+            to_hash(&decimal!(-1.000)),
+            to_hash(&decimal!(-0.9999999999999999999999999999999999999))
+        );
     }
 
     #[test]

@@ -3,13 +3,13 @@ pub mod helper;
 #[doc(hidden)]
 pub use ::tlua::ffi as lua;
 #[doc(hidden)]
-pub mod tarantool;
-#[doc(hidden)]
 pub mod decimal;
 #[doc(hidden)]
-pub mod uuid;
-#[doc(hidden)]
 pub mod sql;
+#[doc(hidden)]
+pub mod tarantool;
+#[doc(hidden)]
+pub mod uuid;
 
 /// Check whether the current tarantool executable supports decimal api.
 /// If this function returns `false` using any of the functions in
@@ -28,8 +28,7 @@ pub fn has_decimal() -> bool {
 pub fn has_fiber_channel() -> bool {
     unsafe {
         let name = crate::c_str!("fiber_channel_new");
-        helper::tnt_internal_symbol::<*const ()>(name).is_some() ||
-        helper::has_dyn_symbol(name)
+        helper::tnt_internal_symbol::<*const ()>(name).is_some() || helper::has_dyn_symbol(name)
     }
 }
 
@@ -44,7 +43,7 @@ pub fn has_fiber_channel() -> bool {
 pub fn has_tuple_field_by_path() -> bool {
     let c_str = std::ffi::CStr::from_bytes_with_nul_unchecked;
     unsafe {
-        helper::has_dyn_symbol(c_str(tarantool::TUPLE_FIELD_BY_PATH_NEW_API.as_bytes())) |
-        helper::has_dyn_symbol(c_str(tarantool::TUPLE_FIELD_BY_PATH_OLD_API.as_bytes()))
+        helper::has_dyn_symbol(c_str(tarantool::TUPLE_FIELD_BY_PATH_NEW_API.as_bytes()))
+            | helper::has_dyn_symbol(c_str(tarantool::TUPLE_FIELD_BY_PATH_OLD_API.as_bytes()))
     }
 }

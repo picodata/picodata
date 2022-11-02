@@ -66,11 +66,15 @@ pub(crate) fn fiber_csw() -> i32 {
                 return fiber.info()[fiber.id()].csw
             end
         "#).unwrap();
-        unsafe { FUNCTION_DEFINED = true; }
+        unsafe {
+            FUNCTION_DEFINED = true;
+        }
     }
 
     lua.get::<tarantool::tlua::LuaFunction<_>, _>("fiber_csw")
-        .unwrap().into_call().unwrap()
+        .unwrap()
+        .into_call()
+        .unwrap()
 }
 
 pub(crate) fn check_yield<F, T>(f: F) -> YieldResult<T>
@@ -112,14 +116,16 @@ impl LuaStackIntegrityGuard {
 impl Drop for LuaStackIntegrityGuard {
     fn drop(&mut self) {
         let single_value = unsafe { tlua::PushGuard::new(self.lua, 1) };
-        let msg: tlua::StringInLua<_> = single_value.read()
-            .map_err(|l|
-                panic!("Lua stack integrity violation
+        let msg: tlua::StringInLua<_> = single_value
+            .read()
+            .map_err(|l| {
+                panic!(
+                    "Lua stack integrity violation
     {:?}
     Expected string: \"{}\"",
                     l, self.name
                 )
-            )
+            })
             .unwrap();
         assert_eq!(msg, self.name);
     }
@@ -145,9 +151,7 @@ impl Drop for LuaContextSpoiler {
 }
 
 fn global_lua() -> tlua::StaticLua {
-    unsafe {
-        tlua::Lua::from_static(tarantool::ffi::tarantool::luaT_state())
-    }
+    unsafe { tlua::Lua::from_static(tarantool::ffi::tarantool::luaT_state()) }
 }
 
 pub trait BoolExt {
@@ -155,12 +159,20 @@ pub trait BoolExt {
 
     #[inline(always)]
     fn as_some<T>(&self, v: T) -> Option<T> {
-        if self.so() { Some(v) } else { None }
+        if self.so() {
+            Some(v)
+        } else {
+            None
+        }
     }
 
     #[inline(always)]
     fn as_some_from<T>(&self, f: impl FnOnce() -> T) -> Option<T> {
-        if self.so() { Some(f()) } else { None }
+        if self.so() {
+            Some(f())
+        } else {
+            None
+        }
     }
 }
 
@@ -174,15 +186,12 @@ impl BoolExt for bool {
 use once_cell::unsync::OnceCell;
 
 pub fn lib_name() -> String {
-    thread_local!{
+    thread_local! {
         static LIB_NAME: OnceCell<String> = OnceCell::new();
     }
-    LIB_NAME.with(|lib_name|
+    LIB_NAME.with(|lib_name| {
         lib_name
-            .get_or_init(||
-                format!("lib{}", env!("CARGO_PKG_NAME").replace('-', "_"))
-            )
+            .get_or_init(|| format!("lib{}", env!("CARGO_PKG_NAME").replace('-', "_")))
             .clone()
-    )
+    })
 }
-

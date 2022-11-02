@@ -36,8 +36,7 @@ impl TarantoolLogger {
         TarantoolLogger(DEFAULT_MAPPING)
     }
 
-    pub fn with_mapping(map_fn: fn(Level) -> SayLevel) -> Self
-    {
+    pub fn with_mapping(map_fn: fn(Level) -> SayLevel) -> Self {
         TarantoolLogger(map_fn)
     }
 }
@@ -99,7 +98,5 @@ pub fn say(level: SayLevel, file: &str, line: i32, error: Option<&str>, message:
     };
     let message = CString::new(message).unwrap();
 
-    unsafe {
-        ffi::SAY_FN.unwrap()(level, file.as_ptr(), line, error_ptr, message.as_ptr())
-    }
+    unsafe { ffi::SAY_FN.unwrap()(level, file.as_ptr(), line, error_ptr, message.as_ptr()) }
 }

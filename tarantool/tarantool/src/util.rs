@@ -1,6 +1,6 @@
-use std::borrow::Cow;
-use serde::{Serialize, Deserialize };
 use crate::error::Error;
+use serde::{Deserialize, Serialize};
+use std::borrow::Cow;
 
 pub trait IntoClones<Tuple>: Clone {
     fn into_clones(self) -> Tuple;
@@ -27,7 +27,7 @@ macro_rules! impl_into_clones {
     () => {};
 }
 
-impl_into_clones!{T T T T T T T T T T T}
+impl_into_clones! {T T T T T T T T T T T}
 
 #[macro_export]
 macro_rules! tuple_from_box_api {
@@ -53,8 +53,8 @@ macro_rules! expr_count {
 
 #[inline]
 pub fn rmp_to_vec<T>(val: &T) -> Result<Vec<u8>, Error>
-    where
-        T: Serialize + ?Sized
+where
+    T: Serialize + ?Sized,
 {
     Ok(rmp_serde::to_vec(val)?)
 }
@@ -104,7 +104,7 @@ macro_rules! unwrap_or {
         } else {
             $else
         }
-    }
+    };
 }
 
 #[macro_export]

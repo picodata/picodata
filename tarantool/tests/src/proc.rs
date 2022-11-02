@@ -1,14 +1,13 @@
+use crate::common::lib_name;
+use rmpv::Value;
 use tarantool::{
     proc::ReturnMsgpack,
     tlua::{
-        self,
-        Call, PushGuard, LuaState, PushInto, LuaFunction, LuaThread,
-        CallError, LuaRead, AsTable,
+        self, AsTable, Call, CallError, LuaFunction, LuaRead, LuaState, LuaThread, PushGuard,
+        PushInto,
     },
-    tuple::{Tuple, TupleBuffer, RawBytes, RawByteBuf},
+    tuple::{RawByteBuf, RawBytes, Tuple, TupleBuffer},
 };
-use crate::common::lib_name;
-use rmpv::Value;
 
 fn call_proc<A, R>(name: &str, args: A) -> Result<R, CallError<A::Err>>
 where
@@ -16,7 +15,9 @@ where
     R: for<'a> LuaRead<PushGuard<LuaFunction<PushGuard<LuaThread>>>>,
 {
     let lua = tarantool::lua_state();
-    let create = LuaFunction::load(lua, "
+    let create = LuaFunction::load(
+        lua,
+        "
         return (
             function(f, ...)
                 if box.func[f] == nil then
@@ -25,8 +26,11 @@ where
                 return box.func[f]:call{...}
             end
         )(...)
-    ").unwrap();
-    create.into_call_with((format!("{}.{}", lib_name(), name), args))
+    ",
+    )
+    .unwrap();
+    create
+        .into_call_with((format!("{}.{}", lib_name(), name), args))
         .map_err(|e| e.map(|e| e.other().first()))
 }
 
@@ -44,7 +48,10 @@ pub fn simple() {
         format!("{s} pong")
     }
 
-    assert_eq!(call_proc("proc_simple_str", "ping").ok(), Some("ping pong".to_string()));
+    assert_eq!(
+        call_proc("proc_simple_str", "ping").ok(),
+        Some("ping pong".to_string())
+    );
 }
 
 pub fn return_tuple() {
@@ -95,7 +102,10 @@ pub fn packed() {
         y.repeat(x)
     }
 
-    assert_eq!(call_proc("proc_packed", (3, "X")).ok(), Some("XXX".to_string()));
+    assert_eq!(
+        call_proc("proc_packed", (3, "X")).ok(),
+        Some("XXX".to_string())
+    );
 }
 
 pub fn return_raw_bytes() {
@@ -105,8 +115,12 @@ pub fn return_raw_bytes() {
     }
 
     assert_eq!(call_proc("proc_returns_raw_bytes", 1).ok(), Some([1]));
-    assert_eq!(call_proc("proc_returns_raw_bytes", "hi").ok(), Some(["hi".to_string()]));
-    assert_eq!(call_proc("proc_returns_raw_bytes", ("hello!", [1, 2, 3])).ok(),
+    assert_eq!(
+        call_proc("proc_returns_raw_bytes", "hi").ok(),
+        Some(["hi".to_string()])
+    );
+    assert_eq!(
+        call_proc("proc_returns_raw_bytes", ("hello!", [1, 2, 3])).ok(),
         Some(AsTable(("hello!".to_string(), [1, 2, 3])))
     );
 
@@ -118,10 +132,12 @@ pub fn return_raw_bytes() {
         RawByteBuf(res)
     }
 
-    assert_eq!(call_proc("proc_returns_raw_byte_buf", [1, 2, 3]).ok(),
+    assert_eq!(
+        call_proc("proc_returns_raw_byte_buf", [1, 2, 3]).ok(),
         Some(AsTable(([[1, 2, 3]], "pong".to_string())))
     );
-    assert_eq!(call_proc("proc_returns_raw_byte_buf", "ping").ok(),
+    assert_eq!(
+        call_proc("proc_returns_raw_byte_buf", "ping").ok(),
         Some(AsTable((["ping".to_string()], "pong".to_string())))
     );
 }
@@ -148,7 +164,10 @@ pub fn tarantool_reimport() {
         42
     }
 
-    assert_eq!(call_proc::<(), i32>("proc_tarantool_reimport", ()).unwrap(), 42);
+    assert_eq!(
+        call_proc::<(), i32>("proc_tarantool_reimport", ()).unwrap(),
+        42
+    );
 }
 
 pub fn custom_ret() {
@@ -160,30 +179,41 @@ pub fn custom_ret() {
 
     #[tarantool::proc]
     fn proc_custom_ret(x: i32) -> ReturnMsgpack<MyStruct> {
-        ReturnMsgpack(MyStruct { x, y: format!("{:x}", x) })
+        ReturnMsgpack(MyStruct {
+            x,
+            y: format!("{:x}", x),
+        })
     }
 
     #[tarantool::proc(custom_ret)]
     fn proc_custom_ret_attr(x: i32) -> MyStruct {
-        MyStruct { x, y: format!("{:x}", x) }
+        MyStruct {
+            x,
+            y: format!("{:x}", x),
+        }
     }
 
     assert_eq!(
         call_proc::<_, MyStruct>("proc_custom_ret", 69).unwrap(),
-        MyStruct { x: 69, y: "45".into() }
+        MyStruct {
+            x: 69,
+            y: "45".into()
+        }
     );
 
     assert_eq!(
         call_proc::<_, MyStruct>("proc_custom_ret_attr", 69).unwrap(),
-        MyStruct { x: 69, y: "45".into() }
+        MyStruct {
+            x: 69,
+            y: "45".into()
+        }
     );
 }
 
 pub fn inject() {
     #[tarantool::proc]
     fn proc_inject<'a>(
-        #[inject(&vec!["hello", "how", "are", "you"])]
-        injected: &'a [&'static str],
+        #[inject(&vec!["hello", "how", "are", "you"])] injected: &'a [&'static str],
         start: usize,
         end: usize,
     ) -> &'a [&'static str] {
@@ -197,13 +227,15 @@ pub fn inject() {
 
     #[tarantool::proc]
     fn proc_inject_2<'a>(
-        #[inject("left")]
-        injected_1: &'a str,
-        #[inject("right")]
-        injected_2: &'a str,
+        #[inject("left")] injected_1: &'a str,
+        #[inject("right")] injected_2: &'a str,
         second: bool,
     ) -> &'a str {
-        if second { injected_2 } else { injected_1 }
+        if second {
+            injected_2
+        } else {
+            injected_1
+        }
     }
 
     assert_eq!(
@@ -223,24 +255,14 @@ pub fn inject() {
     fn global() -> &'static GlobalData {
         static mut GLOBAL: Option<GlobalData> = None;
         unsafe {
-            GLOBAL.get_or_insert_with(||
-                GlobalData {
-                    data: vec![
-                        "some".into(),
-                        "global".into(),
-                        "data".into(),
-                    ]
-                }
-            )
+            GLOBAL.get_or_insert_with(|| GlobalData {
+                data: vec!["some".into(), "global".into(), "data".into()],
+            })
         }
     }
 
     #[tarantool::proc]
-    fn proc_inject_global<'a>(
-        #[inject(&global())]
-        data: &'a GlobalData,
-        i: usize,
-    ) -> &'a str {
+    fn proc_inject_global<'a>(#[inject(&global())] data: &'a GlobalData, i: usize) -> &'a str {
         &data.data[i]
     }
 
@@ -263,8 +285,7 @@ pub fn inject() {
 pub fn inject_with_packed() {
     #[tarantool::proc(packed_args)]
     fn proc_inject_with_packed<'a>(
-        #[inject(&[0, 1, 2, 3, 4, 5])]
-        data: &'a [i32],
+        #[inject(&[0, 1, 2, 3, 4, 5])] data: &'a [i32],
         args: Vec<usize>,
     ) -> &'a [i32] {
         match *args.as_slice() {

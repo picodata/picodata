@@ -1,4 +1,4 @@
-use proc_macro2::{TokenStream, Span};
+use proc_macro2::{Span, TokenStream};
 use quote::quote;
 use syn::{parse_macro_input, DeriveInput, Ident, Lifetime, Type};
 
@@ -11,14 +11,17 @@ fn proc_macro_derive_push_impl(
     // TODO(gmoshkin): add support for custom type param bounds
     let name = &input.ident;
     let info = Info::new(&input);
-    let ctx = Context::with_generics(&input.generics)
-        .set_is_push_into(is_push_into);
+    let ctx = Context::with_generics(&input.generics).set_is_push_into(is_push_into);
     let (lifetimes, types, consts) = split_generics(&input.generics);
     let (_, generics, where_clause) = input.generics.split_for_impl();
     let type_bounds = where_clause.map(|w| &w.predicates);
     let as_lua_bounds = info.push_bounds(&ctx);
     let push_code = info.push();
-    let PushVariant { push_fn, push, push_one } = ctx.push_variant();
+    let PushVariant {
+        push_fn,
+        push,
+        push_one,
+    } = ctx.push_variant();
     let l = ctx.as_lua_type_param;
 
     let expanded = quote! {
@@ -145,9 +148,7 @@ impl<'a> Info<'a> {
                 }
             }
             Self::Enum(v) => {
-                let push_variants = v.variants.iter()
-                    .map(VariantInfo::push)
-                    .collect::<Vec<_>>();
+                let push_variants = v.variants.iter().map(VariantInfo::push).collect::<Vec<_>>();
                 quote! {
                     match self {
                         #( #push_variants )*
@@ -161,38 +162,34 @@ impl<'a> Info<'a> {
         let l = &ctx.as_lua_type_param;
         let PushVariant { push, push_one, .. } = ctx.push_variant();
 
-        let field_bounds = |info: &FieldsInfo| {
-            match info {
-                FieldsInfo::Named { field_types: ty, .. } => {
-                    let ty = ty.iter().filter(|ty| ctx.is_generic(ty));
-                    quote! {
-                        #(
-                            #ty: tlua::#push_one<tlua::LuaState>,
-                            tlua::Void: ::std::convert::From<<#ty as tlua::#push<tlua::LuaState>>::Err>,
-                        )*
-                    }
+        let field_bounds = |info: &FieldsInfo| match info {
+            FieldsInfo::Named {
+                field_types: ty, ..
+            } => {
+                let ty = ty.iter().filter(|ty| ctx.is_generic(ty));
+                quote! {
+                    #(
+                        #ty: tlua::#push_one<tlua::LuaState>,
+                        tlua::Void: ::std::convert::From<<#ty as tlua::#push<tlua::LuaState>>::Err>,
+                    )*
                 }
-                FieldsInfo::Unnamed { field_types: ty, .. }
-                    if ty.iter().any(|ty| ctx.is_generic(ty)) =>
-                {
-                    quote! {
-                        (#(#ty),*): tlua::#push<#l>,
-                        tlua::Void: ::std::convert::From<<(#(#ty),*) as tlua::#push<#l>>::Err>,
-                    }
+            }
+            FieldsInfo::Unnamed {
+                field_types: ty, ..
+            } if ty.iter().any(|ty| ctx.is_generic(ty)) => {
+                quote! {
+                    (#(#ty),*): tlua::#push<#l>,
+                    tlua::Void: ::std::convert::From<<(#(#ty),*) as tlua::#push<#l>>::Err>,
                 }
-                FieldsInfo::Unnamed { .. } => {
-                    quote! {}
-                }
+            }
+            FieldsInfo::Unnamed { .. } => {
+                quote! {}
             }
         };
         match self {
-            Self::Struct(f) => {
-                field_bounds(f)
-            }
+            Self::Struct(f) => field_bounds(f),
             Self::Enum(v) => {
-                let bound = v.variants.iter()
-                    .flat_map(|v| &v.info)
-                    .map(field_bounds);
+                let bound = v.variants.iter().flat_map(|v| &v.info).map(field_bounds);
                 quote! {
                     #(#bound)*
                 }
@@ -202,11 +199,11 @@ impl<'a> Info<'a> {
 
     fn read(&self) -> TokenStream {
         match self {
-            Self::Struct(f) => {
-                f.read_as(quote! { Self })
-            }
+            Self::Struct(f) => f.read_as(quote! { Self }),
             Self::Enum(v) => {
-                let read_and_maybe_return_variant = v.variants.iter()
+                let read_and_maybe_return_variant = v
+                    .variants
+                    .iter()
                     .map(VariantInfo::read_and_maybe_return)
                     .collect::<Vec<_>>();
                 quote! {
@@ -225,7 +222,9 @@ impl<'a> Info<'a> {
 
         let field_bounds = |info: &FieldsInfo| {
             match info {
-                FieldsInfo::Named { field_types: ty, .. } => {
+                FieldsInfo::Named {
+                    field_types: ty, ..
+                } => {
                     // Structs fields are read as values from the lua tables and
                     // this is how `LuaTable::get` bounds it's return values
                     let ty = ty.iter().filter(|ty| ctx.is_generic(ty));
@@ -233,9 +232,9 @@ impl<'a> Info<'a> {
                         #( #ty: for<#lt> tlua::LuaRead<tlua::PushGuard<&#lt #l>>, )*
                     }
                 }
-                FieldsInfo::Unnamed { field_types: ty, .. }
-                    if ty.iter().any(|ty| ctx.is_generic(ty)) =>
-                {
+                FieldsInfo::Unnamed {
+                    field_types: ty, ..
+                } if ty.iter().any(|ty| ctx.is_generic(ty)) => {
                     // Tuple structs are read as tuples, so we bound they're
                     // fields as if they were a tuple
                     quote! {
@@ -250,13 +249,9 @@ impl<'a> Info<'a> {
             }
         };
         match self {
-            Self::Struct(f) => {
-                field_bounds(f)
-            }
+            Self::Struct(f) => field_bounds(f),
             Self::Enum(v) => {
-                let bound = v.variants.iter()
-                    .flat_map(|v| &v.info)
-                    .map(field_bounds);
+                let bound = v.variants.iter().flat_map(|v| &v.info).map(field_bounds);
                 quote! {
                     #(#bound)*
                 }
@@ -266,18 +261,16 @@ impl<'a> Info<'a> {
 
     fn read_top(&self, ctx: &Context) -> TokenStream {
         match self {
-            Self::Struct(_) => quote!{},
+            Self::Struct(_) => quote! {},
             Self::Enum(v) => {
                 let mut n_vals = vec![];
                 let mut read_and_maybe_return = vec![];
                 for variant in &v.variants {
-                    n_vals.push(
-                        if let Some(ref fields) = variant.info {
-                            fields.n_values(ctx)
-                        } else {
-                            quote! { 1 }
-                        }
-                    );
+                    n_vals.push(if let Some(ref fields) = variant.info {
+                        fields.n_values(ctx)
+                    } else {
+                        quote! { 1 }
+                    });
                     read_and_maybe_return.push(variant.read_and_maybe_return());
                 }
                 let l = &ctx.as_lua_type_param;
@@ -374,7 +367,12 @@ impl<'a> FieldsInfo<'a> {
 
     fn push(&self) -> TokenStream {
         match self {
-            Self::Named { field_names, field_idents, n_rec, .. } => {
+            Self::Named {
+                field_names,
+                field_idents,
+                n_rec,
+                ..
+            } => {
                 quote! {
                     unsafe {
                         tlua::ffi::lua_createtable(__lua.as_lua(), 0, #n_rec);
@@ -389,28 +387,30 @@ impl<'a> FieldsInfo<'a> {
                     }
                 }
             }
-            Self::Unnamed { field_idents, .. } => {
-                match field_idents.len() {
-                    0 => unimplemented!("unit structs are not supported yet"),
-                    1 => {
-                        let field_ident = &field_idents[0];
-                        quote! {
-                            tlua::AsLua::push(__lua, #field_ident)
-                        }
-                    }
-                    _ => {
-                        quote! {
-                            tlua::AsLua::push(__lua, ( #( #field_idents, )* ))
-                        }
+            Self::Unnamed { field_idents, .. } => match field_idents.len() {
+                0 => unimplemented!("unit structs are not supported yet"),
+                1 => {
+                    let field_ident = &field_idents[0];
+                    quote! {
+                        tlua::AsLua::push(__lua, #field_ident)
                     }
                 }
-            }
+                _ => {
+                    quote! {
+                        tlua::AsLua::push(__lua, ( #( #field_idents, )* ))
+                    }
+                }
+            },
         }
     }
 
     fn read_as(&self, name: TokenStream) -> TokenStream {
         match self {
-            FieldsInfo::Named { field_idents, field_names, .. } => {
+            FieldsInfo::Named {
+                field_idents,
+                field_names,
+                ..
+            } => {
                 quote! {
                     let t: tlua::LuaTable<_> = tlua::AsLua::read_at(__lua, __index)?;
                     Ok(
@@ -457,7 +457,9 @@ impl<'a> FieldsInfo<'a> {
                 // Corresponds to a single lua table
                 quote! { 1 }
             }
-            Self::Unnamed { field_types: ty, .. } if !ty.is_empty() => {
+            Self::Unnamed {
+                field_types: ty, ..
+            } if !ty.is_empty() => {
                 let l = &ctx.as_lua_type_param;
                 // Corresponds to multiple values on the stack (same as tuple)
                 quote! {
@@ -484,12 +486,18 @@ struct VariantInfo<'a> {
 
 impl<'a> VariantsInfo<'a> {
     fn new(data: &'a syn::DataEnum) -> Self {
-        let variants = data.variants.iter()
-            .map(|syn::Variant { ref ident, ref fields, .. }|
-                VariantInfo {
+        let variants = data
+            .variants
+            .iter()
+            .map(
+                |syn::Variant {
+                     ref ident,
+                     ref fields,
+                     ..
+                 }| VariantInfo {
                     name: ident,
                     info: FieldsInfo::new(fields),
-                }
+                },
             )
             .collect();
 
@@ -559,13 +567,11 @@ impl<'a> VariantInfo<'a> {
         let Self { info, .. } = self;
         match info {
             Some(FieldsInfo::Named { .. }) | None => quote! { v },
-            Some(FieldsInfo::Unnamed { field_idents, .. }) => {
-                match field_idents.len() {
-                    0 => unimplemented!("unit structs aren't supported yet"),
-                    1 => quote! { v },
-                    _ => quote! { ( #(#field_idents,)* ) },
-                }
-            }
+            Some(FieldsInfo::Unnamed { field_idents, .. }) => match field_idents.len() {
+                0 => unimplemented!("unit structs aren't supported yet"),
+                1 => quote! { v },
+                _ => quote! { ( #(#field_idents,)* ) },
+            },
         }
     }
 
@@ -573,14 +579,12 @@ impl<'a> VariantInfo<'a> {
         let Self { name, info } = self;
         match info {
             Some(FieldsInfo::Named { .. }) => quote! { v },
-            Some(FieldsInfo::Unnamed { field_idents, .. }) => {
-                match field_idents.len() {
-                    0 => quote! { Self::#name },
-                    1 => quote! { Self::#name(v) },
-                    _ => quote! { Self::#name(#(#field_idents,)*) },
-                }
-            }
-            None => quote! { Self::#name }
+            Some(FieldsInfo::Unnamed { field_idents, .. }) => match field_idents.len() {
+                0 => quote! { Self::#name },
+                1 => quote! { Self::#name(v) },
+                _ => quote! { Self::#name(#(#field_idents,)*) },
+            },
+            None => quote! { Self::#name },
         }
     }
 
@@ -607,7 +611,7 @@ impl<'a> VariantInfo<'a> {
                 },
                 quote! {
                     ::std::result::Result::Ok(v) => v.into_inner(),
-                }
+                },
             )
         } else {
             (quote! {}, quote! {})
@@ -640,33 +644,36 @@ impl<'a> Context<'a> {
     fn with_generics(generics: &'a syn::Generics) -> Self {
         Self {
             type_params: generics.type_params().map(|tp| &tp.ident).collect(),
-            .. Self::new()
+            ..Self::new()
         }
     }
 
     fn set_is_push_into(self, is_push_into: bool) -> Self {
-        Self { is_push_into, .. self }
+        Self {
+            is_push_into,
+            ..self
+        }
     }
 
     fn push_variant(&self) -> PushVariant {
         let l = &self.as_lua_type_param;
         if self.is_push_into {
             PushVariant {
-                push_fn: quote!{
+                push_fn: quote! {
                     push_into_lua(self, __lua: #l)
                 },
                 push: ident!("PushInto").into(),
                 push_one: ident!("PushOneInto").into(),
             }
-         } else {
+        } else {
             PushVariant {
-                push_fn: quote!{
+                push_fn: quote! {
                     push_to_lua(&self, __lua: #l)
                 },
                 push: ident!("Push").into(),
                 push_one: ident!("PushOne").into(),
             }
-         }
+        }
     }
 
     fn is_generic(&self, ty: &Type) -> bool {
@@ -685,7 +692,7 @@ impl<'a> Context<'a> {
                 for &typar in self.type_params {
                     if tp.path.is_ident(typar) {
                         self.is_generic = true;
-                        return
+                        return;
                     }
                 }
                 syn::visit::visit_type_path(self, tp)
@@ -702,8 +709,12 @@ impl<'a> Context<'a> {
 }
 
 fn split_generics(
-    generics: &syn::Generics
-) -> (Vec<&syn::LifetimeDef>, Vec<&syn::TypeParam>, Vec<&syn::ConstParam>) {
+    generics: &syn::Generics,
+) -> (
+    Vec<&syn::LifetimeDef>,
+    Vec<&syn::TypeParam>,
+    Vec<&syn::ConstParam>,
+) {
     let mut res = (vec![], vec![], vec![]);
     for param in &generics.params {
         match param {

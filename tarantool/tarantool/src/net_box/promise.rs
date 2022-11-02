@@ -5,18 +5,9 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crate::{
-    clock::INFINITY,
-    error::Error,
-    fiber::Cond,
-    Result,
-    tuple::Decode,
-};
+use crate::{clock::INFINITY, error::Error, fiber::Cond, tuple::Decode, Result};
 
-use super::{
-    inner::ConnInner,
-    protocol::Consumer,
-};
+use super::{inner::ConnInner, protocol::Consumer};
 
 type StdResult<T, E> = std::result::Result<T, E>;
 
@@ -29,13 +20,11 @@ impl<T> Promise<T> {
     #[inline]
     pub(crate) fn new(conn: Weak<ConnInner>) -> Self {
         Self {
-            inner: Rc::new(
-                InnerPromise {
-                    conn,
-                    cond: UnsafeCell::default(),
-                    data: Cell::new(None),
-                }
-           )
+            inner: Rc::new(InnerPromise {
+                conn,
+                cond: UnsafeCell::default(),
+                data: Cell::new(None),
+            }),
         }
     }
 
@@ -46,7 +35,11 @@ impl<T> Promise<T> {
 
     #[inline]
     fn is_connected(&self) -> bool {
-        self.inner.conn.upgrade().map(|c| c.is_connected()).unwrap_or(false)
+        self.inner
+            .conn
+            .upgrade()
+            .map(|c| c.is_connected())
+            .unwrap_or(false)
     }
 
     #[inline]
@@ -300,4 +293,3 @@ where
         self.signal();
     }
 }
-

@@ -1,7 +1,7 @@
 use std::cell::{Cell, RefCell, UnsafeCell};
-use std::collections::{HashMap, hash_map::Iter as HashMapIter};
-use std::ops::Range;
+use std::collections::{hash_map::Iter as HashMapIter, HashMap};
 use std::io::{self, Cursor, Read};
+use std::ops::Range;
 use std::rc::{Rc, Weak};
 
 use refpool::{Pool, PoolRef};
@@ -11,7 +11,7 @@ use crate::error::Error;
 use crate::fiber::{Cond, Latch};
 
 use super::options::Options;
-use super::protocol::{Consumer, decode_error, decode_header, Header, Response, Sync};
+use super::protocol::{decode_error, decode_header, Consumer, Header, Response, Sync};
 
 type Consumers = HashMap<Sync, Weak<dyn Consumer>>;
 

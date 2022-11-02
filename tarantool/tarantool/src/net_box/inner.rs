@@ -83,8 +83,14 @@ impl ConnInner {
         });
 
         // start send/recv fibers
-        conn_inner.send_fiber.borrow_mut().start(Rc::downgrade(&conn_inner));
-        conn_inner.recv_fiber.borrow_mut().start(Rc::downgrade(&conn_inner));
+        conn_inner
+            .send_fiber
+            .borrow_mut()
+            .start(Rc::downgrade(&conn_inner));
+        conn_inner
+            .recv_fiber
+            .borrow_mut()
+            .start(Rc::downgrade(&conn_inner));
 
         conn_inner
     }
@@ -137,14 +143,15 @@ impl ConnInner {
                 }
                 ConnState::Active => {
                     return match self.send_queue.send(request_producer) {
-                        Ok(sync) => self
-                            .recv_queue
-                            .recv(sync, response_consumer, options)
-                            .map(|response| {
-                                self.schema_version
-                                    .set(Some(response.header.schema_version));
-                                response.payload
-                            }),
+                        Ok(sync) => {
+                            self.recv_queue
+                                .recv(sync, response_consumer, options)
+                                .map(|response| {
+                                    self.schema_version
+                                        .set(Some(response.header.schema_version));
+                                    response.payload
+                                })
+                        }
                         Err(err) => Err(self.handle_error(err).err().unwrap()),
                     };
                 }
@@ -171,11 +178,13 @@ impl ConnInner {
                     self.init()?;
                 }
                 ConnState::Active => {
-                    let sync = self.send_queue.send(protocol::request_producer(request))
+                    let sync = self
+                        .send_queue
+                        .send(protocol::request_producer(request))
                         .map_err(|err| self.handle_error(err).err().unwrap())?;
                     let promise = Promise::new(Rc::downgrade(self));
                     self.recv_queue.add_consumer(sync, promise.downgrade());
-                    return Ok(promise)
+                    return Ok(promise);
                 }
                 ConnState::Error => self.disconnect(),
                 ConnState::ErrorReconnect => self.reconnect_or_fail()?,

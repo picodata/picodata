@@ -29,7 +29,9 @@ pub fn tuple_as_named_buffer() {
             "value" => assert_eq!("value_16", v.as_str().unwrap()),
             "a" => assert_eq!(1, v.as_u64().unwrap()),
             "b" => assert_eq!(3, v.as_u64().unwrap()),
-            _ => {unreachable!()}
+            _ => {
+                unreachable!()
+            }
         }
     }
 
@@ -43,8 +45,9 @@ pub fn tuple_as_named_buffer() {
         match k.as_u64().unwrap() {
             0 => assert_eq!(1, v.as_u64().unwrap()),
             1 => assert_eq!("foo", v.as_str().unwrap()),
-            _ => {unreachable!()}
+            _ => {
+                unreachable!()
+            }
         }
     }
 }
-

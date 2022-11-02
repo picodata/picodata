@@ -1,23 +1,10 @@
 use crate::{
-    ffi,
-    AsLua,
-    error,
-    Nil,
-    LuaError,
-    LuaRead,
-    LuaState,
-    Push,
-    PushInto,
-    PushGuard,
-    PushOne,
-    PushOneInto,
-    StaticLua,
-    values::ToString,
-    Void,
+    error, ffi, values::ToString, AsLua, LuaError, LuaRead, LuaState, Nil, Push, PushGuard,
+    PushInto, PushOne, PushOneInto, StaticLua, Void,
 };
 
-use std::marker::PhantomData;
 use std::fmt::Display;
+use std::marker::PhantomData;
 use std::mem;
 use std::ptr;
 
@@ -189,7 +176,10 @@ impl<F, P, R> std::fmt::Debug for Function<F, P, R> {
 
 impl<F, P, R> Function<F, P, R> {
     pub fn new(function: F) -> Self {
-        Self { function, marker: PhantomData }
+        Self {
+            function,
+            marker: PhantomData,
+        }
     }
 }
 
@@ -313,7 +303,7 @@ macro_rules! impl_function_ext {
     }
 }
 
-impl_function_ext!{A B C D E F G H I J K M N}
+impl_function_ext! {A B C D E F G H I J K M N}
 
 /// Opaque type that represents the Lua context when inside a callback.
 ///
@@ -339,9 +329,10 @@ where
     type Err = T::Err;
 
     #[inline]
-    fn push_into_lua(self, lua: InsideCallback)
-        -> Result<PushGuard<InsideCallback>, (T::Err, InsideCallback)>
-    {
+    fn push_into_lua(
+        self,
+        lua: InsideCallback,
+    ) -> Result<PushGuard<InsideCallback>, (T::Err, InsideCallback)> {
         match self {
             Ok(val) => val.push_into_lua(lua),
             Err(val) => Ok(lua.push(&(Nil, val.to_string()))),
@@ -383,9 +374,10 @@ where
     type Err = T::Err;
 
     #[inline]
-    fn push_into_lua(self, lua: InsideCallback)
-        -> Result<PushGuard<InsideCallback>, (T::Err, InsideCallback)>
-    {
+    fn push_into_lua(
+        self,
+        lua: InsideCallback,
+    ) -> Result<PushGuard<InsideCallback>, (T::Err, InsideCallback)> {
         match self {
             Ok(ok) => ok.push_into_lua(lua),
             Err(Throw(err)) => crate::error!(lua, "{}", err),
@@ -396,7 +388,7 @@ where
 impl<T, E> PushOneInto<InsideCallback> for Result<T, E>
 where
     T: PushOneInto<InsideCallback>,
-    E: Display
+    E: Display,
 {
 }
 
@@ -410,8 +402,7 @@ where
 {
     // loading the object that we want to call from the Lua context
     let data_raw = unsafe { ffi::lua_touserdata(lua, ffi::lua_upvalueindex(1)) };
-    let data = unsafe { data_raw.cast::<T>().as_mut() }
-        .expect("lua_touserdata returned NULL");
+    let data = unsafe { data_raw.cast::<T>().as_mut() }.expect("lua_touserdata returned NULL");
 
     // creating a temporary Lua context in order to pass it to push & read functions
     let tmp_lua = InsideCallback(lua.as_lua());
@@ -422,7 +413,9 @@ where
     let args = A::lua_read_at_maybe_zero_position(&tmp_lua, -arguments_count);
     let args = match args {
         Err(lua) => {
-            error!(lua, "{}",
+            error!(
+                lua,
+                "{}",
                 LuaError::wrong_type_passed::<A, _>(lua, arguments_count),
             )
         }
@@ -434,7 +427,7 @@ where
     // pushing back the result of the function on the stack
     let nb = match ret_value.push_into_lua(tmp_lua) {
         Ok(p) => p.forget_internal(),
-        Err(_) => panic!(),      // TODO: wrong
+        Err(_) => panic!(), // TODO: wrong
     };
     nb as _
 }
@@ -446,11 +439,12 @@ where
     L: AsLua,
     F: FnOnce(StaticLua) -> R,
 {
-    let mut ud = PCallCtx { r#in: Some(f), out: None };
-    let ud_ptr = &mut ud as *mut PCallCtx<_, _>;
-    let rc = unsafe {
-        ffi::lua_cpcall(lua.as_lua(), trampoline::<F, R>, ud_ptr.cast())
+    let mut ud = PCallCtx {
+        r#in: Some(f),
+        out: None,
     };
+    let ud_ptr = &mut ud as *mut PCallCtx<_, _>;
+    let rc = unsafe { ffi::lua_cpcall(lua.as_lua(), trampoline::<F, R>, ud_ptr.cast()) };
     match rc {
         0 => {}
         ffi::LUA_ERRMEM => panic!("lua_cpcall returned LUA_ERRMEM"),
@@ -458,8 +452,8 @@ where
             let error_msg = ToString::lua_read(PushGuard::new(lua, 1))
                 .ok()
                 .expect("can't find error message at the top of the Lua stack");
-            return Err(LuaError::ExecutionError(error_msg.into()))
-        }
+            return Err(LuaError::ExecutionError(error_msg.into()));
+        },
         rc => panic!("Unknown error code returned by lua_cpcall: {}", rc),
     }
     return Ok(ud.out.expect("if trampoline succeeded the value is set"));
@@ -474,7 +468,8 @@ where
         F: FnOnce(StaticLua) -> R,
     {
         let ud_ptr = ffi::lua_touserdata(l, 1);
-        let PCallCtx { r#in, out } = ud_ptr.cast::<PCallCtx::<F, R>>()
+        let PCallCtx { r#in, out } = ud_ptr
+            .cast::<PCallCtx<F, R>>()
             .as_mut()
             .unwrap_or_else(|| error!(l, "userdata is null"));
 
@@ -484,4 +479,3 @@ where
         0
     }
 }
-

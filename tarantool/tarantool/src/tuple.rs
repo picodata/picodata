@@ -12,8 +12,8 @@ use std::cmp::Ordering;
 use std::convert::TryFrom;
 use std::fmt::{self, Debug, Formatter};
 use std::io::Write;
-use std::os::raw::{c_char, c_int};
 use std::ops::Range;
+use std::os::raw::{c_char, c_int};
 use std::ptr::NonNull;
 
 use num_derive::ToPrimitive;
@@ -23,7 +23,7 @@ use serde::Serialize;
 
 use crate::error::{self, Error, Result, TarantoolError};
 use crate::ffi::tarantool as ffi;
-use crate::tlua as tlua;
+use crate::tlua;
 
 /// Tuple
 pub struct Tuple {
@@ -70,11 +70,7 @@ impl Tuple {
     /// valid messagepack array
     pub unsafe fn from_raw_data(data: *mut c_char, len: u32) -> Self {
         let format = TupleFormat::default();
-        let tuple_ptr = ffi::box_tuple_new(
-            format.inner,
-            data as _,
-            data.add(len as _) as _
-        );
+        let tuple_ptr = ffi::box_tuple_new(format.inner, data as _, data.add(len as _) as _);
 
         Self::from_ptr(NonNull::new_unchecked(tuple_ptr))
     }
@@ -285,9 +281,7 @@ impl Tuple {
         let mut buf = Vec::with_capacity(size);
 
         unsafe {
-            let actual_size = ffi::box_tuple_to_buf(
-                self.ptr.as_ptr(), buf.as_ptr() as _, size,
-            );
+            let actual_size = ffi::box_tuple_to_buf(self.ptr.as_ptr(), buf.as_ptr() as _, size);
             buf.set_len(actual_size as usize);
         }
 
@@ -357,7 +351,7 @@ impl TupleIndex for &str {
             Ok(Api::New(api)) => unsafe {
                 let field_ptr = api(tuple.ptr.as_ptr(), self.as_ptr() as _, self.len() as _, 1);
                 field_value_from_ptr(field_ptr as _)
-            }
+            },
             Ok(Api::Old(api)) => unsafe {
                 let data_offset = tuple.ptr.as_ref().data_offset() as _;
                 let data = tuple.ptr.as_ptr().cast::<c_char>().add(data_offset);
@@ -370,7 +364,7 @@ impl TupleIndex for &str {
                     tlua::util::hash(self),
                 );
                 field_value_from_ptr(field_ptr as _)
-            }
+            },
             Err(e) => Err(Error::IO(IOError::new(ErrorKind::Unsupported, e))),
         };
 
@@ -384,7 +378,7 @@ impl TupleIndex for &str {
                     path: *const c_char,
                     path_len: u32,
                     path_hash: u32,
-                ) -> *const c_char
+                ) -> *const c_char,
             ),
             /// After 2.10 public api `box_tuple_field_by_path`
             New(
@@ -393,7 +387,7 @@ impl TupleIndex for &str {
                     path: *const c_char,
                     path_len: u32,
                     index_base: i32,
-                ) -> *const c_char
+                ) -> *const c_char,
             ),
         }
     }
@@ -401,9 +395,7 @@ impl TupleIndex for &str {
 
 impl From<&TupleBuffer> for Tuple {
     fn from(buf: &TupleBuffer) -> Self {
-        unsafe {
-            Self::from_raw_data(buf.as_ptr() as _, buf.len() as _)
-        }
+        unsafe { Self::from_raw_data(buf.as_ptr() as _, buf.len() as _) }
     }
 }
 
@@ -685,7 +677,7 @@ impl ToTupleBuffer for TupleBuffer {
 impl serde_bytes::Serialize for TupleBuffer {
     fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
     where
-        S: serde::Serializer
+        S: serde::Serializer,
     {
         serde_bytes::Serialize::serialize(&self.0, serializer)
     }
@@ -694,11 +686,10 @@ impl serde_bytes::Serialize for TupleBuffer {
 impl<'de> serde_bytes::Deserialize<'de> for TupleBuffer {
     fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
     where
-        D: serde::Deserializer<'de>
+        D: serde::Deserializer<'de>,
     {
         let tmp: Vec<u8> = serde_bytes::Deserialize::deserialize(deserializer)?;
-        Self::try_from(tmp)
-            .map_err(serde::de::Error::custom)
+        Self::try_from(tmp).map_err(serde::de::Error::custom)
     }
 }
 
@@ -778,9 +769,7 @@ impl TupleIterator {
     where
         T: Decode<'t>,
     {
-        unsafe {
-            field_value_from_ptr(ffi::box_tuple_seek(self.inner, fieldno) as _)
-        }
+        unsafe { field_value_from_ptr(ffi::box_tuple_seek(self.inner, fieldno) as _) }
     }
 
     /// Return the next Tuple field from Tuple iterator.
@@ -797,9 +786,7 @@ impl TupleIterator {
     where
         T: Decode<'t>,
     {
-        unsafe {
-            field_value_from_ptr(ffi::box_tuple_next(self.inner) as _)
-        }
+        unsafe { field_value_from_ptr(ffi::box_tuple_next(self.inner) as _) }
     }
 
     pub fn update(&mut self) {}
@@ -874,12 +861,16 @@ impl KeyDef {
     ///
     /// - `items` - array with key field identifiers and key field types (see [FieldType](struct.FieldType.html))
     #[inline]
-    pub fn new(items: impl IntoIterator<Item=impl Into<KeyDefItem>>) -> Self {
+    pub fn new(items: impl IntoIterator<Item = impl Into<KeyDefItem>>) -> Self {
         let iter = items.into_iter();
         let (size, _) = iter.size_hint();
         let mut ids = Vec::with_capacity(size);
         let mut types = Vec::with_capacity(size);
-        for KeyDefItem { field_id, field_type } in iter.map(Into::into) {
+        for KeyDefItem {
+            field_id,
+            field_type,
+        } in iter.map(Into::into)
+        {
             ids.push(field_id);
             types.push(field_type.to_u32().unwrap());
         }
@@ -902,8 +893,7 @@ impl KeyDef {
     /// - `Ordering::Greater` if `key_fields(tuple_a) > key_fields(tuple_b)`
     pub fn compare(&self, tuple_a: &Tuple, tuple_b: &Tuple) -> Ordering {
         unsafe {
-            ffi::box_tuple_compare(tuple_a.ptr.as_ptr(), tuple_b.ptr.as_ptr(), self.inner)
-                .cmp(&0)
+            ffi::box_tuple_compare(tuple_a.ptr.as_ptr(), tuple_b.ptr.as_ptr(), self.inner).cmp(&0)
         }
     }
 
@@ -923,8 +913,7 @@ impl KeyDef {
         let key_buf = key.to_tuple_buffer().unwrap();
         let key_buf_ptr = key_buf.as_ptr() as _;
         unsafe {
-            ffi::box_tuple_compare_with_key(tuple.ptr.as_ptr(), key_buf_ptr, self.inner)
-                .cmp(&0)
+            ffi::box_tuple_compare_with_key(tuple.ptr.as_ptr(), key_buf_ptr, self.inner).cmp(&0)
         }
     }
 }
@@ -1014,9 +1003,7 @@ impl FunctionCtx {
     #[inline]
     pub fn return_bytes(&self, bytes: &[u8]) -> Result<c_int> {
         let Range { start, end } = bytes.as_ptr_range();
-        let result = unsafe {
-            ffi::box_return_mp(self.inner, start as _, end as _)
-        };
+        let result = unsafe { ffi::box_return_mp(self.inner, start as _, end as _) };
 
         if result < 0 {
             Err(TarantoolError::last().into())
@@ -1038,7 +1025,9 @@ pub struct FunctionArgs {
 
 impl Debug for FunctionArgs {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        f.debug_tuple("FunctionArgs").field(&Tuple::from(self)).finish()
+        f.debug_tuple("FunctionArgs")
+            .field(&Tuple::from(self))
+            .finish()
     }
 }
 
@@ -1050,12 +1039,7 @@ impl From<FunctionArgs> for Tuple {
 
 impl From<&FunctionArgs> for Tuple {
     fn from(args: &FunctionArgs) -> Tuple {
-        unsafe {
-            Tuple::from_raw_data(
-                args.start as _,
-                args.end.offset_from(args.start) as _,
-            )
-        }
+        unsafe { Tuple::from_raw_data(args.start as _, args.end.offset_from(args.start) as _) }
     }
 }
 
@@ -1108,7 +1092,7 @@ where
     let mut slice = data.as_ref();
     let m = rmp::decode::read_marker(&mut slice)?;
     if !matches!(m, Marker::FixArray(_) | Marker::Array16 | Marker::Array32) {
-        return Err(error::Encode::InvalidMP(data.into()).into())
+        return Err(error::Encode::InvalidMP(data.into()).into());
     }
     Ok(data)
 }
@@ -1127,11 +1111,7 @@ where
     }
 }
 
-impl<L> tlua::PushOne<L> for Tuple
-where
-    L: tlua::AsLua,
-{
-}
+impl<L> tlua::PushOne<L> for Tuple where L: tlua::AsLua {}
 
 impl<L> tlua::PushInto<L> for Tuple
 where
@@ -1147,20 +1127,14 @@ where
     }
 }
 
-impl<L> tlua::PushOneInto<L> for Tuple
-where
-    L: tlua::AsLua,
-{
-}
+impl<L> tlua::PushOneInto<L> for Tuple where L: tlua::AsLua {}
 
 impl<L> tlua::LuaRead<L> for Tuple
 where
     L: tlua::AsLua,
 {
     fn lua_read_at_position(lua: L, index: std::num::NonZeroI32) -> std::result::Result<Self, L> {
-        let ptr = unsafe {
-            ffi::luaT_istuple(tlua::AsLua::as_lua(&lua), index.get())
-        };
+        let ptr = unsafe { ffi::luaT_istuple(tlua::AsLua::as_lua(&lua), index.get()) };
         Self::try_from_ptr(ptr).ok_or(lua)
     }
 }
@@ -1200,10 +1174,7 @@ impl Decode<'_> for Tuple {
 /// [`Deserialize`]: serde::Deserialize
 /// [`DeserializeOwned`]: serde::de::DeserializeOwned
 pub trait DecodeOwned: for<'de> Decode<'de> {}
-impl<T> DecodeOwned for T
-where
-    T: for<'de> Decode<'de>,
-{}
+impl<T> DecodeOwned for T where T: for<'de> Decode<'de> {}
 
 ////////////////////////////////////////////////////////////////////////////////
 /// RawBytes
@@ -1270,7 +1241,7 @@ pub struct RawByteBuf(pub Vec<u8>);
 impl serde_bytes::Serialize for RawByteBuf {
     fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
     where
-        S: serde::Serializer
+        S: serde::Serializer,
     {
         serde_bytes::Serialize::serialize(&self.0, serializer)
     }
@@ -1279,7 +1250,7 @@ impl serde_bytes::Serialize for RawByteBuf {
 impl<'de> serde_bytes::Deserialize<'de> for RawByteBuf {
     fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
     where
-        D: serde::Deserializer<'de>
+        D: serde::Deserializer<'de>,
     {
         serde_bytes::Deserialize::deserialize(deserializer).map(Self)
     }
@@ -1326,12 +1297,12 @@ impl std::ops::DerefMut for RawByteBuf {
 
 #[cfg(feature = "picodata")]
 mod picodata {
+    use crate::tuple::{Tuple, TupleFormat};
+    use crate::Result;
     use std::ffi::CStr;
     use std::io::{Cursor, Write};
     use std::marker::PhantomData;
     use std::os::raw::c_char;
-    use crate::tuple::{Tuple, TupleFormat};
-    use crate::Result;
 
     impl Tuple {
         /// Returns messagepack encoded tuple with named fields (messagepack map).
@@ -1381,7 +1352,7 @@ mod picodata {
         }
 
         /// Return tuple field names.
-        pub fn names(&self) -> impl Iterator<Item=&str> {
+        pub fn names(&self) -> impl Iterator<Item = &str> {
             let ptr = unsafe { (*(*self.inner).dict).names };
             NameIterator {
                 ptr,
@@ -1412,7 +1383,11 @@ mod picodata {
                 let str_ptr = self.ptr.add(self.pos);
                 self.pos += 1;
 
-                Some(CStr::from_ptr(*str_ptr).to_str().expect("invalid utf-8 string"))
+                Some(
+                    CStr::from_ptr(*str_ptr)
+                        .to_str()
+                        .expect("invalid utf-8 string"),
+                )
             }
         }
     }

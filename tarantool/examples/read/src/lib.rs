@@ -1,10 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use tarantool::{
-    proc,
-    space::Space,
-    tuple::Encode,
-};
+use tarantool::{proc, space::Space, tuple::Encode};
 
 #[derive(Serialize, Deserialize, Debug)]
 struct Row {

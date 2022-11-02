@@ -30,7 +30,7 @@
 //!
 //! There are several ways Tarantool can call Rust code. It can use either a plugin, a Lua FFI module,
 //! or a [stored procedure]. In this file we only cover the third option, namely Rust stored procedures.
-//! Even though Tarantool always treats Rust routines just as "C functions", we keep on using the "stored procedure" 
+//! Even though Tarantool always treats Rust routines just as "C functions", we keep on using the "stored procedure"
 //! term as an agreed convention and also for historical reasons.
 //!
 //! This tutorial contains the following simple steps:
@@ -68,7 +68,7 @@
 //! ```
 //!
 //! 1. Add the `tarantool` library to the dependencies;
-//! 1. Optionally add [Serde](https://!github.com/serde-rs/serde) to the dependencies. 
+//! 1. Optionally add [Serde](https://!github.com/serde-rs/serde) to the dependencies.
 //! This is only required if you want to use Rust structures as tuple values (see [this example](#harder));
 //! 1. Compile the dynamic library.
 //!
@@ -126,7 +126,7 @@
 //! Another is to call the 'easy' function. Since the `easy()` function in `lib.rs` begins with `println!("hello world")`,
 //! the words "hello world" will be printed in the terminal.
 //!
-//! The third feature is to make sure the call was successful. Since the `easy()` function in `lib.rs` 
+//! The third feature is to make sure the call was successful. Since the `easy()` function in `lib.rs`
 //! ends with return 0, there is no error message to display and therefore the request is over.
 //!
 //! The result should look like this:
@@ -138,8 +138,8 @@
 //! ...
 //! ```
 //!
-//! Now let's call the other function in lib.rs - `easy2()`. This is almost the same as the `easy()` 
-//! function, but with a difference: when the file name is not the same as the function name, 
+//! Now let's call the other function in lib.rs - `easy2()`. This is almost the same as the `easy()`
+//! function, but with a difference: when the file name is not the same as the function name,
 //! we have to specify _{file-name}_._{function-name}_.
 //! ```lua
 //! box.schema.func.create('easy.easy2', {language = 'C'})
@@ -160,14 +160,15 @@ pub mod ffi;
 pub mod fiber;
 pub mod index;
 pub mod log;
-pub mod net_box;
 #[doc(hidden)]
 pub mod msgpack;
+pub mod net_box;
 pub mod proc;
 pub mod schema;
 pub mod sequence;
 pub mod session;
 pub mod space;
+pub mod sql;
 pub mod transaction;
 pub mod trigger;
 pub mod tuple;
@@ -176,9 +177,7 @@ pub mod uuid;
 #[cfg(all(target_arch = "aarch64", target_os = "macos"))]
 #[doc(hidden)]
 mod va_list;
-pub mod sql;
 
-pub use tlua;
 /// `#[tarantool::proc]` is a macro attribute for creating stored procedure
 /// functions.
 ///
@@ -373,6 +372,7 @@ pub use tlua;
 /// [`Return`]: crate::proc::Return
 /// [`ReturnMsgpack`]: crate::proc::ReturnMsgpack
 pub use tarantool_proc::stored_proc as proc;
+pub use tlua;
 
 /// Return a global tarantool lua state.
 ///
@@ -380,9 +380,7 @@ pub use tarantool_proc::stored_proc as proc;
 /// code that will be executed in multiple fibers. Consider using [`lua_thread`]
 /// instead. Use with caution if necessary.
 fn global_lua() -> tlua::StaticLua {
-    unsafe {
-        tlua::Lua::from_static(ffi::tarantool::luaT_state())
-    }
+    unsafe { tlua::Lua::from_static(ffi::tarantool::luaT_state()) }
 }
 
 /// Create a new lua state with an isolated stack. The new state has access to

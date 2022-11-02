@@ -1,9 +1,9 @@
 use tarantool::{
+    index::{self, IndexType, RtreeIndexDistanceType},
     space::{self, SpaceEngineType},
-    index::{self, IndexType, RtreeIndexDistanceType}
 };
 
-use serde_plain::{to_string, from_str};
+use serde_plain::{from_str, to_string};
 
 pub fn space_engine_type() {
     type T = SpaceEngineType;

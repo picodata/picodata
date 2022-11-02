@@ -6,7 +6,7 @@
 
 #![allow(non_camel_case_types)]
 #![allow(clippy::missing_safety_doc)]
-use std::os::raw::{c_double, c_int, c_char, c_void};
+use std::os::raw::{c_char, c_double, c_int, c_void};
 use std::ptr::null_mut;
 
 /// Lua provides a registry, a pre-defined table that can be used by any C code
@@ -400,8 +400,19 @@ extern "C" {
     ///
     /// The `chunkname` argument gives a name to the chunk, which is used for
     /// error messages and in debug information
-    pub fn lua_load(l: *mut lua_State, reader: lua_Reader, dt: *mut libc::c_void, chunkname: *const libc::c_char) -> c_int;
-    pub fn lua_loadx(l: *mut lua_State, reader: lua_Reader, dt: *mut libc::c_void, chunkname: *const libc::c_char, mode: *const libc::c_char) -> c_int;
+    pub fn lua_load(
+        l: *mut lua_State,
+        reader: lua_Reader,
+        dt: *mut libc::c_void,
+        chunkname: *const libc::c_char,
+    ) -> c_int;
+    pub fn lua_loadx(
+        l: *mut lua_State,
+        reader: lua_Reader,
+        dt: *mut libc::c_void,
+        chunkname: *const libc::c_char,
+        mode: *const libc::c_char,
+    ) -> c_int;
     pub fn lua_dump(l: *mut lua_State, writer: lua_Writer, data: *mut libc::c_void) -> c_int;
 
     /// Generates a Lua error. The error message (which can actually be a Lua
@@ -618,28 +629,28 @@ pub unsafe fn lua_pushglobaltable(state: *mut lua_State) {
 }
 
 pub type CTypeID = u32;
-pub const CTID_NONE           : CTypeID = 0;
-pub const CTID_VOID           : CTypeID = 1;
-pub const CTID_CVOID          : CTypeID = 2;
-pub const CTID_BOOL           : CTypeID = 3;
-pub const CTID_CCHAR          : CTypeID = 4;
-pub const CTID_INT8           : CTypeID = 5;
-pub const CTID_UINT8          : CTypeID = 6;
-pub const CTID_INT16          : CTypeID = 7;
-pub const CTID_UINT16         : CTypeID = 8;
-pub const CTID_INT32          : CTypeID = 9;
-pub const CTID_UINT32         : CTypeID = 10;
-pub const CTID_INT64          : CTypeID = 11;
-pub const CTID_UINT64         : CTypeID = 12;
-pub const CTID_FLOAT          : CTypeID = 13;
-pub const CTID_DOUBLE         : CTypeID = 14;
-pub const CTID_COMPLEX_FLOAT  : CTypeID = 15;
-pub const CTID_COMPLEX_DOUBLE : CTypeID = 16;
-pub const CTID_P_VOID         : CTypeID = 17;
-pub const CTID_P_CVOID        : CTypeID = 18;
-pub const CTID_P_CCHAR        : CTypeID = 19;
-pub const CTID_A_CCHAR        : CTypeID = 20;
-pub const CTID_CTYPEID        : CTypeID = 21;
+pub const CTID_NONE: CTypeID = 0;
+pub const CTID_VOID: CTypeID = 1;
+pub const CTID_CVOID: CTypeID = 2;
+pub const CTID_BOOL: CTypeID = 3;
+pub const CTID_CCHAR: CTypeID = 4;
+pub const CTID_INT8: CTypeID = 5;
+pub const CTID_UINT8: CTypeID = 6;
+pub const CTID_INT16: CTypeID = 7;
+pub const CTID_UINT16: CTypeID = 8;
+pub const CTID_INT32: CTypeID = 9;
+pub const CTID_UINT32: CTypeID = 10;
+pub const CTID_INT64: CTypeID = 11;
+pub const CTID_UINT64: CTypeID = 12;
+pub const CTID_FLOAT: CTypeID = 13;
+pub const CTID_DOUBLE: CTypeID = 14;
+pub const CTID_COMPLEX_FLOAT: CTypeID = 15;
+pub const CTID_COMPLEX_DOUBLE: CTypeID = 16;
+pub const CTID_P_VOID: CTypeID = 17;
+pub const CTID_P_CVOID: CTypeID = 18;
+pub const CTID_P_CCHAR: CTypeID = 19;
+pub const CTID_A_CCHAR: CTypeID = 20;
+pub const CTID_CTYPEID: CTypeID = 21;
 
 extern "C" {
     /// Push `u64` onto the stack
@@ -702,7 +713,10 @@ extern "C" {
 #[inline(always)]
 #[allow(non_snake_case)]
 pub unsafe fn luaL_hasmetafield(l: *mut lua_State, index: i32, field: *const c_char) -> bool {
-    luaL_getmetafield(l, index, field) != 0 && { lua_pop(l, 1); true }
+    luaL_getmetafield(l, index, field) != 0 && {
+        lua_pop(l, 1);
+        true
+    }
 }
 
 extern "C" {
@@ -712,4 +726,3 @@ extern "C" {
     /// *[-0, +1, m]*
     pub fn luaT_tolstring(l: *mut lua_State, idx: c_int, len: *mut usize) -> *const c_char;
 }
-

@@ -1,13 +1,10 @@
 use crate::{
     error::TarantoolErrorCode::ProcC,
     set_error,
-    tuple::{FunctionCtx, Tuple, TupleBuffer, RawBytes, RawByteBuf},
+    tuple::{FunctionCtx, RawByteBuf, RawBytes, Tuple, TupleBuffer},
 };
 use serde::Serialize;
-use std::{
-    fmt::Display,
-    os::raw::c_int,
-};
+use std::{fmt::Display, os::raw::c_int};
 
 macro_rules! unwrap_or_report_err {
     ($res:expr) => {
@@ -18,7 +15,7 @@ macro_rules! unwrap_or_report_err {
                 -1
             }
         }
-    }
+    };
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -179,7 +176,7 @@ where
                     set_error!(ProcC, "{}", e);
                     -1
                 }
-            }
+            },
             Err(e) => {
                 set_error!(ProcC, "{}", e);
                 -1
@@ -205,15 +202,15 @@ macro_rules! impl_return {
     }
 }
 
-impl_return!{ impl[V]                 for Option<V> }
-impl_return!{ impl[V]                 for Vec<V> }
-impl_return!{ impl[V]                 for &'_ [V] }
-impl_return!{ impl[V, const N: usize] for [V; N] }
-impl_return!{ impl[K, V]              for std::collections::HashMap<K, V> }
-impl_return!{ impl[K]                 for std::collections::HashSet<K> }
-impl_return!{ impl[K, V]              for std::collections::BTreeMap<K, V> }
-impl_return!{ impl[K]                 for std::collections::BTreeSet<K> }
-impl_return!{
+impl_return! { impl[V]                 for Option<V> }
+impl_return! { impl[V]                 for Vec<V> }
+impl_return! { impl[V]                 for &'_ [V] }
+impl_return! { impl[V, const N: usize] for [V; N] }
+impl_return! { impl[K, V]              for std::collections::HashMap<K, V> }
+impl_return! { impl[K]                 for std::collections::HashSet<K> }
+impl_return! { impl[K, V]              for std::collections::BTreeMap<K, V> }
+impl_return! { impl[K]                 for std::collections::BTreeSet<K> }
+impl_return! {
     bool
     i8 u8 i16 u16 i32 u32 i64 u64 i128 u128 isize usize
     f32 f64
@@ -237,4 +234,4 @@ macro_rules! impl_return_for_tuple {
         impl_return_for_tuple!{$($t)*}
     }
 }
-impl_return_for_tuple!{A B C D E F G H I J K L M N O P Q}
+impl_return_for_tuple! {A B C D E F G H I J K L M N O P Q}

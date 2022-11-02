@@ -1,26 +1,14 @@
+use crate::common::{BoolExt, LuaStackIntegrityGuard};
 use std::{
     cell::RefCell,
-    collections::{HashMap, HashSet, BTreeMap, BTreeSet},
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     num::NonZeroI32,
     rc::Rc,
 };
 use tarantool::tlua::{
-    self,
-    AsLua,
-    Lua,
-    LuaSequence,
-    LuaTable,
-    LuaTableMap,
-    LuaRead,
-    AnyLuaValue,
-    AnyHashableLuaValue,
-    Push,
-    PushInto,
-    PushGuard,
-    PushOne,
-    TuplePushError,
+    self, AnyHashableLuaValue, AnyLuaValue, AsLua, Lua, LuaRead, LuaSequence, LuaTable,
+    LuaTableMap, Push, PushGuard, PushInto, PushOne, TuplePushError,
 };
-use crate::common::{BoolExt, LuaStackIntegrityGuard};
 
 pub fn push_array() {
     let lua = Lua::new();
@@ -28,18 +16,30 @@ pub fn push_array() {
     // Slice
     let data: &[i32] = &[9, 8, 7];
     let table: LuaTable<_> = (&lua).push(data).read().unwrap();
-    let values = table.iter::<i32, i32>().flatten().map(|(_, v)| v).collect::<Vec<_>>();
+    let values = table
+        .iter::<i32, i32>()
+        .flatten()
+        .map(|(_, v)| v)
+        .collect::<Vec<_>>();
     assert_eq!(values, vec![9, 8, 7]);
 
     // By reference
     let data: &[i32; 3] = &[9, 8, 7];
     let table: LuaTable<_> = (&lua).push(data).read().unwrap();
-    let values = table.iter::<i32, i32>().flatten().map(|(_, v)| v).collect::<Vec<_>>();
+    let values = table
+        .iter::<i32, i32>()
+        .flatten()
+        .map(|(_, v)| v)
+        .collect::<Vec<_>>();
     assert_eq!(values, vec![9, 8, 7]);
 
     // By value
     let table: LuaTable<_> = (&lua).push([9, 8, 7]).read().unwrap();
-    let values = table.iter::<i32, i32>().flatten().map(|(_, v)| v).collect::<Vec<_>>();
+    let values = table
+        .iter::<i32, i32>()
+        .flatten()
+        .map(|(_, v)| v)
+        .collect::<Vec<_>>();
     assert_eq!(values, vec![9, 8, 7]);
 }
 
@@ -50,12 +50,20 @@ pub fn push_vec() {
 
     // By reference
     let table: LuaTable<_> = (&lua).push(&orig_vec).read().unwrap();
-    let values = table.iter::<i32, i32>().flatten().map(|(_, v)| v).collect::<Vec<_>>();
+    let values = table
+        .iter::<i32, i32>()
+        .flatten()
+        .map(|(_, v)| v)
+        .collect::<Vec<_>>();
     assert_eq!(values, orig_vec);
 
     // By value
     let table: LuaTable<_> = (&lua).push(orig_vec.clone()).read().unwrap();
-    let values = table.iter::<i32, i32>().flatten().map(|(_, v)| v).collect::<Vec<_>>();
+    let values = table
+        .iter::<i32, i32>()
+        .flatten()
+        .map(|(_, v)| v)
+        .collect::<Vec<_>>();
     assert_eq!(values, orig_vec);
 }
 
@@ -91,14 +99,20 @@ pub fn push_hashset() {
 
     // Be reference
     let table: LuaTable<_> = (&lua).push(&orig_set).read().unwrap();
-    let values: HashSet<i32> = table.iter::<i32, bool>().flatten()
-        .filter_map(|(v, is_set)| is_set.as_some(v)).collect();
+    let values: HashSet<i32> = table
+        .iter::<i32, bool>()
+        .flatten()
+        .filter_map(|(v, is_set)| is_set.as_some(v))
+        .collect();
     assert_eq!(values, orig_set);
 
     // Be value
     let table: LuaTable<_> = (&lua).push(orig_set.clone()).read().unwrap();
-    let values: HashSet<i32> = table.iter::<i32, bool>().flatten()
-        .filter_map(|(v, is_set)| is_set.as_some(v)).collect();
+    let values: HashSet<i32> = table
+        .iter::<i32, bool>()
+        .flatten()
+        .filter_map(|(v, is_set)| is_set.as_some(v))
+        .collect();
     assert_eq!(values, orig_set);
 }
 
@@ -115,16 +129,31 @@ pub fn read_array() {
     let lua = Lua::new();
 
     assert_eq!(lua.eval("return { 1, 2, 3 }").ok(), Some([1, 2, 3]));
-    assert_eq!(lua.eval("return { [1] = 1, [2] = 2, [3] = 3 }").ok(), Some([1, 2, 3]));
+    assert_eq!(
+        lua.eval("return { [1] = 1, [2] = 2, [3] = 3 }").ok(),
+        Some([1, 2, 3])
+    );
     assert_eq!(lua.eval("return { 1, 2 }").ok(), None::<[i32; 3]>);
     assert_eq!(lua.eval("return { 1, 2, 3, 4 }").ok(), None::<[i32; 3]>);
-    assert_eq!(lua.eval("return { [-1] = 1, [1] = 2, [2] = 3 }").ok(), None::<[i32; 3]>);
-    assert_eq!(lua.eval("return { [1] = 1, [3] = 3 }").ok(), None::<[i32; 3]>);
+    assert_eq!(
+        lua.eval("return { [-1] = 1, [1] = 2, [2] = 3 }").ok(),
+        None::<[i32; 3]>
+    );
+    assert_eq!(
+        lua.eval("return { [1] = 1, [3] = 3 }").ok(),
+        None::<[i32; 3]>
+    );
     assert_eq!(lua.eval("return { 1, 2, 'foo' }").ok(), None::<[i32; 3]>);
 
     assert_eq!(lua.eval("return { 1, 2 }").ok(), Some(E::Other(vec![1, 2])));
-    assert_eq!(lua.eval("return { 1, 2, 3 }").ok(), Some(E::Exact([1, 2, 3])));
-    assert_eq!(lua.eval("return { 1, 2, 3, 4 }").ok(), Some(E::Other(vec![1, 2, 3, 4])));
+    assert_eq!(
+        lua.eval("return { 1, 2, 3 }").ok(),
+        Some(E::Exact([1, 2, 3]))
+    );
+    assert_eq!(
+        lua.eval("return { 1, 2, 3, 4 }").ok(),
+        Some(E::Other(vec![1, 2, 3, 4]))
+    );
 
     #[derive(Debug, PartialEq, LuaRead)]
     enum E {
@@ -141,9 +170,18 @@ pub fn read_array_partial() {
 
     // XXX: strictly speaking lua table iteration key order is not defined so
     // this test may not work in some situations, but it seems to work for now
-    assert_eq!(lua.eval("return { 1, 2, 'foo', 4 }").ok(), None::<[DropCheck; 4]>);
+    assert_eq!(
+        lua.eval("return { 1, 2, 'foo', 4 }").ok(),
+        None::<[DropCheck; 4]>
+    );
     let dropped = unsafe {
-        DROPPED.as_ref().unwrap().borrow().iter().copied().collect::<Vec<i32>>()
+        DROPPED
+            .as_ref()
+            .unwrap()
+            .borrow()
+            .iter()
+            .copied()
+            .collect::<Vec<i32>>()
     };
     assert_eq!(dropped, [1, 2]);
 
@@ -185,7 +223,8 @@ pub fn reading_vec_works() {
 pub fn reading_vec_from_sparse_table_doesnt_work() {
     let lua = Lua::new();
 
-    lua.exec(r#"v = { [-1] = -1, [2] = 2, [42] = 42 }"#).unwrap();
+    lua.exec(r#"v = { [-1] = -1, [2] = 2, [42] = 42 }"#)
+        .unwrap();
 
     assert_eq!(lua.get("v"), None::<LuaSequence>);
 }
@@ -202,7 +241,8 @@ pub fn reading_vec_with_empty_table_works() {
 pub fn reading_vec_with_complex_indexes_doesnt_work() {
     let lua = Lua::new();
 
-    lua.exec(r#"v = { [-1] = -1, ["foo"] = 2, [{}] = 42 }"#).unwrap();
+    lua.exec(r#"v = { [-1] = -1, ["foo"] = 2, [{}] = 42 }"#)
+        .unwrap();
 
     assert_eq!(lua.get("v"), None::<LuaSequence>);
 }
@@ -230,7 +270,9 @@ pub fn reading_vec_set_from_lua_works() {
     let read: LuaSequence = lua.get("v").unwrap();
     assert_eq!(
         read,
-        [1., 2., 3.].iter().copied()
+        [1., 2., 3.]
+            .iter()
+            .copied()
             .map(AnyLuaValue::LuaNumber)
             .collect::<Vec<_>>()
     );
@@ -271,12 +313,22 @@ pub fn reading_hashmap_works() {
 pub fn reading_hashmap_from_sparse_table_works() {
     let lua = Lua::new();
 
-    lua.exec(r#"v = { [-1] = -1, [2] = 2, [42] = 42 }"#).unwrap();
+    lua.exec(r#"v = { [-1] = -1, [2] = 2, [42] = 42 }"#)
+        .unwrap();
 
     let read: LuaTableMap = lua.get("v").unwrap();
-    assert_eq!(read[&AnyHashableLuaValue::LuaNumber(-1)], AnyLuaValue::LuaNumber(-1.));
-    assert_eq!(read[&AnyHashableLuaValue::LuaNumber(2)], AnyLuaValue::LuaNumber(2.));
-    assert_eq!(read[&AnyHashableLuaValue::LuaNumber(42)], AnyLuaValue::LuaNumber(42.));
+    assert_eq!(
+        read[&AnyHashableLuaValue::LuaNumber(-1)],
+        AnyLuaValue::LuaNumber(-1.)
+    );
+    assert_eq!(
+        read[&AnyHashableLuaValue::LuaNumber(2)],
+        AnyLuaValue::LuaNumber(2.)
+    );
+    assert_eq!(
+        read[&AnyHashableLuaValue::LuaNumber(42)],
+        AnyLuaValue::LuaNumber(42.)
+    );
     assert_eq!(read.len(), 3);
 
     let read: HashMap<i32, i32> = lua.get("v").unwrap();
@@ -304,12 +356,22 @@ pub fn reading_hashmap_with_empty_table_works() {
 pub fn reading_hashmap_with_complex_indexes_works() {
     let lua = Lua::new();
 
-    lua.exec(r#"v = { [-1] = -1, ["foo"] = 2, [2.] = 42 }"#).unwrap();
+    lua.exec(r#"v = { [-1] = -1, ["foo"] = 2, [2.] = 42 }"#)
+        .unwrap();
 
     let read: LuaTableMap = lua.get("v").unwrap();
-    assert_eq!(read[&AnyHashableLuaValue::LuaNumber(-1)], AnyLuaValue::LuaNumber(-1.));
-    assert_eq!(read[&AnyHashableLuaValue::LuaString("foo".to_owned())], AnyLuaValue::LuaNumber(2.));
-    assert_eq!(read[&AnyHashableLuaValue::LuaNumber(2)], AnyLuaValue::LuaNumber(42.));
+    assert_eq!(
+        read[&AnyHashableLuaValue::LuaNumber(-1)],
+        AnyLuaValue::LuaNumber(-1.)
+    );
+    assert_eq!(
+        read[&AnyHashableLuaValue::LuaString("foo".to_owned())],
+        AnyLuaValue::LuaNumber(2.)
+    );
+    assert_eq!(
+        read[&AnyHashableLuaValue::LuaNumber(2)],
+        AnyLuaValue::LuaNumber(42.)
+    );
     assert_eq!(read.len(), 3);
 }
 
@@ -321,8 +383,14 @@ pub fn reading_hashmap_with_floating_indexes_works() {
     let read: LuaTableMap = lua.get("v").unwrap();
     // It works by truncating integers in some unspecified way
     // https://www.lua.org/manual/5.2/manual.html#lua_tointegerx
-    assert_eq!(read[&AnyHashableLuaValue::LuaNumber(-1)], AnyLuaValue::LuaNumber(-1.));
-    assert_eq!(read[&AnyHashableLuaValue::LuaNumber(2)], AnyLuaValue::LuaNumber(42.));
+    assert_eq!(
+        read[&AnyHashableLuaValue::LuaNumber(-1)],
+        AnyLuaValue::LuaNumber(-1.)
+    );
+    assert_eq!(
+        read[&AnyHashableLuaValue::LuaNumber(2)],
+        AnyLuaValue::LuaNumber(42.)
+    );
     assert_eq!(read.len(), 2);
 }
 
@@ -330,9 +398,18 @@ pub fn reading_heterogenous_hashmap_works() {
     let lua = Lua::new();
 
     let mut orig = HashMap::new();
-    orig.insert(AnyHashableLuaValue::LuaNumber(42), AnyLuaValue::LuaNumber(42.));
-    orig.insert(AnyHashableLuaValue::LuaString("foo".to_owned()), AnyLuaValue::LuaString("foo".to_owned()));
-    orig.insert(AnyHashableLuaValue::LuaBoolean(true), AnyLuaValue::LuaBoolean(true));
+    orig.insert(
+        AnyHashableLuaValue::LuaNumber(42),
+        AnyLuaValue::LuaNumber(42.),
+    );
+    orig.insert(
+        AnyHashableLuaValue::LuaString("foo".to_owned()),
+        AnyLuaValue::LuaString("foo".to_owned()),
+    );
+    orig.insert(
+        AnyHashableLuaValue::LuaBoolean(true),
+        AnyLuaValue::LuaBoolean(true),
+    );
 
     lua.set("v", &orig);
 
@@ -350,8 +427,15 @@ pub fn reading_hashmap_set_from_lua_works() {
     let read: HashMap<_, _> = lua.get("v").unwrap();
     assert_eq!(
         read,
-        [2., 3., 4.].iter().enumerate()
-            .map(|(k, v)| (AnyHashableLuaValue::LuaNumber((k + 1) as i32), AnyLuaValue::LuaNumber(*v))).collect::<HashMap<_, _>>());
+        [2., 3., 4.]
+            .iter()
+            .enumerate()
+            .map(|(k, v)| (
+                AnyHashableLuaValue::LuaNumber((k + 1) as i32),
+                AnyLuaValue::LuaNumber(*v)
+            ))
+            .collect::<HashMap<_, _>>()
+    );
 }
 
 pub fn read_wrong_type_fail() {
@@ -376,15 +460,13 @@ pub fn derive_struct_push() {
     }
 
     let lua = Lua::new();
-    let lua = lua.push(
-        &S {
-            i: 69,
-            s: "nice".into(),
-            boo: true,
-            table: vec![11, 12, 13],
-            r#struct: T { x: 3.14 },
-        }
-    );
+    let lua = lua.push(&S {
+        i: 69,
+        s: "nice".into(),
+        boo: true,
+        table: vec![11, 12, 13],
+        r#struct: T { x: 3.14 },
+    });
     let t: LuaTable<_> = lua.read().unwrap();
     assert_eq!(t.get::<i32, _>("i"), Some(69));
     assert_eq!(t.get::<String, _>("s"), Some("nice".into()));
@@ -413,15 +495,15 @@ pub fn derive_generic_struct_push() {
     }
 
     let lua = Lua::new();
-    let lua = lua.push(
-        &S {
-            a: 69,
-            table: vec![101, 102, 103],
-            r#struct: T { x: vec![("hello", 13), ("sailor", 37)] },
-            array: [3, 2, 1],
-            good_fruit: HashMap::from([("apple", true), ("pear", false)])
-        }
-    );
+    let lua = lua.push(&S {
+        a: 69,
+        table: vec![101, 102, 103],
+        r#struct: T {
+            x: vec![("hello", 13), ("sailor", 37)],
+        },
+        array: [3, 2, 1],
+        good_fruit: HashMap::from([("apple", true), ("pear", false)]),
+    });
     let s: LuaTable<_> = lua.read().unwrap();
     assert_eq!(s.get::<i32, _>("a"), Some(69));
     let t: LuaTable<_> = s.get("table").unwrap();
@@ -443,18 +525,41 @@ pub fn derive_generic_struct_push() {
 
 pub fn derive_struct_lua_read() {
     #[derive(Debug, PartialEq, Eq, LuaRead)]
-    struct S { i: i32, s: String, boo: bool, o: Option<i32> }
+    struct S {
+        i: i32,
+        s: String,
+        boo: bool,
+        o: Option<i32>,
+    }
 
     #[derive(Debug, PartialEq, Eq, LuaRead)]
-    struct T { i: i32, s: String }
+    struct T {
+        i: i32,
+        s: String,
+    }
 
     let lua = Lua::new();
-    lua.exec(r#"t = { i = 69, s = "booboo", boo = true }"#).unwrap();
+    lua.exec(r#"t = { i = 69, s = "booboo", boo = true }"#)
+        .unwrap();
     let s: S = lua.get("t").unwrap();
-    assert_eq!(s, S { i: 69, s: "booboo".into(), boo: true, o: None });
+    assert_eq!(
+        s,
+        S {
+            i: 69,
+            s: "booboo".into(),
+            boo: true,
+            o: None
+        }
+    );
 
     let t: T = lua.get("t").unwrap();
-    assert_eq!(t, T { i: 69, s: "booboo".into() });
+    assert_eq!(
+        t,
+        T {
+            i: 69,
+            s: "booboo".into()
+        }
+    );
 }
 
 pub fn derive_generic_struct_lua_read() {
@@ -470,12 +575,16 @@ pub fn derive_generic_struct_lua_read() {
     }
 
     let lua = Lua::new();
-    let s: S<String, f32, u32, u64, bool> = lua.eval("return {
+    let s: S<String, f32, u32, u64, bool> = lua
+        .eval(
+            "return {
         a = 'hell yeah',
         b = { 1, 2, 3 },
         d = 420,
         is_prime = { [479] = true, [439] = false }
-    }").unwrap();
+    }",
+        )
+        .unwrap();
     assert_eq!(s.a, "hell yeah");
     assert_eq!(s.b, [1.0, 2.0, 3.0]);
     assert_eq!(s.d, Some(420));
@@ -490,14 +599,14 @@ pub fn derive_enum_push() {
         Vec(f32, f32, f32),
         Tuple((f32, f32, f32)),
         S(S),
-        Struct {
-            i: i32,
-            s: String,
-        },
+        Struct { i: i32, s: String },
     }
 
     #[derive(Push, LuaRead, PartialEq, Eq, Debug)]
-    struct S { foo: i32, bar: String }
+    struct S {
+        foo: i32,
+        bar: String,
+    }
 
     let lua = Lua::new();
     let lua = lua.push(&E::Num(69));
@@ -505,12 +614,30 @@ pub fn derive_enum_push() {
     let lua = lua.push(&E::Str("hello".into()));
     assert_eq!((&lua).read::<String>().unwrap(), "hello");
     let lua = lua.push(&E::Vec(3.14, 2.71, 1.62));
-    assert_eq!((&lua).read::<(f32, f32, f32)>().unwrap(), (3.14, 2.71, 1.62));
+    assert_eq!(
+        (&lua).read::<(f32, f32, f32)>().unwrap(),
+        (3.14, 2.71, 1.62)
+    );
     let lua = lua.push(&E::Tuple((2.71, 1.62, 3.14)));
-    assert_eq!((&lua).read::<(f32, f32, f32)>().unwrap(), (2.71, 1.62, 3.14));
-    let lua = lua.push(&E::S(S { foo: 69, bar: "nice".into() }));
-    assert_eq!((&lua).read::<S>().unwrap(), S { foo: 69, bar: "nice".into() });
-    let lua = lua.push(&E::Struct { i: 420, s: "blaze".into() });
+    assert_eq!(
+        (&lua).read::<(f32, f32, f32)>().unwrap(),
+        (2.71, 1.62, 3.14)
+    );
+    let lua = lua.push(&E::S(S {
+        foo: 69,
+        bar: "nice".into(),
+    }));
+    assert_eq!(
+        (&lua).read::<S>().unwrap(),
+        S {
+            foo: 69,
+            bar: "nice".into()
+        }
+    );
+    let lua = lua.push(&E::Struct {
+        i: 420,
+        s: "blaze".into(),
+    });
     let t: LuaTable<_> = (&lua).read().unwrap();
     assert_eq!(t.get::<i32, _>("i").unwrap(), 420);
     assert_eq!(t.get::<String, _>("s").unwrap(), "blaze");
@@ -523,31 +650,42 @@ pub fn derive_generic_enum_push() {
         B(Foo, Bar),
         Tuple(T),
         S(S<Foo, Bar>),
-        Struct {
-            i: Foo,
-            s: Bar,
-        },
+        Struct { i: Foo, s: Bar },
         Str(&'a str),
         Array([A; N]),
     }
 
-    #[derive(Push)]
-    #[derive(LuaRead)]
-    struct S<Foo, Bar> { foo: Foo, bar: Bar }
+    #[derive(Push, LuaRead)]
+    struct S<Foo, Bar> {
+        foo: Foo,
+        bar: Bar,
+    }
 
     let lua = Lua::new();
     type E1<'a> = E<'a, u32, (f32, f32, f32), i64, String, 6>;
     let lua = lua.push(&E1::A(69));
     assert_eq!((&lua).read::<i32>().unwrap(), 69);
     let lua = lua.push(&E1::B(1337, "leet".into()));
-    assert_eq!((&lua).read::<(u32, String)>().unwrap(), (1337, "leet".into()));
+    assert_eq!(
+        (&lua).read::<(u32, String)>().unwrap(),
+        (1337, "leet".into())
+    );
     let lua = lua.push(&E1::Tuple((2.71, 1.62, 3.14)));
-    assert_eq!((&lua).read::<(f32, f32, f32)>().unwrap(), (2.71, 1.62, 3.14));
-    let lua = lua.push(&E1::S(S { foo: 69, bar: "nice".into() }));
+    assert_eq!(
+        (&lua).read::<(f32, f32, f32)>().unwrap(),
+        (2.71, 1.62, 3.14)
+    );
+    let lua = lua.push(&E1::S(S {
+        foo: 69,
+        bar: "nice".into(),
+    }));
     let s = (&lua).read::<S<i64, String>>().unwrap();
     assert_eq!(s.foo, 69);
     assert_eq!(s.bar, "nice");
-    let lua = lua.push(&E1::Struct { i: 420, s: "blaze".into() });
+    let lua = lua.push(&E1::Struct {
+        i: 420,
+        s: "blaze".into(),
+    });
     let t: LuaTable<_> = (&lua).read().unwrap();
     assert_eq!(t.get::<i32, _>("i").unwrap(), 420);
     assert_eq!(t.get::<String, _>("s").unwrap(), "blaze");
@@ -565,17 +703,16 @@ pub fn derive_push_into() {
         Vec(f32, f32, f32),
         Tuple((f32, f32, f32)),
         S(S),
-        Struct {
-            i: i32,
-            s: String,
-            b: bool,
-        },
+        Struct { i: i32, s: String, b: bool },
         Hello,
         Goodbye,
     }
 
     #[derive(PushInto, LuaRead, PartialEq, Eq, Debug)]
-    struct S { foo: i32, bar: String }
+    struct S {
+        foo: i32,
+        bar: String,
+    }
 
     let lua = Lua::new();
     let lua = lua.push(E::Num(69));
@@ -590,10 +727,23 @@ pub fn derive_push_into() {
     let lua = lua.push(E::Tuple((2.71, 1.62, 3.14)));
     assert_eq!((&lua).read().ok(), Some((2.71f32, 1.62f32, 3.14f32)));
 
-    let lua = lua.push(E::S(S { foo: 69, bar: "nice".into() }));
-    assert_eq!((&lua).read().ok(), Some(S { foo: 69, bar: "nice".into() }));
+    let lua = lua.push(E::S(S {
+        foo: 69,
+        bar: "nice".into(),
+    }));
+    assert_eq!(
+        (&lua).read().ok(),
+        Some(S {
+            foo: 69,
+            bar: "nice".into()
+        })
+    );
 
-    let lua = lua.push(E::Struct { i: 420, s: "blaze".into(), b: true });
+    let lua = lua.push(E::Struct {
+        i: 420,
+        s: "blaze".into(),
+        b: true,
+    });
     let t: LuaTable<_> = (&lua).read().unwrap();
     assert_eq!(t.get("i"), Some(420));
     assert_eq!(t.get("s"), Some("blaze".to_string()));
@@ -612,16 +762,16 @@ pub fn derive_generic_push_into() {
         Vec(Foo, Bar),
         Tuple(T),
         S(S<Foo, Bar>),
-        Struct {
-            i: Foo,
-            s: Bar,
-        },
+        Struct { i: Foo, s: Bar },
         Hello,
         Goodbye,
     }
 
     #[derive(PushInto, LuaRead)]
-    struct S<Foo, Bar> { foo: Foo, bar: Bar }
+    struct S<Foo, Bar> {
+        foo: Foo,
+        bar: Bar,
+    }
 
     let lua = Lua::new();
     type E = E0<u32, f32, String, (f32, f32, f32)>;
@@ -635,12 +785,18 @@ pub fn derive_generic_push_into() {
     let lua = lua.push(E::Tuple((2.71, 1.62, 3.14)));
     assert_eq!((&lua).read().ok(), Some((2.71f32, 1.62f32, 3.14f32)));
 
-    let lua = lua.push(E::S(S { foo: 69.0, bar: "nice".into() }));
+    let lua = lua.push(E::S(S {
+        foo: 69.0,
+        bar: "nice".into(),
+    }));
     let t: LuaTable<_> = (&lua).read().unwrap();
     assert_eq!(t.get("foo"), Some(69));
     assert_eq!(t.get("bar"), Some("nice".to_string()));
 
-    let lua = lua.push(E::Struct { i: 420.0, s: "blaze".into() });
+    let lua = lua.push(E::Struct {
+        i: 420.0,
+        s: "blaze".into(),
+    });
     let t: LuaTable<_> = (&lua).read().unwrap();
     assert_eq!(t.get("i"), Some(420));
     assert_eq!(t.get("s"), Some("blaze".to_string()));
@@ -659,14 +815,14 @@ pub fn derive_enum_lua_read() {
         Num(i32),
         Str(String),
         S(S),
-        Struct {
-            i: i32,
-            s: String,
-        },
+        Struct { i: i32, s: String },
     }
 
     #[derive(Push, LuaRead, PartialEq, Eq, Debug)]
-    struct S { foo: i32, bar: String }
+    struct S {
+        foo: i32,
+        bar: String,
+    }
 
     let lua = Lua::new();
     let res: E = lua.eval("return 7").unwrap();
@@ -676,19 +832,39 @@ pub fn derive_enum_lua_read() {
     let res: E = lua.eval("return 1.5, 2.5, 3.5").unwrap();
     assert_eq!(res, E::Vec(1.5, 2.5, 3.5));
     let res: E = lua.eval(r#"return { foo = 420, bar = "foo" }"#).unwrap();
-    assert_eq!(res, E::S(S { foo: 420, bar: "foo".into() }));
+    assert_eq!(
+        res,
+        E::S(S {
+            foo: 420,
+            bar: "foo".into()
+        })
+    );
     let res: E = lua.eval(r#"return { i = 69, s = "nice" }"#).unwrap();
-    assert_eq!(res, E::Struct { i: 69, s: "nice".into() });
+    assert_eq!(
+        res,
+        E::Struct {
+            i: 69,
+            s: "nice".into()
+        }
+    );
 
     let lua = lua.push((1, 2, 3));
     assert_eq!((&lua).read::<E>().unwrap(), E::Vec(1., 2., 3.));
-    let lua = lua.push(&S { foo: 314, bar: "pi".into() });
-    assert_eq!((&lua).read::<E>().unwrap(), E::S(S { foo: 314, bar: "pi".into() }));
+    let lua = lua.push(&S {
+        foo: 314,
+        bar: "pi".into(),
+    });
+    assert_eq!(
+        (&lua).read::<E>().unwrap(),
+        E::S(S {
+            foo: 314,
+            bar: "pi".into()
+        })
+    );
 }
 
 pub fn derive_generic_enum_lua_read() {
-    #[derive(Debug, PartialEq, Eq)]
-    #[derive(LuaRead)]
+    #[derive(Debug, PartialEq, Eq, LuaRead)]
     enum E<A, B, F, G, H, J, K, L, M> {
         A(A),
         B(Vec<B>),
@@ -698,18 +874,38 @@ pub fn derive_generic_enum_lua_read() {
     }
 
     #[derive(LuaRead, PartialEq, Eq, Debug)]
-    struct S<A, B> { foo: A, bar: B }
+    struct S<A, B> {
+        foo: A,
+        bar: B,
+    }
 
     let lua = Lua::new();
     type E1 = E<f64, String, String, u8, String, u8, u64, String, Vec<u8>>;
     let e: E1 = lua.eval("return 3.14").unwrap();
     assert_eq!(e, E::A(3.14));
     let e: E1 = lua.eval("return {'apple', 'banana', 'cytrus'}").unwrap();
-    assert_eq!(e, E::B(vec!["apple".into(), "banana".into(), "cytrus".into()]));
+    assert_eq!(
+        e,
+        E::B(vec!["apple".into(), "banana".into(), "cytrus".into()])
+    );
     let e: E1 = lua.eval("return { f = 'hi', g = { 1, 2, 3 } }").unwrap();
-    assert_eq!(e, E::D { f: "hi".into(), g: vec![1, 2, 3] });
-    let e: E1 = lua.eval("return { foo = 'foo', bar = { 0x62, 0x61, 0x72 } }").unwrap();
-    assert_eq!(e, E::L(S { foo: "foo".into(), bar: b"bar".as_slice().into() }));
+    assert_eq!(
+        e,
+        E::D {
+            f: "hi".into(),
+            g: vec![1, 2, 3]
+        }
+    );
+    let e: E1 = lua
+        .eval("return { foo = 'foo', bar = { 0x62, 0x61, 0x72 } }")
+        .unwrap();
+    assert_eq!(
+        e,
+        E::L(S {
+            foo: "foo".into(),
+            bar: b"bar".as_slice().into()
+        })
+    );
 }
 
 pub fn enum_variants_order_matters() {
@@ -732,53 +928,74 @@ pub fn enum_variants_order_matters() {
 
     let res: B = lua.eval("return 1, 2").unwrap();
     assert_eq!(res, B::Single(1));
-
 }
 
 pub fn struct_of_enums_vs_enum_of_structs() {
     let lua = Lua::new();
 
-    lua.exec(r#"v = {
+    lua.exec(
+        r#"v = {
         vec = {
             { x = 69 },
             { y = "hello" },
             { z = true },
         }
-    }"#).unwrap();
+    }"#,
+    )
+    .unwrap();
 
     let s: S = lua.get("v").unwrap();
-    assert_eq!(s,
+    assert_eq!(
+        s,
         S {
             vec: vec![
-                V { x: Some(69), .. Default::default() },
-                V { y: Some("hello".into()), .. Default::default() },
-                V { z: Some(true), .. Default::default() },
+                V {
+                    x: Some(69),
+                    ..Default::default()
+                },
+                V {
+                    y: Some("hello".into()),
+                    ..Default::default()
+                },
+                V {
+                    z: Some(true),
+                    ..Default::default()
+                },
             ],
         }
     );
 
     let t: T = lua.get("v").unwrap();
-    assert_eq!(t,
+    assert_eq!(
+        t,
         T {
-            vec: vec![
-                E::X { x: 69 },
-                E::Y { y: "hello".into() },
-                E::Z { z: true },
-            ],
+            vec: vec![E::X { x: 69 }, E::Y { y: "hello".into() }, E::Z { z: true },],
         }
     );
 
     #[derive(Debug, PartialEq, LuaRead)]
-    struct S { vec: Vec<V> }
+    struct S {
+        vec: Vec<V>,
+    }
 
     #[derive(Debug, PartialEq, LuaRead, Default)]
-    struct V { x: Option<i32>, y: Option<String>, z: Option<bool> }
+    struct V {
+        x: Option<i32>,
+        y: Option<String>,
+        z: Option<bool>,
+    }
 
     #[derive(Debug, PartialEq, LuaRead)]
-    struct T { vec: Vec<E> }
+    struct T {
+        vec: Vec<E>,
+    }
 
     #[derive(Debug, PartialEq, LuaRead)]
-    enum E { X { x: i32 }, Y { y: String, }, Z { z: bool } }
+    enum E {
+        X { x: i32 },
+        Y { y: String },
+        Z { z: bool },
+    }
 }
 
 pub fn derive_unit_structs_lua_read() {
@@ -829,7 +1046,9 @@ pub fn derive_unit_structs_lua_read() {
         String(String),
     }
 
-    let v: QueryResult = tarantool::lua_state().eval("return {
+    let v: QueryResult = tarantool::lua_state()
+        .eval(
+            "return {
         metadata = {
             {
                 name = 'id',
@@ -847,23 +1066,32 @@ pub fn derive_unit_structs_lua_read() {
         rows = {
             {1, '123', box.NULL}
         }
-    }").unwrap();
+    }",
+        )
+        .unwrap();
 
     assert_eq!(
         v,
         QueryResult {
             metadata: vec![
-                Column { name: "id".into(), r#type: Type::Integer },
-                Column { name: "name".into(), r#type: Type::String },
-                Column { name: "product_units".into(), r#type: Type::Integer },
+                Column {
+                    name: "id".into(),
+                    r#type: Type::Integer
+                },
+                Column {
+                    name: "name".into(),
+                    r#type: Type::String
+                },
+                Column {
+                    name: "product_units".into(),
+                    r#type: Type::Integer
+                },
             ],
-            rows: vec![
-                vec![
-                    Value::Number(1),
-                    Value::String("123".into()),
-                    Value::Null(tlua::Null),
-                ]
-            ]
+            rows: vec![vec![
+                Value::Number(1),
+                Value::String("123".into()),
+                Value::Null(tlua::Null),
+            ]]
         }
     );
 }
@@ -924,7 +1152,8 @@ pub fn error_during_push_iter() {
         hm.insert(S, 1);
         let (e, lua) = lua.try_push(&hm).unwrap_err();
         assert_eq!(e, TuplePushError::First(CustomError));
-        assert_eq!(e.to_string(),
+        assert_eq!(
+            e.to_string(),
             "Error during attempt to push multiple values: (CustomError, ...)"
         );
         lua
@@ -936,7 +1165,8 @@ pub fn error_during_push_iter() {
         hm.insert(1, S);
         let (e, lua) = lua.try_push(&hm).unwrap_err();
         assert_eq!(e, TuplePushError::Other(CustomError));
-        assert_eq!(e.to_string(),
+        assert_eq!(
+            e.to_string(),
             "Error during attempt to push multiple values: (ok, CustomError, ...)"
         );
         lua
@@ -962,7 +1192,8 @@ pub fn error_during_push_iter() {
         let _guard = LuaStackIntegrityGuard::new("push_vec_too_many", &lua);
         let (e, lua) = lua.try_push(vec![(1, 2, 3)]).unwrap_err();
         assert_eq!(e, tlua::PushIterError::TooManyValues);
-        assert_eq!(e.to_string(),
+        assert_eq!(
+            e.to_string(),
             "Can only push 1 or 2 values as lua table item"
         );
         lua
@@ -981,22 +1212,25 @@ pub fn error_during_push_iter() {
 pub fn push_custom_iter() {
     let lua = Lua::new();
 
-    let lua = lua.push_iter((1..=5).map(|i| i * i).filter(|i| i % 2 != 0)).unwrap();
+    let lua = lua
+        .push_iter((1..=5).map(|i| i * i).filter(|i| i % 2 != 0))
+        .unwrap();
     let t: LuaTable<_> = lua.read().unwrap();
     assert_eq!(t.get(1), Some(1_i32));
     assert_eq!(t.get(2), Some(9_i32));
     assert_eq!(t.get(3), Some(25_i32));
     assert_eq!(t.get(4), None::<i32>);
 
-    let lua = t.into_inner().push_iter(
-        ["a", "b", "c"].iter().zip(["foo", "bar", "baz"])
-    ).unwrap();
+    let lua = t
+        .into_inner()
+        .push_iter(["a", "b", "c"].iter().zip(["foo", "bar", "baz"]))
+        .unwrap();
     let t: LuaTable<_> = lua.read().unwrap();
     assert_eq!(t.get("a"), Some("foo".to_string()));
     assert_eq!(t.get("b"), Some("bar".to_string()));
     assert_eq!(t.get("c"), Some("baz".to_string()));
 
-    let res = t.into_inner().push_iter([(1,2,3), (4,5,6)].iter());
+    let res = t.into_inner().push_iter([(1, 2, 3), (4, 5, 6)].iter());
     assert!(res.is_err());
 }
 
@@ -1008,7 +1242,10 @@ pub fn push_custom_collection() {
 
     impl<T> MyVec<T> {
         fn new() -> Self {
-            Self { data: [None, None, None], last: 0 }
+            Self {
+                data: [None, None, None],
+                last: 0,
+            }
         }
 
         fn try_push(&mut self, v: T) -> Result<(), T> {
@@ -1088,8 +1325,7 @@ pub fn push_struct_of_nones() {
 }
 
 pub fn derive_tuple_structs() {
-    #[derive(Debug, PartialEq)]
-    #[derive(Push, PushInto, LuaRead)]
+    #[derive(Debug, PartialEq, Push, PushInto, LuaRead)]
     struct Int(i32);
 
     let lua = Lua::new();

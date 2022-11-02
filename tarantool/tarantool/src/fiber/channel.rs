@@ -1,15 +1,6 @@
-use std::{
-    marker::PhantomData,
-    mem::MaybeUninit,
-    ptr::NonNull,
-    rc::Rc,
-    time::Duration,
-};
+use std::{marker::PhantomData, mem::MaybeUninit, ptr::NonNull, rc::Rc, time::Duration};
 
-use crate::{
-    error::TarantoolErrorCode,
-    ffi::tarantool as ffi,
-};
+use crate::{error::TarantoolErrorCode, ffi::tarantool as ffi};
 
 ////////////////////////////////////////////////////////////////////////////////
 // Channel
@@ -48,7 +39,10 @@ impl<T> Channel<T> {
         let inner_raw = unsafe { ffi::fiber_channel_new(size) };
         let inner = NonNull::new(inner_raw)
             .expect("Memory allocation failure when creating fiber::Channel");
-        Self(Rc::new(ChannelBox { inner, marker: PhantomData }))
+        Self(Rc::new(ChannelBox {
+            inner,
+            marker: PhantomData,
+        }))
     }
 
     fn as_ptr(&self) -> *mut ffi::fiber_channel {
@@ -99,7 +93,8 @@ impl<T> SendTimeout<T> for Channel<T> {
             let ret_code = ffi::fiber_channel_put_msg_timeout(
                 self.as_ptr(),
                 ipc_value_ptr.cast(),
-                timeout.map(|t| t.as_secs_f64())
+                timeout
+                    .map(|t| t.as_secs_f64())
                     .unwrap_or(ffi::TIMEOUT_INFINITY),
             );
 
@@ -132,7 +127,8 @@ impl<T> RecvTimeout<T> for Channel<T> {
             let ret_code = ffi::fiber_channel_get_msg_timeout(
                 self.as_ptr(),
                 ipc_msg_ptr_uninit.as_mut_ptr(),
-                timeout.map(|t| t.as_secs_f64())
+                timeout
+                    .map(|t| t.as_secs_f64())
                     .unwrap_or(ffi::TIMEOUT_INFINITY),
             );
 
@@ -178,11 +174,7 @@ pub trait SendTimeout<T> {
     ///
     /// This function may perform a **yield** in case the channel buffer is full
     /// and there are no readers ready to receive the message.
-    fn send_maybe_timeout(
-        &self,
-        t: T,
-        timeout: Option<Duration>,
-    ) -> Result<(), SendError<T>>
+    fn send_maybe_timeout(&self, t: T, timeout: Option<Duration>) -> Result<(), SendError<T>>
     where
         T: 'static;
 
@@ -354,7 +346,7 @@ macro_rules! iter_struct {
     }
 }
 
-iter_struct!{
+iter_struct! {
     Iter['a, T](&'a Channel<T>) [where T: 'a] |self| { self.0.recv() }
     TryIter['a, T](&'a Channel<T>) [where T: 'a] |self| { self.0.try_recv().ok() }
     IntoIter[T](Channel<T>) |self| { self.0.recv() }
@@ -409,4 +401,3 @@ impl From<RecvError> for TryRecvError {
         }
     }
 }
-

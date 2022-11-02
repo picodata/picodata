@@ -1,13 +1,7 @@
 #![allow(clippy::redundant_allocation)]
-use std::{
-    cell::RefCell,
-    rc::Rc,
-    time::Duration,
-};
+use std::{cell::RefCell, rc::Rc, time::Duration};
 
-use tarantool::fiber::{
-    fiber_yield, is_cancelled, sleep, Cond, Fiber, FiberAttr
-};
+use tarantool::fiber::{fiber_yield, is_cancelled, sleep, Cond, Fiber, FiberAttr};
 
 pub fn fiber_new() {
     let mut fiber = Fiber::new("test_fiber", &mut |_| 0);
@@ -65,14 +59,13 @@ pub fn fiber_wake_multiple() {
     let res = Rc::new(RefCell::new(vec![]));
     let mut fibers = vec![];
     for (i, c) in (1..).zip(&['a', 'b', 'c']) {
-        let mut fiber = Fiber::new(
-            &format!("test_fiber_{}", c),
-            &mut |r: Box<Rc<RefCell<Vec<i32>>>>| {
-                fiber_yield();
-                r.borrow_mut().push(i);
-                0
-            }
-        );
+        let mut fiber = Fiber::new(&format!("test_fiber_{}", c), &mut |r: Box<
+            Rc<RefCell<Vec<i32>>>,
+        >| {
+            fiber_yield();
+            r.borrow_mut().push(i);
+            0
+        });
         fiber.start(res.clone());
         fiber.wakeup();
         fibers.push(fiber);

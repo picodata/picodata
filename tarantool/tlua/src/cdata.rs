@@ -1,11 +1,11 @@
-use crate::{AsLua, LuaState, LuaRead, Push, PushInto, PushOneInto};
-use crate::object::{FromObject, Object};
-use crate::lua_functions::LuaFunction;
-use std::os::raw::{c_char, c_void};
-use std::cell::UnsafeCell;
-use std::num::NonZeroI32;
-use std::convert::TryFrom;
 use crate::ffi;
+use crate::lua_functions::LuaFunction;
+use crate::object::{FromObject, Object};
+use crate::{AsLua, LuaRead, LuaState, Push, PushInto, PushOneInto};
+use std::cell::UnsafeCell;
+use std::convert::TryFrom;
+use std::num::NonZeroI32;
+use std::os::raw::{c_char, c_void};
 
 ////////////////////////////////////////////////////////////////////////////////
 /// CDataOnStack
@@ -92,7 +92,10 @@ where
     pub fn try_as_bytes_mut(&mut self) -> Option<&mut [u8]> {
         match unsafe { *self.data.get() } {
             CDataRef::Slice(slice) => unsafe {
-                Some(std::slice::from_raw_parts_mut(slice.as_ptr() as *mut _, slice.len()))
+                Some(std::slice::from_raw_parts_mut(
+                    slice.as_ptr() as *mut _,
+                    slice.len(),
+                ))
             },
             CDataRef::Ptr(_) => None,
         }
@@ -117,9 +120,7 @@ where
     #[inline(always)]
     pub fn data_mut(&mut self) -> &mut [u8] {
         let data = self.data();
-        unsafe {
-            std::slice::from_raw_parts_mut(data.as_ptr() as *mut _, data.len())
-        }
+        unsafe { std::slice::from_raw_parts_mut(data.as_ptr() as *mut _, data.len()) }
     }
 
     /// Return the ctypeid of the cdata.
@@ -208,11 +209,7 @@ where
 
     unsafe fn from_obj(inner: Object<L>) -> Self {
         let mut ctypeid = 0;
-        let cdata = ffi::luaL_checkcdata(
-            inner.as_lua(),
-            inner.index().into(),
-            &mut ctypeid,
-        );
+        let cdata = ffi::luaL_checkcdata(inner.as_lua(), inner.index().into(), &mut ctypeid);
         Self {
             inner,
             data: UnsafeCell::new(CDataRef::Ptr(cdata)),
@@ -245,8 +242,7 @@ where
 {
     #[inline]
     fn lua_read_at_position(lua: L, index: NonZeroI32) -> Result<Self, L> {
-        Self::try_from_obj(Object::new(lua, index))
-            .map_err(Object::into_guard)
+        Self::try_from_obj(Object::new(lua, index)).map_err(Object::into_guard)
     }
 }
 
@@ -422,12 +418,11 @@ where
     T: AsCData,
 {
     fn lua_read_at_position(lua: L, index: NonZeroI32) -> Result<Self, L> {
-        CDataOnStack::lua_read_at_position(lua, index)
-            .and_then(|data| {
-                match data.try_downcast_into() {
-                    Ok(value) => Ok(CData(value)),
-                    Err(data) => Err(data.inner.into_guard()),
-                }
-            })
+        CDataOnStack::lua_read_at_position(lua, index).and_then(|data| {
+            match data.try_downcast_into() {
+                Ok(value) => Ok(CData(value)),
+                Err(data) => Err(data.inner.into_guard()),
+            }
+        })
     }
 }

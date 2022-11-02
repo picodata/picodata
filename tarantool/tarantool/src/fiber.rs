@@ -24,20 +24,20 @@ use ::va_list::{VaList, VaPrimitive};
 #[cfg(all(target_arch = "aarch64", target_os = "macos"))]
 use crate::va_list::{VaList, VaPrimitive};
 
-use crate::{c_ptr, set_error};
 use crate::error::{TarantoolError, TarantoolErrorCode};
-use crate::ffi::{tarantool as ffi, lua};
+use crate::ffi::{lua, tarantool as ffi};
 use crate::Result;
+use crate::{c_ptr, set_error};
 
 pub mod channel;
 
 pub use channel::{
-    Channel, SendTimeout, RecvTimeout, SendError, RecvError, TrySendError, TryRecvError,
+    Channel, RecvError, RecvTimeout, SendError, SendTimeout, TryRecvError, TrySendError,
 };
 
 pub mod mutex;
-pub use mutex::Mutex;
 use crate::ffi::tarantool::fiber_sleep;
+pub use mutex::Mutex;
 
 macro_rules! impl_debug_stub {
     ($t:ident $($p:tt)*) => {
@@ -117,7 +117,7 @@ pub struct Fiber<'a, T: 'a> {
     phantom: PhantomData<&'a T>,
 }
 
-impl_debug_stub!{Fiber<'a, T>}
+impl_debug_stub! {Fiber<'a, T>}
 
 impl<'a, T> Fiber<'a, T> {
     /// Create a new fiber.
@@ -260,7 +260,7 @@ pub struct Builder<F> {
     f: F,
 }
 
-impl_debug_stub!{Builder<F>}
+impl_debug_stub! {Builder<F>}
 
 impl Builder<NoFunc> {
     /// Generates the base configuration for spawning a fiber, from which
@@ -338,13 +338,11 @@ impl<F> Builder<F> {
 }
 
 macro_rules! inner_spawn {
-    ($self:expr, $invocation:tt) => {
-        {
-            let Self { name, attr, f } = $self;
-            let name = name.unwrap_or_else(|| "<rust>".into());
-            Ok(Fyber::$invocation(name, f, attr.as_ref())?.spawn())
-        }
-    };
+    ($self:expr, $invocation:tt) => {{
+        let Self { name, attr, f } = $self;
+        let name = name.unwrap_or_else(|| "<rust>".into());
+        Ok(Fyber::$invocation(name, f, attr.as_ref())?.spawn())
+    }};
 }
 
 impl<C> Builder<C>
@@ -402,7 +400,7 @@ pub struct Fyber<C, I> {
     _invocation: PhantomData<I>,
 }
 
-impl_debug_stub!{Fyber<C, I>}
+impl_debug_stub! {Fyber<C, I>}
 
 impl<C, I> Fyber<C, I>
 where
@@ -410,14 +408,11 @@ where
     I: Invocation,
 {
     fn new(name: String, callee: C, attr: Option<&FiberAttr>) -> Result<Self> {
-        let cname = CString::new(name)
-            .expect("fiber name may not contain interior null bytes");
+        let cname = CString::new(name).expect("fiber name may not contain interior null bytes");
 
         let inner_raw = unsafe {
             if let Some(attr) = attr {
-                ffi::fiber_new_ex(
-                    cname.as_ptr(), attr.inner, Some(Self::trampoline)
-                )
+                ffi::fiber_new_ex(cname.as_ptr(), attr.inner, Some(Self::trampoline))
             } else {
                 ffi::fiber_new(cname.as_ptr(), Some(Self::trampoline))
             }
@@ -455,11 +450,7 @@ impl<C> Fyber<C, Immediate>
 where
     C: Callee,
 {
-    pub fn immediate(
-        name: String,
-        callee: C,
-        attr: Option<&FiberAttr>,
-    ) -> Result<Self> {
+    pub fn immediate(name: String, callee: C, attr: Option<&FiberAttr>) -> Result<Self> {
         Self::new(name, callee, attr)
     }
 }
@@ -468,11 +459,7 @@ impl<C> Fyber<C, Deferred>
 where
     C: Callee,
 {
-    pub fn deferred(
-        name: String,
-        callee: C,
-        attr: Option<&FiberAttr>,
-    ) -> Result<Self> {
+    pub fn deferred(name: String, callee: C, attr: Option<&FiberAttr>) -> Result<Self> {
         Self::new(name, callee, attr)
     }
 }
@@ -485,7 +472,7 @@ pub struct LuaFiber<C> {
     callee: C,
 }
 
-impl_debug_stub!{LuaFiber<C>}
+impl_debug_stub! {LuaFiber<C>}
 
 /// Deferred non-yielding fiber implemented using **lua** api. This (hopefully)
 /// temporary implementation is a workaround. Tarantool C API lacks the method
@@ -495,7 +482,6 @@ impl_debug_stub!{LuaFiber<C>}
 impl<C> LuaFiber<C>
 where
     C: LuaCallee,
-
 {
     pub fn new(callee: C) -> Self {
         Self { callee }
@@ -511,12 +497,11 @@ where
             lua::lua_getfield(l, -1, c_ptr!("new"));
             impl_details::push_userdata(l, callee.into_inner());
             lua::lua_pushcclosure(l, Self::trampoline, 1);
-            impl_details::guarded_pcall(l, 1, 1)
-                .map_err(|e| {
-                    // Pop the fiber module from the stack
-                    lua::lua_pop(l, 1);
-                    e
-                })?;
+            impl_details::guarded_pcall(l, 1, 1).map_err(|e| {
+                // Pop the fiber module from the stack
+                lua::lua_pop(l, 1);
+                e
+            })?;
             lua::lua_getfield(l, -1, c_ptr!("set_joinable"));
             lua::lua_pushvalue(l, -2);
             lua::lua_pushboolean(l, true as i32);
@@ -536,17 +521,16 @@ where
     unsafe extern "C" fn trampoline(l: *mut lua::lua_State) -> i32 {
         let ud_ptr = lua::lua_touserdata(l, lua::lua_upvalueindex(1));
 
-        let f = (ud_ptr as *mut Option<C::Function>).as_mut()
+        let f = (ud_ptr as *mut Option<C::Function>)
+            .as_mut()
             .unwrap_or_else(||
                 // lua_touserdata returned NULL
-                tlua::error!(l, "failed to extract upvalue")
-            )
+                tlua::error!(l, "failed to extract upvalue"))
             // put None back into userdata
             .take()
             .unwrap_or_else(||
                 // userdata originally contained None
-                tlua::error!(l, "rust FnOnce callback was called more than once")
-            );
+                tlua::error!(l, "rust FnOnce callback was called more than once"));
 
         // call f and drop it afterwards
         let res = f();
@@ -566,11 +550,14 @@ pub struct LuaJoinHandle<'f, T> {
     marker: PhantomData<(&'f (), T)>,
 }
 
-impl_debug_stub!{LuaJoinHandle<'f, T>}
+impl_debug_stub! {LuaJoinHandle<'f, T>}
 
 impl<'f, T> LuaJoinHandle<'f, T> {
     fn new(fiber_ref: i32) -> Self {
-        Self { fiber_ref: Some(fiber_ref), marker: PhantomData }
+        Self {
+            fiber_ref: Some(fiber_ref),
+            marker: PhantomData,
+        }
     }
 
     pub fn join(mut self) -> T {
@@ -582,7 +569,8 @@ impl<'f, T> LuaJoinHandle<'f, T> {
                 .map_err(|e| panic!("Unrecoverable lua failure: {}", e))
                 .unwrap();
             let ud_ptr = lua::lua_touserdata(guard.as_lua(), -1);
-            let res = (ud_ptr as *mut Option<T>).as_mut()
+            let res = (ud_ptr as *mut Option<T>)
+                .as_mut()
                 .expect("fiber:join must return correct userdata")
                 .take()
                 .expect("data can only be taken once from the UDBox");
@@ -609,7 +597,7 @@ pub struct LuaUnitJoinHandle<'f> {
     marker: PhantomData<&'f ()>,
 }
 
-impl_debug_stub!{LuaUnitJoinHandle<'f>}
+impl_debug_stub! {LuaUnitJoinHandle<'f>}
 
 impl<'f> LuaUnitJoinHandle<'f> {
     fn new(fiber_ref: i32) -> Self {
@@ -642,15 +630,13 @@ impl<'f> Drop for LuaUnitJoinHandle<'f> {
 
 mod impl_details {
     use super::*;
-    use crate::tlua::{AsLua, StaticLua, LuaError, PushGuard};
+    use crate::tlua::{AsLua, LuaError, PushGuard, StaticLua};
 
     pub(super) unsafe fn lua_error_from_top(l: *mut lua::lua_State) -> LuaError {
         let mut len = std::mem::MaybeUninit::uninit();
         let data = lua::lua_tolstring(l, -1, len.as_mut_ptr());
         assert!(!data.is_null());
-        let msg_bytes = std::slice::from_raw_parts(
-            data as *mut u8, len.assume_init()
-        );
+        let msg_bytes = std::slice::from_raw_parts(data as *mut u8, len.assume_init());
         let msg = String::from_utf8_lossy(msg_bytes);
         tlua::LuaError::ExecutionError(msg)
     }
@@ -660,9 +646,10 @@ mod impl_details {
     /// In case of error, pops the error from the stack and wraps it into
     /// tarantool::error::Error.
     pub(super) unsafe fn guarded_pcall(
-        lptr: *mut lua::lua_State, nargs: i32, nresults: i32
-    ) -> Result<()>
-    {
+        lptr: *mut lua::lua_State,
+        nargs: i32,
+        nresults: i32,
+    ) -> Result<()> {
         match lua::lua_pcall(lptr, nargs, nresults, 0) {
             lua::LUA_OK => Ok(()),
             lua::LUA_ERRRUN => {
@@ -670,7 +657,7 @@ mod impl_details {
                 lua::lua_pop(lptr, 1);
                 Err(err)
             }
-            code => panic!("lua_pcall: Unrecoverable failure code: {}", code)
+            code => panic!("lua_pcall: Unrecoverable failure code: {}", code),
         }
     }
 
@@ -684,12 +671,11 @@ mod impl_details {
         // fiber instance can now be garbage collected by lua
         lua::luaL_unref(lptr, lua::LUA_REGISTRYINDEX, f_ref);
 
-        guarded_pcall(lptr, 1, 2)
-            .map_err(|e| {
-                // Pop the fiber value from the stack
-                lua::lua_pop(lptr, 1);
-                e
-            })?;
+        guarded_pcall(lptr, 1, 2).map_err(|e| {
+            // Pop the fiber value from the stack
+            lua::lua_pop(lptr, 1);
+            e
+        })?;
 
         // 3 values on the stack that need to be dropped:
         // 1) fiber; 2) flag; 3) return value / error
@@ -747,7 +733,8 @@ mod impl_details {
         /// and if not it drops the value.
         unsafe extern "C" fn wrap_gc<T>(lua: *mut ffi::lua_State) -> i32 {
             let ud_ptr = ffi::lua_touserdata(lua, 1);
-            let ud = ud_ptr.cast::<UDBox<T>>()
+            let ud = ud_ptr
+                .cast::<UDBox<T>>()
                 .as_mut()
                 .expect("__gc called with userdata pointing to NULL");
             drop(ud.take());
@@ -1048,8 +1035,8 @@ pub struct JoinHandle<'f, T> {
     marker: PhantomData<&'f ()>,
 }
 
-impl_debug_stub!{JoinHandle<'f, T>}
-impl_eq_hash!{JoinHandle<'f, T>}
+impl_debug_stub! {JoinHandle<'f, T>}
+impl_eq_hash! {JoinHandle<'f, T>}
 
 impl<'f, T> JoinHandle<'f, T> {
     fn new(inner: NonNull<ffi::Fiber>, result: Box<UnsafeCell<Option<T>>>) -> Self {
@@ -1091,8 +1078,8 @@ pub struct UnitJoinHandle<'f> {
     marker: PhantomData<&'f ()>,
 }
 
-impl_debug_stub!{UnitJoinHandle<'f>}
-impl_eq_hash!{UnitJoinHandle<'f>}
+impl_debug_stub! {UnitJoinHandle<'f>}
+impl_eq_hash! {UnitJoinHandle<'f>}
 
 impl<'f> UnitJoinHandle<'f> {
     fn new(inner: NonNull<ffi::Fiber>) -> Self {
@@ -1312,7 +1299,7 @@ pub fn r#yield() -> Result<()> {
     unsafe { fiber_sleep(0f64) };
     if is_cancelled() {
         set_error!(TarantoolErrorCode::ProcLua, "fiber is cancelled");
-        return Err(TarantoolError::last().into())
+        return Err(TarantoolError::last().into());
     }
     Ok(())
 }
@@ -1441,9 +1428,7 @@ impl Cond {
     /// - `true` on [signal()](#method.signal) call or a spurious wake up.
     /// - `false` on timeout, diag is set to `TimedOut`
     pub fn wait_timeout(&self, timeout: Duration) -> bool {
-        unsafe {
-            ffi::fiber_cond_wait_timeout(self.inner, timeout.as_secs_f64()) >= 0
-        }
+        unsafe { ffi::fiber_cond_wait_timeout(self.inner, timeout.as_secs_f64()) >= 0 }
     }
 
     /// Shortcut for [wait_timeout()](#method.wait_timeout).
