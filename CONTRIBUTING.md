@@ -1,14 +1,14 @@
-## Contributing to Picodata
+# Contributing to Picodata
 This document describes contributing to Picodata, primarily the ways you can build and test it.
 
-### Building Picodata from source
-#### Required build tools
+## Building Picodata from source
+### Required build tools
 - Rust and Cargo 1.63 or newer
 - Cmake 3.16 or newer
 - gcc, g++
 - libstc++-static
 
-#### Prerequisites for CentOS 8
+### Prerequisites for CentOS 8
 Use the following commands to install the required build prerequisites. Note that you'll need recent Rust and Cargo versions installed using the recommended way from [rustup.rs](rustup.rs):
 ```bash
 sudo dnf config-manager --set-enabled powertools
@@ -16,13 +16,13 @@ sudo dnf in -y gcc gcc-c++ make cmake git patch libstdc++-static
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 source "$HOME/.cargo/env"
 ```
-#### Prerequisites for Ubuntu 22.04
+### Prerequisites for Ubuntu 22.04
 Use the following command to install the required build prerequisites. Note that Ubuntu 22.04 provides recent Rust and Cargo versions, so it's preferable to install it via `apt-get`:
 ```bash
 sudo apt-get install build-essential cargo git cmake -y
 ```
 
-#### Prerequisites for Alt Workstation p10
+### Prerequisites for Alt Workstation p10
 Use the following commands to install the required build prerequisites. Note that you'll need recent Rust and Cargo versions installed using the recommended way from [rustup.rs](rustup.rs):
 ```bash
 su -
@@ -31,7 +31,7 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 source "$HOME/.cargo/env"
 ```
 
-#### Getting and building the source code
+### Getting and building the source code
 ```bash
 git clone https://git.picodata.io/picodata/picodata/picodata.git
 cd picodata
@@ -49,10 +49,10 @@ cargo build --release
 ```
 The resulting binaries should appear under the  `target` subdirectory.
 
-### Integration testing with pytest
+## Integration testing with pytest
 The following refers to Ubuntu 20.04 LTS. The mileage with other distributions may vary.
 
-#### Installation
+### Installation
 
 1. Install Python 3.10
 
@@ -75,13 +75,13 @@ The following refers to Ubuntu 20.04 LTS. The mileage with other distributions m
     python3.10 -m pipenv install --deploy
     ```
 
-#### Adding dependencies
+### Adding dependencies
 
 ```bash
 python3.10 -m pipenv install <dependency-package-name>
 ```
 
-#### Running
+### Running
 
 ```bash
 python3.10 -m pipenv run pytest
@@ -97,7 +97,7 @@ pytest
 pipenv run lint
 ```
 
-#### Running tests in parallel with pytest-xdist
+### Running tests in parallel with pytest-xdist
 
 ```bash
 python3.10 -m pipenv run pytest -n 20
