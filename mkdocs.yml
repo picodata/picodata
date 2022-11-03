@@ -10,6 +10,7 @@ nav:
     - Описание параметров запуска: cli.md
     - Инструкция по развертыванию: deploy.md
     - Общая схема инициализации кластера: clustering.md
+    - Возможности кластерного SQL: sql_support.md
 
 theme:
     name: material
