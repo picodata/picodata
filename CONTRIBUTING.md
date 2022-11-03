@@ -102,3 +102,54 @@ pipenv run lint
 ```bash
 python3.10 -m pipenv run pytest -n 20
 ```
+
+## Benchmarks and flamegraphs
+
+### Benchmarks
+
+There is simple benchmark based on pytest scenario. Quick run it with
+
+```bash
+make benchmark
+```
+
+The benchmark consist of two parts: benchmark of tarantool space operations (replaces) and benchmark of picodata's raft writes to leader (NOPs).
+You will see both results.
+
+The benchmark designed for quick estimate of current application performance.
+
+### Flamegraphs
+
+It is possible to make [flamegraphs](https://github.com/brendangregg/FlameGraph) while benchmarking debug build.
+
+- Install `perf`:
+  ```bash
+  apt install -y linux-tools-common linux-tools-generic linux-tools-`uname -r`
+  ```
+
+- Install FlameGraph script:
+  ```bash
+  cd .. && git clone https://github.com/brendangregg/FlameGraph.git ; cd -
+  ```
+  Your folder structure will look like this:
+  ```
+  ..
+  picodata (you here)
+  FlameGraph
+  (other folders and files)
+  ```
+
+- Set kernel options for `perf`:
+  ```bash
+  sudo echo 0 > /proc/sys/kernel/perf_event_paranoid
+  ```
+  ```bash
+  sudo echo 0 > /proc/sys/kernel/kptr_restrict
+  ```
+
+- Now run
+  ```bash
+  make flamegraph
+  ```
+
+  Flamegraphs will be placed in `tmp/flamegraph` dir.
