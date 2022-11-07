@@ -935,7 +935,9 @@ fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
 
         ////////////////////////////////////////////////////////////////////////
         // conf change
-        if let Some(conf_change) = raft_conf_change(&storage.raft, &peers) {
+        let voters = storage.raft.voters().unwrap().unwrap_or_default();
+        let learners = storage.raft.learners().unwrap().unwrap_or_default();
+        if let Some(conf_change) = raft_conf_change(&peers, &voters, &learners) {
             // main_loop gives the warranty that every ProposeConfChange
             // will sometimes be handled and there's no need in timeout.
             // It also guarantees that the notification will arrive only

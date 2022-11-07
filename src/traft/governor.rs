@@ -2,12 +2,10 @@ use ::raft::prelude as raft;
 
 use std::collections::HashMap;
 use std::collections::HashSet;
-use std::iter::FromIterator as _;
 
 use crate::traft::failover;
 use crate::traft::Peer;
 use crate::traft::RaftId;
-use crate::traft::RaftSpaceAccess;
 
 fn conf_change_single(node_id: RaftId, is_voter: bool) -> raft::ConfChangeSingle {
     let change_type = if is_voter {
@@ -23,23 +21,23 @@ fn conf_change_single(node_id: RaftId, is_voter: bool) -> raft::ConfChangeSingle
 }
 
 pub(crate) fn raft_conf_change(
-    storage: &RaftSpaceAccess,
     peers: &[Peer],
+    voters: &[RaftId],
+    learners: &[RaftId],
 ) -> Option<raft::ConfChangeV2> {
-    let voter_ids: HashSet<RaftId> =
-        HashSet::from_iter(storage.voters().unwrap().unwrap_or_default());
-    let learner_ids: HashSet<RaftId> =
-        HashSet::from_iter(storage.learners().unwrap().unwrap_or_default());
+    let voters: HashSet<RaftId> = voters.iter().cloned().collect();
+    let learners: HashSet<RaftId> = learners.iter().cloned().collect();
+
     let peer_is_active: HashMap<RaftId, bool> = peers
         .iter()
         .map(|peer| (peer.raft_id, peer.is_online()))
         .collect();
 
-    let (active_voters, to_demote): (Vec<RaftId>, Vec<RaftId>) = voter_ids
+    let (active_voters, to_demote): (Vec<RaftId>, Vec<RaftId>) = voters
         .iter()
         .partition(|id| peer_is_active.get(id).copied().unwrap_or(false));
 
-    let active_learners: Vec<RaftId> = learner_ids
+    let active_learners: Vec<RaftId> = learners
         .iter()
         .copied()
         .filter(|id| peer_is_active.get(id).copied().unwrap_or(false))
@@ -48,7 +46,7 @@ pub(crate) fn raft_conf_change(
     let new_peers: Vec<RaftId> = peer_is_active
         .iter()
         .map(|(&id, _)| id)
-        .filter(|id| !voter_ids.contains(id) && !learner_ids.contains(id))
+        .filter(|id| !voters.contains(id) && !learners.contains(id))
         .collect();
 
     let mut changes: Vec<raft::ConfChangeSingle> = Vec::new();
