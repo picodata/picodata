@@ -209,8 +209,8 @@ def test_raft_log(instance: Instance):
     raft_log = instance.call("picolib.raft_log", dict(return_string=True))
 
     def strip_spaces(s: str):
-        s = re.sub(r"( +\| +)|(\| +)|( +\|)", "|", s)
-        s = re.sub(r"(\-+\+\-+)|(\+\-+)|(\-+\+)", "+", s)
+        s = re.sub(r"[ ]*\|[ ]*", "|", s)
+        s = re.sub(r"[-]*\+[-]*", "+", s)
         return s
 
     expected = """\
