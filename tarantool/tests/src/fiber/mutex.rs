@@ -26,14 +26,21 @@ pub fn try_lock() {
 
 pub fn debug() {
     let m = Mutex::new(0);
-    let mut guard = m.lock();
-    let s = start(|| format!("{:?}", m)).join();
-    assert_eq!(&s[..21], "Mutex { data: <locked");
-    assert_eq!(&s[s.len() - 7..], ">, .. }");
+
+    let (file, line, mut guard) = (file!(), line!(), m.lock());
+
+    assert_eq!(
+        start(|| format!("{:?}", m)).join(),
+        format!("Mutex {{ data: <locked at {file}:{line}>, .. }}")
+    );
+
     *guard = 13;
-    Mutex::unlock(guard);
-    let s = start(|| format!("{:?}", m)).join();
-    assert_eq!(s, "Mutex { data: 13, .. }");
+    drop(guard);
+
+    assert_eq!(
+        start(|| format!("{:?}", m)).join(),
+        "Mutex { data: 13, .. }"
+    );
 }
 
 pub fn advanced() {

@@ -5,6 +5,7 @@ use std::{
 };
 
 use crate::fiber::{Latch, LatchGuard};
+use crate::unwrap_or;
 
 #[cfg(debug_assertions)]
 use std::{cell::Cell, panic::Location};
@@ -73,7 +74,7 @@ impl<T: ?Sized> Mutex<T> {
     #[track_caller]
     pub fn lock(&self) -> MutexGuard<'_, T> {
         #[cfg(debug_assertions)]
-        let guard = self.latch.try_lock().unwrap_or_else(|| {
+        let guard = unwrap_or!(self.latch.try_lock(), {
             self.log_lock_location();
             self.latch.lock()
         });
@@ -183,14 +184,16 @@ impl<T: ?Sized> Mutex<T> {
 
     #[cfg(debug_assertions)]
     #[inline]
+    #[track_caller]
     fn log_lock_location(&self) {
         use crate::log::{say, SayLevel};
         use std::borrow::Cow;
 
+        let caller = Location::caller();
         let msg: Cow<str> = if let Some(loc) = self.lock_location.get() {
-            format!("mutex was locked at {loc}").into()
+            format!("can't lock mutex at {caller}, already locked at {loc}").into()
         } else {
-            "mutex was locked at unknown location".into()
+            format!("can't lock mutex at {caller}, already locked at unknown location").into()
         };
         say(
             SayLevel::Verbose,
@@ -230,7 +233,7 @@ impl<T: ?Sized + fmt::Debug> fmt::Debug for Mutex<T> {
                 impl fmt::Debug for LockedPlaceholder {
                     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
                         if let Some(loc) = self.0 {
-                            write!(f, "<locked at {loc}>")
+                            write!(f, "<locked at {}:{}>", loc.file(), loc.line())
                         } else {
                             f.write_str("<locked>")
                         }
