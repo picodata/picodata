@@ -3,6 +3,7 @@ import os
 import funcy  # type: ignore
 import pytest
 import signal
+import re
 
 from conftest import (
     Instance,
@@ -206,25 +207,29 @@ def test_raft_log(instance: Instance):
         instance.call("picolib.raft_log")
 
     raft_log = instance.call("picolib.raft_log", dict(return_string=True))
-    assert (
-        raft_log
-        == """\
-+-----+----+-----+----------------------------------------------------------------------------+
-|index|term| lc  |                                  contents                                  |
-+-----+----+-----+----------------------------------------------------------------------------+
-|  1  | 1  |1.0.1|           PersistPeer(i1, 1, r1, 127.0.0.1:{p}, Offline, 1, {b})           |
-|  2  | 1  |1.0.2|              Insert(cluster_state, ["replication_factor",1])               |
-|  3  | 1  |     |                                 Promote(1)                                 |
-|  4  | 2  |     |                                     -                                      |
-|  5  | 2  |1.1.2|      PersistPeer(i1, 1, r1, 127.0.0.1:{p}, Offline -> Online, 5, {b})      |
-|  6  | 2  |1.1.3|    PersistPeer(i1, 1, r1, 127.0.0.1:{p}, RaftSynced -> Online, 6, {b})     |
-|  7  | 2  |1.1.4|    PersistPeer(i1, 1, r1, 127.0.0.1:{p}, Replicated -> Online, 7, {b})     |
-|  8  | 2  |1.1.5|Insert(replicasets, ["r1","e0df68c5-e7f9-395f-86b3-30ad9e1b7b07","i1",1.0]) |
+
+    def strip_spaces(s: str):
+        s = re.sub(r"( +\| +)|(\| +)|( +\|)", "|", s)
+        s = re.sub(r"(\-+\+\-+)|(\+\-+)|(\-+\+)", "+", s)
+        return s
+
+    expected = """\
++-----+----+-----+--------+
+|index|term| lc  |contents|
++-----+----+-----+--------+
+|  1  | 1  |1.0.1|PersistPeer(i1, 1, r1, 127.0.0.1:{p}, Offline, 1, {b})|
+|  2  | 1  |1.0.2|Insert(cluster_state, ["replication_factor",1])|
+|  3  | 1  |     |Promote(1)|
+|  4  | 2  |     |-|
+|  5  | 2  |1.1.2|PersistPeer(i1, 1, r1, 127.0.0.1:{p}, Offline -> Online, 5, {b})|
+|  6  | 2  |1.1.3|PersistPeer(i1, 1, r1, 127.0.0.1:{p}, RaftSynced -> Online, 6, {b})|
+|  7  | 2  |1.1.4|PersistPeer(i1, 1, r1, 127.0.0.1:{p}, Replicated -> Online, 7, {b})|
+|  8  | 2  |1.1.5|Insert(replicasets, ["r1","e0df68c5-e7f9-395f-86b3-30ad9e1b7b07","i1",1.0])|
 |  9  | 2  |1.1.6|PersistPeer(i1, 1, r1, 127.0.0.1:{p}, ShardingInitialized -> Online, 9, {b})|
-| 10  | 2  |1.1.7|            Replace(cluster_state, ["vshard_bootstrapped",true])            |
-| 11  | 2  |1.1.8|           PersistPeer(i1, 1, r1, 127.0.0.1:{p}, Online, 11, {b})           |
-+-----+----+-----+----------------------------------------------------------------------------+
+| 10  | 2  |1.1.7|Replace(cluster_state, ["vshard_bootstrapped",true])|
+| 11  | 2  |1.1.8|PersistPeer(i1, 1, r1, 127.0.0.1:{p}, Online, 11, {b})|
++-----+----+-----+--------+
 """.format(
-            p=instance.port, b="{}"
-        )
+        p=instance.port, b="{}"
     )
+    assert strip_spaces(expected) == strip_spaces(raft_log)
