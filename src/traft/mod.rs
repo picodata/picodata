@@ -984,3 +984,13 @@ impl<'a> IntoIterator for &'a FailureDomain {
         self.data.iter()
     }
 }
+
+////////////////////////////////////////////////////////////////////////////////
+/// Migration
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct Migration {
+    pub id: u64,
+    pub body: String,
+}
+
+impl Encode for Migration {}

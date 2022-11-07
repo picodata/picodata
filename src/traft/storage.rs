@@ -14,7 +14,7 @@ use crate::traft::Result;
 
 use std::marker::PhantomData;
 
-use super::RaftSpaceAccess;
+use super::{Migration, RaftSpaceAccess};
 
 ////////////////////////////////////////////////////////////////////////////////
 // ClusterSpace
@@ -26,6 +26,7 @@ define_str_enum! {
         Group = "raft_group",
         State = "cluster_state",
         Replicasets = "replicasets",
+        Migrations = "migrations",
     }
 
     FromStr::Err = UnknownClusterSpace;
@@ -100,6 +101,7 @@ pub struct Storage {
     pub peers: Peers,
     pub replicasets: Replicasets,
     pub raft: RaftSpaceAccess,
+    pub migrations: Migrations,
 }
 
 impl Storage {
@@ -109,6 +111,7 @@ impl Storage {
             peers: Peers::new()?,
             replicasets: Replicasets::new()?,
             raft: RaftSpaceAccess::new()?,
+            migrations: Migrations::new()?,
         })
     }
 }
@@ -637,6 +640,49 @@ where
     fn next(&mut self) -> Option<Self::Item> {
         let res = self.iter.next().as_ref().map(F::get_in);
         res.map(|res| res.expect("peer should decode correctly"))
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Migrations
+////////////////////////////////////////////////////////////////////////////////
+
+#[derive(Clone, Debug)]
+pub struct Migrations {
+    #[allow(dead_code)]
+    space: Space,
+}
+
+impl Migrations {
+    const SPACE_NAME: &'static str = ClusterSpace::Migrations.as_str();
+    const INDEX_PRIMARY: &'static str = "pk";
+
+    pub fn new() -> tarantool::Result<Self> {
+        let space = Space::builder(Self::SPACE_NAME)
+            .is_local(true)
+            .is_temporary(false)
+            .field(("id", FieldType::Unsigned))
+            .field(("body", FieldType::String))
+            .if_not_exists(true)
+            .create()?;
+
+        space
+            .index_builder(Self::INDEX_PRIMARY)
+            .unique(true)
+            .part("id")
+            .if_not_exists(true)
+            .create()?;
+
+        Ok(Self { space })
+    }
+
+    #[allow(dead_code)]
+    #[inline]
+    pub fn get(&self, id: u64) -> tarantool::Result<Option<Migration>> {
+        match self.space.get(&[id])? {
+            Some(tuple) => tuple.decode().map(Some),
+            None => Ok(None),
+        }
     }
 }
 
