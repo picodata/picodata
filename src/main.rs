@@ -267,15 +267,28 @@ fn picolib_setup(args: &args::Run) {
         .unwrap();
     }
 
+    #[derive(::tarantool::tlua::LuaRead, Default, Clone, Copy)]
+    enum Justify {
+        Left,
+        #[default]
+        Center,
+        Right,
+    }
     #[derive(::tarantool::tlua::LuaRead)]
     struct RaftLogOpts {
         return_string: Option<bool>,
+        justify_contents: Option<Justify>,
     }
     luamod.set(
         "raft_log",
         tlua::function1(
             |opts: Option<RaftLogOpts>| -> traft::Result<Option<String>> {
-                let return_string = opts.and_then(|o| o.return_string).unwrap_or(false);
+                let mut return_string = false;
+                let mut justify_contents = Default::default();
+                if let Some(opts) = opts {
+                    return_string = opts.return_string.unwrap_or(false);
+                    justify_contents = opts.justify_contents.unwrap_or_default();
+                }
                 let header = ["index", "term", "lc", "contents"];
                 let [index, term, lc, contents] = header;
                 let mut rows = vec![];
@@ -318,40 +331,48 @@ fn picolib_setup(args: &args::Run) {
 
                 use std::io::Write;
                 let mut buf: Vec<u8> = Vec::with_capacity(512);
+                let write_contents = move |buf: &mut Vec<u8>, contents: &str| match justify_contents
+                {
+                    Justify::Left => writeln!(buf, "{contents: <cw$}|"),
+                    Justify::Center => writeln!(buf, "{contents: ^cw$}|"),
+                    Justify::Right => writeln!(buf, "{contents: >cw$}|"),
+                };
+
                 let row_sep = |buf: &mut Vec<u8>| {
-                    writeln!(buf, "+{0:-^iw$}+{0:-^tw$}+{0:-^lw$}+{0:-^cw$}+", "").unwrap()
+                    match justify_contents {
+                        Justify::Left => {
+                            writeln!(buf, "+{0:-^iw$}+{0:-^tw$}+{0:-^lw$}+{0:-<cw$}+", "")
+                        }
+                        Justify::Center => {
+                            writeln!(buf, "+{0:-^iw$}+{0:-^tw$}+{0:-^lw$}+{0:-^cw$}+", "")
+                        }
+                        Justify::Right => {
+                            writeln!(buf, "+{0:-^iw$}+{0:-^tw$}+{0:-^lw$}+{0:->cw$}+", "")
+                        }
+                    }
+                    .unwrap()
                 };
                 row_sep(&mut buf);
-                writeln!(
-                    buf,
-                    "|{index: ^iw$}|{term: ^tw$}|{lc: ^lw$}|{contents: ^cw$}|"
-                )
-                .unwrap();
+                write!(buf, "|{index: ^iw$}|{term: ^tw$}|{lc: ^lw$}|").unwrap();
+                write_contents(&mut buf, contents).unwrap();
                 row_sep(&mut buf);
                 for [index, term, lc, contents] in rows {
                     if contents.len() <= cw {
-                        writeln!(
-                            buf,
-                            "|{index: ^iw$}|{term: ^tw$}|{lc: ^lw$}|{contents: ^cw$}|"
-                        )
-                        .unwrap();
+                        write!(buf, "|{index: ^iw$}|{term: ^tw$}|{lc: ^lw$}|").unwrap();
+                        write_contents(&mut buf, &contents).unwrap();
                     } else {
-                        writeln!(
-                            buf,
-                            "|{index: ^iw$}|{term: ^tw$}|{lc: ^lw$}|{contents: ^cw$}|",
-                            contents = &contents[..cw],
-                        )
-                        .unwrap();
+                        write!(buf, "|{index: ^iw$}|{term: ^tw$}|{lc: ^lw$}|").unwrap();
+                        write_contents(&mut buf, &contents[..cw]).unwrap();
                         let mut rest = &contents[cw..];
                         while !rest.is_empty() {
                             let clamped_cw = usize::min(rest.len(), cw);
-                            writeln!(
+                            write!(
                                 buf,
-                                "|{blank: ^iw$}|{blank: ^tw$}|{blank: ^lw$}|{contents: ^cw$}|",
+                                "|{blank: ^iw$}|{blank: ^tw$}|{blank: ^lw$}|",
                                 blank = "~",
-                                contents = &rest[..clamped_cw],
                             )
                             .unwrap();
+                            write_contents(&mut buf, &rest[..clamped_cw]).unwrap();
                             rest = &rest[clamped_cw..];
                         }
                     }
