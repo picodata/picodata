@@ -62,10 +62,7 @@ pub mod promote {
             let node = node::global()?;
             node.status().check_term(req.term)?;
             rpc::sync::wait_for_index_timeout(req.commit, &node.storage.raft, req.timeout)?;
-            crate::tarantool::exec(
-                "box.cfg { read_only = false }
-                box.ctl.promote()",
-            )?;
+            crate::tarantool::exec("box.cfg { read_only = false }")?;
             Ok(Response {})
         }
 

@@ -693,6 +693,7 @@ fn start_discover(args: &args::Run, to_supervisor: ipc::Sender<IpcMessage>) {
 
     // TODO assert traft::Storage::instance_id == (null || args.instance_id)
     if storage.raft.raft_id().unwrap().is_some() {
+        tarantool::set_cfg_field("read_only", true).unwrap();
         return postjoin(args, storage);
     }
 

@@ -147,7 +147,7 @@ impl Default for Cfg {
             replicaset_uuid: None,
             replication: vec![],
             replication_connect_quorum: 32,
-            election_mode: CfgElectionMode::Manual,
+            election_mode: CfgElectionMode::Off,
 
             wal_dir: ".".into(),
             memtx_dir: ".".into(),

@@ -14,12 +14,18 @@ def cluster3(cluster: Cluster):
 
 
 @funcy.retry(tries=30, timeout=0.2)
-def wait_repl_leader(i: Instance, other_than=None):
-    repl_leader = i.eval("return box.info.election.leader")
-    assert repl_leader
+def wait_repl_master(i: Instance, other_than=None):
+    repl_master = i.eval(
+        """
+        local rid = picolib.peer_info(...).replicaset_id
+        return box.space.replicasets:get(rid).master_id
+    """,
+        i.instance_id,
+    )
+    assert repl_master
     if other_than:
-        assert repl_leader != other_than
-    return repl_leader
+        assert repl_master != other_than
+    return repl_master
 
 
 @funcy.retry(tries=60, timeout=0.2)
@@ -34,24 +40,24 @@ def wait_vclock(i: Instance, vclock_expected: dict[int, int]):
 def test_2_of_3_writable(cluster3: Cluster):
     i1, i2, i3 = cluster3.instances
 
-    rl = wait_repl_leader(i1)
-    assert rl == wait_repl_leader(i2)
-    assert rl == wait_repl_leader(i3)
+    rm = wait_repl_master(i1)
+    assert rm == wait_repl_master(i2)
+    assert rm == wait_repl_master(i3)
 
-    leader, i2, i3 = sorted(
+    master, i2, i3 = sorted(
         [i1, i2, i3],
-        key=lambda i: rl == i.eval("return box.info.id"),
+        key=lambda i: rm == i.instance_id,
         reverse=True
     )
 
-    rl_vclock = leader.eval("return box.info.vclock")
+    rl_vclock = master.eval("return box.info.vclock")
     del rl_vclock[0]
 
     wait_vclock(i2, rl_vclock)  # sometimes fails with i2 missing one transaction
     wait_vclock(i3, rl_vclock)  # sometimes fails with i3 missing one transaction
 
-    rl_vclock = leader.eval("""
-        box.schema.space.create('test_space', {is_sync = true})
+    rl_vclock = master.eval("""
+        box.schema.space.create('test_space')
             :create_index('pk')
         box.space.test_space:replace {1}
         return box.info.vclock
@@ -64,23 +70,23 @@ def test_2_of_3_writable(cluster3: Cluster):
     wait_vclock(i3, rl_vclock)
     assert [[1]] == i3.eval("return box.space.test_space:select()")
 
-    leader.terminate()
+    master.terminate()
 
-    rl = wait_repl_leader(i2, other_than=rl)
-    assert rl == wait_repl_leader(i3)
+    rm = wait_repl_master(i2, other_than=rm)
+    assert rm == wait_repl_master(i3)
 
-    old_leader = leader
-    leader, i3 = sorted(
+    old_leader = master
+    master, i3 = sorted(
         [i2, i3],
-        key=lambda i: rl == i.eval("return box.info.id"),
+        key=lambda i: rm == i.eval("return box.info.id"),
         reverse=True
     )
 
-    rl_vclock = leader.eval("return box.info.vclock")
+    rl_vclock = master.eval("return box.info.vclock")
     del rl_vclock[0]
     wait_vclock(i3, rl_vclock)
 
-    rl_vclock = leader.eval("""
+    rl_vclock = master.eval("""
         box.space.test_space:replace {2}
         return box.info.vclock
     """)
@@ -94,7 +100,7 @@ def test_2_of_3_writable(cluster3: Cluster):
     print(f"{old_leader=}")
     old_leader.start()
     old_leader.wait_online()
-    assert wait_repl_leader(old_leader) == rl
+    assert wait_repl_master(old_leader) == rm
     wait_vclock(old_leader, rl_vclock)
     assert [[1], [2]] == old_leader.eval("return box.space.test_space:select()")
 # fmt: on
