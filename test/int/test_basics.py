@@ -219,15 +219,16 @@ def test_raft_log(instance: Instance):
 +-----+----+-----+--------+
 |  1  | 1  |1.0.1|PersistPeer(i1, 1, r1, 127.0.0.1:{p}, Offline, 1, {b})|
 |  2  | 1  |1.0.2|Insert(cluster_state, ["replication_factor",1])|
-|  3  | 1  |     |Promote(1)|
-|  4  | 2  |     |-|
-|  5  | 2  |1.1.2|PersistPeer(i1, 1, r1, 127.0.0.1:{p}, Offline -> Online, 5, {b})|
-|  6  | 2  |1.1.3|PersistPeer(i1, 1, r1, 127.0.0.1:{p}, RaftSynced -> Online, 6, {b})|
-|  7  | 2  |1.1.4|PersistPeer(i1, 1, r1, 127.0.0.1:{p}, Replicated -> Online, 7, {b})|
-|  8  | 2  |1.1.5|Insert(replicasets, ["r1","e0df68c5-e7f9-395f-86b3-30ad9e1b7b07","i1",1.0])|
-|  9  | 2  |1.1.6|PersistPeer(i1, 1, r1, 127.0.0.1:{p}, ShardingInitialized -> Online, 9, {b})|
-| 10  | 2  |1.1.7|Replace(cluster_state, ["vshard_bootstrapped",true])|
-| 11  | 2  |1.1.8|PersistPeer(i1, 1, r1, 127.0.0.1:{p}, Online, 11, {b})|
+|  3  | 1  |1.0.3|Insert(cluster_state, ["desired_schema_version",0])|
+|  4  | 1  |     |Promote(1)|
+|  5  | 2  |     |-|
+|  6  | 2  |1.1.2|PersistPeer(i1, 1, r1, 127.0.0.1:{p}, Offline -> Online, 6, {b})|
+|  7  | 2  |1.1.3|PersistPeer(i1, 1, r1, 127.0.0.1:{p}, RaftSynced -> Online, 7, {b})|
+|  8  | 2  |1.1.4|PersistPeer(i1, 1, r1, 127.0.0.1:{p}, Replicated -> Online, 8, {b})|
+|  9  | 2  |1.1.5|Insert(replicasets, ["r1","e0df68c5-e7f9-395f-86b3-30ad9e1b7b07","i1",1.0,0])|
+| 10  | 2  |1.1.6|PersistPeer(i1, 1, r1, 127.0.0.1:{p}, ShardingInitialized -> Online, 10, {b})|
+| 11  | 2  |1.1.7|Replace(cluster_state, ["vshard_bootstrapped",true])|
+| 12  | 2  |1.1.8|PersistPeer(i1, 1, r1, 127.0.0.1:{p}, Online, 12, {b})|
 +-----+----+-----+--------+
 """.format(
         p=instance.port, b="{}"

@@ -82,6 +82,7 @@ define_str_enum! {
     pub enum StateKey {
         ReplicationFactor = "replication_factor",
         VshardBootstrapped = "vshard_bootstrapped",
+        DesiredSchemaVersion = "desired_schema_version",
     }
 
     FromStr::Err = UnknownStateKey;
@@ -180,6 +181,15 @@ impl State {
             .expect("replication_factor must be set at boot");
         Ok(res)
     }
+
+    #[allow(dead_code)]
+    #[inline]
+    pub fn desired_schema_version(&self) -> tarantool::Result<usize> {
+        let res = self
+            .get(StateKey::DesiredSchemaVersion)?
+            .unwrap_or_default();
+        Ok(res)
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -205,6 +215,7 @@ impl Replicasets {
             .field(("replicaset_uuid", FieldType::String))
             .field(("master_id", FieldType::String))
             .field(("weight", FieldType::Double))
+            .field(("current_schema_version", FieldType::Unsigned))
             .if_not_exists(true)
             .create()?;
 

@@ -397,6 +397,15 @@ fn picolib_setup(args: &args::Run) {
             Ok(())
         }),
     );
+
+    luamod.set(
+        "push_schema_version",
+        tlua::function1(|id: u64| -> traft::Result<()> {
+            let op = OpDML::replace(ClusterSpace::State, &(StateKey::DesiredSchemaVersion, id))?;
+            node::global()?.propose_and_wait(op, Duration::MAX)??;
+            Ok(())
+        }),
+    );
 }
 
 fn preload_vshard() {
@@ -786,12 +795,17 @@ fn start_boot(args: &args::Run) {
 
         init_entries_push_op(traft::Op::persist_peer(peer));
         init_entries_push_op(
-            traft::OpDML::insert(
+            OpDML::insert(
                 ClusterSpace::State,
                 &(StateKey::ReplicationFactor, args.init_replication_factor),
             )
             .expect("cannot fail")
             .into(),
+        );
+        init_entries_push_op(
+            OpDML::insert(ClusterSpace::State, &(StateKey::DesiredSchemaVersion, 0))
+                .expect("cannot fail")
+                .into(),
         );
 
         init_entries.push({

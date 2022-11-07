@@ -1198,6 +1198,7 @@ fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
                                 replicaset_uuid: peer.replicaset_uuid.clone(),
                                 master_id: peer.instance_id.clone(),
                                 weight: if vshard_bootstrapped { 0. } else { 1. },
+                                current_schema_version: 0,
                             },
                         )?;
                         // TODO: don't hard code the timeout

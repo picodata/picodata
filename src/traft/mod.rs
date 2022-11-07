@@ -484,6 +484,9 @@ pub struct Replicaset {
 
     /// Sharding weight of the replicaset.
     pub weight: rpc::sharding::cfg::Weight,
+
+    /// Current schema version of the replicaset.
+    pub current_schema_version: u64,
 }
 impl Encode for Replicaset {}
 
