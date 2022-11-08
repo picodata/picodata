@@ -1,0 +1,262 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
+
+<svg
+   width="56.488537mm"
+   height="28.51697mm"
+   viewBox="0 0 56.488537 28.51697"
+   version="1.1"
+   id="svg5"
+   inkscape:version="1.2.1 (9c6d41e410, 2022-07-14)"
+   sodipodi:docname="sbroad.svg"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <sodipodi:namedview
+     id="namedview7"
+     pagecolor="#ffffff"
+     bordercolor="#666666"
+     borderopacity="1.0"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     inkscape:document-units="mm"
+     showgrid="false"
+     inkscape:zoom="2.9897026"
+     inkscape:cx="108.70647"
+     inkscape:cy="81.111747"
+     inkscape:window-width="1920"
+     inkscape:window-height="1016"
+     inkscape:window-x="0"
+     inkscape:window-y="32"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="layer1" />
+  <defs
+     id="defs2">
+    <marker
+       style="overflow:visible"
+       id="marker3948"
+       refX="0"
+       refY="0"
+       orient="auto-start-reverse"
+       inkscape:stockid="Arrow2"
+       markerWidth="7.6999998"
+       markerHeight="5.5999999"
+       viewBox="0 0 7.7 5.6"
+       inkscape:isstock="true"
+       inkscape:collect="always"
+       preserveAspectRatio="xMidYMid">
+      <path
+         transform="scale(0.7)"
+         d="M -2,-4 9,0 -2,4 c 2,-2.33 2,-5.66 0,-8 z"
+         style="fill:context-stroke;fill-rule:evenodd;stroke:none"
+         id="path3946" />
+    </marker>
+    <marker
+       style="overflow:visible"
+       id="Arrow2"
+       refX="0"
+       refY="0"
+       orient="auto-start-reverse"
+       inkscape:stockid="Arrow2"
+       markerWidth="7.6999998"
+       markerHeight="5.5999999"
+       viewBox="0 0 7.7 5.6"
+       inkscape:isstock="true"
+       inkscape:collect="always"
+       preserveAspectRatio="xMidYMid">
+      <path
+         transform="scale(0.7)"
+         d="M -2,-4 9,0 -2,4 c 2,-2.33 2,-5.66 0,-8 z"
+         style="fill:context-stroke;fill-rule:evenodd;stroke:none"
+         id="arrow2L" />
+    </marker>
+  </defs>
+  <g
+     inkscape:label="Слой 1"
+     inkscape:groupmode="layer"
+     id="layer1"
+     transform="translate(-32.756941,-2.1445672)">
+    <rect
+       style="fill:none;fill-opacity:0.572549;stroke:#000000;stroke-width:0.2"
+       id="rect788"
+       width="13.009259"
+       height="6.9371114"
+       x="32.856941"
+       y="9.320508" />
+    <text
+       xml:space="preserve"
+       style="font-style:normal;font-weight:normal;font-size:2.4674px;line-height:1.25;font-family:sans-serif;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.264582"
+       x="35.144447"
+       y="13.442924"
+       id="text952"><tspan
+         sodipodi:role="line"
+         id="tspan950"
+         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-family:HelveticaNeueCyr;-inkscape-font-specification:HelveticaNeueCyr;stroke-width:0.264582"
+         x="35.144447"
+         y="13.442924">Запрос</tspan></text>
+    <rect
+       style="fill:none;fill-opacity:0.572549;stroke:#000000;stroke-width:0.2"
+       id="rect3279"
+       width="13.009259"
+       height="6.9371114"
+       x="32.856941"
+       y="23.624426" />
+    <text
+       xml:space="preserve"
+       style="font-style:normal;font-weight:normal;font-size:2.4674px;line-height:1.25;font-family:sans-serif;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.264582"
+       x="35.935585"
+       y="27.746841"
+       id="text3283"><tspan
+         sodipodi:role="line"
+         id="tspan3281"
+         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-family:HelveticaNeueCyr;-inkscape-font-specification:HelveticaNeueCyr;stroke-width:0.264582"
+         x="35.935585"
+         y="27.746841">Ответ</tspan></text>
+    <path
+       style="fill:none;stroke:#fcc501;stroke-width:0.264583px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1;marker-end:url(#Arrow2)"
+       d="m 59.978381,19.948372 4.696692,-0.0033"
+       id="path3834"
+       sodipodi:nodetypes="cc" />
+    <path
+       style="fill:none;stroke:#39cb00;stroke-width:0.264583px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1;marker-end:url(#Arrow2)"
+       d="M 75.986133,19.988033 C 98.093923,15.45536 79.743051,-2.816487 63.724242,4.2154124 57.35119,7.0130395 56.360184,14.638488 56.360184,14.638488"
+       id="path3843"
+       sodipodi:nodetypes="csc" />
+    <path
+       style="fill:none;stroke:#39cb00;stroke-width:0.264583px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1;marker-end:url(#Arrow2)"
+       d="m 75.895211,28.37384 c 0.554672,0.01377 3.749969,-0.272688 7.163845,-2.415906 C 97.877889,16.654733 82.875825,-1.6090931 66.143352,3.0146985 56.998828,5.5416633 56.39066,14.59254 56.39066,14.59254"
+       id="path3845"
+       sodipodi:nodetypes="cssc" />
+    <path
+       style="fill:none;stroke:#39cb00;stroke-width:0.264583px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1;marker-end:url(#Arrow2)"
+       d="M 75.848986,11.972362 C 93.452543,9.5916763 72.797891,-1.5215402 62.908638,4.6035201 56.659229,8.474187 56.355076,14.643181 56.355076,14.643181"
+       id="path3847"
+       sodipodi:nodetypes="csc" />
+    <path
+       id="path4236"
+       style="fill:none;fill-opacity:0.572549;stroke:#fcc501;stroke-width:0.265;stroke-dasharray:none;stroke-opacity:1;marker-end:url(#marker3948)"
+       d="m 59.816018,19.783802 c 2.104994,0.0027 2.313027,-7.777494 4.825297,-7.777494 0.007,0 0.0137,2.7e-5 0.0206,8e-5"
+       sodipodi:nodetypes="csc" />
+    <path
+       id="path4267"
+       style="fill:none;fill-opacity:0.572549;stroke:#ff0000;stroke-width:0.265;stroke-dasharray:none;stroke-opacity:1;marker-end:url(#marker3948)"
+       d="m 45.921743,12.766487 c 2.277534,0.0055 5.139273,1.741967 7.424522,4.052602"
+       sodipodi:nodetypes="cc" />
+    <path
+       id="path4330"
+       style="fill:none;fill-opacity:0.572549;stroke:#fcc501;stroke-width:0.265;stroke-dasharray:none;stroke-opacity:1;marker-end:url(#marker3948)"
+       d="m 59.799307,20.102602 c 2.104994,-0.0027 2.313027,7.777494 4.825297,7.777494 0.007,0 0.0137,-2.7e-5 0.0206,-8e-5"
+       sodipodi:nodetypes="csc" />
+    <g
+       id="g3260"
+       transform="translate(-0.65189123,-1.3656154)">
+      <rect
+         style="fill:none;fill-opacity:0.572549;stroke:#000000;stroke-width:0.2"
+         id="rect3232"
+         width="9.7929087"
+         height="5.1817918"
+         x="66.807732"
+         y="18.715742" />
+      <text
+         xml:space="preserve"
+         style="font-style:normal;font-weight:normal;font-size:1.37047px;line-height:1.25;font-family:sans-serif;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.264582"
+         x="71.477493"
+         y="20.934599"
+         id="text3238"
+         transform="scale(1.0038733,0.99614162)"><tspan
+           sodipodi:role="line"
+           id="tspan3234"
+           style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-family:HelveticaNeueCyr;-inkscape-font-specification:HelveticaNeueCyr;text-align:center;text-anchor:middle;stroke-width:0.264582"
+           x="71.477493"
+           y="20.934599">Локальный</tspan><tspan
+           sodipodi:role="line"
+           style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-family:HelveticaNeueCyr;-inkscape-font-specification:HelveticaNeueCyr;text-align:center;text-anchor:middle;stroke-width:0.264582"
+           x="71.477493"
+           y="22.679384"
+           id="tspan3236">запрос 2</tspan></text>
+    </g>
+    <g
+       id="g3266"
+       transform="translate(-3.6435447,-4.1471291)">
+      <rect
+         style="fill:none;fill-opacity:0.572549;stroke:#000000;stroke-width:0.2"
+         id="rect3240"
+         width="9.7929087"
+         height="5.1817918"
+         x="69.799385"
+         y="29.526875" />
+      <text
+         xml:space="preserve"
+         style="font-style:normal;font-weight:normal;font-size:1.37047px;line-height:1.25;font-family:sans-serif;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.264582"
+         x="74.457603"
+         y="31.787607"
+         id="text3246"
+         transform="scale(1.0038733,0.9961416)"><tspan
+           sodipodi:role="line"
+           id="tspan3242"
+           style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-family:HelveticaNeueCyr;-inkscape-font-specification:HelveticaNeueCyr;text-align:center;text-anchor:middle;stroke-width:0.264582"
+           x="74.457603"
+           y="31.787607">Локальный</tspan><tspan
+           sodipodi:role="line"
+           style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-family:HelveticaNeueCyr;-inkscape-font-specification:HelveticaNeueCyr;text-align:center;text-anchor:middle;stroke-width:0.264582"
+           x="74.457603"
+           y="33.532394"
+           id="tspan3244">запрос Х</tspan></text>
+    </g>
+    <g
+       id="g3272"
+       transform="translate(-0.8939414,-1.5361414)">
+      <rect
+         style="fill:none;fill-opacity:0.572549;stroke:#000000;stroke-width:0.2"
+         id="rect3248"
+         width="9.7929087"
+         height="5.1817918"
+         x="67.049782"
+         y="10.856649" />
+      <text
+         xml:space="preserve"
+         style="font-style:normal;font-weight:normal;font-size:1.37047px;line-height:1.25;font-family:sans-serif;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.264582"
+         x="71.718613"
+         y="13.045064"
+         id="text3254"
+         transform="scale(1.0038733,0.99614162)"><tspan
+           sodipodi:role="line"
+           id="tspan3250"
+           style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-family:HelveticaNeueCyr;-inkscape-font-specification:HelveticaNeueCyr;text-align:center;text-anchor:middle;stroke-width:0.264582"
+           x="71.718613"
+           y="13.045064">Локальный</tspan><tspan
+           sodipodi:role="line"
+           style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-family:HelveticaNeueCyr;-inkscape-font-specification:HelveticaNeueCyr;text-align:center;text-anchor:middle;stroke-width:0.264582"
+           x="71.718613"
+           y="14.789849"
+           id="tspan3252">запрос 1</tspan></text>
+    </g>
+    <path
+       id="path4354"
+       style="fill:none;fill-opacity:0.572549;stroke:#00c8e5;stroke-width:0.265;stroke-dasharray:none;stroke-opacity:1;marker-end:url(#marker3948)"
+       d="m 54.355505,21.756189 c -0.857913,1.404901 -3.433264,5.249285 -6.82399,5.363368"
+       sodipodi:nodetypes="cc" />
+    <rect
+       style="fill:#fff001;fill-opacity:1;stroke:#000000;stroke-width:0.2"
+       id="rect3216"
+       width="5.2192421"
+       height="5.2192421"
+       x="23.084471"
+       y="51.285332"
+       transform="rotate(-45)" />
+    <text
+       xml:space="preserve"
+       style="font-style:normal;font-weight:normal;font-size:1.46705px;line-height:1.25;font-family:sans-serif;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.264582"
+       x="53.836781"
+       y="20.334152"
+       id="text3214"><tspan
+         sodipodi:role="line"
+         id="tspan3212"
+         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-family:HelveticaNeueCyr;-inkscape-font-specification:HelveticaNeueCyr;stroke-width:0.264582"
+         x="53.836781"
+         y="20.334152">Роутер</tspan></text>
+  </g>
+</svg>
