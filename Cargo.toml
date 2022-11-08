@@ -1,7 +1,7 @@
 [package]
 name = "picodata"
 version = "22.7.0"
-edition = "2018"
+edition = "2021"
 autotests = false
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -23,9 +23,12 @@ indoc = "1.0"
 nix = "0.23.1"
 itertools = "0.10.3"
 base64 = "0.13"
-protobuf = "2.27"
 lazy_static = "1.4"
 uuid = {version = "1.0", features = ["v3"]}
+
+[dependencies.protobuf]
+version = "2.27"
+features = ["bytes"]
 
 [dependencies.slog]
 version = "2.7.0"
