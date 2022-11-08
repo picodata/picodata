@@ -14,6 +14,47 @@ def cluster3(cluster: Cluster):
     return cluster
 
 
+def break_picodata_procs(instance: Instance):
+    instance.eval(
+        """
+        local log = require 'log'
+        for _, proc in box.space._func:pairs()
+            :filter(function (func)
+                return func.name:sub(1,1) == '.' and func.language == 'C'
+            end)
+        do
+            box.schema.func.drop(proc.name)
+            box.schema.func.create(proc.name, {
+                language = 'lua',
+                body = [[
+                    function()
+                        require 'fiber'.sleep(99999)
+                    end
+                ]]
+            })
+            log.info('\x1b[31m'.. proc.name .. ' is broken\x1b[0m')
+        end
+    """
+    )
+
+
+def fix_picodata_procs(instance: Instance):
+    instance.eval(
+        """
+        local log = require 'log'
+        for _, proc in box.space._func:pairs()
+            :filter(function (func)
+                return func.name:sub(1,1) == '.' and func.language ~= 'C'
+            end)
+        do
+            box.schema.func.drop(proc.name)
+            box.schema.func.create(proc.name, { language = 'C' })
+            log.info('\x1b[32m'.. proc.name .. ' is fixed\x1b[0m')
+        end
+    """
+    )
+
+
 def test_log_rollback(cluster3: Cluster):
     # Scanario: the Leader can't propose without Followers
     #   Given a cluster
@@ -33,29 +74,28 @@ def test_log_rollback(cluster3: Cluster):
     propose_state_change(i1, "i1 is a leader")
 
     # Simulate the network partitioning: i1 can't reach i2 and i3.
-    i2.kill()
-    i3.kill()
+    break_picodata_procs(i2)
+    break_picodata_procs(i3)
 
     # No operations can be committed, i1 is alone.
     with pytest.raises(ReturnError, match="timeout"):
         propose_state_change(i1, "i1 lost the quorum")
 
     # And now i2 + i3 can't reach i1.
-    i1.terminate()
-    i2.start(peers=[i3])
-    i3.start(peers=[i2])
-    i2.wait_online()
-    i3.wait_online()
+    break_picodata_procs(i1)
+    fix_picodata_procs(i2)
+    fix_picodata_procs(i3)
 
     # Help i2 to become a new leader
     i2.promote_or_fail()
     retrying(lambda: i3.assert_raft_status("Follower", i2.raft_id))
 
+    print(i2.call("picolib.raft_log", dict(return_string=True)))
+    print(i2.call("box.space.raft_state:select"))
     propose_state_change(i2, "i2 takes the leadership")
 
     # Now i1 has an uncommitted, but persisted entry that should be rolled back.
-    i1.start(peers=[i2, i3])
-    i1.wait_online()
+    fix_picodata_procs(i1)
     retrying(lambda: i1.assert_raft_status("Follower", i2.raft_id))
 
     propose_state_change(i1, "i1 is alive again")
