@@ -41,7 +41,7 @@ fn patch_tarantool() {
         }
     }
 
-    let _ = std::fs::File::create(&patch_check)
+    let _ = std::fs::File::create(patch_check)
         .unwrap_or_else(|e| panic!("failed to create '{}': {}", patch_check.display(), e));
 }
 

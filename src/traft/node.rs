@@ -291,7 +291,7 @@ impl Node {
     #[inline]
     fn raw_operation<R>(&self, f: impl FnOnce(&mut NodeImpl) -> R) -> R {
         let mut node_impl = self.node_impl.lock();
-        let res = f(&mut *node_impl);
+        let res = f(&mut node_impl);
         drop(node_impl);
         self.main_loop.wakeup();
         res

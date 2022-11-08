@@ -425,7 +425,7 @@ impl std::fmt::Display for Uppercase {
 
 impl std::borrow::Borrow<str> for Uppercase {
     fn borrow(&self) -> &str {
-        &*self.0
+        &self.0
     }
 }
 

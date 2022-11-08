@@ -913,7 +913,7 @@ fn postjoin(args: &args::Run, storage: Storage) {
 
     tlog!(Debug, "Getting a read barrier...");
     loop {
-        if node.status().leader_id == None {
+        if node.status().leader_id.is_none() {
             // This check doesn't guarantee anything. It only eliminates
             // unnecesary requests that will fail for sure. For example,
             // re-election still may be abrupt while `node.read_index()`
