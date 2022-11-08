@@ -77,14 +77,17 @@ pub(crate) fn raft_conf_change(
 
     // Remove / replace voters
     for voter_id in raft_conf.voters.clone().iter() {
-        let peer = raft_conf.all.get(voter_id);
-        match peer {
-            #[rustfmt::skip]
-            Some(Peer {target_grade: TargetGrade::Online, ..}) => {
+        let Some(peer) = raft_conf.all.get(voter_id) else {
+            // Nearly impossible, but rust forces me to check it.
+            let ccs = raft_conf.change_single(RemoveNode, *voter_id);
+            changes.push(ccs);
+            continue;
+        };
+        match peer.target_grade {
+            TargetGrade::Online => {
                 // Do nothing
             }
-            #[rustfmt::skip]
-            Some(peer @ Peer {target_grade: TargetGrade::Offline, ..}) => {
+            TargetGrade::Offline => {
                 // A voter goes offline. Replace it with
                 // another online instance if possible.
                 let Some(replacement) = peers.iter().find(|peer| {
@@ -96,15 +99,9 @@ pub(crate) fn raft_conf_change(
                 let ccs2 = raft_conf.change_single(AddNode, replacement.raft_id);
                 changes.extend_from_slice(&[ccs1, ccs2]);
             }
-            #[rustfmt::skip]
-            Some(peer @ Peer {target_grade: TargetGrade::Expelled, ..}) => {
+            TargetGrade::Expelled => {
                 // Expelled instance is removed unconditionally.
                 let ccs = raft_conf.change_single(RemoveNode, peer.raft_id);
-                changes.push(ccs);
-            }
-            None => {
-                // Nearly impossible, but rust forces me to check it.
-                let ccs = raft_conf.change_single(RemoveNode, *voter_id);
                 changes.push(ccs);
             }
         }
@@ -119,25 +116,19 @@ pub(crate) fn raft_conf_change(
 
     // Remove unknown / expelled learners
     for learner_id in raft_conf.learners.clone().iter() {
-        let peer = raft_conf.all.get(learner_id);
-        match peer {
-            #[rustfmt::skip]
-            Some(Peer {target_grade: TargetGrade::Online, ..}) => {
+        let Some(peer) = raft_conf.all.get(learner_id) else {
+            // Nearly impossible, but rust forces me to check it.
+            let ccs = raft_conf.change_single(RemoveNode, *learner_id);
+            changes.push(ccs);
+            continue;
+        };
+        match peer.target_grade {
+            TargetGrade::Online | TargetGrade::Offline => {
                 // Do nothing
             }
-            #[rustfmt::skip]
-            Some(Peer {target_grade: TargetGrade::Offline, ..}) => {
-                // Do nothing
-            }
-            #[rustfmt::skip]
-            Some(peer @ Peer {target_grade: TargetGrade::Expelled, ..}) => {
+            TargetGrade::Expelled => {
                 // Expelled instance is removed unconditionally.
                 let ccs = raft_conf.change_single(RemoveNode, peer.raft_id);
-                changes.push(ccs);
-            }
-            None => {
-                // Nearly impossible, but rust forces me to check it.
-                let ccs = raft_conf.change_single(RemoveNode, *learner_id);
                 changes.push(ccs);
             }
         }
