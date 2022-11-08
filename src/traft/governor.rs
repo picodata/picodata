@@ -115,3 +115,94 @@ pub(crate) fn raft_conf_change(
 
     Some(conf_change)
 }
+
+#[cfg(test)]
+mod tests {
+    use ::raft::prelude as raft;
+
+    use super::raft_conf_change as cc;
+    use crate::traft;
+
+    macro_rules! p {
+        (
+            $raft_id:literal,
+            $current_grade:ident ->
+            $target_grade:ident
+        ) => {
+            traft::Peer {
+                raft_id: $raft_id,
+                current_grade: traft::CurrentGrade::$current_grade,
+                target_grade: traft::TargetGrade::$target_grade,
+                ..traft::Peer::default()
+            }
+        };
+
+        (
+            $raft_id:literal,
+            $grade:ident
+        ) => {
+            p!($raft_id, $grade -> $grade)
+        };
+    }
+
+    macro_rules! cc {
+        [$(
+            $change:ident($raft_id:literal)
+        ),*] => {{
+            Some(raft::ConfChangeV2 {
+                changes: vec![$(
+                    raft::ConfChangeSingle {
+                        change_type: raft::ConfChangeType::$change,
+                        node_id: $raft_id,
+                        ..Default::default()
+                    }
+                ),*].into(),
+                transition: raft::ConfChangeTransition::Auto,
+                ..Default::default()
+            })
+        }};
+    }
+
+    #[test]
+    fn conf_change() {
+        assert_eq!(
+            cc(&[p!(1, Online), p!(2, Offline -> Online)], &[1], &[]),
+            // cc![AddLearnerNode(2)] // FIXME
+            cc![AddNode(2)]
+        );
+
+        assert_eq!(
+            cc(&[p!(1, Online), p!(2, Offline -> Online)], &[1], &[2]),
+            None
+        );
+
+        assert_eq!(
+            cc(&[p!(1, Online), p!(2, Online)], &[1], &[2]),
+            cc![AddNode(2)]
+        );
+
+        assert_eq!(
+            cc(&[p!(1, Online), p!(2, Online -> Offline)], &[1, 2], &[]),
+            // cc![RemoveNode(2)] // FIXME
+            None
+        );
+
+        assert_eq!(
+            cc(&[p!(1, Online), p!(2, Online -> Offline)], &[1], &[2]),
+            // cc![RemoveNode(2)] // FIXME
+            cc![AddNode(2)]
+        );
+
+        assert_eq!(
+            cc(&[p!(1, Online), p!(2, Offline)], &[1, 2], &[]),
+            // cc![RemoveNode(2)] // FIXME
+            cc![AddLearnerNode(2)]
+        );
+
+        assert_eq!(
+            cc(&[p!(1, Online), p!(2, Offline)], &[1], &[2]),
+            // cc![RemoveNode(2)] // FIXME
+            None
+        );
+    }
+}
