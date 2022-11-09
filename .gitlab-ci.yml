@@ -135,7 +135,9 @@ test:
     # Gitlab CI caching is shit. So we implement it manually
     - |
       # Restore cache
-      if [ -f "${CACHE_ARCHIVE}" ]; then
+      if [ "$CI_COMMIT_BRANCH" == "$CI_DEFAULT_BRANCH" ]; then
+        echo "Skip restoring cache on the master branch"
+      elif [ -f "${CACHE_ARCHIVE}" ]; then
         ci-log-section start "restore-cache" Restoring cache from ${CACHE_ARCHIVE} ...
         tar -xf ${CACHE_ARCHIVE}
         echo "Ok"
