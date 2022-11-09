@@ -764,9 +764,8 @@ impl NodeImpl {
 
             Ok(())
         }) {
-            tlog!(Error, "transaction failed: {e}, {}", TarantoolError::last());
-            tlog!(Warning, "raft ready dropped: {ready:#?}");
-            panic!("no good");
+            tlog!(Warning, "dropping raft ready: {ready:#?}");
+            panic!("transaction failed: {e}, {}", TarantoolError::last());
         }
 
         // This bunch of messages is special. It must be sent only
@@ -791,9 +790,8 @@ impl NodeImpl {
 
             Ok(())
         }) {
-            tlog!(Error, "transaction failed: {e}, {}", TarantoolError::last());
-            tlog!(Warning, "raft light ready dropped: {light_rd:#?}");
-            panic!("no good");
+            tlog!(Warning, "dropping raft light ready: {light_rd:#?}");
+            panic!("transaction failed: {e}, {}", TarantoolError::last());
         }
 
         // Advance the apply index.
