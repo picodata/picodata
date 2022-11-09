@@ -44,16 +44,16 @@ crate::define_rpc_request! {
 }
 
 pub mod redirect {
-    use crate::traft::rpc::{expel::redirect, net_box_call_to_leader};
+    use crate::traft::rpc::net_box_call_to_leader;
     use crate::traft::Result;
 
     use std::time::Duration;
 
     crate::define_rpc_request! {
-        fn proc_expel_redirect(req: redirect::Request) -> Result<redirect::Response> {
-            let redirect::Request(req_to_leader) = req;
+        fn proc_expel_redirect(req: Request) -> Result<Response> {
+            let Request(req_to_leader) = req;
             net_box_call_to_leader(&req_to_leader, Duration::MAX)?;
-            Ok(redirect::Response {})
+            Ok(Response {})
         }
 
         /// A request to expel an instance.
