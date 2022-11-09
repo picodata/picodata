@@ -165,7 +165,9 @@ test:
       if [ "$CI_COMMIT_BRANCH" == "$CI_DEFAULT_BRANCH" ]; then
         ci-log-section start "save-cache" Saving cache to ${CACHE_ARCHIVE} ...
         du -sh ${CACHE_PATHS} || true
-        tar -cf "${CACHE_ARCHIVE}" ${CACHE_PATHS}
+        TMPEXT=$RANDOM
+        tar -cf "${CACHE_ARCHIVE}.${TMPEXT}" ${CACHE_PATHS}
+        mv -f "${CACHE_ARCHIVE}.${TMPEXT}" "${CACHE_ARCHIVE}"
         echo Ok
         du -sh ${CACHE_ARCHIVE}
         ci-log-section end "save-cache"
