@@ -374,7 +374,11 @@ impl NodeImpl {
             self.topology_cache.take_or_drop(&current_term),
             {
                 let peers = self.storage.peers.all_peers()?;
-                let replication_factor = self.storage.state.get(StateKey::ReplicationFactor)?.unwrap();
+                let replication_factor = self
+                    .storage
+                    .state
+                    .get(StateKey::ReplicationFactor)?
+                    .ok_or_else(|| Error::other("missing replication_factor value in storage"))?;
                 Topology::from_peers(peers).with_replication_factor(replication_factor)
             }
         };
