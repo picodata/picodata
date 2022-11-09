@@ -17,7 +17,7 @@ pub fn tuple_new_from_struct() {
     assert!(Tuple::new(&input).is_ok());
 }
 
-pub fn new_tuple_from_flutten_struct() {
+pub fn new_tuple_from_flatten_struct() {
     #[derive(Serialize)]
     struct Embedded {
         b: i32,

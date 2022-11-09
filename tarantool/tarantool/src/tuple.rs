@@ -8,11 +8,13 @@
 //! - [Tuples](https://www.tarantool.io/en/doc/2.2/book/box/data_model/#tuples)
 //! - [Lua reference: Submodule box.tuple](https://www.tarantool.io/en/doc/2.2/reference/reference_lua/box_tuple/)
 //! - [C API reference: Module tuple](https://www.tarantool.io/en/doc/2.2/dev_guide/reference_capi/tuple/)
+use std::borrow::Cow;
 use std::cmp::Ordering;
+use std::collections::BTreeMap;
 use std::convert::TryFrom;
 use std::fmt::{self, Debug, Formatter};
 use std::io::Write;
-use std::ops::Range;
+use std::ops::{Deref, Range};
 use std::os::raw::{c_char, c_int};
 use std::ptr::NonNull;
 
@@ -20,10 +22,14 @@ use num_derive::ToPrimitive;
 use num_traits::ToPrimitive;
 use rmp::Marker;
 use serde::Serialize;
+use tarantool_proc::impl_tuple_encode;
 
 use crate::error::{self, Error, Result, TarantoolError};
 use crate::ffi::tarantool as ffi;
 use crate::tlua;
+
+pub use rmp;
+pub use tarantool_proc::Encode;
 
 /// Tuple
 pub struct Tuple {
@@ -545,6 +551,175 @@ macro_rules! impl_tuple {
 }
 
 impl_tuple! { A B C D E F G H I J K L M N O P }
+
+/// A general purpose trait for msgpack serialization.
+/// It should replace `Encode` after `named serialization` and `raw` attribute are finished
+/// `_` prefix is used for disambiguation and is temporary.
+///
+/// # Example
+/// ```
+/// use tarantool_proc::Encode;
+/// use tarantool::tuple::_Encode;
+/// // For most use cases this trait can be derived
+/// #[derive(Encode)]
+/// struct Foo;
+///
+/// let mut buffer = vec![];
+/// Foo.encode(&mut buffer, false).unwrap();
+/// ```
+// TODO: Remove `_` prefix and use this trait instead of previous, replace derive `Serialize` to derive `Encode`
+pub trait _Encode {
+    fn encode(&self, w: &mut impl Write, named: bool) -> Result<()>;
+}
+
+impl _Encode for () {
+    fn encode(&self, w: &mut impl Write, _named: bool) -> Result<()> {
+        rmp::encode::write_nil(w)?;
+        Ok(())
+    }
+}
+
+impl<T> _Encode for [T]
+where
+    T: _Encode,
+{
+    fn encode(&self, w: &mut impl Write, named: bool) -> Result<()> {
+        rmp::encode::write_array_len(w, self.len() as u32)?;
+        for v in self.iter() {
+            v.encode(w, named)?;
+        }
+        Ok(())
+    }
+}
+
+impl<T> _Encode for Vec<T>
+where
+    T: _Encode,
+{
+    fn encode(&self, w: &mut impl Write, named: bool) -> Result<()> {
+        self[..].as_ref().encode(w, named)
+    }
+}
+
+impl<'a, T> _Encode for Cow<'a, T>
+where
+    T: _Encode + ToOwned + ?Sized,
+{
+    fn encode(&self, w: &mut impl Write, named: bool) -> Result<()> {
+        self.deref().encode(w, named)
+    }
+}
+
+impl _Encode for String {
+    fn encode(&self, w: &mut impl Write, named: bool) -> Result<()> {
+        self.as_str().encode(w, named)
+    }
+}
+
+impl _Encode for str {
+    fn encode(&self, w: &mut impl Write, _named: bool) -> Result<()> {
+        rmp::encode::write_str(w, self).map_err(Into::into)
+    }
+}
+
+impl<K, V> _Encode for BTreeMap<K, V>
+where
+    K: _Encode,
+    V: _Encode,
+{
+    fn encode(&self, w: &mut impl Write, named: bool) -> Result<()> {
+        rmp::encode::write_map_len(w, self.len() as u32)?;
+        for (k, v) in self.iter() {
+            k.encode(w, named)?;
+            v.encode(w, named)?;
+        }
+        Ok(())
+    }
+}
+
+impl _Encode for char {
+    fn encode(&self, w: &mut impl Write, named: bool) -> Result<()> {
+        self.to_string().encode(w, named)
+    }
+}
+
+macro_rules! impl_simple_encode {
+    ($(($t:ty, $f:tt, $conv:ty))+) => {
+        $(
+            impl _Encode for $t{
+                fn encode(&self, w: &mut impl Write, _named: bool) -> Result<()> {
+                    rmp::encode::$f(w, *self as $conv)?;
+                    Ok(())
+                }
+            }
+        )+
+    }
+}
+
+impl_simple_encode! {
+    (u8, write_uint, u64)
+    (u16, write_uint, u64)
+    (u32, write_uint, u64)
+    (u64, write_uint, u64)
+    (usize, write_uint, u64)
+    (i8, write_sint, i64)
+    (i16, write_sint, i64)
+    (i32, write_sint, i64)
+    (i64, write_sint, i64)
+    (isize, write_sint, i64)
+    (f32, write_f32, f32)
+    (f64, write_f64, f64)
+    (bool, write_bool, bool)
+    (&str, write_str, &str)
+}
+
+macro_rules! _impl_array {
+    ($($n:literal)+) => {
+        $(
+            #[allow(clippy::zero_prefixed_literal)]
+            impl<T> _Encode for [T; $n] where T: _Encode {
+                fn encode(&self, w: &mut impl Write, named: bool) -> Result<()> {
+                    rmp::encode::write_array_len(w, $n)?;
+                    for item in self {
+                        item.encode(w, named)?;
+                    }
+                    Ok(())
+                }
+            }
+        )+
+    }
+}
+
+_impl_array! {
+    00 01 02 03 04 05 06 07 08 09 10 11 12 13 14 15
+    16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32
+}
+
+impl_tuple_encode!();
+
+impl _Encode for serde_json::Value {
+    fn encode(&self, w: &mut impl Write, named: bool) -> Result<()> {
+        let bytes = if named {
+            rmp_serde::to_vec_named(self)?
+        } else {
+            rmp_serde::to_vec(self)?
+        };
+        w.write_all(bytes.as_slice())?;
+        Ok(())
+    }
+}
+
+impl _Encode for serde_json::Map<String, serde_json::Value> {
+    fn encode(&self, w: &mut impl Write, named: bool) -> Result<()> {
+        let bytes = if named {
+            rmp_serde::to_vec_named(self)?
+        } else {
+            rmp_serde::to_vec(self)?
+        };
+        w.write_all(bytes.as_slice())?;
+        Ok(())
+    }
+}
 
 #[allow(deprecated)]
 impl<T> AsTuple for T
@@ -1390,5 +1565,135 @@ mod picodata {
                 )
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeMap;
+
+    use super::_Encode;
+    use serde::Deserialize;
+    use tarantool_proc::Encode;
+
+    #[test]
+    pub fn encode_struct() {
+        #[derive(Clone, Encode, Deserialize, PartialEq, Debug)]
+        #[encode(tarantool = "crate")]
+        struct Test1 {
+            b: u32,
+        }
+        #[derive(Clone, Encode, Deserialize, PartialEq, Debug)]
+        #[encode(tarantool = "crate")]
+        struct Test {
+            a: usize,
+            b: String,
+            c: Test1,
+        }
+        let mut bytes = vec![];
+        let original = Test {
+            a: 1,
+            b: "abc".to_owned(),
+            c: Test1 { b: 0 },
+        };
+        original.encode(&mut bytes, false).unwrap();
+        let decoded: Test = rmp_serde::from_slice(bytes.as_slice()).unwrap();
+        assert_eq!(original, decoded);
+    }
+
+    #[test]
+    pub fn encode_tuple_struct() {
+        #[derive(Clone, Encode, Deserialize, PartialEq, Debug)]
+        #[encode(tarantool = "crate")]
+        struct Test(u32, bool);
+        let mut bytes = vec![];
+        let original = Test(0, true);
+        original.encode(&mut bytes, false).unwrap();
+        let decoded: Test = rmp_serde::from_slice(bytes.as_slice()).unwrap();
+        assert_eq!(original, decoded);
+    }
+
+    #[test]
+    pub fn encode_unit_struct() {
+        #[derive(Clone, Encode, Deserialize, PartialEq, Debug)]
+        #[encode(tarantool = "crate")]
+        struct Test;
+        let mut bytes = vec![];
+        let original = Test;
+        original.encode(&mut bytes, false).unwrap();
+        let decoded: Test = rmp_serde::from_slice(bytes.as_slice()).unwrap();
+        assert_eq!(original, decoded);
+    }
+
+    #[test]
+    pub fn encode_enum() {
+        #[derive(Clone, Encode, Deserialize, PartialEq, Debug)]
+        #[encode(tarantool = "crate")]
+        enum Foo {
+            BarUnit,
+            BarTuple1(bool),
+            BarTupleN((), (), ()),
+            BarStruct1 { bar: bool },
+            BarStructN { bar1: (), bar2: (), bar3: () },
+        }
+        let mut bytes = vec![];
+        let original = Foo::BarUnit;
+        original.encode(&mut bytes, false).unwrap();
+        let decoded: Foo = rmp_serde::from_slice(bytes.as_slice()).unwrap();
+        assert_eq!(original, decoded);
+
+        let mut bytes = vec![];
+        let original = Foo::BarTuple1(true);
+        original.encode(&mut bytes, false).unwrap();
+        let decoded: Foo = rmp_serde::from_slice(bytes.as_slice()).unwrap();
+        assert_eq!(original, decoded);
+
+        let mut bytes = vec![];
+        let original = Foo::BarTupleN((), (), ());
+        original.encode(&mut bytes, false).unwrap();
+        let decoded: Foo = rmp_serde::from_slice(bytes.as_slice()).unwrap();
+        assert_eq!(original, decoded);
+
+        let mut bytes = vec![];
+        let original = Foo::BarStruct1 { bar: false };
+        original.encode(&mut bytes, false).unwrap();
+        let decoded: Foo = rmp_serde::from_slice(bytes.as_slice()).unwrap();
+        assert_eq!(original, decoded);
+
+        let mut bytes = vec![];
+        let original = Foo::BarStructN {
+            bar1: (),
+            bar2: (),
+            bar3: (),
+        };
+        original.encode(&mut bytes, false).unwrap();
+        let decoded: Foo = rmp_serde::from_slice(bytes.as_slice()).unwrap();
+        assert_eq!(original, decoded);
+    }
+
+    #[test]
+    pub fn encode_vec() {
+        let mut bytes = vec![];
+        let original = vec![1u32];
+        original.encode(&mut bytes, false).unwrap();
+        let decoded: Vec<u32> = rmp_serde::from_slice(bytes.as_slice()).unwrap();
+        assert_eq!(original, decoded);
+
+        let mut bytes = vec![];
+        let original = vec![(), (), (), (), ()];
+        original.encode(&mut bytes, false).unwrap();
+        let decoded: Vec<()> = rmp_serde::from_slice(bytes.as_slice()).unwrap();
+        assert_eq!(original, decoded);
+    }
+
+    #[test]
+    pub fn encode_map() {
+        let mut bytes = vec![];
+        let mut original = BTreeMap::new();
+        original.insert(1, "abc".to_string());
+        original.insert(2, "def".to_string());
+        original.encode(&mut bytes, false).unwrap();
+        let decoded: BTreeMap<u32, String> = rmp_serde::from_slice(bytes.as_slice()).unwrap();
+        assert_eq!(original, decoded);
     }
 }

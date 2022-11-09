@@ -472,7 +472,7 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 r#box::index_create_drop,
                 r#box::index_parts,
                 tuple::tuple_new_from_struct,
-                tuple::new_tuple_from_flutten_struct,
+                tuple::new_tuple_from_flatten_struct,
                 tuple::tuple_field_count,
                 tuple::tuple_size,
                 tuple::tuple_decode,

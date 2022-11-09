@@ -1,10 +1,224 @@
 use proc_macro::TokenStream;
-use proc_macro2::TokenStream as TokenStream2;
+use proc_macro2::{Span, TokenStream as TokenStream2};
 use quote::quote;
 use syn::{
-    parse_macro_input, punctuated::Punctuated, AttributeArgs, FnArg, Item, ItemFn, Lit, Meta,
-    MetaNameValue, NestedMeta, Signature, Token,
+    parse_macro_input, punctuated::Punctuated, AttributeArgs, DeriveInput, FnArg, Ident, Item,
+    ItemFn, Lit, Meta, MetaNameValue, NestedMeta, Signature, Token,
 };
+
+mod msgpack {
+    use darling::FromDeriveInput;
+    use quote::{format_ident, quote, quote_spanned};
+    use syn::{
+        parse_quote, spanned::Spanned, Data, Fields, FieldsNamed, FieldsUnnamed, GenericParam,
+        Generics, Index, Path,
+    };
+
+    #[derive(FromDeriveInput)]
+    #[darling(attributes(encode))]
+    pub struct EncodeArgs {
+        /// Path to tarantool crate
+        pub tarantool: Option<String>,
+    }
+
+    pub fn add_trait_bounds(mut generics: Generics, tarantool_crate: &Path) -> Generics {
+        for param in &mut generics.params {
+            if let GenericParam::Type(ref mut type_param) = *param {
+                type_param
+                    .bounds
+                    .push(parse_quote!(#tarantool_crate::tuple::_Encode));
+            }
+        }
+        generics
+    }
+
+    fn encode_named_fields(
+        fields: &FieldsNamed,
+        tarantool_crate: &Path,
+        add_self: bool,
+    ) -> proc_macro2::TokenStream {
+        fields
+            .named
+            .iter()
+            .flat_map(|f| {
+                let name = &f.ident;
+                let s = if add_self {
+                    quote! {&self.}
+                } else {
+                    quote! {}
+                };
+                quote_spanned! {f.span()=>
+                    #tarantool_crate::tuple::_Encode::encode(#s #name, w, named)?;
+                }
+            })
+            .collect()
+    }
+
+    fn encode_unnamed_fields(
+        fields: &FieldsUnnamed,
+        tarantool_crate: &Path,
+    ) -> proc_macro2::TokenStream {
+        fields
+            .unnamed
+            .iter()
+            .enumerate()
+            .flat_map(|(i, f)| {
+                let index = Index::from(i);
+                quote_spanned! {f.span()=>
+                    #tarantool_crate::tuple::_Encode::encode(&self.#index, w, named)?;
+                }
+            })
+            .collect()
+    }
+
+    pub fn encode_fields(data: &Data, tarantool_crate: &Path) -> proc_macro2::TokenStream {
+        match *data {
+            Data::Struct(ref data) => match data.fields {
+                Fields::Named(ref fields) => {
+                    let field_count = fields.named.len() as u32;
+                    let fields = encode_named_fields(fields, tarantool_crate, true);
+                    quote! {
+                        #tarantool_crate::tuple::rmp::encode::write_array_len(w, #field_count)?;
+                        #fields
+                    }
+                }
+                Fields::Unnamed(ref fields) => {
+                    let field_count = fields.unnamed.len() as u32;
+                    let fields = encode_unnamed_fields(fields, tarantool_crate);
+                    quote! {
+                        #tarantool_crate::tuple::rmp::encode::write_array_len(w, #field_count)?;
+                        #fields
+                    }
+                }
+                Fields::Unit => {
+                    quote!(#tarantool_crate::tuple::_Encode::encode(&(), w, named)?;)
+                }
+            },
+            Data::Enum(ref variants) => {
+                let variants: proc_macro2::TokenStream = variants
+                    .variants
+                    .iter()
+                    .flat_map(|variant| match variant.fields {
+                        Fields::Named(ref fields) => {
+                            let field_count = fields.named.len() as u32;
+                            let variant_name = &variant.ident;
+                            let field_names = fields.named.iter().map(|field| field.ident.clone());
+                            let fields = encode_named_fields(fields, tarantool_crate, false);
+                            quote! {
+                                 Self::#variant_name { #(#field_names),*} => {
+                                    #tarantool_crate::tuple::rmp::encode::write_map_len(w, 1)?;
+                                    #tarantool_crate::tuple::rmp::encode::write_str(w, stringify!(#variant_name))?;
+                                    #tarantool_crate::tuple::rmp::encode::write_array_len(w, #field_count)?;
+                                    #fields
+                                }
+                            }
+                        },
+                        Fields::Unnamed(ref fields) => {
+                            let field_count = fields.unnamed.len() as u32;
+                            let variant_name = &variant.ident;
+                            let field_names = fields.unnamed.iter().enumerate().map(|(i, _)| format_ident!("t{}", i));
+                            let fields: proc_macro2::TokenStream = field_names.clone().flat_map(|field_name| quote! { #tarantool_crate::tuple::_Encode::encode(#field_name, w, named)?;}).collect();
+                            if field_count > 1 {
+                                quote! {
+                                    Self::#variant_name ( #(#field_names),* ) => {
+                                        #tarantool_crate::tuple::rmp::encode::write_map_len(w, 1)?;
+                                        #tarantool_crate::tuple::rmp::encode::write_str(w, stringify!(#variant_name))?;
+                                        #tarantool_crate::tuple::rmp::encode::write_array_len(w, #field_count)?;
+                                        #fields
+                                    }
+                                }
+                            } else {
+                                quote! {
+                                    Self::#variant_name ( v ) => {
+                                        #tarantool_crate::tuple::rmp::encode::write_map_len(w, 1)?;
+                                        #tarantool_crate::tuple::rmp::encode::write_str(w, stringify!(#variant_name))?;
+                                        #tarantool_crate::tuple::_Encode::encode(v, w, named)?;
+                                    }
+                                }
+                            }
+                        }
+                        Fields::Unit => {
+                            let variant_name = &variant.ident;
+                            quote! {
+                                Self::#variant_name => {
+                                    #tarantool_crate::tuple::rmp::encode::write_str(w, stringify!(#variant_name))?;
+                                }
+                            }
+                        },
+                    })
+                    .collect();
+                quote! {
+                    match self {
+                        #variants
+                    }
+                }
+            }
+            Data::Union(_) => unimplemented!(),
+        }
+    }
+}
+
+/// Macro to automatically derive `tarantool::tuple::_Encode`
+/// Deriving this trait will make this struct encodable into msgpack format.
+/// It is meant as a replacement for serde + rmp_serde
+/// allowing us to customize it for tarantool case and hopefully also decreasing compile-time due to its simplicity.
+///
+/// For more information see `tarantool::tuple::_Encode`
+#[proc_macro_derive(Encode, attributes(encode))]
+pub fn derive_encode(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    let name = &input.ident;
+    let args: msgpack::EncodeArgs = darling::FromDeriveInput::from_derive_input(&input).unwrap();
+    let tarantool_crate = args.tarantool.unwrap_or_else(|| "tarantool".to_string());
+    let tarantool_crate = Ident::new(tarantool_crate.as_str(), Span::call_site()).into();
+    // Add a bound to every type parameter.
+    let generics = msgpack::add_trait_bounds(input.generics, &tarantool_crate);
+    let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
+    let encode_fields = msgpack::encode_fields(&input.data, &tarantool_crate);
+    let expanded = quote! {
+        // The generated impl.
+        impl #impl_generics #tarantool_crate::tuple::_Encode for #name #ty_generics #where_clause {
+            fn encode(&self, w: &mut impl ::std::io::Write, named: bool) -> #tarantool_crate::Result<()> {
+                if named {
+                    unimplemented!("Named encoding for structs is not yet implemented")
+                }
+                #encode_fields
+                Ok(())
+            }
+        }
+    };
+
+    expanded.into()
+}
+
+#[proc_macro]
+pub fn impl_tuple_encode(_input: TokenStream) -> TokenStream {
+    let mut impls = vec![];
+    for i in 1usize..=16usize {
+        let is: Vec<_> = (0..i).into_iter().map(syn::Index::from).collect();
+        let tys: Vec<_> = (0..i)
+            .into_iter()
+            .map(|i| Ident::new(format!("T{i}").as_str(), Span::call_site()))
+            .collect();
+        impls.push(quote! {
+            impl<#(#tys),*> _Encode for (#(#tys,)*)
+            where
+                #(#tys: _Encode,)*
+            {
+                fn encode(&self, w: &mut impl Write, named: bool) -> Result<()> {
+                    rmp::encode::write_array_len(w, #i as u32)?;
+                    #(self.#is.encode(w, named)?;)*
+                    Ok(())
+                }
+            }
+        });
+    }
+    impls
+        .into_iter()
+        .flatten()
+        .collect::<proc_macro2::TokenStream>()
+        .into()
+}
 
 #[proc_macro_attribute]
 pub fn stored_proc(attr: TokenStream, item: TokenStream) -> TokenStream {
