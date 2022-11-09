@@ -1,7 +1,6 @@
 use ::raft::prelude as raft;
 use ::raft::prelude::ConfChangeType::*;
 
-use std::cmp::Ord;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 
@@ -171,9 +170,6 @@ pub(crate) fn raft_conf_change(
         return None;
     }
 
-    // for the sake of test stability
-    changes.sort_by(|l, r| Ord::cmp(&l.node_id, &r.node_id));
-
     let conf_change = raft::ConfChangeV2 {
         transition: raft::ConfChangeTransition::Auto,
         changes: changes.into(),
@@ -187,8 +183,10 @@ pub(crate) fn raft_conf_change(
 mod tests {
     use ::raft::prelude as raft;
 
-    use super::raft_conf_change as cc;
-    use crate::traft;
+    use crate::traft::CurrentGrade;
+    use crate::traft::Peer;
+    use crate::traft::RaftId;
+    use crate::traft::TargetGrade;
 
     macro_rules! p {
         (
@@ -196,11 +194,11 @@ mod tests {
             $current_grade:ident ->
             $target_grade:ident
         ) => {
-            traft::Peer {
+            Peer {
                 raft_id: $raft_id,
-                current_grade: traft::CurrentGrade::$current_grade,
-                target_grade: traft::TargetGrade::$target_grade,
-                ..traft::Peer::default()
+                current_grade: CurrentGrade::$current_grade,
+                target_grade: TargetGrade::$target_grade,
+                ..Peer::default()
             }
         };
 
@@ -228,6 +226,12 @@ mod tests {
                 ..Default::default()
             })
         }};
+    }
+
+    fn cc(p: &[Peer], v: &[RaftId], l: &[RaftId]) -> Option<raft::ConfChangeV2> {
+        let mut cc = super::raft_conf_change(p, v, l)?;
+        cc.changes.sort_by(|l, r| Ord::cmp(&l.node_id, &r.node_id));
+        Some(cc)
     }
 
     #[test]
