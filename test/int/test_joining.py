@@ -305,35 +305,25 @@ def test_reconfigure_failure_domains(cluster: Cluster):
     i1.assert_raft_status("Leader")
     assert replicaset_id(i1) == "r1"
 
-    i2 = cluster.add_instance(
-        failure_domain=dict(planet="Mars"), init_replication_factor=2
-    )
+    i2 = cluster.add_instance(failure_domain=dict(planet="Mars"))
     assert replicaset_id(i2) == "r1"
 
     i2.terminate()
-    i1.terminate()
-
     # fail to start without needed domain subdivisions
-    i1.failure_domain = dict(owner="Bob")
-    i1.fail_to_start()
+    i2.failure_domain = dict(owner="Bob")
+    i2.fail_to_start()
 
-    i1.failure_domain = dict(planet="Mars", owner="Bob")
-    i1.start()
-    i1.wait_online()
-    # replicaset doesn't change automatically
-    assert replicaset_id(i1) == "r1"
-
-    i2.failure_domain = dict(planet="Earth", owner="Jon")
+    i2.terminate()
+    i2.failure_domain = dict(planet="Earth", owner="Bob")
     i2.start()
     i2.wait_online()
+    # replicaset doesn't change automatically
     assert replicaset_id(i2) == "r1"
 
     i2.terminate()
-    i1.terminate()
-
     # fail to remove domain subdivision
-    i1.failure_domain = dict(planet="Mars")
-    i1.fail_to_start()
+    i2.failure_domain = dict(planet="Mars")
+    i2.fail_to_start()
 
 
 def test_fail_to_join(cluster: Cluster):
