@@ -107,6 +107,9 @@ pub(crate) fn raft_conf_change(
         return None;
     }
 
+    // for the sake of test stability
+    changes.sort_by(|l, r| Ord::cmp(&l.node_id, &r.node_id));
+
     let conf_change = raft::ConfChangeV2 {
         transition: raft::ConfChangeTransition::Auto,
         changes: changes.into(),
@@ -165,43 +168,152 @@ mod tests {
 
     #[test]
     fn conf_change() {
+        let p1 = || p!(1, Online);
+        let p2 = || p!(2, Online);
+        let p3 = || p!(3, Online);
+        let p4 = || p!(4, Online);
+        let p5 = || p!(5, Online);
+
         assert_eq!(
-            cc(&[p!(1, Online), p!(2, Offline -> Online)], &[1], &[]),
-            // cc![AddLearnerNode(2)] // FIXME
+            cc(&[p1(), p!(2, Offline)], &[1], &[]),
+            // FIXME
+            // cc![AddLearnerNode(2)]
             cc![AddNode(2)]
         );
 
         assert_eq!(
-            cc(&[p!(1, Online), p!(2, Offline -> Online)], &[1], &[2]),
+            cc(&[p1(), p!(2, Offline -> Online)], &[1], &[]),
+            // FIXME
+            // cc![AddLearnerNode(2)]
+            cc![AddNode(2)]
+        );
+
+        assert_eq!(
+            cc(&[p1(), p!(2, RaftSynced -> Online)], &[1], &[2]),
+            // nothing to do until p2 attains current_grade online
             None
         );
 
         assert_eq!(
-            cc(&[p!(1, Online), p!(2, Online)], &[1], &[2]),
+            cc(&[p1(), p!(2, Online)], &[1], &[2]),
+            // promote p2 as soon as it attains current_grade online
             cc![AddNode(2)]
         );
 
         assert_eq!(
-            cc(&[p!(1, Online), p!(2, Online -> Offline)], &[1, 2], &[]),
-            // cc![RemoveNode(2)] // FIXME
+            cc(&[p1(), p!(2, Online -> Offline)], &[1, 2], &[]),
+            // don't reduce total voters number
             None
         );
 
         assert_eq!(
-            cc(&[p!(1, Online), p!(2, Online -> Offline)], &[1], &[2]),
-            // cc![RemoveNode(2)] // FIXME
-            cc![AddNode(2)]
+            cc(&[p1(), p!(2, Replicated -> Offline)], &[1], &[2]),
+            // p2 went offline even before being promoted.
+            None
         );
 
         assert_eq!(
-            cc(&[p!(1, Online), p!(2, Offline)], &[1, 2], &[]),
-            // cc![RemoveNode(2)] // FIXME
-            cc![AddLearnerNode(2)]
+            cc(&[p1(), p2(), p3(), p4()], &[1, 2, 3], &[4]),
+            // 4 instances -> 3 voters
+            None
         );
 
         assert_eq!(
-            cc(&[p!(1, Online), p!(2, Offline)], &[1], &[2]),
-            // cc![RemoveNode(2)] // FIXME
+            cc(&[p1(), p2(), p3(), p4(), p5()], &[1, 2, 3], &[4, 5]),
+            // 5 and more instances -> 5 voters
+            cc![AddNode(4), AddNode(5)]
+        );
+
+        assert_eq!(
+            cc(
+                &[p1(), p2(), p!(3, Online -> Offline), p4()],
+                &[1, 2, 3],
+                &[4]
+            ),
+            // FIXME
+            // failover a voter
+            // cc![AddLearnerNode(3), AddNode(4)]
+            None
+        );
+
+        assert_eq!(
+            cc(
+                &[p1(), p2(), p3(), p4(), p5(), p!(6, Online -> Offline)],
+                &[1, 2, 3, 4, 5],
+                &[6]
+            ),
+            None
+        );
+
+        assert_eq!(
+            cc(
+                &[
+                    p!(1, Online -> Offline),
+                    p!(2, Online -> Offline),
+                    p!(3, Online -> Offline),
+                    p!(4, Online -> Offline),
+                    p!(5, Online -> Offline)
+                ],
+                &[1, 2, 3, 4, 5],
+                &[]
+            ),
+            None
+        );
+
+        assert_eq!(
+            cc(&[p1()], &[1, 99], &[]),
+            // FIXME
+            // Unknown voters should be removed
+            // cc![RemoveNode(99)]
+            cc![AddLearnerNode(99)]
+        );
+
+        assert_eq!(
+            cc(&[p1()], &[1], &[99]),
+            // FIXME
+            // Unknown learners are removed as well
+            // cc![RemoveNode(99)]
+            None
+        );
+
+        assert_eq!(
+            cc(&[p1(), p!(2, Online -> Expelled)], &[1, 2], &[]),
+            // FIXME
+            // Expelled voters should be removed
+            // cc![RemoveNode(2)]
+            None
+        );
+
+        assert_eq!(
+            cc(&[p1(), p!(2, Offline -> Expelled)], &[1], &[2]),
+            // FIXME
+            // Expelled learners are removed too
+            // cc![RemoveNode(2)]
+            None
+        );
+
+        assert_eq!(
+            cc(
+                &[p1(), p2(), p3(), p4(), p!(5, Online -> Expelled)],
+                &[1, 2, 3, 4, 5],
+                &[]
+            ),
+            // FIXME
+            // Tricky case.
+            // When one of five voters is expelled,
+            // only 3 voters should remain there.
+            // cc![AddLearnerNode(4), RemoveNode(5)]
+            None
+        );
+
+        assert_eq!(
+            cc(
+                &[p1(), p!(2, Online -> Offline), p!(3, RaftSynced -> Online)],
+                &[1, 2],
+                &[3]
+            ),
+            // Tricky case.
+            // Voter p2 goes offline, but there's no replacement.
             None
         );
     }
