@@ -8,7 +8,6 @@ use crate::traft::CurrentGrade;
 use crate::traft::Peer;
 use crate::traft::RaftId;
 use crate::traft::TargetGrade;
-use crate::unwrap_some_or;
 
 struct RaftConf<'a> {
     all: BTreeMap<RaftId, &'a Peer>,
@@ -88,11 +87,10 @@ pub(crate) fn raft_conf_change(
             Some(peer @ Peer {target_grade: TargetGrade::Offline, ..}) => {
                 // A voter goes offline. Replace it with
                 // another online instance if possible.
-                let replacement = peers.iter().find(|peer| {
+                let Some(replacement) = peers.iter().find(|peer| {
                     peer.has_grades(CurrentGrade::Online, TargetGrade::Online)
                     && !raft_conf.voters.contains(&peer.raft_id)
-                });
-                let replacement = unwrap_some_or!(replacement, continue);
+                }) else { continue };
 
                 let ccs1 = raft_conf.change_single(AddLearnerNode, peer.raft_id);
                 let ccs2 = raft_conf.change_single(AddNode, replacement.raft_id);

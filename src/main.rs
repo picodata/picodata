@@ -975,7 +975,7 @@ fn postjoin(args: &args::Run, storage: Storage) {
             .with_target_grade(TargetGrade::Online)
             .with_failure_domain(args.failure_domain());
 
-        let leader_id = unwrap_some_or!(node.status().leader_id, continue);
+        let Some(leader_id) = node.status().leader_id else { continue };
         let leader = storage.peers.get(&leader_id).unwrap();
 
         // It's necessary to call `proc_update_peer` remotely on a
