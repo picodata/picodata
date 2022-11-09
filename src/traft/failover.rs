@@ -99,39 +99,3 @@ pub fn on_shutdown() {
         tlog!(Warning, "failed to wait for self demotion: {e}");
     }
 }
-
-pub fn voters_needed(voters: usize, total: usize) -> i64 {
-    let voters_expected = match total {
-        0 => {
-            crate::warn_or_panic!("`voters_needed` was called with `total` = 0");
-            0
-        }
-        1 => 1,
-        2 => 2,
-        3..=4 => 3,
-        5.. => 5,
-        _ => unreachable!(
-            "just another thing rust is garbage at:
-             `5..` covers all the rest of the values,
-             but rust can't figure this out"
-        ),
-    };
-    voters_expected - (voters as i64)
-}
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn voters_needed() {
-        assert_eq!(super::voters_needed(0, 1), 1);
-        assert_eq!(super::voters_needed(1, 1), 0);
-        assert_eq!(super::voters_needed(2, 1), -1);
-        assert_eq!(super::voters_needed(0, 2), 2);
-        assert_eq!(super::voters_needed(2, 3), 1);
-        assert_eq!(super::voters_needed(6, 4), -3);
-        assert_eq!(super::voters_needed(1, 5), 4);
-        assert_eq!(super::voters_needed(1, 999), 4);
-        assert_eq!(super::voters_needed(0, usize::MAX), 5);
-        assert_eq!(super::voters_needed(0, u64::MAX as _), 5);
-    }
-}

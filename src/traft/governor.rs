@@ -1,22 +1,51 @@
 use ::raft::prelude as raft;
+use ::raft::prelude::ConfChangeType::*;
 
-use std::collections::HashMap;
-use std::collections::HashSet;
+use std::cmp::Ord;
+use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 
-use crate::traft::failover;
+use crate::traft::CurrentGrade;
 use crate::traft::Peer;
 use crate::traft::RaftId;
+use crate::traft::TargetGrade;
+use crate::unwrap_some_or;
 
-fn conf_change_single(node_id: RaftId, is_voter: bool) -> raft::ConfChangeSingle {
-    let change_type = if is_voter {
-        raft::ConfChangeType::AddNode
-    } else {
-        raft::ConfChangeType::AddLearnerNode
-    };
-    raft::ConfChangeSingle {
-        change_type,
-        node_id,
-        ..Default::default()
+struct RaftConf<'a> {
+    all: BTreeMap<RaftId, &'a Peer>,
+    voters: BTreeSet<RaftId>,
+    learners: BTreeSet<RaftId>,
+}
+
+impl<'a> RaftConf<'a> {
+    fn change_single(
+        &mut self,
+        change_type: raft::ConfChangeType,
+        node_id: RaftId,
+    ) -> raft::ConfChangeSingle {
+        // Find the reference at
+        // https://github.com/tikv/raft-rs/blob/v0.6.0/src/confchange/changer.rs#L162
+
+        match change_type {
+            AddNode => {
+                self.voters.insert(node_id);
+                self.learners.remove(&node_id);
+            }
+            AddLearnerNode => {
+                self.voters.remove(&node_id);
+                self.learners.insert(node_id);
+            }
+            RemoveNode => {
+                self.voters.remove(&node_id);
+                self.learners.remove(&node_id);
+            }
+        }
+
+        raft::ConfChangeSingle {
+            change_type,
+            node_id,
+            ..Default::default()
+        }
     }
 }
 
@@ -25,82 +54,117 @@ pub(crate) fn raft_conf_change(
     voters: &[RaftId],
     learners: &[RaftId],
 ) -> Option<raft::ConfChangeV2> {
-    let voters: HashSet<RaftId> = voters.iter().cloned().collect();
-    let learners: HashSet<RaftId> = learners.iter().cloned().collect();
+    let mut raft_conf = RaftConf {
+        all: peers.iter().map(|p| (p.raft_id, p)).collect(),
+        voters: voters.iter().cloned().collect(),
+        learners: learners.iter().cloned().collect(),
+    };
+    let mut changes: Vec<raft::ConfChangeSingle> = vec![];
 
-    let peer_is_active: HashMap<RaftId, bool> = peers
-        .iter()
-        .map(|peer| (peer.raft_id, peer.is_online()))
-        .collect();
+    let not_expelled = |peer: &&Peer| !peer.is_expelled();
+    let target_online = |peer: &&Peer| peer.target_grade == TargetGrade::Online;
+    let current_online = |peer: &&Peer| peer.current_grade == CurrentGrade::Online;
 
-    let (active_voters, to_demote): (Vec<RaftId>, Vec<RaftId>) = voters
-        .iter()
-        .partition(|id| peer_is_active.get(id).copied().unwrap_or(false));
+    let cluster_size = peers.iter().filter(not_expelled).count();
+    let voters_needed = match cluster_size {
+        // five and more nodes -> 5 voters
+        5.. => 5,
+        // three or four nodes -> 3 voters
+        3..=4 => 3,
+        // two nodes -> 2 voters
+        // one node -> 1 voter
+        // zero nodes -> 0 voters (almost unreachable)
+        x => x,
+    };
 
-    let active_learners: Vec<RaftId> = learners
-        .iter()
-        .copied()
-        .filter(|id| peer_is_active.get(id).copied().unwrap_or(false))
-        .collect();
-
-    let new_peers: Vec<RaftId> = peer_is_active
-        .iter()
-        .map(|(&id, _)| id)
-        .filter(|id| !voters.contains(id) && !learners.contains(id))
-        .collect();
-
-    let mut changes: Vec<raft::ConfChangeSingle> = Vec::new();
-
-    const VOTER: bool = true;
-    const LEARNER: bool = false;
-
-    changes.extend(
-        to_demote
-            .into_iter()
-            .map(|id| conf_change_single(id, LEARNER)),
-    );
-
-    let total_active = active_voters.len() + active_learners.len() + new_peers.len();
-
-    if total_active == 0 {
-        return None;
-    }
-
-    let new_peers_to_promote;
-    match failover::voters_needed(active_voters.len(), total_active) {
-        0 => {
-            new_peers_to_promote = 0;
-        }
-        pos @ 1..=i64::MAX => {
-            let pos = pos as usize;
-            if pos < active_learners.len() {
-                for &raft_id in &active_learners[0..pos] {
-                    changes.push(conf_change_single(raft_id, VOTER))
-                }
-                new_peers_to_promote = 0;
-            } else {
-                for &raft_id in &active_learners {
-                    changes.push(conf_change_single(raft_id, VOTER))
-                }
-                new_peers_to_promote = pos - active_learners.len();
-                assert!(new_peers_to_promote <= new_peers.len());
-                for &raft_id in &new_peers[0..new_peers_to_promote] {
-                    changes.push(conf_change_single(raft_id, VOTER))
-                }
+    // Remove / replace voters
+    for voter_id in raft_conf.voters.clone().iter() {
+        let peer = raft_conf.all.get(voter_id);
+        match peer {
+            #[rustfmt::skip]
+            Some(Peer {target_grade: TargetGrade::Online, ..}) => {
+                // Do nothing
             }
-        }
-        neg @ i64::MIN..=-1 => {
-            let neg = -neg as usize;
-            assert!(neg < active_voters.len());
-            for &raft_id in &active_voters[0..neg] {
-                changes.push(conf_change_single(raft_id, LEARNER))
+            #[rustfmt::skip]
+            Some(peer @ Peer {target_grade: TargetGrade::Offline, ..}) => {
+                // A voter goes offline. Replace it with
+                // another online instance if possible.
+                let replacement = peers.iter().find(|peer| {
+                    peer.has_grades(CurrentGrade::Online, TargetGrade::Online)
+                    && !raft_conf.voters.contains(&peer.raft_id)
+                });
+                let replacement = unwrap_some_or!(replacement, continue);
+
+                let ccs1 = raft_conf.change_single(AddLearnerNode, peer.raft_id);
+                let ccs2 = raft_conf.change_single(AddNode, replacement.raft_id);
+                changes.extend_from_slice(&[ccs1, ccs2]);
             }
-            new_peers_to_promote = 0;
+            #[rustfmt::skip]
+            Some(peer @ Peer {target_grade: TargetGrade::Expelled, ..}) => {
+                // Expelled instance is removed unconditionally.
+                let ccs = raft_conf.change_single(RemoveNode, peer.raft_id);
+                changes.push(ccs);
+            }
+            None => {
+                // Nearly impossible, but rust forces me to check it.
+                let ccs = raft_conf.change_single(RemoveNode, *voter_id);
+                changes.push(ccs);
+            }
         }
     }
 
-    for &raft_id in &new_peers[new_peers_to_promote..] {
-        changes.push(conf_change_single(raft_id, LEARNER))
+    for voter_id in raft_conf.voters.clone().iter().skip(voters_needed) {
+        // If threre're more voters that needed, remove excess ones.
+        // That may be the case when one of 5 instances is expelled.
+        let ccs = raft_conf.change_single(AddLearnerNode, *voter_id);
+        changes.push(ccs);
+    }
+
+    // Remove unknown / expelled learners
+    for learner_id in raft_conf.learners.clone().iter() {
+        let peer = raft_conf.all.get(learner_id);
+        match peer {
+            #[rustfmt::skip]
+            Some(Peer {target_grade: TargetGrade::Online, ..}) => {
+                // Do nothing
+            }
+            #[rustfmt::skip]
+            Some(Peer {target_grade: TargetGrade::Offline, ..}) => {
+                // Do nothing
+            }
+            #[rustfmt::skip]
+            Some(peer @ Peer {target_grade: TargetGrade::Expelled, ..}) => {
+                // Expelled instance is removed unconditionally.
+                let ccs = raft_conf.change_single(RemoveNode, peer.raft_id);
+                changes.push(ccs);
+            }
+            None => {
+                // Nearly impossible, but rust forces me to check it.
+                let ccs = raft_conf.change_single(RemoveNode, *learner_id);
+                changes.push(ccs);
+            }
+        }
+    }
+
+    // Promote more voters
+    for peer in peers.iter().filter(target_online).filter(current_online) {
+        if raft_conf.voters.len() >= voters_needed {
+            break;
+        }
+
+        if !raft_conf.voters.contains(&peer.raft_id) {
+            let ccs = raft_conf.change_single(AddNode, peer.raft_id);
+            changes.push(ccs);
+        }
+    }
+
+    // Promote remaining instances as learners
+    for peer in peers.iter().filter(not_expelled) {
+        if !raft_conf.voters.contains(&peer.raft_id) && !raft_conf.learners.contains(&peer.raft_id)
+        {
+            let ccs = raft_conf.change_single(AddLearnerNode, peer.raft_id);
+            changes.push(ccs);
+        }
     }
 
     if changes.is_empty() {
@@ -176,16 +240,12 @@ mod tests {
 
         assert_eq!(
             cc(&[p1(), p!(2, Offline)], &[1], &[]),
-            // FIXME
-            // cc![AddLearnerNode(2)]
-            cc![AddNode(2)]
+            cc![AddLearnerNode(2)]
         );
 
         assert_eq!(
             cc(&[p1(), p!(2, Offline -> Online)], &[1], &[]),
-            // FIXME
-            // cc![AddLearnerNode(2)]
-            cc![AddNode(2)]
+            cc![AddLearnerNode(2)]
         );
 
         assert_eq!(
@@ -230,10 +290,8 @@ mod tests {
                 &[1, 2, 3],
                 &[4]
             ),
-            // FIXME
             // failover a voter
-            // cc![AddLearnerNode(3), AddNode(4)]
-            None
+            cc![AddLearnerNode(3), AddNode(4)]
         );
 
         assert_eq!(
@@ -262,34 +320,26 @@ mod tests {
 
         assert_eq!(
             cc(&[p1()], &[1, 99], &[]),
-            // FIXME
             // Unknown voters should be removed
-            // cc![RemoveNode(99)]
-            cc![AddLearnerNode(99)]
+            cc![RemoveNode(99)]
         );
 
         assert_eq!(
             cc(&[p1()], &[1], &[99]),
-            // FIXME
             // Unknown learners are removed as well
-            // cc![RemoveNode(99)]
-            None
+            cc![RemoveNode(99)]
         );
 
         assert_eq!(
             cc(&[p1(), p!(2, Online -> Expelled)], &[1, 2], &[]),
-            // FIXME
             // Expelled voters should be removed
-            // cc![RemoveNode(2)]
-            None
+            cc![RemoveNode(2)]
         );
 
         assert_eq!(
             cc(&[p1(), p!(2, Offline -> Expelled)], &[1], &[2]),
-            // FIXME
             // Expelled learners are removed too
-            // cc![RemoveNode(2)]
-            None
+            cc![RemoveNode(2)]
         );
 
         assert_eq!(
@@ -298,12 +348,10 @@ mod tests {
                 &[1, 2, 3, 4, 5],
                 &[]
             ),
-            // FIXME
             // Tricky case.
             // When one of five voters is expelled,
             // only 3 voters should remain there.
-            // cc![AddLearnerNode(4), RemoveNode(5)]
-            None
+            cc![AddLearnerNode(4), RemoveNode(5)]
         );
 
         assert_eq!(
