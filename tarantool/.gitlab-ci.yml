@@ -1,112 +1,178 @@
 stages:
-    - prebuild
-    - build
+  - build-base-image
+  - test
+
+workflow:
+  # See https://docs.gitlab.com/ee/ci/jobs/job_control.html#avoid-duplicate-pipelines
+  rules:
+    # To avoid duplicate pipelines we disable merge request events,
+    # leaving only pushes and manual triggering.
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      when: never
+    - if: $CI_PIPELINE_SOURCE == "push"
+    - if: $CI_PIPELINE_SOURCE == "web"
 
 variables:
-    DOCKER_AUTH_CONFIG: ${DOCKER_AUTH_RW}
-    DOCKER_REGISTRY_PUB: docker-public.binary.picodata.io
-    VANILA_IMAGE: ${DOCKER_REGISTRY_PUB}/tm-build-base:latest
-    VANILA_DOCKERFILE: docker/vanila.Dockerfile
-    PICODATA_IMAGE: ${DOCKER_REGISTRY_PUB}/picotnt-build-base:latest
-    PICODATA_DOCKERFILE: docker/picodata.Dockerfile
-    GIT_SUBMODULE_STRATEGY: recursive
-    CARGO_INCREMENTAL: 0
-    CARGO_HOME: ${CI_PROJECT_DIR}/.cargo
+  GIT_DEPTH: 1
+  GIT_STRATEGY: fetch
+  CACHE_PATHS: target
+  CARGO_INCREMENTAL: 0
+  CARGO_HOME: /shared-storage/tarantool-module/.cargo
+  VANILLA_DOCKER_IMAGE: docker-public.binary.picodata.io/tarantool-module-build-base-vanilla
+  PICODATA_DOCKER_IMAGE: docker-public.binary.picodata.io/tarantool-module-build-base-picodata
 
-cache:
-    key:
-        files:
-            - Cargo.toml
-    paths:
-        - target
+# job:rules explained:
+#
+# - if build-base changes on master branch (compared to HEAD~1)
+#     * build-base-image (with tag latest) and push
+#     * test (on base-image:latest)
+# - if build-base changes on development branch (compared to master)
+#     * build-base-image (with tag sha)
+#     * test (on base-image:sha)
+# - else (if build-base doesn't change)
+#     * skip build-base-image
+#     * just test (on base-image:latest)
+#
+# Anchor syntax explained here:
+# https://docs.gitlab.com/ee/ci/yaml/yaml_optimization.html
+#
+.rules:
+  - &if-build-base-changes-on-master-branch
+    if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    changes:
+      # implies compare_to HEAD~1
+      paths: &build-base-changes-paths
+        - docker/**
+        - .gitlab-ci.yml
 
-docker-vanila:
-    stage: prebuild
-    image: docker:20
-    tags:
-        - shell
-    rules:
-        - changes:
-            - ${VANILA_DOCKERFILE}
-    before_script:
-        - mkdir -p $CI_PROJECT_DIR/.docker
-        - echo $DOCKER_AUTH_RW > $CI_PROJECT_DIR/.docker/config.json
-    script:
-        - docker pull ${VANILA_IMAGE} || true
-        - >
-          docker build
-          --pull
-          --label GIT_COMMIT=${CI_COMMIT_SHA}
-          --cache-from ${VANILA_IMAGE}
-          -t ${VANILA_IMAGE}
-          -f ./${VANILA_DOCKERFILE}
-          ./docker
-        - docker --config $CI_PROJECT_DIR/.docker/ push ${VANILA_IMAGE}
+  - &if-build-base-changes-on-dev-branch
+    if: $CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH
+    changes:
+      compare_to: master
+      paths: *build-base-changes-paths
 
-docker-picodata:
-    stage: prebuild
-    image: docker:20
-    tags:
-        - shell
-    rules:
-        - changes:
-            - ${PICODATA_DOCKERFILE}
-    before_script:
-        - mkdir -p $CI_PROJECT_DIR/.docker
-        - echo $DOCKER_AUTH_RW > $CI_PROJECT_DIR/.docker/config.json
-    script:
-        - docker pull ${PICODATA_IMAGE} || true
-        - >
-          docker build
-          --pull
-          --label GIT_COMMIT=${CI_COMMIT_SHA}
-          --cache-from ${PICODATA_IMAGE}
-          -t ${PICODATA_IMAGE}
-          -f ./${PICODATA_DOCKERFILE}
-          ./docker
-        - docker --config $CI_PROJECT_DIR/.docker/ push ${PICODATA_IMAGE}
+  - &else {}
 
-build-vanila:
-    stage: build
-    rules:
-    tags:
-        - docker
-    image: ${VANILA_IMAGE}
-    script:
-        - cargo -V
-        - cargo fmt --all --check
-        - cargo clippy --version
-        - cargo clippy --workspace -- --deny warnings
-        - cargo build --all
-        - cargo test
-        - ./tests/test.sh
+build-base-image:
+  stage: build-base-image
+  tags:
+    - shell
+  rules:
+    - <<: *if-build-base-changes-on-master-branch
+      variables:
+        BASE_IMAGE_TAG: latest
+    - <<: *if-build-base-changes-on-dev-branch
+      variables:
+        BASE_IMAGE_TAG: ${CI_COMMIT_SHA}
+    - <<: *else
+      when: never
+  script:
+    - docker pull ${VANILLA_DOCKER_IMAGE} || true
+    - docker pull ${PICODATA_DOCKER_IMAGE} || true
+    - >
+      docker build
+      -t ${VANILLA_DOCKER_IMAGE}:${BASE_IMAGE_TAG}
+      -f ./docker/vanilla.Dockerfile
+      --label GIT_COMMIT=${CI_COMMIT_SHA}
+      --cache-from ${VANILLA_DOCKER_IMAGE}
+      ./docker
+    - >
+      docker build
+      -t ${PICODATA_DOCKER_IMAGE}:${BASE_IMAGE_TAG}
+      -f ./docker/picodata.Dockerfile
+      --label GIT_COMMIT=${CI_COMMIT_SHA}
+      --cache-from ${PICODATA_DOCKER_IMAGE}
+      ./docker
+    - |
+      # Push image to registry
+      if [ "${CI_COMMIT_BRANCH}" == "${CI_DEFAULT_BRANCH}" ]; then
+        mkdir -p $CI_PROJECT_DIR/.docker
+        echo $DOCKER_AUTH_RW > $CI_PROJECT_DIR/.docker/config.json
+        echo "Pushing ${VANILLA_DOCKER_IMAGE}:${BASE_IMAGE_TAG}"
+        docker --config $CI_PROJECT_DIR/.docker/ push ${VANILLA_DOCKER_IMAGE}:${BASE_IMAGE_TAG}
+        echo "Pushing ${PICODATA_DOCKER_IMAGE}:${BASE_IMAGE_TAG}"
+        docker --config $CI_PROJECT_DIR/.docker/ push ${PICODATA_DOCKER_IMAGE}:${BASE_IMAGE_TAG}
+      else
+        echo "Skip pushing image on a non-master branch"
+      fi
 
-build-picodata:
-    stage: build
-    rules:
-    tags:
-        - docker
-    image: ${PICODATA_IMAGE}
-    script:
-        - cargo -V
-        - cargo fmt --all --check
-        - cargo clippy --version
-        - cargo clippy --features=picodata --workspace -- --deny warnings
-        - cargo build --all --features=picodata
-        - cargo test --features=picodata
-        - ./tests/test.sh
+.test:
+  stage: test
+  rules:
+    - <<: *if-build-base-changes-on-master-branch
+      variables:
+        BASE_IMAGE_TAG: latest
+    - <<: *if-build-base-changes-on-dev-branch
+      variables:
+        BASE_IMAGE_TAG: ${CI_COMMIT_SHA}
+    - <<: *else
+      variables:
+        BASE_IMAGE_TAG: latest
+  tags:
+    - docker
+  image:
+    name: ${DOCKER_IMAGE}:${BASE_IMAGE_TAG}
+    pull_policy: if-not-present
+  before_script:
+    - |
+      # Restore cache
+      if [ -z "${CACHE_ARCHIVE}" ]; then
+        : # do nothing
+      elif [ "$CI_COMMIT_BRANCH" == "$CI_DEFAULT_BRANCH" ]; then
+        echo "Skip restoring cache on the master branch"
+      elif [ -f "${CACHE_ARCHIVE}" ]; then
+        ci-log-section start "restore-cache" Restoring cache from ${CACHE_ARCHIVE} ...
+        tar -xf ${CACHE_ARCHIVE}
+        du -sh ${CACHE_PATHS} || true
+        ci-log-section end "restore-cache"
+      else
+        echo "No cache found in ${CACHE_ARCHIVE}"
+      fi
+  script:
+    - cargo -V
+    - cargo fmt --all --check
+    - cargo clippy --version
+    - cargo clippy --features "${CARGO_FEATURES}" --workspace -- --deny warnings
+    - cargo build --features "${CARGO_FEATURES}" --all
+    - cargo test --features "${CARGO_FEATURES}"
+    - ./tests/test.sh
+    - |
+      # Save cache
+      if [ "$CI_COMMIT_BRANCH" == "$CI_DEFAULT_BRANCH" ]; then
+        ci-log-section start "save-cache" Saving cache to ${CACHE_ARCHIVE} ...
+        du -sh ${CACHE_PATHS} || true
+        TMPEXT=$RANDOM
+        tar -cf "${CACHE_ARCHIVE}.${TMPEXT}" ${CACHE_PATHS}
+        mv -f "${CACHE_ARCHIVE}.${TMPEXT}" "${CACHE_ARCHIVE}"
+        echo Ok
+        du -sh ${CACHE_ARCHIVE}
+        ci-log-section end "save-cache"
+      else
+        echo "Skip saving cache on a non-master branch"
+      fi
+
+test-vanilla:
+  extends: .test
+  variables:
+    CACHE_ARCHIVE: /shared-storage/tarantool-module/vanilla-cache.tar
+    DOCKER_IMAGE: ${VANILLA_DOCKER_IMAGE}
+    CARGO_FEATURES: ""
+
+test-picodata:
+  extends: .test
+  variables:
+    CACHE_ARCHIVE: /shared-storage/tarantool-module/picodata-cache.tar
+    DOCKER_IMAGE: ${PICODATA_DOCKER_IMAGE}
+    CARGO_FEATURES: picodata
 
 pages:
-  image: ${VANILA_IMAGE}
-  stage: build
-  only:
-    - master
+  extends: .test
+  variables:
+    DOCKER_IMAGE: ${VANILLA_DOCKER_IMAGE}
   script:
-    - cargo doc
+    - cargo doc --no-deps
     - rm -rf public
-    - mkdir public
-    - cp -R target/doc/* public
+    - mv target/doc public
   artifacts:
     paths:
-    - public
-
+      - public
