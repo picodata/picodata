@@ -388,6 +388,18 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 fiber::immediate_yields,
                 fiber::start_error,
                 fiber::require_error,
+                fiber::r#async::drop_the_result,
+                fiber::r#async::receive_non_blocking,
+                fiber::r#async::receive_non_blocking_after_dropping_sender,
+                fiber::r#async::receive_blocking_before_sending,
+                fiber::r#async::receive_blocking_before_dropping_sender,
+                fiber::r#async::join_two_after_sending,
+                fiber::r#async::join_two_before_sending,
+                fiber::r#async::join_two_drop_one,
+                fiber::r#async::instant_future,
+                fiber::r#async::actual_timeout_promise,
+                fiber::r#async::drop_tx_before_timeout,
+                fiber::r#async::send_tx_before_timeout,
                 #[should_panic]
                 fiber::start_dont_join,
                 #[should_panic]

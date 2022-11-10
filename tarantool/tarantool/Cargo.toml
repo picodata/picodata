@@ -41,6 +41,7 @@ serde_bytes = "^0"
 sha-1 = "0.9"
 tarantool-proc = { path = "../tarantool-proc", version = "0.1.1" }
 uuid = "0.8.2"
+futures = "0.3.25"
 
 [target.'cfg(not(all(target_arch = "aarch64", target_os = "macos")))'.dependencies]
 va_list = "0.1.3"

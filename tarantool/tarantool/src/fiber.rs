@@ -29,6 +29,7 @@ use crate::ffi::{lua, tarantool as ffi};
 use crate::Result;
 use crate::{c_ptr, set_error};
 
+pub mod r#async;
 pub mod channel;
 
 pub use channel::{
