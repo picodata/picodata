@@ -106,8 +106,12 @@ fn go_offline() -> traft::Result<()> {
             }
         }
 
-        let leader = node.storage.peers.get(&leader_id)?;
-        let res = match rpc::net_box_call(&leader.peer_address, &req, Duration::MAX) {
+        let Some(leader_address) = node.storage.peer_addresses.get(leader_id)? else {
+            // Leader address is unknown, maybe later we'll find it out?
+            fiber::sleep(wait_before_retry.saturating_sub(now.elapsed()));
+            continue;
+        };
+        let res = match rpc::net_box_call(&leader_address, &req, Duration::MAX) {
             Ok(UpdatePeerResponse::Ok) => Ok(()),
             Ok(UpdatePeerResponse::ErrNotALeader) => Err(Error::NotALeader),
             Err(e) => Err(e.into()),
@@ -118,7 +122,7 @@ fn go_offline() -> traft::Result<()> {
             Err(e) => {
                 tlog!(Warning,
                     "failed setting target grade Offline: {e}, retrying ...";
-                    "peer" => %leader,
+                    "raft_id" => leader_id,
                 );
                 fiber::sleep(wait_before_retry.saturating_sub(now.elapsed()));
                 continue;

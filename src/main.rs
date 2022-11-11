@@ -76,10 +76,15 @@ fn picolib_setup(args: &args::Run) {
             let node = traft::node::global()?;
             let iid = iid.unwrap_or(node.storage.raft.instance_id()?.unwrap());
             let peer = node.storage.peers.get(&InstanceId::from(iid))?;
+            let peer_address = node
+                .storage
+                .peer_addresses
+                .get(peer.raft_id)?
+                .unwrap_or_else(|| "<unknown>".into());
 
             Ok(tlua::AsTable((
                 ("raft_id", peer.raft_id),
-                ("advertise_address", peer.peer_address),
+                ("advertise_address", peer_address),
                 ("instance_id", peer.instance_id.0),
                 ("instance_uuid", peer.instance_uuid),
                 ("replicaset_id", peer.replicaset_id),
@@ -756,7 +761,7 @@ fn start_discover(args: &args::Run, to_supervisor: ipc::Sender<IpcMessage>) {
 fn start_boot(args: &args::Run) {
     tlog!(Info, ">>>>> start_boot()");
 
-    let peer = traft::topology::initial_peer(
+    let (peer, address) = traft::topology::initial_peer(
         args.instance_id.clone(),
         args.replicaset_id.clone(),
         args.advertise_address(),
@@ -805,6 +810,14 @@ fn start_boot(args: &args::Run) {
             init_entries.push(raft::Entry::try_from(e).unwrap());
         };
 
+        init_entries_push_op(
+            traft::OpDML::insert(
+                ClusterSpace::Addresses,
+                &traft::PeerAddress { raft_id, address },
+            )
+            .expect("cannot fail")
+            .into(),
+        );
         init_entries_push_op(traft::Op::persist_peer(peer));
         init_entries_push_op(
             OpDML::insert(
@@ -983,9 +996,14 @@ fn postjoin(args: &args::Run, storage: Storage) {
             .cluster_id()
             .unwrap()
             .expect("cluster_id must be persisted at the time of postjoin");
-        let Some(leader_id) = node.status().leader_id else {
-            fiber::sleep(Duration::from_millis(100));
-            continue
+        let leader_id = node.status().leader_id;
+        let leader_address = leader_id.and_then(|id| storage.peer_addresses.try_get(id).ok());
+        let Some(leader_address) = leader_address else {
+            // FIXME: don't hard code timeout
+            let timeout = Duration::from_millis(1000);
+            tlog!(Debug, "leader address is still unkown, retrying in {timeout:?}");
+            fiber::sleep(timeout);
+            continue;
         };
 
         tlog!(Info, "initiating self-activation of {}", peer.instance_id);
@@ -993,14 +1011,12 @@ fn postjoin(args: &args::Run, storage: Storage) {
             .with_target_grade(TargetGradeVariant::Online)
             .with_failure_domain(args.failure_domain());
 
-        let leader = storage.peers.get(&leader_id).unwrap();
-
         // It's necessary to call `proc_update_peer` remotely on a
         // leader over net_box. It always fails otherwise. Only the
         // leader is permitted to propose PersistPeer entries.
         let now = Instant::now();
         let timeout = Duration::from_secs(10);
-        match rpc::net_box_call(&leader.peer_address, &req, timeout) {
+        match rpc::net_box_call(&leader_address, &req, timeout) {
             Ok(UpdatePeerResponse::Ok) => {
                 break;
             }

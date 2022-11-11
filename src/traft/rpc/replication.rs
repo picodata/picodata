@@ -1,11 +1,5 @@
 use crate::tarantool::set_cfg_field;
-use crate::traft::{
-    self,
-    error::Error,
-    node,
-    storage::peer_field::{PeerAddress, ReplicasetId},
-    RaftIndex, RaftTerm, Result,
-};
+use crate::traft::{self, node, storage::peer_field::ReplicasetId, RaftIndex, RaftTerm, Result};
 use crate::InstanceId;
 
 use std::time::Duration;
@@ -16,22 +10,21 @@ crate::define_rpc_request! {
         node.status().check_term(req.term)?;
         super::sync::wait_for_index_timeout(req.commit, &node.storage.raft, req.timeout)?;
 
-        let peer_storage = &node.storage.peers;
-        let this_rsid = peer_storage.peer_field::<ReplicasetId>(&node.raft_id())?;
-        let mut peer_addresses = Vec::with_capacity(req.replicaset_instances.len());
-        for id in &req.replicaset_instances {
-            let (address, rsid) = peer_storage.peer_field::<(PeerAddress, ReplicasetId)>(id)?;
-            if rsid != this_rsid {
-                return Err(Error::ReplicasetIdMismatch {
-                    instance_rsid: this_rsid,
-                    requested_rsid: rsid,
-                });
-            }
-            peer_addresses.push(address)
+        let storage = &node.storage;
+        let rsid = storage.peers.peer_field::<ReplicasetId>(&node.raft_id())?;
+        let mut box_replication = vec![];
+        for replica in storage.peers.replicaset_peers(&rsid)? {
+            let Some(address) = storage.peer_addresses.get(replica.raft_id)? else {
+                crate::tlog!(Warning, "address unknown for peer";
+                    "raft_id" => replica.raft_id,
+                );
+                continue;
+            };
+            box_replication.push(address);
         }
         // box.cfg checks if the replication is already the same
         // and ignores it if nothing changed
-        set_cfg_field("replication", peer_addresses)?;
+        set_cfg_field("replication", box_replication)?;
         let lsn = crate::tarantool::eval("return box.info.lsn")?;
         Ok(Response { lsn })
     }
@@ -41,6 +34,7 @@ crate::define_rpc_request! {
         pub term: RaftTerm,
         pub commit: RaftIndex,
         pub timeout: Duration,
+        // TODO: remove this
         pub replicaset_instances: Vec<InstanceId>,
         pub replicaset_id: traft::ReplicasetId,
     }

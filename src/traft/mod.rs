@@ -41,6 +41,7 @@ use self::event::Event;
 pub type RaftId = u64;
 pub type RaftTerm = u64;
 pub type RaftIndex = u64;
+pub type Address = String;
 
 pub const INIT_RAFT_TERM: RaftTerm = 1;
 
@@ -387,6 +388,20 @@ mod vec_of_raw_byte_buf {
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////
+/// Serializable struct representing an address of a member of raft group
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PeerAddress {
+    /// Used for identifying raft nodes.
+    /// Must be unique in the raft group.
+    pub raft_id: RaftId,
+
+    /// Inbound address used for communication with the node.
+    /// Not to be confused with listen address.
+    pub address: Address,
+}
+impl Encode for PeerAddress {}
+
+//////////////////////////////////////////////////////////////////////////////////////////
 /// Serializable struct representing a member of the raft group.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Peer {
@@ -397,10 +412,6 @@ pub struct Peer {
     /// Used for identifying raft nodes.
     /// Must be unique in the raft group.
     pub raft_id: RaftId,
-
-    /// Inbound address used for communication with the node.
-    /// Not to be confused with listen address.
-    pub peer_address: String,
 
     /// Name of a replicaset the instance belongs to.
     pub replicaset_id: ReplicasetId,
@@ -459,7 +470,6 @@ impl Peer {
             instance_id: Default::default(),
             instance_uuid: Default::default(),
             raft_id: Default::default(),
-            peer_address: Default::default(),
             replicaset_id: Default::default(),
             replicaset_uuid: Default::default(),
             commit_index: Default::default(),
@@ -474,11 +484,10 @@ impl std::fmt::Display for Peer {
     #[rustfmt::skip]
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         return write!(f,
-            "({}, {}, {}, {}, {}, {}, {})",
+            "({}, {}, {}, {}, {}, {})",
             self.instance_id,
             self.raft_id,
             self.replicaset_id,
-            self.peer_address,
             GradeTransition { from: self.current_grade, to: self.target_grade },
             self.commit_index,
             &self.failure_domain,

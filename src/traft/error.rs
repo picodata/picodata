@@ -47,6 +47,10 @@ pub enum Error {
     NoPeerWithRaftId(RaftId),
     #[error("peer with id \"{0}\" not found")]
     NoPeerWithInstanceId(InstanceId),
+    #[error("address of peer with id {0} not found")]
+    AddressUnknownForRaftId(RaftId),
+    #[error("address of peer with id \"{0}\" not found")]
+    AddressUnknownForInstanceId(InstanceId),
     #[error("leader is uknown yet")]
     LeaderUnknown,
     #[error("other error: {0}")]

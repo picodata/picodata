@@ -129,6 +129,12 @@ pub mod cfg {
                 if !peer.may_respond() {
                     continue;
                 }
+                let Some(address) = storage.peer_addresses.get(peer.raft_id)? else {
+                    crate::tlog!(Warning, "address not found for peer";
+                        "raft_id" => peer.raft_id,
+                    );
+                    continue;
+                };
                 let (weight, is_master) = match replicasets.get(&peer.replicaset_id) {
                     Some(r) => (Some(r.weight), r.master_id == peer.instance_id),
                     None => (None, false),
@@ -138,7 +144,7 @@ pub mod cfg {
                 replicaset.replicas.insert(
                     peer.instance_uuid,
                     Replica {
-                        uri: format!("guest:@{}", peer.peer_address),
+                        uri: format!("guest:@{address}"),
                         name: peer.instance_id.into(),
                         master: is_master,
                     },

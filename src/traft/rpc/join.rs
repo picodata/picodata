@@ -18,13 +18,14 @@ crate::define_rpc_request! {
         }
 
         let peer = node.handle_topology_request_and_wait(req.into())?;
-        let box_replication = node
-            .storage
-            .peers
-            .replicaset_peer_addresses(&peer.replicaset_id, Some(peer.commit_index))?;
+        let mut box_replication = vec![];
+        for replica in node.storage.peers.replicaset_peers(&peer.replicaset_id)? {
+            box_replication.extend(node.storage.peer_addresses.get(replica.raft_id)?);
+        }
 
         // A joined peer needs to communicate with other nodes.
         // Provide it the list of raft voters in response.
+        // TODO: return peer_addresses
         let mut raft_group = vec![];
         for raft_id in node.storage.raft.voters()?.unwrap_or_default().into_iter() {
             match node.storage.peers.get(&raft_id) {

@@ -267,8 +267,9 @@ impl Node {
         &self,
         req: TopologyRequest,
     ) -> traft::Result<Box<traft::Peer>> {
-        let notify =
+        let (notify_for_address, notify) =
             self.raw_operation(|node_impl| node_impl.process_topology_request_async(req))?;
+        notify_for_address.map(Notify::recv_any);
         notify.recv()
     }
 
@@ -331,7 +332,7 @@ impl NodeImpl {
             LogicalClock::new(raft_id, gen)
         };
 
-        let pool = ConnectionPool::builder(storage.peers.clone())
+        let pool = ConnectionPool::builder(storage.clone())
             .handler_name(stringify_cfunc!(proc_raft_interact))
             .call_timeout(MainLoop::TICK * 4)
             .connect_timeout(MainLoop::TICK * 4)
@@ -379,7 +380,10 @@ impl NodeImpl {
         let topology: Topology = unwrap_some_or! {
             self.topology_cache.take_or_drop(&current_term),
             {
-                let peers = self.storage.peers.all_peers()?;
+                let mut peers = vec![];
+                for peer @ Peer { raft_id, .. } in self.storage.peers.iter()? {
+                    peers.push((peer, self.storage.peer_addresses.try_get(raft_id)?))
+                }
                 let replication_factor = self
                     .storage
                     .state
@@ -456,25 +460,46 @@ impl NodeImpl {
     pub fn process_topology_request_async(
         &mut self,
         req: TopologyRequest,
-    ) -> traft::Result<Notify> {
+    ) -> traft::Result<(Option<Notify>, Notify)> {
         let topology = self.topology_mut()?;
-        let peer_result = match req {
+        // FIXME: remove this once we introduce some 'async' stuff
+        let notify_for_address;
+        let mut peer = match req {
             TopologyRequest::Join(JoinRequest {
                 instance_id,
                 replicaset_id,
                 advertise_address,
                 failure_domain,
                 ..
-            }) => topology.join(
-                instance_id,
-                replicaset_id,
-                advertise_address,
-                failure_domain,
-            ),
-            TopologyRequest::UpdatePeer(req) => topology.update_peer(req),
+            }) => {
+                let (peer, address) = topology
+                    .join(
+                        instance_id,
+                        replicaset_id,
+                        advertise_address,
+                        failure_domain,
+                    )
+                    .map_err(RaftError::ConfChangeError)?;
+                let peer_address = traft::PeerAddress {
+                    raft_id: peer.raft_id,
+                    address,
+                };
+                let op =
+                    OpDML::replace(ClusterSpace::Addresses, &peer_address).expect("can't fail");
+                let (lc, notify) = self.schedule_notification();
+                notify_for_address = Some(notify);
+                let ctx = traft::EntryContextNormal::new(lc, op);
+                // Important! Read bellow
+                self.raw_node.propose(ctx.to_bytes(), vec![])?;
+                peer
+            }
+            TopologyRequest::UpdatePeer(req) => {
+                notify_for_address = None;
+                topology
+                    .update_peer(req)
+                    .map_err(RaftError::ConfChangeError)?
+            }
         };
-
-        let mut peer = peer_result.map_err(RaftError::ConfChangeError)?;
         peer.commit_index = self.raw_node.raft.raft_log.last_index() + 1;
 
         let (lc, notify) = self.schedule_notification();
@@ -497,7 +522,7 @@ impl NodeImpl {
         //
         self.raw_node.propose(ctx.to_bytes(), vec![])?;
 
-        Ok(notify)
+        Ok((notify_for_address, notify))
     }
 
     fn propose_conf_change_async(
@@ -611,7 +636,7 @@ impl NodeImpl {
             }
         }
 
-        if let Some(traft::Op::PersistPeer { peer }) = entry.op() {
+        if let Some(traft::Op::PersistPeer { peer, .. }) = entry.op() {
             *topology_changed = true;
             if peer.current_grade == CurrentGradeVariant::Expelled && peer.raft_id == self.raft_id()
             {
@@ -926,7 +951,7 @@ impl Drop for MainLoop {
 }
 
 fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
-    let mut pool = ConnectionPool::builder(storage.peers.clone())
+    let mut pool = ConnectionPool::builder(storage.clone())
         .call_timeout(Duration::from_secs(1))
         .connect_timeout(Duration::from_millis(500))
         .inactivity_timeout(Duration::from_secs(60))
@@ -1178,7 +1203,6 @@ fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
                 Err(e) => {
                     tlog!(Warning, "raft sync failed: {e}";
                         "instance_id" => %peer.instance_id,
-                        "address" => %peer.peer_address,
                     );
 
                     // TODO: don't hard code timeout

@@ -18,8 +18,8 @@ use crate::tlog;
 use crate::traft;
 use crate::traft::error::Error;
 use crate::traft::rpc::Request;
-use crate::traft::storage::peer_field::{self, PeerAddress};
-use crate::traft::storage::Peers as PeerStorage;
+use crate::traft::storage::peer_field;
+use crate::traft::storage::{PeerAddresses, Peers, Storage};
 use crate::traft::Result;
 use crate::traft::{InstanceId, RaftId};
 use crate::unwrap_ok_or;
@@ -69,7 +69,7 @@ impl PoolWorker {
     pub fn run(
         raft_id: RaftId,
         instance_id: InstanceId,
-        storage: PeerStorage,
+        storage: PeerAddresses,
         opts: WorkerOptions,
     ) -> PoolWorker {
         let cond = Rc::new(fiber::Cond::new());
@@ -102,7 +102,7 @@ impl PoolWorker {
     /// `inbox`, `promises`, or [`Self::stop`].
     fn worker_loop(
         raft_id: RaftId,
-        storage: PeerStorage,
+        storage: PeerAddresses,
         cond: Rc<fiber::Cond>,
         inbox: Queue,
         stop_flag: Rc<Cell<bool>>,
@@ -155,8 +155,7 @@ impl PoolWorker {
 
             // Make a connection, if not already connected
             let ConnCache { address, conn } = ::tarantool::unwrap_or!(cache.take(), {
-                let address = storage.peer_field::<PeerAddress>(&raft_id);
-                let address = crate::unwrap_ok_or!(address,
+                let address = crate::unwrap_ok_or!(storage.try_get(raft_id),
                     Err(e) => {
                         tlog!(Warning, "failed getting peer address: {e}";
                             "raft_id" => raft_id,
@@ -335,7 +334,7 @@ fn into_either<T>(p: Promise<T>) -> Either<::tarantool::Result<T>, Promise<T>> {
 
 pub struct ConnectionPoolBuilder {
     worker_options: WorkerOptions,
-    storage: PeerStorage,
+    storage: Storage,
 }
 
 macro_rules! builder_option {
@@ -358,7 +357,8 @@ impl ConnectionPoolBuilder {
             worker_options: self.worker_options,
             workers: HashMap::new(),
             raft_ids: HashMap::new(),
-            storage: self.storage,
+            peer_addresses: self.storage.peer_addresses,
+            peers: self.storage.peers,
         }
     }
 }
@@ -372,11 +372,12 @@ pub struct ConnectionPool {
     worker_options: WorkerOptions,
     workers: HashMap<RaftId, PoolWorker>,
     raft_ids: HashMap<InstanceId, RaftId>,
-    storage: PeerStorage,
+    peer_addresses: PeerAddresses,
+    peers: Peers,
 }
 
 impl ConnectionPool {
-    pub fn builder(storage: PeerStorage) -> ConnectionPoolBuilder {
+    pub fn builder(storage: Storage) -> ConnectionPoolBuilder {
         ConnectionPoolBuilder {
             storage,
             worker_options: Default::default(),
@@ -394,13 +395,13 @@ impl ConnectionPool {
             Entry::Occupied(entry) => Ok(entry.into_mut()),
             Entry::Vacant(entry) => {
                 let instance_id = self
-                    .storage
+                    .peers
                     .peer_field::<peer_field::InstanceId>(&raft_id)
                     .map_err(|_| Error::NoPeerWithRaftId(raft_id))?;
                 let worker = PoolWorker::run(
                     raft_id,
                     instance_id.clone(),
-                    self.storage.clone(),
+                    self.peer_addresses.clone(),
                     self.worker_options.clone(),
                 );
                 self.raft_ids.insert(instance_id, raft_id);
@@ -421,13 +422,13 @@ impl ConnectionPool {
             Entry::Vacant(entry) => {
                 let instance_id = entry.key();
                 let raft_id = self
-                    .storage
+                    .peers
                     .peer_field::<peer_field::RaftId>(instance_id)
                     .map_err(|_| Error::NoPeerWithInstanceId(instance_id.clone()))?;
                 let worker = PoolWorker::run(
                     raft_id,
                     instance_id.clone(),
-                    self.storage.clone(),
+                    self.peer_addresses.clone(),
                     self.worker_options.clone(),
                 );
                 entry.insert(raft_id);
@@ -544,7 +545,7 @@ impl PeerId for InstanceId {
 // picodata::traft::network::ConnectionPool::connect
 
 inventory::submit!(crate::InnerTest {
-    name: "test_traft_pool",
+    name: "test_connection_pool",
     body: || {
         use std::rc::Rc;
         use tarantool::tlua;
@@ -567,7 +568,7 @@ inventory::submit!(crate::InnerTest {
             }),
         );
 
-        let storage = PeerStorage::new().unwrap();
+        let storage = Storage::new().unwrap();
         // Connect to the current Tarantool instance
         let mut pool = ConnectionPool::builder(storage.clone())
             .handler_name("test_interact")
@@ -576,13 +577,12 @@ inventory::submit!(crate::InnerTest {
             .build();
         let listen: String = l.eval("return box.info.listen").unwrap();
 
-        storage
-            .put(&traft::Peer {
-                raft_id: 1337,
-                peer_address: listen.clone(),
-                ..traft::Peer::default()
-            })
-            .unwrap();
+        let peer = traft::Peer {
+            raft_id: 1337,
+            ..traft::Peer::default()
+        };
+        storage.peers.put(&peer).unwrap();
+        storage.peer_addresses.put(peer.raft_id, &listen).unwrap();
         tlog!(Info, "TEST: connecting {listen}");
         // pool.connect(1337, listen);
 

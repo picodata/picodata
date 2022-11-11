@@ -200,14 +200,11 @@ fn proc_discover<'a>(request: Request, request_to: Address) -> Result<Response, 
         let status = node.status();
         status
             .leader_id
-            .map(|leader_id| (&node.storage.peers, leader_id, status.id))
+            .map(|leader_id| (&node.storage.peer_addresses, leader_id, status.id))
     });
-    if let Some((peers, leader_id, id)) = ready_ids {
-        let leader = peers.get(&leader_id)?;
-        Ok(Response::Done(Role::new(
-            leader.peer_address,
-            leader_id == id,
-        )))
+    if let Some((peers_addresses, leader_id, id)) = ready_ids {
+        let leader_address = peers_addresses.try_get(leader_id)?;
+        Ok(Response::Done(Role::new(leader_address, leader_id == id)))
     } else {
         let mut discovery = discovery();
         let discovery = discovery.as_mut().ok_or("discovery uninitialized")?;

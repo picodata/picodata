@@ -21,7 +21,10 @@ use super::{Migration, RaftSpaceAccess};
 ::tarantool::define_str_enum! {
     /// An enumeration of builtin cluster-wide spaces
     pub enum ClusterSpace {
+        // TODO: add `picodata_` prefixes to spaces
+        // to avoid collisions with business spaces
         Group = "raft_group",
+        Addresses = "pico_peer_addresses",
         State = "cluster_state",
         Replicasets = "replicasets",
         Migrations = "migrations",
@@ -86,6 +89,7 @@ impl ClusterSpace {
 pub struct Storage {
     pub state: State,
     pub peers: Peers,
+    pub peer_addresses: PeerAddresses,
     pub replicasets: Replicasets,
     pub raft: RaftSpaceAccess,
     pub migrations: Migrations,
@@ -96,6 +100,7 @@ impl Storage {
         Ok(Self {
             state: State::new()?,
             peers: Peers::new()?,
+            peer_addresses: PeerAddresses::new()?,
             replicasets: Replicasets::new()?,
             raft: RaftSpaceAccess::new()?,
             migrations: Migrations::new()?,
@@ -257,6 +262,100 @@ impl Iterator for ReplicasetIter {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// PeerAddresses
+////////////////////////////////////////////////////////////////////////////////
+
+/// A struct for accessing storage of peer addresses.
+#[derive(Clone, Debug)]
+pub struct PeerAddresses {
+    space: Space,
+    #[allow(dead_code)]
+    index_raft_id: Index,
+}
+
+impl PeerAddresses {
+    const SPACE_NAME: &'static str = ClusterSpace::Addresses.as_str();
+    const INDEX_RAFT_ID: &'static str = "raft_id";
+
+    pub fn new() -> tarantool::Result<Self> {
+        let space_peers = Space::builder(Self::SPACE_NAME)
+            .is_local(true)
+            .is_temporary(false)
+            .field(("raft_id", FieldType::Unsigned))
+            .field(("address", FieldType::String))
+            .if_not_exists(true)
+            .create()?;
+
+        let index_raft_id = space_peers
+            .index_builder(Self::INDEX_RAFT_ID)
+            .unique(true)
+            .part("raft_id")
+            .if_not_exists(true)
+            .create()?;
+
+        Ok(Self {
+            space: space_peers,
+            index_raft_id,
+        })
+    }
+
+    #[inline]
+    pub fn put(&self, raft_id: RaftId, address: &traft::Address) -> tarantool::Result<()> {
+        self.space.replace(&(raft_id, address))?;
+        Ok(())
+    }
+
+    #[allow(dead_code)]
+    #[inline]
+    pub fn delete(&self, raft_id: RaftId) -> tarantool::Result<()> {
+        self.space.delete(&[raft_id])?;
+        Ok(())
+    }
+
+    #[inline(always)]
+    pub fn get(&self, raft_id: RaftId) -> Result<Option<traft::Address>> {
+        let Some(tuple) = self.space.get(&[raft_id])? else { return Ok(None) };
+        tuple.field(1).map_err(Into::into)
+    }
+
+    #[inline(always)]
+    pub fn try_get(&self, raft_id: RaftId) -> Result<traft::Address> {
+        self.get(raft_id)?
+            .ok_or(Error::AddressUnknownForRaftId(raft_id))
+    }
+
+    #[allow(dead_code)]
+    #[inline]
+    pub fn iter(&self) -> tarantool::Result<PeerAddressIter> {
+        let iter = self.space.select(IteratorType::All, &())?;
+        Ok(PeerAddressIter::new(iter))
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// PeerAddressIter
+////////////////////////////////////////////////////////////////////////////////
+
+pub struct PeerAddressIter {
+    iter: IndexIterator,
+}
+
+#[allow(dead_code)]
+impl PeerAddressIter {
+    fn new(iter: IndexIterator) -> Self {
+        Self { iter }
+    }
+}
+
+impl Iterator for PeerAddressIter {
+    type Item = traft::PeerAddress;
+    fn next(&mut self) -> Option<Self::Item> {
+        let res = self.iter.next().as_ref().map(Tuple::decode);
+        res.map(|res| res.expect("peer address should decode correctly"))
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // Peers
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -372,34 +471,6 @@ impl Peers {
             .collect()
     }
 
-    pub fn replicaset_peer_addresses(
-        &self,
-        replicaset_id: &str,
-        max_index: impl Into<Option<RaftIndex>>,
-    ) -> tarantool::Result<Vec<String>> {
-        let max_index = max_index.into();
-
-        let mut ret = Vec::new();
-        let iter = self
-            .index_replicaset_id
-            .select(IteratorType::GE, &[replicaset_id])?;
-        for tuple in iter {
-            let cur_replicaset_id: &str = tuple.get(peer_field::ReplicasetId).unwrap();
-            if cur_replicaset_id != replicaset_id {
-                // In Tarantool the iteration must be interrupted explicitly.
-                break;
-            }
-
-            let commit_index: RaftIndex = tuple.get(peer_field::CommitIndex).unwrap();
-            if matches!(max_index, Some(idx) if commit_index > idx) {
-                break;
-            }
-
-            ret.push(tuple.get(peer_field::PeerAddress).unwrap());
-        }
-        Ok(ret)
-    }
-
     pub fn replicaset_peers(&self, replicaset_id: &str) -> tarantool::Result<PeerIter> {
         let iter = self
             .index_replicaset_id
@@ -407,7 +478,10 @@ impl Peers {
         Ok(PeerIter::new(iter))
     }
 
-    pub fn replicaset_fields<T>(&self, replicaset_id: &str) -> tarantool::Result<Vec<T::Type>>
+    pub fn replicaset_fields<T>(
+        &self,
+        replicaset_id: &traft::ReplicasetId,
+    ) -> tarantool::Result<Vec<T::Type>>
     where
         T: PeerFieldDef,
     {
@@ -492,7 +566,6 @@ define_peer_fields! {
     InstanceId     : traft::InstanceId    = ("instance_id",     FieldType::String)
     InstanceUuid   : String               = ("instance_uuid",   FieldType::String)
     RaftId         : traft::RaftId        = ("raft_id",         FieldType::Unsigned)
-    PeerAddress    : String               = ("peer_address",    FieldType::String)
     ReplicasetId   : String               = ("replicaset_id",   FieldType::String)
     ReplicasetUuid : String               = ("replicaset_uuid", FieldType::String)
     CommitIndex    : RaftIndex            = ("commit_index",    FieldType::Unsigned)
@@ -600,6 +673,12 @@ impl Iterator for PeerIter {
     fn next(&mut self) -> Option<Self::Item> {
         let res = self.iter.next().as_ref().map(Tuple::decode);
         res.map(|res| res.expect("peer should decode correctly"))
+    }
+}
+
+impl std::fmt::Debug for PeerIter {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PeerIter").finish_non_exhaustive()
     }
 }
 
@@ -717,7 +796,7 @@ impl Iterator for MigrationIter {
 
 macro_rules! assert_err {
     ($expr:expr, $err:expr) => {
-        assert_eq!($expr.map_err(|e| format!("{e}")), Err($err.into()))
+        assert_eq!($expr.unwrap_err().to_string(), $err)
     };
 }
 
@@ -729,20 +808,24 @@ inventory::submit!(crate::InnerTest {
 
         let storage_peers = Peers::new().unwrap();
         let raft_group = storage_peers.space.clone();
+        let storage_peer_addresses = PeerAddresses::new().unwrap();
+        let space_peer_addresses = storage_peer_addresses.space.clone();
 
         let faildom = crate::traft::FailureDomain::from([("a", "b")]);
 
         for peer in vec![
             // r1
-            ("i1", "i1-uuid", 1u64, "addr:1", "r1", "r1-uuid", 1u64, (CurrentGrade::Online, 0), (TargetGrade::Online, 0), &faildom,),
-            ("i2", "i2-uuid", 2u64, "addr:2", "r1", "r1-uuid",    2, (CurrentGrade::Online, 0), (TargetGrade::Online, 0), &faildom,),
+            ("i1", "i1-uuid", 1u64, "r1", "r1-uuid", 1u64, (CurrentGrade::Online, 0), (TargetGrade::Online, 0), &faildom,),
+            ("i2", "i2-uuid", 2u64, "r1", "r1-uuid",    2, (CurrentGrade::Online, 0), (TargetGrade::Online, 0), &faildom,),
             // r2
-            ("i3", "i3-uuid", 3u64, "addr:3", "r2", "r2-uuid",   10, (CurrentGrade::Online, 0), (TargetGrade::Online, 0), &faildom,),
-            ("i4", "i4-uuid", 4u64, "addr:4", "r2", "r2-uuid",   10, (CurrentGrade::Online, 0), (TargetGrade::Online, 0), &faildom,),
+            ("i3", "i3-uuid", 3u64, "r2", "r2-uuid",   10, (CurrentGrade::Online, 0), (TargetGrade::Online, 0), &faildom,),
+            ("i4", "i4-uuid", 4u64, "r2", "r2-uuid",   10, (CurrentGrade::Online, 0), (TargetGrade::Online, 0), &faildom,),
             // r3
-            ("i5", "i5-uuid", 5u64, "addr:5", "r3", "r3-uuid",   10, (CurrentGrade::Online, 0), (TargetGrade::Online, 0), &faildom,),
+            ("i5", "i5-uuid", 5u64, "r3", "r3-uuid",   10, (CurrentGrade::Online, 0), (TargetGrade::Online, 0), &faildom,),
         ] {
             raft_group.put(&peer).unwrap();
+            let (_, _, raft_id, ..) = peer;
+            space_peer_addresses.put(&(raft_id, format!("addr:{raft_id}"))).unwrap();
         }
 
         let peers = storage_peers.all_peers().unwrap();
@@ -764,9 +847,9 @@ inventory::submit!(crate::InnerTest {
                     " in unique index \"raft_id\"",
                     " in space \"raft_group\"",
                     " with old tuple",
-                    r#" - ["i1", "i1-uuid", 1, "addr:1", "r1", "r1-uuid", 1, ["{gon}", 0], ["{tgon}", 0], {{"A": "B"}}]"#,
+                    r#" - ["i1", "i1-uuid", 1, "r1", "r1-uuid", 1, ["{gon}", 0], ["{tgon}", 0], {{"A": "B"}}]"#,
                     " and new tuple",
-                    r#" - ["i99", "", 1, "", "", "", 0, ["{goff}", 0], ["{tgoff}", 0], {{}}]"#,
+                    r#" - ["i99", "", 1, "", "", 0, ["{goff}", 0], ["{tgoff}", 0], {{}}]"#,
                 ),
                 gon = CurrentGrade::Online,
                 goff = CurrentGrade::Offline,
@@ -778,63 +861,44 @@ inventory::submit!(crate::InnerTest {
         {
             // Ensure traft storage doesn't impose restrictions
             // on peer_address uniqueness.
-            let peer = |id: RaftId, addr: &str| traft::Peer {
-                raft_id: id,
-                instance_id: format!("i{id}").into(),
-                peer_address: addr.into(),
-                ..traft::Peer::default()
-            };
-
-            storage_peers.put(&peer(10, "addr:collision")).unwrap();
-            storage_peers.put(&peer(11, "addr:collision")).unwrap();
+            storage_peer_addresses.put(10, &traft::Address::from("addr:collision")).unwrap();
+            storage_peer_addresses.put(11, &traft::Address::from("addr:collision")).unwrap();
         }
 
-        let peer_by_raft_id = |id: RaftId| storage_peers.get(&id).unwrap();
         {
-            assert_eq!(peer_by_raft_id(1).instance_id, "i1");
-            assert_eq!(peer_by_raft_id(2).instance_id, "i2");
-            assert_eq!(peer_by_raft_id(3).instance_id, "i3");
-            assert_eq!(peer_by_raft_id(4).instance_id, "i4");
-            assert_eq!(peer_by_raft_id(5).instance_id, "i5");
+            // Check accessing peers by 'raft_id'
+            assert_eq!(storage_peers.get(&1).unwrap().instance_id, "i1");
+            assert_eq!(storage_peers.get(&2).unwrap().instance_id, "i2");
+            assert_eq!(storage_peers.get(&3).unwrap().instance_id, "i3");
+            assert_eq!(storage_peers.get(&4).unwrap().instance_id, "i4");
+            assert_eq!(storage_peers.get(&5).unwrap().instance_id, "i5");
             assert_err!(storage_peers.get(&6), "peer with id 6 not found");
         }
 
-        let peer_by_instance_id = |iid: &str| storage_peers.get(&InstanceId::from(iid)).unwrap();
         {
-            assert_eq!(peer_by_instance_id("i1").peer_address, "addr:1");
-            assert_eq!(peer_by_instance_id("i2").peer_address, "addr:2");
-            assert_eq!(peer_by_instance_id("i3").peer_address, "addr:3");
-            assert_eq!(peer_by_instance_id("i4").peer_address, "addr:4");
-            assert_eq!(peer_by_instance_id("i5").peer_address, "addr:5");
-            assert_eq!(
-                peer_by_instance_id("i10").peer_address,
-                peer_by_instance_id("i11").peer_address
-            );
+            // Check accessing peers by 'instance_id'
+            assert_eq!(storage_peers.get(&InstanceId::from("i1")).unwrap().raft_id, 1);
+            assert_eq!(storage_peers.get(&InstanceId::from("i2")).unwrap().raft_id, 2);
+            assert_eq!(storage_peers.get(&InstanceId::from("i3")).unwrap().raft_id, 3);
+            assert_eq!(storage_peers.get(&InstanceId::from("i4")).unwrap().raft_id, 4);
+            assert_eq!(storage_peers.get(&InstanceId::from("i5")).unwrap().raft_id, 5);
             assert_err!(
                 storage_peers.get(&InstanceId::from("i6")),
                 "peer with id \"i6\" not found"
             );
         }
 
-        let box_replication = |replicaset_id: &str, max_index: Option<RaftIndex>| {
-            storage_peers.replicaset_peer_addresses(replicaset_id, max_index).unwrap()
+        let box_replication = |replicaset_id: &str| -> Vec<traft::Address> {
+            storage_peers.replicaset_peers(replicaset_id).unwrap()
+                .map(|peer| storage_peer_addresses.try_get(peer.raft_id).unwrap())
+                .collect::<Vec<_>>()
         };
 
         {
-            assert_eq!(box_replication("r1", Some(0)), Vec::<&str>::new());
-            assert_eq!(box_replication("XX", None), Vec::<&str>::new());
-
-            assert_eq!(box_replication("r1", Some(1)), vec!["addr:1"]);
-            assert_eq!(box_replication("r1", Some(2)), vec!["addr:1", "addr:2"]);
-            assert_eq!(box_replication("r1", Some(99)), vec!["addr:1", "addr:2"]);
-            assert_eq!(box_replication("r1", None), vec!["addr:1", "addr:2"]);
-
-            assert_eq!(box_replication("r2", Some(10)), vec!["addr:3", "addr:4"]);
-            assert_eq!(box_replication("r2", Some(10)), vec!["addr:3", "addr:4"]);
-            assert_eq!(box_replication("r2", None), vec!["addr:3", "addr:4"]);
-
-            assert_eq!(box_replication("r3", Some(10)), vec!["addr:5"]);
-            assert_eq!(box_replication("r3", None), vec!["addr:5"]);
+            assert_eq!(box_replication("XX"), Vec::<&str>::new());
+            assert_eq!(box_replication("r1"), ["addr:1", "addr:2"]);
+            assert_eq!(box_replication("r2"), ["addr:3", "addr:4"]);
+            assert_eq!(box_replication("r3"), ["addr:5"]);
         }
 
         raft_group.index("raft_id").unwrap().drop().unwrap();
@@ -850,7 +914,7 @@ inventory::submit!(crate::InnerTest {
         raft_group.index("replicaset_id").unwrap().drop().unwrap();
 
         assert_err!(
-            storage_peers.replicaset_peer_addresses("", None),
+            storage_peers.replicaset_peers(""),
             concat!(
                 "Tarantool error: NoSuchIndexID: No index #2 is defined",
                 " in space 'raft_group'",

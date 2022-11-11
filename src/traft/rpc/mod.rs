@@ -47,8 +47,8 @@ where
 {
     let node = node::global()?;
     let leader_id = node.status().leader_id.ok_or(Error::LeaderUnknown)?;
-    let leader = node.storage.peers.get(&leader_id)?;
-    let resp = net_box_call(&leader.peer_address, request, timeout)?;
+    let leader_address = node.storage.peer_addresses.try_get(leader_id)?;
+    let resp = net_box_call(&leader_address, request, timeout)?;
     Ok(resp)
 }
 
