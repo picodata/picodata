@@ -87,3 +87,22 @@ def test_expel_by_follower(cluster3: Cluster):
 
     # assert i3.process
     # retrying(lambda: assert_pid_down(i3.process.pid))
+
+
+def test_raft_id_after_expel(cluster: Cluster):
+    # Scenario: join just right after expel should give completely new raft_id for the instance
+    #   Given a cluster
+    #   When instance with max raft_id expelled
+    #   And a new instance joined
+    #   Then raft_id of joined instance should be more than raft_id of the expelled instance
+
+    cluster.deploy(instance_count=2)
+    i1, _ = cluster.instances
+    i3 = cluster.add_instance()
+    assert 3 == i3.raft_id
+
+    cluster.expel(i3, i1)
+    retrying(lambda: assert_peer_expelled(i3, i1))
+
+    i4 = cluster.add_instance()
+    assert 4 == i4.raft_id
