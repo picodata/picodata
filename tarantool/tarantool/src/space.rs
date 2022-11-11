@@ -99,18 +99,11 @@ impl From<SystemSpace> for Space {
 
 crate::define_str_enum! {
     /// Type of engine, used by space.
-    #[derive(Copy, Clone, Debug, PartialEq, Eq)]
     pub enum SpaceEngineType {
         Memtx = "memtx",
         Vinyl = "vinyl",
     }
-
-    FromStr::Err = UnknownEngineType;
 }
-
-#[derive(thiserror::Error, Debug)]
-#[error("unknown engine type {0}")]
-pub struct UnknownEngineType(pub String);
 
 /// Options for new space, used by Space::create.
 /// (for details see [Options for box.schema.space.create](https://www.tarantool.io/en/doc/latest/reference/reference_lua/box_schema/space_create/)).
@@ -263,7 +256,6 @@ pub type SpaceFieldType = FieldType;
 
 crate::define_str_enum! {
     /// Type of a field in the space format definition.
-    #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
     pub enum FieldType {
         Any       = "any",
         Unsigned  = "unsigned",
@@ -281,13 +273,7 @@ crate::define_str_enum! {
         Array     = "array",
         Map       = "map",
     }
-
-    FromStr::Err = UnknownFieldType;
 }
-
-#[derive(thiserror::Error, Debug)]
-#[error("unknown field type {0}")]
-pub struct UnknownFieldType(pub String);
 
 ////////////////////////////////////////////////////////////////////////////////
 // IsNullable

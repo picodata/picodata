@@ -22,6 +22,7 @@ mod r#box;
 mod coio;
 mod common;
 mod decimal;
+mod define_str_enum;
 mod enums;
 mod error;
 mod fiber;
@@ -217,6 +218,7 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 decimal::from_tuple,
                 decimal::to_tuple,
                 decimal::to_lua,
+                define_str_enum::basic,
                 tlua::lua_functions::basic,
                 tlua::lua_functions::two_functions_at_the_same_time,
                 tlua::lua_functions::args,

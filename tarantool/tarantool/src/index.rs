@@ -324,20 +324,13 @@ impl SeqSpec {
 
 crate::define_str_enum! {
     /// Type of index.
-    #[derive(Copy, Clone, Debug, PartialEq, Eq)]
     pub enum IndexType {
         Hash = "hash",
         Tree = "tree",
         Bitset = "bitset",
         Rtree = "rtree",
     }
-
-    FromStr::Err = UnknownIndexType;
 }
-
-#[derive(thiserror::Error, Debug)]
-#[error("unknown index type {0}")]
-pub struct UnknownIndexType(pub String);
 
 ////////////////////////////////////////////////////////////////////////////////
 // FieldType
@@ -348,7 +341,6 @@ pub type IndexFieldType = FieldType;
 
 crate::define_str_enum! {
     /// Type of index part.
-    #[derive(Copy, Clone, Debug, PartialEq, Eq)]
     pub enum FieldType {
         Unsigned  = "unsigned",
         String    = "string",
@@ -363,13 +355,7 @@ crate::define_str_enum! {
         Datetime  = "datetime",
         Array     = "array",
     }
-
-    FromStr::Err = UnknownFieldType;
 }
-
-#[derive(thiserror::Error, Debug)]
-#[error("unknown index field type {0}")]
-pub struct UnknownFieldType(pub String);
 
 ////////////////////////////////////////////////////////////////////////////////
 // IndexPart
@@ -471,18 +457,11 @@ impl From<(&str, FieldType)> for Part {
 
 crate::define_str_enum! {
     /// Type of distance for retree index.
-    #[derive(Copy, Clone, Debug, PartialEq, Eq)]
     pub enum RtreeIndexDistanceType {
         Euclid = "euclid",
         Manhattan = "manhattan",
     }
-
-    FromStr::Err = UnknownRtreeDistanceType;
 }
-
-#[derive(thiserror::Error, Debug)]
-#[error("unknown rtree distance type {0}")]
-pub struct UnknownRtreeDistanceType(pub String);
 
 impl Index {
     pub(crate) fn new(space_id: u32, index_id: u32) -> Self {

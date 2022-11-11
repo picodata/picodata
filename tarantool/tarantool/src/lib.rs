@@ -155,6 +155,7 @@
 pub mod clock;
 pub mod coio;
 pub mod decimal;
+#[doc(hidden)]
 pub mod define_str_enum;
 pub mod error;
 pub mod ffi;
