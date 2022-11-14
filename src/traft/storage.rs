@@ -1,9 +1,7 @@
 use ::tarantool::index::{Index, IndexIterator, IteratorType};
 use ::tarantool::space::{FieldType, Space};
 use ::tarantool::tuple::{DecodeOwned, ToTupleBuffer, Tuple};
-use thiserror::Error;
 
-use crate::define_str_enum;
 use crate::traft;
 use crate::traft::error::Error;
 use crate::traft::rpc::sharding::cfg::ReplicasetWeights;
@@ -20,7 +18,7 @@ use super::{Migration, RaftSpaceAccess};
 // ClusterSpace
 ////////////////////////////////////////////////////////////////////////////////
 
-define_str_enum! {
+::tarantool::define_str_enum! {
     /// An enumeration of builtin cluster-wide spaces
     pub enum ClusterSpace {
         Group = "raft_group",
@@ -28,13 +26,7 @@ define_str_enum! {
         Replicasets = "replicasets",
         Migrations = "migrations",
     }
-
-    FromStr::Err = UnknownClusterSpace;
 }
-
-#[derive(Error, Debug)]
-#[error("unknown cluster space {0}")]
-pub struct UnknownClusterSpace(pub String);
 
 impl ClusterSpace {
     #[inline]
@@ -77,20 +69,14 @@ impl ClusterSpace {
 // StateKey
 ////////////////////////////////////////////////////////////////////////////////
 
-define_str_enum! {
+::tarantool::define_str_enum! {
     /// An enumeration of builtin raft spaces
     pub enum StateKey {
         ReplicationFactor = "replication_factor",
         VshardBootstrapped = "vshard_bootstrapped",
         DesiredSchemaVersion = "desired_schema_version",
     }
-
-    FromStr::Err = UnknownStateKey;
 }
-
-#[derive(Error, Debug)]
-#[error("unknown state key {0}")]
-pub struct UnknownStateKey(pub String);
 
 ////////////////////////////////////////////////////////////////////////////////
 // Storage
@@ -439,13 +425,11 @@ impl Peers {
 
 macro_rules! define_peer_fields {
     ($($field:ident: $ty:ty = ($name:literal, $tt_ty:path))+) => {
-        crate::define_str_enum! {
+        ::tarantool::define_str_enum! {
             /// An enumeration of raft_space field names
             pub enum PeerField {
                 $($field = $name,)+
             }
-
-            FromStr::Err = UnknownPeerField;
         }
 
         pub mod peer_field {
@@ -517,10 +501,6 @@ define_peer_fields! {
     TargetGrade    : traft::TargetGrade   = ("target_grade",    FieldType::Array)
     FailureDomain  : traft::FailureDomain = ("failure_domain",  FieldType::Map)
 }
-
-#[derive(Error, Debug)]
-#[error(r#"unknown peer field "{0}""#)]
-pub struct UnknownPeerField(pub String);
 
 impl tarantool::tuple::TupleIndex for PeerField {
     fn get_field<'a, T>(self, tuple: &'a Tuple) -> tarantool::Result<Option<T>>

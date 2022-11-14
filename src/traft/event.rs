@@ -9,20 +9,14 @@ use ::tarantool::fiber::{mutex::MutexGuard, Cond, Mutex};
 use ::tarantool::proc;
 use ::tarantool::unwrap_or;
 
-use crate::define_str_enum;
 use crate::tlog;
 use crate::traft::error::Error;
 use crate::traft::Result;
 use crate::unwrap_ok_or;
-use thiserror::Error;
 
 pub type BoxResult<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
-#[derive(Error, Debug)]
-#[error("unknown event {0}")]
-pub struct EventFromStrError(pub String);
-
-define_str_enum! {
+::tarantool::define_str_enum! {
     ////////////////////////////////////////////////////////////////////////////
     /// An enumeration of builtin events
     pub enum Event {
@@ -35,8 +29,6 @@ define_str_enum! {
         RaftLoopNeeded = "raft.loop-needed",
         RaftEntryApplied = "raft.entry-applied",
     }
-
-    FromStr::Err = EventFromStrError;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

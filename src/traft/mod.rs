@@ -844,54 +844,36 @@ impl Encode for JoinResponse {}
 
 ///////////////////////////////////////////////////////////////////////////////
 
-crate::define_str_enum! {
+::tarantool::define_str_enum! {
     /// Activity state of an instance.
+    #[derive(Default)]
     pub enum CurrentGradeVariant {
-        // Instance has gracefully shut down or has not been started yet.
+        /// Instance has gracefully shut down or has not been started yet.
+        #[default]
         Offline = "Offline",
-        // Instance has synced by commit index.
+        /// Instance has synced by commit index.
         RaftSynced = "RaftSynced",
-        // Instance has configured replication.
+        /// Instance has configured replication.
         Replicated = "Replicated",
-        // Instance has configured sharding.
+        /// Instance has configured sharding.
         ShardingInitialized = "ShardingInitialized",
-        // Instance is active and is handling requests.
+        /// Instance is active and is handling requests.
         Online = "Online",
-        // Instance has permanently removed from cluster.
+        /// Instance has permanently removed from cluster.
         Expelled = "Expelled",
     }
-    FromStr::Err = UnknownGrade;
 }
 
-#[derive(thiserror::Error, Debug)]
-#[error("unknown grade {0:?}")]
-pub struct UnknownGrade(pub String);
-
-impl Default for CurrentGradeVariant {
-    fn default() -> Self {
-        Self::Offline
-    }
-}
-
-crate::define_str_enum! {
+::tarantool::define_str_enum! {
+    #[derive(Default)]
     pub enum TargetGradeVariant {
-        // Instance should be configured up
+        /// Instance should be configured up
         Online = "Online",
-        // Instance should be gracefully shut down
+        /// Instance should be gracefully shut down
+        #[default]
         Offline = "Offline",
-        // Instance should be removed from cluster
+        /// Instance should be removed from cluster
         Expelled = "Expelled",
-    }
-    FromStr::Err = UnknownTargetGrade;
-}
-
-#[derive(thiserror::Error, Debug)]
-#[error("unknown target grade {0:?}")]
-pub struct UnknownTargetGrade(pub String);
-
-impl Default for TargetGradeVariant {
-    fn default() -> Self {
-        Self::Offline
     }
 }
 

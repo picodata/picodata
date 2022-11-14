@@ -65,18 +65,14 @@ use super::{CurrentGrade, CurrentGradeVariant, TargetGradeVariant};
 
 type RawNode = raft::RawNode<RaftSpaceAccess>;
 
-crate::define_str_enum! {
+::tarantool::define_str_enum! {
     pub enum RaftState {
         Follower = "Follower",
         Candidate = "Candidate",
         Leader = "Leader",
         PreCandidate = "PreCandidate",
     }
-    FromStr::Err = UnknownRaftState;
 }
-#[derive(thiserror::Error, Debug)]
-#[error("unknown raft state {0}")]
-pub struct UnknownRaftState(pub String);
 
 impl RaftState {
     pub fn is_leader(&self) -> bool {
