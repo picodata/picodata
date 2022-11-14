@@ -18,6 +18,9 @@ impl<E: Debug> std::error::Error for UnknownEnumVariant<E> {}
 #[macro_export]
 /// Auto-generate enum that maps to a string.
 ///
+/// **Important**: string variants must be specified in lower case for
+/// `FromStr` to work properly. Comparison is case-insensitive.
+///
 /// It automatically derives/implements the following traits:
 ///
 /// * [`AsRef<str>`],

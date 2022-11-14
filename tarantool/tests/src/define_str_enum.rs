@@ -36,6 +36,7 @@ pub fn basic() {
 
     // std::str::FromStr
     use std::str::FromStr;
+    assert_eq!(Color::from_str(" #FFFFFF "), Ok(Color::White));
     assert_eq!(Color::from_str("#000000"), Ok(Color::Black));
     assert_eq!(
         Color::from_str("#ff0000").unwrap_err().to_string(),
