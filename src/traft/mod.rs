@@ -36,6 +36,8 @@ use storage::ClusterSpace;
 pub use storage::Storage;
 pub use topology::Topology;
 
+use self::event::Event;
+
 pub type RaftId = u64;
 pub type RaftTerm = u64;
 pub type RaftIndex = u64;
@@ -185,7 +187,13 @@ impl Op {
                 peers.put(peer).unwrap();
                 Box::new(peer.clone())
             }
-            Self::Dml(op) => Box::new(op.result()),
+            Self::Dml(op) => {
+                let res = Box::new(op.result());
+                if op.space() == &ClusterSpace::State {
+                    event::broadcast(Event::ClusterStateChanged);
+                }
+                res
+            }
         }
     }
 
@@ -328,6 +336,16 @@ impl OpDML {
             key: key.to_tuple_buffer()?,
         };
         Ok(res)
+    }
+
+    #[rustfmt::skip]
+    pub fn space(&self) -> &ClusterSpace {
+        match &self {
+            Self::Insert { space, .. } => space,
+            Self::Replace { space, .. } => space,
+            Self::Update { space, .. } => space,
+            Self::Delete { space, .. } => space,
+        }
     }
 }
 

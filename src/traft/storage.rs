@@ -168,9 +168,8 @@ impl State {
         Ok(res)
     }
 
-    #[allow(dead_code)]
     #[inline]
-    pub fn desired_schema_version(&self) -> tarantool::Result<usize> {
+    pub fn desired_schema_version(&self) -> tarantool::Result<u64> {
         let res = self
             .get(StateKey::DesiredSchemaVersion)?
             .unwrap_or_default();
@@ -674,6 +673,33 @@ impl Migrations {
             Some(tuple) => tuple.decode().map(Some),
             None => Ok(None),
         }
+    }
+
+    pub fn iter(&self) -> Result<MigrationIter> {
+        let iter = self.space.select(IteratorType::All, &())?;
+        Ok(iter.into())
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// MigrationtIter
+////////////////////////////////////////////////////////////////////////////////
+
+pub struct MigrationIter {
+    iter: IndexIterator,
+}
+
+impl From<IndexIterator> for MigrationIter {
+    fn from(iter: IndexIterator) -> Self {
+        Self { iter }
+    }
+}
+
+impl Iterator for MigrationIter {
+    type Item = traft::Migration;
+    fn next(&mut self) -> Option<Self::Item> {
+        let res = self.iter.next().as_ref().map(Tuple::decode);
+        res.map(|res| res.expect("migration should decode correctly"))
     }
 }
 

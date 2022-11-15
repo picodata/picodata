@@ -11,6 +11,7 @@ use std::time::Duration;
 use serde::de::DeserializeOwned;
 
 pub mod expel;
+pub mod migration;
 pub mod replication;
 pub mod sharding;
 pub mod sync;

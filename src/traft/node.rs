@@ -30,7 +30,8 @@ use tarantool::space::UpdateOps;
 use crate::kvcell::KVCell;
 use crate::r#loop::{FlowControl, Loop};
 use crate::stringify_cfunc;
-use crate::traft::governor::raft_conf_change;
+use crate::traft::governor::{raft_conf_change, waiting_migrations};
+use crate::traft::rpc;
 use crate::traft::storage::ClusterSpace;
 use crate::traft::ContextCoercion as _;
 use crate::traft::OpDML;
@@ -1423,7 +1424,63 @@ fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
             continue 'governor;
         }
 
-        event::wait(Event::TopologyChanged).expect("Events system must be initialized");
+        ////////////////////////////////////////////////////////////////////////
+        // applying migrations
+        let desired_schema_version = storage.state.desired_schema_version().unwrap();
+        let replicasets = storage.replicasets.iter().unwrap().collect::<Vec<_>>();
+        let mut migrations = storage.migrations.iter().unwrap().collect::<Vec<_>>();
+        let commit = storage.raft.commit().unwrap().unwrap();
+        for (mid, rids) in waiting_migrations(&mut migrations, &replicasets, desired_schema_version)
+        {
+            let migration = storage.migrations.get(mid).unwrap().unwrap();
+            for rid in rids {
+                let replicaset = storage
+                    .replicasets
+                    .get(rid.to_string().as_str())
+                    .unwrap()
+                    .unwrap();
+                let peer = storage.peers.get(&replicaset.master_id).unwrap();
+                let req = rpc::migration::apply::Request {
+                    term,
+                    commit,
+                    timeout: SYNC_TIMEOUT,
+                    migration_id: migration.id,
+                };
+                let res = pool.call_and_wait(&peer.raft_id, req);
+                match res {
+                    Ok(_) => {
+                        let mut ops = UpdateOps::new();
+                        ops.assign("current_schema_version", migration.id).unwrap();
+                        let op = OpDML::update(
+                            ClusterSpace::Replicasets,
+                            &[replicaset.replicaset_id.clone()],
+                            ops,
+                        )
+                        .unwrap();
+                        node.propose_and_wait(op, Duration::MAX).unwrap().unwrap();
+                        tlog!(
+                            Info,
+                            "Migration {0} applied to replicaset {1}",
+                            migration.id,
+                            replicaset.replicaset_id
+                        );
+                    }
+                    Err(e) => {
+                        tlog!(
+                            Warning,
+                            "Could not apply migration {0} to replicaset {1}, error: {2}",
+                            migration.id,
+                            replicaset.replicaset_id,
+                            e
+                        );
+                        continue 'governor;
+                    }
+                }
+            }
+        }
+
+        event::wait_any(&[Event::TopologyChanged, Event::ClusterStateChanged])
+            .expect("Events system must be initialized");
     }
 
     #[allow(clippy::type_complexity)]

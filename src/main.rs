@@ -461,6 +461,7 @@ fn init_handlers() {
     declare_cfunc!(traft::rpc::replication::proc_replication);
     declare_cfunc!(traft::rpc::replication::promote::proc_replication_promote);
     declare_cfunc!(traft::rpc::sharding::proc_sharding);
+    declare_cfunc!(traft::rpc::migration::apply::proc_apply_migration);
 }
 
 fn rm_tarantool_files(data_dir: &str) {
