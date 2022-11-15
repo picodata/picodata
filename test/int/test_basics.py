@@ -234,3 +234,27 @@ def test_raft_log(instance: Instance):
         p=instance.port, b="{}"
     )
     assert strip_spaces(expected) == strip_spaces(raft_log)
+
+
+def test_governor_notices_restarts(instance: Instance):
+    def check_vshard_configured(instance: Instance):
+        assert instance.eval(
+            """
+                local replicasets = vshard.router.info().replicasets
+                local replica_uuid = replicasets[box.info.cluster.uuid].replica.uuid
+                return replica_uuid == box.info.uuid
+        """
+        )
+
+    # vshard is configured after first start
+    check_vshard_configured(instance)
+
+    assert instance.current_grade() == dict(variant="Online", incarnation=1)
+
+    instance.restart()
+    instance.wait_online()
+
+    # vshard is configured again after restart
+    check_vshard_configured(instance)
+
+    assert instance.current_grade() == dict(variant="Online", incarnation=2)
