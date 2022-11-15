@@ -43,6 +43,7 @@
 - `fiber::r#yield` function for yielding fibers likewise tarantool LUA api.
 - `#[derive(Copy)]` for a bunch of light enums including `TarantoolErrorCode`,
     `SayLevel`, `SystemSpace`, `FieldType`.
+- `define_str_enum` macro suitable for public use.
 
 ### Removed
 

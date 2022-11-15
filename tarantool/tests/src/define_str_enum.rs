@@ -11,7 +11,7 @@ pub fn basic() {
             /// Black as night
             Black = "#000000",
             /// White as snow
-            White = "#ffffff",
+            White = "#FFFFFF",
         }
     }
 
@@ -23,7 +23,7 @@ pub fn basic() {
 
     assert_eq!(Color::default(), Color::Black);
     assert_eq!(Color::Black.as_ref(), "#000000");
-    assert_eq!(Color::White.as_str(), "#ffffff");
+    assert_eq!(Color::White.as_str(), "#FFFFFF");
 
     // PartialEq, PartialOrd
     assert_eq!(Color::Black == Color::White, false);
@@ -31,32 +31,32 @@ pub fn basic() {
 
     // Debug, Display
     assert_eq!(format!("{:?}", Color::Black), "Black");
-    assert_eq!(format!("{}", Color::White), "#ffffff");
-    assert_eq!(String::from(Color::White), "#ffffff");
+    assert_eq!(format!("{}", Color::White), "#FFFFFF");
+    assert_eq!(String::from(Color::White), "#FFFFFF");
 
     // std::str::FromStr
     use std::str::FromStr;
-    assert_eq!(Color::from_str(" #FFFFFF "), Ok(Color::White));
+    assert_eq!(Color::from_str("#FFFFFF"), Ok(Color::White));
     assert_eq!(Color::from_str("#000000"), Ok(Color::Black));
     assert_eq!(
-        Color::from_str("#ff0000").unwrap_err().to_string(),
-        "unknown Color \"#ff0000\""
+        Color::from_str("#ffffff").unwrap_err().to_string(),
+        "unknown Color \"#ffffff\""
     );
 
     // serde: ser
-    assert_eq!(serde_json::to_string(&Color::White).unwrap(), "\"#ffffff\"");
+    assert_eq!(serde_json::to_string(&Color::White).unwrap(), "\"#FFFFFF\"");
 
     // serde: de
     let de = |v| -> Result<Color, _> { serde_json::from_str(v) };
-    assert_eq!(de("\"#ffffff\"").unwrap(), Color::White);
+    assert_eq!(de("\"#FFFFFF\"").unwrap(), Color::White);
     assert_eq!(
         de("\"#00ff00\"").unwrap_err().to_string(),
-        "unknown variant `#00ff00`, expected `#000000` or `#ffffff`"
+        "unknown variant `#00ff00`, expected `#000000` or `#FFFFFF`"
     );
 
     // Lua-related traits
     let lua = tarantool::lua_state();
-    assert_eq!(lua.eval::<Color>("return '#ffffff'").unwrap(), Color::White);
+    assert_eq!(lua.eval::<Color>("return '#FFFFFF'").unwrap(), Color::White);
     assert_eq!(
         lua.eval_with::<_, String>("return ...", Color::Black)
             .unwrap(),
@@ -96,4 +96,19 @@ pub fn basic() {
         + tlua::PushOneInto<L>
     {
     }
+}
+
+pub fn coerce_from_str() {
+    define_str_enum! {
+        #![coerce_from_str]
+        enum Season {
+            Summer = "summer",
+        }
+    }
+
+    use std::str::FromStr;
+    assert_eq!(Season::from_str("summer"), Ok(Season::Summer));
+    assert_eq!(Season::from_str("SummeR"), Ok(Season::Summer));
+    assert_eq!(Season::from_str("SUMMER"), Ok(Season::Summer));
+    assert_eq!(Season::from_str(" SUMMER "), Ok(Season::Summer));
 }

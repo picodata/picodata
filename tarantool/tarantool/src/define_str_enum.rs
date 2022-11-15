@@ -18,9 +18,6 @@ impl<E: Debug> std::error::Error for UnknownEnumVariant<E> {}
 #[macro_export]
 /// Auto-generate enum that maps to a string.
 ///
-/// **Important**: string variants must be specified in lower case for
-/// `FromStr` to work properly. Comparison is case-insensitive.
-///
 /// It automatically derives/implements the following traits:
 ///
 /// * [`AsRef<str>`],
@@ -47,9 +44,9 @@ impl<E: Debug> std::error::Error for UnknownEnumVariant<E> {}
 /// # use tarantool::define_str_enum;
 /// define_str_enum! {
 ///     pub enum Color {
-///         Red = "#ff0000",
-///         Green = "#00ff00",
-///         Blue = "#0000ff",
+///         Red = "#FF0000",
+///         Green = "#00FF00",
+///         Blue = "#0000FF",
 ///     }
 /// }
 /// ```
@@ -66,15 +63,45 @@ impl<E: Debug> std::error::Error for UnknownEnumVariant<E> {}
 /// impl Color {
 ///     pub const fn as_str(&self) -> &'static str {
 ///         match self {
-///             Self::Red => "#ff0000",
-///             Self::Green => "#00ff00",
-///             Self::Blue => "#0000ff",
+///             Self::Red => "#FF0000",
+///             Self::Green => "#00FF00",
+///             Self::Blue => "#0000FF",
 ///         }
 ///     }
 /// }
 /// ```
+///
+/// # Implicit string coercion
+///
+/// `#![coerce_from_str]`
+///
+/// By default, generated enums are case-sensitive.
+///
+/// This inner attribute enables implicit string coercion when enum is
+/// constructed using `FromStr` trait: the string is trimmed and
+/// converted to lower case before matching.
+///
+/// Note, that in that case string variants must be specified in lower
+/// case too.
+///
+/// ```
+/// # use tarantool::define_str_enum;
+/// define_str_enum! {
+///     #![coerce_from_str]
+///     pub enum Season {
+///         Summer = "summer",
+///     }
+/// }
+///
+/// use std::str::FromStr;
+/// assert_eq!(Season::from_str("summer"), Ok(Season::Summer));
+/// assert_eq!(Season::from_str("SummeR"), Ok(Season::Summer));
+/// assert_eq!(Season::from_str("  SUMMER  "), Ok(Season::Summer));
+/// ```
+///
 macro_rules! define_str_enum {
     (
+        $(#![$macro_attr:ident])?
         $(#[$emeta:meta])*
         $vis:vis enum $enum:ident {
             $(
@@ -121,9 +148,12 @@ macro_rules! define_str_enum {
                 use ::std::marker::PhantomData;
                 use $crate::define_str_enum::UnknownEnumVariant;
 
-                let s = s.trim();
-                let s = s.to_lowercase();
-                let s = s.as_str();
+                $($crate::define_str_enum! { @attr $macro_attr
+                    let s = s.trim();
+                    let s = s.to_lowercase();
+                    let s = s.as_str();
+                })?
+
                 match s {
                     $(
                         $display => Ok(Self::$variant),
@@ -195,4 +225,15 @@ macro_rules! define_str_enum {
             }
         }
     };
+
+    (@attr coerce_from_str $($then:tt)*) => {
+        $($then)*
+    };
+
+    (@attr $other:ident $($then:tt)*) => {
+        compile_error!(
+            concat!("unknown attribute: ", stringify!($other))
+        )
+    };
+
 }

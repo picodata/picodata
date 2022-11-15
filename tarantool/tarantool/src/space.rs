@@ -98,6 +98,7 @@ impl From<SystemSpace> for Space {
 }
 
 crate::define_str_enum! {
+    #![coerce_from_str]
     /// Type of engine, used by space.
     pub enum SpaceEngineType {
         Memtx = "memtx",
@@ -255,6 +256,7 @@ impl Field {
 pub type SpaceFieldType = FieldType;
 
 crate::define_str_enum! {
+    #![coerce_from_str]
     /// Type of a field in the space format definition.
     pub enum FieldType {
         Any       = "any",
