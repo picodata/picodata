@@ -2,8 +2,12 @@ use std::{future::Future, rc::Rc, task::Poll, time::Instant};
 
 use futures::pin_mut;
 
+#[derive(thiserror::Error, Debug, PartialEq, Eq)]
+#[error("Sender dropped")]
+pub struct RecvError;
+
 pub mod oneshot {
-    use super::timeout::Timeout;
+    use super::{timeout::Timeout, RecvError};
     use std::{
         cell::Cell,
         future::Future,
@@ -34,7 +38,8 @@ pub mod oneshot {
     }
 
     impl<T> Future for Receiver<T> {
-        type Output = Option<T>;
+        type Output = Result<T, RecvError>;
+
         fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
             let cell = &self.0;
             match cell.take() {
@@ -43,8 +48,8 @@ pub mod oneshot {
                     cell.set(State::Pending(waker));
                     Poll::Pending
                 }
-                State::Pending(_) => Poll::Ready(None),
-                State::Ready(t) => Poll::Ready(Some(t)),
+                State::Pending(_) => Poll::Ready(Err(RecvError)),
+                State::Ready(t) => Poll::Ready(Ok(t)),
             }
         }
     }
@@ -94,6 +99,198 @@ pub mod oneshot {
     }
 }
 
+// SAFETY:
+// In this module `RefCell::borrow` is used a lot.
+// This method panics if there are alive mutable borrows at that moment.
+// But in this case it is safe to do this as:
+// 1. Mutable borrows are taken and released in an encapsulated Sender functions
+// 2. There are no `await` or `fiber::sleep` calls inside sender functions
+// 3. This module is meant for single threaded async runtime
+pub mod watch {
+    use super::RecvError;
+    use std::{
+        cell::{BorrowMutError, Cell, Ref, RefCell},
+        future::Future,
+        ops::Deref,
+        pin::Pin,
+        rc::Rc,
+        task::{Context, Poll, Waker},
+        time::Duration,
+    };
+
+    pub struct Value<T> {
+        value: T,
+        version: u64,
+    }
+
+    impl<T> Value<T> {
+        fn set(&mut self, v: T) {
+            self.value = v;
+            // It is ok to overflow as we check only the difference in version
+            // and having receivers stuck near 0 version when sender has exceeded u64 is extremely unlickely.
+            self.version = self.version.wrapping_add(1);
+        }
+    }
+
+    struct State<T> {
+        value: RefCell<Value<T>>,
+        // I would be better to use HashSet here,
+        // but `Waker` doesn't implement it.
+        wakers: RefCell<Vec<Waker>>,
+        sender_exists: Cell<bool>,
+    }
+
+    impl<T> State<T> {
+        fn add_waker(&self, waker: &Waker) {
+            let mut wakers = self.wakers.borrow_mut();
+            if !wakers.iter().any(|w| waker.will_wake(w)) {
+                wakers.push(waker.clone());
+            }
+        }
+
+        fn wake_all(&self) {
+            for waker in self.wakers.borrow_mut().drain(..) {
+                waker.wake()
+            }
+        }
+    }
+
+    #[derive(thiserror::Error, Debug)]
+    #[error("Failed to send this value, as receivers are currently holding a reference to the previous value: {0}")]
+    pub struct SendError(BorrowMutError);
+
+    pub struct Sender<T> {
+        state: Rc<State<T>>,
+    }
+
+    pub struct Receiver<T> {
+        state: Rc<State<T>>,
+        seen_version: u64,
+    }
+
+    impl<T> Sender<T> {
+        pub fn subscribe(&self) -> Receiver<T> {
+            Receiver {
+                state: self.state.clone(),
+                seen_version: self.state.value.borrow().version,
+            }
+        }
+
+        pub fn send(&self, value: T) -> Result<(), SendError> {
+            self.state
+                .value
+                .try_borrow_mut()
+                .map_err(SendError)?
+                .set(value);
+            self.state.wake_all();
+            Ok(())
+        }
+    }
+
+    impl<T> Drop for Sender<T> {
+        fn drop(&mut self) {
+            self.state.sender_exists.set(false);
+            self.state.wake_all()
+        }
+    }
+
+    pub struct ValueRef<'a, T>(Ref<'a, Value<T>>);
+
+    impl<'a, T> Deref for ValueRef<'a, T> {
+        type Target = T;
+
+        fn deref(&self) -> &Self::Target {
+            &self.0.value
+        }
+    }
+
+    pub struct Notification<'a, T> {
+        rx: &'a mut Receiver<T>,
+    }
+
+    impl<'a, T> Notification<'a, T> {
+        pub fn timeout(self, timeout: Duration) -> super::timeout::Timeout<Self> {
+            super::timeout::timeout(timeout, self)
+        }
+    }
+
+    impl<T> Receiver<T> {
+        pub fn has_changed(&self) -> bool {
+            self.state.value.borrow().version != self.seen_version
+        }
+
+        pub fn changed(&mut self) -> Notification<T> {
+            Notification { rx: self }
+        }
+
+        /// Care must be taken not to hold a ref, when the sender is setting a new value.
+        /// This includes not holding a ref across await points and not explicitely yielding
+        /// control to other fibers while holding a ref.
+        ///
+        /// Consider using [`Self::get`] or [`Self::get_clone`] instead.
+        pub fn borrow(&self) -> ValueRef<T> {
+            ValueRef(self.state.value.borrow())
+        }
+
+        pub fn get(&self) -> T
+        where
+            T: Copy,
+        {
+            *self.borrow().deref()
+        }
+
+        pub fn get_cloned(&self) -> T
+        where
+            T: Clone,
+        {
+            self.borrow().deref().clone()
+        }
+    }
+
+    impl<T> Clone for Receiver<T> {
+        fn clone(&self) -> Self {
+            Self {
+                state: self.state.clone(),
+                seen_version: self.state.value.borrow().version,
+            }
+        }
+    }
+
+    impl<'a, T> Future for Notification<'a, T> {
+        type Output = Result<(), RecvError>;
+
+        fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+            if !self.rx.state.sender_exists.get() {
+                return Poll::Ready(Err(RecvError));
+            }
+            let version = self.rx.state.value.borrow().version;
+            if version != self.rx.seen_version {
+                self.rx.seen_version = version;
+                Poll::Ready(Ok(()))
+            } else {
+                self.rx.state.add_waker(cx.waker());
+                Poll::Pending
+            }
+        }
+    }
+
+    pub fn channel<T>(initial: T) -> (Sender<T>, Receiver<T>) {
+        let state = State {
+            value: RefCell::new(Value {
+                value: initial,
+                version: 0,
+            }),
+            wakers: Default::default(),
+            sender_exists: Cell::new(true),
+        };
+        let tx = Sender {
+            state: Rc::new(state),
+        };
+        let rx = tx.subscribe();
+        (tx, rx)
+    }
+}
+
 pub mod timeout {
     use std::future::Future;
     use std::pin::Pin;
@@ -103,6 +300,10 @@ pub mod timeout {
     use std::time::Instant;
 
     use super::context::ContextExt;
+
+    #[derive(thiserror::Error, Debug, PartialEq, Eq)]
+    #[error("Deadline expired")]
+    pub struct Expired;
 
     pub struct Timeout<F> {
         future: F,
@@ -125,15 +326,15 @@ pub mod timeout {
     }
 
     impl<F: Future> Future for Timeout<F> {
-        type Output = Option<F::Output>;
+        type Output = Result<F::Output, Expired>;
         fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
             let deadline = self.deadline;
 
             // First, try polling the future
             if let Poll::Ready(v) = self.pin_get_future().poll(cx) {
-                Poll::Ready(Some(v))
+                Poll::Ready(Ok(v))
             } else if Instant::now() > deadline {
-                Poll::Ready(None) // expired
+                Poll::Ready(Err(Expired)) // expired
             } else {
                 // SAFETY: This is safe as long as the `Context` really
                 // is the `ContextExt`. It's always true within provided

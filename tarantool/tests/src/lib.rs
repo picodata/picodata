@@ -403,6 +403,12 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 fiber::r#async::actual_timeout_promise,
                 fiber::r#async::drop_tx_before_timeout,
                 fiber::r#async::send_tx_before_timeout,
+                fiber::r#async::receive_notification_sent_before,
+                fiber::r#async::receive_notification_sent_after,
+                fiber::r#async::receive_multiple_notifications,
+                fiber::r#async::retains_only_last_notification,
+                fiber::r#async::notification_receive_error,
+                fiber::r#async::notification_received_in_concurrent_fibers,
                 #[should_panic]
                 fiber::start_dont_join,
                 #[should_panic]
