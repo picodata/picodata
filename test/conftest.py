@@ -204,6 +204,7 @@ class Instance:
     color: Callable[[str], str]
 
     instance_id: str | None = None
+    replicaset_id: str | None = None
     failure_domain: dict[str, str] = field(default_factory=dict)
     env: dict[str, str] = field(default_factory=dict)
     process: subprocess.Popen | None = None
@@ -230,6 +231,7 @@ class Instance:
             self.binary_path, "run",
             "--cluster-id", self.cluster_id,
             *([f"--instance-id={self.instance_id}"] if self.instance_id else []),
+            *([f"--replicaset-id={self.replicaset_id}"] if self.replicaset_id else []),
             "--data-dir", self.data_dir,
             "--listen", self.listen,
             "--peer", ','.join(self.peers),
@@ -511,6 +513,7 @@ class Cluster:
         wait_online=True,
         peers=None,
         instance_id: str | bool = True,
+        replicaset_id: str | None = None,
         failure_domain=dict(),
         init_replication_factor=1,
     ) -> Instance:
@@ -548,6 +551,7 @@ class Cluster:
             binary_path=self.binary_path,
             cluster_id=self.id,
             instance_id=generated_instance_id,
+            replicaset_id=replicaset_id,
             data_dir=f"{self.data_dir}/i{i}",
             host=self.base_host,
             port=self.base_port + i,
