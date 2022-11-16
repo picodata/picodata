@@ -8,6 +8,12 @@ from conftest import (
 
 
 @pytest.fixture
+def cluster1(cluster: Cluster):
+    cluster.deploy(instance_count=1, init_replication_factor=2)
+    return cluster
+
+
+@pytest.fixture
 def cluster3(cluster: Cluster):
     cluster.deploy(instance_count=3, init_replication_factor=3)
     return cluster
@@ -104,3 +110,19 @@ def test_2_of_3_writable(cluster3: Cluster):
     wait_vclock(old_leader, rl_vclock)
     assert [[1], [2]] == old_leader.eval("return box.space.test_space:select()")
 # fmt: on
+
+
+def test_replication_works(cluster1: Cluster):
+    i2 = cluster1.add_instance(wait_online=False, replicaset_id="r2")
+    i3 = cluster1.add_instance(wait_online=False, replicaset_id="r2")
+    i2.start()
+    i3.start()
+    i2.wait_online()
+    i3.wait_online()
+
+    @funcy.retry(tries=10, timeout=0.2)
+    def wait_replicas_joined(i: Instance, n: int):
+        assert len(i.call("box.info")["replication"]) == n
+
+    wait_replicas_joined(i2, 2)
+    wait_replicas_joined(i3, 2)
