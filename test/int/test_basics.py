@@ -220,7 +220,7 @@ def test_raft_log(instance: Instance):
 |  1  | 1  |1.0.1|PersistPeer(i1, 1, r1, 127.0.0.1:{p}, Offline(0), 1, {b})|
 |  2  | 1  |1.0.2|Insert(cluster_state, ["replication_factor",1])|
 |  3  | 1  |1.0.3|Insert(cluster_state, ["desired_schema_version",0])|
-|  4  | 1  |     |Promote(1)|
+|  4  | 1  |     |AddNode(1)|
 |  5  | 2  |     |-|
 |  6  | 2  |1.1.2|PersistPeer(i1, 1, r1, 127.0.0.1:{p}, Offline(0) -> Online(1), 6, {b})|
 |  7  | 2  |1.1.3|PersistPeer(i1, 1, r1, 127.0.0.1:{p}, RaftSynced(1) -> Online(1), 7, {b})|

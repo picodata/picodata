@@ -676,9 +676,9 @@ impl<'a> std::fmt::Display for EntryPayload<'a> {
 
         const fn change_type(ct: raft::ConfChangeType) -> &'static str {
             match ct {
-                raft::ConfChangeType::AddNode => "Promote",
-                raft::ConfChangeType::AddLearnerNode => "Demote",
-                raft::ConfChangeType::RemoveNode => "Remove",
+                raft::ConfChangeType::AddNode => "AddNode",
+                raft::ConfChangeType::AddLearnerNode => "AddLearnerNode",
+                raft::ConfChangeType::RemoveNode => "RemoveNode",
             }
         }
     }
