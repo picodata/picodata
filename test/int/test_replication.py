@@ -165,3 +165,41 @@ def test_bucket_rebalancing(cluster: Cluster):
 
     i3 = cluster.add_instance()
     wait_has_buckets(i3, 1000)
+
+
+def test_bucket_rebalancing_respects_replication_factor(cluster: Cluster):
+    peer, *_ = cluster.deploy(instance_count=4, init_replication_factor=2)
+
+    # wait for buckets to be rebalanced between 2 replicasets 1500 each
+    for i in cluster.instances:
+        wait_has_buckets(i, 1500)
+
+    # check vshard routes requests to both replicasets
+    reached_instances = set()
+    for bucket_id in [1, 3000]:
+        info = peer.call("vshard.router.callro", bucket_id, "picolib.peer_info")
+        reached_instances.add(info["instance_id"])
+    assert len(reached_instances) == 2
+
+    # add an instance to a new replicaset
+    i5 = cluster.add_instance(wait_online=True)
+
+    # buckets do not start rebalancing until new replicaset is full
+    wait_has_buckets(i5, 0)
+    for i in cluster.instances:
+        if i.instance_id != i5.instance_id:
+            wait_has_buckets(i, 1500)
+
+    # add another instance to new replicaset, it's now full
+    cluster.add_instance(wait_online=True)
+
+    # buckets now must be rebalanced between 3 replicasets 1000 each
+    for i in cluster.instances:
+        wait_has_buckets(i, 1000)
+
+    # check vshard routes requests to all 3 replicasets
+    reached_instances = set()
+    for bucket_id in [1, 1500, 3000]:
+        info = peer.call("vshard.router.callro", bucket_id, "picolib.peer_info")
+        reached_instances.add(info["instance_id"])
+    assert len(reached_instances) == 3
