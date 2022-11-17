@@ -168,9 +168,10 @@ test-picodata:
 pages:
   extends: .test
   variables:
-    DOCKER_IMAGE: ${VANILLA_DOCKER_IMAGE}
+    DOCKER_IMAGE: ${PICODATA_DOCKER_IMAGE}
+    RUSTDOCFLAGS: "-Dwarnings"
   script:
-    - cargo doc --no-deps
+    - cargo doc --workspace --no-deps --features "picodata"
     - rm -rf public
     - mv target/doc public
   artifacts:
