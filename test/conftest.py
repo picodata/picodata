@@ -143,9 +143,9 @@ def normalize_net_box_result(func):
         match result.data:
             case []:
                 return None
-            case [x]:
+            case [x] | [x, None]:
                 return x
-            case [None, str(err)]:
+            case [None, err]:
                 raise ReturnError(err)
             case [*args]:
                 raise MalformedAPI(*args)
