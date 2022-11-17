@@ -1,5 +1,6 @@
 import funcy  # type: ignore
 import pytest
+import time
 
 from conftest import (
     Cluster,
@@ -126,3 +127,41 @@ def test_replication_works(cluster1: Cluster):
 
     wait_replicas_joined(i2, 2)
     wait_replicas_joined(i3, 2)
+
+
+def test_bucket_discovery_single(instance: Instance):
+    @funcy.retry(tries=30, timeout=0.2)
+    def wait_buckets_awailable(i: Instance, expected: int):
+        assert expected == i.call("vshard.router.info")["bucket"]["available_rw"]
+
+    wait_buckets_awailable(instance, 3000)
+
+
+@pytest.mark.xfail(
+    run=True,
+    reason=(
+        "currently we bootstrap vshard even before the first replicaset is filled, "
+        "but we shouldn't"
+    ),
+)
+def test_bucket_discovery_respects_replication_factor(cluster: Cluster):
+    i1, *_ = cluster.deploy(instance_count=1, init_replication_factor=2)
+    time.sleep(1)
+    assert 0 == i1.call("vshard.router.info")["bucket"]["available_rw"]
+
+
+@funcy.retry(tries=30, timeout=0.2)
+def wait_has_buckets(i: Instance, expected_active: int):
+    i.call("vshard.storage.rebalancer_wakeup")
+    storage_info = i.call("vshard.storage.info")
+    assert expected_active == storage_info["bucket"]["active"]
+
+
+def test_bucket_rebalancing(cluster: Cluster):
+    i1, *_ = cluster.deploy(instance_count=1, init_replication_factor=1)
+
+    i2 = cluster.add_instance()
+    wait_has_buckets(i2, 1500)
+
+    i3 = cluster.add_instance()
+    wait_has_buckets(i3, 1000)

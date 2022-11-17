@@ -146,7 +146,7 @@ pub mod cfg {
             }
             Ok(Self {
                 sharding,
-                discovery_mode: DiscoveryMode::Off,
+                discovery_mode: DiscoveryMode::On,
             })
         }
     }
