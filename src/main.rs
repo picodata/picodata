@@ -892,7 +892,7 @@ fn start_join(args: &args::Run, leader_address: String) {
 
     let cfg = tarantool::Cfg {
         listen: Some(args.listen.clone()),
-        read_only: false,
+        read_only: resp.box_replication.len() > 1,
         instance_uuid: Some(resp.peer.instance_uuid.clone()),
         replicaset_uuid: Some(resp.peer.replicaset_uuid.clone()),
         replication: resp.box_replication.clone(),
