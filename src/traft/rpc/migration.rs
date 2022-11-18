@@ -1,6 +1,7 @@
 pub mod apply {
     use crate::traft::{error::Error, node, rpc::sync, RaftIndex, RaftTerm, Result};
     use std::time::Duration;
+    use tarantool::{lua_state, tlua::LuaError};
 
     crate::define_rpc_request! {
         fn proc_apply_migration(req: Request) -> Result<Response> {
@@ -12,9 +13,9 @@ pub mod apply {
 
             match storage.migrations.get(req.migration_id)? {
                 Some(migration) => {
-                    match crate::tarantool::exec(migration.body.as_str()) {
+                    match lua_state().exec_with("box.execute(...)", migration.body) {
                         Ok(_) => Ok(Response{}),
-                        Err(e) => Err(e.into())
+                        Err(e) => Err(LuaError::from(e).into()),
                     }
                 }
                 None => Err(Error::other(format!("Migration {0} not found", req.migration_id))),

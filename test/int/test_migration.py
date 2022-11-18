@@ -31,22 +31,22 @@ def test_apply_migrations(cluster: Cluster):
     i1, _, _ = cluster.instances
     i1.promote_or_fail()
     i1.assert_raft_status("Leader")
+
     i1.call(
         "picolib.add_migration",
         1,
         """
-        box.schema.space.create('test_space', {
-            format = {
-                {name = 'id', type = 'unsigned'},
-                {name = 'value', type = 'string'},
-            }
-        })
-        """,
+    CREATE TABLE "test_space" (
+        "id" INT PRIMARY KEY
+    )""",
     )
     i1.call(
         "picolib.add_migration",
         2,
-        "box.space.test_space:create_index('pk', {parts = {'id'}})",
+        """
+    ALTER TABLE "test_space"
+    ADD COLUMN "value" VARCHAR(100)
+    """,
     )
 
     i1.call("picolib.push_schema_version", 2)
@@ -56,11 +56,11 @@ def test_apply_migrations(cluster: Cluster):
         assert conn.insert("test_space", [1, "foo"])
 
     @funcy.retry(tries=30, timeout=0.2)  # type: ignore
-    def assert_replicaset_version(conn):
+    def assert_replicaset_version(conn, v):
         position = conn.schema.get_field("replicasets", "current_schema_version")["id"]
-        assert [2, 2, 2] == [tuple[position] for tuple in conn.select("replicasets")]
+        assert [v, v, v] == [tuple[position] for tuple in conn.select("replicasets")]
 
     for i in cluster.instances:
         with i.connect(timeout=1) as conn:
             assert_space_insert(conn)
-            assert_replicaset_version(conn)
+            assert_replicaset_version(conn, 2)
