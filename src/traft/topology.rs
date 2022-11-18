@@ -195,7 +195,17 @@ impl Topology {
             .get_mut(&req.instance_id)
             .ok_or_else(|| format!("unknown instance {}", req.instance_id))?;
 
-        if peer.current_grade == CurrentGradeVariant::Expelled {
+        if peer.current_grade == CurrentGradeVariant::Expelled
+            && !matches!(
+                req,
+                UpdatePeerRequest {
+                    target_grade: None,
+                    current_grade: Some(current_grade),
+                    failure_domain: None,
+                    ..
+                } if current_grade == CurrentGradeVariant::Expelled
+            )
+        {
             return Err(format!(
                 "cannot update expelled peer \"{}\"",
                 peer.instance_id

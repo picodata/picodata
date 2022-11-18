@@ -284,6 +284,14 @@ impl Node {
         notify.recv()
     }
 
+    /// Attempt to transfer leadership to a given node and yield.
+    ///
+    /// **This function yields**
+    pub fn transfer_leadership_and_yield(&self, new_leader_id: RaftId) {
+        self.raw_operation(|node_impl| node_impl.raw_node.transfer_leader(new_leader_id));
+        fiber::reschedule();
+    }
+
     /// This function **may yield** if `self.node_impl` mutex is acquired.
     #[inline]
     fn raw_operation<R>(&self, f: impl FnOnce(&mut NodeImpl) -> R) -> R {
@@ -955,12 +963,17 @@ fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
         }
 
         ////////////////////////////////////////////////////////////////////////
-        // offline
+        // offline/expel
         let to_offline = peers
             .iter()
             .filter(|peer| peer.current_grade != CurrentGradeVariant::Offline)
             // TODO: process them all, not just the first one
-            .find(|peer| peer.target_grade == TargetGradeVariant::Offline);
+            .find(|peer| {
+                let (target, current) = (peer.target_grade.variant, peer.current_grade.variant);
+                matches!(target, TargetGradeVariant::Offline)
+                    || !matches!(current, CurrentGradeVariant::Expelled)
+                        && matches!(target, TargetGradeVariant::Expelled)
+            });
         if let Some(peer) = to_offline {
             tlog!(
                 Info,
@@ -969,6 +982,23 @@ fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
                 peer.current_grade,
                 peer.target_grade
             );
+
+            // transfer leadership, if we're the one who goes offline
+            if peer.raft_id == node.raft_id {
+                if let Some(new_leader) = maybe_responding(&peers).find(|peer| {
+                    // FIXME: linear search
+                    voters.contains(&peer.raft_id)
+                }) {
+                    tlog!(
+                        Info,
+                        "transferring leadership to {}",
+                        new_leader.instance_id
+                    );
+                    node.transfer_leadership_and_yield(new_leader.raft_id);
+                    event::wait_timeout(Event::TopologyChanged, Duration::from_secs(1)).unwrap();
+                    continue 'governor;
+                }
+            }
 
             let replicaset_id = &peer.replicaset_id;
             // choose a new replicaset master if needed
@@ -1040,7 +1070,7 @@ fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
 
             // update peer's CurrentGrade
             let req = UpdatePeerRequest::new(peer.instance_id.clone(), cluster_id.clone())
-                .with_current_grade(CurrentGrade::offline(peer.target_grade.incarnation));
+                .with_current_grade(peer.target_grade.into());
             tlog!(Info,
                 "handling UpdatePeerRequest";
                 "current_grade" => %req.current_grade.expect("just set"),
