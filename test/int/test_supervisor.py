@@ -20,7 +20,8 @@ def instance(cluster: Cluster):
 
 
 def assert_all_pids_down(pids):
-    assert all(map(lambda pid: not pid_alive(pid), pids))
+    for pid in pids:
+        assert not pid_alive(pid)
 
 
 def test_instance_kill(instance: Instance):
@@ -38,13 +39,28 @@ def test_instance_kill(instance: Instance):
     retrying(lambda: assert_all_pids_down(pids))
 
 
+def test_sigkill_parent(instance: Instance):
+    # Scenario: killing a supervisor should be noticed by child
+    #   Given an instance
+    #   When parent process is killed with SIGKILL
+    #   Then child process gracefully exits
+
+    assert instance.process
+    pids = pgrep_tree(instance.process.pid)
+
+    os.kill(instance.process.pid, signal.SIGKILL)
+    os.waitpid(instance.process.pid, 0)
+
+    retrying(lambda: assert_all_pids_down(pids))
+
+
 def test_sigint_parent(instance: Instance):
     # Scenario: suspending of child process prevents the parent process from interrupting
     #   Given an instance
-    #   When child process is stopped
+    #   When child process is stopped with SIGSTOP
     #   And parent process got SIGINT
     #   Then parent process keep living
-    #   When child process is continued
+    #   When child process is continued with SIGCONT
     #   Then parent process gracefully exits
 
     assert instance.process
