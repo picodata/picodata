@@ -932,7 +932,6 @@ fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
             continue 'governor;
         }
 
-        let leader_id = status.get().id;
         let peers = storage.peers.all_peers().unwrap();
         let term = status.get().term;
         let cluster_id = storage.raft.cluster_id().unwrap().unwrap();
@@ -1278,7 +1277,7 @@ fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
                             term,
                             commit,
                             timeout: SYNC_TIMEOUT,
-                            bootstrap: !vshard_bootstrapped && peer.raft_id == leader_id,
+                            bootstrap: !vshard_bootstrapped && peer.raft_id == node.raft_id,
                         },
                     )
                 });
