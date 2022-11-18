@@ -7,34 +7,34 @@ const _0_SEC: Duration = Duration::ZERO;
 const _1_SEC: Duration = Duration::from_secs(1);
 
 pub fn drop_the_result() {
-    let (rx, tx) = oneshot::channel::<i32>();
-    assert!(!tx.is_dropped());
+    let (tx, rx) = oneshot::channel::<i32>();
+    assert!(!tx.is_closed());
     drop(rx);
-    assert!(tx.is_dropped());
-    tx.send(0);
+    assert!(tx.is_closed());
+    assert_eq!(tx.send(0).unwrap_err(), 0);
 }
 
 pub fn receive_non_blocking() {
-    let (rx, tx) = oneshot::channel::<i32>();
-    tx.send(56);
+    let (tx, rx) = oneshot::channel::<i32>();
+    tx.send(56).unwrap();
     assert_eq!(block_on(rx), Ok(56));
 }
 
 pub fn receive_non_blocking_after_dropping_sender() {
-    let (rx, tx) = oneshot::channel::<i32>();
+    let (tx, rx) = oneshot::channel::<i32>();
     drop(tx);
     assert_eq!(block_on(rx), Err(RecvError));
 }
 
 pub fn receive_blocking_before_sending() {
-    let (rx, tx) = oneshot::channel::<i32>();
+    let (tx, rx) = oneshot::channel::<i32>();
     let jh = fiber::start(move || block_on(rx));
-    tx.send(39);
+    tx.send(39).unwrap();
     assert_eq!(jh.join(), Ok(39));
 }
 
 pub fn receive_blocking_before_dropping_sender() {
-    let (rx, tx) = oneshot::channel::<i32>();
+    let (tx, rx) = oneshot::channel::<i32>();
     let jh = fiber::start(move || block_on(rx));
     drop(tx);
     assert_eq!(jh.join(), Err(RecvError));
@@ -42,11 +42,11 @@ pub fn receive_blocking_before_dropping_sender() {
 
 pub fn join_two_after_sending() {
     let f = async {
-        let (rx1, tx1) = oneshot::channel::<i32>();
-        let (rx2, tx2) = oneshot::channel::<i32>();
+        let (tx1, rx1) = oneshot::channel::<i32>();
+        let (tx2, rx2) = oneshot::channel::<i32>();
 
-        tx1.send(101);
-        tx2.send(102);
+        tx1.send(101).unwrap();
+        tx2.send(102).unwrap();
         join!(rx1, rx2)
     };
     assert_eq!(block_on(f), (Ok(101), Ok(102)));
@@ -56,23 +56,23 @@ pub fn join_two_before_sending() {
     let c = fiber::Cond::new();
     drop(c);
 
-    let (rx1, tx1) = oneshot::channel::<i32>();
-    let (rx2, tx2) = oneshot::channel::<i32>();
+    let (tx1, rx1) = oneshot::channel::<i32>();
+    let (tx2, rx2) = oneshot::channel::<i32>();
 
     let jh = fiber::start(move || block_on(async { join!(rx1, rx2) }));
 
-    tx1.send(201);
+    tx1.send(201).unwrap();
     fiber::sleep(Duration::ZERO);
-    tx2.send(202);
+    tx2.send(202).unwrap();
     assert_eq!(jh.join(), (Ok(201), Ok(202)));
 }
 
 pub fn join_two_drop_one() {
-    let (rx1, tx1) = oneshot::channel::<i32>();
-    let (rx2, tx2) = oneshot::channel::<i32>();
+    let (tx1, rx1) = oneshot::channel::<i32>();
+    let (tx2, rx2) = oneshot::channel::<i32>();
 
     let jh = fiber::start(move || block_on(async { join!(rx1, rx2) }));
-    tx1.send(301);
+    tx1.send(301).unwrap();
     fiber::sleep(Duration::ZERO);
     drop(tx2);
     assert_eq!(jh.join(), (Ok(301), Err(RecvError)));
@@ -87,7 +87,7 @@ pub fn instant_future() {
 }
 
 pub fn actual_timeout_promise() {
-    let (rx, tx) = oneshot::channel::<i32>();
+    let (tx, rx) = oneshot::channel::<i32>();
     let fut = async move { rx.timeout(_0_SEC).await };
 
     let jh = fiber::start(|| block_on(fut));
@@ -96,7 +96,7 @@ pub fn actual_timeout_promise() {
 }
 
 pub fn drop_tx_before_timeout() {
-    let (rx, tx) = oneshot::channel::<i32>();
+    let (tx, rx) = oneshot::channel::<i32>();
     let fut = async move { rx.timeout(_1_SEC).await };
 
     let jh = fiber::start(move || block_on(fut));
@@ -105,38 +105,42 @@ pub fn drop_tx_before_timeout() {
 }
 
 pub fn send_tx_before_timeout() {
-    let (rx, tx) = oneshot::channel::<i32>();
+    let (tx, rx) = oneshot::channel::<i32>();
     let fut = async move { rx.timeout(_1_SEC).await };
 
     let jh = fiber::start(move || block_on(fut));
-    tx.send(400);
+    tx.send(400).unwrap();
     assert_eq!(jh.join(), Ok(Ok(400)));
 }
 
 pub fn receive_notification_sent_before() {
     let (tx, mut rx_1) = watch::channel::<i32>(10);
     let mut rx_2 = rx_1.clone();
+    // Subscribe should work same as rx clone
+    let mut rx_3 = tx.subscribe();
     tx.send(20).unwrap();
     assert_eq!(
         block_on(async move {
-            let _ = join!(rx_1.changed(), rx_2.changed());
-            (*rx_1.borrow(), *rx_2.borrow())
+            let _ = join!(rx_1.changed(), rx_2.changed(), rx_3.changed());
+            (*rx_1.borrow(), *rx_2.borrow(), *rx_3.borrow())
         }),
-        (20, 20)
+        (20, 20, 20)
     );
 }
 
 pub fn receive_notification_sent_after() {
     let (tx, mut rx_1) = watch::channel::<i32>(10);
     let mut rx_2 = rx_1.clone();
+    // Subscribe should work same as rx clone
+    let mut rx_3 = tx.subscribe();
     let jh = fiber::start(move || {
         block_on(async move {
-            let _ = join!(rx_1.changed(), rx_2.changed());
-            (*rx_1.borrow(), *rx_2.borrow())
+            let _ = join!(rx_1.changed(), rx_2.changed(), rx_3.changed());
+            (*rx_1.borrow(), *rx_2.borrow(), *rx_3.borrow())
         })
     });
     tx.send(20).unwrap();
-    assert_eq!(jh.join(), (20, 20))
+    assert_eq!(jh.join(), (20, 20, 20))
 }
 
 pub fn receive_multiple_notifications() {

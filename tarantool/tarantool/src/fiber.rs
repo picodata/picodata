@@ -39,6 +39,7 @@ pub use channel::{
 pub mod mutex;
 use crate::ffi::tarantool::fiber_sleep;
 pub use mutex::Mutex;
+pub use r#async::block_on;
 
 macro_rules! impl_debug_stub {
     ($t:ident $($p:tt)*) => {
