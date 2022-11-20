@@ -1,5 +1,4 @@
 from conftest import Cluster
-import funcy  # type: ignore
 
 
 def test_add_migration(cluster: Cluster):
@@ -28,7 +27,7 @@ def test_apply_migrations(cluster: Cluster):
     #   And replicaset's current_schema_version is set to desired_schema_version
 
     cluster.deploy(instance_count=3)
-    i1, _, _ = cluster.instances
+    i1 = cluster.instances[0]
     i1.promote_or_fail()
     i1.assert_raft_status("Leader")
 
@@ -38,13 +37,11 @@ def test_apply_migrations(cluster: Cluster):
     }.items():
         i1.call("pico.add_migration", n, sql)
 
-    i1.call("pico.push_schema_version", 2)
+    i1.call("pico.migrate")
 
-    @funcy.retry(tries=30, timeout=0.2)  # type: ignore
     def assert_space_insert(conn):
         assert conn.insert("test_space", [1, "foo"])
 
-    @funcy.retry(tries=30, timeout=0.2)  # type: ignore
     def assert_replicaset_version(conn, v):
         position = conn.schema.get_field("replicasets", "current_schema_version")["id"]
         assert [v, v, v] == [tuple[position] for tuple in conn.select("replicasets")]

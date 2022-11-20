@@ -666,7 +666,6 @@ impl Migrations {
         Ok(Self { space })
     }
 
-    #[allow(dead_code)]
     #[inline]
     pub fn get(&self, id: u64) -> tarantool::Result<Option<Migration>> {
         match self.space.get(&[id])? {
@@ -675,6 +674,15 @@ impl Migrations {
         }
     }
 
+    #[inline]
+    pub fn get_latest(&self) -> tarantool::Result<Option<Migration>> {
+        let iter = self.space.select(IteratorType::Req, &())?;
+        let iter = MigrationIter::from(iter);
+        let ms = iter.take(1).collect::<Vec<_>>();
+        Ok(ms.first().cloned())
+    }
+
+    #[inline]
     pub fn iter(&self) -> Result<MigrationIter> {
         let iter = self.space.select(IteratorType::All, &())?;
         Ok(iter.into())
@@ -867,6 +875,29 @@ inventory::submit!(crate::InnerTest {
                 "Tarantool error: NoSuchSpace: Space '{}' does not exist",
                 raft_group.id(),
             )
+        );
+    }
+});
+
+#[rustfmt::skip]
+inventory::submit!(crate::InnerTest {
+    name: "test_storage_migrations",
+    body: || {
+        let migrations = Migrations::new().unwrap();
+
+        assert_eq!(None, migrations.get_latest().unwrap());
+
+        for m in &[
+            (1, "first"),
+            (3, "third"),
+            (2, "second")
+        ] {
+            migrations.space.put(&m).unwrap();
+        }
+
+        assert_eq!(
+            Some(Migration {id: 3, body: "third".to_string()}),
+            migrations.get_latest().unwrap()
         );
     }
 });

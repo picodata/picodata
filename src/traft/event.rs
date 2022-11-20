@@ -29,6 +29,7 @@ pub type BoxResult<T> = std::result::Result<T, Box<dyn std::error::Error>>;
         RaftLoopNeeded = "raft.loop-needed",
         RaftEntryApplied = "raft.entry-applied",
         ClusterStateChanged = "picodata.cluster-state-updated",
+        MigrateDone = "picodata.migrate-done",
     }
 }
 

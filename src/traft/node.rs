@@ -1519,6 +1519,7 @@ fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
                 }
             }
         }
+        event::broadcast(Event::MigrateDone);
 
         event::wait_any(&[Event::TopologyChanged, Event::ClusterStateChanged])
             .expect("Events system must be initialized");

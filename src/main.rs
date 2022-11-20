@@ -19,7 +19,8 @@ use clap::StructOpt as _;
 use protobuf::Message as _;
 
 use crate::tlog::set_log_level;
-use crate::traft::{node, InstanceId, Migration, OpDML};
+use crate::traft::event::Event;
+use crate::traft::{event, node, InstanceId, Migration, OpDML};
 use crate::traft::{LogicalClock, RaftIndex, TargetGradeVariant};
 use crate::traft::{UpdatePeerRequest, UpdatePeerResponse};
 use traft::error::Error;
@@ -400,6 +401,20 @@ fn picolib_setup(args: &args::Run) {
             let op = OpDML::replace(ClusterSpace::State, &(StateKey::DesiredSchemaVersion, id))?;
             node::global()?.propose_and_wait(op, Duration::MAX)??;
             Ok(())
+        }),
+    );
+
+    luamod.set(
+        "migrate",
+        tlua::function0(|| -> traft::Result<()> {
+            let node = node::global()?;
+            let id = match node.storage.migrations.get_latest()? {
+                Some(m) => m.id,
+                None => return Ok(()),
+            };
+            let op = OpDML::replace(ClusterSpace::State, &(StateKey::DesiredSchemaVersion, id))?;
+            node.propose_and_wait(op, Duration::MAX)??;
+            event::wait(Event::MigrateDone)
         }),
     );
 }
