@@ -1,6 +1,7 @@
+import os
 import pytest
+import signal
 from conftest import Cluster
-from time import sleep
 
 
 @pytest.fixture
@@ -9,20 +10,18 @@ def cluster2(cluster: Cluster):
     return cluster
 
 
-def test_gl119_panic_in_on_shutdown(cluster2: Cluster):
+def test_gl119_panic_on_shutdown(cluster2: Cluster):
     i1, i2 = cluster2.instances
+    i2.assert_raft_status("Follower", leader_id=i1.raft_id)
 
-    i2.call("picolib.raft_timeout_now", timeout=0.01)
-    assert i2.terminate() == 0
+    # suspend i1 (leader) and force i2 to start a new term
+    assert i1.process is not None
+    os.killpg(i1.process.pid, signal.SIGSTOP)
+    i2.call("picolib.raft_timeout_now")
+    # it can't win the election because there is no quorum
+    i2.assert_raft_status("Candidate")
 
-    # second instance terminates first, so it becomes a follower
-    i2.terminate()
-    # terminate the leader, so the follower can't acquire the read barrier
-    i1.terminate()
-
-    i2.start()
-    # wait for the follower to start acquiring the read barrier
-    sleep(1)
+    # stopping i2 in that state still shouldn't be a problem
     assert i2.terminate() == 0
 
 
