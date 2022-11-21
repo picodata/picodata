@@ -958,28 +958,6 @@ fn postjoin(args: &args::Run, storage: Storage) {
     box_cfg.listen = Some(args.listen.clone());
     tarantool::set_cfg(&box_cfg);
 
-    tlog!(Debug, "Getting a read barrier...");
-    loop {
-        if node.status().leader_id.is_none() {
-            // This check doesn't guarantee anything. It only eliminates
-            // unnecesary requests that will fail for sure. For example,
-            // re-election still may be abrupt while `node.read_index()`
-            // implicitly yields.
-            node.wait_status();
-            continue;
-        }
-
-        let timeout = Duration::from_secs(10);
-        if let Err(e) = node.wait_for_read_state(timeout) {
-            tlog!(Debug, "unable to get a read barrier: {e}");
-            fiber::sleep(Duration::from_millis(100));
-            continue;
-        } else {
-            break;
-        }
-    }
-    tlog!(Info, "Read barrier aquired, raft is ready");
-
     if let Err(e) = tarantool::on_shutdown(traft::failover::on_shutdown) {
         tlog!(Error, "failed setting on_shutdown trigger: {e}");
     }
@@ -994,13 +972,16 @@ fn postjoin(args: &args::Run, storage: Storage) {
             .cluster_id()
             .unwrap()
             .expect("cluster_id must be persisted at the time of postjoin");
+        let Some(leader_id) = node.status().leader_id else {
+            fiber::sleep(Duration::from_millis(100));
+            continue
+        };
 
         tlog!(Info, "initiating self-activation of {}", peer.instance_id);
         let req = UpdatePeerRequest::new(peer.instance_id, cluster_id)
             .with_target_grade(TargetGradeVariant::Online)
             .with_failure_domain(args.failure_domain());
 
-        let Some(leader_id) = node.status().leader_id else { continue };
         let leader = storage.peers.get(&leader_id).unwrap();
 
         // It's necessary to call `proc_update_peer` remotely on a
