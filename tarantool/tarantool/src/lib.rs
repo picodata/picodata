@@ -171,6 +171,8 @@ pub mod sequence;
 pub mod session;
 pub mod space;
 pub mod sql;
+#[cfg(feature = "tarantool_test")]
+pub mod test;
 pub mod transaction;
 pub mod trigger;
 pub mod tuple;

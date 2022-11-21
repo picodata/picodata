@@ -13,7 +13,6 @@ use tarantool::fiber::Fiber;
 use tarantool::tlua::AsLua;
 use tarantool::util::IntoClones;
 
-pub mod r#async;
 pub mod channel;
 pub mod mutex;
 pub mod old;

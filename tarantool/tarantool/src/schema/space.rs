@@ -108,7 +108,7 @@ fn resolve_new_space_id() -> Result<u32, Error> {
     let sys_schema: Space = SystemSpace::Schema.into();
 
     // Try to update max_id in _schema space.
-    let new_max_id = sys_schema.update(&("max_id",), &[("+", 1, 1)])?;
+    let new_max_id = sys_schema.update(&("max_id",), [("+", 1, 1)])?;
 
     let space_id = if let Some(new_max_id) = new_max_id {
         // In case of successful update max_id return its value.

@@ -211,8 +211,8 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 })),
             }]
         } else {
-            #[allow(unused_mut)]
-            let mut tests = tests![
+            let mut tests = tarantool::test::collect();
+            tests.append(&mut tests![
                 decimal::from_lua,
                 decimal::from_string,
                 decimal::from_tuple,
@@ -391,24 +391,6 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 fiber::immediate_yields,
                 fiber::start_error,
                 fiber::require_error,
-                fiber::r#async::drop_the_result,
-                fiber::r#async::receive_non_blocking,
-                fiber::r#async::receive_non_blocking_after_dropping_sender,
-                fiber::r#async::receive_blocking_before_sending,
-                fiber::r#async::receive_blocking_before_dropping_sender,
-                fiber::r#async::join_two_after_sending,
-                fiber::r#async::join_two_before_sending,
-                fiber::r#async::join_two_drop_one,
-                fiber::r#async::instant_future,
-                fiber::r#async::actual_timeout_promise,
-                fiber::r#async::drop_tx_before_timeout,
-                fiber::r#async::send_tx_before_timeout,
-                fiber::r#async::receive_notification_sent_before,
-                fiber::r#async::receive_notification_sent_after,
-                fiber::r#async::receive_multiple_notifications,
-                fiber::r#async::retains_only_last_notification,
-                fiber::r#async::notification_receive_error,
-                fiber::r#async::notification_received_in_concurrent_fibers,
                 #[should_panic]
                 fiber::start_dont_join,
                 #[should_panic]
@@ -422,7 +404,7 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 fiber::lifetime,
                 fiber::r#yield,
                 fiber::yield_canceled,
-            ];
+            ]);
 
             tests.append(&mut tests![
                 [should_panic_if: !tarantool::ffi::has_fiber_channel()]

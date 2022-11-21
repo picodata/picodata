@@ -74,3 +74,68 @@ impl<F: Future> Future for Timeout<F> {
         }
     }
 }
+
+#[cfg(feature = "tarantool_test")]
+mod tests {
+    use super::*;
+    use crate::fiber;
+    use crate::fiber::r#async::{oneshot, RecvError};
+    use crate::test::{TestCase, TESTS};
+    use crate::test_name;
+    use linkme::distributed_slice;
+    use std::time::Duration;
+
+    const _0_SEC: Duration = Duration::ZERO;
+    const _1_SEC: Duration = Duration::from_secs(1);
+
+    #[distributed_slice(TESTS)]
+    static INSTANT_FUTURE: TestCase = TestCase {
+        name: test_name!("instant_future"),
+        f: || {
+            let fut = async { 78 };
+            assert_eq!(fiber::block_on(fut), 78);
+
+            let fut = timeout(Duration::ZERO, async { 79 });
+            assert_eq!(fiber::block_on(fut), Ok(79));
+        },
+    };
+
+    #[distributed_slice(TESTS)]
+    static ACTUAL_TIMEOUT_PROMISE: TestCase = TestCase {
+        name: test_name!("actual_timeout_promise"),
+        f: || {
+            let (tx, rx) = oneshot::channel::<i32>();
+            let fut = async move { rx.timeout(_0_SEC).await };
+
+            let jh = fiber::start(|| fiber::block_on(fut));
+            assert_eq!(jh.join(), Err(Expired));
+            drop(tx);
+        },
+    };
+
+    #[distributed_slice(TESTS)]
+    static DROP_TX_BEFORE_TIMEOUT: TestCase = TestCase {
+        name: test_name!("drop_tx_before_timeout"),
+        f: || {
+            let (tx, rx) = oneshot::channel::<i32>();
+            let fut = async move { rx.timeout(_1_SEC).await };
+
+            let jh = fiber::start(move || fiber::block_on(fut));
+            drop(tx);
+            assert_eq!(jh.join(), Ok(Err(RecvError)));
+        },
+    };
+
+    #[distributed_slice(TESTS)]
+    static SEND_TX_BEFORE_TIMEOUT: TestCase = TestCase {
+        name: test_name!("send_tx_before_timeout"),
+        f: || {
+            let (tx, rx) = oneshot::channel::<i32>();
+            let fut = async move { rx.timeout(_1_SEC).await };
+
+            let jh = fiber::start(move || fiber::block_on(fut));
+            tx.send(400).unwrap();
+            assert_eq!(jh.join(), Ok(Ok(400)));
+        },
+    };
+}

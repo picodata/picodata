@@ -291,3 +291,124 @@ pub fn channel<T>(initial: T) -> (Sender<T>, Receiver<T>) {
     let rx = tx.subscribe();
     (tx, rx)
 }
+
+#[cfg(feature = "tarantool_test")]
+mod tests {
+    use super::*;
+    use crate::fiber;
+    use crate::fiber::r#async::timeout;
+    use crate::test::{TestCase, TESTS};
+    use crate::test_name;
+    use futures::join;
+    use linkme::distributed_slice;
+
+    const _1_SEC: Duration = Duration::from_secs(1);
+
+    #[distributed_slice(TESTS)]
+    static RECEIVE_NOTIFICATION_SENT_BEFORE: TestCase = TestCase {
+        name: test_name!("receive_notification_sent_before"),
+        f: || {
+            let (tx, mut rx_1) = channel::<i32>(10);
+            let mut rx_2 = rx_1.clone();
+            // Subscribe should work same as rx clone
+            let mut rx_3 = tx.subscribe();
+            tx.send(20).unwrap();
+            assert_eq!(
+                fiber::block_on(async move {
+                    let _ = join!(rx_1.changed(), rx_2.changed(), rx_3.changed());
+                    (*rx_1.borrow(), *rx_2.borrow(), *rx_3.borrow())
+                }),
+                (20, 20, 20)
+            );
+        },
+    };
+
+    #[distributed_slice(TESTS)]
+    static RECEIVE_NOTIFICATION_SENT_AFTER: TestCase = TestCase {
+        name: test_name!("receive_notification_sent_after"),
+        f: || {
+            let (tx, mut rx_1) = channel::<i32>(10);
+            let mut rx_2 = rx_1.clone();
+            // Subscribe should work same as rx clone
+            let mut rx_3 = tx.subscribe();
+            let jh = fiber::start(move || {
+                fiber::block_on(async move {
+                    let _ = join!(rx_1.changed(), rx_2.changed(), rx_3.changed());
+                    (*rx_1.borrow(), *rx_2.borrow(), *rx_3.borrow())
+                })
+            });
+            tx.send(20).unwrap();
+            assert_eq!(jh.join(), (20, 20, 20))
+        },
+    };
+
+    #[distributed_slice(TESTS)]
+    static RECEIVE_MULTIPLE_NOTIFICATIONS: TestCase = TestCase {
+        name: test_name!("receive_multiple_notifications"),
+        f: || {
+            let (tx, mut rx_1) = channel::<i32>(10);
+            let jh = fiber::start(|| {
+                fiber::block_on(async {
+                    rx_1.changed().await.unwrap();
+                    *rx_1.borrow()
+                })
+            });
+            tx.send(1).unwrap();
+            assert_eq!(jh.join(), 1);
+            let jh = fiber::start(|| {
+                fiber::block_on(async {
+                    rx_1.changed().await.unwrap();
+                    *rx_1.borrow()
+                })
+            });
+            tx.send(2).unwrap();
+            assert_eq!(jh.join(), 2);
+        },
+    };
+
+    #[distributed_slice(TESTS)]
+    static RETAINS_ONLY_LAST_NOTIFICATION: TestCase = TestCase {
+        name: test_name!("retains_only_last_notification"),
+        f: || {
+            let (tx, mut rx_1) = channel::<i32>(10);
+            tx.send(1).unwrap();
+            tx.send(2).unwrap();
+            tx.send(3).unwrap();
+            let v = fiber::block_on(async {
+                rx_1.changed().await.unwrap();
+                *rx_1.borrow()
+            });
+            assert_eq!(v, 3);
+            // No changes after
+            assert_eq!(
+                fiber::block_on(rx_1.changed().timeout(_1_SEC)),
+                Err(timeout::Expired)
+            );
+        },
+    };
+
+    #[distributed_slice(TESTS)]
+    static NOTIFICATION_RECEIVE_ERROR: TestCase = TestCase {
+        name: test_name!("notification_receive_error"),
+        f: || {
+            let (tx, mut rx_1) = channel::<i32>(10);
+            let jh = fiber::start(|| fiber::block_on(rx_1.changed()));
+            drop(tx);
+            assert_eq!(jh.join(), Err(RecvError));
+        },
+    };
+
+    #[distributed_slice(TESTS)]
+    static NOTIFICATION_RECEIVED_IN_CONCURRENT_FIBER: TestCase = TestCase {
+        name: test_name!("notification_received_in_concurrent_fiber"),
+        f: || {
+            let (tx, mut rx_1) = channel::<i32>(10);
+            let mut rx_2 = rx_1.clone();
+            let jh_1 = fiber::start(|| fiber::block_on(rx_1.changed()));
+            let jh_2 = fiber::start(|| fiber::block_on(rx_2.changed()));
+            tx.send(1).unwrap();
+            assert!(jh_1.join().is_ok());
+            assert!(jh_2.join().is_ok());
+        },
+    };
+}
