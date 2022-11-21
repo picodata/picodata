@@ -972,6 +972,7 @@ fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
             );
 
             let replicaset_id = &peer.replicaset_id;
+            // choose a new replicaset master if needed
             let res = (|| -> traft::Result<_> {
                 let replicaset = storage.replicasets.get(replicaset_id)?;
                 if replicaset
@@ -987,13 +988,22 @@ fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
                         let op = OpDML::update(ClusterSpace::Replicasets, &[replicaset_id], ops)?;
                         tlog!(Info, "proposing replicaset master change"; "op" => ?op);
                         // TODO: don't hard code the timeout
-                        // TODO: these `?` will be processed in the wrong place
                         node.propose_and_wait(op, Duration::from_secs(3))??;
                     } else {
                         tlog!(Info, "skip proposing replicaset master change");
                     }
                 }
+                Ok(())
+            })();
+            if let Err(e) = res {
+                tlog!(Warning, "failed proposing replicaset master change: {e}");
+                // TODO: don't hard code timeout
+                event::wait_timeout(Event::TopologyChanged, Duration::from_secs(1)).unwrap();
+                continue 'governor;
+            }
 
+            // reconfigure vshard storages and routers
+            let res = (|| -> traft::Result<_> {
                 let commit = storage.raft.commit()?.unwrap();
                 let reqs = maybe_responding(&peers)
                     .filter(|peer| {
@@ -1029,6 +1039,7 @@ fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
                 continue 'governor;
             }
 
+            // update peer's CurrentGrade
             let req = UpdatePeerRequest::new(peer.instance_id.clone(), cluster_id.clone())
                 .with_current_grade(CurrentGrade::offline(peer.target_grade.incarnation));
             tlog!(Info,
