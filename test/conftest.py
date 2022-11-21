@@ -216,7 +216,7 @@ class Instance:
         return f"{self.host}:{self.port}"
 
     def current_grade(self):
-        return self.call("picolib.peer_info", self.instance_id)["current_grade"]
+        return self.call("pico.peer_info", self.instance_id)["current_grade"]
 
     def instance_uuid(self):
         return self.eval("return box.info.uuid")
@@ -396,13 +396,13 @@ class Instance:
         rmtree(self.data_dir)
 
     def _raft_status(self) -> RaftStatus:
-        status = self.call("picolib.raft_status")
+        status = self.call("pico.raft_status")
         assert isinstance(status, dict)
         return RaftStatus(**status)
 
     def raft_propose_eval(self, lua_code: str, timeout_seconds=2):
         return self.call(
-            "picolib.raft_propose_eval",
+            "pico.raft_propose_eval",
             lua_code,
             dict(timeout=timeout_seconds),
         )
@@ -429,14 +429,14 @@ class Instance:
             AssertionError: if doesn't succeed
         """
 
-        whoami = self.call("picolib.whoami")
+        whoami = self.call("pico.whoami")
         assert isinstance(whoami, dict)
         assert isinstance(whoami["raft_id"], int)
         assert isinstance(whoami["instance_id"], str)
         self.raft_id = whoami["raft_id"]
         self.instance_id = whoami["instance_id"]
 
-        myself = self.call("picolib.peer_info", self.instance_id)
+        myself = self.call("pico.peer_info", self.instance_id)
         assert isinstance(myself, dict)
         assert isinstance(myself["current_grade"], dict)
         assert myself["current_grade"]["variant"] == "Online"
@@ -448,7 +448,7 @@ class Instance:
         eprint(f"{self} is trying to become a leader")
 
         # 1. Force the node to campaign.
-        self.call("picolib.raft_timeout_now")
+        self.call("pico.raft_timeout_now")
 
         # 2. Wait until the miracle occurs.
         @funcy.retry(tries=4, timeout=0.1, errors=AssertionError)

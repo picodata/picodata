@@ -9,7 +9,7 @@ def cluster3(cluster: Cluster):
 
 
 def assert_peer_expelled(expelled_peer: Instance, instance: Instance):
-    peer_info = instance.call("picolib.peer_info", expelled_peer.instance_id)
+    peer_info = instance.call("pico.peer_info", expelled_peer.instance_id)
     grades = peer_info["current_grade"]["variant"], peer_info["target_grade"]["variant"]
     assert ("Expelled", "Expelled") == grades
 

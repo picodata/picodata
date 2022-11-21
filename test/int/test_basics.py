@@ -177,7 +177,7 @@ def test_graceful_stop(instance: Instance):
 
 
 def test_whoami(instance: Instance):
-    assert instance.call("picolib.whoami") == {
+    assert instance.call("pico.whoami") == {
         "raft_id": 1,
         "instance_id": "i1",
         "cluster_id": instance.cluster_id,
@@ -186,7 +186,7 @@ def test_whoami(instance: Instance):
 
 def test_peer_info(instance: Instance):
     def peer_info(iid: str | None = None):
-        return instance.call("picolib.peer_info", iid)
+        return instance.call("pico.peer_info", iid)
 
     # Don't compare entire structure, a couple of fields is enough
     myself = peer_info("i1")
@@ -204,9 +204,9 @@ def test_peer_info(instance: Instance):
 def test_raft_log(instance: Instance):
     # fails due to screen size calculation
     with pytest.raises(ReturnError) as _:
-        instance.call("picolib.raft_log")
+        instance.call("pico.raft_log")
 
-    raft_log = instance.call("picolib.raft_log", dict(return_string=True))
+    raft_log = instance.call("pico.raft_log", dict(return_string=True))
 
     def strip_spaces(s: str):
         s = re.sub(r"[ ]*\|[ ]*", "|", s)

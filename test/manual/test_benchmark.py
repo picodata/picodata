@@ -127,7 +127,7 @@ def test_benchmark_nop(cluster, tmpdir, cluster_size, fibers, with_flamegraph):
             local result = 0
             while deadline > fiber.clock() do
                 for i=1, 5 do
-                    picolib.raft_propose_nop()
+                    pico.raft_propose_nop()
                 end
                 result = result + 5
             end
@@ -162,7 +162,7 @@ def test_benchmark_nop(cluster, tmpdir, cluster_size, fibers, with_flamegraph):
         return state(i)["raft_state"] == "Leader"
 
     def state(i: Instance):
-        return i.eval("return picolib.raft_status()")
+        return i.eval("return pico.raft_status()")
 
     def benchmark():
         print(f"===== Cluster size = {cluster_size}, fibers = {fibers} =====")

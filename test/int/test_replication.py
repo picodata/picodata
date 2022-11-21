@@ -24,7 +24,7 @@ def cluster3(cluster: Cluster):
 def wait_repl_master(i: Instance, other_than=None):
     repl_master = i.eval(
         """
-        local rid = picolib.peer_info(...).replicaset_id
+        local rid = pico.peer_info(...).replicaset_id
         return box.space.replicasets:get(rid).master_id
     """,
         i.instance_id,
@@ -102,7 +102,7 @@ def test_2_of_3_writable(cluster3: Cluster):
     wait_vclock(i3, rl_vclock)
     assert [[1], [2]] == i3.eval("return box.space.test_space:select()")
 
-    print(i3.call("picolib.raft_log", dict(return_string=True)))
+    print(i3.call("pico.raft_log", dict(return_string=True)))
 
     print(f"{old_leader=}")
     old_leader.start()
@@ -177,7 +177,7 @@ def test_bucket_rebalancing_respects_replication_factor(cluster: Cluster):
     # check vshard routes requests to both replicasets
     reached_instances = set()
     for bucket_id in [1, 3000]:
-        info = peer.call("vshard.router.callro", bucket_id, "picolib.peer_info")
+        info = peer.call("vshard.router.callro", bucket_id, "pico.peer_info")
         reached_instances.add(info["instance_id"])
     assert len(reached_instances) == 2
 
@@ -200,6 +200,6 @@ def test_bucket_rebalancing_respects_replication_factor(cluster: Cluster):
     # check vshard routes requests to all 3 replicasets
     reached_instances = set()
     for bucket_id in [1, 1500, 3000]:
-        info = peer.call("vshard.router.callro", bucket_id, "picolib.peer_info")
+        info = peer.call("vshard.router.callro", bucket_id, "pico.peer_info")
         reached_instances.add(info["instance_id"])
     assert len(reached_instances) == 3

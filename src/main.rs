@@ -47,15 +47,9 @@ pub struct InnerTest {
 fn picolib_setup(args: &args::Run) {
     set_log_level(args.log_level());
     let l = ::tarantool::lua_state();
-    let package: tlua::LuaTable<_> = l.get("package").expect("package == nil");
-    let loaded: tlua::LuaTable<_> = package.get("loaded").expect("package.loaded == nil");
-    loaded.set("picolib", &[()]);
-    let luamod: tlua::LuaTable<_> = loaded
-        .get("picolib")
-        .expect("package.loaded.picolib == nil");
-
-    // Also add a global picolib variable
-    l.set("picolib", &luamod);
+    l.exec("package.loaded.pico = {}").unwrap();
+    l.exec("_G.pico = package.loaded.pico").unwrap();
+    let luamod: tlua::LuaTable<_> = l.get("pico").unwrap();
 
     luamod.set("VERSION", env!("CARGO_PKG_VERSION"));
     luamod.set("args", args);
@@ -199,7 +193,7 @@ fn picolib_setup(args: &args::Run) {
         );
         l.exec(
             "
-            picolib.test_space = function(name)
+            pico.test_space = function(name)
                 local s = box.schema.space.create(name, {is_sync = true, if_not_exists = true})
                 s:create_index('pk', {if_not_exists = true})
                 return s
@@ -211,7 +205,7 @@ fn picolib_setup(args: &args::Run) {
     luamod.set("log", &[()]);
     #[rustfmt::skip]
     l.exec_with(
-        "picolib.log.highlight_key = ...",
+        "pico.log.highlight_key = ...",
         tlua::function2(|key: String, color: Option<String>| -> Result<(), String> {
             let color = match color.as_deref() {
                 None            => None,
@@ -233,7 +227,7 @@ fn picolib_setup(args: &args::Run) {
     )
     .unwrap();
     l.exec_with(
-        "picolib.log.clear_highlight = ...",
+        "pico.log.clear_highlight = ...",
         tlua::function0(tlog::clear_highlight),
     )
     .unwrap();
@@ -242,7 +236,7 @@ fn picolib_setup(args: &args::Run) {
             r#"
                 function inspect()
                     return
-                        {raft_log = picolib.raft_log()},
+                        {raft_log = pico.raft_log()},
                         {raft_state = box.space.raft_state:fselect()},
                         {raft_group = box.space.raft_group:fselect()}
                 end

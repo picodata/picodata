@@ -6,7 +6,7 @@ def test_add_migration(cluster: Cluster):
     cluster.deploy(instance_count=2)
     i1, i2 = cluster.instances
     i1.promote_or_fail()
-    i1.eval("picolib.add_migration(1, 'migration body')")
+    i1.eval("pico.add_migration(1, 'migration body')")
     migrations_table = i2.call("box.space.migrations:select")
     assert [[1, "migration body"]] == migrations_table
 
@@ -15,7 +15,7 @@ def test_push_schema_version(cluster: Cluster):
     cluster.deploy(instance_count=2)
     i1, i2 = cluster.instances
     i1.promote_or_fail()
-    i1.eval("picolib.push_schema_version(3)")
+    i1.eval("pico.push_schema_version(3)")
     key = "desired_schema_version"
     assert [[key, 3]] == i2.call("box.space.cluster_state:select", [key])
 
@@ -33,7 +33,7 @@ def test_apply_migrations(cluster: Cluster):
     i1.assert_raft_status("Leader")
 
     i1.call(
-        "picolib.add_migration",
+        "pico.add_migration",
         1,
         """
     CREATE TABLE "test_space" (
@@ -41,7 +41,7 @@ def test_apply_migrations(cluster: Cluster):
     )""",
     )
     i1.call(
-        "picolib.add_migration",
+        "pico.add_migration",
         2,
         """
     ALTER TABLE "test_space"
@@ -49,7 +49,7 @@ def test_apply_migrations(cluster: Cluster):
     """,
     )
 
-    i1.call("picolib.push_schema_version", 2)
+    i1.call("pico.push_schema_version", 2)
 
     @funcy.retry(tries=30, timeout=0.2)  # type: ignore
     def assert_space_insert(conn):

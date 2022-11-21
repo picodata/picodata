@@ -90,7 +90,7 @@ def test_log_rollback(cluster3: Cluster):
     i2.promote_or_fail()
     retrying(lambda: i3.assert_raft_status("Follower", i2.raft_id))
 
-    print(i2.call("picolib.raft_log", dict(return_string=True)))
+    print(i2.call("pico.raft_log", dict(return_string=True)))
     print(i2.call("box.space.raft_state:select"))
     propose_state_change(i2, "i2 takes the leadership")
 
@@ -123,8 +123,8 @@ def test_leader_disruption(cluster3: Cluster):
     # Speed up election timeout
     i3.eval(
         """
-        while picolib.raft_status().raft_state == 'Follower' do
-            picolib.raft_tick(1)
+        while pico.raft_status().raft_state == 'Follower' do
+            pico.raft_tick(1)
         end
         """
     )

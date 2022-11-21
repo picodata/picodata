@@ -45,7 +45,7 @@ def test_failover(cluster2: Cluster):
     retry_call(i2.assert_raft_status, "Follower", leader_id=i1.raft_id)
 
     def do_test():
-        i2.eval("picolib.raft_tick(20)")
+        i2.eval("pico.raft_tick(20)")
         i1.assert_raft_status("Follower", leader_id=i2.raft_id)
         i2.assert_raft_status("Leader")
 
@@ -114,7 +114,7 @@ def test_restart_both(cluster2: Cluster):
     wait_alive(i2)
 
     # Speed up elections
-    i2.call("picolib.raft_timeout_now")
+    i2.call("pico.raft_timeout_now")
 
     i1.wait_online()
     assert i1.current_grade() == dict(variant="Online", incarnation=2)
