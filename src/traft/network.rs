@@ -269,9 +269,9 @@ impl PoolWorker {
         let msg = traft::MessagePb::from(msg);
         let args = [msg].to_tuple_buffer()?;
         let on_result = move |res| match res {
-            Ok(_) => tlog!(Debug, "received response"; "peer" => raft_id),
+            Ok(_) => (),
             Err(e) => tlog!(Debug, "error when sending message to peer: {e}";
-                "peer" => raft_id
+                "raft_id" => raft_id,
             ),
         };
         self.inbox
