@@ -2,7 +2,6 @@
 
 pub mod error;
 pub mod event;
-pub mod governor;
 mod network;
 pub mod node;
 pub mod notify;

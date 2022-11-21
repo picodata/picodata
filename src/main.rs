@@ -27,6 +27,7 @@ use traft::error::Error;
 mod app;
 mod args;
 mod discovery;
+mod governor;
 mod ipc;
 mod kvcell;
 mod r#loop;

@@ -27,10 +27,11 @@ use std::time::Duration;
 use std::time::Instant;
 use tarantool::space::UpdateOps;
 
+use crate::governor::raft_conf_change;
+use crate::governor::waiting_migrations;
 use crate::kvcell::KVCell;
 use crate::r#loop::{FlowControl, Loop};
 use crate::stringify_cfunc;
-use crate::traft::governor::{raft_conf_change, waiting_migrations};
 use crate::traft::rpc;
 use crate::traft::storage::ClusterSpace;
 use crate::traft::ContextCoercion as _;
