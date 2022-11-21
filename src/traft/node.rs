@@ -1542,6 +1542,9 @@ fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
         //
         // Those things aren't implemented yet, so this is what we do
         let reqs = reqs.into_iter().collect::<Vec<_>>();
+        if reqs.is_empty() {
+            return Ok(vec![]);
+        }
         static mut SENT_COUNT: usize = 0;
         unsafe { SENT_COUNT = 0 };
         let (cond_rx, cond_tx) = Rc::new(fiber::Cond::new()).into_clones();
