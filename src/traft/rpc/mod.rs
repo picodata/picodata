@@ -28,7 +28,7 @@ pub trait Request: Encode + DecodeOwned {
 }
 
 impl Request for super::JoinRequest {
-    const PROC_NAME: &'static str = crate::stringify_cfunc!(super::node::raft_join);
+    const PROC_NAME: &'static str = crate::stringify_cfunc!(super::node::proc_raft_join);
     type Response = super::JoinResponse;
 }
 
@@ -77,6 +77,7 @@ macro_rules! define_rpc_request {
         $(#[$proc_meta])*
         #[::tarantool::proc(packed_args)]
         fn $proc($_r: $_request) -> $result {
+            $crate::tarantool::fiber_name(stringify!($proc));
             $($proc_body)*
         }
 

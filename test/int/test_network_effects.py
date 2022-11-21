@@ -118,7 +118,7 @@ def test_leader_disruption(cluster3: Cluster):
     # Node i3 doesn't receive any messages,
     # including the heartbeat from the leader.
     # Then it starts a new election.
-    i3.call("box.schema.func.drop", ".raft_interact")
+    i3.call("box.schema.func.drop", ".proc_raft_interact")
 
     # Speed up election timeout
     i3.eval(
@@ -136,7 +136,7 @@ def test_leader_disruption(cluster3: Cluster):
     # Restore normal network operation
     i3.call(
         "box.schema.func.create",
-        ".raft_interact",
+        ".proc_raft_interact",
         {"language": "C", "if_not_exists": True},
     )
 

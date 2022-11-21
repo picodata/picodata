@@ -45,7 +45,7 @@ def raft_join(
     # See https://git.picodata.io/picodata/picodata/tarantool-module/-/issues/81
     address = f"nowhere/{instance_id}"
     return peer.call(
-        ".raft_join",
+        ".proc_raft_join",
         cluster_id,
         instance_id,
         replicaset_id,

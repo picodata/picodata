@@ -331,7 +331,7 @@ impl NodeImpl {
         };
 
         let pool = ConnectionPool::builder(storage.peers.clone())
-            .handler_name(stringify_cfunc!(raft_interact))
+            .handler_name(stringify_cfunc!(proc_raft_interact))
             .call_timeout(MainLoop::TICK * 4)
             .connect_timeout(MainLoop::TICK * 4)
             .inactivity_timeout(Duration::from_secs(60))
@@ -1620,7 +1620,9 @@ pub fn global() -> traft::Result<&'static Node> {
 }
 
 #[proc(packed_args)]
-fn raft_interact(pbs: Vec<traft::MessagePb>) -> traft::Result<()> {
+fn proc_raft_interact(pbs: Vec<traft::MessagePb>) -> traft::Result<()> {
+    crate::tarantool::fiber_name("proc_raft_interact");
+
     let node = global()?;
     for pb in pbs {
         node.step_and_yield(raft::Message::try_from(pb).map_err(Error::other)?);
@@ -1629,7 +1631,9 @@ fn raft_interact(pbs: Vec<traft::MessagePb>) -> traft::Result<()> {
 }
 
 #[proc(packed_args)]
-fn raft_join(req: JoinRequest) -> traft::Result<JoinResponse> {
+fn proc_raft_join(req: JoinRequest) -> traft::Result<JoinResponse> {
+    crate::tarantool::fiber_name("proc_raft_join");
+
     let node = global()?;
 
     let cluster_id = node

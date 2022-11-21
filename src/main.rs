@@ -452,8 +452,8 @@ fn init_handlers() {
     .unwrap();
 
     declare_cfunc!(discovery::proc_discover);
-    declare_cfunc!(traft::node::raft_interact);
-    declare_cfunc!(traft::node::raft_join);
+    declare_cfunc!(traft::node::proc_raft_interact);
+    declare_cfunc!(traft::node::proc_raft_join);
     declare_cfunc!(traft::rpc::expel::proc_expel_on_leader);
     declare_cfunc!(traft::rpc::expel::redirect::proc_expel_redirect);
     declare_cfunc!(traft::rpc::sync::proc_sync_raft);
