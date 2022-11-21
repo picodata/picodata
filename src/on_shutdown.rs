@@ -13,7 +13,7 @@ use crate::traft::TargetGradeVariant;
 use crate::traft::{UpdatePeerRequest, UpdatePeerResponse};
 use crate::unwrap_ok_or;
 
-pub fn on_shutdown() {
+pub fn callback() {
     // 1. Try setting target grade Offline in a separate fiber
     tlog!(Info, "trying to shutdown gracefully ...");
     let go_offline = fiber::Builder::new()

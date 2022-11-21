@@ -135,8 +135,8 @@ impl RaftSpaceAccess {
         pub(super) fn commit(&self) -> _<RaftIndex>;
         pub fn applied(&self) -> _<RaftIndex>;
 
-        pub(super) fn voters(&self) -> _<Vec<RaftId>>;
-        pub(super) fn learners(&self) -> _<Vec<RaftId>>;
+        pub(crate) fn voters(&self) -> _<Vec<RaftId>>;
+        pub(crate) fn learners(&self) -> _<Vec<RaftId>>;
         fn voters_outgoing(&self) -> _<Vec<RaftId>>;
         fn learners_next(&self) -> _<Vec<RaftId>>;
         fn auto_leave(&self) -> _<bool>;

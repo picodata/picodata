@@ -31,6 +31,7 @@ mod ipc;
 mod kvcell;
 mod r#loop;
 mod mailbox;
+mod on_shutdown;
 mod tarantool;
 mod tlog;
 mod traft;
@@ -958,7 +959,7 @@ fn postjoin(args: &args::Run, storage: Storage) {
     box_cfg.listen = Some(args.listen.clone());
     tarantool::set_cfg(&box_cfg);
 
-    if let Err(e) = tarantool::on_shutdown(traft::failover::on_shutdown) {
+    if let Err(e) = tarantool::on_shutdown(on_shutdown::callback) {
         tlog!(Error, "failed setting on_shutdown trigger: {e}");
     }
 
