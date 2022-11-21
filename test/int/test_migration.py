@@ -32,22 +32,11 @@ def test_apply_migrations(cluster: Cluster):
     i1.promote_or_fail()
     i1.assert_raft_status("Leader")
 
-    i1.call(
-        "pico.add_migration",
-        1,
-        """
-    CREATE TABLE "test_space" (
-        "id" INT PRIMARY KEY
-    )""",
-    )
-    i1.call(
-        "pico.add_migration",
-        2,
-        """
-    ALTER TABLE "test_space"
-    ADD COLUMN "value" VARCHAR(100)
-    """,
-    )
+    for (n, sql) in {
+        1: """create table "test_space" ("id" int primary key)""",
+        2: """alter table "test_space" add column "value" varchar(100)""",
+    }.items():
+        i1.call("pico.add_migration", n, sql)
 
     i1.call("pico.push_schema_version", 2)
 
