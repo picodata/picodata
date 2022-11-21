@@ -1,13 +1,24 @@
 import os
 import pytest
 import signal
-from conftest import Cluster
+from conftest import Cluster, Instance
 
 
 @pytest.fixture
 def cluster2(cluster: Cluster):
     cluster.deploy(instance_count=2)
     return cluster
+
+
+class log_crawler:
+    def __init__(self, instance: Instance, search_str: str) -> None:
+        self.matched = False
+        self.search_str = search_str
+        instance.on_output_line(self._cb)
+
+    def _cb(self, line):
+        if self.search_str in line:
+            self.matched = True
 
 
 def test_gl119_panic_on_shutdown(cluster2: Cluster):
@@ -21,14 +32,16 @@ def test_gl119_panic_on_shutdown(cluster2: Cluster):
     # it can't win the election because there is no quorum
     i2.assert_raft_status("Candidate")
 
+    crawler = log_crawler(i2, "on_shutdown triggers failed")
+
     # stopping i2 in that state still shouldn't be a problem
     assert i2.terminate() == 0
 
+    # though on_shutdown trigger fails
+    assert crawler.matched
 
-# it's 2022 and i have to work around a mypy bug reported in 2018
-on_shutdown_timed_out: bool
 
-
+@pytest.mark.xfail
 def test_gl127_graceul_shutdown(cluster2: Cluster):
     i1, i2 = cluster2.instances
 
@@ -36,17 +49,10 @@ def test_gl127_graceul_shutdown(cluster2: Cluster):
     i1.promote_or_fail()
     i2.wait_online()
 
-    global on_shutdown_timed_out
-    on_shutdown_timed_out = False
+    crawler = log_crawler(i1, "on_shutdown triggers failed")
 
-    def check_log_line(log):
-        if "on_shutdown triggers are timed out" in log:
-            global on_shutdown_timed_out
-            on_shutdown_timed_out = True
-
-    i1.on_output_line(check_log_line)
     # on_shutdown triggers will timeout after 3sec
-    # so we must wait longer than # that
+    # so we must wait longer than that
     i1.terminate(kill_after_seconds=10)
 
-    assert not on_shutdown_timed_out
+    assert not crawler.matched
