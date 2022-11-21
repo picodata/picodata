@@ -109,7 +109,12 @@ def test_restart_both(cluster2: Cluster):
     # i1 has already initialized raft node but can't win election yet
     # i2 starts discovery and should be able to advance further
     wait_alive(i1)
+
     i2.start()
+    wait_alive(i2)
+
+    # Speed up elections
+    i2.call("picolib.raft_timeout_now")
 
     i1.wait_online()
     assert i1.current_grade() == dict(variant="Online", incarnation=2)
