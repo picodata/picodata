@@ -770,7 +770,7 @@ dependencies = [
 
 [[package]]
 name = "picodata"
-version = "22.7.0"
+version = "22.11.0"
 dependencies = [
  "assert_cmd",
  "base64",
