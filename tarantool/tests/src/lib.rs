@@ -269,6 +269,7 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 tlua::functions_write::pcall,
                 tlua::functions_write::error,
                 tlua::functions_write::optional_params,
+                tlua::functions_write::lua_function_as_argument,
                 tlua::any::read_numbers,
                 tlua::any::read_hashable_numbers,
                 tlua::any::read_strings,

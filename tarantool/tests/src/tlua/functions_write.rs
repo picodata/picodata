@@ -322,3 +322,30 @@ pub fn optional_params() {
         "Sup, Sailor!"
     );
 }
+
+pub fn lua_function_as_argument() {
+    let lua = Lua::new();
+    let my_data = std::rc::Rc::new(std::cell::Cell::new(0));
+    let my_data_in_lua = my_data.clone();
+    lua.set(
+        "apply_to_my_data",
+        Function::new(move |lua: tlua::StaticLua| {
+            let f: tlua::LuaFunction<_> = (&lua).read_at(1).unwrap();
+            if let Ok(y) = (&lua).read_at::<i32>(2) {
+                my_data_in_lua.set(f.call_with_args(&(my_data_in_lua.get(), y)).unwrap());
+            } else {
+                my_data_in_lua.set(f.call_with_args(my_data_in_lua.get()).unwrap());
+            }
+        }),
+    );
+    assert_eq!(my_data.get(), 0);
+    lua.exec("apply_to_my_data(function(x) return x + 1 end)")
+        .unwrap();
+    assert_eq!(my_data.get(), 1);
+    lua.exec("apply_to_my_data(function(x) return 42 end)")
+        .unwrap();
+    assert_eq!(my_data.get(), 42);
+    lua.exec("apply_to_my_data(function(x, y) return x + y end, 27)")
+        .unwrap();
+    assert_eq!(my_data.get(), 69);
+}
