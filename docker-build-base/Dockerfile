@@ -6,12 +6,6 @@ RUN set -e; \
         build-essential \
         git unzip wget curl\
         cmake make \
-        zlib1g-dev \
-        libreadline-dev \
-        libncurses5-dev \
-        libssl-dev \
-        libunwind-dev \
-        libicu-dev \
         python3 \
         python3-yaml \
         python3-six \
