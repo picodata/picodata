@@ -25,7 +25,7 @@ with the `YY.0M.MICRO` scheme.
   a replicaset is up to the given replication factor, Picodata will
   automatically re-balance data across replicasets.
 
-- Clusteerwide schema and data _migrations_ are introduced.
+- Clusterwide schema and data _migrations_ are introduced.
 
 - Instances can now be _expelled_ in order to shrink the cluster.
 
