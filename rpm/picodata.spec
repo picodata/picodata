@@ -38,7 +38,7 @@ make install-cargo
 %if %use_cmake3
 make centos7-cmake3
 %endif
-make build
+make build-release
 
 %install
 %make_install

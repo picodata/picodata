@@ -4,11 +4,12 @@ default: ;
 
 install-cargo:
 	curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs |\
-		sh -s -- -y --profile default --default-toolchain 1.64.0
+		sh -s -- -y --profile default --default-toolchain 1.65.0
 
 centos7-cmake3:
 	[ -f /usr/bin/cmake ] && sudo rm /usr/bin/cmake
 	sudo ln -s /usr/bin/cmake3 /usr/bin/cmake
+	sudo sed -i 's/*link_gomp: /*link_gomp: --fPIE/g' $$(find /opt -name libgomp.spec)
 
 reset-submodules:
 	git submodule foreach --recursive 'git clean -dxf && git reset --hard'
@@ -28,7 +29,7 @@ build-release: tarantool-patch
 
 install:
 	mkdir -p $(DESTDIR)/usr/bin
-	install -m 0755 target/debug/picodata $(DESTDIR)/usr/bin/picodata
+	install -m 0755 target/*/picodata $(DESTDIR)/usr/bin/picodata
 
 fmt:
 	cargo fmt
