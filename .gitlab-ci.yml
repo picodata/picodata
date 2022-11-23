@@ -186,11 +186,18 @@ pack-centos:
     - git submodule update --init --recursive
     - git clone https://github.com/packpack/packpack.git packpack
     - sed -i "s/(id -u)/(id -u) -o/g" packpack/packpack
+    - pushd tarantool-sys;
+    - export VER_TNT=$(
+        git describe --long |
+        sed -n 's/^\([0-9\.]*\)-\([0-9]*\)-\([a-z0-9]*\)/\1.\2/p'
+      );
+    - popd
+    - git describe --long
+    - echo $VER_TNT
+  timeout: 2h
   script:
-    - |
-      pushd tarantool-sys; export VER_TNT=$(git describe --long | sed -n 's/^\([0-9\.]*\)-\([0-9]*\)-\([a-z0-9]*\)/\1.\2/p'); popd
-      OS=centos DIST=7 PRESERVE_ENVVARS=VER_TNT packpack/packpack
-      OS=centos DIST=8 PRESERVE_ENVVARS=VER_TNT packpack/packpack
+    - OS=centos DIST=7 PRESERVE_ENVVARS=VER_TNT packpack/packpack
+    - OS=centos DIST=8 PRESERVE_ENVVARS=VER_TNT packpack/packpack
   artifacts:
     paths:
       - build/picodata*.rpm
@@ -206,12 +213,18 @@ pack-ubuntu:
   before_script:
     - git submodule update --init --recursive
     - git clone https://github.com/packpack/packpack.git packpack
+    - pushd tarantool-sys;
+    - export VER_TNT=$(
+        git describe --long |
+        sed -n 's/^\([0-9\.]*\)-\([0-9]*\)-\([a-z0-9]*\)/\1.\2/p'
+      );
+    - popd
     - git describe --long
+    - echo $VER_TNT
+  timeout: 2h
   script:
-    - |
-      pushd tarantool-sys; export VER_TNT=$(git describe --long | sed -n 's/^\([0-9\.]*\)-\([0-9]*\)-\([a-z0-9]*\)/\1.\2/p'); popd
-      OS=ubuntu DIST=focal PRESERVE_ENVVARS=VER_TNT BUILDDIR=$PWD/build_${DIST}/ RELEASE=${DIST} packpack/packpack
-      OS=ubuntu DIST=jammy PRESERVE_ENVVARS=VER_TNT BUILDDIR=$PWD/build_${DIST}/ RELEASE=${DIST} packpack/packpack
+    - OS=ubuntu DIST=focal PRESERVE_ENVVARS=VER_TNT BUILDDIR=$PWD/build_${DIST}/ RELEASE=${DIST} packpack/packpack
+    - OS=ubuntu DIST=jammy PRESERVE_ENVVARS=VER_TNT BUILDDIR=$PWD/build_${DIST}/ RELEASE=${DIST} packpack/packpack
   artifacts:
     paths:
       - build_focal/*.deb
@@ -228,11 +241,17 @@ pack-debian:
   before_script:
     - git submodule update --init --recursive
     - git clone https://github.com/packpack/packpack.git packpack
+    - pushd tarantool-sys;
+    - export VER_TNT=$(
+        git describe --long |
+        sed -n 's/^\([0-9\.]*\)-\([0-9]*\)-\([a-z0-9]*\)/\1.\2/p'
+      );
+    - popd
     - git describe --long
+    - echo $VER_TNT
+  timeout: 2h
   script:
-    - |
-      pushd tarantool-sys; export VER_TNT=$(git describe --long | sed -n 's/^\([0-9\.]*\)-\([0-9]*\)-\([a-z0-9]*\)/\1.\2/p'); popd
-      OS=debian DIST=bullseye PRESERVE_ENVVARS=VER_TNT BUILDDIR=$PWD/build_debian/ RELEASE=${DIST} packpack/packpack
+    - OS=debian DIST=bullseye PRESERVE_ENVVARS=VER_TNT BUILDDIR=$PWD/build_debian/ RELEASE=${DIST} packpack/packpack
   artifacts:
     paths:
       - build_debian/*.deb
