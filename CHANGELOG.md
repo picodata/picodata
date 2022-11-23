@@ -12,26 +12,27 @@ with the `YY.0M.MICRO` scheme.
 
 ### Features
 
-- Brand new algorithm of cluster management based on _"governor"_
-  concept — a centralized actor that operates topology and performs
-  instances configuration.
+- Brand new algorithm of cluster management based on the _"governor"_
+  concept — a centralized actor that maintains cluster topology and
+  performs instances configuration.
 
-- Instances state is denoted by the word _"grade"_ (current and target).
-  The current grade of an instance is not what it tells about itself,
-  but how other instances are configured with respect to the current
-  one.
+- Instance states are now called _"grades"_. This new term more clearly
+  denotes how an instance is currently perceived by other instances (eg.
+  how they are configured in its regard) rather than what it assumes
+  about itself.
 
-- Automatically configure _sharding_ (based on `vshard`) and perform
-  rebalancing when replication factor is satisfied.
+- Built-in _sharding_ configuration based on the `vshard` library. Once
+  a replicaset is up to the given replication factor, Picodata will
+  automatically re-balance data across replicasets.
 
-- Apply schema and data _migrations_ clusterwide.
+- Clusteerwide schema and data _migrations_ are introduced.
 
-- Shrink cluster by _expelling_ instances.
+- Instances can now be _expelled_ in order to shrink the cluster.
 
-### Compatibility
+## Compatibility
 
-- Current version is NOT compatible with `22.07.0`. It cannot be started
-  with the old snapshots.
+- The current version is NOT compatible with `22.07.0`. It cannot be
+  started with the old snapshots.
 
 ## [22.07.0] - 2022-07-08
 
