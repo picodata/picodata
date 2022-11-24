@@ -449,6 +449,7 @@ We use [SemVer](http://semver.org/) for versioning. For the versions available, 
 - **Anton Melnikov**
 - **Dmitriy Koltsov**
 - **Georgy Moshkin**
+- **Egor Ivkov**
 
 © 2020-2022 Picodata.io https://git.picodata.io/picodata
 ## License
