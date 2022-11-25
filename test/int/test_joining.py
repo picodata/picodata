@@ -149,7 +149,6 @@ def test_replication(cluster: Cluster):
             "instance_id": instance.instance_id,
             "instance_uuid": instance.eval("return box.info.uuid"),
             "raft_id": instance.raft_id,
-            "peer_address": instance.eval("return box.info.listen"),
             "replicaset_id": "r1",
             "replicaset_uuid": instance.eval("return box.info.cluster.uuid"),
             "current_grade": ["Online", 1],
