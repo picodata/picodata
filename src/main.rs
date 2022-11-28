@@ -35,6 +35,7 @@ mod kvcell;
 mod r#loop;
 mod mailbox;
 mod on_shutdown;
+mod proc;
 mod storage;
 mod tarantool;
 mod tlog;
@@ -446,7 +447,7 @@ fn preload_vshard() {
     preload!("vshard.version", "vshard/version.lua");
 }
 
-fn init_handlers() {
+fn init_handlers() -> traft::Result<()> {
     tarantool::exec(
         r#"
         box.schema.user.grant('guest', 'super', nil, nil, {if_not_exists = true})
@@ -454,17 +455,18 @@ fn init_handlers() {
     )
     .unwrap();
 
-    declare_cfunc!(discovery::proc_discover);
-    declare_cfunc!(traft::node::proc_raft_interact);
-    declare_cfunc!(traft::rpc::join::proc_raft_join);
-    declare_cfunc!(traft::rpc::expel::proc_expel_on_leader);
-    declare_cfunc!(traft::rpc::expel::redirect::proc_expel_redirect);
-    declare_cfunc!(traft::rpc::sync::proc_sync_raft);
-    declare_cfunc!(traft::rpc::update_instance::proc_update_instance);
-    declare_cfunc!(traft::rpc::replication::proc_replication);
-    declare_cfunc!(traft::rpc::replication::promote::proc_replication_promote);
-    declare_cfunc!(traft::rpc::sharding::proc_sharding);
-    declare_cfunc!(traft::rpc::migration::apply::proc_apply_migration);
+    let lua = ::tarantool::lua_state();
+    for name in proc::AllProcs::names() {
+        lua.exec_with(
+            "box.schema.func.create(...,
+                { language = 'C', if_not_exists = true }
+            );",
+            name,
+        )
+        .map_err(::tarantool::tlua::LuaError::from)?;
+    }
+
+    Ok(())
 }
 
 fn rm_tarantool_files(data_dir: &str) {
@@ -686,7 +688,7 @@ fn init_common(args: &args::Run, cfg: &tarantool::Cfg) -> (Clusterwide, RaftSpac
     tarantool::set_cfg(cfg);
 
     preload_vshard();
-    init_handlers();
+    init_handlers().expect("failed initializing rpc handlers");
     traft::event::init();
     let storage = Clusterwide::new().expect("clusterwide storage initialization failed");
     let raft_storage = RaftSpaceAccess::new().expect("raft storage initialization failed");

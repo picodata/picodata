@@ -70,6 +70,7 @@ macro_rules! define_rpc_request {
         $({ $($res_named_fields:tt)* })?
         $(( $($res_unnamed_fields:tt)* );)?
     ) => {
+        $crate::collect_proc!($proc);
         $(#[$proc_meta])*
         #[::tarantool::proc(packed_args)]
         fn $proc($_r: $_request) -> $result {

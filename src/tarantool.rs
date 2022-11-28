@@ -32,30 +32,6 @@ macro_rules! stringify_cfunc {
 }
 
 #[macro_export]
-macro_rules! declare_cfunc {
-    ( $($func_name:tt)+ ) => {{
-        use ::tarantool::tuple::FunctionArgs;
-        use ::tarantool::tuple::FunctionCtx;
-        use libc::c_int;
-
-        // This is needed to tell the compiler that the functions are really used.
-        // Otherwise the functions get optimized out and disappear from the binary
-        // and we may get this error: dlsym(RTLD_DEFAULT, some_fn): symbol not found
-        fn used(_: unsafe extern "C" fn(FunctionCtx, FunctionArgs) -> c_int) {}
-
-        used($($func_name)+);
-        $crate::tarantool::exec(concat!(
-            "box.schema.func.create('.",
-            $crate::stringify_last_token!($($func_name)+),
-            "', {
-                language = 'C',
-                if_not_exists = true
-            });"
-        )).unwrap();
-    }};
-}
-
-#[macro_export]
 macro_rules! cleanup_env {
     () => {
         // Tarantool implicitly parses some environment variables.
