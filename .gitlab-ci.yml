@@ -4,6 +4,7 @@ stages:
   - pack-centos
   - pack-ubuntu
   - pack-debian
+  - pack-altlinux
   - sign
   - deploy
   - test_rpm
@@ -257,6 +258,35 @@ pack-debian:
       - build_debian/*.deb
   dependencies: []
 
+pack-altlinux:
+  stage: pack-altlinux
+  tags:
+    - shell
+  only:
+    - web
+    - tags
+  before_script:
+    - git submodule update --init --recursive
+    - git clone https://github.com/packpack/packpack.git packpack
+    - sed -i "s/(id -u)/(id -u) -o/g" packpack/packpack
+    - sed -i 's/sudo yum-builddep -y \$<$/sudo yum-builddep -y $< || true/g' packpack/pack/rpm.mk
+    - pushd tarantool-sys;
+    - export VER_TNT=$(
+        git describe --long |
+        sed -n 's/^\([0-9\.]*\)-\([0-9]*\)-\([a-z0-9]*\)/\1.\2/p'
+      );
+    - popd
+    - git describe --long
+    - echo $VER_TNT
+  timeout: 2h
+  script:
+    - PRESERVE_ENVVARS=VER_TNT DOCKER_REPO=docker-picodata.binary.picodata.io/packpack/alt DOCKER_IMAGE=p10 packpack/packpack
+    - PRESERVE_ENVVARS=VER_TNT DOCKER_REPO=docker-picodata.binary.picodata.io/packpack/alt DOCKER_IMAGE=p9 packpack/packpack
+  artifacts:
+    paths:
+      - build/picodata*.rpm
+  dependencies: []
+
 sign-rpm-packages:
   variables:
     DOCKER_AUTH_CONFIG: $DOCKER_AUTH_RO
@@ -277,6 +307,7 @@ sign-rpm-packages:
       - build/picodata*.rpm
   dependencies:
     - pack-centos
+    - pack-altlinux
 
 deploy-job:
   stage: deploy
@@ -321,6 +352,17 @@ deploy-job:
     - scp -o stricthostkeychecking=no build_debian/picodata*deb ansible@94.26.239.246:.deb/debian/
     - ssh -o stricthostkeychecking=no ansible@94.26.239.246 "reprepro -b /data/nginx/www/packrepo/tarantool-picodata/debian/ -C main includedeb bullseye ~/.deb/debian/picodata*bullseye*deb; rm ~/.deb/debian/picodata*bullseye*deb"
     - echo "debian packets successfully deployed."
+    - echo
+    # Altlinux p10
+    - echo "Deploying altlinux-p10 packet..."
+    - scp -o stricthostkeychecking=no build/picodata*.p10.*rpm ansible@94.26.239.246:/data/nginx/www/packrepo/tarantool-picodata/altlinux/p10/
+    - echo "altlinux-p10 packet successfully deployed."
+    - echo
+    # Altlinux p9
+    - echo "Deploying altlinux-p9 packet..."
+    - scp -o stricthostkeychecking=no build/picodata*.p9.*rpm ansible@94.26.239.246:/data/nginx/www/packrepo/tarantool-picodata/altlinux/p9/
+    - echo "altlinux-p9 packet successfully deployed."
+    - echo
   dependencies:
     - pack-ubuntu
     - pack-debian

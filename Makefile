@@ -9,15 +9,14 @@ install-cargo:
 centos7-cmake3:
 	[ -f /usr/bin/cmake ] && sudo rm /usr/bin/cmake
 	sudo ln -s /usr/bin/cmake3 /usr/bin/cmake
-	sudo sed -i 's/*link_gomp: /*link_gomp: --fPIE/g' $$(find /opt -name libgomp.spec)
+	sudo find /opt -name libgomp.spec -delete
 
 reset-submodules:
 	git submodule foreach --recursive 'git clean -dxf && git reset --hard'
 	git submodule update --init --recursive
 
 tarantool-patch:
-	cd tarantool-sys && \
-	echo "${VER_TNT}" > VERSION
+	echo "${VER_TNT}" > tarantool-sys/VERSION
 
 build: tarantool-patch
 	. ~/.cargo/env && \
@@ -25,7 +24,7 @@ build: tarantool-patch
 
 build-release: tarantool-patch
 	. ~/.cargo/env && \
-		cargo build --release
+		cargo build --locked --release
 
 install:
 	mkdir -p $(DESTDIR)/usr/bin

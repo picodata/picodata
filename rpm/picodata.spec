@@ -17,7 +17,7 @@ Source0: %name-%version.tar.gz
 BuildRequires: cmake3
 %endif
 
-%if %{?rhel} == 8
+%if 0%{?rhel} == 8
 BuildRequires: libstdc++-static
 %endif
 
@@ -35,13 +35,20 @@ This package provides the repository binary and tools
 
 %build
 make install-cargo
+
 %if %use_cmake3
 make centos7-cmake3
 %endif
-make build-release
+
+make build
 
 %install
+
+%if %{?_build_vendor} == alt
+%makeinstall_std
+%else
 %make_install
+%endif
 
 %check
 
@@ -52,7 +59,11 @@ make build-release
 %{_bindir}/picodata
 %doc README.md
 %{!?_licensedir:%global license %doc}
+%if %{?_build_vendor} == alt
+%doc license/EE_EN.txt license/EE_RU.txt AUTHORS
+%else
 %license license/EE_EN.txt license/EE_RU.txt AUTHORS
+%endif
 
 %changelog
 * Fri Jul  8 2022 <kdy@picodata.io> - 22.07.0%{?dist}
