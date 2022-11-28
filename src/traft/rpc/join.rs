@@ -1,4 +1,6 @@
-use crate::traft::{error::Error, node, FailureDomain, InstanceId, Peer, ReplicasetId, Result};
+use crate::traft::{
+    error::Error, node, FailureDomain, InstanceId, Peer, PeerAddress, ReplicasetId, Result,
+};
 
 crate::define_rpc_request! {
     fn proc_raft_join(req: Request) -> Result<Response> {
@@ -24,21 +26,12 @@ crate::define_rpc_request! {
         }
 
         // A joined peer needs to communicate with other nodes.
-        // Provide it the list of raft voters in response.
-        // TODO: return peer_addresses
-        let mut raft_group = vec![];
-        for raft_id in node.storage.raft.voters()?.unwrap_or_default().into_iter() {
-            match node.storage.peers.get(&raft_id) {
-                Err(e) => {
-                    crate::warn_or_panic!("failed reading peer with id `{}`: {}", raft_id, e);
-                }
-                Ok(peer) => raft_group.push(peer),
-            }
-        }
+        // TODO: limit the number of entries sent to reduce response size.
+        let peer_addresses = node.storage.peer_addresses.iter()?.collect();
 
         Ok(Response {
             peer,
-            raft_group,
+            peer_addresses,
             box_replication,
         })
     }
@@ -55,7 +48,7 @@ crate::define_rpc_request! {
     /// Response to a [`join::Request`](Request).
     pub struct Response {
         pub peer: Box<Peer>,
-        pub raft_group: Vec<Peer>,
+        pub peer_addresses: Vec<PeerAddress>,
         pub box_replication: Vec<String>,
         // Other parameters necessary for box.cfg()
         // TODO

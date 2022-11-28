@@ -57,7 +57,7 @@ pub struct PoolWorker {
     // primary for worker.
     raft_id: RaftId,
     // Store instance_id for the debugging purposes only.
-    instance_id: InstanceId,
+    instance_id: Option<InstanceId>,
     inbox: Queue,
     fiber: fiber::UnitJoinHandle<'static>,
     cond: Rc<fiber::Cond>,
@@ -66,9 +66,10 @@ pub struct PoolWorker {
 }
 
 impl PoolWorker {
+    #[inline]
     pub fn run(
         raft_id: RaftId,
-        instance_id: InstanceId,
+        instance_id: impl Into<Option<InstanceId>>,
         storage: PeerAddresses,
         opts: WorkerOptions,
     ) -> PoolWorker {
@@ -76,8 +77,14 @@ impl PoolWorker {
         let inbox = Mailbox::with_cond(cond.clone());
         let stop_flag = Rc::new(Cell::default());
         let handler_name = opts.handler_name;
+        let instance_id = instance_id.into();
         let fiber = fiber::Builder::new()
-            .name(format!("to:{instance_id}"))
+            .name(
+                instance_id
+                    .as_ref()
+                    .map(|instance_id| format!("to:{instance_id}"))
+                    .unwrap_or_else(|| format!("to:raft:{raft_id}")),
+            )
             .proc({
                 let cond = cond.clone();
                 let inbox = inbox.clone();
@@ -397,14 +404,16 @@ impl ConnectionPool {
                 let instance_id = self
                     .peers
                     .peer_field::<peer_field::InstanceId>(&raft_id)
-                    .map_err(|_| Error::NoPeerWithRaftId(raft_id))?;
+                    .map_err(|_| Error::NoPeerWithRaftId(raft_id)).ok();
                 let worker = PoolWorker::run(
                     raft_id,
                     instance_id.clone(),
                     self.peer_addresses.clone(),
                     self.worker_options.clone(),
                 );
-                self.raft_ids.insert(instance_id, raft_id);
+                if let Some(instance_id) = instance_id {
+                    self.raft_ids.insert(instance_id, raft_id);
+                }
                 Ok(entry.insert(worker))
             }
         }
