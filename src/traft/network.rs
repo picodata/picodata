@@ -404,7 +404,12 @@ impl ConnectionPool {
                 let instance_id = self
                     .peers
                     .peer_field::<peer_field::InstanceId>(&raft_id)
-                    .map_err(|_| Error::NoPeerWithRaftId(raft_id)).ok();
+                    .map_err(|_| Error::NoPeerWithRaftId(raft_id))
+                    .ok();
+                // Check if address of this peer is known.
+                // No need to store the result,
+                // because it will be updated in the loop
+                let _ = self.peer_addresses.try_get(raft_id)?;
                 let worker = PoolWorker::run(
                     raft_id,
                     instance_id.clone(),
@@ -614,10 +619,12 @@ inventory::submit!(crate::InnerTest {
         );
 
         // Assert unknown recepient error
-        assert!(matches!(
-            pool.send(heartbeat_to_from(9999, 3)).unwrap_err(),
-            Error::NoPeerWithRaftId(9999)
-        ));
+        assert_eq!(
+            pool.send(heartbeat_to_from(9999, 3))
+                .unwrap_err()
+                .to_string(),
+            "address of peer with id 9999 not found",
+        );
 
         // Set up on_disconnect trigger
         let on_disconnect_cond = Rc::new(fiber::Cond::new());
