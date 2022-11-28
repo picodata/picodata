@@ -28,6 +28,8 @@ use protobuf::Message as _;
 
 pub use network::ConnectionPool;
 pub use raft_storage::RaftSpaceAccess;
+pub use rpc::join::Request as JoinRequest;
+pub use rpc::join::Response as JoinResponse;
 pub use rpc::update_peer::Request as UpdatePeerRequest;
 pub use rpc::update_peer::Response as UpdatePeerResponse;
 use storage::ClusterSpace;
@@ -832,31 +834,6 @@ impl From<UpdatePeerRequest> for TopologyRequest {
         Self::UpdatePeer(a)
     }
 }
-
-///////////////////////////////////////////////////////////////////////////////
-/// Request to join the cluster.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct JoinRequest {
-    pub cluster_id: String,
-    pub instance_id: Option<InstanceId>,
-    pub replicaset_id: Option<ReplicasetId>,
-    pub advertise_address: String,
-    pub failure_domain: FailureDomain,
-}
-impl Encode for JoinRequest {}
-
-///////////////////////////////////////////////////////////////////////////////
-/// Response to a JoinRequest
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct JoinResponse {
-    pub peer: Box<Peer>,
-    pub raft_group: Vec<Peer>,
-    pub box_replication: Vec<String>,
-    // TODO add later:
-    // Other parameters necessary for box.cfg()
-    // pub read_only: bool,
-}
-impl Encode for JoinResponse {}
 
 ///////////////////////////////////////////////////////////////////////////////
 

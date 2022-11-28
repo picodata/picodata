@@ -11,6 +11,7 @@ use std::time::Duration;
 use serde::de::DeserializeOwned;
 
 pub mod expel;
+pub mod join;
 pub mod migration;
 pub mod replication;
 pub mod sharding;
@@ -25,11 +26,6 @@ pub trait Request: Encode + DecodeOwned {
 
     /// Describes data returned from a successful RPC request.
     type Response: Encode + DeserializeOwned + Debug + 'static;
-}
-
-impl Request for super::JoinRequest {
-    const PROC_NAME: &'static str = crate::stringify_cfunc!(super::node::proc_raft_join);
-    type Response = super::JoinResponse;
 }
 
 #[inline(always)]
