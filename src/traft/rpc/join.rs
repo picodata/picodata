@@ -2,6 +2,15 @@ use crate::traft::{
     error::Error, node, FailureDomain, InstanceId, Peer, PeerAddress, ReplicasetId, Result,
 };
 
+#[derive(Clone, Debug, ::serde::Serialize, ::serde::Deserialize)]
+pub struct OkResponse {
+    pub peer: Box<Peer>,
+    pub peer_addresses: Vec<PeerAddress>,
+    pub box_replication: Vec<String>,
+    // Other parameters necessary for box.cfg()
+    // TODO
+}
+
 crate::define_rpc_request! {
     fn proc_raft_join(req: Request) -> Result<Response> {
         let node = node::global()?;
@@ -18,21 +27,35 @@ crate::define_rpc_request! {
             });
         }
 
-        let peer = node.handle_topology_request_and_wait(req.into())?;
-        let mut box_replication = vec![];
-        for replica in node.storage.peers.replicaset_peers(&peer.replicaset_id)? {
-            box_replication.extend(node.storage.peer_addresses.get(replica.raft_id)?);
+        match node.handle_topology_request_and_wait(req.into()) {
+            Ok(peer) => {
+                let mut box_replication = vec![];
+                for replica in node.storage.peers.replicaset_peers(&peer.replicaset_id)? {
+                    box_replication.extend(node.storage.peer_addresses.get(replica.raft_id)?);
+                }
+
+                // A joined peer needs to communicate with other nodes.
+                // TODO: limit the number of entries sent to reduce response size.
+                let peer_addresses = node.storage.peer_addresses.iter()?.collect();
+
+                Ok(Response::Ok(OkResponse {
+                    peer,
+                    peer_addresses,
+                    box_replication,
+                }))
+
+            },
+            Err(Error::NotALeader) => {
+                let leader_id = node.status().leader_id;
+                let leader_address = leader_id.and_then(|id| node.storage.peer_addresses.try_get(id).ok());
+                let leader = match (leader_id, leader_address) {
+                    (Some(raft_id), Some(address)) => Some(PeerAddress{raft_id, address}),
+                    (_, _) => None
+                };
+                Ok(Response::ErrNotALeader(leader))
+            }
+            Err(e) => Err(e),
         }
-
-        // A joined peer needs to communicate with other nodes.
-        // TODO: limit the number of entries sent to reduce response size.
-        let peer_addresses = node.storage.peer_addresses.iter()?.collect();
-
-        Ok(Response {
-            peer,
-            peer_addresses,
-            box_replication,
-        })
     }
 
     /// Request to join the cluster.
@@ -45,11 +68,8 @@ crate::define_rpc_request! {
     }
 
     /// Response to a [`join::Request`](Request).
-    pub struct Response {
-        pub peer: Box<Peer>,
-        pub peer_addresses: Vec<PeerAddress>,
-        pub box_replication: Vec<String>,
-        // Other parameters necessary for box.cfg()
-        // TODO
+    pub enum Response {
+        Ok(OkResponse),
+        ErrNotALeader(Option<PeerAddress>),
     }
 }

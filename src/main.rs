@@ -897,6 +897,8 @@ fn start_join(args: &args::Run, leader_address: String) {
         failure_domain: args.failure_domain(),
     };
 
+    let mut leader_address = leader_address;
+
     // Arch memo.
     // - There must be no timeouts. Retrying may lead to flooding the
     //   topology with phantom instances. No worry, specifying a
@@ -905,22 +907,31 @@ fn start_join(args: &args::Run, leader_address: String) {
     // - It's fine to retry "connection refused" errors.
     // - TODO renew leader_address if the current one says it's not a
     //   leader.
-    let resp: traft::JoinResponse = loop {
+    let resp: traft::rpc::join::OkResponse = loop {
         let now = Instant::now();
         // TODO: exponential decay
         let timeout = Duration::from_secs(1);
         match rpc::net_box_call(&leader_address, &req, Duration::MAX) {
+            Ok(traft::JoinResponse::Ok(resp)) => {
+                break resp;
+            }
+            Ok(traft::JoinResponse::ErrNotALeader(maybe_new_leader)) => {
+                tlog!(Warning, "join request failed: not a leader, retry...");
+                if let Some(new_leader) = maybe_new_leader {
+                    leader_address = new_leader.address;
+                } else {
+                    fiber::sleep(Duration::from_millis(100));
+                }
+                continue;
+            }
             Err(TntError::IO(e)) => {
-                tlog!(Warning, "join request failed: {e}");
+                tlog!(Warning, "join request failed: {e}, retry...");
                 fiber::sleep(timeout.saturating_sub(now.elapsed()));
                 continue;
             }
             Err(e) => {
                 tlog!(Error, "join request failed: {e}");
                 std::process::exit(-1);
-            }
-            Ok(resp) => {
-                break resp;
             }
         }
     };
