@@ -1,5 +1,6 @@
+use crate::storage::peer_field::ReplicasetId;
 use crate::tarantool::set_cfg_field;
-use crate::traft::{self, node, storage::peer_field::ReplicasetId, RaftIndex, RaftTerm, Result};
+use crate::traft::{self, node, RaftIndex, RaftTerm, Result};
 use crate::InstanceId;
 
 use std::time::Duration;
@@ -8,7 +9,7 @@ crate::define_rpc_request! {
     fn proc_replication(req: Request) -> Result<Response> {
         let node = node::global()?;
         node.status().check_term(req.term)?;
-        super::sync::wait_for_index_timeout(req.commit, &node.storage.raft, req.timeout)?;
+        super::sync::wait_for_index_timeout(req.commit, &node.raft_storage, req.timeout)?;
 
         let storage = &node.storage;
         let rsid = storage.peers.peer_field::<ReplicasetId>(&node.raft_id())?;
@@ -55,7 +56,7 @@ pub mod promote {
         fn proc_replication_promote(req: Request) -> Result<Response> {
             let node = node::global()?;
             node.status().check_term(req.term)?;
-            rpc::sync::wait_for_index_timeout(req.commit, &node.storage.raft, req.timeout)?;
+            rpc::sync::wait_for_index_timeout(req.commit, &node.raft_storage, req.timeout)?;
             crate::tarantool::exec("box.cfg { read_only = false }")?;
             Ok(Response {})
         }

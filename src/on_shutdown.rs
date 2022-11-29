@@ -48,8 +48,7 @@ pub fn callback() {
         }
 
         let voters = node
-            .storage
-            .raft
+            .raft_storage
             .voters()
             .expect("failed reading voters")
             .unwrap_or_default();
@@ -76,8 +75,7 @@ fn go_offline() -> traft::Result<()> {
 
     let peer = node.storage.peers.get(&raft_id)?;
     let cluster_id = node
-        .storage
-        .raft
+        .raft_storage
         .cluster_id()?
         .ok_or_else(|| Error::other("missing cluster_id value in storage"))?;
 

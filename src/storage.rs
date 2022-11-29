@@ -5,6 +5,7 @@ use ::tarantool::tuple::{DecodeOwned, ToTupleBuffer, Tuple};
 use crate::traft;
 use crate::traft::error::Error;
 use crate::traft::rpc::sharding::cfg::ReplicasetWeights;
+use crate::traft::Migration;
 use crate::traft::RaftId;
 use crate::traft::RaftIndex;
 use crate::traft::Replicaset;
@@ -12,15 +13,13 @@ use crate::traft::Result;
 
 use std::marker::PhantomData;
 
-use super::{Migration, RaftSpaceAccess};
-
 ////////////////////////////////////////////////////////////////////////////////
-// ClusterSpace
+// ClusterwideSpace
 ////////////////////////////////////////////////////////////////////////////////
 
 ::tarantool::define_str_enum! {
     /// An enumeration of builtin cluster-wide spaces
-    pub enum ClusterSpace {
+    pub enum ClusterwideSpace {
         // TODO: add `picodata_` prefixes to spaces
         // to avoid collisions with business spaces
         Group = "raft_group",
@@ -31,7 +30,7 @@ use super::{Migration, RaftSpaceAccess};
     }
 }
 
-impl ClusterSpace {
+impl ClusterwideSpace {
     #[inline]
     fn get(&self) -> tarantool::Result<Space> {
         Space::find(self.as_str()).ok_or_else(|| {
@@ -86,23 +85,21 @@ impl ClusterSpace {
 ////////////////////////////////////////////////////////////////////////////////
 
 #[derive(Clone, Debug)]
-pub struct Storage {
+pub struct Clusterwide {
     pub state: State,
     pub peers: Peers,
     pub peer_addresses: PeerAddresses,
     pub replicasets: Replicasets,
-    pub raft: RaftSpaceAccess,
     pub migrations: Migrations,
 }
 
-impl Storage {
+impl Clusterwide {
     pub fn new() -> tarantool::Result<Self> {
         Ok(Self {
             state: State::new()?,
             peers: Peers::new()?,
             peer_addresses: PeerAddresses::new()?,
             replicasets: Replicasets::new()?,
-            raft: RaftSpaceAccess::new()?,
             migrations: Migrations::new()?,
         })
     }
@@ -120,7 +117,7 @@ pub struct State {
 }
 
 impl State {
-    const SPACE_NAME: &'static str = ClusterSpace::State.as_str();
+    const SPACE_NAME: &'static str = ClusterwideSpace::State.as_str();
     const INDEX_PRIMARY: &'static str = "pk";
 
     pub fn new() -> tarantool::Result<Self> {
@@ -194,7 +191,7 @@ pub struct Replicasets {
 }
 
 impl Replicasets {
-    const SPACE_NAME: &'static str = ClusterSpace::Replicasets.as_str();
+    const SPACE_NAME: &'static str = ClusterwideSpace::Replicasets.as_str();
     const INDEX_PRIMARY: &'static str = "pk";
 
     pub fn new() -> tarantool::Result<Self> {
@@ -274,7 +271,7 @@ pub struct PeerAddresses {
 }
 
 impl PeerAddresses {
-    const SPACE_NAME: &'static str = ClusterSpace::Addresses.as_str();
+    const SPACE_NAME: &'static str = ClusterwideSpace::Addresses.as_str();
     const INDEX_RAFT_ID: &'static str = "raft_id";
 
     pub fn new() -> tarantool::Result<Self> {
@@ -370,7 +367,7 @@ pub struct Peers {
 }
 
 impl Peers {
-    const SPACE_NAME: &'static str = ClusterSpace::Group.as_str();
+    const SPACE_NAME: &'static str = ClusterwideSpace::Group.as_str();
     const INDEX_INSTANCE_ID: &'static str = "instance_id";
     const INDEX_RAFT_ID: &'static str = "raft_id";
     const INDEX_REPLICASET_ID: &'static str = "replicaset_id";
@@ -723,7 +720,7 @@ pub struct Migrations {
 }
 
 impl Migrations {
-    const SPACE_NAME: &'static str = ClusterSpace::Migrations.as_str();
+    const SPACE_NAME: &'static str = ClusterwideSpace::Migrations.as_str();
     const INDEX_PRIMARY: &'static str = "pk";
 
     pub fn new() -> tarantool::Result<Self> {

@@ -14,12 +14,11 @@ use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 use crate::mailbox::Mailbox;
+use crate::storage::{peer_field, Clusterwide, PeerAddresses, Peers};
 use crate::tlog;
 use crate::traft;
 use crate::traft::error::Error;
 use crate::traft::rpc::Request;
-use crate::traft::storage::peer_field;
-use crate::traft::storage::{PeerAddresses, Peers, Storage};
 use crate::traft::Result;
 use crate::traft::{InstanceId, RaftId};
 use crate::unwrap_ok_or;
@@ -341,7 +340,7 @@ fn into_either<T>(p: Promise<T>) -> Either<::tarantool::Result<T>, Promise<T>> {
 
 pub struct ConnectionPoolBuilder {
     worker_options: WorkerOptions,
-    storage: Storage,
+    storage: Clusterwide,
 }
 
 macro_rules! builder_option {
@@ -384,7 +383,7 @@ pub struct ConnectionPool {
 }
 
 impl ConnectionPool {
-    pub fn builder(storage: Storage) -> ConnectionPoolBuilder {
+    pub fn builder(storage: Clusterwide) -> ConnectionPoolBuilder {
         ConnectionPoolBuilder {
             storage,
             worker_options: Default::default(),
@@ -582,7 +581,7 @@ inventory::submit!(crate::InnerTest {
             }),
         );
 
-        let storage = Storage::new().unwrap();
+        let storage = Clusterwide::new().unwrap();
         // Connect to the current Tarantool instance
         let mut pool = ConnectionPool::builder(storage.clone())
             .handler_name("test_interact")

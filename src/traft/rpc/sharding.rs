@@ -9,7 +9,7 @@ crate::define_rpc_request! {
     fn proc_sharding(req: Request) -> Result<Response> {
         let node = node::global()?;
         node.status().check_term(req.term)?;
-        super::sync::wait_for_index_timeout(req.commit, &node.storage.raft, req.timeout)?;
+        super::sync::wait_for_index_timeout(req.commit, &node.raft_storage, req.timeout)?;
 
         let storage = &node.storage;
         let cfg = cfg::Cfg::from_storage(storage)?;
@@ -60,9 +60,8 @@ crate::define_rpc_request! {
 
 #[rustfmt::skip]
 pub mod cfg {
-    use crate::traft::Result;
-    use crate::traft::storage::Storage;
-    use crate::traft::ReplicasetId;
+    use crate::storage::Clusterwide;
+    use crate::traft::{Result, ReplicasetId};
 
     use ::tarantool::tlua;
 
@@ -120,7 +119,7 @@ pub mod cfg {
 
     impl Cfg {
         #[inline]
-        pub fn from_storage(storage: &Storage) -> Result<Self> {
+        pub fn from_storage(storage: &Clusterwide) -> Result<Self> {
             let replicasets: HashMap<_, _> = storage.replicasets.iter()?
                 .map(|r| (r.replicaset_id.clone(), r))
                 .collect();

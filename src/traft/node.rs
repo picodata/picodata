@@ -31,9 +31,9 @@ use crate::governor::raft_conf_change;
 use crate::governor::waiting_migrations;
 use crate::kvcell::KVCell;
 use crate::r#loop::{FlowControl, Loop};
+use crate::storage::{ClusterSpace, Clusterwide, StateKey};
 use crate::stringify_cfunc;
 use crate::traft::rpc;
-use crate::traft::storage::ClusterSpace;
 use crate::traft::ContextCoercion as _;
 use crate::traft::OpDML;
 use crate::traft::Peer;
@@ -53,14 +53,13 @@ use crate::traft::event::Event;
 use crate::traft::notify::Notify;
 use crate::traft::rpc::sharding::cfg::ReplicasetWeights;
 use crate::traft::rpc::{replication, sharding, sync};
-use crate::traft::storage::StateKey;
 use crate::traft::ConnectionPool;
 use crate::traft::LogicalClock;
 use crate::traft::Op;
+use crate::traft::RaftSpaceAccess;
 use crate::traft::Topology;
 use crate::traft::TopologyRequest;
 use crate::traft::{JoinRequest, UpdatePeerRequest};
-use crate::traft::{RaftSpaceAccess, Storage};
 
 use super::OpResult;
 use super::{CurrentGrade, CurrentGradeVariant, TargetGradeVariant};
@@ -128,7 +127,8 @@ pub struct Node {
     raft_id: RaftId,
 
     node_impl: Rc<Mutex<NodeImpl>>,
-    pub(crate) storage: Storage,
+    pub(crate) storage: Clusterwide,
+    pub(crate) raft_storage: RaftSpaceAccess,
     main_loop: MainLoop,
     _conf_change_loop: fiber::UnitJoinHandle<'static>,
     status: Rc<Cell<Status>>,
@@ -145,8 +145,8 @@ impl std::fmt::Debug for Node {
 impl Node {
     /// Initialize the raft node.
     /// **This function yields**
-    pub fn new(storage: Storage) -> Result<Self, RaftError> {
-        let node_impl = NodeImpl::new(storage.clone())?;
+    pub fn new(storage: Clusterwide, raft_storage: RaftSpaceAccess) -> Result<Self, RaftError> {
+        let node_impl = NodeImpl::new(storage.clone(), raft_storage.clone())?;
 
         let raft_id = node_impl.raft_id();
         let status = Rc::new(Cell::new(Status {
@@ -161,7 +161,8 @@ impl Node {
         let conf_change_loop_fn = {
             let status = status.clone();
             let storage = storage.clone();
-            move || raft_conf_change_loop(status, storage)
+            let raft_storage = raft_storage.clone();
+            move || raft_conf_change_loop(status, storage, raft_storage)
         };
 
         let node = Node {
@@ -174,6 +175,7 @@ impl Node {
                 .unwrap(),
             node_impl,
             storage,
+            raft_storage,
             status,
         };
 
@@ -306,7 +308,7 @@ impl Node {
 
     #[inline]
     pub fn all_traft_entries(&self) -> ::tarantool::Result<Vec<traft::Entry>> {
-        self.storage.raft.all_traft_entries()
+        self.raft_storage.all_traft_entries()
     }
 }
 
@@ -315,20 +317,21 @@ struct NodeImpl {
     pub notifications: HashMap<LogicalClock, Notify>,
     topology_cache: KVCell<RaftTerm, Topology>,
     joint_state_latch: KVCell<RaftIndex, Notify>,
-    storage: Storage,
+    storage: Clusterwide,
+    raft_storage: RaftSpaceAccess,
     pool: ConnectionPool,
     lc: LogicalClock,
 }
 
 impl NodeImpl {
-    fn new(storage: Storage) -> Result<Self, RaftError> {
+    fn new(storage: Clusterwide, raft_storage: RaftSpaceAccess) -> Result<Self, RaftError> {
         let box_err = |e| StorageError::Other(Box::new(e));
 
-        let raft_id: RaftId = storage.raft.raft_id().map_err(box_err)?.unwrap();
-        let applied: RaftIndex = storage.raft.applied().map_err(box_err)?.unwrap_or(0);
+        let raft_id: RaftId = raft_storage.raft_id().map_err(box_err)?.unwrap();
+        let applied: RaftIndex = raft_storage.applied().map_err(box_err)?.unwrap_or(0);
         let lc = {
-            let gen = storage.raft.gen().unwrap().unwrap_or(0) + 1;
-            storage.raft.persist_gen(gen).unwrap();
+            let gen = raft_storage.gen().unwrap().unwrap_or(0) + 1;
+            raft_storage.persist_gen(gen).unwrap();
             LogicalClock::new(raft_id, gen)
         };
 
@@ -346,7 +349,7 @@ impl NodeImpl {
             ..Default::default()
         };
 
-        let raw_node = RawNode::new(&cfg, storage.raft.clone(), &tlog::root())?;
+        let raw_node = RawNode::new(&cfg, raft_storage.clone(), &tlog::root())?;
 
         Ok(Self {
             raw_node,
@@ -354,6 +357,7 @@ impl NodeImpl {
             topology_cache: KVCell::new(),
             joint_state_latch: KVCell::new(),
             storage,
+            raft_storage,
             pool,
             lc,
         })
@@ -605,7 +609,7 @@ impl NodeImpl {
         }
 
         if let Some(last_entry) = entries.last() {
-            if let Err(e) = self.storage.raft.persist_applied(last_entry.index) {
+            if let Err(e) = self.raft_storage.persist_applied(last_entry.index) {
                 tlog!(
                     Error,
                     "error persisting applied index: {e}";
@@ -702,7 +706,7 @@ impl NodeImpl {
         };
 
         let raft_id = &self.raft_id();
-        let voters_old = self.storage.raft.voters().unwrap().unwrap_or_default();
+        let voters_old = self.raft_storage.voters().unwrap().unwrap_or_default();
         if voters_old.contains(raft_id) && !conf_state.voters.contains(raft_id) {
             if is_joint {
                 event::broadcast_when(Event::Demoted, Event::JointStateLeave).ok();
@@ -711,7 +715,7 @@ impl NodeImpl {
             }
         }
 
-        self.storage.raft.persist_conf_state(&conf_state).unwrap();
+        self.raft_storage.persist_conf_state(&conf_state).unwrap();
     }
 
     /// Is called during a transaction
@@ -787,11 +791,11 @@ impl NodeImpl {
             self.handle_committed_entries(ready.committed_entries(), topology_changed, expelled);
 
             // Persist uncommitted entries in the raft log.
-            self.storage.raft.persist_entries(ready.entries()).unwrap();
+            self.raft_storage.persist_entries(ready.entries()).unwrap();
 
             // Raft HardState changed, and we need to persist it.
             if let Some(hs) = ready.hs() {
-                self.storage.raft.persist_hard_state(hs).unwrap();
+                self.raft_storage.persist_hard_state(hs).unwrap();
 
                 let mut s = status.get();
                 s.term = hs.term;
@@ -818,7 +822,7 @@ impl NodeImpl {
         if let Err(e) = start_transaction(|| -> Result<(), TransactionError> {
             // Update commit index.
             if let Some(commit) = light_rd.commit_index() {
-                self.storage.raft.persist_commit(commit).unwrap();
+                self.raft_storage.persist_commit(commit).unwrap();
             }
 
             // Apply committed entries.
@@ -950,7 +954,11 @@ impl Drop for MainLoop {
     }
 }
 
-fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
+fn raft_conf_change_loop(
+    status: Rc<Cell<Status>>,
+    storage: Clusterwide,
+    raft_storage: RaftSpaceAccess,
+) {
     let mut pool = ConnectionPool::builder(storage.clone())
         .call_timeout(Duration::from_secs(1))
         .connect_timeout(Duration::from_millis(500))
@@ -968,13 +976,13 @@ fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
 
         let peers = storage.peers.all_peers().unwrap();
         let term = status.get().term;
-        let cluster_id = storage.raft.cluster_id().unwrap().unwrap();
+        let cluster_id = raft_storage.cluster_id().unwrap().unwrap();
         let node = global().expect("must be initialized");
 
         ////////////////////////////////////////////////////////////////////////
         // conf change
-        let voters = storage.raft.voters().unwrap().unwrap_or_default();
-        let learners = storage.raft.learners().unwrap().unwrap_or_default();
+        let voters = raft_storage.voters().unwrap().unwrap_or_default();
+        let learners = raft_storage.learners().unwrap().unwrap_or_default();
         if let Some(conf_change) = raft_conf_change(&peers, &voters, &learners) {
             // main_loop gives the warranty that every ProposeConfChange
             // will sometimes be handled and there's no need in timeout.
@@ -1059,7 +1067,7 @@ fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
 
             // reconfigure vshard storages and routers
             let res = (|| -> traft::Result<_> {
-                let commit = storage.raft.commit()?.unwrap();
+                let commit = raft_storage.commit()?.unwrap();
                 let reqs = maybe_responding(&peers)
                     .filter(|peer| {
                         peer.current_grade == CurrentGradeVariant::ShardingInitialized
@@ -1137,7 +1145,7 @@ fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
                         "calling rpc::replication::promote";
                         "instance_id" => %replicaset.master_id
                     );
-                    let commit = storage.raft.commit()?.unwrap();
+                    let commit = raft_storage.commit()?.unwrap();
                     pool.call_and_wait_timeout(
                         &replicaset.master_id,
                         replication::promote::Request {
@@ -1171,7 +1179,7 @@ fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
         });
         if let Some(peer) = to_sync {
             let (rx, tx) = fiber::Channel::new(1).into_clones();
-            let commit = storage.raft.commit().unwrap().unwrap();
+            let commit = raft_storage.commit().unwrap().unwrap();
             pool.call(
                 &peer.raft_id,
                 sync::Request {
@@ -1231,7 +1239,7 @@ fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
                 .collect::<Vec<_>>();
 
             let res = (|| -> traft::Result<_> {
-                let commit = storage.raft.commit()?.unwrap();
+                let commit = raft_storage.commit()?.unwrap();
                 let reqs = replicaset_iids
                     .iter()
                     .cloned()
@@ -1288,7 +1296,7 @@ fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
                         Cow::Borrowed(&peer.instance_id)
                     };
 
-                let commit = storage.raft.commit()?.unwrap();
+                let commit = raft_storage.commit()?.unwrap();
                 pool.call_and_wait_timeout(
                     &*master_id,
                     replication::promote::Request {
@@ -1324,7 +1332,7 @@ fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
         if let Some(peer) = to_shard {
             let res = (|| -> traft::Result<()> {
                 let vshard_bootstrapped = storage.state.vshard_bootstrapped()?;
-                let commit = storage.raft.commit()?.unwrap();
+                let commit = raft_storage.commit()?.unwrap();
                 let reqs = maybe_responding(&peers).map(|peer| {
                     (
                         peer.instance_id.clone(),
@@ -1381,7 +1389,7 @@ fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
                 // because of tarantool bugs
                 let replicasets = storage.replicasets.iter()?;
                 let masters = replicasets.map(|r| r.master_id).collect::<HashSet<_>>();
-                let commit = storage.raft.commit()?.unwrap();
+                let commit = raft_storage.commit()?.unwrap();
                 let reqs = maybe_responding(&peers)
                     .filter(|peer| masters.contains(&peer.instance_id))
                     .map(|peer| peer.instance_id.clone())
@@ -1431,7 +1439,7 @@ fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
                     }
 
                     let peer_ids = maybe_responding(&peers).map(|peer| peer.instance_id.clone());
-                    let commit = storage.raft.commit()?.unwrap();
+                    let commit = raft_storage.commit()?.unwrap();
                     let reqs = peer_ids.zip(repeat(sharding::Request {
                         term,
                         commit,
@@ -1494,7 +1502,7 @@ fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
         let desired_schema_version = storage.state.desired_schema_version().unwrap();
         let replicasets = storage.replicasets.iter().unwrap().collect::<Vec<_>>();
         let mut migrations = storage.migrations.iter().unwrap().collect::<Vec<_>>();
-        let commit = storage.raft.commit().unwrap().unwrap();
+        let commit = raft_storage.commit().unwrap().unwrap();
         for (mid, rids) in waiting_migrations(&mut migrations, &replicasets, desired_schema_version)
         {
             let migration = storage.migrations.get(mid).unwrap().unwrap();
@@ -1600,7 +1608,7 @@ fn raft_conf_change_loop(status: Rc<Cell<Status>>, storage: Storage) {
     #[inline(always)]
     fn get_weight_changes<'p>(
         peers: impl IntoIterator<Item = &'p Peer>,
-        storage: &Storage,
+        storage: &Clusterwide,
     ) -> Option<ReplicasetWeights> {
         let replication_factor = storage.state.replication_factor().expect("storage error");
         let replicaset_weights = storage.replicasets.weights().expect("storage error");

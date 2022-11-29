@@ -5,8 +5,8 @@ use std::time::{Duration, Instant};
 
 crate::define_rpc_request! {
     fn proc_sync_raft(req: Request) -> Result<Response> {
-        let storage = &node::global()?.storage;
-        let commit = wait_for_index_timeout(req.commit, &storage.raft, req.timeout)?;
+        let raft_storage = &node::global()?.raft_storage;
+        let commit = wait_for_index_timeout(req.commit, raft_storage, req.timeout)?;
         Ok(Response { commit })
     }
 

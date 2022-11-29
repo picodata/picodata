@@ -7,8 +7,7 @@ crate::define_rpc_request! {
         let node = node::global()?;
 
         let cluster_id = node
-            .storage
-            .raft
+            .raft_storage
             .cluster_id()?
             .expect("cluster_id is set on boot");
 

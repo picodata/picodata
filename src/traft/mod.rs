@@ -7,9 +7,10 @@ pub mod node;
 pub mod notify;
 mod raft_storage;
 pub mod rpc;
-pub mod storage;
 pub mod topology;
 
+use crate::storage;
+use crate::storage::ClusterSpace;
 use crate::stringify_debug;
 use crate::util::{AnyWithTypeName, Uppercase};
 use ::raft::prelude as raft;
@@ -26,14 +27,13 @@ use uuid::Uuid;
 
 use protobuf::Message as _;
 
+pub use crate::storage::Clusterwide;
 pub use network::ConnectionPool;
 pub use raft_storage::RaftSpaceAccess;
 pub use rpc::join::Request as JoinRequest;
 pub use rpc::join::Response as JoinResponse;
 pub use rpc::update_peer::Request as UpdatePeerRequest;
 pub use rpc::update_peer::Response as UpdatePeerResponse;
-use storage::ClusterSpace;
-pub use storage::Storage;
 pub use topology::Topology;
 
 use self::event::Event;

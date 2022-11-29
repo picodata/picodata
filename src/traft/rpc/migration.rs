@@ -7,7 +7,7 @@ pub mod apply {
         fn proc_apply_migration(req: Request) -> Result<Response> {
             let node = node::global()?;
             node.status().check_term(req.term)?;
-            sync::wait_for_index_timeout(req.commit, &node.storage.raft, req.timeout)?;
+            sync::wait_for_index_timeout(req.commit, &node.raft_storage, req.timeout)?;
 
             let storage = &node.storage;
 
