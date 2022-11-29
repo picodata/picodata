@@ -35,5 +35,10 @@ path = "../tarantool-proc"
 test = false
 crate-type = ["cdylib"]
 
+[[test]]
+name = "run_tests"
+path = "run.rs"
+harness = false
+
 [features]
 picodata = ["tarantool/picodata"]

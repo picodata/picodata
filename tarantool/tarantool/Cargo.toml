@@ -56,8 +56,3 @@ defer = []
 picodata = []
 all = ["default", "schema", "defer"]
 tarantool_test = ["linkme", "tester"]
-
-[[test]]
-name = "run_tests"
-path = "test/run.rs"
-harness = false
