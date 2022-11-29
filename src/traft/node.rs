@@ -31,7 +31,7 @@ use crate::governor::raft_conf_change;
 use crate::governor::waiting_migrations;
 use crate::kvcell::KVCell;
 use crate::r#loop::{FlowControl, Loop};
-use crate::storage::{ClusterSpace, Clusterwide, StateKey};
+use crate::storage::{Clusterwide, ClusterwideSpace, StateKey};
 use crate::stringify_cfunc;
 use crate::traft::rpc;
 use crate::traft::ContextCoercion as _;
@@ -489,7 +489,7 @@ impl NodeImpl {
                     address,
                 };
                 let op =
-                    OpDML::replace(ClusterSpace::Addresses, &peer_address).expect("can't fail");
+                    OpDML::replace(ClusterwideSpace::Addresses, &peer_address).expect("can't fail");
                 let (lc, notify) = self.schedule_notification();
                 notify_for_address = Some(notify);
                 let ctx = traft::EntryContextNormal::new(lc, op);
@@ -1048,7 +1048,8 @@ fn raft_conf_change_loop(
                         let mut ops = UpdateOps::new();
                         ops.assign("master_id", &peer.instance_id)?;
 
-                        let op = OpDML::update(ClusterSpace::Replicasets, &[replicaset_id], ops)?;
+                        let op =
+                            OpDML::update(ClusterwideSpace::Replicasets, &[replicaset_id], ops)?;
                         tlog!(Info, "proposing replicaset master change"; "op" => ?op);
                         // TODO: don't hard code the timeout
                         node.propose_and_wait(op, Duration::from_secs(3))??;
@@ -1282,7 +1283,7 @@ fn raft_conf_change_loop(
                     } else {
                         let vshard_bootstrapped = storage.state.vshard_bootstrapped()?;
                         let req = traft::OpDML::insert(
-                            ClusterSpace::Replicasets,
+                            ClusterwideSpace::Replicasets,
                             &traft::Replicaset {
                                 replicaset_id: peer.replicaset_id.clone(),
                                 replicaset_uuid: peer.replicaset_uuid.clone(),
@@ -1367,7 +1368,7 @@ fn raft_conf_change_loop(
                     // gets reconfigured
                     node.propose_and_wait(
                         traft::OpDML::replace(
-                            ClusterSpace::State,
+                            ClusterwideSpace::State,
                             &(StateKey::VshardBootstrapped, true),
                         )?,
                         // TODO: don't hard code the timeout
@@ -1432,7 +1433,11 @@ fn raft_conf_change_loop(
                         let mut ops = UpdateOps::new();
                         ops.assign("weight", weight)?;
                         node.propose_and_wait(
-                            traft::OpDML::update(ClusterSpace::Replicasets, &[replicaset_id], ops)?,
+                            traft::OpDML::update(
+                                ClusterwideSpace::Replicasets,
+                                &[replicaset_id],
+                                ops,
+                            )?,
                             // TODO: don't hard code the timeout
                             Duration::from_secs(3),
                         )??;
@@ -1525,7 +1530,7 @@ fn raft_conf_change_loop(
                         let mut ops = UpdateOps::new();
                         ops.assign("current_schema_version", migration.id).unwrap();
                         let op = OpDML::update(
-                            ClusterSpace::Replicasets,
+                            ClusterwideSpace::Replicasets,
                             &[replicaset.replicaset_id.clone()],
                             ops,
                         )

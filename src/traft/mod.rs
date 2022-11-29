@@ -10,7 +10,7 @@ pub mod rpc;
 pub mod topology;
 
 use crate::storage;
-use crate::storage::ClusterSpace;
+use crate::storage::ClusterwideSpace;
 use crate::stringify_debug;
 use crate::util::{AnyWithTypeName, Uppercase};
 use ::raft::prelude as raft;
@@ -190,7 +190,7 @@ impl Op {
             }
             Self::Dml(op) => {
                 let res = Box::new(op.result());
-                if op.space() == &ClusterSpace::State {
+                if op.space() == &ClusterwideSpace::State {
                     event::broadcast(Event::ClusterStateChanged);
                 }
                 res
@@ -256,24 +256,24 @@ pub trait OpResult {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub enum OpDML {
     Insert {
-        space: ClusterSpace,
+        space: ClusterwideSpace,
         #[serde(with = "serde_bytes")]
         tuple: TupleBuffer,
     },
     Replace {
-        space: ClusterSpace,
+        space: ClusterwideSpace,
         #[serde(with = "serde_bytes")]
         tuple: TupleBuffer,
     },
     Update {
-        space: ClusterSpace,
+        space: ClusterwideSpace,
         #[serde(with = "serde_bytes")]
         key: TupleBuffer,
         #[serde(with = "vec_of_raw_byte_buf")]
         ops: Vec<TupleBuffer>,
     },
     Delete {
-        space: ClusterSpace,
+        space: ClusterwideSpace,
         #[serde(with = "serde_bytes")]
         key: TupleBuffer,
     },
@@ -299,7 +299,7 @@ impl From<OpDML> for Op {
 
 impl OpDML {
     /// Serializes `tuple` and returns an [`OpDML::Insert`] in case of success.
-    pub fn insert(space: ClusterSpace, tuple: &impl ToTupleBuffer) -> tarantool::Result<Self> {
+    pub fn insert(space: ClusterwideSpace, tuple: &impl ToTupleBuffer) -> tarantool::Result<Self> {
         let res = Self::Insert {
             space,
             tuple: tuple.to_tuple_buffer()?,
@@ -308,7 +308,7 @@ impl OpDML {
     }
 
     /// Serializes `tuple` and returns an [`OpDML::Replace`] in case of success.
-    pub fn replace(space: ClusterSpace, tuple: &impl ToTupleBuffer) -> tarantool::Result<Self> {
+    pub fn replace(space: ClusterwideSpace, tuple: &impl ToTupleBuffer) -> tarantool::Result<Self> {
         let res = Self::Replace {
             space,
             tuple: tuple.to_tuple_buffer()?,
@@ -318,7 +318,7 @@ impl OpDML {
 
     /// Serializes `key` and returns an [`OpDML::Update`] in case of success.
     pub fn update(
-        space: ClusterSpace,
+        space: ClusterwideSpace,
         key: &impl ToTupleBuffer,
         ops: impl Into<Vec<TupleBuffer>>,
     ) -> tarantool::Result<Self> {
@@ -331,7 +331,7 @@ impl OpDML {
     }
 
     /// Serializes `key` and returns an [`OpDML::Delete`] in case of success.
-    pub fn delete(space: ClusterSpace, key: &impl ToTupleBuffer) -> tarantool::Result<Self> {
+    pub fn delete(space: ClusterwideSpace, key: &impl ToTupleBuffer) -> tarantool::Result<Self> {
         let res = Self::Delete {
             space,
             key: key.to_tuple_buffer()?,
@@ -340,7 +340,7 @@ impl OpDML {
     }
 
     #[rustfmt::skip]
-    pub fn space(&self) -> &ClusterSpace {
+    pub fn space(&self) -> &ClusterwideSpace {
         match &self {
             Self::Insert { space, .. } => space,
             Self::Replace { space, .. } => space,
