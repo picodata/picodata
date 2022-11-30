@@ -1,4 +1,5 @@
-use ::tarantool::fiber;
+use ::tarantool::fiber::r#async::oneshot;
+use ::tarantool::fiber::r#async::timeout::IntoTimeout as _;
 
 use std::time::Duration;
 
@@ -6,69 +7,64 @@ use crate::traft::error::Error;
 use crate::traft::Result;
 use crate::util::{downcast, AnyWithTypeName};
 
-#[derive(Clone)]
-pub struct Notify {
-    ch: fiber::Channel<Result<Box<dyn AnyWithTypeName>>>,
+pub struct Notifier(oneshot::Sender<Result<Box<dyn AnyWithTypeName>>>);
+pub struct Notify(oneshot::Receiver<Result<Box<dyn AnyWithTypeName>>>);
+
+#[inline]
+pub fn notification() -> (Notifier, Notify) {
+    let (tx, rx) = oneshot::channel();
+    (Notifier(tx), Notify(rx))
 }
 
-impl Notify {
+impl Notifier {
     #[inline]
-    pub fn new() -> Self {
-        Self {
-            ch: fiber::Channel::new(1),
-        }
+    pub fn notify_ok_any(self, res: Box<dyn AnyWithTypeName>) {
+        self.0.send(Ok(res)).ok();
     }
 
     #[inline]
-    pub fn notify_ok_any(&self, res: Box<dyn AnyWithTypeName>) {
-        self.ch.try_send(Ok(res)).ok();
-    }
-
-    #[inline]
-    pub fn notify_ok<T: AnyWithTypeName>(&self, res: T) {
+    pub fn notify_ok<T: AnyWithTypeName>(self, res: T) {
         self.notify_ok_any(Box::new(res));
     }
 
     #[inline]
-    pub fn notify_err<E: Into<Error>>(&self, err: E) {
-        self.ch.try_send(Err(err.into())).ok();
+    #[allow(dead_code)]
+    pub fn notify_err<E: Into<Error>>(self, err: E) {
+        self.0.send(Err(err.into())).ok();
     }
 
     #[inline]
-    pub fn recv_any(self) -> Result<Box<dyn AnyWithTypeName>> {
-        match self.ch.recv() {
+    pub fn is_closed(&self) -> bool {
+        self.0.is_closed()
+    }
+}
+
+impl Notify {
+    #[inline]
+    pub async fn recv_any(self) -> Result<Box<dyn AnyWithTypeName>> {
+        match self.0.await.ok() {
             Some(v) => v,
-            None => {
-                self.ch.close();
-                Err(Error::Timeout)
-            }
+            None => Err(Error::Timeout),
         }
     }
 
     #[inline]
-    pub fn recv_timeout_any(self, timeout: Duration) -> Result<Box<dyn AnyWithTypeName>> {
-        match self.ch.recv_timeout(timeout) {
-            Ok(v) => v,
-            Err(_) => {
-                self.ch.close();
-                Err(Error::Timeout)
-            }
+    pub async fn recv_timeout_any(self, timeout: Duration) -> Result<Box<dyn AnyWithTypeName>> {
+        match self.0.timeout(timeout).await {
+            Ok(Ok(v)) => v,
+            Ok(Err(_)) | Err(_) => Err(Error::Timeout),
         }
     }
 
     #[inline]
-    pub fn recv_timeout<T: 'static>(self, timeout: Duration) -> Result<T> {
-        downcast(self.recv_timeout_any(timeout)?)
+    pub async fn recv_timeout<T: 'static>(self, timeout: Duration) -> Result<T> {
+        downcast(self.recv_timeout_any(timeout).await?)
     }
 
     #[inline]
     #[allow(unused)]
-    pub fn recv<T: 'static>(self) -> Result<T> {
-        downcast(self.recv_any()?)
-    }
-
-    pub fn is_closed(&self) -> bool {
-        self.ch.is_closed()
+    pub async fn recv<T: 'static>(self) -> Result<T> {
+        downcast(self.recv_any().await?)
     }
 }
 

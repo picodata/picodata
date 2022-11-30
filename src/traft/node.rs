@@ -12,8 +12,10 @@ use ::raft::StorageError;
 use ::raft::INVALID_ID;
 use ::tarantool::error::{TarantoolError, TransactionError};
 use ::tarantool::fiber;
+use ::tarantool::fiber::r#async::oneshot;
 use ::tarantool::fiber::{Cond, Mutex};
 use ::tarantool::proc;
+use ::tarantool::space::UpdateOps;
 use ::tarantool::tlua;
 use ::tarantool::transaction::start_transaction;
 use std::borrow::Cow;
@@ -25,7 +27,6 @@ use std::iter::repeat;
 use std::rc::Rc;
 use std::time::Duration;
 use std::time::Instant;
-use tarantool::space::UpdateOps;
 
 use crate::governor::raft_conf_change;
 use crate::governor::waiting_migrations;
@@ -50,7 +51,7 @@ use crate::traft;
 use crate::traft::error::Error;
 use crate::traft::event;
 use crate::traft::event::Event;
-use crate::traft::notify::Notify;
+use crate::traft::notify::{notification, Notifier, Notify};
 use crate::traft::rpc::sharding::cfg::ReplicasetWeights;
 use crate::traft::rpc::{join, replication, sharding, sync, update_instance};
 use crate::traft::ConnectionPool;
@@ -200,7 +201,7 @@ impl Node {
     /// **This function yields**
     pub fn wait_for_read_state(&self, timeout: Duration) -> traft::Result<RaftIndex> {
         let notify = self.raw_operation(|node_impl| node_impl.read_state_async())?;
-        notify.recv_timeout::<RaftIndex>(timeout)
+        fiber::block_on(notify.recv_timeout::<RaftIndex>(timeout))
     }
 
     /// Propose an operation and wait for it's result.
@@ -211,7 +212,7 @@ impl Node {
         timeout: Duration,
     ) -> traft::Result<T::Result> {
         let notify = self.raw_operation(|node_impl| node_impl.propose_async(op))?;
-        notify.recv_timeout::<T::Result>(timeout)
+        fiber::block_on(notify.recv_timeout::<T::Result>(timeout))
     }
 
     /// Become a candidate and wait for a main loop round so that there's a
@@ -270,8 +271,13 @@ impl Node {
     ) -> traft::Result<Box<traft::Instance>> {
         let (notify_for_address, notify) =
             self.raw_operation(|node_impl| node_impl.process_topology_request_async(req))?;
-        notify_for_address.map(Notify::recv_any);
-        notify.recv()
+        fiber::block_on(async {
+            if let Some(notify) = notify_for_address {
+                // FIXME: this error should be handled
+                let _ = notify.recv_any().await;
+            }
+            notify.recv().await
+        })
     }
 
     /// Only the conf_change_loop on a leader is eligible to call this function.
@@ -284,7 +290,8 @@ impl Node {
     ) -> traft::Result<()> {
         let notify =
             self.raw_operation(|node_impl| node_impl.propose_conf_change_async(term, conf_change))?;
-        notify.recv()
+        fiber::block_on(notify).unwrap()?;
+        Ok(())
     }
 
     /// Attempt to transfer leadership to a given node and yield.
@@ -313,9 +320,9 @@ impl Node {
 
 struct NodeImpl {
     pub raw_node: RawNode,
-    pub notifications: HashMap<LogicalClock, Notify>,
+    pub notifications: HashMap<LogicalClock, Notifier>,
     topology_cache: KVCell<RaftTerm, Topology>,
-    joint_state_latch: KVCell<RaftIndex, Notify>,
+    joint_state_latch: KVCell<RaftIndex, oneshot::Sender<Result<(), RaftError>>>,
     storage: Clusterwide,
     raft_storage: RaftSpaceAccess,
     pool: ConnectionPool,
@@ -530,7 +537,7 @@ impl NodeImpl {
         &mut self,
         term: RaftTerm,
         conf_change: raft::ConfChangeV2,
-    ) -> Result<Notify, RaftError> {
+    ) -> Result<oneshot::Receiver<Result<(), RaftError>>, RaftError> {
         // In some states proposing a ConfChange is impossible.
         // Check if there's a reason to reject it.
 
@@ -572,7 +579,7 @@ impl NodeImpl {
             warn_or_panic!("joint state latch is locked");
         }
 
-        let (rx, tx) = Notify::new().into_clones();
+        let (tx, rx) = oneshot::channel();
         self.joint_state_latch.insert(last_index, tx);
         event::broadcast(Event::JointStateEnter);
 
@@ -653,7 +660,7 @@ impl NodeImpl {
             // a re-election.
             let e = RaftError::ConfChangeError("rolled back".into());
 
-            notify.notify_err(e);
+            let _ = notify.send(Err(e));
             event::broadcast(Event::JointStateDrop);
         }
     }
@@ -662,7 +669,7 @@ impl NodeImpl {
     fn handle_committed_conf_change(&mut self, entry: traft::Entry) {
         let mut latch_unlock = || {
             if let Some(notify) = self.joint_state_latch.take() {
-                notify.notify_ok(());
+                let _ = notify.send(Ok(()));
                 event::broadcast(Event::JointStateLeave);
             }
         };
@@ -838,8 +845,7 @@ impl NodeImpl {
 
     #[inline]
     fn cleanup_notifications(&mut self) {
-        self.notifications
-            .retain(|_, notify: &mut Notify| !notify.is_closed());
+        self.notifications.retain(|_, notify| !notify.is_closed());
     }
 
     /// Generates a pair of logical clock and a notification channel.
@@ -848,7 +854,7 @@ impl NodeImpl {
     /// corresponding entry is committed.
     #[inline]
     fn schedule_notification(&mut self) -> (LogicalClock, Notify) {
-        let (rx, tx) = Notify::new().into_clones();
+        let (tx, rx) = notification();
         let lc = {
             self.lc.inc();
             self.lc
