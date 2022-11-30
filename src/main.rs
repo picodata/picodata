@@ -776,7 +776,8 @@ fn start_boot(args: &args::Run) {
         args.replicaset_id.clone(),
         args.advertise_address(),
         args.failure_domain(),
-    );
+    )
+    .expect("failed adding initial peer");
     let raft_id = peer.raft_id;
     let instance_id = peer.instance_id.clone();
 

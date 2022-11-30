@@ -468,7 +468,7 @@ impl NodeImpl {
         let topology = self.topology_mut()?;
         // FIXME: remove this once we introduce some 'async' stuff
         let notify_for_address;
-        let mut peer = match req {
+        let peer = match req {
             TopologyRequest::Join(JoinRequest {
                 instance_id,
                 replicaset_id,
@@ -504,8 +504,6 @@ impl NodeImpl {
                     .map_err(RaftError::ConfChangeError)?
             }
         };
-        peer.commit_index = self.raw_node.raft.raft_log.last_index() + 1;
-
         let (lc, notify) = self.schedule_notification();
         let ctx = traft::EntryContextNormal::new(lc, Op::persist_peer(peer));
 

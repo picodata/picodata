@@ -416,10 +416,6 @@ pub struct Peer {
     pub replicaset_id: ReplicasetId,
     pub replicaset_uuid: String,
 
-    /// Index of the most recent raft log entry that persisted this peer.
-    /// `0` means it's not committed yet.
-    pub commit_index: RaftIndex,
-
     /// The cluster's mind about actual state of this instance's activity.
     pub current_grade: CurrentGrade,
     /// The desired state of this instance
@@ -471,7 +467,6 @@ impl Peer {
             raft_id: Default::default(),
             replicaset_id: Default::default(),
             replicaset_uuid: Default::default(),
-            commit_index: Default::default(),
             current_grade: Default::default(),
             target_grade: Default::default(),
             failure_domain: Default::default(),
@@ -483,12 +478,11 @@ impl std::fmt::Display for Peer {
     #[rustfmt::skip]
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         return write!(f,
-            "({}, {}, {}, {}, {}, {})",
+            "({}, {}, {}, {}, {})",
             self.instance_id,
             self.raft_id,
             self.replicaset_id,
             GradeTransition { from: self.current_grade, to: self.target_grade },
-            self.commit_index,
             &self.failure_domain,
         );
 

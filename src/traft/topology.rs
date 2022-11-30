@@ -10,8 +10,6 @@ use crate::traft::{CurrentGrade, CurrentGradeVariant, Grade, TargetGrade, Target
 use crate::traft::{InstanceId, RaftId, ReplicasetId};
 use crate::util::Uppercase;
 
-use raft::INVALID_INDEX;
-
 pub struct Topology {
     replication_factor: u8,
     max_raft_id: RaftId,
@@ -153,7 +151,6 @@ impl Topology {
             raft_id,
             replicaset_id,
             replicaset_uuid,
-            commit_index: INVALID_INDEX,
             current_grade: CurrentGrade::offline(0),
             target_grade: TargetGrade::offline(0),
             failure_domain,
@@ -215,19 +212,15 @@ impl Topology {
     }
 }
 
-// Create first peer in the cluster
+/// Create first peer in the cluster
 pub fn initial_peer(
     instance_id: Option<InstanceId>,
     replicaset_id: Option<ReplicasetId>,
     advertise: Address,
     failure_domain: FailureDomain,
-) -> (Peer, Address) {
+) -> Result<(Peer, Address), String> {
     let mut topology = Topology::from_peers(vec![]);
-    let (mut peer, advertise) = topology
-        .join(instance_id, replicaset_id, advertise, failure_domain)
-        .unwrap();
-    peer.commit_index = 1;
-    (peer, advertise)
+    topology.join(instance_id, replicaset_id, advertise, failure_domain)
 }
 
 #[rustfmt::skip]
@@ -297,7 +290,6 @@ mod tests {
                 replicaset_id: $replicaset_id.into(),
                 instance_uuid: instance_uuid($instance_id),
                 replicaset_uuid: replicaset_uuid($replicaset_id),
-                commit_index: raft::INVALID_INDEX,
 
                 current_grade: $current_grade.into_grade(),
                 target_grade: $target_grade.into_grade(),
