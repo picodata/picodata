@@ -40,7 +40,8 @@ pub struct Run {
         long,
         value_name = "path",
         default_value = ".",
-        env = "PICODATA_DATA_DIR"
+        env = "PICODATA_DATA_DIR",
+        parse(try_from_str = try_parse_path)
     )]
     /// Here the instance persists all of its data
     pub data_dir: String,
@@ -285,6 +286,19 @@ fn try_parse_address(text: &str) -> Result<String, ParseAddressError> {
     Ok(format!("{host}:{port}"))
 }
 
+#[derive(Error, Debug)]
+pub enum ParsePathError {
+    #[error("empty path is not supported, use \".\" for current dir")]
+    EmptyPath,
+}
+
+fn try_parse_path(text: &str) -> Result<String, ParsePathError> {
+    match text {
+        "" => Err(ParsePathError::EmptyPath),
+        _ => Ok(text.to_string()),
+    }
+}
+
 /// Parses a '=' sepparated string of key and value and converts both to
 /// uppercase.
 fn try_parse_kv_uppercase(s: &str) -> Result<(Uppercase, Uppercase), String> {
@@ -311,6 +325,11 @@ mod tests {
         assert_eq!(try_parse_address("example:1234").unwrap(), "example:1234");
         assert!(try_parse_address("example:123456").is_err());
         assert!(try_parse_address("example::1234").is_err());
+    }
+
+    #[test]
+    fn test_parse_path() {
+        assert!(try_parse_path("").is_err());
     }
 
     macro_rules! parse {
