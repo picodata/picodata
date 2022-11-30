@@ -165,6 +165,9 @@ pub mod log;
 #[doc(hidden)]
 pub mod msgpack;
 pub mod net_box;
+// Temporarily private as it is in development
+#[allow(unused)]
+mod network;
 pub mod proc;
 pub mod schema;
 pub mod sequence;

@@ -1,6 +1,5 @@
 use std::cmp::min;
 use std::convert::TryFrom;
-use std::fmt::{Display, Formatter};
 use std::io::{self, Cursor, Read, Seek, Write};
 use std::os::raw::c_char;
 use std::str::from_utf8;
@@ -12,6 +11,8 @@ use crate::error::Error;
 use crate::index::IteratorType;
 use crate::msgpack;
 use crate::tuple::{ToTupleBuffer, Tuple};
+
+use super::ResponseError;
 
 const REQUEST_TYPE: u8 = 0x00;
 const SYNC: u8 = 0x01;
@@ -631,15 +632,4 @@ pub fn value_slice(cursor: &mut Cursor<impl AsRef<[u8]>>) -> crate::Result<&[u8]
     let start = cursor.position() as usize;
     msgpack::skip_value(cursor)?;
     Ok(&cursor.get_ref().as_ref()[start..(cursor.position() as usize)])
-}
-
-#[derive(Debug)]
-pub struct ResponseError {
-    pub(crate) message: String,
-}
-
-impl Display for ResponseError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        write!(f, "{}", self.message)
-    }
 }
