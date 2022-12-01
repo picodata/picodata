@@ -69,6 +69,14 @@ impl<T> Receiver<T> {
     pub fn timeout(self, timeout: Duration) -> Timeout<Self> {
         super::timeout::timeout(timeout, self)
     }
+
+    /// Returns `true` if the associated [`Sender`] handle has been dropped.
+    ///
+    /// If `true` is returned, awaiting this future will always result in an error.
+    #[inline]
+    pub fn is_closed(&self) -> bool {
+        Rc::weak_count(&self.0) == 0
+    }
 }
 
 impl<T> Future for Receiver<T> {
@@ -77,7 +85,7 @@ impl<T> Future for Receiver<T> {
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let cell = &self.0;
         match cell.take() {
-            State::Pending(mut waker) if Rc::weak_count(cell) > 0 => {
+            State::Pending(mut waker) if !self.is_closed() => {
                 waker.get_or_insert_with(|| cx.waker().clone());
                 cell.set(State::Pending(waker));
                 Poll::Pending
@@ -173,14 +181,26 @@ mod tests {
     use linkme::distributed_slice;
 
     #[distributed_slice(TESTS)]
-    static DROP_RESULT: TestCase = TestCase {
-        name: test_name!("drop_the_result"),
+    static DROP_RECEIVER: TestCase = TestCase {
+        name: test_name!("drop_receiver"),
         f: || {
             let (tx, rx) = channel::<i32>();
             assert!(!tx.is_closed());
             drop(rx);
             assert!(tx.is_closed());
             assert_eq!(tx.send(0).unwrap_err(), 0);
+        },
+    };
+
+    #[distributed_slice(TESTS)]
+    static DROP_SENDER: TestCase = TestCase {
+        name: test_name!("drop_sender"),
+        f: || {
+            let (tx, rx) = channel::<i32>();
+            assert!(!rx.is_closed());
+            drop(tx);
+            assert!(rx.is_closed());
+            assert_eq!(fiber::block_on(rx).unwrap_err(), RecvError);
         },
     };
 
