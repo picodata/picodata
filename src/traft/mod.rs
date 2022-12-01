@@ -99,16 +99,13 @@ pub enum Op {
     /// No operation.
     Nop,
     /// Print the message in tarantool log.
-    Info {
-        msg: String,
-    },
+    Info { msg: String },
     /// Evaluate the code on every instance in cluster.
     EvalLua(OpEvalLua),
     ///
     ReturnOne(OpReturnOne),
-    PersistInstance {
-        instance: Box<Instance>,
-    },
+    /// Update the given instance's entry in [`storage::Instances`].
+    PersistInstance(OpPersistInstance),
     /// Cluster-wide data modification operation.
     /// Should be used to manipulate the cluster-wide configuration.
     Dml(OpDML),
@@ -121,7 +118,7 @@ impl std::fmt::Display for Op {
             Self::Info { msg } => write!(f, "Info({msg:?})"),
             Self::EvalLua(OpEvalLua { code }) => write!(f, "EvalLua({code:?})"),
             Self::ReturnOne(_) => write!(f, "ReturnOne"),
-            Self::PersistInstance { instance } => {
+            Self::PersistInstance(OpPersistInstance(instance)) => {
                 write!(f, "PersistInstance{}", instance)
             }
             Self::Dml(OpDML::Insert { space, tuple }) => {
@@ -171,7 +168,7 @@ impl std::fmt::Display for Op {
 }
 
 impl Op {
-    pub fn on_commit(&self, instances: &storage::Instances) -> Box<dyn AnyWithTypeName> {
+    pub fn on_commit(self, instances: &storage::Instances) -> Box<dyn AnyWithTypeName> {
         match self {
             Self::Nop => Box::new(()),
             Self::Info { msg } => {
@@ -180,30 +177,24 @@ impl Op {
             }
             Self::EvalLua(op) => Box::new(op.result()),
             Self::ReturnOne(op) => Box::new(op.result()),
-            Self::PersistInstance { instance } => {
-                instances.put(instance).unwrap();
-                Box::new(instance.clone())
+            Self::PersistInstance(op) => {
+                let instance = op.result();
+                instances.put(&instance).unwrap();
+                instance
             }
             Self::Dml(op) => {
-                let res = Box::new(op.result());
                 if op.space() == &ClusterwideSpace::Property {
                     event::broadcast(Event::ClusterStateChanged);
                 }
-                res
+                Box::new(op.result())
             }
-        }
-    }
-
-    pub fn persist_instance(instance: Instance) -> Self {
-        Self::PersistInstance {
-            instance: Box::new(instance),
         }
     }
 }
 
 impl OpResult for Op {
     type Result = ();
-    fn result(&self) -> Self::Result {}
+    fn result(self) -> Self::Result {}
 }
 
 impl From<OpReturnOne> for Op {
@@ -217,7 +208,7 @@ pub struct OpReturnOne;
 
 impl OpResult for OpReturnOne {
     type Result = u8;
-    fn result(&self) -> Self::Result {
+    fn result(self) -> Self::Result {
         1
     }
 }
@@ -229,7 +220,7 @@ pub struct OpEvalLua {
 
 impl OpResult for OpEvalLua {
     type Result = StdResult<(), LuaError>;
-    fn result(&self) -> Self::Result {
+    fn result(self) -> Self::Result {
         crate::tarantool::exec(&self.code)
     }
 }
@@ -242,7 +233,37 @@ impl From<OpEvalLua> for Op {
 
 pub trait OpResult {
     type Result: 'static;
-    fn result(&self) -> Self::Result;
+    // FIXME: this signature makes it look like result of any operation depends
+    // only on what is contained within the operation which is almost never true
+    // And it makes it hard to do anything useful inside this function.
+    fn result(self) -> Self::Result;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// OpPersistInstance
+////////////////////////////////////////////////////////////////////////////////
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct OpPersistInstance(pub Box<Instance>);
+
+impl OpPersistInstance {
+    pub fn new(instance: Instance) -> Self {
+        Self(Box::new(instance))
+    }
+}
+
+impl OpResult for OpPersistInstance {
+    type Result = Box<Instance>;
+    fn result(self) -> Self::Result {
+        self.0
+    }
+}
+
+impl From<OpPersistInstance> for Op {
+    #[inline]
+    fn from(op: OpPersistInstance) -> Op {
+        Op::PersistInstance(op)
+    }
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////
@@ -277,12 +298,12 @@ pub enum OpDML {
 
 impl OpResult for OpDML {
     type Result = tarantool::Result<Option<Tuple>>;
-    fn result(&self) -> Self::Result {
+    fn result(self) -> Self::Result {
         match self {
-            Self::Insert { space, tuple } => space.insert(tuple).map(Some),
-            Self::Replace { space, tuple } => space.replace(tuple).map(Some),
-            Self::Update { space, key, ops } => space.update(key, ops),
-            Self::Delete { space, key } => space.delete(key),
+            Self::Insert { space, tuple } => space.insert(&tuple).map(Some),
+            Self::Replace { space, tuple } => space.replace(&tuple).map(Some),
+            Self::Update { space, key, ops } => space.update(&key, &ops),
+            Self::Delete { space, key } => space.delete(&key),
         }
     }
 }
@@ -616,18 +637,19 @@ impl ContextCoercion for EntryContextConfChange {}
 
 impl Entry {
     /// Returns the logical clock value if it's an `EntryNormal`.
-    pub fn lc(&self) -> Option<&LogicalClock> {
+    pub fn lc(&self) -> Option<LogicalClock> {
         match &self.context {
-            Some(EntryContext::Normal(v)) => Some(&v.lc),
+            Some(EntryContext::Normal(v)) => Some(v.lc),
             Some(EntryContext::ConfChange(_)) => None,
             None => None,
         }
     }
 
-    /// Returns the contained `Op` if it's an `EntryNormal`.
-    fn op(&self) -> Option<&Op> {
-        match &self.context {
-            Some(EntryContext::Normal(v)) => Some(&v.op),
+    /// Returns the contained `Op` if it's an `EntryNormal`
+    /// consuming `self` by value.
+    fn into_op(self) -> Option<Op> {
+        match self.context {
+            Some(EntryContext::Normal(v)) => Some(v.op),
             Some(EntryContext::ConfChange(_)) => None,
             None => None,
         }

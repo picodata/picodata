@@ -287,7 +287,7 @@ fn picolib_setup(args: &args::Run) {
                         entry.term.to_string(),
                         entry
                             .lc()
-                            .map(ToString::to_string)
+                            .map(|lc| lc.to_string())
                             .unwrap_or_else(String::new),
                         entry.payload().to_string(),
                     ];
@@ -810,7 +810,7 @@ fn start_boot(args: &args::Run) {
             .expect("cannot fail")
             .into(),
         );
-        init_entries_push_op(traft::Op::persist_instance(instance));
+        init_entries_push_op(traft::OpPersistInstance::new(instance).into());
         init_entries_push_op(
             OpDML::insert(
                 ClusterwideSpace::Property,

@@ -37,10 +37,10 @@ use crate::stringify_cfunc;
 use crate::traft::rpc;
 use crate::traft::ContextCoercion as _;
 use crate::traft::Instance;
-use crate::traft::OpDML;
 use crate::traft::RaftId;
 use crate::traft::RaftIndex;
 use crate::traft::RaftTerm;
+use crate::traft::{OpDML, OpPersistInstance};
 use crate::unwrap_some_or;
 use crate::warn_or_panic;
 use ::tarantool::util::IntoClones as _;
@@ -276,7 +276,7 @@ impl Node {
                 // FIXME: this error should be handled
                 let _ = notify.recv_any().await;
             }
-            notify.recv().await
+            notify.recv().await.map(Box::new)
         })
     }
 
@@ -436,7 +436,7 @@ impl NodeImpl {
         T: Into<traft::Op>,
     {
         let (lc, notify) = self.schedule_notification();
-        let ctx = traft::EntryContextNormal::new(lc, op);
+        let ctx = traft::EntryContextNormal::new(lc, op.into());
         self.raw_node.propose(ctx.to_bytes(), vec![])?;
         Ok(notify)
     }
@@ -511,7 +511,7 @@ impl NodeImpl {
             }
         };
         let (lc, notify) = self.schedule_notification();
-        let ctx = traft::EntryContextNormal::new(lc, Op::persist_instance(instance));
+        let ctx = traft::EntryContextNormal::new(lc, OpPersistInstance::new(instance));
 
         // Important! Calling `raw_node.propose()` may result in
         // `ProposalDropped` error, but the topology has already been
@@ -633,18 +633,11 @@ impl NodeImpl {
         expelled: &mut bool,
     ) {
         assert_eq!(entry.entry_type, raft::EntryType::EntryNormal);
-        let result = entry
-            .op()
-            .unwrap_or(&traft::Op::Nop)
-            .on_commit(&self.storage.instances);
+        let lc = entry.lc();
+        let index = entry.index;
+        let op = entry.into_op().unwrap_or(traft::Op::Nop);
 
-        if let Some(lc) = entry.lc() {
-            if let Some(notify) = self.notifications.remove(lc) {
-                notify.notify_ok_any(result);
-            }
-        }
-
-        if let Some(traft::Op::PersistInstance { instance, .. }) = entry.op() {
+        if let traft::Op::PersistInstance(OpPersistInstance(instance)) = &op {
             *topology_changed = true;
             if instance.current_grade == CurrentGradeVariant::Expelled
                 && instance.raft_id == self.raft_id()
@@ -654,7 +647,16 @@ impl NodeImpl {
             }
         }
 
-        if let Some(notify) = self.joint_state_latch.take_or_keep(&entry.index) {
+        // apply the operation
+        let result = op.on_commit(&self.storage.instances);
+
+        if let Some(lc) = &lc {
+            if let Some(notify) = self.notifications.remove(lc) {
+                notify.notify_ok_any(result);
+            }
+        }
+
+        if let Some(notify) = self.joint_state_latch.take_or_keep(&index) {
             // It was expected to be a ConfChange entry, but it's
             // normal. Raft must have overriden it, or there was
             // a re-election.
