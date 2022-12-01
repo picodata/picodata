@@ -27,7 +27,6 @@ use uuid::Uuid;
 
 use protobuf::Message as _;
 
-pub use crate::storage::Clusterwide;
 pub use network::ConnectionPool;
 pub use raft_storage::RaftSpaceAccess;
 pub use rpc::join::Request as JoinRequest;
