@@ -240,7 +240,6 @@ pack-altlinux:
   stage: pack-altlinux
   extends: .pack
   script:
-    - sed -i 's/sudo yum-builddep -y \$<$/sudo yum-builddep -y $< || true/g' packpack/pack/rpm.mk
     - DOCKER_REPO=docker-picodata.binary.picodata.io/packpack/alt DOCKER_IMAGE=p10 packpack/packpack
     - DOCKER_REPO=docker-picodata.binary.picodata.io/packpack/alt DOCKER_IMAGE=p9 packpack/packpack
   artifacts:
