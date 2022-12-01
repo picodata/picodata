@@ -1,3 +1,4 @@
+pub use tarantool::test::{fiber_csw, check_yield, YieldResult};
 use serde::{Deserialize, Serialize};
 
 use tarantool::{
@@ -53,48 +54,6 @@ impl Drop for DropCounter {
 }
 
 pub(crate) fn capture_value<T>(_: &T) {}
-
-pub(crate) fn fiber_csw() -> i32 {
-    static mut FUNCTION_DEFINED: bool = false;
-    let lua = global_lua();
-
-    if unsafe { !FUNCTION_DEFINED } {
-        #[rustfmt::skip]
-        lua.exec(r#"
-            function fiber_csw()
-                local fiber = require('fiber')
-                return fiber.info()[fiber.id()].csw
-            end
-        "#).unwrap();
-        unsafe {
-            FUNCTION_DEFINED = true;
-        }
-    }
-
-    lua.get::<tarantool::tlua::LuaFunction<_>, _>("fiber_csw")
-        .unwrap()
-        .into_call()
-        .unwrap()
-}
-
-pub(crate) fn check_yield<F, T>(f: F) -> YieldResult<T>
-where
-    F: FnOnce() -> T,
-{
-    let csw_before = fiber_csw();
-    let res = f();
-    if fiber_csw() == csw_before {
-        YieldResult::DoesntYield(res)
-    } else {
-        YieldResult::Yields(res)
-    }
-}
-
-#[derive(Debug, PartialEq, Eq)]
-pub(crate) enum YieldResult<T> {
-    Yields(T),
-    DoesntYield(T),
-}
 
 pub(crate) struct LuaStackIntegrityGuard {
     name: &'static str,
