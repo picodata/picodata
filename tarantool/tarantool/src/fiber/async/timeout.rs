@@ -28,6 +28,10 @@ pub struct Timeout<F> {
 /// If the future completes before the duration has elapsed, then the completed
 /// value is returned. Otherwise, an error is returned and the future is
 /// canceled.
+///
+/// A `timeout` equal to [`Duration::ZERO`] guarantees that awaiting this future
+/// will **not** result in a fiber yield.
+///
 /// ```no_run
 /// use tarantool::fiber::r#async::*;
 /// use tarantool::fiber;
@@ -38,7 +42,7 @@ pub struct Timeout<F> {
 /// // Wrap the future with a `Timeout` set to expire in 10 milliseconds.
 /// if let Err(_) = fiber::block_on(timeout::timeout(Duration::from_millis(10), rx)) {
 ///     println!("did not receive value within 10 ms");
-/// }      
+/// }
 /// ```
 pub fn timeout<F: Future>(timeout: Duration, f: F) -> Timeout<F> {
     let now = Instant::now();
@@ -69,7 +73,7 @@ impl<F: Future> Future for Timeout<F> {
         // First, try polling the future
         if let Poll::Ready(v) = self.pin_get_future().poll(cx) {
             Poll::Ready(Ok(v))
-        } else if Instant::now() > deadline {
+        } else if Instant::now() >= deadline {
             Poll::Ready(Err(Expired)) // expired
         } else {
             // SAFETY: This is safe as long as the `Context` really
@@ -86,6 +90,8 @@ mod tests {
     use super::*;
     use crate::fiber;
     use crate::fiber::r#async::{oneshot, RecvError};
+    use crate::test::check_yield;
+    use crate::test::YieldResult::{DoesntYield, Yields};
     use crate::test::{TestCase, TESTS};
     use crate::test_name;
     use linkme::distributed_slice;
@@ -151,6 +157,55 @@ mod tests {
         f: || {
             // must not panic
             timeout(Duration::MAX, async { 1 });
+        },
+    };
+
+    #[distributed_slice(TESTS)]
+    static AWAIT_ACTUALLY_YIELDS: TestCase = TestCase {
+        name: test_name!("await_actually_yields"),
+        f: || {
+            // ready future, no timeout -> no yield
+            assert_eq!(
+                check_yield(|| fiber::block_on(async { 101 })),
+                DoesntYield(101)
+            );
+
+            // ready future, 0 timeout -> no yield
+            assert_eq!(
+                check_yield(|| fiber::block_on(timeout(Duration::ZERO, async { 202 }))),
+                DoesntYield(Ok(202))
+            );
+
+            // ready future, positive timeout -> no yield
+            assert_eq!(
+                check_yield(|| fiber::block_on(timeout(Duration::from_secs(1), async { 303 }))),
+                DoesntYield(Ok(303))
+            );
+
+            // pending future, no timeout -> yield
+            let (_tx, rx) = oneshot::channel::<i32>();
+            let f = check_yield(|| fiber::start(|| fiber::block_on(rx)));
+            // the yield happens as soon as fiber::start is called,
+            // but if fiber::block_on didn't yield we wouldn't even get here,
+            // so this check is totally legit
+            assert!(matches!(f, Yields(_)));
+            // we leak some memory here, but avoid a panic.
+            // Don't do this in your code
+            std::mem::forget(f);
+
+            // pending future, 0 timeout -> no yield
+            let (_tx, rx) = oneshot::channel::<i32>();
+            assert_eq!(
+                check_yield(|| fiber::block_on(timeout(Duration::ZERO, rx))),
+                DoesntYield(Err(Expired))
+            );
+
+            // pending future, positive timeout -> yield
+            let (_tx, rx) = oneshot::channel::<i32>();
+            assert_eq!(
+                check_yield(|| fiber::block_on(timeout(Duration::from_millis(10), rx))),
+                Yields(Err(Expired))
+            );
         },
     };
 }
