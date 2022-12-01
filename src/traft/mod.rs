@@ -837,26 +837,6 @@ pub trait ContextCoercion: Serialize + DeserializeOwned {
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-/// Request to change cluster topology.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum TopologyRequest {
-    Join(join::Request),
-    UpdateInstance(update_instance::Request),
-}
-
-impl From<join::Request> for TopologyRequest {
-    fn from(j: join::Request) -> Self {
-        Self::Join(j)
-    }
-}
-
-impl From<update_instance::Request> for TopologyRequest {
-    fn from(a: update_instance::Request) -> Self {
-        Self::UpdateInstance(a)
-    }
-}
-
-///////////////////////////////////////////////////////////////////////////////
 
 ::tarantool::define_str_enum! {
     /// Activity state of an instance.

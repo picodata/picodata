@@ -59,7 +59,6 @@ use crate::traft::LogicalClock;
 use crate::traft::Op;
 use crate::traft::RaftSpaceAccess;
 use crate::traft::Topology;
-use crate::traft::TopologyRequest;
 
 use super::OpResult;
 use super::{CurrentGrade, CurrentGradeVariant, TargetGradeVariant};
@@ -257,27 +256,43 @@ impl Node {
         })
     }
 
-    /// Processes the topology request and appends [`Op::PersistInstance`]
-    /// entry to the raft log (if successful).
+    /// Processes the [`join::Request`] request and appends necessary
+    /// entries to the raft log (if successful).
     ///
-    /// Returns the resulting instance when the entry is committed.
+    /// Returns the resulting [`Instance`] when the entry is committed.
     ///
     /// Returns an error if the callee node isn't a raft leader.
     ///
     /// **This function yields**
-    pub fn handle_topology_request_and_wait(
+    pub fn handle_join_request_and_wait(
         &self,
-        req: TopologyRequest,
+        req: join::Request,
     ) -> traft::Result<Box<traft::Instance>> {
-        let (notify_for_address, notify) =
-            self.raw_operation(|node_impl| node_impl.process_topology_request_async(req))?;
+        let (notify_addr, notify_instance) =
+            self.raw_operation(|node_impl| node_impl.process_join_request_async(req))?;
         fiber::block_on(async {
-            if let Some(notify) = notify_for_address {
-                // FIXME: this error should be handled
-                let _ = notify.recv_any().await;
-            }
-            notify.recv().await.map(Box::new)
+            let (addr, instance) = futures::join!(notify_addr.recv_any(), notify_instance.recv());
+            addr?;
+            instance.map(Box::new)
         })
+    }
+
+    /// Processes the [`update_instance::Request`] request and appends
+    /// [`Op::PersistInstance`] entry to the raft log (if successful).
+    ///
+    /// Returns `Ok(())` when the entry is committed.
+    ///
+    /// Returns an error if the callee node isn't a raft leader.
+    ///
+    /// **This function yields**
+    pub fn handle_update_instance_request_and_wait(
+        &self,
+        req: update_instance::Request,
+    ) -> traft::Result<()> {
+        let notify =
+            self.raw_operation(|node_impl| node_impl.process_update_instance_request_async(req))?;
+        fiber::block_on(notify.recv_any())?;
+        Ok(())
     }
 
     /// Only the conf_change_loop on a leader is eligible to call this function.
@@ -304,6 +319,7 @@ impl Node {
 
     /// This function **may yield** if `self.node_impl` mutex is acquired.
     #[inline]
+    #[track_caller]
     fn raw_operation<R>(&self, f: impl FnOnce(&mut NodeImpl) -> R) -> R {
         let mut node_impl = self.node_impl.lock();
         let res = f(&mut node_impl);
@@ -431,6 +447,8 @@ impl NodeImpl {
         Ok(notify)
     }
 
+    /// **Doesn't yield**
+    #[inline]
     pub fn propose_async<T>(&mut self, op: T) -> Result<Notify, RaftError>
     where
         T: Into<traft::Op>,
@@ -461,58 +479,65 @@ impl NodeImpl {
         }
     }
 
-    /// Processes the topology request and appends [`Op::PersistInstance`]
+    /// Processes the [`join::Request`] request and appends necessary entries
+    /// to the raft log (if successful).
+    ///
+    /// Returns an error if the callee node isn't a Raft leader.
+    ///
+    /// **This function doesn't yield**
+    pub fn process_join_request_async(
+        &mut self,
+        req: join::Request,
+    ) -> traft::Result<(Notify, Notify)> {
+        let topology = self.topology_mut()?;
+        let (instance, address) = topology
+            .join(
+                req.instance_id,
+                req.replicaset_id,
+                req.advertise_address,
+                req.failure_domain,
+            )
+            .map_err(RaftError::ConfChangeError)?;
+        let peer_address = traft::PeerAddress {
+            raft_id: instance.raft_id,
+            address,
+        };
+        let op_addr = OpDML::replace(ClusterwideSpace::Address, &peer_address).expect("can't fail");
+        let op_instance = OpPersistInstance::new(instance);
+        // Important! Calling `raw_node.propose()` may result in
+        // `ProposalDropped` error, but the topology has already been
+        // modified. The correct handling of this case should be the
+        // following.
+        //
+        // The `topology_cache` should be preserved. It won't be fully
+        // consistent anymore, but that's bearable. (TODO: examine how
+        // the particular requests are handled). At least it doesn't
+        // much differ from the case of overriding the entry due to a
+        // re-election.
+        //
+        // On the other hand, dropping topology_cache may be much more
+        // harmful. Loss of the uncommitted entries could result in
+        // assigning the same `raft_id` to a two different nodes.
+        Ok((
+            self.propose_async(op_addr)?,
+            self.propose_async(op_instance)?,
+        ))
+    }
+
+    /// Processes the [`update_instance::Request`] request and appends [`Op::PersistInstance`]
     /// entry to the raft log (if successful).
     ///
     /// Returns an error if the callee node isn't a Raft leader.
     ///
-    /// **This function yields**
-    pub fn process_topology_request_async(
+    /// **This function doesn't yield**
+    pub fn process_update_instance_request_async(
         &mut self,
-        req: TopologyRequest,
-    ) -> traft::Result<(Option<Notify>, Notify)> {
+        req: update_instance::Request,
+    ) -> traft::Result<Notify> {
         let topology = self.topology_mut()?;
-        // FIXME: remove this once we introduce some 'async' stuff
-        let notify_for_address;
-        let instance = match req {
-            TopologyRequest::Join(join::Request {
-                instance_id,
-                replicaset_id,
-                advertise_address,
-                failure_domain,
-                ..
-            }) => {
-                let (instance, address) = topology
-                    .join(
-                        instance_id,
-                        replicaset_id,
-                        advertise_address,
-                        failure_domain,
-                    )
-                    .map_err(RaftError::ConfChangeError)?;
-                let peer_address = traft::PeerAddress {
-                    raft_id: instance.raft_id,
-                    address,
-                };
-                let op =
-                    OpDML::replace(ClusterwideSpace::Address, &peer_address).expect("can't fail");
-                let (lc, notify) = self.schedule_notification();
-                notify_for_address = Some(notify);
-                let ctx = traft::EntryContextNormal::new(lc, op);
-                // Important! Read bellow
-                self.raw_node.propose(ctx.to_bytes(), vec![])?;
-                instance
-            }
-            TopologyRequest::UpdateInstance(req) => {
-                notify_for_address = None;
-                topology
-                    .update_instance(req)
-                    .map_err(RaftError::ConfChangeError)?
-            }
-        };
-        let (lc, notify) = self.schedule_notification();
-        let ctx = traft::EntryContextNormal::new(lc, OpPersistInstance::new(instance));
-
+        let instance = topology
+            .update_instance(req)
+            .map_err(RaftError::ConfChangeError)?;
         // Important! Calling `raw_node.propose()` may result in
         // `ProposalDropped` error, but the topology has already been
         // modified. The correct handling of this case should be the
@@ -528,9 +553,7 @@ impl NodeImpl {
         // harmful. Loss of the uncommitted entries could result in
         // assigning the same `raft_id` to a two different nodes.
         //
-        self.raw_node.propose(ctx.to_bytes(), vec![])?;
-
-        Ok((notify_for_address, notify))
+        Ok(self.propose_async(OpPersistInstance::new(instance))?)
     }
 
     fn propose_conf_change_async(
@@ -1121,7 +1144,7 @@ fn raft_conf_change_loop(
                 "current_grade" => %req.current_grade.expect("just set"),
                 "instance_id" => %req.instance_id,
             );
-            if let Err(e) = node.handle_topology_request_and_wait(req.into()) {
+            if let Err(e) = node.handle_update_instance_request_and_wait(req) {
                 tlog!(Warning,
                     "failed handling update_instance::Request: {e}";
                     "instance_id" => %instance.instance_id,
@@ -1216,12 +1239,11 @@ fn raft_conf_change_loop(
                     ));
                 global()
                     .expect("can't be deinitialized")
-                    .handle_topology_request_and_wait(req.into())
+                    .handle_update_instance_request_and_wait(req)
             });
             match res {
-                Ok(instance) => {
+                Ok(()) => {
                     tlog!(Info, "raft sync processed");
-                    debug_assert!(instance.current_grade == CurrentGradeVariant::RaftSynced);
                 }
                 Err(e) => {
                     tlog!(Warning, "raft sync failed: {e}";
@@ -1281,7 +1303,7 @@ fn raft_conf_change_loop(
                     .with_current_grade(CurrentGrade::replicated(
                         instance.target_grade.incarnation,
                     ));
-                node.handle_topology_request_and_wait(req.into())?;
+                node.handle_update_instance_request_and_wait(req)?;
 
                 Ok(())
             })();
@@ -1377,7 +1399,7 @@ fn raft_conf_change_loop(
                     .with_current_grade(CurrentGrade::sharding_initialized(
                         instance.target_grade.incarnation,
                     ));
-                node.handle_topology_request_and_wait(req.into())?;
+                node.handle_update_instance_request_and_wait(req)?;
 
                 if !vshard_bootstrapped {
                     // TODO: if this fails, it will only rerun next time vshard
@@ -1482,7 +1504,7 @@ fn raft_conf_change_loop(
                             .with_current_grade(CurrentGrade::online(
                                 instance.target_grade.incarnation,
                             ));
-                    node.handle_topology_request_and_wait(req.into())?;
+                    node.handle_update_instance_request_and_wait(req)?;
                     Ok(())
                 })()
             } else {
@@ -1502,7 +1524,7 @@ fn raft_conf_change_loop(
                         let cluster_id = cluster_id.clone();
                         let req = update_instance::Request::new(instance_id.clone(), cluster_id)
                             .with_current_grade(CurrentGrade::online(target_grade.incarnation));
-                        node.handle_topology_request_and_wait(req.into())?;
+                        node.handle_update_instance_request_and_wait(req)?;
                         // TODO: change `Info` to `Debug`
                         tlog!(Info, "instance is online"; "instance_id" => %instance_id);
                     }

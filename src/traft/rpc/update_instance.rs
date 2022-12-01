@@ -28,7 +28,7 @@ crate::define_rpc_request! {
                 "current_grade" => %current_grade,
             );
         }
-        match node.handle_topology_request_and_wait(req.into()) {
+        match node.handle_update_instance_request_and_wait(req) {
             Ok(_) => Ok(Response::Ok {}),
             Err(Error::NotALeader) => Ok(Response::ErrNotALeader),
             Err(e) => Err(e),

@@ -798,6 +798,7 @@ dependencies = [
  "clap",
  "cmake",
  "errno",
+ "futures",
  "indoc",
  "inventory",
  "itertools",

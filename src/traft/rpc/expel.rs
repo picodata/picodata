@@ -22,9 +22,9 @@ crate::define_rpc_request! {
             return Err(Error::NotALeader);
         }
 
-        let req2 = update_instance::Request::new(req.instance_id, req.cluster_id)
+        let req = update_instance::Request::new(req.instance_id, req.cluster_id)
             .with_target_grade(traft::TargetGradeVariant::Expelled);
-        node.handle_topology_request_and_wait(req2.into())?;
+        node.handle_update_instance_request_and_wait(req)?;
 
         Ok(Response {})
     }

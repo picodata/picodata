@@ -92,7 +92,7 @@ fn go_offline() -> traft::Result<()> {
         let wait_before_retry = Duration::from_millis(300);
 
         if leader_id == raft_id {
-            match node.handle_topology_request_and_wait(req.clone().into()) {
+            match node.handle_update_instance_request_and_wait(req.clone()) {
                 Err(Error::NotALeader) => {
                     // We've lost leadership while waiting for NodeImpl
                     // mutex. Retry after a small pause.

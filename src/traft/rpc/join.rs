@@ -27,7 +27,7 @@ crate::define_rpc_request! {
             });
         }
 
-        match node.handle_topology_request_and_wait(req.into()) {
+        match node.handle_join_request_and_wait(req) {
             Ok(instance) => {
                 let mut box_replication = vec![];
                 for replica in node.storage.instances.replicaset_instances(&instance.replicaset_id)? {
