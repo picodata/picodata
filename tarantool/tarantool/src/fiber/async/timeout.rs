@@ -41,9 +41,15 @@ pub struct Timeout<F> {
 /// }      
 /// ```
 pub fn timeout<F: Future>(timeout: Duration, f: F) -> Timeout<F> {
+    let now = Instant::now();
+    let deadline = now.checked_add(timeout).unwrap_or_else(|| {
+        // Add 30 years for now, because this is what tokio does:
+        // https://github.com/tokio-rs/tokio/blob/22862739dddd49a94065aa7a917cde2dc8a3f6bc/tokio/src/time/instant.rs#L58-L62
+        now + Duration::from_secs(60 * 60 * 24 * 365 * 30)
+    });
     Timeout {
         future: f,
-        deadline: Instant::now() + timeout,
+        deadline,
     }
 }
 
@@ -136,6 +142,15 @@ mod tests {
             let jh = fiber::start(move || fiber::block_on(fut));
             tx.send(400).unwrap();
             assert_eq!(jh.join(), Ok(Ok(400)));
+        },
+    };
+
+    #[distributed_slice(TESTS)]
+    static TIMEOUT_DURATION_MAX: TestCase = TestCase {
+        name: test_name!("timeout_duration_max"),
+        f: || {
+            // must not panic
+            timeout(Duration::MAX, async { 1 });
         },
     };
 }
