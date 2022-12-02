@@ -604,7 +604,7 @@ class Cluster:
     def remove_data(self):
         rmtree(self.data_dir)
 
-    def expel(self, target: Instance, peer: Instance = None):
+    def expel(self, target: Instance, peer: Instance | None = None):
         peer = peer if peer else target
 
         # fmt: off
