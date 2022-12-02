@@ -16,7 +16,7 @@ def assert_peer_expelled(expelled_peer: Instance, instance: Instance):
 
 def assert_voters(voters: list[Instance], instance: Instance):
     expected_voters = list(map(lambda i: i.raft_id, voters))
-    real_voters = instance.eval("return box.space.raft_state:get('voters').value")
+    real_voters = instance.eval("return pico.space.raft_state:get('voters').value")
     assert real_voters.sort() == expected_voters.sort()
 
 

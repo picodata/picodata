@@ -21,16 +21,6 @@ def cluster3(cluster: Cluster):
     return cluster
 
 
-def column_index(instance, space, name):
-    format = instance.eval(f"return box.space.{space}:format()")
-    i = 0
-    for field in format:
-        if field["name"] == name:
-            return i
-        i = i + 1
-    raise (f"Column {name} not found in space {space}")
-
-
 def raft_join(
     peer: Instance,
     cluster_id: str,
@@ -56,7 +46,7 @@ def raft_join(
 
 def replicaset_id(instance: Instance):
     return instance.eval(
-        "return box.space.raft_group:get(...).replicaset_id", instance.instance_id
+        "return pico.space.raft_group:get(...).replicaset_id", instance.instance_id
     )
 
 
@@ -139,7 +129,7 @@ def test_replication(cluster: Cluster):
     for instance in cluster.instances:
         with instance.connect(1) as conn:
             raft_peer = conn.eval(
-                "return box.space.raft_group:get(...):tomap()",
+                "return pico.space.raft_group:get(...):tomap()",
                 instance.instance_id,
             )[0]
             space_cluster = conn.select("_cluster")
@@ -191,20 +181,24 @@ def test_init_replication_factor(cluster: Cluster):
 
     def read_replication_factor(instance):
         return instance.eval(
-            'return box.space.cluster_state:get("replication_factor")'
-        )[1]
+            'return pico.space.cluster_state:get("replication_factor").value'
+        )
 
     assert read_replication_factor(i1) == 2
     assert read_replication_factor(i2) == 2
     assert read_replication_factor(i3) == 2
 
-    INDEX_OF_REPLICASET_ID = column_index(i1, "raft_group", "replicaset_id")
+    replicaset_ids = i1.eval(
+        """
+        return pico.space.raft_group:pairs()
+            :map(function(peer)
+                return peer.replicaset_id
+            end)
+            :totable()
+    """
+    )
 
-    def read_raft_groups(instance):
-        tuples = instance.eval("return box.space.raft_group:select()")
-        return set(map(lambda t: t[INDEX_OF_REPLICASET_ID], tuples))
-
-    assert read_raft_groups(i1) == {"r1", "r2"}
+    assert {"r1", "r2"} == set(replicaset_ids)
 
 
 def test_cluster_id_mismatch(instance: Instance):
@@ -352,11 +346,11 @@ def test_fail_to_join(cluster: Cluster):
 
     joined_instances = i1.eval(
         """
-        res = {}
-        for _, t in pairs(box.space.raft_group:select()) do
-            table.insert(res, { t.instance_id, t.raft_id })
-        end
-        return res
+        return pico.space.raft_group:pairs()
+            :map(function(peer)
+                return { peer.instance_id, peer.raft_id }
+            end)
+            :totable()
     """
     )
     assert {tuple(i) for i in joined_instances} == {(i1.instance_id, i1.raft_id)}

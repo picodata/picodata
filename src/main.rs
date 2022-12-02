@@ -51,8 +51,17 @@ pub struct InnerTest {
 fn picolib_setup(args: &args::Run) {
     set_log_level(args.log_level());
     let l = ::tarantool::lua_state();
-    l.exec("package.loaded.pico = {}").unwrap();
-    l.exec("_G.pico = package.loaded.pico").unwrap();
+    l.exec(
+        "package.loaded.pico = {}
+        _G.pico = package.loaded.pico
+        pico.space = setmetatable({}, { __index =
+            function(self, space_name)
+                return box.space['_picodata_' .. space_name]
+            end
+        })
+        ",
+    )
+    .unwrap();
     let luamod: tlua::LuaTable<_> = l.get("pico").unwrap();
 
     luamod.set("VERSION", env!("CARGO_PKG_VERSION"));

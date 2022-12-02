@@ -25,7 +25,7 @@ def wait_repl_master(i: Instance, other_than=None):
     repl_master = i.eval(
         """
         local rid = pico.peer_info(...).replicaset_id
-        return box.space.replicasets:get(rid).master_id
+        return pico.space.replicaset:get(rid).master_id
     """,
         i.instance_id,
     )

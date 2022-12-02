@@ -6,7 +6,7 @@ def test_add_migration(cluster: Cluster):
     i1, i2 = cluster.instances
     i1.promote_or_fail()
     i1.eval("pico.add_migration(1, 'migration body')")
-    migrations_table = i2.call("box.space.migrations:select")
+    migrations_table = i2.call("pico.space.migration:select")
     assert [[1, "migration body"]] == migrations_table
 
 
@@ -16,7 +16,7 @@ def test_push_schema_version(cluster: Cluster):
     i1.promote_or_fail()
     i1.eval("pico.push_schema_version(3)")
     key = "desired_schema_version"
-    assert [[key, 3]] == i2.call("box.space.cluster_state:select", [key])
+    assert [[key, 3]] == i2.call("pico.space.cluster_state:select", [key])
 
 
 def test_apply_migrations(cluster: Cluster):
@@ -39,14 +39,17 @@ def test_apply_migrations(cluster: Cluster):
 
     i1.call("pico.migrate")
 
-    def assert_space_insert(conn):
-        assert conn.insert("test_space", [1, "foo"])
-
-    def assert_replicaset_version(conn, v):
-        position = conn.schema.get_field("replicasets", "current_schema_version")["id"]
-        assert [v, v, v] == [tuple[position] for tuple in conn.select("replicasets")]
-
     for i in cluster.instances:
         with i.connect(timeout=1) as conn:
-            assert_space_insert(conn)
-            assert_replicaset_version(conn, 2)
+            assert conn.insert("test_space", [1, "foo"])
+
+        schema_versions = i.eval(
+            """
+            return pico.space.replicaset:pairs()
+                :map(function(replicaset)
+                    return replicaset.current_schema_version
+                end)
+                :totable()
+        """
+        )
+        assert {2} == set(schema_versions)
