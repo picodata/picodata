@@ -19,7 +19,7 @@ use std::marker::PhantomData;
 ::tarantool::define_str_enum! {
     /// An enumeration of builtin cluster-wide spaces
     pub enum ClusterwideSpace {
-        Group = "_picodata_raft_group",
+        Instance = "_picodata_instance",
         Address = "_picodata_peer_address",
         Property = "_picodata_property",
         Replicaset = "_picodata_replicaset",
@@ -353,8 +353,7 @@ impl Iterator for PeerAddressIter {
 // Peers
 ////////////////////////////////////////////////////////////////////////////////
 
-/// A struct for accessing storage of all the cluster peers
-/// (currently raft_group).
+/// A struct for accessing storage of all the cluster peers.
 #[derive(Clone, Debug)]
 pub struct Peers {
     space: Space,
@@ -364,7 +363,7 @@ pub struct Peers {
 }
 
 impl Peers {
-    const SPACE_NAME: &'static str = ClusterwideSpace::Group.as_str();
+    const SPACE_NAME: &'static str = ClusterwideSpace::Instance.as_str();
     const INDEX_INSTANCE_ID: &'static str = "instance_id";
     const INDEX_RAFT_ID: &'static str = "raft_id";
     const INDEX_REPLICASET_ID: &'static str = "replicaset_id";
@@ -799,7 +798,7 @@ inventory::submit!(crate::InnerTest {
         use traft::{CurrentGradeVariant as CurrentGrade, TargetGradeVariant as TargetGrade, InstanceId};
 
         let storage_peers = Peers::new().unwrap();
-        let raft_group = storage_peers.space.clone();
+        let space_peers = storage_peers.space.clone();
         let storage_peer_addresses = PeerAddresses::new().unwrap();
         let space_peer_addresses = storage_peer_addresses.space.clone();
 
@@ -815,7 +814,7 @@ inventory::submit!(crate::InnerTest {
             // r3
             ("i5", "i5-uuid", 5u64, "r3", "r3-uuid", (CurrentGrade::Online, 0), (TargetGrade::Online, 0), &faildom,),
         ] {
-            raft_group.put(&peer).unwrap();
+            space_peers.put(&peer).unwrap();
             let (_, _, raft_id, ..) = peer;
             space_peer_addresses.put(&(raft_id, format!("addr:{raft_id}"))).unwrap();
         }
@@ -837,7 +836,7 @@ inventory::submit!(crate::InnerTest {
                     "Tarantool error:",
                     " TupleFound: Duplicate key exists",
                     " in unique index \"raft_id\"",
-                    " in space \"_picodata_raft_group\"",
+                    " in space \"_picodata_instance\"",
                     " with old tuple",
                     r#" - ["i1", "i1-uuid", 1, "r1", "r1-uuid", ["{gon}", 0], ["{tgon}", 0], {{"A": "B"}}]"#,
                     " and new tuple",
@@ -893,43 +892,43 @@ inventory::submit!(crate::InnerTest {
             assert_eq!(box_replication("r3"), ["addr:5"]);
         }
 
-        raft_group.index("raft_id").unwrap().drop().unwrap();
+        space_peers.index("raft_id").unwrap().drop().unwrap();
 
         assert_err!(
             storage_peers.get(&1),
             concat!(
                 "Tarantool error: NoSuchIndexID: No index #1 is defined",
-                " in space '_picodata_raft_group'",
+                " in space '_picodata_instance'",
             )
         );
 
-        raft_group.index("replicaset_id").unwrap().drop().unwrap();
+        space_peers.index("replicaset_id").unwrap().drop().unwrap();
 
         assert_err!(
             storage_peers.replicaset_peers(""),
             concat!(
                 "Tarantool error: NoSuchIndexID: No index #2 is defined",
-                " in space '_picodata_raft_group'",
+                " in space '_picodata_instance'",
             )
         );
 
-        raft_group.primary_key().drop().unwrap();
+        space_peers.primary_key().drop().unwrap();
 
         assert_err!(
             storage_peers.get(&InstanceId::from("i1")),
             concat!(
                 "Tarantool error: NoSuchIndexID: No index #0 is defined",
-                " in space '_picodata_raft_group'",
+                " in space '_picodata_instance'",
             )
         );
 
-        raft_group.drop().unwrap();
+        space_peers.drop().unwrap();
 
         assert_err!(
             storage_peers.all_peers(),
             format!(
                 "Tarantool error: NoSuchSpace: Space '{}' does not exist",
-                raft_group.id(),
+                space_peers.id(),
             )
         );
     }

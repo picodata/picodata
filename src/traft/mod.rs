@@ -423,8 +423,6 @@ pub struct Peer {
 
     /// Instance failure domains. Instances with overlapping failure domains
     /// must not be in the same replicaset.
-    // TODO: raft_group space is kinda bloated, maybe we should store some data
-    // in different spaces/not deserialize the whole tuple every time?
     pub failure_domain: FailureDomain,
 }
 impl Encode for Peer {}
