@@ -182,8 +182,7 @@ impl State {
 // Replicasets
 ////////////////////////////////////////////////////////////////////////////////
 
-/// A struct for accessing storage of the cluster-wide key-value state
-/// (currently cluster_state).
+/// A struct for accessing replicaset info from storage
 #[derive(Clone, Debug)]
 pub struct Replicasets {
     space: Space,
