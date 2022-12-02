@@ -489,7 +489,7 @@ impl NodeImpl {
                     address,
                 };
                 let op =
-                    OpDML::replace(ClusterwideSpace::Addresses, &peer_address).expect("can't fail");
+                    OpDML::replace(ClusterwideSpace::Address, &peer_address).expect("can't fail");
                 let (lc, notify) = self.schedule_notification();
                 notify_for_address = Some(notify);
                 let ctx = traft::EntryContextNormal::new(lc, op);
@@ -1047,7 +1047,7 @@ fn raft_conf_change_loop(
                         ops.assign("master_id", &peer.instance_id)?;
 
                         let op =
-                            OpDML::update(ClusterwideSpace::Replicasets, &[replicaset_id], ops)?;
+                            OpDML::update(ClusterwideSpace::Replicaset, &[replicaset_id], ops)?;
                         tlog!(Info, "proposing replicaset master change"; "op" => ?op);
                         // TODO: don't hard code the timeout
                         node.propose_and_wait(op, Duration::from_secs(3))??;
@@ -1281,7 +1281,7 @@ fn raft_conf_change_loop(
                     } else {
                         let vshard_bootstrapped = storage.state.vshard_bootstrapped()?;
                         let req = traft::OpDML::insert(
-                            ClusterwideSpace::Replicasets,
+                            ClusterwideSpace::Replicaset,
                             &traft::Replicaset {
                                 replicaset_id: peer.replicaset_id.clone(),
                                 replicaset_uuid: peer.replicaset_uuid.clone(),
@@ -1432,7 +1432,7 @@ fn raft_conf_change_loop(
                         ops.assign("weight", weight)?;
                         node.propose_and_wait(
                             traft::OpDML::update(
-                                ClusterwideSpace::Replicasets,
+                                ClusterwideSpace::Replicaset,
                                 &[replicaset_id],
                                 ops,
                             )?,
@@ -1528,7 +1528,7 @@ fn raft_conf_change_loop(
                         let mut ops = UpdateOps::new();
                         ops.assign("current_schema_version", migration.id).unwrap();
                         let op = OpDML::update(
-                            ClusterwideSpace::Replicasets,
+                            ClusterwideSpace::Replicaset,
                             &[replicaset.replicaset_id.clone()],
                             ops,
                         )

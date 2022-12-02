@@ -19,13 +19,11 @@ use std::marker::PhantomData;
 ::tarantool::define_str_enum! {
     /// An enumeration of builtin cluster-wide spaces
     pub enum ClusterwideSpace {
-        // TODO: add `picodata_` prefixes to spaces
-        // to avoid collisions with business spaces
-        Group = "raft_group",
-        Addresses = "pico_peer_addresses",
-        State = "cluster_state",
-        Replicasets = "replicasets",
-        Migrations = "migrations",
+        Group = "_picodata_raft_group",
+        Address = "_picodata_peer_address",
+        State = "_picodata_cluster_state",
+        Replicaset = "_picodata_replicaset",
+        Migration = "_picodata_migration",
     }
 }
 
@@ -189,7 +187,7 @@ pub struct Replicasets {
 }
 
 impl Replicasets {
-    const SPACE_NAME: &'static str = ClusterwideSpace::Replicasets.as_str();
+    const SPACE_NAME: &'static str = ClusterwideSpace::Replicaset.as_str();
     const INDEX_PRIMARY: &'static str = "pk";
 
     pub fn new() -> tarantool::Result<Self> {
@@ -269,7 +267,7 @@ pub struct PeerAddresses {
 }
 
 impl PeerAddresses {
-    const SPACE_NAME: &'static str = ClusterwideSpace::Addresses.as_str();
+    const SPACE_NAME: &'static str = ClusterwideSpace::Address.as_str();
     const INDEX_RAFT_ID: &'static str = "raft_id";
 
     pub fn new() -> tarantool::Result<Self> {
@@ -716,7 +714,7 @@ pub struct Migrations {
 }
 
 impl Migrations {
-    const SPACE_NAME: &'static str = ClusterwideSpace::Migrations.as_str();
+    const SPACE_NAME: &'static str = ClusterwideSpace::Migration.as_str();
     const INDEX_PRIMARY: &'static str = "pk";
 
     pub fn new() -> tarantool::Result<Self> {
@@ -838,7 +836,7 @@ inventory::submit!(crate::InnerTest {
                     "Tarantool error:",
                     " TupleFound: Duplicate key exists",
                     " in unique index \"raft_id\"",
-                    " in space \"raft_group\"",
+                    " in space \"_picodata_raft_group\"",
                     " with old tuple",
                     r#" - ["i1", "i1-uuid", 1, "r1", "r1-uuid", ["{gon}", 0], ["{tgon}", 0], {{"A": "B"}}]"#,
                     " and new tuple",
@@ -900,7 +898,7 @@ inventory::submit!(crate::InnerTest {
             storage_peers.get(&1),
             concat!(
                 "Tarantool error: NoSuchIndexID: No index #1 is defined",
-                " in space 'raft_group'",
+                " in space '_picodata_raft_group'",
             )
         );
 
@@ -910,7 +908,7 @@ inventory::submit!(crate::InnerTest {
             storage_peers.replicaset_peers(""),
             concat!(
                 "Tarantool error: NoSuchIndexID: No index #2 is defined",
-                " in space 'raft_group'",
+                " in space '_picodata_raft_group'",
             )
         );
 
@@ -920,7 +918,7 @@ inventory::submit!(crate::InnerTest {
             storage_peers.get(&InstanceId::from("i1")),
             concat!(
                 "Tarantool error: NoSuchIndexID: No index #0 is defined",
-                " in space 'raft_group'",
+                " in space '_picodata_raft_group'",
             )
         );
 

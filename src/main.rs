@@ -396,7 +396,7 @@ fn picolib_setup(args: &args::Run) {
         "add_migration",
         tlua::function2(|id: u64, body: String| -> traft::Result<()> {
             let migration = Migration { id, body };
-            let op = OpDML::insert(ClusterwideSpace::Migrations, &migration)?;
+            let op = OpDML::insert(ClusterwideSpace::Migration, &migration)?;
             node::global()?.propose_and_wait(op, Duration::MAX)??;
             Ok(())
         }),
@@ -823,7 +823,7 @@ fn start_boot(args: &args::Run) {
 
         init_entries_push_op(
             traft::OpDML::insert(
-                ClusterwideSpace::Addresses,
+                ClusterwideSpace::Address,
                 &traft::PeerAddress { raft_id, address },
             )
             .expect("cannot fail")
