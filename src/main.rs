@@ -249,36 +249,6 @@ fn picolib_setup(args: &args::Run) {
         tlua::function0(tlog::clear_highlight),
     )
     .unwrap();
-    {
-        l.exec(
-            r#"
-                function inspect()
-                    return
-                        {raft_log = pico.raft_log()},
-                        {raft_state = box.space.raft_state:fselect()},
-                        {raft_group = box.space.raft_group:fselect()}
-                end
-
-                function inspect_idx(idx)
-                    local digest = require('digest')
-                    local msgpack = require('msgpack')
-                    local row = box.space.raft_log:get(idx)
-                    local function decode(v)
-                        local ok, ret = pcall(function()
-                            return msgpack.decode(digest.base64_decode(v))
-                        end)
-                        return ok and ret or "???"
-                    end
-                    return {
-                        decode(row.data),
-                        decode(row.ctx),
-                        nil
-                    }
-                end
-            "#,
-        )
-        .unwrap();
-    }
 
     #[derive(::tarantool::tlua::LuaRead, Default, Clone, Copy)]
     enum Justify {
