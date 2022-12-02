@@ -16,7 +16,7 @@ def test_push_schema_version(cluster: Cluster):
     i1.promote_or_fail()
     i1.eval("pico.push_schema_version(3)")
     key = "desired_schema_version"
-    assert [[key, 3]] == i2.call("pico.space.cluster_state:select", [key])
+    assert [[key, 3]] == i2.call("pico.space.property:select", [key])
 
 
 def test_apply_migrations(cluster: Cluster):

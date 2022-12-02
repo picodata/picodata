@@ -12,7 +12,7 @@ use ::tarantool::transaction::start_transaction;
 use std::convert::TryFrom;
 use std::time::{Duration, Instant};
 use storage::Clusterwide;
-use storage::{ClusterwideSpace, StateKey};
+use storage::{ClusterwideSpace, ProperyName};
 use traft::rpc;
 use traft::RaftSpaceAccess;
 
@@ -385,8 +385,8 @@ fn picolib_setup(args: &args::Run) {
         "push_schema_version",
         tlua::function1(|id: u64| -> traft::Result<()> {
             let op = OpDML::replace(
-                ClusterwideSpace::State,
-                &(StateKey::DesiredSchemaVersion, id),
+                ClusterwideSpace::Property,
+                &(ProperyName::DesiredSchemaVersion, id),
             )?;
             node::global()?.propose_and_wait(op, Duration::MAX)??;
             Ok(())
@@ -402,8 +402,8 @@ fn picolib_setup(args: &args::Run) {
                 None => return Ok(()),
             };
             let op = OpDML::replace(
-                ClusterwideSpace::State,
-                &(StateKey::DesiredSchemaVersion, id),
+                ClusterwideSpace::Property,
+                &(ProperyName::DesiredSchemaVersion, id),
             )?;
             node.propose_and_wait(op, Duration::MAX)??;
             event::wait(Event::MigrateDone)
@@ -811,16 +811,16 @@ fn start_boot(args: &args::Run) {
         init_entries_push_op(traft::Op::persist_peer(peer));
         init_entries_push_op(
             OpDML::insert(
-                ClusterwideSpace::State,
-                &(StateKey::ReplicationFactor, args.init_replication_factor),
+                ClusterwideSpace::Property,
+                &(ProperyName::ReplicationFactor, args.init_replication_factor),
             )
             .expect("cannot fail")
             .into(),
         );
         init_entries_push_op(
             OpDML::insert(
-                ClusterwideSpace::State,
-                &(StateKey::DesiredSchemaVersion, 0),
+                ClusterwideSpace::Property,
+                &(ProperyName::DesiredSchemaVersion, 0),
             )
             .expect("cannot fail")
             .into(),

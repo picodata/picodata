@@ -172,8 +172,7 @@ def test_init_replication_factor(cluster: Cluster):
     # Scenario: first instance shares --init-replication-factor to the whole cluster
     #   Given an Leader instance with --init_replication_factor=2
     #   When a new instances with different --init-replication-factor joins to the cluster
-    #   Then all of them have cluster_state[replication_factor] equals to the Leader
-    #   And there are two replicasets in the cluster
+    #   Then there are two replicasets in the cluster
 
     i1 = cluster.add_instance(init_replication_factor=2)
     i2 = cluster.add_instance(init_replication_factor=3)
@@ -181,7 +180,7 @@ def test_init_replication_factor(cluster: Cluster):
 
     def read_replication_factor(instance):
         return instance.eval(
-            'return pico.space.cluster_state:get("replication_factor").value'
+            'return pico.space.property:get("replication_factor").value'
         )
 
     assert read_replication_factor(i1) == 2

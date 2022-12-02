@@ -189,7 +189,7 @@ impl Op {
             }
             Self::Dml(op) => {
                 let res = Box::new(op.result());
-                if op.space() == &ClusterwideSpace::State {
+                if op.space() == &ClusterwideSpace::Property {
                     event::broadcast(Event::ClusterStateChanged);
                 }
                 res

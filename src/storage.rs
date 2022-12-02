@@ -21,7 +21,7 @@ use std::marker::PhantomData;
     pub enum ClusterwideSpace {
         Group = "_picodata_raft_group",
         Address = "_picodata_peer_address",
-        State = "_picodata_cluster_state",
+        Property = "_picodata_property",
         Replicaset = "_picodata_replicaset",
         Migration = "_picodata_migration",
     }
@@ -65,12 +65,12 @@ impl ClusterwideSpace {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// StateKey
+// ProperyName
 ////////////////////////////////////////////////////////////////////////////////
 
 ::tarantool::define_str_enum! {
-    /// An enumeration of builtin raft spaces
-    pub enum StateKey {
+    /// An enumeration of [`ClusterwideSpace::Property`] key names.
+    pub enum ProperyName {
         ReplicationFactor = "replication_factor",
         VshardBootstrapped = "vshard_bootstrapped",
         DesiredSchemaVersion = "desired_schema_version",
@@ -107,14 +107,13 @@ impl Clusterwide {
 ////////////////////////////////////////////////////////////////////////////////
 
 /// A struct for accessing storage of the cluster-wide key-value state
-/// (currently cluster_state).
 #[derive(Clone, Debug)]
 pub struct State {
     space: Space,
 }
 
 impl State {
-    const SPACE_NAME: &'static str = ClusterwideSpace::State.as_str();
+    const SPACE_NAME: &'static str = ClusterwideSpace::Property.as_str();
     const INDEX_PRIMARY: &'static str = "pk";
 
     pub fn new() -> tarantool::Result<Self> {
@@ -137,7 +136,7 @@ impl State {
     }
 
     #[inline]
-    pub fn get<T>(&self, key: StateKey) -> tarantool::Result<Option<T>>
+    pub fn get<T>(&self, key: ProperyName) -> tarantool::Result<Option<T>>
     where
         T: DecodeOwned,
     {
@@ -149,20 +148,22 @@ impl State {
 
     #[allow(dead_code)]
     #[inline]
-    pub fn put(&self, key: StateKey, value: &impl serde::Serialize) -> tarantool::Result<()> {
+    pub fn put(&self, key: ProperyName, value: &impl serde::Serialize) -> tarantool::Result<()> {
         self.space.put(&(key, value))?;
         Ok(())
     }
 
     #[inline]
     pub fn vshard_bootstrapped(&self) -> tarantool::Result<bool> {
-        Ok(self.get(StateKey::VshardBootstrapped)?.unwrap_or_default())
+        Ok(self
+            .get(ProperyName::VshardBootstrapped)?
+            .unwrap_or_default())
     }
 
     #[inline]
     pub fn replication_factor(&self) -> tarantool::Result<usize> {
         let res = self
-            .get(StateKey::ReplicationFactor)?
+            .get(ProperyName::ReplicationFactor)?
             .expect("replication_factor must be set at boot");
         Ok(res)
     }
@@ -170,7 +171,7 @@ impl State {
     #[inline]
     pub fn desired_schema_version(&self) -> tarantool::Result<u64> {
         let res = self
-            .get(StateKey::DesiredSchemaVersion)?
+            .get(ProperyName::DesiredSchemaVersion)?
             .unwrap_or_default();
         Ok(res)
     }
