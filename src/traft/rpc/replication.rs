@@ -1,4 +1,4 @@
-use crate::storage::peer_field::ReplicasetId;
+use crate::storage::instance_field::ReplicasetId;
 use crate::tarantool::set_cfg_field;
 use crate::traft::{self, node, RaftIndex, RaftTerm, Result};
 use crate::InstanceId;
@@ -12,11 +12,11 @@ crate::define_rpc_request! {
         super::sync::wait_for_index_timeout(req.commit, &node.raft_storage, req.timeout)?;
 
         let storage = &node.storage;
-        let rsid = storage.peers.peer_field::<ReplicasetId>(&node.raft_id())?;
+        let rsid = storage.instances.instance_field::<ReplicasetId>(&node.raft_id())?;
         let mut box_replication = vec![];
-        for replica in storage.peers.replicaset_peers(&rsid)? {
+        for replica in storage.instances.replicaset_instances(&rsid)? {
             let Some(address) = storage.peer_addresses.get(replica.raft_id)? else {
-                crate::tlog!(Warning, "address unknown for peer";
+                crate::tlog!(Warning, "address unknown for instance";
                     "raft_id" => replica.raft_id,
                 );
                 continue;
@@ -61,7 +61,7 @@ pub mod promote {
             Ok(Response {})
         }
 
-        /// Request to promote peer to tarantool replication leader.
+        /// Request to promote instance to tarantool replication leader.
         pub struct Request {
             pub term: RaftTerm,
             pub commit: RaftIndex,

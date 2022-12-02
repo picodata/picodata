@@ -31,8 +31,8 @@ pub use network::ConnectionPool;
 pub use raft_storage::RaftSpaceAccess;
 pub use rpc::join::Request as JoinRequest;
 pub use rpc::join::Response as JoinResponse;
-pub use rpc::update_peer::Request as UpdatePeerRequest;
-pub use rpc::update_peer::Response as UpdatePeerResponse;
+pub use rpc::update_instance::Request as UpdateInstanceRequest;
+pub use rpc::update_instance::Response as UpdateInstanceResponse;
 pub use topology::Topology;
 
 use self::event::Event;
@@ -109,8 +109,8 @@ pub enum Op {
     EvalLua(OpEvalLua),
     ///
     ReturnOne(OpReturnOne),
-    PersistPeer {
-        peer: Box<Peer>,
+    PersistInstance {
+        instance: Box<Instance>,
     },
     /// Cluster-wide data modification operation.
     /// Should be used to manipulate the cluster-wide configuration.
@@ -124,8 +124,8 @@ impl std::fmt::Display for Op {
             Self::Info { msg } => write!(f, "Info({msg:?})"),
             Self::EvalLua(OpEvalLua { code }) => write!(f, "EvalLua({code:?})"),
             Self::ReturnOne(_) => write!(f, "ReturnOne"),
-            Self::PersistPeer { peer } => {
-                write!(f, "PersistPeer{}", peer)
+            Self::PersistInstance { instance } => {
+                write!(f, "PersistInstance{}", instance)
             }
             Self::Dml(OpDML::Insert { space, tuple }) => {
                 write!(f, "Insert({space}, {})", DisplayAsJson(tuple))
@@ -174,7 +174,7 @@ impl std::fmt::Display for Op {
 }
 
 impl Op {
-    pub fn on_commit(&self, peers: &storage::Peers) -> Box<dyn AnyWithTypeName> {
+    pub fn on_commit(&self, instances: &storage::Instances) -> Box<dyn AnyWithTypeName> {
         match self {
             Self::Nop => Box::new(()),
             Self::Info { msg } => {
@@ -183,9 +183,9 @@ impl Op {
             }
             Self::EvalLua(op) => Box::new(op.result()),
             Self::ReturnOne(op) => Box::new(op.result()),
-            Self::PersistPeer { peer } => {
-                peers.put(peer).unwrap();
-                Box::new(peer.clone())
+            Self::PersistInstance { instance } => {
+                instances.put(instance).unwrap();
+                Box::new(instance.clone())
             }
             Self::Dml(op) => {
                 let res = Box::new(op.result());
@@ -197,9 +197,9 @@ impl Op {
         }
     }
 
-    pub fn persist_peer(peer: Peer) -> Self {
-        Self::PersistPeer {
-            peer: Box::new(peer),
+    pub fn persist_instance(instance: Instance) -> Self {
+        Self::PersistInstance {
+            instance: Box::new(instance),
         }
     }
 }
@@ -403,7 +403,7 @@ impl Encode for PeerAddress {}
 //////////////////////////////////////////////////////////////////////////////////////////
 /// Serializable struct representing a member of the raft group.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-pub struct Peer {
+pub struct Instance {
     /// Instances are identified by name.
     pub instance_id: InstanceId,
     pub instance_uuid: String,
@@ -423,11 +423,13 @@ pub struct Peer {
 
     /// Instance failure domains. Instances with overlapping failure domains
     /// must not be in the same replicaset.
+    // TODO: raft_group space is kinda bloated, maybe we should store some data
+    // in different spaces/not deserialize the whole tuple every time?
     pub failure_domain: FailureDomain,
 }
-impl Encode for Peer {}
+impl Encode for Instance {}
 
-impl Peer {
+impl Instance {
     pub fn is_online(&self) -> bool {
         // FIXME: this is probably not what we want anymore
         matches!(self.current_grade.variant, CurrentGradeVariant::Online)
@@ -437,7 +439,7 @@ impl Peer {
         matches!(self.target_grade.variant, TargetGradeVariant::Expelled)
     }
 
-    /// Peer has a grade that implies it may cooperate.
+    /// Instance has a grade that implies it may cooperate.
     /// Currently this means that target_grade is neither Offline or Expelled.
     #[inline]
     pub fn may_respond(&self) -> bool {
@@ -472,7 +474,7 @@ impl Peer {
     }
 }
 
-impl std::fmt::Display for Peer {
+impl std::fmt::Display for Instance {
     #[rustfmt::skip]
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         return write!(f,
@@ -608,7 +610,7 @@ impl EntryContextNormal {
 /// [`EntryContext`] of a conf change entry, either `EntryConfChange` or `EntryConfChangeV2`
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct EntryContextConfChange {
-    pub peers: Vec<Peer>,
+    pub instances: Vec<Instance>,
 }
 
 impl Encode for Entry {}
@@ -820,7 +822,7 @@ pub trait ContextCoercion: Serialize + DeserializeOwned {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum TopologyRequest {
     Join(JoinRequest),
-    UpdatePeer(UpdatePeerRequest),
+    UpdateInstance(UpdateInstanceRequest),
 }
 
 impl From<JoinRequest> for TopologyRequest {
@@ -829,9 +831,9 @@ impl From<JoinRequest> for TopologyRequest {
     }
 }
 
-impl From<UpdatePeerRequest> for TopologyRequest {
-    fn from(a: UpdatePeerRequest) -> Self {
-        Self::UpdatePeer(a)
+impl From<UpdateInstanceRequest> for TopologyRequest {
+    fn from(a: UpdateInstanceRequest) -> Self {
+        Self::UpdateInstance(a)
     }
 }
 

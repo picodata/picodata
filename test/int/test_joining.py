@@ -22,7 +22,7 @@ def cluster3(cluster: Cluster):
 
 
 def raft_join(
-    peer: Instance,
+    instance: Instance,
     cluster_id: str,
     instance_id: str,
     timeout_seconds: float | int,
@@ -33,7 +33,7 @@ def raft_join(
     # invalid address format to eliminate blocking DNS requests.
     # See https://git.picodata.io/picodata/picodata/tarantool-module/-/issues/81
     address = f"nowhere/{instance_id}"
-    return peer.call(
+    return instance.call(
         ".proc_raft_join",
         cluster_id,
         instance_id,
@@ -56,7 +56,7 @@ def test_request_follower(cluster2: Cluster):
 
     expected = [{"ErrNotALeader": {"raft_id": 1, "address": i1.listen}}]
     actual = raft_join(
-        peer=i2, cluster_id=cluster2.id, instance_id="fake-0", timeout_seconds=1
+        instance=i2, cluster_id=cluster2.id, instance_id="fake-0", timeout_seconds=1
     )
     assert expected == actual
 
@@ -70,12 +70,12 @@ def test_discovery(cluster3: Cluster):
     # change leader
     i2.promote_or_fail()
 
-    def req_discover(peer: Instance):
+    def req_discover(instance: Instance):
         request = dict(tmp_id="unused", peers=["test:3301"])
-        request_to = peer.listen
-        return peer.call(".proc_discover", request, request_to)
+        request_to = instance.listen
+        return instance.call(".proc_discover", request, request_to)
 
-    # Run discovery against `--peer i1`.
+    # Run discovery against `--instance i1`.
     # It used to be a bootstrap leader, but now it's just a follower.
     assert req_discover(i1) == [{"Done": {"NonLeader": {"leader": i2.listen}}}]
 
@@ -83,7 +83,7 @@ def test_discovery(cluster3: Cluster):
     i4 = cluster3.add_instance(peers=[i1.listen])
     i4.assert_raft_status("Follower", leader_id=i2.raft_id)
 
-    # Run discovery against `--peer i3`.
+    # Run discovery against `--instance i3`.
     # It has performed a rebootstrap after discovery,
     # and now has the discovery module uninitialized.
     assert req_discover(i3) == [{"Done": {"NonLeader": {"leader": i2.listen}}}]
@@ -108,7 +108,7 @@ def test_parallel(cluster3: Cluster):
     i2.promote_or_fail()
     i3.assert_raft_status("Follower", leader_id=i2.raft_id)
 
-    # Add instance with the first peer being i1
+    # Add instance with the first instance being i1
     i4 = cluster3.add_instance(peers=[i1.listen, i2.listen, i3.listen])
     i4.assert_raft_status("Follower", leader_id=i2.raft_id)
 
@@ -128,7 +128,7 @@ def test_replication(cluster: Cluster):
 
     for instance in cluster.instances:
         with instance.connect(1) as conn:
-            raft_peer = conn.eval(
+            raft_instance = conn.eval(
                 "return pico.space.instance:get(...):tomap()",
                 instance.instance_id,
             )[0]
@@ -144,7 +144,7 @@ def test_replication(cluster: Cluster):
             "target_grade": ["Online", 1],
             "failure_domain": dict(),
         }
-        assert {k: v for k, v in raft_peer.items() if k in expected} == expected
+        assert {k: v for k, v in raft_instance.items() if k in expected} == expected
 
         assert list(space_cluster) == [
             [1, i1.instance_uuid()],
@@ -190,8 +190,8 @@ def test_init_replication_factor(cluster: Cluster):
     replicaset_ids = i1.eval(
         """
         return pico.space.instance:pairs()
-            :map(function(peer)
-                return peer.replicaset_id
+            :map(function(instance)
+                return instance.replicaset_id
             end)
             :totable()
     """
@@ -213,7 +213,7 @@ def test_cluster_id_mismatch(instance: Instance):
 
     with pytest.raises(TarantoolError, match=expected_error_re):
         raft_join(
-            peer=instance,
+            instance=instance,
             cluster_id=wrong_cluster_id,
             instance_id="whatever",
             timeout_seconds=1,
@@ -223,7 +223,7 @@ def test_cluster_id_mismatch(instance: Instance):
 @pytest.mark.xfail(
     run=False,
     reason=(
-        "failed reading peer with id `3`: peer with id 3 not found, "
+        "failed reading instance with id `3`: instance with id 3 not found, "
         "thread 'main' panicked, src/traft/node.rs:1515:17"
     ),
 )
@@ -271,7 +271,7 @@ def test_failure_domains(cluster: Cluster):
 
     with pytest.raises(TarantoolError, match="missing failure domain names: PLANET"):
         raft_join(
-            peer=i1,
+            instance=i1,
             cluster_id=i1.cluster_id,
             instance_id="x1",
             failure_domain=dict(os="Arch"),
@@ -284,7 +284,7 @@ def test_failure_domains(cluster: Cluster):
 
     with pytest.raises(TarantoolError, match="missing failure domain names: OS"):
         raft_join(
-            peer=i1,
+            instance=i1,
             cluster_id=i1.cluster_id,
             instance_id="x1",
             failure_domain=dict(planet="Venus"),
@@ -346,8 +346,8 @@ def test_fail_to_join(cluster: Cluster):
     joined_instances = i1.eval(
         """
         return pico.space.instance:pairs()
-            :map(function(peer)
-                return { peer.instance_id, peer.raft_id }
+            :map(function(instance)
+                return { instance.instance_id, instance.raft_id }
             end)
             :totable()
     """
@@ -369,9 +369,9 @@ def test_not_a_leader_at_postjoin(cluster: Cluster):
     i1.eval(
         """
         local args = ...
-        box.schema.func.drop(".proc_update_peer")
-        _G[""] = { proc_update_peer = function()
-            box.schema.func.create(".proc_update_peer", {language="C", if_not_exists=true})
+        box.schema.func.drop(".proc_update_instance")
+        _G[""] = { proc_update_instance = function()
+            box.schema.func.create(".proc_update_instance", {language="C", if_not_exists=true})
             require("net.box").connect(args.addr):call("pico.raft_timeout_now")
             return {'ErrNotALeader'}
         end }

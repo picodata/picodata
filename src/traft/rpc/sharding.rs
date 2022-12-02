@@ -124,7 +124,7 @@ pub mod cfg {
                 .map(|r| (r.replicaset_id.clone(), r))
                 .collect();
             let mut sharding: HashMap<String, Replicaset> = HashMap::new();
-            for peer in storage.peers.iter()? {
+            for peer in storage.instances.iter()? {
                 if !peer.may_respond() {
                     continue;
                 }

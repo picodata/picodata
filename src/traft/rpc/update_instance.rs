@@ -5,7 +5,7 @@ use crate::traft::{error::Error, node, InstanceId};
 use crate::traft::{CurrentGrade, TargetGradeVariant};
 
 crate::define_rpc_request! {
-    fn proc_update_peer(req: Request) -> Result<Response> {
+    fn proc_update_instance(req: Request) -> Result<Response> {
         let node = node::global()?;
 
         let cluster_id = node
@@ -23,7 +23,7 @@ crate::define_rpc_request! {
         let mut req = req;
         let instance_id = &*req.instance_id;
         if let Some(current_grade) = req.current_grade.take() {
-            tlog!(Warning, "attempt to change current_grade by peer";
+            tlog!(Warning, "attempt to change current_grade by instance";
                 "instance_id" => instance_id,
                 "current_grade" => %current_grade,
             );
@@ -42,7 +42,7 @@ crate::define_rpc_request! {
         pub cluster_id: String,
         /// Only allowed to be set by leader
         pub current_grade: Option<CurrentGrade>,
-        /// Can be set by peer
+        /// Can be set by instance
         pub target_grade: Option<TargetGradeVariant>,
         pub failure_domain: Option<FailureDomain>,
     }

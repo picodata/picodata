@@ -10,7 +10,7 @@ use crate::traft::node;
 use crate::traft::rpc;
 use crate::traft::CurrentGradeVariant;
 use crate::traft::TargetGradeVariant;
-use crate::traft::{UpdatePeerRequest, UpdatePeerResponse};
+use crate::traft::{UpdateInstanceRequest, UpdateInstanceResponse};
 use crate::unwrap_ok_or;
 
 pub fn callback() {
@@ -29,7 +29,7 @@ pub fn callback() {
     let raft_id = node.raft_id();
     loop {
         let me = unwrap_ok_or!(
-            node.storage.peers.get(&raft_id),
+            node.storage.instances.get(&raft_id),
             Err(e) => {
                 tlog!(Error, "{e}");
                 break;
@@ -56,8 +56,8 @@ pub fn callback() {
         let quorum = voters.len() / 2 + 1;
         let voters_alive = voters
             .iter()
-            .filter_map(|raft_id| node.storage.peers.get(raft_id).ok())
-            .filter(|peer| peer.current_grade == CurrentGradeVariant::Online)
+            .filter_map(|raft_id| node.storage.instances.get(raft_id).ok())
+            .filter(|instance| instance.current_grade == CurrentGradeVariant::Online)
             .count();
 
         if voters_alive < quorum {
@@ -73,13 +73,13 @@ fn go_offline() -> traft::Result<()> {
     let node = node::global()?;
     let raft_id = node.raft_id();
 
-    let peer = node.storage.peers.get(&raft_id)?;
+    let instance = node.storage.instances.get(&raft_id)?;
     let cluster_id = node
         .raft_storage
         .cluster_id()?
         .ok_or_else(|| Error::other("missing cluster_id value in storage"))?;
 
-    let req = UpdatePeerRequest::new(peer.instance_id, cluster_id)
+    let req = UpdateInstanceRequest::new(instance.instance_id, cluster_id)
         .with_target_grade(TargetGradeVariant::Offline);
 
     loop {
@@ -110,8 +110,8 @@ fn go_offline() -> traft::Result<()> {
             continue;
         };
         let res = match rpc::net_box_call(&leader_address, &req, Duration::MAX) {
-            Ok(UpdatePeerResponse::Ok) => Ok(()),
-            Ok(UpdatePeerResponse::ErrNotALeader) => Err(Error::NotALeader),
+            Ok(UpdateInstanceResponse::Ok) => Ok(()),
+            Ok(UpdateInstanceResponse::ErrNotALeader) => Err(Error::NotALeader),
             Err(e) => Err(e.into()),
         };
 

@@ -68,7 +68,7 @@ def test_couple_leader_first(cluster2: Cluster):
     assert not c1.matched
 
     i2.assert_raft_status("Leader")
-    i1_info = i2.call("pico.peer_info", i1.instance_id)
+    i1_info = i2.call("pico.instance_info", i1.instance_id)
     assert i1_info["target_grade"]["variant"] == "Offline"
     assert i1_info["current_grade"]["variant"] == "Offline"
 
@@ -88,7 +88,7 @@ def test_couple_follower_first(cluster2: Cluster):
     i2.terminate(kill_after_seconds=1)
     assert not c2.matched
 
-    i2_info = i1.call("pico.peer_info", i2.instance_id)
+    i2_info = i1.call("pico.instance_info", i2.instance_id)
     assert i2_info["target_grade"]["variant"] == "Offline"
     assert i2_info["current_grade"]["variant"] == "Offline"
 

@@ -14,7 +14,7 @@ use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 use crate::mailbox::Mailbox;
-use crate::storage::{peer_field, Clusterwide, PeerAddresses, Peers};
+use crate::storage::{instance_field, Clusterwide, Instances, PeerAddresses};
 use crate::tlog;
 use crate::traft;
 use crate::traft::error::Error;
@@ -364,7 +364,7 @@ impl ConnectionPoolBuilder {
             workers: HashMap::new(),
             raft_ids: HashMap::new(),
             peer_addresses: self.storage.peer_addresses,
-            peers: self.storage.peers,
+            instances: self.storage.instances,
         }
     }
 }
@@ -379,7 +379,7 @@ pub struct ConnectionPool {
     workers: HashMap<RaftId, PoolWorker>,
     raft_ids: HashMap<InstanceId, RaftId>,
     peer_addresses: PeerAddresses,
-    peers: Peers,
+    instances: Instances,
 }
 
 impl ConnectionPool {
@@ -401,9 +401,9 @@ impl ConnectionPool {
             Entry::Occupied(entry) => Ok(entry.into_mut()),
             Entry::Vacant(entry) => {
                 let instance_id = self
-                    .peers
-                    .peer_field::<peer_field::InstanceId>(&raft_id)
-                    .map_err(|_| Error::NoPeerWithRaftId(raft_id))
+                    .instances
+                    .instance_field::<instance_field::InstanceId>(&raft_id)
+                    .map_err(|_| Error::NoInstanceWithRaftId(raft_id))
                     .ok();
                 // Check if address of this peer is known.
                 // No need to store the result,
@@ -435,9 +435,9 @@ impl ConnectionPool {
             Entry::Vacant(entry) => {
                 let instance_id = entry.key();
                 let raft_id = self
-                    .peers
-                    .peer_field::<peer_field::RaftId>(instance_id)
-                    .map_err(|_| Error::NoPeerWithInstanceId(instance_id.clone()))?;
+                    .instances
+                    .instance_field::<instance_field::RaftId>(instance_id)
+                    .map_err(|_| Error::NoInstanceWithInstanceId(instance_id.clone()))?;
                 let worker = PoolWorker::run(
                     raft_id,
                     instance_id.clone(),
@@ -460,7 +460,7 @@ impl ConnectionPool {
         self.get_or_create_by_raft_id(msg.to)?.send(msg)
     }
 
-    /// Send a request to peer with `id` (see `PeerId`) and wait for the result.
+    /// Send a request to instance with `id` (see `IdOfInstance`) and wait for the result.
     ///
     /// If the request failed, it's a responsibility of the caller
     /// to re-send it later.
@@ -469,7 +469,7 @@ impl ConnectionPool {
     #[allow(dead_code)]
     pub fn call_and_wait_timeout<R>(
         &mut self,
-        id: &impl PeerId,
+        id: &impl IdOfInstance,
         req: R,
         timeout: Duration,
     ) -> Result<R::Response>
@@ -482,7 +482,7 @@ impl ConnectionPool {
         rx.recv_timeout(timeout).map_err(|_| Error::Timeout)?
     }
 
-    /// Send a request to peer with `id` (see `PeerId`) and wait for the result.
+    /// Send a request to instance with `id` (see `InstanceId`) and wait for the result.
     ///
     /// If the request failed, it's a responsibility of the caller
     /// to re-send it later.
@@ -490,14 +490,14 @@ impl ConnectionPool {
     /// **This function yields.**
     #[allow(dead_code)]
     #[inline(always)]
-    pub fn call_and_wait<R>(&mut self, id: &impl PeerId, req: R) -> Result<R::Response>
+    pub fn call_and_wait<R>(&mut self, id: &impl IdOfInstance, req: R) -> Result<R::Response>
     where
         R: Request,
     {
         self.call_and_wait_timeout(id, req, Duration::MAX)
     }
 
-    /// Send a request to peer with `id` (see `PeerId`) and wait for the result.
+    /// Send a request to instance with `id` (see `InstanceId`) and wait for the result.
     ///
     /// If the request failed, it's a responsibility of the caller
     /// to re-send it later.
@@ -505,7 +505,7 @@ impl ConnectionPool {
     /// **This function never yields.**
     pub fn call<R>(
         &mut self,
-        id: &impl PeerId,
+        id: &impl IdOfInstance,
         req: R,
         cb: impl FnOnce(Result<R::Response>) + 'static,
     ) -> Result<()>
@@ -526,23 +526,23 @@ impl Drop for ConnectionPool {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// PeerId
+// IdOfInstance
 ////////////////////////////////////////////////////////////////////////////////
 
-/// Types implementing this trait can be used to identify a `Peer` when
+/// Types implementing this trait can be used to identify a `Instance` when
 /// accessing ConnectionPool.
-pub trait PeerId: std::hash::Hash {
+pub trait IdOfInstance: std::hash::Hash {
     fn get_or_create_in<'p>(&self, pool: &'p mut ConnectionPool) -> Result<&'p mut PoolWorker>;
 }
 
-impl PeerId for RaftId {
+impl IdOfInstance for RaftId {
     #[inline(always)]
     fn get_or_create_in<'p>(&self, pool: &'p mut ConnectionPool) -> Result<&'p mut PoolWorker> {
         pool.get_or_create_by_raft_id(*self)
     }
 }
 
-impl PeerId for InstanceId {
+impl IdOfInstance for InstanceId {
     #[inline(always)]
     fn get_or_create_in<'p>(&self, pool: &'p mut ConnectionPool) -> Result<&'p mut PoolWorker> {
         pool.get_or_create_by_instance_id(self)
@@ -590,12 +590,15 @@ inventory::submit!(crate::InnerTest {
             .build();
         let listen: String = l.eval("return box.info.listen").unwrap();
 
-        let peer = traft::Peer {
+        let instance = traft::Instance {
             raft_id: 1337,
-            ..traft::Peer::default()
+            ..traft::Instance::default()
         };
-        storage.peers.put(&peer).unwrap();
-        storage.peer_addresses.put(peer.raft_id, &listen).unwrap();
+        storage.instances.put(&instance).unwrap();
+        storage
+            .peer_addresses
+            .put(instance.raft_id, &listen)
+            .unwrap();
         tlog!(Info, "TEST: connecting {listen}");
         // pool.connect(1337, listen);
 

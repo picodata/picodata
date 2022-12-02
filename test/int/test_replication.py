@@ -24,7 +24,7 @@ def cluster3(cluster: Cluster):
 def wait_repl_master(i: Instance, other_than=None):
     repl_master = i.eval(
         """
-        local rid = pico.peer_info(...).replicaset_id
+        local rid = pico.instance_info(...).replicaset_id
         return pico.space.replicaset:get(rid).master_id
     """,
         i.instance_id,
@@ -168,7 +168,7 @@ def test_bucket_rebalancing(cluster: Cluster):
 
 
 def test_bucket_rebalancing_respects_replication_factor(cluster: Cluster):
-    peer, *_ = cluster.deploy(instance_count=4, init_replication_factor=2)
+    i1, *_ = cluster.deploy(instance_count=4, init_replication_factor=2)
 
     # wait for buckets to be rebalanced between 2 replicasets 1500 each
     for i in cluster.instances:
@@ -177,7 +177,7 @@ def test_bucket_rebalancing_respects_replication_factor(cluster: Cluster):
     # check vshard routes requests to both replicasets
     reached_instances = set()
     for bucket_id in [1, 3000]:
-        info = peer.call("vshard.router.callro", bucket_id, "pico.peer_info")
+        info = i1.call("vshard.router.callro", bucket_id, "pico.instance_info")
         reached_instances.add(info["instance_id"])
     assert len(reached_instances) == 2
 
@@ -200,6 +200,6 @@ def test_bucket_rebalancing_respects_replication_factor(cluster: Cluster):
     # check vshard routes requests to all 3 replicasets
     reached_instances = set()
     for bucket_id in [1, 1500, 3000]:
-        info = peer.call("vshard.router.callro", bucket_id, "pico.peer_info")
+        info = i1.call("vshard.router.callro", bucket_id, "pico.instance_info")
         reached_instances.add(info["instance_id"])
     assert len(reached_instances) == 3

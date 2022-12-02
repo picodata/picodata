@@ -216,7 +216,7 @@ class Instance:
         return f"{self.host}:{self.port}"
 
     def current_grade(self):
-        return self.call("pico.peer_info", self.instance_id)["current_grade"]
+        return self.call("pico.instance_info", self.instance_id)["current_grade"]
 
     def instance_uuid(self):
         return self.eval("return box.info.uuid")
@@ -436,7 +436,7 @@ class Instance:
         self.raft_id = whoami["raft_id"]
         self.instance_id = whoami["instance_id"]
 
-        myself = self.call("pico.peer_info", self.instance_id)
+        myself = self.call("pico.instance_info", self.instance_id)
         assert isinstance(myself, dict)
         assert isinstance(myself["current_grade"], dict)
         assert myself["current_grade"]["variant"] == "Online"

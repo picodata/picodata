@@ -184,21 +184,21 @@ def test_whoami(instance: Instance):
     }
 
 
-def test_peer_info(instance: Instance):
-    def peer_info(iid: str | None = None):
-        return instance.call("pico.peer_info", iid)
+def test_instance_info(instance: Instance):
+    def instance_info(iid: str | None = None):
+        return instance.call("pico.instance_info", iid)
 
     # Don't compare entire structure, a couple of fields is enough
-    myself = peer_info("i1")
+    myself = instance_info("i1")
     assert myself["raft_id"] == 1
     assert myself["instance_id"] == "i1"
     assert myself["replicaset_id"] == "r1"
 
     with pytest.raises(ReturnError) as e:
-        peer_info("i2")
-    assert e.value.args == ('peer with id "i2" not found',)
+        instance_info("i2")
+    assert e.value.args == ('instance with id "i2" not found',)
 
-    assert peer_info() == myself
+    assert instance_info() == myself
 
 
 def test_raft_log(instance: Instance):
@@ -218,18 +218,18 @@ def test_raft_log(instance: Instance):
 |index|term| lc  |contents|
 +-----+----+-----+--------+
 |  1  | 1  |1.0.1|Insert(_picodata_peer_address, [1,"127.0.0.1:{p}"])|
-|  2  | 1  |1.0.2|PersistPeer(i1, 1, r1, Offline(0), {b})|
+|  2  | 1  |1.0.2|PersistInstance(i1, 1, r1, Offline(0), {b})|
 |  3  | 1  |1.0.3|Insert(_picodata_property, ["replication_factor",1])|
 |  4  | 1  |1.0.4|Insert(_picodata_property, ["desired_schema_version",0])|
 |  5  | 1  |     |AddNode(1)|
 |  6  | 2  |     |-|
-|  7  | 2  |1.1.1|PersistPeer(i1, 1, r1, Offline(0) -> Online(1), {b})|
-|  8  | 2  |1.1.2|PersistPeer(i1, 1, r1, RaftSynced(1) -> Online(1), {b})|
-|  9  | 2  |1.1.3|PersistPeer(i1, 1, r1, Replicated(1) -> Online(1), {b})|
+|  7  | 2  |1.1.1|PersistInstance(i1, 1, r1, Offline(0) -> Online(1), {b})|
+|  8  | 2  |1.1.2|PersistInstance(i1, 1, r1, RaftSynced(1) -> Online(1), {b})|
+|  9  | 2  |1.1.3|PersistInstance(i1, 1, r1, Replicated(1) -> Online(1), {b})|
 | 10  | 2  |1.1.4|Insert(_picodata_replicaset, ["r1","e0df68c5-e7f9-395f-86b3-30ad9e1b7b07","i1",1.0,0])|
-| 11  | 2  |1.1.5|PersistPeer(i1, 1, r1, ShardingInitialized(1) -> Online(1), {b})|
+| 11  | 2  |1.1.5|PersistInstance(i1, 1, r1, ShardingInitialized(1) -> Online(1), {b})|
 | 12  | 2  |1.1.6|Replace(_picodata_property, ["vshard_bootstrapped",true])|
-| 13  | 2  |1.1.7|PersistPeer(i1, 1, r1, Online(1), {b})|
+| 13  | 2  |1.1.7|PersistInstance(i1, 1, r1, Online(1), {b})|
 +-----+----+-----+--------+
 """.format(  # noqa: E501
         p=instance.port, b="{}"

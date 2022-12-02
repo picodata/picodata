@@ -8,9 +8,9 @@ def cluster3(cluster: Cluster):
     return cluster
 
 
-def assert_peer_expelled(expelled_peer: Instance, instance: Instance):
-    peer_info = instance.call("pico.peer_info", expelled_peer.instance_id)
-    grades = peer_info["current_grade"]["variant"], peer_info["target_grade"]["variant"]
+def assert_instance_expelled(expelled_instance: Instance, instance: Instance):
+    info = instance.call("pico.instance_info", expelled_instance.instance_id)
+    grades = (info["current_grade"]["variant"], info["target_grade"]["variant"])
     assert ("Expelled", "Expelled") == grades
 
 
@@ -28,7 +28,7 @@ def test_expel_follower(cluster3: Cluster):
     # Scenario: expel a Follower instance by command to Leader
     #   Given a cluster
     #   When a Follower instance expelled from the cluster
-    #   Then the instance marked as expelled in the peers table
+    #   Then the instance marked as expelled in the instances table
     #   And excluded from the voters list
 
     i1, i2, i3 = cluster3.instances
@@ -38,7 +38,7 @@ def test_expel_follower(cluster3: Cluster):
 
     cluster3.expel(i3, i1)
 
-    retrying(lambda: assert_peer_expelled(i3, i1))
+    retrying(lambda: assert_instance_expelled(i3, i1))
     retrying(lambda: assert_voters([i1, i2], i1))
 
     # assert i3.process
@@ -49,7 +49,7 @@ def test_expel_leader(cluster3: Cluster):
     # Scenario: expel a Leader instance by command to itself
     #   Given a cluster
     #   When a Leader instance expelled from the cluster
-    #   Then the instance marked as expelled in the peers table
+    #   Then the instance marked as expelled in the instances table
     #   And excluded from the voters list
 
     i1, i2, i3 = cluster3.instances
@@ -59,7 +59,7 @@ def test_expel_leader(cluster3: Cluster):
 
     cluster3.expel(i1)
 
-    retrying(lambda: assert_peer_expelled(i1, i2))
+    retrying(lambda: assert_instance_expelled(i1, i2))
     retrying(lambda: assert_voters([i2, i3], i2))
 
     # assert i1.process
@@ -80,7 +80,7 @@ def test_expel_by_follower(cluster3: Cluster):
 
     cluster3.expel(i3, i2)
 
-    retrying(lambda: assert_peer_expelled(i3, i1))
+    retrying(lambda: assert_instance_expelled(i3, i1))
     retrying(lambda: assert_voters([i1, i2], i1))
 
     # assert i3.process
@@ -100,7 +100,7 @@ def test_raft_id_after_expel(cluster: Cluster):
     assert 3 == i3.raft_id
 
     cluster.expel(i3, i1)
-    retrying(lambda: assert_peer_expelled(i3, i1))
+    retrying(lambda: assert_instance_expelled(i3, i1))
 
     i4 = cluster.add_instance()
     assert 4 == i4.raft_id

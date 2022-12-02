@@ -1,6 +1,6 @@
 use crate::traft;
 use crate::traft::Result;
-use crate::traft::{error::Error, node, InstanceId, UpdatePeerRequest};
+use crate::traft::{error::Error, node, InstanceId, UpdateInstanceRequest};
 
 crate::define_rpc_request! {
     fn proc_expel_on_leader(req: Request) -> Result<Response> {
@@ -22,7 +22,7 @@ crate::define_rpc_request! {
             return Err(Error::NotALeader);
         }
 
-        let req2 = UpdatePeerRequest::new(req.instance_id, req.cluster_id)
+        let req2 = UpdateInstanceRequest::new(req.instance_id, req.cluster_id)
             .with_target_grade(traft::TargetGradeVariant::Expelled);
         node.handle_topology_request_and_wait(req2.into())?;
 
@@ -32,7 +32,7 @@ crate::define_rpc_request! {
     /// A request to expel an instance.
     ///
     /// This request is only handled by the leader.
-    /// Use [`redirect::Request`] for automatic redirection from any peer to
+    /// Use [`redirect::Request`] for automatic redirection from any instance to
     /// leader.
     pub struct Request {
         pub cluster_id: String,
@@ -57,7 +57,7 @@ pub mod redirect {
 
         /// A request to expel an instance.
         ///
-        /// Can be sent to any peer and will be automatically redirected to
+        /// Can be sent to any instance and will be automatically redirected to
         /// leader.
         pub struct Request(pub super::Request);
         pub struct Response {}

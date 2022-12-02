@@ -16,7 +16,7 @@ pub mod migration;
 pub mod replication;
 pub mod sharding;
 pub mod sync;
-pub mod update_peer;
+pub mod update_instance;
 
 /// Types implementing this trait represent an RPC's (remote procedure call)
 /// arguments. This trait contains information about the request.

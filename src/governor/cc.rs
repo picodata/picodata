@@ -5,12 +5,12 @@ use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 
 use crate::traft::CurrentGradeVariant;
-use crate::traft::Peer;
+use crate::traft::Instance;
 use crate::traft::RaftId;
 use crate::traft::TargetGradeVariant;
 
 struct RaftConf<'a> {
-    all: BTreeMap<RaftId, &'a Peer>,
+    all: BTreeMap<RaftId, &'a Instance>,
     voters: BTreeSet<RaftId>,
     learners: BTreeSet<RaftId>,
 }
@@ -48,22 +48,23 @@ impl<'a> RaftConf<'a> {
 }
 
 pub(crate) fn raft_conf_change(
-    peers: &[Peer],
+    instances: &[Instance],
     voters: &[RaftId],
     learners: &[RaftId],
 ) -> Option<raft::ConfChangeV2> {
     let mut raft_conf = RaftConf {
-        all: peers.iter().map(|p| (p.raft_id, p)).collect(),
+        all: instances.iter().map(|p| (p.raft_id, p)).collect(),
         voters: voters.iter().cloned().collect(),
         learners: learners.iter().cloned().collect(),
     };
     let mut changes: Vec<raft::ConfChangeSingle> = vec![];
 
-    let not_expelled = |peer: &&Peer| !peer.is_expelled();
-    let target_online = |peer: &&Peer| peer.target_grade == TargetGradeVariant::Online;
-    let current_online = |peer: &&Peer| peer.current_grade == CurrentGradeVariant::Online;
+    let not_expelled = |instance: &&Instance| !instance.is_expelled();
+    let target_online = |instance: &&Instance| instance.target_grade == TargetGradeVariant::Online;
+    let current_online =
+        |instance: &&Instance| instance.current_grade == CurrentGradeVariant::Online;
 
-    let cluster_size = peers.iter().filter(not_expelled).count();
+    let cluster_size = instances.iter().filter(not_expelled).count();
     let voters_needed = match cluster_size {
         // five and more nodes -> 5 voters
         5.. => 5,
@@ -77,31 +78,31 @@ pub(crate) fn raft_conf_change(
 
     // Remove / replace voters
     for voter_id in raft_conf.voters.clone().iter() {
-        let Some(peer) = raft_conf.all.get(voter_id) else {
+        let Some(instance) = raft_conf.all.get(voter_id) else {
             // Nearly impossible, but rust forces me to check it.
             let ccs = raft_conf.change_single(RemoveNode, *voter_id);
             changes.push(ccs);
             continue;
         };
-        match peer.target_grade.variant {
+        match instance.target_grade.variant {
             TargetGradeVariant::Online => {
                 // Do nothing
             }
             TargetGradeVariant::Offline => {
                 // A voter goes offline. Replace it with
                 // another online instance if possible.
-                let Some(replacement) = peers.iter().find(|peer| {
-                    peer.has_grades(CurrentGradeVariant::Online, TargetGradeVariant::Online)
-                    && !raft_conf.voters.contains(&peer.raft_id)
+                let Some(replacement) = instances.iter().find(|instance| {
+                    instance.has_grades(CurrentGradeVariant::Online, TargetGradeVariant::Online)
+                    && !raft_conf.voters.contains(&instance.raft_id)
                 }) else { continue };
 
-                let ccs1 = raft_conf.change_single(AddLearnerNode, peer.raft_id);
+                let ccs1 = raft_conf.change_single(AddLearnerNode, instance.raft_id);
                 let ccs2 = raft_conf.change_single(AddNode, replacement.raft_id);
                 changes.extend_from_slice(&[ccs1, ccs2]);
             }
             TargetGradeVariant::Expelled => {
                 // Expelled instance is removed unconditionally.
-                let ccs = raft_conf.change_single(RemoveNode, peer.raft_id);
+                let ccs = raft_conf.change_single(RemoveNode, instance.raft_id);
                 changes.push(ccs);
             }
         }
@@ -116,41 +117,46 @@ pub(crate) fn raft_conf_change(
 
     // Remove unknown / expelled learners
     for learner_id in raft_conf.learners.clone().iter() {
-        let Some(peer) = raft_conf.all.get(learner_id) else {
+        let Some(instance) = raft_conf.all.get(learner_id) else {
             // Nearly impossible, but rust forces me to check it.
             let ccs = raft_conf.change_single(RemoveNode, *learner_id);
             changes.push(ccs);
             continue;
         };
-        match peer.target_grade.variant {
+        match instance.target_grade.variant {
             TargetGradeVariant::Online | TargetGradeVariant::Offline => {
                 // Do nothing
             }
             TargetGradeVariant::Expelled => {
                 // Expelled instance is removed unconditionally.
-                let ccs = raft_conf.change_single(RemoveNode, peer.raft_id);
+                let ccs = raft_conf.change_single(RemoveNode, instance.raft_id);
                 changes.push(ccs);
             }
         }
     }
 
     // Promote more voters
-    for peer in peers.iter().filter(target_online).filter(current_online) {
+    for instance in instances
+        .iter()
+        .filter(target_online)
+        .filter(current_online)
+    {
         if raft_conf.voters.len() >= voters_needed {
             break;
         }
 
-        if !raft_conf.voters.contains(&peer.raft_id) {
-            let ccs = raft_conf.change_single(AddNode, peer.raft_id);
+        if !raft_conf.voters.contains(&instance.raft_id) {
+            let ccs = raft_conf.change_single(AddNode, instance.raft_id);
             changes.push(ccs);
         }
     }
 
     // Promote remaining instances as learners
-    for peer in peers.iter().filter(not_expelled) {
-        if !raft_conf.voters.contains(&peer.raft_id) && !raft_conf.learners.contains(&peer.raft_id)
+    for instance in instances.iter().filter(not_expelled) {
+        if !raft_conf.voters.contains(&instance.raft_id)
+            && !raft_conf.learners.contains(&instance.raft_id)
         {
-            let ccs = raft_conf.change_single(AddLearnerNode, peer.raft_id);
+            let ccs = raft_conf.change_single(AddLearnerNode, instance.raft_id);
             changes.push(ccs);
         }
     }
@@ -174,7 +180,7 @@ mod tests {
 
     use crate::traft::CurrentGradeVariant;
     use crate::traft::Grade;
-    use crate::traft::Peer;
+    use crate::traft::Instance;
     use crate::traft::RaftId;
     use crate::traft::TargetGradeVariant;
 
@@ -184,7 +190,7 @@ mod tests {
             $current_grade:ident ->
             $target_grade:ident
         ) => {
-            Peer {
+            Instance {
                 raft_id: $raft_id,
                 current_grade: Grade {
                     variant: CurrentGradeVariant::$current_grade,
@@ -196,7 +202,7 @@ mod tests {
                     // raft_conf_change doesn't care about incarnations
                     incarnation: 0,
                 },
-                ..Peer::default()
+                ..Instance::default()
             }
         };
 
@@ -226,7 +232,7 @@ mod tests {
         }};
     }
 
-    fn cc(p: &[Peer], v: &[RaftId], l: &[RaftId]) -> Option<raft::ConfChangeV2> {
+    fn cc(p: &[Instance], v: &[RaftId], l: &[RaftId]) -> Option<raft::ConfChangeV2> {
         let mut cc = super::raft_conf_change(p, v, l)?;
         cc.changes.sort_by(|l, r| Ord::cmp(&l.node_id, &r.node_id));
         Some(cc)

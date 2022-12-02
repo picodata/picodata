@@ -20,13 +20,13 @@ pub enum Error {
         expected: &'static str,
         actual: &'static str,
     },
-    /// cluster_id of the joining peer mismatches the cluster_id of the cluster
+    /// cluster_id of the joining instance mismatches the cluster_id of the cluster
     #[error("cannot join the instance to the cluster: cluster_id mismatch: cluster_id of the instance = {instance_cluster_id:?}, cluster_id of the cluster = {cluster_cluster_id:?}")]
     ClusterIdMismatch {
         instance_cluster_id: String,
         cluster_cluster_id: String,
     },
-    /// Peer was requested to configure replication with different replicaset.
+    /// Instance was requested to configure replication with different replicaset.
     #[error("cannot replicate with different replicaset: expected {instance_rsid:?}, requested {requested_rsid:?}")]
     ReplicasetIdMismatch {
         instance_rsid: String,
@@ -43,10 +43,10 @@ pub enum Error {
     Lua(#[from] LuaError),
     #[error("{0}")]
     Tarantool(#[from] ::tarantool::error::Error),
-    #[error("peer with id {0} not found")]
-    NoPeerWithRaftId(RaftId),
-    #[error("peer with id \"{0}\" not found")]
-    NoPeerWithInstanceId(InstanceId),
+    #[error("instance with id {0} not found")]
+    NoInstanceWithRaftId(RaftId),
+    #[error("instance with id \"{0}\" not found")]
+    NoInstanceWithInstanceId(InstanceId),
     #[error("address of peer with id {0} not found")]
     AddressUnknownForRaftId(RaftId),
     #[error("address of peer with id \"{0}\" not found")]

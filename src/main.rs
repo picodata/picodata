@@ -23,7 +23,7 @@ use crate::tlog::set_log_level;
 use crate::traft::event::Event;
 use crate::traft::{event, node, InstanceId, Migration, OpDML};
 use crate::traft::{LogicalClock, RaftIndex, TargetGradeVariant};
-use crate::traft::{UpdatePeerRequest, UpdatePeerResponse};
+use crate::traft::{UpdateInstanceRequest, UpdateInstanceResponse};
 use traft::error::Error;
 
 mod app;
@@ -82,26 +82,26 @@ fn picolib_setup(args: &args::Run) {
     );
 
     luamod.set(
-        "peer_info",
+        "instance_info",
         tlua::function1(|iid: Option<String>| -> traft::Result<_> {
             let node = traft::node::global()?;
             let iid = iid.unwrap_or(node.raft_storage.instance_id()?.unwrap());
-            let peer = node.storage.peers.get(&InstanceId::from(iid))?;
+            let instance = node.storage.instances.get(&InstanceId::from(iid))?;
             let peer_address = node
                 .storage
                 .peer_addresses
-                .get(peer.raft_id)?
+                .get(instance.raft_id)?
                 .unwrap_or_else(|| "<unknown>".into());
 
             Ok(tlua::AsTable((
-                ("raft_id", peer.raft_id),
+                ("raft_id", instance.raft_id),
                 ("advertise_address", peer_address),
-                ("instance_id", peer.instance_id.0),
-                ("instance_uuid", peer.instance_uuid),
-                ("replicaset_id", peer.replicaset_id),
-                ("replicaset_uuid", peer.replicaset_uuid),
-                ("current_grade", peer.current_grade),
-                ("target_grade", peer.target_grade),
+                ("instance_id", instance.instance_id.0),
+                ("instance_uuid", instance.instance_uuid),
+                ("replicaset_id", instance.replicaset_id),
+                ("replicaset_uuid", instance.replicaset_uuid),
+                ("current_grade", instance.current_grade),
+                ("target_grade", instance.target_grade),
             )))
         }),
     );
@@ -460,7 +460,7 @@ fn init_handlers() {
     declare_cfunc!(traft::rpc::expel::proc_expel_on_leader);
     declare_cfunc!(traft::rpc::expel::redirect::proc_expel_redirect);
     declare_cfunc!(traft::rpc::sync::proc_sync_raft);
-    declare_cfunc!(traft::rpc::update_peer::proc_update_peer);
+    declare_cfunc!(traft::rpc::update_instance::proc_update_instance);
     declare_cfunc!(traft::rpc::replication::proc_replication);
     declare_cfunc!(traft::rpc::replication::promote::proc_replication_promote);
     declare_cfunc!(traft::rpc::sharding::proc_sharding);
@@ -750,15 +750,15 @@ fn start_discover(args: &args::Run, to_supervisor: ipc::Sender<IpcMessage>) {
 fn start_boot(args: &args::Run) {
     tlog!(Info, ">>>>> start_boot()");
 
-    let (peer, address) = traft::topology::initial_peer(
+    let (instance, address) = traft::topology::initial_instance(
         args.instance_id.clone(),
         args.replicaset_id.clone(),
         args.advertise_address(),
         args.failure_domain(),
     )
-    .expect("failed adding initial peer");
-    let raft_id = peer.raft_id;
-    let instance_id = peer.instance_id.clone();
+    .expect("failed adding initial instance");
+    let raft_id = instance.raft_id;
+    let instance_id = instance.instance_id.clone();
 
     picolib_setup(args);
     assert!(tarantool::cfg().is_none());
@@ -766,8 +766,8 @@ fn start_boot(args: &args::Run) {
     let cfg = tarantool::Cfg {
         listen: None,
         read_only: false,
-        instance_uuid: Some(peer.instance_uuid.clone()),
-        replicaset_uuid: Some(peer.replicaset_uuid.clone()),
+        instance_uuid: Some(instance.instance_uuid.clone()),
+        replicaset_uuid: Some(instance.replicaset_uuid.clone()),
         wal_dir: args.data_dir.clone(),
         memtx_dir: args.data_dir.clone(),
         log_level: args.log_level() as u8,
@@ -808,7 +808,7 @@ fn start_boot(args: &args::Run) {
             .expect("cannot fail")
             .into(),
         );
-        init_entries_push_op(traft::Op::persist_peer(peer));
+        init_entries_push_op(traft::Op::persist_instance(instance));
         init_entries_push_op(
             OpDML::insert(
                 ClusterwideSpace::Property,
@@ -922,8 +922,8 @@ fn start_join(args: &args::Run, leader_address: String) {
     let cfg = tarantool::Cfg {
         listen: Some(args.listen.clone()),
         read_only: resp.box_replication.len() > 1,
-        instance_uuid: Some(resp.peer.instance_uuid.clone()),
-        replicaset_uuid: Some(resp.peer.replicaset_uuid.clone()),
+        instance_uuid: Some(resp.instance.instance_uuid.clone()),
+        replicaset_uuid: Some(resp.instance.replicaset_uuid.clone()),
         replication: resp.box_replication.clone(),
         wal_dir: args.data_dir.clone(),
         memtx_dir: args.data_dir.clone(),
@@ -933,15 +933,15 @@ fn start_join(args: &args::Run, leader_address: String) {
 
     let (storage, raft_storage) = init_common(args, &cfg);
 
-    let raft_id = resp.peer.raft_id;
+    let raft_id = resp.instance.raft_id;
     start_transaction(|| -> Result<(), TntError> {
-        storage.peers.put(&resp.peer).unwrap();
+        storage.instances.put(&resp.instance).unwrap();
         for traft::PeerAddress { raft_id, address } in resp.peer_addresses {
             storage.peer_addresses.put(raft_id, &address).unwrap();
         }
         raft_storage.persist_raft_id(raft_id).unwrap();
         raft_storage
-            .persist_instance_id(&resp.peer.instance_id)
+            .persist_instance_id(&resp.instance.instance_id)
             .unwrap();
         raft_storage.persist_cluster_id(&args.cluster_id).unwrap();
         Ok(())
@@ -990,10 +990,10 @@ fn postjoin(args: &args::Run, storage: Clusterwide, raft_storage: RaftSpaceAcces
     }
 
     loop {
-        let peer = storage
-            .peers
+        let instance = storage
+            .instances
             .get(&raft_id)
-            .expect("peer must be persisted at the time of postjoin");
+            .expect("instance must be persisted at the time of postjoin");
         let cluster_id = raft_storage
             .cluster_id()
             .unwrap()
@@ -1008,21 +1008,25 @@ fn postjoin(args: &args::Run, storage: Clusterwide, raft_storage: RaftSpaceAcces
             continue;
         };
 
-        tlog!(Info, "initiating self-activation of {}", peer.instance_id);
-        let req = UpdatePeerRequest::new(peer.instance_id, cluster_id)
+        tlog!(
+            Info,
+            "initiating self-activation of {}",
+            instance.instance_id
+        );
+        let req = UpdateInstanceRequest::new(instance.instance_id, cluster_id)
             .with_target_grade(TargetGradeVariant::Online)
             .with_failure_domain(args.failure_domain());
 
-        // It's necessary to call `proc_update_peer` remotely on a
+        // It's necessary to call `proc_update_instance` remotely on a
         // leader over net_box. It always fails otherwise. Only the
-        // leader is permitted to propose PersistPeer entries.
+        // leader is permitted to propose PersistInstance entries.
         let now = Instant::now();
         let timeout = Duration::from_secs(10);
         match rpc::net_box_call(&leader_address, &req, timeout) {
-            Ok(UpdatePeerResponse::Ok) => {
+            Ok(UpdateInstanceResponse::Ok) => {
                 break;
             }
-            Ok(UpdatePeerResponse::ErrNotALeader) => {
+            Ok(UpdateInstanceResponse::ErrNotALeader) => {
                 tlog!(Warning, "failed to activate myself: not a leader, retry...");
                 fiber::sleep(Duration::from_millis(100));
                 continue;

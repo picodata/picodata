@@ -4,8 +4,8 @@ use crate::traft::instance_uuid;
 use crate::traft::replicaset_uuid;
 use crate::traft::Address;
 use crate::traft::FailureDomain;
-use crate::traft::Peer;
-use crate::traft::UpdatePeerRequest;
+use crate::traft::Instance;
+use crate::traft::UpdateInstanceRequest;
 use crate::traft::{CurrentGrade, CurrentGradeVariant, Grade, TargetGrade, TargetGradeVariant};
 use crate::traft::{InstanceId, RaftId, ReplicasetId};
 use crate::util::Uppercase;
@@ -15,13 +15,13 @@ pub struct Topology {
     max_raft_id: RaftId,
 
     failure_domain_names: HashSet<Uppercase>,
-    instance_map: HashMap<InstanceId, (Peer, Address)>,
+    instance_map: HashMap<InstanceId, (Instance, Address)>,
     replicaset_map: BTreeMap<ReplicasetId, HashSet<InstanceId>>,
 }
 
 impl Topology {
     #[inline(always)]
-    pub fn from_peers(peers: impl IntoIterator<Item = (Peer, Address)>) -> Self {
+    pub fn from_instances(instances: impl IntoIterator<Item = (Instance, Address)>) -> Self {
         let mut ret = Self {
             replication_factor: 1,
             max_raft_id: 0,
@@ -30,8 +30,8 @@ impl Topology {
             replicaset_map: Default::default(),
         };
 
-        for (peer, address) in peers {
-            ret.put_peer(peer, address);
+        for (instance, address) in instances {
+            ret.put_instance(instance, address);
         }
 
         ret
@@ -42,22 +42,22 @@ impl Topology {
         self
     }
 
-    fn put_peer(&mut self, peer: Peer, address: Address) {
-        self.max_raft_id = std::cmp::max(self.max_raft_id, peer.raft_id);
+    fn put_instance(&mut self, instance: Instance, address: Address) {
+        self.max_raft_id = std::cmp::max(self.max_raft_id, instance.raft_id);
 
-        let instance_id = peer.instance_id.clone();
-        let replicaset_id = peer.replicaset_id.clone();
+        let instance_id = instance.instance_id.clone();
+        let replicaset_id = instance.replicaset_id.clone();
 
-        if let Some((old_peer, ..)) = self.instance_map.remove(&instance_id) {
+        if let Some((old_instance, ..)) = self.instance_map.remove(&instance_id) {
             self.replicaset_map
-                .get_mut(&old_peer.replicaset_id)
-                .map(|r| r.remove(&old_peer.instance_id));
+                .get_mut(&old_instance.replicaset_id)
+                .map(|r| r.remove(&old_instance.instance_id));
         }
 
         self.failure_domain_names
-            .extend(peer.failure_domain.names().cloned());
+            .extend(instance.failure_domain.names().cloned());
         self.instance_map
-            .insert(instance_id.clone(), (peer, address));
+            .insert(instance_id.clone(), (instance, address));
         self.replicaset_map
             .entry(replicaset_id)
             .or_default()
@@ -82,11 +82,11 @@ impl Topology {
     }
 
     fn choose_replicaset_id(&self, failure_domain: &FailureDomain) -> ReplicasetId {
-        'next_replicaset: for (replicaset_id, peers) in self.replicaset_map.iter() {
-            if peers.len() < self.replication_factor as usize {
-                for peer_id in peers {
-                    let (peer, ..) = self.instance_map.get(peer_id).unwrap();
-                    if peer.failure_domain.intersects(failure_domain) {
+        'next_replicaset: for (replicaset_id, instances) in self.replicaset_map.iter() {
+            if instances.len() < self.replication_factor as usize {
+                for instance_id in instances {
+                    let (instance, ..) = self.instance_map.get(instance_id).unwrap();
+                    if instance.failure_domain.intersects(failure_domain) {
                         continue 'next_replicaset;
                     }
                 }
@@ -126,10 +126,10 @@ impl Topology {
         replicaset_id: Option<ReplicasetId>,
         advertise: Address,
         failure_domain: FailureDomain,
-    ) -> Result<(Peer, Address), String> {
+    ) -> Result<(Instance, Address), String> {
         if let Some(id) = &instance_id {
-            let existing_peer = self.instance_map.get(id);
-            if matches!(existing_peer, Some((peer, ..)) if peer.is_online()) {
+            let existing_instance = self.instance_map.get(id);
+            if matches!(existing_instance, Some((instance, ..)) if instance.is_online()) {
                 let e = format!("{} is already joined", id);
                 return Err(e);
             }
@@ -145,7 +145,7 @@ impl Topology {
             replicaset_id.unwrap_or_else(|| self.choose_replicaset_id(&failure_domain));
         let replicaset_uuid = replicaset_uuid(&replicaset_id);
 
-        let peer = Peer {
+        let instance = Instance {
             instance_id,
             instance_uuid,
             raft_id,
@@ -156,22 +156,22 @@ impl Topology {
             failure_domain,
         };
 
-        self.put_peer(peer.clone(), advertise.clone());
-        Ok((peer, advertise))
+        self.put_instance(instance.clone(), advertise.clone());
+        Ok((instance, advertise))
     }
 
-    pub fn update_peer(&mut self, req: UpdatePeerRequest) -> Result<Peer, String> {
+    pub fn update_instance(&mut self, req: UpdateInstanceRequest) -> Result<Instance, String> {
         let this = self as *const Self;
 
-        let (peer, ..) = self
+        let (instance, ..) = self
             .instance_map
             .get_mut(&req.instance_id)
             .ok_or_else(|| format!("unknown instance {}", req.instance_id))?;
 
-        if peer.current_grade == CurrentGradeVariant::Expelled
+        if instance.current_grade == CurrentGradeVariant::Expelled
             && !matches!(
                 req,
-                UpdatePeerRequest {
+                UpdateInstanceRequest {
                     target_grade: None,
                     current_grade: Some(current_grade),
                     failure_domain: None,
@@ -180,8 +180,8 @@ impl Topology {
             )
         {
             return Err(format!(
-                "cannot update expelled peer \"{}\"",
-                peer.instance_id
+                "cannot update expelled instance \"{}\"",
+                instance.instance_id
             ));
         }
 
@@ -190,36 +190,36 @@ impl Topology {
             // the function
             unsafe { &*this }.check_required_failure_domain(&fd)?;
             self.failure_domain_names.extend(fd.names().cloned());
-            peer.failure_domain = fd;
+            instance.failure_domain = fd;
         }
 
         if let Some(value) = req.current_grade {
-            peer.current_grade = value;
+            instance.current_grade = value;
         }
 
         if let Some(variant) = req.target_grade {
             let incarnation = match variant {
-                TargetGradeVariant::Online => peer.target_grade.incarnation + 1,
-                _ => peer.current_grade.incarnation,
+                TargetGradeVariant::Online => instance.target_grade.incarnation + 1,
+                _ => instance.current_grade.incarnation,
             };
-            peer.target_grade = Grade {
+            instance.target_grade = Grade {
                 variant,
                 incarnation,
             };
         }
 
-        Ok(peer.clone())
+        Ok(instance.clone())
     }
 }
 
-/// Create first peer in the cluster
-pub fn initial_peer(
+/// Create first instance in the cluster
+pub fn initial_instance(
     instance_id: Option<InstanceId>,
     replicaset_id: Option<ReplicasetId>,
     advertise: Address,
     failure_domain: FailureDomain,
-) -> Result<(Peer, Address), String> {
-    let mut topology = Topology::from_peers(vec![]);
+) -> Result<(Instance, Address), String> {
+    let mut topology = Topology::from_instances(vec![]);
     topology.join(instance_id, replicaset_id, advertise, failure_domain)
 }
 
@@ -231,8 +231,8 @@ mod tests {
     use crate::traft::instance_uuid;
     use crate::traft::replicaset_uuid;
     use crate::traft::FailureDomain;
-    use crate::traft::Peer;
-    use crate::traft::UpdatePeerRequest;
+    use crate::traft::Instance;
+    use crate::traft::UpdateInstanceRequest;
     use crate::traft::{CurrentGrade, Grade, TargetGrade, TargetGradeVariant};
     use pretty_assertions::assert_eq;
 
@@ -252,29 +252,29 @@ mod tests {
         }
     }
 
-    trait ModifyUpdatePeerRequest {
-        fn modify(self, req: UpdatePeerRequest) -> UpdatePeerRequest;
+    trait ModifyUpdateInstanceRequest {
+        fn modify(self, req: UpdateInstanceRequest) -> UpdateInstanceRequest;
     }
 
-    impl ModifyUpdatePeerRequest for CurrentGrade {
-        fn modify(self, req: UpdatePeerRequest) -> UpdatePeerRequest {
+    impl ModifyUpdateInstanceRequest for CurrentGrade {
+        fn modify(self, req: UpdateInstanceRequest) -> UpdateInstanceRequest {
             req.with_current_grade(self)
         }
     }
 
-    impl ModifyUpdatePeerRequest for TargetGradeVariant {
-        fn modify(self, req: UpdatePeerRequest) -> UpdatePeerRequest {
+    impl ModifyUpdateInstanceRequest for TargetGradeVariant {
+        fn modify(self, req: UpdateInstanceRequest) -> UpdateInstanceRequest {
             req.with_target_grade(self)
         }
     }
 
-    macro_rules! peers {
-        [ $( ( $($peer:tt)+ ) ),* $(,)? ] => {
-            vec![$( (peer!($($peer)+), "who-cares.biz".into()) ),*]
+    macro_rules! instances {
+        [ $( ( $($instance:tt)+ ) ),* $(,)? ] => {
+            vec![$( (instance!($($instance)+), "who-cares.biz".into()) ),*]
         };
     }
 
-    macro_rules! peer {
+    macro_rules! instance {
         (
             $raft_id:expr,
             $instance_id:literal,
@@ -284,7 +284,7 @@ mod tests {
             $(, $failure_domain:expr)?
             $(,)?
         ) => {
-            Peer {
+            Instance {
                 raft_id: $raft_id,
                 instance_id: $instance_id.into(),
                 replicaset_id: $replicaset_id.into(),
@@ -298,7 +298,7 @@ mod tests {
                     $( let _f = $failure_domain; )?
                     _f
                 },
-                .. Peer::default()
+                .. Instance::default()
             }
         };
     }
@@ -333,9 +333,9 @@ mod tests {
             $(, $target_grade:expr)?)?
             $(,)?
         ) => {
-            $topology.update_peer(
+            $topology.update_instance(
                 {
-                    let req = UpdatePeerRequest::new($instance_id.into(), "".into());
+                    let req = UpdateInstanceRequest::new($instance_id.into(), "".into());
                     $(
                         let req = $current_grade.modify(req);
                         $( let req = $target_grade.modify(req); )?
@@ -352,8 +352,8 @@ mod tests {
             $instance_id:expr,
             $failure_domain:expr $(,)?
         ) => {
-            $topology.update_peer(
-                UpdatePeerRequest::new($instance_id.into(), "".into())
+            $topology.update_instance(
+                UpdateInstanceRequest::new($instance_id.into(), "".into())
                     .with_failure_domain($failure_domain),
             )
         };
@@ -368,41 +368,41 @@ mod tests {
 
     #[test]
     fn test_simple() {
-        let mut topology = Topology::from_peers(vec![]).with_replication_factor(1);
+        let mut topology = Topology::from_instances(vec![]).with_replication_factor(1);
 
         assert_eq!(
             join!(topology, None, None, "addr:1").unwrap(),
-            (peer!(1, "i1", "r1", CurrentGrade::offline(0), TargetGrade::offline(0)), "addr:1".into()),
+            (instance!(1, "i1", "r1", CurrentGrade::offline(0), TargetGrade::offline(0)), "addr:1".into()),
         );
 
         assert_eq!(
             join!(topology, None, None, "addr:1").unwrap(),
-            (peer!(2, "i2", "r2", CurrentGrade::offline(0), TargetGrade::offline(0)), "addr:1".into()),
+            (instance!(2, "i2", "r2", CurrentGrade::offline(0), TargetGrade::offline(0)), "addr:1".into()),
         );
 
         assert_eq!(
             join!(topology, None, Some("R3"), "addr:1").unwrap(),
-            (peer!(3, "i3", "R3", CurrentGrade::offline(0), TargetGrade::offline(0)), "addr:1".into()),
+            (instance!(3, "i3", "R3", CurrentGrade::offline(0), TargetGrade::offline(0)), "addr:1".into()),
         );
 
         assert_eq!(
             join!(topology, Some("I4"), None, "addr:1").unwrap(),
-            (peer!(4, "I4", "r3", CurrentGrade::offline(0), TargetGrade::offline(0)), "addr:1".into()),
+            (instance!(4, "I4", "r3", CurrentGrade::offline(0), TargetGrade::offline(0)), "addr:1".into()),
         );
 
-        let mut topology = Topology::from_peers(
-            peers![(1, "i1", "r1", CurrentGrade::offline(0), TargetGrade::offline(0))]
+        let mut topology = Topology::from_instances(
+            instances![(1, "i1", "r1", CurrentGrade::offline(0), TargetGrade::offline(0))]
         ).with_replication_factor(1);
 
         assert_eq!(
             join!(topology, None, None, "addr:1").unwrap(),
-            (peer!(2, "i2", "r2", CurrentGrade::offline(0), TargetGrade::offline(0)), "addr:1".into()),
+            (instance!(2, "i2", "r2", CurrentGrade::offline(0), TargetGrade::offline(0)), "addr:1".into()),
         );
     }
 
     #[test]
     fn test_override() {
-        let mut topology = Topology::from_peers(peers![
+        let mut topology = Topology::from_instances(instances![
             (1, "i1", "r1", CurrentGrade::online(1), TargetGrade::online(1)),
             (2, "i2", "r2-original", CurrentGrade::offline(0), TargetGrade::offline(0)),
         ])
@@ -432,7 +432,7 @@ mod tests {
         //   Disruption isn't destructive if auto-expel allows (TODO).
         assert_eq!(
             join!(topology, Some("i2"), None, "inactive:2").unwrap(),
-            (peer!(3, "i2", "r1", CurrentGrade::offline(0), TargetGrade::offline(0)), "inactive:2".into()),
+            (instance!(3, "i2", "r1", CurrentGrade::offline(0), TargetGrade::offline(0)), "inactive:2".into()),
             // Attention: generated replicaset_id differs from the
             // original one, as well as raft_id.
             // That's a desired behavior.
@@ -453,7 +453,7 @@ mod tests {
 
     #[test]
     fn test_instance_id_collision() {
-        let mut topology = Topology::from_peers(peers![
+        let mut topology = Topology::from_instances(instances![
             (1, "i1", "r1", CurrentGrade::online(1), TargetGrade::online(1)),
             (2, "i3", "r3", CurrentGrade::online(1), TargetGrade::online(1)),
             // Attention: i3 has raft_id=2
@@ -461,13 +461,13 @@ mod tests {
 
         assert_eq!(
             join!(topology, None, Some("r2"), "addr:2").unwrap(),
-            (peer!(3, "i3-2", "r2", CurrentGrade::offline(0), TargetGrade::offline(0)), "addr:2".into()),
+            (instance!(3, "i3-2", "r2", CurrentGrade::offline(0), TargetGrade::offline(0)), "addr:2".into()),
         );
     }
 
     #[test]
     fn test_replication_factor() {
-        let mut topology = Topology::from_peers(peers![
+        let mut topology = Topology::from_instances(instances![
             (9, "i9", "r9", CurrentGrade::online(1), TargetGrade::online(1)),
             (10, "i10", "r9", CurrentGrade::online(1), TargetGrade::online(1)),
         ])
@@ -475,25 +475,25 @@ mod tests {
 
         assert_eq!(
             join!(topology, Some("i1"), None, "addr:1").unwrap(),
-            (peer!(11, "i1", "r1", CurrentGrade::offline(0), TargetGrade::offline(0)), "addr:1".into()),
+            (instance!(11, "i1", "r1", CurrentGrade::offline(0), TargetGrade::offline(0)), "addr:1".into()),
         );
         assert_eq!(
             join!(topology, Some("i2"), None, "addr:2").unwrap(),
-            (peer!(12, "i2", "r1", CurrentGrade::offline(0), TargetGrade::offline(0)), "addr:2".into()),
+            (instance!(12, "i2", "r1", CurrentGrade::offline(0), TargetGrade::offline(0)), "addr:2".into()),
         );
         assert_eq!(
             join!(topology, Some("i3"), None, "addr:3").unwrap(),
-            (peer!(13, "i3", "r2", CurrentGrade::offline(0), TargetGrade::offline(0)), "addr:3".into()),
+            (instance!(13, "i3", "r2", CurrentGrade::offline(0), TargetGrade::offline(0)), "addr:3".into()),
         );
         assert_eq!(
             join!(topology, Some("i4"), None, "addr:4").unwrap(),
-            (peer!(14, "i4", "r2", CurrentGrade::offline(0), TargetGrade::offline(0)), "addr:4".into()),
+            (instance!(14, "i4", "r2", CurrentGrade::offline(0), TargetGrade::offline(0)), "addr:4".into()),
         );
     }
 
     #[test]
     fn test_update_grade() {
-        let mut topology = Topology::from_peers(peers![
+        let mut topology = Topology::from_instances(instances![
             (1, "i1", "r1", CurrentGrade::online(1), TargetGrade::online(1)),
         ])
         .with_replication_factor(1);
@@ -502,55 +502,55 @@ mod tests {
         // governor has the authority over it
         assert_eq!(
             set_grade!(topology, "i1", CurrentGrade::offline(0)).unwrap(),
-            peer!(1, "i1", "r1", CurrentGrade::offline(0), TargetGrade::online(1)),
+            instance!(1, "i1", "r1", CurrentGrade::offline(0), TargetGrade::online(1)),
         );
 
         // idempotency
         assert_eq!(
             set_grade!(topology, "i1", CurrentGrade::offline(0)).unwrap(),
-            peer!(1, "i1", "r1", CurrentGrade::offline(0), TargetGrade::online(1)),
+            instance!(1, "i1", "r1", CurrentGrade::offline(0), TargetGrade::online(1)),
         );
 
         // TargetGradeVariant::Offline takes incarnation from current grade
         assert_eq!(
             set_grade!(topology, "i1", TargetGradeVariant::Offline).unwrap(),
-            peer!(1, "i1", "r1", CurrentGrade::offline(0), TargetGrade::offline(0)),
+            instance!(1, "i1", "r1", CurrentGrade::offline(0), TargetGrade::offline(0)),
         );
 
         // TargetGradeVariant::Online increases incarnation
         assert_eq!(
             set_grade!(topology, "i1", TargetGradeVariant::Online).unwrap(),
-            peer!(1, "i1", "r1", CurrentGrade::offline(0), TargetGrade::online(1)),
+            instance!(1, "i1", "r1", CurrentGrade::offline(0), TargetGrade::online(1)),
         );
 
         // No idempotency, incarnation goes up
         assert_eq!(
             set_grade!(topology, "i1", TargetGradeVariant::Online).unwrap(),
-            peer!(1, "i1", "r1", CurrentGrade::offline(0), TargetGrade::online(2)),
+            instance!(1, "i1", "r1", CurrentGrade::offline(0), TargetGrade::online(2)),
         );
 
         // TargetGrade::Expelled takes incarnation from current grade
         assert_eq!(
             set_grade!(topology, "i1", TargetGradeVariant::Expelled).unwrap(),
-            peer!(1, "i1", "r1", CurrentGrade::offline(0), TargetGrade::expelled(0)),
+            instance!(1, "i1", "r1", CurrentGrade::offline(0), TargetGrade::expelled(0)),
         );
 
-        // Peer get's expelled
+        // Instance get's expelled
         assert_eq!(
             set_grade!(topology, "i1", CurrentGrade::expelled(69)).unwrap(),
-            peer!(1, "i1", "r1", CurrentGrade::expelled(69), TargetGrade::expelled(0)),
+            instance!(1, "i1", "r1", CurrentGrade::expelled(69), TargetGrade::expelled(0)),
         );
 
-        // Updating expelled peers isn't allowed
+        // Updating expelled instances isn't allowed
         assert_eq!(
             set_grade!(topology, "i1", TargetGradeVariant::Online).unwrap_err().to_string(),
-            "cannot update expelled peer \"i1\"",
+            "cannot update expelled instance \"i1\"",
         );
     }
 
     #[test]
     fn failure_domain() {
-        let mut t = Topology::from_peers(peers![]).with_replication_factor(3);
+        let mut t = Topology::from_instances(instances![]).with_replication_factor(3);
 
         assert_eq!(
             join!(t, None, None, "-", faildoms! {planet: Earth})
@@ -633,12 +633,12 @@ mod tests {
 
     #[test]
     fn reconfigure_failure_domain() {
-        let mut t = Topology::from_peers(peers![]).with_replication_factor(3);
+        let mut t = Topology::from_instances(instances![]).with_replication_factor(3);
 
         // first instance
-        let (peer, ..) = join!(t, Some("i1"), None, "-", faildoms! {planet: Earth}).unwrap();
-        assert_eq!(peer.failure_domain, faildoms! {planet: Earth});
-        assert_eq!(peer.replicaset_id, "r1");
+        let (instance, ..) = join!(t, Some("i1"), None, "-", faildoms! {planet: Earth}).unwrap();
+        assert_eq!(instance.failure_domain, faildoms! {planet: Earth});
+        assert_eq!(instance.replicaset_id, "r1");
 
         // reconfigure single instance, fail
         assert_eq!(
@@ -649,9 +649,9 @@ mod tests {
         );
 
         // reconfigure single instance, success
-        let peer = set_faildoms!(t, "i1", faildoms! {planet: Mars, owner: Ivan}).unwrap();
-        assert_eq!(peer.failure_domain, faildoms! {planet: Mars, owner: Ivan});
-        assert_eq!(peer.replicaset_id, "r1"); // same replicaset
+        let instance = set_faildoms!(t, "i1", faildoms! {planet: Mars, owner: Ivan}).unwrap();
+        assert_eq!(instance.failure_domain, faildoms! {planet: Mars, owner: Ivan});
+        assert_eq!(instance.replicaset_id, "r1"); // same replicaset
 
         // second instance won't be joined without the newly added required
         // failure domain subdivision of "OWNER"
@@ -664,27 +664,27 @@ mod tests {
 
         // second instance
         #[rustfmt::skip]
-        let (peer, ..) = join!(t, Some("i2"), None, "-", faildoms! {planet: Mars, owner: Mike})
+        let (instance, ..) = join!(t, Some("i2"), None, "-", faildoms! {planet: Mars, owner: Mike})
             .unwrap();
-        assert_eq!(peer.failure_domain, faildoms! {planet: Mars, owner: Mike});
+        assert_eq!(instance.failure_domain, faildoms! {planet: Mars, owner: Mike});
         // doesn't fit into r1
-        assert_eq!(peer.replicaset_id, "r2");
+        assert_eq!(instance.replicaset_id, "r2");
 
         // reconfigure second instance, success
-        let peer = set_faildoms!(t, "i2", faildoms! {planet: Earth, owner: Mike}).unwrap();
-        assert_eq!(peer.failure_domain, faildoms! {planet: Earth, owner: Mike});
+        let instance = set_faildoms!(t, "i2", faildoms! {planet: Earth, owner: Mike}).unwrap();
+        assert_eq!(instance.failure_domain, faildoms! {planet: Earth, owner: Mike});
         // replicaset doesn't change automatically
-        assert_eq!(peer.replicaset_id, "r2");
+        assert_eq!(instance.replicaset_id, "r2");
 
         // add instance with new subdivision
         #[rustfmt::skip]
-        let (peer, ..) = join!(t, Some("i3"), None, "-", faildoms! {planet: B, owner: V, dimension: C137})
+        let (instance, ..) = join!(t, Some("i3"), None, "-", faildoms! {planet: B, owner: V, dimension: C137})
             .unwrap();
         assert_eq!(
-            peer.failure_domain,
+            instance.failure_domain,
             faildoms! {planet: B, owner: V, dimension: C137}
         );
-        assert_eq!(peer.replicaset_id, "r1");
+        assert_eq!(instance.replicaset_id, "r1");
 
         // even though the only instance with failure domain subdivision of
         // `DIMENSION` is inactive, we can't add an instance without that
