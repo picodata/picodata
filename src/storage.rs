@@ -432,7 +432,7 @@ impl Instances {
     /// Find a instance by `id` (see `InstanceId`) and return a single field
     /// specified by `F` (see `InstanceFieldDef` & `instance_field` module).
     #[inline(always)]
-    pub fn instance_field<F>(&self, id: &impl InstanceId) -> Result<F::Type>
+    pub fn field<F>(&self, id: &impl InstanceId) -> Result<F::Type>
     where
         F: InstanceFieldDef,
     {

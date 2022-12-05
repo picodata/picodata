@@ -402,7 +402,7 @@ impl ConnectionPool {
             Entry::Vacant(entry) => {
                 let instance_id = self
                     .instances
-                    .instance_field::<instance_field::InstanceId>(&raft_id)
+                    .field::<instance_field::InstanceId>(&raft_id)
                     .map_err(|_| Error::NoInstanceWithRaftId(raft_id))
                     .ok();
                 // Check if address of this peer is known.
@@ -436,7 +436,7 @@ impl ConnectionPool {
                 let instance_id = entry.key();
                 let raft_id = self
                     .instances
-                    .instance_field::<instance_field::RaftId>(instance_id)
+                    .field::<instance_field::RaftId>(instance_id)
                     .map_err(|_| Error::NoInstanceWithInstanceId(instance_id.clone()))?;
                 let worker = PoolWorker::run(
                     raft_id,
