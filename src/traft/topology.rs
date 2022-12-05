@@ -21,7 +21,7 @@ pub struct Topology {
 
 impl Topology {
     #[inline(always)]
-    pub fn from_instances(instances: impl IntoIterator<Item = (Instance, Address)>) -> Self {
+    pub fn new(instances: impl IntoIterator<Item = (Instance, Address)>) -> Self {
         let mut ret = Self {
             replication_factor: 1,
             max_raft_id: 0,
@@ -219,7 +219,7 @@ pub fn initial_instance(
     advertise: Address,
     failure_domain: FailureDomain,
 ) -> Result<(Instance, Address), String> {
-    let mut topology = Topology::from_instances(vec![]);
+    let mut topology = Topology::new(vec![]);
     topology.join(instance_id, replicaset_id, advertise, failure_domain)
 }
 
@@ -368,7 +368,7 @@ mod tests {
 
     #[test]
     fn test_simple() {
-        let mut topology = Topology::from_instances(vec![]).with_replication_factor(1);
+        let mut topology = Topology::new(vec![]).with_replication_factor(1);
 
         assert_eq!(
             join!(topology, None, None, "addr:1").unwrap(),
@@ -390,7 +390,7 @@ mod tests {
             (instance!(4, "I4", "r3", CurrentGrade::offline(0), TargetGrade::offline(0)), "addr:1".into()),
         );
 
-        let mut topology = Topology::from_instances(
+        let mut topology = Topology::new(
             instances![(1, "i1", "r1", CurrentGrade::offline(0), TargetGrade::offline(0))]
         ).with_replication_factor(1);
 
@@ -402,7 +402,7 @@ mod tests {
 
     #[test]
     fn test_override() {
-        let mut topology = Topology::from_instances(instances![
+        let mut topology = Topology::new(instances![
             (1, "i1", "r1", CurrentGrade::online(1), TargetGrade::online(1)),
             (2, "i2", "r2-original", CurrentGrade::offline(0), TargetGrade::offline(0)),
         ])
@@ -453,7 +453,7 @@ mod tests {
 
     #[test]
     fn test_instance_id_collision() {
-        let mut topology = Topology::from_instances(instances![
+        let mut topology = Topology::new(instances![
             (1, "i1", "r1", CurrentGrade::online(1), TargetGrade::online(1)),
             (2, "i3", "r3", CurrentGrade::online(1), TargetGrade::online(1)),
             // Attention: i3 has raft_id=2
@@ -467,7 +467,7 @@ mod tests {
 
     #[test]
     fn test_replication_factor() {
-        let mut topology = Topology::from_instances(instances![
+        let mut topology = Topology::new(instances![
             (9, "i9", "r9", CurrentGrade::online(1), TargetGrade::online(1)),
             (10, "i10", "r9", CurrentGrade::online(1), TargetGrade::online(1)),
         ])
@@ -493,7 +493,7 @@ mod tests {
 
     #[test]
     fn test_update_grade() {
-        let mut topology = Topology::from_instances(instances![
+        let mut topology = Topology::new(instances![
             (1, "i1", "r1", CurrentGrade::online(1), TargetGrade::online(1)),
         ])
         .with_replication_factor(1);
@@ -550,7 +550,7 @@ mod tests {
 
     #[test]
     fn failure_domain() {
-        let mut t = Topology::from_instances(instances![]).with_replication_factor(3);
+        let mut t = Topology::new(instances![]).with_replication_factor(3);
 
         assert_eq!(
             join!(t, None, None, "-", faildoms! {planet: Earth})
@@ -633,7 +633,7 @@ mod tests {
 
     #[test]
     fn reconfigure_failure_domain() {
-        let mut t = Topology::from_instances(instances![]).with_replication_factor(3);
+        let mut t = Topology::new(instances![]).with_replication_factor(3);
 
         // first instance
         let (instance, ..) = join!(t, Some("i1"), None, "-", faildoms! {planet: Earth}).unwrap();

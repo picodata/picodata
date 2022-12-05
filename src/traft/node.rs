@@ -392,7 +392,7 @@ impl NodeImpl {
                     .state
                     .get(PropertyName::ReplicationFactor)?
                     .ok_or_else(|| Error::other("missing replication_factor value in storage"))?;
-                Topology::from_instances(instances).with_replication_factor(replication_factor)
+                Topology::new(instances).with_replication_factor(replication_factor)
             }
         };
 
