@@ -1260,11 +1260,11 @@ fn raft_conf_change_loop(
                 // TODO: don't hard code timeout
                 let res = call_all(&mut pool, reqs, Duration::from_secs(3))?;
 
-                for (instance_iid, resp) in res {
+                for (instance_id, resp) in res {
                     let replication::Response { lsn } = resp?;
                     // TODO: change `Info` to `Debug`
                     tlog!(Info, "configured replication with instance";
-                        "instance_id" => &*instance_iid,
+                        "instance_id" => %instance_id,
                         "lsn" => lsn,
                     );
                 }
@@ -1356,12 +1356,12 @@ fn raft_conf_change_loop(
                 // TODO: don't hard code timeout
                 let res = call_all(&mut pool, reqs, Duration::from_secs(3))?;
 
-                for (instance_iid, resp) in res {
+                for (instance_id, resp) in res {
                     let sharding::Response {} = resp?;
 
                     // TODO: change `Info` to `Debug`
                     tlog!(Info, "initialized sharding with instance";
-                        "instance_id" => &*instance_iid,
+                        "instance_id" => %instance_id,
                     );
                 }
 
@@ -1409,9 +1409,9 @@ fn raft_conf_change_loop(
                     }));
                 // TODO: don't hard code timeout
                 let res = call_all(&mut pool, reqs, Duration::from_secs(3))?;
-                for (instance_iid, resp) in res {
+                for (instance_id, resp) in res {
                     resp?;
-                    tlog!(Debug, "promoted replicaset master"; "instance_id" => %instance_iid);
+                    tlog!(Debug, "promoted replicaset master"; "instance_id" => %instance_id);
                 }
                 Ok(())
             })();
@@ -1463,10 +1463,10 @@ fn raft_conf_change_loop(
                     // TODO: don't hard code timeout
                     let res = call_all(&mut pool, reqs, Duration::from_secs(3))?;
 
-                    for (instance_iid, resp) in res {
+                    for (instance_id, resp) in res {
                         resp?;
                         // TODO: change `Info` to `Debug`
-                        tlog!(Info, "instance is online"; "instance_id" => &*instance_iid);
+                        tlog!(Info, "instance is online"; "instance_id" => %instance_id);
                     }
 
                     let req =
@@ -1496,7 +1496,7 @@ fn raft_conf_change_loop(
                             .with_current_grade(CurrentGrade::online(target_grade.incarnation));
                         node.handle_topology_request_and_wait(req.into())?;
                         // TODO: change `Info` to `Debug`
-                        tlog!(Info, "instance is online"; "instance_id" => &**instance_id);
+                        tlog!(Info, "instance is online"; "instance_id" => %instance_id);
                     }
                     Ok(())
                 })()
@@ -1582,7 +1582,7 @@ fn raft_conf_change_loop(
     ) -> traft::Result<Vec<(I, traft::Result<R::Response>)>>
     where
         R: traft::rpc::Request,
-        I: traft::network::IdOfInstance + Clone + std::fmt::Debug + 'static,
+        I: traft::network::IdOfInstance + 'static,
     {
         // TODO: this crap is only needed to wait until results of all
         // the calls are ready. There are several ways to rafactor this:

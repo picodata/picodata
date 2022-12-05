@@ -437,7 +437,7 @@ impl Instance {
     }
 
     /// Instance has a grade that implies it may cooperate.
-    /// Currently this means that target_grade is neither Offline or Expelled.
+    /// Currently this means that target_grade is neither Offline nor Expelled.
     #[inline]
     pub fn may_respond(&self) -> bool {
         !matches!(

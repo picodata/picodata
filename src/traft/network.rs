@@ -531,7 +531,7 @@ impl Drop for ConnectionPool {
 
 /// Types implementing this trait can be used to identify a `Instance` when
 /// accessing ConnectionPool.
-pub trait IdOfInstance: std::hash::Hash {
+pub trait IdOfInstance: std::hash::Hash + Clone + std::fmt::Debug {
     fn get_or_create_in<'p>(&self, pool: &'p mut ConnectionPool) -> Result<&'p mut PoolWorker>;
 }
 
