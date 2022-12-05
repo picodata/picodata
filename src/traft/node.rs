@@ -31,7 +31,8 @@ use std::time::Instant;
 use crate::governor::raft_conf_change;
 use crate::governor::waiting_migrations;
 use crate::kvcell::KVCell;
-use crate::r#loop::{FlowControl, Loop};
+use crate::loop_start;
+use crate::r#loop::FlowControl;
 use crate::storage::{Clusterwide, ClusterwideSpace, PropertyName};
 use crate::stringify_cfunc;
 use crate::traft::rpc;
@@ -890,7 +891,7 @@ impl NodeImpl {
 }
 
 struct MainLoop {
-    _loop: Option<Loop>,
+    _loop: Option<fiber::UnitJoinHandle<'static>>,
     loop_cond: Rc<Cond>,
     stop_flag: Rc<Cell<bool>>,
 }
@@ -922,12 +923,7 @@ impl MainLoop {
 
         Self {
             // implicit yield
-            _loop: Some(Loop::start(
-                "raft_main_loop",
-                Self::iter_fn,
-                args,
-                initial_state,
-            )),
+            _loop: loop_start!("raft_main_loop", Self::iter_fn, args, initial_state),
             loop_cond,
             stop_flag,
         }
@@ -937,7 +933,7 @@ impl MainLoop {
         self.loop_cond.broadcast();
     }
 
-    fn iter_fn(args: &MainLoopArgs, state: &mut MainLoopState) -> FlowControl {
+    async fn iter_fn(args: &MainLoopArgs, state: &mut MainLoopState) -> FlowControl {
         state.loop_cond.wait_timeout(Self::TICK); // yields
         if state.stop_flag.take() {
             return FlowControl::Break;
