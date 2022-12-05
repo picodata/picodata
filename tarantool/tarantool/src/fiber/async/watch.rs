@@ -171,13 +171,6 @@ pub struct Notification<'a, T> {
     rx: &'a mut Receiver<T>,
 }
 
-impl<'a, T> Notification<'a, T> {
-    /// Adds timeout to a future. See [`super::timeout::Timeout`].
-    pub fn timeout(self, timeout: Duration) -> super::timeout::Timeout<Self> {
-        super::timeout::timeout(timeout, self)
-    }
-}
-
 impl<T> Receiver<T> {
     /// Checks if this channel contains a message that this receiver has not yet
     /// seen. The new value is not marked as seen.
@@ -296,7 +289,7 @@ pub fn channel<T>(initial: T) -> (Sender<T>, Receiver<T>) {
 mod tests {
     use super::*;
     use crate::fiber;
-    use crate::fiber::r#async::timeout;
+    use crate::fiber::r#async::timeout::{self, IntoTimeout};
     use crate::test::{TestCase, TESTS};
     use crate::test_name;
     use futures::join;

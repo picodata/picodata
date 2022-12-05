@@ -22,7 +22,7 @@
 //! If the sender is dropped without sending, the receiver will fail with
 //! [`super::RecvError`]:
 
-use super::{timeout::Timeout, RecvError};
+use super::RecvError;
 use std::{
     cell::Cell,
     future::Future,
@@ -65,11 +65,6 @@ pub struct Receiver<T>(Rc<Cell<State<T>>>);
 pub struct Sender<T>(Weak<Cell<State<T>>>);
 
 impl<T> Receiver<T> {
-    /// Adds timeout to a future. See [`Timeout`].
-    pub fn timeout(self, timeout: Duration) -> Timeout<Self> {
-        super::timeout::timeout(timeout, self)
-    }
-
     /// Returns `true` if the associated [`Sender`] handle has been dropped.
     ///
     /// If `true` is returned, awaiting this future will always result in an error.

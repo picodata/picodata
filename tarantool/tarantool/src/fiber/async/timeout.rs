@@ -44,6 +44,7 @@ pub struct Timeout<F> {
 ///     println!("did not receive value within 10 ms");
 /// }
 /// ```
+#[inline]
 pub fn timeout<F: Future>(timeout: Duration, f: F) -> Timeout<F> {
     let now = Instant::now();
     let deadline = now.checked_add(timeout).unwrap_or_else(|| {
@@ -84,6 +85,22 @@ impl<F: Future> Future for Timeout<F> {
         }
     }
 }
+
+/// Futures implementing this trait can be constrained with a timeout (see
+/// [`Timeout`]).
+///
+/// **NOTE**: this trait is implemented for all type implementing
+/// [`std::future::Future`], but it must be used **only** with futures from
+/// [`crate::fiber::async`] otherwise the behaviour is undefined.
+pub trait IntoTimeout: Future + Sized {
+    /// Adds timeout to a future. See [`Timeout`].
+    #[inline]
+    fn timeout(self, timeout: Duration) -> Timeout<Self> {
+        super::timeout::timeout(timeout, self)
+    }
+}
+
+impl<T> IntoTimeout for T where T: Future + Sized {}
 
 #[cfg(feature = "tarantool_test")]
 mod tests {
