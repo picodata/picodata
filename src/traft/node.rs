@@ -52,14 +52,13 @@ use crate::traft::event;
 use crate::traft::event::Event;
 use crate::traft::notify::Notify;
 use crate::traft::rpc::sharding::cfg::ReplicasetWeights;
-use crate::traft::rpc::{join, replication, sharding, sync};
+use crate::traft::rpc::{join, replication, sharding, sync, update_instance};
 use crate::traft::ConnectionPool;
 use crate::traft::LogicalClock;
 use crate::traft::Op;
 use crate::traft::RaftSpaceAccess;
 use crate::traft::Topology;
 use crate::traft::TopologyRequest;
-use crate::traft::UpdateInstanceRequest;
 
 use super::OpResult;
 use super::{CurrentGrade, CurrentGradeVariant, TargetGradeVariant};
@@ -1106,16 +1105,17 @@ fn raft_conf_change_loop(
             }
 
             // update instance's CurrentGrade
-            let req = UpdateInstanceRequest::new(instance.instance_id.clone(), cluster_id.clone())
-                .with_current_grade(instance.target_grade.into());
+            let req =
+                update_instance::Request::new(instance.instance_id.clone(), cluster_id.clone())
+                    .with_current_grade(instance.target_grade.into());
             tlog!(Info,
-                "handling UpdateInstanceRequest";
+                "handling update_instance::Request";
                 "current_grade" => %req.current_grade.expect("just set"),
                 "instance_id" => %req.instance_id,
             );
             if let Err(e) = node.handle_topology_request_and_wait(req.into()) {
                 tlog!(Warning,
-                    "failed handling UpdateInstanceRequest: {e}";
+                    "failed handling update_instance::Request: {e}";
                     "instance_id" => %instance.instance_id,
                 );
                 // TODO: don't hard code timeout
@@ -1202,7 +1202,7 @@ fn raft_conf_change_loop(
                     "instance_id" => &*instance.instance_id,
                 );
 
-                let req = UpdateInstanceRequest::new(instance.instance_id.clone(), cluster_id)
+                let req = update_instance::Request::new(instance.instance_id.clone(), cluster_id)
                     .with_current_grade(CurrentGrade::raft_synced(
                         instance.target_grade.incarnation,
                     ));
@@ -1269,7 +1269,7 @@ fn raft_conf_change_loop(
                     );
                 }
 
-                let req = UpdateInstanceRequest::new(instance.instance_id.clone(), cluster_id)
+                let req = update_instance::Request::new(instance.instance_id.clone(), cluster_id)
                     .with_current_grade(CurrentGrade::replicated(
                         instance.target_grade.incarnation,
                     ));
@@ -1365,7 +1365,7 @@ fn raft_conf_change_loop(
                     );
                 }
 
-                let req = UpdateInstanceRequest::new(instance.instance_id.clone(), cluster_id)
+                let req = update_instance::Request::new(instance.instance_id.clone(), cluster_id)
                     .with_current_grade(CurrentGrade::sharding_initialized(
                         instance.target_grade.incarnation,
                     ));
@@ -1469,10 +1469,11 @@ fn raft_conf_change_loop(
                         tlog!(Info, "instance is online"; "instance_id" => &*instance_iid);
                     }
 
-                    let req = UpdateInstanceRequest::new(instance.instance_id.clone(), cluster_id)
-                        .with_current_grade(CurrentGrade::online(
-                            instance.target_grade.incarnation,
-                        ));
+                    let req =
+                        update_instance::Request::new(instance.instance_id.clone(), cluster_id)
+                            .with_current_grade(CurrentGrade::online(
+                                instance.target_grade.incarnation,
+                            ));
                     node.handle_topology_request_and_wait(req.into())?;
                     Ok(())
                 })()
@@ -1491,7 +1492,7 @@ fn raft_conf_change_loop(
                     } in to_online
                     {
                         let cluster_id = cluster_id.clone();
-                        let req = UpdateInstanceRequest::new(instance_id.clone(), cluster_id)
+                        let req = update_instance::Request::new(instance_id.clone(), cluster_id)
                             .with_current_grade(CurrentGrade::online(target_grade.incarnation));
                         node.handle_topology_request_and_wait(req.into())?;
                         // TODO: change `Info` to `Debug`

@@ -14,7 +14,7 @@ use std::time::{Duration, Instant};
 use storage::Clusterwide;
 use storage::{ClusterwideSpace, ProperyName};
 use traft::rpc;
-use traft::rpc::join;
+use traft::rpc::{join, update_instance};
 use traft::RaftSpaceAccess;
 
 use clap::StructOpt as _;
@@ -24,7 +24,6 @@ use crate::tlog::set_log_level;
 use crate::traft::event::Event;
 use crate::traft::{event, node, InstanceId, Migration, OpDML};
 use crate::traft::{LogicalClock, RaftIndex, TargetGradeVariant};
-use crate::traft::{UpdateInstanceRequest, UpdateInstanceResponse};
 use traft::error::Error;
 
 mod app;
@@ -1014,7 +1013,7 @@ fn postjoin(args: &args::Run, storage: Clusterwide, raft_storage: RaftSpaceAcces
             "initiating self-activation of {}",
             instance.instance_id
         );
-        let req = UpdateInstanceRequest::new(instance.instance_id, cluster_id)
+        let req = update_instance::Request::new(instance.instance_id, cluster_id)
             .with_target_grade(TargetGradeVariant::Online)
             .with_failure_domain(args.failure_domain());
 
@@ -1024,10 +1023,10 @@ fn postjoin(args: &args::Run, storage: Clusterwide, raft_storage: RaftSpaceAcces
         let now = Instant::now();
         let timeout = Duration::from_secs(10);
         match rpc::net_box_call(&leader_address, &req, timeout) {
-            Ok(UpdateInstanceResponse::Ok) => {
+            Ok(update_instance::Response::Ok) => {
                 break;
             }
-            Ok(UpdateInstanceResponse::ErrNotALeader) => {
+            Ok(update_instance::Response::ErrNotALeader) => {
                 tlog!(Warning, "failed to activate myself: not a leader, retry...");
                 fiber::sleep(Duration::from_millis(100));
                 continue;

@@ -8,9 +8,9 @@ use crate::traft::error::Error;
 use crate::traft::event;
 use crate::traft::node;
 use crate::traft::rpc;
+use crate::traft::rpc::update_instance;
 use crate::traft::CurrentGradeVariant;
 use crate::traft::TargetGradeVariant;
-use crate::traft::{UpdateInstanceRequest, UpdateInstanceResponse};
 use crate::unwrap_ok_or;
 
 pub fn callback() {
@@ -79,7 +79,7 @@ fn go_offline() -> traft::Result<()> {
         .cluster_id()?
         .ok_or_else(|| Error::other("missing cluster_id value in storage"))?;
 
-    let req = UpdateInstanceRequest::new(instance.instance_id, cluster_id)
+    let req = update_instance::Request::new(instance.instance_id, cluster_id)
         .with_target_grade(TargetGradeVariant::Offline);
 
     loop {
@@ -110,8 +110,8 @@ fn go_offline() -> traft::Result<()> {
             continue;
         };
         let res = match rpc::net_box_call(&leader_address, &req, Duration::MAX) {
-            Ok(UpdateInstanceResponse::Ok) => Ok(()),
-            Ok(UpdateInstanceResponse::ErrNotALeader) => Err(Error::NotALeader),
+            Ok(update_instance::Response::Ok) => Ok(()),
+            Ok(update_instance::Response::ErrNotALeader) => Err(Error::NotALeader),
             Err(e) => Err(e.into()),
         };
 

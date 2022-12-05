@@ -1,11 +1,11 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 
+use crate::rpc::update_instance;
 use crate::traft::instance_uuid;
 use crate::traft::replicaset_uuid;
 use crate::traft::Address;
 use crate::traft::FailureDomain;
 use crate::traft::Instance;
-use crate::traft::UpdateInstanceRequest;
 use crate::traft::{CurrentGrade, CurrentGradeVariant, Grade, TargetGrade, TargetGradeVariant};
 use crate::traft::{InstanceId, RaftId, ReplicasetId};
 use crate::util::Uppercase;
@@ -160,7 +160,7 @@ impl Topology {
         Ok((instance, advertise))
     }
 
-    pub fn update_instance(&mut self, req: UpdateInstanceRequest) -> Result<Instance, String> {
+    pub fn update_instance(&mut self, req: update_instance::Request) -> Result<Instance, String> {
         let this = self as *const Self;
 
         let (instance, ..) = self
@@ -171,7 +171,7 @@ impl Topology {
         if instance.current_grade == CurrentGradeVariant::Expelled
             && !matches!(
                 req,
-                UpdateInstanceRequest {
+                update_instance::Request {
                     target_grade: None,
                     current_grade: Some(current_grade),
                     failure_domain: None,
@@ -232,7 +232,7 @@ mod tests {
     use crate::traft::replicaset_uuid;
     use crate::traft::FailureDomain;
     use crate::traft::Instance;
-    use crate::traft::UpdateInstanceRequest;
+    use crate::traft::rpc::update_instance;
     use crate::traft::{CurrentGrade, Grade, TargetGrade, TargetGradeVariant};
     use pretty_assertions::assert_eq;
 
@@ -253,17 +253,17 @@ mod tests {
     }
 
     trait ModifyUpdateInstanceRequest {
-        fn modify(self, req: UpdateInstanceRequest) -> UpdateInstanceRequest;
+        fn modify(self, req: update_instance::Request) -> update_instance::Request;
     }
 
     impl ModifyUpdateInstanceRequest for CurrentGrade {
-        fn modify(self, req: UpdateInstanceRequest) -> UpdateInstanceRequest {
+        fn modify(self, req: update_instance::Request) -> update_instance::Request {
             req.with_current_grade(self)
         }
     }
 
     impl ModifyUpdateInstanceRequest for TargetGradeVariant {
-        fn modify(self, req: UpdateInstanceRequest) -> UpdateInstanceRequest {
+        fn modify(self, req: update_instance::Request) -> update_instance::Request {
             req.with_target_grade(self)
         }
     }
@@ -335,7 +335,7 @@ mod tests {
         ) => {
             $topology.update_instance(
                 {
-                    let req = UpdateInstanceRequest::new($instance_id.into(), "".into());
+                    let req = update_instance::Request::new($instance_id.into(), "".into());
                     $(
                         let req = $current_grade.modify(req);
                         $( let req = $target_grade.modify(req); )?
@@ -353,7 +353,7 @@ mod tests {
             $failure_domain:expr $(,)?
         ) => {
             $topology.update_instance(
-                UpdateInstanceRequest::new($instance_id.into(), "".into())
+                update_instance::Request::new($instance_id.into(), "".into())
                     .with_failure_domain($failure_domain),
             )
         };

@@ -29,9 +29,7 @@ use protobuf::Message as _;
 
 pub use network::ConnectionPool;
 pub use raft_storage::RaftSpaceAccess;
-pub use rpc::join;
-pub use rpc::update_instance::Request as UpdateInstanceRequest;
-pub use rpc::update_instance::Response as UpdateInstanceResponse;
+pub use rpc::{join, update_instance};
 pub use topology::Topology;
 
 use self::event::Event;
@@ -821,7 +819,7 @@ pub trait ContextCoercion: Serialize + DeserializeOwned {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum TopologyRequest {
     Join(join::Request),
-    UpdateInstance(UpdateInstanceRequest),
+    UpdateInstance(update_instance::Request),
 }
 
 impl From<join::Request> for TopologyRequest {
@@ -830,8 +828,8 @@ impl From<join::Request> for TopologyRequest {
     }
 }
 
-impl From<UpdateInstanceRequest> for TopologyRequest {
-    fn from(a: UpdateInstanceRequest) -> Self {
+impl From<update_instance::Request> for TopologyRequest {
+    fn from(a: update_instance::Request) -> Self {
         Self::UpdateInstance(a)
     }
 }

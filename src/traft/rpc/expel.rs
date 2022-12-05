@@ -1,6 +1,6 @@
 use crate::traft;
 use crate::traft::Result;
-use crate::traft::{error::Error, node, InstanceId, UpdateInstanceRequest};
+use crate::traft::{error::Error, node, rpc::update_instance, InstanceId};
 
 crate::define_rpc_request! {
     fn proc_expel_on_leader(req: Request) -> Result<Response> {
@@ -22,7 +22,7 @@ crate::define_rpc_request! {
             return Err(Error::NotALeader);
         }
 
-        let req2 = UpdateInstanceRequest::new(req.instance_id, req.cluster_id)
+        let req2 = update_instance::Request::new(req.instance_id, req.cluster_id)
             .with_target_grade(traft::TargetGradeVariant::Expelled);
         node.handle_topology_request_and_wait(req2.into())?;
 
