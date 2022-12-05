@@ -93,6 +93,8 @@
 - In `tlua` if a lua error happens during code evaluation the location in the
     rust program where the code was created is now displayed in the error, i.e.
     the location of a call to `Lua::eval`, `Lua::exec`, etc. will be displayed.
+- `tlua::Lua::set` function now has 2 generic parameters instead of 3 (not
+    including lifetime parameters).
 
 ### Deprecated
 - `update_ops` & `upsert_ops` methods of `Space` & `Index` are deprecated in

@@ -1278,11 +1278,11 @@ where
     /// ```
     #[inline]
     // TODO(gmoshkin): this method should be part of AsLua
-    pub fn set<'lua, I, V, E>(&'lua self, index: I, value: V)
+    pub fn set<'lua, I, V>(&'lua self, index: I, value: V)
     where
         I: Borrow<str>,
-        V: PushOneInto<&'lua Self, Err = E>,
-        E: Into<Void>,
+        V: PushOneInto<&'lua Self>,
+        <V as PushInto<&'lua Self>>::Err: Into<Void>,
     {
         match self.checked_set(index, value) {
             Ok(_) => (),
