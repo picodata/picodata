@@ -65,12 +65,12 @@ impl ClusterwideSpace {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// ProperyName
+// PropertyName
 ////////////////////////////////////////////////////////////////////////////////
 
 ::tarantool::define_str_enum! {
     /// An enumeration of [`ClusterwideSpace::Property`] key names.
-    pub enum ProperyName {
+    pub enum PropertyName {
         ReplicationFactor = "replication_factor",
         VshardBootstrapped = "vshard_bootstrapped",
         DesiredSchemaVersion = "desired_schema_version",
@@ -136,7 +136,7 @@ impl State {
     }
 
     #[inline]
-    pub fn get<T>(&self, key: ProperyName) -> tarantool::Result<Option<T>>
+    pub fn get<T>(&self, key: PropertyName) -> tarantool::Result<Option<T>>
     where
         T: DecodeOwned,
     {
@@ -148,7 +148,7 @@ impl State {
 
     #[allow(dead_code)]
     #[inline]
-    pub fn put(&self, key: ProperyName, value: &impl serde::Serialize) -> tarantool::Result<()> {
+    pub fn put(&self, key: PropertyName, value: &impl serde::Serialize) -> tarantool::Result<()> {
         self.space.put(&(key, value))?;
         Ok(())
     }
@@ -156,14 +156,14 @@ impl State {
     #[inline]
     pub fn vshard_bootstrapped(&self) -> tarantool::Result<bool> {
         Ok(self
-            .get(ProperyName::VshardBootstrapped)?
+            .get(PropertyName::VshardBootstrapped)?
             .unwrap_or_default())
     }
 
     #[inline]
     pub fn replication_factor(&self) -> tarantool::Result<usize> {
         let res = self
-            .get(ProperyName::ReplicationFactor)?
+            .get(PropertyName::ReplicationFactor)?
             .expect("replication_factor must be set at boot");
         Ok(res)
     }
@@ -171,7 +171,7 @@ impl State {
     #[inline]
     pub fn desired_schema_version(&self) -> tarantool::Result<u64> {
         let res = self
-            .get(ProperyName::DesiredSchemaVersion)?
+            .get(PropertyName::DesiredSchemaVersion)?
             .unwrap_or_default();
         Ok(res)
     }

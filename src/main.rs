@@ -12,7 +12,7 @@ use ::tarantool::transaction::start_transaction;
 use std::convert::TryFrom;
 use std::time::{Duration, Instant};
 use storage::Clusterwide;
-use storage::{ClusterwideSpace, ProperyName};
+use storage::{ClusterwideSpace, PropertyName};
 use traft::rpc;
 use traft::rpc::{join, update_instance};
 use traft::RaftSpaceAccess;
@@ -387,7 +387,7 @@ fn picolib_setup(args: &args::Run) {
         tlua::function1(|id: u64| -> traft::Result<()> {
             let op = OpDML::replace(
                 ClusterwideSpace::Property,
-                &(ProperyName::DesiredSchemaVersion, id),
+                &(PropertyName::DesiredSchemaVersion, id),
             )?;
             node::global()?.propose_and_wait(op, Duration::MAX)??;
             Ok(())
@@ -404,7 +404,7 @@ fn picolib_setup(args: &args::Run) {
             };
             let op = OpDML::replace(
                 ClusterwideSpace::Property,
-                &(ProperyName::DesiredSchemaVersion, id),
+                &(PropertyName::DesiredSchemaVersion, id),
             )?;
             node.propose_and_wait(op, Duration::MAX)??;
             event::wait(Event::MigrateDone)
@@ -814,7 +814,10 @@ fn start_boot(args: &args::Run) {
         init_entries_push_op(
             OpDML::insert(
                 ClusterwideSpace::Property,
-                &(ProperyName::ReplicationFactor, args.init_replication_factor),
+                &(
+                    PropertyName::ReplicationFactor,
+                    args.init_replication_factor,
+                ),
             )
             .expect("cannot fail")
             .into(),
@@ -822,7 +825,7 @@ fn start_boot(args: &args::Run) {
         init_entries_push_op(
             OpDML::insert(
                 ClusterwideSpace::Property,
-                &(ProperyName::DesiredSchemaVersion, 0),
+                &(PropertyName::DesiredSchemaVersion, 0),
             )
             .expect("cannot fail")
             .into(),

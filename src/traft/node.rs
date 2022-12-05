@@ -31,7 +31,7 @@ use crate::governor::raft_conf_change;
 use crate::governor::waiting_migrations;
 use crate::kvcell::KVCell;
 use crate::r#loop::{FlowControl, Loop};
-use crate::storage::{Clusterwide, ClusterwideSpace, ProperyName};
+use crate::storage::{Clusterwide, ClusterwideSpace, PropertyName};
 use crate::stringify_cfunc;
 use crate::traft::rpc;
 use crate::traft::ContextCoercion as _;
@@ -390,7 +390,7 @@ impl NodeImpl {
                 let replication_factor = self
                     .storage
                     .state
-                    .get(ProperyName::ReplicationFactor)?
+                    .get(PropertyName::ReplicationFactor)?
                     .ok_or_else(|| Error::other("missing replication_factor value in storage"))?;
                 Topology::from_instances(instances).with_replication_factor(replication_factor)
             }
@@ -1377,7 +1377,7 @@ fn raft_conf_change_loop(
                     node.propose_and_wait(
                         traft::OpDML::replace(
                             ClusterwideSpace::Property,
-                            &(ProperyName::VshardBootstrapped, true),
+                            &(PropertyName::VshardBootstrapped, true),
                         )?,
                         // TODO: don't hard code the timeout
                         Duration::from_secs(3),
