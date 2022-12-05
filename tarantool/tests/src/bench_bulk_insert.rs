@@ -56,7 +56,7 @@ impl TDynBenchFn for BulkInsertBenchmark {
                     let base_id = *base_id;
                     let mut row = S1Record {
                         id: base_id as u32,
-                        text: &*text.borrow(),
+                        text: &text.borrow(),
                     };
 
                     let remote_space = conn.space("bench_s1").unwrap().unwrap();

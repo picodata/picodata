@@ -389,7 +389,7 @@ pub fn tuple_debug_fmt() {
 pub fn raw_bytes() {
     let tuple = Tuple::new(&(1, (2, ("test", [3, 1, 4])), 3)).unwrap();
     let bytes: &RawBytes = tuple.field(1).unwrap().unwrap();
-    let field: (u32, (&str, [u32; 3])) = rmp_serde::from_slice(&**bytes).unwrap();
+    let field: (u32, (&str, [u32; 3])) = rmp_serde::from_slice(bytes).unwrap();
     assert_eq!(field, (2, ("test", [3, 1, 4])));
 
     let tuple2: Tuple = tuple.get(1).unwrap();
