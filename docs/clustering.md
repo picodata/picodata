@@ -87,15 +87,15 @@ struct join::Request {
 
 ```rust
 struct join::Response {
-    /// Добавленный пир (чтобы знать все айдишники)
-    peer: Peer,
-    /// Воутеры (чтобы добавляемый инстанс мог наладить контакт)
-    raft_group: Vec<Peer>,
+    /// Добавленный инстанс (чтобы знать все айдишники)
+    instance: Instance,
+    /// Адреса остальных инстансев кластера (чтобы добавляемый инстанс мог наладить контакт)
+    peer_addresses: Vec<PeerAddress>,
     /// Настройки репликации (чтобы инициализировать репликацию)
     box_replication: Vec<String>,
 }
 
-struct Peer {
+struct Instance {
     // всевозможные идентификаторы
     raft_id: RaftId,
     instance_id: String,
