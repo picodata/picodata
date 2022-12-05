@@ -408,7 +408,7 @@ mod tests {
         ])
         .with_replication_factor(2);
 
-        // JoinRequest with a given instance_id online.
+        // join::Request with a given instance_id online.
         // - It must be an impostor, return an error.
         // - Even if it's a fair rebootstrap, it will be marked as
         //   unreachable soon (when we implement failover) an the error
@@ -420,7 +420,7 @@ mod tests {
             "i1 is already joined",
         );
 
-        // JoinRequest with a given instance_id offline (or unreachable).
+        // join::Request with a given instance_id offline (or unreachable).
         // - Presumably it's a rebootstrap.
         //   1. Perform auto-expel, unless it threatens data safety (TODO).
         //   2. Assign new raft_id.
@@ -440,7 +440,7 @@ mod tests {
 
         // TODO
         //
-        // JoinRequest with a given instance_id bootstrtapping.
+        // join::Request with a given instance_id bootstrtapping.
         // - Presumably it's a retry after tarantool bootstrap failure.
         //   1. Perform auto-expel (it's always ok until bootstrap
         //      finishes).

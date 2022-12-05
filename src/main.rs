@@ -14,6 +14,7 @@ use std::time::{Duration, Instant};
 use storage::Clusterwide;
 use storage::{ClusterwideSpace, ProperyName};
 use traft::rpc;
+use traft::rpc::join;
 use traft::RaftSpaceAccess;
 
 use clap::StructOpt as _;
@@ -869,7 +870,7 @@ fn start_boot(args: &args::Run) {
 fn start_join(args: &args::Run, leader_address: String) {
     tlog!(Info, ">>>>> start_join({leader_address})");
 
-    let req = traft::JoinRequest {
+    let req = join::Request {
         cluster_id: args.cluster_id.clone(),
         instance_id: args.instance_id.clone(),
         replicaset_id: args.replicaset_id.clone(),
@@ -892,10 +893,10 @@ fn start_join(args: &args::Run, leader_address: String) {
         // TODO: exponential decay
         let timeout = Duration::from_secs(1);
         match rpc::net_box_call(&leader_address, &req, Duration::MAX) {
-            Ok(traft::JoinResponse::Ok(resp)) => {
+            Ok(join::Response::Ok(resp)) => {
                 break resp;
             }
-            Ok(traft::JoinResponse::ErrNotALeader(maybe_new_leader)) => {
+            Ok(join::Response::ErrNotALeader(maybe_new_leader)) => {
                 tlog!(Warning, "join request failed: not a leader, retry...");
                 if let Some(new_leader) = maybe_new_leader {
                     leader_address = new_leader.address;

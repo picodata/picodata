@@ -52,14 +52,14 @@ use crate::traft::event;
 use crate::traft::event::Event;
 use crate::traft::notify::Notify;
 use crate::traft::rpc::sharding::cfg::ReplicasetWeights;
-use crate::traft::rpc::{replication, sharding, sync};
+use crate::traft::rpc::{join, replication, sharding, sync};
 use crate::traft::ConnectionPool;
 use crate::traft::LogicalClock;
 use crate::traft::Op;
 use crate::traft::RaftSpaceAccess;
 use crate::traft::Topology;
 use crate::traft::TopologyRequest;
-use crate::traft::{JoinRequest, UpdateInstanceRequest};
+use crate::traft::UpdateInstanceRequest;
 
 use super::OpResult;
 use super::{CurrentGrade, CurrentGradeVariant, TargetGradeVariant};
@@ -469,7 +469,7 @@ impl NodeImpl {
         // FIXME: remove this once we introduce some 'async' stuff
         let notify_for_address;
         let instance = match req {
-            TopologyRequest::Join(JoinRequest {
+            TopologyRequest::Join(join::Request {
                 instance_id,
                 replicaset_id,
                 advertise_address,

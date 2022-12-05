@@ -29,8 +29,7 @@ use protobuf::Message as _;
 
 pub use network::ConnectionPool;
 pub use raft_storage::RaftSpaceAccess;
-pub use rpc::join::Request as JoinRequest;
-pub use rpc::join::Response as JoinResponse;
+pub use rpc::join;
 pub use rpc::update_instance::Request as UpdateInstanceRequest;
 pub use rpc::update_instance::Response as UpdateInstanceResponse;
 pub use topology::Topology;
@@ -821,12 +820,12 @@ pub trait ContextCoercion: Serialize + DeserializeOwned {
 /// Request to change cluster topology.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum TopologyRequest {
-    Join(JoinRequest),
+    Join(join::Request),
     UpdateInstance(UpdateInstanceRequest),
 }
 
-impl From<JoinRequest> for TopologyRequest {
-    fn from(j: JoinRequest) -> Self {
+impl From<join::Request> for TopologyRequest {
+    fn from(j: join::Request) -> Self {
         Self::Join(j)
     }
 }
