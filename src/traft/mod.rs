@@ -2,10 +2,10 @@
 
 pub mod error;
 pub mod event;
-mod network;
+pub(crate) mod network;
 pub mod node;
 pub mod notify;
-mod raft_storage;
+pub(crate) mod raft_storage;
 pub mod rpc;
 pub mod topology;
 

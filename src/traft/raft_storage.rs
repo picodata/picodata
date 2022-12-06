@@ -130,9 +130,9 @@ impl RaftSpaceAccess {
 
         /// Node generation i.e. the number of restarts.
         pub fn gen(&self) -> _<u64>;
-        pub(super) fn term(&self) -> _<RaftTerm>;
+        pub(crate) fn term(&self) -> _<RaftTerm>;
         fn vote(&self) -> _<RaftId>;
-        pub(super) fn commit(&self) -> _<RaftIndex>;
+        pub(crate) fn commit(&self) -> _<RaftIndex>;
         pub fn applied(&self) -> _<RaftIndex>;
 
         pub(crate) fn voters(&self) -> _<Vec<RaftId>>;
