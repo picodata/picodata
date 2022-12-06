@@ -9,6 +9,7 @@ nav:
     - Установка Picodata: install.md
     - Описание параметров запуска: cli.md
     - Инструкция по развертыванию: deploy.md
+    - Пример работы с кластером Picodata: tutorial
     - Общая схема инициализации кластера: clustering.md
     - Возможности кластерного SQL: sql_support.md
 
