@@ -1,11 +1,11 @@
 use std::borrow::Cow;
-use std::cell::Cell;
 use std::collections::{HashMap, HashSet};
 use std::iter::repeat;
 use std::rc::Rc;
 use std::time::Duration;
 
 use ::tarantool::fiber;
+use ::tarantool::fiber::r#async::watch;
 use ::tarantool::space::UpdateOps;
 use ::tarantool::util::IntoClones as _;
 
@@ -37,14 +37,13 @@ impl Loop {
 
     async fn iter_fn(
         Args {
-            status,
             storage,
             raft_storage,
         }: &Args,
-        State { pool }: &mut State,
+        State { status, pool }: &mut State,
     ) -> FlowControl {
         if !status.get().raft_state.is_leader() {
-            event::wait(Event::StatusChanged).expect("Events system must be initialized");
+            status.changed().await.unwrap();
             return Continue;
         }
 
@@ -647,17 +646,17 @@ impl Loop {
     }
 
     pub fn start(
-        status: Rc<Cell<Status>>,
+        status: watch::Receiver<Status>,
         storage: Clusterwide,
         raft_storage: RaftSpaceAccess,
     ) -> Self {
         let args = Args {
-            status,
             storage,
             raft_storage,
         };
 
         let state = State {
+            status,
             pool: ConnectionPool::builder(args.storage.clone())
                 .call_timeout(Duration::from_secs(1))
                 .connect_timeout(Duration::from_millis(500))
@@ -676,12 +675,12 @@ pub struct Loop {
 }
 
 struct Args {
-    status: Rc<Cell<Status>>,
     storage: Clusterwide,
     raft_storage: RaftSpaceAccess,
 }
 
 struct State {
+    status: watch::Receiver<Status>,
     pool: ConnectionPool,
 }
 

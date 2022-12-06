@@ -24,7 +24,6 @@ pub type BoxResult<T> = std::result::Result<T, Box<dyn std::error::Error>>;
         JointStateEnter = "raft.joint-state-enter",
         JointStateLeave = "raft.joint-state-leave",
         JointStateDrop = "raft.joint-state-drop",
-        StatusChanged = "raft.status-changed",
         TopologyChanged = "raft.topology-changed",
         RaftLoopNeeded = "raft.loop-needed",
         RaftEntryApplied = "raft.entry-applied",

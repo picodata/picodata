@@ -12,7 +12,7 @@ use ::raft::StorageError;
 use ::raft::INVALID_ID;
 use ::tarantool::error::{TarantoolError, TransactionError};
 use ::tarantool::fiber;
-use ::tarantool::fiber::r#async::oneshot;
+use ::tarantool::fiber::r#async::{oneshot, watch};
 use ::tarantool::fiber::{Cond, Mutex};
 use ::tarantool::proc;
 use ::tarantool::tlua;
@@ -122,7 +122,7 @@ pub struct Node {
     pub(crate) raft_storage: RaftSpaceAccess,
     main_loop: MainLoop,
     _governor_loop: governor::Loop,
-    status: Rc<Cell<Status>>,
+    status: watch::Receiver<Status>,
 }
 
 impl std::fmt::Debug for Node {
@@ -140,18 +140,13 @@ impl Node {
         let node_impl = NodeImpl::new(storage.clone(), raft_storage.clone())?;
 
         let raft_id = node_impl.raft_id();
-        let status = Rc::new(Cell::new(Status {
-            id: raft_id,
-            leader_id: None,
-            term: traft::INIT_RAFT_TERM,
-            raft_state: RaftState::Follower,
-        }));
+        let status = node_impl.status.subscribe();
 
         let node_impl = Rc::new(Mutex::new(node_impl));
 
         let node = Node {
             raft_id,
-            main_loop: MainLoop::start(status.clone(), node_impl.clone()), // yields
+            main_loop: MainLoop::start(node_impl.clone()), // yields
             _governor_loop: governor::Loop::start(
                 status.clone(),
                 storage.clone(),
@@ -179,7 +174,7 @@ impl Node {
     /// Wait for the status to be changed.
     /// **This function yields**
     pub fn wait_status(&self) {
-        event::wait(Event::StatusChanged).expect("Events system wasn't initialized");
+        fiber::block_on(self.status.clone().changed()).unwrap();
     }
 
     /// **This function yields**
@@ -328,6 +323,7 @@ struct NodeImpl {
     raft_storage: RaftSpaceAccess,
     pool: ConnectionPool,
     lc: LogicalClock,
+    status: watch::Sender<Status>,
 }
 
 impl NodeImpl {
@@ -358,6 +354,13 @@ impl NodeImpl {
 
         let raw_node = RawNode::new(&cfg, raft_storage.clone(), &tlog::root())?;
 
+        let (status, _) = watch::channel(Status {
+            id: raft_id,
+            leader_id: None,
+            term: traft::INIT_RAFT_TERM,
+            raft_state: RaftState::Follower,
+        });
+
         Ok(Self {
             raw_node,
             notifications: Default::default(),
@@ -367,6 +370,7 @@ impl NodeImpl {
             raft_storage,
             pool,
             lc,
+            status,
         })
     }
 
@@ -775,7 +779,7 @@ impl NodeImpl {
     /// - or better <https://github.com/etcd-io/etcd/blob/v3.5.5/raft/node.go#L49>
     ///
     /// This function yields.
-    fn advance(&mut self, status: &Cell<Status>, topology_changed: &mut bool, expelled: &mut bool) {
+    fn advance(&mut self, topology_changed: &mut bool, expelled: &mut bool) {
         // Get the `Ready` with `RawNode::ready` interface.
         if !self.raw_node.has_ready() {
             return;
@@ -792,11 +796,15 @@ impl NodeImpl {
         }
 
         if let Some(ss) = ready.ss() {
-            let mut s = status.get();
-            s.leader_id = (ss.leader_id != INVALID_ID).then_some(ss.leader_id);
-            s.raft_state = ss.raft_state.into();
-            status.set(s);
-            event::broadcast(Event::StatusChanged);
+            if let Err(e) = self.status.send_modify(|s| {
+                s.leader_id = (ss.leader_id != INVALID_ID).then_some(ss.leader_id);
+                s.raft_state = ss.raft_state.into();
+            }) {
+                tlog!(Warning, "failed updating node status: {e}";
+                    "leader_id" => ss.leader_id,
+                    "raft_state" => ?ss.raft_state,
+                )
+            }
         }
 
         self.handle_read_states(ready.read_states());
@@ -811,10 +819,9 @@ impl NodeImpl {
             // Raft HardState changed, and we need to persist it.
             if let Some(hs) = ready.hs() {
                 self.raft_storage.persist_hard_state(hs).unwrap();
-
-                let mut s = status.get();
-                s.term = hs.term;
-                status.set(s);
+                if let Err(e) = self.status.send_modify(|s| s.term = hs.term) {
+                    tlog!(Warning, "failed updating current term: {e}"; "term" => hs.term)
+                }
             }
 
             Ok(())
@@ -881,7 +888,6 @@ struct MainLoop {
 }
 
 struct MainLoopArgs {
-    status: Rc<Cell<Status>>,
     node_impl: Rc<Mutex<NodeImpl>>,
 }
 
@@ -894,11 +900,11 @@ struct MainLoopState {
 impl MainLoop {
     pub const TICK: Duration = Duration::from_millis(100);
 
-    fn start(status: Rc<Cell<Status>>, node_impl: Rc<Mutex<NodeImpl>>) -> Self {
+    fn start(node_impl: Rc<Mutex<NodeImpl>>) -> Self {
         let loop_cond: Rc<Cond> = Default::default();
         let stop_flag: Rc<Cell<bool>> = Default::default();
 
-        let args = MainLoopArgs { status, node_impl };
+        let args = MainLoopArgs { node_impl };
         let initial_state = MainLoopState {
             next_tick: Instant::now(),
             loop_cond: loop_cond.clone(),
@@ -938,7 +944,7 @@ impl MainLoop {
 
         let mut topology_changed = false;
         let mut expelled = false;
-        node_impl.advance(&args.status, &mut topology_changed, &mut expelled); // yields
+        node_impl.advance(&mut topology_changed, &mut expelled); // yields
         if state.stop_flag.take() {
             return FlowControl::Break;
         }
