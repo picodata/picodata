@@ -47,21 +47,11 @@ use std::{
     pin::Pin,
     rc::Rc,
     task::{Context, Poll, Waker},
-    time::Duration,
 };
 
 pub struct Value<T> {
     value: T,
     version: u64,
-}
-
-impl<T> Value<T> {
-    fn set(&mut self, v: T) {
-        self.value = v;
-        // It is ok to overflow as we check only the difference in version
-        // and having receivers stuck near 0 version when sender has exceeded u64 is extremely unlickely.
-        self.version = self.version.wrapping_add(1);
-    }
 }
 
 struct State<T> {
@@ -89,7 +79,9 @@ impl<T> State<T> {
 
 /// Error produced when sending a value fails.
 #[derive(thiserror::Error, Debug)]
-#[error("Failed to send this value, as receivers are currently holding a reference to the previous value")]
+#[error(
+    "failed to send this value, as someone is currently holding a reference to the previous value"
+)]
 pub struct SendError<T>(pub T);
 
 /// Sends values to the associated [`Receiver`](struct@Receiver).
@@ -128,12 +120,62 @@ impl<T> Sender<T> {
     /// to the previous value.
     pub fn send(&self, value: T) -> Result<(), SendError<T>> {
         if let Ok(mut value_ref) = self.state.value.try_borrow_mut() {
-            value_ref.set(value);
+            value_ref.value = value;
+            // It is ok to overflow as we check only the difference in version
+            // and having receivers stuck near 0 version when sender has exceeded u64 is extremely unlickely.
+            value_ref.version = value_ref.version.wrapping_add(1);
         } else {
             return Err(SendError(value));
         }
         self.state.wake_all();
         Ok(())
+    }
+
+    /// Modifies the watched value in place, notifying all receivers.
+    ///
+    /// This can be useful for modifying the watched value,
+    /// without having to allocate a new instance.
+    /// This method permits sending values even when there are no receivers.
+    ///
+    /// This method fails if any of receivers is currently holding a reference
+    /// to the previous value.
+    pub fn send_modify(&self, modify: impl FnOnce(&mut T)) -> Result<(), SendError<()>> {
+        let mut value_ref = self
+            .state
+            .value
+            .try_borrow_mut()
+            .map_err(|_| SendError(()))?;
+        modify(&mut value_ref.value);
+        value_ref.version = value_ref.version.wrapping_add(1);
+        self.state.wake_all();
+        Ok(())
+    }
+
+    /// Returns a reference to the most recently sent value.
+    ///
+    /// Care must be taken not to hold a ref, when the sender is setting a new value.
+    /// This includes not holding a ref across await points and not explicitely yielding
+    /// control to other fibers while holding a ref.
+    ///
+    /// Consider using [`Self::get`] or [`Self::get_cloned`] instead.
+    pub fn borrow(&self) -> ValueRef<T> {
+        ValueRef(self.state.value.borrow())
+    }
+
+    /// Returns a copy of the most recently sent value.
+    pub fn get(&self) -> T
+    where
+        T: Copy,
+    {
+        *self.borrow().deref()
+    }
+
+    /// Returns the most recently sent value cloned.
+    pub fn get_cloned(&self) -> T
+    where
+        T: Clone,
+    {
+        self.borrow().deref().clone()
     }
 
     /// Checks if the channel has been closed. This happens when all receivers
@@ -287,6 +329,8 @@ pub fn channel<T>(initial: T) -> (Sender<T>, Receiver<T>) {
 
 #[cfg(feature = "tarantool_test")]
 mod tests {
+    #![allow(clippy::approx_constant)]
+
     use super::*;
     use crate::fiber;
     use crate::fiber::r#async::timeout::{self, IntoTimeout};
@@ -294,6 +338,7 @@ mod tests {
     use crate::test_name;
     use futures::join;
     use linkme::distributed_slice;
+    use std::time::Duration;
 
     const _1_SEC: Duration = Duration::from_secs(1);
 
@@ -402,6 +447,56 @@ mod tests {
             tx.send(1).unwrap();
             assert!(jh_1.join().is_ok());
             assert!(jh_2.join().is_ok());
+        },
+    };
+
+    #[distributed_slice(TESTS)]
+    static SEND_MODIFY: TestCase = TestCase {
+        name: test_name!("send_modify"),
+        f: || {
+            let (tx, mut rx) = channel(vec![13]);
+            let jh = fiber::start(|| {
+                fiber::block_on(rx.changed()).unwrap();
+                rx.get_cloned()
+            });
+            tx.send_modify(|v| v.push(37)).unwrap();
+            assert_eq!(jh.join(), [13, 37]);
+        },
+    };
+
+    #[distributed_slice(TESTS)]
+    static SENDER_GET: TestCase = TestCase {
+        name: test_name!("sender_get"),
+        f: || {
+            let (tx, _) = channel(69);
+            assert_eq!(tx.get(), 69);
+            tx.send(420).unwrap();
+            assert_eq!(tx.get(), 420);
+
+            let (tx, _) = channel("foo".to_string());
+            assert_eq!(tx.get_cloned(), "foo");
+            tx.send("bar".into()).unwrap();
+            assert_eq!(tx.get_cloned(), "bar");
+
+            let (tx, mut rx) = channel(RefCell::new(vec![3.14]));
+            let value_ref = tx.borrow();
+            assert_eq!(*value_ref.borrow(), [3.14]);
+
+            // modify the watched value without notifying the watchers
+            // don't do that though
+            value_ref.borrow_mut().push(2.71);
+            assert_eq!(*tx.get_cloned().borrow(), [3.14, 2.71]);
+            let res = fiber::block_on(rx.changed().timeout(Duration::ZERO));
+            assert_eq!(res, Err(timeout::Expired));
+
+            // and sending fails until the ref is dropped
+            // really don't do that
+            tx.send_modify(|v| v.get_mut().push(1.61)).unwrap_err();
+            drop(value_ref);
+
+            tx.send_modify(|v| v.get_mut().push(1.61)).unwrap();
+            fiber::block_on(rx.changed()).unwrap();
+            assert_eq!(*rx.get_cloned().borrow(), [3.14, 2.71, 1.61]);
         },
     };
 }

@@ -29,7 +29,6 @@ use std::{
     pin::Pin,
     rc::{Rc, Weak},
     task::{Context, Poll, Waker},
-    time::Duration,
 };
 
 enum State<T> {
@@ -174,6 +173,7 @@ mod tests {
     use crate::test_name;
     use futures::join;
     use linkme::distributed_slice;
+    use std::time::Duration;
 
     #[distributed_slice(TESTS)]
     static DROP_RECEIVER: TestCase = TestCase {
