@@ -362,7 +362,7 @@ impl Loop {
                     if let Some(replicaset) = storage.replicasets.get(&instance.replicaset_id)? {
                         Cow::Owned(replicaset.master_id)
                     } else {
-                        let vshard_bootstrapped = storage.state.vshard_bootstrapped()?;
+                        let vshard_bootstrapped = storage.properties.vshard_bootstrapped()?;
                         let req = OpDML::insert(
                             ClusterwideSpace::Replicaset,
                             &Replicaset {
@@ -413,7 +413,7 @@ impl Loop {
         });
         if let Some(instance) = to_shard {
             let res = (|| -> Result<()> {
-                let vshard_bootstrapped = storage.state.vshard_bootstrapped()?;
+                let vshard_bootstrapped = storage.properties.vshard_bootstrapped()?;
                 let commit = raft_storage.commit()?.unwrap();
                 let reqs = maybe_responding(&instances).map(|instance| {
                     (
@@ -585,7 +585,7 @@ impl Loop {
 
         ////////////////////////////////////////////////////////////////////////
         // applying migrations
-        let desired_schema_version = storage.state.desired_schema_version().unwrap();
+        let desired_schema_version = storage.properties.desired_schema_version().unwrap();
         let replicasets = storage.replicasets.iter().unwrap().collect::<Vec<_>>();
         let mut migrations = storage.migrations.iter().unwrap().collect::<Vec<_>>();
         let commit = raft_storage.commit().unwrap().unwrap();
@@ -737,7 +737,10 @@ fn get_weight_changes<'p>(
     instances: impl IntoIterator<Item = &'p Instance>,
     storage: &Clusterwide,
 ) -> Option<ReplicasetWeights> {
-    let replication_factor = storage.state.replication_factor().expect("storage error");
+    let replication_factor = storage
+        .properties
+        .replication_factor()
+        .expect("storage error");
     let replicaset_weights = storage.replicasets.weights().expect("storage error");
     let mut replicaset_sizes = HashMap::new();
     let mut weight_changes = HashMap::new();

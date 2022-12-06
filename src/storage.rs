@@ -83,7 +83,7 @@ impl ClusterwideSpace {
 
 #[derive(Clone, Debug)]
 pub struct Clusterwide {
-    pub state: State,
+    pub properties: Properties,
     pub instances: Instances,
     pub peer_addresses: PeerAddresses,
     pub replicasets: Replicasets,
@@ -93,7 +93,7 @@ pub struct Clusterwide {
 impl Clusterwide {
     pub fn new() -> tarantool::Result<Self> {
         Ok(Self {
-            state: State::new()?,
+            properties: Properties::new()?,
             instances: Instances::new()?,
             peer_addresses: PeerAddresses::new()?,
             replicasets: Replicasets::new()?,
@@ -103,16 +103,16 @@ impl Clusterwide {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// State
+// Properties
 ////////////////////////////////////////////////////////////////////////////////
 
-/// A struct for accessing storage of the cluster-wide key-value state
+/// A struct for accessing storage of the cluster-wide key-value properties
 #[derive(Clone, Debug)]
-pub struct State {
+pub struct Properties {
     space: Space,
 }
 
-impl State {
+impl Properties {
     const SPACE_NAME: &'static str = ClusterwideSpace::Property.as_str();
     const INDEX_PRIMARY: &'static str = "pk";
 

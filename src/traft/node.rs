@@ -401,7 +401,7 @@ impl NodeImpl {
                 }
                 let replication_factor = self
                     .storage
-                    .state
+                    .properties
                     .get(PropertyName::ReplicationFactor)?
                     .ok_or_else(|| Error::other("missing replication_factor value in storage"))?;
                 Topology::new(instances).with_replication_factor(replication_factor)
