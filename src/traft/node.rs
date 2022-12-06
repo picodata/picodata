@@ -24,7 +24,7 @@ use std::rc::Rc;
 use std::time::Duration;
 use std::time::Instant;
 
-use crate::governor::governor_loop;
+use crate::governor;
 use crate::kvcell::KVCell;
 use crate::loop_start;
 use crate::r#loop::FlowControl;
@@ -121,7 +121,7 @@ pub struct Node {
     pub(crate) storage: Clusterwide,
     pub(crate) raft_storage: RaftSpaceAccess,
     main_loop: MainLoop,
-    _conf_change_loop: fiber::UnitJoinHandle<'static>,
+    _governor_loop: governor::Loop,
     status: Rc<Cell<Status>>,
 }
 
@@ -149,21 +149,14 @@ impl Node {
 
         let node_impl = Rc::new(Mutex::new(node_impl));
 
-        let governor_loop_fn = {
-            let status = status.clone();
-            let storage = storage.clone();
-            let raft_storage = raft_storage.clone();
-            move || governor_loop(status, storage, raft_storage)
-        };
-
         let node = Node {
             raft_id,
             main_loop: MainLoop::start(status.clone(), node_impl.clone()), // yields
-            _conf_change_loop: fiber::Builder::new()
-                .name("governor_loop")
-                .proc(governor_loop_fn)
-                .start()
-                .unwrap(),
+            _governor_loop: governor::Loop::start(
+                status.clone(),
+                storage.clone(),
+                raft_storage.clone(),
+            ),
             node_impl,
             storage,
             raft_storage,
