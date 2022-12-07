@@ -10,6 +10,7 @@ use crate::traft::{CurrentGrade, CurrentGradeVariant, Grade, TargetGrade, Target
 use crate::traft::{InstanceId, RaftId, ReplicasetId};
 use crate::util::Uppercase;
 
+#[derive(Debug)]
 pub struct Topology {
     replication_factor: u8,
     max_raft_id: RaftId,
@@ -126,7 +127,7 @@ impl Topology {
         replicaset_id: Option<ReplicasetId>,
         advertise: Address,
         failure_domain: FailureDomain,
-    ) -> Result<(Instance, Address), String> {
+    ) -> Result<(Instance, Address, HashSet<Address>), String> {
         if let Some(id) = &instance_id {
             let existing_instance = self.instance_map.get(id);
             if matches!(existing_instance, Some((instance, ..)) if instance.is_online()) {
@@ -149,7 +150,7 @@ impl Topology {
             instance_id,
             instance_uuid,
             raft_id,
-            replicaset_id,
+            replicaset_id: replicaset_id.clone(),
             replicaset_uuid,
             current_grade: CurrentGrade::offline(0),
             target_grade: TargetGrade::offline(0),
@@ -157,7 +158,14 @@ impl Topology {
         };
 
         self.put_instance(instance.clone(), advertise.clone());
-        Ok((instance, advertise))
+
+        let replication_ids = self.replicaset_map.get(&replicaset_id).unwrap();
+        let replication_addresses = replication_ids
+            .iter()
+            .map(|id| self.instance_map.get(id).unwrap().1.clone())
+            .collect();
+
+        Ok((instance, advertise, replication_addresses))
     }
 
     pub fn update_instance(&mut self, req: update_instance::Request) -> Result<Instance, String> {
@@ -218,7 +226,7 @@ pub fn initial_instance(
     replicaset_id: Option<ReplicasetId>,
     advertise: Address,
     failure_domain: FailureDomain,
-) -> Result<(Instance, Address), String> {
+) -> Result<(Instance, Address, HashSet<Address>), String> {
     let mut topology = Topology::new(vec![]);
     topology.join(instance_id, replicaset_id, advertise, failure_domain)
 }
@@ -226,6 +234,8 @@ pub fn initial_instance(
 #[rustfmt::skip]
 #[cfg(test)]
 mod tests {
+    use std::collections::HashSet;
+
     use super::Topology;
 
     use crate::traft::instance_uuid;
@@ -303,6 +313,10 @@ mod tests {
         };
     }
 
+    macro_rules! addresses {
+        [$($address:literal),*] => [HashSet::from([$($address.to_string()),*])]
+    }
+
     macro_rules! join {
         (
             $topology:expr,
@@ -372,22 +386,22 @@ mod tests {
 
         assert_eq!(
             join!(topology, None, None, "addr:1").unwrap(),
-            (instance!(1, "i1", "r1", CurrentGrade::offline(0), TargetGrade::offline(0)), "addr:1".into()),
+            (instance!(1, "i1", "r1", CurrentGrade::offline(0), TargetGrade::offline(0)), "addr:1".into(), addresses!["addr:1"]),
         );
 
         assert_eq!(
             join!(topology, None, None, "addr:1").unwrap(),
-            (instance!(2, "i2", "r2", CurrentGrade::offline(0), TargetGrade::offline(0)), "addr:1".into()),
+            (instance!(2, "i2", "r2", CurrentGrade::offline(0), TargetGrade::offline(0)), "addr:1".into(), addresses!["addr:1"]),
         );
 
         assert_eq!(
             join!(topology, None, Some("R3"), "addr:1").unwrap(),
-            (instance!(3, "i3", "R3", CurrentGrade::offline(0), TargetGrade::offline(0)), "addr:1".into()),
+            (instance!(3, "i3", "R3", CurrentGrade::offline(0), TargetGrade::offline(0)), "addr:1".into(), addresses!["addr:1"]),
         );
 
         assert_eq!(
             join!(topology, Some("I4"), None, "addr:1").unwrap(),
-            (instance!(4, "I4", "r3", CurrentGrade::offline(0), TargetGrade::offline(0)), "addr:1".into()),
+            (instance!(4, "I4", "r3", CurrentGrade::offline(0), TargetGrade::offline(0)), "addr:1".into(), addresses!["addr:1"]),
         );
 
         let mut topology = Topology::new(
@@ -396,7 +410,7 @@ mod tests {
 
         assert_eq!(
             join!(topology, None, None, "addr:1").unwrap(),
-            (instance!(2, "i2", "r2", CurrentGrade::offline(0), TargetGrade::offline(0)), "addr:1".into()),
+            (instance!(2, "i2", "r2", CurrentGrade::offline(0), TargetGrade::offline(0)), "addr:1".into(), addresses!["addr:1"]),
         );
     }
 
@@ -432,7 +446,7 @@ mod tests {
         //   Disruption isn't destructive if auto-expel allows (TODO).
         assert_eq!(
             join!(topology, Some("i2"), None, "inactive:2").unwrap(),
-            (instance!(3, "i2", "r1", CurrentGrade::offline(0), TargetGrade::offline(0)), "inactive:2".into()),
+            (instance!(3, "i2", "r1", CurrentGrade::offline(0), TargetGrade::offline(0)), "inactive:2".into(), addresses!["who-cares.biz", "inactive:2"]),
             // Attention: generated replicaset_id differs from the
             // original one, as well as raft_id.
             // That's a desired behavior.
@@ -461,7 +475,7 @@ mod tests {
 
         assert_eq!(
             join!(topology, None, Some("r2"), "addr:2").unwrap(),
-            (instance!(3, "i3-2", "r2", CurrentGrade::offline(0), TargetGrade::offline(0)), "addr:2".into()),
+            (instance!(3, "i3-2", "r2", CurrentGrade::offline(0), TargetGrade::offline(0)), "addr:2".into(), addresses!["addr:2"]),
         );
     }
 
@@ -475,19 +489,19 @@ mod tests {
 
         assert_eq!(
             join!(topology, Some("i1"), None, "addr:1").unwrap(),
-            (instance!(11, "i1", "r1", CurrentGrade::offline(0), TargetGrade::offline(0)), "addr:1".into()),
+            (instance!(11, "i1", "r1", CurrentGrade::offline(0), TargetGrade::offline(0)), "addr:1".into(), addresses!["addr:1"]),
         );
         assert_eq!(
             join!(topology, Some("i2"), None, "addr:2").unwrap(),
-            (instance!(12, "i2", "r1", CurrentGrade::offline(0), TargetGrade::offline(0)), "addr:2".into()),
+            (instance!(12, "i2", "r1", CurrentGrade::offline(0), TargetGrade::offline(0)), "addr:2".into(), addresses!["addr:1", "addr:2"]),
         );
         assert_eq!(
             join!(topology, Some("i3"), None, "addr:3").unwrap(),
-            (instance!(13, "i3", "r2", CurrentGrade::offline(0), TargetGrade::offline(0)), "addr:3".into()),
+            (instance!(13, "i3", "r2", CurrentGrade::offline(0), TargetGrade::offline(0)), "addr:3".into(), addresses!["addr:3"]),
         );
         assert_eq!(
             join!(topology, Some("i4"), None, "addr:4").unwrap(),
-            (instance!(14, "i4", "r2", CurrentGrade::offline(0), TargetGrade::offline(0)), "addr:4".into()),
+            (instance!(14, "i4", "r2", CurrentGrade::offline(0), TargetGrade::offline(0)), "addr:4".into(), addresses!["addr:3", "addr:4"]),
         );
     }
 

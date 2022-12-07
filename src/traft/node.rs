@@ -18,7 +18,7 @@ use ::tarantool::proc;
 use ::tarantool::tlua;
 use ::tarantool::transaction::start_transaction;
 use std::cell::Cell;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::convert::TryFrom;
 use std::rc::Rc;
 use std::time::Duration;
@@ -47,6 +47,7 @@ use crate::traft::event;
 use crate::traft::event::Event;
 use crate::traft::notify::{notification, Notifier, Notify};
 use crate::traft::rpc::{join, update_instance};
+use crate::traft::Address;
 use crate::traft::ConnectionPool;
 use crate::traft::CurrentGradeVariant;
 use crate::traft::LogicalClock;
@@ -247,13 +248,13 @@ impl Node {
     pub fn handle_join_request_and_wait(
         &self,
         req: join::Request,
-    ) -> traft::Result<Box<traft::Instance>> {
-        let (notify_addr, notify_instance) =
+    ) -> traft::Result<(Box<Instance>, HashSet<Address>)> {
+        let (notify_addr, notify_instance, replication_addresses) =
             self.raw_operation(|node_impl| node_impl.process_join_request_async(req))?;
         fiber::block_on(async {
             let (addr, instance) = futures::join!(notify_addr.recv_any(), notify_instance.recv());
             addr?;
-            instance.map(Box::new)
+            instance.map(|i| (Box::new(i), replication_addresses))
         })
     }
 
@@ -477,9 +478,9 @@ impl NodeImpl {
     pub fn process_join_request_async(
         &mut self,
         req: join::Request,
-    ) -> traft::Result<(Notify, Notify)> {
+    ) -> traft::Result<(Notify, Notify, HashSet<Address>)> {
         let topology = self.topology_mut()?;
-        let (instance, address) = topology
+        let (instance, address, replication_addresses) = topology
             .join(
                 req.instance_id,
                 req.replicaset_id,
@@ -510,6 +511,7 @@ impl NodeImpl {
         Ok((
             self.propose_async(op_addr)?,
             self.propose_async(op_instance)?,
+            replication_addresses,
         ))
     }
 

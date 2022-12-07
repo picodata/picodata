@@ -1,12 +1,13 @@
 use crate::traft::{
-    error::Error, node, FailureDomain, Instance, InstanceId, PeerAddress, ReplicasetId, Result,
+    error::Error, node, Address, FailureDomain, Instance, InstanceId, PeerAddress, ReplicasetId,
+    Result,
 };
 
 #[derive(Clone, Debug, ::serde::Serialize, ::serde::Deserialize)]
 pub struct OkResponse {
     pub instance: Box<Instance>,
     pub peer_addresses: Vec<PeerAddress>,
-    pub box_replication: Vec<String>,
+    pub box_replication: Vec<Address>,
     // Other parameters necessary for box.cfg()
     // TODO
 }
@@ -28,12 +29,7 @@ crate::define_rpc_request! {
         }
 
         match node.handle_join_request_and_wait(req) {
-            Ok(instance) => {
-                let mut box_replication = vec![];
-                for replica in node.storage.instances.replicaset_instances(&instance.replicaset_id)? {
-                    box_replication.extend(node.storage.peer_addresses.get(replica.raft_id)?);
-                }
-
+            Ok((instance, replication_addresses)) => {
                 // A joined instance needs to communicate with other nodes.
                 // TODO: limit the number of entries sent to reduce response size.
                 let peer_addresses = node.storage.peer_addresses.iter()?.collect();
@@ -41,7 +37,7 @@ crate::define_rpc_request! {
                 Ok(Response::Ok(OkResponse {
                     instance,
                     peer_addresses,
-                    box_replication,
+                    box_replication: replication_addresses.into_iter().collect(),
                 }))
 
             },

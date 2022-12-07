@@ -752,7 +752,7 @@ fn start_discover(args: &args::Run, to_supervisor: ipc::Sender<IpcMessage>) {
 fn start_boot(args: &args::Run) {
     tlog!(Info, ">>>>> start_boot()");
 
-    let (instance, address) = traft::topology::initial_instance(
+    let (instance, address, _) = traft::topology::initial_instance(
         args.instance_id.clone(),
         args.replicaset_id.clone(),
         args.advertise_address(),
