@@ -20,8 +20,8 @@ BuildRequires: cmake3
 %if 0%{?rhel} == 8
 BuildRequires: libstdc++-static
 %endif
-
-Requires: tarantool > 2.8
+   
+Requires: tarantool-picodata
 
 %description
 Picodata is a high performance in-memory NoSQL database and Rust
@@ -66,6 +66,9 @@ make build
 %endif
 
 %changelog
+* Mon Dec  5 2022 <kdy@picodata.io> - 22.07.0%{?dist}
+   - Replace tarantool to tarantool-picodata
+
 * Fri Jul  8 2022 <kdy@picodata.io> - 22.07.0%{?dist}
    - Added Picodata product
 

@@ -312,15 +312,17 @@ deploy-job:
     - ssh -o stricthostkeychecking=no ansible@94.26.239.246 "reprepro -b /data/nginx/www/packrepo/tarantool-picodata/debian/ -C main includedeb bullseye ~/.deb/debian/picodata*bullseye*deb; rm ~/.deb/debian/picodata*bullseye*deb"
     - echo "debian packets successfully deployed."
     - echo
+    # Altlinux p9
+    - ssh -o stricthostkeychecking=no ansible@94.26.239.246 "mkdir -p /tmp/altlinux/"
+    - echo "Deploying altlinux-p9 packet..."
+    - scp -o stricthostkeychecking=no build/picodata*.p9.*rpm ansible@94.26.239.246:/tmp/altlinux/
+    - echo "altlinux-p9 packet successfully deployed."
+    - echo
     # Altlinux p10
     - echo "Deploying altlinux-p10 packet..."
-    - scp -o stricthostkeychecking=no build/picodata*.p10.*rpm ansible@94.26.239.246:/data/nginx/www/packrepo/tarantool-picodata/altlinux/p10/
+    - scp -o stricthostkeychecking=no build/picodata*.p10.*rpm ansible@94.26.239.246:/tmp/altlinux/
     - echo "altlinux-p10 packet successfully deployed."
-    - echo
-    # Altlinux p9
-    - echo "Deploying altlinux-p9 packet..."
-    - scp -o stricthostkeychecking=no build/picodata*.p9.*rpm ansible@94.26.239.246:/data/nginx/www/packrepo/tarantool-picodata/altlinux/p9/
-    - echo "altlinux-p9 packet successfully deployed."
+    - ssh -o stricthostkeychecking=no ansible@94.26.239.246 "/usr/local/bin/repogen.sh"
     - echo
   dependencies:
     - pack-ubuntu
