@@ -79,13 +79,8 @@ box.space.replicasets:fselect()
 
 ![replicasets_fselect](replicasets.png "Replicasets summary")
 
-Эти и другие команды сведены в Bash-скрипт, который можно загрузить и
-выполнить для более удобного мониторинга кластера Picodata. Это можно
-сделать следующим образом:
-
-```
-curl -sSf https://git.picodata.io/picodata/picodata/picodata/-/blob/master/docs/picodata-list.sh | watch
-```
+Эти и другие команды сведены в [Bash-скрипт](https://git.picodata.io/picodata/picodata/docs/-/raw/main/docs/picodata-list.sh), который можно загрузить и
+выполнить для более удобного мониторинга кластера Picodata. 
 
 Внешний вид выполняющегося скрипта показан ниже.
 
@@ -152,8 +147,9 @@ localhost:3301> box.space.migrations:fselect()
 Теперь можно применить схему в рамках кластера, введя команду
 `pico.push_schema_version(1)`. Для того чтобы посмотреть параметры
 созданного `space` следует использовать команду `box.space.test`, где
-_test_ — название таблицы. Также следует обратить внимание, что в
-скрипте мониторинга обновится номер текущей схемы в кластере:
+_test_ — название таблицы. Также следует обратить внимание, что в выводе
+команды `box.space.replicasets:fselect()` обновится номер текущей схемы
+в кластере:
 
 ![cluster_monitor_1](cluster_monitor_1.png "Schema version bump")
 
