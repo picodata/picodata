@@ -154,7 +154,7 @@ impl<T> Sender<T> {
     /// Returns a reference to the most recently sent value.
     ///
     /// Care must be taken not to hold a ref, when the sender is setting a new value.
-    /// This includes not holding a ref across await points and not explicitely yielding
+    /// This includes not holding a ref across await points and not explicitly yielding
     /// control to other fibers while holding a ref.
     ///
     /// Consider using [`Self::get`] or [`Self::get_cloned`] instead.
@@ -232,7 +232,7 @@ impl<T> Receiver<T> {
     /// method sleeps until a new message is sent by the [`Sender`] connected to
     /// this `Receiver`, or until the [`Sender`] is dropped.
     ///
-    /// This method returns an error if and only if the [`Sender`] is dropped.    
+    /// This method returns an error if and only if the [`Sender`] is dropped.
     pub fn changed(&mut self) -> Notification<T> {
         Notification { rx: self }
     }
@@ -244,8 +244,13 @@ impl<T> Receiver<T> {
     /// value with a call to `borrow`.
     ///
     /// Care must be taken not to hold a ref, when the sender is setting a new value.
-    /// This includes not holding a ref across await points and not explicitely yielding
+    /// This includes not holding a ref across await points and not explicitly yielding
     /// control to other fibers while holding a ref.
+    ///
+    /// If the stored type supports internal mutability, it can be changed
+    /// transparently (without notifying) for the watchers through the reference
+    /// returned from this function. This is not an intended use case, but it is
+    /// possible.
     ///
     /// Consider using [`Self::get`] or [`Self::get_cloned`] instead.
     pub fn borrow(&self) -> ValueRef<T> {
