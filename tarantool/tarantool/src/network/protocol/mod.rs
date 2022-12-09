@@ -1,19 +1,22 @@
 //! Protocol description without actual network layer
 
 use std::fmt::{Display, Formatter};
+
+use self::options::ConnOptions;
 pub mod codec;
+pub mod conn;
 pub mod options;
 pub mod send_queue;
 
-#[derive(Debug, Copy, Clone)]
-pub enum ConnState {
-    Init,
-    Connecting,
-    Auth,
-    Active,
-    Error,
-    ErrorReconnect,
-    Closed,
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct SyncIndex(u64);
+
+impl SyncIndex {
+    pub fn next(&mut self) -> Self {
+        let sync = self.0;
+        self.0 += 1;
+        Self(sync)
+    }
 }
 
 #[derive(Debug)]

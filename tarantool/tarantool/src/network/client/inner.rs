@@ -6,9 +6,10 @@ use crate::coio::CoIOStream;
 use crate::error::Error;
 use crate::fiber::{is_cancelled, reschedule, set_cancellable, sleep, time, Cond, Fiber};
 use crate::network::protocol::codec::{self, Header, Request};
+use crate::network::protocol::conn::write_to_buffer;
 use crate::network::protocol::options::{ConnOptions, Options};
 use crate::network::protocol::send_queue::{self, SendQueue};
-use crate::network::protocol::ConnState;
+use crate::network::protocol::SyncIndex;
 use crate::tuple::Decode;
 use crate::unwrap_or;
 
@@ -17,6 +18,17 @@ use std::io::{Cursor, Read, Write};
 use std::net::SocketAddr;
 use std::rc::{Rc, Weak};
 use std::time::{Duration, SystemTime};
+
+#[derive(Debug, Copy, Clone)]
+enum ConnState {
+    Init,
+    Auth,
+    Active,
+    Connecting,
+    Error,
+    ErrorReconnect,
+    Closed,
+}
 
 pub struct ConnInner {
     addrs: Vec<SocketAddr>,
@@ -115,7 +127,7 @@ impl ConnInner {
         options: &Options,
     ) -> Result<R, Error>
     where
-        Fp: FnOnce(&mut Cursor<Vec<u8>>, u64) -> Result<(), Error>,
+        Fp: FnOnce(&mut Cursor<Vec<u8>>, SyncIndex) -> Result<(), Error>,
         Fc: FnOnce(&mut Cursor<Vec<u8>>, &Header) -> Result<R, Error>,
     {
         loop {
@@ -239,38 +251,7 @@ impl ConnInner {
     }
 
     fn auth(&self, stream: &mut CoIOStream, salt: &[u8]) -> Result<(), Error> {
-        let buf = Vec::new();
-        let mut cur = Cursor::new(buf);
-
-        // send auth request
-        let sync = self.send_queue.next_sync();
-        send_queue::write_to_buffer(&mut cur, sync, |buf, sync| {
-            codec::encode_auth(
-                buf,
-                self.options.user.as_str(),
-                self.options.password.as_str(),
-                salt,
-                sync,
-            )
-        })?;
-        stream.write_all(cur.get_ref())?;
-
-        // handle response
-        let response_len = rmp::decode::read_u32(stream)?;
-        {
-            let buffer = cur.get_mut();
-            buffer.clear();
-            buffer.reserve(response_len as usize);
-            stream.take(response_len as u64).read_to_end(buffer)?;
-            cur.set_position(0);
-        }
-
-        let header = codec::decode_header(&mut cur)?;
-        if header.status_code != 0 {
-            return Err(codec::decode_error(stream)?.into());
-        }
-
-        Ok(())
+        unimplemented!("Moved")
     }
 
     fn update_state(&self, state: ConnState) {

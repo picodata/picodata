@@ -12,7 +12,7 @@ use crate::index::IteratorType;
 use crate::msgpack;
 use crate::tuple::{ToTupleBuffer, Tuple};
 
-use super::ResponseError;
+use super::{ResponseError, SyncIndex};
 
 const REQUEST_TYPE: u8 = 0x00;
 const SYNC: u8 = 0x01;
@@ -71,8 +71,6 @@ impl TryFrom<u8> for IProtoKey {
     }
 }
 
-pub(crate) type Sync = u64;
-
 pub(crate) enum IProtoType {
     Select = 1,
     Insert = 2,
@@ -90,7 +88,7 @@ pub(crate) enum IProtoType {
 pub(crate) trait Request {
     const TYPE: IProtoType;
 
-    fn encode_header<W>(&self, out: &mut W, sync: Sync, ty: IProtoType) -> Result<(), Error>
+    fn encode_header<W>(&self, out: &mut W, sync: SyncIndex, ty: IProtoType) -> Result<(), Error>
     where
         W: Write,
     {
@@ -104,7 +102,7 @@ pub(crate) trait Request {
 
 pub(crate) fn request_producer<R>(
     request: R,
-) -> impl FnOnce(&mut Cursor<Vec<u8>>, Sync) -> crate::Result<()>
+) -> impl FnOnce(&mut Cursor<Vec<u8>>, SyncIndex) -> crate::Result<()>
 where
     R: Request,
 {
@@ -184,14 +182,14 @@ pub trait Consumer {
 
 fn encode_header(
     stream: &mut impl Write,
-    sync: u64,
+    sync: SyncIndex,
     request_type: IProtoType,
 ) -> Result<(), Error> {
     rmp::encode::write_map_len(stream, 2)?;
     rmp::encode::write_pfix(stream, REQUEST_TYPE)?;
     rmp::encode::write_pfix(stream, request_type as u8)?;
     rmp::encode::write_pfix(stream, SYNC)?;
-    rmp::encode::write_uint(stream, sync)?;
+    rmp::encode::write_uint(stream, sync.0)?;
     Ok(())
 }
 
@@ -200,7 +198,7 @@ pub fn encode_auth(
     user: &str,
     password: &str,
     salt: &[u8],
-    sync: u64,
+    sync: SyncIndex,
 ) -> Result<(), Error> {
     // prepare 'chap-sha1' scramble:
     // salt = base64_decode(encoded_salt);
@@ -243,7 +241,7 @@ pub fn encode_auth(
     Ok(())
 }
 
-pub fn encode_ping(stream: &mut impl Write, sync: u64) -> Result<(), Error> {
+pub fn encode_ping(stream: &mut impl Write, sync: SyncIndex) -> Result<(), Error> {
     encode_header(stream, sync, IProtoType::Ping)?;
     rmp::encode::write_map_len(stream, 0)?;
     Ok(())
@@ -251,7 +249,7 @@ pub fn encode_ping(stream: &mut impl Write, sync: u64) -> Result<(), Error> {
 
 pub fn encode_execute(
     stream: &mut impl Write,
-    sync: u64,
+    sync: SyncIndex,
     sql: &str,
     bind_params: &impl ToTupleBuffer,
 ) -> Result<(), Error> {
@@ -267,7 +265,7 @@ pub fn encode_execute(
 
 pub fn encode_call<T>(
     stream: &mut impl Write,
-    sync: u64,
+    sync: SyncIndex,
     function_name: &str,
     args: &T,
 ) -> Result<(), Error>
@@ -305,7 +303,7 @@ impl<'a, A: ToTupleBuffer> Request for Call<'a, A> {
 
 pub fn encode_eval<T>(
     stream: &mut impl Write,
-    sync: u64,
+    sync: SyncIndex,
     expression: &str,
     args: &T,
 ) -> Result<(), Error>
@@ -344,7 +342,7 @@ impl<'a, A: ToTupleBuffer> Request for Eval<'a, A> {
 #[allow(clippy::too_many_arguments)]
 pub fn encode_select<K>(
     stream: &mut impl Write,
-    sync: u64,
+    sync: SyncIndex,
     space_id: u32,
     index_id: u32,
     limit: u32,
@@ -375,7 +373,7 @@ where
 
 pub fn encode_insert<T>(
     stream: &mut impl Write,
-    sync: u64,
+    sync: SyncIndex,
     space_id: u32,
     value: &T,
 ) -> Result<(), Error>
@@ -394,7 +392,7 @@ where
 
 pub fn encode_replace<T>(
     stream: &mut impl Write,
-    sync: u64,
+    sync: SyncIndex,
     space_id: u32,
     value: &T,
 ) -> Result<(), Error>
@@ -413,7 +411,7 @@ where
 
 pub fn encode_update<K, Op>(
     stream: &mut impl Write,
-    sync: u64,
+    sync: SyncIndex,
     space_id: u32,
     index_id: u32,
     key: &K,
@@ -439,7 +437,7 @@ where
 
 pub fn encode_upsert<T, Op>(
     stream: &mut impl Write,
-    sync: u64,
+    sync: SyncIndex,
     space_id: u32,
     index_id: u32,
     value: &T,
@@ -465,7 +463,7 @@ where
 
 pub fn encode_delete<K>(
     stream: &mut impl Write,
-    sync: u64,
+    sync: SyncIndex,
     space_id: u32,
     index_id: u32,
     key: &K,
@@ -487,7 +485,7 @@ where
 
 #[derive(Debug)]
 pub struct Header {
-    pub sync: Sync,
+    pub sync: SyncIndex,
     pub status_code: u32,
     pub schema_version: u32,
 }
@@ -518,7 +516,7 @@ pub fn decode_header(stream: &mut (impl Read + Seek)) -> Result<Header, Error> {
     }
 
     Ok(Header {
-        sync: sync.unwrap(),
+        sync: SyncIndex(sync.unwrap()),
         status_code: status_code.unwrap(),
         schema_version: schema_version.unwrap(),
     })

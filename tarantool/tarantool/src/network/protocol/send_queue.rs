@@ -5,6 +5,9 @@ use std::time::Duration;
 use crate::error::Error;
 use crate::fiber::Cond;
 
+use super::conn::write_to_buffer;
+use super::SyncIndex;
+
 pub struct SendQueue {
     pub(crate) is_active: Cell<bool>,
     sync: Cell<u64>,
@@ -28,71 +31,15 @@ impl SendQueue {
         }
     }
 
-    pub fn send<F>(&self, payload_producer: F) -> Result<u64, Error>
+    pub fn send<F>(&self, payload_producer: F) -> Result<SyncIndex, Error>
     where
-        F: FnOnce(&mut Cursor<Vec<u8>>, u64) -> Result<(), Error>,
+        F: FnOnce(&mut Cursor<Vec<u8>>, SyncIndex) -> Result<(), Error>,
     {
-        let sync = self.next_sync();
-
-        if self.back_buffer.borrow().position() >= self.buffer_limit {
-            self.swap_cond.signal();
-        }
-
-        let offset = {
-            let buffer = &mut *self.back_buffer.borrow_mut();
-
-            let offset = buffer.position();
-            match write_to_buffer(buffer, sync, payload_producer) {
-                Err(err) => {
-                    // rollback buffer position on error
-                    buffer.set_position(offset);
-                    return Err(err);
-                }
-                Ok(_) => offset,
-            }
-        };
-
-        // trigger swap condition if buffer was empty before
-        if offset == 0 {
-            self.swap_cond.signal();
-        }
-
-        Ok(sync)
-    }
-
-    pub fn next_sync(&self) -> u64 {
-        let sync = self.sync.get() + 1;
-        self.sync.set(sync);
-        sync
+        unimplemented!("Function is in the process of being moved into different structure")
     }
 
     pub fn close(&self) {
         self.is_active.set(false);
         self.swap_cond.signal();
     }
-}
-
-pub fn write_to_buffer<F>(
-    buffer: &mut Cursor<Vec<u8>>,
-    sync: u64,
-    payload_producer: F,
-) -> Result<(), Error>
-where
-    F: FnOnce(&mut Cursor<Vec<u8>>, u64) -> Result<(), Error>,
-{
-    // write MSG_SIZE placeholder
-    let msg_start_offset = buffer.position();
-    rmp::encode::write_u32(buffer, 0)?;
-
-    // write message payload
-    let payload_start_offset = buffer.position();
-    payload_producer(buffer, sync)?;
-    let payload_end_offset = buffer.position();
-
-    // calculate and write MSG_SIZE
-    buffer.set_position(msg_start_offset);
-    rmp::encode::write_u32(buffer, (payload_end_offset - payload_start_offset) as u32)?;
-    buffer.set_position(payload_end_offset);
-
-    Ok(())
 }

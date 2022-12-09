@@ -20,7 +20,7 @@ use crate::error::Error;
 use crate::tuple::{Decode, ToTupleBuffer, Tuple};
 use inner::ConnInner;
 
-/// Provides triggers for connect, disconnect and schema reload events.
+/// Provides triggers for connect, disconnect events.
 pub trait ConnTriggers {
     /// Defines a trigger for execution when a new connection is established, and authentication and schema fetch are
     /// completed due to an event such as `connect`.

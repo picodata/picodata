@@ -10,18 +10,17 @@ use rmp::decode;
 use crate::error::Error;
 use crate::fiber::{Cond, Latch};
 
-use crate::network::protocol::codec::{
-    decode_error, decode_header, Consumer, Header, Response, Sync,
-};
+use crate::network::protocol::codec::{decode_error, decode_header, Consumer, Header, Response};
 use crate::network::protocol::options::Options;
+use crate::network::protocol::SyncIndex;
 
-type Consumers = HashMap<Sync, Weak<dyn Consumer>>;
+type Consumers = HashMap<SyncIndex, Weak<dyn Consumer>>;
 
 pub struct RecvQueue {
     is_active: Cell<bool>,
     buffer: RefCell<Cursor<Vec<u8>>>,
     chunks: RefCell<Vec<Range<usize>>>,
-    cond_map: RefCell<HashMap<Sync, PoolRef<Cond>>>,
+    cond_map: RefCell<HashMap<SyncIndex, PoolRef<Cond>>>,
     cond_pool: Pool<Cond>,
     async_consumers: UnsafeCell<Consumers>,
     read_offset: Cell<usize>,
@@ -49,7 +48,7 @@ impl RecvQueue {
 
     pub fn recv<F, R>(
         &self,
-        sync: u64,
+        sync: SyncIndex,
         payload_consumer: F,
         options: &Options,
     ) -> Result<Response<R>, Error>
@@ -94,17 +93,17 @@ impl RecvQueue {
         }
     }
 
-    pub fn add_consumer(&self, sync: Sync, consumer: Weak<dyn Consumer>) {
+    pub fn add_consumer(&self, sync: SyncIndex, consumer: Weak<dyn Consumer>) {
         unsafe { (*self.async_consumers.get()).insert(sync, consumer) };
     }
 
-    pub fn get_consumer(&self, sync: Sync) -> Option<Rc<dyn Consumer>> {
+    pub fn get_consumer(&self, sync: SyncIndex) -> Option<Rc<dyn Consumer>> {
         unsafe { &mut *self.async_consumers.get() }
             .remove(&sync)
             .and_then(|c| c.upgrade())
     }
 
-    pub fn iter_consumers(&self) -> HashMapIter<Sync, Weak<dyn Consumer>> {
+    pub fn iter_consumers(&self) -> HashMapIter<SyncIndex, Weak<dyn Consumer>> {
         unsafe { &*self.async_consumers.get() }.iter()
     }
 
