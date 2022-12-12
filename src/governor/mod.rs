@@ -1,5 +1,5 @@
 use std::borrow::Cow;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::iter::repeat;
 use std::rc::Rc;
 use std::time::Duration;
@@ -464,32 +464,6 @@ impl Loop {
                 // TODO: don't hard code timeout
                 event::wait_timeout(Event::TopologyChanged, Duration::from_secs(1)).unwrap();
                 return Continue;
-            }
-
-            let res = (|| -> Result<()> {
-                // Promote the replication leaders again
-                // because of tarantool bugs
-                let replicasets = storage.replicasets.iter()?;
-                let masters = replicasets.map(|r| r.master_id).collect::<HashSet<_>>();
-                let commit = raft_storage.commit()?.unwrap();
-                let reqs = maybe_responding(&instances)
-                    .filter(|instance| masters.contains(&instance.instance_id))
-                    .map(|instance| instance.instance_id.clone())
-                    .zip(repeat(replication::promote::Request {
-                        term,
-                        commit,
-                        timeout: Self::SYNC_TIMEOUT,
-                    }));
-                // TODO: don't hard code timeout
-                let res = call_all(pool, reqs, Duration::from_secs(3))?;
-                for (instance_id, resp) in res {
-                    resp?;
-                    tlog!(Debug, "promoted replicaset master"; "instance_id" => %instance_id);
-                }
-                Ok(())
-            })();
-            if let Err(e) = res {
-                tlog!(Warning, "failed to promote replicaset masters: {e}");
             }
 
             tlog!(Info, "sharding is initialized");
