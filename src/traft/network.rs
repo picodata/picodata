@@ -1,5 +1,6 @@
 use ::raft::prelude as raft;
 use ::tarantool::fiber;
+use ::tarantool::fiber::r#async::oneshot;
 use ::tarantool::net_box::promise::Promise;
 use ::tarantool::net_box::promise::TryGet;
 use ::tarantool::net_box::Conn;
@@ -7,9 +8,12 @@ use ::tarantool::net_box::ConnOptions;
 use ::tarantool::tuple::Decode;
 use ::tarantool::tuple::{RawByteBuf, ToTupleBuffer, TupleBuffer};
 use ::tarantool::util::IntoClones;
+use futures::future::poll_fn;
+use futures::Future;
 use std::cell::Cell;
 use std::collections::{hash_map::Entry, HashMap};
 use std::io;
+use std::pin::Pin;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
@@ -291,7 +295,7 @@ impl PoolWorker {
     /// - in case peer was disconnected
     /// - in case response failed to deserialize
     /// - in case peer responded with an error
-    pub fn rpc<R>(&mut self, request: R, cb: impl FnOnce(Result<R::Response>) + 'static)
+    pub fn rpc<R>(&mut self, request: &R, cb: impl FnOnce(Result<R::Response>) + 'static)
     where
         R: Request,
     {
@@ -470,7 +474,7 @@ impl ConnectionPool {
     pub fn call_and_wait_timeout<R>(
         &mut self,
         id: &impl IdOfInstance,
-        req: R,
+        req: &R,
         timeout: Duration,
     ) -> Result<R::Response>
     where
@@ -490,30 +494,40 @@ impl ConnectionPool {
     /// **This function yields.**
     #[allow(dead_code)]
     #[inline(always)]
-    pub fn call_and_wait<R>(&mut self, id: &impl IdOfInstance, req: R) -> Result<R::Response>
+    pub fn call_and_wait<R>(&mut self, id: &impl IdOfInstance, req: &R) -> Result<R::Response>
     where
         R: Request,
     {
         self.call_and_wait_timeout(id, req, Duration::MAX)
     }
 
-    /// Send a request to instance with `id` (see `InstanceId`) and wait for the result.
+    /// Send a request to instance with `id` (see `IdOfInstance`) returning a
+    /// future.
     ///
     /// If the request failed, it's a responsibility of the caller
     /// to re-send it later.
-    ///
-    /// **This function never yields.**
     pub fn call<R>(
         &mut self,
         id: &impl IdOfInstance,
-        req: R,
-        cb: impl FnOnce(Result<R::Response>) + 'static,
-    ) -> Result<()>
+        req: &R,
+    ) -> Result<impl Future<Output = Result<R::Response>>>
     where
         R: Request,
     {
-        id.get_or_create_in(self)?.rpc(req, cb);
-        Ok(())
+        let (tx, mut rx) = oneshot::channel();
+        id.get_or_create_in(self)?.rpc(req, move |res| {
+            // TODO: maybe log a warning if receiver was dropped
+            let _ = tx.send(res);
+        });
+
+        // We use an explicit type implementing Future instead of defining an
+        // async fn, because we need to tell rust explicitly that the `id` &
+        // `req` arguments are not borrowed by the returned future.
+        let f = poll_fn(move |cx| {
+            let rx = Pin::new(&mut rx);
+            Future::poll(rx, cx).map(|r| r.unwrap_or_else(|_| Err(Error::other("disconnected"))))
+        });
+        Ok(f)
     }
 }
 

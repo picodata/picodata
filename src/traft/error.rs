@@ -1,5 +1,6 @@
 use crate::traft::InstanceId;
 use crate::traft::{RaftId, RaftTerm};
+use ::tarantool::fiber::r#async::timeout::Expired;
 use ::tarantool::tlua::LuaError;
 use raft::StorageError;
 use rmp_serde::decode::Error as RmpDecodeError;
@@ -63,6 +64,12 @@ impl Error {
         E: Into<Box<dyn std::error::Error>>,
     {
         Self::Other(error.into())
+    }
+}
+
+impl From<Expired> for Error {
+    fn from(_: Expired) -> Self {
+        Self::Timeout
     }
 }
 
