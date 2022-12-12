@@ -464,43 +464,6 @@ impl ConnectionPool {
         self.get_or_create_by_raft_id(msg.to)?.send(msg)
     }
 
-    /// Send a request to instance with `id` (see `IdOfInstance`) and wait for the result.
-    ///
-    /// If the request failed, it's a responsibility of the caller
-    /// to re-send it later.
-    ///
-    /// **This function yields.**
-    #[allow(dead_code)]
-    pub fn call_and_wait_timeout<R>(
-        &mut self,
-        id: &impl IdOfInstance,
-        req: &R,
-        timeout: Duration,
-    ) -> Result<R::Response>
-    where
-        R: Request,
-    {
-        let (rx, tx) = fiber::Channel::new(1).into_clones();
-        id.get_or_create_in(self)?
-            .rpc(req, move |res| tx.send(res).unwrap());
-        rx.recv_timeout(timeout).map_err(|_| Error::Timeout)?
-    }
-
-    /// Send a request to instance with `id` (see `InstanceId`) and wait for the result.
-    ///
-    /// If the request failed, it's a responsibility of the caller
-    /// to re-send it later.
-    ///
-    /// **This function yields.**
-    #[allow(dead_code)]
-    #[inline(always)]
-    pub fn call_and_wait<R>(&mut self, id: &impl IdOfInstance, req: &R) -> Result<R::Response>
-    where
-        R: Request,
-    {
-        self.call_and_wait_timeout(id, req, Duration::MAX)
-    }
-
     /// Send a request to instance with `id` (see `IdOfInstance`) returning a
     /// future.
     ///
