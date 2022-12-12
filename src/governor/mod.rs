@@ -1,4 +1,3 @@
-use std::borrow::Cow;
 use std::collections::HashMap;
 use std::iter::repeat;
 use std::rc::Rc;
@@ -25,6 +24,7 @@ use crate::traft::OpDML;
 use crate::traft::Result;
 use crate::traft::{CurrentGrade, CurrentGradeVariant, TargetGradeVariant};
 use crate::traft::{Instance, Replicaset};
+use crate::unwrap_ok_or;
 
 pub(crate) mod cc;
 pub(crate) mod migration;
@@ -303,6 +303,94 @@ impl Loop {
         }
 
         ////////////////////////////////////////////////////////////////////////
+        // create new replicaset
+        if let Some(to_create_replicaset) = instances
+            .iter()
+            .filter(|instance| {
+                instance.has_grades(CurrentGradeVariant::RaftSynced, TargetGradeVariant::Online)
+            })
+            .find_map(
+                |instance| match storage.replicasets.get(&instance.replicaset_id) {
+                    Err(e) => Some(Err(e)),
+                    Ok(None) => Some(Ok(instance)),
+                    Ok(_) => None,
+                },
+            )
+        {
+            // TODO: what if this is not actually the replicaset bootstrap leader?
+            let Instance {
+                instance_id,
+                replicaset_id,
+                replicaset_uuid,
+                ..
+            } = unwrap_ok_or!(to_create_replicaset,
+                Err(e) => {
+                    tlog!(Warning, "{e}");
+
+                    // TODO: don't hard code timeout
+                    event::wait_timeout(Event::TopologyChanged, Duration::from_millis(300)).unwrap();
+                    return Continue;
+                }
+            );
+
+            // TODO: change `Info` to `Debug`
+            tlog!(Info, "promoting new replicaset master";
+                "master_id" => %instance_id,
+                "replicaset_id" => %replicaset_id,
+            );
+            let res: Result<_> = async {
+                let req = replication::promote::Request {
+                    term,
+                    commit: raft_storage.commit()?.unwrap(),
+                    timeout: Self::SYNC_TIMEOUT,
+                };
+                let replication::promote::Response {} = pool
+                    // TODO: don't hard code the timeout
+                    .call_and_wait_timeout(instance_id, req, Duration::from_secs(3))?;
+                Ok(())
+            }
+            .await;
+            if let Err(e) = res {
+                tlog!(Warning, "failed promoting new replicaset master: {e}";
+                    "master_id" => %instance_id,
+                    "replicaset_id" => %replicaset_id,
+                );
+                return Continue;
+            }
+
+            // TODO: change `Info` to `Debug`
+            tlog!(Info, "creating new replicaset";
+                "master_id" => %instance_id,
+                "replicaset_id" => %replicaset_id,
+            );
+            let res: Result<_> = async {
+                let vshard_bootstrapped = storage.properties.vshard_bootstrapped()?;
+                let req = OpDML::insert(
+                    ClusterwideSpace::Replicaset,
+                    &Replicaset {
+                        replicaset_id: replicaset_id.clone(),
+                        replicaset_uuid: replicaset_uuid.clone(),
+                        master_id: instance_id.clone(),
+                        weight: if vshard_bootstrapped { 0. } else { 1. },
+                        current_schema_version: 0,
+                    },
+                )?;
+                // TODO: don't hard code the timeout
+                node.propose_and_wait(req, Duration::from_secs(3))??;
+                Ok(())
+            }
+            .await;
+            if let Err(e) = res {
+                tlog!(Warning, "failed creating new replicaset: {e}";
+                    "replicaset_id" => %replicaset_id,
+                );
+                return Continue;
+            }
+
+            return Continue;
+        }
+
+        ////////////////////////////////////////////////////////////////////////
         // replication
         let to_replicate = instances
             .iter()
@@ -355,50 +443,6 @@ impl Loop {
                 // TODO: don't hard code timeout
                 event::wait_timeout(Event::TopologyChanged, Duration::from_secs(1)).unwrap();
                 return Continue;
-            }
-
-            let res = (|| -> Result<_> {
-                let master_id =
-                    if let Some(replicaset) = storage.replicasets.get(&instance.replicaset_id)? {
-                        Cow::Owned(replicaset.master_id)
-                    } else {
-                        let vshard_bootstrapped = storage.properties.vshard_bootstrapped()?;
-                        let req = OpDML::insert(
-                            ClusterwideSpace::Replicaset,
-                            &Replicaset {
-                                replicaset_id: instance.replicaset_id.clone(),
-                                replicaset_uuid: instance.replicaset_uuid.clone(),
-                                master_id: instance.instance_id.clone(),
-                                weight: if vshard_bootstrapped { 0. } else { 1. },
-                                current_schema_version: 0,
-                            },
-                        )?;
-                        // TODO: don't hard code the timeout
-                        node.propose_and_wait(req, Duration::from_secs(3))??;
-                        Cow::Borrowed(&instance.instance_id)
-                    };
-
-                let commit = raft_storage.commit()?.unwrap();
-                pool.call_and_wait_timeout(
-                    &*master_id,
-                    replication::promote::Request {
-                        term,
-                        commit,
-                        timeout: Self::SYNC_TIMEOUT,
-                    },
-                    // TODO: don't hard code timeout
-                    Duration::from_secs(3),
-                )?;
-                tlog!(Debug, "promoted replicaset master";
-                    "instance_id" => %master_id,
-                    "replicaset_id" => %instance.replicaset_id,
-                );
-                Ok(())
-            })();
-            if let Err(e) = res {
-                tlog!(Warning, "failed to promote replicaset master: {e}";
-                    "replicaset_id" => %replicaset_id,
-                );
             }
 
             tlog!(Info, "configured replication"; "replicaset_id" => %replicaset_id);
