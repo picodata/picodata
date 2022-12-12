@@ -454,11 +454,13 @@ impl ConnectionPool {
         }
     }
 
-    /// Send a message to `msg.to` asynchronously.
-    /// If the massage can't be sent, it's a responsibility
-    /// of the raft node to re-send it later.
+    /// Send a message to `msg.to` asynchronously. If the massage can't
+    /// be sent, it's a responsibility of the raft node to re-send it
+    /// later.
     ///
-    /// This function never yields.
+    /// Calling this function may result in **fiber rescheduling**, so
+    /// it's not appropriate for use inside a transaction. Anyway,
+    /// sending a message inside a transaction is always a bad idea.
     #[inline]
     pub fn send(&mut self, msg: raft::Message) -> Result<()> {
         self.get_or_create_by_raft_id(msg.to)?.send(msg)
@@ -538,6 +540,8 @@ inventory::submit!(crate::InnerTest {
     name: "test_connection_pool",
     body: || {
         use std::rc::Rc;
+        use tarantool::fiber;
+        use tarantool::fiber::YieldResult::*;
         use tarantool::tlua;
 
         let l = tarantool::lua_state();
@@ -587,13 +591,15 @@ inventory::submit!(crate::InnerTest {
         };
 
         // Send a request
-        // TODO: assert there's no yield
-        pool.send(heartbeat_to_from(1337, 1)).unwrap();
+        assert_eq!(
+            fiber::check_yield(|| pool.send(heartbeat_to_from(1337, 1)).unwrap()),
+            Yielded(()) // because no worker exists so a fiber is started.
+        );
 
         // Assert it arrives
         // Assert equality
         assert_eq!(
-            rx.recv_timeout(Duration::from_millis(10)),
+            rx.recv_timeout(Duration::from_secs(1)),
             Ok((raft::MessageType::MsgHeartbeat, 1337u64, 1u64))
         );
 
@@ -615,18 +621,20 @@ inventory::submit!(crate::InnerTest {
 
         // Wait for it
         on_disconnect_cond
-            .wait_timeout(Duration::from_millis(100))
+            .wait_timeout(Duration::from_secs(1))
             .then(|| (tlog!(Info, "TEST: on_disconnect triggered")))
             .or_else(|| panic!("on_disconnect timed out"));
 
         // Send the second request
-        // TODO: assert there's no yield
-        pool.send(heartbeat_to_from(1337, 4)).unwrap();
+        assert_eq!(
+            fiber::check_yield(|| pool.send(heartbeat_to_from(1337, 4)).unwrap()),
+            DidntYield(()) // because the worker already exists
+        );
 
         // Assert it arrives too
         // Assert equality
         assert_eq!(
-            rx.recv_timeout(Duration::from_millis(10)),
+            rx.recv_timeout(Duration::from_secs(1)),
             Ok((raft::MessageType::MsgHeartbeat, 1337u64, 4u64))
         );
     }
