@@ -5,9 +5,10 @@ use std::{
     time::Duration,
 };
 
-use crate::common::{
-    capture_value, fiber_csw, DropCounter, LuaContextSpoiler, LuaStackIntegrityGuard,
-};
+use crate::common::capture_value;
+use crate::common::DropCounter;
+use crate::common::LuaContextSpoiler;
+use crate::common::LuaStackIntegrityGuard;
 use tarantool::fiber;
 use tarantool::fiber::Fiber;
 use tarantool::tlua::AsLua;
@@ -176,9 +177,9 @@ pub fn immediate_yields() {
     let _guard = LuaStackIntegrityGuard::global("immediate_fiber_guard");
 
     let (tx, rx) = Rc::new(Cell::new(0)).into_clones();
-    let csw1 = fiber_csw();
+    let csw1 = fiber::csw();
     let f = fiber::start(move || tx.set(69));
-    let csw2 = fiber_csw();
+    let csw2 = fiber::csw();
 
     assert_eq!(rx.get(), 69);
     assert_eq!(csw2, csw1 + 1);
@@ -190,9 +191,9 @@ pub fn deferred_doesnt_yield() {
     let _guard = LuaStackIntegrityGuard::global("deferred_fiber_guard");
 
     let (tx, rx) = Rc::new(Cell::new(0)).into_clones();
-    let csw1 = fiber_csw();
+    let csw1 = fiber::csw();
     let f = fiber::defer(move || tx.set(96));
-    let csw2 = fiber_csw();
+    let csw2 = fiber::csw();
 
     assert_eq!(rx.get(), 0);
     assert_eq!(csw2, csw1);

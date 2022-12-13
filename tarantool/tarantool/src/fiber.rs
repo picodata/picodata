@@ -41,6 +41,11 @@ use crate::ffi::tarantool::fiber_sleep;
 pub use mutex::Mutex;
 pub use r#async::block_on;
 
+mod csw;
+pub use csw::check_yield;
+pub use csw::csw;
+pub use csw::YieldResult;
+
 macro_rules! impl_debug_stub {
     ($t:ident $($p:tt)*) => {
         impl $($p)* ::std::fmt::Debug for $t $($p)* {

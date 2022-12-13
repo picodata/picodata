@@ -106,11 +106,11 @@ impl<T> IntoTimeout for T where T: Future + Sized {}
 mod tests {
     use super::*;
     use crate::fiber;
+    use crate::fiber::check_yield;
     use crate::fiber::r#async::{oneshot, RecvError};
+    use crate::fiber::YieldResult::{DidntYield, Yielded};
     use crate::test::{TestCase, TESTS};
     use crate::test_name;
-    use crate::test_utils::check_yield;
-    use crate::test_utils::YieldResult::{DoesntYield, Yields};
     use linkme::distributed_slice;
     use std::time::Duration;
 
@@ -184,19 +184,19 @@ mod tests {
             // ready future, no timeout -> no yield
             assert_eq!(
                 check_yield(|| fiber::block_on(async { 101 })),
-                DoesntYield(101)
+                DidntYield(101)
             );
 
             // ready future, 0 timeout -> no yield
             assert_eq!(
                 check_yield(|| fiber::block_on(timeout(Duration::ZERO, async { 202 }))),
-                DoesntYield(Ok(202))
+                DidntYield(Ok(202))
             );
 
             // ready future, positive timeout -> no yield
             assert_eq!(
                 check_yield(|| fiber::block_on(timeout(Duration::from_secs(1), async { 303 }))),
-                DoesntYield(Ok(303))
+                DidntYield(Ok(303))
             );
 
             // pending future, no timeout -> yield
@@ -205,7 +205,7 @@ mod tests {
             // the yield happens as soon as fiber::start is called,
             // but if fiber::block_on didn't yield we wouldn't even get here,
             // so this check is totally legit
-            assert!(matches!(f, Yields(_)));
+            assert!(matches!(f, Yielded(_)));
             // we leak some memory here, but avoid a panic.
             // Don't do this in your code
             std::mem::forget(f);
@@ -214,14 +214,14 @@ mod tests {
             let (_tx, rx) = oneshot::channel::<i32>();
             assert_eq!(
                 check_yield(|| fiber::block_on(timeout(Duration::ZERO, rx))),
-                DoesntYield(Err(Expired))
+                DidntYield(Err(Expired))
             );
 
             // pending future, positive timeout -> yield
             let (_tx, rx) = oneshot::channel::<i32>();
             assert_eq!(
                 check_yield(|| fiber::block_on(timeout(Duration::from_millis(10), rx))),
-                Yields(Err(Expired))
+                Yielded(Err(Expired))
             );
         },
     };

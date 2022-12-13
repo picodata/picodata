@@ -44,10 +44,12 @@
 - `#[derive(Copy)]` for a bunch of light enums including `TarantoolErrorCode`,
     `SayLevel`, `SystemSpace`, `FieldType`.
 - `define_str_enum` macro suitable for public use.
+- `fiber::csw` function for tracking fiber context switches.
+- `fiber::check_yield` function for easier testing.
 
 ### Removed
 
-- `raft` cfg feature that wasn't finished an will never be.
+- `raft` cfg feature that wasn't finished and will never be.
 
 ### Fixed
 - `TupleBuffer` no longer copies data into tarantool's transaction memory pool

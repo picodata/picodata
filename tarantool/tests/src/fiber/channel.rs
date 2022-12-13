@@ -1,10 +1,9 @@
 use std::{cell::Cell, rc::Rc, time::Duration};
 
-use crate::common::{
-    check_yield, DropCounter,
-    YieldResult::{DoesntYield, Yields},
-};
+use crate::common::DropCounter;
 use tarantool::fiber;
+use tarantool::fiber::check_yield;
+use tarantool::fiber::YieldResult::{DidntYield, Yielded};
 use tarantool::util::IntoClones;
 
 pub fn send_self() {
@@ -22,12 +21,12 @@ pub fn send_full() {
         check_yield(|| ch
             .send_timeout("echo1", Duration::from_micros(1))
             .unwrap_err()),
-        Yields(fiber::SendError::Timeout("echo1"))
+        Yielded(fiber::SendError::Timeout("echo1"))
     );
 
     assert_eq!(
         check_yield(|| ch.try_send("echo2").unwrap_err()),
-        DoesntYield(fiber::TrySendError::Full("echo2"))
+        DidntYield(fiber::TrySendError::Full("echo2"))
     );
 }
 
@@ -36,12 +35,12 @@ pub fn recv_empty() {
 
     assert_eq!(
         check_yield(|| ch.recv_timeout(Duration::from_micros(1)).unwrap_err()),
-        Yields(fiber::RecvError::Timeout)
+        Yielded(fiber::RecvError::Timeout)
     );
 
     assert_eq!(
         check_yield(|| ch.try_recv().unwrap_err()),
-        DoesntYield(fiber::TryRecvError::Empty)
+        DidntYield(fiber::TryRecvError::Empty)
     );
 }
 
@@ -50,7 +49,7 @@ pub fn unbuffered() {
 
     let f = fiber::defer(move || rx.recv().unwrap());
 
-    assert_eq!(check_yield(|| tx.send("hello").unwrap()), Yields(()));
+    assert_eq!(check_yield(|| tx.send("hello").unwrap()), Yielded(()));
 
     assert_eq!(f.join(), "hello")
 }
