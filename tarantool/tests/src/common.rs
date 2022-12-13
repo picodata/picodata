@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-pub use tarantool::test::{check_yield, fiber_csw, YieldResult};
+pub use tarantool::test_utils::{check_yield, fiber_csw, YieldResult};
 
 use tarantool::{
     tlua::{self, AsLua, LuaState},

@@ -107,10 +107,10 @@ mod tests {
     use super::*;
     use crate::fiber;
     use crate::fiber::r#async::{oneshot, RecvError};
-    use crate::test::check_yield;
-    use crate::test::YieldResult::{DoesntYield, Yields};
     use crate::test::{TestCase, TESTS};
     use crate::test_name;
+    use crate::test_utils::check_yield;
+    use crate::test_utils::YieldResult::{DoesntYield, Yields};
     use linkme::distributed_slice;
     use std::time::Duration;
 
