@@ -20,10 +20,13 @@ use crate::traft::rpc;
 use crate::traft::rpc::sharding::cfg::ReplicasetWeights;
 use crate::traft::rpc::{replication, sharding, sync, update_instance};
 use crate::traft::OpDML;
+use crate::traft::RaftId;
 use crate::traft::Result;
 use crate::traft::{CurrentGrade, CurrentGradeVariant, TargetGradeVariant};
 use crate::traft::{Instance, Replicaset};
 use crate::unwrap_ok_or;
+
+use actions::{Plan, TransferLeadership};
 
 use futures::future::join_all;
 
@@ -50,15 +53,30 @@ impl Loop {
 
         let instances = storage.instances.all_instances().unwrap();
         let instances = &instances[..];
+        let voters = raft_storage.voters().unwrap().unwrap_or_default();
+        let learners = raft_storage.learners().unwrap().unwrap_or_default();
+
         let term = status.get().term;
         let cluster_id = raft_storage.cluster_id().unwrap().unwrap();
         let node = global().expect("must be initialized");
 
-        ////////////////////////////////////////////////////////////////////////
-        // conf change
-        let voters = raft_storage.voters().unwrap().unwrap_or_default();
-        let learners = raft_storage.learners().unwrap().unwrap_or_default();
-        if let Some(conf_change) = raft_conf_change(instances, &voters, &learners) {
+        let plan = action_plan(
+            instances,
+            &voters,
+            &learners,
+            node.raft_id,
+            storage,
+            raft_storage,
+        );
+        let plan = unwrap_ok_or!(plan,
+            Err(e) => {
+                tlog!(Warning, "failed constructing an action plan: {e}");
+                // TODO don't hard code timeout
+                event::wait_timeout(Event::TopologyChanged, Duration::from_millis(500)).unwrap();
+                return Continue;
+            }
+        );
+        if let Some(Plan::ConfChange(conf_change)) = plan {
             // main_loop gives the warranty that every ProposeConfChange
             // will sometimes be handled and there's no need in timeout.
             // It also guarantees that the notification will arrive only
@@ -68,6 +86,12 @@ impl Loop {
                 tlog!(Warning, "failed proposing conf_change: {e}");
                 fiber::sleep(Duration::from_secs(1));
             }
+            return Continue;
+        }
+        if let Some(Plan::TransferLeadership(TransferLeadership { to })) = plan {
+            tlog!(Info, "transferring leadership to {}", to.instance_id);
+            node.transfer_leadership_and_yield(to.raft_id);
+            event::wait_timeout(Event::TopologyChanged, Duration::from_secs(1)).unwrap();
             return Continue;
         }
 
@@ -95,23 +119,6 @@ impl Loop {
                 instance.target_grade
             );
 
-            // transfer leadership, if we're the one who goes offline
-            if instance.raft_id == node.raft_id {
-                if let Some(new_leader) = maybe_responding(instances).find(|instance| {
-                    // FIXME: linear search
-                    voters.contains(&instance.raft_id)
-                }) {
-                    tlog!(
-                        Info,
-                        "transferring leadership to {}",
-                        new_leader.instance_id
-                    );
-                    node.transfer_leadership_and_yield(new_leader.raft_id);
-                    event::wait_timeout(Event::TopologyChanged, Duration::from_secs(1)).unwrap();
-                    return Continue;
-                }
-            }
-
             let replicaset_id = &instance.replicaset_id;
             let mut new_master = None;
             // choose a new replicaset master if needed and promote it
@@ -120,8 +127,7 @@ impl Loop {
                     Some(replicaset) if replicaset.master_id == instance.instance_id => {}
                     _ => return Ok(()),
                 }
-                new_master =
-                    maybe_responding(instances).find(|p| p.replicaset_id == replicaset_id);
+                new_master = maybe_responding(instances).find(|p| p.replicaset_id == replicaset_id);
                 let Some(new_master) = new_master else {
                     return Ok(());
                 };
@@ -682,7 +688,57 @@ impl Loop {
 
         Continue
     }
+}
 
+#[allow(unused)]
+fn action_plan<'i>(
+    instances: &'i [Instance],
+    voters: &[RaftId],
+    learners: &[RaftId],
+    my_raft_id: RaftId,
+    storage: &Clusterwide,
+    raft_storage: &RaftSpaceAccess,
+) -> Result<Option<Plan<'i>>> {
+    if let Some(conf_change) = raft_conf_change(instances, voters, learners) {
+        return Ok(Some(Plan::ConfChange(conf_change)));
+    }
+
+    let to_offline = instances
+        .iter()
+        .filter(|instance| instance.current_grade != CurrentGradeVariant::Offline)
+        // TODO: process them all, not just the first one
+        .find(|instance| {
+            let (target, current) = (
+                instance.target_grade.variant,
+                instance.current_grade.variant,
+            );
+            matches!(target, TargetGradeVariant::Offline)
+                || !matches!(current, CurrentGradeVariant::Expelled)
+                    && matches!(target, TargetGradeVariant::Expelled)
+        });
+    if let Some(instance) = to_offline {
+        // transfer leadership, if we're the one who goes offline
+        if instance.raft_id == my_raft_id {
+            let new_leader = maybe_responding(instances)
+                // FIXME: linear search
+                .find(|instance| voters.contains(&instance.raft_id));
+            if let Some(new_leader) = new_leader {
+                return Ok(Some(Plan::TransferLeadership(TransferLeadership {
+                    to: new_leader,
+                })));
+            }
+        } else {
+            tlog!(Warning, "leader is going offline and no substitution is found";
+                "leader_raft_id" => my_raft_id,
+                "voters" => ?voters,
+            );
+        }
+    }
+
+    Ok(None)
+}
+
+impl Loop {
     pub fn start(
         status: watch::Receiver<Status>,
         storage: Clusterwide,
@@ -799,4 +855,29 @@ fn get_first_full_replicaset(
 #[inline(always)]
 fn maybe_responding(instances: &[Instance]) -> impl Iterator<Item = &Instance> {
     instances.iter().filter(|instance| instance.may_respond())
+}
+
+mod actions {
+    use super::*;
+
+    impl Actions for raft::prelude::ConfChangeV2 {
+        type Actions = Self;
+    }
+
+    pub struct TransferLeadership<'i> {
+        pub to: &'i Instance,
+    }
+    impl<'i> Actions for TransferLeadership<'i> {
+        type Actions = TransferLeadership<'i>;
+    }
+
+    /// Describes actions needed to complete a stage of a governor plan
+    pub trait Actions {
+        type Actions;
+    }
+
+    pub enum Plan<'a> {
+        ConfChange(raft::prelude::ConfChangeV2),
+        TransferLeadership(TransferLeadership<'a>),
+    }
 }
