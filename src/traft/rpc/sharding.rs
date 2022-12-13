@@ -1,5 +1,6 @@
 use ::tarantool::tlua;
 
+use crate::traft::rpc::sync::wait_for_index_timeout;
 use crate::traft::Result;
 use crate::traft::{node, RaftIndex, RaftTerm};
 
@@ -9,7 +10,7 @@ crate::define_rpc_request! {
     fn proc_sharding(req: Request) -> Result<Response> {
         let node = node::global()?;
         node.status().check_term(req.term)?;
-        super::sync::wait_for_index_timeout(req.commit, &node.raft_storage, req.timeout)?;
+        wait_for_index_timeout(req.commit, &node.raft_storage, req.timeout)?;
 
         let storage = &node.storage;
         let cfg = cfg::Cfg::from_storage(storage)?;
@@ -32,10 +33,6 @@ crate::define_rpc_request! {
         )
         .map_err(tlua::LuaError::from)?;
 
-        if req.bootstrap {
-            lua.exec("vshard.router.bootstrap()")?;
-        }
-
         // After reconfiguring vshard leaves behind net.box.connection objects,
         // which try reconnecting every 0.5 seconds. Garbage collecting them helps
         lua.exec("collectgarbage()")?;
@@ -49,13 +46,41 @@ crate::define_rpc_request! {
         pub term: RaftTerm,
         pub commit: RaftIndex,
         pub timeout: Duration,
-        pub bootstrap: bool,
     }
 
     /// Response to [`sharding::Request`].
     ///
     /// [`sharding::Request`]: Request
     pub struct Response {}
+}
+
+pub mod bootstrap {
+    use super::*;
+
+    crate::define_rpc_request! {
+        fn proc_sharding_bootstrap(req: Request) -> Result<Response> {
+            let node = node::global()?;
+            node.status().check_term(req.term)?;
+            wait_for_index_timeout(req.commit, &node.raft_storage, req.timeout)?;
+
+            ::tarantool::lua_state().exec("vshard.router.bootstrap()")?;
+
+            Ok(Response {})
+        }
+
+        /// Request to bootstrap bucket distribution.
+        #[derive(Default)]
+        pub struct Request {
+            pub term: RaftTerm,
+            pub commit: RaftIndex,
+            pub timeout: Duration,
+        }
+
+        /// Response to [`sharding::bootstrap::Request`].
+        ///
+        /// [`sharding::bootstrap::Request`]: Request
+        pub struct Response {}
+    }
 }
 
 #[rustfmt::skip]

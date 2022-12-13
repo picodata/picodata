@@ -137,24 +137,35 @@ def test_bucket_discovery_single(instance: Instance):
     wait_buckets_awailable(instance, 3000)
 
 
-@pytest.mark.xfail(
-    run=True,
-    reason=(
-        "currently we bootstrap vshard even before the first replicaset is filled, "
-        "but we shouldn't"
-    ),
-)
-def test_bucket_discovery_respects_replication_factor(cluster: Cluster):
-    i1, *_ = cluster.deploy(instance_count=1, init_replication_factor=2)
-    time.sleep(1)
-    assert 0 == i1.call("vshard.router.info")["bucket"]["available_rw"]
-
-
 @funcy.retry(tries=30, timeout=0.2)
 def wait_has_buckets(i: Instance, expected_active: int):
     i.call("vshard.storage.rebalancer_wakeup")
     storage_info = i.call("vshard.storage.info")
     assert expected_active == storage_info["bucket"]["active"]
+
+
+@pytest.mark.xfail(
+    run=True,
+    reason=(
+        "currently we set non zero weights for all replicasets before bootstrap, "
+        "even those which don't satisfy the replication factor"
+    ),
+)
+def test_bucket_discovery_respects_replication_factor(cluster: Cluster):
+    i1, *_ = cluster.deploy(instance_count=1, init_replication_factor=2)
+    time.sleep(0.5)
+    assert 0 == i1.call("vshard.router.info")["bucket"]["available_rw"]
+    assert None is i1.call("pico.space.property:get", "vshard_bootstrapped")
+
+    i2 = cluster.add_instance(replicaset_id="r2")
+    time.sleep(0.5)
+    assert 0 == i2.call("vshard.router.info")["bucket"]["available_rw"]
+    assert None is i2.call("pico.space.property:get", "vshard_bootstrapped")
+
+    i3 = cluster.add_instance(replicaset_id="r1")
+    time.sleep(0.5)
+    assert i3.call("pico.space.property:get", "vshard_bootstrapped")[1]
+    wait_has_buckets(i3, 3000)
 
 
 def test_bucket_rebalancing(cluster: Cluster):

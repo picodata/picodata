@@ -161,7 +161,6 @@ impl Loop {
                                 term,
                                 commit,
                                 timeout: Self::SYNC_TIMEOUT,
-                                bootstrap: false,
                             },
                         )
                     });
@@ -449,7 +448,6 @@ impl Loop {
         });
         if let Some(instance) = to_shard {
             let res: Result<_> = async {
-                let vshard_bootstrapped = storage.properties.vshard_bootstrapped()?;
                 let commit = raft_storage.commit()?.unwrap();
                 let reqs = maybe_responding(&instances).map(|instance| {
                     (
@@ -458,7 +456,6 @@ impl Loop {
                             term,
                             commit,
                             timeout: Self::SYNC_TIMEOUT,
-                            bootstrap: !vshard_bootstrapped && instance.raft_id == node.raft_id,
                         },
                     )
                 });
@@ -480,19 +477,6 @@ impl Loop {
                     ));
                 node.handle_update_instance_request_and_wait(req)?;
 
-                if !vshard_bootstrapped {
-                    // TODO: if this fails, it will only rerun next time vshard
-                    // gets reconfigured
-                    node.propose_and_wait(
-                        OpDML::replace(
-                            ClusterwideSpace::Property,
-                            &(PropertyName::VshardBootstrapped, true),
-                        )?,
-                        // TODO: don't hard code the timeout
-                        Duration::from_secs(3),
-                    )??;
-                }
-
                 Ok(())
             }
             .await;
@@ -507,6 +491,59 @@ impl Loop {
 
             return Continue;
         }
+
+        ////////////////////////////////////////////////////////////////////////
+        // bootstrap sharding
+        let to_bootstrap = get_first_full_replicaset(&instances, storage);
+        if let Err(e) = to_bootstrap {
+            tlog!(
+                Warning,
+                "failed checking if bucket bootstrapping is needed: {e}"
+            );
+            // TODO: don't hard code timeout
+            event::wait_timeout(Event::TopologyChanged, Duration::from_secs(1)).unwrap();
+            return Continue;
+        }
+        if let Ok(Some(Replicaset { master_id, .. })) = to_bootstrap {
+            // TODO: change `Info` to `Debug`
+            tlog!(Info, "bootstrapping bucket distribution";
+                "instance_id" => %master_id,
+            );
+            let res: Result<_> = async {
+                let req = sharding::bootstrap::Request {
+                    term,
+                    commit: raft_storage.commit()?.unwrap(),
+                    timeout: Self::SYNC_TIMEOUT,
+                };
+                pool.call(&master_id, &req)?
+                    // TODO: don't hard code timeout
+                    .timeout(Duration::from_secs(3))
+                    .await??;
+
+                let op = OpDML::replace(
+                    ClusterwideSpace::Property,
+                    &(PropertyName::VshardBootstrapped, true),
+                )?;
+                // TODO: don't hard code timeout
+                node.propose_and_wait(op, Duration::from_secs(3))??;
+
+                Ok(())
+            }
+            .await;
+            if let Err(e) = res {
+                tlog!(Warning, "failed bootstrapping bucket distribution: {e}");
+                // TODO: don't hard code timeout
+                event::wait_timeout(Event::TopologyChanged, Duration::from_secs(1)).unwrap();
+                return Continue;
+            }
+
+            // TODO: change `Info` to `Debug`
+            tlog!(Info, "bootstrapped bucket distribution";
+                "instance_id" => %master_id,
+            );
+
+            return Continue;
+        };
 
         ////////////////////////////////////////////////////////////////////////
         // sharding weights
@@ -538,7 +575,6 @@ impl Loop {
                         term,
                         commit,
                         timeout: Self::SYNC_TIMEOUT,
-                        bootstrap: false,
                     }));
                     // TODO: don't hard code timeout
                     let res = call_all(pool, reqs, Duration::from_secs(3)).await?;
@@ -746,6 +782,31 @@ fn get_weight_changes<'p>(
         }
     }
     (!weight_changes.is_empty()).then_some(weight_changes)
+}
+
+#[inline(always)]
+fn get_first_full_replicaset(
+    instances: &[Instance],
+    storage: &Clusterwide,
+) -> Result<Option<Replicaset>> {
+    if storage.properties.vshard_bootstrapped()? {
+        return Ok(None);
+    }
+
+    let replication_factor = storage.properties.replication_factor()?;
+    let mut replicaset_sizes = HashMap::new();
+    let mut full_replicaset_id = None;
+    for Instance { replicaset_id, .. } in maybe_responding(instances) {
+        let replicaset_size = replicaset_sizes.entry(replicaset_id).or_insert(0);
+        *replicaset_size += 1;
+        if *replicaset_size >= replication_factor {
+            full_replicaset_id = Some(replicaset_id);
+        }
+    }
+
+    let Some(replicaset_id) = full_replicaset_id else { return Ok(None); };
+    let res = storage.replicasets.get(replicaset_id)?;
+    Ok(res)
 }
 
 #[inline(always)]
