@@ -83,7 +83,7 @@ impl Loop {
                 return Continue;
             }
         );
-        if let Some(Plan::ConfChange(conf_change)) = plan {
+        if let Plan::ConfChange(conf_change) = plan {
             // main_loop gives the warranty that every ProposeConfChange
             // will sometimes be handled and there's no need in timeout.
             // It also guarantees that the notification will arrive only
@@ -95,13 +95,13 @@ impl Loop {
             }
             return Continue;
         }
-        if let Some(Plan::TransferLeadership(TransferLeadership { to })) = plan {
+        if let Plan::TransferLeadership(TransferLeadership { to }) = plan {
             tlog!(Info, "transferring leadership to {}", to.instance_id);
             node.transfer_leadership_and_yield(to.raft_id);
             event::wait_timeout(Event::TopologyChanged, Duration::from_secs(1)).unwrap();
             return Continue;
         }
-        if let Some(Plan::TransferMastership(TransferMastership { to })) = plan {
+        if let Plan::TransferMastership(TransferMastership { to }) = plan {
             #[rustfmt::skip]
             let Instance { instance_id, replicaset_id, .. } = to;
             tlog!(Info, "transferring replicaset mastership to {instance_id}");
@@ -687,9 +687,9 @@ fn action_plan<'i>(
     my_raft_id: RaftId,
     storage: &Clusterwide,
     raft_storage: &RaftSpaceAccess,
-) -> Result<Option<Plan<'i>>> {
+) -> Result<Plan<'i>> {
     if let Some(conf_change) = raft_conf_change(instances, voters, learners) {
-        return Ok(Some(Plan::ConfChange(conf_change)));
+        return Ok(Plan::ConfChange(conf_change));
     }
 
     let to_offline = instances
@@ -712,9 +712,9 @@ fn action_plan<'i>(
                 // FIXME: linear search
                 .find(|instance| voters.contains(&instance.raft_id));
             if let Some(new_leader) = new_leader {
-                return Ok(Some(Plan::TransferLeadership(TransferLeadership {
+                return Ok(Plan::TransferLeadership(TransferLeadership {
                     to: new_leader,
-                })));
+                }));
             }
         } else {
             tlog!(Warning, "leader is going offline and no substitution is found";
@@ -734,9 +734,9 @@ fn action_plan<'i>(
         if matches!(replicaset, Some(replicaset) if replicaset.master_id == instance_id) {
             let new_master = maybe_responding(instances).find(|p| p.replicaset_id == replicaset_id);
             if let Some(new_master) = new_master {
-                return Ok(Some(Plan::TransferMastership(TransferMastership {
+                return Ok(Plan::TransferMastership(TransferMastership {
                     to: new_master,
-                })));
+                }));
             };
         } else {
             tlog!(Warning, "replicaset master is going offline and no substitution is found";
@@ -746,7 +746,7 @@ fn action_plan<'i>(
         }
     }
 
-    Ok(None)
+    Ok(Plan::None)
 }
 
 impl Loop {
@@ -895,6 +895,7 @@ mod actions {
     }
 
     pub enum Plan<'a> {
+        None,
         ConfChange(raft::prelude::ConfChangeV2),
         TransferLeadership(TransferLeadership<'a>),
         TransferMastership(TransferMastership<'a>),
