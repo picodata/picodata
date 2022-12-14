@@ -704,12 +704,12 @@ fn action_plan<'i>(
                 return Ok(Plan::TransferLeadership(TransferLeadership {
                     to: new_leader,
                 }));
+            } else {
+                tlog!(Warning, "leader is going offline and no substitution is found";
+                    "leader_raft_id" => my_raft_id,
+                    "voters" => ?voters,
+                );
             }
-        } else {
-            tlog!(Warning, "leader is going offline and no substitution is found";
-                "leader_raft_id" => my_raft_id,
-                "voters" => ?voters,
-            );
         }
 
         ////////////////////////////////////////////////////////////////////////
@@ -727,12 +727,12 @@ fn action_plan<'i>(
                 ops.assign("master_id", &to.instance_id)?;
                 let op = OpDML::update(ClusterwideSpace::Replicaset, &[&to.replicaset_id], ops)?;
                 return Ok(TransferMastership { to, rpc, op }.into());
-            };
-        } else {
-            tlog!(Warning, "replicaset master is going offline and no substitution is found";
-                "master_id" => %instance_id,
-                "replicaset_id" => %replicaset_id,
-            );
+            } else {
+                tlog!(Warning, "replicaset master is going offline and no substitution is found";
+                    "master_id" => %instance_id,
+                    "replicaset_id" => %replicaset_id,
+                );
+            }
         }
 
         ////////////////////////////////////////////////////////////////////////
