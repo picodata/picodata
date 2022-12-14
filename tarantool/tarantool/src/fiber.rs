@@ -1180,13 +1180,13 @@ where
 /// Async version of [`start`].
 ///
 /// ```ignore
-/// use tarantool::fiber::r#async::oneshot;
 /// use tarantool::fiber;
 ///
-/// let (tx, rx) = oneshot::channel::<i32>();
-/// let jh = fiber::start_async(rx);
-/// tx.send(39).unwrap();
-/// assert_eq!(jh.join(), Ok(39));
+/// let jh = fiber::start_async(async {
+///     // do some async work in another fiber
+///     do_work().await
+/// });
+/// jh.join().unwrap();
 /// ```
 pub fn start_async<'f, F, T>(f: F) -> JoinHandle<'f, T>
 where
@@ -1236,13 +1236,13 @@ where
 /// Async version of [`defer`].
 ///
 /// ```ignore
-/// use tarantool::fiber::r#async::oneshot;
 /// use tarantool::fiber;
 ///
-/// let (tx, rx) = oneshot::channel::<i32>();
-/// let jh = fiber::defer_async(rx);
-/// tx.send(39).unwrap();
-/// assert_eq!(jh.join(), Ok(39));
+/// let jh = fiber::defer_async(async {
+///     // do some async work in another fiber
+///     do_work().await
+/// });
+/// jh.join().unwrap();
 /// ```
 pub fn defer_async<'f, F, T>(f: F) -> LuaJoinHandle<'f, T>
 where
