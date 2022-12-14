@@ -49,6 +49,7 @@ impl Loop {
         }
 
         let instances = storage.instances.all_instances().unwrap();
+        let instances = &instances[..];
         let term = status.get().term;
         let cluster_id = raft_storage.cluster_id().unwrap().unwrap();
         let node = global().expect("must be initialized");
@@ -57,7 +58,7 @@ impl Loop {
         // conf change
         let voters = raft_storage.voters().unwrap().unwrap_or_default();
         let learners = raft_storage.learners().unwrap().unwrap_or_default();
-        if let Some(conf_change) = raft_conf_change(&instances, &voters, &learners) {
+        if let Some(conf_change) = raft_conf_change(instances, &voters, &learners) {
             // main_loop gives the warranty that every ProposeConfChange
             // will sometimes be handled and there's no need in timeout.
             // It also guarantees that the notification will arrive only
@@ -96,7 +97,7 @@ impl Loop {
 
             // transfer leadership, if we're the one who goes offline
             if instance.raft_id == node.raft_id {
-                if let Some(new_leader) = maybe_responding(&instances).find(|instance| {
+                if let Some(new_leader) = maybe_responding(instances).find(|instance| {
                     // FIXME: linear search
                     voters.contains(&instance.raft_id)
                 }) {
@@ -120,7 +121,7 @@ impl Loop {
                     _ => return Ok(()),
                 }
                 new_master =
-                    maybe_responding(&instances).find(|p| p.replicaset_id == replicaset_id);
+                    maybe_responding(instances).find(|p| p.replicaset_id == replicaset_id);
                 let Some(new_master) = new_master else {
                     return Ok(());
                 };
@@ -181,7 +182,7 @@ impl Loop {
             // reconfigure vshard storages and routers
             let res: Result<_> = async {
                 let commit = raft_storage.commit()?.unwrap();
-                let reqs = maybe_responding(&instances)
+                let reqs = maybe_responding(instances)
                     .filter(|instance| {
                         instance.current_grade == CurrentGradeVariant::ShardingInitialized
                             || instance.current_grade == CurrentGradeVariant::Online
@@ -377,7 +378,7 @@ impl Loop {
             });
         if let Some(instance) = to_replicate {
             let replicaset_id = &instance.replicaset_id;
-            let replicaset_iids = maybe_responding(&instances)
+            let replicaset_iids = maybe_responding(instances)
                 .filter(|instance| instance.replicaset_id == replicaset_id)
                 .map(|instance| instance.instance_id.clone())
                 .collect::<Vec<_>>();
@@ -435,7 +436,7 @@ impl Loop {
         if let Some(instance) = to_shard {
             let res: Result<_> = async {
                 let commit = raft_storage.commit()?.unwrap();
-                let reqs = maybe_responding(&instances).map(|instance| {
+                let reqs = maybe_responding(instances).map(|instance| {
                     (
                         instance.instance_id.clone(),
                         sharding::Request {
@@ -480,7 +481,7 @@ impl Loop {
 
         ////////////////////////////////////////////////////////////////////////
         // bootstrap sharding
-        let to_bootstrap = get_first_full_replicaset(&instances, storage);
+        let to_bootstrap = get_first_full_replicaset(instances, storage);
         if let Err(e) = to_bootstrap {
             tlog!(
                 Warning,
@@ -541,7 +542,7 @@ impl Loop {
         });
         if let Some(instance) = to_update_weights {
             let res = if let Some(added_weights) =
-                get_weight_changes(maybe_responding(&instances), storage)
+                get_weight_changes(maybe_responding(instances), storage)
             {
                 async {
                     for (replicaset_id, weight) in added_weights {
@@ -555,7 +556,7 @@ impl Loop {
                     }
 
                     let instance_ids =
-                        maybe_responding(&instances).map(|instance| instance.instance_id.clone());
+                        maybe_responding(instances).map(|instance| instance.instance_id.clone());
                     let commit = raft_storage.commit()?.unwrap();
                     let reqs = instance_ids.zip(repeat(sharding::Request {
                         term,
