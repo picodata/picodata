@@ -40,6 +40,23 @@ pub(crate) mod migration;
 pub(crate) use cc::raft_conf_change;
 pub(crate) use migration::waiting_migrations;
 
+macro_rules! governor_step {
+    ($desc:literal $([ $($kv:tt)* ])? async { $($body:tt)+ }) => {
+        tlog!(Info, $desc $(; $($kv)*)?);
+        #[allow(redundant_semicolons)]
+        let res: Result<_> = async {
+            $($body)+;
+            Ok(())
+        }
+        .await;
+        if let Err(e) = res {
+            tlog!(Warning, ::std::concat!("failed ", $desc, ": {}"), e, $(; $($kv)*)?);
+            event::wait_timeout(Event::TopologyChanged, Loop::RETRY_TIMEOUT).unwrap();
+            return Continue;
+        }
+    }
+}
+
 impl Loop {
     const SYNC_TIMEOUT: Duration = Duration::from_secs(10);
     const RETRY_TIMEOUT: Duration = Duration::from_millis(250);
@@ -116,38 +133,27 @@ impl Loop {
                 let Instance { instance_id, replicaset_id, .. } = to;
                 tlog!(Info, "transferring replicaset mastership to {instance_id}");
 
-                let res: Result<_> = async {
-                    tlog!(Info, "promoting new master");
-                    pool.call(instance_id, &rpc)?
-                        // TODO: don't hard code timeout
-                        .timeout(Duration::from_secs(3))
-                        .await??;
-                    Ok(())
-                }
-                .await;
-                if let Err(e) = res {
-                    tlog!(Warning, "failed promoting new master: {e}";
+                governor_step! {
+                    "promoting new master" [
                         "master_id" => %instance_id,
                         "replicaset_id" => %replicaset_id,
-                    );
-                    event::wait_timeout(Event::TopologyChanged, Loop::RETRY_TIMEOUT).unwrap();
-                    return Continue;
+                    ]
+                    async {
+                        pool.call(instance_id, &rpc)?
+                            // TODO: don't hard code timeout
+                            .timeout(Duration::from_secs(3))
+                            .await??
+                    }
                 }
 
-                let res: Result<_> = async {
-                    tlog!(Info, "proposing replicaset master change");
-                    // TODO: don't hard code the timeout
-                    node.propose_and_wait(op, Duration::from_secs(3))??;
-                    Ok(())
-                }
-                .await;
-                if let Err(e) = res {
-                    tlog!(Warning, "failed proposing replicaset master change: {e}";
+                governor_step! {
+                    "proposing replicaset master change" [
                         "master_id" => %instance_id,
                         "replicaset_id" => %replicaset_id,
-                    );
-                    event::wait_timeout(Event::TopologyChanged, Loop::RETRY_TIMEOUT).unwrap();
-                    return Continue;
+                    ]
+                    async {
+                        node.propose_and_wait(op, Duration::from_secs(3))??
+                    }
                 }
             }
 
@@ -158,43 +164,37 @@ impl Loop {
             }) => {
                 tlog!(Info, "downgrading instance {}", req.instance_id);
 
-                let res: Result<_> = async {
-                    tlog!(Info, "reconfiguring sharding");
-                    let mut fs = vec![];
-                    for instance_id in targets {
-                        tlog!(Info, "calling rpc::sharding"; "instance_id" => %instance_id);
-                        let resp = pool.call(instance_id, &rpc)?;
-                        fs.push(async move {
-                            resp.await.map_err(|e| {
-                                tlog!(Warning, "failed calling rpc::sharding: {e}";
-                                    "instance_id" => %instance_id
-                                );
-                                e
-                            })
-                        });
+                governor_step! {
+                    "reconfiguring sharding"
+                    async {
+                        let mut fs = vec![];
+                        for instance_id in targets {
+                            tlog!(Info, "calling rpc::sharding"; "instance_id" => %instance_id);
+                            let resp = pool.call(instance_id, &rpc)?;
+                            fs.push(async move {
+                                resp.await.map_err(|e| {
+                                    tlog!(Warning, "failed calling rpc::sharding: {e}";
+                                        "instance_id" => %instance_id
+                                    );
+                                    e
+                                })
+                            });
+                        }
+                        // TODO: don't hard code timeout
+                        try_join_all(fs).timeout(Duration::from_secs(3)).await??
                     }
-                    // TODO: don't hard code timeout
-                    try_join_all(fs).timeout(Duration::from_secs(3)).await??;
-                    Ok(())
-                }
-                .await;
-                if let Err(e) = res {
-                    tlog!(Warning, "failed reconfiguring sharding: {e}");
-                    event::wait_timeout(Event::TopologyChanged, Loop::RETRY_TIMEOUT).unwrap();
-                    return Continue;
                 }
 
                 let instance_id = req.instance_id.clone();
-                tlog!(Info, "handling instance grade change";
-                    "instance_id" => %instance_id,
-                    "current_grade" => %req.current_grade.expect("must be set"),
-                );
-                if let Err(e) = node.handle_update_instance_request_and_wait(req) {
-                    tlog!(Warning, "failed handling instance grade change: {e}";
+                let current_grade = req.current_grade.expect("must be set");
+                governor_step! {
+                    "handling instance grade change" [
                         "instance_id" => %instance_id,
-                    );
-                    event::wait_timeout(Event::TopologyChanged, Loop::RETRY_TIMEOUT).unwrap();
-                    return Continue;
+                        "current_grade" => %current_grade,
+                    ]
+                    async {
+                        node.handle_update_instance_request_and_wait(req)?
+                    }
                 }
             }
 
@@ -203,20 +203,18 @@ impl Loop {
                 rpc,
                 req,
             }) => {
-                tlog!(Info, "syncing raft log"; "instance_id" => %instance_id);
-                let res = async {
-                    let sync::Response { commit } = pool
-                        .call(instance_id, &rpc)?
-                        .timeout(Loop::SYNC_TIMEOUT)
-                        .await??;
-                    tlog!(Info, "instance's commit index is {commit}"; "instance_id" => %instance_id);
-                    node.handle_update_instance_request_and_wait(req)
-                }
-                .await;
-                if let Err(e) = res {
-                    tlog!(Warning, "failed syncing raft log: {e}"; "instance_id" => %instance_id);
-                    event::wait_timeout(Event::TopologyChanged, Loop::RETRY_TIMEOUT).unwrap();
-                    return Continue;
+                governor_step! {
+                    "syncing raft log" [
+                        "instance_id" => %instance_id
+                    ]
+                    async {
+                        let sync::Response { commit } = pool
+                            .call(instance_id, &rpc)?
+                            .timeout(Loop::SYNC_TIMEOUT)
+                            .await??;
+                        tlog!(Info, "instance's commit index is {commit}"; "instance_id" => %instance_id);
+                        node.handle_update_instance_request_and_wait(req)?
+                    }
                 }
             }
 
