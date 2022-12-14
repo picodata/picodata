@@ -136,7 +136,7 @@ mod tests {
             let (tx, rx) = oneshot::channel::<i32>();
             let fut = async move { rx.timeout(_0_SEC).await };
 
-            let jh = fiber::start(|| fiber::block_on(fut));
+            let jh = fiber::start_async(fut);
             assert_eq!(jh.join(), Err(Expired));
             drop(tx);
         },

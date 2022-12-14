@@ -374,11 +374,9 @@ mod tests {
             let mut rx_2 = rx_1.clone();
             // Subscribe should work same as rx clone
             let mut rx_3 = tx.subscribe();
-            let jh = fiber::start(move || {
-                fiber::block_on(async move {
-                    let _ = join!(rx_1.changed(), rx_2.changed(), rx_3.changed());
-                    (*rx_1.borrow(), *rx_2.borrow(), *rx_3.borrow())
-                })
+            let jh = fiber::start_async(async move {
+                let _ = join!(rx_1.changed(), rx_2.changed(), rx_3.changed());
+                (*rx_1.borrow(), *rx_2.borrow(), *rx_3.borrow())
             });
             tx.send(20).unwrap();
             assert_eq!(jh.join(), (20, 20, 20))
@@ -390,19 +388,15 @@ mod tests {
         name: test_name!("receive_multiple_notifications"),
         f: || {
             let (tx, mut rx_1) = channel::<i32>(10);
-            let jh = fiber::start(|| {
-                fiber::block_on(async {
-                    rx_1.changed().await.unwrap();
-                    *rx_1.borrow()
-                })
+            let jh = fiber::start_async(async {
+                rx_1.changed().await.unwrap();
+                *rx_1.borrow()
             });
             tx.send(1).unwrap();
             assert_eq!(jh.join(), 1);
-            let jh = fiber::start(|| {
-                fiber::block_on(async {
-                    rx_1.changed().await.unwrap();
-                    *rx_1.borrow()
-                })
+            let jh = fiber::start_async(async {
+                rx_1.changed().await.unwrap();
+                *rx_1.borrow()
             });
             tx.send(2).unwrap();
             assert_eq!(jh.join(), 2);
@@ -435,7 +429,7 @@ mod tests {
         name: test_name!("notification_receive_error"),
         f: || {
             let (tx, mut rx_1) = channel::<i32>(10);
-            let jh = fiber::start(|| fiber::block_on(rx_1.changed()));
+            let jh = fiber::start_async(rx_1.changed());
             drop(tx);
             assert_eq!(jh.join(), Err(RecvError));
         },
@@ -447,8 +441,8 @@ mod tests {
         f: || {
             let (tx, mut rx_1) = channel::<i32>(10);
             let mut rx_2 = rx_1.clone();
-            let jh_1 = fiber::start(|| fiber::block_on(rx_1.changed()));
-            let jh_2 = fiber::start(|| fiber::block_on(rx_2.changed()));
+            let jh_1 = fiber::start_async(rx_1.changed());
+            let jh_2 = fiber::start_async(rx_2.changed());
             tx.send(1).unwrap();
             assert!(jh_1.join().is_ok());
             assert!(jh_2.join().is_ok());

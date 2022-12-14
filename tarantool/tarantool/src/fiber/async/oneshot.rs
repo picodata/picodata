@@ -224,7 +224,7 @@ mod tests {
         name: test_name!("receive_blocking_before_sending"),
         f: || {
             let (tx, rx) = channel::<i32>();
-            let jh = fiber::start(move || fiber::block_on(rx));
+            let jh = fiber::start_async(rx);
             tx.send(39).unwrap();
             assert_eq!(jh.join(), Ok(39));
         },
@@ -235,7 +235,7 @@ mod tests {
         name: test_name!("receive_blocking_before_dropping_sender"),
         f: || {
             let (tx, rx) = channel::<i32>();
-            let jh = fiber::start(move || fiber::block_on(rx));
+            let jh = fiber::start_async(rx);
             drop(tx);
             assert_eq!(jh.join(), Err(RecvError));
         },
@@ -267,7 +267,7 @@ mod tests {
             let (tx1, rx1) = channel::<i32>();
             let (tx2, rx2) = channel::<i32>();
 
-            let jh = fiber::start(move || fiber::block_on(async { join!(rx1, rx2) }));
+            let jh = fiber::start_async(async { join!(rx1, rx2) });
 
             tx1.send(201).unwrap();
             fiber::sleep(Duration::ZERO);
@@ -283,7 +283,7 @@ mod tests {
             let (tx1, rx1) = channel::<i32>();
             let (tx2, rx2) = channel::<i32>();
 
-            let jh = fiber::start(move || fiber::block_on(async { join!(rx1, rx2) }));
+            let jh = fiber::start_async(async { join!(rx1, rx2) });
             tx1.send(301).unwrap();
             fiber::sleep(Duration::ZERO);
             drop(tx2);
