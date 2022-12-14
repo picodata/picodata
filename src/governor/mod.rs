@@ -876,15 +876,8 @@ mod actions {
     use super::*;
     use raft::prelude::ConfChangeV2;
 
-    impl Actions for ConfChangeV2 {
-        type Actions = Self;
-    }
-
     pub struct TransferLeadership<'i> {
         pub to: &'i Instance,
-    }
-    impl<'i> Actions for TransferLeadership<'i> {
-        type Actions = TransferLeadership<'i>;
     }
 
     pub struct TransferMastership<'i> {
@@ -893,26 +886,11 @@ mod actions {
         pub op: OpDML,
     }
 
-    impl<'i> Actions for TransferMastership<'i> {
-        type Actions = (replication::promote::Request, replicaset::update::Master);
-    }
-
-    /// Describes actions needed to complete a stage of a governor plan
-    pub trait Actions {
-        type Actions;
-    }
-
     pub enum Plan<'i> {
         None,
         ConfChange(ConfChangeV2),
         TransferLeadership(TransferLeadership<'i>),
         TransferMastership(TransferMastership<'i>),
-    }
-
-    mod replicaset {
-        pub mod update {
-            pub struct Master;
-        }
     }
 
     impl From<ConfChangeV2> for Plan<'_> {
