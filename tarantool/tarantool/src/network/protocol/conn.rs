@@ -4,8 +4,6 @@ use std::{
     vec::Drain,
 };
 
-use rmp::encode::RmpWrite;
-
 use crate::error::Error;
 
 use super::{codec, options::ConnOptions, SyncIndex};
