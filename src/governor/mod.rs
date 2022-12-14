@@ -42,6 +42,7 @@ pub(crate) use migration::waiting_migrations;
 
 impl Loop {
     const SYNC_TIMEOUT: Duration = Duration::from_secs(10);
+    const RETRY_TIMEOUT: Duration = Duration::from_millis(250);
 
     async fn iter_fn(
         Args {
@@ -84,7 +85,7 @@ impl Loop {
             Err(e) => {
                 tlog!(Warning, "failed constructing an action plan: {e}");
                 // TODO don't hard code timeout
-                event::wait_timeout(Event::TopologyChanged, Duration::from_millis(500)).unwrap();
+                event::wait_timeout(Event::TopologyChanged, Loop::RETRY_TIMEOUT).unwrap();
                 return Continue;
             }
         );
@@ -107,7 +108,7 @@ impl Loop {
             Plan::TransferLeadership(TransferLeadership { to }) => {
                 tlog!(Info, "transferring leadership to {}", to.instance_id);
                 node.transfer_leadership_and_yield(to.raft_id);
-                event::wait_timeout(Event::TopologyChanged, Duration::from_secs(1)).unwrap();
+                event::wait_timeout(Event::TopologyChanged, Loop::RETRY_TIMEOUT).unwrap();
             }
 
             Plan::TransferMastership(TransferMastership { to, rpc, op }) => {
@@ -129,7 +130,7 @@ impl Loop {
                         "master_id" => %instance_id,
                         "replicaset_id" => %replicaset_id,
                     );
-                    event::wait_timeout(Event::TopologyChanged, Duration::from_secs(1)).unwrap();
+                    event::wait_timeout(Event::TopologyChanged, Loop::RETRY_TIMEOUT).unwrap();
                     return Continue;
                 }
 
@@ -145,7 +146,7 @@ impl Loop {
                         "master_id" => %instance_id,
                         "replicaset_id" => %replicaset_id,
                     );
-                    event::wait_timeout(Event::TopologyChanged, Duration::from_secs(1)).unwrap();
+                    event::wait_timeout(Event::TopologyChanged, Loop::RETRY_TIMEOUT).unwrap();
                     return Continue;
                 }
             }
@@ -179,7 +180,7 @@ impl Loop {
                 .await;
                 if let Err(e) = res {
                     tlog!(Warning, "failed reconfiguring sharding: {e}");
-                    event::wait_timeout(Event::TopologyChanged, Duration::from_secs(1)).unwrap();
+                    event::wait_timeout(Event::TopologyChanged, Loop::RETRY_TIMEOUT).unwrap();
                     return Continue;
                 }
 
@@ -192,7 +193,7 @@ impl Loop {
                     tlog!(Warning, "failed handling instance grade change: {e}";
                         "instance_id" => %instance_id,
                     );
-                    event::wait_timeout(Event::TopologyChanged, Duration::from_secs(1)).unwrap();
+                    event::wait_timeout(Event::TopologyChanged, Loop::RETRY_TIMEOUT).unwrap();
                     return Continue;
                 }
             }
@@ -214,8 +215,7 @@ impl Loop {
                 .await;
                 if let Err(e) = res {
                     tlog!(Warning, "failed syncing raft log: {e}"; "instance_id" => %instance_id);
-                    event::wait_timeout(Event::TopologyChanged, Duration::from_millis(250))
-                        .unwrap();
+                    event::wait_timeout(Event::TopologyChanged, Loop::RETRY_TIMEOUT).unwrap();
                     return Continue;
                 }
             }
