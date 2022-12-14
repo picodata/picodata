@@ -21,12 +21,13 @@ use crate::traft::rpc::sharding::cfg::ReplicasetWeights;
 use crate::traft::rpc::{replication, sharding, sync, update_instance};
 use crate::traft::OpDML;
 use crate::traft::RaftId;
+use crate::traft::ReplicasetId;
 use crate::traft::Result;
 use crate::traft::{CurrentGrade, CurrentGradeVariant, TargetGradeVariant};
 use crate::traft::{Instance, Replicaset};
 use crate::unwrap_ok_or;
 
-use actions::{Plan, TransferLeadership};
+use actions::*;
 
 use futures::future::join_all;
 
@@ -55,6 +56,11 @@ impl Loop {
         let instances = &instances[..];
         let voters = raft_storage.voters().unwrap().unwrap_or_default();
         let learners = raft_storage.learners().unwrap().unwrap_or_default();
+        let replicasets: Vec<_> = storage.replicasets.iter().unwrap().collect();
+        let replicasets: HashMap<_, _> = replicasets
+            .iter()
+            .map(|rs| (&rs.replicaset_id, rs))
+            .collect();
 
         let term = status.get().term;
         let cluster_id = raft_storage.cluster_id().unwrap().unwrap();
@@ -64,6 +70,7 @@ impl Loop {
             instances,
             &voters,
             &learners,
+            &replicasets,
             node.raft_id,
             storage,
             raft_storage,
@@ -94,6 +101,53 @@ impl Loop {
             event::wait_timeout(Event::TopologyChanged, Duration::from_secs(1)).unwrap();
             return Continue;
         }
+        if let Some(Plan::TransferMastership(TransferMastership { to })) = plan {
+            #[rustfmt::skip]
+            let Instance { instance_id, replicaset_id, .. } = to;
+            tlog!(Info, "transferring replicaset mastership to {instance_id}");
+
+            let res: Result<_> = async {
+                tlog!(Info, "promoting new master");
+                let req = replication::promote::Request {
+                    term,
+                    commit: raft_storage.commit()?.unwrap(),
+                    timeout: Self::SYNC_TIMEOUT,
+                };
+                pool.call(instance_id, &req)?
+                    // TODO: don't hard code timeout
+                    .timeout(Duration::from_secs(3))
+                    .await??;
+                Ok(())
+            }
+            .await;
+            if let Err(e) = res {
+                tlog!(Warning, "failed promoting new master: {e}";
+                    "master_id" => %instance_id,
+                    "replicaset_id" => %replicaset_id,
+                );
+                event::wait_timeout(Event::TopologyChanged, Duration::from_secs(1)).unwrap();
+                return Continue;
+            }
+
+            let res: Result<_> = async {
+                tlog!(Info, "proposing replicaset master change");
+                let mut ops = UpdateOps::new();
+                ops.assign("master_id", instance_id)?;
+                let op = OpDML::update(ClusterwideSpace::Replicaset, &[replicaset_id], ops)?;
+                // TODO: don't hard code the timeout
+                node.propose_and_wait(op, Duration::from_secs(3))??;
+                Ok(())
+            }
+            .await;
+            if let Err(e) = res {
+                tlog!(Warning, "failed proposing replicaset master change: {e}";
+                    "master_id" => %instance_id,
+                    "replicaset_id" => %replicaset_id,
+                );
+                event::wait_timeout(Event::TopologyChanged, Duration::from_secs(1)).unwrap();
+                return Continue;
+            }
+        }
 
         ////////////////////////////////////////////////////////////////////////
         // offline/expel
@@ -118,72 +172,6 @@ impl Loop {
                 instance.current_grade,
                 instance.target_grade
             );
-
-            let replicaset_id = &instance.replicaset_id;
-            let mut new_master = None;
-            // choose a new replicaset master if needed and promote it
-            let res: Result<_> = async {
-                match storage.replicasets.get(replicaset_id)? {
-                    Some(replicaset) if replicaset.master_id == instance.instance_id => {}
-                    _ => return Ok(()),
-                }
-                new_master = maybe_responding(instances).find(|p| p.replicaset_id == replicaset_id);
-                let Some(new_master) = new_master else {
-                    return Ok(());
-                };
-                tlog!(Info, "calling rpc::replication::promote";
-                    "instance_id" => %new_master.instance_id,
-                );
-                let req = replication::promote::Request {
-                    term,
-                    commit: raft_storage.commit()?.unwrap(),
-                    timeout: Self::SYNC_TIMEOUT,
-                };
-                pool.call(&new_master.instance_id, &req)?
-                    // TODO: don't hard code timeout
-                    .timeout(Duration::from_secs(3))
-                    .await??;
-
-                Ok(())
-            }
-            .await;
-            if let Err(e) = res {
-                tlog!(Warning,
-                    "failed calling rpc::replication::promote: {e}";
-                    "replicaset_id" => %replicaset_id,
-                );
-                // TODO: don't hard code timeout
-                event::wait_timeout(Event::TopologyChanged, Duration::from_millis(250)).unwrap();
-                return Continue;
-            }
-
-            // update replicaset entry if needed
-            let res: Result<_> = async {
-                let Some(new_master) = new_master else { return Ok(()); };
-                tlog!(Info, "proposing replicaset master change";
-                    "master_id" => %new_master.instance_id,
-                    "replicaset_id" => %replicaset_id,
-                );
-
-                let mut ops = UpdateOps::new();
-                ops.assign("master_id", &new_master.instance_id)?;
-
-                let op = OpDML::update(ClusterwideSpace::Replicaset, &[replicaset_id], ops)?;
-                // TODO: don't hard code the timeout
-                node.propose_and_wait(op, Duration::from_secs(3))??;
-                Ok(())
-            }
-            .await;
-            if let Err(e) = res {
-                tlog!(Warning, "failed proposing replicaset master change: {e}");
-                // TODO: don't hard code timeout
-                event::wait_timeout(Event::TopologyChanged, Duration::from_millis(250)).unwrap();
-                return Continue;
-            }
-
-            if new_master.is_none() {
-                tlog!(Info, "skip proposing replicaset master change");
-            }
 
             // reconfigure vshard storages and routers
             let res: Result<_> = async {
@@ -695,6 +683,7 @@ fn action_plan<'i>(
     instances: &'i [Instance],
     voters: &[RaftId],
     learners: &[RaftId],
+    replicasets: &HashMap<&ReplicasetId, &'i Replicaset>,
     my_raft_id: RaftId,
     storage: &Clusterwide,
     raft_storage: &RaftSpaceAccess,
@@ -731,6 +720,28 @@ fn action_plan<'i>(
             tlog!(Warning, "leader is going offline and no substitution is found";
                 "leader_raft_id" => my_raft_id,
                 "voters" => ?voters,
+            );
+        }
+
+        // choose a new replicaset master if needed and promote it
+        // TODO: move up
+        let Instance {
+            replicaset_id,
+            instance_id,
+            ..
+        } = instance;
+        let replicaset = replicasets.get(replicaset_id);
+        if matches!(replicaset, Some(replicaset) if replicaset.master_id == instance_id) {
+            let new_master = maybe_responding(instances).find(|p| p.replicaset_id == replicaset_id);
+            if let Some(new_master) = new_master {
+                return Ok(Some(Plan::TransferMastership(TransferMastership {
+                    to: new_master,
+                })));
+            };
+        } else {
+            tlog!(Warning, "replicaset master is going offline and no substitution is found";
+                "master_id" => %instance_id,
+                "replicaset_id" => %replicaset_id,
             );
         }
     }
@@ -871,6 +882,13 @@ mod actions {
         type Actions = TransferLeadership<'i>;
     }
 
+    pub struct TransferMastership<'i> {
+        pub to: &'i Instance,
+    }
+    impl<'i> Actions for TransferMastership<'i> {
+        type Actions = (replication::promote::Request, replicaset::update::Master);
+    }
+
     /// Describes actions needed to complete a stage of a governor plan
     pub trait Actions {
         type Actions;
@@ -879,5 +897,12 @@ mod actions {
     pub enum Plan<'a> {
         ConfChange(raft::prelude::ConfChangeV2),
         TransferLeadership(TransferLeadership<'a>),
+        TransferMastership(TransferMastership<'a>),
+    }
+
+    mod replicaset {
+        pub mod update {
+            pub struct Master;
+        }
     }
 }
