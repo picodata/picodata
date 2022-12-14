@@ -283,8 +283,6 @@ impl Loop {
                         term,
                         commit,
                         timeout: Self::SYNC_TIMEOUT,
-                        replicaset_instances: replicaset_iids.clone(),
-                        replicaset_id: replicaset_id.clone(),
                     }));
                 // TODO: don't hard code timeout
                 let res = call_all(pool, reqs, Duration::from_secs(3)).await?;

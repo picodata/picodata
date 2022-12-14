@@ -1,7 +1,6 @@
 use crate::storage::instance_field::ReplicasetId;
 use crate::tarantool::set_cfg_field;
-use crate::traft::{self, node, RaftIndex, RaftTerm, Result};
-use crate::InstanceId;
+use crate::traft::{node, RaftIndex, RaftTerm, Result};
 
 use std::time::Duration;
 
@@ -35,9 +34,6 @@ crate::define_rpc_request! {
         pub term: RaftTerm,
         pub commit: RaftIndex,
         pub timeout: Duration,
-        // TODO: remove this
-        pub replicaset_instances: Vec<InstanceId>,
-        pub replicaset_id: traft::ReplicasetId,
     }
 
     /// Response to [`replication::Request`].
