@@ -112,7 +112,7 @@ impl Loop {
         // TODO: remove this once all plans are implemented
         let mut did_something = true;
         match plan {
-            Plan::ConfChange(conf_change) => {
+            Plan::ConfChange(ConfChange { conf_change }) => {
                 // main_loop gives the warranty that every ProposeConfChange
                 // will sometimes be handled and there's no need in timeout.
                 // It also guarantees that the notification will arrive only
@@ -565,7 +565,7 @@ fn action_plan<'i>(
     ////////////////////////////////////////////////////////////////////////////
     // conf change
     if let Some(conf_change) = raft_conf_change(instances, voters, learners) {
-        return Ok(Plan::ConfChange(conf_change));
+        return Ok(Plan::ConfChange(ConfChange { conf_change }));
     }
 
     ////////////////////////////////////////////////////////////////////////////
@@ -888,104 +888,80 @@ mod actions {
     use super::*;
     use raft::prelude::ConfChangeV2;
 
-    pub struct TransferLeadership<'i> {
-        pub to: &'i Instance,
-    }
+    macro_rules! define_plan {
+        (
+            $(
+                pub struct $stage:ident $(<$lt:tt>)? {
+                    $(pub $field:ident: $field_ty:ty,)+
+                }
+            )+
+        ) => {
+            $(
+                pub struct $stage $(<$lt>)? {
+                    $(pub $field: $field_ty,)+
+                }
 
-    pub struct TransferMastership<'i> {
-        pub to: &'i Instance,
-        pub rpc: replication::promote::Request,
-        pub op: OpDML,
-    }
+                impl<'i> From<$stage $(<$lt>)?> for Plan<'i> {
+                    fn from(s: $stage $(<$lt>)?) -> Self {
+                        Self::$stage(s)
+                    }
+                }
+            )+
 
-    pub struct ReconfigureShardingAndDowngrade<'i> {
-        pub targets: Vec<&'i InstanceId>,
-        pub rpc: sharding::Request,
-        pub req: update_instance::Request,
-    }
+            pub enum Plan<'i> {
+                None,
+                $(
+                    $stage ( $stage $(<$lt>)? ),
+                )+
+            }
 
-    pub struct RaftSync<'i> {
-        pub instance_id: &'i InstanceId,
-        pub rpc: sync::Request,
-        pub req: update_instance::Request,
-    }
-
-    pub struct CreateReplicaset<'i> {
-        pub master_id: &'i InstanceId,
-        pub replicaset_id: &'i ReplicasetId,
-        pub rpc: replication::promote::Request,
-        pub op: OpDML,
-    }
-
-    pub struct Replication<'i> {
-        pub targets: Vec<&'i InstanceId>,
-        pub rpc: replication::Request,
-        pub req: update_instance::Request,
-    }
-
-    pub struct ShardingInit<'i> {
-        pub targets: Vec<&'i InstanceId>,
-        pub rpc: sharding::Request,
-        pub req: update_instance::Request,
-    }
-
-    pub enum Plan<'i> {
-        None,
-        ConfChange(ConfChangeV2),
-        TransferLeadership(TransferLeadership<'i>),
-        TransferMastership(TransferMastership<'i>),
-        ReconfigureShardingAndDowngrade(ReconfigureShardingAndDowngrade<'i>),
-        RaftSync(RaftSync<'i>),
-        CreateReplicaset(CreateReplicaset<'i>),
-        Replication(Replication<'i>),
-        ShardingInit(ShardingInit<'i>),
-    }
-
-    impl From<ConfChangeV2> for Plan<'_> {
-        fn from(a: ConfChangeV2) -> Self {
-            Self::ConfChange(a)
         }
     }
 
-    impl<'i> From<TransferLeadership<'i>> for Plan<'i> {
-        fn from(a: TransferLeadership<'i>) -> Self {
-            Self::TransferLeadership(a)
+    define_plan! {
+        pub struct ConfChange {
+            pub conf_change: ConfChangeV2,
         }
-    }
 
-    impl<'i> From<TransferMastership<'i>> for Plan<'i> {
-        fn from(a: TransferMastership<'i>) -> Self {
-            Self::TransferMastership(a)
+        pub struct TransferLeadership<'i> {
+            pub to: &'i Instance,
         }
-    }
 
-    impl<'i> From<ReconfigureShardingAndDowngrade<'i>> for Plan<'i> {
-        fn from(a: ReconfigureShardingAndDowngrade<'i>) -> Self {
-            Self::ReconfigureShardingAndDowngrade(a)
+        pub struct TransferMastership<'i> {
+            pub to: &'i Instance,
+            pub rpc: replication::promote::Request,
+            pub op: OpDML,
         }
-    }
 
-    impl<'i> From<RaftSync<'i>> for Plan<'i> {
-        fn from(a: RaftSync<'i>) -> Self {
-            Self::RaftSync(a)
+        pub struct ReconfigureShardingAndDowngrade<'i> {
+            pub targets: Vec<&'i InstanceId>,
+            pub rpc: sharding::Request,
+            pub req: update_instance::Request,
         }
-    }
 
-    impl<'i> From<CreateReplicaset<'i>> for Plan<'i> {
-        fn from(a: CreateReplicaset<'i>) -> Self {
-            Self::CreateReplicaset(a)
+        pub struct RaftSync<'i> {
+            pub instance_id: &'i InstanceId,
+            pub rpc: sync::Request,
+            pub req: update_instance::Request,
         }
-    }
 
-    impl<'i> From<Replication<'i>> for Plan<'i> {
-        fn from(a: Replication<'i>) -> Self {
-            Self::Replication(a)
+        pub struct CreateReplicaset<'i> {
+            pub master_id: &'i InstanceId,
+            pub replicaset_id: &'i ReplicasetId,
+            pub rpc: replication::promote::Request,
+            pub op: OpDML,
         }
-    }
 
-    impl<'i> From<ShardingInit<'i>> for Plan<'i> {
-        fn from(a: ShardingInit<'i>) -> Self {
-            Self::ShardingInit(a)
+        pub struct Replication<'i> {
+            pub targets: Vec<&'i InstanceId>,
+            pub rpc: replication::Request,
+            pub req: update_instance::Request,
+        }
+
+        pub struct ShardingInit<'i> {
+            pub targets: Vec<&'i InstanceId>,
+            pub rpc: sharding::Request,
+            pub req: update_instance::Request,
         }
     }
 }
