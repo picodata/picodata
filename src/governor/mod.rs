@@ -196,6 +196,28 @@ impl Loop {
                 }
             }
 
+            Plan::RaftSync(RaftSync {
+                instance_id,
+                rpc,
+                req,
+            }) => {
+                tlog!(Info, "syncing raft log"; "instance_id" => %instance_id);
+                let res = async {
+                    let sync::Response { commit } = pool
+                        .call(instance_id, &rpc)?
+                        .timeout(Loop::SYNC_TIMEOUT)
+                        .await??;
+                    tlog!(Info, "instance's commit index is {commit}"; "instance_id" => %instance_id);
+                    node.handle_update_instance_request_and_wait(req)
+                }
+                .await;
+                if let Err(e) = res {
+                    tlog!(Warning, "failed syncing raft log: {e}"; "instance_id" => %instance_id);
+                    event::wait_timeout(Event::TopologyChanged, Duration::from_millis(250)).unwrap();
+                    return Continue;
+                }
+            }
+
             Plan::None => {
                 tlog!(Info, "nothing to do");
                 did_something = false;
@@ -203,46 +225,6 @@ impl Loop {
         }
 
         if did_something {
-            return Continue;
-        }
-
-        ////////////////////////////////////////////////////////////////////////
-        // raft sync
-        // TODO: putting each stage in a different function
-        // will make the control flow more readable
-        let to_sync = instances.iter().find(|instance| {
-            instance.has_grades(CurrentGradeVariant::Offline, TargetGradeVariant::Online)
-                || instance.is_reincarnated()
-        });
-        if let Some(Instance {
-            instance_id,
-            target_grade,
-            ..
-        }) = to_sync
-        {
-            // TODO: change `Info` to `Debug`
-            tlog!(Info, "syncing raft log"; "instance_id" => %instance_id);
-            let res = async {
-                let req = sync::Request {
-                    commit: raft_storage.commit().unwrap().unwrap(),
-                    timeout: Self::SYNC_TIMEOUT,
-                };
-                let sync::Response { commit } = pool.call(instance_id, &req)?.await?;
-                // TODO: change `Info` to `Debug`
-                tlog!(Info, "instance's commit index is {commit}"; "instance_id" => %instance_id);
-
-                let req = update_instance::Request::new(instance_id.clone(), cluster_id)
-                    .with_current_grade(CurrentGrade::raft_synced(target_grade.incarnation));
-                node.handle_update_instance_request_and_wait(req)
-            }
-            .await;
-            if let Err(e) = res {
-                tlog!(Warning, "failed syncing raft log: {e}"; "instance_id" => %instance_id);
-
-                // TODO: don't hard code timeout
-                event::wait_timeout(Event::TopologyChanged, Duration::from_millis(300)).unwrap();
-            }
-
             return Continue;
         }
 
@@ -755,6 +737,28 @@ fn action_plan<'i>(
         return Ok(ReconfigureShardingAndDowngrade { targets, rpc, req }.into());
     }
 
+    ////////////////////////////////////////////////////////////////////////////
+    // raft sync
+    let to_sync = instances.iter().find(|instance| {
+        instance.has_grades(CurrentGradeVariant::Offline, TargetGradeVariant::Online)
+            || instance.is_reincarnated()
+    });
+    if let Some(Instance {
+        instance_id,
+        target_grade,
+        ..
+    }) = to_sync
+    {
+        let rpc = sync::Request {
+            commit: raft_storage.commit()?.unwrap(),
+            timeout: Loop::SYNC_TIMEOUT,
+        };
+        let req = update_instance::Request::new(instance_id.clone(), cluster_id)
+            .with_current_grade(CurrentGrade::raft_synced(target_grade.incarnation));
+        #[rustfmt::skip]
+        return Ok(RaftSync { instance_id, rpc, req }.into());
+    }
+
     Ok(Plan::None)
 }
 
@@ -897,12 +901,19 @@ mod actions {
         pub req: update_instance::Request,
     }
 
+    pub struct RaftSync<'i> {
+        pub instance_id: &'i InstanceId,
+        pub rpc: sync::Request,
+        pub req: update_instance::Request,
+    }
+
     pub enum Plan<'i> {
         None,
         ConfChange(ConfChangeV2),
         TransferLeadership(TransferLeadership<'i>),
         TransferMastership(TransferMastership<'i>),
         ReconfigureShardingAndDowngrade(ReconfigureShardingAndDowngrade<'i>),
+        RaftSync(RaftSync<'i>),
     }
 
     impl From<ConfChangeV2> for Plan<'_> {
@@ -926,6 +937,12 @@ mod actions {
     impl<'i> From<ReconfigureShardingAndDowngrade<'i>> for Plan<'i> {
         fn from(a: ReconfigureShardingAndDowngrade<'i>) -> Self {
             Self::ReconfigureShardingAndDowngrade(a)
+        }
+    }
+
+    impl<'i> From<RaftSync<'i>> for Plan<'i> {
+        fn from(a: RaftSync<'i>) -> Self {
+            Self::RaftSync(a)
         }
     }
 }
