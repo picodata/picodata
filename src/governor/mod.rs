@@ -86,63 +86,69 @@ impl Loop {
             }
         );
 
-        if let Plan::ConfChange(conf_change) = plan {
-            // main_loop gives the warranty that every ProposeConfChange
-            // will sometimes be handled and there's no need in timeout.
-            // It also guarantees that the notification will arrive only
-            // after the node leaves the joint state.
-            tlog!(Info, "proposing conf_change"; "cc" => ?conf_change);
-            if let Err(e) = node.propose_conf_change_and_wait(term, conf_change) {
-                tlog!(Warning, "failed proposing conf_change: {e}");
-                fiber::sleep(Duration::from_secs(1));
+        match plan {
+            Plan::ConfChange(conf_change) => {
+                // main_loop gives the warranty that every ProposeConfChange
+                // will sometimes be handled and there's no need in timeout.
+                // It also guarantees that the notification will arrive only
+                // after the node leaves the joint state.
+                tlog!(Info, "proposing conf_change"; "cc" => ?conf_change);
+                if let Err(e) = node.propose_conf_change_and_wait(term, conf_change) {
+                    tlog!(Warning, "failed proposing conf_change: {e}");
+                    fiber::sleep(Duration::from_secs(1));
+                }
+                return Continue;
             }
-            return Continue;
-        }
 
-        if let Plan::TransferLeadership(TransferLeadership { to }) = plan {
-            tlog!(Info, "transferring leadership to {}", to.instance_id);
-            node.transfer_leadership_and_yield(to.raft_id);
-            event::wait_timeout(Event::TopologyChanged, Duration::from_secs(1)).unwrap();
-            return Continue;
-        }
-
-        if let Plan::TransferMastership(TransferMastership { to, rpc, op }) = plan {
-            #[rustfmt::skip]
-            let Instance { instance_id, replicaset_id, .. } = to;
-            tlog!(Info, "transferring replicaset mastership to {instance_id}");
-
-            let res: Result<_> = async {
-                tlog!(Info, "promoting new master");
-                pool.call(instance_id, &rpc)?
-                    // TODO: don't hard code timeout
-                    .timeout(Duration::from_secs(3))
-                    .await??;
-                Ok(())
-            }
-            .await;
-            if let Err(e) = res {
-                tlog!(Warning, "failed promoting new master: {e}";
-                    "master_id" => %instance_id,
-                    "replicaset_id" => %replicaset_id,
-                );
+            Plan::TransferLeadership(TransferLeadership { to }) => {
+                tlog!(Info, "transferring leadership to {}", to.instance_id);
+                node.transfer_leadership_and_yield(to.raft_id);
                 event::wait_timeout(Event::TopologyChanged, Duration::from_secs(1)).unwrap();
                 return Continue;
             }
 
-            let res: Result<_> = async {
-                tlog!(Info, "proposing replicaset master change");
-                // TODO: don't hard code the timeout
-                node.propose_and_wait(op, Duration::from_secs(3))??;
-                Ok(())
+            Plan::TransferMastership(TransferMastership { to, rpc, op }) => {
+                #[rustfmt::skip]
+                let Instance { instance_id, replicaset_id, .. } = to;
+                tlog!(Info, "transferring replicaset mastership to {instance_id}");
+
+                let res: Result<_> = async {
+                    tlog!(Info, "promoting new master");
+                    pool.call(instance_id, &rpc)?
+                        // TODO: don't hard code timeout
+                        .timeout(Duration::from_secs(3))
+                        .await??;
+                    Ok(())
+                }
+                .await;
+                if let Err(e) = res {
+                    tlog!(Warning, "failed promoting new master: {e}";
+                        "master_id" => %instance_id,
+                        "replicaset_id" => %replicaset_id,
+                    );
+                    event::wait_timeout(Event::TopologyChanged, Duration::from_secs(1)).unwrap();
+                    return Continue;
+                }
+
+                let res: Result<_> = async {
+                    tlog!(Info, "proposing replicaset master change");
+                    // TODO: don't hard code the timeout
+                    node.propose_and_wait(op, Duration::from_secs(3))??;
+                    Ok(())
+                }
+                .await;
+                if let Err(e) = res {
+                    tlog!(Warning, "failed proposing replicaset master change: {e}";
+                        "master_id" => %instance_id,
+                        "replicaset_id" => %replicaset_id,
+                    );
+                    event::wait_timeout(Event::TopologyChanged, Duration::from_secs(1)).unwrap();
+                    return Continue;
+                }
             }
-            .await;
-            if let Err(e) = res {
-                tlog!(Warning, "failed proposing replicaset master change: {e}";
-                    "master_id" => %instance_id,
-                    "replicaset_id" => %replicaset_id,
-                );
-                event::wait_timeout(Event::TopologyChanged, Duration::from_secs(1)).unwrap();
-                return Continue;
+
+            Plan::None => {
+                tlog!(Info, "nothing to do");
             }
         }
 
