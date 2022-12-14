@@ -161,6 +161,7 @@ def test_replication(cluster: Cluster):
     i2.restart()
     wait_replicated(i2)
 
+    i2.wait_online()
     i2.promote_or_fail()
 
     i1.assert_raft_status("Follower")
