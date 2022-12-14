@@ -88,6 +88,8 @@ impl Loop {
             }
         );
 
+        // TODO: remove this once all plans are implemented
+        let mut did_something = true;
         match plan {
             Plan::ConfChange(conf_change) => {
                 // main_loop gives the warranty that every ProposeConfChange
@@ -99,14 +101,12 @@ impl Loop {
                     tlog!(Warning, "failed proposing conf_change: {e}");
                     fiber::sleep(Duration::from_secs(1));
                 }
-                return Continue;
             }
 
             Plan::TransferLeadership(TransferLeadership { to }) => {
                 tlog!(Info, "transferring leadership to {}", to.instance_id);
                 node.transfer_leadership_and_yield(to.raft_id);
                 event::wait_timeout(Event::TopologyChanged, Duration::from_secs(1)).unwrap();
-                return Continue;
             }
 
             Plan::TransferMastership(TransferMastership { to, rpc, op }) => {
@@ -198,7 +198,12 @@ impl Loop {
 
             Plan::None => {
                 tlog!(Info, "nothing to do");
+                did_something = false;
             }
+        }
+
+        if did_something {
+            return Continue;
         }
 
         ////////////////////////////////////////////////////////////////////////
