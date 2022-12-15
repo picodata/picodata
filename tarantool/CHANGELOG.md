@@ -38,18 +38,27 @@
 - Add `tlua::Throw` wrapper type for throwing lua errors from an error returned
     by rust callback.
 - Doc-comments here and there.
-- `tests/test.sh` now supports `TARANTOOL_MODULE_BUILD_MODE` environment
-    variable to select which build mode is tested (debug, release, etc.)
 - `fiber::r#yield` function for yielding fibers likewise tarantool LUA api.
 - `#[derive(Copy)]` for a bunch of light enums including `TarantoolErrorCode`,
     `SayLevel`, `SystemSpace`, `FieldType`.
 - `define_str_enum` macro suitable for public use.
 - `fiber::csw` function for tracking fiber context switches.
 - `fiber::check_yield` function for easier testing.
+- `fiber::r#async` module with a simple fiber based async/await runtime.
+- `fiber::block_on` function for executing a Future on a fiber based async/await
+    runtime.
+- `fiber::r#async::timeout::{timeout, IntoTimeout}` utilities for constraining
+    futures with a timeout (only works with the fiber based async/await runtime!).
+- `fiber::r#async::oneshot` an async/await oneshot channel (inspired by
+    `tokio::sync::oneshot`).
+- `fiber::r#async::watch` an async/await watch channel (inspired by
+    `tokio::sync::watch`).
+- `fiber::{start_async, defer_async}` for executing a future in a separate fiber.
 
 ### Removed
 
 - `raft` cfg feature that wasn't finished and will never be.
+- `tests/test.sh` script for running tests (`cargo test` can now be used).
 
 ### Fixed
 - `TupleBuffer` no longer copies data into tarantool's transaction memory pool
