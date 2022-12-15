@@ -1,6 +1,6 @@
 # Change Log
 
-# [0.6.4] Oct ?? 2022
+# [0.6.4] Dec 15 2022
 
 ### Added
 - `tarantool::space::UpdateOps` helper struct for use with `update` & `upsert`
