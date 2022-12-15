@@ -37,7 +37,7 @@ pub(crate) mod cc;
 pub(crate) mod migration;
 
 pub(crate) use cc::raft_conf_change;
-pub(crate) use migration::waiting_migrations;
+pub(crate) use migration::get_pending_migration;
 
 macro_rules! governor_step {
     ($desc:literal $([ $($kv:tt)* ])? async { $($body:tt)+ }) => {
@@ -81,6 +81,7 @@ impl Loop {
             .iter()
             .map(|rs| (&rs.replicaset_id, rs))
             .collect();
+        let migration_ids = storage.migrations.iter().unwrap().map(|m| m.id).collect();
 
         let term = status.get().term;
         let commit = raft_storage.commit().unwrap().unwrap();
@@ -88,6 +89,7 @@ impl Loop {
         let node = global().expect("must be initialized");
         let vshard_bootstrapped = storage.properties.vshard_bootstrapped().unwrap();
         let replication_factor = storage.properties.replication_factor().unwrap();
+        let desired_schema_version = storage.properties.desired_schema_version().unwrap();
 
         let plan = action_plan(
             term,
@@ -97,9 +99,11 @@ impl Loop {
             &voters,
             &learners,
             &replicasets,
+            migration_ids,
             node.raft_id,
             vshard_bootstrapped,
             replication_factor,
+            desired_schema_version,
         );
         let plan = unwrap_ok_or!(plan,
             Err(e) => {
@@ -110,8 +114,6 @@ impl Loop {
             }
         );
 
-        // TODO: remove this once all plans are implemented
-        let mut did_something = true;
         match plan {
             Plan::ConfChange(ConfChange { conf_change }) => {
                 // main_loop gives the warranty that every ProposeConfChange
@@ -416,77 +418,40 @@ impl Loop {
                 }
             }
 
+            Plan::ApplyMigration(ApplyMigration { target, rpc, op }) => {
+                let migration_id = rpc.migration_id;
+                governor_step! {
+                    "applying migration on a replicaset" [
+                        "replicaset_id" => %target.replicaset_id,
+                        "migration_id" => %migration_id,
+                    ]
+                    async {
+                        pool
+                            .call(&target.master_id, &rpc)?
+                            .timeout(Loop::SYNC_TIMEOUT)
+                            .await??;
+                    }
+                }
+
+                governor_step! {
+                    "proposing replicaset current schema version change" [
+                        "replicaset_id" => %target.replicaset_id,
+                        "migration_id" => %migration_id,
+                    ]
+                    async {
+                        node.propose_and_wait(op, Duration::from_secs(3))??
+                    }
+                }
+
+                event::broadcast(Event::MigrateDone);
+            }
+
             Plan::None => {
-                tlog!(Info, "nothing to do");
-                did_something = false;
+                tlog!(Info, "nothing to do, waiting for events to handle");
+                event::wait_any(&[Event::TopologyChanged, Event::ClusterStateChanged])
+                    .expect("Events system must be initialized");
             }
         }
-
-        if did_something {
-            return Continue;
-        }
-
-        ////////////////////////////////////////////////////////////////////////
-        // applying migrations
-        let desired_schema_version = storage.properties.desired_schema_version().unwrap();
-        let replicasets = storage.replicasets.iter().unwrap().collect::<Vec<_>>();
-        let mut migrations = storage.migrations.iter().unwrap().collect::<Vec<_>>();
-        let commit = raft_storage.commit().unwrap().unwrap();
-        for (mid, rids) in waiting_migrations(&mut migrations, &replicasets, desired_schema_version)
-        {
-            let migration = storage.migrations.get(mid).unwrap().unwrap();
-            for rid in rids {
-                let replicaset = storage
-                    .replicasets
-                    .get(rid.to_string().as_str())
-                    .unwrap()
-                    .unwrap();
-                let instance = storage.instances.get(&replicaset.master_id).unwrap();
-                let req = rpc::migration::apply::Request {
-                    term,
-                    commit,
-                    timeout: Self::SYNC_TIMEOUT,
-                    migration_id: migration.id,
-                };
-                let res: Result<_> = async {
-                    let rpc::migration::apply::Response {} = pool
-                        .call(&instance.raft_id, &req)?
-                        // TODO: don't hard code timeout
-                        .timeout(Duration::from_secs(3))
-                        .await??;
-                    let mut ops = UpdateOps::new();
-                    ops.assign("current_schema_version", migration.id)?;
-                    let op = OpDML::update(
-                        ClusterwideSpace::Replicaset,
-                        &[replicaset.replicaset_id.clone()],
-                        ops,
-                    )?;
-                    node.propose_and_wait(op, Duration::MAX)??;
-                    tlog!(
-                        Info,
-                        "Migration {0} applied to replicaset {1}",
-                        migration.id,
-                        replicaset.replicaset_id
-                    );
-                    Ok(())
-                }
-                .await;
-                if let Err(e) = res {
-                    tlog!(
-                        Warning,
-                        "Could not apply migration {0} to replicaset {1}, error: {2}",
-                        migration.id,
-                        replicaset.replicaset_id,
-                        e
-                    );
-                    return Continue;
-                }
-            }
-        }
-        event::broadcast(Event::MigrateDone);
-
-        event::wait_any(&[Event::TopologyChanged, Event::ClusterStateChanged])
-            .expect("Events system must be initialized");
 
         Continue
     }
@@ -501,9 +466,11 @@ fn action_plan<'i>(
     voters: &[RaftId],
     learners: &[RaftId],
     replicasets: &HashMap<&ReplicasetId, &'i Replicaset>,
+    migration_ids: Vec<u64>,
     my_raft_id: RaftId,
     vshard_bootstrapped: bool,
     replication_factor: usize,
+    desired_schema_version: u64,
 ) -> Result<Plan<'i>> {
     ////////////////////////////////////////////////////////////////////////////
     // conf change
@@ -784,6 +751,23 @@ fn action_plan<'i>(
         return Ok(ToOnline { req }.into());
     }
 
+    ////////////////////////////////////////////////////////////////////////////
+    // migration
+    let replicasets: Vec<_> = replicasets.values().copied().collect();
+    let to_apply = get_pending_migration(migration_ids, &replicasets, desired_schema_version);
+    if let Some((migration_id, target)) = to_apply {
+        let rpc = rpc::migration::apply::Request {
+            term,
+            commit,
+            timeout: Loop::SYNC_TIMEOUT,
+            migration_id,
+        };
+        let mut ops = UpdateOps::new();
+        ops.assign("current_schema_version", migration_id)?;
+        let op = OpDML::update(ClusterwideSpace::Replicaset, &[&target.replicaset_id], ops)?;
+        return Ok(ApplyMigration { target, rpc, op }.into());
+    }
+
     Ok(Plan::None)
 }
 
@@ -989,6 +973,12 @@ mod actions {
 
         pub struct ToOnline {
             pub req: update_instance::Request,
+        }
+
+        pub struct ApplyMigration<'i> {
+            pub target: &'i Replicaset,
+            pub rpc: rpc::migration::apply::Request,
+            pub op: OpDML,
         }
     }
 }

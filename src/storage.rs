@@ -213,6 +213,7 @@ impl Replicasets {
         Ok(Self { space })
     }
 
+    #[allow(unused)]
     #[inline]
     pub fn get(&self, replicaset_id: &str) -> tarantool::Result<Option<Replicaset>> {
         match self.space.get(&[replicaset_id])? {
