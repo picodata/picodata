@@ -4,7 +4,6 @@ use ::tarantool::tuple::{DecodeOwned, ToTupleBuffer, Tuple};
 
 use crate::traft;
 use crate::traft::error::Error;
-use crate::traft::rpc::sharding::cfg::ReplicasetWeights;
 use crate::traft::Migration;
 use crate::traft::RaftId;
 use crate::traft::Replicaset;
@@ -198,7 +197,8 @@ impl Replicasets {
             .field(("replicaset_id", FieldType::String))
             .field(("replicaset_uuid", FieldType::String))
             .field(("master_id", FieldType::String))
-            .field(("weight", FieldType::Double))
+            .field(("current_weight", FieldType::Double))
+            .field(("target_weight", FieldType::Double))
             .field(("current_schema_version", FieldType::Unsigned))
             .if_not_exists(true)
             .create()?;
@@ -211,11 +211,6 @@ impl Replicasets {
             .create()?;
 
         Ok(Self { space })
-    }
-
-    #[inline]
-    pub fn weights(&self) -> Result<ReplicasetWeights> {
-        Ok(self.iter()?.map(|r| (r.replicaset_id, r.weight)).collect())
     }
 
     #[inline]

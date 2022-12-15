@@ -659,13 +659,15 @@ fn action_plan<'i>(
             commit,
             timeout: Loop::SYNC_TIMEOUT,
         };
+        let weight = if vshard_bootstrapped { 0. } else { 1. };
         let op = OpDML::insert(
             ClusterwideSpace::Replicaset,
             &Replicaset {
                 replicaset_id: replicaset_id.clone(),
                 replicaset_uuid: replicaset_uuid.clone(),
                 master_id: master_id.clone(),
-                weight: if vshard_bootstrapped { 0. } else { 1. },
+                current_weight: weight,
+                target_weight: weight,
                 current_schema_version: 0,
             },
         )?;

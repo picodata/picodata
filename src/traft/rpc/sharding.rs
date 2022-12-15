@@ -87,7 +87,7 @@ pub mod bootstrap {
 pub mod cfg {
     use crate::storage::Clusterwide;
     use crate::storage::ToEntryIter as _;
-    use crate::traft::{Result, ReplicasetId};
+    use crate::traft::Result;
 
     use ::tarantool::tlua;
 
@@ -140,7 +140,6 @@ pub mod cfg {
         Once,
     }
 
-    pub type ReplicasetWeights = HashMap<ReplicasetId, Weight>;
     pub type Weight = f64;
 
     impl Cfg {
@@ -161,7 +160,7 @@ pub mod cfg {
                     continue;
                 };
                 let (weight, is_master) = match replicasets.get(&peer.replicaset_id) {
-                    Some(r) => (Some(r.weight), r.master_id == peer.instance_id),
+                    Some(r) => (Some(r.target_weight), r.master_id == peer.instance_id),
                     None => (None, false),
                 };
                 let replicaset = sharding.entry(peer.replicaset_uuid)

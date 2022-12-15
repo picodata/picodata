@@ -47,7 +47,8 @@ mod tests {
                 replicaset_id: ReplicasetId($id.to_string()),
                 replicaset_uuid: "".to_string(),
                 master_id: InstanceId("i0".to_string()),
-                weight: 1.0,
+                current_weight: 1.0,
+                target_weight: 1.0,
                 current_schema_version: $schema_version,
             }
         };

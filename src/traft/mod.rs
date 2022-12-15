@@ -29,6 +29,7 @@ use protobuf::Message as _;
 
 pub use network::ConnectionPool;
 pub use raft_storage::RaftSpaceAccess;
+pub use rpc::sharding::cfg::Weight;
 pub use rpc::{join, update_instance};
 pub use topology::Topology;
 
@@ -519,8 +520,11 @@ pub struct Replicaset {
     /// Instance id of the current replication leader.
     pub master_id: InstanceId,
 
-    /// Sharding weight of the replicaset.
-    pub weight: rpc::sharding::cfg::Weight,
+    /// Current sharding weight of the replicaset.
+    pub current_weight: Weight,
+
+    /// Target sharding weight of the replicaset.
+    pub target_weight: Weight,
 
     /// Current schema version of the replicaset.
     pub current_schema_version: u64,
@@ -531,8 +535,14 @@ impl std::fmt::Display for Replicaset {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(
             f,
-            "({}, master: {}, weight: {})",
-            self.replicaset_id, self.master_id, self.weight,
+            "({}, master: {}, weight: {}, schema_version: {})",
+            self.replicaset_id,
+            self.master_id,
+            Transition {
+                from: self.current_weight,
+                to: self.target_weight
+            },
+            self.current_schema_version,
         )
     }
 }
