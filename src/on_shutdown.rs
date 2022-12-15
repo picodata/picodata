@@ -5,7 +5,6 @@ use ::tarantool::fiber;
 use crate::tlog;
 use crate::traft;
 use crate::traft::error::Error;
-use crate::traft::event;
 use crate::traft::node;
 use crate::traft::rpc;
 use crate::traft::rpc::update_instance;
@@ -13,7 +12,7 @@ use crate::traft::CurrentGradeVariant;
 use crate::traft::TargetGradeVariant;
 use crate::unwrap_ok_or;
 
-pub fn callback() {
+pub async fn callback() {
     // 1. Try setting target grade Offline in a separate fiber
     tlog!(Info, "trying to shutdown gracefully ...");
     let go_offline = fiber::Builder::new()
@@ -65,7 +64,9 @@ pub fn callback() {
             break;
         }
 
-        let Ok(()) = event::wait(event::Event::TopologyChanged) else { break };
+        if let Err(e) = node.governor_loop.awoken().await {
+            tlog!(Warning, "failed to shutdown gracefully: {e}");
+        }
     }
 }
 

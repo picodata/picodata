@@ -54,6 +54,10 @@ pub enum Error {
     AddressUnknownForInstanceId(InstanceId),
     #[error("leader is uknown yet")]
     LeaderUnknown,
+
+    #[error("governor has stopped")]
+    GovernorStopped,
+
     #[error("other error: {0}")]
     Other(Box<dyn std::error::Error>),
 }

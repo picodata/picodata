@@ -11,6 +11,7 @@ use crate::r#loop::FlowControl::{self, Continue};
 use crate::storage::ToEntryIter as _;
 use crate::storage::{Clusterwide, ClusterwideSpace, PropertyName};
 use crate::tlog;
+use crate::traft::error::Error;
 use crate::traft::network::ConnectionPool;
 use crate::traft::node::global;
 use crate::traft::node::Status;
@@ -39,23 +40,6 @@ pub(crate) mod migration;
 pub(crate) use cc::raft_conf_change;
 pub(crate) use migration::get_pending_migration;
 
-macro_rules! governor_step {
-    ($desc:literal $([ $($kv:tt)* ])? async { $($body:tt)+ }) => {
-        tlog!(Info, $desc $(; $($kv)*)?);
-        #[allow(redundant_semicolons)]
-        let res: Result<_> = async {
-            $($body)+;
-            Ok(())
-        }
-        .await;
-        if let Err(e) = res {
-            tlog!(Warning, ::std::concat!("failed ", $desc, ": {}"), e, $(; $($kv)*)?);
-            event::wait_timeout(Event::TopologyChanged, Loop::RETRY_TIMEOUT).unwrap();
-            return Continue;
-        }
-    }
-}
-
 impl Loop {
     const SYNC_TIMEOUT: Duration = Duration::from_secs(10);
     const RETRY_TIMEOUT: Duration = Duration::from_millis(250);
@@ -65,7 +49,11 @@ impl Loop {
             storage,
             raft_storage,
         }: &Args,
-        State { status, pool }: &mut State,
+        State {
+            status,
+            waker,
+            pool,
+        }: &mut State,
     ) -> FlowControl {
         if !status.get().raft_state.is_leader() {
             status.changed().await.unwrap();
@@ -108,11 +96,27 @@ impl Loop {
         let plan = unwrap_ok_or!(plan,
             Err(e) => {
                 tlog!(Warning, "failed constructing an action plan: {e}");
-                // TODO don't hard code timeout
-                event::wait_timeout(Event::TopologyChanged, Loop::RETRY_TIMEOUT).unwrap();
+                _ = waker.changed().timeout(Loop::RETRY_TIMEOUT).await;
                 return Continue;
             }
         );
+
+        macro_rules! governor_step {
+            ($desc:literal $([ $($kv:tt)* ])? async { $($body:tt)+ }) => {
+                tlog!(Info, $desc $(; $($kv)*)?);
+                #[allow(redundant_semicolons)]
+                let res: Result<_> = async {
+                    $($body)+;
+                    Ok(())
+                }
+                .await;
+                if let Err(e) = res {
+                    tlog!(Warning, ::std::concat!("failed ", $desc, ": {}"), e, $(; $($kv)*)?);
+                    _ = waker.changed().timeout(Loop::RETRY_TIMEOUT).await;
+                    return Continue;
+                }
+            }
+        }
 
         match plan {
             Plan::ConfChange(ConfChange { conf_change }) => {
@@ -130,7 +134,7 @@ impl Loop {
             Plan::TransferLeadership(TransferLeadership { to }) => {
                 tlog!(Info, "transferring leadership to {}", to.instance_id);
                 node.transfer_leadership_and_yield(to.raft_id);
-                event::wait_timeout(Event::TopologyChanged, Loop::RETRY_TIMEOUT).unwrap();
+                _ = waker.changed().timeout(Loop::RETRY_TIMEOUT).await;
             }
 
             Plan::TransferMastership(TransferMastership { to, rpc, op }) => {
@@ -448,8 +452,7 @@ impl Loop {
 
             Plan::None => {
                 tlog!(Info, "nothing to do, waiting for events to handle");
-                event::wait_any(&[Event::TopologyChanged, Event::ClusterStateChanged])
-                    .expect("Events system must be initialized");
+                _ = waker.changed().await;
             }
         }
 
@@ -782,8 +785,11 @@ impl Loop {
             raft_storage,
         };
 
+        let (waker_tx, waker_rx) = watch::channel(());
+
         let state = State {
             status,
+            waker: waker_rx,
             pool: ConnectionPool::builder(args.storage.clone())
                 .call_timeout(Duration::from_secs(1))
                 .connect_timeout(Duration::from_millis(500))
@@ -793,12 +799,26 @@ impl Loop {
 
         Self {
             _loop: crate::loop_start!("governor_loop", Self::iter_fn, args, state),
+            waker: waker_tx,
         }
+    }
+
+    pub fn wakeup(&self) -> Result<()> {
+        self.waker.send(()).map_err(|_| Error::GovernorStopped)
+    }
+
+    pub async fn awoken(&self) -> Result<()> {
+        self.waker
+            .subscribe()
+            .changed()
+            .await
+            .map_err(|_| Error::GovernorStopped)
     }
 }
 
 pub struct Loop {
     _loop: Option<fiber::UnitJoinHandle<'static>>,
+    waker: watch::Sender<()>,
 }
 
 struct Args {
@@ -808,6 +828,7 @@ struct Args {
 
 struct State {
     status: watch::Receiver<Status>,
+    waker: watch::Receiver<()>,
     pool: ConnectionPool,
 }
 

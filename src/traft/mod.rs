@@ -33,8 +33,6 @@ pub use rpc::sharding::cfg::Weight;
 pub use rpc::{join, update_instance};
 pub use topology::Topology;
 
-use self::event::Event;
-
 pub type RaftId = u64;
 pub type RaftTerm = u64;
 pub type RaftIndex = u64;
@@ -183,12 +181,7 @@ impl Op {
                 instances.put(&instance).unwrap();
                 instance
             }
-            Self::Dml(op) => {
-                if op.space() == &ClusterwideSpace::Property {
-                    event::broadcast(Event::ClusterStateChanged);
-                }
-                Box::new(op.result())
-            }
+            Self::Dml(op) => Box::new(op.result()),
         }
     }
 }

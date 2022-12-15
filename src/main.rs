@@ -1020,7 +1020,7 @@ fn postjoin(args: &args::Run, storage: Clusterwide, raft_storage: RaftSpaceAcces
     box_cfg.listen = Some(args.listen.clone());
     tarantool::set_cfg(&box_cfg);
 
-    if let Err(e) = tarantool::on_shutdown(on_shutdown::callback) {
+    if let Err(e) = tarantool::on_shutdown(|| fiber::block_on(on_shutdown::callback())) {
         tlog!(Error, "failed setting on_shutdown trigger: {e}");
     }
 

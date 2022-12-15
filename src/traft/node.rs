@@ -124,7 +124,7 @@ pub struct Node {
     pub(crate) storage: Clusterwide,
     pub(crate) raft_storage: RaftSpaceAccess,
     main_loop: MainLoop,
-    _governor_loop: governor::Loop,
+    pub(crate) governor_loop: governor::Loop,
     status: watch::Receiver<Status>,
 }
 
@@ -150,7 +150,7 @@ impl Node {
         let node = Node {
             raft_id,
             main_loop: MainLoop::start(node_impl.clone()), // yields
-            _governor_loop: governor::Loop::start(
+            governor_loop: governor::Loop::start(
                 status.clone(),
                 storage.clone(),
                 raft_storage.clone(),
@@ -606,7 +606,7 @@ impl NodeImpl {
     fn handle_committed_entries(
         &mut self,
         entries: &[raft::Entry],
-        topology_changed: &mut bool,
+        wake_governor: &mut bool,
         expelled: &mut bool,
     ) {
         for entry in entries {
@@ -620,7 +620,7 @@ impl NodeImpl {
 
             match entry.entry_type {
                 raft::EntryType::EntryNormal => {
-                    self.handle_committed_normal_entry(entry, topology_changed, expelled)
+                    self.handle_committed_normal_entry(entry, wake_governor, expelled)
                 }
                 raft::EntryType::EntryConfChange | raft::EntryType::EntryConfChangeV2 => {
                     self.handle_committed_conf_change(entry)
@@ -645,7 +645,7 @@ impl NodeImpl {
     fn handle_committed_normal_entry(
         &mut self,
         entry: traft::Entry,
-        topology_changed: &mut bool,
+        wake_governor: &mut bool,
         expelled: &mut bool,
     ) {
         assert_eq!(entry.entry_type, raft::EntryType::EntryNormal);
@@ -653,14 +653,25 @@ impl NodeImpl {
         let index = entry.index;
         let op = entry.into_op().unwrap_or(traft::Op::Nop);
 
-        if let traft::Op::PersistInstance(OpPersistInstance(instance)) = &op {
-            *topology_changed = true;
-            if instance.current_grade == CurrentGradeVariant::Expelled
-                && instance.raft_id == self.raft_id()
-            {
-                // cannot exit during a transaction
-                *expelled = true;
+        match &op {
+            traft::Op::PersistInstance(OpPersistInstance(instance)) => {
+                *wake_governor = true;
+                if instance.current_grade == CurrentGradeVariant::Expelled
+                    && instance.raft_id == self.raft_id()
+                {
+                    // cannot exit during a transaction
+                    *expelled = true;
+                }
             }
+            traft::Op::Dml(op)
+                if matches!(
+                    op.space(),
+                    ClusterwideSpace::Property | ClusterwideSpace::Replicaset
+                ) =>
+            {
+                *wake_governor = true;
+            }
+            _ => {}
         }
 
         // apply the operation
@@ -783,7 +794,7 @@ impl NodeImpl {
     /// - or better <https://github.com/etcd-io/etcd/blob/v3.5.5/raft/node.go#L49>
     ///
     /// This function yields.
-    fn advance(&mut self, topology_changed: &mut bool, expelled: &mut bool) {
+    fn advance(&mut self, wake_governor: &mut bool, expelled: &mut bool) {
         // Get the `Ready` with `RawNode::ready` interface.
         if !self.raw_node.has_ready() {
             return;
@@ -815,7 +826,7 @@ impl NodeImpl {
 
         if let Err(e) = start_transaction(|| -> Result<(), TransactionError> {
             // Apply committed entries.
-            self.handle_committed_entries(ready.committed_entries(), topology_changed, expelled);
+            self.handle_committed_entries(ready.committed_entries(), wake_governor, expelled);
 
             // Persist uncommitted entries in the raft log.
             self.raft_storage.persist_entries(ready.entries()).unwrap();
@@ -852,7 +863,7 @@ impl NodeImpl {
             }
 
             // Apply committed entries.
-            self.handle_committed_entries(light_rd.committed_entries(), topology_changed, expelled);
+            self.handle_committed_entries(light_rd.committed_entries(), wake_governor, expelled);
 
             Ok(())
         }) {
@@ -946,9 +957,9 @@ impl MainLoop {
             node_impl.raw_node.tick();
         }
 
-        let mut topology_changed = false;
+        let mut wake_governor = false;
         let mut expelled = false;
-        node_impl.advance(&mut topology_changed, &mut expelled); // yields
+        node_impl.advance(&mut wake_governor, &mut expelled); // yields
         if state.stop_flag.take() {
             return FlowControl::Break;
         }
@@ -957,8 +968,10 @@ impl MainLoop {
             crate::tarantool::exit(0);
         }
 
-        if topology_changed {
-            event::broadcast(Event::TopologyChanged);
+        if wake_governor {
+            if let Err(e) = async { global()?.governor_loop.wakeup() }.await {
+                tlog!(Warning, "failed waking up governor: {e}");
+            }
         }
 
         FlowControl::Continue
