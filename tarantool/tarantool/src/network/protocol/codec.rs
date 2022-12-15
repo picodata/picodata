@@ -71,7 +71,7 @@ impl TryFrom<u8> for IProtoKey {
     }
 }
 
-pub(crate) enum IProtoType {
+pub enum IProtoType {
     Select = 1,
     Insert = 2,
     Replace = 3,
@@ -83,34 +83,6 @@ pub(crate) enum IProtoType {
     Call = 10,
     Execute = 11,
     Ping = 64,
-}
-
-pub(crate) trait Request {
-    const TYPE: IProtoType;
-
-    fn encode_header<W>(&self, out: &mut W, sync: SyncIndex, ty: IProtoType) -> Result<(), Error>
-    where
-        W: Write,
-    {
-        encode_header(out, sync, ty)
-    }
-
-    fn encode_body<W>(&self, out: &mut W) -> Result<(), Error>
-    where
-        W: Write;
-}
-
-pub(crate) fn request_producer<R>(
-    request: R,
-) -> impl FnOnce(&mut Cursor<Vec<u8>>, SyncIndex) -> crate::Result<()>
-where
-    R: Request,
-{
-    move |cur, sync| {
-        request.encode_header(cur, sync, R::TYPE)?;
-        request.encode_body(cur)?;
-        Ok(())
-    }
 }
 
 pub trait Consumer {
@@ -180,7 +152,7 @@ pub trait Consumer {
     fn consume_data(&self, data: &[u8]);
 }
 
-fn encode_header(
+pub fn encode_header(
     stream: &mut impl Write,
     sync: SyncIndex,
     request_type: IProtoType,
@@ -195,10 +167,10 @@ fn encode_header(
 
 pub fn encode_auth(
     stream: &mut impl Write,
+    sync: SyncIndex,
     user: &str,
     password: &str,
     salt: &[u8],
-    sync: SyncIndex,
 ) -> Result<(), Error> {
     // prepare 'chap-sha1' scramble:
     // salt = base64_decode(encoded_salt);
@@ -225,7 +197,6 @@ pub fn encode_auth(
         .zip(step_3.iter())
         .for_each(|(a, b)| *a ^= *b);
 
-    encode_header(stream, sync, IProtoType::Auth)?;
     rmp::encode::write_map_len(stream, 2)?;
 
     // username:
@@ -241,8 +212,7 @@ pub fn encode_auth(
     Ok(())
 }
 
-pub fn encode_ping(stream: &mut impl Write, sync: SyncIndex) -> Result<(), Error> {
-    encode_header(stream, sync, IProtoType::Ping)?;
+pub fn encode_ping(stream: &mut impl Write) -> Result<(), Error> {
     rmp::encode::write_map_len(stream, 0)?;
     Ok(())
 }
@@ -253,7 +223,6 @@ pub fn encode_execute(
     sql: &str,
     bind_params: &impl ToTupleBuffer,
 ) -> Result<(), Error> {
-    encode_header(stream, sync, IProtoType::Execute)?;
     rmp::encode::write_map_len(stream, 2)?;
     rmp::encode::write_pfix(stream, SQL_TEXT)?;
     rmp::encode::write_str(stream, sql)?;
@@ -273,32 +242,12 @@ where
     T: ToTupleBuffer,
     T: ?Sized,
 {
-    encode_header(stream, sync, IProtoType::Call)?;
     rmp::encode::write_map_len(stream, 2)?;
     rmp::encode::write_pfix(stream, FUNCTION_NAME)?;
     rmp::encode::write_str(stream, function_name)?;
     rmp::encode::write_pfix(stream, TUPLE)?;
     args.write_tuple_data(stream)?;
     Ok(())
-}
-
-pub(crate) struct Call<'a, A>(pub &'a str, pub A);
-
-impl<'a, A: ToTupleBuffer> Request for Call<'a, A> {
-    const TYPE: IProtoType = IProtoType::Call;
-
-    fn encode_body<W>(&self, out: &mut W) -> Result<(), Error>
-    where
-        W: Write,
-    {
-        let Self(function_name, args) = self;
-        rmp::encode::write_map_len(out, 2)?;
-        rmp::encode::write_pfix(out, FUNCTION_NAME)?;
-        rmp::encode::write_str(out, function_name)?;
-        rmp::encode::write_pfix(out, TUPLE)?;
-        args.write_tuple_data(out)?;
-        Ok(())
-    }
 }
 
 pub fn encode_eval<T>(
@@ -311,32 +260,12 @@ where
     T: ToTupleBuffer,
     T: ?Sized,
 {
-    encode_header(stream, sync, IProtoType::Eval)?;
     rmp::encode::write_map_len(stream, 2)?;
     rmp::encode::write_pfix(stream, EXPR)?;
     rmp::encode::write_str(stream, expression)?;
     rmp::encode::write_pfix(stream, TUPLE)?;
     args.write_tuple_data(stream)?;
     Ok(())
-}
-
-pub(crate) struct Eval<'a, A>(pub &'a str, pub A);
-
-impl<'a, A: ToTupleBuffer> Request for Eval<'a, A> {
-    const TYPE: IProtoType = IProtoType::Eval;
-
-    fn encode_body<W>(&self, out: &mut W) -> Result<(), Error>
-    where
-        W: Write,
-    {
-        let Self(expr, args) = self;
-        rmp::encode::write_map_len(out, 2)?;
-        rmp::encode::write_pfix(out, EXPR)?;
-        rmp::encode::write_str(out, expr)?;
-        rmp::encode::write_pfix(out, TUPLE)?;
-        args.write_tuple_data(out)?;
-        Ok(())
-    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -354,7 +283,6 @@ where
     K: ToTupleBuffer,
     K: ?Sized,
 {
-    encode_header(stream, sync, IProtoType::Select)?;
     rmp::encode::write_map_len(stream, 6)?;
     rmp::encode::write_pfix(stream, SPACE_ID)?;
     rmp::encode::write_u32(stream, space_id)?;
@@ -381,7 +309,6 @@ where
     T: ToTupleBuffer,
     T: ?Sized,
 {
-    encode_header(stream, sync, IProtoType::Insert)?;
     rmp::encode::write_map_len(stream, 2)?;
     rmp::encode::write_pfix(stream, SPACE_ID)?;
     rmp::encode::write_u32(stream, space_id)?;
@@ -400,7 +327,6 @@ where
     T: ToTupleBuffer,
     T: ?Sized,
 {
-    encode_header(stream, sync, IProtoType::Replace)?;
     rmp::encode::write_map_len(stream, 2)?;
     rmp::encode::write_pfix(stream, SPACE_ID)?;
     rmp::encode::write_u32(stream, space_id)?;
@@ -422,7 +348,6 @@ where
     Op: ToTupleBuffer,
     Op: ?Sized,
 {
-    encode_header(stream, sync, IProtoType::Update)?;
     rmp::encode::write_map_len(stream, 4)?;
     rmp::encode::write_pfix(stream, SPACE_ID)?;
     rmp::encode::write_u32(stream, space_id)?;
@@ -448,7 +373,6 @@ where
     Op: ToTupleBuffer,
     Op: ?Sized,
 {
-    encode_header(stream, sync, IProtoType::Upsert)?;
     rmp::encode::write_map_len(stream, 4)?;
     rmp::encode::write_pfix(stream, SPACE_ID)?;
     rmp::encode::write_u32(stream, space_id)?;
@@ -472,7 +396,6 @@ where
     K: ToTupleBuffer,
     K: ?Sized,
 {
-    encode_header(stream, sync, IProtoType::Delete)?;
     rmp::encode::write_map_len(stream, 3)?;
     rmp::encode::write_pfix(stream, SPACE_ID)?;
     rmp::encode::write_u32(stream, space_id)?;
@@ -547,7 +470,7 @@ pub fn decode_greeting(stream: &mut impl Read) -> Result<Vec<u8>, Error> {
     Ok(salt)
 }
 
-pub fn decode_call(buffer: &mut Cursor<Vec<u8>>, _: &Header) -> Result<Option<Tuple>, Error> {
+pub fn decode_call(buffer: &mut Cursor<Vec<u8>>) -> Result<Option<Tuple>, Error> {
     let payload_len = rmp::decode::read_map_len(buffer)?;
     for _ in 0..payload_len {
         let key = rmp::decode::read_pfix(buffer)?;
@@ -592,7 +515,7 @@ pub fn decode_multiple_rows(
     Ok(vec![])
 }
 
-pub fn decode_single_row(buffer: &mut Cursor<Vec<u8>>, _: &Header) -> Result<Option<Tuple>, Error> {
+pub fn decode_single_row(buffer: &mut Cursor<Vec<u8>>) -> Result<Option<Tuple>, Error> {
     let payload_len = rmp::decode::read_map_len(buffer)?;
     for _ in 0..payload_len {
         let key = rmp::decode::read_pfix(buffer)?;

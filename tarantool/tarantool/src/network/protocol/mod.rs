@@ -3,6 +3,7 @@
 use std::fmt::{Display, Formatter};
 
 use self::options::ConnOptions;
+pub mod api;
 pub mod codec;
 pub mod conn;
 pub mod options;

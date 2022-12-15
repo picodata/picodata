@@ -6,10 +6,14 @@ use std::{
 
 use crate::error::Error;
 
-use super::{codec, options::ConnOptions, SyncIndex};
+use super::{
+    api::{self, Request},
+    codec::{self, Header},
+    options::ConnOptions,
+    SyncIndex,
+};
 
 pub type Response = Vec<u8>;
-pub type Request = Vec<u8>;
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum State {
@@ -55,16 +59,12 @@ impl Conn {
         matches!(self.state, State::Ready)
     }
 
-    pub fn send_request<Fp>(&mut self, request_producer: Fp) -> Result<SyncIndex, Error>
-    where
-        // TODO: Use request trait instead of producer see https://git.picodata.io/picodata/picodata/tarantool-module/-/merge_requests/249#note_18418
-        Fp: FnOnce(&mut Cursor<&mut Request>, SyncIndex) -> Result<(), Error>,
-    {
+    pub fn send_request(&mut self, request: &impl Request) -> Result<SyncIndex, Error> {
         let end = self.pending_data.len();
         let mut buf = Cursor::new(&mut self.pending_data);
         buf.set_position(end as u64);
         // TODO: limit the pending vec size
-        write_to_buffer(&mut buf, self.sync, request_producer)?;
+        write_to_buffer(&mut buf, self.sync, request)?;
         self.process_pending_data();
         Ok(self.sync.next())
     }
@@ -79,7 +79,10 @@ impl Conn {
     }
 
     // TODO: handle multiple chunks in incoming data
-    fn process_data<R: Read + Seek>(&mut self, chunk: &mut R) -> Result<Option<Response>, Error> {
+    fn process_data<R: Read + Seek>(
+        &mut self,
+        chunk: &mut R,
+    ) -> Result<Option<(Header, Response)>, Error> {
         let response = match self.state {
             State::Init => {
                 let salt = codec::decode_greeting(chunk)?;
@@ -95,9 +98,15 @@ impl Conn {
                     let mut buf = Cursor::new(&mut self.ready_data);
                     buf.set_position(end as u64);
                     let sync = self.sync.next();
-                    write_to_buffer(&mut buf, sync, |buf, sync| {
-                        codec::encode_auth(buf, user, pass, &salt, sync)
-                    });
+                    write_to_buffer(
+                        &mut buf,
+                        sync,
+                        &api::Auth {
+                            user,
+                            pass,
+                            salt: &salt,
+                        },
+                    );
                 }
                 None
             }
@@ -107,13 +116,17 @@ impl Conn {
                 if header.status_code != 0 {
                     return Err(codec::decode_error(chunk)?.into());
                 }
+                self.state = State::Ready;
                 None
             }
             State::Ready => {
-                // TODO: decode and handle responses in outer `Api` struct
+                let header = codec::decode_header(chunk)?;
+                if header.status_code != 0 {
+                    return Err(codec::decode_error(chunk)?.into());
+                }
                 let mut buf = Vec::new();
                 chunk.read_to_end(&mut buf);
-                Some(buf)
+                Some((header, buf))
             }
         };
         self.process_pending_data();
@@ -142,21 +155,18 @@ impl Conn {
     }
 }
 
-pub fn write_to_buffer<F>(
+pub fn write_to_buffer(
     buffer: &mut Cursor<&mut Vec<u8>>,
     sync: SyncIndex,
-    payload_producer: F,
-) -> Result<(), Error>
-where
-    F: FnOnce(&mut Cursor<&mut Vec<u8>>, SyncIndex) -> Result<(), Error>,
-{
+    request: &impl Request,
+) -> Result<(), Error> {
     // write MSG_SIZE placeholder
     let msg_start_offset = buffer.position();
     rmp::encode::write_u32(buffer, 0)?;
 
     // write message payload
     let payload_start_offset = buffer.position();
-    payload_producer(buffer, sync)?;
+    request.encode(buffer, sync)?;
     let payload_end_offset = buffer.position();
 
     // calculate and write MSG_SIZE
@@ -199,11 +209,7 @@ mod tests {
     fn send_bytes_generated() {
         let mut conn = Conn::with_options(Default::default());
         conn.process_data(&mut Cursor::new(fake_greeting()));
-        conn.send_request(|buf, sync| {
-            buf.write(&[0]);
-            Ok(())
-        })
-        .unwrap();
+        conn.send_request(&api::Ping).unwrap();
         assert!(conn.ready_data_len() > 0);
     }
 }
