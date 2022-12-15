@@ -12,7 +12,7 @@ pub mod topology;
 use crate::storage;
 use crate::storage::ClusterwideSpace;
 use crate::stringify_debug;
-use crate::util::{AnyWithTypeName, Uppercase};
+use crate::util::{AnyWithTypeName, Transition, Uppercase};
 use ::raft::prelude as raft;
 use ::tarantool::tlua;
 use ::tarantool::tlua::LuaError;
@@ -495,25 +495,14 @@ impl Instance {
 impl std::fmt::Display for Instance {
     #[rustfmt::skip]
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        return write!(f,
+        write!(f,
             "({}, {}, {}, {}, {})",
             self.instance_id,
             self.raft_id,
             self.replicaset_id,
-            GradeTransition { from: self.current_grade, to: self.target_grade },
+            Transition { from: self.current_grade, to: self.target_grade },
             &self.failure_domain,
-        );
-
-        struct GradeTransition { from: CurrentGrade, to: TargetGrade }
-        impl std::fmt::Display for GradeTransition {
-            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                if self.from == self.to {
-                    write!(f, "{}", self.to)
-                } else {
-                    write!(f, "{} -> {}", self.from, self.to)
-                }
-            }
-        }
+        )
     }
 }
 

@@ -398,6 +398,30 @@ pub fn downcast<T: 'static>(any: Box<dyn AnyWithTypeName>) -> Result<T, Error> {
     }
 }
 
+////////////////////////////////////////////////////////////////////////////////
+/// A helper struct for displaying transitions between 2 values.
+pub struct Transition<T, U> {
+    pub from: T,
+    pub to: U,
+}
+
+impl<T, U> std::fmt::Display for Transition<T, U>
+where
+    T: std::fmt::Display,
+    U: std::fmt::Display,
+    T: PartialEq<U>,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.from == self.to {
+            write!(f, "{}", self.to)
+        } else {
+            write!(f, "{} -> {}", self.from, self.to)
+        }
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// tests
 #[cfg(test)]
 mod tests {
     #[test]
