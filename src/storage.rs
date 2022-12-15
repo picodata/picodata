@@ -225,33 +225,14 @@ impl Replicasets {
             None => Ok(None),
         }
     }
-
-    #[inline]
-    pub fn iter(&self) -> Result<ReplicasetIter> {
-        let iter = self.space.select(IteratorType::All, &())?;
-        Ok(iter.into())
-    }
 }
 
-////////////////////////////////////////////////////////////////////////////////
-// ReplicasetIter
-////////////////////////////////////////////////////////////////////////////////
+impl ToEntryIter for Replicasets {
+    type Entry = Replicaset;
 
-pub struct ReplicasetIter {
-    iter: IndexIterator,
-}
-
-impl From<IndexIterator> for ReplicasetIter {
-    fn from(iter: IndexIterator) -> Self {
-        Self { iter }
-    }
-}
-
-impl Iterator for ReplicasetIter {
-    type Item = traft::Replicaset;
-    fn next(&mut self) -> Option<Self::Item> {
-        let res = self.iter.next().as_ref().map(Tuple::decode);
-        res.map(|res| res.expect("replicaset should decode correctly"))
+    #[inline(always)]
+    fn index_iter(&self) -> Result<IndexIterator> {
+        Ok(self.space.select(IteratorType::All, &())?)
     }
 }
 
@@ -317,35 +298,14 @@ impl PeerAddresses {
         self.get(raft_id)?
             .ok_or(Error::AddressUnknownForRaftId(raft_id))
     }
-
-    #[allow(dead_code)]
-    #[inline]
-    pub fn iter(&self) -> tarantool::Result<PeerAddressIter> {
-        let iter = self.space.select(IteratorType::All, &())?;
-        Ok(PeerAddressIter::new(iter))
-    }
 }
 
-////////////////////////////////////////////////////////////////////////////////
-// PeerAddressIter
-////////////////////////////////////////////////////////////////////////////////
+impl ToEntryIter for PeerAddresses {
+    type Entry = traft::PeerAddress;
 
-pub struct PeerAddressIter {
-    iter: IndexIterator,
-}
-
-#[allow(dead_code)]
-impl PeerAddressIter {
-    fn new(iter: IndexIterator) -> Self {
-        Self { iter }
-    }
-}
-
-impl Iterator for PeerAddressIter {
-    type Item = traft::PeerAddress;
-    fn next(&mut self) -> Option<Self::Item> {
-        let res = self.iter.next().as_ref().map(Tuple::decode);
-        res.map(|res| res.expect("peer address should decode correctly"))
+    #[inline(always)]
+    fn index_iter(&self) -> Result<IndexIterator> {
+        Ok(self.space.select(IteratorType::All, &())?)
     }
 }
 
@@ -453,12 +413,6 @@ impl Instances {
     }
 
     #[inline]
-    pub fn iter(&self) -> tarantool::Result<InstanceIter> {
-        let iter = self.space.select(IteratorType::All, &())?;
-        Ok(InstanceIter::new(iter))
-    }
-
-    #[inline]
     pub fn all_instances(&self) -> tarantool::Result<Vec<traft::Instance>> {
         self.space
             .select(IteratorType::All, &())?
@@ -466,11 +420,14 @@ impl Instances {
             .collect()
     }
 
-    pub fn replicaset_instances(&self, replicaset_id: &str) -> tarantool::Result<InstanceIter> {
+    pub fn replicaset_instances(
+        &self,
+        replicaset_id: &str,
+    ) -> tarantool::Result<EntryIter<traft::Instance>> {
         let iter = self
             .index_replicaset_id
             .select(IteratorType::Eq, &[replicaset_id])?;
-        Ok(InstanceIter::new(iter))
+        Ok(EntryIter::new(iter))
     }
 
     pub fn replicaset_fields<T>(
@@ -484,6 +441,15 @@ impl Instances {
             .select(IteratorType::Eq, &[replicaset_id])?
             .map(|tuple| T::get_in(&tuple))
             .collect()
+    }
+}
+
+impl ToEntryIter for Instances {
+    type Entry = traft::Instance;
+
+    #[inline(always)]
+    fn index_iter(&self) -> Result<IndexIterator> {
+        Ok(self.space.select(IteratorType::All, &())?)
     }
 }
 
@@ -649,34 +615,6 @@ impl InstanceId for traft::InstanceId {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// InstanceIter
-////////////////////////////////////////////////////////////////////////////////
-
-pub struct InstanceIter {
-    iter: IndexIterator,
-}
-
-impl InstanceIter {
-    fn new(iter: IndexIterator) -> Self {
-        Self { iter }
-    }
-}
-
-impl Iterator for InstanceIter {
-    type Item = traft::Instance;
-    fn next(&mut self) -> Option<Self::Item> {
-        let res = self.iter.next().as_ref().map(Tuple::decode);
-        res.map(|res| res.expect("instance should decode correctly"))
-    }
-}
-
-impl std::fmt::Debug for InstanceIter {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("InstanceIter").finish_non_exhaustive()
-    }
-}
-
-////////////////////////////////////////////////////////////////////////////////
 // InstancesFields
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -712,7 +650,6 @@ where
 
 #[derive(Clone, Debug)]
 pub struct Migrations {
-    #[allow(dead_code)]
     space: Space,
 }
 
@@ -750,37 +687,72 @@ impl Migrations {
     #[inline]
     pub fn get_latest(&self) -> tarantool::Result<Option<Migration>> {
         let iter = self.space.select(IteratorType::Req, &())?;
-        let iter = MigrationIter::from(iter);
+        let iter = EntryIter::new(iter);
         let ms = iter.take(1).collect::<Vec<_>>();
         Ok(ms.first().cloned())
     }
+}
 
-    #[inline]
-    pub fn iter(&self) -> Result<MigrationIter> {
-        let iter = self.space.select(IteratorType::All, &())?;
-        Ok(iter.into())
+impl ToEntryIter for Migrations {
+    type Entry = Migration;
+
+    #[inline(always)]
+    fn index_iter(&self) -> Result<IndexIterator> {
+        Ok(self.space.select(IteratorType::All, &())?)
     }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// MigrationtIter
+// EntryIter
 ////////////////////////////////////////////////////////////////////////////////
 
-pub struct MigrationIter {
+/// This trait is implemented for storage structs for iterating over the entries
+/// from that storage.
+pub trait ToEntryIter {
+    /// Target type for entry deserialization.
+    type Entry;
+
+    fn index_iter(&self) -> Result<IndexIterator>;
+
+    #[inline(always)]
+    fn iter(&self) -> Result<EntryIter<Self::Entry>> {
+        Ok(EntryIter::new(self.index_iter()?))
+    }
+}
+
+/// An iterator struct for automatically deserializing tuples into a given type.
+///
+/// # Panics
+/// Will panic in case deserialization fails on a given iteration.
+pub struct EntryIter<T> {
     iter: IndexIterator,
+    marker: PhantomData<T>,
 }
 
-impl From<IndexIterator> for MigrationIter {
-    fn from(iter: IndexIterator) -> Self {
-        Self { iter }
+impl<T> EntryIter<T> {
+    pub fn new(iter: IndexIterator) -> Self {
+        Self {
+            iter,
+            marker: PhantomData,
+        }
     }
 }
 
-impl Iterator for MigrationIter {
-    type Item = traft::Migration;
+impl<T> Iterator for EntryIter<T>
+where
+    T: DecodeOwned,
+{
+    type Item = T;
     fn next(&mut self) -> Option<Self::Item> {
         let res = self.iter.next().as_ref().map(Tuple::decode);
-        res.map(|res| res.expect("migration should decode correctly"))
+        res.map(|res| res.expect("entry should decode correctly"))
+    }
+}
+
+impl<T> std::fmt::Debug for EntryIter<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct(std::any::type_name::<Self>())
+            .finish_non_exhaustive()
     }
 }
 

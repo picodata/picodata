@@ -86,6 +86,7 @@ pub mod bootstrap {
 #[rustfmt::skip]
 pub mod cfg {
     use crate::storage::Clusterwide;
+    use crate::storage::ToEntryIter as _;
     use crate::traft::{Result, ReplicasetId};
 
     use ::tarantool::tlua;

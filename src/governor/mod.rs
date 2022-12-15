@@ -9,6 +9,7 @@ use ::tarantool::space::UpdateOps;
 
 use crate::event::{self, Event};
 use crate::r#loop::FlowControl::{self, Continue};
+use crate::storage::ToEntryIter as _;
 use crate::storage::{Clusterwide, ClusterwideSpace, PropertyName};
 use crate::tlog;
 use crate::traft::network::{ConnectionPool, IdOfInstance};

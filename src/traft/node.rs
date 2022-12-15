@@ -29,6 +29,7 @@ use crate::governor;
 use crate::kvcell::KVCell;
 use crate::loop_start;
 use crate::r#loop::FlowControl;
+use crate::storage::ToEntryIter as _;
 use crate::storage::{Clusterwide, ClusterwideSpace, PropertyName};
 use crate::stringify_cfunc;
 use crate::traft::ContextCoercion as _;

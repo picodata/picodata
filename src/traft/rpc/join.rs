@@ -1,3 +1,4 @@
+use crate::storage::ToEntryIter as _;
 use crate::traft::{
     error::Error, node, Address, FailureDomain, Instance, InstanceId, PeerAddress, ReplicasetId,
     Result,
