@@ -7,9 +7,11 @@ install-cargo:
 		sh -s -- -y --profile default --default-toolchain 1.65.0
 
 centos7-cmake3:
-	[ -f /usr/bin/cmake ] && sudo rm /usr/bin/cmake
-	sudo ln -s /usr/bin/cmake3 /usr/bin/cmake
-	sudo find /opt -name libgomp.spec -delete
+	if [ ! -L /usr/bin/cmake3 ] ; then \
+		[ -f /usr/bin/cmake ] && sudo rm /usr/bin/cmake; \
+		sudo ln -s /usr/bin/cmake3 /usr/bin/cmake; \
+	fi
+	sudo find {/opt,/usr} -name libgomp.spec -delete
 
 reset-submodules:
 	git submodule foreach --recursive 'git clean -dxf && git reset --hard'

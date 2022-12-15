@@ -2,6 +2,7 @@ Source: picodata
 Section: database
 Priority: optional
 Maintainer: Dmitry Kibirev <kdy@picodata.io>
+Build-Depends: cdbs (>= 0.4.100), debhelper (>= 9), dpkg-dev (>= 1.16.1~)
 
 Package: picodata
 Section: database

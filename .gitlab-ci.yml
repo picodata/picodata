@@ -5,6 +5,7 @@ stages:
   - pack-ubuntu
   - pack-debian
   - pack-altlinux
+  - pack-redos
   - sign
   - deploy
   - test_rpm
@@ -246,6 +247,15 @@ pack-altlinux:
     paths:
       - build/picodata*.rpm
 
+pack-redos:
+  stage: pack-redos
+  extends: .pack
+  script:
+    - OS=redos DIST=7.3 BUILDDIR=$PWD/build_redos/ packpack/packpack
+  artifacts:
+    paths:
+      - build_redos/picodata*.rpm
+
 sign-rpm-packages:
   variables:
     DOCKER_AUTH_CONFIG: $DOCKER_AUTH_RO
@@ -259,14 +269,18 @@ sign-rpm-packages:
     - mkdir -p $CI_PROJECT_DIR/.docker
     - echo $DOCKER_AUTH_RW > $CI_PROJECT_DIR/.docker/config.json
     - echo "$GPG_KEY_KDY" | base64 -d > build/kdy.asc
+    - echo "$GPG_KEY_KDY" | base64 -d > build_redos/kdy.asc
   script:
     - docker run --rm -e KEY_FILE=kdy.asc -v $PWD/build:/build docker-picodata.binary.picodata.io/rpmsign:centos7
+    - docker run --rm -e KEY_FILE=kdy.asc -v $PWD/build_redos:/build docker-picodata.binary.picodata.io/rpmsign:centos7
   artifacts:
     paths:
       - build/picodata*.rpm
+      - build_redos/picodata*.rpm
   dependencies:
     - pack-centos
     - pack-altlinux
+    - pack-redos
 
 deploy-job:
   stage: deploy
@@ -324,6 +338,11 @@ deploy-job:
     - echo "altlinux-p10 packet successfully deployed."
     - ssh -o stricthostkeychecking=no ansible@94.26.239.246 "/usr/local/bin/repogen.sh"
     - echo
+    # RedOS
+    - echo "Deploying RedOS 7 packet..."
+    - scp -o stricthostkeychecking=no build_redos/picodata*.el7.*rpm ansible@94.26.239.246:/data/nginx/www/packrepo/tarantool-picodata/redos/7/x86_64/
+    - ssh -o stricthostkeychecking=no ansible@94.26.239.246 "cd /data/nginx/www/packrepo/tarantool-picodata/redos/7/ && createrepo --update x86_64 && gpg --no-tty --yes -u kdy@picodata.io --detach-sign --armor x86_64/repodata/repomd.xml"
+    - echo
   dependencies:
     - pack-ubuntu
     - pack-debian
@@ -338,9 +357,11 @@ test_el7:
     image: centos:7
     before_script:
       - rpm --import https://download.picodata.io/tarantool-picodata/el/RPM-GPG-KEY-kdy
-      - yum install -y https://download.picodata.io/tarantool-picodata/el/7/x86_64/picodata-release-1.1.0.11-1.el7.x86_64.rpm
+      - yum install -y https://download.picodata.io/tarantool-picodata/el/7/x86_64/picodata-release-1.1.1.0-1.el7.x86_64.rpm
     script:
       - yum install -y picodata
+    needs:
+      - deploy-job
 
 test_el8:
     stage: test_rpm
@@ -351,6 +372,23 @@ test_el8:
     image: rockylinux:8
     before_script:
       - rpm --import https://download.picodata.io/tarantool-picodata/el/RPM-GPG-KEY-kdy
-      - yum install -y https://download.picodata.io/tarantool-picodata/el/8/x86_64/picodata-release-1.1.0.11-1.el8.x86_64.rpm
+      - yum install -y https://download.picodata.io/tarantool-picodata/el/8/x86_64/picodata-release-1.1.1.0-1.el7.x86_64.rpm
     script:
       - yum install -y picodata
+    needs:
+      - deploy-job
+
+test_redos:
+    stage: test_rpm
+    only:
+      - web
+      - tags
+    tags: [docker]
+    image: packpack/packpack:redos-7.3
+    before_script:
+      - rpm --import https://download.picodata.io/tarantool-picodata/el/RPM-GPG-KEY-kdy
+      - yum install -y https://download.picodata.io/tarantool-picodata/redos/7/x86_64/picodata-release-1.1.1.0-1.el7.x86_64.rpm
+    script:
+      - yum install -y picodata
+    needs:
+      - deploy-job

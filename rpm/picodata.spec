@@ -17,7 +17,7 @@ Source0: %name-%version.tar.gz
 BuildRequires: cmake3
 %endif
 
-%if 0%{?rhel} == 8
+%if 0%{?rhel} == 8 || 0%{?redos} > 0
 BuildRequires: libstdc++-static
 %endif
    
