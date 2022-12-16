@@ -50,7 +50,6 @@ impl Loop {
         }
 
         let instances = storage.instances.all_instances().unwrap();
-        let instances = &instances[..];
         let voters = raft_storage.voters().unwrap().unwrap_or_default();
         let learners = raft_storage.learners().unwrap().unwrap_or_default();
         let replicasets: Vec<_> = storage.replicasets.iter().unwrap().collect();
@@ -72,7 +71,7 @@ impl Loop {
             term,
             commit,
             cluster_id.clone(),
-            instances,
+            &instances,
             &voters,
             &learners,
             &replicasets,
