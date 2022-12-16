@@ -350,10 +350,10 @@ impl Loop {
                 }
             }
 
-            Plan::TargetWeights(TargetWeights { ops }) => {
+            Plan::ProposeWeightChanges(ProposeWeightChanges { ops }) => {
                 for op in ops {
                     governor_step! {
-                        "proposing target replicaset weights change"
+                        "proposing replicaset weight changes"
                         async {
                             node.propose_and_wait(op, Duration::from_secs(3))??;
                         }
@@ -361,7 +361,7 @@ impl Loop {
                 }
             }
 
-            Plan::CurrentWeights(CurrentWeights { targets, rpc, ops }) => {
+            Plan::UpdateWeights(UpdateWeights { targets, rpc, ops }) => {
                 governor_step! {
                     "updating sharding weights"
                     async {

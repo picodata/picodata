@@ -26,8 +26,7 @@ mod tests {
             replicaset_id: rid.into(),
             replicaset_uuid: Default::default(),
             master_id: String::default().into(),
-            current_weight: Default::default(),
-            target_weight: Default::default(),
+            weight: Default::default(),
             current_schema_version: mid,
         }
     }

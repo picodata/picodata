@@ -159,7 +159,7 @@ pub mod cfg {
                     continue;
                 };
                 let (weight, is_master) = match replicasets.get(&peer.replicaset_id) {
-                    Some(r) => (Some(r.target_weight), r.master_id == peer.instance_id),
+                    Some(r) => (Some(r.weight.value), r.master_id == peer.instance_id),
                     None => (None, false),
                 };
                 let replicaset = sharding.entry(peer.replicaset_uuid)

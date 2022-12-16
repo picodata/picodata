@@ -1,5 +1,4 @@
 use crate::traft::InstanceId;
-use crate::util::Transition;
 use ::tarantool::tlua;
 use ::tarantool::tuple::Encode;
 
@@ -26,11 +25,8 @@ pub struct Replicaset {
     /// Instance id of the current replication leader.
     pub master_id: InstanceId,
 
-    /// Current sharding weight of the replicaset.
-    pub current_weight: Weight,
-
-    /// Target sharding weight of the replicaset.
-    pub target_weight: Weight,
+    /// Sharding weight of the replicaset.
+    pub weight: weight::Info,
 
     /// Current schema version of the replicaset.
     pub current_schema_version: u64,
@@ -44,8 +40,7 @@ impl Replicaset {
             Field::from(("replicaset_id", FieldType::String)),
             Field::from(("replicaset_uuid", FieldType::String)),
             Field::from(("master_id", FieldType::String)),
-            Field::from(("current_weight", FieldType::Double)),
-            Field::from(("target_weight", FieldType::Double)),
+            Field::from(("weight", FieldType::Array)),
             Field::from(("current_schema_version", FieldType::Unsigned)),
         ]
     }
@@ -56,13 +51,73 @@ impl std::fmt::Display for Replicaset {
         write!(
             f,
             "({}, master: {}, weight: {}, schema_version: {})",
-            self.replicaset_id,
-            self.master_id,
-            Transition {
-                from: self.current_weight,
-                to: self.target_weight
-            },
-            self.current_schema_version,
+            self.replicaset_id, self.master_id, self.weight, self.current_schema_version,
         )
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// Replicaset weight
+pub mod weight {
+    /// Replicaset weight info
+    #[derive(Default, Clone, Debug, serde::Serialize, serde::Deserialize, PartialEq)]
+    pub struct Info {
+        pub value: super::Weight,
+        pub origin: Origin,
+        pub state: State,
+    }
+
+    pub struct Value;
+    impl Value {
+        // FIXME: there's got to be a better way
+        pub const PATH: &str = "weight[1]";
+    }
+
+    ::tarantool::define_str_enum! {
+        /// Replicaset weight origin
+        #[derive(Default)]
+        pub enum Origin {
+            /// Weight is determined by governor.
+            #[default]
+            Auto = "Auto",
+
+            /// Weight is specified by user.
+            User = "User",
+        }
+    }
+    impl Origin {
+        // FIXME: there's got to be a better way
+        pub const PATH: &str = "weight[2]";
+    }
+
+    ::tarantool::define_str_enum! {
+        /// Replicaset weight state
+        #[derive(Default)]
+        pub enum State {
+            /// Weight is set to the inital value, which will be changed.
+            #[default]
+            Initial = "Initial",
+
+            /// Weight is in progress of being updated.
+            Updating = "Updating",
+
+            /// Weight doesn't need updating.
+            UpToDate = "UpToDate",
+        }
+    }
+    impl State {
+        // FIXME: there's got to be a better way
+        pub const PATH: &str = "weight[3]";
+    }
+
+    impl std::fmt::Display for Info {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            let Self {
+                value,
+                origin,
+                state,
+            } = self;
+            write!(f, "({origin}, {state}, {value})")
+        }
     }
 }

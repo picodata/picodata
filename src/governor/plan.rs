@@ -1,4 +1,5 @@
-use crate::replicaset::{Replicaset, ReplicasetId, Weight};
+use crate::replicaset::weight;
+use crate::replicaset::{Replicaset, ReplicasetId};
 use crate::storage::{ClusterwideSpace, PropertyName};
 use crate::tlog;
 use crate::traft::rpc;
@@ -9,7 +10,7 @@ use crate::traft::{CurrentGrade, CurrentGradeVariant, TargetGradeVariant};
 use crate::traft::{Instance, InstanceId};
 use crate::traft::{RaftId, RaftIndex, RaftTerm};
 use ::tarantool::space::UpdateOps;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use super::cc::raft_conf_change;
 use super::migration::get_pending_migration;
@@ -171,8 +172,11 @@ pub(super) fn action_plan<'i>(
                 replicaset_id: replicaset_id.clone(),
                 replicaset_uuid: replicaset_uuid.clone(),
                 master_id: master_id.clone(),
-                current_weight: weight,
-                target_weight: weight,
+                weight: weight::Info {
+                    value: weight,
+                    origin: weight::Origin::Auto,
+                    state: weight::State::Initial,
+                },
                 current_schema_version: 0,
             },
         )?;
@@ -255,23 +259,27 @@ pub(super) fn action_plan<'i>(
     };
 
     ////////////////////////////////////////////////////////////////////////////
-    // target sharding weights
-    let new_target_weights = get_target_weight_changes(instances, replicasets, replication_factor);
-    if let Some(new_target_weights) = new_target_weights {
+    // proposing automatic sharding weight changes
+    let to_change_weights = get_auto_weight_changes(instances, replicasets, replication_factor);
+    if !to_change_weights.is_empty() {
         let mut ops = vec![];
-        for (replicaset_id, weight) in new_target_weights {
+        for replicaset_id in to_change_weights {
             let mut uops = UpdateOps::new();
-            uops.assign("target_weight", weight)?;
+            uops.assign(weight::Value::PATH, 1.)?;
+            uops.assign(weight::State::PATH, weight::State::Updating)?;
             let op = OpDML::update(ClusterwideSpace::Replicaset, &[replicaset_id], uops)?;
             ops.push(op);
         }
-        return Ok(TargetWeights { ops }.into());
+        return Ok(ProposeWeightChanges { ops }.into());
     }
 
     ////////////////////////////////////////////////////////////////////////////
-    // current sharding weights
-    let new_current_weights = get_current_weight_changes(replicasets.values().copied());
-    if let Some(new_current_weights) = new_current_weights {
+    // applying proposed sharding weight changes
+    let to_update_weights: Vec<_> = replicasets
+        .values()
+        .filter_map(|r| (r.weight.state == weight::State::Updating).then_some(&r.replicaset_id))
+        .collect();
+    if !to_update_weights.is_empty() {
         let targets = maybe_responding(instances)
             .map(|instance| &instance.instance_id)
             .collect();
@@ -281,13 +289,13 @@ pub(super) fn action_plan<'i>(
             timeout: Loop::SYNC_TIMEOUT,
         };
         let mut ops = vec![];
-        for (replicaset_id, weight) in new_current_weights {
+        for replicaset_id in to_update_weights {
             let mut uops = UpdateOps::new();
-            uops.assign("current_weight", weight)?;
+            uops.assign(weight::State::PATH, weight::State::UpToDate)?;
             let op = OpDML::update(ClusterwideSpace::Replicaset, &[replicaset_id], uops)?;
             ops.push(op);
         }
-        return Ok(CurrentWeights { targets, rpc, ops }.into());
+        return Ok(UpdateWeights { targets, rpc, ops }.into());
     }
 
     ////////////////////////////////////////////////////////////////////////////
@@ -415,11 +423,11 @@ pub mod stage {
             pub op: OpDML,
         }
 
-        pub struct TargetWeights {
+        pub struct ProposeWeightChanges {
             pub ops: Vec<OpDML>,
         }
 
-        pub struct CurrentWeights<'i> {
+        pub struct UpdateWeights<'i> {
             pub targets: Vec<&'i InstanceId>,
             pub rpc: sharding::Request,
             pub ops: Vec<OpDML>,
@@ -438,41 +446,27 @@ pub mod stage {
 }
 
 #[inline(always)]
-fn get_target_weight_changes<'i>(
+fn get_auto_weight_changes<'i>(
     instances: &'i [Instance],
     replicasets: &HashMap<&ReplicasetId, &Replicaset>,
     replication_factor: usize,
-) -> Option<HashMap<&'i ReplicasetId, Weight>> {
+) -> HashSet<&'i ReplicasetId> {
     let mut replicaset_sizes = HashMap::new();
-    let mut weight_changes = HashMap::new();
+    let mut weight_changes = HashSet::new();
     for Instance { replicaset_id, .. } in maybe_responding(instances) {
         let replicaset_size = replicaset_sizes.entry(replicaset_id).or_insert(0);
         *replicaset_size += 1;
-        let Some(Replicaset {
-            current_weight,
-            target_weight,
-            ..
-        }) = replicasets.get(replicaset_id) else {
+        let Some(Replicaset { weight, .. }) = replicasets.get(replicaset_id) else {
             continue;
         };
-        if *replicaset_size >= replication_factor && *current_weight == 0. && *target_weight != 1. {
-            weight_changes.entry(replicaset_id).or_insert(1.);
+        if weight.origin == weight::Origin::User || weight.state == weight::State::Updating {
+            continue;
+        }
+        if *replicaset_size >= replication_factor && weight.value == 0. {
+            weight_changes.insert(replicaset_id);
         }
     }
-    (!weight_changes.is_empty()).then_some(weight_changes)
-}
-
-#[inline(always)]
-fn get_current_weight_changes<'r>(
-    replicasets: impl IntoIterator<Item = &'r Replicaset>,
-) -> Option<HashMap<&'r ReplicasetId, Weight>> {
-    let res: HashMap<_, _> = replicasets
-        .into_iter()
-        .filter_map(|r| {
-            (r.current_weight != r.target_weight).then_some((&r.replicaset_id, r.target_weight))
-        })
-        .collect();
-    (!res.is_empty()).then_some(res)
+    weight_changes
 }
 
 #[inline(always)]
