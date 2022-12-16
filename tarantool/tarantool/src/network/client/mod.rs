@@ -10,14 +10,13 @@ use std::rc::Rc;
 use std::time::Duration;
 
 use super::protocol::api::{Call, Eval, Execute, Ping, Request};
-use super::protocol::codec;
-use super::protocol::conn::Conn;
 use super::protocol::options::{ConnOptions, Options};
+use super::protocol::{codec, Protocol};
 use crate::error::Error;
 use crate::tuple::{Decode, ToTupleBuffer, Tuple};
 
 struct ClientInner {
-    conn: Conn,
+    protocol: Protocol,
     sender: (),
     receiver: (),
 }
@@ -25,7 +24,7 @@ struct ClientInner {
 impl ClientInner {
     pub fn new(addr: impl ToSocketAddrs) -> Result<Self, Error> {
         Ok(Self {
-            conn: Conn::with_options(Default::default()),
+            protocol: Protocol::with_options(Default::default()),
             sender: todo!(),
             receiver: todo!(),
         })
@@ -49,7 +48,7 @@ impl Client {
 
     #[allow(clippy::diverging_sub_expression)]
     async fn send<R: Request>(&self, request: R) -> Result<R::Response, Error> {
-        let sync = self.0.borrow_mut().conn.send_request(&request)?;
+        let sync = self.0.borrow_mut().protocol.send_request(&request)?;
         let response = todo!("receiver.get(sync).await");
         request.decode_body(response)
     }

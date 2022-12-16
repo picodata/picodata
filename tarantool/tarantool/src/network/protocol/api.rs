@@ -4,8 +4,6 @@ use crate::error::Error;
 use crate::tuple::{ToTupleBuffer, Tuple};
 
 use super::codec::IProtoType;
-use super::conn::Conn;
-use super::options::ConnOptions;
 use super::{codec, SyncIndex};
 
 pub trait Request {

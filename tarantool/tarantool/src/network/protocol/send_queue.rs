@@ -5,7 +5,6 @@ use std::time::Duration;
 use crate::error::Error;
 use crate::fiber::Cond;
 
-use super::conn::write_to_buffer;
 use super::SyncIndex;
 
 pub struct SendQueue {

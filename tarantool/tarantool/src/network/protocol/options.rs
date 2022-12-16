@@ -49,42 +49,6 @@ pub struct ConnOptions {
 
     /// Authentication password.
     pub password: String,
-
-    /// If `reconnect_after` is greater than zero, then a [Conn](struct.Conn.html) instance will try to reconnect if a
-    /// connection is broken or if a connection attempt fails.
-    ///
-    /// This makes transient network failures become transparent to the application.
-    /// Reconnect happens automatically in the background, so requests that initially fail due to connectivity loss are
-    /// transparently retried.
-    /// The number of retries is unlimited, connection attempts are made after each specified interval
-    /// When a connection is explicitly closed, or when connection object is dropped, then reconnect attempts stop.
-    pub reconnect_after: Duration,
-
-    /// Duration to wait before returning “error: Connection timed out”.
-    pub connect_timeout: Duration,
-
-    /// Send buffer flush interval enforced in case of intensive requests stream.
-    ///
-    /// Guarantied to be maximum while requests are going.
-    /// Default: 10ms
-    pub send_buffer_flush_interval: Duration,
-
-    /// Send buffer soft limit. If limit is reached, fiber will block before buffer flush.
-    ///
-    /// Note: This mechanism will prevent buffer overflow in most cases (not at all). In case overflow, buffer
-    /// reallocation will occurred, which may cause performance issues.
-    /// Default: 64000  
-    pub send_buffer_limit: usize,
-
-    /// Reallocated capacity of send buffer
-    ///
-    /// Default: 65536
-    pub send_buffer_size: usize,
-
-    /// Reallocated capacity of receive buffer
-    ///
-    /// Default: 65536
-    pub recv_buffer_size: usize,
 }
 
 impl Default for ConnOptions {
@@ -92,12 +56,6 @@ impl Default for ConnOptions {
         ConnOptions {
             user: "".to_string(),
             password: "".to_string(),
-            reconnect_after: Default::default(),
-            connect_timeout: Default::default(),
-            send_buffer_flush_interval: Duration::from_millis(10),
-            send_buffer_limit: 64000,
-            send_buffer_size: 65536,
-            recv_buffer_size: 65536,
         }
     }
 }
