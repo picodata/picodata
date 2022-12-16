@@ -124,47 +124,6 @@ pub fn wait_deadline(event: Event, deadline: Instant) -> Result<WaitTimeout> {
     })
 }
 
-/// Waits for the event to happen.
-///
-/// Returns an error if the `EVENTS` is uninitialized.
-pub fn wait(event: Event) -> Result<()> {
-    match wait_timeout(event, Duration::MAX)? {
-        WaitTimeout::Signal => Ok(()),
-        WaitTimeout::Timeout => Err(Error::Timeout),
-    }
-}
-
-#[allow(dead_code)]
-/// Waits for any of the specified events to happen.
-///
-/// Returns an error if the `EVENTS` is uninitialized.
-pub fn wait_any_timeout(evs: &[Event], timeout: Duration) -> Result<()> {
-    let mut events = events()?;
-    let cond = Rc::new(Cond::new());
-    for &event in evs {
-        let cond = cond.clone();
-        events.add_once_handler(
-            event,
-            handler(move || {
-                cond.broadcast();
-                Ok(())
-            }),
-        );
-    }
-    // events must be released before yielding
-    drop(events);
-    cond.wait_timeout(timeout);
-    Ok(())
-}
-
-#[allow(dead_code)]
-/// Waits for any of the specified events to happen.
-///
-/// Returns an error if the `EVENTS` is uninitialized.
-pub fn wait_any(evs: &[Event]) -> Result<()> {
-    wait_any_timeout(evs, Duration::MAX)
-}
-
 /// Signals to everybody who's waiting for this `event` either repeated or one
 /// time.
 ///
