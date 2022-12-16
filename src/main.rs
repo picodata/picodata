@@ -37,6 +37,7 @@ mod r#loop;
 mod mailbox;
 mod on_shutdown;
 mod proc;
+mod replicaset;
 mod storage;
 mod tarantool;
 mod tlog;

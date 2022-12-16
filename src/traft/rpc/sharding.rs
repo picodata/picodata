@@ -88,6 +88,7 @@ pub mod cfg {
     use crate::storage::Clusterwide;
     use crate::storage::ToEntryIter as _;
     use crate::traft::Result;
+    use crate::replicaset::Weight;
 
     use ::tarantool::tlua;
 
@@ -139,8 +140,6 @@ pub mod cfg {
         On,
         Once,
     }
-
-    pub type Weight = f64;
 
     impl Cfg {
         #[inline]

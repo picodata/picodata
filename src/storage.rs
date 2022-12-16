@@ -2,11 +2,11 @@ use ::tarantool::index::{Index, IndexIterator, IteratorType};
 use ::tarantool::space::{FieldType, Space};
 use ::tarantool::tuple::{DecodeOwned, ToTupleBuffer, Tuple};
 
+use crate::replicaset::{Replicaset, ReplicasetId};
 use crate::traft;
 use crate::traft::error::Error;
 use crate::traft::Migration;
 use crate::traft::RaftId;
-use crate::traft::Replicaset;
 use crate::traft::Result;
 
 use std::marker::PhantomData;
@@ -194,12 +194,7 @@ impl Replicasets {
         let space = Space::builder(Self::SPACE_NAME)
             .is_local(true)
             .is_temporary(false)
-            .field(("replicaset_id", FieldType::String))
-            .field(("replicaset_uuid", FieldType::String))
-            .field(("master_id", FieldType::String))
-            .field(("current_weight", FieldType::Double))
-            .field(("target_weight", FieldType::Double))
-            .field(("current_schema_version", FieldType::Unsigned))
+            .format(Replicaset::format())
             .if_not_exists(true)
             .create()?;
 
@@ -428,7 +423,7 @@ impl Instances {
 
     pub fn replicaset_fields<T>(
         &self,
-        replicaset_id: &traft::ReplicasetId,
+        replicaset_id: &ReplicasetId,
     ) -> tarantool::Result<Vec<T::Type>>
     where
         T: InstanceFieldDef,

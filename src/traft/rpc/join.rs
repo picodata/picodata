@@ -1,7 +1,7 @@
+use crate::replicaset::ReplicasetId;
 use crate::storage::ToEntryIter as _;
 use crate::traft::{
-    error::Error, node, Address, FailureDomain, Instance, InstanceId, PeerAddress, ReplicasetId,
-    Result,
+    error::Error, node, Address, FailureDomain, Instance, InstanceId, PeerAddress, Result,
 };
 
 #[derive(Clone, Debug, ::serde::Serialize, ::serde::Deserialize)]

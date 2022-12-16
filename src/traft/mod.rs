@@ -9,6 +9,7 @@ pub(crate) mod raft_storage;
 pub mod rpc;
 pub mod topology;
 
+use crate::replicaset::ReplicasetId;
 use crate::storage;
 use crate::storage::ClusterwideSpace;
 use crate::stringify_debug;
@@ -29,7 +30,6 @@ use protobuf::Message as _;
 
 pub use network::ConnectionPool;
 pub use raft_storage::RaftSpaceAccess;
-pub use rpc::sharding::cfg::Weight;
 pub use rpc::{join, update_instance};
 pub use topology::Topology;
 
@@ -46,14 +46,6 @@ crate::define_string_newtype! {
     /// This is a new-type style wrapper around String,
     /// to distinguish it from other strings.
     pub struct InstanceId(pub String);
-}
-
-crate::define_string_newtype! {
-    /// Unique id of a replicaset.
-    ///
-    /// This is a new-type style wrapper around String,
-    /// to distinguish it from other strings.
-    pub struct ReplicasetId(pub String);
 }
 
 pub type Result<T> = std::result::Result<T, error::Error>;
@@ -496,46 +488,6 @@ impl std::fmt::Display for Instance {
             self.replicaset_id,
             Transition { from: self.current_grade, to: self.target_grade },
             &self.failure_domain,
-        )
-    }
-}
-
-////////////////////////////////////////////////////////////////////////////////
-/// Replicaset info
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
-pub struct Replicaset {
-    /// Primary identifier.
-    pub replicaset_id: ReplicasetId,
-
-    /// UUID used to identify replicasets by tarantool's subsystems.
-    pub replicaset_uuid: String,
-
-    /// Instance id of the current replication leader.
-    pub master_id: InstanceId,
-
-    /// Current sharding weight of the replicaset.
-    pub current_weight: Weight,
-
-    /// Target sharding weight of the replicaset.
-    pub target_weight: Weight,
-
-    /// Current schema version of the replicaset.
-    pub current_schema_version: u64,
-}
-impl Encode for Replicaset {}
-
-impl std::fmt::Display for Replicaset {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(
-            f,
-            "({}, master: {}, weight: {}, schema_version: {})",
-            self.replicaset_id,
-            self.master_id,
-            Transition {
-                from: self.current_weight,
-                to: self.target_weight
-            },
-            self.current_schema_version,
         )
     }
 }

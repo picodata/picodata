@@ -1,13 +1,12 @@
+use crate::replicaset::{Replicaset, ReplicasetId, Weight};
 use crate::storage::{ClusterwideSpace, PropertyName};
 use crate::tlog;
 use crate::traft::rpc;
-use crate::traft::rpc::sharding::cfg::Weight;
 use crate::traft::rpc::{replication, sharding, sync, update_instance};
 use crate::traft::OpDML;
 use crate::traft::Result;
 use crate::traft::{CurrentGrade, CurrentGradeVariant, TargetGradeVariant};
-use crate::traft::{Instance, Replicaset};
-use crate::traft::{InstanceId, ReplicasetId};
+use crate::traft::{Instance, InstanceId};
 use crate::traft::{RaftId, RaftIndex, RaftTerm};
 use ::tarantool::space::UpdateOps;
 use std::collections::HashMap;

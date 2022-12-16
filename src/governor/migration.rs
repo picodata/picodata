@@ -1,4 +1,4 @@
-use crate::traft::Replicaset;
+use crate::replicaset::Replicaset;
 
 pub(crate) fn get_pending_migration<'r>(
     mut migration_ids: Vec<u64>,
