@@ -436,7 +436,7 @@ impl Loop {
                 governor_step! {
                     "proposing replicaset current schema version change" [
                         "replicaset_id" => %target.replicaset_id,
-                        "migration_id" => %migration_id,
+                        "schema_version" => %migration_id,
                     ]
                     async {
                         node.propose_and_wait(op, Duration::from_secs(3))??

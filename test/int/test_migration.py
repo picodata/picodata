@@ -31,19 +31,8 @@ def test_apply_migrations(cluster: Cluster):
     i1.promote_or_fail()
     i1.assert_raft_status("Leader")
 
-    for (n, sql) in {
-        1: """create table "test_space" ("id" int primary key)""",
-        2: """alter table "test_space" add column "value" varchar(100)""",
-    }.items():
-        i1.call("pico.add_migration", n, sql)
-
-    i1.call("pico.migrate")
-
-    for i in cluster.instances:
-        with i.connect(timeout=1) as conn:
-            assert conn.insert("test_space", [1, "foo"])
-
-        schema_versions = i.eval(
+    def replicaset_schema_versions(instance):
+        return instance.eval(
             """
             return pico.space.replicaset:pairs()
                 :map(function(replicaset)
@@ -52,4 +41,32 @@ def test_apply_migrations(cluster: Cluster):
                 :totable()
         """
         )
-        assert {2} == set(schema_versions)
+
+    for (n, sql) in {
+        1: """create table "test_space" ("id" int primary key)""",
+        2: """alter table "test_space" add column "value" varchar(100)""",
+    }.items():
+        i1.call("pico.add_migration", n, sql)
+
+    assert 1 == i1.call("pico.migrate", 1)
+
+    for i in cluster.instances:
+        format = i.call("box.space.test_space:format")
+        assert ["id"] == [f["name"] for f in format]
+
+        assert {1} == set(replicaset_schema_versions(i))
+
+    # idempotent
+    assert 1 == i1.call("pico.migrate", 1)
+
+    assert 2 == i1.call("pico.migrate", 2)
+
+    for i in cluster.instances:
+        format = i.call("box.space.test_space:format")
+        assert ["id", "value"] == [f["name"] for f in format]
+
+        assert {2} == set(replicaset_schema_versions(i))
+
+    # idempotent
+    assert 2 == i1.call("pico.migrate", 1)
+    assert 2 == i1.call("pico.migrate", 2)

@@ -3,7 +3,7 @@ use std::collections::{HashMap, LinkedList};
 use std::fmt::Write;
 use std::rc::Rc;
 use std::str::FromStr;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use ::tarantool::fiber::{mutex::MutexGuard, Cond, Mutex};
 use ::tarantool::proc;
@@ -85,10 +85,16 @@ pub enum WaitTimeout {
     Timeout,
 }
 
+impl WaitTimeout {
+    #[inline]
+    pub fn is_timeout(&self) -> bool {
+        matches!(self, Self::Timeout)
+    }
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // functions
 
-#[allow(dead_code)]
 /// Waits for the event to happen or timeout to end.
 ///
 /// Returns an error if the `EVENTS` is uninitialized.
@@ -97,6 +103,22 @@ pub fn wait_timeout(event: Event, timeout: Duration) -> Result<WaitTimeout> {
     let cond = events.regular_cond(event);
     // events must be released before yielding
     drop(events);
+    Ok(if cond.wait_timeout(timeout) {
+        WaitTimeout::Signal
+    } else {
+        WaitTimeout::Timeout
+    })
+}
+
+/// Waits for the event to happen or deadline to be reached.
+///
+/// Returns an error if the `EVENTS` is uninitialized.
+pub fn wait_deadline(event: Event, deadline: Instant) -> Result<WaitTimeout> {
+    let mut events = events()?;
+    let cond = events.regular_cond(event);
+    // events must be released before yielding
+    drop(events);
+    let timeout = deadline.saturating_duration_since(Instant::now());
     Ok(if cond.wait_timeout(timeout) {
         WaitTimeout::Signal
     } else {

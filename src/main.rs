@@ -12,6 +12,7 @@ use ::tarantool::transaction::start_transaction;
 use std::convert::TryFrom;
 use std::time::{Duration, Instant};
 use storage::Clusterwide;
+use storage::ToEntryIter as _;
 use storage::{ClusterwideSpace, PropertyName};
 use traft::rpc;
 use traft::rpc::{join, update_instance};
@@ -396,19 +397,48 @@ fn picolib_setup(args: &args::Run) {
 
     luamod.set(
         "migrate",
-        tlua::function0(|| -> traft::Result<()> {
-            let node = node::global()?;
-            let id = match node.storage.migrations.get_latest()? {
-                Some(m) => m.id,
-                None => return Ok(()),
-            };
-            let op = OpDML::replace(
-                ClusterwideSpace::Property,
-                &(PropertyName::DesiredSchemaVersion, id),
-            )?;
-            node.propose_and_wait(op, Duration::MAX)??;
-            event::wait(Event::MigrateDone)
-        }),
+        tlua::Function::new(
+            |m_id: Option<u64>, timeout: Option<f64>| -> traft::Result<Option<u64>> {
+                let node = node::global()?;
+
+                let Some(latest) = node.storage.migrations.get_latest()? else {
+                    tlog!(Info, "there are no migrations to apply");
+                    return Ok(None);
+                };
+                let current_version = node.storage.properties.desired_schema_version()?;
+                let target_version = m_id.map(|id| id.min(latest.id)).unwrap_or(latest.id);
+                if target_version <= current_version {
+                    return Ok(Some(current_version));
+                }
+
+                let op = OpDML::replace(
+                    ClusterwideSpace::Property,
+                    &(PropertyName::DesiredSchemaVersion, target_version),
+                )?;
+                node.propose_and_wait(op, Duration::MAX)??;
+
+                let deadline = {
+                    let timeout = timeout
+                        .map(Duration::from_secs_f64)
+                        .unwrap_or(Duration::MAX);
+                    let now = Instant::now();
+                    now.checked_add(timeout)
+                        .unwrap_or_else(|| now + Duration::from_secs(30 * 365 * 24 * 60 * 60))
+                };
+                while node
+                    .storage
+                    .replicasets
+                    .iter()?
+                    .any(|r| r.current_schema_version < target_version)
+                {
+                    if event::wait_deadline(Event::MigrateDone, deadline)?.is_timeout() {
+                        return Err(Error::Timeout);
+                    }
+                }
+
+                Ok(Some(node.storage.properties.desired_schema_version()?))
+            },
+        ),
     );
 }
 
