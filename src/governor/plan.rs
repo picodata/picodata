@@ -446,7 +446,7 @@ fn get_target_weight_changes<'i>(
 ) -> Option<HashMap<&'i ReplicasetId, Weight>> {
     let mut replicaset_sizes = HashMap::new();
     let mut weight_changes = HashMap::new();
-    for Instance { replicaset_id, .. } in instances {
+    for Instance { replicaset_id, .. } in maybe_responding(instances) {
         let replicaset_size = replicaset_sizes.entry(replicaset_id).or_insert(0);
         *replicaset_size += 1;
         let Some(Replicaset {
