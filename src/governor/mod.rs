@@ -112,6 +112,11 @@ impl Loop {
                 .await;
                 if let Err(e) = res {
                     tlog!(Warning, ::std::concat!("failed ", $desc, ": {}"), e, $(; $($kv)*)?);
+                    // TODO: better api needed in library
+                    if waker.has_changed() {
+                        // This resolves immediately
+                        _ = waker.changed().await;
+                    }
                     _ = waker.changed().timeout(Loop::RETRY_TIMEOUT).await;
                     return Continue;
                 }
