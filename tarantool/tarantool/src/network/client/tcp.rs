@@ -5,7 +5,7 @@ use std::os::unix::io::RawFd;
 use std::ptr;
 use std::time::Duration;
 
-use libc::{addrinfo, close, connect, freeaddrinfo, socket, AF_UNSPEC, PT_NULL, SOCK_STREAM};
+use libc::{addrinfo, close, connect, freeaddrinfo, socket, AF_UNSPEC, SOCK_STREAM};
 
 use crate::coio::{read, write, CoIOStream};
 use crate::ffi::tarantool as ffi;
@@ -58,6 +58,8 @@ impl TcpStream {
             }
             if !addr.ai_next.is_null() {
                 addr = *addr.ai_next
+            } else {
+                break;
             }
         }
         Err(Error::Connect)
