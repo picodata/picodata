@@ -1,48 +1,8 @@
 use std::path::Path;
 
 fn main() {
-    patch_tarantool();
     build_tarantool();
     println!("cargo:rerun-if-changed=tarantool-sys");
-}
-
-fn patch_tarantool() {
-    let patch_check = Path::new("tarantool-sys/patches-applied");
-    if patch_check.exists() {
-        println!(
-            "cargo:warning='{}' exists, so patching step is skipped",
-            patch_check.display()
-        );
-        return;
-    }
-
-    let mut patches = std::fs::read_dir("tarantool-patches")
-        .expect("failed reading tarantool-patches")
-        .map(|de| de.unwrap_or_else(|e| panic!("Failed reading directory entry: {}", e)))
-        .map(|de| de.path())
-        .filter(|f| f.extension().map(|e| e == "patch").unwrap_or(false))
-        .map(|f| Path::new("..").join(f))
-        .collect::<Vec<_>>();
-    patches.sort();
-
-    for patch in &patches {
-        dbg!(patch);
-        let status = std::process::Command::new("patch")
-            .current_dir("tarantool-sys")
-            .arg("--forward")
-            .arg("-p1")
-            .arg("-i")
-            .arg(patch)
-            .status()
-            .expect("`patch` couldn't be executed");
-
-        if !status.success() {
-            panic!("failed to apply tarantool patches")
-        }
-    }
-
-    let _ = std::fs::File::create(patch_check)
-        .unwrap_or_else(|e| panic!("failed to create '{}': {}", patch_check.display(), e));
 }
 
 fn version() -> (u32, u32) {
