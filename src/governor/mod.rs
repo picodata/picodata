@@ -70,7 +70,7 @@ impl Loop {
         let plan = action_plan(
             term,
             commit,
-            cluster_id.clone(),
+            cluster_id,
             &instances,
             &voters,
             &learners,
