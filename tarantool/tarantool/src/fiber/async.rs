@@ -92,6 +92,8 @@ mod context {
         /// Otherwise, reinterpreting (and further dereferencing) a `Context`
         /// pointer would be an UB.
         cx: Context<'a>,
+        // TODO descriptor: Option<CoIOFileDescriptor>
+        // A descriptor to poll with coio
         deadline: Option<Instant>,
     }
 

@@ -3,6 +3,7 @@
 
 mod recv_queue;
 mod stream;
+mod tcp;
 
 use std::cell::RefCell;
 use std::net::ToSocketAddrs;
