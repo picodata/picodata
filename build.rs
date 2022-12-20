@@ -57,7 +57,7 @@ fn build_tarantool() {
     let dst = cmake::Config::new("tarantool-sys/static-build")
         .define(
             "CMAKE_TARANTOOL_ARGS",
-            "-DCMAKE_BUILD_TYPE=RelWithDebInfo -DBUILD_TESTING=FALSE",
+            "-DCMAKE_BUILD_TYPE=RelWithDebInfo;-DBUILD_TESTING=FALSE;-DBUILD_DOC=FALSE",
         )
         .build_target("tarantool")
         .out_dir(build_dir)
