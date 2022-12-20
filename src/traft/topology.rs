@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 
+use crate::has_grades;
 use crate::replicaset::ReplicasetId;
 use crate::rpc::update_instance;
 use crate::traft::instance_uuid;
@@ -131,7 +132,8 @@ impl Topology {
     ) -> Result<(Instance, Address, HashSet<Address>), String> {
         if let Some(id) = &instance_id {
             let existing_instance = self.instance_map.get(id);
-            if matches!(existing_instance, Some((instance, ..)) if instance.is_online()) {
+            if matches!(existing_instance, Some((instance, ..)) if has_grades!(instance, Online -> *))
+            {
                 let e = format!("{} is already joined", id);
                 return Err(e);
             }

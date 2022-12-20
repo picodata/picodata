@@ -4,7 +4,7 @@ use ::raft::prelude::ConfChangeType::*;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 
-use crate::traft::CurrentGradeVariant;
+use crate::has_grades;
 use crate::traft::Instance;
 use crate::traft::RaftId;
 use crate::traft::TargetGradeVariant;
@@ -59,10 +59,7 @@ pub(crate) fn raft_conf_change(
     };
     let mut changes: Vec<raft::ConfChangeSingle> = vec![];
 
-    let not_expelled = |instance: &&Instance| !instance.is_expelled();
-    let target_online = |instance: &&Instance| instance.target_grade == TargetGradeVariant::Online;
-    let current_online =
-        |instance: &&Instance| instance.current_grade == CurrentGradeVariant::Online;
+    let not_expelled = |instance: &&Instance| has_grades!(instance, * -> not Expelled);
 
     let cluster_size = instances.iter().filter(not_expelled).count();
     let voters_needed = match cluster_size {
@@ -92,7 +89,7 @@ pub(crate) fn raft_conf_change(
                 // A voter goes offline. Replace it with
                 // another online instance if possible.
                 let Some(replacement) = instances.iter().find(|instance| {
-                    instance.has_grades(CurrentGradeVariant::Online, TargetGradeVariant::Online)
+                    has_grades!(instance, Online -> Online)
                     && !raft_conf.voters.contains(&instance.raft_id)
                 }) else { continue };
 
@@ -138,8 +135,7 @@ pub(crate) fn raft_conf_change(
     // Promote more voters
     for instance in instances
         .iter()
-        .filter(target_online)
-        .filter(current_online)
+        .filter(|instance| has_grades!(instance, Online -> Online))
     {
         if raft_conf.voters.len() >= voters_needed {
             break;

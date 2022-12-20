@@ -1,12 +1,13 @@
+use crate::has_grades;
 use crate::replicaset::weight;
 use crate::replicaset::{Replicaset, ReplicasetId};
 use crate::storage::{ClusterwideSpace, PropertyName};
 use crate::tlog;
 use crate::traft::rpc;
 use crate::traft::rpc::{replication, sharding, sync, update_instance};
+use crate::traft::CurrentGrade;
 use crate::traft::OpDML;
 use crate::traft::Result;
-use crate::traft::{CurrentGrade, CurrentGradeVariant, TargetGradeVariant};
 use crate::traft::{Instance, InstanceId};
 use crate::traft::{RaftId, RaftIndex, RaftTerm};
 use ::tarantool::space::UpdateOps;
@@ -43,16 +44,10 @@ pub(super) fn action_plan<'i>(
     // downgrading
     let to_downgrade = instances
         .iter()
-        .filter(|instance| instance.current_grade != CurrentGradeVariant::Offline)
         // TODO: process them all, not just the first one
         .find(|instance| {
-            let (target, current) = (
-                instance.target_grade.variant,
-                instance.current_grade.variant,
-            );
-            matches!(target, TargetGradeVariant::Offline)
-                || !matches!(current, CurrentGradeVariant::Expelled)
-                    && matches!(target, TargetGradeVariant::Expelled)
+            has_grades!(instance, not Offline -> Offline)
+                || has_grades!(instance, not Expelled -> Expelled)
         });
     if let Some(Instance {
         raft_id,
@@ -108,8 +103,8 @@ pub(super) fn action_plan<'i>(
         // and update instance's CurrentGrade afterwards
         let targets = maybe_responding(instances)
             .filter(|instance| {
-                instance.current_grade == CurrentGradeVariant::ShardingInitialized
-                    || instance.current_grade == CurrentGradeVariant::Online
+                has_grades!(instance, ShardingInitialized -> *)
+                    || has_grades!(instance, Online -> *)
             })
             .map(|instance| &instance.instance_id)
             .collect();
@@ -125,10 +120,9 @@ pub(super) fn action_plan<'i>(
 
     ////////////////////////////////////////////////////////////////////////////
     // raft sync
-    let to_sync = instances.iter().find(|instance| {
-        instance.has_grades(CurrentGradeVariant::Offline, TargetGradeVariant::Online)
-            || instance.is_reincarnated()
-    });
+    let to_sync = instances
+        .iter()
+        .find(|instance| has_grades!(instance, Offline -> Online) || instance.is_reincarnated());
     if let Some(Instance {
         instance_id,
         target_grade,
@@ -149,9 +143,7 @@ pub(super) fn action_plan<'i>(
     // create new replicaset
     let to_create_replicaset = instances
         .iter()
-        .filter(|instance| {
-            instance.has_grades(CurrentGradeVariant::RaftSynced, TargetGradeVariant::Online)
-        })
+        .filter(|instance| has_grades!(instance, RaftSynced -> Online))
         .find(|instance| replicasets.get(&instance.replicaset_id).is_none());
     if let Some(Instance {
         instance_id: master_id,
@@ -189,9 +181,7 @@ pub(super) fn action_plan<'i>(
         .iter()
         // TODO: find all such instances in a given replicaset,
         // not just the first one
-        .find(|instance| {
-            instance.has_grades(CurrentGradeVariant::RaftSynced, TargetGradeVariant::Online)
-        });
+        .find(|instance| has_grades!(instance, RaftSynced -> Online));
     if let Some(Instance {
         instance_id,
         replicaset_id,
@@ -218,7 +208,7 @@ pub(super) fn action_plan<'i>(
     // init sharding
     let to_shard = instances
         .iter()
-        .filter(|i| i.has_grades(CurrentGradeVariant::Replicated, TargetGradeVariant::Online))
+        .filter(|i| has_grades!(i, Replicated -> Online))
         .find(|i| {
             vshard_bootstrapped
                 || replicasets
@@ -287,7 +277,7 @@ pub(super) fn action_plan<'i>(
     // skip sharding
     let to_online = instances
         .iter()
-        .find(|i| i.has_grades(CurrentGradeVariant::Replicated, TargetGradeVariant::Online));
+        .find(|i| has_grades!(i, Replicated -> Online));
     if let Some(Instance {
         instance_id,
         target_grade,
@@ -330,12 +320,9 @@ pub(super) fn action_plan<'i>(
 
     ////////////////////////////////////////////////////////////////////////////
     // to online
-    let to_online = instances.iter().find(|instance| {
-        instance.has_grades(
-            CurrentGradeVariant::ShardingInitialized,
-            TargetGradeVariant::Online,
-        )
-    });
+    let to_online = instances
+        .iter()
+        .find(|instance| has_grades!(instance, ShardingInitialized -> Online));
     if let Some(Instance {
         instance_id,
         target_grade,
