@@ -9,12 +9,6 @@ from conftest import (
 
 
 @pytest.fixture
-def cluster1(cluster: Cluster):
-    cluster.deploy(instance_count=1, init_replication_factor=2)
-    return cluster
-
-
-@pytest.fixture
 def cluster3(cluster: Cluster):
     cluster.deploy(instance_count=3, init_replication_factor=3)
     return cluster
@@ -113,9 +107,10 @@ def test_2_of_3_writable(cluster3: Cluster):
 # fmt: on
 
 
-def test_replication_works(cluster1: Cluster):
-    i2 = cluster1.add_instance(wait_online=False, replicaset_id="r2")
-    i3 = cluster1.add_instance(wait_online=False, replicaset_id="r2")
+def test_replication_works(cluster: Cluster):
+    cluster.deploy(instance_count=1, init_replication_factor=2)
+    i2 = cluster.add_instance(wait_online=False, replicaset_id="r2")
+    i3 = cluster.add_instance(wait_online=False, replicaset_id="r2")
     i2.start()
     i3.start()
     i2.wait_online()
@@ -138,44 +133,45 @@ def test_bucket_discovery_single(instance: Instance):
 
 
 @funcy.retry(tries=30, timeout=0.2)
-def wait_has_buckets(i: Instance, expected_active: int):
-    i.call("vshard.storage.rebalancer_wakeup")
+def wait_has_buckets(c: Cluster, i: Instance, expected_active: int):
+    for j in c.instances:
+        j.eval(
+            """
+            if vshard.storage.internal.rebalancer_fiber ~= nil then
+                vshard.storage.rebalancer_wakeup()
+            end
+        """
+        )
+
     storage_info = i.call("vshard.storage.info")
     assert expected_active == storage_info["bucket"]["active"]
 
 
-@pytest.mark.xfail(
-    run=True,
-    reason=(
-        "currently we set non zero weights for all replicasets before bootstrap, "
-        "even those which don't satisfy the replication factor"
-    ),
-)
 def test_bucket_discovery_respects_replication_factor(cluster: Cluster):
-    i1, *_ = cluster.deploy(instance_count=1, init_replication_factor=2)
+    i1 = cluster.add_instance(init_replication_factor=2)
     time.sleep(0.5)
-    assert 0 == i1.call("vshard.router.info")["bucket"]["available_rw"]
+    assert i1.eval("return vshard == nil")
     assert None is i1.call("pico.space.property:get", "vshard_bootstrapped")
 
     i2 = cluster.add_instance(replicaset_id="r2")
     time.sleep(0.5)
-    assert 0 == i2.call("vshard.router.info")["bucket"]["available_rw"]
+    assert i2.eval("return vshard == nil")
     assert None is i2.call("pico.space.property:get", "vshard_bootstrapped")
 
     i3 = cluster.add_instance(replicaset_id="r1")
     time.sleep(0.5)
     assert i3.call("pico.space.property:get", "vshard_bootstrapped")[1]
-    wait_has_buckets(i3, 3000)
+    wait_has_buckets(cluster, i3, 3000)
 
 
 def test_bucket_rebalancing(cluster: Cluster):
     i1, *_ = cluster.deploy(instance_count=1, init_replication_factor=1)
 
     i2 = cluster.add_instance()
-    wait_has_buckets(i2, 1500)
+    wait_has_buckets(cluster, i2, 1500)
 
     i3 = cluster.add_instance()
-    wait_has_buckets(i3, 1000)
+    wait_has_buckets(cluster, i3, 1000)
 
 
 def test_bucket_rebalancing_respects_replication_factor(cluster: Cluster):
@@ -183,7 +179,7 @@ def test_bucket_rebalancing_respects_replication_factor(cluster: Cluster):
 
     # wait for buckets to be rebalanced between 2 replicasets 1500 each
     for i in cluster.instances:
-        wait_has_buckets(i, 1500)
+        wait_has_buckets(cluster, i, 1500)
 
     # check vshard routes requests to both replicasets
     reached_instances = set()
@@ -196,17 +192,17 @@ def test_bucket_rebalancing_respects_replication_factor(cluster: Cluster):
     i5 = cluster.add_instance(wait_online=True)
 
     # buckets do not start rebalancing until new replicaset is full
-    wait_has_buckets(i5, 0)
+    wait_has_buckets(cluster, i5, 0)
     for i in cluster.instances:
         if i.instance_id != i5.instance_id:
-            wait_has_buckets(i, 1500)
+            wait_has_buckets(cluster, i, 1500)
 
     # add another instance to new replicaset, it's now full
     cluster.add_instance(wait_online=True)
 
     # buckets now must be rebalanced between 3 replicasets 1000 each
     for i in cluster.instances:
-        wait_has_buckets(i, 1000)
+        wait_has_buckets(cluster, i, 1000)
 
     # check vshard routes requests to all 3 replicasets
     reached_instances = set()

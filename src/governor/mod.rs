@@ -350,13 +350,25 @@ impl Loop {
                 }
             }
 
-            Plan::ProposeWeightChanges(ProposeWeightChanges { ops }) => {
-                for op in ops {
-                    governor_step! {
-                        "proposing replicaset weight changes"
-                        async {
-                            node.propose_and_wait(op, Duration::from_secs(3))??;
-                        }
+            Plan::ProposeWeightChanges(ProposeWeightChanges { op }) => {
+                governor_step! {
+                    "proposing replicaset weight change"
+                    async {
+                        node.propose_and_wait(op, Duration::from_secs(3))??;
+                    }
+                }
+            }
+
+            Plan::SkipSharding(SkipSharding { req }) => {
+                let instance_id = req.instance_id.clone();
+                let current_grade = req.current_grade.expect("must be set");
+                governor_step! {
+                    "handling instance grade change" [
+                        "instance_id" => %instance_id,
+                        "current_grade" => %current_grade,
+                    ]
+                    async {
+                        node.handle_update_instance_request_and_wait(req)?
                     }
                 }
             }

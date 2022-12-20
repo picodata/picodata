@@ -10,7 +10,7 @@ use crate::traft::{CurrentGrade, CurrentGradeVariant, TargetGradeVariant};
 use crate::traft::{Instance, InstanceId};
 use crate::traft::{RaftId, RaftIndex, RaftTerm};
 use ::tarantool::space::UpdateOps;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use super::cc::raft_conf_change;
 use super::migration::get_pending_migration;
@@ -165,7 +165,6 @@ pub(super) fn action_plan<'i>(
             commit,
             timeout: Loop::SYNC_TIMEOUT,
         };
-        let weight = if vshard_bootstrapped { 0. } else { 1. };
         let op = OpDML::insert(
             ClusterwideSpace::Replicaset,
             &Replicaset {
@@ -173,7 +172,7 @@ pub(super) fn action_plan<'i>(
                 replicaset_uuid: replicaset_uuid.clone(),
                 master_id: master_id.clone(),
                 weight: weight::Info {
-                    value: weight,
+                    value: 0.,
                     origin: weight::Origin::Auto,
                     state: weight::State::Initial,
                 },
@@ -217,9 +216,16 @@ pub(super) fn action_plan<'i>(
 
     ////////////////////////////////////////////////////////////////////////////
     // init sharding
-    let to_shard = instances.iter().find(|instance| {
-        instance.has_grades(CurrentGradeVariant::Replicated, TargetGradeVariant::Online)
-    });
+    let to_shard = instances
+        .iter()
+        .filter(|i| i.has_grades(CurrentGradeVariant::Replicated, TargetGradeVariant::Online))
+        .find(|i| {
+            vshard_bootstrapped
+                || replicasets
+                    .get(&i.replicaset_id)
+                    .map(|r| r.weight.value != 0.)
+                    .unwrap_or(false)
+        });
     if let Some(Instance {
         instance_id,
         target_grade,
@@ -242,7 +248,7 @@ pub(super) fn action_plan<'i>(
     ////////////////////////////////////////////////////////////////////////////
     // bootstrap sharding
     let to_bootstrap = (!vshard_bootstrapped)
-        .then(|| get_first_full_replicaset(instances, replicasets, replication_factor))
+        .then(|| get_first_replicaset_with_weight(instances, replicasets))
         .flatten();
     if let Some(Replicaset { master_id, .. }) = to_bootstrap {
         let target = master_id;
@@ -260,17 +266,41 @@ pub(super) fn action_plan<'i>(
 
     ////////////////////////////////////////////////////////////////////////////
     // proposing automatic sharding weight changes
-    let to_change_weights = get_auto_weight_changes(instances, replicasets, replication_factor);
-    if !to_change_weights.is_empty() {
-        let mut ops = vec![];
-        for replicaset_id in to_change_weights {
-            let mut uops = UpdateOps::new();
-            uops.assign(weight::Value::PATH, 1.)?;
-            uops.assign(weight::State::PATH, weight::State::Updating)?;
-            let op = OpDML::update(ClusterwideSpace::Replicaset, &[replicaset_id], uops)?;
-            ops.push(op);
-        }
-        return Ok(ProposeWeightChanges { ops }.into());
+    let to_change_weights =
+        get_first_auto_weight_change(instances, replicasets, replication_factor);
+    if let Some(replicaset_id) = to_change_weights {
+        let mut uops = UpdateOps::new();
+        uops.assign(weight::Value::PATH, 1.)?;
+        let state = if vshard_bootstrapped {
+            // need to reconfigure sharding on all instances
+            weight::State::Updating
+        } else {
+            // ok to just change the weights
+            weight::State::UpToDate
+        };
+        uops.assign(weight::State::PATH, state)?;
+        let op = OpDML::update(ClusterwideSpace::Replicaset, &[replicaset_id], uops)?;
+        return Ok(ProposeWeightChanges { op }.into());
+    }
+
+    ////////////////////////////////////////////////////////////////////////////
+    // skip sharding
+    let to_online = instances
+        .iter()
+        .find(|i| i.has_grades(CurrentGradeVariant::Replicated, TargetGradeVariant::Online));
+    if let Some(Instance {
+        instance_id,
+        target_grade,
+        ..
+    }) = to_online
+    {
+        // If we got here, there are no replicasets with non zero weights
+        // (i.e. filled up to the replication factor) yet,
+        // so we can't configure sharding.
+        // So we just upgrade the instances to Online.
+        let req = update_instance::Request::new(instance_id.clone(), cluster_id)
+            .with_current_grade(CurrentGrade::online(target_grade.incarnation));
+        return Ok(SkipSharding { req }.into());
     }
 
     ////////////////////////////////////////////////////////////////////////////
@@ -417,6 +447,10 @@ pub mod stage {
             pub req: update_instance::Request,
         }
 
+        pub struct SkipSharding {
+            pub req: update_instance::Request,
+        }
+
         pub struct ShardingBoot<'i> {
             pub target: &'i InstanceId,
             pub rpc: sharding::bootstrap::Request,
@@ -424,7 +458,7 @@ pub mod stage {
         }
 
         pub struct ProposeWeightChanges {
-            pub ops: Vec<OpDML>,
+            pub op: OpDML,
         }
 
         pub struct UpdateWeights<'i> {
@@ -446,13 +480,12 @@ pub mod stage {
 }
 
 #[inline(always)]
-fn get_auto_weight_changes<'i>(
+fn get_first_auto_weight_change<'i>(
     instances: &'i [Instance],
     replicasets: &HashMap<&ReplicasetId, &Replicaset>,
     replication_factor: usize,
-) -> HashSet<&'i ReplicasetId> {
+) -> Option<&'i ReplicasetId> {
     let mut replicaset_sizes = HashMap::new();
-    let mut weight_changes = HashSet::new();
     for Instance { replicaset_id, .. } in maybe_responding(instances) {
         let replicaset_size = replicaset_sizes.entry(replicaset_id).or_insert(0);
         *replicaset_size += 1;
@@ -463,31 +496,26 @@ fn get_auto_weight_changes<'i>(
             continue;
         }
         if *replicaset_size >= replication_factor && weight.value == 0. {
-            weight_changes.insert(replicaset_id);
+            return Some(replicaset_id);
         }
     }
-    weight_changes
+    None
 }
 
 #[inline(always)]
-fn get_first_full_replicaset<'r>(
+fn get_first_replicaset_with_weight<'r>(
     instances: &[Instance],
     replicasets: &HashMap<&ReplicasetId, &'r Replicaset>,
-    replication_factor: usize,
 ) -> Option<&'r Replicaset> {
-    let mut replicaset_sizes = HashMap::new();
-    let mut full_replicaset_id = None;
     for Instance { replicaset_id, .. } in maybe_responding(instances) {
-        let replicaset_size = replicaset_sizes.entry(replicaset_id).or_insert(0);
-        *replicaset_size += 1;
-        if *replicaset_size >= replication_factor {
-            full_replicaset_id = Some(replicaset_id);
+        let Some(replicaset) = replicasets.get(replicaset_id) else {
+            continue;
+        };
+        if replicaset.weight.state == weight::State::UpToDate && replicaset.weight.value > 0. {
+            return Some(replicaset);
         }
     }
-
-    full_replicaset_id
-        .and_then(|id| replicasets.get(id))
-        .copied()
+    None
 }
 
 #[inline(always)]
