@@ -1,9 +1,9 @@
+use crate::instance::grade::{CurrentGrade, TargetGradeVariant};
 use crate::instance::InstanceId;
 use crate::tlog;
 use crate::traft::FailureDomain;
 use crate::traft::Result;
 use crate::traft::{error::Error, node};
-use crate::traft::{CurrentGrade, TargetGradeVariant};
 
 crate::define_rpc_request! {
     fn proc_update_instance(req: Request) -> Result<Response> {

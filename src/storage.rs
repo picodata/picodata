@@ -2,7 +2,7 @@ use ::tarantool::index::{Index, IndexIterator, IteratorType};
 use ::tarantool::space::{FieldType, Space};
 use ::tarantool::tuple::{DecodeOwned, ToTupleBuffer, Tuple};
 
-use crate::instance::{self, Instance};
+use crate::instance::{self, grade, Instance};
 use crate::replicaset::{Replicaset, ReplicasetId};
 use crate::traft;
 use crate::traft::error::Error;
@@ -521,8 +521,8 @@ define_instance_fields! {
     RaftId         : traft::RaftId        = ("raft_id",         FieldType::Unsigned)
     ReplicasetId   : String               = ("replicaset_id",   FieldType::String)
     ReplicasetUuid : String               = ("replicaset_uuid", FieldType::String)
-    CurrentGrade   : traft::CurrentGrade  = ("current_grade",   FieldType::Array)
-    TargetGrade    : traft::TargetGrade   = ("target_grade",    FieldType::Array)
+    CurrentGrade   : grade::CurrentGrade  = ("current_grade",   FieldType::Array)
+    TargetGrade    : grade::TargetGrade   = ("target_grade",    FieldType::Array)
     FailureDomain  : traft::FailureDomain = ("failure_domain",  FieldType::Map)
 }
 
@@ -762,7 +762,7 @@ macro_rules! assert_err {
 inventory::submit!(crate::InnerTest {
     name: "test_storage_instances",
     body: || {
-        use traft::{CurrentGradeVariant as CurrentGrade, TargetGradeVariant as TargetGrade};
+        use crate::instance::grade::{CurrentGradeVariant as CGV, TargetGradeVariant as TGV};
         use crate::instance::InstanceId;
 
         let storage_instances = Instances::new().unwrap();
@@ -774,13 +774,13 @@ inventory::submit!(crate::InnerTest {
 
         for instance in vec![
             // r1
-            ("i1", "i1-uuid", 1u64, "r1", "r1-uuid", (CurrentGrade::Online, 0), (TargetGrade::Online, 0), &faildom,),
-            ("i2", "i2-uuid", 2u64, "r1", "r1-uuid", (CurrentGrade::Online, 0), (TargetGrade::Online, 0), &faildom,),
+            ("i1", "i1-uuid", 1u64, "r1", "r1-uuid", (CGV::Online, 0), (TGV::Online, 0), &faildom,),
+            ("i2", "i2-uuid", 2u64, "r1", "r1-uuid", (CGV::Online, 0), (TGV::Online, 0), &faildom,),
             // r2
-            ("i3", "i3-uuid", 3u64, "r2", "r2-uuid", (CurrentGrade::Online, 0), (TargetGrade::Online, 0), &faildom,),
-            ("i4", "i4-uuid", 4u64, "r2", "r2-uuid", (CurrentGrade::Online, 0), (TargetGrade::Online, 0), &faildom,),
+            ("i3", "i3-uuid", 3u64, "r2", "r2-uuid", (CGV::Online, 0), (TGV::Online, 0), &faildom,),
+            ("i4", "i4-uuid", 4u64, "r2", "r2-uuid", (CGV::Online, 0), (TGV::Online, 0), &faildom,),
             // r3
-            ("i5", "i5-uuid", 5u64, "r3", "r3-uuid", (CurrentGrade::Online, 0), (TargetGrade::Online, 0), &faildom,),
+            ("i5", "i5-uuid", 5u64, "r3", "r3-uuid", (CGV::Online, 0), (TGV::Online, 0), &faildom,),
         ] {
             space_instances.put(&instance).unwrap();
             let (_, _, raft_id, ..) = instance;
@@ -810,10 +810,10 @@ inventory::submit!(crate::InnerTest {
                     " and new tuple",
                     r#" - ["i99", "", 1, "", "", ["{goff}", 0], ["{tgoff}", 0], {{}}]"#,
                 ),
-                gon = CurrentGrade::Online,
-                goff = CurrentGrade::Offline,
-                tgon = TargetGrade::Online,
-                tgoff = TargetGrade::Offline,
+                gon = CGV::Online,
+                goff = CGV::Offline,
+                tgon = TGV::Online,
+                tgoff = TGV::Offline,
             )
         );
 

@@ -1,5 +1,5 @@
+use crate::instance::grade::TargetGradeVariant;
 use crate::instance::InstanceId;
-use crate::traft;
 use crate::traft::Result;
 use crate::traft::{error::Error, node, rpc::update_instance};
 
@@ -24,7 +24,7 @@ crate::define_rpc_request! {
         }
 
         let req = update_instance::Request::new(req.instance_id, req.cluster_id)
-            .with_target_grade(traft::TargetGradeVariant::Expelled);
+            .with_target_grade(TargetGradeVariant::Expelled);
         node.handle_update_instance_request_and_wait(req)?;
 
         Ok(Response {})

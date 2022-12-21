@@ -1,6 +1,9 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 use crate::has_grades;
+use crate::instance::grade::{
+    CurrentGrade, CurrentGradeVariant, Grade, TargetGrade, TargetGradeVariant,
+};
 use crate::instance::{Instance, InstanceId};
 use crate::replicaset::ReplicasetId;
 use crate::rpc::update_instance;
@@ -9,7 +12,6 @@ use crate::traft::replicaset_uuid;
 use crate::traft::Address;
 use crate::traft::FailureDomain;
 use crate::traft::RaftId;
-use crate::traft::{CurrentGrade, CurrentGradeVariant, Grade, TargetGrade, TargetGradeVariant};
 use crate::util::Uppercase;
 
 #[derive(Debug)]
@@ -241,12 +243,12 @@ mod tests {
 
     use super::Topology;
 
+    use crate::instance::grade::{CurrentGrade, Grade, TargetGrade, TargetGradeVariant};
     use crate::traft::instance_uuid;
     use crate::traft::replicaset_uuid;
     use crate::traft::FailureDomain;
     use crate::traft::Instance;
     use crate::traft::rpc::update_instance;
-    use crate::traft::{CurrentGrade, Grade, TargetGrade, TargetGradeVariant};
     use pretty_assertions::assert_eq;
 
     trait IntoGrade<T> {

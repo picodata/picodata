@@ -2,14 +2,14 @@ use std::time::{Duration, Instant};
 
 use ::tarantool::fiber;
 
+use crate::has_grades;
+use crate::instance::grade::TargetGradeVariant;
 use crate::tlog;
 use crate::traft;
 use crate::traft::error::Error;
 use crate::traft::node;
 use crate::traft::rpc;
 use crate::traft::rpc::update_instance;
-use crate::traft::CurrentGradeVariant;
-use crate::traft::TargetGradeVariant;
 use crate::unwrap_ok_or;
 
 pub async fn callback() {
@@ -35,7 +35,7 @@ pub async fn callback() {
             }
         );
 
-        if me.current_grade == CurrentGradeVariant::Offline {
+        if has_grades!(me, Offline -> *) {
             tlog!(Info, "graceful shutdown succeeded");
 
             // Dirty hack. Wait a little bit more before actually
@@ -56,7 +56,7 @@ pub async fn callback() {
         let voters_alive = voters
             .iter()
             .filter_map(|raft_id| node.storage.instances.get(raft_id).ok())
-            .filter(|instance| instance.current_grade == CurrentGradeVariant::Online)
+            .filter(|instance| has_grades!(instance, Online -> *))
             .count();
 
         if voters_alive < quorum {

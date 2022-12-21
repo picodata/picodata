@@ -1,4 +1,5 @@
 use crate::has_grades;
+use crate::instance::grade::CurrentGrade;
 use crate::instance::{Instance, InstanceId};
 use crate::replicaset::weight;
 use crate::replicaset::{Replicaset, ReplicasetId};
@@ -6,7 +7,6 @@ use crate::storage::{ClusterwideSpace, PropertyName};
 use crate::tlog;
 use crate::traft::rpc;
 use crate::traft::rpc::{replication, sharding, sync, update_instance};
-use crate::traft::CurrentGrade;
 use crate::traft::OpDML;
 use crate::traft::Result;
 use crate::traft::{RaftId, RaftIndex, RaftTerm};

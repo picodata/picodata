@@ -5,9 +5,9 @@ use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 
 use crate::has_grades;
+use crate::instance::grade::TargetGradeVariant;
 use crate::instance::Instance;
 use crate::traft::RaftId;
-use crate::traft::TargetGradeVariant;
 
 struct RaftConf<'a> {
     all: BTreeMap<RaftId, &'a Instance>,
@@ -176,8 +176,8 @@ mod tests {
 
     use ::raft::prelude as raft;
 
+    use crate::instance::grade::{CurrentGradeVariant, Grade};
     use crate::traft::RaftId;
-    use crate::traft::{CurrentGradeVariant, Grade};
 
     macro_rules! p {
         (

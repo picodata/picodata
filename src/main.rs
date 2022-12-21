@@ -21,11 +21,12 @@ use traft::RaftSpaceAccess;
 use clap::StructOpt as _;
 use protobuf::Message as _;
 
+use crate::instance::grade::TargetGradeVariant;
 use crate::instance::InstanceId;
 use crate::tlog::set_log_level;
 use crate::traft::event::Event;
 use crate::traft::{event, node, Migration, OpDML};
-use crate::traft::{LogicalClock, RaftIndex, TargetGradeVariant};
+use crate::traft::{LogicalClock, RaftIndex};
 use traft::error::Error;
 
 mod app;

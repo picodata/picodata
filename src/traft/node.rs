@@ -42,6 +42,7 @@ use crate::unwrap_some_or;
 use crate::warn_or_panic;
 use protobuf::Message as _;
 
+use crate::has_grades;
 use crate::tlog;
 use crate::traft;
 use crate::traft::error::Error;
@@ -51,7 +52,6 @@ use crate::traft::notify::{notification, Notifier, Notify};
 use crate::traft::rpc::{join, update_instance};
 use crate::traft::Address;
 use crate::traft::ConnectionPool;
-use crate::traft::CurrentGradeVariant;
 use crate::traft::LogicalClock;
 use crate::traft::Op;
 use crate::traft::OpResult;
@@ -656,9 +656,7 @@ impl NodeImpl {
         match &op {
             traft::Op::PersistInstance(OpPersistInstance(instance)) => {
                 *wake_governor = true;
-                if instance.current_grade == CurrentGradeVariant::Expelled
-                    && instance.raft_id == self.raft_id()
-                {
+                if has_grades!(instance, Expelled -> *) && instance.raft_id == self.raft_id() {
                     // cannot exit during a transaction
                     *expelled = true;
                 }
