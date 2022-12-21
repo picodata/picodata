@@ -1,6 +1,7 @@
 use crate::stringify_debug;
+use crate::traft::Distance;
 use crate::util::Uppercase;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Failure domains of a given instance.
@@ -31,6 +32,17 @@ impl FailureDomain {
             }
         }
         false
+    }
+
+    /// Calculate distance between two `FailureDomain`.
+    /// `Distance` is property of metric space implicitly set by `FailureDomain` keys (axis) and values
+    pub fn distance(&self, other: &Self) -> Distance {
+        let mut keys: HashSet<&Uppercase> = HashSet::new();
+        keys.extend(self.names());
+        keys.extend(other.names());
+        keys.iter()
+            .filter(|&&key| self.data.get(key) != other.data.get(key))
+            .count() as u64
     }
 }
 

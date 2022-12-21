@@ -33,6 +33,7 @@ pub type RaftId = u64;
 pub type RaftTerm = u64;
 pub type RaftIndex = u64;
 pub type Address = String;
+pub type Distance = u64;
 
 pub const INIT_RAFT_TERM: RaftTerm = 1;
 
