@@ -1,7 +1,8 @@
+use crate::instance::InstanceId;
 use crate::tlog;
 use crate::traft::FailureDomain;
 use crate::traft::Result;
-use crate::traft::{error::Error, node, InstanceId};
+use crate::traft::{error::Error, node};
 use crate::traft::{CurrentGrade, TargetGradeVariant};
 
 crate::define_rpc_request! {

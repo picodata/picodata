@@ -1,6 +1,7 @@
+use crate::instance::InstanceId;
 use crate::traft;
 use crate::traft::Result;
-use crate::traft::{error::Error, node, rpc::update_instance, InstanceId};
+use crate::traft::{error::Error, node, rpc::update_instance};
 
 crate::define_rpc_request! {
     fn proc_expel_on_leader(req: Request) -> Result<Response> {

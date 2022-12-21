@@ -6,6 +6,7 @@ use ::tarantool::fiber::r#async::timeout::IntoTimeout as _;
 use ::tarantool::fiber::r#async::watch;
 
 use crate::event::{self, Event};
+use crate::instance::Instance;
 use crate::r#loop::FlowControl::{self, Continue};
 use crate::storage::Clusterwide;
 use crate::storage::ToEntryIter as _;
@@ -16,7 +17,6 @@ use crate::traft::node::global;
 use crate::traft::node::Status;
 use crate::traft::raft_storage::RaftSpaceAccess;
 use crate::traft::rpc::sync;
-use crate::traft::Instance;
 use crate::traft::Result;
 use crate::unwrap_ok_or;
 

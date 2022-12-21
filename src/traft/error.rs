@@ -1,4 +1,4 @@
-use crate::traft::InstanceId;
+use crate::instance::InstanceId;
 use crate::traft::{RaftId, RaftTerm};
 use ::tarantool::fiber::r#async::timeout::Expired;
 use ::tarantool::tlua::LuaError;

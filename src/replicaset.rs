@@ -1,4 +1,4 @@
-use crate::traft::InstanceId;
+use super::instance::InstanceId;
 use ::tarantool::tlua;
 use ::tarantool::tuple::Encode;
 

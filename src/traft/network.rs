@@ -17,14 +17,15 @@ use std::pin::Pin;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
+use crate::instance::InstanceId;
 use crate::mailbox::Mailbox;
 use crate::storage::{instance_field, Clusterwide, Instances, PeerAddresses};
 use crate::tlog;
 use crate::traft;
 use crate::traft::error::Error;
 use crate::traft::rpc::Request;
+use crate::traft::RaftId;
 use crate::traft::Result;
-use crate::traft::{InstanceId, RaftId};
 use crate::unwrap_ok_or;
 use crate::util::Either::{self, Left, Right};
 

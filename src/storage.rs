@@ -2,6 +2,7 @@ use ::tarantool::index::{Index, IndexIterator, IteratorType};
 use ::tarantool::space::{FieldType, Space};
 use ::tarantool::tuple::{DecodeOwned, ToTupleBuffer, Tuple};
 
+use crate::instance::{self, Instance};
 use crate::replicaset::{Replicaset, ReplicasetId};
 use crate::traft;
 use crate::traft::error::Error;
@@ -357,7 +358,7 @@ impl Instances {
     }
 
     #[inline]
-    pub fn put(&self, instance: &traft::Instance) -> tarantool::Result<()> {
+    pub fn put(&self, instance: &Instance) -> tarantool::Result<()> {
         self.space.replace(instance)?;
         Ok(())
     }
@@ -372,7 +373,7 @@ impl Instances {
     /// Find a instance by `raft_id` and return a single field specified by `F`
     /// (see `InstanceFieldDef` & `instance_field` module).
     #[inline(always)]
-    pub fn get(&self, id: &impl InstanceId) -> Result<traft::Instance> {
+    pub fn get(&self, id: &impl InstanceId) -> Result<Instance> {
         let res = id
             .find_in(self)?
             .decode()
@@ -404,7 +405,7 @@ impl Instances {
     }
 
     #[inline]
-    pub fn all_instances(&self) -> tarantool::Result<Vec<traft::Instance>> {
+    pub fn all_instances(&self) -> tarantool::Result<Vec<Instance>> {
         self.space
             .select(IteratorType::All, &())?
             .map(|tuple| tuple.decode())
@@ -414,7 +415,7 @@ impl Instances {
     pub fn replicaset_instances(
         &self,
         replicaset_id: &str,
-    ) -> tarantool::Result<EntryIter<traft::Instance>> {
+    ) -> tarantool::Result<EntryIter<Instance>> {
         let iter = self
             .index_replicaset_id
             .select(IteratorType::Eq, &[replicaset_id])?;
@@ -436,7 +437,7 @@ impl Instances {
 }
 
 impl ToEntryIter for Instances {
-    type Entry = traft::Instance;
+    type Entry = Instance;
 
     #[inline(always)]
     fn index_iter(&self) -> Result<IndexIterator> {
@@ -469,7 +470,7 @@ macro_rules! define_instance_fields {
                 /// and it's tarantool type is
                 #[doc = concat!("`", stringify!($tt_ty), "`")]
                 ///
-                /// [`Instance`]: crate::traft::Instance
+                /// [`Instance`]: crate::instance::Instance
                 pub struct $field;
 
                 impl InstanceFieldDef for $field {
@@ -515,7 +516,7 @@ macro_rules! define_instance_fields {
 }
 
 define_instance_fields! {
-    InstanceId     : traft::InstanceId    = ("instance_id",     FieldType::String)
+    InstanceId     : instance::InstanceId = ("instance_id",     FieldType::String)
     InstanceUuid   : String               = ("instance_uuid",   FieldType::String)
     RaftId         : traft::RaftId        = ("raft_id",         FieldType::Unsigned)
     ReplicasetId   : String               = ("replicaset_id",   FieldType::String)
@@ -595,7 +596,7 @@ impl InstanceId for RaftId {
     }
 }
 
-impl InstanceId for traft::InstanceId {
+impl InstanceId for instance::InstanceId {
     #[inline(always)]
     fn find_in(&self, instances: &Instances) -> Result<Tuple> {
         instances
@@ -761,7 +762,8 @@ macro_rules! assert_err {
 inventory::submit!(crate::InnerTest {
     name: "test_storage_instances",
     body: || {
-        use traft::{CurrentGradeVariant as CurrentGrade, TargetGradeVariant as TargetGrade, InstanceId};
+        use traft::{CurrentGradeVariant as CurrentGrade, TargetGradeVariant as TargetGrade};
+        use crate::instance::InstanceId;
 
         let storage_instances = Instances::new().unwrap();
         let space_instances = storage_instances.space.clone();
@@ -792,10 +794,10 @@ inventory::submit!(crate::InnerTest {
         );
 
         assert_err!(
-            storage_instances.put(&traft::Instance {
+            storage_instances.put(&Instance {
                 raft_id: 1,
                 instance_id: "i99".into(),
-                ..traft::Instance::default()
+                ..Instance::default()
             }),
             format!(
                 concat!(

@@ -7,8 +7,9 @@ use tarantool::log::SayLevel;
 use tarantool::tlua;
 use thiserror::Error;
 
+use crate::instance::InstanceId;
 use crate::replicaset::ReplicasetId;
-use crate::traft::{FailureDomain, InstanceId};
+use crate::traft::FailureDomain;
 use crate::util::Uppercase;
 
 #[derive(Debug, Parser)]

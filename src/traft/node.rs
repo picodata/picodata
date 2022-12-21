@@ -26,6 +26,7 @@ use std::time::Duration;
 use std::time::Instant;
 
 use crate::governor;
+use crate::instance::Instance;
 use crate::kvcell::KVCell;
 use crate::loop_start;
 use crate::r#loop::FlowControl;
@@ -33,7 +34,6 @@ use crate::storage::ToEntryIter as _;
 use crate::storage::{Clusterwide, ClusterwideSpace, PropertyName};
 use crate::stringify_cfunc;
 use crate::traft::ContextCoercion as _;
-use crate::traft::Instance;
 use crate::traft::RaftId;
 use crate::traft::RaftIndex;
 use crate::traft::RaftTerm;

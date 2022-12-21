@@ -21,9 +21,10 @@ use traft::RaftSpaceAccess;
 use clap::StructOpt as _;
 use protobuf::Message as _;
 
+use crate::instance::InstanceId;
 use crate::tlog::set_log_level;
 use crate::traft::event::Event;
-use crate::traft::{event, node, InstanceId, Migration, OpDML};
+use crate::traft::{event, node, Migration, OpDML};
 use crate::traft::{LogicalClock, RaftIndex, TargetGradeVariant};
 use traft::error::Error;
 
@@ -31,6 +32,7 @@ mod app;
 mod args;
 mod discovery;
 mod governor;
+mod instance;
 mod ipc;
 mod kvcell;
 mod r#loop;

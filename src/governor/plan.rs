@@ -1,4 +1,5 @@
 use crate::has_grades;
+use crate::instance::{Instance, InstanceId};
 use crate::replicaset::weight;
 use crate::replicaset::{Replicaset, ReplicasetId};
 use crate::storage::{ClusterwideSpace, PropertyName};
@@ -8,7 +9,6 @@ use crate::traft::rpc::{replication, sharding, sync, update_instance};
 use crate::traft::CurrentGrade;
 use crate::traft::OpDML;
 use crate::traft::Result;
-use crate::traft::{Instance, InstanceId};
 use crate::traft::{RaftId, RaftIndex, RaftTerm};
 use ::tarantool::space::UpdateOps;
 use std::collections::HashMap;
