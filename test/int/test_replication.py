@@ -132,19 +132,37 @@ def test_bucket_discovery_single(instance: Instance):
     wait_buckets_awailable(instance, 3000)
 
 
-@funcy.retry(tries=30, timeout=0.2)
 def wait_has_buckets(c: Cluster, i: Instance, expected_active: int):
-    for j in c.instances:
-        j.eval(
-            """
-            if vshard.storage.internal.rebalancer_fiber ~= nil then
-                vshard.storage.rebalancer_wakeup()
-            end
-        """
-        )
+    @funcy.retry(tries=30, timeout=0.2)
+    def buckets_active(i: Instance):
+        return i.call("vshard.storage.info")["bucket"]["active"]
 
-    storage_info = i.call("vshard.storage.info")
-    assert expected_active == storage_info["bucket"]["active"]
+    tries = 4
+    previous_active = None
+    while True:
+        for j in c.instances:
+            j.eval(
+                """
+                if vshard.storage.internal.rebalancer_fiber ~= nil then
+                    vshard.storage.rebalancer_wakeup()
+                end
+            """
+            )
+
+        actual_active = buckets_active(i)
+        if expected_active == actual_active:
+            return
+
+        if previous_active == actual_active:
+            if tries > 0:
+                tries -= 1
+            else:
+                print("vshard.storage.info.bucket.active stopped changing")
+                assert expected_active == actual_active
+
+        previous_active = actual_active
+
+        time.sleep(0.5)
 
 
 def test_bucket_discovery_respects_replication_factor(cluster: Cluster):
@@ -166,6 +184,7 @@ def test_bucket_discovery_respects_replication_factor(cluster: Cluster):
 
 def test_bucket_rebalancing(cluster: Cluster):
     i1, *_ = cluster.deploy(instance_count=1, init_replication_factor=1)
+    wait_has_buckets(cluster, i1, 3000)
 
     i2 = cluster.add_instance()
     wait_has_buckets(cluster, i2, 1500)
