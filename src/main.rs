@@ -1,3 +1,5 @@
+#![allow(clippy::needless_borrow)]
+
 use nix::sys::signal;
 use nix::sys::termios::{tcgetattr, tcsetattr, SetArg::TCSADRAIN};
 use nix::sys::wait::{waitpid, WaitStatus};

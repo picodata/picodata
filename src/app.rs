@@ -16,6 +16,7 @@ pub trait AppError: Error {}
 impl<T> AppError for T where T: Error {}
 
 #[allow(dead_code)]
+#[allow(clippy::upper_case_acronyms)]
 enum DDL {
     CreateSpace {
         name: &'static str,
