@@ -35,6 +35,7 @@ use traft::error::Error;
 mod app;
 mod args;
 mod discovery;
+mod failure_domain;
 mod governor;
 mod instance;
 mod ipc;

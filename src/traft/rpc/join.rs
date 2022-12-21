@@ -1,7 +1,8 @@
+use crate::failure_domain::FailureDomain;
 use crate::instance::{Instance, InstanceId};
 use crate::replicaset::ReplicasetId;
 use crate::storage::ToEntryIter as _;
-use crate::traft::{error::Error, node, Address, FailureDomain, PeerAddress, Result};
+use crate::traft::{error::Error, node, Address, PeerAddress, Result};
 
 #[derive(Clone, Debug, ::serde::Serialize, ::serde::Deserialize)]
 pub struct OkResponse {

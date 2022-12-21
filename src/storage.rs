@@ -2,6 +2,7 @@ use ::tarantool::index::{Index, IndexIterator, IteratorType};
 use ::tarantool::space::{FieldType, Space};
 use ::tarantool::tuple::{DecodeOwned, ToTupleBuffer, Tuple};
 
+use crate::failure_domain as fd;
 use crate::instance::{self, grade, Instance};
 use crate::replicaset::{Replicaset, ReplicasetId};
 use crate::traft;
@@ -523,7 +524,7 @@ define_instance_fields! {
     ReplicasetUuid : String               = ("replicaset_uuid", FieldType::String)
     CurrentGrade   : grade::CurrentGrade  = ("current_grade",   FieldType::Array)
     TargetGrade    : grade::TargetGrade   = ("target_grade",    FieldType::Array)
-    FailureDomain  : traft::FailureDomain = ("failure_domain",  FieldType::Map)
+    FailureDomain  : fd::FailureDomain    = ("failure_domain",  FieldType::Map)
 }
 
 impl tarantool::tuple::TupleIndex for InstanceField {
@@ -764,13 +765,14 @@ inventory::submit!(crate::InnerTest {
     body: || {
         use crate::instance::grade::{CurrentGradeVariant as CGV, TargetGradeVariant as TGV};
         use crate::instance::InstanceId;
+        use crate::failure_domain::FailureDomain;
 
         let storage_instances = Instances::new().unwrap();
         let space_instances = storage_instances.space.clone();
         let storage_peer_addresses = PeerAddresses::new().unwrap();
         let space_peer_addresses = storage_peer_addresses.space.clone();
 
-        let faildom = crate::traft::FailureDomain::from([("a", "b")]);
+        let faildom = FailureDomain::from([("a", "b")]);
 
         for instance in vec![
             // r1

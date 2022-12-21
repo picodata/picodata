@@ -1,6 +1,6 @@
+use super::failure_domain::FailureDomain;
 use super::replicaset::ReplicasetId;
 use crate::has_grades;
-use crate::traft::FailureDomain;
 use crate::traft::RaftId;
 use crate::util::Transition;
 use ::serde::{Deserialize, Serialize};
