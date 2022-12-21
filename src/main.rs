@@ -27,7 +27,8 @@ use crate::instance::grade::TargetGradeVariant;
 use crate::instance::InstanceId;
 use crate::tlog::set_log_level;
 use crate::traft::event::Event;
-use crate::traft::{event, node, Migration, OpDML};
+use crate::traft::op::{self, Op};
+use crate::traft::{event, node, Migration};
 use crate::traft::{LogicalClock, RaftIndex};
 use traft::error::Error;
 
@@ -134,14 +135,13 @@ fn picolib_setup(args: &args::Run) {
     luamod.set(
         "raft_propose_nop",
         tlua::function0(|| {
-            traft::node::global()?.propose_and_wait(traft::Op::Nop, Duration::from_secs(1))
+            traft::node::global()?.propose_and_wait(Op::Nop, Duration::from_secs(1))
         }),
     );
     luamod.set(
         "raft_propose_info",
         tlua::function1(|x: String| -> traft::Result<()> {
-            traft::node::global()?
-                .propose_and_wait(traft::Op::Info { msg: x }, Duration::from_secs(1))
+            traft::node::global()?.propose_and_wait(Op::Info { msg: x }, Duration::from_secs(1))
         }),
     );
     luamod.set(
@@ -185,10 +185,7 @@ fn picolib_setup(args: &args::Run) {
             |x: String, opts: Option<ProposeEvalOpts>| -> traft::Result<()> {
                 let timeout = opts.and_then(|opts| opts.timeout).unwrap_or(10.0);
                 traft::node::global()?
-                    .propose_and_wait(
-                        traft::OpEvalLua { code: x },
-                        Duration::from_secs_f64(timeout),
-                    )
+                    .propose_and_wait(op::EvalLua { code: x }, Duration::from_secs_f64(timeout))
                     .and_then(|res| res.map_err(Into::into))
             },
         ),
@@ -196,8 +193,7 @@ fn picolib_setup(args: &args::Run) {
     luamod.set(
         "raft_return_one",
         tlua::function1(|timeout: f64| -> traft::Result<u8> {
-            traft::node::global()?
-                .propose_and_wait(traft::OpReturnOne, Duration::from_secs_f64(timeout))
+            traft::node::global()?.propose_and_wait(op::ReturnOne, Duration::from_secs_f64(timeout))
         }),
     );
     // TODO: remove this
@@ -383,7 +379,7 @@ fn picolib_setup(args: &args::Run) {
         "add_migration",
         tlua::function2(|id: u64, body: String| -> traft::Result<()> {
             let migration = Migration { id, body };
-            let op = OpDML::insert(ClusterwideSpace::Migration, &migration)?;
+            let op = op::Dml::insert(ClusterwideSpace::Migration, &migration)?;
             node::global()?.propose_and_wait(op, Duration::MAX)??;
             Ok(())
         }),
@@ -392,7 +388,7 @@ fn picolib_setup(args: &args::Run) {
     luamod.set(
         "push_schema_version",
         tlua::function1(|id: u64| -> traft::Result<()> {
-            let op = OpDML::replace(
+            let op = op::Dml::replace(
                 ClusterwideSpace::Property,
                 &(PropertyName::DesiredSchemaVersion, id),
             )?;
@@ -417,7 +413,7 @@ fn picolib_setup(args: &args::Run) {
                     return Ok(Some(current_version));
                 }
 
-                let op = OpDML::replace(
+                let op = op::Dml::replace(
                     ClusterwideSpace::Property,
                     &(PropertyName::DesiredSchemaVersion, target_version),
                 )?;
@@ -839,16 +835,16 @@ fn start_boot(args: &args::Run) {
         };
 
         init_entries_push_op(
-            traft::OpDML::insert(
+            op::Dml::insert(
                 ClusterwideSpace::Address,
                 &traft::PeerAddress { raft_id, address },
             )
             .expect("cannot fail")
             .into(),
         );
-        init_entries_push_op(traft::OpPersistInstance::new(instance).into());
+        init_entries_push_op(traft::op::PersistInstance::new(instance).into());
         init_entries_push_op(
-            OpDML::insert(
+            op::Dml::insert(
                 ClusterwideSpace::Property,
                 &(
                     PropertyName::ReplicationFactor,
@@ -859,7 +855,7 @@ fn start_boot(args: &args::Run) {
             .into(),
         );
         init_entries_push_op(
-            OpDML::insert(
+            op::Dml::insert(
                 ClusterwideSpace::Property,
                 &(PropertyName::DesiredSchemaVersion, 0),
             )

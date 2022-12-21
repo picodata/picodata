@@ -5,6 +5,34 @@
 //! - handling configuration changes,
 //! - processing raft `Ready` - persisting entries, communicating with other raft nodes.
 
+use crate::governor;
+use crate::has_grades;
+use crate::instance::Instance;
+use crate::kvcell::KVCell;
+use crate::loop_start;
+use crate::r#loop::FlowControl;
+use crate::storage::ToEntryIter as _;
+use crate::storage::{Clusterwide, ClusterwideSpace, PropertyName};
+use crate::stringify_cfunc;
+use crate::tlog;
+use crate::traft;
+use crate::traft::error::Error;
+use crate::traft::event;
+use crate::traft::event::Event;
+use crate::traft::notify::{notification, Notifier, Notify};
+use crate::traft::op::{Dml, Op, OpResult, PersistInstance};
+use crate::traft::rpc::{join, update_instance};
+use crate::traft::Address;
+use crate::traft::ConnectionPool;
+use crate::traft::ContextCoercion as _;
+use crate::traft::LogicalClock;
+use crate::traft::RaftId;
+use crate::traft::RaftIndex;
+use crate::traft::RaftSpaceAccess;
+use crate::traft::RaftTerm;
+use crate::traft::Topology;
+use crate::unwrap_some_or;
+use crate::warn_or_panic;
 use ::raft::prelude as raft;
 use ::raft::Error as RaftError;
 use ::raft::StateRole as RaftStateRole;
@@ -18,45 +46,13 @@ use ::tarantool::fiber::Mutex;
 use ::tarantool::proc;
 use ::tarantool::tlua;
 use ::tarantool::transaction::start_transaction;
+use protobuf::Message as _;
 use std::cell::Cell;
 use std::collections::{HashMap, HashSet};
 use std::convert::TryFrom;
 use std::rc::Rc;
 use std::time::Duration;
 use std::time::Instant;
-
-use crate::governor;
-use crate::instance::Instance;
-use crate::kvcell::KVCell;
-use crate::loop_start;
-use crate::r#loop::FlowControl;
-use crate::storage::ToEntryIter as _;
-use crate::storage::{Clusterwide, ClusterwideSpace, PropertyName};
-use crate::stringify_cfunc;
-use crate::traft::ContextCoercion as _;
-use crate::traft::RaftId;
-use crate::traft::RaftIndex;
-use crate::traft::RaftTerm;
-use crate::traft::{OpDML, OpPersistInstance};
-use crate::unwrap_some_or;
-use crate::warn_or_panic;
-use protobuf::Message as _;
-
-use crate::has_grades;
-use crate::tlog;
-use crate::traft;
-use crate::traft::error::Error;
-use crate::traft::event;
-use crate::traft::event::Event;
-use crate::traft::notify::{notification, Notifier, Notify};
-use crate::traft::rpc::{join, update_instance};
-use crate::traft::Address;
-use crate::traft::ConnectionPool;
-use crate::traft::LogicalClock;
-use crate::traft::Op;
-use crate::traft::OpResult;
-use crate::traft::RaftSpaceAccess;
-use crate::traft::Topology;
 
 type RawNode = raft::RawNode<RaftSpaceAccess>;
 
@@ -188,7 +184,7 @@ impl Node {
 
     /// Propose an operation and wait for it's result.
     /// **This function yields**
-    pub fn propose_and_wait<T: OpResult + Into<traft::Op>>(
+    pub fn propose_and_wait<T: OpResult + Into<Op>>(
         &self,
         op: T,
         timeout: Duration,
@@ -443,7 +439,7 @@ impl NodeImpl {
     #[inline]
     pub fn propose_async<T>(&mut self, op: T) -> Result<Notify, RaftError>
     where
-        T: Into<traft::Op>,
+        T: Into<Op>,
     {
         let (lc, notify) = self.schedule_notification();
         let ctx = traft::EntryContextNormal::new(lc, op.into());
@@ -494,8 +490,8 @@ impl NodeImpl {
             raft_id: instance.raft_id,
             address,
         };
-        let op_addr = OpDML::replace(ClusterwideSpace::Address, &peer_address).expect("can't fail");
-        let op_instance = OpPersistInstance::new(instance);
+        let op_addr = Dml::replace(ClusterwideSpace::Address, &peer_address).expect("can't fail");
+        let op_instance = PersistInstance::new(instance);
         // Important! Calling `raw_node.propose()` may result in
         // `ProposalDropped` error, but the topology has already been
         // modified. The correct handling of this case should be the
@@ -546,7 +542,7 @@ impl NodeImpl {
         // harmful. Loss of the uncommitted entries could result in
         // assigning the same `raft_id` to a two different nodes.
         //
-        Ok(self.propose_async(OpPersistInstance::new(instance))?)
+        Ok(self.propose_async(PersistInstance::new(instance))?)
     }
 
     fn propose_conf_change_async(
@@ -651,17 +647,17 @@ impl NodeImpl {
         assert_eq!(entry.entry_type, raft::EntryType::EntryNormal);
         let lc = entry.lc();
         let index = entry.index;
-        let op = entry.into_op().unwrap_or(traft::Op::Nop);
+        let op = entry.into_op().unwrap_or(Op::Nop);
 
         match &op {
-            traft::Op::PersistInstance(OpPersistInstance(instance)) => {
+            Op::PersistInstance(PersistInstance(instance)) => {
                 *wake_governor = true;
                 if has_grades!(instance, Expelled -> *) && instance.raft_id == self.raft_id() {
                     // cannot exit during a transaction
                     *expelled = true;
                 }
             }
-            traft::Op::Dml(op)
+            Op::Dml(op)
                 if matches!(
                     op.space(),
                     ClusterwideSpace::Property | ClusterwideSpace::Replicaset

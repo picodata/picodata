@@ -5,9 +5,9 @@ use crate::replicaset::weight;
 use crate::replicaset::{Replicaset, ReplicasetId};
 use crate::storage::{ClusterwideSpace, PropertyName};
 use crate::tlog;
+use crate::traft::op::Dml;
 use crate::traft::rpc;
 use crate::traft::rpc::{replication, sharding, sync, update_instance};
-use crate::traft::OpDML;
 use crate::traft::Result;
 use crate::traft::{RaftId, RaftIndex, RaftTerm};
 use ::tarantool::space::UpdateOps;
@@ -88,7 +88,7 @@ pub(super) fn action_plan<'i>(
                 };
                 let mut ops = UpdateOps::new();
                 ops.assign("master_id", &to.instance_id)?;
-                let op = OpDML::update(ClusterwideSpace::Replicaset, &[&to.replicaset_id], ops)?;
+                let op = Dml::update(ClusterwideSpace::Replicaset, &[&to.replicaset_id], ops)?;
                 return Ok(TransferMastership { to, rpc, op }.into());
             } else {
                 tlog!(Warning, "replicaset master is going offline and no substitution is found";
@@ -157,7 +157,7 @@ pub(super) fn action_plan<'i>(
             commit,
             timeout: Loop::SYNC_TIMEOUT,
         };
-        let op = OpDML::insert(
+        let op = Dml::insert(
             ClusterwideSpace::Replicaset,
             &Replicaset {
                 replicaset_id: replicaset_id.clone(),
@@ -247,7 +247,7 @@ pub(super) fn action_plan<'i>(
             commit,
             timeout: Loop::SYNC_TIMEOUT,
         };
-        let op = OpDML::replace(
+        let op = Dml::replace(
             ClusterwideSpace::Property,
             &(PropertyName::VshardBootstrapped, true),
         )?;
@@ -269,7 +269,7 @@ pub(super) fn action_plan<'i>(
             weight::State::UpToDate
         };
         uops.assign(weight::State::PATH, state)?;
-        let op = OpDML::update(ClusterwideSpace::Replicaset, &[replicaset_id], uops)?;
+        let op = Dml::update(ClusterwideSpace::Replicaset, &[replicaset_id], uops)?;
         return Ok(ProposeWeightChanges { op }.into());
     }
 
@@ -312,7 +312,7 @@ pub(super) fn action_plan<'i>(
         for replicaset_id in to_update_weights {
             let mut uops = UpdateOps::new();
             uops.assign(weight::State::PATH, weight::State::UpToDate)?;
-            let op = OpDML::update(ClusterwideSpace::Replicaset, &[replicaset_id], uops)?;
+            let op = Dml::update(ClusterwideSpace::Replicaset, &[replicaset_id], uops)?;
             ops.push(op);
         }
         return Ok(UpdateWeights { targets, rpc, ops }.into());
@@ -347,7 +347,7 @@ pub(super) fn action_plan<'i>(
         };
         let mut ops = UpdateOps::new();
         ops.assign("current_schema_version", migration_id)?;
-        let op = OpDML::update(ClusterwideSpace::Replicaset, &[&target.replicaset_id], ops)?;
+        let op = Dml::update(ClusterwideSpace::Replicaset, &[&target.replicaset_id], ops)?;
         return Ok(ApplyMigration { target, rpc, op }.into());
     }
 
@@ -400,7 +400,7 @@ pub mod stage {
         pub struct TransferMastership<'i> {
             pub to: &'i Instance,
             pub rpc: replication::promote::Request,
-            pub op: OpDML,
+            pub op: Dml,
         }
 
         pub struct ReconfigureShardingAndDowngrade<'i> {
@@ -419,7 +419,7 @@ pub mod stage {
             pub master_id: &'i InstanceId,
             pub replicaset_id: &'i ReplicasetId,
             pub rpc: replication::promote::Request,
-            pub op: OpDML,
+            pub op: Dml,
         }
 
         pub struct Replication<'i> {
@@ -441,17 +441,17 @@ pub mod stage {
         pub struct ShardingBoot<'i> {
             pub target: &'i InstanceId,
             pub rpc: sharding::bootstrap::Request,
-            pub op: OpDML,
+            pub op: Dml,
         }
 
         pub struct ProposeWeightChanges {
-            pub op: OpDML,
+            pub op: Dml,
         }
 
         pub struct UpdateWeights<'i> {
             pub targets: Vec<&'i InstanceId>,
             pub rpc: sharding::Request,
-            pub ops: Vec<OpDML>,
+            pub ops: Vec<Dml>,
         }
 
         pub struct ToOnline {
@@ -461,7 +461,7 @@ pub mod stage {
         pub struct ApplyMigration<'i> {
             pub target: &'i Replicaset,
             pub rpc: rpc::migration::apply::Request,
-            pub op: OpDML,
+            pub op: Dml,
         }
     }
 }
