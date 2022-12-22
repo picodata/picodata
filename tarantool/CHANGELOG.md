@@ -27,6 +27,8 @@
     `std::result::Result<T, r#async::timeout::Error<E>>`
 - `Space::from_id_unchecked` unsafe function, for creating a space struct from a space id.
 - `examples/tokio-hyper` example of using tarantool with tokio + hyper
+- `std::ops::Deref<Target = str>` implementation for enums defined with
+    `tarantool::define_str_enum`.
 
 ### Changed
 - `r#async::timeout::Timeout` can now only be wrapped around a future which

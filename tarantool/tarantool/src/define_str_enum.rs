@@ -135,6 +135,13 @@ macro_rules! define_str_enum {
             }
         }
 
+        impl ::std::ops::Deref for $enum {
+            type Target = str;
+            fn deref(&self) -> &str {
+                self.as_str()
+            }
+        }
+
         impl From<$enum> for String {
             fn from(e: $enum) -> Self {
                 e.as_str().into()
