@@ -19,40 +19,55 @@ use std::marker::PhantomData;
 
 macro_rules! define_clusterwide_spaces {
     (
-        $(#[$space_meta:meta])*
+        $(#[$cw_space_meta:meta])*
         pub enum $cw_space:ident {
             $(
-                $(#[$field_meta:meta])*
-                $cw_space_var:ident = $cw_space_name:expr => $cw_space_struct:ty,
+                $(#[$cw_field_meta:meta])*
+                $cw_space_var:ident = $cw_space_name:expr => {
+                    $(#[$space_meta:meta])*
+                    pub struct $space:ident {
+                        $(
+                            $(#[$field_meta:meta])*
+                            $field:ident : $field_ty:ty,
+                        )+
+                    }
+
+                    $(#[$index_meta:meta])*
+                    pub enum $index:ident {
+                        #[primary]
+                        $primary_index_var:ident = $primary_index_name:expr,
+                        $( $index_var:ident = $index_name:expr, )*
+                    }
+                }
             )+
         }
 
-        $(#[$index_meta:meta])*
+        $(#[$cw_index_meta:meta])*
         pub enum $cw_index:ident {
             #space_name( $index_of:ident <#space_struct_name>),
         }
     ) => {
         ::tarantool::define_str_enum! {
-            $(#[$space_meta])*
+            $(#[$cw_space_meta])*
             pub enum $cw_space {
                 $(
-                    $(#[$field_meta])*
+                    $(#[$cw_field_meta])*
                     $cw_space_var = $cw_space_name,
                 )+
             }
         }
 
-        $(#[$index_meta])*
+        $(#[$cw_index_meta])*
         #[derive(Copy, Clone, Debug, serde::Serialize, serde::Deserialize, PartialEq, Eq, Hash)]
         pub enum $cw_index {
-            $( $cw_space_var($index_of<$cw_space_struct>),)+
+            $( $cw_space_var($index_of<$space>),)+
         }
 
         impl From<$cw_space> for $cw_index {
             fn from(space: $cw_space) -> Self {
                 match space {
                     $(
-                        $cw_space::$cw_space_var => Self::$cw_space_var(<$cw_space_struct>::primary_index()),
+                        $cw_space::$cw_space_var => Self::$cw_space_var(<$space>::primary_index()),
                     )+
                 }
             }
@@ -79,17 +94,114 @@ macro_rules! define_clusterwide_spaces {
                 }
             }
         }
+
+        $(
+            $(#[$space_meta])*
+            pub struct $space {
+                $( $(#[$field_meta])* $field: $field_ty,)+
+            }
+
+            ::tarantool::define_str_enum! {
+                $(#[$index_meta])*
+                pub enum $index {
+                    $primary_index_var = $primary_index_name,
+                    $( $index_var = $index_name, )*
+                }
+            }
+
+            impl TClusterwideSpace for $space {
+                type Index = $index;
+                const SPACE_NAME: &'static str = $cw_space_name;
+            }
+
+            impl TClusterwideSpaceIndex for IndexOf<$space> {
+                #[inline(always)]
+                fn primary() -> Self {
+                    Self::$primary_index_var
+                }
+
+                #[inline(always)]
+                fn is_primary(&self) -> bool {
+                    matches!(self, Self::$primary_index_var)
+                }
+            }
+        )+
     }
 }
 
 define_clusterwide_spaces! {
     /// An enumeration of builtin cluster-wide spaces
     pub enum ClusterwideSpace {
-        Instance   = "_picodata_instance"     => Instances,
-        Address    = "_picodata_peer_address" => PeerAddresses,
-        Property   = "_picodata_property"     => Properties,
-        Replicaset = "_picodata_replicaset"   => Replicasets,
-        Migration  = "_picodata_migration"    => Migrations,
+        Instance = "_picodata_instance" => {
+            /// A struct for accessing storage of all the cluster instances.
+            #[derive(Clone, Debug)]
+            pub struct Instances {
+                space: Space,
+                index_instance_id: Index,
+                index_raft_id: Index,
+                index_replicaset_id: Index,
+            }
+
+            /// An enumeration of indexes defined for instance space.
+            #[allow(clippy::enum_variant_names)]
+            pub enum SpaceInstanceIndex {
+                #[primary]
+                InstanceId = "instance_id",
+                RaftId = "raft_id",
+                ReplicasetId = "replicaset_id",
+            }
+        }
+        Address = "_picodata_peer_address" => {
+            /// A struct for accessing storage of peer addresses.
+            #[derive(Clone, Debug)]
+            pub struct PeerAddresses {
+                space: Space,
+            }
+
+            /// An enumeration of indexes defined for peer address space.
+            pub enum SpacePeerAddressIndex {
+                #[primary]
+                RaftId = "raft_id",
+            }
+        }
+        Property = "_picodata_property" => {
+            /// A struct for accessing storage of the cluster-wide key-value properties
+            #[derive(Clone, Debug)]
+            pub struct Properties {
+                space: Space,
+            }
+
+            /// An enumeration of indexes defined for property space.
+            pub enum SpacePropertyIndex {
+                #[primary]
+                Key = "key",
+            }
+        }
+        Replicaset = "_picodata_replicaset" => {
+            /// A struct for accessing replicaset info from storage
+            #[derive(Clone, Debug)]
+            pub struct Replicasets {
+                space: Space,
+            }
+
+            /// An enumeration of indexes defined for replicaset space.
+            pub enum SpaceReplicasetIndex {
+                #[primary]
+                ReplicasetId = "replicaset_id",
+            }
+        }
+        Migration = "_picodata_migration" => {
+            #[derive(Clone, Debug)]
+            pub struct Migrations {
+                space: Space,
+            }
+
+            /// An enumeration of indexes defined for migration space.
+            pub enum SpaceMigrationIndex {
+                #[primary]
+                Id = "id",
+            }
+        }
     }
 
     /// An index of a clusterwide space.
@@ -185,57 +297,6 @@ pub trait TClusterwideSpaceIndex {
     fn is_primary(&self) -> bool;
 }
 
-macro_rules! define_clusterwide_space_struct {
-    (
-        $space_name:path;
-
-        $(#[$space_meta:meta])*
-        pub struct $space:ident {
-            $(
-                $(#[$field_meta:meta])*
-                $field:ident : $field_ty:ty,
-            )+
-        }
-
-        $(#[$index_meta:meta])*
-        pub enum $index:ident {
-            #[primary]
-            $primary_index_var:ident = $primary_index_name:expr,
-            $( $index_var:ident = $index_name:expr, )*
-        }
-    ) => {
-        $(#[$space_meta])*
-        pub struct $space {
-            $( $(#[$field_meta])* $field: $field_ty,)+
-        }
-
-        ::tarantool::define_str_enum! {
-            $(#[$index_meta])*
-            pub enum $index {
-                $primary_index_var = $primary_index_name,
-                $( $index_var = $index_name, )*
-            }
-        }
-
-        impl TClusterwideSpace for $space {
-            type Index = $index;
-            const SPACE_NAME: &'static str = $space_name.as_str();
-        }
-
-        impl TClusterwideSpaceIndex for IndexOf<$space> {
-            #[inline(always)]
-            fn primary() -> Self {
-                Self::$primary_index_var
-            }
-
-            #[inline(always)]
-            fn is_primary(&self) -> bool {
-                matches!(self, Self::$primary_index_var)
-            }
-        }
-    }
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 // PropertyName
 ////////////////////////////////////////////////////////////////////////////////
@@ -277,22 +338,6 @@ impl Clusterwide {
 ////////////////////////////////////////////////////////////////////////////////
 // Properties
 ////////////////////////////////////////////////////////////////////////////////
-
-define_clusterwide_space_struct! {
-    ClusterwideSpace::Property;
-
-    /// A struct for accessing storage of the cluster-wide key-value properties
-    #[derive(Clone, Debug)]
-    pub struct Properties {
-        space: Space,
-    }
-
-    /// An enumeration of indexes defined for property space.
-    pub enum SpacePropertyIndex {
-        #[primary]
-        Key = "key",
-    }
-}
 
 impl Properties {
     pub fn new() -> tarantool::Result<Self> {
@@ -360,23 +405,6 @@ impl Properties {
 // Replicasets
 ////////////////////////////////////////////////////////////////////////////////
 
-define_clusterwide_space_struct! {
-    ClusterwideSpace::Replicaset;
-
-    /// A struct for accessing replicaset info from storage
-    #[derive(Clone, Debug)]
-    pub struct Replicasets {
-        space: Space,
-    }
-
-
-    /// An enumeration of indexes defined for replicaset space.
-    pub enum SpaceReplicasetIndex {
-        #[primary]
-        ReplicasetId = "replicaset_id",
-    }
-}
-
 impl Replicasets {
     pub fn new() -> tarantool::Result<Self> {
         let space = Space::builder(Self::SPACE_NAME)
@@ -418,22 +446,6 @@ impl ToEntryIter for Replicasets {
 ////////////////////////////////////////////////////////////////////////////////
 // PeerAddresses
 ////////////////////////////////////////////////////////////////////////////////
-
-define_clusterwide_space_struct! {
-    ClusterwideSpace::Address;
-
-    /// A struct for accessing storage of peer addresses.
-    #[derive(Clone, Debug)]
-    pub struct PeerAddresses {
-        space: Space,
-    }
-
-    /// An enumeration of indexes defined for peer address space.
-    pub enum SpacePeerAddressIndex {
-        #[primary]
-        RaftId = "raft_id",
-    }
-}
 
 impl PeerAddresses {
     pub fn new() -> tarantool::Result<Self> {
@@ -495,28 +507,6 @@ impl ToEntryIter for PeerAddresses {
 ////////////////////////////////////////////////////////////////////////////////
 // Instance
 ////////////////////////////////////////////////////////////////////////////////
-
-define_clusterwide_space_struct! {
-    ClusterwideSpace::Instance;
-
-    /// A struct for accessing storage of all the cluster instances.
-    #[derive(Clone, Debug)]
-    pub struct Instances {
-        space: Space,
-        index_instance_id: Index,
-        index_raft_id: Index,
-        index_replicaset_id: Index,
-    }
-
-    /// An enumeration of indexes defined for instance space.
-    #[allow(clippy::enum_variant_names)]
-    pub enum SpaceInstanceIndex {
-        #[primary]
-        InstanceId = "instance_id",
-        RaftId = "raft_id",
-        ReplicasetId = "replicaset_id",
-    }
-}
 
 impl Instances {
     pub fn new() -> tarantool::Result<Self> {
@@ -838,21 +828,6 @@ where
 ////////////////////////////////////////////////////////////////////////////////
 // Migrations
 ////////////////////////////////////////////////////////////////////////////////
-
-define_clusterwide_space_struct! {
-    ClusterwideSpace::Migration;
-
-    #[derive(Clone, Debug)]
-    pub struct Migrations {
-        space: Space,
-    }
-
-    /// An enumeration of indexes defined for migration space.
-    pub enum SpaceMigrationIndex {
-        #[primary]
-        Id = "id",
-    }
-}
 
 impl Migrations {
     pub fn new() -> tarantool::Result<Self> {
