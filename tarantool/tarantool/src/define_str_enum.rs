@@ -129,7 +129,7 @@ macro_rules! define_str_enum {
             }
         }
 
-        impl AsRef<str> for $enum {
+        impl ::std::convert::AsRef<str> for $enum {
             fn as_ref(&self) -> &str {
                 self.as_str()
             }
@@ -142,7 +142,7 @@ macro_rules! define_str_enum {
             }
         }
 
-        impl From<$enum> for String {
+        impl ::std::convert::From<$enum> for ::std::string::String {
             fn from(e: $enum) -> Self {
                 e.as_str().into()
             }
@@ -154,6 +154,7 @@ macro_rules! define_str_enum {
             fn from_str(s: &str) -> ::std::result::Result<Self, Self::Err> {
                 use ::std::marker::PhantomData;
                 use $crate::define_str_enum::UnknownEnumVariant;
+                use ::std::result::Result::{Ok, Err};
 
                 $($crate::define_str_enum! { @attr $macro_attr
                     let s = s.trim();
@@ -191,6 +192,7 @@ macro_rules! define_str_enum {
             where
                 D: serde::Deserializer<'de>,
             {
+                use ::std::result::Result::Ok;
                 use serde::de::Error;
                 let tmp = <&str>::deserialize(deserializer)?;
                 let res = tmp.parse().map_err(|_| {
