@@ -148,6 +148,12 @@ macro_rules! define_str_enum {
             }
         }
 
+        impl ::std::convert::From<$enum> for &'static str {
+            fn from(e: $enum) -> Self {
+                e.as_str()
+            }
+        }
+
         impl ::std::str::FromStr for $enum {
             type Err = $crate::define_str_enum::UnknownEnumVariant<$enum>;
 

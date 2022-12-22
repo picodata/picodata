@@ -29,6 +29,8 @@
 - `examples/tokio-hyper` example of using tarantool with tokio + hyper
 - `std::ops::Deref<Target = str>` implementation for enums defined with
     `tarantool::define_str_enum`.
+- `Into<&'static str>` implementation for enums defined with
+    `tarantool::define_str_enum`.
 
 ### Changed
 - `r#async::timeout::Timeout` can now only be wrapped around a future which
