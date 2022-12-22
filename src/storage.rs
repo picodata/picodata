@@ -17,14 +17,84 @@ use std::marker::PhantomData;
 // ClusterwideSpace
 ////////////////////////////////////////////////////////////////////////////////
 
-::tarantool::define_str_enum! {
+macro_rules! define_clusterwide_spaces {
+    (
+        $(#[$space_meta:meta])*
+        pub enum $cw_space:ident {
+            $(
+                $(#[$field_meta:meta])*
+                $cw_space_var:ident = $cw_space_name:expr => $cw_space_struct:ty,
+            )+
+        }
+
+        $(#[$index_meta:meta])*
+        pub enum $cw_index:ident {
+            #space_name( $index_of:ident <#space_struct_name>),
+        }
+    ) => {
+        ::tarantool::define_str_enum! {
+            $(#[$space_meta])*
+            pub enum $cw_space {
+                $(
+                    $(#[$field_meta])*
+                    $cw_space_var = $cw_space_name,
+                )+
+            }
+        }
+
+        $(#[$index_meta])*
+        #[derive(Copy, Clone, Debug, serde::Serialize, serde::Deserialize, PartialEq, Eq, Hash)]
+        pub enum $cw_index {
+            $( $cw_space_var($index_of<$cw_space_struct>),)+
+        }
+
+        impl From<$cw_space> for $cw_index {
+            fn from(space: $cw_space) -> Self {
+                match space {
+                    $(
+                        $cw_space::$cw_space_var => Self::$cw_space_var(<$cw_space_struct>::primary_index()),
+                    )+
+                }
+            }
+        }
+
+        impl $cw_index {
+            pub const fn space(&self) -> $cw_space {
+                match self {
+                    $(
+                        Self::$cw_space_var(_) => $cw_space::$cw_space_var,
+                    )+
+                }
+            }
+
+            pub const fn index_name(&self) -> &'static str {
+                match self {
+                    $( Self::$cw_space_var(idx) => idx.as_str(), )+
+                }
+            }
+
+            pub fn is_primary(&self) -> bool {
+                match self {
+                    $( Self::$cw_space_var(idx) => idx.is_primary(), )+
+                }
+            }
+        }
+    }
+}
+
+define_clusterwide_spaces! {
     /// An enumeration of builtin cluster-wide spaces
     pub enum ClusterwideSpace {
-        Instance = "_picodata_instance",
-        Address = "_picodata_peer_address",
-        Property = "_picodata_property",
-        Replicaset = "_picodata_replicaset",
-        Migration = "_picodata_migration",
+        Instance   = "_picodata_instance"     => Instances,
+        Address    = "_picodata_peer_address" => PeerAddresses,
+        Property   = "_picodata_property"     => Properties,
+        Replicaset = "_picodata_replicaset"   => Replicasets,
+        Migration  = "_picodata_migration"    => Migrations,
+    }
+
+    /// An index of a clusterwide space.
+    pub enum ClusterwideSpaceIndex {
+        #space_name(IndexOf<#space_struct_name>),
     }
 }
 
@@ -70,16 +140,6 @@ pub trait TClusterwideSpace {
 /// A type alias for getting the enumeration of indexes for a clusterwide space.
 pub type IndexOf<T> = <T as TClusterwideSpace>::Index;
 
-/// An index of a clusterwide space.
-#[derive(Copy, Clone, Debug, serde::Serialize, serde::Deserialize, PartialEq, Eq, Hash)]
-pub enum ClusterwideSpaceIndex {
-    Property(IndexOf<Properties>),
-    Instance(IndexOf<Instances>),
-    Address(IndexOf<PeerAddresses>),
-    Replicaset(IndexOf<Replicasets>),
-    Migration(IndexOf<Migrations>),
-}
-
 impl ClusterwideSpaceIndex {
     #[inline]
     fn get(&self) -> tarantool::Result<Index> {
@@ -107,48 +167,6 @@ impl ClusterwideSpaceIndex {
     #[inline]
     pub fn delete(&self, key: &impl ToTupleBuffer) -> tarantool::Result<Option<Tuple>> {
         self.get()?.delete(key)
-    }
-
-    pub const fn space(&self) -> ClusterwideSpace {
-        match self {
-            Self::Property(_) => ClusterwideSpace::Property,
-            Self::Instance(_) => ClusterwideSpace::Instance,
-            Self::Address(_) => ClusterwideSpace::Address,
-            Self::Replicaset(_) => ClusterwideSpace::Replicaset,
-            Self::Migration(_) => ClusterwideSpace::Migration,
-        }
-    }
-
-    pub const fn index_name(&self) -> &'static str {
-        match self {
-            Self::Property(idx) => idx.as_str(),
-            Self::Instance(idx) => idx.as_str(),
-            Self::Address(idx) => idx.as_str(),
-            Self::Replicaset(idx) => idx.as_str(),
-            Self::Migration(idx) => idx.as_str(),
-        }
-    }
-
-    pub fn is_primary(&self) -> bool {
-        match self {
-            Self::Property(idx) => idx.is_primary(),
-            Self::Instance(idx) => idx.is_primary(),
-            Self::Address(idx) => idx.is_primary(),
-            Self::Replicaset(idx) => idx.is_primary(),
-            Self::Migration(idx) => idx.is_primary(),
-        }
-    }
-}
-
-impl From<ClusterwideSpace> for ClusterwideSpaceIndex {
-    fn from(space: ClusterwideSpace) -> Self {
-        match space {
-            ClusterwideSpace::Property => Self::Property(Properties::primary_index()),
-            ClusterwideSpace::Instance => Self::Instance(Instances::primary_index()),
-            ClusterwideSpace::Address => Self::Address(PeerAddresses::primary_index()),
-            ClusterwideSpace::Replicaset => Self::Replicaset(Replicasets::primary_index()),
-            ClusterwideSpace::Migration => Self::Migration(Migrations::primary_index()),
-        }
     }
 }
 
