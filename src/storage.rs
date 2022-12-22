@@ -31,10 +31,11 @@ use std::marker::PhantomData;
 impl ClusterwideSpace {
     #[inline]
     fn get(&self) -> tarantool::Result<Space> {
-        Space::find(self.as_str()).ok_or_else(|| {
+        Space::find_cached(self.as_str()).ok_or_else(|| {
             tarantool::set_error!(
                 tarantool::error::TarantoolErrorCode::NoSuchSpace,
-                "no such space \"{self}\""
+                "no such space \"{}\"",
+                self
             );
             tarantool::error::TarantoolError::last().into()
         })
@@ -49,6 +50,50 @@ impl ClusterwideSpace {
     pub fn replace(&self, tuple: &impl ToTupleBuffer) -> tarantool::Result<Tuple> {
         self.get()?.replace(tuple)
     }
+}
+
+/// Types implementing this trait represent clusterwide spaces.
+pub trait TClusterwideSpace {
+    type Index: TClusterwideSpaceIndex;
+    const SPACE_NAME: &'static str;
+
+    #[inline(always)]
+    fn primary_index() -> Self::Index {
+        Self::Index::primary()
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// ClusterwideSpaceIndex
+////////////////////////////////////////////////////////////////////////////////
+
+/// A type alias for getting the enumeration of indexes for a clusterwide space.
+pub type IndexOf<T> = <T as TClusterwideSpace>::Index;
+
+/// An index of a clusterwide space.
+#[derive(Copy, Clone, Debug, serde::Serialize, serde::Deserialize, PartialEq, Eq, Hash)]
+pub enum ClusterwideSpaceIndex {
+    Property(IndexOf<Properties>),
+    Instance(IndexOf<Instances>),
+    Address(IndexOf<PeerAddresses>),
+    Replicaset(IndexOf<Replicasets>),
+    Migration(IndexOf<Migrations>),
+}
+
+impl ClusterwideSpaceIndex {
+    #[inline]
+    fn get(&self) -> tarantool::Result<Index> {
+        let space = self.space().get()?;
+        let index_name = self.index_name();
+        let Some(index) = space.index_cached(index_name) else {
+            tarantool::set_error!(
+                tarantool::error::TarantoolErrorCode::NoSuchIndexName,
+                "no such index \"{}\"", index_name
+            );
+            return Err(tarantool::error::TarantoolError::last().into());
+        };
+        Ok(index)
+    }
 
     #[inline]
     pub fn update(
@@ -62,6 +107,114 @@ impl ClusterwideSpace {
     #[inline]
     pub fn delete(&self, key: &impl ToTupleBuffer) -> tarantool::Result<Option<Tuple>> {
         self.get()?.delete(key)
+    }
+
+    pub const fn space(&self) -> ClusterwideSpace {
+        match self {
+            Self::Property(_) => ClusterwideSpace::Property,
+            Self::Instance(_) => ClusterwideSpace::Instance,
+            Self::Address(_) => ClusterwideSpace::Address,
+            Self::Replicaset(_) => ClusterwideSpace::Replicaset,
+            Self::Migration(_) => ClusterwideSpace::Migration,
+        }
+    }
+
+    pub const fn index_name(&self) -> &'static str {
+        match self {
+            Self::Property(idx) => idx.as_str(),
+            Self::Instance(idx) => idx.as_str(),
+            Self::Address(idx) => idx.as_str(),
+            Self::Replicaset(idx) => idx.as_str(),
+            Self::Migration(idx) => idx.as_str(),
+        }
+    }
+
+    pub fn is_primary(&self) -> bool {
+        match self {
+            Self::Property(idx) => idx.is_primary(),
+            Self::Instance(idx) => idx.is_primary(),
+            Self::Address(idx) => idx.is_primary(),
+            Self::Replicaset(idx) => idx.is_primary(),
+            Self::Migration(idx) => idx.is_primary(),
+        }
+    }
+}
+
+impl From<ClusterwideSpace> for ClusterwideSpaceIndex {
+    fn from(space: ClusterwideSpace) -> Self {
+        match space {
+            ClusterwideSpace::Property => Self::Property(Properties::primary_index()),
+            ClusterwideSpace::Instance => Self::Instance(Instances::primary_index()),
+            ClusterwideSpace::Address => Self::Address(PeerAddresses::primary_index()),
+            ClusterwideSpace::Replicaset => Self::Replicaset(Replicasets::primary_index()),
+            ClusterwideSpace::Migration => Self::Migration(Migrations::primary_index()),
+        }
+    }
+}
+
+impl std::fmt::Display for ClusterwideSpaceIndex {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.is_primary() {
+            write!(f, "{}", self.space())
+        } else {
+            write!(f, "{}.index.{}", self.space(), self.index_name())
+        }
+    }
+}
+
+pub trait TClusterwideSpaceIndex {
+    fn primary() -> Self;
+    fn is_primary(&self) -> bool;
+}
+
+macro_rules! define_clusterwide_space_struct {
+    (
+        $space_name:path;
+
+        $(#[$space_meta:meta])*
+        pub struct $space:ident {
+            $(
+                $(#[$field_meta:meta])*
+                $field:ident : $field_ty:ty,
+            )+
+        }
+
+        $(#[$index_meta:meta])*
+        pub enum $index:ident {
+            #[primary]
+            $primary_index_var:ident = $primary_index_name:expr,
+            $( $index_var:ident = $index_name:expr, )*
+        }
+    ) => {
+        $(#[$space_meta])*
+        pub struct $space {
+            $( $(#[$field_meta])* $field: $field_ty,)+
+        }
+
+        ::tarantool::define_str_enum! {
+            $(#[$index_meta])*
+            pub enum $index {
+                $primary_index_var = $primary_index_name,
+                $( $index_var = $index_name, )*
+            }
+        }
+
+        impl TClusterwideSpace for $space {
+            type Index = $index;
+            const SPACE_NAME: &'static str = $space_name.as_str();
+        }
+
+        impl TClusterwideSpaceIndex for IndexOf<$space> {
+            #[inline(always)]
+            fn primary() -> Self {
+                Self::$primary_index_var
+            }
+
+            #[inline(always)]
+            fn is_primary(&self) -> bool {
+                matches!(self, Self::$primary_index_var)
+            }
+        }
     }
 }
 
@@ -107,16 +260,23 @@ impl Clusterwide {
 // Properties
 ////////////////////////////////////////////////////////////////////////////////
 
-/// A struct for accessing storage of the cluster-wide key-value properties
-#[derive(Clone, Debug)]
-pub struct Properties {
-    space: Space,
+define_clusterwide_space_struct! {
+    ClusterwideSpace::Property;
+
+    /// A struct for accessing storage of the cluster-wide key-value properties
+    #[derive(Clone, Debug)]
+    pub struct Properties {
+        space: Space,
+    }
+
+    /// An enumeration of indexes defined for property space.
+    pub enum SpacePropertyIndex {
+        #[primary]
+        Key = "key",
+    }
 }
 
 impl Properties {
-    const SPACE_NAME: &'static str = ClusterwideSpace::Property.as_str();
-    const INDEX_PRIMARY: &'static str = "pk";
-
     pub fn new() -> tarantool::Result<Self> {
         let space = Space::builder(Self::SPACE_NAME)
             .is_local(true)
@@ -127,7 +287,7 @@ impl Properties {
             .create()?;
 
         space
-            .index_builder(Self::INDEX_PRIMARY)
+            .index_builder(Self::primary_index().as_str())
             .unique(true)
             .part("key")
             .if_not_exists(true)
@@ -182,16 +342,24 @@ impl Properties {
 // Replicasets
 ////////////////////////////////////////////////////////////////////////////////
 
-/// A struct for accessing replicaset info from storage
-#[derive(Clone, Debug)]
-pub struct Replicasets {
-    space: Space,
+define_clusterwide_space_struct! {
+    ClusterwideSpace::Replicaset;
+
+    /// A struct for accessing replicaset info from storage
+    #[derive(Clone, Debug)]
+    pub struct Replicasets {
+        space: Space,
+    }
+
+
+    /// An enumeration of indexes defined for replicaset space.
+    pub enum SpaceReplicasetIndex {
+        #[primary]
+        ReplicasetId = "replicaset_id",
+    }
 }
 
 impl Replicasets {
-    const SPACE_NAME: &'static str = ClusterwideSpace::Replicaset.as_str();
-    const INDEX_PRIMARY: &'static str = "pk";
-
     pub fn new() -> tarantool::Result<Self> {
         let space = Space::builder(Self::SPACE_NAME)
             .is_local(true)
@@ -201,7 +369,7 @@ impl Replicasets {
             .create()?;
 
         space
-            .index_builder(Self::INDEX_PRIMARY)
+            .index_builder(Self::primary_index().as_str())
             .unique(true)
             .part("replicaset_id")
             .if_not_exists(true)
@@ -233,18 +401,23 @@ impl ToEntryIter for Replicasets {
 // PeerAddresses
 ////////////////////////////////////////////////////////////////////////////////
 
-/// A struct for accessing storage of peer addresses.
-#[derive(Clone, Debug)]
-pub struct PeerAddresses {
-    space: Space,
-    #[allow(dead_code)]
-    index_raft_id: Index,
+define_clusterwide_space_struct! {
+    ClusterwideSpace::Address;
+
+    /// A struct for accessing storage of peer addresses.
+    #[derive(Clone, Debug)]
+    pub struct PeerAddresses {
+        space: Space,
+    }
+
+    /// An enumeration of indexes defined for peer address space.
+    pub enum SpacePeerAddressIndex {
+        #[primary]
+        RaftId = "raft_id",
+    }
 }
 
 impl PeerAddresses {
-    const SPACE_NAME: &'static str = ClusterwideSpace::Address.as_str();
-    const INDEX_RAFT_ID: &'static str = "raft_id";
-
     pub fn new() -> tarantool::Result<Self> {
         let space_instances = Space::builder(Self::SPACE_NAME)
             .is_local(true)
@@ -254,8 +427,8 @@ impl PeerAddresses {
             .if_not_exists(true)
             .create()?;
 
-        let index_raft_id = space_instances
-            .index_builder(Self::INDEX_RAFT_ID)
+        space_instances
+            .index_builder(Self::primary_index().as_str())
             .unique(true)
             .part("raft_id")
             .if_not_exists(true)
@@ -263,7 +436,6 @@ impl PeerAddresses {
 
         Ok(Self {
             space: space_instances,
-            index_raft_id,
         })
     }
 
@@ -306,21 +478,29 @@ impl ToEntryIter for PeerAddresses {
 // Instance
 ////////////////////////////////////////////////////////////////////////////////
 
-/// A struct for accessing storage of all the cluster instances.
-#[derive(Clone, Debug)]
-pub struct Instances {
-    space: Space,
-    index_instance_id: Index,
-    index_raft_id: Index,
-    index_replicaset_id: Index,
+define_clusterwide_space_struct! {
+    ClusterwideSpace::Instance;
+
+    /// A struct for accessing storage of all the cluster instances.
+    #[derive(Clone, Debug)]
+    pub struct Instances {
+        space: Space,
+        index_instance_id: Index,
+        index_raft_id: Index,
+        index_replicaset_id: Index,
+    }
+
+    /// An enumeration of indexes defined for instance space.
+    #[allow(clippy::enum_variant_names)]
+    pub enum SpaceInstanceIndex {
+        #[primary]
+        InstanceId = "instance_id",
+        RaftId = "raft_id",
+        ReplicasetId = "replicaset_id",
+    }
 }
 
 impl Instances {
-    const SPACE_NAME: &'static str = ClusterwideSpace::Instance.as_str();
-    const INDEX_INSTANCE_ID: &'static str = "instance_id";
-    const INDEX_RAFT_ID: &'static str = "raft_id";
-    const INDEX_REPLICASET_ID: &'static str = "replicaset_id";
-
     pub fn new() -> tarantool::Result<Self> {
         let space_instances = Space::builder(Self::SPACE_NAME)
             .is_local(true)
@@ -330,21 +510,21 @@ impl Instances {
             .create()?;
 
         let index_instance_id = space_instances
-            .index_builder(Self::INDEX_INSTANCE_ID)
+            .index_builder(IndexOf::<Self>::InstanceId.as_str())
             .unique(true)
             .part(instance_field::InstanceId)
             .if_not_exists(true)
             .create()?;
 
         let index_raft_id = space_instances
-            .index_builder(Self::INDEX_RAFT_ID)
+            .index_builder(IndexOf::<Self>::RaftId.as_str())
             .unique(true)
             .part(instance_field::RaftId)
             .if_not_exists(true)
             .create()?;
 
         let index_replicaset_id = space_instances
-            .index_builder(Self::INDEX_REPLICASET_ID)
+            .index_builder(IndexOf::<Self>::ReplicasetId.as_str())
             .unique(false)
             .part(instance_field::ReplicasetId)
             .if_not_exists(true)
@@ -641,15 +821,22 @@ where
 // Migrations
 ////////////////////////////////////////////////////////////////////////////////
 
-#[derive(Clone, Debug)]
-pub struct Migrations {
-    space: Space,
+define_clusterwide_space_struct! {
+    ClusterwideSpace::Migration;
+
+    #[derive(Clone, Debug)]
+    pub struct Migrations {
+        space: Space,
+    }
+
+    /// An enumeration of indexes defined for migration space.
+    pub enum SpaceMigrationIndex {
+        #[primary]
+        Id = "id",
+    }
 }
 
 impl Migrations {
-    const SPACE_NAME: &'static str = ClusterwideSpace::Migration.as_str();
-    const INDEX_PRIMARY: &'static str = "pk";
-
     pub fn new() -> tarantool::Result<Self> {
         let space = Space::builder(Self::SPACE_NAME)
             .is_local(true)
@@ -660,7 +847,7 @@ impl Migrations {
             .create()?;
 
         space
-            .index_builder(Self::INDEX_PRIMARY)
+            .index_builder(Self::primary_index().as_str())
             .unique(true)
             .part("id")
             .if_not_exists(true)

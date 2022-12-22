@@ -12,7 +12,7 @@ use crate::kvcell::KVCell;
 use crate::loop_start;
 use crate::r#loop::FlowControl;
 use crate::storage::ToEntryIter as _;
-use crate::storage::{Clusterwide, ClusterwideSpace, PropertyName};
+use crate::storage::{Clusterwide, ClusterwideSpace, ClusterwideSpaceIndex, PropertyName};
 use crate::stringify_cfunc;
 use crate::tlog;
 use crate::traft;
@@ -106,6 +106,9 @@ impl Status {
     }
 }
 
+type StorageWatchers = HashMap<ClusterwideSpaceIndex, watch::Sender<()>>;
+type StorageChanges = HashSet<ClusterwideSpaceIndex>;
+
 /// The heart of `traft` module - the Node.
 pub struct Node {
     /// RaftId of the Node.
@@ -122,6 +125,7 @@ pub struct Node {
     main_loop: MainLoop,
     pub(crate) governor_loop: governor::Loop,
     status: watch::Receiver<Status>,
+    watchers: Rc<Mutex<StorageWatchers>>,
 }
 
 impl std::fmt::Debug for Node {
@@ -142,10 +146,11 @@ impl Node {
         let status = node_impl.status.subscribe();
 
         let node_impl = Rc::new(Mutex::new(node_impl));
+        let watchers = Rc::new(Mutex::new(HashMap::new()));
 
         let node = Node {
             raft_id,
-            main_loop: MainLoop::start(node_impl.clone()), // yields
+            main_loop: MainLoop::start(node_impl.clone(), watchers.clone()), // yields
             governor_loop: governor::Loop::start(
                 status.clone(),
                 storage.clone(),
@@ -155,6 +160,7 @@ impl Node {
             storage,
             raft_storage,
             status,
+            watchers,
         };
 
         // Wait for the node to enter the main loop
@@ -310,6 +316,30 @@ impl Node {
     #[inline]
     pub fn all_traft_entries(&self) -> ::tarantool::Result<Vec<traft::Entry>> {
         self.raft_storage.all_traft_entries()
+    }
+
+    /// Returns a watch which will be notified when a clusterwide space is
+    /// modified via the specified `index`.
+    ///
+    /// You can also pass a [`ClusterwideSpace`] in which case the space's
+    /// primary index will be used.
+    #[inline(always)]
+    pub fn storage_watcher(&self, index: impl Into<ClusterwideSpaceIndex>) -> watch::Receiver<()> {
+        self.storage_watcher_impl(index.into())
+    }
+
+    /// A non generic version for optimization.
+    fn storage_watcher_impl(&self, index: ClusterwideSpaceIndex) -> watch::Receiver<()> {
+        use std::collections::hash_map::Entry;
+        let mut watchers = self.watchers.lock();
+        match watchers.entry(index) {
+            Entry::Vacant(entry) => {
+                let (tx, rx) = watch::channel(());
+                entry.insert(tx);
+                rx
+            }
+            Entry::Occupied(entry) => entry.get().subscribe(),
+        }
     }
 }
 
@@ -604,6 +634,7 @@ impl NodeImpl {
         entries: &[raft::Entry],
         wake_governor: &mut bool,
         expelled: &mut bool,
+        storage_changes: &mut StorageChanges,
     ) {
         for entry in entries {
             let entry = match traft::Entry::try_from(entry) {
@@ -615,9 +646,12 @@ impl NodeImpl {
             };
 
             match entry.entry_type {
-                raft::EntryType::EntryNormal => {
-                    self.handle_committed_normal_entry(entry, wake_governor, expelled)
-                }
+                raft::EntryType::EntryNormal => self.handle_committed_normal_entry(
+                    entry,
+                    wake_governor,
+                    expelled,
+                    storage_changes,
+                ),
                 raft::EntryType::EntryConfChange | raft::EntryType::EntryConfChangeV2 => {
                     self.handle_committed_conf_change(entry)
                 }
@@ -643,6 +677,7 @@ impl NodeImpl {
         entry: traft::Entry,
         wake_governor: &mut bool,
         expelled: &mut bool,
+        storage_changes: &mut StorageChanges,
     ) {
         assert_eq!(entry.entry_type, raft::EntryType::EntryNormal);
         let lc = entry.lc();
@@ -652,18 +687,20 @@ impl NodeImpl {
         match &op {
             Op::PersistInstance(PersistInstance(instance)) => {
                 *wake_governor = true;
+                storage_changes.insert(ClusterwideSpace::Instance.into());
                 if has_grades!(instance, Expelled -> *) && instance.raft_id == self.raft_id() {
                     // cannot exit during a transaction
                     *expelled = true;
                 }
             }
-            Op::Dml(op)
+            Op::Dml(op) => {
                 if matches!(
                     op.space(),
                     ClusterwideSpace::Property | ClusterwideSpace::Replicaset
-                ) =>
-            {
-                *wake_governor = true;
+                ) {
+                    *wake_governor = true;
+                }
+                storage_changes.insert(op.index());
             }
             _ => {}
         }
@@ -788,7 +825,12 @@ impl NodeImpl {
     /// - or better <https://github.com/etcd-io/etcd/blob/v3.5.5/raft/node.go#L49>
     ///
     /// This function yields.
-    fn advance(&mut self, wake_governor: &mut bool, expelled: &mut bool) {
+    fn advance(
+        &mut self,
+        wake_governor: &mut bool,
+        expelled: &mut bool,
+        storage_changes: &mut StorageChanges,
+    ) {
         // Get the `Ready` with `RawNode::ready` interface.
         if !self.raw_node.has_ready() {
             return;
@@ -820,7 +862,12 @@ impl NodeImpl {
 
         if let Err(e) = start_transaction(|| -> Result<(), TransactionError> {
             // Apply committed entries.
-            self.handle_committed_entries(ready.committed_entries(), wake_governor, expelled);
+            self.handle_committed_entries(
+                ready.committed_entries(),
+                wake_governor,
+                expelled,
+                storage_changes,
+            );
 
             // Persist uncommitted entries in the raft log.
             self.raft_storage.persist_entries(ready.entries()).unwrap();
@@ -857,7 +904,12 @@ impl NodeImpl {
             }
 
             // Apply committed entries.
-            self.handle_committed_entries(light_rd.committed_entries(), wake_governor, expelled);
+            self.handle_committed_entries(
+                light_rd.committed_entries(),
+                wake_governor,
+                expelled,
+                storage_changes,
+            );
 
             Ok(())
         }) {
@@ -904,12 +956,13 @@ struct MainLoopState {
     next_tick: Instant,
     loop_waker: watch::Receiver<()>,
     stop_flag: Rc<Cell<bool>>,
+    watchers: Rc<Mutex<StorageWatchers>>,
 }
 
 impl MainLoop {
     pub const TICK: Duration = Duration::from_millis(100);
 
-    fn start(node_impl: Rc<Mutex<NodeImpl>>) -> Self {
+    fn start(node_impl: Rc<Mutex<NodeImpl>>, watchers: Rc<Mutex<StorageWatchers>>) -> Self {
         let (loop_waker_tx, loop_waker_rx) = watch::channel(());
         let stop_flag: Rc<Cell<bool>> = Default::default();
 
@@ -918,6 +971,7 @@ impl MainLoop {
             next_tick: Instant::now(),
             loop_waker: loop_waker_rx,
             stop_flag: stop_flag.clone(),
+            watchers,
         };
 
         Self {
@@ -953,9 +1007,24 @@ impl MainLoop {
 
         let mut wake_governor = false;
         let mut expelled = false;
-        node_impl.advance(&mut wake_governor, &mut expelled); // yields
+        let mut storage_changes = StorageChanges::new();
+        node_impl.advance(&mut wake_governor, &mut expelled, &mut storage_changes); // yields
+        drop(node_impl);
         if state.stop_flag.take() {
             return FlowControl::Break;
+        }
+
+        {
+            // node_impl lock must be dropped before this to avoid deadlocking
+            let mut watchers = state.watchers.lock();
+            for index in storage_changes {
+                if let Some(tx) = watchers.get(&index) {
+                    let res = tx.send(());
+                    if res.is_err() {
+                        watchers.remove(&index);
+                    }
+                }
+            }
         }
 
         if expelled {

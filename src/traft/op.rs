@@ -1,6 +1,6 @@
 use crate::instance::Instance;
 use crate::storage;
-use crate::storage::ClusterwideSpace;
+use crate::storage::{ClusterwideSpace, ClusterwideSpaceIndex};
 use crate::util::AnyWithTypeName;
 use ::tarantool::tlua::LuaError;
 use ::tarantool::tuple::{ToTupleBuffer, Tuple, TupleBuffer};
@@ -55,13 +55,13 @@ impl std::fmt::Display for Op {
             Self::Dml(Dml::Replace { space, tuple }) => {
                 write!(f, "Replace({space}, {})", DisplayAsJson(tuple))
             }
-            Self::Dml(Dml::Update { space, key, ops }) => {
+            Self::Dml(Dml::Update { index, key, ops }) => {
                 let key = DisplayAsJson(key);
                 let ops = DisplayAsJson(&**ops);
-                write!(f, "Update({space}, {key}, {ops})")
+                write!(f, "Update({index}, {key}, {ops})")
             }
-            Self::Dml(Dml::Delete { space, key }) => {
-                write!(f, "Delete({space}, {})", DisplayAsJson(key))
+            Self::Dml(Dml::Delete { index, key }) => {
+                write!(f, "Delete({index}, {})", DisplayAsJson(key))
             }
         };
 
@@ -207,14 +207,14 @@ pub enum Dml {
         tuple: TupleBuffer,
     },
     Update {
-        space: ClusterwideSpace,
+        index: ClusterwideSpaceIndex,
         #[serde(with = "serde_bytes")]
         key: TupleBuffer,
         #[serde(with = "vec_of_raw_byte_buf")]
         ops: Vec<TupleBuffer>,
     },
     Delete {
-        space: ClusterwideSpace,
+        index: ClusterwideSpaceIndex,
         #[serde(with = "serde_bytes")]
         key: TupleBuffer,
     },
@@ -226,8 +226,8 @@ impl OpResult for Dml {
         match self {
             Self::Insert { space, tuple } => space.insert(&tuple).map(Some),
             Self::Replace { space, tuple } => space.replace(&tuple).map(Some),
-            Self::Update { space, key, ops } => space.update(&key, &ops),
-            Self::Delete { space, key } => space.delete(&key),
+            Self::Update { index, key, ops } => index.update(&key, &ops),
+            Self::Delete { index, key } => index.delete(&key),
         }
     }
 }
@@ -240,6 +240,7 @@ impl From<Dml> for Op {
 
 impl Dml {
     /// Serializes `tuple` and returns an [`Dml::Insert`] in case of success.
+    #[inline(always)]
     pub fn insert(space: ClusterwideSpace, tuple: &impl ToTupleBuffer) -> tarantool::Result<Self> {
         let res = Self::Insert {
             space,
@@ -249,6 +250,7 @@ impl Dml {
     }
 
     /// Serializes `tuple` and returns an [`Dml::Replace`] in case of success.
+    #[inline(always)]
     pub fn replace(space: ClusterwideSpace, tuple: &impl ToTupleBuffer) -> tarantool::Result<Self> {
         let res = Self::Replace {
             space,
@@ -258,13 +260,14 @@ impl Dml {
     }
 
     /// Serializes `key` and returns an [`Dml::Update`] in case of success.
+    #[inline(always)]
     pub fn update(
-        space: ClusterwideSpace,
+        index: impl Into<ClusterwideSpaceIndex>,
         key: &impl ToTupleBuffer,
         ops: impl Into<Vec<TupleBuffer>>,
     ) -> tarantool::Result<Self> {
         let res = Self::Update {
-            space,
+            index: index.into(),
             key: key.to_tuple_buffer()?,
             ops: ops.into(),
         };
@@ -272,21 +275,35 @@ impl Dml {
     }
 
     /// Serializes `key` and returns an [`Dml::Delete`] in case of success.
-    pub fn delete(space: ClusterwideSpace, key: &impl ToTupleBuffer) -> tarantool::Result<Self> {
+    #[inline(always)]
+    pub fn delete(
+        index: impl Into<ClusterwideSpaceIndex>,
+        key: &impl ToTupleBuffer,
+    ) -> tarantool::Result<Self> {
         let res = Self::Delete {
-            space,
+            index: index.into(),
             key: key.to_tuple_buffer()?,
         };
         Ok(res)
     }
 
     #[rustfmt::skip]
-    pub fn space(&self) -> &ClusterwideSpace {
+    pub fn space(&self) -> ClusterwideSpace {
         match &self {
-            Self::Insert { space, .. } => space,
-            Self::Replace { space, .. } => space,
-            Self::Update { space, .. } => space,
-            Self::Delete { space, .. } => space,
+            Self::Insert { space, .. } => *space,
+            Self::Replace { space, .. } => *space,
+            Self::Update { index, .. } => index.space(),
+            Self::Delete { index, .. } => index.space(),
+        }
+    }
+
+    #[rustfmt::skip]
+    pub fn index(&self) -> ClusterwideSpaceIndex {
+        match &self {
+            Self::Insert { space, .. } => (*space).into(),
+            Self::Replace { space, .. } => (*space).into(),
+            Self::Update { index, .. } => *index,
+            Self::Delete { index, .. } => *index,
         }
     }
 }

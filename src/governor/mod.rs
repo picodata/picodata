@@ -495,14 +495,6 @@ impl Loop {
     pub fn wakeup(&self) -> Result<()> {
         self.waker.send(()).map_err(|_| Error::GovernorStopped)
     }
-
-    pub async fn awoken(&self) -> Result<()> {
-        self.waker
-            .subscribe()
-            .changed()
-            .await
-            .map_err(|_| Error::GovernorStopped)
-    }
 }
 
 pub struct Loop {
