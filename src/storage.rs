@@ -60,6 +60,8 @@ macro_rules! define_clusterwide_spaces {
             }
         }
 
+        $( const _: $crate::util::CheckIsSameType<$_cw_struct, $cw_struct> = (); )+
+
         $(#[$cw_index_meta])*
         #[derive(Copy, Clone, Debug, serde::Serialize, serde::Deserialize, PartialEq, Eq, Hash)]
         pub enum $cw_index {

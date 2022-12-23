@@ -421,6 +421,20 @@ where
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+/// IsSameType
+
+pub trait IsSameType<L, R> {
+    type Void;
+}
+
+impl<T> IsSameType<T, T> for T {
+    type Void = ();
+}
+
+#[allow(unused)]
+pub type CheckIsSameType<L, R> = <L as IsSameType<L, R>>::Void;
+
+////////////////////////////////////////////////////////////////////////////////
 /// tests
 #[cfg(test)]
 mod tests {
