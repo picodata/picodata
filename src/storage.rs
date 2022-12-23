@@ -13,17 +13,20 @@ use crate::traft::Result;
 
 use std::marker::PhantomData;
 
-////////////////////////////////////////////////////////////////////////////////
-// ClusterwideSpace
-////////////////////////////////////////////////////////////////////////////////
-
 macro_rules! define_clusterwide_spaces {
     (
+        $(#[$cw_struct_meta:meta])*
+        pub struct $cw_struct:ident {
+            pub #space_name_lower: #space_name_upper,
+        }
+
         $(#[$cw_space_meta:meta])*
         pub enum $cw_space:ident {
             $(
                 $(#[$cw_field_meta:meta])*
                 $cw_space_var:ident = $cw_space_name:expr => {
+                    $_cw_struct:ident :: $cw_field:ident;
+
                     $(#[$space_meta:meta])*
                     pub struct $space:ident {
                         $(
@@ -95,8 +98,21 @@ macro_rules! define_clusterwide_spaces {
             }
         }
 
+        $(#[$cw_struct_meta])*
+        #[derive(Clone, Debug)]
+        pub struct $cw_struct {
+            $( pub $cw_field: $space, )+
+        }
+
+        impl $cw_struct {
+            pub fn new() -> tarantool::Result<Self> {
+                Ok(Self { $( $cw_field: $space::new()?, )+ })
+            }
+        }
+
         $(
             $(#[$space_meta])*
+            #[derive(Clone, Debug)]
             pub struct $space {
                 $( $(#[$field_meta])* $field: $field_ty,)+
             }
@@ -129,12 +145,21 @@ macro_rules! define_clusterwide_spaces {
     }
 }
 
+////////////////////////////////////////////////////////////////////////////////
+// Clusterwide
+////////////////////////////////////////////////////////////////////////////////
+
 define_clusterwide_spaces! {
+    pub struct Clusterwide {
+        pub #space_name_lower: #space_name_upper,
+    }
+
     /// An enumeration of builtin cluster-wide spaces
     pub enum ClusterwideSpace {
         Instance = "_picodata_instance" => {
+            Clusterwide::instances;
+
             /// A struct for accessing storage of all the cluster instances.
-            #[derive(Clone, Debug)]
             pub struct Instances {
                 space: Space,
                 index_instance_id: Index,
@@ -152,8 +177,9 @@ define_clusterwide_spaces! {
             }
         }
         Address = "_picodata_peer_address" => {
+            Clusterwide::peer_addresses;
+
             /// A struct for accessing storage of peer addresses.
-            #[derive(Clone, Debug)]
             pub struct PeerAddresses {
                 space: Space,
             }
@@ -165,8 +191,9 @@ define_clusterwide_spaces! {
             }
         }
         Property = "_picodata_property" => {
+            Clusterwide::properties;
+
             /// A struct for accessing storage of the cluster-wide key-value properties
-            #[derive(Clone, Debug)]
             pub struct Properties {
                 space: Space,
             }
@@ -178,8 +205,9 @@ define_clusterwide_spaces! {
             }
         }
         Replicaset = "_picodata_replicaset" => {
+            Clusterwide::replicasets;
+
             /// A struct for accessing replicaset info from storage
-            #[derive(Clone, Debug)]
             pub struct Replicasets {
                 space: Space,
             }
@@ -191,7 +219,8 @@ define_clusterwide_spaces! {
             }
         }
         Migration = "_picodata_migration" => {
-            #[derive(Clone, Debug)]
+            Clusterwide::migrations;
+
             pub struct Migrations {
                 space: Space,
             }
@@ -209,6 +238,10 @@ define_clusterwide_spaces! {
         #space_name(IndexOf<#space_struct_name>),
     }
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// ClusterwideSpace
+////////////////////////////////////////////////////////////////////////////////
 
 impl ClusterwideSpace {
     #[inline]
@@ -307,31 +340,6 @@ pub trait TClusterwideSpaceIndex {
         ReplicationFactor = "replication_factor",
         VshardBootstrapped = "vshard_bootstrapped",
         DesiredSchemaVersion = "desired_schema_version",
-    }
-}
-
-////////////////////////////////////////////////////////////////////////////////
-// Storage
-////////////////////////////////////////////////////////////////////////////////
-
-#[derive(Clone, Debug)]
-pub struct Clusterwide {
-    pub properties: Properties,
-    pub instances: Instances,
-    pub peer_addresses: PeerAddresses,
-    pub replicasets: Replicasets,
-    pub migrations: Migrations,
-}
-
-impl Clusterwide {
-    pub fn new() -> tarantool::Result<Self> {
-        Ok(Self {
-            properties: Properties::new()?,
-            instances: Instances::new()?,
-            peer_addresses: PeerAddresses::new()?,
-            replicasets: Replicasets::new()?,
-            migrations: Migrations::new()?,
-        })
     }
 }
 
