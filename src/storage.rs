@@ -113,8 +113,28 @@ macro_rules! define_clusterwide_spaces {
         }
 
         impl $cw_struct {
+            #[inline(always)]
             pub fn new() -> tarantool::Result<Self> {
                 Ok(Self { $( $cw_field: $space::new()?, )+ })
+            }
+
+            #[inline(always)]
+            fn space(&self, space: $cw_space) -> &Space {
+                match space.into() {
+                    $( $cw_index::$cw_space_var(_) => &self.$cw_field.space, )+
+                }
+            }
+
+            #[inline(always)]
+            fn index(&self, index: impl Into<$cw_index>) -> &Index {
+                match index.into() {
+                    $(
+                        $cw_index::$cw_space_var(idx) => match idx {
+                            $index_of::<$space>::$index_var_pk => &self.$cw_field.$index_field_pk,
+                            $( $index_of::<$space>::$index_var => &self.$cw_field.$index_field, )*
+                        }
+                    )+
+                }
             }
         }
 
@@ -135,6 +155,12 @@ macro_rules! define_clusterwide_spaces {
                 pub enum $index {
                     $index_var_pk = $index_name_pk,
                     $( $index_var = $index_name, )*
+                }
+            }
+
+            impl From<$index> for $cw_index {
+                fn from(index: $index) -> Self {
+                    Self::$cw_space_var(index)
                 }
             }
 
@@ -958,8 +984,7 @@ inventory::submit!(crate::InnerTest {
         use crate::instance::InstanceId;
         use crate::failure_domain::FailureDomain;
 
-        let storage_instances = Instances::new().unwrap();
-        let space_instances = storage_instances.space.clone();
+        let storage = Clusterwide::new().unwrap();
         let storage_peer_addresses = PeerAddresses::new().unwrap();
         let space_peer_addresses = storage_peer_addresses.space.clone();
 
@@ -975,19 +1000,19 @@ inventory::submit!(crate::InnerTest {
             // r3
             ("i5", "i5-uuid", 5u64, "r3", "r3-uuid", (CGV::Online, 0), (TGV::Online, 0), &faildom,),
         ] {
-            space_instances.put(&instance).unwrap();
+            storage.space(ClusterwideSpace::Instance).put(&instance).unwrap();
             let (_, _, raft_id, ..) = instance;
             space_peer_addresses.put(&(raft_id, format!("addr:{raft_id}"))).unwrap();
         }
 
-        let instance = storage_instances.all_instances().unwrap();
+        let instance = storage.instances.all_instances().unwrap();
         assert_eq!(
             instance.iter().map(|p| &p.instance_id).collect::<Vec<_>>(),
             vec!["i1", "i2", "i3", "i4", "i5"]
         );
 
         assert_err!(
-            storage_instances.put(&Instance {
+            storage.instances.put(&Instance {
                 raft_id: 1,
                 instance_id: "i99".into(),
                 ..Instance::default()
@@ -1019,29 +1044,29 @@ inventory::submit!(crate::InnerTest {
 
         {
             // Check accessing instances by 'raft_id'
-            assert_eq!(storage_instances.get(&1).unwrap().instance_id, "i1");
-            assert_eq!(storage_instances.get(&2).unwrap().instance_id, "i2");
-            assert_eq!(storage_instances.get(&3).unwrap().instance_id, "i3");
-            assert_eq!(storage_instances.get(&4).unwrap().instance_id, "i4");
-            assert_eq!(storage_instances.get(&5).unwrap().instance_id, "i5");
-            assert_err!(storage_instances.get(&6), "instance with id 6 not found");
+            assert_eq!(storage.instances.get(&1).unwrap().instance_id, "i1");
+            assert_eq!(storage.instances.get(&2).unwrap().instance_id, "i2");
+            assert_eq!(storage.instances.get(&3).unwrap().instance_id, "i3");
+            assert_eq!(storage.instances.get(&4).unwrap().instance_id, "i4");
+            assert_eq!(storage.instances.get(&5).unwrap().instance_id, "i5");
+            assert_err!(storage.instances.get(&6), "instance with id 6 not found");
         }
 
         {
             // Check accessing instances by 'instance_id'
-            assert_eq!(storage_instances.get(&InstanceId::from("i1")).unwrap().raft_id, 1);
-            assert_eq!(storage_instances.get(&InstanceId::from("i2")).unwrap().raft_id, 2);
-            assert_eq!(storage_instances.get(&InstanceId::from("i3")).unwrap().raft_id, 3);
-            assert_eq!(storage_instances.get(&InstanceId::from("i4")).unwrap().raft_id, 4);
-            assert_eq!(storage_instances.get(&InstanceId::from("i5")).unwrap().raft_id, 5);
+            assert_eq!(storage.instances.get(&InstanceId::from("i1")).unwrap().raft_id, 1);
+            assert_eq!(storage.instances.get(&InstanceId::from("i2")).unwrap().raft_id, 2);
+            assert_eq!(storage.instances.get(&InstanceId::from("i3")).unwrap().raft_id, 3);
+            assert_eq!(storage.instances.get(&InstanceId::from("i4")).unwrap().raft_id, 4);
+            assert_eq!(storage.instances.get(&InstanceId::from("i5")).unwrap().raft_id, 5);
             assert_err!(
-                storage_instances.get(&InstanceId::from("i6")),
+                storage.instances.get(&InstanceId::from("i6")),
                 "instance with id \"i6\" not found"
             );
         }
 
         let box_replication = |replicaset_id: &str| -> Vec<traft::Address> {
-            storage_instances.replicaset_instances(replicaset_id).unwrap()
+            storage.instances.replicaset_instances(replicaset_id).unwrap()
                 .map(|instance| storage_peer_addresses.try_get(instance.raft_id).unwrap())
                 .collect::<Vec<_>>()
         };
@@ -1053,43 +1078,44 @@ inventory::submit!(crate::InnerTest {
             assert_eq!(box_replication("r3"), ["addr:5"]);
         }
 
-        space_instances.index("raft_id").unwrap().drop().unwrap();
+        storage.index(IndexOf::<Instances>::RaftId).drop().unwrap();
 
         assert_err!(
-            storage_instances.get(&1),
+            storage.instances.get(&1),
             concat!(
                 "Tarantool error: NoSuchIndexID: No index #1 is defined",
                 " in space '_picodata_instance'",
             )
         );
 
-        space_instances.index("replicaset_id").unwrap().drop().unwrap();
+        storage.index(IndexOf::<Instances>::ReplicasetId).drop().unwrap();
 
         assert_err!(
-            storage_instances.replicaset_instances(""),
+            storage.instances.replicaset_instances(""),
             concat!(
                 "Tarantool error: NoSuchIndexID: No index #2 is defined",
                 " in space '_picodata_instance'",
             )
         );
 
-        space_instances.primary_key().drop().unwrap();
+        storage.index(IndexOf::<Instances>::InstanceId).drop().unwrap();
 
         assert_err!(
-            storage_instances.get(&InstanceId::from("i1")),
+            storage.instances.get(&InstanceId::from("i1")),
             concat!(
                 "Tarantool error: NoSuchIndexID: No index #0 is defined",
                 " in space '_picodata_instance'",
             )
         );
 
-        space_instances.drop().unwrap();
+        let space = storage.space(ClusterwideSpace::Instance);
+        space.drop().unwrap();
 
         assert_err!(
-            storage_instances.all_instances(),
+            storage.instances.all_instances(),
             format!(
                 "Tarantool error: NoSuchSpace: Space '{}' does not exist",
-                space_instances.id(),
+                space.id(),
             )
         );
     }
@@ -1115,5 +1141,40 @@ inventory::submit!(crate::InnerTest {
             Some(Migration {id: 3, body: "third".to_string()}),
             migrations.get_latest().unwrap()
         );
+    }
+});
+
+inventory::submit!(crate::InnerTest {
+    name: "clusterwide_space_index",
+    body: || {
+        let storage = Clusterwide::new().unwrap();
+
+        storage
+            .space(ClusterwideSpace::Address)
+            .insert(&(1, "foo"))
+            .unwrap();
+        storage
+            .space(ClusterwideSpace::Address)
+            .insert(&(2, "bar"))
+            .unwrap();
+
+        assert_eq!(storage.peer_addresses.get(1).unwrap().unwrap(), "foo");
+        assert_eq!(storage.peer_addresses.get(2).unwrap().unwrap(), "bar");
+
+        let inst = |raft_id, instance_id: &str| Instance {
+            raft_id,
+            instance_id: instance_id.into(),
+            ..Instance::default()
+        };
+        storage.instances.put(&inst(1, "bob")).unwrap();
+
+        let t = storage
+            .index(IndexOf::<Instances>::RaftId)
+            .get(&[1])
+            .unwrap()
+            .unwrap();
+        let i: Instance = t.decode().unwrap();
+        assert_eq!(i.raft_id, 1);
+        assert_eq!(i.instance_id, "bob");
     }
 });
