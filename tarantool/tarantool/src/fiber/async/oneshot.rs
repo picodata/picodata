@@ -25,12 +25,14 @@
 use super::RecvError;
 use std::{
     cell::Cell,
+    fmt::Debug,
     future::Future,
     pin::Pin,
     rc::{Rc, Weak},
     task::{Context, Poll, Waker},
 };
 
+#[derive(Debug)]
 enum State<T> {
     Pending(Option<Waker>),
     Ready(T),
@@ -52,6 +54,7 @@ impl<T> Default for State<T> {
 ///
 /// If the sender is dropped without sending, the receiver will fail with
 /// [`super::RecvError`]
+#[must_use = "futures do nothing unless you `.await` or poll them"]
 pub struct Receiver<T>(Rc<Cell<State<T>>>);
 
 /// Sends a value to the associated [`Receiver`].
@@ -87,6 +90,12 @@ impl<T> Future for Receiver<T> {
             State::Pending(_) => Poll::Ready(Err(RecvError)),
             State::Ready(t) => Poll::Ready(Ok(t)),
         }
+    }
+}
+
+impl<T> Debug for Receiver<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Receiver").finish_non_exhaustive()
     }
 }
 
@@ -130,6 +139,12 @@ impl<T> Sender<T> {
     /// If `true` is returned, a call to `send` will always result in an error.    
     pub fn is_closed(&self) -> bool {
         self.0.strong_count() == 0
+    }
+}
+
+impl<T> Debug for Sender<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Sender").finish_non_exhaustive()
     }
 }
 

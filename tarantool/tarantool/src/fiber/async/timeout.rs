@@ -18,6 +18,8 @@ use super::context::ContextExt;
 pub struct Expired;
 
 /// Future returned by [`timeout`](timeout).
+#[derive(Debug)]
+#[must_use = "futures do nothing unless you `.await` or poll them"]
 pub struct Timeout<F> {
     future: F,
     deadline: Instant,
@@ -173,7 +175,7 @@ mod tests {
         name: test_name!("timeout_duration_max"),
         f: || {
             // must not panic
-            timeout(Duration::MAX, async { 1 });
+            fiber::block_on(timeout(Duration::MAX, async { 1 })).unwrap();
         },
     };
 

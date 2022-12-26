@@ -49,11 +49,13 @@ use std::{
     task::{Context, Poll, Waker},
 };
 
+#[derive(Debug)]
 pub struct Value<T> {
     value: T,
     version: u64,
 }
 
+#[derive(Debug)]
 struct State<T> {
     value: RefCell<Value<T>>,
     // I would be better to use HashSet here,
@@ -87,6 +89,7 @@ pub struct SendError<T>(pub T);
 /// Sends values to the associated [`Receiver`](struct@Receiver).
 ///
 /// Instances are created by the [`channel`](fn@channel) function.
+#[derive(Debug)]
 pub struct Sender<T> {
     state: Rc<State<T>>,
 }
@@ -94,6 +97,7 @@ pub struct Sender<T> {
 /// Receives values from the associated [`Sender`](struct@Sender).
 ///
 /// Instances are created by the [`channel`](fn@channel) function.
+#[derive(Debug)]
 pub struct Receiver<T> {
     state: Rc<State<T>>,
     seen_version: u64,
@@ -209,6 +213,8 @@ impl<'a, T> Deref for ValueRef<'a, T> {
 }
 
 /// Future that returns when a new value is published in [`Sender`].
+#[derive(Debug)]
+#[must_use = "futures do nothing unless you `.await` or poll them"]
 pub struct Notification<'a, T> {
     rx: &'a mut Receiver<T>,
 }
