@@ -215,7 +215,6 @@ fn proc_discover<'a>(request: Request, request_to: Address) -> Result<Response, 
 
 #[cfg(test)]
 mod tests {
-    use itertools::Itertools;
     use std::collections::{BTreeMap, HashMap, HashSet};
 
     use super::*;
@@ -228,7 +227,7 @@ mod tests {
             instances.into_iter().map(|(k, v)| (k.into(), v)).collect();
         let mut done = HashMap::<Address, Role>::new();
         let len = instances.len();
-        let addrs = instances.keys().cloned().collect_vec();
+        let addrs = instances.keys().cloned().collect::<Vec<_>>();
         let mut pending_requests: HashMap<_, _> = addrs
             .iter()
             .cloned()
@@ -290,8 +289,9 @@ mod tests {
                 ("host3:3", Discovery::new("3", ["host1:1"])),
             ];
             let res = run(instances);
+            let first = res.values().next().unwrap().leader_address();
             assert!(
-                res.values().map(Role::leader_address).all_equal(),
+                res.values().map(Role::leader_address).all(|la| la == first),
                 "multiple leaders: {:#?}",
                 res
             );
@@ -307,8 +307,9 @@ mod tests {
                 ("host3:3", Discovery::new("3", ["host2:2"])),
             ];
             let res = run(instances);
+            let first = res.values().next().unwrap().leader_address();
             assert!(
-                res.values().map(Role::leader_address).all_equal(),
+                res.values().map(Role::leader_address).all(|la| la == first),
                 "multiple leaders: {:#?}",
                 res
             );
@@ -327,8 +328,9 @@ mod tests {
                 ("host3:3", Discovery::new("3", ["host3:3"])),
             ];
             let res = run(instances);
+            let first = res.values().next().unwrap().leader_address();
             assert!(
-                res.values().map(Role::leader_address).all_equal(),
+                res.values().map(Role::leader_address).all(|la| la == first),
                 "multiple leaders: {:#?}",
                 res
             );
