@@ -21,7 +21,6 @@ use std::fmt::{self, Display, Formatter};
 use std::io;
 use std::str::Utf8Error;
 
-use derivative::Derivative;
 use num_derive::{FromPrimitive, ToPrimitive};
 use num_traits::FromPrimitive;
 use rmp::decode::{MarkerReadError, NumValueReadError, ValueReadError};
@@ -178,13 +177,19 @@ impl From<TransactionError> for Error {
 }
 
 /// Settable by Tarantool error type
-#[derive(Derivative)]
-#[derivative(Debug)]
 pub struct TarantoolError {
     code: u32,
     message: String,
-    #[derivative(Debug = "ignore")]
     error_ptr: Box<ffi::BoxError>,
+}
+
+impl std::fmt::Debug for TarantoolError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.debug_struct("TarantoolError")
+            .field("code", &self.code)
+            .field("message", &self.message)
+            .finish_non_exhaustive()
+    }
 }
 
 impl TarantoolError {

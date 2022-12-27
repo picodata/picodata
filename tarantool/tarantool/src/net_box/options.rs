@@ -1,4 +1,4 @@
-use bitflags::_core::time::Duration;
+use std::time::Duration;
 
 use crate::error::Error;
 use crate::net_box::Conn;

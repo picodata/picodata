@@ -15,7 +15,6 @@ use std::rc::Rc;
 use std::time::Duration;
 
 use core::ptr::null_mut;
-use num_traits::Zero;
 
 use crate::error::{Error, TarantoolError};
 use crate::ffi::tarantool as ffi;
@@ -353,7 +352,7 @@ impl<T> Receiver<T> {
     /// Attempts to wait for a value on this receiver, returning `None` if the corresponding channel has hung up.
     pub fn recv(&self) -> Option<T> {
         if self.0.buffer.borrow().len() == 0 {
-            if self.0.tx_count.get().is_zero() {
+            if self.0.tx_count.get() == 0 {
                 return None;
             }
 
