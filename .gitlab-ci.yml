@@ -9,6 +9,8 @@ stages:
   - sign
   - deploy
   - test_rpm
+  - release
+  - docker
 
 workflow:
   # See https://docs.gitlab.com/ee/ci/jobs/job_control.html#avoid-duplicate-pipelines
@@ -392,3 +394,52 @@ test_redos:
       - yum install -y picodata
     needs:
       - deploy-job
+
+docker_build:
+  stage: docker
+  tags:
+    - shell
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      changes:
+        # implies compare_to HEAD~1
+        paths: &helm-changes-paths
+          - helm/**
+          - .gitlab-ci.yml
+    - if: $CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH
+      changes:
+        compare_to: master
+        paths: *helm-changes-paths
+    - when: never
+  variables:
+    GIT_DEPTH: 0
+    GIT_STRATEGY: fetch
+    GIT_SUBMODULE_STRATEGY: recursive
+  script:
+    # Build main k8s image
+    - docker build -t docker-public.binary.picodata.io/picodata:latest -f helm/picodata.Dockerfile .
+    # Build diagnostic image
+    - docker build -t docker-public.binary.picodata.io/picodata-diag:latest -f helm/picodata-diag.Dockerfile .
+
+docker_push:
+  stage: docker
+  tags:
+    - shell
+  # only:
+    # - web
+    # - tags
+  variables:
+    GIT_DEPTH: 0
+    GIT_STRATEGY: fetch
+    GIT_SUBMODULE_STRATEGY: recursive
+  before_script:
+    - mkdir -p $CI_PROJECT_DIR/.docker
+    - echo $DOCKER_AUTH_RW > $CI_PROJECT_DIR/.docker/config.json
+  script:
+    - rm -rf ~/.docker
+    # Push main k8s image
+    - docker build -t docker-public.binary.picodata.io/picodata:latest -f helm/picodata.Dockerfile .
+    - docker --config $CI_PROJECT_DIR push docker-public.binary.picodata.io/picodata:latest
+    # Push diagnostic image
+    - docker build -t docker-public.binary.picodata.io/picodata-diag:latest -f helm/picodata-diag.Dockerfile .
+    - docker --config $CI_PROJECT_DIR push docker-public.binary.picodata.io/picodata-diag:latest

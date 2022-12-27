@@ -1,0 +1,135 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "picodata.fullname" . }}-storage
+  namespace: {{ .Release.namespace | default "default" }}
+  labels:
+    app.kubernetes.io/name: {{ include "picodata.fullname" . }}-storage
+    app.kubernetes.io/cluster: {{ .Release.Name }}
+    app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+spec:
+  {{- if not .Values.storage.autoscaling.enabled }}
+  replicas: {{ .Values.storage.replicas }}
+  {{- end }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "picodata.fullname" . }}-storage
+  serviceName: {{ include "picodata.fullname" . }}-storage-interconnect
+  template:
+    metadata:
+      {{- with .Values.storage.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        app.kubernetes.io/name: {{ include "picodata.fullname" . }}-storage
+    spec:
+      {{- with .Values.storage.securityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "picodata.serviceAccountName" . }}
+      containers:
+        - name: {{ include "picodata.fullname" . }}-storage
+          image: {{ .Values.image.repository }}/{{ .Values.image.tag }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          {{- with .Values.imagePullSecrets }}
+          imagePullSecrets:
+            {{- toYaml . | nindent 8 }}
+          {{- end }}
+          ports:
+            {{- range $i, $value := .Values.storage.service.ports }}
+            - name: {{ $value.name }}
+              containerPort: {{ $value.targetPort }}
+              protocol: {{ $value.protocol }}
+            {{- end }}
+          env:
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: POD_PORT
+              value: {{ include "picodata.storage.binaryTargetPort" . | quote }}
+            - name: INSTANCE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: INSTANCE_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: INSTANCE_ROLE
+              value: {{ .Values.storage.role }}
+            - name: INSTANCE_GROUP
+              value: {{ .Values.storage.group }}
+            - name: PEER_URI
+              value: {{ include "picodata.peerUri" . }}
+            - name: ADVERTISE_URI
+              value: {{ include "picodata.storage.advertiseUri" . }}
+            - name: PICODATA_DATA_DIR
+              value: {{ .Values.storage.dataDir }}
+            {{- range .Values.storage.env }}
+            - name: {{ .name }}
+              value: {{ .value }}
+            {{- end }}
+          {{- with .Values.storage.livenessProbe }}
+          livenessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.storage.readinessProbe }}
+          readinessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.storage.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- if .Values.storage.volumes }}
+          volumeMounts:
+            {{- range .Values.storage.volumes }}
+            - name: {{ .name }}
+              mountPath: {{ .mountPath }}
+            {{- end }}
+          {{- end }}
+          dnsConfig:
+            searches:
+              - $(INSTANCE_NAME)
+      {{- with .Values.storage.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.storage.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.storage.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.storage.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+  {{- if .Values.storage.volumes }}
+  volumeClaimTemplates:
+    {{- range .Values.storage.volumes }}
+    - metadata:
+        name: {{ .name | default "pvc" }}
+        namespace: {{ $.Release.namespace | default "default" }}
+      spec:
+        {{- if .storageClassName }}
+        storageClassName: {{ .storageClassName }}
+        {{- end }}
+        {{- with .accessModes }}
+        accessModes:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        {{- if .volumeMode }}
+        volumeMode: {{ .volumeMode }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .size | default "1Gi" }}
+    {{- end }}
+  {{- end }}

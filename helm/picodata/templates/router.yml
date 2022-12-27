@@ -1,0 +1,105 @@
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "picodata.fullname" . }}-router
+  namespace: {{ .Release.namespace | default "default" }}
+  labels:
+    app.kubernetes.io/name: {{ include "picodata.fullname" . }}-router
+    app.kubernetes.io/cluster: {{ .Release.Name }}
+    app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+spec:
+  {{- if not .Values.router.autoscaling.enabled }}
+  replicas: {{ .Values.router.replicas }}
+  {{- end }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "picodata.fullname" . }}-router
+  serviceName: {{ include "picodata.fullname" . }}-router-interconnect
+  template:
+    metadata:
+      {{- with .Values.router.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        app.kubernetes.io/name: {{ include "picodata.fullname" . }}-router
+    spec:
+      {{- with .Values.storage.securityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "picodata.serviceAccountName" . }}
+      containers:
+        - name: {{ include "picodata.fullname" . }}-router
+          image: {{ .Values.image.repository }}/{{ .Values.image.tag }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          {{- with .Values.imagePullSecrets }}
+          imagePullSecrets:
+            {{- toYaml . | nindent 8 }}
+          {{- end }}
+          ports:
+            {{- range .Values.router.service.ports }}
+            - name: {{ .name }}
+              containerPort: {{ .targetPort }}
+              protocol: {{ .protocol }}
+            {{- end }}
+          env:
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: POD_PORT
+              value: {{ include "picodata.router.binaryTargetPort" . | quote }}
+            - name: INSTANCE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: INSTANCE_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: INSTANCE_ROLE
+              value: {{ .Values.router.role }}
+            - name: INSTANCE_GROUP
+              value: {{ .Values.router.group }}
+            - name: PEER_URI
+              value: {{ include "picodata.peerUri" . }}
+            - name: ADVERTISE_URI
+              value: {{ include "picodata.router.advertiseUri" . }}
+            {{- range  .Values.router.env }}
+            - name: {{ .name }}
+              value: {{ .value }}
+            {{- end }}
+          {{- with .Values.router.livenessProbe }}
+          livenessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.router.readinessProbe }}
+          readinessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.router.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          dnsConfig:
+            searches:
+              - $(INSTANCE_NAME)
+      {{- with .Values.router.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.router.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.router.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.router.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

@@ -1,0 +1,8 @@
+.DS_Store
+.git/
+.gitignore
+.rocks
+*.snap
+*.xlog
+__pycache__/
+tmp/

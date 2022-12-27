@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: "{{ include "picodata.fullname" . }}-test-connection"
+  labels:
+    {{- include "picodata.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": test
+spec:
+  containers:
+    - name: curl
+      image: busybox
+      command: ['curl']
+      args: ['{{ include "picodata.fullname" . }}:{{ include "picodata.router.httpTargetPort" . }}']
+  restartPolicy: Never

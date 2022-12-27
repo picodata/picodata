@@ -1,0 +1,33 @@
+{{- if .Values.router.autoscaling }}
+---
+apiVersion: autoscaling/v2beta1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "picodata.fullname" . }}-router-hpa
+  namespace: {{ .Release.namespace | default "default" }}
+  labels:
+    app.kubernetes.io/name: {{ include "picodata.fullname" . }}-router-hpa
+    app.kubernetes.io/cluster: {{ .Release.Name }}
+    app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: StatefulSet
+    name: {{ include "picodata.fullname" . }}-router
+  minReplicas: {{ .Values.router.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.router.autoscaling.maxReplicas }}
+  metrics:
+    {{- if .Values.router.autoscaling.targetCPUUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: cpu
+        targetAverageUtilization: {{ .Values.router.autoscaling.targetCPUUtilizationPercentage }}
+    {{- end }}
+    {{- if .Values.router.autoscaling.targetMemoryUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: memory
+        targetAverageUtilization: {{ .Values.router.autoscaling.targetMemoryUtilizationPercentage }}
+    {{- end }}
+{{- end }}
