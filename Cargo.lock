@@ -808,7 +808,6 @@ dependencies = [
  "futures",
  "indoc",
  "inventory",
- "lazy_static",
  "libc",
  "linkme",
  "nix 0.23.2",

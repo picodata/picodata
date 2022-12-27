@@ -372,25 +372,28 @@ pub trait ContextCoercion: Serialize + DeserializeOwned {
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-lazy_static::lazy_static! {
-    static ref NAMESPACE_INSTANCE_UUID: Uuid =
-        Uuid::new_v3(&Uuid::nil(), "INSTANCE_UUID".as_bytes());
-    static ref NAMESPACE_REPLICASET_UUID: Uuid =
-        Uuid::new_v3(&Uuid::nil(), "REPLICASET_UUID".as_bytes());
-}
 
 /// Generate UUID for an instance from `instance_id` (String).
 /// Use Version-3 (MD5) UUID.
 pub fn instance_uuid(instance_id: &str) -> String {
-    let uuid = Uuid::new_v3(&NAMESPACE_INSTANCE_UUID, instance_id.as_bytes());
+    static mut NAMESPACE_INSTANCE_UUID: Option<Uuid> = None;
+    let ns = unsafe { NAMESPACE_INSTANCE_UUID.get_or_insert_with(|| uuid_v3("INSTANCE_UUID")) };
+    let uuid = Uuid::new_v3(ns, instance_id.as_bytes());
     uuid.hyphenated().to_string()
 }
 
 /// Generate UUID for a replicaset from `replicaset_id` (String).
 /// Use Version-3 (MD5) UUID.
 pub fn replicaset_uuid(replicaset_id: &str) -> String {
-    let uuid = Uuid::new_v3(&NAMESPACE_REPLICASET_UUID, replicaset_id.as_bytes());
+    static mut NAMESPACE_REPLICASET_UUID: Option<Uuid> = None;
+    let ns = unsafe { NAMESPACE_REPLICASET_UUID.get_or_insert_with(|| uuid_v3("REPLICASET_UUID")) };
+    let uuid = Uuid::new_v3(ns, replicaset_id.as_bytes());
     uuid.hyphenated().to_string()
+}
+
+#[inline(always)]
+fn uuid_v3(name: &str) -> Uuid {
+    Uuid::new_v3(&Uuid::nil(), name.as_bytes())
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -22,7 +22,6 @@ thiserror = "1.0"
 indoc = "1.0"
 nix = "0.23.1"
 base64 = "0.13"
-lazy_static = "1.4"
 uuid = {version = "1.0", features = ["v3"]}
 linkme = "0.2.10"
 futures = "0.3.25"
