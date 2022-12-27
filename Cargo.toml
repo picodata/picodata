@@ -19,9 +19,7 @@ serde_bytes = "0.11"
 rmp-serde = "1.0"
 tempfile = "3"
 thiserror = "1.0"
-indoc = "1.0"
 nix = "0.23.1"
-base64 = "0.13"
 uuid = {version = "1.0", features = ["v3"]}
 linkme = "0.2.10"
 futures = "0.3.25"
@@ -40,9 +38,6 @@ version = "0.6"
 features = ["schema", "picodata"]
 
 [dev-dependencies]
-assert_cmd = "2.0"
-predicates = "2.0"
-tempfile = "3"
 rand = "0.8.5"
 pretty_assertions = "0.6.1"
 
