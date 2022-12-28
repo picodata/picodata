@@ -22,7 +22,7 @@ pub struct Expired;
 #[must_use = "futures do nothing unless you `.await` or poll them"]
 pub struct Timeout<F> {
     future: F,
-    deadline: Instant,
+    deadline: Option<Instant>,
 }
 
 /// Requires a `Future` to complete before the specified duration has elapsed.
@@ -48,15 +48,9 @@ pub struct Timeout<F> {
 /// ```
 #[inline]
 pub fn timeout<F: Future>(timeout: Duration, f: F) -> Timeout<F> {
-    let now = Instant::now();
-    let deadline = now.checked_add(timeout).unwrap_or_else(|| {
-        // Add 30 years for now, because this is what tokio does:
-        // https://github.com/tokio-rs/tokio/blob/22862739dddd49a94065aa7a917cde2dc8a3f6bc/tokio/src/time/instant.rs#L58-L62
-        now + Duration::from_secs(60 * 60 * 24 * 365 * 30)
-    });
     Timeout {
         future: f,
-        deadline,
+        deadline: Instant::now().checked_add(timeout),
     }
 }
 
@@ -75,15 +69,26 @@ impl<F: Future> Future for Timeout<F> {
 
         // First, try polling the future
         if let Poll::Ready(v) = self.pin_get_future().poll(cx) {
-            Poll::Ready(Ok(v))
-        } else if Instant::now() >= deadline {
-            Poll::Ready(Err(Expired)) // expired
-        } else {
-            // SAFETY: This is safe as long as the `Context` really
-            // is the `ContextExt`. It's always true within provided
-            // `block_on` async runtime.
-            unsafe { ContextExt::set_deadline(cx, deadline) };
-            Poll::Pending
+            return Poll::Ready(Ok(v));
+        }
+
+        // Then check deadline and, if necessary, update wakup condition
+        // in the context.
+        match deadline {
+            Some(deadline) if Instant::now() >= deadline => {
+                Poll::Ready(Err(Expired)) // expired
+            }
+            Some(deadline) => {
+                // SAFETY: This is safe as long as the `Context` really
+                // is the `ContextExt`. It's always true within provided
+                // `block_on` async runtime.
+                unsafe { ContextExt::set_deadline(cx, deadline) };
+                Poll::Pending
+            }
+            None => {
+                // No deadline, wait forever
+                Poll::Pending
+            }
         }
     }
 }

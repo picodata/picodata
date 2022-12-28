@@ -1,4 +1,9 @@
-use std::{future::Future, rc::Rc, task::Poll, time::Instant};
+use std::{
+    future::Future,
+    rc::Rc,
+    task::Poll,
+    time::{Duration, Instant},
+};
 
 use futures::pin_mut;
 
@@ -81,20 +86,32 @@ mod waker {
     }
 }
 
-mod context {
+pub(crate) mod context {
+    use std::os::unix::io::RawFd;
     use std::task::Context;
     use std::task::Waker;
     use std::time::Instant;
 
+    use crate::ffi::tarantool as ffi;
+
+    /// The context is primarily used to pass wakup conditions from a
+    /// pending future to the async executor (i.e `block_on`). There's
+    /// no place for that in returned `Poll` enum, so we use a
+    /// workaround.
     #[repr(C)]
     pub struct ContextExt<'a> {
         /// Important: the `Context` field must come at the first place.
         /// Otherwise, reinterpreting (and further dereferencing) a `Context`
         /// pointer would be an UB.
         cx: Context<'a>,
-        // TODO descriptor: Option<CoIOFileDescriptor>
-        // A descriptor to poll with coio
-        deadline: Option<Instant>,
+
+        /// A time limit to wake up the fiber. If `None`, the `block_on`
+        /// async executor will use `Duration::MAX` value as a timeout.
+        pub(super) deadline: Option<Instant>,
+
+        /// Wait an event on a file descriptor rather than on a
+        /// `fiber::Cond` (that is under the hood of a `Waker`).
+        pub(super) coio_wait: Option<(RawFd, ffi::CoIOFlags)>,
     }
 
     impl<'a> ContextExt<'a> {
@@ -103,6 +120,7 @@ mod context {
             Self {
                 cx: Context::from_waker(waker),
                 deadline: None,
+                coio_wait: None,
             }
         }
 
@@ -110,23 +128,31 @@ mod context {
             &mut self.cx
         }
 
-        pub fn deadline(&self) -> Option<Instant> {
-            self.deadline
+        /// SAFETY: The following conditions must be met:
+        /// 1. The `Contex` must be the first field of `ContextExt`.
+        /// 2. Provided `cx` must really be the `ContextExt`. It's up to
+        ///    the caller, so the function is still marked unsafe.
+        pub(crate) unsafe fn as_context_ext<'b>(cx: &'b mut Context<'_>) -> &'b mut Self {
+            let cx: &mut ContextExt = &mut *(cx as *mut Context).cast();
+            cx
         }
 
+        /// SAFETY: `cx` must really be the `ContextExt`
         pub unsafe fn set_deadline(cx: &mut Context<'_>, new: Instant) {
-            // SAFETY: The following conditions must be met:
-            // 1. The `Contex` must be the first field of `ContextExt`.
-            // 2. Provided `cx` must really be the `ContextExt`. It's up to
-            //    the caller, so the function is still marked unsafe.
-            let cx: &mut ContextExt = &mut *(cx as *mut Context).cast();
-
-            if matches!(cx.deadline, Some(old) if new > old) {
-                // Don't increase it.
-                return;
+            let cx = Self::as_context_ext(cx);
+            if let Some(ref mut deadline) = cx.deadline {
+                if new < *deadline {
+                    *deadline = new
+                }
+            } else {
+                cx.deadline = Some(new)
             }
+        }
 
-            cx.deadline = Some(new);
+        /// SAFETY: `cx` must really be the `ContextExt`
+        pub unsafe fn set_coio_wait(cx: &mut Context<'_>, fd: RawFd, event: ffi::CoIOFlags) {
+            let cx = Self::as_context_ext(cx);
+            cx.coio_wait = Some((fd, event));
         }
     }
 }
@@ -146,12 +172,18 @@ pub fn block_on<F: Future>(f: F) -> F::Output {
             return t;
         }
 
-        match cx.deadline() {
-            Some(deadline) => {
-                let timeout = deadline.saturating_duration_since(Instant::now());
-                rcw.cond().wait_timeout(timeout)
+        let timeout = match cx.deadline {
+            Some(deadline) => deadline.saturating_duration_since(Instant::now()),
+            None => Duration::MAX,
+        };
+
+        match cx.coio_wait {
+            Some((fd, event)) => unsafe {
+                crate::ffi::tarantool::coio_wait(fd, event.bits(), timeout.as_secs_f64());
+            },
+            None => {
+                rcw.cond().wait_timeout(timeout);
             }
-            None => rcw.cond().wait(),
         };
     }
 }

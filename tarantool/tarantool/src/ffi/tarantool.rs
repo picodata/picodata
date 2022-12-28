@@ -43,7 +43,7 @@ extern "C" {
     /// - `fd` - non-blocking socket file description
     /// - `events` - requested events to wait.
     /// Combination of `TNT_IO_READ` | `TNT_IO_WRITE` bit flags.
-    /// - `timeoout` - timeout in seconds.
+    /// - `timeout` - timeout in seconds.
     ///
     /// Returns:
     /// - `0` - timeout

@@ -384,7 +384,7 @@ pub use tlua;
 /// Return a global tarantool lua state.
 ///
 /// **WARNING:** using global lua state is error prone, especially when writing
-/// code that will be executed in multiple fibers. Consider using [`lua_thread`]
+/// code that will be executed in multiple fibers. Consider using [`lua_state`]
 /// instead. Use with caution if necessary.
 fn global_lua() -> tlua::StaticLua {
     unsafe { tlua::Lua::from_static(ffi::tarantool::luaT_state()) }
