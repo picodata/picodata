@@ -10,7 +10,7 @@ use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
 use std::{io, ptr};
 
-use futures::AsyncRead;
+use futures::{AsyncRead, AsyncWrite};
 
 use crate::ffi::tarantool as ffi;
 use crate::fiber::r#async::context::ContextExt;
@@ -18,16 +18,18 @@ use crate::fiber::r#async::timeout;
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
-    #[error("Failed to resolve host address by domain name")]
+    #[error("failed to resolve host address by domain name")]
     ResolveAddress,
-    #[error("Input parameters contain ffi incompatible strings: {0}")]
+    #[error("input parameters contain ffi incompatible strings: {0}")]
     ConstructCString(NulError),
-    #[error("Failed to connect to supplied address: {0}")]
+    #[error("failed to connect to supplied address: {0}")]
     Connect(io::Error),
-    #[error("Failed to set socket to nonblocking mode: {0}")]
+    #[error("failed to set socket to nonblocking mode: {0}")]
     SetNonBlock(io::Error),
-    #[error("Unknown address family: {0}")]
+    #[error("unknown address family: {0}")]
     UnknownAddressFamily(u16),
+    #[error("write half of the stream is closed")]
+    WriteClosed,
 }
 
 /// Async TcpStream based on fibers and coio.
@@ -42,6 +44,7 @@ pub enum Error {
 /// [t]: crate::fiber::async::timeout::timeout
 pub struct TcpStream {
     fd: RawFd,
+    write_closed: bool,
 }
 
 impl TcpStream {
@@ -62,6 +65,7 @@ impl TcpStream {
         stream.set_nonblocking(true).map_err(Error::SetNonBlock)?;
         Ok(Self {
             fd: stream.into_raw_fd(),
+            write_closed: false,
         })
     }
 
@@ -125,6 +129,55 @@ unsafe fn to_rs_sockaddr(addr: *const libc::sockaddr, port: u16) -> Result<Socke
     }
 }
 
+impl AsyncWrite for TcpStream {
+    fn poll_write(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &[u8],
+    ) -> Poll<io::Result<usize>> {
+        if self.write_closed {
+            return Poll::Ready(Err(io::Error::new(
+                io::ErrorKind::Other,
+                Error::WriteClosed,
+            )));
+        }
+        let result =
+            unsafe { libc::write(self.fd, buf.as_ptr() as *const libc::c_void, buf.len()) };
+        let err = io::Error::last_os_error();
+
+        if result >= 0 {
+            return Poll::Ready(Ok(result as usize));
+        }
+        match err.kind() {
+            io::ErrorKind::WouldBlock => {
+                // SAFETY: Safe as long as this future is executed by tarantool fiber runtime
+                unsafe { ContextExt::set_coio_wait(cx, self.fd, ffi::CoIOFlags::WRITE) }
+                Poll::Pending
+            }
+            // Return poll pending without setting coio wait
+            // so that write can be retried immediately
+            io::ErrorKind::Interrupted => {
+                unsafe { ContextExt::set_deadline(cx, Instant::now()) }
+                Poll::Pending
+            }
+            _ => Poll::Ready(Err(err)),
+        }
+    }
+
+    fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        // [`TcpStream`] similarily to std does not buffer anything,
+        // so there is nothing to flush.
+        //
+        // If buffering is needed use [`futures::io::BufWriter`] on top of this stream.
+        Poll::Ready(Ok(()))
+    }
+
+    fn poll_close(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        self.write_closed = true;
+        Poll::Ready(Ok(()))
+    }
+}
+
 impl AsyncRead for TcpStream {
     fn poll_read(
         self: Pin<&mut Self>,
@@ -169,7 +222,10 @@ mod tests {
     use crate::test::{TestCase, TESTS};
     use crate::test_name;
 
-    use futures::{AsyncReadExt, FutureExt};
+    use std::net::TcpListener;
+    use std::thread;
+
+    use futures::{AsyncReadExt, AsyncWriteExt, FutureExt};
     use linkme::distributed_slice;
 
     const _10_SEC: Duration = Duration::from_secs(10);
@@ -224,6 +280,38 @@ mod tests {
                 fiber::block_on(timeout::timeout(_0_SEC, stream.read_exact(&mut buf))).unwrap_err(),
                 timeout::Expired
             );
+        },
+    };
+
+    #[distributed_slice(TESTS)]
+    static WRITE: TestCase = TestCase {
+        name: test_name!("write"),
+        f: || {
+            let (sender, receiver) = std::sync::mpsc::channel();
+            // Spawn listener
+            thread::spawn(move || {
+                let listener = TcpListener::bind("127.0.0.1:3302").unwrap();
+                for stream in listener.incoming() {
+                    let mut stream = stream.unwrap();
+                    let mut buf = vec![];
+                    <std::net::TcpStream as std::io::Read>::read_to_end(&mut stream, &mut buf);
+                    sender.send(buf);
+                }
+            });
+            // Send data
+            {
+                let mut stream = unsafe { TcpStream::connect("localhost", 3302, _10_SEC) }.unwrap();
+                fiber::block_on(async move {
+                    timeout::timeout(_10_SEC, stream.write_all(&[1, 2, 3]))
+                        .await
+                        .unwrap();
+                    timeout::timeout(_10_SEC, stream.write_all(&[4, 5]))
+                        .await
+                        .unwrap()
+                });
+            }
+            let buf = receiver.recv_timeout(Duration::from_secs(5)).unwrap();
+            assert_eq!(buf, vec![1, 2, 3, 4, 5])
         },
     };
 
