@@ -553,7 +553,16 @@ macro_rules! impl_tuple {
 impl_tuple! { A B C D E F G H I J K L M N O P }
 
 /// A general purpose trait for msgpack serialization.
-/// It should replace `Encode` after `named serialization` and `raw` attribute are finished
+///
+/// Writes `self` to writer supplied in `w`.
+/// `struct_as_map` sets if struct fields should be serialized as tuple (`false`) or as map (`true`).
+///
+/// E.g. given `let foo = Foo { a: 1, b: true}`
+/// `struct_as_map: false` - `foo` is identical to `(1, true)` during serialization.
+/// `struct_as_map: true` - `foo` is identical to `HashMap<String, _>` with
+/// keys `"a"` and `"b"` and values `1`, `true` accordingly.
+///
+/// It should replace `Encode` after `raw` attribute is finished
 /// `_` prefix is used for disambiguation and is temporary.
 ///
 /// # Example
@@ -569,7 +578,7 @@ impl_tuple! { A B C D E F G H I J K L M N O P }
 /// ```
 // TODO: Remove `_` prefix and use this trait instead of previous, replace derive `Serialize` to derive `Encode`
 pub trait _Encode {
-    fn encode(&self, w: &mut impl Write, named: bool) -> Result<()>;
+    fn encode(&self, w: &mut impl Write, struct_as_map: bool) -> Result<()>;
 }
 
 impl _Encode for () {
@@ -1570,14 +1579,32 @@ mod picodata {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeMap;
+    use std::{collections::BTreeMap, io::Cursor};
 
     use super::_Encode;
     use serde::Deserialize;
     use tarantool_proc::Encode;
 
+    #[track_caller]
+    fn assert_map(bytes: &[u8]) {
+        let marker = rmp::decode::read_marker(&mut bytes.clone()).unwrap();
+        assert!(matches!(
+            dbg!(marker),
+            rmp::Marker::Map16 | rmp::Marker::Map32 | rmp::Marker::FixMap(_)
+        ))
+    }
+
+    #[track_caller]
+    fn assert_array(bytes: &[u8]) {
+        let marker = rmp::decode::read_marker(&mut bytes.clone()).unwrap();
+        assert!(matches!(
+            dbg!(marker),
+            rmp::Marker::Array16 | rmp::Marker::Array32 | rmp::Marker::FixArray(_)
+        ))
+    }
+
     #[test]
-    pub fn encode_struct() {
+    fn encode_struct() {
         #[derive(Clone, Encode, Deserialize, PartialEq, Debug)]
         #[encode(tarantool = "crate")]
         struct Test1 {
@@ -1591,30 +1618,43 @@ mod tests {
             c: Test1,
         }
         let mut bytes = vec![];
+        let mut bytes_named = vec![];
         let original = Test {
             a: 1,
             b: "abc".to_owned(),
             c: Test1 { b: 0 },
         };
         original.encode(&mut bytes, false).unwrap();
+        assert_array(&bytes);
+        original.encode(&mut bytes_named, true).unwrap();
+        assert_map(&bytes_named);
         let decoded: Test = rmp_serde::from_slice(bytes.as_slice()).unwrap();
         assert_eq!(original, decoded);
+        let decoded_named: Test = rmp_serde::from_slice(bytes_named.as_slice()).unwrap();
+        assert_eq!(original, decoded_named);
     }
 
     #[test]
-    pub fn encode_tuple_struct() {
+    fn encode_tuple_struct() {
         #[derive(Clone, Encode, Deserialize, PartialEq, Debug)]
         #[encode(tarantool = "crate")]
         struct Test(u32, bool);
         let mut bytes = vec![];
+        let mut bytes_named = vec![];
         let original = Test(0, true);
         original.encode(&mut bytes, false).unwrap();
+        assert_array(&bytes);
+        original.encode(&mut bytes_named, true).unwrap();
+        assert_eq!(
+            bytes, bytes_named,
+            "tuple structs are always encoded as arrays"
+        );
         let decoded: Test = rmp_serde::from_slice(bytes.as_slice()).unwrap();
         assert_eq!(original, decoded);
     }
 
     #[test]
-    pub fn encode_unit_struct() {
+    fn encode_unit_struct() {
         #[derive(Clone, Encode, Deserialize, PartialEq, Debug)]
         #[encode(tarantool = "crate")]
         struct Test;
@@ -1626,7 +1666,7 @@ mod tests {
     }
 
     #[test]
-    pub fn encode_enum() {
+    fn encode_enum() {
         #[derive(Clone, Encode, Deserialize, PartialEq, Debug)]
         #[encode(tarantool = "crate")]
         enum Foo {
@@ -1655,24 +1695,50 @@ mod tests {
         assert_eq!(original, decoded);
 
         let mut bytes = vec![];
+        let mut bytes_named = vec![];
         let original = Foo::BarStruct1 { bar: false };
         original.encode(&mut bytes, false).unwrap();
+        original.encode(&mut bytes_named, true).unwrap();
         let decoded: Foo = rmp_serde::from_slice(bytes.as_slice()).unwrap();
         assert_eq!(original, decoded);
+        let decoded_named: Foo = rmp_serde::from_slice(bytes.as_slice()).unwrap();
+        assert_eq!(original, decoded_named);
 
         let mut bytes = vec![];
+        let mut bytes_named = vec![];
         let original = Foo::BarStructN {
             bar1: (),
             bar2: (),
             bar3: (),
         };
         original.encode(&mut bytes, false).unwrap();
+        original.encode(&mut bytes_named, true).unwrap();
         let decoded: Foo = rmp_serde::from_slice(bytes.as_slice()).unwrap();
         assert_eq!(original, decoded);
+        let decoded_named: Foo = rmp_serde::from_slice(bytes.as_slice()).unwrap();
+        assert_eq!(original, decoded_named);
     }
 
     #[test]
-    pub fn encode_vec() {
+    fn encode_named_with_raw_ident() {
+        #[derive(Clone, Encode, Deserialize, PartialEq, Debug)]
+        #[encode(tarantool = "crate")]
+        struct Test {
+            r#fn: u32,
+        }
+        let mut bytes = vec![];
+        let original = Test { r#fn: 1 };
+        original.encode(&mut bytes, true).unwrap();
+        let mut bytes = Cursor::new(bytes);
+        let marker = rmp::decode::read_marker(&mut bytes).unwrap();
+        assert!(matches!(marker, rmp::Marker::FixMap(1)));
+        let mut key_bytes = vec![0; 10];
+        let key = rmp::decode::read_str(&mut bytes, key_bytes.as_mut_slice()).unwrap();
+        assert_eq!(key, "fn");
+    }
+
+    #[test]
+    fn encode_vec() {
         let mut bytes = vec![];
         let original = vec![1u32];
         original.encode(&mut bytes, false).unwrap();
@@ -1687,7 +1753,7 @@ mod tests {
     }
 
     #[test]
-    pub fn encode_map() {
+    fn encode_map() {
         let mut bytes = vec![];
         let mut original = BTreeMap::new();
         original.insert(1, "abc".to_string());
