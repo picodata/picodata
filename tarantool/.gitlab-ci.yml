@@ -132,7 +132,7 @@ build-base-image:
     - cargo -V
     - cargo fmt --all --check
     - cargo clippy --version
-    - cargo clippy --features "${CARGO_FEATURES}" --workspace -- --deny warnings
+    - cargo clippy --features "${CARGO_FEATURES}" --workspace --tests -- --deny warnings
     - cargo build --features "${CARGO_FEATURES}" --all
     - cargo test --features "${CARGO_FEATURES}"
     - |

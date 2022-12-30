@@ -1582,12 +1582,13 @@ mod tests {
     use std::{collections::BTreeMap, io::Cursor};
 
     use super::_Encode;
+    use rmp::decode::Bytes;
     use serde::Deserialize;
     use tarantool_proc::Encode;
 
     #[track_caller]
     fn assert_map(bytes: &[u8]) {
-        let marker = rmp::decode::read_marker(&mut bytes.clone()).unwrap();
+        let marker = rmp::decode::read_marker(&mut Bytes::new(bytes)).unwrap();
         assert!(matches!(
             dbg!(marker),
             rmp::Marker::Map16 | rmp::Marker::Map32 | rmp::Marker::FixMap(_)
@@ -1596,7 +1597,7 @@ mod tests {
 
     #[track_caller]
     fn assert_array(bytes: &[u8]) {
-        let marker = rmp::decode::read_marker(&mut bytes.clone()).unwrap();
+        let marker = rmp::decode::read_marker(&mut Bytes::new(bytes)).unwrap();
         assert!(matches!(
             dbg!(marker),
             rmp::Marker::Array16 | rmp::Marker::Array32 | rmp::Marker::FixArray(_)

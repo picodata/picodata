@@ -222,7 +222,7 @@ mod tests {
         let mut greeting = Vec::new();
         greeting.extend([0; 63].iter());
         greeting.push(b'\n');
-        greeting.extend(b"QK2HoFZGXTXBq2vFj7soCsHqTo6PGTF575ssUBAJLAI=".into_iter());
+        greeting.extend(b"QK2HoFZGXTXBq2vFj7soCsHqTo6PGTF575ssUBAJLAI=".iter());
         while greeting.len() < 127 {
             greeting.push(0);
         }
