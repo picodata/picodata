@@ -141,22 +141,28 @@ impl AsyncWrite for TcpStream {
                 Error::WriteClosed,
             )));
         }
-        let result =
-            unsafe { libc::write(self.fd, buf.as_ptr() as *const libc::c_void, buf.len()) };
-        let err = io::Error::last_os_error();
+        let (result, err) = (
+            // `self.fd` must be nonblocking for this to work correctly
+            unsafe { libc::write(self.fd, buf.as_ptr() as *const libc::c_void, buf.len()) },
+            io::Error::last_os_error(),
+        );
 
         if result >= 0 {
             return Poll::Ready(Ok(result as usize));
         }
         match err.kind() {
             io::ErrorKind::WouldBlock => {
-                // SAFETY: Safe as long as this future is executed by tarantool fiber runtime
+                // SAFETY: Safe as long as this future is executed by
+                // `fiber::block_on` async executor.
                 unsafe { ContextExt::set_coio_wait(cx, self.fd, ffi::CoIOFlags::WRITE) }
                 Poll::Pending
             }
-            // Return poll pending without setting coio wait
-            // so that write can be retried immediately
             io::ErrorKind::Interrupted => {
+                // Return poll pending without setting coio wait
+                // so that write can be retried immediately.
+                //
+                // SAFETY: Safe as long as this future is executed by
+                // `fiber::block_on` async executor.
                 unsafe { ContextExt::set_deadline(cx, Instant::now()) }
                 Poll::Pending
             }
@@ -184,22 +190,28 @@ impl AsyncRead for TcpStream {
         cx: &mut Context<'_>,
         buf: &mut [u8],
     ) -> Poll<io::Result<usize>> {
-        let result =
-            unsafe { libc::read(self.fd, buf.as_mut_ptr() as *mut libc::c_void, buf.len()) };
-        let err = io::Error::last_os_error();
+        let (result, err) = (
+            // `self.fd` must be nonblocking for this to work correctly
+            unsafe { libc::read(self.fd, buf.as_mut_ptr() as *mut libc::c_void, buf.len()) },
+            io::Error::last_os_error(),
+        );
 
         if result >= 0 {
             return Poll::Ready(Ok(result as usize));
         }
         match err.kind() {
             io::ErrorKind::WouldBlock => {
-                // SAFETY: Safe as long as this future is executed by tarantool fiber runtime
+                // SAFETY: Safe as long as this future is executed by
+                // `fiber::block_on` async executor.
                 unsafe { ContextExt::set_coio_wait(cx, self.fd, ffi::CoIOFlags::READ) }
                 Poll::Pending
             }
-            // Return poll pending without setting coio wait
-            // so that read can be retried immediately
             io::ErrorKind::Interrupted => {
+                // Return poll pending without setting coio wait
+                // so that read can be retried immediately.
+                //
+                // SAFETY: Safe as long as this future is executed by
+                // `fiber::block_on` async executor.
                 unsafe { ContextExt::set_deadline(cx, Instant::now()) }
                 Poll::Pending
             }
