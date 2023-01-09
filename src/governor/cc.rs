@@ -94,8 +94,21 @@ pub(crate) fn raft_conf_change(
         x => x,
     };
 
+    // A list of instances that can be safely promoted to voters.
+    let mut promotable: BTreeSet<RaftId> = instances
+        .iter()
+        // Only an instance with current grade online can be promoted
+        .filter(|instance| has_grades!(instance, Online -> Online))
+        .map(|instance| instance.raft_id)
+        // Exclude those who is already a voter.
+        .filter(|raft_id| !raft_conf.voters.contains(raft_id))
+        .collect();
+
+    let next_farthest = |raft_conf: &RaftConf, promotable: &BTreeSet<RaftId>| {
+        find_farthest(&raft_conf.all, &raft_conf.voters, promotable)
+    };
+
     // Remove / replace voters
-    let mut next_voters: BTreeSet<&RaftId> = BTreeSet::new();
     for voter_id in raft_conf.voters.clone().iter() {
         let Some(instance) = raft_conf.all.get(voter_id) else {
             // Nearly impossible, but rust forces me to check it.
@@ -110,14 +123,13 @@ pub(crate) fn raft_conf_change(
             TargetGradeVariant::Offline => {
                 // A voter goes offline. Replace it with
                 // another online instance if possible.
-                let Some(next_voter) = instances.iter().find(|instance| {
-                    has_grades!(instance, Online -> Online)
-                    && !raft_conf.voters.contains(&instance.raft_id)
-                    && !next_voters.contains(&instance.raft_id)
-                }) else { continue };
-                next_voters.insert(&next_voter.raft_id);
-                let ccs = raft_conf.change_single(AddLearnerNode, instance.raft_id);
-                changes.push(ccs);
+                let Some((next_voter_id, _)) =
+                    next_farthest(&raft_conf, &promotable) else { continue };
+
+                let ccs1 = raft_conf.change_single(AddLearnerNode, instance.raft_id);
+                let ccs2 = raft_conf.change_single(AddNode, next_voter_id);
+                changes.extend_from_slice(&[ccs1, ccs2]);
+                promotable.remove(&next_voter_id);
             }
             TargetGradeVariant::Expelled => {
                 // Expelled instance is removed unconditionally.
@@ -154,40 +166,28 @@ pub(crate) fn raft_conf_change(
         }
     }
 
-    let remembered_voters = raft_conf.voters.clone();
-
     // Promote more voters
-    let candidates: BTreeSet<_> = instances
-        .iter()
-        .filter(|instance| has_grades!(instance, Online -> Online))
-        .map(|p| p.raft_id)
-        .collect();
     while raft_conf.voters.len() < voters_needed {
-        if let Some((new_voter_id, _)) =
-            find_farthest(&raft_conf.all, &raft_conf.voters, &candidates)
-        {
-            let ccs = raft_conf.change_single(AddNode, new_voter_id);
-            changes.push(ccs);
-        } else {
-            break;
-        }
+        let Some((new_voter_id, _)) = next_farthest(&raft_conf, &promotable) else { break };
+        let ccs = raft_conf.change_single(AddNode, new_voter_id);
+        changes.push(ccs);
+        promotable.remove(&new_voter_id);
     }
 
-    // Redistributing existing voters according to failure domains
-    for voter_id in remembered_voters {
+    // Redistribute existing voters according to their failure domains
+    for voter_id in raft_conf.voters.clone().iter() {
         let mut other_voters = raft_conf.voters.clone();
-        other_voters.remove(&voter_id);
-        if let Some((new_voter_id, new_distance)) =
-            find_farthest(&raft_conf.all, &other_voters, &candidates)
-        {
-            if new_distance > sum_distance(&raft_conf.all, &voter_id, &other_voters) {
-                let ccs1 = raft_conf.change_single(AddLearnerNode, voter_id);
-                let ccs2 = raft_conf.change_single(AddNode, new_voter_id);
-                changes.push(ccs1);
-                changes.push(ccs2);
-            }
-        } else {
-            break;
+        other_voters.remove(voter_id);
+        let other_voters = other_voters;
+
+        let Some((new_voter_id, new_distance)) =
+            find_farthest(&raft_conf.all, &other_voters, &promotable) else { break };
+
+        if new_distance > sum_distance(&raft_conf.all, &voter_id, &other_voters) {
+            let ccs1 = raft_conf.change_single(AddLearnerNode, *voter_id);
+            let ccs2 = raft_conf.change_single(AddNode, new_voter_id);
+            changes.extend_from_slice(&[ccs1, ccs2]);
+            promotable.remove(&new_voter_id);
         }
     }
 
