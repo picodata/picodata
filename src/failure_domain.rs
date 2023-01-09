@@ -3,8 +3,34 @@ use crate::traft::Distance;
 use crate::util::Uppercase;
 use std::collections::{HashMap, HashSet};
 
-////////////////////////////////////////////////////////////////////////////////
-/// Failure domains of a given instance.
+/// Failure domain of a given instance.
+///
+/// A failure domain is a set of `KEY=VALUE` pairs that we call
+/// components. Specifying failure domains provides a user a way to mark
+/// two instances as being a single point of failure. Both key and value
+/// can be anything meaningful to a user, like `"region=eu"`, or
+/// `"dc=msk"`.
+///
+/// If two different failure domains have at least one common component
+/// (both key and value), it is assumed they both may encounter outage
+/// at once.
+///
+/// There might be more than one component in a failure domain, e.g.
+/// `"dc=msk,srv=msk-1"`. Yet Picodata doesn't make any assumptions
+/// about their meaning or hierarchy, it only matches components.
+///
+/// Picodata relies on failure domains to enhance fault tolerance of a
+/// cluster:
+///
+/// - Picodata will avoid forming a replicaset of instances with at
+///   least one common failure domain component.
+///
+/// - Picodata tends to keep raft voters as distant from each other as
+///   possible.
+///
+/// Failure domains are case-insensitive. Components are converted to
+/// upprcase implicitly.
+///
 #[derive(Default, PartialEq, Eq, Clone, serde::Deserialize, serde::Serialize)]
 pub struct FailureDomain {
     #[serde(flatten)]
@@ -20,8 +46,23 @@ impl FailureDomain {
         self.data.keys()
     }
 
-    /// Empty `FailureDomain` doesn't intersect with any other `FailureDomain`
-    /// even with another empty one.
+    /// Checks whether `self` and `other` failure domains have at least
+    /// one common component.
+    ///
+    /// Empty failure domain doesn't intersect with any other even with
+    /// another empty one.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// let msk_1 = FailureDomain::from([("dc", "msk"), ("srv", "msk-1")]);
+    /// let msk_2 = FailureDomain::from([("dc", "msk"), ("srv", "msk-2")]);
+    /// let spb = FailureDomain::from([("dc", "spb")]);
+    ///
+    /// assert_eq!(msk_1.intersects(&msk_2), true);
+    /// assert_eq!(msk_1.intersects(&spb), false);
+    /// ```
+    ///
     pub fn intersects(&self, other: &Self) -> bool {
         for (name, value) in &self.data {
             match other.data.get(name) {
@@ -34,8 +75,21 @@ impl FailureDomain {
         false
     }
 
-    /// Calculate distance between two `FailureDomain`.
-    /// `Distance` is property of metric space implicitly set by `FailureDomain` keys (axis) and values
+    /// Calculates a distance between `self` and `other` failure domains.
+    ///
+    /// The distance is a number of components differ.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// let msk_1 = FailureDomain::from([("dc", "msk"), ("srv", "msk-1")]);
+    /// let msk_2 = FailureDomain::from([("dc", "msk"), ("srv", "msk-2")]);
+    /// let spb = FailureDomain::from([("dc", "spb")]);
+    ///
+    /// assert_eq!(msk_1.distance(&msk_1), 0);
+    /// assert_eq!(msk_1.distance(&msk_2), 1);
+    /// assert_eq!(msk_1.distance(&spb), 2);
+    /// ```
     pub fn distance(&self, other: &Self) -> Distance {
         let mut keys: HashSet<&Uppercase> = HashSet::new();
         keys.extend(self.names());

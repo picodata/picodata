@@ -46,7 +46,7 @@ impl<'a> RaftConf<'a> {
     }
 }
 
-/// Sum of failure domain distances between `a` and each of `bs`
+/// Sum of failure domain distances between `a` and each of `bs`.
 fn sum_distance(all: &BTreeMap<RaftId, &Instance>, a: &RaftId, bs: &BTreeSet<RaftId>) -> Distance {
     let Some(a) = all.get(a) else { return 0 };
     bs.iter()
@@ -55,7 +55,7 @@ fn sum_distance(all: &BTreeMap<RaftId, &Instance>, a: &RaftId, bs: &BTreeSet<Raf
         .sum()
 }
 
-/// From `candidates` find one with maximum total distance to `voters`
+/// Among `candidates` find one with maximum total distance to `voters`.
 fn find_farthest(
     all: &BTreeMap<RaftId, &Instance>,
     voters: &BTreeSet<RaftId>,
