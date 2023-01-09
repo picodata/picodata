@@ -149,3 +149,71 @@ impl<'a> IntoIterator for &'a FailureDomain {
         self.data.iter()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::FailureDomain;
+
+    #[test]
+    fn test_intersection() {
+        let empty = FailureDomain::default();
+        let dc_msk = FailureDomain::from([("dc", "msk")]);
+        let dc_spb = FailureDomain::from([("dc", "spb")]);
+        let srv_s1 = FailureDomain::from([("srv", "s1")]);
+
+        assert!(!empty.intersects(&empty));
+        assert!(!empty.intersects(&dc_msk));
+        assert!(!dc_msk.intersects(&dc_spb));
+        assert!(!dc_msk.intersects(&srv_s1));
+        assert!(dc_msk.intersects(&dc_msk));
+
+        // check case sensivity
+        #[allow(non_snake_case)]
+        let dc_SPB = FailureDomain::from([("dc", "SPB")]);
+        assert!(dc_spb.intersects(&dc_SPB));
+
+        let dcsrv = FailureDomain::from([("dc", "msk"), ("srv", "s1")]);
+        assert!(dcsrv.intersects(&dc_msk));
+        assert!(dcsrv.intersects(&srv_s1));
+    }
+
+    #[test]
+    fn test_distance() {
+        let empty = FailureDomain::default();
+        let dc_msk = FailureDomain::from([("dc", "msk")]);
+        let dc_spb = FailureDomain::from([("dc", "spb")]);
+        let srv_s1 = FailureDomain::from([("srv", "s1")]);
+
+        assert_eq!(empty.distance(&empty), 0);
+        assert_eq!(empty.distance(&dc_msk), 1);
+        assert_eq!(dc_msk.distance(&dc_spb), 1);
+        assert_eq!(dc_msk.distance(&srv_s1), 2);
+
+        let dcsrv = FailureDomain::from([("dc", "msk"), ("srv", "s1")]);
+        assert_eq!(dcsrv.distance(&dc_msk), 1);
+        assert_eq!(dcsrv.distance(&srv_s1), 1);
+        assert_eq!(dcsrv.distance(&dc_spb), 2);
+        assert_eq!(dcsrv.distance(&empty), 2);
+    }
+
+    #[test]
+    fn doctest_intersects() {
+        let msk_1 = FailureDomain::from([("dc", "msk"), ("srv", "msk-1")]);
+        let msk_2 = FailureDomain::from([("dc", "msk"), ("srv", "msk-2")]);
+        let spb = FailureDomain::from([("dc", "spb")]);
+
+        assert_eq!(msk_1.intersects(&msk_2), true);
+        assert_eq!(msk_1.intersects(&spb), false);
+    }
+
+    #[test]
+    fn doctest_distance() {
+        let msk_1 = FailureDomain::from([("dc", "msk"), ("srv", "msk-1")]);
+        let msk_2 = FailureDomain::from([("dc", "msk"), ("srv", "msk-2")]);
+        let spb = FailureDomain::from([("dc", "spb")]);
+
+        assert_eq!(msk_1.distance(&msk_1), 0);
+        assert_eq!(msk_1.distance(&msk_2), 1);
+        assert_eq!(msk_1.distance(&spb), 2);
+    }
+}
