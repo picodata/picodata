@@ -46,8 +46,8 @@ impl<'a> RaftConf<'a> {
     }
 }
 
-/// Sum of failure domain distances between `a` and each of `bs`.
-fn sum_distance(all: &BTreeMap<RaftId, &Instance>, a: &RaftId, bs: &BTreeSet<RaftId>) -> Distance {
+/// Sum of distances between failure domains of `a` and each of `bs`.
+fn sum_distance(all: &BTreeMap<RaftId, &Instance>, bs: &BTreeSet<RaftId>, a: &RaftId) -> Distance {
     let Some(a) = all.get(a) else { return 0 };
     bs.iter()
         .filter_map(|raft_id| all.get(raft_id))
@@ -55,7 +55,10 @@ fn sum_distance(all: &BTreeMap<RaftId, &Instance>, a: &RaftId, bs: &BTreeSet<Raf
         .sum()
 }
 
-/// Among `candidates` find one with maximum total distance to `voters`.
+/// Among `candidates` finds one with maximum total distance to `voters`.
+///
+/// Returns its `RaftId` and the calculated distance.
+/// Returns `None` if `candidates` set is empty.
 fn find_farthest(
     all: &BTreeMap<RaftId, &Instance>,
     voters: &BTreeSet<RaftId>,
@@ -63,8 +66,7 @@ fn find_farthest(
 ) -> Option<(RaftId, Distance)> {
     candidates
         .iter()
-        .filter(|&&raft_id| !voters.contains(&raft_id))
-        .map(|&raft_id| (raft_id, sum_distance(all, &raft_id, voters)))
+        .map(|&raft_id| (raft_id, sum_distance(all, voters, &raft_id)))
         .reduce(|acc, item| if item.1 > acc.1 { item } else { acc })
 }
 
@@ -183,7 +185,7 @@ pub(crate) fn raft_conf_change(
         let Some((new_voter_id, new_distance)) =
             find_farthest(&raft_conf.all, &other_voters, &promotable) else { break };
 
-        if new_distance > sum_distance(&raft_conf.all, &voter_id, &other_voters) {
+        if new_distance > sum_distance(&raft_conf.all, &other_voters, &voter_id) {
             let ccs1 = raft_conf.change_single(AddLearnerNode, *voter_id);
             let ccs2 = raft_conf.change_single(AddNode, new_voter_id);
             changes.extend_from_slice(&[ccs1, ccs2]);
@@ -299,16 +301,16 @@ mod tests {
                     (2, &p!(2, Online, fd! {x: A, y: C})),
                     (3, &p!(3, Online, fd! {x: D, y: C}))
                 ]),
+                &BTreeSet::from([2, 3]),
                 &1,
-                &BTreeSet::from([2, 3])
             )
         );
         assert_eq!(
             0,
             sum_distance(
                 &BTreeMap::from([(1, &p!(1, Online, fd! {x: A, y: B}))]),
+                &BTreeSet::new(),
                 &1,
-                &BTreeSet::new()
             )
         );
     }
