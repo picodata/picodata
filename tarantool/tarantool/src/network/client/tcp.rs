@@ -68,8 +68,6 @@ impl TcpStream {
             write_closed: false,
         })
     }
-
-    // TODO fn write -> Future
 }
 
 unsafe fn get_addrs_from_info(
@@ -300,9 +298,9 @@ mod tests {
         name: test_name!("write"),
         f: || {
             let (sender, receiver) = std::sync::mpsc::channel();
+            let listener = TcpListener::bind("127.0.0.1:3302").unwrap();
             // Spawn listener
             thread::spawn(move || {
-                let listener = TcpListener::bind("127.0.0.1:3302").unwrap();
                 for stream in listener.incoming() {
                     let mut stream = stream.unwrap();
                     let mut buf = vec![];
