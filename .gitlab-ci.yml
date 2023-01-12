@@ -8,7 +8,7 @@ stages:
   - pack-redos
   - sign
   - deploy
-  - test_rpm
+  - check-deployment
 
 workflow:
   # See https://docs.gitlab.com/ee/ci/jobs/job_control.html#avoid-duplicate-pipelines
@@ -189,7 +189,6 @@ test-docker:
         paths:
           - helm/picodata.Dockerfile
           - helm/picodata-diag.Dockerfile
-          - .gitlab-ci.yml
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
       when: on_success
     - # else
@@ -301,8 +300,6 @@ sign-rpm-packages:
     - web
     - tags
   before_script:
-    - mkdir -p $CI_PROJECT_DIR/.docker
-    - echo $DOCKER_AUTH_RW > $CI_PROJECT_DIR/.docker/config.json
     - echo "$GPG_KEY_KDY" | base64 -d > build/kdy.asc
     - echo "$GPG_KEY_KDY" | base64 -d > build_redos/kdy.asc
   script:
@@ -317,7 +314,7 @@ sign-rpm-packages:
     - pack-altlinux
     - pack-redos
 
-deploy-job:
+deploy-packages:
   stage: deploy
   tags:
     - shell
@@ -412,47 +409,25 @@ deploy-docker:
         ci-log-section end "deploy-docker-${image}"
       done
 
-test_el7:
-    stage: test_rpm
-    only:
-      - web
-      - tags
-    tags: [docker]
-    image: centos:7
-    before_script:
-      - rpm --import https://download.picodata.io/tarantool-picodata/el/RPM-GPG-KEY-kdy
-      - yum install -y https://download.picodata.io/tarantool-picodata/el/7/x86_64/picodata-release-1.1.1.0-1.el7.x86_64.rpm
-    script:
-      - yum install -y picodata
-    needs:
-      - deploy-job
-
-test_el8:
-    stage: test_rpm
-    only:
-      - web
-      - tags
-    tags: [docker]
-    image: rockylinux:8
-    before_script:
-      - rpm --import https://download.picodata.io/tarantool-picodata/el/RPM-GPG-KEY-kdy
-      - yum install -y https://download.picodata.io/tarantool-picodata/el/8/x86_64/picodata-release-1.1.1.0-1.el7.x86_64.rpm
-    script:
-      - yum install -y picodata
-    needs:
-      - deploy-job
-
-test_redos:
-    stage: test_rpm
-    only:
-      - web
-      - tags
-    tags: [docker]
-    image: packpack/packpack:redos-7.3
-    before_script:
-      - rpm --import https://download.picodata.io/tarantool-picodata/el/RPM-GPG-KEY-kdy
-      - yum install -y https://download.picodata.io/tarantool-picodata/redos/7/x86_64/picodata-release-1.1.1.0-1.el7.x86_64.rpm
-    script:
-      - yum install -y picodata
-    needs:
-      - deploy-job
+check-deployment:
+  stage: check-deployment
+  only:
+    - web
+    - tags
+  tags:
+    - docker
+  parallel:
+    matrix:
+      - BASE_IMAGE: centos:7
+        PACKAGE: el/7/x86_64/picodata-release-1.1.1.0-1.el7.x86_64.rpm
+      - BASE_IMAGE: rockylinux:8
+        PACKAGE: el/8/x86_64/picodata-release-1.1.1.0-1.el7.x86_64.rpm
+      - BASE_IMAGE: packpack/packpack:redos-7.3
+        PACKAGE: redos/7/x86_64/picodata-release-1.1.1.0-1.el7.x86_64.rpm
+  image: ${BASE_IMAGE}
+  script:
+    - rpm --import https://download.picodata.io/tarantool-picodata/el/RPM-GPG-KEY-kdy
+    - yum install -y https://download.picodata.io/tarantool-picodata/${PACKAGE}
+    - yum install -y picodata
+  needs:
+    - deploy-packages
