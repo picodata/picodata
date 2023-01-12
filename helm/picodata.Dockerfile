@@ -5,16 +5,14 @@ RUN dnf -y install dnf-plugins-core \
     && dnf install -y gcc gcc-c++ make cmake git libstdc++-static libtool \
     && dnf clean all
 
-RUN set -e; curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
-    | sh -s -- -y --profile default --default-toolchain 1.65.0 \
-    && export PATH=/root/.cargo/bin:${PATH} \
-    && mkdir /build
+RUN set -e; \
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | \
+    sh -s -- -y --profile default --default-toolchain 1.65.0
+ENV PATH=/root/.cargo/bin:${PATH}
 
 WORKDIR /build/picodata
-
 COPY . .
-
-RUN make build-release
+RUN cargo build --locked --release
 
 FROM rockylinux:8
 

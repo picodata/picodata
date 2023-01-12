@@ -1,0 +1,8 @@
+/target
+.rocks
+.dockerignore
+.gitlab-ci.yaml
+*.snap
+*.xlog
+__pycache__/
+tmp/
