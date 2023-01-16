@@ -1166,7 +1166,7 @@ impl TrampolineArgs for VaList {
 /// join the child fiber and acquire the result value of the fiber function.
 ///
 /// This will create a fiber using default parameters of [`Builder`], if you
-/// want to specify the stack size or the name of the thread, use this API
+/// want to specify the stack size or the name of the thread, use builder's API
 /// instead.
 pub fn start<'f, F, T>(f: F) -> JoinHandle<'f, T>
 where

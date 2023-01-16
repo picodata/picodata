@@ -6,15 +6,40 @@ pub mod options;
 pub mod send_queue;
 
 use std::cmp::{self, min};
+use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 use std::io::{BufWriter, Cursor, Read, Seek, Write};
+use std::str::Utf8Error;
 use std::vec::Drain;
-
-use crate::error::Error;
 
 use api::Request;
 use codec::Header;
 use options::ConnOptions;
+
+#[derive(thiserror::Error, Debug)]
+pub enum Error {
+    #[error("utf8 error: {0}")]
+    Utf8(#[from] Utf8Error),
+    #[error("failed to encode: {0}")]
+    Encode(#[from] rmp::encode::ValueWriteError),
+    #[error("failed to decode: {0}")]
+    Decode(#[from] rmp::decode::ValueReadError),
+    #[error("failed to decode: {0}")]
+    DecodeNum(#[from] rmp::decode::NumValueReadError),
+    #[error("service responded with error: {0}")]
+    Response(#[from] ResponseError),
+    #[error("io error: {0}")]
+    Io(#[from] std::io::Error),
+    // TODO: Remove when `Encode` trait will return rmp errors
+    #[error("{0}")]
+    Other(#[from] Box<crate::error::Error>),
+}
+
+impl From<crate::error::Error> for Error {
+    fn from(value: crate::error::Error) -> Self {
+        Self::Other(Box::new(value))
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct SyncIndex(u64);
@@ -27,23 +52,10 @@ impl SyncIndex {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
+#[error("{message}")]
 pub struct ResponseError {
     message: String,
-}
-
-impl Display for ResponseError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.message)
-    }
-}
-
-impl From<ResponseError> for crate::error::Error {
-    fn from(error: ResponseError) -> Self {
-        crate::error::Error::Remote(crate::net_box::ResponseError {
-            message: error.message,
-        })
-    }
 }
 
 type Response = Vec<u8>;
@@ -68,38 +80,68 @@ pub enum SizeHint {
 ///
 /// Uses events and actions to communicate with the specific
 /// client implementation.
+#[derive(Debug)]
 pub struct Protocol {
     state: State,
-    ready_data: Vec<u8>,
-    pending_data: Vec<u8>,
+    outgoing: Vec<u8>,
+    pending_outgoing: Vec<u8>,
     sync: SyncIndex,
-    // TODO: remove everything besides name and password from options
-    options: ConnOptions,
+    // TODO: limit incoming size
+    incoming: HashMap<SyncIndex, Result<Vec<u8>, ResponseError>>,
+    /// (user, password)
+    creds: Option<(String, String)>,
 }
 
 impl Protocol {
-    pub fn with_options(options: ConnOptions) -> Self {
+    pub fn new() -> Self {
         Self {
             state: State::Init,
             sync: SyncIndex(0),
-            pending_data: Vec::new(),
-            options,
-            ready_data: Vec::new(),
+            pending_outgoing: Vec::new(),
+            creds: None,
+            outgoing: Vec::new(),
+            incoming: HashMap::new(),
         }
+    }
+
+    pub fn with_auth(user: String, password: String) -> Self {
+        let mut protocol = Self::new();
+        protocol.creds = Some((user, password));
+        protocol
     }
 
     pub fn is_ready(&self) -> bool {
         matches!(self.state, State::Ready)
     }
 
+    /// Data can be sent independently of whether the protocol [`is_ready`].
+    /// If the protocol is not ready data will be queued and eventually processed
+    /// after auth is done.
     pub fn send_request(&mut self, request: &impl Request) -> Result<SyncIndex, Error> {
-        let end = self.pending_data.len();
-        let mut buf = Cursor::new(&mut self.pending_data);
+        let end = self.pending_outgoing.len();
+        let mut buf = Cursor::new(&mut self.pending_outgoing);
         buf.set_position(end as u64);
         // TODO: limit the pending vec size
         write_to_buffer(&mut buf, self.sync, request)?;
         self.process_pending_data();
         Ok(self.sync.next())
+    }
+
+    /// Take existing response by [`SyncIndex`].
+    pub fn take_response<R: Request>(
+        &mut self,
+        sync: SyncIndex,
+        request: &R,
+    ) -> Option<Result<R::Response, Error>> {
+        let response = match self.incoming.remove(&sync)? {
+            Ok(response) => response,
+            Err(err) => return Some(Err(err.into())),
+        };
+        Some(request.decode_body(&mut Cursor::new(response)))
+    }
+
+    pub fn drop_response(&mut self, sync: SyncIndex) {
+        self.incoming.remove(&sync);
     }
 
     pub fn read_size_hint(&self) -> SizeHint {
@@ -111,24 +153,20 @@ impl Protocol {
         }
     }
 
-    // TODO: handle multiple chunks in incoming data
-    fn process_data<R: Read + Seek>(
+    /// Returns a [`SyncIndex`] if non-technical message was received.
+    /// Then this message can be retreived by this index.
+    pub fn process_incoming<R: Read + Seek>(
         &mut self,
         chunk: &mut R,
-    ) -> Result<Option<(Header, Response)>, Error> {
-        let response = match self.state {
+    ) -> Result<Option<SyncIndex>, Error> {
+        let sync = match self.state {
             State::Init => {
                 let salt = codec::decode_greeting(chunk)?;
-                if self.options.user.is_empty() {
-                    // No auth
-                    self.state = State::Ready;
-                } else {
+                if let Some((user, pass)) = self.creds.as_ref() {
                     // Auth
                     self.state = State::Auth;
-                    let end = self.pending_data.len();
-                    let user = self.options.user.as_ref();
-                    let pass = self.options.password.as_ref();
-                    let mut buf = Cursor::new(&mut self.ready_data);
+                    let end = self.pending_outgoing.len();
+                    let mut buf = Cursor::new(&mut self.outgoing);
                     buf.set_position(end as u64);
                     let sync = self.sync.next();
                     write_to_buffer(
@@ -140,6 +178,9 @@ impl Protocol {
                             salt: &salt,
                         },
                     );
+                } else {
+                    // No auth
+                    self.state = State::Ready;
                 }
                 None
             }
@@ -154,36 +195,39 @@ impl Protocol {
             }
             State::Ready => {
                 let header = codec::decode_header(chunk)?;
-                if header.status_code != 0 {
-                    return Err(codec::decode_error(chunk)?.into());
-                }
-                let mut buf = Vec::new();
-                chunk.read_to_end(&mut buf);
-                Some((header, buf))
+                let response = if header.status_code != 0 {
+                    Err(codec::decode_error(chunk)?)
+                } else {
+                    let mut buf = Vec::new();
+                    chunk.read_to_end(&mut buf);
+                    Ok(buf)
+                };
+                self.incoming.insert(header.sync, response);
+                Some(header.sync)
             }
         };
         self.process_pending_data();
-        Ok(response)
+        Ok(sync)
     }
 
-    pub fn ready_data_len(&self) -> usize {
-        self.ready_data.len()
+    pub fn ready_outgoing_len(&self) -> usize {
+        self.outgoing.len()
     }
 
-    pub fn drain_ready_data(&mut self, max: Option<usize>) -> Drain<u8> {
+    pub fn drain_outgoing_data(&mut self, max: Option<usize>) -> Drain<u8> {
         let bound = if let Some(max) = max {
-            cmp::min(self.ready_data_len(), max)
+            cmp::min(self.ready_outgoing_len(), max)
         } else {
-            self.ready_data_len()
+            self.ready_outgoing_len()
         };
-        self.ready_data.drain(..bound)
+        self.outgoing.drain(..bound)
     }
 
     fn process_pending_data(&mut self) {
         if self.is_ready() {
-            let pending_data = self.pending_data.drain(..);
+            let pending_data = self.pending_outgoing.drain(..);
             // TODO: limit the ready vec size
-            self.ready_data.extend(pending_data);
+            self.outgoing.extend(pending_data);
         }
     }
 }
@@ -232,17 +276,17 @@ mod tests {
 
     #[test]
     fn connection_established() {
-        let mut conn = Protocol::with_options(Default::default());
+        let mut conn = Protocol::new();
         assert!(!conn.is_ready());
-        conn.process_data(&mut Cursor::new(fake_greeting()));
+        conn.process_incoming(&mut Cursor::new(fake_greeting()));
         assert!(conn.is_ready())
     }
 
     #[test]
     fn send_bytes_generated() {
-        let mut conn = Protocol::with_options(Default::default());
-        conn.process_data(&mut Cursor::new(fake_greeting()));
+        let mut conn = Protocol::new();
+        conn.process_incoming(&mut Cursor::new(fake_greeting()));
         conn.send_request(&api::Ping).unwrap();
-        assert!(conn.ready_data_len() > 0);
+        assert!(conn.ready_outgoing_len() > 0);
     }
 }

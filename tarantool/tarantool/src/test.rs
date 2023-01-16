@@ -47,3 +47,6 @@ pub fn collect() -> Vec<TestDescAndFn> {
         })
         .collect()
 }
+
+/// The default port where tarantool listens in tests
+pub const TARANTOOL_LISTEN: u16 = 3301;

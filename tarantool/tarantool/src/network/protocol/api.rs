@@ -1,6 +1,6 @@
 use std::io::{Cursor, Read, Write};
 
-use crate::error::Error;
+use super::Error;
 use crate::tuple::{ToTupleBuffer, Tuple};
 
 use super::codec::IProtoType;
@@ -42,17 +42,17 @@ impl Request for Ping {
     }
 }
 
-pub struct Call<'a, A> {
+pub struct Call<'a, 'b, T> {
     pub fn_name: &'a str,
-    pub args: A,
+    pub args: &'b T,
 }
 
-impl<'a, A: ToTupleBuffer> Request for Call<'a, A> {
+impl<'a, 'b, T: ToTupleBuffer> Request for Call<'a, 'b, T> {
     const TYPE: IProtoType = IProtoType::Call;
     type Response = Option<Tuple>;
 
     fn encode_body(&self, out: &mut impl Write, sync: SyncIndex) -> Result<(), Error> {
-        codec::encode_call(out, sync, self.fn_name, &self.args)
+        codec::encode_call(out, sync, self.fn_name, self.args)
     }
 
     fn decode_body(&self, r#in: &mut Cursor<Vec<u8>>) -> Result<Self::Response, Error> {
@@ -60,17 +60,17 @@ impl<'a, A: ToTupleBuffer> Request for Call<'a, A> {
     }
 }
 
-pub struct Eval<'a, A> {
+pub struct Eval<'a, 'b, T> {
     pub expr: &'a str,
-    pub args: A,
+    pub args: &'b T,
 }
 
-impl<'a, A: ToTupleBuffer> Request for Eval<'a, A> {
+impl<'a, 'b, T: ToTupleBuffer> Request for Eval<'a, 'b, T> {
     const TYPE: IProtoType = IProtoType::Eval;
     type Response = Option<Tuple>;
 
     fn encode_body(&self, out: &mut impl Write, sync: SyncIndex) -> Result<(), Error> {
-        codec::encode_eval(out, sync, self.expr, &self.args)
+        codec::encode_eval(out, sync, self.expr, self.args)
     }
 
     fn decode_body(&self, r#in: &mut Cursor<Vec<u8>>) -> Result<Self::Response, Error> {
@@ -78,18 +78,18 @@ impl<'a, A: ToTupleBuffer> Request for Eval<'a, A> {
     }
 }
 
-pub struct Execute<'a, P> {
+pub struct Execute<'a, 'b, T> {
     pub sql: &'a str,
-    pub bind_params: P,
+    pub bind_params: &'b T,
     pub limit: Option<usize>,
 }
 
-impl<'a, P: ToTupleBuffer> Request for Execute<'a, P> {
+impl<'a, 'b, T: ToTupleBuffer> Request for Execute<'a, 'b, T> {
     const TYPE: IProtoType = IProtoType::Execute;
     type Response = Vec<Tuple>;
 
     fn encode_body(&self, out: &mut impl Write, sync: SyncIndex) -> Result<(), Error> {
-        codec::encode_execute(out, sync, self.sql, &self.bind_params)
+        codec::encode_execute(out, sync, self.sql, self.bind_params)
     }
 
     fn decode_body(&self, r#in: &mut Cursor<Vec<u8>>) -> Result<Self::Response, Error> {

@@ -7,7 +7,7 @@ use std::str::from_utf8;
 use num_derive::FromPrimitive;
 use sha1::{Digest, Sha1};
 
-use crate::error::Error;
+use super::Error;
 use crate::index::IteratorType;
 use crate::msgpack;
 use crate::tuple::{ToTupleBuffer, Tuple};
@@ -83,73 +83,6 @@ pub enum IProtoType {
     Call = 10,
     Execute = 11,
     Ping = 64,
-}
-
-pub trait Consumer {
-    /// Is called to handle a single response consisting of a header and a body.
-    ///
-    /// The default implementation is suitable for most cases, so you probably
-    /// only need to implement [`consume_data`] and [`handle_error`].
-    ///
-    /// **Must not yield**
-    fn consume(&self, header: &Header, body: &[u8]) {
-        let _ = header;
-        let consume_impl = || {
-            let mut cursor = Cursor::new(body);
-            let map_len = rmp::decode::read_map_len(&mut cursor)?;
-            for _ in 0..map_len {
-                let key = rmp::decode::read_pfix(&mut cursor)?;
-                let value = value_slice(&mut cursor)?;
-                // dbg!((IProtoKey::try_from(key), rmp_serde::from_slice::<rmpv::Value>(value)));
-                match key {
-                    DATA => self.consume_data(value),
-                    ERROR => {
-                        let message = rmp_serde::from_slice(value)?;
-                        self.handle_error(ResponseError { message }.into());
-                    }
-                    // TODO: IPROTO_ERROR (0x52)
-                    other => self.consume_other(other, value),
-                }
-            }
-            Ok(())
-        };
-
-        if let Err(e) = consume_impl() {
-            self.handle_error(e)
-        }
-    }
-
-    /// Handles key-value pairs other than `IPROTO_DATA` and `IPROTO_ERROR_24`.
-    /// The default implementation ignores them, so if nothing needs to be done
-    /// for those, don't implement this method.
-    ///
-    /// **Must not yield**
-    fn consume_other(&self, key: u8, other: &[u8]) {
-        let (_, _) = (key, other);
-    }
-
-    /// If an error happens during the consumption of the response or if the
-    /// response contains the `IPROTO_ERROR_24` key this function is called with
-    /// the corresponding error value.
-    ///
-    /// **Must not yield**
-    fn handle_error(&self, error: Error);
-
-    /// Called when the connection is closed before the response was received.
-    ///
-    /// The default implementation calls [`handle_error`] with a
-    /// [`NotConnected`](std::io::ErrorKind::NotConnected) error kind.
-    ///
-    /// **Must not yield**
-    fn handle_disconnect(&self) {
-        self.handle_error(io::Error::from(io::ErrorKind::NotConnected).into())
-    }
-
-    /// Handles a slice that covers a msgpack value corresponding to the
-    /// `IPROTO_DATA` key.
-    ///
-    /// **Must not yield**
-    fn consume_data(&self, data: &[u8]);
 }
 
 pub fn encode_header(
