@@ -24,14 +24,16 @@ impl<E: Debug> std::error::Error for UnknownEnumVariant<E> {}
 /// * [`Clone`],
 /// * [`Copy`],
 /// * [`Into<String>`],
+/// * [`Into<&'static str>`](Into),
 /// * [`PartialEq`], [`Eq`],
 /// * [`PartialOrd`], [`Ord`],
 /// * [`std::fmt::Debug`],
 /// * [`std::fmt::Display`],
 /// * [`std::hash::Hash`],
+/// * [`std::ops::Deref<Target = str>`](std::ops::Deref),
 /// * [`std::str::FromStr`],
-/// * `serde::Deserialize<'de>`,
-/// * `serde::Serialize`,
+/// * [`serde::Deserialize<'de>`],
+/// * [`serde::Serialize`],
 /// * [`crate::tlua::LuaRead<L>`],
 /// * [`crate::tlua::Push<L>`],
 /// * [`crate::tlua::PushInto<L>`],
@@ -99,6 +101,8 @@ impl<E: Debug> std::error::Error for UnknownEnumVariant<E> {}
 /// assert_eq!(Season::from_str("  SUMMER  "), Ok(Season::Summer));
 /// ```
 ///
+/// [`serde::Deserialize<'de>`]: https://docs.rs/serde/latest/serde/trait.Deserialize.html
+/// [`serde::Serialize`]: https://docs.rs/serde/latest/serde/trait.Serialize.html
 macro_rules! define_str_enum {
     (
         $(#![$macro_attr:ident])?

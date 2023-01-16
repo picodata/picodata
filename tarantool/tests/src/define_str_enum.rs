@@ -77,6 +77,7 @@ pub fn basic() {
     trait AssertImpl<'de, L: tlua::AsLua>:
         AsRef<str>
         + Into<String>
+        + Into<&'static str>
         + Default
         + Clone
         + Copy
@@ -86,6 +87,7 @@ pub fn basic() {
         + PartialOrd
         + std::fmt::Debug
         + std::fmt::Display
+        + std::ops::Deref<Target = str>
         + std::hash::Hash
         + serde::Deserialize<'de>
         + serde::Serialize
