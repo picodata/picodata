@@ -229,17 +229,15 @@ fn start_fibers(client: Rc<RefCell<ClientInner>>, tx: oneshot::Sender<()>, url: 
         let (reader, writer) = stream.split();
 
         // start receiver in a separate fiber
-        let receiver_client = client.clone();
         let mut receiver_handle = fiber::Builder::new()
-            .func(move || fiber::block_on(receiver(receiver_client.clone(), reader)))
+            .func_async(receiver(client.clone(), reader))
             .name("network-client-receiver")
             .start()
             .unwrap();
 
         // start sender here
-        let sender_client = client.clone();
         let sender_handle = fiber::Builder::new()
-            .func(move || fiber::block_on(sender(sender_client.clone(), writer)))
+            .func_async(sender(client.clone(), writer))
             .name("network-client-sender")
             .start()
             .unwrap();

@@ -298,7 +298,18 @@ impl Builder<NoFunc> {
         }
     }
 
-    /// Sets the callee function for the new fiber.
+    /// Sets the callee async function for the new fiber.
+    pub fn func_async<'f, F, T>(
+        self,
+        f: F,
+    ) -> Builder<FiberFunc<'f, Box<dyn FnOnce() -> T + 'f>, T>>
+    where
+        F: Future<Output = T> + 'f,
+    {
+        self.func(Box::new(|| block_on(f)))
+    }
+
+    /// Sets the callee procedure for the new fiber.
     pub fn proc<'f, F>(self, f: F) -> Builder<FiberProc<'f, F>>
     where
         F: FnOnce(),
@@ -312,6 +323,14 @@ impl Builder<NoFunc> {
                 marker: PhantomData,
             },
         }
+    }
+
+    /// Sets the callee async procedure for the new fiber.
+    pub fn proc_async<'f, F>(self, f: F) -> Builder<FiberProc<'f, Box<dyn FnOnce() + 'f>>>
+    where
+        F: Future<Output = ()> + 'f,
+    {
+        self.proc(Box::new(|| block_on(f)))
     }
 }
 
@@ -1571,4 +1590,44 @@ where
         (*closure)(boxed_arg)
     }
     (callback as *mut F as *mut c_void, Some(trampoline::<F, T>))
+}
+
+#[cfg(feature = "tarantool_test")]
+mod tests {
+    use super::*;
+
+    use crate::test::{TestCase, TESTS};
+    use crate::test_name;
+
+    use linkme::distributed_slice;
+
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    #[distributed_slice(TESTS)]
+    static BUILDER_ASYNC_FUNC: TestCase = TestCase {
+        name: test_name!("builder_async_func"),
+        f: || {
+            let jh = Builder::new().func_async(async { 69 }).start().unwrap();
+            let res = jh.join();
+            assert_eq!(res, 69);
+        },
+    };
+
+    #[distributed_slice(TESTS)]
+    static BUILDER_ASYNC_PROC: TestCase = TestCase {
+        name: test_name!("builder_async_proc"),
+        f: || {
+            let res = Rc::new(RefCell::new(0u32));
+            let res_moved = res.clone();
+            let jh = Builder::new()
+                .proc_async(async move {
+                    *res_moved.borrow_mut() = 1;
+                })
+                .start()
+                .unwrap();
+            jh.join();
+            assert_eq!(*res.borrow(), 1);
+        },
+    };
 }

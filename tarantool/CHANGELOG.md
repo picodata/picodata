@@ -1,5 +1,11 @@
 # Change Log
 
+# [0.7.0] Mar ?? 2023
+
+### Added
+- `fiber::Builder::func_async` and `fiber::Builder::proc_async` - methods for
+    easier construction with `Builder` of fibers executing `Future`
+
 # [0.6.4] Dec 15 2022
 
 ### Added
