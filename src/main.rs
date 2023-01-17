@@ -772,6 +772,14 @@ fn main_run(args: args::Run) -> ! {
     }
 }
 
+/// Performs tarantool initialization calling `box.cfg` for the first time.
+///
+/// This function is called from:
+///
+/// - `start_discover`
+/// - `start_boot`
+/// - `start_join`
+///
 fn init_common(args: &args::Run, cfg: &tarantool::Cfg) -> (Clusterwide, RaftSpaceAccess) {
     std::fs::create_dir_all(&args.data_dir).unwrap();
     tarantool::set_cfg(cfg);
