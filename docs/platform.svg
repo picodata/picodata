@@ -24,9 +24,9 @@
      inkscape:deskcolor="#d1d1d1"
      inkscape:document-units="mm"
      showgrid="false"
-     inkscape:zoom="1.4948513"
-     inkscape:cx="52.848066"
-     inkscape:cy="78.937618"
+     inkscape:zoom="4.228078"
+     inkscape:cx="-49.076673"
+     inkscape:cy="75.921022"
      inkscape:window-width="1920"
      inkscape:window-height="1011"
      inkscape:window-x="0"
@@ -138,7 +138,7 @@
          style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52778px;font-family:HelveticaNeueCyr;-inkscape-font-specification:HelveticaNeueCyr;stroke-width:0.264583"
          x="54.502609"
          y="79.488037"
-         id="tspan11760">Oracle, PostreSGL</tspan></text>
+         id="tspan11760">Oracle, PostreSQL</tspan></text>
     <text
        xml:space="preserve"
        style="font-style:normal;font-weight:normal;font-size:3.52778px;line-height:1.25;font-family:sans-serif;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.264583"
