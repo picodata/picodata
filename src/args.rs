@@ -116,6 +116,15 @@ pub struct Run {
     /// the cluster. It's only accounted upon the cluster initialization
     /// (when the first instance bootstraps), and ignored aftwerwards.
     pub init_replication_factor: u8,
+
+    #[clap(
+        long,
+        value_name = "path",
+        env = "PICODATA_SCRIPT",
+        parse(try_from_str = try_parse_path)
+    )]
+    /// A path to a lua script that will be executed at postjoin stage
+    pub script: Option<String>,
 }
 
 // Copy enum because clap:ArgEnum can't be derived for the foreign SayLevel.

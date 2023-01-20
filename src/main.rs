@@ -992,6 +992,13 @@ fn start_join(args: &args::Run, leader_address: String) {
 fn postjoin(args: &args::Run, storage: Clusterwide, raft_storage: RaftSpaceAccess) {
     tlog!(Info, ">>>>> postjoin()");
 
+    // Execute postjoin script if present
+    if let Some(ref script) = args.script {
+        let l = ::tarantool::lua_state();
+        l.exec(&format!("dofile('{script}')"))
+            .unwrap_or_else(|err| panic!("failed to execute postjoin script: {err}"))
+    }
+
     let mut box_cfg = tarantool::cfg().unwrap();
 
     // Reset the quorum BEFORE initializing the raft node.
