@@ -2,9 +2,9 @@
 <!-- Created with Inkscape (http://www.inkscape.org/) -->
 
 <svg
-   width="113.60455mm"
+   width="116.25038mm"
    height="43.4188mm"
-   viewBox="0 0 113.60455 43.4188"
+   viewBox="0 0 116.25038 43.4188"
    version="1.1"
    id="svg5"
    inkscape:version="1.2.2 (b0a8486541, 2022-12-01)"
@@ -25,8 +25,8 @@
      inkscape:document-units="mm"
      showgrid="false"
      inkscape:zoom="4.228078"
-     inkscape:cx="-49.076673"
-     inkscape:cy="75.921022"
+     inkscape:cx="58.064208"
+     inkscape:cy="76.157535"
      inkscape:window-width="1920"
      inkscape:window-height="1011"
      inkscape:window-x="0"
@@ -39,7 +39,7 @@
      inkscape:label="Layer 1"
      inkscape:groupmode="layer"
      id="layer1"
-     transform="translate(-54.640193,-60.967199)">
+     transform="translate(-51.994357,-60.967199)">
     <path
        id="rect234"
        style="fill:#cb001d;fill-opacity:1;stroke:none;stroke-width:0.653963;stroke-opacity:1"
@@ -131,14 +131,14 @@
     <text
        xml:space="preserve"
        style="font-style:normal;font-weight:normal;font-size:3.52778px;line-height:1.25;font-family:sans-serif;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.264583"
-       x="54.502609"
+       x="51.856773"
        y="79.488037"
        id="text11762"><tspan
          sodipodi:role="line"
          style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52778px;font-family:HelveticaNeueCyr;-inkscape-font-specification:HelveticaNeueCyr;stroke-width:0.264583"
-         x="54.502609"
+         x="51.856773"
          y="79.488037"
-         id="tspan11760">Oracle, PostreSQL</tspan></text>
+         id="tspan11760">Oracle, PostgreSQL</tspan></text>
     <text
        xml:space="preserve"
        style="font-style:normal;font-weight:normal;font-size:3.52778px;line-height:1.25;font-family:sans-serif;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.264583"
