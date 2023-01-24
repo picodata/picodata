@@ -33,7 +33,7 @@ use crate::traft::{LogicalClock, RaftIndex};
 use traft::error::Error;
 
 mod app;
-mod args;
+pub mod args;
 mod discovery;
 mod failure_domain;
 mod governor;
@@ -575,15 +575,6 @@ fn rm_tarantool_files(data_dir: &str) {
         });
 }
 
-fn main() -> ! {
-    match args::Picodata::parse() {
-        args::Picodata::Run(args) => main_run(args),
-        args::Picodata::Test(args) => main_test(args),
-        args::Picodata::Tarantool(args) => main_tarantool(args),
-        args::Picodata::Expel(args) => main_expel(args),
-    }
-}
-
 #[allow(clippy::enum_variant_names)]
 #[derive(Debug, Serialize, Deserialize)]
 enum Entrypoint {
@@ -637,7 +628,7 @@ macro_rules! tarantool_main {
     }};
 }
 
-fn main_run(args: args::Run) -> ! {
+pub fn main_run(args: args::Run) -> ! {
     // Tarantool implicitly parses some environment variables.
     // We don't want them to affect the behavior and thus filter them out.
     for (k, _) in std::env::vars() {
@@ -1159,7 +1150,7 @@ fn postjoin(args: &args::Run, storage: Clusterwide, raft_storage: RaftSpaceAcces
     }
 }
 
-fn main_tarantool(args: args::Tarantool) -> ! {
+pub fn main_tarantool(args: args::Tarantool) -> ! {
     // XXX: `argv` is a vec of pointers to data owned by `tt_args`, so
     // make sure `tt_args` outlives `argv`, because the compiler is not
     // gonna do that for you
@@ -1178,7 +1169,7 @@ fn main_tarantool(args: args::Tarantool) -> ! {
     std::process::exit(rc);
 }
 
-fn main_expel(args: args::Expel) -> ! {
+pub fn main_expel(args: args::Expel) -> ! {
     let rc = tarantool_main!(
         args.tt_args().unwrap(),
         callback_data: (args,),
@@ -1222,7 +1213,7 @@ macro_rules! color {
     }
 }
 
-fn main_test(args: args::Test) -> ! {
+pub fn main_test(args: args::Test) -> ! {
     cleanup_env!();
 
     const PASSED: &str = color![green "ok" clear];
