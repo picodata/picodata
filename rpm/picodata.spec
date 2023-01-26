@@ -20,8 +20,6 @@ BuildRequires: cmake3
 %if 0%{?rhel} == 8 || 0%{?redos} > 0
 BuildRequires: libstdc++-static
 %endif
-   
-Requires: tarantool-picodata
 
 %description
 Picodata is a high performance in-memory NoSQL database and Rust
