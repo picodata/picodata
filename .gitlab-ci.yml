@@ -421,7 +421,7 @@ check-deployment:
       - BASE_IMAGE: centos:7
         PACKAGE: el/7/x86_64/picodata-release-1.1.1.0-1.el7.x86_64.rpm
       - BASE_IMAGE: rockylinux:8
-        PACKAGE: el/8/x86_64/picodata-release-1.1.1.0-1.el7.x86_64.rpm
+        PACKAGE: el/8/x86_64/picodata-release-1.1.1.0-1.el8.x86_64.rpm
       - BASE_IMAGE: packpack/packpack:redos-7.3
         PACKAGE: redos/7/x86_64/picodata-release-1.1.1.0-1.el7.x86_64.rpm
   image: ${BASE_IMAGE}
