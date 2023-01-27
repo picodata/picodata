@@ -8,3 +8,6 @@
 [submodule "vshard"]
 	path = vshard
 	url = https://github.com/tarantool/vshard
+[submodule "http"]
+	path = http
+	url = https://github.com/tarantool/http

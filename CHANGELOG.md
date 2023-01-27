@@ -8,6 +8,13 @@ with the `YY.0M.MICRO` scheme.
 
 <img src="https://img.shields.io/badge/calver-YY.0M.MICRO-22bfda.svg">
 
+## Unreleased
+
+### Added
+- `--script` cli argument to set a path to a lua script executed at startup
+- `--http-listen` cli argument to set [http server](https://github.com/tarantool/http) host and port.
+  If specified the server will be brought up on startup with these params.
+
 ## [22.11.0] - 2022-11-22
 
 ### Features

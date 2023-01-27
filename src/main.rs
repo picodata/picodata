@@ -445,17 +445,23 @@ fn picolib_setup(args: &args::Run) {
     );
 }
 
+macro_rules! lua_preload {
+    ($lua:ident, $module:literal, $path_prefix:literal, $path:literal) => {
+        $lua.exec_with(
+            "local module, path, code = ...
+            package.preload[module] = load(code, '@'..path)",
+            ($module, $path, include_str!(concat!($path_prefix, $path))),
+        )
+        .unwrap();
+    };
+}
+
 fn preload_vshard() {
     let lua = ::tarantool::lua_state();
 
     macro_rules! preload {
         ($module:literal, $path:literal) => {
-            lua.exec_with(
-                "local module, source, path = ...; \
-                package.preload[module] = load(source, '@'..path)",
-                ($module, include_str!(concat!("../vshard/", $path)), $path),
-            )
-            .unwrap();
+            lua_preload!(lua, $module, "../vshard/", $path)
         };
     }
 
@@ -478,6 +484,56 @@ fn preload_vshard() {
     preload!("vshard.storage.sched", "vshard/storage/sched.lua");
     preload!("vshard.util", "vshard/util.lua");
     preload!("vshard.version", "vshard/version.lua");
+}
+
+#[link(name = "httpd")]
+extern "C" {
+    fn luaopen_http_lib(lua_state: tlua::LuaState) -> libc::c_int;
+}
+
+fn preload_http() {
+    let lua = ::tarantool::lua_state();
+
+    // Load C part of the library
+    lua.exec_with(
+        "package.preload['http.lib'] = ...;",
+        tlua::function1(|state: tlua::LuaState| unsafe {
+            luaopen_http_lib(state);
+            let lua = tlua::Lua::from_static(state);
+            lua.exec("package.loaded['http.lib'] = package.loaded['box._lib'];")
+                .unwrap();
+        }),
+    )
+    .unwrap();
+
+    macro_rules! preload {
+        ($module:literal, $path:literal) => {
+            lua_preload!(lua, $module, "../http/", $path);
+        };
+    }
+
+    preload!("http.server", "http/server.lua");
+    preload!("http.codes", "http/codes.lua");
+    preload!("http.mime_types", "http/mime_types.lua");
+}
+
+fn start_http_server(address: &str) {
+    tlog!(Info, "starting http server at {address}");
+    let lua = ::tarantool::lua_state();
+    let (host, port) = address
+        .rsplit_once(':')
+        .expect("this part should have been checked at args parse");
+    let port: u16 = port
+        .parse()
+        .expect("this part should have been checked at args parse");
+    lua.exec_with(
+        "local host, port = ...;
+        local httpd = require('http.server').new(host, port);
+        httpd:start();
+        _G.pico.httpd = httpd",
+        (host, port),
+    )
+    .expect("failed to start http server")
 }
 
 fn init_handlers() -> traft::Result<()> {
@@ -720,7 +776,10 @@ fn init_common(args: &args::Run, cfg: &tarantool::Cfg) -> (Clusterwide, RaftSpac
     std::fs::create_dir_all(&args.data_dir).unwrap();
     tarantool::set_cfg(cfg);
 
+    // Load Lua libraries
     preload_vshard();
+    preload_http();
+
     init_handlers().expect("failed initializing rpc handlers");
     traft::event::init();
     let storage = Clusterwide::new().expect("clusterwide storage initialization failed");
@@ -992,10 +1051,13 @@ fn start_join(args: &args::Run, leader_address: String) {
 fn postjoin(args: &args::Run, storage: Clusterwide, raft_storage: RaftSpaceAccess) {
     tlog!(Info, ">>>>> postjoin()");
 
+    if let Some(ref address) = args.http_listen {
+        start_http_server(address);
+    }
     // Execute postjoin script if present
     if let Some(ref script) = args.script {
         let l = ::tarantool::lua_state();
-        l.exec(&format!("dofile('{script}')"))
+        l.exec_with("dofile(...)", script)
             .unwrap_or_else(|err| panic!("failed to execute postjoin script: {err}"))
     }
 

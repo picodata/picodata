@@ -1,8 +1,19 @@
 use std::path::Path;
 
 fn main() {
-    build_tarantool();
+    // $OUT_DIR = ".../target/<build-type>/build/picodata-<smth>/out"
+    let out_dir = std::env::var("OUT_DIR").unwrap();
+    // cargo creates 2 different output directories when running `cargo build`
+    // and `cargo clippy`, which is stupid, so we're not going to use them
+    //
+    // build_dir = ".../target/<build-type>/build"
+    let build_dir = Path::new(&out_dir).parent().unwrap().parent().unwrap();
+    let tarantool_dir = build_dir.join("tarantool-sys");
+    build_tarantool(&tarantool_dir);
+    let http_dir = build_dir.join("http");
+    build_http(&http_dir, &tarantool_dir);
     println!("cargo:rerun-if-changed=tarantool-sys");
+    println!("cargo:rerun-if-changed=http/http");
 }
 
 fn version() -> (u32, u32) {
@@ -22,20 +33,48 @@ fn version() -> (u32, u32) {
     (major, minor)
 }
 
-fn build_tarantool() {
-    // $OUT_DIR = ".../target/<build-type>/build/picodata-<smth>/out"
-    let out_dir = std::env::var("OUT_DIR").unwrap();
-    // cargo creates 2 different output directories when running `cargo build`
-    // and `cargo clippy`, which is stupid, so we're not going to use them
-    //
-    // build_dir = ".../target/<build-type>/build/tarantool-sys"
-    let build_dir = Path::new(&out_dir)
-        .parent()
-        .unwrap()
-        .parent()
-        .unwrap()
-        .join("tarantool-sys");
+fn build_http(build_dir: &Path, tarantool_dir: &Path) {
+    let status = std::process::Command::new("cmake")
+        .arg("-S")
+        .arg("http")
+        .arg("-B")
+        .arg(build_dir)
+        .arg(format!(
+            "-DTARANTOOL_DIR={}",
+            tarantool_dir
+                .join("build/tarantool-prefix/include")
+                .to_string_lossy()
+        ))
+        .status()
+        .expect("cmake couldn't be executed");
+    if !status.success() {
+        panic!("cmake failed")
+    }
+    let status = std::process::Command::new("cmake")
+        .arg("--build")
+        .arg(build_dir)
+        .status()
+        .expect("cmake couldn't be executed");
+    if !status.success() {
+        panic!("cmake failed")
+    }
+    let status = std::process::Command::new("ar")
+        .arg("-rcs")
+        .arg(build_dir.join("libhttpd.a"))
+        .arg(build_dir.join("http/CMakeFiles/httpd.dir/lib.c.o"))
+        .status()
+        .expect("ar couldn't be executed");
+    if !status.success() {
+        panic!("ar failed")
+    }
 
+    println!(
+        "cargo:rustc-link-search=native={}",
+        build_dir.to_string_lossy()
+    );
+}
+
+fn build_tarantool(build_dir: &Path) {
     if build_dir.exists() {
         // static-build/CMakeFiles.txt builds tarantool via the ExternalProject
         // module, which doesn't rebuild subprojects if their contents changed,
@@ -53,7 +92,7 @@ fn build_tarantool() {
         }
     }
 
-    std::fs::create_dir_all(&build_dir).expect("failed creating build directory");
+    std::fs::create_dir_all(build_dir).expect("failed creating build directory");
     let dst = cmake::Config::new("tarantool-sys/static-build")
         .define(
             "CMAKE_TARANTOOL_ARGS",

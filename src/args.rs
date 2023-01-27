@@ -125,6 +125,17 @@ pub struct Run {
     )]
     /// A path to a lua script that will be executed at postjoin stage
     pub script: Option<String>,
+
+    #[clap(
+        long,
+        value_name = "[host][:port]",
+        env = "PICODATA_HTTP_LISTEN",
+        parse(try_from_str = try_parse_address)
+    )]
+    /// Address to start the HTTP server on. The routing API is exposed
+    /// in Lua as `_G.pico.httpd` variable. If not specified, it won't
+    /// be initialized.
+    pub http_listen: Option<String>,
 }
 
 // Copy enum because clap:ArgEnum can't be derived for the foreign SayLevel.
