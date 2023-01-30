@@ -5,6 +5,7 @@
 ### Added
 - `fiber::Builder::func_async` and `fiber::Builder::proc_async` - methods for
     easier construction with `Builder` of fibers executing `Future`
+- `tlua::CFunction` wrapper struct to push `C` functions as values into lua.
 
 # [0.6.4] Dec 15 2022
 

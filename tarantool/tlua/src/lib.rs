@@ -120,7 +120,7 @@ pub use any::{AnyHashableLuaValue, AnyLuaString, AnyLuaValue};
 pub use cdata::{AsCData, CData, CDataOnStack};
 pub use functions_write::{
     function0, function1, function10, function2, function3, function4, function5, function6,
-    function7, function8, function9, protected_call, Function, InsideCallback, Throw,
+    function7, function8, function9, protected_call, CFunction, Function, InsideCallback, Throw,
 };
 pub use lua_functions::LuaFunction;
 pub use lua_functions::{LuaCode, LuaCodeFromReader};
@@ -149,6 +149,8 @@ mod lua_tables;
 mod macros;
 mod object;
 mod rust_tables;
+#[cfg(feature = "tarantool_test")]
+pub mod test;
 mod tuples;
 mod userdata;
 pub mod util;

@@ -215,6 +215,7 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
             }]
         } else {
             let mut tests = tarantool::test::collect();
+            tests.append(&mut tarantool::tlua::test::collect());
             tests.append(&mut tests![
                 decimal::from_lua,
                 decimal::from_string,

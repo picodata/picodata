@@ -4,7 +4,8 @@ version = "0.1.0"
 authors = [
     "Dmitriy Koltsov <dkoltsov@picodata.io>",
     "Georgy Moshkin <gmoshkin@picodata.io>",
-    "Anton Melnikov <volt0@picodata.io>"
+    "Anton Melnikov <volt0@picodata.io>",
+    "Egor Ivkov <e.ivkov@picodata.io>",
 ]
 edition = "2018"
 license = "BSD-2-Clause"

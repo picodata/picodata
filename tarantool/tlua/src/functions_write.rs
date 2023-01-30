@@ -305,6 +305,65 @@ macro_rules! impl_function_ext {
 
 impl_function_ext! {A B C D E F G H I J K M N}
 
+/// A wrapper around [`ffi::lua_CFunction`] to push `C` functions
+/// into lua as values.
+///
+/// # Example
+/// ```no_run
+/// use tlua::{Lua, CFunction, LuaState, ffi};
+///
+/// let lua = Lua::new();
+/// unsafe extern "C" fn return_42(lua: LuaState) -> libc::c_int {
+///     ffi::lua_pushinteger(lua, 42);
+///     1
+/// }
+/// assert_eq!(
+///     lua.eval_with::<_, i32>("local fn = ...; return fn()", &CFunction::new(return_42))
+///         .unwrap(),
+///     42
+/// );
+/// ```
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct CFunction(ffi::lua_CFunction);
+
+impl CFunction {
+    pub fn new(f: ffi::lua_CFunction) -> Self {
+        Self(f)
+    }
+
+    pub fn into_inner(self) -> ffi::lua_CFunction {
+        self.0
+    }
+}
+
+impl From<ffi::lua_CFunction> for CFunction {
+    fn from(f: ffi::lua_CFunction) -> Self {
+        Self::new(f)
+    }
+}
+
+impl<L: AsLua> PushInto<L> for CFunction {
+    type Err = Void;
+
+    fn push_into_lua(self, lua: L) -> Result<PushGuard<L>, (Self::Err, L)> {
+        unsafe {
+            ffi::lua_pushcfunction(lua.as_lua(), self.0);
+            Ok(PushGuard::new(lua, 1))
+        }
+    }
+}
+
+impl<L: AsLua> Push<L> for CFunction {
+    type Err = Void;
+
+    fn push_to_lua(&self, lua: L) -> Result<PushGuard<L>, (Self::Err, L)> {
+        unsafe {
+            ffi::lua_pushcfunction(lua.as_lua(), self.0);
+            Ok(PushGuard::new(lua, 1))
+        }
+    }
+}
+
 /// Opaque type that represents the Lua context when inside a callback.
 ///
 /// Some types (like `Result`) can only be returned from a callback and not written inside a
@@ -478,4 +537,31 @@ where
 
         0
     }
+}
+
+#[cfg(feature = "tarantool_test")]
+mod tests {
+    use super::*;
+    use crate::test::{TestCase, TLUA_TESTS};
+    use crate::test_name;
+    use linkme::distributed_slice;
+
+    #[distributed_slice(TLUA_TESTS)]
+    static C_FUNCTION: TestCase = TestCase {
+        name: test_name!("c_function"),
+        f: || {
+            let lua = crate::Lua::new();
+
+            unsafe extern "C" fn return_42(lua: crate::LuaState) -> libc::c_int {
+                ffi::lua_pushinteger(lua, 42);
+                1
+            }
+
+            assert_eq!(
+                lua.eval_with::<_, i32>("local fn = ...; return fn()", &CFunction::new(return_42))
+                    .unwrap(),
+                42
+            );
+        },
+    };
 }

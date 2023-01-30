@@ -5,7 +5,8 @@ version = "0.6.4"
 authors = [
     "Dmitriy Koltsov <dkoltsov@picodata.io>",
     "Georgy Moshkin <gmoshkin@picodata.io>",
-    "Anton Melnikov <volt0@picodata.io>"
+    "Anton Melnikov <volt0@picodata.io>",
+    "Egor Ivkov <e.ivkov@picodata.io>",
 ]
 edition = "2018"
 license = "BSD-2-Clause"
@@ -55,4 +56,4 @@ defer = []
 picodata = []
 network_client = []
 all = ["default", "schema", "defer"]
-tarantool_test = ["linkme", "tester"]
+tarantool_test = ["linkme", "tester", "tlua/tarantool_test"]
