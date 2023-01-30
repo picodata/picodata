@@ -16,23 +16,6 @@ fn main() {
     println!("cargo:rerun-if-changed=http/http");
 }
 
-fn version() -> (u32, u32) {
-    let version_bytes = std::process::Command::new("rustc")
-        .arg("--version")
-        .output()
-        .unwrap()
-        .stdout;
-    let version_line = String::from_utf8(version_bytes).unwrap();
-    let mut version_line_parts = version_line.split_whitespace();
-    let rustc = version_line_parts.next().unwrap();
-    assert_eq!(rustc, "rustc");
-    let version = version_line_parts.next().unwrap();
-    let mut version_parts = version.split('.');
-    let major = version_parts.next().unwrap().parse().unwrap();
-    let minor = version_parts.next().unwrap().parse().unwrap();
-    (major, minor)
-}
-
 fn build_http(build_dir: &Path, tarantool_dir: &Path) {
     let status = std::process::Command::new("cmake")
         .arg("-S")
@@ -108,11 +91,7 @@ fn build_tarantool(build_dir: &Path) {
     // Don't build a shared object in case it's the default for the compiler
     println!("cargo:rustc-link-arg=-no-pie");
 
-    let link_static_flag = if version() < (1, 61) {
-        "cargo:rustc-link-lib=static"
-    } else {
-        "cargo:rustc-link-lib=static:+whole-archive"
-    };
+    let link_static_flag = "cargo:rustc-link-lib=static:+whole-archive";
 
     for l in [
         "core",
