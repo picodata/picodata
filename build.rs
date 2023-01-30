@@ -1,4 +1,6 @@
+use std::panic::Location;
 use std::path::Path;
+use std::process::Command;
 
 fn main() {
     // $OUT_DIR = ".../target/<build-type>/build/picodata-<smth>/out"
@@ -17,7 +19,7 @@ fn main() {
 }
 
 fn build_http(build_dir: &Path, tarantool_dir: &Path) {
-    let status = std::process::Command::new("cmake")
+    Command::new("cmake")
         .arg("-S")
         .arg("http")
         .arg("-B")
@@ -28,28 +30,15 @@ fn build_http(build_dir: &Path, tarantool_dir: &Path) {
                 .join("build/tarantool-prefix/include")
                 .to_string_lossy()
         ))
-        .status()
-        .expect("cmake couldn't be executed");
-    if !status.success() {
-        panic!("cmake failed")
-    }
-    let status = std::process::Command::new("cmake")
-        .arg("--build")
-        .arg(build_dir)
-        .status()
-        .expect("cmake couldn't be executed");
-    if !status.success() {
-        panic!("cmake failed")
-    }
-    let status = std::process::Command::new("ar")
+        .run();
+
+    Command::new("cmake").arg("--build").arg(build_dir).run();
+
+    Command::new("ar")
         .arg("-rcs")
         .arg(build_dir.join("libhttpd.a"))
         .arg(build_dir.join("http/CMakeFiles/httpd.dir/lib.c.o"))
-        .status()
-        .expect("ar couldn't be executed");
-    if !status.success() {
-        panic!("ar failed")
-    }
+        .run();
 
     println!(
         "cargo:rustc-link-search=native={}",
@@ -63,16 +52,11 @@ fn build_tarantool(build_dir: &Path) {
         // module, which doesn't rebuild subprojects if their contents changed,
         // therefore we do `cmake --build tarantool-prefix/src/tarantool-build`
         // directly, to try and rebuild tarantool-sys.
-        let status = std::process::Command::new("cmake")
+        Command::new("cmake")
             .arg("--build")
             .arg(build_dir.join("build/tarantool-prefix/src/tarantool-build"))
             .arg("-j")
-            .status()
-            .expect("cmake couldn't be executed");
-
-        if !status.success() {
-            panic!("cmake failed")
-        }
+            .run();
     }
 
     std::fs::create_dir_all(build_dir).expect("failed creating build directory");
@@ -247,5 +231,25 @@ fn build_tarantool(build_dir: &Path) {
         // not supported on macos
         println!("cargo:rustc-link-arg=-export-dynamic");
         println!("cargo:rustc-link-lib=dylib=stdc++");
+    }
+}
+
+trait CommandExt {
+    fn run(&mut self);
+}
+
+impl CommandExt for Command {
+    #[track_caller]
+    fn run(&mut self) {
+        let loc = Location::caller();
+        eprintln!("[{}:{}] running [{:?}]", loc.file(), loc.line(), self);
+
+        let prog = self.get_program().to_owned().into_string().unwrap();
+
+        match self.status() {
+            Ok(status) if status.success() => (),
+            Ok(status) => panic!("{} failed: {}", prog, status),
+            Err(e) => panic!("failed running `{}`: {}", prog, e),
+        }
     }
 }
