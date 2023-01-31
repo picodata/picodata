@@ -3,13 +3,29 @@ use std::path::Path;
 use std::process::Command;
 
 fn main() {
+    // The file structure roughly looks as follows:
+    // .
+    // ├── build.rs                         // you are here
+    // ├── src/
+    // ├── tarantool-sys
+    // │   └── static-build
+    // │       └── CMakeLists.txt
+    // └── <target-dir>/<build-type>/build  // <- build_root
+    //     ├── picodata-<smth>/out          // <- out_dir
+    //     ├── tarantool-http
+    //     └── tarantool-sys
+    //         ├── ncurses-prefix
+    //         ├── openssl-prefix
+    //         ├── readline-prefix
+    //         └── tarantool-prefix
+    //
     let out_dir = std::env::var("OUT_DIR").unwrap();
-    dbg!(&out_dir); // "$PWD/target/<build-type>/build/picodata-<smth>/out"
+    dbg!(&out_dir); // "<target-dir>/<build-type>/build/picodata-<smth>/out"
 
     // Running `cargo build` and `cargo clippy` produces 2 different
     // `out_dir` paths. This is stupid, we're not going to use them.
     let build_root = Path::new(&out_dir).parent().unwrap().parent().unwrap();
-    dbg!(&build_root); // "$PWD/target/<build-type>/build"
+    dbg!(&build_root); // "<target-dir>/<build-type>/build"
 
     build_tarantool(build_root);
     build_http(build_root);
@@ -22,7 +38,7 @@ fn build_http(build_root: &Path) {
     let build_dir = build_root.join("tarantool-http");
     let build_dir_str = build_dir.display().to_string();
 
-    let tarantool_dir = build_root.join("tarantool-sys/build/tarantool-prefix");
+    let tarantool_dir = build_root.join("tarantool-sys/tarantool-prefix");
     let tarantool_dir_str = tarantool_dir.display().to_string();
 
     Command::new("cmake")
@@ -46,7 +62,7 @@ fn build_http(build_root: &Path) {
 }
 
 fn build_tarantool(build_root: &Path) {
-    let build_dir = build_root.join("tarantool-sys/build");
+    let build_dir = build_root.join("tarantool-sys");
     let build_dir_str = build_dir.display().to_string();
 
     let tarantool_prefix = "tarantool-prefix/src/tarantool-build";
