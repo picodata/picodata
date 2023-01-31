@@ -42,7 +42,7 @@ fn build_http(build_root: &Path) {
         .arg(build_dir.join("http/CMakeFiles/httpd.dir/lib.c.o"))
         .run();
 
-    println!("cargo:rustc-link-search=native={build_dir_str}");
+    rustc::link_search(build_dir_str);
 }
 
 fn build_tarantool(build_root: &Path) {
@@ -80,17 +80,10 @@ fn build_tarantool(build_root: &Path) {
             .run();
     }
 
-    // A temporary alias to reduce the commit diff
-    // TODO (rosik): refactor in the next commit
-    let dst = build_dir.parent().unwrap(); // this is what cmake crate used to do
-
-    let build_dir = dst.join("build/tarantool-prefix/src/tarantool-build");
-    let build_disp = build_dir.display();
+    let b = build_dir_str; // rename for shortness
 
     // Don't build a shared object in case it's the default for the compiler
-    println!("cargo:rustc-link-arg=-no-pie");
-
-    let link_static_flag = "cargo:rustc-link-lib=static:+whole-archive";
+    rustc::link_arg("-no-pie");
 
     for l in [
         "core",
@@ -112,140 +105,96 @@ fn build_tarantool(build_root: &Path) {
         "salad",
         "tzcode",
     ] {
-        println!(
-            "cargo:rustc-link-search=native={}/src/lib/{}",
-            build_disp, l
-        );
-        println!("{}={}", link_static_flag, l);
+        rustc::link_search(format!("{b}/{tarantool_prefix}/src/lib/{l}"));
+        rustc::link_lib_static(l);
     }
 
-    println!("cargo:rustc-link-search=native={}", build_disp);
-    println!("cargo:rustc-link-search=native={}/src", build_disp);
-    println!("cargo:rustc-link-search=native={}/src/box", build_disp);
-    println!(
-        "cargo:rustc-link-search=native={}/third_party/luajit/src",
-        build_disp
-    );
-    println!(
-        "cargo:rustc-link-search=native={}/third_party/libyaml",
-        build_disp
-    );
-    println!("cargo:rustc-link-search=native={build_disp}/third_party/c-dt/build");
-    println!("cargo:rustc-link-search=native={build_disp}/build/nghttp2/dest/lib");
-    for l in [
-        "tarantool",
-        "ev",
-        "coro",
-        "cdt",
-        "server",
-        "misc",
-        "nghttp2",
-        "zstd",
-        "decNumber",
-        "eio",
-        "box",
-        "tuple",
-        "xrow",
-        "box_error",
-        "xlog",
-        "crc32",
-        "scramble",
-        "stat",
-        "shutdown",
-        "swim_udp",
-        "swim_ev",
-        "cpu_feature",
-        "luajit",
-        "yaml_static",
-    ] {
-        println!("{}={}", link_static_flag, l);
-    }
+    rustc::link_search(format!("{b}/{tarantool_prefix}"));
+    rustc::link_search(format!("{b}/{tarantool_prefix}/src"));
+    rustc::link_search(format!("{b}/{tarantool_prefix}/src/box"));
+    rustc::link_search(format!("{b}/{tarantool_prefix}/third_party/luajit/src"));
+    rustc::link_search(format!("{b}/{tarantool_prefix}/third_party/libyaml"));
+    rustc::link_search(format!("{b}/{tarantool_prefix}/third_party/c-dt/build"));
+    rustc::link_search(format!("{b}/{tarantool_prefix}/build/nghttp2/dest/lib"));
 
-    if !cfg!(target_os = "macos") {
-        // OpenMP is builtin to the compiler on macos
-        println!("{}=gomp", link_static_flag);
+    rustc::link_lib_static("tarantool");
+    rustc::link_lib_static("ev");
+    rustc::link_lib_static("coro");
+    rustc::link_lib_static("cdt");
+    rustc::link_lib_static("server");
+    rustc::link_lib_static("misc");
+    rustc::link_lib_static("nghttp2");
+    rustc::link_lib_static("zstd");
+    rustc::link_lib_static("decNumber");
+    rustc::link_lib_static("eio");
+    rustc::link_lib_static("box");
+    rustc::link_lib_static("tuple");
+    rustc::link_lib_static("xrow");
+    rustc::link_lib_static("box_error");
+    rustc::link_lib_static("xlog");
+    rustc::link_lib_static("crc32");
+    rustc::link_lib_static("scramble");
+    rustc::link_lib_static("stat");
+    rustc::link_lib_static("shutdown");
+    rustc::link_lib_static("swim_udp");
+    rustc::link_lib_static("swim_ev");
+    rustc::link_lib_static("cpu_feature");
+    rustc::link_lib_static("luajit");
+    rustc::link_lib_static("yaml_static");
 
-        // Libunwind is builtin to the compiler on macos
-        //
+    if cfg!(target_os = "macos") {
+        // OpenMP and Libunwind are builtin to the compiler on macos
+    } else {
+        rustc::link_lib_static("gomp");
+
         // These two must be linked as positional arguments, because they define
         // duplicate symbols which is not allowed (by default) when linking with
         // via -l... option
-        println!(
-            "cargo:rustc-link-arg={}/build/libunwind/dest/lib/libunwind-x86_64.a",
-            build_disp
-        );
-        println!(
-            "cargo:rustc-link-arg={}/build/libunwind/dest/lib/libunwind.a",
-            build_disp
-        );
+        let lib_dir = format!("{b}/{tarantool_prefix}/build/libunwind/dest/lib");
+        rustc::link_arg(format!("{lib_dir}/libunwind-x86_64.a"));
+        rustc::link_arg(format!("{lib_dir}/libunwind.a"));
     }
 
-    println!("cargo:rustc-link-arg=-lc");
+    rustc::link_arg("-lc");
 
-    println!(
-        "cargo:rustc-link-search=native={}/build/readline-prefix/lib",
-        dst.display()
-    );
-    println!("{}=readline", link_static_flag);
+    rustc::link_search(format!("{b}/readline-prefix/lib"));
+    rustc::link_lib_static("readline");
 
-    println!(
-        "cargo:rustc-link-search=native={}/build/icu-prefix/lib",
-        dst.display()
-    );
-    println!("{}=icudata", link_static_flag);
-    println!("{}=icui18n", link_static_flag);
-    println!("{}=icuio", link_static_flag);
-    println!("{}=icutu", link_static_flag);
-    println!("{}=icuuc", link_static_flag);
+    rustc::link_search(format!("{b}/icu-prefix/lib"));
+    rustc::link_lib_static("icudata");
+    rustc::link_lib_static("icui18n");
+    rustc::link_lib_static("icuio");
+    rustc::link_lib_static("icutu");
+    rustc::link_lib_static("icuuc");
 
-    println!(
-        "cargo:rustc-link-search=native={}/build/zlib-prefix/lib",
-        dst.display()
-    );
-    println!("{}=z", link_static_flag);
+    rustc::link_search(format!("{b}/zlib-prefix/lib"));
+    rustc::link_lib_static("z");
 
-    println!(
-        "cargo:rustc-link-search=native={}/build/curl/dest/lib",
-        build_disp
-    );
-    println!("{}=curl", link_static_flag);
-    println!(
-        "cargo:rustc-link-search=native={}/build/ares/dest/lib",
-        build_disp
-    );
-    println!("{}=cares", link_static_flag);
+    rustc::link_search(format!("{b}/{tarantool_prefix}/build/curl/dest/lib"));
+    rustc::link_lib_static("curl");
 
-    println!(
-        "cargo:rustc-link-search=native={}/build/openssl-prefix/lib",
-        dst.display()
-    );
-    println!("{}=ssl", link_static_flag);
+    rustc::link_search(format!("{b}/{tarantool_prefix}/build/ares/dest/lib"));
+    rustc::link_lib_static("cares");
+
+    rustc::link_search(format!("{b}/openssl-prefix/lib"));
+    rustc::link_lib_static("ssl");
+
     // This one must be linked as a positional argument, because -lcrypto
     // conflicts with `src/lib/crypto/libcrypto.a`
     // duplicate symbols which is not allowed (by default) when linking with via
-    println!(
-        "cargo:rustc-link-arg={}/build/openssl-prefix/lib/libcrypto.a",
-        dst.display()
-    );
+    rustc::link_arg(format!("{b}/openssl-prefix/lib/libcrypto.a"));
 
-    println!(
-        "cargo:rustc-link-search=native={}/build/ncurses-prefix/lib",
-        dst.display()
-    );
-    println!("{}=tinfo", link_static_flag);
+    rustc::link_search(format!("{b}/ncurses-prefix/lib"));
+    rustc::link_lib_static("tinfo");
 
-    println!(
-        "cargo:rustc-link-search=native={}/build/iconv-prefix/lib",
-        dst.display()
-    );
-
+    rustc::link_search(format!("{b}/iconv-prefix/lib"));
     if cfg!(target_os = "macos") {
         // -lc++ instead of -lstdc++ on macos
-        println!("cargo:rustc-link-lib=dylib=c++");
+        rustc::link_lib_dynamic("c++");
     } else {
         // not supported on macos
-        println!("cargo:rustc-link-arg=-export-dynamic");
-        println!("cargo:rustc-link-lib=dylib=stdc++");
+        rustc::link_arg("-export-dynamic");
+        rustc::link_lib_dynamic("stdc++");
     }
 }
 
@@ -266,5 +215,26 @@ impl CommandExt for Command {
             Ok(status) => panic!("{} failed: {}", prog, status),
             Err(e) => panic!("failed running `{}`: {}", prog, e),
         }
+    }
+}
+
+mod rustc {
+    pub fn link_search(path: impl AsRef<str>) {
+        println!("cargo:rustc-link-search=native={}", path.as_ref());
+    }
+
+    pub fn link_lib_static(lib: impl AsRef<str>) {
+        println!(
+            "cargo:rustc-link-lib=static:+whole-archive={}",
+            lib.as_ref()
+        );
+    }
+
+    pub fn link_lib_dynamic(lib: impl AsRef<str>) {
+        println!("cargo:rustc-link-lib=dylib={}", lib.as_ref());
+    }
+
+    pub fn link_arg(arg: impl AsRef<str>) {
+        println!("cargo:rustc-link-arg={}", arg.as_ref());
     }
 }
