@@ -193,13 +193,22 @@ fn build_tarantool(build_root: &Path) {
     rustc::link_search(format!("{b}/{tarantool_prefix}/build/ares/dest/lib"));
     rustc::link_lib_static("cares");
 
+    // `openssl-prefix/lib/libcrypto.a` conflicts with
+    // `src/lib/crypto/libcrypto.a` by name when passed as `-lcrypto` link
+    // argument. So we rename one of the libraries, which seems to solve the
+    // problem.
+    let openssl_dir = build_dir.join("openssl-prefix/lib");
+    let old_lib = openssl_dir.join("libcrypto.a");
+    let new_lib = openssl_dir.join("libcrypto-ssl.a");
+
+    if old_lib.exists() {
+        std::fs::remove_file(&new_lib).ok();
+        std::fs::rename(old_lib, new_lib).unwrap();
+    }
+
     rustc::link_search(format!("{b}/openssl-prefix/lib"));
     rustc::link_lib_static("ssl");
-
-    // This one must be linked as a positional argument, because -lcrypto
-    // conflicts with `src/lib/crypto/libcrypto.a`
-    // duplicate symbols which is not allowed (by default) when linking with via
-    rustc::link_arg(format!("{b}/openssl-prefix/lib/libcrypto.a"));
+    rustc::link_lib_static("crypto-ssl");
 
     rustc::link_search(format!("{b}/ncurses-prefix/lib"));
     rustc::link_lib_static("tinfo");
