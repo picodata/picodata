@@ -3,36 +3,38 @@ use std::path::Path;
 use std::process::Command;
 
 fn main() {
-    // $OUT_DIR = ".../target/<build-type>/build/picodata-<smth>/out"
     let out_dir = std::env::var("OUT_DIR").unwrap();
-    // cargo creates 2 different output directories when running `cargo build`
-    // and `cargo clippy`, which is stupid, so we're not going to use them
-    //
-    // build_dir = ".../target/<build-type>/build"
-    let build_dir = Path::new(&out_dir).parent().unwrap().parent().unwrap();
-    let tarantool_dir = build_dir.join("tarantool-sys");
-    build_tarantool(&tarantool_dir);
-    let http_dir = build_dir.join("http");
-    build_http(&http_dir, &tarantool_dir);
+    dbg!(&out_dir); // "$PWD/target/<build-type>/build/picodata-<smth>/out"
+
+    // Running `cargo build` and `cargo clippy` produces 2 different
+    // `out_dir` paths. This is stupid, we're not going to use them.
+    let build_root = Path::new(&out_dir).parent().unwrap().parent().unwrap();
+    dbg!(&build_root); // "$PWD/target/<build-type>/build"
+
+    build_tarantool(build_root);
+    build_http(build_root);
+
     println!("cargo:rerun-if-changed=tarantool-sys");
     println!("cargo:rerun-if-changed=http/http");
 }
 
-fn build_http(build_dir: &Path, tarantool_dir: &Path) {
+fn build_http(build_root: &Path) {
+    let build_dir = build_root.join("tarantool-http");
+    let build_dir_str = build_dir.display().to_string();
+
+    let tarantool_dir = build_root.join("tarantool-sys/build/tarantool-prefix");
+    let tarantool_dir_str = tarantool_dir.display().to_string();
+
     Command::new("cmake")
-        .arg("-S")
-        .arg("http")
-        .arg("-B")
-        .arg(build_dir)
-        .arg(format!(
-            "-DTARANTOOL_DIR={}",
-            tarantool_dir
-                .join("build/tarantool-prefix/include")
-                .to_string_lossy()
-        ))
+        .args(["-S", "http"])
+        .args(["-B", &build_dir_str])
+        .arg(format!("-DTARANTOOL_DIR={tarantool_dir_str}"))
         .run();
 
-    Command::new("cmake").arg("--build").arg(build_dir).run();
+    Command::new("cmake")
+        .args(["--build", &build_dir_str])
+        .arg("-j")
+        .run();
 
     Command::new("ar")
         .arg("-rcs")
@@ -40,34 +42,47 @@ fn build_http(build_dir: &Path, tarantool_dir: &Path) {
         .arg(build_dir.join("http/CMakeFiles/httpd.dir/lib.c.o"))
         .run();
 
-    println!(
-        "cargo:rustc-link-search=native={}",
-        build_dir.to_string_lossy()
-    );
+    println!("cargo:rustc-link-search=native={build_dir_str}");
 }
 
-fn build_tarantool(build_dir: &Path) {
-    if build_dir.exists() {
+fn build_tarantool(build_root: &Path) {
+    let build_dir = build_root.join("tarantool-sys/build");
+    let build_dir_str = build_dir.display().to_string();
+
+    let tarantool_prefix = "tarantool-prefix/src/tarantool-build";
+
+    if !build_dir.join(tarantool_prefix).exists() {
+        // Build from scratch
+        Command::new("cmake")
+            .args(["-S", "tarantool-sys/static-build"])
+            .args(["-B", &build_dir_str])
+            .arg(concat!(
+                "-DCMAKE_TARANTOOL_ARGS=",
+                "-DCMAKE_BUILD_TYPE=RelWithDebInfo;",
+                "-DBUILD_TESTING=FALSE;",
+                "-DBUILD_DOC=FALSE",
+            ))
+            .run();
+        Command::new("cmake")
+            .args(["--build", &build_dir_str])
+            .arg("-j")
+            .run();
+    } else {
         // static-build/CMakeFiles.txt builds tarantool via the ExternalProject
         // module, which doesn't rebuild subprojects if their contents changed,
-        // therefore we do `cmake --build tarantool-prefix/src/tarantool-build`
-        // directly, to try and rebuild tarantool-sys.
+        // therefore we dive into `tarantool-prefix/src/tarantool-build`
+        // directly and try to rebuild it individually.
+        let build_dir = build_dir.join(tarantool_prefix);
+        let build_dir_str = build_dir.display().to_string();
         Command::new("cmake")
-            .arg("--build")
-            .arg(build_dir.join("build/tarantool-prefix/src/tarantool-build"))
+            .args(["--build", &build_dir_str])
             .arg("-j")
             .run();
     }
 
-    std::fs::create_dir_all(build_dir).expect("failed creating build directory");
-    let dst = cmake::Config::new("tarantool-sys/static-build")
-        .define(
-            "CMAKE_TARANTOOL_ARGS",
-            "-DCMAKE_BUILD_TYPE=RelWithDebInfo;-DBUILD_TESTING=FALSE;-DBUILD_DOC=FALSE",
-        )
-        .build_target("tarantool")
-        .out_dir(build_dir)
-        .build();
+    // A temporary alias to reduce the commit diff
+    // TODO (rosik): refactor in the next commit
+    let dst = build_dir.parent().unwrap(); // this is what cmake crate used to do
 
     let build_dir = dst.join("build/tarantool-prefix/src/tarantool-build");
     let build_disp = build_dir.display();

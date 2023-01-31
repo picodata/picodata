@@ -41,9 +41,6 @@ features = ["schema", "picodata"]
 rand = "0.8.5"
 pretty_assertions = "0.6.1"
 
-[build-dependencies]
-cmake = "^0"
-
 [[bin]]
 name = "picodata"
 doctest = false
