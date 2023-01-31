@@ -1,6 +1,25 @@
+use proc_macro::TokenStream as TokenStream1;
 use proc_macro2::{Span, TokenStream};
 use quote::quote;
 use syn::{parse_macro_input, DeriveInput, Ident, Lifetime, Type};
+
+#[proc_macro_attribute]
+pub fn test(_attr: TokenStream1, item: TokenStream1) -> TokenStream1 {
+    let fn_item = parse_macro_input!(item as syn::ItemFn);
+    let fn_name = fn_item.sig.ident;
+    let test_name = fn_name.to_string();
+    let test_name_ident = syn::Ident::new(&test_name.to_uppercase(), fn_name.span());
+    let test_body = fn_item.block;
+    let unsafe_token = fn_item.sig.unsafety;
+    quote! {
+        #[::linkme::distributed_slice(crate::test::TLUA_TESTS)]
+        static #test_name_ident: crate::test::TestCase = crate::test::TestCase {
+            name: ::std::concat!(::std::module_path!(), "::", #test_name),
+            f: || #unsafe_token #test_body,
+        };
+    }
+    .into()
+}
 
 fn proc_macro_derive_push_impl(
     input: proc_macro::TokenStream,

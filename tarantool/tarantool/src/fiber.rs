@@ -1596,38 +1596,27 @@ where
 mod tests {
     use super::*;
 
-    use crate::test::{TestCase, TESTS};
-    use crate::test_name;
-
-    use linkme::distributed_slice;
-
     use std::cell::RefCell;
     use std::rc::Rc;
 
-    #[distributed_slice(TESTS)]
-    static BUILDER_ASYNC_FUNC: TestCase = TestCase {
-        name: test_name!("builder_async_func"),
-        f: || {
-            let jh = Builder::new().func_async(async { 69 }).start().unwrap();
-            let res = jh.join();
-            assert_eq!(res, 69);
-        },
-    };
+    #[crate::test]
+    fn builder_async_func() {
+        let jh = Builder::new().func_async(async { 69 }).start().unwrap();
+        let res = jh.join();
+        assert_eq!(res, 69);
+    }
 
-    #[distributed_slice(TESTS)]
-    static BUILDER_ASYNC_PROC: TestCase = TestCase {
-        name: test_name!("builder_async_proc"),
-        f: || {
-            let res = Rc::new(RefCell::new(0u32));
-            let res_moved = res.clone();
-            let jh = Builder::new()
-                .proc_async(async move {
-                    *res_moved.borrow_mut() = 1;
-                })
-                .start()
-                .unwrap();
-            jh.join();
-            assert_eq!(*res.borrow(), 1);
-        },
-    };
+    #[crate::test]
+    fn builder_async_proc() {
+        let res = Rc::new(RefCell::new(0u32));
+        let res_moved = res.clone();
+        let jh = Builder::new()
+            .proc_async(async move {
+                *res_moved.borrow_mut() = 1;
+            })
+            .start()
+            .unwrap();
+        jh.join();
+        assert_eq!(*res.borrow(), 1);
+    }
 }

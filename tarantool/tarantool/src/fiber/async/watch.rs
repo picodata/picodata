@@ -345,163 +345,136 @@ mod tests {
     use super::*;
     use crate::fiber;
     use crate::fiber::r#async::timeout::{self, IntoTimeout};
-    use crate::test::{TestCase, TESTS};
-    use crate::test_name;
     use futures::join;
-    use linkme::distributed_slice;
     use std::time::Duration;
 
     const _1_SEC: Duration = Duration::from_secs(1);
 
-    #[distributed_slice(TESTS)]
-    static RECEIVE_NOTIFICATION_SENT_BEFORE: TestCase = TestCase {
-        name: test_name!("receive_notification_sent_before"),
-        f: || {
-            let (tx, mut rx_1) = channel::<i32>(10);
-            let mut rx_2 = rx_1.clone();
-            // Subscribe should work same as rx clone
-            let mut rx_3 = tx.subscribe();
-            tx.send(20).unwrap();
-            assert_eq!(
-                fiber::block_on(async move {
-                    let _ = join!(rx_1.changed(), rx_2.changed(), rx_3.changed());
-                    (*rx_1.borrow(), *rx_2.borrow(), *rx_3.borrow())
-                }),
-                (20, 20, 20)
-            );
-        },
-    };
-
-    #[distributed_slice(TESTS)]
-    static RECEIVE_NOTIFICATION_SENT_AFTER: TestCase = TestCase {
-        name: test_name!("receive_notification_sent_after"),
-        f: || {
-            let (tx, mut rx_1) = channel::<i32>(10);
-            let mut rx_2 = rx_1.clone();
-            // Subscribe should work same as rx clone
-            let mut rx_3 = tx.subscribe();
-            let jh = fiber::start_async(async move {
+    #[crate::test]
+    fn receive_notification_sent_before() {
+        let (tx, mut rx_1) = channel::<i32>(10);
+        let mut rx_2 = rx_1.clone();
+        // Subscribe should work same as rx clone
+        let mut rx_3 = tx.subscribe();
+        tx.send(20).unwrap();
+        assert_eq!(
+            fiber::block_on(async move {
                 let _ = join!(rx_1.changed(), rx_2.changed(), rx_3.changed());
                 (*rx_1.borrow(), *rx_2.borrow(), *rx_3.borrow())
-            });
-            tx.send(20).unwrap();
-            assert_eq!(jh.join(), (20, 20, 20))
-        },
-    };
+            }),
+            (20, 20, 20)
+        );
+    }
 
-    #[distributed_slice(TESTS)]
-    static RECEIVE_MULTIPLE_NOTIFICATIONS: TestCase = TestCase {
-        name: test_name!("receive_multiple_notifications"),
-        f: || {
-            let (tx, mut rx_1) = channel::<i32>(10);
-            let jh = fiber::start_async(async {
-                rx_1.changed().await.unwrap();
-                *rx_1.borrow()
-            });
-            tx.send(1).unwrap();
-            assert_eq!(jh.join(), 1);
-            let jh = fiber::start_async(async {
-                rx_1.changed().await.unwrap();
-                *rx_1.borrow()
-            });
-            tx.send(2).unwrap();
-            assert_eq!(jh.join(), 2);
-        },
-    };
+    #[crate::test]
+    fn receive_notification_sent_after() {
+        let (tx, mut rx_1) = channel::<i32>(10);
+        let mut rx_2 = rx_1.clone();
+        // Subscribe should work same as rx clone
+        let mut rx_3 = tx.subscribe();
+        let jh = fiber::start_async(async move {
+            let _ = join!(rx_1.changed(), rx_2.changed(), rx_3.changed());
+            (*rx_1.borrow(), *rx_2.borrow(), *rx_3.borrow())
+        });
+        tx.send(20).unwrap();
+        assert_eq!(jh.join(), (20, 20, 20))
+    }
 
-    #[distributed_slice(TESTS)]
-    static RETAINS_ONLY_LAST_NOTIFICATION: TestCase = TestCase {
-        name: test_name!("retains_only_last_notification"),
-        f: || {
-            let (tx, mut rx_1) = channel::<i32>(10);
-            tx.send(1).unwrap();
-            tx.send(2).unwrap();
-            tx.send(3).unwrap();
-            let v = fiber::block_on(async {
-                rx_1.changed().await.unwrap();
-                *rx_1.borrow()
-            });
-            assert_eq!(v, 3);
-            // No changes after
-            assert_eq!(
-                fiber::block_on(rx_1.changed().timeout(_1_SEC)),
-                Err(timeout::Expired)
-            );
-        },
-    };
+    #[crate::test]
+    fn receive_multiple_notifications() {
+        let (tx, mut rx_1) = channel::<i32>(10);
+        let jh = fiber::start_async(async {
+            rx_1.changed().await.unwrap();
+            *rx_1.borrow()
+        });
+        tx.send(1).unwrap();
+        assert_eq!(jh.join(), 1);
+        let jh = fiber::start_async(async {
+            rx_1.changed().await.unwrap();
+            *rx_1.borrow()
+        });
+        tx.send(2).unwrap();
+        assert_eq!(jh.join(), 2);
+    }
 
-    #[distributed_slice(TESTS)]
-    static NOTIFICATION_RECEIVE_ERROR: TestCase = TestCase {
-        name: test_name!("notification_receive_error"),
-        f: || {
-            let (tx, mut rx_1) = channel::<i32>(10);
-            let jh = fiber::start_async(rx_1.changed());
-            drop(tx);
-            assert_eq!(jh.join(), Err(RecvError));
-        },
-    };
+    #[crate::test]
+    fn retains_only_last_notification() {
+        let (tx, mut rx_1) = channel::<i32>(10);
+        tx.send(1).unwrap();
+        tx.send(2).unwrap();
+        tx.send(3).unwrap();
+        let v = fiber::block_on(async {
+            rx_1.changed().await.unwrap();
+            *rx_1.borrow()
+        });
+        assert_eq!(v, 3);
+        // No changes after
+        assert_eq!(
+            fiber::block_on(rx_1.changed().timeout(_1_SEC)),
+            Err(timeout::Expired)
+        );
+    }
 
-    #[distributed_slice(TESTS)]
-    static NOTIFICATION_RECEIVED_IN_CONCURRENT_FIBER: TestCase = TestCase {
-        name: test_name!("notification_received_in_concurrent_fiber"),
-        f: || {
-            let (tx, mut rx_1) = channel::<i32>(10);
-            let mut rx_2 = rx_1.clone();
-            let jh_1 = fiber::start_async(rx_1.changed());
-            let jh_2 = fiber::start_async(rx_2.changed());
-            tx.send(1).unwrap();
-            assert!(jh_1.join().is_ok());
-            assert!(jh_2.join().is_ok());
-        },
-    };
+    #[crate::test]
+    fn notification_receive_error() {
+        let (tx, mut rx_1) = channel::<i32>(10);
+        let jh = fiber::start_async(rx_1.changed());
+        drop(tx);
+        assert_eq!(jh.join(), Err(RecvError));
+    }
 
-    #[distributed_slice(TESTS)]
-    static SEND_MODIFY: TestCase = TestCase {
-        name: test_name!("send_modify"),
-        f: || {
-            let (tx, mut rx) = channel(vec![13]);
-            let jh = fiber::start(|| {
-                fiber::block_on(rx.changed()).unwrap();
-                rx.get_cloned()
-            });
-            tx.send_modify(|v| v.push(37)).unwrap();
-            assert_eq!(jh.join(), [13, 37]);
-        },
-    };
+    #[crate::test]
+    fn notification_received_in_concurrent_fiber() {
+        let (tx, mut rx_1) = channel::<i32>(10);
+        let mut rx_2 = rx_1.clone();
+        let jh_1 = fiber::start_async(rx_1.changed());
+        let jh_2 = fiber::start_async(rx_2.changed());
+        tx.send(1).unwrap();
+        assert!(jh_1.join().is_ok());
+        assert!(jh_2.join().is_ok());
+    }
 
-    #[distributed_slice(TESTS)]
-    static SENDER_GET: TestCase = TestCase {
-        name: test_name!("sender_get"),
-        f: || {
-            let (tx, _) = channel(69);
-            assert_eq!(tx.get(), 69);
-            tx.send(420).unwrap();
-            assert_eq!(tx.get(), 420);
-
-            let (tx, _) = channel("foo".to_string());
-            assert_eq!(tx.get_cloned(), "foo");
-            tx.send("bar".into()).unwrap();
-            assert_eq!(tx.get_cloned(), "bar");
-
-            let (tx, mut rx) = channel(RefCell::new(vec![3.14]));
-            let value_ref = tx.borrow();
-            assert_eq!(*value_ref.borrow(), [3.14]);
-
-            // modify the watched value without notifying the watchers
-            // don't do that though
-            value_ref.borrow_mut().push(2.71);
-            assert_eq!(*tx.get_cloned().borrow(), [3.14, 2.71]);
-            let res = fiber::block_on(rx.changed().timeout(Duration::ZERO));
-            assert_eq!(res, Err(timeout::Expired));
-
-            // and sending fails until the ref is dropped
-            // really don't do that
-            tx.send_modify(|v| v.get_mut().push(1.61)).unwrap_err();
-            drop(value_ref);
-
-            tx.send_modify(|v| v.get_mut().push(1.61)).unwrap();
+    #[crate::test]
+    fn send_modify() {
+        let (tx, mut rx) = channel(vec![13]);
+        let jh = fiber::start(|| {
             fiber::block_on(rx.changed()).unwrap();
-            assert_eq!(*rx.get_cloned().borrow(), [3.14, 2.71, 1.61]);
-        },
-    };
+            rx.get_cloned()
+        });
+        tx.send_modify(|v| v.push(37)).unwrap();
+        assert_eq!(jh.join(), [13, 37]);
+    }
+
+    #[crate::test]
+    fn sender_get() {
+        let (tx, _) = channel(69);
+        assert_eq!(tx.get(), 69);
+        tx.send(420).unwrap();
+        assert_eq!(tx.get(), 420);
+
+        let (tx, _) = channel("foo".to_string());
+        assert_eq!(tx.get_cloned(), "foo");
+        tx.send("bar".into()).unwrap();
+        assert_eq!(tx.get_cloned(), "bar");
+
+        let (tx, mut rx) = channel(RefCell::new(vec![3.14]));
+        let value_ref = tx.borrow();
+        assert_eq!(*value_ref.borrow(), [3.14]);
+
+        // modify the watched value without notifying the watchers
+        // don't do that though
+        value_ref.borrow_mut().push(2.71);
+        assert_eq!(*tx.get_cloned().borrow(), [3.14, 2.71]);
+        let res = fiber::block_on(rx.changed().timeout(Duration::ZERO));
+        assert_eq!(res, Err(timeout::Expired));
+
+        // and sending fails until the ref is dropped
+        // really don't do that
+        tx.send_modify(|v| v.get_mut().push(1.61)).unwrap_err();
+        drop(value_ref);
+
+        tx.send_modify(|v| v.get_mut().push(1.61)).unwrap();
+        fiber::block_on(rx.changed()).unwrap();
+        assert_eq!(*rx.get_cloned().borrow(), [3.14, 2.71, 1.61]);
+    }
 }

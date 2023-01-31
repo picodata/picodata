@@ -116,6 +116,18 @@ use std::io::{self, Write};
 use std::num::NonZeroI32;
 
 pub use ::tlua_derive::*;
+
+/// The recommended way to describe tests in `tlua` crate
+///
+/// # Example
+/// ```skip
+/// #[tlua::test]
+/// fn my_test() {
+///     assert!(true);
+/// }
+/// ```
+pub use ::tlua_derive::test;
+
 pub use any::{AnyHashableLuaValue, AnyLuaString, AnyLuaValue};
 pub use cdata::{AsCData, CData, CDataOnStack};
 pub use functions_write::{

@@ -1,19 +1,6 @@
 //! Internals used by custom test runtime to run tests that require tarantool environment
-
-use linkme::distributed_slice;
 use tester::{ShouldPanic, TestDesc, TestDescAndFn, TestFn, TestName, TestType};
 
-/// The recommended way to describe tests in `tarantool` crate
-///
-/// # Example
-/// ```
-/// use tarantool::test::{TESTS, TestCase};
-/// use tarantool::test_name;
-/// use linkme::distributed_slice;
-///
-/// #[distributed_slice(TESTS)]
-/// static MY_TEST: TestCase = TestCase { name: test_name!("my_test"), f: || { assert!(true) }};
-/// ```
 #[derive(Clone)]
 pub struct TestCase {
     pub name: &'static str,
@@ -21,19 +8,14 @@ pub struct TestCase {
     pub f: fn(),
 }
 
-/// Combines a user defined test name with its module path
-#[macro_export]
-macro_rules! test_name {
-    ($name:literal) => {
-        concat!(module_path!(), "::", $name)
-    };
-}
-
-#[distributed_slice]
-pub static TESTS: [TestCase] = [..];
+// Linkme distributed_slice exports a symbol with the given name, so we must
+// make sure the name is unique, so as not to conflict with distributed slices
+// from other crates.
+#[::linkme::distributed_slice]
+pub static TARANTOOL_MODULE_TESTS: [TestCase] = [..];
 
 pub fn collect() -> Vec<TestDescAndFn> {
-    TESTS
+    TARANTOOL_MODULE_TESTS
         .iter()
         .map(|case| TestDescAndFn {
             desc: TestDesc {

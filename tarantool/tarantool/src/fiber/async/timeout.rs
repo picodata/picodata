@@ -116,120 +116,99 @@ mod tests {
     use crate::fiber::check_yield;
     use crate::fiber::r#async::{oneshot, RecvError};
     use crate::fiber::YieldResult::{DidntYield, Yielded};
-    use crate::test::{TestCase, TESTS};
-    use crate::test_name;
-    use linkme::distributed_slice;
     use std::time::Duration;
 
     const _0_SEC: Duration = Duration::ZERO;
     const _1_SEC: Duration = Duration::from_secs(1);
 
-    #[distributed_slice(TESTS)]
-    static INSTANT_FUTURE: TestCase = TestCase {
-        name: test_name!("instant_future"),
-        f: || {
-            let fut = async { 78 };
-            assert_eq!(fiber::block_on(fut), 78);
+    #[crate::test]
+    fn instant_future() {
+        let fut = async { 78 };
+        assert_eq!(fiber::block_on(fut), 78);
 
-            let fut = timeout(Duration::ZERO, async { 79 });
-            assert_eq!(fiber::block_on(fut), Ok(79));
-        },
-    };
+        let fut = timeout(Duration::ZERO, async { 79 });
+        assert_eq!(fiber::block_on(fut), Ok(79));
+    }
 
-    #[distributed_slice(TESTS)]
-    static ACTUAL_TIMEOUT_PROMISE: TestCase = TestCase {
-        name: test_name!("actual_timeout_promise"),
-        f: || {
-            let (tx, rx) = oneshot::channel::<i32>();
-            let fut = async move { rx.timeout(_0_SEC).await };
+    #[crate::test]
+    fn actual_timeout_promise() {
+        let (tx, rx) = oneshot::channel::<i32>();
+        let fut = async move { rx.timeout(_0_SEC).await };
 
-            let jh = fiber::start_async(fut);
-            assert_eq!(jh.join(), Err(Expired));
-            drop(tx);
-        },
-    };
+        let jh = fiber::start_async(fut);
+        assert_eq!(jh.join(), Err(Expired));
+        drop(tx);
+    }
 
-    #[distributed_slice(TESTS)]
-    static DROP_TX_BEFORE_TIMEOUT: TestCase = TestCase {
-        name: test_name!("drop_tx_before_timeout"),
-        f: || {
-            let (tx, rx) = oneshot::channel::<i32>();
-            let fut = async move { rx.timeout(_1_SEC).await };
+    #[crate::test]
+    fn drop_tx_before_timeout() {
+        let (tx, rx) = oneshot::channel::<i32>();
+        let fut = async move { rx.timeout(_1_SEC).await };
 
-            let jh = fiber::start(move || fiber::block_on(fut));
-            drop(tx);
-            assert_eq!(jh.join(), Ok(Err(RecvError)));
-        },
-    };
+        let jh = fiber::start(move || fiber::block_on(fut));
+        drop(tx);
+        assert_eq!(jh.join(), Ok(Err(RecvError)));
+    }
 
-    #[distributed_slice(TESTS)]
-    static SEND_TX_BEFORE_TIMEOUT: TestCase = TestCase {
-        name: test_name!("send_tx_before_timeout"),
-        f: || {
-            let (tx, rx) = oneshot::channel::<i32>();
-            let fut = async move { rx.timeout(_1_SEC).await };
+    #[crate::test]
+    fn send_tx_before_timeout() {
+        let (tx, rx) = oneshot::channel::<i32>();
+        let fut = async move { rx.timeout(_1_SEC).await };
 
-            let jh = fiber::start(move || fiber::block_on(fut));
-            tx.send(400).unwrap();
-            assert_eq!(jh.join(), Ok(Ok(400)));
-        },
-    };
+        let jh = fiber::start(move || fiber::block_on(fut));
+        tx.send(400).unwrap();
+        assert_eq!(jh.join(), Ok(Ok(400)));
+    }
 
-    #[distributed_slice(TESTS)]
-    static TIMEOUT_DURATION_MAX: TestCase = TestCase {
-        name: test_name!("timeout_duration_max"),
-        f: || {
-            // must not panic
-            fiber::block_on(timeout(Duration::MAX, async { 1 })).unwrap();
-        },
-    };
+    #[crate::test]
+    fn timeout_duration_max() {
+        // must not panic
+        fiber::block_on(timeout(Duration::MAX, async { 1 })).unwrap();
+    }
 
-    #[distributed_slice(TESTS)]
-    static AWAIT_ACTUALLY_YIELDS: TestCase = TestCase {
-        name: test_name!("await_actually_yields"),
-        f: || {
-            // ready future, no timeout -> no yield
-            assert_eq!(
-                check_yield(|| fiber::block_on(async { 101 })),
-                DidntYield(101)
-            );
+    #[crate::test]
+    fn await_actually_yields() {
+        // ready future, no timeout -> no yield
+        assert_eq!(
+            check_yield(|| fiber::block_on(async { 101 })),
+            DidntYield(101)
+        );
 
-            // ready future, 0 timeout -> no yield
-            assert_eq!(
-                check_yield(|| fiber::block_on(timeout(Duration::ZERO, async { 202 }))),
-                DidntYield(Ok(202))
-            );
+        // ready future, 0 timeout -> no yield
+        assert_eq!(
+            check_yield(|| fiber::block_on(timeout(Duration::ZERO, async { 202 }))),
+            DidntYield(Ok(202))
+        );
 
-            // ready future, positive timeout -> no yield
-            assert_eq!(
-                check_yield(|| fiber::block_on(timeout(Duration::from_secs(1), async { 303 }))),
-                DidntYield(Ok(303))
-            );
+        // ready future, positive timeout -> no yield
+        assert_eq!(
+            check_yield(|| fiber::block_on(timeout(Duration::from_secs(1), async { 303 }))),
+            DidntYield(Ok(303))
+        );
 
-            // pending future, no timeout -> yield
-            let (_tx, rx) = oneshot::channel::<i32>();
-            let f = check_yield(|| fiber::start(|| fiber::block_on(rx)));
-            // the yield happens as soon as fiber::start is called,
-            // but if fiber::block_on didn't yield we wouldn't even get here,
-            // so this check is totally legit
-            assert!(matches!(f, Yielded(_)));
-            // we leak some memory here, but avoid a panic.
-            // Don't do this in your code
-            std::mem::forget(f);
+        // pending future, no timeout -> yield
+        let (_tx, rx) = oneshot::channel::<i32>();
+        let f = check_yield(|| fiber::start(|| fiber::block_on(rx)));
+        // the yield happens as soon as fiber::start is called,
+        // but if fiber::block_on didn't yield we wouldn't even get here,
+        // so this check is totally legit
+        assert!(matches!(f, Yielded(_)));
+        // we leak some memory here, but avoid a panic.
+        // Don't do this in your code
+        std::mem::forget(f);
 
-            // pending future, 0 timeout -> no yield
-            let (_tx, rx) = oneshot::channel::<i32>();
-            assert_eq!(
-                check_yield(|| fiber::block_on(timeout(Duration::ZERO, rx))),
-                DidntYield(Err(Expired))
-            );
+        // pending future, 0 timeout -> no yield
+        let (_tx, rx) = oneshot::channel::<i32>();
+        assert_eq!(
+            check_yield(|| fiber::block_on(timeout(Duration::ZERO, rx))),
+            DidntYield(Err(Expired))
+        );
 
-            // pending future, positive timeout -> yield
-            let (_tx, rx) = oneshot::channel::<i32>();
-            assert_eq!(
-                check_yield(|| fiber::block_on(timeout(Duration::from_millis(10), rx))),
-                Yielded(Err(Expired))
-            );
-        },
-    };
+        // pending future, positive timeout -> yield
+        let (_tx, rx) = oneshot::channel::<i32>();
+        assert_eq!(
+            check_yield(|| fiber::block_on(timeout(Duration::from_millis(10), rx))),
+            Yielded(Err(Expired))
+        );
+    }
 }

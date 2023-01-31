@@ -260,14 +260,12 @@ mod tests {
 
     use crate::fiber;
     use crate::fiber::r#async::timeout::IntoTimeout;
-    use crate::test::{TestCase, TARANTOOL_LISTEN, TESTS};
-    use crate::test_name;
+    use crate::test::TARANTOOL_LISTEN;
 
     use std::net::TcpListener;
     use std::thread;
 
     use futures::{AsyncReadExt, AsyncWriteExt, FutureExt};
-    use linkme::distributed_slice;
 
     const _10_SEC: Duration = Duration::from_secs(10);
     const _0_SEC: Duration = Duration::from_secs(0);
@@ -278,48 +276,136 @@ mod tests {
         }
     }
 
-    #[distributed_slice(TESTS)]
-    static RESOLVE_ADDRESS: TestCase = TestCase {
-        name: test_name!("resolve_address"),
-        f: || unsafe {
+    #[tarantool::test]
+    fn resolve_address() {
+        unsafe {
             let _ = fiber::block_on(get_address_info("localhost").timeout(_10_SEC))
                 .unwrap()
                 .unwrap();
-        },
-    };
+        }
+    }
 
-    #[distributed_slice(TESTS)]
-    static CONNECT: TestCase = TestCase {
-        name: test_name!("connect"),
-        f: || {
-            let _ =
-                fiber::block_on(TcpStream::connect("localhost", TARANTOOL_LISTEN).timeout(_10_SEC))
-                    .unwrap()
-                    .unwrap();
-        },
-    };
+    #[tarantool::test]
+    fn connect() {
+        let _ =
+            fiber::block_on(TcpStream::connect("localhost", TARANTOOL_LISTEN).timeout(_10_SEC))
+                .unwrap()
+                .unwrap();
+    }
 
-    #[distributed_slice(TESTS)]
-    static READ: TestCase = TestCase {
-        name: test_name!("read"),
-        f: || {
+    #[tarantool::test]
+    fn read() {
+        fiber::block_on(async {
+            let mut stream = TcpStream::connect("localhost", TARANTOOL_LISTEN)
+                .timeout(_10_SEC)
+                .await
+                .unwrap()
+                .unwrap();
+            // Read greeting
+            let mut buf = vec![0; 128];
+            stream.read_exact(&mut buf).timeout(_10_SEC).await.unwrap();
+        });
+    }
+
+    #[tarantool::test]
+    fn read_timeout() {
+        fiber::block_on(async {
+            let mut stream = TcpStream::connect("localhost", TARANTOOL_LISTEN)
+                .timeout(_10_SEC)
+                .await
+                .unwrap()
+                .unwrap();
+            // Read greeting
+            let mut buf = vec![0; 128];
+            assert_eq!(
+                stream
+                    .read_exact(&mut buf)
+                    .timeout(_0_SEC)
+                    .await
+                    .unwrap_err(),
+                timeout::Expired
+            );
+        });
+    }
+
+    fn write() {
+        let (sender, receiver) = std::sync::mpsc::channel();
+        let listener = TcpListener::bind("127.0.0.1:3302").unwrap();
+        // Spawn listener
+        thread::spawn(move || {
+            for stream in listener.incoming() {
+                let mut stream = stream.unwrap();
+                let mut buf = vec![];
+                <std::net::TcpStream as std::io::Read>::read_to_end(&mut stream, &mut buf);
+                sender.send(buf);
+            }
+        });
+        // Send data
+        {
             fiber::block_on(async {
-                let mut stream = TcpStream::connect("localhost", TARANTOOL_LISTEN)
+                let mut stream = TcpStream::connect("localhost", 3302)
                     .timeout(_10_SEC)
                     .await
                     .unwrap()
                     .unwrap();
-                // Read greeting
-                let mut buf = vec![0; 128];
-                stream.read_exact(&mut buf).timeout(_10_SEC).await.unwrap();
+                timeout::timeout(_10_SEC, stream.write_all(&[1, 2, 3]))
+                    .await
+                    .unwrap();
+                timeout::timeout(_10_SEC, stream.write_all(&[4, 5]))
+                    .await
+                    .unwrap()
             });
-        },
-    };
+        }
+        let buf = receiver.recv_timeout(Duration::from_secs(5)).unwrap();
+        assert_eq!(buf, vec![1, 2, 3, 4, 5])
+    }
 
-    #[distributed_slice(TESTS)]
-    static READ_TIMEOUT: TestCase = TestCase {
-        name: test_name!("read_timeout"),
-        f: || {
+    #[tarantool::test]
+    fn split() {
+        let (sender, receiver) = std::sync::mpsc::channel();
+        let listener = TcpListener::bind("127.0.0.1:3303").unwrap();
+        // Spawn listener
+        thread::spawn(move || {
+            for stream in listener.incoming() {
+                let mut stream = stream.unwrap();
+                let mut buf = vec![0; 5];
+                <std::net::TcpStream as std::io::Read>::read_exact(&mut stream, &mut buf);
+                <std::net::TcpStream as std::io::Write>::write_all(&mut stream, &buf.clone());
+                sender.send(buf);
+            }
+        });
+        // Send and read data
+        {
+            let mut stream =
+                fiber::block_on(TcpStream::connect("localhost", 3303).timeout(_10_SEC))
+                    .unwrap()
+                    .unwrap();
+            let (mut reader, mut writer) = stream.split();
+            let reader_handle = fiber::start_async(async move {
+                let mut buf = vec![0; 5];
+                timeout::timeout(_10_SEC, reader.read_exact(&mut buf))
+                    .await
+                    .unwrap();
+                assert_eq!(buf, vec![1, 2, 3, 4, 5])
+            });
+            let writer_handle = fiber::start_async(async move {
+                timeout::timeout(_10_SEC, writer.write_all(&[1, 2, 3]))
+                    .await
+                    .unwrap();
+                timeout::timeout(_10_SEC, writer.write_all(&[4, 5]))
+                    .await
+                    .unwrap();
+            });
+            writer_handle.join();
+            reader_handle.join();
+        }
+        let buf = receiver.recv_timeout(Duration::from_secs(5)).unwrap();
+        assert_eq!(buf, vec![1, 2, 3, 4, 5])
+    }
+
+    #[tarantool::test]
+    fn join_correct_timeout() {
+        {
             fiber::block_on(async {
                 let mut stream = TcpStream::connect("localhost", TARANTOOL_LISTEN)
                     .timeout(_10_SEC)
@@ -328,187 +414,76 @@ mod tests {
                     .unwrap();
                 // Read greeting
                 let mut buf = vec![0; 128];
-                assert_eq!(
-                    stream
-                        .read_exact(&mut buf)
-                        .timeout(_0_SEC)
-                        .await
-                        .unwrap_err(),
-                    timeout::Expired
+                let (is_err, is_ok) = futures::join!(
+                    timeout::timeout(_0_SEC, always_pending()),
+                    timeout::timeout(_10_SEC, stream.read_exact(&mut buf))
                 );
+                assert_eq!(is_err.unwrap_err(), timeout::Expired);
+                is_ok.unwrap();
             });
-        },
-    };
-
-    #[distributed_slice(TESTS)]
-    static WRITE: TestCase = TestCase {
-        name: test_name!("write"),
-        f: || {
-            let (sender, receiver) = std::sync::mpsc::channel();
-            let listener = TcpListener::bind("127.0.0.1:3302").unwrap();
-            // Spawn listener
-            thread::spawn(move || {
-                for stream in listener.incoming() {
-                    let mut stream = stream.unwrap();
-                    let mut buf = vec![];
-                    <std::net::TcpStream as std::io::Read>::read_to_end(&mut stream, &mut buf);
-                    sender.send(buf);
-                }
+        }
+        // Testing with different order in join
+        {
+            fiber::block_on(async {
+                let mut stream = TcpStream::connect("localhost", TARANTOOL_LISTEN)
+                    .timeout(_10_SEC)
+                    .await
+                    .unwrap()
+                    .unwrap();
+                // Read greeting
+                let mut buf = vec![0; 128];
+                let (is_ok, is_err) = futures::join!(
+                    timeout::timeout(_10_SEC, stream.read_exact(&mut buf)),
+                    timeout::timeout(_0_SEC, always_pending())
+                );
+                assert_eq!(is_err.unwrap_err(), timeout::Expired);
+                is_ok.unwrap();
             });
-            // Send data
-            {
-                fiber::block_on(async {
-                    let mut stream = TcpStream::connect("localhost", 3302)
-                        .timeout(_10_SEC)
-                        .await
-                        .unwrap()
-                        .unwrap();
-                    timeout::timeout(_10_SEC, stream.write_all(&[1, 2, 3]))
-                        .await
-                        .unwrap();
-                    timeout::timeout(_10_SEC, stream.write_all(&[4, 5]))
-                        .await
-                        .unwrap()
-                });
-            }
-            let buf = receiver.recv_timeout(Duration::from_secs(5)).unwrap();
-            assert_eq!(buf, vec![1, 2, 3, 4, 5])
-        },
-    };
+        }
+    }
 
-    #[distributed_slice(TESTS)]
-    static SPLIT: TestCase = TestCase {
-        name: test_name!("split"),
-        f: || {
-            let (sender, receiver) = std::sync::mpsc::channel();
-            let listener = TcpListener::bind("127.0.0.1:3303").unwrap();
-            // Spawn listener
-            thread::spawn(move || {
-                for stream in listener.incoming() {
-                    let mut stream = stream.unwrap();
-                    let mut buf = vec![0; 5];
-                    <std::net::TcpStream as std::io::Read>::read_exact(&mut stream, &mut buf);
-                    <std::net::TcpStream as std::io::Write>::write_all(&mut stream, &buf.clone());
-                    sender.send(buf);
-                }
+    #[tarantool::test]
+    fn select_correct_timeout() {
+        {
+            fiber::block_on(async {
+                let mut stream = TcpStream::connect("localhost", TARANTOOL_LISTEN)
+                    .timeout(_10_SEC)
+                    .await
+                    .unwrap()
+                    .unwrap();
+                // Read greeting
+                let mut buf = vec![0; 128];
+                let f1 = timeout::timeout(_0_SEC, always_pending()).fuse();
+                let f2 = timeout::timeout(_10_SEC, stream.read_exact(&mut buf)).fuse();
+                futures::pin_mut!(f1);
+                futures::pin_mut!(f2);
+                let is_err = futures::select!(
+                    res = f1 => res.is_err(),
+                    res = f2 => res.is_err()
+                );
+                assert!(is_err);
             });
-            // Send and read data
-            {
-                let mut stream =
-                    fiber::block_on(TcpStream::connect("localhost", 3303).timeout(_10_SEC))
-                        .unwrap()
-                        .unwrap();
-                let (mut reader, mut writer) = stream.split();
-                let reader_handle = fiber::start_async(async move {
-                    let mut buf = vec![0; 5];
-                    timeout::timeout(_10_SEC, reader.read_exact(&mut buf))
-                        .await
-                        .unwrap();
-                    assert_eq!(buf, vec![1, 2, 3, 4, 5])
-                });
-                let writer_handle = fiber::start_async(async move {
-                    timeout::timeout(_10_SEC, writer.write_all(&[1, 2, 3]))
-                        .await
-                        .unwrap();
-                    timeout::timeout(_10_SEC, writer.write_all(&[4, 5]))
-                        .await
-                        .unwrap();
-                });
-                writer_handle.join();
-                reader_handle.join();
-            }
-            let buf = receiver.recv_timeout(Duration::from_secs(5)).unwrap();
-            assert_eq!(buf, vec![1, 2, 3, 4, 5])
-        },
-    };
-
-    #[distributed_slice(TESTS)]
-    static JOIN_CORRECT_TIMEOUT: TestCase = TestCase {
-        name: test_name!("join_correct_timeout"),
-        f: || {
-            {
-                fiber::block_on(async {
-                    let mut stream = TcpStream::connect("localhost", TARANTOOL_LISTEN)
-                        .timeout(_10_SEC)
-                        .await
-                        .unwrap()
-                        .unwrap();
-                    // Read greeting
-                    let mut buf = vec![0; 128];
-                    let (is_err, is_ok) = futures::join!(
-                        timeout::timeout(_0_SEC, always_pending()),
-                        timeout::timeout(_10_SEC, stream.read_exact(&mut buf))
-                    );
-                    assert_eq!(is_err.unwrap_err(), timeout::Expired);
-                    is_ok.unwrap();
-                });
-            }
-            // Testing with different order in join
-            {
-                fiber::block_on(async {
-                    let mut stream = TcpStream::connect("localhost", TARANTOOL_LISTEN)
-                        .timeout(_10_SEC)
-                        .await
-                        .unwrap()
-                        .unwrap();
-                    // Read greeting
-                    let mut buf = vec![0; 128];
-                    let (is_ok, is_err) = futures::join!(
-                        timeout::timeout(_10_SEC, stream.read_exact(&mut buf)),
-                        timeout::timeout(_0_SEC, always_pending())
-                    );
-                    assert_eq!(is_err.unwrap_err(), timeout::Expired);
-                    is_ok.unwrap();
-                });
-            }
-        },
-    };
-
-    #[distributed_slice(TESTS)]
-    static SELECT_CORRECT_TIMEOUT: TestCase = TestCase {
-        name: test_name!("select_correct_timeout"),
-        f: || {
-            {
-                fiber::block_on(async {
-                    let mut stream = TcpStream::connect("localhost", TARANTOOL_LISTEN)
-                        .timeout(_10_SEC)
-                        .await
-                        .unwrap()
-                        .unwrap();
-                    // Read greeting
-                    let mut buf = vec![0; 128];
-                    let f1 = timeout::timeout(_0_SEC, always_pending()).fuse();
-                    let f2 = timeout::timeout(_10_SEC, stream.read_exact(&mut buf)).fuse();
-                    futures::pin_mut!(f1);
-                    futures::pin_mut!(f2);
-                    let is_err = futures::select!(
-                        res = f1 => res.is_err(),
-                        res = f2 => res.is_err()
-                    );
-                    assert!(is_err);
-                });
-            }
-            // Testing with different future timeouting first
-            {
-                fiber::block_on(async {
-                    let mut stream = TcpStream::connect("localhost", TARANTOOL_LISTEN)
-                        .timeout(_10_SEC)
-                        .await
-                        .unwrap()
-                        .unwrap();
-                    // Read greeting
-                    let mut buf = vec![0; 128];
-                    let f1 = timeout::timeout(Duration::from_secs(15), always_pending()).fuse();
-                    let f2 = timeout::timeout(_10_SEC, stream.read_exact(&mut buf)).fuse();
-                    futures::pin_mut!(f1);
-                    futures::pin_mut!(f2);
-                    let is_ok = futures::select!(
-                        res = f1 => res.is_ok(),
-                        res = f2 => res.is_ok()
-                    );
-                    assert!(is_ok);
-                });
-            }
-        },
-    };
+        }
+        // Testing with different future timeouting first
+        {
+            fiber::block_on(async {
+                let mut stream = TcpStream::connect("localhost", TARANTOOL_LISTEN)
+                    .timeout(_10_SEC)
+                    .await
+                    .unwrap()
+                    .unwrap();
+                // Read greeting
+                let mut buf = vec![0; 128];
+                let f1 = timeout::timeout(Duration::from_secs(15), always_pending()).fuse();
+                let f2 = timeout::timeout(_10_SEC, stream.read_exact(&mut buf)).fuse();
+                futures::pin_mut!(f1);
+                futures::pin_mut!(f2);
+                let is_ok = futures::select!(
+                    res = f1 => res.is_ok(),
+                    res = f2 => res.is_ok()
+                );
+                assert!(is_ok);
+            });
+        }
+        }
 }

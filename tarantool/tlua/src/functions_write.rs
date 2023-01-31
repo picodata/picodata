@@ -542,26 +542,20 @@ where
 #[cfg(feature = "tarantool_test")]
 mod tests {
     use super::*;
-    use crate::test::{TestCase, TLUA_TESTS};
-    use crate::test_name;
-    use linkme::distributed_slice;
 
-    #[distributed_slice(TLUA_TESTS)]
-    static C_FUNCTION: TestCase = TestCase {
-        name: test_name!("c_function"),
-        f: || {
-            let lua = crate::Lua::new();
+    #[crate::test]
+    fn c_function() {
+        let lua = crate::Lua::new();
 
-            unsafe extern "C" fn return_42(lua: crate::LuaState) -> libc::c_int {
-                ffi::lua_pushinteger(lua, 42);
-                1
-            }
+        unsafe extern "C" fn return_42(lua: crate::LuaState) -> libc::c_int {
+            ffi::lua_pushinteger(lua, 42);
+            1
+        }
 
-            assert_eq!(
-                lua.eval_with::<_, i32>("local fn = ...; return fn()", &CFunction::new(return_42))
-                    .unwrap(),
-                42
-            );
-        },
-    };
+        assert_eq!(
+            lua.eval_with::<_, i32>("local fn = ...; return fn()", &CFunction::new(return_42))
+                .unwrap(),
+            42
+        );
+    }
 }

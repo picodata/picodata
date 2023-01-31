@@ -381,6 +381,17 @@ mod va_list;
 pub use tarantool_proc::stored_proc as proc;
 pub use tlua;
 
+/// The recommended way to describe tests in `tarantool` crate
+///
+/// # Example
+/// ```skip
+/// #[tarantool::test]
+/// fn my_test() {
+///     assert!(true);
+/// }
+/// ```
+pub use tarantool_proc::test;
+
 /// Return a global tarantool lua state.
 ///
 /// **WARNING:** using global lua state is error prone, especially when writing

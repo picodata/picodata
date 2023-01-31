@@ -184,125 +184,95 @@ pub fn channel<T>() -> (Sender<T>, Receiver<T>) {
 mod tests {
     use super::*;
     use crate::fiber;
-    use crate::test::{TestCase, TESTS};
-    use crate::test_name;
     use futures::join;
-    use linkme::distributed_slice;
     use std::time::Duration;
 
-    #[distributed_slice(TESTS)]
-    static DROP_RECEIVER: TestCase = TestCase {
-        name: test_name!("drop_receiver"),
-        f: || {
-            let (tx, rx) = channel::<i32>();
-            assert!(!tx.is_closed());
-            drop(rx);
-            assert!(tx.is_closed());
-            assert_eq!(tx.send(0).unwrap_err(), 0);
-        },
-    };
+    #[crate::test]
+    fn drop_receiver() {
+        let (tx, rx) = channel::<i32>();
+        assert!(!tx.is_closed());
+        drop(rx);
+        assert!(tx.is_closed());
+        assert_eq!(tx.send(0).unwrap_err(), 0);
+    }
 
-    #[distributed_slice(TESTS)]
-    static DROP_SENDER: TestCase = TestCase {
-        name: test_name!("drop_sender"),
-        f: || {
-            let (tx, rx) = channel::<i32>();
-            assert!(!rx.is_closed());
-            drop(tx);
-            assert!(rx.is_closed());
-            assert_eq!(fiber::block_on(rx).unwrap_err(), RecvError);
-        },
-    };
+    #[crate::test]
+    fn drop_sender() {
+        let (tx, rx) = channel::<i32>();
+        assert!(!rx.is_closed());
+        drop(tx);
+        assert!(rx.is_closed());
+        assert_eq!(fiber::block_on(rx).unwrap_err(), RecvError);
+    }
 
-    #[distributed_slice(TESTS)]
-    static RECEIVE_NON_BLOCKING: TestCase = TestCase {
-        name: test_name!("receive_non_blocking"),
-        f: || {
-            let (tx, rx) = channel::<i32>();
-            tx.send(56).unwrap();
-            assert_eq!(fiber::block_on(rx), Ok(56));
-        },
-    };
+    #[crate::test]
+    fn receive_non_blocking() {
+        let (tx, rx) = channel::<i32>();
+        tx.send(56).unwrap();
+        assert_eq!(fiber::block_on(rx), Ok(56));
+    }
 
-    #[distributed_slice(TESTS)]
-    static RECEIVE_NON_BLOCKING_AFTER_DROPPING_SENDER: TestCase = TestCase {
-        name: test_name!("receive_non_blocking_after_dropping_sender"),
-        f: || {
-            let (tx, rx) = channel::<i32>();
-            drop(tx);
-            assert_eq!(fiber::block_on(rx), Err(RecvError));
-        },
-    };
+    #[crate::test]
+    fn receive_non_blocking_after_dropping_sender() {
+        let (tx, rx) = channel::<i32>();
+        drop(tx);
+        assert_eq!(fiber::block_on(rx), Err(RecvError));
+    }
 
-    #[distributed_slice(TESTS)]
-    static RECEIVE_BLOCKING_BEFORE_SENDING: TestCase = TestCase {
-        name: test_name!("receive_blocking_before_sending"),
-        f: || {
-            let (tx, rx) = channel::<i32>();
-            let jh = fiber::start_async(rx);
-            tx.send(39).unwrap();
-            assert_eq!(jh.join(), Ok(39));
-        },
-    };
+    #[crate::test]
+    fn receive_blocking_before_sending() {
+        let (tx, rx) = channel::<i32>();
+        let jh = fiber::start_async(rx);
+        tx.send(39).unwrap();
+        assert_eq!(jh.join(), Ok(39));
+    }
 
-    #[distributed_slice(TESTS)]
-    static RECEIVE_BLOCKING_BEFORE_DROPPING_SENDER: TestCase = TestCase {
-        name: test_name!("receive_blocking_before_dropping_sender"),
-        f: || {
-            let (tx, rx) = channel::<i32>();
-            let jh = fiber::start_async(rx);
-            drop(tx);
-            assert_eq!(jh.join(), Err(RecvError));
-        },
-    };
+    #[crate::test]
+    fn receive_blocking_before_dropping_sender() {
+        let (tx, rx) = channel::<i32>();
+        let jh = fiber::start_async(rx);
+        drop(tx);
+        assert_eq!(jh.join(), Err(RecvError));
+    }
 
-    #[distributed_slice(TESTS)]
-    static JOIN_TWO_AFTER_SENDING: TestCase = TestCase {
-        name: test_name!("join_two_after_sending"),
-        f: || {
-            let f = async {
-                let (tx1, rx1) = channel::<i32>();
-                let (tx2, rx2) = channel::<i32>();
-
-                tx1.send(101).unwrap();
-                tx2.send(102).unwrap();
-                join!(rx1, rx2)
-            };
-            assert_eq!(fiber::block_on(f), (Ok(101), Ok(102)));
-        },
-    };
-
-    #[distributed_slice(TESTS)]
-    static JOIN_TWO_BEFORE_SENDING: TestCase = TestCase {
-        name: test_name!("join_two_before_sending"),
-        f: || {
-            let c = fiber::Cond::new();
-            drop(c);
-
+    #[crate::test]
+    fn join_two_after_sending() {
+        let f = async {
             let (tx1, rx1) = channel::<i32>();
             let (tx2, rx2) = channel::<i32>();
 
-            let jh = fiber::start_async(async { join!(rx1, rx2) });
+            tx1.send(101).unwrap();
+            tx2.send(102).unwrap();
+            join!(rx1, rx2)
+        };
+        assert_eq!(fiber::block_on(f), (Ok(101), Ok(102)));
+    }
 
-            tx1.send(201).unwrap();
-            fiber::sleep(Duration::ZERO);
-            tx2.send(202).unwrap();
-            assert_eq!(jh.join(), (Ok(201), Ok(202)));
-        },
-    };
+    #[crate::test]
+    fn join_two_before_sending() {
+        let c = fiber::Cond::new();
+        drop(c);
 
-    #[distributed_slice(TESTS)]
-    static JOIN_TWO_DROP_ONCE: TestCase = TestCase {
-        name: test_name!("join_two_drop_one"),
-        f: || {
-            let (tx1, rx1) = channel::<i32>();
-            let (tx2, rx2) = channel::<i32>();
+        let (tx1, rx1) = channel::<i32>();
+        let (tx2, rx2) = channel::<i32>();
 
-            let jh = fiber::start_async(async { join!(rx1, rx2) });
-            tx1.send(301).unwrap();
-            fiber::sleep(Duration::ZERO);
-            drop(tx2);
-            assert_eq!(jh.join(), (Ok(301), Err(RecvError)));
-        },
-    };
+        let jh = fiber::start_async(async { join!(rx1, rx2) });
+
+        tx1.send(201).unwrap();
+        fiber::sleep(Duration::ZERO);
+        tx2.send(202).unwrap();
+        assert_eq!(jh.join(), (Ok(201), Ok(202)));
+    }
+
+    #[crate::test]
+    fn join_two_drop_one() {
+        let (tx1, rx1) = channel::<i32>();
+        let (tx2, rx2) = channel::<i32>();
+
+        let jh = fiber::start_async(async { join!(rx1, rx2) });
+        tx1.send(301).unwrap();
+        fiber::sleep(Duration::ZERO);
+        drop(tx2);
+        assert_eq!(jh.join(), (Ok(301), Err(RecvError)));
+    }
 }

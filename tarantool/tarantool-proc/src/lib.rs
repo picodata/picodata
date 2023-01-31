@@ -6,6 +6,24 @@ use syn::{
     ItemFn, Lit, Meta, MetaNameValue, NestedMeta, Signature, Token,
 };
 
+#[proc_macro_attribute]
+pub fn test(_attr: TokenStream, item: TokenStream) -> TokenStream {
+    let fn_item = parse_macro_input!(item as syn::ItemFn);
+    let fn_name = fn_item.sig.ident;
+    let test_name = fn_name.to_string();
+    let test_name_ident = syn::Ident::new(&test_name.to_uppercase(), fn_name.span());
+    let test_body = fn_item.block;
+    let unsafe_token = fn_item.sig.unsafety;
+    quote! {
+        #[::linkme::distributed_slice(crate::test::TARANTOOL_MODULE_TESTS)]
+        static #test_name_ident: crate::test::TestCase = crate::test::TestCase {
+            name: ::std::concat!(::std::module_path!(), "::", #test_name),
+            f: || #unsafe_token #test_body,
+        };
+    }
+    .into()
+}
+
 mod msgpack {
     use darling::FromDeriveInput;
     use quote::{format_ident, quote, quote_spanned};
