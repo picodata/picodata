@@ -32,22 +32,22 @@ use traft::error::Error;
 #[doc(hidden)]
 mod app;
 pub mod args;
-mod discovery;
-mod failure_domain;
-mod governor;
-mod instance;
-mod ipc;
-mod kvcell;
-mod r#loop;
-mod mailbox;
-mod on_shutdown;
-mod proc;
-mod replicaset;
-mod storage;
-mod tarantool;
-mod tlog;
-mod traft;
-mod util;
+pub mod discovery;
+pub mod failure_domain;
+pub mod governor;
+pub mod instance;
+pub mod ipc;
+pub mod kvcell;
+pub mod r#loop;
+pub mod mailbox;
+pub mod on_shutdown;
+pub mod proc;
+pub mod replicaset;
+pub mod storage;
+pub mod tarantool;
+pub mod tlog;
+pub mod traft;
+pub mod util;
 
 inventory::collect!(InnerTest);
 

@@ -55,6 +55,8 @@ impl FailureDomain {
     /// # Example
     ///
     /// ```
+    /// use picodata::failure_domain::FailureDomain;
+    ///
     /// let msk_1 = FailureDomain::from([("dc", "msk"), ("srv", "msk-1")]);
     /// let msk_2 = FailureDomain::from([("dc", "msk"), ("srv", "msk-2")]);
     /// let spb = FailureDomain::from([("dc", "spb")]);
@@ -82,6 +84,8 @@ impl FailureDomain {
     /// # Example
     ///
     /// ```
+    /// use picodata::failure_domain::FailureDomain;
+    ///
     /// let msk_1 = FailureDomain::from([("dc", "msk"), ("srv", "msk-1")]);
     /// let msk_2 = FailureDomain::from([("dc", "msk"), ("srv", "msk-2")]);
     /// let spb = FailureDomain::from([("dc", "spb")]);

@@ -14,7 +14,9 @@ use std::time::Duration;
 ///
 /// One can send messages one by one, transferring the ownership.
 ///
-/// ```
+/// ```no_run
+/// use picodata::mailbox::Mailbox;
+///
 /// let mailbox: Mailbox<String> = Mailbox::new();
 /// mailbox.send("Hello".into());
 /// mailbox.send("World".into());
@@ -26,7 +28,10 @@ use std::time::Duration;
 ///
 /// 1. Blocking
 ///
-/// ```
+/// ```no_run
+/// # use picodata::mailbox::Mailbox;
+/// # use std::time::Duration;
+///
 /// let mailbox: Mailbox<String> = Mailbox::new();
 /// let timeout = Duration::from_secs(1);
 ///
@@ -37,16 +42,18 @@ use std::time::Duration;
 /// assert_eq!(mailbox.receive_all(timeout), vec!["Hello", "World"]);
 ///
 /// // Will yield and subsequently timeout.
-/// assert_eq!(mailbox.receive_all(timeout), vec![]);
+/// assert!(mailbox.receive_all(timeout).is_empty());
 /// ```
 ///
 /// 2. Non-blocking
 ///
-/// ```
+/// ```no_run
+/// # use picodata::mailbox::Mailbox;
+///
 /// let mailbox: Mailbox<()> = Mailbox::new();
 ///
 /// // Won't ever yield.
-/// assert_eq!(mailbox.try_receive_all(), vec![]);
+/// assert!(mailbox.try_receive_all().is_empty());
 /// ```
 
 pub struct Mailbox<T>(Rc<Inner<T>>);
@@ -61,7 +68,9 @@ impl<T> Clone for Mailbox<T> {
     /// inter-fiber communication. The conent itself isn't cloned.
     ///
     /// # Example
-    /// ```
+    /// ```no_run
+    /// use picodata::mailbox::Mailbox;
+    ///
     /// let original: Mailbox<i32> = Mailbox::new();
     /// let cloned: Mailbox<i32> = original.clone();
     /// cloned.send(55);
@@ -114,12 +123,14 @@ impl<T> Mailbox<T> {
     /// Always returns a `Vec<T>`, either empty or not.
     ///
     /// # Examples
-    /// ```
+    /// ```no_run
+    /// use picodata::mailbox::Mailbox;
+    ///
     /// let mailbox: Mailbox<i32> = Mailbox::new();
     /// mailbox.send(9);
     ///
     /// assert_eq!(mailbox.try_receive_all(), vec![9]); // doesn't yield
-    /// assert_eq!(mailbox.try_receive_all(), vec![]); // doesn't yield either
+    /// assert!(mailbox.try_receive_all().is_empty()); // doesn't yield either
     /// ```
     pub fn try_receive_all(&self) -> Vec<T> {
         self.0.content.take()
@@ -141,13 +152,16 @@ impl<T> Mailbox<T> {
     ///
     /// # Examples
     ///
-    /// ```
+    /// ```no_run
+    /// use picodata::mailbox::Mailbox;
+    /// use std::time::Duration;
+    ///
     /// let mailbox: Mailbox<i32> = Mailbox::new();
     /// let timeout = Duration::from_secs(1);
     ///
     /// mailbox.send(7);
     /// assert_eq!(mailbox.receive_all(timeout), vec![7]); // doesn't yield
-    /// assert_eq!(mailbox.receive_all(timeout), vec![]); // yields until timeout expires
+    /// assert!(mailbox.receive_all(timeout).is_empty()); // yields until timeout expires
     /// ```
     ///
     pub fn receive_all(&self, timeout: Duration) -> Vec<T> {

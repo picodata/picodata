@@ -42,7 +42,7 @@ rand = "0.8.5"
 pretty_assertions = "0.6.1"
 
 [lib]
-doctest = false
+doctest = true
 
 [[test]]
 name = "inner"

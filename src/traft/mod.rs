@@ -97,9 +97,9 @@ pub struct Entry {
     ///
     /// ```
     /// enum EntryType {
-    ///     EntryNormal = 0;
-    ///     EntryConfChange = 1;
-    ///     EntryConfChangeV2 = 2;
+    ///     EntryNormal = 0,
+    ///     EntryConfChange = 1,
+    ///     EntryConfChangeV2 = 2,
     /// }
     /// ```
     #[serde(with = "entry_type_as_i32")]
