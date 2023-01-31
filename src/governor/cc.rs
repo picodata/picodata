@@ -185,7 +185,7 @@ pub(crate) fn raft_conf_change(
         let Some((new_voter_id, new_distance)) =
             find_farthest(&raft_conf.all, &other_voters, &promotable) else { break };
 
-        if new_distance > sum_distance(&raft_conf.all, &other_voters, &voter_id) {
+        if new_distance > sum_distance(&raft_conf.all, &other_voters, voter_id) {
             let ccs1 = raft_conf.change_single(AddLearnerNode, *voter_id);
             let ccs2 = raft_conf.change_single(AddNode, new_voter_id);
             changes.extend_from_slice(&[ccs1, ccs2]);

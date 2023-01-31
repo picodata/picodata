@@ -32,7 +32,7 @@ impl AllProcs {
 /// initialization). And, since those functions aren't invoked directly,
 /// to prevent symbols removal due to the link-time optimization.
 ///
-/// For retrieving collected items refer to [`AllProcs`].
+/// For retrieving collected items refer to `AllProcs`.
 ///
 macro_rules! collect_proc {
     ($proc:ident) => {

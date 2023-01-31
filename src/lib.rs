@@ -1,5 +1,3 @@
-#![allow(clippy::needless_borrow)]
-
 use nix::sys::signal;
 use nix::sys::termios::{tcgetattr, tcsetattr, SetArg::TCSADRAIN};
 use nix::sys::wait::{waitpid, WaitStatus};
@@ -20,7 +18,6 @@ use traft::rpc;
 use traft::rpc::{join, update_instance};
 use traft::RaftSpaceAccess;
 
-use clap::StructOpt as _;
 use protobuf::Message as _;
 
 use crate::instance::grade::TargetGradeVariant;
@@ -32,6 +29,7 @@ use crate::traft::{event, node, Migration};
 use crate::traft::{LogicalClock, RaftIndex};
 use traft::error::Error;
 
+#[doc(hidden)]
 mod app;
 pub mod args;
 mod discovery;
