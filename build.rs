@@ -2,6 +2,7 @@ use std::panic::Location;
 use std::path::Path;
 use std::process::Command;
 
+// See also: https://doc.rust-lang.org/cargo/reference/build-scripts.html
 fn main() {
     // The file structure roughly looks as follows:
     // .
@@ -240,8 +241,11 @@ mod rustc {
     }
 
     pub fn link_lib_static(lib: impl AsRef<str>) {
+        // See also:
+        // https://doc.rust-lang.org/cargo/reference/build-scripts.html#cargorustc-link-liblib
+        // https://doc.rust-lang.org/rustc/command-line-arguments.html#option-l-link-lib
         println!(
-            "cargo:rustc-link-lib=static:+whole-archive={}",
+            "cargo:rustc-link-lib=static:+whole-archive,-bundle={}",
             lib.as_ref()
         );
     }
