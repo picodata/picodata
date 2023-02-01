@@ -86,14 +86,28 @@ pub struct Client(Rc<RefCell<ClientInner>>);
 
 impl Client {
     pub async fn connect(url: &str, port: u16) -> Result<Self, Error> {
-        let client = Rc::new(RefCell::new(ClientInner::new()));
-        let (tx, rx) = oneshot::channel();
-        start_fibers(client.clone(), tx, url, port);
-        // RecvError may happen if there was some error during connection.
-        let _ = rx.await;
-        let client = Self(client);
-        client.check_state()?;
-        Ok(client)
+        let mut client = ClientInner::new();
+        let stream = TcpStream::connect(url, port).await?;
+        client.close_token = Some(stream.close_token());
+
+        let (reader, writer) = stream.split();
+        let client = Rc::new(RefCell::new(client));
+
+        // start receiver in a separate fiber
+        let mut receiver_handle = fiber::Builder::new()
+            .func_async(receiver(client.clone(), reader))
+            .name("network-client-receiver")
+            .start()
+            .unwrap();
+
+        // start sender in a separate fiber
+        let sender_handle = fiber::Builder::new()
+            .func_async(sender(client.clone(), writer))
+            .name("network-client-sender")
+            .start()
+            .unwrap();
+        client.borrow_mut().worker_handles = vec![receiver_handle, sender_handle];
+        Ok(Self(client))
     }
 
     fn check_state(&self) -> Result<(), Error> {
@@ -115,7 +129,6 @@ impl Client {
         let sync = self.0.borrow_mut().protocol.send_request(request)?;
         let (tx, rx) = oneshot::channel();
         self.0.borrow_mut().awaiting_response.insert(sync, tx);
-        // TODO: Set timeout
         rx.await.expect("Channel should be open")?;
         Ok(self
             .0
@@ -219,34 +232,6 @@ macro_rules! handle_result {
     };
 }
 
-/// Starts receiver and sender fibers.
-fn start_fibers(client: Rc<RefCell<ClientInner>>, tx: oneshot::Sender<()>, url: &str, port: u16) {
-    let jh = fiber::start(move || {
-        // TODO: Set actual timeout
-        let result = TcpStream::connect(url, port, Duration::MAX);
-        let stream = handle_result!(client.borrow_mut(), result);
-        client.borrow_mut().close_token = Some(stream.close_token());
-        let (reader, writer) = stream.split();
-
-        // start receiver in a separate fiber
-        let mut receiver_handle = fiber::Builder::new()
-            .func_async(receiver(client.clone(), reader))
-            .name("network-client-receiver")
-            .start()
-            .unwrap();
-
-        // start sender here
-        let sender_handle = fiber::Builder::new()
-            .func_async(sender(client.clone(), writer))
-            .name("network-client-sender")
-            .start()
-            .unwrap();
-        client.borrow_mut().worker_handles = vec![receiver_handle, sender_handle];
-        tx.send(()).unwrap();
-    });
-    std::mem::forget(jh);
-}
-
 /// Sender work loop. Yields on each iteration and during awaits.
 async fn sender(client: Rc<RefCell<ClientInner>>, mut writer: WriteHalf<TcpStream>) {
     loop {
@@ -343,7 +328,7 @@ mod tests {
             fiber::block_on(async {
                 // Can be any other unused port
                 let err = Client::connect("localhost", 3300).await.unwrap_err();
-                assert!(matches!(dbg!(err), Error::ClosedWithErr(_)))
+                assert!(matches!(dbg!(err), Error::Tcp(_)))
             });
         },
     };
