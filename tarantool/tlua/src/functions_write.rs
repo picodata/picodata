@@ -539,7 +539,7 @@ where
     }
 }
 
-#[cfg(feature = "tarantool_test")]
+#[cfg(feature = "internal_test")]
 mod tests {
     use super::*;
 

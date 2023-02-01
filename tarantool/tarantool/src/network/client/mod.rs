@@ -300,13 +300,13 @@ async fn receiver(client: Rc<RefCell<ClientInner>>, mut reader: ReadHalf<TcpStre
     }
 }
 
-#[cfg(feature = "tarantool_test")]
+#[cfg(feature = "internal_test")]
 mod tests {
     use super::*;
     use crate::fiber::r#async::timeout::IntoTimeout as _;
     use crate::test::TARANTOOL_LISTEN;
 
-    #[crate::test]
+    #[crate::test(tarantool = "crate")]
     fn connect() {
         fiber::block_on(async {
             let client = Client::connect("localhost", TARANTOOL_LISTEN)
@@ -315,7 +315,7 @@ mod tests {
         });
     }
 
-    #[crate::test]
+    #[crate::test(tarantool = "crate")]
     fn connect_failure() {
         fiber::block_on(async {
             // Can be any other unused port
@@ -324,7 +324,7 @@ mod tests {
         });
     }
 
-    #[crate::test]
+    #[crate::test(tarantool = "crate")]
     fn ping() {
         fiber::block_on(async {
             let client = Client::connect("localhost", TARANTOOL_LISTEN)

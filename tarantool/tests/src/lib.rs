@@ -35,6 +35,7 @@ mod net_box;
 mod proc;
 mod session;
 mod sql;
+mod test_attr;
 mod tlua;
 mod transaction;
 mod tuple;
@@ -214,7 +215,7 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 })),
             }]
         } else {
-            let mut tests = tarantool::test::collect();
+            let mut tests = tarantool::test::collect_tester();
             tests.append(&mut tarantool::tlua::test::collect());
             tests.append(&mut tests![
                 decimal::from_lua,
@@ -566,6 +567,7 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 enums::index_type,
                 enums::index_field_type,
                 enums::rtree_index_distance_type,
+                test_attr::with_custom_section,
             ]);
 
             #[cfg(feature = "picodata")]

@@ -276,7 +276,7 @@ mod tests {
         }
     }
 
-    #[tarantool::test]
+    #[crate::test(tarantool = "crate")]
     fn resolve_address() {
         unsafe {
             let _ = fiber::block_on(get_address_info("localhost").timeout(_10_SEC))
@@ -285,15 +285,14 @@ mod tests {
         }
     }
 
-    #[tarantool::test]
+    #[crate::test(tarantool = "crate")]
     fn connect() {
-        let _ =
-            fiber::block_on(TcpStream::connect("localhost", TARANTOOL_LISTEN).timeout(_10_SEC))
-                .unwrap()
-                .unwrap();
+        let _ = fiber::block_on(TcpStream::connect("localhost", TARANTOOL_LISTEN).timeout(_10_SEC))
+            .unwrap()
+            .unwrap();
     }
 
-    #[tarantool::test]
+    #[crate::test(tarantool = "crate")]
     fn read() {
         fiber::block_on(async {
             let mut stream = TcpStream::connect("localhost", TARANTOOL_LISTEN)
@@ -307,7 +306,7 @@ mod tests {
         });
     }
 
-    #[tarantool::test]
+    #[crate::test(tarantool = "crate")]
     fn read_timeout() {
         fiber::block_on(async {
             let mut stream = TcpStream::connect("localhost", TARANTOOL_LISTEN)
@@ -328,6 +327,7 @@ mod tests {
         });
     }
 
+    #[crate::test(tarantool = "crate")]
     fn write() {
         let (sender, receiver) = std::sync::mpsc::channel();
         let listener = TcpListener::bind("127.0.0.1:3302").unwrap();
@@ -360,7 +360,7 @@ mod tests {
         assert_eq!(buf, vec![1, 2, 3, 4, 5])
     }
 
-    #[tarantool::test]
+    #[crate::test(tarantool = "crate")]
     fn split() {
         let (sender, receiver) = std::sync::mpsc::channel();
         let listener = TcpListener::bind("127.0.0.1:3303").unwrap();
@@ -403,7 +403,7 @@ mod tests {
         assert_eq!(buf, vec![1, 2, 3, 4, 5])
     }
 
-    #[tarantool::test]
+    #[crate::test(tarantool = "crate")]
     fn join_correct_timeout() {
         {
             fiber::block_on(async {
@@ -442,7 +442,7 @@ mod tests {
         }
     }
 
-    #[tarantool::test]
+    #[crate::test(tarantool = "crate")]
     fn select_correct_timeout() {
         {
             fiber::block_on(async {
@@ -485,5 +485,5 @@ mod tests {
                 assert!(is_ok);
             });
         }
-        }
+    }
 }

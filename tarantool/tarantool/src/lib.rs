@@ -174,7 +174,7 @@ pub mod sequence;
 pub mod session;
 pub mod space;
 pub mod sql;
-#[cfg(feature = "tarantool_test")]
+#[cfg(feature = "test")]
 pub mod test;
 pub mod transaction;
 pub mod trigger;
@@ -381,13 +381,25 @@ mod va_list;
 pub use tarantool_proc::stored_proc as proc;
 pub use tlua;
 
-/// The recommended way to describe tests in `tarantool` crate
+#[cfg(feature = "test")]
+/// A re-export of [linkme] crate used inside #[`[tarantool::test]`] macro
+/// attribute.
+pub use linkme;
+
+/// Mark a function as a test. This will add the function to the list of tests
+/// in a special global section. The tests can be accessed using
+/// [`test::test_cases`] or [`test::collect_tester`].
 ///
 /// # Example
-/// ```skip
+/// ```no_run
 /// #[tarantool::test]
 /// fn my_test() {
 ///     assert!(true);
+/// }
+///
+/// #[tarantool::test(should_panic)]
+/// fn my_panicking_test() {
+///     assert!(false);
 /// }
 /// ```
 pub use tarantool_proc::test;

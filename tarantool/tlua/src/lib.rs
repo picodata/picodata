@@ -161,7 +161,7 @@ mod lua_tables;
 mod macros;
 mod object;
 mod rust_tables;
-#[cfg(feature = "tarantool_test")]
+#[cfg(feature = "test")]
 pub mod test;
 mod tuples;
 mod userdata;

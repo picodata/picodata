@@ -3,25 +3,17 @@ use proc_macro2::{Span, TokenStream as TokenStream2};
 use quote::quote;
 use syn::{
     parse_macro_input, punctuated::Punctuated, AttributeArgs, DeriveInput, FnArg, Ident, Item,
-    ItemFn, Lit, Meta, MetaNameValue, NestedMeta, Signature, Token,
+    ItemFn, Signature, Token,
 };
 
+mod test;
+
+/// Mark a function as a test.
+///
+/// See `tarantool::test` doc-comments in tarantool crate for details.
 #[proc_macro_attribute]
-pub fn test(_attr: TokenStream, item: TokenStream) -> TokenStream {
-    let fn_item = parse_macro_input!(item as syn::ItemFn);
-    let fn_name = fn_item.sig.ident;
-    let test_name = fn_name.to_string();
-    let test_name_ident = syn::Ident::new(&test_name.to_uppercase(), fn_name.span());
-    let test_body = fn_item.block;
-    let unsafe_token = fn_item.sig.unsafety;
-    quote! {
-        #[::linkme::distributed_slice(crate::test::TARANTOOL_MODULE_TESTS)]
-        static #test_name_ident: crate::test::TestCase = crate::test::TestCase {
-            name: ::std::concat!(::std::module_path!(), "::", #test_name),
-            f: || #unsafe_token #test_body,
-        };
-    }
-    .into()
+pub fn test(attr: TokenStream, item: TokenStream) -> TokenStream {
+    test::impl_macro_attribute(attr, item)
 }
 
 mod msgpack {
@@ -344,7 +336,7 @@ pub fn stored_proc(attr: TokenStream, item: TokenStream) -> TokenStream {
 }
 
 struct Context {
-    tarantool: TokenStream2,
+    tarantool: syn::Path,
     debug_tuple: TokenStream2,
     is_packed: bool,
     wrap_ret: TokenStream2,
@@ -352,39 +344,31 @@ struct Context {
 
 impl Context {
     fn from_args(args: AttributeArgs) -> Self {
-        let mut tarantool = quote! { ::tarantool };
+        let mut tarantool: syn::Path = syn::parse2(quote! { ::tarantool }).unwrap();
         let mut debug_tuple_needed = false;
         let mut is_packed = false;
         let mut wrap_ret = quote! {};
 
-        use syn::NestedMeta::{Lit as NMLit, Meta as NMMeta};
         for arg in args {
-            match arg {
-                NMLit(lit) => {
-                    eprintln!("unsuported attribute argument: {:?}", lit)
-                }
-                NMMeta(Meta::Path(path)) if path.is_ident("custom_ret") => {
-                    wrap_ret = quote! {
-                        let __tp_res = #tarantool::proc::ReturnMsgpack(__tp_res);
-                    }
-                }
-                NMMeta(Meta::Path(path)) if path.is_ident("packed_args") => is_packed = true,
-                NMMeta(Meta::Path(path)) if path.is_ident("debug") => debug_tuple_needed = true,
-                NMMeta(Meta::NameValue(MetaNameValue { path, lit, .. }))
-                    if path.get_ident().map(|p| p == "tarantool").unwrap_or(false) =>
-                {
-                    match &lit {
-                        Lit::Str(s) => {
-                            let tp: syn::Path = imp::parse_lit_str(s).unwrap();
-                            tarantool = quote! { #tp };
-                        }
-                        _ => panic!("tarantool value must be a string literal"),
-                    }
-                }
-                NestedMeta::Meta(meta) => {
-                    eprintln!("unsuported attribute argument: {:?}", meta)
-                }
+            if let Some(path) = imp::parse_lit_str_with_key(&arg, "tarantool") {
+                tarantool = path;
+                continue;
             }
+            if imp::is_path_eq_to(&arg, "custom_ret") {
+                wrap_ret = quote! {
+                    let __tp_res = #tarantool::proc::ReturnMsgpack(__tp_res);
+                };
+                continue;
+            }
+            if imp::is_path_eq_to(&arg, "packed_args") {
+                is_packed = true;
+                continue;
+            }
+            if imp::is_path_eq_to(&arg, "debug") {
+                debug_tuple_needed = true;
+                continue;
+            }
+            panic!("unsuported attribute argument: {:?}", arg)
         }
 
         let debug_tuple = if debug_tuple_needed {
@@ -493,6 +477,34 @@ mod kw {
 mod imp {
     use proc_macro2::{Group, Span, TokenStream, TokenTree};
     use syn::parse::{self, Parse};
+
+    #[track_caller]
+    pub(crate) fn parse_lit_str_with_key<T>(nm: &syn::NestedMeta, key: &str) -> Option<T>
+    where
+        T: Parse,
+    {
+        match nm {
+            syn::NestedMeta::Meta(syn::Meta::NameValue(syn::MetaNameValue {
+                path, lit, ..
+            })) if path.is_ident(key) => match &lit {
+                syn::Lit::Str(s) => Some(crate::imp::parse_lit_str(s).unwrap()),
+                _ => panic!("{key} value must be a string literal"),
+            },
+            _ => None,
+        }
+    }
+
+    #[track_caller]
+    pub(crate) fn is_path_eq_to(nm: &syn::NestedMeta, expected: &str) -> bool {
+        matches!(
+            nm,
+            syn::NestedMeta::Meta(syn::Meta::Path(path)) if path.is_ident(expected)
+        )
+    }
+
+    pub(crate) fn path_from_ts2(ts: TokenStream) -> syn::Path {
+        syn::parse2(ts).unwrap()
+    }
 
     // stolen from serde
 

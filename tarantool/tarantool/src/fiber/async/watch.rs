@@ -338,7 +338,7 @@ pub fn channel<T>(initial: T) -> (Sender<T>, Receiver<T>) {
     (tx, rx)
 }
 
-#[cfg(feature = "tarantool_test")]
+#[cfg(feature = "internal_test")]
 mod tests {
     #![allow(clippy::approx_constant)]
 
@@ -350,7 +350,7 @@ mod tests {
 
     const _1_SEC: Duration = Duration::from_secs(1);
 
-    #[crate::test]
+    #[crate::test(tarantool = "crate")]
     fn receive_notification_sent_before() {
         let (tx, mut rx_1) = channel::<i32>(10);
         let mut rx_2 = rx_1.clone();
@@ -366,7 +366,7 @@ mod tests {
         );
     }
 
-    #[crate::test]
+    #[crate::test(tarantool = "crate")]
     fn receive_notification_sent_after() {
         let (tx, mut rx_1) = channel::<i32>(10);
         let mut rx_2 = rx_1.clone();
@@ -380,7 +380,7 @@ mod tests {
         assert_eq!(jh.join(), (20, 20, 20))
     }
 
-    #[crate::test]
+    #[crate::test(tarantool = "crate")]
     fn receive_multiple_notifications() {
         let (tx, mut rx_1) = channel::<i32>(10);
         let jh = fiber::start_async(async {
@@ -397,7 +397,7 @@ mod tests {
         assert_eq!(jh.join(), 2);
     }
 
-    #[crate::test]
+    #[crate::test(tarantool = "crate")]
     fn retains_only_last_notification() {
         let (tx, mut rx_1) = channel::<i32>(10);
         tx.send(1).unwrap();
@@ -415,7 +415,7 @@ mod tests {
         );
     }
 
-    #[crate::test]
+    #[crate::test(tarantool = "crate")]
     fn notification_receive_error() {
         let (tx, mut rx_1) = channel::<i32>(10);
         let jh = fiber::start_async(rx_1.changed());
@@ -423,7 +423,7 @@ mod tests {
         assert_eq!(jh.join(), Err(RecvError));
     }
 
-    #[crate::test]
+    #[crate::test(tarantool = "crate")]
     fn notification_received_in_concurrent_fiber() {
         let (tx, mut rx_1) = channel::<i32>(10);
         let mut rx_2 = rx_1.clone();
@@ -434,7 +434,7 @@ mod tests {
         assert!(jh_2.join().is_ok());
     }
 
-    #[crate::test]
+    #[crate::test(tarantool = "crate")]
     fn send_modify() {
         let (tx, mut rx) = channel(vec![13]);
         let jh = fiber::start(|| {
@@ -445,7 +445,7 @@ mod tests {
         assert_eq!(jh.join(), [13, 37]);
     }
 
-    #[crate::test]
+    #[crate::test(tarantool = "crate")]
     fn sender_get() {
         let (tx, _) = channel(69);
         assert_eq!(tx.get(), 69);

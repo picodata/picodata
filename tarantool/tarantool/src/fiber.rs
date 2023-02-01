@@ -1592,21 +1592,21 @@ where
     (callback as *mut F as *mut c_void, Some(trampoline::<F, T>))
 }
 
-#[cfg(feature = "tarantool_test")]
+#[cfg(feature = "internal_test")]
 mod tests {
     use super::*;
 
     use std::cell::RefCell;
     use std::rc::Rc;
 
-    #[crate::test]
+    #[crate::test(tarantool = "crate")]
     fn builder_async_func() {
         let jh = Builder::new().func_async(async { 69 }).start().unwrap();
         let res = jh.join();
         assert_eq!(res, 69);
     }
 
-    #[crate::test]
+    #[crate::test(tarantool = "crate")]
     fn builder_async_proc() {
         let res = Rc::new(RefCell::new(0u32));
         let res_moved = res.clone();

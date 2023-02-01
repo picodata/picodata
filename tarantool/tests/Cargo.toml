@@ -24,10 +24,11 @@ rmp-serde = "1"
 rmpv = { version = "1", features = ["with-serde"] }
 libc = "*"
 futures = "0.3.25"
+linkme = "0.2.10"
 
 [dependencies.tarantool]
 path = "../tarantool"
-features = ["all", "tarantool_test"]
+features = ["all", "internal_test"]
 
 [dependencies.tarantool-proc]
 path = "../tarantool-proc"

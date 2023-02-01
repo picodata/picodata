@@ -109,7 +109,7 @@ pub trait IntoTimeout: Future + Sized {
 
 impl<T> IntoTimeout for T where T: Future + Sized {}
 
-#[cfg(feature = "tarantool_test")]
+#[cfg(feature = "internal_test")]
 mod tests {
     use super::*;
     use crate::fiber;
@@ -121,7 +121,7 @@ mod tests {
     const _0_SEC: Duration = Duration::ZERO;
     const _1_SEC: Duration = Duration::from_secs(1);
 
-    #[crate::test]
+    #[crate::test(tarantool = "crate")]
     fn instant_future() {
         let fut = async { 78 };
         assert_eq!(fiber::block_on(fut), 78);
@@ -130,7 +130,7 @@ mod tests {
         assert_eq!(fiber::block_on(fut), Ok(79));
     }
 
-    #[crate::test]
+    #[crate::test(tarantool = "crate")]
     fn actual_timeout_promise() {
         let (tx, rx) = oneshot::channel::<i32>();
         let fut = async move { rx.timeout(_0_SEC).await };
@@ -140,7 +140,7 @@ mod tests {
         drop(tx);
     }
 
-    #[crate::test]
+    #[crate::test(tarantool = "crate")]
     fn drop_tx_before_timeout() {
         let (tx, rx) = oneshot::channel::<i32>();
         let fut = async move { rx.timeout(_1_SEC).await };
@@ -150,7 +150,7 @@ mod tests {
         assert_eq!(jh.join(), Ok(Err(RecvError)));
     }
 
-    #[crate::test]
+    #[crate::test(tarantool = "crate")]
     fn send_tx_before_timeout() {
         let (tx, rx) = oneshot::channel::<i32>();
         let fut = async move { rx.timeout(_1_SEC).await };
@@ -160,13 +160,13 @@ mod tests {
         assert_eq!(jh.join(), Ok(Ok(400)));
     }
 
-    #[crate::test]
+    #[crate::test(tarantool = "crate")]
     fn timeout_duration_max() {
         // must not panic
         fiber::block_on(timeout(Duration::MAX, async { 1 })).unwrap();
     }
 
-    #[crate::test]
+    #[crate::test(tarantool = "crate")]
     fn await_actually_yields() {
         // ready future, no timeout -> no yield
         assert_eq!(

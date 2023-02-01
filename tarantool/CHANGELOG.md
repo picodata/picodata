@@ -6,6 +6,13 @@
 - `fiber::Builder::func_async` and `fiber::Builder::proc_async` - methods for
     easier construction with `Builder` of fibers executing `Future`
 - `tlua::CFunction` wrapper struct to push `C` functions as values into lua.
+- `#[tarantool::test]` macro attribute for defining test functions and adding
+  them into a global list of test cases. Requires `--features=test`.
+- `test::test_cases` & `test::collect_tester` functions for accessing the global
+  list of test cases. This can be used to implement a custom testing harness.
+  Requires `--features=test`.
+- `test::TestCase` struct which is used internally in `#[tarantool::test]` and
+  is returned by `test::test_cases`. Requires `--features=test`.
 
 # [0.6.4] Dec 15 2022
 

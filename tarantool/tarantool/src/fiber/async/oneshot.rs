@@ -180,14 +180,14 @@ pub fn channel<T>() -> (Sender<T>, Receiver<T>) {
     (Sender(weak), Receiver(strong))
 }
 
-#[cfg(feature = "tarantool_test")]
+#[cfg(feature = "internal_test")]
 mod tests {
     use super::*;
     use crate::fiber;
     use futures::join;
     use std::time::Duration;
 
-    #[crate::test]
+    #[crate::test(tarantool = "crate")]
     fn drop_receiver() {
         let (tx, rx) = channel::<i32>();
         assert!(!tx.is_closed());
@@ -196,7 +196,7 @@ mod tests {
         assert_eq!(tx.send(0).unwrap_err(), 0);
     }
 
-    #[crate::test]
+    #[crate::test(tarantool = "crate")]
     fn drop_sender() {
         let (tx, rx) = channel::<i32>();
         assert!(!rx.is_closed());
@@ -205,21 +205,21 @@ mod tests {
         assert_eq!(fiber::block_on(rx).unwrap_err(), RecvError);
     }
 
-    #[crate::test]
+    #[crate::test(tarantool = "crate")]
     fn receive_non_blocking() {
         let (tx, rx) = channel::<i32>();
         tx.send(56).unwrap();
         assert_eq!(fiber::block_on(rx), Ok(56));
     }
 
-    #[crate::test]
+    #[crate::test(tarantool = "crate")]
     fn receive_non_blocking_after_dropping_sender() {
         let (tx, rx) = channel::<i32>();
         drop(tx);
         assert_eq!(fiber::block_on(rx), Err(RecvError));
     }
 
-    #[crate::test]
+    #[crate::test(tarantool = "crate")]
     fn receive_blocking_before_sending() {
         let (tx, rx) = channel::<i32>();
         let jh = fiber::start_async(rx);
@@ -227,7 +227,7 @@ mod tests {
         assert_eq!(jh.join(), Ok(39));
     }
 
-    #[crate::test]
+    #[crate::test(tarantool = "crate")]
     fn receive_blocking_before_dropping_sender() {
         let (tx, rx) = channel::<i32>();
         let jh = fiber::start_async(rx);
@@ -235,7 +235,7 @@ mod tests {
         assert_eq!(jh.join(), Err(RecvError));
     }
 
-    #[crate::test]
+    #[crate::test(tarantool = "crate")]
     fn join_two_after_sending() {
         let f = async {
             let (tx1, rx1) = channel::<i32>();
@@ -248,7 +248,7 @@ mod tests {
         assert_eq!(fiber::block_on(f), (Ok(101), Ok(102)));
     }
 
-    #[crate::test]
+    #[crate::test(tarantool = "crate")]
     fn join_two_before_sending() {
         let c = fiber::Cond::new();
         drop(c);
@@ -264,7 +264,7 @@ mod tests {
         assert_eq!(jh.join(), (Ok(201), Ok(202)));
     }
 
-    #[crate::test]
+    #[crate::test(tarantool = "crate")]
     fn join_two_drop_one() {
         let (tx1, rx1) = channel::<i32>();
         let (tx2, rx2) = channel::<i32>();
