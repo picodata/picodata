@@ -20,7 +20,7 @@ crate::define_string_newtype! {
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Serializable struct representing a member of the raft group.
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Instance {
     /// Instances are identified by name.
     pub instance_id: InstanceId,
@@ -58,20 +58,6 @@ impl Instance {
     #[inline]
     pub fn is_reincarnated(&self) -> bool {
         self.current_grade.incarnation < self.target_grade.incarnation
-    }
-
-    /// Only used for testing.
-    pub(crate) fn default() -> Self {
-        Self {
-            instance_id: Default::default(),
-            instance_uuid: Default::default(),
-            raft_id: Default::default(),
-            replicaset_id: Default::default(),
-            replicaset_uuid: Default::default(),
-            current_grade: Default::default(),
-            target_grade: Default::default(),
-            failure_domain: Default::default(),
-        }
     }
 }
 

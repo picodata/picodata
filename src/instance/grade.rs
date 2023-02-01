@@ -144,11 +144,10 @@ impl From<TargetGrade> for CurrentGrade {
 
 /// Check if instance's current and target grades match the specified pattern.
 /// # Examples:
-/// ```no_run
+/// ```
 /// # use picodata::{has_grades, instance::Instance};
-/// # let instance: Instance = unsafe {
-/// #     std::mem::MaybeUninit::uninit().assume_init()
-/// # };
+/// # let instance = Instance::default();
+/// #
 /// // Check if current_grade == `Offline`, target_grade == `Online`
 /// has_grades!(instance, Offline -> Online);
 ///
