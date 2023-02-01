@@ -31,20 +31,6 @@ macro_rules! stringify_cfunc {
     }};
 }
 
-#[macro_export]
-macro_rules! cleanup_env {
-    () => {
-        // Tarantool implicitly parses some environment variables.
-        // We don't want them to affect the behavior and thus filter them out.
-
-        for (k, _) in std::env::vars() {
-            if k.starts_with("TT_") || k.starts_with("TARANTOOL_") {
-                std::env::remove_var(k)
-            }
-        }
-    };
-}
-
 mod ffi {
     use libc::c_char;
     use libc::c_int;
