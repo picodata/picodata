@@ -409,13 +409,19 @@ deploy-docker:
         ci-log-section end "deploy-docker-${image}"
       done
 
-check-deployment:
+.check-deployment:
   stage: check-deployment
+  tags:
+    - docker
   only:
     - web
     - tags
-  tags:
-    - docker
+  image: ${BASE_IMAGE}
+  needs:
+    - deploy-packages
+
+check-deployment-rpm:
+  extends: .check-deployment
   parallel:
     matrix:
       - BASE_IMAGE: centos:7
@@ -424,10 +430,50 @@ check-deployment:
         PACKAGE: el/8/x86_64/picodata-release-1.1.1.0-1.el8.x86_64.rpm
       - BASE_IMAGE: packpack/packpack:redos-7.3
         PACKAGE: redos/7/x86_64/picodata-release-1.1.1.0-1.el7.x86_64.rpm
-  image: ${BASE_IMAGE}
   script:
     - rpm --import https://download.picodata.io/tarantool-picodata/el/RPM-GPG-KEY-kdy
     - yum install -y https://download.picodata.io/tarantool-picodata/${PACKAGE}
     - yum install -y picodata
-  needs:
-    - deploy-packages
+
+check-deployment-deb:
+  extends: .check-deployment
+  variables:
+    DEBIAN_FRONTEND: noninteractive
+    TZ: Europe/Moscow
+  parallel:
+    matrix:
+      - BASE_IMAGE: debian:bullseye
+      - BASE_IMAGE: ubuntu:focal
+      - BASE_IMAGE: ubuntu:jammy
+  before_script:
+    - apt update
+    - apt install -y curl gpg software-properties-common
+    - export DIST=$(lsb_release -si | tr [:upper:] [:lower:])
+    - export CODENAME=$(lsb_release -sc)
+  script:
+    - curl -s https://download.picodata.io/tarantool-picodata/ubuntu/picodata.gpg.key | gpg --no-default-keyring --keyring gnupg-ring:/etc/apt/trusted.gpg.d/picodata.gpg --import
+    - chmod 644 /etc/apt/trusted.gpg.d/picodata.gpg
+    - add-apt-repository -y "deb [arch=amd64] https://download.picodata.io/tarantool-picodata/${DIST}/ ${CODENAME} main"
+    - apt update
+    - apt install -y picodata
+
+check-deployment-alt:
+  extends: .check-deployment
+  parallel:
+    matrix:
+      - DIST: p10
+      - DIST: p9
+  image: docker.binary.picodata.io/altlinux/base:${DIST}
+  before_script:
+    - apt-get update
+    - apt-get install -y curl git
+    - until git describe; do git fetch --deepen 100; done
+    - export VER=$(git describe --long | sed -n 's/^\([0-9\.]*\)-\([0-9]*\)-\([a-z0-9]*\)/\1.\2/p')
+  script:
+    - curl https://download.picodata.io/tarantool-picodata/altlinux/${DIST}/picodata-release-1.0.2.7-1.${DIST}.x86_64.rpm -o picodata-release.rpm
+    - apt-get install -y ./picodata-release.rpm
+    - apt-get update
+    - apt-get install -y picodata
+    - apt-get remove -y picodata picodata-release
+    - curl https://download.picodata.io/tarantool-picodata/altlinux/${DIST}/x86_64/RPMS.main/picodata-${VER}-1.${DIST}.x86_64.rpm -o picodata.rpm
+    - apt-get install -y ./picodata.rpm
