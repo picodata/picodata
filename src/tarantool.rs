@@ -61,15 +61,17 @@ pub fn package() -> &'static str {
     return c_str.to_str().unwrap();
 }
 
-inventory::submit!(crate::InnerTest {
-    name: "test_version",
-    body: || {
+mod tests {
+    use super::*;
+
+    #[::tarantool::test]
+    fn test_version() {
         let l = lua_state();
         let t: LuaTable<_> = l.eval("return require('tarantool')").unwrap();
         assert_eq!(version(), t.get::<String, _>("version").unwrap());
         assert_eq!(package(), t.get::<String, _>("package").unwrap());
     }
-});
+}
 
 #[derive(Clone, Debug, tlua::Push, tlua::LuaRead, PartialEq, Eq)]
 pub struct Cfg {

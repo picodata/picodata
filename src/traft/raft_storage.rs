@@ -299,9 +299,11 @@ macro_rules! assert_err {
     };
 }
 
-inventory::submit!(crate::InnerTest {
-    name: "test_storage2",
-    body: || {
+mod tests {
+    use super::*;
+
+    #[::tarantool::test]
+    fn test_storage2() {
         // It's fine to create two access objects
         let s1 = RaftSpaceAccess::new().unwrap();
         let s2 = RaftSpaceAccess::new().unwrap();
@@ -312,11 +314,9 @@ inventory::submit!(crate::InnerTest {
         #[allow(clippy::redundant_clone)]
         let _s3 = s2.clone();
     }
-});
 
-inventory::submit!(crate::InnerTest {
-    name: "test_storage2_log",
-    body: || {
+    #[::tarantool::test]
+    fn test_storage2_log() {
         use ::raft::Storage as S;
         let test_entries = vec![raft::Entry {
             term: 9u64,
@@ -382,11 +382,9 @@ inventory::submit!(crate::InnerTest {
             )
         );
     }
-});
 
-inventory::submit!(crate::InnerTest {
-    name: "test_storage2_hard_state",
-    body: || {
+    #[::tarantool::test]
+    fn test_storage2_hard_state() {
         use ::raft::Storage as S;
 
         let storage = RaftSpaceAccess::new().unwrap();
@@ -405,11 +403,9 @@ inventory::submit!(crate::InnerTest {
         storage.persist_hard_state(&hs).unwrap();
         assert_eq!(S::initial_state(&storage).unwrap().hard_state, hs);
     }
-});
 
-inventory::submit!(crate::InnerTest {
-    name: "test_storage2_conf_state",
-    body: || {
+    #[::tarantool::test]
+    fn test_storage2_conf_state() {
         use ::raft::Storage as S;
 
         let storage = RaftSpaceAccess::new().unwrap();
@@ -431,11 +427,9 @@ inventory::submit!(crate::InnerTest {
         storage.persist_conf_state(&cs).unwrap();
         assert_eq!(S::initial_state(&storage).unwrap().conf_state, cs);
     }
-});
 
-inventory::submit!(crate::InnerTest {
-    name: "test_storage2_other_state",
-    body: || {
+    #[::tarantool::test]
+    fn test_storage2_other_state() {
         let storage = RaftSpaceAccess::new().unwrap();
         let raft_state = Space::find(RaftSpaceAccess::SPACE_RAFT_STATE).unwrap();
 
@@ -483,4 +477,4 @@ inventory::submit!(crate::InnerTest {
             )
         );
     }
-});
+}

@@ -45,13 +45,6 @@ pub mod tlog;
 pub mod traft;
 pub mod util;
 
-inventory::collect!(InnerTest);
-
-pub struct InnerTest {
-    pub name: &'static str,
-    pub body: fn(),
-}
-
 fn picolib_setup(args: &args::Run) {
     set_log_level(args.log_level());
     let l = ::tarantool::lua_state();

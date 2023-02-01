@@ -976,10 +976,12 @@ macro_rules! assert_err {
     };
 }
 
-#[rustfmt::skip]
-inventory::submit!(crate::InnerTest {
-    name: "test_storage_instances",
-    body: || {
+mod tests {
+    use super::*;
+
+    #[rustfmt::skip]
+    #[::tarantool::test]
+    fn test_storage_instances() {
         use crate::instance::grade::{CurrentGradeVariant as CGV, TargetGradeVariant as TGV};
         use crate::instance::InstanceId;
         use crate::failure_domain::FailureDomain;
@@ -1119,12 +1121,10 @@ inventory::submit!(crate::InnerTest {
             )
         );
     }
-});
 
-#[rustfmt::skip]
-inventory::submit!(crate::InnerTest {
-    name: "test_storage_migrations",
-    body: || {
+    #[rustfmt::skip]
+    #[::tarantool::test]
+    fn test_storage_migrations() {
         let migrations = Migrations::new().unwrap();
 
         assert_eq!(None, migrations.get_latest().unwrap());
@@ -1142,11 +1142,9 @@ inventory::submit!(crate::InnerTest {
             migrations.get_latest().unwrap()
         );
     }
-});
 
-inventory::submit!(crate::InnerTest {
-    name: "clusterwide_space_index",
-    body: || {
+    #[::tarantool::test]
+    fn clusterwide_space_index() {
         let storage = Clusterwide::new().unwrap();
 
         storage
@@ -1177,4 +1175,4 @@ inventory::submit!(crate::InnerTest {
         assert_eq!(i.raft_id, 1);
         assert_eq!(i.instance_id, "bob");
     }
-});
+}

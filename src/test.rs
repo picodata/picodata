@@ -1,8 +1,8 @@
 use crate::tarantool_main;
+use ::tarantool::test::TestCase;
 use nix::unistd::{self, fork, ForkResult};
 use picodata::args;
 use picodata::ipc;
-use picodata::InnerTest;
 
 macro_rules! color {
     (@priv red) => { "\x1b[0;31m" };
@@ -32,19 +32,16 @@ pub fn main_test(args: args::Test) -> ! {
 
     let now = std::time::Instant::now();
 
-    println!();
-    println!(
-        "total {} tests",
-        inventory::iter::<InnerTest>.into_iter().count()
-    );
-    for t in inventory::iter::<InnerTest> {
+    let tests = ::tarantool::test::test_cases();
+    println!("total {} tests", tests.len());
+    for t in tests {
         if let Some(filter) = args.filter.as_ref() {
-            if !t.name.contains(filter) {
+            if !t.name().contains(filter) {
                 cnt_skipped += 1;
                 continue;
             }
         }
-        print!("test {} ... ", t.name);
+        print!("test {} ... ", t.name());
 
         let (mut rx, tx) = ipc::pipe().expect("pipe creation failed");
         let pid = unsafe { fork() };
@@ -61,7 +58,7 @@ pub fn main_test(args: args::Test) -> ! {
                 let rc = tarantool_main!(
                     args.tt_args().unwrap(),
                     callback_data: t,
-                    callback_data_type: &InnerTest,
+                    callback_data_type: &TestCase,
                     callback_body: test_one(t)
                 );
                 std::process::exit(rc);
@@ -123,7 +120,7 @@ pub fn main_test(args: args::Test) -> ! {
     std::process::exit(!ok as _);
 }
 
-fn test_one(t: &InnerTest) {
+fn test_one(test: &TestCase) {
     use picodata::tarantool;
 
     let temp = tempfile::tempdir().expect("Failed creating a temp directory");
@@ -144,6 +141,6 @@ fn test_one(t: &InnerTest) {
     )
     .unwrap();
 
-    (t.body)();
+    test.run();
     std::process::exit(0i32);
 }

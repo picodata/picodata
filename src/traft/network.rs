@@ -537,9 +537,11 @@ impl IdOfInstance for InstanceId {
 // thread 'main' panicked at 'UnitJoinHandle dropped before being joined',
 // picodata::traft::network::ConnectionPool::connect
 
-inventory::submit!(crate::InnerTest {
-    name: "test_connection_pool",
-    body: || {
+mod tests {
+    use super::*;
+
+    #[::tarantool::test]
+    fn test_connection_pool() {
         use std::rc::Rc;
         use tarantool::fiber;
         use tarantool::fiber::YieldResult::*;
@@ -639,4 +641,4 @@ inventory::submit!(crate::InnerTest {
             Ok((raft::MessageType::MsgHeartbeat, 1337u64, 4u64))
         );
     }
-});
+}

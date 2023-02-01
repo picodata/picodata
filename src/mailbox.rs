@@ -175,9 +175,11 @@ impl<T> Mailbox<T> {
     }
 }
 
-inventory::submit!(crate::InnerTest {
-    name: "test_mailbox",
-    body: || {
+mod tests {
+    use super::*;
+
+    #[::tarantool::test]
+    fn test_mailbox() {
         let mailbox = Mailbox::<u8>::new();
         assert_eq!(mailbox.receive_all(Duration::ZERO), Vec::<u8>::new());
         assert_eq!(mailbox.try_receive_all(), Vec::<u8>::new());
@@ -196,4 +198,4 @@ inventory::submit!(crate::InnerTest {
 
         assert_eq!(format!("{mailbox:?}"), "Mailbox<u8> { .. }")
     }
-});
+}
