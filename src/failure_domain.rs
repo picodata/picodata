@@ -199,25 +199,4 @@ mod tests {
         assert_eq!(dcsrv.distance(&dc_spb), 2);
         assert_eq!(dcsrv.distance(&empty), 2);
     }
-
-    #[test]
-    fn doctest_intersects() {
-        let msk_1 = FailureDomain::from([("dc", "msk"), ("srv", "msk-1")]);
-        let msk_2 = FailureDomain::from([("dc", "msk"), ("srv", "msk-2")]);
-        let spb = FailureDomain::from([("dc", "spb")]);
-
-        assert_eq!(msk_1.intersects(&msk_2), true);
-        assert_eq!(msk_1.intersects(&spb), false);
-    }
-
-    #[test]
-    fn doctest_distance() {
-        let msk_1 = FailureDomain::from([("dc", "msk"), ("srv", "msk-1")]);
-        let msk_2 = FailureDomain::from([("dc", "msk"), ("srv", "msk-2")]);
-        let spb = FailureDomain::from([("dc", "spb")]);
-
-        assert_eq!(msk_1.distance(&msk_1), 0);
-        assert_eq!(msk_1.distance(&msk_2), 1);
-        assert_eq!(msk_1.distance(&spb), 2);
-    }
 }
