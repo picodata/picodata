@@ -56,8 +56,10 @@ use std::time::Duration;
 /// assert!(mailbox.try_receive_all().is_empty());
 /// ```
 
+#[derive(Default)]
 pub struct Mailbox<T>(Rc<Inner<T>>);
 
+#[derive(Default)]
 struct Inner<T> {
     cond: Rc<fiber::Cond>,
     content: RefCell<Vec<T>>,
