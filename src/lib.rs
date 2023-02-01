@@ -495,12 +495,7 @@ fn preload_http() {
     // Load C part of the library
     lua.exec_with(
         "package.preload['http.lib'] = ...;",
-        tlua::function1(|state: tlua::LuaState| unsafe {
-            luaopen_http_lib(state);
-            let lua = tlua::Lua::from_static(state);
-            lua.exec("package.loaded['http.lib'] = package.loaded['box._lib'];")
-                .unwrap();
-        }),
+        tlua::CFunction::new(luaopen_http_lib),
     )
     .unwrap();
 
