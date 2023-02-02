@@ -982,3 +982,7 @@ extern "C" {
         old_handler: Option<extern "C" fn(*mut c_void) -> c_int>,
     ) -> c_int;
 }
+
+/// Tarantool stored procedure signature.
+pub type Proc =
+    unsafe extern "C" fn(crate::tuple::FunctionCtx, crate::tuple::FunctionArgs) -> c_int;

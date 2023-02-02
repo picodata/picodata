@@ -381,9 +381,8 @@ mod va_list;
 pub use tarantool_proc::stored_proc as proc;
 pub use tlua;
 
-#[cfg(feature = "test")]
-/// A re-export of [linkme] crate used inside #[`[tarantool::test]`] macro
-/// attribute.
+/// A re-export of [linkme] crate used inside #[`[tarantool::test]`]
+/// and #[`[tarantool::proc]`] macro attributes.
 pub use linkme;
 
 /// Mark a function as a test. This will add the function to the list of tests

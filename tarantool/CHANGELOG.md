@@ -13,6 +13,9 @@
   Requires `--features=test`.
 - `test::TestCase` struct which is used internally in `#[tarantool::test]` and
   is returned by `test::test_cases`. Requires `--features=test`.
+- `ffi::tarantool::Proc` type alias for a tarntool stored C function.
+- `proc::all_procs` helper function which returns a global slice of `proc::Proc`
+  \- descriptions for stored procedures defined with `#[tarantool::proc]`.
 
 # [0.6.4] Dec 15 2022
 

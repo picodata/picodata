@@ -246,6 +246,9 @@ pub fn impl_tuple_encode(_input: TokenStream) -> TokenStream {
         .into()
 }
 
+/// Create a tarantool stored procedure.
+///
+/// See `tarantool::proc` doc-comments in tarantool crate for details.
 #[proc_macro_attribute]
 pub fn stored_proc(attr: TokenStream, item: TokenStream) -> TokenStream {
     let args = parse_macro_input!(attr as AttributeArgs);
@@ -292,14 +295,25 @@ pub fn stored_proc(attr: TokenStream, item: TokenStream) -> TokenStream {
 
     let Context {
         tarantool,
+        linkme,
+        section,
         debug_tuple,
         wrap_ret,
         ..
     } = ctx;
 
     let inner_fn_name = syn::Ident::new("__tp_inner", ident.span());
+    let desc_name = ident.to_string();
+    let desc_ident = syn::Ident::new(&desc_name.to_uppercase(), ident.span());
 
     quote! {
+        #[#linkme::distributed_slice(#section)]
+        #[linkme(crate = #linkme)]
+        static #desc_ident: #tarantool::proc::Proc = #tarantool::proc::Proc::new(
+            #desc_name,
+            #ident,
+        );
+
         #[no_mangle]
         pub unsafe extern "C" fn #ident (
             __tp_ctx: #tarantool::tuple::FunctionCtx,
@@ -337,6 +351,8 @@ pub fn stored_proc(attr: TokenStream, item: TokenStream) -> TokenStream {
 
 struct Context {
     tarantool: syn::Path,
+    section: syn::Path,
+    linkme: syn::Path,
     debug_tuple: TokenStream2,
     is_packed: bool,
     wrap_ret: TokenStream2,
@@ -345,6 +361,8 @@ struct Context {
 impl Context {
     fn from_args(args: AttributeArgs) -> Self {
         let mut tarantool: syn::Path = syn::parse2(quote! { ::tarantool }).unwrap();
+        let mut linkme = None;
+        let mut section = None;
         let mut debug_tuple_needed = false;
         let mut is_packed = false;
         let mut wrap_ret = quote! {};
@@ -352,6 +370,14 @@ impl Context {
         for arg in args {
             if let Some(path) = imp::parse_lit_str_with_key(&arg, "tarantool") {
                 tarantool = path;
+                continue;
+            }
+            if let Some(path) = imp::parse_lit_str_with_key(&arg, "linkme") {
+                linkme = Some(path);
+                continue;
+            }
+            if let Some(path) = imp::parse_lit_str_with_key(&arg, "section") {
+                section = Some(path);
                 continue;
             }
             if imp::is_path_eq_to(&arg, "custom_ret") {
@@ -371,6 +397,11 @@ impl Context {
             panic!("unsuported attribute argument: {:?}", arg)
         }
 
+        let section = section.unwrap_or_else(|| {
+            imp::path_from_ts2(quote! { #tarantool::proc::TARANTOOL_MODULE_STORED_PROCS })
+        });
+        let linkme = linkme.unwrap_or_else(|| imp::path_from_ts2(quote! { #tarantool::linkme }));
+
         let debug_tuple = if debug_tuple_needed {
             quote! {
                 ::std::dbg!(#tarantool::tuple::Tuple::from(&__tp_args));
@@ -380,6 +411,8 @@ impl Context {
         };
         Self {
             tarantool,
+            linkme,
+            section,
             debug_tuple,
             is_packed,
             wrap_ret,
