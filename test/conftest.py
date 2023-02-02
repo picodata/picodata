@@ -2,6 +2,7 @@ import io
 import json
 import os
 import re
+import socket
 import sys
 import threading
 from types import SimpleNamespace
@@ -27,6 +28,9 @@ from tarantool.error import (  # type: ignore
 # A constant represents invalid id of raft.
 # pub const INVALID_ID: u64 = 0;
 INVALID_RAFT_ID = 0
+BASE_HOST = "127.0.0.1"
+BASE_PORT = 3300
+PORT_RANGE = 200
 
 
 def eprint(*args, **kwargs):
@@ -49,6 +53,32 @@ def pytest_addoption(parser: pytest.Parser):
         default=False,
         help="Whether gather flamegraphs or not (for benchmarks only)",
     )
+
+
+@pytest.fixture(scope="session")
+def port_range(xdist_worker_number: int) -> tuple[int, int]:
+    """
+    Return pair (base_port, max_port) available for current pytest subprocess.
+    Ensures that all ports in this range are not in use.
+    Executes once due scope="session".
+
+    Note: this function has a side-effect.
+    """
+
+    assert isinstance(xdist_worker_number, int)
+    assert xdist_worker_number >= 0
+    base_port = BASE_PORT + xdist_worker_number * PORT_RANGE
+
+    max_port = base_port + PORT_RANGE - 1
+    assert max_port <= 65535
+
+    for port in range(base_port, max_port + 1):
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        s.bind((BASE_HOST, port))
+        s.close()
+
+    return (base_port, max_port)
 
 
 @pytest.fixture(scope="session")
@@ -547,6 +577,9 @@ class Cluster:
             case _:
                 raise Exception("unreachable")
 
+        port = self.base_port + i
+        assert self.base_port <= port <= self.max_port
+
         instance = Instance(
             binary_path=self.binary_path,
             cluster_id=self.id,
@@ -554,14 +587,13 @@ class Cluster:
             replicaset_id=replicaset_id,
             data_dir=f"{self.data_dir}/i{i}",
             host=self.base_host,
-            port=self.base_port + i,
+            port=port,
             peers=peers or [f"{self.base_host}:{self.base_port + 1}"],
             init_replication_factor=init_replication_factor,
             color=CLUSTER_COLORS[len(self.instances) % len(CLUSTER_COLORS)],
             failure_domain=failure_domain,
         )
 
-        assert self.base_port <= instance.port <= self.max_port
         self.instances.append(instance)
 
         if wait_online:
@@ -647,26 +679,15 @@ def cluster_ids(xdist_worker_number) -> Iterator[str]:
 
 @pytest.fixture
 def cluster(
-    binary_path,
-    tmpdir,
-    xdist_worker_number,
-    cluster_ids,
+    binary_path, tmpdir, cluster_ids, port_range
 ) -> Generator[Cluster, None, None]:
     """Return a `Cluster` object capable of deploying test clusters."""
-    n = xdist_worker_number
-    assert isinstance(n, int)
-    assert n >= 0
-
-    # Provide each worker a dedicated pool of 200 listening ports
-    base_port = 3300 + n * 200
-    max_port = base_port + 199
-    assert max_port <= 65535
-
+    base_port, max_port = port_range
     cluster = Cluster(
         binary_path=binary_path,
         id=next(cluster_ids),
         data_dir=tmpdir,
-        base_host="127.0.0.1",
+        base_host=BASE_HOST,
         base_port=base_port,
         max_port=max_port,
     )
