@@ -2,7 +2,6 @@ import io
 import json
 import os
 import re
-import socket
 import sys
 import threading
 from types import SimpleNamespace
@@ -28,9 +27,6 @@ from tarantool.error import (  # type: ignore
 # A constant represents invalid id of raft.
 # pub const INVALID_ID: u64 = 0;
 INVALID_RAFT_ID = 0
-BASE_HOST = "127.0.0.1"
-BASE_PORT = 3300
-PORT_RANGE = 200
 
 
 def eprint(*args, **kwargs):
@@ -551,18 +547,14 @@ class Cluster:
             case _:
                 raise Exception("unreachable")
 
-        host = self.base_host
-        port = self.base_port + i
-        assert port_free(host, port), f"Port {host}:{port} is busy"
-
         instance = Instance(
             binary_path=self.binary_path,
             cluster_id=self.id,
             instance_id=generated_instance_id,
             replicaset_id=replicaset_id,
             data_dir=f"{self.data_dir}/i{i}",
-            host=host,
-            port=port,
+            host=self.base_host,
+            port=self.base_port + i,
             peers=peers or [f"{self.base_host}:{self.base_port + 1}"],
             init_replication_factor=init_replication_factor,
             color=CLUSTER_COLORS[len(self.instances) % len(CLUSTER_COLORS)],
@@ -665,16 +657,16 @@ def cluster(
     assert isinstance(n, int)
     assert n >= 0
 
-    # Provide each worker a dedicated pool of PORT_RANGE listening ports
-    base_port = BASE_PORT + n * PORT_RANGE
-    max_port = base_port + PORT_RANGE - 1
+    # Provide each worker a dedicated pool of 200 listening ports
+    base_port = 3300 + n * 200
+    max_port = base_port + 199
     assert max_port <= 65535
 
     cluster = Cluster(
         binary_path=binary_path,
         id=next(cluster_ids),
         data_dir=tmpdir,
-        base_host=BASE_HOST,
+        base_host="127.0.0.1",
         base_port=base_port,
         max_port=max_port,
     )
@@ -723,14 +715,3 @@ def pgrep_tree(pid):
         return [pid, *subps]
     except subprocess.SubprocessError:
         return [pid]
-
-
-def port_free(ipv4addr, port):
-    try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        s.bind((ipv4addr, port))
-        s.close()
-    except socket.error:
-        return False
-    return True
