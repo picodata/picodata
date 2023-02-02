@@ -149,7 +149,11 @@ pub fn lib_name() -> String {
     }
     LIB_NAME.with(|lib_name| {
         lib_name
-            .get_or_init(|| format!("lib{}", env!("CARGO_PKG_NAME").replace('-', "_")))
+            .get_or_init(|| {
+                let path = ::tarantool::proc::module_path(&LIB_NAME as *const _ as _).unwrap();
+                let name = path.file_stem().unwrap();
+                name.to_str().unwrap().into()
+            })
             .clone()
     })
 }

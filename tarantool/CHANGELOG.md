@@ -16,6 +16,8 @@
 - `ffi::tarantool::Proc` type alias for a tarntool stored C function.
 - `proc::all_procs` helper function which returns a global slice of `proc::Proc`
   \- descriptions for stored procedures defined with `#[tarantool::proc]`.
+- `proc::module_path` helper function for getting a path to the dynamically
+  linked object file in which the given symbol is defined.
 
 # [0.6.4] Dec 15 2022
 

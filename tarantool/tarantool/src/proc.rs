@@ -5,7 +5,7 @@ use crate::{
     tuple::{FunctionCtx, RawByteBuf, RawBytes, Tuple, TupleBuffer},
 };
 use serde::Serialize;
-use std::{fmt::Display, os::raw::c_int};
+use std::{fmt::Display, os::raw::c_int, path::Path};
 
 macro_rules! unwrap_or_report_err {
     ($res:expr) => {
@@ -41,7 +41,10 @@ impl Proc {
     /// This function is called when `#[`[`tarantool::proc`]`]` attribute is
     /// used, so users don't usually use it directly.
     ///
+    /// See also [`module_path`]
+    ///
     /// [`tarantool::proc`]: macro@crate::proc
+    /// [`module_path`]: module_path()
     pub const fn new(name: &'static str, proc: ffi::Proc) -> Self {
         Self { name, proc }
     }
@@ -71,9 +74,54 @@ pub static TARANTOOL_MODULE_STORED_PROCS: [Proc] = [..];
 /// Returns a slice of all stored procedures defined using the
 /// `#[`[`tarantool::proc`]`]` macro attribute.
 ///
+/// The order of procs in the slice is undefined.
+///
 /// [`tarantool::proc`]: macro@crate::proc
 pub fn all_procs() -> &'static [Proc] {
     &*TARANTOOL_MODULE_STORED_PROCS
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// module_name
+////////////////////////////////////////////////////////////////////////////////
+
+/// Returns a path to the dynamically linked ojbect in which the symbol pointed
+/// to by `sym` is defined.
+///
+/// This can be used to dynamically figure out the module name for tarantool's
+/// stored procedure definition, for example by passing in a pointer to the
+/// function defined using `#[`[`tarantool::proc`]`]` macro attribute, but is
+/// NOT GUARANTEED TO WORK.
+///
+/// ```no_run
+/// use tarantool::proc::module_path;
+///
+/// #[tarantool::proc]
+/// fn my_proc() -> i32 {
+///     69
+/// }
+///
+/// let path = module_path(my_proc as _).unwrap();
+/// let filename = path.file_stem().unwrap();
+/// assert_eq!(filename, std::ffi::OsStr::new("libmy_library"));
+/// ```
+///
+/// [`tarantool::proc`]: macro@crate::proc
+pub fn module_path(sym: *const ()) -> Option<&'static Path> {
+    unsafe {
+        let mut info: libc::Dl_info = std::mem::zeroed();
+        if libc::dladdr(sym as _, &mut info) == 0 {
+            return None;
+        }
+
+        if info.dli_fname.is_null() {
+            return None;
+        }
+
+        let path = std::ffi::CStr::from_ptr(info.dli_fname);
+        let path: &std::ffi::OsStr = std::os::unix::ffi::OsStrExt::from_bytes(path.to_bytes());
+        Some(Path::new(path))
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////

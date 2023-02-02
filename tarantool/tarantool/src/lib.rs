@@ -202,6 +202,29 @@ mod va_list;
 /// assert(box.func['libname.add']:call({ 1, 2 }) == 3)
 /// ```
 ///
+/// # Collecting stored procedures
+///
+/// All stored procs defined with `#[tarantool::proc]` attribute are
+/// automatically added to a global array and can be accessed via
+/// `proc::all_procs` function.
+/// ```no_run
+/// use tarantool::proc::all_procs;
+///
+/// #[tarantool::proc]
+/// fn my_proc() -> i32 { 69 }
+///
+/// let procs = all_procs();
+/// assert_eq!(procs[0].name(), "my_proc");
+/// ```
+///
+/// This can be used to generate stored procedure defintions for tarantool's
+/// `box.schema.func.create`. Although there's currently no easy way to fully
+/// automate this process, because of how loading dynamic modules works in
+/// tarantool. To be able to access the list of procs from a module you need to
+/// call a function defined in that module.
+///
+/// See how you can bootstrap proc definitions in example in `examples/all_procs`.
+///
 /// # Accepting borrowed arguments
 ///
 /// It can sometimes be more efficient to borrow the procedure's arguments
