@@ -7,7 +7,6 @@ authors = [
 ]
 edition = "2018"
 license = "BSD-2-Clause"
-rust-version = "1.59"
 
 [dependencies.tarantool]
 path = "../../tarantool"

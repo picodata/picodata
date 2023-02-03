@@ -23,7 +23,7 @@
 //!
 //! ### Prerequisites
 //!
-//! - rustc 1.59 or newer
+//! - rustc 1.61 or newer
 //! - tarantool 2.2
 //!
 //! ### Stored procedures

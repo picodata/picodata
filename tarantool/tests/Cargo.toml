@@ -9,7 +9,7 @@ authors = [
 ]
 edition = "2018"
 license = "BSD-2-Clause"
-rust-version = "1.59"
+rust-version = "1.61"
 
 [dependencies]
 log = "0.4.11"

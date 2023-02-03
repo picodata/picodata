@@ -9,7 +9,7 @@ edition = "2021"
 license = "BSD-2-Clause"
 documentation = "https://docs.rs/tarantool-proc/"
 repository = "https://github.com/picodata/tarantool-module"
-rust-version = "1.59"
+rust-version = "1.61"
 
 [lib]
 proc-macro = true
