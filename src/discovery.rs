@@ -192,7 +192,6 @@ pub fn wait_global() -> Role {
     }
 }
 
-crate::collect_proc!(proc_discover);
 #[proc]
 fn proc_discover<'a>(request: Request, request_to: Address) -> Result<Response, Box<dyn StdError>> {
     crate::tarantool::fiber_name("proc_discover");

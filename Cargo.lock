@@ -725,7 +725,6 @@ dependencies = [
  "errno",
  "futures",
  "libc",
- "linkme",
  "nix 0.23.2",
  "pretty_assertions",
  "protobuf",

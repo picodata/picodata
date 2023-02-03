@@ -20,7 +20,6 @@ tempfile = "3"
 thiserror = "1.0"
 nix = "0.23.1"
 uuid = {version = "1.0", features = ["v3"]}
-linkme = "0.2.10"
 futures = "0.3.25"
 
 [dependencies.protobuf]

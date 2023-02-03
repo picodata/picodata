@@ -37,7 +37,6 @@ pub mod kvcell;
 pub mod r#loop;
 pub mod mailbox;
 pub mod on_shutdown;
-pub mod proc;
 pub mod replicaset;
 pub mod storage;
 pub mod tarantool;
@@ -527,12 +526,12 @@ fn init_handlers() -> traft::Result<()> {
     .unwrap();
 
     let lua = ::tarantool::lua_state();
-    for name in proc::AllProcs::names() {
+    for proc in ::tarantool::proc::all_procs().iter() {
         lua.exec_with(
-            "box.schema.func.create(...,
+            "box.schema.func.create('.' .. ...,
                 { language = 'C', if_not_exists = true }
             );",
-            name,
+            proc.name(),
         )
         .map_err(::tarantool::tlua::LuaError::from)?;
     }

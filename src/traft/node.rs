@@ -1069,7 +1069,6 @@ pub fn global() -> traft::Result<&'static Node> {
     unsafe { RAFT_NODE.as_deref() }.ok_or(Error::Uninitialized)
 }
 
-crate::collect_proc!(proc_raft_interact);
 #[proc(packed_args)]
 fn proc_raft_interact(pbs: Vec<traft::MessagePb>) -> traft::Result<()> {
     crate::tarantool::fiber_name("proc_raft_interact");
