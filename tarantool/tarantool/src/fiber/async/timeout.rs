@@ -14,8 +14,14 @@ use super::context::ContextExt;
 
 /// Error returned by [`Timeout`]
 #[derive(thiserror::Error, Debug, PartialEq, Eq)]
-#[error("deadline expired")]
-pub struct Expired;
+pub enum Error<E> {
+    #[error("deadline expired")]
+    Expired,
+    #[error("{0}")]
+    Failed(#[from] E),
+}
+
+pub type Result<T, E> = std::result::Result<T, Error<E>>;
 
 /// Future returned by [`timeout`](timeout).
 #[derive(Debug)]
@@ -62,21 +68,24 @@ impl<F: Future> Timeout<F> {
     }
 }
 
-impl<F: Future> Future for Timeout<F> {
-    type Output = Result<F::Output, Expired>;
+impl<F, T, E> Future for Timeout<F>
+where
+    F: Future<Output = std::result::Result<T, E>>,
+{
+    type Output = Result<T, E>;
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let deadline = self.deadline;
 
         // First, try polling the future
         if let Poll::Ready(v) = self.pin_get_future().poll(cx) {
-            return Poll::Ready(Ok(v));
+            return Poll::Ready(v.map_err(Error::Failed));
         }
 
         // Then check deadline and, if necessary, update wakup condition
         // in the context.
         match deadline {
             Some(deadline) if Instant::now() >= deadline => {
-                Poll::Ready(Err(Expired)) // expired
+                Poll::Ready(Err(Error::Expired)) // expired
             }
             Some(deadline) => {
                 // SAFETY: This is safe as long as the `Context` really
@@ -116,6 +125,7 @@ mod tests {
     use crate::fiber::check_yield;
     use crate::fiber::r#async::{oneshot, RecvError};
     use crate::fiber::YieldResult::{DidntYield, Yielded};
+    use crate::test::util::ok;
     use std::time::Duration;
 
     const _0_SEC: Duration = Duration::ZERO;
@@ -126,7 +136,7 @@ mod tests {
         let fut = async { 78 };
         assert_eq!(fiber::block_on(fut), 78);
 
-        let fut = timeout(Duration::ZERO, async { 79 });
+        let fut = timeout(Duration::ZERO, async { ok(79) });
         assert_eq!(fiber::block_on(fut), Ok(79));
     }
 
@@ -136,7 +146,7 @@ mod tests {
         let fut = async move { rx.timeout(_0_SEC).await };
 
         let jh = fiber::start_async(fut);
-        assert_eq!(jh.join(), Err(Expired));
+        assert_eq!(jh.join(), Err(Error::Expired));
         drop(tx);
     }
 
@@ -147,7 +157,7 @@ mod tests {
 
         let jh = fiber::start(move || fiber::block_on(fut));
         drop(tx);
-        assert_eq!(jh.join(), Ok(Err(RecvError)));
+        assert_eq!(jh.join(), Err(Error::Failed(RecvError)));
     }
 
     #[crate::test(tarantool = "crate")]
@@ -157,13 +167,13 @@ mod tests {
 
         let jh = fiber::start(move || fiber::block_on(fut));
         tx.send(400).unwrap();
-        assert_eq!(jh.join(), Ok(Ok(400)));
+        assert_eq!(jh.join(), Ok(400));
     }
 
     #[crate::test(tarantool = "crate")]
     fn timeout_duration_max() {
         // must not panic
-        fiber::block_on(timeout(Duration::MAX, async { 1 })).unwrap();
+        fiber::block_on(timeout(Duration::MAX, async { ok(1) })).unwrap();
     }
 
     #[crate::test(tarantool = "crate")]
@@ -176,13 +186,13 @@ mod tests {
 
         // ready future, 0 timeout -> no yield
         assert_eq!(
-            check_yield(|| fiber::block_on(timeout(Duration::ZERO, async { 202 }))),
+            check_yield(|| fiber::block_on(timeout(Duration::ZERO, async { ok(202) }))),
             DidntYield(Ok(202))
         );
 
         // ready future, positive timeout -> no yield
         assert_eq!(
-            check_yield(|| fiber::block_on(timeout(Duration::from_secs(1), async { 303 }))),
+            check_yield(|| fiber::block_on(timeout(Duration::from_secs(1), async { ok(303) }))),
             DidntYield(Ok(303))
         );
 
@@ -201,14 +211,14 @@ mod tests {
         let (_tx, rx) = oneshot::channel::<i32>();
         assert_eq!(
             check_yield(|| fiber::block_on(timeout(Duration::ZERO, rx))),
-            DidntYield(Err(Expired))
+            DidntYield(Err(Error::Expired))
         );
 
         // pending future, positive timeout -> yield
         let (_tx, rx) = oneshot::channel::<i32>();
         assert_eq!(
             check_yield(|| fiber::block_on(timeout(Duration::from_millis(10), rx))),
-            Yielded(Err(Expired))
+            Yielded(Err(Error::Expired))
         );
     }
 }

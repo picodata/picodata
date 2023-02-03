@@ -21,6 +21,17 @@
 - `tarantool::network::client` alternative async network client.
 - `tarantool::network::protocol` sans-io (without transport layer) implementation of Tarantool Binary Protocol.
   Serves as a base for `network::client`, but can be also used independently by other client implementations.
+- `r#async::timeout::Error` enum with `Expired` and `Failed` vairants.
+- `r#async::timeout::Result<T, E>` type alias for
+    `std::result::Result<T, r#async::timeout::Error<E>>`
+
+### Changed
+- `r#async::timeout::Timeout` can now only be wrapped around a future which
+    resolves into a `std::result::Result<T, E>` and timeout itself now resolves
+    into `r#async::timeout::Result`.
+
+### Removed
+- `r#async::timeout::Expired` in favor of `r#async::timeout::Error`
 
 # [0.6.4] Dec 15 2022
 

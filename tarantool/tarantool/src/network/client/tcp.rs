@@ -281,7 +281,8 @@ mod tests {
 
     use crate::fiber;
     use crate::fiber::r#async::timeout::IntoTimeout;
-    use crate::test::TARANTOOL_LISTEN;
+    use crate::test::util::always_pending;
+    use crate::test::util::TARANTOOL_LISTEN;
 
     use std::net::TcpListener;
     use std::thread;
@@ -291,18 +292,10 @@ mod tests {
     const _10_SEC: Duration = Duration::from_secs(10);
     const _0_SEC: Duration = Duration::from_secs(0);
 
-    async fn always_pending() {
-        loop {
-            futures::pending!()
-        }
-    }
-
     #[crate::test(tarantool = "crate")]
     fn resolve_address() {
         unsafe {
-            let _ = fiber::block_on(get_address_info("localhost").timeout(_10_SEC))
-                .unwrap()
-                .unwrap();
+            let _ = fiber::block_on(get_address_info("localhost").timeout(_10_SEC)).unwrap();
         }
     }
 
@@ -310,16 +303,15 @@ mod tests {
     fn resolve_address_error() {
         unsafe {
             let err = fiber::block_on(get_address_info("invalid domain name").timeout(_10_SEC))
-                .unwrap()
-                .unwrap_err();
-            assert!(matches!(err, Error::ResolveAddress))
+                .unwrap_err()
+                .to_string();
+            assert_eq!(err, "failed to resolve host address by domain name")
         }
     }
 
     #[crate::test(tarantool = "crate")]
     fn connect() {
         let _ = fiber::block_on(TcpStream::connect("localhost", TARANTOOL_LISTEN).timeout(_10_SEC))
-            .unwrap()
             .unwrap();
     }
 
@@ -329,16 +321,10 @@ mod tests {
             let mut stream = TcpStream::connect("localhost", TARANTOOL_LISTEN)
                 .timeout(_10_SEC)
                 .await
-                .unwrap()
                 .unwrap();
             // Read greeting
             let mut buf = vec![0; 128];
-            stream
-                .read_exact(&mut buf)
-                .timeout(_10_SEC)
-                .await
-                .unwrap()
-                .unwrap();
+            stream.read_exact(&mut buf).timeout(_10_SEC).await.unwrap();
         });
     }
 
@@ -348,7 +334,6 @@ mod tests {
             let mut stream = TcpStream::connect("localhost", TARANTOOL_LISTEN)
                 .timeout(_10_SEC)
                 .await
-                .unwrap()
                 .unwrap();
             // Read greeting
             let mut buf = vec![0; 128];
@@ -357,8 +342,9 @@ mod tests {
                     .read_exact(&mut buf)
                     .timeout(_0_SEC)
                     .await
-                    .unwrap_err(),
-                timeout::Expired
+                    .unwrap_err()
+                    .to_string(),
+                "deadline expired"
             );
         });
     }
@@ -382,15 +368,12 @@ mod tests {
                 let mut stream = TcpStream::connect("localhost", 3302)
                     .timeout(_10_SEC)
                     .await
-                    .unwrap()
                     .unwrap();
                 timeout::timeout(_10_SEC, stream.write_all(&[1, 2, 3]))
                     .await
-                    .unwrap()
                     .unwrap();
                 timeout::timeout(_10_SEC, stream.write_all(&[4, 5]))
                     .await
-                    .unwrap()
                     .unwrap();
             });
         }
@@ -415,26 +398,22 @@ mod tests {
         });
         // Send and read data
         {
-            let stream = fiber::block_on(TcpStream::connect("localhost", 3303).timeout(_10_SEC))
-                .unwrap()
-                .unwrap();
+            let stream =
+                fiber::block_on(TcpStream::connect("localhost", 3303).timeout(_10_SEC)).unwrap();
             let (mut reader, mut writer) = stream.split();
             let reader_handle = fiber::start_async(async move {
                 let mut buf = vec![0; 5];
                 timeout::timeout(_10_SEC, reader.read_exact(&mut buf))
                     .await
-                    .unwrap()
                     .unwrap();
                 assert_eq!(buf, vec![1, 2, 3, 4, 5])
             });
             let writer_handle = fiber::start_async(async move {
                 timeout::timeout(_10_SEC, writer.write_all(&[1, 2, 3]))
                     .await
-                    .unwrap()
                     .unwrap();
                 timeout::timeout(_10_SEC, writer.write_all(&[4, 5]))
                     .await
-                    .unwrap()
                     .unwrap();
             });
             writer_handle.join();
@@ -451,7 +430,6 @@ mod tests {
                 let mut stream = TcpStream::connect("localhost", TARANTOOL_LISTEN)
                     .timeout(_10_SEC)
                     .await
-                    .unwrap()
                     .unwrap();
                 // Read greeting
                 let mut buf = vec![0; 128];
@@ -459,8 +437,8 @@ mod tests {
                     timeout::timeout(_0_SEC, always_pending()),
                     timeout::timeout(_10_SEC, stream.read_exact(&mut buf))
                 );
-                assert_eq!(is_err.unwrap_err(), timeout::Expired);
-                is_ok.unwrap().unwrap();
+                assert_eq!(is_err.unwrap_err().to_string(), "deadline expired");
+                is_ok.unwrap();
             });
         }
         // Testing with different order in join
@@ -469,7 +447,6 @@ mod tests {
                 let mut stream = TcpStream::connect("localhost", TARANTOOL_LISTEN)
                     .timeout(_10_SEC)
                     .await
-                    .unwrap()
                     .unwrap();
                 // Read greeting
                 let mut buf = vec![0; 128];
@@ -477,8 +454,8 @@ mod tests {
                     timeout::timeout(_10_SEC, stream.read_exact(&mut buf)),
                     timeout::timeout(_0_SEC, always_pending())
                 );
-                assert_eq!(is_err.unwrap_err(), timeout::Expired);
-                is_ok.unwrap().unwrap();
+                assert_eq!(is_err.unwrap_err().to_string(), "deadline expired");
+                is_ok.unwrap();
             });
         }
     }
@@ -490,7 +467,6 @@ mod tests {
                 let mut stream = TcpStream::connect("localhost", TARANTOOL_LISTEN)
                     .timeout(_10_SEC)
                     .await
-                    .unwrap()
                     .unwrap();
                 // Read greeting
                 let mut buf = vec![0; 128];
@@ -511,7 +487,6 @@ mod tests {
                 let mut stream = TcpStream::connect("localhost", TARANTOOL_LISTEN)
                     .timeout(_10_SEC)
                     .await
-                    .unwrap()
                     .unwrap();
                 // Read greeting
                 let mut buf = vec![0; 128];

@@ -313,12 +313,7 @@ mod tests {
 
     use super::timeout::IntoTimeout as _;
     use super::*;
-
-    async fn always_pending() {
-        loop {
-            futures::pending!()
-        }
-    }
+    use crate::test::util::{always_pending, ok};
 
     #[crate::test(tarantool = "crate")]
     fn on_drop_is_executed() {
@@ -334,7 +329,7 @@ mod tests {
 
             // Future completes
             let mut executed = false;
-            std::future::ready(())
+            std::future::ready(ok(()))
                 .on_drop(|| executed = true)
                 .timeout(Duration::from_secs(0))
                 .await
@@ -347,11 +342,9 @@ mod tests {
     fn nested_on_drop_is_executed() {
         let executed = Rc::new(Cell::new(false));
         let executed_clone = executed.clone();
-        let foo = || async {
-            always_pending().on_drop(|| executed_clone.set(true)).await;
-        };
+        let f = async { always_pending().on_drop(|| executed_clone.set(true)).await };
         block_on(async {
-            foo().timeout(Duration::from_secs(0)).await.unwrap_err();
+            f.timeout(Duration::from_secs(0)).await.unwrap_err();
         });
         assert!(executed.get());
     }

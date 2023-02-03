@@ -105,5 +105,21 @@ pub fn collect_tester() -> Vec<TestDescAndFn> {
 }
 
 #[cfg(feature = "internal_test")]
-/// The default port where tarantool listens in tests
-pub const TARANTOOL_LISTEN: u16 = 3301;
+pub mod util {
+    use std::convert::Infallible;
+
+    /// The default port where tarantool listens in tests
+    pub const TARANTOOL_LISTEN: u16 = 3301;
+
+    /// Returns a future, which is never resolved
+    pub async fn always_pending() -> Result<Infallible, Infallible> {
+        loop {
+            futures::pending!()
+        }
+    }
+
+    /// Wraps the provided value in a `Ok` of an `Infallible` `Result`.
+    pub fn ok<T>(v: T) -> std::result::Result<T, Infallible> {
+        Ok(v)
+    }
+}

@@ -411,7 +411,7 @@ mod tests {
         // No changes after
         assert_eq!(
             fiber::block_on(rx_1.changed().timeout(_1_SEC)),
-            Err(timeout::Expired)
+            Err(timeout::Error::Expired)
         );
     }
 
@@ -466,7 +466,7 @@ mod tests {
         value_ref.borrow_mut().push(2.71);
         assert_eq!(*tx.get_cloned().borrow(), [3.14, 2.71]);
         let res = fiber::block_on(rx.changed().timeout(Duration::ZERO));
-        assert_eq!(res, Err(timeout::Expired));
+        assert_eq!(res, Err(timeout::Error::Expired));
 
         // and sending fails until the ref is dropped
         // really don't do that

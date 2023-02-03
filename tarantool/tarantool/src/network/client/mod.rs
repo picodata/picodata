@@ -14,7 +14,7 @@
 //! use tarantool::fiber::r#async::timeout::IntoTimeout as _;
 //! use std::time::Duration;
 //!
-//! client.ping().timeout(Duration::from_secs(10)).await.unwrap().unwrap();
+//! client.ping().timeout(Duration::from_secs(10)).await.unwrap();
 //! # };
 //! ```
 //!
@@ -392,7 +392,7 @@ mod tests {
     use super::*;
     use crate::fiber::r#async::timeout::IntoTimeout as _;
     use crate::space::Space;
-    use crate::test::TARANTOOL_LISTEN;
+    use crate::test::util::TARANTOOL_LISTEN;
 
     async fn test_client() -> Client {
         Client::connect_with_config(
@@ -404,7 +404,6 @@ mod tests {
         )
         .timeout(Duration::from_secs(3))
         .await
-        .unwrap()
         .unwrap()
     }
 
@@ -432,12 +431,7 @@ mod tests {
             let client = test_client().await;
 
             for _ in 0..5 {
-                client
-                    .ping()
-                    .timeout(Duration::from_secs(3))
-                    .await
-                    .unwrap()
-                    .unwrap();
+                client.ping().timeout(Duration::from_secs(3)).await.unwrap();
             }
         });
     }
@@ -446,20 +440,10 @@ mod tests {
     fn ping_concurrent() {
         let client = fiber::block_on(test_client());
         let fiber_a = fiber::start_async(async {
-            client
-                .ping()
-                .timeout(Duration::from_secs(3))
-                .await
-                .unwrap()
-                .unwrap()
+            client.ping().timeout(Duration::from_secs(3)).await.unwrap()
         });
         let fiber_b = fiber::start_async(async {
-            client
-                .ping()
-                .timeout(Duration::from_secs(3))
-                .await
-                .unwrap()
-                .unwrap()
+            client.ping().timeout(Duration::from_secs(3)).await.unwrap()
         });
         fiber_a.join();
         fiber_b.join();
@@ -483,7 +467,6 @@ mod tests {
                 .execute(r#"SELECT * FROM "test_s1""#, &(), None)
                 .timeout(Duration::from_secs(3))
                 .await
-                .unwrap()
                 .unwrap();
             assert!(result.len() >= 2);
 
@@ -491,7 +474,6 @@ mod tests {
                 .execute(r#"SELECT * FROM "test_s1" WHERE "id" = ?"#, &(6002,), None)
                 .timeout(Duration::from_secs(3))
                 .await
-                .unwrap()
                 .unwrap();
 
             assert_eq!(result.len(), 1);
@@ -511,7 +493,6 @@ mod tests {
                 .call("test_stored_proc", &(1, 2))
                 .timeout(Duration::from_secs(3))
                 .await
-                .unwrap()
                 .unwrap();
             assert_eq!(result.unwrap().decode::<(i32,)>().unwrap(), (3,));
         });
@@ -522,16 +503,13 @@ mod tests {
         fiber::block_on(async {
             let client = test_client().await;
 
-            let result = client
+            let err = client
                 .call("unexistent_proc", &())
                 .timeout(Duration::from_secs(3))
                 .await
-                .unwrap()
-                .unwrap_err();
-            assert!(matches!(
-                dbg!(result),
-                Error::Protocol(protocol::Error::Response(_))
-            ));
+                .unwrap_err()
+                .to_string();
+            assert_eq!(err, "protocol error: service responded with error: Procedure 'unexistent_proc' is not defined");
         });
     }
 
@@ -544,7 +522,6 @@ mod tests {
                 .eval("return ...", &(1, 2))
                 .timeout(Duration::from_secs(3))
                 .await
-                .unwrap()
                 .unwrap();
             assert_eq!(result.unwrap().decode::<(i32, i32)>().unwrap(), (1, 2));
         });
