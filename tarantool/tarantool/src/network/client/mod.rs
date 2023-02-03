@@ -14,7 +14,7 @@ use self::tcp::{Error as TcpError, TcpStream};
 
 use super::protocol::api::{Call, Eval, Execute, Ping, Request};
 use super::protocol::options::{ConnOptions, Options};
-use super::protocol::{codec, Error as ProtocolError, Protocol, SizeHint, SyncIndex};
+use super::protocol::{self, codec, Error as ProtocolError, Protocol, SizeHint, SyncIndex};
 use crate::ffi::tarantool::coio_close;
 use crate::fiber;
 use crate::fiber::r#async::{oneshot, timeout};
@@ -66,9 +66,9 @@ struct ClientInner {
 }
 
 impl ClientInner {
-    pub fn new() -> Self {
+    pub fn new(config: protocol::Config) -> Self {
         Self {
-            protocol: Protocol::new(),
+            protocol: Protocol::with_config(config),
             awaiting_response: HashMap::new(),
             state: State::Alive,
             close_token: None,
@@ -86,7 +86,15 @@ pub struct Client(Rc<RefCell<ClientInner>>);
 
 impl Client {
     pub async fn connect(url: &str, port: u16) -> Result<Self, Error> {
-        let mut client = ClientInner::new();
+        Self::connect_with_config(url, port, Default::default()).await
+    }
+
+    pub async fn connect_with_config(
+        url: &str,
+        port: u16,
+        config: protocol::Config,
+    ) -> Result<Self, Error> {
+        let mut client = ClientInner::new(config);
         let stream = TcpStream::connect(url, port).await?;
         client.close_token = Some(stream.close_token());
 
@@ -304,7 +312,22 @@ async fn receiver(client: Rc<RefCell<ClientInner>>, mut reader: ReadHalf<TcpStre
 mod tests {
     use super::*;
     use crate::fiber::r#async::timeout::IntoTimeout as _;
+    use crate::space::Space;
     use crate::test::TARANTOOL_LISTEN;
+
+    async fn test_client() -> Client {
+        Client::connect_with_config(
+            "localhost",
+            TARANTOOL_LISTEN,
+            protocol::Config {
+                creds: Some(("test_user".to_owned(), "password".to_owned())),
+            },
+        )
+        .timeout(Duration::from_secs(3))
+        .await
+        .unwrap()
+        .unwrap()
+    }
 
     #[crate::test(tarantool = "crate")]
     fn connect() {
@@ -327,13 +350,124 @@ mod tests {
     #[crate::test(tarantool = "crate")]
     fn ping() {
         fiber::block_on(async {
-            let client = Client::connect("localhost", TARANTOOL_LISTEN)
-                .await
-                .unwrap();
+            let client = test_client().await;
 
             for _ in 0..5 {
-                client.ping().timeout(Duration::from_secs(3)).await.unwrap();
+                client
+                    .ping()
+                    .timeout(Duration::from_secs(3))
+                    .await
+                    .unwrap()
+                    .unwrap();
             }
+        });
+    }
+
+    #[crate::test(tarantool = "crate")]
+    fn ping_concurrent() {
+        let client = fiber::block_on(test_client());
+        let fiber_a = fiber::start_async(async {
+            client
+                .ping()
+                .timeout(Duration::from_secs(3))
+                .await
+                .unwrap()
+                .unwrap()
+        });
+        let fiber_b = fiber::start_async(async {
+            client
+                .ping()
+                .timeout(Duration::from_secs(3))
+                .await
+                .unwrap()
+                .unwrap()
+        });
+        fiber_a.join();
+        fiber_b.join();
+    }
+
+    #[crate::test(tarantool = "crate")]
+    fn execute() {
+        Space::find("test_s1")
+            .unwrap()
+            .insert(&(6001, "6001"))
+            .unwrap();
+        Space::find("test_s1")
+            .unwrap()
+            .insert(&(6002, "6002"))
+            .unwrap();
+
+        fiber::block_on(async {
+            let client = test_client().await;
+
+            let result = client
+                .execute(r#"SELECT * FROM "test_s1""#, &(), None)
+                .timeout(Duration::from_secs(3))
+                .await
+                .unwrap()
+                .unwrap();
+            assert!(result.len() >= 2);
+
+            let result = client
+                .execute(r#"SELECT * FROM "test_s1" WHERE "id" = ?"#, &(6002,), None)
+                .timeout(Duration::from_secs(3))
+                .await
+                .unwrap()
+                .unwrap();
+
+            assert_eq!(result.len(), 1);
+            assert_eq!(
+                result.get(0).unwrap().decode::<(u64, String)>().unwrap(),
+                (6002, "6002".to_string())
+            );
+        });
+    }
+
+    #[crate::test(tarantool = "crate")]
+    fn call() {
+        fiber::block_on(async {
+            let client = test_client().await;
+
+            let result = client
+                .call("test_stored_proc", &(1, 2))
+                .timeout(Duration::from_secs(3))
+                .await
+                .unwrap()
+                .unwrap();
+            assert_eq!(result.unwrap().decode::<(i32,)>().unwrap(), (3,));
+        });
+    }
+
+    #[crate::test(tarantool = "crate")]
+    fn invalid_call() {
+        fiber::block_on(async {
+            let client = test_client().await;
+
+            let result = client
+                .call("unexistent_proc", &())
+                .timeout(Duration::from_secs(3))
+                .await
+                .unwrap()
+                .unwrap_err();
+            assert!(matches!(
+                dbg!(result),
+                Error::Protocol(protocol::Error::Response(_))
+            ));
+        });
+    }
+
+    #[crate::test(tarantool = "crate")]
+    fn eval() {
+        fiber::block_on(async {
+            let client = test_client().await;
+
+            let result = client
+                .eval("return ...", &(1, 2))
+                .timeout(Duration::from_secs(3))
+                .await
+                .unwrap()
+                .unwrap();
+            assert_eq!(result.unwrap().decode::<(i32, i32)>().unwrap(), (1, 2));
         });
     }
 }

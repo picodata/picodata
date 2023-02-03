@@ -14,7 +14,6 @@ use std::vec::Drain;
 
 use api::Request;
 use codec::Header;
-use options::ConnOptions;
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
@@ -76,6 +75,13 @@ pub enum SizeHint {
     FirstU32,
 }
 
+#[derive(Debug, Clone, Default, Eq, PartialEq)]
+pub struct Config {
+    /// (user, password)
+    pub creds: Option<(String, String)>,
+    // TODO: add buffer limits here
+}
+
 /// A sans-io connection handler.
 ///
 /// Uses events and actions to communicate with the specific
@@ -104,9 +110,9 @@ impl Protocol {
         }
     }
 
-    pub fn with_auth(user: String, password: String) -> Self {
+    pub fn with_config(config: Config) -> Self {
         let mut protocol = Self::new();
-        protocol.creds = Some((user, password));
+        protocol.creds = config.creds;
         protocol
     }
 
@@ -165,9 +171,9 @@ impl Protocol {
                 if let Some((user, pass)) = self.creds.as_ref() {
                     // Auth
                     self.state = State::Auth;
-                    let end = self.pending_outgoing.len();
+                    // Write straight to outgoing, it should be empty
+                    debug_assert!(self.outgoing.is_empty());
                     let mut buf = Cursor::new(&mut self.outgoing);
-                    buf.set_position(end as u64);
                     let sync = self.sync.next();
                     write_to_buffer(
                         &mut buf,
@@ -185,7 +191,6 @@ impl Protocol {
                 None
             }
             State::Auth => {
-                // TODO: Will the client get the length of both header and error?
                 let header = codec::decode_header(chunk)?;
                 if header.status_code != 0 {
                     return Err(codec::decode_error(chunk)?.into());

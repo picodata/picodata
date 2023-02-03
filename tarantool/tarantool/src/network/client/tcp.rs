@@ -254,7 +254,7 @@ impl Drop for TcpStream {
     }
 }
 
-#[cfg(feature = "tarantool_test")]
+#[cfg(feature = "internal_test")]
 mod tests {
     use super::*;
 
@@ -282,6 +282,16 @@ mod tests {
             let _ = fiber::block_on(get_address_info("localhost").timeout(_10_SEC))
                 .unwrap()
                 .unwrap();
+        }
+    }
+
+    #[crate::test(tarantool = "crate")]
+    fn resolve_address_error() {
+        unsafe {
+            let err = fiber::block_on(get_address_info("invalid domain name").timeout(_10_SEC))
+                .unwrap()
+                .unwrap_err();
+            assert!(matches!(err, Error::ResolveAddress))
         }
     }
 
