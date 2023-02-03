@@ -44,7 +44,7 @@ lint:
 
 test:
 	cargo test
-	pipenv run pytest
+	pipenv run pytest -n auto
 
 check:
 	@$(MAKE) lint --no-print-directory
