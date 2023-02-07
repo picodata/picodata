@@ -1,5 +1,6 @@
 use std::{
     future::Future,
+    pin::Pin,
     rc::Rc,
     task::Poll,
     time::{Duration, Instant},
@@ -185,6 +186,54 @@ pub(crate) mod context {
     }
 }
 
+/// A wrapper around a future which has on_drop behavior.
+/// See [`on_drop`].
+pub struct OnDrop<Fut, Fun: FnMut()> {
+    future: Fut,
+    on_drop: Fun,
+}
+
+impl<Fut: Future, Fun: FnMut()> OnDrop<Fut, Fun> {
+    #[inline]
+    fn pin_get_future(self: Pin<&mut Self>) -> Pin<&mut Fut> {
+        // This is okay because `future` is pinned when `self` is.
+        unsafe { self.map_unchecked_mut(|s| &mut s.future) }
+    }
+}
+
+impl<Fut: Future, Fun: FnMut()> Future for OnDrop<Fut, Fun> {
+    type Output = Fut::Output;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> Poll<Self::Output> {
+        self.pin_get_future().poll(cx)
+    }
+}
+
+impl<Fut, Fun: FnMut()> Drop for OnDrop<Fut, Fun> {
+    fn drop(&mut self) {
+        (self.on_drop)()
+    }
+}
+
+/// Adds a closure to the future, which will be executed when the future is dropped.
+/// This can be useful to cleanup external resources on future cancelation.
+pub fn on_drop<Fut: Future, Fun: FnMut()>(future: Fut, on_drop: Fun) -> OnDrop<Fut, Fun> {
+    OnDrop { future, on_drop }
+}
+
+/// Futures implementing this trait can attach a closure
+/// which will be executed when the future is dropped.
+/// See [`on_drop`].
+pub trait IntoOnDrop: Future + Sized {
+    /// Adds on_drop closure to a future. See [`on_drop`].
+    #[inline]
+    fn on_drop<Fun: FnMut()>(self, on_drop: Fun) -> OnDrop<Self, Fun> {
+        self::on_drop(self, on_drop)
+    }
+}
+
+impl<T> IntoOnDrop for T where T: Future + Sized {}
+
 /// Runs a future to completion on the fiber-based runtime. This is the async runtime’s entry point.
 ///
 /// This runs the given future on the current fiber, blocking until it is complete, and yielding its resolved result.
@@ -225,5 +274,45 @@ pub fn block_on<F: Future>(f: F) -> F::Output {
         } else {
             rcw.cond().wait_timeout(timeout);
         }
+    }
+}
+
+#[cfg(feature = "internal_test")]
+mod tests {
+    use std::cell::Cell;
+
+    use super::timeout::IntoTimeout as _;
+    use super::*;
+
+    async fn always_pending() {
+        loop {
+            futures::pending!()
+        }
+    }
+
+    #[crate::test(tarantool = "crate")]
+    fn on_drop_is_executed() {
+        block_on(async {
+            let mut executed = false;
+            always_pending()
+                .on_drop(|| executed = true)
+                .timeout(Duration::from_secs(0))
+                .await
+                .unwrap_err();
+            assert!(executed);
+        });
+    }
+
+    #[crate::test(tarantool = "crate")]
+    fn nested_on_drop_is_executed() {
+        let executed = Rc::new(Cell::new(false));
+        let executed_clone = executed.clone();
+        let foo = || async {
+            always_pending().on_drop(|| executed_clone.set(true)).await;
+        };
+        block_on(async {
+            foo().timeout(Duration::from_secs(0)).await.unwrap_err();
+        });
+        assert!(executed.get());
     }
 }

@@ -17,6 +17,7 @@ use super::protocol::options::{ConnOptions, Options};
 use super::protocol::{self, codec, Error as ProtocolError, Protocol, SizeHint, SyncIndex};
 use crate::ffi::tarantool::coio_close;
 use crate::fiber;
+use crate::fiber::r#async::IntoOnDrop as _;
 use crate::fiber::r#async::{oneshot, timeout, watch};
 use crate::tuple::{Decode, ToTupleBuffer, Tuple};
 
@@ -155,7 +156,14 @@ impl Client {
         let (tx, rx) = oneshot::channel();
         self.0.borrow_mut().awaiting_response.insert(sync, tx);
         wake_sender(&self.0).unwrap();
-        rx.await.expect("Channel should be open")?;
+        // Cleanup `awaiting_response` entry in case of `send` future cancelation
+        // at this `.await`.
+        // `send` can be canceled for example with `Timeout`.
+        rx.on_drop(|| {
+            let _ = self.0.borrow_mut().awaiting_response.remove(&sync);
+        })
+        .await
+        .expect("Channel should be open")?;
         Ok(self
             .0
             .borrow_mut()

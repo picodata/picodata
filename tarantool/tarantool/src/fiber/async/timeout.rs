@@ -57,7 +57,7 @@ pub fn timeout<F: Future>(timeout: Duration, f: F) -> Timeout<F> {
 impl<F: Future> Timeout<F> {
     #[inline]
     fn pin_get_future(self: Pin<&mut Self>) -> Pin<&mut F> {
-        // This is okay because `field` is pinned when `self` is.
+        // This is okay because `future` is pinned when `self` is.
         unsafe { self.map_unchecked_mut(|s| &mut s.future) }
     }
 }
@@ -103,7 +103,7 @@ pub trait IntoTimeout: Future + Sized {
     /// Adds timeout to a future. See [`Timeout`].
     #[inline]
     fn timeout(self, timeout: Duration) -> Timeout<Self> {
-        super::timeout::timeout(timeout, self)
+        self::timeout(timeout, self)
     }
 }
 
