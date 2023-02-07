@@ -18,6 +18,8 @@
   \- descriptions for stored procedures defined with `#[tarantool::proc]`.
 - `proc::module_path` helper function for getting a path to the dynamically
   linked object file in which the given symbol is defined.
+- `fiber::r#async::watch::Sender` now implements `Clone`, so the watch channel effectively
+  becomes a multi-producer multi-consumer channel.
 
 # [0.6.4] Dec 15 2022
 

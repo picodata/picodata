@@ -6,7 +6,7 @@
 // 2. There are no `await` or `fiber::sleep` calls inside sender functions
 // 3. This module is meant for single threaded async runtime
 //
-//! A single-producer, multi-consumer channel that only retains the *last* sent
+//! A multi-producer, multi-consumer channel that only retains the *last* sent
 //! value.
 //!
 //! This channel is useful for watching for changes to a value from multiple
@@ -61,7 +61,7 @@ struct State<T> {
     // I would be better to use HashSet here,
     // but `Waker` doesn't implement it.
     wakers: RefCell<Vec<Waker>>,
-    sender_exists: Cell<bool>,
+    sender_count: Cell<usize>,
 }
 
 impl<T> State<T> {
@@ -88,6 +88,7 @@ pub struct SendError<T>(pub T);
 
 /// Sends values to the associated [`Receiver`](struct@Receiver).
 ///
+/// Can be cloned to get multiple senders for the same channel.
 /// Instances are created by the [`channel`](fn@channel) function.
 #[derive(Debug)]
 pub struct Sender<T> {
@@ -185,14 +186,25 @@ impl<T> Sender<T> {
     /// Checks if the channel has been closed. This happens when all receivers
     /// have dropped.
     pub fn is_closed(&self) -> bool {
-        // Only the rc instance of this sender remains
-        Rc::strong_count(&self.state) == 1
+        // Only the rc instances of senders remain
+        Rc::strong_count(&self.state) == self.state.sender_count.get()
+    }
+}
+
+impl<T> Clone for Sender<T> {
+    fn clone(&self) -> Self {
+        let count = self.state.sender_count.get();
+        self.state.sender_count.set(count + 1);
+        Self {
+            state: self.state.clone(),
+        }
     }
 }
 
 impl<T> Drop for Sender<T> {
     fn drop(&mut self) {
-        self.state.sender_exists.set(false);
+        let count = self.state.sender_count.get();
+        self.state.sender_count.set(count - 1);
         self.state.wake_all()
     }
 }
@@ -301,7 +313,7 @@ impl<'a, T> Future for Notification<'a, T> {
     type Output = Result<(), RecvError>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        if !self.rx.state.sender_exists.get() {
+        if self.rx.state.sender_count.get() == 0 {
             return Poll::Ready(Err(RecvError));
         }
         let version = self.rx.state.value.borrow().version;
@@ -329,7 +341,7 @@ pub fn channel<T>(initial: T) -> (Sender<T>, Receiver<T>) {
             version: 0,
         }),
         wakers: Default::default(),
-        sender_exists: Cell::new(true),
+        sender_count: Cell::new(1),
     };
     let tx = Sender {
         state: Rc::new(state),
@@ -395,6 +407,42 @@ mod tests {
         });
         tx.send(2).unwrap();
         assert_eq!(jh.join(), 2);
+    }
+
+    #[crate::test(tarantool = "crate")]
+    fn receive_from_different_senders() {
+        let (tx, mut rx_1) = channel::<i32>(10);
+        let jh = fiber::start_async(async {
+            rx_1.changed().await.unwrap();
+            *rx_1.borrow()
+        });
+        tx.send(1).unwrap();
+        assert_eq!(jh.join(), 1);
+        let jh = fiber::start_async(async {
+            rx_1.changed().await.unwrap();
+            *rx_1.borrow()
+        });
+        #[allow(clippy::redundant_clone)]
+        let tx_2 = tx.clone();
+        tx_2.send(2).unwrap();
+        assert_eq!(jh.join(), 2);
+    }
+
+    #[crate::test(tarantool = "crate")]
+    fn check_closed() {
+        let (tx, rx_1) = channel(());
+        assert!(!tx.is_closed());
+        drop(rx_1);
+        assert!(tx.is_closed());
+
+        let rx_2 = tx.subscribe();
+        let rx_3 = tx.subscribe();
+        #[allow(clippy::redundant_clone)]
+        let _tx_2 = tx.clone();
+        assert!(!tx.is_closed());
+        drop(rx_2);
+        drop(rx_3);
+        assert!(tx.is_closed());
     }
 
     #[crate::test(tarantool = "crate")]

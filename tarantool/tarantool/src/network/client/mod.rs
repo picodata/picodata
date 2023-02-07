@@ -17,7 +17,7 @@ use super::protocol::options::{ConnOptions, Options};
 use super::protocol::{self, codec, Error as ProtocolError, Protocol, SizeHint, SyncIndex};
 use crate::ffi::tarantool::coio_close;
 use crate::fiber;
-use crate::fiber::r#async::{oneshot, timeout};
+use crate::fiber::r#async::{oneshot, timeout, watch};
 use crate::tuple::{Decode, ToTupleBuffer, Tuple};
 
 use futures::io::{ReadHalf, WriteHalf};
@@ -63,18 +63,34 @@ struct ClientInner {
     state: State,
     close_token: Option<tcp::CloseToken>,
     worker_handles: Vec<WorkerHandle>,
+    sender_waker: watch::Sender<()>,
 }
 
 impl ClientInner {
-    pub fn new(config: protocol::Config) -> Self {
+    pub fn new(config: protocol::Config, sender_waker: watch::Sender<()>) -> Self {
         Self {
             protocol: Protocol::with_config(config),
             awaiting_response: HashMap::new(),
             state: State::Alive,
             close_token: None,
             worker_handles: Vec::new(),
+            sender_waker,
         }
     }
+}
+
+/// Wakes sender if `protocol` has new outgoing data.
+///
+/// # Errors
+/// Returns an error if `sender_waker` channel receivers are holding a reference to the previous value.
+/// Which generally shouldn't be the case as it is an empty value.
+fn wake_sender(client: &RefCell<ClientInner>) -> Result<(), watch::SendError<()>> {
+    let len = client.borrow().protocol.ready_outgoing_len();
+    if len > 0 {
+        let waker = client.borrow().sender_waker.clone();
+        waker.send(())?;
+    }
+    Ok(())
 }
 
 /// Actual client that can be used to send and receive messages to tarantool instance.
@@ -94,7 +110,8 @@ impl Client {
         port: u16,
         config: protocol::Config,
     ) -> Result<Self, Error> {
-        let mut client = ClientInner::new(config);
+        let (sender_waker_tx, sender_waker_rx) = watch::channel(());
+        let mut client = ClientInner::new(config, sender_waker_tx);
         let stream = TcpStream::connect(url, port).await?;
         client.close_token = Some(stream.close_token());
 
@@ -110,7 +127,7 @@ impl Client {
 
         // start sender in a separate fiber
         let sender_handle = fiber::Builder::new()
-            .func_async(sender(client.clone(), writer))
+            .func_async(sender(client.clone(), writer, sender_waker_rx))
             .name("network-client-sender")
             .start()
             .unwrap();
@@ -137,6 +154,7 @@ impl Client {
         let sync = self.0.borrow_mut().protocol.send_request(request)?;
         let (tx, rx) = oneshot::channel();
         self.0.borrow_mut().awaiting_response.insert(sync, tx);
+        wake_sender(&self.0).unwrap();
         rx.await.expect("Channel should be open")?;
         Ok(self
             .0
@@ -205,6 +223,7 @@ impl Drop for Client {
 
             let close_token = client.close_token.take();
             let handles: Vec<_> = client.worker_handles.drain(..).collect();
+            let waker = client.sender_waker.clone();
 
             // Drop ref before executing code that switches fibers.
             drop(client);
@@ -212,6 +231,8 @@ impl Drop for Client {
                 // Close TCP stream to wake fibers waiting on coio events
                 let _ = close_token.close();
             }
+            // Wake sender so it can exit loop
+            waker.send(());
             // Join fibers
             for handle in handles {
                 handle.join();
@@ -241,7 +262,11 @@ macro_rules! handle_result {
 }
 
 /// Sender work loop. Yields on each iteration and during awaits.
-async fn sender(client: Rc<RefCell<ClientInner>>, mut writer: WriteHalf<TcpStream>) {
+async fn sender(
+    client: Rc<RefCell<ClientInner>>,
+    mut writer: WriteHalf<TcpStream>,
+    mut waker: watch::Receiver<()>,
+) {
     loop {
         if client.borrow().state.is_closed() {
             return;
@@ -253,8 +278,8 @@ async fn sender(client: Rc<RefCell<ClientInner>>, mut writer: WriteHalf<TcpStrea
             .drain_outgoing_data(None)
             .collect();
         if data.is_empty() {
-            // TODO: use a watch channel to wait till data is not empty instead
-            fiber::r#yield();
+            // Wait for explicit wakeup, it should happen when there is new outgoing data
+            waker.changed().await;
         } else {
             let result = writer.write_all(&data).await;
             handle_result!(client.borrow_mut(), result);
@@ -273,13 +298,15 @@ async fn receiver(client: Rc<RefCell<ClientInner>>, mut reader: ReadHalf<TcpStre
             SizeHint::Hint(size) => {
                 let mut buf = vec![0; size];
                 handle_result!(client.borrow_mut(), reader.read_exact(&mut buf).await);
-                let mut client_ref = client.borrow_mut();
-                let result = client_ref.protocol.process_incoming(&mut Cursor::new(buf));
-                hint = client_ref.protocol.read_size_hint();
-                if let Some(sync) = handle_result!(client_ref, result) {
-                    if let Some(subscription) = client_ref.awaiting_response.remove(&sync) {
-                        // Dropping client ref as `send` can wake other fibers.
-                        drop(client_ref);
+                let result = client
+                    .borrow_mut()
+                    .protocol
+                    .process_incoming(&mut Cursor::new(buf));
+                hint = client.borrow().protocol.read_size_hint();
+                let result = handle_result!(client.borrow_mut(), result);
+                if let Some(sync) = result {
+                    let subscription = client.borrow_mut().awaiting_response.remove(&sync);
+                    if let Some(subscription) = subscription {
                         subscription
                             .send(Ok(()))
                             .expect("Cannot be closed at this point");
@@ -287,6 +314,7 @@ async fn receiver(client: Rc<RefCell<ClientInner>>, mut reader: ReadHalf<TcpStre
                         log::warn!("Received unwaited message for {sync:?}");
                     }
                 }
+                wake_sender(&client).unwrap();
             }
             SizeHint::FirstU32 => {
                 // Read 5 bytes, 1st is a marker
