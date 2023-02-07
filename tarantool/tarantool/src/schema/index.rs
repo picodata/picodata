@@ -1,8 +1,9 @@
 use crate::c_ptr;
 use crate::error::{Error, TarantoolError};
 use crate::ffi::lua;
-use crate::ffi::tarantool::{luaT_call, luaT_state};
+use crate::ffi::tarantool::luaT_call;
 use crate::index::{Index, IndexOptions};
+use tlua::AsLua as _;
 use tlua::{
     LuaError::{self, ExecutionError},
     LuaFunction, LuaTable,
@@ -46,8 +47,8 @@ pub fn drop_index(space_id: u32, index_id: u32) -> Result<(), Error> {
     unsafe {
         // Create new stack (just in case - in order no to mess things
         // in current stack).
-        let state = luaT_state();
-        let drop_state = lua::lua_newthread(state);
+        let lua = crate::lua_state();
+        let drop_state = lua.as_lua();
 
         // Execute the following Lua code:
         // -- space = box.space._space:get(space_id)

@@ -6,18 +6,19 @@
 //! See also:
 //! - [Lua reference: Submodule box.session](https://www.tarantool.io/en/doc/1.10/reference/reference_lua/box_session/)
 use std::ffi::CString;
+use tlua::AsLua as _;
 
 use crate::error::{Error, TarantoolError};
 use crate::ffi::lua as ffi_lua;
-use crate::ffi::tarantool::{luaT_call, luaT_state};
+use crate::ffi::tarantool::luaT_call;
 
 /// Get the user ID of the current user.
 pub fn uid() -> Result<isize, Error> {
     unsafe {
         // Create new stack (just in case - in order no to mess things
         // in current stack).
-        let state = luaT_state();
-        let uid_state = ffi_lua::lua_newthread(state);
+        let lua = crate::lua_state();
+        let uid_state = lua.as_lua();
 
         // Push box.session.uid function on the stack.
         let name_box = CString::new("box").unwrap();
@@ -42,8 +43,8 @@ pub fn euid() -> Result<isize, Error> {
     unsafe {
         // Create new stack (just in case - in order no to mess things
         // in current stack).
-        let state = luaT_state();
-        let euid_state = ffi_lua::lua_newthread(state);
+        let lua = crate::lua_state();
+        let euid_state = lua.as_lua();
 
         // Push box.session.euid on the stack.
         let name = CString::new("box").unwrap();
