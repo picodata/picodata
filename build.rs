@@ -28,6 +28,16 @@ fn main() {
     let build_root = Path::new(&out_dir).parent().unwrap().parent().unwrap();
     dbg!(&build_root); // "<target-dir>/<build-type>/build"
 
+    // See also:
+    // https://doc.rust-lang.org/cargo/reference/environment-variables.html#environment-variables-cargo-sets-for-build-scripts
+    if let Some(ref makeflags) = std::env::var_os("CARGO_MAKEFLAGS") {
+        std::env::set_var("MAKEFLAGS", makeflags);
+    }
+
+    for (var, value) in std::env::vars() {
+        println!("[{}:{}] {var}={value}", file!(), line!());
+    }
+
     build_tarantool(build_root);
     build_http(build_root);
 
@@ -232,7 +242,7 @@ impl CommandExt for Command {
     #[track_caller]
     fn run(&mut self) {
         let loc = Location::caller();
-        eprintln!("[{}:{}] running [{:?}]", loc.file(), loc.line(), self);
+        println!("[{}:{}] running [{:?}]", loc.file(), loc.line(), self);
 
         let prog = self.get_program().to_owned().into_string().unwrap();
 
