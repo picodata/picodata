@@ -116,8 +116,7 @@ impl ClientInner {
 fn wake_sender(client: &RefCell<ClientInner>) -> Result<(), watch::SendError<()>> {
     let len = client.borrow().protocol.ready_outgoing_len();
     if len > 0 {
-        let waker = client.borrow().sender_waker.clone();
-        waker.send(())?;
+        client.borrow().sender_waker.send(())?;
     }
     Ok(())
 }
@@ -276,7 +275,8 @@ impl Drop for Client {
 
             let close_token = client.close_token.take();
             let handles: Vec<_> = client.worker_handles.drain(..).collect();
-            let waker = client.sender_waker.clone();
+            // Wake sender so it can exit loop
+            client.sender_waker.send(()).unwrap();
 
             // Drop ref before executing code that switches fibers.
             drop(client);
@@ -284,8 +284,6 @@ impl Drop for Client {
                 // Close TCP stream to wake fibers waiting on coio events
                 let _ = close_token.close();
             }
-            // Wake sender so it can exit loop
-            let _ = waker.send(());
             // Join fibers
             for handle in handles {
                 handle.join();

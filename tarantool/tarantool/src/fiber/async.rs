@@ -213,12 +213,12 @@ pub(crate) mod context {
 
 /// A wrapper around a future which has on_drop behavior.
 /// See [`on_drop`].
-pub struct OnDrop<Fut, Fun: FnMut()> {
+pub struct OnDrop<Fut, Fun: FnOnce()> {
     future: Fut,
-    on_drop: Fun,
+    on_drop: Option<Fun>,
 }
 
-impl<Fut: Future, Fun: FnMut()> OnDrop<Fut, Fun> {
+impl<Fut: Future, Fun: FnOnce()> OnDrop<Fut, Fun> {
     #[inline]
     fn pin_get_future(self: Pin<&mut Self>) -> Pin<&mut Fut> {
         // This is okay because `future` is pinned when `self` is.
@@ -226,7 +226,7 @@ impl<Fut: Future, Fun: FnMut()> OnDrop<Fut, Fun> {
     }
 }
 
-impl<Fut: Future, Fun: FnMut()> Future for OnDrop<Fut, Fun> {
+impl<Fut: Future, Fun: FnOnce()> Future for OnDrop<Fut, Fun> {
     type Output = Fut::Output;
 
     fn poll(self: Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> Poll<Self::Output> {
@@ -234,16 +234,19 @@ impl<Fut: Future, Fun: FnMut()> Future for OnDrop<Fut, Fun> {
     }
 }
 
-impl<Fut, Fun: FnMut()> Drop for OnDrop<Fut, Fun> {
+impl<Fut, Fun: FnOnce()> Drop for OnDrop<Fut, Fun> {
     fn drop(&mut self) {
-        (self.on_drop)()
+        (self.on_drop.take().unwrap())()
     }
 }
 
 /// Adds a closure to the future, which will be executed when the future is dropped.
-/// This can be useful to cleanup external resources on future cancelation.
-pub fn on_drop<Fut: Future, Fun: FnMut()>(future: Fut, on_drop: Fun) -> OnDrop<Fut, Fun> {
-    OnDrop { future, on_drop }
+/// This can be useful to cleanup external resources on future cancelation or completion.
+pub fn on_drop<Fut: Future, Fun: FnOnce()>(future: Fut, on_drop: Fun) -> OnDrop<Fut, Fun> {
+    OnDrop {
+        future,
+        on_drop: Some(on_drop),
+    }
 }
 
 /// Futures implementing this trait can attach a closure
@@ -252,7 +255,7 @@ pub fn on_drop<Fut: Future, Fun: FnMut()>(future: Fut, on_drop: Fun) -> OnDrop<F
 pub trait IntoOnDrop: Future + Sized {
     /// Adds on_drop closure to a future. See [`on_drop`].
     #[inline]
-    fn on_drop<Fun: FnMut()>(self, on_drop: Fun) -> OnDrop<Self, Fun> {
+    fn on_drop<Fun: FnOnce()>(self, on_drop: Fun) -> OnDrop<Self, Fun> {
         self::on_drop(self, on_drop)
     }
 }
@@ -320,12 +323,22 @@ mod tests {
     #[crate::test(tarantool = "crate")]
     fn on_drop_is_executed() {
         block_on(async {
+            // Future is canceled
             let mut executed = false;
             always_pending()
                 .on_drop(|| executed = true)
                 .timeout(Duration::from_secs(0))
                 .await
                 .unwrap_err();
+            assert!(executed);
+
+            // Future completes
+            let mut executed = false;
+            std::future::ready(())
+                .on_drop(|| executed = true)
+                .timeout(Duration::from_secs(0))
+                .await
+                .unwrap();
             assert!(executed);
         });
     }

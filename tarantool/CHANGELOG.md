@@ -18,8 +18,6 @@
   \- descriptions for stored procedures defined with `#[tarantool::proc]`.
 - `proc::module_path` helper function for getting a path to the dynamically
   linked object file in which the given symbol is defined.
-- `fiber::r#async::watch::Sender` now implements `Clone`, so the watch channel effectively
-  becomes a multi-producer multi-consumer channel.
 - `tarantool::network::client` alternative async network client.
 - `tarantool::network::protocol` sans-io (without transport layer) implementation of Tarantool Binary Protocol.
   Serves as a base for `network::client`, but can be also used independently by other client implementations.
