@@ -1,3 +1,28 @@
+//! Async runtime based on Tarantool fibers.
+//! Also includes sycnhronization primitives and useful traits for working with futures.
+//!
+//! Use [`block_on`] to start the runtime.
+//! ## Example
+//! ```no_run
+//! async fn foo() {
+//!     // do something
+//! }
+//!
+//! use tarantool::fiber;
+//! fiber::block_on(async {
+//!     foo().await;
+//!     // ... some other code
+//! });
+//! ```
+//!
+//! See also:
+//! - Channels
+//!   - [`oneshot`]
+//!   - [`watch`]
+//! - Extension Traits:
+//!   - [`timeout::IntoTimeout`]
+//!   - [`IntoOnDrop`]
+
 use std::{
     future::Future,
     pin::Pin,
@@ -92,8 +117,8 @@ pub(crate) mod coio {
     use std::ffi::CString;
     use std::rc::Rc;
 
-    /// Request for address resolution. After being set in [`context::ContextExt`] it will be executed by `block_on`.
-    /// See [coio_getaddrinfo](tarantool::ffi::tarantool::coio_getaddrinfo) for low level details.
+    /// Request for address resolution. After being set in [`super::context::ContextExt`] it will be executed by `block_on`.
+    /// See [coio_getaddrinfo](crate::ffi::tarantool::coio_getaddrinfo) for low level details.
     #[derive(Clone, Debug)]
     pub struct GetAddrInfo {
         pub host: CString,
@@ -237,6 +262,8 @@ impl<T> IntoOnDrop for T where T: Future + Sized {}
 /// Runs a future to completion on the fiber-based runtime. This is the async runtime’s entry point.
 ///
 /// This runs the given future on the current fiber, blocking until it is complete, and yielding its resolved result.
+///
+/// For examples see module level documentation in [`super::async`].
 pub fn block_on<F: Future>(f: F) -> F::Output {
     let rcw: Rc<waker::FiberWaker> = Default::default();
     let waker = waker::with_rcw(rcw.clone());

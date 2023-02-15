@@ -1,4 +1,4 @@
-use std::io::{Cursor, Read, Write};
+use std::io::{Cursor, Write};
 
 use super::Error;
 use crate::tuple::{ToTupleBuffer, Tuple};
@@ -14,11 +14,11 @@ pub trait Request {
         codec::encode_header(out, sync, Self::TYPE)
     }
 
-    fn encode_body(&self, out: &mut impl Write, sync: SyncIndex) -> Result<(), Error>;
+    fn encode_body(&self, out: &mut impl Write) -> Result<(), Error>;
 
     fn encode(&self, out: &mut impl Write, sync: SyncIndex) -> Result<(), Error> {
         self.encode_header(out, sync)?;
-        self.encode_body(out, sync)?;
+        self.encode_body(out)?;
         Ok(())
     }
 
@@ -33,11 +33,11 @@ impl Request for Ping {
     const TYPE: IProtoType = IProtoType::Ping;
     type Response = ();
 
-    fn encode_body(&self, out: &mut impl Write, sync: SyncIndex) -> Result<(), Error> {
+    fn encode_body(&self, out: &mut impl Write) -> Result<(), Error> {
         codec::encode_ping(out)
     }
 
-    fn decode_body(&self, r#in: &mut Cursor<Vec<u8>>) -> Result<Self::Response, Error> {
+    fn decode_body(&self, _in: &mut Cursor<Vec<u8>>) -> Result<Self::Response, Error> {
         Ok(())
     }
 }
@@ -51,8 +51,8 @@ impl<'a, 'b, T: ToTupleBuffer> Request for Call<'a, 'b, T> {
     const TYPE: IProtoType = IProtoType::Call;
     type Response = Option<Tuple>;
 
-    fn encode_body(&self, out: &mut impl Write, sync: SyncIndex) -> Result<(), Error> {
-        codec::encode_call(out, sync, self.fn_name, self.args)
+    fn encode_body(&self, out: &mut impl Write) -> Result<(), Error> {
+        codec::encode_call(out, self.fn_name, self.args)
     }
 
     fn decode_body(&self, r#in: &mut Cursor<Vec<u8>>) -> Result<Self::Response, Error> {
@@ -69,8 +69,8 @@ impl<'a, 'b, T: ToTupleBuffer> Request for Eval<'a, 'b, T> {
     const TYPE: IProtoType = IProtoType::Eval;
     type Response = Option<Tuple>;
 
-    fn encode_body(&self, out: &mut impl Write, sync: SyncIndex) -> Result<(), Error> {
-        codec::encode_eval(out, sync, self.expr, self.args)
+    fn encode_body(&self, out: &mut impl Write) -> Result<(), Error> {
+        codec::encode_eval(out, self.expr, self.args)
     }
 
     fn decode_body(&self, r#in: &mut Cursor<Vec<u8>>) -> Result<Self::Response, Error> {
@@ -88,8 +88,8 @@ impl<'a, 'b, T: ToTupleBuffer> Request for Execute<'a, 'b, T> {
     const TYPE: IProtoType = IProtoType::Execute;
     type Response = Vec<Tuple>;
 
-    fn encode_body(&self, out: &mut impl Write, sync: SyncIndex) -> Result<(), Error> {
-        codec::encode_execute(out, sync, self.sql, self.bind_params)
+    fn encode_body(&self, out: &mut impl Write) -> Result<(), Error> {
+        codec::encode_execute(out, self.sql, self.bind_params)
     }
 
     fn decode_body(&self, r#in: &mut Cursor<Vec<u8>>) -> Result<Self::Response, Error> {
@@ -107,11 +107,11 @@ impl<'u, 'p, 's> Request for Auth<'u, 'p, 's> {
     const TYPE: IProtoType = IProtoType::Auth;
     type Response = ();
 
-    fn encode_body(&self, out: &mut impl Write, sync: SyncIndex) -> Result<(), Error> {
-        codec::encode_auth(out, sync, self.user, self.pass, self.salt)
+    fn encode_body(&self, out: &mut impl Write) -> Result<(), Error> {
+        codec::encode_auth(out, self.user, self.pass, self.salt)
     }
 
-    fn decode_body(&self, r#in: &mut Cursor<Vec<u8>>) -> Result<Self::Response, Error> {
+    fn decode_body(&self, _in: &mut Cursor<Vec<u8>>) -> Result<Self::Response, Error> {
         Ok(())
     }
 }

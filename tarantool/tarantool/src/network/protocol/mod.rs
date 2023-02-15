@@ -1,20 +1,23 @@
-//! Protocol description without actual network layer
+//! Tarantool Binary Protocol implementation without actual transport layer.
+//!
+//! According to Sans-I/O pattern this implementation processes requests and responses
+//! by outputing the corresponding bytes into incoming and outgoing buffers.
+//! And it provides an API for the upper client layer to get data from these buffers.
+//!
+//! See [`super::client`] if you need a fully functional Tarantool client.
 
 pub mod api;
 pub mod codec;
-pub mod options;
-pub mod send_queue;
 
-use std::cmp::{self, min};
+use std::cmp;
 use std::collections::HashMap;
-use std::fmt::{Display, Formatter};
-use std::io::{BufWriter, Cursor, Read, Seek, Write};
+use std::io::{Cursor, Read, Seek};
 use std::str::Utf8Error;
 use std::vec::Drain;
 
 use api::Request;
-use codec::Header;
 
+/// Error returned by [`Protocol`].
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
     #[error("utf8 error: {0}")]
@@ -40,24 +43,29 @@ impl From<crate::error::Error> for Error {
     }
 }
 
+/// Unique identifier of the sent message on this connection.
+/// It is used to retrieve response for the corresponding request.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct SyncIndex(u64);
 
 impl SyncIndex {
-    pub fn next(&mut self) -> Self {
+    pub fn next_index(&mut self) -> Self {
         let sync = self.0;
         self.0 += 1;
         Self(sync)
     }
 }
 
+/// Error returned from the Tarantool server.
+///
+/// It represents an error with which Tarantool server
+/// answers to the client in case of faulty request or an error
+/// during request execution on the server side.
 #[derive(Debug, thiserror::Error)]
 #[error("{message}")]
 pub struct ResponseError {
     message: String,
 }
-
-type Response = Vec<u8>;
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 enum State {
@@ -69,12 +77,18 @@ enum State {
     Ready,
 }
 
+/// A hint to a client implementation on the expected size of the next
+/// message that should be read by receiver.
 #[derive(Debug, Eq, PartialEq, Clone, Copy)]
 pub enum SizeHint {
+    /// Receiver should read exactly `n` bytes in `Hint(n)`.
     Hint(usize),
+    // TODO: Eliminate this option? Process first u32 here and always give exact hint
+    /// The first `u32` that will be read by receiver identifies the size of the message.
     FirstU32,
 }
 
+/// Configuration of [`Protocol`].
 #[derive(Debug, Clone, Default, Eq, PartialEq)]
 pub struct Config {
     /// (user, password)
@@ -84,8 +98,12 @@ pub struct Config {
 
 /// A sans-io connection handler.
 ///
-/// Uses events and actions to communicate with the specific
-/// client implementation.
+/// Buffers incoming and outgoing bytes and provides an API for
+/// a client implementation to:
+/// - Input requests
+/// - Get processed responses
+/// - Retrieve outgoing bytes
+/// - Input incoming bytes
 #[derive(Debug)]
 pub struct Protocol {
     state: State,
@@ -98,7 +116,14 @@ pub struct Protocol {
     creds: Option<(String, String)>,
 }
 
+impl Default for Protocol {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Protocol {
+    /// Construct [`Protocol`] with default values for [`Config`].
     pub fn new() -> Self {
         Self {
             state: State::Init,
@@ -110,17 +135,27 @@ impl Protocol {
         }
     }
 
+    /// Construct [`Protocol`] with custom values for [`Config`].
     pub fn with_config(config: Config) -> Self {
         let mut protocol = Self::new();
         protocol.creds = config.creds;
         protocol
     }
 
+    /// Returns `true` if the [`Protocol`] has passed initialization and authorization
+    /// stages.
+    ///
+    /// Data can be sent independently of whether the protocol [`Self::is_ready`].
+    /// If the protocol is not ready data will be queued and eventually processed
+    /// after auth is done.
     pub fn is_ready(&self) -> bool {
         matches!(self.state, State::Ready)
     }
 
-    /// Data can be sent independently of whether the protocol [`is_ready`].
+    /// Processes incoming request and buffers generated outgoing bytes.
+    /// Outgoing bytes can be retrieved with [`Protocol::drain_outgoing_data`]
+    ///
+    /// Data can be sent independently of whether the protocol [`Self::is_ready`].
     /// If the protocol is not ready data will be queued and eventually processed
     /// after auth is done.
     pub fn send_request(&mut self, request: &impl Request) -> Result<SyncIndex, Error> {
@@ -130,7 +165,7 @@ impl Protocol {
         // TODO: limit the pending vec size
         write_to_buffer(&mut buf, self.sync, request)?;
         self.process_pending_data();
-        Ok(self.sync.next())
+        Ok(self.sync.next_index())
     }
 
     /// Take existing response by [`SyncIndex`].
@@ -146,10 +181,12 @@ impl Protocol {
         Some(request.decode_body(&mut Cursor::new(response)))
     }
 
+    /// Drop response by [`SyncIndex`] if it exists. If not - does nothing.
     pub fn drop_response(&mut self, sync: SyncIndex) {
         self.incoming.remove(&sync);
     }
 
+    /// Get [`SizeHint`]. See [`SizeHint`] struct description for more information.
     pub fn read_size_hint(&self) -> SizeHint {
         if let State::Init = self.state {
             // Greeting message is exactly 128 bytes
@@ -159,8 +196,10 @@ impl Protocol {
         }
     }
 
+    /// Processes incoming bytes received over transport layer.
+    ///
     /// Returns a [`SyncIndex`] if non-technical message was received.
-    /// Then this message can be retreived by this index.
+    /// This message can be retreived by this index with [`Protocol::take_response`].
     pub fn process_incoming<R: Read + Seek>(
         &mut self,
         chunk: &mut R,
@@ -174,7 +213,7 @@ impl Protocol {
                     // Write straight to outgoing, it should be empty
                     debug_assert!(self.outgoing.is_empty());
                     let mut buf = Cursor::new(&mut self.outgoing);
-                    let sync = self.sync.next();
+                    let sync = self.sync.next_index();
                     write_to_buffer(
                         &mut buf,
                         sync,
@@ -183,7 +222,7 @@ impl Protocol {
                             pass,
                             salt: &salt,
                         },
-                    );
+                    )?;
                 } else {
                     // No auth
                     self.state = State::Ready;
@@ -204,7 +243,7 @@ impl Protocol {
                     Err(codec::decode_error(chunk)?)
                 } else {
                     let mut buf = Vec::new();
-                    chunk.read_to_end(&mut buf);
+                    chunk.read_to_end(&mut buf)?;
                     Ok(buf)
                 };
                 self.incoming.insert(header.sync, response);
@@ -215,10 +254,15 @@ impl Protocol {
         Ok(sync)
     }
 
+    /// Returns a number of outgoing data bytes.
     pub fn ready_outgoing_len(&self) -> usize {
         self.outgoing.len()
     }
 
+    /// Drains and returns buffered outgoing data.
+    ///
+    /// The returned bytes can then be sent through a
+    /// transport layer to a Tarantool server.
     pub fn drain_outgoing_data(&mut self, max: Option<usize>) -> Drain<u8> {
         let bound = if let Some(max) = max {
             cmp::min(self.ready_outgoing_len(), max)
@@ -237,7 +281,7 @@ impl Protocol {
     }
 }
 
-pub fn write_to_buffer(
+fn write_to_buffer(
     buffer: &mut Cursor<&mut Vec<u8>>,
     sync: SyncIndex,
     request: &impl Request,
@@ -261,9 +305,6 @@ pub fn write_to_buffer(
 
 #[cfg(test)]
 mod tests {
-    use std::convert::TryInto;
-    use std::io::Write;
-
     use super::*;
 
     /// See [tarantool docs](https://www.tarantool.io/en/doc/latest/dev_guide/internals/iproto/authentication/#greeting-message).
@@ -283,14 +324,16 @@ mod tests {
     fn connection_established() {
         let mut conn = Protocol::new();
         assert!(!conn.is_ready());
-        conn.process_incoming(&mut Cursor::new(fake_greeting()));
+        conn.process_incoming(&mut Cursor::new(fake_greeting()))
+            .unwrap();
         assert!(conn.is_ready())
     }
 
     #[test]
     fn send_bytes_generated() {
         let mut conn = Protocol::new();
-        conn.process_incoming(&mut Cursor::new(fake_greeting()));
+        conn.process_incoming(&mut Cursor::new(fake_greeting()))
+            .unwrap();
         conn.send_request(&api::Ping).unwrap();
         assert!(conn.ready_outgoing_len() > 0);
     }

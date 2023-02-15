@@ -2,11 +2,12 @@
 //! This library contains the following Tarantool API's:
 //!
 //! - Box: [spaces](space), [indexes](index), [sequences](sequence)
-//! - [Fibers: fiber attributes, conditional variables, latches](fiber)
+//! - [Fibers: fiber attributes, conditional variables, latches, async runtime](fiber)
 //! - [CoIO](coio)
 //! - [Transactions](transaction)
 //! - [Schema management](schema)
 //! - [Protocol implementation](net_box) (`net.box`): CRUD, stored procedure call, triggers
+//! - [Alternative async protocol implementation](network) (`network::client`): Async, coio based CRUD
 //! - [Tuple utils](mod@tuple)
 //! - [Decimal numbers](mod@decimal)
 //! - [Logging](log) (see <https://docs.rs/log/>)
@@ -165,9 +166,7 @@ pub mod log;
 #[doc(hidden)]
 pub mod msgpack;
 pub mod net_box;
-// Temporarily private as it is in development
-#[allow(unused)]
-mod network;
+pub mod network;
 pub mod proc;
 pub mod schema;
 pub mod sequence;

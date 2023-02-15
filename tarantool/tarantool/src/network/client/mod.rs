@@ -1,29 +1,57 @@
-//! Tarantool based client.
-//! Can be used only from inside tarantool.
+//! Tarantool based async [`Client`].
+//!
+//! Can be used only from inside Tarantool as it makes heavy use of fibers and coio.
+//!
+//! # Example
+//! ```no_run
+//! # async {
+//! use tarantool::network::client::Client;
+//!
+//! let client = Client::connect("localhost", 3301).await.unwrap();
+//! client.ping().await.unwrap();
+//!
+//! // Requests can also be easily combined with fiber::r#async::timeout
+//! use tarantool::fiber::r#async::timeout::IntoTimeout as _;
+//! use std::time::Duration;
+//!
+//! client.ping().timeout(Duration::from_secs(10)).await.unwrap().unwrap();
+//! # };
+//! ```
+//!
+//! # Reusing Connection
+//! Client can be cloned, and safely moved to a different fiber if needed, to reuse the same connection.
+//! When multiple fibers use the same connection, all requests are pipelined through the same network socket, but each fiber
+//! gets back a correct response. Reducing the number of active sockets lowers the overhead of system calls and increases
+//! the overall server performance.
+//!
+//! # Implementation
+//! Internally the client uses [`Protocol`] to get bytes that it needs to send
+//! and push bytes that it gets from the network.
+//!
+//! On creation the client spawns sender and receiver worker threads. Which in turn
+//! use coio based [`TcpStream`] as the transport layer.
 
-mod tcp;
+pub mod tcp;
 
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::io::{Cursor, Error as IoError};
-use std::net::ToSocketAddrs;
 use std::rc::Rc;
 use std::time::Duration;
 
 use self::tcp::{Error as TcpError, TcpStream};
 
 use super::protocol::api::{Call, Eval, Execute, Ping, Request};
-use super::protocol::options::{ConnOptions, Options};
-use super::protocol::{self, codec, Error as ProtocolError, Protocol, SizeHint, SyncIndex};
-use crate::ffi::tarantool::coio_close;
+use super::protocol::{self, Error as ProtocolError, Protocol, SizeHint, SyncIndex};
 use crate::fiber;
 use crate::fiber::r#async::IntoOnDrop as _;
-use crate::fiber::r#async::{oneshot, timeout, watch};
-use crate::tuple::{Decode, ToTupleBuffer, Tuple};
+use crate::fiber::r#async::{oneshot, watch};
+use crate::tuple::{ToTupleBuffer, Tuple};
 
 use futures::io::{ReadHalf, WriteHalf};
 use futures::{AsyncReadExt, AsyncWriteExt};
 
+/// Error returned by [`Client`].
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
     #[error("tcp stream error: {0}")]
@@ -96,16 +124,33 @@ fn wake_sender(client: &RefCell<ClientInner>) -> Result<(), watch::SendError<()>
 
 /// Actual client that can be used to send and receive messages to tarantool instance.
 ///
-/// Can be cloned and moved into different fibers for connection to be reused
+/// Can be cloned and moved into different fibers for connection to be reused.
+///
+/// See [`super::client`] for examples.
 // WARNING: Attention should be payed not to borrow inner client across await and yield points.
 #[derive(Clone, Debug)]
 pub struct Client(Rc<RefCell<ClientInner>>);
 
 impl Client {
+    /// Creates a new client and tries to establish connection
+    /// to `url:port`
+    ///
+    /// # Errors
+    /// Error is returned if an attempt to connect failed.
+    /// See [`Error`].
     pub async fn connect(url: &str, port: u16) -> Result<Self, Error> {
         Self::connect_with_config(url, port, Default::default()).await
     }
 
+    /// Creates a new client and tries to establish connection
+    /// to `url:port`
+    ///
+    /// Takes explicit `config` in comparison to [`Client::connect`]
+    /// where default values are used.
+    ///
+    /// # Errors
+    /// Error is returned if an attempt to connect failed.
+    /// See [`Error`].
     pub async fn connect_with_config(
         url: &str,
         port: u16,
@@ -120,7 +165,7 @@ impl Client {
         let client = Rc::new(RefCell::new(client));
 
         // start receiver in a separate fiber
-        let mut receiver_handle = fiber::Builder::new()
+        let receiver_handle = fiber::Builder::new()
             .func_async(receiver(client.clone(), reader))
             .name("network-client-receiver")
             .start()
@@ -205,7 +250,7 @@ impl Client {
         self.send(&Eval { args, expr }).await
     }
 
-    /// Remote execute of sql query.
+    /// Execute sql query remotely.
     pub async fn execute<T: ToTupleBuffer>(
         &self,
         sql: &str,
@@ -240,7 +285,7 @@ impl Drop for Client {
                 let _ = close_token.close();
             }
             // Wake sender so it can exit loop
-            waker.send(());
+            let _ = waker.send(());
             // Join fibers
             for handle in handles {
                 handle.join();
@@ -287,7 +332,7 @@ async fn sender(
             .collect();
         if data.is_empty() {
             // Wait for explicit wakeup, it should happen when there is new outgoing data
-            waker.changed().await;
+            waker.changed().await.expect("channel should be open");
         } else {
             let result = writer.write_all(&data).await;
             handle_result!(client.borrow_mut(), result);
@@ -317,9 +362,9 @@ async fn receiver(client: Rc<RefCell<ClientInner>>, mut reader: ReadHalf<TcpStre
                     if let Some(subscription) = subscription {
                         subscription
                             .send(Ok(()))
-                            .expect("Cannot be closed at this point");
+                            .expect("cannot be closed at this point");
                     } else {
-                        log::warn!("Received unwaited message for {sync:?}");
+                        log::warn!("received unwaited message for {sync:?}");
                     }
                 }
                 wake_sender(&client).unwrap();
@@ -336,7 +381,7 @@ async fn receiver(client: Rc<RefCell<ClientInner>>, mut reader: ReadHalf<TcpStre
                 } else {
                     handle_result!(
                         client_ref,
-                        Err(Error::Other("Unexpected zero message length".to_owned()))
+                        Err(Error::Other("unexpected zero message length".to_owned()))
                     )
                 }
             }
@@ -368,7 +413,7 @@ mod tests {
     #[crate::test(tarantool = "crate")]
     fn connect() {
         fiber::block_on(async {
-            let client = Client::connect("localhost", TARANTOOL_LISTEN)
+            let _client = Client::connect("localhost", TARANTOOL_LISTEN)
                 .await
                 .unwrap();
         });

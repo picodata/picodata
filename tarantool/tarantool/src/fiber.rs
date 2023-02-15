@@ -1,9 +1,10 @@
-//! Сooperative multitasking module
+//! Сooperative multitasking module with optional async runtime.
 //!
 //! With the fiber module, you can:
 //! - create, run and manage [fibers](struct.Fiber.html),
 //! - use a synchronization mechanism for fibers, similar to “condition variables” and similar to operating-system
-//! functions such as `pthread_cond_wait()` plus `pthread_cond_signal()`.
+//! functions such as `pthread_cond_wait()` plus `pthread_cond_signal()`,
+//! - spawn a fiber based [async runtime](async).
 //!
 //! See also:
 //! - [Threads, fibers and yields](https://www.tarantool.io/en/doc/latest/book/box/atomic/#threads-fibers-and-yields)

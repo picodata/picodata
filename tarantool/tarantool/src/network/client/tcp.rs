@@ -1,8 +1,27 @@
-use std::cell::{Cell, RefCell};
+//! Contains an implementation of a custom async coio based [`TcpStream`].
+//!
+//! ## Example
+//! ```no_run
+//! # async {
+//! use futures::AsyncReadExt;
+//! use tarantool::network::client::tcp::TcpStream;
+//!
+//! let mut stream = TcpStream::connect("localhost", 8080)
+//!     .await
+//!     .unwrap();
+//! let mut buf = vec![];
+//! let read_size = stream
+//!     .read(&mut buf)
+//!     .await
+//!     .unwrap();
+//! # };
+//! ```
+
+use std::cell::Cell;
 use std::ffi::{CString, NulError};
 use std::future::Future;
 use std::mem::{self, MaybeUninit};
-use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
+use std::net::{SocketAddr, SocketAddrV4, SocketAddrV6};
 use std::os::unix::io::RawFd;
 use std::os::unix::prelude::IntoRawFd;
 use std::pin::Pin;
@@ -41,6 +60,8 @@ pub enum Error {
 /// Atention should be payed that [`TcpStream`] is not [`futures::select`] friendly when awaiting multiple streams
 /// As there is no coio support to await multiple file descriptors yet.
 /// Though it can be used with [`futures::join`] without problems.
+///
+/// See module level [documentation](super::tcp) for examples.
 ///
 /// [t]: crate::fiber::async::timeout::timeout
 #[derive(Debug)]
@@ -199,7 +220,7 @@ impl AsyncWrite for TcpStream {
         }
     }
 
-    fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+    fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
         // [`TcpStream`] similarily to std does not buffer anything,
         // so there is nothing to flush.
         //
@@ -207,7 +228,7 @@ impl AsyncWrite for TcpStream {
         Poll::Ready(Ok(()))
     }
 
-    fn poll_close(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+    fn poll_close(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
         Poll::Ready(self.close_token().close())
     }
 }
@@ -312,7 +333,12 @@ mod tests {
                 .unwrap();
             // Read greeting
             let mut buf = vec![0; 128];
-            stream.read_exact(&mut buf).timeout(_10_SEC).await.unwrap();
+            stream
+                .read_exact(&mut buf)
+                .timeout(_10_SEC)
+                .await
+                .unwrap()
+                .unwrap();
         });
     }
 
@@ -346,8 +372,8 @@ mod tests {
             for stream in listener.incoming() {
                 let mut stream = stream.unwrap();
                 let mut buf = vec![];
-                <std::net::TcpStream as std::io::Read>::read_to_end(&mut stream, &mut buf);
-                sender.send(buf);
+                <std::net::TcpStream as std::io::Read>::read_to_end(&mut stream, &mut buf).unwrap();
+                sender.send(buf).unwrap();
             }
         });
         // Send data
@@ -360,10 +386,12 @@ mod tests {
                     .unwrap();
                 timeout::timeout(_10_SEC, stream.write_all(&[1, 2, 3]))
                     .await
+                    .unwrap()
                     .unwrap();
                 timeout::timeout(_10_SEC, stream.write_all(&[4, 5]))
                     .await
                     .unwrap()
+                    .unwrap();
             });
         }
         let buf = receiver.recv_timeout(Duration::from_secs(5)).unwrap();
@@ -379,31 +407,34 @@ mod tests {
             for stream in listener.incoming() {
                 let mut stream = stream.unwrap();
                 let mut buf = vec![0; 5];
-                <std::net::TcpStream as std::io::Read>::read_exact(&mut stream, &mut buf);
-                <std::net::TcpStream as std::io::Write>::write_all(&mut stream, &buf.clone());
-                sender.send(buf);
+                <std::net::TcpStream as std::io::Read>::read_exact(&mut stream, &mut buf).unwrap();
+                <std::net::TcpStream as std::io::Write>::write_all(&mut stream, &buf.clone())
+                    .unwrap();
+                sender.send(buf).unwrap();
             }
         });
         // Send and read data
         {
-            let mut stream =
-                fiber::block_on(TcpStream::connect("localhost", 3303).timeout(_10_SEC))
-                    .unwrap()
-                    .unwrap();
+            let stream = fiber::block_on(TcpStream::connect("localhost", 3303).timeout(_10_SEC))
+                .unwrap()
+                .unwrap();
             let (mut reader, mut writer) = stream.split();
             let reader_handle = fiber::start_async(async move {
                 let mut buf = vec![0; 5];
                 timeout::timeout(_10_SEC, reader.read_exact(&mut buf))
                     .await
+                    .unwrap()
                     .unwrap();
                 assert_eq!(buf, vec![1, 2, 3, 4, 5])
             });
             let writer_handle = fiber::start_async(async move {
                 timeout::timeout(_10_SEC, writer.write_all(&[1, 2, 3]))
                     .await
+                    .unwrap()
                     .unwrap();
                 timeout::timeout(_10_SEC, writer.write_all(&[4, 5]))
                     .await
+                    .unwrap()
                     .unwrap();
             });
             writer_handle.join();
@@ -429,7 +460,7 @@ mod tests {
                     timeout::timeout(_10_SEC, stream.read_exact(&mut buf))
                 );
                 assert_eq!(is_err.unwrap_err(), timeout::Expired);
-                is_ok.unwrap();
+                is_ok.unwrap().unwrap();
             });
         }
         // Testing with different order in join
@@ -447,7 +478,7 @@ mod tests {
                     timeout::timeout(_0_SEC, always_pending())
                 );
                 assert_eq!(is_err.unwrap_err(), timeout::Expired);
-                is_ok.unwrap();
+                is_ok.unwrap().unwrap();
             });
         }
     }

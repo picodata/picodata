@@ -100,7 +100,6 @@ pub fn encode_header(
 
 pub fn encode_auth(
     stream: &mut impl Write,
-    sync: SyncIndex,
     user: &str,
     password: &str,
     salt: &[u8],
@@ -152,7 +151,6 @@ pub fn encode_ping(stream: &mut impl Write) -> Result<(), Error> {
 
 pub fn encode_execute(
     stream: &mut impl Write,
-    sync: SyncIndex,
     sql: &str,
     bind_params: &impl ToTupleBuffer,
 ) -> Result<(), Error> {
@@ -165,12 +163,7 @@ pub fn encode_execute(
     Ok(())
 }
 
-pub fn encode_call<T>(
-    stream: &mut impl Write,
-    sync: SyncIndex,
-    function_name: &str,
-    args: &T,
-) -> Result<(), Error>
+pub fn encode_call<T>(stream: &mut impl Write, function_name: &str, args: &T) -> Result<(), Error>
 where
     T: ToTupleBuffer,
     T: ?Sized,
@@ -183,12 +176,7 @@ where
     Ok(())
 }
 
-pub fn encode_eval<T>(
-    stream: &mut impl Write,
-    sync: SyncIndex,
-    expression: &str,
-    args: &T,
-) -> Result<(), Error>
+pub fn encode_eval<T>(stream: &mut impl Write, expression: &str, args: &T) -> Result<(), Error>
 where
     T: ToTupleBuffer,
     T: ?Sized,
@@ -204,7 +192,6 @@ where
 #[allow(clippy::too_many_arguments)]
 pub fn encode_select<K>(
     stream: &mut impl Write,
-    sync: SyncIndex,
     space_id: u32,
     index_id: u32,
     limit: u32,
@@ -232,12 +219,7 @@ where
     Ok(())
 }
 
-pub fn encode_insert<T>(
-    stream: &mut impl Write,
-    sync: SyncIndex,
-    space_id: u32,
-    value: &T,
-) -> Result<(), Error>
+pub fn encode_insert<T>(stream: &mut impl Write, space_id: u32, value: &T) -> Result<(), Error>
 where
     T: ToTupleBuffer,
     T: ?Sized,
@@ -250,12 +232,7 @@ where
     Ok(())
 }
 
-pub fn encode_replace<T>(
-    stream: &mut impl Write,
-    sync: SyncIndex,
-    space_id: u32,
-    value: &T,
-) -> Result<(), Error>
+pub fn encode_replace<T>(stream: &mut impl Write, space_id: u32, value: &T) -> Result<(), Error>
 where
     T: ToTupleBuffer,
     T: ?Sized,
@@ -270,7 +247,6 @@ where
 
 pub fn encode_update<K, Op>(
     stream: &mut impl Write,
-    sync: SyncIndex,
     space_id: u32,
     index_id: u32,
     key: &K,
@@ -295,7 +271,6 @@ where
 
 pub fn encode_upsert<T, Op>(
     stream: &mut impl Write,
-    sync: SyncIndex,
     space_id: u32,
     index_id: u32,
     value: &T,
@@ -320,7 +295,6 @@ where
 
 pub fn encode_delete<K>(
     stream: &mut impl Write,
-    sync: SyncIndex,
     space_id: u32,
     index_id: u32,
     key: &K,
