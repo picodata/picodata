@@ -20,7 +20,7 @@ use tarantool::ffi::lua as ffi_lua;
 use tarantool::index::IndexType;
 use tarantool::space::{Field, FieldType, Space};
 
-mod bench_bulk_insert;
+mod bench;
 mod r#box;
 mod coio;
 mod common;
@@ -200,20 +200,7 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
             options: Options::new(),
         },
         if cfg.bench {
-            vec![TestDescAndFn {
-                desc: TestDesc {
-                    name: TestName::StaticTestName("bench_bulk_insert"),
-                    ignore: false,
-                    should_panic: ShouldPanic::No,
-                    allow_fail: false,
-                    test_type: TestType::Unknown,
-                },
-                testfn: TestFn::DynBenchFn(Box::new(bench_bulk_insert::BulkInsertBenchmark {
-                    test_size: 64,
-                    num_fibers: 256,
-                    num_rows: 1000,
-                })),
-            }]
+            bench::collect()
         } else {
             let mut tests = tarantool::test::collect_tester();
             tests.append(&mut tarantool::tlua::test::collect());

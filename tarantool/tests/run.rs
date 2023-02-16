@@ -20,6 +20,7 @@ fn main() {
         serde_json::from_slice(&metadata.stdout).expect("failed to parse cargo metadata output");
     let status = Command::new(tarantool_exec)
         .arg(format!("{}/tests/run_tests.lua", metadata.workspace_root))
+        .arg("--test")
         .args(filter)
         .status()
         .expect("failed to run tarantool child process");

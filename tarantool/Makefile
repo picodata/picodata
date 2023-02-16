@@ -9,5 +9,6 @@ test-pd:
 	cargo build -p tarantool-module-test-runner --features=picodata
 	TARANTOOL_EXECUTABLE=tarantool-pd cargo test
 
-benchmark:
-	tests/run_benchmarks.lua
+bench:
+	cargo build -p tarantool-module-test-runner
+	tarantool tests/run_tests.lua --bench
