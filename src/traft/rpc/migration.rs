@@ -11,15 +11,21 @@ pub mod apply {
 
             let storage = &node.storage;
 
-            match storage.migrations.get(req.migration_id)? {
-                Some(migration) => {
-                    match lua_state().exec_with("box.execute(...)", migration.body) {
-                        Ok(_) => Ok(Response{}),
-                        Err(e) => Err(LuaError::from(e).into()),
-                    }
-                }
-                None => Err(Error::other(format!("Migration {0} not found", req.migration_id))),
-            }
+            let Some(migration) = storage.migrations.get(req.migration_id)? else {
+                return Err(Error::other(format!("migration {0} not found", req.migration_id)));
+            };
+
+            lua_state()
+                .exec_with(
+                    "local ok, err = box.execute(...)
+                    if not ok then
+                        box.error(err)
+                    end",
+                    migration.body,
+                )
+                .map_err(LuaError::from)?;
+
+            Ok(Response {})
         }
 
         pub struct Request {
