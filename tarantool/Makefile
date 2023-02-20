@@ -10,5 +10,5 @@ test-pd:
 	TARANTOOL_EXECUTABLE=tarantool-pd cargo test
 
 bench:
-	cargo build -p tarantool-module-test-runner
-	tarantool tests/run_tests.lua --bench
+	cargo build -p perf-test --release
+	TARANTOOL_MODULE_BUILD_MODE="release" tarantool perf-test/run.lua

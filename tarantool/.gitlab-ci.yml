@@ -157,6 +157,13 @@ test-vanilla:
     DOCKER_IMAGE: ${VANILLA_DOCKER_IMAGE}
     CARGO_FEATURES: default
 
+bench-vanilla:
+  extends: .test
+  variables:
+    DOCKER_IMAGE: ${VANILLA_DOCKER_IMAGE}
+  script:
+    - make bench
+
 test-picodata:
   extends: .test
   variables:

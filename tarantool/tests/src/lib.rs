@@ -20,7 +20,6 @@ use tarantool::ffi::lua as ffi_lua;
 use tarantool::index::IndexType;
 use tarantool::space::{Field, FieldType, Space};
 
-mod bench;
 mod r#box;
 mod coio;
 mod common;
@@ -70,9 +69,6 @@ macro_rules! tests {
 
 #[derive(Clone, Deserialize)]
 struct TestConfig {
-    #[serde(default)]
-    bench: bool,
-
     filter: Option<String>,
 
     #[serde(default = "default_listen")]
@@ -189,7 +185,7 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
             exclude_should_panic: false,
             run_ignored: RunIgnored::No,
             run_tests: true,
-            bench_benchmarks: cfg.bench,
+            bench_benchmarks: false,
             logfile: None,
             nocapture: false,
             color: ColorConfig::AutoColor,
@@ -199,9 +195,7 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
             time_options: None,
             options: Options::new(),
         },
-        if cfg.bench {
-            bench::collect()
-        } else {
+        {
             let mut tests = tarantool::test::collect_tester();
             tests.append(&mut tarantool::tlua::test::collect());
             tests.append(&mut tests![
@@ -571,7 +565,6 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                     tuple_picodata::tuple_as_named_buffer,
                 ])
             }
-
             tests
         },
     )

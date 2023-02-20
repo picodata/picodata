@@ -88,20 +88,9 @@ package.cpath = string.format(
     package.cpath
 )
 
-local bench
-if arg[1] == "--bench" then
-    bench = true
-elseif arg[1] == "--test" then
-    bench = false
-else
-    io.stderr:write("First argument must be either \"--bench\" or \"--test\"\n")
-    os.exit(1)
-end
-
 -- Prepare config
 cfg = json.encode {
-    bench = bench,
-    filter = arg[2] or "",
+    filter = arg[1] or "",
     listen = port,
 }
 
