@@ -11,7 +11,7 @@
 Tarantool Rust SDK offers a library for interacting with Tarantool from Rust applications. This document describes the Tarantool API bindings for Rust and includes the following API's:
 
 - Box: spaces, indexes, sequences
-- Fibers: fiber attributes, conditional variables, latches
+- Fibers: fiber attributes, conditional variables, latches, async runtime
 - CoIO
 - Transactions
 - Schema management
@@ -117,7 +117,6 @@ crate-type = ["cdylib"]
 3. Create the server entry point named `init.lua` with the following script:
 
 ```lua
-require('easy')
 box.cfg({listen = 3301})
 box.schema.func.create('easy', {language = 'C', if_not_exists = true})
 box.schema.func.create('easy.easy2', {language = 'C', if_not_exists = true})
@@ -133,7 +132,6 @@ To learn more about the commands used above, look up their syntax and usage deta
 4. Edit `lib.rs` file and add the following lines:
 
 ```rust
-use std::os::raw::c_int;
 use tarantool::proc;
 
 #[proc]
@@ -144,13 +142,6 @@ fn easy() {
 #[proc]
 fn easy2() {
     println!("hello world -- easy2");
-}
-
-#[no_mangle]
-pub extern "C" fn luaopen_easy(_l: std::ffi::c_void) -> c_int {
-    // Tarantool calls this function upon require("easy")
-    println!("easy module loaded");
-    0
 }
 ```
 We are now ready to provide some usage examples. We will show three difficulty levels of calling a function, from a basic usage example (`easy`), to a couple of more complex shared libraries (`harder` and `hardest`) examples. Additionally, there will be separate examples for reading and writing data.
@@ -163,6 +154,7 @@ Compile the application and start the server:
 $ cargo build
 $ LUA_CPATH=target/debug/lib?.so tarantool init.lua
 ```
+Check that the generated `.so` file is on the `LUA_CPATH` that was specified earlier for the next lines to work.
 
 Although Rust and Lua layout conventions are different, we can take hold of Lua flexibility and fix it by explicitly setting the [LUA_CPATH](https://www.lua.org/pil/8.1.html) environmental variable, as shown above.
 
