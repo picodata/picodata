@@ -155,6 +155,7 @@
 //! [stored procedure]: macro@crate::proc
 pub mod clock;
 pub mod coio;
+pub mod datetime;
 pub mod decimal;
 #[doc(hidden)]
 pub mod define_str_enum;
