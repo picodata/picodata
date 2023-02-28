@@ -785,14 +785,16 @@ impl NodeImpl {
     /// Is called during a transaction
     fn handle_read_states(&mut self, read_states: &[raft::ReadState]) {
         for rs in read_states {
-            let ctx = match traft::EntryContextNormal::read_from_bytes(&rs.request_ctx) {
-                Ok(Some(v)) => v,
-                Ok(None) => continue,
+            if rs.request_ctx.is_empty() {
+                continue;
+            }
+            let ctx = crate::unwrap_ok_or!(
+                traft::EntryContextNormal::from_bytes(&rs.request_ctx),
                 Err(e) => {
                     tlog!(Error, "abnormal read_state: {e}"; "read_state" => ?rs);
                     continue;
                 }
-            };
+            );
 
             if let Some(notify) = self.notifications.remove(&ctx.lc) {
                 notify.notify_ok(rs.index);

@@ -14,6 +14,7 @@ use crate::instance::Instance;
 use crate::stringify_debug;
 use ::raft::prelude as raft;
 use ::tarantool::tuple::Encode;
+use error::CoercionError;
 use op::Op;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -260,18 +261,17 @@ impl<'a> std::fmt::Display for EntryPayload<'a> {
 }
 
 impl EntryContext {
-    fn from_bytes_normal(bytes: &[u8]) -> StdResult<Option<Self>, error::CoercionError> {
-        match EntryContextNormal::read_from_bytes(bytes)? {
-            Some(v) => Ok(Some(Self::Normal(v))),
-            None => Ok(None),
+    pub fn from_raft_entry(e: &raft::Entry) -> StdResult<Option<Self>, CoercionError> {
+        if e.context.is_empty() {
+            return Ok(None);
         }
-    }
-
-    fn from_bytes_conf_change(bytes: &[u8]) -> StdResult<Option<Self>, error::CoercionError> {
-        match EntryContextConfChange::read_from_bytes(bytes)? {
-            Some(v) => Ok(Some(Self::ConfChange(v))),
-            None => Ok(None),
-        }
+        let res = match e.entry_type {
+            raft::EntryType::EntryNormal => Self::Normal(ContextCoercion::from_bytes(&e.context)?),
+            raft::EntryType::EntryConfChange | raft::EntryType::EntryConfChangeV2 => {
+                Self::ConfChange(ContextCoercion::from_bytes(&e.context)?)
+            }
+        };
+        Ok(Some(res))
     }
 
     fn write_to_bytes(ctx: Option<&Self>) -> Vec<u8> {
@@ -292,12 +292,7 @@ impl TryFrom<&raft::Entry> for self::Entry {
             index: e.index,
             term: e.term,
             data: Vec::from(e.get_data()),
-            context: match e.entry_type {
-                raft::EntryType::EntryNormal => EntryContext::from_bytes_normal(&e.context)?,
-                raft::EntryType::EntryConfChange | raft::EntryType::EntryConfChangeV2 => {
-                    EntryContext::from_bytes_conf_change(&e.context)?
-                }
-            },
+            context: EntryContext::from_raft_entry(e)?,
         };
 
         Ok(ret)
@@ -353,22 +348,14 @@ impl TryFrom<self::MessagePb> for raft::Message {
 ///////////////////////////////////////////////////////////////////////////////
 /// This trait allows converting `EntryContext` to / from `Vec<u8>`.
 pub trait ContextCoercion: Serialize + DeserializeOwned {
-    fn read_from_bytes(bytes: &[u8]) -> StdResult<Option<Self>, error::CoercionError> {
-        match bytes {
-            bytes if bytes.is_empty() => Ok(None),
-            bytes => Ok(Some(rmp_serde::from_read_ref(bytes)?)),
-        }
+    #[inline(always)]
+    fn from_bytes(bytes: &[u8]) -> StdResult<Self, error::CoercionError> {
+        Ok(rmp_serde::from_slice(bytes)?)
     }
 
-    fn write_to_bytes(ctx: Option<&Self>) -> Vec<u8> {
-        match ctx {
-            None => vec![],
-            Some(ctx) => rmp_serde::to_vec_named(ctx).unwrap(),
-        }
-    }
-
+    #[inline(always)]
     fn to_bytes(&self) -> Vec<u8> {
-        ContextCoercion::write_to_bytes(Some(self))
+        rmp_serde::to_vec_named(self).unwrap()
     }
 }
 
