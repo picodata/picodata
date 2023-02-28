@@ -6,6 +6,8 @@
 //! ```no_run
 //! # async {
 //! use tarantool::network::client::Client;
+//! // Most of the client's methods are in the `AsClient` trait
+//! use tarantool::network::client::AsClient as _;
 //!
 //! let client = Client::connect("localhost", 3301).await.unwrap();
 //! client.ping().await.unwrap();
@@ -31,6 +33,7 @@
 //! On creation the client spawns sender and receiver worker threads. Which in turn
 //! use coio based [`TcpStream`] as the transport layer.
 
+pub mod reconnect;
 pub mod tcp;
 
 use std::cell::RefCell;
@@ -125,7 +128,7 @@ fn wake_sender(client: &RefCell<ClientInner>) -> Result<(), watch::SendError<()>
 ///
 /// Can be cloned and moved into different fibers for connection to be reused.
 ///
-/// See [`super::client`] for examples.
+/// See [`super::client`] for examples and [`AsClient`] trait for API.
 // WARNING: Attention should be payed not to borrow inner client across await and yield points.
 #[derive(Clone, Debug)]
 pub struct Client(Rc<RefCell<ClientInner>>);
@@ -187,13 +190,66 @@ impl Client {
             State::ClosedWithError(err) => Err(Error::ClosedWithErr(err)),
         }
     }
+}
 
+/// Generic API for an entity that behaves as Tarantool Client.
+#[async_trait::async_trait(?Send)]
+pub trait AsClient {
     /// Send [`Request`] and wait for response.
     /// This function yields.
     ///
     /// # Errors
     /// In case of `ClosedWithErr` it is suggested to recreate the connection.
     /// Other errors are self-descriptive.
+    async fn send<R: Request>(&self, request: &R) -> Result<R::Response, Error>;
+
+    /// Execute a PING command.
+    async fn ping(&self) -> Result<(), Error> {
+        self.send(&Ping).await
+    }
+
+    /// Call a remote stored procedure.
+    ///
+    /// `conn.call("func", &("1", "2", "3"))` is the remote-call equivalent of `func('1', '2', '3')`.
+    /// That is, `conn.call` is a remote stored-procedure call.
+    /// The return from `conn.call` is whatever the function returns.
+    async fn call<T: ToTupleBuffer>(
+        &self,
+        fn_name: &str,
+        args: &T,
+    ) -> Result<Option<Tuple>, Error> {
+        self.send(&Call { fn_name, args }).await
+    }
+
+    /// Evaluates and executes the expression in Lua-string, which may be any statement or series of statements.
+    ///
+    /// An execute privilege is required; if the user does not have it, an administrator may grant it with
+    /// `box.schema.user.grant(username, 'execute', 'universe')`.
+    ///
+    /// To ensure that the return from `eval` is whatever the Lua expression returns, begin the Lua-string with the
+    /// word `return`.
+    async fn eval<T: ToTupleBuffer>(&self, expr: &str, args: &T) -> Result<Option<Tuple>, Error> {
+        self.send(&Eval { args, expr }).await
+    }
+
+    /// Execute sql query remotely.
+    async fn execute<T: ToTupleBuffer>(
+        &self,
+        sql: &str,
+        bind_params: &T,
+        limit: Option<usize>,
+    ) -> Result<Vec<Tuple>, Error> {
+        self.send(&Execute {
+            sql,
+            bind_params,
+            limit,
+        })
+        .await
+    }
+}
+
+#[async_trait::async_trait(?Send)]
+impl AsClient for Client {
     async fn send<R: Request>(&self, request: &R) -> Result<R::Response, Error> {
         self.check_state()?;
         let sync = self.0.borrow_mut().protocol.send_request(request)?;
@@ -214,54 +270,6 @@ impl Client {
             .protocol
             .take_response(sync, request)
             .expect("Is present at this point")?)
-    }
-
-    /// Execute a PING command.
-    pub async fn ping(&self) -> Result<(), Error> {
-        self.send(&Ping).await
-    }
-
-    /// Call a remote stored procedure.
-    ///
-    /// `conn.call("func", &("1", "2", "3"))` is the remote-call equivalent of `func('1', '2', '3')`.
-    /// That is, `conn.call` is a remote stored-procedure call.
-    /// The return from `conn.call` is whatever the function returns.
-    pub async fn call<T: ToTupleBuffer>(
-        &self,
-        fn_name: &str,
-        args: &T,
-    ) -> Result<Option<Tuple>, Error> {
-        self.send(&Call { fn_name, args }).await
-    }
-
-    /// Evaluates and executes the expression in Lua-string, which may be any statement or series of statements.
-    ///
-    /// An execute privilege is required; if the user does not have it, an administrator may grant it with
-    /// `box.schema.user.grant(username, 'execute', 'universe')`.
-    ///
-    /// To ensure that the return from `eval` is whatever the Lua expression returns, begin the Lua-string with the
-    /// word `return`.
-    pub async fn eval<T: ToTupleBuffer>(
-        &self,
-        expr: &str,
-        args: &T,
-    ) -> Result<Option<Tuple>, Error> {
-        self.send(&Eval { args, expr }).await
-    }
-
-    /// Execute sql query remotely.
-    pub async fn execute<T: ToTupleBuffer>(
-        &self,
-        sql: &str,
-        bind_params: &T,
-        limit: Option<usize>,
-    ) -> Result<Vec<Tuple>, Error> {
-        self.send(&Execute {
-            sql,
-            bind_params,
-            limit,
-        })
-        .await
     }
 }
 
@@ -379,6 +387,8 @@ async fn receiver(client: Rc<RefCell<ClientInner>>, mut reader: ReadHalf<TcpStre
                 } else {
                     handle_result!(
                         client_ref,
+                        // FIXME: this is actually a protocol error
+                        // move marker processing into protocol impl
                         Err(Error::Other("unexpected zero message length".to_owned()))
                     )
                 }
@@ -399,7 +409,7 @@ mod tests {
             "localhost",
             TARANTOOL_LISTEN,
             protocol::Config {
-                creds: Some(("test_user".to_owned(), "password".to_owned())),
+                creds: Some(("test_user".into(), "password".into())),
             },
         )
         .timeout(Duration::from_secs(3))

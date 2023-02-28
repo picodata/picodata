@@ -19,6 +19,7 @@
 - `proc::module_path` helper function for getting a path to the dynamically
   linked object file in which the given symbol is defined.
 - `tarantool::network::client` alternative async network client.
+- `tarantool::network::client::reconnect` reconnecting async network client based on `network::client`.
 - `tarantool::network::protocol` sans-io (without transport layer) implementation of Tarantool Binary Protocol.
   Serves as a base for `network::client`, but can be also used independently by other client implementations.
 - `r#async::timeout::Error` enum with `Expired` and `Failed` vairants.

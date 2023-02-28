@@ -6,7 +6,7 @@ use std::{
 use tarantool::{
     fiber,
     net_box::{Conn, ConnOptions, Options},
-    network::client::Client,
+    network::client::{AsClient as _, Client},
     proc,
 };
 

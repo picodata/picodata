@@ -12,3 +12,9 @@
 #[cfg(feature = "network_client")]
 pub mod client;
 pub mod protocol;
+
+#[cfg(feature = "network_client")]
+pub use client::reconnect::Client as ReconnClient;
+#[cfg(feature = "network_client")]
+pub use client::{AsClient, Client, Error};
+pub use protocol::Config;

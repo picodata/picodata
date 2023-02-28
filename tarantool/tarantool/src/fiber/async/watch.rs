@@ -230,6 +230,21 @@ impl<T> Receiver<T> {
         self.state.value.borrow().version != self.seen_version
     }
 
+    /// Marks the new value if it exists as seen.
+    pub fn mark_seen(&mut self) {
+        self.seen_version = self.state.value.borrow().version;
+    }
+
+    #[cfg(feature = "internal_test")]
+    pub fn value_version(&self) -> u64 {
+        self.state.value.borrow().version
+    }
+
+    #[cfg(feature = "internal_test")]
+    pub fn seen_version(&self) -> u64 {
+        self.seen_version
+    }
+
     /// Waits for a change notification, then marks the newest value as seen.
     ///
     /// If the newest value in the channel has not yet been marked seen when

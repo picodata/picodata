@@ -37,7 +37,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 pub enum Error {
     #[error("Tarantool error: {0}")]
     Tarantool(TarantoolError),
-
+    // TODO: Add client and protocol error
     #[error("IO error: {0}")]
     IO(io::Error),
 

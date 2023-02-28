@@ -64,7 +64,7 @@ impl SyncIndex {
 #[derive(Debug, thiserror::Error)]
 #[error("{message}")]
 pub struct ResponseError {
-    message: String,
+    pub(crate) message: String,
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
