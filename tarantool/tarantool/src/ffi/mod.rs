@@ -3,6 +3,8 @@ pub mod helper;
 #[doc(hidden)]
 pub use ::tlua::ffi as lua;
 #[doc(hidden)]
+pub mod datetime;
+#[doc(hidden)]
 pub mod decimal;
 #[doc(hidden)]
 pub mod sql;
@@ -46,4 +48,13 @@ pub fn has_tuple_field_by_path() -> bool {
         helper::has_dyn_symbol(c_str(tarantool::TUPLE_FIELD_BY_PATH_NEW_API.as_bytes()))
             | helper::has_dyn_symbol(c_str(tarantool::TUPLE_FIELD_BY_PATH_OLD_API.as_bytes()))
     }
+}
+
+/// Check whether the current tarantool executable supports datetime api.
+/// If this function returns `false` using functions in
+/// [`tarantool::datetime`] may result in a **panic**.
+///
+/// [`tarantool::datetime`]: mod@crate::datetime
+pub fn has_datetime() -> bool {
+    unsafe { helper::has_dyn_symbol(crate::c_str!("tnt_mp_encode_datetime")) }
 }

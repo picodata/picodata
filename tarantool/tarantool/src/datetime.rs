@@ -1,3 +1,6 @@
+use crate::ffi::datetime as ffi;
+use num_traits::ToPrimitive;
+use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use std::convert::TryInto;
 use std::fmt::Display;
@@ -6,16 +9,24 @@ use time::{Duration, UtcOffset};
 
 type Inner = time::OffsetDateTime;
 
-const MP_DATETIME: std::os::raw::c_char = 4;
-
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
     #[error("incorrect timestamp value")]
     WrongUnixTimestamp(time::error::ComponentRange),
     #[error("incorrect offset value")]
     WrongUtcOffset(time::error::ComponentRange),
+    #[error("error while convert type of epoch value")]
+    ErrorEpochTypeConvert,
 }
 
+/// A Datetime type implemented using the builtin tarantool api. **Note** that
+/// this api is not available in all versions of tarantool.
+/// Use [`tarantool::ffi::has_datetime`] to check if it is supported in your
+/// case.
+/// If `has_datetime` return `false`, using functions from this module
+/// may result in a **panic**.
+///
+/// [`tarantool::ffi::has_datetime`]: crate::ffi::has_datetime
 #[derive(Debug, Copy, Clone, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct Datetime {
     inner: Inner,
@@ -68,6 +79,29 @@ impl Datetime {
 
         buf
     }
+
+    #[inline(always)]
+    fn from_ffi_dt(inner: ffi::datetime) -> Result<Self, Error> {
+        let utc_offset = UtcOffset::from_whole_seconds((inner.tzoffset * 60).into())
+            .map_err(Error::WrongUtcOffset)?;
+        let dt =
+            Inner::from_unix_timestamp(inner.epoch.to_i64().ok_or(Error::ErrorEpochTypeConvert)?)
+                .map_err(Error::WrongUnixTimestamp)?
+                .to_offset(utc_offset)
+                + Duration::nanoseconds(inner.nsec as i64);
+
+        Ok(dt.into())
+    }
+
+    #[inline(always)]
+    fn as_ffi_dt(&self) -> ffi::datetime {
+        ffi::datetime {
+            epoch: self.inner.unix_timestamp() as f64,
+            nsec: self.inner.nanosecond() as i32,
+            tzoffset: self.inner.offset().whole_minutes(),
+            tzindex: 0,
+        }
+    }
 }
 
 impl From<Inner> for Datetime {
@@ -103,7 +137,8 @@ impl serde::Serialize for Datetime {
         struct _ExtStruct((c_char, serde_bytes::ByteBuf));
 
         let data = self.as_bytes_tt();
-        _ExtStruct((MP_DATETIME, serde_bytes::ByteBuf::from(&data as &[_]))).serialize(serializer)
+        _ExtStruct((ffi::MP_DATETIME, serde_bytes::ByteBuf::from(&data as &[_])))
+            .serialize(serializer)
     }
 }
 
@@ -117,7 +152,7 @@ impl<'de> serde::Deserialize<'de> for Datetime {
 
         let _ExtStruct((kind, bytes)) = serde::Deserialize::deserialize(deserializer)?;
 
-        if kind != MP_DATETIME {
+        if kind != ffi::MP_DATETIME {
             return Err(serde::de::Error::custom(format!(
                 "Expected Datetime, found msgpack ext #{}",
                 kind
@@ -136,6 +171,72 @@ impl<'de> serde::Deserialize<'de> for Datetime {
             .map_err(|_| serde::de::Error::custom("Error decoding msgpack bytes"))
     }
 }
+
+////////////////////////////////////////////////////////////////////////////////
+/// Lua
+////////////////////////////////////////////////////////////////////////////////
+
+static CTID_DATETIME: Lazy<u32> = Lazy::new(|| {
+    if !crate::ffi::has_datetime() {
+        panic!("datetime is not supported in current tarantool version")
+    }
+    use tlua::AsLua;
+    let lua = crate::global_lua();
+    let ctid_datetime =
+        unsafe { tlua::ffi::luaL_ctypeid(lua.as_lua(), crate::c_ptr!("struct datetime")) };
+    ctid_datetime
+});
+
+impl<L> tlua::LuaRead<L> for Datetime
+where
+    L: tlua::AsLua,
+{
+    fn lua_read_at_position(lua: L, index: std::num::NonZeroI32) -> Result<Self, L> {
+        let raw_lua = lua.as_lua();
+        let index = index.get();
+        unsafe {
+            if tlua::ffi::lua_type(raw_lua, index) != tlua::ffi::LUA_TCDATA {
+                return Err(lua);
+            }
+            let mut ctypeid = std::mem::MaybeUninit::uninit();
+            let cdata = tlua::ffi::luaL_checkcdata(raw_lua, index, ctypeid.as_mut_ptr());
+            if ctypeid.assume_init() != *CTID_DATETIME {
+                return Err(lua);
+            }
+
+            Self::from_ffi_dt(*cdata.cast::<ffi::datetime>()).map_err(|_| lua)
+        }
+    }
+}
+
+#[inline(always)]
+fn push_datetime<L: tlua::AsLua>(lua: L, d: ffi::datetime) -> tlua::PushGuard<L> {
+    unsafe {
+        let dec = tlua::ffi::luaL_pushcdata(lua.as_lua(), *CTID_DATETIME);
+        std::ptr::write(dec.cast::<ffi::datetime>(), d);
+        tlua::PushGuard::new(lua, 1)
+    }
+}
+
+impl<L: tlua::AsLua> tlua::Push<L> for Datetime {
+    type Err = tlua::Void;
+
+    fn push_to_lua(&self, lua: L) -> Result<tlua::PushGuard<L>, (Self::Err, L)> {
+        Ok(push_datetime(lua, self.as_ffi_dt()))
+    }
+}
+
+impl<L: tlua::AsLua> tlua::PushOne<L> for Datetime {}
+
+impl<L: tlua::AsLua> tlua::PushInto<L> for Datetime {
+    type Err = tlua::Void;
+
+    fn push_into_lua(self, lua: L) -> Result<tlua::PushGuard<L>, (Self::Err, L)> {
+        Ok(push_datetime(lua, self.as_ffi_dt()))
+    }
+}
+
+impl<L: tlua::AsLua> tlua::PushOneInto<L> for Datetime {}
 
 #[cfg(test)]
 mod tests {

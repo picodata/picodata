@@ -25,6 +25,8 @@ rmpv = { version = "1", features = ["with-serde"] }
 libc = "*"
 futures = "0.3.25"
 linkme = "0.2.10"
+time = "=0.3.17"
+time-macros = "=0.2.6"
 
 [dependencies.tarantool]
 path = "../tarantool"

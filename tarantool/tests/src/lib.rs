@@ -23,6 +23,7 @@ use tarantool::space::{Field, FieldType, Space};
 mod r#box;
 mod coio;
 mod common;
+mod datetime;
 mod decimal;
 mod define_str_enum;
 mod enums;
@@ -549,6 +550,13 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 enums::index_field_type,
                 enums::rtree_index_distance_type,
                 test_attr::with_custom_section,
+            ]);
+            tests.append(&mut tests![
+                [should_panic_if: !tarantool::ffi::has_datetime()]
+                datetime::to_tuple,
+                datetime::from_tuple,
+                datetime::to_lua,
+                datetime::from_lua,
             ]);
 
             #[cfg(feature = "picodata")]
