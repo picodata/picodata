@@ -8,6 +8,7 @@ use crate::traft::Result;
 use crate::util::{downcast, AnyWithTypeName};
 
 pub struct Notifier(oneshot::Sender<Result<Box<dyn AnyWithTypeName>>>);
+#[must_use]
 pub struct Notify(oneshot::Receiver<Result<Box<dyn AnyWithTypeName>>>);
 
 #[inline]

@@ -60,6 +60,10 @@ pub enum Error {
     LeaderUnknown,
     #[error("governor has stopped")]
     GovernorStopped,
+
+    #[error("compare-and-swap request failed: {0}")]
+    Cas(#[from] crate::traft::rpc::cas::Error),
+
     #[error("other error: {0}")]
     Other(Box<dyn std::error::Error>),
 }

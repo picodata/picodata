@@ -1,5 +1,6 @@
 use ::tarantool::index::{Index, IndexIterator, IteratorType};
 use ::tarantool::space::{FieldType, Space};
+use ::tarantool::tuple::KeyDef;
 use ::tarantool::tuple::{DecodeOwned, ToTupleBuffer, Tuple};
 
 use crate::failure_domain as fd;
@@ -11,6 +12,8 @@ use crate::traft::Migration;
 use crate::traft::RaftId;
 use crate::traft::Result;
 
+use std::collections::hash_map::Entry;
+use std::collections::HashMap;
 use std::marker::PhantomData;
 
 macro_rules! define_clusterwide_spaces {
@@ -100,6 +103,84 @@ macro_rules! define_clusterwide_spaces {
             pub fn is_primary(&self) -> bool {
                 match self {
                     $( Self::$cw_space_var(idx) => idx.is_primary(), )+
+                }
+            }
+        }
+
+        impl<L: ::tarantool::tlua::AsLua> ::tarantool::tlua::LuaRead<L> for $cw_index {
+            fn lua_read_at_position(lua: L, index: ::std::num::NonZeroI32) -> ::tarantool::tlua::ReadResult<Self, L> {
+                use ::tarantool::tlua;
+
+                #[derive(tlua::LuaRead)]
+                struct ClusterwideSpaceIndexInfo {
+                    name: Option<String>,
+                    index_name: Option<String>,
+                    space_id: Option<u32>,
+                    space_name: Option<String>,
+                }
+
+                let when = "reading cluster-wide space index info";
+                let info = $crate::unwrap_ok_or! {
+                    ClusterwideSpaceIndexInfo::lua_read_at_position(&lua, index),
+                    Err((_, err)) => {
+                        let err = err.when(when).expected("Lua table");
+                        return Err((lua, err));
+                    }
+                };
+
+                let index_name = if let Some(index_name) = info.name {
+                    index_name
+                } else if let Some(index_name) = info.index_name {
+                    index_name
+                } else {
+                    let err = tlua::WrongType::info(when)
+                        .expected("field 'name' or 'index_name'")
+                        .actual("table with none of them");
+                    return Err((lua, err));
+                };
+
+                let space_name = if let Some(space_name) = info.space_name {
+                    space_name
+                } else if let Some(space_id) = info.space_id {
+                    let space = unsafe { Space::from_id_unchecked(space_id) };
+                    let meta = $crate::unwrap_ok_or! { space.meta(),
+                        Err(err) => {
+                            let err = tlua::WrongType::info(when)
+                                .expected("valid space id")
+                                .actual(format!("error: {err}"));
+                            return Err((lua, err));
+                        }
+                    };
+                    meta.name.into()
+                } else {
+                    let err = tlua::WrongType::info(when)
+                        .expected("field 'space_name' or 'space_id'")
+                        .actual("table with none of them");
+                    return Err((lua, err));
+                };
+
+                match &*space_name {
+                    $(
+                        $cw_space_name => {
+                            let index = match &*index_name {
+                                $index_name_pk => $index::$index_var_pk,
+                                $( $index_name => $index::$index_var, )*
+                                unknown_index => {
+                                    let err = tlua::WrongType::info(when)
+                                        .expected(format!("one of {:?}", $index_of::<$space>::values()))
+                                        .actual(unknown_index);
+                                    return Err((lua, err))
+                                }
+                            };
+                            Ok(Self::$cw_space_var(index))
+                        }
+                    )+
+                    unknown_space => {
+                        let err = tlua::WrongType::info(when)
+                            .expected(format!("one of {:?}", $cw_space::values()))
+                            .actual(unknown_space);
+                        return Err((lua, err))
+                    }
                 }
             }
         }
@@ -276,7 +357,7 @@ define_clusterwide_spaces! {
 
 impl ClusterwideSpace {
     #[inline]
-    fn get(&self) -> tarantool::Result<Space> {
+    pub(crate) fn get(&self) -> tarantool::Result<Space> {
         Space::find_cached(self.as_str()).ok_or_else(|| {
             tarantool::set_error!(
                 tarantool::error::TarantoolErrorCode::NoSuchSpace,
@@ -318,7 +399,7 @@ pub type IndexOf<T> = <T as TClusterwideSpace>::Index;
 
 impl ClusterwideSpaceIndex {
     #[inline]
-    fn get(&self) -> tarantool::Result<Index> {
+    pub(crate) fn get(&self) -> tarantool::Result<Index> {
         let space = self.space().get()?;
         let index_name = self.index_name();
         let Some(index) = space.index_cached(index_name) else {
@@ -329,6 +410,36 @@ impl ClusterwideSpaceIndex {
             return Err(tarantool::error::TarantoolError::last().into());
         };
         Ok(index)
+    }
+
+    /// Return reference to a cached instance of `KeyDef` to be used for
+    /// comparing **tuples** of the corresponding cluster-wide space.
+    pub(crate) fn key_def(&self) -> tarantool::Result<&'static KeyDef> {
+        static mut KEY_DEF: Option<HashMap<ClusterwideSpaceIndex, KeyDef>> = None;
+        let key_defs = unsafe { KEY_DEF.get_or_insert_with(HashMap::new) };
+        let key_def = match key_defs.entry(*self) {
+            Entry::Occupied(o) => o.into_mut(),
+            Entry::Vacant(v) => {
+                let key_def = self.get()?.meta()?.to_key_def();
+                v.insert(key_def)
+            }
+        };
+        Ok(key_def)
+    }
+
+    /// Return reference to a cached instance of `KeyDef` to be used for
+    /// comparing **keys** of the corresponding cluster-wide space.
+    pub(crate) fn key_def_for_key(&self) -> tarantool::Result<&'static KeyDef> {
+        static mut KEY_DEF: Option<HashMap<ClusterwideSpaceIndex, KeyDef>> = None;
+        let key_defs = unsafe { KEY_DEF.get_or_insert_with(HashMap::new) };
+        let key_def = match key_defs.entry(*self) {
+            Entry::Occupied(o) => o.into_mut(),
+            Entry::Vacant(v) => {
+                let key_def = self.get()?.meta()?.to_key_def_for_key();
+                v.insert(key_def)
+            }
+        };
+        Ok(key_def)
     }
 
     #[inline]

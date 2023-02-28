@@ -2,6 +2,7 @@ use crate::instance::Instance;
 use crate::storage;
 use crate::storage::{ClusterwideSpace, ClusterwideSpaceIndex};
 use crate::util::AnyWithTypeName;
+use ::tarantool::tlua;
 use ::tarantool::tlua::LuaError;
 use ::tarantool::tuple::{ToTupleBuffer, Tuple, TupleBuffer};
 use serde::{Deserialize, Serialize};
@@ -220,6 +221,15 @@ pub enum Dml {
     },
 }
 
+::tarantool::define_str_enum! {
+    pub enum DmlKind {
+        Insert = "insert",
+        Replace = "replace",
+        Update = "update",
+        Delete = "delete",
+    }
+}
+
 impl OpResult for Dml {
     type Result = tarantool::Result<Option<Tuple>>;
     fn result(self) -> Self::Result {
@@ -306,6 +316,57 @@ impl Dml {
             Self::Delete { index, .. } => *index,
         }
     }
+
+    /// Parse lua arguments to an api function such as `pico.cas`.
+    pub fn from_lua_args(op: DmlInLua, index: ClusterwideSpaceIndex) -> Result<Self, String> {
+        match op.kind {
+            DmlKind::Insert => {
+                let Some(tuple) = op.tuple else {
+                    return Err("insert operation must have a tuple".into());
+                };
+                Ok(Self::Insert {
+                    space: index.space(),
+                    tuple,
+                })
+            }
+            DmlKind::Replace => {
+                let Some(tuple) = op.tuple else {
+                    return Err("replace operation must have a tuple".into());
+                };
+                Ok(Self::Replace {
+                    space: index.space(),
+                    tuple,
+                })
+            }
+            DmlKind::Update => {
+                let Some(key) = op.key else {
+                    return Err("update operation must have a key".into());
+                };
+                let Some(ops) = op.ops else {
+                    return Err("update operation must have ops".into());
+                };
+                Ok(Self::Update { index, key, ops })
+            }
+            DmlKind::Delete => {
+                let Some(key) = op.key else {
+                    return Err("delete operation must have a key".into());
+                };
+                Ok(Self::Delete { index, key })
+            }
+        }
+    }
+}
+
+/// Represents a lua table describing a [`Dml`] operation.
+///
+/// This is only used to parse lua arguments from lua api functions such as
+/// `pico.cas`.
+#[derive(Clone, Debug, PartialEq, Eq, tlua::LuaRead)]
+pub struct DmlInLua {
+    pub kind: DmlKind,
+    pub tuple: Option<TupleBuffer>,
+    pub key: Option<TupleBuffer>,
+    pub ops: Option<Vec<TupleBuffer>>,
 }
 
 mod vec_of_raw_byte_buf {

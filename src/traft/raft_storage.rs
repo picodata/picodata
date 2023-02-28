@@ -138,8 +138,10 @@ impl RaftSpaceAccess {
         fn learners_next(&self) -> _<Vec<RaftId>>;
         fn auto_leave(&self) -> _<bool>;
 
-        fn compacted_term(&self) -> _<RaftTerm>;
+        /// Returns `compacted_index` that is `first_index - 1`.
         fn compacted_index(&self) -> _<RaftIndex>;
+        /// Returns the term of entry at `compacted_index`.
+        fn compacted_term(&self) -> _<RaftTerm>;
     }
 
     pub fn conf_state(&self) -> tarantool::Result<raft::ConfState> {
@@ -175,16 +177,16 @@ impl RaftSpaceAccess {
     ///
     /// Panics if `high` < `low`.
     ///
-    pub fn entries(&self, low: RaftIndex, high: RaftIndex) -> tarantool::Result<Vec<raft::Entry>> {
+    pub fn entries(&self, low: RaftIndex, high: RaftIndex) -> tarantool::Result<Vec<traft::Entry>> {
         let iter = self.space_raft_log.select(IteratorType::GE, &(low,))?;
         let mut ret = Vec::with_capacity((high - low) as usize);
 
         for tuple in iter {
-            let row: traft::Entry = tuple.decode()?;
+            let row = tuple.decode::<traft::Entry>()?;
             if row.index >= high {
                 break;
             }
-            ret.push(row.into());
+            ret.push(row);
         }
 
         Ok(ret)
@@ -248,6 +250,12 @@ impl RaftSpaceAccess {
         Ok(())
     }
 
+    /// Persists a slice of entries.
+    ///
+    /// # Panics
+    ///
+    /// Panics if one `raft::Entry` of provided fails to be converted
+    /// into `traft::Entry`.
     pub fn persist_entries(&self, entries: &[raft::Entry]) -> tarantool::Result<()> {
         for e in entries {
             let row = traft::Entry::try_from(e).unwrap();
@@ -345,11 +353,11 @@ impl raft::Storage for RaftSpaceAccess {
             return Err(RaftError::Store(StorageError::Compacted));
         }
 
-        let ret = self.entries(low, high).cvt_err()?;
+        let ret: Vec<traft::Entry> = self.entries(low, high).cvt_err()?;
         if ret.len() < (high - low) as usize {
             return Err(RaftError::Store(StorageError::Unavailable));
         }
-        Ok(ret)
+        Ok(ret.into_iter().map(Into::into).collect())
     }
 
     /// Returns the term of entry `idx`.
@@ -503,6 +511,8 @@ mod tests {
         assert_err!(S::term(&storage, 0), "log compacted");
         assert_eq!(S::term(&storage, 99), Ok(9));
         assert_err!(S::term(&storage, 100), "log unavailable");
+
+        assert_eq!(S::entries(&storage, 100, 100, u64::MAX), Ok(vec![]));
 
         // Part 3. Add some new entries.
         let test_entries = vec![

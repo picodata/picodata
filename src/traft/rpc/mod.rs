@@ -11,6 +11,7 @@ use std::io;
 
 use serde::de::DeserializeOwned;
 
+pub mod cas;
 pub mod expel;
 pub mod join;
 pub mod migration;

@@ -41,6 +41,7 @@ use ::raft::StorageError;
 use ::raft::INVALID_ID;
 use ::tarantool::error::{TarantoolError, TransactionError};
 use ::tarantool::fiber;
+use ::tarantool::fiber::mutex::MutexGuard;
 use ::tarantool::fiber::r#async::timeout::IntoTimeout as _;
 use ::tarantool::fiber::r#async::{oneshot, watch};
 use ::tarantool::fiber::Mutex;
@@ -175,6 +176,10 @@ impl Node {
 
     pub fn status(&self) -> Status {
         self.status.get()
+    }
+
+    pub(crate) fn node_impl(&self) -> MutexGuard<NodeImpl> {
+        self.node_impl.lock()
     }
 
     /// Wait for the status to be changed.
@@ -344,7 +349,7 @@ impl Node {
     }
 }
 
-struct NodeImpl {
+pub(crate) struct NodeImpl {
     pub raw_node: RawNode,
     pub notifications: HashMap<LogicalClock, Notifier>,
     topology_cache: KVCell<RaftTerm, Topology>,
@@ -466,6 +471,7 @@ impl NodeImpl {
 
     /// **Doesn't yield**
     #[inline]
+    // TODO: rename and document
     pub fn propose_async<T>(&mut self, op: T) -> Result<Notify, RaftError>
     where
         T: Into<Op>,
