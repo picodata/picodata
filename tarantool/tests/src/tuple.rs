@@ -2,6 +2,7 @@ use std::cmp::Ordering;
 use std::collections::BTreeMap;
 
 use serde::Serialize;
+use tarantool::ffi::tarantool as ffi;
 use tarantool::tlua::{Index, Indexable, Nil};
 use tarantool::tuple::{
     Encode, FieldType, KeyDef, KeyDefPart, RawByteBuf, RawBytes, Tuple, TupleBuffer,
@@ -342,6 +343,7 @@ pub fn tuple_compare_with_key() {
 }
 
 pub fn to_and_from_lua() {
+    let svp = unsafe { ffi::box_region_used() };
     let tuple = Tuple::new(&S2Record {
         id: 42,
         key: "hello".into(),
@@ -355,11 +357,13 @@ pub fn to_and_from_lua() {
     lua.set("to_and_from_lua", &tuple);
 
     let tuple: Tuple = lua
-        .eval(
-            "
-        return box.tuple.new{ 1, 3.14, 'hello', { 10, 20, 30 } }
-    ",
-        )
+        .eval("return box.tuple.new{ 1, 3.14, 'hello', { 10, 20, 30 } }")
+        .unwrap();
+    let data: (u32, f64, String, [u32; 3]) = tuple.decode().unwrap();
+    assert_eq!(data, (1, 3.14, "hello".to_string(), [10, 20, 30]));
+
+    let tuple: Tuple = lua
+        .eval("return { 1, 3.14, 'hello', { 10, 20, 30 } }")
         .unwrap();
     let data: (u32, f64, String, [u32; 3]) = tuple.decode().unwrap();
     assert_eq!(data, (1, 3.14, "hello".to_string(), [10, 20, 30]));
@@ -393,6 +397,8 @@ pub fn to_and_from_lua() {
     assert_eq!(res.get(3), Some(1337));
 
     lua.set("to_and_from_lua", Nil);
+
+    assert_eq!(svp, unsafe { ffi::box_region_used() });
 }
 
 pub fn tuple_debug_fmt() {

@@ -187,6 +187,11 @@ impl TarantoolError {
             .to_string_lossy()
             .to_string()
     }
+
+    /// Return the error message
+    pub fn message(&self) -> &str {
+        &self.message
+    }
 }
 
 impl Display for TarantoolError {

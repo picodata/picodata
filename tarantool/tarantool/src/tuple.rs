@@ -1373,14 +1373,45 @@ where
     L: tlua::AsLua,
 {
     fn lua_read_at_position(lua: L, index: std::num::NonZeroI32) -> tlua::ReadResult<Self, L> {
-        let ptr = unsafe { ffi::luaT_istuple(tlua::AsLua::as_lua(&lua), index.get()) };
-        if let Some(t) = Self::try_from_ptr(ptr) {
-            Ok(t)
-        } else {
+        let lua_ptr = tlua::AsLua::as_lua(&lua);
+        let mut ptr = unsafe { ffi::luaT_istuple(lua_ptr, index.get()) };
+        if ptr.is_null() {
+            let format = TupleFormat::default();
+            ptr = unsafe { ffi::luaT_tuple_new(lua_ptr, index.get(), format.inner) };
+        }
+        Self::try_from_ptr(ptr).ok_or_else(|| {
             let e = tlua::WrongType::info("reading tarantool tuple")
                 .expected_type::<Self>()
                 .actual_single_lua(&lua, index);
-            Err((lua, e))
+            (lua, e)
+        })
+    }
+}
+
+impl<L> tlua::LuaRead<L> for TupleBuffer
+where
+    L: tlua::AsLua,
+{
+    fn lua_read_at_position(lua: L, index: std::num::NonZeroI32) -> tlua::ReadResult<Self, L> {
+        unsafe {
+            let svp = ffi::box_region_used();
+            let lua_ptr = tlua::AsLua::as_lua(&lua);
+            let ptr = ffi::luaT_istuple(lua_ptr, index.get());
+            if let Some(tuple) = Tuple::try_from_ptr(ptr) {
+                return Ok(Self::from(tuple));
+            }
+            let mut len = 0;
+            let data = ffi::luaT_tuple_encode(lua_ptr, index.get(), &mut len);
+            if data.is_null() {
+                let e = tlua::WrongType::info("converting Lua value to tarantool tuple")
+                    .expected("msgpack array")
+                    .actual(format!("error: {}", TarantoolError::last().message()));
+                return Err((lua, e));
+            }
+            let data = std::slice::from_raw_parts(data, len);
+            let data = Vec::from(data);
+            ffi::box_region_truncate(svp);
+            Ok(Self::from_vec_unchecked(data))
         }
     }
 }
@@ -1824,5 +1855,64 @@ mod tests {
         original.encode(&mut bytes, false).unwrap();
         let decoded: BTreeMap<u32, String> = rmp_serde::from_slice(bytes.as_slice()).unwrap();
         assert_eq!(original, decoded);
+    }
+}
+
+#[cfg(feature = "internal_test")]
+mod test {
+    use super::*;
+
+    #[crate::test(tarantool = "crate")]
+    fn tuple_buffer_from_lua() {
+        let svp = unsafe { ffi::box_region_used() };
+
+        let lua = crate::lua_state();
+        let t: TupleBuffer = lua
+            .eval("return { 3, 'foo', { true, box.NIL, false } }")
+            .unwrap();
+
+        #[derive(::serde::Deserialize, PartialEq, Eq, Debug)]
+        struct S {
+            i: i32,
+            s: String,
+            t: [Option<bool>; 3],
+        }
+
+        let s = S::decode(t.as_ref()).unwrap();
+        assert_eq!(
+            s,
+            S {
+                i: 3,
+                s: "foo".into(),
+                t: [Some(true), None, Some(false)]
+            }
+        );
+
+        let res = lua.eval::<TupleBuffer>("return 1, 2, 3");
+        assert_eq!(
+            res.unwrap_err().to_string(),
+            "failed converting Lua value to tarantool tuple: msgpack array expected, got error: A tuple or a table expected, got number
+    while reading value(s) returned by Lua: tarantool::tuple::TupleBuffer expected, got (number, number, number)"
+        );
+
+        let res = lua.eval::<TupleBuffer>("return { 1, 2, foo = 'bar' }");
+        assert_eq!(
+            res.unwrap_err().to_string(),
+            "failed converting Lua value to tarantool tuple: msgpack array expected, got error: Tuple/Key must be MsgPack array
+    while reading value(s) returned by Lua: tarantool::tuple::TupleBuffer expected, got table"
+        );
+
+        let res = lua.eval::<TupleBuffer>(
+            "ffi = require 'ffi';
+            local cdata = ffi.new('struct { int x; int y; }', { x = -1, y = 2 })
+            return { 1, cdata }",
+        );
+        assert_eq!(
+            res.unwrap_err().to_string(),
+            "failed converting Lua value to tarantool tuple: msgpack array expected, got error: unsupported Lua type 'cdata'
+    while reading value(s) returned by Lua: tarantool::tuple::TupleBuffer expected, got table"
+        );
+
+        assert_eq!(svp, unsafe { ffi::box_region_used() });
     }
 }

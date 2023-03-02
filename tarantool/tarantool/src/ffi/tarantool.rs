@@ -972,6 +972,37 @@ extern "C" {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// box_region
+////////////////////////////////////////////////////////////////////////////////
+
+extern "C" {
+    /// How much memory is used by the box region.
+    pub fn box_region_used() -> usize;
+
+    /// Allocate size bytes from the box region.
+    ///
+    /// Don't use this function to allocate a memory block for a value
+    /// or array of values of a type with alignment requirements. A
+    /// violation of alignment requirements leads to undefined
+    /// behaviour.
+    ///
+    /// In case of a memory error set a diag and return NULL.
+    /// See also [`box_error_last`].
+    pub fn box_region_alloc(size: usize) -> *mut c_void;
+
+    /// Allocate size bytes from the box region with given alignment.
+    ///
+    /// Alignment must be a power of 2.
+    ///
+    /// In case of a memory error set a diag and return NULL.
+    /// See also [`box_error_last`].
+    pub fn box_region_aligned_alloc(size: usize, alignment: usize) -> *mut c_void;
+
+    /// Truncate the box region to the given size.
+    pub fn box_region_truncate(size: usize);
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // ...
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -1021,6 +1052,12 @@ extern "C" {
     pub fn luaT_call(l: *mut lua_State, nargs: c_int, nreturns: c_int) -> isize;
     pub fn luaT_istuple(l: *mut lua_State, index: i32) -> *mut BoxTuple;
     pub fn luaT_pushtuple(l: *mut lua_State, tuple: *mut BoxTuple);
+    pub fn luaT_tuple_encode(l: *mut lua_State, index: i32, len: *mut usize) -> *const u8;
+    pub fn luaT_tuple_new(
+        l: *mut lua_State,
+        index: i32,
+        format: *mut BoxTupleFormat,
+    ) -> *mut BoxTuple;
 }
 
 extern "C" {

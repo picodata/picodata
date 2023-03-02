@@ -33,8 +33,10 @@
     `tarantool::define_str_enum`.
 - `WrongType::[info|when|actual*|expected*|subtype*]` constructor methods to be
     used in impl LuaRead for user defined types.
+- `impl LuaRead for TupleBuffer`.
 - `LuaTable::try_get` method for checking which error happened.
 - `fiber::r#async::Mutex` an async Mutex, with guard that can be held across await points.
+- `TarantoolError::message()` method for getting just the error message.
 - `T::as_cstr` method returning std::ffi::CStr is now implemented for
     enums defined with `tarantool::define_str_enum`.
 - `T::values` method returning a static slice of static str variant names
@@ -54,6 +56,7 @@
     resolves into a `std::result::Result<T, E>` and timeout itself now resolves
     into `r#async::timeout::Result`.
 - `LuaRead` methods now return `WrongType` error in case of failure.
+- `LuaRead` for `Tuple` now accepts arbitrary lua tables, not only tuples.
 - `KeyDef::new` now accepts iterator over references to `KeyDefPart` and returns
     a result.
 
