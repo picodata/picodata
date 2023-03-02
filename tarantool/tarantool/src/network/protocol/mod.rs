@@ -11,7 +11,7 @@ pub mod codec;
 
 use std::cmp;
 use std::collections::HashMap;
-use std::io::{Cursor, Read, Seek};
+use std::io::{self, Cursor, Read, Seek};
 use std::str::Utf8Error;
 use std::vec::Drain;
 
@@ -31,15 +31,21 @@ pub enum Error {
     #[error("service responded with error: {0}")]
     Response(#[from] ResponseError),
     #[error("io error: {0}")]
-    Io(#[from] std::io::Error),
-    // TODO: Remove when `Encode` trait will return rmp errors
-    #[error("{0}")]
-    Other(#[from] Box<crate::error::Error>),
+    Io(#[from] io::Error),
+    #[error("message size hint is 0")]
+    ZeroSizeHint,
+    /// This type of error is only present in codec
+    /// due to ToTupleBuffer implementation using generic Tarantool Error.
+    /// So should be related to encode/decode.
+    // TODO: remove this variant when ToTupleBuffer switches to more specific errors
+    #[error("encode/decode error: {0}")]
+    Tarantool(Box<crate::error::Error>),
 }
 
+// TODO: remove this conversion when ToTupleBuffer switches to more specific errors
 impl From<crate::error::Error> for Error {
-    fn from(value: crate::error::Error) -> Self {
-        Self::Other(Box::new(value))
+    fn from(err: crate::error::Error) -> Self {
+        Error::Tarantool(Box::new(err))
     }
 }
 
@@ -61,7 +67,7 @@ impl SyncIndex {
 /// It represents an error with which Tarantool server
 /// answers to the client in case of faulty request or an error
 /// during request execution on the server side.
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, Clone)]
 #[error("{message}")]
 pub struct ResponseError {
     pub(crate) message: String,
@@ -75,17 +81,6 @@ enum State {
     Auth,
     /// Ready to accept new messages
     Ready,
-}
-
-/// A hint to a client implementation on the expected size of the next
-/// message that should be read by receiver.
-#[derive(Debug, Eq, PartialEq, Clone, Copy)]
-pub enum SizeHint {
-    /// Receiver should read exactly `n` bytes in `Hint(n)`.
-    Hint(usize),
-    // TODO: Eliminate this option? Process first u32 here and always give exact hint
-    /// The first `u32` that will be read by receiver identifies the size of the message.
-    FirstU32,
 }
 
 /// Configuration of [`Protocol`].
@@ -107,6 +102,7 @@ pub struct Config {
 #[derive(Debug)]
 pub struct Protocol {
     state: State,
+    msg_size_hint: Option<usize>,
     outgoing: Vec<u8>,
     pending_outgoing: Vec<u8>,
     sync: SyncIndex,
@@ -132,6 +128,8 @@ impl Protocol {
             creds: None,
             outgoing: Vec::new(),
             incoming: HashMap::new(),
+            // Greeting is exactly 128 bytes
+            msg_size_hint: Some(128),
         }
     }
 
@@ -186,17 +184,24 @@ impl Protocol {
         self.incoming.remove(&sync);
     }
 
-    /// Get [`SizeHint`]. See [`SizeHint`] struct description for more information.
-    pub fn read_size_hint(&self) -> SizeHint {
-        if let State::Init = self.state {
-            // Greeting message is exactly 128 bytes
-            SizeHint::Hint(128)
+    /// See [`Protocol::process_incoming`].
+    pub fn read_size_hint(&self) -> usize {
+        if let Some(hint) = self.msg_size_hint {
+            hint
         } else {
-            SizeHint::FirstU32
+            // Reading the U32 message size hint
+            // Read 5 bytes, 1st is a marker
+            5
         }
     }
 
     /// Processes incoming bytes received over transport layer.
+    ///
+    /// Should be used together with [`Protocol::read_size_hint`] e.g:
+    /// 1. Call `read_size_hint` and get its value.
+    ///    It is the number of bytes a client implementation should read from transport.
+    /// 2. Read the required number of bytes from transport
+    /// 3. Call [`Protocol::process_incoming`] with these bytes.
     ///
     /// Returns a [`SyncIndex`] if non-technical message was received.
     /// This message can be retreived by this index with [`Protocol::take_response`].
@@ -204,9 +209,29 @@ impl Protocol {
         &mut self,
         chunk: &mut R,
     ) -> Result<Option<SyncIndex>, Error> {
+        if self.msg_size_hint.is_some() {
+            // Message size hint was already read at previous call - now processing message
+            self.msg_size_hint = None;
+            self.process_message(chunk)
+        } else {
+            // Message was read at previous call - now reading size hint
+            let hint = rmp::decode::read_u32(chunk)?;
+            if hint > 0 {
+                self.msg_size_hint = Some(hint as usize);
+                Ok(None)
+            } else {
+                Err(Error::ZeroSizeHint)
+            }
+        }
+    }
+
+    fn process_message<R: Read + Seek>(
+        &mut self,
+        message: &mut R,
+    ) -> Result<Option<SyncIndex>, Error> {
         let sync = match self.state {
             State::Init => {
-                let salt = codec::decode_greeting(chunk)?;
+                let salt = codec::decode_greeting(message)?;
                 if let Some((user, pass)) = self.creds.as_ref() {
                     // Auth
                     self.state = State::Auth;
@@ -230,20 +255,20 @@ impl Protocol {
                 None
             }
             State::Auth => {
-                let header = codec::decode_header(chunk)?;
+                let header = codec::decode_header(message)?;
                 if header.status_code != 0 {
-                    return Err(codec::decode_error(chunk)?.into());
+                    return Err(codec::decode_error(message)?.into());
                 }
                 self.state = State::Ready;
                 None
             }
             State::Ready => {
-                let header = codec::decode_header(chunk)?;
+                let header = codec::decode_header(message)?;
                 let response = if header.status_code != 0 {
-                    Err(codec::decode_error(chunk)?)
+                    Err(codec::decode_error(message)?)
                 } else {
                     let mut buf = Vec::new();
-                    chunk.read_to_end(&mut buf)?;
+                    message.read_to_end(&mut buf)?;
                     Ok(buf)
                 };
                 self.incoming.insert(header.sync, response);
@@ -303,7 +328,9 @@ fn write_to_buffer(
     Ok(())
 }
 
-#[cfg(test)]
+// Tests have to be run in Tarantool environment due to `ToTupleBuffer` using `crate::Error` which contains `LuaError`
+// and therefore lua symbols
+#[cfg(feature = "internal_test")]
 mod tests {
     use super::*;
 
@@ -320,16 +347,20 @@ mod tests {
         greeting
     }
 
-    #[test]
+    #[crate::test(tarantool = "crate")]
     fn connection_established() {
         let mut conn = Protocol::new();
         assert!(!conn.is_ready());
+        assert_eq!(conn.msg_size_hint, Some(128));
+        assert_eq!(conn.read_size_hint(), 128);
         conn.process_incoming(&mut Cursor::new(fake_greeting()))
             .unwrap();
+        assert_eq!(conn.msg_size_hint, None);
+        assert_eq!(conn.read_size_hint(), 5);
         assert!(conn.is_ready())
     }
 
-    #[test]
+    #[crate::test(tarantool = "crate")]
     fn send_bytes_generated() {
         let mut conn = Protocol::new();
         conn.process_incoming(&mut Cursor::new(fake_greeting()))

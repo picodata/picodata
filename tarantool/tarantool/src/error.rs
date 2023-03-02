@@ -19,6 +19,7 @@
 use std::ffi::CStr;
 use std::fmt::{self, Display, Formatter};
 use std::io;
+use std::rc::Rc;
 use std::str::Utf8Error;
 
 use num_derive::{FromPrimitive, ToPrimitive};
@@ -37,62 +38,48 @@ pub type Result<T> = std::result::Result<T, Error>;
 pub enum Error {
     #[error("Tarantool error: {0}")]
     Tarantool(TarantoolError),
-    // TODO: Add client and protocol error
-    #[error("IO error: {0}")]
-    IO(io::Error),
 
-    #[cfg(feature = "raft_node")]
-    #[error("Raft: {0}")]
-    Raft(raft::Error),
+    #[error("IO error: {0}")]
+    IO(#[from] io::Error),
 
     #[error("Failed to encode tuple: {0}")]
     Encode(#[from] Encode),
 
     #[error("Failed to decode tuple: {0}")]
-    Decode(rmp_serde::decode::Error),
-
-    #[cfg(feature = "raft_node")]
-    #[error("Protobuf encode/decode error: {0}")]
-    Protobuf(protobuf::ProtobufError),
+    Decode(#[from] rmp_serde::decode::Error),
 
     #[error("Unicode string decode error: {0}")]
-    Unicode(Utf8Error),
+    Unicode(#[from] Utf8Error),
 
     #[error("Numeric value read error: {0}")]
-    NumValueRead(NumValueReadError),
+    NumValueRead(#[from] NumValueReadError),
 
     #[error("Value read error: {0}")]
-    ValueRead(ValueReadError),
+    ValueRead(#[from] ValueReadError),
 
     #[error("Value write error: {0}")]
-    ValueWrite(ValueWriteError),
+    ValueWrite(#[from] ValueWriteError),
 
     #[error("Transaction issue: {0}")]
     Transaction(TransactionError),
 
     #[cfg(feature = "net_box")]
     #[error("Server responded with error: {0}")]
-    Remote(crate::net_box::ResponseError),
+    Remote(#[from] crate::net_box::ResponseError),
+
+    #[error("Server responded with error: {0}")]
+    Protocol(Rc<crate::network::protocol::Error>),
+
+    #[cfg(feature = "network_client")]
+    #[error("Server responded with error: {0}")]
+    Tcp(Rc<crate::network::client::tcp::Error>),
 
     #[error("Lua error: {0}")]
-    LuaError(LuaError),
+    LuaError(#[from] LuaError),
 
     #[cfg(feature = "schema")]
     #[error("Space metadata not found")]
     MetaNotFound,
-}
-
-impl From<io::Error> for Error {
-    fn from(error: io::Error) -> Self {
-        Error::IO(error)
-    }
-}
-
-#[cfg(feature = "raft_node")]
-impl From<raft::Error> for Error {
-    fn from(error: raft::Error) -> Self {
-        Error::Raft(error)
-    }
 }
 
 impl From<rmp_serde::encode::Error> for Error {
@@ -101,59 +88,21 @@ impl From<rmp_serde::encode::Error> for Error {
     }
 }
 
-impl From<rmp_serde::decode::Error> for Error {
-    fn from(error: rmp_serde::decode::Error) -> Self {
-        Error::Decode(error)
+impl From<crate::network::client::tcp::Error> for Error {
+    fn from(err: crate::network::client::tcp::Error) -> Self {
+        Error::Tcp(Rc::new(err))
     }
 }
 
-#[cfg(feature = "raft_node")]
-impl From<protobuf::ProtobufError> for Error {
-    fn from(error: protobuf::ProtobufError) -> Self {
-        Error::Protobuf(error)
-    }
-}
-
-impl From<Utf8Error> for Error {
-    fn from(error: Utf8Error) -> Self {
-        Error::Unicode(error)
-    }
-}
-
-impl From<NumValueReadError> for Error {
-    fn from(error: NumValueReadError) -> Self {
-        Error::NumValueRead(error)
+impl From<crate::network::protocol::Error> for Error {
+    fn from(err: crate::network::protocol::Error) -> Self {
+        Error::Protocol(Rc::new(err))
     }
 }
 
 impl From<MarkerReadError> for Error {
     fn from(error: MarkerReadError) -> Self {
         Error::ValueRead(error.into())
-    }
-}
-
-impl From<ValueReadError> for Error {
-    fn from(error: ValueReadError) -> Self {
-        Error::ValueRead(error)
-    }
-}
-
-impl From<ValueWriteError> for Error {
-    fn from(error: ValueWriteError) -> Self {
-        Error::ValueWrite(error)
-    }
-}
-
-#[cfg(feature = "net_box")]
-impl From<crate::net_box::ResponseError> for Error {
-    fn from(error: crate::net_box::ResponseError) -> Self {
-        Error::Remote(error)
-    }
-}
-
-impl From<LuaError> for Error {
-    fn from(error: LuaError) -> Self {
-        Error::LuaError(error)
     }
 }
 

@@ -633,7 +633,7 @@ pub fn value_slice(cursor: &mut Cursor<impl AsRef<[u8]>>) -> crate::Result<&[u8]
     Ok(&cursor.get_ref().as_ref()[start..(cursor.position() as usize)])
 }
 
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub struct ResponseError {
     pub(crate) message: String,
 }

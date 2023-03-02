@@ -151,14 +151,13 @@ impl super::AsClient for Client {
                 Ok(response) => return Ok(response),
                 // Reconnect on timeout
                 Err(timeout::Error::Expired) => (),
-                Err(timeout::Error::Failed(error)) => match error {
-                    // Protocol errors can't be solved by reconnect
-                    error @ Error::Protocol(_) => return Err(error),
-                    // Is actually a protocol error - should be fixed
-                    error @ Error::Other(_) => return Err(error),
-                    // Reconnect in all other cases
-                    _ => (),
-                },
+                Err(timeout::Error::Failed(error)) => {
+                    if let error @ Error::Protocol(_) = error {
+                        // Protocol errors can't be solved by reconnect,
+                        // reconnect in all other cases
+                        return Err(error);
+                    }
+                }
             }
             // Try to reconnect
             loop {
@@ -222,11 +221,15 @@ mod tests {
         fiber::block_on(async {
             let client = test_client().await;
 
-            client.inject_error(Error::ClosedWithErr("something happened".to_string()));
+            client.inject_error(Error::Io(Rc::new(
+                std::io::ErrorKind::ConnectionAborted.into(),
+            )));
             client.ping().timeout(Duration::from_secs(3)).await.unwrap();
             assert_eq!(client.reconnect_count(), 1);
 
-            client.inject_error(Error::ClosedWithErr("something happened".to_string()));
+            client.inject_error(Error::Io(Rc::new(
+                std::io::ErrorKind::ConnectionAborted.into(),
+            )));
             client.ping().timeout(Duration::from_secs(3)).await.unwrap();
             assert_eq!(client.reconnect_count(), 2);
         });
@@ -242,11 +245,11 @@ mod tests {
             assert_eq!(client.reconnect_count(), 0);
 
             // User error
-            client.inject_error(Error::Protocol(protocol::Error::Response(
+            client.inject_error(Error::Protocol(Rc::new(protocol::Error::Response(
                 protocol::ResponseError {
                     message: "server answered with err".to_string(),
                 },
-            )));
+            ))));
             client
                 .ping()
                 .timeout(Duration::from_secs(3))

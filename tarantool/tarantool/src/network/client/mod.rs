@@ -38,14 +38,14 @@ pub mod tcp;
 
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::io::{Cursor, Error as IoError};
+use std::io::{self, Cursor};
 use std::rc::Rc;
 use std::time::Duration;
 
 use self::tcp::{Error as TcpError, TcpStream};
 
 use super::protocol::api::{Call, Eval, Execute, Ping, Request};
-use super::protocol::{self, Error as ProtocolError, Protocol, SizeHint, SyncIndex};
+use super::protocol::{self, Error as ProtocolError, Protocol, SyncIndex};
 use crate::fiber;
 use crate::fiber::r#async::IntoOnDrop as _;
 use crate::fiber::r#async::{oneshot, watch};
@@ -55,25 +55,49 @@ use futures::io::{ReadHalf, WriteHalf};
 use futures::{AsyncReadExt, AsyncWriteExt};
 
 /// Error returned by [`Client`].
-#[derive(thiserror::Error, Debug)]
+#[derive(thiserror::Error, Debug, Clone)]
 pub enum Error {
     #[error("tcp stream error: {0}")]
-    Tcp(#[from] TcpError),
+    Tcp(Rc<TcpError>),
     #[error("io error: {0}")]
-    Io(#[from] IoError),
+    Io(Rc<io::Error>),
     #[error("protocol error: {0}")]
-    Protocol(#[from] ProtocolError),
-    #[error("closed with error: {0}")]
-    ClosedWithErr(String),
-    #[error("{0}")]
-    Other(String),
+    Protocol(Rc<ProtocolError>),
+}
+
+impl From<Error> for crate::error::Error {
+    fn from(err: Error) -> Self {
+        match err {
+            Error::Tcp(err) => crate::error::Error::Tcp(err),
+            Error::Io(err) => crate::error::Error::IO(err.kind().into()),
+            Error::Protocol(err) => crate::error::Error::Protocol(err),
+        }
+    }
+}
+
+impl From<TcpError> for Error {
+    fn from(err: TcpError) -> Self {
+        Error::Tcp(Rc::new(err))
+    }
+}
+
+impl From<io::Error> for Error {
+    fn from(err: io::Error) -> Self {
+        Error::Io(Rc::new(err))
+    }
+}
+
+impl From<ProtocolError> for Error {
+    fn from(err: ProtocolError) -> Self {
+        Error::Protocol(Rc::new(err))
+    }
 }
 
 #[derive(Clone, Debug)]
 enum State {
     Alive,
     ClosedManually,
-    ClosedWithError(String),
+    ClosedWithError(Error),
 }
 
 impl State {
@@ -187,7 +211,7 @@ impl Client {
         match self.0.borrow().state.clone() {
             State::Alive => Ok(()),
             State::ClosedManually => unreachable!("All client handles are dropped at this point"),
-            State::ClosedWithError(err) => Err(Error::ClosedWithErr(err)),
+            State::ClosedWithError(err) => Err(err),
         }
     }
 }
@@ -306,13 +330,12 @@ macro_rules! handle_result {
             Ok(value) => value,
             Err(err) => {
                 let err: Error = err.into();
-                let str_err = err.to_string();
-                $client.state = State::ClosedWithError(err.to_string());
+                $client.state = State::ClosedWithError(err.clone());
                 // Notify all subscribers on closing
                 let subscriptions: HashMap<_, _> = $client.awaiting_response.drain().collect();
                 for (_, subscription) in subscriptions {
                     // We don't care about errors at this point
-                    let _ = subscription.send(Err(Error::ClosedWithErr(str_err.clone())));
+                    let _ = subscription.send(Err(err.clone()));
                 }
                 return;
             }
@@ -348,52 +371,29 @@ async fn sender(
 
 /// Receiver work loop. Yields on each iteration and during awaits.
 async fn receiver(client: Rc<RefCell<ClientInner>>, mut reader: ReadHalf<TcpStream>) {
-    let mut hint = client.borrow().protocol.read_size_hint();
     loop {
         if client.borrow().state.is_closed() {
             return;
         }
-        match hint {
-            SizeHint::Hint(size) => {
-                let mut buf = vec![0; size];
-                handle_result!(client.borrow_mut(), reader.read_exact(&mut buf).await);
-                let result = client
-                    .borrow_mut()
-                    .protocol
-                    .process_incoming(&mut Cursor::new(buf));
-                hint = client.borrow().protocol.read_size_hint();
-                let result = handle_result!(client.borrow_mut(), result);
-                if let Some(sync) = result {
-                    let subscription = client.borrow_mut().awaiting_response.remove(&sync);
-                    if let Some(subscription) = subscription {
-                        subscription
-                            .send(Ok(()))
-                            .expect("cannot be closed at this point");
-                    } else {
-                        log::warn!("received unwaited message for {sync:?}");
-                    }
-                }
-                wake_sender(&client).unwrap();
-            }
-            SizeHint::FirstU32 => {
-                // Read 5 bytes, 1st is a marker
-                let mut buf = vec![0; 5];
-                handle_result!(client.borrow_mut(), reader.read_exact(&mut buf).await);
-                let result = rmp::decode::read_u32(&mut Cursor::new(buf));
-                let mut client_ref = client.borrow_mut();
-                let new_hint = handle_result!(client_ref, result.map_err(ProtocolError::from));
-                if new_hint > 0 {
-                    hint = SizeHint::Hint(new_hint as usize)
-                } else {
-                    handle_result!(
-                        client_ref,
-                        // FIXME: this is actually a protocol error
-                        // move marker processing into protocol impl
-                        Err(Error::Other("unexpected zero message length".to_owned()))
-                    )
-                }
+        let size = client.borrow().protocol.read_size_hint();
+        let mut buf = vec![0; size];
+        handle_result!(client.borrow_mut(), reader.read_exact(&mut buf).await);
+        let result = client
+            .borrow_mut()
+            .protocol
+            .process_incoming(&mut Cursor::new(buf));
+        let result = handle_result!(client.borrow_mut(), result);
+        if let Some(sync) = result {
+            let subscription = client.borrow_mut().awaiting_response.remove(&sync);
+            if let Some(subscription) = subscription {
+                subscription
+                    .send(Ok(()))
+                    .expect("cannot be closed at this point");
+            } else {
+                log::warn!("received unwaited message for {sync:?}");
             }
         }
+        wake_sender(&client).unwrap();
     }
 }
 
