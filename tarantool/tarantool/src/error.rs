@@ -19,8 +19,8 @@
 use std::ffi::CStr;
 use std::fmt::{self, Display, Formatter};
 use std::io;
-use std::rc::Rc;
 use std::str::Utf8Error;
+use std::sync::Arc;
 
 use num_derive::{FromPrimitive, ToPrimitive};
 use num_traits::FromPrimitive;
@@ -67,12 +67,20 @@ pub enum Error {
     #[error("Server responded with error: {0}")]
     Remote(#[from] crate::net_box::ResponseError),
 
+    /// The error is wrapped in a [`Arc`], because some libraries require
+    /// error types to implement [`Sync`], which isn't implemented for [`Rc`].
+    ///
+    /// [`Rc`]: std::rc::Rc
     #[error("Server responded with error: {0}")]
-    Protocol(Rc<crate::network::protocol::Error>),
+    Protocol(Arc<crate::network::protocol::Error>),
 
+    /// The error is wrapped in a [`Arc`], because some libraries require
+    /// error types to implement [`Sync`], which isn't implemented for [`Rc`].
+    ///
+    /// [`Rc`]: std::rc::Rc
     #[cfg(feature = "network_client")]
     #[error("Server responded with error: {0}")]
-    Tcp(Rc<crate::network::client::tcp::Error>),
+    Tcp(Arc<crate::network::client::tcp::Error>),
 
     #[error("Lua error: {0}")]
     LuaError(#[from] LuaError),
@@ -90,13 +98,13 @@ impl From<rmp_serde::encode::Error> for Error {
 
 impl From<crate::network::client::tcp::Error> for Error {
     fn from(err: crate::network::client::tcp::Error) -> Self {
-        Error::Tcp(Rc::new(err))
+        Error::Tcp(Arc::new(err))
     }
 }
 
 impl From<crate::network::protocol::Error> for Error {
     fn from(err: crate::network::protocol::Error) -> Self {
-        Error::Protocol(Rc::new(err))
+        Error::Protocol(Arc::new(err))
     }
 }
 

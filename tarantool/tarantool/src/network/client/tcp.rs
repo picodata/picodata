@@ -27,14 +27,14 @@ use std::os::unix::prelude::IntoRawFd;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::task::{Context, Poll};
-use std::time::{Duration, Instant};
+use std::time::Instant;
 use std::{io, ptr};
 
 use futures::{AsyncRead, AsyncWrite};
 
 use crate::ffi::tarantool as ffi;
+use crate::fiber::r#async;
 use crate::fiber::r#async::context::ContextExt;
-use crate::fiber::r#async::{self, timeout};
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
@@ -280,12 +280,13 @@ mod tests {
     use super::*;
 
     use crate::fiber;
-    use crate::fiber::r#async::timeout::IntoTimeout;
+    use crate::fiber::r#async::timeout::{self, IntoTimeout};
     use crate::test::util::always_pending;
     use crate::test::util::TARANTOOL_LISTEN;
 
     use std::net::TcpListener;
     use std::thread;
+    use std::time::Duration;
 
     use futures::{AsyncReadExt, AsyncWriteExt, FutureExt};
 

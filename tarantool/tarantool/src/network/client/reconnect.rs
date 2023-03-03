@@ -218,18 +218,15 @@ mod tests {
 
     #[crate::test(tarantool = "crate")]
     fn reconnect_on_network_error() {
+        use std::io::{Error, ErrorKind};
         fiber::block_on(async {
             let client = test_client().await;
 
-            client.inject_error(Error::Io(Rc::new(
-                std::io::ErrorKind::ConnectionAborted.into(),
-            )));
+            client.inject_error(Error::from(ErrorKind::ConnectionAborted).into());
             client.ping().timeout(Duration::from_secs(3)).await.unwrap();
             assert_eq!(client.reconnect_count(), 1);
 
-            client.inject_error(Error::Io(Rc::new(
-                std::io::ErrorKind::ConnectionAborted.into(),
-            )));
+            client.inject_error(Error::from(ErrorKind::ConnectionAborted).into());
             client.ping().timeout(Duration::from_secs(3)).await.unwrap();
             assert_eq!(client.reconnect_count(), 2);
         });
@@ -245,11 +242,12 @@ mod tests {
             assert_eq!(client.reconnect_count(), 0);
 
             // User error
-            client.inject_error(Error::Protocol(Rc::new(protocol::Error::Response(
-                protocol::ResponseError {
+            client.inject_error(
+                protocol::Error::Response(protocol::ResponseError {
                     message: "server answered with err".to_string(),
-                },
-            ))));
+                })
+                .into(),
+            );
             client
                 .ping()
                 .timeout(Duration::from_secs(3))

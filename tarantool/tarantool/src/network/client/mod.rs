@@ -40,7 +40,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::io::{self, Cursor};
 use std::rc::Rc;
-use std::time::Duration;
+use std::sync::Arc;
 
 use self::tcp::{Error as TcpError, TcpStream};
 
@@ -57,12 +57,20 @@ use futures::{AsyncReadExt, AsyncWriteExt};
 /// Error returned by [`Client`].
 #[derive(thiserror::Error, Debug, Clone)]
 pub enum Error {
+    /// The error is wrapped in a [`Arc`], because some libraries require
+    /// error types to implement [`Sync`], which isn't implemented for [`Rc`].
     #[error("tcp stream error: {0}")]
-    Tcp(Rc<TcpError>),
+    Tcp(Arc<TcpError>),
     #[error("io error: {0}")]
-    Io(Rc<io::Error>),
+
+    /// The error is wrapped in a [`Arc`], because some libraries require
+    /// error types to implement [`Sync`], which isn't implemented for [`Rc`].
+    Io(Arc<io::Error>),
+
+    /// The error is wrapped in a [`Arc`], because some libraries require
+    /// error types to implement [`Sync`], which isn't implemented for [`Rc`].
     #[error("protocol error: {0}")]
-    Protocol(Rc<ProtocolError>),
+    Protocol(Arc<ProtocolError>),
 }
 
 impl From<Error> for crate::error::Error {
@@ -77,19 +85,19 @@ impl From<Error> for crate::error::Error {
 
 impl From<TcpError> for Error {
     fn from(err: TcpError) -> Self {
-        Error::Tcp(Rc::new(err))
+        Error::Tcp(Arc::new(err))
     }
 }
 
 impl From<io::Error> for Error {
     fn from(err: io::Error) -> Self {
-        Error::Io(Rc::new(err))
+        Error::Io(Arc::new(err))
     }
 }
 
 impl From<ProtocolError> for Error {
     fn from(err: ProtocolError) -> Self {
-        Error::Protocol(Rc::new(err))
+        Error::Protocol(Arc::new(err))
     }
 }
 
@@ -403,6 +411,7 @@ mod tests {
     use crate::fiber::r#async::timeout::IntoTimeout as _;
     use crate::space::Space;
     use crate::test::util::TARANTOOL_LISTEN;
+    use std::time::Duration;
 
     async fn test_client() -> Client {
         Client::connect_with_config(
