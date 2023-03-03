@@ -1,4 +1,5 @@
 # Возможности кластерного SQL
+
 ## Основная информация об SQL Broadcaster
 Данный раздел содержит описание возможностей распределенного SQL, реализованного в виде компонента [SQL Broadcaster](https://git.picodata.io/picodata/picodata/sbroad) в составе Picodata.
 SQL Broadcaster представляет собой библиотеку, предоставляющую функции планировщика и модуля исполнения SQL-запросов в рамках распределенного кластера СУБД Tarantool. Подробности архитектуры планировщика доступны в отдельной [PDF-презентации](https://git.picodata.io/picodata/picodata/sbroad/-/blob/main/doc/design/sbroad.pdf).
@@ -11,6 +12,181 @@ SQL Broadcaster — это динамическая библиотека, кот
 ![Distributed query](sbroad-curves.svg "general distributed query flow")
 
 На схеме <span style="color:#ff0000ff">красным</span> показан исходный пользовательский запрос, <span style="color:#fcc501ff">желтым</span> — план запроса (IR, intermediate representation), <span style="color:#39cb00ff">зеленым</span> — собранные фрагменты ответов, <span style="color:#00c8e5ff">голубым</span> — консолидированный ответ на пользовательский запрос в виде списка кортежей, обработанного функцией MapReduce.
+
+## Поддерживаемые запросы и их синтаксис
+Мы предоставляем описание поддерживаемых запросов (queries) в SQL Broadcaster в виде схем формата eBNF.
+
+**Query:**
+
+![Query](ebnf/Query.svg)
+
+```
+Query    ::= Select ( ( 'union all' | 'except' | 'except distinct' ) Select )?
+           | Values
+           | Insert
+```
+
+**Select:**
+
+![Select](ebnf/Select.svg)
+
+```
+Select   ::= 'select' Column ( ',' Column )* 'from' ( Table | Select ) ( 'as' Alias )? ( 'inner'? 'join' ( Table | Select ) ( 'as' Alias )? 'on' Expression )? ( 'group by' GroupBy )? ( 'where' Expression )?
+```
+
+Используется в:
+
+* Expression
+* Insert
+* Query
+* Select
+
+**Column:**
+
+![Column](ebnf/Column.svg)
+
+```
+Column   ::= ( Table '.' )? '*'
+           | Expression ( 'as' Alias )?
+```
+
+Используется в:
+
+* Select
+
+**Expression:**
+
+![Expression](ebnf/Expression.svg)
+
+```
+Expression
+         ::= Expression ( ( 'or' | ( 'between' Expression )? 'and' | '*' | '/' | '+' | '-' | '=' | '>' | '>=' | '<' | '<=' | '<>' | '!=' )
+                  Expression | 'is null' | 'is not null' )
+           | Reference
+           | Select
+           | Value
+```
+
+Используется в:
+
+* Cast
+* Column
+* Expression
+* Select
+
+**GroupBy:**
+
+![GroupBy](ebnf/GroupBy.svg)
+
+```
+GroupBy  ::= Concat
+           | Cast
+           | Function
+           | Reference
+```
+
+Используется в:
+
+* Select
+
+**Reference:**
+
+![Reference](ebnf/Reference.svg)
+
+```
+Reference
+         ::= ( ( Table | '"' Table '"' ) '.' )? ( Alias | '"' Alias '"' )
+```
+
+Используется в:
+
+* Expression
+* GroupBy
+* Insert
+
+**Value:**
+
+![Value](ebnf/Value.svg)
+
+```
+Value    ::= 'true'
+           | 'false'
+           | 'null'
+           | '?'
+           | Integer
+           | Unsigned
+           | Double
+           | Decimal
+           | String
+           | Row
+```
+
+Используется в:
+
+* Expression
+* Values
+
+**Cast:**
+
+![Cast](ebnf/Cast.svg)
+
+```
+Cast     ::= 'cast' '(' Expression 'as' Type ')'
+```
+
+Используется в:
+
+* GroupBy
+
+**Type:**
+
+![Type](ebnf/Type.svg)
+
+```
+Type     ::= 'any'
+           | 'bool'
+           | 'boolean'
+           | 'decimal'
+           | 'double'
+           | 'int'
+           | 'integer'
+           | 'number'
+           | 'scalar'
+           | 'string'
+           | 'text'
+           | 'unsigned'
+           | 'varchar' ( '(' Length ')' )?
+```
+
+Используется в:
+
+* Cast
+
+**Insert:**
+
+![Insert](ebnf/Insert.svg)
+
+```
+Insert   ::= 'insert into' Table ( '(' Reference ( ',' Reference )* ')' )? ( Select | Values )
+```
+
+Используется в:
+
+* Query
+
+**Values:**
+
+![Values](ebnf/Values.svg)
+
+```
+Values   ::= 'values' '(' Value ( ',' Value )* ')' ( ',' '(' Value ( ',' Value )* ')' )*
+```
+
+Используется в:
+
+* Insert
+* Query
+
 
 ## Установка и пример использования SQL Broadcaster
 ### Общие сведения для установки
