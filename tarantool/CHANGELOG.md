@@ -25,6 +25,7 @@
 - `r#async::timeout::Error` enum with `Expired` and `Failed` vairants.
 - `r#async::timeout::Result<T, E>` type alias for
     `std::result::Result<T, r#async::timeout::Error<E>>`
+- `Space::from_id_unchecked` unsafe function, for creating a space struct from a space id.
 
 ### Changed
 - `r#async::timeout::Timeout` can now only be wrapped around a future which

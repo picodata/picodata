@@ -457,6 +457,15 @@ impl Space {
         SPACE_CACHE.with(|cache| cache.space(name))
     }
 
+    /// Create a `Space` with `id`.
+    ///
+    /// # Safety
+    /// `id` must be a valid tarantool space id. Only use this function with
+    /// ids acquired from tarantool in some way, e.g. from lua code.
+    pub const unsafe fn from_id_unchecked(id: u32) -> Self {
+        Self { id }
+    }
+
     /// Get space ID.
     pub const fn id(&self) -> u32 {
         self.id
