@@ -1,5 +1,6 @@
 use crate::common::{BoolExt, LuaStackIntegrityGuard};
 use std::{
+    any::type_name,
     cell::RefCell,
     collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     num::NonZeroI32,
@@ -133,17 +134,50 @@ pub fn read_array() {
         lua.eval("return { [1] = 1, [2] = 2, [3] = 3 }").ok(),
         Some([1, 2, 3])
     );
-    assert_eq!(lua.eval("return { 1, 2 }").ok(), None::<[i32; 3]>);
-    assert_eq!(lua.eval("return { 1, 2, 3, 4 }").ok(), None::<[i32; 3]>);
+
+    let res = lua.eval::<[i32; 3]>("return { 1, 2 }");
     assert_eq!(
-        lua.eval("return { [-1] = 1, [1] = 2, [2] = 3 }").ok(),
-        None::<[i32; 3]>
+        res.unwrap_err().to_string(),
+        "failed converting Lua table to array: indexes in range 1..=3 expected, got Lua table with missing index 3
+    while reading value(s) returned by Lua: [i32; 3] expected, got table"
     );
+
+    let res = lua.eval::<[i32; 3]>("return { 1, 2, 3, 4 }");
     assert_eq!(
-        lua.eval("return { [1] = 1, [3] = 3 }").ok(),
-        None::<[i32; 3]>
+        res.unwrap_err().to_string(),
+        "failed converting Lua table to array: indexes in range 1..=3 expected, got value with index 4
+    while reading value(s) returned by Lua: [i32; 3] expected, got table"
     );
-    assert_eq!(lua.eval("return { 1, 2, 'foo' }").ok(), None::<[i32; 3]>);
+
+    let res = lua.eval::<[i32; 3]>("return { [-1] = 1, [1] = 2, [2] = 3 }");
+    assert_eq!(
+        res.unwrap_err().to_string(),
+        "failed converting Lua table to array: indexes in range 1..=3 expected, got value with index -1
+    while reading value(s) returned by Lua: [i32; 3] expected, got table"
+    );
+
+    let res = lua.eval::<[i32; 3]>("return { [1] = 1, [3] = 3 }");
+    assert_eq!(
+        res.unwrap_err().to_string(),
+        "failed converting Lua table to array: indexes in range 1..=3 expected, got Lua table with missing index 2
+    while reading value(s) returned by Lua: [i32; 3] expected, got table"
+    );
+
+    let res = lua.eval::<[i32; 3]>("return { 1, 2, 'foo' }");
+    assert_eq!(
+        res.unwrap_err().to_string(),
+        "failed reading Lua value: i32 expected, got string
+    while converting Lua table to array: [i32; 3] expected, got table value of wrong type
+    while reading value(s) returned by Lua: [i32; 3] expected, got table"
+    );
+
+    let res = lua.eval::<[i32; 3]>("return { [1] = 1, [2] = 2, foo = 3 }");
+    assert_eq!(
+        res.unwrap_err().to_string(),
+        "failed reading Lua value: i32 expected, got string
+    while converting Lua table to array: [i32; 3] expected, got table key of wrong type
+    while reading value(s) returned by Lua: [i32; 3] expected, got table"
+    );
 
     assert_eq!(lua.eval("return { 1, 2 }").ok(), Some(E::Other(vec![1, 2])));
     assert_eq!(
@@ -189,7 +223,7 @@ pub fn read_array_partial() {
     struct DropCheck(i32);
 
     impl<L: AsLua> LuaRead<L> for DropCheck {
-        fn lua_read_at_position(lua: L, idx: NonZeroI32) -> Result<Self, L> {
+        fn lua_read_at_position(lua: L, idx: NonZeroI32) -> tlua::ReadResult<Self, L> {
             Ok(DropCheck(lua.read_at_nz(idx)?))
         }
     }
@@ -203,7 +237,7 @@ pub fn read_array_partial() {
     }
 }
 
-pub fn reading_vec_works() {
+pub fn read_vec() {
     let lua = Lua::new();
 
     let orig = [1., 2., 3.];
@@ -218,37 +252,47 @@ pub fn reading_vec_works() {
             panic!("Unexpected variant");
         }
     }
-}
 
-pub fn reading_vec_from_sparse_table_doesnt_work() {
-    let lua = Lua::new();
+    let res = lua.eval::<LuaSequence>("return { [-1] = -1, [2] = 2, [42] = 42 }");
+    assert_eq!(
+        res.unwrap_err().to_string(),
+        format!(
+            "failed converting Lua table to Vec<_>: indexes in range 1..N expected, got value with index -1
+    while reading value(s) returned by Lua: {seq} expected, got table",
+            seq = type_name::<LuaSequence>(),
+        ),
+    );
 
-    lua.exec(r#"v = { [-1] = -1, [2] = 2, [42] = 42 }"#)
-        .unwrap();
+    let res = lua.eval::<LuaSequence>("return { [1] = 1, [2] = 2, [42] = 42 }");
+    assert_eq!(
+        res.unwrap_err().to_string(),
+        format!(
+            "failed converting Lua table to Vec<_>: indexes in range 1..N expected, got Lua table with missing index 3
+    while reading value(s) returned by Lua: {seq} expected, got table",
+            seq = type_name::<LuaSequence>(),
+        ),
+    );
 
-    assert_eq!(lua.get("v"), None::<LuaSequence>);
-}
-
-pub fn reading_vec_with_empty_table_works() {
-    let lua = Lua::new();
+    let res = lua.eval::<LuaSequence>("return { [1] = 1, ['foo'] = 2, [42] = 42 }");
+    assert_eq!(
+        res.unwrap_err().to_string(),
+        format!(
+            "failed reading Lua value: i32 expected, got string
+    while converting Lua table to Vec<_>: {seq} expected, got table key of wrong type
+    while reading value(s) returned by Lua: {seq} expected, got table",
+            seq = type_name::<LuaSequence>(),
+        ),
+    );
 
     lua.exec(r#"v = { }"#).unwrap();
 
     let read: LuaSequence = lua.get("v").unwrap();
     assert!(read.is_empty());
-}
-
-pub fn reading_vec_with_complex_indexes_doesnt_work() {
-    let lua = Lua::new();
 
     lua.exec(r#"v = { [-1] = -1, ["foo"] = 2, [{}] = 42 }"#)
         .unwrap();
 
     assert_eq!(lua.get("v"), None::<LuaSequence>);
-}
-
-pub fn reading_heterogenous_vec_works() {
-    let lua = Lua::new();
 
     let orig = [
         AnyLuaValue::LuaNumber(1.),
@@ -260,10 +304,6 @@ pub fn reading_heterogenous_vec_works() {
 
     let read: LuaSequence = lua.get("v").unwrap();
     assert_eq!(read, orig);
-}
-
-pub fn reading_vec_set_from_lua_works() {
-    let lua = Lua::new();
 
     lua.exec(r#"v = { 1, 2, 3 }"#).unwrap();
 
@@ -287,7 +327,7 @@ pub fn reading_vec_set_from_lua_works() {
     assert_eq!(read, vec![1., 2., 3.]);
 }
 
-pub fn reading_hashmap_works() {
+pub fn read_hashmap() {
     let lua = Lua::new();
 
     let orig: HashMap<i32, f64> = (0..).zip([1., 2., 3.]).collect();
@@ -308,10 +348,6 @@ pub fn reading_hashmap_works() {
             panic!("Unexpected variant");
         }
     }
-}
-
-pub fn reading_hashmap_from_sparse_table_works() {
-    let lua = Lua::new();
 
     lua.exec(r#"v = { [-1] = -1, [2] = 2, [42] = 42 }"#)
         .unwrap();
@@ -342,19 +378,11 @@ pub fn reading_hashmap_from_sparse_table_works() {
     assert_eq!(read[&2], 2.0);
     assert_eq!(read[&42], 42.0);
     assert_eq!(read.len(), 3);
-}
-
-pub fn reading_hashmap_with_empty_table_works() {
-    let lua = Lua::new();
 
     lua.exec(r#"v = { }"#).unwrap();
 
     let read: LuaTableMap = lua.get("v").unwrap();
     assert!(read.is_empty());
-}
-
-pub fn reading_hashmap_with_complex_indexes_works() {
-    let lua = Lua::new();
 
     lua.exec(r#"v = { [-1] = -1, ["foo"] = 2, [2.] = 42 }"#)
         .unwrap();
@@ -373,10 +401,6 @@ pub fn reading_hashmap_with_complex_indexes_works() {
         AnyLuaValue::LuaNumber(42.)
     );
     assert_eq!(read.len(), 3);
-}
-
-pub fn reading_hashmap_with_floating_indexes_works() {
-    let lua = Lua::new();
 
     lua.exec(r#"v = { [-1.25] = -1, [2.5] = 42 }"#).unwrap();
 
@@ -392,10 +416,6 @@ pub fn reading_hashmap_with_floating_indexes_works() {
         AnyLuaValue::LuaNumber(42.)
     );
     assert_eq!(read.len(), 2);
-}
-
-pub fn reading_heterogenous_hashmap_works() {
-    let lua = Lua::new();
 
     let mut orig = HashMap::new();
     orig.insert(
@@ -417,10 +437,6 @@ pub fn reading_heterogenous_hashmap_works() {
     assert_eq!(read, orig);
 
     assert_eq!(lua.get::<HashMap<i32, i32>, _>("v"), None);
-}
-
-pub fn reading_hashmap_set_from_lua_works() {
-    let lua = Lua::new();
 
     lua.exec(r#"v = { [1] = 2, [2] = 3, [3] = 4 }"#).unwrap();
 
@@ -436,12 +452,39 @@ pub fn reading_hashmap_set_from_lua_works() {
             ))
             .collect::<HashMap<_, _>>()
     );
+
+    type HM = HashMap<String, i32>;
+    let res = lua.eval::<HM>("return { 1, 2, 'foo' }");
+    assert_eq!(
+        res.unwrap_err().to_string(),
+        format!(
+            "failed reading Lua value: alloc::string::String expected, got number
+    while converting Lua table to HashMap<_, _>: {hm} expected, got table key of wrong type
+    while reading value(s) returned by Lua: {hm} expected, got table",
+            hm = type_name::<HM>(),
+        ),
+    );
+
+    let res = lua.eval::<HM>("return { foo = 1, bar = false }");
+    assert_eq!(
+        res.unwrap_err().to_string(),
+        format!(
+            "failed reading Lua value: i32 expected, got boolean
+    while converting Lua table to HashMap<_, _>: {hm} expected, got table value of wrong type
+    while reading value(s) returned by Lua: {hm} expected, got table",
+            hm = type_name::<HM>(),
+        ),
+    );
 }
 
 pub fn read_wrong_type_fail() {
     let lua = Lua::new();
 
-    assert_eq!(lua.eval("return { 1, 2, 'foo' }").ok(), None::<Vec<i32>>);
+    let res = lua.eval::<i32>("return { 1, 2, 'foo' }");
+    assert_eq!(
+        res.unwrap_err().to_string(),
+        "failed reading value(s) returned by Lua: i32 expected, got table"
+    );
 }
 
 pub fn derive_struct_push() {
@@ -560,10 +603,20 @@ pub fn derive_struct_lua_read() {
             s: "booboo".into()
         }
     );
+
+    let res = lua.eval::<S>("return 'not a table'");
+    assert_eq!(
+        res.unwrap_err().to_string(),
+        format!(
+            "failed converting Lua value to struct: Lua table expected, got string
+    while reading value(s) returned by Lua: {s} expected, got string",
+            s = type_name::<S>(),
+        )
+    );
 }
 
 pub fn derive_generic_struct_lua_read() {
-    #[derive(LuaRead)]
+    #[derive(Debug, LuaRead)]
     struct S<A, B, C, K, V>
     where
         K: std::hash::Hash,
@@ -575,7 +628,7 @@ pub fn derive_generic_struct_lua_read() {
     }
 
     let lua = Lua::new();
-    let s: S<String, f32, u32, u64, bool> = lua
+    let s: S1 = lua
         .eval(
             "return {
         a = 'hell yeah',
@@ -589,6 +642,29 @@ pub fn derive_generic_struct_lua_read() {
     assert_eq!(s.b, [1.0, 2.0, 3.0]);
     assert_eq!(s.d, Some(420));
     assert_eq!(s.is_prime, HashMap::from([(479, true), (439, false)]));
+
+    let res = lua.eval::<S1>(
+        "return {
+        a = 'hell yeah',
+        b = { 1, 2, 3 },
+        d = 420,
+        is_prime = { [479] = true, [false] = false }
+    }",
+    );
+    assert_eq!(
+        res.unwrap_err().to_string(),
+        format!(
+            "failed reading Lua value: u64 expected, got boolean
+    while converting Lua table to HashMap<_, _>: {hm} expected, got table key of wrong type
+    while reading value from Lua table: {hm} expected, got table
+    while converting Lua table to struct: {s} expected, got wrong field type for key 'is_prime'
+    while reading value(s) returned by Lua: {s} expected, got table",
+            hm = type_name::<HashMap<u64, bool>>(),
+            s = type_name::<S1>(),
+        )
+    );
+
+    type S1 = S<String, f32, u32, u64, bool>;
 }
 
 pub fn derive_enum_push() {
@@ -861,6 +937,30 @@ pub fn derive_enum_lua_read() {
             bar: "pi".into()
         })
     );
+
+    let res = lua.into_inner().into_inner().eval::<E>("return { s = 0 }");
+    assert_eq!(
+        res.unwrap_err().to_string(),
+        format!(
+            "variant #1: failed reading Lua value: f32 expected, got table
+    while reading one of multiple values: f32 at index 1 (1-based) expected, got incorrect value
+    while reading enum variant: Vec expected, got (table, no value, no value)
+variant #2: failed reading Lua value: i32 expected, got table
+    while reading enum variant: Num expected, got table
+variant #3: failed reading Lua value: alloc::string::String expected, got table
+    while reading enum variant: Str expected, got table
+variant #4: failed reading value from Lua table: i32 expected, got nil
+    while converting Lua table to struct: {s} expected, got wrong field type for key 'foo'
+    while reading enum variant: S expected, got table
+variant #5: failed reading value from Lua table: i32 expected, got nil
+    while converting Lua table to struct: struct with fields {{ i: i32, s: String }} expected, got wrong field type for key 'i'
+    while reading enum variant: Struct expected, got table
+    while reading any of the variants: {e} expected, got something else
+    while reading value(s) returned by Lua: {e} expected, got table",
+            s = type_name::<S>(),
+            e = type_name::<E>(),
+        )
+    );
 }
 
 pub fn derive_generic_enum_lua_read() {
@@ -905,6 +1005,27 @@ pub fn derive_generic_enum_lua_read() {
             foo: "foo".into(),
             bar: b"bar".as_slice().into()
         })
+    );
+
+    let res = lua.eval::<E1>("return { foo = { 'wrong', 'type' } }");
+    assert_eq!(
+        res.unwrap_err().to_string(),
+        "variant #1: failed reading Lua value: f64 expected, got table
+    while reading enum variant: A expected, got table
+variant #2: failed reading Lua value: i32 expected, got string
+    while converting Lua table to Vec<_>: alloc::vec::Vec<alloc::string::String> expected, got table key of wrong type
+    while reading enum variant: B expected, got table
+variant #3: failed reading value from Lua table: alloc::string::String expected, got nil
+    while converting Lua table to struct: struct with fields { f: F, g: Vec < G > } expected, got wrong field type for key 'f'
+    while reading enum variant: D expected, got table
+variant #4: failed reading Lua value: alloc::string::String expected, got table
+    while reading one of multiple values: alloc::string::String at index 1 (1-based) expected, got incorrect value
+    while reading enum variant: H expected, got (table, no value, no value)
+variant #5: failed reading value from Lua table: alloc::string::String expected, got table
+    while converting Lua table to struct: tarantool_module_test_runner::tlua::rust_tables::derive_generic_enum_lua_read::S<alloc::string::String, alloc::vec::Vec<u8>> expected, got wrong field type for key 'foo'
+    while reading enum variant: L expected, got table
+    while reading any of the variants: tarantool_module_test_runner::tlua::rust_tables::derive_generic_enum_lua_read::E<f64, alloc::string::String, alloc::string::String, u8, alloc::string::String, u8, u64, alloc::string::String, alloc::vec::Vec<u8>> expected, got something else
+    while reading value(s) returned by Lua: tarantool_module_test_runner::tlua::rust_tables::derive_generic_enum_lua_read::E<f64, alloc::string::String, alloc::string::String, u8, alloc::string::String, u8, u64, alloc::string::String, alloc::vec::Vec<u8>> expected, got table"
     );
 }
 
@@ -1017,7 +1138,15 @@ pub fn derive_unit_structs_lua_read() {
     assert_eq!((&lua).push("XXX").read().ok(), Some(E::XXX));
     assert_eq!((&lua).push("Xxx").read().ok(), Some(E::XXX));
     assert_eq!((&lua).push("xxx").read().ok(), Some(E::XXX));
-    assert_eq!((&lua).push("f_oo").read().ok(), None::<E>);
+
+    let res = (&lua).push("f_oo").read::<E>();
+    assert_eq!(
+        res.unwrap_err().1.to_string(),
+        "variant #1: failed reading unit struct: case incensitive match with 'a' expected, got 'f_oo'
+variant #2: failed reading unit struct: case incensitive match with 'foo' expected, got 'f_oo'
+variant #3: failed reading unit struct: case incensitive match with 'xxx' expected, got 'f_oo'
+    while reading any of the variants: tarantool_module_test_runner::tlua::rust_tables::derive_unit_structs_lua_read::E expected, got something else",
+    );
 
     #[derive(LuaRead, Debug, PartialEq, Eq)]
     struct QueryResult {
@@ -1046,7 +1175,9 @@ pub fn derive_unit_structs_lua_read() {
         String(String),
     }
 
-    let v: QueryResult = tarantool::lua_state()
+    let lua = tarantool::lua_state();
+
+    let v: QueryResult = lua
         .eval(
             "return {
         metadata = {
@@ -1093,6 +1224,44 @@ pub fn derive_unit_structs_lua_read() {
                 Value::Null(tlua::Null),
             ]]
         }
+    );
+
+    let msg = lua
+        .eval::<QueryResult>(
+            "return {
+                metadata = {
+                    {
+                        name = 'id',
+                        type = 'integer'
+                    },
+                    {
+                        name = 'name',
+                        type = 'string'
+                    },
+                    {
+                        name = 0xcafebabe,
+                        type = 'integer'
+                    }
+                },
+                rows = {
+                    {1, '123', box.NULL}
+                }
+            }",
+        )
+        .unwrap_err()
+        .to_string();
+    assert_eq!(
+        msg,
+        format!(
+            "failed reading value from Lua table: alloc::string::String expected, got number
+    while converting Lua table to struct: {col} expected, got wrong field type for key 'name'
+    while converting Lua table to Vec<_>: alloc::vec::Vec<{col}> expected, got table value of wrong type
+    while reading value from Lua table: alloc::vec::Vec<{col}> expected, got table
+    while converting Lua table to struct: {qr} expected, got wrong field type for key 'metadata'
+    while reading value(s) returned by Lua: {qr} expected, got table",
+            col = type_name::<Column>(),
+            qr = type_name::<QueryResult>(),
+        )
     );
 }
 
@@ -1333,6 +1502,12 @@ pub fn derive_tuple_structs() {
     // LuaRead
     lua.set("derive_tuple_structs", 1337);
     assert_eq!(lua.get("derive_tuple_structs"), Some(Int(1337)));
+
+    assert_eq!(
+        lua.eval::<Int>("return 'not a number'").unwrap_err().to_string(),
+        "failed reading Lua value: i32 expected, got string
+    while reading value(s) returned by Lua: tarantool_module_test_runner::tlua::rust_tables::derive_tuple_structs::Int expected, got string"
+    );
 
     // PushInto
     lua.set("derive_tuple_structs", Int(420));

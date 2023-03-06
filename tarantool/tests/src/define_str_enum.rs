@@ -67,8 +67,10 @@ pub fn basic() {
             .unwrap_err()
             .to_string(),
         format!(
-            "Wrong type returned by Lua: {} expected, got string",
-            std::any::type_name::<Color>()
+            "failed reading string enum: one of {:?} expected, got string '#808080'
+    while reading value(s) returned by Lua: {} expected, got string",
+            Color::values(),
+            std::any::type_name::<Color>(),
         )
     );
 

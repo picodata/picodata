@@ -2,7 +2,8 @@ use crate::{
     ffi,
     lua_tables::LuaTable,
     tuples::TuplePushError::{self, First, Other},
-    AsLua, LuaRead, LuaState, Push, PushGuard, PushInto, PushOne, PushOneInto, Void,
+    AsLua, LuaRead, LuaState, Push, PushGuard, PushInto, PushOne, PushOneInto, ReadResult, Void,
+    WrongType,
 };
 
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -210,7 +211,7 @@ where
     T: for<'a> LuaRead<PushGuard<&'a LuaTable<L>>>,
     T: 'static,
 {
-    fn lua_read_at_position(lua: L, index: NonZeroI32) -> Result<Self, L> {
+    fn lua_read_at_position(lua: L, index: NonZeroI32) -> ReadResult<Self, L> {
         // We need this as iteration order isn't guaranteed to match order of
         // keys, even if they're numeric
         // https://www.lua.org/manual/5.2/manual.html#pdf-next
@@ -226,9 +227,14 @@ where
         {
             let mut iter = table.iter::<i32, T>();
             while let Some(maybe_kv) = iter.next() {
-                let (key, value) = crate::unwrap_or! {maybe_kv,
-                    drop(iter);
-                    return Err(table.into_inner())
+                let (key, value) = crate::unwrap_ok_or! { maybe_kv,
+                    Err(e) => {
+                        drop(iter);
+                        let lua = table.into_inner();
+                        let e = e.when("converting Lua table to Vec<_>")
+                            .expected_type::<Self>();
+                        return Err((lua, e))
+                    }
                 };
                 max_key = max_key.max(key);
                 min_key = min_key.min(key);
@@ -243,7 +249,10 @@ where
         if min_key != 1 {
             // Rust doesn't support sparse arrays or arrays with negative
             // indices
-            return Err(table.into_inner());
+            let e = WrongType::info("converting Lua table to Vec<_>")
+                .expected("indexes in range 1..N")
+                .actual(format!("value with index {}", min_key));
+            return Err((table.into_inner(), e));
         }
 
         let mut result = Vec::with_capacity(max_key as _);
@@ -256,7 +265,10 @@ where
         // and check that table represented non-sparse 1-indexed array
         for (k, v) in dict {
             if previous_key + 1 != k {
-                return Err(table.into_inner());
+                let e = WrongType::info("converting Lua table to Vec<_>")
+                    .expected("indexes in range 1..N")
+                    .actual(format!("Lua table with missing index {}", previous_key + 1));
+                return Err((table.into_inner(), e));
             } else {
                 // We just push, thus converting Lua 1-based indexing
                 // to Rust 0-based indexing
@@ -343,7 +355,7 @@ where
     T: for<'a> LuaRead<PushGuard<&'a LuaTable<L>>>,
     T: 'static,
 {
-    fn lua_read_at_position(lua: L, index: NonZeroI32) -> Result<Self, L> {
+    fn lua_read_at_position(lua: L, index: NonZeroI32) -> ReadResult<Self, L> {
         let table = match LuaTable::lua_read_at_position(lua, index) {
             Ok(table) => table,
             Err(lua) => return Err(lua),
@@ -352,33 +364,62 @@ where
         let mut res = std::mem::MaybeUninit::uninit();
         let ptr = &mut res as *mut _ as *mut [T; N] as *mut T;
         let mut was_assigned = [false; N];
-        let mut err = false;
+        let mut err = None;
 
         for maybe_kv in table.iter::<i32, T>() {
             match maybe_kv {
-                Some((key, value)) if 1 <= key && key as usize <= N => {
+                Ok((key, value)) if 1 <= key && key as usize <= N => {
                     let i = (key - 1) as usize;
                     unsafe { std::ptr::write(ptr.add(i), value) }
                     was_assigned[i] = true;
                 }
-                _ => {
-                    err = true;
+                Err(e) => {
+                    err = Some(Error::Subtype(e));
+                    break;
+                }
+                Ok((index, _)) => {
+                    err = Some(Error::WrongIndex(index));
                     break;
                 }
             }
         }
 
-        if err || was_assigned.iter().any(|&was_assigned| !was_assigned) {
-            for i in IntoIterator::into_iter(was_assigned)
-                .enumerate()
-                .flat_map(|(i, was_assigned)| was_assigned.then(|| i))
-            {
-                unsafe { std::ptr::drop_in_place(ptr.add(i)) }
-            }
-            return Err(table.into_inner());
+        if err.is_none() {
+            err = was_assigned
+                .iter()
+                .zip(1..)
+                .find(|(&was_assigned, _)| !was_assigned)
+                .map(|(_, i)| Error::MissingIndex(i));
         }
 
-        Ok(unsafe { res.assume_init() })
+        let err = crate::unwrap_or! { err,
+            return Ok(unsafe { res.assume_init() });
+        };
+
+        for i in IntoIterator::into_iter(was_assigned)
+            .enumerate()
+            .flat_map(|(i, was_assigned)| was_assigned.then(|| i))
+        {
+            unsafe { std::ptr::drop_in_place(ptr.add(i)) }
+        }
+
+        let when = "converting Lua table to array";
+        let e = match err {
+            Error::Subtype(err) => err.when(when).expected_type::<Self>(),
+            Error::WrongIndex(index) => WrongType::info(when)
+                .expected(format!("indexes in range 1..={}", N))
+                .actual(format!("value with index {}", index)),
+            Error::MissingIndex(index) => WrongType::info(when)
+                .expected(format!("indexes in range 1..={}", N))
+                .actual(format!("Lua table with missing index {}", index)),
+        };
+        return Err((table.into_inner(), e));
+
+        enum Error {
+            Subtype(WrongType),
+            WrongIndex(i32),
+            MissingIndex(i32),
+        }
     }
 }
 
@@ -394,10 +435,16 @@ where
     V: 'static,
     V: for<'v> LuaRead<PushGuard<&'v LuaTable<L>>>,
 {
-    fn lua_read_at_position(lua: L, index: NonZeroI32) -> Result<Self, L> {
+    fn lua_read_at_position(lua: L, index: NonZeroI32) -> ReadResult<Self, L> {
         let table = LuaTable::lua_read_at_position(lua, index)?;
-        let res: Result<_, ()> = table.iter().map(|kv| kv.ok_or(())).collect();
-        res.map_err(|_| table.into_inner())
+        let res: Result<_, _> = table.iter().collect();
+        res.map_err(|err| {
+            let l = table.into_inner();
+            let e = err
+                .when("converting Lua table to HashMap<_, _>")
+                .expected_type::<Self>();
+            (l, e)
+        })
     }
 }
 

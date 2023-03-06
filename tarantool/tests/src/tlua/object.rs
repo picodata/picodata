@@ -51,7 +51,7 @@ pub fn indexable_builtin() {
     assert_eq!(i.get(2), None::<i32>);
     assert_eq!(
         i.try_get::<_, i32>(2).unwrap_err().to_string(),
-        "Wrong type returned by Lua: i32 expected, got nil"
+        "failed reading value from Lua table: i32 expected, got nil"
     );
 }
 
@@ -84,7 +84,7 @@ pub fn indexable_ffi() {
         assert_eq!(i.get("no such member"), None::<()>);
         assert_eq!(
             i.try_get::<_, ()>("no such member").unwrap_err().to_string(),
-            "Execution error: 'struct bigfoo_t' has no member named 'no such member'"
+            "execution error: 'struct bigfoo_t' has no member named 'no such member'"
         );
     }
 }
@@ -113,13 +113,13 @@ pub fn indexable_meta() {
     assert_eq!(i.get("hello"), None::<()>);
     assert_eq!(
         i.try_get::<_, u8>("hello").unwrap_err().to_string(),
-        format!("Execution error: [{file}:{line}]:7: 'for' limit must be a number")
+        format!("execution error: [{file}:{line}]:7: 'for' limit must be a number")
     );
 
     let t = LuaTable::try_from(Object::from(i)).unwrap();
     assert_eq!(
         t.try_get::<_, u8>("hello").unwrap_err().to_string(),
-        format!("Execution error: [{file}:{line}]:7: 'for' limit must be a number")
+        format!("execution error: [{file}:{line}]:7: 'for' limit must be a number")
     );
 }
 
@@ -130,11 +130,15 @@ pub fn cannot_get_mutltiple_values() {
     assert_eq!(i.get::<_, (String,)>(1), Some(("one".to_string(),)));
     assert_eq!(
         i.try_get::<_, (String, i32)>(1).unwrap_err().to_string(),
-        "Wrong type returned by Lua: (alloc::string::String, i32) expected, got string"
+        "failed reading Lua value: i32 expected, got no value
+    while reading one of multiple values: i32 at index 2 (1-based) expected, got no value
+    while reading value from Lua table: (alloc::string::String, i32) expected, got string"
     );
     assert_eq!(
         i.try_get::<_, (i32, i32)>(2).unwrap_err().to_string(),
-        "Wrong type returned by Lua: (i32, i32) expected, got nil"
+        "failed reading Lua value: i32 expected, got nil
+    while reading one of multiple values: i32 at index 1 (1-based) expected, got incorrect value
+    while reading value from Lua table: (i32, i32) expected, got nil"
     );
 }
 
@@ -167,7 +171,7 @@ pub fn indexable_rw_meta() {
     assert_eq!(
         i.try_set(3, [1, 2, 3]).unwrap_err().to_string(),
         format!(
-            "Execution error: [{file}:{line}]:4: \
+            "execution error: [{file}:{line}]:4: \
             attempt to concatenate local 'v' (a table value)"
         )
     );

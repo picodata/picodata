@@ -131,6 +131,16 @@ macro_rules! unwrap_or {
 }
 
 #[macro_export]
+macro_rules! unwrap_ok_or {
+    ($r:expr, $err:pat => $($else:tt)+) => {
+        match $r {
+            Ok(v) => v,
+            $err => $($else)+,
+        }
+    }
+}
+
+#[macro_export]
 macro_rules! nzi32 {
     ($i:expr) => {
         #[allow(unused_unsafe)]

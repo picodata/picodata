@@ -1,6 +1,9 @@
 use std::num::NonZeroI32;
 
-use crate::{AsLua, LuaRead, LuaTable, Nil, Push, PushGuard, PushInto, PushOne, PushOneInto, Void};
+use crate::{
+    AsLua, LuaRead, LuaTable, Nil, Push, PushGuard, PushInto, PushOne, PushOneInto, ReadResult,
+    Void,
+};
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct AnyLuaString(pub Vec<u8>);
@@ -82,47 +85,47 @@ macro_rules! impl_any_lua_value {
 
         impl<L: AsLua> LuaRead<L> for $t {
             #[inline]
-            fn lua_read_at_position(lua: L, index: NonZeroI32) -> Result<Self, L> {
+            fn lua_read_at_position(lua: L, index: NonZeroI32) -> ReadResult<Self, L> {
                 let lua = match LuaRead::lua_read_at_position(lua, index) {
                     Ok(v) => return Ok(Self::LuaString(v)),
-                    Err(lua) => lua,
+                    Err((lua, _)) => lua,
                 };
 
                 let lua = match LuaRead::lua_read_at_position(lua, index) {
                     Ok(v) => return Ok(Self::LuaAnyString(v)),
-                    Err(lua) => lua,
+                    Err((lua, _)) => lua,
                 };
 
                 let lua = match LuaRead::lua_read_at_position(lua, index) {
                     Ok(v) => return Ok(Self::LuaNumber(v)),
-                    Err(lua) => lua,
+                    Err((lua, _)) => lua,
                 };
 
                 let lua = match LuaRead::lua_read_at_position(lua, index) {
                     Ok(v) => return Ok(Self::LuaBoolean(v)),
-                    Err(lua) => lua,
+                    Err((lua, _)) => lua,
                 };
 
                 let lua = match LuaRead::lua_read_at_position(lua, index) {
                     Ok(v) => return Ok(Self::LuaString(v)),
-                    Err(lua) => lua,
+                    Err((lua, _)) => lua,
                 };
 
                 let lua = match LuaRead::lua_read_at_position(lua, index) {
                     Ok(v) => return Ok(Self::LuaAnyString(v)),
-                    Err(lua) => lua,
+                    Err((lua, _)) => lua,
                 };
 
                 let lua = match Nil::lua_read_at_position(lua, index) {
                     Ok(Nil) => return Ok(Self::LuaNil),
-                    Err(lua) => lua,
+                    Err((lua, _)) => lua,
                 };
 
                 let _ = match LuaTable::lua_read_at_position(lua.as_lua(), index) {
                     Ok(v) => return Ok(
                         Self::LuaArray(v.iter::<Self, Self>().flatten().collect())
                     ),
-                    Err(lua) => lua,
+                    Err((lua, _)) => lua,
                 };
 
                 Ok(Self::LuaOther)

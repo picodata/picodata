@@ -223,7 +223,7 @@ pub fn start_error() {
     match fiber::LuaFiber::new(fiber::LuaFiberFunc::new(|| ())).spawn() {
         Err(e) => assert_eq!(
             format!("{}", e),
-            "Lua error: Execution error: Artificial error"
+            "Lua error: execution error: Artificial error"
         ),
         _ => panic!(),
     }
@@ -250,7 +250,7 @@ pub fn require_error() {
     match fiber::LuaFiber::new(fiber::LuaFiberFunc::new(|| ())).spawn() {
         Err(e) => assert_eq!(
             format!("{}", e),
-            "Lua error: Execution error: Artificial require error"
+            "Lua error: execution error: Artificial require error"
         ),
         _ => panic!(),
     }

@@ -7,7 +7,7 @@ struct Metadata {
     workspace_root: String,
 }
 
-fn main() {
+fn main() -> Result<(), i32> {
     let filter = env::args().skip(1);
     let tarantool_exec =
         env::var("TARANTOOL_EXECUTABLE").unwrap_or_else(|_| "tarantool".to_owned());
@@ -23,5 +23,9 @@ fn main() {
         .args(filter)
         .status()
         .expect("failed to run tarantool child process");
-    assert!(status.success())
+    if status.success() {
+        Ok(())
+    } else {
+        Err(1)
+    }
 }

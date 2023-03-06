@@ -131,6 +131,10 @@ macro_rules! define_str_enum {
                     )+
                 }
             }
+
+            $vis const fn values() -> &'static [&'static str] {
+                &[ $( $display, )+ ]
+            }
         }
 
         impl ::std::convert::AsRef<str> for $enum {
@@ -206,12 +210,7 @@ macro_rules! define_str_enum {
                 use serde::de::Error;
                 let tmp = <&str>::deserialize(deserializer)?;
                 let res = tmp.parse().map_err(|_| {
-                    let expected = &[
-                        $(
-                            $display
-                        ),+
-                    ];
-                    Error::unknown_variant(tmp, expected)
+                    Error::unknown_variant(tmp, Self::values())
                 })?;
                 Ok(res)
             }
@@ -237,10 +236,17 @@ macro_rules! define_str_enum {
             fn lua_read_at_position(
                 lua: L,
                 index: ::std::num::NonZeroI32
-            ) -> ::std::result::Result<Self, L> {
-                $crate::tlua::StringInLua::lua_read_at_position(&lua, index).ok()
-                    .and_then(|s| s.parse().ok())
-                    .ok_or(lua)
+            ) -> $crate::tlua::ReadResult<Self, L> {
+                let s = $crate::tlua::StringInLua::lua_read_at_position(lua, index)?;
+                match s.parse() {
+                    Ok(v) => Ok(v),
+                    Err(_) => {
+                        let e = $crate::tlua::WrongType::info("reading string enum")
+                            .expected(format!("one of {:?}", Self::values()))
+                            .actual(format!("string '{}'", &*s));
+                        Err((s.into_inner(), e))
+                    }
+                }
             }
         }
     };

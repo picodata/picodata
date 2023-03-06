@@ -1,6 +1,6 @@
 use crate::{
     impl_object, AbsoluteIndex, AsLua, LuaError, LuaRead, LuaState, Push, PushGuard, PushInto,
-    PushOneInto, Void,
+    PushOneInto, ReadResult, Void,
 };
 use std::{error::Error, fmt, num::NonZeroI32};
 
@@ -21,7 +21,7 @@ pub struct Object<L> {
     index: AbsoluteIndex,
 }
 
-impl<L> Object<L> {
+impl<L: AsLua> Object<L> {
     #[inline(always)]
     pub(crate) fn new(guard: L, index: NonZeroI32) -> Self
     where
@@ -60,7 +60,7 @@ impl<L> Object<L> {
         T: LuaRead<L>,
     {
         let Self { guard, index } = self;
-        T::lua_read_at_position(guard, index.0).map_err(|guard| Self { guard, index })
+        T::lua_read_at_position(guard, index.0).map_err(|(guard, _)| Self { guard, index })
     }
 }
 
@@ -77,7 +77,7 @@ impl<L> LuaRead<L> for Object<L>
 where
     L: AsLua,
 {
-    fn lua_read_at_position(lua: L, index: NonZeroI32) -> Result<Self, L> {
+    fn lua_read_at_position(lua: L, index: NonZeroI32) -> ReadResult<Self, L> {
         Ok(Self::new(lua, index))
     }
 }
@@ -85,6 +85,7 @@ where
 impl<L, K> Push<L> for Object<K>
 where
     L: AsLua,
+    K: AsLua,
 {
     type Err = Void;
     fn push_to_lua(&self, lua: L) -> crate::PushResult<L, Self> {
@@ -99,6 +100,7 @@ impl<L> crate::PushOne<L> for Object<L> where L: AsLua {}
 impl<L, K> PushInto<L> for Object<K>
 where
     L: AsLua,
+    K: AsLua,
 {
     type Err = Void;
     fn push_into_lua(self, lua: L) -> crate::PushIntoResult<L, Self> {
@@ -113,7 +115,7 @@ impl<L> crate::PushOneInto<L> for Object<L> where L: AsLua {}
 /// Types implementing this trait represent a single value stored on the lua
 /// stack. Type parameter `L` represents a value guarding the state of the lua
 /// stack (see [`PushGuard`]).
-pub trait FromObject<L> {
+pub trait FromObject<L: AsLua> {
     /// Check if a value at `index` satisfies the given type's invariants
     unsafe fn check(lua: impl AsLua, index: NonZeroI32) -> bool;
 
@@ -647,7 +649,7 @@ mod imp {
     use super::{CallError, CheckedSetError, TryCheckedSetError};
     use crate::{
         c_ptr, ffi, nzi32, AbsoluteIndex, AsLua, LuaError, LuaRead, LuaState, PushGuard, PushInto,
-        PushOneInto, ToString, Void,
+        PushOneInto, ToString, Void, WrongType,
     };
     use std::num::NonZeroI32;
 
@@ -713,9 +715,12 @@ mod imp {
             ffi::luaL_unref(raw_lua, ffi::LUA_REGISTRYINDEX, table_ref);
         }
 
-        R::lua_read_at_position(PushGuard::new(this, 1), nzi32!(-1)).map_err(|g| {
-            let e = LuaError::wrong_type_returned::<R, _>(raw_lua, 1);
-            (g.into_inner(), e)
+        R::lua_read_at_position(PushGuard::new(this, 1), nzi32!(-1)).map_err(|(g, e)| {
+            let e = WrongType::info("reading value from Lua table")
+                .expected_type::<R>()
+                .actual_single_lua(raw_lua, nzi32!(-1))
+                .subtype(e);
+            (g.into_inner(), e.into())
         })
     }
 
@@ -845,8 +850,13 @@ mod imp {
         }
 
         let n_results = pushed_value.size;
-        LuaRead::lua_read_at_maybe_zero_position(pushed_value, -n_results)
-            .map_err(|lua| LuaError::wrong_type_returned::<R, _>(lua, n_results).into())
+        LuaRead::lua_read_at_maybe_zero_position(pushed_value, -n_results).map_err(|(lua, e)| {
+            WrongType::info("reading value(s) returned by Lua")
+                .expected_type::<R>()
+                .actual_multiple_lua(lua, n_results)
+                .subtype(e)
+                .into()
+        })
     }
 
     ////////////////////////////////////////////////////////////////////////////
@@ -925,7 +935,10 @@ macro_rules! impl_object {
             }
         }
 
-        impl<L> ::std::convert::AsRef<$crate::object::Object<L>> for $this<L> {
+        impl<L> ::std::convert::AsRef<$crate::object::Object<L>> for $this<L>
+        where
+            L: $crate::AsLua,
+        {
             #[inline(always)]
             fn as_ref(&self) -> &$crate::object::Object<L> {
                 &self.inner
@@ -969,15 +982,22 @@ macro_rules! impl_object {
             fn lua_read_at_position(
                 lua: L,
                 index: ::std::num::NonZeroI32,
-            ) -> ::std::result::Result<Self, L> {
+            ) -> $crate::ReadResult<Self, L> {
                 ::std::convert::TryFrom::try_from($crate::object::Object::new(lua, index))
-                    .map_err($crate::object::Object::into_guard)
+                    .map_err(|l| {
+                        let g = $crate::object::Object::into_guard(l);
+                        let e = $crate::WrongType::info("reading lua value from stack")
+                            .expected_type::<Self>()
+                            .actual_single_lua(&g, index);
+                        (g, e)
+                    })
             }
         }
 
         impl<L, T> $crate::Push<L> for $this<T>
         where
             L: $crate::AsLua,
+            T: $crate::AsLua,
         {
             type Err = $crate::Void;
 
@@ -993,6 +1013,7 @@ macro_rules! impl_object {
         impl<L, T> $crate::PushOne<L> for $this<T>
         where
             L: $crate::AsLua,
+            T: $crate::AsLua,
         {}
     }
 }

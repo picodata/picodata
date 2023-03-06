@@ -1,6 +1,6 @@
 use crate::{
     error, ffi, values::ToString, AsLua, LuaError, LuaRead, LuaState, Nil, Push, PushGuard,
-    PushInto, PushOne, PushOneInto, StaticLua, Void,
+    PushInto, PushOne, PushOneInto, StaticLua, Void, WrongType,
 };
 
 use std::fmt::Display;
@@ -471,11 +471,14 @@ where
     // TODO: what if the user has the wrong params?
     let args = A::lua_read_at_maybe_zero_position(&tmp_lua, -arguments_count);
     let args = match args {
-        Err(lua) => {
+        Err((lua, e)) => {
             error!(
                 lua,
                 "{}",
-                LuaError::wrong_type_passed::<A, _>(lua, arguments_count),
+                WrongType::info("reading value(s) passed into rust callback")
+                    .expected_type::<A>()
+                    .actual_multiple_lua(&lua, arguments_count)
+                    .subtype(e),
             )
         }
         Ok(a) => a,

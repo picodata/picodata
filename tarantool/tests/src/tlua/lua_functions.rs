@@ -62,21 +62,9 @@ pub fn check_types() {
     let lua = Lua::new();
     let f = LuaFunction::load(&lua, "return 12").unwrap();
     let err = f.call::<bool>().unwrap_err();
-    match &err {
-        LuaError::WrongType {
-            rust_expected,
-            lua_actual,
-            when,
-        } => {
-            assert_eq!(rust_expected, "bool");
-            assert_eq!(lua_actual, "number");
-            assert_eq!(*when, "Wrong type returned by Lua")
-        }
-        v => panic!("{}", v),
-    };
     assert_eq!(
         err.to_string(),
-        "Wrong type returned by Lua: bool expected, got number"
+        "failed reading value(s) returned by Lua: bool expected, got number"
     );
 
     assert_eq!(f.call::<i32>().unwrap(), 12i32);
@@ -84,7 +72,7 @@ pub fn check_types() {
     assert_eq!(f.call::<f64>().unwrap(), 12f64);
     assert_eq!(
         f.call::<String>().unwrap_err().to_string(),
-        "Wrong type returned by Lua: alloc::string::String expected, got number"
+        "failed reading value(s) returned by Lua: alloc::string::String expected, got number"
     );
 }
 
@@ -178,7 +166,7 @@ pub fn error_location() {
     let (line, res) = (line!(), lua.exec(code).unwrap_err());
     assert_eq!(
         res.to_string(),
-        format!("Execution error: [{file}:{line}]:1: exec failed")
+        format!("execution error: [{file}:{line}]:1: exec failed")
     );
     eprintln!("  {res}");
 
@@ -187,7 +175,7 @@ pub fn error_location() {
     let (line, res) = (line!(), lua.eval::<()>(code).unwrap_err());
     assert_eq!(
         res.to_string(),
-        format!("Execution error: [{file}:{line}]:1: eval failed")
+        format!("execution error: [{file}:{line}]:1: eval failed")
     );
     eprintln!("  {res}");
 
@@ -196,7 +184,7 @@ pub fn error_location() {
     let (line, res) = (line!(), lua.exec_with(code, arg).unwrap_err());
     assert_eq!(
         res.to_string(),
-        format!("Lua error: Execution error: [{file}:{line}]:1: exec_with failed")
+        format!("Lua error: execution error: [{file}:{line}]:1: exec_with failed")
     );
     eprintln!("  {res}");
 
@@ -205,7 +193,7 @@ pub fn error_location() {
     let (line, res) = (line!(), lua.eval_with::<_, ()>(code, arg).unwrap_err());
     assert_eq!(
         res.to_string(),
-        format!("Lua error: Execution error: [{file}:{line}]:1: eval_with failed")
+        format!("Lua error: execution error: [{file}:{line}]:1: eval_with failed")
     );
     eprintln!("  {res}");
 
@@ -214,7 +202,7 @@ pub fn error_location() {
 
     // One stack frame above
     let res = lua.exec("error('error(2)', 2)").unwrap_err();
-    assert_eq!(res.to_string(), "Execution error: error(2)");
+    assert_eq!(res.to_string(), "execution error: error(2)");
     eprintln!("  {res}");
 
     // One plus one minus
@@ -228,7 +216,7 @@ pub fn error_location() {
     let (line, res) = (line!(), lua.exec(code).unwrap_err());
     assert_eq!(
         res.to_string(),
-        format!("Execution error: [{}:{}]:6: oops", file!(), line)
+        format!("execution error: [{}:{}]:6: oops", file!(), line)
     );
     eprintln!("  {res}");
 
@@ -244,7 +232,7 @@ pub fn error_location() {
 
     assert_eq!(
         res.to_string(),
-        format!("Execution error: [{file}:{line}]:3: oops")
+        format!("execution error: [{file}:{line}]:3: oops")
     );
     eprintln!("  {res}");
 }
@@ -279,7 +267,9 @@ pub fn multiple_return_values() {
     let e = f.call::<(i8, i8, i8, i8)>().unwrap_err();
     assert_eq!(
         e.to_string(),
-        "Wrong type returned by Lua: (i8, i8, i8, i8) expected, got (number, string, number, boolean)",
+        "failed reading Lua value: i8 expected, got string
+    while reading one of multiple values: i8 at index 2 (1-based) expected, got incorrect value
+    while reading value(s) returned by Lua: (i8, i8, i8, i8) expected, got (number, string, number, boolean)",
     );
 }
 
@@ -292,7 +282,9 @@ pub fn multiple_return_values_fail() {
     assert_eq!(f.call::<(i32, i32, i32)>().unwrap(), (1, 2, 3));
     assert_eq!(
         f.call::<(i32, i32, i32, i32)>().unwrap_err().to_string(),
-        "Wrong type returned by Lua: (i32, i32, i32, i32) expected, got (number, number, number)"
+        "failed reading Lua value: i32 expected, got no value
+    while reading one of multiple values: i32 at index 4 (1-based) expected, got no value
+    while reading value(s) returned by Lua: (i32, i32, i32, i32) expected, got (number, number, number)"
             .to_string()
     );
     assert_eq!(
@@ -308,7 +300,9 @@ pub fn multiple_return_values_fail() {
     assert_eq!(
         f.call::<(bool, String, f64)>()
             .unwrap_err().to_string(),
-        "Wrong type returned by Lua: (bool, alloc::string::String, f64) expected, got (number, number, number)"
+        "failed reading Lua value: bool expected, got number
+    while reading one of multiple values: bool at index 1 (1-based) expected, got incorrect value
+    while reading value(s) returned by Lua: (bool, alloc::string::String, f64) expected, got (number, number, number)"
             .to_string()
     );
 }
@@ -403,7 +397,7 @@ pub fn push_iter_no_err() {
     };
     assert_eq!(
         f().unwrap_err().to_string(),
-        format!("Execution error: [{file}:{line}]:4: oopsie")
+        format!("execution error: [{file}:{line}]:4: oopsie")
     );
 }
 

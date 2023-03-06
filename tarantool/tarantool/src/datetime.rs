@@ -187,34 +187,32 @@ static CTID_DATETIME: Lazy<u32> = Lazy::new(|| {
     ctid_datetime
 });
 
+unsafe impl tlua::AsCData for ffi::datetime {
+    fn ctypeid() -> tlua::ffi::CTypeID {
+        *CTID_DATETIME
+    }
+}
+
 impl<L> tlua::LuaRead<L> for Datetime
 where
     L: tlua::AsLua,
 {
-    fn lua_read_at_position(lua: L, index: std::num::NonZeroI32) -> Result<Self, L> {
-        let raw_lua = lua.as_lua();
-        let index = index.get();
-        unsafe {
-            if tlua::ffi::lua_type(raw_lua, index) != tlua::ffi::LUA_TCDATA {
-                return Err(lua);
+    fn lua_read_at_position(lua: L, index: std::num::NonZeroI32) -> tlua::ReadResult<Self, L> {
+        let res = tlua::LuaRead::lua_read_at_position(&lua, index);
+        let tlua::CData(datetime) = crate::unwrap_ok_or!(res,
+            Err((_, e)) => {
+                return Err((lua, e));
             }
-            let mut ctypeid = std::mem::MaybeUninit::uninit();
-            let cdata = tlua::ffi::luaL_checkcdata(raw_lua, index, ctypeid.as_mut_ptr());
-            if ctypeid.assume_init() != *CTID_DATETIME {
-                return Err(lua);
+        );
+        match Self::from_ffi_dt(datetime) {
+            Ok(v) => Ok(v),
+            Err(err) => {
+                let e = tlua::WrongType::info("reading tarantool datetime")
+                    .expected_type::<Self>()
+                    .actual(format!("datetime failing to convert: {}", err));
+                Err((lua, e))
             }
-
-            Self::from_ffi_dt(*cdata.cast::<ffi::datetime>()).map_err(|_| lua)
         }
-    }
-}
-
-#[inline(always)]
-fn push_datetime<L: tlua::AsLua>(lua: L, d: ffi::datetime) -> tlua::PushGuard<L> {
-    unsafe {
-        let dec = tlua::ffi::luaL_pushcdata(lua.as_lua(), *CTID_DATETIME);
-        std::ptr::write(dec.cast::<ffi::datetime>(), d);
-        tlua::PushGuard::new(lua, 1)
     }
 }
 
@@ -222,7 +220,7 @@ impl<L: tlua::AsLua> tlua::Push<L> for Datetime {
     type Err = tlua::Void;
 
     fn push_to_lua(&self, lua: L) -> Result<tlua::PushGuard<L>, (Self::Err, L)> {
-        Ok(push_datetime(lua, self.as_ffi_dt()))
+        Ok(lua.push_one(tlua::CData(self.as_ffi_dt())))
     }
 }
 
@@ -232,7 +230,7 @@ impl<L: tlua::AsLua> tlua::PushInto<L> for Datetime {
     type Err = tlua::Void;
 
     fn push_into_lua(self, lua: L) -> Result<tlua::PushGuard<L>, (Self::Err, L)> {
-        Ok(push_datetime(lua, self.as_ffi_dt()))
+        Ok(lua.push_one(tlua::CData(self.as_ffi_dt())))
     }
 }
 

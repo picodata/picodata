@@ -4,7 +4,7 @@ use std::num::NonZeroI32;
 use crate::{
     ffi, impl_object, nzi32,
     object::{Callable, CheckedSetError, FromObject, Index, MethodCallError, NewIndex, Object},
-    AsLua, LuaRead, LuaState, PushGuard, PushInto, PushOne, PushOneInto, Void,
+    AsLua, LuaError, LuaRead, LuaState, PushGuard, PushInto, PushOne, PushOneInto, Void, WrongType,
 };
 
 /// Represents a table stored in the Lua context.
@@ -20,7 +20,7 @@ use crate::{
 /// lua.exec("a = {28, 92, 17};").unwrap();
 ///
 /// let table: tlua::LuaTable<_> = lua.get("a").unwrap();
-/// for (k, v) in table.iter::<i32, i32>().filter_map(|e| e) {
+/// for (k, v) in table.iter::<i32, i32>().filter_map(|e| e.ok()) {
 ///     println!("{} => {}", k, v);
 /// }
 /// ```
@@ -115,6 +115,29 @@ where
         R: LuaRead<PushGuard<&'lua L>>,
     {
         Index::get(self, index)
+    }
+
+    /// Loads a value from the table given its `key`.
+    ///
+    /// # Possible errors:
+    /// - `LuaError::ExecutionError` if an error happened during the check that
+    ///     `index` is valid in `self` or in `__index` metamethod
+    /// - `LuaError::WrongType` if the result lua value couldn't be read as the
+    ///     expected rust type
+    ///
+    /// The `key` must implement the [`PushOneInto`] trait and the return type
+    /// must implement the [`LuaRead`] trait. See [the documentation at the
+    /// crate root](index.html#pushing-and-loading-values) for more information.
+    #[track_caller]
+    #[inline]
+    pub fn try_get<K, R>(&'lua self, key: K) -> Result<R, LuaError>
+    where
+        L: 'lua,
+        K: PushOneInto<LuaState>,
+        K::Err: Into<Void>,
+        R: LuaRead<PushGuard<&'lua L>>,
+    {
+        Index::try_get(self, key)
     }
 
     /// Loads a value in the table, with the result capturing the table by value.
@@ -304,10 +327,10 @@ where
     K: LuaRead<&'t LuaTable<L>>,
     V: LuaRead<PushGuard<&'t LuaTable<L>>>,
 {
-    type Item = Option<(K, V)>;
+    type Item = Result<(K, V), WrongType>;
 
     #[inline]
-    fn next(&mut self) -> Option<Option<(K, V)>> {
+    fn next(&mut self) -> Option<Self::Item> {
         unsafe {
             if self.finished {
                 return None;
@@ -336,13 +359,22 @@ where
             let guard = PushGuard::new(self.table, 1);
 
             // Reading the key and value.
-            let key = K::lua_read_at_position(self.table, crate::NEGATIVE_TWO).ok();
-            let value = V::lua_read_at_position(guard, crate::NEGATIVE_ONE).ok();
+            let key = K::lua_read_at_position(self.table, crate::NEGATIVE_TWO);
+            let value = V::lua_read_at_position(guard, crate::NEGATIVE_ONE);
 
-            Some(match (key, value) {
-                (Some(key), Some(value)) => Some((key, value)),
-                _ => None,
-            })
+            match (key, value) {
+                (Ok(key), Ok(value)) => Some(Ok((key, value))),
+                (key, value) => {
+                    let mut e =
+                        WrongType::info("iterating over Lua table").expected("iterable table");
+                    if let Err((_, subtype)) = key {
+                        e = e.actual("table key of wrong type").subtype(subtype);
+                    } else if let Err((_, subtype)) = value {
+                        e = e.actual("table value of wrong type").subtype(subtype);
+                    };
+                    Some(Err(e))
+                }
+            }
         }
     }
 }

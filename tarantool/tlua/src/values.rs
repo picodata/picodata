@@ -10,7 +10,8 @@ use std::slice;
 use std::str;
 
 use crate::{
-    ffi, AnyLuaString, AsLua, LuaRead, Push, PushGuard, PushInto, PushOne, PushOneInto, Void,
+    ffi, AnyLuaString, AsLua, LuaRead, Push, PushGuard, PushInto, PushOne, PushOneInto, ReadResult,
+    Void, WrongType,
 };
 
 macro_rules! numeric_impl {
@@ -59,10 +60,15 @@ macro_rules! numeric_impl {
             L: AsLua,
         {
             #[inline(always)]
-            fn lua_read_at_position(lua: L, index: NonZeroI32) -> Result<$t, L> {
-                return unsafe { read_numeric(lua.as_lua(), index.into()) }
-                    .map(|v| v as _)
-                    .ok_or(lua);
+            fn lua_read_at_position(lua: L, index: NonZeroI32) -> ReadResult<$t, L> {
+                return if let Some(v) = unsafe { read_numeric(lua.as_lua(), index.into()) } {
+                    Ok(v as _)
+                } else {
+                    let e = WrongType::default()
+                        .expected_type::<Self>()
+                        .actual_single_lua(&lua, index);
+                    Err((lua, e))
+                };
 
                 #[inline(always)]
                 pub unsafe fn read_numeric(l: *mut ffi::lua_State, idx: c_int) -> Option<$t> {
@@ -145,7 +151,7 @@ macro_rules! strict_numeric_impl {
             L: AsLua,
         {
             #[inline(always)]
-            fn lua_read_at_position(lua: L, index: NonZeroI32) -> Result<Self, L> {
+            fn lua_read_at_position(lua: L, index: NonZeroI32) -> ReadResult<Self, L> {
                 let l = lua.as_lua();
                 let idx = index.into();
                 let res = unsafe {
@@ -162,7 +168,12 @@ macro_rules! strict_numeric_impl {
                         _ => None,
                     }
                 };
-                res.map(Strict).ok_or(lua)
+                res.map(Strict).ok_or_else(|| {
+                    let e = WrongType::default()
+                        .expected_type::<Self>()
+                        .actual_single_lua(&lua, index);
+                    (lua, e)
+                })
             }
         }
     };
@@ -291,13 +302,13 @@ macro_rules! impl_push_read {
                 L: AsLua,
             {
                 #[inline(always)]
-                fn lua_read_at_position($lua3: L, $index1: NonZeroI32) -> Result<Self, L> {
+                fn lua_read_at_position($lua3: L, $index1: NonZeroI32) -> $crate::ReadResult<Self, L> {
                     $($read)*
                 }
 
                 $(
                     #[inline(always)]
-                    fn lua_read_at_maybe_zero_position($lua4: L, $index2: i32) -> Result<Self, L> {
+                    fn lua_read_at_maybe_zero_position($lua4: L, $index2: i32) -> $crate::ReadResult<Self, L> {
                         $($read_mz)*
                     }
                 )?
@@ -321,7 +332,7 @@ macro_rules! push_string_impl {
 
 macro_rules! lua_read_string_impl {
     ($lua:ident, $index:ident, $from_slice:expr) => {
-        unsafe {
+        (|| unsafe {
             let mut size = MaybeUninit::uninit();
             let type_code = ffi::lua_type($lua.as_lua(), $index.into());
             // Because this function may be called while iterating over
@@ -337,7 +348,13 @@ macro_rules! lua_read_string_impl {
             }
             let slice = slice::from_raw_parts(c_ptr as _, size.assume_init());
             $from_slice(slice, $lua)
-        }
+        })()
+        .map_err(|lua| {
+            let e = $crate::WrongType::default()
+                .expected_type::<Self>()
+                .actual_single_lua(&lua, $index);
+            (lua, e)
+        })
     };
 }
 
@@ -452,7 +469,7 @@ impl<'a, L> LuaRead<L> for StringInLua<'a, L>
 where
     L: 'a + AsLua,
 {
-    fn lua_read_at_position(lua: L, index: NonZeroI32) -> Result<Self, L> {
+    fn lua_read_at_position(lua: L, index: NonZeroI32) -> ReadResult<Self, L> {
         lua_read_string_impl!(
             lua,
             index,
@@ -485,7 +502,10 @@ impl_push_read! { bool,
     }
     read_at_position(lua, index) {
         if !unsafe { ffi::lua_isboolean(lua.as_lua(), index.into()) } {
-            return Err(lua);
+            let e = WrongType::default()
+                .expected_type::<Self>()
+                .actual_single_lua(&lua, index);
+            return Err((lua, e));
         }
 
         Ok(unsafe { ffi::lua_toboolean(lua.as_lua(), index.into()) != 0 })
@@ -558,7 +578,7 @@ where
     L: AsLua,
     T: LuaRead<L>,
 {
-    fn lua_read_at_maybe_zero_position(lua: L, index: i32) -> Result<Option<T>, L> {
+    fn lua_read_at_maybe_zero_position(lua: L, index: i32) -> ReadResult<Option<T>, L> {
         if let Some(index) = NonZeroI32::new(index) {
             Self::lua_read_at_position(lua, index)
         } else {
@@ -566,7 +586,7 @@ where
         }
     }
 
-    fn lua_read_at_position(lua: L, index: NonZeroI32) -> Result<Option<T>, L> {
+    fn lua_read_at_position(lua: L, index: NonZeroI32) -> ReadResult<Option<T>, L> {
         if unsafe { is_null_or_nil(lua.as_lua(), index.get()) } {
             return Ok(None);
         }
@@ -580,14 +600,17 @@ where
     A: for<'a> LuaRead<&'a L>,
     B: for<'b> LuaRead<&'b L>,
 {
-    fn lua_read_at_position(lua: L, index: NonZeroI32) -> Result<Result<A, B>, L> {
+    fn lua_read_at_position(lua: L, index: NonZeroI32) -> ReadResult<Result<A, B>, L> {
         if let Ok(a) = A::lua_read_at_position(&lua, index) {
             return Ok(Ok(a));
         }
         if let Ok(b) = B::lua_read_at_position(&lua, index) {
             return Ok(Err(b));
         }
-        Err(lua)
+        let e = WrongType::default()
+            .expected_type::<Self>()
+            .actual_multiple_lua_at(&lua, index, Self::n_values_expected() as _);
+        Err((lua, e))
     }
 }
 
@@ -608,7 +631,10 @@ impl_push_read! {Nil,
         if unsafe { ffi::lua_isnil(lua.as_lua(), index.into()) } {
             Ok(Nil)
         } else {
-            Err(lua)
+            let e = WrongType::default()
+                .expected_type::<Self>()
+                .actual_single_lua(&lua, index);
+            Err((lua, e))
         }
     }
     read_at_maybe_zero_position(lua, index) {
@@ -655,7 +681,10 @@ impl_push_read! {Null,
         if unsafe { Null::is_null(lua.as_lua(), index.into()) } {
             Ok(Null)
         } else {
-            Err(lua)
+            let e = WrongType::default()
+                .expected_type::<Self>()
+                .actual_single_lua(&lua, index);
+            Err((lua, e))
         }
     }
     read_at_maybe_zero_position(lua, index) {
@@ -700,7 +729,12 @@ impl_push_read! {True,
     read_at_position(lua, index) {
         match bool::lua_read_at_position(&lua, index) {
             Ok(v) if v => Ok(True),
-            _ => Err(lua),
+            _ => {
+                let e = WrongType::default()
+                    .expected_type::<Self>()
+                    .actual_single_lua(&lua, index);
+                Err((lua, e))
+            }
         }
     }
 }
@@ -745,7 +779,12 @@ impl_push_read! {False,
     read_at_position(lua, index) {
         match bool::lua_read_at_position(&lua, index) {
             Ok(v) if !v => Ok(False),
-            _ => Err(lua),
+            _ => {
+                let e = WrongType::default()
+                    .expected_type::<Self>()
+                    .actual_single_lua(&lua, index);
+                Err((lua, e))
+            }
         }
     }
 }
@@ -810,7 +849,10 @@ impl_push_read! {ToString,
             // the newly created string needs to be popped
             let _new_string = PushGuard::new(lua.as_lua(), 1);
             if c_ptr.is_null() {
-                return Err(lua)
+                let e = WrongType::default()
+                    .expected_type::<Self>()
+                    .actual_single_lua(&lua, index);
+                return Err((lua, e));
             }
             let slice = slice::from_raw_parts(c_ptr as _, size.assume_init());
             Ok(Self(String::from_utf8_lossy(slice).into()))

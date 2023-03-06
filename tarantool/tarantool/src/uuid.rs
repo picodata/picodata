@@ -270,24 +270,19 @@ fn ctid_uuid() -> u32 {
     }
 }
 
+unsafe impl tlua::AsCData for ffi::tt_uuid {
+    fn ctypeid() -> tlua::ffi::CTypeID {
+        ctid_uuid()
+    }
+}
+
 impl<L> tlua::LuaRead<L> for Uuid
 where
     L: tlua::AsLua,
 {
-    fn lua_read_at_position(lua: L, index: std::num::NonZeroI32) -> Result<Self, L> {
-        let raw_lua = lua.as_lua();
-        let index = index.get();
-        unsafe {
-            if tlua::ffi::lua_type(raw_lua, index) != tlua::ffi::LUA_TCDATA {
-                return Err(lua);
-            }
-            let mut ctypeid = std::mem::MaybeUninit::uninit();
-            let cdata = tlua::ffi::luaL_checkcdata(raw_lua, index, ctypeid.as_mut_ptr());
-            if ctypeid.assume_init() != ctid_uuid() {
-                return Err(lua);
-            }
-            Ok(Self::from_tt_uuid(*cdata.cast()))
-        }
+    fn lua_read_at_position(lua: L, index: std::num::NonZeroI32) -> tlua::ReadResult<Self, L> {
+        let tlua::CData(uuid) = lua.read_at_nz(index)?;
+        Ok(Self::from_tt_uuid(uuid))
     }
 }
 
@@ -296,7 +291,7 @@ impl<L: tlua::AsLua> tlua::Push<L> for Uuid {
 
     #[inline(always)]
     fn push_to_lua(&self, lua: L) -> Result<tlua::PushGuard<L>, (Self::Err, L)> {
-        tlua::PushInto::push_into_lua(*self, lua)
+        Ok(lua.push_one(tlua::CData(self.to_tt_uuid())))
     }
 }
 
@@ -306,11 +301,7 @@ impl<L: tlua::AsLua> tlua::PushInto<L> for Uuid {
     type Err = tlua::Void;
 
     fn push_into_lua(self, lua: L) -> Result<tlua::PushGuard<L>, (Self::Err, L)> {
-        unsafe {
-            let cdata = tlua::ffi::luaL_pushcdata(lua.as_lua(), ctid_uuid());
-            std::ptr::write(cdata as _, self.to_tt_uuid());
-            Ok(tlua::PushGuard::new(lua, 1))
-        }
+        Ok(lua.push_one(tlua::CData(self.to_tt_uuid())))
     }
 }
 

@@ -19,7 +19,7 @@ pub fn readwrite() {
     where
         L: tlua::AsLua,
     {
-        fn lua_read_at_position(lua: L, index: NonZeroI32) -> Result<Foo, L> {
+        fn lua_read_at_position(lua: L, index: NonZeroI32) -> tlua::ReadResult<Foo, L> {
             let val: Result<tlua::UserdataOnStack<Foo, _>, _> =
                 tlua::LuaRead::lua_read_at_position(lua, index);
             val.map(|d| d.clone())
@@ -90,7 +90,7 @@ pub fn type_check() {
     where
         L: tlua::AsLua,
     {
-        fn lua_read_at_position(lua: L, index: NonZeroI32) -> Result<Foo, L> {
+        fn lua_read_at_position(lua: L, index: NonZeroI32) -> tlua::ReadResult<Foo, L> {
             let val: Result<tlua::UserdataOnStack<Foo, _>, _> =
                 tlua::LuaRead::lua_read_at_position(lua, index);
             val.map(|d| d.clone())
@@ -113,7 +113,7 @@ pub fn type_check() {
     where
         L: tlua::AsLua,
     {
-        fn lua_read_at_position(lua: L, index: NonZeroI32) -> Result<Bar, L> {
+        fn lua_read_at_position(lua: L, index: NonZeroI32) -> tlua::ReadResult<Bar, L> {
             let val: Result<tlua::UserdataOnStack<Bar, _>, _> =
                 tlua::LuaRead::lua_read_at_position(lua, index);
             val.map(|d| d.clone())
@@ -169,7 +169,7 @@ pub fn multiple_userdata() {
     where
         L: tlua::AsLua,
     {
-        fn lua_read_at_position(lua: L, index: NonZeroI32) -> Result<Integer, L> {
+        fn lua_read_at_position(lua: L, index: NonZeroI32) -> tlua::ReadResult<Integer, L> {
             let val: Result<tlua::UserdataOnStack<Integer, _>, _> =
                 tlua::LuaRead::lua_read_at_position(lua, index);
             val.map(|d| d.clone())
@@ -192,7 +192,7 @@ pub fn multiple_userdata() {
     where
         L: tlua::AsLua,
     {
-        fn lua_read_at_position(lua: L, index: NonZeroI32) -> Result<BigInteger, L> {
+        fn lua_read_at_position(lua: L, index: NonZeroI32) -> tlua::ReadResult<BigInteger, L> {
             let val: Result<tlua::UserdataOnStack<BigInteger, _>, _> =
                 tlua::LuaRead::lua_read_at_position(lua, index);
             val.map(|d| d.clone())

@@ -1,7 +1,7 @@
 use crate::ffi;
 use crate::lua_functions::LuaFunction;
 use crate::object::{FromObject, Object};
-use crate::{AsLua, LuaRead, LuaState, Push, PushInto, PushOneInto};
+use crate::{AsLua, LuaRead, LuaState, Push, PushInto, PushOneInto, ReadResult, WrongType};
 use std::cell::UnsafeCell;
 use std::convert::TryFrom;
 use std::num::NonZeroI32;
@@ -241,14 +241,21 @@ where
     L: AsLua,
 {
     #[inline]
-    fn lua_read_at_position(lua: L, index: NonZeroI32) -> Result<Self, L> {
-        Self::try_from_obj(Object::new(lua, index)).map_err(Object::into_guard)
+    fn lua_read_at_position(lua: L, index: NonZeroI32) -> ReadResult<Self, L> {
+        Self::try_from_obj(Object::new(lua, index)).map_err(|l| {
+            let g = Object::into_guard(l);
+            let e = WrongType::info("reading cdata")
+                .expected_type::<Self>()
+                .actual_single_lua(&g, index);
+            (g, e)
+        })
     }
 }
 
 impl<L, O> Push<L> for CDataOnStack<'_, O>
 where
     L: AsLua,
+    O: AsLua,
 {
     type Err = crate::Void;
     #[inline]
@@ -417,11 +424,17 @@ where
     L: AsLua,
     T: AsCData,
 {
-    fn lua_read_at_position(lua: L, index: NonZeroI32) -> Result<Self, L> {
+    fn lua_read_at_position(lua: L, index: NonZeroI32) -> ReadResult<Self, L> {
         CDataOnStack::lua_read_at_position(lua, index).and_then(|data| {
             match data.try_downcast_into() {
                 Ok(value) => Ok(CData(value)),
-                Err(data) => Err(data.inner.into_guard()),
+                Err(data) => {
+                    let g = data.inner.into_guard();
+                    let e = WrongType::info("reading cdata")
+                        .expected_type::<T>()
+                        .actual_single_lua(&g, index);
+                    Err((g, e))
+                }
             }
         })
     }

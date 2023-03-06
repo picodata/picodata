@@ -107,10 +107,9 @@
 //! - TODO: userdata
 //!
 use std::borrow::{Borrow, Cow};
-use std::error::Error;
+use std::collections::LinkedList;
 use std::ffi::{CStr, CString};
 use std::fmt;
-use std::io::Error as IoError;
 use std::io::Read;
 use std::io::{self, Write};
 use std::num::NonZeroI32;
@@ -480,7 +479,7 @@ pub trait AsLua {
     }
 
     #[inline(always)]
-    fn read<T>(self) -> Result<T, Self>
+    fn read<T>(self) -> ReadResult<T, Self>
     where
         Self: Sized,
         T: LuaRead<Self>,
@@ -489,7 +488,7 @@ pub trait AsLua {
     }
 
     #[inline(always)]
-    fn read_at<T>(self, index: i32) -> Result<T, Self>
+    fn read_at<T>(self, index: i32) -> ReadResult<T, Self>
     where
         Self: Sized,
         T: LuaRead<Self>,
@@ -498,7 +497,7 @@ pub trait AsLua {
     }
 
     #[inline(always)]
-    fn read_at_nz<T>(self, index: NonZeroI32) -> Result<T, Self>
+    fn read_at_nz<T>(self, index: NonZeroI32) -> ReadResult<T, Self>
     where
         Self: Sized,
         T: LuaRead<Self>,
@@ -698,6 +697,10 @@ impl fmt::Display for Void {
 pub const NEGATIVE_ONE: NonZeroI32 = unsafe { NonZeroI32::new_unchecked(-1) };
 pub const NEGATIVE_TWO: NonZeroI32 = unsafe { NonZeroI32::new_unchecked(-2) };
 
+////////////////////////////////////////////////////////////////////////////////
+// LuaRead
+////////////////////////////////////////////////////////////////////////////////
+
 /// Types that can be obtained from a Lua context.
 ///
 /// Most types that implement `Push` also implement `LuaRead`, but this is not always the case
@@ -710,71 +713,209 @@ pub trait LuaRead<L>: Sized {
 
     /// Reads the data from Lua.
     #[inline]
-    fn lua_read(lua: L) -> Result<Self, L> {
+    fn lua_read(lua: L) -> ReadResult<Self, L> {
         let index = NonZeroI32::new(-Self::n_values_expected()).expect("Invalid n_values_expected");
         Self::lua_read_at_position(lua, index)
     }
 
-    fn lua_read_at_maybe_zero_position(lua: L, index: i32) -> Result<Self, L> {
+    fn lua_read_at_maybe_zero_position(lua: L, index: i32) -> ReadResult<Self, L>
+    where
+        L: AsLua,
+    {
         if let Some(index) = NonZeroI32::new(index) {
             Self::lua_read_at_position(lua, index)
         } else {
-            Err(lua)
+            let e = WrongType::default()
+                .expected_type::<Self>()
+                .actual("no value");
+            Err((lua, e))
         }
     }
 
     /// Reads the data from Lua at a given position.
-    fn lua_read_at_position(lua: L, index: NonZeroI32) -> Result<Self, L>;
+    fn lua_read_at_position(lua: L, index: NonZeroI32) -> ReadResult<Self, L>;
 }
+
+pub type ReadResult<T, L> = Result<T, (L, WrongType)>;
 
 impl<L: AsLua> LuaRead<L> for LuaState {
-    fn lua_read_at_maybe_zero_position(lua: L, _: i32) -> Result<Self, L> {
+    fn lua_read_at_maybe_zero_position(lua: L, _: i32) -> ReadResult<Self, L> {
         Ok(lua.as_lua())
     }
 
-    fn lua_read_at_position(lua: L, _: NonZeroI32) -> Result<Self, L> {
+    fn lua_read_at_position(lua: L, _: NonZeroI32) -> ReadResult<Self, L> {
         Ok(lua.as_lua())
     }
 }
 
+////////////////////////////////////////////////////////////////////////////////
+// LuaError
+////////////////////////////////////////////////////////////////////////////////
+
 /// Error that can happen when executing Lua code.
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum LuaError {
     /// There was a syntax error when parsing the Lua code.
+    #[error("syntax error: {0}")]
     SyntaxError(String),
 
     /// There was an error during execution of the Lua code
     /// (for example not enough parameters for a function call).
+    #[error("execution error: {0}")]
     ExecutionError(Cow<'static, str>),
 
     /// There was an IoError while reading the source code to execute.
-    ReadError(IoError),
+    #[error("{0}")]
+    ReadError(#[from] io::Error),
 
     /// The call to `eval` has requested the wrong type of data.
-    WrongType {
-        when: &'static str,
-        rust_expected: String,
-        lua_actual: String,
-    },
+    #[error("{0}")]
+    WrongType(#[from] WrongType),
 }
 
-impl LuaError {
-    pub fn wrong_type_returned<T, L: AsLua>(lua: L, n_values: i32) -> Self {
-        Self::wrong_type::<T, _>(lua, n_values, "Wrong type returned by Lua")
-    }
+////////////////////////////////////////////////////////////////////////////////
+// WrongType
+////////////////////////////////////////////////////////////////////////////////
 
-    pub fn wrong_type_passed<T, L: AsLua>(lua: L, n_values: i32) -> Self {
-        Self::wrong_type::<T, _>(lua, n_values, "Wrong type passed into rust callback")
-    }
+#[derive(Debug, thiserror::Error)]
+pub struct WrongType {
+    when: &'static str,
+    rust_expected: String,
+    lua_actual: String,
+    subtypes: LinkedList<WrongType>,
+}
 
-    pub fn wrong_type<T, L: AsLua>(lua: L, n_values: i32, when: &'static str) -> Self {
-        let nz = unsafe { NonZeroI32::new_unchecked(-n_values) };
-        let start = AbsoluteIndex::new(nz, lua.as_lua());
-        Self::WrongType {
-            when,
-            rust_expected: std::any::type_name::<T>().into(),
-            lua_actual: typenames(lua, start, n_values as _),
+impl<E> From<WrongType> for CallError<E> {
+    fn from(e: WrongType) -> Self {
+        Self::LuaError(e.into())
+    }
+}
+
+impl Default for WrongType {
+    fn default() -> Self {
+        Self {
+            when: "reading Lua value",
+            rust_expected: Default::default(),
+            lua_actual: Default::default(),
+            subtypes: Default::default(),
         }
+    }
+}
+
+impl fmt::Display for WrongType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let subtype = crate::unwrap_or! { self.subtypes.front(),
+            write!(f, "failed ")?;
+            return display_leaf(self, f);
+        };
+
+        if subtype.subtypes.is_empty()
+            && subtype.rust_expected == self.rust_expected
+            && subtype.lua_actual == self.lua_actual
+        {
+            write!(f, "failed ")?;
+            return display_leaf(self, f);
+        }
+
+        if self.subtypes.len() == 1 {
+            write!(f, "{}", subtype)?;
+        } else {
+            write!(f, "variant #1: {}", subtype)?;
+            for (subtype, i) in self.subtypes.iter().skip(1).zip(2..) {
+                write!(f, "\nvariant #{}: {}", i, subtype)?;
+            }
+        }
+
+        write!(f, "\n    while ")?;
+        display_leaf(self, f)?;
+
+        return Ok(());
+
+        fn display_leaf(wt: &WrongType, f: &mut fmt::Formatter) -> fmt::Result {
+            return write!(
+                f,
+                "{}: {} expected, got {}",
+                wt.when, wt.rust_expected, wt.lua_actual
+            );
+        }
+    }
+}
+
+impl WrongType {
+    #[inline(always)]
+    pub fn info(when: &'static str) -> Self {
+        Self {
+            when,
+            ..Self::default()
+        }
+    }
+
+    #[inline(always)]
+    pub fn when(mut self, when: &'static str) -> Self {
+        self.when = when;
+        self
+    }
+
+    #[inline(always)]
+    pub fn expected_type<T>(mut self) -> Self {
+        self.rust_expected = std::any::type_name::<T>().into();
+        self
+    }
+
+    #[inline(always)]
+    pub fn expected(mut self, expected: impl Into<String>) -> Self {
+        self.rust_expected = expected.into();
+        self
+    }
+
+    /// Set the actual Lua type from a value at `index`.
+    #[inline(always)]
+    pub fn actual_single_lua<L: AsLua>(mut self, lua: L, index: NonZeroI32) -> Self {
+        let index = AbsoluteIndex::new(index, lua.as_lua());
+        self.lua_actual = typenames(lua, index, 1);
+        self
+    }
+
+    /// Set the actual Lua type from a range of lowest `n_values` on the stack.
+    #[inline(always)]
+    #[track_caller]
+    pub fn actual_multiple_lua<L: AsLua>(self, lua: L, n_values: i32) -> Self {
+        self.actual_multiple_lua_at(lua, -n_values, n_values)
+    }
+
+    /// Set the actual Lua type from a range of `n_values` values starting at index `start`.
+    #[inline(always)]
+    #[track_caller]
+    pub fn actual_multiple_lua_at<L: AsLua>(
+        mut self,
+        lua: L,
+        start: impl Into<i32>,
+        n_values: i32,
+    ) -> Self {
+        if let Some(start) = AbsoluteIndex::try_new(start, lua.as_lua()) {
+            self.lua_actual = typenames(lua, start, n_values as _);
+        } else {
+            self.lua_actual = "no values".into()
+        }
+        self
+    }
+
+    #[inline(always)]
+    pub fn actual(mut self, actual: impl Into<String>) -> Self {
+        self.lua_actual = actual.into();
+        self
+    }
+
+    #[inline(always)]
+    pub fn subtype(mut self, subtype: Self) -> Self {
+        self.subtypes.push_back(subtype);
+        self
+    }
+
+    #[inline(always)]
+    pub fn subtypes(mut self, subtypes: LinkedList<Self>) -> Self {
+        self.subtypes = subtypes;
+        self
     }
 }
 
@@ -786,6 +927,7 @@ pub fn typename(lua: impl AsLua, index: i32) -> &'static CStr {
     }
 }
 
+#[track_caller]
 pub fn typenames(lua: impl AsLua, start: AbsoluteIndex, count: u32) -> String {
     let l_ptr = lua.as_lua();
     let single_typename = |i| typename(l_ptr, i as _).to_string_lossy();
@@ -808,58 +950,9 @@ pub fn typenames(lua: impl AsLua, start: AbsoluteIndex, count: u32) -> String {
     unsafe { String::from_utf8_unchecked(res) }
 }
 
-impl fmt::Display for LuaError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use LuaError::*;
-
-        match self {
-            SyntaxError(s) => write!(f, "Syntax error: {}", s),
-            ExecutionError(s) => write!(f, "Execution error: {}", s),
-            ReadError(e) => write!(f, "Read error: {}", e),
-            WrongType {
-                when,
-                rust_expected,
-                lua_actual,
-            } => {
-                write!(
-                    f,
-                    "{}: {} expected, got {}",
-                    when, rust_expected, lua_actual
-                )
-            }
-        }
-    }
-}
-
-impl Error for LuaError {
-    fn description(&self) -> &str {
-        use LuaError::*;
-
-        match *self {
-            SyntaxError(ref s) => s,
-            ExecutionError(ref s) => s,
-            ReadError(_) => "read error",
-            WrongType { when, .. } => when,
-        }
-    }
-
-    fn cause(&self) -> Option<&dyn Error> {
-        use LuaError::*;
-
-        match *self {
-            SyntaxError(_) => None,
-            ExecutionError(_) => None,
-            ReadError(ref e) => Some(e),
-            WrongType { .. } => None,
-        }
-    }
-}
-
-impl From<io::Error> for LuaError {
-    fn from(e: io::Error) -> Self {
-        LuaError::ReadError(e)
-    }
-}
+////////////////////////////////////////////////////////////////////////////////
+// impl TempLua
+////////////////////////////////////////////////////////////////////////////////
 
 impl TempLua {
     /// Builds a new empty TempLua context.
@@ -949,14 +1042,14 @@ impl StaticLua {
 }
 
 impl<L: AsLua> LuaRead<L> for StaticLua {
-    fn lua_read_at_maybe_zero_position(lua: L, _: i32) -> Result<Self, L> {
+    fn lua_read_at_maybe_zero_position(lua: L, _: i32) -> ReadResult<Self, L> {
         Ok(Self {
             lua: lua.as_lua(),
             on_drop: on_drop::Ignore,
         })
     }
 
-    fn lua_read_at_position(lua: L, _: NonZeroI32) -> Result<Self, L> {
+    fn lua_read_at_position(lua: L, _: NonZeroI32) -> ReadResult<Self, L> {
         Ok(Self {
             lua: lua.as_lua(),
             on_drop: on_drop::Ignore,
@@ -1267,7 +1360,7 @@ where
         let index = CString::new(index.borrow()).unwrap();
         unsafe {
             ffi::lua_getglobal(self.lua, index.as_ptr());
-            V::lua_read(PushGuard::new(self, 1))
+            V::lua_read(PushGuard::new(self, 1)).map_err(|(l, _)| l)
         }
     }
 
@@ -1466,16 +1559,32 @@ impl<L: AsLua> Drop for PushGuard<L> {
 pub struct AbsoluteIndex(NonZeroI32);
 
 impl AbsoluteIndex {
+    /// Convert the non-zero index into an absolute index.
+    ///
+    /// # Panicking
+    /// Will panic if `index` equals to `-1 - lua_gettop(lua)`.
+    #[inline]
+    #[track_caller]
     pub fn new<L>(index: NonZeroI32, lua: L) -> Self
     where
         L: AsLua,
     {
+        Self::try_new(index, lua).expect("Invalid relative index")
+    }
+
+    /// Convert the non-zero `index` into an absolute index or return `None` if
+    /// the result would not be non-zero.
+    #[inline]
+    pub fn try_new<L>(index: impl Into<i32>, lua: L) -> Option<Self>
+    where
+        L: AsLua,
+    {
         let top = unsafe { ffi::lua_gettop(lua.as_lua()) };
-        let i = index.get();
-        if ffi::is_relative_index(i) {
-            Self(NonZeroI32::new(top + i + 1).expect("Invalid relative index"))
+        let index = index.into();
+        if ffi::is_relative_index(index) {
+            NonZeroI32::new(top + index + 1).map(Self)
         } else {
-            Self(index)
+            NonZeroI32::new(index).map(Self)
         }
     }
 

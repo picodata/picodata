@@ -26,7 +26,7 @@ pub fn iterable_multipletimes() {
     let table = lua.get::<LuaTable<_>, _>("a").unwrap();
 
     for _ in 0..10 {
-        let table_content: Vec<Option<(u32, u32)>> = table.iter().collect();
+        let table_content: Vec<Option<(u32, u32)>> = table.iter().map(Result::ok).collect();
         assert_eq!(
             table_content,
             vec![Some((1, 9)), Some((2, 8)), Some((3, 7))]
@@ -54,7 +54,11 @@ pub fn get_set() {
 pub fn get_nil() {
     let lua = Lua::new();
     let t: LuaTable<_> = lua.eval("return {}").unwrap();
-    assert_eq!(t.get::<i32, _>(1), None);
+    let res = t.try_get::<_, i32>(1);
+    assert_eq!(
+        res.unwrap_err().to_string(),
+        "failed reading value from Lua table: i32 expected, got nil"
+    );
     assert_eq!(t.get::<Option<i32>, _>(1), Some(None));
     assert_eq!(t.get::<Option<Option<i32>>, _>(1), Some(None));
 }

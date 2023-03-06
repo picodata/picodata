@@ -1317,9 +1317,16 @@ impl<L> tlua::LuaRead<L> for Tuple
 where
     L: tlua::AsLua,
 {
-    fn lua_read_at_position(lua: L, index: std::num::NonZeroI32) -> std::result::Result<Self, L> {
+    fn lua_read_at_position(lua: L, index: std::num::NonZeroI32) -> tlua::ReadResult<Self, L> {
         let ptr = unsafe { ffi::luaT_istuple(tlua::AsLua::as_lua(&lua), index.get()) };
-        Self::try_from_ptr(ptr).ok_or(lua)
+        if let Some(t) = Self::try_from_ptr(ptr) {
+            Ok(t)
+        } else {
+            let e = tlua::WrongType::info("reading tarantool tuple")
+                .expected_type::<Self>()
+                .actual_single_lua(&lua, index);
+            Err((lua, e))
+        }
     }
 }
 

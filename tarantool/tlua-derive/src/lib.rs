@@ -1,3 +1,5 @@
+use std::io::Write;
+
 use proc_macro::TokenStream as TokenStream1;
 use proc_macro2::{Span, TokenStream};
 use quote::quote;
@@ -90,7 +92,7 @@ pub fn proc_macro_derive_lua_read(input: proc_macro::TokenStream) -> proc_macro:
     let (_, generics, where_clause) = input.generics.split_for_impl();
     let type_bounds = where_clause.map(|w| &w.predicates);
     let as_lua_bounds = info.read_bounds(&ctx);
-    let read_at_code = info.read();
+    let read_at_code = info.read(&ctx);
     let maybe_n_values_expected = info.n_values(&ctx);
     let maybe_lua_read = info.read_top(&ctx);
 
@@ -110,13 +112,13 @@ pub fn proc_macro_derive_lua_read(input: proc_macro::TokenStream) -> proc_macro:
 
             #[inline(always)]
             fn lua_read_at_position(__lua: #l, __index: ::std::num::NonZeroI32)
-                -> ::std::result::Result<Self, #l>
+                -> tlua::ReadResult<Self, #l>
             {
                 Self::lua_read_at_maybe_zero_position(__lua, __index.into())
             }
 
             fn lua_read_at_maybe_zero_position(__lua: #l, __index: i32)
-                -> ::std::result::Result<Self, #l>
+                -> tlua::ReadResult<Self, #l>
             {
                 #read_at_code
             }
@@ -216,20 +218,31 @@ impl<'a> Info<'a> {
         }
     }
 
-    fn read(&self) -> TokenStream {
+    fn read(&self, ctx: &Context) -> TokenStream {
         match self {
-            Self::Struct(f) => f.read_as(quote! { Self }),
+            Self::Struct(f) => f.read_as(None),
             Self::Enum(v) => {
-                let read_and_maybe_return_variant = v
-                    .variants
-                    .iter()
-                    .map(VariantInfo::read_and_maybe_return)
-                    .collect::<Vec<_>>();
+                let mut n_vals = vec![];
+                let mut read_and_maybe_return_variant = vec![];
+                for variant in &v.variants {
+                    n_vals.push(if let Some(ref fields) = variant.info {
+                        fields.n_values(ctx)
+                    } else {
+                        quote! { 1 }
+                    });
+                    read_and_maybe_return_variant.push(variant.read_and_maybe_return());
+                }
                 quote! {
+                    let mut errors: ::std::collections::LinkedList<tlua::WrongType> = Default::default();
                     #(
+                        let n_vals = #n_vals;
                         let __lua = #read_and_maybe_return_variant;
                     )*
-                    Err(__lua)
+                    let e = tlua::WrongType::info("reading any of the variants")
+                        .expected_type::<Self>()
+                        .actual("something else")
+                        .subtypes(errors);
+                    Err((__lua, e))
                 }
             }
         }
@@ -294,8 +307,9 @@ impl<'a> Info<'a> {
                 }
                 let l = &ctx.as_lua_type_param;
                 quote! {
-                    fn lua_read(__lua: #l) -> ::std::result::Result<Self, #l> {
+                    fn lua_read(__lua: #l) -> tlua::ReadResult<Self, #l> {
                         let top = unsafe { tlua::ffi::lua_gettop(__lua.as_lua()) };
+                        let mut errors: ::std::collections::LinkedList<tlua::WrongType> = Default::default();
                         #(
                             let n_vals = #n_vals;
                             let __lua = if top >= n_vals {
@@ -305,7 +319,11 @@ impl<'a> Info<'a> {
                                 __lua
                             };
                         )*
-                        Err(__lua)
+                        let e = tlua::WrongType::info("reading any of the variants")
+                            .expected_type::<Self>()
+                            .actual("something else")
+                            .subtypes(errors);
+                        Err((__lua, e))
                     }
                 }
             }
@@ -423,21 +441,65 @@ impl<'a> FieldsInfo<'a> {
         }
     }
 
-    fn read_as(&self, name: TokenStream) -> TokenStream {
+    fn read_as(&self, name: Option<TokenStream>) -> TokenStream {
+        let is_variant = name.is_some();
+        let name = name.unwrap_or_else(|| quote! { Self });
         match self {
             FieldsInfo::Named {
                 field_idents,
                 field_names,
+                field_types,
                 ..
             } => {
+                let expected = if is_variant {
+                    let mut msg = vec![];
+                    write!(&mut msg, "struct with fields {{").unwrap();
+                    if let Some((n, t)) = field_names.iter().zip(field_types).next() {
+                        write!(&mut msg, " {}: {}", n, quote! { #t }).unwrap();
+                    }
+                    for (n, t) in field_names.iter().zip(field_types).skip(1) {
+                        write!(&mut msg, ", {}: {}", n, quote! { #t }).unwrap();
+                    }
+                    write!(&mut msg, " }}").unwrap();
+                    let msg = String::from_utf8(msg).unwrap();
+                    quote! { .expected(#msg) }
+                } else {
+                    quote! { .expected_type::<Self>() }
+                };
                 quote! {
-                    let t: tlua::LuaTable<_> = tlua::AsLua::read_at(__lua, __index)?;
+                    let t: tlua::LuaTable<_> = tlua::AsLua::read_at(__lua, __index)
+                        .map_err(|(lua, err)| {
+                            let err = err.when("converting Lua value to struct")
+                                .expected("Lua table");
+                            (lua, err)
+                        })?;
                     Ok(
                         #name {
                             #(
-                                #field_idents: match t.get(#field_names) {
-                                    Some(v) => v,
-                                    None => return Err(t.into_inner()),
+                                #field_idents: match tlua::Index::try_get(&t, #field_names) {
+                                    Ok(v) => v,
+                                    Err(err) => {
+                                        let l = t.into_inner();
+                                        let mut e = tlua::WrongType::info(
+                                            "converting Lua table to struct"
+                                        ) #expected;
+                                        match err {
+                                            tlua::LuaError::WrongType(subtype) => {
+                                                let actual_msg = ::std::concat!(
+                                                    "wrong field type for key '",
+                                                    #field_names,
+                                                    "'",
+                                                );
+                                                e = e.actual(actual_msg).subtype(subtype);
+                                            }
+                                            other => {
+                                                e = e.actual(format!(
+                                                    "error in meta method: {}", other
+                                                ));
+                                            }
+                                        }
+                                        return Err((l, e))
+                                    },
                                 },
                             )*
                         }
@@ -550,12 +612,24 @@ impl<'a> VariantInfo<'a> {
         let pattern = self.pattern();
         let constructor = self.constructor();
         let (guard, catch_all) = self.optional_match();
+        let name = self.name.to_string();
         quote! {
             match #read_variant {
                 ::std::result::Result::Ok(#pattern) #guard
                     => return ::std::result::Result::Ok(#constructor),
                 #catch_all
-                ::std::result::Result::Err(__lua) => __lua,
+                ::std::result::Result::Err((__lua, e)) => {
+                    let mut e = tlua::WrongType::info("reading enum variant")
+                        .expected(#name)
+                        .subtype(e);
+                    if let Some(i) = ::std::num::NonZeroI32::new(__index) {
+                        e = e.actual_multiple_lua_at(&__lua, dbg!(i), dbg!(n_vals))
+                    } else {
+                        e = e.actual("no value")
+                    }
+                    errors.push_back(e);
+                    __lua
+                }
             }
         }
     }
@@ -564,7 +638,7 @@ impl<'a> VariantInfo<'a> {
         let Self { name, info } = self;
         match info {
             Some(s @ FieldsInfo::Named { .. }) => {
-                let read_struct = s.read_as(quote! { Self::#name });
+                let read_struct = s.read_as(Some(quote! { Self::#name }));
                 quote! {
                     (|| { #read_struct })()
                 }
@@ -611,6 +685,7 @@ impl<'a> VariantInfo<'a> {
         let Self { name, info } = self;
         let value = name.to_string().to_lowercase();
         if info.is_none() {
+            let expected = format!("case incensitive match with '{value}'");
             (
                 quote! {
                     if {
@@ -629,7 +704,13 @@ impl<'a> VariantInfo<'a> {
                     }
                 },
                 quote! {
-                    ::std::result::Result::Ok(v) => v.into_inner(),
+                    ::std::result::Result::Ok(v) => {
+                        let e = tlua::WrongType::info("reading unit struct")
+                            .expected(#expected)
+                            .actual(format!("'{}'", &*v));
+                        errors.push_back(e);
+                        v.into_inner()
+                    },
                 },
             )
         } else {

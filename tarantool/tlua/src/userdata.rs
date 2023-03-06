@@ -8,7 +8,7 @@ use std::ptr;
 use crate::{
     c_ptr, ffi,
     object::{FromObject, Object},
-    AsLua, InsideCallback, LuaRead, LuaState, LuaTable, Push, PushGuard,
+    AsLua, InsideCallback, LuaRead, LuaState, LuaTable, Push, PushGuard, ReadResult, WrongType,
 };
 
 /// Pushes `value` of type `T` onto the stack as a userdata. The value is
@@ -228,8 +228,14 @@ where
     T: Any,
 {
     #[inline]
-    fn lua_read_at_position(lua: L, index: NonZeroI32) -> Result<Self, L> {
-        Self::try_from_obj(Object::new(lua, index)).map_err(Object::into_guard)
+    fn lua_read_at_position(lua: L, index: NonZeroI32) -> ReadResult<Self, L> {
+        Self::try_from_obj(Object::new(lua, index)).map_err(|l| {
+            let g = Object::into_guard(l);
+            let e = WrongType::info("reading userdata")
+                .expected_type::<T>()
+                .actual_single_lua(&g, index);
+            (g, e)
+        })
     }
 }
 

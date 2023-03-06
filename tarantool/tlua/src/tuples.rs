@@ -5,7 +5,8 @@ use crate::{
     ffi,
     object::{Index, Indexable, Object},
     rust_tables::{push_iter, PushIterError},
-    AsLua, LuaRead, LuaState, Push, PushGuard, PushInto, PushOne, PushOneInto, Void,
+    AsLua, LuaError, LuaRead, LuaState, Push, PushGuard, PushInto, PushOne, PushOneInto,
+    ReadResult, Void, WrongType,
 };
 
 macro_rules! tuple_impl {
@@ -78,12 +79,12 @@ macro_rules! tuple_impl {
             }
 
             #[inline]
-            fn lua_read_at_position(lua: LU, index: NonZeroI32) -> Result<($ty,), LU> {
+            fn lua_read_at_position(lua: LU, index: NonZeroI32) -> ReadResult<($ty,), LU> {
                 LuaRead::lua_read_at_position(lua, index).map(|v| (v,))
             }
 
             #[inline]
-            fn lua_read_at_maybe_zero_position(lua: LU, index: i32) -> Result<($ty,), LU> {
+            fn lua_read_at_maybe_zero_position(lua: LU, index: i32) -> ReadResult<($ty,), LU> {
                 LuaRead::lua_read_at_maybe_zero_position(lua, index).map(|v| (v,))
             }
         }
@@ -146,11 +147,13 @@ macro_rules! tuple_impl {
             $ty: for<'a> LuaRead<PushGuard<&'a LU>>,
         {
             #[inline]
-            fn lua_read_at_position(lua: LU, index: NonZeroI32) -> Result<Self, LU> {
+            fn lua_read_at_position(lua: LU, index: NonZeroI32) -> ReadResult<Self, LU> {
                 let table = Indexable::lua_read_at_position(lua, index)?;
-                match table.get(1) {
-                    Some(res) => Ok(AsTable(res)),
-                    None => Err(Object::from(table).into_guard()),
+                match table.try_get(1) {
+                    Ok(res) => Ok(AsTable(res)),
+                    Err(err) => {
+                        convert_as_table_read_error::<Self, _>(table, 1, err)
+                    },
                 }
             }
         }
@@ -260,15 +263,18 @@ macro_rules! tuple_impl {
             }
 
             #[inline]
-            fn lua_read_at_position(lua: LU, index: NonZeroI32) -> Result<($first, $($other),+), LU> {
+            fn lua_read_at_position(lua: LU, index: NonZeroI32) -> ReadResult<($first, $($other),+), LU> {
                 LuaRead::lua_read_at_maybe_zero_position(lua, index.into())
             }
 
             #[inline]
-            fn lua_read_at_maybe_zero_position(lua: LU, index: i32) -> Result<($first, $($other),+), LU> {
+            fn lua_read_at_maybe_zero_position(lua: LU, index: i32) -> ReadResult<($first, $($other),+), LU> {
+                let mut tuple_i = 0;
                 let $first: $first = match LuaRead::lua_read_at_maybe_zero_position(&lua, index) {
                     Ok(v) => v,
-                    Err(_) => return Err(lua)
+                    Err((_, e)) => {
+                        return Err(on_error::<$first, _>(lua, tuple_i, index, e));
+                    }
                 };
 
                 let mut i = index;
@@ -277,9 +283,13 @@ macro_rules! tuple_impl {
                 i = if i == 0 { 0 } else { i + 1 };
 
                 $(
+                    tuple_i += 1;
+
                     let $other: $other = match LuaRead::lua_read_at_maybe_zero_position(&lua, i) {
                         Ok(v) => v,
-                        Err(_) => return Err(lua)
+                        Err((_, e)) => {
+                            return Err(on_error::<$other, _>(lua, tuple_i, i, e));
+                        }
                     };
                     // The 0 index is the special case that should not be walked
                     // over. Either we return Err on it or we handle the
@@ -289,7 +299,20 @@ macro_rules! tuple_impl {
                     i = if i == 0 { 0 } else { i + 1 };
                 )+
 
-                Ok(($first, $($other),+))
+                return Ok(($first, $($other),+));
+
+                fn on_error<T, L: AsLua>(lua: L, tuple_i: i32, lua_i: i32, e: WrongType) -> (L, WrongType) {
+                    let mut e = WrongType::info("reading one of multiple values")
+                        .expected(format!("{} at index {} (1-based)", std::any::type_name::<T>(), tuple_i + 1))
+                        .subtype(e);
+
+                    if lua_i != 0 {
+                        e = e.actual("incorrect value")
+                    } else {
+                        e = e.actual("no value")
+                    }
+                    (lua, e)
+                }
             }
         }
 
@@ -415,23 +438,23 @@ macro_rules! tuple_impl {
             $($other: for<'a> LuaRead<PushGuard<&'a LU>>),+
         {
             #[inline]
-            fn lua_read_at_position(lua: LU, index: NonZeroI32) -> Result<Self, LU> {
+            fn lua_read_at_position(lua: LU, index: NonZeroI32) -> ReadResult<Self, LU> {
                 let table = Indexable::lua_read_at_position(lua, index)?;
                 let i = 1;
-                let $first = match table.get(i) {
-                    Some(res) => res,
-                    None => return Err(Object::from(table).into_guard()),
+                let $first = match table.try_get(i) {
+                    Ok(res) => res,
+                    Err(err) => return convert_as_table_read_error::<Self, _>(table, i, err),
                 };
 
                 $(
                     let i = i + 1;
-                    let $other = match table.get(i) {
-                        Some(res) => res,
-                        None => return Err(Object::from(table).into_guard()),
+                    let $other = match table.try_get(i) {
+                        Ok(res) => res,
+                        Err(err) => return convert_as_table_read_error::<Self, _>(table, i, err),
                     };
                 )+
 
-                Ok(AsTable(($first, $($other),+)))
+                return Ok(AsTable(($first, $($other),+)));
             }
         }
 
@@ -440,6 +463,24 @@ macro_rules! tuple_impl {
 }
 
 tuple_impl!(A, B, C, D, E, F, G, H, I, J, K, L, M);
+
+fn convert_as_table_read_error<T, L>(table: Indexable<L>, i: i32, err: LuaError) -> ReadResult<T, L>
+where
+    L: AsLua,
+{
+    let g = Object::from(table).into_guard();
+    let e = WrongType::info("reading Lua table").expected_type::<T>();
+    let e = match err {
+        LuaError::WrongType(subtype) => e
+            .actual(format!("table with wrong value at index {}", i))
+            .subtype(subtype),
+        other_err => e.actual(format!(
+            "error in meta method for index {}: {}",
+            i, other_err,
+        )),
+    };
+    Err((g, e))
+}
 
 /// Error that can happen when pushing multiple values at once.
 // TODO: implement Error on that thing

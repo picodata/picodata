@@ -579,34 +579,19 @@ static CTID_DECIMAL: Lazy<u32> = Lazy::new(|| {
     ctid_decimal
 });
 
+unsafe impl tlua::AsCData for ffi::decNumber {
+    fn ctypeid() -> tlua::ffi::CTypeID {
+        *CTID_DECIMAL
+    }
+}
+
 impl<L> tlua::LuaRead<L> for Decimal
 where
     L: tlua::AsLua,
 {
-    fn lua_read_at_position(lua: L, index: std::num::NonZeroI32) -> Result<Self, L> {
-        let raw_lua = lua.as_lua();
-        let index = index.get();
-        unsafe {
-            if tlua::ffi::lua_type(raw_lua, index) != tlua::ffi::LUA_TCDATA {
-                return Err(lua);
-            }
-            let mut ctypeid = std::mem::MaybeUninit::uninit();
-            let cdata = tlua::ffi::luaL_checkcdata(raw_lua, index, ctypeid.as_mut_ptr());
-            if ctypeid.assume_init() != *CTID_DECIMAL {
-                return Err(lua);
-            }
-
-            Ok(Self::from_raw(*cdata.cast::<ffi::decNumber>()))
-        }
-    }
-}
-
-#[inline(always)]
-fn push_decimal<L: tlua::AsLua>(lua: L, d: ffi::decNumber) -> tlua::PushGuard<L> {
-    unsafe {
-        let dec = tlua::ffi::luaL_pushcdata(lua.as_lua(), *CTID_DECIMAL);
-        std::ptr::write(dec.cast::<ffi::decNumber>(), d);
-        tlua::PushGuard::new(lua, 1)
+    fn lua_read_at_position(lua: L, index: std::num::NonZeroI32) -> tlua::ReadResult<Self, L> {
+        let tlua::CData(dec) = lua.read_at_nz(index)?;
+        unsafe { Ok(Self::from_raw(dec)) }
     }
 }
 
@@ -615,16 +600,13 @@ impl<L: tlua::AsLua> tlua::Push<L> for Decimal {
 
     fn push_to_lua(&self, lua: L) -> Result<tlua::PushGuard<L>, (Self::Err, L)> {
         let (digits, exponent, bits, lsu) = self.inner.to_raw_parts();
-        let digits = digits as i32;
-        Ok(push_decimal(
-            lua,
-            ffi::decNumber {
-                digits,
-                exponent,
-                bits,
-                lsu,
-            },
-        ))
+        let dec = ffi::decNumber {
+            digits: digits as _,
+            exponent,
+            bits,
+            lsu,
+        };
+        Ok(lua.push_one(tlua::CData(dec)))
     }
 }
 
@@ -635,16 +617,13 @@ impl<L: tlua::AsLua> tlua::PushInto<L> for Decimal {
 
     fn push_into_lua(self, lua: L) -> Result<tlua::PushGuard<L>, (Self::Err, L)> {
         let (digits, exponent, bits, lsu) = self.inner.to_raw_parts();
-        let digits = digits as i32;
-        Ok(push_decimal(
-            lua,
-            ffi::decNumber {
-                digits,
-                exponent,
-                bits,
-                lsu,
-            },
-        ))
+        let dec = ffi::decNumber {
+            digits: digits as _,
+            exponent,
+            bits,
+            lsu,
+        };
+        Ok(lua.push_one(tlua::CData(dec)))
     }
 }
 

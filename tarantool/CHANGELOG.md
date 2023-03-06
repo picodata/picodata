@@ -31,11 +31,15 @@
     `tarantool::define_str_enum`.
 - `Into<&'static str>` implementation for enums defined with
     `tarantool::define_str_enum`.
+- `WrongType::[info|when|actual*|expected*|subtype*]` constructor methods to be
+    used in impl LuaRead for user defined types.
+- `LuaTable::try_get` method for checking which error happened.
 
 ### Changed
 - `r#async::timeout::Timeout` can now only be wrapped around a future which
     resolves into a `std::result::Result<T, E>` and timeout itself now resolves
     into `r#async::timeout::Result`.
+- `LuaRead` methods now return `WrongType` error in case of failure.
 
 ### Removed
 - `r#async::timeout::Expired` in favor of `r#async::timeout::Error`

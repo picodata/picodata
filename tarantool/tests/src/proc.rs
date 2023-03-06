@@ -88,7 +88,7 @@ pub fn with_error() {
     assert_eq!(call_proc("proc_with_error", (3, "good")).ok(), Some([1, 2]));
     assert_eq!(
         call_proc("proc_with_error", (0, "FAIL")).map_err(|e| e.to_string()),
-        Err::<(), _>("Lua error: Execution error: FAIL".into()),
+        Err::<(), _>("Lua error: execution error: FAIL".into()),
     );
 }
 
