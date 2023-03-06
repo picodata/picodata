@@ -26,6 +26,7 @@
 - `r#async::timeout::Result<T, E>` type alias for
     `std::result::Result<T, r#async::timeout::Error<E>>`
 - `Space::from_id_unchecked` unsafe function, for creating a space struct from a space id.
+- `examples/tokio-hyper` example of using tarantool with tokio + hyper
 
 ### Changed
 - `r#async::timeout::Timeout` can now only be wrapped around a future which

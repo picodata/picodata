@@ -11,5 +11,6 @@ members = [
     "examples/hardest",
     "examples/read",
     "examples/write",
+    "examples/tokio-hyper",
     "perf-test"
 ]
