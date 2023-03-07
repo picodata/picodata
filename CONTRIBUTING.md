@@ -3,7 +3,7 @@ This document describes contributing to Picodata, primarily the ways you can bui
 
 ## Building Picodata from source
 ### Required build tools
-- Rust and Cargo 1.63 or newer
+- Rust and Cargo 1.65 or newer
 - Cmake 3.16 or newer
 - gcc, g++
 - libstc++-static
