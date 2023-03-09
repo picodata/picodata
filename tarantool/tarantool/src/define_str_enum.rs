@@ -132,6 +132,18 @@ macro_rules! define_str_enum {
                 }
             }
 
+            $vis const fn as_cstr(&self) -> &'static ::std::ffi::CStr {
+                match self {
+                    $(
+                        Self::$variant => unsafe {
+                            ::std::ffi::CStr::from_bytes_with_nul_unchecked(
+                                ::std::concat!($display, "\0").as_bytes()
+                            )
+                        }
+                    )+
+                }
+            }
+
             $vis const fn values() -> &'static [&'static str] {
                 &[ $( $display, )+ ]
             }

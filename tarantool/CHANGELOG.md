@@ -35,18 +35,31 @@
     used in impl LuaRead for user defined types.
 - `LuaTable::try_get` method for checking which error happened.
 - `fiber::r#async::Mutex` an async Mutex, with guard that can be held across await points.
+- `T::as_cstr` method returning std::ffi::CStr is now implemented for
+    enums defined with `tarantool::define_str_enum`.
+- `T::values` method returning a static slice of static str variant names
+    is now defined for enums defined with `tarantool::define_str_enum`.
 - `index::Metadata` struct representing tuples stored in `_index` system space.
 - `Index::meta` method for getting index metadata from `_index` system space.
 - `Index::id` & `Index::space_id` accessor methods for getting ids.
+- `tuple::KeyDefPart` helper struct for constructing `tuple::KeyDef`, it also
+    has `try_from_index_part` constructor method which accepts `index::Part`.
+- `IndexMetadata::to_key_def` method for creating a `tuple::KeyDef` instance
+    from index metadata. Can be used to compare tuples with a key.
+- `IndexMetadata::to_key_def_for_key` method for creating `tuple::KeyDef`
+    similar to `to_key_def` but is used for comparing just the keys themselves.
 
 ### Changed
 - `r#async::timeout::Timeout` can now only be wrapped around a future which
     resolves into a `std::result::Result<T, E>` and timeout itself now resolves
     into `r#async::timeout::Result`.
 - `LuaRead` methods now return `WrongType` error in case of failure.
+- `KeyDef::new` now accepts iterator over references to `KeyDefPart` and returns
+    a result.
 
 ### Removed
 - `r#async::timeout::Expired` in favor of `r#async::timeout::Error`
+- `tuple::KeyDefItem` in favor of `tuple::KeyDefPart`.
 
 # [0.6.4] Dec 15 2022
 

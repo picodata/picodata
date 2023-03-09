@@ -12,21 +12,22 @@ use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
 use std::convert::TryFrom;
+use std::ffi::{CStr, CString};
 use std::fmt::{self, Debug, Formatter};
 use std::io::Write;
 use std::ops::{Deref, Range};
 use std::os::raw::{c_char, c_int};
-use std::ptr::NonNull;
+use std::ptr::{null, NonNull};
 
-use num_derive::ToPrimitive;
-use num_traits::ToPrimitive;
 use rmp::Marker;
 use serde::Serialize;
 use tarantool_proc::impl_tuple_encode;
 
 use crate::error::{self, Error, Result, TarantoolError};
 use crate::ffi::tarantool as ffi;
+use crate::index;
 use crate::tlua;
+use crate::util::NumOrStr;
 
 pub use rmp;
 pub use tarantool_proc::Encode;
@@ -1013,36 +1014,91 @@ impl Default for FieldType {
     }
 }
 
-////////////////////////////////////////////////////////////////////////////////
-/// KeyDef
-////////////////////////////////////////////////////////////////////////////////
-
-#[derive(Debug)]
-pub struct KeyDef {
-    inner: *mut ffi::BoxKeyDef,
-}
-
-#[derive(Debug, PartialEq, Eq, Hash)]
-pub struct KeyDefItem {
-    pub field_id: u32,
-    pub field_type: FieldType,
-}
-
-impl KeyDefItem {
-    pub fn new(field_id: u32, field_type: FieldType) -> Self {
-        Self {
-            field_id,
-            field_type,
+impl From<index::FieldType> for FieldType {
+    #[rustfmt::skip]
+    fn from(t: index::FieldType) -> Self {
+        match t {
+            // "any" type is not supported as index part,
+            // that's the only reason we need 2 enums.
+            index::FieldType::Unsigned  => Self::Unsigned,
+            index::FieldType::String    => Self::String,
+            index::FieldType::Number    => Self::Number,
+            index::FieldType::Double    => Self::Double,
+            index::FieldType::Integer   => Self::Integer,
+            index::FieldType::Boolean   => Self::Boolean,
+            index::FieldType::Varbinary => Self::Varbinary,
+            index::FieldType::Scalar    => Self::Scalar,
+            index::FieldType::Decimal   => Self::Decimal,
+            index::FieldType::Uuid      => Self::Uuid,
+            index::FieldType::Datetime  => Self::Datetime,
+            index::FieldType::Array     => Self::Array,
         }
     }
 }
 
-impl From<(u32, FieldType)> for KeyDefItem {
-    fn from((field_id, field_type): (u32, FieldType)) -> Self {
-        Self {
-            field_id,
-            field_type,
+////////////////////////////////////////////////////////////////////////////////
+// KeyDef
+////////////////////////////////////////////////////////////////////////////////
+
+#[derive(Debug)]
+pub struct KeyDef {
+    inner: NonNull<ffi::BoxKeyDef>,
+}
+
+#[derive(Default, Debug, PartialEq, Eq, Hash)]
+pub struct KeyDefPart<'a> {
+    pub field_no: u32,
+    pub field_type: FieldType,
+    pub collation: Option<Cow<'a, CStr>>,
+    pub is_nullable: bool,
+    pub path: Option<Cow<'a, CStr>>,
+}
+
+impl<'a> KeyDefPart<'a> {
+    fn as_tt(&self) -> ffi::box_key_part_def_t {
+        let flags = if self.is_nullable {
+            ffi::BoxKeyDefPartFlag::IS_NULLABLE.bits()
+        } else {
+            0
+        };
+        ffi::box_key_part_def_t {
+            meat: ffi::BoxKeyDefPart {
+                fieldno: self.field_no,
+                field_type: self.field_type.as_cstr().as_ptr(),
+                flags,
+                collation: self
+                    .collation
+                    .as_deref()
+                    .map(CStr::as_ptr)
+                    .unwrap_or(null()),
+                path: self.path.as_deref().map(CStr::as_ptr).unwrap_or(null()),
+            },
         }
+    }
+
+    pub fn try_from_index_part(p: &'a index::Part) -> Option<Self> {
+        let field_no = match p.field {
+            NumOrStr::Num(field_no) => field_no,
+            NumOrStr::Str(_) => return None,
+        };
+
+        let collation = p.collation.as_deref().map(|s| {
+            CString::new(s)
+                .expect("it's your fault if you put '\0' in collation")
+                .into()
+        });
+        let path = p.path.as_deref().map(|s| {
+            CString::new(s)
+                .expect("it's your fault if you put '\0' in collation")
+                .into()
+        });
+        Some(Self {
+            field_no,
+            field_type: p.r#type.map(From::from).unwrap_or(FieldType::Any),
+            is_nullable: p.is_nullable.unwrap_or(false),
+            collation,
+            path,
+        })
     }
 }
 
@@ -1052,25 +1108,11 @@ impl KeyDef {
     ///
     /// - `items` - array with key field identifiers and key field types (see [FieldType](struct.FieldType.html))
     #[inline]
-    pub fn new(items: impl IntoIterator<Item = impl Into<KeyDefItem>>) -> Self {
-        let iter = items.into_iter();
-        let (size, _) = iter.size_hint();
-        let mut ids = Vec::with_capacity(size);
-        let mut types = Vec::with_capacity(size);
-        for KeyDefItem {
-            field_id,
-            field_type,
-        } in iter.map(Into::into)
-        {
-            ids.push(field_id);
-            types.push(field_type.to_u32().unwrap());
-        }
-
-        KeyDef {
-            inner: unsafe {
-                ffi::box_key_def_new(ids.as_mut_ptr(), types.as_mut_ptr(), size as u32)
-            },
-        }
+    pub fn new<'a>(parts: impl IntoIterator<Item = &'a KeyDefPart<'a>>) -> Result<Self> {
+        let mut tt_parts = parts.into_iter().map(KeyDefPart::as_tt).collect::<Vec<_>>();
+        let ptr = unsafe { ffi::box_key_def_new_v2(tt_parts.as_mut_ptr(), tt_parts.len() as _) };
+        let inner = NonNull::new(ptr).ok_or_else(TarantoolError::last)?;
+        Ok(KeyDef { inner })
     }
 
     /// Compare tuples using the key definition.
@@ -1084,7 +1126,12 @@ impl KeyDef {
     /// - `Ordering::Greater` if `key_fields(tuple_a) > key_fields(tuple_b)`
     pub fn compare(&self, tuple_a: &Tuple, tuple_b: &Tuple) -> Ordering {
         unsafe {
-            ffi::box_tuple_compare(tuple_a.ptr.as_ptr(), tuple_b.ptr.as_ptr(), self.inner).cmp(&0)
+            ffi::box_tuple_compare(
+                tuple_a.ptr.as_ptr(),
+                tuple_b.ptr.as_ptr(),
+                self.inner.as_ptr(),
+            )
+            .cmp(&0)
         }
     }
 
@@ -1104,14 +1151,15 @@ impl KeyDef {
         let key_buf = key.to_tuple_buffer().unwrap();
         let key_buf_ptr = key_buf.as_ptr() as _;
         unsafe {
-            ffi::box_tuple_compare_with_key(tuple.ptr.as_ptr(), key_buf_ptr, self.inner).cmp(&0)
+            ffi::box_tuple_compare_with_key(tuple.ptr.as_ptr(), key_buf_ptr, self.inner.as_ptr())
+                .cmp(&0)
         }
     }
 }
 
 impl Drop for KeyDef {
     fn drop(&mut self) {
-        unsafe { ffi::box_key_def_delete(self.inner) }
+        unsafe { ffi::box_key_def_delete(self.inner.as_ptr()) }
     }
 }
 

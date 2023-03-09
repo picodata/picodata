@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 use serde::Serialize;
 use tarantool::tlua::{Index, Indexable, Nil};
 use tarantool::tuple::{
-    Encode, FieldType, KeyDef, KeyDefItem, RawByteBuf, RawBytes, Tuple, TupleBuffer,
+    Encode, FieldType, KeyDef, KeyDefPart, RawByteBuf, RawBytes, Tuple, TupleBuffer,
 };
 
 use crate::common::{S1Record, S2Key, S2Record};
@@ -259,21 +259,23 @@ pub fn tuple_compare() {
     .unwrap();
 
     let key = KeyDef::new(vec![
-        KeyDefItem {
-            field_id: 0,
+        &KeyDefPart {
+            field_no: 0,
             field_type: FieldType::Unsigned,
+            ..Default::default()
         },
-        KeyDefItem {
-            field_id: 3,
+        &KeyDefPart {
+            field_no: 3,
             field_type: FieldType::Integer,
+            ..Default::default()
         },
     ]);
-    assert_eq!(key.compare(&tuple_a, &tuple_b), Ordering::Less);
+    assert_eq!(key.unwrap().compare(&tuple_a, &tuple_b), Ordering::Less);
 }
 
 pub fn tuple_compare_with_key() {
     let tuple = Tuple::new(&S2Record {
-        id: 1,
+        id: 0x1d,
         key: "key".to_string(),
         value: "value".to_string(),
         a: 1,
@@ -281,31 +283,62 @@ pub fn tuple_compare_with_key() {
     })
     .unwrap();
 
-    let key_value = S2Key { id: 1, a: 3, b: 4 };
+    let space = tarantool::space::Space::find("test_s2").unwrap();
+    let index = space.index("primary").unwrap();
+    let meta = index.meta().unwrap();
+    let key_def = meta.to_key_def();
+    assert_eq!(key_def.compare_with_key(&tuple, &[0x1d]), Ordering::Equal);
 
-    let key_def = KeyDef::new(vec![
-        KeyDefItem {
-            field_id: 0,
-            field_type: FieldType::Unsigned,
-        },
-        KeyDefItem {
-            field_id: 3,
-            field_type: FieldType::Integer,
-        },
-        KeyDefItem {
-            field_id: 4,
-            field_type: FieldType::Integer,
-        },
-    ]);
-    assert_eq!(key_def.compare_with_key(&tuple, &key_value), Ordering::Less);
-
-    let tuple = Tuple::new(&S2Key { id: 3, a: 1, b: 4 }).unwrap();
     let key_def = KeyDef::new([
-        (0, FieldType::Unsigned),
-        (1, FieldType::Integer),
-        (2, FieldType::Integer),
-    ]);
-    assert_eq!(key_def.compare_with_key(&tuple, &tuple), Ordering::Equal);
+        &KeyDefPart {
+            field_no: 0,
+            field_type: FieldType::Unsigned,
+            ..Default::default()
+        },
+        &KeyDefPart {
+            field_no: 3,
+            field_type: FieldType::Integer,
+            ..Default::default()
+        },
+        &KeyDefPart {
+            field_no: 4,
+            field_type: FieldType::Integer,
+            ..Default::default()
+        },
+    ])
+    .unwrap();
+    assert_eq!(
+        key_def.compare_with_key(
+            &tuple,
+            &S2Key {
+                id: 0x1d,
+                a: 3,
+                b: 4
+            }
+        ),
+        Ordering::Less
+    );
+
+    let key = Tuple::new(&S2Key { id: 3, a: 1, b: 4 }).unwrap();
+    let key_def = KeyDef::new([
+        &KeyDefPart {
+            field_no: 0,
+            field_type: FieldType::Unsigned,
+            ..Default::default()
+        },
+        &KeyDefPart {
+            field_no: 1,
+            field_type: FieldType::Integer,
+            ..Default::default()
+        },
+        &KeyDefPart {
+            field_no: 2,
+            field_type: FieldType::Integer,
+            ..Default::default()
+        },
+    ])
+    .unwrap();
+    assert_eq!(key_def.compare_with_key(&key, &key), Ordering::Equal);
 }
 
 pub fn to_and_from_lua() {

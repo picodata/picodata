@@ -24,6 +24,9 @@ pub fn basic() {
     assert_eq!(Color::default(), Color::Black);
     assert_eq!(Color::Black.as_ref(), "#000000");
     assert_eq!(Color::White.as_str(), "#FFFFFF");
+    assert_eq!(Color::Black.as_cstr(), unsafe {
+        tarantool::c_str!("#000000")
+    });
 
     // PartialEq, PartialOrd
     assert_eq!(Color::Black == Color::White, false);

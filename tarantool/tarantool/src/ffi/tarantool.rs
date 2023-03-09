@@ -903,15 +903,77 @@ extern "C" {
     pub fn box_tuple_next(it: *mut BoxTupleIterator) -> *const c_char;
 }
 
+////////////////////////////////////////////////////////////////////////////////
+// box_key_def_t
+////////////////////////////////////////////////////////////////////////////////
+
 #[repr(C)]
 pub struct BoxKeyDef {
     _unused: [u8; 0],
 }
 
+#[repr(C, packed)]
+#[derive(Clone, Copy)]
+pub struct BoxKeyDefPart {
+    /// Index of a tuple field (zero based).
+    pub fieldno: u32,
+
+    /// Flags, e.g. nullability.
+    pub flags: u32,
+
+    /// Type of the tuple field.
+    pub field_type: *const c_char,
+
+    /// Collation name for string comparisons.
+    pub collation: *const c_char,
+
+    /// JSON path to point a nested field.
+    ///
+    /// Example:
+    /// ```ignore
+    /// tuple: [1, {"foo": "bar"}]
+    /// key parts: [
+    ///     {
+    ///         "fieldno": 2,
+    ///         "type": "string",
+    ///         "path": "foo"
+    ///     }
+    /// ]
+    ///
+    /// => key: ["bar"]
+    /// ```
+    ///
+    /// Note: When the path is given, <field_type>
+    /// means type of the nested field.
+    pub path: *const c_char,
+}
+
+const BOX_KEY_PART_DEF_T_SIZE: usize = 64;
+
+#[repr(C)]
+pub union box_key_part_def_t {
+    pub meat: BoxKeyDefPart,
+    /// Padding to guarantee certain size across different
+    /// tarantool versions.
+    _padding: [u8; BOX_KEY_PART_DEF_T_SIZE],
+}
+
+bitflags! {
+    /// Key part definition flag.
+    pub struct BoxKeyDefPartFlag: u32 {
+        const IS_NULLABLE = 1 << 0;
+    }
+}
+
 extern "C" {
     pub fn box_key_def_new(fields: *mut u32, types: *mut u32, part_count: u32) -> *mut BoxKeyDef;
+    pub fn box_key_def_new_v2(parts: *mut box_key_part_def_t, part_count: u32) -> *mut BoxKeyDef;
     pub fn box_key_def_delete(key_def: *mut BoxKeyDef);
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// ...
+////////////////////////////////////////////////////////////////////////////////
 
 #[repr(C)]
 pub struct BoxFunctionCtx {

@@ -22,6 +22,7 @@ use crate::ffi::tarantool as ffi;
 use crate::msgpack;
 use crate::space::{Space, SystemSpace};
 use crate::tuple::{Encode, ToTupleBuffer, Tuple, TupleBuffer};
+use crate::tuple::{KeyDef, KeyDefPart};
 use crate::tuple_from_box_api;
 use crate::util::NumOrStr;
 use crate::util::Value;
@@ -863,6 +864,60 @@ impl Encode for Metadata<'_> {}
 #[error("field number expected, got string '{0}'")]
 pub struct FieldMustBeNumber(pub String);
 
+impl Metadata<'_> {
+    /// Construct a [`KeyDef`] instance from index parts.
+    ///
+    /// # Panicking
+    /// Will panic if any of the parts have field name instead of field number.
+    /// Normally this doesn't happen, because `Metadata` returned from
+    /// `_index` always has field number, but if you got this metadata from
+    /// somewhere else, use [`Self::try_to_key_def`] instead, to check for this
+    /// error.
+    #[inline(always)]
+    pub fn to_key_def(&self) -> KeyDef {
+        self.try_to_key_def().unwrap()
+    }
+
+    /// Construct a [`KeyDef`] instance from index parts. Returns error in case
+    /// any of the parts had field name instead of field number.
+    #[inline]
+    pub fn try_to_key_def(&self) -> Result<KeyDef, FieldMustBeNumber> {
+        let mut kd_parts = Vec::with_capacity(self.parts.len());
+        for p in &self.parts {
+            let kd_p = KeyDefPart::try_from_index_part(p)
+                .ok_or_else(|| FieldMustBeNumber(p.field.clone().into()))?;
+            kd_parts.push(kd_p);
+        }
+        Ok(KeyDef::new(&kd_parts).unwrap())
+    }
+
+    /// Construct a [`KeyDef`] instance from index parts for comparing keys only.
+    ///
+    /// The difference between this function and [`Self::to_key_def`] is that
+    /// the latter is used to compare tuples of a space, while the former is
+    /// used to compare only the keys.
+    #[inline]
+    pub fn to_key_def_for_key(&self) -> KeyDef {
+        let mut kd_parts = Vec::with_capacity(self.parts.len());
+        for (p, i) in self.parts.iter().zip(0..) {
+            let collation = p.collation.as_deref().map(|s| {
+                std::ffi::CString::new(s)
+                    .expect("it's your fault if you put '\0' in collation")
+                    .into()
+            });
+            let kd_p = KeyDefPart {
+                field_no: i,
+                field_type: p.r#type.map(From::from).unwrap_or_default(),
+                collation,
+                is_nullable: p.is_nullable.unwrap_or(false),
+                path: None,
+            };
+            kd_parts.push(kd_p);
+        }
+        KeyDef::new(&kd_parts).unwrap()
+    }
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // IndexIterator
 ////////////////////////////////////////////////////////////////////////////////
@@ -902,10 +957,14 @@ mod tests {
             .field(("id", space::FieldType::Unsigned))
             .field(("s", space::FieldType::String))
             .field(("map", space::FieldType::Map))
-            .create().unwrap();
+            .create()
+            .unwrap();
 
-        let index = space.index_builder("pk")
-            .index_type(IndexType::Hash).create().unwrap();
+        let index = space
+            .index_builder("pk")
+            .index_type(IndexType::Hash)
+            .create()
+            .unwrap();
         let meta = index.meta().unwrap();
         assert_eq!(
             meta,
@@ -914,20 +973,17 @@ mod tests {
                 iid: 0,
                 name: "pk".into(),
                 r#type: IndexType::Hash,
-                opts: BTreeMap::from([
-                    ("unique".into(), Value::from(true)),
-                ]),
-                parts: vec![
-                    Part {
-                        field: 0.into(),
-                        r#type: Some(FieldType::Unsigned),
-                        ..Default::default()
-                    }
-                ],
+                opts: BTreeMap::from([("unique".into(), Value::from(true)),]),
+                parts: vec![Part {
+                    field: 0.into(),
+                    r#type: Some(FieldType::Unsigned),
+                    ..Default::default()
+                }],
             }
         );
 
-        let index = space.index_builder("i")
+        let index = space
+            .index_builder("i")
             .unique(false)
             .index_type(IndexType::Tree)
             .part(("s", FieldType::String))
@@ -938,7 +994,8 @@ mod tests {
                 ..Default::default()
             })
             .part(("map.value[1]", FieldType::String))
-            .create().unwrap();
+            .create()
+            .unwrap();
         let meta = index.meta().unwrap();
         assert_eq!(
             meta,
@@ -947,9 +1004,7 @@ mod tests {
                 iid: 1,
                 name: "i".into(),
                 r#type: IndexType::Tree,
-                opts: BTreeMap::from([
-                    ("unique".into(), Value::from(false)),
-                ]),
+                opts: BTreeMap::from([("unique".into(), Value::from(false)),]),
                 parts: vec![
                     Part {
                         field: 1.into(),
@@ -972,6 +1027,52 @@ mod tests {
                 ],
             }
         );
+
+        space.drop().unwrap();
+    }
+
+    #[crate::test(tarantool = "crate")]
+    fn key_def_for_key() {
+        let space = Space::builder("test_key_def_for_keys_space")
+            .field(("id", space::FieldType::Unsigned))
+            .field(("s", space::FieldType::String))
+            .field(("map", space::FieldType::Map))
+            .create()
+            .unwrap();
+
+        space.index_builder("pk").create().unwrap();
+
+        let index = space
+            .index_builder("i")
+            .unique(false)
+            .part(("map.arr[1]", FieldType::String))
+            .part(("map.val", FieldType::Unsigned))
+            .part(("s", FieldType::String))
+            .part(("id", FieldType::Unsigned))
+            .create()
+            .unwrap();
+        let key_def = index.meta().unwrap().to_key_def_for_key();
+
+        assert!(key_def
+            .compare_with_key(
+                &Tuple::new(&("foo", 13, "bar", 37)).unwrap(),
+                &("foo", 13, "bar", 37),
+            )
+            .is_eq());
+
+        assert!(key_def
+            .compare_with_key(
+                &Tuple::new(&("foo", 13, "bar", 37)).unwrap(),
+                &("foo", 14, "bar", 37),
+            )
+            .is_lt());
+
+        assert!(key_def
+            .compare_with_key(
+                &Tuple::new(&("foo", 13, "baz", 37)).unwrap(),
+                &("foo", 13, "bar", 37),
+            )
+            .is_gt());
 
         space.drop().unwrap();
     }
