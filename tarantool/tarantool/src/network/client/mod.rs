@@ -128,6 +128,7 @@ struct ClientInner {
     close_token: Option<tcp::CloseToken>,
     worker_handles: Vec<WorkerHandle>,
     sender_waker: watch::Sender<()>,
+    clients_count: usize,
 }
 
 impl ClientInner {
@@ -139,6 +140,7 @@ impl ClientInner {
             close_token: None,
             worker_handles: Vec::new(),
             sender_waker,
+            clients_count: 1,
         }
     }
 }
@@ -162,7 +164,7 @@ fn wake_sender(client: &RefCell<ClientInner>) -> Result<(), watch::SendError<()>
 ///
 /// See [`super::client`] for examples and [`AsClient`] trait for API.
 // WARNING: Attention should be payed not to borrow inner client across await and yield points.
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct Client(Rc<RefCell<ClientInner>>);
 
 impl Client {
@@ -307,8 +309,8 @@ impl AsClient for Client {
 
 impl Drop for Client {
     fn drop(&mut self) {
-        // 3 means this client and 2 fibers: receiver and sender
-        if Rc::strong_count(&self.0) <= 3 {
+        let clients_count = self.0.borrow().clients_count;
+        if clients_count == 1 {
             let mut client = self.0.borrow_mut();
             // Stop fibers
             client.state = State::ClosedManually;
@@ -328,7 +330,16 @@ impl Drop for Client {
             for handle in handles {
                 handle.join();
             }
+        } else {
+            self.0.borrow_mut().clients_count -= 1;
         }
+    }
+}
+
+impl Clone for Client {
+    fn clone(&self) -> Self {
+        self.0.borrow_mut().clients_count += 1;
+        Self(self.0.clone())
     }
 }
 
