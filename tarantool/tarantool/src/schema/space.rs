@@ -90,7 +90,7 @@ pub fn create_space(name: &str, opts: &SpaceCreateOptions) -> Result<Space, Erro
 }
 
 /// SpaceMetadata is tuple, holding space metadata in system `_space` space.
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct SpaceMetadata<'a> {
     pub id: u32,
     pub user_id: u32,

@@ -35,6 +35,9 @@
     used in impl LuaRead for user defined types.
 - `LuaTable::try_get` method for checking which error happened.
 - `fiber::r#async::Mutex` an async Mutex, with guard that can be held across await points.
+- `index::Metadata` struct representing tuples stored in `_index` system space.
+- `Index::meta` method for getting index metadata from `_index` system space.
+- `Index::id` & `Index::space_id` accessor methods for getting ids.
 
 ### Changed
 - `r#async::timeout::Timeout` can now only be wrapped around a future which

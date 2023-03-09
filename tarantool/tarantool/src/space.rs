@@ -106,6 +106,12 @@ crate::define_str_enum! {
     }
 }
 
+impl Default for SpaceEngineType {
+    fn default() -> Self {
+        Self::Memtx
+    }
+}
+
 /// Options for new space, used by Space::create.
 /// (for details see [Options for box.schema.space.create](https://www.tarantool.io/en/doc/latest/reference/reference_lua/box_schema/space_create/)).
 ///

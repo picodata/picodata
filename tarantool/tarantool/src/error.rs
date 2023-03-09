@@ -510,6 +510,22 @@ macro_rules! set_error {
     };
 }
 
+/// Set the last tarantool error and return it immediately.
+#[macro_export]
+macro_rules! set_and_get_error {
+    ($code:expr, $($msg_args:expr),+ $(,)?) => {{
+        let msg = ::std::fmt::format(format_args!($($msg_args),*));
+        let file = ::std::concat!(file!(), "\0").as_ptr().cast();
+        let msg = ::std::ffi::CString::new(msg).expect("msg mustn't contain nul bytes");
+        // `msg` must outlive `msg_ptr`
+        let msg_ptr = msg.as_ptr().cast();
+        unsafe {
+            $crate::ffi::tarantool::box_error_set(file, line!(), $code as u32, msg_ptr);
+            $crate::error::TarantoolError::last()
+        }
+    }};
+}
+
 /// Error that can happen when serializing a tuple
 #[derive(Debug, thiserror::Error)]
 pub enum Encode {

@@ -59,12 +59,19 @@ where
     Ok(rmp_serde::to_vec(val)?)
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, tlua::Push)]
+#[derive(Clone, Debug, Serialize, Deserialize, tlua::Push, PartialEq, Eq)]
+#[serde(untagged)]
 pub enum NumOrStr {
     Num(u32),
     // TODO(gmoshkin): this should be a `&str` instead, but
     // `#[derive(tlua::Push)]` doesn't support generic parameters yet
     Str(String),
+}
+
+impl Default for NumOrStr {
+    fn default() -> Self {
+        Self::Num(0)
+    }
 }
 
 impl From<u32> for NumOrStr {
@@ -81,6 +88,16 @@ impl From<String> for NumOrStr {
     }
 }
 
+impl From<NumOrStr> for String {
+    #[inline(always)]
+    fn from(s: NumOrStr) -> Self {
+        match s {
+            NumOrStr::Str(s) => s,
+            NumOrStr::Num(n) => n.to_string(),
+        }
+    }
+}
+
 impl<'a> From<&'a str> for NumOrStr {
     #[inline(always)]
     fn from(s: &'a str) -> Self {
@@ -88,13 +105,22 @@ impl<'a> From<&'a str> for NumOrStr {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
 #[serde(untagged)]
 pub enum Value<'a> {
     Num(u32),
     Str(Cow<'a, str>),
     Bool(bool),
 }
+
+#[rustfmt::skip]
+impl From<bool> for Value<'_> { fn from(v: bool) -> Self { Self::Bool(v) } }
+#[rustfmt::skip]
+impl From<u32> for Value<'_> { fn from(v: u32) -> Self { Self::Num(v) } }
+#[rustfmt::skip]
+impl From<String> for Value<'_> { fn from(v: String) -> Self { Self::Str(v.into()) } }
+#[rustfmt::skip]
+impl<'s> From<&'s str> for Value<'s> { fn from(v: &'s str) -> Self { Self::Str(v.into()) } }
 
 #[macro_export]
 macro_rules! unwrap_or {

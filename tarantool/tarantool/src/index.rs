@@ -7,6 +7,8 @@
 //! See also:
 //! - [Indexes](https://www.tarantool.io/en/doc/latest/book/box/data_model/#indexes)
 //! - [Lua reference: Submodule box.index](https://www.tarantool.io/en/doc/latest/reference/reference_lua/box_index/)
+use std::borrow::Cow;
+use std::collections::BTreeMap;
 use std::mem::MaybeUninit;
 use std::os::raw::c_char;
 use std::ptr::null_mut;
@@ -15,12 +17,14 @@ use num_derive::ToPrimitive;
 use num_traits::ToPrimitive;
 use serde::{Deserialize, Serialize};
 
-use crate::error::{Error, TarantoolError};
+use crate::error::{Error, TarantoolError, TarantoolErrorCode};
 use crate::ffi::tarantool as ffi;
 use crate::msgpack;
-use crate::tuple::{ToTupleBuffer, Tuple, TupleBuffer};
+use crate::space::{Space, SystemSpace};
+use crate::tuple::{Encode, ToTupleBuffer, Tuple, TupleBuffer};
 use crate::tuple_from_box_api;
 use crate::util::NumOrStr;
+use crate::util::Value;
 
 /// An index is a group of key values and pointers.
 #[derive(Clone, Debug)]
@@ -333,6 +337,12 @@ crate::define_str_enum! {
     }
 }
 
+impl Default for IndexType {
+    fn default() -> Self {
+        Self::Tree
+    }
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // FieldType
 ////////////////////////////////////////////////////////////////////////////////
@@ -367,12 +377,16 @@ crate::define_str_enum! {
 pub type IndexPart = Part;
 
 /// Index part.
-#[derive(Clone, Debug, Serialize, Deserialize, tlua::Push)]
+#[derive(Clone, Default, Debug, Serialize, Deserialize, tlua::Push, PartialEq, Eq)]
 pub struct Part {
     pub field: NumOrStr,
+    #[serde(default)]
     pub r#type: Option<FieldType>,
+    #[serde(default)]
     pub collation: Option<String>,
+    #[serde(default)]
     pub is_nullable: Option<bool>,
+    #[serde(default)]
     pub path: Option<String>,
 }
 
@@ -469,6 +483,32 @@ crate::define_str_enum! {
 impl Index {
     pub(crate) fn new(space_id: u32, index_id: u32) -> Self {
         Index { space_id, index_id }
+    }
+
+    /// Return id of this index.
+    pub fn id(&self) -> u32 {
+        self.index_id
+    }
+
+    /// Return the space id of this index.
+    pub fn space_id(&self) -> u32 {
+        self.space_id
+    }
+
+    // Return index metadata from system `_index` space.
+    pub fn meta(&self) -> Result<Metadata, Error> {
+        let sys_space: Space = SystemSpace::Index.into();
+        let tuple = sys_space
+            .get(&[self.space_id, self.index_id])?
+            .ok_or_else(|| {
+                crate::set_and_get_error!(
+                    TarantoolErrorCode::NoSuchIndexID,
+                    "index #{} for space #{} not found",
+                    self.index_id,
+                    self.space_id,
+                )
+            })?;
+        tuple.decode::<Metadata>()
     }
 
     // Drops index.
@@ -803,6 +843,30 @@ impl Index {
     }
 }
 
+////////////////////////////////////////////////////////////////////////////////
+// Metadata
+////////////////////////////////////////////////////////////////////////////////
+
+/// Representation of a tuple holding index metadata in system `_index` space.
+#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq)]
+pub struct Metadata<'a> {
+    pub id: u32,
+    pub iid: u32,
+    pub name: Cow<'a, str>,
+    pub r#type: IndexType,
+    pub opts: BTreeMap<Cow<'a, str>, Value<'a>>,
+    pub parts: Vec<Part>,
+}
+impl Encode for Metadata<'_> {}
+
+#[derive(thiserror::Error, Debug)]
+#[error("field number expected, got string '{0}'")]
+pub struct FieldMustBeNumber(pub String);
+
+////////////////////////////////////////////////////////////////////////////////
+// IndexIterator
+////////////////////////////////////////////////////////////////////////////////
+
 /// Index iterator. Can be used with `for` statement.
 pub struct IndexIterator {
     ptr: *mut ffi::BoxIterator,
@@ -824,5 +888,91 @@ impl Iterator for IndexIterator {
 impl Drop for IndexIterator {
     fn drop(&mut self) {
         unsafe { ffi::box_iterator_free(self.ptr) };
+    }
+}
+
+#[cfg(feature = "internal_test")]
+mod tests {
+    use super::*;
+    use crate::space;
+
+    #[crate::test(tarantool = "crate")]
+    fn index_metadata() {
+        let space = Space::builder("test_index_metadata_space")
+            .field(("id", space::FieldType::Unsigned))
+            .field(("s", space::FieldType::String))
+            .field(("map", space::FieldType::Map))
+            .create().unwrap();
+
+        let index = space.index_builder("pk")
+            .index_type(IndexType::Hash).create().unwrap();
+        let meta = index.meta().unwrap();
+        assert_eq!(
+            meta,
+            Metadata {
+                id: space.id(),
+                iid: 0,
+                name: "pk".into(),
+                r#type: IndexType::Hash,
+                opts: BTreeMap::from([
+                    ("unique".into(), Value::from(true)),
+                ]),
+                parts: vec![
+                    Part {
+                        field: 0.into(),
+                        r#type: Some(FieldType::Unsigned),
+                        ..Default::default()
+                    }
+                ],
+            }
+        );
+
+        let index = space.index_builder("i")
+            .unique(false)
+            .index_type(IndexType::Tree)
+            .part(("s", FieldType::String))
+            .part(Part {
+                field: NumOrStr::Str("map.key".into()),
+                r#type: Some(FieldType::Unsigned),
+                is_nullable: Some(true),
+                ..Default::default()
+            })
+            .part(("map.value[1]", FieldType::String))
+            .create().unwrap();
+        let meta = index.meta().unwrap();
+        assert_eq!(
+            meta,
+            Metadata {
+                id: space.id(),
+                iid: 1,
+                name: "i".into(),
+                r#type: IndexType::Tree,
+                opts: BTreeMap::from([
+                    ("unique".into(), Value::from(false)),
+                ]),
+                parts: vec![
+                    Part {
+                        field: 1.into(),
+                        r#type: Some(FieldType::String),
+                        ..Default::default()
+                    },
+                    Part {
+                        field: 2.into(),
+                        r#type: Some(FieldType::Unsigned),
+                        is_nullable: Some(true),
+                        path: Some(".key".into()),
+                        ..Default::default()
+                    },
+                    Part {
+                        field: 2.into(),
+                        r#type: Some(FieldType::String),
+                        path: Some(".value[1]".into()),
+                        ..Default::default()
+                    },
+                ],
+            }
+        );
+
+        space.drop().unwrap();
     }
 }

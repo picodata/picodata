@@ -985,25 +985,32 @@ impl Drop for TupleIterator {
 impl TupleIterator {}
 
 ////////////////////////////////////////////////////////////////////////////////
-/// FieldType
+// FieldType
 ////////////////////////////////////////////////////////////////////////////////
 
-#[repr(u32)]
-#[derive(Copy, Clone, Debug, ToPrimitive, PartialEq, Eq, Hash)]
-pub enum FieldType {
-    Any = 0,
-    Unsigned,
-    String,
-    Number,
-    Double,
-    Integer,
-    Boolean,
-    Varbinary,
-    Scalar,
-    Decimal,
-    Uuid,
-    Array,
-    Map,
+crate::define_str_enum! {
+    pub enum FieldType {
+        Any       = "any",
+        Unsigned  = "unsigned",
+        String    = "string",
+        Number    = "number",
+        Double    = "double",
+        Integer   = "integer",
+        Boolean   = "boolean",
+        Varbinary = "varbinary",
+        Scalar    = "scalar",
+        Decimal   = "decimal",
+        Uuid      = "uuid",
+        Datetime  = "datetime",
+        Array     = "array",
+        Map       = "map",
+    }
+}
+
+impl Default for FieldType {
+    fn default() -> Self {
+        Self::Any
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
