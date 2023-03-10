@@ -556,4 +556,32 @@ mod tests {
             assert_eq!(result.unwrap().decode::<(i32, i32)>().unwrap(), (1, 2));
         });
     }
+
+    /// A regression test for https://git.picodata.io/picodata/picodata/tarantool-module/-/merge_requests/302
+    #[crate::test(tarantool = "crate")]
+    fn client_count_regression() {
+        fiber::block_on(async {
+            let client = test_client().await;
+            // Should close sender and receiver fibers
+            let close_token = client.0.borrow_mut().close_token.take();
+            close_token.unwrap().close().unwrap();
+            // Receiver wakes and closes
+            fiber::r#yield().unwrap();
+            client.0.borrow().sender_waker.send(()).unwrap();
+            // Sender wakes and closes
+            fiber::r#yield().unwrap();
+            // Sender and receiver stopped and dropped their refs
+            assert_eq!(Rc::strong_count(&client.0), 1);
+
+            // Cloning a client produces 2 refs
+            let client_clone = client.clone();
+            assert_eq!(Rc::strong_count(&client.0), 2);
+            // Here if client checked by Rc refs <= 3 it would assume it is the last and set state to ClosedManually
+            drop(client_clone);
+            assert_eq!(Rc::strong_count(&client.0), 1);
+
+            // This would panic on unreachable if previous drop have set the state
+            client.check_state().unwrap_err();
+        });
+    }
 }
