@@ -16,7 +16,7 @@ use super::options::Options;
 use super::protocol::{decode_multiple_rows, encode_select};
 
 pub struct ConnSchema {
-    version: Cell<Option<u32>>,
+    version: Cell<Option<u64>>,
     is_updating: Cell<bool>,
     space_ids: RefCell<HashMap<String, u32>>,
     index_ids: RefCell<HashMap<(u32, String), u32>>,
@@ -54,7 +54,7 @@ impl ConnSchema {
     pub fn refresh(
         &self,
         conn_inner: &Rc<ConnInner>,
-        actual_version: Option<u32>,
+        actual_version: Option<u64>,
     ) -> Result<bool, Error> {
         let mut _lock: Option<LatchGuard> = None;
 
@@ -106,7 +106,7 @@ impl ConnSchema {
             .copied()
     }
 
-    fn is_outdated(&self, actual_version: Option<u32>) -> bool {
+    fn is_outdated(&self, actual_version: Option<u64>) -> bool {
         match actual_version {
             None => true,
             Some(actual_version) => match self.version.get() {
@@ -116,7 +116,7 @@ impl ConnSchema {
         }
     }
 
-    fn fetch_schema_spaces(&self, conn_inner: &Rc<ConnInner>) -> Result<(Vec<Tuple>, u32), Error> {
+    fn fetch_schema_spaces(&self, conn_inner: &Rc<ConnInner>) -> Result<(Vec<Tuple>, u64), Error> {
         conn_inner.request(
             |buf, sync| {
                 encode_select(

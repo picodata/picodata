@@ -488,7 +488,7 @@ where
 pub struct Header {
     pub sync: Sync,
     pub status_code: u32,
-    pub schema_version: u32,
+    pub schema_version: u64,
 }
 
 pub struct Response<T> {
@@ -499,7 +499,7 @@ pub struct Response<T> {
 pub fn decode_header(stream: &mut (impl Read + Seek)) -> Result<Header, Error> {
     let mut sync: Option<u64> = None;
     let mut status_code: Option<u32> = None;
-    let mut schema_version: Option<u32> = None;
+    let mut schema_version: Option<u64> = None;
 
     let map_len = rmp::decode::read_map_len(stream)?;
     for _ in 0..map_len {

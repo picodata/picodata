@@ -37,7 +37,7 @@ pub struct ConnInner {
     state: Cell<ConnState>,
     state_change_cond: Cond,
     schema: Rc<ConnSchema>,
-    schema_version: Cell<Option<u32>>,
+    schema_version: Cell<Option<u64>>,
     stream: RefCell<Option<ConnStream>>,
     send_queue: SendQueue,
     recv_queue: RecvQueue,
