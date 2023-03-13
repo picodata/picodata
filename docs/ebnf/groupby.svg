@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="179" height="169">
+   <defs>
+      <style type="text/css">
+    @namespace "http://www.w3.org/2000/svg";
+    .line                 {fill: none; stroke: #320000; stroke-width: 1;}
+    .bold-line            {stroke: #FFE0E0; shape-rendering: crispEdges; stroke-width: 2;}
+    .thin-line            {stroke: #1F0000; shape-rendering: crispEdges}
+    .filled               {fill: #320000; stroke: none;}
+    text.terminal         {font-family: HelveticaNeueCyr, Sans-serif;
+                            font-size: 14px;
+                            fill: #FFE0E0;
+                            font-weight: bold;
+                          }
+    text.nonterminal      {font-family: HelveticaNeueCyr, Sans-serif;
+                            font-size: 14px;
+                            fill: #FFE0E0;
+                            font-weight: normal;
+                          }
+    text.regexp           {font-family: HelveticaNeueCyr, Sans-serif;
+                            font-size: 14px;
+                            fill: #1F0000;
+                            font-weight: normal;
+                          }
+    rect, circle, polygon {fill: #320000; stroke: #320000;}
+    rect.terminal         {fill: #FF0000; stroke: #320000; stroke-width: 1;}
+    rect.nonterminal      {fill: #FF3F3F; stroke: #320000; stroke-width: 1;}
+    rect.text             {fill: none; stroke: none;}
+    polygon.regexp        {fill: #FF5E5E; stroke: #320000; stroke-width: 1;}
+  </style>
+   </defs>
+   <polygon points="9 17 1 13 1 21"/>
+   <polygon points="17 17 9 13 9 21"/>
+   <a xmlns:xlink="http://www.w3.org/1999/xlink"
+       xlink:href="#concat"
+       xlink:title="concat">
+      <rect x="51" y="3" width="60" height="32"/>
+      <rect x="49" y="1" width="60" height="32" class="nonterminal"/>
+      <text class="nonterminal" x="59" y="21">concat</text>
+   </a>
+   <a xmlns:xlink="http://www.w3.org/1999/xlink"
+       xlink:href="#cast"
+       xlink:title="cast">
+      <rect x="51" y="47" width="46" height="32"/>
+      <rect x="49" y="45" width="46" height="32" class="nonterminal"/>
+      <text class="nonterminal" x="59" y="65">cast</text>
+   </a>
+   <a xmlns:xlink="http://www.w3.org/1999/xlink"
+       xlink:href="#function"
+       xlink:title="function">
+      <rect x="51" y="91" width="70" height="32"/>
+      <rect x="49" y="89" width="70" height="32" class="nonterminal"/>
+      <text class="nonterminal" x="59" y="109">function</text>
+   </a>
+   <a xmlns:xlink="http://www.w3.org/1999/xlink"
+       xlink:href="#reference"
+       xlink:title="reference">
+      <rect x="51" y="135" width="80" height="32"/>
+      <rect x="49" y="133" width="80" height="32" class="nonterminal"/>
+      <text class="nonterminal" x="59" y="153">reference</text>
+   </a>
+   <path class="line"
+          d="m17 17 h2 m20 0 h10 m60 0 h10 m0 0 h20 m-120 0 h20 m100 0 h20 m-140 0 q10 0 10 10 m120 0 q0 -10 10 -10 m-130 10 v24 m120 0 v-24 m-120 24 q0 10 10 10 m100 0 q10 0 10 -10 m-110 10 h10 m46 0 h10 m0 0 h34 m-110 -10 v20 m120 0 v-20 m-120 20 v24 m120 0 v-24 m-120 24 q0 10 10 10 m100 0 q10 0 10 -10 m-110 10 h10 m70 0 h10 m0 0 h10 m-110 -10 v20 m120 0 v-20 m-120 20 v24 m120 0 v-24 m-120 24 q0 10 10 10 m100 0 q10 0 10 -10 m-110 10 h10 m80 0 h10 m23 -132 h-3"/>
+   <polygon points="169 17 177 13 177 21"/>
+   <polygon points="169 17 161 13 161 21"/>
+</svg>
