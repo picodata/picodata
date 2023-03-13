@@ -1,0 +1,49 @@
+Query       ::= SELECT | SELECT 'UNION ALL' SELECT | SELECT ('EXCEPT' | 'EXCEPT DISTINCT') SELECT | VALUES | INSERT
+SELECT      ::= 'SELECT' (column (',' column)*) 'FROM' (table | SELECT) ('AS' alias)? ( ('INNER')? 'JOIN' (table | SELECT) ('AS' alias)? 'ON' expression )? ( 'GROUP BY' groupby )? ( 'WHERE' expression )?
+COLUMN      ::= '*' | table '.' '*' | expression | expression 'AS' alias
+EXPRESSION  ::= expression 'OR' expression
+               | expression 'AND' expression
+               | expression '*' expression
+               | expression '/' expression
+               | expression '+' expression
+               | expression '-' expression
+               | expression '=' expression
+               | expression '>' expression
+               | expression '>=' expression
+               | expression '<' expression
+               | expression '<=' expression
+               | expression ('<>' | '!=') expression
+               | expression 'IS NULL'
+               | expression 'IS NOT NULL'
+               | expression 'BETWEEN' expression 'AND' expression
+               | reference
+               | SELECT
+               | VALUE
+GROUPBY     ::= concat | cast | function | reference
+REFERENCE   ::= ((table | '"' table '"') '.')? (alias | '"' alias '"')
+VALUE       ::= 'TRUE'
+                | 'FALSE'
+                | 'NULL'
+                | '?'
+                | INTEGER
+                | UNSIGNED
+                | DOUBLE
+                | DECIMAL
+                | STRING
+                | ROW
+CAST        ::= 'CAST' '(' expression 'AS' type ')'
+TYPE        ::= 'ANY'
+                | 'BOOL'
+                | 'BOOLEAN'
+                | 'DECIMAL'
+                | 'DOUBLE'
+                | 'INT'
+                | 'INTEGER'
+                | 'NUMBER'
+                | 'SCALAR'
+                | 'STRING'
+                | 'TEXT'
+                | 'UNSIGNED'
+                | 'VARCHAR' ('(' length ')')?
+INSERT      ::= 'INSERT INTO' table ('(' reference (',' reference)* ')')? (SELECT | VALUES)
+VALUES      ::= 'VALUES' '(' (value (',' value)*) ')' (',' '(' (value (',' value)*) ')')*

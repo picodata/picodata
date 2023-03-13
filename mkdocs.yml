@@ -2,16 +2,21 @@ site_name: Портал документации Picodata
 site_description: Picodata documentation site
 
 nav:
-    - Главная: index.md
+  - Главная страница: index.md
+  - Ознакомление с ПО Picodata:
     - Общее описание продукта: description.md
-    - Преимущества Picodata: benefits.md
-    - Преимущества языка Rust: benefits_rust.md
-    - Установка Picodata: install.md
-    - Описание параметров запуска: cli.md
-    - Инструкция по развертыванию: deploy.md
-    - Пример работы с кластером Picodata: tutorial
+    - Преимущества использования Picodata: benefits.md
+    - Преимущества языка Rust при разработке приложений: benefits_rust.md
     - Общая схема инициализации кластера: clustering.md
-    - Возможности кластерного SQL: sql_support.md
+    - Возможности кластерного SQL: sql_index.md
+  - Инструкции и руководства:
+    - Установка Picodata: install.md
+    - Инструкция по развертыванию: deploy.md
+    - Пример работы с кластером Picodata: tutorial.md
+  - Справочные материалы:
+    - Описание параметров запуска Picodata: cli.md
+    - Поддерживаемые функции стандарта SQL: sql_reference.md
+
 
 theme:
     name: material
@@ -24,9 +29,10 @@ theme:
     locale: ru
     language: ru
     features:
-        - tabs.navigation
-        - navigation.tracking
+        - navigation.indexes
+        - navigation.path
         - navigation.sections
+ 
 
 extra:
     homepage: https://docs.picodata.io/
