@@ -1,20 +1,9 @@
-Query       ::= SELECT | SELECT 'UNION ALL' SELECT | SELECT ('EXCEPT' | 'EXCEPT DISTINCT') SELECT | VALUES | INSERT
-SELECT      ::= 'SELECT' (column (',' column)*) 'FROM' (table | SELECT) ('AS' alias)? ( ('INNER')? 'JOIN' (table | SELECT) ('AS' alias)? 'ON' expression )? ( 'GROUP BY' groupby )? ( 'WHERE' expression )?
+Query       ::= SELECT | SELECT 'UNION ALL' SELECT | SELECT ('EXCEPT' | 'EXCEPT DISTINCT') SELECT  | INSERT
+SELECT      ::= 'SELECT' (column (',' column)*) 'FROM' (table (',' table)* | SELECT) ('AS' alias)? ( ('INNER')? 'JOIN' (table | SELECT) ('AS' alias)? 'ON' expression )? ( 'WHERE' expression )? ( 'GROUP BY' groupby )?
 COLUMN      ::= '*' | table '.' '*' | expression | expression 'AS' alias
 EXPRESSION  ::= expression 'OR' expression
                | expression 'AND' expression
-               | expression '*' expression
-               | expression '/' expression
-               | expression '+' expression
-               | expression '-' expression
-               | expression '=' expression
-               | expression '>' expression
-               | expression '>=' expression
-               | expression '<' expression
-               | expression '<=' expression
-               | expression ('<>' | '!=') expression
-               | expression 'IS NULL'
-               | expression 'IS NOT NULL'
+               | expression ('* | / | + | -| = | > | >= | < | <= | <> | <= | <> | != | IS NULL | IS NOT NULL') expression
                | expression 'BETWEEN' expression 'AND' expression
                | reference
                | SELECT
@@ -45,5 +34,5 @@ TYPE        ::= 'ANY'
                 | 'TEXT'
                 | 'UNSIGNED'
                 | 'VARCHAR' ('(' length ')')?
-INSERT      ::= 'INSERT INTO' table ('(' reference (',' reference)* ')')? (SELECT | VALUES)
+INSERT      ::= 'INSERT' 'INTO' table ('(' reference (',' reference)* ')')? (SELECT | VALUES)
 VALUES      ::= 'VALUES' '(' (value (',' value)*) ')' (',' '(' (value (',' value)*) ')')*
