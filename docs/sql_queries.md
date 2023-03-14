@@ -6,7 +6,9 @@
 
 ## Запрос SELECT
 
-Cхема возможных запросов SELECT показана ниже
+Запрос `SELECT` используется для получения иснформации из одной или нескольких таблиц баз данных. Он возвращает 0 или более строк из таблицы/таблиц согласно поисковому запросу. 
+
+Cхема возможных запросов `SELECT` показана ниже.
 
 ![Select](ebnf/select.svg)
 
@@ -40,12 +42,12 @@ SELECT *
 
 Используется в:
 
-* EXPRESSION
-* INSERT
-* QUERY
-* SELECT
+* expression
+* insert
+* query
+* select
 
-### **COLUMN**
+### **column**
 
 ![Column](ebnf/column.svg)
 
@@ -53,9 +55,9 @@ SELECT *
 
 Используется в:
 
-* Select
+* select
 
-### **EXPRESSION**
+### **expression**
 
 ![Expression](ebnf/expression.svg)
 
@@ -63,12 +65,12 @@ SELECT *
 
 Используется в:
 
-* Cast
-* Column
-* Expression
-* Select
+* cast
+* column
+* expression
+* select
 
-### **GROUP BY**
+### **group by**
 
 ![GroupBy](ebnf/groupby.svg)
 
@@ -76,9 +78,9 @@ SELECT *
 
 Используется в:
 
-* Select
+* select
 
-### **REFERENCE**
+### **reference**
 
 ![Reference](ebnf/reference.svg)
 
@@ -86,11 +88,11 @@ SELECT *
 
 Используется в:
 
-* Expression
-* GroupBy
-* Insert
+* expression
+* groupby
+* insert
 
-### **VALUE**
+### **value**
 
 ![Value](ebnf/value.svg)
 
@@ -98,10 +100,10 @@ SELECT *
 
 Используется в:
 
-* Expression
-* Values
+* expression
+* values
 
-### **CAST**
+### **cast**
 
 ![Cast](ebnf/cast.svg)
 
@@ -109,9 +111,9 @@ SELECT *
 
 Используется в:
 
-* GroupBy
+* groupby
 
-### **TYPE**
+### **type**
 
 ![Type](ebnf/type.svg)
 
@@ -119,11 +121,14 @@ SELECT *
 
 Используется в:
 
-* Cast
+* cast
 
 ## Запрос INSERT
+Запрос `INSERT` используется для помещения (записи) данных в одну или несколько таблиц. 
 
-**INSERT**
+Схема возможных запросов `INSERT` показана ниже.
+
+**insert**
 
 ![Insert](ebnf/insert.svg)
 
@@ -134,10 +139,10 @@ INSERT INTO "t" VALUES(1, 2, 3, 4)
 
 Используется в:
 
-* Query
+* query
 
 
-### **VALUES**
+### **values**
 
 ![Values](ebnf/values.svg)
 
@@ -145,7 +150,7 @@ INSERT INTO "t" VALUES(1, 2, 3, 4)
 
 Используется в:
 
-* Insert
-* Query
+* insert
+* query
 
 Читать далее: [Перечень поддерживаемых типов данных](../sql_datatypes)
