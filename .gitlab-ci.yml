@@ -1,11 +1,7 @@
 stages:
   - build-base-image
   - test
-  - pack-centos
-  - pack-ubuntu
-  - pack-debian
-  - pack-altlinux
-  - pack-redos
+  - pack
   - sign
   - deploy
   - check-deployment
@@ -62,7 +58,7 @@ variables:
 build-base-image:
   stage: build-base-image
   tags:
-    - shell
+    - shell-yc
   rules:
     - <<: *if-build-base-changes-on-master-branch
       variables:
@@ -99,7 +95,7 @@ build-base-image:
 test:
   stage: test
   tags:
-    - docker
+    - docker-yc
   rules:
     - <<: *if-build-base-changes-on-master-branch
       variables:
@@ -213,7 +209,7 @@ test-docker:
 
 .pack:
   tags:
-    - shell
+    - shell-limit-1
   only:
     - web
     - tags
@@ -241,18 +237,18 @@ test-docker:
   dependencies: []
 
 pack-centos:
-  stage: pack-centos
+  stage: pack
   extends: .pack
   script:
     - sed -i "s/(id -u)/(id -u) -o/g" packpack/packpack
-    - OS=centos DIST=7 packpack/packpack
-    - OS=centos DIST=8 packpack/packpack
+    - OS=centos DIST=7 BUILDDIR=$PWD/build_centos packpack/packpack
+    - OS=centos DIST=8 BUILDDIR=$PWD/build_centos packpack/packpack
   artifacts:
     paths:
-      - build/picodata*.rpm
+      - build_centos/picodata*.rpm
 
 pack-ubuntu:
-  stage: pack-ubuntu
+  stage: pack
   extends: .pack
   script:
     - OS=ubuntu DIST=focal BUILDDIR=$PWD/build_${DIST}/ RELEASE=${DIST} packpack/packpack
@@ -263,7 +259,7 @@ pack-ubuntu:
       - build_jammy/*.deb
 
 pack-debian:
-  stage: pack-debian
+  stage: pack
   extends: .pack
   script:
     - OS=debian DIST=bullseye BUILDDIR=$PWD/build_debian/ RELEASE=${DIST} packpack/packpack
@@ -272,23 +268,32 @@ pack-debian:
       - build_debian/*.deb
 
 pack-altlinux:
-  stage: pack-altlinux
+  stage: pack
   extends: .pack
   script:
-    - DOCKER_REPO=docker-picodata.binary.picodata.io/packpack/alt DOCKER_IMAGE=p10 packpack/packpack
-    - DOCKER_REPO=docker-picodata.binary.picodata.io/packpack/alt DOCKER_IMAGE=p9 packpack/packpack
+    - DOCKER_REPO=docker-picodata.binary.picodata.io/packpack/alt DOCKER_IMAGE=p10 BUILDDIR=$PWD/build_alt packpack/packpack
+    - DOCKER_REPO=docker-picodata.binary.picodata.io/packpack/alt DOCKER_IMAGE=p9 BUILDDIR=$PWD/build_alt packpack/packpack
   artifacts:
     paths:
-      - build/picodata*.rpm
+      - build_alt/picodata*.rpm
 
 pack-redos:
-  stage: pack-redos
+  stage: pack
   extends: .pack
   script:
     - OS=redos DIST=7.3 BUILDDIR=$PWD/build_redos/ packpack/packpack
   artifacts:
     paths:
       - build_redos/picodata*.rpm
+
+pack-astralinux:
+  stage: pack
+  extends: .pack
+  script:
+    - DOCKER_REPO=docker-picodata.binary.picodata.io/packpack/astra DOCKER_IMAGE=orel-2.12 BUILDDIR=$PWD/build_astra packpack/packpack
+  artifacts:
+    paths:
+      - build_astra/*.deb
 
 sign-rpm-packages:
   variables:
@@ -300,19 +305,42 @@ sign-rpm-packages:
     - web
     - tags
   before_script:
-    - echo "$GPG_KEY_KDY" | base64 -d > build/kdy.asc
+    - echo "$GPG_KEY_KDY" | base64 -d > build_centos/kdy.asc
+    - echo "$GPG_KEY_KDY" | base64 -d > build_alt/kdy.asc
     - echo "$GPG_KEY_KDY" | base64 -d > build_redos/kdy.asc
   script:
-    - docker run --rm -e KEY_FILE=kdy.asc -v $PWD/build:/build docker-picodata.binary.picodata.io/rpmsign:centos7
+    - docker run --rm -e KEY_FILE=kdy.asc -v $PWD/build_centos:/build docker-picodata.binary.picodata.io/rpmsign:centos7
+    - docker run --rm -e KEY_FILE=kdy.asc -v $PWD/build_alt:/build docker-picodata.binary.picodata.io/rpmsign:centos7
     - docker run --rm -e KEY_FILE=kdy.asc -v $PWD/build_redos:/build docker-picodata.binary.picodata.io/rpmsign:centos7
   artifacts:
     paths:
-      - build/picodata*.rpm
+      - build_centos/picodata*.rpm
+      - build_alt/picodata*.rpm
       - build_redos/picodata*.rpm
   dependencies:
     - pack-centos
     - pack-altlinux
     - pack-redos
+
+sign-astralinux-packages:
+  variables:
+    DOCKER_AUTH_CONFIG: $DOCKER_AUTH_RO
+  stage: sign
+  tags:
+    - shell
+  only:
+    - web
+    - tags
+  before_script:
+    - echo "$GPG_KEY_ASTRA" | base64 -d > build_astra/pico.asc
+    - echo "$GPG_PASS_ASTRA" > build_astra/pico.pass
+  script:
+    - docker run --rm -e KEY_FILE=pico.asc -e PASS_FILE=pico.pass -e SIGNER="5A7D5C9D749260B6CCD24D72A45397D5554CBECD" -v $PWD/build_astra:/build docker-picodata.binary.picodata.io/astrasign:orel-2.12
+  artifacts:
+    paths:
+      - build_astra/picodata*_signed.deb
+  dependencies:
+    - pack-astralinux
 
 deploy-packages:
   stage: deploy
@@ -327,13 +355,13 @@ deploy-packages:
   script:
     # CentOS 7
     - echo "Deploying rpm-centos7-packet..."
-    - scp -o stricthostkeychecking=no build/picodata*.el7.*rpm ansible@94.26.239.246:/data/nginx/www/packrepo/tarantool-picodata/el/7/x86_64/
+    - scp -o stricthostkeychecking=no build_centos/picodata*.el7.*rpm ansible@94.26.239.246:/data/nginx/www/packrepo/tarantool-picodata/el/7/x86_64/
     - ssh -o stricthostkeychecking=no ansible@94.26.239.246 "cd /data/nginx/www/packrepo/tarantool-picodata/el/7/ && createrepo --update x86_64 && gpg --no-tty --yes -u kdy@picodata.io --detach-sign --armor x86_64/repodata/repomd.xml"
-    -  echo "rpm-centos7-packet successfully deployed."
-    -  echo
+    - echo "rpm-centos7-packet successfully deployed."
+    - echo
     # CentOS 8
     - echo "Deploying rpm-centos8-packet..."
-    - scp -o stricthostkeychecking=no build/picodata*.el8.*rpm ansible@94.26.239.246:/data/nginx/www/packrepo/tarantool-picodata/el/8/x86_64/
+    - scp -o stricthostkeychecking=no build_centos/picodata*.el8.*rpm ansible@94.26.239.246:/data/nginx/www/packrepo/tarantool-picodata/el/8/x86_64/
     - ssh -o stricthostkeychecking=no ansible@94.26.239.246 "cd /data/nginx/www/packrepo/tarantool-picodata/el/8/ && createrepo --update x86_64 && gpg --no-tty --yes -u kdy@picodata.io --detach-sign --armor x86_64/repodata/repomd.xml"
     - echo "rpm-centos8-packet successfully deployed."
     - echo
@@ -361,24 +389,33 @@ deploy-packages:
     # Altlinux p9
     - ssh -o stricthostkeychecking=no ansible@94.26.239.246 "mkdir -p /tmp/altlinux/"
     - echo "Deploying altlinux-p9 packet..."
-    - scp -o stricthostkeychecking=no build/picodata*.p9.*rpm ansible@94.26.239.246:/tmp/altlinux/
+    - scp -o stricthostkeychecking=no build_alt/picodata*.p9.*rpm ansible@94.26.239.246:/tmp/altlinux/
     - echo "altlinux-p9 packet successfully deployed."
     - echo
     # Altlinux p10
     - echo "Deploying altlinux-p10 packet..."
-    - scp -o stricthostkeychecking=no build/picodata*.p10.*rpm ansible@94.26.239.246:/tmp/altlinux/
-    - echo "altlinux-p10 packet successfully deployed."
+    - scp -o stricthostkeychecking=no build_alt/picodata*.p10.*rpm ansible@94.26.239.246:/tmp/altlinux/
     - ssh -o stricthostkeychecking=no ansible@94.26.239.246 "/usr/local/bin/repogen.sh"
+    - echo "altlinux-p10 packet successfully deployed."
     - echo
     # RedOS
     - echo "Deploying RedOS 7 packet..."
     - scp -o stricthostkeychecking=no build_redos/picodata*.el7.*rpm ansible@94.26.239.246:/data/nginx/www/packrepo/tarantool-picodata/redos/7/x86_64/
     - ssh -o stricthostkeychecking=no ansible@94.26.239.246 "cd /data/nginx/www/packrepo/tarantool-picodata/redos/7/ && createrepo --update x86_64 && gpg --no-tty --yes -u kdy@picodata.io --detach-sign --armor x86_64/repodata/repomd.xml"
+    - echo "RedOS 7 packet successfully deployed."
+    - echo
+    # Astralinux
+    - echo "Deploying Astralinux packet..."
+    - ssh -o stricthostkeychecking=no ansible@94.26.239.246 "mkdir -p ~/.deb/astra"
+    - scp -o stricthostkeychecking=no build_astra/picodata*_signed.deb ansible@94.26.239.246:.deb/astra/
+    - ssh -o stricthostkeychecking=no ansible@94.26.239.246 "reprepro -b /data/nginx/www/packrepo/tarantool-picodata/astra -C main includedeb orel ~/.deb/astra/picodata*_signed.deb; rm -rf ~/.deb/astra"
+    - echo "Astralinux-packets successfully deployed."
     - echo
   dependencies:
     - pack-ubuntu
     - pack-debian
     - sign-rpm-packages
+    - sign-astralinux-packages
 
 deploy-docker:
   stage: deploy
@@ -417,6 +454,8 @@ deploy-docker:
     - web
     - tags
   image: ${BASE_IMAGE}
+  variables:
+    DOCKER_AUTH_CONFIG: $DOCKER_AUTH_RO
   needs:
     - deploy-packages
 
@@ -426,14 +465,21 @@ check-deployment-rpm:
     matrix:
       - BASE_IMAGE: centos:7
         PACKAGE: el/7/x86_64/picodata-release-1.1.1.0-1.el7.x86_64.rpm
+        GIT_FETCH_PARAM: depth
       - BASE_IMAGE: rockylinux:8
         PACKAGE: el/8/x86_64/picodata-release-1.1.1.0-1.el8.x86_64.rpm
+        GIT_FETCH_PARAM: deepen
       - BASE_IMAGE: packpack/packpack:redos-7.3
         PACKAGE: redos/7/x86_64/picodata-release-1.1.1.0-1.el7.x86_64.rpm
+        GIT_FETCH_PARAM: deepen
+  before_script:
+    - yum install -y git
+    - until git describe; do git fetch --${GIT_FETCH_PARAM} 100; done
+    - export VER=$(git describe --long | sed -n 's/^\([0-9\.]*\)-\([0-9]*\)-\([a-z0-9]*\)/\1.\2/p')
   script:
     - rpm --import https://download.picodata.io/tarantool-picodata/el/RPM-GPG-KEY-kdy
     - yum install -y https://download.picodata.io/tarantool-picodata/${PACKAGE}
-    - yum install -y picodata
+    - yum install -y picodata-${VER}
 
 check-deployment-deb:
   extends: .check-deployment
@@ -447,15 +493,17 @@ check-deployment-deb:
       - BASE_IMAGE: ubuntu:jammy
   before_script:
     - apt update
-    - apt install -y curl gpg software-properties-common
+    - apt install -y curl gpg software-properties-common git
     - export DIST=$(lsb_release -si | tr [:upper:] [:lower:])
     - export CODENAME=$(lsb_release -sc)
+    - until git describe; do git fetch --deepen 100; done
+    - export VER=$(git describe --long | sed -n 's/^\([0-9\.]*\)-\([0-9]*\)-\([a-z0-9]*\)/\1.\2/p')
   script:
     - curl -s https://download.picodata.io/tarantool-picodata/ubuntu/picodata.gpg.key | gpg --no-default-keyring --keyring gnupg-ring:/etc/apt/trusted.gpg.d/picodata.gpg --import
     - chmod 644 /etc/apt/trusted.gpg.d/picodata.gpg
     - add-apt-repository -y "deb [arch=amd64] https://download.picodata.io/tarantool-picodata/${DIST}/ ${CODENAME} main"
     - apt update
-    - apt install -y picodata
+    - apt install -y picodata=${VER}-${CODENAME}
 
 check-deployment-alt:
   extends: .check-deployment
@@ -466,14 +514,30 @@ check-deployment-alt:
   image: docker.binary.picodata.io/altlinux/base:${DIST}
   before_script:
     - apt-get update
-    - apt-get install -y curl git
+    - apt-get install -y curl git apt-https
     - until git describe; do git fetch --deepen 100; done
     - export VER=$(git describe --long | sed -n 's/^\([0-9\.]*\)-\([0-9]*\)-\([a-z0-9]*\)/\1.\2/p')
   script:
-    - curl https://download.picodata.io/tarantool-picodata/altlinux/${DIST}/picodata-release-1.0.2.7-1.${DIST}.x86_64.rpm -o picodata-release.rpm
-    - apt-get install -y ./picodata-release.rpm
-    - apt-get update
-    - apt-get install -y picodata
-    - apt-get remove -y picodata picodata-release
+    # Checking for absent dependencies
     - curl https://download.picodata.io/tarantool-picodata/altlinux/${DIST}/x86_64/RPMS.main/picodata-${VER}-1.${DIST}.x86_64.rpm -o picodata.rpm
     - apt-get install -y ./picodata.rpm
+    - apt-get remove -y picodata
+    # Checking for install from repo
+    - apt-get install -y https://download.picodata.io/tarantool-picodata/altlinux/${DIST}/picodata-release-1.0.2.7-1.${DIST}.x86_64.rpm
+    - apt-get update
+    - apt-get install -y picodata=${VER}
+
+check-deployment-astra:
+  extends: .check-deployment
+  image: docker-picodata.binary.picodata.io/astra/orel:2.12
+  before_script:
+    - apt-get update
+    - apt-get install -y curl git apt-transport-https
+    - until git describe; do git fetch --deepen 100; done
+    - export VER=$(git describe --long | sed -n 's/^\([0-9\.]*\)-\([0-9]*\)-\([a-z0-9]*\)/\1.\2/p')
+  script:
+    - curl -s https://download.picodata.io/tarantool-picodata/ubuntu/picodata.gpg.key | gpg --no-default-keyring --keyring gnupg-ring:/etc/apt/trusted.gpg.d/picodata.gpg --import
+    - chmod 644 /etc/apt/trusted.gpg.d/picodata.gpg
+    - echo "deb [arch=amd64] https://download.picodata.io/tarantool-picodata/astra/ orel main" > /etc/apt/sources.list.d/picodata.list
+    - apt-get update
+    - apt-get install -y picodata=${VER}-1
