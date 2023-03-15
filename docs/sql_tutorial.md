@@ -4,6 +4,14 @@
 
 ## Пример установки для CentOS 7
 Ниже показан пример установки сборочных зависимостей и компиляции исходного кода SQL Broadcaster в операционной системе CentOS 7. Шаги для других дистрибутивов Linux могут отличаться. Для начала требуется подключить репозиторий с пакетами Picodata. Этот этап документирован для [страницы загрузки Picodata](https://picodata.io/download/). Далее предлагается выполнить в терминале следующие команды:
+
+<style>
+  code {
+    white-space : pre-wrap !important;
+    word-break: break-word;
+  }
+</style>
+
 ````bash
 sudo yum --disablerepo="*" --enablerepo="picodata" install -y tarantool-picodata tarantool-picodata-devel
 sudo yum install cartridge-cli
@@ -13,6 +21,7 @@ sudo ln -s /usr/bin/cmake3 /usr/local/bin/cmake
 git clone https://git.picodata.io/picodata/picodata/sbroad.git
 cd sbroad/sbroad-cartridge/test_app
 ````
+
 Сборка SQL Broadcaster, запуск приложения, настройка тестового шардирования:
 ````bash
 cd .. && make build_integration
