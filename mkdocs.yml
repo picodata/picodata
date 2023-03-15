@@ -32,6 +32,7 @@ theme:
         - navigation.indexes
         - navigation.path
         - navigation.sections
+        - content.code.copy
  
 
 extra:
