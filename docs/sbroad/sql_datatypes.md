@@ -1,6 +1,22 @@
 # Поддерживаемые типы данных
-* Числовые: INTEGER, SMALLINT, REAL, DOUBLE PRECISON, FLOAT
-* Текстовые: CHARACTER
-* Дата и время: DATE, TIME, TIMESTAMP
+На данный момент в SQL Broadcaster поддерживаются следующие типы данных:
+## Boolean type
+    Boolean(bool)
+## Fixed point type
+    Decimal(Decimal)
+## Floating point type
+    Double(Double)
+## Signed integer type
+    Integer(i64)
+## SQL NULL ("unknown" in the terms of three-valued logic)
+    Null
+## String type
+    String(String)
+## Unsigned integer type
+    Unsigned(u64)
+## Tuple type
+    Tuple(Tuple)
 
-Читать далее: [Инструкция по установке SQL Broadcaster и тестового приложения](../sql_tutorial)
+Более подробные сведения о поддерживаемых типах данных можно узнать в разделе [Поддерживаемые функции стандарта SQL](../sql_reference)
+
+См. также: [Инструкция по установке SQL Broadcaster и тестового приложения](../sql_tutorial)
