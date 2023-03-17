@@ -18,7 +18,6 @@ use serde_json::{Map, Value};
 use crate::error::{Error, TarantoolError};
 use crate::ffi::tarantool as ffi;
 use crate::index::{Index, IndexIterator, IteratorType};
-#[cfg(feature = "schema")]
 use crate::schema::space::SpaceMetadata;
 use crate::tuple::{Encode, ToTupleBuffer, Tuple, TupleBuffer};
 use crate::tuple_from_box_api;
@@ -413,13 +412,11 @@ impl Space {
     /// - `opts` - see SpaceCreateOptions struct.
     ///
     /// Returns a new space.
-    #[cfg(feature = "schema")]
     pub fn create(name: &str, opts: &SpaceCreateOptions) -> Result<Space, Error> {
         crate::schema::space::create_space(name, opts)
     }
 
     /// Drop a space.
-    #[cfg(feature = "schema")]
     pub fn drop(&self) -> Result<(), Error> {
         crate::schema::space::drop_space(self.id)
     }
@@ -481,7 +478,6 @@ impl Space {
     ///
     /// - `name` - name of index to create, which should conform to the rules for object names.
     /// - `opts` - see schema::IndexOptions struct.
-    #[cfg(feature = "schema")]
     pub fn create_index(
         &self,
         name: &str,
@@ -493,7 +489,6 @@ impl Space {
     /// Return an index builder.
     ///
     /// - `name` - name of index to create, which should conform to the rules for object names.
-    #[cfg(feature = "schema")]
     pub fn index_builder<'a>(&self, name: &'a str) -> crate::index::Builder<'a> {
         crate::index::Builder::new(self.id, name)
     }
@@ -803,7 +798,6 @@ impl Space {
     }
 
     // Return space metadata from system `_space` space.
-    #[cfg(feature = "schema")]
     pub fn meta(&self) -> Result<SpaceMetadata, Error> {
         let sys_space: Space = SystemSpace::Space.into();
         let tuple = sys_space.get(&(self.id,))?.ok_or(Error::MetaNotFound)?;
@@ -896,7 +890,6 @@ impl<'a> Builder<'a> {
         self
     }
 
-    #[cfg(feature = "schema")]
     pub fn create(self) -> crate::Result<Space> {
         crate::schema::space::create_space(self.name, &self.opts)
     }

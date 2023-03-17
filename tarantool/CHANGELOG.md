@@ -68,6 +68,7 @@
 ### Removed
 - `r#async::timeout::Expired` in favor of `r#async::timeout::Error`
 - `tuple::KeyDefItem` in favor of `tuple::KeyDefPart`.
+- `feature = "schema"`. Now the functionality is supported by default
 
 # [0.6.4] Dec 15 2022
 

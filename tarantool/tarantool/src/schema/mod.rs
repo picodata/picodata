@@ -1,5 +1,3 @@
-#![cfg(any(feature = "schema", doc))]
-
 pub mod index;
 pub mod sequence;
 pub mod space;

@@ -188,7 +188,6 @@ impl<'a> Builder<'a> {
     }
 
     /// Create a new index using the current options.
-    #[cfg(feature = "schema")]
     #[inline(always)]
     pub fn create(self) -> crate::Result<Index> {
         crate::schema::index::create_index(self.space_id, self.name, &self.opts)
@@ -513,7 +512,6 @@ impl Index {
     }
 
     // Drops index.
-    #[cfg(feature = "schema")]
     pub fn drop(&self) -> Result<(), Error> {
         crate::schema::index::drop_index(self.space_id, self.index_id)
     }

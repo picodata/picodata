@@ -53,12 +53,11 @@ va_list = "0.1.3"
 [features]
 default = ["net_box", "network_client"]
 net_box = ["refpool"]
-schema = []
 defer = []
 picodata = []
 network_client = []
 test = ["tester"]
-all = ["default", "schema", "defer", "test"]
+all = ["default", "defer", "test"]
 internal_test = ["test", "tlua/test"]
 
 [dev-dependencies]

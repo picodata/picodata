@@ -85,7 +85,6 @@ pub enum Error {
     #[error("Lua error: {0}")]
     LuaError(#[from] LuaError),
 
-    #[cfg(feature = "schema")]
     #[error("Space metadata not found")]
     MetaNotFound,
 }
