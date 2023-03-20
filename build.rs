@@ -227,6 +227,9 @@ fn build_tarantool(build_root: &Path) {
     if cfg!(target_os = "macos") {
         // -lc++ instead of -lstdc++ on macos
         rustc::link_lib_dynamic("c++");
+
+        // -lresolv on macos
+        rustc::link_lib_dynamic("resolv");
     } else {
         // not supported on macos
         rustc::link_arg("-export-dynamic");
