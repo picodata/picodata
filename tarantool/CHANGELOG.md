@@ -34,6 +34,7 @@
 - `WrongType::[info|when|actual*|expected*|subtype*]` constructor methods to be
     used in impl LuaRead for user defined types.
 - `LuaTable::try_get` method for checking which error happened.
+- `fiber::r#async::Mutex` an async Mutex, with guard that can be held across await points.
 
 ### Changed
 - `r#async::timeout::Timeout` can now only be wrapped around a future which

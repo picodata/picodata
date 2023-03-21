@@ -16,6 +16,8 @@
 //! ```
 //!
 //! See also:
+//! - Synchronization Primitives:
+//!   - [`mutex`]
 //! - Channels
 //!   - [`oneshot`]
 //!   - [`watch`]
@@ -33,9 +35,12 @@ use std::{
 
 use futures::pin_mut;
 
+pub mod mutex;
 pub mod oneshot;
 pub mod timeout;
 pub mod watch;
+
+pub use mutex::Mutex;
 
 /// Error that happens on the receiver side of the channel.
 #[derive(thiserror::Error, Debug, PartialEq, Eq)]
