@@ -152,7 +152,7 @@ mod tests {
 
     fn test_client() -> Client {
         Client::with_config(
-            "localhost".to_string(),
+            "localhost".into(),
             TARANTOOL_LISTEN,
             protocol::Config {
                 creds: Some(("test_user".into(), "password".into())),
@@ -164,7 +164,7 @@ mod tests {
     fn connect_failure() {
         fiber::block_on(async {
             // Can be any other unused port
-            let client = Client::new("localhost".to_string(), 3300);
+            let client = Client::new("localhost".into(), 3300);
             let err = client.ping().await.unwrap_err();
             let correct_err = [
                 "tcp stream error: failed to connect to supplied address: Connection refused (os error 111)",
@@ -281,7 +281,7 @@ mod tests {
     #[crate::test(tarantool = "crate")]
     fn try_reconnect_only_once() {
         fiber::block_on(async {
-            let client = Client::new("localhost".to_string(), 3300);
+            let client = Client::new("localhost".into(), 3300);
             client.ping().await.unwrap_err();
             assert_eq!(client.reconnect_count(), 0);
 

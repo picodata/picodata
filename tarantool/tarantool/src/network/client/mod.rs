@@ -514,7 +514,7 @@ mod tests {
             assert_eq!(result.len(), 1);
             assert_eq!(
                 result.get(0).unwrap().decode::<(u64, String)>().unwrap(),
-                (6002, "6002".to_string())
+                (6002, "6002".into())
             );
         });
     }
