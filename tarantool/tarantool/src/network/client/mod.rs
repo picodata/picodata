@@ -247,11 +247,10 @@ pub trait AsClient {
     /// `conn.call("func", &("1", "2", "3"))` is the remote-call equivalent of `func('1', '2', '3')`.
     /// That is, `conn.call` is a remote stored-procedure call.
     /// The return from `conn.call` is whatever the function returns.
-    async fn call<T: ToTupleBuffer>(
-        &self,
-        fn_name: &str,
-        args: &T,
-    ) -> Result<Option<Tuple>, Error> {
+    async fn call<T>(&self, fn_name: &str, args: &T) -> Result<Option<Tuple>, Error>
+    where
+        T: ToTupleBuffer + ?Sized,
+    {
         self.send(&Call { fn_name, args }).await
     }
 
@@ -262,17 +261,23 @@ pub trait AsClient {
     ///
     /// To ensure that the return from `eval` is whatever the Lua expression returns, begin the Lua-string with the
     /// word `return`.
-    async fn eval<T: ToTupleBuffer>(&self, expr: &str, args: &T) -> Result<Option<Tuple>, Error> {
+    async fn eval<T>(&self, expr: &str, args: &T) -> Result<Option<Tuple>, Error>
+    where
+        T: ToTupleBuffer + ?Sized,
+    {
         self.send(&Eval { args, expr }).await
     }
 
     /// Execute sql query remotely.
-    async fn execute<T: ToTupleBuffer>(
+    async fn execute<T>(
         &self,
         sql: &str,
         bind_params: &T,
         limit: Option<usize>,
-    ) -> Result<Vec<Tuple>, Error> {
+    ) -> Result<Vec<Tuple>, Error>
+    where
+        T: ToTupleBuffer + ?Sized,
+    {
         self.send(&Execute {
             sql,
             bind_params,

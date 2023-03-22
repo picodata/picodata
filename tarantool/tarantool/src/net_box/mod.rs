@@ -204,12 +204,15 @@ impl Conn {
     }
 
     /// Remote execute of sql query.
-    pub fn execute(
+    pub fn execute<P>(
         &self,
         sql: &str,
-        bind_params: &impl ToTupleBuffer,
+        bind_params: &P,
         options: &Options,
-    ) -> Result<Vec<Tuple>, Error> {
+    ) -> Result<Vec<Tuple>, Error>
+    where
+        P: ToTupleBuffer + ?Sized,
+    {
         self.inner.request(
             |buf, sync| protocol::encode_execute(buf, sync, sql, bind_params),
             |buf, _| protocol::decode_multiple_rows(buf, None),

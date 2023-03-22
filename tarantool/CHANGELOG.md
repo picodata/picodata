@@ -59,6 +59,8 @@
 - `LuaRead` for `Tuple` now accepts arbitrary lua tables, not only tuples.
 - `KeyDef::new` now accepts iterator over references to `KeyDefPart` and returns
     a result.
+- All functions which take `t: &T` where `T: ToTupleBuffer`, now allow `T` to be
+   unsized (`?Sized`), e.g. `tuple::RawBytes`
 
 ### Removed
 - `r#async::timeout::Expired` in favor of `r#async::timeout::Error`

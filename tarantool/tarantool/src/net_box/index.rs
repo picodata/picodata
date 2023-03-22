@@ -29,7 +29,7 @@ impl RemoteIndex {
     /// (see [details](../index/struct.Index.html#method.get)).
     pub fn get<K>(&self, key: &K, options: &Options) -> Result<Option<Tuple>, Error>
     where
-        K: ToTupleBuffer,
+        K: ToTupleBuffer + ?Sized,
     {
         Ok(self
             .select(
@@ -53,7 +53,7 @@ impl RemoteIndex {
         options: &Options,
     ) -> Result<RemoteIndexIterator, Error>
     where
-        K: ToTupleBuffer,
+        K: ToTupleBuffer + ?Sized,
     {
         self.conn_inner.request(
             |buf, sync| {
@@ -86,7 +86,7 @@ impl RemoteIndex {
         options: &Options,
     ) -> Result<Option<Tuple>, Error>
     where
-        K: ToTupleBuffer,
+        K: ToTupleBuffer + ?Sized,
         Op: Encode,
     {
         self.conn_inner.request(
@@ -105,7 +105,7 @@ impl RemoteIndex {
         options: &Options,
     ) -> Result<Option<Tuple>, Error>
     where
-        T: ToTupleBuffer,
+        T: ToTupleBuffer + ?Sized,
         Op: Encode,
     {
         self.conn_inner.request(
@@ -121,7 +121,7 @@ impl RemoteIndex {
     /// (see [details](../index/struct.Index.html#method.delete)).
     pub fn delete<K>(&self, key: &K, options: &Options) -> Result<Option<Tuple>, Error>
     where
-        K: ToTupleBuffer,
+        K: ToTupleBuffer + ?Sized,
     {
         self.conn_inner.request(
             |buf, sync| protocol::encode_delete(buf, sync, self.space_id, self.index_id, key),

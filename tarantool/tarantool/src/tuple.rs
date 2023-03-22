@@ -53,7 +53,7 @@ impl Tuple {
     #[inline]
     pub fn new<T>(value: &T) -> Result<Self>
     where
-        T: ToTupleBuffer,
+        T: ToTupleBuffer + ?Sized,
     {
         Ok(Self::from(&value.to_tuple_buffer()?))
     }
@@ -67,7 +67,7 @@ impl Tuple {
     #[inline]
     pub fn from_struct<T>(value: &T) -> Result<Self>
     where
-        T: ToTupleBuffer,
+        T: ToTupleBuffer + ?Sized,
     {
         Self::new(value)
     }
@@ -1146,7 +1146,7 @@ impl KeyDef {
     /// - `Ordering::Greater` if `key_fields(tuple) > parts(key)`
     pub fn compare_with_key<K>(&self, tuple: &Tuple, key: &K) -> Ordering
     where
-        K: ToTupleBuffer,
+        K: ToTupleBuffer + ?Sized,
     {
         let key_buf = key.to_tuple_buffer().unwrap();
         let key_buf_ptr = key_buf.as_ptr() as _;
@@ -1224,7 +1224,7 @@ impl FunctionCtx {
     #[inline]
     pub fn return_mp<T>(&self, value: &T) -> Result<c_int>
     where
-        T: Serialize,
+        T: Serialize + ?Sized,
     {
         let buf = rmp_serde::to_vec_named(value)?;
         self.return_bytes(&buf)
@@ -1312,7 +1312,7 @@ impl FunctionArgs {
 /// into the network. Just like with `write()`/`send()` system calls.
 pub fn session_push<T>(value: &T) -> Result<()>
 where
-    T: ToTupleBuffer,
+    T: ToTupleBuffer + ?Sized,
 {
     let buf = value.to_tuple_buffer().unwrap();
     let buf_ptr = buf.as_ptr() as *const c_char;
@@ -1474,11 +1474,27 @@ impl<T> DecodeOwned for T where T: for<'de> Decode<'de> {}
 #[repr(transparent)]
 pub struct RawBytes(pub [u8]);
 
+impl RawBytes {
+    /// Convert a slice of bytes `data` into a `&RawBytes`.
+    #[inline(always)]
+    pub fn new(data: &[u8]) -> &Self {
+        // SAFETY: this is safe, because `RawBytes` has `#[repr(transparent)]`
+        unsafe { &*(data as *const [u8] as *const RawBytes) }
+    }
+}
+
+impl<'a> From<&'a [u8]> for &'a RawBytes {
+    #[inline(always)]
+    fn from(data: &'a [u8]) -> Self {
+        RawBytes::new(data)
+    }
+}
+
 impl<'de> Decode<'de> for &'de RawBytes {
     #[inline(always)]
     fn decode(data: &'de [u8]) -> Result<Self> {
         // TODO: only read msgpack bytes
-        unsafe { Ok(&*(data as *const [u8] as *const RawBytes)) }
+        Ok(RawBytes::new(data))
     }
 }
 

@@ -248,12 +248,15 @@ pub fn encode_ping(stream: &mut impl Write, sync: u64) -> Result<(), Error> {
     Ok(())
 }
 
-pub fn encode_execute(
+pub fn encode_execute<P>(
     stream: &mut impl Write,
     sync: u64,
     sql: &str,
-    bind_params: &impl ToTupleBuffer,
-) -> Result<(), Error> {
+    bind_params: &P,
+) -> Result<(), Error>
+where
+    P: ToTupleBuffer + ?Sized,
+{
     encode_header(stream, sync, IProtoType::Execute)?;
     rmp::encode::write_map_len(stream, 2)?;
     rmp::encode::write_pfix(stream, SQL_TEXT)?;
@@ -271,8 +274,7 @@ pub fn encode_call<T>(
     args: &T,
 ) -> Result<(), Error>
 where
-    T: ToTupleBuffer,
-    T: ?Sized,
+    T: ToTupleBuffer + ?Sized,
 {
     encode_header(stream, sync, IProtoType::Call)?;
     rmp::encode::write_map_len(stream, 2)?;
@@ -309,8 +311,7 @@ pub fn encode_eval<T>(
     args: &T,
 ) -> Result<(), Error>
 where
-    T: ToTupleBuffer,
-    T: ?Sized,
+    T: ToTupleBuffer + ?Sized,
 {
     encode_header(stream, sync, IProtoType::Eval)?;
     rmp::encode::write_map_len(stream, 2)?;
@@ -352,8 +353,7 @@ pub fn encode_select<K>(
     key: &K,
 ) -> Result<(), Error>
 where
-    K: ToTupleBuffer,
-    K: ?Sized,
+    K: ToTupleBuffer + ?Sized,
 {
     encode_header(stream, sync, IProtoType::Select)?;
     rmp::encode::write_map_len(stream, 6)?;
@@ -379,8 +379,7 @@ pub fn encode_insert<T>(
     value: &T,
 ) -> Result<(), Error>
 where
-    T: ToTupleBuffer,
-    T: ?Sized,
+    T: ToTupleBuffer + ?Sized,
 {
     encode_header(stream, sync, IProtoType::Insert)?;
     rmp::encode::write_map_len(stream, 2)?;
@@ -398,8 +397,7 @@ pub fn encode_replace<T>(
     value: &T,
 ) -> Result<(), Error>
 where
-    T: ToTupleBuffer,
-    T: ?Sized,
+    T: ToTupleBuffer + ?Sized,
 {
     encode_header(stream, sync, IProtoType::Replace)?;
     rmp::encode::write_map_len(stream, 2)?;
@@ -419,9 +417,8 @@ pub fn encode_update<K, Op>(
     ops: &Op,
 ) -> Result<(), Error>
 where
-    K: ToTupleBuffer,
-    Op: ToTupleBuffer,
-    Op: ?Sized,
+    K: ToTupleBuffer + ?Sized,
+    Op: ToTupleBuffer + ?Sized,
 {
     encode_header(stream, sync, IProtoType::Update)?;
     rmp::encode::write_map_len(stream, 4)?;
@@ -445,9 +442,8 @@ pub fn encode_upsert<T, Op>(
     ops: &Op,
 ) -> Result<(), Error>
 where
-    T: ToTupleBuffer,
-    Op: ToTupleBuffer,
-    Op: ?Sized,
+    T: ToTupleBuffer + ?Sized,
+    Op: ToTupleBuffer + ?Sized,
 {
     encode_header(stream, sync, IProtoType::Upsert)?;
     rmp::encode::write_map_len(stream, 4)?;
@@ -470,8 +466,7 @@ pub fn encode_delete<K>(
     key: &K,
 ) -> Result<(), Error>
 where
-    K: ToTupleBuffer,
-    K: ?Sized,
+    K: ToTupleBuffer + ?Sized,
 {
     encode_header(stream, sync, IProtoType::Delete)?;
     rmp::encode::write_map_len(stream, 3)?;

@@ -123,3 +123,15 @@ pub mod util {
         Ok(v)
     }
 }
+
+#[macro_export]
+macro_rules! temp_space_name {
+    () => {
+        ::std::format!(
+            "temp_space@{}:{}:{}",
+            ::std::file!(),
+            ::std::line!(),
+            ::std::column!()
+        )
+    };
+}

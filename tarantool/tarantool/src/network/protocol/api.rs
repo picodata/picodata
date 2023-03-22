@@ -42,12 +42,15 @@ impl Request for Ping {
     }
 }
 
-pub struct Call<'a, 'b, T> {
+pub struct Call<'a, 'b, T: ?Sized> {
     pub fn_name: &'a str,
     pub args: &'b T,
 }
 
-impl<'a, 'b, T: ToTupleBuffer> Request for Call<'a, 'b, T> {
+impl<'a, 'b, T> Request for Call<'a, 'b, T>
+where
+    T: ToTupleBuffer + ?Sized,
+{
     const TYPE: IProtoType = IProtoType::Call;
     type Response = Option<Tuple>;
 
@@ -60,12 +63,15 @@ impl<'a, 'b, T: ToTupleBuffer> Request for Call<'a, 'b, T> {
     }
 }
 
-pub struct Eval<'a, 'b, T> {
+pub struct Eval<'a, 'b, T: ?Sized> {
     pub expr: &'a str,
     pub args: &'b T,
 }
 
-impl<'a, 'b, T: ToTupleBuffer> Request for Eval<'a, 'b, T> {
+impl<'a, 'b, T> Request for Eval<'a, 'b, T>
+where
+    T: ToTupleBuffer + ?Sized,
+{
     const TYPE: IProtoType = IProtoType::Eval;
     type Response = Option<Tuple>;
 
@@ -78,13 +84,16 @@ impl<'a, 'b, T: ToTupleBuffer> Request for Eval<'a, 'b, T> {
     }
 }
 
-pub struct Execute<'a, 'b, T> {
+pub struct Execute<'a, 'b, T: ?Sized> {
     pub sql: &'a str,
     pub bind_params: &'b T,
     pub limit: Option<usize>,
 }
 
-impl<'a, 'b, T: ToTupleBuffer> Request for Execute<'a, 'b, T> {
+impl<'a, 'b, T> Request for Execute<'a, 'b, T>
+where
+    T: ToTupleBuffer + ?Sized,
+{
     const TYPE: IProtoType = IProtoType::Execute;
     type Response = Vec<Tuple>;
 

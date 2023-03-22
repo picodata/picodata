@@ -527,7 +527,7 @@ impl Index {
     /// Returns a tuple or `None` if index is empty
     pub fn get<K>(&self, key: &K) -> Result<Option<Tuple>, Error>
     where
-        K: ToTupleBuffer,
+        K: ToTupleBuffer + ?Sized,
     {
         let key_buf = key.to_tuple_buffer().unwrap();
         let key_buf_ptr = key_buf.as_ptr() as *const c_char;
@@ -551,7 +551,7 @@ impl Index {
     /// - `key` - encoded key in MsgPack Array format (`[part1, part2, ...]`).
     pub fn select<K>(&self, iterator_type: IteratorType, key: &K) -> Result<IndexIterator, Error>
     where
-        K: ToTupleBuffer,
+        K: ToTupleBuffer + ?Sized,
     {
         let key_buf = key.to_tuple_buffer().unwrap();
         let key_buf_ptr = key_buf.as_ptr() as *const c_char;
@@ -586,7 +586,7 @@ impl Index {
     /// Returns the deleted tuple
     pub fn delete<K>(&self, key: &K) -> Result<Option<Tuple>, Error>
     where
-        K: ToTupleBuffer,
+        K: ToTupleBuffer + ?Sized,
     {
         let key_buf = key.to_tuple_buffer().unwrap();
         let key_buf_ptr = key_buf.as_ptr() as *const c_char;
@@ -616,7 +616,7 @@ impl Index {
     #[inline]
     pub fn update<K, Op>(&self, key: &K, ops: impl AsRef<[Op]>) -> Result<Option<Tuple>, Error>
     where
-        K: ToTupleBuffer,
+        K: ToTupleBuffer + ?Sized,
         Op: ToTupleBuffer,
     {
         let key_buf = key.to_tuple_buffer().unwrap();
@@ -630,7 +630,7 @@ impl Index {
     #[deprecated = "use update_raw instead"]
     pub unsafe fn update_mp<K>(&self, key: &K, ops: &[Vec<u8>]) -> Result<Option<Tuple>, Error>
     where
-        K: ToTupleBuffer,
+        K: ToTupleBuffer + ?Sized,
     {
         let key_buf = key.to_tuple_buffer().unwrap();
         let mut buf = Vec::with_capacity(128);
@@ -667,7 +667,7 @@ impl Index {
     #[inline]
     pub fn upsert<T, Op>(&self, value: &T, ops: impl AsRef<[Op]>) -> Result<(), Error>
     where
-        T: ToTupleBuffer,
+        T: ToTupleBuffer + ?Sized,
         Op: ToTupleBuffer,
     {
         let value_buf = value.to_tuple_buffer().unwrap();
@@ -681,7 +681,7 @@ impl Index {
     #[deprecated = "use upsert_raw instead"]
     pub unsafe fn upsert_mp<T>(&self, value: &T, ops: &[Vec<u8>]) -> Result<(), Error>
     where
-        T: ToTupleBuffer,
+        T: ToTupleBuffer + ?Sized,
     {
         let value_buf = value.to_tuple_buffer().unwrap();
         let mut buf = Vec::with_capacity(128);
@@ -760,7 +760,7 @@ impl Index {
     /// Returns a tuple or `None` if index is empty
     pub fn min<K>(&self, key: &K) -> Result<Option<Tuple>, Error>
     where
-        K: ToTupleBuffer,
+        K: ToTupleBuffer + ?Sized,
     {
         let key_buf = key.to_tuple_buffer().unwrap();
         let key_buf_ptr = key_buf.as_ptr() as *const c_char;
@@ -782,7 +782,7 @@ impl Index {
     /// Returns a tuple or `None` if index is empty
     pub fn max<K>(&self, key: &K) -> Result<Option<Tuple>, Error>
     where
-        K: ToTupleBuffer,
+        K: ToTupleBuffer + ?Sized,
     {
         let key_buf = key.to_tuple_buffer().unwrap();
         let key_buf_ptr = key_buf.as_ptr() as *const c_char;
@@ -803,7 +803,7 @@ impl Index {
     /// - `key` - encoded key in MsgPack Array format (`[part1, part2, ...]`).
     pub fn count<K>(&self, iterator_type: IteratorType, key: &K) -> Result<usize, Error>
     where
-        K: ToTupleBuffer,
+        K: ToTupleBuffer + ?Sized,
     {
         let key_buf = key.to_tuple_buffer().unwrap();
         let key_buf_ptr = key_buf.as_ptr() as *const c_char;

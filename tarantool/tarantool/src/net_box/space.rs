@@ -41,7 +41,7 @@ impl RemoteSpace {
     /// (see [details](../space/struct.Space.html#method.get)).
     pub fn get<K>(&self, key: &K, options: &Options) -> Result<Option<Tuple>, Error>
     where
-        K: ToTupleBuffer,
+        K: ToTupleBuffer + ?Sized,
     {
         self.primary_key().get(key, options)
     }
@@ -55,7 +55,7 @@ impl RemoteSpace {
         options: &Options,
     ) -> Result<RemoteIndexIterator, Error>
     where
-        K: ToTupleBuffer,
+        K: ToTupleBuffer + ?Sized,
     {
         self.primary_key().select(iterator_type, key, options)
     }
@@ -64,7 +64,7 @@ impl RemoteSpace {
     /// (see [details](../space/struct.Space.html#method.insert)).
     pub fn insert<T>(&self, value: &T, options: &Options) -> Result<Option<Tuple>, Error>
     where
-        T: ToTupleBuffer,
+        T: ToTupleBuffer + ?Sized,
     {
         self.conn_inner.request(
             |buf, sync| protocol::encode_insert(buf, sync, self.space_id, value),
@@ -77,7 +77,7 @@ impl RemoteSpace {
     /// (see [details](../space/struct.Space.html#method.replace)).
     pub fn replace<T>(&self, value: &T, options: &Options) -> Result<Option<Tuple>, Error>
     where
-        T: ToTupleBuffer,
+        T: ToTupleBuffer + ?Sized,
     {
         self.conn_inner.request(
             |buf, sync| protocol::encode_replace(buf, sync, self.space_id, value),
@@ -95,7 +95,7 @@ impl RemoteSpace {
         options: &Options,
     ) -> Result<Option<Tuple>, Error>
     where
-        K: ToTupleBuffer,
+        K: ToTupleBuffer + ?Sized,
         Op: Encode,
     {
         self.primary_key().update(key, ops, options)
@@ -110,7 +110,7 @@ impl RemoteSpace {
         options: &Options,
     ) -> Result<Option<Tuple>, Error>
     where
-        T: ToTupleBuffer,
+        T: ToTupleBuffer + ?Sized,
         Op: Encode,
     {
         self.primary_key().upsert(value, ops, options)
@@ -120,7 +120,7 @@ impl RemoteSpace {
     /// (see [details](../space/struct.Space.html#method.delete)).
     pub fn delete<K>(&self, key: &K, options: &Options) -> Result<Option<Tuple>, Error>
     where
-        K: ToTupleBuffer,
+        K: ToTupleBuffer + ?Sized,
     {
         self.primary_key().delete(key, options)
     }

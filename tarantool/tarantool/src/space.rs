@@ -553,8 +553,10 @@ impl Space {
     /// See also: `box.space[space_id]:insert(tuple)`
     pub fn insert<T>(&self, value: &T) -> Result<Tuple, Error>
     where
-        T: ToTupleBuffer,
+        T: ToTupleBuffer + ?Sized,
     {
+        // TODO: use region allocation for this
+        // TODO: add ability to not copy data, if the data doesn't need copying
         let buf = value.to_tuple_buffer().unwrap();
         let buf_ptr = buf.as_ptr() as *const c_char;
         tuple_from_box_api!(
@@ -579,7 +581,7 @@ impl Space {
     /// Returns a new tuple.
     pub fn replace<T>(&self, value: &T) -> Result<Tuple, Error>
     where
-        T: ToTupleBuffer,
+        T: ToTupleBuffer + ?Sized,
     {
         let buf = value.to_tuple_buffer().unwrap();
         let buf_ptr = buf.as_ptr() as *const c_char;
@@ -599,7 +601,7 @@ impl Space {
     #[inline(always)]
     pub fn put<T>(&self, value: &T) -> Result<Tuple, Error>
     where
-        T: ToTupleBuffer,
+        T: ToTupleBuffer + ?Sized,
     {
         self.replace(value)
     }
@@ -639,7 +641,7 @@ impl Space {
     #[inline(always)]
     pub fn get<K>(&self, key: &K) -> Result<Option<Tuple>, Error>
     where
-        K: ToTupleBuffer,
+        K: ToTupleBuffer + ?Sized,
     {
         self.primary_key().get(key)
     }
@@ -652,7 +654,7 @@ impl Space {
     #[inline(always)]
     pub fn select<K>(&self, iterator_type: IteratorType, key: &K) -> Result<IndexIterator, Error>
     where
-        K: ToTupleBuffer,
+        K: ToTupleBuffer + ?Sized,
     {
         self.primary_key().select(iterator_type, key)
     }
@@ -664,7 +666,7 @@ impl Space {
     /// - `key` - encoded key in the MsgPack Array format (`[part1, part2, ...]`).
     pub fn count<K>(&self, iterator_type: IteratorType, key: &K) -> Result<usize, Error>
     where
-        K: ToTupleBuffer,
+        K: ToTupleBuffer + ?Sized,
     {
         self.primary_key().count(iterator_type, key)
     }
@@ -677,7 +679,7 @@ impl Space {
     #[inline(always)]
     pub fn delete<K>(&self, key: &K) -> Result<Option<Tuple>, Error>
     where
-        K: ToTupleBuffer,
+        K: ToTupleBuffer + ?Sized,
     {
         self.primary_key().delete(key)
     }
@@ -702,7 +704,7 @@ impl Space {
     #[inline(always)]
     pub fn update<K, Op>(&self, key: &K, ops: impl AsRef<[Op]>) -> Result<Option<Tuple>, Error>
     where
-        K: ToTupleBuffer,
+        K: ToTupleBuffer + ?Sized,
         Op: ToTupleBuffer,
     {
         self.primary_key().update(key, ops)
@@ -723,7 +725,7 @@ impl Space {
     #[deprecated = "use update_raw instead"]
     pub unsafe fn update_mp<K>(&self, key: &K, ops: &[Vec<u8>]) -> Result<Option<Tuple>, Error>
     where
-        K: ToTupleBuffer,
+        K: ToTupleBuffer + ?Sized,
     {
         #[allow(deprecated)]
         self.primary_key().update_mp(key, ops)
@@ -760,7 +762,7 @@ impl Space {
     #[inline(always)]
     pub fn upsert<T, Op>(&self, value: &T, ops: impl AsRef<[Op]>) -> Result<(), Error>
     where
-        T: ToTupleBuffer,
+        T: ToTupleBuffer + ?Sized,
         Op: ToTupleBuffer,
     {
         self.primary_key().upsert(value, ops)
@@ -777,12 +779,12 @@ impl Space {
     /// `ops` must be a slice of valid msgpack arrays.
     #[inline(always)]
     #[deprecated = "use upsert_raw instead"]
-    pub unsafe fn upsert_mp<K>(&self, key: &K, ops: &[Vec<u8>]) -> Result<(), Error>
+    pub unsafe fn upsert_mp<T>(&self, value: &T, ops: &[Vec<u8>]) -> Result<(), Error>
     where
-        K: ToTupleBuffer,
+        T: ToTupleBuffer + ?Sized,
     {
         #[allow(deprecated)]
-        self.primary_key().upsert_mp(key, ops)
+        self.primary_key().upsert_mp(value, ops)
     }
 
     /// Upsert a tuple using already encoded arguments.
@@ -1175,4 +1177,22 @@ macro_rules! upsert {
         };
         f()
     }};
+}
+
+#[cfg(feature = "internal_test")]
+mod test {
+    use super::*;
+    use crate::tuple::RawBytes;
+
+    #[crate::test(tarantool = "crate")]
+    fn insert_raw_bytes() {
+        let space_name = crate::temp_space_name!();
+        let space = Space::builder(&space_name).create().unwrap();
+        space.index_builder("pk").create().unwrap();
+        space.insert(RawBytes::new(b"\x93*\xa3foo\xa3bar")).unwrap();
+        let t = space.get(&(42,)).unwrap().unwrap();
+        let t: (u32, String, String) = t.decode().unwrap();
+        assert_eq!(t, (42, "foo".to_owned(), "bar".to_owned()));
+        space.drop().unwrap();
+    }
 }
