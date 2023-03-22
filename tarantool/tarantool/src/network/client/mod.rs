@@ -455,7 +455,7 @@ mod tests {
     fn connect_failure() {
         fiber::block_on(async {
             // Can be any other unused port
-            let err = Client::connect("localhost", 3300).await.unwrap_err();
+            let err = Client::connect("localhost", 0).await.unwrap_err();
             assert!(matches!(dbg!(err), Error::Tcp(_)))
         });
     }
