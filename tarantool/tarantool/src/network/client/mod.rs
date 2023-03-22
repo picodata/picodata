@@ -584,4 +584,18 @@ mod tests {
             client.check_state().unwrap_err();
         });
     }
+
+    #[crate::test(tarantool = "crate")]
+    fn concurrent_messages_one_fiber() {
+        fiber::block_on(async {
+            let client = test_client().await;
+            let mut ping_futures = vec![];
+            for _ in 0..10 {
+                ping_futures.push(client.ping());
+            }
+            for res in futures::future::join_all(ping_futures).await {
+                res.unwrap();
+            }
+        });
+    }
 }
