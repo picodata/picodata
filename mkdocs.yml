@@ -8,7 +8,7 @@ nav:
     - Преимущества использования Picodata: benefits.md
     - Преимущества языка Rust при разработке приложений: benefits_rust.md
     - Общая схема инициализации кластера: clustering.md
-    - Возможности кластерного SQL: sbroad/sql_index.md
+    - Работа с SQL в Picodata: sbroad/sql_index.md
   - Инструкции и руководства:
     - Установка Picodata: install.md
     - Инструкция по развертыванию: deploy.md
