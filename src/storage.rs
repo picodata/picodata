@@ -1,13 +1,15 @@
 use ::tarantool::index::{Index, IndexIterator, IteratorType};
-use ::tarantool::space::{FieldType, Space};
+use ::tarantool::msgpack::{ArrayWriter, ValueIter};
+use ::tarantool::space::{FieldType, Space, SpaceId};
 use ::tarantool::tuple::KeyDef;
-use ::tarantool::tuple::{DecodeOwned, ToTupleBuffer, Tuple};
-use tarantool::space::SpaceId;
+use ::tarantool::tuple::{Decode, DecodeOwned, Encode};
+use ::tarantool::tuple::{RawBytes, ToTupleBuffer, Tuple, TupleBuffer};
 
 use crate::failure_domain as fd;
 use crate::instance::{self, grade, Instance};
 use crate::replicaset::{Replicaset, ReplicasetId};
 use crate::schema::{IndexDef, SpaceDef};
+use crate::tlog;
 use crate::traft;
 use crate::traft::error::Error;
 use crate::traft::op::Ddl;
@@ -220,6 +222,24 @@ macro_rules! define_clusterwide_spaces {
                     )+
                 }
             }
+
+            /// Apply `cb` to each clusterwide space.
+            #[inline(always)]
+            pub fn for_each_space(
+                &self,
+                mut cb: impl FnMut(&Space) -> tarantool::Result<()>,
+            ) -> tarantool::Result<()>
+            {
+                $( cb(&self.$cw_field.space)?; )+
+                Ok(())
+            }
+
+            pub fn snapshot_data() -> tarantool::Result<SnapshotData> {
+                let space_dumps = vec![
+                    $( $cw_space::$cw_space_var.dump()?, )+
+                ];
+                Ok(SnapshotData { space_dumps })
+            }
         }
 
         ////////////////////////////////////////////////////////////////////////
@@ -384,6 +404,22 @@ define_clusterwide_spaces! {
     }
 }
 
+impl Clusterwide {
+    pub fn apply_snapshot_data(&self, raw_data: &[u8]) -> tarantool::Result<()> {
+        let data = SnapshotData::decode(raw_data)?;
+        for space_dump in &data.space_dumps {
+            let space = self.space(space_dump.space);
+            let tuples = space_dump.tuples.as_ref();
+            for tuple in ValueIter::from_array(tuples)? {
+                // Some data may already be present, as we're sending instance
+                // info in the JoinResponse, so we replace instead of inserting
+                space.replace(RawBytes::new(tuple))?;
+            }
+        }
+        Ok(())
+    }
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // ClusterwideSpace
 ////////////////////////////////////////////////////////////////////////////////
@@ -409,6 +445,26 @@ impl ClusterwideSpace {
     #[inline]
     pub fn replace(&self, tuple: &impl ToTupleBuffer) -> tarantool::Result<Tuple> {
         self.get()?.replace(tuple)
+    }
+
+    pub fn dump(&self) -> tarantool::Result<SpaceDump> {
+        let space = self.get()?;
+        let mut array_writer = ArrayWriter::from_vec(Vec::with_capacity(space.bsize()?));
+        for t in self.get()?.select(IteratorType::All, &())? {
+            array_writer.push_tuple(&t)?;
+        }
+        let tuples = array_writer.finish()?.into_inner();
+        // SAFETY: ArrayWriter guarantees the result is a valid msgpack array
+        let tuples = unsafe { TupleBuffer::from_vec_unchecked(tuples) };
+        tlog!(
+            Info,
+            "generated snapshot for clusterwide space '{self}': {} bytes",
+            tuples.len()
+        );
+        Ok(SpaceDump {
+            space: *self,
+            tuples,
+        })
     }
 }
 
@@ -1132,6 +1188,24 @@ impl<T> std::fmt::Debug for EntryIter<T> {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// SnapshotData
+////////////////////////////////////////////////////////////////////////////////
+
+#[derive(Debug, ::serde::Serialize, ::serde::Deserialize)]
+pub struct SnapshotData {
+    pub space_dumps: Vec<SpaceDump>,
+}
+impl Encode for SnapshotData {}
+
+#[derive(Debug, ::serde::Serialize, ::serde::Deserialize)]
+pub struct SpaceDump {
+    pub space: ClusterwideSpace,
+    #[serde(with = "serde_bytes")]
+    pub tuples: TupleBuffer,
+}
+impl Encode for SpaceDump {}
+
+////////////////////////////////////////////////////////////////////////////////
 // Spaces
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -1452,5 +1526,173 @@ mod tests {
         let i: Instance = t.decode().unwrap();
         assert_eq!(i.raft_id, 1);
         assert_eq!(i.instance_id, "bob");
+    }
+
+    #[::tarantool::test]
+    fn snapshot_data() {
+        let storage = Clusterwide::new().unwrap();
+        storage.for_each_space(|s| s.truncate()).unwrap();
+
+        let i = Instance {
+            raft_id: 1,
+            instance_id: "i".into(),
+            ..Instance::default()
+        };
+        storage.instances.put(&i).unwrap();
+
+        storage
+            .peer_addresses
+            .space
+            .insert(&(1, "google.com"))
+            .unwrap();
+        storage.peer_addresses.space.insert(&(2, "ya.ru")).unwrap();
+
+        storage.properties.space.insert(&("foo", "bar")).unwrap();
+
+        let r = Replicaset {
+            replicaset_id: "r1".into(),
+            replicaset_uuid: "r1-uuid".into(),
+            master_id: "i".into(),
+            weight: crate::replicaset::weight::Info::default(),
+            current_schema_version: 0,
+        };
+        storage.replicasets.space.insert(&r).unwrap();
+
+        storage
+            .migrations
+            .space
+            .insert(&(1, "drop table BANK_ACCOUNTS"))
+            .unwrap();
+
+        let snapshot_data = Clusterwide::snapshot_data().unwrap();
+        let space_dumps = snapshot_data.space_dumps;
+
+        assert_eq!(space_dumps.len(), 7);
+
+        for space_dump in &space_dumps {
+            match space_dump.space {
+                ClusterwideSpace::Instance => {
+                    let [instance]: [Instance; 1] =
+                        Decode::decode(space_dump.tuples.as_ref()).unwrap();
+                    assert_eq!(instance, i);
+                }
+
+                ClusterwideSpace::Address => {
+                    let addrs: [(i32, String); 2] =
+                        Decode::decode(space_dump.tuples.as_ref()).unwrap();
+                    assert_eq!(
+                        addrs,
+                        [(1, "google.com".to_string()), (2, "ya.ru".to_string())]
+                    );
+                }
+
+                ClusterwideSpace::Property => {
+                    let [property]: [(String, String); 1] =
+                        Decode::decode(space_dump.tuples.as_ref()).unwrap();
+                    assert_eq!(property, ("foo".to_owned(), "bar".to_owned()));
+                }
+
+                ClusterwideSpace::Replicaset => {
+                    let [replicaset]: [Replicaset; 1] =
+                        Decode::decode(space_dump.tuples.as_ref()).unwrap();
+                    assert_eq!(replicaset, r);
+                }
+
+                ClusterwideSpace::Migration => {
+                    let [migration]: [(i32, String); 1] =
+                        Decode::decode(space_dump.tuples.as_ref()).unwrap();
+                    assert_eq!(migration, (1, "drop table BANK_ACCOUNTS".to_owned()));
+                }
+
+                ClusterwideSpace::Space => {
+                    let []: [(); 0] = Decode::decode(space_dump.tuples.as_ref()).unwrap();
+                }
+
+                ClusterwideSpace::Index => {
+                    let []: [(); 0] = Decode::decode(space_dump.tuples.as_ref()).unwrap();
+                }
+            }
+        }
+    }
+
+    #[::tarantool::test]
+    fn apply_snapshot_data() {
+        let storage = Clusterwide::new().unwrap();
+
+        let mut data = SnapshotData {
+            space_dumps: vec![],
+        };
+
+        let i = Instance {
+            raft_id: 1,
+            instance_id: "i".into(),
+            ..Instance::default()
+        };
+        let tuples = [&i].to_tuple_buffer().unwrap();
+        data.space_dumps.push(SpaceDump {
+            space: ClusterwideSpace::Instance,
+            tuples,
+        });
+
+        let tuples = [(1, "google.com"), (2, "ya.ru")].to_tuple_buffer().unwrap();
+        data.space_dumps.push(SpaceDump {
+            space: ClusterwideSpace::Address,
+            tuples,
+        });
+
+        let tuples = [("foo", "bar")].to_tuple_buffer().unwrap();
+        data.space_dumps.push(SpaceDump {
+            space: ClusterwideSpace::Property,
+            tuples,
+        });
+
+        let r = Replicaset {
+            replicaset_id: "r1".into(),
+            replicaset_uuid: "r1-uuid".into(),
+            master_id: "i".into(),
+            weight: crate::replicaset::weight::Info::default(),
+            current_schema_version: 0,
+        };
+        let tuples = [&r].to_tuple_buffer().unwrap();
+        data.space_dumps.push(SpaceDump {
+            space: ClusterwideSpace::Replicaset,
+            tuples,
+        });
+
+        let m = Migration {
+            id: 1,
+            body: "drop table BANK_ACCOUNTS".into(),
+        };
+        let tuples = [&m].to_tuple_buffer().unwrap();
+        data.space_dumps.push(SpaceDump {
+            space: ClusterwideSpace::Migration,
+            tuples,
+        });
+
+        let raw_data = data.to_tuple_buffer().unwrap();
+
+        storage.for_each_space(|s| s.truncate()).unwrap();
+        if let Err(e) = storage.apply_snapshot_data(raw_data.as_ref()) {
+            println!("{e}");
+            panic!();
+        }
+
+        assert_eq!(storage.instances.space.len().unwrap(), 1);
+        let instance = storage.instances.get(&1).unwrap();
+        assert_eq!(instance, i);
+
+        assert_eq!(storage.peer_addresses.space.len().unwrap(), 2);
+        let addr = storage.peer_addresses.get(1).unwrap().unwrap();
+        assert_eq!(addr, "google.com");
+        let addr = storage.peer_addresses.get(2).unwrap().unwrap();
+        assert_eq!(addr, "ya.ru");
+
+        assert_eq!(storage.replicasets.space.len().unwrap(), 1);
+        let replicaset = storage.replicasets.get("r1").unwrap().unwrap();
+        assert_eq!(replicaset, r);
+
+        assert_eq!(storage.migrations.space.len().unwrap(), 1);
+        let migration = storage.migrations.get(1).unwrap().unwrap();
+        assert_eq!(migration, m);
     }
 }

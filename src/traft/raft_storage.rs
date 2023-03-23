@@ -3,11 +3,10 @@ use ::raft::Error as RaftError;
 use ::raft::StorageError;
 use ::tarantool::index::IteratorType;
 use ::tarantool::space::Space;
-use ::tarantool::tuple::Tuple;
+use ::tarantool::tuple::{ToTupleBuffer, Tuple};
 use std::cmp::Ordering;
 use std::convert::TryFrom as _;
 
-use crate::tlog;
 use crate::traft;
 use crate::traft::RaftId;
 use crate::traft::RaftIndex;
@@ -264,6 +263,24 @@ impl RaftSpaceAccess {
         Ok(())
     }
 
+    /// Persists snapshot metadata from raft-rs.
+    ///
+    /// Currently this is just compacted index, compacted term and conf change.
+    ///
+    /// # Panics
+    ///
+    /// In debug mode panics if invoked outside of a transaction.
+    ///
+    pub fn persist_snapshot_metadata(
+        &self,
+        meta: &raft::SnapshotMetadata,
+    ) -> tarantool::Result<()> {
+        self.persist_compacted_term(meta.term)?;
+        self.persist_compacted_index(meta.index)?;
+        self.persist_conf_state(meta.get_conf_state())?;
+        Ok(())
+    }
+
     /// Trims raft log up to the given index (excluding the index
     /// itself).
     ///
@@ -431,10 +448,26 @@ impl raft::Storage for RaftSpaceAccess {
     }
 
     fn snapshot(&self, idx: RaftIndex) -> Result<raft::Snapshot, RaftError> {
-        tlog!(Critical, "snapshot"; "request_index" => idx);
-        unimplemented!();
+        let applied = self.applied().cvt_err()?.expect("never None");
+        if applied < idx {
+            crate::warn_or_panic!(
+                "requested snapshot for index {idx} greater than applied {applied}"
+            );
+            return Err(StorageError::SnapshotTemporarilyUnavailable.into());
+        }
 
-        // Ok(Storage::snapshot()?)
+        let mut snapshot = raft::Snapshot::new();
+
+        let meta = snapshot.mut_metadata();
+        meta.index = applied;
+        meta.term = self.term().cvt_err()?.expect("never None");
+        *meta.mut_conf_state() = self.conf_state().cvt_err()?;
+
+        let snapshot_data = crate::storage::Clusterwide::snapshot_data().cvt_err()?;
+        let data = snapshot_data.to_tuple_buffer().cvt_err()?;
+        *snapshot.mut_data() = Vec::from(data).into();
+
+        Ok(snapshot)
     }
 }
 
