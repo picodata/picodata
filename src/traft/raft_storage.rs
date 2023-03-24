@@ -178,7 +178,7 @@ impl RaftSpaceAccess {
     ///
     pub fn entries(&self, low: RaftIndex, high: RaftIndex) -> tarantool::Result<Vec<traft::Entry>> {
         let iter = self.space_raft_log.select(IteratorType::GE, &(low,))?;
-        let mut ret = Vec::with_capacity((high - low) as usize);
+        let mut ret = Vec::with_capacity((high - low) as _);
 
         for tuple in iter {
             let row = tuple.decode::<traft::Entry>()?;
@@ -263,20 +263,30 @@ impl RaftSpaceAccess {
         Ok(())
     }
 
-    /// Persists snapshot metadata from raft-rs.
+    /// Handles snapshot metadata from raft-rs.
     ///
-    /// Currently this is just compacted index, compacted term and conf change.
+    /// Currently this truncates the raft log and persists
+    /// `compacted_term`, `compacted_index`, `applied` index and `conf_state`.
     ///
     /// # Panics
     ///
     /// In debug mode panics if invoked outside of a transaction.
     ///
-    pub fn persist_snapshot_metadata(
-        &self,
-        meta: &raft::SnapshotMetadata,
-    ) -> tarantool::Result<()> {
+    pub fn handle_snapshot_metadata(&self, meta: &raft::SnapshotMetadata) -> tarantool::Result<()> {
+        // We don't want to have a hole in the log, so we clear everything
+        // before applying the snapshot
+        self.compact_log(meta.index + 1)?;
+
+        let compacted_index = self.compacted_index()?.unwrap_or(0);
+        assert!(meta.index > compacted_index);
+        // We must set these explicitly, because compact_log only sets them to
+        // the coordinates of the last entry which was in our log.
         self.persist_compacted_term(meta.term)?;
         self.persist_compacted_index(meta.index)?;
+
+        let applied = self.applied()?.unwrap_or(0);
+        assert!(meta.index > applied);
+        self.persist_applied(meta.index)?;
         self.persist_conf_state(meta.get_conf_state())?;
         Ok(())
     }
@@ -299,6 +309,11 @@ impl RaftSpaceAccess {
     ///
     pub fn compact_log(&self, up_to: RaftIndex) -> tarantool::Result<u64> {
         debug_assert!(unsafe { tarantool::ffi::tarantool::box_txn() });
+
+        // We cannot drop entries, which weren't commited yet
+        let commit = self.commit()?.expect("is always present");
+        let up_to = up_to.min(commit + 1);
+
         // IteratorType::LT means tuples are returned in descending order
         let mut iter = self.space_raft_log.select(IteratorType::LT, &(up_to,))?;
 
@@ -448,7 +463,7 @@ impl raft::Storage for RaftSpaceAccess {
     }
 
     fn snapshot(&self, idx: RaftIndex) -> Result<raft::Snapshot, RaftError> {
-        let applied = self.applied().cvt_err()?.expect("never None");
+        let applied = self.applied().cvt_err()?.unwrap_or(0);
         if applied < idx {
             crate::warn_or_panic!(
                 "requested snapshot for index {idx} greater than applied {applied}"
@@ -651,6 +666,8 @@ mod tests {
         for i in first..=last {
             storage.persist_entries(&[dummy_entry(i, i)]).unwrap();
         }
+        let commit = 8;
+        storage.persist_commit(commit).unwrap();
         let entries = |lo, hi| S::entries(&storage, lo, hi, u64::MAX);
         let compact_log = |up_to| start_transaction(|| storage.compact_log(up_to));
 
@@ -681,6 +698,11 @@ mod tests {
         // check idempotency
         assert_eq!(compact_log(0).unwrap(), first);
         assert_eq!(compact_log(first).unwrap(), first);
+
+        // cannot compact past commit
+        assert_eq!(compact_log(commit + 2).unwrap(), commit + 1);
+
+        storage.persist_commit(last).unwrap();
 
         // trim to the end
         assert_eq!(compact_log(u64::MAX).unwrap(), last + 1);

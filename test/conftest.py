@@ -611,7 +611,7 @@ class Cluster:
     def add_instance(
         self,
         wait_online=True,
-        peers=None,
+        peers: list[str] | None = None,
         instance_id: str | bool = True,
         replicaset_id: str | None = None,
         failure_domain=dict(),

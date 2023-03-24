@@ -872,8 +872,26 @@ impl NodeImpl {
         self.handle_messages(ready.take_messages());
 
         // This is a snapshot, we need to apply the snapshot at first.
-        if !ready.snapshot().is_empty() {
-            unimplemented!();
+        let snapshot = ready.snapshot();
+        if !snapshot.is_empty() {
+            if let Err(e) = start_transaction(|| -> tarantool::Result<()> {
+                let meta = snapshot.get_metadata();
+                self.raft_storage.handle_snapshot_metadata(meta)?;
+                self.storage.apply_snapshot_data(snapshot.get_data())?;
+
+                // TODO: As long as the snapshot was sent to us in response to
+                // a rejected MsgAppend (which is the only possible case
+                // currently), we will send a MsgAppendResponse back which will
+                // automatically reset our status from Snapshot to Replicate.
+                // But when we implement support for manual snapshot requests,
+                // we will have to also implement sending a MsgSnapStatus,
+                // to reset out status explicitly to avoid leader ignoring us
+                // indefinitely after that point.
+                Ok(())
+            }) {
+                tlog!(Warning, "dropping raft ready: {ready:#?}");
+                panic!("transaction failed: {e}, {}", TarantoolError::last());
+            }
         }
 
         if let Some(ss) = ready.ss() {
