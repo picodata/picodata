@@ -34,6 +34,14 @@ fn main() {
         std::env::set_var("MAKEFLAGS", makeflags);
     }
 
+    if cfg!(target_os = "macos") {
+        // We don't want to strip unused symbols from the static libraries on
+        // the linking stage. This leads to problems with tarantool's `crypto`
+        // module (some symbols are used only by the ffi calls inside `crypto.lua`
+        // file and we are in trouble if they are stripped by the linker).
+        rustc::link_arg("-C link-dead-code=on");
+    }
+
     for (var, value) in std::env::vars() {
         println!("[{}:{}] {var}={value}", file!(), line!());
     }
