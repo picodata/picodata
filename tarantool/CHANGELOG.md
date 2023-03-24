@@ -79,6 +79,8 @@
 ### Fixed
 - Link errors when `Display::fmt` is called for `tarantool::error::Error`
     from rust unit tests
+- Used to have wrong crate versions for internal dependencies
+      (tlua, tarantool-proc, etc.)
 
 
 # [0.6.4] Dec 15 2022
