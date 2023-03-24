@@ -161,54 +161,48 @@ mod tests {
     }
 
     #[crate::test(tarantool = "crate")]
-    fn connect_failure() {
-        fiber::block_on(async {
-            // Can be any other unused port
-            let client = Client::new("localhost".into(), 0);
-            let err = client.ping().await.unwrap_err();
-            let correct_err = [
-                "tcp stream error: failed to connect to supplied address: Connection refused (os error 111)",
-                "tcp stream error: failed to connect to supplied address: Cannot assign requested address (os error 99)"
-            ].contains(&err.to_string().as_str());
-            assert!(correct_err);
-        });
+    async fn connect_failure() {
+        // Can be any other unused port
+        let client = Client::new("localhost".into(), 0);
+        let err = client.ping().await.unwrap_err();
+        let correct_err = [
+            "tcp stream error: failed to connect to supplied address: Connection refused (os error 111)",
+            "tcp stream error: failed to connect to supplied address: Cannot assign requested address (os error 99)"
+        ].contains(&err.to_string().as_str());
+        assert!(correct_err);
     }
 
     #[crate::test(tarantool = "crate")]
-    fn ping_after_reconnect() {
-        fiber::block_on(async {
-            let client = test_client();
+    async fn ping_after_reconnect() {
+        let client = test_client();
 
-            for _ in 0..2 {
-                client.ping().timeout(_3_SEC).await.unwrap();
-            }
-            assert_eq!(client.reconnect_count(), 0);
-            client.reconnect();
-            for _ in 0..2 {
-                client.ping().timeout(_3_SEC).await.unwrap();
-            }
-            assert_eq!(client.reconnect_count(), 1);
-        });
+        for _ in 0..2 {
+            client.ping().timeout(_3_SEC).await.unwrap();
+        }
+        assert_eq!(client.reconnect_count(), 0);
+        client.reconnect();
+        for _ in 0..2 {
+            client.ping().timeout(_3_SEC).await.unwrap();
+        }
+        assert_eq!(client.reconnect_count(), 1);
     }
 
     #[crate::test(tarantool = "crate")]
-    fn reconnect_now_vs_later() {
-        fiber::block_on(async {
-            let client = test_client();
-            // Client initializes at initial request
-            client.ping().timeout(_3_SEC).await.unwrap();
-            assert_eq!(client.reconnect_count(), 0);
+    async fn reconnect_now_vs_later() {
+        let client = test_client();
+        // Client initializes at initial request
+        client.ping().timeout(_3_SEC).await.unwrap();
+        assert_eq!(client.reconnect_count(), 0);
 
-            // Reconnect happens at the first send
-            client.reconnect();
-            assert_eq!(client.reconnect_count(), 0);
-            client.ping().timeout(_3_SEC).await.unwrap();
-            assert_eq!(client.reconnect_count(), 1);
+        // Reconnect happens at the first send
+        client.reconnect();
+        assert_eq!(client.reconnect_count(), 0);
+        client.ping().timeout(_3_SEC).await.unwrap();
+        assert_eq!(client.reconnect_count(), 1);
 
-            // Reconnect happens right away
-            client.reconnect_now().await.unwrap();
-            assert_eq!(client.reconnect_count(), 2);
-        });
+        // Reconnect happens right away
+        client.reconnect_now().await.unwrap();
+        assert_eq!(client.reconnect_count(), 2);
     }
 
     // More of an example of how this client can be used than a test
@@ -265,33 +259,29 @@ mod tests {
     }
 
     #[crate::test(tarantool = "crate")]
-    fn concurrent_messages_one_fiber() {
-        fiber::block_on(async {
-            let client = test_client();
-            let mut ping_futures = vec![];
-            for _ in 0..10 {
-                ping_futures.push(client.ping());
-            }
-            for res in futures::future::join_all(ping_futures).await {
-                res.unwrap();
-            }
-        });
+    async fn concurrent_messages_one_fiber() {
+        let client = test_client();
+        let mut ping_futures = vec![];
+        for _ in 0..10 {
+            ping_futures.push(client.ping());
+        }
+        for res in futures::future::join_all(ping_futures).await {
+            res.unwrap();
+        }
     }
 
     #[crate::test(tarantool = "crate")]
-    fn try_reconnect_only_once() {
-        fiber::block_on(async {
-            let client = Client::new("localhost".into(), 0);
-            client.ping().await.unwrap_err();
-            assert_eq!(client.reconnect_count(), 0);
+    async fn try_reconnect_only_once() {
+        let client = Client::new("localhost".into(), 0);
+        client.ping().await.unwrap_err();
+        assert_eq!(client.reconnect_count(), 0);
 
-            // If reconnect was requested once - try to reconnect only once
-            // even if reconnection fails
-            client.reconnect();
-            for _ in 0..10 {
-                client.ping().await.unwrap_err();
-            }
-            assert_eq!(client.reconnect_count(), 1);
-        });
+        // If reconnect was requested once - try to reconnect only once
+        // even if reconnection fails
+        client.reconnect();
+        for _ in 0..10 {
+            client.ping().await.unwrap_err();
+        }
+        assert_eq!(client.reconnect_count(), 1);
     }
 }

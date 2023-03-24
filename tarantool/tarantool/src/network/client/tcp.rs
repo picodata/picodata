@@ -317,37 +317,33 @@ mod tests {
     }
 
     #[crate::test(tarantool = "crate")]
-    fn read() {
-        fiber::block_on(async {
-            let mut stream = TcpStream::connect("localhost", TARANTOOL_LISTEN)
-                .timeout(_10_SEC)
-                .await
-                .unwrap();
-            // Read greeting
-            let mut buf = vec![0; 128];
-            stream.read_exact(&mut buf).timeout(_10_SEC).await.unwrap();
-        });
+    async fn read() {
+        let mut stream = TcpStream::connect("localhost", TARANTOOL_LISTEN)
+            .timeout(_10_SEC)
+            .await
+            .unwrap();
+        // Read greeting
+        let mut buf = vec![0; 128];
+        stream.read_exact(&mut buf).timeout(_10_SEC).await.unwrap();
     }
 
     #[crate::test(tarantool = "crate")]
-    fn read_timeout() {
-        fiber::block_on(async {
-            let mut stream = TcpStream::connect("localhost", TARANTOOL_LISTEN)
-                .timeout(_10_SEC)
+    async fn read_timeout() {
+        let mut stream = TcpStream::connect("localhost", TARANTOOL_LISTEN)
+            .timeout(_10_SEC)
+            .await
+            .unwrap();
+        // Read greeting
+        let mut buf = vec![0; 128];
+        assert_eq!(
+            stream
+                .read_exact(&mut buf)
+                .timeout(_0_SEC)
                 .await
-                .unwrap();
-            // Read greeting
-            let mut buf = vec![0; 128];
-            assert_eq!(
-                stream
-                    .read_exact(&mut buf)
-                    .timeout(_0_SEC)
-                    .await
-                    .unwrap_err()
-                    .to_string(),
-                "deadline expired"
-            );
-        });
+                .unwrap_err()
+                .to_string(),
+            "deadline expired"
+        );
     }
 
     #[crate::test(tarantool = "crate")]

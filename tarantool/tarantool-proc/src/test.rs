@@ -16,6 +16,20 @@ pub fn impl_macro_attribute(attr: TS1, item: TS1) -> TS1 {
         linkme,
         should_panic,
     } = ctx;
+
+    let fn_item = if fn_item.sig.asyncness.is_some() {
+        let body = fn_item.block;
+        quote! {
+            fn #fn_name() {
+                #tarantool::fiber::block_on(async { #body })
+            }
+        }
+    } else {
+        quote! {
+            #fn_item
+        }
+    };
+
     quote! {
         #[#linkme::distributed_slice(#section)]
         #[linkme(crate = #linkme)]

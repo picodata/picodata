@@ -261,24 +261,20 @@ mod tests {
     use super::*;
 
     #[crate::test(tarantool = "crate")]
-    fn smoke() {
-        fiber::block_on(async {
-            let m = Mutex::new(());
-            drop(m.lock().await);
-            drop(m.lock().await);
-        })
+    async fn smoke() {
+        let m = Mutex::new(());
+        drop(m.lock().await);
+        drop(m.lock().await);
     }
 
     #[crate::test(tarantool = "crate")]
-    fn timeouts() {
-        fiber::block_on(async {
-            let m = Mutex::new(());
-            let _guard = m.lock().await;
-            let _guard_2 = async { ok(m.lock().await) }
-                .timeout(Duration::from_millis(50))
-                .await
-                .unwrap_err();
-        })
+    async fn timeouts() {
+        let m = Mutex::new(());
+        let _guard = m.lock().await;
+        let _guard_2 = async { ok(m.lock().await) }
+            .timeout(Duration::from_millis(50))
+            .await
+            .unwrap_err();
     }
 
     #[crate::test(tarantool = "crate")]

@@ -424,6 +424,28 @@ pub use linkme;
 ///     assert!(false);
 /// }
 /// ```
+///
+/// You can also use `#[tarantool::test]` with `async` functions, in which case
+/// the body of the test will be wrapped inside `fiber::block_on(async {})`
+/// block. The following two tests are equivalent:
+/// ```no_run
+/// #[tarantool::test]
+/// async fn async_test_1() {
+///     assert_eq!(foo().await, 1);
+/// }
+///
+/// #[tarantool::test]
+/// fn async_test_2() {
+///     tarantool::fiber::block_on(async {
+///         assert_eq!(foo().await, 1);
+///     })
+/// }
+///
+/// async fn foo() -> i32 {
+///     1
+/// }
+/// ```
+///
 pub use tarantool_proc::test;
 
 /// Return a global tarantool lua state.

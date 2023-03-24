@@ -443,32 +443,26 @@ mod tests {
     }
 
     #[crate::test(tarantool = "crate")]
-    fn connect() {
-        fiber::block_on(async {
-            let _client = Client::connect("localhost", TARANTOOL_LISTEN)
-                .await
-                .unwrap();
-        });
+    async fn connect() {
+        let _client = Client::connect("localhost", TARANTOOL_LISTEN)
+            .await
+            .unwrap();
     }
 
     #[crate::test(tarantool = "crate")]
-    fn connect_failure() {
-        fiber::block_on(async {
-            // Can be any other unused port
-            let err = Client::connect("localhost", 0).await.unwrap_err();
-            assert!(matches!(dbg!(err), Error::Tcp(_)))
-        });
+    async fn connect_failure() {
+        // Can be any other unused port
+        let err = Client::connect("localhost", 0).await.unwrap_err();
+        assert!(matches!(dbg!(err), Error::Tcp(_)))
     }
 
     #[crate::test(tarantool = "crate")]
-    fn ping() {
-        fiber::block_on(async {
-            let client = test_client().await;
+    async fn ping() {
+        let client = test_client().await;
 
-            for _ in 0..5 {
-                client.ping().timeout(Duration::from_secs(3)).await.unwrap();
-            }
-        });
+        for _ in 0..5 {
+            client.ping().timeout(Duration::from_secs(3)).await.unwrap();
+        }
     }
 
     #[crate::test(tarantool = "crate")]
@@ -485,7 +479,7 @@ mod tests {
     }
 
     #[crate::test(tarantool = "crate")]
-    fn execute() {
+    async fn execute() {
         Space::find("test_s1")
             .unwrap()
             .insert(&(6001, "6001"))
@@ -495,112 +489,100 @@ mod tests {
             .insert(&(6002, "6002"))
             .unwrap();
 
-        fiber::block_on(async {
-            let client = test_client().await;
+        let client = test_client().await;
 
-            let result = client
-                .execute(r#"SELECT * FROM "test_s1""#, &(), None)
-                .timeout(Duration::from_secs(3))
-                .await
-                .unwrap();
-            assert!(result.len() >= 2);
+        let result = client
+            .execute(r#"SELECT * FROM "test_s1""#, &(), None)
+            .timeout(Duration::from_secs(3))
+            .await
+            .unwrap();
+        assert!(result.len() >= 2);
 
-            let result = client
-                .execute(r#"SELECT * FROM "test_s1" WHERE "id" = ?"#, &(6002,), None)
-                .timeout(Duration::from_secs(3))
-                .await
-                .unwrap();
+        let result = client
+            .execute(r#"SELECT * FROM "test_s1" WHERE "id" = ?"#, &(6002,), None)
+            .timeout(Duration::from_secs(3))
+            .await
+            .unwrap();
 
-            assert_eq!(result.len(), 1);
-            assert_eq!(
-                result.get(0).unwrap().decode::<(u64, String)>().unwrap(),
-                (6002, "6002".into())
-            );
-        });
+        assert_eq!(result.len(), 1);
+        assert_eq!(
+            result.get(0).unwrap().decode::<(u64, String)>().unwrap(),
+            (6002, "6002".into())
+        );
     }
 
     #[crate::test(tarantool = "crate")]
-    fn call() {
-        fiber::block_on(async {
-            let client = test_client().await;
+    async fn call() {
+        let client = test_client().await;
 
-            let result = client
-                .call("test_stored_proc", &(1, 2))
-                .timeout(Duration::from_secs(3))
-                .await
-                .unwrap();
-            assert_eq!(result.unwrap().decode::<(i32,)>().unwrap(), (3,));
-        });
+        let result = client
+            .call("test_stored_proc", &(1, 2))
+            .timeout(Duration::from_secs(3))
+            .await
+            .unwrap();
+        assert_eq!(result.unwrap().decode::<(i32,)>().unwrap(), (3,));
     }
 
     #[crate::test(tarantool = "crate")]
-    fn invalid_call() {
-        fiber::block_on(async {
-            let client = test_client().await;
+    async fn invalid_call() {
+        let client = test_client().await;
 
-            let err = client
-                .call("unexistent_proc", &())
-                .timeout(Duration::from_secs(3))
-                .await
-                .unwrap_err()
-                .to_string();
-            assert_eq!(err, "protocol error: service responded with error: Procedure 'unexistent_proc' is not defined");
-        });
+        let err = client
+            .call("unexistent_proc", &())
+            .timeout(Duration::from_secs(3))
+            .await
+            .unwrap_err()
+            .to_string();
+        assert_eq!(err, "protocol error: service responded with error: Procedure 'unexistent_proc' is not defined");
     }
 
     #[crate::test(tarantool = "crate")]
-    fn eval() {
-        fiber::block_on(async {
-            let client = test_client().await;
+    async fn eval() {
+        let client = test_client().await;
 
-            let result = client
-                .eval("return ...", &(1, 2))
-                .timeout(Duration::from_secs(3))
-                .await
-                .unwrap();
-            assert_eq!(result.unwrap().decode::<(i32, i32)>().unwrap(), (1, 2));
-        });
+        let result = client
+            .eval("return ...", &(1, 2))
+            .timeout(Duration::from_secs(3))
+            .await
+            .unwrap();
+        assert_eq!(result.unwrap().decode::<(i32, i32)>().unwrap(), (1, 2));
     }
 
     /// A regression test for https://git.picodata.io/picodata/picodata/tarantool-module/-/merge_requests/302
     #[crate::test(tarantool = "crate")]
-    fn client_count_regression() {
-        fiber::block_on(async {
-            let client = test_client().await;
-            // Should close sender and receiver fibers
-            let close_token = client.0.borrow_mut().close_token.take();
-            close_token.unwrap().close().unwrap();
-            // Receiver wakes and closes
-            fiber::r#yield().unwrap();
-            client.0.borrow().sender_waker.send(()).unwrap();
-            // Sender wakes and closes
-            fiber::r#yield().unwrap();
-            // Sender and receiver stopped and dropped their refs
-            assert_eq!(Rc::strong_count(&client.0), 1);
+    async fn client_count_regression() {
+        let client = test_client().await;
+        // Should close sender and receiver fibers
+        let close_token = client.0.borrow_mut().close_token.take();
+        close_token.unwrap().close().unwrap();
+        // Receiver wakes and closes
+        fiber::r#yield().unwrap();
+        client.0.borrow().sender_waker.send(()).unwrap();
+        // Sender wakes and closes
+        fiber::r#yield().unwrap();
+        // Sender and receiver stopped and dropped their refs
+        assert_eq!(Rc::strong_count(&client.0), 1);
 
-            // Cloning a client produces 2 refs
-            let client_clone = client.clone();
-            assert_eq!(Rc::strong_count(&client.0), 2);
-            // Here if client checked by Rc refs <= 3 it would assume it is the last and set state to ClosedManually
-            drop(client_clone);
-            assert_eq!(Rc::strong_count(&client.0), 1);
+        // Cloning a client produces 2 refs
+        let client_clone = client.clone();
+        assert_eq!(Rc::strong_count(&client.0), 2);
+        // Here if client checked by Rc refs <= 3 it would assume it is the last and set state to ClosedManually
+        drop(client_clone);
+        assert_eq!(Rc::strong_count(&client.0), 1);
 
-            // This would panic on unreachable if previous drop have set the state
-            client.check_state().unwrap_err();
-        });
+        // This would panic on unreachable if previous drop have set the state
+        client.check_state().unwrap_err();
     }
 
     #[crate::test(tarantool = "crate")]
-    fn concurrent_messages_one_fiber() {
-        fiber::block_on(async {
-            let client = test_client().await;
-            let mut ping_futures = vec![];
-            for _ in 0..10 {
-                ping_futures.push(client.ping());
-            }
-            for res in futures::future::join_all(ping_futures).await {
-                res.unwrap();
-            }
-        });
+    async fn concurrent_messages_one_fiber() {
+        let client = test_client().await;
+        let mut ping_futures = vec![];
+        for _ in 0..10 {
+            ping_futures.push(client.ping());
+        }
+        for res in futures::future::join_all(ping_futures).await {
+            res.unwrap();
+        }
     }
 }
