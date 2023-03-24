@@ -71,7 +71,7 @@ pub enum Error {
     /// error types to implement [`Sync`], which isn't implemented for [`Rc`].
     ///
     /// [`Rc`]: std::rc::Rc
-    #[error("Server responded with error: {0}")]
+    #[error("Binary protocol (iproto) error: {0}")]
     Protocol(Arc<crate::network::protocol::Error>),
 
     /// The error is wrapped in a [`Arc`], because some libraries require
@@ -79,7 +79,7 @@ pub enum Error {
     ///
     /// [`Rc`]: std::rc::Rc
     #[cfg(feature = "network_client")]
-    #[error("Server responded with error: {0}")]
+    #[error("Tcp error: {0}")]
     Tcp(Arc<crate::network::client::tcp::Error>),
 
     #[error("Lua error: {0}")]
