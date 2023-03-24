@@ -32,6 +32,7 @@ use crate::traft::RaftSpaceAccess;
 use crate::traft::RaftTerm;
 use crate::traft::Topology;
 use crate::unwrap_some_or;
+use crate::util::instant_saturating_add;
 use crate::warn_or_panic;
 use ::raft::prelude as raft;
 use ::raft::Error as RaftError;
@@ -369,7 +370,7 @@ impl NodeImpl {
 
         let pool = ConnectionPool::builder(storage.clone())
             .handler_name(stringify_cfunc!(proc_raft_interact))
-            .call_timeout(MainLoop::TICK * 4)
+            .call_timeout(MainLoop::TICK.saturating_mul(4))
             .build();
 
         let cfg = raft::Config {
@@ -999,7 +1000,7 @@ impl MainLoop {
 
         let now = Instant::now();
         if now > state.next_tick {
-            state.next_tick = now + Self::TICK;
+            state.next_tick = instant_saturating_add(now, Self::TICK);
             node_impl.raw_node.tick();
         }
 
