@@ -27,6 +27,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "983cd8b9d4b02a6dc6ffa557262eb5858a27a0038ffffe21a0f133eaa819a164"
 
 [[package]]
+name = "async-trait"
+version = "0.1.64"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1cd7fce9ba8c3c042128ce72d8b2ddbf3a05747efb67ea0313c635e10bda47a2"
+dependencies = [
+ "proc-macro2 1.0.47",
+ "quote 1.0.21",
+ "syn 1.0.105",
+]
+
+[[package]]
 name = "atty"
 version = "0.2.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1193,6 +1204,7 @@ checksum = "f764005d11ee5f36500a149ace24e00e3da98b0158b3e2d53a7495660d3f4d60"
 name = "tarantool"
 version = "0.7.0"
 dependencies = [
+ "async-trait",
  "base64",
  "bitflags",
  "byteorder",
@@ -1217,6 +1229,7 @@ dependencies = [
  "tarantool-proc",
  "tester",
  "thiserror",
+ "time",
  "tlua",
  "uuid 0.8.2",
  "va_list",
@@ -1357,6 +1370,7 @@ version = "0.6.5"
 dependencies = [
  "libc",
  "serde",
+ "thiserror",
  "tlua-derive",
 ]
 

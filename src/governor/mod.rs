@@ -144,7 +144,7 @@ impl Loop {
                         pool.call(instance_id, &rpc)?
                             // TODO: don't hard code timeout
                             .timeout(Duration::from_secs(3))
-                            .await??
+                            .await?
                     }
                 }
 
@@ -183,7 +183,7 @@ impl Loop {
                             });
                         }
                         // TODO: don't hard code timeout
-                        try_join_all(fs).timeout(Duration::from_secs(3)).await??
+                        try_join_all(fs).timeout(Duration::from_secs(3)).await?
                     }
                 }
 
@@ -213,7 +213,7 @@ impl Loop {
                         let sync::Response { commit } = pool
                             .call(instance_id, &rpc)?
                             .timeout(Loop::SYNC_TIMEOUT)
-                            .await??;
+                            .await?;
                         tlog!(Info, "instance's commit index is {commit}"; "instance_id" => %instance_id);
                         node.handle_update_instance_request_and_wait(req)?
                     }
@@ -234,7 +234,7 @@ impl Loop {
                     async {
                         pool.call(master_id, &rpc)?
                             .timeout(Duration::from_secs(3))
-                            .await??
+                            .await?
                     }
                 }
 
@@ -275,7 +275,7 @@ impl Loop {
                             });
                         }
                         // TODO: don't hard code timeout
-                        try_join_all(fs).timeout(Duration::from_secs(3)).await??
+                        try_join_all(fs).timeout(Duration::from_secs(3)).await?
                     }
                 }
 
@@ -318,7 +318,7 @@ impl Loop {
                             });
                         }
                         // TODO: don't hard code timeout
-                        try_join_all(fs).timeout(Duration::from_secs(3)).await??
+                        try_join_all(fs).timeout(Duration::from_secs(3)).await?
                     }
                 }
 
@@ -344,7 +344,7 @@ impl Loop {
                         pool
                             .call(target, &rpc)?
                             .timeout(Loop::SYNC_TIMEOUT)
-                            .await??;
+                            .await?;
                         node.propose_and_wait(op, Duration::from_secs(3))??
                     }
                 }
@@ -399,7 +399,7 @@ impl Loop {
                             });
                         }
                         // TODO: don't hard code timeout
-                        try_join_all(fs).timeout(Duration::from_secs(3)).await??
+                        try_join_all(fs).timeout(Duration::from_secs(3)).await?
                     }
                 }
 
@@ -438,7 +438,7 @@ impl Loop {
                         pool
                             .call(&target.master_id, &rpc)?
                             .timeout(Loop::SYNC_TIMEOUT)
-                            .await??;
+                            .await?;
                     }
                 }
 
@@ -481,8 +481,6 @@ impl Loop {
             waker: waker_rx,
             pool: ConnectionPool::builder(args.storage.clone())
                 .call_timeout(Duration::from_secs(1))
-                .connect_timeout(Duration::from_millis(500))
-                .inactivity_timeout(Duration::from_secs(60))
                 .build(),
         };
 

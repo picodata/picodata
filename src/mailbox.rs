@@ -138,6 +138,13 @@ impl<T> Mailbox<T> {
         self.0.content.take()
     }
 
+    /// Same as [`Self::try_receive_all`] but places an upper limit of `n` on the number of
+    /// messages that should be taken.
+    pub fn try_receive_n(&self, n: usize) -> Vec<T> {
+        let min = std::cmp::min(n, self.0.content.borrow().len());
+        self.0.content.borrow_mut().drain(..min).collect()
+    }
+
     /// Checks the mailbox for incoming messages. If there're none, puts
     /// the calling fiber into sleep and yields. The fiber is resumed in
     /// any of these events:
@@ -183,6 +190,7 @@ mod tests {
         let mailbox = Mailbox::<u8>::new();
         assert_eq!(mailbox.receive_all(Duration::ZERO), Vec::<u8>::new());
         assert_eq!(mailbox.try_receive_all(), Vec::<u8>::new());
+        assert_eq!(mailbox.try_receive_n(100), Vec::<u8>::new());
 
         mailbox.send(1);
         assert_eq!(mailbox.receive_all(Duration::ZERO), vec![1]);
@@ -195,6 +203,9 @@ mod tests {
         mailbox.send(4);
         mailbox.send(5);
         assert_eq!(mailbox.try_receive_all(), vec![4, 5]);
+        mailbox.send(6);
+        mailbox.send(7);
+        assert_eq!(mailbox.try_receive_n(1), vec![6]);
 
         assert_eq!(format!("{mailbox:?}"), "Mailbox<u8> { .. }")
     }

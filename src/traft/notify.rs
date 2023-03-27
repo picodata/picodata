@@ -51,8 +51,8 @@ impl Notify {
     #[inline]
     pub async fn recv_timeout_any(self, timeout: Duration) -> Result<Box<dyn AnyWithTypeName>> {
         match self.0.timeout(timeout).await {
-            Ok(Ok(v)) => v,
-            Ok(Err(_)) | Err(_) => Err(Error::Timeout),
+            Ok(v) => v,
+            Err(_) => Err(Error::Timeout),
         }
     }
 

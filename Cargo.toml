@@ -40,6 +40,9 @@ features = ["schema", "picodata", "test"]
 rand = "0.8.5"
 pretty_assertions = "0.6.1"
 
+[features]
+load_test = []
+
 [lib]
 doctest = true
 

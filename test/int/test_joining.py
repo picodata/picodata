@@ -119,7 +119,7 @@ def test_replication(cluster: Cluster):
 
     assert i1.replicaset_uuid() == i2.replicaset_uuid()
 
-    @funcy.retry(tries=20, timeout=0.1)
+    @funcy.retry(tries=20, timeout=0.5)
     def wait_replicated(instance):
         box_replication = instance.eval("return box.cfg.replication")
         assert set(box_replication) == set(

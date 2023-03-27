@@ -370,8 +370,6 @@ impl NodeImpl {
         let pool = ConnectionPool::builder(storage.clone())
             .handler_name(stringify_cfunc!(proc_raft_interact))
             .call_timeout(MainLoop::TICK * 4)
-            .connect_timeout(MainLoop::TICK * 4)
-            .inactivity_timeout(Duration::from_secs(60))
             .build();
 
         let cfg = raft::Config {

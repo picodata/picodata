@@ -284,7 +284,10 @@ impl<L: ::tarantool::tlua::AsLua> ::tarantool::tlua::PushInto<L> for Uppercase {
 impl<L: ::tarantool::tlua::AsLua> ::tarantool::tlua::PushOneInto<L> for Uppercase {}
 
 impl<L: ::tarantool::tlua::AsLua> ::tarantool::tlua::LuaRead<L> for Uppercase {
-    fn lua_read_at_position(lua: L, index: std::num::NonZeroI32) -> Result<Self, L> {
+    fn lua_read_at_position(
+        lua: L,
+        index: std::num::NonZeroI32,
+    ) -> ::tarantool::tlua::ReadResult<Self, L> {
         Ok(String::lua_read_at_position(lua, index)?.into())
     }
 }

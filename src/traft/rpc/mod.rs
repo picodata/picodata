@@ -28,6 +28,7 @@ pub trait Request: Encode + DecodeOwned {
     type Response: Encode + DeserializeOwned + Debug + 'static;
 }
 
+// FIXME: should this go through pool?
 #[inline(always)]
 pub fn net_box_call<R>(
     address: impl ToSocketAddrs + Display,

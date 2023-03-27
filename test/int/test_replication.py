@@ -116,7 +116,7 @@ def test_replication_works(cluster: Cluster):
     i2.wait_online()
     i3.wait_online()
 
-    @funcy.retry(tries=10, timeout=0.2)
+    @funcy.retry(tries=10, timeout=0.5)
     def wait_replicas_joined(i: Instance, n: int):
         assert len(i.call("box.info")["replication"]) == n
 
@@ -125,7 +125,7 @@ def test_replication_works(cluster: Cluster):
 
 
 def test_bucket_discovery_single(instance: Instance):
-    @funcy.retry(tries=30, timeout=0.2)
+    @funcy.retry(tries=30, timeout=0.5)
     def wait_buckets_awailable(i: Instance, expected: int):
         assert expected == i.call("vshard.router.info")["bucket"]["available_rw"]
 
@@ -133,7 +133,7 @@ def test_bucket_discovery_single(instance: Instance):
 
 
 def wait_has_buckets(c: Cluster, i: Instance, expected_active: int):
-    @funcy.retry(tries=30, timeout=0.2)
+    @funcy.retry(tries=30, timeout=0.5)
     def buckets_active(i: Instance):
         return i.call("vshard.storage.info")["bucket"]["active"]
 

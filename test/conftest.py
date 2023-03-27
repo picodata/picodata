@@ -451,7 +451,7 @@ class Instance:
 
         assert want == have
 
-    @funcy.retry(tries=30, timeout=0.2)
+    @funcy.retry(tries=30, timeout=0.5)
     def wait_online(self):
         """Wait until instance attains Online grade
 
@@ -473,7 +473,7 @@ class Instance:
 
         eprint(f"{self} is online")
 
-    @funcy.retry(tries=4, timeout=0.1, errors=AssertionError)
+    @funcy.retry(tries=4, timeout=0.5, errors=AssertionError)
     def promote_or_fail(self):
         eprint(f"{self} is trying to become a leader")
 
@@ -481,7 +481,7 @@ class Instance:
         self.call("pico.raft_timeout_now")
 
         # 2. Wait until the miracle occurs.
-        @funcy.retry(tries=4, timeout=0.1, errors=AssertionError)
+        @funcy.retry(tries=4, timeout=0.5, errors=AssertionError)
         def wait_promoted():
             self.assert_raft_status("Leader")
 

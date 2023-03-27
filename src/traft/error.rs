@@ -1,6 +1,6 @@
 use crate::instance::InstanceId;
 use crate::traft::{RaftId, RaftTerm};
-use ::tarantool::fiber::r#async::timeout::Expired;
+use ::tarantool::fiber::r#async::timeout;
 use ::tarantool::tlua::LuaError;
 use raft::StorageError;
 use rmp_serde::decode::Error as RmpDecodeError;
@@ -52,12 +52,14 @@ pub enum Error {
     AddressUnknownForRaftId(RaftId),
     #[error("address of peer with id \"{0}\" not found")]
     AddressUnknownForInstanceId(InstanceId),
-    #[error("leader is uknown yet")]
+    #[error("address of peer is incorrectly formatted: {0}")]
+    AddressParseFailure(String),
+    #[error("rpc answer is empty")]
+    EmptyRpcAnswer,
+    #[error("leader is unknown yet")]
     LeaderUnknown,
-
     #[error("governor has stopped")]
     GovernorStopped,
-
     #[error("other error: {0}")]
     Other(Box<dyn std::error::Error>),
 }
@@ -71,9 +73,21 @@ impl Error {
     }
 }
 
-impl From<Expired> for Error {
-    fn from(_: Expired) -> Self {
-        Self::Timeout
+impl<E> From<timeout::Error<E>> for Error
+where
+    Error: From<E>,
+{
+    fn from(err: timeout::Error<E>) -> Self {
+        match err {
+            timeout::Error::Expired => Self::Timeout,
+            timeout::Error::Failed(err) => err.into(),
+        }
+    }
+}
+
+impl From<::tarantool::network::Error> for Error {
+    fn from(err: ::tarantool::network::Error) -> Self {
+        Self::Tarantool(err.into())
     }
 }
 
