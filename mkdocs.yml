@@ -15,6 +15,7 @@ nav:
     - Пример работы с кластером Picodata: tutorial.md
   - Справочные материалы:
     - Описание параметров запуска Picodata: cli.md
+    - Глоссарий основных терминов и определений: sbroad/sql_glossary
     - Поддерживаемые функции стандарта SQL: sbroad/sql_reference.md
 
 
