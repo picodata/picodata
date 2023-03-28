@@ -4,11 +4,38 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc && vite build",
-    "preview": "vite preview"
+    "start": "concurrently vite \"yarn type-check:watch\"",
+    "build": "vite build && rimraf ./build/**/*.js.map",
+    "test": "jest --watchAll=false",
+    "preview": "vite preview",
+    "lint": "eslint src --max-warnings 0",
+    "lint:fix": "eslint --fix src",
+    "type-check:watch": "tsc -w --pretty",
+    "type-check": "tsc --noEmit",
+    "prepare": "husky install"
+  },
+  "lint-staged": {
+    "*.ts": "yarn tsc --noEmit",
+    "*.{js,jsx,ts,tsx}": "yarn eslint",
+    "*.{js,jsx,ts,tsx,html,css}": "yarn prettier --check"
   },
   "dependencies": {
+    "@typescript-eslint/eslint-plugin": "^5.57.0",
+    "@typescript-eslint/parser": "^5.57.0",
+    "concurrently": "^7.6.0",
+    "eslint": "^8.36.0",
+    "eslint-config-airbnb": "^19.0.4",
+    "eslint-config-airbnb-typescript": "^17.0.0",
+    "eslint-config-prettier": "^8.8.0",
+    "eslint-import-resolver-typescript": "^3.5.3",
+    "eslint-plugin-import": "^2.27.5",
+    "eslint-plugin-jest": "^27.2.1",
+    "eslint-plugin-jsx-a11y": "^6.7.1",
+    "eslint-plugin-prettier": "^4.2.1",
+    "eslint-plugin-react": "^7.32.2",
+    "eslint-plugin-react-hooks": "^4.6.0",
+    "lint-staged": "^13.2.0",
+    "prettier": "^2.8.7",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
   },
@@ -16,6 +43,7 @@
     "@types/react": "^18.0.28",
     "@types/react-dom": "^18.0.11",
     "@vitejs/plugin-react": "^3.1.0",
+    "husky": "^8.0.0",
     "typescript": "^4.9.3",
     "vite": "^4.2.0"
   }
