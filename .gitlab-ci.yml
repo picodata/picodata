@@ -112,7 +112,7 @@ test:
   variables:
     GIT_DEPTH: 100
     GIT_SUBMODULE_STRATEGY: recursive
-    RUST_BACKTRACE: 1
+    RUST_BACKTRACE: full
   before_script:
     # Gitlab CI implicitly clones specific refs (e.g. `refs/pipelines/xxxxxxx`),
     # but it doesn't imply fetching tags. We clone them manually with the
