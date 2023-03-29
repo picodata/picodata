@@ -428,6 +428,21 @@ fn picolib_setup(args: &args::Run) {
             },
         ),
     );
+
+    luamod.set("compact_raft_log", {
+        #[derive(tlua::PushInto)]
+        struct Output {
+            n_deleted: u64,
+        }
+        tlua::Function::new(|last_index_to_delete: u64| -> traft::Result<Output> {
+            let node = node::global()?;
+            let n_deleted = start_transaction(|| -> ::tarantool::Result<_> {
+                let n_deleted = node.raft_storage.compact_log(last_index_to_delete)?;
+                Ok(n_deleted)
+            })?;
+            Ok(Output { n_deleted })
+        })
+    });
 }
 
 macro_rules! lua_preload {
