@@ -228,7 +228,7 @@ fn main_expel(args: args::Expel) -> ! {
         callback_data: (args,),
         callback_data_type: (args::Expel,),
         callback_body: {
-            picodata::tt_expel(args)
+            ::tarantool::fiber::block_on(picodata::tt_expel(args))
         }
     );
     std::process::exit(rc);

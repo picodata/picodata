@@ -112,7 +112,7 @@ fn go_offline() -> traft::Result<()> {
             fiber::sleep(wait_before_retry.saturating_sub(now.elapsed()));
             continue;
         };
-        let res = match rpc::net_box_call(&leader_address, &req, Duration::MAX) {
+        let res = match fiber::block_on(rpc::network_call(&leader_address, &req)) {
             Ok(update_instance::Response::Ok) => Ok(()),
             Ok(update_instance::Response::ErrNotALeader) => Err(Error::NotALeader),
             Err(e) => Err(e.into()),

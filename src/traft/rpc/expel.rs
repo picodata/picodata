@@ -44,15 +44,15 @@ crate::define_rpc_request! {
 }
 
 pub mod redirect {
-    use crate::traft::rpc::net_box_call_to_leader;
-    use crate::traft::Result;
+    use ::tarantool::fiber;
 
-    use std::time::Duration;
+    use crate::traft::rpc::network_call_to_leader;
+    use crate::traft::Result;
 
     crate::define_rpc_request! {
         fn proc_expel_redirect(req: Request) -> Result<Response> {
             let Request(req_to_leader) = req;
-            net_box_call_to_leader(&req_to_leader, Duration::MAX)?;
+            fiber::block_on(network_call_to_leader(&req_to_leader))?;
             Ok(Response {})
         }
 

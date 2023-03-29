@@ -1,12 +1,13 @@
+use ::tarantool::network::AsClient as _;
+use ::tarantool::network::Client;
 use ::tarantool::tuple::{DecodeOwned, Encode};
 
 use crate::traft::error::Error;
 use crate::traft::node;
 use crate::traft::Result;
 
-use std::fmt::{Debug, Display};
-use std::net::ToSocketAddrs;
-use std::time::Duration;
+use std::fmt::Debug;
+use std::io;
 
 use serde::de::DeserializeOwned;
 
@@ -28,28 +29,36 @@ pub trait Request: Encode + DecodeOwned {
     type Response: Encode + DeserializeOwned + Debug + 'static;
 }
 
-// FIXME: should this go through pool?
-#[inline(always)]
-pub fn net_box_call<R>(
-    address: impl ToSocketAddrs + Display,
-    request: &R,
-    timeout: Duration,
-) -> ::tarantool::Result<R::Response>
+pub async fn network_call<R>(address: &str, request: &R) -> ::tarantool::Result<R::Response>
 where
     R: Request,
 {
-    crate::tarantool::net_box_call(&address, R::PROC_NAME, request, timeout)
+    // TODO: move address parsing into client
+    let (address, port) = address.rsplit_once(':').ok_or_else(|| {
+        ::tarantool::error::Error::IO(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("invalid address: {}", address),
+        ))
+    })?;
+    let port: u16 = port.parse().map_err(|err| {
+        ::tarantool::error::Error::IO(io::Error::new(io::ErrorKind::InvalidInput, err))
+    })?;
+    let client = Client::connect(address, port).await?;
+    let tuple = client
+        .call(R::PROC_NAME, request)
+        .await?
+        .expect("unexpected result Ok(None)");
+    tuple.decode().map(|((res,),)| res)
 }
 
-#[inline]
-pub fn net_box_call_to_leader<R>(request: &R, timeout: Duration) -> Result<R::Response>
+pub async fn network_call_to_leader<R>(request: &R) -> Result<R::Response>
 where
     R: Request,
 {
     let node = node::global()?;
     let leader_id = node.status().leader_id.ok_or(Error::LeaderUnknown)?;
     let leader_address = node.storage.peer_addresses.try_get(leader_id)?;
-    let resp = net_box_call(&leader_address, request, timeout)?;
+    let resp = network_call(&leader_address, request).await?;
     Ok(resp)
 }
 

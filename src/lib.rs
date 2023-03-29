@@ -3,6 +3,8 @@ use serde::{Deserialize, Serialize};
 use ::raft::prelude as raft;
 use ::tarantool::error::Error as TntError;
 use ::tarantool::fiber;
+use ::tarantool::fiber::r#async::timeout;
+use ::tarantool::fiber::r#async::timeout::IntoTimeout as _;
 use ::tarantool::tlua;
 use ::tarantool::transaction::start_transaction;
 use std::convert::TryFrom;
@@ -152,13 +154,10 @@ fn picolib_setup(args: &args::Run) {
             let cluster_id = raft_storage
                 .cluster_id()?
                 .expect("cluster_id is set on boot");
-            rpc::net_box_call_to_leader(
-                &rpc::expel::Request {
-                    instance_id,
-                    cluster_id,
-                },
-                Duration::MAX,
-            )?;
+            fiber::block_on(rpc::network_call_to_leader(&rpc::expel::Request {
+                instance_id,
+                cluster_id,
+            }))?;
             Ok(())
         }),
     );
@@ -787,7 +786,7 @@ fn start_join(args: &args::Run, leader_address: String) {
         let now = Instant::now();
         // TODO: exponential decay
         let timeout = Duration::from_secs(1);
-        match rpc::net_box_call(&leader_address, &req, Duration::MAX) {
+        match fiber::block_on(rpc::network_call(&leader_address, &req)) {
             Ok(join::Response::Ok(resp)) => {
                 break resp;
             }
@@ -800,7 +799,7 @@ fn start_join(args: &args::Run, leader_address: String) {
                 }
                 continue;
             }
-            Err(TntError::IO(e)) => {
+            Err(TntError::Tcp(e)) => {
                 tlog!(Warning, "join request failed: {e}, retry...");
                 fiber::sleep(timeout.saturating_sub(now.elapsed()));
                 continue;
@@ -928,7 +927,7 @@ fn postjoin(args: &args::Run, storage: Clusterwide, raft_storage: RaftSpaceAcces
         // leader is permitted to propose PersistInstance entries.
         let now = Instant::now();
         let timeout = Duration::from_secs(10);
-        match rpc::net_box_call(&leader_address, &req, timeout) {
+        match fiber::block_on(rpc::network_call(&leader_address, &req).timeout(timeout)) {
             Ok(update_instance::Response::Ok) => {
                 break;
             }
@@ -937,7 +936,7 @@ fn postjoin(args: &args::Run, storage: Clusterwide, raft_storage: RaftSpaceAcces
                 fiber::sleep(Duration::from_millis(100));
                 continue;
             }
-            Err(TntError::IO(e)) => {
+            Err(timeout::Error::Failed(TntError::Tcp(e))) => {
                 tlog!(Warning, "failed to activate myself: {e}, retry...");
                 fiber::sleep(timeout.saturating_sub(now.elapsed()));
                 continue;
@@ -950,16 +949,12 @@ fn postjoin(args: &args::Run, storage: Clusterwide, raft_storage: RaftSpaceAcces
     }
 }
 
-pub fn tt_expel(args: args::Expel) {
+pub async fn tt_expel(args: args::Expel) {
     let req = rpc::expel::Request {
         cluster_id: args.cluster_id,
         instance_id: args.instance_id,
     };
-    let res = rpc::net_box_call(
-        &args.peer_address,
-        &rpc::expel::redirect::Request(req),
-        Duration::MAX,
-    );
+    let res = rpc::network_call(&args.peer_address, &rpc::expel::redirect::Request(req)).await;
     match res {
         Ok(_) => {
             tlog!(Info, "Success expel call");
