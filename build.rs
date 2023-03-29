@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+use std::io::Write;
 use std::panic::Location;
 use std::path::Path;
 use std::process::Command;
@@ -34,23 +36,56 @@ fn main() {
         std::env::set_var("MAKEFLAGS", makeflags);
     }
 
-    if cfg!(target_os = "macos") {
-        // We don't want to strip unused symbols from the static libraries on
-        // the linking stage. This leads to problems with tarantool's `crypto`
-        // module (some symbols are used only by the ffi calls inside `crypto.lua`
-        // file and we are in trouble if they are stripped by the linker).
-        rustc::link_arg("-C link-dead-code=on");
-    }
-
     for (var, value) in std::env::vars() {
         println!("[{}:{}] {var}={value}", file!(), line!());
     }
 
+    generate_export_stubs(&out_dir);
     build_tarantool(build_root);
     build_http(build_root);
 
     println!("cargo:rerun-if-changed=tarantool-sys");
     println!("cargo:rerun-if-changed=http/http");
+}
+
+fn generate_export_stubs(out_dir: &str) {
+    let mut symbols = HashSet::with_capacity(1024);
+    let exports = std::fs::read_to_string("tarantool-sys/extra/exports").unwrap();
+    read_symbols_into(&exports, &mut symbols);
+    let exports = std::fs::read_to_string("tarantool-sys/extra/exports_libcurl").unwrap();
+    read_symbols_into(&exports, &mut symbols);
+
+    let mut code = Vec::with_capacity(2048);
+    writeln!(code, "pub fn export_symbols() {{").unwrap();
+    writeln!(code, "    extern \"C\" {{").unwrap();
+    for symbol in &symbols {
+        writeln!(code, "        static {symbol}: *const ();").unwrap();
+    }
+    writeln!(code, "    }}").unwrap();
+    // TODO: use std::hint::black_box, when we move to rust 1.66
+    writeln!(code, "    fn black_box(_: *const ()) {{}}").unwrap();
+    writeln!(code, "    unsafe {{").unwrap();
+    for symbol in &symbols {
+        writeln!(code, "        black_box({symbol});").unwrap();
+    }
+    writeln!(code, "    }}").unwrap();
+    writeln!(code, "}}").unwrap();
+
+    let gen_path = std::path::Path::new(out_dir).join("export_symbols.rs");
+    std::fs::write(gen_path, code).unwrap();
+
+    fn read_symbols_into<'a>(file_contents: &'a str, symbols: &mut HashSet<&'a str>) {
+        for line in file_contents.lines() {
+            let line = line.trim();
+            if line.starts_with('#') {
+                continue;
+            }
+            if line.is_empty() {
+                continue;
+            }
+            symbols.insert(line);
+        }
+    }
 }
 
 fn build_http(build_root: &Path) {
@@ -173,9 +208,11 @@ fn build_tarantool(build_root: &Path) {
     rustc::link_lib_static("shutdown");
     rustc::link_lib_static("swim_udp");
     rustc::link_lib_static("swim_ev");
+    rustc::link_lib_static("symbols");
     rustc::link_lib_static("cpu_feature");
     rustc::link_lib_static("luajit");
     rustc::link_lib_static("yaml_static");
+    rustc::link_lib_static("xxhash");
 
     if cfg!(target_os = "macos") {
         // OpenMP and Libunwind are builtin to the compiler on macos

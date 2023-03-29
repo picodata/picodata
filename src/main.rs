@@ -10,9 +10,12 @@ use picodata::Entrypoint;
 use picodata::IpcMessage;
 use tarantool::fiber;
 
+include!(concat!(env!("OUT_DIR"), "/export_symbols.rs"));
+
 mod test;
 
 fn main() -> ! {
+    export_symbols();
     match args::Picodata::parse() {
         args::Picodata::Run(args) => main_run(args),
         args::Picodata::Test(args) => test::main_test(args),
