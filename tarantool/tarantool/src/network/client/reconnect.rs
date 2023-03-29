@@ -1,4 +1,4 @@
-use std::{cell::RefCell, rc::Rc, time::Duration};
+use std::rc::Rc;
 
 use super::Error;
 use crate::fiber::r#async::Mutex;
@@ -23,7 +23,7 @@ pub struct Client {
 
     // Testing related code
     #[cfg(feature = "internal_test")]
-    inject_error: Rc<RefCell<Option<super::Error>>>,
+    inject_error: Rc<std::cell::RefCell<Option<super::Error>>>,
     #[cfg(feature = "internal_test")]
     reconnect_count: Rc<AtomicUsize>,
 }
@@ -147,6 +147,7 @@ mod tests {
     use crate::fiber::r#async::timeout::IntoTimeout as _;
     use crate::network::AsClient as _;
     use crate::test::util::TARANTOOL_LISTEN;
+    use std::time::Duration;
 
     const _3_SEC: Duration = Duration::from_secs(3);
 
