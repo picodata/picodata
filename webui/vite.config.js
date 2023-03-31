@@ -10,7 +10,7 @@ const currentDir = "./picodata-ui";
 
 const walkSync = function (dir, filelist = []) {
   const files = fs.readdirSync(dir);
-  const currentFileList = [...filelist];
+  let currentFileList = [...filelist];
   files.forEach((file) => {
     if (fs.statSync(dir + file).isDirectory()) {
       currentFileList = walkSync(dir + file + "/", currentFileList);
@@ -58,8 +58,8 @@ const somePluginFunc = (currentNamespace = "") => {
         lua + " " + pathToPacker + " ./dist/bundle.json ./dist/" + bundleName
       );
       debug("dist " + bundleName);
-      fs.unlinkSync(buildFolder + "/bundle.json");
-      debug("delete bundle.json");
+      // fs.unlinkSync(buildFolder + "/bundle.json");
+      // debug("delete bundle.json");
     },
   };
 };
