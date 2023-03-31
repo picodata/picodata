@@ -1,18 +1,18 @@
 {
-    "printWidth": 120,
-    "singleQuote": true,
-    "importOrder": [
-      "^setupTests",
-      "^(components|pages)\\/(?!.*\\.styles$)(.*)$",
-      "^(shared|provider)\\/(.*)$",
-      "^api\\/(.*)$",
-      "^store\\/(.*)$",
-      "^styles\\/(.*)$",
-      "^\\.\\.\\/",
-      "^\\.(\\/[^/.]+)+$",
-      "\\.(png|jpg|svg)$",
-      "\\.\\/[^/.]+\\.module\\.scss$",
-      "^(.*)\\.styles$"
-    ],
-    "importOrderSeparation": true
-  }
+  "printWidth": 120,
+  "singleQuote": true,
+  "importOrder": [
+    "^setupTests",
+    "^(components|pages)\\/(?!.*\\.styles$)(.*)$",
+    "^(shared|provider)\\/(.*)$",
+    "^api\\/(.*)$",
+    "^store\\/(.*)$",
+    "^styles\\/(.*)$",
+    "^\\.\\.\\/",
+    "^\\.(\\/[^/.]+)+$",
+    "\\.(png|jpg|svg)$",
+    "\\.\\/[^/.]+\\.module\\.scss$",
+    "^(.*)\\.styles$"
+  ],
+  "importOrderSeparation": true
+}
