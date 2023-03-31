@@ -32,7 +32,7 @@ macro_rules! tarantool_main {
          callback_data_type: $cb_data_ty:ty,
          callback_body: $cb_body:expr
     ) => {{
-        let tt_args = $tt_args;
+        let tt_args: Vec<_> = $tt_args;
         // `argv` is a vec of pointers to data owned by `tt_args`, so
         // make sure `tt_args` outlives `argv`, because the compiler is not
         // gonna do that for you
@@ -210,7 +210,7 @@ fn main_tarantool(args: args::Tarantool) -> ! {
     // XXX: `argv` is a vec of pointers to data owned by `tt_args`, so
     // make sure `tt_args` outlives `argv`, because the compiler is not
     // gonna do that for you
-    let tt_args = args.tt_args();
+    let tt_args: Vec<_> = args.tt_args().unwrap();
     let argv = tt_args.iter().map(|a| a.as_ptr()).collect::<Vec<_>>();
 
     let rc = unsafe {
