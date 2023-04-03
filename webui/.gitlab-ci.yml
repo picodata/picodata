@@ -1,0 +1,22 @@
+default:
+  tags:
+    - docker
+  image: node:19.8-alpine
+
+stages:
+  - lint
+  - test
+
+lint:
+  stage: lint
+  before_script:
+    - yarn add eslint
+  script:
+    - yarn lint
+
+.test:
+  stage: test
+  before_script:
+    - yarn add jest
+  script:
+    - yarn test
