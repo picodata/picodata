@@ -17,17 +17,23 @@ Cхема возможных распределенных запросов `SELE
 
 
 ### Примеры запросов
+Ниже показаны некоторые примеры работающих SQL-запросов.
+
+Простой запрос строки из таблицы по известному ID:
+
 ```
 SELECT "identification_number", "product_code" FROM "hash_testing"
         WHERE "identification_number" = 1"
 ```
-
+Запрос с двумя вариантами условий, в каждом из которых используется оператор `AND`:
 ```
 SELECT "identification_number", "product_code"
         FROM "hash_testing"
         WHERE "identification_number" = 1 AND "product_code" = '1'
         OR "identification_number" = 2 AND "product_code" = '2'
 ```
+
+Пример запроса со вложенными подзапросами `SELECT`, объединенными оператором `UNION ALL`:
 
 ```
 SELECT *
@@ -131,13 +137,13 @@ SELECT *
 
 Схема возможных запросов `INSERT` показана ниже.
 
-**insert**
 
 ![Insert](ebnf/insert.svg)
 
 ### Пример запроса
+Для примера вставим строки значений из таблицы `t2`в таблицу `t1` с использоваением подзапроса `SELECT`:
 ```
-INSERT INTO "t" VALUES(1, 2, 3, 4)
+INSERT INTO "t1" FROM (SELECT id, id2 FROM t2)
 ```
 
 Используется в:
@@ -145,11 +151,27 @@ INSERT INTO "t" VALUES(1, 2, 3, 4)
 * query
 
 
+## Использование VALUES
+Команда `VALUES` представляет собой конструктор строки значений для
+использования в запросах `SELECT` и `INSERT`. В некотором смысле,
+передаваемые с `VALUES` значения являются временной таблицей, которая
+существует только в рамках запроса.
+
+Пример использования с `SELECT`:
+```
+SELECT id, id2 FROM hash_testing WHERE (id, id2) in (VALUES (1, 2), (2, 3))
+```
+Здесь в таблицу hash_testing будет вставлены две строки: (1, 2) и (2, 3).
+
+Пример использования со вставкой строки значений в таблицу при помощи команды `INSERT`:
+
+```
+INSERT INTO "t" VALUES(1, 2, 3, 4)
+```
+
 ### **values**
 
 ![Values](ebnf/values.svg)
-
-
 
 Используется в:
 
