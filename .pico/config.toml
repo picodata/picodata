@@ -1,0 +1,56 @@
+# Current picodata HTTP API version.
+apiVersion = "v1"
+# Context to be used if flag --context is not provided.
+current-context = "dev-admin"
+
+# List of settings passed as arguments to a specific command
+[preferences.list]
+format = "json"
+describe = true
+
+[preferences.describe]
+format = "json"
+
+# List of clusters.
+[[cluster]]
+name = "development"
+# Array of addresses (formatted as [host]:[binary_port]).
+# Each element is the peer address of the instance in the cluster
+peer = [ "192.168.0.2:3301", "192.168.0.2:3302", "192.168.0.3:3302" ]
+# HTTP API address of the cluster.
+# At this address, we are accessing the cluster.
+http_entrypoint = "192.168.0.2:8081"
+
+[[cluster]]
+name = "client.company.com"
+peer = [ "192.168.5.2:3301", "192.168.5.2:3302", "192.168.5.3:3302", "192.168.5.2:3303" ]
+entrypoint = "192.168.5.2:8081"
+
+# The context is a combination of cluster to work with and 
+# the user on behalf of which operations would be performed.
+[[contexts]]
+name = "dev-guest"
+
+  [contexts.context]
+  # Cluster name corresponding to one of the clusters in the cluster block.
+  cluster = "development"
+  # The username from which the connection is established.
+  user = "guest"
+
+# In this example, the same cluster has 2 different contexts 
+# with different users. This context will run on behalf of the 
+# user dev-admin.
+[[contexts]]
+name = "dev-admin"
+
+  [contexts.context]
+  cluster = "development"
+  user = "admin"
+
+[[contexts]]
+name = "prod"
+
+  [contexts.context]
+  cluster = "client.company.com"
+  user = "petr.ivanov@picodata.io"
+
