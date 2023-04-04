@@ -1,7 +1,7 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import * as fs from "fs";
-import * as ChildProcess from "child_process";
+// import * as ChildProcess from 'child_process';
 import * as path from "path";
 import mime from "mime-types";
 import debug from "debug";
@@ -33,7 +33,11 @@ const somePluginFunc = (currentNamespace = "") => {
     apply: "build",
     writeBundle(options) {
       const outputPath = options.dir;
-      const { bundleName, entryRegExp, lua } = currentOptions;
+      const {
+        // bundleName,
+        entryRegExp,
+        // lua
+      } = currentOptions;
       const buildFolder = path.relative(process.cwd(), outputPath);
       const namespaceFolder = buildFolder + "/";
       const files = walkSync(namespaceFolder);
@@ -48,15 +52,15 @@ const somePluginFunc = (currentNamespace = "") => {
         };
       }
       debug(path.join(currentDir, "pack-fron.lia"), "test");
-      const pathToPacker = "./pack-front.lua";
+      // const pathToPacker = './pack-front.lua';
       fs.writeFileSync(buildFolder + "/bundle.json", JSON.stringify(filemap), {
         encoding: "utf8",
       });
       debug("compile bundle.json");
-      ChildProcess.execSync(
-        lua + " " + pathToPacker + " ./dist/bundle.json ./dist/" + bundleName
-      );
-      debug("dist " + bundleName);
+      // ChildProcess.execSync(
+      //   lua + " " + pathToPacker + " ./dist/bundle.json ./dist/" + bundleName
+      // );
+      // debug("dist " + bundleName);
       // fs.unlinkSync(buildFolder + "/bundle.json");
       // debug("delete bundle.json");
     },
