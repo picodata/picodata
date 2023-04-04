@@ -39,12 +39,7 @@ const somePluginFunc = (currentNamespace = "") => {
       const files = walkSync(namespaceFolder);
       const filemap = {};
       for (const file of files) {
-        let fileName = file.slice(namespaceFolder.length).split("/");
-        if (fileName.length > 1) {
-          fileName = fileName[fileName.length - 1];
-        } else {
-          fileName = fileName[0];
-        }
+        const fileName = file.slice(namespaceFolder.length);
         const fileBody = fs.readFileSync(file, { encoding: "utf8" });
         filemap[fileName] = {
           is_entry: entryRegExp.test(fileName),
