@@ -70,6 +70,17 @@
 - `tuple::KeyDefItem` in favor of `tuple::KeyDefPart`.
 - `feature = "schema"`. Now the functionality is supported by default
 
+# [0.6.5] Apr 5 2023
+
+### Changed
+- `TarantoolError`'s `Display` implementation will no longer lookup the error
+    code in lua in case it's not found in `TarantoolErrorCode` enum.
+
+### Fixed
+- Link errors when `Display::fmt` is called for `tarantool::error::Error`
+    from rust unit tests
+
+
 # [0.6.4] Dec 15 2022
 
 ### Added

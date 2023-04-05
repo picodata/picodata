@@ -198,18 +198,7 @@ impl Display for TarantoolError {
         if let Some(code) = TarantoolErrorCode::from_u32(self.code) {
             return write!(f, "{:?}: {}", code, self.message);
         }
-        let kind = crate::lua_state().eval_with::<_, String>(
-            "
-                for kind, code in pairs(box.error) do
-                    if code == ... then
-                        return kind
-                    end
-                end
-                ",
-            self.code,
-        );
-        let kind = kind.as_deref().unwrap_or("?");
-        write!(f, "{}: {}", kind, self.message)
+        write!(f, "tarantool error #{}: {}", self.code, self.message)
     }
 }
 
@@ -550,4 +539,14 @@ impl std::fmt::Debug for DebugAsMPValue<'_> {
             Err(_) => write!(f, "{:?}", self.0),
         }
     }
+}
+
+#[test]
+fn tarantool_error_doesnt_depend_on_link_error() {
+    let err = Error::from(rmp_serde::decode::Error::OutOfRange);
+    // This test checks that tarantool::error::Error can be displayed without
+    // the need for linking to tarantool symbols, because `#[test]` tests are
+    // linked into a standalone executable without access to those symbols.
+    assert!(!err.to_string().is_empty());
+    assert!(!format!("{}", err).is_empty());
 }
