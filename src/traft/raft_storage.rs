@@ -13,10 +13,6 @@ use crate::traft::RaftIndex;
 use crate::traft::RaftTerm;
 use crate::util::str_eq;
 
-fn box_err(e: impl std::error::Error + Sync + Send + 'static) -> StorageError {
-    StorageError::Other(Box::new(e))
-}
-
 #[derive(Clone, Debug)]
 pub struct RaftSpaceAccess {
     space_raft_log: Space,
@@ -148,16 +144,16 @@ impl RaftSpaceAccess {
             learners: self.learners()?.unwrap_or_default(),
             voters_outgoing: self.voters_outgoing()?.unwrap_or_default(),
             learners_next: self.learners_next()?.unwrap_or_default(),
-            auto_leave: self.auto_leave()?.unwrap_or_default(),
+            auto_leave: self.auto_leave()?.unwrap_or(false),
             ..Default::default()
         })
     }
 
     pub fn hard_state(&self) -> tarantool::Result<raft::HardState> {
         Ok(raft::HardState {
-            term: self.term()?.unwrap_or_default(),
-            vote: self.vote()?.unwrap_or_default(),
-            commit: self.commit()?.unwrap_or_default(),
+            term: self.term()?.unwrap_or(0),
+            vote: self.vote()?.unwrap_or(0),
+            commit: self.commit()?.unwrap_or(0),
             ..Default::default()
         })
     }
@@ -230,8 +226,8 @@ impl RaftSpaceAccess {
 
 impl raft::Storage for RaftSpaceAccess {
     fn initial_state(&self) -> Result<raft::RaftState, RaftError> {
-        let hs = self.hard_state().map_err(box_err)?;
-        let cs = self.conf_state().map_err(box_err)?;
+        let hs = self.hard_state().cvt_err()?;
+        let cs = self.conf_state().cvt_err()?;
         let ret = raft::RaftState::new(hs, cs);
         Ok(ret)
     }
@@ -243,7 +239,7 @@ impl raft::Storage for RaftSpaceAccess {
         _max_size: impl Into<Option<u64>>,
     ) -> Result<Vec<raft::Entry>, RaftError> {
         // tlog!(Info, "++++++ entries {low} {high}");
-        Ok(self.entries(low, high).map_err(box_err)?)
+        Ok(self.entries(low, high).cvt_err()?)
     }
 
     fn term(&self, idx: RaftIndex) -> Result<RaftTerm, RaftError> {
@@ -252,14 +248,13 @@ impl raft::Storage for RaftSpaceAccess {
         }
         // tlog!(Info, "++++++ term {idx}");
 
-        let tuple = self.space_raft_log.get(&(idx,)).map_err(box_err)?;
+        let tuple = self.space_raft_log.get(&(idx,)).cvt_err()?;
 
         if let Some(tuple) = tuple {
-            // Unwrap is fine here: term isn't nullable.
             Ok(tuple
                 .field(Self::FIELD_ENTRY_TERM)
-                .map_err(box_err)?
-                .unwrap())
+                .cvt_err()?
+                .expect("term is non-nullable"))
         } else {
             Err(RaftError::Store(StorageError::Unavailable))
         }
@@ -271,15 +266,12 @@ impl raft::Storage for RaftSpaceAccess {
     }
 
     fn last_index(&self) -> Result<RaftIndex, RaftError> {
-        let tuple: Option<Tuple> = self
-            .space_raft_log
-            .primary_key()
-            .max(&())
-            .map_err(box_err)?;
+        let tuple: Option<Tuple> = self.space_raft_log.primary_key().max(&()).cvt_err()?;
 
         if let Some(t) = tuple {
-            // Unwrap is fine here: index isn't nullable.
-            Ok(t.field(Self::FIELD_ENTRY_INDEX).map_err(box_err)?.unwrap())
+            Ok(t.field(Self::FIELD_ENTRY_INDEX)
+                .cvt_err()?
+                .expect("index is non-nullabe"))
         } else {
             Ok(0)
         }
@@ -290,6 +282,21 @@ impl raft::Storage for RaftSpaceAccess {
         unimplemented!();
 
         // Ok(Storage::snapshot()?)
+    }
+}
+
+/// Convert errors from tarantool to raft-rs types.
+/// The only purpose of this trait is to reduce boilerplate.
+trait CvtErr {
+    type T;
+    fn cvt_err(self) -> Result<Self::T, StorageError>;
+}
+
+impl<T> CvtErr for Result<T, tarantool::error::Error> {
+    type T = T;
+    #[inline(always)]
+    fn cvt_err(self) -> Result<T, StorageError> {
+        self.map_err(|e| StorageError::Other(Box::new(e)))
     }
 }
 
