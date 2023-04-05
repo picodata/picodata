@@ -19,6 +19,7 @@ pub enum Picodata {
     Tarantool(Tarantool),
     Expel(Expel),
     Test(Test),
+    Connect(Connect),
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -330,6 +331,35 @@ fn try_parse_kv_uppercase(s: &str) -> Result<(Uppercase, Uppercase), String> {
     Ok((key.into(), value.into()))
 }
 
+////////////////////////////////////////////////////////////////////////////////
+// Picodata cli
+////////////////////////////////////////////////////////////////////////////////
+
+#[derive(Debug, Parser)]
+#[clap(about = "Сonnect a Picodata instance and start interactive Lua console")]
+pub struct Connect {
+    #[clap(
+        short = 'u',
+        long = "user",
+        value_name = "user",
+        default_value = "guest",
+        env = "PICODATA_USER"
+    )]
+    /// The username to connect with
+    pub user: String,
+
+    /// Picodata instance address
+    #[clap(parse(try_from_str = try_parse_address),)]
+    pub address: String,
+}
+
+impl Connect {
+    /// Get the arguments that will be passed to `tarantool_main`
+    pub fn tt_args(&self) -> Result<Vec<CString>, String> {
+        Ok(vec![current_exe()?])
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -502,6 +532,19 @@ mod tests {
             std::env::set_var("PICODATA_INIT_REPLICATION_FACTOR", "9");
             let parsed = parse![Run,];
             assert_eq!(parsed.init_replication_factor, 9);
+        }
+
+        {
+            let parsed = parse![Connect, "somewhere:3301"];
+            assert_eq!(parsed.address, "somewhere:3301");
+            assert_eq!(parsed.user, "guest");
+
+            let parsed = parse![Connect, "somewhere:3301", "--user", "superman"];
+            assert_eq!(parsed.user, "superman");
+
+            std::env::set_var("PICODATA_USER", "batman");
+            let parsed = parse!(Connect, "somewhere:3301");
+            assert_eq!(parsed.user, "batman");
         }
     }
 }

@@ -1,3 +1,8 @@
+use nix::sys::termios::{tcgetattr, tcsetattr, LocalFlags, SetArg::TCSADRAIN};
+use std::io::BufRead as _;
+use std::io::BufReader;
+use std::io::Write as _;
+use std::os::unix::io::AsRawFd as _;
 pub use Either::{Left, Right};
 
 use crate::traft::error::Error;
@@ -436,6 +441,59 @@ where
             write!(f, "{} -> {}", self.from, self.to)
         }
     }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// Prompts a password from a terminal.
+///
+/// This function bypasses stdin redirection (like `cat script.lua |
+/// picodata connect`) and always prompts a password from a TTY.
+///
+/// If this function returns `Ok(None)`, the input was interrupted by a
+/// user.
+pub fn prompt_password(prompt: &str) -> Result<Option<String>, std::io::Error> {
+    // See also: https://man7.org/linux/man-pages/man3/termios.3.html
+    let mut tty = std::fs::File::options()
+        .read(true)
+        .write(true)
+        .open("/dev/tty")?;
+    let tty_fd = tty.as_raw_fd();
+    let tcattr_old = tcgetattr(tty_fd)?;
+
+    // Restore old terminal settings when `_d` is dropped
+    let _d = Defer(Some(|| {
+        tcsetattr(tty_fd, TCSADRAIN, &tcattr_old).unwrap_or(())
+    }));
+    struct Defer<F: FnOnce()>(Option<F>);
+    impl<F: FnOnce()> Drop for Defer<F> {
+        fn drop(&mut self) {
+            if let Some(f) = self.0.take() {
+                f()
+            }
+        }
+    }
+
+    // Disable echo while prompting a password
+    let mut tcattr_new = tcattr_old.clone();
+    tcattr_new.local_flags.set(LocalFlags::ECHO, false);
+    tcattr_new.local_flags.set(LocalFlags::ECHONL, true);
+    tcsetattr(tty_fd, TCSADRAIN, &tcattr_new)?;
+
+    // Print the prompt
+    tty.write_all(prompt.as_bytes())?;
+    tty.flush()?;
+
+    // Read the password
+    let mut password = String::new();
+    BufReader::new(&tty).read_line(&mut password)?;
+
+    if !password.ends_with('\n') {
+        // Preliminary EOF, a user didn't hit enter
+        return Ok(None);
+    }
+
+    let crlf = |c| matches!(c, '\r' | '\n');
+    Ok(Some(password.trim_end_matches(crlf).to_owned()))
 }
 
 ////////////////////////////////////////////////////////////////////////////////

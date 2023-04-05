@@ -21,6 +21,7 @@ fn main() -> ! {
         args::Picodata::Test(args) => test::main_test(args),
         args::Picodata::Tarantool(args) => main_tarantool(args),
         args::Picodata::Expel(args) => main_expel(args),
+        args::Picodata::Connect(args) => main_connect(args),
     }
 }
 
@@ -234,5 +235,41 @@ fn main_expel(args: args::Expel) -> ! {
             ::tarantool::fiber::block_on(picodata::tt_expel(args))
         }
     );
+    std::process::exit(rc);
+}
+
+fn main_connect(args: args::Connect) -> ! {
+    let prompt = format!("Enter password for {}: ", args.user);
+    let password = match picodata::util::prompt_password(&prompt) {
+        Ok(Some(password)) => password,
+        Ok(None) => {
+            eprintln!("\nNo password provided");
+            std::process::exit(1);
+        }
+        Err(e) => {
+            eprintln!("Failed to prompt for a password: {e}");
+            std::process::exit(2);
+        }
+    };
+
+    let address = format!("{}:{}@{}", args.user, password, &args.address);
+
+    let rc = tarantool_main!(
+        args.tt_args().unwrap(),
+        callback_data: address,
+        callback_data_type: String,
+        callback_body: {
+            let lua = ::tarantool::lua_state();
+            if let Err(e) = lua.exec_with(
+                r#"local code, arg = ...
+                return load(code, '@src/connect.lua')(arg)"#,
+                (include_str!("connect.lua"), address)
+            ) {
+                eprintln!("{e}");
+                std::process::exit(3);
+            }
+        }
+    );
+
     std::process::exit(rc);
 }
