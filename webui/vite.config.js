@@ -70,7 +70,4 @@ const somePluginFunc = (currentNamespace = "") => {
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react(), somePluginFunc()],
-  build: {
-    outDir: import.meta.env?.BUILD_DIR ?? "./dist",
-  },
 });
