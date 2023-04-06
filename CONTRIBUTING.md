@@ -7,6 +7,7 @@ This document describes contributing to Picodata, primarily the ways you can bui
 - Cmake 3.16 or newer
 - gcc, g++
 - libstc++-static
+- (*optional* to build with Web UI) node v15+, yarn
 
 ### Prerequisites for CentOS 8
 Use the following commands to install the required build prerequisites. Note that you'll need recent Rust and Cargo versions installed using the recommended way from [rustup.rs](rustup.rs):
@@ -15,11 +16,19 @@ sudo dnf config-manager --set-enabled powertools
 sudo dnf in -y gcc gcc-c++ make cmake git patch libstdc++-static
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 source "$HOME/.cargo/env"
+
+# Optional - to build with Web UI
+sudo dnf module install nodejs:19
+sudo corepack enable
 ```
 ### Prerequisites for Ubuntu 22.04
 Use the following command to install the required build prerequisites. Note that Ubuntu 22.04 provides recent Rust and Cargo versions, so it's preferable to install it via `apt-get`:
 ```bash
 sudo apt-get install build-essential cargo git cmake -y
+
+# Optional - to build with Web UI
+curl -fsSL https://deb.nodesource.com/setup_19.x | sudo -E bash - &&\
+sudo apt-get install -y nodejs
 ```
 
 ### Prerequisites for Alt Workstation p10
@@ -47,6 +56,14 @@ This will build the debug version. If you want the release version, try this ins
 ```bash
 cargo build --release
 ```
+
+If you want to enable Web UI for administration, build with these flags:
+
+```bash
+cargo build --features webui
+```
+When running `picodata` `-http-listen` should be supplied to serve Web UI.
+
 The resulting binaries should appear under the  `target` subdirectory.
 
 ## Integration testing with pytest

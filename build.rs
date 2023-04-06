@@ -43,9 +43,13 @@ fn main() {
     generate_export_stubs(&out_dir);
     build_tarantool(build_root);
     build_http(build_root);
+    #[cfg(feature = "webui")]
+    build_webui(build_root);
 
     println!("cargo:rerun-if-changed=tarantool-sys");
     println!("cargo:rerun-if-changed=http/http");
+    #[cfg(feature = "webui")]
+    rerun_if_webui_changed();
 }
 
 fn generate_export_stubs(out_dir: &str) {
@@ -86,6 +90,49 @@ fn generate_export_stubs(out_dir: &str) {
             symbols.insert(line);
         }
     }
+}
+
+#[cfg(feature = "webui")]
+fn rerun_if_webui_changed() {
+    use std::fs;
+
+    let source_dir = std::env::current_dir().unwrap().join("picodata-webui");
+    // Do not rerun for generated files changes
+    let ignored_files = ["node_modules", ".husky"];
+    for entry in fs::read_dir(&source_dir)
+        .expect("failed to scan picodata-webui dir")
+        .flatten()
+    {
+        if !ignored_files.contains(&entry.file_name().to_str().unwrap()) {
+            println!(
+                "cargo:rerun-if-changed=picodata-webui/{}",
+                entry.file_name().to_string_lossy()
+            );
+        }
+    }
+}
+
+#[cfg(feature = "webui")]
+fn build_webui(build_root: &Path) {
+    let source_dir = std::env::current_dir().unwrap().join("picodata-webui");
+    let build_dir = build_root.join("picodata-webui");
+    let build_dir_str = build_dir.display().to_string();
+
+    Command::new("yarn")
+        .arg("install")
+        .arg("--prefer-offline")
+        .arg("--frozen-lockfile")
+        .arg("--no-progress")
+        .arg("--non-interactive")
+        .current_dir(&source_dir)
+        .run();
+    Command::new("yarn")
+        .arg("vite")
+        .arg("build")
+        .args(["--outDir", &build_dir_str])
+        .arg("--emptyOutDir")
+        .current_dir(&source_dir)
+        .run();
 }
 
 fn build_http(build_root: &Path) {

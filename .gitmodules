@@ -11,3 +11,6 @@
 [submodule "http"]
 	path = http
 	url = https://github.com/tarantool/http
+[submodule "picodata-webui"]
+	path = picodata-webui
+	url = ../picodata-webui.git

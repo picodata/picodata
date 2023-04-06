@@ -14,6 +14,7 @@ with the `YY.0M.MICRO` scheme.
 - `--script` cli argument to set a path to a lua script executed at startup
 - `--http-listen` cli argument to set [http server](https://github.com/tarantool/http) host and port.
   If specified the server will be brought up on startup with these params.
+- `webui` cargo feature to build picodata with Web UI for administration.
 
 ## [22.11.0] - 2022-11-22
 

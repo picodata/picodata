@@ -23,3 +23,8 @@ COPY ci-log-section /usr/bin/ci-log-section
 COPY requirements-pipenv.txt /tmp/requirements-pipenv.txt
 RUN PIP_NO_CACHE_DIR=true python3.10 -m pip install -q --require-hashes -r /tmp/requirements-pipenv.txt \
     && rm /tmp/requirements-pipenv.txt
+
+# install nodejs
+RUN curl -fsSL https://deb.nodesource.com/setup_19.x | bash - &&\
+    apt install -y nodejs &&\
+    corepack enable

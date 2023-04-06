@@ -516,6 +516,49 @@ fn start_http_server(address: &str) {
     .expect("failed to start http server")
 }
 
+#[cfg(feature = "webui")]
+fn start_webui() {
+    use ::tarantool::tlua::PushInto;
+    use std::collections::HashMap;
+
+    /// This structure is used to check that `json` contains valid data
+    /// at deserialization.
+    #[derive(Deserialize, Debug, PushInto)]
+    struct File {
+        body: String,
+        mime: String,
+    }
+
+    let lua = ::tarantool::lua_state();
+    let bundle = include_str!(concat!(
+        concat!(env!("OUT_DIR"), "/../../"), // build root
+        "picodata-webui/bundle.json"
+    ));
+    let bundle: HashMap<String, File> =
+        serde_json::from_str(bundle).expect("failed to parse Web UI bundle");
+    if !bundle.contains_key("index.html") {
+        panic!("'index.html' not present in Web UI bundle")
+    }
+    lua.exec_with(
+        "local bundle = ...;
+        for filename, file in pairs(bundle) do
+            local handler = function ()
+                return {
+                    status = 200,
+                    headers = { ['content-type'] = file['mime'] },
+                    body = file['body'],
+                }
+            end
+            if filename == 'index.html' then
+                pico.httpd:route({path = '/', method = 'GET'}, handler);
+            end
+            pico.httpd:route({path = '/' .. filename, method = 'GET'}, handler);
+        end",
+        bundle,
+    )
+    .expect("failed to add Web UI routes")
+}
+
 fn init_handlers() -> traft::Result<()> {
     tarantool::exec(
         r#"
@@ -851,6 +894,13 @@ fn postjoin(args: &args::Run, storage: Clusterwide, raft_storage: RaftSpaceAcces
 
     if let Some(ref address) = args.http_listen {
         start_http_server(address);
+        if cfg!(feature = "webui") {
+            tlog!(Info, "Web UI is enabled");
+        } else {
+            tlog!(Info, "Web UI is disabled");
+        }
+        #[cfg(feature = "webui")]
+        start_webui();
     }
     // Execute postjoin script if present
     if let Some(ref script) = args.script {

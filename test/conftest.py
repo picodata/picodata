@@ -660,7 +660,9 @@ class Cluster:
 def compile() -> None:
     """Run `cargo build` before tests."""
 
-    assert subprocess.call(["cargo", "build"]) == 0, "cargo build failed"
+    assert (
+        subprocess.call(["cargo", "build", "--features", "webui"]) == 0
+    ), "cargo build failed"
 
 
 @pytest.fixture(scope="session")
