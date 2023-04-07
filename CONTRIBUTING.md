@@ -29,6 +29,7 @@ sudo apt-get install build-essential cargo git cmake -y
 # Optional - to build with Web UI
 curl -fsSL https://deb.nodesource.com/setup_19.x | sudo -E bash - &&\
 sudo apt-get install -y nodejs
+sudo corepack enable
 ```
 
 ### Prerequisites for Alt Workstation p10
