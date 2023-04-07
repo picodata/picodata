@@ -162,11 +162,13 @@ impl RaftSpaceAccess {
     }
 
     /// Returns a slice of log entries in the range `[low, high)`.
+    ///
     /// It also can be thought of as `[first_index, last_index+1)`.
     ///
-    /// As distinct from [`raft::Storage::entries`], this function
-    /// doesn't perform bound checks. In case some entries are missing,
-    /// the returned vec would be shorter than expected.
+    /// This function doesn't perform bound checks. In case some entries
+    /// are missing, the returned `Vec` would be shorter than expected.
+    /// This behavior differs from the similar function from
+    /// [`raft::Storage`] trait.
     ///
     /// # Panics
     ///
@@ -309,16 +311,22 @@ impl raft::Storage for RaftSpaceAccess {
     /// Returns a slice of log entries in the range `[low, high)`.
     ///
     /// As distinct from [`RaftSpaceAccess::entries`] this function
-    /// returns either all entries or an error.
+    /// returns either _all_ entries or an error:
     ///
-    /// Returns `Err(Compacted)` if `low <= compacted_index`. Notice
-    /// that an entry for `compacted_index` doesn't exist.
+    /// - `Err(Compacted)` if `low <= compacted_index`. Notice that an
+    /// entry for `compacted_index` doesn't exist, despite its term is
+    /// known.
     ///
-    /// Returns `Err(Unavailable)` in case at least one entry in the
-    /// range is missing (either `high > last_index` or it's really
-    /// missing). Raft-rs will panic in this case, but it's fair.
+    /// - `Err(Unavailable)` in case at least one entry in the range is
+    /// missing (either `high > last_index` or it's really missing).
+    /// Raft-rs will panic in this case, but it's fair.
     ///
-    /// The result is handled in raft_log.rs:583 (`RaftLog::slice`).
+    /// # See also
+    ///
+    /// Result handling [@github].
+    ///
+    /// [@github]:
+    ///     https://github.com/tikv/raft-rs/blob/v0.6.0/src/raft_log.rs#L583
     ///
     /// # Panics
     ///
@@ -344,10 +352,18 @@ impl raft::Storage for RaftSpaceAccess {
     /// Returns the term of entry `idx`.
     ///
     /// The valid range is `[compacted_index, last_index()]`, that's why
-    /// we also persist `compacted_term`.
+    /// we also persist `compacted_term`. Besides the range returns an
+    /// error:
     ///
-    /// For `idx < compacted_index` the functon returns `Err(Compacted)`.
-    /// For `idx > last_index()` the functon returns `Err(Unavailable)`.
+    /// - `Err(Compacted)` if `idx < compacted_index`.
+    /// - `Err(Unavailable)` if `idx > last_index()`.
+    ///
+    /// # See also
+    ///
+    /// Result handling [@github].
+    ///
+    /// [@github]:
+    ///     https://github.com/tikv/raft-rs/blob/v0.6.0/src/raft_log.rs#L134
     ///
     fn term(&self, idx: RaftIndex) -> Result<RaftTerm, RaftError> {
         let compacted_index = self.compacted_index().cvt_err()?.unwrap_or(0);
@@ -356,8 +372,6 @@ impl raft::Storage for RaftSpaceAccess {
         if idx == compacted_index {
             return Ok(compacted_term);
         } else if idx < compacted_index {
-            // Returning `Err(Compacted)` is safe. It's handled in
-            // raft_log.rs:134 (`RaftLog::term`)
             return Err(RaftError::Store(StorageError::Compacted));
         }
 
@@ -369,15 +383,13 @@ impl raft::Storage for RaftSpaceAccess {
                 .expect("term is non-nullable"));
         }
 
-        // Returning `Err(Unavailable)` is safe. It's handled in
-        // raft_log.rs:134 (`RaftLog::term`)
         Err(RaftError::Store(StorageError::Unavailable))
     }
 
     /// Returns `compacted_index` plus 1.
     ///
     /// The naming is actually misleading, as returned index might not
-    /// exist. And that means `last_index < first_index` and indicates
+    /// exist. In that case `last_index < first_index` and it indicates
     /// that the log was compacted. Raft-rs treats it the same way.
     ///
     /// Empty log is considered compacted at index 0 with term 0.
@@ -516,8 +528,10 @@ mod tests {
             "log unavailable"
         );
 
-        // This is what raft-rs literally does, see raft_log.rs:388
-        // (`RaftLog::entries`)
+        // `first, last + 1` is what raft-rs literally does, see [@github].
+        //
+        // [@github]: https://github.com/tikv/raft-rs/blob/v0.6.0/src/raft_log.rs#L388
+        //
         assert_eq!(
             S::entries(&storage, first, last + 1, u64::MAX),
             Ok(test_entries.clone())
