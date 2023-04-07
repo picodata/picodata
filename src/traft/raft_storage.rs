@@ -4,6 +4,7 @@ use ::raft::StorageError;
 use ::tarantool::index::IteratorType;
 use ::tarantool::space::Space;
 use ::tarantool::tuple::Tuple;
+use std::cmp::Ordering;
 use std::convert::TryFrom as _;
 
 use crate::tlog;
@@ -291,7 +292,7 @@ impl RaftSpaceAccess {
             let index = tuple
                 .field::<RaftIndex>(Self::FIELD_ENTRY_INDEX)?
                 .expect("index is non-nullable");
-            if let Some(_) = self.space_raft_log.delete(&(index,))? {
+            if self.space_raft_log.delete(&(index,))?.is_some() {
                 n_deleted += 1;
             }
         }
@@ -369,10 +370,10 @@ impl raft::Storage for RaftSpaceAccess {
         let compacted_index = self.compacted_index().cvt_err()?.unwrap_or(0);
         let compacted_term = self.compacted_term().cvt_err()?.unwrap_or(0);
 
-        if idx == compacted_index {
-            return Ok(compacted_term);
-        } else if idx < compacted_index {
-            return Err(RaftError::Store(StorageError::Compacted));
+        match idx.cmp(&compacted_index) {
+            Ordering::Less => return Err(RaftError::Store(StorageError::Compacted)),
+            Ordering::Equal => return Ok(compacted_term),
+            Ordering::Greater => {} // go on
         }
 
         let tuple = self.space_raft_log.get(&(idx,)).cvt_err()?;
@@ -534,7 +535,7 @@ mod tests {
         //
         assert_eq!(
             S::entries(&storage, first, last + 1, u64::MAX),
-            Ok(test_entries.clone())
+            Ok(test_entries)
         );
     }
 
@@ -603,7 +604,7 @@ mod tests {
 
         let (first, last) = (1, 10);
         for i in first..=last {
-            storage.persist_entries(&vec![dummy_entry(i, i)]).unwrap();
+            storage.persist_entries(&[dummy_entry(i, i)]).unwrap();
         }
         let entries = |lo, hi| S::entries(&storage, lo, hi, u64::MAX);
         let compact_log = |up_to| start_transaction(|| storage.compact_log(up_to));
