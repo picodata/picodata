@@ -429,18 +429,13 @@ fn picolib_setup(args: &args::Run) {
         ),
     );
 
-    luamod.set("compact_raft_log", {
-        #[derive(tlua::PushInto)]
-        struct Output {
-            n_deleted: u64,
-        }
-        tlua::Function::new(|last_index_to_delete: u64| -> traft::Result<Output> {
-            let node = node::global()?;
-            let n_deleted = start_transaction(|| -> ::tarantool::Result<_> {
-                let n_deleted = node.raft_storage.compact_log(last_index_to_delete)?;
-                Ok(n_deleted)
-            })?;
-            Ok(Output { n_deleted })
+    // Trims raft log up to the given index (excluding the index
+    // itself). Returns the number of entries deleted.
+    luamod.set("raft_compact_log", {
+        tlua::Function::new(|up_to: u64| -> traft::Result<u64> {
+            let raft_storage = &node::global()?.raft_storage;
+            let ret = start_transaction(|| raft_storage.compact_log(up_to));
+            Ok(ret?)
         })
     });
 }
