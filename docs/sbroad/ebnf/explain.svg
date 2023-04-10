@@ -1,0 +1,150 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   width="169"
+   height="81"
+   version="1.1"
+   id="svg28"
+   sodipodi:docname="explain.svg"
+   inkscape:version="1.2.2 (b0a8486541, 2022-12-01)"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <sodipodi:namedview
+     id="namedview30"
+     pagecolor="#ffffff"
+     bordercolor="#666666"
+     borderopacity="1.0"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     showgrid="false"
+     inkscape:zoom="7.6745562"
+     inkscape:cx="84.5"
+     inkscape:cy="40.523516"
+     inkscape:window-width="1920"
+     inkscape:window-height="1011"
+     inkscape:window-x="0"
+     inkscape:window-y="32"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="svg28" />
+  <defs
+     id="defs4">
+    <style
+       type="text/css"
+       id="style2">
+    @namespace &quot;http://www.w3.org/2000/svg&quot;;
+    .line                 {fill: none; stroke: #320000; stroke-width: 1;}
+    .bold-line            {stroke: #FFE0E0; shape-rendering: crispEdges; stroke-width: 2;}
+    .thin-line            {stroke: #1F0000; shape-rendering: crispEdges}
+    .filled               {fill: #320000; stroke: none;}
+    text.terminal         {font-family: HelveticaNeueCyr, Sans-serif;
+                            font-size: 14px;
+                            fill: #FFE0E0;
+                            font-weight: bold;
+                          }
+    text.nonterminal      {font-family: HelveticaNeueCyr, Sans-serif;
+                            font-size: 14px;
+                            fill: #FFE0E0;
+                            font-weight: normal;
+                          }
+    text.regexp           {font-family: HelveticaNeueCyr, Sans-serif;
+                            font-size: 14px;
+                            fill: #1F0000;
+                            font-weight: normal;
+                          }
+    rect, circle, polygon {fill: #320000; stroke: #320000;}
+    rect.terminal         {fill: #FF0000; stroke: #320000; stroke-width: 1;}
+    rect.nonterminal      {fill: #FF3F3F; stroke: #320000; stroke-width: 1;}
+    rect.text             {fill: none; stroke: none;}
+    polygon.regexp        {fill: #FF5E5E; stroke: #320000; stroke-width: 1;}
+  </style>
+  </defs>
+  <path
+     id="polygon6"
+     style="fill:#320000;stroke:#320000"
+     d="M 9,17 1,13 v 8 z" />
+  <path
+     id="polygon8"
+     style="fill:#320000;stroke:#320000"
+     d="M 17,17 9,13 v 8 z" />
+  <path
+     id="rect10"
+     style="fill:#320000;stroke:#320000"
+     d="m 61,3 h 50 c 5.54,0 10,4.46 10,10 v 12 c 0,5.54 -4.46,10 -10,10 H 61 C 55.46,35 51,30.54 51,25 V 13 C 51,7.46 55.46,3 61,3 Z" />
+  <path
+     id="rect12"
+     class="terminal"
+     style="fill:#ff0000;stroke:#320000"
+     d="m 59,1 h 50 c 5.54,0 10,4.46 10,10 v 12 c 0,5.54 -4.46,10 -10,10 H 59 C 53.46,33 49,28.54 49,23 V 11 C 49,5.46 53.46,1 59,1 Z" />
+  <g
+     aria-label="SELECT"
+     id="text14"
+     class="terminal"
+     style="font-weight:bold;font-size:14px;font-family:HelveticaNeueCyr, Sans-serif;fill:#ffe0e0">
+    <path
+       d="m 67.344,14 h -2.072 q -0.126,-1.484 -1.89,-1.484 -0.756,0 -1.19,0.308 -0.42,0.294 -0.42,0.826 0,0.182 0.056,0.322 0.056,0.14 0.21,0.266 0.154,0.112 0.308,0.196 0.154,0.07 0.448,0.168 0.308,0.084 0.546,0.154 0.252,0.07 0.7,0.182 0.448,0.112 0.784,0.21 1.47,0.42 2.184,1.05 0.728,0.63 0.728,1.806 0,0.854 -0.35,1.498 -0.35,0.63 -0.952,1.008 -0.588,0.364 -1.302,0.532 -0.7,0.182 -1.498,0.182 -2.03,0 -3.178,-0.924 -1.134,-0.938 -1.148,-2.632 h 2.17 q 0.056,1.876 2.254,1.876 0.854,0 1.344,-0.35 0.504,-0.364 0.504,-0.98 0,-0.518 -0.462,-0.756 Q 64.67,17.22 63.214,16.8 62.976,16.744 62.85,16.702 q -0.504,-0.14 -0.7,-0.196 -0.196,-0.07 -0.63,-0.224 -0.42,-0.154 -0.616,-0.28 -0.196,-0.126 -0.49,-0.35 -0.28,-0.224 -0.406,-0.462 -0.126,-0.252 -0.238,-0.602 -0.098,-0.364 -0.098,-0.784 0,-1.358 1.05,-2.17 1.05,-0.812 2.786,-0.812 1.68,0 2.744,0.798 1.064,0.784 1.092,2.38 z"
+       id="path276" />
+    <path
+       d="m 76.528002,11.032 v 1.792 h -5.306 v 2.17 h 4.872 v 1.722 h -4.872 v 2.45 h 5.404 V 21 h -7.574 v -9.968 z"
+       id="path278" />
+    <path
+       d="M 85.180012,19.124 V 21 h -7.056 v -9.968 h 2.184 v 8.092 z"
+       id="path280" />
+    <path
+       d="m 93.902018,11.032 v 1.792 h -5.306 v 2.17 h 4.872 v 1.722 h -4.872 v 2.45 h 5.404 V 21 h -7.574 v -9.968 z"
+       id="path282" />
+    <path
+       d="m 104.40203,17.15 q -0.168,1.876 -1.316,2.982 -1.148,1.106 -3.150002,1.106 -2.17,0 -3.5,-1.428 -1.316,-1.442 -1.316,-3.808 0,-2.24 1.33,-3.724 1.344,-1.484 3.570002,-1.484 1.778,0 2.982,1.008 1.204,1.008 1.33,2.562 h -2.142 q -0.168,-0.826 -0.756,-1.274 -0.574,-0.462 -1.456002,-0.462 -0.91,0 -1.54,0.518 -0.616,0.504 -0.868,1.246 -0.252,0.742 -0.252,1.624 0,1.54 0.714,2.464 0.714,0.91 1.918,0.91 2.002002,0 2.282002,-2.24 z"
+       id="path284" />
+    <path
+       d="m 113.27802,11.032 v 1.862 h -2.996 V 21 h -2.198 v -8.106 h -2.996 v -1.862 z"
+       id="path286" />
+  </g>
+  <path
+     id="rect16"
+     style="fill:#320000;stroke:#320000"
+     d="m 61,47 h 50 c 5.54,0 10,4.46 10,10 v 12 c 0,5.54 -4.46,10 -10,10 H 61 C 55.46,79 51,74.54 51,69 V 57 c 0,-5.54 4.46,-10 10,-10 z" />
+  <path
+     id="rect18"
+     class="terminal"
+     style="fill:#ff0000;stroke:#320000"
+     d="m 59,45 h 50 c 5.54,0 10,4.46 10,10 v 12 c 0,5.54 -4.46,10 -10,10 H 59 C 53.46,77 49,72.54 49,67 V 55 c 0,-5.54 4.46,-10 10,-10 z" />
+  <g
+     aria-label="INSERT"
+     id="text20"
+     class="terminal"
+     style="font-weight:bold;font-size:14px;font-family:HelveticaNeueCyr, Sans-serif;fill:#ffe0e0">
+    <path
+       d="M 62.164,55.032 V 65 h -2.198 v -9.968 z"
+       id="path261" />
+    <path
+       d="m 64.096001,65 v -9.968 h 2.226 l 4.102,6.678 v -6.678 h 2.1 V 65 h -2.184 l -4.13,-6.692 V 65 Z"
+       id="path263" />
+    <path
+       d="m 81.84799,58 h -2.072 q -0.126,-1.484 -1.89,-1.484 -0.756,0 -1.19,0.308 -0.42,0.294 -0.42,0.826 0,0.182 0.056,0.322 0.056,0.14 0.21,0.266 0.154,0.112 0.308,0.196 0.154,0.07 0.448,0.168 0.308,0.084 0.546,0.154 0.252,0.07 0.7,0.182 0.448,0.112 0.784,0.21 1.47,0.42 2.184,1.05 0.728,0.63 0.728,1.806 0,0.854 -0.35,1.498 -0.35,0.63 -0.952,1.008 -0.588,0.364 -1.302,0.532 -0.7,0.182 -1.498,0.182 -2.03,0 -3.178,-0.924 -1.134,-0.938 -1.148,-2.632 h 2.17 q 0.056,1.876 2.254,1.876 0.854,0 1.344,-0.35 0.504,-0.364 0.504,-0.98 0,-0.518 -0.462,-0.756 -0.448,-0.238 -1.904,-0.658 -0.238,-0.056 -0.364,-0.098 -0.504,-0.14 -0.7,-0.196 -0.196,-0.07 -0.63,-0.224 -0.42,-0.154 -0.616,-0.28 -0.196,-0.126 -0.49,-0.35 -0.28,-0.224 -0.406,-0.462 -0.126,-0.252 -0.238,-0.602 -0.098,-0.364 -0.098,-0.784 0,-1.358 1.05,-2.17 1.05,-0.812 2.786,-0.812 1.68,0 2.744,0.798 1.064,0.784 1.092,2.38 z"
+       id="path265" />
+    <path
+       d="m 91.031993,55.032 v 1.792 h -5.306 v 2.17 h 4.872 v 1.722 h -4.872 v 2.45 h 5.404 V 65 h -7.574 v -9.968 z"
+       id="path267" />
+    <path
+       d="m 92.712003,55.032 h 4.956 q 1.484,0 2.421997,0.7 0.938,0.7 0.938,2.128 0,0.868 -0.42,1.526 -0.42,0.644 -1.161997,0.924 1.287997,0.266 1.469997,2.324 0,0.07 0.028,0.434 0.028,0.364 0.056,0.588 0.028,0.21 0.07,0.518 0.042,0.308 0.126,0.518 0.084,0.21 0.196,0.308 h -2.267997 q -0.112,-0.224 -0.168,-0.56 -0.056,-0.35 -0.098,-0.882 -0.042,-0.546 -0.042,-0.602 -0.112,-1.05 -0.532,-1.456 -0.406,-0.406 -1.456,-0.406 h -1.946 V 65 h -2.17 z m 2.17,1.722 v 2.758 h 2.072 q 0.91,0 1.414,-0.28 0.518,-0.294 0.518,-1.134 0,-0.784 -0.504,-1.064 -0.49,-0.28 -1.33,-0.28 z"
+       id="path269" />
+    <path
+       d="m 109.89001,55.032 v 1.862 h -2.996 V 65 h -2.198 v -8.106 h -2.996 v -1.862 z"
+       id="path271" />
+  </g>
+  <path
+     class="line"
+     d="m17 17 h2 m20 0 h10 m70 0 h10 m-110 0 h20 m90 0 h20 m-130 0 q10 0 10 10 m110 0 q0 -10 10 -10 m-120 10 v24 m110 0 v-24 m-110 24 q0 10 10 10 m90 0 q10 0 10 -10 m-100 10 h10 m70 0 h10 m23 -44 h-3"
+     id="path22" />
+  <path
+     id="polygon24"
+     style="fill:#320000;stroke:#320000"
+     d="m 159,17 8,-4 v 8 z" />
+  <path
+     id="polygon26"
+     style="fill:#320000;stroke:#320000"
+     d="m 159,17 -8,-4 v 8 z" />
+</svg>
