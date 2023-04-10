@@ -10,9 +10,14 @@ pub fn csw() -> i32 {
     if unsafe { !FUNCTION_DEFINED } {
         #[rustfmt::skip]
         lua.exec(r#"
+            local fiber = require('fiber')
             function fiber_csw()
-                local fiber = require('fiber')
-                return fiber.info()[fiber.id()].csw
+                local fiber_self = fiber.self()
+                if fiber_self.csw ~= nil then
+                    return fiber_self:csw()
+                else
+                    return fiber.info({bt = false})[fiber.id()].csw
+                end
             end
         "#).unwrap();
         unsafe {
@@ -64,4 +69,32 @@ pub enum YieldResult<T> {
     DidntYield(T),
     /// The function did yield.
     Yielded(T),
+}
+
+#[cfg(feature = "internal_test")]
+mod tests {
+    use super::YieldResult;
+    use crate::fiber;
+    use std::time::Duration;
+
+    #[crate::test(tarantool = "crate")]
+    fn check_yield() {
+        assert_eq!(
+            super::check_yield(|| ()), //
+            YieldResult::DidntYield(())
+        );
+        assert_eq!(
+            super::check_yield(|| fiber::sleep(Duration::ZERO)),
+            YieldResult::Yielded(())
+        );
+    }
+
+    #[crate::test(tarantool = "crate")]
+    fn performance() {
+        let now = std::time::Instant::now();
+        let _ = super::csw();
+        let elapsed = now.elapsed();
+        print!("{elapsed:?} ");
+        assert!(elapsed < Duration::from_millis(1));
+    }
 }

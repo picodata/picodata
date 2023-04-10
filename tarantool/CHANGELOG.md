@@ -65,6 +65,10 @@
 - All functions which take `t: &T` where `T: ToTupleBuffer`, now allow `T` to be
    unsized (`?Sized`), e.g. `tuple::RawBytes`
 
+### Fixed
+- Performance issue with `fiber::csw()` and `fiber::check_yield()`
+  that caused tests failure.
+
 ### Removed
 - `r#async::timeout::Expired` in favor of `r#async::timeout::Error`
 - `tuple::KeyDefItem` in favor of `tuple::KeyDefPart`.
