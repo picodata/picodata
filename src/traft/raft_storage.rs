@@ -259,11 +259,14 @@ impl RaftSpaceAccess {
     /// Trims raft log up to the given index (excluding the index
     /// itself).
     ///
+    /// Returns the new `first_index` after log compaction. It may
+    /// differ from the requested one if the corresponding entry doesn't
+    /// exist (either `up_to > last_index+1` or `up_to < first_index`).
+    /// Yet both cases are valid.
+    ///
     /// It also updates the `compacted_index` & `compacted_term`
     /// raft-state values, so it **should be invoked within a
     /// transaction**.
-    ///
-    /// Returns the number of entries deleted.
     ///
     /// # Panics
     ///
@@ -274,30 +277,29 @@ impl RaftSpaceAccess {
         // IteratorType::LT means tuples are returned in descending order
         let mut iter = self.space_raft_log.select(IteratorType::LT, &(up_to,))?;
 
-        let Some(tuple) = iter.next() else { return Ok(0) };
+        let Some(tuple) = iter.next() else {
+            let compacted_index = self.compacted_index()?.unwrap_or(0);
+            return Ok(1 + compacted_index);
+        };
 
-        let index = tuple
+        let compacted_index = tuple
             .field::<RaftIndex>(Self::FIELD_ENTRY_INDEX)?
             .expect("index is non-nullable");
-        let term = tuple
+        let compacted_term = tuple
             .field::<RaftTerm>(Self::FIELD_ENTRY_TERM)?
             .expect("term is non-nullable");
-        self.persist_compacted_index(index)?;
-        self.persist_compacted_term(term)?;
-
-        self.space_raft_log.delete(&(index,))?;
-        let mut n_deleted = 1;
+        self.space_raft_log.delete(&(compacted_index,))?;
+        self.persist_compacted_index(compacted_index)?;
+        self.persist_compacted_term(compacted_term)?;
 
         for tuple in iter {
             let index = tuple
                 .field::<RaftIndex>(Self::FIELD_ENTRY_INDEX)?
                 .expect("index is non-nullable");
-            if self.space_raft_log.delete(&(index,))?.is_some() {
-                n_deleted += 1;
-            }
+            self.space_raft_log.delete(&(index,))?;
         }
 
-        Ok(n_deleted)
+        Ok(1 + compacted_index)
     }
 }
 
@@ -614,7 +616,7 @@ mod tests {
         assert_eq!(entries(first, last + 1).unwrap().len(), 10);
 
         let first = 6;
-        assert_eq!(compact_log(6).unwrap(), 5);
+        assert_eq!(compact_log(first).unwrap(), first);
         assert_eq!(S::first_index(&storage), Ok(first));
         assert_eq!(S::last_index(&storage), Ok(last));
         assert_eq!(S::term(&storage, 5), Ok(5));
@@ -631,11 +633,15 @@ mod tests {
             .unwrap();
 
         let first_entry = tuple.decode::<traft::Entry>().unwrap();
-        assert_eq!(first_entry.index, 6);
+        assert_eq!(first_entry.index, first);
 
         // check idempotency
-        assert_eq!(compact_log(0).unwrap(), 0);
-        assert_eq!(compact_log(first).unwrap(), 0);
+        assert_eq!(compact_log(0).unwrap(), first);
+        assert_eq!(compact_log(first).unwrap(), first);
+
+        // trim to the end
+        assert_eq!(compact_log(u64::MAX).unwrap(), last + 1);
+        assert_eq!(storage.space_raft_log.len().unwrap(), 0);
     }
 
     #[::tarantool::test]

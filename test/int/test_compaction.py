@@ -10,15 +10,15 @@ def test_compaction(instance: Instance):
     applied_index = get_raft_state(instance, "applied")
     assert read_index == applied_index
 
-    assert instance.call("pico.raft_compact_log", 1) == 0
+    assert instance.call("pico.raft_compact_log", 1) == 1
 
     # Trim first entry
-    assert instance.call("pico.raft_compact_log", 2) == 1
+    assert instance.call("pico.raft_compact_log", 2) == 2
     assert get_raft_state(instance, "compacted_index") == 1
 
     # Compact everything
-    assert instance.call("pico.raft_compact_log", 2**64-1) == applied_index - 1
+    assert instance.call("pico.raft_compact_log", 2**64 - 1) == applied_index + 1
     assert get_raft_state(instance, "compacted_index") == applied_index
 
     # Check idempotency
-    assert instance.call("pico.raft_compact_log", 2) == 0
+    assert instance.call("pico.raft_compact_log", 2) == applied_index + 1

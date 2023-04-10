@@ -430,7 +430,7 @@ fn picolib_setup(args: &args::Run) {
     );
 
     // Trims raft log up to the given index (excluding the index
-    // itself). Returns the number of entries deleted.
+    // itself). Returns the new `first_index` after the log compaction.
     luamod.set("raft_compact_log", {
         tlua::Function::new(|up_to: u64| -> traft::Result<u64> {
             let raft_storage = &node::global()?.raft_storage;
