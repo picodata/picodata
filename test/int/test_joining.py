@@ -58,7 +58,7 @@ def test_request_follower(cluster2: Cluster):
     actual = raft_join(
         instance=i2, cluster_id=cluster2.id, instance_id="fake-0", timeout_seconds=1
     )
-    assert expected == actual
+    assert actual == expected
 
 
 def test_discovery(cluster3: Cluster):
@@ -198,13 +198,13 @@ def test_init_replication_factor(cluster: Cluster):
     """
     )
 
-    assert {"r1", "r2"} == set(replicaset_ids)
+    assert set(replicaset_ids) == {"r1", "r2"}
 
 
 def test_cluster_id_mismatch(instance: Instance):
     wrong_cluster_id = "wrong-cluster-id"
 
-    assert wrong_cluster_id != instance.cluster_id
+    assert instance.cluster_id != wrong_cluster_id
 
     expected_error_re = re.escape(
         "cannot join the instance to the cluster: cluster_id mismatch:"

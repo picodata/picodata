@@ -11,13 +11,13 @@ def cluster3(cluster: Cluster):
 def assert_instance_expelled(expelled_instance: Instance, instance: Instance):
     info = instance.call("pico.instance_info", expelled_instance.instance_id)
     grades = (info["current_grade"]["variant"], info["target_grade"]["variant"])
-    assert ("Expelled", "Expelled") == grades
+    assert grades == ("Expelled", "Expelled")
 
 
 def assert_voters(voters: list[Instance], instance: Instance):
     expected_voters = list(map(lambda i: i.raft_id, voters))
-    real_voters = instance.eval("return pico.space.raft_state:get('voters').value")
-    assert real_voters.sort() == expected_voters.sort()
+    actual_voters = instance.eval("return pico.space.raft_state:get('voters').value")
+    assert actual_voters.sort() == expected_voters.sort()
 
 
 def assert_pid_down(pid):
@@ -97,10 +97,10 @@ def test_raft_id_after_expel(cluster: Cluster):
     cluster.deploy(instance_count=2)
     i1, _ = cluster.instances
     i3 = cluster.add_instance()
-    assert 3 == i3.raft_id
+    assert i3.raft_id == 3
 
     cluster.expel(i3, i1)
     retrying(lambda: assert_instance_expelled(i3, i1))
 
     i4 = cluster.add_instance()
-    assert 4 == i4.raft_id
+    assert i4.raft_id == 4

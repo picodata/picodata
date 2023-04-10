@@ -443,13 +443,10 @@ class Instance:
         if leader_id is None:
             leader_id = status.leader_id
 
-        want = {"raft_state": state, "leader_id": leader_id}
-        have = {
+        assert {
             "raft_state": status.raft_state,
             "leader_id": status.leader_id,
-        }
-
-        assert want == have
+        } == {"raft_state": state, "leader_id": leader_id}
 
     @funcy.retry(tries=30, timeout=0.5)
     def wait_online(self):

@@ -23,7 +23,7 @@ def test_server_works(cluster: Cluster):
     instance.start()
     instance.wait_online()
     with urlopen("http://127.0.0.1:8080/hello") as response:
-        assert b"world" == response.read()
+        assert response.read() == b"world"
 
 
 def test_webui(cluster: Cluster):
@@ -32,4 +32,4 @@ def test_webui(cluster: Cluster):
     instance.start()
     instance.wait_online()
     with urlopen("http://127.0.0.1:8081") as response:
-        assert "text/html" == response.headers.get("content-type")
+        assert response.headers.get("content-type") == "text/html"

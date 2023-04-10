@@ -6,8 +6,7 @@ def test_add_migration(cluster: Cluster):
     i1, i2 = cluster.instances
     i1.promote_or_fail()
     i1.eval("pico.add_migration(1, 'migration body')")
-    migrations_table = i2.call("pico.space.migration:select")
-    assert [[1, "migration body"]] == migrations_table
+    assert i2.call("pico.space.migration:select") == [[1, "migration body"]]
 
 
 def test_push_schema_version(cluster: Cluster):
@@ -16,7 +15,7 @@ def test_push_schema_version(cluster: Cluster):
     i1.promote_or_fail()
     i1.eval("pico.push_schema_version(3)")
     key = "desired_schema_version"
-    assert [[key, 3]] == i2.call("pico.space.property:select", [key])
+    assert i2.call("pico.space.property:select", [key]) == [[key, 3]]
 
 
 def test_apply_migrations(cluster: Cluster):
@@ -48,25 +47,24 @@ def test_apply_migrations(cluster: Cluster):
     }.items():
         i1.call("pico.add_migration", n, sql)
 
-    assert 1 == i1.call("pico.migrate", 1)
+    assert i1.call("pico.migrate", 1) == 1
 
     for i in cluster.instances:
         format = i.call("box.space.test_space:format")
-        assert ["id"] == [f["name"] for f in format]
+        assert [f["name"] for f in format] == ["id"]
 
-        assert {1} == set(replicaset_schema_versions(i))
+        assert set(replicaset_schema_versions(i)) == {1}
 
     # idempotent
-    assert 1 == i1.call("pico.migrate", 1)
+    assert i1.call("pico.migrate", 1) == 1
 
-    assert 2 == i1.call("pico.migrate", 2)
+    assert i1.call("pico.migrate", 2) == 2
 
     for i in cluster.instances:
         format = i.call("box.space.test_space:format")
-        assert ["id", "value"] == [f["name"] for f in format]
-
-        assert {2} == set(replicaset_schema_versions(i))
+        assert [f["name"] for f in format] == ["id", "value"]
+        assert set(replicaset_schema_versions(i)) == {2}
 
     # idempotent
-    assert 2 == i1.call("pico.migrate", 1)
-    assert 2 == i1.call("pico.migrate", 2)
+    assert i1.call("pico.migrate", 1) == 2
+    assert i1.call("pico.migrate", 2) == 2

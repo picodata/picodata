@@ -34,7 +34,7 @@ def wait_vclock(i: Instance, vclock_expected: dict[int, int]):
     vclock_actual = i.eval("return box.info.vclock")
     del vclock_actual[0]
     for k, v_exp in vclock_expected.items():
-        assert (k, v_exp) <= (k, vclock_actual[k])
+        assert (k, vclock_actual[k]) >= (k, v_exp)
 
 
 # fmt: off
@@ -42,8 +42,8 @@ def test_2_of_3_writable(cluster3: Cluster):
     i1, i2, i3 = cluster3.instances
 
     rm = wait_repl_master(i1)
-    assert rm == wait_repl_master(i2)
-    assert rm == wait_repl_master(i3)
+    assert wait_repl_master(i2) == rm
+    assert wait_repl_master(i3) == rm
 
     master, i2, i3 = sorted(
         [i1, i2, i3],
@@ -66,20 +66,20 @@ def test_2_of_3_writable(cluster3: Cluster):
     del rl_vclock[0]
 
     wait_vclock(i2, rl_vclock)
-    assert [[1]] == i2.eval("return box.space.test_space:select()")
+    assert i2.eval("return box.space.test_space:select()") == [[1]]
 
     wait_vclock(i3, rl_vclock)
-    assert [[1]] == i3.eval("return box.space.test_space:select()")
+    assert i3.eval("return box.space.test_space:select()") == [[1]]
 
     master.terminate()
 
     rm = wait_repl_master(i2, other_than=rm)
-    assert rm == wait_repl_master(i3)
+    assert wait_repl_master(i3) == rm
 
     old_leader = master
     master, i3 = sorted(
         [i2, i3],
-        key=lambda i: rm == i.eval("return box.info.id"),
+        key=lambda i: i.eval("return box.info.id") == rm,
         reverse=True
     )
 
@@ -94,7 +94,7 @@ def test_2_of_3_writable(cluster3: Cluster):
     del rl_vclock[0]
 
     wait_vclock(i3, rl_vclock)
-    assert [[1], [2]] == i3.eval("return box.space.test_space:select()")
+    assert i3.eval("return box.space.test_space:select()") == [[1], [2]]
 
     print(i3.call("pico.raft_log", dict(return_string=True)))
 
@@ -103,7 +103,7 @@ def test_2_of_3_writable(cluster3: Cluster):
     old_leader.wait_online()
     assert wait_repl_master(old_leader) == rm
     wait_vclock(old_leader, rl_vclock)
-    assert [[1], [2]] == old_leader.eval("return box.space.test_space:select()")
+    assert old_leader.eval("return box.space.test_space:select()") == [[1], [2]]
 # fmt: on
 
 
@@ -127,7 +127,7 @@ def test_replication_works(cluster: Cluster):
 def test_bucket_discovery_single(instance: Instance):
     @funcy.retry(tries=30, timeout=0.5)
     def wait_buckets_awailable(i: Instance, expected: int):
-        assert expected == i.call("vshard.router.info")["bucket"]["available_rw"]
+        assert i.call("vshard.router.info")["bucket"]["available_rw"] == expected
 
     wait_buckets_awailable(instance, 3000)
 
@@ -150,15 +150,15 @@ def wait_has_buckets(c: Cluster, i: Instance, expected_active: int):
             )
 
         actual_active = buckets_active(i)
-        if expected_active == actual_active:
+        if actual_active == expected_active:
             return
 
-        if previous_active == actual_active:
+        if actual_active == previous_active:
             if tries > 0:
                 tries -= 1
             else:
                 print("vshard.storage.info.bucket.active stopped changing")
-                assert expected_active == actual_active
+                assert actual_active == expected_active
 
         previous_active = actual_active
 
@@ -169,12 +169,12 @@ def test_bucket_discovery_respects_replication_factor(cluster: Cluster):
     i1 = cluster.add_instance(init_replication_factor=2)
     time.sleep(0.5)
     assert i1.eval("return vshard == nil")
-    assert None is i1.call("pico.space.property:get", "vshard_bootstrapped")
+    assert i1.call("pico.space.property:get", "vshard_bootstrapped") is None
 
     i2 = cluster.add_instance(replicaset_id="r2")
     time.sleep(0.5)
     assert i2.eval("return vshard == nil")
-    assert None is i2.call("pico.space.property:get", "vshard_bootstrapped")
+    assert i2.call("pico.space.property:get", "vshard_bootstrapped") is None
 
     i3 = cluster.add_instance(replicaset_id="r1")
     time.sleep(0.5)
