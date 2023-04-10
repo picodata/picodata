@@ -250,7 +250,6 @@ fn build_tarantool(build_root: &Path) {
     rustc::link_lib_static("box_error");
     rustc::link_lib_static("xlog");
     rustc::link_lib_static("crc32");
-    rustc::link_lib_static("scramble");
     rustc::link_lib_static("stat");
     rustc::link_lib_static("shutdown");
     rustc::link_lib_static("swim_udp");
@@ -269,7 +268,7 @@ fn build_tarantool(build_root: &Path) {
         // These two must be linked as positional arguments, because they define
         // duplicate symbols which is not allowed (by default) when linking with
         // via -l... option
-        let lib_dir = format!("{b}/{tarantool_prefix}/build/libunwind/dest/lib");
+        let lib_dir = format!("{b}/{tarantool_prefix}/third_party/libunwind/src/.libs");
         rustc::link_arg(format!("{lib_dir}/libunwind-x86_64.a"));
         rustc::link_arg(format!("{lib_dir}/libunwind.a"));
     }

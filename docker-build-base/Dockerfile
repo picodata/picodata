@@ -5,7 +5,7 @@ RUN set -e; \
     apt install -y \
         build-essential \
         git unzip wget curl\
-        cmake make \
+        libtool autoconf cmake make \
         python3 \
         python3-yaml \
         python3-six \
