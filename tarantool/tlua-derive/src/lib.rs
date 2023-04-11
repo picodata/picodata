@@ -623,7 +623,7 @@ impl<'a> VariantInfo<'a> {
                         .expected(#name)
                         .subtype(e);
                     if let Some(i) = ::std::num::NonZeroI32::new(__index) {
-                        e = e.actual_multiple_lua_at(&__lua, dbg!(i), dbg!(n_vals))
+                        e = e.actual_multiple_lua_at(&__lua, i, n_vals)
                     } else {
                         e = e.actual("no value")
                     }
