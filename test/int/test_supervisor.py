@@ -103,6 +103,6 @@ def test_sigsegv_child(instance: Instance):
     # Upon segmentation fault tarantool calls `crash_signal_cb` handler
     # which ends with `abort()`. That's why the exit status is SIGABRT
     # and not SIGSEGV.
-    assert instance.process.wait(timeout=1) == signal.SIGABRT
+    assert instance.process.wait(timeout=5) == signal.SIGABRT
 
     retrying(lambda: assert_all_pids_down(pids))

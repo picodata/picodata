@@ -34,7 +34,7 @@ features = ["max_level_trace", "release_max_level_trace"]
 [dependencies.tarantool]
 path = "./tarantool/tarantool"
 version = "0.7"
-features = ["schema", "picodata", "test"]
+features = ["picodata", "test"]
 
 [dev-dependencies]
 rand = "0.8.5"
