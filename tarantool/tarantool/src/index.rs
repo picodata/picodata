@@ -20,18 +20,20 @@ use serde::{Deserialize, Serialize};
 use crate::error::{Error, TarantoolError, TarantoolErrorCode};
 use crate::ffi::tarantool as ffi;
 use crate::msgpack;
-use crate::space::{Space, SystemSpace};
+use crate::space::{Space, SpaceId, SystemSpace};
 use crate::tuple::{Encode, ToTupleBuffer, Tuple, TupleBuffer};
 use crate::tuple::{KeyDef, KeyDefPart};
 use crate::tuple_from_box_api;
 use crate::util::NumOrStr;
 use crate::util::Value;
 
+pub type IndexId = u32;
+
 /// An index is a group of key values and pointers.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Index {
-    space_id: u32,
-    index_id: u32,
+    space_id: SpaceId,
+    index_id: IndexId,
 }
 
 /// Controls how to iterate over tuples in an index.
@@ -97,7 +99,7 @@ pub enum IteratorType {
 
 #[allow(dead_code)]
 pub struct Builder<'a> {
-    space_id: u32,
+    space_id: SpaceId,
     name: &'a str,
     opts: IndexOptions,
 }
@@ -117,7 +119,7 @@ macro_rules! define_setters {
 impl<'a> Builder<'a> {
     /// Creates a new index builder with default options.
     #[inline(always)]
-    pub fn new(space_id: u32, name: &'a str) -> Self {
+    pub fn new(space_id: SpaceId, name: &'a str) -> Self {
         Self {
             space_id,
             name,
@@ -127,7 +129,7 @@ impl<'a> Builder<'a> {
 
     define_setters! {
         index_type(r#type: IndexType)
-        id(id: u32)
+        id(id: SpaceId)
         unique(unique: bool)
         if_not_exists(if_not_exists: bool)
         dimension(dimension: u32)
@@ -481,8 +483,17 @@ crate::define_str_enum! {
 }
 
 impl Index {
-    pub(crate) fn new(space_id: u32, index_id: u32) -> Self {
+    pub(crate) fn new(space_id: SpaceId, index_id: IndexId) -> Self {
         Index { space_id, index_id }
+    }
+
+    /// Create an `Index` with corresponding space and index `id`s.
+    ///
+    /// # Safety
+    /// `id`s must be valid tarantool space/index id. Only use this function with
+    /// ids acquired from tarantool in some way, e.g. from lua code.
+    pub const unsafe fn from_ids_unchecked(space_id: SpaceId, index_id: IndexId) -> Self {
+        Self { space_id, index_id }
     }
 
     /// Return id of this index.
@@ -849,8 +860,8 @@ impl Index {
 /// Representation of a tuple holding index metadata in system `_index` space.
 #[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq)]
 pub struct Metadata<'a> {
-    pub id: u32,
-    pub iid: u32,
+    pub space_id: SpaceId,
+    pub index_id: IndexId,
     pub name: Cow<'a, str>,
     pub r#type: IndexType,
     pub opts: BTreeMap<Cow<'a, str>, Value<'a>>,
@@ -967,8 +978,8 @@ mod tests {
         assert_eq!(
             meta,
             Metadata {
-                id: space.id(),
-                iid: 0,
+                space_id: space.id(),
+                index_id: 0,
                 name: "pk".into(),
                 r#type: IndexType::Hash,
                 opts: BTreeMap::from([("unique".into(), Value::from(true)),]),
@@ -998,8 +1009,8 @@ mod tests {
         assert_eq!(
             meta,
             Metadata {
-                id: space.id(),
-                iid: 1,
+                space_id: space.id(),
+                index_id: 1,
                 name: "i".into(),
                 r#type: IndexType::Tree,
                 opts: BTreeMap::from([("unique".into(), Value::from(false)),]),

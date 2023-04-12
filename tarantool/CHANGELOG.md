@@ -29,6 +29,7 @@
 - `r#async::timeout::Result<T, E>` type alias for
     `std::result::Result<T, r#async::timeout::Error<E>>`
 - `Space::from_id_unchecked` unsafe function, for creating a space struct from a space id.
+- `Index::from_ids_unchecked` unsafe function, for creating a index struct from space and index ids.
 - `examples/tokio-hyper` example of using tarantool with tokio + hyper
 - `std::ops::Deref<Target = str>` implementation for enums defined with
     `tarantool::define_str_enum`.
@@ -53,6 +54,7 @@
     from index metadata. Can be used to compare tuples with a key.
 - `IndexMetadata::to_key_def_for_key` method for creating `tuple::KeyDef`
     similar to `to_key_def` but is used for comparing just the keys themselves.
+- `IndexId` and `SpaceId` type aliases
 
 ### Changed
 - `r#async::timeout::Timeout` can now only be wrapped around a future which

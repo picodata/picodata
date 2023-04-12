@@ -12,7 +12,7 @@ use std::os::raw::c_char;
 
 use num_derive::ToPrimitive;
 use num_traits::ToPrimitive;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
 use crate::error::{Error, TarantoolError};
@@ -23,7 +23,9 @@ use crate::tuple::{Encode, ToTupleBuffer, Tuple, TupleBuffer};
 use crate::tuple_from_box_api;
 
 /// End of the reserved range of system spaces.
-pub const SYSTEM_ID_MAX: u32 = 511;
+pub const SYSTEM_ID_MAX: SpaceId = 511;
+
+pub type SpaceId = u32;
 
 /// Provides access to system spaces
 ///
@@ -119,7 +121,7 @@ impl Default for SpaceEngineType {
 pub struct SpaceCreateOptions {
     pub if_not_exists: bool,
     pub engine: SpaceEngineType,
-    pub id: Option<u32>,
+    pub id: Option<SpaceId>,
     pub field_count: u32,
     pub user: Option<String>,
     pub is_local: bool,
@@ -151,7 +153,7 @@ impl Default for SpaceCreateOptions {
 #[deprecated = "Use `space::Field` instead"]
 pub type SpaceFieldFormat = Field;
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Field {
     pub name: String, // TODO(gmoshkin): &str
     #[serde(alias = "type")]
@@ -392,9 +394,9 @@ pub fn clear_cache() {
     SPACE_CACHE.with(SpaceCache::clear)
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Space {
-    id: u32,
+    id: SpaceId,
 }
 
 impl Space {
@@ -465,12 +467,12 @@ impl Space {
     /// # Safety
     /// `id` must be a valid tarantool space id. Only use this function with
     /// ids acquired from tarantool in some way, e.g. from lua code.
-    pub const unsafe fn from_id_unchecked(id: u32) -> Self {
+    pub const unsafe fn from_id_unchecked(id: SpaceId) -> Self {
         Self { id }
     }
 
     /// Get space ID.
-    pub const fn id(&self) -> u32 {
+    pub const fn id(&self) -> SpaceId {
         self.id
     }
 
@@ -838,7 +840,7 @@ impl<'a> Builder<'a> {
     define_setters! {
         if_not_exists(if_not_exists: bool)
         engine(engine: SpaceEngineType)
-        id(id: u32)
+        id(id: SpaceId)
         field_count(field_count: u32)
         user(user: String)
         is_local(is_local: bool)
