@@ -191,11 +191,6 @@ SELECT id, id2 FROM hash_testing WHERE (id, id2) in (VALUES (1, 2), (2, 3))
 INSERT INTO "t" VALUES(1, 2, 3, 4)
 ```
 
-<!-- Для примера вставим строки значений из таблицы `t2`в таблицу `t1` с использованием подзапроса `SELECT`:
-```
-INSERT INTO "t1" FROM (SELECT id, id2 FROM t2)
-``` -->
-
 Используется в:
 
 * query
