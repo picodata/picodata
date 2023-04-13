@@ -368,20 +368,20 @@ pub fn decode_greeting(stream: &mut impl Read) -> Result<Vec<u8>, Error> {
     Ok(salt)
 }
 
-pub fn decode_call(buffer: &mut Cursor<Vec<u8>>) -> Result<Option<Tuple>, Error> {
+pub fn decode_call(buffer: &mut Cursor<Vec<u8>>) -> Result<Tuple, Error> {
     let payload_len = rmp::decode::read_map_len(buffer)?;
     for _ in 0..payload_len {
         let key = rmp::decode::read_pfix(buffer)?;
         match key {
             DATA => {
-                return Ok(Some(decode_tuple(buffer)?));
+                return decode_tuple(buffer);
             }
             _ => {
                 msgpack::skip_value(buffer)?;
             }
         };
     }
-    Ok(None)
+    Err(Error::ResponseDataNotFound)
 }
 
 pub fn decode_multiple_rows(

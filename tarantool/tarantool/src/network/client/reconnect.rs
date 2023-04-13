@@ -248,7 +248,6 @@ mod tests {
                 .eval("return _G.reconnect_test_chan:get()", &())
                 .await
                 .unwrap()
-                .unwrap()
                 .decode::<(i32,)>()
                 .unwrap();
             // value received on an old connection, though there was a reconnect request

@@ -34,6 +34,8 @@ pub enum Error {
     Io(#[from] io::Error),
     #[error("message size hint is 0")]
     ZeroSizeHint,
+    #[error("DATA not found in response body but is required for call/eval")]
+    ResponseDataNotFound,
     /// This type of error is only present in codec
     /// due to ToTupleBuffer implementation using generic Tarantool Error.
     /// So should be related to encode/decode.

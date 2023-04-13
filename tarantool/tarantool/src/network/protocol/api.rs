@@ -52,7 +52,7 @@ where
     T: ToTupleBuffer + ?Sized,
 {
     const TYPE: IProtoType = IProtoType::Call;
-    type Response = Option<Tuple>;
+    type Response = Tuple;
 
     fn encode_body(&self, out: &mut impl Write) -> Result<(), Error> {
         codec::encode_call(out, self.fn_name, self.args)
@@ -73,7 +73,7 @@ where
     T: ToTupleBuffer + ?Sized,
 {
     const TYPE: IProtoType = IProtoType::Eval;
-    type Response = Option<Tuple>;
+    type Response = Tuple;
 
     fn encode_body(&self, out: &mut impl Write) -> Result<(), Error> {
         codec::encode_eval(out, self.expr, self.args)

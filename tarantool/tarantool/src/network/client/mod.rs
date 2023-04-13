@@ -247,7 +247,7 @@ pub trait AsClient {
     /// `conn.call("func", &("1", "2", "3"))` is the remote-call equivalent of `func('1', '2', '3')`.
     /// That is, `conn.call` is a remote stored-procedure call.
     /// The return from `conn.call` is whatever the function returns.
-    async fn call<T>(&self, fn_name: &str, args: &T) -> Result<Option<Tuple>, Error>
+    async fn call<T>(&self, fn_name: &str, args: &T) -> Result<Tuple, Error>
     where
         T: ToTupleBuffer + ?Sized,
     {
@@ -261,7 +261,7 @@ pub trait AsClient {
     ///
     /// To ensure that the return from `eval` is whatever the Lua expression returns, begin the Lua-string with the
     /// word `return`.
-    async fn eval<T>(&self, expr: &str, args: &T) -> Result<Option<Tuple>, Error>
+    async fn eval<T>(&self, expr: &str, args: &T) -> Result<Tuple, Error>
     where
         T: ToTupleBuffer + ?Sized,
     {
@@ -520,7 +520,7 @@ mod tests {
             .timeout(Duration::from_secs(3))
             .await
             .unwrap();
-        assert_eq!(result.unwrap().decode::<(i32,)>().unwrap(), (3,));
+        assert_eq!(result.decode::<(i32,)>().unwrap(), (3,));
     }
 
     #[crate::test(tarantool = "crate")]
@@ -545,7 +545,7 @@ mod tests {
             .timeout(Duration::from_secs(3))
             .await
             .unwrap();
-        assert_eq!(result.unwrap().decode::<(i32, i32)>().unwrap(), (1, 2));
+        assert_eq!(result.decode::<(i32, i32)>().unwrap(), (1, 2));
     }
 
     /// A regression test for https://git.picodata.io/picodata/picodata/tarantool-module/-/merge_requests/302
@@ -584,5 +584,15 @@ mod tests {
         for res in futures::future::join_all(ping_futures).await {
             res.unwrap();
         }
+    }
+
+    #[crate::test(tarantool = "crate")]
+    async fn data_always_present_in_response() {
+        let client = test_client().await;
+
+        // Even though we do a return without value,
+        // error `ResponseDataNotFound` is never returned, the result is Ok(_) instead.
+        client.eval("return", &()).await.unwrap();
+        client.call("LUA", &("return",)).await.unwrap();
     }
 }
