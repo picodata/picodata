@@ -40,6 +40,9 @@ features = ["picodata", "test"]
 rand = "0.8.5"
 pretty_assertions = "0.6.1"
 
+[build-dependencies]
+nix = "0.23.1"
+
 [features]
 load_test = []
 webui = []

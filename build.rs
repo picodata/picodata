@@ -1,8 +1,10 @@
 use std::collections::HashSet;
 use std::io::Write;
+use std::os::unix::io::{AsRawFd, FromRawFd};
 use std::panic::Location;
 use std::path::Path;
 use std::process::Command;
+use std::process::Stdio;
 
 // See also: https://doc.rust-lang.org/cargo/reference/build-scripts.html
 fn main() {
@@ -337,6 +339,15 @@ impl CommandExt for Command {
     fn run(&mut self) {
         let loc = Location::caller();
         println!("[{}:{}] running [{:?}]", loc.file(), loc.line(), self);
+
+        // Redirect stderr to stdout. This is needed to preserve the order of
+        // error messages in the output, because otherwise cargo separates the
+        // streams into 2 chunks destroying any hope of understanding when the
+        // errors happened.
+        let stdout_fd = std::io::stdout().as_raw_fd();
+        let stdout_dup_fd = nix::unistd::dup(stdout_fd).expect("what could go wrong?");
+        let stdout = unsafe { Stdio::from_raw_fd(stdout_dup_fd) };
+        self.stderr(stdout);
 
         let prog = self.get_program().to_owned().into_string().unwrap();
 
