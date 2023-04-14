@@ -84,7 +84,6 @@ macro_rules! define_rpc_request {
         $(#[$proc_meta])*
         #[::tarantool::proc(packed_args)]
         fn $proc($_r: $_request) -> $result {
-            $crate::tarantool::fiber_name(stringify!($proc));
             $($proc_body)*
         }
 
