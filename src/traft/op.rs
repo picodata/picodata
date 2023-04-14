@@ -2,6 +2,8 @@ use crate::instance::Instance;
 use crate::storage;
 use crate::storage::{ClusterwideSpace, ClusterwideSpaceIndex};
 use crate::util::AnyWithTypeName;
+use ::tarantool::index::IndexId;
+use ::tarantool::space::{Field, SpaceId};
 use ::tarantool::tlua;
 use ::tarantool::tlua::LuaError;
 use ::tarantool::tuple::{ToTupleBuffer, Tuple, TupleBuffer};
@@ -38,6 +40,20 @@ pub enum Op {
     /// Cluster-wide data modification operation.
     /// Should be used to manipulate the cluster-wide configuration.
     Dml(Dml),
+    /// Start cluster-wide data schema definition operation.
+    /// Should be used to manipulate the cluster-wide schema.
+    ///
+    /// The provided DDL operation will be set as pending.
+    /// Only one pending DDL operation can exist at the same time.
+    DdlPrepare { schema_version: u64, ddl: Ddl },
+    /// Commit the pending DDL operation.
+    ///
+    /// Only one pending DDL operation can exist at the same time.
+    DdlCommit,
+    /// Abort the pending DDL operation.
+    ///
+    /// Only one pending DDL operation can exist at the same time.
+    DdlAbort,
 }
 
 impl std::fmt::Display for Op {
@@ -64,6 +80,50 @@ impl std::fmt::Display for Op {
             Self::Dml(Dml::Delete { index, key }) => {
                 write!(f, "Delete({index}, {})", DisplayAsJson(key))
             }
+            Self::DdlPrepare {
+                schema_version,
+                ddl: Ddl::CreateSpace {
+                    id, distribution, ..
+                },
+            } => {
+                let distr = match distribution {
+                    Distribution::Global => "Global",
+                    Distribution::ShardedImplicitly { .. } => "ShardedImplicitly",
+                    Distribution::ShardedByField { .. } => "ShardedByField",
+                };
+                write!(
+                    f,
+                    "DdlPrepare({schema_version}, CreateSpace({id}, {distr}))"
+                )
+            }
+            Self::DdlPrepare {
+                schema_version,
+                ddl: Ddl::DropSpace { id },
+            } => {
+                write!(f, "DdlPrepare({schema_version}, DropSpace({id}))")
+            }
+            Self::DdlPrepare {
+                schema_version,
+                ddl: Ddl::CreateIndex {
+                    space_id, index_id, ..
+                },
+            } => {
+                write!(
+                    f,
+                    "DdlPrepare({schema_version}, CreateIndex({space_id}, {index_id}))"
+                )
+            }
+            Self::DdlPrepare {
+                schema_version,
+                ddl: Ddl::DropIndex { space_id, index_id },
+            } => {
+                write!(
+                    f,
+                    "DdlPrepare({schema_version}, DropIndex({space_id}, {index_id}))"
+                )
+            }
+            Self::DdlCommit => write!(f, "DdlCommit"),
+            Self::DdlAbort => write!(f, "DdlAbort"),
         };
 
         struct DisplayAsJson<T>(pub T);
@@ -112,6 +172,9 @@ impl Op {
                 instance
             }
             Self::Dml(op) => Box::new(op.result()),
+            Op::DdlPrepare { .. } => todo!(),
+            Op::DdlCommit => todo!(),
+            Op::DdlAbort => todo!(),
         }
     }
 }
@@ -367,6 +430,152 @@ pub struct DmlInLua {
     pub tuple: Option<TupleBuffer>,
     pub key: Option<TupleBuffer>,
     pub ops: Option<Vec<TupleBuffer>>,
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Ddl
+////////////////////////////////////////////////////////////////////////////////
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum Ddl {
+    CreateSpace {
+        id: SpaceId,
+        name: String,
+        format: Vec<Field>,
+        #[serde(with = "serde_bytes")]
+        primary_key: TupleBuffer,
+        distribution: Distribution,
+    },
+    DropSpace {
+        id: SpaceId,
+    },
+    CreateIndex {
+        space_id: SpaceId,
+        index_id: IndexId,
+        #[serde(with = "serde_bytes")]
+        by_fields: TupleBuffer,
+    },
+    DropIndex {
+        space_id: SpaceId,
+        index_id: IndexId,
+    },
+}
+
+/// Defines how to distribute tuples in a space across replicasets.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum Distribution {
+    /// Tuples will be replicated to each instance.
+    Global,
+    /// Tuples will be implicitely sharded. E.g. sent to the corresponding bucket
+    /// which will be determined by a hash of the provided `sharding_key`.
+    ShardedImplicitly {
+        #[serde(with = "serde_bytes")]
+        sharding_key: TupleBuffer,
+        #[serde(default)]
+        sharding_fn: ShardingFn,
+    },
+    /// Tuples will be explicitely sharded. E.g. sent to the bucket
+    /// which id is provided by field that is specified here.
+    ///
+    /// Default field name: "bucket_id"
+    ShardedByField {
+        #[serde(default = "default_bucket_id_field")]
+        field: String,
+    },
+}
+
+fn default_bucket_id_field() -> String {
+    "bucket_id".into()
+}
+
+/// Custom sharding functions are not yet supported.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub enum ShardingFn {
+    Crc32,
+    #[default]
+    Murmur3,
+    Xxhash,
+    Md5,
+}
+
+/// Builder for [`Op::DdlPrepare`] operations.
+///
+/// # Example
+/// ```no_run
+/// use picodata::traft::op::DdlBuilder;
+///
+/// // Assuming that space `1` was created.
+/// let op = DdlBuilder::with_schema_version(1)
+///     .drop_space(1);
+/// ```
+pub struct DdlBuilder {
+    schema_version: u64,
+}
+
+impl DdlBuilder {
+    /// Sets current schema version.
+    pub fn with_schema_version(version: u64) -> Self {
+        Self {
+            schema_version: version,
+        }
+    }
+    /// Creates an `Op::DdlPrepare(Ddl::CreateSpace)`.
+    #[inline(always)]
+    pub fn create_space(
+        &self,
+        id: SpaceId,
+        name: String,
+        format: Vec<tarantool::space::Field>,
+        primary_key: &impl ToTupleBuffer,
+        distribution: Distribution,
+    ) -> tarantool::Result<Op> {
+        Ok(Op::DdlPrepare {
+            ddl: Ddl::CreateSpace {
+                id,
+                name,
+                format,
+                primary_key: primary_key.to_tuple_buffer()?,
+                distribution,
+            },
+            schema_version: self.schema_version,
+        })
+    }
+
+    /// Creates an `Op::DdlPrepare(Ddl::DropSpace)`.
+    #[inline(always)]
+    pub fn drop_space(&self, id: SpaceId) -> Op {
+        Op::DdlPrepare {
+            ddl: Ddl::DropSpace { id },
+            schema_version: self.schema_version,
+        }
+    }
+
+    /// Creates an `Op::DdlPrepare(Ddl::CreateIndex)`.
+    #[inline(always)]
+    pub fn create_index(
+        &self,
+        space_id: SpaceId,
+        index_id: IndexId,
+        by_fields: &impl ToTupleBuffer,
+    ) -> tarantool::Result<Op> {
+        Ok(Op::DdlPrepare {
+            ddl: Ddl::CreateIndex {
+                space_id,
+                index_id,
+                by_fields: by_fields.to_tuple_buffer()?,
+            },
+            schema_version: self.schema_version,
+        })
+    }
+
+    /// Creates an `Op::DdlPrepare(Ddl::DropIndex)`.
+    #[inline(always)]
+    pub fn drop_index(&self, space_id: SpaceId, index_id: IndexId) -> Op {
+        Op::DdlPrepare {
+            ddl: Ddl::DropIndex { space_id, index_id },
+            schema_version: self.schema_version,
+        }
+    }
 }
 
 mod vec_of_raw_byte_buf {
