@@ -33,6 +33,7 @@ use crate::traft::RaftTerm;
 use crate::traft::Topology;
 use crate::unwrap_some_or;
 use crate::util::instant_saturating_add;
+use crate::util::AnyWithTypeName;
 use crate::warn_or_panic;
 use ::raft::prelude as raft;
 use ::raft::Error as RaftError;
@@ -711,7 +712,7 @@ impl NodeImpl {
         }
 
         // apply the operation
-        let result = op.on_commit(&self.storage.instances);
+        let result = self.apply_op(op).expect("storage error");
 
         if let Some(lc) = &lc {
             if let Some(notify) = self.notifications.remove(lc) {
@@ -728,6 +729,28 @@ impl NodeImpl {
             let _ = notify.send(Err(e));
             event::broadcast(Event::JointStateDrop);
         }
+    }
+
+    fn apply_op(&self, op: Op) -> traft::Result<Box<dyn AnyWithTypeName>> {
+        let res = match op {
+            Op::Nop => Box::new(()),
+            Op::Info { msg } => {
+                crate::tlog!(Info, "{msg}");
+                ().into_box_dyn_any()
+            }
+            Op::EvalLua(op) => op.result().into_box_dyn_any(),
+            Op::ReturnOne(op) => op.result().into_box_dyn_any(),
+            Op::PersistInstance(op) => {
+                let instance = op.result();
+                self.storage.instances.put(&instance).unwrap();
+                instance as Box<dyn AnyWithTypeName>
+            }
+            Op::Dml(op) => op.result().into_box_dyn_any(),
+            Op::DdlPrepare { .. } => todo!(),
+            Op::DdlCommit => todo!(),
+            Op::DdlAbort => todo!(),
+        };
+        Ok(res)
     }
 
     /// Is called during a transaction

@@ -385,6 +385,13 @@ pub fn screen_size() -> (i32, i32) {
 /// getting the type name from a `dyn AnyWithTypeName`.
 pub trait AnyWithTypeName: Any {
     fn type_name(&self) -> &'static str;
+
+    fn into_box_dyn_any(self) -> Box<dyn AnyWithTypeName>
+    where
+        Self: Sized,
+    {
+        Box::new(self)
+    }
 }
 
 impl<T: Any> AnyWithTypeName for T {

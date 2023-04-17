@@ -1,8 +1,6 @@
 use crate::instance::Instance;
 use crate::schema::Distribution;
-use crate::storage;
 use crate::storage::{ClusterwideSpace, ClusterwideSpaceIndex};
-use crate::util::AnyWithTypeName;
 use ::tarantool::index::IndexId;
 use ::tarantool::space::{Field, SpaceId};
 use ::tarantool::tlua;
@@ -154,29 +152,6 @@ impl std::fmt::Display for Op {
                 }
                 write!(f, "]")
             }
-        }
-    }
-}
-
-impl Op {
-    pub fn on_commit(self, instances: &storage::Instances) -> Box<dyn AnyWithTypeName> {
-        match self {
-            Self::Nop => Box::new(()),
-            Self::Info { msg } => {
-                crate::tlog!(Info, "{msg}");
-                Box::new(())
-            }
-            Self::EvalLua(op) => Box::new(op.result()),
-            Self::ReturnOne(op) => Box::new(op.result()),
-            Self::PersistInstance(op) => {
-                let instance = op.result();
-                instances.put(&instance).unwrap();
-                instance
-            }
-            Self::Dml(op) => Box::new(op.result()),
-            Op::DdlPrepare { .. } => todo!(),
-            Op::DdlCommit => todo!(),
-            Op::DdlAbort => todo!(),
         }
     }
 }
