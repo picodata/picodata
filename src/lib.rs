@@ -7,6 +7,7 @@ use ::tarantool::fiber::r#async::timeout;
 use ::tarantool::fiber::r#async::timeout::IntoTimeout as _;
 use ::tarantool::tlua;
 use ::tarantool::transaction::start_transaction;
+use ::tarantool::tuple::Decode;
 use std::convert::TryFrom;
 use std::time::{Duration, Instant};
 use storage::Clusterwide;
@@ -125,6 +126,26 @@ fn picolib_setup(args: &args::Run) {
         }),
     );
     luamod.set(
+        "raft_propose",
+        tlua::function1(|lua: tlua::LuaState| -> traft::Result<()> {
+            use tlua::{AnyLuaString, AsLua, LuaError, LuaTable};
+            let lua = unsafe { tlua::Lua::from_static(lua) };
+            let t: LuaTable<_> = AsLua::read(&lua).map_err(|(_, e)| LuaError::from(e))?;
+            let mp: AnyLuaString = lua
+                .eval_with("return require 'msgpack'.encode(...)", &t)
+                .map_err(LuaError::from)?;
+            let op: Op = Decode::decode(mp.as_bytes())?;
+            traft::node::global()?.propose_and_wait(op, Duration::from_secs(1))
+        }),
+    );
+    luamod.set(
+        "raft_propose_mp",
+        tlua::function1(|op: tlua::AnyLuaString| -> traft::Result<()> {
+            let op: Op = Decode::decode(op.as_bytes())?;
+            traft::node::global()?.propose_and_wait(op, Duration::from_secs(1))
+        }),
+    );
+    luamod.set(
         "raft_timeout_now",
         tlua::function0(|| -> traft::Result<()> {
             traft::node::global()?.timeout_now();
@@ -154,6 +175,25 @@ fn picolib_setup(args: &args::Run) {
     );
     // TODO: remove this
     if cfg!(debug_assertions) {
+        use ::tarantool::index::IteratorType;
+        use ::tarantool::space::Space;
+        use ::tarantool::tuple::Tuple;
+        luamod.set(
+            "prop",
+            tlua::Function::new(|property: Option<String>| -> traft::Result<Vec<Tuple>> {
+                if let Some(property) = property {
+                    let _ = property;
+                    todo!();
+                }
+                let space = Space::find("_picodata_property").expect("always defined");
+                let iter = space.select(IteratorType::All, &())?;
+                let mut res = vec![];
+                for t in iter {
+                    res.push(t);
+                }
+                Ok(res)
+            }),
+        );
         luamod.set(
             "emit",
             tlua::Function::new(|event: String| -> traft::Result<()> {
