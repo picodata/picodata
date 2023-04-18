@@ -10,6 +10,7 @@ use crate::replicaset::{Replicaset, ReplicasetId};
 use crate::schema::{IndexDef, SpaceDef};
 use crate::traft;
 use crate::traft::error::Error;
+use crate::traft::op::Ddl;
 use crate::traft::Migration;
 use crate::traft::RaftId;
 use crate::traft::Result;
@@ -514,6 +515,9 @@ pub trait TClusterwideSpaceIndex {
         ReplicationFactor = "replication_factor",
         VshardBootstrapped = "vshard_bootstrapped",
         DesiredSchemaVersion = "desired_schema_version",
+        PendingSchemaChange = "pending_schema_change",
+        PendingSchemaVersion = "pending_schema_version",
+        CurrentSchemaVersion = "current_schema_version",
     }
 }
 
@@ -578,6 +582,24 @@ impl Properties {
     pub fn desired_schema_version(&self) -> tarantool::Result<u64> {
         let res = self
             .get(PropertyName::DesiredSchemaVersion)?
+            .unwrap_or_default();
+        Ok(res)
+    }
+
+    #[inline]
+    pub fn pending_schema_change(&self) -> tarantool::Result<Option<Ddl>> {
+        self.get(PropertyName::PendingSchemaChange)
+    }
+
+    #[inline]
+    pub fn pending_schema_version(&self) -> tarantool::Result<Option<u64>> {
+        self.get(PropertyName::PendingSchemaVersion)
+    }
+
+    #[inline]
+    pub fn current_schema_version(&self) -> tarantool::Result<u64> {
+        let res = self
+            .get(PropertyName::CurrentSchemaVersion)?
             .unwrap_or_default();
         Ok(res)
     }
