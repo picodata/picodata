@@ -1,13 +1,12 @@
 use crate::instance::Instance;
 use crate::schema::Distribution;
 use crate::storage::{ClusterwideSpace, ClusterwideSpaceIndex};
-use ::tarantool::index::IndexId;
+use ::tarantool::index::{IndexId, Part};
 use ::tarantool::space::{Field, SpaceId};
 use ::tarantool::tlua;
 use ::tarantool::tlua::LuaError;
 use ::tarantool::tuple::{ToTupleBuffer, Tuple, TupleBuffer};
 use serde::{Deserialize, Serialize};
-use tarantool::index::Part;
 
 ////////////////////////////////////////////////////////////////////////////////
 // OpResult
@@ -236,6 +235,8 @@ impl From<PersistInstance> for Op {
 
 /// Cluster-wide data modification operation.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+#[serde(tag = "op_kind")]
 pub enum Dml {
     Insert {
         space: ClusterwideSpace,
@@ -414,6 +415,8 @@ pub struct DmlInLua {
 ////////////////////////////////////////////////////////////////////////////////
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+#[serde(tag = "kind")]
 pub enum Ddl {
     CreateSpace {
         id: SpaceId,

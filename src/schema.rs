@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use tarantool::{
     index::{IndexId, Part},
     space::{Field, SpaceId},
-    tuple::TupleBuffer,
+    tuple::{Encode, TupleBuffer},
 };
 
 /// Space definition.
@@ -17,9 +17,12 @@ pub struct SpaceDef {
     pub schema_version: u64,
     pub operable: bool,
 }
+impl Encode for SpaceDef {}
 
 /// Defines how to distribute tuples in a space across replicasets.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+#[serde(tag = "kind")]
 pub enum Distribution {
     /// Tuples will be replicated to each instance.
     Global,
@@ -60,11 +63,12 @@ pub enum ShardingFn {
 /// Describes a user-defined index.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct IndexDef {
+    pub space_id: SpaceId,
     pub id: IndexId,
     pub name: String,
-    pub space_id: SpaceId,
     pub local: bool,
     pub parts: Vec<Part>,
     pub schema_version: u64,
     pub operable: bool,
 }
+impl Encode for IndexDef {}

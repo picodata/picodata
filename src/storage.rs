@@ -1,4 +1,4 @@
-use ::tarantool::index::{Index, IndexIterator, IteratorType};
+use ::tarantool::index::{Index, IndexId, IndexIterator, IteratorType};
 use ::tarantool::msgpack::{ArrayWriter, ValueIter};
 use ::tarantool::space::{FieldType, Space, SpaceId};
 use ::tarantool::tuple::KeyDef;
@@ -1216,8 +1216,8 @@ impl Spaces {
             .is_temporary(false)
             .field(("id", FieldType::Unsigned))
             .field(("name", FieldType::String))
-            .field(("distribution", FieldType::Map))
-            .field(("format", FieldType::Map))
+            .field(("distribution", FieldType::Array))
+            .field(("format", FieldType::Array))
             .field(("schema_version", FieldType::Unsigned))
             .field(("operable", FieldType::Boolean))
             .if_not_exists(true)
@@ -1253,6 +1253,12 @@ impl Spaces {
     }
 
     #[inline]
+    pub fn insert(&self, space_def: &SpaceDef) -> tarantool::Result<()> {
+        self.space.insert(space_def)?;
+        Ok(())
+    }
+
+    #[inline]
     pub fn by_name(&self, name: String) -> tarantool::Result<Option<SpaceDef>> {
         match self.index_name.get(&[name])? {
             Some(tuple) => tuple.decode().map(Some),
@@ -1270,9 +1276,9 @@ impl Indexes {
         let space = Space::builder(Self::SPACE_NAME)
             .is_local(true)
             .is_temporary(false)
+            .field(("space_id", FieldType::Unsigned))
             .field(("id", FieldType::Unsigned))
             .field(("name", FieldType::String))
-            .field(("space_id", FieldType::Unsigned))
             .field(("local", FieldType::Boolean))
             .field(("parts", FieldType::Array))
             .field(("schema_version", FieldType::Unsigned))
@@ -1283,6 +1289,7 @@ impl Indexes {
         let index_id = space
             .index_builder(IndexOf::<Self>::Id.as_str())
             .unique(true)
+            .part("space_id")
             .part("id")
             .if_not_exists(true)
             .create()?;
@@ -1290,6 +1297,7 @@ impl Indexes {
         let index_name = space
             .index_builder(IndexOf::<Self>::Name.as_str())
             .unique(true)
+            .part("space_id")
             .part("name")
             .if_not_exists(true)
             .create()?;
@@ -1302,16 +1310,22 @@ impl Indexes {
     }
 
     #[inline]
-    pub fn get(&self, id: SpaceId) -> tarantool::Result<Option<IndexDef>> {
-        match self.space.get(&[id])? {
+    pub fn get(&self, space_id: SpaceId, index_id: IndexId) -> tarantool::Result<Option<IndexDef>> {
+        match self.space.get(&(space_id, index_id))? {
             Some(tuple) => tuple.decode().map(Some),
             None => Ok(None),
         }
     }
 
     #[inline]
-    pub fn by_name(&self, name: String) -> tarantool::Result<Option<IndexDef>> {
-        match self.index_name.get(&[name])? {
+    pub fn insert(&self, index_def: &IndexDef) -> tarantool::Result<()> {
+        self.space.insert(index_def)?;
+        Ok(())
+    }
+
+    #[inline]
+    pub fn by_name(&self, space_id: SpaceId, name: String) -> tarantool::Result<Option<IndexDef>> {
+        match self.index_name.get(&(space_id, name))? {
             Some(tuple) => tuple.decode().map(Some),
             None => Ok(None),
         }

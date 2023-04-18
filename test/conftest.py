@@ -501,20 +501,13 @@ class Instance:
         )
 
         if dml_kind in ["insert", "replace"]:
-            dml = {
-                dml_kind.capitalize(): dict(
-                    space=space,
-                    tuple=msgpack.packb(tuple),
-                )
-            }
-        elif dml_kind == "delete":
-            raise Exception("unimplemented")
-            dml = {
-                "Delete": dict(
-                    index="Property",
-                    key=1,  # msgpack.packb(tuple),
-                )
-            }
+            dml = dict(
+                op_kind=dml_kind,
+                space=space,
+                tuple=msgpack.packb(tuple),
+            )
+        else:
+            raise Exception(f"unsupported {dml_kind=}")
 
         eprint(f"CaS:\n  {predicate=}\n  {dml=}")
         return self.call(".proc_cas", self.cluster_id, predicate, dml)[0]["index"]
