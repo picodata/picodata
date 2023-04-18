@@ -38,6 +38,7 @@ fn main() {
         std::env::set_var("MAKEFLAGS", makeflags);
     }
 
+    #[allow(clippy::print_literal)]
     for (var, value) in std::env::vars() {
         println!("[{}:{}] {var}={value}", file!(), line!());
     }
