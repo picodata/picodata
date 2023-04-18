@@ -1,4 +1,5 @@
 use crate::instance::Instance;
+use crate::schema::Distribution;
 use crate::storage;
 use crate::storage::{ClusterwideSpace, ClusterwideSpaceIndex};
 use crate::util::AnyWithTypeName;
@@ -8,6 +9,7 @@ use ::tarantool::tlua;
 use ::tarantool::tlua::LuaError;
 use ::tarantool::tuple::{ToTupleBuffer, Tuple, TupleBuffer};
 use serde::{Deserialize, Serialize};
+use tarantool::index::Part;
 
 ////////////////////////////////////////////////////////////////////////////////
 // OpResult
@@ -442,8 +444,7 @@ pub enum Ddl {
         id: SpaceId,
         name: String,
         format: Vec<Field>,
-        #[serde(with = "serde_bytes")]
-        primary_key: TupleBuffer,
+        primary_key: Vec<Part>,
         distribution: Distribution,
     },
     DropSpace {
@@ -452,50 +453,12 @@ pub enum Ddl {
     CreateIndex {
         space_id: SpaceId,
         index_id: IndexId,
-        #[serde(with = "serde_bytes")]
-        by_fields: TupleBuffer,
+        by_fields: Vec<Part>,
     },
     DropIndex {
         space_id: SpaceId,
         index_id: IndexId,
     },
-}
-
-/// Defines how to distribute tuples in a space across replicasets.
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-pub enum Distribution {
-    /// Tuples will be replicated to each instance.
-    Global,
-    /// Tuples will be implicitely sharded. E.g. sent to the corresponding bucket
-    /// which will be determined by a hash of the provided `sharding_key`.
-    ShardedImplicitly {
-        #[serde(with = "serde_bytes")]
-        sharding_key: TupleBuffer,
-        #[serde(default)]
-        sharding_fn: ShardingFn,
-    },
-    /// Tuples will be explicitely sharded. E.g. sent to the bucket
-    /// which id is provided by field that is specified here.
-    ///
-    /// Default field name: "bucket_id"
-    ShardedByField {
-        #[serde(default = "default_bucket_id_field")]
-        field: String,
-    },
-}
-
-fn default_bucket_id_field() -> String {
-    "bucket_id".into()
-}
-
-/// Custom sharding functions are not yet supported.
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Default)]
-pub enum ShardingFn {
-    Crc32,
-    #[default]
-    Murmur3,
-    Xxhash,
-    Md5,
 }
 
 /// Builder for [`Op::DdlPrepare`] operations.
@@ -526,19 +489,19 @@ impl DdlBuilder {
         id: SpaceId,
         name: String,
         format: Vec<tarantool::space::Field>,
-        primary_key: &impl ToTupleBuffer,
+        primary_key: Vec<Part>,
         distribution: Distribution,
-    ) -> tarantool::Result<Op> {
-        Ok(Op::DdlPrepare {
+    ) -> Op {
+        Op::DdlPrepare {
             ddl: Ddl::CreateSpace {
                 id,
                 name,
                 format,
-                primary_key: primary_key.to_tuple_buffer()?,
+                primary_key,
                 distribution,
             },
             schema_version: self.schema_version,
-        })
+        }
     }
 
     /// Creates an `Op::DdlPrepare(Ddl::DropSpace)`.
@@ -552,20 +515,15 @@ impl DdlBuilder {
 
     /// Creates an `Op::DdlPrepare(Ddl::CreateIndex)`.
     #[inline(always)]
-    pub fn create_index(
-        &self,
-        space_id: SpaceId,
-        index_id: IndexId,
-        by_fields: &impl ToTupleBuffer,
-    ) -> tarantool::Result<Op> {
-        Ok(Op::DdlPrepare {
+    pub fn create_index(&self, space_id: SpaceId, index_id: IndexId, by_fields: Vec<Part>) -> Op {
+        Op::DdlPrepare {
             ddl: Ddl::CreateIndex {
                 space_id,
                 index_id,
-                by_fields: by_fields.to_tuple_buffer()?,
+                by_fields,
             },
             schema_version: self.schema_version,
-        })
+        }
     }
 
     /// Creates an `Op::DdlPrepare(Ddl::DropIndex)`.

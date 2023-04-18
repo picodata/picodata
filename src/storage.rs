@@ -2,10 +2,12 @@ use ::tarantool::index::{Index, IndexIterator, IteratorType};
 use ::tarantool::space::{FieldType, Space};
 use ::tarantool::tuple::KeyDef;
 use ::tarantool::tuple::{DecodeOwned, ToTupleBuffer, Tuple};
+use tarantool::space::SpaceId;
 
 use crate::failure_domain as fd;
 use crate::instance::{self, grade, Instance};
 use crate::replicaset::{Replicaset, ReplicasetId};
+use crate::schema::{IndexDef, SpaceDef};
 use crate::traft;
 use crate::traft::error::Error;
 use crate::traft::Migration;
@@ -342,6 +344,36 @@ define_clusterwide_spaces! {
 
             /// An enumeration of indexes defined for migration space.
             pub enum SpaceMigrationIndex;
+        }
+        Space = "_picodata_space" => {
+            Clusterwide::spaces;
+
+            /// A struct for accessing definitions of all the user-defined spaces.
+            pub struct Spaces {
+                space: Space,
+                #[primary]
+                index_id: Index => Id = "id",
+                index_name: Index => Name = "name",
+            }
+
+            /// An enumeration of indexes defined for "_pico_space".
+            #[allow(clippy::enum_variant_names)]
+            pub enum SpaceSpaceIndex;
+        }
+        Index = "_picodata_index" => {
+            Clusterwide::indexes;
+
+            /// A struct for accessing definitions of all the user-defined indexes.
+            pub struct Indexes {
+                space: Space,
+                #[primary]
+                index_id: Index => Id = "id",
+                index_name: Index => Name = "name",
+            }
+
+            /// An enumeration of indexes defined for "_pico_index".
+            #[allow(clippy::enum_variant_names)]
+            pub enum SpaceIndexIndex;
         }
     }
 
@@ -1074,6 +1106,119 @@ impl<T> std::fmt::Debug for EntryIter<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct(std::any::type_name::<Self>())
             .finish_non_exhaustive()
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Spaces
+////////////////////////////////////////////////////////////////////////////////
+
+impl Spaces {
+    pub fn new() -> tarantool::Result<Self> {
+        let space = Space::builder(Self::SPACE_NAME)
+            .is_local(true)
+            .is_temporary(false)
+            .field(("id", FieldType::Unsigned))
+            .field(("name", FieldType::String))
+            .field(("distribution", FieldType::Map))
+            .field(("format", FieldType::Map))
+            .field(("schema_version", FieldType::Unsigned))
+            .field(("operable", FieldType::Boolean))
+            .if_not_exists(true)
+            .create()?;
+
+        let index_id = space
+            .index_builder(IndexOf::<Self>::Id.as_str())
+            .unique(true)
+            .part("id")
+            .if_not_exists(true)
+            .create()?;
+
+        let index_name = space
+            .index_builder(IndexOf::<Self>::Name.as_str())
+            .unique(true)
+            .part("name")
+            .if_not_exists(true)
+            .create()?;
+
+        Ok(Self {
+            space,
+            index_id,
+            index_name,
+        })
+    }
+
+    #[inline]
+    pub fn get(&self, id: SpaceId) -> tarantool::Result<Option<SpaceDef>> {
+        match self.space.get(&[id])? {
+            Some(tuple) => tuple.decode().map(Some),
+            None => Ok(None),
+        }
+    }
+
+    #[inline]
+    pub fn by_name(&self, name: String) -> tarantool::Result<Option<SpaceDef>> {
+        match self.index_name.get(&[name])? {
+            Some(tuple) => tuple.decode().map(Some),
+            None => Ok(None),
+        }
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Indexes
+////////////////////////////////////////////////////////////////////////////////
+
+impl Indexes {
+    pub fn new() -> tarantool::Result<Self> {
+        let space = Space::builder(Self::SPACE_NAME)
+            .is_local(true)
+            .is_temporary(false)
+            .field(("id", FieldType::Unsigned))
+            .field(("name", FieldType::String))
+            .field(("space_id", FieldType::Unsigned))
+            .field(("local", FieldType::Boolean))
+            .field(("parts", FieldType::Array))
+            .field(("schema_version", FieldType::Unsigned))
+            .field(("operable", FieldType::Boolean))
+            .if_not_exists(true)
+            .create()?;
+
+        let index_id = space
+            .index_builder(IndexOf::<Self>::Id.as_str())
+            .unique(true)
+            .part("id")
+            .if_not_exists(true)
+            .create()?;
+
+        let index_name = space
+            .index_builder(IndexOf::<Self>::Name.as_str())
+            .unique(true)
+            .part("name")
+            .if_not_exists(true)
+            .create()?;
+
+        Ok(Self {
+            space,
+            index_id,
+            index_name,
+        })
+    }
+
+    #[inline]
+    pub fn get(&self, id: SpaceId) -> tarantool::Result<Option<IndexDef>> {
+        match self.space.get(&[id])? {
+            Some(tuple) => tuple.decode().map(Some),
+            None => Ok(None),
+        }
+    }
+
+    #[inline]
+    pub fn by_name(&self, name: String) -> tarantool::Result<Option<IndexDef>> {
+        match self.index_name.get(&[name])? {
+            Some(tuple) => tuple.decode().map(Some),
+            None => Ok(None),
+        }
     }
 }
 

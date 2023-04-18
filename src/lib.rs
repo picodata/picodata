@@ -40,6 +40,7 @@ pub mod r#loop;
 pub mod mailbox;
 pub mod on_shutdown;
 pub mod replicaset;
+pub mod schema;
 pub mod storage;
 pub mod tarantool;
 pub mod tlog;
