@@ -457,7 +457,7 @@ class Instance:
 
     def cas(
         self,
-        dml_kind: Literal["insert", "replace"],
+        dml_kind: Literal["insert", "replace", "delete"],
         space: str,
         tuple: Any,  # TODO tuple, not any
         index: int | None = None,
@@ -500,12 +500,21 @@ class Instance:
             ranges=[range] if range is not None else [],
         )
 
-        dml = {
-            dml_kind.capitalize(): dict(
-                space=space,
-                tuple=msgpack.packb(tuple),
-            )
-        }
+        if dml_kind in ["insert", "replace"]:
+            dml = {
+                dml_kind.capitalize(): dict(
+                    space=space,
+                    tuple=msgpack.packb(tuple),
+                )
+            }
+        elif dml_kind == "delete":
+            raise Exception("unimplemented")
+            dml = {
+                "Delete": dict(
+                    index="Property",
+                    key=1,  # msgpack.packb(tuple),
+                )
+            }
 
         eprint(f"CaS:\n  {predicate=}\n  {dml=}")
         return self.call(".proc_cas", self.cluster_id, predicate, dml)[0]["index"]

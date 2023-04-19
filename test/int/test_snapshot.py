@@ -1,75 +1,60 @@
-from conftest import Cluster, Instance
+from conftest import Cluster
+
+_3_SEC = 3
 
 
-def raft_compact_log_and_get_len(i: Instance):
-    return i.eval(
-        """
-        local last_index = pico.space.raft_log.index[0]:max().index
-        pico.raft_compact_log(last_index + 1)
-        return pico.space.raft_log:len()
-        """
-    )
+def test_bootstrap_from_snapshot(cluster: Cluster):
+    [i1] = cluster.deploy(instance_count=1)
+
+    ret = i1.cas("insert", "_picodata_property", ["animal", "horse"])
+    i1.call(".proc_sync_raft", ret, (_3_SEC, 0))
+    assert i1.call("pico.raft_read_index", _3_SEC) == ret
+
+    # Compact the whole log
+    assert i1.raft_compact_log() == ret + 1
+
+    # Ensure i2 bootstraps from a snapshot
+    i2 = cluster.add_instance(wait_online=True)
+    # Whenever a snapshot is applied, all preceeding raft log is
+    # implicitly compacted. Adding an instance implies appending 3
+    # entries to the raft log. i2 catches them via a snapshot.
+    assert i2.raft_first_index() == i1.raft_first_index() + 3
+
+    # Ensure new instance replicates the property
+    assert i2.call("pico.space.property:get", "animal") == ["animal", "horse"]
 
 
-def get_raft_commit(i: Instance) -> int:
-    return i.eval("return pico.space.raft_state:get('commit')")
-
-
-def get_raft_log_len(i: Instance) -> int:
-    return i.eval("return pico.space.raft_log:len()")
-
-
-def test_reelection_after_snapshot(cluster: Cluster):
-    i1, *_ = cluster.deploy(instance_count=1)
-
-    assert raft_compact_log_and_get_len(i1) == 0
-
-    # Add another instance after log compaction
-    i2 = cluster.add_instance()
-
-    assert get_raft_commit(i1) == get_raft_commit(i2)
-    # first 3 entries (replace peer_address, persist instance, raft conf change)
-    # will be in the snapshot, and the rest will be arriving via append entries
-    assert get_raft_log_len(i2) == get_raft_log_len(i1) - 3
-
-    # Add another instance
-    i3 = cluster.add_instance()
-
-    assert get_raft_commit(i2) == get_raft_commit(i3)
-    # the fresh snapshot is generated for each new instance
-    assert get_raft_log_len(i3) != get_raft_log_len(i2)
-
-    i1.terminate()
-
-    assert raft_compact_log_and_get_len(i2) == 0
-    assert raft_compact_log_and_get_len(i3) == 0
-
-    # Add yet another instance after another log compaction
-    i4 = cluster.add_instance(peers=[i2.listen])
-
-    assert get_raft_commit(i3) == get_raft_commit(i4)
-    assert get_raft_log_len(i4) != get_raft_log_len(i3)
-
-
-def test_follower_restarts_after_leader_compacts(cluster: Cluster):
+def test_catchup_by_snapshot(cluster: Cluster):
     i1, i2, i3 = cluster.deploy(instance_count=3)
+    i1.assert_raft_status("Leader")
+    ret = i1.cas("insert", "_picodata_property", ["animal", "tiger"])
 
-    # Stop a follower
+    i3.call(".proc_sync_raft", ret, (_3_SEC, 0))
+    assert i3.call("pico.space.property:get", "animal") == ["animal", "tiger"]
+    assert i3.raft_first_index() == 1
     i3.terminate()
 
-    # Add more stuff to the raft log
-    _ = cluster.add_instance(wait_online=True)
+    # TODO: i1.cas("delete", "_picodata_property", ["animal"])
+    i1.cas("replace", "_picodata_property", ["animal", "lion"])
+    ret = i1.cas("insert", "_picodata_property", ["tree", "birch"])
 
-    # Compact log on leader
-    i1.call("pico.raft_compact_log", 999)
+    for i in [i1, i2]:
+        i.call(".proc_sync_raft", ret, (_3_SEC, 0))
+        assert i.raft_compact_log() == ret + 1
 
-    # raft_sync works successfully for i3
+    # Ensure i3 is able to sync raft using a snapshot
     i3.start()
     i3.wait_online()
 
-    # i3 has received all the needed data
-    assert i3.call("pico.space.instance:get", "i4") is not None
+    assert i3.call("pico.space.property:get", "animal") == ["animal", "lion"]
+    assert i3.call("pico.space.property:get", "tree") == ["tree", "birch"]
 
-    # i3 sucessfully restarts
+    # Since there were no cas requests since log compaction, the indexes
+    # should be equal.
+    assert i3.raft_first_index() == ret + 1
+
+    # There used to be a problem: catching snapshot used to cause
+    # inconsistent raft state so the second restart used to panic.
     i3.terminate()
     i3.start()
+    i3.wait_online()
