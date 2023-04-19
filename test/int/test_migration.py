@@ -38,10 +38,10 @@ def test_apply_migrations(cluster: Cluster):
                     return replicaset.current_schema_version
                 end)
                 :totable()
-        """
+            """
         )
 
-    for (n, sql) in {
+    for n, sql in {
         1: """create table "test_space" ("id" int primary key)""",
         2: """alter table "test_space" add column "value" varchar(100)""",
     }.items():

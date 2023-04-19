@@ -10,11 +10,12 @@ import funcy  # type: ignore
 import pytest
 import signal
 import subprocess
+import msgpack  # type: ignore
 from rand.params import generate_seed
 from functools import reduce
 from datetime import datetime
 from shutil import rmtree
-from typing import Callable, Generator, Iterator
+from typing import Any, Callable, Literal, Generator, Iterator
 from itertools import count
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass, field
@@ -436,6 +437,78 @@ class Instance:
             lua_code,
             dict(timeout=timeout_seconds),
         )
+
+    def raft_compact_log(self, up_to: int = 2**64 - 1) -> int:
+        """
+        Trim raft log up to the given index (excluding the index
+        itself). By default all entries are compacted so the log
+        remains empty.
+
+        Return the new first_index after compaction.
+        """
+        return self.call("pico.raft_compact_log", up_to)
+
+    def raft_first_index(self) -> int:
+        """
+        Return the raft first_index value that is `(compacted_index or 0) + 1`.
+        """
+
+        return self.call("pico.raft_compact_log", 0)
+
+    def cas(
+        self,
+        dml_kind: Literal["insert", "replace"],
+        space: str,
+        tuple: Any,  # TODO tuple, not any
+        index: int | None = None,
+        term: int | None = None,
+        range: Any | None = None,
+    ) -> int:
+        if index is None:
+            index, term = self.eval(
+                """
+                local index = box.space._picodata_raft_state:get("applied").value
+                local term = box.space._picodata_raft_state:get("term").value
+                return {index, term}
+            """
+            )
+        elif term is None:
+            term = self.eval(
+                """
+                local entry = box.space._picodata_raft_log:get(...)
+                if entry then
+                    return entry.term
+                else
+                    return pico.raft_status().term
+                end
+            """,
+                index,
+            )
+
+        if range is not None:
+            key_min, key_max = range
+            range = dict(
+                space=space,
+                index=self.eval("return box.space[...].index[0].name", space),
+                key_min=msgpack.packb([key_min]),
+                key_max=msgpack.packb([key_max]),
+            )
+
+        predicate = dict(
+            index=index,
+            term=term,
+            ranges=[range] if range is not None else [],
+        )
+
+        dml = {
+            dml_kind.capitalize(): dict(
+                space=space,
+                tuple=msgpack.packb(tuple),
+            )
+        }
+
+        eprint(f"CaS:\n  {predicate=}\n  {dml=}")
+        return self.call(".proc_cas", self.cluster_id, predicate, dml)[0]["index"]
 
     def assert_raft_status(self, state, leader_id=None):
         status = self._raft_status()
