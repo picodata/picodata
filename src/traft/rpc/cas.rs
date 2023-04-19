@@ -66,6 +66,10 @@ crate::define_rpc_request! {
         assert!(requested <= last);
         assert_eq!(requested_term, status.term);
 
+        // Also check that requested index actually belongs to the
+        // requested term.
+        check_term(raft_log.term(requested).unwrap_or(0))?;
+
         let last_persisted = raft::Storage::last_index(raft_storage)?;
         assert!(last_persisted <= last);
 
@@ -92,7 +96,6 @@ crate::define_rpc_request! {
         //                  [ unstable  ]
         //
 
-
         if requested < last_persisted { // there's at least one persisted entry to check
             let persisted = raft_storage.entries(requested + 1, last_persisted + 1)?;
             if persisted.len() < (last_persisted - requested) as usize {
@@ -100,7 +103,7 @@ crate::define_rpc_request! {
             }
 
             for entry in persisted {
-                check_term(entry.term)?;
+                assert_eq!(entry.term, status.term);
                 let entry_index = entry.index;
                 let Some(Op::Dml(op)) = entry.into_op() else { continue };
                 check_predicate_for_entry(&req.predicate, entry_index, &op)?;
@@ -110,7 +113,7 @@ crate::define_rpc_request! {
         // Check remaining unstable entries.
         let unstable = raft_log.entries(last_persisted + 1, u64::MAX)?;
         for entry in unstable {
-            check_term(entry.term)?;
+            assert_eq!(entry.term, status.term);
             let Ok(cx) = EntryContext::from_raft_entry(&entry) else {
                 tlog!(Warning, "raft entry has invalid context"; "entry" => ?entry);
                 continue;

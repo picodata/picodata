@@ -47,7 +47,8 @@ def test_cas_errors(instance: Instance):
             "insert",
             "_picodata_property",
             ["foo", "420"],
-            index=0,
+            index=1,
+            term=2,  # actually 1
         )
     assert e3.value.args == (
         "ER_PROC_C",
