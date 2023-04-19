@@ -1101,8 +1101,6 @@ pub fn global() -> traft::Result<&'static Node> {
 
 #[proc(packed_args)]
 fn proc_raft_interact(pbs: Vec<traft::MessagePb>) -> traft::Result<()> {
-    crate::tarantool::fiber_name("proc_raft_interact");
-
     let node = global()?;
     for pb in pbs {
         node.step_and_yield(raft::Message::try_from(pb).map_err(Error::other)?);

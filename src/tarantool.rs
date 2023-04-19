@@ -186,12 +186,6 @@ where
     l.eval(code)
 }
 
-/// Give calling fiber a name
-pub fn fiber_name(name: &str) {
-    let l = lua_state();
-    l.exec_with("package.loaded.fiber.name(...)", name).unwrap();
-}
-
 // fn net_box_repeat_call_until_succeed<Args, Res, Addr>(
 pub fn net_box_call<Args, Res, Addr>(
     address: Addr,

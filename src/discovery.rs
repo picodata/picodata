@@ -194,8 +194,6 @@ pub fn wait_global() -> Role {
 
 #[proc]
 fn proc_discover<'a>(request: Request, request_to: Address) -> Result<Response, Box<dyn StdError>> {
-    crate::tarantool::fiber_name("proc_discover");
-
     let ready_ids = traft::node::global().ok().and_then(|node| {
         let status = node.status();
         status
