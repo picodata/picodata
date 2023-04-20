@@ -41,6 +41,19 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 source "$HOME/.cargo/env"
 ```
 
+### Prerequisites for MacOs
+Use the following commands to install the required build prerequisites. 
+Note that you'll need recent Rust and Cargo versions installed using the 
+recommended way from [rustup.rs](rustup.rs):
+```shell
+brew install git cmake make curl gcc msgpack
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+source "$HOME/.cargo/env"
+
+# Optional - to build with Web UI
+brew install node yarn
+```
+
 ### Getting and building the source code
 ```bash
 git clone https://git.picodata.io/picodata/picodata/picodata.git
@@ -70,7 +83,10 @@ The resulting binaries should appear under the  `target` subdirectory.
 ## Integration testing with pytest
 The following refers to Ubuntu 20.04 LTS. The mileage with other distributions may vary.
 
-### Installation
+### Ubuntu
+
+#### Installation
+
 
 1. Install Python 3.10
 
@@ -93,13 +109,14 @@ The following refers to Ubuntu 20.04 LTS. The mileage with other distributions m
     python3.10 -m pipenv install --deploy
     ```
 
-### Adding dependencies
+
+#### Adding dependencies
 
 ```bash
 python3.10 -m pipenv install <dependency-package-name>
 ```
 
-### Running
+#### Running
 
 ```bash
 python3.10 -m pipenv run pytest
@@ -115,10 +132,86 @@ pytest
 pipenv run lint
 ```
 
-### Running tests in parallel with pytest-xdist
+#### Running tests in parallel with pytest-xdist
 
 ```bash
 python3.10 -m pipenv run pytest -n 20
+```
+
+---
+
+### MacOs
+
+#### Installation
+
+The first step is to see which version is currently linked homebrew.
+```shell
+brew info python
+```
+
+If the python version is equal to `3.10`, go to install pipenv.
+```shell
+brew install python@3.10
+brew link python
+python3 --version
+```
+
+Since with a high probability you have already installed
+`Xcode Developer Tools`, check which executable file you have called by
+command:
+```shell
+which python3
+```
+If it is a python3 installed by homebrew then proceed to the installation 
+pipenv. Also, if you not make sure the `/usr/local/bin` directory is included 
+in the `PATH`, add it. After that, check homebrew environment:
+```shell
+brew config
+```
+Variable `HOMEBREW_PREFIX` will point to the directory in which brew 
+installs packages. Depending on where the homebrew executables are located,
+create a symlink.
+```shell
+ln -s "$(brew config | sed -n "s/^HOMEBREW_PREFIX: //p" | tr -d "\n")/bin/python@3.10" /usr/local/bin/python3
+```
+
+Check `python3` location and version. Now it should be python installed 
+homebrew.
+```shell
+which python3
+python3 --version
+```
+
+Make sure the `pip3` executable also points to the homebrew directory.
+```shell
+which pip3
+```
+If not using "right" (located in homebrew directory) an executable, then
+repeat the steps similar to `python3` before proceeding with installing
+`pipenv`.
+```shell
+ln -s "$(brew config | sed -n "s/^HOMEBREW_PREFIX: //p" | tr -d "\n")/bin/pip@3.10" /usr/local/bin/pip3
+```
+After that you can install pipenv:
+```shell
+pip3 install pipenv==2022.4.8
+```
+Set python path for pipenv:
+```shell
+pipenv --python /usr/local/bin/python3
+ ```
+
+#### Adding dependencies
+
+```shell
+pipenv install --deploy
+```
+
+#### Running
+
+```shell
+pipenv run pytest -n auto
+pipenv run lint
 ```
 
 ## Benchmarks and flamegraphs
