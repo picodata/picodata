@@ -36,6 +36,8 @@ pub fn wait_for_index_timeout(
         }
 
         if let Some(timeout) = deadline.checked_duration_since(Instant::now()) {
+            // TODO: this assumes applied index is updated after committe index,
+            // maybe we should be more explicit about what we're waiting for
             event::wait_timeout(event::Event::RaftEntryApplied, timeout)?;
         } else {
             return Err(Error::Timeout);
