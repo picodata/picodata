@@ -16,7 +16,7 @@ pub trait OpResult {
     // FIXME: this signature makes it look like result of any operation depends
     // only on what is contained within the operation which is almost never true
     // And it makes it hard to do anything useful inside this function.
-    fn result(self) -> Self::Result;
+    fn result(&self) -> Self::Result;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -147,7 +147,7 @@ impl std::fmt::Display for Op {
 
 impl OpResult for Op {
     type Result = ();
-    fn result(self) -> Self::Result {}
+    fn result(&self) -> Self::Result {}
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -165,8 +165,8 @@ impl PersistInstance {
 
 impl OpResult for PersistInstance {
     type Result = Box<Instance>;
-    fn result(self) -> Self::Result {
-        self.0
+    fn result(&self) -> Self::Result {
+        self.0.clone()
     }
 }
 
@@ -223,12 +223,12 @@ pub enum Dml {
 
 impl OpResult for Dml {
     type Result = tarantool::Result<Option<Tuple>>;
-    fn result(self) -> Self::Result {
+    fn result(&self) -> Self::Result {
         match self {
-            Self::Insert { space, tuple } => space.insert(&tuple).map(Some),
-            Self::Replace { space, tuple } => space.replace(&tuple).map(Some),
-            Self::Update { space, key, ops } => space.primary_index().update(&key, &ops),
-            Self::Delete { space, key } => space.primary_index().delete(&key),
+            Self::Insert { space, tuple } => space.insert(tuple).map(Some),
+            Self::Replace { space, tuple } => space.replace(tuple).map(Some),
+            Self::Update { space, key, ops } => space.primary_index().update(key, ops),
+            Self::Delete { space, key } => space.primary_index().delete(key),
         }
     }
 }
