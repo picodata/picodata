@@ -447,43 +447,56 @@ fn picolib_setup(args: &args::Run) {
              op: op::DmlInLua,
              predicate: rpc::cas::Predicate|
              -> traft::Result<RaftIndex> {
-                let node = node::global()?;
-                let request = rpc::cas::Request {
-                    cluster_id: node
-                        .raft_storage
-                        .cluster_id()?
-                        .expect("cluster_id really shouldn't be returning Option"),
-                    op: op::Dml::from_lua_args(op, index).map_err(Error::other)?,
-                    predicate,
-                };
-                loop {
-                    let Some(leader_id) = node.status().leader_id else {
-                        tlog!(Warning, "leader id is unknown, waiting for status change...");
-                        node.wait_status();
-                        continue;
-                    };
-                    let leader_address = unwrap_ok_or!(
-                        node.storage.peer_addresses.try_get(leader_id),
-                        Err(e) => {
-                            tlog!(Warning, "failed getting leader address: {e}");
-                            tlog!(Info, "going to retry in while...");
-                            fiber::sleep(Duration::from_millis(250));
-                            continue;
-                        }
-                    );
-                    let resp = rpc::network_call(&leader_address, &request);
-                    let resp = fiber::block_on(resp.timeout(Duration::from_secs(3)));
-                    match resp {
-                        Ok(rpc::cas::Response { index, .. }) => return Ok(index),
-                        Err(e) => {
-                            tlog!(Warning, "{e}");
-                            return Err(e.into());
-                        }
-                    }
-                }
+                let op = op::Dml::from_lua_args(op, index).map_err(Error::other)?;
+                compare_and_swap(op.into(), predicate)
             },
         ),
-    )
+    );
+}
+
+/// Performs a clusterwide compare and swap operation.
+///
+/// E.g. it checks the `predicate` on leader and if no conflicting entries were found
+/// appends the `op` to the raft log and returns its index.
+///
+/// # Errors
+/// See [`rpc::cas::Error`] for CaS-specific errors.
+/// It can also return general picodata errors in cases of faulty network or storage.
+pub fn compare_and_swap(op: Op, predicate: rpc::cas::Predicate) -> traft::Result<RaftIndex> {
+    let node = node::global()?;
+    let request = rpc::cas::Request {
+        cluster_id: node
+            .raft_storage
+            .cluster_id()?
+            .expect("cluster_id really shouldn't be returning Option"),
+        predicate,
+        op,
+    };
+    loop {
+        let Some(leader_id) = node.status().leader_id else {
+            tlog!(Warning, "leader id is unknown, waiting for status change...");
+            node.wait_status();
+            continue;
+        };
+        let leader_address = unwrap_ok_or!(
+            node.storage.peer_addresses.try_get(leader_id),
+            Err(e) => {
+                tlog!(Warning, "failed getting leader address: {e}");
+                tlog!(Info, "going to retry in while...");
+                fiber::sleep(Duration::from_millis(250));
+                continue;
+            }
+        );
+        let resp = rpc::network_call(&leader_address, &request);
+        let resp = fiber::block_on(resp.timeout(Duration::from_secs(3)));
+        match resp {
+            Ok(rpc::cas::Response { index, .. }) => return Ok(index),
+            Err(e) => {
+                tlog!(Warning, "{e}");
+                return Err(e.into());
+            }
+        }
+    }
 }
 
 macro_rules! lua_preload {

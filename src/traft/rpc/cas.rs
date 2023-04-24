@@ -1,7 +1,9 @@
-use crate::op::{Dml, Op};
+use crate::storage::TClusterwideSpace as _;
+use crate::storage::{ClusterwideSpace, ClusterwideSpaceIndex, Instances, Properties};
 use crate::tlog;
 use crate::traft::error::Error as TraftError;
 use crate::traft::node;
+use crate::traft::op::{Dml, Op};
 use crate::traft::Result;
 use crate::traft::{EntryContext, EntryContextNormal};
 use crate::traft::{RaftIndex, RaftTerm};
@@ -13,6 +15,8 @@ use ::raft::StorageError;
 use tarantool::error::Error as TntError;
 use tarantool::tlua;
 use tarantool::tuple::{Tuple, TupleBuffer};
+
+use once_cell::sync::Lazy;
 
 crate::define_rpc_request! {
     fn proc_cas(req: Request) -> Result<Response> {
@@ -105,7 +109,7 @@ crate::define_rpc_request! {
             for entry in persisted {
                 assert_eq!(entry.term, status.term);
                 let entry_index = entry.index;
-                let Some(Op::Dml(op)) = entry.into_op() else { continue };
+                let Some(op) = entry.into_op() else { continue };
                 check_predicate_for_entry(&req.predicate, entry_index, &op)?;
             }
         }
@@ -118,7 +122,7 @@ crate::define_rpc_request! {
                 tlog!(Warning, "raft entry has invalid context"; "entry" => ?entry);
                 continue;
             };
-            let Some(EntryContext::Normal(EntryContextNormal { op: Op::Dml(op), .. })) = cx else {
+            let Some(EntryContext::Normal(EntryContextNormal { op, .. })) = cx else {
                 continue;
             };
             check_predicate_for_entry(&req.predicate, entry.index, &op)?;
@@ -144,7 +148,7 @@ crate::define_rpc_request! {
     pub struct Request {
         pub cluster_id: String,
         pub predicate: Predicate,
-        pub op: Dml,
+        pub op: Op,
     }
 
     pub struct Response {
@@ -156,43 +160,83 @@ crate::define_rpc_request! {
 pub fn check_predicate_for_entry(
     predicate: &Predicate,
     entry_index: RaftIndex,
-    entry_op: &Dml,
+    entry_op: &Op,
 ) -> std::result::Result<(), Error> {
+    let error = Error::Rejected {
+        requested: predicate.index,
+        conflict_index: entry_index,
+    };
+    let ddl_keys: Lazy<Vec<Tuple>> = Lazy::new(|| {
+        use crate::storage::PropertyName::*;
+
+        [
+            PendingSchemaChange.into(),
+            PendingSchemaVersion.into(),
+            CurrentSchemaVersion.into(),
+        ]
+        .into_iter()
+        .map(|key: &str| Tuple::new(&(key,)))
+        .collect::<tarantool::Result<_>>()
+        .expect("keys should convert to tuple")
+    });
+    // Fail CaS if there was an `EvalLua` entry as we don't know which spaces, indexes and keys it touches
+    if let Op::EvalLua(_) = entry_op {
+        return Err(error);
+    }
     for range in &predicate.ranges {
-        let space = entry_op.space();
-        let index = entry_op.index();
+        let Some(space) = space(entry_op) else {
+            continue
+        };
+        let Some(index) = index(entry_op) else {
+            continue
+        };
         if space.as_str() != range.space || index.index_name() != range.index {
             continue;
         }
 
-        let error = || Error::Rejected {
-            requested: predicate.index,
-            conflict_index: entry_index,
-        };
-
         match entry_op {
-            Dml::Update { key, .. } | // prevent rustfmt from spoiling linewraps
-            Dml::Delete { key, .. } => {
+            Op::Dml(Dml::Update { key, .. } | Dml::Delete { key, .. }) => {
                 let key = Tuple::new(key)?;
                 let key_def = index.key_def_for_key()?;
 
                 if key_def.compare_with_key(&key, &range.key_min).is_ge()
-                && key_def.compare_with_key(&key, &range.key_max).is_le()
+                    && key_def.compare_with_key(&key, &range.key_max).is_le()
                 {
-                    return Err(error());
+                    return Err(error);
                 }
             }
-            Dml::Insert { tuple, .. } | // prevent rustfmt from spoiling linewraps
-            Dml::Replace { tuple, .. } => {
+            Op::Dml(Dml::Insert { tuple, .. } | Dml::Replace { tuple, .. }) => {
                 let tuple = Tuple::new(tuple)?;
                 let key_def = index.key_def()?;
 
                 if key_def.compare_with_key(&tuple, &range.key_min).is_ge()
-                && key_def.compare_with_key(&tuple, &range.key_max).is_le()
+                    && key_def.compare_with_key(&tuple, &range.key_max).is_le()
                 {
-                    return Err(error());
+                    return Err(error);
                 }
-            },
+            }
+            Op::DdlPrepare { .. } | Op::DdlCommit | Op::DdlAbort => {
+                let key_def = index.key_def_for_key()?;
+                for key in ddl_keys.iter() {
+                    if key_def.compare_with_key(key, &range.key_min).is_ge()
+                        && key_def.compare_with_key(key, &range.key_max).is_le()
+                    {
+                        return Err(error);
+                    }
+                }
+            }
+            Op::PersistInstance(op) => {
+                let key = Tuple::new(&(&op.0.instance_id,))?;
+                let key_def = index.key_def_for_key()?;
+
+                if key_def.compare_with_key(&key, &range.key_min).is_ge()
+                    && key_def.compare_with_key(&key, &range.key_max).is_le()
+                {
+                    return Err(error);
+                }
+            }
+            Op::Nop | Op::Info { .. } | Op::ReturnOne(_) => (),
+            Op::EvalLua(_) => unreachable!("checked earlier"),
         };
     }
     Ok(())
@@ -232,10 +276,14 @@ pub enum Error {
     KeyTypeMismatch(#[from] TntError),
 }
 
+/// Predicate that will be checked by the leader, before accepting the proposed `op`.
 #[derive(Clone, Debug, ::serde::Serialize, ::serde::Deserialize, tlua::LuaRead)]
 pub struct Predicate {
+    /// CaS sender's current raft index.
     pub index: RaftIndex,
+    /// CaS sender's current raft term.
     pub term: RaftTerm,
+    /// Range that the CaS sender have read and expects it to be unmodified.
     pub ranges: Vec<Range>,
 }
 
@@ -247,4 +295,76 @@ pub struct Range {
     pub key_min: TupleBuffer,
     #[serde(with = "serde_bytes")]
     pub key_max: TupleBuffer,
+}
+
+/// Get space that the operation touches.
+fn space(op: &Op) -> Option<ClusterwideSpace> {
+    match op {
+        Op::Dml(dml) => Some(dml.space()),
+        Op::DdlPrepare { .. } | Op::DdlCommit | Op::DdlAbort => Some(ClusterwideSpace::Property),
+        Op::PersistInstance(_) => Some(ClusterwideSpace::Instance),
+        Op::Nop | Op::Info { .. } | Op::ReturnOne(_) => None,
+        Op::EvalLua(_) => unreachable!("should be checked earlier"),
+    }
+}
+
+/// Get index that the operation touches.
+fn index(op: &Op) -> Option<ClusterwideSpaceIndex> {
+    match op {
+        Op::Dml(dml) => Some(dml.index()),
+        Op::DdlPrepare { .. } | Op::DdlCommit | Op::DdlAbort => {
+            Some(Properties::primary_index().into())
+        }
+        Op::PersistInstance(_) => Some(Instances::primary_index().into()),
+        Op::Nop | Op::Info { .. } | Op::ReturnOne(_) => None,
+        Op::EvalLua(_) => unreachable!("should be checked earlier"),
+    }
+}
+
+mod tests {
+    use tarantool::tuple::ToTupleBuffer;
+
+    use crate::storage::{Clusterwide, Properties, PropertyName, TClusterwideSpace};
+
+    use super::{check_predicate_for_entry, Op, Predicate, Range};
+
+    #[::tarantool::test]
+    fn check_ddl_predicate() {
+        Clusterwide::new().unwrap();
+
+        let err = check_predicate_for_entry(
+            &Predicate {
+                index: 1,
+                term: 1,
+                ranges: vec![Range {
+                    space: Properties::SPACE_NAME.into(),
+                    index: Properties::primary_index().into(),
+                    key_min: (PropertyName::PendingSchemaChange,)
+                        .to_tuple_buffer()
+                        .unwrap(),
+                    key_max: (PropertyName::PendingSchemaChange,)
+                        .to_tuple_buffer()
+                        .unwrap(),
+                }],
+            },
+            2,
+            &Op::DdlCommit,
+        )
+        .unwrap_err();
+        assert_eq!(
+            &err.to_string(),
+            "comparison failed for index 1 as it conflicts with 2"
+        );
+
+        check_predicate_for_entry(
+            &Predicate {
+                index: 1,
+                term: 1,
+                ranges: vec![],
+            },
+            2,
+            &Op::DdlCommit,
+        )
+        .unwrap();
+    }
 }

@@ -34,7 +34,7 @@ pub enum Op {
     EvalLua(EvalLua),
     ///
     ReturnOne(ReturnOne),
-    /// Update the given instance's entry in [`storage::Instances`].
+    /// Update the given instance's entry in [`crate::storage::Instances`].
     PersistInstance(PersistInstance),
     /// Cluster-wide data modification operation.
     /// Should be used to manipulate the cluster-wide configuration.

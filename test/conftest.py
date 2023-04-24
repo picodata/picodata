@@ -502,6 +502,7 @@ class Instance:
 
         if dml_kind in ["insert", "replace"]:
             dml = dict(
+                kind="dml",
                 op_kind=dml_kind,
                 space=space,
                 tuple=msgpack.packb(tuple),
