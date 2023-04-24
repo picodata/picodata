@@ -145,9 +145,12 @@ impl std::fmt::Display for Op {
     }
 }
 
+// TODO: remove this
 impl OpResult for Op {
     type Result = ();
-    fn result(&self) -> Self::Result {}
+    fn result(&self) -> Self::Result {
+        unreachable!()
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -163,10 +166,11 @@ impl PersistInstance {
     }
 }
 
+// TODO: remove this
 impl OpResult for PersistInstance {
     type Result = Box<Instance>;
     fn result(&self) -> Self::Result {
-        self.0.clone()
+        unreachable!()
     }
 }
 
@@ -221,15 +225,11 @@ pub enum Dml {
     }
 }
 
+// TODO: remove this
 impl OpResult for Dml {
     type Result = tarantool::Result<Option<Tuple>>;
     fn result(&self) -> Self::Result {
-        match self {
-            Self::Insert { space, tuple } => space.insert(tuple).map(Some),
-            Self::Replace { space, tuple } => space.replace(tuple).map(Some),
-            Self::Update { space, key, ops } => space.primary_index().update(key, ops),
-            Self::Delete { space, key } => space.primary_index().delete(key),
-        }
+        unreachable!()
     }
 }
 

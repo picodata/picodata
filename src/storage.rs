@@ -1,6 +1,7 @@
 use ::tarantool::index::{Index, IndexId, IndexIterator, IteratorType};
 use ::tarantool::msgpack::{ArrayWriter, ValueIter};
-use ::tarantool::space::{FieldType, Space, SpaceId};
+use ::tarantool::space::UpdateOps;
+use ::tarantool::space::{FieldType, Space, SpaceId, SystemSpace};
 use ::tarantool::tuple::KeyDef;
 use ::tarantool::tuple::{Decode, DecodeOwned, Encode};
 use ::tarantool::tuple::{RawBytes, ToTupleBuffer, Tuple, TupleBuffer};
@@ -617,10 +618,15 @@ impl Properties {
         }
     }
 
-    #[allow(dead_code)]
     #[inline]
     pub fn put(&self, key: PropertyName, value: &impl serde::Serialize) -> tarantool::Result<()> {
         self.space.put(&(key, value))?;
+        Ok(())
+    }
+
+    #[inline]
+    pub fn delete(&self, key: PropertyName) -> tarantool::Result<()> {
+        self.space.delete(&[key])?;
         Ok(())
     }
 
@@ -822,8 +828,7 @@ impl Instances {
         Ok(())
     }
 
-    /// Find a instance by `raft_id` and return a single field specified by `F`
-    /// (see `InstanceFieldDef` & `instance_field` module).
+    /// Find a instance by `id` (see trait [`InstanceId`]).
     #[inline(always)]
     pub fn get(&self, id: &impl InstanceId) -> Result<Instance> {
         let res = id
@@ -1258,9 +1263,28 @@ impl Spaces {
     }
 
     #[inline]
+    pub fn put(&self, space_def: &SpaceDef) -> tarantool::Result<()> {
+        self.space.replace(space_def)?;
+        Ok(())
+    }
+
+    #[inline]
     pub fn insert(&self, space_def: &SpaceDef) -> tarantool::Result<()> {
         self.space.insert(space_def)?;
         Ok(())
+    }
+
+    #[inline]
+    pub fn update_operable(&self, id: SpaceId, operable: bool) -> tarantool::Result<()> {
+        let mut ops = UpdateOps::with_capacity(1);
+        ops.assign(SpaceDef::FIELD_OPERABLE, operable)?;
+        self.space.update(&[id], ops)?;
+        Ok(())
+    }
+
+    #[inline]
+    pub fn delete(&self, id: SpaceId) -> tarantool::Result<Option<Tuple>> {
+        self.space.delete(&[id])
     }
 
     #[inline]
@@ -1323,9 +1347,33 @@ impl Indexes {
     }
 
     #[inline]
+    pub fn put(&self, index_def: &IndexDef) -> tarantool::Result<()> {
+        self.space.replace(index_def)?;
+        Ok(())
+    }
+
+    #[inline]
     pub fn insert(&self, index_def: &IndexDef) -> tarantool::Result<()> {
         self.space.insert(index_def)?;
         Ok(())
+    }
+
+    #[inline]
+    pub fn update_operable(
+        &self,
+        space_id: SpaceId,
+        index_id: IndexId,
+        operable: bool,
+    ) -> tarantool::Result<()> {
+        let mut ops = UpdateOps::with_capacity(1);
+        ops.assign(IndexDef::FIELD_OPERABLE, operable)?;
+        self.space.update(&(space_id, index_id), ops)?;
+        Ok(())
+    }
+
+    #[inline]
+    pub fn delete(&self, space_id: SpaceId, index_id: IndexId) -> tarantool::Result<Option<Tuple>> {
+        self.space.delete(&[space_id, index_id])
     }
 
     #[inline]
@@ -1335,6 +1383,24 @@ impl Indexes {
             None => Ok(None),
         }
     }
+}
+
+pub fn pico_schema_version() -> tarantool::Result<u64> {
+    let space_schema = Space::from(SystemSpace::Schema);
+    let tuple = space_schema.get(&["pico_schema_version"])?;
+    let mut res = 0;
+    if let Some(tuple) = tuple {
+        if let Some(v) = tuple.field(1)? {
+            res = v;
+        }
+    }
+    Ok(res)
+}
+
+pub fn set_pico_schema_version(v: u64) -> tarantool::Result<()> {
+    let space_schema = Space::from(SystemSpace::Schema);
+    space_schema.insert(&("pico_schema_version", v))?;
+    Ok(())
 }
 
 ////////////////////////////////////////////////////////////////////////////////

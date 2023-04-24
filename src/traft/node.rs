@@ -11,16 +11,19 @@ use crate::instance::Instance;
 use crate::kvcell::KVCell;
 use crate::loop_start;
 use crate::r#loop::FlowControl;
+use crate::schema::{IndexDef, SpaceDef};
 use crate::storage::ToEntryIter as _;
+use crate::storage::{pico_schema_version, set_pico_schema_version};
 use crate::storage::{Clusterwide, ClusterwideSpace, ClusterwideSpaceIndex, PropertyName};
 use crate::stringify_cfunc;
+use crate::tarantool::eval as lua_eval;
 use crate::tlog;
 use crate::traft;
 use crate::traft::error::Error;
 use crate::traft::event;
 use crate::traft::event::Event;
 use crate::traft::notify::{notification, Notifier, Notify};
-use crate::traft::op::{Dml, Op, OpResult, PersistInstance};
+use crate::traft::op::{Ddl, Dml, Op, OpResult, PersistInstance};
 use crate::traft::rpc::{join, lsn, update_instance};
 use crate::traft::Address;
 use crate::traft::ConnectionPool;
@@ -729,14 +732,6 @@ impl NodeImpl {
         tlog!(Debug, "applying entry: {op}"; "index" => index);
 
         match &op {
-            Op::DdlCommit => {
-                // TODO:
-                // if box.space._schema:get('pico_schema_change') <
-                //    pico.space.property:get('pending_schema_version')
-                // then
-                //    return true -- wait_lsn
-                todo!();
-            }
             Op::PersistInstance(PersistInstance(instance)) => {
                 *wake_governor = true;
                 storage_changes.insert(ClusterwideSpace::Instance.into());
@@ -757,8 +752,126 @@ impl NodeImpl {
             _ => {}
         }
 
+        let storage_properties = &self.storage.properties;
+
         // apply the operation
-        let result = self.apply_op(op).expect("storage error");
+        let mut result = Box::new(()) as Box<dyn AnyWithTypeName>;
+        match op {
+            Op::Nop => {}
+            Op::PersistInstance(op) => {
+                let instance = op.0;
+                self.storage.instances.put(&instance).unwrap();
+                result = instance as _;
+            }
+            Op::Dml(op) => {
+                let res = match op {
+                    Dml::Insert { space, tuple } => space.insert(&tuple).map(Some),
+                    Dml::Replace { space, tuple } => space.replace(&tuple).map(Some),
+                    Dml::Update { space, key, ops } => space.primary_index().update(&key, &ops),
+                    Dml::Delete { space, key } => space.primary_index().delete(&key),
+                };
+                result = Box::new(res) as _;
+            }
+            Op::DdlPrepare {
+                ddl,
+                schema_version,
+            } => {
+                self.apply_op_ddl_prepare(ddl, schema_version)
+                    .expect("storage error");
+            }
+            Op::DdlCommit => {
+                let current_version_in_tarantool = pico_schema_version().expect("storage error");
+                let pending_version = storage_properties
+                    .pending_schema_version()
+                    .expect("storage error")
+                    .expect("granted we don't mess up log compaction, this should not be None");
+                if current_version_in_tarantool < pending_version {
+                    // TODO: check if replication master in _pico_replicaset
+                    let is_master = !lua_eval::<bool>("return box.info.ro").expect("lua error");
+                    if is_master {
+                        set_pico_schema_version(pending_version).expect("storage error");
+                        // TODO: after this current_version_in_tarantool must be >= pending_version
+                    } else {
+                        // wait_lsn
+                        return true;
+                    }
+                }
+
+                let ddl = storage_properties
+                    .pending_schema_change()
+                    .expect("storage error")
+                    .expect("granted we don't mess up log compaction, this should not be None");
+                match ddl {
+                    Ddl::CreateSpace { id, .. } => {
+                        self.storage
+                            .spaces
+                            .update_operable(id, true)
+                            .expect("storage error");
+                        self.storage
+                            .indexes
+                            .update_operable(id, 0, true)
+                            .expect("storage error");
+                    }
+                    _ => {
+                        todo!()
+                    }
+                }
+
+                storage_properties
+                    .delete(PropertyName::PendingSchemaChange)
+                    .expect("storage error");
+                storage_properties
+                    .delete(PropertyName::PendingSchemaVersion)
+                    .expect("storage error");
+                storage_properties
+                    .put(PropertyName::CurrentSchemaVersion, &pending_version)
+                    .expect("storage error");
+            }
+            Op::DdlAbort => {
+                let current_version_in_tarantool = pico_schema_version().expect("storage error");
+                let pending_version: u64 = storage_properties
+                    .pending_schema_version()
+                    .expect("storage error")
+                    .expect("granted we don't mess up log compaction, this should not be None");
+                // This condition means, schema versions must always increase
+                // even after an DdlAbort
+                if current_version_in_tarantool == pending_version {
+                    // TODO: check if replication master in _pico_replicaset
+                    let is_master = !lua_eval::<bool>("return box.info.ro").expect("lua error");
+                    if is_master {
+                        let current_version = storage_properties
+                            .current_schema_version()
+                            .expect("storage error");
+                        set_pico_schema_version(current_version).expect("storage error");
+                        // TODO: after this current_version must be == pending_version
+                    } else {
+                        // wait_lsn
+                        return true;
+                    }
+                }
+
+                let ddl = storage_properties
+                    .pending_schema_change()
+                    .expect("storage error")
+                    .expect("granted we don't mess up log compaction, this should not be None");
+                match ddl {
+                    Ddl::CreateSpace { id, .. } => {
+                        self.storage.indexes.delete(id, 0).expect("storage error");
+                        self.storage.spaces.delete(id).expect("storage error");
+                    }
+                    _ => {
+                        todo!()
+                    }
+                }
+
+                storage_properties
+                    .delete(PropertyName::PendingSchemaChange)
+                    .expect("storage error");
+                storage_properties
+                    .delete(PropertyName::PendingSchemaVersion)
+                    .expect("storage error");
+            }
+        }
 
         if let Some(lc) = &lc {
             if let Some(notify) = self.notifications.remove(lc) {
@@ -779,20 +892,66 @@ impl NodeImpl {
         false
     }
 
-    fn apply_op(&self, op: Op) -> traft::Result<Box<dyn AnyWithTypeName>> {
-        let res = match op {
-            Op::Nop => Box::new(()),
-            Op::PersistInstance(op) => {
-                let instance = op.result();
-                self.storage.instances.put(&instance).unwrap();
-                instance as Box<dyn AnyWithTypeName>
+    fn apply_op_ddl_prepare(&self, ddl: Ddl, schema_version: u64) -> traft::Result<()> {
+        debug_assert!(unsafe { tarantool::ffi::tarantool::box_txn() });
+
+        match ddl.clone() {
+            Ddl::CreateSpace {
+                id,
+                name,
+                format,
+                primary_key,
+                distribution,
+            } => {
+                let space_def = SpaceDef {
+                    id,
+                    name,
+                    distribution,
+                    schema_version,
+                    format,
+                    operable: false,
+                };
+                self.storage.spaces.insert(&space_def)?;
+
+                let index_def = IndexDef {
+                    id: 0,
+                    name: "primary_key".into(),
+                    space_id: id,
+                    schema_version,
+                    parts: primary_key,
+                    operable: false,
+                    // TODO: support other cases
+                    local: true,
+                };
+                self.storage.indexes.insert(&index_def)?;
             }
-            Op::Dml(op) => op.result().into_box_dyn_any(),
-            Op::DdlPrepare { .. } => todo!(),
-            Op::DdlCommit => todo!(),
-            Op::DdlAbort => todo!(),
-        };
-        Ok(res)
+
+            Ddl::CreateIndex {
+                space_id,
+                index_id,
+                by_fields,
+            } => {
+                let _ = (space_id, index_id, by_fields);
+                todo!();
+            }
+            Ddl::DropSpace { id } => {
+                let _ = id;
+                todo!();
+            }
+            Ddl::DropIndex { index_id, space_id } => {
+                let _ = (index_id, space_id);
+                todo!();
+            }
+        }
+
+        self.storage
+            .properties
+            .put(PropertyName::PendingSchemaChange, &ddl)?;
+        self.storage
+            .properties
+            .put(PropertyName::PendingSchemaVersion, &schema_version)?;
+
+        Ok(())
     }
 
     /// Is called during a transaction

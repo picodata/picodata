@@ -212,7 +212,7 @@ def test_raft_log(instance: Instance):
 |  1  | 1  |1.0.1|Insert(_pico_peer_address, [1,"127.0.0.1:{p}"])|
 |  2  | 1  |1.0.2|PersistInstance(i1, 1, r1, Offline(0), {b})|
 |  3  | 1  |1.0.3|Insert(_pico_property, ["replication_factor",1])|
-|  4  | 1  |1.0.4|Insert(_pico_property, ["desired_schema_version",0])|
+|  4  | 1  |1.0.4|Insert(_pico_property, ["current_schema_version",0])|
 |  5  | 1  |     |AddNode(1)|
 |  6  | 2  |     |-|
 |  7  | 2  |1.1.1|PersistInstance(i1, 1, r1, Offline(0) -> Online(1), {b})|

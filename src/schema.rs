@@ -19,6 +19,11 @@ pub struct SpaceDef {
 }
 impl Encode for SpaceDef {}
 
+impl SpaceDef {
+    // Don't forget to update this, if fields of `SpaceDef` change.
+    pub const FIELD_OPERABLE: usize = 5;
+}
+
 /// Defines how to distribute tuples in a space across replicasets.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -73,3 +78,8 @@ pub struct IndexDef {
     pub operable: bool,
 }
 impl Encode for IndexDef {}
+
+impl IndexDef {
+    // Don't forget to update this, if fields of `IndexDef` change.
+    pub const FIELD_OPERABLE: usize = 6;
+}
