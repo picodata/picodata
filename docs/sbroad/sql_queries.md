@@ -4,7 +4,29 @@
 Функциональность компонента Sbroad в Picodata обеспечивает поддержку распределенных запросов `SELECT` и `INSERT` c поддержкой анализатора запросов `EXPLAIN`. Ниже на схеме показаны базовые варианты этих запросов.
 
 
-![Query](ebnf/query.svg)
+![Query](ebnf/Query.svg)
+
+## Использование SQL-команд в консоли Picodata
+После подключения в консоли к узлу-маршрутизатору (роль router), можно
+выполнять SQL-команды, т.е. добавлять данные в таблицы (spaces) и
+получать их. Синтаксис команд учитывает особенности Lua-интерпретатора в
+консоли Picodata и предполагает, что любой SQL-запрос должен содержаться
+в обертке следующего вида: 
+```
+sbroad.execute([[запрос]], {значения передаваемых параметров})
+```
+Команды Sbroad будут отличаться в зависимости от того, записываем ли мы в БД данные (`INSERT`) или считываем их (`SELECT`).
+Так как при SELECT-запросах мы не передаем каких-либо параметров, то содержимое фигурных скобок будет пустым. Пример:
+```
+sbroad.execute([[select *  from "products"]], {})
+```
+
+Запись строки данных в таблицу командой `INSERT` требует указания как полей, так и их значений:
+```
+sbroad.execute([[insert into "products" ("id", "name") values (?, ?)]], {1, "Alice"})
+```
+
+Ниже приведены подробности использования SQL-команд в Picodata.
 
 ## Запрос SELECT
 
@@ -13,42 +35,63 @@
 
 Cхема возможных распределенных запросов `SELECT` показана ниже.
 
-![Select](ebnf/select.svg)
+![Select](ebnf/SELECT.svg)
 
 
 ### Примеры запросов
-Ниже показаны некоторые примеры работающих SQL-запросов.
 
-Простой запрос строки из таблицы по известному ID:
+Для примера используем две тестовые таблицы:
+- `products` с данными об остатках игрушек на складе;
+- `orders` с данными о заказах соответствующих позиций;
 
-```
-SELECT "identification_number", "product_code" FROM "hash_testing"
-        WHERE "identification_number" = 1"
-```
-Запрос с двумя вариантами условий, в каждом из которых используется оператор `AND`:
-```
-SELECT "identification_number", "product_code"
-        FROM "hash_testing"
-        WHERE "identification_number" = 1 AND "product_code" = '1'
-        OR "identification_number" = 2 AND "product_code" = '2'
-```
+![Table_products](test_table.svg)
 
-Пример запроса со вложенными подзапросами `SELECT`, объединенными оператором `UNION ALL`:
+![Table_orders](test_table_orders.svg)
 
+Ниже показаны некоторые примеры работающих SQL-запросов с использованием данных из этих таблиц.
+
+Вывод всей таблицы:
 ```
-SELECT *
-        FROM
-            (SELECT "identification_number", "product_code"
-            FROM "hash_testing"
-            WHERE "sys_op" = 1
-            UNION ALL
-            SELECT "identification_number", "product_code"
-            FROM "hash_testing_hist"
-            WHERE "sys_op" > 1) AS "t3"
-        WHERE "identification_number" = 1
+sbroad.execute([[select * from "products"]], {})
 ```
 
+Пример вывода в консоль:
+```
+---
+- {'metadata': [{'name': 'id', 'type': 'integer'}, {'name': 'name', 'type': 'string'},
+    {'name': 'product_units', 'type': 'integer'}], 'rows': [[1, 'Woody', 2561], [
+      3, 'Bo Peep', 255], [6, 'Rex', 998], [7, 'Hamm', 66], [8, 'Mrs. Davis', 341],
+    [2, 'Buzz Lightyear', 4781], [4, 'Mr. Potato Head', 109], [5, 'Slinky Dog', 1112],
+    [9, 'Molly Davis', 235], [10, 'Sid Phillips', 78]]}
+...
+```
+_Примечание_: строки в выводе идут в том порядке, в каком их отдают узлы хранения Picodata (с ролью `storage`).
 
+Вывод строки по известному `id`:
+```
+sbroad.execute([[select "name" from "products" where "id"=1]], {})
+```
+
+Пример вывода в консоль:
+```
+---
+- {'metadata': [{'name': 'name', 'type': 'string'}], 'rows': [['Woody']]}
+...
+```
+
+Вывод строк по нескольким условиям для разных столбцов:
+```
+sbroad.execute([[select "name","product_units" from "products" where "id">3 and "product_units">200 ]], {})
+```
+
+Пример вывода в консоль:
+```
+---
+- {'metadata': [{'name': 'name', 'type': 'string'}, {'name': 'product_units', 'type': 'integer'}],
+  'rows': [['Rex', 998], ['Mrs. Davis', 341], ['Slinky Dog', 1112], ['Molly Davis',
+      235]]}
+...
+```
 Используется в:
 
 * expression
@@ -99,7 +142,7 @@ SELECT *
 
 ### **group by**
 
-![GroupBy](ebnf/groupby.svg)
+<!-- ![GroupBy](ebnf/groupby.svg) -->
 
 
 
@@ -134,7 +177,7 @@ SELECT *
 
 ### **cast**
 
-![Cast](ebnf/cast.svg)
+<!-- ![Cast](ebnf/cast.svg) -->
 
 
 
@@ -154,25 +197,56 @@ SELECT *
 
 ## Использование VALUES
 Команда `VALUES` представляет собой конструктор строки значений для
-использования в запросе `SELECT`. В некотором смысле,
-передаваемые с `VALUES` значения являются временной таблицей, которая
-существует только в рамках запроса.
+использования в запросе `SELECT`. В некотором смысле, передаваемые с
+`VALUES` значения являются временной таблицей, которая существует только
+в рамках запроса. Использовать `VALUES` имеет смысл тогда, когда
+требуется получить набор строк, для которых известны значения одного или
+более столбцов. Например, с помощью команды ниже можно выяснить название
+товара, зная количество сделанных по нему заказов:
 
-Пример использования:
 ```
-SELECT id, id2 FROM hash_testing WHERE (id, id2) in (VALUES (1, 2), (2, 3))
+sbroad.execute([[select "order" from "orders" where ("amount") in (values (109))]], {})
 ```
-Здесь в таблицу hash_testing будет вставлены две строки: (1, 2) и (2, 3).
+Пример вывода в консоль:
+```
+---
+- {'metadata': [{'name': 'order', 'type': 'string'}], 'rows': [['Woody']]}
+...
+
+```
 
 
 ### **values**
 
-![Values](ebnf/values.svg)
+<!-- ![Values](ebnf/values.svg) -->
 
 Используется в:
 
 * insert
 * query
+
+## Использование EXCEPT
+Команда `EXCEPT` используется для соединения нескольких запросов
+`SELECT` по принципу исключения. Это означает, к примеру, что из
+результата первого запроса будут исключены результаты второго, если
+между ними есть пересечение. `EXCEPT` может применяться при запросах из
+разных таблиц, либо разных столбцов одной таблицы, когда нужный
+результат нельзя получить лишь одним SELECT-запросом.
+
+Для более наглядной демонстрации предположим, что требуется получить
+данные об остатках на складе каждого товара, который был заказан менее
+50 раз. Для этого используем команду `EXCEPT`: 
+```
+sbroad.execute([[select "id","name" from "products" except select "id","order" from "orders" where "amount">50]], {})
+```
+Пример вывода в консоль:
+```
+---
+- {'metadata': [{'name': 'id', 'type': 'integer'}, {'name': 'name', 'type': 'string'}],
+  'rows': [[6, 'Rex'], [7, 'Hamm'], [8, 'Mrs. Davis'], [4, 'Mr. Potato Head'], [5,
+      'Slinky Dog'], [9, 'Molly Davis'], [10, 'Sid Phillips']]}
+...
+```
 
 ## Запрос INSERT
 Запрос `INSERT` используется для помещения (записи) строки данных в
@@ -182,13 +256,21 @@ SELECT id, id2 FROM hash_testing WHERE (id, id2) in (VALUES (1, 2), (2, 3))
 Схема возможных запросов `INSERT` показана ниже.
 
 
-![Insert](ebnf/insert.svg)
+![Insert](ebnf/INSERT.svg)
 
 ### Пример запроса
 Пример использования со вставкой строки значений в таблицу при помощи команды `INSERT`:
 
 ```
-INSERT INTO "t" VALUES(1, 2, 3, 4)
+sbroad.execute([[insert into "products" ("id", "name", "product_units") values (?, ?, ?)]], {1, "Woody", 2561})
+```
+
+Вывод в консоль при успешной вставке:
+
+```
+---
+- {'row_count': 1}
+
 ```
 
 Используется в:
@@ -197,9 +279,12 @@ INSERT INTO "t" VALUES(1, 2, 3, 4)
 
 
 ## Запрос EXPLAIN
-Команда `EXPLAIN` добавляется перед командами `SELECT` и `INSERT` для того
-чтобы показать план запроса, при том что сам запрос выполнен не будет.
-`EXPLAIN` является инструментом для анализа и оптимизации запросов.
+Команда `EXPLAIN` добавляется перед командами `SELECT` и `INSERT` для
+того чтобы показать то как будет выглядеть запрос, при этом не выполняя
+его. План запроса строится на узле-маршрутизаторе (роль `router`) и
+позволяет наглядно оценить структуру и последовательность действий при
+выполнении запроса. `EXPLAIN` является инструментом для анализа и
+оптимизации запросов.
 
 Схема использования `EXPLAIN` показана ниже.
 
@@ -210,8 +295,30 @@ INSERT INTO "t" VALUES(1, 2, 3, 4)
 Примером может служить любой поддерживаемый SQL-запрос:
 
 ```
-EXPLAIN INSERT INTO "t" VALUES(1, 2, 3, 4)
+sbroad.execute([[explain select "order" from "orders" where ("amount") in (values (109))]], {})
 ```
+
+Пример вывода в консоль:
+```
+---
+- ['projection ("orders"."order" -> "order")', '    selection ROW("orders"."amount")
+    in ROW($0)', '        scan "orders"', 'subquery $0:', 'motion [policy: full]',
+  '            scan', '                values', '                    value row (data=ROW(109))']
+...
+```
+
+Грамматический разбор дерева запроса:
+```
+- Explain > Select
+  - Projection > Column > Reference > ColumnName: "\"order\""
+  - Scan > Table: "\"orders\""
+  - Selection > In
+    - Row > Reference > ColumnName: "\"amount\""
+    - SubQuery > Values > ValuesRow > Row > Unsigned: "109"
+- EOF > EOI: ""
+
+```
+
 
 Читать далее: [Перечень поддерживаемых типов данных](../sql_datatypes)
 <!-- ebnf source: https://git.picodata.io/picodata/picodata/sbroad/-/blob/main/doc/sql/query.ebnf -->

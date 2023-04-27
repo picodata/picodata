@@ -1,0 +1,623 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   width="836"
+   height="480"
+   version="1.1"
+   id="svg1810"
+   sodipodi:docname="SELECT.svg"
+   viewBox="0 0 836 480"
+   inkscape:version="1.2.2 (b0a8486541, 2022-12-01)"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns:xlink="http://www.w3.org/1999/xlink"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <sodipodi:namedview
+     id="namedview1812"
+     pagecolor="#ffffff"
+     bordercolor="#666666"
+     borderopacity="1.0"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     showgrid="false"
+     inkscape:zoom="0.77479092"
+     inkscape:cx="178.7579"
+     inkscape:cy="247.80879"
+     inkscape:window-width="1920"
+     inkscape:window-height="1011"
+     inkscape:window-x="0"
+     inkscape:window-y="32"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="svg1810" />
+  <defs
+     id="defs1630">
+    <style
+       type="text/css"
+       id="style1628">
+    @namespace &quot;http://www.w3.org/2000/svg&quot;;
+    @import url('https://fonts.googleapis.com/css?family=Tilt+Prism');
+    .line                 {fill: none; stroke: #320000; stroke-width: 1;}
+    .bold-line            {stroke: #FFE0E0; shape-rendering: crispEdges; stroke-width: 2;}
+    .thin-line            {stroke: #1F0000; shape-rendering: crispEdges}
+    .filled               {fill: #320000; stroke: none;}
+    text.terminal         {font-family: HelveticaNeueCyr, Bold;
+                            font-size: 14px;
+                            fill: #FFE0E0;
+                            font-weight: bold;
+				}
+    text.nonterminal      {font-family: HelveticaNeueCyr, Bold;
+                            font-size: 14px;
+                            fill: #FFE0E0;
+                            font-weight: bold;
+                                                      }
+    text.regexp           {font-family: HelveticaNeueCyr, Bold;
+                            font-size: 14px;
+                            fill: #FFE0E0;
+                            font-weight: bold;
+                          }
+    rect, circle, polygon {fill: #320000; stroke: #320000;}
+    rect.terminal         {fill: #FF0000; stroke: #320000; stroke-width: 1;}
+    rect.nonterminal      {fill: #FF3F3F; stroke: #320000; stroke-width: 1;}
+    rect.text             {fill: none; stroke: none;}
+    polygon.regexp        {fill: #FF5E5E; stroke: #320000; stroke-width: 1;}
+  </style>
+  </defs>
+  <polygon
+     points="9,61 1,57 1,65 "
+     id="polygon1632"
+     transform="translate(-0.5,-0.5)" />
+  <polygon
+     points="17,61 9,57 9,65 "
+     id="polygon1634"
+     transform="translate(-0.5,-0.5)" />
+  <rect
+     x="30.5"
+     y="46.5"
+     width="70"
+     height="32"
+     rx="10"
+     id="rect1636" />
+  <rect
+     x="28.5"
+     y="44.5"
+     width="70"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect1638" />
+  <text
+     class="terminal"
+     x="38.5"
+     y="64.5"
+     id="text1640">SELECT</text>
+  <a
+     xlink:href="#column"
+     xlink:title="column"
+     id="a1648"
+     transform="translate(-0.5,-0.5)">
+    <rect
+       x="141"
+       y="47"
+       width="64"
+       height="32"
+       id="rect1642" />
+    <rect
+       x="139"
+       y="45"
+       width="64"
+       height="32"
+       class="nonterminal"
+       id="rect1644" />
+    <text
+       class="nonterminal"
+       x="149"
+       y="65"
+       id="text1646">column</text>
+  </a>
+  <rect
+     x="140.5"
+     y="2.5"
+     width="24"
+     height="32"
+     rx="10"
+     id="rect1650" />
+  <rect
+     x="138.5"
+     y="0.5"
+     width="24"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect1652" />
+  <text
+     class="terminal"
+     x="148.5"
+     y="20.5"
+     id="text1654">,</text>
+  <rect
+     x="244.5"
+     y="46.5"
+     width="60"
+     height="32"
+     rx="10"
+     id="rect1656" />
+  <rect
+     x="242.5"
+     y="44.5"
+     width="60"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect1658" />
+  <text
+     class="terminal"
+     x="252.5"
+     y="64.5"
+     id="text1660">FROM</text>
+  <a
+     xlink:href="#table"
+     xlink:title="table"
+     id="a1668"
+     transform="translate(-0.5,-0.5)">
+    <rect
+       x="365"
+       y="47"
+       width="52"
+       height="32"
+       id="rect1662" />
+    <rect
+       x="363"
+       y="45"
+       width="52"
+       height="32"
+       class="nonterminal"
+       id="rect1664" />
+    <text
+       class="nonterminal"
+       x="373"
+       y="65"
+       id="text1666">table</text>
+  </a>
+  <rect
+     x="364.5"
+     y="2.5"
+     width="24"
+     height="32"
+     rx="10"
+     id="rect1670" />
+  <rect
+     x="362.5"
+     y="0.5"
+     width="24"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect1672" />
+  <text
+     class="terminal"
+     x="372.5"
+     y="20.5"
+     id="text1674">,</text>
+  <rect
+     x="344.5"
+     y="90.5"
+     width="70"
+     height="32"
+     rx="10"
+     id="rect1676" />
+  <rect
+     x="342.5"
+     y="88.5"
+     width="70"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect1678" />
+  <text
+     class="terminal"
+     x="352.5"
+     y="108.5"
+     id="text1680">SELECT</text>
+  <rect
+     x="496.5"
+     y="78.5"
+     width="38"
+     height="32"
+     rx="10"
+     id="rect1682" />
+  <rect
+     x="494.5"
+     y="76.5"
+     width="38"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect1684" />
+  <text
+     class="terminal"
+     x="504.5"
+     y="96.5"
+     id="text1686">AS</text>
+  <a
+     xlink:href="#alias"
+     xlink:title="alias"
+     id="a1694"
+     transform="translate(-0.5,-0.5)">
+    <rect
+       x="555"
+       y="79"
+       width="50"
+       height="32"
+       id="rect1688" />
+    <rect
+       x="553"
+       y="77"
+       width="50"
+       height="32"
+       class="nonterminal"
+       id="rect1690" />
+    <text
+       class="nonterminal"
+       x="563"
+       y="97"
+       id="text1692">alias</text>
+  </a>
+  <rect
+     x="64.5"
+     y="188.5"
+     width="64"
+     height="32"
+     rx="10"
+     id="rect1696" />
+  <rect
+     x="62.5"
+     y="186.5"
+     width="64"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect1698" />
+  <text
+     class="terminal"
+     x="72.5"
+     y="206.5"
+     id="text1700">INNER</text>
+  <rect
+     x="168.5"
+     y="156.5"
+     width="54"
+     height="32"
+     rx="10"
+     id="rect1702" />
+  <rect
+     x="166.5"
+     y="154.5"
+     width="54"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect1704" />
+  <text
+     class="terminal"
+     x="176.5"
+     y="174.5"
+     id="text1706">JOIN</text>
+  <a
+     xlink:href="#table"
+     xlink:title="table"
+     id="a1714"
+     transform="translate(-0.5,-0.5)">
+    <rect
+       x="263"
+       y="157"
+       width="52"
+       height="32"
+       id="rect1708" />
+    <rect
+       x="261"
+       y="155"
+       width="52"
+       height="32"
+       class="nonterminal"
+       id="rect1710" />
+    <text
+       class="nonterminal"
+       x="271"
+       y="175"
+       id="text1712">table</text>
+  </a>
+  <rect
+     x="262.5"
+     y="200.5"
+     width="70"
+     height="32"
+     rx="10"
+     id="rect1716" />
+  <rect
+     x="260.5"
+     y="198.5"
+     width="70"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect1718" />
+  <text
+     class="terminal"
+     x="270.5"
+     y="218.5"
+     id="text1720">SELECT</text>
+  <rect
+     x="262.5"
+     y="288.5"
+     width="72"
+     height="32"
+     rx="10"
+     id="rect1722" />
+  <rect
+     x="260.5"
+     y="286.5"
+     width="72"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect1724" />
+  <text
+     class="terminal"
+     x="270.5"
+     y="306.5"
+     id="text1726">VALUES</text>
+  <a
+     xlink:href="#row"
+     xlink:title="row"
+     id="a1734"
+     transform="translate(-0.5,-0.5)">
+    <rect
+       x="375"
+       y="289"
+       width="42"
+       height="32"
+       id="rect1728" />
+    <rect
+       x="373"
+       y="287"
+       width="42"
+       height="32"
+       class="nonterminal"
+       id="rect1730" />
+    <text
+       class="nonterminal"
+       x="383"
+       y="307"
+       id="text1732">row</text>
+  </a>
+  <rect
+     x="374.5"
+     y="244.5"
+     width="24"
+     height="32"
+     rx="10"
+     id="rect1736" />
+  <rect
+     x="372.5"
+     y="242.5"
+     width="24"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect1738" />
+  <text
+     class="terminal"
+     x="382.5"
+     y="262.5"
+     id="text1740">,</text>
+  <rect
+     x="496.5"
+     y="188.5"
+     width="38"
+     height="32"
+     rx="10"
+     id="rect1742" />
+  <rect
+     x="494.5"
+     y="186.5"
+     width="38"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect1744" />
+  <text
+     class="terminal"
+     x="504.5"
+     y="206.5"
+     id="text1746">AS</text>
+  <a
+     xlink:href="#alias"
+     xlink:title="alias"
+     id="a1754"
+     transform="translate(-0.5,-0.5)">
+    <rect
+       x="555"
+       y="189"
+       width="50"
+       height="32"
+       id="rect1748" />
+    <rect
+       x="553"
+       y="187"
+       width="50"
+       height="32"
+       class="nonterminal"
+       id="rect1750" />
+    <text
+       class="nonterminal"
+       x="563"
+       y="207"
+       id="text1752">alias</text>
+  </a>
+  <rect
+     x="644.5"
+     y="156.5"
+     width="40"
+     height="32"
+     rx="10"
+     id="rect1756" />
+  <rect
+     x="642.5"
+     y="154.5"
+     width="40"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect1758" />
+  <text
+     class="terminal"
+     x="652.5"
+     y="174.5"
+     id="text1760">ON</text>
+  <a
+     xlink:href="#expression"
+     xlink:title="expression"
+     id="a1768"
+     transform="translate(-0.5,-0.5)">
+    <rect
+       x="705"
+       y="157"
+       width="90"
+       height="32"
+       id="rect1762" />
+    <rect
+       x="703"
+       y="155"
+       width="90"
+       height="32"
+       class="nonterminal"
+       id="rect1764" />
+    <text
+       class="nonterminal"
+       x="713"
+       y="175"
+       id="text1766">expression</text>
+  </a>
+  <rect
+     x="308.5"
+     y="446.5"
+     width="70"
+     height="32"
+     rx="10"
+     id="rect1770" />
+  <rect
+     x="306.5"
+     y="444.5"
+     width="70"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect1772" />
+  <text
+     class="terminal"
+     x="316.5"
+     y="464.5"
+     id="text1774">WHERE</text>
+  <a
+     xlink:href="#expression"
+     xlink:title="expression"
+     id="a1782"
+     transform="translate(-0.5,-0.5)">
+    <rect
+       x="399"
+       y="447"
+       width="90"
+       height="32"
+       id="rect1776" />
+    <rect
+       x="397"
+       y="445"
+       width="90"
+       height="32"
+       class="nonterminal"
+       id="rect1778" />
+    <text
+       class="nonterminal"
+       x="407"
+       y="465"
+       id="text1780">expression</text>
+  </a>
+  <rect
+     x="548.5"
+     y="414.5"
+     width="90"
+     height="32"
+     rx="10"
+     id="rect1784" />
+  <rect
+     x="546.5"
+     y="412.5"
+     width="90"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect1786" />
+  <text
+     class="terminal"
+     x="556.5"
+     y="432.5"
+     id="text1788">GROUP BY</text>
+  <a
+     xlink:href="#expression"
+     xlink:title="expression"
+     id="a1796"
+     transform="translate(-0.5,-0.5)">
+    <rect
+       x="679"
+       y="415"
+       width="90"
+       height="32"
+       id="rect1790" />
+    <rect
+       x="677"
+       y="413"
+       width="90"
+       height="32"
+       class="nonterminal"
+       id="rect1792" />
+    <text
+       class="nonterminal"
+       x="687"
+       y="433"
+       id="text1794">expression</text>
+  </a>
+  <rect
+     x="678.5"
+     y="370.5"
+     width="24"
+     height="32"
+     rx="10"
+     id="rect1798" />
+  <rect
+     x="676.5"
+     y="368.5"
+     width="24"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect1800" />
+  <text
+     class="terminal"
+     x="686.5"
+     y="388.5"
+     id="text1802">,</text>
+  <path
+     class="line"
+     d="m 16.5,60.5 h 2 m 0,0 h 10 m 70,0 h 10 m 20,0 h 10 m 64,0 h 10 m -104,0 h 20 m -1,0 q -9,0 -9,-10 v -24 q 0,-10 10,-10 m 84,44 h 20 m -20,0 q 10,0 10,-10 v -24 q 0,-10 -10,-10 m -84,0 h 10 m 24,0 h 10 m 0,0 h 40 m 20,44 h 10 m 60,0 h 10 m 40,0 h 10 m 52,0 h 10 m -92,0 h 20 m -1,0 q -9,0 -9,-10 v -24 q 0,-10 10,-10 m 72,44 h 20 m -20,0 q 10,0 10,-10 v -24 q 0,-10 -10,-10 m -72,0 h 10 m 24,0 h 10 m 0,0 h 28 m -112,44 h 20 m 112,0 h 20 m -152,0 q 10,0 10,10 m 132,0 q 0,-10 10,-10 m -142,10 v 24 m 132,0 v -24 m -132,24 q 0,10 10,10 m 112,0 q 10,0 10,-10 m -122,10 h 10 m 70,0 h 10 m 0,0 h 22 m 40,-44 h 10 m 0,0 h 118 m -148,0 h 20 m 128,0 h 20 m -168,0 q 10,0 10,10 m 148,0 q 0,-10 10,-10 m -158,10 v 12 m 148,0 v -12 m -148,12 q 0,10 10,10 m 128,0 q 10,0 10,-10 m -138,10 h 10 m 38,0 h 10 m 0,0 h 10 m 50,0 h 10 m 22,-32 h 2 m 2,0 h 2 m 2,0 h 2 m -644,110 h 2 m 2,0 h 2 m 2,0 h 2 m 42,0 h 10 m 0,0 h 74 m -104,0 h 20 m 84,0 h 20 m -124,0 q 10,0 10,10 m 104,0 q 0,-10 10,-10 m -114,10 v 12 m 104,0 v -12 m -104,12 q 0,10 10,10 m 84,0 q 10,0 10,-10 m -94,10 h 10 m 64,0 h 10 m 20,-32 h 10 m 54,0 h 10 m 20,0 h 10 m 52,0 h 10 m 0,0 h 122 m -214,0 h 20 m 194,0 h 20 m -234,0 q 10,0 10,10 m 214,0 q 0,-10 10,-10 m -224,10 v 24 m 214,0 v -24 m -214,24 q 0,10 10,10 m 194,0 q 10,0 10,-10 m -204,10 h 10 m 70,0 h 10 m 0,0 h 104 m -204,-10 v 20 m 214,0 v -20 m -214,20 v 68 m 214,0 v -68 m -214,68 q 0,10 10,10 m 194,0 q 10,0 10,-10 m -204,10 h 10 m 72,0 h 10 m 20,0 h 10 m 42,0 h 10 m -82,0 h 20 m -1,0 q -9,0 -9,-10 v -24 q 0,-10 10,-10 m 62,44 h 20 m -20,0 q 10,0 10,-10 v -24 q 0,-10 -10,-10 m -62,0 h 10 m 24,0 h 10 m 0,0 h 18 m 60,-88 h 10 m 0,0 h 118 m -148,0 h 20 m 128,0 h 20 m -168,0 q 10,0 10,10 m 148,0 q 0,-10 10,-10 m -158,10 v 12 m 148,0 v -12 m -148,12 q 0,10 10,10 m 128,0 q 10,0 10,-10 m -138,10 h 10 m 38,0 h 10 m 0,0 h 10 m 50,0 h 10 m 20,-32 h 10 m 40,0 h 10 m 0,0 h 10 m 90,0 h 10 m -790,0 h 20 m 770,0 h 20 m -810,0 q 10,0 10,10 m 790,0 q 0,-10 10,-10 m -800,10 v 146 m 790,0 v -146 m -790,146 q 0,10 10,10 m 770,0 q 10,0 10,-10 m -780,10 h 10 m 0,0 h 760 m 22,-166 h 2 m 2,0 h 2 m 2,0 h 2 m -570,258 h 2 m 2,0 h 2 m 2,0 h 2 m 22,0 h 10 m 0,0 h 190 m -220,0 h 20 m 200,0 h 20 m -240,0 q 10,0 10,10 m 220,0 q 0,-10 10,-10 m -230,10 v 12 m 220,0 v -12 m -220,12 q 0,10 10,10 m 200,0 q 10,0 10,-10 m -210,10 h 10 m 70,0 h 10 m 0,0 h 10 m 90,0 h 10 m 40,-32 h 10 m 90,0 h 10 m 20,0 h 10 m 90,0 h 10 m -130,0 h 20 m -1,0 q -9,0 -9,-10 v -24 q 0,-10 10,-10 m 110,44 h 20 m -20,0 q 10,0 10,-10 v -24 q 0,-10 -10,-10 m -110,0 h 10 m 24,0 h 10 m 0,0 h 66 m -260,44 h 20 m 260,0 h 20 m -300,0 q 10,0 10,10 m 280,0 q 0,-10 10,-10 m -290,10 v 14 m 280,0 v -14 m -280,14 q 0,10 10,10 m 260,0 q 10,0 10,-10 m -270,10 h 10 m 0,0 h 250 m 23,-34 h -3"
+     id="path1804" />
+  <polygon
+     points="827,429 835,425 835,433 "
+     id="polygon1806"
+     transform="translate(-0.5,-0.5)" />
+  <polygon
+     points="827,429 819,425 819,433 "
+     id="polygon1808"
+     transform="translate(-0.5,-0.5)" />
+</svg>

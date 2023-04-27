@@ -60,6 +60,7 @@ extra_css:
     - extra/style.css
 
 plugins:
+    - inline-svg
     - search:
         lang: 
           - en
