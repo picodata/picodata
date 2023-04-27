@@ -4,3 +4,5 @@
 *.xlog
 __pycache__/
 tmp/
+*.rustfmt
+tags

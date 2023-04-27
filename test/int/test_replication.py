@@ -168,12 +168,12 @@ def wait_has_buckets(c: Cluster, i: Instance, expected_active: int):
 def test_bucket_discovery_respects_replication_factor(cluster: Cluster):
     i1 = cluster.add_instance(init_replication_factor=2)
     time.sleep(0.5)
-    assert i1.eval("return vshard == nil")
+    assert i1.eval("return rawget(_G, 'vshard') == nil")
     assert i1.call("pico.space.property:get", "vshard_bootstrapped") is None
 
     i2 = cluster.add_instance(replicaset_id="r2")
     time.sleep(0.5)
-    assert i2.eval("return vshard == nil")
+    assert i2.eval("return rawget(_G, 'vshard') == nil")
     assert i2.call("pico.space.property:get", "vshard_bootstrapped") is None
 
     i3 = cluster.add_instance(replicaset_id="r1")

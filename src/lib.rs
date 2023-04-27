@@ -41,6 +41,7 @@ pub mod mailbox;
 pub mod on_shutdown;
 pub mod replicaset;
 pub mod schema;
+pub mod sql;
 pub mod storage;
 pub mod tarantool;
 pub mod tlog;
@@ -510,6 +511,55 @@ fn preload_vshard() {
     preload!("vshard.version", "vshard/version.lua");
 }
 
+fn init_sbroad() {
+    let lua = ::tarantool::lua_state();
+
+    macro_rules! preload {
+        ($module:literal, $path:literal) => {
+            lua_preload!(lua, $module, "../", $path);
+        };
+    }
+
+    preload!("sbroad", "src/sql/init.lua");
+    preload!("sbroad.helper", "sbroad/sbroad-core/src/helper.lua");
+    preload!(
+        "sbroad.core-router",
+        "sbroad/sbroad-core/src/core-router.lua"
+    );
+    preload!(
+        "sbroad.core-storage",
+        "sbroad/sbroad-core/src/core-storage.lua"
+    );
+
+    // Create SQL function for bucket calculation.
+    lua.exec(
+        r#"
+        box.schema.func.create('BUCKET_ID', {
+            language = 'Lua',
+            body = [[
+                function(x)
+                    return box.func['.calculate_bucket_id']:call({ x })
+                end
+            ]],
+            if_not_exists = true,
+            param_list = {'string'},
+            returns = 'unsigned',
+            aggregate = 'none',
+            exports = {'SQL'},
+        })
+    "#,
+    )
+    .unwrap();
+
+    lua.exec(
+        r#"
+        _G.pico.sql = require('sbroad').sql;
+        _G.pico.trace = require('sbroad').trace;
+    "#,
+    )
+    .unwrap();
+}
+
 #[link(name = "httpd")]
 extern "C" {
     fn luaopen_http_lib(lua_state: tlua::LuaState) -> libc::c_int;
@@ -659,6 +709,7 @@ fn init_common(args: &args::Run, cfg: &tarantool::Cfg) -> (Clusterwide, RaftSpac
     // Load Lua libraries
     preload_vshard();
     preload_http();
+    init_sbroad();
 
     init_handlers().expect("failed initializing rpc handlers");
     traft::event::init();

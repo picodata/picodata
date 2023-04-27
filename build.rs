@@ -59,7 +59,11 @@ fn generate_export_stubs(out_dir: &str) {
     let mut symbols = HashSet::with_capacity(1024);
     let exports = std::fs::read_to_string("tarantool-sys/extra/exports").unwrap();
     read_symbols_into(&exports, &mut symbols);
+
     let exports = std::fs::read_to_string("tarantool-sys/extra/exports_libcurl").unwrap();
+    read_symbols_into(&exports, &mut symbols);
+
+    let exports = std::fs::read_to_string("src/sql/exports").unwrap();
     read_symbols_into(&exports, &mut symbols);
 
     let mut code = Vec::with_capacity(2048);

@@ -311,6 +311,10 @@ class Instance:
             eprint(f"{self} killed")
         self.process = None
 
+    def sql(self, sql: str, *params, timeout: int | float = 1) -> dict:
+        """Run SQL query and return result"""
+        return self.call("pico.sql", sql, params, timeout=timeout)
+
     def terminate(self, kill_after_seconds=10) -> int | None:
         """Terminate the instance gracefully with SIGTERM"""
         if self.process is None:

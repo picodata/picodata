@@ -64,6 +64,9 @@ pub enum Error {
     #[error("compare-and-swap request failed: {0}")]
     Cas(#[from] crate::traft::rpc::cas::Error),
 
+    #[error("sbroad: {0}")]
+    Sbroad(#[from] sbroad::errors::SbroadError),
+
     #[error("other error: {0}")]
     Other(Box<dyn std::error::Error>),
 }

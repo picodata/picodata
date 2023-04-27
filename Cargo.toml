@@ -28,6 +28,14 @@ once_cell = "1.17.1"
 version = "2.27"
 features = ["bytes"]
 
+[dependencies.sbroad-core]
+version = "0.1"
+path = "sbroad/sbroad-core"
+
+[dependencies.sbroad-picodata]
+version = "0.1"
+path = "sbroad/sbroad-picodata"
+
 [dependencies.slog]
 version = "2.7.0"
 features = ["max_level_trace", "release_max_level_trace"]
