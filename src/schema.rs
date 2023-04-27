@@ -1,8 +1,12 @@
+use crate::traft;
 use serde::{Deserialize, Serialize};
 use tarantool::{
+    index::Metadata as IndexMetadata,
     index::{IndexId, Part},
+    schema::space::SpaceMetadata,
     space::{Field, SpaceId},
     tuple::Encode,
+    util::Value,
 };
 
 /// Space definition.
@@ -22,6 +26,38 @@ impl Encode for SpaceDef {}
 impl SpaceDef {
     // Don't forget to update this, if fields of `SpaceDef` change.
     pub const FIELD_OPERABLE: usize = 5;
+
+    pub fn to_space_metadata(&self) -> traft::Result<SpaceMetadata> {
+        use tarantool::session::uid;
+        use tarantool::space::SpaceEngineType;
+
+        // FIXME: this is copy pasted from tarantool::schema::space::create_space
+        let format = self
+            .format
+            .iter()
+            .map(|f| {
+                IntoIterator::into_iter([
+                    ("name".into(), Value::Str(f.name.as_str().into())),
+                    ("type".into(), Value::Str(f.field_type.as_str().into())),
+                    ("is_nullable".into(), Value::Bool(f.is_nullable)),
+                ])
+                .collect()
+            })
+            .collect();
+
+        let space_def = SpaceMetadata {
+            id: self.id,
+            // Do we want to be more explicit about user_id?
+            user_id: uid()? as _,
+            name: self.name.as_str().into(),
+            engine: SpaceEngineType::Memtx,
+            field_count: 0,
+            flags: Default::default(),
+            format,
+        };
+
+        Ok(space_def)
+    }
 }
 
 /// Defines how to distribute tuples in a space across replicasets.
@@ -82,4 +118,19 @@ impl Encode for IndexDef {}
 impl IndexDef {
     // Don't forget to update this, if fields of `IndexDef` change.
     pub const FIELD_OPERABLE: usize = 6;
+
+    pub fn to_index_metadata(&self) -> traft::Result<IndexMetadata> {
+        use tarantool::index::IndexType;
+
+        let index_meta = IndexMetadata {
+            space_id: self.space_id,
+            index_id: self.id,
+            name: self.name.as_str().into(),
+            r#type: IndexType::Tree,
+            opts: Default::default(),
+            parts: self.parts.clone(),
+        };
+
+        Ok(index_meta)
+    }
 }

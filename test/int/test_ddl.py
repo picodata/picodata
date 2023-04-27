@@ -2,13 +2,15 @@ from conftest import Cluster
 
 
 def test_ddl_create_space_basic(cluster: Cluster):
+    # TODO: add 2 more instances, to check that another replicaset is handled
+    # correctly
     i1, i2 = cluster.deploy(instance_count=2, init_replication_factor=2)
 
     # At cluster boot schema version is 0
     assert i1.call("box.space._picodata_property:get", "current_schema_version")[1] == 0
     assert i2.call("box.space._picodata_property:get", "current_schema_version")[1] == 0
 
-    # Propose a space creation and abort it
+    # Propose a space creation which will fail
     op = dict(
         kind="ddl_prepare",
         schema_version=1,
@@ -17,14 +19,12 @@ def test_ddl_create_space_basic(cluster: Cluster):
             id=666,
             name="stuff",
             format=[dict(name="id", type="unsigned", is_nullable=False)],
-            primary_key=[dict(field="id")],
+            primary_key=[dict(field="(this will cause an error)")],
             distribution=dict(kind="global"),
         ),
     )
     # TODO: rewrite the test using pico.cas, when it supports ddl
     i1.call("pico.raft_propose", op)
-    # TODO: check the intermediate state
-    i1.call("pico.raft_propose", dict(kind = "ddl_abort"))
 
     # No space was created
     assert i1.call("box.space._picodata_space:get", 666) is None
@@ -37,21 +37,24 @@ def test_ddl_create_space_basic(cluster: Cluster):
     assert i1.call("box.space._picodata_property:get", "current_schema_version")[1] == 0
     assert i2.call("box.space._picodata_property:get", "current_schema_version")[1] == 0
 
-    # Propose a space creation and commit it
+    # Propose a space creation which will succeed
     op = dict(
         kind="ddl_prepare",
+        # This version number must not be equal to the version of the aborted
+        # change, otherwise all of the instances joined after this request was
+        # committed will be blocked during the attempt to apply the previous
+        # DdlAbort
         schema_version=2,
         ddl=dict(
             kind="create_space",
             id=666,
             name="stuff",
             format=[dict(name="id", type="unsigned", is_nullable=False)],
-            primary_key=[dict(field="id")],
+            primary_key=[dict(field=1, type="unsigned")],
             distribution=dict(kind="global"),
         ),
     )
     i1.call("pico.raft_propose", op)
-    i1.call("pico.raft_propose", dict(kind = "ddl_commit"))
 
     # Schema version was updated
     assert i1.call("box.space._picodata_property:get", "current_schema_version")[1] == 2
@@ -61,15 +64,44 @@ def test_ddl_create_space_basic(cluster: Cluster):
     space_info = [666, "stuff", ["global"], [["id", "unsigned", False]], 2, True]
     assert i1.call("box.space._picodata_space:get", 666) == space_info
     assert i2.call("box.space._picodata_space:get", 666) == space_info
-    # TODO: check box.space._space was also update when it's supported
+
+    space_meta = [
+        666,
+        1,
+        "stuff",
+        "memtx",
+        0,
+        dict(),
+        [dict(name="id", type="unsigned", is_nullable=False)],
+    ]
+    assert i1.call("box.space._space:get", 666) == space_meta
+    assert i2.call("box.space._space:get", 666) == space_meta
 
     # Primary index was also created
     # TODO: maybe we want to replace these `None`s with the default values when
     # inserting the index definition into _picodata_index?
-    index_info = [666, 0, "primary_key", True, [["id", None, None, None, None]], 2, True]
+    index_info = [
+        666,
+        0,
+        "primary_key",
+        True,
+        [[1, "unsigned", None, None, None]],
+        2,
+        True,
+    ]
     assert i1.call("box.space._picodata_index:get", [666, 0]) == index_info
     assert i2.call("box.space._picodata_index:get", [666, 0]) == index_info
-    # TODO: check box.space._index was also update when it's supported
+
+    index_meta = [
+        666,
+        0,
+        "primary_key",
+        "tree",
+        dict(),
+        [[1, "unsigned", None, None, None]],
+    ]
+    assert i1.call("box.space._index:get", [666, 0]) == index_meta
+    assert i2.call("box.space._index:get", [666, 0]) == index_meta
 
     # Add a new replicaset master
     i3 = cluster.add_instance(wait_online=True, replicaset_id="r2")
@@ -78,6 +110,9 @@ def test_ddl_create_space_basic(cluster: Cluster):
     assert i3.call("box.space._picodata_property:get", "current_schema_version")[1] == 2
     assert i3.call("box.space._picodata_space:get", 666) == space_info
     assert i3.call("box.space._picodata_index:get", [666, 0]) == index_info
+    # TODO: this fails
+    assert i3.call("box.space._space:get", 666) == space_meta
+    assert i3.call("box.space._index:get", [666, 0]) == index_meta
 
     # Add a follower to the new replicaset
     i4 = cluster.add_instance(wait_online=True, replicaset_id="r2")
@@ -86,3 +121,8 @@ def test_ddl_create_space_basic(cluster: Cluster):
     assert i4.call("box.space._picodata_property:get", "current_schema_version")[1] == 2
     assert i4.call("box.space._picodata_space:get", 666) == space_info
     assert i4.call("box.space._picodata_index:get", [666, 0]) == index_info
+    assert i4.call("box.space._space:get", 666) == space_meta
+    assert i4.call("box.space._index:get", [666, 0]) == index_meta
+
+
+# TODO: test schema change applied only on part of instances and failed on some

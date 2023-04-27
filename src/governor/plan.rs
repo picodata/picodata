@@ -31,6 +31,7 @@ pub(super) fn action_plan<'i>(
     vshard_bootstrapped: bool,
     replication_factor: usize,
     desired_schema_version: u64,
+    has_pending_schema_change: bool,
 ) -> Result<Plan<'i>> {
     ////////////////////////////////////////////////////////////////////////////
     // conf change
@@ -335,6 +336,22 @@ pub(super) fn action_plan<'i>(
     }
 
     ////////////////////////////////////////////////////////////////////////////
+    // ddl
+    if has_pending_schema_change {
+        let mut targets = Vec::with_capacity(replicasets.len());
+        for r in replicasets.values() {
+            targets.push(&r.master_id);
+        }
+
+        let rpc = rpc::ddl_apply::Request {
+            term,
+            applied,
+            timeout: Loop::SYNC_TIMEOUT,
+        };
+        return Ok(ApplySchemaChange { rpc, targets }.into());
+    }
+
+    ////////////////////////////////////////////////////////////////////////////
     // migration
     let replicasets: Vec<_> = replicasets.values().copied().collect();
     let to_apply = get_pending_migration(migration_ids, &replicasets, desired_schema_version);
@@ -456,6 +473,11 @@ pub mod stage {
 
         pub struct ToOnline {
             pub req: update_instance::Request,
+        }
+
+        pub struct ApplySchemaChange<'i> {
+            pub targets: Vec<&'i InstanceId>,
+            pub rpc: rpc::ddl_apply::Request,
         }
 
         pub struct ApplyMigration<'i> {

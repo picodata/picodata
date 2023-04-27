@@ -24,7 +24,7 @@ use crate::traft::event;
 use crate::traft::event::Event;
 use crate::traft::notify::{notification, Notifier, Notify};
 use crate::traft::op::{Ddl, Dml, Op, OpResult, PersistInstance};
-use crate::traft::rpc::{join, lsn, update_instance};
+use crate::traft::rpc::{ddl_apply, join, lsn, update_instance};
 use crate::traft::Address;
 use crate::traft::ConnectionPool;
 use crate::traft::ContextCoercion as _;
@@ -749,6 +749,9 @@ impl NodeImpl {
                 }
                 storage_changes.insert(op.index());
             }
+            Op::DdlPrepare { .. } => {
+                *wake_governor = true;
+            }
             _ => {}
         }
 
@@ -787,13 +790,9 @@ impl NodeImpl {
                     .expect("granted we don't mess up log compaction, this should not be None");
                 if current_version_in_tarantool < pending_version {
                     // TODO: check if replication master in _pico_replicaset
-                    let is_master = !lua_eval::<bool>("return box.info.ro").expect("lua error");
-                    if is_master {
-                        set_pico_schema_version(pending_version).expect("storage error");
-                        // TODO: after this current_version_in_tarantool must be >= pending_version
-                    } else {
-                        // wait_lsn
-                        return true;
+                    let not_master = lua_eval::<bool>("return box.info.ro").expect("lua error");
+                    if not_master {
+                        return true; // wait_lsn
                     }
                 }
 
@@ -814,6 +813,26 @@ impl NodeImpl {
                     }
                     _ => {
                         todo!()
+                    }
+                }
+
+                // FIXME: copy-pasted from above
+                if current_version_in_tarantool < pending_version {
+                    // TODO: check if replication master in _pico_replicaset
+                    let is_master = !lua_eval::<bool>("return box.info.ro").expect("lua error");
+                    if is_master {
+                        let resp =
+                            ddl_apply::apply_schema_change(&self.storage, &ddl, pending_version)
+                                .expect("storage error");
+                        match resp {
+                            ddl_apply::Response::Abort { reason } => {
+                                tlog!(Critical, "failed applying already committed ddl operation: {reason}";
+                                    "ddl" => ?ddl,
+                                );
+                                panic!("abort of a committed operation");
+                            }
+                            ddl_apply::Response::Ok => {}
+                        }
                     }
                 }
 

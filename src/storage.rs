@@ -1399,7 +1399,7 @@ pub fn pico_schema_version() -> tarantool::Result<u64> {
 
 pub fn set_pico_schema_version(v: u64) -> tarantool::Result<()> {
     let space_schema = Space::from(SystemSpace::Schema);
-    space_schema.insert(&("pico_schema_version", v))?;
+    space_schema.replace(&("pico_schema_version", v))?;
     Ok(())
 }
 
