@@ -734,12 +734,6 @@ impl NodeImpl {
     fn apply_op(&self, op: Op) -> traft::Result<Box<dyn AnyWithTypeName>> {
         let res = match op {
             Op::Nop => Box::new(()),
-            Op::Info { msg } => {
-                crate::tlog!(Info, "{msg}");
-                ().into_box_dyn_any()
-            }
-            Op::EvalLua(op) => op.result().into_box_dyn_any(),
-            Op::ReturnOne(op) => op.result().into_box_dyn_any(),
             Op::PersistInstance(op) => {
                 let instance = op.result();
                 self.storage.instances.put(&instance).unwrap();

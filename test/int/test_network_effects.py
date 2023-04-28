@@ -1,11 +1,6 @@
 import pytest
 
-from conftest import (
-    Cluster,
-    Instance,
-    ReturnError,
-    retrying,
-)
+from conftest import Cluster, Instance, retrying, TarantoolError
 
 
 @pytest.fixture
@@ -67,9 +62,15 @@ def test_log_rollback(cluster3: Cluster):
     i2.assert_raft_status("Follower")
     i3.assert_raft_status("Follower")
 
+    key = 0
+
     def propose_state_change(srv: Instance, value):
-        code = 'pico.space.property:put({"test-timeline", "%s"})' % value
-        return srv.raft_propose_eval(code, 0.1)
+        nonlocal key
+        index = cluster3.cas(
+            "insert", "_picodata_property", (f"check{key}", value), instance=srv
+        )
+        srv.raft_wait_index(index)
+        key += 1
 
     propose_state_change(i1, "i1 is a leader")
 
@@ -78,7 +79,7 @@ def test_log_rollback(cluster3: Cluster):
     break_picodata_procs(i3)
 
     # No operations can be committed, i1 is alone.
-    with pytest.raises(ReturnError, match="timeout"):
+    with pytest.raises(TarantoolError):
         propose_state_change(i1, "i1 lost the quorum")
 
     # And now i2 + i3 can't reach i1.
@@ -131,7 +132,7 @@ def test_leader_disruption(cluster3: Cluster):
     i3.assert_raft_status("PreCandidate", None)
 
     # Advance the raft log. It makes i1 and i2 to reject the RequestPreVote.
-    i1.raft_propose_eval("return", timeout_seconds=1)
+    i1.raft_propose_nop()
 
     # Restore normal network operation
     i3.call(

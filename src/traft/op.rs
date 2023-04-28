@@ -4,7 +4,6 @@ use crate::storage::{ClusterwideSpace, ClusterwideSpaceIndex};
 use ::tarantool::index::{IndexId, Part};
 use ::tarantool::space::{Field, SpaceId};
 use ::tarantool::tlua;
-use ::tarantool::tlua::LuaError;
 use ::tarantool::tuple::{ToTupleBuffer, Tuple, TupleBuffer};
 use serde::{Deserialize, Serialize};
 
@@ -28,12 +27,6 @@ pub trait OpResult {
 pub enum Op {
     /// No operation.
     Nop,
-    /// Print the message in tarantool log.
-    Info { msg: String },
-    /// Evaluate the code on every instance in cluster.
-    EvalLua(EvalLua),
-    ///
-    ReturnOne(ReturnOne),
     /// Update the given instance's entry in [`crate::storage::Instances`].
     PersistInstance(PersistInstance),
     /// Cluster-wide data modification operation.
@@ -59,9 +52,6 @@ impl std::fmt::Display for Op {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         return match self {
             Self::Nop => f.write_str("Nop"),
-            Self::Info { msg } => write!(f, "Info({msg:?})"),
-            Self::EvalLua(EvalLua { code }) => write!(f, "EvalLua({code:?})"),
-            Self::ReturnOne(_) => write!(f, "ReturnOne"),
             Self::PersistInstance(PersistInstance(instance)) => {
                 write!(f, "PersistInstance{}", instance)
             }
@@ -158,48 +148,6 @@ impl std::fmt::Display for Op {
 impl OpResult for Op {
     type Result = ();
     fn result(self) -> Self::Result {}
-}
-
-////////////////////////////////////////////////////////////////////////////////
-// ReturnOne
-////////////////////////////////////////////////////////////////////////////////
-
-impl From<ReturnOne> for Op {
-    fn from(op: ReturnOne) -> Op {
-        Op::ReturnOne(op)
-    }
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-pub struct ReturnOne;
-
-impl OpResult for ReturnOne {
-    type Result = u8;
-    fn result(self) -> Self::Result {
-        1
-    }
-}
-
-////////////////////////////////////////////////////////////////////////////////
-// EvalLua
-////////////////////////////////////////////////////////////////////////////////
-
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-pub struct EvalLua {
-    pub code: String,
-}
-
-impl OpResult for EvalLua {
-    type Result = Result<(), LuaError>;
-    fn result(self) -> Self::Result {
-        crate::tarantool::exec(&self.code)
-    }
-}
-
-impl From<EvalLua> for Op {
-    fn from(op: EvalLua) -> Op {
-        Op::EvalLua(op)
-    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -359,14 +307,14 @@ impl Dml {
     }
 
     /// Parse lua arguments to an api function such as `pico.cas`.
-    pub fn from_lua_args(op: DmlInLua, index: ClusterwideSpaceIndex) -> Result<Self, String> {
+    pub fn from_lua_args(op: DmlInLua) -> Result<Self, String> {
         match op.kind {
             DmlKind::Insert => {
                 let Some(tuple) = op.tuple else {
                     return Err("insert operation must have a tuple".into());
                 };
                 Ok(Self::Insert {
-                    space: index.space(),
+                    space: op.space,
                     tuple,
                 })
             }
@@ -375,7 +323,7 @@ impl Dml {
                     return Err("replace operation must have a tuple".into());
                 };
                 Ok(Self::Replace {
-                    space: index.space(),
+                    space: op.space,
                     tuple,
                 })
             }
@@ -386,11 +334,17 @@ impl Dml {
                 let Some(ops) = op.ops else {
                     return Err("update operation must have ops".into());
                 };
+                let Some(index) = op.index else {
+                    return Err("update operation must specify index".into());
+                };
                 Ok(Self::Update { index, key, ops })
             }
             DmlKind::Delete => {
                 let Some(key) = op.key else {
                     return Err("delete operation must have a key".into());
+                };
+                let Some(index) = op.index else {
+                    return Err("delete operation must specify index".into());
                 };
                 Ok(Self::Delete { index, key })
             }
@@ -404,6 +358,8 @@ impl Dml {
 /// `pico.cas`.
 #[derive(Clone, Debug, PartialEq, Eq, tlua::LuaRead)]
 pub struct DmlInLua {
+    pub space: ClusterwideSpace,
+    pub index: Option<ClusterwideSpaceIndex>,
     pub kind: DmlKind,
     pub tuple: Option<TupleBuffer>,
     pub key: Option<TupleBuffer>,

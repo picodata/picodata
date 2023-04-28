@@ -179,10 +179,6 @@ pub fn check_predicate_for_entry(
         .collect::<tarantool::Result<_>>()
         .expect("keys should convert to tuple")
     });
-    // Fail CaS if there was an `EvalLua` entry as we don't know which spaces, indexes and keys it touches
-    if let Op::EvalLua(_) = entry_op {
-        return Err(error);
-    }
     for range in &predicate.ranges {
         let Some(space) = space(entry_op) else {
             continue
@@ -235,8 +231,7 @@ pub fn check_predicate_for_entry(
                     return Err(error);
                 }
             }
-            Op::Nop | Op::Info { .. } | Op::ReturnOne(_) => (),
-            Op::EvalLua(_) => unreachable!("checked earlier"),
+            Op::Nop => (),
         };
     }
     Ok(())
@@ -303,8 +298,7 @@ fn space(op: &Op) -> Option<ClusterwideSpace> {
         Op::Dml(dml) => Some(dml.space()),
         Op::DdlPrepare { .. } | Op::DdlCommit | Op::DdlAbort => Some(ClusterwideSpace::Property),
         Op::PersistInstance(_) => Some(ClusterwideSpace::Instance),
-        Op::Nop | Op::Info { .. } | Op::ReturnOne(_) => None,
-        Op::EvalLua(_) => unreachable!("should be checked earlier"),
+        Op::Nop => None,
     }
 }
 
@@ -316,8 +310,7 @@ fn index(op: &Op) -> Option<ClusterwideSpaceIndex> {
             Some(Properties::primary_index().into())
         }
         Op::PersistInstance(_) => Some(Instances::primary_index().into()),
-        Op::Nop | Op::Info { .. } | Op::ReturnOne(_) => None,
-        Op::EvalLua(_) => unreachable!("should be checked earlier"),
+        Op::Nop => None,
     }
 }
 

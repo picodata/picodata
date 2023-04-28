@@ -431,12 +431,8 @@ class Instance:
         assert isinstance(status, dict)
         return RaftStatus(**status)
 
-    def raft_propose_eval(self, lua_code: str, timeout_seconds=2):
-        return self.call(
-            "pico.raft_propose_eval",
-            lua_code,
-            dict(timeout=timeout_seconds),
-        )
+    def raft_propose_nop(self):
+        return self.call("pico.raft_propose_nop")
 
     def raft_compact_log(self, up_to: int = 2**64 - 1) -> int:
         """
@@ -464,26 +460,21 @@ class Instance:
         term: int | None = None,
         range: Any | None = None,
     ) -> int:
+        """
+        Performs a clusterwide compare and swap operation.
+
+        E.g. it checks the `predicate` on leader and if no conflicting entries were found
+        appends the `op` to the raft log and returns its index.
+
+        ASSUMPTIONS
+        It is assumed that this operation is called on leader.
+        Failing to do so will result in error.
+        """
         if index is None:
-            index, term = self.eval(
-                """
-                local index = box.space._picodata_raft_state:get("applied").value
-                local term = box.space._picodata_raft_state:get("term").value
-                return {index, term}
-            """
-            )
+            index = self.raft_index()
+            term = self.raft_term()
         elif term is None:
-            term = self.eval(
-                """
-                local entry = box.space._picodata_raft_log:get(...)
-                if entry then
-                    return entry.term
-                else
-                    return pico.raft_status().term
-                end
-            """,
-                index,
-            )
+            term = self.raft_term_by_index(index)
 
         if range is not None:
             key_min, key_max = range
@@ -545,6 +536,45 @@ class Instance:
         assert myself["current_grade"]["variant"] == "Online"
 
         eprint(f"{self} is online")
+
+    def raft_index(self) -> int:
+        """Get raft applied `index`"""
+
+        return self.eval("return box.space._picodata_raft_state:get('applied').value")
+
+    def raft_term(self) -> int:
+        """Get current raft `term`"""
+
+        return self.eval("return box.space._picodata_raft_state:get('term').value")
+
+    def raft_term_by_index(self, index: int) -> int:
+        """Get raft `term` for entry with supplied `index`"""
+        term = self.eval(
+            """
+            local entry = box.space._picodata_raft_log:get(...)
+            if entry then
+                return entry.term
+            else
+                return box.space._picodata_raft_state:get('term').value
+            end
+            """,
+            index,
+        )
+        return term
+
+    def raft_wait_index(self, index: int, timeout: int = 1):
+        """Wait until instance applies an entry with supplied `index`.
+
+        Raises:
+            TarantoolError: on timeout
+        """
+
+        # Rely on rpc's timeout instead of `call` timeout
+        unreachable_timeout = timeout * 10
+        timeout_duration = dict(secs=timeout, nanos=0)
+        self.call(
+            ".proc_sync_raft", index, timeout_duration, timeout=unreachable_timeout
+        )
 
     @funcy.retry(tries=4, timeout=0.5, errors=AssertionError)
     def promote_or_fail(self):
@@ -727,6 +757,59 @@ class Cluster:
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
+
+    def cas(
+        self,
+        dml_kind: Literal["insert", "replace", "delete"],
+        space: str,
+        tuple: Any,  # TODO tuple, not any
+        index: int | None = None,
+        term: int | None = None,
+        range: Any | None = None,
+        # If specified send CaS through this instance
+        instance: Instance | None = None,
+    ) -> int:
+        """
+        Performs a clusterwide compare and swap operation.
+
+        E.g. it checks the `predicate` on leader and if no conflicting entries were found
+        appends the `op` to the raft log and returns its index.
+
+        Calling this operation will route CaS request to a leader.
+        """
+        if instance is None:
+            instance = self.instances[0]
+        if index is None:
+            index = instance.raft_index()
+            term = instance.raft_term()
+        elif term is None:
+            term = instance.raft_term_by_index(index)
+
+        if range is not None:
+            key_min, key_max = range
+            range = dict(
+                space=space,
+                index=instance.eval("return box.space[...].index[0].name", space),
+                key_min=key_min,
+                key_max=key_max,
+            )
+
+        predicate = dict(
+            index=index,
+            term=term,
+            ranges=[range] if range is not None else [],
+        )
+        if dml_kind in ["insert", "replace"]:
+            dml = dict(
+                space=space,
+                kind=dml_kind,
+                tuple=tuple,
+            )
+        else:
+            raise Exception(f"unsupported {dml_kind=}")
+
+        eprint(f"CaS:\n  {predicate=}\n  {dml=}")
+        return instance.call("pico.cas", dml, predicate)
 
 
 @pytest.fixture(scope="session")

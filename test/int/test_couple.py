@@ -19,10 +19,8 @@ def test_follower_proposal(cluster2: Cluster):
     i1.promote_or_fail()
 
     i2.assert_raft_status("Follower", leader_id=i1.raft_id)
-    i2.raft_propose_eval("rawset(_G, 'check', box.info.listen)")
 
-    assert i1.eval("return check") == i1.listen
-    assert i2.eval("return check") == i2.listen
+    i2.raft_propose_nop()
 
 
 def test_switchover(cluster2: Cluster):
@@ -82,7 +80,7 @@ def test_restart_leader(cluster2: Cluster):
     i1.restart()
     i1.wait_online()
     assert i1.current_grade() == dict(variant="Online", incarnation=2)
-    i1.raft_propose_eval("return")
+    i1.raft_propose_nop()
 
     i1.restart()
     i1.wait_online()
@@ -121,6 +119,8 @@ def test_restart_both(cluster2: Cluster):
     i2.wait_online()
     assert i1.current_grade() == dict(variant="Online", incarnation=2)
 
-    i1.raft_propose_eval("rawset(_G, 'check', true)")
-    assert i1.eval("return check") is True
-    assert i2.eval("return check") is True
+    index = cluster2.cas("insert", "_picodata_property", ("check", True))
+    i1.raft_wait_index(index)
+    i2.raft_wait_index(index)
+    assert i1.eval("return pico.space.property:get('check')")[1] is True
+    assert i2.eval("return pico.space.property:get('check')")[1] is True

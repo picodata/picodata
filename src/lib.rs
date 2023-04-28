@@ -129,12 +129,6 @@ fn picolib_setup(args: &args::Run) {
         }),
     );
     luamod.set(
-        "raft_propose_info",
-        tlua::function1(|x: String| -> traft::Result<()> {
-            traft::node::global()?.propose_and_wait(Op::Info { msg: x }, Duration::from_secs(1))
-        }),
-    );
-    luamod.set(
         "raft_timeout_now",
         tlua::function0(|| -> traft::Result<()> {
             traft::node::global()?.timeout_now();
@@ -160,27 +154,6 @@ fn picolib_setup(args: &args::Run) {
                 cluster_id,
             }))?;
             Ok(())
-        }),
-    );
-    #[derive(::tarantool::tlua::LuaRead)]
-    struct ProposeEvalOpts {
-        timeout: Option<f64>,
-    }
-    luamod.set(
-        "raft_propose_eval",
-        tlua::function2(
-            |x: String, opts: Option<ProposeEvalOpts>| -> traft::Result<()> {
-                let timeout = opts.and_then(|opts| opts.timeout).unwrap_or(10.0);
-                traft::node::global()?
-                    .propose_and_wait(op::EvalLua { code: x }, Duration::from_secs_f64(timeout))
-                    .and_then(|res| res.map_err(Into::into))
-            },
-        ),
-    );
-    luamod.set(
-        "raft_return_one",
-        tlua::function1(|timeout: f64| -> traft::Result<u8> {
-            traft::node::global()?.propose_and_wait(op::ReturnOne, Duration::from_secs_f64(timeout))
         }),
     );
     // TODO: remove this
@@ -443,11 +416,8 @@ fn picolib_setup(args: &args::Run) {
     luamod.set(
         "cas",
         tlua::Function::new(
-            |index: storage::ClusterwideSpaceIndex,
-             op: op::DmlInLua,
-             predicate: rpc::cas::Predicate|
-             -> traft::Result<RaftIndex> {
-                let op = op::Dml::from_lua_args(op, index).map_err(Error::other)?;
+            |op: op::DmlInLua, predicate: rpc::cas::Predicate| -> traft::Result<RaftIndex> {
+                let op = op::Dml::from_lua_args(op).map_err(Error::other)?;
                 compare_and_swap(op.into(), predicate)
             },
         ),

@@ -159,14 +159,6 @@ def test_process_management(instance: Instance):
     instance.kill()
 
 
-def test_propose_eval(instance: Instance):
-    with pytest.raises(ReturnError, match="timeout"):
-        instance.raft_propose_eval("return", timeout_seconds=0)
-
-    instance.raft_propose_eval("_G.success = true")
-    assert instance.eval("return _G.success") is True
-
-
 def test_graceful_stop(instance: Instance):
     instance.terminate()
     *_, last_xlog = sorted(

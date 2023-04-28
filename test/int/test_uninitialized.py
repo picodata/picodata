@@ -32,7 +32,6 @@ def test_raft_api(uninitialized_instance: Instance):
     functions: list[Callable[[Instance], Any]] = [
         lambda i: i._raft_status(),
         lambda i: i.call("pico.raft_propose_nop"),
-        lambda i: i.call("pico.raft_propose_info", "who cares"),
         lambda i: i.call("pico.whoami"),
         lambda i: i.call("pico.instance_info", "i1"),
         lambda i: i.call("pico.instance_info", "i2"),
