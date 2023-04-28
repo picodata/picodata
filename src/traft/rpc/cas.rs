@@ -1,5 +1,4 @@
-use crate::storage::TClusterwideSpace as _;
-use crate::storage::{ClusterwideSpace, ClusterwideSpaceIndex, Instances, Properties};
+use crate::storage::ClusterwideSpace;
 use crate::tlog;
 use crate::traft::error::Error as TraftError;
 use crate::traft::node;
@@ -183,10 +182,8 @@ pub fn check_predicate_for_entry(
         let Some(space) = space(entry_op) else {
             continue
         };
-        let Some(index) = index(entry_op) else {
-            continue
-        };
-        if space.as_str() != range.space || index.index_name() != range.index {
+        let index = space.primary_index();
+        if space.as_str() != range.space {
             continue;
         }
 
@@ -285,7 +282,6 @@ pub struct Predicate {
 #[derive(Clone, Debug, ::serde::Serialize, ::serde::Deserialize, tlua::LuaRead)]
 pub struct Range {
     pub space: String,
-    pub index: String,
     #[serde(with = "serde_bytes")]
     pub key_min: TupleBuffer,
     #[serde(with = "serde_bytes")]
@@ -298,18 +294,6 @@ fn space(op: &Op) -> Option<ClusterwideSpace> {
         Op::Dml(dml) => Some(dml.space()),
         Op::DdlPrepare { .. } | Op::DdlCommit | Op::DdlAbort => Some(ClusterwideSpace::Property),
         Op::PersistInstance(_) => Some(ClusterwideSpace::Instance),
-        Op::Nop => None,
-    }
-}
-
-/// Get index that the operation touches.
-fn index(op: &Op) -> Option<ClusterwideSpaceIndex> {
-    match op {
-        Op::Dml(dml) => Some(dml.index()),
-        Op::DdlPrepare { .. } | Op::DdlCommit | Op::DdlAbort => {
-            Some(Properties::primary_index().into())
-        }
-        Op::PersistInstance(_) => Some(Instances::primary_index().into()),
         Op::Nop => None,
     }
 }
@@ -331,7 +315,6 @@ mod tests {
                 term: 1,
                 ranges: vec![Range {
                     space: Properties::SPACE_NAME.into(),
-                    index: Properties::primary_index().into(),
                     key_min: (PropertyName::PendingSchemaChange,)
                         .to_tuple_buffer()
                         .unwrap(),

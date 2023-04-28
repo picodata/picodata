@@ -61,13 +61,13 @@ impl std::fmt::Display for Op {
             Self::Dml(Dml::Replace { space, tuple }) => {
                 write!(f, "Replace({space}, {})", DisplayAsJson(tuple))
             }
-            Self::Dml(Dml::Update { index, key, ops }) => {
+            Self::Dml(Dml::Update { space, key, ops }) => {
                 let key = DisplayAsJson(key);
                 let ops = DisplayAsJson(&**ops);
-                write!(f, "Update({index}, {key}, {ops})")
+                write!(f, "Update({space}, {key}, {ops})")
             }
-            Self::Dml(Dml::Delete { index, key }) => {
-                write!(f, "Delete({index}, {})", DisplayAsJson(key))
+            Self::Dml(Dml::Delete { space, key }) => {
+                write!(f, "Delete({space}, {})", DisplayAsJson(key))
             }
             Self::DdlPrepare {
                 schema_version,
@@ -197,14 +197,16 @@ pub enum Dml {
         tuple: TupleBuffer,
     },
     Update {
-        index: ClusterwideSpaceIndex,
+        space: ClusterwideSpace,
+        /// Key in primary index
         #[serde(with = "serde_bytes")]
         key: TupleBuffer,
         #[serde(with = "vec_of_raw_byte_buf")]
         ops: Vec<TupleBuffer>,
     },
     Delete {
-        index: ClusterwideSpaceIndex,
+        space: ClusterwideSpace,
+        /// Key in primary index
         #[serde(with = "serde_bytes")]
         key: TupleBuffer,
     },
@@ -225,8 +227,8 @@ impl OpResult for Dml {
         match self {
             Self::Insert { space, tuple } => space.insert(&tuple).map(Some),
             Self::Replace { space, tuple } => space.replace(&tuple).map(Some),
-            Self::Update { index, key, ops } => index.update(&key, &ops),
-            Self::Delete { index, key } => index.delete(&key),
+            Self::Update { space, key, ops } => space.primary_index().update(&key, &ops),
+            Self::Delete { space, key } => space.primary_index().delete(&key),
         }
     }
 }
@@ -261,12 +263,12 @@ impl Dml {
     /// Serializes `key` and returns an [`Dml::Update`] in case of success.
     #[inline(always)]
     pub fn update(
-        index: impl Into<ClusterwideSpaceIndex>,
+        space: impl Into<ClusterwideSpace>,
         key: &impl ToTupleBuffer,
         ops: impl Into<Vec<TupleBuffer>>,
     ) -> tarantool::Result<Self> {
         let res = Self::Update {
-            index: index.into(),
+            space: space.into(),
             key: key.to_tuple_buffer()?,
             ops: ops.into(),
         };
@@ -276,11 +278,11 @@ impl Dml {
     /// Serializes `key` and returns an [`Dml::Delete`] in case of success.
     #[inline(always)]
     pub fn delete(
-        index: impl Into<ClusterwideSpaceIndex>,
+        space: impl Into<ClusterwideSpace>,
         key: &impl ToTupleBuffer,
     ) -> tarantool::Result<Self> {
         let res = Self::Delete {
-            index: index.into(),
+            space: space.into(),
             key: key.to_tuple_buffer()?,
         };
         Ok(res)
@@ -291,8 +293,8 @@ impl Dml {
         match &self {
             Self::Insert { space, .. } => *space,
             Self::Replace { space, .. } => *space,
-            Self::Update { index, .. } => index.space(),
-            Self::Delete { index, .. } => index.space(),
+            Self::Update { space, .. } => *space,
+            Self::Delete { space, .. } => *space,
         }
     }
 
@@ -301,8 +303,8 @@ impl Dml {
         match &self {
             Self::Insert { space, .. } => (*space).into(),
             Self::Replace { space, .. } => (*space).into(),
-            Self::Update { index, .. } => *index,
-            Self::Delete { index, .. } => *index,
+            Self::Update { space, .. } => (*space).into(),
+            Self::Delete { space, .. } => (*space).into(),
         }
     }
 
@@ -334,19 +336,20 @@ impl Dml {
                 let Some(ops) = op.ops else {
                     return Err("update operation must have ops".into());
                 };
-                let Some(index) = op.index else {
-                    return Err("update operation must specify index".into());
-                };
-                Ok(Self::Update { index, key, ops })
+                Ok(Self::Update {
+                    space: op.space,
+                    key,
+                    ops,
+                })
             }
             DmlKind::Delete => {
                 let Some(key) = op.key else {
                     return Err("delete operation must have a key".into());
                 };
-                let Some(index) = op.index else {
-                    return Err("delete operation must specify index".into());
-                };
-                Ok(Self::Delete { index, key })
+                Ok(Self::Delete {
+                    space: op.space,
+                    key,
+                })
             }
         }
     }
@@ -359,7 +362,6 @@ impl Dml {
 #[derive(Clone, Debug, PartialEq, Eq, tlua::LuaRead)]
 pub struct DmlInLua {
     pub space: ClusterwideSpace,
-    pub index: Option<ClusterwideSpaceIndex>,
     pub kind: DmlKind,
     pub tuple: Option<TupleBuffer>,
     pub key: Option<TupleBuffer>,

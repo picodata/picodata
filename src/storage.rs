@@ -70,6 +70,16 @@ macro_rules! define_clusterwide_spaces {
             }
         }
 
+        impl $cw_space {
+            pub fn primary_index(&self) -> $cw_index {
+                match self {
+                    $(
+                        $cw_space::$cw_space_var => $cw_index::$cw_space_var(<$space>::primary_index()),
+                    )+
+                }
+            }
+        }
+
         $( const _: $crate::util::CheckIsSameType<$_cw_struct, $cw_struct> = (); )+
 
         ////////////////////////////////////////////////////////////////////////
@@ -82,11 +92,7 @@ macro_rules! define_clusterwide_spaces {
 
         impl From<$cw_space> for $cw_index {
             fn from(space: $cw_space) -> Self {
-                match space {
-                    $(
-                        $cw_space::$cw_space_var => Self::$cw_space_var(<$space>::primary_index()),
-                    )+
-                }
+                space.primary_index()
             }
         }
 
