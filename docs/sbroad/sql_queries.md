@@ -172,6 +172,7 @@ sbroad.execute([[select "name","product_units" from "products" where "id">3 and 
 
 Используется в:
 
+* select
 * expression
 * values
 
@@ -225,6 +226,24 @@ sbroad.execute([[select "order" from "orders" where ("amount") in (values (109))
 * insert
 * query
 
+## Использование UNION ALL
+Команда `UNION ALL` используется для соединения результатов нескольких
+запросов. Это может быть полезно для объединения данных из нескольких
+таблиц, или для удобного отображения разных вычислений или манипуляций
+со строками таблицы.
+
+Для примера посчитаем общее количество товаров на складе и сравним его с общим числом заказов:
+```
+sbroad.execute([[select sum("product_units") from "products" union all select sum("amount") from "orders"]], {})
+```
+
+Пример вывода в консоль:
+```
+---
+- {'metadata': [{'name': 'COL_1', 'type': 'decimal'}], 'rows': [[10536], [363]]}
+...
+```
+
 ## Использование EXCEPT
 Команда `EXCEPT` используется для соединения нескольких запросов
 `SELECT` по принципу исключения. Это означает, к примеру, что из
@@ -247,6 +266,7 @@ sbroad.execute([[select "id","name" from "products" except select "id","order" f
       'Slinky Dog'], [9, 'Molly Davis'], [10, 'Sid Phillips']]}
 ...
 ```
+
 
 ## Запрос INSERT
 Запрос `INSERT` используется для помещения (записи) строки данных в
