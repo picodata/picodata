@@ -685,8 +685,6 @@ impl NodeImpl {
                         "error persisting applied index: {e}";
                         "index" => entry_index
                     );
-                } else {
-                    event::broadcast(Event::RaftEntryApplied);
                 }
 
                 Ok(())
@@ -1161,6 +1159,7 @@ impl NodeImpl {
             // Raft HardState changed, and we need to persist it.
             if let Some(hs) = ready.hs() {
                 self.raft_storage.persist_hard_state(hs).unwrap();
+                event::broadcast(Event::CommitIndexPersisted);
                 if let Err(e) = self.status.send_modify(|s| s.term = hs.term) {
                     tlog!(Warning, "failed updating current term: {e}"; "term" => hs.term)
                 }
@@ -1186,6 +1185,7 @@ impl NodeImpl {
         // Update commit index.
         if let Some(commit) = light_rd.commit_index() {
             self.raft_storage.persist_commit(commit).unwrap();
+            event::broadcast(Event::CommitIndexPersisted);
         }
 
         // Apply committed entries.
