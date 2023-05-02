@@ -1,7 +1,7 @@
 from conftest import Cluster
 
 
-def test_ddl_create_space_basic(cluster: Cluster):
+def test_ddl_create_space_bulky(cluster: Cluster):
     # TODO: add 2 more instances, to check that another replicaset is handled
     # correctly
     i1, i2 = cluster.deploy(instance_count=2, init_replication_factor=2)
@@ -125,4 +125,41 @@ def test_ddl_create_space_basic(cluster: Cluster):
     assert i4.call("box.space._index:get", [666, 0]) == index_meta
 
 
-# TODO: test schema change applied only on part of instances and failed on some
+def test_ddl_create_space_partial_failure(cluster: Cluster):
+    i1, i2, i3 = cluster.deploy(instance_count=3)
+
+    # Create a space on one instance
+    # which will conflict with the clusterwide space.
+    i3.eval("box.schema.space.create(...)", "space_name_conflict")
+
+    # Propose a space creation which will fail
+    op = dict(
+        kind="ddl_prepare",
+        schema_version=1,
+        ddl=dict(
+            kind="create_space",
+            id=666,
+            name="space_name_conflict",
+            format=[dict(name="id", type="unsigned", is_nullable=False)],
+            primary_key=[dict(field=1, type="unsigned")],
+            distribution=dict(kind="global"),
+        ),
+    )
+    # TODO: rewrite the test using pico.cas, when it supports ddl
+    prepare_index = i1.call("pico.raft_propose", op)
+    abort_index = prepare_index + 1
+
+    i1.call(".proc_sync_raft", abort_index, (3, 0))
+    i2.call(".proc_sync_raft", abort_index, (3, 0))
+    i3.call(".proc_sync_raft", abort_index, (3, 0))
+
+    # No space was created
+    assert i1.call("box.space._picodata_space:get", 666) is None
+    assert i1.call("box.space._space:get", 666) is None
+    assert i2.call("box.space._picodata_space:get", 666) is None
+    assert i2.call("box.space._space:get", 666) is None
+    assert i3.call("box.space._picodata_space:get", 666) is None
+    assert i3.call("box.space._space:get", 666) is None
+
+    # TODO: add instance which will conflict with this ddl and make sure it
+    # panics

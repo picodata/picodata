@@ -69,6 +69,7 @@ crate::define_rpc_request! {
     }
 }
 
+// TODO: move this to crate::schema maybe?
 pub fn apply_schema_change(storage: &Clusterwide, ddl: &Ddl, version: u64) -> Result<Response> {
     debug_assert!(unsafe { tarantool::ffi::tarantool::box_txn() });
     let sys_space = Space::from(SystemSpace::Space);

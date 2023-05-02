@@ -11,9 +11,10 @@ use crate::instance::Instance;
 use crate::kvcell::KVCell;
 use crate::loop_start;
 use crate::r#loop::FlowControl;
+use crate::schema::ddl_abort_on_master;
 use crate::schema::{IndexDef, SpaceDef};
+use crate::storage::pico_schema_version;
 use crate::storage::ToEntryIter as _;
-use crate::storage::{pico_schema_version, set_pico_schema_version};
 use crate::storage::{Clusterwide, ClusterwideSpace, ClusterwideSpaceIndex, PropertyName};
 use crate::stringify_cfunc;
 use crate::tarantool::eval as lua_eval;
@@ -798,6 +799,8 @@ impl NodeImpl {
                     .pending_schema_version()
                     .expect("storage error")
                     .expect("granted we don't mess up log compaction, this should not be None");
+                // This instance is catching up to the cluster and must sync
+                // with replication master on it's own.
                 if current_version_in_tarantool < pending_version {
                     // TODO: check if replication master in _pico_replicaset
                     let not_master = lua_eval::<bool>("return box.info.ro").expect("lua error");
@@ -806,6 +809,7 @@ impl NodeImpl {
                     }
                 }
 
+                // Update pico metadata.
                 let ddl = storage_properties
                     .pending_schema_change()
                     .expect("storage error")
@@ -826,6 +830,10 @@ impl NodeImpl {
                     }
                 }
 
+                // Update tarantool metadata.
+                // This instance is catching up to the cluster and is a
+                // replication master, so it must apply the schema change on it's
+                // own.
                 // FIXME: copy-pasted from above
                 if current_version_in_tarantool < pending_version {
                     // TODO: check if replication master in _pico_replicaset
@@ -836,9 +844,14 @@ impl NodeImpl {
                                 .expect("storage error");
                         match resp {
                             ddl_apply::Response::Abort { reason } => {
+                                // There's no risk to brick the cluster at this point because
+                                // the governor would have made sure the ddl applies on all
+                                // active (at the time) instances. This instance is just catching
+                                // up to the cluster and this failure will be at startup time.
                                 tlog!(Critical, "failed applying already committed ddl operation: {reason}";
                                     "ddl" => ?ddl,
                                 );
+                                // TODO: add support to mitigate these failures
                                 panic!("abort of a committed operation");
                             }
                             ddl_apply::Response::Ok => {}
@@ -867,18 +880,13 @@ impl NodeImpl {
                 if current_version_in_tarantool == pending_version {
                     // TODO: check if replication master in _pico_replicaset
                     let is_master = !lua_eval::<bool>("return box.info.ro").expect("lua error");
-                    if is_master {
-                        let current_version = storage_properties
-                            .current_schema_version()
-                            .expect("storage error");
-                        set_pico_schema_version(current_version).expect("storage error");
-                        // TODO: after this current_version must be == pending_version
-                    } else {
+                    if !is_master {
                         // wait_lsn
                         return true;
                     }
                 }
 
+                // Update pico metadata.
                 let ddl = storage_properties
                     .pending_schema_change()
                     .expect("storage error")
@@ -890,6 +898,19 @@ impl NodeImpl {
                     }
                     _ => {
                         todo!()
+                    }
+                }
+
+                // Update tarantool metadata.
+                // FIXME: copy-pasted from above
+                if current_version_in_tarantool == pending_version {
+                    // TODO: check if replication master in _pico_replicaset
+                    let is_master = !lua_eval::<bool>("return box.info.ro").expect("lua error");
+                    if is_master {
+                        let current_version = storage_properties
+                            .current_schema_version()
+                            .expect("storage error");
+                        ddl_abort_on_master(&ddl, current_version).expect("storage error");
                     }
                 }
 

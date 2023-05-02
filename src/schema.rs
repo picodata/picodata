@@ -1,10 +1,13 @@
+use crate::storage::set_pico_schema_version;
 use crate::traft;
+use crate::traft::op::Ddl;
 use serde::{Deserialize, Serialize};
 use tarantool::{
     index::Metadata as IndexMetadata,
     index::{IndexId, Part},
     schema::space::SpaceMetadata,
     space::{Field, SpaceId},
+    space::{Space, SystemSpace},
     tuple::Encode,
     util::Value,
 };
@@ -133,4 +136,23 @@ impl IndexDef {
 
         Ok(index_meta)
     }
+}
+
+pub fn ddl_abort_on_master(ddl: &Ddl, version: u64) -> traft::Result<()> {
+    debug_assert!(unsafe { tarantool::ffi::tarantool::box_txn() });
+    let sys_space = Space::from(SystemSpace::Space);
+    let sys_index = Space::from(SystemSpace::Index);
+
+    match *ddl {
+        Ddl::CreateSpace { id, .. } => {
+            sys_index.delete(&[id, 0])?;
+            sys_space.delete(&[id])?;
+            set_pico_schema_version(version)?;
+        }
+        _ => {
+            todo!();
+        }
+    }
+
+    Ok(())
 }

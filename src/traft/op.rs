@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 // OpResult
 ////////////////////////////////////////////////////////////////////////////////
 
+// TODO: remove this trait completely.
 pub trait OpResult {
     type Result: 'static;
     // FIXME: this signature makes it look like result of any operation depends
