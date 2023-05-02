@@ -128,7 +128,7 @@ pub struct Node {
     node_impl: Rc<Mutex<NodeImpl>>,
     pub(crate) storage: Clusterwide,
     pub(crate) raft_storage: RaftSpaceAccess,
-    main_loop: MainLoop,
+    pub(crate) main_loop: MainLoop,
     pub(crate) governor_loop: governor::Loop,
     status: watch::Receiver<Status>,
     watchers: Rc<Mutex<StorageWatchers>>,
@@ -484,6 +484,18 @@ impl NodeImpl {
         let ctx = traft::EntryContextNormal::new(lc, op.into());
         self.raw_node.propose(ctx.to_bytes(), vec![])?;
         Ok(notify)
+    }
+
+    /// Proposes a raft entry to be appended to the log and returns raft index
+    /// at which it is expected to be committed unless it gets rejected.
+    ///
+    /// **Doesn't yield**
+    pub fn propose(&mut self, op: Op) -> Result<RaftIndex, RaftError> {
+        self.lc.inc();
+        let ctx = traft::EntryContextNormal::new(self.lc, op);
+        self.raw_node.propose(ctx.to_bytes(), vec![])?;
+        let index = self.raw_node.raft.raft_log.last_index();
+        Ok(index)
     }
 
     pub fn campaign(&mut self) -> Result<(), RaftError> {
@@ -1275,7 +1287,7 @@ impl NodeImpl {
     }
 }
 
-struct MainLoop {
+pub(crate) struct MainLoop {
     _loop: Option<fiber::UnitJoinHandle<'static>>,
     loop_waker: watch::Sender<()>,
     stop_flag: Rc<Cell<bool>>,

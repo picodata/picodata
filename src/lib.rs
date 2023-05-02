@@ -127,7 +127,7 @@ fn picolib_setup(args: &args::Run) {
     );
     luamod.set(
         "raft_propose",
-        tlua::function1(|lua: tlua::LuaState| -> traft::Result<()> {
+        tlua::function1(|lua: tlua::LuaState| -> traft::Result<RaftIndex> {
             use tlua::{AnyLuaString, AsLua, LuaError, LuaTable};
             let lua = unsafe { tlua::Lua::from_static(lua) };
             let t: LuaTable<_> = AsLua::read(&lua).map_err(|(_, e)| LuaError::from(e))?;
@@ -135,7 +135,14 @@ fn picolib_setup(args: &args::Run) {
                 .eval_with("return require 'msgpack'.encode(...)", &t)
                 .map_err(LuaError::from)?;
             let op: Op = Decode::decode(mp.as_bytes())?;
-            traft::node::global()?.propose_and_wait(op, Duration::from_secs(1))
+
+            let node = traft::node::global()?;
+            let mut node_impl = node.node_impl();
+            let index = node_impl.propose(op)?;
+            node.main_loop.wakeup();
+            // Release the lock
+            drop(node_impl);
+            Ok(index)
         }),
     );
     luamod.set(
