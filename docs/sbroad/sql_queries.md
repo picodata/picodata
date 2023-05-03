@@ -58,11 +58,23 @@ sbroad.execute([[select * from "products"]], {})
 Пример вывода в консоль:
 ```
 ---
-- {'metadata': [{'name': 'id', 'type': 'integer'}, {'name': 'name', 'type': 'string'},
-    {'name': 'product_units', 'type': 'integer'}], 'rows': [[1, 'Woody', 2561], [
-      3, 'Bo Peep', 255], [6, 'Rex', 998], [7, 'Hamm', 66], [8, 'Mrs. Davis', 341],
-    [2, 'Buzz Lightyear', 4781], [4, 'Mr. Potato Head', 109], [5, 'Slinky Dog', 1112],
-    [9, 'Molly Davis', 235], [10, 'Sid Phillips', 78]]}
+- {
+  'metadata': 
+  [{'name': 'id', 'type': 'integer'}, 
+   {'name': 'name', 'type': 'string'},
+   {'name': 'product_units', 'type': 'integer'}],
+  'rows':
+  [[1, 'Woody', 2561], 
+   [3, 'Bo Peep', 255], 
+   [6, 'Rex', 998], 
+   [7, 'Hamm', 66],
+   [8, 'Mrs. Davis', 341],
+   [2, 'Buzz Lightyear', 4781], 
+   [4, 'Mr. Potato Head', 109],
+   [5, 'Slinky Dog', 1112],
+   [9, 'Molly Davis', 235],
+   [10, 'Sid Phillips', 78]]
+   }
 ...
 ```
 _Примечание_: строки в выводе идут в том порядке, в каком их отдают узлы хранения Picodata (с ролью `storage`).
@@ -87,34 +99,28 @@ sbroad.execute([[select "name","product_units" from "products" where "id">3 and 
 Пример вывода в консоль:
 ```
 ---
-- {'metadata': [{'name': 'name', 'type': 'string'}, {'name': 'product_units', 'type': 'integer'}],
-  'rows': [['Rex', 998], ['Mrs. Davis', 341], ['Slinky Dog', 1112], ['Molly Davis',
-      235]]}
+- {
+  'metadata': 
+  [{'name': 'name', 'type': 'string'},
+   {'name': 'product_units', 'type': 'integer'}],
+  'rows': 
+  [['Rex', 998],
+   ['Mrs. Davis', 341],
+   ['Slinky Dog', 1112],
+   ['Molly Davis', 235]]
+   }
 ...
 ```
-Используется в:
-
-* expression
-* query
-* select
 
 ### **values**
 
 ![Column](ebnf/values.svg)
 
 
-Используется в:
-* select
-
-
 ### **row**
 
 ![Column](ebnf/row.svg)
 
-
-Используется в:
-* insert
-* value
 
 
 ### **column**
@@ -123,44 +129,15 @@ sbroad.execute([[select "name","product_units" from "products" where "id">3 and 
 
 
 
-Используется в:
-
-* select
-
 ### **expression**
 
 ![Expression](ebnf/expression.svg)
 
 
 
-Используется в:
-
-* cast
-* column
-* expression
-* select
-
-### **group by**
-
-<!-- ![GroupBy](ebnf/groupby.svg) -->
-
-
-
-Используется в:
-
-* select
-
 ### **reference**
 
 ![Reference](ebnf/reference.svg)
-
-
-
-Используется в:
-
-* expression
-* groupby
-* insert
 
 
 
@@ -170,31 +147,11 @@ sbroad.execute([[select "name","product_units" from "products" where "id">3 and 
 
 
 
-Используется в:
-
-* select
-* expression
-* values
-
-### **cast**
-
-<!-- ![Cast](ebnf/cast.svg) -->
-
-
-
-Используется в:
-
-* groupby
-
 ### **type**
 
 ![Type](ebnf/type.svg)
 
 
-
-Используется в:
-
-* cast
 
 ## Использование VALUES
 Команда `VALUES` представляет собой конструктор строки значений для
@@ -217,20 +174,11 @@ sbroad.execute([[select "order" from "orders" where ("amount") in (values (109))
 ```
 
 
-### **values**
-
-<!-- ![Values](ebnf/values.svg) -->
-
-Используется в:
-
-* insert
-* query
-
 ## Использование UNION ALL
 Команда `UNION ALL` используется для соединения результатов нескольких
 запросов. Это может быть полезно для объединения данных из нескольких
 таблиц, или для удобного отображения разных вычислений или манипуляций
-со строками таблицы.
+со строками таблицы. Результат запроса может содержать дублирующиеся строки.
 
 Для примера посчитаем общее количество товаров на складе и сравним его с общим числом заказов:
 ```
@@ -261,9 +209,19 @@ sbroad.execute([[select "id","name" from "products" except select "id","order" f
 Пример вывода в консоль:
 ```
 ---
-- {'metadata': [{'name': 'id', 'type': 'integer'}, {'name': 'name', 'type': 'string'}],
-  'rows': [[6, 'Rex'], [7, 'Hamm'], [8, 'Mrs. Davis'], [4, 'Mr. Potato Head'], [5,
-      'Slinky Dog'], [9, 'Molly Davis'], [10, 'Sid Phillips']]}
+- {
+  'metadata':
+  [{'name': 'id', 'type': 'integer'},
+   {'name': 'name', 'type': 'string'}],
+  'rows': 
+  [[6, 'Rex'],
+   [7, 'Hamm'],
+   [8, 'Mrs. Davis'],
+   [4, 'Mr. Potato Head'],
+   [5, 'Slinky Dog'],
+   [9, 'Molly Davis'],
+   [10, 'Sid Phillips']]
+   }
 ...
 ```
 
@@ -321,24 +279,15 @@ sbroad.execute([[explain select "order" from "orders" where ("amount") in (value
 Пример вывода в консоль:
 ```
 ---
-- ['projection ("orders"."order" -> "order")', '    selection ROW("orders"."amount")
-    in ROW($0)', '        scan "orders"', 'subquery $0:', 'motion [policy: full]',
-  '            scan', '                values', '                    value row (data=ROW(109))']
+- ['projection ("orders"."order" -> "order")',
+ '    selection ROW("orders"."amount" in ROW($0)',
+ '        scan "orders"', 'subquery $0:',
+ 'motion [policy: full]',
+ '            scan',
+ '                values',
+ '                    value row (data=ROW(109))']
 ...
 ```
-
-Грамматический разбор дерева запроса:
-```
-- Explain > Select
-  - Projection > Column > Reference > ColumnName: "\"order\""
-  - Scan > Table: "\"orders\""
-  - Selection > In
-    - Row > Reference > ColumnName: "\"amount\""
-    - SubQuery > Values > ValuesRow > Row > Unsigned: "109"
-- EOF > EOI: ""
-
-```
-
 
 Читать далее: [Перечень поддерживаемых типов данных](../sql_datatypes)
 <!-- ebnf source: https://git.picodata.io/picodata/picodata/sbroad/-/blob/main/doc/sql/query.ebnf -->
