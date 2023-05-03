@@ -81,6 +81,15 @@ def test_cas_errors(instance: Instance):
         + f"raft index {index-1} is compacted at {index}",
     )
 
+    # Prohibited space
+    with pytest.raises(TarantoolError) as e5:
+        instance.cas("insert", "_picodata_space", [0], range=(0, 0))
+    assert e5.value.args == (
+        "ER_PROC_C",
+        "compare-and-swap request failed: space _picodata_space is prohibited for use "
+        + "in a predicate",
+    )
+
 
 def test_cas_predicate(instance: Instance):
     def property(k: str):

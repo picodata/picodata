@@ -1,4 +1,5 @@
-use crate::storage::ClusterwideSpace;
+use crate::storage::TClusterwideSpace as _;
+use crate::storage::{ClusterwideSpace, Indexes, Spaces};
 use crate::tlog;
 use crate::traft::error::Error as TraftError;
 use crate::traft::node;
@@ -16,6 +17,8 @@ use tarantool::tlua;
 use tarantool::tuple::{KeyDef, Tuple, TupleBuffer};
 
 use once_cell::sync::Lazy;
+
+const PROHIBITED_SPACES: &[&str] = &[Spaces::SPACE_NAME, Indexes::SPACE_NAME];
 
 crate::define_rpc_request! {
     fn proc_cas(req: Request) -> Result<Response> {
@@ -75,6 +78,14 @@ crate::define_rpc_request! {
 
         let last_persisted = raft::Storage::last_index(raft_storage)?;
         assert!(last_persisted <= last);
+
+        // Check if ranges in predicate contain prohibited spaces.
+        for range in &req.predicate.ranges {
+            if PROHIBITED_SPACES.contains(&range.space.as_str())
+            {
+                return Err(Error::SpaceNotAllowed { space: range.space.clone() }.into())
+            }
+        }
 
         // It's tempting to just use `raft_log.entries()` here and only
         // write the body of the loop once, but this would mean
@@ -179,10 +190,13 @@ pub enum Error {
 
     /// Checking the predicate revealed a collision.
     #[error("comparison failed for index {requested} as it conflicts with {conflict_index}")]
-    Rejected {
+    ConflictFound {
         requested: RaftIndex,
         conflict_index: RaftIndex,
     },
+
+    #[error("space {space} is prohibited for use in a predicate")]
+    SpaceNotAllowed { space: String },
 
     /// An error related to `key_def` operation arised from tarantool
     /// depths while checking the predicate.
@@ -207,7 +221,7 @@ impl Predicate {
         entry_index: RaftIndex,
         entry_op: &Op,
     ) -> std::result::Result<(), Error> {
-        let error = || Error::Rejected {
+        let error = || Error::ConflictFound {
             requested: self.index,
             conflict_index: entry_index,
         };
@@ -316,7 +330,8 @@ fn space(op: &Op) -> Option<ClusterwideSpace> {
 mod tests {
     use tarantool::tuple::ToTupleBuffer;
 
-    use crate::storage::{Clusterwide, Properties, PropertyName, TClusterwideSpace};
+    use crate::storage::TClusterwideSpace as _;
+    use crate::storage::{Clusterwide, Properties, PropertyName};
 
     use super::*;
 
