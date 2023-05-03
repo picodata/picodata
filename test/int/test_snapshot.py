@@ -34,8 +34,7 @@ def test_catchup_by_snapshot(cluster: Cluster):
     assert i3.raft_first_index() == 1
     i3.terminate()
 
-    # TODO: i1.cas("delete", "_picodata_property", ["animal"])
-    i1.cas("replace", "_picodata_property", ["animal", "lion"])
+    i1.cas("delete", "_picodata_property", ["animal"])
     ret = i1.cas("insert", "_picodata_property", ["tree", "birch"])
 
     for i in [i1, i2]:
@@ -46,7 +45,7 @@ def test_catchup_by_snapshot(cluster: Cluster):
     i3.start()
     i3.wait_online()
 
-    assert i3.call("pico.space.property:get", "animal") == ["animal", "lion"]
+    assert i3.call("pico.space.property:get", "animal") is None
     assert i3.call("pico.space.property:get", "tree") == ["tree", "birch"]
 
     # Since there were no cas requests since log compaction, the indexes

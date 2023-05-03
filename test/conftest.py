@@ -510,6 +510,13 @@ class Instance:
                 space=space,
                 tuple=msgpack.packb(tuple),
             )
+        elif dml_kind == "delete":
+            dml = dict(
+                kind="dml",
+                op_kind=dml_kind,
+                space=space,
+                key=msgpack.packb(tuple),
+            )
         else:
             raise Exception(f"unsupported {dml_kind=}")
 

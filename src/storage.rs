@@ -415,11 +415,10 @@ impl Clusterwide {
         let data = SnapshotData::decode(raw_data)?;
         for space_dump in &data.space_dumps {
             let space = self.space(space_dump.space);
+            space.truncate()?;
             let tuples = space_dump.tuples.as_ref();
             for tuple in ValueIter::from_array(tuples)? {
-                // Some data may already be present, as we're sending instance
-                // info in the JoinResponse, so we replace instead of inserting
-                space.replace(RawBytes::new(tuple))?;
+                space.insert(RawBytes::new(tuple))?;
             }
         }
         Ok(())
