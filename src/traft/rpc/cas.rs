@@ -13,7 +13,7 @@ use ::raft::StorageError;
 
 use tarantool::error::Error as TntError;
 use tarantool::tlua;
-use tarantool::tuple::{Tuple, TupleBuffer};
+use tarantool::tuple::{KeyDef, Tuple, TupleBuffer};
 
 use once_cell::sync::Lazy;
 
@@ -109,7 +109,7 @@ crate::define_rpc_request! {
                 assert_eq!(entry.term, status.term);
                 let entry_index = entry.index;
                 let Some(op) = entry.into_op() else { continue };
-                check_predicate_for_entry(&req.predicate, entry_index, &op)?;
+                req.predicate.check_entry(entry_index, &op)?;
             }
         }
 
@@ -124,7 +124,7 @@ crate::define_rpc_request! {
             let Some(EntryContext::Normal(EntryContextNormal { op, .. })) = cx else {
                 continue;
             };
-            check_predicate_for_entry(&req.predicate, entry.index, &op)?;
+            req.predicate.check_entry(entry.index, &op)?;
         }
 
         // TODO: apply to limbo first
@@ -154,84 +154,6 @@ crate::define_rpc_request! {
         pub index: RaftIndex,
         pub term: RaftTerm,
     }
-}
-
-pub fn check_predicate_for_entry(
-    predicate: &Predicate,
-    entry_index: RaftIndex,
-    entry_op: &Op,
-) -> std::result::Result<(), Error> {
-    let error = Error::Rejected {
-        requested: predicate.index,
-        conflict_index: entry_index,
-    };
-    let ddl_keys: Lazy<Vec<Tuple>> = Lazy::new(|| {
-        use crate::storage::PropertyName::*;
-
-        [
-            PendingSchemaChange.into(),
-            PendingSchemaVersion.into(),
-            CurrentSchemaVersion.into(),
-        ]
-        .into_iter()
-        .map(|key: &str| Tuple::new(&(key,)))
-        .collect::<tarantool::Result<_>>()
-        .expect("keys should convert to tuple")
-    });
-    for range in &predicate.ranges {
-        let Some(space) = space(entry_op) else {
-            continue
-        };
-        let index = space.primary_index();
-        if space.as_str() != range.space {
-            continue;
-        }
-
-        match entry_op {
-            Op::Dml(Dml::Update { key, .. } | Dml::Delete { key, .. }) => {
-                let key = Tuple::new(key)?;
-                let key_def = index.key_def_for_key()?;
-
-                if key_def.compare_with_key(&key, &range.key_min).is_ge()
-                    && key_def.compare_with_key(&key, &range.key_max).is_le()
-                {
-                    return Err(error);
-                }
-            }
-            Op::Dml(Dml::Insert { tuple, .. } | Dml::Replace { tuple, .. }) => {
-                let tuple = Tuple::new(tuple)?;
-                let key_def = index.key_def()?;
-
-                if key_def.compare_with_key(&tuple, &range.key_min).is_ge()
-                    && key_def.compare_with_key(&tuple, &range.key_max).is_le()
-                {
-                    return Err(error);
-                }
-            }
-            Op::DdlPrepare { .. } | Op::DdlCommit | Op::DdlAbort => {
-                let key_def = index.key_def_for_key()?;
-                for key in ddl_keys.iter() {
-                    if key_def.compare_with_key(key, &range.key_min).is_ge()
-                        && key_def.compare_with_key(key, &range.key_max).is_le()
-                    {
-                        return Err(error);
-                    }
-                }
-            }
-            Op::PersistInstance(op) => {
-                let key = Tuple::new(&(&op.0.instance_id,))?;
-                let key_def = index.key_def_for_key()?;
-
-                if key_def.compare_with_key(&key, &range.key_min).is_ge()
-                    && key_def.compare_with_key(&key, &range.key_max).is_le()
-                {
-                    return Err(error);
-                }
-            }
-            Op::Nop => (),
-        };
-    }
-    Ok(())
 }
 
 /// Error kinds specific to Compare and Swap algorithm.
@@ -279,13 +201,106 @@ pub struct Predicate {
     pub ranges: Vec<Range>,
 }
 
+impl Predicate {
+    pub fn check_entry(
+        &self,
+        entry_index: RaftIndex,
+        entry_op: &Op,
+    ) -> std::result::Result<(), Error> {
+        let error = || Error::Rejected {
+            requested: self.index,
+            conflict_index: entry_index,
+        };
+        let check_bounds = |key_def: &KeyDef, key: &Tuple, range: &Range| {
+            let min_satisfied = match &range.key_min {
+                Bound::Included(bound) => key_def.compare_with_key(key, bound).is_ge(),
+                Bound::Excluded(bound) => key_def.compare_with_key(key, bound).is_gt(),
+                Bound::Unbounded => true,
+            };
+            // short-circuit
+            if !min_satisfied {
+                return Ok(());
+            }
+            let max_satisfied = match &range.key_max {
+                Bound::Included(bound) => key_def.compare_with_key(key, bound).is_le(),
+                Bound::Excluded(bound) => key_def.compare_with_key(key, bound).is_lt(),
+                Bound::Unbounded => true,
+            };
+            // min_satisfied && max_satisfied
+            if max_satisfied {
+                // If entry found that modified a tuple in bounds - cancel CaS.
+                Err(error())
+            } else {
+                Ok(())
+            }
+        };
+
+        let ddl_keys: Lazy<Vec<Tuple>> = Lazy::new(|| {
+            use crate::storage::PropertyName::*;
+
+            [
+                PendingSchemaChange.into(),
+                PendingSchemaVersion.into(),
+                CurrentSchemaVersion.into(),
+            ]
+            .into_iter()
+            .map(|key: &str| Tuple::new(&(key,)))
+            .collect::<tarantool::Result<_>>()
+            .expect("keys should convert to tuple")
+        });
+        for range in &self.ranges {
+            let Some(space) = space(entry_op) else {
+                continue
+            };
+            let index = space.primary_index();
+            if space.as_str() != range.space {
+                continue;
+            }
+
+            match entry_op {
+                Op::Dml(Dml::Update { key, .. } | Dml::Delete { key, .. }) => {
+                    let key = Tuple::new(key)?;
+                    let key_def = index.key_def_for_key()?;
+                    check_bounds(key_def, &key, range)?;
+                }
+                Op::Dml(Dml::Insert { tuple, .. } | Dml::Replace { tuple, .. }) => {
+                    let tuple = Tuple::new(tuple)?;
+                    let key_def = index.key_def()?;
+                    check_bounds(key_def, &tuple, range)?;
+                }
+                Op::DdlPrepare { .. } | Op::DdlCommit | Op::DdlAbort => {
+                    let key_def = index.key_def_for_key()?;
+                    for key in ddl_keys.iter() {
+                        check_bounds(key_def, key, range)?;
+                    }
+                }
+                Op::PersistInstance(op) => {
+                    let key = Tuple::new(&(&op.0.instance_id,))?;
+                    let key_def = index.key_def_for_key()?;
+                    check_bounds(key_def, &key, range)?;
+                }
+                Op::Nop => (),
+            };
+        }
+        Ok(())
+    }
+}
+
 #[derive(Clone, Debug, ::serde::Serialize, ::serde::Deserialize, tlua::LuaRead)]
 pub struct Range {
     pub space: String,
+    pub key_min: Bound,
+    pub key_max: Bound,
+}
+
+#[derive(Clone, Debug, ::serde::Serialize, ::serde::Deserialize, tlua::LuaRead)]
+#[serde(rename_all = "snake_case", tag = "kind", content = "value")]
+pub enum Bound {
     #[serde(with = "serde_bytes")]
-    pub key_min: TupleBuffer,
+    Included(TupleBuffer),
     #[serde(with = "serde_bytes")]
-    pub key_max: TupleBuffer,
+    Excluded(TupleBuffer),
+    Unbounded,
 }
 
 /// Get space that the operation touches.
@@ -303,44 +318,127 @@ mod tests {
 
     use crate::storage::{Clusterwide, Properties, PropertyName, TClusterwideSpace};
 
-    use super::{check_predicate_for_entry, Op, Predicate, Range};
+    use super::*;
 
     #[::tarantool::test]
     fn check_ddl_predicate() {
         Clusterwide::new().unwrap();
 
-        let err = check_predicate_for_entry(
-            &Predicate {
-                index: 1,
-                term: 1,
-                ranges: vec![Range {
-                    space: Properties::SPACE_NAME.into(),
-                    key_min: (PropertyName::PendingSchemaChange,)
+        let predicate = Predicate {
+            index: 1,
+            term: 1,
+            ranges: vec![Range {
+                space: Properties::SPACE_NAME.into(),
+                key_min: Bound::Included(
+                    (PropertyName::PendingSchemaChange,)
                         .to_tuple_buffer()
                         .unwrap(),
-                    key_max: (PropertyName::PendingSchemaChange,)
+                ),
+                key_max: Bound::Included(
+                    (PropertyName::PendingSchemaChange,)
                         .to_tuple_buffer()
                         .unwrap(),
-                }],
-            },
-            2,
-            &Op::DdlCommit,
-        )
-        .unwrap_err();
+                ),
+            }],
+        };
+        let err = predicate.check_entry(2, &Op::DdlCommit).unwrap_err();
         assert_eq!(
             &err.to_string(),
             "comparison failed for index 1 as it conflicts with 2"
         );
 
-        check_predicate_for_entry(
-            &Predicate {
+        Predicate {
+            index: 1,
+            term: 1,
+            ranges: vec![],
+        }
+        .check_entry(2, &Op::DdlCommit)
+        .unwrap();
+    }
+
+    #[::tarantool::test]
+    fn check_bounds() {
+        #[track_caller]
+        fn test(range: Range, test_cases: &[&str]) -> Vec<bool> {
+            let predicate = Predicate {
                 index: 1,
                 term: 1,
-                ranges: vec![],
-            },
-            2,
-            &Op::DdlCommit,
-        )
-        .unwrap();
+                ranges: vec![range],
+            };
+            test_cases
+                .iter()
+                .map(|&case| (String::from(case),).to_tuple_buffer().unwrap())
+                .map(|key| {
+                    predicate
+                        .check_entry(
+                            2,
+                            &Op::Dml(Dml::Delete {
+                                space: ClusterwideSpace::Property,
+                                key,
+                            }),
+                        )
+                        .is_err()
+                })
+                .collect()
+        }
+
+        Clusterwide::new().unwrap();
+
+        let test_cases = ["a", "b", "c", "d", "e"];
+
+        // For range ["b", "d"]
+        // Test cases a,b,c,d,e
+        // Error      0,1,1,1,0
+        let range = Range {
+            space: Properties::SPACE_NAME.into(),
+            key_min: Bound::Included(("b",).to_tuple_buffer().unwrap()),
+            key_max: Bound::Included(("d",).to_tuple_buffer().unwrap()),
+        };
+        let errors = test(range, &test_cases);
+        assert_eq!(errors, vec![false, true, true, true, false]);
+
+        // For range ("b", "d"]
+        // Test cases a,b,c,d,e
+        // Error      0,0,1,1,0
+        let range = Range {
+            space: Properties::SPACE_NAME.into(),
+            key_min: Bound::Excluded(("b",).to_tuple_buffer().unwrap()),
+            key_max: Bound::Included(("d",).to_tuple_buffer().unwrap()),
+        };
+        let errors = test(range, &test_cases);
+        assert_eq!(errors, vec![false, false, true, true, false]);
+
+        // For range ["b", "d")
+        // Test cases a,b,c,d,e
+        // Error      0,1,1,0,0
+        let range = Range {
+            space: Properties::SPACE_NAME.into(),
+            key_min: Bound::Included(("b",).to_tuple_buffer().unwrap()),
+            key_max: Bound::Excluded(("d",).to_tuple_buffer().unwrap()),
+        };
+        let errors = test(range, &test_cases);
+        assert_eq!(errors, vec![false, true, true, false, false]);
+
+        // For range _, "d"]
+        // Test cases a,b,c,d,e
+        // Error      1,1,1,1,0
+        let range = Range {
+            space: Properties::SPACE_NAME.into(),
+            key_min: Bound::Unbounded,
+            key_max: Bound::Included(("d",).to_tuple_buffer().unwrap()),
+        };
+        let errors = test(range, &test_cases);
+        assert_eq!(errors, vec![true, true, true, true, false]);
+
+        // For range ["b", _
+        // Test cases a,b,c,d,e
+        // Error      0,1,1,1,1
+        let range = Range {
+            space: Properties::SPACE_NAME.into(),
+            key_min: Bound::Included(("b",).to_tuple_buffer().unwrap()),
+            key_max: Bound::Unbounded,
+        };
+        let errors = test(range, &test_cases);
+        assert_eq!(errors, vec![false, true, true, true, true]);
     }
 }

@@ -458,13 +458,20 @@ class Instance:
         tuple: Any,  # TODO tuple, not any
         index: int | None = None,
         term: int | None = None,
-        range: Any | None = None,
+        range: Any | None = None,  # TODO better types for bounds
     ) -> int:
         """
         Performs a clusterwide compare and swap operation.
 
         E.g. it checks the `predicate` on leader and if no conflicting entries were found
         appends the `op` to the raft log and returns its index.
+
+        `range` is a tuple of two dictionaries: (key_min, key_max). Each dictionary
+        is of the following structure:
+        {
+            "kind": "included" | "excluded" | "unbounded",
+            "value": int | None
+        }
 
         ASSUMPTIONS
         It is assumed that this operation is called on leader.
@@ -478,11 +485,12 @@ class Instance:
 
         if range is not None:
             key_min, key_max = range
+            key_min["value"] = msgpack.packb([key_min["value"]])
+            key_max["value"] = msgpack.packb([key_max["value"]])
             range = dict(
                 space=space,
-                index=self.eval("return box.space[...].index[0].name", space),
-                key_min=msgpack.packb([key_min]),
-                key_max=msgpack.packb([key_max]),
+                key_min=key_min,
+                key_max=key_max,
             )
 
         predicate = dict(
@@ -765,7 +773,7 @@ class Cluster:
         tuple: Any,  # TODO tuple, not any
         index: int | None = None,
         term: int | None = None,
-        range: Any | None = None,
+        range: Any | None = None,  # TODO better types
         # If specified send CaS through this instance
         instance: Instance | None = None,
     ) -> int:
@@ -776,6 +784,13 @@ class Cluster:
         appends the `op` to the raft log and returns its index.
 
         Calling this operation will route CaS request to a leader.
+
+        `range` is a tuple of two dictionaries: (key_min, key_max). Each dictionary
+        is of the following structure:
+        {
+            "kind": "included" | "excluded" | "unbounded",
+            "value": int  # skip if `None`
+        }
         """
         if instance is None:
             instance = self.instances[0]

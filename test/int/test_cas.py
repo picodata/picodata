@@ -109,7 +109,10 @@ def test_cas_predicate(instance: Instance):
             "_picodata_property",
             ["fruit", "orange"],
             index=read_index,
-            range=("fruit", "fruit"),
+            range=(
+                dict(kind="included", value="fruit"),
+                dict(kind="included", value="fruit"),
+            ),
         )
     assert e5.value.args == (
         "ER_PROC_C",
@@ -124,7 +127,10 @@ def test_cas_predicate(instance: Instance):
         "_picodata_property",
         ["flower", "tulip"],
         index=read_index,
-        range=("flower", "flower"),
+        range=(
+            dict(kind="included", value="flower"),
+            dict(kind="included", value="flower"),
+        ),
     )
     assert ret == read_index + 2
     instance.call(".proc_sync_raft", ret, (_3_SEC, 0))
