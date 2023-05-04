@@ -82,21 +82,22 @@ def test_cas_errors(instance: Instance):
     )
 
     # Prohibited spaces
-    with pytest.raises(TarantoolError) as e5:
-        instance.cas(
-            "insert",
-            "_picodata_space",
-            [0],
-            range=(
-                dict(kind="included", value=0),
-                dict(kind="included", value=0),
-            ),
+    for space in ["_picodata_space", "_picodata_index"]:
+        with pytest.raises(TarantoolError) as e5:
+            instance.cas(
+                "insert",
+                space,
+                [0],
+                range=(
+                    dict(kind="included", value=0),
+                    dict(kind="included", value=0),
+                ),
+            )
+        assert e5.value.args == (
+            "ER_PROC_C",
+            f"compare-and-swap request failed: space {space} is prohibited for use "
+            + "in a predicate",
         )
-    assert e5.value.args == (
-        "ER_PROC_C",
-        "compare-and-swap request failed: space _picodata_space is prohibited for use "
-        + "in a predicate",
-    )
 
 
 def test_cas_predicate(instance: Instance):
