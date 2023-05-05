@@ -2,6 +2,13 @@
 
 Здесь живёт проект Mkdocs, с помощью которого генерируется статичный сайт документации для Picodata. Содержимое репозитория попадает на сайт [docs.binary.picodata.io/picodata](docs.binary.picodata.io/picodata).
 
+## Установка зависимостей
+```
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+```
+
 ## Cборка проекта
 ```
 mkdocs build -d site
@@ -12,7 +19,9 @@ mkdocs build -d site
 mkdocs serve
 ```
 
-По умолчанию сайт будет доступен[^1] по адресу [http://127.0.0.1:8000](http://127.0.0.1:8000/).
+По умолчанию сайт будет доступен по адресу [http://127.0.0.1:8000](http://127.0.0.1:8000/).
+
+Для выхода из временного окружения Python нажмите _Ctrl+D_.
 
 ## Сборка в Docker
 
@@ -22,11 +31,11 @@ docker build -f docker/static/Dockerfile -t test-project-mkdocs --no-cache .
 docker run -p 8080:8080 test-project-mkdocs:latest
 ```
 
-## Загрузка в Heroku
+<!-- ## Загрузка в Heroku
 Я сделал небольшую обёртку в PHP для того чтобы статическую версию сайта можно было деплоить в Heroku. После генерации сайта следует запустить скрипт `./phpize.sh`
 
 
-#### Настройка и деплой в первый раз[^2]:
+#### Настройка и деплой в первый раз[^1]:
 ```
 cd site 
 heroku create
@@ -41,7 +50,5 @@ git commit -m "First Heroku commit"
 git remote add origin https://git.heroku.com/peaceful-brook-74799.git
 git push -u origin master
 ```
-
-[^1]:Примечание: запуск и сборка между собой не связаны — можно запускать сайт без сборки статической версии.
-[^2]:Примечание: имя приложения будет отличаться (см. `heroku apps`)
+[^1]:Примечание: имя приложения будет отличаться (см. `heroku apps`) -->
 
