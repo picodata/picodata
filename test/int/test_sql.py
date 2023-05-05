@@ -1,14 +1,63 @@
 import funcy  # type: ignore
+import pytest
+import re
 
 from conftest import (
     Cluster,
     Instance,
+    ReturnError,
 )
 
 
 @funcy.retry(tries=30, timeout=0.2)
 def apply_migration(i: Instance, n: int):
     assert i.call("pico.migrate", n) == n
+
+
+def test_pico_sql(cluster: Cluster):
+    cluster.deploy(instance_count=1)
+    i1 = cluster.instances[0]
+
+    usage_msg = re.escape("Usage: sql(query[, params])")
+    with pytest.raises(ReturnError, match=usage_msg):
+        i1.call(
+            "pico.sql",
+        )
+    with pytest.raises(ReturnError, match=usage_msg):
+        i1.call(
+            "pico.sql",
+            "select * from t",
+            {},
+            "extra",
+        )
+
+    first_arg_msg = re.escape("SQL query must be a string")
+    with pytest.raises(ReturnError, match=first_arg_msg):
+        i1.call(
+            "pico.sql",
+            1,
+        )
+
+    second_arg_msg = re.escape("SQL params must be a table")
+    with pytest.raises(ReturnError, match=second_arg_msg):
+        i1.call(
+            "pico.sql",
+            "select * from t",
+            1,
+        )
+
+    invalid_meta_msg = re.escape("sbroad: space")
+    with pytest.raises(ReturnError, match=invalid_meta_msg):
+        i1.call(
+            "pico.sql",
+            "select * from absent_table",
+        )
+    with pytest.raises(ReturnError, match=invalid_meta_msg):
+        i1.call(
+            "pico.sql",
+            "select * from absent_table where a = ?",
+            (1,),
+        )
 
 
 def test_select(cluster: Cluster):
