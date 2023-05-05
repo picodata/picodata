@@ -968,6 +968,7 @@ impl NodeImpl {
                     name: "primary_key".into(),
                     space_id: id,
                     schema_version,
+                    // TODO: fill up parts with defaults/stuff we know
                     parts: primary_key,
                     operable: false,
                     // TODO: support other cases

@@ -33,6 +33,9 @@ crate::define_rpc_request! {
         let rc = unsafe { ffi::box_txn_begin() };
         assert_eq!(rc, 0, "we're not in a transaction currently");
 
+        // TODO: transaction may have already started, if we're in a process of
+        // creating a big index. If governor sends a repeat rpc request to us we
+        // should handle this correctly
         let res = apply_schema_change(storage, &ddl, pending_schema_version);
         match res {
             Ok(Response::Abort { .. }) | Err(_) => {
