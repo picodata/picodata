@@ -1,262 +1,679 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="703" height="905">
-   <defs>
-      <style type="text/css">
-    @namespace "http://www.w3.org/2000/svg";
-    .line                 {fill: none; stroke: #320000; stroke-width: 1;}
-    .bold-line            {stroke: #FFE0E0; shape-rendering: crispEdges; stroke-width: 2;}
-    .thin-line            {stroke: #1F0000; shape-rendering: crispEdges}
-    .filled               {fill: #320000; stroke: none;}
-    text.terminal         {font-family: HelveticaNeueCyr, Sans-serif;
-                            font-size: 14px;
-                            fill: #FFE0E0;
-                            font-weight: bold;
-                          }
-    text.nonterminal      {font-family: HelveticaNeueCyr, Sans-serif;
-                            font-size: 14px;
-                            fill: #FFE0E0;
-                            font-weight: normal;
-                          }
-    text.regexp           {font-family: HelveticaNeueCyr, Sans-serif;
-                            font-size: 14px;
-                            fill: #1F0000;
-                            font-weight: normal;
-                          }
-    rect, circle, polygon {fill: #320000; stroke: #320000;}
-    rect.terminal         {fill: #FF0000; stroke: #320000; stroke-width: 1;}
-    rect.nonterminal      {fill: #FF3F3F; stroke: #320000; stroke-width: 1;}
-    rect.text             {fill: none; stroke: none;}
-    polygon.regexp        {fill: #FF5E5E; stroke: #320000; stroke-width: 1;}
-  </style>
-   </defs>
-   <polygon points="9 17 1 13 1 21"/>
-   <polygon points="17 17 9 13 9 21"/>
-   <a xmlns:xlink="http://www.w3.org/1999/xlink"
-       xlink:href="#column_name"
-       xlink:title="column_name">
-      <rect x="51" y="3" width="108" height="32"/>
-      <rect x="49" y="1" width="108" height="32" class="nonterminal"/>
-      <text class="nonterminal" x="59" y="21">column_name</text>
-   </a>
-   <rect x="51" y="47" width="56" height="32" rx="10"/>
-   <rect x="49"
-          y="45"
-          width="56"
-          height="32"
-          class="terminal"
-          rx="10"/>
-   <text class="terminal" x="59" y="65">CAST</text>
-   <rect x="127" y="47" width="26" height="32" rx="10"/>
-   <rect x="125"
-          y="45"
-          width="26"
-          height="32"
-          class="terminal"
-          rx="10"/>
-   <text class="terminal" x="135" y="65">(</text>
-   <a xmlns:xlink="http://www.w3.org/1999/xlink"
-       xlink:href="#expression"
-       xlink:title="expression">
-      <rect x="173" y="47" width="90" height="32"/>
-      <rect x="171" y="45" width="90" height="32" class="nonterminal"/>
-      <text class="nonterminal" x="181" y="65">expression</text>
-   </a>
-   <rect x="283" y="47" width="38" height="32" rx="10"/>
-   <rect x="281"
-          y="45"
-          width="38"
-          height="32"
-          class="terminal"
-          rx="10"/>
-   <text class="terminal" x="291" y="65">AS</text>
-   <a xmlns:xlink="http://www.w3.org/1999/xlink"
-       xlink:href="#type"
-       xlink:title="type">
-      <rect x="341" y="47" width="48" height="32"/>
-      <rect x="339" y="45" width="48" height="32" class="nonterminal"/>
-      <text class="nonterminal" x="349" y="65">type</text>
-   </a>
-   <rect x="409" y="47" width="26" height="32" rx="10"/>
-   <rect x="407"
-          y="45"
-          width="26"
-          height="32"
-          class="terminal"
-          rx="10"/>
-   <text class="terminal" x="417" y="65">)</text>
-   <a xmlns:xlink="http://www.w3.org/1999/xlink"
-       xlink:href="#expression"
-       xlink:title="expression">
-      <rect x="51" y="91" width="90" height="32"/>
-      <rect x="49" y="89" width="90" height="32" class="nonterminal"/>
-      <text class="nonterminal" x="59" y="109">expression</text>
-   </a>
-   <rect x="181" y="91" width="74" height="32" rx="10"/>
-   <rect x="179"
-          y="89"
-          width="74"
-          height="32"
-          class="terminal"
-          rx="10"/>
-   <text class="terminal" x="189" y="109">IS NULL</text>
-   <rect x="181" y="135" width="108" height="32" rx="10"/>
-   <rect x="179"
-          y="133"
-          width="108"
-          height="32"
-          class="terminal"
-          rx="10"/>
-   <text class="terminal" x="189" y="153">IS NOT NULL</text>
-   <rect x="201" y="179" width="40" height="32" rx="10"/>
-   <rect x="199"
-          y="177"
-          width="40"
-          height="32"
-          class="terminal"
-          rx="10"/>
-   <text class="terminal" x="209" y="197">OR</text>
-   <rect x="221" y="255" width="86" height="32" rx="10"/>
-   <rect x="219"
-          y="253"
-          width="86"
-          height="32"
-          class="terminal"
-          rx="10"/>
-   <text class="terminal" x="229" y="273">BETWEEN</text>
-   <a xmlns:xlink="http://www.w3.org/1999/xlink"
-       xlink:href="#expression"
-       xlink:title="expression">
-      <rect x="327" y="255" width="90" height="32"/>
-      <rect x="325" y="253" width="90" height="32" class="nonterminal"/>
-      <text class="nonterminal" x="335" y="273">expression</text>
-   </a>
-   <rect x="457" y="223" width="48" height="32" rx="10"/>
-   <rect x="455"
-          y="221"
-          width="48"
-          height="32"
-          class="terminal"
-          rx="10"/>
-   <text class="terminal" x="465" y="241">AND</text>
-   <rect x="201" y="299" width="28" height="32" rx="10"/>
-   <rect x="199"
-          y="297"
-          width="28"
-          height="32"
-          class="terminal"
-          rx="10"/>
-   <text class="terminal" x="209" y="317">*</text>
-   <rect x="201" y="343" width="28" height="32" rx="10"/>
-   <rect x="199"
-          y="341"
-          width="28"
-          height="32"
-          class="terminal"
-          rx="10"/>
-   <text class="terminal" x="209" y="361">/</text>
-   <rect x="201" y="387" width="30" height="32" rx="10"/>
-   <rect x="199"
-          y="385"
-          width="30"
-          height="32"
-          class="terminal"
-          rx="10"/>
-   <text class="terminal" x="209" y="405">+</text>
-   <rect x="201" y="431" width="26" height="32" rx="10"/>
-   <rect x="199"
-          y="429"
-          width="26"
-          height="32"
-          class="terminal"
-          rx="10"/>
-   <text class="terminal" x="209" y="449">-</text>
-   <rect x="201" y="475" width="30" height="32" rx="10"/>
-   <rect x="199"
-          y="473"
-          width="30"
-          height="32"
-          class="terminal"
-          rx="10"/>
-   <text class="terminal" x="209" y="493">=</text>
-   <rect x="201" y="519" width="30" height="32" rx="10"/>
-   <rect x="199"
-          y="517"
-          width="30"
-          height="32"
-          class="terminal"
-          rx="10"/>
-   <text class="terminal" x="209" y="537">&gt;</text>
-   <rect x="201" y="563" width="30" height="32" rx="10"/>
-   <rect x="199"
-          y="561"
-          width="30"
-          height="32"
-          class="terminal"
-          rx="10"/>
-   <text class="terminal" x="209" y="581">&lt;</text>
-   <rect x="201" y="607" width="40" height="32" rx="10"/>
-   <rect x="199"
-          y="605"
-          width="40"
-          height="32"
-          class="terminal"
-          rx="10"/>
-   <text class="terminal" x="209" y="625">&gt;=</text>
-   <rect x="201" y="651" width="40" height="32" rx="10"/>
-   <rect x="199"
-          y="649"
-          width="40"
-          height="32"
-          class="terminal"
-          rx="10"/>
-   <text class="terminal" x="209" y="669">&lt;=</text>
-   <rect x="201" y="695" width="40" height="32" rx="10"/>
-   <rect x="199"
-          y="693"
-          width="40"
-          height="32"
-          class="terminal"
-          rx="10"/>
-   <text class="terminal" x="209" y="713">&lt;&gt;</text>
-   <rect x="201" y="739" width="34" height="32" rx="10"/>
-   <rect x="199"
-          y="737"
-          width="34"
-          height="32"
-          class="terminal"
-          rx="10"/>
-   <text class="terminal" x="209" y="757">!=</text>
-   <a xmlns:xlink="http://www.w3.org/1999/xlink"
-       xlink:href="#expression"
-       xlink:title="expression">
-      <rect x="545" y="179" width="90" height="32"/>
-      <rect x="543" y="177" width="90" height="32" class="nonterminal"/>
-      <text class="nonterminal" x="553" y="197">expression</text>
-   </a>
-   <a xmlns:xlink="http://www.w3.org/1999/xlink"
-       xlink:href="#reference"
-       xlink:title="reference">
-      <rect x="51" y="783" width="80" height="32"/>
-      <rect x="49" y="781" width="80" height="32" class="nonterminal"/>
-      <text class="nonterminal" x="59" y="801">reference</text>
-   </a>
-   <rect x="51" y="827" width="70" height="32" rx="10"/>
-   <rect x="49"
-          y="825"
-          width="70"
-          height="32"
-          class="terminal"
-          rx="10"/>
-   <text class="terminal" x="59" y="845">SELECT</text>
-   <a xmlns:xlink="http://www.w3.org/1999/xlink"
-       xlink:href="#value"
-       xlink:title="value">
-      <rect x="51" y="871" width="54" height="32"/>
-      <rect x="49" y="869" width="54" height="32" class="nonterminal"/>
-      <text class="nonterminal" x="59" y="889">value</text>
-   </a>
-   <path class="line"
-          d="m17 17 h2 m20 0 h10 m108 0 h10 m0 0 h496 m-644 0 h20 m624 0 h20 m-664 0 q10 0 10 10 m644 0 q0 -10 10 -10 m-654 10 v24 m644 0 v-24 m-644 24 q0 10 10 10 m624 0 q10 0 10 -10 m-634 10 h10 m56 0 h10 m0 0 h10 m26 0 h10 m0 0 h10 m90 0 h10 m0 0 h10 m38 0 h10 m0 0 h10 m48 0 h10 m0 0 h10 m26 0 h10 m0 0 h220 m-634 -10 v20 m644 0 v-20 m-644 20 v24 m644 0 v-24 m-644 24 q0 10 10 10 m624 0 q10 0 10 -10 m-634 10 h10 m90 0 h10 m20 0 h10 m74 0 h10 m0 0 h380 m-494 0 h20 m474 0 h20 m-514 0 q10 0 10 10 m494 0 q0 -10 10 -10 m-504 10 v24 m494 0 v-24 m-494 24 q0 10 10 10 m474 0 q10 0 10 -10 m-484 10 h10 m108 0 h10 m0 0 h346 m-484 -10 v20 m494 0 v-20 m-494 20 v24 m494 0 v-24 m-494 24 q0 10 10 10 m474 0 q10 0 10 -10 m-464 10 h10 m40 0 h10 m0 0 h264 m-344 0 h20 m324 0 h20 m-364 0 q10 0 10 10 m344 0 q0 -10 10 -10 m-354 10 v24 m344 0 v-24 m-344 24 q0 10 10 10 m324 0 q10 0 10 -10 m-314 10 h10 m0 0 h206 m-236 0 h20 m216 0 h20 m-256 0 q10 0 10 10 m236 0 q0 -10 10 -10 m-246 10 v12 m236 0 v-12 m-236 12 q0 10 10 10 m216 0 q10 0 10 -10 m-226 10 h10 m86 0 h10 m0 0 h10 m90 0 h10 m20 -32 h10 m48 0 h10 m-334 -10 v20 m344 0 v-20 m-344 20 v56 m344 0 v-56 m-344 56 q0 10 10 10 m324 0 q10 0 10 -10 m-334 10 h10 m28 0 h10 m0 0 h276 m-334 -10 v20 m344 0 v-20 m-344 20 v24 m344 0 v-24 m-344 24 q0 10 10 10 m324 0 q10 0 10 -10 m-334 10 h10 m28 0 h10 m0 0 h276 m-334 -10 v20 m344 0 v-20 m-344 20 v24 m344 0 v-24 m-344 24 q0 10 10 10 m324 0 q10 0 10 -10 m-334 10 h10 m30 0 h10 m0 0 h274 m-334 -10 v20 m344 0 v-20 m-344 20 v24 m344 0 v-24 m-344 24 q0 10 10 10 m324 0 q10 0 10 -10 m-334 10 h10 m26 0 h10 m0 0 h278 m-334 -10 v20 m344 0 v-20 m-344 20 v24 m344 0 v-24 m-344 24 q0 10 10 10 m324 0 q10 0 10 -10 m-334 10 h10 m30 0 h10 m0 0 h274 m-334 -10 v20 m344 0 v-20 m-344 20 v24 m344 0 v-24 m-344 24 q0 10 10 10 m324 0 q10 0 10 -10 m-334 10 h10 m30 0 h10 m0 0 h274 m-334 -10 v20 m344 0 v-20 m-344 20 v24 m344 0 v-24 m-344 24 q0 10 10 10 m324 0 q10 0 10 -10 m-334 10 h10 m30 0 h10 m0 0 h274 m-334 -10 v20 m344 0 v-20 m-344 20 v24 m344 0 v-24 m-344 24 q0 10 10 10 m324 0 q10 0 10 -10 m-334 10 h10 m40 0 h10 m0 0 h264 m-334 -10 v20 m344 0 v-20 m-344 20 v24 m344 0 v-24 m-344 24 q0 10 10 10 m324 0 q10 0 10 -10 m-334 10 h10 m40 0 h10 m0 0 h264 m-334 -10 v20 m344 0 v-20 m-344 20 v24 m344 0 v-24 m-344 24 q0 10 10 10 m324 0 q10 0 10 -10 m-334 10 h10 m40 0 h10 m0 0 h264 m-334 -10 v20 m344 0 v-20 m-344 20 v24 m344 0 v-24 m-344 24 q0 10 10 10 m324 0 q10 0 10 -10 m-334 10 h10 m34 0 h10 m0 0 h270 m20 -560 h10 m90 0 h10 m-614 -98 v20 m644 0 v-20 m-644 20 v672 m644 0 v-672 m-644 672 q0 10 10 10 m624 0 q10 0 10 -10 m-634 10 h10 m80 0 h10 m0 0 h524 m-634 -10 v20 m644 0 v-20 m-644 20 v24 m644 0 v-24 m-644 24 q0 10 10 10 m624 0 q10 0 10 -10 m-634 10 h10 m70 0 h10 m0 0 h534 m-634 -10 v20 m644 0 v-20 m-644 20 v24 m644 0 v-24 m-644 24 q0 10 10 10 m624 0 q10 0 10 -10 m-634 10 h10 m54 0 h10 m0 0 h550 m23 -868 h-3"/>
-   <polygon points="693 17 701 13 701 21"/>
-   <polygon points="693 17 685 13 685 21"/>
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   width="703"
+   height="905"
+   version="1.1"
+   id="svg206"
+   sodipodi:docname="expression.svg"
+   inkscape:version="1.2.2 (b0a8486541, 2022-12-01)"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns:xlink="http://www.w3.org/1999/xlink"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <sodipodi:namedview
+     id="namedview208"
+     pagecolor="#ffffff"
+     bordercolor="#666666"
+     borderopacity="1.0"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     showgrid="false"
+     inkscape:zoom="1.3110775"
+     inkscape:cx="69.027191"
+     inkscape:cy="610.18511"
+     inkscape:window-width="1920"
+     inkscape:window-height="1011"
+     inkscape:window-x="0"
+     inkscape:window-y="32"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="a12485" />
+  <defs
+     id="defs4">
+    <style
+       type="text/css"
+       id="style2">@namespace &quot;http://www.w3.org/2000/svg&quot;;.line { fill: none; stroke: #320000; stroke-width: 1; }
+.bold-line { stroke: #FFE0E0; shape-rendering: crispEdges; stroke-width: 2; }
+.thin-line { stroke: #1F0000; shape-rendering: crispEdges }
+.filled { fill: #320000; stroke: none; }
+text.terminal { font-family: HelveticaNeueCyr, Sans-serif;                            font-size: 14px;                            fill: #FFE0E0;                            font-weight: bold; }
+text.nonterminal { font-family: HelveticaNeueCyr, Sans-serif;                            font-size: 14px;                            fill: #FFE0E0;                            font-weight: normal; }
+text.regexp { font-family: HelveticaNeueCyr, Sans-serif;                            font-size: 14px;                            fill: #1F0000;                            font-weight: normal; }
+rect, circle, polygon { fill: #320000; stroke: #320000; }
+rect.terminal { fill: #FF0000; stroke: #320000; stroke-width: 1; }
+rect.nonterminal { fill: #FF3F3F; stroke: #320000; stroke-width: 1; }
+rect.text { fill: none; stroke: none; }
+polygon.regexp { fill: #FF5E5E; stroke: #320000; stroke-width: 1; }
+</style>
+  </defs>
+  <polygon
+     points="9 17 1 13 1 21"
+     id="polygon6" />
+  <polygon
+     points="17 17 9 13 9 21"
+     id="polygon8" />
+  <a
+     xlink:href="#column_name"
+     xlink:title="column_name"
+     id="a16">
+    <rect
+       x="51"
+       y="3"
+       width="108"
+       height="32"
+       id="rect10" />
+    <rect
+       x="49"
+       y="1"
+       width="108"
+       height="32"
+       class="nonterminal"
+       id="rect12" />
+    <text
+       class="nonterminal"
+       x="59"
+       y="21"
+       id="text14">column_name</text>
+  </a>
+  <rect
+     x="51"
+     y="47"
+     width="56"
+     height="32"
+     rx="10"
+     id="rect18" />
+  <rect
+     x="49"
+     y="45"
+     width="56"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect20" />
+  <text
+     class="terminal"
+     x="59"
+     y="65"
+     id="text22">CAST</text>
+  <rect
+     x="127"
+     y="47"
+     width="26"
+     height="32"
+     rx="10"
+     id="rect24" />
+  <rect
+     x="125"
+     y="45"
+     width="26"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect26" />
+  <text
+     class="terminal"
+     x="135"
+     y="65"
+     id="text28">(</text>
+  <a
+     xlink:href="#expression"
+     xlink:title="expression"
+     id="a36">
+    <rect
+       x="173"
+       y="47"
+       width="90"
+       height="32"
+       id="rect30" />
+    <rect
+       x="171"
+       y="45"
+       width="90"
+       height="32"
+       class="nonterminal"
+       id="rect32" />
+    <text
+       class="nonterminal"
+       x="181"
+       y="65"
+       id="text34">expression</text>
+  </a>
+  <rect
+     x="283"
+     y="47"
+     width="38"
+     height="32"
+     rx="10"
+     id="rect38" />
+  <rect
+     x="281"
+     y="45"
+     width="38"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect40" />
+  <text
+     class="terminal"
+     x="291"
+     y="65"
+     id="text42">AS</text>
+  <a
+     xlink:href="#type"
+     xlink:title="type"
+     id="a50">
+    <rect
+       x="341"
+       y="47"
+       width="48"
+       height="32"
+       id="rect44" />
+    <rect
+       x="339"
+       y="45"
+       width="48"
+       height="32"
+       class="nonterminal"
+       id="rect46" />
+    <text
+       class="nonterminal"
+       x="349"
+       y="65"
+       id="text48">type</text>
+  </a>
+  <rect
+     x="409"
+     y="47"
+     width="26"
+     height="32"
+     rx="10"
+     id="rect52" />
+  <rect
+     x="407"
+     y="45"
+     width="26"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect54" />
+  <text
+     class="terminal"
+     x="417"
+     y="65"
+     id="text56">)</text>
+  <a
+     xlink:href="#expression"
+     xlink:title="expression"
+     id="a64">
+    <rect
+       x="51"
+       y="91"
+       width="90"
+       height="32"
+       id="rect58" />
+    <rect
+       x="49"
+       y="89"
+       width="90"
+       height="32"
+       class="nonterminal"
+       id="rect60" />
+    <text
+       class="nonterminal"
+       x="59"
+       y="109"
+       id="text62">expression</text>
+  </a>
+  <rect
+     x="181"
+     y="91"
+     width="74"
+     height="32"
+     rx="10"
+     id="rect66" />
+  <rect
+     x="179"
+     y="89"
+     width="74"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect68" />
+  <text
+     class="terminal"
+     x="189"
+     y="109"
+     id="text70">IS NULL</text>
+  <rect
+     x="181"
+     y="135"
+     width="108"
+     height="32"
+     rx="10"
+     id="rect72" />
+  <rect
+     x="179"
+     y="133"
+     width="108"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect74" />
+  <text
+     class="terminal"
+     x="189"
+     y="153"
+     id="text76">IS NOT NULL</text>
+  <rect
+     x="201"
+     y="179"
+     width="40"
+     height="32"
+     rx="10"
+     id="rect78" />
+  <rect
+     x="199"
+     y="177"
+     width="40"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect80" />
+  <text
+     class="terminal"
+     x="209"
+     y="197"
+     id="text82">OR</text>
+  <rect
+     x="221"
+     y="255"
+     width="86"
+     height="32"
+     rx="10"
+     id="rect84" />
+  <rect
+     x="219"
+     y="253"
+     width="86"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect86" />
+  <text
+     class="terminal"
+     x="229"
+     y="273"
+     id="text88">BETWEEN</text>
+  <a
+     xlink:href="#expression"
+     xlink:title="expression"
+     id="a96">
+    <rect
+       x="327"
+       y="255"
+       width="90"
+       height="32"
+       id="rect90" />
+    <rect
+       x="325"
+       y="253"
+       width="90"
+       height="32"
+       class="nonterminal"
+       id="rect92" />
+    <text
+       class="nonterminal"
+       x="335"
+       y="273"
+       id="text94">expression</text>
+  </a>
+  <rect
+     x="457"
+     y="223"
+     width="48"
+     height="32"
+     rx="10"
+     id="rect98" />
+  <rect
+     x="455"
+     y="221"
+     width="48"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect100" />
+  <text
+     class="terminal"
+     x="465"
+     y="241"
+     id="text102">AND</text>
+  <rect
+     x="201"
+     y="299"
+     width="28"
+     height="32"
+     rx="10"
+     id="rect104" />
+  <rect
+     x="199"
+     y="297"
+     width="28"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect106" />
+  <text
+     class="terminal"
+     x="209"
+     y="317"
+     id="text108">*</text>
+  <rect
+     x="201"
+     y="343"
+     width="28"
+     height="32"
+     rx="10"
+     id="rect110" />
+  <rect
+     x="199"
+     y="341"
+     width="28"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect112" />
+  <text
+     class="terminal"
+     x="209"
+     y="361"
+     id="text114">/</text>
+  <rect
+     x="201"
+     y="387"
+     width="30"
+     height="32"
+     rx="10"
+     id="rect116" />
+  <rect
+     x="199"
+     y="385"
+     width="30"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect118" />
+  <text
+     class="terminal"
+     x="209"
+     y="405"
+     id="text120">+</text>
+  <rect
+     x="201"
+     y="431"
+     width="26"
+     height="32"
+     rx="10"
+     id="rect122" />
+  <rect
+     x="199"
+     y="429"
+     width="26"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect124" />
+  <text
+     class="terminal"
+     x="209"
+     y="449"
+     id="text126">-</text>
+  <rect
+     x="201"
+     y="475"
+     width="30"
+     height="32"
+     rx="10"
+     id="rect128" />
+  <rect
+     x="199"
+     y="473"
+     width="30"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect130" />
+  <text
+     class="terminal"
+     x="209"
+     y="493"
+     id="text132">=</text>
+  <rect
+     x="201"
+     y="519"
+     width="30"
+     height="32"
+     rx="10"
+     id="rect134" />
+  <rect
+     x="199"
+     y="517"
+     width="30"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect136" />
+  <text
+     class="terminal"
+     x="209"
+     y="537"
+     id="text138">&gt;</text>
+  <rect
+     x="201"
+     y="563"
+     width="30"
+     height="32"
+     rx="10"
+     id="rect140" />
+  <rect
+     x="199"
+     y="561"
+     width="30"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect142" />
+  <text
+     class="terminal"
+     x="209"
+     y="581"
+     id="text144">&lt;</text>
+  <rect
+     x="201"
+     y="607"
+     width="40"
+     height="32"
+     rx="10"
+     id="rect146" />
+  <rect
+     x="199"
+     y="605"
+     width="40"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect148" />
+  <text
+     class="terminal"
+     x="209"
+     y="625"
+     id="text150">&gt;=</text>
+  <rect
+     x="201"
+     y="651"
+     width="40"
+     height="32"
+     rx="10"
+     id="rect152" />
+  <rect
+     x="199"
+     y="649"
+     width="40"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect154" />
+  <text
+     class="terminal"
+     x="209"
+     y="669"
+     id="text156">&lt;=</text>
+  <rect
+     x="201"
+     y="695"
+     width="40"
+     height="32"
+     rx="10"
+     id="rect158" />
+  <rect
+     x="199"
+     y="693"
+     width="40"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect160" />
+  <text
+     class="terminal"
+     x="209"
+     y="713"
+     id="text162">&lt;&gt;</text>
+  <rect
+     x="201"
+     y="739"
+     width="34"
+     height="32"
+     rx="10"
+     id="rect164" />
+  <rect
+     x="199"
+     y="737"
+     width="34"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect166" />
+  <text
+     class="terminal"
+     x="209"
+     y="757"
+     id="text168">!=</text>
+  <a
+     xlink:href="#expression"
+     xlink:title="expression"
+     id="a176">
+    <rect
+       x="545"
+       y="179"
+       width="90"
+       height="32"
+       id="rect170" />
+    <rect
+       x="543"
+       y="177"
+       width="90"
+       height="32"
+       class="nonterminal"
+       id="rect172" />
+    <text
+       class="nonterminal"
+       x="553"
+       y="197"
+       id="text174">expression</text>
+  </a>
+  <a
+     xlink:href="#reference"
+     xlink:title="reference"
+     id="a184">
+    <rect
+       x="51"
+       y="783"
+       width="80"
+       height="32"
+       id="rect178" />
+    <rect
+       x="49"
+       y="781"
+       width="80"
+       height="32"
+       class="nonterminal"
+       id="rect180" />
+    <text
+       class="nonterminal"
+       x="59"
+       y="801"
+       id="text182">reference</text>
+  </a>
+  <a
+     xlink:href="#value"
+     xlink:title="value"
+     id="a198">
+    <rect
+       x="51"
+       y="871"
+       width="54"
+       height="32"
+       id="rect192" />
+    <rect
+       x="49"
+       y="869"
+       width="54"
+       height="32"
+       class="nonterminal"
+       id="rect194" />
+    <text
+       class="nonterminal"
+       x="59"
+       y="889"
+       id="text196">value</text>
+  </a>
+  <path
+     class="line"
+     d="m 17,17 h 2 m 20,0 h 10 m 108,0 h 10 m 0,0 H 663 M 19,17 h 20 m 624,0 h 20 M 19,17 c 6.666667,0 10,3.333333 10,10 m 644,0 c 0,-6.666667 3.33333,-10 10,-10 M 29,27 v 24 m 644,0 V 27 M 29,51 c 0,6.666667 3.333333,10 10,10 m 624,0 c 6.66667,0 10,-3.333333 10,-10 M 39,61 h 10 m 56,0 h 10 m 0,0 h 10 m 26,0 h 10 m 0,0 h 10 m 90,0 h 10 m 0,0 h 10 m 38,0 h 10 m 0,0 h 10 m 48,0 h 10 m 0,0 h 10 m 26,0 h 10 m 0,0 H 663 M 29,51 v 20 m 644,0 V 51 M 29,71 v 24 m 644,0 V 71 M 29,95 c 0,6.66667 3.333333,10 10,10 m 624,0 c 6.66667,0 10,-3.33333 10,-10 M 39,105 h 10 m 90,0 h 10 m 20,0 h 10 m 74,0 h 10 m 0,0 h 380 m -494,0 h 20 m 474,0 h 20 m -514,0 c 6.66667,0 10,3.33333 10,10 m 494,0 c 0,-6.66667 3.33333,-10 10,-10 m -504,10 v 24 m 494,0 v -24 m -494,24 c 0,6.66667 3.33333,10 10,10 m 474,0 c 6.66667,0 10,-3.33333 10,-10 m -484,10 h 10 m 108,0 h 10 m 0,0 H 643 M 159,139 v 20 m 494,0 v -20 m -494,20 v 24 m 494,0 v -24 m -494,24 c 0,6.66667 3.33333,10 10,10 m 474,0 c 6.66667,0 10,-3.33333 10,-10 m -464,10 h 10 m 40,0 h 10 m 0,0 h 264 m -344,0 h 20 m 324,0 h 20 m -364,0 c 6.66667,0 10,3.33333 10,10 m 344,0 c 0,-6.66667 3.33333,-10 10,-10 m -354,10 v 24 m 344,0 v -24 m -344,24 c 0,6.66667 3.33333,10 10,10 m 324,0 c 6.66667,0 10,-3.33333 10,-10 m -314,10 h 10 m 0,0 h 206 m -236,0 h 20 m 216,0 h 20 m -256,0 c 6.66667,0 10,3.33333 10,10 m 236,0 c 0,-6.66667 3.33333,-10 10,-10 m -246,10 v 12 m 236,0 v -12 m -236,12 c 0,6.66667 3.33333,10 10,10 m 216,0 c 6.66667,0 10,-3.33333 10,-10 m -226,10 h 10 m 86,0 h 10 m 0,0 h 10 m 90,0 h 10 m 20,-32 h 10 m 48,0 h 10 M 179,227 v 20 m 344,0 v -20 m -344,20 v 56 m 344,0 v -56 m -344,56 c 0,6.66667 3.33333,10 10,10 m 324,0 c 6.66667,0 10,-3.33333 10,-10 m -334,10 h 10 m 28,0 h 10 m 0,0 H 513 M 179,303 v 20 m 344,0 v -20 m -344,20 v 24 m 344,0 v -24 m -344,24 c 0,6.66667 3.33333,10 10,10 m 324,0 c 6.66667,0 10,-3.33333 10,-10 m -334,10 h 10 m 28,0 h 10 m 0,0 H 513 M 179,347 v 20 m 344,0 v -20 m -344,20 v 24 m 344,0 v -24 m -344,24 c 0,6.66667 3.33333,10 10,10 m 324,0 c 6.66667,0 10,-3.33333 10,-10 m -334,10 h 10 m 30,0 h 10 m 0,0 H 513 M 179,391 v 20 m 344,0 v -20 m -344,20 v 24 m 344,0 v -24 m -344,24 c 0,6.66667 3.33333,10 10,10 m 324,0 c 6.66667,0 10,-3.33333 10,-10 m -334,10 h 10 m 26,0 h 10 m 0,0 H 513 M 179,435 v 20 m 344,0 v -20 m -344,20 v 24 m 344,0 v -24 m -344,24 c 0,6.66667 3.33333,10 10,10 m 324,0 c 6.66667,0 10,-3.33333 10,-10 m -334,10 h 10 m 30,0 h 10 m 0,0 H 513 M 179,479 v 20 m 344,0 v -20 m -344,20 v 24 m 344,0 v -24 m -344,24 c 0,6.66667 3.33333,10 10,10 m 324,0 c 6.66667,0 10,-3.33333 10,-10 m -334,10 h 10 m 30,0 h 10 m 0,0 H 513 M 179,523 v 20 m 344,0 v -20 m -344,20 v 24 m 344,0 v -24 m -344,24 c 0,6.66667 3.33333,10 10,10 m 324,0 c 6.66667,0 10,-3.33333 10,-10 m -334,10 h 10 m 30,0 h 10 m 0,0 H 513 M 179,567 v 20 m 344,0 v -20 m -344,20 v 24 m 344,0 v -24 m -344,24 c 0,6.66667 3.33333,10 10,10 m 324,0 c 6.66667,0 10,-3.33333 10,-10 m -334,10 h 10 m 40,0 h 10 m 0,0 H 513 M 179,611 v 20 m 344,0 v -20 m -344,20 v 24 m 344,0 v -24 m -344,24 c 0,6.66667 3.33333,10 10,10 m 324,0 c 6.66667,0 10,-3.33333 10,-10 m -334,10 h 10 m 40,0 h 10 m 0,0 H 513 M 179,655 v 20 m 344,0 v -20 m -344,20 v 24 m 344,0 v -24 m -344,24 c 0,6.66667 3.33333,10 10,10 m 324,0 c 6.66667,0 10,-3.33333 10,-10 m -334,10 h 10 m 40,0 h 10 m 0,0 H 513 M 179,699 v 20 m 344,0 v -20 m -344,20 v 24 m 344,0 v -24 m -344,24 c 0,6.66667 3.33333,10 10,10 m 324,0 c 6.66667,0 10,-3.33333 10,-10 m -334,10 h 10 m 34,0 h 10 m 0,0 h 270 m 20,-560 h 10 m 90,0 h 10 M 29,95 v 20 m 644,0 V 95 M 29,115 v 672 m 644,0 V 115 M 29,787 c 0,6.66667 3.333333,10 10,10 m 624,0 c 6.66667,0 10,-3.33333 10,-10 M 39,797 h 10 m 80,0 h 10 m 0,0 H 663 M 29,787 v 20 m 644,0 V 787 M 29,807 v 24 m 644,0 V 807 M 29,831 c 0,6.66667 3.333333,10 10,10 m 624,0 c 6.66667,0 10,-3.33333 10,-10 M 39,841 h 10 m 68.0781,0 11.9219,0 m 0,0 H 663 M 29,831 v 20 m 644,0 V 831 M 29,851 v 24 m 644,0 V 851 M 29,875 c 0,6.66667 3.333333,10 10,10 m 624,0 c 6.66667,0 10,-3.33333 10,-10 M 39,885 h 10 m 54,0 h 10 m 0,0 H 663 M 686,17 h -3"
+     id="path200"
+     sodipodi:nodetypes="cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc" />
+  <polygon
+     points="693 17 701 13 701 21"
+     id="polygon202" />
+  <polygon
+     points="693 17 685 13 685 21"
+     id="polygon204" />
+  <a
+     xlink:href="#select"
+     xlink:title="SELECT"
+     id="a12485"
+     transform="translate(0.34458658,823.206)">
+    <rect
+       x="51"
+       y="3"
+       width="66"
+       height="32"
+       id="rect12479"
+       style="fill:#320000;stroke:#320000" />
+    <rect
+       x="49"
+       y="1"
+       width="66"
+       height="32"
+       class="nonterminal"
+       id="rect12481"
+       style="fill:#ff3f3f;stroke:#320000;stroke-width:1" />
+    <text
+       class="nonterminal"
+       x="57.299294"
+       y="21.214561"
+       id="text12483"
+       style="font-weight:normal;font-size:14px;font-family:HelveticaNeueCyr, Sans-serif;fill:#ffe0e0">SELECT</text>
+  </a>
 </svg>
