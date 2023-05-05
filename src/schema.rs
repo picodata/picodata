@@ -122,7 +122,7 @@ impl IndexDef {
     // Don't forget to update this, if fields of `IndexDef` change.
     pub const FIELD_OPERABLE: usize = 6;
 
-    pub fn to_index_metadata(&self) -> traft::Result<IndexMetadata> {
+    pub fn to_index_metadata(&self) -> IndexMetadata {
         use tarantool::index::IndexType;
 
         let index_meta = IndexMetadata {
@@ -134,7 +134,7 @@ impl IndexDef {
             parts: self.parts.clone(),
         };
 
-        Ok(index_meta)
+        index_meta
     }
 }
 

@@ -1,3 +1,4 @@
+use ::tarantool::error::Error as TntError;
 use ::tarantool::index::{Index, IndexId, IndexIterator, IteratorType};
 use ::tarantool::msgpack::{ArrayWriter, ValueIter};
 use ::tarantool::space::UpdateOps;
@@ -412,16 +413,61 @@ define_clusterwide_spaces! {
 }
 
 impl Clusterwide {
-    pub fn apply_snapshot_data(&self, raw_data: &[u8]) -> tarantool::Result<()> {
+    pub fn apply_snapshot_data(&self, raw_data: &[u8], is_master: bool) -> Result<()> {
         let data = SnapshotData::decode(raw_data)?;
         for space_dump in &data.space_dumps {
             let space = self.space(space_dump.space);
             space.truncate()?;
             let tuples = space_dump.tuples.as_ref();
-            for tuple in ValueIter::from_array(tuples)? {
+            for tuple in ValueIter::from_array(tuples).map_err(TntError::from)? {
                 space.insert(RawBytes::new(tuple))?;
             }
         }
+
+        if !is_master {
+            return Ok(());
+        }
+
+        let sys_space = Space::from(SystemSpace::Space);
+        let sys_index = Space::from(SystemSpace::Index);
+        let mut new_pico_schema_version = pico_schema_version()?;
+
+        for space_def in self.spaces.iter()? {
+            if !space_def.operable {
+                // This means a ddl operation wasn't committed yet. We probably
+                // don't want unfinished ddl artifacts comming over the snapshot
+                // so this will likely never happen.
+                crate::warn_or_panic!(
+                    "unfinished ddl operation arrived via snapshot: {space_def:?}"
+                );
+                continue;
+            }
+
+            let Some(index_def) = self.indexes.get(space_def.id, 0)? else {
+                crate::warn_or_panic!("a space definition without a primary index arrived via snapshot: {space_def:?}");
+                continue;
+            };
+
+            // XXX: this logic is duplicated in proc_apply_schema_change, but
+            // the code is so small, it doesn't seem forth it extracting it for
+            // now
+            let space_meta = space_def.to_space_metadata()?;
+            let index_meta = index_def.to_index_metadata();
+
+            sys_space.replace(&space_meta)?;
+            sys_index.replace(&index_meta)?;
+            if space_def.schema_version > new_pico_schema_version {
+                new_pico_schema_version = space_def.schema_version;
+            }
+        }
+
+        // TODO: secondary indexes
+
+        set_pico_schema_version(new_pico_schema_version)?;
+
+        // TODO: check if a space exists here in box.space._space, but doesn't
+        // exist in pico._space, then delete it
+
         Ok(())
     }
 }
@@ -1296,6 +1342,15 @@ impl Spaces {
     }
 }
 
+impl ToEntryIter for Spaces {
+    type Entry = SpaceDef;
+
+    #[inline(always)]
+    fn index_iter(&self) -> Result<IndexIterator> {
+        Ok(self.space.select(IteratorType::All, &())?)
+    }
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // Indexes
 ////////////////////////////////////////////////////////////////////////////////
@@ -1757,7 +1812,7 @@ mod tests {
         let raw_data = data.to_tuple_buffer().unwrap();
 
         storage.for_each_space(|s| s.truncate()).unwrap();
-        if let Err(e) = storage.apply_snapshot_data(raw_data.as_ref()) {
+        if let Err(e) = storage.apply_snapshot_data(raw_data.as_ref(), true) {
             println!("{e}");
             panic!();
         }

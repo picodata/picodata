@@ -95,7 +95,7 @@ pub fn apply_schema_change(storage: &Clusterwide, ddl: &Ddl, version: u64) -> Re
                 ))
             })?;
             // TODO: set index parts from space format
-            let index_meta = index_info.to_index_metadata()?;
+            let index_meta = index_info.to_index_metadata();
 
             let res = (|| -> tarantool::Result<()> {
                 sys_space.insert(&space_meta)?;

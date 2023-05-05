@@ -1126,7 +1126,7 @@ impl NodeImpl {
         // This is a snapshot, we need to apply the snapshot at first.
         let snapshot = ready.snapshot();
         if !snapshot.is_empty() {
-            if let Err(e) = start_transaction(|| -> tarantool::Result<()> {
+            if let Err(e) = start_transaction(|| -> traft::Result<()> {
                 let meta = snapshot.get_metadata();
                 self.raft_storage.handle_snapshot_metadata(meta)?;
                 // FIXME: apply_snapshot_data calls truncate on clusterwide
@@ -1138,7 +1138,9 @@ impl NodeImpl {
                 if is_readonly {
                     crate::tarantool::eval("box.cfg { read_only = false }")?;
                 }
-                let res = self.storage.apply_snapshot_data(snapshot.get_data());
+                let res = self
+                    .storage
+                    .apply_snapshot_data(snapshot.get_data(), !is_readonly);
                 if is_readonly {
                     crate::tarantool::exec("box.cfg { read_only = true }")?;
                 }

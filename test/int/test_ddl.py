@@ -54,6 +54,7 @@ def test_ddl_create_space_bulky(cluster: Cluster):
             distribution=dict(kind="global"),
         ),
     )
+    # TODO: rewrite the test using pico.cas, when it supports ddl
     i1.call("pico.raft_propose", op)
 
     # Schema version was updated
@@ -163,3 +164,64 @@ def test_ddl_create_space_partial_failure(cluster: Cluster):
 
     # TODO: add instance which will conflict with this ddl and make sure it
     # panics
+
+
+def test_ddl_from_snapshot(cluster: Cluster):
+    # Second instance is only for quorum
+    i1, i2 = cluster.deploy(instance_count=2)
+
+    i1.assert_raft_status("Leader")
+
+    # TODO: check other ddl operations
+    # Propose a space creation which will succeed
+    op = dict(
+        kind="ddl_prepare",
+        schema_version=1,
+        ddl=dict(
+            kind="create_space",
+            id=666,
+            name="stuff",
+            format=[dict(name="id", type="unsigned", is_nullable=False)],
+            primary_key=[dict(field=1, type="unsigned")],
+            distribution=dict(kind="global"),
+        ),
+    )
+    # TODO: rewrite the test using pico.cas, when it supports ddl
+    ret = i1.call("pico.raft_propose", op)
+
+    # Make sure everyone is synchronized
+    i1.call(".proc_sync_raft", ret, (3, 0))
+    i2.call(".proc_sync_raft", ret, (3, 0))
+
+    space_meta = [
+        666,
+        1,
+        "stuff",
+        "memtx",
+        0,
+        dict(),
+        [dict(name="id", type="unsigned", is_nullable=False)],
+    ]
+    assert i1.call("box.space._space:get", 666) == space_meta
+    assert i2.call("box.space._space:get", 666) == space_meta
+
+    index_meta = [
+        666,
+        0,
+        "primary_key",
+        "tree",
+        dict(),
+        [[1, "unsigned", None, None, None]],
+    ]
+    assert i1.call("box.space._index:get", [666, 0]) == index_meta
+    assert i2.call("box.space._index:get", [666, 0]) == index_meta
+
+    # Compact the log to trigger snapshot for the newcommer
+    i1.raft_compact_log()
+    i2.raft_compact_log()
+
+    i3 = cluster.add_instance(wait_online=True)
+
+    # Check space was created from the snapshot data
+    assert i3.call("box.space._space:get", 666) == space_meta
+    assert i3.call("box.space._index:get", [666, 0]) == index_meta

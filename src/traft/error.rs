@@ -98,6 +98,12 @@ impl From<::tarantool::network::Error> for Error {
     }
 }
 
+impl From<::tarantool::error::TransactionError> for Error {
+    fn from(err: ::tarantool::error::TransactionError) -> Self {
+        Self::Tarantool(err.into())
+    }
+}
+
 #[derive(Debug, Error)]
 pub enum CoercionError {
     #[error("unknown entry type ({0})")]
