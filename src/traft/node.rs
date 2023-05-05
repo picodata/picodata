@@ -1239,12 +1239,7 @@ impl NodeImpl {
 
     fn wait_lsn(&mut self) -> traft::Result<()> {
         assert!(self.raw_node.raft.state != RaftStateRole::Leader);
-
-        let leader_id = self.raw_node.raft.leader_id;
         let my_id = self.raw_node.raft.id;
-
-        let resp = fiber::block_on(self.pool.call(&leader_id, &lsn::Request {})?)?;
-        let target_lsn = resp.lsn;
 
         let replicaset_id = self.storage.instances.get(&my_id)?.replicaset_id;
         let replicaset = self.storage.replicasets.get(&replicaset_id)?;
@@ -1253,13 +1248,12 @@ impl NodeImpl {
         })?;
         let master = self.storage.instances.get(&replicaset.master_id)?;
         let master_uuid = master.instance_uuid;
+
+        let resp = fiber::block_on(self.pool.call(&master.raft_id, &lsn::Request {})?)?;
+        let target_lsn = resp.lsn;
+
         let mut current_lsn = None;
 
-        #[derive(tlua::LuaRead)]
-        struct ReplicationInfo {
-            lsn: u64,
-            uuid: String,
-        }
         let replication: HashMap<u64, ReplicationInfo> =
             crate::tarantool::eval("return box.info.replication")?;
         for r in replication.values() {
@@ -1284,7 +1278,13 @@ impl NodeImpl {
             fiber::sleep(MainLoop::TICK * 4);
         }
 
-        Ok(())
+        return Ok(());
+
+        #[derive(tlua::LuaRead)]
+        struct ReplicationInfo {
+            lsn: u64,
+            uuid: String,
+        }
     }
 
     #[inline]
