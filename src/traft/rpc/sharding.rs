@@ -10,7 +10,7 @@ crate::define_rpc_request! {
     fn proc_sharding(req: Request) -> Result<Response> {
         let node = node::global()?;
         node.status().check_term(req.term)?;
-        wait_for_index_timeout(req.commit, &node.raft_storage, req.timeout)?;
+        wait_for_index_timeout(req.applied, &node.raft_storage, req.timeout)?;
 
         let storage = &node.storage;
         let cfg = cfg::Cfg::from_storage(storage)?;
@@ -44,7 +44,7 @@ crate::define_rpc_request! {
     #[derive(Default)]
     pub struct Request {
         pub term: RaftTerm,
-        pub commit: RaftIndex,
+        pub applied: RaftIndex,
         pub timeout: Duration,
     }
 
@@ -61,7 +61,7 @@ pub mod bootstrap {
         fn proc_sharding_bootstrap(req: Request) -> Result<Response> {
             let node = node::global()?;
             node.status().check_term(req.term)?;
-            wait_for_index_timeout(req.commit, &node.raft_storage, req.timeout)?;
+            wait_for_index_timeout(req.applied, &node.raft_storage, req.timeout)?;
 
             ::tarantool::lua_state().exec("vshard.router.bootstrap()")?;
 
@@ -72,7 +72,7 @@ pub mod bootstrap {
         #[derive(Default)]
         pub struct Request {
             pub term: RaftTerm,
-            pub commit: RaftIndex,
+            pub applied: RaftIndex,
             pub timeout: Duration,
         }
 

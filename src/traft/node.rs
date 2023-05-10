@@ -689,6 +689,7 @@ impl NodeImpl {
         let lc = entry.lc();
         let index = entry.index;
         let op = entry.into_op().unwrap_or(Op::Nop);
+        tlog!(Debug, "applying entry: {op}"; "index" => index);
 
         match &op {
             Op::PersistInstance(PersistInstance(instance)) => {

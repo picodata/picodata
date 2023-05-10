@@ -20,7 +20,7 @@ use super::Loop;
 #[allow(clippy::too_many_arguments)]
 pub(super) fn action_plan<'i>(
     term: RaftTerm,
-    commit: RaftIndex,
+    applied: RaftIndex,
     cluster_id: String,
     instances: &'i [Instance],
     voters: &[RaftId],
@@ -83,7 +83,7 @@ pub(super) fn action_plan<'i>(
             if let Some(to) = new_master {
                 let rpc = replication::promote::Request {
                     term,
-                    commit,
+                    applied,
                     timeout: Loop::SYNC_TIMEOUT,
                 };
                 let mut ops = UpdateOps::new();
@@ -110,7 +110,7 @@ pub(super) fn action_plan<'i>(
             .collect();
         let rpc = sharding::Request {
             term,
-            commit,
+            applied,
             timeout: Loop::SYNC_TIMEOUT,
         };
         let req = update_instance::Request::new(instance_id.clone(), cluster_id)
@@ -130,7 +130,7 @@ pub(super) fn action_plan<'i>(
     }) = to_sync
     {
         let rpc = sync::Request {
-            commit,
+            applied,
             timeout: Loop::SYNC_TIMEOUT,
         };
         let req = update_instance::Request::new(instance_id.clone(), cluster_id)
@@ -154,7 +154,7 @@ pub(super) fn action_plan<'i>(
     {
         let rpc = replication::promote::Request {
             term,
-            commit,
+            applied,
             timeout: Loop::SYNC_TIMEOUT,
         };
         let op = Dml::insert(
@@ -195,7 +195,7 @@ pub(super) fn action_plan<'i>(
             .collect();
         let rpc = replication::Request {
             term,
-            commit,
+            applied,
             timeout: Loop::SYNC_TIMEOUT,
         };
         let req = update_instance::Request::new(instance_id.clone(), cluster_id)
@@ -227,7 +227,7 @@ pub(super) fn action_plan<'i>(
             .collect();
         let rpc = sharding::Request {
             term,
-            commit,
+            applied,
             timeout: Loop::SYNC_TIMEOUT,
         };
         let req = update_instance::Request::new(instance_id.clone(), cluster_id)
@@ -244,7 +244,7 @@ pub(super) fn action_plan<'i>(
         let target = master_id;
         let rpc = sharding::bootstrap::Request {
             term,
-            commit,
+            applied,
             timeout: Loop::SYNC_TIMEOUT,
         };
         let op = Dml::replace(
@@ -305,7 +305,7 @@ pub(super) fn action_plan<'i>(
             .collect();
         let rpc = sharding::Request {
             term,
-            commit,
+            applied,
             timeout: Loop::SYNC_TIMEOUT,
         };
         let mut ops = vec![];
@@ -341,7 +341,7 @@ pub(super) fn action_plan<'i>(
     if let Some((migration_id, target)) = to_apply {
         let rpc = rpc::migration::apply::Request {
             term,
-            commit,
+            applied,
             timeout: Loop::SYNC_TIMEOUT,
             migration_id,
         };

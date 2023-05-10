@@ -8,7 +8,7 @@ crate::define_rpc_request! {
     fn proc_replication(req: Request) -> Result<Response> {
         let node = node::global()?;
         node.status().check_term(req.term)?;
-        super::sync::wait_for_index_timeout(req.commit, &node.raft_storage, req.timeout)?;
+        super::sync::wait_for_index_timeout(req.applied, &node.raft_storage, req.timeout)?;
 
         let storage = &node.storage;
         let rsid = storage.instances.field::<ReplicasetId>(&node.raft_id())?;
@@ -32,7 +32,7 @@ crate::define_rpc_request! {
     /// Request to configure tarantool replication.
     pub struct Request {
         pub term: RaftTerm,
-        pub commit: RaftIndex,
+        pub applied: RaftIndex,
         pub timeout: Duration,
     }
 
@@ -52,7 +52,7 @@ pub mod promote {
         fn proc_replication_promote(req: Request) -> Result<Response> {
             let node = node::global()?;
             node.status().check_term(req.term)?;
-            rpc::sync::wait_for_index_timeout(req.commit, &node.raft_storage, req.timeout)?;
+            rpc::sync::wait_for_index_timeout(req.applied, &node.raft_storage, req.timeout)?;
             crate::tarantool::exec("box.cfg { read_only = false }")?;
             Ok(Response {})
         }
@@ -60,7 +60,7 @@ pub mod promote {
         /// Request to promote instance to tarantool replication leader.
         pub struct Request {
             pub term: RaftTerm,
-            pub commit: RaftIndex,
+            pub applied: RaftIndex,
             pub timeout: Duration,
         }
 

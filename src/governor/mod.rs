@@ -60,7 +60,7 @@ impl Loop {
         let migration_ids = storage.migrations.iter().unwrap().map(|m| m.id).collect();
 
         let term = status.get().term;
-        let commit = raft_storage.commit().unwrap().unwrap();
+        let applied = raft_storage.applied().unwrap().unwrap();
         let cluster_id = raft_storage.cluster_id().unwrap().unwrap();
         let node = global().expect("must be initialized");
         let vshard_bootstrapped = storage.properties.vshard_bootstrapped().unwrap();
@@ -69,7 +69,7 @@ impl Loop {
 
         let plan = action_plan(
             term,
-            commit,
+            applied,
             cluster_id,
             &instances,
             &voters,
@@ -210,11 +210,11 @@ impl Loop {
                         "instance_id" => %instance_id
                     ]
                     async {
-                        let sync::Response { commit } = pool
+                        let sync::Response { applied } = pool
                             .call(instance_id, &rpc)?
                             .timeout(Loop::SYNC_TIMEOUT)
                             .await?;
-                        tlog!(Info, "instance's commit index is {commit}"; "instance_id" => %instance_id);
+                        tlog!(Info, "instance's applied index is {applied}"; "instance_id" => %instance_id);
                         node.handle_update_instance_request_and_wait(req)?
                     }
                 }

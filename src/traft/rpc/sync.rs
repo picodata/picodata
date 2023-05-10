@@ -1,3 +1,4 @@
+use crate::tlog;
 use crate::traft::Result;
 use crate::traft::{error::Error, event, node, RaftIndex, RaftSpaceAccess};
 
@@ -6,31 +7,32 @@ use std::time::{Duration, Instant};
 crate::define_rpc_request! {
     fn proc_sync_raft(req: Request) -> Result<Response> {
         let raft_storage = &node::global()?.raft_storage;
-        let commit = wait_for_index_timeout(req.commit, raft_storage, req.timeout)?;
-        Ok(Response { commit })
+        let applied = wait_for_index_timeout(req.applied, raft_storage, req.timeout)?;
+        Ok(Response { applied })
     }
 
     pub struct Request {
-        pub commit: RaftIndex,
+        pub applied: RaftIndex,
         pub timeout: Duration,
     }
 
     pub struct Response {
-        pub commit: RaftIndex,
+        pub applied: RaftIndex,
     }
 }
 
 #[inline]
 pub fn wait_for_index_timeout(
-    commit: RaftIndex,
+    applied: RaftIndex,
     raft_storage: &RaftSpaceAccess,
     timeout: Duration,
 ) -> Result<RaftIndex> {
     let deadline = Instant::now() + timeout;
     loop {
-        let cur_commit = raft_storage.commit()?.expect("commit is always persisted");
-        if cur_commit >= commit {
-            return Ok(cur_commit);
+        let cur_applied = raft_storage.applied()?.unwrap_or(0);
+        if cur_applied >= applied {
+            tlog!(Debug, "synchronized raft log to index {applied}"; "applied" => cur_applied);
+            return Ok(cur_applied);
         }
 
         if let Some(timeout) = deadline.checked_duration_since(Instant::now()) {
