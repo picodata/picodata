@@ -14,7 +14,7 @@ use ::raft::StorageError;
 
 use tarantool::error::Error as TntError;
 use tarantool::tlua;
-use tarantool::tuple::{KeyDef, Tuple, TupleBuffer};
+use tarantool::tuple::{KeyDef, ToTupleBuffer, Tuple, TupleBuffer};
 
 use once_cell::sync::Lazy;
 
@@ -306,6 +306,7 @@ impl Predicate {
     }
 }
 
+/// A range of keys used as an argument for a [`Predicate`].
 #[derive(Clone, Debug, ::serde::Serialize, ::serde::Deserialize, tlua::LuaRead)]
 pub struct Range {
     pub space: String,
@@ -313,6 +314,62 @@ pub struct Range {
     pub key_max: Bound,
 }
 
+impl Range {
+    /// Creates new unbounded range in `space`. Use other methods to restrict it.
+    ///
+    /// # Example
+    /// ```
+    /// use picodata::traft::rpc::cas::Range;
+    ///
+    /// // Creates a range for tuples with keys from 1 (excluding) to 10 (excluding)
+    /// let range = Range::new("my_space").gt((1,)).lt((10,));
+    /// ```
+    pub fn new(space: impl ToString) -> Self {
+        Self {
+            space: space.to_string(),
+            key_min: Bound::Unbounded,
+            key_max: Bound::Unbounded,
+        }
+    }
+
+    /// Add a "greater than" restriction.
+    pub fn gt(mut self, key: impl ToTupleBuffer) -> Self {
+        let tuple = key.to_tuple_buffer().expect("cannot fail");
+        self.key_min = Bound::Excluded(tuple);
+        self
+    }
+
+    /// Add a "greater or equal" restriction.
+    pub fn ge(mut self, key: impl ToTupleBuffer) -> Self {
+        let tuple = key.to_tuple_buffer().expect("cannot fail");
+        self.key_min = Bound::Included(tuple);
+        self
+    }
+
+    /// Add a "less than" restriction.
+    pub fn lt(mut self, key: impl ToTupleBuffer) -> Self {
+        let tuple = key.to_tuple_buffer().expect("cannot fail");
+        self.key_max = Bound::Excluded(tuple);
+        self
+    }
+
+    /// Add a "less or equal" restriction.
+    pub fn le(mut self, key: impl ToTupleBuffer) -> Self {
+        let tuple = key.to_tuple_buffer().expect("cannot fail");
+        self.key_max = Bound::Included(tuple);
+        self
+    }
+
+    /// Add a "equal" restriction.
+    pub fn eq(mut self, key: impl ToTupleBuffer) -> Self {
+        let tuple = key.to_tuple_buffer().expect("cannot fail");
+        self.key_min = Bound::Included(tuple.clone());
+        self.key_max = Bound::Included(tuple);
+        self
+    }
+}
+
+/// A bound for keys.
 #[derive(Clone, Debug, ::serde::Serialize, ::serde::Deserialize, tlua::LuaRead)]
 #[serde(rename_all = "snake_case", tag = "kind", content = "value")]
 pub enum Bound {
@@ -370,7 +427,6 @@ fn modifies_operable(op: &Op, space: &str, storage: &Clusterwide) -> bool {
 
 /// Predicate tests based on the CaS Design Document.
 mod tests {
-    use serde::Serialize;
     use tarantool::tuple::ToTupleBuffer;
 
     use crate::schema::{Distribution, SpaceDef};
@@ -382,25 +438,16 @@ mod tests {
 
     #[::tarantool::test]
     fn ddl() {
-        #[track_caller]
-        fn test<T: Serialize + ?Sized>(
-            op: &Op,
-            space: &str,
-            key: &T,
-            storage: &Clusterwide,
-        ) -> std::result::Result<(), Error> {
+        let storage = Clusterwide::new().unwrap();
+
+        let t = |op: &Op, range: Range| -> std::result::Result<(), Error> {
             let predicate = Predicate {
                 index: 1,
                 term: 1,
-                ranges: vec![Range {
-                    space: space.into(),
-                    key_min: Bound::Included((key,).to_tuple_buffer().unwrap()),
-                    key_max: Bound::Included((key,).to_tuple_buffer().unwrap()),
-                }],
+                ranges: vec![range],
             };
-            predicate.check_entry(2, op, storage)
-        }
-        let storage = Clusterwide::new().unwrap();
+            predicate.check_entry(2, op, &storage)
+        };
 
         let builder = DdlBuilder::with_schema_version(1);
 
@@ -421,35 +468,20 @@ mod tests {
 
         let commit = Op::DdlCommit;
         let abort = Op::DdlAbort;
+        let props = Properties::SPACE_NAME;
+        let pending_schema_change = (PropertyName::PendingSchemaChange.to_string(),);
+        let pending_schema_version = (PropertyName::PendingSchemaChange.to_string(),);
+        let current_schema_version = (PropertyName::CurrentSchemaVersion.to_string(),);
 
-        let all = [
-            &create_space,
-            &drop_space,
-            &create_index,
-            &drop_index,
-            &commit,
-            &abort,
-        ];
+        // create_space
+        assert!(t(&create_space, Range::new(props).eq(&pending_schema_change)).is_err());
+        assert!(t(&create_space, Range::new(props).eq(&pending_schema_version)).is_err());
+        assert!(t(&create_space, Range::new(props).eq(("another_key",))).is_ok());
 
-        for op in all {
-            assert!(test(
-                op,
-                Properties::SPACE_NAME,
-                PropertyName::PendingSchemaChange.into(),
-                &storage
-            )
-            .is_err());
-            assert!(test(
-                op,
-                Properties::SPACE_NAME,
-                PropertyName::PendingSchemaVersion.into(),
-                &storage
-            )
-            .is_err());
-            assert!(test(op, Properties::SPACE_NAME, "unrelated_key", &storage).is_ok());
-            assert!(test(op, "unrelated_space", "unrelated_key", &storage).is_ok())
-        }
+        assert!(t(&create_space, Range::new("another_space").eq(("any_key",))).is_ok());
+        assert!(t(&create_space, Range::new(space_name).eq(("any_key",))).is_err());
 
+        // drop_space
         // `DropSpace` needs `SpaceDef` to get space name
         storage
             .spaces
@@ -462,178 +494,100 @@ mod tests {
                 schema_version: 1,
             })
             .unwrap();
-        assert!(test(&create_space, space_name, "any_key", &storage).is_err());
-        assert!(test(&drop_space, space_name, "any_key", &storage).is_err());
+        assert!(t(&drop_space, Range::new(props).eq(&pending_schema_change)).is_err());
+        assert!(t(&drop_space, Range::new(props).eq(&pending_schema_version)).is_err());
+        assert!(t(&drop_space, Range::new(props).eq(("another_key",))).is_ok());
 
-        assert!(test(&create_index, space_name, "any_key", &storage).is_ok());
-        assert!(test(&drop_index, space_name, "any_key", &storage).is_ok());
+        assert!(t(&drop_space, Range::new("another_space").eq(("any_key",))).is_ok());
+        assert!(t(&drop_space, Range::new(space_name).eq(("any_key",))).is_err());
+
+        // create_index
+        assert!(t(&create_index, Range::new(props).eq(&pending_schema_change)).is_err());
+        assert!(t(&create_index, Range::new(props).eq(&pending_schema_version)).is_err());
+        assert!(t(&create_index, Range::new(props).eq(("another_key",))).is_ok());
+
+        assert!(t(&create_index, Range::new("another_space").eq(("any_key",))).is_ok());
+        assert!(t(&create_index, Range::new(space_name).eq(("any_key",))).is_ok());
+
+        // drop_index
+        assert!(t(&drop_index, Range::new(props).eq(&pending_schema_change)).is_err());
+        assert!(t(&drop_index, Range::new(props).eq(&pending_schema_version)).is_err());
+        assert!(t(&drop_index, Range::new(props).eq(("another_key",))).is_ok());
+
+        assert!(t(&drop_index, Range::new("another_space").eq(("any_key",))).is_ok());
+        assert!(t(&drop_index, Range::new(space_name).eq(("any_key",))).is_ok());
 
         // Abort and Commit need a pending schema change to get space name
-        let Op::DdlPrepare{ ddl: create_space_ddl, ..} = create_space.clone() else {
+        let Op::DdlPrepare{ ddl: create_space_ddl, ..} = create_space else {
             unreachable!();
         };
         storage
             .properties
             .put(PropertyName::PendingSchemaChange, &create_space_ddl)
             .unwrap();
-        assert!(test(
-            &abort,
-            Properties::SPACE_NAME,
-            PropertyName::CurrentSchemaVersion.into(),
-            &storage
-        )
-        .is_err());
-        assert!(test(
-            &commit,
-            Properties::SPACE_NAME,
-            PropertyName::CurrentSchemaVersion.into(),
-            &storage
-        )
-        .is_err());
+        // commit
+        assert!(t(&commit, Range::new(props).eq(&pending_schema_change)).is_err());
+        assert!(t(&commit, Range::new(props).eq(&pending_schema_version)).is_err());
+        assert!(t(&commit, Range::new(props).eq(&current_schema_version)).is_err());
+        assert!(t(&commit, Range::new(props).eq(("another_key",))).is_ok());
+
+        assert!(t(&commit, Range::new("another_space").eq(("any_key",))).is_ok());
+        assert!(t(&commit, Range::new(space_name).eq(("any_key",))).is_err());
+
+        // abort
+        assert!(t(&abort, Range::new(props).eq(&pending_schema_change)).is_err());
+        assert!(t(&abort, Range::new(props).eq(&pending_schema_version)).is_err());
+        assert!(t(&abort, Range::new(props).eq(&current_schema_version)).is_err());
+        assert!(t(&abort, Range::new(props).eq(("another_key",))).is_ok());
+
+        assert!(t(&abort, Range::new("another_space").eq(("any_key",))).is_ok());
+        assert!(t(&abort, Range::new(space_name).eq(("any_key",))).is_err());
     }
 
     #[::tarantool::test]
     fn dml() {
-        #[derive(Debug)]
-        enum TestOp {
-            Insert,
-            Replace,
-            Update,
-            Delete,
-        }
+        let key = (12,).to_tuple_buffer().unwrap();
+        let tuple = (12, "twelve").to_tuple_buffer().unwrap();
+        let storage = Clusterwide::new().unwrap();
 
-        #[track_caller]
-        fn test<T: Serialize>(
-            op: &TestOp,
-            range: &Range,
-            test_cases: &[T],
-            storage: &Clusterwide,
-        ) -> Vec<bool> {
+        let test = |op: &Dml, range: Range| {
             let predicate = Predicate {
                 index: 1,
                 term: 1,
-                ranges: vec![range.clone()],
+                ranges: vec![range],
             };
-            test_cases
-                .iter()
-                .map(|case| (case,).to_tuple_buffer().unwrap())
-                .map(|key| {
-                    let space = ClusterwideSpace::Property;
-                    match op {
-                        TestOp::Insert => Dml::Insert { space, tuple: key },
-                        TestOp::Replace => Dml::Replace { space, tuple: key },
-                        TestOp::Update => Dml::Update {
-                            space,
-                            key,
-                            ops: vec![],
-                        },
-                        TestOp::Delete => Dml::Delete { space, key },
-                    }
-                })
-                .map(|op| predicate.check_entry(2, &Op::Dml(op), storage).is_err())
-                .collect()
-        }
+            predicate.check_entry(2, &Op::Dml(op.clone()), &storage)
+        };
 
-        let storage = Clusterwide::new().unwrap();
-
-        let test_cases = ["a", "b", "c", "d", "e"];
+        let space = ClusterwideSpace::Space;
         let ops = &[
-            TestOp::Insert,
-            TestOp::Replace,
-            TestOp::Update,
-            TestOp::Delete,
+            Dml::Insert {
+                space,
+                tuple: tuple.clone(),
+            },
+            Dml::Replace { space, tuple },
+            Dml::Update {
+                space,
+                key: key.clone(),
+                ops: vec![],
+            },
+            Dml::Delete { space, key },
         ];
 
-        // For range ["b", "d"]
-        // Test cases a,b,c,d,e
-        // Error      0,1,1,1,0
-        let range = Range {
-            space: Properties::SPACE_NAME.into(),
-            key_min: Bound::Included(("b",).to_tuple_buffer().unwrap()),
-            key_max: Bound::Included(("d",).to_tuple_buffer().unwrap()),
-        };
+        let space = ClusterwideSpace::Space.to_string();
         for op in ops {
-            let errors = test(op, &range, &test_cases, &storage);
-            assert_eq!(errors, vec![false, true, true, true, false], "{op:?}");
-        }
+            assert!(test(op, Range::new(&space)).is_err());
+            assert!(test(op, Range::new(&space).le((12,))).is_err());
+            assert!(test(op, Range::new(&space).ge((12,))).is_err());
+            assert!(test(op, Range::new(&space).eq((12,))).is_err());
 
-        // For range ("b", "d"]
-        // Test cases a,b,c,d,e
-        // Error      0,0,1,1,0
-        let range = Range {
-            space: Properties::SPACE_NAME.into(),
-            key_min: Bound::Excluded(("b",).to_tuple_buffer().unwrap()),
-            key_max: Bound::Included(("d",).to_tuple_buffer().unwrap()),
-        };
-        for op in ops {
-            let errors = test(op, &range, &test_cases, &storage);
-            assert_eq!(errors, vec![false, false, true, true, false], "{op:?}");
-        }
+            assert!(test(op, Range::new(&space).lt((12,))).is_ok());
+            assert!(test(op, Range::new(&space).le((11,))).is_ok());
 
-        // For range ["b", "d")
-        // Test cases a,b,c,d,e
-        // Error      0,1,1,0,0
-        let range = Range {
-            space: Properties::SPACE_NAME.into(),
-            key_min: Bound::Included(("b",).to_tuple_buffer().unwrap()),
-            key_max: Bound::Excluded(("d",).to_tuple_buffer().unwrap()),
-        };
-        for op in ops {
-            let errors = test(op, &range, &test_cases, &storage);
-            assert_eq!(errors, vec![false, true, true, false, false], "{op:?}");
-        }
+            assert!(test(op, Range::new(&space).gt((12,))).is_ok());
+            assert!(test(op, Range::new(&space).ge((13,))).is_ok());
 
-        // For range _, "d"]
-        // Test cases a,b,c,d,e
-        // Error      1,1,1,1,0
-        let range = Range {
-            space: Properties::SPACE_NAME.into(),
-            key_min: Bound::Unbounded,
-            key_max: Bound::Included(("d",).to_tuple_buffer().unwrap()),
-        };
-        for op in ops {
-            let errors = test(op, &range, &test_cases, &storage);
-            assert_eq!(errors, vec![true, true, true, true, false], "{op:?}");
-        }
-
-        // For range ["b", _
-        // Test cases a,b,c,d,e
-        // Error      0,1,1,1,1
-        let range = Range {
-            space: Properties::SPACE_NAME.into(),
-            key_min: Bound::Included(("b",).to_tuple_buffer().unwrap()),
-            key_max: Bound::Unbounded,
-        };
-        for op in ops {
-            let errors = test(op, &range, &test_cases, &storage);
-            assert_eq!(errors, vec![false, true, true, true, true], "{op:?}");
-        }
-
-        // For range _, _
-        // Test cases a,b,c,d,e
-        // Error      1,1,1,1,1
-        let range = Range {
-            space: Properties::SPACE_NAME.into(),
-            key_min: Bound::Unbounded,
-            key_max: Bound::Unbounded,
-        };
-        for op in ops {
-            let errors = test(op, &range, &test_cases, &storage);
-            assert_eq!(errors, vec![true, true, true, true, true], "{op:?}");
-        }
-
-        // Different space
-        // For range _, _
-        // Test cases a
-        // Error      0
-        let range = Range {
-            space: Spaces::SPACE_NAME.into(),
-            key_min: Bound::Unbounded,
-            key_max: Bound::Unbounded,
-        };
-        for op in ops {
-            let errors = test(op, &range, &[1], &storage);
-            assert_eq!(errors, vec![false], "{op:?}");
+            assert!(test(op, Range::new("other_space")).is_ok());
         }
     }
 }
