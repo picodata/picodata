@@ -264,3 +264,16 @@ It is possible to make [flamegraphs](https://github.com/brendangregg/FlameGraph)
   ```
 
   Flamegraphs will be placed in `tmp/flamegraph` dir.
+
+### SQL performance
+
+To benchmark SQL, a custom K6 build ([xk6](https://github.com/grafana/xk6) with
+Tarantool protocol support is used.
+
+- Install [golang](https://go.dev/doc/install) and [xk6](https://github.com/grafana/xk6).
+
+- Run K6:
+  ```bash
+  make k6
+  ```
+  Performance summary would be placed in `test/manual/sql/` directory.

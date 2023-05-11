@@ -61,7 +61,10 @@ clean:
 	find . -type d -name __pycache__ | xargs -n 500 rm -rf
 
 benchmark:
-	PICODATA_LOG_LEVEL=warn pytest test/manual/test_benchmark.py
+	PICODATA_LOG_LEVEL=warn pipenv run pytest test/manual/test_benchmark.py
 
 flamegraph:
-	PICODATA_LOG_LEVEL=warn pytest test/manual/test_benchmark.py --with-flamegraph
+	PICODATA_LOG_LEVEL=warn pipenv run pytest test/manual/test_benchmark.py --with-flamegraph
+
+k6:
+	PICODATA_LOG_LEVEL=warn pipenv run pytest test/manual/sql/test_sql_perf.py
