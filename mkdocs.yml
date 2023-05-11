@@ -42,7 +42,20 @@ extra:
     analytics:
      provider: google
      property: G-6X8Z5N2CGR
-
+     feedback:
+      title: Была ли эта информация полезной для вас?
+      ratings:
+        - icon: material/emoticon-happy-outline
+          name: Да, это было полезно
+          data: 1
+          note: >-
+            Благодарим за отзыв!
+        - icon: material/emoticon-sad-outline
+          name: Страница требует улучшения
+          data: 0
+          note: >- 
+            Благодарим за отзыв! <a href="https://t.me/picodataru" target="_blank" rel="noopener">Напишите</a>, что бы вы хотели улучшить на этой странице или в целом на сайте документации.
+       
 extra_css:
     - extra/style.css
 
