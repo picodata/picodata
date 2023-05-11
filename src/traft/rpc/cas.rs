@@ -462,13 +462,11 @@ mod tests {
                 schema_version: 1,
             })
             .unwrap();
-        for op in [&create_space, &drop_space] {
-            assert!(test(op, space_name, "any_key", &storage).is_err());
-        }
+        assert!(test(&create_space, space_name, "any_key", &storage).is_err());
+        assert!(test(&drop_space, space_name, "any_key", &storage).is_err());
 
-        for op in [&create_index, &drop_index] {
-            assert!(test(op, space_name, "any_key", &storage).is_ok());
-        }
+        assert!(test(&create_index, space_name, "any_key", &storage).is_ok());
+        assert!(test(&drop_index, space_name, "any_key", &storage).is_ok());
 
         // Abort and Commit need a pending schema change to get space name
         let Op::DdlPrepare{ ddl: create_space_ddl, ..} = create_space.clone() else {
@@ -478,15 +476,20 @@ mod tests {
             .properties
             .put(PropertyName::PendingSchemaChange, &create_space_ddl)
             .unwrap();
-        for op in [&abort, &commit] {
-            assert!(test(
-                op,
-                Properties::SPACE_NAME,
-                PropertyName::CurrentSchemaVersion.into(),
-                &storage
-            )
-            .is_err());
-        }
+        assert!(test(
+            &abort,
+            Properties::SPACE_NAME,
+            PropertyName::CurrentSchemaVersion.into(),
+            &storage
+        )
+        .is_err());
+        assert!(test(
+            &commit,
+            Properties::SPACE_NAME,
+            PropertyName::CurrentSchemaVersion.into(),
+            &storage
+        )
+        .is_err());
     }
 
     #[::tarantool::test]
