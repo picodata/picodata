@@ -88,8 +88,8 @@ sbroad.execute([[select * from "products"]], {})
   [{'name': 'id', 'type': 'integer'}, 
    {'name': 'name', 'type': 'string'},
    {'name': 'product_units', 'type': 'integer'}],
-  'rows':
-  [[1, 'Woody', 2561], 
+  'rows': [
+   [1, 'Woody', 2561], 
    [3, 'Bo Peep', 255], 
    [6, 'Rex', 998], 
    [7, 'Hamm', 66],
@@ -128,8 +128,8 @@ sbroad.execute([[select "name","product_units" from "products" where "id">3 and 
   'metadata': 
   [{'name': 'name', 'type': 'string'},
    {'name': 'product_units', 'type': 'integer'}],
-  'rows': 
-  [['Rex', 998],
+  'rows': [
+   ['Rex', 998],
    ['Mrs. Davis', 341],
    ['Slinky Dog', 1112],
    ['Molly Davis', 235]]
@@ -238,8 +238,8 @@ sbroad.execute([[select "id","name" from "products" except select "id","order" f
   'metadata':
   [{'name': 'id', 'type': 'integer'},
    {'name': 'name', 'type': 'string'}],
-  'rows': 
-  [[6, 'Rex'],
+  'rows': [
+   [6, 'Rex'],
    [7, 'Hamm'],
    [8, 'Mrs. Davis'],
    [4, 'Mr. Potato Head'],
@@ -277,34 +277,38 @@ SELECT-запросах. С ее помощью можно преобразов�
 ### Пример запроса
 В качестве примера покажем преобразование дробных чисел в целые с отбрасыванием дробной части.
 Используем следующую таблицу:
+
+![Table_scores](test_table_scores.svg)
+
+В обычном виде значения столбца `score` имеют дробную часть и определены в схеме данных типом `decimal`:
 ```
-sbroad.execute([[select "id","name","score" from "scoring"]], {})
+sbroad.execute([[select "score" from "scoring"]], {})
 ---
 - {
   'metadata': [
-    {'name': 'id', 'type': 'integer'},
-    {'name': 'name', 'type': 'string'},
-    {'name': 'score', 'type': 'decimal'}], 
+   {'name': 'score', 'type': 'decimal'}], 
   'rows': [
-    [1, 'Alice', 78.33],
-    [2, 'Bob', 84.61], 
-    [3, 'Trudy', 47.28]]
+    [78.33],
+    [84.61],
+    [47.28]]
     }
+...
+
 ```
-Значение столбца `score` определено в схеме данных как `decimal`. Преобразуем его в `int` в рамках SELECT-запроса:
+Преобразуем эти числа в `int`:
 ```
-sbroad.execute([[select "id","name",cast("score" as int) from "scoring"]], {})
+sbroad.execute([[select cast("score" as int) from "scoring"]], {})
 ---
 - {
   'metadata': [
-    {'name': 'id', 'type': 'integer'},
-    {'name': 'name', 'type': 'string'},
-    {'name': 'COL_1', 'type': 'integer'}], 
+  {'name': 'COL_1', 'type': 'integer'}],
   'rows': [
-    [1, 'Alice', 78],
-    [2, 'Bob', 84], 
-    [3, 'Trudy', 47]]
-    }
+  [78],
+  [84],
+  [47]]
+  }
+...
+
 ```
 ## Использование псевдонимов
 Использование псевдонимов (aliases) позволяет переопределить названия
@@ -320,8 +324,8 @@ sbroad.execute([[select "score" as "Total_score" from "scoring"]], {})
 - {
   'metadata': [
     {'name': 'Total_score', 'type': 'decimal'}], 
-  'rows': 
-    [[78.33],
+  'rows': [
+    [78.33],
     [84.61],
     [47.28]]
     }
