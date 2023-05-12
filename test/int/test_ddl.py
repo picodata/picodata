@@ -7,8 +7,8 @@ def test_ddl_create_space_bulky(cluster: Cluster):
     i1, i2 = cluster.deploy(instance_count=2, init_replication_factor=2)
 
     # At cluster boot schema version is 0
-    assert i1.call("box.space._picodata_property:get", "current_schema_version")[1] == 0
-    assert i2.call("box.space._picodata_property:get", "current_schema_version")[1] == 0
+    assert i1.call("box.space._pico_property:get", "current_schema_version")[1] == 0
+    assert i2.call("box.space._pico_property:get", "current_schema_version")[1] == 0
 
     # Propose a space creation which will fail
     op = dict(
@@ -27,15 +27,14 @@ def test_ddl_create_space_bulky(cluster: Cluster):
     i1.call("pico.raft_propose", op)
 
     # No space was created
-    assert i1.call("box.space._picodata_space:get", 666) is None
+    assert i1.call("box.space._pico_space:get", 666) is None
     assert i1.call("box.space._space:get", 666) is None
-    assert i2.call("box.space._picodata_space:get", 666) is None
+    assert i2.call("box.space._pico_space:get", 666) is None
     assert i2.call("box.space._space:get", 666) is None
 
     # Schema version hasn't changed
-    # XXX: This seems weird
-    assert i1.call("box.space._picodata_property:get", "current_schema_version")[1] == 0
-    assert i2.call("box.space._picodata_property:get", "current_schema_version")[1] == 0
+    assert i1.call("box.space._pico_property:get", "current_schema_version")[1] == 0
+    assert i2.call("box.space._pico_property:get", "current_schema_version")[1] == 0
 
     # Propose a space creation which will succeed
     op = dict(
@@ -51,16 +50,19 @@ def test_ddl_create_space_bulky(cluster: Cluster):
         ),
     )
     # TODO: rewrite the test using pico.cas, when it supports ddl
-    i1.call("pico.raft_propose", op)
+    index = i1.call("pico.raft_propose", op)
+
+    i1.call(".proc_sync_raft", index, (3, 0))
+    i2.call(".proc_sync_raft", index, (3, 0))
 
     # Schema version was updated
-    assert i1.call("box.space._picodata_property:get", "current_schema_version")[1] == 2
-    assert i2.call("box.space._picodata_property:get", "current_schema_version")[1] == 2
+    assert i1.call("box.space._pico_property:get", "current_schema_version")[1] == 2
+    assert i2.call("box.space._pico_property:get", "current_schema_version")[1] == 2
 
     # Space was created and is operable
     space_info = [666, "stuff", ["global"], [["id", "unsigned", False]], 2, True]
-    assert i1.call("box.space._picodata_space:get", 666) == space_info
-    assert i2.call("box.space._picodata_space:get", 666) == space_info
+    assert i1.call("box.space._pico_space:get", 666) == space_info
+    assert i2.call("box.space._pico_space:get", 666) == space_info
 
     space_meta = [
         666,
@@ -76,7 +78,7 @@ def test_ddl_create_space_bulky(cluster: Cluster):
 
     # Primary index was also created
     # TODO: maybe we want to replace these `None`s with the default values when
-    # inserting the index definition into _picodata_index?
+    # inserting the index definition into _pico_index?
     index_info = [
         666,
         0,
@@ -86,8 +88,8 @@ def test_ddl_create_space_bulky(cluster: Cluster):
         2,
         True,
     ]
-    assert i1.call("box.space._picodata_index:get", [666, 0]) == index_info
-    assert i2.call("box.space._picodata_index:get", [666, 0]) == index_info
+    assert i1.call("box.space._pico_index:get", [666, 0]) == index_info
+    assert i2.call("box.space._pico_index:get", [666, 0]) == index_info
 
     index_meta = [
         666,
@@ -104,9 +106,9 @@ def test_ddl_create_space_bulky(cluster: Cluster):
     i3 = cluster.add_instance(wait_online=True, replicaset_id="r2")
 
     # It's schema was updated automatically
-    assert i3.call("box.space._picodata_property:get", "current_schema_version")[1] == 2
-    assert i3.call("box.space._picodata_space:get", 666) == space_info
-    assert i3.call("box.space._picodata_index:get", [666, 0]) == index_info
+    assert i3.call("box.space._pico_property:get", "current_schema_version")[1] == 2
+    assert i3.call("box.space._pico_space:get", 666) == space_info
+    assert i3.call("box.space._pico_index:get", [666, 0]) == index_info
     # TODO: this fails
     assert i3.call("box.space._space:get", 666) == space_meta
     assert i3.call("box.space._index:get", [666, 0]) == index_meta
@@ -115,9 +117,9 @@ def test_ddl_create_space_bulky(cluster: Cluster):
     i4 = cluster.add_instance(wait_online=True, replicaset_id="r2")
 
     # It's schema was updated automatically as well
-    assert i4.call("box.space._picodata_property:get", "current_schema_version")[1] == 2
-    assert i4.call("box.space._picodata_space:get", 666) == space_info
-    assert i4.call("box.space._picodata_index:get", [666, 0]) == index_info
+    assert i4.call("box.space._pico_property:get", "current_schema_version")[1] == 2
+    assert i4.call("box.space._pico_space:get", 666) == space_info
+    assert i4.call("box.space._pico_index:get", [666, 0]) == index_info
     assert i4.call("box.space._space:get", 666) == space_meta
     assert i4.call("box.space._index:get", [666, 0]) == index_meta
 
@@ -151,11 +153,11 @@ def test_ddl_create_space_partial_failure(cluster: Cluster):
     i3.call(".proc_sync_raft", abort_index, (3, 0))
 
     # No space was created
-    assert i1.call("box.space._picodata_space:get", 666) is None
+    assert i1.call("box.space._pico_space:get", 666) is None
     assert i1.call("box.space._space:get", 666) is None
-    assert i2.call("box.space._picodata_space:get", 666) is None
+    assert i2.call("box.space._pico_space:get", 666) is None
     assert i2.call("box.space._space:get", 666) is None
-    assert i3.call("box.space._picodata_space:get", 666) is None
+    assert i3.call("box.space._pico_space:get", 666) is None
     assert i3.call("box.space._space:get", 666) is None
 
     # TODO: add instance which will conflict with this ddl and make sure it

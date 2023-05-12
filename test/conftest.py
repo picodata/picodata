@@ -525,7 +525,7 @@ class Instance:
         return self.call(".proc_cas", self.cluster_id, predicate, dml)[0]["index"]
 
     def next_schema_version(self) -> int:
-        t = self.call("box.space._picodata_property:get", "next_schema_version")
+        t = self.call("box.space._pico_property:get", "next_schema_version")
         if t is None:
             return 1
 
