@@ -67,8 +67,8 @@ macro_rules! auto_impl {
 }
 
 impl RaftSpaceAccess {
-    const SPACE_RAFT_LOG: &'static str = "_picodata_raft_log";
-    const SPACE_RAFT_STATE: &'static str = "_picodata_raft_state";
+    const SPACE_RAFT_LOG: &'static str = "_raft_log";
+    const SPACE_RAFT_STATE: &'static str = "_raft_state";
     const FIELD_STATE_VALUE: u32 = 1;
     const FIELD_ENTRY_INDEX: u32 = 1;
     const FIELD_ENTRY_TERM: u32 = 2;
@@ -637,7 +637,7 @@ mod tests {
                 "unknown error",
                 " Tarantool error:",
                 " NoSuchIndexID:",
-                " No index #0 is defined in space '_picodata_raft_log'"
+                " No index #0 is defined in space '_raft_log'"
             )
         );
 
@@ -774,7 +774,7 @@ mod tests {
             concat!(
                 "Tarantool error:",
                 " TupleFound:",
-                " Duplicate key exists in unique index \"pk\" in space \"_picodata_raft_state\"",
+                " Duplicate key exists in unique index \"pk\" in space \"_raft_state\"",
                 " with old tuple - [\"raft_id\", 16]",
                 " and new tuple - [\"raft_id\", 32]"
             )
@@ -786,7 +786,7 @@ mod tests {
             concat!(
                 "Tarantool error:",
                 " NoSuchIndexID:",
-                " No index #0 is defined in space '_picodata_raft_state'"
+                " No index #0 is defined in space '_raft_state'"
             )
         );
 

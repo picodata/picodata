@@ -7,8 +7,8 @@ _3_SEC = 3
 def test_cas_errors(instance: Instance):
     index, term = instance.eval(
         """
-        local index = box.space._picodata_raft_state:get("applied").value
-        local term = box.space._picodata_raft_state:get("term").value
+        local index = box.space._raft_state:get("applied").value
+        local term = box.space._raft_state:get("term").value
         return {index, term}
         """
     )
@@ -17,7 +17,7 @@ def test_cas_errors(instance: Instance):
     with pytest.raises(TarantoolError) as e1:
         instance.cas(
             "insert",
-            "_picodata_property",
+            "_pico_property",
             ["foo", "420"],
             index=index,
             term=term + 1,
@@ -31,7 +31,7 @@ def test_cas_errors(instance: Instance):
     with pytest.raises(TarantoolError) as e2:
         instance.cas(
             "insert",
-            "_picodata_property",
+            "_pico_property",
             ["foo", "420"],
             index=index,
             term=term - 1,
@@ -45,7 +45,7 @@ def test_cas_errors(instance: Instance):
     with pytest.raises(TarantoolError) as e3:
         instance.cas(
             "insert",
-            "_picodata_property",
+            "_pico_property",
             ["foo", "420"],
             index=1,
             term=2,  # actually 1
@@ -59,7 +59,7 @@ def test_cas_errors(instance: Instance):
     with pytest.raises(TarantoolError) as e4:
         instance.cas(
             "insert",
-            "_picodata_property",
+            "_pico_property",
             ["foo", "420"],
             index=2048,
         )
@@ -74,7 +74,7 @@ def test_cas_errors(instance: Instance):
 
     # Wrong index (compacted)
     with pytest.raises(TarantoolError) as e5:
-        instance.cas("insert", "_picodata_property", ["foo", "420"], index=index - 1)
+        instance.cas("insert", "_pico_property", ["foo", "420"], index=index - 1)
     assert e5.value.args == (
         "ER_PROC_C",
         "compare-and-swap request failed: "
@@ -82,7 +82,7 @@ def test_cas_errors(instance: Instance):
     )
 
     # Prohibited spaces
-    for space in ["_picodata_space", "_picodata_index"]:
+    for space in ["_pico_space", "_pico_index"]:
         with pytest.raises(TarantoolError) as e5:
             instance.cas(
                 "insert",
@@ -104,7 +104,7 @@ def test_cas_predicate(instance: Instance):
     def property(k: str):
         return instance.eval(
             """
-            local tuple = box.space._picodata_property:get(...)
+            local tuple = box.space._pico_property:get(...)
             return tuple and tuple.value
             """,
             k,
@@ -114,7 +114,7 @@ def test_cas_predicate(instance: Instance):
     read_index = instance.call("pico.raft_read_index", _3_SEC)
 
     # Successful insert
-    ret = instance.cas("insert", "_picodata_property", ["fruit", "apple"], read_index)
+    ret = instance.cas("insert", "_pico_property", ["fruit", "apple"], read_index)
     assert ret == read_index + 1
     instance.call(".proc_sync_raft", ret, (_3_SEC, 0))
     assert instance.call("pico.raft_read_index", _3_SEC) == ret
@@ -124,7 +124,7 @@ def test_cas_predicate(instance: Instance):
     with pytest.raises(TarantoolError) as e5:
         instance.cas(
             "insert",
-            "_picodata_property",
+            "_pico_property",
             ["fruit", "orange"],
             index=read_index,
             range=(
@@ -142,7 +142,7 @@ def test_cas_predicate(instance: Instance):
     # Stale index, yet successful insert of another key
     ret = instance.cas(
         "insert",
-        "_picodata_property",
+        "_pico_property",
         ["flower", "tulip"],
         index=read_index,
         range=(

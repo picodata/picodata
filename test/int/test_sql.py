@@ -67,17 +67,16 @@ def test_select(cluster: Cluster):
     for n, sql in {
         1: """create table t(a int, "bucket_id" unsigned, primary key (a));""",
         2: """create index "bucket_id" on t ("bucket_id");""",
-        3: """create table "_pico_space"("id" int, "distribution" text, primary key("id"));""",
     }.items():
         i1.call("pico.add_migration", n, sql)
-    apply_migration(i1, 3)
+    apply_migration(i1, 2)
 
     space_id = i1.eval("return box.space.T.id")
     for n, sql in {
-        4: """insert into "_pico_space" values({id}, 'A');""".format(id=space_id),
+        3: """insert into "_pico_space" values({id}, 'A');""".format(id=space_id),
     }.items():
         i1.call("pico.add_migration", n, sql)
-    apply_migration(i2, 4)
+    apply_migration(i2, 3)
 
     data = i1.sql("""insert into t values(1);""")
     assert data["row_count"] == 1

@@ -6,7 +6,7 @@ def test_add_migration(cluster: Cluster):
     i1, i2 = cluster.instances
     i1.promote_or_fail()
     i1.eval("pico.add_migration(1, 'migration body')")
-    assert i2.call("box.space._picodata_migration:select") == [[1, "migration body"]]
+    assert i2.call("box.space._pico_migration:select") == [[1, "migration body"]]
 
 
 def test_push_schema_version(cluster: Cluster):
@@ -15,7 +15,7 @@ def test_push_schema_version(cluster: Cluster):
     i1.promote_or_fail()
     i1.eval("pico.push_schema_version(3)")
     key = "desired_schema_version"
-    assert i2.call("box.space._picodata_property:select", [key]) == [[key, 3]]
+    assert i2.call("box.space._pico_property:select", [key]) == [[key, 3]]
 
 
 def test_apply_migrations(cluster: Cluster):
@@ -33,7 +33,7 @@ def test_apply_migrations(cluster: Cluster):
     def replicaset_schema_versions(instance):
         return instance.eval(
             """
-            return box.space._picodata_replicaset:pairs()
+            return box.space._pico_replicaset:pairs()
                 :map(function(replicaset)
                     return replicaset.current_schema_version
                 end)

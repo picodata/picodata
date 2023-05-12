@@ -559,22 +559,22 @@ class Instance:
     def raft_index(self) -> int:
         """Get raft applied `index`"""
 
-        return self.eval("return box.space._picodata_raft_state:get('applied').value")
+        return self.eval("return box.space._raft_state:get('applied').value")
 
     def raft_term(self) -> int:
         """Get current raft `term`"""
 
-        return self.eval("return box.space._picodata_raft_state:get('term').value")
+        return self.eval("return box.space._raft_state:get('term').value")
 
     def raft_term_by_index(self, index: int) -> int:
         """Get raft `term` for entry with supplied `index`"""
         term = self.eval(
             """
-            local entry = box.space._picodata_raft_log:get(...)
+            local entry = box.space._raft_log:get(...)
             if entry then
                 return entry.term
             else
-                return box.space._picodata_raft_state:get('term').value
+                return box.space._raft_state:get('term').value
             end
             """,
             index,

@@ -19,7 +19,7 @@ def wait_repl_master(i: Instance, other_than=None):
     repl_master = i.eval(
         """
         local rid = pico.instance_info(...).replicaset_id
-        return box.space._picodata_replicaset:get(rid).master_id
+        return box.space._pico_replicaset:get(rid).master_id
     """,
         i.instance_id,
     )
@@ -169,16 +169,16 @@ def test_bucket_discovery_respects_replication_factor(cluster: Cluster):
     i1 = cluster.add_instance(init_replication_factor=2)
     time.sleep(0.5)
     assert i1.eval("return rawget(_G, 'vshard') == nil")
-    assert i1.call("box.space._picodata_property:get", "vshard_bootstrapped") is None
+    assert i1.call("box.space._pico_property:get", "vshard_bootstrapped") is None
 
     i2 = cluster.add_instance(replicaset_id="r2")
     time.sleep(0.5)
     assert i2.eval("return rawget(_G, 'vshard') == nil")
-    assert i2.call("box.space._picodata_property:get", "vshard_bootstrapped") is None
+    assert i2.call("box.space._pico_property:get", "vshard_bootstrapped") is None
 
     i3 = cluster.add_instance(replicaset_id="r1")
     time.sleep(0.5)
-    assert i3.call("box.space._picodata_property:get", "vshard_bootstrapped")[1]
+    assert i3.call("box.space._pico_property:get", "vshard_bootstrapped")[1]
     wait_has_buckets(cluster, i3, 3000)
 
 

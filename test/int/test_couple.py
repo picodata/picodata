@@ -119,8 +119,8 @@ def test_restart_both(cluster2: Cluster):
     i2.wait_online()
     assert i1.current_grade() == dict(variant="Online", incarnation=2)
 
-    index = cluster2.cas("insert", "_picodata_property", ("check", True))
+    index = cluster2.cas("insert", "_pico_property", ("check", True))
     i1.raft_wait_index(index)
     i2.raft_wait_index(index)
-    assert i1.eval("return box.space._picodata_property:get('check')")[1] is True
-    assert i2.eval("return box.space._picodata_property:get('check')")[1] is True
+    assert i1.eval("return box.space._pico_property:get('check')")[1] is True
+    assert i2.eval("return box.space._pico_property:get('check')")[1] is True

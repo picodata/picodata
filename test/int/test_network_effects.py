@@ -67,7 +67,7 @@ def test_log_rollback(cluster3: Cluster):
     def propose_state_change(srv: Instance, value):
         nonlocal key
         index = cluster3.cas(
-            "insert", "_picodata_property", (f"check{key}", value), instance=srv
+            "insert", "_pico_property", (f"check{key}", value), instance=srv
         )
         srv.raft_wait_index(index)
         key += 1
@@ -92,7 +92,7 @@ def test_log_rollback(cluster3: Cluster):
     retrying(lambda: i3.assert_raft_status("Follower", i2.raft_id))
 
     print(i2.call("pico.raft_log", dict(return_string=True)))
-    print(i2.call("box.space._picodata_raft_state:select"))
+    print(i2.call("box.space._raft_state:select"))
     propose_state_change(i2, "i2 takes the leadership")
 
     # Now i1 has an uncommitted, but persisted entry that should be rolled back.

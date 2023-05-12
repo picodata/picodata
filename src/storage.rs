@@ -305,7 +305,7 @@ define_clusterwide_spaces! {
 
     /// An enumeration of builtin cluster-wide spaces
     pub enum ClusterwideSpace {
-        Instance = "_picodata_instance" => {
+        Instance = "_pico_instance" => {
             Clusterwide::instances;
 
             /// A struct for accessing storage of all the cluster instances.
@@ -321,7 +321,7 @@ define_clusterwide_spaces! {
             #[allow(clippy::enum_variant_names)]
             pub enum SpaceInstanceIndex;
         }
-        Address = "_picodata_peer_address" => {
+        Address = "_pico_peer_address" => {
             Clusterwide::peer_addresses;
 
             /// A struct for accessing storage of peer addresses.
@@ -334,7 +334,7 @@ define_clusterwide_spaces! {
             /// An enumeration of indexes defined for peer address space.
             pub enum SpacePeerAddressIndex;
         }
-        Property = "_picodata_property" => {
+        Property = "_pico_property" => {
             Clusterwide::properties;
 
             /// A struct for accessing storage of the cluster-wide key-value properties
@@ -347,7 +347,7 @@ define_clusterwide_spaces! {
             /// An enumeration of indexes defined for property space.
             pub enum SpacePropertyIndex;
         }
-        Replicaset = "_picodata_replicaset" => {
+        Replicaset = "_pico_replicaset" => {
             Clusterwide::replicasets;
 
             /// A struct for accessing replicaset info from storage
@@ -360,7 +360,7 @@ define_clusterwide_spaces! {
             /// An enumeration of indexes defined for replicaset space.
             pub enum SpaceReplicasetIndex;
         }
-        Migration = "_picodata_migration" => {
+        Migration = "_pico_migration" => {
             Clusterwide::migrations;
 
             pub struct Migrations {
@@ -372,7 +372,7 @@ define_clusterwide_spaces! {
             /// An enumeration of indexes defined for migration space.
             pub enum SpaceMigrationIndex;
         }
-        Space = "_picodata_space" => {
+        Space = "_pico_space" => {
             Clusterwide::spaces;
 
             /// A struct for accessing definitions of all the user-defined spaces.
@@ -387,7 +387,7 @@ define_clusterwide_spaces! {
             #[allow(clippy::enum_variant_names)]
             pub enum SpaceSpaceIndex;
         }
-        Index = "_picodata_index" => {
+        Index = "_pico_index" => {
             Clusterwide::indexes;
 
             /// A struct for accessing definitions of all the user-defined indexes.
@@ -1395,7 +1395,7 @@ mod tests {
                     "Tarantool error:",
                     " TupleFound: Duplicate key exists",
                     " in unique index \"raft_id\"",
-                    " in space \"_picodata_instance\"",
+                    " in space \"_pico_instance\"",
                     " with old tuple",
                     r#" - ["i1", "i1-uuid", 1, "r1", "r1-uuid", ["{gon}", 0], ["{tgon}", 0], {{"A": "B"}}]"#,
                     " and new tuple",
@@ -1457,7 +1457,7 @@ mod tests {
             storage.instances.get(&1),
             concat!(
                 "Tarantool error: NoSuchIndexID: No index #1 is defined",
-                " in space '_picodata_instance'",
+                " in space '_pico_instance'",
             )
         );
 
@@ -1467,7 +1467,7 @@ mod tests {
             storage.instances.replicaset_instances(""),
             concat!(
                 "Tarantool error: NoSuchIndexID: No index #2 is defined",
-                " in space '_picodata_instance'",
+                " in space '_pico_instance'",
             )
         );
 
@@ -1477,7 +1477,7 @@ mod tests {
             storage.instances.get(&InstanceId::from("i1")),
             concat!(
                 "Tarantool error: NoSuchIndexID: No index #0 is defined",
-                " in space '_picodata_instance'",
+                " in space '_pico_instance'",
             )
         );
 

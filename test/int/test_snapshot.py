@@ -6,7 +6,7 @@ _3_SEC = 3
 def test_bootstrap_from_snapshot(cluster: Cluster):
     [i1] = cluster.deploy(instance_count=1)
 
-    ret = i1.cas("insert", "_picodata_property", ["animal", "horse"])
+    ret = i1.cas("insert", "_pico_property", ["animal", "horse"])
     i1.call(".proc_sync_raft", ret, (_3_SEC, 0))
     assert i1.call("pico.raft_read_index", _3_SEC) == ret
 
@@ -21,21 +21,21 @@ def test_bootstrap_from_snapshot(cluster: Cluster):
     assert i2.raft_first_index() == i1.raft_first_index() + 3
 
     # Ensure new instance replicates the property
-    assert i2.call("box.space._picodata_property:get", "animal") == ["animal", "horse"]
+    assert i2.call("box.space._pico_property:get", "animal") == ["animal", "horse"]
 
 
 def test_catchup_by_snapshot(cluster: Cluster):
     i1, i2, i3 = cluster.deploy(instance_count=3)
     i1.assert_raft_status("Leader")
-    ret = i1.cas("insert", "_picodata_property", ["animal", "tiger"])
+    ret = i1.cas("insert", "_pico_property", ["animal", "tiger"])
 
     i3.call(".proc_sync_raft", ret, (_3_SEC, 0))
-    assert i3.call("box.space._picodata_property:get", "animal") == ["animal", "tiger"]
+    assert i3.call("box.space._pico_property:get", "animal") == ["animal", "tiger"]
     assert i3.raft_first_index() == 1
     i3.terminate()
 
-    i1.cas("delete", "_picodata_property", ["animal"])
-    ret = i1.cas("insert", "_picodata_property", ["tree", "birch"])
+    i1.cas("delete", "_pico_property", ["animal"])
+    ret = i1.cas("insert", "_pico_property", ["tree", "birch"])
 
     for i in [i1, i2]:
         i.call(".proc_sync_raft", ret, (_3_SEC, 0))
@@ -45,8 +45,8 @@ def test_catchup_by_snapshot(cluster: Cluster):
     i3.start()
     i3.wait_online()
 
-    assert i3.call("box.space._picodata_property:get", "animal") is None
-    assert i3.call("box.space._picodata_property:get", "tree") == ["tree", "birch"]
+    assert i3.call("box.space._pico_property:get", "animal") is None
+    assert i3.call("box.space._pico_property:get", "tree") == ["tree", "birch"]
 
     # Since there were no cas requests since log compaction, the indexes
     # should be equal.
