@@ -140,43 +140,46 @@ python3.10 -m pipenv run pytest -n 20
 
 ---
 
-### MacOs
+### macOS
 
 #### Installation
 
-The first step is to see which version is currently linked homebrew.
+The installation sequence requires Python 3.10 or newer, preferably installed via Homebrew.
+
+First check if the required version is available:
 ```shell
 brew info python
 ```
 
-If the python version is equal to `3.10`, go to install pipenv.
+If it is, go and install it:
 ```shell
-brew install python@3.10
+brew install python@3.11
 brew link python
 python3 --version
 ```
+Check if the default `python3` executable is available and provided by the Homebrew installation:
 
-Since with a high probability you have already installed
-`Xcode Developer Tools`, check which executable file you have called by
-command:
 ```shell
 which python3
 ```
-If it is a python3 installed by homebrew then proceed to the installation 
-pipenv. Also, if you not make sure the `/usr/local/bin` directory is included 
-in the `PATH`, add it. After that, check homebrew environment:
+_Note_: Python versions <=3.9 such as the one provided by the older `Xcode Developer Tools` will not work.
+
+If the `python3` executable is provided by Homebrew, skip the following part and jump to `pipenv` installation.
+Otherwise, that needs to be fixed. Let's find out the local Homebrew installation details:
+
 ```shell
 brew config
 ```
-Variable `HOMEBREW_PREFIX` will point to the directory in which brew 
-installs packages. Depending on where the homebrew executables are located,
-create a symlink.
+The `HOMEBREW_PREFIX` variable should point to the directory where `brew` 
+installs packages. Let's create a symlink:
+
 ```shell
 ln -s "$(brew config | sed -n "s/^HOMEBREW_PREFIX: //p" | tr -d "\n")/bin/python@3.10" /usr/local/bin/python3
 ```
+_Note_: Make sure that `/usr/local/bin` is in your `PATH`.
 
-Check `python3` location and version. Now it should be python installed 
-homebrew.
+Check `python3` location and version. Now it should be provided by Homebrew: 
+
 ```shell
 which python3
 python3 --version
@@ -186,9 +189,8 @@ Make sure the `pip3` executable also points to the homebrew directory.
 ```shell
 which pip3
 ```
-If not using "right" (located in homebrew directory) an executable, then
-repeat the steps similar to `python3` before proceeding with installing
-`pipenv`.
+If it doesn't, then similarly create a simlink for `pip3`:
+
 ```shell
 ln -s "$(brew config | sed -n "s/^HOMEBREW_PREFIX: //p" | tr -d "\n")/bin/pip@3.10" /usr/local/bin/pip3
 ```
@@ -218,20 +220,20 @@ pipenv run lint
 
 ### Benchmarks
 
-There is simple benchmark based on pytest scenario. Quick run it with
+There is a simple benchmark based on `pytest` scenario. Quick run it with
 
 ```bash
 make benchmark
 ```
 
-The benchmark consist of two parts: benchmark of tarantool space operations (replaces) and benchmark of picodata's raft writes to leader (NOPs).
+The benchmark consists of two parts: Tarantool space operations (replaces) and Picodata `raft` writes to leader (NOPs).
 You will see both results.
 
-The benchmark designed for quick estimate of current application performance.
+The benchmark designed for quick evaluation of the current application performance.
 
 ### Flamegraphs
 
-It is possible to make [flamegraphs](https://github.com/brendangregg/FlameGraph) while benchmarking debug build.
+It is possible to make [flamegraphs](https://github.com/brendangregg/FlameGraph) while benchmarking a debug build.
 
 - Install `perf`:
   ```bash
@@ -245,7 +247,7 @@ It is possible to make [flamegraphs](https://github.com/brendangregg/FlameGraph)
   Your folder structure will look like this:
   ```
   ..
-  picodata (you here)
+  picodata (you are here)
   FlameGraph
   (other folders and files)
   ```
@@ -267,7 +269,7 @@ It is possible to make [flamegraphs](https://github.com/brendangregg/FlameGraph)
 
 ### SQL performance
 
-To benchmark SQL, a custom K6 build ([xk6](https://github.com/grafana/xk6) with
+To benchmark SQL, a custom K6 build ([xk6](https://github.com/grafana/xk6)) with
 Tarantool protocol support is used.
 
 - Install [golang](https://go.dev/doc/install) and [xk6](https://github.com/grafana/xk6).
@@ -276,4 +278,4 @@ Tarantool protocol support is used.
   ```bash
   make k6
   ```
-  Performance summary would be placed in `test/manual/sql/` directory.
+  Performance summary can then be found in the `test/manual/sql/` directory.
