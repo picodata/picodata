@@ -72,11 +72,19 @@ def test_select(cluster: Cluster):
     apply_migration(i1, 2)
 
     space_id = i1.eval("return box.space.T.id")
-    for n, sql in {
-        3: """insert into "_pico_space" values({id}, 'A');""".format(id=space_id),
-    }.items():
-        i1.call("pico.add_migration", n, sql)
-    apply_migration(i2, 3)
+    space_def = [
+        space_id,
+        "T",
+        ["sharded_implicitly", ["A"]],
+        [
+            dict(name="A", type="integer", is_nullable=False),
+            dict(name="bucket_id", type="unsigned", is_nullable=False),
+        ],
+        69,
+        False,
+    ]
+    i1.call("box.space._pico_space:put", space_def)
+    i2.call("box.space._pico_space:put", space_def)
 
     data = i1.sql("""insert into t values(1);""")
     assert data["row_count"] == 1
