@@ -54,11 +54,6 @@ fn picolib_setup(args: &args::Run) {
     l.exec(
         "package.loaded.pico = {}
         _G.pico = package.loaded.pico
-        pico.space = setmetatable({}, { __index =
-            function(self, space_name)
-                return box.space['_picodata_' .. space_name]
-            end
-        })
         ",
     )
     .unwrap();

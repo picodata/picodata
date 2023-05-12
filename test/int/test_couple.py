@@ -122,5 +122,5 @@ def test_restart_both(cluster2: Cluster):
     index = cluster2.cas("insert", "_picodata_property", ("check", True))
     i1.raft_wait_index(index)
     i2.raft_wait_index(index)
-    assert i1.eval("return pico.space.property:get('check')")[1] is True
-    assert i2.eval("return pico.space.property:get('check')")[1] is True
+    assert i1.eval("return box.space._picodata_property:get('check')")[1] is True
+    assert i2.eval("return box.space._picodata_property:get('check')")[1] is True

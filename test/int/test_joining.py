@@ -46,7 +46,7 @@ def raft_join(
 
 def replicaset_id(instance: Instance):
     return instance.eval(
-        "return pico.space.instance:get(...).replicaset_id", instance.instance_id
+        "return box.space._picodata_instance:get(...).replicaset_id", instance.instance_id
     )
 
 
@@ -129,7 +129,7 @@ def test_replication(cluster: Cluster):
     for instance in cluster.instances:
         with instance.connect(1) as conn:
             raft_instance = conn.eval(
-                "return pico.space.instance:get(...):tomap()",
+                "return box.space._picodata_instance:get(...):tomap()",
                 instance.instance_id,
             )[0]
             space_cluster = conn.select("_cluster")
@@ -181,7 +181,7 @@ def test_init_replication_factor(cluster: Cluster):
 
     def read_replication_factor(instance):
         return instance.eval(
-            'return pico.space.property:get("replication_factor").value'
+            'return box.space._picodata_property:get("replication_factor").value'
         )
 
     assert read_replication_factor(i1) == 2
@@ -190,7 +190,7 @@ def test_init_replication_factor(cluster: Cluster):
 
     replicaset_ids = i1.eval(
         """
-        return pico.space.instance:pairs()
+        return box.space._picodata_instance:pairs()
             :map(function(instance)
                 return instance.replicaset_id
             end)
@@ -346,7 +346,7 @@ def test_fail_to_join(cluster: Cluster):
 
     joined_instances = i1.eval(
         """
-        return pico.space.instance:pairs()
+        return box.space._picodata_instance:pairs()
             :map(function(instance)
                 return { instance.instance_id, instance.raft_id }
             end)

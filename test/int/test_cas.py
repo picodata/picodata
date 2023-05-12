@@ -104,7 +104,7 @@ def test_cas_predicate(instance: Instance):
     def property(k: str):
         return instance.eval(
             """
-            local tuple = pico.space.property:get(...)
+            local tuple = box.space._picodata_property:get(...)
             return tuple and tuple.value
             """,
             k,

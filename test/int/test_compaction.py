@@ -5,7 +5,7 @@ def test_compaction(instance: Instance):
     def raft_state(k: str):
         return instance.eval(
             """
-            local tuple = pico.space.raft_state:get(...)
+            local tuple = box.space._picodata_raft_state:get(...)
             return tuple and tuple.value
             """,
             k,

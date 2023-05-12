@@ -21,7 +21,7 @@ def test_bootstrap_from_snapshot(cluster: Cluster):
     assert i2.raft_first_index() == i1.raft_first_index() + 3
 
     # Ensure new instance replicates the property
-    assert i2.call("pico.space.property:get", "animal") == ["animal", "horse"]
+    assert i2.call("box.space._picodata_property:get", "animal") == ["animal", "horse"]
 
 
 def test_catchup_by_snapshot(cluster: Cluster):
@@ -30,7 +30,7 @@ def test_catchup_by_snapshot(cluster: Cluster):
     ret = i1.cas("insert", "_picodata_property", ["animal", "tiger"])
 
     i3.call(".proc_sync_raft", ret, (_3_SEC, 0))
-    assert i3.call("pico.space.property:get", "animal") == ["animal", "tiger"]
+    assert i3.call("box.space._picodata_property:get", "animal") == ["animal", "tiger"]
     assert i3.raft_first_index() == 1
     i3.terminate()
 
@@ -45,8 +45,8 @@ def test_catchup_by_snapshot(cluster: Cluster):
     i3.start()
     i3.wait_online()
 
-    assert i3.call("pico.space.property:get", "animal") is None
-    assert i3.call("pico.space.property:get", "tree") == ["tree", "birch"]
+    assert i3.call("box.space._picodata_property:get", "animal") is None
+    assert i3.call("box.space._picodata_property:get", "tree") == ["tree", "birch"]
 
     # Since there were no cas requests since log compaction, the indexes
     # should be equal.
