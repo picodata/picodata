@@ -972,6 +972,7 @@ impl NodeImpl {
                     parts: primary_key,
                     operable: false,
                     // TODO: support other cases
+                    unique: true,
                     local: true,
                 };
                 self.storage.indexes.insert(&index_def)?;

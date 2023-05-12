@@ -87,6 +87,7 @@ def test_ddl_create_space_bulky(cluster: Cluster):
         [[1, "unsigned", None, None, None]],
         2,
         True,
+        True,
     ]
     assert i1.call("box.space._pico_index:get", [666, 0]) == index_info
     assert i2.call("box.space._pico_index:get", [666, 0]) == index_info
@@ -96,7 +97,7 @@ def test_ddl_create_space_bulky(cluster: Cluster):
         0,
         "primary_key",
         "tree",
-        dict(),
+        dict(unique=True),
         [[1, "unsigned", None, None, None]],
     ]
     assert i1.call("box.space._index:get", [666, 0]) == index_meta
@@ -208,7 +209,7 @@ def test_ddl_from_snapshot(cluster: Cluster):
         0,
         "primary_key",
         "tree",
-        dict(),
+        dict(unique=True),
         [[1, "unsigned", None, None, None]],
     ]
     assert i1.call("box.space._index:get", [666, 0]) == index_meta

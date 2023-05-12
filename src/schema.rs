@@ -2,6 +2,8 @@ use crate::storage::set_pico_schema_version;
 use crate::traft;
 use crate::traft::op::Ddl;
 use serde::{Deserialize, Serialize};
+use std::borrow::Cow;
+use std::collections::BTreeMap;
 use tarantool::{
     index::Metadata as IndexMetadata,
     index::{IndexId, Part},
@@ -115,6 +117,7 @@ pub struct IndexDef {
     pub parts: Vec<Part>,
     pub schema_version: u64,
     pub operable: bool,
+    pub unique: bool,
 }
 impl Encode for IndexDef {}
 
@@ -125,12 +128,14 @@ impl IndexDef {
     pub fn to_index_metadata(&self) -> IndexMetadata {
         use tarantool::index::IndexType;
 
+        let mut opts = BTreeMap::new();
+        opts.insert(Cow::from("unique"), Value::Bool(self.unique));
         let index_meta = IndexMetadata {
             space_id: self.space_id,
             index_id: self.id,
             name: self.name.as_str().into(),
             r#type: IndexType::Tree,
-            opts: Default::default(),
+            opts,
             parts: self.parts.clone(),
         };
 

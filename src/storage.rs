@@ -1392,6 +1392,7 @@ impl Indexes {
             .field(("parts", FieldType::Array))
             .field(("schema_version", FieldType::Unsigned))
             .field(("operable", FieldType::Boolean))
+            .field(("unique", FieldType::Boolean))
             .if_not_exists(true)
             .create()?;
 
