@@ -10,11 +10,47 @@ with the `YY.0M.MICRO` scheme.
 
 ## Unreleased
 
-### Added
-- `--script` cli argument to set a path to a lua script executed at startup
-- `--http-listen` cli argument to set [http server](https://github.com/tarantool/http) host and port.
-  If specified the server will be brought up on startup with these params.
-- `webui` cargo feature to build picodata with Web UI for administration.
+### Features
+
+- _Compare and Swap_ (CaS) is an algorithm that allows to combine Raft
+  operations with a predicate checking. Im makes read-write access to
+  global spaces serializable.
+  <!-- TODO: API docs link. -->
+
+- _Clusterwide schema_ now allows to create global spaces. Their content
+  is replicated on every instance in the cluster.
+  <!-- TODO: API docs link. -->
+
+- _Raft log compaction_ allows stripping old raft log entries in order
+  to prevent its infinite growth.
+  <!-- TODO: API docs link. -->
+
+- Remove everything related to "migrations". They're superseeded with
+  "clusterwide schema" metioned above.
+
+### CLI
+
+- `picodata run --script` command-line argument sets a path to a Lua
+  script executed at startup.
+
+- `picodata run --http-listen` command-line argument sets the [HTTP
+  server](https://github.com/tarantool/http) listening address. If no
+  value is provided, the server won't be initialized.
+
+- `picodata connect` CLI command provides interactive Lua console.
+
+### Implementation details
+
+- Picodata automatically demotes Raft voters that go offline and
+  promotes a replacement. See [docs/topology.md] for more details.
+  Replicaset leadership is swiched too.
+
+[docs/topology.md]: https://git.picodata.io/picodata/picodata/picodata/-/blob/310a773f3f/docs/topology.md#динамическое-переключение-голосующих-узлов-в-raft-raft-voter-failover
+
+## Compatibility
+
+- The current version is NOT compatible with prior releases. It cannot
+  be started with the old snapshots.
 
 ## [22.11.0] - 2022-11-22
 
