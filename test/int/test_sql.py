@@ -73,16 +73,15 @@ def test_select(cluster: Cluster):
             name="T",
             format=[
                 dict(name="A", type="integer", is_nullable=False),
-                # TODO: this should be done automatically by picodata
-                dict(name="bucket_id", type="unsigned", is_nullable=False),
             ],
-            primary_key=[dict(field=0, type="integer")],
+            primary_key=[dict(field="A")],
             # sharding function is implicitly murmur3
-            distribution=dict(kind="sharded_implicitly", sharding_key=["bucket_id"]),
+            distribution=dict(kind="sharded_implicitly", sharding_key=["A"]),
         ),
     )
     # TODO: rewrite the test using pico.cas, when it supports ddl
     index = i1.call("pico.raft_propose", op)
+    i1.call(".proc_sync_raft", index, [3, 0])
 
     data = i1.sql("""insert into t values(1);""")
     assert data["row_count"] == 1

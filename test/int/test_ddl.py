@@ -45,7 +45,7 @@ def test_ddl_create_space_bulky(cluster: Cluster):
             id=666,
             name="stuff",
             format=[dict(name="id", type="unsigned", is_nullable=False)],
-            primary_key=[dict(field=1, type="unsigned")],
+            primary_key=[dict(field=0, type="unsigned")],
             distribution=dict(kind="global"),
         ),
     )
@@ -60,11 +60,11 @@ def test_ddl_create_space_bulky(cluster: Cluster):
     assert i2.call("box.space._pico_property:get", "current_schema_version")[1] == 2
 
     # Space was created and is operable
-    space_info = [666, "stuff", ["global"], [["id", "unsigned", False]], 2, True]
-    assert i1.call("box.space._pico_space:get", 666) == space_info
-    assert i2.call("box.space._pico_space:get", 666) == space_info
+    pico_space_def = [666, "stuff", ["global"], [["id", "unsigned", False]], 2, True]
+    assert i1.call("box.space._pico_space:get", 666) == pico_space_def
+    assert i2.call("box.space._pico_space:get", 666) == pico_space_def
 
-    space_meta = [
+    tt_space_def = [
         666,
         1,
         "stuff",
@@ -73,56 +73,168 @@ def test_ddl_create_space_bulky(cluster: Cluster):
         dict(),
         [dict(name="id", type="unsigned", is_nullable=False)],
     ]
-    assert i1.call("box.space._space:get", 666) == space_meta
-    assert i2.call("box.space._space:get", 666) == space_meta
+    assert i1.call("box.space._space:get", 666) == tt_space_def
+    assert i2.call("box.space._space:get", 666) == tt_space_def
 
     # Primary index was also created
     # TODO: maybe we want to replace these `None`s with the default values when
     # inserting the index definition into _pico_index?
-    index_info = [
+    pico_pk_def = [
         666,
         0,
         "primary_key",
         True,
-        [[1, "unsigned", None, None, None]],
+        [[0, "unsigned", None, False, None]],
         2,
         True,
         True,
     ]
-    assert i1.call("box.space._pico_index:get", [666, 0]) == index_info
-    assert i2.call("box.space._pico_index:get", [666, 0]) == index_info
+    assert i1.call("box.space._pico_index:get", [666, 0]) == pico_pk_def
+    assert i2.call("box.space._pico_index:get", [666, 0]) == pico_pk_def
 
-    index_meta = [
+    tt_pk_def = [
         666,
         0,
         "primary_key",
         "tree",
         dict(unique=True),
-        [[1, "unsigned", None, None, None]],
+        [[0, "unsigned", None, False, None]],
     ]
-    assert i1.call("box.space._index:get", [666, 0]) == index_meta
-    assert i2.call("box.space._index:get", [666, 0]) == index_meta
+    assert i1.call("box.space._index:get", [666, 0]) == tt_pk_def
+    assert i2.call("box.space._index:get", [666, 0]) == tt_pk_def
 
     # Add a new replicaset master
     i3 = cluster.add_instance(wait_online=True, replicaset_id="r2")
 
     # It's schema was updated automatically
     assert i3.call("box.space._pico_property:get", "current_schema_version")[1] == 2
-    assert i3.call("box.space._pico_space:get", 666) == space_info
-    assert i3.call("box.space._pico_index:get", [666, 0]) == index_info
+    assert i3.call("box.space._pico_space:get", 666) == pico_space_def
+    assert i3.call("box.space._pico_index:get", [666, 0]) == pico_pk_def
     # TODO: this fails
-    assert i3.call("box.space._space:get", 666) == space_meta
-    assert i3.call("box.space._index:get", [666, 0]) == index_meta
+    assert i3.call("box.space._space:get", 666) == tt_space_def
+    assert i3.call("box.space._index:get", [666, 0]) == tt_pk_def
 
     # Add a follower to the new replicaset
     i4 = cluster.add_instance(wait_online=True, replicaset_id="r2")
 
     # It's schema was updated automatically as well
     assert i4.call("box.space._pico_property:get", "current_schema_version")[1] == 2
-    assert i4.call("box.space._pico_space:get", 666) == space_info
-    assert i4.call("box.space._pico_index:get", [666, 0]) == index_info
-    assert i4.call("box.space._space:get", 666) == space_meta
-    assert i4.call("box.space._index:get", [666, 0]) == index_meta
+    assert i4.call("box.space._pico_space:get", 666) == pico_space_def
+    assert i4.call("box.space._pico_index:get", [666, 0]) == pico_pk_def
+    assert i4.call("box.space._space:get", 666) == tt_space_def
+    assert i4.call("box.space._index:get", [666, 0]) == tt_pk_def
+
+
+def test_ddl_create_sharded_space(cluster: Cluster):
+    i1, i2 = cluster.deploy(instance_count=2, init_replication_factor=2)
+
+    # Propose a space creation which will succeed
+    schema_version = i1.next_schema_version()
+    op = dict(
+        kind="ddl_prepare",
+        schema_version=schema_version,
+        ddl=dict(
+            kind="create_space",
+            id=666,
+            name="stuff",
+            format=[
+                dict(name="id", type="unsigned", is_nullable=False),
+                dict(name="foo", type="integer", is_nullable=False),
+                dict(name="bar", type="string", is_nullable=False),
+            ],
+            primary_key=[dict(field="id")],
+            distribution=dict(kind="sharded_implicitly", sharding_key=["foo", "bar"]),
+        ),
+    )
+    # TODO: rewrite the test using pico.cas, when it supports ddl
+    index = i1.call("pico.raft_propose", op)
+
+    i1.call(".proc_sync_raft", index, (3, 0))
+    i2.call(".proc_sync_raft", index, (3, 0))
+
+    # Space was created and is operable
+    pico_space_def = [
+        666,
+        "stuff",
+        ["sharded_implicitly", ["foo", "bar"], "murmur3"],
+        [
+            ["id", "unsigned", False],
+            ["bucket_id", "unsigned", False],
+            ["foo", "integer", False],
+            ["bar", "string", False],
+        ],
+        schema_version,
+        True,
+    ]
+    assert i1.call("box.space._pico_space:get", 666) == pico_space_def
+    assert i2.call("box.space._pico_space:get", 666) == pico_space_def
+
+    tt_space_def = [
+        666,
+        1,
+        "stuff",
+        "memtx",
+        0,
+        dict(),
+        [
+            dict(name="id", type="unsigned", is_nullable=False),
+            dict(name="bucket_id", type="unsigned", is_nullable=False),
+            dict(name="foo", type="integer", is_nullable=False),
+            dict(name="bar", type="string", is_nullable=False),
+        ],
+    ]
+    assert i1.call("box.space._space:get", 666) == tt_space_def
+    assert i2.call("box.space._space:get", 666) == tt_space_def
+
+    # Primary index was also created
+    pico_pk_def = [
+        666,
+        0,
+        "primary_key",
+        True,
+        [[0, "unsigned", None, False, None]],
+        schema_version,
+        True,
+        True,
+    ]
+    assert i1.call("box.space._pico_index:get", [666, 0]) == pico_pk_def
+    assert i2.call("box.space._pico_index:get", [666, 0]) == pico_pk_def
+
+    tt_pk_def = [
+        666,
+        0,
+        "primary_key",
+        "tree",
+        dict(unique=True),
+        [[0, "unsigned", None, False, None]],
+    ]
+    assert i1.call("box.space._index:get", [666, 0]) == tt_pk_def
+    assert i2.call("box.space._index:get", [666, 0]) == tt_pk_def
+
+    # This time bucket id was also created
+    pico_bucket_id_def = [
+        666,
+        1,
+        "bucket_id",
+        True,
+        [[1, "unsigned", None, False, None]],
+        schema_version,
+        True,
+        False,
+    ]
+    assert i1.call("box.space._pico_index:get", [666, 1]) == pico_bucket_id_def
+    assert i2.call("box.space._pico_index:get", [666, 1]) == pico_bucket_id_def
+
+    tt_bucket_id_def = [
+        666,
+        1,
+        "bucket_id",
+        "tree",
+        dict(unique=False),
+        [[1, "unsigned", None, False, None]],
+    ]
+    assert i1.call("box.space._index:get", [666, 1]) == tt_bucket_id_def
+    assert i2.call("box.space._index:get", [666, 1]) == tt_bucket_id_def
 
 
 def test_ddl_create_space_partial_failure(cluster: Cluster):
@@ -192,7 +304,7 @@ def test_ddl_from_snapshot(cluster: Cluster):
     i1.call(".proc_sync_raft", ret, (3, 0))
     i2.call(".proc_sync_raft", ret, (3, 0))
 
-    space_meta = [
+    tt_space_def = [
         666,
         1,
         "stuff",
@@ -201,10 +313,10 @@ def test_ddl_from_snapshot(cluster: Cluster):
         dict(),
         [dict(name="id", type="unsigned", is_nullable=False)],
     ]
-    assert i1.call("box.space._space:get", 666) == space_meta
-    assert i2.call("box.space._space:get", 666) == space_meta
+    assert i1.call("box.space._space:get", 666) == tt_space_def
+    assert i2.call("box.space._space:get", 666) == tt_space_def
 
-    index_meta = [
+    tt_pk_def = [
         666,
         0,
         "primary_key",
@@ -212,8 +324,8 @@ def test_ddl_from_snapshot(cluster: Cluster):
         dict(unique=True),
         [[1, "unsigned", None, None, None]],
     ]
-    assert i1.call("box.space._index:get", [666, 0]) == index_meta
-    assert i2.call("box.space._index:get", [666, 0]) == index_meta
+    assert i1.call("box.space._index:get", [666, 0]) == tt_pk_def
+    assert i2.call("box.space._index:get", [666, 0]) == tt_pk_def
 
     # Compact the log to trigger snapshot for the newcommer
     i1.raft_compact_log()
@@ -222,5 +334,5 @@ def test_ddl_from_snapshot(cluster: Cluster):
     i3 = cluster.add_instance(wait_online=True)
 
     # Check space was created from the snapshot data
-    assert i3.call("box.space._space:get", 666) == space_meta
-    assert i3.call("box.space._index:get", [666, 0]) == index_meta
+    assert i3.call("box.space._space:get", 666) == tt_space_def
+    assert i3.call("box.space._index:get", [666, 0]) == tt_pk_def

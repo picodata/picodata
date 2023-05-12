@@ -150,6 +150,7 @@ pub fn ddl_abort_on_master(ddl: &Ddl, version: u64) -> traft::Result<()> {
 
     match *ddl {
         Ddl::CreateSpace { id, .. } => {
+            sys_index.delete(&[id, 1])?;
             sys_index.delete(&[id, 0])?;
             sys_space.delete(&[id])?;
             set_pico_schema_version(version)?;
@@ -160,4 +161,30 @@ pub fn ddl_abort_on_master(ddl: &Ddl, version: u64) -> traft::Result<()> {
     }
 
     Ok(())
+}
+
+// TODO: this should be a TryFrom in tarantool-module
+pub fn try_space_field_type_to_index_field_type(
+    ft: tarantool::space::FieldType,
+) -> Option<tarantool::index::FieldType> {
+    use tarantool::index::FieldType as IFT;
+    use tarantool::space::FieldType as SFT;
+    let res = match ft {
+        SFT::Any => None,
+        SFT::Unsigned => Some(IFT::Unsigned),
+        SFT::String => Some(IFT::String),
+        SFT::Number => Some(IFT::Number),
+        SFT::Double => Some(IFT::Double),
+        SFT::Integer => Some(IFT::Integer),
+        SFT::Boolean => Some(IFT::Boolean),
+        SFT::Varbinary => Some(IFT::Varbinary),
+        SFT::Scalar => Some(IFT::Scalar),
+        SFT::Decimal => Some(IFT::Decimal),
+        SFT::Uuid => Some(IFT::Uuid),
+        SFT::Datetime => Some(IFT::Datetime),
+        SFT::Interval => None,
+        SFT::Array => Some(IFT::Array),
+        SFT::Map => None,
+    };
+    res
 }

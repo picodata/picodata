@@ -443,19 +443,31 @@ impl Clusterwide {
                 continue;
             }
 
-            let Some(index_def) = self.indexes.get(space_def.id, 0)? else {
+            let Some(pk_def) = self.indexes.get(space_def.id, 0)? else {
                 crate::warn_or_panic!("a space definition without a primary index arrived via snapshot: {space_def:?}");
                 continue;
             };
 
+            // For now we just assume that during space creation index with id 1
+            // exists if and only if it is a bucket_id index.
+            let bucket_id_def = self.indexes.get(space_def.id, 1)?;
+
             // XXX: this logic is duplicated in proc_apply_schema_change, but
             // the code is so small, it doesn't seem forth it extracting it for
             // now
-            let space_meta = space_def.to_space_metadata()?;
-            let index_meta = index_def.to_index_metadata();
+            let tt_space_def = space_def.to_space_metadata()?;
+            let tt_pk_def = pk_def.to_index_metadata();
+            let mut tt_bucket_id_def = None;
+            if let Some(def) = &bucket_id_def {
+                tt_bucket_id_def = Some(def.to_index_metadata());
+            }
 
-            sys_space.replace(&space_meta)?;
-            sys_index.replace(&index_meta)?;
+            sys_space.replace(&tt_space_def)?;
+            sys_index.replace(&tt_pk_def)?;
+            if let Some(def) = tt_bucket_id_def {
+                sys_index.replace(&def)?;
+            }
+
             if space_def.schema_version > new_pico_schema_version {
                 new_pico_schema_version = space_def.schema_version;
             }

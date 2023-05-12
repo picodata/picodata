@@ -80,26 +80,35 @@ pub fn apply_schema_change(storage: &Clusterwide, ddl: &Ddl, version: u64) -> Re
 
     match *ddl {
         Ddl::CreateSpace { id, .. } => {
-            let space_info = storage
+            let pico_space_def = storage
                 .spaces
                 .get(id)?
                 .ok_or_else(|| Error::other(format!("space with id #{id} not found")))?;
             // TODO: set defaults
-            // TODO: handle `distribution`
-            let space_meta = space_info.to_space_metadata()?;
+            let tt_space_def = pico_space_def.to_space_metadata()?;
 
-            let index_info = storage.indexes.get(id, 0)?.ok_or_else(|| {
+            let pico_pk_def = storage.indexes.get(id, 0)?.ok_or_else(|| {
                 Error::other(format!(
                     "primary index for space {} not found",
-                    space_info.name
+                    pico_space_def.name
                 ))
             })?;
-            // TODO: set index parts from space format
-            let index_meta = index_info.to_index_metadata();
+            let tt_pk_def = pico_pk_def.to_index_metadata();
+
+            // For now we just assume that during space creation index with id 1
+            // exists if and only if it is a bucket_id index.
+            let mut tt_bucket_id_def = None;
+            let pico_bucket_id_def = storage.indexes.get(id, 1)?;
+            if let Some(def) = &pico_bucket_id_def {
+                tt_bucket_id_def = Some(def.to_index_metadata());
+            }
 
             let res = (|| -> tarantool::Result<()> {
-                sys_space.insert(&space_meta)?;
-                sys_index.insert(&index_meta)?;
+                sys_space.insert(&tt_space_def)?;
+                sys_index.insert(&tt_pk_def)?;
+                if let Some(def) = tt_bucket_id_def {
+                    sys_index.insert(&def)?;
+                }
                 set_pico_schema_version(version)?;
 
                 Ok(())

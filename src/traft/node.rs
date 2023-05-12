@@ -12,7 +12,7 @@ use crate::kvcell::KVCell;
 use crate::loop_start;
 use crate::r#loop::FlowControl;
 use crate::schema::ddl_abort_on_master;
-use crate::schema::{IndexDef, SpaceDef};
+use crate::schema::{Distribution, IndexDef, SpaceDef};
 use crate::storage::pico_schema_version;
 use crate::storage::ToEntryIter as _;
 use crate::storage::{Clusterwide, ClusterwideSpace, ClusterwideSpaceIndex, PropertyName};
@@ -50,7 +50,10 @@ use ::tarantool::fiber::mutex::MutexGuard;
 use ::tarantool::fiber::r#async::timeout::IntoTimeout as _;
 use ::tarantool::fiber::r#async::{oneshot, watch};
 use ::tarantool::fiber::Mutex;
+use ::tarantool::index::FieldType as IFT;
+use ::tarantool::index::Part;
 use ::tarantool::proc;
+use ::tarantool::space::FieldType as SFT;
 use ::tarantool::tlua;
 use ::tarantool::transaction::start_transaction;
 use protobuf::Message as _;
@@ -824,6 +827,13 @@ impl NodeImpl {
                             .indexes
                             .update_operable(id, 0, true)
                             .expect("storage error");
+                        // For now we just assume that during space creation index with id 1
+                        // exists if and only if it is a bucket_id index.
+                        let res = self.storage.indexes.update_operable(id, 1, true);
+                        // TODO: maybe we should first check if this index
+                        // exists or check the space definition if this should
+                        // be done, but for now we just ignore the error "no such index"
+                        let _ = res;
                     }
                     _ => {
                         todo!()
@@ -949,10 +959,105 @@ impl NodeImpl {
             Ddl::CreateSpace {
                 id,
                 name,
-                format,
-                primary_key,
+                mut format,
+                mut primary_key,
                 distribution,
             } => {
+                use ::tarantool::util::NumOrStr::*;
+
+                let mut last_pk_part_index = 0;
+                for pk_part in &mut primary_key {
+                    let (index, field) = match &pk_part.field {
+                        Num(index) => {
+                            if *index as usize >= format.len() {
+                                // Ddl prepare operations should be verified before being proposed,
+                                // so this shouldn't ever happen. But ignoring this is safe anyway,
+                                // because proc_apply_schema_change will catch the error and ddl will be aborted.
+                                tlog!(
+                                    Warning,
+                                    "invalid primary key part: field index {index} is out of bound"
+                                );
+                                continue;
+                            }
+                            (*index, &format[*index as usize])
+                        }
+                        Str(name) => {
+                            let field_index = format.iter().zip(0..).find(|(f, _)| f.name == *name);
+                            let Some((field, index)) = field_index else {
+                                // Ddl prepare operations should be verified before being proposed,
+                                // so this shouldn't ever happen. But ignoring this is safe anyway,
+                                // because proc_apply_schema_change will catch the error and ddl will be aborted.
+                                tlog!(Warning, "invalid primary key part: field '{name}' not found");
+                                continue;
+                            };
+                            // We store all index parts as field indexes.
+                            pk_part.field = Num(index);
+                            (index, field)
+                        }
+                    };
+                    let Some(field_type) =
+                        crate::schema::try_space_field_type_to_index_field_type(field.field_type) else
+                    {
+                        // Ddl prepare operations should be verified before being proposed,
+                        // so this shouldn't ever happen. But ignoring this is safe anyway,
+                        // because proc_apply_schema_change will catch the error and ddl will be aborted.
+                        tlog!(Warning, "invalid primary key part: field type {} cannot be part of an index", field.field_type);
+                        continue;
+                    };
+                    // We overwrite the one provided in the request because
+                    // there's no reason for it to be there, we know the type
+                    // right here.
+                    pk_part.r#type = Some(field_type);
+                    pk_part.is_nullable = Some(field.is_nullable);
+                    last_pk_part_index = last_pk_part_index.max(index);
+                }
+
+                let primary_key_def = IndexDef {
+                    id: 0,
+                    name: "primary_key".into(),
+                    space_id: id,
+                    schema_version,
+                    parts: primary_key,
+                    operable: false,
+                    // TODO: support other cases
+                    unique: true,
+                    local: true,
+                };
+                self.storage.indexes.insert(&primary_key_def)?;
+
+                match distribution {
+                    Distribution::Global => {
+                        // Nothing else is needed
+                    }
+                    Distribution::ShardedByField { .. } => {
+                        todo!()
+                    }
+                    Distribution::ShardedImplicitly { .. } => {
+                        // TODO: if primary key is not the first field or
+                        // there's some space between key parts, we want
+                        // bucket_id to go closer to the beginning of the tuple,
+                        // but this will require to update primary key part
+                        // indexes, so somebody should do that at some point.
+                        let bucket_id_index = last_pk_part_index + 1;
+                        format.insert(bucket_id_index as _, ("bucket_id", SFT::Unsigned).into());
+
+                        let bucket_id_def = IndexDef {
+                            id: 1,
+                            name: "bucket_id".into(),
+                            space_id: id,
+                            schema_version,
+                            parts: vec![Part::field(bucket_id_index)
+                                .field_type(IFT::Unsigned)
+                                .is_nullable(false)],
+                            operable: false,
+                            unique: false,
+                            // TODO: support other cases
+                            local: true,
+                        };
+                        self.storage.indexes.insert(&bucket_id_def)?;
+                    }
+                }
+
                 let space_def = SpaceDef {
                     id,
                     name,
@@ -962,20 +1067,6 @@ impl NodeImpl {
                     operable: false,
                 };
                 self.storage.spaces.insert(&space_def)?;
-
-                let index_def = IndexDef {
-                    id: 0,
-                    name: "primary_key".into(),
-                    space_id: id,
-                    schema_version,
-                    // TODO: fill up parts with defaults/stuff we know
-                    parts: primary_key,
-                    operable: false,
-                    // TODO: support other cases
-                    unique: true,
-                    local: true,
-                };
-                self.storage.indexes.insert(&index_def)?;
             }
 
             Ddl::CreateIndex {
