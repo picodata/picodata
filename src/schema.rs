@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use tarantool::{
     index::{IndexId, Part},
     space::{Field, SpaceId},
-    tuple::{Encode, TupleBuffer},
+    tuple::Encode,
 };
 
 /// Space definition.
@@ -29,8 +29,7 @@ pub enum Distribution {
     /// Tuples will be implicitely sharded. E.g. sent to the corresponding bucket
     /// which will be determined by a hash of the provided `sharding_key`.
     ShardedImplicitly {
-        #[serde(with = "serde_bytes")]
-        sharding_key: TupleBuffer,
+        sharding_key: Vec<String>,
         #[serde(default)]
         sharding_fn: ShardingFn,
     },
@@ -48,14 +47,16 @@ fn default_bucket_id_field() -> String {
     "bucket_id".into()
 }
 
-/// Custom sharding functions are not yet supported.
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Default)]
-pub enum ShardingFn {
-    Crc32,
-    #[default]
-    Murmur3,
-    Xxhash,
-    Md5,
+::tarantool::define_str_enum! {
+    /// Custom sharding functions are not yet supported.
+    #[derive(Default)]
+    pub enum ShardingFn {
+        Crc32 = "crc32",
+        #[default]
+        Murmur3 = "murmur3",
+        Xxhash = "xxhash",
+        Md5 = "md5",
+    }
 }
 
 /// Index definition.
