@@ -64,27 +64,25 @@ def test_select(cluster: Cluster):
     cluster.deploy(instance_count=2)
     i1, i2 = cluster.instances
 
-    for n, sql in {
-        1: """create table t(a int, "bucket_id" unsigned, primary key (a));""",
-        2: """create index "bucket_id" on t ("bucket_id");""",
-    }.items():
-        i1.call("pico.add_migration", n, sql)
-    apply_migration(i1, 2)
-
-    space_id = i1.eval("return box.space.T.id")
-    space_def = [
-        space_id,
-        "T",
-        ["sharded_implicitly", ["A"]],
-        [
-            dict(name="A", type="integer", is_nullable=False),
-            dict(name="bucket_id", type="unsigned", is_nullable=False),
-        ],
-        69,
-        False,
-    ]
-    i1.call("box.space._pico_space:put", space_def)
-    i2.call("box.space._pico_space:put", space_def)
+    op = dict(
+        kind="ddl_prepare",
+        schema_version=i1.next_schema_version(),
+        ddl=dict(
+            kind="create_space",
+            id=666,
+            name="T",
+            format=[
+                dict(name="A", type="integer", is_nullable=False),
+                # TODO: this should be done automatically by picodata
+                dict(name="bucket_id", type="unsigned", is_nullable=False),
+            ],
+            primary_key=[dict(field=0, type="integer")],
+            # sharding function is implicitly murmur3
+            distribution=dict(kind="sharded_implicitly", sharding_key=["bucket_id"]),
+        ),
+    )
+    # TODO: rewrite the test using pico.cas, when it supports ddl
+    index = i1.call("pico.raft_propose", op)
 
     data = i1.sql("""insert into t values(1);""")
     assert data["row_count"] == 1
