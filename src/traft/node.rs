@@ -1001,6 +1001,9 @@ impl NodeImpl {
         self.storage
             .properties
             .put(PropertyName::PendingSchemaVersion, &schema_version)?;
+        self.storage
+            .properties
+            .put(PropertyName::NextSchemaVersion, &(schema_version + 1))?;
 
         Ok(())
     }

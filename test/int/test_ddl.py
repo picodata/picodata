@@ -13,7 +13,7 @@ def test_ddl_create_space_bulky(cluster: Cluster):
     # Propose a space creation which will fail
     op = dict(
         kind="ddl_prepare",
-        schema_version=1,
+        schema_version=i1.next_schema_version(),
         ddl=dict(
             kind="create_space",
             id=666,
@@ -40,11 +40,7 @@ def test_ddl_create_space_bulky(cluster: Cluster):
     # Propose a space creation which will succeed
     op = dict(
         kind="ddl_prepare",
-        # This version number must not be equal to the version of the aborted
-        # change, otherwise all of the instances joined after this request was
-        # committed will be blocked during the attempt to apply the previous
-        # DdlAbort
-        schema_version=2,
+        schema_version=i1.next_schema_version(),
         ddl=dict(
             kind="create_space",
             id=666,
@@ -136,7 +132,7 @@ def test_ddl_create_space_partial_failure(cluster: Cluster):
     # Propose a space creation which will fail
     op = dict(
         kind="ddl_prepare",
-        schema_version=1,
+        schema_version=i1.next_schema_version(),
         ddl=dict(
             kind="create_space",
             id=666,
@@ -176,7 +172,7 @@ def test_ddl_from_snapshot(cluster: Cluster):
     # Propose a space creation which will succeed
     op = dict(
         kind="ddl_prepare",
-        schema_version=1,
+        schema_version=i1.next_schema_version(),
         ddl=dict(
             kind="create_space",
             id=666,

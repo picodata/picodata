@@ -622,10 +622,35 @@ pub trait TClusterwideSpaceIndex {
     pub enum PropertyName {
         ReplicationFactor = "replication_factor",
         VshardBootstrapped = "vshard_bootstrapped",
+        // TODO: remove this
         DesiredSchemaVersion = "desired_schema_version",
+
+        /// Pending ddl operation which is to be either committed or aborted.
+        ///
+        /// Is only present during the time between the last ddl prepare
+        /// operation and the corresponding ddl commit or abort operation.
         PendingSchemaChange = "pending_schema_change",
+
+        /// Schema version of the pending ddl prepare operation.
+        /// This will be the current schema version if the next entry is a ddl
+        /// commit operation.
+        ///
+        /// Is only present during the time between the last ddl prepare
+        /// operation and the corresponding ddl commit or abort operation.
         PendingSchemaVersion = "pending_schema_version",
+
+        /// Current schema version. Increases with every ddl commit operation.
+        ///
+        /// This is equal to [`pico_schema_version`] during the time between
+        /// the last ddl commit or abort operation and the next ddl prepare
+        /// operation.
         CurrentSchemaVersion = "current_schema_version",
+
+        /// Schema version which should be used for the next ddl prepare
+        /// operation. This increases with every ddl prepare operation in the
+        /// log no matter if it is committed or aborted.
+        /// This guards us from some painfull corner cases.
+        NextSchemaVersion = "next_schema_version",
     }
 }
 
