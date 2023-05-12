@@ -24,7 +24,11 @@ def test_ddl_create_space_bulky(cluster: Cluster):
         ),
     )
     # TODO: rewrite the test using pico.cas, when it supports ddl
-    i1.call("pico.raft_propose", op)
+    index = i1.call("pico.raft_propose", op)
+    abort_index = index + 1
+
+    i1.call(".proc_sync_raft", abort_index, (3, 0))
+    i2.call(".proc_sync_raft", abort_index, (3, 0))
 
     # No space was created
     assert i1.call("box.space._pico_space:get", 666) is None
