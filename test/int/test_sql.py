@@ -121,3 +121,52 @@ def test_hash(cluster: Cluster):
     assert data["row_count"] == 1
     data = i1.sql(""" select "bucket_id" from t where a = ?""", 1)
     assert data["rows"] == [[lua_hash % bucket_count]]
+
+
+def test_select_lowercase_name(cluster: Cluster):
+    i1, *_ = cluster.deploy(instance_count=1)
+
+    space_id = 837
+    index = i1.propose_create_space(
+        dict(
+            id=space_id,
+            name="lowercase_name",
+            format=[
+                dict(name="id", type="integer", is_nullable=False),
+            ],
+            primary_key=[dict(field="id")],
+            distribution=dict(kind="sharded_implicitly", sharding_key=["id"]),
+        )
+    )
+    i1.raft_wait_index(index, 3)
+
+    assert i1.call("box.space.lowercase_name:select") == []
+
+    data = i1.sql("""insert into "lowercase_name" values(420);""")
+    assert data["row_count"] == 1
+    data = i1.sql("""select * from "lowercase_name" """)
+    assert data["rows"] == [[420]]
+
+
+def test_select_string_field(cluster: Cluster):
+    i1, *_ = cluster.deploy(instance_count=1)
+
+    space_id = 826
+    index = i1.propose_create_space(
+        dict(
+            id=space_id,
+            name="STUFF",
+            format=[
+                dict(name="id", type="integer", is_nullable=False),
+                dict(name="str", type="string", is_nullable=False),
+            ],
+            primary_key=[dict(field="id")],
+            distribution=dict(kind="sharded_implicitly", sharding_key=["id"]),
+        )
+    )
+    i1.raft_wait_index(index, 3)
+
+    data = i1.sql("""insert into STUFF values(1337, 'foo');""")
+    assert data["row_count"] == 1
+    data = i1.sql("""select * from STUFF """)
+    assert data["rows"] == [[1337, "foo"]]
