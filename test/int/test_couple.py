@@ -1,11 +1,5 @@
-import funcy  # type: ignore
 import pytest
-from conftest import Cluster, Instance
-
-
-@funcy.retry(tries=20, timeout=0.1)
-def retry_call(call, *args, **kwargs):
-    return call(*args, **kwargs)
+from conftest import Cluster, Instance, Retriable
 
 
 @pytest.fixture
@@ -40,14 +34,16 @@ def test_failover(cluster2: Cluster):
     i1, i2 = cluster2.instances
     i1.promote_or_fail()
 
-    retry_call(i2.assert_raft_status, "Follower", leader_id=i1.raft_id)
+    Retriable(timeout=2, rps=10).call(
+        i2.assert_raft_status, "Follower", leader_id=i1.raft_id
+    )
 
     def do_test():
         i2.eval("pico.raft_tick(20)")
         i1.assert_raft_status("Follower", leader_id=i2.raft_id)
         i2.assert_raft_status("Leader")
 
-    retry_call(do_test)
+    Retriable(timeout=2, rps=10).call(do_test)
 
 
 def test_restart_follower(cluster2: Cluster):
@@ -98,18 +94,17 @@ def test_restart_both(cluster2: Cluster):
     i1.terminate()
     i2.terminate()
 
-    @funcy.retry(tries=20, timeout=0.1)
-    def wait_alive(instance: Instance):
+    def check_alive(instance: Instance):
         assert instance._raft_status().leader_id is None
 
     i1.start()
     # This synchronization is necessary for proper test case reproducing.
     # i1 has already initialized raft node but can't win election yet
     # i2 starts discovery and should be able to advance further
-    wait_alive(i1)
+    Retriable(timeout=2, rps=10).call(check_alive, i1)
 
     i2.start()
-    wait_alive(i2)
+    Retriable(timeout=2, rps=10).call(check_alive, i2)
 
     # Speed up elections
     i2.call("pico.raft_timeout_now")

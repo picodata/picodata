@@ -1,10 +1,10 @@
-import funcy  # type: ignore
 import re
 import pytest
 
 from conftest import (
     Cluster,
     Instance,
+    Retriable,
     TarantoolError,
 )
 
@@ -119,8 +119,7 @@ def test_replication(cluster: Cluster):
 
     assert i1.replicaset_uuid() == i2.replicaset_uuid()
 
-    @funcy.retry(tries=20, timeout=0.5)
-    def wait_replicated(instance):
+    def check_replicated(instance):
         box_replication = instance.eval("return box.cfg.replication")
         assert set(box_replication) == set(
             (f"guest:@{addr}" for addr in [i1.listen, i2.listen])
@@ -151,7 +150,7 @@ def test_replication(cluster: Cluster):
             [2, i2.instance_uuid()],
         ]
 
-        wait_replicated(instance)
+        Retriable(timeout=10, rps=2).call(check_replicated, instance)
 
     # It doesn't affect replication setup
     # but speeds up the test by eliminating failover.
@@ -159,14 +158,14 @@ def test_replication(cluster: Cluster):
 
     i2.assert_raft_status("Follower")
     i2.restart()
-    wait_replicated(i2)
+    Retriable(timeout=10, rps=2).call(check_replicated, i2)
 
     i2.wait_online()
     i2.promote_or_fail()
 
     i1.assert_raft_status("Follower")
     i1.restart()
-    wait_replicated(i1)
+    Retriable(timeout=10, rps=2).call(check_replicated, i1)
 
 
 def test_init_replication_factor(cluster: Cluster):

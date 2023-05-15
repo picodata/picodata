@@ -1,4 +1,3 @@
-import funcy  # type: ignore
 import pytest
 
 from typing import Any, Callable, Generator
@@ -7,6 +6,7 @@ from conftest import (
     eprint,
     Cluster,
     Instance,
+    Retriable,
     ReturnError,
 )
 
@@ -19,12 +19,11 @@ def uninitialized_instance(cluster: Cluster) -> Generator[Instance, None, None]:
     instance = cluster.add_instance(peers=[":0"], wait_online=False)
     instance.start()
 
-    @funcy.retry(tries=30, timeout=0.2)
-    def wait_running():
+    def check_running(instance):
         assert instance.eval("return box.info.status") == "running"
         eprint(f"{instance} is running (but stuck in discovery phase)")
 
-    wait_running()
+    Retriable(timeout=6, rps=5).call(check_running, instance)
     yield instance
 
 

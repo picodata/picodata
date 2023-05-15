@@ -7,7 +7,6 @@ import sys
 import time
 import threading
 from types import SimpleNamespace
-import funcy  # type: ignore
 import pytest
 import signal
 import subprocess
@@ -16,7 +15,7 @@ from rand.params import generate_seed
 from functools import reduce
 from datetime import datetime
 from shutil import rmtree
-from typing import Any, Callable, Literal, Generator, Iterator, Dict, List, Tuple
+from typing import Any, Callable, Literal, Generator, Iterator, Dict, List, Tuple, Type
 from itertools import count
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass, field
@@ -275,6 +274,95 @@ color = SimpleNamespace(
 # Usage:
 assert color.green("text") == "\x1b[32mtext\x1b[0m"
 assert color.intense_red("text") == "\x1b[31;1mtext\x1b[0m"
+
+
+class Retriable:
+    """A utility class for handling retries.
+
+    Example:
+
+        def guess_fizzbuzz():
+            x = random.randint(1, 20)
+            assert x % 3 == 0
+            assert x % 5 == 0
+            return x
+
+        fizzuzz = Retriable(timeout=3, rps=5).call(guess_fizzbuzz)
+
+    It calls `guess_fizzbuzz` function repeatedly during 3 seconds until
+    it succeeds to find a random number that satisfies criteria. The
+    calling rate is limited by 5 times a second.
+
+    By default it suppresses and retries all exceptions subclassed
+    from `Exception` type, except those specified in `fatal` parameter.
+    """
+
+    def __init__(
+        self,
+        timeout: int | float,
+        rps: int | float,
+        fatal: Type[Exception] | Tuple[Exception, ...] = (),
+    ) -> None:
+        """
+        Build the retriable call context
+
+        Args:
+            timeout (int | float): total time limit.
+            rps (int | float): retries per second.
+            fatal (Exception | Tuple[Exception, ...], default=()):
+                unsuppressed exception class or a tuple of classes
+                that should never be retried.
+        """
+
+        now = time.monotonic()
+        self.deadline = now + timeout
+        self.retry_period = 1 / rps
+        self.next_retry = now
+        self.fatal = fatal
+
+    def call(self, func, *args, **kwargs):
+        """
+        Calls a function repeatedly until it succeeds
+        or timeout expires.
+        """
+        while self._next_try():
+            try:
+                return func(*args, **kwargs)
+            except self.fatal as e:
+                raise e from e
+            except Exception as e:
+                self._suppress(e)
+                continue
+
+    def _next_try(self) -> bool:
+        """
+        Suspend execution until it's time to make the next attempt.
+
+        Raises:
+            AssertionError: if timeout expired. This usually shouldn't
+            be a case as `next_try` usually preceeds with `suppress`
+            which does the same check.
+        """
+
+        now = time.monotonic()
+        assert now <= self.deadline, "timeout"
+
+        if now < self.next_retry:
+            time.sleep(self.next_retry - now)
+            now = time.monotonic()
+
+        self.next_retry = now + self.retry_period
+        return True
+
+    def _suppress(self, e: Exception) -> None:
+        """
+        Suppress the exception unless timeout expired. Raises
+        the same exception if timout did expire.
+        """
+        now = time.monotonic()
+        if now > self.deadline:
+            raise e from e
+
 
 OUT_LOCK = threading.Lock()
 
@@ -646,63 +734,46 @@ class Instance:
             "leader_id": status.leader_id,
         } == {"raft_state": state, "leader_id": leader_id}
 
-    def wait_online(self, retry_timeout=0.2):
+    def wait_online(self, timeout: int | float = 6, rps: int | float = 5):
         """Wait until instance attains Online grade
+
+        Args:
+            timeout (int | float, default=6): total time limit
+            rps (int | float, default=5): retries per second
 
         Raises:
             AssertionError: if doesn't succeed
         """
 
-        if not self.process:
-            raise Exception("process failed to start")
+        class ProcessDead(Exception):
+            pass
 
-        n_tries = 30
+        if self.process is None:
+            raise ProcessDead("process was not started")
 
-        def on_retriable_exception(e, time_start):
-            nonlocal n_tries
-            n_tries -= 1
-            if n_tries <= 0:
-                raise e from e
-
-            elapsed = time.time() - time_start
-            if elapsed < retry_timeout:
-                time.sleep(retry_timeout - elapsed)
-
-        while n_tries > 0:
-            time_start = time.time()
-
+        def fetch_info():
             try:
                 exit_code = self.process.wait(timeout=0)
             except subprocess.TimeoutExpired:
-                # time out means process is still running, carry on
-                exit_code = None
-            except Exception as e:
-                on_retriable_exception(e, time_start)
-                continue
+                # it's fine, the process is still running
+                pass
+            else:
+                raise ProcessDead(f"process exited unexpectedly, {exit_code=}")
 
-            if exit_code is not None:
-                raise Exception(
-                    f"process exited unexpectedly with exit code {exit_code}"
-                )
+            whoami = self.call("pico.whoami")
+            assert isinstance(whoami, dict)
+            assert isinstance(whoami["raft_id"], int)
+            assert isinstance(whoami["instance_id"], str)
+            self.raft_id = whoami["raft_id"]
+            self.instance_id = whoami["instance_id"]
 
-            try:
-                whoami = self.call("pico.whoami")
-                assert isinstance(whoami, dict)
-                assert isinstance(whoami["raft_id"], int)
-                assert isinstance(whoami["instance_id"], str)
-                self.raft_id = whoami["raft_id"]
-                self.instance_id = whoami["instance_id"]
+            myself = self.call("pico.instance_info", self.instance_id)
+            assert isinstance(myself, dict)
+            assert isinstance(myself["current_grade"], dict)
+            assert myself["current_grade"]["variant"] == "Online"
 
-                myself = self.call("pico.instance_info", self.instance_id)
-                assert isinstance(myself, dict)
-                assert isinstance(myself["current_grade"], dict)
-                assert myself["current_grade"]["variant"] == "Online"
-            except Exception as e:
-                on_retriable_exception(e, time_start)
-                continue
-
-            eprint(f"{self} is online")
-            return
+        Retriable(timeout, rps, fatal=ProcessDead).call(fetch_info)
+        eprint(f"{self} is online")
 
     def raft_index(self) -> int:
         """Get raft applied `index`"""
@@ -743,19 +814,21 @@ class Instance:
             ".proc_sync_raft", index, timeout_duration, timeout=unreachable_timeout
         )
 
-    @funcy.retry(tries=4, timeout=0.5, errors=AssertionError)
     def promote_or_fail(self):
-        eprint(f"{self} is trying to become a leader")
+        attempt = 0
 
-        # 1. Force the node to campaign.
-        self.call("pico.raft_timeout_now")
+        def make_attempt(timeout, rps):
+            nonlocal attempt
+            attempt = attempt + 1
+            eprint(f"{self} is trying to become a leader, {attempt=}")
 
-        # 2. Wait until the miracle occurs.
-        @funcy.retry(tries=4, timeout=0.5, errors=AssertionError)
-        def wait_promoted():
-            self.assert_raft_status("Leader")
+            # 1. Force the node to campaign.
+            self.call("pico.raft_timeout_now")
 
-        wait_promoted()
+            # 2. Wait until the miracle occurs.
+            Retriable(timeout, rps).call(self.assert_raft_status, "Leader")
+
+        Retriable(timeout=3, rps=1).call(make_attempt, timeout=1, rps=10)
         eprint(f"{self} is a leader now")
 
 

@@ -1,12 +1,12 @@
 import errno
 import os
-import funcy  # type: ignore
 import pytest
 import signal
 import re
 
 from conftest import (
     Instance,
+    Retriable,
     TarantoolError,
     ReturnError,
     MalformedAPI,
@@ -93,12 +93,11 @@ def test_process_management(instance: Instance):
     class StillAlive(Exception):
         pass
 
-    @funcy.retry(tries=10, timeout=0.01, errors=StillAlive)
-    def waitpg(pgrp):
+    def check_pg(pgrp):
         try:
             os.killpg(pgrp, 0)
         except ProcessLookupError:
-            return True
+            pass
         except PermissionError:
             # According to `man 2 kill`, MacOS raises it if at least one process
             # in the process group has insufficient permissions. In fact, it also
@@ -125,7 +124,7 @@ def test_process_management(instance: Instance):
         instance.eval("return 'ok'", timeout=0.1)
     assert exc.value.errno == errno.ECONNRESET
     with pytest.raises(StillAlive):
-        waitpg(pgrp)
+        Retriable(timeout=1, rps=10).call(check_pg, pgrp)
     print(f"{instance} is still alive")
 
     # Kill the remaining child in the process group using conftest API
@@ -140,7 +139,7 @@ def test_process_management(instance: Instance):
     # a zombie for a while. The child is removed from the process
     # table when a subreaper calls `waitpid`.
     #
-    waitpg(pgrp)
+    Retriable(timeout=1, rps=100).call(check_pg, pgrp)
     print(f"{instance} is finally dead")
 
     # Ensure the child is dead
