@@ -326,11 +326,11 @@ h6 {
 }
 
 .md-sidebar {
-    order: 3;
+    order: 1;
 }
 
 .md-sidebar--secondary {
-    order: 1;
+    order: 3;
 }
 
 .md-content {
