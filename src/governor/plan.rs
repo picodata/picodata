@@ -340,7 +340,17 @@ pub(super) fn action_plan<'i>(
     if has_pending_schema_change {
         let mut targets = Vec::with_capacity(replicasets.len());
         for r in replicasets.values() {
-            targets.push(&r.master_id);
+            let Some(master) = instances.iter().find(|i| i.instance_id == r.master_id) else {
+                tlog!(Warning,
+                    "couldn't find instance with id {}, which is chosen as master of replicaset {}",
+                    r.master_id, r.replicaset_id,
+                );
+                continue;
+            };
+            if !master.may_respond() {
+                continue;
+            }
+            targets.push(&master.instance_id);
         }
 
         let rpc = rpc::ddl_apply::Request {

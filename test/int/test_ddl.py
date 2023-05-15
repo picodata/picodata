@@ -300,7 +300,19 @@ def test_ddl_create_space_partial_failure(cluster: Cluster):
     assert i2.call("box.space._space:get", 666) is None
     assert i3.call("box.space._space:get", 666) is None
 
-    # TODO: terminate i3, commit create space and wake i3 back up
+    # Put i3 to sleep
+    i3.terminate()
+
+    # Propose the same space creation which this time succeeds, because there's
+    # no conflict on any online instances.
+    index = i1.ddl_create_space(space_def)
+    i2.call(".proc_sync_raft", index, (3, 0))
+
+    assert i1.call("box.space._space:get", 666) is not None
+    assert i2.call("box.space._space:get", 666) is not None
+
+    # Wake i3 up and currently it just panics...
+    i3.fail_to_start()
 
 
 def test_ddl_from_snapshot(cluster: Cluster):
