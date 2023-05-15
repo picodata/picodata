@@ -64,11 +64,8 @@ def test_select(cluster: Cluster):
     cluster.deploy(instance_count=2)
     i1, i2 = cluster.instances
 
-    op = dict(
-        kind="ddl_prepare",
-        schema_version=i1.next_schema_version(),
-        ddl=dict(
-            kind="create_space",
+    index = i1.ddl_create_space(
+        dict(
             id=666,
             name="T",
             format=[
@@ -77,11 +74,9 @@ def test_select(cluster: Cluster):
             primary_key=[dict(field="A")],
             # sharding function is implicitly murmur3
             distribution=dict(kind="sharded_implicitly", sharding_key=["A"]),
-        ),
+        )
     )
-    # TODO: rewrite the test using pico.cas, when it supports ddl
-    index = i1.call("pico.raft_propose", op)
-    i1.call(".proc_sync_raft", index, [3, 0])
+    i2.call(".proc_sync_raft", index, [3, 0])
 
     data = i1.sql("""insert into t values(1);""")
     assert data["row_count"] == 1

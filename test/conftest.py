@@ -16,7 +16,7 @@ from rand.params import generate_seed
 from functools import reduce
 from datetime import datetime
 from shutil import rmtree
-from typing import Any, Callable, Literal, Generator, Iterator
+from typing import Any, Callable, Literal, Generator, Iterator, Dict
 from itertools import count
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass, field
@@ -530,6 +530,30 @@ class Instance:
             return 1
 
         return t[1]
+
+    def ddl_create_space(
+        self, space_def: Dict[str, Any], wait_index: bool = True, timeout: int = 3
+    ) -> int:
+        """
+        Proposes a space creation ddl prepare operation. Returns the index of
+        the corresponding finilazing ddl commit or ddl abort entry.
+
+        If `wait_index` is `True` will wait for the finilazing entry
+        to be applied for `timeout` seconds.
+        """
+        op = dict(
+            kind="ddl_prepare",
+            schema_version=self.next_schema_version(),
+            ddl=dict(kind="create_space", **space_def),
+        )
+        # TODO: rewrite the test using pico.cas
+        index = self.call("pico.raft_propose", op)
+        # Index of the corresponding ddl abort / ddl commit entry
+        index_fin = index + 1
+        if wait_index:
+            self.call(".proc_sync_raft", index_fin, [timeout, 0])
+
+        return index_fin
 
     def assert_raft_status(self, state, leader_id=None):
         status = self._raft_status()
