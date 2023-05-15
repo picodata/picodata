@@ -4,6 +4,7 @@ import os
 import re
 import socket
 import sys
+import time
 import threading
 from types import SimpleNamespace
 import funcy  # type: ignore
@@ -534,27 +535,63 @@ class Instance:
             "leader_id": status.leader_id,
         } == {"raft_state": state, "leader_id": leader_id}
 
-    @funcy.retry(tries=30, timeout=0.5)
-    def wait_online(self):
+    def wait_online(self, retry_timeout=0.2):
         """Wait until instance attains Online grade
 
         Raises:
             AssertionError: if doesn't succeed
         """
 
-        whoami = self.call("pico.whoami")
-        assert isinstance(whoami, dict)
-        assert isinstance(whoami["raft_id"], int)
-        assert isinstance(whoami["instance_id"], str)
-        self.raft_id = whoami["raft_id"]
-        self.instance_id = whoami["instance_id"]
+        if not self.process:
+            raise Exception("process failed to start")
 
-        myself = self.call("pico.instance_info", self.instance_id)
-        assert isinstance(myself, dict)
-        assert isinstance(myself["current_grade"], dict)
-        assert myself["current_grade"]["variant"] == "Online"
+        n_tries = 30
 
-        eprint(f"{self} is online")
+        def on_retriable_exception(e, time_start):
+            nonlocal n_tries
+            n_tries -= 1
+            if n_tries <= 0:
+                raise e from e
+
+            elapsed = time.time() - time_start
+            if elapsed < retry_timeout:
+                time.sleep(retry_timeout - elapsed)
+
+        while n_tries > 0:
+            time_start = time.time()
+
+            try:
+                exit_code = self.process.wait(timeout=0)
+            except subprocess.TimeoutExpired:
+                # time out means process is still running, carry on
+                exit_code = None
+            except Exception as e:
+                on_retriable_exception(e, time_start)
+                continue
+
+            if exit_code is not None:
+                raise Exception(
+                    f"process exited unexpectedly with exit code {exit_code}"
+                )
+
+            try:
+                whoami = self.call("pico.whoami")
+                assert isinstance(whoami, dict)
+                assert isinstance(whoami["raft_id"], int)
+                assert isinstance(whoami["instance_id"], str)
+                self.raft_id = whoami["raft_id"]
+                self.instance_id = whoami["instance_id"]
+
+                myself = self.call("pico.instance_info", self.instance_id)
+                assert isinstance(myself, dict)
+                assert isinstance(myself["current_grade"], dict)
+                assert myself["current_grade"]["variant"] == "Online"
+            except Exception as e:
+                on_retriable_exception(e, time_start)
+                continue
+
+            eprint(f"{self} is online")
+            return
 
     def raft_index(self) -> int:
         """Get raft applied `index`"""
