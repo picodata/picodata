@@ -1,3 +1,4 @@
+import pytest
 from conftest import Cluster
 
 
@@ -313,6 +314,52 @@ def test_ddl_create_space_partial_failure(cluster: Cluster):
 
     # Wake i3 up and currently it just panics...
     i3.fail_to_start()
+
+
+@pytest.mark.xfail(reason="lsn isn't replicated properly")
+def test_successful_wakeup_after_ddl(cluster: Cluster):
+    # Manual replicaset distribution.
+    # 5 instances are needed for quorum (2 go offline).
+    i1 = cluster.add_instance(replicaset_id="r1", wait_online=True)
+    i2 = cluster.add_instance(replicaset_id="r1", wait_online=True)
+    i3 = cluster.add_instance(replicaset_id="r2", wait_online=True)
+    i4 = cluster.add_instance(replicaset_id="r2", wait_online=True)
+    i5 = cluster.add_instance(replicaset_id="r3", wait_online=True)
+
+    # This is a replicaset follower which will be catching up
+    i4.terminate()
+    # This is a replicaset master (sole member) which will be catching up
+    i5.terminate()
+
+    # Propose a space creation which will succeed
+    space_def = dict(
+        id=666,
+        name="space_name_conflict",
+        format=[dict(name="id", type="unsigned", is_nullable=False)],
+        primary_key=[dict(field="id")],
+        distribution=dict(kind="global"),
+    )
+    index = i1.ddl_create_space(space_def)
+
+    i2.call(".proc_sync_raft", index, (3, 0))
+    i3.call(".proc_sync_raft", index, (3, 0))
+
+    # Space created
+    assert i1.call("box.space._space:get", 666) is not None
+    assert i2.call("box.space._space:get", 666) is not None
+    assert i3.call("box.space._space:get", 666) is not None
+
+    # Wake up the catcher-uppers
+    i4.start()
+    i5.start()
+    # FIXME: currently wait_lsn never stops, because lsn doesn't get replicated
+    # tarantool bug?
+    i4.wait_online()
+    i5.wait_online()
+
+    # They caught up!
+    assert i4.call("box.space._space:get", 666) is not None
+    assert i5.call("box.space._space:get", 666) is not None
 
 
 def test_ddl_from_snapshot(cluster: Cluster):
