@@ -424,6 +424,8 @@ impl Clusterwide {
             }
         }
 
+        // If we're not the replication master, the rest of the data will come
+        // via tarantool replication.
         if !is_master {
             return Ok(());
         }
