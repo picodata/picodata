@@ -22,7 +22,7 @@
      inkscape:deskcolor="#d1d1d1"
      showgrid="false"
      inkscape:zoom="1.4902309"
-     inkscape:cx="499.58701"
+     inkscape:cx="450.60131"
      inkscape:cy="226.13945"
      inkscape:window-width="1920"
      inkscape:window-height="1011"
@@ -34,33 +34,19 @@
      id="defs12702">
     <style
        type="text/css"
-       id="style12700">
-    @namespace &quot;http://www.w3.org/2000/svg&quot;;
-    .line                 {fill: none; stroke: #320000; stroke-width: 1;}
-    .bold-line            {stroke: #FFE0E0; shape-rendering: crispEdges; stroke-width: 2;}
-    .thin-line            {stroke: #1F0000; shape-rendering: crispEdges}
-    .filled               {fill: #320000; stroke: none;}
-    text.terminal         {font-family: HelveticaNeueCyr, Sans-serif;
-                            font-size: 14px;
-                            fill: #FFE0E0;
-                            font-weight: bold;
-                          }
-    text.nonterminal      {font-family: HelveticaNeueCyr, Sans-serif;
-                            font-size: 14px;
-                            fill: #FFE0E0;
-                            font-weight: normal;
-                          }
-    text.regexp           {font-family: HelveticaNeueCyr, Sans-serif;
-                            font-size: 14px;
-                            fill: #1F0000;
-                            font-weight: normal;
-                          }
-    rect, circle, polygon {fill: #320000; stroke: #320000;}
-    rect.terminal         {fill: #FF0000; stroke: #320000; stroke-width: 1;}
-    rect.nonterminal      {fill: #FF3F3F; stroke: #320000; stroke-width: 1;}
-    rect.text             {fill: none; stroke: none;}
-    polygon.regexp        {fill: #FF5E5E; stroke: #320000; stroke-width: 1;}
-  </style>
+       id="style12700">@namespace &quot;http://www.w3.org/2000/svg&quot;;.line { fill: none; stroke: #320000; stroke-width: 1; }
+.bold-line { stroke: #FFE0E0; shape-rendering: crispEdges; stroke-width: 2; }
+.thin-line { stroke: #1F0000; shape-rendering: crispEdges }
+.filled { fill: #320000; stroke: none; }
+text.terminal { font-family: HelveticaNeueCyr, Sans-serif;                            font-size: 14px;                            fill: #FFE0E0;                            font-weight: bold; }
+text.nonterminal { font-family: HelveticaNeueCyr, Sans-serif;                            font-size: 14px;                            fill: #FFE0E0;                            font-weight: normal; }
+text.regexp { font-family: HelveticaNeueCyr, Sans-serif;                            font-size: 14px;                            fill: #1F0000;                            font-weight: normal; }
+rect, circle, polygon { fill: #320000; stroke: #320000; }
+rect.terminal { fill: #FF0000; stroke: #320000; stroke-width: 1; }
+rect.nonterminal { fill: #FF3F3F; stroke: #320000; stroke-width: 1; }
+rect.text { fill: none; stroke: none; }
+polygon.regexp { fill: #FF5E5E; stroke: #320000; stroke-width: 1; }
+</style>
   </defs>
   <polygon
      points="1,65 9,61 1,57 "
@@ -207,7 +193,7 @@
      id="text12746"
      style="stroke-width:0.863304">(</text>
   <a
-     xlink:href="#SELECT"
+     xlink:href="#select"
      xlink:title="SELECT"
      id="a12754"
      transform="matrix(0.86330477,0,0,0.86330477,-0.43165239,-0.48693398)">
@@ -231,7 +217,7 @@
        id="text12752">SELECT</text>
   </a>
   <a
-     xlink:href="#VALUES"
+     xlink:href="#values"
      xlink:title="VALUES"
      id="a12762"
      transform="matrix(0.86330477,0,0,0.86330477,-0.43165239,-0.48693398)">
@@ -413,7 +399,7 @@
      id="text12808"
      style="stroke-width:0.863304">(</text>
   <a
-     xlink:href="#SELECT"
+     xlink:href="#select"
      xlink:title="SELECT"
      id="a12816"
      transform="matrix(0.86330477,0,0,0.86330477,-0.43165239,-0.48693398)">
@@ -437,7 +423,7 @@
        id="text12814">SELECT</text>
   </a>
   <a
-     xlink:href="#VALUES"
+     xlink:href="#values"
      xlink:title="VALUES"
      id="a12824"
      transform="matrix(0.86330477,0,0,0.86330477,-0.43165239,-0.48693398)">
