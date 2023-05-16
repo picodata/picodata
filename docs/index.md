@@ -8,6 +8,7 @@
 * [Преимущества языка Rust при разработке приложений](benefits_rust)
 * [Общая схема инициализации кластера](clustering)
 * [Работа с SQL в Picodata](sbroad/sql_index)
+* [Описание публичного API Picodata](api)
 
 ### Инструкции и руководства
 * [Установка Picodata](install)
