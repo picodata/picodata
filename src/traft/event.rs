@@ -25,7 +25,7 @@ pub type BoxResult<T> = std::result::Result<T, Box<dyn std::error::Error>>;
         JointStateLeave = "raft.joint-state-leave",
         JointStateDrop = "raft.joint-state-drop",
         RaftLoopNeeded = "raft.loop-needed",
-        CommitIndexPersisted = "raft.commit-index-persisted",
+        EntryApplied = "raft.entry-applied",
         MigrateDone = "picodata.migrate-done",
     }
 }

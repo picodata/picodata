@@ -36,7 +36,7 @@ pub fn wait_for_index_timeout(
         }
 
         if let Some(timeout) = deadline.checked_duration_since(Instant::now()) {
-            event::wait_timeout(event::Event::CommitIndexPersisted, timeout)?;
+            event::wait_timeout(event::Event::EntryApplied, timeout)?;
         } else {
             return Err(Error::Timeout);
         }
