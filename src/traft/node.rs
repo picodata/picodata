@@ -15,7 +15,7 @@ use crate::schema::ddl_abort_on_master;
 use crate::schema::{Distribution, IndexDef, SpaceDef};
 use crate::storage::pico_schema_version;
 use crate::storage::ToEntryIter as _;
-use crate::storage::{Clusterwide, ClusterwideSpace, ClusterwideSpaceIndex, PropertyName};
+use crate::storage::{Clusterwide, ClusterwideSpace, PropertyName};
 use crate::stringify_cfunc;
 use crate::tlog;
 use crate::traft;
@@ -115,8 +115,10 @@ impl Status {
     }
 }
 
-type StorageWatchers = HashMap<ClusterwideSpaceIndex, watch::Sender<()>>;
-type StorageChanges = HashSet<ClusterwideSpaceIndex>;
+/// Key is a cluster-wide space name.
+type StorageWatchers = HashMap<String, watch::Sender<()>>;
+/// Key is a cluster-wide space name.
+type StorageChanges = HashSet<String>;
 
 /// The heart of `traft` module - the Node.
 pub struct Node {
@@ -337,15 +339,10 @@ impl Node {
     /// You can also pass a [`ClusterwideSpace`] in which case the space's
     /// primary index will be used.
     #[inline(always)]
-    pub fn storage_watcher(&self, index: impl Into<ClusterwideSpaceIndex>) -> watch::Receiver<()> {
-        self.storage_watcher_impl(index.into())
-    }
-
-    /// A non generic version for optimization.
-    fn storage_watcher_impl(&self, index: ClusterwideSpaceIndex) -> watch::Receiver<()> {
+    pub fn storage_watcher(&self, space: impl Into<String>) -> watch::Receiver<()> {
         use std::collections::hash_map::Entry;
         let mut watchers = self.watchers.lock();
-        match watchers.entry(index) {
+        match watchers.entry(space.into()) {
             Entry::Vacant(entry) => {
                 let (tx, rx) = watch::channel(());
                 entry.insert(tx);
@@ -755,13 +752,12 @@ impl NodeImpl {
                 }
             }
             Op::Dml(op) => {
-                if matches!(
-                    op.space(),
-                    ClusterwideSpace::Property | ClusterwideSpace::Replicaset
-                ) {
+                let space = op.space();
+                if space == &*ClusterwideSpace::Property || space == &*ClusterwideSpace::Replicaset
+                {
                     *wake_governor = true;
                 }
-                storage_changes.insert(op.index());
+                storage_changes.insert(space.into());
             }
             Op::DdlPrepare { .. } => {
                 *wake_governor = true;
@@ -781,11 +777,11 @@ impl NodeImpl {
                 result = instance as _;
             }
             Op::Dml(op) => {
-                let res = match op {
-                    Dml::Insert { space, tuple } => space.insert(&tuple).map(Some),
-                    Dml::Replace { space, tuple } => space.replace(&tuple).map(Some),
-                    Dml::Update { space, key, ops } => space.primary_index().update(&key, &ops),
-                    Dml::Delete { space, key } => space.primary_index().delete(&key),
+                let res = match &op {
+                    Dml::Insert { space, tuple } => self.storage.insert(space, tuple).map(Some),
+                    Dml::Replace { space, tuple } => self.storage.replace(space, tuple).map(Some),
+                    Dml::Update { space, key, ops } => self.storage.update(space, key, ops),
+                    Dml::Delete { space, key } => self.storage.delete(space, key),
                 };
                 result = Box::new(res) as _;
             }

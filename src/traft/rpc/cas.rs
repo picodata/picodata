@@ -273,32 +273,32 @@ impl Predicate {
             let Some(space) = space(entry_op) else {
                 continue
             };
-            let index = space.primary_index();
-            if space.as_str() != range.space {
+            // TODO: check `space` exists
+            if space != range.space {
                 continue;
             }
 
             match entry_op {
                 Op::Dml(Dml::Update { key, .. } | Dml::Delete { key, .. }) => {
                     let key = Tuple::new(key)?;
-                    let key_def = index.key_def_for_key()?;
-                    check_bounds(key_def, &key, range)?;
+                    let key_def = storage.key_def_for_key(space, 0)?;
+                    check_bounds(&key_def, &key, range)?;
                 }
                 Op::Dml(Dml::Insert { tuple, .. } | Dml::Replace { tuple, .. }) => {
                     let tuple = Tuple::new(tuple)?;
-                    let key_def = index.key_def()?;
-                    check_bounds(key_def, &tuple, range)?;
+                    let key_def = storage.key_def(space, 0)?;
+                    check_bounds(&key_def, &tuple, range)?;
                 }
                 Op::DdlPrepare { .. } | Op::DdlCommit | Op::DdlAbort => {
-                    let key_def = index.key_def_for_key()?;
+                    let key_def = storage.key_def_for_key(space, 0)?;
                     for key in ddl_keys.iter() {
-                        check_bounds(key_def, key, range)?;
+                        check_bounds(&key_def, key, range)?;
                     }
                 }
                 Op::PersistInstance(op) => {
                     let key = Tuple::new(&(&op.0.instance_id,))?;
-                    let key_def = index.key_def_for_key()?;
-                    check_bounds(key_def, &key, range)?;
+                    let key_def = storage.key_def_for_key(space, 0)?;
+                    check_bounds(&key_def, &key, range)?;
                 }
                 Op::Nop => (),
             };
@@ -382,11 +382,13 @@ pub enum Bound {
 }
 
 /// Get space that the operation touches.
-fn space(op: &Op) -> Option<ClusterwideSpace> {
+fn space(op: &Op) -> Option<&str> {
     match op {
         Op::Dml(dml) => Some(dml.space()),
-        Op::DdlPrepare { .. } | Op::DdlCommit | Op::DdlAbort => Some(ClusterwideSpace::Property),
-        Op::PersistInstance(_) => Some(ClusterwideSpace::Instance),
+        Op::DdlPrepare { .. } | Op::DdlCommit | Op::DdlAbort => {
+            Some(ClusterwideSpace::Property.into())
+        }
+        Op::PersistInstance(_) => Some(ClusterwideSpace::Instance.into()),
         Op::Nop => None,
     }
 }
@@ -569,16 +571,22 @@ mod tests {
         let space = ClusterwideSpace::Space;
         let ops = &[
             Dml::Insert {
-                space,
+                space: space.into(),
                 tuple: tuple.clone(),
             },
-            Dml::Replace { space, tuple },
+            Dml::Replace {
+                space: space.into(),
+                tuple,
+            },
             Dml::Update {
-                space,
+                space: space.into(),
                 key: key.clone(),
                 ops: vec![],
             },
-            Dml::Delete { space, key },
+            Dml::Delete {
+                space: space.into(),
+                key,
+            },
         ];
 
         let space = ClusterwideSpace::Space.to_string();

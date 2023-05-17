@@ -22,6 +22,7 @@ use crate::traft::Result;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::marker::PhantomData;
+use std::rc::Rc;
 
 macro_rules! define_clusterwide_spaces {
     (
@@ -213,9 +214,20 @@ macro_rules! define_clusterwide_spaces {
             }
 
             #[inline(always)]
-            fn space(&self, space: $cw_space) -> &Space {
-                match space.into() {
-                    $( $cw_index::$cw_space_var(_) => &self.$cw_field.space, )+
+            fn space_by_name(&self, space: impl AsRef<str>) -> tarantool::Result<Space> {
+                let space = space.as_ref();
+                match space {
+                    $( $cw_space_name => Ok(self.$cw_field.space.clone()), )+
+                    _ => {
+                        Space::find(space).ok_or_else(|| {
+                            tarantool::set_error!(
+                                tarantool::error::TarantoolErrorCode::NoSuchSpace,
+                                "no such space \"{}\"",
+                                space
+                            );
+                            tarantool::error::TarantoolError::last().into()
+                        })
+                    }
                 }
             }
 
@@ -415,8 +427,12 @@ define_clusterwide_spaces! {
 impl Clusterwide {
     pub fn apply_snapshot_data(&self, raw_data: &[u8], is_master: bool) -> Result<()> {
         let data = SnapshotData::decode(raw_data)?;
+        let mut dont_exist_yet = Vec::new();
         for space_dump in &data.space_dumps {
-            let space = self.space(space_dump.space);
+            let Ok(space) = self.space_by_name(&space_dump.space) else {
+                dont_exist_yet.push(space_dump);
+                continue;
+            };
             space.truncate()?;
             let tuples = space_dump.tuples.as_ref();
             for tuple in ValueIter::from_array(tuples).map_err(TntError::from)? {
@@ -482,7 +498,111 @@ impl Clusterwide {
         // TODO: check if a space exists here in box.space._space, but doesn't
         // exist in pico._space, then delete it
 
+        // These are likely globally distributed user-defined spaces, which
+        // just got defined from the metadata which arrived in the _pico_space
+        // dump.
+        for space_dump in &dont_exist_yet {
+            let Ok(space) = self.space_by_name(&space_dump.space) else {
+                crate::warn_or_panic!("a dump for a non existent space '{}' arrived via snapshot", space_dump.space);
+                continue;
+            };
+            space.truncate()?;
+            let tuples = space_dump.tuples.as_ref();
+            for tuple in ValueIter::from_array(tuples).map_err(TntError::from)? {
+                space.insert(RawBytes::new(tuple))?;
+            }
+        }
+
         Ok(())
+    }
+
+    /// Return a `KeyDef` to be used for comparing **tuples** of the
+    /// corresponding global space.
+    pub(crate) fn key_def(&self, space: &str, index: IndexId) -> tarantool::Result<Rc<KeyDef>> {
+        static mut KEY_DEF: Option<HashMap<(ClusterwideSpace, IndexId), Rc<KeyDef>>> = None;
+        let key_defs = unsafe { KEY_DEF.get_or_insert_with(HashMap::new) };
+        if let Some(sys_space) = space.parse::<ClusterwideSpace>().ok() {
+            let key_def = match key_defs.entry((sys_space, index)) {
+                Entry::Occupied(o) => o.into_mut(),
+                Entry::Vacant(v) => {
+                    let space = self.space_by_name(space).expect("system spaces are always present");
+                    let index = unsafe { Index::from_ids_unchecked(space.id(), index) };
+                    let key_def = index.meta()?.to_key_def();
+                    // System space definition's never change during a single
+                    // execution, so it's safe to cache these
+                    v.insert(Rc::new(key_def))
+                }
+            };
+            return Ok(key_def.clone());
+        }
+
+        let space = self.space_by_name(space).expect("system spaces are always present");
+        let index = unsafe { Index::from_ids_unchecked(space.id(), index) };
+        let key_def = index.meta()?.to_key_def();
+        Ok(Rc::new(key_def))
+    }
+
+    /// Return a `KeyDef` to be used for comparing **keys** of the
+    /// corresponding global space.
+    pub(crate) fn key_def_for_key(
+        &self,
+        space: &str,
+        index: IndexId,
+    ) -> tarantool::Result<Rc<KeyDef>> {
+        static mut KEY_DEF: Option<HashMap<(ClusterwideSpace, IndexId), Rc<KeyDef>>> = None;
+        let key_defs = unsafe { KEY_DEF.get_or_insert_with(HashMap::new) };
+        if let Some(sys_space) = space.parse::<ClusterwideSpace>().ok() {
+            let key_def = match key_defs.entry((sys_space, index)) {
+                Entry::Occupied(o) => o.into_mut(),
+                Entry::Vacant(v) => {
+                    let space = self.space_by_name(space).expect("system spaces are always present");
+                    let index = unsafe { Index::from_ids_unchecked(space.id(), index) };
+                    let key_def = index.meta()?.to_key_def_for_key();
+                    // System space definition's never change during a single
+                    // execution, so it's safe to cache these
+                    v.insert(Rc::new(key_def))
+                }
+            };
+            return Ok(key_def.clone());
+        }
+
+        let space = self.space_by_name(space).expect("system spaces are always present");
+        let index = unsafe { Index::from_ids_unchecked(space.id(), index) };
+        let key_def = index.meta()?.to_key_def_for_key();
+        Ok(Rc::new(key_def))
+    }
+
+    pub(crate) fn insert(&self, space: &str, tuple: &TupleBuffer) -> tarantool::Result<Tuple> {
+        let space = self.space_by_name(space)?;
+        let res = space.insert(tuple)?;
+        Ok(res)
+    }
+
+    pub(crate) fn replace(&self, space: &str, tuple: &TupleBuffer) -> tarantool::Result<Tuple> {
+        let space = self.space_by_name(space)?;
+        let res = space.replace(tuple)?;
+        Ok(res)
+    }
+
+    pub(crate) fn update(
+        &self,
+        space: &str,
+        key: &TupleBuffer,
+        ops: &[TupleBuffer],
+    ) -> tarantool::Result<Option<Tuple>> {
+        let space = self.space_by_name(space)?;
+        let res = space.update(key, ops)?;
+        Ok(res)
+    }
+
+    pub(crate) fn delete(
+        &self,
+        space: &str,
+        key: &TupleBuffer,
+    ) -> tarantool::Result<Option<Tuple>> {
+        let space = self.space_by_name(space)?;
+        let res = space.delete(key)?;
+        Ok(res)
     }
 }
 
@@ -528,7 +648,7 @@ impl ClusterwideSpace {
             tuples.len()
         );
         Ok(SpaceDump {
-            space: *self,
+            space: (*self).into(),
             tuples,
         })
     }
@@ -551,66 +671,6 @@ pub trait TClusterwideSpace {
 
 /// A type alias for getting the enumeration of indexes for a clusterwide space.
 pub type IndexOf<T> = <T as TClusterwideSpace>::Index;
-
-impl ClusterwideSpaceIndex {
-    #[inline]
-    pub(crate) fn get(&self) -> tarantool::Result<Index> {
-        let space = self.space().get()?;
-        let index_name = self.index_name();
-        let Some(index) = space.index_cached(index_name) else {
-            tarantool::set_error!(
-                tarantool::error::TarantoolErrorCode::NoSuchIndexName,
-                "no such index \"{}\"", index_name
-            );
-            return Err(tarantool::error::TarantoolError::last().into());
-        };
-        Ok(index)
-    }
-
-    /// Return reference to a cached instance of `KeyDef` to be used for
-    /// comparing **tuples** of the corresponding cluster-wide space.
-    pub(crate) fn key_def(&self) -> tarantool::Result<&'static KeyDef> {
-        static mut KEY_DEF: Option<HashMap<ClusterwideSpaceIndex, KeyDef>> = None;
-        let key_defs = unsafe { KEY_DEF.get_or_insert_with(HashMap::new) };
-        let key_def = match key_defs.entry(*self) {
-            Entry::Occupied(o) => o.into_mut(),
-            Entry::Vacant(v) => {
-                let key_def = self.get()?.meta()?.to_key_def();
-                v.insert(key_def)
-            }
-        };
-        Ok(key_def)
-    }
-
-    /// Return reference to a cached instance of `KeyDef` to be used for
-    /// comparing **keys** of the corresponding cluster-wide space.
-    pub(crate) fn key_def_for_key(&self) -> tarantool::Result<&'static KeyDef> {
-        static mut KEY_DEF: Option<HashMap<ClusterwideSpaceIndex, KeyDef>> = None;
-        let key_defs = unsafe { KEY_DEF.get_or_insert_with(HashMap::new) };
-        let key_def = match key_defs.entry(*self) {
-            Entry::Occupied(o) => o.into_mut(),
-            Entry::Vacant(v) => {
-                let key_def = self.get()?.meta()?.to_key_def_for_key();
-                v.insert(key_def)
-            }
-        };
-        Ok(key_def)
-    }
-
-    #[inline]
-    pub fn update(
-        &self,
-        key: &impl ToTupleBuffer,
-        ops: &[impl ToTupleBuffer],
-    ) -> tarantool::Result<Option<Tuple>> {
-        self.get()?.update(key, ops)
-    }
-
-    #[inline]
-    pub fn delete(&self, key: &impl ToTupleBuffer) -> tarantool::Result<Option<Tuple>> {
-        self.get()?.delete(key)
-    }
-}
 
 impl std::fmt::Display for ClusterwideSpaceIndex {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -1305,7 +1365,7 @@ impl Encode for SnapshotData {}
 
 #[derive(Debug, ::serde::Serialize, ::serde::Deserialize)]
 pub struct SpaceDump {
-    pub space: ClusterwideSpace,
+    pub space: String,
     #[serde(with = "serde_bytes")]
     pub tuples: TupleBuffer,
 }
@@ -1545,7 +1605,7 @@ mod tests {
             // r3
             ("i5", "i5-uuid", 5u64, "r3", "r3-uuid", (CGV::Online, 0), (TGV::Online, 0), &faildom,),
         ] {
-            storage.space(ClusterwideSpace::Instance).put(&instance).unwrap();
+            storage.space_by_name(ClusterwideSpace::Instance).unwrap().put(&instance).unwrap();
             let (_, _, raft_id, ..) = instance;
             space_peer_addresses.put(&(raft_id, format!("addr:{raft_id}"))).unwrap();
         }
@@ -1653,7 +1713,7 @@ mod tests {
             )
         );
 
-        let space = storage.space(ClusterwideSpace::Instance);
+        let space = storage.space_by_name(ClusterwideSpace::Instance).unwrap();
         space.drop().unwrap();
 
         assert_err!(
@@ -1691,11 +1751,13 @@ mod tests {
         let storage = Clusterwide::new().unwrap();
 
         storage
-            .space(ClusterwideSpace::Address)
+            .space_by_name(ClusterwideSpace::Address)
+            .unwrap()
             .insert(&(1, "foo"))
             .unwrap();
         storage
-            .space(ClusterwideSpace::Address)
+            .space_by_name(ClusterwideSpace::Address)
+            .unwrap()
             .insert(&(2, "bar"))
             .unwrap();
 
@@ -1761,14 +1823,14 @@ mod tests {
         assert_eq!(space_dumps.len(), 7);
 
         for space_dump in &space_dumps {
-            match space_dump.space {
-                ClusterwideSpace::Instance => {
+            match &space_dump.space {
+                s if s == &*ClusterwideSpace::Instance => {
                     let [instance]: [Instance; 1] =
                         Decode::decode(space_dump.tuples.as_ref()).unwrap();
                     assert_eq!(instance, i);
                 }
 
-                ClusterwideSpace::Address => {
+                s if s == &*ClusterwideSpace::Address => {
                     let addrs: [(i32, String); 2] =
                         Decode::decode(space_dump.tuples.as_ref()).unwrap();
                     assert_eq!(
@@ -1777,30 +1839,34 @@ mod tests {
                     );
                 }
 
-                ClusterwideSpace::Property => {
+                s if s == &*ClusterwideSpace::Property => {
                     let [property]: [(String, String); 1] =
                         Decode::decode(space_dump.tuples.as_ref()).unwrap();
                     assert_eq!(property, ("foo".to_owned(), "bar".to_owned()));
                 }
 
-                ClusterwideSpace::Replicaset => {
+                s if s == &*ClusterwideSpace::Replicaset => {
                     let [replicaset]: [Replicaset; 1] =
                         Decode::decode(space_dump.tuples.as_ref()).unwrap();
                     assert_eq!(replicaset, r);
                 }
 
-                ClusterwideSpace::Migration => {
+                s if s == &*ClusterwideSpace::Migration => {
                     let [migration]: [(i32, String); 1] =
                         Decode::decode(space_dump.tuples.as_ref()).unwrap();
                     assert_eq!(migration, (1, "drop table BANK_ACCOUNTS".to_owned()));
                 }
 
-                ClusterwideSpace::Space => {
+                s if s == &*ClusterwideSpace::Space => {
                     let []: [(); 0] = Decode::decode(space_dump.tuples.as_ref()).unwrap();
                 }
 
-                ClusterwideSpace::Index => {
+                s if s == &*ClusterwideSpace::Index => {
                     let []: [(); 0] = Decode::decode(space_dump.tuples.as_ref()).unwrap();
+                }
+
+                _ => {
+                    unreachable!();
                 }
             }
         }
@@ -1821,19 +1887,19 @@ mod tests {
         };
         let tuples = [&i].to_tuple_buffer().unwrap();
         data.space_dumps.push(SpaceDump {
-            space: ClusterwideSpace::Instance,
+            space: ClusterwideSpace::Instance.into(),
             tuples,
         });
 
         let tuples = [(1, "google.com"), (2, "ya.ru")].to_tuple_buffer().unwrap();
         data.space_dumps.push(SpaceDump {
-            space: ClusterwideSpace::Address,
+            space: ClusterwideSpace::Address.into(),
             tuples,
         });
 
         let tuples = [("foo", "bar")].to_tuple_buffer().unwrap();
         data.space_dumps.push(SpaceDump {
-            space: ClusterwideSpace::Property,
+            space: ClusterwideSpace::Property.into(),
             tuples,
         });
 
@@ -1846,7 +1912,7 @@ mod tests {
         };
         let tuples = [&r].to_tuple_buffer().unwrap();
         data.space_dumps.push(SpaceDump {
-            space: ClusterwideSpace::Replicaset,
+            space: ClusterwideSpace::Replicaset.into(),
             tuples,
         });
 
@@ -1856,7 +1922,7 @@ mod tests {
         };
         let tuples = [&m].to_tuple_buffer().unwrap();
         data.space_dumps.push(SpaceDump {
-            space: ClusterwideSpace::Migration,
+            space: ClusterwideSpace::Migration.into(),
             tuples,
         });
 

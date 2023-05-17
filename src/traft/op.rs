@@ -1,6 +1,6 @@
 use crate::instance::Instance;
 use crate::schema::Distribution;
-use crate::storage::{Clusterwide, ClusterwideSpace, ClusterwideSpaceIndex};
+use crate::storage::Clusterwide;
 use ::tarantool::index::{IndexId, Part};
 use ::tarantool::space::{Field, SpaceId};
 use ::tarantool::tlua;
@@ -192,17 +192,17 @@ impl From<PersistInstance> for Op {
 #[serde(tag = "op_kind")]
 pub enum Dml {
     Insert {
-        space: ClusterwideSpace,
+        space: String,
         #[serde(with = "serde_bytes")]
         tuple: TupleBuffer,
     },
     Replace {
-        space: ClusterwideSpace,
+        space: String,
         #[serde(with = "serde_bytes")]
         tuple: TupleBuffer,
     },
     Update {
-        space: ClusterwideSpace,
+        space: String,
         /// Key in primary index
         #[serde(with = "serde_bytes")]
         key: TupleBuffer,
@@ -210,7 +210,7 @@ pub enum Dml {
         ops: Vec<TupleBuffer>,
     },
     Delete {
-        space: ClusterwideSpace,
+        space: String,
         /// Key in primary index
         #[serde(with = "serde_bytes")]
         key: TupleBuffer,
@@ -243,9 +243,9 @@ impl From<Dml> for Op {
 impl Dml {
     /// Serializes `tuple` and returns an [`Dml::Insert`] in case of success.
     #[inline(always)]
-    pub fn insert(space: ClusterwideSpace, tuple: &impl ToTupleBuffer) -> tarantool::Result<Self> {
+    pub fn insert(space: impl Into<String>, tuple: &impl ToTupleBuffer) -> tarantool::Result<Self> {
         let res = Self::Insert {
-            space,
+            space: space.into(),
             tuple: tuple.to_tuple_buffer()?,
         };
         Ok(res)
@@ -253,9 +253,12 @@ impl Dml {
 
     /// Serializes `tuple` and returns an [`Dml::Replace`] in case of success.
     #[inline(always)]
-    pub fn replace(space: ClusterwideSpace, tuple: &impl ToTupleBuffer) -> tarantool::Result<Self> {
+    pub fn replace(
+        space: impl Into<String>,
+        tuple: &impl ToTupleBuffer,
+    ) -> tarantool::Result<Self> {
         let res = Self::Replace {
-            space,
+            space: space.into(),
             tuple: tuple.to_tuple_buffer()?,
         };
         Ok(res)
@@ -264,7 +267,7 @@ impl Dml {
     /// Serializes `key` and returns an [`Dml::Update`] in case of success.
     #[inline(always)]
     pub fn update(
-        space: impl Into<ClusterwideSpace>,
+        space: impl Into<String>,
         key: &impl ToTupleBuffer,
         ops: impl Into<Vec<TupleBuffer>>,
     ) -> tarantool::Result<Self> {
@@ -278,10 +281,7 @@ impl Dml {
 
     /// Serializes `key` and returns an [`Dml::Delete`] in case of success.
     #[inline(always)]
-    pub fn delete(
-        space: impl Into<ClusterwideSpace>,
-        key: &impl ToTupleBuffer,
-    ) -> tarantool::Result<Self> {
+    pub fn delete(space: impl Into<String>, key: &impl ToTupleBuffer) -> tarantool::Result<Self> {
         let res = Self::Delete {
             space: space.into(),
             key: key.to_tuple_buffer()?,
@@ -290,22 +290,12 @@ impl Dml {
     }
 
     #[rustfmt::skip]
-    pub fn space(&self) -> ClusterwideSpace {
+    pub fn space(&self) -> &str {
         match &self {
-            Self::Insert { space, .. } => *space,
-            Self::Replace { space, .. } => *space,
-            Self::Update { space, .. } => *space,
-            Self::Delete { space, .. } => *space,
-        }
-    }
-
-    #[rustfmt::skip]
-    pub fn index(&self) -> ClusterwideSpaceIndex {
-        match &self {
-            Self::Insert { space, .. } => (*space).into(),
-            Self::Replace { space, .. } => (*space).into(),
-            Self::Update { space, .. } => (*space).into(),
-            Self::Delete { space, .. } => (*space).into(),
+            Self::Insert { space, .. } => space,
+            Self::Replace { space, .. } => space,
+            Self::Update { space, .. } => space,
+            Self::Delete { space, .. } => space,
         }
     }
 
@@ -362,7 +352,7 @@ impl Dml {
 /// `pico.cas`.
 #[derive(Clone, Debug, PartialEq, Eq, tlua::LuaRead)]
 pub struct DmlInLua {
-    pub space: ClusterwideSpace,
+    pub space: String,
     pub kind: DmlKind,
     pub tuple: Option<TupleBuffer>,
     pub key: Option<TupleBuffer>,
