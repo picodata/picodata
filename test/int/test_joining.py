@@ -132,7 +132,7 @@ def test_replication(cluster: Cluster):
                 "return box.space._pico_instance:get(...):tomap()",
                 instance.instance_id,
             )[0]
-            space_cluster = conn.select("_cluster")
+            space_cluster = conn.call("box.space._cluster:select")
 
         expected = {
             "instance_id": instance.instance_id,
@@ -146,7 +146,7 @@ def test_replication(cluster: Cluster):
         }
         assert {k: v for k, v in raft_instance.items() if k in expected} == expected
 
-        assert list(space_cluster) == [
+        assert list(*space_cluster) == [
             [1, i1.instance_uuid()],
             [2, i2.instance_uuid()],
         ]

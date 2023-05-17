@@ -282,6 +282,8 @@ class Instance:
             self.port,
             socket_timeout=timeout,
             connection_timeout=timeout,
+            connect_now=True,
+            fetch_schema=False,
         )
         try:
             yield c
