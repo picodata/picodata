@@ -20,9 +20,10 @@ def test_ddl_create_space_bulky(cluster: Cluster):
     ############################################################################
     # Propose a space creation which will fail
 
+    space_id = 713
     abort_index = i1.ddl_create_space(
         dict(
-            id=666,
+            id=space_id,
             name="stuff",
             format=[dict(name="id", type="unsigned", is_nullable=False)],
             primary_key=[dict(field="(this will cause an error)")],
@@ -36,14 +37,14 @@ def test_ddl_create_space_bulky(cluster: Cluster):
     i4.call(".proc_sync_raft", abort_index, (3, 0))
 
     # No space was created
-    assert i1.call("box.space._pico_space:get", 666) is None
-    assert i2.call("box.space._pico_space:get", 666) is None
-    assert i3.call("box.space._pico_space:get", 666) is None
-    assert i4.call("box.space._pico_space:get", 666) is None
-    assert i1.call("box.space._space:get", 666) is None
-    assert i2.call("box.space._space:get", 666) is None
-    assert i3.call("box.space._space:get", 666) is None
-    assert i4.call("box.space._space:get", 666) is None
+    assert i1.call("box.space._pico_space:get", space_id) is None
+    assert i2.call("box.space._pico_space:get", space_id) is None
+    assert i3.call("box.space._pico_space:get", space_id) is None
+    assert i4.call("box.space._pico_space:get", space_id) is None
+    assert i1.call("box.space._space:get", space_id) is None
+    assert i2.call("box.space._space:get", space_id) is None
+    assert i3.call("box.space._space:get", space_id) is None
+    assert i4.call("box.space._space:get", space_id) is None
 
     # Schema version hasn't changed
     assert i1.call("box.space._pico_property:get", "current_schema_version")[1] == 0
@@ -62,7 +63,7 @@ def test_ddl_create_space_bulky(cluster: Cluster):
 
     commit_index = i1.ddl_create_space(
         dict(
-            id=666,
+            id=space_id,
             name="stuff",
             format=[dict(name="id", type="unsigned", is_nullable=False)],
             primary_key=[dict(field="id")],
@@ -88,14 +89,21 @@ def test_ddl_create_space_bulky(cluster: Cluster):
     assert i4.next_schema_version() == 3
 
     # Space was created and is operable
-    pico_space_def = [666, "stuff", ["global"], [["id", "unsigned", False]], 2, True]
-    assert i1.call("box.space._pico_space:get", 666) == pico_space_def
-    assert i2.call("box.space._pico_space:get", 666) == pico_space_def
-    assert i3.call("box.space._pico_space:get", 666) == pico_space_def
-    assert i4.call("box.space._pico_space:get", 666) == pico_space_def
+    pico_space_def = [
+        space_id,
+        "stuff",
+        ["global"],
+        [["id", "unsigned", False]],
+        2,
+        True,
+    ]
+    assert i1.call("box.space._pico_space:get", space_id) == pico_space_def
+    assert i2.call("box.space._pico_space:get", space_id) == pico_space_def
+    assert i3.call("box.space._pico_space:get", space_id) == pico_space_def
+    assert i4.call("box.space._pico_space:get", space_id) == pico_space_def
 
     tt_space_def = [
-        666,
+        space_id,
         1,
         "stuff",
         "memtx",
@@ -103,16 +111,16 @@ def test_ddl_create_space_bulky(cluster: Cluster):
         dict(),
         [dict(name="id", type="unsigned", is_nullable=False)],
     ]
-    assert i1.call("box.space._space:get", 666) == tt_space_def
-    assert i2.call("box.space._space:get", 666) == tt_space_def
-    assert i3.call("box.space._space:get", 666) == tt_space_def
-    assert i4.call("box.space._space:get", 666) == tt_space_def
+    assert i1.call("box.space._space:get", space_id) == tt_space_def
+    assert i2.call("box.space._space:get", space_id) == tt_space_def
+    assert i3.call("box.space._space:get", space_id) == tt_space_def
+    assert i4.call("box.space._space:get", space_id) == tt_space_def
 
     # Primary index was also created
     # TODO: maybe we want to replace these `None`s with the default values when
     # inserting the index definition into _pico_index?
     pico_pk_def = [
-        666,
+        space_id,
         0,
         "primary_key",
         True,
@@ -121,23 +129,23 @@ def test_ddl_create_space_bulky(cluster: Cluster):
         True,
         True,
     ]
-    assert i1.call("box.space._pico_index:get", [666, 0]) == pico_pk_def
-    assert i2.call("box.space._pico_index:get", [666, 0]) == pico_pk_def
-    assert i3.call("box.space._pico_index:get", [666, 0]) == pico_pk_def
-    assert i4.call("box.space._pico_index:get", [666, 0]) == pico_pk_def
+    assert i1.call("box.space._pico_index:get", [space_id, 0]) == pico_pk_def
+    assert i2.call("box.space._pico_index:get", [space_id, 0]) == pico_pk_def
+    assert i3.call("box.space._pico_index:get", [space_id, 0]) == pico_pk_def
+    assert i4.call("box.space._pico_index:get", [space_id, 0]) == pico_pk_def
 
     tt_pk_def = [
-        666,
+        space_id,
         0,
         "primary_key",
         "tree",
         dict(unique=True),
         [[0, "unsigned", None, False, None]],
     ]
-    assert i1.call("box.space._index:get", [666, 0]) == tt_pk_def
-    assert i2.call("box.space._index:get", [666, 0]) == tt_pk_def
-    assert i3.call("box.space._index:get", [666, 0]) == tt_pk_def
-    assert i4.call("box.space._index:get", [666, 0]) == tt_pk_def
+    assert i1.call("box.space._index:get", [space_id, 0]) == tt_pk_def
+    assert i2.call("box.space._index:get", [space_id, 0]) == tt_pk_def
+    assert i3.call("box.space._index:get", [space_id, 0]) == tt_pk_def
+    assert i4.call("box.space._index:get", [space_id, 0]) == tt_pk_def
 
     ############################################################################
     # A new replicaset catches up after the fact successfully
@@ -146,20 +154,20 @@ def test_ddl_create_space_bulky(cluster: Cluster):
 
     assert i5.call("box.space._pico_property:get", "current_schema_version")[1] == 2
     assert i5.next_schema_version() == 3
-    assert i5.call("box.space._pico_space:get", 666) == pico_space_def
-    assert i5.call("box.space._pico_index:get", [666, 0]) == pico_pk_def
-    assert i5.call("box.space._space:get", 666) == tt_space_def
-    assert i5.call("box.space._index:get", [666, 0]) == tt_pk_def
+    assert i5.call("box.space._pico_space:get", space_id) == pico_space_def
+    assert i5.call("box.space._pico_index:get", [space_id, 0]) == pico_pk_def
+    assert i5.call("box.space._space:get", space_id) == tt_space_def
+    assert i5.call("box.space._index:get", [space_id, 0]) == tt_pk_def
 
     i6 = cluster.add_instance(wait_online=True, replicaset_id="r3")
 
     # It's schema was updated automatically as well
     assert i6.call("box.space._pico_property:get", "current_schema_version")[1] == 2
     assert i6.next_schema_version() == 3
-    assert i6.call("box.space._pico_space:get", 666) == pico_space_def
-    assert i6.call("box.space._pico_index:get", [666, 0]) == pico_pk_def
-    assert i6.call("box.space._space:get", 666) == tt_space_def
-    assert i6.call("box.space._index:get", [666, 0]) == tt_pk_def
+    assert i6.call("box.space._pico_space:get", space_id) == pico_space_def
+    assert i6.call("box.space._pico_index:get", [space_id, 0]) == pico_pk_def
+    assert i6.call("box.space._space:get", space_id) == tt_space_def
+    assert i6.call("box.space._index:get", [space_id, 0]) == tt_pk_def
 
 
 def test_ddl_create_sharded_space(cluster: Cluster):
@@ -167,9 +175,10 @@ def test_ddl_create_sharded_space(cluster: Cluster):
 
     # Propose a space creation which will succeed
     schema_version = i1.next_schema_version()
+    space_id = 679
     index = i1.ddl_create_space(
         dict(
-            id=666,
+            id=space_id,
             name="stuff",
             format=[
                 dict(name="id", type="unsigned", is_nullable=False),
@@ -187,7 +196,7 @@ def test_ddl_create_sharded_space(cluster: Cluster):
     ############################################################################
     # Space was created and is operable
     pico_space_def = [
-        666,
+        space_id,
         "stuff",
         ["sharded_implicitly", ["foo", "bar"], "murmur3"],
         [
@@ -200,11 +209,11 @@ def test_ddl_create_sharded_space(cluster: Cluster):
         schema_version,
         True,
     ]
-    assert i1.call("box.space._pico_space:get", 666) == pico_space_def
-    assert i2.call("box.space._pico_space:get", 666) == pico_space_def
+    assert i1.call("box.space._pico_space:get", space_id) == pico_space_def
+    assert i2.call("box.space._pico_space:get", space_id) == pico_space_def
 
     tt_space_def = [
-        666,
+        space_id,
         1,
         "stuff",
         "memtx",
@@ -217,13 +226,13 @@ def test_ddl_create_sharded_space(cluster: Cluster):
             dict(name="bar", type="string", is_nullable=False),
         ],
     ]
-    assert i1.call("box.space._space:get", 666) == tt_space_def
-    assert i2.call("box.space._space:get", 666) == tt_space_def
+    assert i1.call("box.space._space:get", space_id) == tt_space_def
+    assert i2.call("box.space._space:get", space_id) == tt_space_def
 
     ############################################################################
     # Primary index was also created
     pico_pk_def = [
-        666,
+        space_id,
         0,
         "primary_key",
         True,
@@ -232,24 +241,24 @@ def test_ddl_create_sharded_space(cluster: Cluster):
         True,
         True,
     ]
-    assert i1.call("box.space._pico_index:get", [666, 0]) == pico_pk_def
-    assert i2.call("box.space._pico_index:get", [666, 0]) == pico_pk_def
+    assert i1.call("box.space._pico_index:get", [space_id, 0]) == pico_pk_def
+    assert i2.call("box.space._pico_index:get", [space_id, 0]) == pico_pk_def
 
     tt_pk_def = [
-        666,
+        space_id,
         0,
         "primary_key",
         "tree",
         dict(unique=True),
         [[0, "unsigned", None, False, None]],
     ]
-    assert i1.call("box.space._index:get", [666, 0]) == tt_pk_def
-    assert i2.call("box.space._index:get", [666, 0]) == tt_pk_def
+    assert i1.call("box.space._index:get", [space_id, 0]) == tt_pk_def
+    assert i2.call("box.space._index:get", [space_id, 0]) == tt_pk_def
 
     ############################################################################
     # This time bucket id was also created
     pico_bucket_id_def = [
-        666,
+        space_id,
         1,
         "bucket_id",
         True,
@@ -258,19 +267,19 @@ def test_ddl_create_sharded_space(cluster: Cluster):
         True,
         False,
     ]
-    assert i1.call("box.space._pico_index:get", [666, 1]) == pico_bucket_id_def
-    assert i2.call("box.space._pico_index:get", [666, 1]) == pico_bucket_id_def
+    assert i1.call("box.space._pico_index:get", [space_id, 1]) == pico_bucket_id_def
+    assert i2.call("box.space._pico_index:get", [space_id, 1]) == pico_bucket_id_def
 
     tt_bucket_id_def = [
-        666,
+        space_id,
         1,
         "bucket_id",
         "tree",
         dict(unique=False),
         [[1, "unsigned", None, False, None]],
     ]
-    assert i1.call("box.space._index:get", [666, 1]) == tt_bucket_id_def
-    assert i2.call("box.space._index:get", [666, 1]) == tt_bucket_id_def
+    assert i1.call("box.space._index:get", [space_id, 1]) == tt_bucket_id_def
+    assert i2.call("box.space._index:get", [space_id, 1]) == tt_bucket_id_def
 
 
 def test_ddl_create_space_partial_failure(cluster: Cluster):
@@ -281,8 +290,9 @@ def test_ddl_create_space_partial_failure(cluster: Cluster):
     i3.eval("box.schema.space.create(...)", "space_name_conflict")
 
     # Propose a space creation which will fail
+    space_id = 876
     space_def = dict(
-        id=666,
+        id=space_id,
         name="space_name_conflict",
         format=[dict(name="id", type="unsigned", is_nullable=False)],
         primary_key=[dict(field="id")],
@@ -294,12 +304,12 @@ def test_ddl_create_space_partial_failure(cluster: Cluster):
     i3.call(".proc_sync_raft", index, (3, 0))
 
     # No space was created
-    assert i1.call("box.space._pico_space:get", 666) is None
-    assert i2.call("box.space._pico_space:get", 666) is None
-    assert i3.call("box.space._pico_space:get", 666) is None
-    assert i1.call("box.space._space:get", 666) is None
-    assert i2.call("box.space._space:get", 666) is None
-    assert i3.call("box.space._space:get", 666) is None
+    assert i1.call("box.space._pico_space:get", space_id) is None
+    assert i2.call("box.space._pico_space:get", space_id) is None
+    assert i3.call("box.space._pico_space:get", space_id) is None
+    assert i1.call("box.space._space:get", space_id) is None
+    assert i2.call("box.space._space:get", space_id) is None
+    assert i3.call("box.space._space:get", space_id) is None
 
     # Put i3 to sleep
     i3.terminate()
@@ -309,8 +319,8 @@ def test_ddl_create_space_partial_failure(cluster: Cluster):
     index = i1.ddl_create_space(space_def)
     i2.call(".proc_sync_raft", index, (3, 0))
 
-    assert i1.call("box.space._space:get", 666) is not None
-    assert i2.call("box.space._space:get", 666) is not None
+    assert i1.call("box.space._space:get", space_id) is not None
+    assert i2.call("box.space._space:get", space_id) is not None
 
     # Wake i3 up and currently it just panics...
     i3.fail_to_start()
@@ -332,8 +342,9 @@ def test_successful_wakeup_after_ddl(cluster: Cluster):
     i5.terminate()
 
     # Propose a space creation which will succeed
+    space_id = 901
     space_def = dict(
-        id=666,
+        id=space_id,
         name="space_name_conflict",
         format=[dict(name="id", type="unsigned", is_nullable=False)],
         primary_key=[dict(field="id")],
@@ -345,9 +356,9 @@ def test_successful_wakeup_after_ddl(cluster: Cluster):
     i3.call(".proc_sync_raft", index, (3, 0))
 
     # Space created
-    assert i1.call("box.space._space:get", 666) is not None
-    assert i2.call("box.space._space:get", 666) is not None
-    assert i3.call("box.space._space:get", 666) is not None
+    assert i1.call("box.space._space:get", space_id) is not None
+    assert i2.call("box.space._space:get", space_id) is not None
+    assert i3.call("box.space._space:get", space_id) is not None
 
     # Wake up the catcher-uppers
     i4.start()
@@ -358,8 +369,8 @@ def test_successful_wakeup_after_ddl(cluster: Cluster):
     i5.wait_online()
 
     # They caught up!
-    assert i4.call("box.space._space:get", 666) is not None
-    assert i5.call("box.space._space:get", 666) is not None
+    assert i4.call("box.space._space:get", space_id) is not None
+    assert i5.call("box.space._space:get", space_id) is not None
 
 
 def test_ddl_from_snapshot(cluster: Cluster):
@@ -370,9 +381,10 @@ def test_ddl_from_snapshot(cluster: Cluster):
 
     # TODO: check other ddl operations
     # Propose a space creation which will succeed
+    space_id = 632
     index = i1.ddl_create_space(
         dict(
-            id=666,
+            id=space_id,
             name="stuff",
             format=[dict(name="id", type="unsigned", is_nullable=False)],
             primary_key=[dict(field="id")],
@@ -383,7 +395,7 @@ def test_ddl_from_snapshot(cluster: Cluster):
     i2.call(".proc_sync_raft", index, (3, 0))
 
     tt_space_def = [
-        666,
+        space_id,
         1,
         "stuff",
         "memtx",
@@ -394,30 +406,30 @@ def test_ddl_from_snapshot(cluster: Cluster):
             dict(name="bucket_id", type="unsigned", is_nullable=False),
         ],
     ]
-    assert i1.call("box.space._space:get", 666) == tt_space_def
-    assert i2.call("box.space._space:get", 666) == tt_space_def
+    assert i1.call("box.space._space:get", space_id) == tt_space_def
+    assert i2.call("box.space._space:get", space_id) == tt_space_def
 
     tt_pk_def = [
-        666,
+        space_id,
         0,
         "primary_key",
         "tree",
         dict(unique=True),
         [[0, "unsigned", None, False, None]],
     ]
-    assert i1.call("box.space._index:get", [666, 0]) == tt_pk_def
-    assert i2.call("box.space._index:get", [666, 0]) == tt_pk_def
+    assert i1.call("box.space._index:get", [space_id, 0]) == tt_pk_def
+    assert i2.call("box.space._index:get", [space_id, 0]) == tt_pk_def
 
     tt_bucket_id_def = [
-        666,
+        space_id,
         1,
         "bucket_id",
         "tree",
         dict(unique=False),
         [[1, "unsigned", None, False, None]],
     ]
-    assert i1.call("box.space._index:get", [666, 1]) == tt_bucket_id_def
-    assert i2.call("box.space._index:get", [666, 1]) == tt_bucket_id_def
+    assert i1.call("box.space._index:get", [space_id, 1]) == tt_bucket_id_def
+    assert i2.call("box.space._index:get", [space_id, 1]) == tt_bucket_id_def
 
     # Compact the log to trigger snapshot for the newcommer
     i1.raft_compact_log()
@@ -425,14 +437,14 @@ def test_ddl_from_snapshot(cluster: Cluster):
 
     # A replicaset master catches up from snapshot
     i3 = cluster.add_instance(wait_online=True, replicaset_id="R2")
-    assert i3.call("box.space._space:get", 666) == tt_space_def
-    assert i3.call("box.space._index:get", [666, 0]) == tt_pk_def
-    assert i3.call("box.space._index:get", [666, 1]) == tt_bucket_id_def
+    assert i3.call("box.space._space:get", space_id) == tt_space_def
+    assert i3.call("box.space._index:get", [space_id, 0]) == tt_pk_def
+    assert i3.call("box.space._index:get", [space_id, 1]) == tt_bucket_id_def
     assert i3.call("box.space._schema:get", "pico_schema_version")[1] == 1
 
     # A replicaset follower catches up from snapshot
     i4 = cluster.add_instance(wait_online=True, replicaset_id="R2")
-    assert i4.call("box.space._space:get", 666) == tt_space_def
-    assert i4.call("box.space._index:get", [666, 0]) == tt_pk_def
-    assert i4.call("box.space._index:get", [666, 1]) == tt_bucket_id_def
+    assert i4.call("box.space._space:get", space_id) == tt_space_def
+    assert i4.call("box.space._index:get", [space_id, 0]) == tt_pk_def
+    assert i4.call("box.space._index:get", [space_id, 1]) == tt_bucket_id_def
     assert i4.call("box.space._schema:get", "pico_schema_version")[1] == 1

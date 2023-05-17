@@ -64,9 +64,10 @@ def test_select(cluster: Cluster):
     cluster.deploy(instance_count=2)
     i1, i2 = cluster.instances
 
+    space_id = 739
     index = i1.ddl_create_space(
         dict(
-            id=666,
+            id=space_id,
             name="T",
             format=[
                 dict(name="A", type="integer", is_nullable=False),
