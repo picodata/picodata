@@ -41,18 +41,12 @@ crate::define_rpc_request! {
         let mut node_impl = node.node_impl();
         let status = node.status();
 
-        let check_term = |requested_term| -> Result<()> {
-            if requested_term != status.term {
-                Err(TraftError::TermMismatch {
-                    requested: requested_term,
-                    current: status.term,
-                })
-            } else {
-                Ok(())
-            }
-        };
-
-        check_term(requested_term)?;
+        if requested_term != status.term {
+            return Err(TraftError::TermMismatch {
+                requested: requested_term,
+                current: status.term,
+            });
+        }
         if status.leader_id != Some(node.raft_id()) {
             // Nearly impossible error indicating invalid request.
             return Err(TraftError::NotALeader);
@@ -75,7 +69,14 @@ crate::define_rpc_request! {
 
         // Also check that requested index actually belongs to the
         // requested term.
-        check_term(raft_log.term(requested).unwrap_or(0))?;
+        let entry_term = raft_log.term(requested).unwrap_or(0);
+        if entry_term != status.term {
+            return Err(Error::EntryTermMismatch {
+                index: requested,
+                expected_term: status.term,
+                actual_term: entry_term,
+            }.into());
+        }
 
         let last_persisted = raft::Storage::last_index(raft_storage)?;
         assert!(last_persisted <= last);
@@ -194,6 +195,14 @@ pub enum Error {
     ConflictFound {
         requested: RaftIndex,
         conflict_index: RaftIndex,
+    },
+
+    /// Checking the predicate revealed a collision.
+    #[error("entry at index {index} has term {actual_term}, request implies term {expected_term}")]
+    EntryTermMismatch {
+        index: RaftIndex,
+        expected_term: RaftTerm,
+        actual_term: RaftTerm,
     },
 
     #[error("space {space} is prohibited for use in a predicate")]

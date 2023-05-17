@@ -52,7 +52,7 @@ def test_cas_errors(instance: Instance):
         )
     assert e3.value.args == (
         "ER_PROC_C",
-        "operation request from different term 1, current term is 2",
+        "compare-and-swap request failed: entry at index 1 has term 1, request implies term 2",
     )
 
     # Wrong index (too big)
