@@ -418,12 +418,11 @@ impl ConnectionPool {
         R: rpc::Request,
     {
         let (tx, mut rx) = oneshot::channel();
-        let id_dbg = format!("{id:?}");
         id.get_or_create_in(self)?.rpc(req, move |res| {
             if tx.send(res).is_err() {
                 tlog!(
-                    Warning,
-                    "skipping call: pool worker receiver dropped for id: {id_dbg}"
+                    Debug,
+                    "rpc response ignored because caller dropped the future"
                 )
             }
         });

@@ -1,6 +1,5 @@
 import pytest
-import time
-from conftest import Cluster, ReturnError
+from conftest import Cluster, ReturnError, TarantoolError
 
 
 def test_ddl_create_space_lua(cluster: Cluster):
@@ -352,12 +351,13 @@ def test_ddl_create_sharded_space(cluster: Cluster):
 
 
 def test_ddl_create_space_partial_failure(cluster: Cluster):
-    i1, i2, i3 = cluster.deploy(instance_count=3)
+    # i2 & i3 are for quorum
+    i1, i2, i3, i4, i5 = cluster.deploy(instance_count=5)
 
-    # Create a space on one instance
-    # which will conflict with the clusterwide space.
+    # Create a conflict to block clusterwide space creation.
     space_name = "space_name_conflict"
-    i3.eval("box.schema.space.create(...)", space_name)
+    i4.eval("box.schema.space.create(...)", space_name)
+    i5.eval("box.schema.space.create(...)", space_name)
 
     # Propose a space creation which will fail
     space_id = 876
@@ -370,52 +370,64 @@ def test_ddl_create_space_partial_failure(cluster: Cluster):
     )
     index = i1.propose_create_space(space_def)
 
-    i2.call(".proc_sync_raft", index, (3, 0))
-    i3.call(".proc_sync_raft", index, (3, 0))
+    i2.raft_wait_index(index)
+    i3.raft_wait_index(index)
+    i4.raft_wait_index(index)
+    i5.raft_wait_index(index)
 
     # No space was created
-    assert i1.call("box.space._pico_space:get", space_id) is None
-    assert i2.call("box.space._pico_space:get", space_id) is None
-    assert i3.call("box.space._pico_space:get", space_id) is None
     assert i1.call("box.space._space:get", space_id) is None
     assert i2.call("box.space._space:get", space_id) is None
     assert i3.call("box.space._space:get", space_id) is None
+    assert i4.call("box.space._space:get", space_id) is None
+    assert i5.call("box.space._space:get", space_id) is None
 
-    # Put i3 to sleep
-    i3.terminate()
+    # Put one of the conflicting instances to sleep, to showcase it doesn't fix
+    # the conflict
+    i5.terminate()
 
-    # Propose the same space creation which this time succeeds, because there's
-    # no conflict on any online instances.
-    index = i1.propose_create_space(space_def)
-    i2.call(".proc_sync_raft", index, (3, 0))
+    # Fix the conflict on the other instance.
+    i4.eval("box.space[...]:drop()", space_name)
 
+    # Propose again, now the proposal hangs indefinitely, because all replicaset
+    # masters are required to be present during schema change, but i5 is asleep.
+    index = i1.propose_create_space(space_def, wait_index=False)
+    with pytest.raises(TarantoolError, match="timeout"):
+        i1.raft_wait_index(index, timeout=3)
+
+    entry, *_ = i1.call(
+        "box.space._raft_log:select", None, dict(iterator="lt", limit=1)
+    )
+    # Has not yet been finalized
+    assert entry[4][1][0] == "ddl_prepare"
+
+    # Expel the last conflicting instance to fix the conflict.
+    i1.call("pico.expel", "i5")
+    applied_index = i1.call("box.space._raft_state:get", "applied")[1]
+
+    # After that expel we expect a ddl commit
+    i1.raft_wait_index(applied_index + 1)
+    i2.raft_wait_index(applied_index + 1)
+    i3.raft_wait_index(applied_index + 1)
+    i4.raft_wait_index(applied_index + 1)
+
+    # Now ddl has been applied
     assert i1.call("box.space._space:get", space_id) is not None
     assert i2.call("box.space._space:get", space_id) is not None
-
-    # Wake i3 up.
-    i3.start()
-    time.sleep(2)
-    # It's locked while trying to apply a confliciting ddl op.
-    assert i1.current_grade(i3.instance_id)["variant"] == "Replicated"
-
-    # Solve the conflict.
-    i3.eval("box.space[...]:drop()", space_name)
-    i3.wait_online()
+    assert i3.call("box.space._space:get", space_id) is not None
+    assert i4.call("box.space._space:get", space_id) is not None
 
 
 def test_successful_wakeup_after_ddl(cluster: Cluster):
     # Manual replicaset distribution.
-    # 5 instances are needed for quorum (2 go offline).
     i1 = cluster.add_instance(replicaset_id="r1", wait_online=True)
-    i2 = cluster.add_instance(replicaset_id="r1", wait_online=True)
+    i2 = cluster.add_instance(replicaset_id="r2", wait_online=True)
     i3 = cluster.add_instance(replicaset_id="r2", wait_online=True)
-    i4 = cluster.add_instance(replicaset_id="r2", wait_online=True)
-    i5 = cluster.add_instance(replicaset_id="r3", wait_online=True)
 
-    # This is a replicaset follower which will be catching up
-    i4.terminate()
-    # This is a replicaset master (sole member) which will be catching up
-    i5.terminate()
+    # This is a replica which will be catching up
+    i3.terminate()
+    # Replicaset master cannot wakeup after a ddl, because all masters must be
+    # present for the ddl to be committed.
 
     # Propose a space creation which will succeed
     space_id = 901
@@ -429,22 +441,17 @@ def test_successful_wakeup_after_ddl(cluster: Cluster):
     index = i1.create_space(space_def)
 
     i2.call(".proc_sync_raft", index, (3, 0))
-    i3.call(".proc_sync_raft", index, (3, 0))
 
     # Space created
     assert i1.call("box.space._space:get", space_id) is not None
     assert i2.call("box.space._space:get", space_id) is not None
+
+    # Wake up the catching-up instance.
+    i3.start()
+    i3.wait_online()
+
+    # It caught up!
     assert i3.call("box.space._space:get", space_id) is not None
-
-    # Wake up the catcher-uppers
-    i4.start()
-    i5.start()
-    i4.wait_online()
-    i5.wait_online()
-
-    # They caught up!
-    assert i4.call("box.space._space:get", space_id) is not None
-    assert i5.call("box.space._space:get", space_id) is not None
 
 
 def test_ddl_from_snapshot_at_boot(cluster: Cluster):

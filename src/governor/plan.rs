@@ -333,9 +333,11 @@ pub(super) fn action_plan<'i>(
                     "couldn't find instance with id {}, which is chosen as master of replicaset {}",
                     r.master_id, r.replicaset_id,
                 );
+                // Send them a request anyway just to be safe
+                targets.push(&r.master_id);
                 continue;
             };
-            if !master.may_respond() {
+            if has_grades!(master, Expelled -> *) {
                 continue;
             }
             targets.push(&master.instance_id);

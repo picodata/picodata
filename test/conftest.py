@@ -631,7 +631,7 @@ class Instance:
         # Index of the corresponding ddl abort / ddl commit entry
         index_fin = index + 1
         if wait_index:
-            self.call(".proc_sync_raft", index_fin, [timeout, 0], timeout=timeout)
+            self.call(".proc_sync_raft", index_fin, [timeout, 0], timeout)
 
         return index_fin
 
