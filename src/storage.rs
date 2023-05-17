@@ -218,16 +218,8 @@ macro_rules! define_clusterwide_spaces {
                 let space = space.as_ref();
                 match space {
                     $( $cw_space_name => Ok(self.$cw_field.space.clone()), )+
-                    _ => {
-                        Space::find(space).ok_or_else(|| {
-                            tarantool::set_error!(
-                                tarantool::error::TarantoolErrorCode::NoSuchSpace,
-                                "no such space \"{}\"",
-                                space
-                            );
-                            tarantool::error::TarantoolError::last().into()
-                        })
-                    }
+                    _ => space_by_name(space),
+
                 }
             }
 
@@ -254,10 +246,21 @@ macro_rules! define_clusterwide_spaces {
                 Ok(())
             }
 
+            /// This doesn't have `&self` parameter, because it is called from
+            /// RaftSpaceAccess, which doesn't have a reference to Node at least
+            /// for now.
             pub fn snapshot_data() -> tarantool::Result<SnapshotData> {
-                let space_dumps = vec![
-                    $( $cw_space::$cw_space_var.dump()?, )+
+                let mut space_dumps = vec![
+                    $( Self::space_dump(&$cw_space::$cw_space_var)?, )+
                 ];
+
+                let pico_space = space_by_name(&ClusterwideSpace::Space)?;
+                let iter = pico_space.select(IteratorType::All, &())?;
+                for tuple in iter {
+                    let space_def: SpaceDef = tuple.decode()?;
+                    space_dumps.push(Self::space_dump(&space_def.name)?);
+                }
+
                 Ok(SnapshotData { space_dumps })
             }
         }
@@ -306,6 +309,18 @@ macro_rules! define_clusterwide_spaces {
             }
         )+
     }
+}
+
+fn space_by_name(space_name: &str) -> tarantool::Result<Space> {
+    let space = Space::find(space_name).ok_or_else(|| {
+        tarantool::set_error!(
+            tarantool::error::TarantoolErrorCode::NoSuchSpace,
+            "no such space \"{}\"",
+            space_name
+        );
+        tarantool::error::TarantoolError::last()
+    })?;
+    Ok(space)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -425,6 +440,26 @@ define_clusterwide_spaces! {
 }
 
 impl Clusterwide {
+    fn space_dump(space_name: &str) -> tarantool::Result<SpaceDump> {
+        let space = space_by_name(space_name)?;
+        let mut array_writer = ArrayWriter::from_vec(Vec::with_capacity(space.bsize()?));
+        for t in space.select(IteratorType::All, &())? {
+            array_writer.push_tuple(&t)?;
+        }
+        let tuples = array_writer.finish()?.into_inner();
+        // SAFETY: ArrayWriter guarantees the result is a valid msgpack array
+        let tuples = unsafe { TupleBuffer::from_vec_unchecked(tuples) };
+        tlog!(
+            Info,
+            "generated snapshot for clusterwide space '{space_name}': {} bytes",
+            tuples.len()
+        );
+        Ok(SpaceDump {
+            space: space_name.into(),
+            tuples,
+        })
+    }
+
     pub fn apply_snapshot_data(&self, raw_data: &[u8], is_master: bool) -> Result<()> {
         let data = SnapshotData::decode(raw_data)?;
         let mut dont_exist_yet = Vec::new();
@@ -442,10 +477,29 @@ impl Clusterwide {
 
         // If we're not the replication master, the rest of the data will come
         // via tarantool replication.
-        if !is_master {
-            return Ok(());
+        if is_master {
+            self.apply_ddl_changes_on_replicaset_master()?;
         }
 
+        // These are likely globally distributed user-defined spaces, which
+        // just got defined from the metadata which arrived in the _pico_space
+        // dump.
+        for space_dump in &dont_exist_yet {
+            let Ok(space) = self.space_by_name(&space_dump.space) else {
+                crate::warn_or_panic!("a dump for a non existent space '{}' arrived via snapshot", space_dump.space);
+                continue;
+            };
+            space.truncate()?;
+            let tuples = space_dump.tuples.as_ref();
+            for tuple in ValueIter::from_array(tuples).map_err(TntError::from)? {
+                space.insert(RawBytes::new(tuple))?;
+            }
+        }
+
+        Ok(())
+    }
+
+    pub fn apply_ddl_changes_on_replicaset_master(&self) -> traft::Result<()> {
         let sys_space = Space::from(SystemSpace::Space);
         let sys_index = Space::from(SystemSpace::Index);
         let mut new_pico_schema_version = pico_schema_version()?;
@@ -498,21 +552,6 @@ impl Clusterwide {
         // TODO: check if a space exists here in box.space._space, but doesn't
         // exist in pico._space, then delete it
 
-        // These are likely globally distributed user-defined spaces, which
-        // just got defined from the metadata which arrived in the _pico_space
-        // dump.
-        for space_dump in &dont_exist_yet {
-            let Ok(space) = self.space_by_name(&space_dump.space) else {
-                crate::warn_or_panic!("a dump for a non existent space '{}' arrived via snapshot", space_dump.space);
-                continue;
-            };
-            space.truncate()?;
-            let tuples = space_dump.tuples.as_ref();
-            for tuple in ValueIter::from_array(tuples).map_err(TntError::from)? {
-                space.insert(RawBytes::new(tuple))?;
-            }
-        }
-
         Ok(())
     }
 
@@ -521,11 +560,13 @@ impl Clusterwide {
     pub(crate) fn key_def(&self, space: &str, index: IndexId) -> tarantool::Result<Rc<KeyDef>> {
         static mut KEY_DEF: Option<HashMap<(ClusterwideSpace, IndexId), Rc<KeyDef>>> = None;
         let key_defs = unsafe { KEY_DEF.get_or_insert_with(HashMap::new) };
-        if let Some(sys_space) = space.parse::<ClusterwideSpace>().ok() {
+        if let Ok(sys_space) = space.parse::<ClusterwideSpace>() {
             let key_def = match key_defs.entry((sys_space, index)) {
                 Entry::Occupied(o) => o.into_mut(),
                 Entry::Vacant(v) => {
-                    let space = self.space_by_name(space).expect("system spaces are always present");
+                    let space = self
+                        .space_by_name(space)
+                        .expect("system spaces are always present");
                     let index = unsafe { Index::from_ids_unchecked(space.id(), index) };
                     let key_def = index.meta()?.to_key_def();
                     // System space definition's never change during a single
@@ -536,7 +577,9 @@ impl Clusterwide {
             return Ok(key_def.clone());
         }
 
-        let space = self.space_by_name(space).expect("system spaces are always present");
+        let space = self
+            .space_by_name(space)
+            .expect("system spaces are always present");
         let index = unsafe { Index::from_ids_unchecked(space.id(), index) };
         let key_def = index.meta()?.to_key_def();
         Ok(Rc::new(key_def))
@@ -551,11 +594,13 @@ impl Clusterwide {
     ) -> tarantool::Result<Rc<KeyDef>> {
         static mut KEY_DEF: Option<HashMap<(ClusterwideSpace, IndexId), Rc<KeyDef>>> = None;
         let key_defs = unsafe { KEY_DEF.get_or_insert_with(HashMap::new) };
-        if let Some(sys_space) = space.parse::<ClusterwideSpace>().ok() {
+        if let Ok(sys_space) = space.parse::<ClusterwideSpace>() {
             let key_def = match key_defs.entry((sys_space, index)) {
                 Entry::Occupied(o) => o.into_mut(),
                 Entry::Vacant(v) => {
-                    let space = self.space_by_name(space).expect("system spaces are always present");
+                    let space = self
+                        .space_by_name(space)
+                        .expect("system spaces are always present");
                     let index = unsafe { Index::from_ids_unchecked(space.id(), index) };
                     let key_def = index.meta()?.to_key_def_for_key();
                     // System space definition's never change during a single
@@ -566,7 +611,9 @@ impl Clusterwide {
             return Ok(key_def.clone());
         }
 
-        let space = self.space_by_name(space).expect("system spaces are always present");
+        let space = self
+            .space_by_name(space)
+            .expect("system spaces are always present");
         let index = unsafe { Index::from_ids_unchecked(space.id(), index) };
         let key_def = index.meta()?.to_key_def_for_key();
         Ok(Rc::new(key_def))
@@ -631,26 +678,6 @@ impl ClusterwideSpace {
     #[inline]
     pub fn replace(&self, tuple: &impl ToTupleBuffer) -> tarantool::Result<Tuple> {
         self.get()?.replace(tuple)
-    }
-
-    pub fn dump(&self) -> tarantool::Result<SpaceDump> {
-        let space = self.get()?;
-        let mut array_writer = ArrayWriter::from_vec(Vec::with_capacity(space.bsize()?));
-        for t in self.get()?.select(IteratorType::All, &())? {
-            array_writer.push_tuple(&t)?;
-        }
-        let tuples = array_writer.finish()?.into_inner();
-        // SAFETY: ArrayWriter guarantees the result is a valid msgpack array
-        let tuples = unsafe { TupleBuffer::from_vec_unchecked(tuples) };
-        tlog!(
-            Info,
-            "generated snapshot for clusterwide space '{self}': {} bytes",
-            tuples.len()
-        );
-        Ok(SpaceDump {
-            space: (*self).into(),
-            tuples,
-        })
     }
 }
 
