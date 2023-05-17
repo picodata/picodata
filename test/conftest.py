@@ -547,11 +547,11 @@ class Instance:
             ddl=dict(kind="create_space", **space_def),
         )
         # TODO: rewrite the test using pico.cas
-        index = self.call("pico.raft_propose", op)
+        index = self.call("pico.raft_propose", op, timeout=timeout)
         # Index of the corresponding ddl abort / ddl commit entry
         index_fin = index + 1
         if wait_index:
-            self.call(".proc_sync_raft", index_fin, [timeout, 0])
+            self.call(".proc_sync_raft", index_fin, [timeout, 0], timeout=timeout)
 
         return index_fin
 
