@@ -13,7 +13,7 @@ def test_global_space_dml_catchup_by_log(cluster: Cluster):
     # Catcher-upper replicaset follower
     i5 = cluster.add_instance(wait_online=True, replicaset_id="r2")
 
-    index = i1.ddl_create_space(
+    cluster.create_space(
         dict(
             id=812,
             name="candy",
@@ -22,11 +22,10 @@ def test_global_space_dml_catchup_by_log(cluster: Cluster):
                 dict(name="kind", type="string", is_nullable=False),
                 dict(name="kilos", type="number", is_nullable=False),
             ],
-            primary_key=[dict(field="id")],
-            distribution=dict(kind="global"),
+            primary_key=["id"],
+            distribution="global",
         ),
     )
-    i2.raft_wait_index(index, 3)
 
     # Some dml
     index = i1.cas("insert", "candy", [1, "marshmallow", 2.7])
@@ -103,7 +102,7 @@ def test_global_space_dml_catchup_by_snapshot(cluster: Cluster):
     # Catcher-upper replicaset follower
     i5 = cluster.add_instance(wait_online=True, replicaset_id="r2")
 
-    index = i1.ddl_create_space(
+    cluster.create_space(
         dict(
             id=812,
             name="candy",
@@ -112,11 +111,10 @@ def test_global_space_dml_catchup_by_snapshot(cluster: Cluster):
                 dict(name="kind", type="string", is_nullable=False),
                 dict(name="kilos", type="number", is_nullable=False),
             ],
-            primary_key=[dict(field="id")],
-            distribution=dict(kind="global"),
-        ),
+            primary_key=["id"],
+            distribution="global",
+        )
     )
-    i2.raft_wait_index(index, 3)
 
     # Some dml
     index = i1.cas("insert", "candy", [1, "marshmallow", 2.7])

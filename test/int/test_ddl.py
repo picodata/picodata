@@ -95,20 +95,15 @@ def test_ddl_create_space_bulky(cluster: Cluster):
     ############################################################################
     # Propose a space creation which will succeed
 
-    commit_index = i1.propose_create_space(
+    cluster.create_space(
         dict(
             id=space_id,
             name="stuff",
             format=[dict(name="id", type="unsigned", is_nullable=False)],
-            primary_key=[dict(field="id")],
-            distribution=dict(kind="global"),
+            primary_key=["id"],
+            distribution="global",
         ),
     )
-
-    i1.call(".proc_sync_raft", commit_index, (3, 0))
-    i2.call(".proc_sync_raft", commit_index, (3, 0))
-    i3.call(".proc_sync_raft", commit_index, (3, 0))
-    i4.call(".proc_sync_raft", commit_index, (3, 0))
 
     # This time schema version did change
     assert i1.call("box.space._pico_property:get", "current_schema_version")[1] == 2
@@ -210,7 +205,7 @@ def test_ddl_create_sharded_space(cluster: Cluster):
     # Propose a space creation which will succeed
     schema_version = i1.next_schema_version()
     space_id = 679
-    index = i1.propose_create_space(
+    cluster.create_space(
         dict(
             id=space_id,
             name="stuff",
@@ -219,13 +214,10 @@ def test_ddl_create_sharded_space(cluster: Cluster):
                 dict(name="foo", type="integer", is_nullable=False),
                 dict(name="bar", type="string", is_nullable=False),
             ],
-            primary_key=[dict(field="id")],
-            distribution=dict(kind="sharded_implicitly", sharding_key=["foo", "bar"]),
+            primary_key=["id"],
+            distribution=dict(sharding_key=["foo", "bar"], sharding_fn="murmur3"),
         ),
     )
-
-    i1.call(".proc_sync_raft", index, (3, 0))
-    i2.call(".proc_sync_raft", index, (3, 0))
 
     ############################################################################
     # Space was created and is operable
@@ -381,10 +373,10 @@ def test_successful_wakeup_after_ddl(cluster: Cluster):
         id=space_id,
         name="space_name_conflict",
         format=[dict(name="id", type="unsigned", is_nullable=False)],
-        primary_key=[dict(field="id")],
-        distribution=dict(kind="global"),
+        primary_key=["id"],
+        distribution="global",
     )
-    index = i1.propose_create_space(space_def)
+    index = i1.create_space(space_def)
 
     i2.call(".proc_sync_raft", index, (3, 0))
     i3.call(".proc_sync_raft", index, (3, 0))
@@ -416,17 +408,15 @@ def test_ddl_from_snapshot(cluster: Cluster):
     # TODO: check other ddl operations
     # Propose a space creation which will succeed
     space_id = 632
-    index = i1.propose_create_space(
+    cluster.create_space(
         dict(
             id=space_id,
             name="stuff",
             format=[dict(name="id", type="unsigned", is_nullable=False)],
-            primary_key=[dict(field="id")],
-            distribution=dict(kind="sharded_implicitly", sharding_key=["id"]),
+            primary_key=["id"],
+            distribution=dict(sharding_key=["id"], sharding_fn="murmur3"),
         ),
     )
-
-    i2.call(".proc_sync_raft", index, (3, 0))
 
     tt_space_def = [
         space_id,
