@@ -1,5 +1,5 @@
 import pytest
-from conftest import Instance, TarantoolError
+from conftest import Instance, TarantoolError, CasRange
 
 _3_SEC = 3
 
@@ -88,10 +88,7 @@ def test_cas_errors(instance: Instance):
                 "insert",
                 space,
                 [0],
-                range=(
-                    dict(kind="included", value=0),
-                    dict(kind="included", value=0),
-                ),
+                range=CasRange(eq=0),
             )
         assert e5.value.args == (
             "ER_PROC_C",
@@ -127,10 +124,7 @@ def test_cas_predicate(instance: Instance):
             "_pico_property",
             ["fruit", "orange"],
             index=read_index,
-            range=(
-                dict(kind="included", value="fruit"),
-                dict(kind="included", value="fruit"),
-            ),
+            range=CasRange(eq="fruit"),
         )
     assert e5.value.args == (
         "ER_PROC_C",
@@ -145,10 +139,7 @@ def test_cas_predicate(instance: Instance):
         "_pico_property",
         ["flower", "tulip"],
         index=read_index,
-        range=(
-            dict(kind="included", value="flower"),
-            dict(kind="included", value="flower"),
-        ),
+        range=CasRange(eq="flower"),
     )
     assert ret == read_index + 2
     instance.call(".proc_sync_raft", ret, (_3_SEC, 0))

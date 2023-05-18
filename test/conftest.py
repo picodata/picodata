@@ -195,6 +195,64 @@ class RaftStatus:
     leader_id: int | None = None
 
 
+class CasRange:
+    key_min = dict(kind="unbounded", value=None)
+    key_max = dict(kind="unbounded", value=None)
+    repr_min = "unbounded"
+    repr_max = "unbounded"
+
+    @property
+    def key_min_packed(self) -> dict:
+        key = self.key_min.copy()
+        key["value"] = msgpack.packb([key["value"]])
+        return key
+
+    @property
+    def key_max_packed(self) -> dict:
+        key = self.key_max.copy()
+        key["value"] = msgpack.packb([key["value"]])
+        return key
+
+    def __repr__(self):
+        return f"CasRange({self.repr_min}, {self.repr_max})"
+
+    def __init__(self, gt=None, ge=None, lt=None, le=None, eq=None):
+        """
+        Creates a CasRange from the specified bounds.
+
+        To specify a range for exactly one key use only: `eq`.
+        Example: `CasRange(eq=1) # [1,1]`
+
+        To specify a range between lower and upper bound use:
+        1. `gt` - greater then - an exclusive lower bound
+        2. `ge` - greater or equal - an inclusive lower bound
+        3. `lt` - less then - an exclusive upper bound
+        4. `le` - less or equal - an inclusive upper bound
+        Example: `CasRange(ge=1, lt=3) # [1,3)`
+
+        If only one lower or upper bound is specified, the other bound will be assumed `unbounded`.
+        Example: `CasRange(ge=1) # [1, +infinity)`
+        """
+        if gt is not None:
+            self.key_min = dict(kind="excluded", value=gt)
+            self.repr_min = f'gt="{gt}"'
+        if ge is not None:
+            self.key_min = dict(kind="included", value=ge)
+            self.repr_min = f'ge="{ge}"'
+
+        if lt is not None:
+            self.key_max = dict(kind="excluded", value=lt)
+            self.repr_max = f'lt="{lt}"'
+        if le is not None:
+            self.key_max = dict(kind="included", value=le)
+            self.repr_max = f'le="{le}"'
+        if eq is not None:
+            self.key_min = dict(kind="included", value=eq)
+            self.key_max = dict(kind="included", value=eq)
+            self.repr_min = f'ge="{eq}"'
+            self.repr_max = f'le="{eq}"'
+
+
 color = SimpleNamespace(
     **{
         f"{prefix}{color}": f"\033[{ansi_color_code}{ansi_effect_code}m{{0}}\033[0m".format
@@ -465,7 +523,7 @@ class Instance:
         tuple: Any,  # TODO tuple, not any
         index: int | None = None,
         term: int | None = None,
-        range: Any | None = None,  # TODO better types for bounds
+        range: CasRange | None = None,  # TODO better types for bounds
     ) -> int:
         """
         Performs a clusterwide compare and swap operation.
@@ -482,7 +540,7 @@ class Instance:
 
         ASSUMPTIONS
         It is assumed that this operation is called on leader.
-        Failing to do so will result in error.
+        Failing to do so will result in an error.
         """
         if index is None:
             index = self.raft_index()
@@ -490,20 +548,18 @@ class Instance:
         elif term is None:
             term = self.raft_term_by_index(index)
 
+        predicate_range = None
         if range is not None:
-            key_min, key_max = range
-            key_min["value"] = msgpack.packb([key_min["value"]])
-            key_max["value"] = msgpack.packb([key_max["value"]])
-            range = dict(
+            predicate_range = dict(
                 space=space,
-                key_min=key_min,
-                key_max=key_max,
+                key_min=range.key_min_packed,
+                key_max=range.key_max_packed,
             )
 
         predicate = dict(
             index=index,
             term=term,
-            ranges=[range] if range is not None else [],
+            ranges=[predicate_range] if predicate_range is not None else [],
         )
 
         if dml_kind in ["insert", "replace"]:
@@ -873,7 +929,7 @@ class Cluster:
         tuple: Any,  # TODO tuple, not any
         index: int | None = None,
         term: int | None = None,
-        range: Any | None = None,  # TODO better types
+        range: CasRange | None = None,  # TODO better types
         # If specified send CaS through this instance
         instance: Instance | None = None,
     ) -> int:
@@ -900,21 +956,20 @@ class Cluster:
         elif term is None:
             term = instance.raft_term_by_index(index)
 
+        predicate_range = None
         if range is not None:
-            key_min, key_max = range
-            range = dict(
+            predicate_range = dict(
                 space=space,
-                index=instance.eval("return box.space[...].index[0].name", space),
-                key_min=key_min,
-                key_max=key_max,
+                key_min=range.key_min,
+                key_max=range.key_max,
             )
 
         predicate = dict(
             index=index,
             term=term,
-            ranges=[range] if range is not None else [],
+            ranges=[predicate_range] if predicate_range is not None else [],
         )
-        if dml_kind in ["insert", "replace"]:
+        if dml_kind in ["insert", "replace", "delete"]:
             dml = dict(
                 space=space,
                 kind=dml_kind,
