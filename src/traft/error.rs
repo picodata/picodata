@@ -63,6 +63,8 @@ pub enum Error {
 
     #[error("compare-and-swap request failed: {0}")]
     Cas(#[from] crate::traft::rpc::cas::Error),
+    #[error("ddl failed: {0}")]
+    Ddl(#[from] crate::schema::DdlError),
 
     #[error("sbroad: {0}")]
     Sbroad(#[from] sbroad::errors::SbroadError),

@@ -21,6 +21,7 @@ crate::define_rpc_request! {
     }
 }
 
+// TODO: move out to traft as it's used not only in this rpc
 #[inline]
 pub fn wait_for_index_timeout(
     applied: RaftIndex,

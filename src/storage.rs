@@ -755,6 +755,17 @@ impl Properties {
             .unwrap_or_default();
         Ok(res)
     }
+
+    #[inline]
+    pub fn next_schema_version(&self) -> tarantool::Result<u64> {
+        let res = if let Some(version) = self.get(PropertyName::NextSchemaVersion)? {
+            version
+        } else {
+            let current = self.current_schema_version()?;
+            current + 1
+        };
+        Ok(res)
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1373,7 +1384,7 @@ impl Spaces {
     }
 
     #[inline]
-    pub fn by_name(&self, name: String) -> tarantool::Result<Option<SpaceDef>> {
+    pub fn by_name(&self, name: &str) -> tarantool::Result<Option<SpaceDef>> {
         match self.index_name.get(&[name])? {
             Some(tuple) => tuple.decode().map(Some),
             None => Ok(None),

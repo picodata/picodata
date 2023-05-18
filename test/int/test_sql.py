@@ -65,7 +65,7 @@ def test_select(cluster: Cluster):
     i1, i2 = cluster.instances
 
     space_id = 739
-    index = i1.ddl_create_space(
+    index = i1.propose_create_space(
         dict(
             id=space_id,
             name="T",

@@ -259,6 +259,7 @@ impl Predicate {
                 PendingSchemaChange.into(),
                 PendingSchemaVersion.into(),
                 CurrentSchemaVersion.into(),
+                NextSchemaVersion.into(),
             ]
             .into_iter()
             .map(|key: &str| Tuple::new(&(key,)))
@@ -455,16 +456,20 @@ mod tests {
         let space_id = 1;
         let index_id = 1;
 
-        let create_space = builder.create_space(
+        let create_space = builder.with_op(Ddl::CreateSpace {
+            id: space_id,
+            name: space_name.into(),
+            format: vec![],
+            primary_key: vec![],
+            distribution: Distribution::Global,
+        });
+        let drop_space = builder.with_op(Ddl::DropSpace { id: space_id });
+        let create_index = builder.with_op(Ddl::CreateIndex {
             space_id,
-            space_name.into(),
-            vec![],
-            vec![],
-            Distribution::Global,
-        );
-        let drop_space = builder.drop_space(space_id);
-        let create_index = builder.create_index(space_id, index_id, vec![]);
-        let drop_index = builder.drop_index(space_id, index_id);
+            index_id,
+            by_fields: vec![],
+        });
+        let drop_index = builder.with_op(Ddl::DropIndex { space_id, index_id });
 
         let commit = Op::DdlCommit;
         let abort = Op::DdlAbort;
@@ -472,6 +477,7 @@ mod tests {
         let pending_schema_change = (PropertyName::PendingSchemaChange.to_string(),);
         let pending_schema_version = (PropertyName::PendingSchemaChange.to_string(),);
         let current_schema_version = (PropertyName::CurrentSchemaVersion.to_string(),);
+        let next_schema_version = (PropertyName::NextSchemaVersion.to_string(),);
 
         // create_space
         assert!(t(&create_space, Range::new(props).eq(&pending_schema_change)).is_err());
@@ -538,6 +544,7 @@ mod tests {
         assert!(t(&abort, Range::new(props).eq(&pending_schema_change)).is_err());
         assert!(t(&abort, Range::new(props).eq(&pending_schema_version)).is_err());
         assert!(t(&abort, Range::new(props).eq(&current_schema_version)).is_err());
+        assert!(t(&abort, Range::new(props).eq(&next_schema_version)).is_err());
         assert!(t(&abort, Range::new(props).eq(("another_key",))).is_ok());
 
         assert!(t(&abort, Range::new("another_space").eq(("any_key",))).is_ok());

@@ -1,6 +1,6 @@
 use crate::instance::Instance;
 use crate::schema::Distribution;
-use crate::storage::{ClusterwideSpace, ClusterwideSpaceIndex};
+use crate::storage::{Clusterwide, ClusterwideSpace, ClusterwideSpaceIndex};
 use ::tarantool::index::{IndexId, Part};
 use ::tarantool::space::{Field, SpaceId};
 use ::tarantool::tlua;
@@ -402,73 +402,33 @@ pub enum Ddl {
 ///
 /// # Example
 /// ```no_run
-/// use picodata::traft::op::DdlBuilder;
+/// use picodata::traft::op::{DdlBuilder, Ddl};
 ///
 /// // Assuming that space `1` was created.
 /// let op = DdlBuilder::with_schema_version(1)
-///     .drop_space(1);
+///     .with_op(Ddl::DropSpace { id: 1 });
 /// ```
 pub struct DdlBuilder {
     schema_version: u64,
 }
 
 impl DdlBuilder {
+    pub fn new(storage: &Clusterwide) -> super::Result<Self> {
+        let version = storage.properties.next_schema_version()?;
+        Ok(Self::with_schema_version(version))
+    }
+
     /// Sets current schema version.
     pub fn with_schema_version(version: u64) -> Self {
         Self {
             schema_version: version,
         }
     }
-    /// Creates an `Op::DdlPrepare(Ddl::CreateSpace)`.
-    #[inline(always)]
-    pub fn create_space(
-        &self,
-        id: SpaceId,
-        name: String,
-        format: Vec<tarantool::space::Field>,
-        primary_key: Vec<Part>,
-        distribution: Distribution,
-    ) -> Op {
-        Op::DdlPrepare {
-            ddl: Ddl::CreateSpace {
-                id,
-                name,
-                format,
-                primary_key,
-                distribution,
-            },
-            schema_version: self.schema_version,
-        }
-    }
 
-    /// Creates an `Op::DdlPrepare(Ddl::DropSpace)`.
-    #[inline(always)]
-    pub fn drop_space(&self, id: SpaceId) -> Op {
+    pub fn with_op(&self, op: Ddl) -> Op {
         Op::DdlPrepare {
-            ddl: Ddl::DropSpace { id },
             schema_version: self.schema_version,
-        }
-    }
-
-    /// Creates an `Op::DdlPrepare(Ddl::CreateIndex)`.
-    #[inline(always)]
-    pub fn create_index(&self, space_id: SpaceId, index_id: IndexId, by_fields: Vec<Part>) -> Op {
-        Op::DdlPrepare {
-            ddl: Ddl::CreateIndex {
-                space_id,
-                index_id,
-                by_fields,
-            },
-            schema_version: self.schema_version,
-        }
-    }
-
-    /// Creates an `Op::DdlPrepare(Ddl::DropIndex)`.
-    #[inline(always)]
-    pub fn drop_index(&self, space_id: SpaceId, index_id: IndexId) -> Op {
-        Op::DdlPrepare {
-            ddl: Ddl::DropIndex { space_id, index_id },
-            schema_version: self.schema_version,
+            ddl: op,
         }
     }
 }

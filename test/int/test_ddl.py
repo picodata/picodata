@@ -1,5 +1,38 @@
 import pytest
-from conftest import Cluster
+from conftest import Cluster, ReturnError
+
+
+def test_ddl_create_space_lua(cluster: Cluster):
+    i1, i2 = cluster.deploy(instance_count=2)
+
+    # Successful space creation
+    cluster.create_space(
+        dict(
+            id=1,
+            name="some_name",
+            format=[dict(name="id", type="unsigned", is_nullable=False)],
+            primary_key=["id"],
+            distribution="global",
+        )
+    )
+    pico_space_def = [1, "some_name", ["global"], [["id", "unsigned", False]], 1, True]
+    assert i1.call("box.space._pico_space:get", 1) == pico_space_def
+    assert i2.call("box.space._pico_space:get", 1) == pico_space_def
+
+    # Space creation error
+    with pytest.raises(ReturnError) as e1:
+        cluster.create_space(
+            dict(
+                id=2,
+                name="different_name",
+                format=[dict(name="id", type="unsigned", is_nullable=False)],
+                primary_key=["not_defined"],
+                distribution="global",
+            )
+        )
+    assert e1.value.args == (
+        "ddl failed: space creation failed: no field with name: not_defined",
+    )
 
 
 def test_ddl_create_space_bulky(cluster: Cluster):
@@ -21,7 +54,7 @@ def test_ddl_create_space_bulky(cluster: Cluster):
     # Propose a space creation which will fail
 
     space_id = 713
-    abort_index = i1.ddl_create_space(
+    abort_index = i1.propose_create_space(
         dict(
             id=space_id,
             name="stuff",
@@ -31,6 +64,7 @@ def test_ddl_create_space_bulky(cluster: Cluster):
         ),
     )
 
+    # TODO: use `raft_wait_index`
     i1.call(".proc_sync_raft", abort_index, (3, 0))
     i2.call(".proc_sync_raft", abort_index, (3, 0))
     i3.call(".proc_sync_raft", abort_index, (3, 0))
@@ -61,7 +95,7 @@ def test_ddl_create_space_bulky(cluster: Cluster):
     ############################################################################
     # Propose a space creation which will succeed
 
-    commit_index = i1.ddl_create_space(
+    commit_index = i1.propose_create_space(
         dict(
             id=space_id,
             name="stuff",
@@ -176,7 +210,7 @@ def test_ddl_create_sharded_space(cluster: Cluster):
     # Propose a space creation which will succeed
     schema_version = i1.next_schema_version()
     space_id = 679
-    index = i1.ddl_create_space(
+    index = i1.propose_create_space(
         dict(
             id=space_id,
             name="stuff",
@@ -298,7 +332,7 @@ def test_ddl_create_space_partial_failure(cluster: Cluster):
         primary_key=[dict(field="id")],
         distribution=dict(kind="global"),
     )
-    index = i1.ddl_create_space(space_def)
+    index = i1.propose_create_space(space_def)
 
     i2.call(".proc_sync_raft", index, (3, 0))
     i3.call(".proc_sync_raft", index, (3, 0))
@@ -316,7 +350,7 @@ def test_ddl_create_space_partial_failure(cluster: Cluster):
 
     # Propose the same space creation which this time succeeds, because there's
     # no conflict on any online instances.
-    index = i1.ddl_create_space(space_def)
+    index = i1.propose_create_space(space_def)
     i2.call(".proc_sync_raft", index, (3, 0))
 
     assert i1.call("box.space._space:get", space_id) is not None
@@ -350,7 +384,7 @@ def test_successful_wakeup_after_ddl(cluster: Cluster):
         primary_key=[dict(field="id")],
         distribution=dict(kind="global"),
     )
-    index = i1.ddl_create_space(space_def)
+    index = i1.propose_create_space(space_def)
 
     i2.call(".proc_sync_raft", index, (3, 0))
     i3.call(".proc_sync_raft", index, (3, 0))
@@ -382,7 +416,7 @@ def test_ddl_from_snapshot(cluster: Cluster):
     # TODO: check other ddl operations
     # Propose a space creation which will succeed
     space_id = 632
-    index = i1.ddl_create_space(
+    index = i1.propose_create_space(
         dict(
             id=space_id,
             name="stuff",

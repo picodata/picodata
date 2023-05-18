@@ -184,7 +184,7 @@ impl Entry {
 
     /// Returns the contained `Op` if it's an `EntryNormal`
     /// consuming `self` by value.
-    fn into_op(self) -> Option<Op> {
+    pub fn into_op(self) -> Option<Op> {
         match self.context {
             Some(EntryContext::Normal(v)) => Some(v.op),
             Some(EntryContext::ConfChange(_)) => None,

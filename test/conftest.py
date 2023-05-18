@@ -533,7 +533,18 @@ class Instance:
 
         return t[1]
 
-    def ddl_create_space(
+    def create_space(self, params: dict, timeout: float = 3.0) -> int:
+        """
+        Creates a space. Returns a raft index at which a newly created space
+        has to exist on all peers.
+
+        Works through Lua API in difference to `propose_create_space`,
+        which is more low level and directly proposes a raft entry.
+        """
+        index = self.call("pico.create_space", params, timeout)
+        return index
+
+    def propose_create_space(
         self, space_def: Dict[str, Any], wait_index: bool = True, timeout: int = 3
     ) -> int:
         """
@@ -846,6 +857,14 @@ class Cluster:
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
+
+    def create_space(self, params: dict, timeout: float = 3.0):
+        """
+        Creates a space. Waits for all peers to be aware of it.
+        """
+        index = self.instances[0].create_space(params, timeout)
+        for instance in self.instances:
+            instance.raft_wait_index(index)
 
     def cas(
         self,

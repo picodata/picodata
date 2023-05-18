@@ -14,14 +14,15 @@ use std::time::{Duration, Instant};
 use storage::Clusterwide;
 use storage::ToEntryIter as _;
 use storage::{ClusterwideSpace, PropertyName};
-use traft::rpc;
 use traft::rpc::{join, update_instance};
 use traft::RaftSpaceAccess;
+use traft::{rpc, RaftTerm};
 
 use protobuf::Message as _;
 
 use crate::instance::grade::TargetGradeVariant;
 use crate::instance::InstanceId;
+use crate::schema::CreateSpaceParams;
 use crate::tlog::set_log_level;
 use crate::traft::event::Event;
 use crate::traft::op::{self, Op};
@@ -462,21 +463,45 @@ fn picolib_setup(args: &args::Run) {
         tlua::Function::new(
             |op: op::DmlInLua, predicate: rpc::cas::Predicate| -> traft::Result<RaftIndex> {
                 let op = op::Dml::from_lua_args(op).map_err(Error::other)?;
-                compare_and_swap(op.into(), predicate)
+                let (index, _) = compare_and_swap(op.into(), predicate)?;
+                Ok(index)
             },
         ),
     );
+
+    luamod.set("create_space", {
+        tlua::function2(
+            |params: CreateSpaceParams,
+             // Specifying the timeout identifies how long user is ready to wait for ddl to be applied.
+             // But it does not provide guarantees that a ddl will be aborted if wait for commit timeouts.
+             timeout_sec: f64|
+             -> traft::Result<RaftIndex> {
+                let timeout = Duration::from_secs_f64(timeout_sec);
+                let storage = &node::global()?.storage;
+                params.validate(storage)?;
+                // TODO: check space creation and rollback
+                // box.begin() box.schema.space.create() box.rollback()
+                let op = params.into_ddl(storage);
+                let index = schema::prepare_ddl(op, timeout)?;
+                let commit_index = schema::wait_for_ddl_commit(index, timeout)?;
+                Ok(commit_index)
+            },
+        )
+    });
 }
 
 /// Performs a clusterwide compare and swap operation.
 ///
 /// E.g. it checks the `predicate` on leader and if no conflicting entries were found
-/// appends the `op` to the raft log and returns its index.
+/// appends the `op` to the raft log and returns its index and term.
 ///
 /// # Errors
 /// See [`rpc::cas::Error`] for CaS-specific errors.
 /// It can also return general picodata errors in cases of faulty network or storage.
-pub fn compare_and_swap(op: Op, predicate: rpc::cas::Predicate) -> traft::Result<RaftIndex> {
+pub fn compare_and_swap(
+    op: Op,
+    predicate: rpc::cas::Predicate,
+) -> traft::Result<(RaftIndex, RaftTerm)> {
     let node = node::global()?;
     let request = rpc::cas::Request {
         cluster_id: node
@@ -504,7 +529,7 @@ pub fn compare_and_swap(op: Op, predicate: rpc::cas::Predicate) -> traft::Result
         let resp = rpc::network_call(&leader_address, &request);
         let resp = fiber::block_on(resp.timeout(Duration::from_secs(3)));
         match resp {
-            Ok(rpc::cas::Response { index, .. }) => return Ok(index),
+            Ok(rpc::cas::Response { index, term }) => return Ok((index, term)),
             Err(e) => {
                 tlog!(Warning, "{e}");
                 return Err(e.into());
