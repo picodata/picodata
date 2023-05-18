@@ -142,7 +142,7 @@ def test_ddl_create_space_bulky(cluster: Cluster):
         "stuff",
         "memtx",
         0,
-        dict(),
+        dict(group_id=1),
         [dict(name="id", type="unsigned", is_nullable=False)],
     ]
     assert i1.call("box.space._space:get", space_id) == tt_space_def

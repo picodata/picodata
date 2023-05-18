@@ -59,6 +59,11 @@ impl SpaceDef {
             })
             .collect();
 
+        let mut flags = BTreeMap::new();
+        if matches!(self.distribution, Distribution::Global) {
+            flags.insert("group_id".into(), 1.into());
+        }
+
         let space_def = SpaceMetadata {
             id: self.id,
             // Do we want to be more explicit about user_id?
@@ -66,7 +71,7 @@ impl SpaceDef {
             name: self.name.as_str().into(),
             engine: SpaceEngineType::Memtx,
             field_count: 0,
-            flags: Default::default(),
+            flags,
             format,
         };
 
