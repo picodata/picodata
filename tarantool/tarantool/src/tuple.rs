@@ -1214,6 +1214,19 @@ impl KeyDef {
                 .cmp(&0)
         }
     }
+
+    /// Calculate a tuple hash for a given key definition.
+    /// At the moment 32-bit murmur3 hash is used but it may
+    /// change in future.
+    ///
+    /// - `tuple` - tuple
+    ///
+    /// Returns:
+    /// - 32-bit murmur3 hash value
+    #[cfg(feature = "picodata")]
+    pub fn hash(&self, tuple: &Tuple) -> u32 {
+        unsafe { ffi::box_tuple_hash(tuple.ptr.as_ptr(), self.inner.as_ptr()) }
+    }
 }
 
 impl Drop for KeyDef {

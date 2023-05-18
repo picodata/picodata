@@ -883,6 +883,8 @@ extern "C" {
         key_b: *const c_char,
         key_def: *mut BoxKeyDef,
     ) -> c_int;
+    #[cfg(feature = "picodata")]
+    pub fn box_tuple_hash(tuple: *mut BoxTuple, key_def: *mut BoxKeyDef) -> c_uint;
 }
 
 pub(crate) const TUPLE_FIELD_BY_PATH_OLD_API: &str = "tuple_field_raw_by_full_path\0";

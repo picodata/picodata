@@ -555,6 +555,7 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                     sql::prepared_invalid_params,
                     tuple_picodata::tuple_format_get_names,
                     tuple_picodata::tuple_as_named_buffer,
+                    tuple_picodata::tuple_hash,
                 ])
             }
             tests
