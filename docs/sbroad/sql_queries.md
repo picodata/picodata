@@ -442,7 +442,7 @@ sbroad.execute([[insert into "products" values (1, 'Woody', 2561)]], {})
 ### **EXPLAIN**
 ![Explain](ebnf/EXPLAIN.svg)
 
-### Примеры запросов
+### Простые запросы
 Для начала рассмотрим план простого запроса на получение данных одного столбца таблицы:
 
 ```
@@ -458,12 +458,10 @@ sbroad.execute([[explain select "score" from "scoring"]], {})
 ...
 ```
 Обязательными элементами плана запроса являются `scan` и `projection`.
-Первый узел отвечает за сканирование (получение данных) таблицы, второй — 
-за выборку нужных столбцов. Построение проекции
-(`projection`) всегда происходит после сканирования. В рамках
-построения проекции планировщик явно идентифицирует столбец указанной
-таблицы: `"scoring"."score" -> "score"` читается как _«считать неким
-столбцом "score" конкретный столбец "score" таблицы "scoring"»_.
+Первый узел отвечает за сканирование (получение данных) таблицы, второй
+— за выборку нужных столбцов. Построение проекции (`projection`) всегда
+происходит после сканирования. В рамках построения проекции планировщик
+создает псевдоним для столбца: `"scoring"."score" -> "score"`.
 
 Если в запросе есть условие (`where`), то в план добавляется узел `selection`:
 
@@ -484,11 +482,13 @@ sbroad.execute([[explain select "score" from "scoring" where "score">70]], {})
 Если `projection` выбирает столбцы (атрибуты таблицы), то `selection`
 фильтрует данные по строкам (`ROW`).
 
-Фраза `selection ROW("scoring"."score") > ROW(70)'` читается как
-_«значение строки столбца "score" таблицы "scoring" должно превышать
-значение строки с содержимым 70»_.
+Фраза `selection ROW("scoring"."score") > ROW(70)'` является результатом
+трансформации фильтра `where "score" > 70` в `where ("score") > (70)`, т.е.
+превращения значения в строку из одного столбца. 
 
+### Запрос с несколькими проекциями
 Пример построения проекции из более сложного запроса:
+
 ```
 sbroad.execute([[explain select "id","name" from "products" except select "id","order" from "orders" where "amount">50]], {})
 ```
@@ -511,6 +511,58 @@ sbroad.execute([[explain select "id","name" from "products" except select "id","
 сканирование таблицы и, опционально, дополнительный фильтр по строкам
 (`selection`).
 
+### Варианты перемещения данных
+В зависимости от состава SQL-команды, планировщик в разборе плана запроса может отобразить значение параметра `motion`. Этот параметр указывает на характер перемещения данных между узлами кластера при выполнении запроса. Для `motion` значимым свойством является `policy`, т.е. тип перемещения данных. Таких типов в Picodata SQL имеется три:
+
+1. **Локальный**. Перемещения данных нет. Примером может служить `SELECT`-запрос, в котором отсутствует группировка (`GROUP BY`) или соединение столбцов таблиц (`JOIN`). Планировщик не отображает какие-либо сведения о `motion` в таком плане запроса.
+1. **Частичный**. При выполнении запроса на каждый узел кластера будет
+   отправлена некоторая часть таблицы. Это характерно для
+   `SELECT`-запросов с использованием `GROUP BY` и для `INSERT`-запросов. Планировщик отобразит значение `motion [policy:   segment]`.
+1. **Полный**. На каждый узел кластера будет отправлена вся таблица. Примером является получением таблицы из столбцов других таблиц через `JOIN`. Планировщик отобразит значение `motion [policy:   full]`.
+
+#### Пример `motion [policy:   segment]`.
+```
+sbroad.execute([[explain insert into "orders" ("id", "order", "amount") values (?, ?, ?)]], {12, "Sid Phillips", 98})
+```
+Вывод в консоль:
+```
+---
+[
+ 'insert "orders"', 
+ '    projection (COL_0 -> COL_0, COL_1 -> COL_1, COL_2 -> COL_2, bucket_id((coalesce((''NULL'', COL_0::string)) || coalesce((''NULL'', COL_1::string)))))',
+ '        scan', 
+ '            projection (COLUMN_1::int -> COL_0, COLUMN_2::string -> COL_1, COLUMN_3::int -> COL_2)', 
+ '                scan', 
+ '                    motion [policy: segment([ref(COLUMN_1), ref(COLUMN_2)])]', 
+ '                        values',
+ '                            value row (data=ROW(12, ''Sid Phillips'', 98))'
+]
+...
+```
+
+#### Пример `motion [policy:   full]`.
+```
+sbroad.execute([[explain select "id","name","product_units","amount" as "orders" from "products" join (select "id" as "number","amount" from "orders") as orders on "products"."id"=orders."number"]], {})
+```
+
+Вывод в консоль:
+```
+---
+- [
+  'projection 
+  ("products"."id" -> "id", "products"."name" -> "name", "products"."product_units" -> "product_units", "ORDERS"."amount" -> "orders")', 
+  '    join on ROW("products"."id") = ROW("ORDERS"."number")', 
+  '        scan "products"', 
+  '            projection
+               ("products"."id" -> "id", "products"."name" -> "name", "products"."product_units" -> "product_units")', 
+               '                scan "products"', 
+               '        motion [policy:   full]', 
+               '            scan "ORDERS"', 
+               '                projection ("orders"."id" -> "number", "orders"."amount" -> "amount")', 
+               '                    scan "orders"'
+  ]
+...
+```
 Читать далее: [Перечень
 поддерживаемых типов данных](../sql_datatypes)
 <!-- ebnf source: https://git.picodata.io/picodata/picodata/sbroad/-/blob/main/doc/sql/query.ebnf -->
