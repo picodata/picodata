@@ -447,7 +447,7 @@ def test_successful_wakeup_after_ddl(cluster: Cluster):
     assert i5.call("box.space._space:get", space_id) is not None
 
 
-def test_ddl_from_snapshot(cluster: Cluster):
+def test_ddl_from_snapshot_at_boot(cluster: Cluster):
     # Second instance is only for quorum
     i1, i2 = cluster.deploy(instance_count=2, init_replication_factor=2)
 
@@ -507,16 +507,78 @@ def test_ddl_from_snapshot(cluster: Cluster):
     i1.raft_compact_log()
     i2.raft_compact_log()
 
-    # A replicaset master catches up from snapshot
+    # A replicaset master boots up from snapshot
     i3 = cluster.add_instance(wait_online=True, replicaset_id="R2")
     assert i3.call("box.space._space:get", space_id) == tt_space_def
     assert i3.call("box.space._index:get", [space_id, 0]) == tt_pk_def
     assert i3.call("box.space._index:get", [space_id, 1]) == tt_bucket_id_def
     assert i3.call("box.space._schema:get", "pico_schema_version")[1] == 1
 
-    # A replicaset follower catches up from snapshot
+    # A replicaset follower boots up from snapshot
     i4 = cluster.add_instance(wait_online=True, replicaset_id="R2")
     assert i4.call("box.space._space:get", space_id) == tt_space_def
     assert i4.call("box.space._index:get", [space_id, 0]) == tt_pk_def
     assert i4.call("box.space._index:get", [space_id, 1]) == tt_bucket_id_def
     assert i4.call("box.space._schema:get", "pico_schema_version")[1] == 1
+
+
+def test_ddl_from_snapshot_at_catchup(cluster: Cluster):
+    # Second instance is only for quorum
+    i1 = cluster.add_instance(wait_online=True, replicaset_id="r1")
+    i2 = cluster.add_instance(wait_online=True, replicaset_id="R2")
+    i3 = cluster.add_instance(wait_online=True, replicaset_id="R2")
+
+    i1.assert_raft_status("Leader")
+
+    i3.terminate()
+
+    # TODO: check other ddl operations
+    # Propose a space creation which will succeed
+    space_id = 649
+    index = i1.create_space(
+        dict(
+            id=space_id,
+            name="stuff",
+            format=[dict(name="id", type="unsigned", is_nullable=False)],
+            primary_key=["id"],
+            distribution="global",
+        ),
+    )
+    i1.raft_wait_index(index)
+    i2.raft_wait_index(index)
+
+    tt_space_def = [
+        space_id,
+        1,
+        "stuff",
+        "memtx",
+        0,
+        dict(group_id=1),
+        [dict(name="id", type="unsigned", is_nullable=False)],
+    ]
+    assert i1.call("box.space._space:get", space_id) == tt_space_def
+    assert i2.call("box.space._space:get", space_id) == tt_space_def
+
+    tt_pk_def = [
+        space_id,
+        0,
+        "primary_key",
+        "tree",
+        dict(unique=True),
+        [[0, "unsigned", None, False, None]],
+    ]
+    assert i1.call("box.space._index:get", [space_id, 0]) == tt_pk_def
+    assert i2.call("box.space._index:get", [space_id, 0]) == tt_pk_def
+
+    # Compact the log to trigger snapshot applying on the catching up instance
+    i1.raft_compact_log()
+    i2.raft_compact_log()
+
+    # Wake up the catching up instance
+    i3.start()
+    i3.wait_online()
+
+    # A replica catches up by snapshot
+    assert i3.call("box.space._space:get", space_id) == tt_space_def
+    assert i3.call("box.space._index:get", [space_id, 0]) == tt_pk_def
+    assert i3.call("box.space._schema:get", "pico_schema_version")[1] == 1
