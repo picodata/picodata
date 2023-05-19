@@ -3,11 +3,10 @@ use crate::instance::grade::CurrentGrade;
 use crate::instance::{Instance, InstanceId};
 use crate::replicaset::weight;
 use crate::replicaset::{Replicaset, ReplicasetId};
+use crate::rpc;
 use crate::storage::{ClusterwideSpace, PropertyName};
 use crate::tlog;
 use crate::traft::op::Dml;
-use crate::traft::rpc;
-use crate::traft::rpc::{replication, sharding, sync, update_instance};
 use crate::traft::Result;
 use crate::traft::{RaftId, RaftIndex, RaftTerm};
 use ::tarantool::space::UpdateOps;
@@ -82,7 +81,7 @@ pub(super) fn action_plan<'i>(
         if matches!(replicaset, Some(replicaset) if replicaset.master_id == instance_id) {
             let new_master = maybe_responding(instances).find(|p| p.replicaset_id == replicaset_id);
             if let Some(to) = new_master {
-                let rpc = replication::promote::Request {
+                let rpc = rpc::replication::promote::Request {
                     term,
                     applied,
                     timeout: Loop::SYNC_TIMEOUT,
@@ -109,12 +108,12 @@ pub(super) fn action_plan<'i>(
             })
             .map(|instance| &instance.instance_id)
             .collect();
-        let rpc = sharding::Request {
+        let rpc = rpc::sharding::Request {
             term,
             applied,
             timeout: Loop::SYNC_TIMEOUT,
         };
-        let req = update_instance::Request::new(instance_id.clone(), cluster_id)
+        let req = rpc::update_instance::Request::new(instance_id.clone(), cluster_id)
             .with_current_grade((*target_grade).into());
         return Ok(ReconfigureShardingAndDowngrade { targets, rpc, req }.into());
     }
@@ -130,11 +129,11 @@ pub(super) fn action_plan<'i>(
         ..
     }) = to_sync
     {
-        let rpc = sync::Request {
+        let rpc = rpc::sync::Request {
             applied,
             timeout: Loop::SYNC_TIMEOUT,
         };
-        let req = update_instance::Request::new(instance_id.clone(), cluster_id)
+        let req = rpc::update_instance::Request::new(instance_id.clone(), cluster_id)
             .with_current_grade(CurrentGrade::raft_synced(target_grade.incarnation));
         #[rustfmt::skip]
         return Ok(RaftSync { instance_id, rpc, req }.into());
@@ -153,7 +152,7 @@ pub(super) fn action_plan<'i>(
         ..
     }) = to_create_replicaset
     {
-        let rpc = replication::promote::Request {
+        let rpc = rpc::replication::promote::Request {
             term,
             applied,
             timeout: Loop::SYNC_TIMEOUT,
@@ -194,12 +193,12 @@ pub(super) fn action_plan<'i>(
             .filter(|instance| instance.replicaset_id == replicaset_id)
             .map(|instance| &instance.instance_id)
             .collect();
-        let rpc = replication::Request {
+        let rpc = rpc::replication::Request {
             term,
             applied,
             timeout: Loop::SYNC_TIMEOUT,
         };
-        let req = update_instance::Request::new(instance_id.clone(), cluster_id)
+        let req = rpc::update_instance::Request::new(instance_id.clone(), cluster_id)
             .with_current_grade(CurrentGrade::replicated(target_grade.incarnation));
 
         return Ok(Replication { targets, rpc, req }.into());
@@ -226,12 +225,12 @@ pub(super) fn action_plan<'i>(
         let targets = maybe_responding(instances)
             .map(|instance| &instance.instance_id)
             .collect();
-        let rpc = sharding::Request {
+        let rpc = rpc::sharding::Request {
             term,
             applied,
             timeout: Loop::SYNC_TIMEOUT,
         };
-        let req = update_instance::Request::new(instance_id.clone(), cluster_id)
+        let req = rpc::update_instance::Request::new(instance_id.clone(), cluster_id)
             .with_current_grade(CurrentGrade::sharding_initialized(target_grade.incarnation));
         return Ok(ShardingInit { targets, rpc, req }.into());
     }
@@ -243,7 +242,7 @@ pub(super) fn action_plan<'i>(
         .flatten();
     if let Some(Replicaset { master_id, .. }) = to_bootstrap {
         let target = master_id;
-        let rpc = sharding::bootstrap::Request {
+        let rpc = rpc::sharding::bootstrap::Request {
             term,
             applied,
             timeout: Loop::SYNC_TIMEOUT,
@@ -289,7 +288,7 @@ pub(super) fn action_plan<'i>(
         // (i.e. filled up to the replication factor) yet,
         // so we can't configure sharding.
         // So we just upgrade the instances to Online.
-        let req = update_instance::Request::new(instance_id.clone(), cluster_id)
+        let req = rpc::update_instance::Request::new(instance_id.clone(), cluster_id)
             .with_current_grade(CurrentGrade::online(target_grade.incarnation));
         return Ok(SkipSharding { req }.into());
     }
@@ -304,7 +303,7 @@ pub(super) fn action_plan<'i>(
         let targets = maybe_responding(instances)
             .map(|instance| &instance.instance_id)
             .collect();
-        let rpc = sharding::Request {
+        let rpc = rpc::sharding::Request {
             term,
             applied,
             timeout: Loop::SYNC_TIMEOUT,
@@ -330,7 +329,7 @@ pub(super) fn action_plan<'i>(
         ..
     }) = to_online
     {
-        let req = update_instance::Request::new(instance_id.clone(), cluster_id)
+        let req = rpc::update_instance::Request::new(instance_id.clone(), cluster_id)
             .with_current_grade(CurrentGrade::online(target_grade.incarnation));
         return Ok(ToOnline { req }.into());
     }
@@ -426,48 +425,48 @@ pub mod stage {
 
         pub struct TransferMastership<'i> {
             pub to: &'i Instance,
-            pub rpc: replication::promote::Request,
+            pub rpc: rpc::replication::promote::Request,
             pub op: Dml,
         }
 
         pub struct ReconfigureShardingAndDowngrade<'i> {
             pub targets: Vec<&'i InstanceId>,
-            pub rpc: sharding::Request,
-            pub req: update_instance::Request,
+            pub rpc: rpc::sharding::Request,
+            pub req: rpc::update_instance::Request,
         }
 
         pub struct RaftSync<'i> {
             pub instance_id: &'i InstanceId,
-            pub rpc: sync::Request,
-            pub req: update_instance::Request,
+            pub rpc: rpc::sync::Request,
+            pub req: rpc::update_instance::Request,
         }
 
         pub struct CreateReplicaset<'i> {
             pub master_id: &'i InstanceId,
             pub replicaset_id: &'i ReplicasetId,
-            pub rpc: replication::promote::Request,
+            pub rpc: rpc::replication::promote::Request,
             pub op: Dml,
         }
 
         pub struct Replication<'i> {
             pub targets: Vec<&'i InstanceId>,
-            pub rpc: replication::Request,
-            pub req: update_instance::Request,
+            pub rpc: rpc::replication::Request,
+            pub req: rpc::update_instance::Request,
         }
 
         pub struct ShardingInit<'i> {
             pub targets: Vec<&'i InstanceId>,
-            pub rpc: sharding::Request,
-            pub req: update_instance::Request,
+            pub rpc: rpc::sharding::Request,
+            pub req: rpc::update_instance::Request,
         }
 
         pub struct SkipSharding {
-            pub req: update_instance::Request,
+            pub req: rpc::update_instance::Request,
         }
 
         pub struct ShardingBoot<'i> {
             pub target: &'i InstanceId,
-            pub rpc: sharding::bootstrap::Request,
+            pub rpc: rpc::sharding::bootstrap::Request,
             pub op: Dml,
         }
 
@@ -477,12 +476,12 @@ pub mod stage {
 
         pub struct UpdateWeights<'i> {
             pub targets: Vec<&'i InstanceId>,
-            pub rpc: sharding::Request,
+            pub rpc: rpc::sharding::Request,
             pub ops: Vec<Dml>,
         }
 
         pub struct ToOnline {
-            pub req: update_instance::Request,
+            pub req: rpc::update_instance::Request,
         }
 
         pub struct ApplySchemaChange<'i> {

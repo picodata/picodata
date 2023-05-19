@@ -45,7 +45,11 @@ crate::define_rpc_request! {
 }
 
 pub mod promote {
-    use crate::traft::{node, rpc, RaftIndex, RaftTerm, Result};
+    use crate::rpc;
+    use crate::traft::node;
+    use crate::traft::RaftIndex;
+    use crate::traft::RaftTerm;
+    use crate::traft::Result;
     use std::time::Duration;
 
     crate::define_rpc_request! {

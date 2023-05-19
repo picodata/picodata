@@ -18,9 +18,10 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::compare_and_swap;
+use crate::rpc;
 use crate::storage::{set_pico_schema_version, Clusterwide, ClusterwideSpace, PropertyName};
 use crate::traft::op::{Ddl, DdlBuilder, Op};
-use crate::traft::{self, event, node, rpc, RaftIndex};
+use crate::traft::{self, event, node, RaftIndex};
 
 /// Space definition.
 ///

@@ -7,7 +7,6 @@ pub mod node;
 pub mod notify;
 pub mod op;
 pub(crate) mod raft_storage;
-pub mod rpc;
 pub mod topology;
 
 use crate::instance::Instance;
@@ -27,7 +26,6 @@ use protobuf::Message as _;
 
 pub use network::ConnectionPool;
 pub use raft_storage::RaftSpaceAccess;
-pub use rpc::{join, update_instance};
 pub use topology::Topology;
 
 pub type RaftId = u64;

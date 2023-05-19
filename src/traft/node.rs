@@ -11,6 +11,7 @@ use crate::instance::Instance;
 use crate::kvcell::KVCell;
 use crate::loop_start;
 use crate::r#loop::FlowControl;
+use crate::rpc;
 use crate::schema::ddl_abort_on_master;
 use crate::schema::{Distribution, IndexDef, SpaceDef};
 use crate::storage::pico_schema_version;
@@ -24,7 +25,6 @@ use crate::traft::event;
 use crate::traft::event::Event;
 use crate::traft::notify::{notification, Notifier, Notify};
 use crate::traft::op::{Ddl, Dml, Op, OpResult, PersistInstance};
-use crate::traft::rpc::{ddl_apply, join, lsn, update_instance};
 use crate::traft::Address;
 use crate::traft::ConnectionPool;
 use crate::traft::ContextCoercion as _;
@@ -266,7 +266,7 @@ impl Node {
     /// **This function yields**
     pub fn handle_join_request_and_wait(
         &self,
-        req: join::Request,
+        req: rpc::join::Request,
     ) -> traft::Result<(Box<Instance>, HashSet<Address>)> {
         let (notify_addr, notify_instance, replication_addresses) =
             self.raw_operation(|node_impl| node_impl.process_join_request_async(req))?;
@@ -287,7 +287,7 @@ impl Node {
     /// **This function yields**
     pub fn handle_update_instance_request_and_wait(
         &self,
-        req: update_instance::Request,
+        req: rpc::update_instance::Request,
     ) -> traft::Result<()> {
         let notify =
             self.raw_operation(|node_impl| node_impl.process_update_instance_request_async(req))?;
@@ -526,7 +526,7 @@ impl NodeImpl {
     /// **This function doesn't yield**
     pub fn process_join_request_async(
         &mut self,
-        req: join::Request,
+        req: rpc::join::Request,
     ) -> traft::Result<(Notify, Notify, HashSet<Address>)> {
         let topology = self.topology_mut()?;
         let (instance, address, replication_addresses) = topology
@@ -572,7 +572,7 @@ impl NodeImpl {
     /// **This function doesn't yield**
     pub fn process_update_instance_request_async(
         &mut self,
-        req: update_instance::Request,
+        req: rpc::update_instance::Request,
     ) -> traft::Result<Notify> {
         let topology = self.topology_mut()?;
         let instance = topology
@@ -843,11 +843,14 @@ impl NodeImpl {
                 if current_version_in_tarantool < pending_version {
                     let is_master = self.is_replicaset_master().expect("storage_error");
                     if is_master {
-                        let resp =
-                            ddl_apply::apply_schema_change(&self.storage, &ddl, pending_version)
-                                .expect("storage error");
+                        let resp = rpc::ddl_apply::apply_schema_change(
+                            &self.storage,
+                            &ddl,
+                            pending_version,
+                        )
+                        .expect("storage error");
                         match resp {
-                            ddl_apply::Response::Abort { reason } => {
+                            rpc::ddl_apply::Response::Abort { reason } => {
                                 // There's no risk to brick the cluster at this point because
                                 // the governor would have made sure the ddl applies on all
                                 // active (at the time) instances. This instance is just catching
@@ -858,7 +861,7 @@ impl NodeImpl {
                                 // TODO: add support to mitigate these failures
                                 panic!("abort of a committed operation");
                             }
-                            ddl_apply::Response::Ok => {}
+                            rpc::ddl_apply::Response::Ok => {}
                         }
                     }
                 }
@@ -1361,7 +1364,7 @@ impl NodeImpl {
         let master = self.storage.instances.get(&replicaset.master_id)?;
         let master_uuid = master.instance_uuid;
 
-        let resp = fiber::block_on(self.pool.call(&master.raft_id, &lsn::Request {})?)?;
+        let resp = fiber::block_on(self.pool.call(&master.raft_id, &rpc::lsn::Request {})?)?;
         let target_lsn = resp.lsn;
 
         let mut current_lsn = None;

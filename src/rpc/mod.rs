@@ -1,3 +1,5 @@
+//! Remote procedure calls
+
 use ::tarantool::network::AsClient as _;
 use ::tarantool::network::Client;
 use ::tarantool::tuple::{DecodeOwned, Encode};
@@ -103,7 +105,7 @@ macro_rules! define_rpc_request {
         $({ $($res_named_fields)* })?
         $(( $($res_unnamed_fields)* );)?
 
-        impl $crate::traft::rpc::Request for $request {
+        impl $crate::rpc::Request for $request {
             const PROC_NAME: &'static str = $crate::stringify_cfunc!($proc);
             type Response = $response;
         }

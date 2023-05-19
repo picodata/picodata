@@ -1,10 +1,10 @@
 use crate::op::Ddl;
+use crate::rpc;
 use crate::storage::Clusterwide;
 use crate::storage::{pico_schema_version, set_pico_schema_version};
 use crate::tlog;
 use crate::traft::error::Error;
 use crate::traft::node;
-use crate::traft::rpc::sync::wait_for_index_timeout;
 use crate::traft::Result;
 use crate::traft::{RaftIndex, RaftTerm};
 use std::time::Duration;
@@ -15,7 +15,7 @@ use tarantool::space::{Space, SystemSpace};
 crate::define_rpc_request! {
     fn proc_apply_schema_change(req: Request) -> Result<Response> {
         let node = node::global()?;
-        wait_for_index_timeout(req.applied, &node.raft_storage, req.timeout)?;
+        rpc::sync::wait_for_index_timeout(req.applied, &node.raft_storage, req.timeout)?;
         node.status().check_term(req.term)?;
 
         let storage = &node.storage;

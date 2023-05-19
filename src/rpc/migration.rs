@@ -1,5 +1,6 @@
 pub mod apply {
-    use crate::traft::{error::Error, node, rpc::sync, RaftIndex, RaftTerm, Result};
+    use crate::rpc;
+    use crate::traft::{error::Error, node, RaftIndex, RaftTerm, Result};
     use std::time::Duration;
     use tarantool::{lua_state, tlua::LuaError};
 
@@ -7,7 +8,7 @@ pub mod apply {
         fn proc_apply_migration(req: Request) -> Result<Response> {
             let node = node::global()?;
             node.status().check_term(req.term)?;
-            sync::wait_for_index_timeout(req.applied, &node.raft_storage, req.timeout)?;
+            rpc::sync::wait_for_index_timeout(req.applied, &node.raft_storage, req.timeout)?;
 
             let storage = &node.storage;
 

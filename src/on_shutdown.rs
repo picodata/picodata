@@ -4,13 +4,12 @@ use ::tarantool::fiber;
 
 use crate::has_grades;
 use crate::instance::grade::TargetGradeVariant;
+use crate::rpc;
 use crate::storage::ClusterwideSpace;
 use crate::tlog;
 use crate::traft;
 use crate::traft::error::Error;
 use crate::traft::node;
-use crate::traft::rpc;
-use crate::traft::rpc::update_instance;
 use crate::unwrap_ok_or;
 
 pub async fn callback() {
@@ -82,7 +81,7 @@ fn go_offline() -> traft::Result<()> {
         .cluster_id()?
         .ok_or_else(|| Error::other("missing cluster_id value in storage"))?;
 
-    let req = update_instance::Request::new(instance.instance_id, cluster_id)
+    let req = rpc::update_instance::Request::new(instance.instance_id, cluster_id)
         .with_target_grade(TargetGradeVariant::Offline);
 
     loop {
@@ -113,8 +112,8 @@ fn go_offline() -> traft::Result<()> {
             continue;
         };
         let res = match fiber::block_on(rpc::network_call(&leader_address, &req)) {
-            Ok(update_instance::Response::Ok) => Ok(()),
-            Ok(update_instance::Response::ErrNotALeader) => Err(Error::NotALeader),
+            Ok(rpc::update_instance::Response::Ok) => Ok(()),
+            Ok(rpc::update_instance::Response::ErrNotALeader) => Err(Error::NotALeader),
             Err(e) => Err(e.into()),
         };
 

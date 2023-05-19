@@ -1,7 +1,8 @@
 use crate::instance::grade::TargetGradeVariant;
 use crate::instance::InstanceId;
+use crate::rpc;
 use crate::traft::Result;
-use crate::traft::{error::Error, node, rpc::update_instance};
+use crate::traft::{error::Error, node};
 
 crate::define_rpc_request! {
     fn proc_expel_on_leader(req: Request) -> Result<Response> {
@@ -23,7 +24,7 @@ crate::define_rpc_request! {
             return Err(Error::NotALeader);
         }
 
-        let req = update_instance::Request::new(req.instance_id, req.cluster_id)
+        let req = rpc::update_instance::Request::new(req.instance_id, req.cluster_id)
             .with_target_grade(TargetGradeVariant::Expelled);
         node.handle_update_instance_request_and_wait(req)?;
 
@@ -46,7 +47,7 @@ crate::define_rpc_request! {
 pub mod redirect {
     use ::tarantool::fiber;
 
-    use crate::traft::rpc::network_call_to_leader;
+    use crate::rpc::network_call_to_leader;
     use crate::traft::Result;
 
     crate::define_rpc_request! {

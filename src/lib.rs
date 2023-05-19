@@ -9,14 +9,14 @@ use ::tarantool::fiber::r#async::timeout::IntoTimeout as _;
 use ::tarantool::tlua;
 use ::tarantool::transaction::start_transaction;
 use ::tarantool::tuple::Decode;
+use rpc::{join, update_instance};
 use std::convert::TryFrom;
 use std::time::{Duration, Instant};
 use storage::Clusterwide;
 use storage::ToEntryIter as _;
 use storage::{ClusterwideSpace, PropertyName};
-use traft::rpc::{join, update_instance};
 use traft::RaftSpaceAccess;
-use traft::{rpc, RaftTerm};
+use traft::RaftTerm;
 
 use protobuf::Message as _;
 
@@ -43,6 +43,7 @@ pub mod r#loop;
 pub mod mailbox;
 pub mod on_shutdown;
 pub mod replicaset;
+pub mod rpc;
 pub mod schema;
 pub mod sql;
 pub mod storage;
@@ -213,9 +214,9 @@ fn picolib_setup(args: &args::Run) {
         );
         luamod.set(
             "vshard_cfg",
-            tlua::function0(|| -> traft::Result<traft::rpc::sharding::cfg::Cfg> {
+            tlua::function0(|| -> traft::Result<rpc::sharding::cfg::Cfg> {
                 let node = traft::node::global()?;
-                traft::rpc::sharding::cfg::Cfg::from_storage(&node.storage)
+                rpc::sharding::cfg::Cfg::from_storage(&node.storage)
             }),
         );
         l.exec(
@@ -983,9 +984,9 @@ fn start_join(args: &args::Run, leader_address: String) {
     // - It's fine to retry "connection refused" errors.
     // - TODO renew leader_address if the current one says it's not a
     //   leader.
-    let resp: traft::rpc::join::OkResponse = loop {
+    let resp: rpc::join::OkResponse = loop {
         let now = Instant::now();
-        // TODO: exponential decay
+        // TODO: exponential delay
         let timeout = Duration::from_secs(1);
         match fiber::block_on(rpc::network_call(&leader_address, &req)) {
             Ok(join::Response::Ok(resp)) => {

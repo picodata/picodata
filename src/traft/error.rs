@@ -62,7 +62,7 @@ pub enum Error {
     GovernorStopped,
 
     #[error("compare-and-swap request failed: {0}")]
-    Cas(#[from] crate::traft::rpc::cas::Error),
+    Cas(#[from] crate::rpc::cas::Error),
     #[error("ddl failed: {0}")]
     Ddl(#[from] crate::schema::DdlError),
 

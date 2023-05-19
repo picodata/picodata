@@ -7,7 +7,7 @@ use crate::instance::grade::{
 };
 use crate::instance::{Instance, InstanceId};
 use crate::replicaset::ReplicasetId;
-use crate::rpc::update_instance;
+use crate::rpc;
 use crate::traft::instance_uuid;
 use crate::traft::replicaset_uuid;
 use crate::traft::Address;
@@ -173,7 +173,10 @@ impl Topology {
         Ok((instance, advertise, replication_addresses))
     }
 
-    pub fn update_instance(&mut self, req: update_instance::Request) -> Result<Instance, String> {
+    pub fn update_instance(
+        &mut self,
+        req: rpc::update_instance::Request,
+    ) -> Result<Instance, String> {
         let this = self as *const Self;
 
         let (instance, ..) = self
@@ -184,7 +187,7 @@ impl Topology {
         if instance.current_grade == CurrentGradeVariant::Expelled
             && !matches!(
                 req,
-                update_instance::Request {
+                rpc::update_instance::Request {
                     target_grade: None,
                     current_grade: Some(current_grade),
                     failure_domain: None,
@@ -248,7 +251,7 @@ mod tests {
     use crate::traft::instance_uuid;
     use crate::traft::replicaset_uuid;
     use crate::traft::Instance;
-    use crate::traft::rpc::update_instance;
+    use crate::rpc;
     use pretty_assertions::assert_eq;
 
     trait IntoGrade<T> {
@@ -268,17 +271,17 @@ mod tests {
     }
 
     trait ModifyUpdateInstanceRequest {
-        fn modify(self, req: update_instance::Request) -> update_instance::Request;
+        fn modify(self, req: rpc::update_instance::Request) -> rpc::update_instance::Request;
     }
 
     impl ModifyUpdateInstanceRequest for CurrentGrade {
-        fn modify(self, req: update_instance::Request) -> update_instance::Request {
+        fn modify(self, req: rpc::update_instance::Request) -> rpc::update_instance::Request {
             req.with_current_grade(self)
         }
     }
 
     impl ModifyUpdateInstanceRequest for TargetGradeVariant {
-        fn modify(self, req: update_instance::Request) -> update_instance::Request {
+        fn modify(self, req: rpc::update_instance::Request) -> rpc::update_instance::Request {
             req.with_target_grade(self)
         }
     }
@@ -354,7 +357,7 @@ mod tests {
         ) => {
             $topology.update_instance(
                 {
-                    let req = update_instance::Request::new($instance_id.into(), "".into());
+                    let req = rpc::update_instance::Request::new($instance_id.into(), "".into());
                     $(
                         let req = $current_grade.modify(req);
                         $( let req = $target_grade.modify(req); )?
@@ -372,7 +375,7 @@ mod tests {
             $failure_domain:expr $(,)?
         ) => {
             $topology.update_instance(
-                update_instance::Request::new($instance_id.into(), "".into())
+                rpc::update_instance::Request::new($instance_id.into(), "".into())
                     .with_failure_domain($failure_domain),
             )
         };

@@ -10,6 +10,7 @@ use crate::event::{self, Event};
 use crate::instance::Instance;
 use crate::op::Op;
 use crate::r#loop::FlowControl::{self, Continue};
+use crate::rpc;
 use crate::storage::Clusterwide;
 use crate::storage::ToEntryIter as _;
 use crate::tlog;
@@ -18,8 +19,6 @@ use crate::traft::network::ConnectionPool;
 use crate::traft::node::global;
 use crate::traft::node::Status;
 use crate::traft::raft_storage::RaftSpaceAccess;
-use crate::traft::rpc::ddl_apply;
-use crate::traft::rpc::sync;
 use crate::traft::Result;
 use crate::unwrap_ok_or;
 
@@ -216,7 +215,7 @@ impl Loop {
                         "instance_id" => %instance_id
                     ]
                     async {
-                        let sync::Response { applied } = pool
+                        let rpc::sync::Response { applied } = pool
                             .call(instance_id, &rpc)?
                             .timeout(Loop::SYNC_TIMEOUT)
                             .await?;
@@ -444,13 +443,13 @@ impl Loop {
                             let resp = pool.call(instance_id, &rpc)?;
                             fs.push(async move {
                                 match resp.await {
-                                    Ok(ddl_apply::Response::Ok) => {
+                                    Ok(rpc::ddl_apply::Response::Ok) => {
                                         tlog!(Info, "applied schema change on instance";
                                             "instance_id" => %instance_id,
                                         );
                                         Ok(())
                                     }
-                                    Ok(ddl_apply::Response::Abort { reason }) => {
+                                    Ok(rpc::ddl_apply::Response::Abort { reason }) => {
                                         tlog!(Error, "failed to apply schema change on instance: {reason}";
                                             "instance_id" => %instance_id,
                                         );

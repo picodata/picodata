@@ -329,7 +329,7 @@ impl Range {
     ///
     /// # Example
     /// ```
-    /// use picodata::traft::rpc::cas::Range;
+    /// use picodata::rpc::cas::Range;
     ///
     /// // Creates a range for tuples with keys from 1 (excluding) to 10 (excluding)
     /// let range = Range::new("my_space").gt((1,)).lt((10,));

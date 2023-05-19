@@ -1,6 +1,6 @@
 use ::tarantool::tlua;
 
-use crate::traft::rpc::sync::wait_for_index_timeout;
+use crate::rpc;
 use crate::traft::Result;
 use crate::traft::{node, RaftIndex, RaftTerm};
 
@@ -10,7 +10,7 @@ crate::define_rpc_request! {
     fn proc_sharding(req: Request) -> Result<Response> {
         let node = node::global()?;
         node.status().check_term(req.term)?;
-        wait_for_index_timeout(req.applied, &node.raft_storage, req.timeout)?;
+        rpc::sync::wait_for_index_timeout(req.applied, &node.raft_storage, req.timeout)?;
 
         let storage = &node.storage;
         let cfg = cfg::Cfg::from_storage(storage)?;
@@ -61,7 +61,7 @@ pub mod bootstrap {
         fn proc_sharding_bootstrap(req: Request) -> Result<Response> {
             let node = node::global()?;
             node.status().check_term(req.term)?;
-            wait_for_index_timeout(req.applied, &node.raft_storage, req.timeout)?;
+            rpc::sync::wait_for_index_timeout(req.applied, &node.raft_storage, req.timeout)?;
 
             ::tarantool::lua_state().exec("vshard.router.bootstrap()")?;
 

@@ -20,11 +20,11 @@ use tarantool::fiber::r#async::timeout;
 
 use crate::instance::InstanceId;
 use crate::mailbox::Mailbox;
+use crate::rpc;
 use crate::storage::{instance_field, Clusterwide, Instances, PeerAddresses};
 use crate::tlog;
 use crate::traft;
 use crate::traft::error::Error;
-use crate::traft::rpc::Request;
 use crate::traft::RaftId;
 use crate::traft::Result;
 use crate::unwrap_ok_or;
@@ -238,7 +238,7 @@ impl PoolWorker {
     /// - in case peer responded with an error
     pub fn rpc<R>(&mut self, request: &R, cb: impl FnOnce(Result<R::Response>) + 'static)
     where
-        R: Request,
+        R: rpc::Request,
     {
         let args = unwrap_ok_or!(request.to_tuple_buffer(),
             Err(e) => { return cb(Err(e.into())) }
@@ -415,7 +415,7 @@ impl ConnectionPool {
         req: &R,
     ) -> Result<impl Future<Output = Result<R::Response>>>
     where
-        R: Request,
+        R: rpc::Request,
     {
         let (tx, mut rx) = oneshot::channel();
         let id_dbg = format!("{id:?}");
