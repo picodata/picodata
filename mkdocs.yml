@@ -34,8 +34,9 @@ theme:
         - navigation.indexes
         - navigation.path
         - navigation.sections
-        - content.code.copy
         - toc.follow
+        - content.code.copy
+        
  
 
 extra:
