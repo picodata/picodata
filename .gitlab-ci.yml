@@ -44,7 +44,7 @@ pack-doc:
     - popd
     - echo "Picodata doc successfully packed."
   artifacts:
-    expire_in: 5m
+    expire_in: 1h
     paths:
       - .vars
       - picodata-doc-*.tgz
