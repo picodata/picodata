@@ -4,7 +4,7 @@ site_description: Picodata documentation site
 nav:
   - Ознакомление с ПО Picodata:
     - Общее описание продукта: description.md
-    - Преимущества использования Picodata: benefits.md
+    - Преимущества Picodata: benefits.md
     - Преимущества языка Rust при разработке приложений: benefits_rust.md
     - Общая схема инициализации кластера: clustering.md
     - Работа с SQL в Picodata: sbroad/sql_index.md
