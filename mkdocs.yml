@@ -2,7 +2,6 @@ site_name: Портал документации Picodata
 site_description: Picodata documentation site
 
 nav:
-  - Главная страница: index.md
   - Ознакомление с ПО Picodata:
     - Общее описание продукта: description.md
     - Преимущества использования Picodata: benefits.md
@@ -16,7 +15,7 @@ nav:
   - Справочные материалы:
     - Описание параметров запуска Picodata: cli.md
     - Справочник команд SQL: sbroad/sql_queries
-    - Глоссарий основных терминов и определений: glossary.md
+    - Глоссарий: glossary.md
     - Поддерживаемые функции стандарта SQL: sbroad/sql_reference.md
 
 
