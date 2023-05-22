@@ -4,7 +4,7 @@ use crate::instance::{Instance, InstanceId};
 use crate::replicaset::weight;
 use crate::replicaset::{Replicaset, ReplicasetId};
 use crate::rpc;
-use crate::storage::{ClusterwideSpace, PropertyName};
+use crate::storage::{ClusterwideSpaceId, PropertyName};
 use crate::tlog;
 use crate::traft::op::Dml;
 use crate::traft::Result;
@@ -85,7 +85,7 @@ pub(super) fn action_plan<'i>(
                 };
                 let mut ops = UpdateOps::new();
                 ops.assign("master_id", &to.instance_id)?;
-                let op = Dml::update(ClusterwideSpace::Replicaset, &[&to.replicaset_id], ops)?;
+                let op = Dml::update(ClusterwideSpaceId::Replicaset, &[&to.replicaset_id], ops)?;
                 return Ok(TransferMastership { to, rpc, op }.into());
             } else {
                 tlog!(Warning, "replicaset master is going offline and no substitution is found";
@@ -155,7 +155,7 @@ pub(super) fn action_plan<'i>(
             timeout: Loop::SYNC_TIMEOUT,
         };
         let op = Dml::insert(
-            ClusterwideSpace::Replicaset,
+            ClusterwideSpaceId::Replicaset,
             &Replicaset {
                 replicaset_id: replicaset_id.clone(),
                 replicaset_uuid: replicaset_uuid.clone(),
@@ -245,7 +245,7 @@ pub(super) fn action_plan<'i>(
             timeout: Loop::SYNC_TIMEOUT,
         };
         let op = Dml::replace(
-            ClusterwideSpace::Property,
+            ClusterwideSpaceId::Property,
             &(PropertyName::VshardBootstrapped, true),
         )?;
         return Ok(ShardingBoot { target, rpc, op }.into());
@@ -266,7 +266,7 @@ pub(super) fn action_plan<'i>(
             weight::State::UpToDate
         };
         uops.assign(weight::State::PATH, state)?;
-        let op = Dml::update(ClusterwideSpace::Replicaset, &[replicaset_id], uops)?;
+        let op = Dml::update(ClusterwideSpaceId::Replicaset, &[replicaset_id], uops)?;
         return Ok(ProposeWeightChanges { op }.into());
     }
 
@@ -309,7 +309,7 @@ pub(super) fn action_plan<'i>(
         for replicaset_id in to_update_weights {
             let mut uops = UpdateOps::new();
             uops.assign(weight::State::PATH, weight::State::UpToDate)?;
-            let op = Dml::update(ClusterwideSpace::Replicaset, &[replicaset_id], uops)?;
+            let op = Dml::update(ClusterwideSpaceId::Replicaset, &[replicaset_id], uops)?;
             ops.push(op);
         }
         return Ok(UpdateWeights { targets, rpc, ops }.into());

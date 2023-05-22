@@ -16,7 +16,7 @@ use crate::schema::ddl_abort_on_master;
 use crate::schema::{Distribution, IndexDef, SpaceDef};
 use crate::storage::pico_schema_version;
 use crate::storage::ToEntryIter as _;
-use crate::storage::{Clusterwide, ClusterwideSpace, PropertyName};
+use crate::storage::{Clusterwide, ClusterwideSpaceId, PropertyName};
 use crate::stringify_cfunc;
 use crate::tlog;
 use crate::traft;
@@ -53,6 +53,7 @@ use ::tarantool::index::FieldType as IFT;
 use ::tarantool::index::Part;
 use ::tarantool::proc;
 use ::tarantool::space::FieldType as SFT;
+use ::tarantool::space::SpaceId;
 use ::tarantool::tlua;
 use ::tarantool::transaction::start_transaction;
 use protobuf::Message as _;
@@ -115,10 +116,8 @@ impl Status {
     }
 }
 
-/// Key is a cluster-wide space name.
-type StorageWatchers = HashMap<String, watch::Sender<()>>;
-/// Key is a cluster-wide space name.
-type StorageChanges = HashSet<String>;
+type StorageWatchers = HashMap<SpaceId, watch::Sender<()>>;
+type StorageChanges = HashSet<SpaceId>;
 
 /// The heart of `traft` module - the Node.
 pub struct Node {
@@ -339,7 +338,7 @@ impl Node {
     /// You can also pass a [`ClusterwideSpace`] in which case the space's
     /// primary index will be used.
     #[inline(always)]
-    pub fn storage_watcher(&self, space: impl Into<String>) -> watch::Receiver<()> {
+    pub fn storage_watcher(&self, space: impl Into<SpaceId>) -> watch::Receiver<()> {
         use std::collections::hash_map::Entry;
         let mut watchers = self.watchers.lock();
         match watchers.entry(space.into()) {
@@ -541,7 +540,7 @@ impl NodeImpl {
             raft_id: instance.raft_id,
             address,
         };
-        let op_addr = Dml::replace(ClusterwideSpace::Address, &peer_address).expect("can't fail");
+        let op_addr = Dml::replace(ClusterwideSpaceId::Address, &peer_address).expect("can't fail");
         let op_instance = PersistInstance::new(instance);
         // Important! Calling `raw_node.propose()` may result in
         // `ProposalDropped` error, but the topology has already been
@@ -745,7 +744,7 @@ impl NodeImpl {
         match &op {
             Op::PersistInstance(PersistInstance(instance)) => {
                 *wake_governor = true;
-                storage_changes.insert(ClusterwideSpace::Instance.into());
+                storage_changes.insert(ClusterwideSpaceId::Instance.into());
                 if has_grades!(instance, Expelled -> *) && instance.raft_id == self.raft_id() {
                     // cannot exit during a transaction
                     *expelled = true;
@@ -753,11 +752,12 @@ impl NodeImpl {
             }
             Op::Dml(op) => {
                 let space = op.space();
-                if space == &*ClusterwideSpace::Property || space == &*ClusterwideSpace::Replicaset
+                if space == ClusterwideSpaceId::Property as SpaceId
+                    || space == ClusterwideSpaceId::Replicaset as SpaceId
                 {
                     *wake_governor = true;
                 }
-                storage_changes.insert(space.into());
+                storage_changes.insert(space);
             }
             Op::DdlPrepare { .. } => {
                 *wake_governor = true;
@@ -778,10 +778,10 @@ impl NodeImpl {
             }
             Op::Dml(op) => {
                 let res = match &op {
-                    Dml::Insert { space, tuple } => self.storage.insert(space, tuple).map(Some),
-                    Dml::Replace { space, tuple } => self.storage.replace(space, tuple).map(Some),
-                    Dml::Update { space, key, ops } => self.storage.update(space, key, ops),
-                    Dml::Delete { space, key } => self.storage.delete(space, key),
+                    Dml::Insert { space, tuple } => self.storage.insert(*space, tuple).map(Some),
+                    Dml::Replace { space, tuple } => self.storage.replace(*space, tuple).map(Some),
+                    Dml::Update { space, key, ops } => self.storage.update(*space, key, ops),
+                    Dml::Delete { space, key } => self.storage.delete(*space, key),
                 };
                 result = Box::new(res) as _;
             }

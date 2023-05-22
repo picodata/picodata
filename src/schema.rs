@@ -19,7 +19,7 @@ use thiserror::Error;
 
 use crate::compare_and_swap;
 use crate::rpc;
-use crate::storage::{set_pico_schema_version, Clusterwide, ClusterwideSpace, PropertyName};
+use crate::storage::{set_pico_schema_version, Clusterwide, ClusterwideSpaceId, PropertyName};
 use crate::traft::op::{Ddl, DdlBuilder, Op};
 use crate::traft::{self, event, node, RaftIndex};
 
@@ -413,11 +413,11 @@ pub fn prepare_ddl(op: Ddl, timeout: Duration) -> traft::Result<RaftIndex> {
             index,
             term,
             ranges: vec![
-                rpc::cas::Range::new(ClusterwideSpace::Property)
+                rpc::cas::Range::new(ClusterwideSpaceId::Property as _)
                     .eq((PropertyName::PendingSchemaChange,)),
-                rpc::cas::Range::new(ClusterwideSpace::Property)
+                rpc::cas::Range::new(ClusterwideSpaceId::Property as _)
                     .eq((PropertyName::CurrentSchemaVersion,)),
-                rpc::cas::Range::new(ClusterwideSpace::Property)
+                rpc::cas::Range::new(ClusterwideSpaceId::Property as _)
                     .eq((PropertyName::NextSchemaVersion,)),
             ],
         };

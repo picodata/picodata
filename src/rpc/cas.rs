@@ -1,5 +1,5 @@
-use crate::storage::{Clusterwide, TClusterwideSpace as _};
-use crate::storage::{ClusterwideSpace, Indexes, Spaces};
+use crate::storage::Clusterwide;
+use crate::storage::ClusterwideSpaceId;
 use crate::tlog;
 use crate::traft::error::Error as TraftError;
 use crate::traft::node;
@@ -13,12 +13,14 @@ use ::raft::Error as RaftError;
 use ::raft::StorageError;
 
 use tarantool::error::Error as TntError;
+use tarantool::space::SpaceId;
 use tarantool::tlua;
 use tarantool::tuple::{KeyDef, ToTupleBuffer, Tuple, TupleBuffer};
 
 use once_cell::sync::Lazy;
 
-const PROHIBITED_SPACES: &[&str] = &[Spaces::SPACE_NAME, Indexes::SPACE_NAME];
+const PROHIBITED_SPACES: &[ClusterwideSpaceId] =
+    &[ClusterwideSpaceId::Space, ClusterwideSpaceId::Index];
 
 crate::define_rpc_request! {
     fn proc_cas(req: Request) -> Result<Response> {
@@ -83,9 +85,10 @@ crate::define_rpc_request! {
 
         // Check if ranges in predicate contain prohibited spaces.
         for range in &req.predicate.ranges {
-            if PROHIBITED_SPACES.contains(&range.space.as_str())
+            let Ok(space) = ClusterwideSpaceId::try_from(range.space) else { continue; };
+            if PROHIBITED_SPACES.contains(&space)
             {
-                return Err(Error::SpaceNotAllowed { space: range.space.clone() }.into())
+                return Err(Error::SpaceNotAllowed { space: space.name().into() }.into())
             }
         }
 
@@ -276,7 +279,7 @@ impl Predicate {
             .expect("keys should convert to tuple")
         });
         for range in &self.ranges {
-            if modifies_operable(entry_op, &range.space, storage) {
+            if modifies_operable(entry_op, range.space, storage) {
                 return Err(error());
             }
             let Some(space) = space(entry_op) else {
@@ -319,7 +322,7 @@ impl Predicate {
 /// A range of keys used as an argument for a [`Predicate`].
 #[derive(Clone, Debug, ::serde::Serialize, ::serde::Deserialize, tlua::LuaRead)]
 pub struct Range {
-    pub space: String,
+    pub space: SpaceId,
     pub key_min: Bound,
     pub key_max: Bound,
 }
@@ -332,17 +335,20 @@ impl Range {
     /// use picodata::rpc::cas::Range;
     ///
     /// // Creates a range for tuples with keys from 1 (excluding) to 10 (excluding)
-    /// let range = Range::new("my_space").gt((1,)).lt((10,));
+    /// let my_space_id = 2222;
+    /// let range = Range::new(my_space_id).gt((1,)).lt((10,));
     /// ```
-    pub fn new(space: impl ToString) -> Self {
+    #[inline(always)]
+    pub fn new(space: SpaceId) -> Self {
         Self {
-            space: space.to_string(),
+            space,
             key_min: Bound::Unbounded,
             key_max: Bound::Unbounded,
         }
     }
 
     /// Add a "greater than" restriction.
+    #[inline(always)]
     pub fn gt(mut self, key: impl ToTupleBuffer) -> Self {
         let tuple = key.to_tuple_buffer().expect("cannot fail");
         self.key_min = Bound::Excluded(tuple);
@@ -350,6 +356,7 @@ impl Range {
     }
 
     /// Add a "greater or equal" restriction.
+    #[inline(always)]
     pub fn ge(mut self, key: impl ToTupleBuffer) -> Self {
         let tuple = key.to_tuple_buffer().expect("cannot fail");
         self.key_min = Bound::Included(tuple);
@@ -357,6 +364,7 @@ impl Range {
     }
 
     /// Add a "less than" restriction.
+    #[inline(always)]
     pub fn lt(mut self, key: impl ToTupleBuffer) -> Self {
         let tuple = key.to_tuple_buffer().expect("cannot fail");
         self.key_max = Bound::Excluded(tuple);
@@ -364,6 +372,7 @@ impl Range {
     }
 
     /// Add a "less or equal" restriction.
+    #[inline(always)]
     pub fn le(mut self, key: impl ToTupleBuffer) -> Self {
         let tuple = key.to_tuple_buffer().expect("cannot fail");
         self.key_max = Bound::Included(tuple);
@@ -371,6 +380,7 @@ impl Range {
     }
 
     /// Add a "equal" restriction.
+    #[inline(always)]
     pub fn eq(mut self, key: impl ToTupleBuffer) -> Self {
         let tuple = key.to_tuple_buffer().expect("cannot fail");
         self.key_min = Bound::Included(tuple.clone());
@@ -391,32 +401,22 @@ pub enum Bound {
 }
 
 /// Get space that the operation touches.
-fn space(op: &Op) -> Option<&str> {
+fn space(op: &Op) -> Option<SpaceId> {
     match op {
         Op::Dml(dml) => Some(dml.space()),
         Op::DdlPrepare { .. } | Op::DdlCommit | Op::DdlAbort => {
-            Some(ClusterwideSpace::Property.into())
+            Some(ClusterwideSpaceId::Property.into())
         }
-        Op::PersistInstance(_) => Some(ClusterwideSpace::Instance.into()),
+        Op::PersistInstance(_) => Some(ClusterwideSpaceId::Instance.into()),
         Op::Nop => None,
     }
 }
 
 /// Checks if the operation would by its semantics modify `operable` flag of the provided `space`.
-fn modifies_operable(op: &Op, space: &str, storage: &Clusterwide) -> bool {
+fn modifies_operable(op: &Op, space: SpaceId, storage: &Clusterwide) -> bool {
     let ddl_modifies = |ddl: &Ddl| match ddl {
-        Ddl::CreateSpace { name, .. } => name == space,
-        Ddl::DropSpace { id } => {
-            if let Some(space_def) = storage
-                .spaces
-                .get(*id)
-                .expect("deserialization should not fail")
-            {
-                space_def.name == space
-            } else {
-                false
-            }
-        }
+        Ddl::CreateSpace { id, .. } => *id == space,
+        Ddl::DropSpace { id } => *id == space,
         Ddl::CreateIndex { .. } => false,
         Ddl::DropIndex { .. } => false,
     };
@@ -484,7 +484,7 @@ mod tests {
 
         let commit = Op::DdlCommit;
         let abort = Op::DdlAbort;
-        let props = Properties::SPACE_NAME;
+        let props = Properties::SPACE_ID;
         let pending_schema_change = (PropertyName::PendingSchemaChange.to_string(),);
         let pending_schema_version = (PropertyName::PendingSchemaChange.to_string(),);
         let current_schema_version = (PropertyName::CurrentSchemaVersion.to_string(),);
@@ -495,8 +495,8 @@ mod tests {
         assert!(t(&create_space, Range::new(props).eq(&pending_schema_version)).is_err());
         assert!(t(&create_space, Range::new(props).eq(("another_key",))).is_ok());
 
-        assert!(t(&create_space, Range::new("another_space").eq(("any_key",))).is_ok());
-        assert!(t(&create_space, Range::new(space_name).eq(("any_key",))).is_err());
+        assert!(t(&create_space, Range::new(69105).eq(("any_key",))).is_ok());
+        assert!(t(&create_space, Range::new(space_id).eq(("any_key",))).is_err());
 
         // drop_space
         // `DropSpace` needs `SpaceDef` to get space name
@@ -515,24 +515,24 @@ mod tests {
         assert!(t(&drop_space, Range::new(props).eq(&pending_schema_version)).is_err());
         assert!(t(&drop_space, Range::new(props).eq(("another_key",))).is_ok());
 
-        assert!(t(&drop_space, Range::new("another_space").eq(("any_key",))).is_ok());
-        assert!(t(&drop_space, Range::new(space_name).eq(("any_key",))).is_err());
+        assert!(t(&drop_space, Range::new(69105).eq(("any_key",))).is_ok());
+        assert!(t(&drop_space, Range::new(space_id).eq(("any_key",))).is_err());
 
         // create_index
         assert!(t(&create_index, Range::new(props).eq(&pending_schema_change)).is_err());
         assert!(t(&create_index, Range::new(props).eq(&pending_schema_version)).is_err());
         assert!(t(&create_index, Range::new(props).eq(("another_key",))).is_ok());
 
-        assert!(t(&create_index, Range::new("another_space").eq(("any_key",))).is_ok());
-        assert!(t(&create_index, Range::new(space_name).eq(("any_key",))).is_ok());
+        assert!(t(&create_index, Range::new(69105).eq(("any_key",))).is_ok());
+        assert!(t(&create_index, Range::new(space_id).eq(("any_key",))).is_ok());
 
         // drop_index
         assert!(t(&drop_index, Range::new(props).eq(&pending_schema_change)).is_err());
         assert!(t(&drop_index, Range::new(props).eq(&pending_schema_version)).is_err());
         assert!(t(&drop_index, Range::new(props).eq(("another_key",))).is_ok());
 
-        assert!(t(&drop_index, Range::new("another_space").eq(("any_key",))).is_ok());
-        assert!(t(&drop_index, Range::new(space_name).eq(("any_key",))).is_ok());
+        assert!(t(&drop_index, Range::new(69105).eq(("any_key",))).is_ok());
+        assert!(t(&drop_index, Range::new(space_id).eq(("any_key",))).is_ok());
 
         // Abort and Commit need a pending schema change to get space name
         let Op::DdlPrepare{ ddl: create_space_ddl, ..} = create_space else {
@@ -548,8 +548,8 @@ mod tests {
         assert!(t(&commit, Range::new(props).eq(&current_schema_version)).is_err());
         assert!(t(&commit, Range::new(props).eq(("another_key",))).is_ok());
 
-        assert!(t(&commit, Range::new("another_space").eq(("any_key",))).is_ok());
-        assert!(t(&commit, Range::new(space_name).eq(("any_key",))).is_err());
+        assert!(t(&commit, Range::new(69105).eq(("any_key",))).is_ok());
+        assert!(t(&commit, Range::new(space_id).eq(("any_key",))).is_err());
 
         // abort
         assert!(t(&abort, Range::new(props).eq(&pending_schema_change)).is_err());
@@ -558,8 +558,8 @@ mod tests {
         assert!(t(&abort, Range::new(props).eq(&next_schema_version)).is_err());
         assert!(t(&abort, Range::new(props).eq(("another_key",))).is_ok());
 
-        assert!(t(&abort, Range::new("another_space").eq(("any_key",))).is_ok());
-        assert!(t(&abort, Range::new(space_name).eq(("any_key",))).is_err());
+        assert!(t(&abort, Range::new(69105).eq(("any_key",))).is_ok());
+        assert!(t(&abort, Range::new(space_id).eq(("any_key",))).is_err());
     }
 
     #[::tarantool::test]
@@ -577,7 +577,7 @@ mod tests {
             predicate.check_entry(2, &Op::Dml(op.clone()), &storage)
         };
 
-        let space = ClusterwideSpace::Space;
+        let space = ClusterwideSpaceId::Space;
         let ops = &[
             Dml::Insert {
                 space: space.into(),
@@ -598,20 +598,20 @@ mod tests {
             },
         ];
 
-        let space = ClusterwideSpace::Space.to_string();
+        let space = ClusterwideSpaceId::Space.value();
         for op in ops {
-            assert!(test(op, Range::new(&space)).is_err());
-            assert!(test(op, Range::new(&space).le((12,))).is_err());
-            assert!(test(op, Range::new(&space).ge((12,))).is_err());
-            assert!(test(op, Range::new(&space).eq((12,))).is_err());
+            assert!(test(op, Range::new(space)).is_err());
+            assert!(test(op, Range::new(space).le((12,))).is_err());
+            assert!(test(op, Range::new(space).ge((12,))).is_err());
+            assert!(test(op, Range::new(space).eq((12,))).is_err());
 
-            assert!(test(op, Range::new(&space).lt((12,))).is_ok());
-            assert!(test(op, Range::new(&space).le((11,))).is_ok());
+            assert!(test(op, Range::new(space).lt((12,))).is_ok());
+            assert!(test(op, Range::new(space).le((11,))).is_ok());
 
-            assert!(test(op, Range::new(&space).gt((12,))).is_ok());
-            assert!(test(op, Range::new(&space).ge((13,))).is_ok());
+            assert!(test(op, Range::new(space).gt((12,))).is_ok());
+            assert!(test(op, Range::new(space).ge((13,))).is_ok());
 
-            assert!(test(op, Range::new("other_space")).is_ok());
+            assert!(test(op, Range::new(69105)).is_ok());
         }
     }
 }

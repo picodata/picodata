@@ -13,7 +13,7 @@ use rpc::{join, update_instance};
 use std::convert::TryFrom;
 use std::time::{Duration, Instant};
 use storage::Clusterwide;
-use storage::{ClusterwideSpace, PropertyName};
+use storage::{ClusterwideSpaceId, PropertyName};
 use traft::RaftSpaceAccess;
 use traft::RaftTerm;
 
@@ -826,7 +826,7 @@ fn start_boot(args: &args::Run) {
 
         init_entries_push_op(
             op::Dml::insert(
-                ClusterwideSpace::Address,
+                ClusterwideSpaceId::Address,
                 &traft::PeerAddress { raft_id, address },
             )
             .expect("cannot fail")
@@ -835,7 +835,7 @@ fn start_boot(args: &args::Run) {
         init_entries_push_op(traft::op::PersistInstance::new(instance).into());
         init_entries_push_op(
             op::Dml::insert(
-                ClusterwideSpace::Property,
+                ClusterwideSpaceId::Property,
                 &(
                     PropertyName::ReplicationFactor,
                     args.init_replication_factor,
@@ -846,7 +846,7 @@ fn start_boot(args: &args::Run) {
         );
         init_entries_push_op(
             op::Dml::insert(
-                ClusterwideSpace::Property,
+                ClusterwideSpaceId::Property,
                 &(PropertyName::CurrentSchemaVersion, 0),
             )
             .expect("cannot fail")

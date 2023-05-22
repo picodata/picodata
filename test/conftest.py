@@ -519,7 +519,7 @@ class Instance:
     def cas(
         self,
         dml_kind: Literal["insert", "replace", "delete"],
-        space: str,
+        space: str | int,
         tuple: Tuple | List,
         index: int | None = None,
         term: int | None = None,
@@ -548,10 +548,19 @@ class Instance:
         elif term is None:
             term = self.raft_term_by_index(index)
 
+        space_id = None
+        match space:
+            case int():
+                space_id = space
+            case str():
+                space_id = self.eval("return box.space[...].id", space)
+            case _:
+                raise TypeError("space must be str or int")
+
         predicate_range = None
         if range is not None:
             predicate_range = dict(
-                space=space,
+                space=space_id,
                 key_min=range.key_min_packed,
                 key_max=range.key_max_packed,
             )
@@ -566,14 +575,14 @@ class Instance:
             dml = dict(
                 kind="dml",
                 op_kind=dml_kind,
-                space=space,
+                space=space_id,
                 tuple=msgpack.packb(tuple),
             )
         elif dml_kind == "delete":
             dml = dict(
                 kind="dml",
                 op_kind=dml_kind,
-                space=space,
+                space=space_id,
                 key=msgpack.packb(tuple),
             )
         else:

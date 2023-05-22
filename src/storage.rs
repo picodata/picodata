@@ -79,9 +79,47 @@ macro_rules! define_clusterwide_spaces {
 
         $(#[$enum_cw_space_id_meta])*
         pub enum $enum_cw_space_id {
-            $(
-                $cw_space_var = $cw_space_id_value,
-            )+
+            $( $cw_space_var = $cw_space_id_value, )+
+        }
+
+        impl From<$enum_cw_space_id> for $cw_space {
+            fn from(space_id: $enum_cw_space_id) -> Self {
+                match space_id {
+                    $( $enum_cw_space_id::$cw_space_var => Self::$cw_space_var, )+
+                }
+            }
+        }
+
+        impl From<$cw_space> for $enum_cw_space_id {
+            fn from(space_name: $cw_space) -> Self {
+                match space_name {
+                    $(
+                        $cw_space::$cw_space_var => Self::$cw_space_var,
+                    )+
+                }
+            }
+        }
+
+        impl $enum_cw_space_id {
+            #[inline(always)]
+            pub const fn name(&self) -> &'static str {
+                match self {
+                    $( Self::$cw_space_var => $cw_space_name, )+
+                }
+            }
+        }
+
+        impl TryFrom<SpaceId> for $enum_cw_space_id {
+            // TODO: conform to bureaucracy
+            type Error = ();
+
+            #[inline(always)]
+            fn try_from(id: SpaceId) -> ::std::result::Result<$enum_cw_space_id, Self::Error> {
+                match id {
+                    $( $cw_space_id_value => Ok(Self::$cw_space_var), )+
+                    _ => Err(()),
+                }
+            }
         }
 
         impl $cw_space {
@@ -323,7 +361,16 @@ macro_rules! define_clusterwide_spaces {
     }
 }
 
-fn space_by_name(space_name: &str) -> tarantool::Result<Space> {
+fn space_by_id(space_id: SpaceId) -> tarantool::Result<Space> {
+    let space = unsafe { Space::from_id_unchecked(space_id) };
+    // TODO: maybe we should verify the space exists, but it's not a big deal
+    // currently, because first of all tarantool api will just return a no such
+    // space id error from any box_* function, and secondly this function is
+    // only used internally for now anyway.
+    Ok(space)
+}
+
+pub fn space_by_name(space_name: &str) -> tarantool::Result<Space> {
     let space = Space::find(space_name).ok_or_else(|| {
         tarantool::set_error!(
             tarantool::error::TarantoolErrorCode::NoSuchSpace,
@@ -345,11 +392,13 @@ define_clusterwide_spaces! {
     }
 
     /// An enumeration of system clusterwide spaces' ids.
+    #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
     pub enum ClusterwideSpaceId {
         #space_name_upper = #space_id,
     }
 
     /// An enumeration of builtin cluster-wide spaces
+    // TODO: maybe rename ClusterwideSpaceName
     pub enum ClusterwideSpace {
         Instance = 515, "_pico_instance" => {
             Clusterwide::instances;
@@ -562,17 +611,18 @@ impl Clusterwide {
 
     /// Return a `KeyDef` to be used for comparing **tuples** of the
     /// corresponding global space.
-    pub(crate) fn key_def(&self, space: &str, index: IndexId) -> tarantool::Result<Rc<KeyDef>> {
-        static mut KEY_DEF: Option<HashMap<(ClusterwideSpace, IndexId), Rc<KeyDef>>> = None;
+    pub(crate) fn key_def(
+        &self,
+        space_id: SpaceId,
+        index_id: IndexId,
+    ) -> tarantool::Result<Rc<KeyDef>> {
+        static mut KEY_DEF: Option<HashMap<(ClusterwideSpaceId, IndexId), Rc<KeyDef>>> = None;
         let key_defs = unsafe { KEY_DEF.get_or_insert_with(HashMap::new) };
-        if let Ok(sys_space) = space.parse::<ClusterwideSpace>() {
-            let key_def = match key_defs.entry((sys_space, index)) {
+        if let Ok(sys_space_id) = ClusterwideSpaceId::try_from(space_id) {
+            let key_def = match key_defs.entry((sys_space_id, index_id)) {
                 Entry::Occupied(o) => o.into_mut(),
                 Entry::Vacant(v) => {
-                    let space = self
-                        .space_by_name(space)
-                        .expect("system spaces are always present");
-                    let index = unsafe { Index::from_ids_unchecked(space.id(), index) };
+                    let index = unsafe { Index::from_ids_unchecked(space_id, index_id) };
                     let key_def = index.meta()?.to_key_def();
                     // System space definition's never change during a single
                     // execution, so it's safe to cache these
@@ -582,10 +632,7 @@ impl Clusterwide {
             return Ok(key_def.clone());
         }
 
-        let space = self
-            .space_by_name(space)
-            .expect("system spaces are always present");
-        let index = unsafe { Index::from_ids_unchecked(space.id(), index) };
+        let index = unsafe { Index::from_ids_unchecked(space_id, index_id) };
         let key_def = index.meta()?.to_key_def();
         Ok(Rc::new(key_def))
     }
@@ -594,19 +641,16 @@ impl Clusterwide {
     /// corresponding global space.
     pub(crate) fn key_def_for_key(
         &self,
-        space: &str,
-        index: IndexId,
+        space_id: SpaceId,
+        index_id: IndexId,
     ) -> tarantool::Result<Rc<KeyDef>> {
-        static mut KEY_DEF: Option<HashMap<(ClusterwideSpace, IndexId), Rc<KeyDef>>> = None;
+        static mut KEY_DEF: Option<HashMap<(ClusterwideSpaceId, IndexId), Rc<KeyDef>>> = None;
         let key_defs = unsafe { KEY_DEF.get_or_insert_with(HashMap::new) };
-        if let Ok(sys_space) = space.parse::<ClusterwideSpace>() {
-            let key_def = match key_defs.entry((sys_space, index)) {
+        if let Ok(sys_space_id) = ClusterwideSpaceId::try_from(space_id) {
+            let key_def = match key_defs.entry((sys_space_id, index_id)) {
                 Entry::Occupied(o) => o.into_mut(),
                 Entry::Vacant(v) => {
-                    let space = self
-                        .space_by_name(space)
-                        .expect("system spaces are always present");
-                    let index = unsafe { Index::from_ids_unchecked(space.id(), index) };
+                    let index = unsafe { Index::from_ids_unchecked(space_id, index_id) };
                     let key_def = index.meta()?.to_key_def_for_key();
                     // System space definition's never change during a single
                     // execution, so it's safe to cache these
@@ -616,43 +660,48 @@ impl Clusterwide {
             return Ok(key_def.clone());
         }
 
-        let space = self
-            .space_by_name(space)
-            .expect("system spaces are always present");
-        let index = unsafe { Index::from_ids_unchecked(space.id(), index) };
+        let index = unsafe { Index::from_ids_unchecked(space_id, index_id) };
         let key_def = index.meta()?.to_key_def_for_key();
         Ok(Rc::new(key_def))
     }
 
-    pub(crate) fn insert(&self, space: &str, tuple: &TupleBuffer) -> tarantool::Result<Tuple> {
-        let space = self.space_by_name(space)?;
+    pub(crate) fn insert(
+        &self,
+        space_id: SpaceId,
+        tuple: &TupleBuffer,
+    ) -> tarantool::Result<Tuple> {
+        let space = space_by_id(space_id)?;
         let res = space.insert(tuple)?;
         Ok(res)
     }
 
-    pub(crate) fn replace(&self, space: &str, tuple: &TupleBuffer) -> tarantool::Result<Tuple> {
-        let space = self.space_by_name(space)?;
+    pub(crate) fn replace(
+        &self,
+        space_id: SpaceId,
+        tuple: &TupleBuffer,
+    ) -> tarantool::Result<Tuple> {
+        let space = space_by_id(space_id)?;
         let res = space.replace(tuple)?;
         Ok(res)
     }
 
     pub(crate) fn update(
         &self,
-        space: &str,
+        space_id: SpaceId,
         key: &TupleBuffer,
         ops: &[TupleBuffer],
     ) -> tarantool::Result<Option<Tuple>> {
-        let space = self.space_by_name(space)?;
+        let space = space_by_id(space_id)?;
         let res = space.update(key, ops)?;
         Ok(res)
     }
 
     pub(crate) fn delete(
         &self,
-        space: &str,
+        space_id: SpaceId,
         key: &TupleBuffer,
     ) -> tarantool::Result<Option<Tuple>> {
-        let space = self.space_by_name(space)?;
+        let space = space_by_id(space_id)?;
         let res = space.delete(key)?;
         Ok(res)
     }
@@ -695,6 +744,20 @@ pub trait TClusterwideSpace {
     #[inline(always)]
     fn primary_index() -> Self::Index {
         Self::Index::primary()
+    }
+}
+
+impl ClusterwideSpaceId {
+    #[inline(always)]
+    pub const fn value(&self) -> SpaceId {
+        *self as _
+    }
+}
+
+impl From<ClusterwideSpaceId> for SpaceId {
+    #[inline(always)]
+    fn from(id: ClusterwideSpaceId) -> SpaceId {
+        id as _
     }
 }
 

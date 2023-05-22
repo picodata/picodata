@@ -1,5 +1,6 @@
 use crate::instance::Instance;
 use crate::schema::Distribution;
+use crate::storage::space_by_name;
 use crate::storage::Clusterwide;
 use ::tarantool::index::{IndexId, Part};
 use ::tarantool::space::{Field, SpaceId};
@@ -192,17 +193,17 @@ impl From<PersistInstance> for Op {
 #[serde(tag = "op_kind")]
 pub enum Dml {
     Insert {
-        space: String,
+        space: SpaceId,
         #[serde(with = "serde_bytes")]
         tuple: TupleBuffer,
     },
     Replace {
-        space: String,
+        space: SpaceId,
         #[serde(with = "serde_bytes")]
         tuple: TupleBuffer,
     },
     Update {
-        space: String,
+        space: SpaceId,
         /// Key in primary index
         #[serde(with = "serde_bytes")]
         key: TupleBuffer,
@@ -210,7 +211,7 @@ pub enum Dml {
         ops: Vec<TupleBuffer>,
     },
     Delete {
-        space: String,
+        space: SpaceId,
         /// Key in primary index
         #[serde(with = "serde_bytes")]
         key: TupleBuffer,
@@ -243,7 +244,10 @@ impl From<Dml> for Op {
 impl Dml {
     /// Serializes `tuple` and returns an [`Dml::Insert`] in case of success.
     #[inline(always)]
-    pub fn insert(space: impl Into<String>, tuple: &impl ToTupleBuffer) -> tarantool::Result<Self> {
+    pub fn insert(
+        space: impl Into<SpaceId>,
+        tuple: &impl ToTupleBuffer,
+    ) -> tarantool::Result<Self> {
         let res = Self::Insert {
             space: space.into(),
             tuple: tuple.to_tuple_buffer()?,
@@ -254,7 +258,7 @@ impl Dml {
     /// Serializes `tuple` and returns an [`Dml::Replace`] in case of success.
     #[inline(always)]
     pub fn replace(
-        space: impl Into<String>,
+        space: impl Into<SpaceId>,
         tuple: &impl ToTupleBuffer,
     ) -> tarantool::Result<Self> {
         let res = Self::Replace {
@@ -267,7 +271,7 @@ impl Dml {
     /// Serializes `key` and returns an [`Dml::Update`] in case of success.
     #[inline(always)]
     pub fn update(
-        space: impl Into<String>,
+        space: impl Into<SpaceId>,
         key: &impl ToTupleBuffer,
         ops: impl Into<Vec<TupleBuffer>>,
     ) -> tarantool::Result<Self> {
@@ -281,7 +285,7 @@ impl Dml {
 
     /// Serializes `key` and returns an [`Dml::Delete`] in case of success.
     #[inline(always)]
-    pub fn delete(space: impl Into<String>, key: &impl ToTupleBuffer) -> tarantool::Result<Self> {
+    pub fn delete(space: impl Into<SpaceId>, key: &impl ToTupleBuffer) -> tarantool::Result<Self> {
         let res = Self::Delete {
             space: space.into(),
             key: key.to_tuple_buffer()?,
@@ -290,24 +294,26 @@ impl Dml {
     }
 
     #[rustfmt::skip]
-    pub fn space(&self) -> &str {
-        match &self {
-            Self::Insert { space, .. } => space,
-            Self::Replace { space, .. } => space,
-            Self::Update { space, .. } => space,
-            Self::Delete { space, .. } => space,
+    pub fn space(&self) -> SpaceId {
+        match self {
+            Self::Insert { space, .. } => *space,
+            Self::Replace { space, .. } => *space,
+            Self::Update { space, .. } => *space,
+            Self::Delete { space, .. } => *space,
         }
     }
 
     /// Parse lua arguments to an api function such as `pico.cas`.
     pub fn from_lua_args(op: DmlInLua) -> Result<Self, String> {
+        let space = space_by_name(&op.space).map_err(|e| e.to_string())?;
+        let space_id = space.id();
         match op.kind {
             DmlKind::Insert => {
                 let Some(tuple) = op.tuple else {
                     return Err("insert operation must have a tuple".into());
                 };
                 Ok(Self::Insert {
-                    space: op.space,
+                    space: space_id,
                     tuple,
                 })
             }
@@ -316,7 +322,7 @@ impl Dml {
                     return Err("replace operation must have a tuple".into());
                 };
                 Ok(Self::Replace {
-                    space: op.space,
+                    space: space_id,
                     tuple,
                 })
             }
@@ -328,7 +334,7 @@ impl Dml {
                     return Err("update operation must have ops".into());
                 };
                 Ok(Self::Update {
-                    space: op.space,
+                    space: space_id,
                     key,
                     ops,
                 })
@@ -338,7 +344,7 @@ impl Dml {
                     return Err("delete operation must have a key".into());
                 };
                 Ok(Self::Delete {
-                    space: op.space,
+                    space: space_id,
                     key,
                 })
             }

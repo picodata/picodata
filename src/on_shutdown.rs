@@ -5,7 +5,7 @@ use ::tarantool::fiber;
 use crate::has_grades;
 use crate::instance::grade::TargetGradeVariant;
 use crate::rpc;
-use crate::storage::ClusterwideSpace;
+use crate::storage::ClusterwideSpaceId;
 use crate::tlog;
 use crate::traft;
 use crate::traft::error::Error;
@@ -26,7 +26,7 @@ pub async fn callback() {
     // 2. Meanwhile, wait until either it succeeds or there is no quorum.
     let node = node::global().unwrap();
     let raft_id = node.raft_id();
-    let mut instances_watcher = node.storage_watcher(ClusterwideSpace::Instance);
+    let mut instances_watcher = node.storage_watcher(ClusterwideSpaceId::Instance);
     loop {
         let me = unwrap_ok_or!(
             node.storage.instances.get(&raft_id),
