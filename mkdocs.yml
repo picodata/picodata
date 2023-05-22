@@ -1,5 +1,7 @@
 site_name: Портал документации Picodata
 site_description: Picodata documentation site
+repo_url: https://git.picodata.io/picodata/picodata/docs
+
 
 nav:
   - Ознакомление с ПО Picodata:
@@ -62,6 +64,8 @@ extra_css:
 
 plugins:
     - inline-svg
+    - git-revision-date-localized:
+        enable_creation_date: true
     - search:
         lang: 
           - en
