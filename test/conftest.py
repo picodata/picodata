@@ -16,7 +16,7 @@ from rand.params import generate_seed
 from functools import reduce
 from datetime import datetime
 from shutil import rmtree
-from typing import Any, Callable, Literal, Generator, Iterator, Dict
+from typing import Any, Callable, Literal, Generator, Iterator, Dict, List, Tuple
 from itertools import count
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass, field
@@ -520,7 +520,7 @@ class Instance:
         self,
         dml_kind: Literal["insert", "replace", "delete"],
         space: str,
-        tuple: Any,  # TODO tuple, not any
+        tuple: Tuple | List,
         index: int | None = None,
         term: int | None = None,
         range: CasRange | None = None,  # TODO better types for bounds
@@ -926,7 +926,7 @@ class Cluster:
         self,
         dml_kind: Literal["insert", "replace", "delete"],
         space: str,
-        tuple: Any,  # TODO tuple, not any
+        tuple: Tuple | List,
         index: int | None = None,
         term: int | None = None,
         range: CasRange | None = None,  # TODO better types
