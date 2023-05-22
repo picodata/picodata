@@ -19,6 +19,7 @@ use thiserror::Error;
 
 use crate::compare_and_swap;
 use crate::rpc;
+use crate::storage::SPACE_ID_INTERNAL_MAX;
 use crate::storage::{set_pico_schema_version, Clusterwide, ClusterwideSpaceId, PropertyName};
 use crate::traft::op::{Ddl, DdlBuilder, Op};
 use crate::traft::{self, event, node, RaftIndex};
@@ -264,6 +265,9 @@ impl CreateSpaceParams {
         if let Some(id) = self.id {
             if storage.spaces.get(id)?.is_some() {
                 return Err(DdlError::CreateSpace(CreateSpaceError::IdExists(id)).into());
+            }
+            if id <= SPACE_ID_INTERNAL_MAX {
+                crate::tlog!(Warning, "requested space id {id} is in the range 0..={SPACE_ID_INTERNAL_MAX} reserved for future use by picodata, you may have a conflict in a future version");
             }
         }
         // All field names are unique

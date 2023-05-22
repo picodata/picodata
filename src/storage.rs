@@ -1611,6 +1611,22 @@ pub fn set_pico_schema_version(v: u64) -> tarantool::Result<()> {
     Ok(())
 }
 
+pub const SPACE_ID_INTERNAL_MAX: u32 = 1024;
+
+/// Updates box.space._schema max_id to start outside the reserved internal
+/// space id range.
+pub fn tweak_max_space_id() -> tarantool::Result<()> {
+    let sys_schema = Space::from(SystemSpace::Schema);
+    let tuple = sys_schema
+        .get(&["max_id"])?
+        .expect("max_id is always there");
+    let max_id: u32 = tuple.field(1)?.expect("always has value");
+    if max_id < SPACE_ID_INTERNAL_MAX {
+        sys_schema.put(&("max_id", SPACE_ID_INTERNAL_MAX))?;
+    }
+    Ok(())
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // tests
 ////////////////////////////////////////////////////////////////////////////////

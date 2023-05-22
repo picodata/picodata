@@ -12,6 +12,7 @@ use ::tarantool::tuple::Decode;
 use rpc::{join, update_instance};
 use std::convert::TryFrom;
 use std::time::{Duration, Instant};
+use storage::tweak_max_space_id;
 use storage::Clusterwide;
 use storage::{ClusterwideSpaceId, PropertyName};
 use traft::RaftSpaceAccess;
@@ -712,6 +713,8 @@ fn init_common(args: &args::Run, cfg: &tarantool::Cfg) -> (Clusterwide, RaftSpac
 
     init_handlers().expect("failed initializing rpc handlers");
     traft::event::init();
+
+    tweak_max_space_id().expect("failed setting max_id");
     let storage = Clusterwide::new().expect("clusterwide storage initialization failed");
     let raft_storage = RaftSpaceAccess::new().expect("raft storage initialization failed");
     (storage, raft_storage)
