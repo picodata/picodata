@@ -1,10 +1,12 @@
 site_name: Портал документации Picodata
 site_description: Picodata documentation site
+repo_url: https://git.picodata.io/picodata/picodata/docs
+
 
 nav:
   - Ознакомление с ПО Picodata:
     - Общее описание продукта: description.md
-    - Преимущества использования Picodata: benefits.md
+    - Преимущества Picodata: benefits.md
     - Преимущества языка Rust при разработке приложений: benefits_rust.md
     - Общая схема инициализации кластера: clustering.md
     - Работа с SQL в Picodata: sbroad/sql_index.md
@@ -62,6 +64,8 @@ extra_css:
 
 plugins:
     - inline-svg
+    - git-revision-date-localized:
+        enable_creation_date: true
     - search:
         lang: 
           - en
