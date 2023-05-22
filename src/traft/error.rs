@@ -40,7 +40,7 @@ pub enum Error {
     },
     #[error("not a leader")]
     NotALeader,
-    #[error("error during execution of lua code: {0}")]
+    #[error("lua error: {0}")]
     Lua(#[from] LuaError),
     #[error("{0}")]
     Tarantool(#[from] ::tarantool::error::Error),
