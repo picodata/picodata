@@ -256,7 +256,7 @@ impl Node {
         })
     }
 
-    /// Processes the [`join::Request`] request and appends necessary
+    /// Processes the [`rpc::join::Request`] and appends necessary
     /// entries to the raft log (if successful).
     ///
     /// Returns the resulting [`Instance`] when the entry is committed.
@@ -277,7 +277,7 @@ impl Node {
         })
     }
 
-    /// Processes the [`update_instance::Request`] request and appends
+    /// Processes the [`rpc::update_instance::Request`] and appends
     /// [`Op::PersistInstance`] entry to the raft log (if successful).
     ///
     /// Returns `Ok(())` when the entry is committed.
@@ -518,8 +518,8 @@ impl NodeImpl {
         }
     }
 
-    /// Processes the [`join::Request`] request and appends necessary entries
-    /// to the raft log (if successful).
+    /// Processes the [`rpc::join::Request`] and appends necessary
+    /// entries to the raft log (if successful).
     ///
     /// Returns an error if the callee node isn't a Raft leader.
     ///
@@ -564,8 +564,8 @@ impl NodeImpl {
         ))
     }
 
-    /// Processes the [`update_instance::Request`] request and appends [`Op::PersistInstance`]
-    /// entry to the raft log (if successful).
+    /// Processes the [`rpc::update_instance::Request`] and appends
+    /// [`Op::PersistInstance`] entry to the raft log (if successful).
     ///
     /// Returns an error if the callee node isn't a Raft leader.
     ///
