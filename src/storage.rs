@@ -30,11 +30,16 @@ macro_rules! define_clusterwide_spaces {
             pub #space_name_lower: #space_name_upper,
         }
 
+        $(#[$enum_cw_space_id_meta:meta])*
+        pub enum $enum_cw_space_id:ident {
+            #space_name_upper = #space_id,
+        }
+
         $(#[$cw_space_meta:meta])*
         pub enum $cw_space:ident {
             $(
                 $(#[$cw_field_meta:meta])*
-                $cw_space_var:ident = $cw_space_name:expr => {
+                $cw_space_var:ident = $cw_space_id_value:expr, $cw_space_name:expr => {
                     $_cw_struct:ident :: $cw_field:ident;
 
                     $(#[$space_meta:meta])*
@@ -70,6 +75,13 @@ macro_rules! define_clusterwide_spaces {
                     $cw_space_var = $cw_space_name,
                 )+
             }
+        }
+
+        $(#[$enum_cw_space_id_meta])*
+        pub enum $enum_cw_space_id {
+            $(
+                $cw_space_var = $cw_space_id_value,
+            )+
         }
 
         impl $cw_space {
@@ -293,6 +305,7 @@ macro_rules! define_clusterwide_spaces {
             impl TClusterwideSpace for $space {
                 type Index = $index;
                 const SPACE_NAME: &'static str = $cw_space_name;
+                const SPACE_ID: SpaceId = $cw_space_id_value;
             }
 
             impl TClusterwideSpaceIndex for IndexOf<$space> {
@@ -331,9 +344,14 @@ define_clusterwide_spaces! {
         pub #space_name_lower: #space_name_upper,
     }
 
+    /// An enumeration of system clusterwide spaces' ids.
+    pub enum ClusterwideSpaceId {
+        #space_name_upper = #space_id,
+    }
+
     /// An enumeration of builtin cluster-wide spaces
     pub enum ClusterwideSpace {
-        Instance = "_pico_instance" => {
+        Instance = 515, "_pico_instance" => {
             Clusterwide::instances;
 
             /// A struct for accessing storage of all the cluster instances.
@@ -349,7 +367,7 @@ define_clusterwide_spaces! {
             #[allow(clippy::enum_variant_names)]
             pub enum SpaceInstanceIndex;
         }
-        Address = "_pico_peer_address" => {
+        Address = 514, "_pico_peer_address" => {
             Clusterwide::peer_addresses;
 
             /// A struct for accessing storage of peer addresses.
@@ -362,7 +380,7 @@ define_clusterwide_spaces! {
             /// An enumeration of indexes defined for peer address space.
             pub enum SpacePeerAddressIndex;
         }
-        Property = "_pico_property" => {
+        Property = 516, "_pico_property" => {
             Clusterwide::properties;
 
             /// A struct for accessing storage of the cluster-wide key-value properties
@@ -375,7 +393,7 @@ define_clusterwide_spaces! {
             /// An enumeration of indexes defined for property space.
             pub enum SpacePropertyIndex;
         }
-        Replicaset = "_pico_replicaset" => {
+        Replicaset = 517, "_pico_replicaset" => {
             Clusterwide::replicasets;
 
             /// A struct for accessing replicaset info from storage
@@ -388,7 +406,7 @@ define_clusterwide_spaces! {
             /// An enumeration of indexes defined for replicaset space.
             pub enum SpaceReplicasetIndex;
         }
-        Space = "_pico_space" => {
+        Space = 512, "_pico_space" => {
             Clusterwide::spaces;
 
             /// A struct for accessing definitions of all the user-defined spaces.
@@ -403,7 +421,7 @@ define_clusterwide_spaces! {
             #[allow(clippy::enum_variant_names)]
             pub enum SpaceSpaceIndex;
         }
-        Index = "_pico_index" => {
+        Index = 513, "_pico_index" => {
             Clusterwide::indexes;
 
             /// A struct for accessing definitions of all the user-defined indexes.
@@ -672,6 +690,7 @@ impl ClusterwideSpace {
 pub trait TClusterwideSpace {
     type Index: TClusterwideSpaceIndex;
     const SPACE_NAME: &'static str;
+    const SPACE_ID: SpaceId;
 
     #[inline(always)]
     fn primary_index() -> Self::Index {
@@ -747,6 +766,7 @@ pub trait TClusterwideSpaceIndex {
 impl Properties {
     pub fn new() -> tarantool::Result<Self> {
         let space = Space::builder(Self::SPACE_NAME)
+            .id(Self::SPACE_ID)
             .is_local(true)
             .is_temporary(false)
             .field(("key", FieldType::String))
@@ -839,6 +859,7 @@ impl Properties {
 impl Replicasets {
     pub fn new() -> tarantool::Result<Self> {
         let space = Space::builder(Self::SPACE_NAME)
+            .id(Self::SPACE_ID)
             .is_local(true)
             .is_temporary(false)
             .format(Replicaset::format())
@@ -881,6 +902,7 @@ impl ToEntryIter for Replicasets {
 impl PeerAddresses {
     pub fn new() -> tarantool::Result<Self> {
         let space = Space::builder(Self::SPACE_NAME)
+            .id(Self::SPACE_ID)
             .is_local(true)
             .is_temporary(false)
             .field(("raft_id", FieldType::Unsigned))
@@ -940,6 +962,7 @@ impl ToEntryIter for PeerAddresses {
 impl Instances {
     pub fn new() -> tarantool::Result<Self> {
         let space_instances = Space::builder(Self::SPACE_NAME)
+            .id(Self::SPACE_ID)
             .is_local(true)
             .is_temporary(false)
             .format(instance_format())
@@ -1332,6 +1355,7 @@ impl Encode for SpaceDump {}
 impl Spaces {
     pub fn new() -> tarantool::Result<Self> {
         let space = Space::builder(Self::SPACE_NAME)
+            .id(Self::SPACE_ID)
             .is_local(true)
             .is_temporary(false)
             .field(("id", FieldType::Unsigned))
@@ -1422,6 +1446,7 @@ impl ToEntryIter for Spaces {
 impl Indexes {
     pub fn new() -> tarantool::Result<Self> {
         let space = Space::builder(Self::SPACE_NAME)
+            .id(Self::SPACE_ID)
             .is_local(true)
             .is_temporary(false)
             .field(("space_id", FieldType::Unsigned))

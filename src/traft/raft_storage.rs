@@ -2,7 +2,7 @@ use ::raft::prelude as raft;
 use ::raft::Error as RaftError;
 use ::raft::StorageError;
 use ::tarantool::index::IteratorType;
-use ::tarantool::space::Space;
+use ::tarantool::space::{Space, SpaceId};
 use ::tarantool::tuple::{ToTupleBuffer, Tuple};
 use std::cmp::Ordering;
 use std::convert::TryFrom as _;
@@ -68,7 +68,9 @@ macro_rules! auto_impl {
 
 impl RaftSpaceAccess {
     const SPACE_RAFT_LOG: &'static str = "_raft_log";
+    const SPACE_ID_RAFT_LOG: SpaceId = 518;
     const SPACE_RAFT_STATE: &'static str = "_raft_state";
+    const SPACE_ID_RAFT_STATE: SpaceId = 519;
     const FIELD_STATE_VALUE: u32 = 1;
     const FIELD_ENTRY_INDEX: u32 = 1;
     const FIELD_ENTRY_TERM: u32 = 2;
@@ -77,6 +79,7 @@ impl RaftSpaceAccess {
         use tarantool::space::Field;
 
         let space_raft_log = Space::builder(Self::SPACE_RAFT_LOG)
+            .id(Self::SPACE_ID_RAFT_LOG)
             .is_local(true)
             .is_temporary(false)
             .field(Field::unsigned("entry_type"))
@@ -95,6 +98,7 @@ impl RaftSpaceAccess {
             .create()?;
 
         let space_raft_state = Space::builder(Self::SPACE_RAFT_STATE)
+            .id(Self::SPACE_ID_RAFT_STATE)
             .is_local(true)
             .is_temporary(false)
             .field(Field::string("key"))
