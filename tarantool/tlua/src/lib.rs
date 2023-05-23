@@ -761,7 +761,7 @@ pub enum LuaError {
 
     /// There was an error during execution of the Lua code
     /// (for example not enough parameters for a function call).
-    #[error("execution error: {0}")]
+    #[error("{0}")]
     ExecutionError(Cow<'static, str>),
 
     /// There was an IoError while reading the source code to execute.

@@ -84,7 +84,7 @@ pub fn indexable_ffi() {
         assert_eq!(i.get("no such member"), None::<()>);
         assert_eq!(
             i.try_get::<_, ()>("no such member").unwrap_err().to_string(),
-            "execution error: 'struct bigfoo_t' has no member named 'no such member'"
+            "'struct bigfoo_t' has no member named 'no such member'"
         );
     }
 }
@@ -113,13 +113,13 @@ pub fn indexable_meta() {
     assert_eq!(i.get("hello"), None::<()>);
     assert_eq!(
         i.try_get::<_, u8>("hello").unwrap_err().to_string(),
-        format!("execution error: [{file}:{line}]:7: 'for' limit must be a number")
+        format!("[{file}:{line}]:7: 'for' limit must be a number")
     );
 
     let t = LuaTable::try_from(Object::from(i)).unwrap();
     assert_eq!(
         t.try_get::<_, u8>("hello").unwrap_err().to_string(),
-        format!("execution error: [{file}:{line}]:7: 'for' limit must be a number")
+        format!("[{file}:{line}]:7: 'for' limit must be a number")
     );
 }
 
@@ -171,7 +171,7 @@ pub fn indexable_rw_meta() {
     assert_eq!(
         i.try_set(3, [1, 2, 3]).unwrap_err().to_string(),
         format!(
-            "execution error: [{file}:{line}]:4: \
+            "[{file}:{line}]:4: \
             attempt to concatenate local 'v' (a table value)"
         )
     );

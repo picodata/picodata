@@ -53,7 +53,7 @@ pub fn wrong_arguments_types() {
     let e = lua.eval::<i32>("return add()").unwrap_err();
     assert_eq!(
         e.to_string(),
-        "execution error: failed reading Lua value: i32 expected, got no value
+        "failed reading Lua value: i32 expected, got no value
     while reading one of multiple values: i32 at index 1 (1-based) expected, got no value
     while reading value(s) passed into rust callback: (i32, i32) expected, got no values"
     );
@@ -61,7 +61,7 @@ pub fn wrong_arguments_types() {
     let e = lua.eval::<i32>("return add(true)").unwrap_err();
     assert_eq!(
         e.to_string(),
-        "execution error: failed reading Lua value: i32 expected, got boolean
+        "failed reading Lua value: i32 expected, got boolean
     while reading one of multiple values: i32 at index 1 (1-based) expected, got incorrect value
     while reading value(s) passed into rust callback: (i32, i32) expected, got boolean"
     );
@@ -69,7 +69,7 @@ pub fn wrong_arguments_types() {
     let e = lua.eval::<i32>("return add(3)").unwrap_err();
     assert_eq!(
         e.to_string(),
-        "execution error: failed reading Lua value: i32 expected, got no value
+        "failed reading Lua value: i32 expected, got no value
     while reading one of multiple values: i32 at index 2 (1-based) expected, got no value
     while reading value(s) passed into rust callback: (i32, i32) expected, got number"
     );
@@ -78,7 +78,7 @@ pub fn wrong_arguments_types() {
     assert!(matches!(e, tlua::LuaError::ExecutionError(_)));
     assert_eq!(
         e.to_string(),
-        "execution error: failed reading Lua value: i32 expected, got string
+        "failed reading Lua value: i32 expected, got string
     while reading one of multiple values: i32 at index 2 (1-based) expected, got incorrect value
     while reading value(s) passed into rust callback: (i32, i32) expected, got (number, string)"
     );
@@ -258,10 +258,7 @@ pub fn pcall() {
         .to_string();
     let l = line!() - 3;
     let f = file!();
-    assert_eq!(
-        err_msg,
-        format!("execution error: {}:{}:20> catch this", f, l)
-    );
+    assert_eq!(err_msg, format!("{}:{}:20> catch this", f, l));
 }
 
 #[rustfmt::skip]
@@ -273,13 +270,13 @@ pub fn error() {
     let l = line!() - 2;
     let f = file!();
     let msg = lua.exec("return error_callback()").unwrap_err().to_string();
-    assert_eq!(msg, format!("execution error: {}:{}:47> but it compiled :(", f, l));
+    assert_eq!(msg, format!("{}:{}:47> but it compiled :(", f, l));
 
     lua.set("error_callback_2",
         tlua::function2(|msg: String, lua: tlua::LuaState| tlua::error!(lua, "your message: {}", msg))
     );
     let msg = lua.exec("return error_callback_2('my message')").unwrap_err().to_string();
-    assert_eq!(msg, "execution error: your message: my message");
+    assert_eq!(msg, "your message: my message");
 
     lua.set("error_callback_3",
         tlua::Function::new(
@@ -289,7 +286,7 @@ pub fn error() {
         )
     );
     let msg = lua.exec("return error_callback_3('better')").unwrap_err().to_string();
-    assert_eq!(msg, "execution error: this way is better");
+    assert_eq!(msg, "this way is better");
 
     lua.set("error_callback_4",
         tlua::Function::new(
@@ -300,7 +297,7 @@ pub fn error() {
         )
     );
     let msg = lua.exec("return error_callback_4('the best')").unwrap_err().to_string();
-    assert_eq!(msg, "execution error: but this way is the best");
+    assert_eq!(msg, "but this way is the best");
 }
 
 pub fn optional_params() {

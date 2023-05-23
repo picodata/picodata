@@ -71,7 +71,7 @@ pub enum Error {
     /// error types to implement [`Sync`], which isn't implemented for [`Rc`].
     ///
     /// [`Rc`]: std::rc::Rc
-    #[error("Binary protocol (iproto) error: {0}")]
+    #[error("Network error: {0}")]
     Protocol(Arc<crate::network::protocol::Error>),
 
     /// The error is wrapped in a [`Arc`], because some libraries require

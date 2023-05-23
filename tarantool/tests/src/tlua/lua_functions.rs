@@ -164,19 +164,13 @@ pub fn error_location() {
     // Trivial exec
     let code = "error('exec failed')";
     let (line, res) = (line!(), lua.exec(code).unwrap_err());
-    assert_eq!(
-        res.to_string(),
-        format!("execution error: [{file}:{line}]:1: exec failed")
-    );
+    assert_eq!(res.to_string(), format!("[{file}:{line}]:1: exec failed"));
     eprintln!("  {res}");
 
     // Trivial eval
     let code = "error('eval failed')";
     let (line, res) = (line!(), lua.eval::<()>(code).unwrap_err());
-    assert_eq!(
-        res.to_string(),
-        format!("execution error: [{file}:{line}]:1: eval failed")
-    );
+    assert_eq!(res.to_string(), format!("[{file}:{line}]:1: eval failed"));
     eprintln!("  {res}");
 
     // Trivial exec_with
@@ -184,7 +178,7 @@ pub fn error_location() {
     let (line, res) = (line!(), lua.exec_with(code, arg).unwrap_err());
     assert_eq!(
         res.to_string(),
-        format!("Lua error: execution error: [{file}:{line}]:1: exec_with failed")
+        format!("Lua error: [{file}:{line}]:1: exec_with failed")
     );
     eprintln!("  {res}");
 
@@ -193,7 +187,7 @@ pub fn error_location() {
     let (line, res) = (line!(), lua.eval_with::<_, ()>(code, arg).unwrap_err());
     assert_eq!(
         res.to_string(),
-        format!("Lua error: execution error: [{file}:{line}]:1: eval_with failed")
+        format!("Lua error: [{file}:{line}]:1: eval_with failed")
     );
     eprintln!("  {res}");
 
@@ -202,7 +196,7 @@ pub fn error_location() {
 
     // One stack frame above
     let res = lua.exec("error('error(2)', 2)").unwrap_err();
-    assert_eq!(res.to_string(), "execution error: error(2)");
+    assert_eq!(res.to_string(), "error(2)");
     eprintln!("  {res}");
 
     // One plus one minus
@@ -214,10 +208,7 @@ pub fn error_location() {
         foo() -- < location points here
     ";
     let (line, res) = (line!(), lua.exec(code).unwrap_err());
-    assert_eq!(
-        res.to_string(),
-        format!("execution error: [{}:{}]:6: oops", file!(), line)
-    );
+    assert_eq!(res.to_string(), format!("[{}:{}]:6: oops", file!(), line));
     eprintln!("  {res}");
 
     // Exec doesn't raise, but the call does
@@ -230,10 +221,7 @@ pub fn error_location() {
     let foo: LuaFunction<_> = lua.get("foo").unwrap();
     let res = foo.call::<()>().unwrap_err();
 
-    assert_eq!(
-        res.to_string(),
-        format!("execution error: [{file}:{line}]:3: oops")
-    );
+    assert_eq!(res.to_string(), format!("[{file}:{line}]:3: oops"));
     eprintln!("  {res}");
 }
 
@@ -397,7 +385,7 @@ pub fn push_iter_no_err() {
     };
     assert_eq!(
         f().unwrap_err().to_string(),
-        format!("execution error: [{file}:{line}]:4: oopsie")
+        format!("[{file}:{line}]:4: oopsie")
     );
 }
 
