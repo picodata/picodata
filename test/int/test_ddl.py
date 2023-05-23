@@ -34,6 +34,48 @@ def test_ddl_create_space_lua(cluster: Cluster):
         "ddl failed: space creation failed: no field with name: not_defined",
     )
 
+    # Automatic space id
+    cluster.create_space(
+        dict(
+            name="space 2",
+            format=[dict(name="id", type="unsigned", is_nullable=False)],
+            primary_key=["id"],
+            distribution="global",
+        )
+    )
+    space_id = 1026
+    pico_space_def = [
+        space_id,
+        "space 2",
+        ["global"],
+        [["id", "unsigned", False]],
+        2,
+        True,
+    ]
+    assert i1.call("box.space._pico_space:get", space_id) == pico_space_def
+    assert i2.call("box.space._pico_space:get", space_id) == pico_space_def
+
+    # Another one
+    cluster.create_space(
+        dict(
+            name="space the third",
+            format=[dict(name="id", type="unsigned", is_nullable=False)],
+            primary_key=["id"],
+            distribution="global",
+        )
+    )
+    space_id = 1027
+    pico_space_def = [
+        space_id,
+        "space the third",
+        ["global"],
+        [["id", "unsigned", False]],
+        3,
+        True,
+    ]
+    assert i1.call("box.space._pico_space:get", space_id) == pico_space_def
+    assert i2.call("box.space._pico_space:get", space_id) == pico_space_def
+
 
 def test_ddl_create_space_bulky(cluster: Cluster):
     i1, i2, i3, i4 = cluster.deploy(instance_count=4, init_replication_factor=2)

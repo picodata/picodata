@@ -413,7 +413,7 @@ fn picolib_setup(args: &args::Run) {
                 params.validate(storage)?;
                 // TODO: check space creation and rollback
                 // box.begin() box.schema.space.create() box.rollback()
-                let op = params.into_ddl(storage);
+                let op = params.into_ddl(storage)?;
                 let index = schema::prepare_ddl(op, timeout)?;
                 let commit_index = schema::wait_for_ddl_commit(index, timeout)?;
                 Ok(commit_index)

@@ -19,6 +19,7 @@ use thiserror::Error;
 
 use crate::compare_and_swap;
 use crate::rpc;
+use crate::storage::ToEntryIter;
 use crate::storage::SPACE_ID_INTERNAL_MAX;
 use crate::storage::{set_pico_schema_version, Clusterwide, ClusterwideSpaceId, PropertyName};
 use crate::traft::op::{Ddl, DdlBuilder, Op};
@@ -321,11 +322,30 @@ impl CreateSpaceParams {
         Ok(())
     }
 
-    pub fn into_ddl(self, _storage: &Clusterwide) -> Ddl {
+    pub fn into_ddl(self, storage: &Clusterwide) -> traft::Result<Ddl> {
         let id = if let Some(id) = self.id {
             id
         } else {
-            todo!("max_id + 1");
+            let mut id = SPACE_ID_INTERNAL_MAX;
+            // FIXME: space _bucket is the first space in the user space id range.
+            // See https://git.picodata.io/picodata/picodata/picodata/-/issues/288
+            id += 1;
+
+            // ToEntryIter::iter iterates in an order of ascending space ids
+            let iter = storage.spaces.iter()?;
+            // Find the first accessible space id.
+            for space in iter {
+                // We aren't forcing users to not use internal range, so we have
+                // to ignore those
+                if space.id <= SPACE_ID_INTERNAL_MAX {
+                    continue;
+                }
+                if space.id != id + 1 {
+                    break;
+                }
+                id += 1;
+            }
+            id + 1
         };
         let primary_key: Vec<_> = self.primary_key.into_iter().map(Part::field).collect();
         let format: Vec<_> = self
@@ -333,13 +353,14 @@ impl CreateSpaceParams {
             .into_iter()
             .map(tarantool::space::Field::from)
             .collect();
-        Ddl::CreateSpace {
+        let res = Ddl::CreateSpace {
             id,
             name: self.name,
             format,
             primary_key,
             distribution: self.distribution,
-        }
+        };
+        Ok(res)
     }
 }
 
