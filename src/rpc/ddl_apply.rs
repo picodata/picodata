@@ -104,6 +104,15 @@ pub fn apply_schema_change(storage: &Clusterwide, ddl: &Ddl, version: u64) -> Re
             }
 
             let res = (|| -> tarantool::Result<()> {
+                if tt_pk_def.parts.is_empty() {
+                    return Err(tarantool::set_and_get_error!(
+                        tarantool::error::TarantoolErrorCode::ModifyIndex,
+                        "can't create index '{}' in space '{}': parts list cannot be empty",
+                        tt_pk_def.name,
+                        tt_space_def.name,
+                    )
+                    .into());
+                }
                 sys_space.insert(&tt_space_def)?;
                 sys_index.insert(&tt_pk_def)?;
                 if let Some(def) = tt_bucket_id_def {
