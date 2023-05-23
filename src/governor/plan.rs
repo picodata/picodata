@@ -13,7 +13,6 @@ use ::tarantool::space::UpdateOps;
 use std::collections::HashMap;
 
 use super::cc::raft_conf_change;
-use super::migration::get_pending_migration;
 use super::Loop;
 
 #[allow(clippy::too_many_arguments)]
@@ -25,11 +24,9 @@ pub(super) fn action_plan<'i>(
     voters: &[RaftId],
     learners: &[RaftId],
     replicasets: &HashMap<&ReplicasetId, &'i Replicaset>,
-    migration_ids: Vec<u64>,
     my_raft_id: RaftId,
     vshard_bootstrapped: bool,
     replication_factor: usize,
-    desired_schema_version: u64,
     has_pending_schema_change: bool,
 ) -> Result<Plan<'i>> {
     ////////////////////////////////////////////////////////////////////////////
@@ -360,23 +357,6 @@ pub(super) fn action_plan<'i>(
         return Ok(ApplySchemaChange { rpc, targets }.into());
     }
 
-    ////////////////////////////////////////////////////////////////////////////
-    // migration
-    let replicasets: Vec<_> = replicasets.values().copied().collect();
-    let to_apply = get_pending_migration(migration_ids, &replicasets, desired_schema_version);
-    if let Some((migration_id, target)) = to_apply {
-        let rpc = rpc::migration::apply::Request {
-            term,
-            applied,
-            timeout: Loop::SYNC_TIMEOUT,
-            migration_id,
-        };
-        let mut ops = UpdateOps::new();
-        ops.assign("current_schema_version", migration_id)?;
-        let op = Dml::update(ClusterwideSpace::Replicaset, &[&target.replicaset_id], ops)?;
-        return Ok(ApplyMigration { target, rpc, op }.into());
-    }
-
     Ok(Plan::None)
 }
 
@@ -487,12 +467,6 @@ pub mod stage {
         pub struct ApplySchemaChange<'i> {
             pub targets: Vec<&'i InstanceId>,
             pub rpc: rpc::ddl_apply::Request,
-        }
-
-        pub struct ApplyMigration<'i> {
-            pub target: &'i Replicaset,
-            pub rpc: rpc::migration::apply::Request,
-            pub op: Dml,
         }
     }
 }

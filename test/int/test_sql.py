@@ -1,17 +1,10 @@
-import funcy  # type: ignore
 import pytest
 import re
 
 from conftest import (
     Cluster,
-    Instance,
     ReturnError,
 )
-
-
-@funcy.retry(tries=30, timeout=0.2)
-def apply_migration(i: Instance, n: int):
-    assert i.call("pico.migrate", n) == n
 
 
 def test_pico_sql(cluster: Cluster):

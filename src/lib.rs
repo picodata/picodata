@@ -13,7 +13,6 @@ use rpc::{join, update_instance};
 use std::convert::TryFrom;
 use std::time::{Duration, Instant};
 use storage::Clusterwide;
-use storage::ToEntryIter as _;
 use storage::{ClusterwideSpace, PropertyName};
 use traft::RaftSpaceAccess;
 use traft::RaftTerm;
@@ -24,9 +23,8 @@ use crate::instance::grade::TargetGradeVariant;
 use crate::instance::InstanceId;
 use crate::schema::CreateSpaceParams;
 use crate::tlog::set_log_level;
-use crate::traft::event::Event;
+use crate::traft::node;
 use crate::traft::op::{self, Op};
-use crate::traft::{event, node, Migration};
 use crate::traft::{LogicalClock, RaftIndex};
 use traft::error::Error;
 
@@ -377,74 +375,6 @@ fn picolib_setup(args: &args::Run) {
                     std::io::stdout().write_all(&buf).unwrap();
                     Ok(None)
                 }
-            },
-        ),
-    );
-
-    luamod.set(
-        "add_migration",
-        tlua::function2(|id: u64, body: String| -> traft::Result<()> {
-            let migration = Migration { id, body };
-            let op = op::Dml::insert(ClusterwideSpace::Migration, &migration)?;
-            node::global()?.propose_and_wait(op, Duration::MAX)??;
-            Ok(())
-        }),
-    );
-
-    luamod.set(
-        "push_schema_version",
-        tlua::function1(|id: u64| -> traft::Result<()> {
-            let op = op::Dml::replace(
-                ClusterwideSpace::Property,
-                &(PropertyName::DesiredSchemaVersion, id),
-            )?;
-            node::global()?.propose_and_wait(op, Duration::MAX)??;
-            Ok(())
-        }),
-    );
-
-    luamod.set(
-        "migrate",
-        tlua::Function::new(
-            |m_id: Option<u64>, timeout: Option<f64>| -> traft::Result<Option<u64>> {
-                let node = node::global()?;
-
-                let Some(latest) = node.storage.migrations.get_latest()? else {
-                    tlog!(Info, "there are no migrations to apply");
-                    return Ok(None);
-                };
-                let current_version = node.storage.properties.desired_schema_version()?;
-                let target_version = m_id.map(|id| id.min(latest.id)).unwrap_or(latest.id);
-                if target_version <= current_version {
-                    return Ok(Some(current_version));
-                }
-
-                let op = op::Dml::replace(
-                    ClusterwideSpace::Property,
-                    &(PropertyName::DesiredSchemaVersion, target_version),
-                )?;
-                node.propose_and_wait(op, Duration::MAX)??;
-
-                let deadline = {
-                    let timeout = timeout
-                        .map(Duration::from_secs_f64)
-                        .unwrap_or(Duration::MAX);
-                    let now = Instant::now();
-                    now.checked_add(timeout)
-                        .unwrap_or_else(|| now + Duration::from_secs(30 * 365 * 24 * 60 * 60))
-                };
-                while node
-                    .storage
-                    .replicasets
-                    .iter()?
-                    .any(|r| r.current_schema_version < target_version)
-                {
-                    if event::wait_deadline(Event::MigrateDone, deadline)?.is_timeout() {
-                        return Err(Error::Timeout);
-                    }
-                }
-
-                Ok(Some(node.storage.properties.desired_schema_version()?))
             },
         ),
     );

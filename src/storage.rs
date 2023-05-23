@@ -15,7 +15,6 @@ use crate::tlog;
 use crate::traft;
 use crate::traft::error::Error;
 use crate::traft::op::Ddl;
-use crate::traft::Migration;
 use crate::traft::RaftId;
 use crate::traft::Result;
 
@@ -389,18 +388,6 @@ define_clusterwide_spaces! {
             /// An enumeration of indexes defined for replicaset space.
             pub enum SpaceReplicasetIndex;
         }
-        Migration = "_pico_migration" => {
-            Clusterwide::migrations;
-
-            pub struct Migrations {
-                space: Space,
-                #[primary]
-                index: Index => Id = "id",
-            }
-
-            /// An enumeration of indexes defined for migration space.
-            pub enum SpaceMigrationIndex;
-        }
         Space = "_pico_space" => {
             Clusterwide::spaces;
 
@@ -723,8 +710,6 @@ pub trait TClusterwideSpaceIndex {
     pub enum PropertyName {
         ReplicationFactor = "replication_factor",
         VshardBootstrapped = "vshard_bootstrapped",
-        // TODO: remove this
-        DesiredSchemaVersion = "desired_schema_version",
 
         /// Pending ddl operation which is to be either committed or aborted.
         ///
@@ -814,14 +799,6 @@ impl Properties {
         let res = self
             .get(PropertyName::ReplicationFactor)?
             .expect("replication_factor must be set at boot");
-        Ok(res)
-    }
-
-    #[inline]
-    pub fn desired_schema_version(&self) -> tarantool::Result<u64> {
-        let res = self
-            .get(PropertyName::DesiredSchemaVersion)?
-            .unwrap_or_default();
         Ok(res)
     }
 
@@ -1277,56 +1254,6 @@ where
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// Migrations
-////////////////////////////////////////////////////////////////////////////////
-
-impl Migrations {
-    pub fn new() -> tarantool::Result<Self> {
-        let space = Space::builder(Self::SPACE_NAME)
-            .is_local(true)
-            .is_temporary(false)
-            .field(("id", FieldType::Unsigned))
-            .field(("body", FieldType::String))
-            .if_not_exists(true)
-            .create()?;
-
-        let index = space
-            .index_builder(Self::primary_index().as_str())
-            .unique(true)
-            .part("id")
-            .if_not_exists(true)
-            .create()?;
-
-        Ok(Self { space, index })
-    }
-
-    #[inline]
-    pub fn get(&self, id: u64) -> tarantool::Result<Option<Migration>> {
-        match self.space.get(&[id])? {
-            Some(tuple) => tuple.decode().map(Some),
-            None => Ok(None),
-        }
-    }
-
-    #[inline]
-    pub fn get_latest(&self) -> tarantool::Result<Option<Migration>> {
-        let iter = self.space.select(IteratorType::Req, &())?;
-        let iter = EntryIter::new(iter);
-        let ms = iter.take(1).collect::<Vec<_>>();
-        Ok(ms.first().cloned())
-    }
-}
-
-impl ToEntryIter for Migrations {
-    type Entry = Migration;
-
-    #[inline(always)]
-    fn index_iter(&self) -> Result<IndexIterator> {
-        Ok(self.space.select(IteratorType::All, &())?)
-    }
-}
-
-////////////////////////////////////////////////////////////////////////////////
 // EntryIter
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -1752,27 +1679,6 @@ mod tests {
         );
     }
 
-    #[rustfmt::skip]
-    #[::tarantool::test]
-    fn test_storage_migrations() {
-        let migrations = Migrations::new().unwrap();
-
-        assert_eq!(None, migrations.get_latest().unwrap());
-
-        for m in &[
-            (1, "first"),
-            (3, "third"),
-            (2, "second")
-        ] {
-            migrations.space.put(&m).unwrap();
-        }
-
-        assert_eq!(
-            Some(Migration {id: 3, body: "third".to_string()}),
-            migrations.get_latest().unwrap()
-        );
-    }
-
     #[::tarantool::test]
     fn clusterwide_space_index() {
         let storage = Clusterwide::new().unwrap();
@@ -1838,16 +1744,10 @@ mod tests {
         };
         storage.replicasets.space.insert(&r).unwrap();
 
-        storage
-            .migrations
-            .space
-            .insert(&(1, "drop table BANK_ACCOUNTS"))
-            .unwrap();
-
         let snapshot_data = Clusterwide::snapshot_data().unwrap();
         let space_dumps = snapshot_data.space_dumps;
 
-        assert_eq!(space_dumps.len(), 7);
+        assert_eq!(space_dumps.len(), 6);
 
         for space_dump in &space_dumps {
             match &space_dump.space {
@@ -1876,12 +1776,6 @@ mod tests {
                     let [replicaset]: [Replicaset; 1] =
                         Decode::decode(space_dump.tuples.as_ref()).unwrap();
                     assert_eq!(replicaset, r);
-                }
-
-                s if s == &*ClusterwideSpace::Migration => {
-                    let [migration]: [(i32, String); 1] =
-                        Decode::decode(space_dump.tuples.as_ref()).unwrap();
-                    assert_eq!(migration, (1, "drop table BANK_ACCOUNTS".to_owned()));
                 }
 
                 s if s == &*ClusterwideSpace::Space => {
@@ -1943,16 +1837,6 @@ mod tests {
             tuples,
         });
 
-        let m = Migration {
-            id: 1,
-            body: "drop table BANK_ACCOUNTS".into(),
-        };
-        let tuples = [&m].to_tuple_buffer().unwrap();
-        data.space_dumps.push(SpaceDump {
-            space: ClusterwideSpace::Migration.into(),
-            tuples,
-        });
-
         let raw_data = data.to_tuple_buffer().unwrap();
 
         storage.for_each_space(|s| s.truncate()).unwrap();
@@ -1974,9 +1858,5 @@ mod tests {
         assert_eq!(storage.replicasets.space.len().unwrap(), 1);
         let replicaset = storage.replicasets.get("r1").unwrap().unwrap();
         assert_eq!(replicaset, r);
-
-        assert_eq!(storage.migrations.space.len().unwrap(), 1);
-        let migration = storage.migrations.get(1).unwrap().unwrap();
-        assert_eq!(migration, m);
     }
 }

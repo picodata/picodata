@@ -18,7 +18,6 @@ pub mod ddl_apply;
 pub mod expel;
 pub mod join;
 pub mod lsn;
-pub mod migration;
 pub mod replication;
 pub mod sharding;
 pub mod sync;

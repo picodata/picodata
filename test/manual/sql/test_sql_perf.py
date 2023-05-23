@@ -14,18 +14,15 @@ def test_projection(cluster: Cluster):
     i1, i2 = cluster.instances
 
     # Create a sharded space and populate it with data.
-    for n, sql in {
-        1: """create table t(a int, "bucket_id" unsigned, primary key (a));""",
-        2: """create index "bucket_id" on t ("bucket_id");""",
-        3: """create table "_pico_space"("id" int, "distribution" text, primary key("id"));""",
-    }.items():
-        i1.call("pico.add_migration", n, sql)
-    apply_migration(i1, 3)
-
-    space_id = i1.eval("return box.space.T.id")
-    sql = """insert into "_pico_space" values({id}, 'A');""".format(id=space_id)
-    i1.call("pico.add_migration", 4, sql)
-    apply_migration(i1, 4)
+    cluster.create_space(
+        dict(
+            id=895,
+            name="T",
+            format=[dict(name="A", type="integer", is_nullable=False)],
+            primary_key=["A"],
+            distribution=dict(sharding_key=["A"], sharding_fn="murmur3"),
+        )
+    )
 
     row_number = 100
     for n in range(row_number):

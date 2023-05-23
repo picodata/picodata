@@ -381,13 +381,3 @@ pub fn replicaset_uuid(replicaset_id: &str) -> String {
 fn uuid_v3(name: &str) -> Uuid {
     Uuid::new_v3(&Uuid::nil(), name.as_bytes())
 }
-
-////////////////////////////////////////////////////////////////////////////////
-/// Migration
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-pub struct Migration {
-    pub id: u64,
-    pub body: String,
-}
-
-impl Encode for Migration {}

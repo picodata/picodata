@@ -6,7 +6,6 @@ use ::tarantool::fiber::r#async::timeout::Error as TimeoutError;
 use ::tarantool::fiber::r#async::timeout::IntoTimeout as _;
 use ::tarantool::fiber::r#async::watch;
 
-use crate::event::{self, Event};
 use crate::instance::Instance;
 use crate::op::Op;
 use crate::r#loop::FlowControl::{self, Continue};
@@ -25,7 +24,6 @@ use crate::unwrap_ok_or;
 use futures::future::try_join_all;
 
 pub(crate) mod cc;
-pub(crate) mod migration;
 pub(crate) mod plan;
 
 use plan::action_plan;
@@ -59,7 +57,6 @@ impl Loop {
             .iter()
             .map(|rs| (&rs.replicaset_id, rs))
             .collect();
-        let migration_ids = storage.migrations.iter().unwrap().map(|m| m.id).collect();
 
         let term = status.get().term;
         let applied = raft_storage.applied().unwrap().unwrap();
@@ -67,7 +64,6 @@ impl Loop {
         let node = global().expect("must be initialized");
         let vshard_bootstrapped = storage.properties.vshard_bootstrapped().unwrap();
         let replication_factor = storage.properties.replication_factor().unwrap();
-        let desired_schema_version = storage.properties.desired_schema_version().unwrap();
         let pending_schema_change = storage.properties.pending_schema_change().unwrap();
         let has_pending_schema_change = pending_schema_change.is_some();
 
@@ -79,11 +75,9 @@ impl Loop {
             &voters,
             &learners,
             &replicasets,
-            migration_ids,
             node.raft_id,
             vshard_bootstrapped,
             replication_factor,
-            desired_schema_version,
             has_pending_schema_change,
         );
         let plan = unwrap_ok_or!(plan,
@@ -497,34 +491,6 @@ impl Loop {
                         node.propose_and_wait(next_op, Duration::from_secs(3))?;
                     }
                 }
-            }
-
-            Plan::ApplyMigration(ApplyMigration { target, rpc, op }) => {
-                let migration_id = rpc.migration_id;
-                governor_step! {
-                    "applying migration on a replicaset" [
-                        "replicaset_id" => %target.replicaset_id,
-                        "migration_id" => %migration_id,
-                    ]
-                    async {
-                        pool
-                            .call(&target.master_id, &rpc)?
-                            .timeout(Loop::SYNC_TIMEOUT)
-                            .await?;
-                    }
-                }
-
-                governor_step! {
-                    "proposing replicaset current schema version change" [
-                        "replicaset_id" => %target.replicaset_id,
-                        "schema_version" => %migration_id,
-                    ]
-                    async {
-                        node.propose_and_wait(op, Duration::from_secs(3))??
-                    }
-                }
-
-                event::broadcast(Event::MigrateDone);
             }
 
             Plan::None => {
