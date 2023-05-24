@@ -305,8 +305,10 @@ class Instance:
     def listen(self):
         return f"{self.host}:{self.port}"
 
-    def current_grade(self):
-        return self.call("pico.instance_info", self.instance_id)["current_grade"]
+    def current_grade(self, instance_id=None):
+        if instance_id is None:
+            instance_id = self.instance_id
+        return self.call("pico.instance_info", instance_id)["current_grade"]
 
     def instance_uuid(self):
         return self.eval("return box.info.uuid")

@@ -1,4 +1,5 @@
 import pytest
+import time
 from conftest import Cluster, ReturnError
 
 
@@ -355,13 +356,14 @@ def test_ddl_create_space_partial_failure(cluster: Cluster):
 
     # Create a space on one instance
     # which will conflict with the clusterwide space.
-    i3.eval("box.schema.space.create(...)", "space_name_conflict")
+    space_name = "space_name_conflict"
+    i3.eval("box.schema.space.create(...)", space_name)
 
     # Propose a space creation which will fail
     space_id = 876
     space_def = dict(
         id=space_id,
-        name="space_name_conflict",
+        name=space_name,
         format=[dict(name="id", type="unsigned", is_nullable=False)],
         primary_key=[dict(field="id")],
         distribution=dict(kind="global"),
@@ -390,11 +392,17 @@ def test_ddl_create_space_partial_failure(cluster: Cluster):
     assert i1.call("box.space._space:get", space_id) is not None
     assert i2.call("box.space._space:get", space_id) is not None
 
-    # Wake i3 up and currently it just panics...
-    i3.fail_to_start()
+    # Wake i3 up.
+    i3.start()
+    time.sleep(2)
+    # It's locked while trying to apply a confliciting ddl op.
+    assert i1.current_grade(i3.instance_id)["variant"] == "Replicated"
+
+    # Solve the conflict.
+    i3.eval("box.space[...]:drop()", space_name)
+    i3.wait_online()
 
 
-@pytest.mark.xfail(reason="lsn isn't replicated properly")
 def test_successful_wakeup_after_ddl(cluster: Cluster):
     # Manual replicaset distribution.
     # 5 instances are needed for quorum (2 go offline).
@@ -413,7 +421,7 @@ def test_successful_wakeup_after_ddl(cluster: Cluster):
     space_id = 901
     space_def = dict(
         id=space_id,
-        name="space_name_conflict",
+        name="ids",
         format=[dict(name="id", type="unsigned", is_nullable=False)],
         primary_key=["id"],
         distribution="global",
@@ -431,8 +439,6 @@ def test_successful_wakeup_after_ddl(cluster: Cluster):
     # Wake up the catcher-uppers
     i4.start()
     i5.start()
-    # FIXME: currently wait_lsn never stops, because lsn doesn't get replicated
-    # tarantool bug?
     i4.wait_online()
     i5.wait_online()
 
