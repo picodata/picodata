@@ -21,6 +21,7 @@ pub(super) fn action_plan<'i>(
     applied: RaftIndex,
     cluster_id: String,
     instances: &'i [Instance],
+    peer_addresses: &'i HashMap<RaftId, String>,
     voters: &[RaftId],
     learners: &[RaftId],
     replicasets: &HashMap<&ReplicasetId, &'i Replicaset>,
@@ -116,31 +117,10 @@ pub(super) fn action_plan<'i>(
     }
 
     ////////////////////////////////////////////////////////////////////////////
-    // raft sync
-    let to_sync = instances
-        .iter()
-        .find(|instance| has_grades!(instance, Offline -> Online) || instance.is_reincarnated());
-    if let Some(Instance {
-        instance_id,
-        target_grade,
-        ..
-    }) = to_sync
-    {
-        let rpc = rpc::sync::Request {
-            applied,
-            timeout: Loop::SYNC_TIMEOUT,
-        };
-        let req = rpc::update_instance::Request::new(instance_id.clone(), cluster_id)
-            .with_current_grade(CurrentGrade::raft_synced(target_grade.incarnation));
-        #[rustfmt::skip]
-        return Ok(RaftSync { instance_id, rpc, req }.into());
-    }
-
-    ////////////////////////////////////////////////////////////////////////////
     // create new replicaset
     let to_create_replicaset = instances
         .iter()
-        .filter(|instance| has_grades!(instance, RaftSynced -> Online))
+        .filter(|instance| has_grades!(instance, Offline -> Online) || instance.is_reincarnated())
         .find(|instance| replicasets.get(&instance.replicaset_id).is_none());
     if let Some(Instance {
         instance_id: master_id,
@@ -178,7 +158,7 @@ pub(super) fn action_plan<'i>(
         .iter()
         // TODO: find all such instances in a given replicaset,
         // not just the first one
-        .find(|instance| has_grades!(instance, RaftSynced -> Online));
+        .find(|instance| has_grades!(instance, Offline -> Online) || instance.is_reincarnated());
     if let Some(Instance {
         instance_id,
         replicaset_id,
@@ -186,13 +166,25 @@ pub(super) fn action_plan<'i>(
         ..
     }) = to_replicate
     {
-        let targets = maybe_responding(instances)
-            .filter(|instance| instance.replicaset_id == replicaset_id)
-            .map(|instance| &instance.instance_id)
-            .collect();
+        let mut targets = Vec::new();
+        let mut replicaset_peers = Vec::new();
+        for instance in instances {
+            if instance.replicaset_id != replicaset_id {
+                continue;
+            }
+            if let Some(address) = peer_addresses.get(&instance.raft_id) {
+                replicaset_peers.push(address.clone());
+            } else {
+                tlog!(Warning, "replica {} address unknown, will be excluded from box.cfg.replication", instance.instance_id;
+                    "replicaset_id" => %replicaset_id,
+                );
+            }
+            if instance.may_respond() {
+                targets.push(&instance.instance_id);
+            }
+        }
         let rpc = rpc::replication::Request {
-            term,
-            applied,
+            replicaset_peers,
             timeout: Loop::SYNC_TIMEOUT,
         };
         let req = rpc::update_instance::Request::new(instance_id.clone(), cluster_id)
@@ -412,12 +404,6 @@ pub mod stage {
         pub struct ReconfigureShardingAndDowngrade<'i> {
             pub targets: Vec<&'i InstanceId>,
             pub rpc: rpc::sharding::Request,
-            pub req: rpc::update_instance::Request,
-        }
-
-        pub struct RaftSync<'i> {
-            pub instance_id: &'i InstanceId,
-            pub rpc: rpc::sync::Request,
             pub req: rpc::update_instance::Request,
         }
 

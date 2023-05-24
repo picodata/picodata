@@ -50,6 +50,12 @@ impl Loop {
         }
 
         let instances = storage.instances.all_instances().unwrap();
+        let peer_addresses: HashMap<_, _> = storage
+            .peer_addresses
+            .iter()
+            .unwrap()
+            .map(|pa| (pa.raft_id, pa.address))
+            .collect();
         let voters = raft_storage.voters().unwrap().unwrap_or_default();
         let learners = raft_storage.learners().unwrap().unwrap_or_default();
         let replicasets: Vec<_> = storage.replicasets.iter().unwrap().collect();
@@ -72,6 +78,7 @@ impl Loop {
             applied,
             cluster_id,
             &instances,
+            &peer_addresses,
             &voters,
             &learners,
             &replicasets,
@@ -194,26 +201,6 @@ impl Loop {
                         "current_grade" => %current_grade,
                     ]
                     async {
-                        node.handle_update_instance_request_and_wait(req)?
-                    }
-                }
-            }
-
-            Plan::RaftSync(RaftSync {
-                instance_id,
-                rpc,
-                req,
-            }) => {
-                governor_step! {
-                    "syncing raft log" [
-                        "instance_id" => %instance_id
-                    ]
-                    async {
-                        let rpc::sync::Response { applied } = pool
-                            .call(instance_id, &rpc)?
-                            .timeout(Loop::SYNC_TIMEOUT)
-                            .await?;
-                        tlog!(Info, "instance's applied index is {applied}"; "instance_id" => %instance_id);
                         node.handle_update_instance_request_and_wait(req)?
                     }
                 }

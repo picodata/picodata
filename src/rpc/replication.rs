@@ -1,38 +1,26 @@
-use crate::storage::instance_field::ReplicasetId;
 use crate::tarantool::set_cfg_field;
-use crate::traft::{node, RaftIndex, RaftTerm, Result};
+use crate::traft::Result;
 
 use std::time::Duration;
 
 crate::define_rpc_request! {
     fn proc_replication(req: Request) -> Result<Response> {
-        let node = node::global()?;
-        node.status().check_term(req.term)?;
-        super::sync::wait_for_index_timeout(req.applied, &node.raft_storage, req.timeout)?;
+        // TODO: check this configuration is newer then the one currently
+        // applied. For this we'll probably need to store the governor's applied
+        // index at the moment of request generation in box.space._schema on the
+        // requestee. And if the new request has index less then the one in our
+        // _schema, then we ignore it.
 
-        let storage = &node.storage;
-        let rsid = storage.instances.field::<ReplicasetId>(&node.raft_id())?;
-        let mut box_replication = vec![];
-        for replica in storage.instances.replicaset_instances(&rsid)? {
-            let Some(address) = storage.peer_addresses.get(replica.raft_id)? else {
-                crate::tlog!(Warning, "address unknown for instance";
-                    "raft_id" => replica.raft_id,
-                );
-                continue;
-            };
-            box_replication.push(address);
-        }
         // box.cfg checks if the replication is already the same
         // and ignores it if nothing changed
-        set_cfg_field("replication", box_replication)?;
+        set_cfg_field("replication", &req.replicaset_peers)?;
         let lsn = crate::tarantool::eval("return box.info.lsn")?;
         Ok(Response { lsn })
     }
 
     /// Request to configure tarantool replication.
     pub struct Request {
-        pub term: RaftTerm,
-        pub applied: RaftIndex,
+        pub replicaset_peers: Vec<String>,
         pub timeout: Duration,
     }
 

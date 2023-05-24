@@ -8,8 +8,6 @@ use ::tarantool::tlua;
         /// Instance has gracefully shut down or has not been started yet.
         #[default]
         Offline = "Offline",
-        /// Instance has synced by commit index.
-        RaftSynced = "RaftSynced",
         /// Instance has configured replication.
         Replicated = "Replicated",
         /// Instance has configured sharding.
@@ -84,9 +82,6 @@ impl CurrentGrade {
     impl_constructors! {
         #[variant = CurrentGradeVariant::Offline]
         pub fn offline(incarnation: u64) -> Self;
-
-        #[variant = CurrentGradeVariant::RaftSynced]
-        pub fn raft_synced(incarnation: u64) -> Self;
 
         #[variant = CurrentGradeVariant::Replicated]
         pub fn replicated(incarnation: u64) -> Self;

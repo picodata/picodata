@@ -362,7 +362,7 @@ mod tests {
         );
 
         assert_eq!(
-            cc(&[p1(), p!(2, RaftSynced -> Online)], &[1], &[2]),
+            cc(&[p1(), p!(2, Replicated -> Online)], &[1], &[2]),
             // nothing to do until p2 attains current_grade online
             None
         );
@@ -469,7 +469,7 @@ mod tests {
 
         assert_eq!(
             cc(
-                &[p1(), p!(2, Online -> Offline), p!(3, RaftSynced -> Online)],
+                &[p1(), p!(2, Online -> Offline), p!(3, Replicated -> Online)],
                 &[1, 2],
                 &[3]
             ),
