@@ -17,10 +17,8 @@ pub mod cas;
 pub mod ddl_apply;
 pub mod expel;
 pub mod join;
-pub mod lsn;
 pub mod replication;
 pub mod sharding;
-pub mod sync;
 pub mod update_instance;
 
 /// Types implementing this trait represent an RPC's (remote procedure call)

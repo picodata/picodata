@@ -633,8 +633,8 @@ class Instance:
         Failing to do so will result in an error.
         """
         if index is None:
-            index = self.raft_index()
-            term = self.raft_term()
+            index = self.raft_read_index()
+            term = self.raft_term_by_index(index)
         elif term is None:
             term = self.raft_term_by_index(index)
 
@@ -720,7 +720,7 @@ class Instance:
         # Index of the corresponding ddl abort / ddl commit entry
         index_fin = index + 1
         if wait_index:
-            self.call(".proc_sync_raft", index_fin, [timeout, 0], timeout)
+            self.raft_wait_index(index_fin, timeout)
 
         return index_fin
 
@@ -776,11 +776,6 @@ class Instance:
         Retriable(timeout, rps, fatal=ProcessDead).call(fetch_info)
         eprint(f"{self} is online")
 
-    def raft_index(self) -> int:
-        """Get raft applied `index`"""
-
-        return self.eval("return box.space._raft_state:get('applied').value")
-
     def raft_term(self) -> int:
         """Get current raft `term`"""
 
@@ -801,18 +796,49 @@ class Instance:
         )
         return term
 
-    def raft_wait_index(self, index: int, timeout: int = 1):
-        """Wait until instance applies an entry with supplied `index`.
+    def raft_get_index(self) -> int:
+        """Get current applied raft index"""
+        return self.call("pico.raft_get_index")
+
+    def raft_read_index(self, timeout: int | float = 1) -> int:
+        """
+        Perform the quorum read operation.
+        See `crate::traft::node::Node::read_index`.
+        """
+
+        return self.call(
+            "pico.raft_read_index", timeout,  # this timeout is passed as an argument
+            timeout=timeout + 1  # this timeout is for network call
+        )
+
+    def raft_wait_index(self, target: int, timeout: int | float = 1) -> int:
+        """
+        Wait until instance applies the `target` raft index.
+        See `crate::traft::node::Node::wait_index`.
+        """
+
+        return self.call(
+            "pico.raft_wait_index", target, timeout,  # this timeout is passed as an argument
+            timeout=timeout + 1  # this timeout is for network call
+        )
+
+    def get_lsn(self) -> int:
+        """Get current lsn"""
+
+        return self.call("pico.get_lsn")
+
+    def wait_lsn(self, target: int, timeout: int | float = 1) -> int:
+        """
+        Wait until Tarantool LSN reaches the `target`. Returns the
+        actual LSN. It can be equal to or greater than the target one.
 
         Raises:
             TarantoolError: on timeout
         """
 
-        # Rely on rpc's timeout instead of `call` timeout
-        unreachable_timeout = timeout * 10
-        timeout_duration = dict(secs=timeout, nanos=0)
-        self.call(
-            ".proc_sync_raft", index, timeout_duration, timeout=unreachable_timeout
+        return self.call(
+            "pico.wait_lsn", target, timeout,  # this timeout is passed as an argument
+            timeout=timeout + 1  # this timeout is for network call
         )
 
     def promote_or_fail(self):
@@ -1036,8 +1062,8 @@ class Cluster:
         if instance is None:
             instance = self.instances[0]
         if index is None:
-            index = instance.raft_index()
-            term = instance.raft_term()
+            index = instance.raft_read_index()
+            term = instance.raft_term_by_index(index)
         elif term is None:
             term = instance.raft_term_by_index(index)
 

@@ -1,5 +1,4 @@
 use crate::op::Ddl;
-use crate::rpc;
 use crate::storage::Clusterwide;
 use crate::storage::{local_schema_version, set_local_schema_version};
 use crate::tlog;
@@ -15,7 +14,7 @@ use tarantool::space::{Space, SystemSpace};
 crate::define_rpc_request! {
     fn proc_apply_schema_change(req: Request) -> Result<Response> {
         let node = node::global()?;
-        rpc::sync::wait_for_index_timeout(req.applied, &node.raft_storage, req.timeout)?;
+        node.wait_index(req.applied, req.timeout)?;
         node.status().check_term(req.term)?;
 
         let storage = &node.storage;

@@ -114,11 +114,10 @@ def test_ddl_create_space_bulky(cluster: Cluster):
         ),
     )
 
-    # TODO: use `raft_wait_index`
-    i1.call(".proc_sync_raft", abort_index, (3, 0))
-    i2.call(".proc_sync_raft", abort_index, (3, 0))
-    i3.call(".proc_sync_raft", abort_index, (3, 0))
-    i4.call(".proc_sync_raft", abort_index, (3, 0))
+    i1.raft_wait_index(abort_index, 3)
+    i2.raft_wait_index(abort_index, 3)
+    i3.raft_wait_index(abort_index, 3)
+    i4.raft_wait_index(abort_index, 3)
 
     # No space was created
     assert i1.call("box.space._pico_space:get", space_id) is None
@@ -450,7 +449,7 @@ def test_successful_wakeup_after_ddl(cluster: Cluster):
     )
     index = i1.create_space(space_def)
 
-    i2.call(".proc_sync_raft", index, (3, 0))
+    i2.raft_wait_index(index, 3)
 
     # Space created
     assert i1.call("box.space._space:get", space_id) is not None

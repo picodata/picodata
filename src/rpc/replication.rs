@@ -38,7 +38,6 @@ crate::define_rpc_request! {
 }
 
 pub mod promote {
-    use crate::rpc;
     use crate::traft::node;
     use crate::traft::RaftIndex;
     use crate::traft::RaftTerm;
@@ -48,8 +47,8 @@ pub mod promote {
     crate::define_rpc_request! {
         fn proc_replication_promote(req: Request) -> Result<Response> {
             let node = node::global()?;
+            node.wait_index(req.applied, req.timeout)?;
             node.status().check_term(req.term)?;
-            rpc::sync::wait_for_index_timeout(req.applied, &node.raft_storage, req.timeout)?;
             crate::tarantool::exec("box.cfg { read_only = false }")?;
             Ok(Response {})
         }

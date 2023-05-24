@@ -70,7 +70,7 @@ def test_select(cluster: Cluster):
             distribution=dict(kind="sharded_implicitly", sharding_key=["A"]),
         )
     )
-    i2.call(".proc_sync_raft", index, [3, 0])
+    i2.raft_wait_index(index, 3)
 
     data = i1.sql("""insert into t values(1);""")
     assert data["row_count"] == 1

@@ -199,10 +199,63 @@ impl Node {
         fiber::block_on(self.status.clone().changed()).unwrap();
     }
 
+    /// Returns current applied [`RaftIndex`].
+    pub fn get_index(&self) -> RaftIndex {
+        self.raft_storage
+            .applied()
+            .expect("reading from memtx should never fail")
+            .unwrap_or(0)
+    }
+
+    /// Performs the quorum read operation.
+    ///
+    /// If works the following way:
+    ///
+    /// 1. The instance forwards a request (`MsgReadIndex`) to a raft
+    ///    leader. In case there's no leader at the moment, the function
+    ///    returns `Err(ProposalDropped)`.
+    /// 2. Raft leader tracks its `commit_index` and broadcasts a
+    ///    heartbeat to followers to make certain that it's still a
+    ///    leader.
+    /// 3. As soon as the heartbeat is acknowlenged by the quorum, the
+    ///    function returns that index.
+    /// 4. The instance awaits when the index is applied. If timeout
+    ///    expires beforehand, the function returns `Err(Timeout)`.
+    ///
+    /// Returns current applied [`RaftIndex`].
+    ///
     /// **This function yields**
-    pub fn wait_for_read_state(&self, timeout: Duration) -> traft::Result<RaftIndex> {
-        let notify = self.raw_operation(|node_impl| node_impl.read_state_async())?;
-        fiber::block_on(notify.recv_timeout::<RaftIndex>(timeout))
+    pub fn read_index(&self, timeout: Duration) -> traft::Result<RaftIndex> {
+        let deadline = instant_saturating_add(Instant::now(), timeout);
+
+        let notify = self.raw_operation(|node_impl| node_impl.read_index_async())?;
+        let index: RaftIndex = fiber::block_on(notify.recv_timeout(timeout))?;
+
+        self.wait_index(index, deadline.saturating_duration_since(Instant::now()))
+    }
+
+    /// Waits for [`RaftIndex`] to be applied to the storage locally.
+    ///
+    /// Returns current applied [`RaftIndex`]. It can be equal to or
+    /// greater than the target one. If timeout expires beforehand, the
+    /// function returns `Err(Timeout)`.
+    ///
+    /// **This function yields**
+    #[inline]
+    pub fn wait_index(&self, target: RaftIndex, timeout: Duration) -> traft::Result<RaftIndex> {
+        let deadline = instant_saturating_add(Instant::now(), timeout);
+        loop {
+            let current = self.get_index();
+            if current >= target {
+                return Ok(current);
+            }
+
+            if let Some(timeout) = deadline.checked_duration_since(Instant::now()) {
+                event::wait_timeout(event::Event::EntryApplied, timeout)?;
+            } else {
+                return Err(Error::Timeout);
+            }
+        }
     }
 
     /// Propose an operation and wait for it's result.
@@ -453,7 +506,7 @@ impl NodeImpl {
         Ok(self.topology_cache.insert(current_term, topology))
     }
 
-    pub fn read_state_async(&mut self) -> Result<Notify, RaftError> {
+    pub fn read_index_async(&mut self) -> Result<Notify, RaftError> {
         // In some states `raft-rs` ignores the ReadIndex request.
         // Check it preliminary, don't wait for the timeout.
         //
@@ -1401,7 +1454,7 @@ impl NodeImpl {
         let master = self.storage.instances.get(&replicaset.master_id)?;
         let master_uuid = master.instance_uuid;
 
-        let resp = fiber::block_on(self.pool.call(&master.raft_id, &rpc::lsn::Request {})?)?;
+        let resp = fiber::block_on(self.pool.call(&master.raft_id, &rpc::lsn::ReadRequest {})?)?;
         let target_lsn = resp.lsn;
 
         let mut current_lsn = None;

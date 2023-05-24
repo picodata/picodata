@@ -7,8 +7,8 @@ def test_bootstrap_from_snapshot(cluster: Cluster):
     [i1] = cluster.deploy(instance_count=1)
 
     ret = i1.cas("insert", "_pico_property", ["animal", "horse"])
-    i1.call(".proc_sync_raft", ret, (_3_SEC, 0))
-    assert i1.call("pico.raft_read_index", _3_SEC) == ret
+    i1.raft_wait_index(ret, _3_SEC)
+    assert i1.raft_read_index(_3_SEC) == ret
 
     # Compact the whole log
     assert i1.raft_compact_log() == ret + 1
@@ -29,7 +29,7 @@ def test_catchup_by_snapshot(cluster: Cluster):
     i1.assert_raft_status("Leader")
     ret = i1.cas("insert", "_pico_property", ["animal", "tiger"])
 
-    i3.call(".proc_sync_raft", ret, (_3_SEC, 0))
+    i3.raft_wait_index(ret, _3_SEC)
     assert i3.call("box.space._pico_property:get", "animal") == ["animal", "tiger"]
     assert i3.raft_first_index() == 1
     i3.terminate()
@@ -38,7 +38,7 @@ def test_catchup_by_snapshot(cluster: Cluster):
     ret = i1.cas("insert", "_pico_property", ["tree", "birch"])
 
     for i in [i1, i2]:
-        i.call(".proc_sync_raft", ret, (_3_SEC, 0))
+        i.raft_wait_index(ret, _3_SEC)
         assert i.raft_compact_log() == ret + 1
 
     # Ensure i3 is able to sync raft using a snapshot

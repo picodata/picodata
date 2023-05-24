@@ -495,7 +495,7 @@ pub fn prepare_ddl(op: Ddl, timeout: Duration) -> traft::Result<RaftIndex> {
         let raft_storage = &node.raft_storage;
         let op = DdlBuilder::new(storage)?.with_op(op.clone());
         wait_for_no_pending_schema_change(storage, timeout)?;
-        let index = node::global()?.wait_for_read_state(timeout)?;
+        let index = node::global()?.read_index(timeout)?;
         let term = raft::Storage::term(raft_storage, index)?;
         let predicate = rpc::cas::Predicate {
             index,
@@ -510,7 +510,7 @@ pub fn prepare_ddl(op: Ddl, timeout: Duration) -> traft::Result<RaftIndex> {
             ],
         };
         let (index, term) = compare_and_swap(op, predicate)?;
-        rpc::sync::wait_for_index_timeout(index, raft_storage, timeout)?;
+        node.wait_index(index, timeout)?;
         if raft::Storage::term(raft_storage, index)? != term {
             // leader switched - retry
             continue;

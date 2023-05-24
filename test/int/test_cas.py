@@ -108,13 +108,13 @@ def test_cas_predicate(instance: Instance):
         )
 
     instance.raft_compact_log()
-    read_index = instance.call("pico.raft_read_index", _3_SEC)
+    read_index = instance.raft_read_index(_3_SEC)
 
     # Successful insert
     ret = instance.cas("insert", "_pico_property", ["fruit", "apple"], read_index)
     assert ret == read_index + 1
-    instance.call(".proc_sync_raft", ret, (_3_SEC, 0))
-    assert instance.call("pico.raft_read_index", _3_SEC) == ret
+    instance.raft_wait_index(ret, _3_SEC)
+    assert instance.raft_read_index(_3_SEC) == ret
     assert property("fruit") == "apple"
 
     # CaS rejected
@@ -142,6 +142,6 @@ def test_cas_predicate(instance: Instance):
         range=CasRange(eq="flower"),
     )
     assert ret == read_index + 2
-    instance.call(".proc_sync_raft", ret, (_3_SEC, 0))
-    assert instance.call("pico.raft_read_index", _3_SEC) == ret
+    instance.raft_wait_index(ret, _3_SEC)
+    assert instance.raft_read_index(_3_SEC) == ret
     assert property("flower") == "tulip"

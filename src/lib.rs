@@ -23,6 +23,7 @@ use protobuf::Message as _;
 use crate::instance::grade::TargetGradeVariant;
 use crate::instance::InstanceId;
 use crate::schema::CreateSpaceParams;
+use crate::sync::Lsn;
 use crate::tlog::set_log_level;
 use crate::traft::node;
 use crate::traft::op::{self, Op};
@@ -46,6 +47,7 @@ pub mod rpc;
 pub mod schema;
 pub mod sql;
 pub mod storage;
+pub mod sync;
 pub mod tarantool;
 pub mod tlog;
 pub mod traft;
@@ -116,10 +118,36 @@ fn picolib_setup(args: &args::Run) {
         }),
     );
     luamod.set(
+        "raft_get_index",
+        tlua::function0(|| -> traft::Result<RaftIndex> {
+            let node = traft::node::global()?;
+            Ok(node.get_index())
+        }),
+    );
+    luamod.set(
         "raft_read_index",
         tlua::function1(|timeout: f64| -> traft::Result<RaftIndex> {
-            traft::node::global()?.wait_for_read_state(Duration::from_secs_f64(timeout))
+            let node = traft::node::global()?;
+            node.read_index(Duration::from_secs_f64(timeout))
         }),
+    );
+    luamod.set(
+        "raft_wait_index",
+        tlua::function2(
+            |target: RaftIndex, timeout: f64| -> traft::Result<RaftIndex> {
+                let node = traft::node::global()?;
+                node.wait_index(target, Duration::from_secs_f64(timeout))
+            },
+        ),
+    );
+    luamod.set("get_lsn", tlua::function0(sync::get_lsn));
+    luamod.set(
+        "wait_lsn",
+        tlua::function2(
+            |target: Lsn, timeout: f64| -> Result<Lsn, sync::TimeoutError> {
+                sync::wait_lsn(target, Duration::from_secs_f64(timeout))
+            },
+        ),
     );
     luamod.set(
         "raft_propose_nop",

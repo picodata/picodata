@@ -11,7 +11,7 @@ def test_compaction(instance: Instance):
             k,
         )
 
-    read_index = instance.call("pico.raft_read_index", 3)
+    read_index = instance.raft_read_index(3)
     applied_index = raft_state("applied")
     assert read_index == applied_index
 

@@ -1,6 +1,6 @@
 import pytest
 
-from conftest import Cluster, Instance, retrying, TarantoolError
+from conftest import Cluster, Instance, retrying, ReturnError
 
 
 @pytest.fixture
@@ -79,7 +79,7 @@ def test_log_rollback(cluster3: Cluster):
     break_picodata_procs(i3)
 
     # No operations can be committed, i1 is alone.
-    with pytest.raises(TarantoolError):
+    with pytest.raises(ReturnError):
         propose_state_change(i1, "i1 lost the quorum")
 
     # And now i2 + i3 can't reach i1.
