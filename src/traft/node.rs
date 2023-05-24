@@ -63,6 +63,7 @@ use std::convert::TryFrom;
 use std::rc::Rc;
 use std::time::Duration;
 use std::time::Instant;
+use ApplyEntryResult::*;
 
 type RawNode = raft::RawNode<RaftSpaceAccess>;
 
@@ -649,8 +650,6 @@ impl NodeImpl {
     }
 
     /// Is called during a transaction
-    ///
-    /// Returns `true` if wait_lsn is needed in `advance`.
     fn handle_committed_entries(
         &mut self,
         entries: &[raft::Entry],
@@ -669,18 +668,18 @@ impl NodeImpl {
                 }
             };
 
-            let mut wait_lsn = false;
+            let mut apply_entry_result = EntryApplied;
             start_transaction(|| -> tarantool::Result<()> {
                 let entry_index = entry.index;
                 match entry.entry_type {
                     raft::EntryType::EntryNormal => {
-                        wait_lsn = self.handle_committed_normal_entry(
+                        apply_entry_result = self.handle_committed_normal_entry(
                             entry,
                             wake_governor,
                             expelled,
                             storage_changes,
                         );
-                        if wait_lsn {
+                        if apply_entry_result != EntryApplied {
                             return Ok(());
                         }
                     }
@@ -702,39 +701,42 @@ impl NodeImpl {
                 Ok(())
             })?;
 
-            if wait_lsn {
-                // TODO: this shouldn't ever happen for a raft leader,
-                // but what if it does?
-                // TODO: What if about we get elected leader after wait_lsn?
-                if let Err(e) = self.wait_lsn() {
-                    let timeout = MainLoop::TICK;
-                    tlog!(
-                        Warning,
-                        "failed syncing with replication master: {e}, retrying in {:?}...",
-                        timeout
-                    );
-                    fiber::sleep(timeout);
+            match apply_entry_result {
+                WaitLsnAndRetry => {
+                    if let Err(e) = self.check_lsn_and_sleep() {
+                        let timeout = MainLoop::TICK;
+                        tlog!(
+                            Warning,
+                            "failed syncing with replication master: {e}, retrying in {:?}...",
+                            timeout
+                        );
+                        fiber::sleep(timeout);
+                    }
+                    continue;
                 }
-                continue;
+                SleepAndRetry => {
+                    let timeout = MainLoop::TICK * 4;
+                    fiber::sleep(timeout);
+                    continue;
+                }
+                EntryApplied => {
+                    // Actually advance the iterator.
+                    let _ = entries.next();
+                }
             }
-
-            // Actually advance the iterator.
-            let _ = entries.next();
         }
 
         Ok(())
     }
 
     /// Is called during a transaction
-    ///
-    /// Returns `true` if wait_lsn is needed in `advance`.
     fn handle_committed_normal_entry(
         &mut self,
         entry: traft::Entry,
         wake_governor: &mut bool,
         expelled: &mut bool,
         storage_changes: &mut StorageChanges,
-    ) -> bool {
+    ) -> ApplyEntryResult {
         assert_eq!(entry.entry_type, raft::EntryType::EntryNormal);
         let lc = entry.lc();
         let index = entry.index;
@@ -803,7 +805,7 @@ impl NodeImpl {
                 if current_version_in_tarantool < pending_version {
                     let is_master = self.is_replicaset_master().expect("storage_error");
                     if !is_master {
-                        return true; // wait_lsn
+                        return WaitLsnAndRetry;
                     }
                 }
 
@@ -851,15 +853,10 @@ impl NodeImpl {
                         .expect("storage error");
                         match resp {
                             rpc::ddl_apply::Response::Abort { reason } => {
-                                // There's no risk to brick the cluster at this point because
-                                // the governor would have made sure the ddl applies on all
-                                // active (at the time) instances. This instance is just catching
-                                // up to the cluster and this failure will be at startup time.
-                                tlog!(Critical, "failed applying already committed ddl operation: {reason}";
+                                tlog!(Warning, "failed applying committed ddl operation: {reason}";
                                     "ddl" => ?ddl,
                                 );
-                                // TODO: add support to mitigate these failures
-                                panic!("abort of a committed operation");
+                                return SleepAndRetry;
                             }
                             rpc::ddl_apply::Response::Ok => {}
                         }
@@ -887,8 +884,7 @@ impl NodeImpl {
                 if current_version_in_tarantool == pending_version {
                     let is_master = self.is_replicaset_master().expect("storage_error");
                     if !is_master {
-                        // wait_lsn
-                        return true;
+                        return WaitLsnAndRetry;
                     }
                 }
 
@@ -944,7 +940,7 @@ impl NodeImpl {
             event::broadcast(Event::JointStateDrop);
         }
 
-        false
+        EntryApplied
     }
 
     fn apply_op_ddl_prepare(&self, ddl: Ddl, schema_version: u64) -> traft::Result<()> {
@@ -1348,7 +1344,7 @@ impl NodeImpl {
         self.raw_node.advance_apply();
     }
 
-    fn wait_lsn(&mut self) -> traft::Result<()> {
+    fn check_lsn_and_sleep(&mut self) -> traft::Result<()> {
         assert!(self.raw_node.raft.state != RaftStateRole::Leader);
         let my_id = self.raw_node.raft.id;
 
@@ -1436,6 +1432,20 @@ impl NodeImpl {
         self.notifications.insert(lc, tx);
         (lc, rx)
     }
+}
+
+/// Return value of [`handle_committed_normal_entry`], explains what should be
+/// done as result of attempting to apply a given entry.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ApplyEntryResult {
+    /// This is a replica and it needs to sync with replicaset master.
+    WaitLsnAndRetry,
+
+    /// This entry failed to apply for some reason, and must be retried later.
+    SleepAndRetry,
+
+    /// Entry applied successfully, proceed to next entry.
+    EntryApplied,
 }
 
 pub(crate) struct MainLoop {
