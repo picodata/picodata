@@ -11,6 +11,7 @@ rust-version = "1.65"
 bytes = "1.1"
 clap = {version = "3", features = ["derive", "env"]}
 errno = "0.2.8"
+indoc = "2"
 libc = "0.2.108"
 raft = "0.6.0"
 serde = "1.0"

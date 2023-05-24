@@ -31,6 +31,7 @@ pub trait Request: Encode + DecodeOwned {
     type Response: Encode + DeserializeOwned + Debug + 'static;
 }
 
+/// Invoke remote procedure call on an instance specified by `address`.
 pub async fn network_call<R>(address: &str, request: &R) -> ::tarantool::Result<R::Response>
 where
     R: Request,
@@ -50,6 +51,7 @@ where
     tuple.decode().map(|((res,),)| res)
 }
 
+/// Invoke remote procedure call on a Raft leader.
 pub async fn network_call_to_leader<R>(request: &R) -> Result<R::Response>
 where
     R: Request,

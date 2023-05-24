@@ -8,8 +8,6 @@ use ::tarantool::fiber::r#async::timeout;
 use ::tarantool::fiber::r#async::timeout::IntoTimeout as _;
 use ::tarantool::tlua;
 use ::tarantool::transaction::start_transaction;
-use ::tarantool::tuple::Decode;
-use ::tarantool::vclock::Vclock;
 use rpc::{join, update_instance};
 use std::convert::TryFrom;
 use std::time::{Duration, Instant};
@@ -22,13 +20,9 @@ use traft::RaftTerm;
 use protobuf::Message as _;
 
 use crate::instance::grade::TargetGradeVariant;
-use crate::instance::InstanceId;
-use crate::schema::CreateSpaceParams;
-use crate::tlog::set_log_level;
 use crate::traft::node;
 use crate::traft::op::{self, Op};
 use crate::traft::{LogicalClock, RaftIndex};
-use traft::error::Error;
 
 #[doc(hidden)]
 mod app;
@@ -40,6 +34,7 @@ pub mod instance;
 pub mod ipc;
 pub mod kvcell;
 pub mod r#loop;
+mod luamod;
 pub mod mailbox;
 pub mod on_shutdown;
 pub mod replicaset;
@@ -52,395 +47,6 @@ pub mod tarantool;
 pub mod tlog;
 pub mod traft;
 pub mod util;
-
-fn picolib_setup(args: &args::Run) {
-    set_log_level(args.log_level());
-    let l = ::tarantool::lua_state();
-    l.exec(
-        "package.loaded.pico = {}
-        _G.pico = package.loaded.pico
-        ",
-    )
-    .unwrap();
-    let luamod: tlua::LuaTable<_> = l.get("pico").unwrap();
-
-    luamod.set("VERSION", env!("CARGO_PKG_VERSION"));
-    luamod.set("args", args);
-
-    luamod.set(
-        "whoami",
-        tlua::function0(|| -> traft::Result<_> {
-            let node = traft::node::global()?;
-            let raft_storage = &node.raft_storage;
-
-            Ok(tlua::AsTable((
-                ("raft_id", raft_storage.raft_id()?),
-                ("cluster_id", raft_storage.cluster_id()?),
-                ("instance_id", raft_storage.instance_id()?),
-            )))
-        }),
-    );
-
-    luamod.set(
-        "instance_info",
-        tlua::function1(|iid: Option<InstanceId>| -> traft::Result<_> {
-            let node = traft::node::global()?;
-            let iid = iid.unwrap_or(node.raft_storage.instance_id()?.unwrap());
-            let instance = node.storage.instances.get(&iid)?;
-            let peer_address = node
-                .storage
-                .peer_addresses
-                .get(instance.raft_id)?
-                .unwrap_or_else(|| "<unknown>".into());
-
-            Ok(tlua::AsTable((
-                ("raft_id", instance.raft_id),
-                ("advertise_address", peer_address),
-                ("instance_id", instance.instance_id.0),
-                ("instance_uuid", instance.instance_uuid),
-                ("replicaset_id", instance.replicaset_id),
-                ("replicaset_uuid", instance.replicaset_uuid),
-                ("current_grade", instance.current_grade),
-                ("target_grade", instance.target_grade),
-            )))
-        }),
-    );
-
-    luamod.set(
-        "raft_status",
-        tlua::function0(|| traft::node::global().map(|n| n.status())),
-    );
-    luamod.set(
-        "raft_tick",
-        tlua::function1(|n_times: u32| -> traft::Result<()> {
-            traft::node::global()?.tick_and_yield(n_times);
-            Ok(())
-        }),
-    );
-    luamod.set(
-        "raft_get_index",
-        tlua::function0(|| -> traft::Result<RaftIndex> {
-            let node = traft::node::global()?;
-            Ok(node.get_index())
-        }),
-    );
-    luamod.set(
-        "raft_read_index",
-        tlua::function1(|timeout: f64| -> traft::Result<RaftIndex> {
-            let node = traft::node::global()?;
-            node.read_index(Duration::from_secs_f64(timeout))
-        }),
-    );
-    luamod.set(
-        "raft_wait_index",
-        tlua::function2(
-            |target: RaftIndex, timeout: f64| -> traft::Result<RaftIndex> {
-                let node = traft::node::global()?;
-                node.wait_index(target, Duration::from_secs_f64(timeout))
-            },
-        ),
-    );
-    luamod.set("get_vclock", tlua::function0(Vclock::current));
-    luamod.set(
-        "wait_vclock",
-        tlua::function2(
-            |target: Vclock, timeout: f64| -> Result<Vclock, sync::TimeoutError> {
-                sync::wait_vclock(target, Duration::from_secs_f64(timeout))
-            },
-        ),
-    );
-    luamod.set(
-        "raft_propose_nop",
-        tlua::function0(|| {
-            traft::node::global()?.propose_and_wait(Op::Nop, Duration::from_secs(1))
-        }),
-    );
-    luamod.set(
-        "raft_propose",
-        tlua::function1(|lua: tlua::LuaState| -> traft::Result<RaftIndex> {
-            use tlua::{AnyLuaString, AsLua, LuaError, LuaTable};
-            let lua = unsafe { tlua::Lua::from_static(lua) };
-            let t: LuaTable<_> = AsLua::read(&lua).map_err(|(_, e)| LuaError::from(e))?;
-            let mp: AnyLuaString = lua
-                .eval_with("return require 'msgpack'.encode(...)", &t)
-                .map_err(LuaError::from)?;
-            let op: Op = Decode::decode(mp.as_bytes())?;
-
-            let node = traft::node::global()?;
-            let mut node_impl = node.node_impl();
-            let index = node_impl.propose(op)?;
-            node.main_loop.wakeup();
-            // Release the lock
-            drop(node_impl);
-            Ok(index)
-        }),
-    );
-    luamod.set(
-        "raft_propose_mp",
-        tlua::function1(|op: tlua::AnyLuaString| -> traft::Result<()> {
-            let op: Op = Decode::decode(op.as_bytes())?;
-            traft::node::global()?.propose_and_wait(op, Duration::from_secs(1))
-        }),
-    );
-    luamod.set(
-        "raft_timeout_now",
-        tlua::function0(|| -> traft::Result<()> {
-            traft::node::global()?.timeout_now();
-            Ok(())
-        }),
-    );
-    #[rustfmt::skip]
-    luamod.set(
-        "exit",
-        tlua::function1(|code: Option<i32>| {
-            tarantool::exit(code.unwrap_or(0))
-        }),
-    );
-    luamod.set(
-        "expel",
-        tlua::function1(|instance_id: InstanceId| -> traft::Result<()> {
-            let raft_storage = &traft::node::global()?.raft_storage;
-            let cluster_id = raft_storage.cluster_id()?;
-            fiber::block_on(rpc::network_call_to_leader(&rpc::expel::Request {
-                instance_id,
-                cluster_id,
-            }))?;
-            Ok(())
-        }),
-    );
-    // TODO: remove this
-    if cfg!(debug_assertions) {
-        use ::tarantool::index::IteratorType;
-        use ::tarantool::space::Space;
-        use ::tarantool::tuple::Tuple;
-        luamod.set(
-            "prop",
-            tlua::Function::new(|property: Option<String>| -> traft::Result<Vec<Tuple>> {
-                if let Some(property) = property {
-                    let _ = property;
-                    todo!();
-                }
-                let space = Space::find("_picodata_property").expect("always defined");
-                let iter = space.select(IteratorType::All, &())?;
-                let mut res = vec![];
-                for t in iter {
-                    res.push(t);
-                }
-                Ok(res)
-            }),
-        );
-        luamod.set(
-            "emit",
-            tlua::Function::new(|event: String| -> traft::Result<()> {
-                let event: traft::event::Event = event.parse().map_err(Error::other)?;
-                traft::event::broadcast(event);
-                Ok(())
-            }),
-        );
-        luamod.set(
-            "vshard_cfg",
-            tlua::function0(|| -> traft::Result<rpc::sharding::cfg::Cfg> {
-                let node = traft::node::global()?;
-                rpc::sharding::cfg::Cfg::from_storage(&node.storage)
-            }),
-        );
-        l.exec(
-            "
-            pico.test_space = function(name)
-                local s = box.schema.space.create(name, {is_sync = true, if_not_exists = true})
-                s:create_index('pk', {if_not_exists = true})
-                return s
-            end
-        ",
-        )
-        .unwrap();
-    }
-    luamod.set("log", &[()]);
-    #[rustfmt::skip]
-    l.exec_with(
-        "pico.log.highlight_key = ...",
-        tlua::function2(|key: String, color: Option<String>| -> Result<(), String> {
-            let color = match color.as_deref() {
-                None            => None,
-                Some("red")     => Some(tlog::Color::Red),
-                Some("green")   => Some(tlog::Color::Green),
-                Some("blue")    => Some(tlog::Color::Blue),
-                Some("cyan")    => Some(tlog::Color::Cyan),
-                Some("yellow")  => Some(tlog::Color::Yellow),
-                Some("magenta") => Some(tlog::Color::Magenta),
-                Some("white")   => Some(tlog::Color::White),
-                Some("black")   => Some(tlog::Color::Black),
-                Some(other) => {
-                    return Err(format!("unknown color: {other:?}"))
-                }
-            };
-            tlog::highlight_key(key, color);
-            Ok(())
-        }),
-    )
-    .unwrap();
-    l.exec_with(
-        "pico.log.clear_highlight = ...",
-        tlua::function0(tlog::clear_highlight),
-    )
-    .unwrap();
-
-    #[derive(::tarantool::tlua::LuaRead, Default, Clone, Copy)]
-    enum Justify {
-        Left,
-        #[default]
-        Center,
-        Right,
-    }
-    #[derive(::tarantool::tlua::LuaRead)]
-    struct RaftLogOpts {
-        return_string: Option<bool>,
-        justify_contents: Option<Justify>,
-    }
-    luamod.set(
-        "raft_log",
-        tlua::function1(
-            |opts: Option<RaftLogOpts>| -> traft::Result<Option<String>> {
-                let mut return_string = false;
-                let mut justify_contents = Default::default();
-                if let Some(opts) = opts {
-                    return_string = opts.return_string.unwrap_or(false);
-                    justify_contents = opts.justify_contents.unwrap_or_default();
-                }
-                let header = ["index", "term", "lc", "contents"];
-                let [index, term, lc, contents] = header;
-                let mut rows = vec![];
-                let mut col_widths = header.map(|h| h.len());
-                let node = traft::node::global()?;
-                let entries = node
-                    .all_traft_entries()
-                    .map_err(|e| Error::Other(Box::new(e)))?;
-                for entry in entries {
-                    let row = [
-                        entry.index.to_string(),
-                        entry.term.to_string(),
-                        entry
-                            .lc()
-                            .map(|lc| lc.to_string())
-                            .unwrap_or_else(String::new),
-                        entry.payload().to_string(),
-                    ];
-                    for i in 0..col_widths.len() {
-                        col_widths[i] = col_widths[i].max(row[i].len());
-                    }
-                    rows.push(row);
-                }
-                let [iw, tw, lw, mut cw] = col_widths;
-
-                let total_width = 1 + header.len() + col_widths.iter().sum::<usize>();
-                let cols = if return_string {
-                    256
-                } else {
-                    util::screen_size().1 as usize
-                };
-                if total_width > cols {
-                    match cw.checked_sub(total_width - cols) {
-                        Some(new_cw) if new_cw > 0 => cw = new_cw,
-                        _ => {
-                            return Err(Error::other("screen too small"));
-                        }
-                    }
-                }
-
-                use std::io::Write;
-                let mut buf: Vec<u8> = Vec::with_capacity(512);
-                let write_contents = move |buf: &mut Vec<u8>, contents: &str| match justify_contents
-                {
-                    Justify::Left => writeln!(buf, "{contents: <cw$}|"),
-                    Justify::Center => writeln!(buf, "{contents: ^cw$}|"),
-                    Justify::Right => writeln!(buf, "{contents: >cw$}|"),
-                };
-
-                let row_sep = |buf: &mut Vec<u8>| {
-                    match justify_contents {
-                        Justify::Left => {
-                            writeln!(buf, "+{0:-^iw$}+{0:-^tw$}+{0:-^lw$}+{0:-<cw$}+", "")
-                        }
-                        Justify::Center => {
-                            writeln!(buf, "+{0:-^iw$}+{0:-^tw$}+{0:-^lw$}+{0:-^cw$}+", "")
-                        }
-                        Justify::Right => {
-                            writeln!(buf, "+{0:-^iw$}+{0:-^tw$}+{0:-^lw$}+{0:->cw$}+", "")
-                        }
-                    }
-                    .unwrap()
-                };
-                row_sep(&mut buf);
-                write!(buf, "|{index: ^iw$}|{term: ^tw$}|{lc: ^lw$}|").unwrap();
-                write_contents(&mut buf, contents).unwrap();
-                row_sep(&mut buf);
-                for [index, term, lc, contents] in rows {
-                    if contents.len() <= cw {
-                        write!(buf, "|{index: ^iw$}|{term: ^tw$}|{lc: ^lw$}|").unwrap();
-                        write_contents(&mut buf, &contents).unwrap();
-                    } else {
-                        write!(buf, "|{index: ^iw$}|{term: ^tw$}|{lc: ^lw$}|").unwrap();
-                        write_contents(&mut buf, &contents[..cw]).unwrap();
-                        let mut rest = &contents[cw..];
-                        while !rest.is_empty() {
-                            let clamped_cw = usize::min(rest.len(), cw);
-                            write!(
-                                buf,
-                                "|{blank: ^iw$}|{blank: ^tw$}|{blank: ^lw$}|",
-                                blank = "~",
-                            )
-                            .unwrap();
-                            write_contents(&mut buf, &rest[..clamped_cw]).unwrap();
-                            rest = &rest[clamped_cw..];
-                        }
-                    }
-                }
-                row_sep(&mut buf);
-                if return_string {
-                    Ok(Some(String::from_utf8_lossy(&buf).into()))
-                } else {
-                    std::io::stdout().write_all(&buf).unwrap();
-                    Ok(None)
-                }
-            },
-        ),
-    );
-
-    // Trims raft log up to the given index (excluding the index
-    // itself). Returns the new `first_index` after the log compaction.
-    luamod.set("raft_compact_log", {
-        tlua::Function::new(|up_to: u64| -> traft::Result<u64> {
-            let raft_storage = &node::global()?.raft_storage;
-            let ret = start_transaction(|| raft_storage.compact_log(up_to));
-            Ok(ret?)
-        })
-    });
-
-    luamod.set(
-        "cas",
-        tlua::Function::new(
-            |op: op::DmlInLua, predicate: rpc::cas::Predicate| -> traft::Result<RaftIndex> {
-                let op = op::Dml::from_lua_args(op).map_err(Error::other)?;
-                let (index, _) = compare_and_swap(op.into(), predicate)?;
-                Ok(index)
-            },
-        ),
-    );
-
-    luamod.set("create_space", {
-        tlua::function1(|params: CreateSpaceParams| -> traft::Result<RaftIndex> {
-            let timeout = Duration::from_secs_f64(params.timeout_sec);
-            let storage = &node::global()?.storage;
-            let params = params.validate(storage)?;
-            // TODO: check space creation and rollback
-            // box.begin() box.schema.space.create() box.rollback()
-            let op = params.into_ddl(storage)?;
-            let index = schema::prepare_ddl(op, timeout)?;
-            let commit_index = schema::wait_for_ddl_commit(index, timeout)?;
-            Ok(commit_index)
-        })
-    });
-}
 
 /// Performs a clusterwide compare and swap operation.
 ///
@@ -743,7 +349,8 @@ fn init_common(args: &args::Run, cfg: &tarantool::Cfg) -> (Clusterwide, RaftSpac
 fn start_discover(args: &args::Run, to_supervisor: ipc::Sender<IpcMessage>) {
     tlog!(Info, ">>>>> start_discover()");
 
-    picolib_setup(args);
+    tlog::set_log_level(args.log_level());
+    luamod::setup(args);
     assert!(tarantool::cfg().is_none());
 
     // Don't try to guess instance and replicaset uuids now,
@@ -807,7 +414,8 @@ fn start_boot(args: &args::Run) {
     let raft_id = instance.raft_id;
     let instance_id = instance.instance_id.clone();
 
-    picolib_setup(args);
+    tlog::set_log_level(args.log_level());
+    luamod::setup(args);
     assert!(tarantool::cfg().is_none());
 
     let cfg = tarantool::Cfg {
@@ -966,7 +574,8 @@ fn start_join(args: &args::Run, leader_address: String) {
         }
     };
 
-    picolib_setup(args);
+    tlog::set_log_level(args.log_level());
+    luamod::setup(args);
     assert!(tarantool::cfg().is_none());
 
     let cfg = tarantool::Cfg {
