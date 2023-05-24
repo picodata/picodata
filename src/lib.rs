@@ -402,23 +402,17 @@ fn picolib_setup(args: &args::Run) {
     );
 
     luamod.set("create_space", {
-        tlua::function2(
-            |params: CreateSpaceParams,
-             // Specifying the timeout identifies how long user is ready to wait for ddl to be applied.
-             // But it does not provide guarantees that a ddl will be aborted if wait for commit timeouts.
-             timeout_sec: f64|
-             -> traft::Result<RaftIndex> {
-                let timeout = Duration::from_secs_f64(timeout_sec);
-                let storage = &node::global()?.storage;
-                params.validate(storage)?;
-                // TODO: check space creation and rollback
-                // box.begin() box.schema.space.create() box.rollback()
-                let op = params.into_ddl(storage)?;
-                let index = schema::prepare_ddl(op, timeout)?;
-                let commit_index = schema::wait_for_ddl_commit(index, timeout)?;
-                Ok(commit_index)
-            },
-        )
+        tlua::function1(|params: CreateSpaceParams| -> traft::Result<RaftIndex> {
+            let timeout = Duration::from_secs_f64(params.timeout_sec);
+            let storage = &node::global()?.storage;
+            let params = params.validate(storage)?;
+            // TODO: check space creation and rollback
+            // box.begin() box.schema.space.create() box.rollback()
+            let op = params.into_ddl(storage)?;
+            let index = schema::prepare_ddl(op, timeout)?;
+            let commit_index = schema::wait_for_ddl_commit(index, timeout)?;
+            Ok(commit_index)
+        })
     });
 }
 

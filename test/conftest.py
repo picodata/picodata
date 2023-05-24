@@ -696,6 +696,7 @@ class Instance:
         Works through Lua API in difference to `propose_create_space`,
         which is more low level and directly proposes a raft entry.
         """
+        params["timeout_sec"] = timeout
         index = self.call("pico.create_space", params, timeout)
         return index
 

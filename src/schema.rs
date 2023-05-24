@@ -225,6 +225,16 @@ pub enum CreateSpaceError {
     DuplicateFieldName(String),
     #[error("no field with name: {0}")]
     FieldUndefined(String),
+    #[error("distribution is `sharded`, but neither `by_field` nor `sharding_key` is set")]
+    ShardingPolicyUndefined,
+    #[error("only one of sharding policy fields (`by_field`, `sharding_key`) should be set")]
+    ConflictingShardingPolicy,
+}
+
+impl From<CreateSpaceError> for traft::error::Error {
+    fn from(err: CreateSpaceError) -> Self {
+        DdlError::CreateSpace(err).into()
+    }
 }
 
 // TODO: Add `LuaRead` to tarantool::space::Field and use it
@@ -245,27 +255,40 @@ impl From<Field> for tarantool::space::Field {
     }
 }
 
+::tarantool::define_str_enum! {
+    #[derive(Default)]
+    pub enum DistributionParam {
+        #[default]
+        Global = "global",
+        Sharded = "sharded",
+    }
+}
+
 #[derive(Clone, Debug, LuaRead)]
 pub struct CreateSpaceParams {
     id: Option<SpaceId>,
     name: String,
     format: Vec<Field>,
     primary_key: Vec<String>,
-    distribution: Distribution,
+    distribution: DistributionParam,
+    by_field: Option<String>,
+    sharding_key: Option<Vec<String>>,
+    sharding_fn: Option<ShardingFn>,
+    /// Specifying the timeout identifies how long user is ready to wait for ddl to be applied.
+    /// But it does not provide guarantees that a ddl will be aborted if wait for commit timeouts.
+    pub timeout_sec: f64,
 }
 
 impl CreateSpaceParams {
-    pub fn validate(&self, storage: &Clusterwide) -> traft::Result<()> {
+    pub fn validate(self, storage: &Clusterwide) -> traft::Result<ValidCreateSpaceParams> {
         // Check that there is no space with this name
         if storage.spaces.by_name(&self.name)?.is_some() {
-            return Err(
-                DdlError::CreateSpace(CreateSpaceError::NameExists(self.name.clone())).into(),
-            );
+            return Err(CreateSpaceError::NameExists(self.name).into());
         }
         // Check that there is no space with this id (if specified)
         if let Some(id) = self.id {
             if storage.spaces.get(id)?.is_some() {
-                return Err(DdlError::CreateSpace(CreateSpaceError::IdExists(id)).into());
+                return Err(CreateSpaceError::IdExists(id).into());
             }
             if id <= SPACE_ID_INTERNAL_MAX {
                 crate::tlog!(Warning, "requested space id {id} is in the range 0..={SPACE_ID_INTERNAL_MAX} reserved for future use by picodata, you may have a conflict in a future version");
@@ -275,55 +298,76 @@ impl CreateSpaceParams {
         let mut field_names = HashSet::new();
         for field in &self.format {
             if !field_names.insert(field.name.as_str()) {
-                return Err(DdlError::CreateSpace(CreateSpaceError::DuplicateFieldName(
-                    field.name.clone(),
-                ))
-                .into());
+                return Err(CreateSpaceError::DuplicateFieldName(field.name.clone()).into());
             }
         }
         // All primary key components exist in fields
         for part in &self.primary_key {
             if !field_names.contains(part.as_str()) {
-                return Err(
-                    DdlError::CreateSpace(CreateSpaceError::FieldUndefined(part.clone())).into(),
-                );
+                return Err(CreateSpaceError::FieldUndefined(part.clone()).into());
             }
         }
         // All sharding key components exist in fields
-        match &self.distribution {
-            Distribution::Global => (),
-            Distribution::ShardedImplicitly { sharding_key, .. } => {
-                let mut parts = HashSet::new();
-                for part in sharding_key {
-                    if !field_names.contains(part.as_str()) {
-                        return Err(DdlError::CreateSpace(CreateSpaceError::FieldUndefined(
-                            part.clone(),
-                        ))
-                        .into());
+        if self.distribution == DistributionParam::Sharded {
+            match (&self.by_field, &self.sharding_key) {
+                (Some(by_field), None) => {
+                    if !field_names.contains(by_field.as_str()) {
+                        return Err(CreateSpaceError::FieldUndefined(by_field.clone()).into());
                     }
-                    // And all parts are unique
-                    if !parts.insert(part.as_str()) {
-                        return Err(DdlError::CreateSpace(CreateSpaceError::DuplicateFieldName(
-                            part.clone(),
-                        ))
-                        .into());
+                    if self.sharding_fn.is_some() {
+                        crate::tlog!(
+                            Warning,
+                            "`sharding_fn` is specified but will be ignored, as sharding `by_field` is set"
+                        );
                     }
+                }
+                (None, Some(sharding_key)) => {
+                    let mut parts = HashSet::new();
+                    for part in sharding_key {
+                        if !field_names.contains(part.as_str()) {
+                            return Err(CreateSpaceError::FieldUndefined(part.clone()).into());
+                        }
+                        // And all parts are unique
+                        if !parts.insert(part.as_str()) {
+                            return Err(CreateSpaceError::DuplicateFieldName(part.clone()).into());
+                        }
+                    }
+                }
+                (None, None) => return Err(CreateSpaceError::ShardingPolicyUndefined.into()),
+                (Some(_), Some(_)) => {
+                    return Err(CreateSpaceError::ConflictingShardingPolicy.into())
                 }
             }
-            Distribution::ShardedByField { field } => {
-                if !field_names.contains(field.as_str()) {
-                    return Err(DdlError::CreateSpace(CreateSpaceError::FieldUndefined(
-                        field.clone(),
-                    ))
-                    .into());
-                }
+        } else {
+            if self.by_field.is_some() {
+                crate::tlog!(
+                    Warning,
+                    "`by_field` is specified but will be ignored, as `distribution` is `global`"
+                );
+            }
+            if self.sharding_key.is_some() {
+                crate::tlog!(
+                    Warning,
+                    "`sharding_key` is specified but will be ignored, as `distribution` is `global`"
+                );
+            }
+            if self.sharding_fn.is_some() {
+                crate::tlog!(
+                    Warning,
+                    "`sharding_fn` is specified but will be ignored, as `distribution` is `global`"
+                );
             }
         }
-        Ok(())
+        Ok(ValidCreateSpaceParams(self))
     }
+}
 
+#[derive(Debug)]
+pub struct ValidCreateSpaceParams(CreateSpaceParams);
+
+impl ValidCreateSpaceParams {
     pub fn into_ddl(self, storage: &Clusterwide) -> traft::Result<Ddl> {
-        let id = if let Some(id) = self.id {
+        let id = if let Some(id) = self.0.id {
             id
         } else {
             let mut id = SPACE_ID_INTERNAL_MAX;
@@ -347,18 +391,35 @@ impl CreateSpaceParams {
             }
             id + 1
         };
-        let primary_key: Vec<_> = self.primary_key.into_iter().map(Part::field).collect();
+        let primary_key: Vec<_> = self.0.primary_key.into_iter().map(Part::field).collect();
         let format: Vec<_> = self
+            .0
             .format
             .into_iter()
             .map(tarantool::space::Field::from)
             .collect();
+        let distribution = match self.0.distribution {
+            DistributionParam::Global => Distribution::Global,
+            DistributionParam::Sharded => {
+                if let Some(field) = self.0.by_field {
+                    Distribution::ShardedByField { field }
+                } else {
+                    Distribution::ShardedImplicitly {
+                        sharding_key: self
+                            .0
+                            .sharding_key
+                            .expect("should be checked during `validate`"),
+                        sharding_fn: self.0.sharding_fn.unwrap_or_default(),
+                    }
+                }
+            }
+        };
         let res = Ddl::CreateSpace {
             id,
-            name: self.name,
+            name: self.0.name,
             format,
             primary_key,
-            distribution: self.distribution,
+            distribution,
         };
         Ok(res)
     }
@@ -428,8 +489,9 @@ fn wait_for_no_pending_schema_change(
 /// If `timeout` is reached earlier returns an error.
 pub fn prepare_ddl(op: Ddl, timeout: Duration) -> traft::Result<RaftIndex> {
     loop {
-        let storage = &node::global()?.storage;
-        let raft_storage = &node::global()?.raft_storage;
+        let node = node::global()?;
+        let storage = &node.storage;
+        let raft_storage = &node.raft_storage;
         let op = DdlBuilder::new(storage)?.with_op(op.clone());
         wait_for_no_pending_schema_change(storage, timeout)?;
         let index = node::global()?.wait_for_read_state(timeout)?;
@@ -496,7 +558,11 @@ mod tests {
             name: new_space.into(),
             format: vec![],
             primary_key: vec![],
-            distribution: Distribution::Global,
+            distribution: DistributionParam::Global,
+            by_field: None,
+            sharding_key: None,
+            sharding_fn: None,
+            timeout_sec: 0.0,
         }
         .validate(&storage)
         .unwrap_err();
@@ -510,7 +576,11 @@ mod tests {
             name: existing_space.into(),
             format: vec![],
             primary_key: vec![],
-            distribution: Distribution::Global,
+            distribution: DistributionParam::Global,
+            by_field: None,
+            sharding_key: None,
+            sharding_fn: None,
+            timeout_sec: 0.0,
         }
         .validate(&storage)
         .unwrap_err();
@@ -524,7 +594,11 @@ mod tests {
             name: new_space.into(),
             format: vec![field1.clone(), field1.clone()],
             primary_key: vec![],
-            distribution: Distribution::Global,
+            distribution: DistributionParam::Global,
+            by_field: None,
+            sharding_key: None,
+            sharding_fn: None,
+            timeout_sec: 0.0,
         }
         .validate(&storage)
         .unwrap_err();
@@ -538,7 +612,11 @@ mod tests {
             name: new_space.into(),
             format: vec![field1.clone()],
             primary_key: vec![field2.name.clone()],
-            distribution: Distribution::Global,
+            distribution: DistributionParam::Global,
+            by_field: None,
+            sharding_key: None,
+            sharding_fn: None,
+            timeout_sec: 0.0,
         }
         .validate(&storage)
         .unwrap_err();
@@ -552,10 +630,11 @@ mod tests {
             name: new_space.into(),
             format: vec![field1.clone()],
             primary_key: vec![],
-            distribution: Distribution::ShardedImplicitly {
-                sharding_key: vec![field2.name.clone()],
-                sharding_fn: ShardingFn::Md5,
-            },
+            distribution: DistributionParam::Sharded,
+            by_field: None,
+            sharding_key: Some(vec![field2.name.clone()]),
+            sharding_fn: None,
+            timeout_sec: 0.0,
         }
         .validate(&storage)
         .unwrap_err();
@@ -569,10 +648,11 @@ mod tests {
             name: new_space.into(),
             format: vec![field1.clone()],
             primary_key: vec![],
-            distribution: Distribution::ShardedImplicitly {
-                sharding_key: vec![field1.name.clone(), field1.name.clone()],
-                sharding_fn: ShardingFn::Md5,
-            },
+            distribution: DistributionParam::Sharded,
+            by_field: None,
+            sharding_key: Some(vec![field1.name.clone(), field1.name.clone()]),
+            sharding_fn: None,
+            timeout_sec: 0.0,
         }
         .validate(&storage)
         .unwrap_err();
@@ -586,15 +666,53 @@ mod tests {
             name: new_space.into(),
             format: vec![field1.clone()],
             primary_key: vec![],
-            distribution: Distribution::ShardedByField {
-                field: field2.name.clone(),
-            },
+            distribution: DistributionParam::Sharded,
+            by_field: Some(field2.name.clone()),
+            sharding_key: None,
+            sharding_fn: None,
+            timeout_sec: 0.0,
         }
         .validate(&storage)
         .unwrap_err();
         assert_eq!(
             err.to_string(),
             "ddl failed: space creation failed: no field with name: field2"
+        );
+
+        let err = CreateSpaceParams {
+            id: Some(new_id),
+            name: new_space.into(),
+            format: vec![field1.clone()],
+            primary_key: vec![],
+            distribution: DistributionParam::Sharded,
+            by_field: None,
+            sharding_key: None,
+            sharding_fn: None,
+            timeout_sec: 0.0,
+        }
+        .validate(&storage)
+        .unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "ddl failed: space creation failed: distribution is `sharded`, but neither `by_field` nor `sharding_key` is set"
+        );
+
+        let err = CreateSpaceParams {
+            id: Some(new_id),
+            name: new_space.into(),
+            format: vec![field1.clone()],
+            primary_key: vec![],
+            distribution: DistributionParam::Sharded,
+            by_field: Some(field2.name.clone()),
+            sharding_key: Some(vec![]),
+            sharding_fn: None,
+            timeout_sec: 0.0,
+        }
+        .validate(&storage)
+        .unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "ddl failed: space creation failed: only one of sharding policy fields (`by_field`, `sharding_key`) should be set"
         );
 
         CreateSpaceParams {
@@ -602,7 +720,11 @@ mod tests {
             name: new_space.into(),
             format: vec![field1, field2.clone()],
             primary_key: vec![field2.name.clone()],
-            distribution: Distribution::ShardedByField { field: field2.name },
+            distribution: DistributionParam::Sharded,
+            by_field: Some(field2.name),
+            sharding_key: None,
+            sharding_fn: None,
+            timeout_sec: 0.0,
         }
         .validate(&storage)
         .unwrap();

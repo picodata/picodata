@@ -5,25 +5,33 @@ from conftest import Cluster, ReturnError, TarantoolError
 def test_ddl_create_space_lua(cluster: Cluster):
     i1, i2 = cluster.deploy(instance_count=2)
 
-    # Successful space creation
+    # Successful global space creation
+    space_id = 1026
     cluster.create_space(
         dict(
-            id=1,
+            id=space_id,
             name="some_name",
             format=[dict(name="id", type="unsigned", is_nullable=False)],
             primary_key=["id"],
             distribution="global",
         )
     )
-    pico_space_def = [1, "some_name", ["global"], [["id", "unsigned", False]], 1, True]
-    assert i1.call("box.space._pico_space:get", 1) == pico_space_def
-    assert i2.call("box.space._pico_space:get", 1) == pico_space_def
+    pico_space_def = [
+        space_id,
+        "some_name",
+        ["global"],
+        [["id", "unsigned", False]],
+        1,
+        True,
+    ]
+    assert i1.call("box.space._pico_space:get", space_id) == pico_space_def
+    assert i2.call("box.space._pico_space:get", space_id) == pico_space_def
 
     # Space creation error
     with pytest.raises(ReturnError) as e1:
         cluster.create_space(
             dict(
-                id=2,
+                id=1027,
                 name="different_name",
                 format=[dict(name="id", type="unsigned", is_nullable=False)],
                 primary_key=["not_defined"],
@@ -43,7 +51,7 @@ def test_ddl_create_space_lua(cluster: Cluster):
             distribution="global",
         )
     )
-    space_id = 1026
+    space_id = 1027
     pico_space_def = [
         space_id,
         "space 2",
@@ -64,7 +72,7 @@ def test_ddl_create_space_lua(cluster: Cluster):
             distribution="global",
         )
     )
-    space_id = 1027
+    space_id = 1028
     pico_space_def = [
         space_id,
         "space the third",
@@ -257,7 +265,9 @@ def test_ddl_create_sharded_space(cluster: Cluster):
                 dict(name="bar", type="string", is_nullable=False),
             ],
             primary_key=["id"],
-            distribution=dict(sharding_key=["foo", "bar"], sharding_fn="murmur3"),
+            distribution="sharded",
+            sharding_key=["foo", "bar"],
+            sharding_fn="murmur3",
         ),
     )
 
@@ -469,7 +479,9 @@ def test_ddl_from_snapshot_at_boot(cluster: Cluster):
             name="stuff",
             format=[dict(name="id", type="unsigned", is_nullable=False)],
             primary_key=["id"],
-            distribution=dict(sharding_key=["id"], sharding_fn="murmur3"),
+            distribution="sharded",
+            sharding_key=["id"],
+            sharding_fn="murmur3",
         ),
     )
 
