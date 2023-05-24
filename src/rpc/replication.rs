@@ -15,6 +15,13 @@ crate::define_rpc_request! {
         // and ignores it if nothing changed
         set_cfg_field("replication", &req.replicaset_peers)?;
         let lsn = crate::tarantool::eval("return box.info.lsn")?;
+
+        // This is the only replica in the replicaset, so it must be master.
+        // This is a point, where a sole replica becomes writable after restart.
+        if req.replicaset_peers.len() == 1 {
+            set_cfg_field("read_only", false)?;
+        }
+
         Ok(Response { lsn })
     }
 
