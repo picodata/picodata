@@ -310,7 +310,16 @@ macro_rules! define_clusterwide_spaces {
                     space_dumps.push(Self::space_dump(&space_def.name)?);
                 }
 
-                Ok(SnapshotData { space_dumps })
+                let pico_property = space_by_id(ClusterwideSpaceId::Property.value())?;
+                let tuple = pico_property.get(&[PropertyName::CurrentSchemaVersion.as_str()])?;
+                let mut schema_version = 0;
+                if let Some(tuple) = tuple {
+                    if let Some(v) = tuple.field(1)? {
+                        schema_version = v;
+                    }
+                }
+
+                Ok(SnapshotData { schema_version, space_dumps })
             }
         }
 
@@ -514,8 +523,7 @@ impl Clusterwide {
         })
     }
 
-    pub fn apply_snapshot_data(&self, raw_data: &[u8], is_master: bool) -> Result<()> {
-        let data = SnapshotData::decode(raw_data)?;
+    pub fn apply_snapshot_data(&self, data: &SnapshotData, is_master: bool) -> Result<()> {
         let mut dont_exist_yet = Vec::new();
         for space_dump in &data.space_dumps {
             let space_name = &space_dump.space_name;
@@ -1401,6 +1409,7 @@ impl<T> std::fmt::Debug for EntryIter<T> {
 
 #[derive(Debug, ::serde::Serialize, ::serde::Deserialize)]
 pub struct SnapshotData {
+    pub schema_version: u64,
     pub space_dumps: Vec<SpaceDump>,
 }
 impl Encode for SnapshotData {}
@@ -1904,6 +1913,7 @@ mod tests {
         let storage = Clusterwide::new().unwrap();
 
         let mut data = SnapshotData {
+            schema_version: 0,
             space_dumps: vec![],
         };
 
@@ -1943,10 +1953,8 @@ mod tests {
             tuples,
         });
 
-        let raw_data = data.to_tuple_buffer().unwrap();
-
         storage.for_each_space(|s| s.truncate()).unwrap();
-        if let Err(e) = storage.apply_snapshot_data(raw_data.as_ref(), true) {
+        if let Err(e) = storage.apply_snapshot_data(&data, true) {
             println!("{e}");
             panic!();
         }

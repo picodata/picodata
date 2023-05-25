@@ -15,6 +15,7 @@ use crate::rpc;
 use crate::schema::ddl_abort_on_master;
 use crate::schema::{Distribution, IndexDef, SpaceDef};
 use crate::storage::pico_schema_version;
+use crate::storage::SnapshotData;
 use crate::storage::ToEntryIter as _;
 use crate::storage::{Clusterwide, ClusterwideSpaceId, PropertyName};
 use crate::stringify_cfunc;
@@ -56,6 +57,7 @@ use ::tarantool::space::FieldType as SFT;
 use ::tarantool::space::SpaceId;
 use ::tarantool::tlua;
 use ::tarantool::transaction::start_transaction;
+use ::tarantool::tuple::Decode;
 use protobuf::Message as _;
 use std::cell::Cell;
 use std::collections::{HashMap, HashSet};
@@ -1231,7 +1233,53 @@ impl NodeImpl {
 
         // This is a snapshot, we need to apply the snapshot at first.
         let snapshot = ready.snapshot();
-        if !snapshot.is_empty() {
+        let snapshot_data = (|| -> Option<SnapshotData> {
+            if snapshot.is_empty() {
+                return None;
+            }
+            let snapshot_data = crate::unwrap_ok_or!(
+                SnapshotData::decode(snapshot.get_data()),
+                Err(e) => {
+                    tlog!(Warning, "skipping snapshot, which failed to deserialize: {e}");
+                    return None;
+                }
+            );
+
+            let local_schema_version = pico_schema_version().expect("storage error");
+            if local_schema_version > snapshot_data.schema_version {
+                // Maybe we should at least apply snapshot metadata?
+                tlog!(
+                    Warning,
+                    "skipping stale snapshot: local schema_version: {}, snapshot schema_version: {}",
+                    local_schema_version,
+                    snapshot_data.schema_version,
+                );
+                return None;
+            }
+
+            if !self.is_replicaset_master().expect("storage error") {
+                loop {
+                    let local_schema_version = pico_schema_version().expect("storage error");
+                    if local_schema_version >= snapshot_data.schema_version {
+                        break;
+                    }
+                    if let Err(e) = self.check_lsn_and_sleep() {
+                        let timeout = MainLoop::TICK;
+                        tlog!(
+                            Warning,
+                            "failed syncing with replication master: {e}, retrying in {:?}...",
+                            timeout
+                        );
+                        fiber::sleep(timeout);
+                    }
+                    continue;
+                }
+            }
+
+            Some(snapshot_data)
+        })();
+
+        if let Some(snapshot_data) = snapshot_data {
             if let Err(e) = start_transaction(|| -> traft::Result<()> {
                 let meta = snapshot.get_metadata();
                 self.raft_storage.handle_snapshot_metadata(meta)?;
@@ -1246,7 +1294,7 @@ impl NodeImpl {
                 }
                 let res = self
                     .storage
-                    .apply_snapshot_data(snapshot.get_data(), !is_readonly);
+                    .apply_snapshot_data(&snapshot_data, !is_readonly);
                 if is_readonly {
                     crate::tarantool::exec("box.cfg { read_only = true }")?;
                 }
