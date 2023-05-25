@@ -1155,3 +1155,6 @@ sbroad.execute([[select "name" from "testing_space" where "id" = 1]], {})
 ![sbroad.execute](data_read.png "data reading example")
 
 См. также: [Справочник поддерживаемых функций стандарта SQL](../sql_reference)
+
+---
+[Исходный код страницы](https://git.picodata.io/picodata/picodata/docs/-/blob/main/docs/sbroad/sql_tutorial.md)

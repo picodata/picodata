@@ -95,3 +95,6 @@
 ### F041-03. LEFT OUTER JOIN.
 
 Подробнее о внутренней архитектуре кластера Picodata см. в разделе [Общая схема инициализации кластера](../clustering). Параметры запуска из командной строки описаны в разделе [Описание параметров запуска](../cli).
+
+---
+[Исходный код страницы](https://git.picodata.io/picodata/picodata/docs/-/blob/main/docs/sbroad/sql_reference.md)

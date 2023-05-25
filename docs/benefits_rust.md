@@ -10,3 +10,6 @@
 - развитая экосистема: [Cargo](https://doc.rust-lang.org/cargo/){:target="_blank"} — единый инструмент для настройки/сборки/тестирования/установки зависимостей и публикации кода. [Crates.io](https://crates.io){:target="_blank"} — централизованное хранилище Rust-модулей, написанных сообществом.
 - стандартизированная документация — наиболее удобный способ комментирования собственного кода (достаточно написать комментарий с простой разметкой, и затем при публикации модуля документация автоматически становится доступна всем пользователям на сайте [docs.rs](https://docs.rs){:target="_blank"});
 - быстро растущее сообщество разработчиков и энтузиастов. В ежегодном [опросе](https://insights.stackoverflow.com/survey/2021){:target="_blank"} пользователей [stackoverflow.com](https://stackoverflow.com){:target="_blank"} язык Rust несколько лет подряд [занимает первое место](https://stackoverflow.blog/2020/06/05/why-the-developers-who-use-rust-love-it-so-much){:target="_blank"} по удовлетворенности пользователей (те, которые пишут на Rust, не хотят писать ни на чем другом).
+
+---
+[Исходный код страницы](https://git.picodata.io/picodata/picodata/docs/-/blob/main/docs/benefits_rust.md)

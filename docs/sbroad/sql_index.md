@@ -44,4 +44,7 @@ Sbroad — это динамическая библиотека, которая 
 
 Дополнительную техническую поддержку, информацию о новостях и тренингах Picodata, а также о сотрудничестве можно также получить в нашем Telegram-канале [@picodataru](https://t.me/picodataru).
 
+---
+[Исходный код страницы](https://git.picodata.io/picodata/picodata/docs/-/blob/main/docs/sbroad/sql_index.md)
+
 

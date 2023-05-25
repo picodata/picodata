@@ -20,3 +20,6 @@
 Более подробные сведения о поддерживаемых типах данных можно узнать в разделе [Поддерживаемые функции стандарта SQL](../sql_reference)
 
 См. также: [Инструкция по установке SQL Broadcaster и тестового приложения](../sql_tutorial)
+
+---
+[Исходный код страницы](https://git.picodata.io/picodata/picodata/docs/-/blob/main/docs/sbroad/sql_datatypes.md)

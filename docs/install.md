@@ -189,4 +189,6 @@ picodata run --listen 0.0.0.0:3301 --advertise 192.168.0.1:3301
 [Инструкция по развертыванию](../deploy). Параметры запуска из командной
 строки описаны в разделе [Описание параметров запуска](../cli).
 
+---
+[Исходный код страницы](https://git.picodata.io/picodata/picodata/docs/-/blob/main/docs/install.md)
 

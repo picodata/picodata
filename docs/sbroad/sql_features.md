@@ -515,3 +515,7 @@
 
 ## T631. IN predicate with one list element.
 1. Subclause 8.4, “in predicate”: in value list containing exactly one row value expression: **yes**
+
+
+---
+[Исходный код страницы](https://git.picodata.io/picodata/picodata/docs/-/blob/main/docs/sbroad/sql_features.md)

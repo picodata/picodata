@@ -564,3 +564,6 @@ sbroad.execute([[explain select "id","name","product_units","amount" as "orders"
 Читать далее: [Перечень
 поддерживаемых типов данных](../sql_datatypes)
 <!-- ebnf source: https://git.picodata.io/picodata/picodata/sbroad/-/blob/main/doc/sql/query.ebnf -->
+
+---
+[Исходный код страницы](https://git.picodata.io/picodata/picodata/docs/-/blob/main/docs/sbroad/sql_queries.md)
