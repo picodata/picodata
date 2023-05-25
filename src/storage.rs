@@ -25,25 +25,25 @@ use std::rc::Rc;
 
 macro_rules! define_clusterwide_spaces {
     (
-        $(#[$cw_struct_meta:meta])*
-        pub struct $cw_struct:ident {
+        $(#[$Clusterwide_meta:meta])*
+        pub struct $Clusterwide:ident {
             pub #space_name_lower: #space_name_upper,
         }
 
-        $(#[$enum_cw_space_id_meta:meta])*
-        pub enum $enum_cw_space_id:ident {
+        $(#[$ClusterwideSpaceId_meta:meta])*
+        pub enum $ClusterwideSpaceId:ident {
             #space_name_upper = #space_id,
         }
 
-        $(#[$cw_space_meta:meta])*
-        pub enum $cw_space:ident {
+        $(#[$ClusterwideSpace_meta:meta])*
+        pub enum $ClusterwideSpace:ident {
             $(
                 $(#[$cw_field_meta:meta])*
                 $cw_space_var:ident = $cw_space_id_value:expr, $cw_space_name:expr => {
-                    $_cw_struct:ident :: $cw_field:ident;
+                    $_Clusterwide:ident :: $Clusterwide_field:ident;
 
-                    $(#[$space_meta:meta])*
-                    pub struct $space:ident {
+                    $(#[$space_struct_meta:meta])*
+                    pub struct $space_struct:ident {
                         $space_field:ident: $space_ty:ty,
                         #[primary]
                         $index_field_pk:ident: $index_ty_pk:ty
@@ -60,16 +60,16 @@ macro_rules! define_clusterwide_spaces {
             )+
         }
 
-        $(#[$cw_index_meta:meta])*
-        pub enum $cw_index:ident {
+        $(#[$ClusterwideSpaceIndex_meta:meta])*
+        pub enum $ClusterwideSpaceIndex:ident {
             #space_name( $index_of:ident <#space_struct_name>),
         }
     ) => {
         ////////////////////////////////////////////////////////////////////////
         // ClusterwideSpace
         ::tarantool::define_str_enum! {
-            $(#[$cw_space_meta])*
-            pub enum $cw_space {
+            $(#[$ClusterwideSpace_meta])*
+            pub enum $ClusterwideSpace {
                 $(
                     $(#[$cw_field_meta])*
                     $cw_space_var = $cw_space_name,
@@ -77,30 +77,30 @@ macro_rules! define_clusterwide_spaces {
             }
         }
 
-        $(#[$enum_cw_space_id_meta])*
-        pub enum $enum_cw_space_id {
+        $(#[$ClusterwideSpaceId_meta])*
+        pub enum $ClusterwideSpaceId {
             $( $cw_space_var = $cw_space_id_value, )+
         }
 
-        impl From<$enum_cw_space_id> for $cw_space {
-            fn from(space_id: $enum_cw_space_id) -> Self {
+        impl From<$ClusterwideSpaceId> for $ClusterwideSpace {
+            fn from(space_id: $ClusterwideSpaceId) -> Self {
                 match space_id {
-                    $( $enum_cw_space_id::$cw_space_var => Self::$cw_space_var, )+
+                    $( $ClusterwideSpaceId::$cw_space_var => Self::$cw_space_var, )+
                 }
             }
         }
 
-        impl From<$cw_space> for $enum_cw_space_id {
-            fn from(space_name: $cw_space) -> Self {
+        impl From<$ClusterwideSpace> for $ClusterwideSpaceId {
+            fn from(space_name: $ClusterwideSpace) -> Self {
                 match space_name {
                     $(
-                        $cw_space::$cw_space_var => Self::$cw_space_var,
+                        $ClusterwideSpace::$cw_space_var => Self::$cw_space_var,
                     )+
                 }
             }
         }
 
-        impl $enum_cw_space_id {
+        impl $ClusterwideSpaceId {
             #[inline(always)]
             pub const fn name(&self) -> &'static str {
                 match self {
@@ -109,12 +109,12 @@ macro_rules! define_clusterwide_spaces {
             }
         }
 
-        impl TryFrom<SpaceId> for $enum_cw_space_id {
+        impl TryFrom<SpaceId> for $ClusterwideSpaceId {
             // TODO: conform to bureaucracy
             type Error = ();
 
             #[inline(always)]
-            fn try_from(id: SpaceId) -> ::std::result::Result<$enum_cw_space_id, Self::Error> {
+            fn try_from(id: SpaceId) -> ::std::result::Result<$ClusterwideSpaceId, Self::Error> {
                 match id {
                     $( $cw_space_id_value => Ok(Self::$cw_space_var), )+
                     _ => Err(()),
@@ -122,37 +122,37 @@ macro_rules! define_clusterwide_spaces {
             }
         }
 
-        impl $cw_space {
-            pub fn primary_index(&self) -> $cw_index {
+        impl $ClusterwideSpace {
+            pub fn primary_index(&self) -> $ClusterwideSpaceIndex {
                 match self {
                     $(
-                        $cw_space::$cw_space_var => $cw_index::$cw_space_var(<$space>::primary_index()),
+                        $ClusterwideSpace::$cw_space_var => $ClusterwideSpaceIndex::$cw_space_var(<$space_struct>::primary_index()),
                     )+
                 }
             }
         }
 
-        $( const _: $crate::util::CheckIsSameType<$_cw_struct, $cw_struct> = (); )+
+        $( const _: $crate::util::CheckIsSameType<$_Clusterwide, $Clusterwide> = (); )+
 
         ////////////////////////////////////////////////////////////////////////
         // ClusterwideSpaceIndex
-        $(#[$cw_index_meta])*
+        $(#[$ClusterwideSpaceIndex_meta])*
         #[derive(Copy, Clone, Debug, serde::Serialize, serde::Deserialize, PartialEq, Eq, Hash)]
-        pub enum $cw_index {
-            $( $cw_space_var($index_of<$space>),)+
+        pub enum $ClusterwideSpaceIndex {
+            $( $cw_space_var($index_of<$space_struct>),)+
         }
 
-        impl From<$cw_space> for $cw_index {
-            fn from(space: $cw_space) -> Self {
+        impl From<$ClusterwideSpace> for $ClusterwideSpaceIndex {
+            fn from(space: $ClusterwideSpace) -> Self {
                 space.primary_index()
             }
         }
 
-        impl $cw_index {
-            pub const fn space(&self) -> $cw_space {
+        impl $ClusterwideSpaceIndex {
+            pub const fn space(&self) -> $ClusterwideSpace {
                 match self {
                     $(
-                        Self::$cw_space_var(_) => $cw_space::$cw_space_var,
+                        Self::$cw_space_var(_) => $ClusterwideSpace::$cw_space_var,
                     )+
                 }
             }
@@ -170,7 +170,7 @@ macro_rules! define_clusterwide_spaces {
             }
         }
 
-        impl<L: ::tarantool::tlua::AsLua> ::tarantool::tlua::LuaRead<L> for $cw_index {
+        impl<L: ::tarantool::tlua::AsLua> ::tarantool::tlua::LuaRead<L> for $ClusterwideSpaceIndex {
             fn lua_read_at_position(lua: L, index: ::std::num::NonZeroI32) -> ::tarantool::tlua::ReadResult<Self, L> {
                 use ::tarantool::tlua;
 
@@ -230,7 +230,7 @@ macro_rules! define_clusterwide_spaces {
                                 $( $index_name => $index::$index_var, )*
                                 unknown_index => {
                                     let err = tlua::WrongType::info(when)
-                                        .expected(format!("one of {:?}", $index_of::<$space>::values()))
+                                        .expected(format!("one of {:?}", $index_of::<$space_struct>::values()))
                                         .actual(unknown_index);
                                     return Err((lua, err))
                                 }
@@ -240,7 +240,7 @@ macro_rules! define_clusterwide_spaces {
                     )+
                     unknown_space => {
                         let err = tlua::WrongType::info(when)
-                            .expected(format!("one of {:?}", $cw_space::values()))
+                            .expected(format!("one of {:?}", $ClusterwideSpace::values()))
                             .actual(unknown_space);
                         return Err((lua, err))
                     }
@@ -250,35 +250,35 @@ macro_rules! define_clusterwide_spaces {
 
         ////////////////////////////////////////////////////////////////////////
         // Clusterwide
-        $(#[$cw_struct_meta])*
+        $(#[$Clusterwide_meta])*
         #[derive(Clone, Debug)]
-        pub struct $cw_struct {
-            $( pub $cw_field: $space, )+
+        pub struct $Clusterwide {
+            $( pub $Clusterwide_field: $space_struct, )+
         }
 
-        impl $cw_struct {
+        impl $Clusterwide {
             #[inline(always)]
             pub fn new() -> tarantool::Result<Self> {
-                Ok(Self { $( $cw_field: $space::new()?, )+ })
+                Ok(Self { $( $Clusterwide_field: $space_struct::new()?, )+ })
             }
 
             #[inline(always)]
             fn space_by_name(&self, space: impl AsRef<str>) -> tarantool::Result<Space> {
                 let space = space.as_ref();
                 match space {
-                    $( $cw_space_name => Ok(self.$cw_field.space.clone()), )+
+                    $( $cw_space_name => Ok(self.$Clusterwide_field.space.clone()), )+
                     _ => space_by_name(space),
 
                 }
             }
 
             #[inline(always)]
-            fn index(&self, index: impl Into<$cw_index>) -> &Index {
+            fn index(&self, index: impl Into<$ClusterwideSpaceIndex>) -> &Index {
                 match index.into() {
                     $(
-                        $cw_index::$cw_space_var(idx) => match idx {
-                            $index_of::<$space>::$index_var_pk => &self.$cw_field.$index_field_pk,
-                            $( $index_of::<$space>::$index_var => &self.$cw_field.$index_field, )*
+                        $ClusterwideSpaceIndex::$cw_space_var(idx) => match idx {
+                            $index_of::<$space_struct>::$index_var_pk => &self.$Clusterwide_field.$index_field_pk,
+                            $( $index_of::<$space_struct>::$index_var => &self.$Clusterwide_field.$index_field, )*
                         }
                     )+
                 }
@@ -291,7 +291,7 @@ macro_rules! define_clusterwide_spaces {
                 mut cb: impl FnMut(&Space) -> tarantool::Result<()>,
             ) -> tarantool::Result<()>
             {
-                $( cb(&self.$cw_field.space)?; )+
+                $( cb(&self.$Clusterwide_field.space)?; )+
                 Ok(())
             }
 
@@ -300,7 +300,7 @@ macro_rules! define_clusterwide_spaces {
             /// for now.
             pub fn snapshot_data() -> tarantool::Result<SnapshotData> {
                 let mut space_dumps = vec![
-                    $( Self::space_dump(&$cw_space::$cw_space_var)?, )+
+                    $( Self::space_dump(&$ClusterwideSpace::$cw_space_var)?, )+
                 ];
 
                 let pico_space = space_by_name(&ClusterwideSpace::Space)?;
@@ -317,9 +317,9 @@ macro_rules! define_clusterwide_spaces {
         ////////////////////////////////////////////////////////////////////////
         // Instances, Replicasets, etc.
         $(
-            $(#[$space_meta])*
+            $(#[$space_struct_meta])*
             #[derive(Clone, Debug)]
-            pub struct $space {
+            pub struct $space_struct {
                 $space_field: $space_ty,
                 #[allow(unused)]
                 $index_field_pk: $index_ty_pk,
@@ -334,19 +334,19 @@ macro_rules! define_clusterwide_spaces {
                 }
             }
 
-            impl From<$index> for $cw_index {
+            impl From<$index> for $ClusterwideSpaceIndex {
                 fn from(index: $index) -> Self {
                     Self::$cw_space_var(index)
                 }
             }
 
-            impl TClusterwideSpace for $space {
+            impl TClusterwideSpace for $space_struct {
                 type Index = $index;
                 const SPACE_NAME: &'static str = $cw_space_name;
                 const SPACE_ID: SpaceId = $cw_space_id_value;
             }
 
-            impl TClusterwideSpaceIndex for IndexOf<$space> {
+            impl TClusterwideSpaceIndex for IndexOf<$space_struct> {
                 #[inline(always)]
                 fn primary() -> Self {
                     Self::$index_var_pk
