@@ -509,7 +509,7 @@ impl Clusterwide {
             tuples.len()
         );
         Ok(SpaceDump {
-            space: space_name.into(),
+            space_name: space_name.into(),
             tuples,
         })
     }
@@ -518,7 +518,8 @@ impl Clusterwide {
         let data = SnapshotData::decode(raw_data)?;
         let mut dont_exist_yet = Vec::new();
         for space_dump in &data.space_dumps {
-            let Ok(space) = self.space_by_name(&space_dump.space) else {
+            let space_name = &space_dump.space_name;
+            let Ok(space) = self.space_by_name(space_name) else {
                 dont_exist_yet.push(space_dump);
                 continue;
             };
@@ -539,8 +540,9 @@ impl Clusterwide {
         // just got defined from the metadata which arrived in the _pico_space
         // dump.
         for space_dump in &dont_exist_yet {
-            let Ok(space) = self.space_by_name(&space_dump.space) else {
-                crate::warn_or_panic!("a dump for a non existent space '{}' arrived via snapshot", space_dump.space);
+            let space_name = &space_dump.space_name;
+            let Ok(space) = self.space_by_name(space_name) else {
+                crate::warn_or_panic!("a dump for a non existent space '{}' arrived via snapshot", space_name);
                 continue;
             };
             space.truncate()?;
@@ -1405,7 +1407,7 @@ impl Encode for SnapshotData {}
 
 #[derive(Debug, ::serde::Serialize, ::serde::Deserialize)]
 pub struct SpaceDump {
-    pub space: String,
+    pub space_name: String,
     #[serde(with = "serde_bytes")]
     pub tuples: TupleBuffer,
 }
@@ -1854,7 +1856,7 @@ mod tests {
         assert_eq!(space_dumps.len(), 6);
 
         for space_dump in &space_dumps {
-            match &space_dump.space {
+            match &space_dump.space_name {
                 s if s == &*ClusterwideSpace::Instance => {
                     let [instance]: [Instance; 1] =
                         Decode::decode(space_dump.tuples.as_ref()).unwrap();
@@ -1912,19 +1914,19 @@ mod tests {
         };
         let tuples = [&i].to_tuple_buffer().unwrap();
         data.space_dumps.push(SpaceDump {
-            space: ClusterwideSpace::Instance.into(),
+            space_name: ClusterwideSpace::Instance.into(),
             tuples,
         });
 
         let tuples = [(1, "google.com"), (2, "ya.ru")].to_tuple_buffer().unwrap();
         data.space_dumps.push(SpaceDump {
-            space: ClusterwideSpace::Address.into(),
+            space_name: ClusterwideSpace::Address.into(),
             tuples,
         });
 
         let tuples = [("foo", "bar")].to_tuple_buffer().unwrap();
         data.space_dumps.push(SpaceDump {
-            space: ClusterwideSpace::Property.into(),
+            space_name: ClusterwideSpace::Property.into(),
             tuples,
         });
 
@@ -1937,7 +1939,7 @@ mod tests {
         };
         let tuples = [&r].to_tuple_buffer().unwrap();
         data.space_dumps.push(SpaceDump {
-            space: ClusterwideSpace::Replicaset.into(),
+            space_name: ClusterwideSpace::Replicaset.into(),
             tuples,
         });
 
