@@ -261,6 +261,40 @@ impl PoolWorker {
         }
     }
 
+    /// Send an RPC `request` and invoke `cb` whenever the result is ready.
+    ///
+    /// An error will be passed to `cb` in one of the following situations:
+    /// - in case `args` failed to serialize
+    /// - in case peer was disconnected
+    /// - in case response failed to deserialize
+    /// - in case peer responded with an error
+    pub fn rpc_raw<Args, Response>(
+        &mut self,
+        proc: &'static str,
+        args: &Args,
+        cb: impl FnOnce(Result<Response>) + 'static,
+    ) where
+        Args: ToTupleBuffer,
+        Response: serde::de::DeserializeOwned,
+    {
+        let args = unwrap_ok_or!(args.to_tuple_buffer(),
+            Err(e) => { return cb(Err(e.into())) }
+        );
+        let convert_result = |bytes: Result<Option<Tuple>>| {
+            let tuple: Tuple = bytes?.ok_or(Error::EmptyRpcAnswer)?;
+            let res = tuple.decode()?;
+            Ok(res)
+        };
+        self.inbox
+            .send((Box::new(move |res| cb(convert_result(res))), proc, args));
+        if self.inbox_ready.send(()).is_err() {
+            tlog!(
+                Warning,
+                "failed sending request to peer, worker loop receiver dropped"
+            );
+        }
+    }
+
     fn stop(self) {
         let _ = self.stop.send(());
         self.fiber.join();
@@ -436,6 +470,45 @@ impl ConnectionPool {
         });
         Ok(f)
     }
+
+    /// Call an rpc on instance with `id` (see `IdOfInstance`) returning a
+    /// future.
+    ///
+    /// This method is similar to [`Self::call`] but allows to call rpcs
+    /// without using [`rpc::Request`] trait.
+    ///
+    /// If the request failed, it's a responsibility of the caller
+    /// to re-send it later.
+    pub fn call_raw<Args, Response>(
+        &mut self,
+        id: &impl IdOfInstance,
+        proc: &'static str,
+        args: &Args,
+    ) -> Result<impl Future<Output = Result<Response>>>
+    where
+        Response: serde::de::DeserializeOwned + 'static,
+        Args: ToTupleBuffer,
+    {
+        let (tx, mut rx) = oneshot::channel();
+        let id_dbg = format!("{id:?}");
+        id.get_or_create_in(self)?.rpc_raw(proc, args, move |res| {
+            if tx.send(res).is_err() {
+                tlog!(
+                    Debug,
+                    "rpc response ignored because caller dropped the future"
+                )
+            }
+        });
+
+        // We use an explicit type implementing Future instead of defining an
+        // async fn, because we need to tell rust explicitly that the `id` &
+        // `req` arguments are not borrowed by the returned future.
+        let f = poll_fn(move |cx| {
+            let rx = Pin::new(&mut rx);
+            Future::poll(rx, cx).map(|r| r.unwrap_or_else(|_| Err(Error::other("disconnected"))))
+        });
+        Ok(f)
+    }
 }
 
 impl Drop for ConnectionPool {
@@ -491,6 +564,43 @@ mod tests {
             from,
             ..Default::default()
         }
+    }
+
+    #[::tarantool::test]
+    fn call_raw() {
+        let l = tarantool::lua_state();
+        l.exec(
+            r#"
+            function test_stored_proc(a, b)
+                return a + b
+            end
+            
+            box.schema.func.create('test_stored_proc')
+            "#,
+        )
+        .unwrap();
+
+        let storage = Clusterwide::new().unwrap();
+        // Connect to the current Tarantool instance
+        let mut pool = ConnectionPool::builder(storage.clone()).build();
+        let listen: String = l.eval("return box.info.listen").unwrap();
+
+        let instance = traft::Instance {
+            raft_id: 1337,
+            ..traft::Instance::default()
+        };
+        storage.instances.put(&instance).unwrap();
+        storage
+            .peer_addresses
+            .put(instance.raft_id, &listen)
+            .unwrap();
+
+        let result: (u32,) = fiber::block_on(
+            pool.call_raw(&instance.raft_id, "test_stored_proc", &(1u32, 2u32))
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(result.0, 3u32);
     }
 
     #[::tarantool::test]
