@@ -1,5 +1,12 @@
 # Change Log
 
+# [1.1.0] In Development
+
+### Added
+- `vclock::Vclock` data structure representing Tarantool vector clock
+  (`box.info.vclock` Lua interface).
+- `vclock::Lsn` type alias for `u64` representing Tarantool log sequence number.
+
 # [1.0.0] May 29 2023
 
 ### Added
