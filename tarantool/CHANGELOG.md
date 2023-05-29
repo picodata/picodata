@@ -1,6 +1,6 @@
 # Change Log
 
-# [0.7.0] Mar ?? 2023
+# [1.0.0] May 29 2023
 
 ### Added
 - `fiber::Builder::func_async` and `fiber::Builder::proc_async` - methods for

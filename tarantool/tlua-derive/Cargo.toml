@@ -4,7 +4,7 @@ authors = [
 ]
 name = "tlua-derive"
 description = "Tlua derive macro definitions"
-version = "0.1.4"
+version = "0.2.0"
 edition = "2018"
 license = "BSD-2-Clause"
 documentation = "https://docs.rs/tlua-derive/"
@@ -15,7 +15,7 @@ rust-version = "1.61"
 proc-macro = true
 
 [dependencies]
-syn = { version = "1.0.98", features = ["visit"] }
+syn = { version = "1.0.98", features = ["full", "visit"] }
 quote = "^1.0"
 proc-macro2 = "^1.0"
 
