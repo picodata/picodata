@@ -648,13 +648,17 @@ fn start_webui() {
     .expect("failed to add Web UI routes")
 }
 
-fn init_handlers() -> traft::Result<()> {
+/// Initializes Tarantool stored procedures.
+///
+/// Those are used for inter-instance communication
+/// (discovery, rpc, public proc api).
+fn init_handlers() {
     tarantool::exec(
         r#"
         box.schema.user.grant('guest', 'super', nil, nil, {if_not_exists = true})
         "#,
     )
-    .unwrap();
+    .expect("box.schema.user.grant should never fail");
 
     let lua = ::tarantool::lua_state();
     for proc in ::tarantool::proc::all_procs().iter() {
@@ -664,10 +668,8 @@ fn init_handlers() -> traft::Result<()> {
             );",
             proc.name(),
         )
-        .map_err(::tarantool::tlua::LuaError::from)?;
+        .expect("box.schema.func.create should never fail");
     }
-
-    Ok(())
 }
 
 #[allow(clippy::enum_variant_names)]
@@ -711,12 +713,13 @@ fn init_common(args: &args::Run, cfg: &tarantool::Cfg) -> (Clusterwide, RaftSpac
     preload_http();
     init_sbroad();
 
-    init_handlers().expect("failed initializing rpc handlers");
+    init_handlers();
     traft::event::init();
 
-    tweak_max_space_id().expect("failed setting max_id");
-    let storage = Clusterwide::new().expect("clusterwide storage initialization failed");
-    let raft_storage = RaftSpaceAccess::new().expect("raft storage initialization failed");
+    tweak_max_space_id().expect("setting max_id should never fail");
+    let storage = Clusterwide::new().expect("storage initialization should never fail");
+    let raft_storage =
+        RaftSpaceAccess::new().expect("raft storage initialization should never fail");
     (storage, raft_storage)
 }
 
