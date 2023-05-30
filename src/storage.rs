@@ -542,6 +542,7 @@ impl Clusterwide {
         // via tarantool replication.
         if is_master {
             self.apply_ddl_changes_on_replicaset_master()?;
+            set_pico_schema_version(data.schema_version)?;
         }
 
         // These are likely globally distributed user-defined spaces, which
@@ -566,13 +567,13 @@ impl Clusterwide {
     pub fn apply_ddl_changes_on_replicaset_master(&self) -> traft::Result<()> {
         let sys_space = Space::from(SystemSpace::Space);
         let sys_index = Space::from(SystemSpace::Index);
-        let mut new_pico_schema_version = pico_schema_version()?;
 
         for space_def in self.spaces.iter()? {
             if !space_def.operable {
                 // This means a ddl operation wasn't committed yet. We probably
                 // don't want unfinished ddl artifacts comming over the snapshot
                 // so this will likely never happen.
+                // TODO: or do we actually want this working?
                 crate::warn_or_panic!(
                     "unfinished ddl operation arrived via snapshot: {space_def:?}"
                 );
@@ -603,15 +604,9 @@ impl Clusterwide {
             if let Some(def) = tt_bucket_id_def {
                 sys_index.replace(&def)?;
             }
-
-            if space_def.schema_version > new_pico_schema_version {
-                new_pico_schema_version = space_def.schema_version;
-            }
         }
 
         // TODO: secondary indexes
-
-        set_pico_schema_version(new_pico_schema_version)?;
 
         // TODO: check if a space exists here in box.space._space, but doesn't
         // exist in pico._space, then delete it
