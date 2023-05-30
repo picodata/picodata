@@ -1,6 +1,6 @@
 use crate::op::Ddl;
-use crate::storage::ddl_create_space_on_master;
 use crate::storage::Clusterwide;
+use crate::storage::{ddl_create_space_on_master, ddl_drop_space_on_master};
 use crate::storage::{local_schema_version, set_local_schema_version};
 use crate::tlog;
 use crate::traft::error::Error;
@@ -43,7 +43,7 @@ crate::define_rpc_request! {
         // TODO: transaction may have already started, if we're in a process of
         // creating a big index. If governor sends a repeat rpc request to us we
         // should handle this correctly
-        let res = apply_schema_change(storage, &ddl, pending_schema_version);
+        let res = apply_schema_change(storage, &ddl, pending_schema_version, false);
         match res {
             Ok(Response::Abort { .. }) | Err(_) => {
                 let rc = unsafe { ffi::box_txn_rollback() };
@@ -79,8 +79,27 @@ crate::define_rpc_request! {
     }
 }
 
-// TODO: move this to crate::schema maybe?
-pub fn apply_schema_change(storage: &Clusterwide, ddl: &Ddl, version: u64) -> Result<Response> {
+/// Applies the schema change described by `ddl` to the tarantool storage. This
+/// function is only called on replicaset masters, other replicas get the
+/// changes via tarantool replication.
+///
+/// In case of successful schema change the local schema version will be set to
+/// `version`. In case of [`Ddl::DropSpace`] and [`Ddl::DropIndex`] schema is
+/// only changed if `is_commit` is `true`.
+///
+/// The space and index definitions are extracted from picodata storage via
+/// `storage`.
+///
+/// `is_commit` is `true` if schema change is being applied in response to a
+/// [`DdlCommit`] raft entry, else it's `false`.
+///
+/// [`DdlCommit`]: crate::traft::op::Op::DdlCommit
+pub fn apply_schema_change(
+    storage: &Clusterwide,
+    ddl: &Ddl,
+    version: u64,
+    is_commit: bool,
+) -> Result<Response> {
     debug_assert!(unsafe { tarantool::ffi::tarantool::box_txn() });
 
     match *ddl {
@@ -94,6 +113,23 @@ pub fn apply_schema_change(storage: &Clusterwide, ddl: &Ddl, version: u64) -> Re
                 });
             }
         }
+
+        Ddl::DropSpace { id } => {
+            if !is_commit {
+                // Space is only dropped on commit.
+                return Ok(Response::Ok);
+            }
+
+            let abort_reason = ddl_drop_space_on_master(id)?;
+            if let Some(e) = abort_reason {
+                // We return Ok(error) because currently this is the only
+                // way to report an application level error.
+                return Ok(Response::Abort {
+                    reason: e.to_string(),
+                });
+            }
+        }
+
         _ => {
             todo!();
         }

@@ -1599,11 +1599,51 @@ impl Indexes {
             None => Ok(None),
         }
     }
+
+    #[inline]
+    pub fn by_space_id(&self, space_id: SpaceId) -> tarantool::Result<EntryIter<IndexDef>> {
+        let iter = self.space.select(IteratorType::Eq, &[space_id])?;
+        Ok(EntryIter::new(iter))
+    }
+}
+
+impl ToEntryIter for Indexes {
+    type Entry = IndexDef;
+
+    #[inline(always)]
+    fn index_iter(&self) -> Result<IndexIterator> {
+        Ok(self.space.select(IteratorType::All, &())?)
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 // ddl
 ////////////////////////////////////////////////////////////////////////////////
+
+pub fn ddl_abort_on_master(ddl: &Ddl, version: u64) -> traft::Result<()> {
+    debug_assert!(unsafe { tarantool::ffi::tarantool::box_txn() });
+    let sys_space = Space::from(SystemSpace::Space);
+    let sys_index = Space::from(SystemSpace::Index);
+
+    match *ddl {
+        Ddl::CreateSpace { id, .. } => {
+            sys_index.delete(&[id, 1])?;
+            sys_index.delete(&[id, 0])?;
+            sys_space.delete(&[id])?;
+            set_local_schema_version(version)?;
+        }
+
+        Ddl::DropSpace { .. } => {
+            // Actual drop happens only on commit, so there's nothing to abort.
+        }
+
+        _ => {
+            todo!();
+        }
+    }
+
+    Ok(())
+}
 
 /// Create tarantool space and any required indexes. Currently it creates a
 /// primary index and a `bucket_id` index if it's a sharded space.
@@ -1671,6 +1711,51 @@ pub fn ddl_create_space_on_master(
     Ok(res.err())
 }
 
+/// Drop tarantool space and any entities which depend on it (currently just indexes).
+///
+/// Return values:
+/// * `Ok(None)` in case of success.
+/// * `Ok(Some(abort_reason))` in case of error which should result in a ddl abort.
+/// * `Err(e)` in case of retryable errors.
+///
+// FIXME: this function returns 2 kinds of errors: retryable and non-retryable.
+// Currently this is impelemnted by returning one kind of errors as Err(e) and
+// the other as Ok(Some(e)). This was the simplest solution at the time this
+// function was implemented, as it requires the least amount of boilerplate and
+// error forwarding code. But this signature is not intuitive, so maybe there's
+// room for improvement.
+pub fn ddl_drop_space_on_master(space_id: SpaceId) -> traft::Result<Option<TntError>> {
+    debug_assert!(unsafe { tarantool::ffi::tarantool::box_txn() });
+    let sys_space = Space::from(SystemSpace::Space);
+    let sys_index = Space::from(SystemSpace::Index);
+    let sys_truncate = Space::from(SystemSpace::Truncate);
+
+    let iter = sys_index.select(IteratorType::Eq, &[space_id])?;
+    let mut index_ids = Vec::with_capacity(4);
+    for tuple in iter {
+        let index_id: IndexId = tuple
+            .field(1)?
+            .expect("decoding metadata should never fail");
+        // Primary key is handled explicitly.
+        if index_id != 0 {
+            index_ids.push(index_id);
+        }
+    }
+    let res = (|| -> tarantool::Result<()> {
+        // TODO: delete it from _truncate, delete grants
+        for iid in index_ids.iter().rev() {
+            sys_index.delete(&(space_id, iid))?;
+        }
+        // Primary key must be dropped last.
+        sys_index.delete(&(space_id, 0))?;
+        sys_truncate.delete(&[space_id])?;
+        sys_space.delete(&[space_id])?;
+
+        Ok(())
+    })();
+    Ok(res.err())
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // local schema version
 ////////////////////////////////////////////////////////////////////////////////
@@ -1692,6 +1777,10 @@ pub fn set_local_schema_version(v: u64) -> tarantool::Result<()> {
     space_schema.replace(&("local_schema_version", v))?;
     Ok(())
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// max space id
+////////////////////////////////////////////////////////////////////////////////
 
 pub const SPACE_ID_INTERNAL_MAX: u32 = 1024;
 

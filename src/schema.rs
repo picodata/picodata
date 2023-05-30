@@ -8,7 +8,6 @@ use tarantool::{
     index::{IndexId, Part},
     schema::space::SpaceMetadata,
     space::SpaceId,
-    space::{Space, SystemSpace},
     tlua::{self, LuaRead},
     tuple::Encode,
     util::Value,
@@ -21,7 +20,7 @@ use crate::compare_and_swap;
 use crate::rpc;
 use crate::storage::ToEntryIter;
 use crate::storage::SPACE_ID_INTERNAL_MAX;
-use crate::storage::{set_local_schema_version, Clusterwide, ClusterwideSpaceId, PropertyName};
+use crate::storage::{Clusterwide, ClusterwideSpaceId, PropertyName};
 use crate::traft::op::{Ddl, DdlBuilder, Op};
 use crate::traft::{self, event, node, RaftIndex};
 use crate::util::instant_saturating_add;
@@ -160,26 +159,6 @@ impl IndexDef {
 
         index_meta
     }
-}
-
-pub fn ddl_abort_on_master(ddl: &Ddl, version: u64) -> traft::Result<()> {
-    debug_assert!(unsafe { tarantool::ffi::tarantool::box_txn() });
-    let sys_space = Space::from(SystemSpace::Space);
-    let sys_index = Space::from(SystemSpace::Index);
-
-    match *ddl {
-        Ddl::CreateSpace { id, .. } => {
-            sys_index.delete(&[id, 1])?;
-            sys_index.delete(&[id, 0])?;
-            sys_space.delete(&[id])?;
-            set_local_schema_version(version)?;
-        }
-        _ => {
-            todo!();
-        }
-    }
-
-    Ok(())
 }
 
 // TODO: this should be a TryFrom in tarantool-module

@@ -12,8 +12,8 @@ use crate::kvcell::KVCell;
 use crate::loop_start;
 use crate::r#loop::FlowControl;
 use crate::rpc;
-use crate::schema::ddl_abort_on_master;
 use crate::schema::{Distribution, IndexDef, SpaceDef};
+use crate::storage::ddl_abort_on_master;
 use crate::storage::local_schema_version;
 use crate::storage::SnapshotData;
 use crate::storage::ToEntryIter as _;
@@ -858,10 +858,12 @@ impl NodeImpl {
                     if self.is_readonly() {
                         return SleepAndRetry;
                     } else {
+                        // Master applies schema change at this point.
                         let resp = rpc::ddl_apply::apply_schema_change(
                             &self.storage,
                             &ddl,
                             pending_version,
+                            true,
                         )
                         .expect("storage error");
                         match resp {
@@ -895,6 +897,25 @@ impl NodeImpl {
                         // be done, but for now we just ignore the error "no such index"
                         let _ = res;
                     }
+
+                    Ddl::DropSpace { id } => {
+                        self.storage
+                            .spaces
+                            .delete(id)
+                            .expect("storage should never fail");
+                        let iter = self
+                            .storage
+                            .indexes
+                            .by_space_id(id)
+                            .expect("storage should never fail");
+                        for index in iter {
+                            self.storage
+                                .indexes
+                                .delete(index.space_id, index.id)
+                                .expect("storage should never fail");
+                        }
+                    }
+
                     _ => {
                         todo!()
                     }
@@ -939,6 +960,25 @@ impl NodeImpl {
                         self.storage.indexes.delete(id, 0).expect("storage error");
                         self.storage.spaces.delete(id).expect("storage error");
                     }
+
+                    Ddl::DropSpace { id } => {
+                        self.storage
+                            .spaces
+                            .update_operable(id, true)
+                            .expect("storage should never fail");
+                        let iter = self
+                            .storage
+                            .indexes
+                            .by_space_id(id)
+                            .expect("storage should never fail");
+                        for index in iter {
+                            self.storage
+                                .indexes
+                                .update_operable(index.space_id, index.id, true)
+                                .expect("storage should never fail");
+                        }
+                    }
+
                     _ => {
                         todo!()
                     }
@@ -1117,10 +1157,25 @@ impl NodeImpl {
                 let _ = (space_id, index_id, by_fields);
                 todo!();
             }
+
             Ddl::DropSpace { id } => {
-                let _ = id;
-                todo!();
+                self.storage
+                    .spaces
+                    .update_operable(id, false)
+                    .expect("storage should never fail");
+                let iter = self
+                    .storage
+                    .indexes
+                    .by_space_id(id)
+                    .expect("storage should never fail");
+                for index in iter {
+                    self.storage
+                        .indexes
+                        .update_operable(index.space_id, index.id, false)
+                        .expect("storage should never fail");
+                }
             }
+
             Ddl::DropIndex { index_id, space_id } => {
                 let _ = (index_id, space_id);
                 todo!();
