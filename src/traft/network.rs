@@ -490,7 +490,6 @@ impl ConnectionPool {
         Args: ToTupleBuffer,
     {
         let (tx, mut rx) = oneshot::channel();
-        let id_dbg = format!("{id:?}");
         id.get_or_create_in(self)?.rpc_raw(proc, args, move |res| {
             if tx.send(res).is_err() {
                 tlog!(
