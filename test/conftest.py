@@ -624,9 +624,9 @@ class Instance:
 
     def cas(
         self,
-        dml_kind: Literal["insert", "replace", "delete"],
+        op_kind: Literal["insert", "replace", "delete", "drop_space"],
         space: str | int,
-        tuple: Tuple | List,
+        tuple: Tuple | List | None = None,
         index: int | None = None,
         term: int | None = None,
         ranges: List[CasRange] | None = None,
@@ -666,25 +666,35 @@ class Instance:
             ranges=predicate_ranges,
         )
 
-        if dml_kind in ["insert", "replace"]:
-            dml = dict(
+        if op_kind in ["insert", "replace"]:
+            op = dict(
                 kind="dml",
-                op_kind=dml_kind,
+                op_kind=op_kind,
                 space=space_id,
                 tuple=msgpack.packb(tuple),
             )
-        elif dml_kind == "delete":
-            dml = dict(
+        elif op_kind == "delete":
+            op = dict(
                 kind="dml",
-                op_kind=dml_kind,
+                op_kind=op_kind,
                 space=space_id,
                 key=msgpack.packb(tuple),
             )
+        elif op_kind == "drop_space":
+            op = dict(
+                kind="ddl_prepare",
+                op_kind=op_kind,
+                schema_version=self.next_schema_version(),
+                ddl=dict(
+                    kind="drop_space",
+                    id=space_id,
+                ),
+            )
         else:
-            raise Exception(f"unsupported {dml_kind=}")
+            raise Exception(f"unsupported {op_kind=}")
 
-        eprint(f"CaS:\n  {predicate=}\n  {dml=}")
-        return self.call(".proc_cas", self.cluster_id, predicate, dml)[0]["index"]
+        eprint(f"CaS:\n  {predicate=}\n  {op=}")
+        return self.call(".proc_cas", self.cluster_id, predicate, op)[0]["index"]
 
     def next_schema_version(self) -> int:
         t = self.call("box.space._pico_property:get", "next_schema_version")
@@ -1062,7 +1072,7 @@ class Cluster:
 
     def create_space(self, params: dict, timeout: float = 3.0):
         """
-        Creates a space. Waits for all peers to be aware of it.
+        Creates a space. Waits for all online peers to be aware of it.
         """
         index = self.instances[0].create_space(params, timeout)
         self.raft_wait_index(index, timeout)
