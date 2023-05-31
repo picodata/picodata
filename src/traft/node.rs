@@ -1129,14 +1129,14 @@ impl NodeImpl {
         // `ConfChangeTransition::Auto` implies that `ConfChangeV2` may be
         // applied in an instant without entering the joint state.
 
-        let (is_joint, conf_state) = match entry.entry_type {
+        let conf_state = match entry.entry_type {
             raft::EntryType::EntryConfChange => {
                 let mut cc = raft::ConfChange::default();
                 cc.merge_from_bytes(&entry.data).unwrap();
 
                 latch_unlock();
 
-                (false, self.raw_node.apply_conf_change(&cc).unwrap())
+                self.raw_node.apply_conf_change(&cc).unwrap()
             }
             raft::EntryType::EntryConfChangeV2 => {
                 let mut cc = raft::ConfChangeV2::default();
@@ -1153,20 +1153,10 @@ impl NodeImpl {
                 // ConfChangeTransition::Auto implies that at this
                 // moment raft-rs will implicitly propose another empty
                 // conf change that represents leaving the joint state.
-                (!leave_joint, self.raw_node.apply_conf_change(&cc).unwrap())
+                self.raw_node.apply_conf_change(&cc).unwrap()
             }
             _ => unreachable!(),
         };
-
-        let raft_id = &self.raft_id();
-        let voters_old = self.raft_storage.voters().unwrap().unwrap_or_default();
-        if voters_old.contains(raft_id) && !conf_state.voters.contains(raft_id) {
-            if is_joint {
-                event::broadcast_when(Event::Demoted, Event::JointStateLeave).ok();
-            } else {
-                event::broadcast(Event::Demoted);
-            }
-        }
 
         self.raft_storage.persist_conf_state(&conf_state).unwrap();
     }
