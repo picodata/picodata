@@ -1850,7 +1850,6 @@ mod tests {
             replicaset_uuid: "r1-uuid".into(),
             master_id: "i".into(),
             weight: crate::replicaset::weight::Info::default(),
-            current_schema_version: 0,
         };
         storage.replicasets.space.insert(&r).unwrap();
 
@@ -1940,7 +1939,6 @@ mod tests {
             replicaset_uuid: "r1-uuid".into(),
             master_id: "i".into(),
             weight: crate::replicaset::weight::Info::default(),
-            current_schema_version: 0,
         };
         let tuples = [&r].to_tuple_buffer().unwrap();
         data.space_dumps.push(SpaceDump {

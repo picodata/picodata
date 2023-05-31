@@ -145,7 +145,6 @@ pub(super) fn action_plan<'i>(
                     origin: weight::Origin::Auto,
                     state: weight::State::Initial,
                 },
-                current_schema_version: 0,
             },
         )?;
         #[rustfmt::skip]

@@ -27,9 +27,6 @@ pub struct Replicaset {
 
     /// Sharding weight of the replicaset.
     pub weight: weight::Info,
-
-    /// Current schema version of the replicaset.
-    pub current_schema_version: u64,
 }
 impl Encode for Replicaset {}
 
@@ -41,7 +38,6 @@ impl Replicaset {
             Field::from(("replicaset_uuid", FieldType::String)),
             Field::from(("master_id", FieldType::String)),
             Field::from(("weight", FieldType::Array)),
-            Field::from(("current_schema_version", FieldType::Unsigned)),
         ]
     }
 }
@@ -50,8 +46,8 @@ impl std::fmt::Display for Replicaset {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(
             f,
-            "({}, master: {}, weight: {}, schema_version: {})",
-            self.replicaset_id, self.master_id, self.weight, self.current_schema_version,
+            "({}, master: {}, weight: {})",
+            self.replicaset_id, self.master_id, self.weight,
         )
     }
 }
