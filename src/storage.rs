@@ -311,7 +311,7 @@ macro_rules! define_clusterwide_spaces {
                 }
 
                 let pico_property = space_by_id(ClusterwideSpaceId::Property.value())?;
-                let tuple = pico_property.get(&[PropertyName::CurrentSchemaVersion.as_str()])?;
+                let tuple = pico_property.get(&[PropertyName::GlobalSchemaVersion.as_str()])?;
                 let mut schema_version = 0;
                 if let Some(tuple) = tuple {
                     if let Some(v) = tuple.field(1)? {
@@ -542,7 +542,7 @@ impl Clusterwide {
         // via tarantool replication.
         if is_master {
             self.apply_ddl_changes_on_replicaset_master()?;
-            set_pico_schema_version(data.schema_version)?;
+            set_local_schema_version(data.schema_version)?;
         }
 
         // These are likely globally distributed user-defined spaces, which
@@ -814,10 +814,10 @@ pub trait TClusterwideSpaceIndex {
 
         /// Current schema version. Increases with every ddl commit operation.
         ///
-        /// This is equal to [`pico_schema_version`] during the time between
+        /// This is equal to [`local_schema_version`] during the time between
         /// the last ddl commit or abort operation and the next ddl prepare
         /// operation.
-        CurrentSchemaVersion = "current_schema_version",
+        GlobalSchemaVersion = "global_schema_version",
 
         /// Schema version which should be used for the next ddl prepare
         /// operation. This increases with every ddl prepare operation in the
@@ -901,9 +901,9 @@ impl Properties {
     }
 
     #[inline]
-    pub fn current_schema_version(&self) -> tarantool::Result<u64> {
+    pub fn global_schema_version(&self) -> tarantool::Result<u64> {
         let res = self
-            .get(PropertyName::CurrentSchemaVersion)?
+            .get(PropertyName::GlobalSchemaVersion)?
             .unwrap_or_default();
         Ok(res)
     }
@@ -913,7 +913,7 @@ impl Properties {
         let res = if let Some(version) = self.get(PropertyName::NextSchemaVersion)? {
             version
         } else {
-            let current = self.current_schema_version()?;
+            let current = self.global_schema_version()?;
             current + 1
         };
         Ok(res)
@@ -1599,9 +1599,9 @@ impl Indexes {
     }
 }
 
-pub fn pico_schema_version() -> tarantool::Result<u64> {
+pub fn local_schema_version() -> tarantool::Result<u64> {
     let space_schema = Space::from(SystemSpace::Schema);
-    let tuple = space_schema.get(&["pico_schema_version"])?;
+    let tuple = space_schema.get(&["local_schema_version"])?;
     let mut res = 0;
     if let Some(tuple) = tuple {
         if let Some(v) = tuple.field(1)? {
@@ -1611,9 +1611,9 @@ pub fn pico_schema_version() -> tarantool::Result<u64> {
     Ok(res)
 }
 
-pub fn set_pico_schema_version(v: u64) -> tarantool::Result<()> {
+pub fn set_local_schema_version(v: u64) -> tarantool::Result<()> {
     let space_schema = Space::from(SystemSpace::Schema);
-    space_schema.replace(&("pico_schema_version", v))?;
+    space_schema.replace(&("local_schema_version", v))?;
     Ok(())
 }
 

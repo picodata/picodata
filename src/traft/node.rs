@@ -14,7 +14,7 @@ use crate::r#loop::FlowControl;
 use crate::rpc;
 use crate::schema::ddl_abort_on_master;
 use crate::schema::{Distribution, IndexDef, SpaceDef};
-use crate::storage::pico_schema_version;
+use crate::storage::local_schema_version;
 use crate::storage::SnapshotData;
 use crate::storage::ToEntryIter as _;
 use crate::storage::{Clusterwide, ClusterwideSpaceId, PropertyName};
@@ -797,14 +797,14 @@ impl NodeImpl {
                     .expect("storage error");
             }
             Op::DdlCommit => {
-                let current_version_in_tarantool = pico_schema_version().expect("storage error");
+                let v_local = local_schema_version().expect("storage error");
                 let pending_version = storage_properties
                     .pending_schema_version()
                     .expect("storage error")
                     .expect("granted we don't mess up log compaction, this should not be None");
                 // This instance is catching up to the cluster and must sync
                 // with replication master on it's own.
-                if current_version_in_tarantool < pending_version {
+                if v_local < pending_version {
                     let is_master = self.is_replicaset_master().expect("storage_error");
                     if !is_master {
                         return WaitLsnAndRetry;
@@ -844,7 +844,7 @@ impl NodeImpl {
                 // replication master, so it must apply the schema change on it's
                 // own.
                 // FIXME: copy-pasted from above
-                if current_version_in_tarantool < pending_version {
+                if v_local < pending_version {
                     let is_master = self.is_replicaset_master().expect("storage_error");
                     if is_master {
                         let resp = rpc::ddl_apply::apply_schema_change(
@@ -872,18 +872,18 @@ impl NodeImpl {
                     .delete(PropertyName::PendingSchemaVersion)
                     .expect("storage error");
                 storage_properties
-                    .put(PropertyName::CurrentSchemaVersion, &pending_version)
+                    .put(PropertyName::GlobalSchemaVersion, &pending_version)
                     .expect("storage error");
             }
             Op::DdlAbort => {
-                let current_version_in_tarantool = pico_schema_version().expect("storage error");
+                let v_local = local_schema_version().expect("storage error");
                 let pending_version: u64 = storage_properties
                     .pending_schema_version()
                     .expect("storage error")
                     .expect("granted we don't mess up log compaction, this should not be None");
                 // This condition means, schema versions must always increase
                 // even after an DdlAbort
-                if current_version_in_tarantool == pending_version {
+                if v_local == pending_version {
                     let is_master = self.is_replicaset_master().expect("storage_error");
                     if !is_master {
                         return WaitLsnAndRetry;
@@ -907,13 +907,13 @@ impl NodeImpl {
 
                 // Update tarantool metadata.
                 // FIXME: copy-pasted from above
-                if current_version_in_tarantool == pending_version {
+                if v_local == pending_version {
                     let is_master = self.is_replicaset_master().expect("storage_error");
                     if is_master {
-                        let current_version = storage_properties
-                            .current_schema_version()
+                        let v_global = storage_properties
+                            .global_schema_version()
                             .expect("storage error");
-                        ddl_abort_on_master(&ddl, current_version).expect("storage error");
+                        ddl_abort_on_master(&ddl, v_global).expect("storage error");
                     }
                 }
 
@@ -1235,13 +1235,13 @@ impl NodeImpl {
                 }
             );
 
-            let local_schema_version = pico_schema_version().expect("storage error");
-            if local_schema_version > snapshot_data.schema_version {
+            let v_local = local_schema_version().expect("storage error");
+            if v_local > snapshot_data.schema_version {
                 // Maybe we should at least apply snapshot metadata?
                 tlog!(
                     Warning,
-                    "skipping stale snapshot: local schema_version: {}, snapshot schema_version: {}",
-                    local_schema_version,
+                    "skipping stale snapshot: local schema version: {}, snapshot schema version: {}",
+                    v_local,
                     snapshot_data.schema_version,
                 );
                 return None;
@@ -1249,8 +1249,8 @@ impl NodeImpl {
 
             if !self.is_replicaset_master().expect("storage error") {
                 loop {
-                    let local_schema_version = pico_schema_version().expect("storage error");
-                    if local_schema_version >= snapshot_data.schema_version {
+                    let v_local = local_schema_version().expect("storage error");
+                    if v_local >= snapshot_data.schema_version {
                         break;
                     }
                     if let Err(e) = self.check_lsn_and_sleep() {

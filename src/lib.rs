@@ -847,7 +847,7 @@ fn start_boot(args: &args::Run) {
         init_entries_push_op(
             op::Dml::insert(
                 ClusterwideSpaceId::Property,
-                &(PropertyName::CurrentSchemaVersion, 0),
+                &(PropertyName::GlobalSchemaVersion, 0),
             )
             .expect("cannot fail")
             .into(),

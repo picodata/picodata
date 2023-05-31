@@ -270,7 +270,7 @@ impl Predicate {
             [
                 PendingSchemaChange.into(),
                 PendingSchemaVersion.into(),
-                CurrentSchemaVersion.into(),
+                GlobalSchemaVersion.into(),
                 NextSchemaVersion.into(),
             ]
             .into_iter()
@@ -487,7 +487,7 @@ mod tests {
         let props = Properties::SPACE_ID;
         let pending_schema_change = (PropertyName::PendingSchemaChange.to_string(),);
         let pending_schema_version = (PropertyName::PendingSchemaChange.to_string(),);
-        let current_schema_version = (PropertyName::CurrentSchemaVersion.to_string(),);
+        let global_schema_version = (PropertyName::GlobalSchemaVersion.to_string(),);
         let next_schema_version = (PropertyName::NextSchemaVersion.to_string(),);
 
         // create_space
@@ -545,7 +545,7 @@ mod tests {
         // commit
         assert!(t(&commit, Range::new(props).eq(&pending_schema_change)).is_err());
         assert!(t(&commit, Range::new(props).eq(&pending_schema_version)).is_err());
-        assert!(t(&commit, Range::new(props).eq(&current_schema_version)).is_err());
+        assert!(t(&commit, Range::new(props).eq(&global_schema_version)).is_err());
         assert!(t(&commit, Range::new(props).eq(("another_key",))).is_ok());
 
         assert!(t(&commit, Range::new(69105).eq(("any_key",))).is_ok());
@@ -554,7 +554,7 @@ mod tests {
         // abort
         assert!(t(&abort, Range::new(props).eq(&pending_schema_change)).is_err());
         assert!(t(&abort, Range::new(props).eq(&pending_schema_version)).is_err());
-        assert!(t(&abort, Range::new(props).eq(&current_schema_version)).is_err());
+        assert!(t(&abort, Range::new(props).eq(&global_schema_version)).is_err());
         assert!(t(&abort, Range::new(props).eq(&next_schema_version)).is_err());
         assert!(t(&abort, Range::new(props).eq(("another_key",))).is_ok());
 

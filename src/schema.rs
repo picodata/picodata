@@ -21,7 +21,7 @@ use crate::compare_and_swap;
 use crate::rpc;
 use crate::storage::ToEntryIter;
 use crate::storage::SPACE_ID_INTERNAL_MAX;
-use crate::storage::{set_pico_schema_version, Clusterwide, ClusterwideSpaceId, PropertyName};
+use crate::storage::{set_local_schema_version, Clusterwide, ClusterwideSpaceId, PropertyName};
 use crate::traft::op::{Ddl, DdlBuilder, Op};
 use crate::traft::{self, event, node, RaftIndex};
 
@@ -171,7 +171,7 @@ pub fn ddl_abort_on_master(ddl: &Ddl, version: u64) -> traft::Result<()> {
             sys_index.delete(&[id, 1])?;
             sys_index.delete(&[id, 0])?;
             sys_space.delete(&[id])?;
-            set_pico_schema_version(version)?;
+            set_local_schema_version(version)?;
         }
         _ => {
             todo!();
@@ -503,7 +503,7 @@ pub fn prepare_ddl(op: Ddl, timeout: Duration) -> traft::Result<RaftIndex> {
                 rpc::cas::Range::new(ClusterwideSpaceId::Property as _)
                     .eq((PropertyName::PendingSchemaChange,)),
                 rpc::cas::Range::new(ClusterwideSpaceId::Property as _)
-                    .eq((PropertyName::CurrentSchemaVersion,)),
+                    .eq((PropertyName::GlobalSchemaVersion,)),
                 rpc::cas::Range::new(ClusterwideSpaceId::Property as _)
                     .eq((PropertyName::NextSchemaVersion,)),
             ],

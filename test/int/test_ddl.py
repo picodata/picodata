@@ -89,10 +89,10 @@ def test_ddl_create_space_bulky(cluster: Cluster):
     i1, i2, i3, i4 = cluster.deploy(instance_count=4, init_replication_factor=2)
 
     # At cluster boot schema version is 0
-    assert i1.call("box.space._pico_property:get", "current_schema_version")[1] == 0
-    assert i2.call("box.space._pico_property:get", "current_schema_version")[1] == 0
-    assert i3.call("box.space._pico_property:get", "current_schema_version")[1] == 0
-    assert i4.call("box.space._pico_property:get", "current_schema_version")[1] == 0
+    assert i1.call("box.space._pico_property:get", "global_schema_version")[1] == 0
+    assert i2.call("box.space._pico_property:get", "global_schema_version")[1] == 0
+    assert i3.call("box.space._pico_property:get", "global_schema_version")[1] == 0
+    assert i4.call("box.space._pico_property:get", "global_schema_version")[1] == 0
 
     # And next schema version will be 1
     assert i1.next_schema_version() == 1
@@ -131,10 +131,10 @@ def test_ddl_create_space_bulky(cluster: Cluster):
     assert i4.call("box.space._space:get", space_id) is None
 
     # Schema version hasn't changed
-    assert i1.call("box.space._pico_property:get", "current_schema_version")[1] == 0
-    assert i2.call("box.space._pico_property:get", "current_schema_version")[1] == 0
-    assert i3.call("box.space._pico_property:get", "current_schema_version")[1] == 0
-    assert i4.call("box.space._pico_property:get", "current_schema_version")[1] == 0
+    assert i1.call("box.space._pico_property:get", "global_schema_version")[1] == 0
+    assert i2.call("box.space._pico_property:get", "global_schema_version")[1] == 0
+    assert i3.call("box.space._pico_property:get", "global_schema_version")[1] == 0
+    assert i4.call("box.space._pico_property:get", "global_schema_version")[1] == 0
 
     # But next schema version did change
     assert i1.next_schema_version() == 2
@@ -156,10 +156,10 @@ def test_ddl_create_space_bulky(cluster: Cluster):
     )
 
     # This time schema version did change
-    assert i1.call("box.space._pico_property:get", "current_schema_version")[1] == 2
-    assert i2.call("box.space._pico_property:get", "current_schema_version")[1] == 2
-    assert i3.call("box.space._pico_property:get", "current_schema_version")[1] == 2
-    assert i4.call("box.space._pico_property:get", "current_schema_version")[1] == 2
+    assert i1.call("box.space._pico_property:get", "global_schema_version")[1] == 2
+    assert i2.call("box.space._pico_property:get", "global_schema_version")[1] == 2
+    assert i3.call("box.space._pico_property:get", "global_schema_version")[1] == 2
+    assert i4.call("box.space._pico_property:get", "global_schema_version")[1] == 2
 
     # And so did next schema version obviously
     assert i1.next_schema_version() == 3
@@ -231,7 +231,7 @@ def test_ddl_create_space_bulky(cluster: Cluster):
 
     i5 = cluster.add_instance(wait_online=True, replicaset_id="r3")
 
-    assert i5.call("box.space._pico_property:get", "current_schema_version")[1] == 2
+    assert i5.call("box.space._pico_property:get", "global_schema_version")[1] == 2
     assert i5.next_schema_version() == 3
     assert i5.call("box.space._pico_space:get", space_id) == pico_space_def
     assert i5.call("box.space._pico_index:get", [space_id, 0]) == pico_pk_def
@@ -241,7 +241,7 @@ def test_ddl_create_space_bulky(cluster: Cluster):
     i6 = cluster.add_instance(wait_online=True, replicaset_id="r3")
 
     # It's schema was updated automatically as well
-    assert i6.call("box.space._pico_property:get", "current_schema_version")[1] == 2
+    assert i6.call("box.space._pico_property:get", "global_schema_version")[1] == 2
     assert i6.next_schema_version() == 3
     assert i6.call("box.space._pico_space:get", space_id) == pico_space_def
     assert i6.call("box.space._pico_index:get", [space_id, 0]) == pico_pk_def
@@ -531,14 +531,14 @@ def test_ddl_from_snapshot_at_boot(cluster: Cluster):
     assert i3.call("box.space._space:get", space_id) == tt_space_def
     assert i3.call("box.space._index:get", [space_id, 0]) == tt_pk_def
     assert i3.call("box.space._index:get", [space_id, 1]) == tt_bucket_id_def
-    assert i3.call("box.space._schema:get", "pico_schema_version")[1] == 1
+    assert i3.call("box.space._schema:get", "local_schema_version")[1] == 1
 
     # A replicaset follower boots up from snapshot
     i4 = cluster.add_instance(wait_online=True, replicaset_id="R2")
     assert i4.call("box.space._space:get", space_id) == tt_space_def
     assert i4.call("box.space._index:get", [space_id, 0]) == tt_pk_def
     assert i4.call("box.space._index:get", [space_id, 1]) == tt_bucket_id_def
-    assert i4.call("box.space._schema:get", "pico_schema_version")[1] == 1
+    assert i4.call("box.space._schema:get", "local_schema_version")[1] == 1
 
 
 def test_ddl_from_snapshot_at_catchup(cluster: Cluster):
@@ -600,4 +600,4 @@ def test_ddl_from_snapshot_at_catchup(cluster: Cluster):
     # A replica catches up by snapshot
     assert i3.call("box.space._space:get", space_id) == tt_space_def
     assert i3.call("box.space._index:get", [space_id, 0]) == tt_pk_def
-    assert i3.call("box.space._schema:get", "pico_schema_version")[1] == 1
+    assert i3.call("box.space._schema:get", "local_schema_version")[1] == 1

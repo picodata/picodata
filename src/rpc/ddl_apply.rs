@@ -1,7 +1,7 @@
 use crate::op::Ddl;
 use crate::rpc;
 use crate::storage::Clusterwide;
-use crate::storage::{pico_schema_version, set_pico_schema_version};
+use crate::storage::{local_schema_version, set_local_schema_version};
 use crate::tlog;
 use crate::traft::error::Error;
 use crate::traft::node;
@@ -22,7 +22,7 @@ crate::define_rpc_request! {
 
         let pending_schema_version = storage.properties.pending_schema_version()?.ok_or_else(|| Error::other("pending schema version not found"))?;
         // Already applied.
-        if pico_schema_version()? >= pending_schema_version {
+        if local_schema_version()? >= pending_schema_version {
             return Ok(Response::Ok);
         }
 
@@ -118,7 +118,7 @@ pub fn apply_schema_change(storage: &Clusterwide, ddl: &Ddl, version: u64) -> Re
                 if let Some(def) = tt_bucket_id_def {
                     sys_index.insert(&def)?;
                 }
-                set_pico_schema_version(version)?;
+                set_local_schema_version(version)?;
 
                 Ok(())
             })();
