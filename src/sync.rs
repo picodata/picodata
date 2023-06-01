@@ -1,63 +1,88 @@
 //! Picodata synchronization primitives.
 
+use ::tarantool::tuple::Encode;
+use ::tarantool::vclock::Vclock;
 use ::tarantool::{fiber, proc};
+use serde::{Deserialize, Serialize};
+
 use std::time::{Duration, Instant};
 
-use crate::tarantool;
-use crate::traft;
-use crate::traft::RaftIndex;
+use crate::traft::network::IdOfInstance;
+use crate::traft::{ConnectionPool, RaftIndex};
+use crate::util::instant_saturating_add;
+use crate::{rpc, traft};
 
 #[derive(thiserror::Error, Debug)]
 #[error("timeout")]
 pub struct TimeoutError;
 
-/// Tarantool log sequence number.
-///
-/// To ensure data persistence, Tarantool records updates to the
-/// database in the so-called write-ahead log (WAL) files. LSN is the
-/// index of the entry applied last. It tracks the current database
-/// state.
-pub type Lsn = u64;
+/////////////////////////////////////////////////////////////////
+// Vclock
+/////////////////////////////////////////////////////////////////
 
 #[proc]
-fn proc_get_lsn() -> Lsn {
-    get_lsn()
+fn proc_get_vclock() -> traft::Result<Vclock> {
+    let vclock = Vclock::try_current()?;
+    Ok(vclock)
 }
 
-/// Returns current [`Lsn`].
-pub fn get_lsn() -> Lsn {
-    tarantool::eval("return box.info.lsn").expect("this code should never fail")
+/// Calls [`proc_get_vclock`] on instance with `instance_id`.
+pub async fn call_get_vclock(
+    pool: &mut ConnectionPool,
+    instance_id: &impl IdOfInstance,
+) -> traft::Result<Vclock> {
+    let (vclock,): (Vclock,) = pool
+        .call_raw(instance_id, crate::stringify_cfunc!(proc_get_vclock), &())?
+        .await?;
+    Ok(vclock)
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct WaitVclockRpc {
+    target: Vclock,
+    timeout: f64,
+}
+
+impl Encode for WaitVclockRpc {}
+
+impl rpc::Request for WaitVclockRpc {
+    const PROC_NAME: &'static str = crate::stringify_cfunc!(proc_wait_vclock);
+    type Response = (Vclock,);
 }
 
 #[proc]
-fn proc_wait_lsn(target: Lsn, timeout: f64) -> Result<Lsn, TimeoutError> {
-    wait_lsn(target, Duration::from_secs_f64(timeout))
+fn proc_wait_vclock(target: Vclock, timeout: f64) -> Result<(Vclock,), TimeoutError> {
+    wait_vclock(target, Duration::from_secs_f64(timeout)).map(|vclock| (vclock,))
 }
 
-/// Block current fiber until Tarantool [`Lsn`] reaches the `target`.
+/// Block current fiber until Tarantool [`Vclock`] reaches the `target`.
 ///
-/// Returns the actual LSN. It can be equal to or greater than the
+/// Returns the actual Vclock value. It can be equal to or greater than the
 /// target one. If timeout expires beforehand, the function returns
 /// `Err(TimeoutError)`.
 ///
 /// **This function yields**
 ///
-pub fn wait_lsn(target: Lsn, timeout: Duration) -> Result<Lsn, TimeoutError> {
+pub fn wait_vclock(target: Vclock, timeout: Duration) -> Result<Vclock, TimeoutError> {
     // TODO: this all should be a part of tarantool C API
-    let deadline = Instant::now() + timeout;
+    let deadline = instant_saturating_add(Instant::now(), timeout);
     loop {
-        let current = get_lsn();
+        let current = Vclock::current();
         if current >= target {
             return Ok(current);
         }
 
         if Instant::now() < deadline {
-            fiber::sleep(crate::traft::node::MainLoop::TICK);
+            fiber::sleep(traft::node::MainLoop::TICK);
         } else {
             return Err(TimeoutError);
         }
     }
 }
+
+/////////////////////////////////////////////////////////////////
+// RaftIndex
+/////////////////////////////////////////////////////////////////
 
 #[proc]
 fn proc_get_index() -> traft::Result<RaftIndex> {
@@ -65,14 +90,94 @@ fn proc_get_index() -> traft::Result<RaftIndex> {
     Ok(node.get_index())
 }
 
-#[proc]
-fn proc_read_index(timeout: f64) -> traft::Result<RaftIndex> {
-    let node = traft::node::global()?;
-    node.read_index(Duration::from_secs_f64(timeout))
+/// Calls [`proc_get_index`] on instance with `instance_id`.
+pub async fn call_get_index(
+    pool: &mut ConnectionPool,
+    instance_id: &impl IdOfInstance,
+) -> traft::Result<RaftIndex> {
+    let (index,): (RaftIndex,) = pool
+        .call_raw(instance_id, crate::stringify_cfunc!(proc_get_index), &())?
+        .await?;
+    Ok(index)
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ReadIndexRpc {
+    timeout: f64,
+}
+
+impl Encode for ReadIndexRpc {}
+
+impl rpc::Request for ReadIndexRpc {
+    const PROC_NAME: &'static str = crate::stringify_cfunc!(proc_read_index);
+    type Response = (RaftIndex,);
 }
 
 #[proc]
-fn proc_wait_index(target: RaftIndex, timeout: f64) -> traft::Result<RaftIndex> {
+fn proc_read_index(timeout: f64) -> traft::Result<(RaftIndex,)> {
+    let node = traft::node::global()?;
+    node.read_index(Duration::from_secs_f64(timeout))
+        .map(|index| (index,))
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct WaitIndexRpc {
+    target: RaftIndex,
+    timeout: f64,
+}
+
+impl Encode for WaitIndexRpc {}
+
+impl rpc::Request for WaitIndexRpc {
+    const PROC_NAME: &'static str = crate::stringify_cfunc!(proc_wait_index);
+    type Response = (RaftIndex,);
+}
+
+#[proc]
+fn proc_wait_index(target: RaftIndex, timeout: f64) -> traft::Result<(RaftIndex,)> {
     let node = traft::node::global()?;
     node.wait_index(target, Duration::from_secs_f64(timeout))
+        .map(|index| (index,))
+}
+
+mod tests {
+    use super::*;
+
+    use crate::instance::Instance;
+    use crate::storage::Clusterwide;
+    use crate::traft::network::ConnectionPool;
+
+    #[::tarantool::test]
+    async fn vclock_proc() {
+        let storage = Clusterwide::new().unwrap();
+        // Connect to the current Tarantool instance
+        let mut pool = ConnectionPool::builder(storage.clone()).build();
+        let l = ::tarantool::lua_state();
+        let listen: String = l.eval("return box.info.listen").unwrap();
+
+        let instance = Instance {
+            raft_id: 1337,
+            ..Instance::default()
+        };
+        storage.instances.put(&instance).unwrap();
+        storage
+            .peer_addresses
+            .put(instance.raft_id, &listen)
+            .unwrap();
+        crate::init_handlers();
+
+        let result = call_get_vclock(&mut pool, &instance.raft_id).await.unwrap();
+        assert_eq!(result, Vclock::current());
+
+        pool.call(
+            &instance.raft_id,
+            &WaitVclockRpc {
+                target: Vclock::current(),
+                timeout: 1.0,
+            },
+        )
+        .unwrap()
+        .await
+        .unwrap();
+    }
 }

@@ -807,8 +807,9 @@ class Instance:
         """
 
         return self.call(
-            "pico.raft_read_index", timeout,  # this timeout is passed as an argument
-            timeout=timeout + 1  # this timeout is for network call
+            "pico.raft_read_index",
+            timeout,  # this timeout is passed as an argument
+            timeout=timeout + 1,  # this timeout is for network call
         )
 
     def raft_wait_index(self, target: int, timeout: int | float = 1) -> int:
@@ -818,27 +819,31 @@ class Instance:
         """
 
         return self.call(
-            "pico.raft_wait_index", target, timeout,  # this timeout is passed as an argument
-            timeout=timeout + 1  # this timeout is for network call
+            "pico.raft_wait_index",
+            target,
+            timeout,  # this timeout is passed as an argument
+            timeout=timeout + 1,  # this timeout is for network call
         )
 
-    def get_lsn(self) -> int:
-        """Get current lsn"""
+    def get_vclock(self) -> int:
+        """Get current vclock"""
 
-        return self.call("pico.get_lsn")
+        return self.call("pico.get_vclock")
 
-    def wait_lsn(self, target: int, timeout: int | float = 1) -> int:
+    def wait_vclock(self, target: int, timeout: int | float = 1) -> int:
         """
-        Wait until Tarantool LSN reaches the `target`. Returns the
-        actual LSN. It can be equal to or greater than the target one.
+        Wait until Tarantool vclock reaches the `target`. Returns the
+        actual vclock. It can be equal to or greater than the target one.
 
         Raises:
             TarantoolError: on timeout
         """
 
         return self.call(
-            "pico.wait_lsn", target, timeout,  # this timeout is passed as an argument
-            timeout=timeout + 1  # this timeout is for network call
+            "pico.wait_vclock",
+            target,
+            timeout,  # this timeout is passed as an argument
+            timeout=timeout + 1,  # this timeout is for network call
         )
 
     def promote_or_fail(self):

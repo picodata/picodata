@@ -53,7 +53,7 @@ impl Default for WorkerOptions {
 // PoolWorker
 ////////////////////////////////////////////////////////////////////////////////
 
-type Callback = Box<dyn FnOnce(Result<Option<Tuple>>)>;
+type Callback = Box<dyn FnOnce(Result<Tuple>)>;
 type Queue = Mailbox<(Callback, &'static str, TupleBuffer)>;
 
 pub struct PoolWorker {
@@ -243,8 +243,8 @@ impl PoolWorker {
         let args = unwrap_ok_or!(request.to_tuple_buffer(),
             Err(e) => { return cb(Err(e.into())) }
         );
-        let convert_result = |bytes: Result<Option<Tuple>>| {
-            let tuple: Tuple = bytes?.ok_or(Error::EmptyRpcAnswer)?;
+        let convert_result = |bytes: Result<Tuple>| {
+            let tuple: Tuple = bytes?;
             let ((res,),) = tuple.decode()?;
             Ok(res)
         };
@@ -280,9 +280,9 @@ impl PoolWorker {
         let args = unwrap_ok_or!(args.to_tuple_buffer(),
             Err(e) => { return cb(Err(e.into())) }
         );
-        let convert_result = |bytes: Result<Option<Tuple>>| {
-            let tuple: Tuple = bytes?.ok_or(Error::EmptyRpcAnswer)?;
-            let res = tuple.decode()?;
+        let convert_result = |bytes: Result<Tuple>| {
+            let tuple: Tuple = bytes?;
+            let (res,) = tuple.decode()?;
             Ok(res)
         };
         self.inbox
@@ -594,12 +594,12 @@ mod tests {
             .put(instance.raft_id, &listen)
             .unwrap();
 
-        let result: (u32,) = fiber::block_on(
+        let result: u32 = fiber::block_on(
             pool.call_raw(&instance.raft_id, "test_stored_proc", &(1u32, 2u32))
                 .unwrap(),
         )
         .unwrap();
-        assert_eq!(result.0, 3u32);
+        assert_eq!(result, 3u32);
     }
 
     #[::tarantool::test]

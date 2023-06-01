@@ -46,10 +46,7 @@ where
         ::tarantool::error::Error::IO(io::Error::new(io::ErrorKind::InvalidInput, err))
     })?;
     let client = Client::connect(address, port).await?;
-    let tuple = client
-        .call(R::PROC_NAME, request)
-        .await?
-        .expect("unexpected result Ok(None)");
+    let tuple = client.call(R::PROC_NAME, request).await?;
     tuple.decode().map(|((res,),)| res)
 }
 

@@ -54,8 +54,6 @@ pub enum Error {
     AddressUnknownForInstanceId(InstanceId),
     #[error("address of peer is incorrectly formatted: {0}")]
     AddressParseFailure(String),
-    #[error("rpc answer is empty")]
-    EmptyRpcAnswer,
     #[error("leader is unknown yet")]
     LeaderUnknown,
     #[error("governor has stopped")]

@@ -19,6 +19,7 @@ use crate::storage::SnapshotData;
 use crate::storage::ToEntryIter as _;
 use crate::storage::{Clusterwide, ClusterwideSpaceId, PropertyName};
 use crate::stringify_cfunc;
+use crate::sync;
 use crate::tlog;
 use crate::traft;
 use crate::traft::error::Error;
@@ -58,8 +59,10 @@ use ::tarantool::space::SpaceId;
 use ::tarantool::tlua;
 use ::tarantool::transaction::start_transaction;
 use ::tarantool::tuple::Decode;
+use ::tarantool::vclock::Vclock;
 use protobuf::Message as _;
 use std::cell::Cell;
+use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 use std::convert::TryFrom;
 use std::rc::Rc;
@@ -204,7 +207,6 @@ impl Node {
         self.raft_storage
             .applied()
             .expect("reading from memtx should never fail")
-            .unwrap_or(0)
     }
 
     /// Performs the quorum read operation.
@@ -760,8 +762,8 @@ impl NodeImpl {
             })?;
 
             match apply_entry_result {
-                WaitLsnAndRetry => {
-                    if let Err(e) = self.check_lsn_and_sleep() {
+                WaitVclockAndRetry => {
+                    if let Err(e) = self.check_vclock_and_sleep() {
                         let timeout = MainLoop::TICK;
                         tlog!(
                             Warning,
@@ -863,7 +865,7 @@ impl NodeImpl {
                 if v_local < pending_version {
                     let is_master = self.is_replicaset_master().expect("storage_error");
                     if !is_master {
-                        return WaitLsnAndRetry;
+                        return WaitVclockAndRetry;
                     }
                 }
 
@@ -942,7 +944,7 @@ impl NodeImpl {
                 if v_local == pending_version {
                     let is_master = self.is_replicaset_master().expect("storage_error");
                     if !is_master {
-                        return WaitLsnAndRetry;
+                        return WaitVclockAndRetry;
                     }
                 }
 
@@ -1309,7 +1311,7 @@ impl NodeImpl {
                     if v_local >= snapshot_data.schema_version {
                         break;
                     }
-                    if let Err(e) = self.check_lsn_and_sleep() {
+                    if let Err(e) = self.check_vclock_and_sleep() {
                         let timeout = MainLoop::TICK;
                         tlog!(
                             Warning,
@@ -1438,7 +1440,7 @@ impl NodeImpl {
         self.raw_node.advance_apply();
     }
 
-    fn check_lsn_and_sleep(&mut self) -> traft::Result<()> {
+    fn check_vclock_and_sleep(&mut self) -> traft::Result<()> {
         assert!(self.raw_node.raft.state != RaftStateRole::Leader);
         let my_id = self.raw_node.raft.id;
 
@@ -1449,47 +1451,26 @@ impl NodeImpl {
             Error::other(format!("replicaset info for id {replicaset_id} not found"))
         })?;
         if replicaset.master_id == my_instance_info.instance_id {
-            return Err(Error::other("wait_lsn called on replicaset master"));
+            return Err(Error::other(
+                "check_vclock_and_sleep called on replicaset master",
+            ));
         }
         let master = self.storage.instances.get(&replicaset.master_id)?;
-        let master_uuid = master.instance_uuid;
-
-        let resp = fiber::block_on(self.pool.call(&master.raft_id, &rpc::lsn::ReadRequest {})?)?;
-        let target_lsn = resp.lsn;
-
-        let mut current_lsn = None;
-
-        let replication: HashMap<u64, ReplicationInfo> =
-            crate::tarantool::eval("return box.info.replication")?;
-        for r in replication.values() {
-            if r.uuid != master_uuid {
-                continue;
-            }
-            current_lsn = Some(r.lsn);
-            break;
-        }
-
-        let current_lsn = unwrap_some_or!(current_lsn, {
-            return Err(Error::other(format!(
-                "replication info is unavailable for instance with uuid \"{master_uuid}\""
-            )));
-        });
-
-        if current_lsn < target_lsn {
+        let master_vclock =
+            fiber::block_on(sync::call_get_vclock(&mut self.pool, &master.raft_id))?;
+        let local_vclock = Vclock::current();
+        if matches!(
+            local_vclock.partial_cmp(&master_vclock),
+            None | Some(Ordering::Less)
+        ) {
             tlog!(Info, "blocking raft loop until replication progresses";
-                "target_lsn" => target_lsn,
-                "current_lsn" => current_lsn,
+                "master_vclock" => ?master_vclock,
+                "local_vclock" => ?local_vclock,
             );
             fiber::sleep(MainLoop::TICK * 4);
         }
 
-        return Ok(());
-
-        #[derive(tlua::LuaRead)]
-        struct ReplicationInfo {
-            lsn: u64,
-            uuid: String,
-        }
+        Ok(())
     }
 
     fn is_replicaset_master(&self) -> traft::Result<bool> {
@@ -1533,7 +1514,7 @@ impl NodeImpl {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ApplyEntryResult {
     /// This is a replica and it needs to sync with replicaset master.
-    WaitLsnAndRetry,
+    WaitVclockAndRetry,
 
     /// This entry failed to apply for some reason, and must be retried later.
     SleepAndRetry,

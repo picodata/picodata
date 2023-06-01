@@ -9,6 +9,7 @@ use ::tarantool::fiber::r#async::timeout::IntoTimeout as _;
 use ::tarantool::tlua;
 use ::tarantool::transaction::start_transaction;
 use ::tarantool::tuple::Decode;
+use ::tarantool::vclock::Vclock;
 use rpc::{join, update_instance};
 use std::convert::TryFrom;
 use std::time::{Duration, Instant};
@@ -23,7 +24,6 @@ use protobuf::Message as _;
 use crate::instance::grade::TargetGradeVariant;
 use crate::instance::InstanceId;
 use crate::schema::CreateSpaceParams;
-use crate::sync::Lsn;
 use crate::tlog::set_log_level;
 use crate::traft::node;
 use crate::traft::op::{self, Op};
@@ -140,12 +140,12 @@ fn picolib_setup(args: &args::Run) {
             },
         ),
     );
-    luamod.set("get_lsn", tlua::function0(sync::get_lsn));
+    luamod.set("get_vclock", tlua::function0(Vclock::current));
     luamod.set(
-        "wait_lsn",
+        "wait_vclock",
         tlua::function2(
-            |target: Lsn, timeout: f64| -> Result<Lsn, sync::TimeoutError> {
-                sync::wait_lsn(target, Duration::from_secs_f64(timeout))
+            |target: Vclock, timeout: f64| -> Result<Vclock, sync::TimeoutError> {
+                sync::wait_vclock(target, Duration::from_secs_f64(timeout))
             },
         ),
     );

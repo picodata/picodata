@@ -1,5 +1,5 @@
 import pytest
-from conftest import Cluster, ReturnError, TarantoolError
+from conftest import Cluster, ReturnError
 
 
 def test_ddl_create_space_lua(cluster: Cluster):
@@ -401,7 +401,7 @@ def test_ddl_create_space_partial_failure(cluster: Cluster):
     # Propose again, now the proposal hangs indefinitely, because all replicaset
     # masters are required to be present during schema change, but i5 is asleep.
     index = i1.propose_create_space(space_def, wait_index=False)
-    with pytest.raises(TarantoolError, match="timeout"):
+    with pytest.raises(ReturnError, match="timeout"):
         i1.raft_wait_index(index, timeout=3)
 
     entry, *_ = i1.call(
