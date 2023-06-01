@@ -302,16 +302,14 @@ fn build_tarantool(build_root: &Path) {
     rustc::link_lib_static("cares");
 
     // `openssl-prefix/lib/libcrypto.a` conflicts with
-    // `src/lib/crypto/libcrypto.a` by name when passed as `-lcrypto` link
-    // argument. So we rename one of the libraries, which seems to solve the
-    // problem.
+    // `src/lib/crypto/libcrypto.a` by name when passed as `-lcrypto`
+    // link argument. So we symlink it into `libcrypto-ssl.a` and pass
+    // as `-lcrypto-ssl`.
     let openssl_dir = build_dir.join("openssl-prefix/lib");
-    let old_lib = openssl_dir.join("libcrypto.a");
-    let new_lib = openssl_dir.join("libcrypto-ssl.a");
+    let symlink = openssl_dir.join("libcrypto-ssl.a");
 
-    if old_lib.exists() {
-        std::fs::remove_file(&new_lib).ok();
-        std::fs::rename(old_lib, new_lib).unwrap();
+    if !symlink.exists() {
+        std::os::unix::fs::symlink("libcrypto.a", symlink).unwrap();
     }
 
     rustc::link_search(format!("{b}/openssl-prefix/lib"));
