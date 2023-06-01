@@ -39,9 +39,8 @@ pub type Lsn = u64;
 /// Find the explanation of the concept in the [module
 /// documentation][self].
 ///
-/// `Vclock` is a mapping of replica id (`usize`) to its LSN (`u64`).
-/// Components with LSN equal to `0` are skipped during
-/// (de)serialization.
+/// `Vclock` is a mapping ([`HashMap`][std::collections::HashMap]) of
+/// replica id (`usize`) to its LSN (`u64`).
 ///
 /// Unlike in Tarantool, `Vclock` doesn't impose any restrictions on the
 /// replica ids (in Tarantool its valid range is `0..32`).
@@ -59,8 +58,10 @@ pub type Lsn = u64;
 /// assert!(vc1 < vc2);
 /// ```
 ///
-/// Since vclocks doesn't form a total order, the use of operators `>`,
-/// `<`, `>=`, `<=` is discouraged as they panic on incomparable values.
+/// Since vclocks do not form a total order some vclock instances might
+/// be incomparible, leading to both `>=` and `<=` returning `false`.
+/// Such situations can be detected by directly calling `partial_cmp`
+/// and checking if it returns `None`.
 ///
 /// ```no_run
 /// use tarantool::vclock::Vclock;
@@ -68,6 +69,8 @@ pub type Lsn = u64;
 ///
 /// let vc1 = Vclock::from([0, 100]);
 /// let vc2 = Vclock::from([100, 0]);
+/// assert_eq!(vc1 <= vc2, false);
+/// assert_eq!(vc1 >= vc2, false);
 /// assert!(vc1.partial_cmp(&vc2).is_none());
 /// ```
 ///
@@ -158,8 +161,12 @@ impl Vclock {
 }
 
 impl<const N: usize> From<[Lsn; N]> for Vclock {
+    /// Converts an array `[Lsn; N]` into a `Vclock`, skipping
+    /// components with LSN equal to `0`.
+    ///
     /// Primarily used for testing. It has no meaningful application in
     /// the real world.
+    ///
     fn from(from: [Lsn; N]) -> Self {
         Self(
             from.iter()
