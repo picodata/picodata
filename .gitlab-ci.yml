@@ -92,23 +92,8 @@ build-base-image:
         echo "Skip pushing image on a non-master branch"
       fi
 
-test:
+.test:
   stage: test
-  tags:
-    - docker-yc
-  rules:
-    - <<: *if-build-base-changes-on-master-branch
-      variables:
-        BASE_IMAGE_TAG: latest
-    - <<: *if-build-base-changes-on-dev-branch
-      variables:
-        BASE_IMAGE_TAG: ${CI_COMMIT_SHA}
-    - <<: *else
-      variables:
-        BASE_IMAGE_TAG: latest
-  image:
-    name: ${BASE_IMAGE}:${BASE_IMAGE_TAG}
-    pull_policy: if-not-present
   variables:
     GIT_DEPTH: 100
     GIT_SUBMODULE_STRATEGY: recursive
@@ -145,6 +130,25 @@ test:
       else
         echo "No cache found"
       fi
+
+test-linux:
+  extends: .test
+  tags:
+    - docker-yc
+  rules:
+    - <<: *if-build-base-changes-on-master-branch
+      variables:
+        BASE_IMAGE_TAG: latest
+    - <<: *if-build-base-changes-on-dev-branch
+      variables:
+        BASE_IMAGE_TAG: ${CI_COMMIT_SHA}
+    - <<: *else
+      variables:
+        BASE_IMAGE_TAG: latest
+  image:
+    name: ${BASE_IMAGE}:${BASE_IMAGE_TAG}
+    pull_policy: if-not-present
+
   script:
     - cargo -V
     - cargo build --locked
@@ -176,6 +180,31 @@ test:
       else
         echo "Skip saving cache on a non-master branch"
       fi
+
+test-mac-m1:
+  extends: .test
+  tags:
+    - mac-dev-m1
+  script:
+    - export CARGO_HOME=$HOME/.cargo
+    - cargo -V
+    - cargo build --locked
+    - cargo build --features webui --locked
+    # There are no Rust tests for `webui` feature.
+    # It will be checked during integration tests.
+    # - cargo test --locked
+
+    - cargo fmt -- -v --check
+    - cargo clippy --version
+    - cargo clippy --features webui -- --deny clippy::all
+    # - |
+    #   # Pipenv install
+    #   ci-log-section start "pipenv-install" Installing pip dependencies ...
+    #   PIPENV_VENV_IN_PROJECT=1 PIP_NO_CACHE_DIR=true python3.10 -m pipenv install --deploy
+    #   ci-log-section end "pipenv-install"
+    # - pipenv run pytest --numprocesses auto -v
+    # - pipenv run lint
+    # - |
 
 test-docker:
   stage: test
@@ -211,6 +240,7 @@ test-docker:
       done
 
 .pack:
+  stage: pack
   tags:
     - shell-limit-1
   only:
@@ -244,7 +274,6 @@ test-docker:
   dependencies: []
 
 pack-centos:
-  stage: pack
   extends: .pack
   script:
     - sed -i "s/(id -u)/(id -u) -o/g" packpack/packpack
@@ -255,7 +284,6 @@ pack-centos:
       - build_centos/picodata*.rpm
 
 pack-ubuntu:
-  stage: pack
   extends: .pack
   script:
     - OS=ubuntu DIST=focal BUILDDIR=$PWD/build_${DIST}/ RELEASE=${DIST} packpack/packpack
@@ -266,7 +294,6 @@ pack-ubuntu:
       - build_jammy/*.deb
 
 pack-debian:
-  stage: pack
   extends: .pack
   script:
     - OS=debian DIST=bullseye BUILDDIR=$PWD/build_debian/ RELEASE=${DIST} packpack/packpack
@@ -275,7 +302,6 @@ pack-debian:
       - build_debian/*.deb
 
 pack-altlinux:
-  stage: pack
   extends: .pack
   script:
     - DOCKER_REPO=docker-picodata.binary.picodata.io/packpack/alt DOCKER_IMAGE=p10 BUILDDIR=$PWD/build_alt packpack/packpack
@@ -285,7 +311,6 @@ pack-altlinux:
       - build_alt/picodata*.rpm
 
 pack-redos:
-  stage: pack
   extends: .pack
   script:
     - OS=redos DIST=7.3 BUILDDIR=$PWD/build_redos/ packpack/packpack
@@ -294,7 +319,6 @@ pack-redos:
       - build_redos/picodata*.rpm
 
 pack-astralinux:
-  stage: pack
   extends: .pack
   script:
     - DOCKER_REPO=docker-picodata.binary.picodata.io/packpack/astra DOCKER_IMAGE=orel-2.12 BUILDDIR=$PWD/build_astra packpack/packpack
@@ -303,7 +327,6 @@ pack-astralinux:
       - build_astra/*.deb
 
 pack-macos-arm:
-  stage: pack
   extends: .pack
   tags:
     - mac-dev-m1
