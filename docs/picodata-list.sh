@@ -7,8 +7,8 @@ local raft_status = pico.raft_status()
 return
 {instance_id = whoami.instance_id},
 {raft_state = raft_status.raft_state},
-{voters = box.space.raft_state:get("voters").value},
-{learners = box.space.raft_state:get("learners").value},
-{instances = box.space.raft_group:fselect()},
-{replicasets = box.space.replicasets:fselect()}
+{voters = box.space._raft_state:get("voters").value},
+{learners = box.space._raft_state:get("learners").value},
+{instances = box.space._pico_instance:fselect()},
+{replicasets = box.space._pico_replicaset:fselect()}
 _SCRIPT_
