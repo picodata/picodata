@@ -52,6 +52,27 @@ fn main() {
     #[cfg(feature = "webui")]
     build_webui(build_root);
 
+    // Reproduce packaged layout as picodata RUNPATH points to
+    // "$ORIGIN/picodata-libs".
+    let picodata_libs = Path::new(&build_root)
+        .parent()
+        .unwrap()
+        .join("picodata-libs");
+    dbg!(&picodata_libs); // "<target-dir>/<build-type>/picodata-libs"
+    if !picodata_libs.exists() {
+        std::fs::create_dir(picodata_libs.clone()).unwrap();
+        std::os::unix::fs::symlink(
+            "../build/tarantool-sys/readline-prefix/lib/libreadline.so.8",
+            picodata_libs.join("libreadline.so.8"),
+        )
+        .unwrap();
+        std::os::unix::fs::symlink(
+            "../build/tarantool-sys/ncurses-prefix/lib/libtinfo.so.6",
+            picodata_libs.join("libtinfo.so.6"),
+        )
+        .unwrap();
+    }
+
     println!("cargo:rerun-if-changed=tarantool-sys");
     println!("cargo:rerun-if-changed=http/http");
     #[cfg(feature = "webui")]
@@ -305,7 +326,8 @@ fn build_tarantool(jsc: Option<&jobserver::Client>, build_root: &Path) {
     rustc::link_arg("-lc");
 
     rustc::link_search(format!("{tarantool_sys}/readline-prefix/lib"));
-    rustc::link_lib_static("readline");
+    rustc::link_arg_bins("-Wl,-rpath,$ORIGIN/picodata-libs");
+    rustc::link_lib_dynamic("readline");
 
     rustc::link_search(format!("{tarantool_sys}/icu-prefix/lib"));
     rustc::link_lib_static("icudata");
@@ -328,7 +350,7 @@ fn build_tarantool(jsc: Option<&jobserver::Client>, build_root: &Path) {
     rustc::link_lib_static("crypto");
 
     rustc::link_search(format!("{tarantool_sys}/ncurses-prefix/lib"));
-    rustc::link_lib_static("tinfo");
+    rustc::link_lib_dynamic("tinfo");
 
     rustc::link_search(format!("{tarantool_sys}/iconv-prefix/lib"));
     if cfg!(target_os = "macos") {
@@ -402,5 +424,9 @@ mod rustc {
 
     pub fn link_arg(arg: impl AsRef<str>) {
         println!("cargo:rustc-link-arg={}", arg.as_ref());
+    }
+
+    pub fn link_arg_bins(arg: impl AsRef<str>) {
+        println!("cargo:rustc-link-arg-bins={}", arg.as_ref());
     }
 }
