@@ -79,11 +79,7 @@ pub(super) fn action_plan<'i>(
         if matches!(replicaset, Some(replicaset) if replicaset.master_id == instance_id) {
             let new_master = maybe_responding(instances).find(|p| p.replicaset_id == replicaset_id);
             if let Some(to) = new_master {
-                let rpc = rpc::replication::promote::Request {
-                    term,
-                    applied,
-                    timeout: Loop::SYNC_TIMEOUT,
-                };
+                let rpc = rpc::replication::promote::Request {};
                 let mut ops = UpdateOps::new();
                 ops.assign("master_id", &to.instance_id)?;
                 let op = Dml::update(ClusterwideSpaceId::Replicaset, &[&to.replicaset_id], ops)?;
@@ -129,11 +125,7 @@ pub(super) fn action_plan<'i>(
         ..
     }) = to_create_replicaset
     {
-        let rpc = rpc::replication::promote::Request {
-            term,
-            applied,
-            timeout: Loop::SYNC_TIMEOUT,
-        };
+        let rpc = rpc::replication::promote::Request {};
         let op = Dml::insert(
             ClusterwideSpaceId::Replicaset,
             &Replicaset {
@@ -155,11 +147,7 @@ pub(super) fn action_plan<'i>(
     // replicaset master switchover
     let to_promote = get_new_replicaset_master_if_needed(instances, replicasets);
     if let Some(to) = to_promote {
-        let rpc = rpc::replication::promote::Request {
-            term,
-            applied,
-            timeout: Loop::SYNC_TIMEOUT,
-        };
+        let rpc = rpc::replication::promote::Request {};
         let mut ops = UpdateOps::new();
         ops.assign("master_id", &to.instance_id)?;
         let op = Dml::update(ClusterwideSpaceId::Replicaset, &[&to.replicaset_id], ops)?;

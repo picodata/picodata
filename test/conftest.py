@@ -480,6 +480,7 @@ class Instance:
         try:
             rc = self.process.wait(timeout=kill_after_seconds)
             eprint(f"{self} terminated: rc = {rc}")
+            self.process = None
             return rc
         finally:
             self.kill()
@@ -1036,7 +1037,8 @@ class Cluster:
         """
         index = self.instances[0].create_space(params, timeout)
         for instance in self.instances:
-            instance.raft_wait_index(index)
+            if instance.process is not None:
+                instance.raft_wait_index(index)
 
     def cas(
         self,

@@ -38,27 +38,18 @@ crate::define_rpc_request! {
 }
 
 pub mod promote {
-    use crate::traft::node;
-    use crate::traft::RaftIndex;
-    use crate::traft::RaftTerm;
     use crate::traft::Result;
-    use std::time::Duration;
 
     crate::define_rpc_request! {
         fn proc_replication_promote(req: Request) -> Result<Response> {
-            let node = node::global()?;
-            node.wait_index(req.applied, req.timeout)?;
-            node.status().check_term(req.term)?;
+            let _ = req;
+            // TODO: find a way to guard against stale governor requests.
             crate::tarantool::exec("box.cfg { read_only = false }")?;
             Ok(Response {})
         }
 
         /// Request to promote instance to tarantool replication leader.
-        pub struct Request {
-            pub term: RaftTerm,
-            pub applied: RaftIndex,
-            pub timeout: Duration,
-        }
+        pub struct Request {}
 
         /// Response to [`replication::promote::Request`].
         ///

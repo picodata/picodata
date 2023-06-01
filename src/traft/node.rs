@@ -860,20 +860,35 @@ impl NodeImpl {
                     .pending_schema_version()
                     .expect("storage error")
                     .expect("granted we don't mess up log compaction, this should not be None");
-                // This instance is catching up to the cluster and must sync
-                // with replication master on it's own.
-                if v_local < pending_version {
-                    let is_master = self.is_replicaset_master().expect("storage_error");
-                    if !is_master {
-                        return WaitVclockAndRetry;
-                    }
-                }
-
-                // Update pico metadata.
                 let ddl = storage_properties
                     .pending_schema_change()
                     .expect("storage error")
                     .expect("granted we don't mess up log compaction, this should not be None");
+
+                // This instance is catching up to the cluster.
+                if v_local < pending_version {
+                    if self.is_readonly() {
+                        return WaitVclockAndRetry;
+                    } else {
+                        let resp = rpc::ddl_apply::apply_schema_change(
+                            &self.storage,
+                            &ddl,
+                            pending_version,
+                        )
+                        .expect("storage error");
+                        match resp {
+                            rpc::ddl_apply::Response::Abort { reason } => {
+                                tlog!(Warning, "failed applying committed ddl operation: {reason}";
+                                    "ddl" => ?ddl,
+                                );
+                                return SleepAndRetry;
+                            }
+                            rpc::ddl_apply::Response::Ok => {}
+                        }
+                    }
+                }
+
+                // Update pico metadata.
                 match ddl {
                     Ddl::CreateSpace { id, .. } => {
                         self.storage
@@ -897,32 +912,6 @@ impl NodeImpl {
                     }
                 }
 
-                // Update tarantool metadata.
-                // This instance is catching up to the cluster and is a
-                // replication master, so it must apply the schema change on it's
-                // own.
-                // FIXME: copy-pasted from above
-                if v_local < pending_version {
-                    let is_master = self.is_replicaset_master().expect("storage_error");
-                    if is_master {
-                        let resp = rpc::ddl_apply::apply_schema_change(
-                            &self.storage,
-                            &ddl,
-                            pending_version,
-                        )
-                        .expect("storage error");
-                        match resp {
-                            rpc::ddl_apply::Response::Abort { reason } => {
-                                tlog!(Warning, "failed applying committed ddl operation: {reason}";
-                                    "ddl" => ?ddl,
-                                );
-                                return SleepAndRetry;
-                            }
-                            rpc::ddl_apply::Response::Ok => {}
-                        }
-                    }
-                }
-
                 storage_properties
                     .delete(PropertyName::PendingSchemaChange)
                     .expect("storage error");
@@ -939,20 +928,24 @@ impl NodeImpl {
                     .pending_schema_version()
                     .expect("storage error")
                     .expect("granted we don't mess up log compaction, this should not be None");
-                // This condition means, schema versions must always increase
-                // even after an DdlAbort
-                if v_local == pending_version {
-                    let is_master = self.is_replicaset_master().expect("storage_error");
-                    if !is_master {
-                        return WaitVclockAndRetry;
-                    }
-                }
-
-                // Update pico metadata.
                 let ddl = storage_properties
                     .pending_schema_change()
                     .expect("storage error")
                     .expect("granted we don't mess up log compaction, this should not be None");
+                // This condition means, schema versions must always increase
+                // even after an DdlAbort
+                if v_local == pending_version {
+                    if self.is_readonly() {
+                        return WaitVclockAndRetry;
+                    } else {
+                        let v_global = storage_properties
+                            .global_schema_version()
+                            .expect("storage error");
+                        ddl_abort_on_master(&ddl, v_global).expect("storage error");
+                    }
+                }
+
+                // Update pico metadata.
                 match ddl {
                     Ddl::CreateSpace { id, .. } => {
                         self.storage.indexes.delete(id, 0).expect("storage error");
@@ -960,18 +953,6 @@ impl NodeImpl {
                     }
                     _ => {
                         todo!()
-                    }
-                }
-
-                // Update tarantool metadata.
-                // FIXME: copy-pasted from above
-                if v_local == pending_version {
-                    let is_master = self.is_replicaset_master().expect("storage_error");
-                    if is_master {
-                        let v_global = storage_properties
-                            .global_schema_version()
-                            .expect("storage error");
-                        ddl_abort_on_master(&ddl, v_global).expect("storage error");
                     }
                 }
 
@@ -1294,8 +1275,8 @@ impl NodeImpl {
             );
 
             let v_local = local_schema_version().expect("storage error");
-            if v_local > snapshot_data.schema_version {
-                // Maybe we should at least apply snapshot metadata?
+            let v_snapshot = snapshot_data.schema_version;
+            if v_local > v_snapshot {
                 tlog!(
                     Warning,
                     "skipping stale snapshot: local schema version: {}, snapshot schema version: {}",
@@ -1305,23 +1286,35 @@ impl NodeImpl {
                 return None;
             }
 
-            if !self.is_replicaset_master().expect("storage error") {
-                loop {
-                    let v_local = local_schema_version().expect("storage error");
-                    if v_local >= snapshot_data.schema_version {
-                        break;
-                    }
-                    if let Err(e) = self.check_vclock_and_sleep() {
-                        let timeout = MainLoop::TICK;
-                        tlog!(
-                            Warning,
-                            "failed syncing with replication master: {e}, retrying in {:?}...",
-                            timeout
-                        );
-                        fiber::sleep(timeout);
-                    }
-                    continue;
+            loop {
+                if !self.is_readonly() {
+                    break;
                 }
+
+                let v_local = local_schema_version().expect("storage error");
+                if v_local == v_snapshot {
+                    break;
+                }
+                if v_local > v_snapshot {
+                    tlog!(
+                        Warning,
+                        "skipping stale snapshot: local schema version: {}, snapshot schema version: {}",
+                        v_local,
+                        snapshot_data.schema_version,
+                    );
+                    return None;
+                }
+
+                if let Err(e) = self.check_vclock_and_sleep() {
+                    let timeout = MainLoop::TICK;
+                    tlog!(
+                        Warning,
+                        "failed syncing with replication master: {e}, retrying in {:?}...",
+                        timeout
+                    );
+                    fiber::sleep(timeout);
+                }
+                continue;
             }
 
             Some(snapshot_data)
@@ -1336,7 +1329,7 @@ impl NodeImpl {
                 // truncate on them is not allowed on read_only instances.
                 // Related issue in tarantool:
                 // https://github.com/tarantool/tarantool/issues/5616
-                let is_readonly: bool = crate::tarantool::eval("return box.info.ro")?;
+                let is_readonly = self.is_readonly();
                 if is_readonly {
                     crate::tarantool::eval("box.cfg { read_only = false }")?;
                 }
@@ -1473,19 +1466,20 @@ impl NodeImpl {
         Ok(())
     }
 
-    fn is_replicaset_master(&self) -> traft::Result<bool> {
-        let my_raft_id = self.raw_node.raft.id;
-        let my_instance_info = self.storage.instances.get(&my_raft_id)?;
-        let replicaset_id = my_instance_info.replicaset_id;
-        let replicaset = self.storage.replicasets.get(&replicaset_id)?;
-        let res = if let Some(replicaset) = replicaset {
-            my_instance_info.instance_id == replicaset.master_id
-        } else {
-            // Replicaset wasn't initialized yet, fallback to lua eval
-            let is_ro: bool = crate::tarantool::eval("return box.info.ro")?;
-            !is_ro
-        };
-        Ok(res)
+    /// Check if this is a read only replica. This function is called when we
+    /// need to determine if this instance should be changing the schema
+    /// definition or if it should instead synchronize with a master.
+    ///
+    /// Note: it would be a little more reliable to check if the replica is
+    /// chosen to be a master by checking master_id in _pico_replicaset, but
+    /// currently we cannot do that, because tarantool replication is being
+    /// done asynchronously with raft log replication. Basically instance needs
+    /// to know it's a replicaset master before it can access the replicaset
+    /// info.
+    fn is_readonly(&self) -> bool {
+        let is_ro: bool = crate::tarantool::eval("return box.info.ro")
+            .expect("checking read-onlyness should never fail");
+        is_ro
     }
 
     #[inline]

@@ -600,3 +600,44 @@ def test_ddl_from_snapshot_at_catchup(cluster: Cluster):
     assert i3.call("box.space._space:get", space_id) == tt_space_def
     assert i3.call("box.space._index:get", [space_id, 0]) == tt_pk_def
     assert i3.call("box.space._schema:get", "local_schema_version")[1] == 1
+
+
+def test_ddl_create_space_at_catchup_with_master_switchover(cluster: Cluster):
+    # For quorum.
+    i1, i2 = cluster.deploy(instance_count=2, init_replication_factor=1)
+    # This is a master, who will be present at ddl.
+    i3 = cluster.add_instance(wait_online=True, replicaset_id="r99")
+    # This is a replica, who will become master and will catch up.
+    i4 = cluster.add_instance(wait_online=True, replicaset_id="r99")
+
+    i4.terminate()
+
+    # TODO: check other ddl operations
+    # Propose a space creation which will succeed
+    space_name = "table"
+    cluster.create_space(
+        dict(
+            name=space_name,
+            format=[dict(name="id", type="unsigned", is_nullable=False)],
+            primary_key=["id"],
+            distribution="global",
+        ),
+    )
+
+    assert i1.call("box.space._space.index.name:get", space_name) is not None
+    assert i2.call("box.space._space.index.name:get", space_name) is not None
+    assert i3.call("box.space._space.index.name:get", space_name) is not None
+
+    # Compact the log to trigger snapshot applying on the catching up instance
+    i1.raft_compact_log()
+    i2.raft_compact_log()
+
+    # Terminate master to trigger switchover.
+    i3.terminate()
+
+    # Wake up the catching up instance, who will also become master.
+    i4.start()
+    i4.wait_online()
+
+    # A master catches up by snapshot
+    assert i4.call("box.space._space.index.name:get", space_name) is not None
