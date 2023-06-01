@@ -152,6 +152,21 @@ pub(super) fn action_plan<'i>(
     }
 
     ////////////////////////////////////////////////////////////////////////////
+    // replicaset master switchover
+    let to_promote = get_new_replicaset_master_if_needed(instances, replicasets);
+    if let Some(to) = to_promote {
+        let rpc = rpc::replication::promote::Request {
+            term,
+            applied,
+            timeout: Loop::SYNC_TIMEOUT,
+        };
+        let mut ops = UpdateOps::new();
+        ops.assign("master_id", &to.instance_id)?;
+        let op = Dml::update(ClusterwideSpaceId::Replicaset, &[&to.replicaset_id], ops)?;
+        return Ok(TransferMastership { to, rpc, op }.into());
+    }
+
+    ////////////////////////////////////////////////////////////////////////////
     // replication
     let to_replicate = instances
         .iter()
@@ -182,14 +197,20 @@ pub(super) fn action_plan<'i>(
                 targets.push(&instance.instance_id);
             }
         }
-        let rpc = rpc::replication::Request {
-            replicaset_peers,
-            timeout: Loop::SYNC_TIMEOUT,
-        };
+        let replicaset = replicasets
+            .get(replicaset_id)
+            .expect("replicaset info should be available at this point");
+        let master_id = &replicaset.master_id;
         let req = rpc::update_instance::Request::new(instance_id.clone(), cluster_id)
             .with_current_grade(CurrentGrade::replicated(target_grade.incarnation));
 
-        return Ok(Replication { targets, rpc, req }.into());
+        return Ok(Replication {
+            targets,
+            master_id,
+            replicaset_peers,
+            req,
+        }
+        .into());
     }
 
     ////////////////////////////////////////////////////////////////////////////
@@ -326,6 +347,8 @@ pub(super) fn action_plan<'i>(
     // ddl
     if has_pending_schema_change {
         let mut targets = Vec::with_capacity(replicasets.len());
+        // TODO: invert this loop to improve performance
+        // `for instances { replicasets.get() }` instead of `for replicasets { instances.find() }`
         for r in replicasets.values() {
             let Some(master) = instances.iter().find(|i| i.instance_id == r.master_id) else {
                 tlog!(Warning,
@@ -417,7 +440,8 @@ pub mod stage {
 
         pub struct Replication<'i> {
             pub targets: Vec<&'i InstanceId>,
-            pub rpc: rpc::replication::Request,
+            pub master_id: &'i InstanceId,
+            pub replicaset_peers: Vec<String>,
             pub req: rpc::update_instance::Request,
         }
 
@@ -456,6 +480,37 @@ pub mod stage {
             pub rpc: rpc::ddl_apply::Request,
         }
     }
+}
+
+/// Checks if there's replicaset whose master if offline and tries to find a
+/// replica to promote.
+///
+/// This covers the case when a replicaset is waking up.
+#[inline(always)]
+fn get_new_replicaset_master_if_needed<'i>(
+    instances: &'i [Instance],
+    replicasets: &HashMap<&ReplicasetId, &Replicaset>,
+) -> Option<&'i Instance> {
+    // TODO: construct a map from replicaset id to instance to improve performance
+    for r in replicasets.values() {
+        let Some(master) = instances.iter().find(|i| i.instance_id == r.master_id) else {
+            crate::warn_or_panic!(
+                "couldn't find instance with id {}, which is chosen as master of replicaset {}",
+                r.master_id, r.replicaset_id,
+            );
+            continue;
+        };
+        if !has_grades!(master, * -> Offline) {
+            continue;
+        }
+        let Some(new_master) = maybe_responding(instances).find(|i| i.replicaset_id == r.replicaset_id) else {
+            continue;
+        };
+
+        return Some(new_master);
+    }
+
+    None
 }
 
 #[inline(always)]

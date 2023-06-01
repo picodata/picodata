@@ -1,8 +1,6 @@
 use crate::tarantool::set_cfg_field;
 use crate::traft::Result;
 
-use std::time::Duration;
-
 crate::define_rpc_request! {
     fn proc_replication(req: Request) -> Result<Response> {
         // TODO: check this configuration is newer then the one currently
@@ -16,9 +14,9 @@ crate::define_rpc_request! {
         set_cfg_field("replication", &req.replicaset_peers)?;
         let lsn = crate::tarantool::eval("return box.info.lsn")?;
 
-        // This is the only replica in the replicaset, so it must be master.
-        // This is a point, where a sole replica becomes writable after restart.
-        if req.replicaset_peers.len() == 1 {
+        // We do this everytime because firstly it helps when waking up.
+        // And secondly just in case, it doesn't hurt anyways.
+        if req.is_master {
             set_cfg_field("read_only", false)?;
         }
 
@@ -27,8 +25,8 @@ crate::define_rpc_request! {
 
     /// Request to configure tarantool replication.
     pub struct Request {
+        pub is_master: bool,
         pub replicaset_peers: Vec<String>,
-        pub timeout: Duration,
     }
 
     /// Response to [`replication::Request`].

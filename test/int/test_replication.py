@@ -124,6 +124,55 @@ def test_replication_works(cluster: Cluster):
     wait_replicas_joined(i3, 2)
 
 
+def test_master_auto_switchover(cluster: Cluster):
+    # These guys are for quorum.
+    i1, i2, i3 = cluster.deploy(instance_count=3)
+    # These are being tested.
+    i4 = cluster.add_instance(wait_online=True, replicaset_id="r99")
+    i5 = cluster.add_instance(wait_online=True, replicaset_id="r99")
+
+    # i4 is master as the first member of the replicaset.
+    assert wait_repl_master(i4) == i4.instance_id
+    assert wait_repl_master(i5) == i4.instance_id
+    assert not i4.eval("return box.info.ro")
+    assert i5.eval("return box.info.ro")
+
+    # Terminate master to force switchover.
+    i4.terminate()
+    assert wait_repl_master(i5) == i5.instance_id
+    assert not i5.eval("return box.info.ro")
+
+    # Terminate the last remaining replica, switchover is impossible.
+    i5.terminate()
+    # FIXME: wait until governor handles all pending events
+    time.sleep(0.5)
+    assert (
+        i1.eval("return box.space._pico_replicaset:get(...).master_id", "r99")
+        == i5.instance_id
+    )
+
+    # Wake the master back up, check it's not read only.
+    i5.start()
+    i5.wait_online()
+    assert wait_repl_master(i5) == i5.instance_id
+    assert not i5.eval("return box.info.ro")
+
+    # Terminate it again, to check switchover at catch-up.
+    i5.terminate()
+    i4.start()
+    i4.wait_online()
+
+    # i4 is master again.
+    assert wait_repl_master(i4) == i4.instance_id
+    assert not i4.eval("return box.info.ro")
+
+    i5.start()
+    i5.wait_online()
+    # i5 is still read only.
+    assert wait_repl_master(i5) == i4.instance_id
+    assert i5.eval("return box.info.ro")
+
+
 def test_bucket_discovery_single(instance: Instance):
     @funcy.retry(tries=30, timeout=0.5)
     def wait_buckets_awailable(i: Instance, expected: int):

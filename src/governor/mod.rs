@@ -234,13 +234,23 @@ impl Loop {
                 }
             }
 
-            Plan::Replication(Replication { targets, rpc, req }) => {
+            Plan::Replication(Replication {
+                targets,
+                master_id,
+                replicaset_peers,
+                req,
+            }) => {
                 governor_step! {
                     "configuring replication"
                     async {
                         let mut fs = vec![];
+                        let mut rpc = rpc::replication::Request {
+                            is_master: false,
+                            replicaset_peers,
+                        };
                         for instance_id in targets {
                             tlog!(Info, "calling rpc::replication"; "instance_id" => %instance_id);
+                            rpc.is_master = instance_id == master_id;
                             let resp = pool.call(instance_id, &rpc)?;
                             fs.push(async move {
                                 match resp.await {
