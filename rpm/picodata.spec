@@ -55,6 +55,7 @@ make build
 
 %files
 %{_bindir}/picodata
+%{_bindir}/picodata-libs/*
 %doc README.md
 %{!?_licensedir:%global license %doc}
 %if %{?_build_vendor} == alt

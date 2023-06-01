@@ -31,6 +31,13 @@ build-release: tarantool-patch
 install:
 	mkdir -p $(DESTDIR)/usr/bin
 	install -m 0755 target/*/picodata $(DESTDIR)/usr/bin/picodata
+	mkdir -p $(DESTDIR)/usr/bin/picodata-libs
+	cp -P \
+		target/*/build/tarantool-sys/readline-prefix/lib/libreadline.* \
+		$(DESTDIR)/usr/bin/picodata-libs
+	cp -P \
+		target/*/build/tarantool-sys/ncurses-prefix/lib/libtinfo.* \
+		$(DESTDIR)/usr/bin/picodata-libs
 
 fmt:
 	cargo fmt
