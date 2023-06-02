@@ -29,7 +29,7 @@ _G.pico.raft_compact_log(
 Описание функций и хранимых процедур приведено ниже:
 
 - `_G.pico.VERSION`. Вывод версии Picodata.
-- `_G.pico.args`. Вывод аргументов командной строки, с которыми был запущен инстанс.
+- `_G.pico.args`. Вывод данных о запущенном инстансе.
 - `_G.pico.raft_read_index()`. Чтение индекса Raft-журнала.
 - `_G.pico.raft_propose_nop()`. Добавляет в Raft-журнал запись `Nop` (no operation).
 - `_G.pico.cas()`. Запрос на изменение параметров методом [Compare and Swap](glossary.md#сas-compare-and-swap).
@@ -41,7 +41,7 @@ _G.pico.raft_compact_log(
 - `_G.pico.whoami()`. Отображение данных о текущем пользователе (судя по всему, ещё не реализовано).
 - `_G.pico.raft_compact_log()`. [Обрезание](glossary.md#компактизация-raft-журнала-raft-log-compaction) Raft-журнала c удалением указанного числа наиболее старых записей.
 
-## Примеры использования функций
+## Описание функций
 ### `VERSION` (string)
 
 Содержит версию Picodata. Семантика соответствует календарному
@@ -58,7 +58,89 @@ tarantool> _G.pico.VERSION
 - 22.11.0
 ...
 ```
+### args (string)
+Выводит набор параметров текущего инстанса, в частности:
+- ID кластера;
+- ключи домена отказа (см. [подробнее](glossary.md#домен-отказа-failure_domain));
+- уровень журналирования;
+- указанный исходный фактор репликации (см. [подробнее](glossary.md#фактор-репликации-replication_factor));
+- адрес (хост:порт), по которому инстанс принимает соединения;
+- адреса соседних инстансов (peers);
+- рабочую директорию, в которой инстанс хранит снимки состояния и рабочие файлы.
 
+**Возвращаемое значение** (_table_)
+
+Таблица с полями:
+- `cluster_id`: (_string_)
+- `failure_domain`: (_table_ {[_string_] = _string_})
+- `log_level`: (_string_)
+- `init_replication_factor`: (_number_)
+- `listen`: (_string_)
+- `peers`: (_table_ {_string_})
+- `data_dir`: (_string_)
+
+
+**Пример**
+```console
+tarantool> _G.pico.args
+---
+- cluster_id: demo
+  failure_domain: []
+  log_level: info
+  init_replication_factor: 2
+  listen: localhost:3302
+  peers:
+  - localhost:3301
+  data_dir: inst2
+...
+```
+### instance_info()
+Функция показывает информацию о текущем инстансе Picodata
+
+```lua
+function instance_info(instance)
+```
+**Параметры**
+- `instance`: (_string_)
+
+**Возвращаемое значение** (_table_)
+
+Таблица с полями:
+
+- `target_grade`: (_table_)
+  - `variant`: (_string_)
+  - `incarnation` (_number_)
+- `instance_id`: (_string_)
+- `instance_uuid`: (_number_)
+- `raft_id`: (_string_)
+- `current_grade`: (_table_)
+  - `variant`: (_string_)
+  - `incarnation`: (_number_)
+- `replicaset_uuid`: (_number_)
+- `replicaset_id`: (_string_)
+- `advertise_address`: (_string_)
+
+**Пример**
+
+```console
+tarantool> _G.pico.instance_info(i2)
+---
+- target_grade:
+    variant: Online
+    incarnation: 1
+  instance_id: i4
+  instance_uuid: 826cbe5e-6979-3191-9e22-e39deef142f0
+  raft_id: 4
+  current_grade:
+    variant: Online
+    incarnation: 1
+  replicaset_uuid: eff4449e-feb2-3d73-87bc-75807cb23191
+  replicaset_id: r2
+  advertise_address: localhost:3304
+...
+
+
+```
 ### `whoami` (function)
 
 ```lua
@@ -83,6 +165,26 @@ tarantool> _G.pico.whoami()
   cluster_id: demo
   instance_id: i1
 ```
+### cas (function)
+Отправляет запрос на вызов/изменение параметра с учетом его текущего
+значения (проверяется на лидере). Функция работает на всем кластере.
+
+```lua
+function cas({args},...)
+```
+
+**Параметры**
+
+  `args`: (_string_ = '_string_' | {_table_} )
+
+**Пример**
+```
+pico.cas({space = 'test', kind = 'insert', tuple = {13, 37} }, { timeout = 1 }) 
+```
+
+**Возвращаемое значение** (_number_)
+
+Функция возвращает индекс сделанной записи в raft-журнале.
 
 ### `raft_compact_log` (function)
 
