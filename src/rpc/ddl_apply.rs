@@ -7,7 +7,7 @@ use crate::traft::node;
 use crate::traft::Result;
 use crate::traft::{RaftIndex, RaftTerm};
 use std::time::Duration;
-use tarantool::error::TarantoolError;
+use tarantool::error::{TarantoolError, TarantoolErrorCode};
 use tarantool::ffi::tarantool as ffi;
 use tarantool::space::{Space, SystemSpace};
 
@@ -23,6 +23,14 @@ crate::define_rpc_request! {
         // Already applied.
         if local_schema_version()? >= pending_schema_version {
             return Ok(Response::Ok);
+        }
+
+        if crate::tarantool::eval("return box.info.ro")? {
+            let e = tarantool::set_and_get_error!(
+                TarantoolErrorCode::Readonly,
+                "cannot apply schema change on a read only instance"
+            );
+            return Err(e.into());
         }
 
         let ddl = storage.properties.pending_schema_change()?.ok_or_else(|| Error::other("pending schema change not found"))?;
