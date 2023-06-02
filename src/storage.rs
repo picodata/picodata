@@ -10,7 +10,7 @@ use ::tarantool::tuple::{RawBytes, ToTupleBuffer, Tuple, TupleBuffer};
 use crate::failure_domain as fd;
 use crate::instance::{self, grade, Instance};
 use crate::replicaset::{Replicaset, ReplicasetId};
-use crate::schema::{IndexDef, SpaceDef};
+use crate::schema::{Distribution, IndexDef, SpaceDef};
 use crate::tlog;
 use crate::traft;
 use crate::traft::error::Error;
@@ -494,6 +494,9 @@ impl Clusterwide {
         let iter = pico_space.select(IteratorType::All, &())?;
         for tuple in iter {
             let space_def: SpaceDef = tuple.decode()?;
+            if !matches!(space_def.distribution, Distribution::Global) {
+                continue;
+            }
             space_dumps.push(Self::space_dump(&space_def.name)?);
         }
 
