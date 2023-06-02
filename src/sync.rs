@@ -20,6 +20,9 @@ pub struct TimeoutError;
 // Vclock
 /////////////////////////////////////////////////////////////////
 
+/// A stored procedure to get current [`Vclock`].
+///
+/// See [`Vclock::try_current`]
 #[proc]
 fn proc_get_vclock() -> traft::Result<Vclock> {
     let vclock = Vclock::try_current()?;
@@ -37,6 +40,10 @@ pub async fn call_get_vclock(
     Ok(vclock)
 }
 
+/// RPC request to [`proc_wait_vclock`].
+///
+/// Can be used in [`ConnectionPool::call`] to call [`proc_wait_vclock`] on
+/// the corresponding instance.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct WaitVclockRpc {
     target: Vclock,
@@ -50,6 +57,9 @@ impl rpc::Request for WaitVclockRpc {
     type Response = (Vclock,);
 }
 
+/// A stored procedure to wait for `target` [`Vclock`].
+///
+/// See [`wait_vclock`]
 #[proc]
 fn proc_wait_vclock(target: Vclock, timeout: f64) -> Result<(Vclock,), TimeoutError> {
     wait_vclock(target, Duration::from_secs_f64(timeout)).map(|vclock| (vclock,))
@@ -84,6 +94,9 @@ pub fn wait_vclock(target: Vclock, timeout: Duration) -> Result<Vclock, TimeoutE
 // RaftIndex
 /////////////////////////////////////////////////////////////////
 
+/// A stored procedure to get current [`RaftIndex`].
+///
+/// See [Node::get_index](traft::node::Node::get_index)
 #[proc]
 fn proc_get_index() -> traft::Result<RaftIndex> {
     let node = traft::node::global()?;
@@ -101,6 +114,10 @@ pub async fn call_get_index(
     Ok(index)
 }
 
+/// RPC request to [`proc_read_index`].
+///
+/// Can be used in [`ConnectionPool::call`] to call [`proc_read_index`] on
+/// the corresponding instance.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ReadIndexRpc {
     timeout: f64,
@@ -113,6 +130,9 @@ impl rpc::Request for ReadIndexRpc {
     type Response = (RaftIndex,);
 }
 
+/// A stored procedure to perforam a quorum read of [`RaftIndex`].
+///
+/// See [Node::read_index](traft::node::Node::read_index)
 #[proc]
 fn proc_read_index(timeout: f64) -> traft::Result<(RaftIndex,)> {
     let node = traft::node::global()?;
@@ -120,6 +140,10 @@ fn proc_read_index(timeout: f64) -> traft::Result<(RaftIndex,)> {
         .map(|index| (index,))
 }
 
+/// RPC request to [`proc_wait_index`].
+///
+/// Can be used in [`ConnectionPool::call`] to call [`proc_wait_index`] on
+/// the corresponding instance.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct WaitIndexRpc {
     target: RaftIndex,
@@ -133,6 +157,9 @@ impl rpc::Request for WaitIndexRpc {
     type Response = (RaftIndex,);
 }
 
+/// A stored procedure to wait for `target` [`RaftIndex`].
+///
+/// See [Node::wait_index](traft::node::Node::wait_index)
 #[proc]
 fn proc_wait_index(target: RaftIndex, timeout: f64) -> traft::Result<(RaftIndex,)> {
     let node = traft::node::global()?;

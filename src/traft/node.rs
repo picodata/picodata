@@ -393,7 +393,7 @@ impl Node {
     /// Returns a watch which will be notified when a clusterwide space is
     /// modified via the specified `index`.
     ///
-    /// You can also pass a [`ClusterwideSpace`] in which case the space's
+    /// You can also pass a [ClusterwideSpace](crate::storage::ClusterwideSpace) in which case the space's
     /// primary index will be used.
     #[inline(always)]
     pub fn storage_watcher(&self, space: impl Into<SpaceId>) -> watch::Receiver<()> {
@@ -1503,7 +1503,7 @@ impl NodeImpl {
     }
 }
 
-/// Return value of [`handle_committed_normal_entry`], explains what should be
+/// Return value of [`NodeImpl::handle_committed_normal_entry`], explains what should be
 /// done as result of attempting to apply a given entry.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ApplyEntryResult {
