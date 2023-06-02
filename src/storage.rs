@@ -523,7 +523,21 @@ impl Clusterwide {
         })
     }
 
+    /// Applies contents of the raft snapshot. This includes
+    /// * Contents of internal clusterwide spaces.
+    /// * If `is_master` is `true`, definitions of user-defined global spaces.
+    /// * If `is_master` is `true`, contents of user-defined global spaces.
+    ///
+    /// This function is called from [`NodeImpl::advance`] when a snapshot was
+    /// received from the current raft leader and it was determined that the
+    /// snapshot should be applied.
+    ///
+    /// This should be called within a transaction.
+    ///
+    /// [`NodeImpl::advance`]: crate::traft::node::NodeImpl::advance
     pub fn apply_snapshot_data(&self, data: &SnapshotData, is_master: bool) -> Result<()> {
+        debug_assert!(unsafe { ::tarantool::ffi::tarantool::box_txn() });
+
         let mut dont_exist_yet = Vec::new();
         for space_dump in &data.space_dumps {
             let space_name = &space_dump.space_name;
@@ -1645,6 +1659,7 @@ macro_rules! assert_err {
 
 mod tests {
     use super::*;
+    use ::tarantool::transaction::start_transaction;
 
     #[rustfmt::skip]
     #[::tarantool::test]
@@ -1947,7 +1962,9 @@ mod tests {
         });
 
         storage.for_each_space(|s| s.truncate()).unwrap();
-        if let Err(e) = storage.apply_snapshot_data(&data, true) {
+        if let Err(e) =
+            start_transaction(|| -> traft::Result<()> { storage.apply_snapshot_data(&data, true) })
+        {
             println!("{e}");
             panic!();
         }

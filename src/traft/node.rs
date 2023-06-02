@@ -1262,8 +1262,23 @@ impl NodeImpl {
                 }
             );
 
-            let v_local = local_schema_version().expect("storage error");
+            let v_local = local_schema_version().expect("storage souldn't fail");
+            let v_global = self
+                .storage
+                .properties
+                .global_schema_version()
+                .expect("storage shouldn't fail");
             let v_snapshot = snapshot_data.schema_version;
+
+            assert!(
+                v_global <= v_local,
+                "global schema version is only ever increased after local"
+            );
+            assert!(
+                v_global <= v_snapshot,
+                "global schema version updates are distributed via raft"
+            );
+
             if v_local > v_snapshot {
                 tlog!(
                     Warning,
