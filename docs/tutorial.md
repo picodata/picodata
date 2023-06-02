@@ -172,13 +172,11 @@ connected to localhost:3301
 
 После подключения к инстансу кластера посредством команды picodata
 connect, начальным действием в пустом кластере будет создание первой
-таблицы/space. Пусть в нем будет два поля: идентификатор записи и
-идентификатор бакета, в которой эта запись хранится:
+таблицы/space. Пусть это будет шаблон списка друзей Свинки Пеппы, в
+котором будет два поля: идентификатор записи и имя друга:
 
 ```
-pico.create_space({ name = 'test', format = { {name='id',
-type='unsigned', is_nullable=false} }, primary_key = { 'id' },
-distribution = 'global' }, 3.0)
+pico.create_space({ name = 'Friends_of_Peppa', format = { {name='id', type='unsigned', is_nullable=false}, {name='name', type='string', is_nullable=true} }, primary_key = { 'id' }, distribution = 'global' }, 3.0)
 ```
 
 Ключ _distribution_ отвечает за тип спейса. В примере указан глобальный
@@ -190,8 +188,8 @@ distribution = 'global' }, 3.0)
 Пример создания шардированного спейса:
 
 ```
-pico.create_space{ name = 'test', format = { {name='id',
-type='unsigned', is_nullable=false} }, primary_key = { 'id' },
+pico.create_space{ name = 'Friends_of_Peppa', format = { {name='id',
+type='unsigned', is_nullable=false}, {name='name', type='string', is_nullable=true} }, primary_key = { 'id' },
 distribution = 'sharded', sharding_key = { 'id' }, timeout = 3.0 }
 ```
 
@@ -210,32 +208,32 @@ box.space._pico_property:get("current_schema_version")
 ## Запись данных в глобальный спейс
 В случае с глобальным спейсом, запись данных, т.е. вставка строк, происходит с помощью следующей команды:
 ```
-pico.cas({space = 'test', kind = 'insert', tuple = {13, 37} }, { index = box.space._raft_state:get('applied').value, term = box.space._raft_state:get('term').value, ranges = {} })
+pico.cas({space = 'Friends_of_Peppa', kind = 'insert', tuple = {1, "Susie"} }, { index = box.space._raft_state:get('applied').value, term = box.space._raft_state:get('term').value, ranges = {} })
 ```
 
 ## Запись данных в шардированный спейс
 Для записи данных в шардированный спейс можно использовать функцию записи из состава библиотеки _vshard_:
 ```
-vshard.router.callrw (1, "box.space.test:insert", {{1, 1}})
+vshard.router.callrw (1, "box.space.Friends_of_Peppa:insert", {{1, "Susie"}})
 ```
 Здесь первая и третья 1 — номер бакета, вторая — номер записи. Можно делать множество записей с разными номерами в один и тот же бакет. Пример для 4-й записи в 2000-м бакете:
 ```
-vshard.router.callrw (2000, "box.space.test:insert", {{4, 2000}})
+vshard.router.callrw (2000, "box.space.Friends_of_Peppa:insert", {{4, "Rebecca"}})
 ```
 
 ## Чтение данных
 Для чтения данных из глобального спейса подойдёт команда:
 ```
-box.space.test:select()
+box.space.Friends_of_Peppa:select()
 ```
 
 Отдельно можно узнать, какие именно поля (названия столбцов) есть спейсе:
 ```
-box.space.test:format()
+box.space.Friends_of_Peppa:format()
 ```
 Чтение данных из шардированного спейса происходит посредством вызова vshard. Например:
 ```
-vshard.router.callro (2000, "box.space.test:select")
+vshard.router.callro (2000, "box.space.Friends_of_Peppa:select")
 ```
 
 ## Балансировка данных
