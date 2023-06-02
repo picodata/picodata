@@ -24,6 +24,7 @@ use crate::storage::SPACE_ID_INTERNAL_MAX;
 use crate::storage::{set_local_schema_version, Clusterwide, ClusterwideSpaceId, PropertyName};
 use crate::traft::op::{Ddl, DdlBuilder, Op};
 use crate::traft::{self, event, node, RaftIndex};
+use crate::util::instant_saturating_add;
 
 /// Space definition.
 ///
@@ -435,7 +436,7 @@ pub fn wait_for_ddl_commit(
     timeout: Duration,
 ) -> traft::Result<RaftIndex> {
     let raft_storage = &node::global()?.raft_storage;
-    let deadline = Instant::now() + timeout;
+    let deadline = instant_saturating_add(Instant::now(), timeout);
     let last_seen = prepare_commit;
     loop {
         let cur_applied = raft_storage.applied()?.expect("commit is always persisted");
@@ -468,7 +469,7 @@ fn wait_for_no_pending_schema_change(
     storage: &Clusterwide,
     timeout: Duration,
 ) -> traft::Result<()> {
-    let deadline = Instant::now() + timeout;
+    let deadline = instant_saturating_add(Instant::now(), timeout);
     loop {
         if storage.properties.pending_schema_change()?.is_none() {
             return Ok(());

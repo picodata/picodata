@@ -1,6 +1,7 @@
 use crate::tlog;
 use crate::traft::Result;
 use crate::traft::{error::Error, event, node, RaftIndex, RaftSpaceAccess};
+use crate::util::instant_saturating_add;
 
 use std::time::{Duration, Instant};
 
@@ -28,7 +29,7 @@ pub fn wait_for_index_timeout(
     raft_storage: &RaftSpaceAccess,
     timeout: Duration,
 ) -> Result<RaftIndex> {
-    let deadline = Instant::now() + timeout;
+    let deadline = instant_saturating_add(Instant::now(), timeout);
     loop {
         let cur_applied = raft_storage.applied()?.unwrap_or(0);
         if cur_applied >= applied {
