@@ -596,13 +596,9 @@ impl Clusterwide {
 
         for space_def in self.spaces.iter()? {
             if !space_def.operable {
-                // This means a ddl operation wasn't committed yet. We probably
-                // don't want unfinished ddl artifacts comming over the snapshot
-                // so this will likely never happen.
-                // TODO: or do we actually want this working?
-                crate::warn_or_panic!(
-                    "unfinished ddl operation arrived via snapshot: {space_def:?}"
-                );
+                // If it so happens, that we receive an unfinished schema change via snapshot,
+                // which will somehow get finished without the governor sending us
+                // a proc_apply_schema_change rpc, it will be a very sad day.
                 continue;
             }
 

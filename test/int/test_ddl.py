@@ -369,6 +369,59 @@ def test_ddl_create_sharded_space(cluster: Cluster):
     assert i2.call("box.space._index:get", [space_id, 1]) == tt_bucket_id_def
 
 
+def test_ddl_create_space_unfinished_from_snapshot(cluster: Cluster):
+    i1, i2, i3 = cluster.deploy(instance_count=3)
+
+    # Put i3 to sleep, so that schema change get's blocked.
+    i3.terminate()
+
+    # Start schema change.
+    space_id = 732
+    index = i1.propose_create_space(
+        dict(
+            id=space_id,
+            name="some space name",
+            format=[dict(name="id", type="unsigned", is_nullable=False)],
+            primary_key=[dict(field="id")],
+            distribution=dict(
+                kind="sharded_implicitly", sharding_key=["id"], sharding_fn="murmur3"
+            ),
+        ),
+        wait_index=False,
+    )
+
+    # Schema change is blocked.
+    with pytest.raises(ReturnError, match="timeout"):
+        i1.raft_wait_index(index, timeout=3)
+
+    # Space is created but is not operable.
+    assert i1.call("box.space._space:get", space_id) is not None
+    assert not i1.eval("return box.space._pico_space:get(...).operable", space_id)
+    assert i2.call("box.space._space:get", space_id) is not None
+    assert not i2.eval("return box.space._pico_space:get(...).operable", space_id)
+
+    # Compact raft log to trigger snapshot with an unfinished schema change.
+    i1.raft_compact_log()
+    i2.raft_compact_log()
+
+    # Add a new replicaset who will boot from snapshot.
+    i4 = cluster.add_instance(wait_online=True)
+
+    # TODO: test readonly replica doing the same
+
+    # It has received an unfinished schema change.
+    assert not i4.eval("return box.space._pico_space:get(...).operable", space_id)
+
+    # Wake the instance, who was blocking the schema change.
+    i3.start()
+    i3.wait_online()
+
+    # The schema change finalized.
+    for i in cluster.instances:
+        assert i.call("box.space._space:get", space_id) is not None
+        assert i.eval("return box.space._pico_space:get(...).operable", space_id)
+
+
 def test_ddl_create_space_partial_failure(cluster: Cluster):
     # i2 & i3 are for quorum
     i1, i2, i3, i4, i5 = cluster.deploy(instance_count=5)
