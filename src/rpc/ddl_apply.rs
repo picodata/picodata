@@ -1,4 +1,5 @@
 use crate::op::Ddl;
+use crate::storage::ddl_create_space_on_master;
 use crate::storage::Clusterwide;
 use crate::storage::{local_schema_version, set_local_schema_version};
 use crate::tlog;
@@ -9,7 +10,6 @@ use crate::traft::{RaftIndex, RaftTerm};
 use std::time::Duration;
 use tarantool::error::{TarantoolError, TarantoolErrorCode};
 use tarantool::ffi::tarantool as ffi;
-use tarantool::space::{Space, SystemSpace};
 
 crate::define_rpc_request! {
     fn proc_apply_schema_change(req: Request) -> Result<Response> {
@@ -82,54 +82,11 @@ crate::define_rpc_request! {
 // TODO: move this to crate::schema maybe?
 pub fn apply_schema_change(storage: &Clusterwide, ddl: &Ddl, version: u64) -> Result<Response> {
     debug_assert!(unsafe { tarantool::ffi::tarantool::box_txn() });
-    let sys_space = Space::from(SystemSpace::Space);
-    let sys_index = Space::from(SystemSpace::Index);
 
     match *ddl {
         Ddl::CreateSpace { id, .. } => {
-            let pico_space_def = storage
-                .spaces
-                .get(id)?
-                .ok_or_else(|| Error::other(format!("space with id #{id} not found")))?;
-            // TODO: set defaults
-            let tt_space_def = pico_space_def.to_space_metadata()?;
-
-            let pico_pk_def = storage.indexes.get(id, 0)?.ok_or_else(|| {
-                Error::other(format!(
-                    "primary index for space {} not found",
-                    pico_space_def.name
-                ))
-            })?;
-            let tt_pk_def = pico_pk_def.to_index_metadata();
-
-            // For now we just assume that during space creation index with id 1
-            // exists if and only if it is a bucket_id index.
-            let mut tt_bucket_id_def = None;
-            let pico_bucket_id_def = storage.indexes.get(id, 1)?;
-            if let Some(def) = &pico_bucket_id_def {
-                tt_bucket_id_def = Some(def.to_index_metadata());
-            }
-
-            let res = (|| -> tarantool::Result<()> {
-                if tt_pk_def.parts.is_empty() {
-                    return Err(tarantool::set_and_get_error!(
-                        tarantool::error::TarantoolErrorCode::ModifyIndex,
-                        "can't create index '{}' in space '{}': parts list cannot be empty",
-                        tt_pk_def.name,
-                        tt_space_def.name,
-                    )
-                    .into());
-                }
-                sys_space.insert(&tt_space_def)?;
-                sys_index.insert(&tt_pk_def)?;
-                if let Some(def) = tt_bucket_id_def {
-                    sys_index.insert(&def)?;
-                }
-                set_local_schema_version(version)?;
-
-                Ok(())
-            })();
-            if let Err(e) = res {
+            let abort_reason = ddl_create_space_on_master(storage, id)?;
+            if let Some(e) = abort_reason {
                 // We return Ok(error) because currently this is the only
                 // way to report an application level error.
                 return Ok(Response::Abort {
@@ -140,6 +97,14 @@ pub fn apply_schema_change(storage: &Clusterwide, ddl: &Ddl, version: u64) -> Re
         _ => {
             todo!();
         }
+    }
+
+    if let Err(e) = set_local_schema_version(version) {
+        // We return Ok(error) because currently this is the only
+        // way to report an application level error.
+        return Ok(Response::Abort {
+            reason: e.to_string(),
+        });
     }
 
     Ok(Response::Ok)
