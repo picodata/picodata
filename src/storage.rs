@@ -295,31 +295,12 @@ macro_rules! define_clusterwide_spaces {
                 Ok(())
             }
 
-            /// This doesn't have `&self` parameter, because it is called from
-            /// RaftSpaceAccess, which doesn't have a reference to Node at least
-            /// for now.
-            pub fn snapshot_data() -> tarantool::Result<SnapshotData> {
-                let mut space_dumps = vec![
+            #[inline(always)]
+            pub fn internal_space_dumps() -> tarantool::Result<Vec<SpaceDump>> {
+                let res = vec![
                     $( Self::space_dump(&$ClusterwideSpace::$cw_space_var)?, )+
                 ];
-
-                let pico_space = space_by_name(&ClusterwideSpace::Space)?;
-                let iter = pico_space.select(IteratorType::All, &())?;
-                for tuple in iter {
-                    let space_def: SpaceDef = tuple.decode()?;
-                    space_dumps.push(Self::space_dump(&space_def.name)?);
-                }
-
-                let pico_property = space_by_id(ClusterwideSpaceId::Property.value())?;
-                let tuple = pico_property.get(&[PropertyName::GlobalSchemaVersion.as_str()])?;
-                let mut schema_version = 0;
-                if let Some(tuple) = tuple {
-                    if let Some(v) = tuple.field(1)? {
-                        schema_version = v;
-                    }
-                }
-
-                Ok(SnapshotData { schema_version, space_dumps })
+                Ok(res)
             }
         }
 
@@ -503,6 +484,34 @@ define_clusterwide_spaces! {
 }
 
 impl Clusterwide {
+    // This doesn't have `&self` parameter, because it is called from
+    // RaftSpaceAccess, which doesn't have a reference to Node at least
+    // for now.
+    pub fn snapshot_data() -> tarantool::Result<SnapshotData> {
+        let mut space_dumps = Self::internal_space_dumps()?;
+
+        let pico_space = space_by_name(&ClusterwideSpace::Space)?;
+        let iter = pico_space.select(IteratorType::All, &())?;
+        for tuple in iter {
+            let space_def: SpaceDef = tuple.decode()?;
+            space_dumps.push(Self::space_dump(&space_def.name)?);
+        }
+
+        let pico_property = space_by_id(ClusterwideSpaceId::Property.value())?;
+        let tuple = pico_property.get(&[PropertyName::GlobalSchemaVersion.as_str()])?;
+        let mut schema_version = 0;
+        if let Some(tuple) = tuple {
+            if let Some(v) = tuple.field(1)? {
+                schema_version = v;
+            }
+        }
+
+        Ok(SnapshotData {
+            schema_version,
+            space_dumps,
+        })
+    }
+
     fn space_dump(space_name: &str) -> tarantool::Result<SpaceDump> {
         let space = space_by_name(space_name)?;
         let mut array_writer = ArrayWriter::from_vec(Vec::with_capacity(space.bsize()?));
