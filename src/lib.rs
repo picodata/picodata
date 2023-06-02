@@ -81,10 +81,10 @@ fn picolib_setup(args: &args::Run) {
 
     luamod.set(
         "instance_info",
-        tlua::function1(|iid: Option<String>| -> traft::Result<_> {
+        tlua::function1(|iid: Option<InstanceId>| -> traft::Result<_> {
             let node = traft::node::global()?;
             let iid = iid.unwrap_or(node.raft_storage.instance_id()?.unwrap());
-            let instance = node.storage.instances.get(&InstanceId::from(iid))?;
+            let instance = node.storage.instances.get(&iid)?;
             let peer_address = node
                 .storage
                 .peer_addresses
@@ -172,9 +172,7 @@ fn picolib_setup(args: &args::Run) {
         "expel",
         tlua::function1(|instance_id: InstanceId| -> traft::Result<()> {
             let raft_storage = &traft::node::global()?.raft_storage;
-            let cluster_id = raft_storage
-                .cluster_id()?
-                .expect("cluster_id is set on boot");
+            let cluster_id = raft_storage.cluster_id()?;
             fiber::block_on(rpc::network_call_to_leader(&rpc::expel::Request {
                 instance_id,
                 cluster_id,
@@ -430,10 +428,7 @@ pub fn compare_and_swap(
 ) -> traft::Result<(RaftIndex, RaftTerm)> {
     let node = node::global()?;
     let request = rpc::cas::Request {
-        cluster_id: node
-            .raft_storage
-            .cluster_id()?
-            .expect("cluster_id really shouldn't be returning Option"),
+        cluster_id: node.raft_storage.cluster_id()?,
         predicate,
         op,
     };
@@ -1040,8 +1035,7 @@ fn postjoin(args: &args::Run, storage: Clusterwide, raft_storage: RaftSpaceAcces
             .expect("instance must be persisted at the time of postjoin");
         let cluster_id = raft_storage
             .cluster_id()
-            .unwrap()
-            .expect("cluster_id must be persisted at the time of postjoin");
+            .expect("storage should never fail");
         let leader_id = node.status().leader_id;
         let leader_address = leader_id.and_then(|id| storage.peer_addresses.try_get(id).ok());
         let Some(leader_address) = leader_address else {

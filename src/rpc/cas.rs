@@ -27,9 +27,7 @@ crate::define_rpc_request! {
         let node = node::global()?;
         let raft_storage = &node.raft_storage;
         let storage = &node.storage;
-        let cluster_id = raft_storage
-            .cluster_id()?
-            .expect("cluster_id is set on boot");
+        let cluster_id = raft_storage.cluster_id()?;
 
         if req.cluster_id != cluster_id {
             return Err(TraftError::ClusterIdMismatch {

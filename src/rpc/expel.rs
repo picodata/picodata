@@ -8,9 +8,7 @@ crate::define_rpc_request! {
     fn proc_expel_on_leader(req: Request) -> Result<Response> {
         let node = node::global()?;
         let raft_storage = &node.raft_storage;
-        let cluster_id = raft_storage
-            .cluster_id()?
-            .expect("cluster_id is set on boot");
+        let cluster_id = raft_storage.cluster_id()?;
 
         if req.cluster_id != cluster_id {
             return Err(Error::ClusterIdMismatch {

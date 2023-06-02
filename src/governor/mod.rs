@@ -49,28 +49,46 @@ impl Loop {
             return Continue;
         }
 
-        let instances = storage.instances.all_instances().unwrap();
+        let instances = storage
+            .instances
+            .all_instances()
+            .expect("storage should never fail");
         let peer_addresses: HashMap<_, _> = storage
             .peer_addresses
             .iter()
             .unwrap()
             .map(|pa| (pa.raft_id, pa.address))
             .collect();
-        let voters = raft_storage.voters().unwrap().unwrap_or_default();
-        let learners = raft_storage.learners().unwrap().unwrap_or_default();
-        let replicasets: Vec<_> = storage.replicasets.iter().unwrap().collect();
+        let voters = raft_storage.voters().expect("storage should never fail");
+        let learners = raft_storage.learners().expect("storage should never fail");
+        let replicasets: Vec<_> = storage
+            .replicasets
+            .iter()
+            .expect("storage should never fail")
+            .collect();
         let replicasets: HashMap<_, _> = replicasets
             .iter()
             .map(|rs| (&rs.replicaset_id, rs))
             .collect();
 
         let term = status.get().term;
-        let applied = raft_storage.applied().unwrap().unwrap();
-        let cluster_id = raft_storage.cluster_id().unwrap().unwrap();
+        let applied = raft_storage.applied().expect("storage should never fail");
+        let cluster_id = raft_storage
+            .cluster_id()
+            .expect("storage should never fail");
         let node = global().expect("must be initialized");
-        let vshard_bootstrapped = storage.properties.vshard_bootstrapped().unwrap();
-        let replication_factor = storage.properties.replication_factor().unwrap();
-        let pending_schema_change = storage.properties.pending_schema_change().unwrap();
+        let vshard_bootstrapped = storage
+            .properties
+            .vshard_bootstrapped()
+            .expect("storage should never fail");
+        let replication_factor = storage
+            .properties
+            .replication_factor()
+            .expect("storage should never fail");
+        let pending_schema_change = storage
+            .properties
+            .pending_schema_change()
+            .expect("storage should never fail");
         let has_pending_schema_change = pending_schema_change.is_some();
 
         let plan = action_plan(

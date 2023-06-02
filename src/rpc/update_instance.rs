@@ -8,11 +8,7 @@ use crate::traft::{error::Error, node};
 crate::define_rpc_request! {
     fn proc_update_instance(req: Request) -> Result<Response> {
         let node = node::global()?;
-
-        let cluster_id = node
-            .raft_storage
-            .cluster_id()?
-            .expect("cluster_id is set at boot");
+        let cluster_id = node.raft_storage.cluster_id()?;
 
         if req.cluster_id != cluster_id {
             return Err(Error::ClusterIdMismatch {

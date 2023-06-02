@@ -439,7 +439,7 @@ pub fn wait_for_ddl_commit(
     let deadline = instant_saturating_add(Instant::now(), timeout);
     let last_seen = prepare_commit;
     loop {
-        let cur_applied = raft_storage.applied()?.expect("commit is always persisted");
+        let cur_applied = raft_storage.applied()?;
         let new_entries = raft_storage.entries(last_seen + 1, cur_applied + 1)?;
         for entry in new_entries {
             if entry.entry_type != raft::prelude::EntryType::EntryNormal {

@@ -47,11 +47,7 @@ pub async fn callback() {
             break;
         }
 
-        let voters = node
-            .raft_storage
-            .voters()
-            .expect("failed reading voters")
-            .unwrap_or_default();
+        let voters = node.raft_storage.voters().expect("failed reading voters");
 
         let quorum = voters.len() / 2 + 1;
         let voters_alive = voters
@@ -76,10 +72,7 @@ fn go_offline() -> traft::Result<()> {
     let raft_id = node.raft_id();
 
     let instance = node.storage.instances.get(&raft_id)?;
-    let cluster_id = node
-        .raft_storage
-        .cluster_id()?
-        .ok_or_else(|| Error::other("missing cluster_id value in storage"))?;
+    let cluster_id = node.raft_storage.cluster_id()?;
 
     let req = rpc::update_instance::Request::new(instance.instance_id, cluster_id)
         .with_target_grade(TargetGradeVariant::Offline);

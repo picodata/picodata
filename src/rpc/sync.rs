@@ -31,7 +31,7 @@ pub fn wait_for_index_timeout(
 ) -> Result<RaftIndex> {
     let deadline = instant_saturating_add(Instant::now(), timeout);
     loop {
-        let cur_applied = raft_storage.applied()?.unwrap_or(0);
+        let cur_applied = raft_storage.applied()?;
         if cur_applied >= applied {
             tlog!(Debug, "synchronized raft log to index {applied}"; "applied" => cur_applied);
             return Ok(cur_applied);

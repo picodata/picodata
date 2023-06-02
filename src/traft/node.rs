@@ -371,10 +371,13 @@ impl NodeImpl {
     fn new(storage: Clusterwide, raft_storage: RaftSpaceAccess) -> Result<Self, RaftError> {
         let box_err = |e| StorageError::Other(Box::new(e));
 
-        let raft_id: RaftId = raft_storage.raft_id().map_err(box_err)?.unwrap();
-        let applied: RaftIndex = raft_storage.applied().map_err(box_err)?.unwrap_or(0);
+        let raft_id: RaftId = raft_storage
+            .raft_id()
+            .map_err(box_err)?
+            .expect("raft_id should be set by the time the node is being initialized");
+        let applied: RaftIndex = raft_storage.applied().map_err(box_err)?;
         let lc = {
-            let gen = raft_storage.gen().unwrap().unwrap_or(0) + 1;
+            let gen = raft_storage.gen().unwrap() + 1;
             raft_storage.persist_gen(gen).unwrap();
             LogicalClock::new(raft_id, gen)
         };

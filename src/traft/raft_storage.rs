@@ -3,67 +3,20 @@ use ::raft::Error as RaftError;
 use ::raft::StorageError;
 use ::tarantool::index::IteratorType;
 use ::tarantool::space::{Space, SpaceId};
-use ::tarantool::tuple::{ToTupleBuffer, Tuple};
+use ::tarantool::tuple::ToTupleBuffer;
 use std::cmp::Ordering;
 use std::convert::TryFrom as _;
 
+use crate::instance::InstanceId;
 use crate::traft;
 use crate::traft::RaftId;
 use crate::traft::RaftIndex;
 use crate::traft::RaftTerm;
-use crate::util::str_eq;
 
 #[derive(Clone, Debug)]
 pub struct RaftSpaceAccess {
     space_raft_log: Space,
     space_raft_state: Space,
-}
-
-macro_rules! auto_impl {
-    (
-        // getters
-        $(
-            $(#[$meta:meta])*
-            $vis:vis fn $getter:ident(&self) -> _<$ty:ty>;
-        )+
-    ) => {
-        $(
-            $(#[$meta])*
-            $vis fn $getter(&self) -> tarantool::Result<Option<$ty>> {
-                let key: &str = stringify!($getter);
-                let tuple: Option<Tuple> = self.space_raft_state.get(&(key,))?;
-
-                match tuple {
-                    Some(t) => t.field(Self::FIELD_STATE_VALUE),
-                    None => Ok(None),
-                }
-            }
-        )+
-    };
-
-    (
-        // setters
-        $(
-            $(#[$meta:meta])*
-            $vis:vis fn $setter:ident(
-                &self,
-                $mod:ident $key:ident: $ty:ty
-            ) -> _;
-        )+
-    ) => {
-        $(
-            $(#[$meta])*
-            $vis fn $setter(&self, value: $ty) -> tarantool::Result<()> {
-                const _: () = assert!(str_eq(
-                    stringify!($setter),
-                    concat!("persist_", stringify!($key))
-                ));
-                let key: &str = stringify!($key);
-                self.space_raft_state.$mod(&(key, value))?;
-                Ok(())
-            }
-        )+
-    };
 }
 
 impl RaftSpaceAccess {
@@ -119,50 +72,145 @@ impl RaftSpaceAccess {
         })
     }
 
+    #[inline(always)]
+    pub fn try_get_raft_state<T>(&self, key: &str) -> tarantool::Result<Option<T>>
+    where
+        T: serde::de::DeserializeOwned,
+    {
+        let tuple = self.space_raft_state.get(&[key])?;
+        let mut res = None;
+        if let Some(t) = tuple {
+            res = t.field(Self::FIELD_STATE_VALUE)?;
+        }
+        Ok(res)
+    }
+
     // Find the meaning of the fields here:
     // https://github.com/etcd-io/etcd/blob/main/raft/raftpb/raft.pb.go
 
-    auto_impl! {
-        pub fn raft_id(&self) -> _<RaftId>;
-        #[allow(dead_code)]
-        pub fn instance_id(&self) -> _<String>;
-        pub fn cluster_id(&self) -> _<String>;
-
-        /// Node generation i.e. the number of restarts.
-        pub fn gen(&self) -> _<u64>;
-        pub(crate) fn term(&self) -> _<RaftTerm>;
-        fn vote(&self) -> _<RaftId>;
-        pub(crate) fn commit(&self) -> _<RaftIndex>;
-        pub fn applied(&self) -> _<RaftIndex>;
-
-        pub(crate) fn voters(&self) -> _<Vec<RaftId>>;
-        pub(crate) fn learners(&self) -> _<Vec<RaftId>>;
-        fn voters_outgoing(&self) -> _<Vec<RaftId>>;
-        fn learners_next(&self) -> _<Vec<RaftId>>;
-        fn auto_leave(&self) -> _<bool>;
-
-        /// Returns `compacted_index` that is `first_index - 1`.
-        fn compacted_index(&self) -> _<RaftIndex>;
-        /// Returns the term of entry at `compacted_index`.
-        fn compacted_term(&self) -> _<RaftTerm>;
+    #[inline(always)]
+    pub fn raft_id(&self) -> tarantool::Result<Option<RaftId>> {
+        let res = self.try_get_raft_state("raft_id")?;
+        Ok(res)
     }
 
+    #[inline(always)]
+    pub fn instance_id(&self) -> tarantool::Result<Option<InstanceId>> {
+        let res = self.try_get_raft_state("instance_id")?;
+        Ok(res)
+    }
+
+    #[inline(always)]
+    pub fn cluster_id(&self) -> tarantool::Result<String> {
+        let res = self.try_get_raft_state("cluster_id")?;
+        let res = res.expect("cluster_id should always be set");
+        Ok(res)
+    }
+
+    /// Node generation i.e. the number of restarts.
+    #[inline(always)]
+    pub fn gen(&self) -> tarantool::Result<u64> {
+        let res = self.try_get_raft_state("gen")?;
+        let res = res.unwrap_or(0);
+        Ok(res)
+    }
+
+    #[inline(always)]
+    pub(crate) fn term(&self) -> tarantool::Result<RaftTerm> {
+        let res = self.try_get_raft_state("term")?;
+        let res = res.unwrap_or(0);
+        Ok(res)
+    }
+
+    #[inline(always)]
+    fn vote(&self) -> tarantool::Result<RaftId> {
+        let res = self.try_get_raft_state("vote")?;
+        let res = res.unwrap_or(0);
+        Ok(res)
+    }
+
+    #[inline(always)]
+    pub(crate) fn commit(&self) -> tarantool::Result<RaftIndex> {
+        let res = self.try_get_raft_state("commit")?;
+        let res = res.unwrap_or(0);
+        Ok(res)
+    }
+
+    #[inline(always)]
+    pub fn applied(&self) -> tarantool::Result<RaftIndex> {
+        let res = self.try_get_raft_state("applied")?;
+        let res = res.unwrap_or(0);
+        Ok(res)
+    }
+
+    #[inline(always)]
+    pub(crate) fn voters(&self) -> tarantool::Result<Vec<RaftId>> {
+        let res = self.try_get_raft_state("voters")?;
+        let res = res.unwrap_or_default();
+        Ok(res)
+    }
+
+    #[inline(always)]
+    pub(crate) fn learners(&self) -> tarantool::Result<Vec<RaftId>> {
+        let res = self.try_get_raft_state("learners")?;
+        let res = res.unwrap_or_default();
+        Ok(res)
+    }
+
+    #[inline(always)]
+    fn voters_outgoing(&self) -> tarantool::Result<Vec<RaftId>> {
+        let res = self.try_get_raft_state("voters_outgoing")?;
+        let res = res.unwrap_or_default();
+        Ok(res)
+    }
+
+    #[inline(always)]
+    fn learners_next(&self) -> tarantool::Result<Vec<RaftId>> {
+        let res = self.try_get_raft_state("learners_next")?;
+        let res = res.unwrap_or_default();
+        Ok(res)
+    }
+
+    #[inline(always)]
+    fn auto_leave(&self) -> tarantool::Result<bool> {
+        let res = self.try_get_raft_state("auto_leave")?;
+        let res = res.unwrap_or(false);
+        Ok(res)
+    }
+
+    /// Returns `compacted_index` that is `first_index - 1`.
+    #[inline(always)]
+    fn compacted_index(&self) -> tarantool::Result<RaftIndex> {
+        let res = self.try_get_raft_state("compacted_index")?;
+        let res = res.unwrap_or(0);
+        Ok(res)
+    }
+
+    /// Returns the term of entry at `compacted_index`.
+    #[inline(always)]
+    fn compacted_term(&self) -> tarantool::Result<RaftTerm> {
+        let res = self.try_get_raft_state("compacted_term")?;
+        let res = res.unwrap_or(0);
+        Ok(res)
+    }
+
+    #[inline(always)]
     pub fn conf_state(&self) -> tarantool::Result<raft::ConfState> {
         Ok(raft::ConfState {
-            voters: self.voters()?.unwrap_or_default(),
-            learners: self.learners()?.unwrap_or_default(),
-            voters_outgoing: self.voters_outgoing()?.unwrap_or_default(),
-            learners_next: self.learners_next()?.unwrap_or_default(),
-            auto_leave: self.auto_leave()?.unwrap_or(false),
+            voters: self.voters()?,
+            learners: self.learners()?,
+            voters_outgoing: self.voters_outgoing()?,
+            learners_next: self.learners_next()?,
+            auto_leave: self.auto_leave()?,
             ..Default::default()
         })
     }
 
     pub fn hard_state(&self) -> tarantool::Result<raft::HardState> {
         Ok(raft::HardState {
-            term: self.term()?.unwrap_or(0),
-            vote: self.vote()?.unwrap_or(0),
-            commit: self.commit()?.unwrap_or(0),
+            term: self.term()?,
+            vote: self.vote()?,
+            commit: self.commit()?,
             ..Default::default()
         })
     }
@@ -202,25 +250,99 @@ impl RaftSpaceAccess {
             .collect()
     }
 
-    auto_impl! {
-        pub fn persist_raft_id(&self, insert raft_id: RaftId) -> _;
-        pub fn persist_instance_id(&self, insert instance_id: &str) -> _;
-        pub fn persist_cluster_id(&self, insert cluster_id: &str) -> _;
+    #[inline(always)]
+    pub fn persist_raft_id(&self, raft_id: RaftId) -> tarantool::Result<()> {
+        self.space_raft_state.insert(&("raft_id", raft_id))?;
+        Ok(())
+    }
 
-        pub fn persist_gen(&self, replace gen: u64) -> _;
-        fn persist_term(&self, replace term: RaftTerm) -> _;
-        fn persist_vote(&self, replace vote: RaftId) -> _;
-        pub fn persist_commit(&self, replace commit: RaftIndex) -> _;
-        pub fn persist_applied(&self, replace applied: RaftIndex) -> _;
+    #[inline(always)]
+    pub fn persist_instance_id(&self, instance_id: &InstanceId) -> tarantool::Result<()> {
+        self.space_raft_state
+            .insert(&("instance_id", instance_id))?;
+        Ok(())
+    }
 
-        fn persist_voters(&self, replace voters: &[RaftId]) -> _;
-        fn persist_learners(&self, replace learners: &[RaftId]) -> _;
-        fn persist_voters_outgoing(&self, replace voters_outgoing: &[RaftId]) -> _;
-        fn persist_learners_next(&self, replace learners_next: &[RaftId]) -> _;
-        fn persist_auto_leave(&self, replace auto_leave: bool) -> _;
+    #[inline(always)]
+    pub fn persist_cluster_id(&self, cluster_id: &str) -> tarantool::Result<()> {
+        self.space_raft_state.insert(&("cluster_id", cluster_id))?;
+        Ok(())
+    }
 
-        fn persist_compacted_term(&self, replace compacted_term: RaftTerm) -> _;
-        fn persist_compacted_index(&self, replace compacted_index: RaftTerm) -> _;
+    #[inline(always)]
+    pub fn persist_gen(&self, gen: u64) -> tarantool::Result<()> {
+        self.space_raft_state.replace(&("gen", gen))?;
+        Ok(())
+    }
+
+    #[inline(always)]
+    fn persist_term(&self, term: RaftTerm) -> tarantool::Result<()> {
+        self.space_raft_state.replace(&("term", term))?;
+        Ok(())
+    }
+
+    #[inline(always)]
+    fn persist_vote(&self, vote: RaftId) -> tarantool::Result<()> {
+        self.space_raft_state.replace(&("vote", vote))?;
+        Ok(())
+    }
+
+    #[inline(always)]
+    pub fn persist_commit(&self, commit: RaftId) -> tarantool::Result<()> {
+        self.space_raft_state.replace(&("commit", commit))?;
+        Ok(())
+    }
+
+    #[inline(always)]
+    pub fn persist_applied(&self, applied: RaftId) -> tarantool::Result<()> {
+        self.space_raft_state.replace(&("applied", applied))?;
+        Ok(())
+    }
+
+    #[inline(always)]
+    fn persist_voters(&self, voters: &[RaftId]) -> tarantool::Result<()> {
+        self.space_raft_state.replace(&("voters", voters))?;
+        Ok(())
+    }
+
+    #[inline(always)]
+    fn persist_learners(&self, learners: &[RaftId]) -> tarantool::Result<()> {
+        self.space_raft_state.replace(&("learners", learners))?;
+        Ok(())
+    }
+
+    #[inline(always)]
+    fn persist_voters_outgoing(&self, voters_outgoing: &[RaftId]) -> tarantool::Result<()> {
+        self.space_raft_state
+            .replace(&("voters_outgoing", voters_outgoing))?;
+        Ok(())
+    }
+
+    #[inline(always)]
+    fn persist_learners_next(&self, learners_next: &[RaftId]) -> tarantool::Result<()> {
+        self.space_raft_state
+            .replace(&("learners_next", learners_next))?;
+        Ok(())
+    }
+
+    #[inline(always)]
+    fn persist_auto_leave(&self, auto_leave: bool) -> tarantool::Result<()> {
+        self.space_raft_state.replace(&("auto_leave", auto_leave))?;
+        Ok(())
+    }
+
+    #[inline(always)]
+    fn persist_compacted_term(&self, compacted_term: RaftTerm) -> tarantool::Result<()> {
+        self.space_raft_state
+            .replace(&("compacted_term", compacted_term))?;
+        Ok(())
+    }
+
+    #[inline(always)]
+    fn persist_compacted_index(&self, compacted_index: RaftTerm) -> tarantool::Result<()> {
+        self.space_raft_state
+            .replace(&("compacted_index", compacted_index))?;
+        Ok(())
     }
 
     /// Persists the `ConfState` (voters, learners, etc.).
@@ -281,14 +403,14 @@ impl RaftSpaceAccess {
         // before applying the snapshot
         self.compact_log(meta.index + 1)?;
 
-        let compacted_index = self.compacted_index()?.unwrap_or(0);
+        let compacted_index = self.compacted_index()?;
         assert!(meta.index > compacted_index);
         // We must set these explicitly, because compact_log only sets them to
         // the coordinates of the last entry which was in our log.
         self.persist_compacted_term(meta.term)?;
         self.persist_compacted_index(meta.index)?;
 
-        let applied = self.applied()?.unwrap_or(0);
+        let applied = self.applied()?;
         assert!(meta.index > applied);
         self.persist_applied(meta.index)?;
         self.persist_conf_state(meta.get_conf_state())?;
@@ -315,14 +437,14 @@ impl RaftSpaceAccess {
         debug_assert!(unsafe { tarantool::ffi::tarantool::box_txn() });
 
         // We cannot drop entries, which weren't commited yet
-        let commit = self.commit()?.expect("is always present");
+        let commit = self.commit()?;
         let up_to = up_to.min(commit + 1);
 
         // IteratorType::LT means tuples are returned in descending order
         let mut iter = self.space_raft_log.select(IteratorType::LT, &(up_to,))?;
 
         let Some(tuple) = iter.next() else {
-            let compacted_index = self.compacted_index()?.unwrap_or(0);
+            let compacted_index = self.compacted_index()?;
             return Ok(1 + compacted_index);
         };
 
@@ -385,7 +507,7 @@ impl raft::Storage for RaftSpaceAccess {
         high: RaftIndex,
         _max_size: impl Into<Option<u64>>,
     ) -> Result<Vec<raft::Entry>, RaftError> {
-        if low <= self.compacted_index().cvt_err()?.unwrap_or(0) {
+        if low <= self.compacted_index().cvt_err()? {
             return Err(RaftError::Store(StorageError::Compacted));
         }
 
@@ -413,8 +535,8 @@ impl raft::Storage for RaftSpaceAccess {
     ///     https://github.com/tikv/raft-rs/blob/v0.6.0/src/raft_log.rs#L134
     ///
     fn term(&self, idx: RaftIndex) -> Result<RaftTerm, RaftError> {
-        let compacted_index = self.compacted_index().cvt_err()?.unwrap_or(0);
-        let compacted_term = self.compacted_term().cvt_err()?.unwrap_or(0);
+        let compacted_index = self.compacted_index().cvt_err()?;
+        let compacted_term = self.compacted_term().cvt_err()?;
 
         match idx.cmp(&compacted_index) {
             Ordering::Less => return Err(RaftError::Store(StorageError::Compacted)),
@@ -442,7 +564,7 @@ impl raft::Storage for RaftSpaceAccess {
     /// Empty log is considered compacted at index 0 with term 0.
     ///
     fn first_index(&self) -> Result<RaftIndex, RaftError> {
-        let compacted_index = self.compacted_index().cvt_err()?.unwrap_or(0);
+        let compacted_index = self.compacted_index().cvt_err()?;
         Ok(1 + compacted_index)
     }
 
@@ -462,12 +584,12 @@ impl raft::Storage for RaftSpaceAccess {
                 .cvt_err()?
                 .expect("index is non-nullabe"))
         } else {
-            Ok(self.compacted_index().cvt_err()?.unwrap_or(0))
+            Ok(self.compacted_index().cvt_err()?)
         }
     }
 
     fn snapshot(&self, idx: RaftIndex) -> Result<raft::Snapshot, RaftError> {
-        let applied = self.applied().cvt_err()?.unwrap_or(0);
+        let applied = self.applied().cvt_err()?;
         if applied < idx {
             crate::warn_or_panic!(
                 "requested snapshot for index {idx} greater than applied {applied}"
@@ -479,7 +601,7 @@ impl raft::Storage for RaftSpaceAccess {
 
         let meta = snapshot.mut_metadata();
         meta.index = applied;
-        meta.term = self.term().cvt_err()?.expect("never None");
+        meta.term = self.term().cvt_err()?;
         *meta.mut_conf_state() = self.conf_state().cvt_err()?;
 
         let snapshot_data = crate::storage::Clusterwide::snapshot_data().cvt_err()?;
@@ -763,11 +885,9 @@ mod tests {
         let storage = RaftSpaceAccess::new().unwrap();
         let raft_state = Space::find(RaftSpaceAccess::SPACE_RAFT_STATE).unwrap();
 
-        assert_eq!(storage.cluster_id().unwrap(), None);
-
         storage.persist_cluster_id("test_cluster").unwrap();
         storage.persist_cluster_id("test_cluster_2").unwrap_err();
-        assert_eq!(storage.cluster_id().unwrap(), Some("test_cluster".into()));
+        assert_eq!(storage.cluster_id().unwrap(), "test_cluster".to_string());
 
         raft_state.delete(&("id",)).unwrap();
         assert_eq!(storage.raft_id().unwrap(), None);
@@ -781,16 +901,6 @@ mod tests {
                 " Duplicate key exists in unique index \"pk\" in space \"_raft_state\"",
                 " with old tuple - [\"raft_id\", 16]",
                 " and new tuple - [\"raft_id\", 32]"
-            )
-        );
-
-        raft_state.primary_key().drop().unwrap();
-        assert_err!(
-            storage.term(),
-            concat!(
-                "Tarantool error:",
-                " NoSuchIndexID:",
-                " No index #0 is defined in space '_raft_state'"
             )
         );
 
