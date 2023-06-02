@@ -762,18 +762,6 @@ impl NodeImpl {
             })?;
 
             match apply_entry_result {
-                WaitVclockAndRetry => {
-                    if let Err(e) = self.check_vclock_and_sleep() {
-                        let timeout = MainLoop::TICK;
-                        tlog!(
-                            Warning,
-                            "failed syncing with replication master: {e}, retrying in {:?}...",
-                            timeout
-                        );
-                        fiber::sleep(timeout);
-                    }
-                    continue;
-                }
                 SleepAndRetry => {
                     let timeout = MainLoop::TICK * 4;
                     fiber::sleep(timeout);
@@ -868,7 +856,7 @@ impl NodeImpl {
                 // This instance is catching up to the cluster.
                 if v_local < pending_version {
                     if self.is_readonly() {
-                        return WaitVclockAndRetry;
+                        return SleepAndRetry;
                     } else {
                         let resp = rpc::ddl_apply::apply_schema_change(
                             &self.storage,
@@ -936,7 +924,7 @@ impl NodeImpl {
                 // even after an DdlAbort
                 if v_local == pending_version {
                     if self.is_readonly() {
-                        return WaitVclockAndRetry;
+                        return SleepAndRetry;
                     } else {
                         let v_global = storage_properties
                             .global_schema_version()
@@ -1305,16 +1293,8 @@ impl NodeImpl {
                     return None;
                 }
 
-                if let Err(e) = self.check_vclock_and_sleep() {
-                    let timeout = MainLoop::TICK;
-                    tlog!(
-                        Warning,
-                        "failed syncing with replication master: {e}, retrying in {:?}...",
-                        timeout
-                    );
-                    fiber::sleep(timeout);
-                }
-                continue;
+                let timeout = MainLoop::TICK * 4;
+                fiber::sleep(timeout);
             }
 
             Some(snapshot_data)
@@ -1433,6 +1413,7 @@ impl NodeImpl {
         self.raw_node.advance_apply();
     }
 
+    #[allow(dead_code)]
     fn check_vclock_and_sleep(&mut self) -> traft::Result<()> {
         assert!(self.raw_node.raft.state != RaftStateRole::Leader);
         let my_id = self.raw_node.raft.id;
@@ -1507,9 +1488,6 @@ impl NodeImpl {
 /// done as result of attempting to apply a given entry.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ApplyEntryResult {
-    /// This is a replica and it needs to sync with replicaset master.
-    WaitVclockAndRetry,
-
     /// This entry failed to apply for some reason, and must be retried later.
     SleepAndRetry,
 
