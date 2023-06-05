@@ -213,7 +213,6 @@ fn build_tarantool(build_root: &Path) {
         "core",
         "small",
         "msgpuck",
-        "crypto",
         "vclock",
         "bit",
         "swim",
@@ -232,6 +231,9 @@ fn build_tarantool(build_root: &Path) {
         rustc::link_search(format!("{b}/{tarantool_prefix}/src/lib/{l}"));
         rustc::link_lib_static(l);
     }
+
+    rustc::link_search(format!("{b}/{tarantool_prefix}/src/lib/crypto"));
+    rustc::link_lib_static("tcrypto");
 
     rustc::link_search(format!("{b}/{tarantool_prefix}"));
     rustc::link_search(format!("{b}/{tarantool_prefix}/src"));
@@ -301,20 +303,9 @@ fn build_tarantool(build_root: &Path) {
     rustc::link_search(format!("{b}/{tarantool_prefix}/build/ares/dest/lib"));
     rustc::link_lib_static("cares");
 
-    // `openssl-prefix/lib/libcrypto.a` conflicts with
-    // `src/lib/crypto/libcrypto.a` by name when passed as `-lcrypto`
-    // link argument. So we symlink it into `libcrypto-ssl.a` and pass
-    // as `-lcrypto-ssl`.
-    let openssl_dir = build_dir.join("openssl-prefix/lib");
-    let symlink = openssl_dir.join("libcrypto-ssl.a");
-
-    if !symlink.exists() {
-        std::os::unix::fs::symlink("libcrypto.a", symlink).unwrap();
-    }
-
     rustc::link_search(format!("{b}/openssl-prefix/lib"));
     rustc::link_lib_static("ssl");
-    rustc::link_lib_static("crypto-ssl");
+    rustc::link_lib_static("crypto");
 
     rustc::link_search(format!("{b}/ncurses-prefix/lib"));
     rustc::link_lib_static("tinfo");
