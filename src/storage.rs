@@ -1671,6 +1671,29 @@ impl ToEntryIter for Indexes {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// ddl meta
+////////////////////////////////////////////////////////////////////////////////
+
+/// Updates the field `"operable"` for a space with id `space_id` and any
+/// necessary entities (currently all existing indexes).
+///
+/// This function is called when applying the different ddl operations.
+pub fn ddl_meta_space_update_operable(
+    storage: &Clusterwide,
+    space_id: SpaceId,
+    operable: bool,
+) -> traft::Result<()> {
+    storage.spaces.update_operable(space_id, operable)?;
+    let iter = storage.indexes.by_space_id(space_id)?;
+    for index in iter {
+        storage
+            .indexes
+            .update_operable(index.space_id, index.id, operable)?;
+    }
+    Ok(())
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // ddl
 ////////////////////////////////////////////////////////////////////////////////
 

@@ -13,10 +13,10 @@ use crate::loop_start;
 use crate::r#loop::FlowControl;
 use crate::rpc;
 use crate::schema::{Distribution, IndexDef, SpaceDef};
-use crate::storage::ddl_abort_on_master;
 use crate::storage::local_schema_version;
 use crate::storage::SnapshotData;
 use crate::storage::ToEntryIter as _;
+use crate::storage::{ddl_abort_on_master, ddl_meta_space_update_operable};
 use crate::storage::{Clusterwide, ClusterwideSpaceId, PropertyName};
 use crate::stringify_cfunc;
 use crate::sync;
@@ -881,21 +881,8 @@ impl NodeImpl {
                 // Update pico metadata.
                 match ddl {
                     Ddl::CreateSpace { id, .. } => {
-                        self.storage
-                            .spaces
-                            .update_operable(id, true)
-                            .expect("storage error");
-                        self.storage
-                            .indexes
-                            .update_operable(id, 0, true)
-                            .expect("storage error");
-                        // For now we just assume that during space creation index with id 1
-                        // exists if and only if it is a bucket_id index.
-                        let res = self.storage.indexes.update_operable(id, 1, true);
-                        // TODO: maybe we should first check if this index
-                        // exists or check the space definition if this should
-                        // be done, but for now we just ignore the error "no such index"
-                        let _ = res;
+                        ddl_meta_space_update_operable(&self.storage, id, true)
+                            .expect("storage shouldn't fail");
                     }
 
                     Ddl::DropSpace { id } => {
@@ -962,21 +949,8 @@ impl NodeImpl {
                     }
 
                     Ddl::DropSpace { id } => {
-                        self.storage
-                            .spaces
-                            .update_operable(id, true)
-                            .expect("storage should never fail");
-                        let iter = self
-                            .storage
-                            .indexes
-                            .by_space_id(id)
-                            .expect("storage should never fail");
-                        for index in iter {
-                            self.storage
-                                .indexes
-                                .update_operable(index.space_id, index.id, true)
-                                .expect("storage should never fail");
-                        }
+                        ddl_meta_space_update_operable(&self.storage, id, true)
+                            .expect("storage shouldn't fail");
                     }
 
                     _ => {
@@ -1159,21 +1133,8 @@ impl NodeImpl {
             }
 
             Ddl::DropSpace { id } => {
-                self.storage
-                    .spaces
-                    .update_operable(id, false)
-                    .expect("storage should never fail");
-                let iter = self
-                    .storage
-                    .indexes
-                    .by_space_id(id)
-                    .expect("storage should never fail");
-                for index in iter {
-                    self.storage
-                        .indexes
-                        .update_operable(index.space_id, index.id, false)
-                        .expect("storage should never fail");
-                }
+                ddl_meta_space_update_operable(&self.storage, id, false)
+                    .expect("storage shouldn't fail");
             }
 
             Ddl::DropIndex { index_id, space_id } => {
