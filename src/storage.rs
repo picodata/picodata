@@ -1693,6 +1693,18 @@ pub fn ddl_meta_space_update_operable(
     Ok(())
 }
 
+/// Deletes the picodata internal metadata for a space with id `space_id`.
+///
+/// This function is called when applying the different ddl operations.
+pub fn ddl_meta_drop_space(storage: &Clusterwide, space_id: SpaceId) -> traft::Result<()> {
+    storage.spaces.delete(space_id)?;
+    let iter = storage.indexes.by_space_id(space_id)?;
+    for index in iter {
+        storage.indexes.delete(index.space_id, index.id)?;
+    }
+    Ok(())
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // ddl
 ////////////////////////////////////////////////////////////////////////////////

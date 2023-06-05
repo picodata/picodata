@@ -13,6 +13,7 @@ use crate::loop_start;
 use crate::r#loop::FlowControl;
 use crate::rpc;
 use crate::schema::{Distribution, IndexDef, SpaceDef};
+use crate::storage::ddl_meta_drop_space;
 use crate::storage::local_schema_version;
 use crate::storage::SnapshotData;
 use crate::storage::ToEntryIter as _;
@@ -886,21 +887,7 @@ impl NodeImpl {
                     }
 
                     Ddl::DropSpace { id } => {
-                        self.storage
-                            .spaces
-                            .delete(id)
-                            .expect("storage should never fail");
-                        let iter = self
-                            .storage
-                            .indexes
-                            .by_space_id(id)
-                            .expect("storage should never fail");
-                        for index in iter {
-                            self.storage
-                                .indexes
-                                .delete(index.space_id, index.id)
-                                .expect("storage should never fail");
-                        }
+                        ddl_meta_drop_space(&self.storage, id).expect("storage shouldn't fail");
                     }
 
                     _ => {
@@ -944,8 +931,7 @@ impl NodeImpl {
                 // Update pico metadata.
                 match ddl {
                     Ddl::CreateSpace { id, .. } => {
-                        self.storage.indexes.delete(id, 0).expect("storage error");
-                        self.storage.spaces.delete(id).expect("storage error");
+                        ddl_meta_drop_space(&self.storage, id).expect("storage shouldn't fail");
                     }
 
                     Ddl::DropSpace { id } => {

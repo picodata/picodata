@@ -430,6 +430,72 @@ def test_ddl_create_space_unfinished_from_snapshot(cluster: Cluster):
 
 
 ################################################################################
+def test_ddl_create_space_abort(cluster: Cluster):
+    i1, i2, i3 = cluster.deploy(instance_count=3, init_replication_factor=1)
+
+    # Create a conflict to force ddl abort.
+    space_name = "space_name_conflict"
+    i3.eval("box.schema.space.create(...)", space_name)
+
+    # Terminate i3 so that other instances actually partially apply the ddl.
+    i3.terminate()
+
+    # Initiate ddl create space.
+    space_id = 887
+    index_fin = i1.propose_create_space(
+        dict(
+            id=space_id,
+            name=space_name,
+            format=[
+                dict(name="id", type="unsigned", is_nullable=False),
+            ],
+            primary_key=[dict(field="id")],
+            distribution=dict(
+                kind="sharded_implicitly",
+                sharding_key=["id"],
+                sharding_fn="murmur3",
+            ),
+        ),
+        wait_index=False,
+    )
+
+    index_prepare = index_fin - 1
+    i1.raft_wait_index(index_prepare)
+    i2.raft_wait_index(index_prepare)
+
+    def get_index_names(i, space_id):
+        return i.eval(
+            """
+            local space_id = ...
+            local res = box.space._pico_index:select({space_id})
+            for i, t in ipairs(res) do
+                res[i] = t.name
+            end
+            return res
+        """
+        )
+
+    assert i1.call("box.space._space:get", space_id) is not None
+    assert get_index_names(i1, space_id) == ["primary_key", "bucket_id"]
+    assert i2.call("box.space._space:get", space_id) is not None
+    assert get_index_names(i2, space_id) == ["primary_key", "bucket_id"]
+
+    # Wake the instance so that governor finds out there's a conflict
+    # and aborts the ddl op.
+    i3.start()
+    i3.wait_online()
+
+    # Everything was cleaned up.
+    assert i1.call("box.space._space:get", space_id) is None
+    assert i2.call("box.space._space:get", space_id) is None
+    assert i3.call("box.space._space:get", space_id) is None
+
+    assert get_index_names(i1, space_id) == []
+    assert get_index_names(i2, space_id) == []
+    assert get_index_names(i3, space_id) == []
+
+
+################################################################################
 def test_ddl_create_space_partial_failure(cluster: Cluster):
     # i2 & i3 are for quorum
     i1, i2, i3, i4, i5 = cluster.deploy(instance_count=5)
