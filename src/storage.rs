@@ -573,7 +573,7 @@ impl Clusterwide {
         // If we're not the replication master, the rest of the data will come
         // via tarantool replication.
         if is_master {
-            self.apply_ddl_changes_on_replicaset_master(&old_space_versions)?;
+            self.apply_ddl_changes_on_master(&old_space_versions)?;
             set_local_schema_version(data.schema_version)?;
         }
 
@@ -596,7 +596,7 @@ impl Clusterwide {
         Ok(())
     }
 
-    pub fn apply_ddl_changes_on_replicaset_master(
+    pub fn apply_ddl_changes_on_master(
         &self,
         old_space_versions: &HashMap<SpaceId, u64>,
     ) -> traft::Result<()> {

@@ -863,7 +863,7 @@ impl NodeImpl {
             }
             Op::DdlCommit => {
                 let v_local = local_schema_version().expect("storage error");
-                let pending_version = storage_properties
+                let v_pending = storage_properties
                     .pending_schema_version()
                     .expect("storage error")
                     .expect("granted we don't mess up log compaction, this should not be None");
@@ -873,7 +873,7 @@ impl NodeImpl {
                     .expect("granted we don't mess up log compaction, this should not be None");
 
                 // This instance is catching up to the cluster.
-                if v_local < pending_version {
+                if v_local < v_pending {
                     if self.is_readonly() {
                         return SleepAndRetry;
                     } else {
@@ -881,7 +881,7 @@ impl NodeImpl {
                         let resp = rpc::ddl_apply::apply_schema_change(
                             &self.storage,
                             &ddl,
-                            pending_version,
+                            v_pending,
                             true,
                         )
                         .expect("storage error");
@@ -920,12 +920,12 @@ impl NodeImpl {
                     .delete(PropertyName::PendingSchemaVersion)
                     .expect("storage error");
                 storage_properties
-                    .put(PropertyName::GlobalSchemaVersion, &pending_version)
+                    .put(PropertyName::GlobalSchemaVersion, &v_pending)
                     .expect("storage error");
             }
             Op::DdlAbort => {
                 let v_local = local_schema_version().expect("storage error");
-                let pending_version: u64 = storage_properties
+                let v_pending: u64 = storage_properties
                     .pending_schema_version()
                     .expect("storage error")
                     .expect("granted we don't mess up log compaction, this should not be None");
@@ -935,7 +935,7 @@ impl NodeImpl {
                     .expect("granted we don't mess up log compaction, this should not be None");
                 // This condition means, schema versions must always increase
                 // even after an DdlAbort
-                if v_local == pending_version {
+                if v_local == v_pending {
                     if self.is_readonly() {
                         return SleepAndRetry;
                     } else {
