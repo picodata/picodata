@@ -1,4 +1,4 @@
-use crate::schema::Distribution;
+use crate::schema::{Distribution, UserDef};
 use crate::storage::space_by_name;
 use crate::storage::Clusterwide;
 use ::tarantool::index::{IndexId, Part};
@@ -45,6 +45,8 @@ pub enum Op {
     ///
     /// Only one pending DDL operation can exist at the same time.
     DdlAbort,
+    /// Cluster-wide access control list change operation.
+    Acl { schema_version: u64, acl: Acl },
 }
 
 impl std::fmt::Display for Op {
@@ -109,6 +111,16 @@ impl std::fmt::Display for Op {
             }
             Self::DdlCommit => write!(f, "DdlCommit"),
             Self::DdlAbort => write!(f, "DdlAbort"),
+            Self::Acl {
+                schema_version,
+                acl: Acl::CreateUser { user_def },
+            } => {
+                write!(
+                    f,
+                    r#"CreateUser({schema_version}, {}, "{}")"#,
+                    user_def.id, user_def.name,
+                )
+            }
         };
 
         struct DisplayAsJson<T>(pub T);
@@ -393,6 +405,18 @@ impl DdlBuilder {
             ddl: op,
         }
     }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Acl
+////////////////////////////////////////////////////////////////////////////////
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+#[serde(tag = "op_kind")]
+pub enum Acl {
+    /// Create a tarantool user. Grant it default privileges.
+    CreateUser { user_def: UserDef },
 }
 
 mod vec_of_raw_byte_buf {

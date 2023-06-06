@@ -25,6 +25,10 @@ use crate::traft::op::{Ddl, DdlBuilder, Op};
 use crate::traft::{self, event, node, RaftIndex};
 use crate::util::instant_saturating_add;
 
+////////////////////////////////////////////////////////////////////////////////
+// SpaceDef
+////////////////////////////////////////////////////////////////////////////////
+
 /// Space definition.
 ///
 /// Describes a user-defined space.
@@ -81,6 +85,10 @@ impl SpaceDef {
     }
 }
 
+////////////////////////////////////////////////////////////////////////////////
+// Distribution
+////////////////////////////////////////////////////////////////////////////////
+
 /// Defines how to distribute tuples in a space across replicasets.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, LuaRead)]
 #[serde(rename_all = "snake_case")]
@@ -121,6 +129,10 @@ fn default_bucket_id_field() -> String {
     }
 }
 
+////////////////////////////////////////////////////////////////////////////////
+// IndexDef
+////////////////////////////////////////////////////////////////////////////////
+
 /// Index definition.
 ///
 /// Describes a user-defined index.
@@ -159,6 +171,46 @@ impl IndexDef {
         index_meta
     }
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// UserDef
+////////////////////////////////////////////////////////////////////////////////
+
+/// User definition.
+///
+/// Describes a user-defined index.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct UserDef {
+    pub id: UserId,
+    pub name: String,
+    pub schema_version: u64,
+    pub auth: AuthDef,
+}
+
+pub type UserId = u32;
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct AuthDef {
+    pub method: AuthMethod,
+    /// Base64 encoded digest.
+    pub data: String,
+}
+
+::tarantool::define_str_enum! {
+    pub enum AuthMethod {
+        ChapSha1 = "chap-sha1",
+    }
+}
+
+impl Encode for UserDef {}
+
+impl UserDef {
+    // TODO
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// ...
+////////////////////////////////////////////////////////////////////////////////
 
 // TODO: this should be a TryFrom in tarantool-module
 pub fn try_space_field_type_to_index_field_type(

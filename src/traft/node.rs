@@ -13,11 +13,14 @@ use crate::loop_start;
 use crate::r#loop::FlowControl;
 use crate::rpc;
 use crate::schema::{Distribution, IndexDef, SpaceDef};
+use crate::storage::acl_global_create_user;
 use crate::storage::ddl_meta_drop_space;
-use crate::storage::local_schema_version;
 use crate::storage::SnapshotData;
 use crate::storage::ToEntryIter as _;
+use crate::storage::ToEntryIter as _;
+use crate::storage::{acl_create_user_on_master, acl_drop_user_on_master};
 use crate::storage::{ddl_abort_on_master, ddl_meta_space_update_operable};
+use crate::storage::{local_schema_version, set_local_schema_version};
 use crate::storage::{Clusterwide, ClusterwideSpaceId, PropertyName};
 use crate::stringify_cfunc;
 use crate::sync;
@@ -27,7 +30,7 @@ use crate::traft::error::Error;
 use crate::traft::event;
 use crate::traft::event::Event;
 use crate::traft::notify::{notification, Notifier, Notify};
-use crate::traft::op::{Ddl, Dml, Op, OpResult};
+use crate::traft::op::{Acl, Ddl, Dml, Op, OpResult};
 use crate::traft::Address;
 use crate::traft::ConnectionPool;
 use crate::traft::ContextCoercion as _;
@@ -967,6 +970,34 @@ impl NodeImpl {
                     .expect("storage error");
                 storage_properties
                     .delete(PropertyName::PendingSchemaVersion)
+                    .expect("storage error");
+            }
+
+            Op::Acl {
+                schema_version,
+                acl: Acl::CreateUser { user_def },
+            } => {
+                let v_local = local_schema_version().expect("storage error");
+                let v_pending = schema_version;
+                if v_local < v_pending {
+                    if self.is_readonly() {
+                        // Wait for tarantool replication with master to progress.
+                        return SleepAndRetry;
+                    } else {
+                        assert_eq!(user_def.schema_version, v_pending);
+                        acl_create_user_on_master(&user_def).expect("creating user shouldn't fail");
+                        set_local_schema_version(v_pending).expect("storage error");
+                    }
+                }
+
+                acl_global_create_user(&self.storage, &user_def)
+                    .expect("persisting a user definition shouldn't fail");
+
+                storage_properties
+                    .put(PropertyName::GlobalSchemaVersion, &v_pending)
+                    .expect("storage error");
+                storage_properties
+                    .put(PropertyName::NextSchemaVersion, &(v_pending + 1))
                     .expect("storage error");
             }
         }

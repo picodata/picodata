@@ -26,8 +26,11 @@ use tarantool::tuple::{KeyDef, ToTupleBuffer, Tuple, TupleBuffer};
 
 use once_cell::sync::Lazy;
 
-const PROHIBITED_SPACES: &[ClusterwideSpaceId] =
-    &[ClusterwideSpaceId::Space, ClusterwideSpaceId::Index];
+const PROHIBITED_SPACES: &[ClusterwideSpaceId] = &[
+    ClusterwideSpaceId::Space,
+    ClusterwideSpaceId::Index,
+    ClusterwideSpaceId::User,
+];
 
 /// Performs a clusterwide compare and swap operation.
 ///
@@ -368,7 +371,7 @@ impl Predicate {
                         return Err(error());
                     }
                 }
-                Op::DdlPrepare { .. } | Op::DdlCommit | Op::DdlAbort => {
+                Op::DdlPrepare { .. } | Op::DdlCommit | Op::DdlAbort | Op::Acl { .. } => {
                     let key_def = storage.key_def_for_key(space, 0)?;
                     for key in ddl_keys.iter() {
                         if range.contains(&key_def, key) {
@@ -547,7 +550,7 @@ impl Bound {
 fn space(op: &Op) -> Option<SpaceId> {
     match op {
         Op::Dml(dml) => Some(dml.space()),
-        Op::DdlPrepare { .. } | Op::DdlCommit | Op::DdlAbort => {
+        Op::DdlPrepare { .. } | Op::DdlCommit | Op::DdlAbort | Op::Acl { .. } => {
             Some(ClusterwideSpaceId::Property.into())
         }
         Op::Nop => None,

@@ -3,6 +3,7 @@ use ::tarantool::index::{Index, IndexId, IndexIterator, IteratorType};
 use ::tarantool::msgpack::{ArrayWriter, ValueIter};
 use ::tarantool::space::UpdateOps;
 use ::tarantool::space::{FieldType, Space, SpaceId, SystemSpace};
+use ::tarantool::tlua::{self, LuaError};
 use ::tarantool::tuple::KeyDef;
 use ::tarantool::tuple::{Decode, DecodeOwned, Encode};
 use ::tarantool::tuple::{RawBytes, ToTupleBuffer, Tuple, TupleBuffer};
@@ -10,7 +11,7 @@ use ::tarantool::tuple::{RawBytes, ToTupleBuffer, Tuple, TupleBuffer};
 use crate::failure_domain as fd;
 use crate::instance::{self, grade, Instance};
 use crate::replicaset::{Replicaset, ReplicasetId};
-use crate::schema::{Distribution, IndexDef, SpaceDef};
+use crate::schema::{Distribution, IndexDef, SpaceDef, UserDef, UserId};
 use crate::tlog;
 use crate::traft;
 use crate::traft::error::Error;
@@ -475,6 +476,21 @@ define_clusterwide_spaces! {
             #[allow(clippy::enum_variant_names)]
             pub enum SpaceIndexIndex;
         }
+        User = 520, "_pico_user" => {
+            Clusterwide::users;
+
+            /// A struct for accessing info of all the user-defined users.
+            pub struct Users {
+                space: Space,
+                #[primary]
+                index_id: Index => Id = "id",
+                index_name: Index => Name = "name",
+            }
+
+            /// An enumeration of indexes defined for "_pico_user".
+            #[allow(clippy::enum_variant_names)]
+            pub enum SpaceUserIndex;
+        }
     }
 
     /// An index of a clusterwide space.
@@ -550,10 +566,15 @@ impl Clusterwide {
     pub fn apply_snapshot_data(&self, data: &SnapshotData, is_master: bool) -> Result<()> {
         debug_assert!(unsafe { ::tarantool::ffi::tarantool::box_txn() });
 
-        // We need to save these before truncating _pico_space.
+        // These need to be saved before we truncate the corresponding space.
         let mut old_space_versions: HashMap<SpaceId, u64> = HashMap::new();
         for space_def in self.spaces.iter()? {
             old_space_versions.insert(space_def.id, space_def.schema_version);
+        }
+
+        let mut old_user_versions = HashMap::new();
+        for user_def in self.users.iter()? {
+            old_user_versions.insert(user_def.id, user_def.schema_version);
         }
 
         let mut dont_exist_yet = Vec::new();
@@ -574,6 +595,7 @@ impl Clusterwide {
         // via tarantool replication.
         if is_master {
             self.apply_ddl_changes_on_master(&old_space_versions)?;
+            self.apply_acl_changes_on_master(&old_user_versions)?;
             set_local_schema_version(data.schema_version)?;
         }
 
@@ -666,6 +688,52 @@ impl Clusterwide {
         }
 
         // TODO: secondary indexes
+
+        Ok(())
+    }
+
+    pub fn apply_acl_changes_on_master(
+        &self,
+        old_user_versions: &HashMap<UserId, u64>,
+    ) -> traft::Result<()> {
+        let mut user_defs = Vec::new();
+        let mut new_user_ids = HashSet::new();
+        for user_def in self.users.iter()? {
+            new_user_ids.insert(user_def.id);
+            user_defs.push(user_def);
+        }
+
+        // First we drop all users which have been dropped.
+        for &old_user_id in old_user_versions.keys() {
+            if new_user_ids.contains(&old_user_id) {
+                // Will be handled later.
+                continue;
+            }
+
+            // User was dropped.
+            acl_drop_user_on_master(old_user_id)?;
+        }
+
+        // Now create any new users, or replace ones that changed.
+        for user_def in &user_defs {
+            let user_id = user_def.id;
+            if let Some(&v_old) = old_user_versions.get(&user_id) {
+                let v_new = user_def.schema_version;
+                assert!(v_old <= v_new);
+
+                if v_old == v_new {
+                    // User def is up to date.
+                    continue;
+                }
+
+                // User def changed, need to drop it and recreate.
+                acl_drop_user_on_master(user_id)?;
+            } else {
+                // New user.
+            }
+
+            acl_create_user_on_master(user_def)?;
+        }
 
         Ok(())
     }
@@ -1846,6 +1914,154 @@ pub fn ddl_drop_space_on_master(space_id: SpaceId) -> traft::Result<Option<TntEr
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// Users
+////////////////////////////////////////////////////////////////////////////////
+
+impl Users {
+    pub fn new() -> tarantool::Result<Self> {
+        let space = Space::builder(Self::SPACE_NAME)
+            .id(Self::SPACE_ID)
+            .is_local(true)
+            .is_temporary(false)
+            .field(("id", FieldType::Unsigned))
+            .field(("name", FieldType::String))
+            .field(("schema_version", FieldType::Unsigned))
+            .field(("auth", FieldType::Array))
+            .if_not_exists(true)
+            .create()?;
+
+        let index_id = space
+            .index_builder(IndexOf::<Self>::Id.as_str())
+            .unique(true)
+            .part("id")
+            .if_not_exists(true)
+            .create()?;
+
+        let index_name = space
+            .index_builder(IndexOf::<Self>::Name.as_str())
+            .unique(true)
+            .part("name")
+            .if_not_exists(true)
+            .create()?;
+
+        Ok(Self {
+            space,
+            index_id,
+            index_name,
+        })
+    }
+
+    #[inline]
+    pub fn by_id(&self, user_id: UserId) -> tarantool::Result<Option<UserDef>> {
+        let tuple = self.space.get(&[user_id])?;
+        let mut res = None;
+        if let Some(tuple) = tuple {
+            res = Some(tuple.decode()?);
+        }
+        Ok(res)
+    }
+
+    #[inline]
+    pub fn by_name(&self, user_name: &str) -> tarantool::Result<Option<UserDef>> {
+        let tuple = self.index_name.get(&[user_name])?;
+        let mut res = None;
+        if let Some(tuple) = tuple {
+            res = Some(tuple.decode()?);
+        }
+        Ok(res)
+    }
+
+    #[inline]
+    pub fn replace(&self, user_def: &UserDef) -> tarantool::Result<()> {
+        self.space.replace(user_def)?;
+        Ok(())
+    }
+
+    #[inline]
+    pub fn insert(&self, user_def: &UserDef) -> tarantool::Result<()> {
+        self.space.insert(user_def)?;
+        Ok(())
+    }
+}
+
+impl ToEntryIter for Users {
+    type Entry = UserDef;
+
+    #[inline(always)]
+    fn index_iter(&self) -> Result<IndexIterator> {
+        Ok(self.space.select(IteratorType::All, &())?)
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// acl global
+////////////////////////////////////////////////////////////////////////////////
+
+/// Persist a user definition in the internal clusterwide storage.
+pub fn acl_global_create_user(storage: &Clusterwide, user_def: &UserDef) -> tarantool::Result<()> {
+    storage.users.insert(user_def)?;
+    Ok(())
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// acl
+////////////////////////////////////////////////////////////////////////////////
+
+/// Create a tarantool user. Grant it default privileges.
+pub fn acl_create_user_on_master(user_def: &UserDef) -> tarantool::Result<()> {
+    let sys_user = Space::from(SystemSpace::User);
+
+    // This impelemtation was copied from box.schema.user.create excluding the
+    // password hashing.
+    let user_id = user_def.id;
+    let euid = ::tarantool::session::euid()?;
+
+    // Tarantool expects auth info to be a map of form `{ method: data }`,
+    // and currently the simplest way to achieve this is to use a HashMap.
+    let auth_map = HashMap::from([(user_def.auth.method, &user_def.auth.data)]);
+    sys_user.insert(&(
+        user_id,
+        euid,
+        &user_def.name,
+        "user",
+        auth_map,
+        &[(); 0],
+        0,
+    ))?;
+
+    let lua = ::tarantool::lua_state();
+    lua.exec_with("box.schema.user.grant(...)", (user_id, "public"))
+        .map_err(LuaError::from)?;
+    lua.exec_with(
+        "box.schema.user.grant(...)",
+        (user_id, "alter", "user", user_id),
+    )
+    .map_err(LuaError::from)?;
+    lua.exec_with(
+        "box.session.su('admin', box.schema.user.grant, ...)",
+        (
+            user_id,
+            "session,usage",
+            "universe",
+            tlua::Nil,
+            tlua::AsTable((("if_not_exists", true),)),
+        ),
+    )
+    .map_err(LuaError::from)?;
+
+    Ok(())
+}
+
+/// Drop a tarantool user and any entities (spaces, etc.) owned by it.
+pub fn acl_drop_user_on_master(user_id: UserId) -> tarantool::Result<()> {
+    let lua = ::tarantool::lua_state();
+    lua.exec_with("box.schema.user.drop(...)", user_id)
+        .map_err(LuaError::from)?;
+
+    Ok(())
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // local schema version
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -2111,7 +2327,8 @@ mod tests {
         let snapshot_data = Clusterwide::snapshot_data().unwrap();
         let space_dumps = snapshot_data.space_dumps;
 
-        assert_eq!(space_dumps.len(), 6);
+        let n_internal_spaces = ClusterwideSpace::values().len();
+        assert_eq!(space_dumps.len(), n_internal_spaces);
 
         for space_dump in &space_dumps {
             match &space_dump.space_name {
@@ -2150,8 +2367,12 @@ mod tests {
                     let []: [(); 0] = Decode::decode(space_dump.tuples.as_ref()).unwrap();
                 }
 
-                _ => {
-                    unreachable!();
+                s if s == &*ClusterwideSpace::User => {
+                    let []: [(); 0] = Decode::decode(space_dump.tuples.as_ref()).unwrap();
+                }
+
+                s => {
+                    unreachable!("space dump for space '{s}'");
                 }
             }
         }
