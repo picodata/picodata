@@ -7,6 +7,9 @@
   (`box.info.vclock` Lua interface).
 - `vclock::Lsn` type alias for `u64` representing Tarantool log sequence number.
 
+### Fixed
+- Doc comments are no longer lost for functions marked with `#[proc]` attribute.
+
 # [1.0.0] May 29 2023
 
 ### Added

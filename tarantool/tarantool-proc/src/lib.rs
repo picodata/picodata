@@ -256,7 +256,9 @@ pub fn stored_proc(attr: TokenStream, item: TokenStream) -> TokenStream {
 
     let input = parse_macro_input!(item as Item);
 
-    let ItemFn { sig, block, .. } = match input {
+    let ItemFn {
+        sig, block, attrs, ..
+    } = match input {
         Item::Fn(f) => f,
         _ => panic!("only `fn` items can be stored procedures"),
     };
@@ -314,6 +316,7 @@ pub fn stored_proc(attr: TokenStream, item: TokenStream) -> TokenStream {
             #ident,
         );
 
+        #(#attrs)*
         #[no_mangle]
         pub unsafe extern "C" fn #ident (
             __tp_ctx: #tarantool::tuple::FunctionCtx,
