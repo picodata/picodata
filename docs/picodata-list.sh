@@ -12,3 +12,4 @@ return
 {instances = box.space._pico_instance:fselect()},
 {replicasets = box.space._pico_replicaset:fselect()}
 _SCRIPT_
+

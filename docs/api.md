@@ -138,9 +138,38 @@ tarantool> _G.pico.instance_info(i2)
   replicaset_id: r2
   advertise_address: localhost:3304
 ...
-
-
 ```
+
+### `expel` (function)
+
+```lua
+function expel("instance_id")
+```
+Выводит инстанс из кластера, но не завершает его работу. Может быть запущена только один раз для определенного инстанса.
+
+**Параметры**
+- `instance_id`: (_string_)
+
+**Пример**
+```
+pico.expel("i2") 
+```
+У функции нет непосредственно возвращаемых значений
+
+**Результат работы**
+
+На инстансе, с которого была вызвана функция, в консоли `stdout` появятся сообщения:
+```
+downgrading instance i2
+reconfiguring sharding
+```
+И далее для оставшихся в raft-группе инстансов сообщения вида:
+```
+calling rpc::sharding
+```
+Инстанс в состоянии `expelled` останется запущенным. При его перезапуске он не присоединится снова к raft-группе.
+
+
 ### `whoami` (function)
 
 ```lua
@@ -175,7 +204,7 @@ function cas({args},...)
 
 **Параметры**
 
-  `args`: (_string_ = '_string_' | {_table_} )
+ - `args`: (_string_ = '_string_' | {_table_} )
 
 **Пример**
 ```
