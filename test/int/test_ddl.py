@@ -7,9 +7,7 @@ def test_ddl_abort(cluster: Cluster):
 
     with pytest.raises(ReturnError) as e1:
         cluster.abort_ddl()
-    assert e1.value.args == (
-        "ddl failed: there is no pending ddl operation",
-    )
+    assert e1.value.args == ("ddl failed: there is no pending ddl operation",)
 
     # TODO: test manual abort when we have long-running ddls
 

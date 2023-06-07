@@ -1042,23 +1042,33 @@ class Cluster:
             stderr=subprocess.PIPE,
         )
 
+    def raft_wait_index(self, index: int, timeout: float = 3.0):
+        """
+        Waits for all peers to commit an entry with index `index`.
+        """
+        import time
+
+        deadline = time.time() + timeout
+        for instance in self.instances:
+            if instance.process is not None:
+                timeout = deadline - time.time()
+                if timeout < 0:
+                    timeout = 0
+                instance.raft_wait_index(index, timeout)
+
     def create_space(self, params: dict, timeout: float = 3.0):
         """
         Creates a space. Waits for all peers to be aware of it.
         """
         index = self.instances[0].create_space(params, timeout)
-        for instance in self.instances:
-            if instance.process is not None:
-                instance.raft_wait_index(index)
+        self.raft_wait_index(index, timeout)
 
     def abort_ddl(self, timeout: float = 3.0):
         """
         Aborts a pending ddl. Waits for all peers to be aware of it.
         """
         index = self.instances[0].abort_ddl(timeout)
-        for instance in self.instances:
-            if instance.process is not None:
-                instance.raft_wait_index(index)
+        self.raft_wait_index(index, timeout)
 
     def cas(
         self,
