@@ -88,7 +88,7 @@ box.space._pico_instance:fselect()
 
 ```
 
-Просмотр списка репликасетов, их UUID и веса (наполненности):
+Просмотр списка репликасетов, их UUID и веса (т.е. приоритета при распределении бакетов):
 ```
 box.space._pico_replicaset:fselect()
 ```
@@ -170,13 +170,13 @@ connected to localhost:3301
 1. Шардированные (_sharded_) — каждый репликасет хранит лишь часть
 общего набора данных. Данные реплицируются внутри репликасета.
 
-После подключения к инстансу кластера посредством команды picodata
-connect, начальным действием в пустом кластере будет создание первой
+После подключения к инстансу кластера посредством команды `picodata
+connect`, начальным действием в пустом кластере будет создание первой
 таблицы/space. Пусть это будет шаблон списка друзей Свинки Пеппы, в
 котором будет два поля: идентификатор записи и имя друга:
 
 ```
-pico.create_space({ name = 'Friends_of_Peppa', format = { {name='id', type='unsigned', is_nullable=false}, {name='name', type='string', is_nullable=true} }, primary_key = { 'id' }, distribution = 'global' }, 3.0)
+pico.create_space({ name = 'friends_of_peppa', format = { {name='id', type='unsigned', is_nullable=false}, {name='name', type='string', is_nullable=true} }, primary_key = { 'id' }, distribution = 'global' }, 3.0)
 ```
 
 Ключ _distribution_ отвечает за тип спейса. В примере указан глобальный
@@ -184,11 +184,12 @@ pico.create_space({ name = 'Friends_of_Peppa', format = { {name='id', type='unsi
 Значение “3.0” означает таймаут в секундах перед возвращением управления
 пользователю (т.к. действие производится на всем кластере, то оно может
 занять продолжительное время).
+Для ключа `type` допустимы следующие значения:  any | unsigned | string | integer | number | varbinary | boolean | double | decimal | uuid | array | map | scalar.
 
 Пример создания шардированного спейса:
 
 ```
-pico.create_space{ name = 'Friends_of_Peppa', format = { {name='id',
+pico.create_space{ name = 'friends_of_peppa', format = { {name='id',
 type='unsigned', is_nullable=false}, {name='name', type='string', is_nullable=true} }, primary_key = { 'id' },
 distribution = 'sharded', sharding_key = { 'id' }, timeout = 3.0 }
 ```
@@ -208,32 +209,32 @@ box.space._pico_property:get("current_schema_version")
 ## Запись данных в глобальный спейс
 В случае с глобальным спейсом, запись данных, т.е. вставка строк, происходит с помощью следующей команды:
 ```
-pico.cas({space = 'Friends_of_Peppa', kind = 'insert', tuple = {1, "Susie"} }, { index = box.space._raft_state:get('applied').value, term = box.space._raft_state:get('term').value, ranges = {} })
+pico.cas({space = 'friends_of_peppa', kind = 'insert', tuple = {1, "Susie"} }, { index = box.space._raft_state:get('applied').value, term = box.space._raft_state:get('term').value, ranges = {} })
 ```
 
 ## Запись данных в шардированный спейс
 Для записи данных в шардированный спейс можно использовать функцию записи из состава библиотеки _vshard_:
 ```
-vshard.router.callrw (1, "box.space.Friends_of_Peppa:insert", {{1, "Susie"}})
+vshard.router.callrw (1, "box.space.friends_of_peppa:insert", {{1, "Susie"}})
 ```
 Здесь первая и третья 1 — номер бакета, вторая — номер записи. Можно делать множество записей с разными номерами в один и тот же бакет. Пример для 4-й записи в 2000-м бакете:
 ```
-vshard.router.callrw (2000, "box.space.Friends_of_Peppa:insert", {{4, "Rebecca"}})
+vshard.router.callrw (2000, "box.space.friends_of_peppa:insert", {{4, "Rebecca"}})
 ```
 
 ## Чтение данных
 Для чтения данных из глобального спейса подойдёт команда:
 ```
-box.space.Friends_of_Peppa:select()
+box.space.friends_of_peppa:select()
 ```
 
 Отдельно можно узнать, какие именно поля (названия столбцов) есть спейсе:
 ```
-box.space.Friends_of_Peppa:format()
+box.space.friends_of_peppa:format()
 ```
 Чтение данных из шардированного спейса происходит посредством вызова vshard. Например:
 ```
-vshard.router.callro (2000, "box.space.Friends_of_Peppa:select")
+vshard.router.callro (2000, "box.space.friends_of_peppa:select")
 ```
 
 ## Балансировка данных
