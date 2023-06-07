@@ -250,6 +250,7 @@ test-docker:
     PRESERVE_ENVVARS: VER_TNT
     GIT_DEPTH: 100
     GIT_SUBMODULE_STRATEGY: recursive
+    DOCKER_AUTH_CONFIG: $DOCKER_AUTH_RO
   before_script:
     - git clone https://github.com/packpack/packpack.git packpack
     - |
