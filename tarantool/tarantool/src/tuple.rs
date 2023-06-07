@@ -747,9 +747,6 @@ where
 ////////////////////////////////////////////////////////////////////////////////
 
 /// Buffer containing tuple contents (MsgPack array)
-///
-/// If buffer is allocated within transaction: will be disposed after transaction ended (committed or dropped).
-/// If not: will act as a regular rust `Vec<u8>`
 #[derive(Clone, PartialEq, Eq)]
 pub struct TupleBuffer(
     // TODO(gmoshkin): previously TupleBuffer would use tarantool's transaction
@@ -1522,9 +1519,8 @@ impl std::ops::Deref for RawBytes {
 /// A wrapper type for reading raw bytes from a tuple.
 ///
 /// The difference between [`TupleBuffer`] and `RawByteBuf` is that the former
-/// involves tarantool built-in memory allocation and can only contain a valid
-/// tarantool tuple (msgpack array), while the latter is based on a simple heap
-/// allocated `Vec<u8>` and can contain any sequence of bytes.
+/// can only contain a valid tarantool tuple (msgpack array), while the latter
+/// can contain any sequence of bytes.
 ///
 /// This type also implements [`ToTupleBuffer`] such that `to_tuple_buffer`
 /// returns `Ok` only if the underlying bytes represent a valid tuple.
