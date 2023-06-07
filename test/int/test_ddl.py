@@ -2,6 +2,18 @@ import pytest
 from conftest import Cluster, ReturnError
 
 
+def test_ddl_abort(cluster: Cluster):
+    cluster.deploy(instance_count=2)
+
+    with pytest.raises(ReturnError) as e1:
+        cluster.abort_ddl()
+    assert e1.value.args == (
+        "ddl failed: there is no pending ddl operation",
+    )
+
+    # TODO: test manual abort when we have long-running ddls
+
+
 def test_ddl_create_space_lua(cluster: Cluster):
     i1, i2 = cluster.deploy(instance_count=2)
 

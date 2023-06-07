@@ -214,6 +214,8 @@ pub enum DdlError {
     CreateSpace(#[from] CreateSpaceError),
     #[error("ddl operation was aborted")]
     Aborted,
+    #[error("there is no pending ddl operation")]
+    NoPendingDdl,
 }
 
 #[derive(Debug, Error)]
@@ -275,9 +277,11 @@ pub struct CreateSpaceParams {
     by_field: Option<String>,
     sharding_key: Option<Vec<String>>,
     sharding_fn: Option<ShardingFn>,
+    /// Timeout in seconds.
+    ///
     /// Specifying the timeout identifies how long user is ready to wait for ddl to be applied.
     /// But it does not provide guarantees that a ddl will be aborted if wait for commit timeouts.
-    pub timeout_sec: f64,
+    pub timeout: f64,
 }
 
 impl CreateSpaceParams {
@@ -519,6 +523,41 @@ pub fn prepare_ddl(op: Ddl, timeout: Duration) -> traft::Result<RaftIndex> {
     }
 }
 
+/// Aborts a pending DDL operation and waits for abort to be committed localy.
+/// If `timeout` is reached earlier returns an error.
+///
+/// Returns an index of the corresponding DdlAbort raft entry, or an error if
+/// there is no pending DDL operation.
+pub fn abort_ddl(timeout: Duration) -> traft::Result<RaftIndex> {
+    let node = node::global()?;
+    loop {
+        if node.storage.properties.pending_schema_change()?.is_none() {
+            return Err(DdlError::NoPendingDdl.into());
+        }
+        let index = node.get_index();
+        let term = raft::Storage::term(&node.raft_storage, index)?;
+        let predicate = rpc::cas::Predicate {
+            index,
+            term,
+            ranges: vec![
+                rpc::cas::Range::new(ClusterwideSpaceId::Property as _)
+                    .eq((PropertyName::PendingSchemaChange,)),
+                rpc::cas::Range::new(ClusterwideSpaceId::Property as _)
+                    .eq((PropertyName::GlobalSchemaVersion,)),
+                rpc::cas::Range::new(ClusterwideSpaceId::Property as _)
+                    .eq((PropertyName::NextSchemaVersion,)),
+            ],
+        };
+        let (index, term) = compare_and_swap(Op::DdlAbort, predicate)?;
+        node.wait_index(index, timeout)?;
+        if raft::Storage::term(&node.raft_storage, index)? != term {
+            // leader switched - retry
+            continue;
+        }
+        return Ok(index);
+    }
+}
+
 mod tests {
     use tarantool::space::FieldType;
 
@@ -563,7 +602,7 @@ mod tests {
             by_field: None,
             sharding_key: None,
             sharding_fn: None,
-            timeout_sec: 0.0,
+            timeout: 0.0,
         }
         .validate(&storage)
         .unwrap_err();
@@ -581,7 +620,7 @@ mod tests {
             by_field: None,
             sharding_key: None,
             sharding_fn: None,
-            timeout_sec: 0.0,
+            timeout: 0.0,
         }
         .validate(&storage)
         .unwrap_err();
@@ -599,7 +638,7 @@ mod tests {
             by_field: None,
             sharding_key: None,
             sharding_fn: None,
-            timeout_sec: 0.0,
+            timeout: 0.0,
         }
         .validate(&storage)
         .unwrap_err();
@@ -617,7 +656,7 @@ mod tests {
             by_field: None,
             sharding_key: None,
             sharding_fn: None,
-            timeout_sec: 0.0,
+            timeout: 0.0,
         }
         .validate(&storage)
         .unwrap_err();
@@ -635,7 +674,7 @@ mod tests {
             by_field: None,
             sharding_key: Some(vec![field2.name.clone()]),
             sharding_fn: None,
-            timeout_sec: 0.0,
+            timeout: 0.0,
         }
         .validate(&storage)
         .unwrap_err();
@@ -653,7 +692,7 @@ mod tests {
             by_field: None,
             sharding_key: Some(vec![field1.name.clone(), field1.name.clone()]),
             sharding_fn: None,
-            timeout_sec: 0.0,
+            timeout: 0.0,
         }
         .validate(&storage)
         .unwrap_err();
@@ -671,7 +710,7 @@ mod tests {
             by_field: Some(field2.name.clone()),
             sharding_key: None,
             sharding_fn: None,
-            timeout_sec: 0.0,
+            timeout: 0.0,
         }
         .validate(&storage)
         .unwrap_err();
@@ -689,7 +728,7 @@ mod tests {
             by_field: None,
             sharding_key: None,
             sharding_fn: None,
-            timeout_sec: 0.0,
+            timeout: 0.0,
         }
         .validate(&storage)
         .unwrap_err();
@@ -707,7 +746,7 @@ mod tests {
             by_field: Some(field2.name.clone()),
             sharding_key: Some(vec![]),
             sharding_fn: None,
-            timeout_sec: 0.0,
+            timeout: 0.0,
         }
         .validate(&storage)
         .unwrap_err();
@@ -725,7 +764,7 @@ mod tests {
             by_field: Some(field2.name),
             sharding_key: None,
             sharding_fn: None,
-            timeout_sec: 0.0,
+            timeout: 0.0,
         }
         .validate(&storage)
         .unwrap();

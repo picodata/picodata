@@ -692,7 +692,7 @@ pub(crate) fn setup(args: &args::Run) {
             format = ...,         -- table of Field. See pico.help(\"Field\")
             primary_key = ...,    -- table of string
             distribution = ...,   -- string, one of 'global' | 'sharded'
-            timeout_sec = ...,    -- number
+            timeout = ...,    -- number, in seconds
         }
         ========================
 
@@ -701,7 +701,7 @@ pub(crate) fn setup(args: &args::Run) {
         "},
         {
             tlua::function1(|params: CreateSpaceParams| -> traft::Result<RaftIndex> {
-                let timeout = Duration::from_secs_f64(params.timeout_sec);
+                let timeout = Duration::from_secs_f64(params.timeout);
                 let storage = &node::global()?.storage;
                 let params = params.validate(storage)?;
                 // TODO: check space creation and rollback
@@ -710,6 +710,27 @@ pub(crate) fn setup(args: &args::Run) {
                 let index = schema::prepare_ddl(op, timeout)?;
                 let commit_index = schema::wait_for_ddl_commit(index, timeout)?;
                 Ok(commit_index)
+            })
+        },
+    );
+    luamod_set(
+        &l,
+        "abort_ddl",
+        indoc! {"
+        pico.abort_ddl(timeout)
+        ========================
+
+        Aborts a pending DDL operation.
+
+        Returns an index of the corresponding DdlAbort raft entry, or an error if
+        there is no pending DDL operation.
+
+        # Params
+        1. timeout - number, in seconds
+        "},
+        {
+            tlua::function1(|timeout: f64| -> traft::Result<RaftIndex> {
+                schema::abort_ddl(Duration::from_secs_f64(timeout))
             })
         },
     );

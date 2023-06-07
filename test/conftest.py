@@ -697,8 +697,19 @@ class Instance:
         Works through Lua API in difference to `propose_create_space`,
         which is more low level and directly proposes a raft entry.
         """
-        params["timeout_sec"] = timeout
+        params["timeout"] = timeout
         index = self.call("pico.create_space", params, timeout)
+        return index
+
+    def abort_ddl(self, timeout: float = 3.0) -> int:
+        """
+        Aborts a pending DDL operation and waits for abort to be committed localy.
+        If `timeout` is reached earlier returns an error.
+
+        Returns an index of the corresponding DdlAbort raft entry, or an error if
+        there is no pending DDL operation.
+        """
+        index = self.call("pico.abort_ddl", timeout)
         return index
 
     def propose_create_space(
@@ -1036,6 +1047,15 @@ class Cluster:
         Creates a space. Waits for all peers to be aware of it.
         """
         index = self.instances[0].create_space(params, timeout)
+        for instance in self.instances:
+            if instance.process is not None:
+                instance.raft_wait_index(index)
+
+    def abort_ddl(self, timeout: float = 3.0):
+        """
+        Aborts a pending ddl. Waits for all peers to be aware of it.
+        """
+        index = self.instances[0].abort_ddl(timeout)
         for instance in self.instances:
             if instance.process is not None:
                 instance.raft_wait_index(index)
