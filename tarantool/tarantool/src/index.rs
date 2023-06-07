@@ -10,7 +10,7 @@
 use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::mem::MaybeUninit;
-use std::os::raw::c_char;
+use std::ops::Range;
 use std::ptr::null_mut;
 
 use num_derive::ToPrimitive;
@@ -24,6 +24,7 @@ use crate::space::{Space, SpaceId, SystemSpace};
 use crate::tuple::{Encode, ToTupleBuffer, Tuple, TupleBuffer};
 use crate::tuple::{KeyDef, KeyDefPart};
 use crate::tuple_from_box_api;
+use crate::unwrap_or;
 use crate::util::NumOrStr;
 use crate::util::Value;
 
@@ -538,14 +539,19 @@ impl Index {
     where
         K: ToTupleBuffer + ?Sized,
     {
-        let key_buf = key.to_tuple_buffer().unwrap();
-        let key_buf_ptr = key_buf.as_ptr() as *const c_char;
+        let buf;
+        let data = unwrap_or!(key.tuple_data(), {
+            // TODO: use region allocation for this
+            buf = key.to_tuple_buffer()?;
+            buf.as_ref()
+        });
+        let Range { start, end } = data.as_ptr_range();
         tuple_from_box_api!(
             ffi::box_index_get[
                 self.space_id,
                 self.index_id,
-                key_buf_ptr,
-                key_buf_ptr.add(key_buf.len()),
+                start as _,
+                end as _,
                 @out
             ]
         )
@@ -563,15 +569,15 @@ impl Index {
         K: ToTupleBuffer + ?Sized,
     {
         let key_buf = key.to_tuple_buffer().unwrap();
-        let key_buf_ptr = key_buf.as_ptr() as *const c_char;
+        let Range { start, end } = key_buf.as_ref().as_ptr_range();
 
         let ptr = unsafe {
             ffi::box_index_iterator(
                 self.space_id,
                 self.index_id,
                 iterator_type.to_i32().unwrap(),
-                key_buf_ptr,
-                key_buf_ptr.add(key_buf.len()),
+                start as _,
+                end as _,
             )
         };
 
@@ -597,14 +603,19 @@ impl Index {
     where
         K: ToTupleBuffer + ?Sized,
     {
-        let key_buf = key.to_tuple_buffer().unwrap();
-        let key_buf_ptr = key_buf.as_ptr() as *const c_char;
+        let buf;
+        let data = unwrap_or!(key.tuple_data(), {
+            // TODO: use region allocation for this
+            buf = key.to_tuple_buffer()?;
+            buf.as_ref()
+        });
+        let Range { start, end } = data.as_ptr_range();
         tuple_from_box_api!(
             ffi::box_delete[
                 self.space_id,
                 self.index_id,
-                key_buf_ptr,
-                key_buf_ptr.add(key_buf.len()),
+                start as _,
+                end as _,
                 @out
             ]
         )
@@ -628,10 +639,15 @@ impl Index {
         K: ToTupleBuffer + ?Sized,
         Op: ToTupleBuffer,
     {
-        let key_buf = key.to_tuple_buffer().unwrap();
+        let key_buf;
+        let key_data = unwrap_or!(key.tuple_data(), {
+            // TODO: use region allocation for this
+            key_buf = key.to_tuple_buffer()?;
+            key_buf.as_ref()
+        });
         let mut ops_buf = Vec::with_capacity(4 + ops.as_ref().len() * 4);
         msgpack::write_array(&mut ops_buf, ops.as_ref())?;
-        unsafe { self.update_raw(key_buf.as_ref(), ops_buf.as_ref()) }
+        unsafe { self.update_raw(key_data, ops_buf.as_ref()) }
     }
 
     /// # Safety
@@ -641,10 +657,15 @@ impl Index {
     where
         K: ToTupleBuffer + ?Sized,
     {
-        let key_buf = key.to_tuple_buffer().unwrap();
-        let mut buf = Vec::with_capacity(128);
-        msgpack::write_array(&mut buf, ops)?;
-        self.update_raw(key_buf.as_ref(), buf.as_ref())
+        let key_buf;
+        let key_data = unwrap_or!(key.tuple_data(), {
+            // TODO: use region allocation for this
+            key_buf = key.to_tuple_buffer()?;
+            key_buf.as_ref()
+        });
+        let mut ops_buf = Vec::with_capacity(128);
+        msgpack::write_array(&mut ops_buf, ops)?;
+        self.update_raw(key_data, ops_buf.as_ref())
     }
 
     /// # Safety
@@ -679,10 +700,15 @@ impl Index {
         T: ToTupleBuffer + ?Sized,
         Op: ToTupleBuffer,
     {
-        let value_buf = value.to_tuple_buffer().unwrap();
+        let value_buf;
+        let value_data = unwrap_or!(value.tuple_data(), {
+            // TODO: use region allocation for this
+            value_buf = value.to_tuple_buffer()?;
+            value_buf.as_ref()
+        });
         let mut ops_buf = Vec::with_capacity(4 + ops.as_ref().len() * 4);
         msgpack::write_array(&mut ops_buf, ops.as_ref())?;
-        unsafe { self.upsert_raw(value_buf.as_ref(), ops_buf.as_ref()) }
+        unsafe { self.upsert_raw(value_data, ops_buf.as_ref()) }
     }
 
     /// # Safety
@@ -692,10 +718,15 @@ impl Index {
     where
         T: ToTupleBuffer + ?Sized,
     {
-        let value_buf = value.to_tuple_buffer().unwrap();
-        let mut buf = Vec::with_capacity(128);
-        msgpack::write_array(&mut buf, ops)?;
-        self.upsert_raw(value_buf.as_ref(), buf.as_ref())
+        let value_buf;
+        let value_data = unwrap_or!(value.tuple_data(), {
+            // TODO: use region allocation for this
+            value_buf = value.to_tuple_buffer()?;
+            value_buf.as_ref()
+        });
+        let mut ops_buf = Vec::with_capacity(128);
+        msgpack::write_array(&mut ops_buf, ops)?;
+        self.upsert_raw(value_data, ops_buf.as_ref())
     }
 
     /// # Safety
@@ -771,14 +802,19 @@ impl Index {
     where
         K: ToTupleBuffer + ?Sized,
     {
-        let key_buf = key.to_tuple_buffer().unwrap();
-        let key_buf_ptr = key_buf.as_ptr() as *const c_char;
+        let buf;
+        let data = unwrap_or!(key.tuple_data(), {
+            // TODO: use region allocation for this
+            buf = key.to_tuple_buffer()?;
+            buf.as_ref()
+        });
+        let Range { start, end } = data.as_ptr_range();
         tuple_from_box_api!(
             ffi::box_index_min[
                 self.space_id,
                 self.index_id,
-                key_buf_ptr,
-                key_buf_ptr.add(key_buf.len()),
+                start as _,
+                end as _,
                 @out
             ]
         )
@@ -793,14 +829,19 @@ impl Index {
     where
         K: ToTupleBuffer + ?Sized,
     {
-        let key_buf = key.to_tuple_buffer().unwrap();
-        let key_buf_ptr = key_buf.as_ptr() as *const c_char;
+        let buf;
+        let data = unwrap_or!(key.tuple_data(), {
+            // TODO: use region allocation for this
+            buf = key.to_tuple_buffer()?;
+            buf.as_ref()
+        });
+        let Range { start, end } = data.as_ptr_range();
         tuple_from_box_api!(
             ffi::box_index_max[
                 self.space_id,
                 self.index_id,
-                key_buf_ptr,
-                key_buf_ptr.add(key_buf.len()),
+                start as _,
+                end as _,
                 @out
             ]
         )
@@ -814,16 +855,20 @@ impl Index {
     where
         K: ToTupleBuffer + ?Sized,
     {
-        let key_buf = key.to_tuple_buffer().unwrap();
-        let key_buf_ptr = key_buf.as_ptr() as *const c_char;
-
+        let buf;
+        let data = unwrap_or!(key.tuple_data(), {
+            // TODO: use region allocation for this
+            buf = key.to_tuple_buffer()?;
+            buf.as_ref()
+        });
+        let Range { start, end } = data.as_ptr_range();
         let result = unsafe {
             ffi::box_index_count(
                 self.space_id,
                 self.index_id,
                 iterator_type.to_i32().unwrap(),
-                key_buf_ptr,
-                key_buf_ptr.add(key_buf.len()),
+                start as _,
+                end as _,
             )
         };
 

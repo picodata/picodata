@@ -6,6 +6,11 @@
 - `vclock::Vclock` data structure representing Tarantool vector clock
   (`box.info.vclock` Lua interface).
 - `vclock::Lsn` type alias for `u64` representing Tarantool log sequence number.
+- `ToTupleBuffer::tuple_data` method which returns `Option<&[u8]>`. It's only
+  implemented for wrapper types (`TupleBuffer`, `RawBytes`, `RawByteBuf`)
+  as an optimization to avoid extra copies.
+- `impl ToOwned<Owned = RawByteBuf> for RawBytes`
+- `impl Borrow<RawBytes> for RawByteBuf`
 
 ### Fixed
 - Doc comments are no longer lost for functions marked with `#[proc]` attribute.

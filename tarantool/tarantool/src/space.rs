@@ -8,6 +8,7 @@
 //! - [C API reference: Module box](https://www.tarantool.io/en/doc/latest/dev_guide/reference_capi/box/)
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::ops::Range;
 use std::os::raw::c_char;
 
 use num_derive::ToPrimitive;
@@ -21,6 +22,7 @@ use crate::index::{Index, IndexIterator, IteratorType};
 use crate::schema::space::SpaceMetadata;
 use crate::tuple::{Encode, ToTupleBuffer, Tuple, TupleBuffer};
 use crate::tuple_from_box_api;
+use crate::unwrap_or;
 
 /// End of the reserved range of system spaces.
 pub const SYSTEM_ID_MAX: SpaceId = 511;
@@ -552,15 +554,18 @@ impl Space {
     where
         T: ToTupleBuffer + ?Sized,
     {
-        // TODO: use region allocation for this
-        // TODO: add ability to not copy data, if the data doesn't need copying
-        let buf = value.to_tuple_buffer().unwrap();
-        let buf_ptr = buf.as_ptr() as *const c_char;
+        let buf;
+        let data = unwrap_or!(value.tuple_data(), {
+            // TODO: use region allocation for this
+            buf = value.to_tuple_buffer()?;
+            buf.as_ref()
+        });
+        let Range { start, end } = data.as_ptr_range();
         tuple_from_box_api!(
             ffi::box_insert[
                 self.id,
-                buf_ptr,
-                buf_ptr.add(buf.len()),
+                start as _,
+                end as _,
                 @out
             ]
         )
@@ -580,13 +585,18 @@ impl Space {
     where
         T: ToTupleBuffer + ?Sized,
     {
-        let buf = value.to_tuple_buffer().unwrap();
-        let buf_ptr = buf.as_ptr() as *const c_char;
+        let buf;
+        let data = unwrap_or!(value.tuple_data(), {
+            // TODO: use region allocation for this
+            buf = value.to_tuple_buffer()?;
+            buf.as_ref()
+        });
+        let Range { start, end } = data.as_ptr_range();
         tuple_from_box_api!(
             ffi::box_replace[
                 self.id,
-                buf_ptr,
-                buf_ptr.add(buf.len()),
+                start as _,
+                end as _,
                 @out
             ]
         )
@@ -1131,14 +1141,21 @@ macro_rules! update {
     ($target:expr, $key:expr, $($op:expr),+ $(,)?) => {{
         use $crate::tuple::ToTupleBuffer;
         let mut f = || -> $crate::Result<Option<$crate::tuple::Tuple>> {
-            let key_buf = $key.to_tuple_buffer()?;
+            let key = $key;
+            let buf;
+            let key_data = $crate::unwrap_or!(key.tuple_data(), {
+                // TODO: use region allocation for this
+                buf = key.to_tuple_buffer()?;
+                buf.as_ref()
+            });
+
             const len: u32 = $crate::expr_count!($($op),+);
             let mut ops_buf = Vec::with_capacity((4 + len * 4) as _);
             $crate::msgpack::write_array_len(&mut ops_buf, len)?;
             $( $op.write_tuple_data(&mut ops_buf)?; )+
             #[allow(unused_unsafe)]
             unsafe {
-                $target.update_raw(key_buf.as_ref(), ops_buf.as_ref())
+                $target.update_raw(key_data, ops_buf.as_ref())
             }
         };
         f()
@@ -1160,14 +1177,21 @@ macro_rules! upsert {
     ($target:expr, $value: expr, $($op:expr),+ $(,)?) => {{
         use $crate::tuple::ToTupleBuffer;
         let mut f = || -> $crate::Result<()> {
-            let value_buf = $value.to_tuple_buffer()?;
+            let value = $value;
+            let buf;
+            let value_data = $crate::unwrap_or!(value.tuple_data(), {
+                // TODO: use region allocation for this
+                buf = value.to_tuple_buffer()?;
+                buf.as_ref()
+            });
+
             const len: u32 = $crate::expr_count!($($op),+);
             let mut ops_buf = Vec::with_capacity((4 + len * 4) as _);
             $crate::msgpack::write_array_len(&mut ops_buf, len)?;
             $( $op.write_tuple_data(&mut ops_buf)?; )+
             #[allow(unused_unsafe)]
             unsafe {
-                $target.upsert_raw(value_buf.as_ref(), ops_buf.as_ref())
+                $target.upsert_raw(value_data, ops_buf.as_ref())
             }
         };
         f()

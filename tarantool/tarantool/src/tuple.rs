@@ -432,6 +432,18 @@ pub trait ToTupleBuffer {
         TupleBuffer::try_from_vec(buf)
     }
 
+    /// Returns a slice of bytes represeting the underlying tarantool tuple.
+    ///
+    /// Returns `None` if `Self` doesn't contain the data, in which case the
+    /// [`ToTupleBuffer::to_tuple_buffer`] should be used.
+    ///
+    /// This method exists as an optimization for wrapper types to eliminate
+    /// extra copies, in cases where the implementing type already contains the
+    /// tuple data (e.g. [`TupleBuffer`], [`RawBytes`], etc.).
+    fn tuple_data(&self) -> Option<&[u8]> {
+        None
+    }
+
     fn write_tuple_data(&self, w: &mut impl Write) -> Result<()>;
 }
 
@@ -848,6 +860,11 @@ impl ToTupleBuffer for TupleBuffer {
     #[inline]
     fn to_tuple_buffer(&self) -> Result<TupleBuffer> {
         Ok(self.clone())
+    }
+
+    #[inline]
+    fn tuple_data(&self) -> Option<&[u8]> {
+        Some(&self.0)
     }
 
     #[inline]
@@ -1502,6 +1519,13 @@ impl ToTupleBuffer for RawBytes {
         validate_msgpack(data)?;
         w.write_all(data).map_err(Into::into)
     }
+
+    #[inline(always)]
+    fn tuple_data(&self) -> Option<&[u8]> {
+        let data = &**self;
+        validate_msgpack(data).ok()?;
+        Some(data)
+    }
 }
 
 impl std::ops::Deref for RawBytes {
@@ -1509,6 +1533,14 @@ impl std::ops::Deref for RawBytes {
     #[inline(always)]
     fn deref(&self) -> &Self::Target {
         &self.0
+    }
+}
+
+impl std::borrow::ToOwned for RawBytes {
+    type Owned = RawByteBuf;
+    #[inline(always)]
+    fn to_owned(&self) -> Self::Owned {
+        self.0.to_vec().into()
     }
 }
 
@@ -1567,6 +1599,13 @@ impl ToTupleBuffer for RawByteBuf {
         validate_msgpack(data)?;
         w.write_all(data).map_err(Into::into)
     }
+
+    #[inline(always)]
+    fn tuple_data(&self) -> Option<&[u8]> {
+        let data = self.as_slice();
+        validate_msgpack(data).ok()?;
+        Some(data)
+    }
 }
 
 impl std::ops::Deref for RawByteBuf {
@@ -1581,6 +1620,13 @@ impl std::ops::DerefMut for RawByteBuf {
     #[inline(always)]
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
+    }
+}
+
+impl std::borrow::Borrow<RawBytes> for RawByteBuf {
+    #[inline(always)]
+    fn borrow(&self) -> &RawBytes {
+        RawBytes::new(self.0.as_slice())
     }
 }
 
