@@ -1,6 +1,7 @@
 use crate::storage::Clusterwide;
 use crate::storage::ClusterwideSpaceId;
 use crate::tlog;
+use crate::traft;
 use crate::traft::error::Error as TraftError;
 use crate::traft::node;
 use crate::traft::op::{Ddl, Dml, Op};
@@ -215,8 +216,22 @@ pub enum Error {
     KeyTypeMismatch(#[from] TntError),
 }
 
+/// Represents a lua table describing a [`Predicate`].
+///
+/// This is only used to parse lua arguments from lua api functions such as
+/// `pico.cas`.
+#[derive(Clone, Debug, Default, ::serde::Serialize, ::serde::Deserialize, tlua::LuaRead)]
+pub struct PredicateInLua {
+    /// CaS sender's current raft index.
+    pub index: Option<RaftIndex>,
+    /// CaS sender's current raft term.
+    pub term: Option<RaftTerm>,
+    /// Range that the CaS sender have read and expects it to be unmodified.
+    pub ranges: Option<Vec<Range>>,
+}
+
 /// Predicate that will be checked by the leader, before accepting the proposed `op`.
-#[derive(Clone, Debug, ::serde::Serialize, ::serde::Deserialize, tlua::LuaRead)]
+#[derive(Clone, Debug, ::serde::Serialize, ::serde::Deserialize)]
 pub struct Predicate {
     /// CaS sender's current raft index.
     pub index: RaftIndex,
@@ -227,6 +242,27 @@ pub struct Predicate {
 }
 
 impl Predicate {
+    pub fn from_lua_args(predicate: PredicateInLua) -> traft::Result<Self> {
+        let node = traft::node::global()?;
+        let (index, term) = if let Some(index) = predicate.index {
+            if let Some(term) = predicate.term {
+                (index, term)
+            } else {
+                let term = raft::Storage::term(&node.raft_storage, index)?;
+                (index, term)
+            }
+        } else {
+            let index = node.get_index();
+            let term = raft::Storage::term(&node.raft_storage, index)?;
+            (index, term)
+        };
+        Ok(Self {
+            index,
+            term,
+            ranges: predicate.ranges.unwrap_or_default(),
+        })
+    }
+
     /// Checks if `entry_op` changes anything within the ranges specified in the predicate.
     pub fn check_entry(
         &self,

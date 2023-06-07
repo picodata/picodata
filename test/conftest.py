@@ -607,6 +607,21 @@ class Instance:
 
         return self.call("pico.raft_compact_log", 0)
 
+    def space_id(self, space: str | int) -> int:
+        """
+        Get space id by space name.
+        If id is supplied instead it is just returned back.
+
+        This method is useful in functions which can take both id and space name.
+        """
+        match space:
+            case int():
+                return space
+            case str():
+                return self.eval("return box.space[...].id", space)
+            case _:
+                raise TypeError("space must be str or int")
+
     def cas(
         self,
         dml_kind: Literal["insert", "replace", "delete"],
@@ -614,20 +629,13 @@ class Instance:
         tuple: Tuple | List,
         index: int | None = None,
         term: int | None = None,
-        range: CasRange | None = None,  # TODO better types for bounds
+        range: CasRange | None = None,
     ) -> int:
         """
         Performs a clusterwide compare and swap operation.
 
         E.g. it checks the `predicate` on leader and if no conflicting entries were found
         appends the `op` to the raft log and returns its index.
-
-        `range` is a tuple of two dictionaries: (key_min, key_max). Each dictionary
-        is of the following structure:
-        {
-            "kind": "included" | "excluded" | "unbounded",
-            "value": int | None
-        }
 
         ASSUMPTIONS
         It is assumed that this operation is called on leader.
@@ -639,14 +647,7 @@ class Instance:
         elif term is None:
             term = self.raft_term_by_index(index)
 
-        space_id = None
-        match space:
-            case int():
-                space_id = space
-            case str():
-                space_id = self.eval("return box.space[...].id", space)
-            case _:
-                raise TypeError("space must be str or int")
+        space_id = self.space_id(space)
 
         predicate_range = None
         if range is not None:
@@ -1077,7 +1078,7 @@ class Cluster:
         tuple: Tuple | List,
         index: int | None = None,
         term: int | None = None,
-        range: CasRange | None = None,  # TODO better types
+        range: CasRange | None = None,
         # If specified send CaS through this instance
         instance: Instance | None = None,
     ) -> int:
@@ -1088,21 +1089,9 @@ class Cluster:
         appends the `op` to the raft log and returns its index.
 
         Calling this operation will route CaS request to a leader.
-
-        `range` is a tuple of two dictionaries: (key_min, key_max). Each dictionary
-        is of the following structure:
-        {
-            "kind": "included" | "excluded" | "unbounded",
-            "value": int  # skip if `None`
-        }
         """
         if instance is None:
             instance = self.instances[0]
-        if index is None:
-            index = instance.raft_read_index()
-            term = instance.raft_term_by_index(index)
-        elif term is None:
-            term = instance.raft_term_by_index(index)
 
         predicate_range = None
         if range is not None:
@@ -1115,7 +1104,7 @@ class Cluster:
         predicate = dict(
             index=index,
             term=term,
-            ranges=[predicate_range] if predicate_range is not None else [],
+            ranges=predicate_range,
         )
         if dml_kind in ["insert", "replace", "delete"]:
             dml = dict(
