@@ -170,16 +170,15 @@ fn build_http(build_root: &Path) {
 }
 
 fn build_tarantool(build_root: &Path) {
-    let build_dir = build_root.join("tarantool-sys");
-    let build_dir_str = build_dir.display().to_string();
+    let tarantool_sys = build_root.join("tarantool-sys");
+    let tarantool_build = tarantool_sys.join("tarantool-prefix/src/tarantool-build");
 
-    let tarantool_prefix = "tarantool-prefix/src/tarantool-build";
-
-    if !build_dir.join(tarantool_prefix).exists() {
+    if !tarantool_build.exists() {
         // Build from scratch
         Command::new("cmake")
             .args(["-S", "tarantool-sys/static-build"])
-            .args(["-B", &build_dir_str])
+            .arg("-B")
+            .arg(&tarantool_sys)
             .arg(concat!(
                 "-DCMAKE_TARANTOOL_ARGS=",
                 "-DCMAKE_BUILD_TYPE=RelWithDebInfo;",
@@ -188,7 +187,8 @@ fn build_tarantool(build_root: &Path) {
             ))
             .run();
         Command::new("cmake")
-            .args(["--build", &build_dir_str])
+            .arg("--build")
+            .arg(&tarantool_sys)
             .arg("-j")
             .run();
     } else {
@@ -196,15 +196,15 @@ fn build_tarantool(build_root: &Path) {
         // module, which doesn't rebuild subprojects if their contents changed,
         // therefore we dive into `tarantool-prefix/src/tarantool-build`
         // directly and try to rebuild it individually.
-        let build_dir = build_dir.join(tarantool_prefix);
-        let build_dir_str = build_dir.display().to_string();
         Command::new("cmake")
-            .args(["--build", &build_dir_str])
+            .arg("--build")
+            .arg(&tarantool_build)
             .arg("-j")
             .run();
     }
 
-    let b = build_dir_str; // rename for shortness
+    let tarantool_sys = tarantool_sys.display();
+    let tarantool_build = tarantool_build.display();
 
     // Don't build a shared object in case it's the default for the compiler
     rustc::link_arg("-no-pie");
@@ -228,20 +228,20 @@ fn build_tarantool(build_root: &Path) {
         "salad",
         "tzcode",
     ] {
-        rustc::link_search(format!("{b}/{tarantool_prefix}/src/lib/{l}"));
+        rustc::link_search(format!("{tarantool_build}/src/lib/{l}"));
         rustc::link_lib_static(l);
     }
 
-    rustc::link_search(format!("{b}/{tarantool_prefix}/src/lib/crypto"));
+    rustc::link_search(format!("{tarantool_build}/src/lib/crypto"));
     rustc::link_lib_static("tcrypto");
 
-    rustc::link_search(format!("{b}/{tarantool_prefix}"));
-    rustc::link_search(format!("{b}/{tarantool_prefix}/src"));
-    rustc::link_search(format!("{b}/{tarantool_prefix}/src/box"));
-    rustc::link_search(format!("{b}/{tarantool_prefix}/third_party/luajit/src"));
-    rustc::link_search(format!("{b}/{tarantool_prefix}/third_party/libyaml"));
-    rustc::link_search(format!("{b}/{tarantool_prefix}/third_party/c-dt/build"));
-    rustc::link_search(format!("{b}/{tarantool_prefix}/build/nghttp2/dest/lib"));
+    rustc::link_search(format!("{tarantool_build}"));
+    rustc::link_search(format!("{tarantool_build}/src"));
+    rustc::link_search(format!("{tarantool_build}/src/box"));
+    rustc::link_search(format!("{tarantool_build}/third_party/luajit/src"));
+    rustc::link_search(format!("{tarantool_build}/third_party/libyaml"));
+    rustc::link_search(format!("{tarantool_build}/third_party/c-dt/build"));
+    rustc::link_search(format!("{tarantool_build}/build/nghttp2/dest/lib"));
 
     rustc::link_lib_static("tarantool");
     rustc::link_lib_static("ev");
@@ -277,40 +277,40 @@ fn build_tarantool(build_root: &Path) {
         // These two must be linked as positional arguments, because they define
         // duplicate symbols which is not allowed (by default) when linking with
         // via -l... option
-        let lib_dir = format!("{b}/{tarantool_prefix}/third_party/libunwind/src/.libs");
+        let lib_dir = format!("{tarantool_build}/third_party/libunwind/src/.libs");
         rustc::link_arg(format!("{lib_dir}/libunwind-x86_64.a"));
         rustc::link_arg(format!("{lib_dir}/libunwind.a"));
     }
 
     rustc::link_arg("-lc");
 
-    rustc::link_search(format!("{b}/readline-prefix/lib"));
+    rustc::link_search(format!("{tarantool_sys}/readline-prefix/lib"));
     rustc::link_lib_static("readline");
 
-    rustc::link_search(format!("{b}/icu-prefix/lib"));
+    rustc::link_search(format!("{tarantool_sys}/icu-prefix/lib"));
     rustc::link_lib_static("icudata");
     rustc::link_lib_static("icui18n");
     rustc::link_lib_static("icuio");
     rustc::link_lib_static("icutu");
     rustc::link_lib_static("icuuc");
 
-    rustc::link_search(format!("{b}/zlib-prefix/lib"));
+    rustc::link_search(format!("{tarantool_sys}/zlib-prefix/lib"));
     rustc::link_lib_static("z");
 
-    rustc::link_search(format!("{b}/{tarantool_prefix}/build/curl/dest/lib"));
+    rustc::link_search(format!("{tarantool_build}/build/curl/dest/lib"));
     rustc::link_lib_static("curl");
 
-    rustc::link_search(format!("{b}/{tarantool_prefix}/build/ares/dest/lib"));
+    rustc::link_search(format!("{tarantool_build}/build/ares/dest/lib"));
     rustc::link_lib_static("cares");
 
-    rustc::link_search(format!("{b}/openssl-prefix/lib"));
+    rustc::link_search(format!("{tarantool_sys}/openssl-prefix/lib"));
     rustc::link_lib_static("ssl");
     rustc::link_lib_static("crypto");
 
-    rustc::link_search(format!("{b}/ncurses-prefix/lib"));
+    rustc::link_search(format!("{tarantool_sys}/ncurses-prefix/lib"));
     rustc::link_lib_static("tinfo");
 
-    rustc::link_search(format!("{b}/iconv-prefix/lib"));
+    rustc::link_search(format!("{tarantool_sys}/iconv-prefix/lib"));
     if cfg!(target_os = "macos") {
         // -lc++ instead of -lstdc++ on macos
         rustc::link_lib_dynamic("c++");
