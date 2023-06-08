@@ -58,9 +58,9 @@ make build
 %doc README.md
 %{!?_licensedir:%global license %doc}
 %if %{?_build_vendor} == alt
-%doc license/EE_EN.txt license/EE_RU.txt AUTHORS
+%doc docs/licenses/eula_en.txt docs/licenses/eula_ru.txt AUTHORS
 %else
-%license license/EE_EN.txt license/EE_RU.txt AUTHORS
+%license docs/licenses/eula_en.txt docs/licenses/eula_ru.txt AUTHORS
 %endif
 
 %changelog
