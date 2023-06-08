@@ -56,7 +56,7 @@ variables:
 build-base-image:
   stage: build-base-image
   tags:
-    - shell
+    - tmodule-shell
   rules:
     - <<: *if-build-base-changes-on-master-branch
       variables:
@@ -109,7 +109,7 @@ build-base-image:
       variables:
         BASE_IMAGE_TAG: latest
   tags:
-    - docker
+    - tmodule-docker
   image:
     name: ${DOCKER_IMAGE}:${BASE_IMAGE_TAG}
     pull_policy: if-not-present
