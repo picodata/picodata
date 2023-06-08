@@ -175,6 +175,12 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
         },
         {
             let mut tests = tarantool::test::collect_tester();
+
+            println!("internal tests count: {}", tests.len());
+            for test in &tests {
+                println!("{}", test.desc.name);
+            }
+
             tests.append(&mut tarantool::tlua::test::collect());
             tests.append(&mut tests![
                 decimal::from_lua,
