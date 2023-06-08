@@ -58,7 +58,7 @@ variables:
 build-base-image:
   stage: build-base-image
   tags:
-    - shell-yc
+    - picodata-shell
   rules:
     - <<: *if-build-base-changes-on-master-branch
       variables:
@@ -134,7 +134,7 @@ build-base-image:
 test-linux:
   extends: .test
   tags:
-    - docker-yc
+    - picodata-docker
   rules:
     - <<: *if-build-base-changes-on-master-branch
       variables:
