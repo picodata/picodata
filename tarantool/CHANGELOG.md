@@ -15,6 +15,8 @@
 ### Fixed
 - Doc comments are no longer lost for functions marked with `#[proc]` attribute.
 - Error when compiling with --no-default-features.
+- `cargo test` link failure when a `#[::test]` is defined in the same mod with a
+  `#[tarantool::proc]` on MacOS.
 
 # [1.0.0] May 29 2023
 

@@ -117,6 +117,17 @@ pub mod vclock;
 ///
 /// See how you can bootstrap proc definitions in example in `examples/all_procs`.
 ///
+/// **NOTE:** collecting stored procedures is implemented by inserting the
+/// pointers to the functions into a static array. This can sometimes cause
+/// problems when functions marked `#[tarantool::proc]` are defined in the same
+/// mod as unit tests marked `#[::test]`, specifically on MacOS. This is most
+/// likely due to a bug in the compiler, but until it is fixed we've added a
+/// workaround, such that procs are added to the global array under the
+/// `#[cfg(not(test))]` attribute. This can only affect you, if you try
+/// collecting stored procedures from the rust builtin unit tests, which there's
+/// no reason for you to do. If you want to test collecting of stored procedures,
+/// consider using `#[tarantool::test]`.
+///
 /// # Accepting borrowed arguments
 ///
 /// It can sometimes be more efficient to borrow the procedure's arguments
@@ -285,7 +296,7 @@ pub mod vclock;
 /// fn print_what_you_got() {}
 /// ```
 ///
-/// The above stored procedure will just print it's any of it's arguments to
+/// The above stored procedure will just print any of it's arguments to
 /// stderr and return immediately.
 ///
 /// [`Result`]: std::result::Result

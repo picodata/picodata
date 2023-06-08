@@ -311,6 +311,7 @@ pub fn stored_proc(attr: TokenStream, item: TokenStream) -> TokenStream {
     quote! {
         #[#linkme::distributed_slice(#section)]
         #[linkme(crate = #linkme)]
+        #[cfg(not(test))]
         static #desc_ident: #tarantool::proc::Proc = #tarantool::proc::Proc::new(
             #desc_name,
             #ident,
