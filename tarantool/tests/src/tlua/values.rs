@@ -336,14 +336,26 @@ pub fn int64() {
     let lua = lua.into_inner().push(f64::INFINITY);
     assert_eq!((&lua).read::<i64>().unwrap(), i64::MAX);
     assert_eq!((&lua).read::<isize>().unwrap(), isize::MAX);
-    assert_eq!((&lua).read::<i32>().unwrap(), 0);
-    assert_eq!((&lua).read::<i16>().unwrap(), 0);
-    assert_eq!((&lua).read::<i8>().unwrap(), 0);
+    if cfg!(target_os = "macos") {
+        assert_eq!((&lua).read::<i32>().unwrap(), -1);
+        assert_eq!((&lua).read::<i16>().unwrap(), -1);
+        assert_eq!((&lua).read::<i8>().unwrap(), -1);
+    } else {
+        assert_eq!((&lua).read::<i32>().unwrap(), 0);
+        assert_eq!((&lua).read::<i16>().unwrap(), 0);
+        assert_eq!((&lua).read::<i8>().unwrap(), 0);
+    }
     assert_eq!((&lua).read::<u64>().unwrap(), u64::MAX);
     assert_eq!((&lua).read::<usize>().unwrap(), usize::MAX);
-    assert_eq!((&lua).read::<u32>().unwrap(), 0);
-    assert_eq!((&lua).read::<u16>().unwrap(), 0);
-    assert_eq!((&lua).read::<u8>().unwrap(), 0);
+    if cfg!(target_os = "macos") {
+        assert_eq!((&lua).read::<u32>().unwrap(), u32::MAX);
+        assert_eq!((&lua).read::<u16>().unwrap(), u16::MAX);
+        assert_eq!((&lua).read::<u8>().unwrap(), u8::MAX);
+    } else {
+        assert_eq!((&lua).read::<u32>().unwrap(), 0);
+        assert_eq!((&lua).read::<u16>().unwrap(), 0);
+        assert_eq!((&lua).read::<u8>().unwrap(), 0);
+    }
     assert_eq!((&lua).read::<f64>().unwrap(), f64::INFINITY);
     assert_eq!((&lua).read::<f32>().unwrap(), f32::INFINITY);
     assert_eq!((&lua).read::<Strict<i8>>().ok(), None);

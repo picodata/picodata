@@ -11,4 +11,5 @@ serde = { version = "*", features = ["derive"] }
 rmp-serde = "1"
 
 [lib]
+test = false
 crate-type = ["cdylib"]

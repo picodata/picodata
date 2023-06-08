@@ -50,6 +50,7 @@
 
 ### Fixed
 
+- tests on macos
 - Used to panic when implicitly converting a 64-bit integer to a `Decimal`
   inside an arithmetic operation, due to global context contention.
 - `network::ReconnClient::with_config` constructor now has `pub` visibility,
