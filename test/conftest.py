@@ -629,7 +629,7 @@ class Instance:
         tuple: Tuple | List,
         index: int | None = None,
         term: int | None = None,
-        range: CasRange | None = None,
+        ranges: List[CasRange] | None = None,
     ) -> int:
         """
         Performs a clusterwide compare and swap operation.
@@ -649,18 +649,21 @@ class Instance:
 
         space_id = self.space_id(space)
 
-        predicate_range = None
-        if range is not None:
-            predicate_range = dict(
-                space=space_id,
-                key_min=range.key_min_packed,
-                key_max=range.key_max_packed,
-            )
+        predicate_ranges = []
+        if ranges is not None:
+            for range in ranges:
+                predicate_ranges.append(
+                    dict(
+                        space=space_id,
+                        key_min=range.key_min_packed,
+                        key_max=range.key_max_packed,
+                    )
+                )
 
         predicate = dict(
             index=index,
             term=term,
-            ranges=[predicate_range] if predicate_range is not None else [],
+            ranges=predicate_ranges,
         )
 
         if dml_kind in ["insert", "replace"]:
@@ -1078,7 +1081,7 @@ class Cluster:
         tuple: Tuple | List,
         index: int | None = None,
         term: int | None = None,
-        range: CasRange | None = None,
+        ranges: List[CasRange] | None = None,
         # If specified send CaS through this instance
         instance: Instance | None = None,
     ) -> int:
@@ -1093,18 +1096,21 @@ class Cluster:
         if instance is None:
             instance = self.instances[0]
 
-        predicate_range = None
-        if range is not None:
-            predicate_range = dict(
-                space=space,
-                key_min=range.key_min,
-                key_max=range.key_max,
-            )
+        predicate_ranges = []
+        if ranges is not None:
+            for range in ranges:
+                predicate_ranges.append(
+                    dict(
+                        space=space,
+                        key_min=range.key_min,
+                        key_max=range.key_max,
+                    )
+                )
 
         predicate = dict(
             index=index,
             term=term,
-            ranges=predicate_range,
+            ranges=predicate_ranges,
         )
         if dml_kind in ["insert", "replace", "delete"]:
             dml = dict(

@@ -88,7 +88,7 @@ def test_cas_errors(instance: Instance):
                 "insert",
                 space,
                 [0],
-                range=CasRange(eq=0),
+                ranges=[CasRange(eq=0)],
             )
         assert e5.value.args == (
             "ER_PROC_C",
@@ -124,7 +124,7 @@ def test_cas_predicate(instance: Instance):
             "_pico_property",
             ["fruit", "orange"],
             index=read_index,
-            range=CasRange(eq="fruit"),
+            ranges=[CasRange(eq="fruit")],
         )
     assert e5.value.args == (
         "ER_PROC_C",
@@ -139,7 +139,7 @@ def test_cas_predicate(instance: Instance):
         "_pico_property",
         ["flower", "tulip"],
         index=read_index,
-        range=CasRange(eq="flower"),
+        ranges=[CasRange(eq="flower")],
     )
     assert ret == read_index + 2
     instance.raft_wait_index(ret, _3_SEC)
