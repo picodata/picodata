@@ -34,6 +34,7 @@ pub fn impl_macro_attribute(attr: TS1, item: TS1) -> TS1 {
     quote! {
         #[#linkme::distributed_slice(#section)]
         #[linkme(crate = #linkme)]
+        #[used]
         static #test_name_ident: #tarantool::test::TestCase = #tarantool::test::TestCase::new(
             ::std::concat!(::std::module_path!(), "::", #test_name),
             #fn_name,
