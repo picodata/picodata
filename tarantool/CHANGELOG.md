@@ -14,6 +14,7 @@
 
 ### Fixed
 - Doc comments are no longer lost for functions marked with `#[proc]` attribute.
+- Error when compiling with --no-default-features.
 
 # [1.0.0] May 29 2023
 

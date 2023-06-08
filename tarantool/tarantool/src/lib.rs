@@ -338,6 +338,7 @@ pub use linkme;
 /// }
 /// ```
 ///
+#[cfg(feature = "test")]
 pub use tarantool_proc::test;
 
 /// Return a global tarantool lua state.

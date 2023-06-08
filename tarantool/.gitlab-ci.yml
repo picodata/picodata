@@ -134,6 +134,7 @@ build-base-image:
     - cargo clippy --version
     - cargo clippy --features "${CARGO_FEATURES}" --workspace --tests -- --deny warnings
     - cargo build --features "${CARGO_FEATURES}" --all
+    - cargo test --no-default-features -p tarantool
     - cargo test --features "${CARGO_FEATURES}"
     - |
       # Save cache
