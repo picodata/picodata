@@ -192,7 +192,7 @@ test-mac-m1:
     - cargo build --features webui --locked
     # There are no Rust tests for `webui` feature.
     # It will be checked during integration tests.
-    # - cargo test --locked
+    - cargo test --locked
 
     - cargo fmt -- -v --check
     - cargo clippy --version

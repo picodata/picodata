@@ -270,6 +270,13 @@ fn build_tarantool(build_root: &Path) {
     rustc::link_lib_static("xxhash");
 
     if cfg!(target_os = "macos") {
+        // Currently we link against 2 versions of `decNumber` library: one
+        // comes with tarantool and ther other comes from the `dec` cargo crate.
+        // On macos this seems to confuse the linker, which just chooses one of
+        // the libraries and complains that it can't find symbols from the other.
+        // So we add the second library explicitly via full path to the file.
+        rustc::link_arg(format!("{tarantool_build}/libdecNumber.a"));
+
         // OpenMP and Libunwind are builtin to the compiler on macos
     } else {
         rustc::link_lib_static("gomp");
