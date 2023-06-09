@@ -8,19 +8,23 @@ nav:
     - Общее описание продукта: description.md
     - Преимущества Picodata: benefits.md
     - Преимущества языка Rust при разработке приложений: benefits_rust.md
-    - Общая схема инициализации кластера: clustering.md
     - Работа с SQL в Picodata: sbroad/sql_index.md
-    - Описание публичного API Picodata: api.md
   - Инструкции и руководства:
     - Установка Picodata: install.md
-    - Инструкция по развертыванию: deploy.md
+    - Развертывание кластера: deploy.md
     - Пример работы с кластером Picodata: tutorial.md
+    - Пример работы с приложением Picodata SQL: sbroad/sql_tutorial
   - Справочные материалы:
     - Описание параметров запуска Picodata: cli.md
     - Справочник команд SQL: sbroad/sql_queries
-    - Глоссарий: glossary.md
+    - Поддерживаемые типы данных: sbroad/sql_datatypes
+    - Описание публичного API Picodata: api.md
     - Поддерживаемые функции стандарта SQL: sbroad/sql_reference.md
-
+    - Глоссарий: glossary.md
+  - Архитектурная документация:
+    - Схема инициализации кластера: clustering.md
+    - Принципы работы распределенного SQL: sbroad/sql_review
+  
 
 theme:
     name: material
