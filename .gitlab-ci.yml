@@ -251,6 +251,7 @@ test-docker:
     GIT_DEPTH: 100
     GIT_SUBMODULE_STRATEGY: recursive
     DOCKER_AUTH_CONFIG: $DOCKER_AUTH_RO
+    SED: sed
   before_script:
     - git clone https://github.com/packpack/packpack.git packpack
     - |
@@ -262,7 +263,7 @@ test-docker:
         # 2.10.5-17-gf818b9108 -> '2.10.5.17'
         # 2.11.0-entrypoint-1137-g4686b909 -> '2.11.0.1137'
         # 3.0.0-alpha1-14-g342c242-dev -> '3.0.0.14'
-        sed -n 's/-[a-z]\+[a-z0-9]*//p' |sed -n 's/^\([0-9\.]*\)-\([0-9]*\)\(-\([a-z0-9]*\)\)*/\1.\2/p'
+        $SED -n 's/-[a-z]\+[a-z0-9]*//p' | $SED -n 's/^\([0-9\.]*\)-\([0-9]*\)\(-\([a-z0-9]*\)\)*/\1.\2/p'
       );
       echo $VER_TNT
       [ "$VER_TNT" == "" ] && false
@@ -335,9 +336,10 @@ pack-macos-arm:
     PKGNAME: 'picodata'
     BUILDDIR: 'build_mac_arm'
     MACOS: 'ventura'
+    SED: gsed
   script: |
     export CARGO_HOME=$HOME/.cargo
-    VER=$(git describe --long | sed -n 's/^\([0-9\.]*\)-\([0-9]*\)-\([a-z0-9]*\)/\1.\2/p')
+    VER=$(git describe --long | $SED -n 's/^\([0-9\.]*\)-\([0-9]*\)-\([a-z0-9]*\)/\1.\2/p')
     MAJOR=$(echo $VER | cut -f 1-2 -d '.')
     make reset-submodules
     echo "-------------------------------------------------------------------"
@@ -503,7 +505,7 @@ deploy-macos-arm:
     PKGNAME: 'picodata'
     BUILDDIR: 'build_mac_arm'
   script: |
-    VER=$(git describe --long | sed -n 's/^\([0-9\.]*\)-\([0-9]*\)-\([a-z0-9]*\)/\1.\2/p')
+    VER=$(git describe --long | gsed -n 's/^\([0-9\.]*\)-\([0-9]*\)-\([a-z0-9]*\)/\1.\2/p')
     MAJOR=$(echo $VER | cut -f 1-2 -d '.')
     curl -v -H "Authorization: Basic $RAW_AUTH_RW" --upload-file $BUILDDIR/$PKGNAME-$VER.tar.gz $RAW_REGISTRY/brew/packages/
     curl -v -H "Authorization: Basic $RAW_AUTH_RW" --upload-file $BUILDDIR/$PKGNAME@$MAJOR-$VER.*.bottle.tar.gz $RAW_REGISTRY/brew/bottle/
