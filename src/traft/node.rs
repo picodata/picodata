@@ -13,12 +13,12 @@ use crate::loop_start;
 use crate::r#loop::FlowControl;
 use crate::rpc;
 use crate::schema::{Distribution, IndexDef, SpaceDef};
-use crate::storage::acl_global_create_user;
 use crate::storage::ddl_meta_drop_space;
 use crate::storage::SnapshotData;
 use crate::storage::ToEntryIter as _;
 use crate::storage::ToEntryIter as _;
 use crate::storage::{acl_create_user_on_master, acl_drop_user_on_master};
+use crate::storage::{acl_global_create_user, acl_global_drop_user};
 use crate::storage::{ddl_abort_on_master, ddl_meta_space_update_operable};
 use crate::storage::{local_schema_version, set_local_schema_version};
 use crate::storage::{Clusterwide, ClusterwideSpaceId, PropertyName};
@@ -992,6 +992,33 @@ impl NodeImpl {
 
                 acl_global_create_user(&self.storage, &user_def)
                     .expect("persisting a user definition shouldn't fail");
+
+                storage_properties
+                    .put(PropertyName::GlobalSchemaVersion, &v_pending)
+                    .expect("storage error");
+                storage_properties
+                    .put(PropertyName::NextSchemaVersion, &(v_pending + 1))
+                    .expect("storage error");
+            }
+
+            Op::Acl {
+                schema_version,
+                acl: Acl::DropUser { user_id },
+            } => {
+                let v_local = local_schema_version().expect("storage error");
+                let v_pending = schema_version;
+                if v_local < v_pending {
+                    if self.is_readonly() {
+                        // Wait for tarantool replication with master to progress.
+                        return SleepAndRetry;
+                    } else {
+                        acl_drop_user_on_master(user_id).expect("creating user shouldn't fail");
+                        set_local_schema_version(v_pending).expect("storage error");
+                    }
+                }
+
+                acl_global_drop_user(&self.storage, user_id)
+                    .expect("droping a user definition shouldn't fail");
 
                 storage_properties
                     .put(PropertyName::GlobalSchemaVersion, &v_pending)

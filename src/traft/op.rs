@@ -1,4 +1,4 @@
-use crate::schema::{Distribution, UserDef};
+use crate::schema::{Distribution, UserDef, UserId};
 use crate::storage::space_by_name;
 use crate::storage::Clusterwide;
 use ::tarantool::index::{IndexId, Part};
@@ -120,6 +120,12 @@ impl std::fmt::Display for Op {
                     r#"CreateUser({schema_version}, {}, "{}")"#,
                     user_def.id, user_def.name,
                 )
+            }
+            Self::Acl {
+                schema_version,
+                acl: Acl::DropUser { user_id },
+            } => {
+                write!(f, "DropUser({schema_version}, {user_id})")
             }
         };
 
@@ -417,6 +423,9 @@ impl DdlBuilder {
 pub enum Acl {
     /// Create a tarantool user. Grant it default privileges.
     CreateUser { user_def: UserDef },
+
+    /// Drop a tarantool user and any entities owned by it.
+    DropUser { user_id: UserId },
 }
 
 mod vec_of_raw_byte_buf {

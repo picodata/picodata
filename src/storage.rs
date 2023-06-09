@@ -1982,6 +1982,12 @@ impl Users {
         self.space.insert(user_def)?;
         Ok(())
     }
+
+    #[inline]
+    pub fn delete(&self, user_id: UserId) -> tarantool::Result<()> {
+        self.space.delete(&[user_id])?;
+        Ok(())
+    }
 }
 
 impl ToEntryIter for Users {
@@ -2000,6 +2006,14 @@ impl ToEntryIter for Users {
 /// Persist a user definition in the internal clusterwide storage.
 pub fn acl_global_create_user(storage: &Clusterwide, user_def: &UserDef) -> tarantool::Result<()> {
     storage.users.insert(user_def)?;
+    Ok(())
+}
+
+/// Remove a user definition and any entities owned by it from the internal
+/// clusterwide storage.
+pub fn acl_global_drop_user(storage: &Clusterwide, user_id: UserId) -> tarantool::Result<()> {
+    // TODO: delete privilege records
+    storage.users.delete(user_id)?;
     Ok(())
 }
 
