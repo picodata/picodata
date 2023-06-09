@@ -362,6 +362,7 @@ pack-macos-arm:
       --exclude=.git --exclude='.gitignore' --exclude='.gitmodules' \
       --exclude=FreeBSD --exclude=debian --exclude=rpm --exclude=rump \
       --exclude=apk --exclude=$BUILDDIR --exclude=packpack \
+      --exclude=target \
       * $BUILDDIR/$PKGNAME-$VER/
     cd $BUILDDIR
     tar --uid=0 --gid=0 -caPf $PKGNAME-$VER.tar.gz $PKGNAME-$VER
