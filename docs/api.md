@@ -1,30 +1,18 @@
 # Описание публичного API Picodata
-## Общие сведения
 
-Picodata позволяет использовать RPC (remote procedure call), т.е.
-вызывать публично доступные удаленные хранимые процедуры в консоли
-подключения к инстансу Picodata через Lua-интерфейс. Подключение может
-осуществляться как из Bash-консоли (`tarantoolctl connect`), так и с
-помощью внешних коннекторов (например из Python).
+Публичный интерфейс Picodata состоит из нескольких разделов:
 
-## Поддерживаемые функции
+- Lua API
+- Хранимые процедуры (Stored procedures)
 
-Поддерживается вызов следующих функций и хранимых процедур:
-```
-tarantool> _G.pico.
-_G.pico.VERSION
-_G.pico.args
-_G.pico.raft_read_index(
-_G.pico.raft_propose_nop(
-_G.pico.cas(
-_G.pico.raft_status(
-_G.pico.exit(
-_G.pico.expel(
-_G.pico.raft_timeout_now(
-_G.pico.instance_info(
-_G.pico.whoami(
-_G.pico.raft_compact_log(
-```
+По функциональности они во многом повторяют друг друга. Выбор
+конкретного зависит от протокола, по которому происходит подключение.
+
+Lua API больше подходит для использования в интерактивной консоли
+(picodata connect), в то время как хранимые процедуры удобнее
+использовать при подключении через клиент по iproto (например из
+Python).
+
 ## Описание функций
 Описание функций и хранимых процедур приведено ниже:
 
@@ -152,7 +140,7 @@ function expel("instance_id")
 
 **Пример**
 ```
-pico.expel("i2") 
+pico.expel("i2")
 ```
 У функции нет непосредственно возвращаемых значений
 
@@ -208,7 +196,7 @@ function cas({args},...)
 
 **Пример**
 ```
-pico.cas({space = 'test', kind = 'insert', tuple = {13, 37} }, { timeout = 1 }) 
+pico.cas({space = 'test', kind = 'insert', tuple = {13, 37} }, { timeout = 1 })
 ```
 
 **Возвращаемое значение** (_number_)
@@ -232,4 +220,3 @@ function raft_compact_log(up_to)
 **Возвращаемое значение** (_number_)
 
 Функция возвращает значение `first_index` — индекс первой записи в raft-журнале.
-
