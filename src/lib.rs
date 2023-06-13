@@ -295,6 +295,20 @@ fn init_handlers() {
     }
 }
 
+/// Sets interactive prompt to display `picodata>`.
+fn set_console_prompt() {
+    tarantool::exec(
+        r#"
+        local console = require('console')
+
+        console.on_start(function(self)
+            self.prompt = "picodata"
+        end)
+        "#,
+    )
+    .expect("setting prompt should never fail")
+}
+
 #[allow(clippy::enum_variant_names)]
 #[derive(Debug, Serialize, Deserialize)]
 pub enum Entrypoint {
@@ -336,6 +350,7 @@ fn init_common(args: &args::Run, cfg: &tarantool::Cfg) -> (Clusterwide, RaftSpac
     preload_http();
     init_sbroad();
 
+    set_console_prompt();
     init_handlers();
     traft::event::init();
 
