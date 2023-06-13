@@ -1,5 +1,5 @@
 import pytest
-from conftest import Instance, TarantoolError, CasRange
+from conftest import Cluster, Instance, TarantoolError, ReturnError, CasRange
 
 _3_SEC = 3
 
@@ -145,3 +145,42 @@ def test_cas_predicate(instance: Instance):
     instance.raft_wait_index(ret, _3_SEC)
     assert instance.raft_read_index(_3_SEC) == ret
     assert property("flower") == "tulip"
+
+
+# Previous tests use stored procedure `.proc_cas`, this one uses `pico.cas` lua api instead
+def test_cas_lua_api(cluster: Cluster):
+    def property(k: str):
+        return cluster.instances[0].eval(
+            """
+            local tuple = box.space._pico_property:get(...)
+            return tuple and tuple.value
+            """,
+            k,
+        )
+
+    cluster.deploy(instance_count=3)
+    read_index = cluster.instances[0].raft_read_index(_3_SEC)
+
+    # Successful insert
+    ret = cluster.cas("insert", "_pico_property", ["fruit", "apple"], read_index)
+    assert ret == read_index + 1
+    cluster.raft_wait_index(ret, _3_SEC)
+    assert cluster.instances[0].raft_read_index(_3_SEC) == ret
+    assert property("fruit") == "apple"
+
+    # CaS rejected
+    with pytest.raises(ReturnError) as e5:
+        cluster.cas(
+            "insert",
+            "_pico_property",
+            ["fruit", "orange"],
+            index=read_index,
+            ranges=[CasRange(eq="fruit")],
+        )
+    assert e5.value.args == (
+        "Network error: service responded with error: "
+        + "compare-and-swap request failed: "
+        + f"comparison failed for index {read_index} "
+        + f"as it conflicts with {read_index+1}",
+    )
+    pass

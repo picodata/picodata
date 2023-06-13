@@ -195,21 +195,21 @@ class RaftStatus:
 
 
 class CasRange:
-    key_min = dict(kind="unbounded", value=None)
-    key_max = dict(kind="unbounded", value=None)
+    key_min = dict(kind="unbounded", key=None)
+    key_max = dict(kind="unbounded", key=None)
     repr_min = "unbounded"
     repr_max = "unbounded"
 
     @property
     def key_min_packed(self) -> dict:
         key = self.key_min.copy()
-        key["value"] = msgpack.packb([key["value"]])
+        key["key"] = msgpack.packb([key["key"][0]])
         return key
 
     @property
     def key_max_packed(self) -> dict:
         key = self.key_max.copy()
-        key["value"] = msgpack.packb([key["value"]])
+        key["key"] = msgpack.packb([key["key"][0]])
         return key
 
     def __repr__(self):
@@ -233,21 +233,21 @@ class CasRange:
         Example: `CasRange(ge=1) # [1, +infinity)`
         """
         if gt is not None:
-            self.key_min = dict(kind="excluded", value=gt)
+            self.key_min = dict(kind="excluded", key=(gt,))
             self.repr_min = f'gt="{gt}"'
         if ge is not None:
-            self.key_min = dict(kind="included", value=ge)
+            self.key_min = dict(kind="included", key=(ge,))
             self.repr_min = f'ge="{ge}"'
 
         if lt is not None:
-            self.key_max = dict(kind="excluded", value=lt)
+            self.key_max = dict(kind="excluded", key=(lt,))
             self.repr_max = f'lt="{lt}"'
         if le is not None:
-            self.key_max = dict(kind="included", value=le)
+            self.key_max = dict(kind="included", key=(le,))
             self.repr_max = f'le="{le}"'
         if eq is not None:
-            self.key_min = dict(kind="included", value=eq)
-            self.key_max = dict(kind="included", value=eq)
+            self.key_min = dict(kind="included", key=(eq,))
+            self.key_max = dict(kind="included", key=(eq,))
             self.repr_min = f'ge="{eq}"'
             self.repr_max = f'le="{eq}"'
 
@@ -1077,7 +1077,7 @@ class Cluster:
     def cas(
         self,
         dml_kind: Literal["insert", "replace", "delete"],
-        space: str,
+        space: str | int,
         tuple: Tuple | List,
         index: int | None = None,
         term: int | None = None,
@@ -1096,12 +1096,14 @@ class Cluster:
         if instance is None:
             instance = self.instances[0]
 
+        space_id = instance.space_id(space)
+
         predicate_ranges = []
         if ranges is not None:
             for range in ranges:
                 predicate_ranges.append(
                     dict(
-                        space=space,
+                        space=space_id,
                         key_min=range.key_min,
                         key_max=range.key_max,
                     )

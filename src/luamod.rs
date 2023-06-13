@@ -633,6 +633,8 @@ pub(crate) fn setup(args: &args::Run) {
             })
         },
     );
+    // FIXME: space param inconsistency
+    // op requires `space` to be a String, but ranges in predicate require space to be a `SpaceId`
     luamod_set(
         &l,
         "cas",

@@ -274,30 +274,6 @@ impl Predicate {
             requested: self.index,
             conflict_index: entry_index,
         };
-        let check_bounds = |key_def: &KeyDef, key: &Tuple, range: &Range| {
-            let min_satisfied = match &range.key_min {
-                Bound::Included(bound) => key_def.compare_with_key(key, bound).is_ge(),
-                Bound::Excluded(bound) => key_def.compare_with_key(key, bound).is_gt(),
-                Bound::Unbounded => true,
-            };
-            // short-circuit
-            if !min_satisfied {
-                return Ok(());
-            }
-            let max_satisfied = match &range.key_max {
-                Bound::Included(bound) => key_def.compare_with_key(key, bound).is_le(),
-                Bound::Excluded(bound) => key_def.compare_with_key(key, bound).is_lt(),
-                Bound::Unbounded => true,
-            };
-            // min_satisfied && max_satisfied
-            if max_satisfied {
-                // If entry found that modified a tuple in bounds - cancel CaS.
-                Err(error())
-            } else {
-                Ok(())
-            }
-        };
-
         let ddl_keys: Lazy<Vec<Tuple>> = Lazy::new(|| {
             use crate::storage::PropertyName::*;
 
@@ -328,23 +304,31 @@ impl Predicate {
                 Op::Dml(Dml::Update { key, .. } | Dml::Delete { key, .. }) => {
                     let key = Tuple::new(key)?;
                     let key_def = storage.key_def_for_key(space, 0)?;
-                    check_bounds(&key_def, &key, range)?;
+                    if range.contains(&key_def, &key) {
+                        return Err(error());
+                    }
                 }
                 Op::Dml(Dml::Insert { tuple, .. } | Dml::Replace { tuple, .. }) => {
                     let tuple = Tuple::new(tuple)?;
                     let key_def = storage.key_def(space, 0)?;
-                    check_bounds(&key_def, &tuple, range)?;
+                    if range.contains(&key_def, &tuple) {
+                        return Err(error());
+                    }
                 }
                 Op::DdlPrepare { .. } | Op::DdlCommit | Op::DdlAbort => {
                     let key_def = storage.key_def_for_key(space, 0)?;
                     for key in ddl_keys.iter() {
-                        check_bounds(&key_def, key, range)?;
+                        if range.contains(&key_def, key) {
+                            return Err(error());
+                        }
                     }
                 }
                 Op::PersistInstance(op) => {
                     let key = Tuple::new(&(&op.0.instance_id,))?;
                     let key_def = storage.key_def_for_key(space, 0)?;
-                    check_bounds(&key_def, &key, range)?;
+                    if range.contains(&key_def, &key) {
+                        return Err(error());
+                    }
                 }
                 Op::Nop => (),
             };
@@ -376,62 +360,115 @@ impl Range {
     pub fn new(space: SpaceId) -> Self {
         Self {
             space,
-            key_min: Bound::Unbounded,
-            key_max: Bound::Unbounded,
+            key_min: Bound::unbounded(),
+            key_max: Bound::unbounded(),
         }
     }
 
     /// Add a "greater than" restriction.
     #[inline(always)]
     pub fn gt(mut self, key: impl ToTupleBuffer) -> Self {
-        let tuple = key.to_tuple_buffer().expect("cannot fail");
-        self.key_min = Bound::Excluded(tuple);
+        self.key_min = Bound::excluded(&key);
         self
     }
 
     /// Add a "greater or equal" restriction.
     #[inline(always)]
     pub fn ge(mut self, key: impl ToTupleBuffer) -> Self {
-        let tuple = key.to_tuple_buffer().expect("cannot fail");
-        self.key_min = Bound::Included(tuple);
+        self.key_min = Bound::included(&key);
         self
     }
 
     /// Add a "less than" restriction.
     #[inline(always)]
     pub fn lt(mut self, key: impl ToTupleBuffer) -> Self {
-        let tuple = key.to_tuple_buffer().expect("cannot fail");
-        self.key_max = Bound::Excluded(tuple);
+        self.key_max = Bound::excluded(&key);
         self
     }
 
     /// Add a "less or equal" restriction.
     #[inline(always)]
     pub fn le(mut self, key: impl ToTupleBuffer) -> Self {
-        let tuple = key.to_tuple_buffer().expect("cannot fail");
-        self.key_max = Bound::Included(tuple);
+        self.key_max = Bound::included(&key);
         self
     }
 
     /// Add a "equal" restriction.
     #[inline(always)]
     pub fn eq(mut self, key: impl ToTupleBuffer) -> Self {
-        let tuple = key.to_tuple_buffer().expect("cannot fail");
-        self.key_min = Bound::Included(tuple.clone());
-        self.key_max = Bound::Included(tuple);
+        self.key_min = Bound::included(&key);
+        self.key_max = Bound::included(&key);
         self
+    }
+
+    pub fn contains(&self, key_def: &KeyDef, tuple: &Tuple) -> bool {
+        let min_satisfied = match self.key_min.kind {
+            BoundKind::Included => key_def
+                .compare_with_key(tuple, self.key_min.key.as_ref().unwrap())
+                .is_ge(),
+            BoundKind::Excluded => key_def
+                .compare_with_key(tuple, self.key_min.key.as_ref().unwrap())
+                .is_gt(),
+            BoundKind::Unbounded => true,
+        };
+        // short-circuit
+        if !min_satisfied {
+            return false;
+        }
+        let max_satisfied = match self.key_max.kind {
+            BoundKind::Included => key_def
+                .compare_with_key(tuple, self.key_max.key.as_ref().unwrap())
+                .is_le(),
+            BoundKind::Excluded => key_def
+                .compare_with_key(tuple, self.key_max.key.as_ref().unwrap())
+                .is_lt(),
+            BoundKind::Unbounded => true,
+        };
+        // min_satisfied && max_satisfied
+        max_satisfied
     }
 }
 
 /// A bound for keys.
 #[derive(Clone, Debug, ::serde::Serialize, ::serde::Deserialize, tlua::LuaRead)]
-#[serde(rename_all = "snake_case", tag = "kind", content = "value")]
-pub enum Bound {
+pub struct Bound {
+    kind: BoundKind,
     #[serde(with = "serde_bytes")]
-    Included(TupleBuffer),
-    #[serde(with = "serde_bytes")]
-    Excluded(TupleBuffer),
-    Unbounded,
+    key: Option<TupleBuffer>,
+}
+
+impl Bound {
+    pub fn included(key: &impl ToTupleBuffer) -> Self {
+        Self {
+            kind: BoundKind::Included,
+            key: Some(key.to_tuple_buffer().expect("cannot fail")),
+        }
+    }
+
+    pub fn excluded(key: &impl ToTupleBuffer) -> Self {
+        Self {
+            kind: BoundKind::Excluded,
+            key: Some(key.to_tuple_buffer().expect("cannot fail")),
+        }
+    }
+
+    pub fn unbounded() -> Self {
+        Self {
+            kind: BoundKind::Unbounded,
+            key: None,
+        }
+    }
+}
+
+::tarantool::define_str_enum! {
+    /// A bound for keys.
+    #[derive(Default)]
+    pub enum BoundKind {
+        Included = "included",
+        Excluded = "excluded",
+        #[default]
+        Unbounded = "unbounded",
+    }
 }
 
 /// Get space that the operation touches.
