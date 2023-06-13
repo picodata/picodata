@@ -49,6 +49,8 @@
 //! on try to receiver, if data is already available - lock is redundant.
 //! For implementing a consumer lock and unlock a [`crate::fiber::Cond`] is used.
 
+pub mod oneshot;
+
 use crate::ffi;
 use crate::ffi::tarantool::{
     cbus_endpoint_delete, cbus_endpoint_new, cbus_loop, lcpipe_delete, lcpipe_new, lcpipe_push_now,
