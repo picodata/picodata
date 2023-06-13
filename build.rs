@@ -71,6 +71,11 @@ fn main() {
             picodata_libs.join("libtinfo.so.6"),
         )
         .unwrap();
+        std::os::unix::fs::symlink(
+            "../build/tarantool-sys/zlib-prefix/lib/libz.so.1.2.12",
+            picodata_libs.join("libz.so"),
+        )
+        .unwrap();
     }
 
     println!("cargo:rerun-if-changed=tarantool-sys");
@@ -337,7 +342,7 @@ fn build_tarantool(jsc: Option<&jobserver::Client>, build_root: &Path) {
     rustc::link_lib_static("icuuc");
 
     rustc::link_search(format!("{tarantool_sys}/zlib-prefix/lib"));
-    rustc::link_lib_static("z");
+    rustc::link_lib_dynamic("z");
 
     rustc::link_search(format!("{tarantool_build}/build/curl/dest/lib"));
     rustc::link_lib_static("curl");
