@@ -15,10 +15,10 @@
 Данный раздел интерфейса больше подходит для использования в
 интерактивной консоли (`picodata run` или `picodata connect`).
 
-Пример
+Пример:
 
 ```
-tarantool> pico.help()
+picodata> pico.help()
 -- Печатает встроенную справку
 ```
 
@@ -28,21 +28,20 @@ tarantool> pico.help()
 
 <!-- TODO: Error handling guideline -->
 
-| <!-- -->                      | <!-- -->                          |
+| Функция                       | Описание                          |
 |-------------------------------|-----------------------------------|
 | [pico.VERSION](#picoversion) | Версия Picodata.                  |
-| [pico.args](#picoargs)       | Аргументы запуска `picodata run`. |
-| [pico.raft_read_index ()](#picoraftreadindex) | Чтение индекса Raft-журнала.
-
-- `pico.raft_propose_nop()`. Добавляет в Raft-журнал запись `Nop` (no operation).
-- `pico.cas()`. Запрос на изменение параметров методом [Compare and Swap](glossary.md#сas-compare-and-swap).
-- `pico.raft_status()`. Получение данных о текущем состоянии Raft-журнала ([терм](glossary.md#терм-term), лидер и т.д.)
-- `pico.exit()`. Корректное завершение работы указанного инстанса Picodata.
-- `pico.expel()`. [Контролируемый вывод](cli.md#описание-команды-expel) инстанса Picodata из кластера.
-- `pico.raft_timeout_now()`.  Вызывает таймаут Raft-узла прямо сейчас, инициируеют новые выборы в Raft-группе.
-- `pico.instance_info()`. Получение информации об инстансе Picodata (идентификаторы, уровни ([grade](glossary.md#грейд-grade)) и прочее).
-- `pico.whoami()`. Отображение данных о текущем пользователе (судя по всему, ещё не реализовано).
-- `pico.raft_compact_log()`. [Обрезание](glossary.md#компактизация-raft-журнала-raft-log-compaction) Raft-журнала c удалением указанного числа наиболее старых записей.
+| [pico.args](#picoargs)       | Вывод аргументов запуска `picodata run`. |
+| [pico.raft_read_index()](#picoraft_read_index) | Чтение индекса raft-журнала.
+| [pico.raft_propose_nop()](#picoraft_propose_nop) | Добавление в raft-журнал запись `Nop` (no operation).
+| [pico.cas()](#picocas) | Запрос на изменение параметров методом [Compare and Swap](glossary.md#сas-compare-and-swap).
+| [pico.raft_status()](#picoraft_status) | Получение данных о текущем состоянии raft-журнала ([терм](glossary.md#терм-term), лидер и т.д.)
+| [pico.exit()](#picoexit) | Корректное завершение работы указанного инстанса Picodata.
+| [pico.expel()](#picoexpel) | [Контролируемый вывод](cli.md#описание-команды-expel) инстанса Picodata из кластера.
+| [pico.raft_timeout_now()](#picoraft_timeout_now) |  Вызов таймаута raft-узла прямо сейчас, объявление новых выборов в raft-группе.
+| [pico.instance_info()](#picoinstance_info) | Получение информации об инстансе Picodata (идентификаторы, уровни ([grade](glossary.md#грейд-grade)) и прочее).
+| [pico.whoami()](#picowhoami) | Отображение данных о текущем пользователе (судя по всему, ещё не реализовано).
+| [pico.raft_compact_log()](#picoraft_compact_log) | [Обрезание](glossary.md#компактизация-raft-журнала-raft-log-compaction) raft-журнала c удалением указанного числа наиболее старых записей.
 
 ### pico.VERSION
 
@@ -52,10 +51,10 @@ Versioning][calver]) с форматом `YY.0M.MICRO`.
 
 [calver]: https://calver.org/#scheme
 
-Пример
+Пример:
 
 ```console
-tarantool> pico.VERSION
+picodata> pico.VERSION
 ---
 - 22.11.0
 ...
@@ -85,10 +84,10 @@ Lua-таблица (не функция) с [параметрами запуск
 
 (_table_)
 
-Пример
+Пример:
 
 ```console
-tarantool> pico.args
+picodata> pico.args
 ---
 - cluster_id: demo
   failure_domain: {}
@@ -100,18 +99,137 @@ tarantool> pico.args
   data_dir: ./data/i2
 ...
 ```
+### pico.raft_read_index
+Кворумное чтение текущего индекса raft-журнала
 
-### instance_info()
+```lua
+function raft_read_index(timeout)
+```
+Параметры:
+
+- `timeout`: (_number_)
+
+Функция принимает в качестве параметра число секунд (>0), в течение которых
+будет длиться таймаут операции чтения.
+
+Пример:
+
+```console
+picodata> pico.raft_read_index(1)
+---
+- 42
+...
+```
+### pico.raft_propose_nop
+Добавляет в raft-журнал запись `Nop` (no operation). Используется для обновления raft-журнала путем добавления в него свежей записи.
+Функция не имеет передаваемых параметров.
+
+### pico.cas
+Отправляет запрос на вызов/изменение параметра с учетом его текущего
+значения (проверяется на лидере). Функция работает на всем кластере.
+
+```lua
+function cas({args},...)
+```
+
+Параметры:
+
+ - `args`: (_string_ = '_string_' | {_table_} )
+
+Пример:
+
+```
+pico.cas({space = 'test', kind = 'insert', tuple = {13, 37} }, { timeout = 1 })
+```
+
+Возвращаемое значение:
+
+(_number_)
+
+Функция возвращает индекс сделанной записи в raft-журнале.
+
+### pico.raft_status
+Получение данных о текущем состоянии raft-журнала ([терм](glossary.md#терм-term), лидер и т.д.). Функция не имеет передаваемых параметров.
+
+Пример:
+
+```console
+picodata> pico.raft_status()
+---
+- term: 2
+  leader_id: 1
+  raft_state: Leader
+  id: 1
+...
+```
+
+### pico.exit
+Корректное завершение работы указанного инстанса Picodata.
+
+```lua
+function exit([code])
+```
+
+Параметры:
+
+- `[code]`: (_table_)
+
+В качестве параметров функция принимает строку кода Lua.
+
+Результат работы: 
+
+Завершение текущего инстанса, завершение системных
+процессов, связанных инстансом. В выводе `stdout` будет присутствовать
+строка `graceful shutdown succeeded`, после чего будет возвращено
+управление командному интерпретатору.
+
+Перезапуск инстанса позволит ему снова войти в состав кластера в статусе `follower`.
+
+### pico.expel
+
+```lua
+function expel("instance_id")
+```
+Выводит инстанс из кластера, но не завершает его работу. Может быть запущена только один раз для определенного инстанса.
+
+Параметры:
+
+- `instance_id`: (_string_)
+
+Пример:
+
+```
+pico.expel("i2")
+```
+У функции нет непосредственно возвращаемых значений
+
+Результат работы:
+
+На инстансе, с которого была вызвана функция, в консоли `stdout` появятся сообщения:
+```
+downgrading instance i2
+reconfiguring sharding
+```
+И далее для оставшихся в raft-группе инстансов сообщения вида:
+```
+calling rpc::sharding
+```
+Инстанс в состоянии `expelled` останется запущенным. Если его остановить и запустить снова, то он не присоединится к raft-группе.
+
+
+### pico.instance_info
 
 Функция показывает информацию о текущем инстансе Picodata
 
 ```lua
 function instance_info(instance)
 ```
-**Параметры**
+Параметры:
 - `instance`: (_string_)
 
-**Возвращаемое значение** (_table_)
+Возвращаемое значение: 
+
+(_table_)
 
 Таблица с полями:
 
@@ -128,10 +246,10 @@ function instance_info(instance)
 - `replicaset_id`: (_string_)
 - `advertise_address`: (_string_)
 
-**Пример**
+Пример:
 
 ```console
-tarantool> pico.instance_info(i2)
+picodata> pico.instance_info(i2)
 ---
 - target_grade:
     variant: Online
@@ -147,38 +265,55 @@ tarantool> pico.instance_info(i2)
   advertise_address: localhost:3304
 ...
 ```
+### pico.raft_timeout_now
+Вызов таймаута raft-узла прямо сейчас, объявление новых выборов в raft-группе.
 
-#### `expel` (function)
+Функция используется для явного и сознательного завершения текущего терма и объявления новых выборов в raft-группе. Функция не имеет передаваемых параметров.
 
-```lua
-function expel("instance_id")
-```
-Выводит инстанс из кластера, но не завершает его работу. Может быть запущена только один раз для определенного инстанса.
+После вызова функции в выводе `stdout` будут отражены этапы новых выборов (пример для инстанса в `raft_id`=`3`):
 
-**Параметры**
-- `instance_id`: (_string_)
+Объявление новых выборов:
 
-**Пример**
-```
-pico.expel("i2")
-```
-У функции нет непосредственно возвращаемых значений
+  ```
+  received MsgTimeoutNow from 3 and starts an election to get leadership., from: 3, term: 4, raft_id: 3
+  ```
 
-**Результат работы**
+Начало выборов:
 
-На инстансе, с которого была вызвана функция, в консоли `stdout` появятся сообщения:
-```
-downgrading instance i2
-reconfiguring sharding
-```
-И далее для оставшихся в raft-группе инстансов сообщения вида:
-```
-calling rpc::sharding
-```
-Инстанс в состоянии `expelled` останется запущенным. При его перезапуске он не присоединится снова к raft-группе.
+  ```
+  starting a new election, term: 4, raft_id: 3
+  ```
+
+Превращение текущего инстанса в кандидаты в лидеры:
+
+  ```
+  became candidate at term 5, term: 5, raft_id: 3
+  ```
+
+Объявление голосования:
+
+  ```
+  broadcasting vote request, to: [4, 1], log_index: 54, log_term: 4, term: 5, type: MsgRequestVote, raft_id: 3
+  ```
+
+Получение голосов:
+
+  ```
+  received votes response, term: 5, type: MsgRequestVoteResponse, approvals: 2, rejections: 0, from: 4, vote: true, raft_id: 3
+  ```
+
+Объявление результата выборов:
+
+  ```
+  became leader at term 5, term: 5, raft_id: 3
+  ```
+
+В отсутствие других кандидатов, инстанс, инициировавший
+`raft_timeout_now`, с большой вероятностью (при наличии кворума) сам
+станет лидером по результатам выборов.
 
 
-#### `whoami` (function)
+### pico.whoami
 
 ```lua
 function whoami()
@@ -186,7 +321,9 @@ function whoami()
 
 Возвращает идентификаторы инстанса.
 
-**Возвращаемое значение** (_table_)
+Возвращаемое значение:
+
+(_table_)
 
 Таблица с полями:
 
@@ -194,36 +331,17 @@ function whoami()
 - `cluster_id`: (_string_)
 - `instance_id`: (_string_)
 
-**Пример**
+Пример:
 
 ```console
-tarantool> pico.whoami()
+picodata> pico.whoami()
 - raft_id: 1
   cluster_id: demo
   instance_id: i1
 ```
-#### cas (function)
-Отправляет запрос на вызов/изменение параметра с учетом его текущего
-значения (проверяется на лидере). Функция работает на всем кластере.
 
-```lua
-function cas({args},...)
-```
 
-**Параметры**
-
- - `args`: (_string_ = '_string_' | {_table_} )
-
-**Пример**
-```
-pico.cas({space = 'test', kind = 'insert', tuple = {13, 37} }, { timeout = 1 })
-```
-
-**Возвращаемое значение** (_number_)
-
-Функция возвращает индекс сделанной записи в raft-журнале.
-
-#### `raft_compact_log` (function)
+### pico.raft_compact_log
 
 Компактизирует raft-журнал до указанного индекса (не включая сам индекс).
 
@@ -233,11 +351,13 @@ pico.cas({space = 'test', kind = 'insert', tuple = {13, 37} }, { timeout = 1 })
 function raft_compact_log(up_to)
 ```
 
-**Параметры**
+Параметры:
 
 - `up_to`: (_number_) (_optional_, default: `inf`)
 
-**Возвращаемое значение** (_number_)
+Возвращаемое значение:
+
+(_number_)
 
 Функция возвращает значение `first_index` — индекс первой записи в raft-журнале.
 
