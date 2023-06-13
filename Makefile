@@ -38,6 +38,9 @@ install:
 	cp -P \
 		target/*/build/tarantool-sys/ncurses-prefix/lib/libtinfo.* \
 		$(DESTDIR)/usr/bin/picodata-libs
+	cp -P \
+		target/*/build/tarantool-sys/zlib-prefix/lib/zlib.[^a]* \
+		$(DESTDIR)/usr/bin/picodata-libs
 
 fmt:
 	cargo fmt
