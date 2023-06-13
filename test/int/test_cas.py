@@ -149,30 +149,46 @@ def test_cas_predicate(instance: Instance):
 
 # Previous tests use stored procedure `.proc_cas`, this one uses `pico.cas` lua api instead
 def test_cas_lua_api(cluster: Cluster):
-    def property(k: str):
+    def value(k: str):
         return cluster.instances[0].eval(
             """
-            local tuple = box.space._pico_property:get(...)
+            local tuple = box.space.some_space:get(...)
             return tuple and tuple.value
             """,
             k,
         )
 
     cluster.deploy(instance_count=3)
+
+    # We cannot use `_pico_property` here as it does not have
+    # a corresponding entry in `Spaces`
+    cluster.create_space(
+        dict(
+            id=1026,
+            name="some_space",
+            format=[
+                dict(name="key", type="string", is_nullable=False),
+                dict(name="value", type="string", is_nullable=False),
+            ],
+            primary_key=["key"],
+            distribution="global",
+        )
+    )
+
     read_index = cluster.instances[0].raft_read_index(_3_SEC)
 
     # Successful insert
-    ret = cluster.cas("insert", "_pico_property", ["fruit", "apple"], read_index)
+    ret = cluster.cas("insert", "some_space", ["fruit", "apple"], read_index)
     assert ret == read_index + 1
     cluster.raft_wait_index(ret, _3_SEC)
     assert cluster.instances[0].raft_read_index(_3_SEC) == ret
-    assert property("fruit") == "apple"
+    assert value("fruit") == "apple"
 
     # CaS rejected
     with pytest.raises(ReturnError) as e5:
         cluster.cas(
             "insert",
-            "_pico_property",
+            "some_space",
             ["fruit", "orange"],
             index=read_index,
             ranges=[CasRange(eq="fruit")],

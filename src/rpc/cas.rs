@@ -227,7 +227,7 @@ pub struct PredicateInLua {
     /// CaS sender's current raft term.
     pub term: Option<RaftTerm>,
     /// Range that the CaS sender have read and expects it to be unmodified.
-    pub ranges: Option<Vec<Range>>,
+    pub ranges: Option<Vec<RangeInLua>>,
 }
 
 /// Predicate that will be checked by the leader, before accepting the proposed `op`.
@@ -259,7 +259,12 @@ impl Predicate {
         Ok(Self {
             index,
             term,
-            ranges: predicate.ranges.unwrap_or_default(),
+            ranges: predicate
+                .ranges
+                .unwrap_or_default()
+                .into_iter()
+                .map(Range::from_lua_args)
+                .collect::<traft::Result<_>>()?,
         })
     }
 
@@ -337,6 +342,18 @@ impl Predicate {
     }
 }
 
+/// Represents a lua table describing a [`Range`].
+///
+/// This is only used to parse lua arguments from lua api functions such as
+/// `pico.cas`.
+#[derive(Clone, Debug, ::serde::Serialize, ::serde::Deserialize, tlua::LuaRead)]
+pub struct RangeInLua {
+    /// Space name.
+    pub space: String,
+    pub key_min: Bound,
+    pub key_max: Bound,
+}
+
 /// A range of keys used as an argument for a [`Predicate`].
 #[derive(Clone, Debug, ::serde::Serialize, ::serde::Deserialize, tlua::LuaRead)]
 pub struct Range {
@@ -346,6 +363,20 @@ pub struct Range {
 }
 
 impl Range {
+    pub fn from_lua_args(range: RangeInLua) -> traft::Result<Self> {
+        let node = traft::node::global()?;
+        let space_id = if let Some(space) = node.storage.spaces.by_name(&range.space)? {
+            space.id
+        } else {
+            return Err(TraftError::Other("space not found".into()));
+        };
+        Ok(Self {
+            space: space_id,
+            key_min: range.key_min,
+            key_max: range.key_max,
+        })
+    }
+
     /// Creates new unbounded range in `space`. Use other methods to restrict it.
     ///
     /// # Example

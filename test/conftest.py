@@ -203,13 +203,13 @@ class CasRange:
     @property
     def key_min_packed(self) -> dict:
         key = self.key_min.copy()
-        key["key"] = msgpack.packb([key["key"][0]])
+        key["key"] = msgpack.packb([key["key"][0]])  # type: ignore
         return key
 
     @property
     def key_max_packed(self) -> dict:
         key = self.key_max.copy()
-        key["key"] = msgpack.packb([key["key"][0]])
+        key["key"] = msgpack.packb([key["key"][0]])  # type: ignore
         return key
 
     def __repr__(self):
@@ -1077,7 +1077,7 @@ class Cluster:
     def cas(
         self,
         dml_kind: Literal["insert", "replace", "delete"],
-        space: str | int,
+        space: str,
         tuple: Tuple | List,
         index: int | None = None,
         term: int | None = None,
@@ -1096,14 +1096,12 @@ class Cluster:
         if instance is None:
             instance = self.instances[0]
 
-        space_id = instance.space_id(space)
-
         predicate_ranges = []
         if ranges is not None:
             for range in ranges:
                 predicate_ranges.append(
                     dict(
-                        space=space_id,
+                        space=space,
                         key_min=range.key_min,
                         key_max=range.key_max,
                     )
