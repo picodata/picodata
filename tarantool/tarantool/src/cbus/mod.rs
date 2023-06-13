@@ -50,6 +50,7 @@
 //! For implementing a consumer lock and unlock a [`crate::fiber::Cond`] is used.
 
 pub mod oneshot;
+pub mod unbounded;
 
 use crate::ffi;
 use crate::ffi::tarantool::{

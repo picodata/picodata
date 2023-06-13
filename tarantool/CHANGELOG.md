@@ -7,6 +7,8 @@
     log::Level to SayLevel taking the mapping function into account.
 - `tlua::Push` and `tlua::LuaRead` implementations for `SayLevel`.
 - `examples/luaopen` example of how to implement native lua modules.
+- `tarantool::cbus` module for communication between any arbitrary thread and 
+tarantool thread via syncronization primitives (channels) and low-level cbus api.
 
 ### Fixed
 - `log::Log::enabled` implementation for TarantoolLogger no longer ignores the
