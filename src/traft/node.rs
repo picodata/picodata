@@ -19,6 +19,8 @@ use crate::storage::ToEntryIter as _;
 use crate::storage::ToEntryIter as _;
 use crate::storage::{acl_create_user_on_master, acl_drop_user_on_master};
 use crate::storage::{acl_global_create_user, acl_global_drop_user};
+use crate::storage::{acl_global_grant_privilege, acl_global_revoke_privilege};
+use crate::storage::{acl_grant_privilege_on_master, acl_revoke_privilege_on_master};
 use crate::storage::{ddl_abort_on_master, ddl_meta_space_update_operable};
 use crate::storage::{local_schema_version, set_local_schema_version};
 use crate::storage::{Clusterwide, ClusterwideSpaceId, PropertyName};
@@ -973,52 +975,54 @@ impl NodeImpl {
                     .expect("storage error");
             }
 
-            Op::Acl {
-                schema_version,
-                acl: Acl::CreateUser { user_def },
-            } => {
+            Op::Acl(acl) => {
                 let v_local = local_schema_version().expect("storage error");
-                let v_pending = schema_version;
+                let v_pending = acl.schema_version();
                 if v_local < v_pending {
                     if self.is_readonly() {
                         // Wait for tarantool replication with master to progress.
                         return SleepAndRetry;
                     } else {
-                        assert_eq!(user_def.schema_version, v_pending);
-                        acl_create_user_on_master(&user_def).expect("creating user shouldn't fail");
+                        match &acl {
+                            Acl::CreateUser { user_def } => {
+                                acl_create_user_on_master(user_def)
+                                    .expect("creating user shouldn't fail");
+                            }
+                            Acl::DropUser { user_id, .. } => {
+                                acl_drop_user_on_master(*user_id)
+                                    .expect("creating user shouldn't fail");
+                            }
+                            Acl::GrantPrivilege { priv_def } => {
+                                acl_grant_privilege_on_master(priv_def)
+                                    .expect("granting a privilege shouldn't fail");
+                            }
+                            Acl::RevokePrivilege { priv_def } => {
+                                acl_revoke_privilege_on_master(priv_def)
+                                    .expect("revoking a privilege shouldn't fail");
+                            }
+                        }
                         set_local_schema_version(v_pending).expect("storage error");
                     }
                 }
 
-                acl_global_create_user(&self.storage, &user_def)
-                    .expect("persisting a user definition shouldn't fail");
-
-                storage_properties
-                    .put(PropertyName::GlobalSchemaVersion, &v_pending)
-                    .expect("storage error");
-                storage_properties
-                    .put(PropertyName::NextSchemaVersion, &(v_pending + 1))
-                    .expect("storage error");
-            }
-
-            Op::Acl {
-                schema_version,
-                acl: Acl::DropUser { user_id },
-            } => {
-                let v_local = local_schema_version().expect("storage error");
-                let v_pending = schema_version;
-                if v_local < v_pending {
-                    if self.is_readonly() {
-                        // Wait for tarantool replication with master to progress.
-                        return SleepAndRetry;
-                    } else {
-                        acl_drop_user_on_master(user_id).expect("creating user shouldn't fail");
-                        set_local_schema_version(v_pending).expect("storage error");
+                match &acl {
+                    Acl::CreateUser { user_def } => {
+                        acl_global_create_user(&self.storage, user_def)
+                            .expect("persisting a user definition shouldn't fail");
+                    }
+                    Acl::DropUser { user_id, .. } => {
+                        acl_global_drop_user(&self.storage, *user_id)
+                            .expect("droping a user definition shouldn't fail");
+                    }
+                    Acl::GrantPrivilege { priv_def } => {
+                        acl_global_grant_privilege(&self.storage, priv_def)
+                            .expect("persiting a privilege definition shouldn't fail");
+                    }
+                    Acl::RevokePrivilege { priv_def } => {
+                        acl_global_revoke_privilege(&self.storage, priv_def)
+                            .expect("removing a privilege definition shouldn't fail");
                     }
                 }
-
-                acl_global_drop_user(&self.storage, user_id)
-                    .expect("droping a user definition shouldn't fail");
 
                 storage_properties
                     .put(PropertyName::GlobalSchemaVersion, &v_pending)

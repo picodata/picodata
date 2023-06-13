@@ -1,4 +1,4 @@
-use crate::schema::{Distribution, UserDef, UserId};
+use crate::schema::{Distribution, PrivilegeDef, UserDef, UserId};
 use crate::storage::space_by_name;
 use crate::storage::Clusterwide;
 use ::tarantool::index::{IndexId, Part};
@@ -46,7 +46,7 @@ pub enum Op {
     /// Only one pending DDL operation can exist at the same time.
     DdlAbort,
     /// Cluster-wide access control list change operation.
-    Acl { schema_version: u64, acl: Acl },
+    Acl(Acl),
 }
 
 impl std::fmt::Display for Op {
@@ -111,21 +111,42 @@ impl std::fmt::Display for Op {
             }
             Self::DdlCommit => write!(f, "DdlCommit"),
             Self::DdlAbort => write!(f, "DdlAbort"),
-            Self::Acl {
-                schema_version,
-                acl: Acl::CreateUser { user_def },
-            } => {
-                write!(
-                    f,
-                    r#"CreateUser({schema_version}, {}, "{}")"#,
-                    user_def.id, user_def.name,
-                )
+            Self::Acl(Acl::CreateUser { user_def }) => {
+                let UserDef {
+                    id,
+                    name,
+                    schema_version,
+                    ..
+                } = user_def;
+                write!(f, r#"CreateUser({schema_version}, {id}, "{name}")"#,)
             }
-            Self::Acl {
+            Self::Acl(Acl::DropUser {
+                user_id,
                 schema_version,
-                acl: Acl::DropUser { user_id },
-            } => {
+            }) => {
                 write!(f, "DropUser({schema_version}, {user_id})")
+            }
+            Self::Acl(Acl::GrantPrivilege { priv_def }) => {
+                let PrivilegeDef {
+                    user_id,
+                    object_type,
+                    object_name,
+                    privilege,
+                    schema_version,
+                    ..
+                } = priv_def;
+                write!(f, "GrantPrivilege({schema_version}, {user_id}, {object_type}, {object_name}, {privilege})")
+            }
+            Self::Acl(Acl::RevokePrivilege { priv_def }) => {
+                let PrivilegeDef {
+                    user_id,
+                    object_type,
+                    object_name,
+                    privilege,
+                    schema_version,
+                    ..
+                } = priv_def;
+                write!(f, "RevokePrivilege({schema_version}, {user_id}, {object_type}, {object_name}, {privilege})")
             }
         };
 
@@ -425,7 +446,27 @@ pub enum Acl {
     CreateUser { user_def: UserDef },
 
     /// Drop a tarantool user and any entities owned by it.
-    DropUser { user_id: UserId },
+    DropUser {
+        user_id: UserId,
+        schema_version: u64,
+    },
+
+    /// Grant a user some privilege.
+    GrantPrivilege { priv_def: PrivilegeDef },
+
+    /// Revoke a user some privilege.
+    RevokePrivilege { priv_def: PrivilegeDef },
+}
+
+impl Acl {
+    pub fn schema_version(&self) -> u64 {
+        match self {
+            Self::CreateUser { user_def } => user_def.schema_version,
+            Self::DropUser { schema_version, .. } => *schema_version,
+            Self::GrantPrivilege { priv_def } => priv_def.schema_version,
+            Self::RevokePrivilege { priv_def } => priv_def.schema_version,
+        }
+    }
 }
 
 mod vec_of_raw_byte_buf {

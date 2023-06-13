@@ -11,7 +11,7 @@ use ::tarantool::tuple::{RawBytes, ToTupleBuffer, Tuple, TupleBuffer};
 use crate::failure_domain as fd;
 use crate::instance::{self, grade, Instance};
 use crate::replicaset::{Replicaset, ReplicasetId};
-use crate::schema::{Distribution, IndexDef, SpaceDef, UserDef, UserId};
+use crate::schema::{Distribution, IndexDef, PrivilegeDef, SpaceDef, UserDef, UserId};
 use crate::tlog;
 use crate::traft;
 use crate::traft::error::Error;
@@ -490,6 +490,21 @@ define_clusterwide_spaces! {
             /// An enumeration of indexes defined for "_pico_user".
             #[allow(clippy::enum_variant_names)]
             pub enum SpaceUserIndex;
+        }
+        Privilege = 521, "_pico_privilege" => {
+            Clusterwide::privileges;
+
+            /// A struct for accessing info of all privileges granted to
+            /// user-defined users.
+            pub struct Privileges {
+                space: Space,
+                #[primary]
+                primary_key: Index => Primary = "primary",
+            }
+
+            /// An enumeration of indexes defined for "_pico_privilege".
+            #[allow(clippy::enum_variant_names)]
+            pub enum SpacePrivilegeIndex;
         }
     }
 
@@ -2000,6 +2015,103 @@ impl ToEntryIter for Users {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// Privileges
+////////////////////////////////////////////////////////////////////////////////
+
+impl Privileges {
+    pub fn new() -> tarantool::Result<Self> {
+        let space = Space::builder(Self::SPACE_NAME)
+            .id(Self::SPACE_ID)
+            .is_local(true)
+            .is_temporary(false)
+            .field(("user_id", FieldType::Unsigned))
+            .field(("object_type", FieldType::String))
+            .field(("object_name", FieldType::String))
+            .field(("privilege", FieldType::String))
+            .field(("schema_version", FieldType::Unsigned))
+            .if_not_exists(true)
+            .create()?;
+
+        let primary_key = space
+            .index_builder(IndexOf::<Self>::Primary.as_str())
+            .unique(true)
+            .parts(["user_id", "object_type", "object_name", "privilege"])
+            .if_not_exists(true)
+            .create()?;
+
+        Ok(Self { space, primary_key })
+    }
+
+    #[inline(always)]
+    pub fn get(
+        &self,
+        user_id: UserId,
+        object_type: &str,
+        object_name: &str,
+    ) -> tarantool::Result<Option<PrivilegeDef>> {
+        let tuple = self.space.get(&(user_id, object_type, object_name))?;
+        let mut res = None;
+        if let Some(tuple) = tuple {
+            res = Some(tuple.decode()?);
+        }
+        Ok(res)
+    }
+
+    #[inline(always)]
+    pub fn by_user_id(&self, user_id: UserId) -> tarantool::Result<EntryIter<PrivilegeDef>> {
+        let iter = self.primary_key.select(IteratorType::Eq, &[user_id])?;
+        Ok(EntryIter::new(iter))
+    }
+
+    #[inline(always)]
+    pub fn replace(&self, priv_def: &PrivilegeDef) -> tarantool::Result<()> {
+        self.space.replace(priv_def)?;
+        Ok(())
+    }
+
+    #[inline(always)]
+    pub fn insert(&self, priv_def: &PrivilegeDef) -> tarantool::Result<()> {
+        self.space.insert(priv_def)?;
+        Ok(())
+    }
+
+    #[inline(always)]
+    pub fn delete(
+        &self,
+        user_id: UserId,
+        object_type: &str,
+        object_name: &str,
+        privilege: &str,
+    ) -> tarantool::Result<()> {
+        self.space
+            .delete(&(user_id, object_type, object_name, privilege))?;
+        Ok(())
+    }
+
+    #[inline(always)]
+    pub fn delete_all_by_user_id(&self, user_id: UserId) -> tarantool::Result<()> {
+        for priv_def in self.by_user_id(user_id)? {
+            self.delete(
+                priv_def.user_id,
+                &priv_def.object_type,
+                &priv_def.object_name,
+                &priv_def.privilege,
+            )?;
+        }
+        Ok(())
+    }
+}
+
+impl ToEntryIter for Privileges {
+    type Entry = PrivilegeDef;
+
+    #[inline(always)]
+    fn index_iter(&self) -> Result<IndexIterator> {
+        Ok(self.space.select(IteratorType::All, &())?)
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // acl global
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -2012,8 +2124,33 @@ pub fn acl_global_create_user(storage: &Clusterwide, user_def: &UserDef) -> tara
 /// Remove a user definition and any entities owned by it from the internal
 /// clusterwide storage.
 pub fn acl_global_drop_user(storage: &Clusterwide, user_id: UserId) -> tarantool::Result<()> {
-    // TODO: delete privilege records
+    storage.privileges.delete_all_by_user_id(user_id)?;
     storage.users.delete(user_id)?;
+    Ok(())
+}
+
+/// Persist a privilege definition in the internal clusterwide storage.
+pub fn acl_global_grant_privilege(
+    storage: &Clusterwide,
+    priv_def: &PrivilegeDef,
+) -> tarantool::Result<()> {
+    storage.privileges.insert(priv_def)?;
+    Ok(())
+}
+
+/// Remove a privilege definition from the internal clusterwide storage.
+pub fn acl_global_revoke_privilege(
+    storage: &Clusterwide,
+    priv_def: &PrivilegeDef,
+) -> tarantool::Result<()> {
+    // FIXME: currently there's no way to revoke a default privilege
+    storage.privileges.delete(
+        priv_def.user_id,
+        &priv_def.object_type,
+        &priv_def.object_name,
+        &priv_def.privilege,
+    )?;
+
     Ok(())
 }
 
@@ -2071,6 +2208,40 @@ pub fn acl_drop_user_on_master(user_id: UserId) -> tarantool::Result<()> {
     let lua = ::tarantool::lua_state();
     lua.exec_with("box.schema.user.drop(...)", user_id)
         .map_err(LuaError::from)?;
+
+    Ok(())
+}
+
+/// Grant a tarantool user some privilege defined by `priv_def`.
+pub fn acl_grant_privilege_on_master(priv_def: &PrivilegeDef) -> tarantool::Result<()> {
+    let lua = ::tarantool::lua_state();
+    lua.exec_with(
+        "box.schema.user.grant(...)",
+        (
+            priv_def.user_id,
+            &priv_def.privilege,
+            &priv_def.object_type,
+            &priv_def.object_name,
+        ),
+    )
+    .map_err(LuaError::from)?;
+
+    Ok(())
+}
+
+/// Revoke a privilege from a tarantool user.
+pub fn acl_revoke_privilege_on_master(priv_def: &PrivilegeDef) -> tarantool::Result<()> {
+    let lua = ::tarantool::lua_state();
+    lua.exec_with(
+        "box.schema.user.revoke(...)",
+        (
+            priv_def.user_id,
+            &priv_def.privilege,
+            &priv_def.object_type,
+            &priv_def.object_name,
+        ),
+    )
+    .map_err(LuaError::from)?;
 
     Ok(())
 }

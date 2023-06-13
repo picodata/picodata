@@ -177,8 +177,6 @@ impl IndexDef {
 ////////////////////////////////////////////////////////////////////////////////
 
 /// User definition.
-///
-/// Describes a user-defined index.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct UserDef {
     pub id: UserId,
@@ -203,6 +201,26 @@ pub struct AuthDef {
 }
 
 impl Encode for UserDef {}
+
+impl UserDef {
+    // TODO
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// PrivilegeDef
+////////////////////////////////////////////////////////////////////////////////
+
+/// Privilege definition.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PrivilegeDef {
+    pub user_id: UserId,
+    pub object_type: String,
+    pub object_name: String,
+    pub privilege: String,
+    pub schema_version: u64,
+}
+
+impl Encode for PrivilegeDef {}
 
 impl UserDef {
     // TODO

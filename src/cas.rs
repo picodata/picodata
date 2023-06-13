@@ -30,6 +30,7 @@ const PROHIBITED_SPACES: &[ClusterwideSpaceId] = &[
     ClusterwideSpaceId::Space,
     ClusterwideSpaceId::Index,
     ClusterwideSpaceId::User,
+    ClusterwideSpaceId::Privilege,
 ];
 
 /// Performs a clusterwide compare and swap operation.
