@@ -73,6 +73,38 @@ fn main() {
             picodata_libs.join("libz.so"),
         )
         .unwrap();
+
+        for lib in [
+            "libicuuc.so.71",
+            "libicudata.so.71",
+            "libicutest.so",
+            "libicutu.so.71",
+            "libicuio.so",
+            "libicui18n.so.71",
+        ] {
+            std::os::unix::fs::symlink(
+                format!("../build/tarantool-sys/icu-prefix/lib/{lib}"),
+                picodata_libs.join(format!("{lib}")),
+            )
+            .unwrap();
+        }
+
+        std::os::unix::fs::symlink(
+            "../build/tarantool-sys/openssl-prefix/lib/libcrypto.so.1.1",
+            picodata_libs.join("libcrypto.so.1.1"),
+        )
+        .unwrap();
+        std::os::unix::fs::symlink(
+            "../build/tarantool-sys/openssl-prefix/lib/libssl.so.1.1",
+            picodata_libs.join("libssl.so.1.1"),
+        )
+        .unwrap();
+
+        std::os::unix::fs::symlink(
+            "../build/tarantool-sys/tarantool-prefix/src/tarantool-build/build/curl/dest/lib/libcurl.so.4",
+            picodata_libs.join("libcurl.so.4"),
+        )
+        .unwrap();
     }
 
     println!("cargo:rerun-if-changed=tarantool-sys");
@@ -322,24 +354,24 @@ fn build_tarantool(build_root: &Path) {
     rustc::link_lib_dynamic("readline");
 
     rustc::link_search(format!("{tarantool_sys}/icu-prefix/lib"));
-    rustc::link_lib_static("icudata");
-    rustc::link_lib_static("icui18n");
-    rustc::link_lib_static("icuio");
-    rustc::link_lib_static("icutu");
-    rustc::link_lib_static("icuuc");
+    rustc::link_lib_dynamic("icudata");
+    rustc::link_lib_dynamic("icui18n");
+    rustc::link_lib_dynamic("icuio");
+    rustc::link_lib_dynamic("icutu");
+    rustc::link_lib_dynamic("icuuc");
 
     rustc::link_search(format!("{tarantool_sys}/zlib-prefix/lib"));
     rustc::link_lib_dynamic("z");
 
     rustc::link_search(format!("{tarantool_build}/build/curl/dest/lib"));
-    rustc::link_lib_static("curl");
+    rustc::link_lib_dynamic("curl");
 
     rustc::link_search(format!("{tarantool_build}/build/ares/dest/lib"));
     rustc::link_lib_static("cares");
 
     rustc::link_search(format!("{tarantool_sys}/openssl-prefix/lib"));
-    rustc::link_lib_static("ssl");
-    rustc::link_lib_static("crypto");
+    rustc::link_lib_dynamic("ssl");
+    rustc::link_lib_dynamic("crypto");
 
     rustc::link_search(format!("{tarantool_sys}/ncurses-prefix/lib"));
     rustc::link_lib_dynamic("tinfo");

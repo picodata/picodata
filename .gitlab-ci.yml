@@ -117,19 +117,19 @@ build-base-image:
       ci-log-section end "fetch-submodule-tags"
 
     # Gitlab CI caching is shit. So we implement it manually
-    - |
-      # Restore cache
-      if [ "$CI_COMMIT_BRANCH" == "$CI_DEFAULT_BRANCH" ]; then
-        echo "Skip restoring cache on the master branch"
-      elif [ -f "${CACHE_ARCHIVE}" ]; then
-        ci-log-section start "restore-cache" Restoring cache from ${CACHE_ARCHIVE} ...
-        tar -xf ${CACHE_ARCHIVE}
-        echo "Ok"
-        du -sh ${CACHE_PATHS} || true
-        ci-log-section end "restore-cache"
-      else
-        echo "No cache found"
-      fi
+    # - |
+    #   # Restore cache
+    #   if [ "$CI_COMMIT_BRANCH" == "$CI_DEFAULT_BRANCH" ]; then
+    #     echo "Skip restoring cache on the master branch"
+    #   elif [ -f "${CACHE_ARCHIVE}" ]; then
+    #     ci-log-section start "restore-cache" Restoring cache from ${CACHE_ARCHIVE} ...
+    #     tar -xf ${CACHE_ARCHIVE}
+    #     echo "Ok"
+    #     du -sh ${CACHE_PATHS} || true
+    #     ci-log-section end "restore-cache"
+    #   else
+    #     echo "No cache found"
+    #   fi
 
 test-linux:
   extends: .test

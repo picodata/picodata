@@ -36,10 +36,16 @@ install:
 		target/*/build/tarantool-sys/readline-prefix/lib/libreadline.* \
 		$(DESTDIR)/usr/bin/picodata-libs
 	cp -P \
-		target/*/build/tarantool-sys/ncurses-prefix/lib/libtinfo.* \
+		target/*/build/tarantool-sys/ncurses-prefix/lib/libtinfo.[^a]* \
 		$(DESTDIR)/usr/bin/picodata-libs
 	cp -P \
-		target/*/build/tarantool-sys/zlib-prefix/lib/zlib.[^a]* \
+		target/*/build/tarantool-sys/zlib-prefix/lib/libz.[^a]* \
+		$(DESTDIR)/usr/bin/picodata-libs
+	cp -P \
+		target/*/build/tarantool-sys/icu-prefix/lib/libicu*.[^a]* \
+		$(DESTDIR)/usr/bin/picodata-libs
+	cp -P \
+		target/*/build/tarantool-sys/openssl-prefix/lib/lib*.[^a]* \
 		$(DESTDIR)/usr/bin/picodata-libs
 
 fmt:
