@@ -2,87 +2,107 @@
 
 Публичный интерфейс Picodata состоит из нескольких разделов:
 
-- Lua API
-- Хранимые процедуры (Stored procedures)
+- [Lua API](#lua-api)
+- [Proc API](#proc-api) — интерфейс хранимых процедур
 
 По функциональности они во многом повторяют друг друга. Выбор
-конкретного интерфейса зависит от протокола, по которому происходит подключение.
+конкретного интерфейса зависит от протокола, по которому происходит
+подключение.
 
-Lua API больше подходит для использования в интерактивной консоли
-(`picodata connect`), в то время как хранимые процедуры удобнее
-использовать при подключении через клиент по `iproto` (например из
-Python).
+<!-- ############################################################ -->
+## Lua API
 
-## Описание функций
-Описание функций и хранимых процедур приведено ниже:
+Данный раздел интерфейса больше подходит для использования в
+интерактивной консоли (`picodata run` или `picodata connect`).
 
-- `_G.pico.VERSION`. Вывод версии Picodata.
-- `_G.pico.args`. Вывод данных о запущенном инстансе.
-- `_G.pico.raft_read_index()`. Чтение индекса Raft-журнала.
-- `_G.pico.raft_propose_nop()`. Добавляет в Raft-журнал запись `Nop` (no operation).
-- `_G.pico.cas()`. Запрос на изменение параметров методом [Compare and Swap](glossary.md#сas-compare-and-swap).
-- `_G.pico.raft_status()`. Получение данных о текущем состоянии Raft-журнала ([терм](glossary.md#терм-term), лидер и т.д.)
-- `_G.pico.exit()`. Корректное завершение работы указанного инстанса Picodata.
-- `_G.pico.expel()`. [Контролируемый вывод](cli.md#описание-команды-expel) инстанса Picodata из кластера.
-- `_G.pico.raft_timeout_now()`.  Вызывает таймаут Raft-узла прямо сейчас, инициируеют новые выборы в Raft-группе.
-- `_G.pico.instance_info()`. Получение информации об инстансе Picodata (идентификаторы, уровни ([grade](glossary.md#грейд-grade)) и прочее).
-- `_G.pico.whoami()`. Отображение данных о текущем пользователе (судя по всему, ещё не реализовано).
-- `_G.pico.raft_compact_log()`. [Обрезание](glossary.md#компактизация-raft-журнала-raft-log-compaction) Raft-журнала c удалением указанного числа наиболее старых записей.
+Пример
 
-## Описание функций
-### `VERSION` (string)
+```
+tarantool> pico.help()
+-- Печатает встроенную справку
+```
 
-Содержит версию Picodata. Семантика соответствует календарному
-версионированию ([Calendar Versioning][calver]) с форматом
-`YY.0M.MICRO`.
+Вызов функций `pico.*` возможен и через `iproto`, но влечет за собой
+накладные расходы связанные с конфертацией из MessagePack формата в Lua
+и обратно.
+
+<!-- TODO: Error handling guideline -->
+
+| <!-- -->                      | <!-- -->                          |
+|-------------------------------|-----------------------------------|
+| [pico.VERSION](#picoversion) | Версия Picodata.                  |
+| [pico.args](#picoargs)       | Аргументы запуска `picodata run`. |
+| [pico.raft_read_index ()](#picoraftreadindex) | Чтение индекса Raft-журнала.
+
+- `pico.raft_propose_nop()`. Добавляет в Raft-журнал запись `Nop` (no operation).
+- `pico.cas()`. Запрос на изменение параметров методом [Compare and Swap](glossary.md#сas-compare-and-swap).
+- `pico.raft_status()`. Получение данных о текущем состоянии Raft-журнала ([терм](glossary.md#терм-term), лидер и т.д.)
+- `pico.exit()`. Корректное завершение работы указанного инстанса Picodata.
+- `pico.expel()`. [Контролируемый вывод](cli.md#описание-команды-expel) инстанса Picodata из кластера.
+- `pico.raft_timeout_now()`.  Вызывает таймаут Raft-узла прямо сейчас, инициируеют новые выборы в Raft-группе.
+- `pico.instance_info()`. Получение информации об инстансе Picodata (идентификаторы, уровни ([grade](glossary.md#грейд-grade)) и прочее).
+- `pico.whoami()`. Отображение данных о текущем пользователе (судя по всему, ещё не реализовано).
+- `pico.raft_compact_log()`. [Обрезание](glossary.md#компактизация-raft-журнала-raft-log-compaction) Raft-журнала c удалением указанного числа наиболее старых записей.
+
+### pico.VERSION
+
+Строковая переменная (не функция), которая содержит версию Picodata.
+Семантика соответствует календарному версионированию ([Calendar
+Versioning][calver]) с форматом `YY.0M.MICRO`.
 
 [calver]: https://calver.org/#scheme
 
-**Пример**
+Пример
 
 ```console
-tarantool> _G.pico.VERSION
+tarantool> pico.VERSION
 ---
 - 22.11.0
 ...
 ```
-### args (string)
-Выводит набор параметров текущего инстанса, в частности:
-- ID кластера;
-- ключи домена отказа (см. [подробнее](glossary.md#домен-отказа-failure_domain));
-- уровень журналирования;
-- указанный исходный фактор репликации (см. [подробнее](glossary.md#фактор-репликации-replication_factor));
-- адрес (хост:порт), по которому инстанс принимает соединения;
-- адреса соседних инстансов (peers);
-- рабочую директорию, в которой инстанс хранит снимки состояния и рабочие файлы.
 
-**Возвращаемое значение** (_table_)
+### pico.args
 
-Таблица с полями:
+Lua-таблица (не функция) с [параметрами запуска](cli.md#run) инстанса,
+которые были переданы в виде переменных окружения или аргументов
+командной строки.
+
+<!-- RTFS: https://git.picodata.io/picodata/picodata/picodata/-/blob/master/src/args.rs -->
 - `cluster_id`: (_string_)
-- `failure_domain`: (_table_ {[_string_] = _string_})
-- `log_level`: (_string_)
-- `init_replication_factor`: (_number_)
-- `listen`: (_string_)
-- `peers`: (_table_ {_string_})
 - `data_dir`: (_string_)
+- `instance_id`: (optional _string_)
+- `advertise_address`: (optional _string_)
+- `listen`: (_string_)
+- `peers`: ({_string_})
+- `failure_domain`: ({[_string_] = _string_})
+- `replicaset_id`: (optional _string_)
+- `init_replication_factor`: (_number_)
+- `script`: (optional _string_)
+- `log_level`: (_string_)
+- `http_listen`: (optional _string_)
 
+Возвращаемое значение:
 
-**Пример**
+(_table_)
+
+Пример
+
 ```console
-tarantool> _G.pico.args
+tarantool> pico.args
 ---
 - cluster_id: demo
-  failure_domain: []
+  failure_domain: {}
   log_level: info
   init_replication_factor: 2
   listen: localhost:3302
   peers:
   - localhost:3301
-  data_dir: inst2
+  data_dir: ./data/i2
 ...
 ```
+
 ### instance_info()
+
 Функция показывает информацию о текущем инстансе Picodata
 
 ```lua
@@ -111,7 +131,7 @@ function instance_info(instance)
 **Пример**
 
 ```console
-tarantool> _G.pico.instance_info(i2)
+tarantool> pico.instance_info(i2)
 ---
 - target_grade:
     variant: Online
@@ -128,7 +148,7 @@ tarantool> _G.pico.instance_info(i2)
 ...
 ```
 
-### `expel` (function)
+#### `expel` (function)
 
 ```lua
 function expel("instance_id")
@@ -158,7 +178,7 @@ calling rpc::sharding
 Инстанс в состоянии `expelled` останется запущенным. При его перезапуске он не присоединится снова к raft-группе.
 
 
-### `whoami` (function)
+#### `whoami` (function)
 
 ```lua
 function whoami()
@@ -177,12 +197,12 @@ function whoami()
 **Пример**
 
 ```console
-tarantool> _G.pico.whoami()
+tarantool> pico.whoami()
 - raft_id: 1
   cluster_id: demo
   instance_id: i1
 ```
-### cas (function)
+#### cas (function)
 Отправляет запрос на вызов/изменение параметра с учетом его текущего
 значения (проверяется на лидере). Функция работает на всем кластере.
 
@@ -203,7 +223,7 @@ pico.cas({space = 'test', kind = 'insert', tuple = {13, 37} }, { timeout = 1 })
 
 Функция возвращает индекс сделанной записи в raft-журнале.
 
-### `raft_compact_log` (function)
+#### `raft_compact_log` (function)
 
 Компактизирует raft-журнал до указанного индекса (не включая сам индекс).
 
@@ -220,3 +240,6 @@ function raft_compact_log(up_to)
 **Возвращаемое значение** (_number_)
 
 Функция возвращает значение `first_index` — индекс первой записи в raft-журнале.
+
+---
+[Исходный код страницы](https://git.picodata.io/picodata/picodata/docs/-/blob/main/docs/api.md)
