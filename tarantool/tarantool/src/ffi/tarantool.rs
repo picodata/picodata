@@ -1087,3 +1087,21 @@ extern "C" {
 /// Tarantool stored procedure signature.
 pub type Proc =
     unsafe extern "C" fn(crate::tuple::FunctionCtx, crate::tuple::FunctionArgs) -> c_int;
+
+// Cbus lcpipe.
+#[cfg(feature = "picodata")]
+#[repr(C)]
+pub struct LCPipe {
+    _unused: [u8; 0],
+}
+
+#[cfg(feature = "picodata")]
+extern "C" {
+    pub fn lcpipe_new(name: *const c_char) -> *mut LCPipe;
+    pub fn lcpipe_push_now(lcpipe: *mut LCPipe, cmsg: *mut c_void);
+    pub fn lcpipe_delete(lcpipe: *mut LCPipe);
+    pub fn cbus_endpoint_new(endpoint: *mut *mut c_void, name: *const c_char) -> c_int;
+    pub fn cbus_endpoint_delete(endpoint: *mut c_void) -> c_int;
+    pub fn cbus_loop(endpoint: *mut c_void);
+    pub fn cbus_process(endpoint: *mut c_void);
+}
