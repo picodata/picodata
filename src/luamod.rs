@@ -52,9 +52,9 @@ pub(crate) fn setup(args: &args::Run) {
 
             https://calver.org/#scheme
 
-        Example
+        Example:
 
-            tarantool> pico.VERSION
+            picodata> pico.VERSION
             ---
             - 22.11.0
             ...
@@ -75,7 +75,7 @@ pub(crate) fn setup(args: &args::Run) {
 
         Example:
 
-            tarantool> pico.args
+            picodata> pico.args
             ---
             - log_level: info
               listen: localhost:3301
@@ -100,9 +100,9 @@ pub(crate) fn setup(args: &args::Run) {
         - cluster_id (string)
         - instance_id (string)
 
-        Example
+        Example:
 
-            tarantool> pico.whoami()
+            picodata> pico.whoami()
             ---
             - raft_id: 1
               cluster_id: demo
@@ -139,8 +139,27 @@ pub(crate) fn setup(args: &args::Run) {
         - current_grade (table)
         - target_grade (table)
 
-        # Params
-        1. instance_id - number
+        Params:
+
+            1. instance_id - number
+
+        Example:
+
+            picodata> pico.instance_info()
+            ---
+            - target_grade:
+                variant: Online
+                incarnation: 26
+              instance_id: i1
+              instance_uuid: 68d4a766-4144-3248-aeb4-e212356716e4
+              raft_id: 1
+              current_grade:
+                variant: Online
+                incarnation: 26
+              replicaset_uuid: e0df68c5-e7f9-395f-86b3-30ad9e1b7b07
+              replicaset_id: r1
+              advertise_address: localhost:3301
+            ...
         "},
         tlua::function1(|iid: Option<InstanceId>| -> traft::Result<_> {
             let node = traft::node::global()?;
@@ -174,10 +193,15 @@ pub(crate) fn setup(args: &args::Run) {
 
         Returns a table `RaftStatus`. See pico.help(\"RaftStatus\")
 
-        - id (number)
-        - leader_id (number)
-        - term (number)
-        - raft_state (string)
+        Example:
+
+            picodata> pico.raft_status()
+            ---
+            - term: 27
+              leader_id: 1
+              raft_state: Leader
+              id: 1
+            ...
         "},
         tlua::function0(|| traft::node::global().map(|n| n.status())),
     );
@@ -185,11 +209,15 @@ pub(crate) fn setup(args: &args::Run) {
         &l,
         "RaftStatus",
         indoc! {"
-        This table contains the following fields:
-        - id (number)
-        - leader_id (number)
-        - term (number)
-        - raft_state (string)
+        RaftStatus (table)
+        ==================
+
+        Fields:
+
+            - id (number)
+            - leader_id (number)
+            - term (number)
+            - raft_state (string, one of 'Follower' | 'Candidate' | 'Leader' | 'PreCandidate')
         "},
     );
 
@@ -200,8 +228,9 @@ pub(crate) fn setup(args: &args::Run) {
         pico.raft_tick(n_times)
         ======================
 
-        # Params
-        1. timeout - number
+        Params:
+
+            1. timeout - number
         "},
         tlua::function1(|n_times: u32| -> traft::Result<()> {
             traft::node::global()?.tick_and_yield(n_times);
@@ -229,10 +258,11 @@ pub(crate) fn setup(args: &args::Run) {
         indoc! {"
         pico.raft_read_index(timeout)
         ============================
+
         Performs the quorum read operation.
-       
-        If works the following way:
-       
+
+        It works the following way:
+
         1. The instance forwards a request (`MsgReadIndex`) to a raft
            leader. In case there's no leader at the moment, the function
            returns `Err(ProposalDropped)`.
@@ -243,11 +273,12 @@ pub(crate) fn setup(args: &args::Run) {
            function returns that index.
         4. The instance awaits when the index is applied. If timeout
            expires beforehand, the function returns an error.
-       
+
         Returns current applied raft index (number).
 
-        # Params
-        1. timeout - number
+        Params:
+
+            1. timeout - number
         "},
         tlua::function1(|timeout: f64| -> traft::Result<RaftIndex> {
             traft::node::global()?.read_index(Duration::from_secs_f64(timeout))
@@ -259,15 +290,17 @@ pub(crate) fn setup(args: &args::Run) {
         indoc! {"
         pico.raft_wait_index(target_index, timeout)
         ===========================================
+
         Waits for target_index to be applied to the storage locally.
-       
+
         Returns current applied raft index. It can be equal to or
         greater than the target one. If timeout expires beforehand, the
         function returns an error.
 
-        # Params
-        1. target_vclock - table
-        2. timeout - number
+        Params:
+
+            1. target_vclock - table
+            2. timeout - number
         "},
         tlua::function2(
             |target: RaftIndex, timeout: f64| -> traft::Result<RaftIndex> {
@@ -282,6 +315,7 @@ pub(crate) fn setup(args: &args::Run) {
         indoc! {"
         pico.get_vclock()
         ==================
+
         Obtains current vclock from Tarantool `box.info.vclock` API.
 
         Returns a Vclock (table). See pico.help(\"Vclock\")
@@ -292,16 +326,19 @@ pub(crate) fn setup(args: &args::Run) {
         &l,
         "Vclock",
         indoc! {"
+        Vclock (table)
+        ==============
+
         Vclock is a mapping of replica id (number) to its LSN (number).
 
         The meaning of these concepts is explained below.
-       
+
         To ensure data persistence, Tarantool records updates to the
         database in the so-called write-ahead log (WAL) files. Each record
         in the WAL represents a single Tarantool data-change request such as
         `INSERT`, `UPDATE`, or `DELETE`, and is assigned a monotonically
         growing log sequence number (LSN).
-       
+
         Enabling replication makes all replicas in a replica set to exchange
         their records, each with it's own LSN. Together, LSNs from different
         replicas form a vector clock (vclock). Vclock defines the database
@@ -314,12 +351,14 @@ pub(crate) fn setup(args: &args::Run) {
         indoc! {"
         pico.wait_vclock(target_vclock, timeout)
         ========================================
+
         Wait until Tarantool vclock reaches the target_vclock. Returns the
         actual vclock (table). It can be equal to or greater than the target one.
 
-        # Params
-        1. target_vclock - table. See pico.help(\"Vclock\")
-        2. timeout - number
+        Params:
+
+            1. target_vclock - table. See pico.help(\"Vclock\")
+            2. timeout - number
         "},
         tlua::function2(
             |target: Vclock, timeout: f64| -> Result<Vclock, sync::TimeoutError> {
@@ -344,6 +383,8 @@ pub(crate) fn setup(args: &args::Run) {
     luamod_set(
         &l,
         "raft_propose",
+        // TODO: Provide a more Lua friendly interface for `Op` and then document it
+        // or maybe mark this function `internal`
         indoc! {"
         pico.raft_propose(operation)
         ============================
@@ -352,8 +393,9 @@ pub(crate) fn setup(args: &args::Run) {
         Returned index should be supplied to `pico.wait_index`
         manually if it's necessary.
 
-        # Params
-        1. operation - table. See pico.help(\"Op\")
+        Params:
+
+            1. operation - table. See pico.help(\"Op\")
         "},
         tlua::function1(|lua: tlua::LuaState| -> traft::Result<RaftIndex> {
             use tlua::{AnyLuaString, AsLua, LuaError, LuaTable};
@@ -376,7 +418,6 @@ pub(crate) fn setup(args: &args::Run) {
     luamod_set_help_only(
         &l,
         "Op",
-        // TODO: provide more detailed description of each op
         indoc! {"
         Op is an operation on the raft state machine.
 
@@ -391,6 +432,10 @@ pub(crate) fn setup(args: &args::Run) {
         =====================================
 
         Proposes operation to raft and returns its index (number).
+
+        Params:
+
+            1. operation_bytes - table. Op encoded with msgpack. See pico.help(\"Op\")
         "},
         tlua::function1(|op: tlua::AnyLuaString| -> traft::Result<()> {
             let op: Op = Decode::decode(op.as_bytes())?;
@@ -403,6 +448,9 @@ pub(crate) fn setup(args: &args::Run) {
         indoc! {"
         pico.raft_timeout_now()
         =======================
+
+        Causes this instance to artificially timeout on waiting for a heartbeat from raft leader.
+        This instance will then start a new election and transition to a candidate state.
         "},
         tlua::function0(|| -> traft::Result<()> {
             traft::node::global()?.timeout_now();
@@ -419,8 +467,9 @@ pub(crate) fn setup(args: &args::Run) {
 
         Terminate the picodata process with the supplied code.
 
-        # Params
-        1. code - number, default: 0
+        Params:
+
+            1. code - number, default: 0
         "},
         tlua::function1(|code: Option<i32>| {
             crate::tarantool::exit(code.unwrap_or(0))
@@ -435,8 +484,9 @@ pub(crate) fn setup(args: &args::Run) {
 
         Expells an instance with instance_id from the cluster.
 
-        # Params
-        1. instance_id - number
+        Params:
+
+            1. instance_id - number
         "},
         tlua::function1(|instance_id: InstanceId| -> traft::Result<()> {
             let raft_storage = &traft::node::global()?.raft_storage;
@@ -497,7 +547,7 @@ pub(crate) fn setup(args: &args::Run) {
         "raft_log",
         indoc! {"
         pico.raft_log()
-        pico.raft_log { 
+        pico.raft_log {
             return_string=...,    -- boolean
             justify_contents=...  -- string
         }
@@ -622,8 +672,9 @@ pub(crate) fn setup(args: &args::Run) {
         Trims raft log up to the given index (excluding the index
         itself). Returns the new first_index (number) after the log compaction.
 
-        # Params
-        1. up_to_index - number
+        Params:
+
+            1. up_to_index - number
         "},
         {
             tlua::function1(|up_to: RaftIndex| -> traft::Result<RaftIndex> {
@@ -633,25 +684,39 @@ pub(crate) fn setup(args: &args::Run) {
             })
         },
     );
-    // FIXME: space param inconsistency
-    // op requires `space` to be a String, but ranges in predicate require space to be a `SpaceId`
     luamod_set(
         &l,
         "cas",
         indoc! {"
-        pico.cas(dml, [predicate])
+        pico.cas(op, predicate)
         ========================
 
         Performs a clusterwide compare and swap operation.
-       
+
         E.g. it checks the `predicate` on leader and if no conflicting entries were found
         appends the `op` to the raft log and returns its index (number). If predicate
         is not supplied, it will be auto generated with `index` and `term` taken from the
         current instance and with empty `ranges`.
 
-        # Params
-        1. dml - table. See pico.help(\"Dml\")
-        2. predicate - table. See pico.help(\"Predicate\")
+        Params:
+
+            1. op - table. Dml operation to be appended. See `pico.help('Dml')`
+            2. predicate - table. See `pico.help('Predicate')`
+
+        Example:
+
+            -- Assuming there exists a space \"wonderland\"
+            -- with two fields: string and number,
+            -- we are inserting a tuple (\"roses\", 7) into this space.
+            --
+            -- In this case we are not supplying a predicate as it is optional.
+            pico.cas(
+                {
+                    kind = \"insert\",
+                    space = \"wonderland\",
+                    tuple = {\"roses\", 7},
+                }
+            )
         "},
         tlua::function2(
             |op: op::DmlInLua,
@@ -669,12 +734,49 @@ pub(crate) fn setup(args: &args::Run) {
         &l,
         "Dml",
         indoc! {"
-        A table describing a dml operation. Has these fields:
-        - space (string)
-        - kind (string, one of 'insert' | 'replace' | 'update' | 'delete')
-        - tuple (optional, table)
-        - key (optional, table)
-        - ops (optional, table)
+        Dml (table)
+        ===========
+
+        Dml describes an operation.
+
+        Fields:
+
+            - kind (string, one of 'insert' | 'replace' | 'update' | 'delete')
+            - space (string)
+            - tuple (optional, table)
+            - key (optional, table)
+            - ops (optional, table)
+
+        Example:
+
+            local op_insert = {
+                kind = 'insert',
+                space = 'friends_of_peppa',
+                tuple = {1, 'Suzy'},
+            }
+
+            local op_replace = {
+                kind = 'replace',
+                space = 'friends_of_peppa',
+                tuple = {2, 'Rebecca'},
+            }
+
+            local op_update = {
+                kind = 'update',
+                space = 'friends_of_peppa',
+                key = {2},
+                ops = {'=', 2, 'Emily'},
+                -- replace 'Rebecca' with 'Emily'
+            }
+
+            local op_delete = {
+                kind = 'delete',
+                space = 'friends_of_peppa',
+                key = {2},
+            }
+
+        See also:
+            - https://www.tarantool.io/en/doc/latest/reference/reference_lua/box_space/update/
         "},
     );
     // TODO: describe ranges
@@ -682,16 +784,80 @@ pub(crate) fn setup(args: &args::Run) {
         &l,
         "Predicate",
         indoc! {"
-        Predicate that will be checked by the leader, before accepting the proposed op.
+        Predicate (table)
+        =================
 
-        Has these fields:
-        - index (optional, number)
-        - term (optional, number)
-        - ranges (optional, table)
+        The predicate the leader checks during compare and swap operation before accepting it,
+        see `pico.help('cas')`.
+
+        Fields:
+
+            - index (optional, number)
+            - term (optional, number)
+            - ranges (optional, {CasRange, ...}). See pico.help(\"CasRange\")
 
         If some fields are not supplied, they will be autogenerated. `index` and `term` taken from the
         raft state on the instance which sends this operation and `ranges` left as an empty
         vector.
+
+        Example:
+
+            local predicate = {
+                index = box.space._raft_state:get('applied').value,
+                term = box.space._raft_state:get('term').value,
+                ranges = {
+                    {
+                        spacer = \"my_space\",
+                        key_min = { kind = \"unbounded\" }
+                        key_max = { kind = \"unbounded\" }
+                    }
+                },
+            }
+        "},
+    );
+    luamod_set_help_only(
+        &l,
+        "CasRange",
+        indoc! {"
+        CasRange (table)
+        =================
+
+        Fields:
+
+            - space (string)
+            - key_min (table, CasBound}). See pico.help(\"CasBound\")
+            - key_max (table, CasBound}). See pico.help(\"CasBound\")
+
+        Example:
+
+            local unbounded_range = {
+                spacer = \"my_space\",
+                key_min = { kind = \"unbounded\" }
+                key_max = { kind = \"unbounded\" }
+            }
+        "},
+    );
+    luamod_set_help_only(
+        &l,
+        "CasBound",
+        indoc! {"
+        CasBound (table)
+        =================
+
+        Used in {CasRange}. See pico.help(\"CasRange\")
+
+        Fields:
+
+            - kind (string, one of 'included' | 'excluded' | 'unbounded')
+            - key (optional, table). Should be set only when kind is included or excluded
+
+        Example:
+
+            local unbounded = { kind = \"unbounded\" }
+
+            local includes_1 = { kind = \"included\", key = {1,} }
+
+            local excludes_3 = { kind = \"excluded\", key = {3,} }
         "},
     );
     luamod_set(
@@ -701,8 +867,8 @@ pub(crate) fn setup(args: &args::Run) {
         pico.create_space {
             id = ...,             -- number
             name = ...,           -- string
-            format = ...,         -- table of Field. See pico.help(\"Field\")
-            primary_key = ...,    -- table of string
+            format = ...,         -- {Field, ...}, See pico.help(\"Field\")
+            primary_key = ...,    -- {string, ...}
             distribution = ...,   -- string, one of 'global' | 'sharded'
             timeout = ...,    -- number, in seconds
         }
@@ -710,6 +876,43 @@ pub(crate) fn setup(args: &args::Run) {
 
         Creates a space. Returns a raft index (number) at which a newly created space
         has to exist on all peers.
+
+        If 'distribution' is set to 'sharded' then one of the following sets
+        of params should be specified:
+            - For implicit sharding:
+                - sharding_key - {string, ...}
+                - sharding_fn - optional, string one of 'crc32' | 'murmur3' | 'xxhash' | 'md5'
+            - For explicit sharding:
+                - by_field - string
+
+        Example:
+
+            -- Creates a global space \"wonderland\" with fields key and value
+            -- which are of string and unsigned types correspondingly.
+            pico.create_space{
+                name = 'wonderland',
+                format = {
+                    {name='key', type='string', is_nullable=false},
+                    {name='value', type='unsigned', is_nullable=true}
+                },
+                primary_key = { 'key' },
+                distribution = 'global',
+                timeout = 3.0
+            }
+
+            -- Creates an implicitly sharded space \"faraway\" with fields key and value
+            -- which are of string and unsigned types correspondingly.
+            pico.create_space{
+                name = 'faraway',
+                format = {
+                    {name='key', type='string', is_nullable=false},
+                    {name='value', type='unsigned', is_nullable=true}
+                },
+                primary_key = { 'key' },
+                distribution = 'sharded',
+                sharding_key = { 'key' }
+                timeout = 3.0
+            }
         "},
         {
             tlua::function1(|params: CreateSpaceParams| -> traft::Result<RaftIndex> {
@@ -737,8 +940,9 @@ pub(crate) fn setup(args: &args::Run) {
         Returns an index of the corresponding DdlAbort raft entry, or an error if
         there is no pending DDL operation.
 
-        # Params
-        1. timeout - number, in seconds
+        Params:
+
+            1. timeout - number, in seconds
         "},
         {
             tlua::function1(|timeout: f64| -> traft::Result<RaftIndex> {
@@ -750,10 +954,24 @@ pub(crate) fn setup(args: &args::Run) {
         &l,
         "Field",
         indoc! {"
-        Has these fields:
-        - name (number)
-        - type (string)
-        - is_nullable (boolean)
+        Field (table)
+        =============
+
+        Describes a field in a space.
+        
+        Fields:
+
+            - name (number)
+            - type (string)
+            - is_nullable (boolean)
+
+        Example:
+
+            local new_field = {
+                name = 'id',
+                type = 'unsigned',
+                is_nullable = false
+            }
         "},
     );
 }
