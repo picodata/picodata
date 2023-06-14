@@ -1,4 +1,4 @@
-use super::{LCPipe, Message, MessageHop};
+use super::{LCPipe, Message};
 use crate::cbus::RecvError;
 use crate::fiber::Cond;
 use std::cell::UnsafeCell;
@@ -119,11 +119,10 @@ impl<T> Sender<T> {
 
 impl<T> Drop for Sender<T> {
     fn drop(&mut self) {
-        let hop = MessageHop::new(|b: Box<Message<Arc<Cond>>>| {
-            let cond = b.user_data();
+        let cond = Arc::clone(&self.channel.cond);
+        let msg = Message::new(move || {
             cond.signal();
         });
-        let msg = Message::new(hop, Arc::clone(&self.channel.cond));
         self.pipe.push_message(msg);
     }
 }

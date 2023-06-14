@@ -80,70 +80,57 @@ struct STailQEntry {
 /// One hop in a message travel route. Next destination defined by `_pipe` field,
 /// but for `lcpipe` there is only one hop supported, so `_pipe` field must always be NULL.
 #[repr(C)]
-pub struct MessageHop<T> {
-    f: fn(Box<Message<T>>),
+pub struct MessageHop {
+    f: unsafe fn(*mut c_void),
     _pipe: *const c_void,
-}
-
-impl<T> MessageHop<T> {
-    /// Create a hop.
-    ///
-    /// # Arguments
-    ///
-    /// * `f`: callback, called when consumer (cord) handle a message
-    pub fn new(f: fn(Box<Message<T>>)) -> Self {
-        Self {
-            f,
-            _pipe: ptr::null(),
-        }
-    }
-
-    pub fn boxed(self) -> Box<Self> {
-        Box::new(self)
-    }
 }
 
 /// A message traveling between thread and cord.
 #[repr(C)]
 pub struct Message<T> {
     fifo: STailQEntry,
-    route: *const MessageHop<T>,
-    hop: *const MessageHop<T>,
-    user_data: T,
+    route: *mut MessageHop,
+    hop: *mut MessageHop,
+    callback: Option<T>,
 }
 
-impl<T> Message<T> {
+impl<F> Message<F>
+where
+    F: FnOnce() + 'static,
+{
+    unsafe fn trampoline(msg: *mut c_void) {
+        let msg = msg.cast::<Self>();
+        let mut msg = Box::from_raw(msg);
+        if let Some(callback) = msg.callback.take() {
+            callback();
+        }
+    }
+
     /// Create a new cbus message.
     ///
     /// # Arguments
     ///
-    /// * `hop`: a message hop, define how message will be processed in consumer side
-    /// * `user_data`: data received by the consumer
-    pub fn new(hop: MessageHop<T>, user_data: T) -> Message<T> {
-        // leaks hop, now it will be freed when message is dropped
-        let hop = hop.boxed();
-        let hop = Box::leak(hop);
-        Message {
+    /// * `callback`: executes when the message reaches destination endpoint
+    pub fn new(callback: F) -> Self {
+        let hop = MessageHop {
+            f: Self::trampoline,
+            _pipe: std::ptr::null(),
+        };
+        let hop = Box::new(hop);
+        let hop = Box::into_raw(hop);
+        Self {
             fifo: STailQEntry { next: ptr::null() },
-            route: hop as *const MessageHop<T>,
-            hop: hop as *const MessageHop<T>,
-            user_data,
+            route: hop,
+            hop,
+            callback: Some(callback),
         }
-    }
-
-    /// Return an underlying payload.
-    pub fn user_data(&self) -> &T {
-        &self.user_data
-    }
-
-    pub fn boxed(self) -> Box<Self> {
-        Box::new(self)
     }
 }
 
 impl<T> Drop for Message<T> {
     fn drop(&mut self) {
-        _ = unsafe { Box::from_raw(self.route as *mut MessageHop<T>) };
+        let hop = self.hop.cast::<MessageHop>();
+        drop(unsafe { Box::from_raw(hop) });
     }
 }
 
@@ -206,7 +193,7 @@ impl LCPipe {
 
     /// Push a new message into pipe. Message will be flushed to consumer queue (but not handled) immediately.
     pub fn push_message<T>(&self, msg: Message<T>) {
-        let msg = msg.boxed();
+        let msg = Box::new(msg);
         // leaks a message, there is no `Box::from_raw` later, because it will happen implicitly
         // when [`MessageHop::f`] called
         let msg = Box::leak(msg);
@@ -222,14 +209,14 @@ impl Drop for LCPipe {
 
 #[cfg(feature = "internal_test")]
 mod tests {
-    use crate::cbus::{Message, MessageHop};
+    use crate::cbus;
+    use crate::cbus::Message;
     use crate::fiber::{Cond, Fiber};
-    use crate::{cbus, fiber};
     use std::thread;
     use std::thread::ThreadId;
 
     pub(super) fn run_cbus_endpoint(endpoint_name: &str) -> Fiber<'static, ()> {
-        let mut fiber = fiber::Fiber::new("cbus_fiber", &mut |_: Box<()>| {
+        let mut fiber = Fiber::new("cbus_fiber", &mut |_: Box<()>| {
             let cbus_endpoint = cbus::Endpoint::new(endpoint_name).unwrap();
             cbus_endpoint.cbus_loop();
             0
@@ -254,12 +241,11 @@ mod tests {
         let thread = thread::spawn(move || {
             unsafe { SENDER_THREAD_ID = Some(thread::current().id()) };
             let pipe = cbus::LCPipe::new("cbus_send_message_test");
-            let hop = MessageHop::new(|msg: Box<Message<CondPtr>>| {
+            let msg = Message::new(move || {
                 unsafe { TX_THREAD_ID = Some(thread::current().id()) };
-                let cond = unsafe { msg.user_data().0.as_ref().unwrap() };
+                let cond = unsafe { cond_ptr.0.as_ref().unwrap() };
                 cond.broadcast();
             });
-            let msg = Message::new(hop, cond_ptr);
             pipe.push_message(msg);
         });
 

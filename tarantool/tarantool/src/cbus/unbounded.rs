@@ -1,4 +1,4 @@
-use super::{LCPipe, Message, MessageHop};
+use super::{LCPipe, Message};
 use crate::cbus::RecvError;
 use crate::fiber::Cond;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -27,11 +27,10 @@ impl Waker {
             .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
             .is_ok();
         if do_wake {
-            let hop = MessageHop::new(|b: Box<Message<Arc<Cond>>>| {
-                b.user_data().signal();
+            let cond = Arc::clone(&self.condition);
+            let msg = Message::new(move || {
+                cond.signal();
             });
-
-            let msg = Message::new(hop, Arc::clone(&self.condition));
             pipe.push_message(msg);
         }
     }
