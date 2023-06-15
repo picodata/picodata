@@ -1,6 +1,6 @@
 # Change Log
 
-# [1.1.0] In Development
+# [1.1.0] June 16 2023
 
 ### Added
 - `vclock::Vclock` data structure representing Tarantool vector clock

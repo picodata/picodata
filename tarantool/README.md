@@ -31,9 +31,6 @@ See also:
 - https://tarantool.io
 - https://github.com/tarantool/tarantool
 
-> **Caution!** The library is currently under development.
-> API may be unstable until version 1.0 is released.
-
 ## Getting Started
 
 The following instructions will help you get a copy of the project up and running on your local machine.
@@ -60,13 +57,13 @@ rustflags = [
 Add the following lines to your project's Cargo.toml:
 ```toml
 [dependencies]
-tarantool = "1.0"
+tarantool = "1.1"
 
 [lib]
 crate-type = ["cdylib"]
 ```
 
-See https://github.com/picodata/brod for example usage. 
+See https://github.com/picodata/brod for example usage.
 
 ### Features
 
@@ -107,7 +104,7 @@ edition = "2018"
 # author, license, etc
 
 [dependencies]
-tarantool = "1.0"
+tarantool = "1.1"
 serde = "1.0"
 
 [lib]
@@ -158,7 +155,7 @@ Check that the generated `.so` file is on the `LUA_CPATH` that was specified ear
 
 Although Rust and Lua layout conventions are different, we can take hold of Lua flexibility and fix it by explicitly setting the [LUA_CPATH](https://www.lua.org/pil/8.1.html) environmental variable, as shown above.
 
-Now you're ready to make some requests. Open separate console window and run Tarantool as a client. Paste the following into the console:  
+Now you're ready to make some requests. Open separate console window and run Tarantool as a client. Paste the following into the console:
 
 ```lua
 conn = require('net.box').connect(3301)
@@ -436,7 +433,7 @@ Please make sure to update tests as appropriate.
 
 ## Versioning
 
-We use [SemVer](http://semver.org/) for versioning. For the versions available, see the [tags on this repository](https://git.picodata.io/picodata/picodata/tarantool-module/-/tags). 
+We use [SemVer](http://semver.org/) for versioning. For the versions available, see the [tags on this repository](https://git.picodata.io/picodata/picodata/tarantool-module/-/tags).
 
 ## Authors
 
