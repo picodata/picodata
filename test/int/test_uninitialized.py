@@ -30,6 +30,9 @@ def uninitialized_instance(cluster: Cluster) -> Generator[Instance, None, None]:
 def test_raft_api(uninitialized_instance: Instance):
     functions: list[Callable[[Instance], Any]] = [
         lambda i: i._raft_status(),
+        lambda i: i.raft_get_index(),
+        lambda i: i.raft_read_index(),
+        lambda i: i.raft_wait_index(0),
         lambda i: i.call("pico.raft_propose_nop"),
         lambda i: i.call("pico.whoami"),
         lambda i: i.call("pico.instance_info", "i1"),

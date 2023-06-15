@@ -48,7 +48,7 @@ pub(crate) fn setup(args: &args::Run) {
 
         A string variable (not a function) contatining Picodata version
         which follows the Calendar Versioning convention with the
-        `YY.0M.MICRO` scheme.
+        `YY.0M.MICRO` scheme:
 
             https://calver.org/#scheme
 
@@ -216,7 +216,8 @@ pub(crate) fn setup(args: &args::Run) {
 
             (table)
             or
-            (nil) if the raft node is not initialized yet
+            (nil, string) in case of an error, if the raft node is
+                not initialized yet
 
         Fields:
 
@@ -238,7 +239,7 @@ pub(crate) fn setup(args: &args::Run) {
               id: 1
             ...
         "},
-        tlua::function0(|| traft::node::global().ok().map(|n| n.status())),
+        tlua::function0(|| traft::node::global().map(|n| n.status())),
     );
 
     luamod_set(
@@ -285,9 +286,10 @@ pub(crate) fn setup(args: &args::Run) {
 
             (number)
             or
-            (nil) if the raft node is not initialized yet
+            (nil, string) in case of an error, if the raft node is
+                not initialized yet
         "},
-        tlua::function0(|| traft::node::global().ok().map(|n| n.get_index())),
+        tlua::function0(|| traft::node::global().map(|n| n.get_index())),
     );
     luamod_set(
         &l,
@@ -776,7 +778,8 @@ pub(crate) fn setup(args: &args::Run) {
         ============================
 
         Trims raft log up to the given index (excluding the index itself).
-        Returns the new `first_index` after the log compaction.
+        Returns the new first_index after the log compaction. Returns when
+        transaction is committed to the local storage.
 
         Params:
 
@@ -803,18 +806,22 @@ pub(crate) fn setup(args: &args::Run) {
         pico.cas(dml[, predicate])
         ==========================
 
-        Performs a clusterwide compare and swap operation.
+        Performs a clusterwide compare-and-swap operation. Works for global
+        spaces only.
 
-        E.g. it checks the `predicate` on leader and if no conflicting entries were found
-        appends the `op` to the raft log and returns its index (number). If predicate
-        is not supplied, it will be auto generated with `index` and `term` taken from the
-        current instance and with empty `ranges`.
+        E.g. it checks the `predicate` on leader and if no conflicting entries
+        were found appends the `op` to the raft log and returns its index. If
+        predicate is not supplied, it will be auto generated with `index` and
+        `term` taken from the current instance and with empty `ranges`.
+
+        Returns when the operation is appended to the raft log on a leader.
+        Returns the index of the corresponding Op::Dml.
 
         Params:
 
             1. dml (table)
                 - kind (string), one of 'insert' | 'replace' | 'update' | 'delete'
-                - space (string)
+                - space (stringLua)
                 - tuple (optional table), mandatory for insert and replace, see [1, 2]
                 - key (optional table), mandatory for udate and delete, see [3, 4]
                 - ops (optional table), mandatory for update see [3]
@@ -824,6 +831,12 @@ pub(crate) fn setup(args: &args::Run) {
                 - term (optional number), default: current term
                 - ranges (optional table {table CasRange,...}), see pico.help('table CasRange'),
                     default: {} (empty table)
+
+        Returns:
+
+            (number)
+            or
+            (nil, string) in case of an error
 
         See also:
 
@@ -840,53 +853,49 @@ pub(crate) fn setup(args: &args::Run) {
 
             -- Insert a tuple {1, 'Suzy'} into this space. This will fail
             -- if the term of the current instance is outdated.
-            local op_insert = {
+            pico.cas({
                 kind = 'insert',
                 space = 'friends_of_peppa',
                 tuple = {1, 'Suzy'},
-            }
-            pico.cas(op_insert)
+            })
 
-            -- Add Rebecca, but only if no other friends were added after
-            -- Suzy.
-            local unbounded = {
-                space = 'friends_of_peppa',
-                key_min = { kind = 'excluded', key = {1,} }
-                key_max = { kind = 'unbounded' }
-            }
-            local op_replace = {
+            -- Add Rebecca, but only if no other friends were added after Suzy.
+            pico.cas({
                 kind = 'replace',
                 space = 'friends_of_peppa',
                 tuple = {2, 'Rebecca'},
-            }
-            pico.cas(op_replace, {ranges = {unbounded}})
-
-            -- Check that there were no other updates, and update the tuple
-            -- by primary key {2}, replacing 'Rebecca' with 'Emily'.
-            local predicate = {
+            }, {
                 ranges = {{
                     space = 'friends_of_peppa',
-                    key_min = { kind = 'included', key = {2} }
-                    key_max = { kind = 'included', key = {2} }
+                    key_min = { kind = 'excluded', key = {1,} },
+                    key_max = { kind = 'unbounded' },
                 }},
-            }
-            local op_update = {
+            })
+
+            -- Check that there were no other updates, and update the second
+            -- Peppa friend, replacing 'Rebecca' with 'Emily'.
+            pico.cas({
                 kind = 'update',
                 space = 'friends_of_peppa',
                 key = {2},
                 ops = {'=', 2, 'Emily'},
-            }
-            pico.cas(op_update, predicate)
+            }, {
+                ranges = {{
+                    space = 'friends_of_peppa',
+                    key_min = { kind = 'included', key = {2} },
+                    key_max = { kind = 'included', key = {2} },
+                }},
+            })
 
             -- Delete the second Peppa friend, specifying index and term
             -- explicitly. It's necessary when there are some yileding
             -- operations between reading and writing.
-            local index, term = {
+            index, term = {
                 assert(pico.raft_get_index()),
                 assert(pico.raft_status()).term,
             }
-            local emily = box.space.friends_of_peppa.index.name:get('Emily')
-            fiber.sleep(1) -- do someting yielding
+            emily = box.space.friends_of_peppa.index.name:get('Emily')
+            fiber.sleep(1) -- do something yielding
 
             pico.cas({
                 kind = 'delete',
@@ -897,8 +906,8 @@ pub(crate) fn setup(args: &args::Run) {
                 term = term,
                 ranges = {{
                     space = 'friends_of_peppa',
-                    key_min = { kind = 'included', key = {emily.id} }
-                    key_max = { kind = 'included', key = {emily.id} }
+                    key_min = { kind = 'included', key = {emily.id} },
+                    key_max = { kind = 'included', key = {emily.id} },
                 }},
             })
         "},
@@ -970,55 +979,80 @@ pub(crate) fn setup(args: &args::Run) {
         &l,
         "create_space",
         indoc! {"
-        pico.create_space {
-            id = ...,             -- number
-            name = ...,           -- string
-            format = ...,         -- {Field, ...}, see pico.help('Field')
-            primary_key = ...,    -- {string, ...}
-            distribution = ...,   -- string, one of 'global' | 'sharded'
-            timeout = ...,    -- number, in seconds
-        }
-        ========================
+        pico.create_space(opts)
+        =======================
 
-        Creates a space. Returns a raft index (number) at which a newly created space
-        has to exist on all peers.
+        Creates a space.
 
-        If 'distribution' is set to 'sharded' then one of the following sets
-        of params should be specified:
-            - For implicit sharding:
-                - sharding_key - {string, ...}
-                - sharding_fn - optional string one of 'crc32' | 'murmur3' | 'xxhash' | 'md5'
-            - For explicit sharding:
-                - by_field - string
+        Returns when the space is created globally and becomes operable on the
+        current instance. Returns the index of the corresponding Op::DdlCommit
+        raft entry. It's necessary for syncing with other instances.
+
+        Params:
+
+            1. opts (table)
+                - name (string)
+                - format (table {table SpaceField,...}), see pico.help('table SpaceField')
+                - primary_key (table {string,...}), with field names
+                - id (optional number), default: implicitly generated
+                - distribution (string), one of 'global' | 'sharded'
+                    in case it's sharded, either `by_field` (for explicit sharding)
+                    or `sharding_key`+`sharding_fn` (for implicit sharding) options
+                    must be supplied.
+                - by_field (optional string), usually 'bucket_id'
+                - sharding_key (optional table {string,...}) with field names
+                - sharding_fn (optional string), only default 'murmur3' is supported for now
+                - timeout (number), in seconds
+
+        Returns:
+
+            (number)
+            or
+            (nil, string) in case of an error
 
         Example:
 
-            -- Creates a global space 'wonderland' with fields key and value
-            -- which are of string and unsigned types correspondingly.
-            pico.create_space{
+            -- Creates a global space 'friends_of_peppa' with two fields:
+            -- id (unsigned) and name (string).
+            pico.create_space({
+                name = 'friends_of_peppa',
+                format = {
+                    {name = 'id', type = 'unsigned', is_nullable = false},
+                    {name = 'name', type = 'string', is_nullable = false},
+                },
+                primary_key = {'id'},
+                distribution = 'global',
+                timeout = 3,
+            })
+
+            -- Global spaces are updated with compare-and-swap, see pico.help('cas')
+            pico.cas({
+                kind = 'insert',
+                space = 'friends_of_peppa',
+                key = {1, 'Suzy'},
+            })
+
+            -- Creates an implicitly sharded space 'wonderland' with two fields:
+            -- property (string) and value (any).
+            pico.create_space({
                 name = 'wonderland',
                 format = {
-                    {name='key', type='string', is_nullable=false},
-                    {name='value', type='unsigned', is_nullable=true}
+                    {name = 'property', type = 'string', is_nullable = false},
+                    {name = 'value', type = 'any', is_nullable = true}
                 },
-                primary_key = { 'key' },
-                distribution = 'global',
-                timeout = 3.0
-            }
-
-            -- Creates an implicitly sharded space 'faraway' with fields key and value
-            -- which are of string and unsigned types correspondingly.
-            pico.create_space{
-                name = 'faraway',
-                format = {
-                    {name='key', type='string', is_nullable=false},
-                    {name='value', type='unsigned', is_nullable=true}
-                },
-                primary_key = { 'key' },
+                primary_key = {'property'},
                 distribution = 'sharded',
-                sharding_key = { 'key' }
-                timeout = 3.0
-            }
+                sharding_key = {'property'},
+                timeout = 3,
+            })
+
+            -- Sharded spaces are updated via vshard api, see [1]
+            local bucket_id = vshard.router.bucket_id_mpcrc32('unicorns')
+            vshard.router.callrw(bucket_id, 'box.space.wonderland:insert', {{'unicorns', 12}})
+
+        See also:
+
+            [1]: https://www.tarantool.io/en/doc/latest/reference/reference_rock/vshard/vshard_router/
         "},
         {
             tlua::function1(|params: CreateSpaceParams| -> traft::Result<RaftIndex> {
@@ -1039,16 +1073,22 @@ pub(crate) fn setup(args: &args::Run) {
         "abort_ddl",
         indoc! {"
         pico.abort_ddl(timeout)
-        ========================
+        =======================
 
-        Aborts a pending DDL operation.
+        Aborts a pending schema change.
 
-        Returns an index of the corresponding DdlAbort raft entry, or an error if
-        there is no pending DDL operation.
+        Returns an index of the corresponding Op::DdlAbort raft entry.
+        Returns an error if there is no pending schema change operation.
 
         Params:
 
-            1. timeout - number, in seconds
+            1. timeout (number), in seconds
+
+        Returns:
+
+            (numer)
+            or
+            (nil, string) in case of an error
         "},
         {
             tlua::function1(|timeout: f64| -> traft::Result<RaftIndex> {
@@ -1058,26 +1098,28 @@ pub(crate) fn setup(args: &args::Run) {
     );
     luamod_set_help_only(
         &l,
-        "Field",
+        "table SpaceField",
         indoc! {"
-        Field (table)
-        =============
+        table SpaceField
+        ================
 
-        Describes a field in a space.
+        A Lua table describing a field in a space, see [1].
 
         Fields:
 
-            - name (number)
-            - type (string)
+            - name (string)
+            - type (string), see [2]
             - is_nullable (boolean)
 
         Example:
 
-            local new_field = {
-                name = 'id',
-                type = 'unsigned',
-                is_nullable = false
-            }
+            {name = 'id', type = 'unsigned', is_nullable = false}
+            {name = 'value', type = 'unsigned', is_nullable = false}
+
+        See also:
+
+            [1]: https://www.tarantool.io/en/doc/latest/reference/reference_lua/box_space/format/
+            [2]: https://docs.rs/tarantool/latest/tarantool/space/enum.FieldType.html
         "},
     );
 }
