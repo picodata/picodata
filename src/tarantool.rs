@@ -89,7 +89,6 @@ pub struct Cfg {
 
     pub memtx_memory: u64,
 
-    pub feedback_enabled: bool,
     pub log_level: u8,
 }
 
@@ -118,7 +117,6 @@ impl Default for Cfg {
 
             memtx_memory: 32 * 1024 * 1024,
 
-            feedback_enabled: false,
             log_level: tarantool::log::SayLevel::Info as u8,
         }
     }
