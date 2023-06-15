@@ -424,10 +424,14 @@ class Instance:
         return f"Instance({self.instance_id}, listen={self.listen})"
 
     @contextmanager
-    def connect(self, timeout: int | float):
+    def connect(
+        self, timeout: int | float, user: str | None = None, password: str | None = None
+    ):
         c = Connection(
             self.host,
             self.port,
+            user=user,
+            password=password,
             socket_timeout=timeout,
             connection_timeout=timeout,
             connect_now=True,
@@ -439,13 +443,27 @@ class Instance:
             c.close()
 
     @normalize_net_box_result
-    def call(self, fn, *args, timeout: int | float = 1):
-        with self.connect(timeout) as conn:
+    def call(
+        self,
+        fn,
+        *args,
+        user: str | None = None,
+        password: str | None = None,
+        timeout: int | float = 1,
+    ):
+        with self.connect(timeout, user=user, password=password) as conn:
             return conn.call(fn, args)
 
     @normalize_net_box_result
-    def eval(self, expr, *args, timeout: int | float = 1):
-        with self.connect(timeout) as conn:
+    def eval(
+        self,
+        expr,
+        *args,
+        user: str | None = None,
+        password: str | None = None,
+        timeout: int | float = 1,
+    ):
+        with self.connect(timeout, user=user, password=password) as conn:
             return conn.eval(expr, *args)
 
     def kill(self):
