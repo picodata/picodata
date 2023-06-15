@@ -1,35 +1,34 @@
-from conftest import Cluster
+from conftest import Cluster, Instance
 from urllib.request import urlopen
+import pytest
 
 
-def test_server_works(cluster: Cluster):
+@pytest.fixture
+def instance(cluster: Cluster):
     instance = cluster.add_instance(wait_online=False)
-    script = f"{cluster.data_dir}/add_routes.lua"
-    with open(script, "w") as f:
-        f.write(
-            """
-            function handler(req)
-                return {
-                    status = 200,
-                    headers = { ['content-type'] = 'text/html; charset=utf8' },
-                    body = 'world'
-                }
-            end
-            pico.httpd:route({path = '/hello', method = 'GET'}, handler)
-            """
-        )
-    instance.env["PICODATA_SCRIPT"] = script
-    instance.env["PICODATA_HTTP_LISTEN"] = ":8080"
+    instance.env["PICODATA_HTTP_LISTEN"] = f"{cluster.base_host}:{cluster.base_port+80}"
     instance.start()
     instance.wait_online()
-    with urlopen("http://127.0.0.1:8080/hello") as response:
+    return instance
+
+
+def test_http_routes(instance: Instance):
+    instance.eval(
+        """
+        pico.httpd:route({path = '/hello', method = 'GET'}, function(req)
+            return {
+                status = 200,
+                body = 'world'
+            }
+        end)
+        """
+    )
+    http_listen = instance.env["PICODATA_HTTP_LISTEN"]
+    with urlopen(f"http://{http_listen}/hello") as response:
         assert response.read() == b"world"
 
 
-def test_webui(cluster: Cluster):
-    instance = cluster.add_instance(wait_online=False)
-    instance.env["PICODATA_HTTP_LISTEN"] = ":8081"
-    instance.start()
-    instance.wait_online()
-    with urlopen("http://127.0.0.1:8081") as response:
+def test_webui(instance: Instance):
+    http_listen = instance.env["PICODATA_HTTP_LISTEN"]
+    with urlopen(f"http://{http_listen}/") as response:
         assert response.headers.get("content-type") == "text/html"
