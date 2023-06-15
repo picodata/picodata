@@ -1615,7 +1615,7 @@ dependencies = [
  "serde_bytes",
  "serde_json",
  "sha-1",
- "tarantool-proc 0.2.0",
+ "tarantool-proc 0.2.1",
  "tester",
  "thiserror",
  "time",
@@ -1637,7 +1637,7 @@ dependencies = [
 
 [[package]]
 name = "tarantool-proc"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "darling",
  "proc-macro2 1.0.47",
