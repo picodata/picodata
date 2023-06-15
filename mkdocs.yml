@@ -12,6 +12,7 @@ nav:
   - Инструкции и руководства:
     - Установка Picodata: install.md
     - Развертывание кластера: deploy.md
+    - Мониторинг кластера: monitoring.md
     - Пример работы с кластером Picodata: tutorial.md
     - Пример работы с приложением Picodata SQL: sbroad/sql_tutorial
   - Справочные материалы:

@@ -11,6 +11,7 @@
 ### Инструкции и руководства
 * [Установка Picodata](install)
 * [Развертывание кластера](deploy)
+* [Мониторинг кластера](monitoring)
 * [Пример работы с кластером Picodata](tutorial)
 * [Пример работы с приложением Picodata SQL](sbroad/sql_tutorial)
 
