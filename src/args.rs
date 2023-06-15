@@ -13,7 +13,7 @@ use crate::replicaset::ReplicasetId;
 use crate::util::Uppercase;
 
 #[derive(Debug, Parser)]
-#[clap(name = "picodata", version = "22.11.0")]
+#[clap(name = "picodata", version = "23.06.0")]
 pub enum Picodata {
     Run(Run),
     Tarantool(Tarantool),

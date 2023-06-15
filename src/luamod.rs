@@ -7,6 +7,7 @@ use crate::instance::InstanceId;
 use crate::schema::{self, CreateSpaceParams};
 use crate::traft::op::{self, Op};
 use crate::traft::{self, node, RaftIndex};
+use crate::util::str_eq;
 use crate::{args, compare_and_swap, rpc, sync, tlog};
 use ::tarantool::fiber;
 use ::tarantool::tlua;
@@ -41,10 +42,10 @@ pub(crate) fn setup(args: &args::Run) {
 
     luamod_set(
         &l,
-        "VERSION",
+        "PICODATA_VERSION",
         indoc! {"
-        pico.VERSION
-        ============
+        pico.PICODATA_VERSION
+        =====================
 
         A string variable (not a function) contatining Picodata version
         which follows the Calendar Versioning convention with the
@@ -54,12 +55,39 @@ pub(crate) fn setup(args: &args::Run) {
 
         Example:
 
-            picodata> pico.VERSION
+            picodata> pico.PICODATA_VERSION
             ---
-            - 22.11.0
+            - 23.06.0
             ...
         "},
-        env!("CARGO_PKG_VERSION"),
+        {
+            const _: () = assert!(str_eq(env!("CARGO_PKG_VERSION"), "23.6.0"));
+            "23.06.0"
+        },
+    );
+
+    luamod_set(
+        &l,
+        "LUA_API_VERSION",
+        indoc! {"
+        pico.LUA_API_VERSION
+        ====================
+
+        A string variable (not a function) contatining version of the Lua API
+        which follows the Semantic Versioning convention:
+
+            https://semver.org/
+
+        The functions marked as Internal API only affect the PATCH version.
+
+        Example:
+
+            picodata> pico.LUA_API_VERSION
+            ---
+            - 1.0.0
+            ...
+        "},
+        "1.0.0",
     );
 
     luamod_set(

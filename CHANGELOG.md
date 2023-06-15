@@ -8,25 +8,28 @@ with the `YY.0M.MICRO` scheme.
 
 <img src="https://img.shields.io/badge/calver-YY.0M.MICRO-22bfda.svg">
 
-## Unreleased
+## [23.06.0] - 2023-06-16
 
 ### Features
 
-- _Compare and Swap_ (CaS) is an algorithm that allows to combine Raft
-  operations with a predicate checking. Im makes read-write access to
-  global spaces serializable.
-  <!-- TODO: API docs link. -->
+- Expose the Public Lua API `pico.*`. It's supplemented with a
+  built-in reference manual, see `pico.help()`.
 
-- _Clusterwide schema_ now allows to create global spaces. Their content
-  is replicated on every instance in the cluster.
-  <!-- TODO: API docs link. -->
+- _Compare and Swap_ (CaS) is an algorithm that allows to combine Raft
+  operations with a predicate checking. It makes read-write access to
+  global spaces serializable. See `pico.help('cas')`.
+
+- _Clusterwide schema_ now allows to create global and sharded spaces.
+  The content of global spaces is replicated to every instance in the
+  cluster. In sharded spaces the chuncs of data (buckets) are
+  distributed across different replicasets. See
+  `pico.help('create_space')`.
 
 - _Raft log compaction_ allows stripping old raft log entries in order
-  to prevent its infinite growth.
-  <!-- TODO: API docs link. -->
+  to prevent its infinite growth. See `pico.help('raft_compact_log')`.
 
 - Remove everything related to "migrations". They're superseeded with
-  "clusterwide schema" metioned above.
+  "clusterwide schema" mentioned above.
 
 ### CLI
 
@@ -42,12 +45,10 @@ with the `YY.0M.MICRO` scheme.
 ### Implementation details
 
 - Picodata automatically demotes Raft voters that go offline and
-  promotes a replacement. See [docs/topology.md] for more details.
-  Replicaset leadership is swiched too.
+  promotes a replacement. See docs/topology.md for more details.
+  Replicaset leadership is switched too.
 
-[docs/topology.md]: https://git.picodata.io/picodata/picodata/picodata/-/blob/310a773f3f/docs/topology.md#динамическое-переключение-голосующих-узлов-в-raft-raft-voter-failover
-
-## Compatibility
+### Compatibility
 
 - The current version is NOT compatible with prior releases. It cannot
   be started with the old snapshots.
@@ -73,7 +74,7 @@ with the `YY.0M.MICRO` scheme.
 
 - Instances can now be _expelled_ in order to shrink the cluster.
 
-## Compatibility
+### Compatibility
 
 - The current version is NOT compatible with `22.07.0`. It cannot be
   started with the old snapshots.
