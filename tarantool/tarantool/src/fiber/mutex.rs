@@ -5,6 +5,8 @@ use std::{
 };
 
 use crate::fiber::{Latch, LatchGuard};
+
+#[cfg(debug_assertions)]
 use crate::unwrap_or;
 
 #[cfg(debug_assertions)]
