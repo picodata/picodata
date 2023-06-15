@@ -101,8 +101,38 @@ fn main() {
         .unwrap();
 
         std::os::unix::fs::symlink(
-            "../build/tarantool-sys/tarantool-prefix/src/tarantool-build/build/curl/dest/lib/libcurl.so.4",
+            "../build/tarantool-sys/tarantool-prefix/src/tarantool-build/build/curl/dest/lib/libcurl.so.4.8.0",
             picodata_libs.join("libcurl.so.4"),
+        )
+        .unwrap();
+
+        std::os::unix::fs::symlink(
+            "../build/tarantool-sys/tarantool-prefix/src/tarantool-build/third_party/libyaml/libyaml.so",
+            picodata_libs.join("libyaml.so"),
+        )
+        .unwrap();
+
+        std::os::unix::fs::symlink(
+            "../build/tarantool-sys/tarantool-prefix/src/tarantool-build/libev.so",
+            picodata_libs.join("libev.so"),
+        )
+        .unwrap();
+
+        std::os::unix::fs::symlink(
+            "../build/tarantool-sys/tarantool-prefix/src/tarantool-build/libeio.so",
+            picodata_libs.join("libeio.so"),
+        )
+        .unwrap();
+
+        std::os::unix::fs::symlink(
+            "../build/tarantool-sys/tarantool-prefix/src/tarantool-build/build/nghttp2/dest/lib/libnghttp2.so.14",
+            picodata_libs.join("libnghttp2.so.14"),
+        )
+        .unwrap();
+
+        std::os::unix::fs::symlink(
+            "../build/tarantool-sys/tarantool-prefix/src/tarantool-build/third_party/luajit/src/libluajit.so",
+            picodata_libs.join("libluajit.so"),
         )
         .unwrap();
     }
@@ -247,7 +277,7 @@ fn build_tarantool(build_root: &Path) {
         Command::new("cmake")
             .arg("--build")
             .arg(&tarantool_sys)
-            .arg("-j")
+            .arg("-j12")
             .run();
     } else {
         // static-build/CMakeFiles.txt builds tarantool via the ExternalProject
@@ -257,7 +287,7 @@ fn build_tarantool(build_root: &Path) {
         Command::new("cmake")
             .arg("--build")
             .arg(&tarantool_build)
-            .arg("-j")
+            .arg("-j12")
             .run();
     }
 
@@ -302,15 +332,16 @@ fn build_tarantool(build_root: &Path) {
     rustc::link_search(format!("{tarantool_build}/build/nghttp2/dest/lib"));
 
     rustc::link_lib_static("tarantool");
-    rustc::link_lib_static("ev");
+    // rustc::link_lib_dynamic("tarantool"); // temporary? 
+    rustc::link_lib_dynamic("ev");
     rustc::link_lib_static("coro");
     rustc::link_lib_static("cdt");
-    rustc::link_lib_static("server");
+    rustc::link_lib_static("server"); // luajit linked to server with errors
     rustc::link_lib_static("misc");
-    rustc::link_lib_static("nghttp2");
+    rustc::link_lib_dynamic("nghttp2");
     rustc::link_lib_static("zstd");
     rustc::link_lib_static("decNumber");
-    rustc::link_lib_static("eio");
+    rustc::link_lib_dynamic("eio");
     rustc::link_lib_static("box");
     rustc::link_lib_static("tuple");
     rustc::link_lib_static("xrow");
@@ -323,8 +354,8 @@ fn build_tarantool(build_root: &Path) {
     rustc::link_lib_static("swim_ev");
     rustc::link_lib_static("symbols");
     rustc::link_lib_static("cpu_feature");
-    rustc::link_lib_static("luajit");
-    rustc::link_lib_static("yaml_static");
+    rustc::link_lib_dynamic("luajit");
+    rustc::link_lib_dynamic("yaml");
     rustc::link_lib_static("xxhash");
 
     if cfg!(target_os = "macos") {
