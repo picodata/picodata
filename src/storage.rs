@@ -584,12 +584,17 @@ impl Clusterwide {
         // These need to be saved before we truncate the corresponding spaces.
         let mut old_space_versions = HashMap::new();
         let mut old_user_versions = HashMap::new();
+        let mut old_priv_versions = HashMap::new();
 
         for def in self.spaces.iter()? {
             old_space_versions.insert(def.id, def.schema_version);
         }
         for def in self.users.iter()? {
             old_user_versions.insert(def.id, def.schema_version);
+        }
+        for def in self.privileges.iter()? {
+            let schema_version = def.schema_version;
+            old_priv_versions.insert(def, schema_version);
         }
 
         let mut dont_exist_yet = Vec::new();
@@ -612,6 +617,7 @@ impl Clusterwide {
             self.apply_schema_changes_on_master(self.spaces.iter()?, &old_space_versions)?;
             // TODO: secondary indexes
             self.apply_schema_changes_on_master(self.users.iter()?, &old_user_versions)?;
+            self.apply_schema_changes_on_master(self.privileges.iter()?, &old_priv_versions)?;
             set_local_schema_version(data.schema_version)?;
         }
 
@@ -2136,6 +2142,34 @@ impl SchemaDef for UserDef {
     fn on_delete(user_id: &UserId, storage: &Clusterwide) -> traft::Result<()> {
         _ = storage;
         acl_drop_user_on_master(*user_id)?;
+        Ok(())
+    }
+}
+
+impl SchemaDef for PrivilegeDef {
+    type Key = Self;
+
+    #[inline(always)]
+    fn key(&self) -> Self {
+        self.clone()
+    }
+
+    #[inline(always)]
+    fn schema_version(&self) -> u64 {
+        self.schema_version
+    }
+
+    #[inline(always)]
+    fn on_insert(&self, storage: &Clusterwide) -> traft::Result<()> {
+        _ = storage;
+        acl_grant_privilege_on_master(self)?;
+        Ok(())
+    }
+
+    #[inline(always)]
+    fn on_delete(this: &Self, storage: &Clusterwide) -> traft::Result<()> {
+        _ = storage;
+        acl_revoke_privilege_on_master(this)?;
         Ok(())
     }
 }

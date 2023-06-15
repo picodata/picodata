@@ -211,7 +211,7 @@ impl UserDef {
 ////////////////////////////////////////////////////////////////////////////////
 
 /// Privilege definition.
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct PrivilegeDef {
     pub user_id: UserId,
     pub object_type: String,
