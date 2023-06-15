@@ -361,10 +361,10 @@ pub(crate) fn setup(args: &args::Run) {
     ///////////////////////////////////////////////////////////////////////////
     luamod_set_help_only(
         &l,
-        "Vclock",
+        "table Vclock",
         indoc! {"
-        Vclock
-        ======
+        table Vclock
+        ============
 
         Vclock is a mapping of replica id (number) to its LSN (number).
 
@@ -378,7 +378,7 @@ pub(crate) fn setup(args: &args::Run) {
 
         Enabling replication makes all replicas in a replica set to exchange
         their records, each with it's own LSN. Together, LSNs from different
-        replicas form a vector clock (vclock). Vclock defines the database
+        replicas form a vector clock — vclock. Vclock defines the database
         state of an instance.
 
         The zero vclock component is special, it's used for tracking local
@@ -401,7 +401,7 @@ pub(crate) fn setup(args: &args::Run) {
 
         Returns:
 
-            (table Vclock), see pico.help('Vclock')
+            (table Vclock), see pico.help('table Vclock')
 
         Example:
 
@@ -428,12 +428,12 @@ pub(crate) fn setup(args: &args::Run) {
 
         Params:
 
-            1. target (table Vclock), see pico.help('Vclock')
-            2. timeout - number
+            1. target (table Vclock), see pico.help('table Vclock')
+            2. timeout (number), in seconds
 
         Returns:
 
-            (table Vclock), see pico.help('Vclock')
+            (table Vclock)
             or
             (nil, string) in case of an error
         "},
@@ -822,7 +822,7 @@ pub(crate) fn setup(args: &args::Run) {
             2. predicate (optional table)
                 - index (optional number), default: current applied index
                 - term (optional number), default: current term
-                - ranges (optional table {CasRange,...}), see pico.help('CasRange'),
+                - ranges (optional table {table CasRange,...}), see pico.help('table CasRange'),
                     default: {} (empty table)
 
         See also:
@@ -915,18 +915,18 @@ pub(crate) fn setup(args: &args::Run) {
     );
     luamod_set_help_only(
         &l,
-        "CasRange",
+        "table CasRange",
         indoc! {"
-        CasRange
-        ========
+        table CasRange
+        ==============
 
-        A Lua table describing a range to be used as a compare-and-swap
-        predicate, see pico.help('cas')
+        CasRange is a Lua table describing a range to be used as a
+        compare-and-swap predicate, see pico.help('cas')
 
         Fields:
 
             - space (string)
-            - key_min (table CasBound), see pico.help('CasBound')
+            - key_min (table CasBound), see pico.help('table CasBound')
             - key_max (table CasBound)
 
         Example:
@@ -951,13 +951,13 @@ pub(crate) fn setup(args: &args::Run) {
     );
     luamod_set_help_only(
         &l,
-        "CasBound",
+        "table CasBound",
         indoc! {"
-        CasBound
-        ========
+        table CasBound
+        ==============
 
         A Lua table representing a range bound (either min or max) used in
-        CasRange, see pico.help('CasRange')
+        CasRange, see pico.help('table CasRange')
 
         Fields:
 

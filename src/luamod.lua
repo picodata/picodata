@@ -4,13 +4,23 @@ setmetatable(M, help)
 
 local intro = [[
 pico.help([topic])
-===================
+==================
 
 Show built-in Picodata reference for the given topic.
 
 Full Picodata documentation:
 
     https://docs.picodata.io/picodata/
+
+Params:
+
+    1. topic (optional string)
+
+Returns:
+
+    (string)
+    or
+    (nil) if topic not found
 
 Example:
 
