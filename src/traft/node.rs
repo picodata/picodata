@@ -16,9 +16,10 @@ use crate::schema::{Distribution, IndexDef, SpaceDef};
 use crate::storage::ddl_meta_drop_space;
 use crate::storage::SnapshotData;
 use crate::storage::ToEntryIter as _;
-use crate::storage::ToEntryIter as _;
-use crate::storage::{acl_create_user_on_master, acl_drop_user_on_master};
-use crate::storage::{acl_global_create_user, acl_global_drop_user};
+use crate::storage::{
+    acl_change_user_auth_on_master, acl_create_user_on_master, acl_drop_user_on_master,
+};
+use crate::storage::{acl_global_change_user_auth, acl_global_create_user, acl_global_drop_user};
 use crate::storage::{acl_global_grant_privilege, acl_global_revoke_privilege};
 use crate::storage::{acl_grant_privilege_on_master, acl_revoke_privilege_on_master};
 use crate::storage::{ddl_abort_on_master, ddl_meta_space_update_operable};
@@ -988,9 +989,13 @@ impl NodeImpl {
                                 acl_create_user_on_master(user_def)
                                     .expect("creating user shouldn't fail");
                             }
+                            Acl::ChangeAuth { user_id, auth, .. } => {
+                                acl_change_user_auth_on_master(*user_id, auth)
+                                    .expect("changing user auth shouldn't fail");
+                            }
                             Acl::DropUser { user_id, .. } => {
                                 acl_drop_user_on_master(*user_id)
-                                    .expect("creating user shouldn't fail");
+                                    .expect("droping user shouldn't fail");
                             }
                             Acl::GrantPrivilege { priv_def } => {
                                 acl_grant_privilege_on_master(priv_def)
@@ -1009,6 +1014,10 @@ impl NodeImpl {
                     Acl::CreateUser { user_def } => {
                         acl_global_create_user(&self.storage, user_def)
                             .expect("persisting a user definition shouldn't fail");
+                    }
+                    Acl::ChangeAuth { user_id, auth, .. } => {
+                        acl_global_change_user_auth(&self.storage, *user_id, auth)
+                            .expect("changing user definition shouldn't fail");
                     }
                     Acl::DropUser { user_id, .. } => {
                         acl_global_drop_user(&self.storage, *user_id)

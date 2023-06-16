@@ -203,7 +203,7 @@ pub struct AuthDef {
 impl Encode for UserDef {}
 
 impl UserDef {
-    // TODO
+    pub const FIELD_AUTH: usize = 3;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -1,4 +1,5 @@
 use ::tarantool::error::Error as TntError;
+use ::tarantool::fiber;
 use ::tarantool::index::{Index, IndexId, IndexIterator, IteratorType};
 use ::tarantool::msgpack::{ArrayWriter, ValueIter};
 use ::tarantool::space::UpdateOps;
@@ -11,7 +12,7 @@ use ::tarantool::tuple::{RawBytes, ToTupleBuffer, Tuple, TupleBuffer};
 use crate::failure_domain as fd;
 use crate::instance::{self, grade, Instance};
 use crate::replicaset::{Replicaset, ReplicasetId};
-use crate::schema::{Distribution, IndexDef, PrivilegeDef, SpaceDef, UserDef, UserId};
+use crate::schema::{AuthDef, Distribution, IndexDef, PrivilegeDef, SpaceDef, UserDef, UserId};
 use crate::tlog;
 use crate::traft;
 use crate::traft::error::Error;
@@ -1949,6 +1950,14 @@ impl Users {
         self.space.delete(&[user_id])?;
         Ok(())
     }
+
+    #[inline]
+    pub fn update_auth(&self, user_id: UserId, auth: &AuthDef) -> tarantool::Result<()> {
+        let mut ops = UpdateOps::with_capacity(1);
+        ops.assign(UserDef::FIELD_AUTH, auth)?;
+        self.space.update(&[user_id], ops)?;
+        Ok(())
+    }
 }
 
 impl ToEntryIter for Users {
@@ -2186,6 +2195,17 @@ pub fn acl_global_create_user(storage: &Clusterwide, user_def: &UserDef) -> tara
 
 /// Remove a user definition and any entities owned by it from the internal
 /// clusterwide storage.
+pub fn acl_global_change_user_auth(
+    storage: &Clusterwide,
+    user_id: UserId,
+    auth: &AuthDef,
+) -> tarantool::Result<()> {
+    storage.users.update_auth(user_id, auth)?;
+    Ok(())
+}
+
+/// Remove a user definition and any entities owned by it from the internal
+/// clusterwide storage.
 pub fn acl_global_drop_user(storage: &Clusterwide, user_id: UserId) -> tarantool::Result<()> {
     storage.privileges.delete_all_by_user_id(user_id)?;
     storage.users.delete(user_id)?;
@@ -2233,15 +2253,7 @@ pub fn acl_create_user_on_master(user_def: &UserDef) -> tarantool::Result<()> {
     // Tarantool expects auth info to be a map of form `{ method: data }`,
     // and currently the simplest way to achieve this is to use a HashMap.
     let auth_map = HashMap::from([(user_def.auth.method, &user_def.auth.data)]);
-    sys_user.insert(&(
-        user_id,
-        euid,
-        &user_def.name,
-        "user",
-        auth_map,
-        &[(); 0],
-        0,
-    ))?;
+    sys_user.insert(&(user_id, euid, &user_def.name, "user", auth_map, &[(); 0], 0))?;
 
     let lua = ::tarantool::lua_state();
     lua.exec_with("box.schema.user.grant(...)", (user_id, "public"))
@@ -2263,6 +2275,22 @@ pub fn acl_create_user_on_master(user_def: &UserDef) -> tarantool::Result<()> {
     )
     .map_err(LuaError::from)?;
 
+    Ok(())
+}
+
+/// Update a tarantool user's authentication details.
+pub fn acl_change_user_auth_on_master(user_id: UserId, auth: &AuthDef) -> tarantool::Result<()> {
+    const USER_FIELD_AUTH: i32 = 4;
+    const USER_FIELD_LAST_MODIFIED: i32 = 6;
+    let sys_user = Space::from(SystemSpace::User);
+
+    // Tarantool expects auth info to be a map of form `{ method: data }`,
+    // and currently the simplest way to achieve this is to use a HashMap.
+    let auth_map = HashMap::from([(auth.method, &auth.data)]);
+    let mut ops = UpdateOps::with_capacity(2);
+    ops.assign(USER_FIELD_AUTH, auth_map)?;
+    ops.assign(USER_FIELD_LAST_MODIFIED, fiber::time() as u64)?;
+    sys_user.update(&[user_id], ops)?;
     Ok(())
 }
 

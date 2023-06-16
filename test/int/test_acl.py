@@ -27,6 +27,25 @@ def propose_create_user(
     return instance.call("pico.raft_propose", op, timeout=timeout)
 
 
+def propose_change_password(
+    instance: Instance,
+    user_id: int,
+    password: str,
+    timeout: int = 3,
+) -> int:
+    digest = instance.call("box.internal.prepare_auth", "chap-sha1", password)
+    schema_version = instance.next_schema_version()
+    op = dict(
+        kind="acl",
+        op_kind="change_auth",
+        user_id=user_id,
+        auth=dict(method="chap-sha1", data=digest),
+        schema_version=schema_version,
+    )
+    # TODO: use pico.cas
+    return instance.call("pico.raft_propose", op, timeout=timeout)
+
+
 def propose_drop_user(
     instance: Instance,
     id: int,
@@ -90,6 +109,8 @@ def test_acl_basic(cluster: Cluster):
             == [[0]]
         )
 
+    #
+    #
     # Create user.
     index = propose_create_user(i1, id=user_id, name=user, password=password)
     cluster.raft_wait_index(index)
@@ -110,6 +131,8 @@ def test_acl_basic(cluster: Cluster):
             != [[0]]
         )
 
+    #
+    #
     # Create a space to have something to grant privileges to.
     cluster.create_space(
         dict(
@@ -126,6 +149,8 @@ def test_acl_basic(cluster: Cluster):
     )
     v += 1
 
+    #
+    #
     # Grant some privileges.
     index = propose_update_privilege(
         i1,
@@ -190,6 +215,8 @@ def test_acl_basic(cluster: Cluster):
     for i in cluster.instances:
         assert i.call("box.space.money:select", user=user, password=password) == []
 
+    #
+    #
     # Revoke the privilege.
     index = propose_update_privilege(
         i1,
@@ -210,6 +237,32 @@ def test_acl_basic(cluster: Cluster):
         ):
             assert i.call("box.space.money:select", user=user, password=password) == []
 
+    #
+    #
+    # Change user's password.
+    old_password = password
+    new_password = "$3kr3T"
+    index = propose_change_password(
+        i1,
+        user_id=user_id,
+        password=new_password,
+    )
+    cluster.raft_wait_index(index)
+    v += 1
+
+    # Old password doesn't work.
+    for i in cluster.instances:
+        with pytest.raises(
+            NetworkError, match="User not found or supplied credentials are invalid"
+        ):
+            i.eval("return 1", user=user, password=old_password)
+
+    # New password works.
+    for i in cluster.instances:
+        assert i.eval("return 1", user=user, password=new_password) == 1
+
+    #
+    #
     # Drop user.
     index = propose_drop_user(i1, id=user_id)
 
@@ -236,4 +289,4 @@ def test_acl_basic(cluster: Cluster):
         with pytest.raises(
             NetworkError, match="User not found or supplied credentials are invalid"
         ):
-            i.eval("return 1", user=user, password=password)
+            i.eval("return 1", user=user, password=new_password)

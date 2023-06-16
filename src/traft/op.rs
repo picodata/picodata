@@ -1,4 +1,4 @@
-use crate::schema::{Distribution, PrivilegeDef, UserDef, UserId};
+use crate::schema::{AuthDef, Distribution, PrivilegeDef, UserDef, UserId};
 use crate::storage::space_by_name;
 use crate::storage::Clusterwide;
 use ::tarantool::index::{IndexId, Part};
@@ -119,6 +119,13 @@ impl std::fmt::Display for Op {
                     ..
                 } = user_def;
                 write!(f, r#"CreateUser({schema_version}, {id}, "{name}")"#,)
+            }
+            Self::Acl(Acl::ChangeAuth {
+                user_id,
+                schema_version,
+                ..
+            }) => {
+                write!(f, "ChangeAuth({schema_version}, {user_id})")
             }
             Self::Acl(Acl::DropUser {
                 user_id,
@@ -445,6 +452,13 @@ pub enum Acl {
     /// Create a tarantool user. Grant it default privileges.
     CreateUser { user_def: UserDef },
 
+    /// Update the tarantool user's authentication details (e.g. password).
+    ChangeAuth {
+        user_id: UserId,
+        auth: AuthDef,
+        schema_version: u64,
+    },
+
     /// Drop a tarantool user and any entities owned by it.
     DropUser {
         user_id: UserId,
@@ -462,6 +476,7 @@ impl Acl {
     pub fn schema_version(&self) -> u64 {
         match self {
             Self::CreateUser { user_def } => user_def.schema_version,
+            Self::ChangeAuth { schema_version, .. } => *schema_version,
             Self::DropUser { schema_version, .. } => *schema_version,
             Self::GrantPrivilege { priv_def } => priv_def.schema_version,
             Self::RevokePrivilege { priv_def } => priv_def.schema_version,
