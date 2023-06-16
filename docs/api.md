@@ -34,7 +34,7 @@ picodata> pico.help()
 | [pico.args](#picoargs)       | Вывод аргументов запуска `picodata run`. |
 | [pico.raft_read_index()](#picoraft_read_index) | Чтение индекса raft-журнала.
 | [pico.raft_propose_nop()](#picoraft_propose_nop) | Добавление в raft-журнал запись `Nop` (no operation).
-| [pico.cas()](#picocas) | Запрос на изменение параметров методом [Compare and Swap](glossary.md#сas-compare-and-swap).
+| [pico.cas()](#picocas) | Запрос на изменение параметров методом [Compare and Swap](glossary.md#cas-compare-and-swap).
 | [pico.raft_status()](#picoraft_status) | Получение данных о текущем состоянии raft-журнала ([терм](glossary.md#терм-term), лидер и т.д.)
 | [pico.exit()](#picoexit) | Корректное завершение работы указанного инстанса Picodata.
 | [pico.expel()](#picoexpel) | [Контролируемый вывод](cli.md#описание-команды-expel) инстанса Picodata из кластера.
