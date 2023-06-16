@@ -2635,20 +2635,9 @@ mod tests {
                     assert_eq!(replicaset, r);
                 }
 
-                s if s == &*ClusterwideSpace::Space => {
-                    let []: [(); 0] = Decode::decode(space_dump.tuples.as_ref()).unwrap();
-                }
-
-                s if s == &*ClusterwideSpace::Index => {
-                    let []: [(); 0] = Decode::decode(space_dump.tuples.as_ref()).unwrap();
-                }
-
-                s if s == &*ClusterwideSpace::User => {
-                    let []: [(); 0] = Decode::decode(space_dump.tuples.as_ref()).unwrap();
-                }
-
                 s => {
-                    unreachable!("space dump for space '{s}'");
+                    assert!(ClusterwideSpace::values().contains(dbg!(&&**s)));
+                    let []: [(); 0] = Decode::decode(space_dump.tuples.as_ref()).unwrap();
                 }
             }
         }
