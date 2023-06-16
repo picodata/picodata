@@ -42,6 +42,8 @@ picodata> pico.help()
 | [pico.instance_info()](#picoinstance_info) | Получение информации об инстансе Picodata (идентификаторы, уровни ([grade](glossary.md#грейд-grade)) и прочее).
 | [pico.whoami()](#picowhoami) | Отображение данных о текущем пользователе (судя по всему, ещё не реализовано).
 | [pico.raft_compact_log()](#picoraft_compact_log) | [Обрезание](glossary.md#компактизация-raft-журнала-raft-log-compaction) raft-журнала c удалением указанного числа наиболее старых записей.
+| [pico.help()](#picohelp) | Доступ к встроенной справочной системе Picodata.
+| [pico.create_space()](#picocreate_space) | Создание спейса в Picodata.
 
 ### pico.VERSION
 
@@ -174,7 +176,9 @@ function exit([code])
 
 - `[code]`: (_table_)
 
-В качестве параметров функция принимает строку кода Lua.
+В качестве параметров функция может принимать [код
+выхода](https://linuxconfig.org/list-of-exit-codes-on-linux),
+обозначающий состояние завершения процесса.
 
 Результат работы: 
 
@@ -233,36 +237,41 @@ function instance_info(instance)
 
 Таблица с полями:
 
-- `target_grade`: (_table_)
-  - `variant`: (_string_)
-  - `incarnation` (_number_)
-- `instance_id`: (_string_)
-- `instance_uuid`: (_number_)
-- `raft_id`: (_string_)
-- `current_grade`: (_table_)
-  - `variant`: (_string_)
-  - `incarnation`: (_number_)
-- `replicaset_uuid`: (_number_)
-- `replicaset_id`: (_string_)
-- `advertise_address`: (_string_)
+- `raft_id `(_number_)
+- `advertise_address` (_string_)
+- `instance_id` (_string_)
+- `instance_uuid` (_string_)
+- `replicaset_id `(_string_)
+- `replicaset_uuid` (_string_)
+- `current_grade` (_table_),
+
+  `{variant = _string_, incarnation = _number_}`, 
+  
+   `variant`: 'Offline' | 'Online' | 'Expelled'
+- target_grade (_table_),
+
+  `{variant = _string_, incarnation = _number_}`,
+
+    variant: 'Offline' | 'Replicated' | 'ShardingInitialized' | 'Online' | 'Expelled'
 
 Пример:
 
 ```console
-picodata> pico.instance_info(i2)
----
-- target_grade:
-    variant: Online
-    incarnation: 1
-  instance_id: i4
-  instance_uuid: 826cbe5e-6979-3191-9e22-e39deef142f0
-  raft_id: 4
-  current_grade:
-    variant: Online
-    incarnation: 1
-  replicaset_uuid: eff4449e-feb2-3d73-87bc-75807cb23191
-  replicaset_id: r2
-  advertise_address: localhost:3304
+
+ picodata> pico.instance_info()
+ ---
+ - raft_id: 1
+advertise_address: localhost:3301
+instance_id: i1
+instance_uuid: 68d4a766-4144-3248-aeb4-e212356716e4
+replicaset_id: r1
+replicaset_uuid: e0df68c5-e7f9-395f-86b3-30ad9e1b7b07
+current_grade:
+  variant: Online
+  incarnation: 26
+target_grade:
+  variant: Online
+  incarnation: 26
 ...
 ```
 ### pico.raft_timeout_now
@@ -361,5 +370,96 @@ function raft_compact_log(up_to)
 
 Функция возвращает значение `first_index` — индекс первой записи в raft-журнале.
 
+### pico.help
+Функция предоставляет доступ к встроенной справочной системе в Picodata.
+
+```lua
+function help(topic)
+```
+Параметры:
+
+- `topic`: (_string_) (_optional_, default: ``)
+
+Пример:
+```
+picodata> pico.help("help")
+  -- Shows this message
+```
+### pico.create_space
+Создание спейса (пространства для хранения данных) в Picodata
+
+```lua
+function create_space(opts)
+```
+
+Параметры:
+
+- `opts`: (_table_)
+
+Состав таблицы:
+- `name` (_string_)
+- `format` (_table_ {_table_ SpaceField,...}), see pico.help('table SpaceField')
+- `primary_key `(_table_ {_string_,...}), with field names
+- `id` (optional _number_), default: implicitly generated
+- `distribution` (_string_), one of 'global' | 'sharded'
+    in case it's sharded, either `by_field` (for explicit sharding)
+    or `sharding_key`+`sharding_fn` (for implicit sharding) options
+    must be supplied.
+- `by_field` (optional _string_), usually 'bucket_id'
+- `sharding_key `(optional _table_ {string,...}) with field names
+- `sharding_fn` (optional _string_), only default 'murmur3' is supported for now
+- `timeout` (_number_), in seconds
+
+Возвращаемое значение:
+
+(_number_)
+
+Примеры:
+
+Создание глобального спейса с двумя полями:
+
+```lua
+pico.create_space({
+    name = 'friends_of_peppa',
+    format = {
+        {name = 'id', type = 'unsigned', is_nullable = false},
+        {name = 'name', type = 'string', is_nullable = false},
+    },
+    primary_key = {'id'},
+    distribution = 'global',
+    timeout = 3,
+})
+```
+Добавление данных происходит через функцию `pico.cas`:
+
+```lua
+pico.cas({
+    kind = 'insert',
+    space = 'friends_of_peppa',
+    key = {1, 'Suzy'},
+})
+```
+
+Создание шардированного спейса с двумя полями:
+
+```lua
+pico.create_space({
+    name = 'wonderland',
+    format = {
+        {name = 'property', type = 'string', is_nullable = false},
+        {name = 'value', type = 'any', is_nullable = true}
+    },
+    primary_key = {'property'},
+    distribution = 'sharded',
+    sharding_key = {'property'},
+    timeout = 3,
+})
+```
+Добавление данных в шардированный спейс происходит с помощью [VShard API](https://www.tarantool.io/en/doc/latest/reference/reference_rock/vshard/vshard_router/):
+
+```lua
+local bucket_id = vshard.router.bucket_id_mpcrc32('unicorns')
+vshard.router.callrw(bucket_id, 'box.space.wonderland:insert', {{'unicorns', 12}})
+```
 ---
 [Исходный код страницы](https://git.picodata.io/picodata/picodata/docs/-/blob/main/docs/api.md)
