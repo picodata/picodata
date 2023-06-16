@@ -27,10 +27,26 @@
 //! - [Lua reference: Functions for transaction management](https://www.tarantool.io/en/doc/latest/reference/reference_lua/box_txn_management/)
 //! - [C API reference: Module txn](https://www.tarantool.io/en/doc/latest/dev_guide/reference_capi/txn/)
 
-use crate::error::TransactionError;
+use crate::error::TarantoolError;
 use crate::ffi::tarantool as ffi;
 
-/// Begin a transaction in the current fiber.
+/// Transaction-related error cases
+#[derive(Debug, thiserror::Error)]
+pub enum TransactionError<E> {
+    #[error("Transaction has already been started")]
+    AlreadyStarted,
+
+    #[error("Failed to commit: {0}")]
+    FailedToCommit(TarantoolError),
+
+    #[error("Failed to rollback: {0}")]
+    FailedToRollback(TarantoolError),
+
+    #[error("Transaction rolled-back: {0}")]
+    RolledBack(E),
+}
+
+/// Executes a transaction in the current fiber.
 ///
 /// A transaction is attached to caller fiber, therefore one fiber can have
 /// only one active transaction.
@@ -40,27 +56,28 @@ use crate::ffi::tarantool as ffi;
 /// Returns result of function `f` execution. Depending on the function result:
 /// - will **commit** - if function completes successfully
 /// - will **rollback** - if function completes with any error
-pub fn start_transaction<T, E, F>(f: F) -> Result<T, E>
+pub fn transaction<T, E, F>(f: F) -> Result<T, TransactionError<E>>
 where
     F: FnOnce() -> Result<T, E>,
-    E: From<TransactionError>,
 {
     if unsafe { ffi::box_txn_begin() } < 0 {
-        return Err(TransactionError::AlreadyStarted.into());
+        return Err(TransactionError::AlreadyStarted);
     }
 
     let result = f();
     match &result {
         Ok(_) => {
             if unsafe { ffi::box_txn_commit() } < 0 {
-                return Err(TransactionError::FailedToCommit.into());
+                let error = TarantoolError::last();
+                return Err(TransactionError::FailedToCommit(error));
             }
         }
         Err(_) => {
             if unsafe { ffi::box_txn_rollback() } < 0 {
-                return Err(TransactionError::FailedToRollback.into());
+                let error = TarantoolError::last();
+                return Err(TransactionError::FailedToRollback(error));
             }
         }
     }
-    result
+    result.map_err(TransactionError::RolledBack)
 }

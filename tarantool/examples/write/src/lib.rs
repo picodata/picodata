@@ -1,4 +1,4 @@
-use tarantool::{error::Error, fiber::sleep, proc, space::Space, transaction::start_transaction};
+use tarantool::{error::Error, fiber::sleep, proc, space::Space, transaction::transaction};
 
 #[proc]
 fn write() -> Result<(i32, String), String> {
@@ -6,7 +6,7 @@ fn write() -> Result<(i32, String), String> {
 
     let row = (1, "22".to_string());
 
-    start_transaction(|| -> Result<(), Error> {
+    transaction(|| -> Result<(), Error> {
         space.replace(&row)?;
         Ok(())
     })

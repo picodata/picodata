@@ -60,9 +60,6 @@ pub enum Error {
     #[error("Value write error: {0}")]
     ValueWrite(#[from] ValueWriteError),
 
-    #[error("Transaction issue: {0}")]
-    Transaction(TransactionError),
-
     #[cfg(feature = "net_box")]
     #[error("Server responded with error: {0}")]
     Remote(#[from] crate::net_box::ResponseError),
@@ -111,25 +108,6 @@ impl From<crate::network::protocol::Error> for Error {
 impl From<MarkerReadError> for Error {
     fn from(error: MarkerReadError) -> Self {
         Error::ValueRead(error.into())
-    }
-}
-
-/// Transaction-related error cases
-#[derive(Debug, thiserror::Error)]
-pub enum TransactionError {
-    #[error("Transaction has already been started")]
-    AlreadyStarted,
-
-    #[error("Failed to commit")]
-    FailedToCommit,
-
-    #[error("Failed to rollback")]
-    FailedToRollback,
-}
-
-impl From<TransactionError> for Error {
-    fn from(error: TransactionError) -> Self {
-        Error::Transaction(error)
     }
 }
 

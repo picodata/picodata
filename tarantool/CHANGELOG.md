@@ -1,6 +1,6 @@
 # Change Log
 
-# [1.2.0] Unreleased
+# [2.0.0] Unreleased
 
 ### Added
 - `tarantool::log::TarantoolLogger::convert_level` method for converting
@@ -11,6 +11,10 @@
 ### Fixed
 - `log::Log::enabled` implementation for TarantoolLogger no longer ignores the
   mapping provided at construction.
+
+### Breaking Changes
+- `transaction::start_transaction` has a more flexible error handling,
+  and is renamed to `transaction::transaction`
 
 
 # [1.1.0] June 16 2023

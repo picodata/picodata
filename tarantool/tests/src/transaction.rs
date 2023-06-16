@@ -2,7 +2,7 @@ use std::io;
 
 use tarantool::error::Error;
 use tarantool::space::Space;
-use tarantool::transaction::start_transaction;
+use tarantool::transaction::transaction;
 
 use crate::common::S1Record;
 
@@ -15,7 +15,7 @@ pub fn transaction_commit() {
         text: "test".to_string(),
     };
 
-    let result = start_transaction(|| -> Result<(), Error> {
+    let result = transaction(|| -> Result<(), Error> {
         space.insert(&input)?;
         Ok(())
     });
@@ -30,14 +30,17 @@ pub fn transaction_rollback() {
     let space = Space::find("test_s1").unwrap();
     space.truncate().unwrap();
 
-    let result = start_transaction(|| -> Result<(), Error> {
+    let result = transaction(|| -> Result<(), Error> {
         space.insert(&S1Record {
             id: 1,
             text: "test".to_string(),
         })?;
         Err(Error::IO(io::ErrorKind::Interrupted.into()))
     });
-    assert!(result.is_err());
+    assert_eq!(
+        result.unwrap_err().to_string(),
+        "Transaction rolled-back: IO error: operation interrupted"
+    );
 
     let output = space.get(&(1,)).unwrap();
     assert!(output.is_none());
