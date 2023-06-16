@@ -3,6 +3,8 @@ import re
 
 from conftest import (
     Cluster,
+    KeyDef,
+    KeyPart,
     ReturnError,
 )
 
@@ -87,3 +89,35 @@ def test_select(cluster: Cluster):
         2,
     )
     assert data["rows"] == [[2, 2]]
+
+
+def test_hash(cluster: Cluster):
+    cluster.deploy(instance_count=1)
+    i1 = cluster.instances[0]
+
+    space_id = 777
+    index = i1.propose_create_space(
+        dict(
+            id=space_id,
+            name="T",
+            format=[
+                dict(name="A", type="integer", is_nullable=True),
+            ],
+            primary_key=[dict(field="A")],
+            # sharding function is implicitly murmur3
+            distribution=dict(kind="sharded_implicitly", sharding_key=["A"]),
+        )
+    )
+    i1.raft_wait_index(index, 3)
+
+    # Calculate tuple hash with Lua
+    tup = (1,)
+    key_def = KeyDef([KeyPart(1, "integer", True)])
+    lua_hash = i1.hash(tup, key_def)
+    bucket_count = 3000
+
+    # Compare SQL and Lua bucket_id
+    data = i1.sql("""insert into t values(?);""", 1)
+    assert data["row_count"] == 1
+    data = i1.sql(""" select "bucket_id" from t where a = ?""", 1)
+    assert data["rows"] == [[lua_hash % bucket_count]]

@@ -186,6 +186,27 @@ def normalize_net_box_result(func):
     return inner
 
 
+@dataclass
+class KeyPart:
+    fieldno: int
+    type: str
+    is_nullable: bool = False
+
+    def __str__(self):
+        return """{{ fieldno = {}, type = "{}", is_nullable = {} }}""".format(
+            self.fieldno, self.type, self.is_nullable
+        )
+
+
+@dataclass
+class KeyDef:
+    parts: list[KeyPart]
+
+    def __str__(self):
+        parts = ", ".join(str(part) for part in self.parts)
+        return """{{ {} }}""".format(parts)
+
+
 @dataclass(frozen=True)
 class RaftStatus:
     id: int
@@ -479,6 +500,15 @@ class Instance:
                 os.waitpid(pid, 0)
             eprint(f"{self} killed")
         self.process = None
+
+    def hash(self, tup: tuple, key_def: KeyDef) -> int:
+        tup_str = "{{ {} }}".format(", ".join(str(x) for x in tup))
+        lua = """
+            return require("key_def").new({kd}):hash(box.tuple.new({t}))
+        """.format(
+            t=tup_str, kd=str(key_def)
+        )
+        return self.eval(lua)
 
     def sql(self, sql: str, *params, timeout: int | float = 1) -> dict:
         """Run SQL query and return result"""

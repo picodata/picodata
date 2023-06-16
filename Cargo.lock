@@ -1376,7 +1376,7 @@ dependencies = [
  "pest",
  "pest_derive",
  "rand",
- "rmp-serde 0.14.4",
+ "rmp-serde 1.0.0",
  "sbroad-proc",
  "serde",
  "serde_yaml",
