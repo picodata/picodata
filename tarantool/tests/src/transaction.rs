@@ -39,7 +39,7 @@ pub fn transaction_rollback() {
     });
     assert_eq!(
         result.unwrap_err().to_string(),
-        "Transaction rolled-back: IO error: operation interrupted"
+        "transaction rolled-back: io error: operation interrupted"
     );
 
     let output = space.get(&(1,)).unwrap();

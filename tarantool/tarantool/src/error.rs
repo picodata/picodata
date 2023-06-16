@@ -36,39 +36,39 @@ pub type Result<T> = std::result::Result<T, Error>;
 /// Represents all error cases for all routines of crate (including Tarantool errors)
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
-    #[error("Tarantool error: {0}")]
+    #[error("tarantool error: {0}")]
     Tarantool(TarantoolError),
 
-    #[error("IO error: {0}")]
+    #[error("io error: {0}")]
     IO(#[from] io::Error),
 
-    #[error("Failed to encode tuple: {0}")]
+    #[error("failed to encode tuple: {0}")]
     Encode(#[from] Encode),
 
-    #[error("Failed to decode tuple: {0}")]
+    #[error("failed to decode tuple: {0}")]
     Decode(#[from] rmp_serde::decode::Error),
 
-    #[error("Unicode string decode error: {0}")]
+    #[error("unicode string decode error: {0}")]
     Unicode(#[from] Utf8Error),
 
-    #[error("Numeric value read error: {0}")]
+    #[error("numeric value read error: {0}")]
     NumValueRead(#[from] NumValueReadError),
 
-    #[error("Value read error: {0}")]
+    #[error("value read error: {0}")]
     ValueRead(#[from] ValueReadError),
 
-    #[error("Value write error: {0}")]
+    #[error("value write error: {0}")]
     ValueWrite(#[from] ValueWriteError),
 
     #[cfg(feature = "net_box")]
-    #[error("Server responded with error: {0}")]
+    #[error("server responded with error: {0}")]
     Remote(#[from] crate::net_box::ResponseError),
 
     /// The error is wrapped in a [`Arc`], because some libraries require
     /// error types to implement [`Sync`], which isn't implemented for [`Rc`].
     ///
     /// [`Rc`]: std::rc::Rc
-    #[error("Network error: {0}")]
+    #[error("network error: {0}")]
     Protocol(Arc<crate::network::protocol::Error>),
 
     /// The error is wrapped in a [`Arc`], because some libraries require
@@ -76,13 +76,13 @@ pub enum Error {
     ///
     /// [`Rc`]: std::rc::Rc
     #[cfg(feature = "network_client")]
-    #[error("Tcp error: {0}")]
+    #[error("tcp error: {0}")]
     Tcp(Arc<crate::network::client::tcp::Error>),
 
-    #[error("Lua error: {0}")]
+    #[error("lua error: {0}")]
     LuaError(#[from] LuaError),
 
-    #[error("Space metadata not found")]
+    #[error("space metadata not found")]
     MetaNotFound,
 }
 
@@ -504,7 +504,7 @@ pub enum Encode {
     #[error("{0}")]
     Rmp(#[from] rmp_serde::encode::Error),
 
-    #[error("Invalid msgpack value (epxected array, found {:?})", DebugAsMPValue(.0))]
+    #[error("invalid msgpack value (epxected array, found {:?})", DebugAsMPValue(.0))]
     InvalidMP(Vec<u8>),
 }
 

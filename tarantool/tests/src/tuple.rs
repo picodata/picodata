@@ -39,7 +39,7 @@ pub fn new_tuple_from_flatten_struct() {
     assert_eq!(
         Tuple::new(&input).unwrap_err().to_string(),
         concat![
-            "Failed to encode tuple: Invalid msgpack value (epxected array, found Map([",
+            "failed to encode tuple: invalid msgpack value (epxected array, found Map([",
             r#"(String(Utf8String { s: Ok("a") }), Integer(PosInt(1))), "#,
             r#"(String(Utf8String { s: Ok("b") }), Integer(PosInt(2))), "#,
             r#"(String(Utf8String { s: Ok("c") }), Integer(PosInt(3)))"#,
@@ -53,7 +53,7 @@ pub fn tuple_buffer_from_vec_fail() {
         TupleBuffer::try_from_vec(vec![1, 2, 3])
             .unwrap_err()
             .to_string(),
-        "Failed to encode tuple: Invalid msgpack value (epxected array, found Integer(PosInt(1)))"
+        "failed to encode tuple: invalid msgpack value (epxected array, found Integer(PosInt(1)))"
     )
 }
 
@@ -445,7 +445,7 @@ pub fn raw_bytes() {
     let tuple = Tuple::try_from_slice(&data).unwrap();
     // Cannot read a field as Tuple, because it's not a messagepack array
     let msg = tuple.try_get::<_, Tuple>(1).unwrap_err().to_string();
-    let epxected = "Failed to encode tuple: Invalid msgpack value (epxected array, found Map";
+    let epxected = "failed to encode tuple: invalid msgpack value (epxected array, found Map";
     assert_eq!(msg.get(..epxected.len()), Some(epxected));
     // No problem with RawByteBuf
     let bytes: RawByteBuf = tuple.get(1).unwrap();

@@ -33,16 +33,16 @@ use crate::ffi::tarantool as ffi;
 /// Transaction-related error cases
 #[derive(Debug, thiserror::Error)]
 pub enum TransactionError<E> {
-    #[error("Transaction has already been started")]
+    #[error("transaction has already been started")]
     AlreadyStarted,
 
-    #[error("Failed to commit: {0}")]
+    #[error("failed to commit: {0}")]
     FailedToCommit(TarantoolError),
 
-    #[error("Failed to rollback: {0}")]
+    #[error("failed to rollback: {0}")]
     FailedToRollback(TarantoolError),
 
-    #[error("Transaction rolled-back: {0}")]
+    #[error("transaction rolled-back: {0}")]
     RolledBack(E),
 }
 

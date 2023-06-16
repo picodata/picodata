@@ -149,7 +149,7 @@ pub fn call_async_error() {
         .unwrap();
     assert_eq!(
         p.wait().unwrap_err().to_string(),
-        "Server responded with error: Procedure 'Procedure is not defined' is not defined"
+        "server responded with error: Procedure 'Procedure is not defined' is not defined"
     );
 
     let mut p = conn
@@ -170,7 +170,7 @@ pub fn call_async_disconnected() {
     let p = p.try_get().pending().unwrap();
     drop(conn);
     assert_eq!(p.state(), State::Disconnected);
-    assert_eq!(p.wait().unwrap_err().to_string(), "IO error: not connected");
+    assert_eq!(p.wait().unwrap_err().to_string(), "io error: not connected");
 
     let conn = test_user_conn();
     let p = conn
@@ -212,7 +212,7 @@ pub fn call_async_wait_disconnected() {
         reschedule();
         drop(conn);
     });
-    assert_eq!(p.wait().unwrap_err().to_string(), "IO error: not connected");
+    assert_eq!(p.wait().unwrap_err().to_string(), "io error: not connected");
     jh.join();
 }
 
