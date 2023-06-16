@@ -144,12 +144,14 @@ macro_rules! define_str_enum {
                 }
             }
 
+            #[inline(always)]
             $vis const fn values() -> &'static [&'static str] {
                 &[ $( $display, )+ ]
             }
         }
 
         impl ::std::convert::AsRef<str> for $enum {
+            #[inline(always)]
             fn as_ref(&self) -> &str {
                 self.as_str()
             }
@@ -157,18 +159,21 @@ macro_rules! define_str_enum {
 
         impl ::std::ops::Deref for $enum {
             type Target = str;
+            #[inline(always)]
             fn deref(&self) -> &str {
                 self.as_str()
             }
         }
 
         impl ::std::convert::From<$enum> for ::std::string::String {
+            #[inline(always)]
             fn from(e: $enum) -> Self {
                 e.as_str().into()
             }
         }
 
         impl ::std::convert::From<$enum> for &'static str {
+            #[inline(always)]
             fn from(e: $enum) -> Self {
                 e.as_str()
             }
@@ -198,13 +203,14 @@ macro_rules! define_str_enum {
         }
 
         impl ::std::fmt::Display for $enum {
+            #[inline(always)]
             fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
                 f.write_str(self.as_str())
             }
         }
 
         impl serde::Serialize for $enum {
-            #[inline]
+            #[inline(always)]
             fn serialize<S>(&self, serializer: S) -> ::std::result::Result<S::Ok, S::Error>
             where
                 S: serde::Serializer,
@@ -214,6 +220,7 @@ macro_rules! define_str_enum {
         }
 
         impl<'de> serde::Deserialize<'de> for $enum {
+            #[inline]
             fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
             where
                 D: serde::Deserializer<'de>,
@@ -230,6 +237,7 @@ macro_rules! define_str_enum {
 
         impl<L: $crate::tlua::AsLua> $crate::tlua::Push<L> for $enum {
             type Err = $crate::tlua::Void;
+            #[inline(always)]
             fn push_to_lua(&self, lua: L) -> $crate::tlua::PushResult<L, Self> {
                 $crate::tlua::PushInto::push_into_lua(self.as_str(), lua)
             }
@@ -238,6 +246,7 @@ macro_rules! define_str_enum {
 
         impl<L: $crate::tlua::AsLua> $crate::tlua::PushInto<L> for $enum {
             type Err = $crate::tlua::Void;
+            #[inline(always)]
             fn push_into_lua(self, lua: L) -> $crate::tlua::PushIntoResult<L, Self> {
                 $crate::tlua::PushInto::push_into_lua(self.as_str(), lua)
             }
@@ -245,6 +254,7 @@ macro_rules! define_str_enum {
         impl<L: $crate::tlua::AsLua> $crate::tlua::PushOneInto<L> for $enum {}
 
         impl<L: $crate::tlua::AsLua> $crate::tlua::LuaRead<L> for $enum {
+            #[inline]
             fn lua_read_at_position(
                 lua: L,
                 index: ::std::num::NonZeroI32

@@ -12,7 +12,6 @@ use std::ops::Range;
 use std::os::raw::c_char;
 
 use num_derive::ToPrimitive;
-use num_traits::ToPrimitive;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
@@ -93,10 +92,9 @@ pub enum SystemSpace {
 }
 
 impl From<SystemSpace> for Space {
+    #[inline(always)]
     fn from(ss: SystemSpace) -> Self {
-        Space {
-            id: ss.to_u32().unwrap(),
-        }
+        Space { id: ss as _ }
     }
 }
 
@@ -110,6 +108,7 @@ crate::define_str_enum! {
 }
 
 impl Default for SpaceEngineType {
+    #[inline(always)]
     fn default() -> Self {
         Self::Memtx
     }
@@ -133,6 +132,7 @@ pub struct SpaceCreateOptions {
 }
 
 impl Default for SpaceCreateOptions {
+    #[inline(always)]
     fn default() -> Self {
         SpaceCreateOptions {
             if_not_exists: false,
@@ -167,6 +167,7 @@ impl<S> From<(S, FieldType, IsNullable)> for Field
 where
     String: From<S>,
 {
+    #[inline(always)]
     fn from(args: (S, FieldType, IsNullable)) -> Self {
         let (name, field_type, is_nullable) = args;
         let name = name.into();
@@ -183,6 +184,7 @@ impl<S> From<(S, FieldType)> for Field
 where
     String: From<S>,
 {
+    #[inline(always)]
     fn from(args: (S, FieldType)) -> Self {
         let (name, field_type) = args;
         let name = name.into();
@@ -202,6 +204,7 @@ macro_rules! define_constructors {
                 "Create a new field format specifier with the given `name` and ",
                 "type \"", ::std::stringify!($constructor), "\""
             )]
+            #[inline(always)]
             pub fn $constructor(name: impl Into<String>) -> Self {
                 Self {
                     name: name.into(),
@@ -218,6 +221,7 @@ impl Field {
     /// Create a new field format specifier.
     ///
     /// You should use one of the other constructors instead
+    #[inline(always)]
     pub fn new(name: &str, ft: FieldType) -> Self {
         Self {
             name: name.to_string(),
@@ -233,6 +237,7 @@ impl Field {
     /// use tarantool::space::Field;
     /// let f = Field::string("middle name").is_nullable(true);
     /// ```
+    #[inline(always)]
     pub fn is_nullable(mut self, is_nullable: bool) -> Self {
         self.is_nullable = is_nullable;
         self
@@ -298,6 +303,7 @@ pub enum IsNullable {
 }
 
 impl IsNullable {
+    #[inline(always)]
     const fn is_nullable(&self) -> bool {
         matches!(self, Self::Nullable)
     }
@@ -405,6 +411,7 @@ impl Space {
     /// Return a space builder.
     ///
     /// - `name` - name of space to be created
+    #[inline(always)]
     pub fn builder(name: &str) -> Builder {
         Builder::new(name)
     }
@@ -416,11 +423,13 @@ impl Space {
     /// - `opts` - see SpaceCreateOptions struct.
     ///
     /// Returns a new space.
+    #[inline(always)]
     pub fn create(name: &str, opts: &SpaceCreateOptions) -> Result<Space, Error> {
         crate::schema::space::create_space(name, opts)
     }
 
     /// Drop a space.
+    #[inline(always)]
     pub fn drop(&self) -> Result<(), Error> {
         crate::schema::space::drop_space(self.id)
     }
@@ -433,6 +442,7 @@ impl Space {
     /// Returns:
     /// - `None` if not found
     /// - `Some(space)` otherwise
+    #[inline(always)]
     pub fn find(name: &str) -> Option<Self> {
         let id =
             unsafe { ffi::box_space_id_by_name(name.as_ptr() as *const c_char, name.len() as u32) };
@@ -460,6 +470,7 @@ impl Space {
     /// - `Some(space)` otherwise
     ///
     /// [`NoSuchSpace`]: crate::error::TarantoolErrorCode::NoSuchSpace
+    #[inline(always)]
     pub fn find_cached(name: &str) -> Option<Self> {
         SPACE_CACHE.with(|cache| cache.space(name))
     }
@@ -469,11 +480,13 @@ impl Space {
     /// # Safety
     /// `id` must be a valid tarantool space id. Only use this function with
     /// ids acquired from tarantool in some way, e.g. from lua code.
+    #[inline(always)]
     pub const unsafe fn from_id_unchecked(id: SpaceId) -> Self {
         Self { id }
     }
 
     /// Get space ID.
+    #[inline(always)]
     pub const fn id(&self) -> SpaceId {
         self.id
     }
@@ -482,6 +495,7 @@ impl Space {
     ///
     /// - `name` - name of index to create, which should conform to the rules for object names.
     /// - `opts` - see schema::IndexOptions struct.
+    #[inline(always)]
     pub fn create_index(
         &self,
         name: &str,
@@ -493,6 +507,7 @@ impl Space {
     /// Return an index builder.
     ///
     /// - `name` - name of index to create, which should conform to the rules for object names.
+    #[inline(always)]
     pub fn index_builder<'a>(&self, name: &'a str) -> crate::index::Builder<'a> {
         crate::index::Builder::new(self.id, name)
     }
@@ -505,6 +520,7 @@ impl Space {
     /// Returns:
     /// - `None` if not found
     /// - `Some(index)` otherwise
+    #[inline(always)]
     pub fn index(&self, name: &str) -> Option<Index> {
         let index_id = unsafe {
             ffi::box_index_id_by_name(self.id, name.as_ptr() as *const c_char, name.len() as u32)
@@ -533,6 +549,7 @@ impl Space {
     ///
     /// [`NoSuchSpace`]: crate::error::TarantoolErrorCode::NoSuchSpace
     /// [`NoSuchIndexID`]: crate::error::TarantoolErrorCode::NoSuchIndexID
+    #[inline(always)]
     pub fn index_cached(&self, name: &str) -> Option<Index> {
         SPACE_CACHE.with(|cache| cache.index(self, name))
     }
@@ -550,6 +567,7 @@ impl Space {
     /// Returns a new tuple.
     ///
     /// See also: `box.space[space_id]:insert(tuple)`
+    #[inline]
     pub fn insert<T>(&self, value: &T) -> Result<Tuple, Error>
     where
         T: ToTupleBuffer + ?Sized,
@@ -581,6 +599,7 @@ impl Space {
     /// - `value` - tuple value to replace with
     ///
     /// Returns a new tuple.
+    #[inline]
     pub fn replace<T>(&self, value: &T) -> Result<Tuple, Error>
     where
         T: ToTupleBuffer + ?Sized,
@@ -614,6 +633,7 @@ impl Space {
     }
 
     /// Deletes all tuples. The method is performed in background and doesn’t block consequent requests.
+    #[inline(always)]
     pub fn truncate(&self) -> Result<(), Error> {
         if unsafe { ffi::box_truncate(self.id) } < 0 {
             return Err(TarantoolError::last().into());
@@ -671,6 +691,7 @@ impl Space {
     ///
     /// - `type` - iterator type
     /// - `key` - encoded key in the MsgPack Array format (`[part1, part2, ...]`).
+    #[inline(always)]
     pub fn count<K>(&self, iterator_type: IteratorType, key: &K) -> Result<usize, Error>
     where
         K: ToTupleBuffer + ?Sized,
@@ -810,6 +831,7 @@ impl Space {
     }
 
     // Return space metadata from system `_space` space.
+    #[inline(always)]
     pub fn meta(&self) -> Result<SpaceMetadata, Error> {
         let sys_space: Space = SystemSpace::Space.into();
         let tuple = sys_space.get(&(self.id,))?.ok_or(Error::MetaNotFound)?;
@@ -840,6 +862,7 @@ macro_rules! define_setters {
 }
 
 impl<'a> Builder<'a> {
+    #[inline(always)]
     pub fn new(name: &'a str) -> Self {
         Self {
             name,
@@ -864,7 +887,7 @@ impl<'a> Builder<'a> {
     /// fields in bulk. The difference is purely syntactical.
     ///
     /// [`format`]: Self::format
-    #[inline]
+    #[inline(always)]
     pub fn field(mut self, field: impl Into<Field>) -> Self {
         self.opts
             .format
@@ -902,6 +925,7 @@ impl<'a> Builder<'a> {
         self
     }
 
+    #[inline(always)]
     pub fn create(self) -> crate::Result<Space> {
         crate::schema::space::create_space(self.name, &self.opts)
     }
@@ -952,7 +976,7 @@ macro_rules! define_bin_ops {
     ($( $(#[$meta:meta])* $op_name:ident, $op_code:literal; )+) => {
         $(
             $(#[$meta])*
-            #[inline]
+            #[inline(always)]
             pub fn $op_name<K, V>(&mut self, field: K, value: V) -> crate::Result<&mut Self>
             where
                 K: Serialize,
@@ -971,7 +995,7 @@ impl UpdateOps {
         Self { ops: Vec::new() }
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
             ops: Vec::with_capacity(capacity),
@@ -1064,12 +1088,12 @@ impl UpdateOps {
         Ok(self)
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn as_slice(&self) -> &[TupleBuffer] {
         &self.ops
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn into_inner(self) -> Vec<TupleBuffer> {
         self.ops
     }
@@ -1092,20 +1116,21 @@ impl UpdateOps {
 }
 
 impl Default for UpdateOps {
+    #[inline(always)]
     fn default() -> Self {
         Self::new()
     }
 }
 
 impl AsRef<[TupleBuffer]> for UpdateOps {
-    #[inline]
+    #[inline(always)]
     fn as_ref(&self) -> &[TupleBuffer] {
         &self.ops
     }
 }
 
 impl From<UpdateOps> for Vec<TupleBuffer> {
-    #[inline]
+    #[inline(always)]
     fn from(ops: UpdateOps) -> Vec<TupleBuffer> {
         ops.ops
     }
@@ -1115,6 +1140,7 @@ impl IntoIterator for UpdateOps {
     type Item = TupleBuffer;
     type IntoIter = std::vec::IntoIter<TupleBuffer>;
 
+    #[inline(always)]
     fn into_iter(self) -> Self::IntoIter {
         self.ops.into_iter()
     }

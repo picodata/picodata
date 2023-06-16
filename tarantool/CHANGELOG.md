@@ -18,6 +18,10 @@
 - `cargo test` link failure when a `#[::test]` is defined in the same mod with a
   `#[tarantool::proc]` on MacOS.
 
+### Changed
+- Marked trivial functions with `#[inline]` attributes in mods tuple, index, space.
+
+
 # [1.0.0] May 29 2023
 
 ### Added

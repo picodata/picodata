@@ -75,6 +75,7 @@ impl Tuple {
     /// # Safety
     /// `data` must point to a buffer containing `len` bytes representing a
     /// valid messagepack array
+    #[inline(always)]
     pub unsafe fn from_raw_data(data: *mut c_char, len: u32) -> Self {
         let format = TupleFormat::default();
         let tuple_ptr = ffi::box_tuple_new(format.inner, data as _, data.add(len as _) as _);
@@ -84,6 +85,7 @@ impl Tuple {
 
     /// # Safety
     /// `data` must represent a valid messagepack array
+    #[inline(always)]
     pub unsafe fn from_slice(data: &[u8]) -> Self {
         let format = TupleFormat::default();
         let Range { start, end } = data.as_ptr_range();
@@ -92,25 +94,30 @@ impl Tuple {
         Self::from_ptr(NonNull::new_unchecked(tuple_ptr))
     }
 
+    #[inline]
     pub fn try_from_slice(data: &[u8]) -> Result<Self> {
         let data = validate_msgpack(data)?;
         unsafe { Ok(Self::from_slice(data)) }
     }
 
+    #[inline(always)]
     pub fn from_ptr(mut ptr: NonNull<ffi::BoxTuple>) -> Self {
         unsafe { ffi::box_tuple_ref(ptr.as_mut()) };
         Tuple { ptr }
     }
 
+    #[inline(always)]
     pub fn try_from_ptr(ptr: *mut ffi::BoxTuple) -> Option<Self> {
         NonNull::new(ptr).map(Self::from_ptr)
     }
 
     /// Return the number of fields in tuple (the size of MsgPack Array).
+    #[inline(always)]
     pub fn len(&self) -> u32 {
         unsafe { ffi::box_tuple_field_count(self.ptr.as_ptr()) }
     }
 
+    #[inline(always)]
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
@@ -124,11 +131,13 @@ impl Tuple {
     ///
     /// The value does not include the size of "struct tuple"
     /// (for the current size of this structure look in the tuple.h file in Tarantool’s source code).
+    #[inline(always)]
     pub fn bsize(&self) -> usize {
         unsafe { self.ptr.as_ref().bsize() }
     }
 
     /// Return the associated format.
+    #[inline(always)]
     pub fn format(&self) -> TupleFormat {
         TupleFormat {
             inner: unsafe { ffi::box_tuple_format(self.ptr.as_ptr()) },
@@ -156,6 +165,7 @@ impl Tuple {
     /// assert!(it.position() == 4);
     /// }
     /// ```
+    #[inline]
     pub fn iter(&self) -> Result<TupleIterator> {
         let inner = unsafe { ffi::box_tuple_iterator(self.ptr.as_ptr()) };
         if inner.is_null() {
@@ -175,6 +185,7 @@ impl Tuple {
     /// - `Ok(Some(field value))` otherwise
     ///
     /// See also [`Tuple::try_get`], [`Tuple::get`].
+    #[inline(always)]
     pub fn field<'a, T>(&'a self, fieldno: u32) -> Result<Option<T>>
     where
         T: Decode<'a>,
@@ -304,6 +315,7 @@ impl Tuple {
         self.decode()
     }
 
+    #[inline(always)]
     pub(crate) fn into_ptr(self) -> *mut ffi::BoxTuple {
         self.ptr.as_ptr()
     }
@@ -401,18 +413,21 @@ impl TupleIndex for &str {
 }
 
 impl From<&TupleBuffer> for Tuple {
+    #[inline(always)]
     fn from(buf: &TupleBuffer) -> Self {
         unsafe { Self::from_raw_data(buf.as_ptr() as _, buf.len() as _) }
     }
 }
 
 impl Drop for Tuple {
+    #[inline(always)]
     fn drop(&mut self) {
         unsafe { ffi::box_tuple_unref(self.ptr.as_ptr()) };
     }
 }
 
 impl Clone for Tuple {
+    #[inline(always)]
     fn clone(&self) -> Self {
         unsafe { ffi::box_tuple_ref(self.ptr.as_ptr()) };
         Tuple { ptr: self.ptr }
@@ -426,6 +441,7 @@ impl Clone for Tuple {
 /// Types implementing this trait can be converted to tarantool tuple (msgpack
 /// array).
 pub trait ToTupleBuffer {
+    #[inline]
     fn to_tuple_buffer(&self) -> Result<TupleBuffer> {
         let mut buf = Vec::with_capacity(128);
         self.write_tuple_data(&mut buf)?;
@@ -440,6 +456,7 @@ pub trait ToTupleBuffer {
     /// This method exists as an optimization for wrapper types to eliminate
     /// extra copies, in cases where the implementing type already contains the
     /// tuple data (e.g. [`TupleBuffer`], [`RawBytes`], etc.).
+    #[inline(always)]
     fn tuple_data(&self) -> Option<&[u8]> {
         None
     }
@@ -448,7 +465,7 @@ pub trait ToTupleBuffer {
 }
 
 impl ToTupleBuffer for Tuple {
-    #[inline]
+    #[inline(always)]
     fn to_tuple_buffer(&self) -> Result<TupleBuffer> {
         Ok(TupleBuffer::from(self))
     }
@@ -499,6 +516,7 @@ pub trait AsTuple: Serialize {
         Ok(vec)
     }
 
+    #[inline(always)]
     fn serialize_to(&self, w: &mut impl Write) -> Result<()> {
         rmp_serde::encode::write(w, self).map_err(Into::into)
     }
@@ -513,6 +531,7 @@ pub trait AsTuple: Serialize {
 // TODO: remove this trait when `specialization` feature is stabilized
 // https://github.com/rust-lang/rust/issues/31844
 pub trait Encode: Serialize {
+    #[inline(always)]
     fn encode(&self, w: &mut impl Write) -> Result<()> {
         rmp_serde::encode::write(w, self).map_err(Into::into)
     }
@@ -522,12 +541,14 @@ impl<'a, T> Encode for &'a T
 where
     T: Encode,
 {
+    #[inline(always)]
     fn encode(&self, w: &mut impl Write) -> Result<()> {
         T::encode(*self, w)
     }
 }
 
 impl Encode for () {
+    #[inline(always)]
     fn encode(&self, w: &mut impl Write) -> Result<()> {
         rmp_serde::encode::write(w, &Vec::<()>::new()).map_err(Into::into)
     }
@@ -595,6 +616,7 @@ pub trait _Encode {
 }
 
 impl _Encode for () {
+    #[inline(always)]
     fn encode(&self, w: &mut impl Write, _named: bool) -> Result<()> {
         rmp::encode::write_nil(w)?;
         Ok(())
@@ -605,6 +627,7 @@ impl<T> _Encode for [T]
 where
     T: _Encode,
 {
+    #[inline]
     fn encode(&self, w: &mut impl Write, named: bool) -> Result<()> {
         rmp::encode::write_array_len(w, self.len() as u32)?;
         for v in self.iter() {
@@ -618,6 +641,7 @@ impl<T> _Encode for Vec<T>
 where
     T: _Encode,
 {
+    #[inline(always)]
     fn encode(&self, w: &mut impl Write, named: bool) -> Result<()> {
         self[..].as_ref().encode(w, named)
     }
@@ -627,18 +651,21 @@ impl<'a, T> _Encode for Cow<'a, T>
 where
     T: _Encode + ToOwned + ?Sized,
 {
+    #[inline(always)]
     fn encode(&self, w: &mut impl Write, named: bool) -> Result<()> {
         self.deref().encode(w, named)
     }
 }
 
 impl _Encode for String {
+    #[inline(always)]
     fn encode(&self, w: &mut impl Write, named: bool) -> Result<()> {
         self.as_str().encode(w, named)
     }
 }
 
 impl _Encode for str {
+    #[inline(always)]
     fn encode(&self, w: &mut impl Write, _named: bool) -> Result<()> {
         rmp::encode::write_str(w, self).map_err(Into::into)
     }
@@ -649,6 +676,7 @@ where
     K: _Encode,
     V: _Encode,
 {
+    #[inline]
     fn encode(&self, w: &mut impl Write, named: bool) -> Result<()> {
         rmp::encode::write_map_len(w, self.len() as u32)?;
         for (k, v) in self.iter() {
@@ -660,6 +688,7 @@ where
 }
 
 impl _Encode for char {
+    #[inline(always)]
     fn encode(&self, w: &mut impl Write, named: bool) -> Result<()> {
         self.to_string().encode(w, named)
     }
@@ -669,6 +698,7 @@ macro_rules! impl_simple_encode {
     ($(($t:ty, $f:tt, $conv:ty))+) => {
         $(
             impl _Encode for $t{
+                #[inline(always)]
                 fn encode(&self, w: &mut impl Write, _named: bool) -> Result<()> {
                     rmp::encode::$f(w, *self as $conv)?;
                     Ok(())
@@ -700,6 +730,7 @@ macro_rules! _impl_array {
         $(
             #[allow(clippy::zero_prefixed_literal)]
             impl<T> _Encode for [T; $n] where T: _Encode {
+                #[inline]
                 fn encode(&self, w: &mut impl Write, named: bool) -> Result<()> {
                     rmp::encode::write_array_len(w, $n)?;
                     for item in self {
@@ -720,6 +751,7 @@ _impl_array! {
 impl_tuple_encode!();
 
 impl _Encode for serde_json::Value {
+    #[inline]
     fn encode(&self, w: &mut impl Write, named: bool) -> Result<()> {
         let bytes = if named {
             rmp_serde::to_vec_named(self)?
@@ -732,6 +764,7 @@ impl _Encode for serde_json::Value {
 }
 
 impl _Encode for serde_json::Map<String, serde_json::Value> {
+    #[inline]
     fn encode(&self, w: &mut impl Write, named: bool) -> Result<()> {
         let bytes = if named {
             rmp_serde::to_vec_named(self)?
@@ -749,6 +782,7 @@ where
     T: ?Sized,
     T: Encode,
 {
+    #[inline(always)]
     fn serialize_to(&self, w: &mut impl Write) -> Result<()> {
         self.encode(w)
     }
@@ -778,18 +812,18 @@ pub struct TupleBuffer(
 
 impl TupleBuffer {
     /// Get raw pointer to buffer.
-    #[inline]
+    #[inline(always)]
     pub fn as_ptr(&self) -> *const u8 {
         self.0.as_ptr()
     }
 
     /// Return the number of bytes used in memory by the tuple.
-    #[inline]
+    #[inline(always)]
     pub fn len(&self) -> usize {
         self.0.len()
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
@@ -797,7 +831,7 @@ impl TupleBuffer {
     /// # Safety
     /// `buf` must be a valid message pack array
     #[track_caller]
-    #[inline]
+    #[inline(always)]
     pub unsafe fn from_vec_unchecked(buf: Vec<u8>) -> Self {
         Self(buf)
     }
@@ -810,14 +844,14 @@ impl TupleBuffer {
 }
 
 impl AsRef<[u8]> for TupleBuffer {
-    #[inline]
+    #[inline(always)]
     fn as_ref(&self) -> &[u8] {
         self.0.as_ref()
     }
 }
 
 impl From<TupleBuffer> for Vec<u8> {
-    #[inline]
+    #[inline(always)]
     fn from(b: TupleBuffer) -> Self {
         b.0
     }
@@ -826,21 +860,21 @@ impl From<TupleBuffer> for Vec<u8> {
 impl TryFrom<Vec<u8>> for TupleBuffer {
     type Error = Error;
 
-    #[inline]
+    #[inline(always)]
     fn try_from(data: Vec<u8>) -> Result<Self> {
         Self::try_from_vec(data)
     }
 }
 
 impl From<Tuple> for TupleBuffer {
-    #[inline]
+    #[inline(always)]
     fn from(t: Tuple) -> Self {
         Self(t.as_buffer())
     }
 }
 
 impl From<&Tuple> for TupleBuffer {
-    #[inline]
+    #[inline(always)]
     fn from(t: &Tuple) -> Self {
         Self(t.as_buffer())
     }
@@ -857,23 +891,24 @@ impl Debug for TupleBuffer {
 }
 
 impl ToTupleBuffer for TupleBuffer {
-    #[inline]
+    #[inline(always)]
     fn to_tuple_buffer(&self) -> Result<TupleBuffer> {
         Ok(self.clone())
     }
 
-    #[inline]
+    #[inline(always)]
     fn tuple_data(&self) -> Option<&[u8]> {
         Some(&self.0)
     }
 
-    #[inline]
+    #[inline(always)]
     fn write_tuple_data(&self, w: &mut impl Write) -> Result<()> {
         w.write_all(self.as_ref()).map_err(Into::into)
     }
 }
 
 impl serde_bytes::Serialize for TupleBuffer {
+    #[inline(always)]
     fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
@@ -883,6 +918,7 @@ impl serde_bytes::Serialize for TupleBuffer {
 }
 
 impl<'de> serde_bytes::Deserialize<'de> for TupleBuffer {
+    #[inline]
     fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
@@ -905,6 +941,7 @@ pub struct TupleFormat {
 }
 
 impl Default for TupleFormat {
+    #[inline(always)]
     fn default() -> Self {
         TupleFormat {
             inner: unsafe { ffi::box_tuple_format_default() },
@@ -946,11 +983,13 @@ impl TupleIterator {
     /// returned by the next call to `box_tuple_next(it)`. Returned value is zero
     /// after initialization or rewind and `box_tuple_field_count(Tuple)`
     /// after the end of iteration.
+    #[inline(always)]
     pub fn position(&self) -> u32 {
         unsafe { ffi::box_tuple_position(self.inner) }
     }
 
     /// Rewind iterator to the initial position.
+    #[inline(always)]
     pub fn rewind(&mut self) {
         unsafe { ffi::box_tuple_rewind(self.inner) }
     }
@@ -964,6 +1003,7 @@ impl TupleIterator {
     /// After call:
     /// - `box_tuple_position(it) == fieldno` if returned value is not `None`
     /// - `box_tuple_position(it) == box_tuple_field_count(Tuple)` if returned value is `None`.
+    #[inline]
     pub fn seek<'t, T>(&'t mut self, fieldno: u32) -> Result<Option<T>>
     where
         T: Decode<'t>,
@@ -981,6 +1021,7 @@ impl TupleIterator {
     /// - `box_tuple_position(it) == fieldno` if returned value is not `None`
     /// - `box_tuple_position(it) == box_tuple_field_count(Tuple)` if returned value is `None`.
     #[allow(clippy::should_implement_trait)]
+    #[inline]
     pub fn next<'t, T>(&'t mut self) -> Result<Option<T>>
     where
         T: Decode<'t>,
@@ -992,6 +1033,7 @@ impl TupleIterator {
 }
 
 impl Drop for TupleIterator {
+    #[inline(always)]
     fn drop(&mut self) {
         unsafe { ffi::box_tuple_iterator_free(self.inner) }
     }
@@ -1023,6 +1065,7 @@ crate::define_str_enum! {
 }
 
 impl Default for FieldType {
+    #[inline(always)]
     fn default() -> Self {
         Self::Any
     }
@@ -1138,6 +1181,7 @@ impl KeyDef {
     /// - `Ordering::Equal`   if `key_fields(tuple_a) == key_fields(tuple_b)`
     /// - `Ordering::Less`    if `key_fields(tuple_a) < key_fields(tuple_b)`
     /// - `Ordering::Greater` if `key_fields(tuple_a) > key_fields(tuple_b)`
+    #[inline(always)]
     pub fn compare(&self, tuple_a: &Tuple, tuple_b: &Tuple) -> Ordering {
         unsafe {
             ffi::box_tuple_compare(
@@ -1158,6 +1202,7 @@ impl KeyDef {
     /// - `Ordering::Equal`   if `key_fields(tuple) == parts(key)`
     /// - `Ordering::Less`    if `key_fields(tuple) < parts(key)`
     /// - `Ordering::Greater` if `key_fields(tuple) > parts(key)`
+    #[inline]
     pub fn compare_with_key<K>(&self, tuple: &Tuple, key: &K) -> Ordering
     where
         K: ToTupleBuffer + ?Sized,
@@ -1172,6 +1217,7 @@ impl KeyDef {
 }
 
 impl Drop for KeyDef {
+    #[inline(always)]
     fn drop(&mut self) {
         unsafe { ffi::box_key_def_delete(self.inner.as_ptr()) }
     }
@@ -1285,12 +1331,14 @@ impl Debug for FunctionArgs {
 }
 
 impl From<FunctionArgs> for Tuple {
+    #[inline(always)]
     fn from(args: FunctionArgs) -> Tuple {
         Tuple::from(&args)
     }
 }
 
 impl From<&FunctionArgs> for Tuple {
+    #[inline(always)]
     fn from(args: &FunctionArgs) -> Tuple {
         unsafe { Tuple::from_raw_data(args.start as _, args.end.offset_from(args.start) as _) }
     }
@@ -1324,6 +1372,7 @@ impl FunctionArgs {
 /// console or whatever is behind the session. Note, that
 /// successful push does not guarantee delivery in case it was sent
 /// into the network. Just like with `write()`/`send()` system calls.
+#[inline]
 pub fn session_push<T>(value: &T) -> Result<()>
 where
     T: ToTupleBuffer + ?Sized,
@@ -1337,7 +1386,7 @@ where
     }
 }
 
-#[inline(always)]
+#[inline]
 fn validate_msgpack<T>(data: T) -> Result<T>
 where
     T: AsRef<[u8]> + Into<Vec<u8>>,
@@ -1356,6 +1405,7 @@ where
 {
     type Err = tlua::Void;
 
+    #[inline(always)]
     fn push_to_lua(&self, lua: L) -> tlua::PushResult<L, Self> {
         unsafe {
             ffi::luaT_pushtuple(tlua::AsLua::as_lua(&lua), self.ptr.as_ptr());
@@ -1372,6 +1422,7 @@ where
 {
     type Err = tlua::Void;
 
+    #[inline(always)]
     fn push_into_lua(self, lua: L) -> tlua::PushResult<L, Self> {
         unsafe {
             ffi::luaT_pushtuple(tlua::AsLua::as_lua(&lua), self.ptr.as_ptr());
@@ -1446,12 +1497,14 @@ impl<'de, T> Decode<'de> for T
 where
     T: serde::Deserialize<'de>,
 {
+    #[inline(always)]
     fn decode(data: &'de [u8]) -> Result<Self> {
         Ok(rmp_serde::from_slice(data)?)
     }
 }
 
 impl Decode<'_> for Tuple {
+    #[inline(always)]
     fn decode(data: &[u8]) -> Result<Self> {
         Self::try_from_slice(data)
     }
@@ -1560,6 +1613,7 @@ impl std::borrow::ToOwned for RawBytes {
 pub struct RawByteBuf(pub Vec<u8>);
 
 impl serde_bytes::Serialize for RawByteBuf {
+    #[inline(always)]
     fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
@@ -1569,6 +1623,7 @@ impl serde_bytes::Serialize for RawByteBuf {
 }
 
 impl<'de> serde_bytes::Deserialize<'de> for RawByteBuf {
+    #[inline(always)]
     fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,

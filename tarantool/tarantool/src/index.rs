@@ -341,6 +341,7 @@ crate::define_str_enum! {
 }
 
 impl Default for IndexType {
+    #[inline(always)]
     fn default() -> Self {
         Self::Tree
     }
@@ -406,6 +407,7 @@ macro_rules! define_setters {
 }
 
 impl Part {
+    #[inline(always)]
     pub fn field(field: impl Into<NumOrStr>) -> Self {
         Self {
             field: field.into(),
@@ -423,6 +425,7 @@ impl Part {
         path(path: String)
     }
 
+    #[inline(always)]
     pub fn new(fi: impl Into<NumOrStr>, ft: FieldType) -> Self {
         Self::field(fi).field_type(ft)
     }
@@ -484,6 +487,7 @@ crate::define_str_enum! {
 }
 
 impl Index {
+    #[inline(always)]
     pub(crate) fn new(space_id: SpaceId, index_id: IndexId) -> Self {
         Index { space_id, index_id }
     }
@@ -493,21 +497,25 @@ impl Index {
     /// # Safety
     /// `id`s must be valid tarantool space/index id. Only use this function with
     /// ids acquired from tarantool in some way, e.g. from lua code.
+    #[inline(always)]
     pub const unsafe fn from_ids_unchecked(space_id: SpaceId, index_id: IndexId) -> Self {
         Self { space_id, index_id }
     }
 
     /// Return id of this index.
+    #[inline(always)]
     pub fn id(&self) -> u32 {
         self.index_id
     }
 
     /// Return the space id of this index.
+    #[inline(always)]
     pub fn space_id(&self) -> u32 {
         self.space_id
     }
 
     // Return index metadata from system `_index` space.
+    #[inline]
     pub fn meta(&self) -> Result<Metadata, Error> {
         let sys_space: Space = SystemSpace::Index.into();
         let tuple = sys_space
@@ -524,6 +532,7 @@ impl Index {
     }
 
     // Drops index.
+    #[inline(always)]
     pub fn drop(&self) -> Result<(), Error> {
         crate::schema::index::drop_index(self.space_id, self.index_id)
     }
@@ -535,6 +544,7 @@ impl Index {
     /// - `key` - encoded key in MsgPack Array format (`[part1, part2, ...]`).
     ///
     /// Returns a tuple or `None` if index is empty
+    #[inline]
     pub fn get<K>(&self, key: &K) -> Result<Option<Tuple>, Error>
     where
         K: ToTupleBuffer + ?Sized,
@@ -564,6 +574,7 @@ impl Index {
     ///
     /// - `type` - iterator type
     /// - `key` - encoded key in MsgPack Array format (`[part1, part2, ...]`).
+    #[inline]
     pub fn select<K>(&self, iterator_type: IteratorType, key: &K) -> Result<IndexIterator, Error>
     where
         K: ToTupleBuffer + ?Sized,
@@ -599,6 +610,7 @@ impl Index {
     /// - `key` - encoded key in MsgPack Array format (`[part1, part2, ...]`).
     ///
     /// Returns the deleted tuple
+    #[inline]
     pub fn delete<K>(&self, key: &K) -> Result<Option<Tuple>, Error>
     where
         K: ToTupleBuffer + ?Sized,
@@ -671,6 +683,7 @@ impl Index {
     /// # Safety
     /// `key` must be a valid msgpack array.
     /// `ops` must be a valid msgpack array of msgpack arrays.
+    #[inline(always)]
     pub unsafe fn update_raw(&self, key: &[u8], ops: &[u8]) -> Result<Option<Tuple>, Error> {
         let key = key.as_ptr_range();
         let ops = ops.as_ptr_range();
@@ -732,6 +745,7 @@ impl Index {
     /// # Safety
     /// `value` must be a valid msgpack array.
     /// `ops` must be a valid msgpack array of msgpack arrays.
+    #[inline(always)]
     pub unsafe fn upsert_raw(&self, value: &[u8], ops: &[u8]) -> Result<(), Error> {
         let value = value.as_ptr_range();
         let ops = ops.as_ptr_range();
@@ -753,6 +767,7 @@ impl Index {
     }
 
     /// Return the number of elements in the index.
+    #[inline(always)]
     pub fn len(&self) -> Result<usize, Error> {
         let result = unsafe { ffi::box_index_len(self.space_id, self.index_id) };
 
@@ -769,6 +784,7 @@ impl Index {
     }
 
     /// Return the number of bytes used in memory by the index.
+    #[inline(always)]
     pub fn bsize(&self) -> Result<usize, Error> {
         let result = unsafe { ffi::box_index_bsize(self.space_id, self.index_id) };
 
@@ -782,6 +798,7 @@ impl Index {
     /// Return a random tuple from the index (useful for statistical analysis).
     ///
     /// - `rnd` - random seed
+    #[inline(always)]
     pub fn random(&self, seed: u32) -> Result<Option<Tuple>, Error> {
         tuple_from_box_api!(
             ffi::box_index_random[
@@ -798,6 +815,7 @@ impl Index {
     /// - `key` - encoded key in MsgPack Array format (`[part1, part2, ...]`).
     ///
     /// Returns a tuple or `None` if index is empty
+    #[inline]
     pub fn min<K>(&self, key: &K) -> Result<Option<Tuple>, Error>
     where
         K: ToTupleBuffer + ?Sized,
@@ -825,6 +843,7 @@ impl Index {
     /// - `key` - encoded key in MsgPack Array format (`[part1, part2, ...]`).
     ///
     /// Returns a tuple or `None` if index is empty
+    #[inline]
     pub fn max<K>(&self, key: &K) -> Result<Option<Tuple>, Error>
     where
         K: ToTupleBuffer + ?Sized,
@@ -851,6 +870,7 @@ impl Index {
     ///
     /// - `type` - iterator type
     /// - `key` - encoded key in MsgPack Array format (`[part1, part2, ...]`).
+    #[inline]
     pub fn count<K>(&self, iterator_type: IteratorType, key: &K) -> Result<usize, Error>
     where
         K: ToTupleBuffer + ?Sized,
@@ -884,6 +904,7 @@ impl Index {
     /// this key.
     ///
     /// - `tuple` - tuple from which need to extract key.
+    #[inline(always)]
     pub fn extract_key(&self, tuple: Tuple) -> Tuple {
         unsafe {
             let mut result_size = MaybeUninit::uninit();
@@ -985,6 +1006,7 @@ pub struct IndexIterator {
 impl Iterator for IndexIterator {
     type Item = Tuple;
 
+    #[inline(always)]
     fn next(&mut self) -> Option<Self::Item> {
         let mut result_ptr = null_mut();
         if unsafe { ffi::box_iterator_next(self.ptr, &mut result_ptr) } < 0 {
@@ -995,6 +1017,7 @@ impl Iterator for IndexIterator {
 }
 
 impl Drop for IndexIterator {
+    #[inline(always)]
     fn drop(&mut self) {
         unsafe { ffi::box_iterator_free(self.ptr) };
     }
