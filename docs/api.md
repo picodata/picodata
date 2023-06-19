@@ -30,7 +30,7 @@ picodata> pico.help()
 
 | Функция                       | Описание                          |
 |-------------------------------|-----------------------------------|
-| [pico.VERSION](#picoversion) | Версия Picodata.                  |
+| [pico.PICODATA_VERSION](#picopicodata_version) | Версия Picodata.                  |
 | [pico.args](#picoargs)       | Вывод аргументов запуска `picodata run`. |
 | [pico.raft_get_index()](#picoraft_get_index) | Чтение индекса raft-журнала.
 | [pico.raft_propose_nop()](#picoraft_propose_nop) | Добавление в raft-журнал запись `Nop` (no operation).
@@ -56,7 +56,7 @@ Versioning][calver]) с форматом `YY.0M.MICRO`.
 Пример:
 
 ```console
-picodata> pico.VERSION
+picodata> pico.PICODATA_VERSION
 ---
 - 23.06.0
 ...
@@ -468,17 +468,16 @@ function create_space(opts)
 Состав таблицы:
 
 - `name` (_string_)
-- `format` (_table_ {_table_ SpaceField,...}), see pico.help('table SpaceField')
-- `primary_key `(_table_ {_string_,...}), with field names
-- `id` (optional _number_), default: implicitly generated
-- `distribution` (_string_), one of 'global' | 'sharded'
-    in case it's sharded, either `by_field` (for explicit sharding)
-    or `sharding_key`+`sharding_fn` (for implicit sharding) options
-    must be supplied.
-- `by_field` (optional _string_), usually 'bucket_id'
-- `sharding_key `(optional _table_ {string,...}) with field names
-- `sharding_fn` (optional _string_), only default 'murmur3' is supported for now
-- `timeout` (_number_), in seconds
+- `format` (_table_ {_table_ SpaceField,...}), см. `pico.help('table SpaceField')`
+- `primary_key `(_table_ {_string_,...}), с именами полей
+- `id` (optional _number_), по умолчанию генерируется автоматически
+- `distribution` (_string_), варианты: 'global' | 'sharded'
+    при использовании `sharded` также нужно использовать параметр `by_field`
+    или связку параметров `sharding_key`+`sharding_fn`.
+- `by_field` (optional _string_), обычно используется `bucket_id`
+- `sharding_key `(optional _table_ {string,...}), с именами полей
+- `sharding_fn` (optional _string_), поддерживается пока только функция `murmur3`
+- `timeout` (_number_), в секундах
 
 Возвращаемое значение:
 
