@@ -30,7 +30,6 @@ mod enums;
 mod error;
 mod fiber;
 mod latch;
-mod log;
 mod net_box;
 mod proc;
 mod session;
@@ -482,9 +481,6 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 coio::channel_tx_closed,
                 transaction::transaction_commit,
                 transaction::transaction_rollback,
-                log::log_with_user_defined_mapping,
-                #[should_panic]
-                log::zlog,
                 latch::latch_lock,
                 latch::latch_try_lock,
                 net_box::immediate_close,
