@@ -31,25 +31,35 @@ use crate::ffi::tarantool as ffi;
 pub struct TarantoolLogger(fn(Level) -> SayLevel);
 
 impl TarantoolLogger {
+    #[inline(always)]
     pub const fn new() -> Self {
         const DEFAULT_MAPPING: fn(Level) -> SayLevel = |l: Level| l.into();
         TarantoolLogger(DEFAULT_MAPPING)
     }
 
+    #[inline(always)]
     pub fn with_mapping(map_fn: fn(Level) -> SayLevel) -> Self {
         TarantoolLogger(map_fn)
+    }
+
+    /// Convert [`log::Level`] to [`SayLevel`] taking the mapping into account.
+    #[inline(always)]
+    pub fn convert_level(&self, level: Level) -> SayLevel {
+        (self.0)(level)
     }
 }
 
 impl Log for TarantoolLogger {
+    #[inline(always)]
     fn enabled(&self, metadata: &Metadata) -> bool {
-        let level: SayLevel = metadata.level().into();
+        let level = self.convert_level(metadata.level());
         level <= SayLevel::from_i32(unsafe { ffi::LOG_LEVEL }).unwrap()
     }
 
+    #[inline]
     fn log(&self, record: &Record) {
         say(
-            (self.0)(record.level()),
+            self.convert_level(record.level()),
             record.file().unwrap_or_default(),
             record.line().unwrap_or(0) as i32,
             None,
@@ -57,6 +67,7 @@ impl Log for TarantoolLogger {
         )
     }
 
+    #[inline(always)]
     fn flush(&self) {}
 }
 
@@ -99,4 +110,51 @@ pub fn say(level: SayLevel, file: &str, line: i32, error: Option<&str>, message:
     let message = CString::new(message).unwrap();
 
     unsafe { ffi::SAY_FN.unwrap()(level, file.as_ptr(), line, error_ptr, message.as_ptr()) }
+}
+
+#[cfg(feature = "internal_test")]
+mod tests {
+    use super::*;
+    use crate::lua_state;
+
+    struct RestoreLogLevel {
+        log_level: String,
+    }
+    impl Drop for RestoreLogLevel {
+        fn drop(&mut self) {
+            let lua = lua_state();
+            lua.exec_with("return box.cfg { log_level = ... }", &self.log_level)
+                .unwrap();
+        }
+    }
+
+    #[crate::test(tarantool = "crate")]
+    fn is_enabled() {
+        let lua = lua_state();
+        let log_level_saved: String = lua.eval("return box.cfg.log_level").unwrap();
+        let _ = RestoreLogLevel {
+            log_level: log_level_saved,
+        };
+
+        // default mapping
+        lua.exec("box.cfg { log_level = 'info' }").unwrap();
+        let logger = TarantoolLogger::new();
+        assert!(logger.enabled(&log::Metadata::builder().level(Level::Error).build()));
+        assert!(!logger.enabled(&log::Metadata::builder().level(Level::Debug).build()));
+        assert!(logger.enabled(&log::Metadata::builder().level(Level::Info).build()));
+
+        // debug > info, so enabled is never true
+        lua.exec("box.cfg { log_level = 'info' }").unwrap();
+        let logger = TarantoolLogger::with_mapping(|_| SayLevel::Debug);
+        assert!(!logger.enabled(&log::Metadata::builder().level(Level::Error).build()));
+        assert!(!logger.enabled(&log::Metadata::builder().level(Level::Debug).build()));
+        assert!(!logger.enabled(&log::Metadata::builder().level(Level::Info).build()));
+
+        // debug = debug, so enabled is always true
+        lua.exec("box.cfg { log_level = 'debug' }").unwrap();
+        let logger = TarantoolLogger::with_mapping(|_| SayLevel::Debug);
+        assert!(logger.enabled(&log::Metadata::builder().level(Level::Error).build()));
+        assert!(logger.enabled(&log::Metadata::builder().level(Level::Debug).build()));
+        assert!(logger.enabled(&log::Metadata::builder().level(Level::Info).build()));
+    }
 }

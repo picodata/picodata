@@ -1,5 +1,16 @@
 # Change Log
 
+# [1.2.0] Unreleased
+
+### Added
+- `tarantool::log::TarantoolLogger::convert_level` method for converting
+    log::Level to SayLevel taking the mapping function into account.
+
+### Fixed
+- `log::Log::enabled` implementation for TarantoolLogger no longer ignores the
+  mapping provided at construction.
+
+
 # [1.1.0] June 16 2023
 
 ### Added
