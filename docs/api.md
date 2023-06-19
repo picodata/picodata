@@ -32,20 +32,20 @@ picodata> pico.help()
 |-------------------------------|-----------------------------------|
 | [pico.VERSION](#picoversion) | Версия Picodata.                  |
 | [pico.args](#picoargs)       | Вывод аргументов запуска `picodata run`. |
-| [pico.raft_read_index()](#picoraft_read_index) | Чтение индекса raft-журнала.
+| [pico.raft_get_index()](#picoraft_get_index) | Чтение индекса raft-журнала.
 | [pico.raft_propose_nop()](#picoraft_propose_nop) | Добавление в raft-журнал запись `Nop` (no operation).
-| [pico.cas()](#picocas) | Запрос на изменение параметров методом [Compare and Swap](glossary.md#cas-compare-and-swap).
-| [pico.raft_status()](#picoraft_status) | Получение данных о текущем состоянии raft-журнала ([терм](glossary.md#терм-term), лидер и т.д.)
+| [pico.cas()](#picocas) | Запрос на изменение параметров методом [Compare and Swap](glossary.md#as-compare-and-swap).
+| [pico.raft_status()](#picoraft_status) | Получение данных о текущем состоянии raft-журнала ([терм](glossary.md#term), [лидер](glossary.md#raft-_1) и т.д.)
 | [pico.exit()](#picoexit) | Корректное завершение работы указанного инстанса Picodata.
-| [pico.expel()](#picoexpel) | [Контролируемый вывод](cli.md#описание-команды-expel) инстанса Picodata из кластера.
+| [pico.expel()](#picoexpel) | [Контролируемый вывод](cli.md#expel) инстанса Picodata из кластера.
 | [pico.raft_timeout_now()](#picoraft_timeout_now) |  Вызов таймаута raft-узла прямо сейчас, объявление новых выборов в raft-группе.
-| [pico.instance_info()](#picoinstance_info) | Получение информации об инстансе Picodata (идентификаторы, уровни ([grade](glossary.md#грейд-grade)) и прочее).
-| [pico.whoami()](#picowhoami) | Отображение данных о текущем пользователе (судя по всему, ещё не реализовано).
-| [pico.raft_compact_log()](#picoraft_compact_log) | [Обрезание](glossary.md#компактизация-raft-журнала-raft-log-compaction) raft-журнала c удалением указанного числа наиболее старых записей.
+| [pico.instance_info()](#picoinstance_info) | Получение информации об инстансе Picodata (идентификаторы, уровни ([grade](glossary.md#grade)) и прочее).
+| [pico.whoami()](#picowhoami) | Отображение данных о текущем инстансе.
+| [pico.raft_compact_log()](#picoraft_compact_log) | [Компактизация](glossary.md#raft-raft-log-compaction) raft-журнала c удалением указанного числа наиболее старых записей.
 | [pico.help()](#picohelp) | Доступ к встроенной справочной системе Picodata.
 | [pico.create_space()](#picocreate_space) | Создание спейса в Picodata.
 
-### pico.VERSION
+### pico.PICODATA_VERSION
 
 Строковая переменная (не функция), которая содержит версию Picodata.
 Семантика соответствует календарному версионированию ([Calendar
@@ -58,7 +58,7 @@ Versioning][calver]) с форматом `YY.0M.MICRO`.
 ```console
 picodata> pico.VERSION
 ---
-- 22.11.0
+- 23.06.0
 ...
 ```
 
@@ -101,11 +101,11 @@ picodata> pico.args
   data_dir: ./data/i2
 ...
 ```
-### pico.raft_read_index
+### pico.raft_get_index
 Кворумное чтение текущего индекса raft-журнала
 
 ```lua
-function raft_read_index(timeout)
+function raft_get_index(timeout)
 ```
 Параметры:
 
@@ -117,7 +117,7 @@ function raft_read_index(timeout)
 Пример:
 
 ```console
-picodata> pico.raft_read_index(1)
+picodata> pico.raft_get_index(1)
 ---
 - 42
 ...
@@ -128,20 +128,71 @@ picodata> pico.raft_read_index(1)
 
 ### pico.cas
 Отправляет запрос на вызов/изменение параметра с учетом его текущего
-значения (проверяется на лидере). Функция работает на всем кластере.
+значения (проверяется на лидере). Если проверка не выявляет конфликтов,
+то запрос успешно выполняется и в raft-журнале фиксируется новый индекс
+схемы данных. Проверка значения параметра называется _проверкой
+предиката_. Предикат состоит из трёх частей:
+
+- номера индекса схемы данных;
+- номера терма;
+- диапазона значений самого проверяемого параметра (`ranges`).
+
+Предоставление предиката при cas-запросе опционально. Если его не
+указывать, то по умолчанию cas-запрос будет использовать текущий индекс,
+текущий терм и пустой диапазон (разрешающий любые значения).
+
+Функция применется только для
+глобальных спейсов и работает на всем кластере.
 
 ```lua
-function cas({args},...)
+function cas(dml[, predicate])
 ```
 
 Параметры:
 
- - `args`: (_string_ = '_string_' | {_table_} )
+ - `dml`: (_table_)
 
-Пример:
+    Таблица с полями:
 
+    - `kind` (_string_), варианты: 'insert' | 'replace' | 'update' | 'delete'
+    - `space` (_stringLua_)
+    - `tuple` (optional _table_), обязательно для `insert` и `replace`
+    - `key` (optional _table_), обязательно для `update` и `delete`
+    - `ops` (optional _table_), обязательно для `update`
+
+ - `predicate`: (optional _table_)
+
+  Таблица с полями:
+
+    - `index` (optional _number_), default: current applied index
+    - `term` (optional _number_), default: current term
+    - `ranges` (optional _table_ {table CasRange,...})
+        default: {} (empty table)
+
+
+
+Пример без указания предиката:
+```lua
+pico.cas({
+    kind = 'insert',
+    space = 'friends_of_peppa',
+    tuple = {1, 'Suzy'},
+})
 ```
-pico.cas({space = 'test', kind = 'insert', tuple = {13, 37} }, { timeout = 1 })
+
+Пример с указанием предиката (проверка, что никакие другие записи не были добавлены ранее):
+```lua
+pico.cas({
+    kind = 'replace',
+    space = 'friends_of_peppa',
+    tuple = {2, 'Rebecca'},
+}, {
+    ranges = {{
+        space = 'friends_of_peppa',
+        key_min = { kind = 'excluded', key = {1,} },
+        key_max = { kind = 'unbounded' },
+    }},
+})
 ```
 
 Возвращаемое значение:
@@ -152,6 +203,16 @@ pico.cas({space = 'test', kind = 'insert', tuple = {13, 37} }, { timeout = 1 })
 
 ### pico.raft_status
 Получение данных о текущем состоянии raft-журнала ([терм](glossary.md#терм-term), лидер и т.д.). Функция не имеет передаваемых параметров.
+
+Возвращаемые поля:
+
+- `id` (_number_)
+- `term` (_number_)
+- `leader_id` (_number_ | _nil_),
+    поле может быть пустым если в текущем терме нет лидера или он еще неизвестен
+- `raft_state` (_string_),
+    варианты: 'Follower' | 'Candidate' | 'Leader' | 'PreCandidate'
+
 
 Пример:
 
@@ -164,6 +225,11 @@ picodata> pico.raft_status()
   id: 1
 ...
 ```
+
+Возвращаемое значение:
+
+(_table_)
+
 
 ### pico.exit
 Корректное завершение работы указанного инстанса Picodata.
@@ -202,10 +268,13 @@ function expel("instance_id")
 
 Пример:
 
-```
+```lua
 pico.expel("i2")
 ```
-У функции нет непосредственно возвращаемых значений
+Возвращаемые значения:
+
+- (_true_) — при успешном выполнении;
+- (_nil_, _string_) — при ошибке;
 
 Результат работы:
 
@@ -229,6 +298,7 @@ calling rpc::sharding
 function instance_info(instance)
 ```
 Параметры:
+
 - `instance`: (_string_)
 
 Возвращаемое значение: 
@@ -243,20 +313,17 @@ function instance_info(instance)
 - `instance_uuid` (_string_)
 - `replicaset_id `(_string_)
 - `replicaset_uuid` (_string_)
-- `current_grade` (_table_),
+- `current_grade` (_table_).
+   `variant` (_string_), варианты: 'Offline' | 'Online' | 'Expelled';
+   `incarnation` (_number_) 
+- `target_grade` (_table_).
+   `variant` (_string_),  варианты: 'Offline' | 'Replicated' | 'ShardingInitialized' | 'Online' | 'Expelled';
+   `incarnation`(_number_),
 
-  `{variant = _string_, incarnation = _number_}`, 
-  
-   `variant`: 'Offline' | 'Online' | 'Expelled'
-- target_grade (_table_),
-
-  `{variant = _string_, incarnation = _number_}`,
-
-    variant: 'Offline' | 'Replicated' | 'ShardingInitialized' | 'Online' | 'Expelled'
-
+   
 Пример:
 
-```console
+```lua
 
  picodata> pico.instance_info()
  ---
@@ -283,37 +350,37 @@ target_grade:
 
 Объявление новых выборов:
 
-  ```
+  ```lua
   received MsgTimeoutNow from 3 and starts an election to get leadership., from: 3, term: 4, raft_id: 3
   ```
 
 Начало выборов:
 
-  ```
+  ```lua
   starting a new election, term: 4, raft_id: 3
   ```
 
 Превращение текущего инстанса в кандидаты в лидеры:
 
-  ```
+  ```lua
   became candidate at term 5, term: 5, raft_id: 3
   ```
 
 Объявление голосования:
 
-  ```
+  ```lua
   broadcasting vote request, to: [4, 1], log_index: 54, log_term: 4, term: 5, type: MsgRequestVote, raft_id: 3
   ```
 
 Получение голосов:
 
-  ```
+  ```lua
   received votes response, term: 5, type: MsgRequestVoteResponse, approvals: 2, rejections: 0, from: 4, vote: true, raft_id: 3
   ```
 
 Объявление результата выборов:
 
-  ```
+  ```lua
   became leader at term 5, term: 5, raft_id: 3
   ```
 
@@ -385,6 +452,8 @@ function help(topic)
 picodata> pico.help("help")
   -- Shows this message
 ```
+Далее будет показан список разделов (`topics`).
+
 ### pico.create_space
 Создание спейса (пространства для хранения данных) в Picodata
 
@@ -397,6 +466,7 @@ function create_space(opts)
 - `opts`: (_table_)
 
 Состав таблицы:
+
 - `name` (_string_)
 - `format` (_table_ {_table_ SpaceField,...}), see pico.help('table SpaceField')
 - `primary_key `(_table_ {_string_,...}), with field names
