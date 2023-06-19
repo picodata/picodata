@@ -455,6 +455,14 @@ fn start_boot(args: &args::Run) {
             .expect("cannot fail")
             .into(),
         );
+        init_entries_push_op(
+            op::Dml::insert(
+                ClusterwideSpaceId::Property,
+                &(PropertyName::NextSchemaVersion, 1),
+            )
+            .expect("cannot fail")
+            .into(),
+        );
 
         init_entries.push({
             let conf_change = raft::ConfChange {
