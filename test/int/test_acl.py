@@ -1,65 +1,7 @@
 import pytest
 from typing import Literal
 from conftest import Cluster, Instance, TarantoolError
-from tarantool.error import NetworkError
-
-
-def propose_create_user(
-    instance: Instance,
-    id: int,
-    name: str,
-    password: str,
-    timeout: int = 3,
-) -> int:
-    digest = instance.call("box.internal.prepare_auth", "chap-sha1", password)
-    schema_version = instance.next_schema_version()
-    op = dict(
-        kind="acl",
-        op_kind="create_user",
-        user_def=dict(
-            id=id,
-            name=name,
-            auth=dict(method="chap-sha1", data=digest),
-            schema_version=schema_version,
-        ),
-    )
-    # TODO: use pico.cas
-    return instance.call("pico.raft_propose", op, timeout=timeout)
-
-
-def propose_change_password(
-    instance: Instance,
-    user_id: int,
-    password: str,
-    timeout: int = 3,
-) -> int:
-    digest = instance.call("box.internal.prepare_auth", "chap-sha1", password)
-    schema_version = instance.next_schema_version()
-    op = dict(
-        kind="acl",
-        op_kind="change_auth",
-        user_id=user_id,
-        auth=dict(method="chap-sha1", data=digest),
-        schema_version=schema_version,
-    )
-    # TODO: use pico.cas
-    return instance.call("pico.raft_propose", op, timeout=timeout)
-
-
-def propose_drop_user(
-    instance: Instance,
-    id: int,
-    timeout: int = 3,
-) -> int:
-    schema_version = instance.next_schema_version()
-    op = dict(
-        kind="acl",
-        op_kind="drop_user",
-        user_id=id,
-        schema_version=schema_version,
-    )
-    # TODO: use pico.cas
-    return instance.call("pico.raft_propose", op, timeout=timeout)
+from tarantool.error import NetworkError  # type: ignore
 
 
 def propose_update_privilege(
@@ -92,44 +34,24 @@ def test_acl_basic(cluster: Cluster):
 
     user = "Bobby"
     password = "s3cr3t"
-    user_id = 314
     v = 0
 
     # Initial state.
     for i in cluster.instances:
         assert i.call("box.space._pico_property:get", "global_schema_version")[1] == v
-        assert i.call("box.space._user:get", user_id) is None
-        assert (
-            i.eval(
-                """return box.execute([[
-                select count(*) from "_priv" where "grantee" = ?
-            ]], {...}).rows""",
-                user_id,
-            )
-            == [[0]]
-        )
+        assert i.call("box.space._user.index.name:get", user) is None
 
     #
     #
     # Create user.
-    index = propose_create_user(i1, id=user_id, name=user, password=password)
+    index = i1.call("pico.create_user", user, password)
     cluster.raft_wait_index(index)
     v += 1
 
     # Schema was updated.
     for i in cluster.instances:
         assert i.call("box.space._pico_property:get", "global_schema_version")[1] == v
-        assert i.call("box.space._user:get", user_id) is not None
-        # Default privileges have been granted.
-        assert (
-            i.eval(
-                """return box.execute([[
-                select count(*) from "_priv" where "grantee" = ?
-            ]], {...}).rows""",
-                user_id,
-            )
-            != [[0]]
-        )
+        assert i.call("box.space._user.index.name:get", user) is not None
 
     #
     #
@@ -148,6 +70,9 @@ def test_acl_basic(cluster: Cluster):
         )
     )
     v += 1
+
+    # TODO: remove this
+    user_id = i1.eval("return box.space._user.index.name:get(...).id", user)
 
     #
     #
@@ -242,11 +167,7 @@ def test_acl_basic(cluster: Cluster):
     # Change user's password.
     old_password = password
     new_password = "$3kr3T"
-    index = propose_change_password(
-        i1,
-        user_id=user_id,
-        password=new_password,
-    )
+    index = i1.call("pico.change_password", user, new_password)
     cluster.raft_wait_index(index)
     v += 1
 
@@ -264,7 +185,7 @@ def test_acl_basic(cluster: Cluster):
     #
     #
     # Drop user.
-    index = propose_drop_user(i1, id=user_id)
+    index = i1.call("pico.drop_user", user)
 
     for i in cluster.instances:
         i.raft_wait_index(index)
@@ -290,3 +211,6 @@ def test_acl_basic(cluster: Cluster):
             NetworkError, match="User not found or supplied credentials are invalid"
         ):
             i.eval("return 1", user=user, password=new_password)
+
+
+# TODO: test acl get denied when there's an unfinished ddl

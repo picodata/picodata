@@ -7,7 +7,7 @@ use crate::cas::{self, compare_and_swap};
 use crate::instance::InstanceId;
 use crate::schema::{self, CreateSpaceParams};
 use crate::traft::op::{self, Op};
-use crate::traft::{self, node, RaftIndex};
+use crate::traft::{self, node, RaftIndex, RaftTerm};
 use crate::util::str_eq;
 use crate::{args, rpc, sync, tlog};
 use ::tarantool::fiber;
@@ -513,9 +513,8 @@ pub(crate) fn setup(args: &args::Run) {
             or
             (nil, string) in case of an error
         "},
-        tlua::function1(|lua: tlua::LuaState| -> traft::Result<RaftIndex> {
+        tlua::function1(|lua: tlua::StaticLua| -> traft::Result<RaftIndex> {
             use tlua::{AnyLuaString, AsLua, LuaError, LuaTable};
-            let lua = unsafe { tlua::Lua::from_static(lua) };
             let t: LuaTable<_> = AsLua::read(&lua).map_err(|(_, e)| LuaError::from(e))?;
             let mp: AnyLuaString = lua
                 .eval_with("return require 'msgpack'.encode(...)", &t)
@@ -534,26 +533,43 @@ pub(crate) fn setup(args: &args::Run) {
 
     luamod_set(
         &l,
-        "raft_propose_mp",
+        "_prepare_schema_change",
         indoc! {"
-        pico.raft_propose_mp(op_bytes)
-        ==============================
+        pico._prepare_schema_change(op, timeout)
+        ============================
 
         Internal API, see src/luamod.rs for the details.
 
         Params:
 
-            1. op_bytes (string), encoded with msgpack
+            1. op (table)
+            2. timeout (number) seconds
 
         Returns:
 
-            ()
+            (number) raft index
             or
-            (nil, string) in case of an error
+            (nil, error) in case of an error
         "},
-        tlua::function1(|op: tlua::AnyLuaString| -> traft::Result<()> {
-            let op: Op = Decode::decode(op.as_bytes())?;
-            traft::node::global()?.propose_and_wait(op, Duration::from_secs(1))
+        tlua::Function::new(|lua: tlua::StaticLua| -> traft::Result<RaftIndex> {
+            use tlua::{AnyLuaString, AsLua, LuaError, LuaTable};
+
+            let t: LuaTable<_> = (&lua).read_at(1).map_err(|(_, e)| LuaError::from(e))?;
+            // We do [lua value -> msgpack -> rust -> msgpack]
+            // instead of [lua value -> rust -> msgpack]
+            // because despite what it may seem this is much simpler.
+            // (The final [-> msgpack] is when we eventually do the rpc).
+            // The transmition medium is always msgpack.
+            let mp: AnyLuaString = lua
+                .eval_with("return require 'msgpack'.encode(...)", &t)
+                .map_err(LuaError::from)?;
+            let op: Op = Decode::decode(mp.as_bytes())?;
+
+            let timeout: f64 = (&lua).read_at(2).map_err(|(_, e)| LuaError::from(e))?;
+            let timeout = Duration::from_secs_f64(timeout);
+
+            let index = schema::prepare_schema_change(op, timeout)?;
+            Ok(index)
         }),
     );
 
@@ -872,7 +888,7 @@ pub(crate) fn setup(args: &args::Run) {
 
             1. dml (table)
                 - kind (string), one of 'insert' | 'replace' | 'update' | 'delete'
-                - space (stringLua)
+                - space (string)
                 - tuple (optional table), mandatory for insert and replace, see [1, 2]
                 - key (optional table), mandatory for update and delete, see [3, 4]
                 - ops (optional table), mandatory for update see [3]
@@ -1178,5 +1194,37 @@ pub(crate) fn setup(args: &args::Run) {
             [1]: https://www.tarantool.io/en/doc/latest/reference/reference_lua/box_space/format/
             [2]: https://docs.rs/tarantool/latest/tarantool/space/enum.FieldType.html
         "},
+    );
+    luamod_set(
+        &l,
+        "raft_term",
+        indoc! {"
+        pico.raft_term([index])
+        =======================
+
+        Returns term of the raft entry at the given index or the current term if
+        no argument was specified.
+
+        Params:
+
+            1. index (optional number), raft index
+
+        Returns:
+
+            (number)
+            or
+            (nil, string) in case of an error
+        "},
+        {
+            tlua::function1(|index: Option<RaftIndex>| -> traft::Result<RaftTerm> {
+                let node = node::global()?;
+                let term = if let Some(index) = index {
+                    raft::Storage::term(&node.raft_storage, index)?
+                } else {
+                    node.status().term
+                };
+                Ok(term)
+            })
+        },
     );
 }

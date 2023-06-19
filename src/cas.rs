@@ -20,7 +20,7 @@ use ::raft::StorageError;
 use tarantool::error::Error as TntError;
 use tarantool::fiber;
 use tarantool::fiber::r#async::timeout::IntoTimeout;
-use tarantool::space::SpaceId;
+use tarantool::space::{Space, SpaceId};
 use tarantool::tlua;
 use tarantool::tuple::{KeyDef, ToTupleBuffer, Tuple, TupleBuffer};
 
@@ -412,8 +412,13 @@ impl Range {
         let node = traft::node::global()?;
         let space_id = if let Some(space) = node.storage.spaces.by_name(&range.space)? {
             space.id
+        } else if let Some(space) = Space::find(&range.space) {
+            space.id()
         } else {
-            return Err(TraftError::Other("space not found".into()));
+            return Err(TraftError::other(format!(
+                "space '{}' not found",
+                range.space
+            )));
         };
         Ok(Self {
             space: space_id,

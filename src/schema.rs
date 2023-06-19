@@ -588,6 +588,7 @@ fn wait_for_no_pending_schema_change(
 /// Prepares an `op` for execution on a cluster-wide schema
 /// by proposing a corresponding Raft entry.
 /// Retries entry proposal if leader changes until the entry is added to the log.
+/// Waits for any pending schema change to finalize.
 ///
 /// If `timeout` is reached earlier returns an error.
 pub fn prepare_schema_change(op: Op, timeout: Duration) -> traft::Result<RaftIndex> {
