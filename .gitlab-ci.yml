@@ -275,6 +275,14 @@ test-docker:
   timeout: 2h
   dependencies: []
 
+pack-sources:
+  extends: .pack
+  script:
+    - OS=centos DIST=7 BUILDDIR=$PWD/build_sources packpack/packpack tarball
+  artifacts:
+    paths:
+      - build_sources/picodata*.tar.xz
+
 pack-centos:
   extends: .pack
   script:
@@ -430,62 +438,65 @@ deploy-packages:
     - eval $(ssh-agent -s)
     - echo "$DEPLOY_PROD_SSH_KEY" | base64 -d | ssh-add -
   script:
+    # Sources
+    - echo "Deploying sources..."
+    - scp -o stricthostkeychecking=no build_sources/picodata*.tar.xz ansible@picodata.io:/data/nginx/www/packrepo/tarantool-picodata/sources/
     # CentOS 7
     - echo "Deploying rpm-centos7-packet..."
-    - scp -o stricthostkeychecking=no build_centos/picodata*.el7.*rpm ansible@94.26.239.246:/data/nginx/www/packrepo/tarantool-picodata/el/7/x86_64/
-    - ssh -o stricthostkeychecking=no ansible@94.26.239.246 "cd /data/nginx/www/packrepo/tarantool-picodata/el/7/ && createrepo --update x86_64 && gpg --no-tty --yes -u kdy@picodata.io --detach-sign --armor x86_64/repodata/repomd.xml"
+    - scp -o stricthostkeychecking=no build_centos/picodata*.el7.*rpm ansible@picodata.io:/data/nginx/www/packrepo/tarantool-picodata/el/7/x86_64/
+    - ssh -o stricthostkeychecking=no ansible@picodata.io "cd /data/nginx/www/packrepo/tarantool-picodata/el/7/ && createrepo --update x86_64 && gpg --no-tty --yes -u kdy@picodata.io --detach-sign --armor x86_64/repodata/repomd.xml"
     - echo "rpm-centos7-packet successfully deployed."
     - echo
     # CentOS 8
     - echo "Deploying rpm-centos8-packet..."
-    - scp -o stricthostkeychecking=no build_centos/picodata*.el8.*rpm ansible@94.26.239.246:/data/nginx/www/packrepo/tarantool-picodata/el/8/x86_64/
-    - ssh -o stricthostkeychecking=no ansible@94.26.239.246 "cd /data/nginx/www/packrepo/tarantool-picodata/el/8/ && createrepo --update x86_64 && gpg --no-tty --yes -u kdy@picodata.io --detach-sign --armor x86_64/repodata/repomd.xml"
+    - scp -o stricthostkeychecking=no build_centos/picodata*.el8.*rpm ansible@picodata.io:/data/nginx/www/packrepo/tarantool-picodata/el/8/x86_64/
+    - ssh -o stricthostkeychecking=no ansible@picodata.io "cd /data/nginx/www/packrepo/tarantool-picodata/el/8/ && createrepo --update x86_64 && gpg --no-tty --yes -u kdy@picodata.io --detach-sign --armor x86_64/repodata/repomd.xml"
     - echo "rpm-centos8-packet successfully deployed."
     - echo
     # Ubuntu focal
     - echo "Deploying ubuntu focal deb-packets..."
-    - ssh -o stricthostkeychecking=no ansible@94.26.239.246 "mkdir -p ~/.deb/ubuntu"
-    - scp -o stricthostkeychecking=no build_focal/picodata*deb ansible@94.26.239.246:.deb/ubuntu/
-    - ssh -o stricthostkeychecking=no ansible@94.26.239.246 "reprepro -b /data/nginx/www/packrepo/tarantool-picodata/ubuntu/ -C main includedeb focal ~/.deb/ubuntu/picodata*focal*deb; rm ~/.deb/ubuntu/picodata*focal*deb"
+    - ssh -o stricthostkeychecking=no ansible@picodata.io "mkdir -p ~/.deb/ubuntu"
+    - scp -o stricthostkeychecking=no build_focal/picodata*deb ansible@picodata.io:.deb/ubuntu/
+    - ssh -o stricthostkeychecking=no ansible@picodata.io "reprepro -b /data/nginx/www/packrepo/tarantool-picodata/ubuntu/ -C main includedeb focal ~/.deb/ubuntu/picodata*focal*deb; rm ~/.deb/ubuntu/picodata*focal*deb"
     - echo "ubuntu focal deb-packets successfully deployed."
     - echo
     # Ubuntu jammy
     - echo "Deploying ubuntu jammy deb-packets..."
-    - ssh -o stricthostkeychecking=no ansible@94.26.239.246 "mkdir -p ~/.deb/ubuntu"
-    - scp -o stricthostkeychecking=no build_jammy/picodata*deb ansible@94.26.239.246:.deb/ubuntu/
-    - ssh -o stricthostkeychecking=no ansible@94.26.239.246 "reprepro -b /data/nginx/www/packrepo/tarantool-picodata/ubuntu/ -C main includedeb jammy ~/.deb/ubuntu/picodata*jammy*deb; rm ~/.deb/ubuntu/picodata*jammy*deb"
+    - ssh -o stricthostkeychecking=no ansible@picodata.io "mkdir -p ~/.deb/ubuntu"
+    - scp -o stricthostkeychecking=no build_jammy/picodata*deb ansible@picodata.io:.deb/ubuntu/
+    - ssh -o stricthostkeychecking=no ansible@picodata.io "reprepro -b /data/nginx/www/packrepo/tarantool-picodata/ubuntu/ -C main includedeb jammy ~/.deb/ubuntu/picodata*jammy*deb; rm ~/.deb/ubuntu/picodata*jammy*deb"
     - echo "ubuntu jammy deb-packets successfully deployed."
     - echo
     # Debian
     - echo "Deploying debian packets..."
-    - ssh -o stricthostkeychecking=no ansible@94.26.239.246 "mkdir -p ~/.deb/debian"
-    - scp -o stricthostkeychecking=no build_debian/picodata*deb ansible@94.26.239.246:.deb/debian/
-    - ssh -o stricthostkeychecking=no ansible@94.26.239.246 "reprepro -b /data/nginx/www/packrepo/tarantool-picodata/debian/ -C main includedeb bullseye ~/.deb/debian/picodata*bullseye*deb; rm ~/.deb/debian/picodata*bullseye*deb"
+    - ssh -o stricthostkeychecking=no ansible@picodata.io "mkdir -p ~/.deb/debian"
+    - scp -o stricthostkeychecking=no build_debian/picodata*deb ansible@picodata.io:.deb/debian/
+    - ssh -o stricthostkeychecking=no ansible@picodata.io "reprepro -b /data/nginx/www/packrepo/tarantool-picodata/debian/ -C main includedeb bullseye ~/.deb/debian/picodata*bullseye*deb; rm ~/.deb/debian/picodata*bullseye*deb"
     - echo "debian packets successfully deployed."
     - echo
     # Altlinux p9
-    - ssh -o stricthostkeychecking=no ansible@94.26.239.246 "mkdir -p /tmp/altlinux/"
+    - ssh -o stricthostkeychecking=no ansible@picodata.io "mkdir -p /tmp/altlinux/"
     - echo "Deploying altlinux-p9 packet..."
-    - scp -o stricthostkeychecking=no build_alt/picodata*.p9.*rpm ansible@94.26.239.246:/tmp/altlinux/
+    - scp -o stricthostkeychecking=no build_alt/picodata*.p9.*rpm ansible@picodata.io:/tmp/altlinux/
     - echo "altlinux-p9 packet successfully deployed."
     - echo
     # Altlinux p10
     - echo "Deploying altlinux-p10 packet..."
-    - scp -o stricthostkeychecking=no build_alt/picodata*.p10.*rpm ansible@94.26.239.246:/tmp/altlinux/
-    - ssh -o stricthostkeychecking=no ansible@94.26.239.246 "/usr/local/bin/repogen.sh"
+    - scp -o stricthostkeychecking=no build_alt/picodata*.p10.*rpm ansible@picodata.io:/tmp/altlinux/
+    - ssh -o stricthostkeychecking=no ansible@picodata.io "/usr/local/bin/repogen.sh"
     - echo "altlinux-p10 packet successfully deployed."
     - echo
     # RedOS
     - echo "Deploying RedOS 7 packet..."
-    - scp -o stricthostkeychecking=no build_redos/picodata*.el7.*rpm ansible@94.26.239.246:/data/nginx/www/packrepo/tarantool-picodata/redos/7/x86_64/
-    - ssh -o stricthostkeychecking=no ansible@94.26.239.246 "cd /data/nginx/www/packrepo/tarantool-picodata/redos/7/ && createrepo --update x86_64 && gpg --no-tty --yes -u kdy@picodata.io --detach-sign --armor x86_64/repodata/repomd.xml"
+    - scp -o stricthostkeychecking=no build_redos/picodata*.el7.*rpm ansible@picodata.io:/data/nginx/www/packrepo/tarantool-picodata/redos/7/x86_64/
+    - ssh -o stricthostkeychecking=no ansible@picodata.io "cd /data/nginx/www/packrepo/tarantool-picodata/redos/7/ && createrepo --update x86_64 && gpg --no-tty --yes -u kdy@picodata.io --detach-sign --armor x86_64/repodata/repomd.xml"
     - echo "RedOS 7 packet successfully deployed."
     - echo
     # Astralinux
     - echo "Deploying Astralinux packet..."
-    - ssh -o stricthostkeychecking=no ansible@94.26.239.246 "mkdir -p ~/.deb/astra"
-    - scp -o stricthostkeychecking=no build_astra/picodata*_signed.deb ansible@94.26.239.246:.deb/astra/
-    - ssh -o stricthostkeychecking=no ansible@94.26.239.246 "reprepro -b /data/nginx/www/packrepo/tarantool-picodata/astra -C main includedeb orel ~/.deb/astra/picodata*_signed.deb; rm -rf ~/.deb/astra"
+    - ssh -o stricthostkeychecking=no ansible@picodata.io "mkdir -p ~/.deb/astra"
+    - scp -o stricthostkeychecking=no build_astra/picodata*_signed.deb ansible@picodata.io:.deb/astra/
+    - ssh -o stricthostkeychecking=no ansible@picodata.io "reprepro -b /data/nginx/www/packrepo/tarantool-picodata/astra -C main includedeb orel ~/.deb/astra/picodata*_signed.deb; rm -rf ~/.deb/astra"
     - echo "Astralinux-packets successfully deployed."
     - echo
   dependencies:
@@ -493,6 +504,7 @@ deploy-packages:
     - pack-debian
     - sign-rpm-packages
     - sign-astralinux-packages
+    - pack-sources
 
 deploy-macos-arm:
   stage: deploy
