@@ -15,12 +15,12 @@ use tarantool::{
 };
 
 use serde::{Deserialize, Serialize};
-use thiserror::Error;
 
 use crate::cas::{self, compare_and_swap};
 use crate::storage::ToEntryIter;
 use crate::storage::SPACE_ID_INTERNAL_MAX;
 use crate::storage::{Clusterwide, ClusterwideSpaceId, PropertyName};
+use crate::traft::error::Error;
 use crate::traft::op::{Ddl, Op};
 use crate::traft::{self, event, node, RaftIndex};
 use crate::util::instant_saturating_add;
@@ -252,7 +252,7 @@ pub fn try_space_field_type_to_index_field_type(
     res
 }
 
-#[derive(Debug, Error)]
+#[derive(Debug, thiserror::Error)]
 pub enum DdlError {
     #[error("space creation failed: {0}")]
     CreateSpace(#[from] CreateSpaceError),
@@ -262,7 +262,7 @@ pub enum DdlError {
     NoPendingDdl,
 }
 
-#[derive(Debug, Error)]
+#[derive(Debug, thiserror::Error)]
 pub enum CreateSpaceError {
     #[error("space with id {0} already exists")]
     IdExists(SpaceId),
@@ -278,7 +278,7 @@ pub enum CreateSpaceError {
     ConflictingShardingPolicy,
 }
 
-impl From<CreateSpaceError> for traft::error::Error {
+impl From<CreateSpaceError> for Error {
     fn from(err: CreateSpaceError) -> Self {
         DdlError::CreateSpace(err).into()
     }
@@ -555,7 +555,7 @@ pub fn wait_for_ddl_commit(
         if let Some(timeout) = deadline.checked_duration_since(Instant::now()) {
             event::wait_timeout(event::Event::EntryApplied, timeout)?;
         } else {
-            return Err(traft::error::Error::Timeout);
+            return Err(Error::Timeout);
         }
     }
 }
@@ -576,7 +576,7 @@ fn wait_for_no_pending_schema_change(
         if let Some(timeout) = deadline.checked_duration_since(Instant::now()) {
             event::wait_timeout(event::Event::EntryApplied, timeout)?;
         } else {
-            return Err(traft::error::Error::Timeout);
+            return Err(Error::Timeout);
         }
     }
 }
@@ -597,7 +597,9 @@ pub fn prepare_schema_change(op: Op, timeout: Duration) -> traft::Result<RaftInd
         let mut op = op.clone();
         op.set_schema_version(storage.properties.next_schema_version()?);
         wait_for_no_pending_schema_change(storage, timeout)?;
-        let index = node::global()?.read_index(timeout)?;
+        let index = node::global()?
+            .read_index(timeout)
+            .map_err(|e| Error::other(format!("read_index failed: {e}")))?;
         let term = raft::Storage::term(raft_storage, index)?;
         let predicate = cas::Predicate {
             index,
