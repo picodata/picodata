@@ -85,10 +85,10 @@ pub(crate) fn setup(args: &args::Run) {
 
             picodata> pico.LUA_API_VERSION
             ---
-            - 1.1.0
+            - 1.2.0
             ...
         "},
-        "1.1.0",
+        "1.2.0",
     );
 
     luamod_set(
@@ -1167,6 +1167,49 @@ pub(crate) fn setup(args: &args::Run) {
             tlua::function1(|timeout: f64| -> traft::Result<RaftIndex> {
                 schema::abort_ddl(Duration::from_secs_f64(timeout))
             })
+        },
+    );
+    luamod_set(
+        &l,
+        "wait_ddl_finalize",
+        indoc! {"
+        pico.wait_ddl_finalize(index, opts)
+        =======================
+
+        Waits for the ddl operation at given raft index to be finalized.
+
+        Returns raft index of the finilizing entry.
+
+        Params:
+
+            1. index (number), raft index
+            1. opts (table)
+                - timeout (number), in seconds, default: 3 seconds
+
+        Returns:
+
+            (number) raft index
+            or
+            (nil, string) in case of an error
+        "},
+        {
+            #[derive(::tarantool::tlua::LuaRead)]
+            struct Opts {
+                timeout: Option<f64>,
+            }
+            tlua::Function::new(
+                |index: RaftIndex, opts: Option<Opts>| -> traft::Result<RaftIndex> {
+                    let mut timeout = 3.0;
+                    if let Some(opts) = opts {
+                        if let Some(t) = opts.timeout {
+                            timeout = t;
+                        }
+                    }
+                    let timeout = Duration::from_secs_f64(timeout);
+                    let commit_index = schema::wait_for_ddl_commit(index, timeout)?;
+                    Ok(commit_index)
+                },
+            )
         },
     );
     luamod_set_help_only(

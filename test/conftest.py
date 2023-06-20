@@ -642,7 +642,7 @@ class Instance:
 
     def cas(
         self,
-        op_kind: Literal["insert", "replace", "delete", "drop_space"],
+        op_kind: Literal["insert", "replace", "delete"],
         space: str | int,
         tuple: Tuple | List | None = None,
         index: int | None = None,
@@ -698,16 +698,6 @@ class Instance:
                 space=space_id,
                 key=msgpack.packb(tuple),
             )
-        elif op_kind == "drop_space":
-            op = dict(
-                kind="ddl_prepare",
-                op_kind=op_kind,
-                schema_version=self.next_schema_version(),
-                ddl=dict(
-                    kind="drop_space",
-                    id=space_id,
-                ),
-            )
         else:
             raise Exception(f"unsupported {op_kind=}")
 
@@ -730,7 +720,17 @@ class Instance:
         which is more low level and directly proposes a raft entry.
         """
         params["timeout"] = timeout
-        index = self.call("pico.create_space", params, timeout)
+        index = self.call("pico.create_space", params, timeout, timeout=timeout + 0.5)
+        return index
+
+    def drop_space(self, space: int | str, timeout: float = 3.0):
+        """
+        Drops the space. Returns a raft index at which the space has to be
+        dropped on all peers.
+        """
+        index = self.call(
+            "pico.drop_space", space, dict(timeout=timeout), timeout=timeout + 0.5
+        )
         return index
 
     def abort_ddl(self, timeout: float = 3.0) -> int:
@@ -741,7 +741,7 @@ class Instance:
         Returns an index of the corresponding DdlAbort raft entry, or an error if
         there is no pending DDL operation.
         """
-        index = self.call("pico.abort_ddl", timeout)
+        index = self.call("pico.abort_ddl", timeout, timeout=timeout + 0.5)
         return index
 
     def propose_create_space(
@@ -1093,6 +1093,13 @@ class Cluster:
         Creates a space. Waits for all online peers to be aware of it.
         """
         index = self.instances[0].create_space(params, timeout)
+        self.raft_wait_index(index, timeout)
+
+    def drop_space(self, space: int | str, timeout: float = 3.0):
+        """
+        Drops the space. Waits for all online peers to be aware of it.
+        """
+        index = self.instances[0].drop_space(space, timeout)
         self.raft_wait_index(index, timeout)
 
     def abort_ddl(self, timeout: float = 3.0):

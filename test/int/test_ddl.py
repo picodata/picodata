@@ -14,7 +14,7 @@ def test_ddl_abort(cluster: Cluster):
 
 
 ################################################################################
-def test_ddl_create_space_lua(cluster: Cluster):
+def test_ddl_lua_api(cluster: Cluster):
     i1, i2 = cluster.deploy(instance_count=2)
 
     # Successful global space creation
@@ -95,6 +95,48 @@ def test_ddl_create_space_lua(cluster: Cluster):
     ]
     assert i1.call("box.space._pico_space:get", space_id) == pico_space_def
     assert i2.call("box.space._pico_space:get", space_id) == pico_space_def
+
+    #
+    # pico.drop_space
+    #
+
+    # No such space name -> error.
+    with pytest.raises(
+        ReturnError, match="Space 'Space does not exist' does not exist"
+    ):
+        cluster.drop_space("Space does not exist")
+
+    # No such space id -> error.
+    with pytest.raises(ReturnError, match="Space '69105' does not exist"):
+        cluster.drop_space(69105)
+
+    # Ok by name.
+    cluster.drop_space("some_name")
+    for i in cluster.instances:
+        assert i.call("box.space._pico_space.index.name:get", "some_name") is None
+
+    # Ok by id.
+    cluster.drop_space(space_id)
+    for i in cluster.instances:
+        assert i.call("box.space._pico_space:get", space_id) is None
+
+    #
+    # Options validation
+    #
+
+    # Options is not table -> error.
+    with pytest.raises(ReturnError, match="options should be a table"):
+        i1.call("pico.drop_space", "some_name", "timeout after 3 seconds please")
+
+    # Unknown option -> error.
+    with pytest.raises(ReturnError, match="unexpected option 'deadline'"):
+        i1.call("pico.drop_space", "some_name", dict(deadline="June 7th"))
+
+    # Unknown option -> error.
+    with pytest.raises(
+        ReturnError, match="options parameter 'timeout' should be of type number"
+    ):
+        i1.call("pico.drop_space", "some_name", dict(timeout="3s"))
 
 
 ################################################################################
@@ -804,10 +846,7 @@ def test_ddl_drop_space_normal(cluster: Cluster):
         assert i.call("box.space._space.index.name:get", space_name) is not None
 
     # Actual behaviour we're testing
-    index = i1.cas("drop_space", space=space_name)
-    index_commit = index + 1
-    for i in cluster.instances:
-        i.raft_wait_index(index_commit)
+    cluster.drop_space(space_name)
 
     for i in cluster.instances:
         assert i.call("box.space._space.index.name:get", space_name) is None
@@ -856,10 +895,8 @@ def test_ddl_drop_space_partial_failure(cluster: Cluster):
     i5.terminate()
 
     # Ddl fails because all masters must be present.
-    index = i1.cas("drop_space", space=space_name)
-    index_commit = index + 1
     with pytest.raises(ReturnError, match="timeout"):
-        i1.raft_wait_index(index_commit, timeout=3)
+        i1.drop_space(space_name)
 
     entry, *_ = i1.call(
         "box.space._raft_log:select", None, dict(iterator="lt", limit=1)
@@ -947,10 +984,7 @@ def test_ddl_drop_space_by_raft_log_at_catchup(cluster: Cluster):
 
     # Drop the spaces
     for space_name in ["replace_me", "drop_me"]:
-        index = i1.cas("drop_space", space=space_name)
-        index_commit = index + 1
-        i1.raft_wait_index(index_commit)
-        i2.raft_wait_index(index_commit)
+        cluster.drop_space(space_name)
         assert i1.call("box.space._space.index.name:get", space_name) is None
         assert i2.call("box.space._space.index.name:get", space_name) is None
 
@@ -1019,10 +1053,7 @@ def test_ddl_drop_space_by_raft_log_at_boot(cluster: Cluster):
     # Drop spaces.
     #
     for space_name in ["replace_me", "drop_me"]:
-        index = i1.cas("drop_space", space=space_name)
-        index_commit = index + 1
-        i1.raft_wait_index(index_commit)
-        i2.raft_wait_index(index_commit)
+        cluster.drop_space(space_name)
         assert i1.call("box.space._space.index.name:get", space_name) is None
         assert i2.call("box.space._space.index.name:get", space_name) is None
 
@@ -1104,10 +1135,7 @@ def test_ddl_drop_space_by_snapshot_on_replica(cluster: Cluster):
     i3.terminate()
 
     for space_name in ["replace_me", "drop_me"]:
-        index = i1.cas("drop_space", space=space_name)
-        index_commit = index + 1
-        i1.raft_wait_index(index_commit)
-        i2.raft_wait_index(index_commit)
+        cluster.drop_space(space_name)
         assert i1.call("box.space._space.index.name:get", space_name) is None
         assert i2.call("box.space._space.index.name:get", space_name) is None
 
@@ -1183,11 +1211,7 @@ def test_ddl_drop_space_by_snapshot_on_master(cluster: Cluster):
     # Drop spaces.
     #
     for space_name in ["space_to_drop", "space_to_replace"]:
-        index = i1.cas("drop_space", space=space_name)
-        index_commit = index + 1
-        i1.raft_wait_index(index_commit)
-        i2.raft_wait_index(index_commit)
-        i3.raft_wait_index(index_commit)
+        cluster.drop_space(space_name)
         assert i1.call("box.space._space.index.name:get", space_name) is None
         assert i2.call("box.space._space.index.name:get", space_name) is None
         assert i3.call("box.space._space.index.name:get", space_name) is None

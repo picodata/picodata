@@ -566,5 +566,81 @@ function pico.revoke_privilege(user, privilege, object_type, object_name, opts)
     return pico._prepare_schema_change(op, opts.timeout or 3)
 end
 
+help.drop_space = [[
+pico.drop_space(space, [opts])
+======================
+
+Drops a space on each instance of the cluster.
+
+Waits for the space to be dropped globally or returns an error if the timeout is
+reached before that.
+
+Params:
+
+    1. space (number | string), clusterwide space id or name
+
+    2. opts (table)
+        - timeout (number), seconds
+
+Returns:
+
+    (number) raft index
+    or
+    (nil, error) in case of an error
+]]
+function pico.drop_space(space, opts)
+    local ok, err = pcall(function()
+        if type(space) ~= 'string' and type(space) ~= 'number' then
+            box.error(box.error.ILLEGAL_PARAMS, 'space should be a number or a string')
+        end
+        box.internal.check_param_table(opts, { timeout = 'number' })
+        opts = opts or {}
+        if not opts.timeout then
+            box.error(box.error.ILLEGAL_PARAMS, 'opts.timeout is mandatory')
+        end
+    end)
+    if not ok then
+        return nil, err
+    end
+
+    local space_id
+    if type(space) == 'string' then
+        local space_def = box.space._pico_space.index.name:get(space)
+        if space_def == nil then
+            return nil, box.error.new(box.error.NO_SUCH_SPACE, space)
+        end
+        space_id = space_def.id
+    elseif type(space) == 'number' then
+        space_id = space
+        if box.space._pico_space:get(space_id) == nil then
+            return nil, box.error.new(box.error.NO_SUCH_SPACE, space)
+        end
+    end
+
+    local op = {
+        kind = 'ddl_prepare',
+        schema_version = next_schema_version(),
+        ddl = {
+            kind = 'drop_space',
+            id = space_id,
+        }
+    }
+
+    local timeout = opts.timeout
+    local ok, err = pico._prepare_schema_change(op, timeout)
+    if not ok then
+        return nil, err
+    end
+    local index = ok
+
+    local ok, err = pico.wait_ddl_finalize(index, { timeout = timeout })
+    if not ok then
+        return nil, err
+    end
+
+    local fin_index = ok
+    return fin_index
+end
+
 _G.pico = pico
 package.loaded.pico = pico
