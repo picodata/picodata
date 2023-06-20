@@ -94,10 +94,51 @@ fn main() {
         ] {
             std::os::unix::fs::symlink(
                 format!("../build/tarantool-sys/icu-prefix/lib/{lib}"),
-                picodata_libs.join(format!("{lib}")),
+                picodata_libs.join(lib),
             )
             .unwrap();
         }
+
+        std::os::unix::fs::symlink(
+            "../build/tarantool-sys/tarantool-prefix/src/tarantool-build/libeio.so",
+            picodata_libs.join("libeio.so"),
+        )
+        .unwrap();
+
+        std::os::unix::fs::symlink(
+            "../build/tarantool-sys/tarantool-prefix/src/tarantool-build/libev.so",
+            picodata_libs.join("libev.so"),
+        )
+        .unwrap();
+
+        std::os::unix::fs::symlink(
+            "../build/tarantool-sys/tarantool-prefix/src/tarantool-build/build/nghttp2/dest/lib/libnghttp2.so.14",
+            picodata_libs.join("libnghttp2.so.14"),
+        )
+        .unwrap();
+
+        std::os::unix::fs::symlink(
+            "../build/tarantool-sys/tarantool-prefix/src/tarantool-build/build/curl/dest/lib/libcurl.so.4.8.0",
+            picodata_libs.join("libcurl.so.4"),
+        )
+        .unwrap();
+
+        std::os::unix::fs::symlink(
+            "../build/tarantool-sys/openssl-prefix/lib/libcrypto.so.1.1",
+            picodata_libs.join("libcrypto.so.1.1"),
+        )
+        .unwrap();
+        std::os::unix::fs::symlink(
+            "../build/tarantool-sys/openssl-prefix/lib/libssl.so.1.1",
+            picodata_libs.join("libssl.so.1.1"),
+        )
+        .unwrap();
+
+        // std::os::unix::fs::symlink(
+        // "../build/tarantool-sys/tarantool-prefix/src/tarantool-build/third_party/libyaml/libyaml.so",
+        // picodata_libs.join("libyaml.so"),
+        // )
+        // .unwrap();
     }
 
     println!("cargo:rerun-if-changed=tarantool-sys");
@@ -300,16 +341,16 @@ fn build_tarantool(jsc: Option<&jobserver::Client>, build_root: &Path) {
     rustc::link_search(format!("{tarantool_build}/build/nghttp2/dest/lib"));
 
     rustc::link_lib_static("tarantool");
-    rustc::link_lib_static("ev");
+    rustc::link_lib_dynamic("ev");
     rustc::link_lib_static("coro");
     rustc::link_lib_static("cdt");
     rustc::link_lib_static("server");
     rustc::link_lib_static("misc");
-    rustc::link_lib_static("nghttp2");
+    rustc::link_lib_dynamic("nghttp2");
     rustc::link_lib_static("box");
     rustc::link_lib_dynamic("zstd");
     rustc::link_lib_static("decNumber");
-    rustc::link_lib_static("eio");
+    rustc::link_lib_dynamic("eio");
     rustc::link_lib_static("tuple");
     rustc::link_lib_static("xrow");
     rustc::link_lib_static("box_error");
@@ -368,14 +409,14 @@ fn build_tarantool(jsc: Option<&jobserver::Client>, build_root: &Path) {
     rustc::link_lib_dynamic("z");
 
     rustc::link_search(format!("{tarantool_build}/build/curl/dest/lib"));
-    rustc::link_lib_static("curl");
+    rustc::link_lib_dynamic("curl");
 
     rustc::link_search(format!("{tarantool_build}/build/ares/dest/lib"));
     rustc::link_lib_static("cares");
 
     rustc::link_search(format!("{tarantool_sys}/openssl-prefix/lib"));
-    rustc::link_lib_static("ssl");
-    rustc::link_lib_static("crypto");
+    rustc::link_lib_dynamic("ssl");
+    rustc::link_lib_dynamic("crypto");
 
     rustc::link_search(format!("{tarantool_sys}/ncurses-prefix/lib"));
     rustc::link_lib_dynamic("tinfo");
