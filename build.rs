@@ -150,6 +150,12 @@ fn main() {
         picodata_libs.join("libunwind-x86_64.so.8"),
         )
         .unwrap();
+
+        std::os::unix::fs::symlink(
+            "../build/tarantool-sys/tarantool-prefix/src/tarantool-build/third_party/luajit/src/libluajit.so.2",
+            picodata_libs.join("libluajit.so.2"),
+        )
+        .unwrap();
     }
 
     println!("cargo:rerun-if-changed=tarantool-sys");
@@ -373,7 +379,7 @@ fn build_tarantool(jsc: Option<&jobserver::Client>, build_root: &Path) {
     rustc::link_lib_static("swim_ev");
     rustc::link_lib_static("symbols");
     rustc::link_lib_static("cpu_feature");
-    rustc::link_lib_static("luajit");
+    rustc::link_lib_dynamic("luajit");
     rustc::link_lib_static("yaml_static");
     rustc::link_lib_static("xxhash");
 
