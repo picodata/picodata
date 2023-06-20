@@ -1113,8 +1113,13 @@ pub(crate) fn setup(args: &args::Run) {
                 let storage = &node::global()?.storage;
                 let mut params = params.validate(storage)?;
                 params.test_create_space(storage)?;
-                let op = params.into_ddl(storage)?;
-                let index = schema::prepare_ddl(op, timeout)?;
+                let ddl = params.into_ddl(storage)?;
+                let schema_version = storage.properties.next_schema_version()?;
+                let op = Op::DdlPrepare {
+                    schema_version,
+                    ddl,
+                };
+                let index = schema::prepare_schema_change(op, timeout)?;
                 let commit_index = schema::wait_for_ddl_commit(index, timeout)?;
                 Ok(commit_index)
             })

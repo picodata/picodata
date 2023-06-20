@@ -21,7 +21,7 @@ use crate::cas::{self, compare_and_swap};
 use crate::storage::ToEntryIter;
 use crate::storage::SPACE_ID_INTERNAL_MAX;
 use crate::storage::{Clusterwide, ClusterwideSpaceId, PropertyName};
-use crate::traft::op::{Ddl, DdlBuilder, Op};
+use crate::traft::op::{Ddl, Op};
 use crate::traft::{self, event, node, RaftIndex};
 use crate::util::instant_saturating_add;
 
@@ -585,17 +585,20 @@ fn wait_for_no_pending_schema_change(
     }
 }
 
-/// Prepares a ddl for execution on a cluster-wide schema
-/// by proposing DdlPrepare Raft entry.
-/// After that ddl will be either `Committed` or `Aborted` by the governor.
+/// Prepares an `op` for execution on a cluster-wide schema
+/// by proposing a corresponding Raft entry.
+/// Retries entry proposal if leader changes until the entry is added to the log.
 ///
 /// If `timeout` is reached earlier returns an error.
-pub fn prepare_ddl(op: Ddl, timeout: Duration) -> traft::Result<RaftIndex> {
+pub fn prepare_schema_change(op: Op, timeout: Duration) -> traft::Result<RaftIndex> {
+    debug_assert!(op.is_schema_change());
+
     loop {
         let node = node::global()?;
         let storage = &node.storage;
         let raft_storage = &node.raft_storage;
-        let op = DdlBuilder::new(storage)?.with_op(op.clone());
+        let mut op = op.clone();
+        op.set_schema_version(storage.properties.next_schema_version()?);
         wait_for_no_pending_schema_change(storage, timeout)?;
         let index = node::global()?.read_index(timeout)?;
         let term = raft::Storage::term(raft_storage, index)?;
@@ -605,6 +608,8 @@ pub fn prepare_ddl(op: Ddl, timeout: Duration) -> traft::Result<RaftIndex> {
             ranges: vec![
                 cas::Range::new(ClusterwideSpaceId::Property as _)
                     .eq((PropertyName::PendingSchemaChange,)),
+                cas::Range::new(ClusterwideSpaceId::Property as _)
+                    .eq((PropertyName::PendingSchemaVersion,)),
                 cas::Range::new(ClusterwideSpaceId::Property as _)
                     .eq((PropertyName::GlobalSchemaVersion,)),
                 cas::Range::new(ClusterwideSpaceId::Property as _)

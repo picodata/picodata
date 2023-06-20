@@ -187,6 +187,29 @@ impl std::fmt::Display for Op {
     }
 }
 
+impl Op {
+    #[inline]
+    pub fn is_schema_change(&self) -> bool {
+        match self {
+            Self::Nop | Self::Dml(_) | Self::DdlAbort | Self::DdlCommit => false,
+            Self::DdlPrepare { .. } | Self::Acl(_) => true,
+        }
+    }
+
+    #[inline]
+    pub fn set_schema_version(&mut self, new_schema_version: u64) {
+        match self {
+            Self::Nop | Self::Dml(_) | Self::DdlAbort | Self::DdlCommit => {}
+            Self::DdlPrepare { schema_version, .. } => {
+                *schema_version = new_schema_version;
+            }
+            Self::Acl(acl) => {
+                acl.set_schema_version(new_schema_version);
+            }
+        }
+    }
+}
+
 // TODO: remove this
 impl OpResult for Op {
     type Result = ();
@@ -480,6 +503,16 @@ impl Acl {
             Self::DropUser { schema_version, .. } => *schema_version,
             Self::GrantPrivilege { priv_def } => priv_def.schema_version,
             Self::RevokePrivilege { priv_def } => priv_def.schema_version,
+        }
+    }
+
+    pub fn set_schema_version(&mut self, new_schema_version: u64) {
+        match self {
+            Self::CreateUser { user_def } => user_def.schema_version = new_schema_version,
+            Self::ChangeAuth { schema_version, .. } => *schema_version = new_schema_version,
+            Self::DropUser { schema_version, .. } => *schema_version = new_schema_version,
+            Self::GrantPrivilege { priv_def } => priv_def.schema_version = new_schema_version,
+            Self::RevokePrivilege { priv_def } => priv_def.schema_version = new_schema_version,
         }
     }
 }
