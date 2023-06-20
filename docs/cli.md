@@ -175,6 +175,7 @@ picodata expel --instance-id <instance-id> [--cluster-id <cluster-id>] [--peer <
     — сервер можно выключать.
 
 
-Подробнее об устройстве кластера и репликасетов Picodata см. разделе [Инструкция по развертыванию](../deploy)
+Подробнее об устройстве кластера и репликасетов Picodata см. разделе [Развертывание кластера](../deploy).
+
 ---
 [Исходный код страницы](https://git.picodata.io/picodata/picodata/docs/-/blob/main/docs/cli.md)
