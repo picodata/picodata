@@ -1,32 +1,6 @@
 import pytest
-from typing import Literal
-from conftest import Cluster, Instance, TarantoolError
+from conftest import Cluster, TarantoolError
 from tarantool.error import NetworkError  # type: ignore
-
-
-def propose_update_privilege(
-    instance: Instance,
-    user_id: int,
-    privilege: str,
-    object_type: str,
-    object_name: str,
-    what: Literal["grant", "revoke"],
-    timeout: int = 3,
-) -> int:
-    schema_version = instance.next_schema_version()
-    op = dict(
-        kind="acl",
-        op_kind=f"{what}_privilege",
-        priv_def=dict(
-            user_id=user_id,
-            privilege=privilege,
-            object_type=object_type,
-            object_name=object_name,
-            schema_version=schema_version,
-        ),
-    )
-    # TODO: use pico.cas
-    return instance.call("pico.raft_propose", op, timeout=timeout)
 
 
 def test_acl_basic(cluster: Cluster):
@@ -77,27 +51,13 @@ def test_acl_basic(cluster: Cluster):
     #
     #
     # Grant some privileges.
-    index = propose_update_privilege(
-        i1,
-        user_id=user_id,
-        # Doing anything via remote function execution requires execute access
-        # to the "universe"
-        privilege="execute",
-        object_type="universe",
-        object_name="",
-        what="grant",
-    )
+    # Doing anything via remote function execution requires execute access
+    # to the "universe"
+    index = i1.call("pico.grant_privilege", user, "execute", "universe")
     cluster.raft_wait_index(index)
     v += 1
 
-    index = propose_update_privilege(
-        i1,
-        user_id=user_id,
-        privilege="read",
-        object_type="space",
-        object_name="money",
-        what="grant",
-    )
+    index = i1.call("pico.grant_privilege", user, "read", "space", "money")
     cluster.raft_wait_index(index)
     v += 1
 
@@ -143,14 +103,7 @@ def test_acl_basic(cluster: Cluster):
     #
     #
     # Revoke the privilege.
-    index = propose_update_privilege(
-        i1,
-        user_id=user_id,
-        privilege="read",
-        object_type="space",
-        object_name="money",
-        what="revoke",
-    )
+    index = i1.call("pico.revoke_privilege", user, "read", "space", "money")
     cluster.raft_wait_index(index)
     v += 1
 

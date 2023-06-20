@@ -218,5 +218,323 @@ function pico.drop_user(user, password, opts)
     return pico._prepare_schema_change(op, opts.timeout or 3)
 end
 
+-- A lookup map
+local supported_priveleges = {
+    read = true,
+    write = true,
+    execute = true,
+    session = true,
+    usage = true,
+    create = true,
+    drop = true,
+    alter = true,
+    reference = true,
+    trigger = true,
+    insert = true,
+    update = true,
+    delete = true,
+}
+
+-- Implementation is based on function privilege_check
+-- from tarantool-sys/src/box/lua/schema.lua
+local function privilege_check(privilege, object_type, entrypoint)
+    if type(privilege) ~= 'string' then
+        box.error(box.error.ILLEGAL_PARAMS, 'privilege must be a string')
+    end
+
+    if supported_priveleges[privilege] == nil then
+        box.error(box.error.ILLEGAL_PARAMS, string.format(
+            'unsupported privilege "%s", see pico.help("%s") for details',
+            privilege, entrypoint
+        ))
+    end
+
+    if type(object_type) ~= 'string' then
+        box.error(box.error.ILLEGAL_PARAMS, 'object_type must be a string')
+    end
+
+    if object_type == 'universe' then
+        return
+    end
+
+    if object_type == 'space' then
+        local black_list = {
+            session = true,
+            revoke = true,
+            grant = true,
+            execute = true,
+        }
+        if black_list[privilege] then
+            box.error(box.error.UNSUPPORTED_PRIV, object_type, privilege)
+        else
+            return
+        end
+    end
+
+    local white_lists = {
+        ['sequence'] = {
+            read = true,
+            write = true,
+            usage = true,
+            create = true,
+            drop = true,
+        },
+        ['function'] = {
+            execute = true,
+            usage = true,
+            create = true,
+            drop = true,
+        },
+        ['role'] = {
+            execute = true,
+            usage = true,
+            create = true,
+            drop = true,
+        },
+        ['user'] = {
+            create = true,
+            drop = true,
+            alter = true,
+        },
+    }
+
+    local white_list = white_lists[object_type]
+    if white_list == nil then
+        box.error(box.error.UNKNOWN_SCHEMA_OBJECT, object_type)
+    end
+
+    if not white_list[privilege] then
+        box.error(box.error.UNSUPPORTED_PRIV, object_type, privilege)
+    end
+end
+
+-- Copy-pasted from tarantool-sys/src/box/lua/schema.lua
+-- TODO: patch tarantool-sys to export this function and use it here directly
+local function object_resolve(object_type, object_name)
+    if object_name ~= nil and type(object_name) ~= 'string'
+            and type(object_name) ~= 'number' then
+        box.error(box.error.ILLEGAL_PARAMS, "wrong object name type")
+    end
+    if object_type == 'universe' then
+        return 0
+    end
+    if object_type == 'space' then
+        if object_name == '' then
+            return ''
+        end
+        local space = box.space[object_name]
+        if  space == nil then
+            box.error(box.error.NO_SUCH_SPACE, object_name)
+        end
+        return space.id
+    end
+    if object_type == 'function' then
+        if object_name == '' then
+            return ''
+        end
+        local _vfunc = box.space[box.schema.VFUNC_ID]
+        local func
+        if type(object_name) == 'string' then
+            func = _vfunc.index.name:get{object_name}
+        else
+            func = _vfunc:get{object_name}
+        end
+        if func then
+            return func.id
+        else
+            box.error(box.error.NO_SUCH_FUNCTION, object_name)
+        end
+    end
+    if object_type == 'sequence' then
+        if object_name == '' then
+            return ''
+        end
+        local seq = sequence_resolve(object_name)
+        if seq == nil then
+            box.error(box.error.NO_SUCH_SEQUENCE, object_name)
+        end
+        return seq
+    end
+    if object_type == 'role' or object_type == 'user' then
+        if object_name == '' then
+            return ''
+        end
+        local _vuser = box.space[box.schema.VUSER_ID]
+        local role_or_user
+        if type(object_name) == 'string' then
+            role_or_user = _vuser.index.name:get{object_name}
+        else
+            role_or_user = _vuser:get{object_name}
+        end
+        if role_or_user and role_or_user.type == object_type then
+            return role_or_user.id
+        elseif object_type == 'role' then
+            box.error(box.error.NO_SUCH_ROLE, object_name)
+        else
+            box.error(box.error.NO_SUCH_USER, object_name)
+        end
+    end
+
+    box.error(box.error.UNKNOWN_SCHEMA_OBJECT, object_type)
+end
+
+help.grant_privilege = [[
+pico.grant_privilege(user, privilege, object_type, [object_name], [opts])
+========================================
+
+Grant the user some privilege on each instance of the cluster.
+
+Proposes a raft entry which when applied on an instance grants the user the
+specified privilege on it.
+On success returns an index of the corresponding raft entry.
+
+Params:
+
+    1. user (string), username
+
+    2. privilege (string), one of
+        'read' | 'write' | 'execute' | 'session' | 'usage' | 'create' | 'drop' |
+        'alter' | 'reference' | 'trigger' | 'insert' | 'update' | 'delete'
+
+    3. object_type (string), one of
+        'universe' | 'space' | 'sequence' | 'function' | 'role' | 'user'
+
+    4. object_name (optional string), can be omitted when privilege concerns an
+        entire class of entities, see examples below.
+
+    5. opts (table)
+        - timeout (number), wait for this many seconds for the proposed entry
+            to be applied locally, default: 3 seconds
+
+Returns:
+
+    (number) raft index
+    or
+    (nil, error) in case of an error
+
+Examples:
+
+    -- Grant read access to space 'Fruit' for user 'Dave'.
+    pico.grant_privilege('Dave', 'read', 'space', 'Fruit')
+
+    -- Grant user 'Dave' privilege to execute arbitrary lua code.
+    pico.grant_privilege('Dave', 'execute', 'universe')
+
+    -- Grant user 'Dave' privilege to create new users.
+    pico.grant_privilege('Dave', 'create', 'user')
+
+]]
+function pico.grant_privilege(user, privilege, object_type, object_name, opts)
+    box.internal.check_param_table(opts, { timeout = 'number' })
+    opts = opts or {}
+    object_name = object_name or ''
+
+    local user_def = box.space._pico_user.index.name:get(user)
+    if user_def == nil then
+        return nil, box.error.new(box.error.NO_SUCH_USER, user)
+    end
+
+    local ok, err = pcall(privilege_check, privilege, object_type, 'grant_privilege')
+    if not ok then
+        return nil, err
+    end
+
+    local ok, err = pcall(object_resolve, object_type, object_name)
+    if not ok then
+        return nil, err
+    end
+
+    if box.space._pico_privilege:get{user_def.id, object_type, object_name, privilege} ~= nil then
+        return nil, box.error.new(box.error.PRIV_GRANTED, user, privilege, object_type, object_name)
+    end
+
+    local op = {
+        kind = 'acl',
+        op_kind = 'grant_privilege',
+        priv_def = {
+            user_id = user_def.id,
+            object_type = object_type,
+            object_name = object_name,
+            privilege = privilege,
+            schema_version = box.space._pico_property:get("next_schema_version").value,
+        },
+    }
+
+    return pico._prepare_schema_change(op, opts.timeout or 3)
+end
+
+help.revoke_privilege = [[
+pico.revoke_privilege(user, privilege, object_type, [object_name], [opts])
+========================================
+
+Revoke some privilege from the user on each instance of the cluster.
+
+Proposes a raft entry which when applied on an instance revokes the specified
+privilege from the user on it.
+On success returns an index of the corresponding raft entry.
+
+Params:
+
+    1. user (string), username
+
+    2. privilege (string), one of
+        'read' | 'write' | 'execute' | 'session' | 'usage' | 'create' | 'drop' |
+        'alter' | 'reference' | 'trigger' | 'insert' | 'update' | 'delete'
+
+    3. object_type (string), one of
+        'universe' | 'space' | 'sequence' | 'function' | 'role' | 'user'
+
+    4. object_name (optional string), can be omitted when privilege concerns an
+        entire class of entities, see pico.help("pico.grant_privilege") for details.
+
+    5. opts (table)
+        - timeout (number), wait for this many seconds for the proposed entry
+            to be applied locally, default: 3 seconds
+
+Returns:
+
+    (number) raft index
+    or
+    (nil, error) in case of an error
+]]
+function pico.revoke_privilege(user, privilege, object_type, object_name, opts)
+    box.internal.check_param_table(opts, { timeout = 'number' })
+    opts = opts or {}
+    object_name = object_name or ''
+
+    local user_def = box.space._pico_user.index.name:get(user)
+    if user_def == nil then
+        return nil, box.error.new(box.error.NO_SUCH_USER, user)
+    end
+
+    local ok, err = pcall(privilege_check, privilege, object_type, 'revoke_privilege')
+    if not ok then
+        return nil, err
+    end
+
+    local ok, err = pcall(object_resolve, object_type, object_name)
+    if not ok then
+        return nil, err
+    end
+
+    if box.space._pico_privilege:get{user_def.id, object_type, object_name, privilege} == nil then
+        return nil, box.error.new(box.error.PRIV_NOT_GRANTED, user, privilege, object_type, object_name)
+    end
+
+    local op = {
+        kind = 'acl',
+        op_kind = 'revoke_privilege',
+        priv_def = {
+            user_id = user_def.id,
+            object_type = object_type,
+            object_name = object_name,
+            privilege = privilege,
+            schema_version = box.space._pico_property:get("next_schema_version").value,
+        },
+    }
+
+    return pico._prepare_schema_change(op, opts.timeout or 3)
+end
+
 _G.pico = pico
 package.loaded.pico = pico
