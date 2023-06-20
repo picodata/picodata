@@ -183,7 +183,7 @@ test-linux:
     - make lint
 
     - sed '/define LJ_NOAPI	extern __attribute__((visibility("hidden")))/s/^/\/\//' -i tarantool-sys/third_party/luajit/src/lj_def.h
-    - sed "s/LJ_FUNCA int lj_err_unwind_dwarf(int version, int actions,/extern __attribute__((visibility("hidden"))) int lj_err_unwind_dwarf(int version, int actions,/g" -i tarantool-sys/third_party/luajit/src/lj_err.c
+    - sed "s/LJ_FUNCA int lj_err_unwind_dwarf(int version, int actions,/extern __attribute__((visibility(\"hidden\"))) int lj_err_unwind_dwarf(int version, int actions,/g" -i tarantool-sys/third_party/luajit/src/lj_err.c
     - cargo build --locked
     - cargo build --features webui --locked
     # There are no Rust tests for `webui` feature.
