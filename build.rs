@@ -139,6 +139,17 @@ fn main() {
         // picodata_libs.join("libyaml.so"),
         // )
         // .unwrap();
+
+        std::os::unix::fs::symlink(
+        "../build/tarantool-sys/tarantool-prefix/src/tarantool-build/third_party/libunwind/src/.libs/libunwind.so.8",
+        picodata_libs.join("libunwind.so.8"),
+        )
+        .unwrap();
+        std::os::unix::fs::symlink(
+        "../build/tarantool-sys/tarantool-prefix/src/tarantool-build/third_party/libunwind/src/.libs/libunwind-x86_64.so.8",
+        picodata_libs.join("libunwind-x86_64.so.8"),
+        )
+        .unwrap();
     }
 
     println!("cargo:rerun-if-changed=tarantool-sys");
@@ -386,10 +397,13 @@ fn build_tarantool(jsc: Option<&jobserver::Client>, build_root: &Path) {
         // These two must be linked as positional arguments, because they define
         // duplicate symbols which is not allowed (by default) when linking with
         // via -l... option
-        let arch = std::env::var("CARGO_CFG_TARGET_ARCH").unwrap();
+        // let arch = std::env::var("CARGO_CFG_TARGET_ARCH").unwrap();
         let lib_dir = format!("{tarantool_build}/third_party/libunwind/src/.libs");
-        rustc::link_arg(format!("{lib_dir}/libunwind-{arch}.a"));
-        rustc::link_arg(format!("{lib_dir}/libunwind.a"));
+        // rustc::link_arg(format!("{lib_dir}/libunwind-{arch}.a"));
+        // rustc::link_arg(format!("{lib_dir}/libunwind.a"));
+
+        rustc::link_arg(format!("{lib_dir}/libunwind-x86_64.so"));
+        rustc::link_arg(format!("{lib_dir}/libunwind.so"));
     }
 
     rustc::link_arg("-lc");
