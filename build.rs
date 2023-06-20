@@ -59,6 +59,7 @@ fn main() {
         .unwrap()
         .join("picodata-libs");
     dbg!(&picodata_libs); // "<target-dir>/<build-type>/picodata-libs"
+
     if !picodata_libs.exists() {
         std::fs::create_dir(picodata_libs.clone()).unwrap();
         std::os::unix::fs::symlink(
@@ -76,6 +77,27 @@ fn main() {
             picodata_libs.join("libz.so"),
         )
         .unwrap();
+
+        std::os::unix::fs::symlink(
+            "../build/tarantool-sys/tarantool-prefix/src/tarantool-build/libzstd.so",
+            picodata_libs.join("libzstd.so"),
+        )
+        .unwrap();
+
+        for lib in [
+            "libicuuc.so.71",
+            "libicudata.so.71",
+            "libicutest.so",
+            "libicutu.so.71",
+            "libicuio.so",
+            "libicui18n.so.71",
+        ] {
+            std::os::unix::fs::symlink(
+                format!("../build/tarantool-sys/icu-prefix/lib/{lib}"),
+                picodata_libs.join(format!("{lib}")),
+            )
+            .unwrap();
+        }
     }
 
     println!("cargo:rerun-if-changed=tarantool-sys");
@@ -217,6 +239,7 @@ fn build_tarantool(jsc: Option<&jobserver::Client>, build_root: &Path) {
                 "-DBUILD_DOC=FALSE",
             ))
             .run();
+
         let mut cmd = Command::new("cmake");
         cmd.arg("--build").arg(&tarantool_sys);
         if let Some(jsc) = jsc {
@@ -283,10 +306,10 @@ fn build_tarantool(jsc: Option<&jobserver::Client>, build_root: &Path) {
     rustc::link_lib_static("server");
     rustc::link_lib_static("misc");
     rustc::link_lib_static("nghttp2");
-    rustc::link_lib_static("zstd");
+    rustc::link_lib_static("box");
+    rustc::link_lib_dynamic("zstd");
     rustc::link_lib_static("decNumber");
     rustc::link_lib_static("eio");
-    rustc::link_lib_static("box");
     rustc::link_lib_static("tuple");
     rustc::link_lib_static("xrow");
     rustc::link_lib_static("box_error");
@@ -335,11 +358,11 @@ fn build_tarantool(jsc: Option<&jobserver::Client>, build_root: &Path) {
     rustc::link_lib_dynamic("readline");
 
     rustc::link_search(format!("{tarantool_sys}/icu-prefix/lib"));
-    rustc::link_lib_static("icudata");
-    rustc::link_lib_static("icui18n");
-    rustc::link_lib_static("icuio");
-    rustc::link_lib_static("icutu");
-    rustc::link_lib_static("icuuc");
+    rustc::link_lib_dynamic("icudata");
+    rustc::link_lib_dynamic("icui18n");
+    rustc::link_lib_dynamic("icuio");
+    rustc::link_lib_dynamic("icutu");
+    rustc::link_lib_dynamic("icuuc");
 
     rustc::link_search(format!("{tarantool_sys}/zlib-prefix/lib"));
     rustc::link_lib_dynamic("z");
