@@ -16,7 +16,7 @@
 * [Пример работы с приложением Picodata SQL](sbroad/sql_tutorial)
 
 ### Справочные материалы
-* [Описание параметров запуска Picodata](cli)
+* [Описание параметров командной строки Picodata](cli)
 * [Справочник команд SQL](sbroad/sql_queries)
 * [Поддерживаемые типы данных](sbroad/sql_datatypes)
 * [Описание публичного API Picodata](api.md)

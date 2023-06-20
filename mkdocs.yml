@@ -16,7 +16,7 @@ nav:
     - Пример работы с кластером Picodata: tutorial.md
     - Пример работы с приложением Picodata SQL: sbroad/sql_tutorial
   - Справочные материалы:
-    - Описание параметров запуска Picodata: cli.md
+    - Описание параметров командной строки Picodata: cli.md
     - Справочник команд SQL: sbroad/sql_queries
     - Поддерживаемые типы данных: sbroad/sql_datatypes
     - Описание публичного API Picodata: api.md

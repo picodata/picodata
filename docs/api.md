@@ -2,7 +2,7 @@
 
 Публичный интерфейс Picodata состоит из нескольких разделов:
 
-- [Lua API](#lua-api)
+- [Lua API](#lua-api) — интерфейс Lua
 - [Proc API](#proc-api) — интерфейс хранимых процедур
 
 По функциональности они во многом повторяют друг друга. Выбор
@@ -44,6 +44,13 @@ picodata> pico.help()
 | [pico.raft_compact_log()](#picoraft_compact_log) | [Компактизация](glossary.md#raft-raft-log-compaction) raft-журнала c удалением указанного числа наиболее старых записей.
 | [pico.help()](#picohelp) | Доступ к встроенной справочной системе Picodata.
 | [pico.create_space()](#picocreate_space) | Создание спейса в Picodata.
+
+
+<!-- pico.create_user
+pico.change_password
+pico.drop_user
+pico.grant_privilege
+pico.revoke_privilege -->
 
 ### pico.PICODATA_VERSION
 
