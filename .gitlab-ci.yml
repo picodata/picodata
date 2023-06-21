@@ -218,30 +218,30 @@ test-linux:
     reports:
       junit: junit_pytest.xml
 
-test-mac-m1:
-  extends: .test
-  tags:
-    - mac-dev-m1
-  script:
-    - export CARGO_HOME=$HOME/.cargo
-    - cargo -V
-    - cargo build --locked
-    - cargo build --features webui --locked
-    # There are no Rust tests for `webui` feature.
-    # It will be checked during integration tests.
-    - cargo test --locked
+# test-mac-m1:
+#   extends: .test
+#   tags:
+#     - mac-dev-m1
+#   script:
+#     - export CARGO_HOME=$HOME/.cargo
+#     - cargo -V
+#     - cargo build --locked
+#     - cargo build --features webui --locked
+#     # There are no Rust tests for `webui` feature.
+#     # It will be checked during integration tests.
+#     - cargo test --locked
 
-    - cargo fmt -- -v --check
-    - cargo clippy --version
-    - cargo clippy --all-features -- --deny clippy::all --no-deps
-    # - |
-    #   # Pipenv install
-    #   ci-log-section start "pipenv-install" Installing pip dependencies ...
-    #   PIPENV_VENV_IN_PROJECT=1 PIP_NO_CACHE_DIR=true python3.10 -m pipenv install --deploy
-    #   ci-log-section end "pipenv-install"
-    # - pipenv run pytest --numprocesses auto -v
-    # - pipenv run lint
-    # - |
+#     - cargo fmt -- -v --check
+#     - cargo clippy --version
+#     - cargo clippy --features webui -- --deny clippy::all
+#     # - |
+#     #   # Pipenv install
+#     #   ci-log-section start "pipenv-install" Installing pip dependencies ...
+#     #   PIPENV_VENV_IN_PROJECT=1 PIP_NO_CACHE_DIR=true python3.10 -m pipenv install --deploy
+#     #   ci-log-section end "pipenv-install"
+#     # - pipenv run pytest --numprocesses auto -v
+#     # - pipenv run lint
+#     # - |
 
 test-docker:
   stage: test

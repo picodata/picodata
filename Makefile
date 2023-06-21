@@ -46,6 +46,24 @@ install:
 	cp -P \
 		target/*/build/tarantool-sys/zlib-prefix/lib/libz.[^a]* \
 		$(DESTDIR)/usr/bin/picodata-libs
+	cp -P \
+		target/*/build/tarantool-sys/tarantool-prefix/src/tarantool-build/lib*.[^a]* \
+		$(DESTDIR)/usr/bin/picodata-libs
+	cp -P \
+		target/*/build/tarantool-sys/tarantool-prefix/src/tarantool-build/build/nghttp2/dest/lib/libnghttp2.[^a]* \
+		$(DESTDIR)/usr/bin/picodata-libs
+	cp -P \
+		target/*/build/tarantool-sys/tarantool-prefix/src/tarantool-build/build/curl/dest/lib/libcurl.[^a]* \
+		$(DESTDIR)/usr/bin/picodata-libs
+	cp -P \
+		target/*/build/tarantool-sys/openssl-prefix/lib/lib*.[^a]* \
+		$(DESTDIR)/usr/bin/picodata-libs
+	cp -P \
+		target/*/build/tarantool-sys/tarantool-prefix/src/tarantool-build/third_party/libunwind/src/.libs/libunwind*.so* \
+		$(DESTDIR)/usr/bin/picodata-libs
+	cp -P \
+		target/*/build/tarantool-sys/tarantool-prefix/src/tarantool-build/third_party/luajit/src/libluajit.so* \
+		$(DESTDIR)/usr/bin/picodata-libs
 
 fmt:
 	cargo fmt
