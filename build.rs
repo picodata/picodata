@@ -134,11 +134,11 @@ fn main() {
         )
         .unwrap();
 
-        // std::os::unix::fs::symlink(
-        // "../build/tarantool-sys/tarantool-prefix/src/tarantool-build/third_party/libyaml/libyaml.so",
-        // picodata_libs.join("libyaml.so"),
-        // )
-        // .unwrap();
+        std::os::unix::fs::symlink(
+        "../build/tarantool-sys/tarantool-prefix/src/tarantool-build/third_party/libyaml/libyaml.so",
+        picodata_libs.join("libyaml.so"),
+        )
+        .unwrap();
 
         std::os::unix::fs::symlink(
         "../build/tarantool-sys/tarantool-prefix/src/tarantool-build/third_party/libunwind/src/.libs/libunwind.so.8",
@@ -380,7 +380,7 @@ fn build_tarantool(jsc: Option<&jobserver::Client>, build_root: &Path) {
     rustc::link_lib_static("symbols");
     rustc::link_lib_static("cpu_feature");
     rustc::link_lib_dynamic("luajit");
-    rustc::link_lib_static("yaml_static");
+    rustc::link_lib_dynamic("yaml");
     rustc::link_lib_static("xxhash");
 
     // Add LDAP authentication support libraries.
