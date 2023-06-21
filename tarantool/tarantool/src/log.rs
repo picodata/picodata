@@ -97,6 +97,110 @@ impl From<Level> for SayLevel {
     }
 }
 
+crate::define_str_enum! {
+    /// Is only used for implementing LuaRead and Push for [`SayLevel`].
+    enum SayLevelStr {
+        Fatal = "fatal",
+        System = "system",
+        Error = "error",
+        Crit = "crit",
+        Warn = "warn",
+        Info = "info",
+        Verbose = "verbose",
+        Debug = "debug",
+    }
+}
+
+impl<L> tlua::LuaRead<L> for SayLevel
+where
+    L: tlua::AsLua,
+{
+    #[inline]
+    fn lua_read_at_position(lua: L, index: std::num::NonZeroI32) -> tlua::ReadResult<Self, L> {
+        let lua_type = unsafe { tlua::ffi::lua_type(lua.as_lua(), index.into()) };
+
+        if lua_type == tlua::ffi::LUA_TSTRING {
+            let l = crate::unwrap_ok_or!(
+                SayLevelStr::lua_read_at_position(&lua, index),
+                Err((_, e)) => {
+                    return Err((lua, e.when("reading tarantool log level")));
+                }
+            );
+            let res = match l {
+                SayLevelStr::Fatal => Self::Fatal,
+                SayLevelStr::System => Self::System,
+                SayLevelStr::Error => Self::Error,
+                SayLevelStr::Crit => Self::Crit,
+                SayLevelStr::Warn => Self::Warn,
+                SayLevelStr::Info => Self::Info,
+                SayLevelStr::Verbose => Self::Verbose,
+                SayLevelStr::Debug => Self::Debug,
+            };
+            return Ok(res);
+        }
+
+        if lua_type == tlua::ffi::LUA_TNUMBER {
+            let lvl = u32::lua_read_at_position(&lua, index)
+                .ok()
+                .expect("just made sure this is a number, so reading shouldn't ever fail");
+            let res = crate::unwrap_or!(Self::from_u32(lvl), {
+                return Err((
+                    lua,
+                    tlua::WrongType::info("reading tarantool log level")
+                        .expected(format!(
+                            "an integer in range {}..={}",
+                            Self::Fatal as u32,
+                            Self::Debug as u32
+                        ))
+                        .actual(format!("{lvl}")),
+                ));
+            });
+            return Ok(res);
+        }
+
+        let err = tlua::WrongType::info("reading tarantool log level")
+            .expected("string or number")
+            .actual_single_lua(&lua, index);
+        Err((lua, err))
+    }
+}
+
+impl<L> tlua::Push<L> for SayLevel
+where
+    L: tlua::AsLua,
+{
+    type Err = tlua::Void;
+
+    #[inline]
+    fn push_to_lua(&self, lua: L) -> Result<tlua::PushGuard<L>, (Self::Err, L)> {
+        let lvl = match self {
+            Self::Fatal => SayLevelStr::Fatal,
+            Self::System => SayLevelStr::System,
+            Self::Error => SayLevelStr::Error,
+            Self::Crit => SayLevelStr::Crit,
+            Self::Warn => SayLevelStr::Warn,
+            Self::Info => SayLevelStr::Info,
+            Self::Verbose => SayLevelStr::Verbose,
+            Self::Debug => SayLevelStr::Debug,
+        };
+        tlua::Push::push_to_lua(&lvl, lua)
+    }
+}
+impl<L> tlua::PushOne<L> for SayLevel where L: tlua::AsLua {}
+
+impl<L> tlua::PushInto<L> for SayLevel
+where
+    L: tlua::AsLua,
+{
+    type Err = tlua::Void;
+
+    #[inline(always)]
+    fn push_into_lua(self, lua: L) -> Result<tlua::PushGuard<L>, (Self::Err, L)> {
+        tlua::Push::push_to_lua(&self, lua)
+    }
+}
+impl<L> tlua::PushOneInto<L> for SayLevel where L: tlua::AsLua {}
+
 /// Format and print a message to the Tarantool log file.
 #[inline]
 pub fn say(level: SayLevel, file: &str, line: i32, error: Option<&str>, message: &str) {
@@ -120,12 +224,12 @@ mod tests {
     use once_cell::sync::Lazy;
 
     struct RestoreLogLevel {
-        log_level: String,
+        log_level: SayLevel,
     }
     impl Drop for RestoreLogLevel {
         fn drop(&mut self) {
             let lua = lua_state();
-            lua.exec_with("return box.cfg { log_level = ... }", &self.log_level)
+            lua.exec_with("box.cfg { log_level = ... }", &self.log_level)
                 .unwrap();
         }
     }
@@ -133,9 +237,8 @@ mod tests {
     #[crate::test(tarantool = "crate")]
     fn is_enabled() {
         let lua = lua_state();
-        let log_level_saved: String = lua.eval("return box.cfg.log_level").unwrap();
-        let _ = RestoreLogLevel {
-            log_level: log_level_saved,
+        let _restore_log_level_when_dropped = RestoreLogLevel {
+            log_level: lua.eval("return box.cfg.log_level").unwrap(),
         };
 
         // default mapping
@@ -185,5 +288,49 @@ mod tests {
         warn!(target: "target", "message {}", 99);
 
         say(SayLevel::Warn, "<file>", 0, Some("<error>"), "<message>");
+    }
+
+    #[crate::test(tarantool = "crate")]
+    fn log_level_to_from_lua() {
+        let lua = crate::lua_state();
+
+        let lvl: SayLevel = lua.eval("return 'debug'").unwrap();
+        assert_eq!(lvl, SayLevel::Debug);
+
+        let lvl: SayLevel = lua.eval("return 5").unwrap();
+        assert_eq!(lvl, SayLevel::Info);
+
+        let msg = lua.eval::<SayLevel>("return 69").unwrap_err().to_string();
+        assert_eq!(
+            msg,
+            "failed reading tarantool log level: an integer in range 0..=7 expected, got 69
+    while reading value(s) returned by Lua: tarantool::log::SayLevel expected, got number"
+        );
+
+        let msg = lua
+            .eval::<SayLevel>("return 'nightmare'")
+            .unwrap_err()
+            .to_string();
+        assert_eq!(
+            msg,
+            "failed reading tarantool log level: one of [\"fatal\", \"system\", \"error\", \"crit\", \"warn\", \"info\", \"verbose\", \"debug\"] expected, got string 'nightmare'
+    while reading value(s) returned by Lua: tarantool::log::SayLevel expected, got string"
+        );
+
+        let msg = lua
+            .eval::<SayLevel>("return { lasagna = 'delicious' }")
+            .unwrap_err()
+            .to_string();
+        assert_eq!(
+            msg,
+            "failed reading tarantool log level: string or number expected, got table
+    while reading value(s) returned by Lua: tarantool::log::SayLevel expected, got table"
+        );
+
+        let lvl: String = lua.eval_with("return ...", SayLevel::Fatal).unwrap();
+        assert_eq!(lvl, "fatal");
+
+        let lvl: String = lua.eval_with("return ...", &SayLevel::Crit).unwrap();
+        assert_eq!(lvl, "crit");
     }
 }

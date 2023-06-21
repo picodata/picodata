@@ -123,6 +123,7 @@ macro_rules! define_str_enum {
             )+
         }
 
+        #[allow(dead_code)]
         impl $enum {
             $vis const fn as_str(&self) -> &'static str {
                 match self {

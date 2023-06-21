@@ -5,6 +5,7 @@
 ### Added
 - `tarantool::log::TarantoolLogger::convert_level` method for converting
     log::Level to SayLevel taking the mapping function into account.
+- `tlua::Push` and `tlua::LuaRead` implementations for `SayLevel`.
 
 ### Fixed
 - `log::Log::enabled` implementation for TarantoolLogger no longer ignores the
