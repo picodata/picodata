@@ -1,4 +1,4 @@
-use crate::schema::{AuthDef, Distribution, PrivilegeDef, UserDef, UserId};
+use crate::schema::{AuthDef, Distribution, PrivilegeDef, RoleDef, UserDef, UserId};
 use crate::storage::space_by_name;
 use crate::storage::Clusterwide;
 use ::tarantool::index::{IndexId, Part};
@@ -133,27 +133,42 @@ impl std::fmt::Display for Op {
             }) => {
                 write!(f, "DropUser({schema_version}, {user_id})")
             }
+            Self::Acl(Acl::CreateRole { role_def }) => {
+                let RoleDef {
+                    id,
+                    name,
+                    schema_version,
+                    ..
+                } = role_def;
+                write!(f, r#"CreateRole({schema_version}, {id}, "{name}")"#,)
+            }
+            Self::Acl(Acl::DropRole {
+                role_id,
+                schema_version,
+            }) => {
+                write!(f, "DropRole({schema_version}, {role_id})")
+            }
             Self::Acl(Acl::GrantPrivilege { priv_def }) => {
                 let PrivilegeDef {
-                    user_id,
+                    grantee_id,
                     object_type,
                     object_name,
                     privilege,
                     schema_version,
                     ..
                 } = priv_def;
-                write!(f, "GrantPrivilege({schema_version}, {user_id}, {object_type}, {object_name}, {privilege})")
+                write!(f, "GrantPrivilege({schema_version}, {grantee_id}, {object_type}, {object_name}, {privilege})")
             }
             Self::Acl(Acl::RevokePrivilege { priv_def }) => {
                 let PrivilegeDef {
-                    user_id,
+                    grantee_id,
                     object_type,
                     object_name,
                     privilege,
                     schema_version,
                     ..
                 } = priv_def;
-                write!(f, "RevokePrivilege({schema_version}, {user_id}, {object_type}, {object_name}, {privilege})")
+                write!(f, "RevokePrivilege({schema_version}, {grantee_id}, {object_type}, {object_name}, {privilege})")
             }
         };
 
@@ -488,10 +503,19 @@ pub enum Acl {
         schema_version: u64,
     },
 
-    /// Grant a user some privilege.
+    /// Create a tarantool role. Grant it default privileges.
+    CreateRole { role_def: RoleDef },
+
+    /// Drop a tarantool role and revoke it from any grantees.
+    DropRole {
+        role_id: UserId,
+        schema_version: u64,
+    },
+
+    /// Grant some privilege to a user or a role.
     GrantPrivilege { priv_def: PrivilegeDef },
 
-    /// Revoke a user some privilege.
+    /// Revoke some privilege from a user or a role.
     RevokePrivilege { priv_def: PrivilegeDef },
 }
 
@@ -501,6 +525,8 @@ impl Acl {
             Self::CreateUser { user_def } => user_def.schema_version,
             Self::ChangeAuth { schema_version, .. } => *schema_version,
             Self::DropUser { schema_version, .. } => *schema_version,
+            Self::CreateRole { role_def, .. } => role_def.schema_version,
+            Self::DropRole { schema_version, .. } => *schema_version,
             Self::GrantPrivilege { priv_def } => priv_def.schema_version,
             Self::RevokePrivilege { priv_def } => priv_def.schema_version,
         }
@@ -511,6 +537,8 @@ impl Acl {
             Self::CreateUser { user_def } => user_def.schema_version = new_schema_version,
             Self::ChangeAuth { schema_version, .. } => *schema_version = new_schema_version,
             Self::DropUser { schema_version, .. } => *schema_version = new_schema_version,
+            Self::CreateRole { role_def, .. } => role_def.schema_version = new_schema_version,
+            Self::DropRole { schema_version, .. } => *schema_version = new_schema_version,
             Self::GrantPrivilege { priv_def } => priv_def.schema_version = new_schema_version,
             Self::RevokePrivilege { priv_def } => priv_def.schema_version = new_schema_version,
         }

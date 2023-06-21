@@ -166,4 +166,73 @@ def test_acl_basic(cluster: Cluster):
             i.eval("return 1", user=user, password=new_password)
 
 
+def test_acl_roles_basic(cluster: Cluster):
+    i1, *_ = cluster.deploy(instance_count=4, init_replication_factor=2)
+
+    user = "Steven"
+    password = "1234"
+
+    # Create user.
+    index = i1.call("pico.create_user", user, password)
+    cluster.raft_wait_index(index)
+
+    # Doing anything via remote function execution requires execute access
+    # to the "universe"
+    index = i1.call("pico.grant_privilege", user, "execute", "universe")
+    cluster.raft_wait_index(index)
+
+    # Try reading from space on behalf of the user.
+    for i in cluster.instances:
+        with pytest.raises(
+            TarantoolError,
+            match="Read access to space '_pico_property' is denied for user 'Steven'",
+        ):
+            i.call("box.space._pico_property:select", user=user, password=password)
+
+    #
+    #
+    # Create role.
+    role = "PropertyReader"
+    index = i1.call("pico.create_role", role)
+    cluster.raft_wait_index(index)
+
+    # Grant the role read access.
+    index = i1.call("pico.grant_privilege", role, "read", "space", "_pico_property")
+    cluster.raft_wait_index(index)
+
+    # Assign role to user.
+    index = i1.call("pico.grant_privilege", user, "execute", "role", role)
+    cluster.raft_wait_index(index)
+
+    # Try reading from space on behalf of the user again. Now succeed.
+    for i in cluster.instances:
+        rows = i.call("box.space._pico_property:select", user=user, password=password)
+        assert len(rows) > 0
+
+    # Revoke read access from the role.
+    index = i1.call("pico.revoke_privilege", role, "read", "space", "_pico_property")
+    cluster.raft_wait_index(index)
+
+    # Try reading from space on behalf of the user yet again, which fails again.
+    for i in cluster.instances:
+        with pytest.raises(
+            TarantoolError,
+            match="Read access to space '_pico_property' is denied for user 'Steven'",
+        ):
+            i.call("box.space._pico_property:select", user=user, password=password)
+
+    # Drop the role.
+    index = i1.call("pico.drop_role", role)
+    cluster.raft_wait_index(index)
+
+    # Nothing changed here.
+    for i in cluster.instances:
+        with pytest.raises(
+            TarantoolError,
+            match="Read access to space '_pico_property' is denied for user 'Steven'",
+        ):
+            i.call("box.space._pico_property:select", user=user, password=password)
+
+
+# TODO: test acl via snapshot
 # TODO: test acl get denied when there's an unfinished ddl

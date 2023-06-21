@@ -33,6 +33,7 @@ const PROHIBITED_SPACES: &[ClusterwideSpaceId] = &[
     ClusterwideSpaceId::Space,
     ClusterwideSpaceId::Index,
     ClusterwideSpaceId::User,
+    ClusterwideSpaceId::Role,
     ClusterwideSpaceId::Privilege,
 ];
 

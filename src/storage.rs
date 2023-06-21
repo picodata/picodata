@@ -12,7 +12,9 @@ use ::tarantool::tuple::{RawBytes, ToTupleBuffer, Tuple, TupleBuffer};
 use crate::failure_domain as fd;
 use crate::instance::{self, grade, Instance};
 use crate::replicaset::{Replicaset, ReplicasetId};
-use crate::schema::{AuthDef, Distribution, IndexDef, PrivilegeDef, SpaceDef, UserDef, UserId};
+use crate::schema::{
+    AuthDef, Distribution, IndexDef, PrivilegeDef, RoleDef, SpaceDef, UserDef, UserId,
+};
 use crate::tlog;
 use crate::traft;
 use crate::traft::error::Error;
@@ -492,6 +494,21 @@ define_clusterwide_spaces! {
             #[allow(clippy::enum_variant_names)]
             pub enum SpaceUserIndex;
         }
+        Role = 522, "_pico_role" => {
+            Clusterwide::roles;
+
+            /// A struct for accessing info of all the user-defined roles.
+            pub struct Roles {
+                space: Space,
+                #[primary]
+                index_id: Index => Id = "id",
+                index_name: Index => Name = "name",
+            }
+
+            /// An enumeration of indexes defined for "_pico_role".
+            #[allow(clippy::enum_variant_names)]
+            pub enum SpaceRoleIndex;
+        }
         Privilege = 521, "_pico_privilege" => {
             Clusterwide::privileges;
 
@@ -588,6 +605,7 @@ impl Clusterwide {
         // These need to be saved before we truncate the corresponding spaces.
         let mut old_space_versions = HashMap::new();
         let mut old_user_versions = HashMap::new();
+        let mut old_role_versions = HashMap::new();
         let mut old_priv_versions = HashMap::new();
 
         for def in self.spaces.iter()? {
@@ -595,6 +613,9 @@ impl Clusterwide {
         }
         for def in self.users.iter()? {
             old_user_versions.insert(def.id, def.schema_version);
+        }
+        for def in self.roles.iter()? {
+            old_role_versions.insert(def.id, def.schema_version);
         }
         for def in self.privileges.iter()? {
             let schema_version = def.schema_version;
@@ -621,6 +642,7 @@ impl Clusterwide {
             self.apply_schema_changes_on_master(self.spaces.iter()?, &old_space_versions)?;
             // TODO: secondary indexes
             self.apply_schema_changes_on_master(self.users.iter()?, &old_user_versions)?;
+            self.apply_schema_changes_on_master(self.roles.iter()?, &old_role_versions)?;
             self.apply_schema_changes_on_master(self.privileges.iter()?, &old_priv_versions)?;
             set_local_schema_version(data.schema_version)?;
         }
@@ -1985,6 +2007,91 @@ impl ToEntryIter for Users {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// Roles
+////////////////////////////////////////////////////////////////////////////////
+
+impl Roles {
+    pub fn new() -> tarantool::Result<Self> {
+        let space = Space::builder(Self::SPACE_NAME)
+            .id(Self::SPACE_ID)
+            .is_local(true)
+            .is_temporary(false)
+            .field(("id", FieldType::Unsigned))
+            .field(("name", FieldType::String))
+            .field(("schema_version", FieldType::Unsigned))
+            .if_not_exists(true)
+            .create()?;
+
+        let index_id = space
+            .index_builder(IndexOf::<Self>::Id.as_str())
+            .unique(true)
+            .part("id")
+            .if_not_exists(true)
+            .create()?;
+
+        let index_name = space
+            .index_builder(IndexOf::<Self>::Name.as_str())
+            .unique(true)
+            .part("name")
+            .if_not_exists(true)
+            .create()?;
+
+        Ok(Self {
+            space,
+            index_id,
+            index_name,
+        })
+    }
+
+    #[inline]
+    pub fn by_id(&self, role_id: UserId) -> tarantool::Result<Option<RoleDef>> {
+        let tuple = self.space.get(&[role_id])?;
+        let mut res = None;
+        if let Some(tuple) = tuple {
+            res = Some(tuple.decode()?);
+        }
+        Ok(res)
+    }
+
+    #[inline]
+    pub fn by_name(&self, role_name: &str) -> tarantool::Result<Option<RoleDef>> {
+        let tuple = self.index_name.get(&[role_name])?;
+        let mut res = None;
+        if let Some(tuple) = tuple {
+            res = Some(tuple.decode()?);
+        }
+        Ok(res)
+    }
+
+    #[inline]
+    pub fn replace(&self, role_def: &RoleDef) -> tarantool::Result<()> {
+        self.space.replace(role_def)?;
+        Ok(())
+    }
+
+    #[inline]
+    pub fn insert(&self, role_def: &RoleDef) -> tarantool::Result<()> {
+        self.space.insert(role_def)?;
+        Ok(())
+    }
+
+    #[inline]
+    pub fn delete(&self, role_id: UserId) -> tarantool::Result<()> {
+        self.space.delete(&[role_id])?;
+        Ok(())
+    }
+}
+
+impl ToEntryIter for Roles {
+    type Entry = RoleDef;
+
+    #[inline(always)]
+    fn index_iter(&self) -> Result<IndexIterator> {
+        Ok(self.space.select(IteratorType::All, &())?)
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // Privileges
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -1994,7 +2101,7 @@ impl Privileges {
             .id(Self::SPACE_ID)
             .is_local(true)
             .is_temporary(false)
-            .field(("user_id", FieldType::Unsigned))
+            .field(("grantee_id", FieldType::Unsigned))
             .field(("object_type", FieldType::String))
             .field(("object_name", FieldType::String))
             .field(("privilege", FieldType::String))
@@ -2005,7 +2112,7 @@ impl Privileges {
         let primary_key = space
             .index_builder(IndexOf::<Self>::Primary.as_str())
             .unique(true)
-            .parts(["user_id", "object_type", "object_name", "privilege"])
+            .parts(["grantee_id", "object_type", "object_name", "privilege"])
             .if_not_exists(true)
             .create()?;
 
@@ -2015,11 +2122,11 @@ impl Privileges {
     #[inline(always)]
     pub fn get(
         &self,
-        user_id: UserId,
+        grantee_id: UserId,
         object_type: &str,
         object_name: &str,
     ) -> tarantool::Result<Option<PrivilegeDef>> {
-        let tuple = self.space.get(&(user_id, object_type, object_name))?;
+        let tuple = self.space.get(&(grantee_id, object_type, object_name))?;
         let mut res = None;
         if let Some(tuple) = tuple {
             res = Some(tuple.decode()?);
@@ -2028,8 +2135,8 @@ impl Privileges {
     }
 
     #[inline(always)]
-    pub fn by_user_id(&self, user_id: UserId) -> tarantool::Result<EntryIter<PrivilegeDef>> {
-        let iter = self.primary_key.select(IteratorType::Eq, &[user_id])?;
+    pub fn by_grantee_id(&self, grantee_id: UserId) -> tarantool::Result<EntryIter<PrivilegeDef>> {
+        let iter = self.primary_key.select(IteratorType::Eq, &[grantee_id])?;
         Ok(EntryIter::new(iter))
     }
 
@@ -2048,25 +2155,45 @@ impl Privileges {
     #[inline(always)]
     pub fn delete(
         &self,
-        user_id: UserId,
+        grantee_id: UserId,
         object_type: &str,
         object_name: &str,
         privilege: &str,
     ) -> tarantool::Result<()> {
         self.space
-            .delete(&(user_id, object_type, object_name, privilege))?;
+            .delete(&(grantee_id, object_type, object_name, privilege))?;
         Ok(())
     }
 
-    #[inline(always)]
-    pub fn delete_all_by_user_id(&self, user_id: UserId) -> tarantool::Result<()> {
-        for priv_def in self.by_user_id(user_id)? {
+    /// Remove any privilege definitions granted to the given grantee.
+    #[inline]
+    pub fn delete_all_by_grantee_id(&self, grantee_id: UserId) -> tarantool::Result<()> {
+        for priv_def in self.by_grantee_id(grantee_id)? {
             self.delete(
-                priv_def.user_id,
+                priv_def.grantee_id,
                 &priv_def.object_type,
                 &priv_def.object_name,
                 &priv_def.privilege,
             )?;
+        }
+        Ok(())
+    }
+
+    /// Remove any privilege definitions assigning the given role.
+    #[inline]
+    pub fn delete_all_by_granted_role(&self, role_name: &str) -> Result<()> {
+        for priv_def in self.iter()? {
+            if priv_def.privilege == "execute"
+                && priv_def.object_type == "role"
+                && priv_def.object_name == role_name
+            {
+                self.delete(
+                    priv_def.grantee_id,
+                    &priv_def.object_type,
+                    &priv_def.object_name,
+                    &priv_def.privilege,
+                )?;
+            }
         }
         Ok(())
     }
@@ -2192,6 +2319,34 @@ impl SchemaDef for UserDef {
     }
 }
 
+impl SchemaDef for RoleDef {
+    type Key = UserId;
+
+    #[inline(always)]
+    fn key(&self) -> UserId {
+        self.id
+    }
+
+    #[inline(always)]
+    fn schema_version(&self) -> u64 {
+        self.schema_version
+    }
+
+    #[inline(always)]
+    fn on_insert(&self, storage: &Clusterwide) -> traft::Result<()> {
+        _ = storage;
+        acl_create_role_on_master(self)?;
+        Ok(())
+    }
+
+    #[inline(always)]
+    fn on_delete(user_id: &UserId, storage: &Clusterwide) -> traft::Result<()> {
+        _ = storage;
+        acl_drop_role_on_master(*user_id)?;
+        Ok(())
+    }
+}
+
 impl SchemaDef for PrivilegeDef {
     type Key = Self;
 
@@ -2244,8 +2399,28 @@ pub fn acl_global_change_user_auth(
 /// Remove a user definition and any entities owned by it from the internal
 /// clusterwide storage.
 pub fn acl_global_drop_user(storage: &Clusterwide, user_id: UserId) -> tarantool::Result<()> {
-    storage.privileges.delete_all_by_user_id(user_id)?;
+    storage.privileges.delete_all_by_grantee_id(user_id)?;
     storage.users.delete(user_id)?;
+    Ok(())
+}
+
+/// Persist a role definition in the internal clusterwide storage.
+pub fn acl_global_create_role(storage: &Clusterwide, role_def: &RoleDef) -> tarantool::Result<()> {
+    storage.roles.insert(role_def)?;
+    Ok(())
+}
+
+/// Remove a role definition and any entities owned by it from the internal
+/// clusterwide storage.
+pub fn acl_global_drop_role(storage: &Clusterwide, role_id: UserId) -> Result<()> {
+    storage.privileges.delete_all_by_grantee_id(role_id)?;
+    if let Some(role_def) = storage.roles.by_id(role_id)? {
+        // Revoke the role from any grantees.
+        storage
+            .privileges
+            .delete_all_by_granted_role(&role_def.name)?;
+        storage.roles.delete(role_id)?;
+    }
     Ok(())
 }
 
@@ -2265,7 +2440,7 @@ pub fn acl_global_revoke_privilege(
 ) -> tarantool::Result<()> {
     // FIXME: currently there's no way to revoke a default privilege
     storage.privileges.delete(
-        priv_def.user_id,
+        priv_def.grantee_id,
         &priv_def.object_type,
         &priv_def.object_name,
         &priv_def.privilege,
@@ -2340,13 +2515,49 @@ pub fn acl_drop_user_on_master(user_id: UserId) -> tarantool::Result<()> {
     Ok(())
 }
 
+/// Create a tarantool role.
+pub fn acl_create_role_on_master(role_def: &RoleDef) -> tarantool::Result<()> {
+    let sys_user = Space::from(SystemSpace::User);
+
+    // This impelemtation was copied from box.schema.role.create.
+
+    // Tarantool expects auth info to be a map `{}`, and currently the simplest
+    // way to achieve this is to use a HashMap.
+    sys_user.insert(&(
+        role_def.id,
+        ::tarantool::session::euid()?,
+        &role_def.name,
+        "role",
+        HashMap::<(), ()>::new(),
+        &[(); 0],
+        0,
+    ))?;
+
+    Ok(())
+}
+
+/// Drop a tarantool role and revoke it from anybody it was assigned to.
+pub fn acl_drop_role_on_master(role_id: UserId) -> tarantool::Result<()> {
+    let lua = ::tarantool::lua_state();
+    lua.exec_with("box.schema.role.drop(...)", role_id)
+        .map_err(LuaError::from)?;
+
+    Ok(())
+}
+
 /// Grant a tarantool user some privilege defined by `priv_def`.
 pub fn acl_grant_privilege_on_master(priv_def: &PrivilegeDef) -> tarantool::Result<()> {
     let lua = ::tarantool::lua_state();
     lua.exec_with(
-        "box.schema.user.grant(...)",
+        "local grantee_id, privilege, object_type, object_name = ...
+        local grantee_def = box.space._user:get(grantee_id)
+        if grantee_def.type == 'user' then
+            box.schema.user.grant(grantee_id, privilege, object_type, object_name)
+        else
+            box.schema.role.grant(grantee_id, privilege, object_type, object_name)
+        end",
         (
-            priv_def.user_id,
+            priv_def.grantee_id,
             &priv_def.privilege,
             &priv_def.object_type,
             &priv_def.object_name,
@@ -2361,9 +2572,15 @@ pub fn acl_grant_privilege_on_master(priv_def: &PrivilegeDef) -> tarantool::Resu
 pub fn acl_revoke_privilege_on_master(priv_def: &PrivilegeDef) -> tarantool::Result<()> {
     let lua = ::tarantool::lua_state();
     lua.exec_with(
-        "box.schema.user.revoke(...)",
+        "local grantee_id, privilege, object_type, object_name = ...
+        local grantee_def = box.space._user:get(grantee_id)
+        if grantee_def.type == 'user' then
+            box.schema.user.revoke(grantee_id, privilege, object_type, object_name)
+        else
+            box.schema.role.revoke(grantee_id, privilege, object_type, object_name)
+        end",
         (
-            priv_def.user_id,
+            priv_def.grantee_id,
             &priv_def.privilege,
             &priv_def.object_type,
             &priv_def.object_name,

@@ -207,13 +207,31 @@ impl UserDef {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// RoleDef
+////////////////////////////////////////////////////////////////////////////////
+
+/// Role definition.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct RoleDef {
+    pub id: UserId,
+    pub name: String,
+    pub schema_version: u64,
+}
+
+impl Encode for RoleDef {}
+
+////////////////////////////////////////////////////////////////////////////////
 // PrivilegeDef
 ////////////////////////////////////////////////////////////////////////////////
 
 /// Privilege definition.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct PrivilegeDef {
-    pub user_id: UserId,
+    /// Id of the user or role to whom the privilege is granted.
+    ///
+    /// In tarantool users and roles are stored in the same space, which means a
+    /// role and a user cannot have the same id or name.
+    pub grantee_id: UserId,
     pub object_type: String,
     pub object_name: String,
     pub privilege: String,

@@ -44,12 +44,23 @@ function pico.help(topic)
     end
 end
 
-local function get_next_user_id()
-    -- TODO: if user id overflows start filling the holes
-    local user = box.space._pico_user.index[0]:max()
-    if user ~= nil then
-        return user.id + 1
+-- Get next id unoccupied by a user or a role. Tarantool stores both users and
+-- roles in the same space, so they share the same set of ids.
+local function get_next_grantee_id()
+    -- TODO: if id overflows start filling the holes
+    local max_user = box.space._pico_user.index[0]:max()
+    local max_role = box.space._pico_role.index[0]:max()
+    local new_id = 0
+    if max_user then
+        new_id = max_user.id + 1
+    end
+    if max_role and new_id <= max_role.id then
+        new_id = max_role.id + 1
+    end
+    if new_id ~= 0 then
+        return new_id
     else
+        -- There are always builtin tarantool users
         local tt_user = box.space._user.index[0]:max()
         return tt_user.id + 1
     end
@@ -120,7 +131,7 @@ function pico.create_user(user, password, opts)
         kind = 'acl',
         op_kind = 'create_user',
         user_def = {
-            id = get_next_user_id(),
+            id = get_next_grantee_id(),
             name = user,
             schema_version = next_schema_version(),
             auth = {
@@ -234,6 +245,105 @@ function pico.drop_user(user, password, opts)
         kind = 'acl',
         op_kind = 'drop_user',
         user_id = user_def.id,
+        schema_version = next_schema_version(),
+    }
+
+    return pico._prepare_schema_change(op, opts.timeout or 3)
+end
+
+help.create_role = [[
+pico.create_role(name, [opts])
+========================================
+
+Creates a role on each instance of the cluster.
+
+Proposes a raft entry which when applied on an instance creates a role on it.
+On success returns an index of the corresponding raft entry.
+
+Params:
+
+    1. name (string), role name
+    2. opts (table)
+        - if_not_exists (boolean), if true, do nothing if role with given name already exists
+        - timeout (number), wait for this many seconds for the proposed entry
+            to be applied locally, default: 3 seconds
+
+Returns:
+
+    (number) raft index
+    or
+    (nil, error) in case of an error
+]]
+function pico.create_role(role, opts)
+    box.internal.check_param_table(opts, { if_not_exists = 'boolean', timeout = 'number' })
+    opts = opts or {}
+
+    local grantee_def = box.space._user.index.name:get(role)
+    if grantee_def ~= nil then
+        if grantee_def.type == "user" then
+            return nil, box.error.new(box.error.USER_EXISTS, role)
+        elseif opts.if_not_exists == true then
+            -- Role exists at current index.
+            return pico.raft_get_index()
+        else
+            return nil, box.error.new(box.error.ROLE_EXISTS, role)
+        end
+    end
+
+    local op = {
+        kind = 'acl',
+        op_kind = 'create_role',
+        role_def = {
+            id = get_next_grantee_id(),
+            name = role,
+            schema_version = next_schema_version(),
+        }
+    }
+
+    return pico._prepare_schema_change(op, opts.timeout or 3)
+end
+
+help.drop_role = [[
+pico.drop_role(role, [opts])
+========================================
+
+Drop the role and any entities owned by them on each instance of the cluster.
+
+Proposes a raft entry which when applied on an instance drops the role on it.
+On success returns a raft index at which the role should no longer exist.
+
+Params:
+
+    1. role (string), role name
+    2. opts (table)
+        - if_exists (boolean), if true do nothing if role with given name doesn't exist
+        - timeout (number), wait for this many seconds for the proposed entry
+            to be applied locally, default: 3 seconds
+
+Returns:
+
+    (number) raft index
+    or
+    (nil, error) in case of an error
+]]
+function pico.drop_role(role, password, opts)
+    box.internal.check_param_table(opts, { if_exists = 'boolean', timeout = 'number' })
+    opts = opts or {}
+
+    local role_def = box.space._pico_role.index.name:get(role)
+    if role_def == nil then
+        if opts.if_exists then
+            -- Role doesn't exist at current index
+            return pico.raft_get_index()
+        else
+            return nil, box.error.new(box.error.NO_SUCH_ROLE, role)
+        end
+    end
+
+    local op = {
+        kind = 'acl',
+        op_kind = 'drop_role',
+        role_id = role_def.id,
         schema_version = next_schema_version(),
     }
 
@@ -401,12 +511,12 @@ local function object_resolve(object_type, object_name)
 end
 
 help.grant_privilege = [[
-pico.grant_privilege(user, privilege, object_type, [object_name], [opts])
+pico.grant_privilege(grantee, privilege, object_type, [object_name], [opts])
 ========================================
 
-Grant the user some privilege on each instance of the cluster.
+Grant some privilege to a user or role on each instance of the cluster.
 
-Proposes a raft entry which when applied on an instance grants the user the
+Proposes a raft entry which when applied on an instance grants the grantee the
 specified privilege on it.
 On success returns an index of the corresponding raft entry.
 
@@ -416,7 +526,7 @@ even if the subsequent call to this function returns an "already granted" error.
 
 Params:
 
-    1. user (string), username
+    1. grantee (string), name of user or role
 
     2. privilege (string), one of
         'read' | 'write' | 'execute' | 'session' | 'usage' | 'create' | 'drop' |
@@ -449,15 +559,23 @@ Examples:
     -- Grant user 'Dave' privilege to create new users.
     pico.grant_privilege('Dave', 'create', 'user')
 
+    -- Grant write access to space 'Junk' for role 'Maintainer'.
+    pico.grant_privilege('Maintainer', 'write', 'space', 'Junk')
+
+    -- Assign role 'Maintainer' to user 'Dave'.
+    pico.grant_privilege('Dave', 'execute', 'role', 'Maintainer')
 ]]
-function pico.grant_privilege(user, privilege, object_type, object_name, opts)
+function pico.grant_privilege(grantee, privilege, object_type, object_name, opts)
     box.internal.check_param_table(opts, { timeout = 'number' })
     opts = opts or {}
     object_name = object_name or ''
 
-    local user_def = box.space._pico_user.index.name:get(user)
-    if user_def == nil then
-        return nil, box.error.new(box.error.NO_SUCH_USER, user)
+    local grantee_def = box.space._pico_user.index.name:get(grantee)
+    if grantee_def == nil then
+        grantee_def = box.space._pico_role.index.name:get(grantee)
+    end
+    if grantee_def == nil then
+        return nil, box.error.new(box.error.NO_SUCH_USER, grantee)
     end
 
     local ok, err = pcall(privilege_check, privilege, object_type, 'grant_privilege')
@@ -470,15 +588,15 @@ function pico.grant_privilege(user, privilege, object_type, object_name, opts)
         return nil, err
     end
 
-    if box.space._pico_privilege:get{user_def.id, object_type, object_name, privilege} ~= nil then
-        return nil, box.error.new(box.error.PRIV_GRANTED, user, privilege, object_type, object_name)
+    if box.space._pico_privilege:get{grantee_def.id, object_type, object_name, privilege} ~= nil then
+        return nil, box.error.new(box.error.PRIV_GRANTED, grantee, privilege, object_type, object_name)
     end
 
     local op = {
         kind = 'acl',
         op_kind = 'grant_privilege',
         priv_def = {
-            user_id = user_def.id,
+            grantee_id = grantee_def.id,
             object_type = object_type,
             object_name = object_name,
             privilege = privilege,
@@ -490,13 +608,13 @@ function pico.grant_privilege(user, privilege, object_type, object_name, opts)
 end
 
 help.revoke_privilege = [[
-pico.revoke_privilege(user, privilege, object_type, [object_name], [opts])
+pico.revoke_privilege(grantee, privilege, object_type, [object_name], [opts])
 ========================================
 
-Revoke some privilege from the user on each instance of the cluster.
+Revoke some privilege from the user or role on each instance of the cluster.
 
 Proposes a raft entry which when applied on an instance revokes the specified
-privilege from the user on it.
+privilege from the grantee on it.
 On success returns an index of the corresponding raft entry.
 
 NOTE: If this function returns a timeout error, the change may have been locally
@@ -505,7 +623,7 @@ even if the subsequent call to this function returns an "not granted" error.
 
 Params:
 
-    1. user (string), username
+    1. grantee (string), name of user or role
 
     2. privilege (string), one of
         'read' | 'write' | 'execute' | 'session' | 'usage' | 'create' | 'drop' |
@@ -527,14 +645,17 @@ Returns:
     or
     (nil, error) in case of an error
 ]]
-function pico.revoke_privilege(user, privilege, object_type, object_name, opts)
+function pico.revoke_privilege(grantee, privilege, object_type, object_name, opts)
     box.internal.check_param_table(opts, { timeout = 'number' })
     opts = opts or {}
     object_name = object_name or ''
 
-    local user_def = box.space._pico_user.index.name:get(user)
-    if user_def == nil then
-        return nil, box.error.new(box.error.NO_SUCH_USER, user)
+    local grantee_def = box.space._pico_user.index.name:get(grantee)
+    if grantee_def == nil then
+        grantee_def = box.space._pico_role.index.name:get(grantee)
+    end
+    if grantee_def == nil then
+        return nil, box.error.new(box.error.NO_SUCH_USER, grantee)
     end
 
     local ok, err = pcall(privilege_check, privilege, object_type, 'revoke_privilege')
@@ -547,15 +668,15 @@ function pico.revoke_privilege(user, privilege, object_type, object_name, opts)
         return nil, err
     end
 
-    if box.space._pico_privilege:get{user_def.id, object_type, object_name, privilege} == nil then
-        return nil, box.error.new(box.error.PRIV_NOT_GRANTED, user, privilege, object_type, object_name)
+    if box.space._pico_privilege:get{grantee_def.id, object_type, object_name, privilege} == nil then
+        return nil, box.error.new(box.error.PRIV_NOT_GRANTED, grantee, privilege, object_type, object_name)
     end
 
     local op = {
         kind = 'acl',
         op_kind = 'revoke_privilege',
         priv_def = {
-            user_id = user_def.id,
+            grantee_id = grantee_def.id,
             object_type = object_type,
             object_name = object_name,
             privilege = privilege,
