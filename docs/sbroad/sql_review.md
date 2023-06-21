@@ -14,7 +14,7 @@
 
 На схеме <span style="color:#ff0000ff">красным</span> показан исходный пользовательский запрос, <span style="color:#fcc501ff">желтым</span> — план запроса (IR, intermediate representation), <span style="color:#39cb00ff">зеленым</span> — собранные фрагменты ответов, <span style="color:#00c8e5ff">голубым</span> — консолидированный ответ на пользовательский запрос в виде списка кортежей, обработанного функцией MapReduce.
 
-Читать далее: [Описание поддерживаемых запросов и их синтаксиса](../sql_queries)
+Описание поддерживаемых запросов и их синтаксиса приведены в разделе: [Команды SQL](../sql_queries)
 
 ---
 [Исходный код страницы](https://git.picodata.io/picodata/picodata/docs/-/blob/main/docs/sbroad/sql_review.md)

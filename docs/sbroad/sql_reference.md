@@ -94,7 +94,7 @@
 ### E071-03. Табличный оператор EXCEPT DISTINCT
 ### F041-03. LEFT OUTER JOIN.
 
-Подробнее о внутренней архитектуре кластера Picodata см. в разделе [Общая схема инициализации кластера](../clustering). Параметры запуска из командной строки описаны в разделе [Описание параметров запуска](../cli).
+См. также: [Пример работы с приложением Picodata SQL](../sql_tutorial).
 
 ---
 [Исходный код страницы](https://git.picodata.io/picodata/picodata/docs/-/blob/main/docs/sbroad/sql_reference.md)

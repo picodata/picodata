@@ -1,6 +1,6 @@
-# Установка и пример использования SQL Broadcaster
+# Пример работы с приложением Picodata SQL
 ## Общие сведения для установки
-На данный момент компонент SQL Broadcaster работает только для приложений, использующих Tarantool Cartridge. Однако, при этом требуется использовать версию Tarantool, которая поставляется вместе с программным продуктом Picodata. Подробная информация об установке SQL Broadcaster приведена в описании его [Git-репозитория](https://git.picodata.io/picodata/picodata/sbroad). Установка возможна либо путём компиляции исходного кода, либо посредством утилиты `tarantoolctl`. В обоих случаях требуется выполнять команды из директории Cartridge-приложения. Для ознакомления и тестирования удобно воспользоваться [тестовым приложением](https://git.picodata.io/picodata/picodata/sbroad/-/tree/main/sbroad-cartridge/test_app), поставляемым вместе с кодом SQL Broadcaster.
+На данный момент функциональность Picodata SQL обеспечивается только для приложений, использующих Tarantool Cartridge. Однако, при этом требуется использовать версию Tarantool, которая поставляется вместе с программным продуктом Picodata. Для использования Picodata SQL требуется установить компонент SQL Broadcaster согласно инструкциям в его [Git-репозитории](https://git.picodata.io/picodata/picodata/sbroad). Установка возможна либо путём компиляции исходного кода, либо посредством утилиты `tarantoolctl`. В обоих случаях требуется выполнять команды из директории Cartridge-приложения. Для ознакомления и тестирования удобно воспользоваться [тестовым приложением](https://git.picodata.io/picodata/picodata/sbroad/-/tree/main/sbroad-cartridge/test_app), поставляемым вместе с кодом SQL Broadcaster.
 
 ## Пример установки для CentOS 7
 Ниже показан пример установки сборочных зависимостей и компиляции исходного кода SQL Broadcaster в операционной системе CentOS 7. Шаги для других дистрибутивов Linux могут отличаться. Для начала требуется подключить репозиторий с пакетами Picodata. Этот этап документирован для [страницы загрузки Picodata](https://picodata.io/download/). Далее предлагается выполнить в терминале следующие команды:
@@ -1154,7 +1154,7 @@ sbroad.execute([[select "name" from "testing_space" where "id" = 1]], {})
 
 ![sbroad.execute](data_read.png "data reading example")
 
-См. также: [Справочник поддерживаемых функций стандарта SQL](../sql_reference)
+См. также: [Поддерживаемые функции стандарта SQL](../sql_reference)
 
 ---
 [Исходный код страницы](https://git.picodata.io/picodata/picodata/docs/-/blob/main/docs/sbroad/sql_tutorial.md)
