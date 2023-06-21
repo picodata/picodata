@@ -466,7 +466,7 @@ pack-rosalinux:
     paths:
       - build_rosa/picodata*.rpm
 
-pack-macos-arm:
+.pack-macos-arm:
   extends: .pack
   tags:
     - mac-dev-m1
@@ -646,7 +646,7 @@ deploy-packages:
     - sign-astralinux-packages
     - pack-sources
 
-deploy-macos-arm:
+.deploy-macos-arm:
   stage: deploy
   tags:
     - mac-dev-m1

@@ -19,8 +19,11 @@ reset-submodules:
 
 tarantool-patch:
 	echo "${VER_TNT}" > tarantool-sys/VERSION
+	sed '/define LJ_NOAPI	extern __attribute__((visibility("hidden")))/s/^/\/\//' -i tarantool-sys/third_party/luajit/src/lj_def.h
+	sed "s/LJ_FUNCA int lj_err_unwind_dwarf(int version, int actions,/extern __attribute__((visibility(\"hidden\"))) int lj_err_unwind_dwarf(int version, int actions,/g" -i tarantool-sys/third_party/luajit/src/lj_err.c
 	PATCH_DIR=$(pwd)/certification_patches/svace_patches
 	(cd tarantool-sys/third_party/luajit; find ${PATCH_DIR} -name "luajit_*" | xargs -n 1 git apply)
+
 
 build: tarantool-patch
 	. ~/.cargo/env && \
