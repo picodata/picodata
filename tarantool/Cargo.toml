@@ -12,5 +12,6 @@ members = [
     "examples/read",
     "examples/write",
     "examples/tokio-hyper",
+    "examples/luaopen",
     "perf-test"
 ]
