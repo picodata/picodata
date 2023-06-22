@@ -203,7 +203,7 @@ impl PoolWorker {
                 if ver >= client_ver {
                     client.reconnect();
                     client_ver = client_ver.wrapping_add(1);
-                    tlog!(Debug, "reconnecting to {address}:{port}"; "client_version" => client_ver);
+                    tlog!(Warning, "reconnecting to {address}:{port}"; "client_version" => client_ver);
                 }
             }
         }
@@ -215,7 +215,7 @@ impl PoolWorker {
         let args = [msg].to_tuple_buffer()?;
         let on_result = move |res| match res {
             Ok(_) => (),
-            Err(e) => tlog!(Debug, "error when sending message to peer: {e}";
+            Err(e) => tlog!(Warning, "error when sending message to peer: {e}";
                 "raft_id" => raft_id,
             ),
         };
