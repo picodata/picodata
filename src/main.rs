@@ -154,7 +154,7 @@ fn main_run(args: args::Run) -> ! {
                 drop(from_parent);
                 drop(to_parent);
 
-                let msg = from_child.recv().ok();
+                let msg = from_child.recv();
 
                 let status = waitpid(child, None);
 
@@ -172,7 +172,7 @@ fn main_run(args: args::Run) -> ! {
                 let status = status.unwrap();
                 println!("[supervisor:{parent}] subprocess finished: {status:?}");
 
-                if let Some(msg) = msg {
+                if let Ok(msg) = msg {
                     entrypoint = msg.next_entrypoint;
                     if msg.drop_db {
                         rm_tarantool_files(&args.data_dir);
