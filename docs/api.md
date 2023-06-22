@@ -23,7 +23,7 @@ picodata> pico.help()
 ```
 
 Вызов функций `pico.*` возможен и через `iproto`, но влечет за собой
-накладные расходы связанные с конфертацией из MessagePack формата в Lua
+накладные расходы, связанные с конвертацией из формата MessagePack в Lua
 и обратно.
 
 <!-- TODO: Error handling guideline -->
@@ -41,10 +41,12 @@ picodata> pico.help()
 | [pico.help()](#picohelp) | Доступ к встроенной справочной системе Picodata.
 | [pico.instance_info()](#picoinstance_info) | Получение информации об инстансе Picodata (идентификаторы, уровни ([grade](glossary.md#grade)) и прочее).
 | [pico.raft_compact_log()](#picoraft_compact_log) | [Компактизация](glossary.md#raft-raft-log-compaction) raft-журнала c удалением указанного числа наиболее старых записей.
-| [pico.raft_get_index()](#picoraft_get_index) | Чтение индекса raft-журнала.
+| [pico.raft_get_index()](#picoraft_get_index) | Получение текущего примененного индекса raft-журнала.
 | [pico.raft_propose_nop()](#picoraft_propose_nop) | Добавление в raft-журнал запись `Nop` (no operation).
+| [pico.raft_read_index()](#picoraft_read_index) | Кворумное чтение индекса raft-журнала.
 | [pico.raft_status()](#picoraft_status) | Получение данных о текущем состоянии raft-журнала ([терм](glossary.md#term), [лидер](glossary.md#raft-_1) и т.д.)
 | [pico.raft_timeout_now()](#picoraft_timeout_now) |  Вызов таймаута raft-узла прямо сейчас, объявление новых выборов в raft-группе.
+| [pico.raft_wait_index()](#picoraft_wait_index) |  Ожидание локального применения указанного индекса.
 | [pico.wait_vclock()](#picowait_vclock) | Ожидание момента, когда значение [Vclock](glossary.md#vclock-vector-clock) достигнет целевого.
 | [pico.whoami()](#picowhoami) | Отображение данных о текущем инстансе.
 
@@ -455,12 +457,32 @@ function raft_compact_log(up_to)
 
 Функция возвращает значение `first_index` — индекс первой записи в raft-журнале.
 
-
 ### pico.raft_get_index
-Кворумное чтение текущего индекса raft-журнала
+Получение текущего примененного индекса raft-журнала.
+
+Возвращаемое значение:
+
+(_number_)
+
+### pico.raft_propose_nop
+Добавляет в raft-журнал запись `Nop` (no operation). Используется для обновления raft-журнала путем добавления в него свежей записи.
+Функция не имеет передаваемых параметров.
+
+### pico.raft_read_index
+Кворумное чтение текущего индекса raft-журнала. Принцип работы следующий:
+
+  1. Инстанс направляет запрос (`MsgReadIndex`) лидеру raft-группы. В случае, если лидера в данный момент нет, функция
+     возвращает ошибку `raft: proposal dropped`.
+  2. Raft-лидер отслеживает свой `commit_index` и отправляет всем узлам
+     в статусе `follower` сообщение (heartbeat) с тем, чтобы убедиться,
+     что он все еще является лидером.
+  3. Как только это получение этого сообщения подтверждается большинством `follower`-узлов, лидер
+     возвращает этот индекс инстансу.
+  4. Инстанс ожидает, когда индекс будет применен. Если таймаут
+     истекает раньше, функция возвращает ошибку `timeout`.
 
 ```lua
-function raft_get_index(timeout)
+function raft_read_index(timeout)
 ```
 Параметры:
 
@@ -472,14 +494,15 @@ function raft_get_index(timeout)
 Пример:
 
 ```console
-picodata> pico.raft_get_index(1)
+picodata> pico.raft_read_index(1)
 ---
 - 42
 ...
 ```
-### pico.raft_propose_nop
-Добавляет в raft-журнал запись `Nop` (no operation). Используется для обновления raft-журнала путем добавления в него свежей записи.
-Функция не имеет передаваемых параметров.
+
+Возвращаемое значение:
+
+(_number_)
 
 ### pico.raft_status
 Получение данных о текущем состоянии raft-журнала ([терм](glossary.md#терм-term), лидер и т.д.). Функция не имеет передаваемых параметров.
@@ -558,6 +581,26 @@ picodata> pico.raft_status()
 `raft_timeout_now`, с большой вероятностью (при наличии кворума) сам
 станет лидером по результатам выборов.
 
+### pico.raft_wait_index
+Ожидание момента, когда указанный индекс применится на локальном узле
+хранения. Функция возвращает текущий примененный индекс raft-журнала,
+который может быть равен или превышать указанный.
+
+```lua
+function raft_wait_index(target, timeout)
+```
+Параметры:
+
+- `target`: (_number_)
+- `timeout`: (_number_)
+
+Возвращаемое значение:
+
+(_number_)
+
+Если за указанное время (`timeout`) функция не успеет получить индекс, будет
+выведено сообщение об ошибке.
+
 ### pico.wait_vclock
 Ожидание момента, когда значение [Vclock](glossary.md#vclock-vector-clock) в Tarantool достигнет целевого.
 
@@ -596,5 +639,68 @@ picodata> pico.whoami()
   instance_id: i1
 ```
 
+## Использование таблиц в Lua
+### table CasBound
+Lua-таблица, используемая для обозначения минимального (`key_min`) или максимального (`key_max`) значения в таблице `table CasRange`.
+
+Состав таблицы:
+
+- `kind` (_string_), варианты: `included` | `excluded` | `unbounded`
+- `key` (optional _table_), обязательно для вариантов `included` и `excluded`
+
+### table CasRange
+Lua-таблица, задающая диапазон значений. Используется для обозначения предиката (проверяемых данных) в функции [pico.cas()](#picocas).
+
+Состав таблицы:
+
+- `space` (_string_)
+- `key_min` (table CasBound), см. [выше](#table-casbound)
+- `key_max` (table CasBound)
+
+Пример:
+
+```lua
+local unbounded = { kind = 'unbounded' }
+local including_1 = { kind = 'included', key = {1,} }
+local excluding_3 = { kind = 'excluded', key = {3,} }
+
+local range_a = {
+    space = 'friends_of_peppa',
+    key_min = unbounded,
+    key_max = unbounded,
+}
+
+-- [1, 3)
+local range_a = {
+    space = 'friends_of_peppa',
+    key_min = including_1,
+    key_max = excluding_3,
+}
+
+```
+
+### table SpaceField
+Lua-таблица, описывающее поле в составе спейса.
+
+Состав таблицы:
+
+- `name` (_string_)
+- `type` (_string_)
+- `is_nullable` (_boolean_)
+
+Пример:
+```lua
+{name = 'id', type = 'unsigned', is_nullable = false}
+{name = 'value', type = 'unsigned', is_nullable = false}
+```
+
+### table Vclock
+Lua-таблица, отражающая соответствие `id` инстанса его [LSN-номеру](glossary.md#lsn-log-sequence-number).
+
+Пример:
+```lua
+{[0] = 2, [1] = 101}
+{[0] = 148, [1] = 9086, [3] = 2}
+```
 ---
 [Исходный код страницы](https://git.picodata.io/picodata/picodata/docs/-/blob/main/docs/api.md)
