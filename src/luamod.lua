@@ -84,6 +84,7 @@ pico.create_user(user, password, [opts])
 Creates a user on each instance of the cluster.
 
 Proposes a raft entry which when applied on an instance creates a user on it.
+Waits for opts.timeout seconds for the entry to be applied locally.
 On success returns a raft index at which the user should exist.
 
 NOTE: If this function returns a timeout error, the user may have been locally
@@ -106,8 +107,15 @@ Returns:
     (nil, error) in case of an error
 ]]
 function pico.create_user(user, password, opts)
-    box.internal.check_param_table(opts, { if_not_exists = 'boolean', timeout = 'number' })
-    opts = opts or {}
+    local ok, err = pcall(function()
+        box.internal.check_param(user, 'user', 'string')
+        box.internal.check_param(password, 'password', 'string')
+        box.internal.check_param_table(opts, { if_not_exists = 'boolean', timeout = 'number' })
+        opts = opts or {}
+    end)
+    if not ok then
+        return nil, err
+    end
 
     local grantee_def = box.space._user.index.name:get(user)
     if grantee_def ~= nil then
@@ -119,10 +127,6 @@ function pico.create_user(user, password, opts)
         else
             return nil, box.error.new(box.error.USER_EXISTS, user)
         end
-    end
-
-    if type(password) ~= "string" then
-        return nil, box.error.new(box.error.ILLEGAL_PARAMS, "password should be a string")
     end
 
     -- TODO: check password requirements.
@@ -151,6 +155,7 @@ pico.change_password(user, password, [opts])
 Change the user's password on each instance of the cluster.
 
 Proposes a raft entry which when applied on an instance changes the user's password on it.
+Waits for opts.timeout seconds for the entry to be applied locally.
 On success returns an index of the corresponding raft entry.
 
 NOTE: If this function returns a timeout error, the change may have been locally
@@ -171,17 +176,20 @@ Returns:
     (nil, error) in case of an error
 ]]
 function pico.change_password(user, password, opts)
-    box.internal.check_param_table(opts, { timeout = 'number' })
-    opts = opts or {}
+    local ok, err = pcall(function()
+        box.internal.check_param(user, 'user', 'string')
+        box.internal.check_param(password, 'password', 'string')
+        box.internal.check_param_table(opts, { timeout = 'number' })
+        opts = opts or {}
+    end)
+    if not ok then
+        return nil, err
+    end
 
     -- TODO: allow `user` to be a user id instead of name
     local user_def = box.space._pico_user.index.name:get(user)
     if user_def == nil then
         return nil, box.error.new(box.error.NO_SUCH_USER, user)
-    end
-
-    if type(password) ~= "string" then
-        return nil, box.error.new(box.error.ILLEGAL_PARAMS, "password should be a string")
     end
 
     -- TODO: check password requirements.
@@ -207,6 +215,7 @@ pico.drop_user(user, [opts])
 Drop the user and any entities owned by them on each instance of the cluster.
 
 Proposes a raft entry which when applied on an instance drops the user on it.
+Waits for opts.timeout seconds for the entry to be applied locally.
 On success returns a raft index at which the user should no longer exist.
 
 NOTE: If this function returns a timeout error, the user may have been locally
@@ -227,9 +236,15 @@ Returns:
     or
     (nil, error) in case of an error
 ]]
-function pico.drop_user(user, password, opts)
-    box.internal.check_param_table(opts, { if_exists = 'boolean', timeout = 'number' })
-    opts = opts or {}
+function pico.drop_user(user, opts)
+    local ok, err = pcall(function()
+        box.internal.check_param(user, 'user', 'string')
+        box.internal.check_param_table(opts, { if_exists = 'boolean', timeout = 'number' })
+        opts = opts or {}
+    end)
+    if not ok then
+        return nil, err
+    end
 
     local user_def = box.space._pico_user.index.name:get(user)
     if user_def == nil then
@@ -258,6 +273,7 @@ pico.create_role(name, [opts])
 Creates a role on each instance of the cluster.
 
 Proposes a raft entry which when applied on an instance creates a role on it.
+Waits for opts.timeout seconds for the entry to be applied locally.
 On success returns an index of the corresponding raft entry.
 
 Params:
@@ -275,8 +291,14 @@ Returns:
     (nil, error) in case of an error
 ]]
 function pico.create_role(role, opts)
-    box.internal.check_param_table(opts, { if_not_exists = 'boolean', timeout = 'number' })
-    opts = opts or {}
+    local ok, err = pcall(function()
+        box.internal.check_param(role, 'role', 'string')
+        box.internal.check_param_table(opts, { if_not_exists = 'boolean', timeout = 'number' })
+        opts = opts or {}
+    end)
+    if not ok then
+        return nil, err
+    end
 
     local grantee_def = box.space._user.index.name:get(role)
     if grantee_def ~= nil then
@@ -310,6 +332,7 @@ pico.drop_role(role, [opts])
 Drop the role and any entities owned by them on each instance of the cluster.
 
 Proposes a raft entry which when applied on an instance drops the role on it.
+Waits for opts.timeout seconds for the entry to be applied locally.
 On success returns a raft index at which the role should no longer exist.
 
 Params:
@@ -326,9 +349,15 @@ Returns:
     or
     (nil, error) in case of an error
 ]]
-function pico.drop_role(role, password, opts)
-    box.internal.check_param_table(opts, { if_exists = 'boolean', timeout = 'number' })
-    opts = opts or {}
+function pico.drop_role(role, opts)
+    local ok, err = pcall(function()
+        box.internal.check_param(role, 'role', 'string')
+        box.internal.check_param_table(opts, { if_exists = 'boolean', timeout = 'number' })
+        opts = opts or {}
+    end)
+    if not ok then
+        return nil, err
+    end
 
     local role_def = box.space._pico_role.index.name:get(role)
     if role_def == nil then
@@ -365,6 +394,8 @@ local supported_priveleges = {
     insert = true,
     update = true,
     delete = true,
+    grant = true,
+    revoke = true,
 }
 
 -- Implementation is based on function privilege_check
@@ -376,7 +407,7 @@ local function privilege_check(privilege, object_type, entrypoint)
 
     if supported_priveleges[privilege] == nil then
         box.error(box.error.ILLEGAL_PARAMS, string.format(
-            'unsupported privilege "%s", see pico.help("%s") for details',
+            "unsupported privilege '%s', see pico.help('%s') for details",
             privilege, entrypoint
         ))
     end
@@ -518,6 +549,7 @@ Grant some privilege to a user or role on each instance of the cluster.
 
 Proposes a raft entry which when applied on an instance grants the grantee the
 specified privilege on it.
+Waits for opts.timeout seconds for the entry to be applied locally.
 On success returns an index of the corresponding raft entry.
 
 NOTE: If this function returns a timeout error, the change may have been locally
@@ -566,9 +598,18 @@ Examples:
     pico.grant_privilege('Dave', 'execute', 'role', 'Maintainer')
 ]]
 function pico.grant_privilege(grantee, privilege, object_type, object_name, opts)
-    box.internal.check_param_table(opts, { timeout = 'number' })
-    opts = opts or {}
-    object_name = object_name or ''
+    local ok, err = pcall(function()
+        box.internal.check_param(grantee, 'grantee', 'string')
+        box.internal.check_param(privilege, 'privilege', 'string')
+        box.internal.check_param(object_type, 'object_type', 'string')
+        object_name = object_name ~= nil and object_name or ''
+        box.internal.check_param(object_name, 'object_name', 'string')
+        box.internal.check_param_table(opts, { timeout = 'number' })
+        opts = opts or {}
+    end)
+    if not ok then
+        return nil, err
+    end
 
     local grantee_def = box.space._pico_user.index.name:get(grantee)
     if grantee_def == nil then
@@ -589,7 +630,7 @@ function pico.grant_privilege(grantee, privilege, object_type, object_name, opts
     end
 
     if box.space._pico_privilege:get{grantee_def.id, object_type, object_name, privilege} ~= nil then
-        return nil, box.error.new(box.error.PRIV_GRANTED, grantee, privilege, object_type, object_name)
+        return nil, box.error.new(box.error.PRIV_GRANTED, grantee, privilege, object_type, (" '%s'"):format(object_name))
     end
 
     local op = {
@@ -615,6 +656,7 @@ Revoke some privilege from the user or role on each instance of the cluster.
 
 Proposes a raft entry which when applied on an instance revokes the specified
 privilege from the grantee on it.
+Waits for opts.timeout seconds for the entry to be applied locally.
 On success returns an index of the corresponding raft entry.
 
 NOTE: If this function returns a timeout error, the change may have been locally
@@ -646,9 +688,18 @@ Returns:
     (nil, error) in case of an error
 ]]
 function pico.revoke_privilege(grantee, privilege, object_type, object_name, opts)
-    box.internal.check_param_table(opts, { timeout = 'number' })
-    opts = opts or {}
-    object_name = object_name or ''
+    local ok, err = pcall(function()
+        box.internal.check_param(grantee, 'grantee', 'string')
+        box.internal.check_param(privilege, 'privilege', 'string')
+        box.internal.check_param(object_type, 'object_type', 'string')
+        object_name = object_name ~= nil and object_name or ''
+        box.internal.check_param(object_name, 'object_name', 'string')
+        box.internal.check_param_table(opts, { timeout = 'number' })
+        opts = opts or {}
+    end)
+    if not ok then
+        return nil, err
+    end
 
     local grantee_def = box.space._pico_user.index.name:get(grantee)
     if grantee_def == nil then

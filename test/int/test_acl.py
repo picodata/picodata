@@ -1,6 +1,223 @@
 import pytest
-from conftest import Cluster, TarantoolError
+from conftest import Cluster, TarantoolError, ReturnError
 from tarantool.error import NetworkError  # type: ignore
+
+
+def test_acl_lua_api(cluster: Cluster):
+    i1, *_ = cluster.deploy(instance_count=1)
+
+    #
+    # pico.create_user
+    #
+
+    # No user -> error.
+    with pytest.raises(ReturnError, match="user should be a string"):
+        i1.call("pico.create_user")
+
+    # No password -> error.
+    with pytest.raises(ReturnError, match="password should be a string"):
+        i1.call("pico.create_user", "Dave")
+
+    # This is probably not ok.
+    i1.call("pico.create_user", "Dave", "")
+
+    # Already exists -> error.
+    with pytest.raises(ReturnError, match="User 'Dave' already exists"):
+        i1.call("pico.create_user", "Dave", "")
+
+    # Role already exists -> error.
+    with pytest.raises(ReturnError, match="Role 'super' already exists"):
+        i1.call("pico.create_user", "super", "")
+
+    #
+    # pico.create_role
+    #
+
+    # No role -> error.
+    with pytest.raises(ReturnError, match="role should be a string"):
+        i1.call("pico.create_role")
+
+    # Ok.
+    i1.call("pico.create_role", "Parent")
+
+    # Already exists -> error.
+    with pytest.raises(ReturnError, match="Role 'Parent' already exists"):
+        i1.call("pico.create_role", "Parent")
+
+    # User already exists -> error.
+    with pytest.raises(ReturnError, match="User 'Dave' already exists"):
+        i1.call("pico.create_role", "Dave")
+
+    #
+    # pico.grant_privilege / pico.revoke_privilege parameter verification
+    #
+
+    for f in ["grant_privilege", "revoke_privilege"]:
+        # No user -> error.
+        with pytest.raises(ReturnError, match="grantee should be a string"):
+            i1.call(f"pico.{f}")
+
+        # No such user -> error.
+        with pytest.raises(ReturnError, match="User 'User is not found' is not found"):
+            i1.call(f"pico.{f}", "User is not found", "execute", "universe")
+
+        # No privilege -> error.
+        with pytest.raises(ReturnError, match="privilege should be a string"):
+            i1.call(f"pico.{f}", "Dave")
+
+        # No such privilege -> error.
+        with pytest.raises(
+            ReturnError,
+            match=rf"unsupported privilege 'boogie', see pico.help\('{f}'\) for details",
+        ):
+            i1.call(f"pico.{f}", "Dave", "boogie", "universe")
+
+        # Comma separated list of privileges -> error.
+        with pytest.raises(
+            ReturnError,
+            match=rf"unsupported privilege 'read,write', see pico.help\('{f}'\) for details",
+        ):
+            i1.call(f"pico.{f}", "Dave", "read,write", "universe")
+
+        # No object_type -> error.
+        with pytest.raises(ReturnError, match="object_type should be a string"):
+            i1.call(f"pico.{f}", "Dave", "read")
+
+        # No such object_type -> error.
+        with pytest.raises(ReturnError, match="Unknown object type 'bible'"):
+            i1.call(f"pico.{f}", "Dave", "read", "bible")
+
+        # Wrong combo -> error.
+        with pytest.raises(ReturnError, match="Unsupported space privilege 'grant'"):
+            i1.call(f"pico.{f}", "Dave", "grant", "space")
+
+        # No such role -> error.
+        with pytest.raises(ReturnError, match="Role 'Joker' is not found"):
+            i1.call(f"pico.{f}", "Dave", "execute", "role", "Joker")
+
+    #
+    # pico.grant_privilege semantics verification
+    #
+
+    # Grant privilege to user -> Ok.
+    i1.call("pico.grant_privilege", "Dave", "read", "space", "_pico_property")
+
+    # Already granted -> error.
+    with pytest.raises(
+        ReturnError,
+        match="User 'Dave' already has read access on space '_pico_property'",
+    ):
+        i1.call("pico.grant_privilege", "Dave", "read", "space", "_pico_property")
+
+    # Grant privilege to role -> Ok.
+    i1.call("pico.grant_privilege", "Parent", "write", "space", "_pico_property")
+
+    # Already granted -> error.
+    # FIXME: tarantool says User instead of Role.
+    with pytest.raises(
+        ReturnError,
+        match="User 'Parent' already has write access on space '_pico_property'",
+    ):
+        i1.call("pico.grant_privilege", "Parent", "write", "space", "_pico_property")
+
+    # Assign role to user -> Ok.
+    i1.call("pico.grant_privilege", "Dave", "execute", "role", "Parent")
+
+    # Already assigned role to user -> error.
+    with pytest.raises(
+        ReturnError, match="User 'Dave' already has execute access on role 'Parent'"
+    ):
+        i1.call("pico.grant_privilege", "Dave", "execute", "role", "Parent")
+
+    #
+    # pico.revoke_privilege semantics verification
+    #
+
+    # Revoke privilege to user -> Ok.
+    i1.call("pico.revoke_privilege", "Dave", "read", "space", "_pico_property")
+
+    # Already revoked -> error.
+    with pytest.raises(
+        ReturnError,
+        match="User 'Dave' does not have read access on space '_pico_property'",
+    ):
+        i1.call("pico.revoke_privilege", "Dave", "read", "space", "_pico_property")
+
+    # Revoke privilege to role -> Ok.
+    i1.call("pico.revoke_privilege", "Parent", "write", "space", "_pico_property")
+
+    # Already revoked -> error.
+    # FIXME: tarantool says User instead of Role.
+    with pytest.raises(
+        ReturnError,
+        match="User 'Parent' does not have write access on space '_pico_property'",
+    ):
+        i1.call("pico.revoke_privilege", "Parent", "write", "space", "_pico_property")
+
+    # Revoke role to user -> Ok.
+    i1.call("pico.revoke_privilege", "Dave", "execute", "role", "Parent")
+
+    # Already revoked role to user -> error.
+    with pytest.raises(
+        ReturnError, match="User 'Dave' does not have execute access on role 'Parent'"
+    ):
+        i1.call("pico.revoke_privilege", "Dave", "execute", "role", "Parent")
+
+    #
+    # pico.drop_user
+    #
+
+    # No user -> error.
+    with pytest.raises(ReturnError, match="user should be a string"):
+        i1.call("pico.drop_user")
+
+    # No such user -> error.
+    with pytest.raises(ReturnError, match="User 'User is not found' is not found"):
+        i1.call("pico.drop_user", "User is not found")
+
+    # Ok.
+    i1.call("pico.drop_user", "Dave")
+
+    # Repeat drop -> error.
+    with pytest.raises(ReturnError, match="User 'Dave' is not found"):
+        i1.call("pico.drop_user", "Dave")
+
+    #
+    # pico.drop_role
+    #
+
+    # No role -> error.
+    with pytest.raises(ReturnError, match="role should be a string"):
+        i1.call("pico.drop_role")
+
+    # No such role -> error.
+    with pytest.raises(ReturnError, match="Role 'Role is not found' is not found"):
+        i1.call("pico.drop_role", "Role is not found")
+
+    # Ok.
+    i1.call("pico.drop_role", "Parent")
+
+    # Repeat drop -> error.
+    with pytest.raises(ReturnError, match="Role 'Parent' is not found"):
+        i1.call("pico.drop_role", "Parent")
+
+    #
+    # Options validation
+    #
+
+    # Options is not table -> error.
+    with pytest.raises(ReturnError, match="options should be a table"):
+        i1.call("pico.create_user", "Dave", "pass", "timeout after 3 seconds please")
+
+    # Unknown option -> error.
+    with pytest.raises(ReturnError, match="unexpected option 'deadline'"):
+        i1.call("pico.create_user", "Dave", "pass", dict(deadline="June 7th"))
+
+    # Unknown option -> error.
+    with pytest.raises(
+        ReturnError, match="options parameter 'timeout' should be of type number"
+    ):
+        i1.call("pico.create_user", "Dave", "pass", dict(timeout="3s"))
 
 
 def test_acl_basic(cluster: Cluster):
