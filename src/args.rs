@@ -2,6 +2,7 @@ use clap::Parser;
 use std::{
     borrow::Cow,
     ffi::{CStr, CString},
+    str::FromStr,
 };
 use tarantool::log::SayLevel;
 use tarantool::tlua;
@@ -15,7 +16,7 @@ use crate::util::Uppercase;
 #[derive(Debug, Parser)]
 #[clap(name = "picodata", version = "23.06.0")]
 pub enum Picodata {
-    Run(Run),
+    Run(Box<Run>),
     Tarantool(Tarantool),
     Expel(Expel),
     Test(Test),
@@ -57,35 +58,32 @@ pub struct Run {
     #[clap(
         long = "advertise",
         value_name = "[host][:port]",
-        env = "PICODATA_ADVERTISE",
-        parse(try_from_str = try_parse_address)
+        env = "PICODATA_ADVERTISE"
     )]
     /// Address the other instances should use to connect to this instance.
     /// Defaults to `--listen` value.
-    pub advertise_address: Option<String>,
+    pub advertise_address: Option<Address>,
 
     #[clap(
         short = 'l',
         long = "listen",
         value_name = "[host][:port]",
-        parse(try_from_str = try_parse_address),
         default_value = "localhost:3301",
         env = "PICODATA_LISTEN"
     )]
     /// Socket bind address
-    pub listen: String,
+    pub listen: Address,
 
     #[clap(
         long = "peer",
         value_name = "[host][:port]",
         require_value_delimiter = true,
         use_value_delimiter = true,
-        parse(try_from_str = try_parse_address),
         default_value = "localhost:3301",
         env = "PICODATA_PEER"
     )]
     /// Address(es) of other instance(s)
-    pub peers: Vec<String>,
+    pub peers: Vec<Address>,
 
     #[clap(
         long = "failure-domain",
@@ -127,16 +125,11 @@ pub struct Run {
     /// A path to a lua script that will be executed at postjoin stage
     pub script: Option<String>,
 
-    #[clap(
-        long,
-        value_name = "[host][:port]",
-        env = "PICODATA_HTTP_LISTEN",
-        parse(try_from_str = try_parse_address)
-    )]
+    #[clap(long, value_name = "[host][:port]", env = "PICODATA_HTTP_LISTEN")]
     /// Address to start the HTTP server on. The routing API is exposed
     /// in Lua as `_G.pico.httpd` variable. If not specified, it won't
     /// be initialized.
-    pub http_listen: Option<String>,
+    pub http_listen: Option<Address>,
 }
 
 // Copy enum because clap:ArgEnum can't be derived for the foreign SayLevel.
@@ -175,10 +168,8 @@ impl Run {
     }
 
     pub fn advertise_address(&self) -> String {
-        match &self.advertise_address {
-            Some(v) => v.clone(),
-            None => self.listen.clone(),
-        }
+        let Address { host, port, .. } = self.advertise_address.as_ref().unwrap_or(&self.listen);
+        format!("{host}:{port}")
     }
 
     pub fn log_level(&self) -> SayLevel {
@@ -232,11 +223,10 @@ pub struct Expel {
     #[clap(
         long = "peer",
         value_name = "[host][:port]",
-        parse(try_from_str = try_parse_address),
-        default_value = "localhost:3301",
+        default_value = "localhost:3301"
     )]
     /// Address of any instance from the cluster.
-    pub peer_address: String,
+    pub peer_address: Address,
 }
 
 impl Expel {
@@ -291,24 +281,6 @@ pub enum ParseAddressError {
     BadPort(#[from] std::num::ParseIntError),
 }
 
-fn try_parse_address(text: &str) -> Result<String, ParseAddressError> {
-    let (host, port) = match text.rsplit_once(':') {
-        Some((mut host, port)) => {
-            if host.is_empty() {
-                host = "localhost";
-            }
-            if host.contains(':') {
-                return Err(ParseAddressError::BadAddress(
-                    r#"contains more than 1 ":" symbol"#,
-                ));
-            }
-            (host, port.parse::<u16>()?)
-        }
-        None => (text, 3301),
-    };
-    Ok(format!("{host}:{port}"))
-}
-
 #[derive(Error, Debug)]
 pub enum ParsePathError {
     #[error("empty path is not supported, use \".\" for current dir")]
@@ -345,12 +317,12 @@ pub struct Connect {
         default_value = "guest",
         env = "PICODATA_USER"
     )]
-    /// The username to connect with
+    /// The username to connect with. Ignored if provided in <ADDRESS>.
     pub user: String,
 
-    /// Picodata instance address
-    #[clap(parse(try_from_str = try_parse_address),)]
-    pub address: String,
+    #[clap(value_name = "ADDRESS")]
+    /// Picodata instance address. Format: [user@][host][:port]
+    pub address: Address,
 }
 
 impl Connect {
@@ -360,23 +332,143 @@ impl Connect {
     }
 }
 
+const DEFAULT_HOST: &str = "localhost";
+const DEFAULT_PORT: &str = "3301";
+
+#[derive(Debug, Clone, PartialEq, Eq, tlua::Push)]
+pub struct Address {
+    pub user: Option<String>,
+    pub host: String,
+    pub port: String,
+}
+
+impl FromStr for Address {
+    type Err = String;
+
+    fn from_str(text: &str) -> Result<Self, Self::Err> {
+        let err = Err("valid format: [user@][host][:port]".to_string());
+        let (user, host_port) = match text.rsplit_once('@') {
+            Some((user, host_port)) => {
+                if user.contains(':') || user.contains('@') {
+                    return err;
+                }
+                if user.is_empty() {
+                    return err;
+                }
+                (Some(user), host_port)
+            }
+            None => (None, text),
+        };
+        let (host, port) = match host_port.rsplit_once(':') {
+            Some((host, port)) => {
+                if host.contains(':') {
+                    return err;
+                }
+                if port.is_empty() {
+                    return err;
+                }
+                let host = if host.is_empty() { None } else { Some(host) };
+                (host, Some(port))
+            }
+            None => (Some(host_port), None),
+        };
+        Ok(Self {
+            user: user.map(Into::into),
+            host: host.unwrap_or(DEFAULT_HOST).into(),
+            port: port.unwrap_or(DEFAULT_PORT).into(),
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn test_try_parse_address() {
-        assert_eq!(try_parse_address("1234").unwrap(), "1234:3301");
-        assert_eq!(try_parse_address(":1234").unwrap(), "localhost:1234");
-        assert_eq!(try_parse_address("example").unwrap(), "example:3301");
         assert_eq!(
-            try_parse_address("localhost:1234").unwrap(),
-            "localhost:1234"
+            "1234".parse(),
+            Ok(Address {
+                user: None,
+                host: "1234".into(),
+                port: "3301".into()
+            })
         );
-        assert_eq!(try_parse_address("1.2.3.4:1234").unwrap(), "1.2.3.4:1234");
-        assert_eq!(try_parse_address("example:1234").unwrap(), "example:1234");
-        assert!(try_parse_address("example:123456").is_err());
-        assert!(try_parse_address("example::1234").is_err());
+        assert_eq!(
+            ":1234".parse(),
+            Ok(Address {
+                user: None,
+                host: "localhost".into(),
+                port: "1234".into()
+            })
+        );
+        assert_eq!(
+            "example".parse(),
+            Ok(Address {
+                user: None,
+                host: "example".into(),
+                port: "3301".into()
+            })
+        );
+        assert_eq!(
+            "localhost:1234".parse(),
+            Ok(Address {
+                user: None,
+                host: "localhost".into(),
+                port: "1234".into()
+            })
+        );
+        assert_eq!(
+            "1.2.3.4:1234".parse(),
+            Ok(Address {
+                user: None,
+                host: "1.2.3.4".into(),
+                port: "1234".into()
+            })
+        );
+        assert_eq!(
+            "example:1234".parse(),
+            Ok(Address {
+                user: None,
+                host: "example".into(),
+                port: "1234".into()
+            })
+        );
+
+        assert_eq!(
+            "user@host:port".parse(),
+            Ok(Address {
+                user: Some("user".into()),
+                host: "host".into(),
+                port: "port".into()
+            })
+        );
+
+        assert_eq!(
+            "user@:port".parse(),
+            Ok(Address {
+                user: Some("user".into()),
+                host: "localhost".into(),
+                port: "port".into()
+            })
+        );
+
+        assert_eq!(
+            "user@host".parse(),
+            Ok(Address {
+                user: Some("user".into()),
+                host: "host".into(),
+                port: "3301".into()
+            })
+        );
+
+        assert!("example::1234".parse::<Address>().is_err());
+        assert!("user@@example".parse::<Address>().is_err());
+        assert!("user:pass@host:port".parse::<Address>().is_err());
+        assert!("a:b@c".parse::<Address>().is_err());
+        assert!("user:pass@host".parse::<Address>().is_err());
+        assert!("@host".parse::<Address>().is_err());
+        assert!("host:".parse::<Address>().is_err());
     }
 
     #[test]
@@ -420,8 +512,22 @@ mod tests {
         {
             let parsed = parse![Run,];
             assert_eq!(parsed.instance_id, Some("instance-id-from-env".into()));
-            assert_eq!(parsed.peers.as_ref(), vec!["localhost:3301"]);
-            assert_eq!(parsed.listen, "localhost:3301"); // default
+            assert_eq!(
+                parsed.peers.as_ref(),
+                vec![Address {
+                    user: None,
+                    host: "localhost".into(),
+                    port: "3301".into()
+                }]
+            );
+            assert_eq!(
+                parsed.listen,
+                Address {
+                    user: None,
+                    host: "localhost".into(),
+                    port: "3301".into()
+                }
+            ); // default
             assert_eq!(parsed.advertise_address(), "localhost:3301"); // default
             assert_eq!(parsed.log_level(), SayLevel::Info); // default
             assert_eq!(parsed.failure_domain(), FailureDomain::default()); // default
@@ -436,16 +542,56 @@ mod tests {
         std::env::set_var("PICODATA_PEER", "peer-from-env");
         {
             let parsed = parse![Run,];
-            assert_eq!(parsed.peers.as_ref(), vec!["peer-from-env:3301"]);
+            assert_eq!(
+                parsed.peers.as_ref(),
+                vec![Address {
+                    user: None,
+                    host: "peer-from-env".into(),
+                    port: "3301".into()
+                }]
+            );
 
             let parsed = parse![Run, "--peer", "peer-from-args"];
-            assert_eq!(parsed.peers.as_ref(), vec!["peer-from-args:3301"]);
+            assert_eq!(
+                parsed.peers.as_ref(),
+                vec![Address {
+                    user: None,
+                    host: "peer-from-args".into(),
+                    port: "3301".into()
+                }]
+            );
 
             let parsed = parse![Run, "--peer", ":3302"];
-            assert_eq!(parsed.peers.as_ref(), vec!["localhost:3302"]);
+            assert_eq!(
+                parsed.peers.as_ref(),
+                vec![Address {
+                    user: None,
+                    host: "localhost".into(),
+                    port: "3302".into()
+                }]
+            );
 
             let parsed = parse![Run, "--peer", "p1", "--peer", "p2,p3"];
-            assert_eq!(parsed.peers.as_ref(), vec!["p1:3301", "p2:3301", "p3:3301"]);
+            assert_eq!(
+                parsed.peers.as_ref(),
+                vec![
+                    Address {
+                        user: None,
+                        host: "p1".into(),
+                        port: "3301".into()
+                    },
+                    Address {
+                        user: None,
+                        host: "p2".into(),
+                        port: "3301".into()
+                    },
+                    Address {
+                        user: None,
+                        host: "p3".into(),
+                        port: "3301".into()
+                    }
+                ]
+            );
         }
 
         std::env::set_var("PICODATA_INSTANCE_ID", "");
@@ -463,26 +609,61 @@ mod tests {
         std::env::set_var("PICODATA_LISTEN", "listen-from-env");
         {
             let parsed = parse![Run,];
-            assert_eq!(parsed.listen, "listen-from-env:3301");
+            assert_eq!(
+                parsed.listen,
+                Address {
+                    user: None,
+                    host: "listen-from-env".into(),
+                    port: "3301".into()
+                }
+            );
             assert_eq!(parsed.advertise_address(), "listen-from-env:3301");
 
             let parsed = parse![Run, "-l", "listen-from-args"];
-            assert_eq!(parsed.listen, "listen-from-args:3301");
+            assert_eq!(
+                parsed.listen,
+                Address {
+                    user: None,
+                    host: "listen-from-args".into(),
+                    port: "3301".into()
+                }
+            );
             assert_eq!(parsed.advertise_address(), "listen-from-args:3301");
         }
 
         std::env::set_var("PICODATA_ADVERTISE", "advertise-from-env");
         {
             let parsed = parse![Run,];
-            assert_eq!(parsed.listen, "listen-from-env:3301");
+            assert_eq!(
+                parsed.listen,
+                Address {
+                    user: None,
+                    host: "listen-from-env".into(),
+                    port: "3301".into()
+                }
+            );
             assert_eq!(parsed.advertise_address(), "advertise-from-env:3301");
 
             let parsed = parse![Run, "-l", "listen-from-args"];
-            assert_eq!(parsed.listen, "listen-from-args:3301");
+            assert_eq!(
+                parsed.listen,
+                Address {
+                    user: None,
+                    host: "listen-from-args".into(),
+                    port: "3301".into()
+                }
+            );
             assert_eq!(parsed.advertise_address(), "advertise-from-env:3301");
 
             let parsed = parse![Run, "--advertise", "advertise-from-args"];
-            assert_eq!(parsed.listen, "listen-from-env:3301");
+            assert_eq!(
+                parsed.listen,
+                Address {
+                    user: None,
+                    host: "listen-from-env".into(),
+                    port: "3301".into()
+                }
+            );
             assert_eq!(parsed.advertise_address(), "advertise-from-args:3301");
         }
 
@@ -536,11 +717,26 @@ mod tests {
 
         {
             let parsed = parse![Connect, "somewhere:3301"];
-            assert_eq!(parsed.address, "somewhere:3301");
             assert_eq!(parsed.user, "guest");
+            assert_eq!(
+                parsed.address,
+                Address {
+                    user: None,
+                    host: "somewhere".into(),
+                    port: "3301".into()
+                }
+            );
 
-            let parsed = parse![Connect, "somewhere:3301", "--user", "superman"];
+            let parsed = parse![Connect, "user@host:port", "--user", "superman"];
             assert_eq!(parsed.user, "superman");
+            assert_eq!(
+                parsed.address,
+                Address {
+                    user: Some("user".into()),
+                    host: "host".into(),
+                    port: "port".into(),
+                }
+            );
 
             std::env::set_var("PICODATA_USER", "batman");
             let parsed = parse!(Connect, "somewhere:3301");

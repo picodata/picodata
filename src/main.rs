@@ -17,7 +17,7 @@ mod test;
 fn main() -> ! {
     export_symbols();
     match args::Picodata::parse() {
-        args::Picodata::Run(args) => main_run(args),
+        args::Picodata::Run(args) => main_run(*args),
         args::Picodata::Test(args) => test::main_test(args),
         args::Picodata::Tarantool(args) => main_tarantool(args),
         args::Picodata::Expel(args) => main_expel(args),
@@ -239,7 +239,8 @@ fn main_expel(args: args::Expel) -> ! {
 }
 
 fn main_connect(args: args::Connect) -> ! {
-    let prompt = format!("Enter password for {}: ", args.user);
+    let user = args.address.user.as_ref().unwrap_or(&args.user).clone();
+    let prompt = format!("Enter password for {}: ", &user);
     let password = match picodata::util::prompt_password(&prompt) {
         Ok(Some(password)) => password,
         Ok(None) => {
@@ -252,7 +253,10 @@ fn main_connect(args: args::Connect) -> ! {
         }
     };
 
-    let address = format!("{}:{}@{}", args.user, password, &args.address);
+    let address = format!(
+        "{user}:{password}@{}:{}",
+        args.address.host, args.address.port
+    );
 
     let rc = tarantool_main!(
         args.tt_args().unwrap(),

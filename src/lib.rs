@@ -18,6 +18,7 @@ use traft::RaftSpaceAccess;
 
 use protobuf::Message as _;
 
+use crate::args::Address;
 use crate::instance::grade::TargetGradeVariant;
 use crate::traft::op;
 use crate::traft::LogicalClock;
@@ -163,15 +164,9 @@ fn preload_http() {
     preload!("http.mime_types", "http/mime_types.lua");
 }
 
-fn start_http_server(address: &str) {
-    tlog!(Info, "starting http server at {address}");
+fn start_http_server(Address { host, port, .. }: &Address) {
+    tlog!(Info, "starting http server at {host}:{port}");
     let lua = ::tarantool::lua_state();
-    let (host, port) = address
-        .rsplit_once(':')
-        .expect("this part should have been checked at args parse");
-    let port: u16 = port
-        .parse()
-        .expect("this part should have been checked at args parse");
     lua.exec_with(
         "local host, port = ...;
         local httpd = require('http.server').new(host, port);
@@ -334,9 +329,13 @@ fn start_discover(args: &args::Run, to_supervisor: ipc::Sender<IpcMessage>) {
     };
 
     let (storage, raft_storage) = init_common(args, &cfg);
-    discovery::init_global(&args.peers);
+    discovery::init_global(
+        args.peers
+            .iter()
+            .map(|Address { host, port, .. }| format!("{host}:{port}")),
+    );
 
-    cfg.listen = Some(args.listen.clone());
+    cfg.listen = Some(format!("{}:{}", args.listen.host, args.listen.port));
     tarantool::set_cfg(&cfg);
 
     // TODO assert traft::Storage::instance_id == (null || args.instance_id)
@@ -552,7 +551,7 @@ fn start_join(args: &args::Run, leader_address: String) {
     assert!(tarantool::cfg().is_none());
 
     let cfg = tarantool::Cfg {
-        listen: Some(args.listen.clone()),
+        listen: Some(format!("{}:{}", args.listen.host, args.listen.port)),
         read_only: resp.box_replication.len() > 1,
         instance_uuid: Some(resp.instance.instance_uuid.clone()),
         replicaset_uuid: Some(resp.instance.replicaset_uuid.clone()),
@@ -586,8 +585,8 @@ fn start_join(args: &args::Run, leader_address: String) {
 fn postjoin(args: &args::Run, storage: Clusterwide, raft_storage: RaftSpaceAccess) {
     tlog!(Info, ">>>>> postjoin()");
 
-    if let Some(ref address) = args.http_listen {
-        start_http_server(address);
+    if let Some(addr) = &args.http_listen {
+        start_http_server(addr);
         if cfg!(feature = "webui") {
             tlog!(Info, "Web UI is enabled");
         } else {
@@ -631,7 +630,7 @@ fn postjoin(args: &args::Run, storage: Clusterwide, raft_storage: RaftSpaceAcces
         assert!(node.status().raft_state.is_leader());
     }
 
-    box_cfg.listen = Some(args.listen.clone());
+    box_cfg.listen = Some(format!("{}:{}", args.listen.host, args.listen.port));
     tarantool::set_cfg(&box_cfg);
 
     if let Err(e) = tarantool::on_shutdown(|| fiber::block_on(on_shutdown::callback())) {
@@ -697,7 +696,11 @@ pub async fn tt_expel(args: args::Expel) {
         cluster_id: args.cluster_id,
         instance_id: args.instance_id,
     };
-    let res = rpc::network_call(&args.peer_address, &rpc::expel::redirect::Request(req)).await;
+    let res = rpc::network_call(
+        &format!("{}:{}", args.peer_address.host, args.peer_address.port),
+        &rpc::expel::redirect::Request(req),
+    )
+    .await;
     match res {
         Ok(_) => {
             tlog!(Info, "Success expel call");

@@ -8,6 +8,13 @@ with the `YY.0M.MICRO` scheme.
 
 <img src="https://img.shields.io/badge/calver-YY.0M.MICRO-22bfda.svg">
 
+## Unreleased
+
+### Features
+
+- Allow specifying `picodata connect [user@][host][:port]` format. It
+  overrides the `--user` option.
+
 ## [23.06.0] - 2023-06-16
 
 ### Features
