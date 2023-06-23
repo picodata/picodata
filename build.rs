@@ -441,10 +441,8 @@ fn build_tarantool(jsc: Option<&jobserver::Client>, build_root: &Path) {
     rustc::link_lib_dynamic("ssl");
     rustc::link_lib_dynamic("crypto");
 
-    rustc::link_search(format!("{tarantool_sys}/ncurses-prefix/lib"));
     rustc::link_lib_dynamic("tinfo");
 
-    rustc::link_search(format!("{tarantool_sys}/iconv-prefix/lib"));
     if cfg!(target_os = "macos") {
         // -lc++ instead of -lstdc++ on macos
         rustc::link_lib_dynamic("c++");
