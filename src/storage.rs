@@ -2574,6 +2574,10 @@ pub fn acl_revoke_privilege_on_master(priv_def: &PrivilegeDef) -> tarantool::Res
     lua.exec_with(
         "local grantee_id, privilege, object_type, object_name = ...
         local grantee_def = box.space._user:get(grantee_id)
+        if not grantee_def then
+            -- Grantee already dropped -> privileges already revoked
+            return
+        end
         if grantee_def.type == 'user' then
             box.schema.user.revoke(grantee_id, privilege, object_type, object_name)
         else
