@@ -47,7 +47,7 @@ pub(crate) fn setup(args: &args::Run) {
         pico.PICODATA_VERSION
         =====================
 
-        A string variable (not a function) contatining Picodata version
+        A string variable (not a function) containing Picodata version
         which follows the Calendar Versioning convention with the
         `YY.0M.MICRO` scheme:
 
@@ -98,7 +98,7 @@ pub(crate) fn setup(args: &args::Run) {
         =========
 
         A Lua table (not a function) containing the command-line arguments
-        specified at instance startup. The content of the table is not
+        specified at the instance startup. The content of the table is not
         strictly defined and may depend on circumstances.
 
         Example:
@@ -336,7 +336,7 @@ pub(crate) fn setup(args: &args::Run) {
         2. Raft leader tracks its `commit_index` and broadcasts a
            heartbeat to followers to make certain that it's still a
            leader.
-        3. As soon as the heartbeat is acknowlenged by the quorum, the
+        3. As soon as the heartbeat is acknowledged by the quorum, the
            leader returns that index to the instance.
         4. The instance awaits when the index is applied. If timeout
            expires beforehand, the function returns the error 'timeout'.
@@ -566,8 +566,29 @@ pub(crate) fn setup(args: &args::Run) {
 
         Internal API. Causes this instance to artificially timeout on waiting
         for a heartbeat from raft leader. The instance then will start a new
-        election and transition to a 'PreCandidate' state. See `src/luamod.rs`
-        for the details.
+        election and transition to a 'PreCandidate' state.
+
+        This function yields. It returns when the raft node changes it's state.
+
+        Later the instance will likely become a leader, unless there are some
+        impediments, e.g. the loss of quorum or split-vote.
+
+        Example log:
+
+            received MsgTimeoutNow from 3 and starts an election
+                to get leadership., from: 3, term: 4, raft_id: 3
+            
+            starting a new election, term: 4, raft_id: 3
+            
+            became candidate at term 5, term: 5, raft_id: 3
+            
+            broadcasting vote request, to: [4, 1], log_index: 54,
+                log_term: 4, term: 5, type: MsgRequestVote, raft_id: 3
+            
+            received votes response, term: 5, type: MsgRequestVoteResponse, 
+                approvals: 2, rejections: 0, from: 4, vote: true, raft_id: 3
+        
+            became leader at term 5, term: 5, raft_id: 3
         "},
         tlua::function0(|| -> traft::Result<()> {
             traft::node::global()?.timeout_now();
@@ -603,7 +624,8 @@ pub(crate) fn setup(args: &args::Run) {
         pico.expel(instance_id)
         ======================
 
-        Expells an instance with instance_id from the cluster.
+        Expels an instance with instance_id from the cluster. The instance will
+        keep on running though. If restarted, it will not join the cluster.
 
         Params:
 
@@ -851,7 +873,7 @@ pub(crate) fn setup(args: &args::Run) {
                 - kind (string), one of 'insert' | 'replace' | 'update' | 'delete'
                 - space (stringLua)
                 - tuple (optional table), mandatory for insert and replace, see [1, 2]
-                - key (optional table), mandatory for udate and delete, see [3, 4]
+                - key (optional table), mandatory for update and delete, see [3, 4]
                 - ops (optional table), mandatory for update see [3]
 
             2. predicate (optional table)
@@ -916,7 +938,7 @@ pub(crate) fn setup(args: &args::Run) {
             })
 
             -- Delete the second Peppa friend, specifying index and term
-            -- explicitly. It's necessary when there are some yileding
+            -- explicitly. It's necessary when there are some yielding
             -- operations between reading and writing.
             index, term = {
                 assert(pico.raft_get_index()),
@@ -1114,7 +1136,7 @@ pub(crate) fn setup(args: &args::Run) {
 
         Returns:
 
-            (numer)
+            (number)
             or
             (nil, string) in case of an error
         "},
