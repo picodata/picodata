@@ -134,22 +134,22 @@ fn main() {
         )
         .unwrap();
 
-        std::os::unix::fs::symlink(
-        "../build/tarantool-sys/tarantool-prefix/src/tarantool-build/third_party/libyaml/libyaml.so",
-        picodata_libs.join("libyaml.so"),
-        )
-        .unwrap();
+        // std::os::unix::fs::symlink(
+        // "../build/tarantool-sys/tarantool-prefix/src/tarantool-build/third_party/libyaml/libyaml.so",
+        // picodata_libs.join("libyaml.so"),
+        // )
+        // .unwrap();
 
-        std::os::unix::fs::symlink(
-        "../build/tarantool-sys/tarantool-prefix/src/tarantool-build/third_party/libunwind/src/.libs/libunwind.so.8",
-        picodata_libs.join("libunwind.so.8"),
-        )
-        .unwrap();
-        std::os::unix::fs::symlink(
-        "../build/tarantool-sys/tarantool-prefix/src/tarantool-build/third_party/libunwind/src/.libs/libunwind-x86_64.so.8",
-        picodata_libs.join("libunwind-x86_64.so.8"),
-        )
-        .unwrap();
+        // std::os::unix::fs::symlink(
+        // "../build/tarantool-sys/tarantool-prefix/src/tarantool-build/third_party/libunwind/src/.libs/libunwind.so.8",
+        // picodata_libs.join("libunwind.so.8"),
+        // )
+        // .unwrap();
+        // std::os::unix::fs::symlink(
+        // "../build/tarantool-sys/tarantool-prefix/src/tarantool-build/third_party/libunwind/src/.libs/libunwind-x86_64.so.8",
+        // picodata_libs.join("libunwind-x86_64.so.8"),
+        // )
+        // .unwrap();
 
         std::os::unix::fs::symlink(
             "../build/tarantool-sys/tarantool-prefix/src/tarantool-build/third_party/luajit/src/libluajit.so.2",
@@ -380,7 +380,7 @@ fn build_tarantool(jsc: Option<&jobserver::Client>, build_root: &Path) {
     rustc::link_lib_static("symbols");
     rustc::link_lib_static("cpu_feature");
     rustc::link_lib_dynamic("luajit");
-    rustc::link_lib_dynamic("yaml");
+    rustc::link_lib_static("yaml_static");
     rustc::link_lib_static("xxhash");
 
     // Add LDAP authentication support libraries.
@@ -404,12 +404,15 @@ fn build_tarantool(jsc: Option<&jobserver::Client>, build_root: &Path) {
         // duplicate symbols which is not allowed (by default) when linking with
         // via -l... option
         // let arch = std::env::var("CARGO_CFG_TARGET_ARCH").unwrap();
-        let lib_dir = format!("{tarantool_build}/third_party/libunwind/src/.libs");
+        // let lib_dir = format!("{tarantool_build}/third_party/libunwind/src/.libs");
         // rustc::link_arg(format!("{lib_dir}/libunwind-{arch}.a"));
         // rustc::link_arg(format!("{lib_dir}/libunwind.a"));
 
-        rustc::link_arg(format!("{lib_dir}/libunwind-x86_64.so"));
-        rustc::link_arg(format!("{lib_dir}/libunwind.so"));
+        // rustc::link_arg(format!("{lib_dir}/libunwind-x86_64.so"));
+        // rustc::link_arg(format!("{lib_dir}/libunwind.so"));
+        // rustc::link_search(format!("{tarantool_build}/third_party/libunwind/src/.libs"));
+        // rustc::link_lib_dynamic("unwind-x86_64");
+        // rustc::link_lib_dynamic("unwind");
     }
 
     rustc::link_arg("-lc");
