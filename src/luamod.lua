@@ -97,8 +97,7 @@ Params:
     2. password (string)
     3. opts (table)
         - if_not_exists (boolean), if true, do nothing if user with given name already exists
-        - timeout (number), wait for this many seconds for the proposed entry
-            to be applied locally, default: 3 seconds
+        - timeout (number), seconds
 
 Returns:
 
@@ -112,6 +111,9 @@ function pico.create_user(user, password, opts)
         box.internal.check_param(password, 'password', 'string')
         box.internal.check_param_table(opts, { if_not_exists = 'boolean', timeout = 'number' })
         opts = opts or {}
+        if not opts.timeout then
+            box.error(box.error.ILLEGAL_PARAMS, 'opts.timeout is mandatory')
+        end
     end)
     if not ok then
         return nil, err
@@ -145,7 +147,7 @@ function pico.create_user(user, password, opts)
         }
     }
 
-    return pico._prepare_schema_change(op, opts.timeout or 3)
+    return pico._prepare_schema_change(op, opts.timeout)
 end
 
 help.change_password = [[
@@ -166,8 +168,7 @@ Params:
     1. user (string), username
     2. password (string)
     3. opts (table)
-        - timeout (number), wait for this many seconds for the proposed entry
-            to be applied locally, default: 3 seconds
+        - timeout (number), seconds
 
 Returns:
 
@@ -181,6 +182,9 @@ function pico.change_password(user, password, opts)
         box.internal.check_param(password, 'password', 'string')
         box.internal.check_param_table(opts, { timeout = 'number' })
         opts = opts or {}
+        if not opts.timeout then
+            box.error(box.error.ILLEGAL_PARAMS, 'opts.timeout is mandatory')
+        end
     end)
     if not ok then
         return nil, err
@@ -205,7 +209,7 @@ function pico.change_password(user, password, opts)
         }
     }
 
-    return pico._prepare_schema_change(op, opts.timeout or 3)
+    return pico._prepare_schema_change(op, opts.timeout)
 end
 
 help.drop_user = [[
@@ -227,8 +231,7 @@ Params:
     1. user (string), username
     2. opts (table)
         - if_exists (boolean), if true do nothing if user with given name doesn't exist
-        - timeout (number), wait for this many seconds for the proposed entry
-            to be applied locally, default: 3 seconds
+        - timeout (number), seconds
 
 Returns:
 
@@ -241,6 +244,9 @@ function pico.drop_user(user, opts)
         box.internal.check_param(user, 'user', 'string')
         box.internal.check_param_table(opts, { if_exists = 'boolean', timeout = 'number' })
         opts = opts or {}
+        if not opts.timeout then
+            box.error(box.error.ILLEGAL_PARAMS, 'opts.timeout is mandatory')
+        end
     end)
     if not ok then
         return nil, err
@@ -263,7 +269,7 @@ function pico.drop_user(user, opts)
         schema_version = next_schema_version(),
     }
 
-    return pico._prepare_schema_change(op, opts.timeout or 3)
+    return pico._prepare_schema_change(op, opts.timeout)
 end
 
 help.create_role = [[
@@ -281,8 +287,7 @@ Params:
     1. name (string), role name
     2. opts (table)
         - if_not_exists (boolean), if true, do nothing if role with given name already exists
-        - timeout (number), wait for this many seconds for the proposed entry
-            to be applied locally, default: 3 seconds
+        - timeout (number), seconds
 
 Returns:
 
@@ -295,6 +300,9 @@ function pico.create_role(role, opts)
         box.internal.check_param(role, 'role', 'string')
         box.internal.check_param_table(opts, { if_not_exists = 'boolean', timeout = 'number' })
         opts = opts or {}
+        if not opts.timeout then
+            box.error(box.error.ILLEGAL_PARAMS, 'opts.timeout is mandatory')
+        end
     end)
     if not ok then
         return nil, err
@@ -322,7 +330,7 @@ function pico.create_role(role, opts)
         }
     }
 
-    return pico._prepare_schema_change(op, opts.timeout or 3)
+    return pico._prepare_schema_change(op, opts.timeout)
 end
 
 help.drop_role = [[
@@ -340,8 +348,7 @@ Params:
     1. role (string), role name
     2. opts (table)
         - if_exists (boolean), if true do nothing if role with given name doesn't exist
-        - timeout (number), wait for this many seconds for the proposed entry
-            to be applied locally, default: 3 seconds
+        - timeout (number), seconds
 
 Returns:
 
@@ -354,6 +361,9 @@ function pico.drop_role(role, opts)
         box.internal.check_param(role, 'role', 'string')
         box.internal.check_param_table(opts, { if_exists = 'boolean', timeout = 'number' })
         opts = opts or {}
+        if not opts.timeout then
+            box.error(box.error.ILLEGAL_PARAMS, 'opts.timeout is mandatory')
+        end
     end)
     if not ok then
         return nil, err
@@ -376,7 +386,7 @@ function pico.drop_role(role, opts)
         schema_version = next_schema_version(),
     }
 
-    return pico._prepare_schema_change(op, opts.timeout or 3)
+    return pico._prepare_schema_change(op, opts.timeout)
 end
 
 -- A lookup map
@@ -571,8 +581,7 @@ Params:
         entire class of entities, see examples below.
 
     5. opts (table)
-        - timeout (number), wait for this many seconds for the proposed entry
-            to be applied locally, default: 3 seconds
+        - timeout (number), seconds
 
 Returns:
 
@@ -606,6 +615,9 @@ function pico.grant_privilege(grantee, privilege, object_type, object_name, opts
         box.internal.check_param(object_name, 'object_name', 'string')
         box.internal.check_param_table(opts, { timeout = 'number' })
         opts = opts or {}
+        if not opts.timeout then
+            box.error(box.error.ILLEGAL_PARAMS, 'opts.timeout is mandatory')
+        end
     end)
     if not ok then
         return nil, err
@@ -645,7 +657,7 @@ function pico.grant_privilege(grantee, privilege, object_type, object_name, opts
         },
     }
 
-    return pico._prepare_schema_change(op, opts.timeout or 3)
+    return pico._prepare_schema_change(op, opts.timeout)
 end
 
 help.revoke_privilege = [[
@@ -678,8 +690,7 @@ Params:
         entire class of entities, see pico.help("pico.grant_privilege") for details.
 
     5. opts (table)
-        - timeout (number), wait for this many seconds for the proposed entry
-            to be applied locally, default: 3 seconds
+        - timeout (number), seconds
 
 Returns:
 
@@ -696,6 +707,9 @@ function pico.revoke_privilege(grantee, privilege, object_type, object_name, opt
         box.internal.check_param(object_name, 'object_name', 'string')
         box.internal.check_param_table(opts, { timeout = 'number' })
         opts = opts or {}
+        if not opts.timeout then
+            box.error(box.error.ILLEGAL_PARAMS, 'opts.timeout is mandatory')
+        end
     end)
     if not ok then
         return nil, err
@@ -735,7 +749,7 @@ function pico.revoke_privilege(grantee, privilege, object_type, object_name, opt
         },
     }
 
-    return pico._prepare_schema_change(op, opts.timeout or 3)
+    return pico._prepare_schema_change(op, opts.timeout)
 end
 
 help.drop_space = [[

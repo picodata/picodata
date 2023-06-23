@@ -19,15 +19,15 @@ def test_acl_lua_api(cluster: Cluster):
         i1.call("pico.create_user", "Dave")
 
     # This is probably not ok.
-    i1.call("pico.create_user", "Dave", "")
+    i1.call("pico.create_user", "Dave", "", dict(timeout=3))
 
     # Already exists -> error.
     with pytest.raises(ReturnError, match="User 'Dave' already exists"):
-        i1.call("pico.create_user", "Dave", "")
+        i1.call("pico.create_user", "Dave", "", dict(timeout=3))
 
     # Role already exists -> error.
     with pytest.raises(ReturnError, match="Role 'super' already exists"):
-        i1.call("pico.create_user", "super", "")
+        i1.call("pico.create_user", "super", "", dict(timeout=3))
 
     #
     # pico.create_role
@@ -38,15 +38,15 @@ def test_acl_lua_api(cluster: Cluster):
         i1.call("pico.create_role")
 
     # Ok.
-    i1.call("pico.create_role", "Parent")
+    i1.call("pico.create_role", "Parent", dict(timeout=3))
 
     # Already exists -> error.
     with pytest.raises(ReturnError, match="Role 'Parent' already exists"):
-        i1.call("pico.create_role", "Parent")
+        i1.call("pico.create_role", "Parent", dict(timeout=3))
 
     # User already exists -> error.
     with pytest.raises(ReturnError, match="User 'Dave' already exists"):
-        i1.call("pico.create_role", "Dave")
+        i1.call("pico.create_role", "Dave", dict(timeout=3))
 
     #
     # pico.grant_privilege / pico.revoke_privilege parameter verification
@@ -57,27 +57,27 @@ def test_acl_lua_api(cluster: Cluster):
         with pytest.raises(ReturnError, match="grantee should be a string"):
             i1.call(f"pico.{f}")
 
-        # No such user -> error.
-        with pytest.raises(ReturnError, match="User 'User is not found' is not found"):
-            i1.call(f"pico.{f}", "User is not found", "execute", "universe")
-
         # No privilege -> error.
         with pytest.raises(ReturnError, match="privilege should be a string"):
             i1.call(f"pico.{f}", "Dave")
+
+        # No such user -> error.
+        with pytest.raises(ReturnError, match="User 'User is not found' is not found"):
+            i1.call(f"pico.{f}", "User is not found", "execute", "universe", None, dict(timeout=3))
 
         # No such privilege -> error.
         with pytest.raises(
             ReturnError,
             match=rf"unsupported privilege 'boogie', see pico.help\('{f}'\) for details",
         ):
-            i1.call(f"pico.{f}", "Dave", "boogie", "universe")
+            i1.call(f"pico.{f}", "Dave", "boogie", "universe", None, dict(timeout=3))
 
         # Comma separated list of privileges -> error.
         with pytest.raises(
             ReturnError,
             match=rf"unsupported privilege 'read,write', see pico.help\('{f}'\) for details",
         ):
-            i1.call(f"pico.{f}", "Dave", "read,write", "universe")
+            i1.call(f"pico.{f}", "Dave", "read,write", "universe", None, dict(timeout=3))
 
         # No object_type -> error.
         with pytest.raises(ReturnError, match="object_type should be a string"):
@@ -85,32 +85,32 @@ def test_acl_lua_api(cluster: Cluster):
 
         # No such object_type -> error.
         with pytest.raises(ReturnError, match="Unknown object type 'bible'"):
-            i1.call(f"pico.{f}", "Dave", "read", "bible")
+            i1.call(f"pico.{f}", "Dave", "read", "bible", None, dict(timeout=3))
 
         # Wrong combo -> error.
         with pytest.raises(ReturnError, match="Unsupported space privilege 'grant'"):
-            i1.call(f"pico.{f}", "Dave", "grant", "space")
+            i1.call(f"pico.{f}", "Dave", "grant", "space", None, dict(timeout=3))
 
         # No such role -> error.
         with pytest.raises(ReturnError, match="Role 'Joker' is not found"):
-            i1.call(f"pico.{f}", "Dave", "execute", "role", "Joker")
+            i1.call(f"pico.{f}", "Dave", "execute", "role", "Joker", dict(timeout=3))
 
     #
     # pico.grant_privilege semantics verification
     #
 
     # Grant privilege to user -> Ok.
-    i1.call("pico.grant_privilege", "Dave", "read", "space", "_pico_property")
+    i1.call("pico.grant_privilege", "Dave", "read", "space", "_pico_property", dict(timeout=3))
 
     # Already granted -> error.
     with pytest.raises(
         ReturnError,
         match="User 'Dave' already has read access on space '_pico_property'",
     ):
-        i1.call("pico.grant_privilege", "Dave", "read", "space", "_pico_property")
+        i1.call("pico.grant_privilege", "Dave", "read", "space", "_pico_property", dict(timeout=3))
 
     # Grant privilege to role -> Ok.
-    i1.call("pico.grant_privilege", "Parent", "write", "space", "_pico_property")
+    i1.call("pico.grant_privilege", "Parent", "write", "space", "_pico_property", dict(timeout=3))
 
     # Already granted -> error.
     # FIXME: tarantool says User instead of Role.
@@ -118,33 +118,33 @@ def test_acl_lua_api(cluster: Cluster):
         ReturnError,
         match="User 'Parent' already has write access on space '_pico_property'",
     ):
-        i1.call("pico.grant_privilege", "Parent", "write", "space", "_pico_property")
+        i1.call("pico.grant_privilege", "Parent", "write", "space", "_pico_property", dict(timeout=3))
 
     # Assign role to user -> Ok.
-    i1.call("pico.grant_privilege", "Dave", "execute", "role", "Parent")
+    i1.call("pico.grant_privilege", "Dave", "execute", "role", "Parent", dict(timeout=3))
 
     # Already assigned role to user -> error.
     with pytest.raises(
         ReturnError, match="User 'Dave' already has execute access on role 'Parent'"
     ):
-        i1.call("pico.grant_privilege", "Dave", "execute", "role", "Parent")
+        i1.call("pico.grant_privilege", "Dave", "execute", "role", "Parent", dict(timeout=3))
 
     #
     # pico.revoke_privilege semantics verification
     #
 
     # Revoke privilege to user -> Ok.
-    i1.call("pico.revoke_privilege", "Dave", "read", "space", "_pico_property")
+    i1.call("pico.revoke_privilege", "Dave", "read", "space", "_pico_property", dict(timeout=3))
 
     # Already revoked -> error.
     with pytest.raises(
         ReturnError,
         match="User 'Dave' does not have read access on space '_pico_property'",
     ):
-        i1.call("pico.revoke_privilege", "Dave", "read", "space", "_pico_property")
+        i1.call("pico.revoke_privilege", "Dave", "read", "space", "_pico_property", dict(timeout=3))
 
     # Revoke privilege to role -> Ok.
-    i1.call("pico.revoke_privilege", "Parent", "write", "space", "_pico_property")
+    i1.call("pico.revoke_privilege", "Parent", "write", "space", "_pico_property", dict(timeout=3))
 
     # Already revoked -> error.
     # FIXME: tarantool says User instead of Role.
@@ -152,16 +152,16 @@ def test_acl_lua_api(cluster: Cluster):
         ReturnError,
         match="User 'Parent' does not have write access on space '_pico_property'",
     ):
-        i1.call("pico.revoke_privilege", "Parent", "write", "space", "_pico_property")
+        i1.call("pico.revoke_privilege", "Parent", "write", "space", "_pico_property", dict(timeout=3))
 
     # Revoke role to user -> Ok.
-    i1.call("pico.revoke_privilege", "Dave", "execute", "role", "Parent")
+    i1.call("pico.revoke_privilege", "Dave", "execute", "role", "Parent", dict(timeout=3))
 
     # Already revoked role to user -> error.
     with pytest.raises(
         ReturnError, match="User 'Dave' does not have execute access on role 'Parent'"
     ):
-        i1.call("pico.revoke_privilege", "Dave", "execute", "role", "Parent")
+        i1.call("pico.revoke_privilege", "Dave", "execute", "role", "Parent", dict(timeout=3))
 
     #
     # pico.drop_user
@@ -169,18 +169,18 @@ def test_acl_lua_api(cluster: Cluster):
 
     # No user -> error.
     with pytest.raises(ReturnError, match="user should be a string"):
-        i1.call("pico.drop_user")
+        i1.call("pico.drop_user", dict(timeout=3))
 
     # No such user -> error.
     with pytest.raises(ReturnError, match="User 'User is not found' is not found"):
-        i1.call("pico.drop_user", "User is not found")
+        i1.call("pico.drop_user", "User is not found", dict(timeout=3))
 
     # Ok.
-    i1.call("pico.drop_user", "Dave")
+    i1.call("pico.drop_user", "Dave", dict(timeout=3))
 
     # Repeat drop -> error.
     with pytest.raises(ReturnError, match="User 'Dave' is not found"):
-        i1.call("pico.drop_user", "Dave")
+        i1.call("pico.drop_user", "Dave", dict(timeout=3))
 
     #
     # pico.drop_role
@@ -192,14 +192,14 @@ def test_acl_lua_api(cluster: Cluster):
 
     # No such role -> error.
     with pytest.raises(ReturnError, match="Role 'Role is not found' is not found"):
-        i1.call("pico.drop_role", "Role is not found")
+        i1.call("pico.drop_role", "Role is not found", dict(timeout=3))
 
     # Ok.
-    i1.call("pico.drop_role", "Parent")
+    i1.call("pico.drop_role", "Parent", dict(timeout=3))
 
     # Repeat drop -> error.
     with pytest.raises(ReturnError, match="Role 'Parent' is not found"):
-        i1.call("pico.drop_role", "Parent")
+        i1.call("pico.drop_role", "Parent", dict(timeout=3))
 
     #
     # Options validation
@@ -219,6 +219,12 @@ def test_acl_lua_api(cluster: Cluster):
     ):
         i1.call("pico.create_user", "Dave", "pass", dict(timeout="3s"))
 
+    # No timeout -> error.
+    with pytest.raises(
+        ReturnError, match="opts.timeout is mandatory"
+    ):
+        i1.call("pico.create_user", "Dave", "pass")
+
 
 def test_acl_basic(cluster: Cluster):
     i1, *_ = cluster.deploy(instance_count=4, init_replication_factor=2)
@@ -235,7 +241,7 @@ def test_acl_basic(cluster: Cluster):
     #
     #
     # Create user.
-    index = i1.call("pico.create_user", user, password)
+    index = i1.call("pico.create_user", user, password, dict(timeout=3))
     cluster.raft_wait_index(index)
     v += 1
 
@@ -270,11 +276,11 @@ def test_acl_basic(cluster: Cluster):
     # Grant some privileges.
     # Doing anything via remote function execution requires execute access
     # to the "universe"
-    index = i1.call("pico.grant_privilege", user, "execute", "universe")
+    index = i1.call("pico.grant_privilege", user, "execute", "universe", None, dict(timeout=3))
     cluster.raft_wait_index(index)
     v += 1
 
-    index = i1.call("pico.grant_privilege", user, "read", "space", "money")
+    index = i1.call("pico.grant_privilege", user, "read", "space", "money", dict(timeout=3))
     cluster.raft_wait_index(index)
     v += 1
 
@@ -320,7 +326,7 @@ def test_acl_basic(cluster: Cluster):
     #
     #
     # Revoke the privilege.
-    index = i1.call("pico.revoke_privilege", user, "read", "space", "money")
+    index = i1.call("pico.revoke_privilege", user, "read", "space", "money", dict(timeout=3))
     cluster.raft_wait_index(index)
     v += 1
 
@@ -337,7 +343,7 @@ def test_acl_basic(cluster: Cluster):
     # Change user's password.
     old_password = password
     new_password = "$3kr3T"
-    index = i1.call("pico.change_password", user, new_password)
+    index = i1.call("pico.change_password", user, new_password, dict(timeout=3))
     cluster.raft_wait_index(index)
     v += 1
 
@@ -355,7 +361,7 @@ def test_acl_basic(cluster: Cluster):
     #
     #
     # Drop user.
-    index = i1.call("pico.drop_user", user)
+    index = i1.call("pico.drop_user", user, dict(timeout=3))
 
     for i in cluster.instances:
         i.raft_wait_index(index)
@@ -390,12 +396,12 @@ def test_acl_roles_basic(cluster: Cluster):
     password = "1234"
 
     # Create user.
-    index = i1.call("pico.create_user", user, password)
+    index = i1.call("pico.create_user", user, password, dict(timeout=3))
     cluster.raft_wait_index(index)
 
     # Doing anything via remote function execution requires execute access
     # to the "universe"
-    index = i1.call("pico.grant_privilege", user, "execute", "universe")
+    index = i1.call("pico.grant_privilege", user, "execute", "universe", None, dict(timeout=3))
     cluster.raft_wait_index(index)
 
     # Try reading from space on behalf of the user.
@@ -410,15 +416,15 @@ def test_acl_roles_basic(cluster: Cluster):
     #
     # Create role.
     role = "PropertyReader"
-    index = i1.call("pico.create_role", role)
+    index = i1.call("pico.create_role", role, dict(timeout=3))
     cluster.raft_wait_index(index)
 
     # Grant the role read access.
-    index = i1.call("pico.grant_privilege", role, "read", "space", "_pico_property")
+    index = i1.call("pico.grant_privilege", role, "read", "space", "_pico_property", dict(timeout=3))
     cluster.raft_wait_index(index)
 
     # Assign role to user.
-    index = i1.call("pico.grant_privilege", user, "execute", "role", role)
+    index = i1.call("pico.grant_privilege", user, "execute", "role", role, dict(timeout=3))
     cluster.raft_wait_index(index)
 
     # Try reading from space on behalf of the user again. Now succeed.
@@ -427,7 +433,7 @@ def test_acl_roles_basic(cluster: Cluster):
         assert len(rows) > 0
 
     # Revoke read access from the role.
-    index = i1.call("pico.revoke_privilege", role, "read", "space", "_pico_property")
+    index = i1.call("pico.revoke_privilege", role, "read", "space", "_pico_property", dict(timeout=3))
     cluster.raft_wait_index(index)
 
     # Try reading from space on behalf of the user yet again, which fails again.
@@ -439,7 +445,7 @@ def test_acl_roles_basic(cluster: Cluster):
             i.call("box.space._pico_property:select", user=user, password=password)
 
     # Drop the role.
-    index = i1.call("pico.drop_role", role)
+    index = i1.call("pico.drop_role", role, dict(timeout=3))
     cluster.raft_wait_index(index)
 
     # Nothing changed here.
