@@ -635,7 +635,7 @@ macro_rules! assert_err {
 
 mod tests {
     use super::*;
-    use ::tarantool::transaction::start_transaction;
+    use ::tarantool::transaction::transaction;
 
     fn dummy_entry(index: RaftIndex, term: RaftTerm) -> raft::Entry {
         raft::Entry {
@@ -672,7 +672,7 @@ mod tests {
         assert_err!(S::term(&storage, 1), "log unavailable");
 
         // Part 2. Whole log was compacted.
-        start_transaction(|| -> tarantool::Result<()> {
+        transaction(|| -> tarantool::Result<()> {
             storage.persist_compacted_term(9)?;
             storage.persist_compacted_index(99)?;
             Ok(())
@@ -737,7 +737,7 @@ mod tests {
         raft_log.put(&(1337, first, term, "", ())).unwrap();
         assert_err!(
             S::entries(&storage, first, last + 1, u64::MAX),
-            "unknown error Failed to decode tuple: unknown entry type (1337)"
+            "unknown error failed to decode tuple: unknown entry type (1337)"
         );
 
         raft_log.put(&(0, first, term, "", false)).unwrap();
@@ -745,7 +745,7 @@ mod tests {
             S::entries(&storage, first, last + 1, u64::MAX),
             concat!(
                 "unknown error",
-                " Failed to decode tuple:",
+                " failed to decode tuple:",
                 " data did not match any variant",
                 " of untagged enum EntryContext"
             )
@@ -761,7 +761,7 @@ mod tests {
             S::entries(&storage, first, last + 1, u64::MAX),
             concat!(
                 "unknown error",
-                " Tarantool error:",
+                " tarantool error:",
                 " NoSuchIndexID:",
                 " No index #0 is defined in space '_raft_log'"
             )
@@ -773,7 +773,7 @@ mod tests {
             format!(
                 concat!(
                     "unknown error",
-                    " Tarantool error:",
+                    " tarantool error:",
                     " NoSuchSpace:",
                     " Space '{}' does not exist",
                 ),
@@ -795,7 +795,7 @@ mod tests {
         let commit = 8;
         storage.persist_commit(commit).unwrap();
         let entries = |lo, hi| S::entries(&storage, lo, hi, u64::MAX);
-        let compact_log = |up_to| start_transaction(|| storage.compact_log(up_to));
+        let compact_log = |up_to| transaction(|| storage.compact_log(up_to));
 
         assert_eq!(S::first_index(&storage), Ok(first));
         assert_eq!(S::last_index(&storage), Ok(last));
@@ -852,7 +852,7 @@ mod tests {
             commit: 98,
             ..Default::default()
         };
-        start_transaction(|| storage.persist_hard_state(&hs)).unwrap();
+        transaction(|| storage.persist_hard_state(&hs)).unwrap();
         assert_eq!(S::initial_state(&storage).unwrap().hard_state, hs);
     }
 
@@ -876,7 +876,7 @@ mod tests {
             ..Default::default()
         };
 
-        start_transaction(|| storage.persist_conf_state(&cs)).unwrap();
+        transaction(|| storage.persist_conf_state(&cs)).unwrap();
         assert_eq!(S::initial_state(&storage).unwrap().conf_state, cs);
     }
 
@@ -896,7 +896,7 @@ mod tests {
         assert_err!(
             storage.persist_raft_id(32),
             concat!(
-                "Tarantool error:",
+                "tarantool error:",
                 " TupleFound:",
                 " Duplicate key exists in unique index \"pk\" in space \"_raft_state\"",
                 " with old tuple - [\"raft_id\", 16]",
@@ -909,7 +909,7 @@ mod tests {
             storage.commit(),
             format!(
                 concat!(
-                    "Tarantool error:",
+                    "tarantool error:",
                     " NoSuchSpace:",
                     " Space '{}' does not exist",
                 ),

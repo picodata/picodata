@@ -1899,7 +1899,7 @@ macro_rules! assert_err {
 
 mod tests {
     use super::*;
-    use ::tarantool::transaction::start_transaction;
+    use ::tarantool::transaction::transaction;
 
     #[rustfmt::skip]
     #[::tarantool::test]
@@ -1943,7 +1943,7 @@ mod tests {
             }),
             format!(
                 concat!(
-                    "Tarantool error:",
+                    "tarantool error:",
                     " TupleFound: Duplicate key exists",
                     " in unique index \"raft_id\"",
                     " in space \"_pico_instance\"",
@@ -2007,7 +2007,7 @@ mod tests {
         assert_err!(
             storage.instances.get(&1),
             concat!(
-                "Tarantool error: NoSuchIndexID: No index #1 is defined",
+                "tarantool error: NoSuchIndexID: No index #1 is defined",
                 " in space '_pico_instance'",
             )
         );
@@ -2017,7 +2017,7 @@ mod tests {
         assert_err!(
             storage.instances.replicaset_instances(""),
             concat!(
-                "Tarantool error: NoSuchIndexID: No index #2 is defined",
+                "tarantool error: NoSuchIndexID: No index #2 is defined",
                 " in space '_pico_instance'",
             )
         );
@@ -2027,7 +2027,7 @@ mod tests {
         assert_err!(
             storage.instances.get(&InstanceId::from("i1")),
             concat!(
-                "Tarantool error: NoSuchIndexID: No index #0 is defined",
+                "tarantool error: NoSuchIndexID: No index #0 is defined",
                 " in space '_pico_instance'",
             )
         );
@@ -2038,7 +2038,7 @@ mod tests {
         assert_err!(
             storage.instances.all_instances(),
             format!(
-                "Tarantool error: NoSuchSpace: Space '{}' does not exist",
+                "tarantool error: NoSuchSpace: Space '{}' does not exist",
                 space.id(),
             )
         );
@@ -2203,7 +2203,7 @@ mod tests {
 
         storage.for_each_space(|s| s.truncate()).unwrap();
         if let Err(e) =
-            start_transaction(|| -> traft::Result<()> { storage.apply_snapshot_data(&data, true) })
+            transaction(|| -> traft::Result<()> { storage.apply_snapshot_data(&data, true) })
         {
             println!("{e}");
             panic!();

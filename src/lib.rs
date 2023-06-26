@@ -7,7 +7,7 @@ use ::tarantool::fiber;
 use ::tarantool::fiber::r#async::timeout;
 use ::tarantool::fiber::r#async::timeout::IntoTimeout as _;
 use ::tarantool::tlua;
-use ::tarantool::transaction::start_transaction;
+use ::tarantool::transaction::transaction;
 use rpc::{join, update_instance};
 use std::convert::TryFrom;
 use std::time::{Duration, Instant};
@@ -483,7 +483,7 @@ fn start_boot(args: &args::Run) {
         ..Default::default()
     };
 
-    start_transaction(|| -> Result<(), TntError> {
+    transaction(|| -> Result<(), TntError> {
         raft_storage.persist_raft_id(raft_id).unwrap();
         raft_storage.persist_instance_id(&instance_id).unwrap();
         raft_storage.persist_cluster_id(&args.cluster_id).unwrap();
@@ -566,7 +566,7 @@ fn start_join(args: &args::Run, leader_address: String) {
     let (storage, raft_storage) = init_common(args, &cfg);
 
     let raft_id = resp.instance.raft_id;
-    start_transaction(|| -> Result<(), TntError> {
+    transaction(|| -> Result<(), TntError> {
         storage.instances.put(&resp.instance).unwrap();
         for traft::PeerAddress { raft_id, address } in resp.peer_addresses {
             storage.peer_addresses.put(raft_id, &address).unwrap();

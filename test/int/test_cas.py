@@ -194,7 +194,7 @@ def test_cas_lua_api(cluster: Cluster):
             ranges=[CasRange(eq="fruit")],
         )
     assert e5.value.args == (
-        "Network error: service responded with error: "
+        "network error: service responded with error: "
         + "compare-and-swap request failed: "
         + f"comparison failed for index {read_index} "
         + f"as it conflicts with {read_index+1}",

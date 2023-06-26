@@ -986,7 +986,7 @@ dependencies = [
  "serde_bytes",
  "serde_json",
  "slog",
- "tarantool 1.1.0",
+ "tarantool 1.2.0",
  "tempfile",
  "thiserror",
  "uuid 1.2.2",
@@ -1591,7 +1591,7 @@ dependencies = [
 
 [[package]]
 name = "tarantool"
-version = "1.1.0"
+version = "1.2.0"
 dependencies = [
  "async-trait",
  "base64",

@@ -46,7 +46,7 @@ use ::raft::Error as RaftError;
 use ::raft::StateRole as RaftStateRole;
 use ::raft::StorageError;
 use ::raft::INVALID_ID;
-use ::tarantool::error::{TarantoolError, TransactionError};
+use ::tarantool::error::TarantoolError;
 use ::tarantool::fiber;
 use ::tarantool::fiber::mutex::MutexGuard;
 use ::tarantool::fiber::r#async::timeout::IntoTimeout as _;
@@ -58,7 +58,7 @@ use ::tarantool::proc;
 use ::tarantool::space::FieldType as SFT;
 use ::tarantool::space::SpaceId;
 use ::tarantool::tlua;
-use ::tarantool::transaction::start_transaction;
+use ::tarantool::transaction::transaction;
 use ::tarantool::tuple::Decode;
 use ::tarantool::vclock::Vclock;
 use protobuf::Message as _;
@@ -743,7 +743,7 @@ impl NodeImpl {
             };
 
             let mut apply_entry_result = EntryApplied;
-            start_transaction(|| -> tarantool::Result<()> {
+            transaction(|| -> tarantool::Result<()> {
                 let entry_index = entry.index;
                 match entry.entry_type {
                     raft::EntryType::EntryNormal => {
@@ -1336,7 +1336,7 @@ impl NodeImpl {
         })();
 
         if let Some(snapshot_data) = snapshot_data {
-            if let Err(e) = start_transaction(|| -> traft::Result<()> {
+            if let Err(e) = transaction(|| -> traft::Result<()> {
                 let meta = snapshot.get_metadata();
                 self.raft_storage.handle_snapshot_metadata(meta)?;
                 // FIXME: apply_snapshot_data calls truncate on clusterwide
@@ -1398,7 +1398,7 @@ impl NodeImpl {
             panic!("transaction failed: {e}, {}", TarantoolError::last());
         }
 
-        if let Err(e) = start_transaction(|| -> Result<(), TransactionError> {
+        if let Err(e) = transaction(|| -> Result<(), &str> {
             // Persist uncommitted entries in the raft log.
             self.raft_storage.persist_entries(ready.entries()).unwrap();
 
@@ -1413,7 +1413,7 @@ impl NodeImpl {
             Ok(())
         }) {
             tlog!(Warning, "dropping raft ready: {ready:#?}");
-            panic!("transaction failed: {e}, {}", TarantoolError::last());
+            panic!("transaction failed: {e}");
         }
 
         // This bunch of messages is special. It must be sent only

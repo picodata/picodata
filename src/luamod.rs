@@ -13,7 +13,7 @@ use crate::{args, rpc, sync, tlog};
 use ::tarantool::fiber;
 use ::tarantool::tlua;
 use ::tarantool::tlua::{LuaState, LuaThread, PushOneInto, Void};
-use ::tarantool::transaction::start_transaction;
+use ::tarantool::transaction::transaction;
 use ::tarantool::tuple::Decode;
 use ::tarantool::vclock::Vclock;
 use indoc::indoc;
@@ -843,7 +843,7 @@ pub(crate) fn setup(args: &args::Run) {
         {
             tlua::function1(|up_to: RaftIndex| -> traft::Result<RaftIndex> {
                 let raft_storage = &node::global()?.raft_storage;
-                let ret = start_transaction(|| raft_storage.compact_log(up_to));
+                let ret = transaction(|| raft_storage.compact_log(up_to));
                 Ok(ret?)
             })
         },

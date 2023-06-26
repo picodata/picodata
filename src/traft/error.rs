@@ -1,3 +1,5 @@
+use std::fmt::{Debug, Display};
+
 use crate::instance::InstanceId;
 use crate::traft::{RaftId, RaftTerm};
 use ::tarantool::fiber::r#async::timeout;
@@ -67,7 +69,10 @@ pub enum Error {
     #[error("sbroad: {0}")]
     Sbroad(#[from] sbroad::errors::SbroadError),
 
-    #[error("other error: {0}")]
+    #[error("transaction: {0}")]
+    Transaction(String),
+
+    #[error("{0}")]
     Other(Box<dyn std::error::Error>),
 }
 
@@ -98,9 +103,9 @@ impl From<::tarantool::network::Error> for Error {
     }
 }
 
-impl From<::tarantool::error::TransactionError> for Error {
-    fn from(err: ::tarantool::error::TransactionError) -> Self {
-        Self::Tarantool(err.into())
+impl<E: Display> From<::tarantool::transaction::TransactionError<E>> for Error {
+    fn from(err: ::tarantool::transaction::TransactionError<E>) -> Self {
+        Self::Transaction(err.to_string())
     }
 }
 
