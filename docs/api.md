@@ -18,8 +18,9 @@
 Пример:
 
 ```
-picodata> pico.help()
--- Печатает встроенную справку
+picodata> pico.help("help")
+-- Печатает данную справку
+-- и список доступных разделов (topics)
 ```
 
 Вызов функций `pico.*` возможен и через `iproto`, но влечет за собой
@@ -62,7 +63,7 @@ pico.revoke_privilege -->
 ### pico.LUA_API_VERSION
 
 Строковая переменная (не функция), которая содержит версию Lua API Picodata.
-Применяется семантическое версионирование ([Semantic
+Формат соответствует семантическому версионированию ([Semantic
 Versioning][semver]).
 
 [semver]: https://semver.org/
@@ -80,7 +81,7 @@ picodata> pico.LUA_API_VERSION
 ### pico.PICODATA_VERSION
 
 Строковая переменная (не функция), которая содержит версию Picodata.
-Применяется календарное версионирование ([Calendar
+Формат соответствует календарному версионированию ([Calendar
 Versioning][calver]) с форматом `YY.0M.MICRO`.
 
 [calver]: https://calver.org/#scheme
@@ -95,7 +96,7 @@ picodata> pico.PICODATA_VERSION
 ```
 ### pico.abort_ddl
 
-Отменяет ожидающую операцию по изменению схемы данных.
+Отменяет изменение схемы данных.
 
 ```lua
 function abort_ddl(timeout)
@@ -104,20 +105,10 @@ function abort_ddl(timeout)
 
 - `timeout`: (_number_)
 
-Функция принимает в качестве параметра число секунд перед отменой
-операции. Возвращает индекс соответствующей операции `DdlAbort` в
-raft-журнале, либо ошибку в случае отсутствия ожидающих операций.
-
-Пример:
-
-```console
-picodata> pico.abort_ddl(1)
----
-- null
-- 'ddl failed: there is no pending ddl operation'
-...
-```
-
+Функция принимает в качестве параметра число секунд, в течение которых
+она будет ожидать подтверждения отмены операции. Возвращает индекс
+соответствующей операции `DdlAbort` в raft-журнале, либо ошибку в случае
+отсутствия ожидающих операций.
 
 ### pico.args
 
@@ -185,9 +176,9 @@ function cas(dml[, predicate])
 - `dml`: (_table_):
     - `kind` (_string_), варианты: `'insert'` | `'replace'` | `'update'` | `'delete'`
     - `space` (_stringLua_)
-    - `tuple` (optional _table_), обязательно для `insert` и `replace`
-    - `key` (optional _table_), обязательно для `update` и `delete`
-    - `ops` (optional _table_), обязательно для `update`
+    - `tuple` (optional _table_), обязательно для `'insert'` и `'replace'`
+    - `key` (optional _table_), обязательно для `'update'` и `'delete'`
+    - `ops` (optional _table_), обязательно для `'update'`
 
 - `predicate`: (optional _table_):
     - `index` (optional _number_), default: current applied index
@@ -228,7 +219,7 @@ pico.cas({
 Функция возвращает индекс сделанной записи в raft-журнале.
 
 ### pico.create_space
-Создание спейса (пространства для хранения данных) в Picodata
+Создает спейс (пространства для хранения данных) в Picodata
 
 ```lua
 function create_space(opts)
@@ -269,7 +260,7 @@ pico.create_space({
     timeout = 3,
 })
 ```
-Добавление данных происходит через функцию [`pico.cas`](#picocas):
+Запись в глобальный спейс происходит посредством функции [`pico.cas`](#picocas):
 
 ```lua
 pico.cas({
@@ -475,7 +466,7 @@ function raft_get_index()
   3. Как только получение этого сообщения подтверждается
      большинством `follower`-узлов, лидер возвращает этот индекс
      инстансу.
-  4. Инстанс дожидается применения (apply) указанного индекс. Если
+  4. Инстанс дожидается применения (apply) указанного raft-индекса. Если
      таймаут истекает раньше, функция возвращает ошибку 'timeout'.
 
 ```lua
@@ -485,8 +476,8 @@ function raft_read_index(timeout)
 
 - `timeout`: (_number_)
 
-Функция принимает в качестве параметра число секунд (>0), в течение которых
-будет длиться таймаут операции чтения.
+Функция принимает в качестве параметра число секунд, в течение которых
+она ожидает ответа от инстанса.
 
 Пример:
 
@@ -506,17 +497,6 @@ picodata> pico.raft_read_index(1)
 ([терм](glossary.md#term), [лидер](glossary.md#leader) и т.д.). Функция
 не имеет передаваемых параметров.
 
-Пример:
-
-```console
-picodata> pico.raft_status()
----
-- term: 2
-  leader_id: 1
-  raft_state: Leader
-  id: 1
-...
-```
 Возвращаемые поля:
 
 - `id` (_number_)
@@ -530,7 +510,19 @@ picodata> pico.raft_status()
 Возвращаемое значение:
 
 (_table_) или (_nil_, _string_) в случае ошибки (если raft-узел еще не
-инициализирован)
+инициализирован).
+
+Пример:
+
+```console
+picodata> pico.raft_status()
+---
+- term: 2
+  leader_id: 1
+  raft_state: Leader
+  id: 1
+...
+```
 
 
 ### pico.raft_timeout_now
@@ -645,16 +637,16 @@ picodata> pico.whoami()
 Lua-таблица, используемая для обозначения минимального (`key_min`) или
 максимального (`key_max`) значения в таблице `table CasRange`.
 
-Состав таблицы:
+Поля:
 
-- `kind` (_string_), варианты: `included` | `excluded` | `unbounded`
+- `kind` (_string_), варианты: `'included'` | `'excluded'` | `'unbounded'`
 - `key` (optional _table_), обязательно для вариантов `included` и `excluded`
 
 ### table CasRange
 Lua-таблица, задающая диапазон значений. Используется для обозначения
 предиката (проверяемых данных) в функции [pico.cas()](#picocas).
 
-Состав таблицы:
+Поля:
 
 - `space` (_string_)
 - `key_min` (table CasBound), см. [выше](#table-casbound)
@@ -685,7 +677,7 @@ local range_a = {
 ### table SpaceField
 Lua-таблица, описывающее поле в составе спейса (см. [pico.create_space](#picocreate_space)).
 
-Состав таблицы:
+Поля:
 
 - `name` (_string_)
 - `type` (_string_)
