@@ -1109,9 +1109,8 @@ pub(crate) fn setup(args: &args::Run) {
             tlua::function1(|params: CreateSpaceParams| -> traft::Result<RaftIndex> {
                 let timeout = Duration::from_secs_f64(params.timeout);
                 let storage = &node::global()?.storage;
-                let params = params.validate(storage)?;
-                // TODO: check space creation and rollback
-                // box.begin() box.schema.space.create() box.rollback()
+                let mut params = params.validate(storage)?;
+                params.test_create_space(storage)?;
                 let op = params.into_ddl(storage)?;
                 let index = schema::prepare_ddl(op, timeout)?;
                 let commit_index = schema::wait_for_ddl_commit(index, timeout)?;

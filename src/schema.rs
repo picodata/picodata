@@ -2,7 +2,8 @@ use std::borrow::Cow;
 use std::collections::{BTreeMap, HashSet};
 use std::time::{Duration, Instant};
 
-use tarantool::space::FieldType;
+use tarantool::space::{FieldType, SpaceCreateOptions, SpaceEngineType};
+use tarantool::transaction::{transaction, TransactionError};
 use tarantool::{
     index::Metadata as IndexMetadata,
     index::{IndexId, Part},
@@ -45,7 +46,6 @@ impl SpaceDef {
 
     pub fn to_space_metadata(&self) -> traft::Result<SpaceMetadata> {
         use tarantool::session::uid;
-        use tarantool::space::SpaceEngineType;
 
         // FIXME: this is copy pasted from tarantool::schema::space::create_space
         let format = self
@@ -349,7 +349,51 @@ impl CreateSpaceParams {
 pub struct ValidCreateSpaceParams(CreateSpaceParams);
 
 impl ValidCreateSpaceParams {
-    pub fn into_ddl(self, storage: &Clusterwide) -> traft::Result<Ddl> {
+    /// Create space and then rollback.
+    ///
+    /// Should be used for checking if a space with these params can be created.
+    pub fn test_create_space(&mut self, storage: &Clusterwide) -> traft::Result<()> {
+        let id = self.id(storage)?;
+        let params = &self.0;
+        let err = transaction(|| -> Result<(), Option<tarantool::error::Error>> {
+            ::tarantool::schema::space::create_space(
+                &params.name,
+                &SpaceCreateOptions {
+                    if_not_exists: false,
+                    engine: SpaceEngineType::Memtx,
+                    id: Some(id),
+                    field_count: params.format.len() as u32,
+                    user: None,
+                    is_local: false,
+                    is_temporary: false,
+                    is_sync: false,
+                    format: Some(
+                        params
+                            .format
+                            .iter()
+                            .cloned()
+                            .map(tarantool::space::Field::from)
+                            .collect(),
+                    ),
+                },
+            )
+            .map_err(Some)?;
+            // Rollback space creation
+            Err(None)
+        })
+        .unwrap_err();
+        match err {
+            // Space was successfully created and rolled back
+            TransactionError::RolledBack(None) => Ok(()),
+            // Space creation failed
+            TransactionError::RolledBack(Some(err)) => Err(err.into()),
+            // Error during commit or rollback
+            err => panic!("transaction mechanism should not fail: {err:?}"),
+        }
+    }
+
+    /// Memoizes id if it is automatically selected.
+    fn id(&mut self, storage: &Clusterwide) -> traft::Result<SpaceId> {
         let id = if let Some(id) = self.0.id {
             id
         } else {
@@ -374,6 +418,12 @@ impl ValidCreateSpaceParams {
             }
             id + 1
         };
+        self.0.id = Some(id);
+        Ok(id)
+    }
+
+    pub fn into_ddl(mut self, storage: &Clusterwide) -> traft::Result<Ddl> {
+        let id = self.id(storage)?;
         let primary_key: Vec<_> = self.0.primary_key.into_iter().map(Part::field).collect();
         let format: Vec<_> = self
             .0
@@ -540,6 +590,54 @@ mod tests {
     use tarantool::space::FieldType;
 
     use super::*;
+
+    #[::tarantool::test]
+    fn test_create_space() {
+        let storage = Clusterwide::new().unwrap();
+        ValidCreateSpaceParams(CreateSpaceParams {
+            id: None,
+            name: "friends_of_peppa".into(),
+            format: vec![
+                Field {
+                    name: "id".into(),
+                    r#type: FieldType::Number,
+                    is_nullable: false,
+                },
+                Field {
+                    name: "name".into(),
+                    r#type: FieldType::String,
+                    is_nullable: false,
+                },
+            ],
+            primary_key: vec![],
+            distribution: DistributionParam::Global,
+            by_field: None,
+            sharding_key: None,
+            sharding_fn: None,
+            timeout: 0.0,
+        })
+        .test_create_space(&storage)
+        .unwrap();
+        assert!(tarantool::space::Space::find("friends_of_peppa").is_none());
+
+        let err = ValidCreateSpaceParams(CreateSpaceParams {
+            id: Some(0),
+            name: "friends_of_peppa".into(),
+            format: vec![],
+            primary_key: vec![],
+            distribution: DistributionParam::Global,
+            by_field: None,
+            sharding_key: None,
+            sharding_fn: None,
+            timeout: 0.0,
+        })
+        .test_create_space(&storage)
+        .unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "tarantool error: CreateSpace: Failed to create space 'friends_of_peppa': space id 0 is reserved"
+        );
+    }
 
     #[::tarantool::test]
     fn ddl() {
