@@ -70,7 +70,8 @@ spaces:
           type: unsigned
           is_nullable: true
         name: bucket_id
-        type: TREEtesting_space:
+        type: TREE
+        testing_space:
       format:
       - type: integer
         name: id
