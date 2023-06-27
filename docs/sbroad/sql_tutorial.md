@@ -71,42 +71,7 @@ spaces:
           is_nullable: true
         name: bucket_id
         type: TREE
-        testing_space:
-      format:
-      - type: integer
-        name: id
-        is_nullable: false
-      - type: string
-        name: name
-        is_nullable: false
-      - type: integer
-        name: product_units
-        is_nullable: false
-      - type: unsigned
-        name: bucket_id
-        is_nullable: true
-      temporary: false
-      engine: memtx
-      is_local: false
-      sharding_key:
-      - id
-      - name
-      indexes:
-      - unique: true
-        parts:
-        - path: id
-          type: integer
-          is_nullable: false
-        name: id
-        type: TREE
-      - unique: false
-        parts:
-        - path: bucket_id
-          type: unsigned
-          is_nullable: true
-        name: bucket_id
-        type: TREE
-        
+ 
 ````
 </details>
 
