@@ -1,4 +1,3 @@
-use crate::instance::Instance;
 use crate::schema::Distribution;
 use crate::storage::space_by_name;
 use crate::storage::Clusterwide;
@@ -29,8 +28,6 @@ pub trait OpResult {
 pub enum Op {
     /// No operation.
     Nop,
-    /// Update the given instance's entry in [`crate::storage::Instances`].
-    PersistInstance(PersistInstance),
     /// Cluster-wide data modification operation.
     /// Should be used to manipulate the cluster-wide configuration.
     Dml(Dml),
@@ -54,9 +51,6 @@ impl std::fmt::Display for Op {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         return match self {
             Self::Nop => f.write_str("Nop"),
-            Self::PersistInstance(PersistInstance(instance)) => {
-                write!(f, "PersistInstance{}", instance)
-            }
             Self::Dml(Dml::Insert { space, tuple }) => {
                 write!(f, "Insert({space}, {})", DisplayAsJson(tuple))
             }
@@ -152,34 +146,6 @@ impl OpResult for Op {
     type Result = ();
     fn result(&self) -> Self::Result {
         unreachable!()
-    }
-}
-
-////////////////////////////////////////////////////////////////////////////////
-// PersistInstance
-////////////////////////////////////////////////////////////////////////////////
-
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-pub struct PersistInstance(pub Box<Instance>);
-
-impl PersistInstance {
-    pub fn new(instance: Instance) -> Self {
-        Self(Box::new(instance))
-    }
-}
-
-// TODO: remove this
-impl OpResult for PersistInstance {
-    type Result = Box<Instance>;
-    fn result(&self) -> Self::Result {
-        unreachable!()
-    }
-}
-
-impl From<PersistInstance> for Op {
-    #[inline]
-    fn from(op: PersistInstance) -> Op {
-        Op::PersistInstance(op)
     }
 }
 

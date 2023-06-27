@@ -27,7 +27,7 @@ use crate::traft::error::Error;
 use crate::traft::event;
 use crate::traft::event::Event;
 use crate::traft::notify::{notification, Notifier, Notify};
-use crate::traft::op::{Ddl, Dml, Op, OpResult, PersistInstance};
+use crate::traft::op::{Ddl, Dml, Op, OpResult};
 use crate::traft::Address;
 use crate::traft::ConnectionPool;
 use crate::traft::ContextCoercion as _;
@@ -69,6 +69,7 @@ use std::convert::TryFrom;
 use std::rc::Rc;
 use std::time::Duration;
 use std::time::Instant;
+use tarantool::tuple::Tuple;
 use ApplyEntryResult::*;
 
 type RawNode = raft::RawNode<RaftSpaceAccess>;
@@ -329,14 +330,21 @@ impl Node {
         let (notify_addr, notify_instance, replication_addresses) =
             self.raw_operation(|node_impl| node_impl.process_join_request_async(req))?;
         fiber::block_on(async {
-            let (addr, instance) = futures::join!(notify_addr.recv_any(), notify_instance.recv());
+            let (addr, instance): (
+                _,
+                Result<Result<Option<Tuple>, ::tarantool::error::Error>, _>,
+            ) = futures::join!(notify_addr.recv_any(), notify_instance.recv());
             addr?;
-            instance.map(|i| (Box::new(i), replication_addresses))
+            let instance = instance??
+                .expect("option is always some")
+                .decode()
+                .expect("decoding should not fail");
+            Ok((Box::new(instance), replication_addresses))
         })
     }
 
     /// Processes the [`rpc::update_instance::Request`] and appends
-    /// [`Op::PersistInstance`] entry to the raft log (if successful).
+    /// the corresponding [`Op::Dml`] entry to the raft log (if successful).
     ///
     /// Returns `Ok(())` when the entry is committed.
     ///
@@ -568,7 +576,7 @@ impl NodeImpl {
             return Ok(());
         }
 
-        // TODO check it's not a MsgPropose with op::PersistInstance.
+        // TODO check it's not a MsgPropose with op::Dml for updating _pico_instance.
         // TODO check it's not a MsgPropose with ConfChange.
         self.raw_node.step(msg)
     }
@@ -602,8 +610,10 @@ impl NodeImpl {
             raft_id: instance.raft_id,
             address,
         };
-        let op_addr = Dml::replace(ClusterwideSpaceId::Address, &peer_address).expect("can't fail");
-        let op_instance = PersistInstance::new(instance);
+        let op_addr = Dml::replace(ClusterwideSpaceId::Address, &peer_address)
+            .expect("encoding should not fail");
+        let op_instance = Dml::replace(ClusterwideSpaceId::Instance, &instance)
+            .expect("encoding should not fail");
         // Important! Calling `raw_node.propose()` may result in
         // `ProposalDropped` error, but the topology has already been
         // modified. The correct handling of this case should be the
@@ -626,7 +636,7 @@ impl NodeImpl {
     }
 
     /// Processes the [`rpc::update_instance::Request`] and appends
-    /// [`Op::PersistInstance`] entry to the raft log (if successful).
+    /// a corresponding [`Op::Dml`] entry to the raft log (if successful).
     ///
     /// Returns an error if the callee node isn't a Raft leader.
     ///
@@ -654,7 +664,10 @@ impl NodeImpl {
         // harmful. Loss of the uncommitted entries could result in
         // assigning the same `raft_id` to a two different nodes.
         //
-        Ok(self.propose_async(PersistInstance::new(instance))?)
+        Ok(self.propose_async(
+            Dml::replace(ClusterwideSpaceId::Instance, &instance)
+                .expect("encoding should not fail"),
+        )?)
     }
 
     fn propose_conf_change_async(
@@ -793,20 +806,30 @@ impl NodeImpl {
         tlog!(Debug, "applying entry: {op}"; "index" => index);
 
         match &op {
-            Op::PersistInstance(PersistInstance(instance)) => {
-                *wake_governor = true;
-                storage_changes.insert(ClusterwideSpaceId::Instance.into());
-                if has_grades!(instance, Expelled -> *) && instance.raft_id == self.raft_id() {
-                    // cannot exit during a transaction
-                    *expelled = true;
-                }
-            }
             Op::Dml(op) => {
                 let space = op.space();
                 if space == ClusterwideSpaceId::Property as SpaceId
                     || space == ClusterwideSpaceId::Replicaset as SpaceId
                 {
                     *wake_governor = true;
+                } else if space == ClusterwideSpaceId::Instance as SpaceId {
+                    *wake_governor = true;
+                    let instance = match op {
+                        Dml::Insert { tuple, .. } => Some(tuple),
+                        Dml::Replace { tuple, .. } => Some(tuple),
+                        Dml::Update { .. } => None,
+                        Dml::Delete { .. } => None,
+                    };
+                    if let Some(instance) = instance {
+                        let instance: Instance = rmp_serde::from_slice(instance.as_ref())
+                            .expect("should be a valid instance tuple");
+                        if has_grades!(instance, Expelled -> *)
+                            && instance.raft_id == self.raft_id()
+                        {
+                            // cannot exit during a transaction
+                            *expelled = true;
+                        }
+                    }
                 }
                 storage_changes.insert(space);
             }
@@ -822,11 +845,6 @@ impl NodeImpl {
         let mut result = Box::new(()) as Box<dyn AnyWithTypeName>;
         match op {
             Op::Nop => {}
-            Op::PersistInstance(op) => {
-                let instance = op.0;
-                self.storage.instances.put(&instance).unwrap();
-                result = instance as _;
-            }
             Op::Dml(op) => {
                 let res = match &op {
                     Dml::Insert { space, tuple } => self.storage.insert(*space, tuple).map(Some),

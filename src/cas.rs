@@ -376,13 +376,6 @@ impl Predicate {
                         }
                     }
                 }
-                Op::PersistInstance(op) => {
-                    let key = Tuple::new(&(&op.0.instance_id,))?;
-                    let key_def = storage.key_def_for_key(space, 0)?;
-                    if range.contains(&key_def, &key) {
-                        return Err(error());
-                    }
-                }
                 Op::Nop => (),
             };
         }
@@ -557,7 +550,6 @@ fn space(op: &Op) -> Option<SpaceId> {
         Op::DdlPrepare { .. } | Op::DdlCommit | Op::DdlAbort => {
             Some(ClusterwideSpaceId::Property.into())
         }
-        Op::PersistInstance(_) => Some(ClusterwideSpaceId::Instance.into()),
         Op::Nop => None,
     }
 }

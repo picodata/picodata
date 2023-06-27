@@ -432,7 +432,11 @@ fn start_boot(args: &args::Run) {
             .expect("cannot fail")
             .into(),
         );
-        init_entries_push_op(traft::op::PersistInstance::new(instance).into());
+        init_entries_push_op(
+            op::Dml::insert(ClusterwideSpaceId::Instance, &instance)
+                .expect("cannot fail")
+                .into(),
+        );
         init_entries_push_op(
             op::Dml::insert(
                 ClusterwideSpaceId::Property,
@@ -663,7 +667,7 @@ fn postjoin(args: &args::Run, storage: Clusterwide, raft_storage: RaftSpaceAcces
 
         // It's necessary to call `proc_update_instance` remotely on a
         // leader over net_box. It always fails otherwise. Only the
-        // leader is permitted to propose PersistInstance entries.
+        // leader is permitted to propose changes to _pico_instance.
         let now = Instant::now();
         let timeout = Duration::from_secs(10);
         match fiber::block_on(rpc::network_call(&leader_address, &req).timeout(timeout)) {
