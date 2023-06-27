@@ -13,7 +13,7 @@
 * [Развертывание кластера](deploy)
 * [Мониторинг кластера](monitoring)
 * [Пример работы с кластером Picodata](tutorial)
-* [Пример работы с приложением Picodata SQL](sbroad/sql_tutorial)
+* [Пример работы с SQL Broadcaster в Picodata](sbroad/sql_tutorial)
 
 ### Справочные материалы
 * [Аргументы командной строки Picodata](cli)

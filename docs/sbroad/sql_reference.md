@@ -94,7 +94,7 @@
 ### E071-03. Табличный оператор EXCEPT DISTINCT
 ### F041-03. LEFT OUTER JOIN.
 
-См. также: [Пример работы с приложением Picodata SQL](../sql_tutorial).
+См. также: [Пример работы с SQL Broadcaster в Picodata](../sql_tutorial).
 
 ---
 [Исходный код страницы](https://git.picodata.io/picodata/picodata/docs/-/blob/main/docs/sbroad/sql_reference.md)

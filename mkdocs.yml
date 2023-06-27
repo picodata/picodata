@@ -14,7 +14,7 @@ nav:
     - Развертывание кластера: deploy.md
     - Мониторинг кластера: monitoring.md
     - Пример работы с кластером Picodata: tutorial.md
-    - Пример работы с приложением Picodata SQL: sbroad/sql_tutorial
+    - Пример работы с SQL Broadcaster в Picodata: sbroad/sql_tutorial
   - Справочные материалы:
     - Аргументы командной строки Picodata: cli.md
     - Публичный API Picodata: api.md

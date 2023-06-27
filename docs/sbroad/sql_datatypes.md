@@ -19,7 +19,7 @@
 
 Более подробные сведения о поддерживаемых типах данных можно узнать в разделе [Поддерживаемые функции стандарта SQL](../sql_reference)
 
-См. также: [Пример работы с приложением Picodata SQL](../sql_tutorial)
+См. также: [Пример работы с SQL Broadcaster в Picodata](../sql_tutorial)
 
 ---
 [Исходный код страницы](https://git.picodata.io/picodata/picodata/docs/-/blob/main/docs/sbroad/sql_datatypes.md)
