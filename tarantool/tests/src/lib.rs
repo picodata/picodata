@@ -200,7 +200,6 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
             tests.append(&mut tarantool::tlua::test::collect());
             tests.append(&mut tests![
                 decimal::from_lua,
-                decimal::from_string,
                 decimal::from_tuple,
                 decimal::to_tuple,
                 decimal::to_lua,

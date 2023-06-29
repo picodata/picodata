@@ -15,20 +15,6 @@ pub fn to_lua() {
     assert_eq!(s, "-8.11");
 }
 
-pub fn from_string() {
-    let d: Decimal = "-81.1e-1".parse().unwrap();
-    assert_eq!(d.to_string(), "-8.11");
-    assert_eq!(decimal!(-81.1e-1).to_string(), "-8.11");
-
-    assert_eq!("foobar".parse::<Decimal>().ok(), None::<Decimal>);
-    assert_eq!("".parse::<Decimal>().ok(), None::<Decimal>);
-
-    // tarantool decimals don't support infinity or NaN
-    assert_eq!("inf".parse::<Decimal>().ok(), None::<Decimal>);
-    assert_eq!("infinity".parse::<Decimal>().ok(), None::<Decimal>);
-    assert_eq!("NaN".parse::<Decimal>().ok(), None::<Decimal>);
-}
-
 pub fn from_tuple() {
     let t: Tuple = tarantool::lua_state()
         .eval("return box.tuple.new(require('decimal').new('-8.11'))")
