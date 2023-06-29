@@ -16,8 +16,7 @@ use tarantool::{
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::compare_and_swap;
-use crate::rpc;
+use crate::cas::{self, compare_and_swap};
 use crate::storage::ToEntryIter;
 use crate::storage::SPACE_ID_INTERNAL_MAX;
 use crate::storage::{Clusterwide, ClusterwideSpaceId, PropertyName};
@@ -480,15 +479,15 @@ pub fn prepare_ddl(op: Ddl, timeout: Duration) -> traft::Result<RaftIndex> {
         wait_for_no_pending_schema_change(storage, timeout)?;
         let index = node::global()?.read_index(timeout)?;
         let term = raft::Storage::term(raft_storage, index)?;
-        let predicate = rpc::cas::Predicate {
+        let predicate = cas::Predicate {
             index,
             term,
             ranges: vec![
-                rpc::cas::Range::new(ClusterwideSpaceId::Property as _)
+                cas::Range::new(ClusterwideSpaceId::Property as _)
                     .eq((PropertyName::PendingSchemaChange,)),
-                rpc::cas::Range::new(ClusterwideSpaceId::Property as _)
+                cas::Range::new(ClusterwideSpaceId::Property as _)
                     .eq((PropertyName::GlobalSchemaVersion,)),
-                rpc::cas::Range::new(ClusterwideSpaceId::Property as _)
+                cas::Range::new(ClusterwideSpaceId::Property as _)
                     .eq((PropertyName::NextSchemaVersion,)),
             ],
         };
@@ -515,15 +514,15 @@ pub fn abort_ddl(timeout: Duration) -> traft::Result<RaftIndex> {
         }
         let index = node.get_index();
         let term = raft::Storage::term(&node.raft_storage, index)?;
-        let predicate = rpc::cas::Predicate {
+        let predicate = cas::Predicate {
             index,
             term,
             ranges: vec![
-                rpc::cas::Range::new(ClusterwideSpaceId::Property as _)
+                cas::Range::new(ClusterwideSpaceId::Property as _)
                     .eq((PropertyName::PendingSchemaChange,)),
-                rpc::cas::Range::new(ClusterwideSpaceId::Property as _)
+                cas::Range::new(ClusterwideSpaceId::Property as _)
                     .eq((PropertyName::GlobalSchemaVersion,)),
-                rpc::cas::Range::new(ClusterwideSpaceId::Property as _)
+                cas::Range::new(ClusterwideSpaceId::Property as _)
                     .eq((PropertyName::NextSchemaVersion,)),
             ],
         };

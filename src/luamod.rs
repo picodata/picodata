@@ -3,12 +3,13 @@
 
 use std::time::Duration;
 
+use crate::cas::{self, compare_and_swap};
 use crate::instance::InstanceId;
 use crate::schema::{self, CreateSpaceParams};
 use crate::traft::op::{self, Op};
 use crate::traft::{self, node, RaftIndex};
 use crate::util::str_eq;
-use crate::{args, compare_and_swap, rpc, sync, tlog};
+use crate::{args, rpc, sync, tlog};
 use ::tarantool::fiber;
 use ::tarantool::tlua;
 use ::tarantool::tlua::{LuaState, LuaThread, PushOneInto, Void};
@@ -963,10 +964,10 @@ pub(crate) fn setup(args: &args::Run) {
         "},
         tlua::function2(
             |op: op::DmlInLua,
-             predicate: Option<rpc::cas::PredicateInLua>|
+             predicate: Option<cas::PredicateInLua>|
              -> traft::Result<RaftIndex> {
                 let op = op::Dml::from_lua_args(op).map_err(traft::error::Error::other)?;
-                let predicate = rpc::cas::Predicate::from_lua_args(predicate.unwrap_or_default())?;
+                let predicate = cas::Predicate::from_lua_args(predicate.unwrap_or_default())?;
                 let (index, _) = compare_and_swap(op.into(), predicate)?;
                 Ok(index)
             },

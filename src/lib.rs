@@ -15,18 +15,17 @@ use storage::tweak_max_space_id;
 use storage::Clusterwide;
 use storage::{ClusterwideSpaceId, PropertyName};
 use traft::RaftSpaceAccess;
-use traft::RaftTerm;
 
 use protobuf::Message as _;
 
 use crate::instance::grade::TargetGradeVariant;
-use crate::traft::node;
-use crate::traft::op::{self, Op};
-use crate::traft::{LogicalClock, RaftIndex};
+use crate::traft::op;
+use crate::traft::LogicalClock;
 
 #[doc(hidden)]
 mod app;
 pub mod args;
+pub mod cas;
 pub mod discovery;
 pub mod failure_domain;
 pub mod governor;
@@ -47,51 +46,6 @@ pub mod tarantool;
 pub mod tlog;
 pub mod traft;
 pub mod util;
-
-/// Performs a clusterwide compare and swap operation.
-///
-/// E.g. it checks the `predicate` on leader and if no conflicting entries were found
-/// appends the `op` to the raft log and returns its index and term.
-///
-/// # Errors
-/// See [`rpc::cas::Error`] for CaS-specific errors.
-/// It can also return general picodata errors in cases of faulty network or storage.
-pub fn compare_and_swap(
-    op: Op,
-    predicate: rpc::cas::Predicate,
-) -> traft::Result<(RaftIndex, RaftTerm)> {
-    let node = node::global()?;
-    let request = rpc::cas::Request {
-        cluster_id: node.raft_storage.cluster_id()?,
-        predicate,
-        op,
-    };
-    loop {
-        let Some(leader_id) = node.status().leader_id else {
-            tlog!(Warning, "leader id is unknown, waiting for status change...");
-            node.wait_status();
-            continue;
-        };
-        let leader_address = unwrap_ok_or!(
-            node.storage.peer_addresses.try_get(leader_id),
-            Err(e) => {
-                tlog!(Warning, "failed getting leader address: {e}");
-                tlog!(Info, "going to retry in while...");
-                fiber::sleep(Duration::from_millis(250));
-                continue;
-            }
-        );
-        let resp = rpc::network_call(&leader_address, &request);
-        let resp = fiber::block_on(resp.timeout(Duration::from_secs(3)));
-        match resp {
-            Ok(rpc::cas::Response { index, term }) => return Ok((index, term)),
-            Err(e) => {
-                tlog!(Warning, "{e}");
-                return Err(e.into());
-            }
-        }
-    }
-}
 
 macro_rules! lua_preload {
     ($lua:ident, $module:literal, $path_prefix:literal, $path:literal) => {

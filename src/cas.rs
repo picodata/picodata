@@ -1,3 +1,6 @@
+use std::time::Duration;
+
+use crate::rpc;
 use crate::storage::Clusterwide;
 use crate::storage::ClusterwideSpaceId;
 use crate::tlog;
@@ -8,12 +11,15 @@ use crate::traft::op::{Ddl, Dml, Op};
 use crate::traft::Result;
 use crate::traft::{EntryContext, EntryContextNormal};
 use crate::traft::{RaftIndex, RaftTerm};
+use crate::unwrap_ok_or;
 
 use ::raft::prelude as raft;
 use ::raft::Error as RaftError;
 use ::raft::StorageError;
 
 use tarantool::error::Error as TntError;
+use tarantool::fiber;
+use tarantool::fiber::r#async::timeout::IntoTimeout;
 use tarantool::space::SpaceId;
 use tarantool::tlua;
 use tarantool::tuple::{KeyDef, ToTupleBuffer, Tuple, TupleBuffer};
@@ -22,6 +28,48 @@ use once_cell::sync::Lazy;
 
 const PROHIBITED_SPACES: &[ClusterwideSpaceId] =
     &[ClusterwideSpaceId::Space, ClusterwideSpaceId::Index];
+
+/// Performs a clusterwide compare and swap operation.
+///
+/// E.g. it checks the `predicate` on leader and if no conflicting entries were found
+/// appends the `op` to the raft log and returns its index and term.
+///
+/// # Errors
+/// See [`rpc::cas::Error`] for CaS-specific errors.
+/// It can also return general picodata errors in cases of faulty network or storage.
+pub fn compare_and_swap(op: Op, predicate: Predicate) -> traft::Result<(RaftIndex, RaftTerm)> {
+    let node = node::global()?;
+    let request = Request {
+        cluster_id: node.raft_storage.cluster_id()?,
+        predicate,
+        op,
+    };
+    loop {
+        let Some(leader_id) = node.status().leader_id else {
+            tlog!(Warning, "leader id is unknown, waiting for status change...");
+            node.wait_status();
+            continue;
+        };
+        let leader_address = unwrap_ok_or!(
+            node.storage.peer_addresses.try_get(leader_id),
+            Err(e) => {
+                tlog!(Warning, "failed getting leader address: {e}");
+                tlog!(Info, "going to retry in while...");
+                fiber::sleep(Duration::from_millis(250));
+                continue;
+            }
+        );
+        let resp = rpc::network_call(&leader_address, &request);
+        let resp = fiber::block_on(resp.timeout(Duration::from_secs(3)));
+        match resp {
+            Ok(Response { index, term }) => return Ok((index, term)),
+            Err(e) => {
+                tlog!(Warning, "{e}");
+                return Err(e.into());
+            }
+        }
+    }
+}
 
 crate::define_rpc_request! {
     fn proc_cas(req: Request) -> Result<Response> {
@@ -381,7 +429,7 @@ impl Range {
     ///
     /// # Example
     /// ```
-    /// use picodata::rpc::cas::Range;
+    /// use picodata::cas::Range;
     ///
     /// // Creates a range for tuples with keys from 1 (excluding) to 10 (excluding)
     /// let my_space_id = 2222;
