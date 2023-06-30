@@ -22,26 +22,27 @@
 
 ## Использование SQL-команд в консоли Picodata
 После подключения в консоли к узлу-маршрутизатору (роль router), можно
-выполнять SQL-команды, т.е. добавлять данные в таблицы (spaces) и
+выполнять SQL-команды, т.е. добавлять данные в [спейсы](../glossary.md#space) (таблицы) и
 получать их. Синтаксис команд учитывает особенности Lua-интерпретатора в
 консоли Picodata и предполагает, что любой SQL-запрос должен содержаться
 в обертке следующего вида: 
 ```
 sbroad.execute([[запрос]], {значения передаваемых параметров})
 ```
+
 Команды Sbroad будут отличаться в зависимости от того, записываем ли мы в БД данные (`INSERT`) или считываем их (`SELECT`).
 Так как при SELECT-запросах мы не передаем каких-либо параметров, то содержимое фигурных скобок будет пустым. Пример:
 ```
-sbroad.execute([[select *  from "products"]], {})
+sbroad.execute([[select * from "characters"]], {})
 ```
 
 Запись строки данных в таблицу командой `INSERT` возможна как в обычном виде:
 ```
-sbroad.execute([[insert into "products" ("id", "name") values (1, 'Alice')]], {})
+sbroad.execute([[insert into "characters" ("id", "name", "year") values (1, 'Woody', 1995)]], {})
 ```
 Так и параметризированном:
 ```
-sbroad.execute([[insert into "products" ("id", "name") values (?, ?)]], {1, 'Alice'})
+sbroad.execute([[insert into "characters" ("id", "name", "year") values (?, ?, ?)]], {1, "Woody", 1995})
 ```
 
 Ниже приведены подробности использования SQL-команд в Picodata.
@@ -65,48 +66,50 @@ Cхема возможных распределенных запросов `SELE
 
 ### Примеры запросов
 
-Для примера используем две тестовые таблицы:
-- `products` с данными об остатках игрушек на складе;
-- `orders` с данными о заказах соответствующих позиций;
+Для примера используем два тестовых спейса для учета персонажей из "Истории игрушек":
+- `characters` — список персонажей с указанием года выхода на экран;
+- `assets` — список соответствующих игрушек с указанием их остатков на складе;
 
-![Table_products](test_table.svg)
+![Table_characters](table_characters.svg)
 
-![Table_orders](test_table_orders.svg)
+![Table_assets](table_assets.svg)
+
 
 Ниже показаны некоторые примеры работающих SQL-запросов с использованием данных из этих таблиц.
 
 Вывод всей таблицы:
 ```
-sbroad.execute([[select * from "products"]], {})
+sbroad.execute([[select * from "characters"]], {})
 ```
 
 Вывод в консоль:
 ```
 ---
 - {
-  'metadata': 
-  [{'name': 'id', 'type': 'integer'}, 
-   {'name': 'name', 'type': 'string'},
-   {'name': 'product_units', 'type': 'integer'}],
+  'metadata': [
+    {'name': 'id', 'type': 'integer'},
+    {'name': 'name', 'type': 'string'},
+    {'name': 'year', 'type': 'integer'}], 
   'rows': [
-   [1, 'Woody', 2561], 
-   [3, 'Bo Peep', 255], 
-   [6, 'Rex', 998], 
-   [7, 'Hamm', 66],
-   [8, 'Mrs. Davis', 341],
-   [2, 'Buzz Lightyear', 4781], 
-   [4, 'Mr. Potato Head', 109],
-   [5, 'Slinky Dog', 1112],
-   [9, 'Molly Davis', 235],
-   [10, 'Sid Phillips', 78]]
-   }
+    [1, 'Woody', 1995], 
+    [3, 'Bo Peep', 1995],
+    [7, 'Daisy', 2010], 
+    [8, 'Forky', 2019], 
+    [2, 'Buzz Lightyear', 1995],
+    [4, 'Mr. Potato Head', 1995], 
+    [5, 'Slinky Dog', 1995], 
+    [6, 'Barbie', 2010], 
+    [9, 'Dragon', 2019], 
+    [10, 'The Dummies', 2019]]
+    }
 ...
+
 ```
 _Примечание_: строки в выводе идут в том порядке, в каком их отдают узлы хранения Picodata (с ролью `storage`).
 
 Вывод строки по известному `id`:
 ```
-sbroad.execute([[select "name" from "products" where "id"=1]], {})
+sbroad.execute([[select "name" from "characters" where "id"=1]], {})
 ```
 
 Вывод в консоль:
@@ -118,23 +121,25 @@ sbroad.execute([[select "name" from "products" where "id"=1]], {})
 
 Вывод строк по нескольким условиям для разных столбцов:
 ```
-sbroad.execute([[select "name","product_units" from "products" where "id">3 and "product_units">200 ]], {})
+sbroad.execute([[select "name","year" from "characters" where "id">3 and "year">2000 ]], {})
 ```
 
 Вывод в консоль:
 ```
 ---
 - {
-  'metadata': 
-  [{'name': 'name', 'type': 'string'},
-   {'name': 'product_units', 'type': 'integer'}],
+  'metadata': [
+    {'name': 'name', 'type': 'string'},
+    {'name': 'year', 'type': 'integer'}],
   'rows': [
-   ['Rex', 998],
-   ['Mrs. Davis', 341],
-   ['Slinky Dog', 1112],
-   ['Molly Davis', 235]]
-   }
+    ['Daisy', 2010], 
+    ['Forky', 2019], 
+    ['Barbie', 2010], 
+    ['Dragon', 2019], 
+    ['The Dummies', 2019]]
+    }
 ...
+
 ```
 
 Структурно SQL-запрос состоит из трех частей:
@@ -193,15 +198,15 @@ sbroad.execute([[select "name","product_units" from "products" where "id">3 and 
 в рамках запроса. Использовать `VALUES` имеет смысл тогда, когда
 требуется получить набор строк, для которых известны значения одного или
 более столбцов. Например, с помощью команды ниже можно выяснить название
-товара, зная количество сделанных по нему заказов:
+игрушки, зная её количество на складе:
 
 ```
-sbroad.execute([[select "order" from "orders" where ("amount") in (values (109))]], {})
+sbroad.execute([[select "name" from "assets" where ("stock") in (values (2561))]], {})
 ```
 Вывод в консоль:
 ```
 ---
-- {'metadata': [{'name': 'order', 'type': 'string'}], 'rows': [['Woody']]}
+- {'metadata': [{'name': 'name', 'type': 'string'}], 'rows': [['Woody']]}
 ...
 
 ```
@@ -213,15 +218,30 @@ sbroad.execute([[select "order" from "orders" where ("amount") in (values (109))
 таблиц, или для удобного отображения разных вычислений или манипуляций
 со строками таблицы. Результат запроса может содержать дублирующиеся строки.
 
-Для примера посчитаем общее количество товаров на складе и сравним его с общим числом заказов:
+Для примера предположим, что требуется получить список игрушек с
+персонажами 1995 года, а также все игрушки, остатки которых на складе
+превышают 1000 штук:
+
 ```
-sbroad.execute([[select sum("product_units") from "products" union all select sum("amount") from "orders"]], {})
+sbroad.execute([[select "name"  from "characters" where "year"=1995 union all select "name" from "assets" where "stock">1000]], {})
 ```
 
 Вывод в консоль:
 ```
 ---
-- {'metadata': [{'name': 'COL_1', 'type': 'decimal'}], 'rows': [[10536], [363]]}
+- {
+  'metadata': [
+    {'name': 'name', 'type': 'string'}],
+ 'rows': [
+    ['Woody'], 
+    ['Bo Peep'],
+    ['Woody'], 
+    ['Buzz Lightyear'], 
+    ['Mr. Potato Head'], 
+    ['Slinky Dog'], 
+    ['Buzz Lightyear'],
+    ['Slinky Dog']]
+    }
 ...
 ```
 
@@ -233,148 +253,24 @@ sbroad.execute([[select sum("product_units") from "products" union all select su
 разных таблиц, либо разных столбцов одной таблицы, когда нужный
 результат нельзя получить лишь одним SELECT-запросом.
 
-Для более наглядной демонстрации предположим, что требуется получить
-данные об остатках на складе каждого товара, который был заказан менее
-50 раз. Для этого используем команду `EXCEPT`: 
+Используем команду, похожую на предыдущий пример, но с другим смыслом.
+На этот раз нужно получить список игрушек с персонажами 1995 года, но
+только если их запасы меньше 1000 штук: 
+
 ```
-sbroad.execute([[select "id","name" from "products" except select "id","order" from "orders" where "amount">50]], {})
+ sbroad.execute([[select "name"  from "characters" where "year"=1995 except select "name" from "assets" where "stock">1000]], {})
 ```
 Вывод в консоль:
 ```
----
-- {
-  'metadata':
-  [{'name': 'id', 'type': 'integer'},
-   {'name': 'name', 'type': 'string'}],
-  'rows': [
-   [6, 'Rex'],
-   [7, 'Hamm'],
-   [8, 'Mrs. Davis'],
-   [4, 'Mr. Potato Head'],
-   [5, 'Slinky Dog'],
-   [9, 'Molly Davis'],
-   [10, 'Sid Phillips']]
-   }
-...
-```
-Приведенный пример использует готовые данные из таблиц, с однозначно
-идентифицируемыми строками по столбцу `id`, без манипуляций с данными
-столбцов, поэтому перемещения данных в узлах хранения (`storage`) не
-происходит. Если запрос предполагает работу с другими столбцами, либо
-обработку данных прямо в запросе, то при его выполнении планировщик
-будет перемещать шардированные данные. Пример:
-```
-sbroad.execute([[explain select "name" from "products" except select "order" from "orders" where "amount">50]], {})
-```
-Здесь будет перемещена таблица `products`, в то время как данные таблицы `orders` будут использованы в готовом виде.
-Если в запросе с `EXCEPT` происходит манипуляция с данными в обеих частях запроса, то при его выполнении будут перемещаться данные обеих таблиц. Например:
-```
-sbroad.execute([[select count("id") from "products" except select count("id") from "orders"]], {})
-```
-Варианты перемещения данных в SQL-планировщике Picodata обозначаются термином `motion policy` и описаны подробнее [ниже](#варианты-перемещения-данных).
-
-## Использование JOIN
-Команда `JOIN` используется для комбинирования данных из нескольких
-таблиц. Но, в отличие от `UNION ALL`, результатом будет объединение не
-строк, а столбцов. Таким образом, если `UNION ALL` добавляет к строкам
-одной таблицы строки другой (при условии совпадения типов данных в
-соответствующих столбцах), то `JOIN` создает новую результирующую
-таблицу из указанных столбцов этих таблиц. Использование `JOIN` полезно
-для соединения связанных друг с другом данных из разных таблиц.
-Склеивание столбцов требует указания условия (оператор `ON`). Для
-примера создадим из двух таблицы выше новую результирующую таблицу, где
-будут одновременно и остатки на складе, и заказы:
-
-![Table_joined](test_table_orders_joined.svg)
-
-Команда:
-
-```
-sbroad.execute([[select "id","name","product_units","amount" as "orders" from "products" join (select "id" as "number","amount" from "orders") as orders on "products"."id"=orders."number"]], {})
-
-```
-
-Вывод в консоль:
-```
----
-- {
-  'metadata': 
-  [{'name': 'products.id', 'type': 'integer'}, 
-   {'name': 'products.name', 'type': 'string'}, 
-   {'name': 'products.product_units', 'type': 'integer'},
-   {'name': 'orders', 'type': 'integer'}], 
-  'rows': 
-  [[1, 'Woody', 2561, 109], 
-   [3, 'Bo Peep', 255, 65], 
-   [6, 'Rex', 998, 29], 
-   [7, 'Hamm', 66, 27], 
-   [8, 'Mrs. Davis', 341, 15], 
-   [2, 'Buzz Lightyear', 4781, 87], 
-   [4, 'Mr. Potato Head', 109, 3], 
-   [5, 'Slinky Dog', 1112, 14], 
-   [9, 'Molly Davis', 235, 5], 
-   [10, 'Sid Phillips', 78, 9],]
-   }
-...
-```
-Если после оператора `JOIN` следует подзапрос (как в примере выше), то обязательно использование псевдонима (`AS`).
-
-
-## Использование функции CAST()
-Функция `CAST()` используется для изменения получаемого типа данных при
-SELECT-запросах. С ее помощью можно преобразовать числа в текст, дробные
-числа в целые и так далее согласно приведённой [выше](#type) схеме. В
-частности, поддерживаются следующие типы данных:
-
-- `ANY`. Любой тип данных / тип данных не задан;
-- `BOOL`, `BOOLEAN`. Логический тип данных, поддерживаемые значения: `FALSE`, `TRUE` и `NULL` (`UNKNOWN` в терминологии троичной логики). По правилам сравнения `FALSE` меньше `TRUE`.
-- `DECIMAL`. Числа с фиксированной запятой, содержащие до 38 цифр;
-- `DOUBLE` Числа с плавающей запятой стандарта IEEE 754. Помимо стандартной записи дробного числа (например, `0.5`) поддерживается и экспоненциальная форма (например, `5E-1`);
-- `INT`, `INTEGER`. Целые числа в диапазоне от `-2^63` до `+2^64` или `NULL`;
-- `NUMBER`. Универсальный числовой контейнер, в котором могут лежать как
-  целые числа, так и числа с плавающей запятой;
-- `SCALAR`. Скалярный тип данных, т.е содержащий только один элемент (_не_ кортеж и _не_ массив);
-- `STRING`, `TEXT`. Текстовый тип данных. Позволяет хранить текстовую
-  строку переменной длины. Максимальная длина составляет `2,147,483,647`
-  байт;
-- `UNSIGNED`. Тип целого беззнакового числа в диапазоне от `0` до `+2^64` или `NULL`.
-- `VARCHAR`. Текстовый тип данных с явно заданной длиной строки.
-
-### Пример запроса
-В качестве примера покажем преобразование дробных чисел в целые с отбрасыванием дробной части.
-Используем следующую таблицу:
-
-![Table_scores](test_table_scores.svg)
-
-В обычном виде значения столбца `score` имеют дробную часть и определены в схеме данных типом `decimal`:
-```
-sbroad.execute([[select "score" from "scoring"]], {})
 ---
 - {
   'metadata': [
-   {'name': 'score', 'type': 'decimal'}], 
+    {'name': 'name', 'type': 'string'}], 
   'rows': [
-    [78.33],
-    [84.61],
-    [47.28]]
+    ['Bo Peep'], 
+    ['Mr. Potato Head']]
     }
 ...
-
-```
-Преобразуем эти числа в `int`:
-```
-sbroad.execute([[select cast("score" as int) from "scoring"]], {})
----
-- {
-  'metadata': [
-  {'name': 'COL_1', 'type': 'integer'}],
-  'rows': [
-  [78],
-  [84],
-  [47]]
-  }
-...
-
 ```
 ## Использование псевдонимов
 Использование псевдонимов (aliases) позволяет переопределить названия
@@ -410,6 +306,142 @@ sbroad.execute([[select sum(cast("score" as int)) as "_Total_score_1" from "scor
 ...
 ```
 
+## Использование JOIN
+Команда `JOIN` используется для комбинирования данных из нескольких
+таблиц. Но, в отличие от `UNION ALL`, результатом будет объединение не
+строк, а столбцов. Таким образом, если `UNION ALL` добавляет к строкам
+одной таблицы строки другой (при условии совпадения типов данных в
+соответствующих столбцах), то `JOIN` создает новую результирующую
+таблицу из указанных столбцов этих таблиц. Использование `JOIN` полезно
+для соединения связанных друг с другом данных из разных таблиц.
+Склеивание столбцов требует указания условия (оператор `ON`). Для
+примера создадим из двух таблицы выше новую результирующую таблицу, где
+будут одновременно и остатки игрушек на складе, и годы выхода
+соответствующих персонажей:
+
+![Table_joined](table_joined.svg)
+
+Команда:
+
+```
+sbroad.execute([[select "id","name","stock","year" from "characters" join (select "id" as "number","stock" from "assets") as stock on "characters"."id"=stock."number"]], {})
+```
+
+
+Вывод в консоль:
+```
+---
+- {
+  'metadata': [
+    {'name': 'characters.id', 'type': 'integer'}, 
+    {'name': 'characters.name', 'type': 'string'}, 
+    {'name': 'STOCK.stock', 'type': 'integer'}, 
+    {'name': 'characters.year', 'type': 'integer'}], 
+  'rows': [
+    [1, 'Woody', 2561, 1995], 
+    [3, 'Bo Peep', 255, 1995], 
+    [7, 'Daisy', 66, 2010], 
+    [8, 'Forky', 341, 2019], 
+    [2, 'Buzz Lightyear', 4781, 1995], 
+    [4, 'Mr. Potato Head', 109, 1995], 
+    [5, 'Slinky Dog', 1112, 1995],
+    [6, 'Barbie', 998, 2010], 
+    [9, 'Dragon', 235, 2019], 
+    [10, 'The Dummies', 78, 2019]]
+    }
+...
+
+```
+Если после оператора `JOIN` следует подзапрос (как в примере выше), то
+обязательно использование псевдонима (`AS`). С помощью дополнительных
+псевдонимов можно заменить автоматические имена колонок в результирующей
+таблице на собственные. Новые имена не должны совпадать с прежними:
+
+```
+ sbroad.execute([[select "id" as "id1","name" as "name1","stock" as "stock1","year" as "year1" from "characters" join (select "id" as "number","stock" from "assets") as stock on "characters"."id"=stock."number"]], {})
+```
+
+Вывод в консоль:
+```
+---
+- {
+  'metadata': [
+    {'name': 'id1', 'type': 'integer'}, 
+    {'name': 'name1', 'type': 'string'},
+    {'name': 'stock1', 'type': 'integer'}, 
+    {'name': 'year1', 'type': 'integer'}],
+  'rows': [
+    [1, 'Woody', 2561, 1995], 
+    [3, 'Bo Peep', 255, 1995], 
+    [7, 'Daisy', 66, 2010],
+    [8, 'Forky', 341, 2019], 
+    [2, 'Buzz Lightyear', 4781, 1995], 
+    [4, 'Mr. Potato Head', 109, 1995], 
+    [5, 'Slinky Dog', 1112, 1995], 
+    [6, 'Barbie', 998, 2010], 
+    [9, 'Dragon', 235, 2019], 
+    [10, 'The Dummies', 78, 2019]]
+    }
+...
+
+```
+
+## Использование функции CAST()
+Функция `CAST()` используется для изменения получаемого типа данных при
+SELECT-запросах. С ее помощью можно преобразовать числа в текст, дробные
+числа в целые и так далее согласно приведённой [выше](#type) схеме. В
+частности, поддерживаются следующие типы данных:
+
+- `ANY`. Любой тип данных / тип данных не задан;
+- `BOOL`, `BOOLEAN`. Логический тип данных, поддерживаемые значения: `FALSE`, `TRUE` и `NULL` (`UNKNOWN` в терминологии троичной логики). По правилам сравнения `FALSE` меньше `TRUE`.
+- `DECIMAL`. Числа с фиксированной запятой, содержащие до 38 цифр;
+- `DOUBLE` Числа с плавающей запятой стандарта IEEE 754. Помимо стандартной записи дробного числа (например, `0.5`) поддерживается и экспоненциальная форма (например, `5E-1`);
+- `INT`, `INTEGER`. Целые числа в диапазоне от `-2^63` до `+2^64` или `NULL`;
+- `NUMBER`. Универсальный числовой контейнер, в котором могут лежать как
+  целые числа, так и числа с плавающей запятой;
+- `SCALAR`. Скалярный тип данных, т.е содержащий только один элемент (_не_ кортеж и _не_ массив);
+- `STRING`, `TEXT`. Текстовый тип данных. Позволяет хранить текстовую
+  строку переменной длины. Максимальная длина составляет `2,147,483,647`
+  байт;
+- `UNSIGNED`. Тип целого беззнакового числа в диапазоне от `0` до `+2^64` или `NULL`.
+- `VARCHAR`. Текстовый тип данных с явно заданной длиной строки.
+
+### Пример запроса
+В качестве примера покажем преобразование дробных чисел в целые с отбрасыванием дробной части.
+Используем следующую таблицу:
+
+![Table_scores](table_scores.svg)
+
+В обычном виде значения столбца `score` имеют дробную часть и определены в схеме данных типом `decimal`:
+```
+sbroad.execute([[select "score" from "scoring"]], {})
+---
+- {
+  'metadata': [
+   {'name': 'score', 'type': 'decimal'}], 
+  'rows': [
+    [78.33],
+    [84.61],
+    [47.28]]
+    }
+...
+
+```
+Преобразуем эти числа в `int`:
+```
+sbroad.execute([[select cast("score" as int) from "scoring"]], {})
+---
+- {
+  'metadata': [
+  {'name': 'COL_1', 'type': 'integer'}],
+  'rows': [
+  [78],
+  [84],
+  [47]]
+  }
+...
+```
+
 ## Запрос INSERT
 Запрос `INSERT` используется для помещения (записи) строки данных в
 таблицу. На данный момент доступна запись только одной строки в рамках
@@ -424,7 +456,7 @@ sbroad.execute([[select sum(cast("score" as int)) as "_Total_score_1" from "scor
 Пример использования со вставкой строки значений в таблицу при помощи команды `INSERT`:
 
 ```
-sbroad.execute([[insert into "products" ("id", "name", "product_units") values (?, ?, ?)]], {1, 'Woody', 2561})
+sbroad.execute([[insert into "assets" ("id", "name", "stock") values (?, ?, ?)]], {1, "Woody", 2561})
 ```
 
 В данном случае использовалась параметризированная вставка с явным
@@ -432,7 +464,7 @@ sbroad.execute([[insert into "products" ("id", "name", "product_units") values (
 значения для всех столбцов, то их можно явно не указывать:
 
 ```
-sbroad.execute([[insert into "products" values (1, 'Woody', 2561)]], {})
+sbroad.execute([[insert into "assets" values (1, 'Woody', 2561)]], {})
 ```
 
 Вывод в консоль при успешной вставке:
@@ -446,12 +478,11 @@ sbroad.execute([[insert into "products" values (1, 'Woody', 2561)]], {})
 
 ## Запрос EXPLAIN
 Команда `EXPLAIN` добавляется перед командами `SELECT` и `INSERT` для
-того чтобы показать как будет выглядеть план исполнения запроса, при
-этом не выполняя сам запрос. План строится на узле-маршрутизаторе (роль
-`router`) и позволяет наглядно оценить структуру и последовательность
-действий при выполнении запроса, включая, в частности, варианты
-перемещения данных между узлами хранения. `EXPLAIN` является
-инструментом для анализа и оптимизации запросов.
+того чтобы показать как будет выглядеть план исполнения запроса, при этом не выполняя
+сам запрос. План строится на узле-маршрутизаторе (роль `router`) и
+позволяет наглядно оценить структуру и последовательность действий при
+выполнении запроса. `EXPLAIN` является инструментом для анализа и
+оптимизации запросов.
 
 Схема использования `EXPLAIN` показана ниже.
 
@@ -507,20 +538,21 @@ sbroad.execute([[explain select "score" from "scoring" where "score">70]], {})
 Пример построения проекции из более сложного запроса:
 
 ```
-sbroad.execute([[explain select "id","name" from "products" except select "id","order" from "orders" where "amount">50]], {})
+sbroad.execute([[explain select "id","name"  from "characters" except select "id","name" from "assets" where "stock">1000]], {})
 ```
 
 Вывод в консоль:
 ```
----
 - [
   'except', 
-  '    projection ("products"."id" -> "id", "products"."name" -> "name")',
-  '        scan "products"', 
-  '    projection ("orders"."id" -> "id", "orders"."order" -> "order")', 
-  '        selection ROW("orders"."amount") > ROW(50)', 
-  '            scan  "orders"']
+  '    projection ("characters"."id" -> "id", "characters"."name" -> "name")',
+  '        scan "characters"', 
+  '    projection ("assets"."id" -> "id", "assets"."name" -> "name")', 
+  '        selection ROW("assets"."stock") > ROW(1000)', 
+  '            scan "assets"'
+  ]
 ...
+
 
 ```
 В таком плане запроса присутствует два блока `projection`, перед
@@ -529,21 +561,45 @@ sbroad.execute([[explain select "id","name" from "products" except select "id","
 (`selection`).
 
 ### Варианты перемещения данных
-В плане запроса может быть указан параметр `motion`, который отражает тип перемещения данных между узлами хранения. Существуют следующие два типа:
+В плане запроса может быть указан параметр `motion`, который отражает
+тип перемещения данных между узлами хранения. Существуют следующие два
+типа:
 
 1. **Частичный**. При выполнении запроса на каждый узел кластера будет
-   отправлена только востребованная часть данных (таблица перераспределяется по новому ключу). При таком запросе планировщик отобразит значение `motion [policy:   segment]`.
-1. **Полный**. На каждый узел кластера будет отправлена вся таблица. Планировщик отобразит значение `motion [policy:   full]`.
+   отправлена только востребованная часть данных (таблица
+   перераспределяется по новому ключу). При таком запросе планировщик
+   отобразит значение `motion [policy:   segment]`.
+1. **Полный**. На каждый узел кластера будет отправлена вся таблица.
+   Планировщик отобразит значение `motion [policy:   full]`.
+
+Вариант перемещения данных определяется характером распределения спейса
+между репликами (шардами) и зависит от типа запроса. Распределенный
+запрос выполняется отдельно на каждом шарде, после чего результаты
+соединяются (см. [подробнее](sql_review.md)). При выполнении
+распределенного `EXCEPT` требуется полное перемещение таблицы в правой
+части запроса на все шарды, содержащие таблицу из левой части (без этого
+результаты локальных запросов будут неверными). Аналогично, для
+объединения нескольких таблиц требуется наличие полной копии
+присоединяемой таблицы на всех шардах для того, чтобы распределенный
+`JOIN` смог корректно соединить столбцы разных таблиц.
+
+Частичное перемещение данных характерно для распределенного `INSERT`,
+при котором перемещаются только те колонки, по которым таблица
+шардирована (`sharding_key` в схеме данных).
+
+При работе с одной таблицей, либо независимом выполнении запросов на
+разных таблицах без их взаимодействия (например, при распределенном
+`UNION ALL`), перемещение данных не происходит. 
 
 #### Пример `motion [policy:   segment]`.
 ```
-sbroad.execute([[explain insert into "orders" ("id", "order", "amount") values (?, ?, ?)]], {12, "Sid Phillips", 98})
+sbroad.execute([[explain insert into "assets" ("id", "name", "stock") values (?, ?, ?)]], {12, "Sid Phillips", 98})
 ```
 Вывод в консоль:
 ```
 ---
 [
- 'insert "orders"', 
+ 'insert "assets"', 
  '    projection (COL_0 -> COL_0, COL_1 -> COL_1, COL_2 -> COL_2, bucket_id((coalesce((''NULL'', COL_0::string)) || coalesce((''NULL'', COL_1::string)))))',
  '        scan', 
  '            projection (COLUMN_1::int -> COL_0, COLUMN_2::string -> COL_1, COLUMN_3::int -> COL_2)', 
@@ -557,25 +613,33 @@ sbroad.execute([[explain insert into "orders" ("id", "order", "amount") values (
 
 #### Пример `motion [policy:   full]`.
 ```
-sbroad.execute([[explain select "id","name","product_units","amount" as "orders" from "products" join (select "id" as "number","amount" from "orders") as orders on "products"."id"=orders."number"]], {})
+sbroad.execute([[explain select "id","name","stock","year" from "characters" join (select "id" as "number","stock" from "assets") as stock on "characters"."id"=stock."number"]], {})
 ```
 
 Вывод в консоль:
 ```
 ---
 - [
-  'projection 
-  ("products"."id" -> "id", "products"."name" -> "name", "products"."product_units" -> "product_units", "ORDERS"."amount" -> "orders")', 
-  '    join on ROW("products"."id") = ROW("ORDERS"."number")', 
-  '        scan "products"', 
-  '            projection
-               ("products"."id" -> "id", "products"."name" -> "name", "products"."product_units" -> "product_units")', 
-               '                scan "products"', 
-               '        motion [policy:   full]', 
-               '            scan "ORDERS"', 
-               '                projection ("orders"."id" -> "number", "orders"."amount" -> "amount")', 
-               '                    scan "orders"'
-  ]
+  'projection (
+    "characters"."id" -> "id", 
+    "characters"."name" -> "name", 
+    "STOCK"."stock" -> "stock", 
+    "characters"."year" -> "year")', 
+    '    join on ROW("characters"."id") = ROW("STOCK"."number")', 
+    '        scan "characters"', 
+    '            projection (
+      "characters"."id" -> "id", 
+      "characters"."name" -> "name", 
+      "characters"."year" -> "year")', 
+      '                scan "characters"', 
+      '        motion [policy: full]',
+      '            scan "STOCK"', 
+      '                projection (
+        "assets"."id" -> "number",
+        "assets"."stock" -> "stock")', 
+        '                    scan "assets"'
+    ]
+
 ...
 ```
 Читать далее: [Поддерживаемые типы данных SQL](../sql_datatypes)
