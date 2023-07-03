@@ -578,17 +578,17 @@ pub(crate) fn setup(args: &args::Run) {
 
             received MsgTimeoutNow from 3 and starts an election
                 to get leadership., from: 3, term: 4, raft_id: 3
-            
+
             starting a new election, term: 4, raft_id: 3
-            
+
             became candidate at term 5, term: 5, raft_id: 3
-            
+
             broadcasting vote request, to: [4, 1], log_index: 54,
                 log_term: 4, term: 5, type: MsgRequestVote, raft_id: 3
-            
-            received votes response, term: 5, type: MsgRequestVoteResponse, 
+
+            received votes response, term: 5, type: MsgRequestVoteResponse,
                 approvals: 2, rejections: 0, from: 4, vote: true, raft_id: 3
-        
+
             became leader at term 5, term: 5, raft_id: 3
         "},
         tlua::function0(|| -> traft::Result<()> {
@@ -941,10 +941,9 @@ pub(crate) fn setup(args: &args::Run) {
             -- Delete the second Peppa friend, specifying index and term
             -- explicitly. It's necessary when there are some yielding
             -- operations between reading and writing.
-            index, term = {
+            index, term =
                 assert(pico.raft_get_index()),
-                assert(pico.raft_status()).term,
-            }
+                assert(pico.raft_status()).term
             emily = box.space.friends_of_peppa.index.name:get('Emily')
             fiber.sleep(1) -- do something yielding
 
@@ -1080,8 +1079,11 @@ pub(crate) fn setup(args: &args::Run) {
             pico.cas({
                 kind = 'insert',
                 space = 'friends_of_peppa',
-                key = {1, 'Suzy'},
+                tuple = {1, 'Suzy'},
             })
+
+            -- Global spaces are read with Tarantool `box` API for now.
+            box.space.friends_of_peppa:fselect()
 
             -- Creates an implicitly sharded space 'wonderland' with two fields:
             -- property (string) and value (any).
