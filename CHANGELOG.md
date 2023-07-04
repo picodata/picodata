@@ -15,6 +15,15 @@ with the `YY.0M.MICRO` scheme.
 - Allow specifying `picodata connect [user@][host][:port]` format. It
   overrides the `--user` option.
 
+- _Clusterwide SQL_ now uses an internal module called `key_def` to
+  determine tuple buckets. In case the spaces were sharded using a
+  different hash function, executing SQL queries on these spaces would
+  return inaccurate outcomes. For more examples, refer to
+  `pico.help('create_space')`.
+
+- _Clusterwide SQL_ now features Lua documentation. Refer to
+  `pico.help('sql')` for more information.
+
 ### Lua API:
 
 - Update `pico.LUA_API_VERSION`: `1.0.0` -> `1.2.0`

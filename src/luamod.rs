@@ -388,6 +388,74 @@ pub(crate) fn setup(args: &args::Run) {
         ),
     );
 
+    // sql
+    ///////////////////////////////////////////////////////////////////////////
+    luamod_set_help_only(
+        &l,
+        "sql",
+        indoc! {r#"
+        pico.sql(query[, params])
+        =========================
+
+        Executes a cluster-wide SQL query.
+
+        1. The query is parsed and validated to build a distributed
+           query plan on the current instance (router).
+        2. The query plan is dispatched to the target instances (storages)
+           slice-by-slice in a bottom-up manner. All intermediate results
+           are stored in the router's memory.
+
+        Params:
+
+            1. query (string)
+            2. params (table), optional
+
+        Returns:
+
+            (table DqlResult) if query retrieves data
+            or
+            (table DmlResult) if query modifies data
+            or
+            (nil, string) in case of an error
+
+        table DqlResult:
+
+            - metadata (table),
+                `{{name = string, type = string}, ...}`, an array of column
+                definitions of the table.
+            - rows (table),
+                `{row, ...}`, essentially the result of the query.
+
+        table DmlResult:
+
+            - row_count (number), the number of rows modified, inserted or
+            deleted by the query.
+
+        Example:
+
+            picodata> -- Insert a row into the 'wonderland' table using parameters
+            picodata> -- as an optional argument.
+            picodata> pico.sql(
+                [[insert into "wonderland" ("property", "value") values (?, ?)]],
+                {"dragon", 13}
+            )
+            ---
+            - row_count: 1
+            ...
+
+            picodata> -- Select a row from the 'wonderland' table.
+            picodata> pico.sql(
+                [[select * from "wonderland" where "property" = 'dragon']]
+            )
+            ---
+            - metadata:
+                - {'name': 'property', 'type': 'string'}
+                - {'name': 'value', 'type': 'integer'}
+              rows:
+                - ['dragon', 13]
+        "#},
+    );
+
     // vclock
     ///////////////////////////////////////////////////////////////////////////
     luamod_set_help_only(
@@ -1107,7 +1175,7 @@ pub(crate) fn setup(args: &args::Run) {
                 name = 'wonderland',
                 format = {
                     {name = 'property', type = 'string', is_nullable = false},
-                    {name = 'value', type = 'any', is_nullable = true}
+                    {name = 'value', type = 'integer', is_nullable = true}
                 },
                 primary_key = {'property'},
                 distribution = 'sharded',
@@ -1115,8 +1183,12 @@ pub(crate) fn setup(args: &args::Run) {
                 timeout = 3,
             })
 
+            -- Calculate an SQL-compatible hash for the bucket id.
+            local key = require('key_def').new({{fieldno = 1, type = 'string'}})
+            local tuple = box.tuple.new({'unicorns'})
+            local bucket_id = key:hash(tuple) % vshard.router.bucket_count()
+
             -- Sharded spaces are updated via vshard api, see [1]
-            local bucket_id = vshard.router.bucket_id_mpcrc32('unicorns')
             vshard.router.callrw(bucket_id, 'box.space.wonderland:insert', {{'unicorns', 12}})
 
         See also:
