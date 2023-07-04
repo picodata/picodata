@@ -104,7 +104,7 @@ edition = "2018"
 # author, license, etc
 
 [dependencies]
-tarantool = "1.1"
+tarantool = "2.0"
 serde = "1.0"
 
 [lib]
@@ -357,7 +357,7 @@ use tarantool::{
     error::Error,
     fiber::sleep,
     space::Space,
-    transaction::start_transaction,
+    transaction::transaction,
 };
 
 #[proc]
@@ -367,7 +367,7 @@ fn write() -> Result<(i32, String), String> {
 
     let row = (1, "22".to_string());
 
-    start_transaction(|| -> Result<(), Error> {
+    transaction(|| -> Result<(), Error> {
         space.replace(&row)?;
         Ok(())
     })

@@ -1,7 +1,7 @@
 [package]
 name = "tarantool"
 description = "Tarantool rust bindings"
-version = "1.2.0"
+version = "2.0.0"
 authors = [
     "Dmitriy Koltsov <dkoltsov@picodata.io>",
     "Georgy Moshkin <gmoshkin@picodata.io>",
