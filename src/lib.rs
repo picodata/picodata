@@ -109,26 +109,6 @@ fn init_sbroad() {
         "sbroad/sbroad-core/src/core-storage.lua"
     );
 
-    // Create SQL function for bucket calculation.
-    lua.exec(
-        r#"
-        box.schema.func.create('BUCKET_ID', {
-            language = 'Lua',
-            body = [[
-                function(x)
-                    return box.func['.calculate_bucket_id']:call({ x })
-                end
-            ]],
-            if_not_exists = true,
-            param_list = {'string'},
-            returns = 'unsigned',
-            aggregate = 'none',
-            exports = {'SQL'},
-        })
-    "#,
-    )
-    .unwrap();
-
     lua.exec(
         r#"
         _G.pico.sql = require('sbroad').sql;
