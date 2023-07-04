@@ -112,7 +112,9 @@ fn init_sbroad() {
     lua.exec(
         r#"
         _G.pico.sql = require('sbroad').sql;
+        box.schema.func.create('pico.sql', {if_not_exists = true});
         _G.pico.trace = require('sbroad').trace;
+        box.schema.func.create('pico.trace', {if_not_exists = true});
     "#,
     )
     .unwrap();
