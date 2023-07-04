@@ -237,16 +237,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "crossbeam-queue"
-version = "0.3.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d1cfb3ea8a53f37c40dea2c7bedcbd88bdfae54f5e2175d6ecaff1c988353add"
-dependencies = [
- "cfg-if 1.0.0",
- "crossbeam-utils",
-]
-
-[[package]]
 name = "crossbeam-utils"
 version = "0.8.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1012,14 +1002,13 @@ dependencies = [
  "protobuf",
  "raft",
  "rand",
- "rmp-serde 1.0.0",
+ "rmp-serde",
  "sbroad-core",
- "sbroad-picodata",
  "serde",
  "serde_bytes",
  "serde_json",
  "slog",
- "tarantool 1.2.0",
+ "tarantool",
  "tempfile",
  "thiserror",
  "uuid 1.4.0",
@@ -1302,17 +1291,6 @@ dependencies = [
 
 [[package]]
 name = "rmp-serde"
-version = "0.14.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4ce7d70c926fe472aed493b902010bccc17fa9f7284145cb8772fd22fdb052d8"
-dependencies = [
- "byteorder",
- "rmp",
- "serde",
-]
-
-[[package]]
-name = "rmp-serde"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f3eedffbfcc6a428f230c04baf8f59bd73c1781361e4286111fe900849aaddaf"
@@ -1376,34 +1354,12 @@ dependencies = [
  "pest",
  "pest_derive",
  "rand",
- "rmp-serde 1.0.0",
+ "rmp-serde",
  "sbroad-proc",
  "serde",
  "serde_yaml",
- "tarantool 2.0.0",
+ "tarantool",
  "uuid 1.4.0",
-]
-
-[[package]]
-name = "sbroad-picodata"
-version = "0.1.0"
-dependencies = [
- "ahash",
- "base64ct",
- "bincode",
- "blake3",
- "opentelemetry",
- "opentelemetry-jaeger",
- "rand",
- "rmp",
- "rmp-serde 0.14.4",
- "sbroad-core",
- "sbroad-proc",
- "serde",
- "serde_yaml",
- "tarantool 2.0.0",
- "uuid 1.4.0",
- "yaml-rust",
 ]
 
 [[package]]
@@ -1644,53 +1600,17 @@ dependencies = [
  "once_cell",
  "refpool",
  "rmp",
- "rmp-serde 1.0.0",
+ "rmp-serde",
  "rmpv",
  "serde",
  "serde_bytes",
  "serde_json",
  "sha-1",
- "tarantool-proc 0.2.1",
+ "tarantool-proc",
  "tester",
  "thiserror",
  "time",
- "tlua 1.0.0",
- "uuid 0.8.2",
- "va_list",
-]
-
-[[package]]
-name = "tarantool"
-version = "2.0.0"
-source = "git+https://git.picodata.io/picodata/picodata/tarantool-module.git#6872b6dc986b7f7d4718e2e7cc1717a5b0a5842c"
-dependencies = [
- "async-trait",
- "base64",
- "bitflags",
- "byteorder",
- "crossbeam-queue",
- "dec",
- "dlopen",
- "futures",
- "libc",
- "linkme",
- "log",
- "nix 0.24.3",
- "num-derive",
- "num-traits",
- "once_cell",
- "refpool",
- "rmp",
- "rmp-serde 1.0.0",
- "rmpv",
- "serde",
- "serde_bytes",
- "serde_json",
- "sha-1",
- "tarantool-proc 0.2.1 (git+https://git.picodata.io/picodata/picodata/tarantool-module.git)",
- "thiserror",
- "time",
- "tlua 1.0.0 (git+https://git.picodata.io/picodata/picodata/tarantool-module.git)",
+ "tlua",
  "uuid 0.8.2",
  "va_list",
 ]
@@ -1698,17 +1618,6 @@ dependencies = [
 [[package]]
 name = "tarantool-proc"
 version = "0.2.1"
-dependencies = [
- "darling",
- "proc-macro2 1.0.63",
- "quote 1.0.29",
- "syn 1.0.109",
-]
-
-[[package]]
-name = "tarantool-proc"
-version = "0.2.1"
-source = "git+https://git.picodata.io/picodata/picodata/tarantool-module.git#6872b6dc986b7f7d4718e2e7cc1717a5b0a5842c"
 dependencies = [
  "darling",
  "proc-macro2 1.0.63",
@@ -1865,33 +1774,12 @@ dependencies = [
  "libc",
  "serde",
  "thiserror",
- "tlua-derive 0.2.0",
-]
-
-[[package]]
-name = "tlua"
-version = "1.0.0"
-source = "git+https://git.picodata.io/picodata/picodata/tarantool-module.git#6872b6dc986b7f7d4718e2e7cc1717a5b0a5842c"
-dependencies = [
- "libc",
- "serde",
- "thiserror",
- "tlua-derive 0.2.0 (git+https://git.picodata.io/picodata/picodata/tarantool-module.git)",
+ "tlua-derive",
 ]
 
 [[package]]
 name = "tlua-derive"
 version = "0.2.0"
-dependencies = [
- "proc-macro2 1.0.63",
- "quote 1.0.29",
- "syn 1.0.109",
-]
-
-[[package]]
-name = "tlua-derive"
-version = "0.2.0"
-source = "git+https://git.picodata.io/picodata/picodata/tarantool-module.git#6872b6dc986b7f7d4718e2e7cc1717a5b0a5842c"
 dependencies = [
  "proc-macro2 1.0.63",
  "quote 1.0.29",

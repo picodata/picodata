@@ -34,10 +34,6 @@ features = ["bytes"]
 version = "0.1"
 path = "sbroad/sbroad-core"
 
-[dependencies.sbroad-picodata]
-version = "0.1"
-path = "sbroad/sbroad-picodata"
-
 [dependencies.slog]
 version = "2.7.0"
 features = ["max_level_trace", "release_max_level_trace"]
@@ -53,6 +49,9 @@ pretty_assertions = "0.6.1"
 
 [build-dependencies]
 nix = "0.23.1"
+
+[patch."https://git.picodata.io/picodata/picodata/tarantool-module.git"]
+tarantool = { path = "./tarantool/tarantool" }
 
 [features]
 load_test = []
