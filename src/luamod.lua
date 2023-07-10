@@ -55,6 +55,17 @@ local function get_next_user_id()
     end
 end
 
+local function next_schema_version()
+    local t = box.space._pico_property:get("next_schema_version")
+    -- This shouldn't be necessary if this code is ran after raft node is
+    -- initialized, but currently we can call this from the code passed via
+    -- `--script` option which is called before node initialization
+    if t ~= nil then
+        return t.value
+    end
+    return 1
+end
+
 help.create_user = [[
 pico.create_user(user, password, [opts])
 ========================================
@@ -107,7 +118,7 @@ function pico.create_user(user, password, opts)
         user_def = {
             id = get_next_user_id(),
             name = user,
-            schema_version = box.space._pico_property:get("next_schema_version").value,
+            schema_version = next_schema_version(),
             auth = {
                 method = "chap-sha1",
                 data = box.internal.prepare_auth("chap-sha1", password),
@@ -161,7 +172,7 @@ function pico.change_password(user, password, opts)
         kind = 'acl',
         op_kind = 'change_auth',
         user_id = user_def.id,
-        schema_version = box.space._pico_property:get("next_schema_version").value,
+        schema_version = next_schema_version(),
         auth = {
             method = "chap-sha1",
             data = box.internal.prepare_auth("chap-sha1", password),
@@ -212,7 +223,7 @@ function pico.drop_user(user, password, opts)
         kind = 'acl',
         op_kind = 'drop_user',
         user_id = user_def.id,
-        schema_version = box.space._pico_property:get("next_schema_version").value,
+        schema_version = next_schema_version(),
     }
 
     return pico._prepare_schema_change(op, opts.timeout or 3)
@@ -456,7 +467,7 @@ function pico.grant_privilege(user, privilege, object_type, object_name, opts)
             object_type = object_type,
             object_name = object_name,
             privilege = privilege,
-            schema_version = box.space._pico_property:get("next_schema_version").value,
+            schema_version = next_schema_version(),
         },
     }
 
@@ -529,7 +540,7 @@ function pico.revoke_privilege(user, privilege, object_type, object_name, opts)
             object_type = object_type,
             object_name = object_name,
             privilege = privilege,
-            schema_version = box.space._pico_property:get("next_schema_version").value,
+            schema_version = next_schema_version(),
         },
     }
 
