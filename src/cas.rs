@@ -26,6 +26,9 @@ use tarantool::tuple::{KeyDef, ToTupleBuffer, Tuple, TupleBuffer};
 
 use once_cell::sync::Lazy;
 
+/// This spaces cannot be changed directly dy a [`Dml`] operation. They have
+/// dedicated operation types (e.g. Ddl, Acl) because updating these spaces
+/// requires automatically updating corresponding local spaces.
 const PROHIBITED_SPACES: &[ClusterwideSpaceId] = &[
     ClusterwideSpaceId::Space,
     ClusterwideSpaceId::Index,

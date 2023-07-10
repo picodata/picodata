@@ -75,6 +75,10 @@ Creates a user on each instance of the cluster.
 Proposes a raft entry which when applied on an instance creates a user on it.
 On success returns a raft index at which the user should exist.
 
+NOTE: If this function returns a timeout error, the user may have been locally
+created and in the future it's creation can either be committed or rolled back,
+even if the subsequent call to this function returns an "already exists" error.
+
 Params:
 
     1. user (string), username
@@ -138,6 +142,9 @@ Change the user's password on each instance of the cluster.
 Proposes a raft entry which when applied on an instance changes the user's password on it.
 On success returns an index of the corresponding raft entry.
 
+NOTE: If this function returns a timeout error, the change may have been locally
+applied and in the future it can either be committed or rolled back.
+
 Params:
 
     1. user (string), username
@@ -190,6 +197,10 @@ Drop the user and any entities owned by them on each instance of the cluster.
 
 Proposes a raft entry which when applied on an instance drops the user on it.
 On success returns a raft index at which the user should no longer exist.
+
+NOTE: If this function returns a timeout error, the user may have been locally
+dropped and in the future the change can either be committed or rolled back,
+even if the subsequent call to this function returns an "does not exist" error.
 
 Params:
 
@@ -399,6 +410,10 @@ Proposes a raft entry which when applied on an instance grants the user the
 specified privilege on it.
 On success returns an index of the corresponding raft entry.
 
+NOTE: If this function returns a timeout error, the change may have been locally
+applied and in the future it can either be committed or rolled back,
+even if the subsequent call to this function returns an "already granted" error.
+
 Params:
 
     1. user (string), username
@@ -483,6 +498,10 @@ Revoke some privilege from the user on each instance of the cluster.
 Proposes a raft entry which when applied on an instance revokes the specified
 privilege from the user on it.
 On success returns an index of the corresponding raft entry.
+
+NOTE: If this function returns a timeout error, the change may have been locally
+applied and in the future it can either be committed or rolled back,
+even if the subsequent call to this function returns an "not granted" error.
 
 Params:
 

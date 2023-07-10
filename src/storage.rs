@@ -547,6 +547,8 @@ impl Clusterwide {
         })
     }
 
+    /// Returns the contents of the given space as a `SpaceDump`, i.e. a raw
+    /// msgpack array of tuples.
     fn space_dump(space_name: &str) -> tarantool::Result<SpaceDump> {
         let space = space_by_name(space_name)?;
         let mut array_writer = ArrayWriter::from_vec(Vec::with_capacity(space.bsize()?));
@@ -641,6 +643,18 @@ impl Clusterwide {
         Ok(())
     }
 
+    /// Updates local storage of the given schema entity in accordance with
+    /// contents of the global storage. This function is called during snapshot
+    /// application and is responsible for performing schema change operations
+    /// (acl or ddl) for a given entity type (space, user, etc.) based on the
+    /// contents of the snapshot and the global storage at the moment snapshot
+    /// is received.
+    ///
+    /// `iter` is an iterator of records representing given schema entities
+    /// ([`SpaceDef`], [`UserDef`]).
+    ///
+    /// `old_versions` provides information of entity versions for determining
+    /// which entities should be dropped and/or recreated.
     fn apply_schema_changes_on_master<T>(
         &self,
         iter: impl Iterator<Item = T>,
@@ -2076,13 +2090,35 @@ impl ToEntryIter for Privileges {
 /// This trait is currently only used to minimize code duplication in the
 /// [`apply_snapshot_data`] function.
 trait SchemaDef {
+    /// Type of unique key used to identify entities for the purpose of
+    /// associating the schema version with.
     type Key: std::hash::Hash + Eq;
+
+    /// Extract unique key from the entity.
     fn key(&self) -> Self::Key;
+
+    /// Extract the schema version at which the entity was created.
     fn schema_version(&self) -> u64;
+
+    /// Checks if the entity is currently operable. Is only applicable for ddl
+    /// entities, i.e. spaces and indexes, hence returns `true` for everything
+    /// else.
     fn is_operable(&self) -> bool {
         true
     }
+
+    /// Is called when the entity is being created in the local storage.
+    ///
+    /// Should perform the necessary tarantool api calls and or tarantool system
+    /// space updates.
     fn on_insert(&self, storage: &Clusterwide) -> traft::Result<()>;
+
+    /// Is called when the entity is being dropped in the local storage.
+    /// If the entity is being changed, first `Self::on_delete` is called and
+    /// then `Self::on_insert` is called for it.
+    ///
+    /// Should perform the necessary tarantool api calls and or tarantool system
+    /// space updates.
     fn on_delete(key: &Self::Key, storage: &Clusterwide) -> traft::Result<()>;
 }
 
