@@ -122,7 +122,10 @@ pub struct Run {
         env = "PICODATA_SCRIPT",
         parse(try_from_str = try_parse_path)
     )]
-    /// A path to a lua script that will be executed at postjoin stage
+    /// A path to a lua script that will be executed at postjoin stage.
+    /// At the moment the script is executed, the local storage is
+    /// already initialized and HTTP server is running (if specified).
+    /// But the raft node is uninitialized yet.
     pub script: Option<String>,
 
     #[clap(long, value_name = "[host][:port]", env = "PICODATA_HTTP_LISTEN")]
@@ -321,7 +324,7 @@ pub struct Connect {
     pub user: String,
 
     #[clap(value_name = "ADDRESS")]
-    /// Picodata instance address. Format: [user@][host][:port]
+    /// Picodata instance address. Format: `[user@][host][:port]`
     pub address: Address,
 }
 

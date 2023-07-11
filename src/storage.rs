@@ -580,6 +580,7 @@ impl Clusterwide {
     ///
     /// This should be called within a transaction.
     ///
+    #[allow(rustdoc::private_intra_doc_links)]
     /// [`NodeImpl::advance`]: crate::traft::node::NodeImpl::advance
     pub fn apply_snapshot_data(&self, data: &SnapshotData, is_master: bool) -> Result<()> {
         debug_assert!(unsafe { ::tarantool::ffi::tarantool::box_txn() });

@@ -38,12 +38,13 @@ const PROHIBITED_SPACES: &[ClusterwideSpaceId] = &[
 
 /// Performs a clusterwide compare and swap operation.
 ///
-/// E.g. it checks the `predicate` on leader and if no conflicting entries were found
-/// appends the `op` to the raft log and returns its index and term.
+/// E.g. it checks the `predicate` on leader and if no conflicting
+/// entries were found appends the `op` to the raft log and returns its
+/// index and term.
 ///
 /// # Errors
-/// See [`rpc::cas::Error`] for CaS-specific errors.
-/// It can also return general picodata errors in cases of faulty network or storage.
+/// See [`cas::Error`][Error] for CaS-specific errors. It can also return
+/// general picodata errors in cases of faulty network or storage.
 pub fn compare_and_swap(op: Op, predicate: Predicate) -> traft::Result<(RaftIndex, RaftTerm)> {
     let node = node::global()?;
     let request = Request {
