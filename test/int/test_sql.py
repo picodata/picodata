@@ -59,20 +59,15 @@ def test_select(cluster: Cluster):
     cluster.deploy(instance_count=2)
     i1, i2 = cluster.instances
 
-    space_id = 739
-    index = i1.propose_create_space(
-        dict(
-            id=space_id,
-            name="T",
-            format=[
-                dict(name="A", type="integer", is_nullable=False),
-            ],
-            primary_key=[dict(field="A")],
-            # sharding function is implicitly murmur3
-            distribution=dict(kind="sharded_implicitly", sharding_key=["A"]),
-        )
+    ddl = i1.sql(
+        """
+        create table t (a int, primary key (a))
+        using memtx
+        distributed by (a)
+        option (timeout = 3)
+    """
     )
-    i2.raft_wait_index(index, 3)
+    assert ddl["row_count"] == 1
 
     data = i1.sql("""insert into t values(1);""")
     assert data["row_count"] == 1
@@ -95,20 +90,14 @@ def test_hash(cluster: Cluster):
     cluster.deploy(instance_count=1)
     i1 = cluster.instances[0]
 
-    space_id = 777
-    index = i1.propose_create_space(
-        dict(
-            id=space_id,
-            name="T",
-            format=[
-                dict(name="A", type="integer", is_nullable=True),
-            ],
-            primary_key=[dict(field="A")],
-            # sharding function is implicitly murmur3
-            distribution=dict(kind="sharded_implicitly", sharding_key=["A"]),
-        )
+    ddl = i1.sql(
+        """
+        create table t (a int, primary key (a))
+        using memtx
+        distributed by (a)
+    """
     )
-    i1.raft_wait_index(index, 3)
+    assert ddl["row_count"] == 1
 
     # Calculate tuple hash with Lua
     tup = (1,)
@@ -126,19 +115,13 @@ def test_hash(cluster: Cluster):
 def test_select_lowercase_name(cluster: Cluster):
     i1, *_ = cluster.deploy(instance_count=1)
 
-    space_id = 837
-    index = i1.propose_create_space(
-        dict(
-            id=space_id,
-            name="lowercase_name",
-            format=[
-                dict(name="id", type="integer", is_nullable=False),
-            ],
-            primary_key=[dict(field="id")],
-            distribution=dict(kind="sharded_implicitly", sharding_key=["id"]),
-        )
+    ddl = i1.sql(
+        """
+        create table "lowercase_name" ("id" int, primary key ("id"))
+        distributed by ("id")
+    """
     )
-    i1.raft_wait_index(index, 3)
+    assert ddl["row_count"] == 1
 
     assert i1.call("box.space.lowercase_name:select") == []
 
@@ -151,20 +134,13 @@ def test_select_lowercase_name(cluster: Cluster):
 def test_select_string_field(cluster: Cluster):
     i1, *_ = cluster.deploy(instance_count=1)
 
-    space_id = 826
-    index = i1.propose_create_space(
-        dict(
-            id=space_id,
-            name="STUFF",
-            format=[
-                dict(name="id", type="integer", is_nullable=False),
-                dict(name="str", type="string", is_nullable=False),
-            ],
-            primary_key=[dict(field="id")],
-            distribution=dict(kind="sharded_implicitly", sharding_key=["id"]),
-        )
+    ddl = i1.sql(
+        """
+        create table "STUFF" ("id" integer not null, "str" string null, primary key ("id"))
+        distributed by ("id")
+    """
     )
-    i1.raft_wait_index(index, 3)
+    assert ddl["row_count"] == 1
 
     data = i1.sql("""insert into STUFF values(1337, 'foo');""")
     assert data["row_count"] == 1

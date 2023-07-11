@@ -433,6 +433,19 @@ pub(crate) fn setup(args: &args::Run) {
 
         Example:
 
+            picodata> -- Create a sharded table 'wonderland'.
+            picodata> pico.sql([[
+                create table "wonderland" (
+                    "property" text not null,
+                    "value" integer,
+                    primary key ("property")
+                ) using memtx distributed by ("property")
+                options (timeout = 3.0)
+            ]])
+            ---
+            - row_count: 1
+            ...
+
             picodata> -- Insert a row into the 'wonderland' table using parameters
             picodata> -- as an optional argument.
             picodata> pico.sql(

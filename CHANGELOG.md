@@ -24,6 +24,9 @@ with the `YY.0M.MICRO` scheme.
 - _Clusterwide SQL_ now features Lua documentation. Refer to
   `pico.help('sql')` for more information.
 
+- _Clusterwide SQL_ now enables the creation of sharded tables.
+  To learn more, please consult `pico.help('sql')`.
+
 ### Lua API:
 
 - Update `pico.LUA_API_VERSION`: `1.0.0` -> `1.3.0`

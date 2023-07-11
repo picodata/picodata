@@ -332,14 +332,14 @@ impl From<Field> for tarantool::space::Field {
 
 #[derive(Clone, Debug, LuaRead)]
 pub struct CreateSpaceParams {
-    id: Option<SpaceId>,
-    name: String,
-    format: Vec<Field>,
-    primary_key: Vec<String>,
-    distribution: DistributionParam,
-    by_field: Option<String>,
-    sharding_key: Option<Vec<String>>,
-    sharding_fn: Option<ShardingFn>,
+    pub(crate) id: Option<SpaceId>,
+    pub(crate) name: String,
+    pub(crate) format: Vec<Field>,
+    pub(crate) primary_key: Vec<String>,
+    pub(crate) distribution: DistributionParam,
+    pub(crate) by_field: Option<String>,
+    pub(crate) sharding_key: Option<Vec<String>>,
+    pub(crate) sharding_fn: Option<ShardingFn>,
     /// Timeout in seconds.
     ///
     /// Specifying the timeout identifies how long user is ready to wait for ddl to be applied.
