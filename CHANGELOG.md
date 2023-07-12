@@ -15,6 +15,18 @@ with the `YY.0M.MICRO` scheme.
 - Allow specifying `picodata connect [user@][host][:port]` format. It
   overrides the `--user` option.
 
+### Lua API:
+
+- Update `pico.LUA_API_VERSION`: `1.0.0` -> `1.2.0`
+- Add `pico.raft_term()`
+- Add `pico.create_user()`
+- Add `pico.drop_user()`
+- Add `pico.change_password()`
+- Add `pico.grant_privilege()`
+- Add `pico.revoke_privilege()`
+- Add `pico.drop_space()`
+- Add `pico.wait_ddl_finalize()`
+
 ## [23.06.0] - 2023-06-16
 
 ### Features
