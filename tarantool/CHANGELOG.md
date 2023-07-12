@@ -12,6 +12,8 @@ tarantool thread via syncronization primitives (channels) and low-level cbus api
 - `tarantool::time::Instant` a custom implementation of std-like `Instant` with more saturating operations
 and support of the `fiber_clock` API.
 - `r#async::sleep` - an async friendly analog of `fiber::sleep`.
+- `SpaceEngineType` variants `SysView`, `Blackhole` and `Service` which cannot
+  be created by users, but can be deserialized from contents of _space system space.
 
 ### Fixed
 - `log::Log::enabled` implementation for TarantoolLogger no longer ignores the

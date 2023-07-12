@@ -102,8 +102,46 @@ crate::define_str_enum! {
     #![coerce_from_str]
     /// Type of engine, used by space.
     pub enum SpaceEngineType {
+        /// Spaces with "memtx" engine type store their tuples in memory.
+        /// Persistence is implemented via the WAL.
+        ///
+        /// See <https://www.tarantool.io/en/doc/latest/concepts/engines/memtx/>
+        /// for more details.
         Memtx = "memtx",
+
+        /// Spaces with "vinyl" engine type use LSM trees for tuple storage.
+        ///
+        /// See <https://www.tarantool.io/en/doc/latest/concepts/engines/vinyl/>
+        /// for more details.
         Vinyl = "vinyl",
+
+        /// Spaces with "sysview" engine type represent read-only views into a
+        /// system space.
+        ///
+        /// Cannot be used as type of user defined spaces.
+        /// Is used as part of [`SpaceMetadata`] when decoding tuples from
+        /// _space.
+        ///
+        /// See <https://www.tarantool.io/en/doc/latest/reference/reference_lua/box_space/system_views/>
+        /// for more details.
+        SysView = "sysview",
+
+        /// This is a special space engine which is only used by _session_settings.
+        /// You shouldn't care about this.
+        ///
+        /// Cannot be used as type of user defined spaces.
+        /// Is used as part of [`SpaceMetadata`] when decoding tuples from
+        /// _space.
+        Service = "service",
+
+        /// This is crutch implemented by tarantool authors to workaround some
+        /// internal issue. You shouldn't care about this.
+        ///
+        /// Cannot be used as type of user defined spaces.
+        /// Is used as part of [`SpaceMetadata`] when decoding tuples from
+        /// _space.
+        Blackhole = "blackhole",
+
     }
 }
 
@@ -1239,5 +1277,14 @@ mod test {
         let t: (u32, String, String) = t.decode().unwrap();
         assert_eq!(t, (42, "foo".to_owned(), "bar".to_owned()));
         space.drop().unwrap();
+    }
+
+    #[crate::test(tarantool = "crate")]
+    fn sys_space_metadata() {
+        let sys_space = Space::from(SystemSpace::Space);
+        for tuple in sys_space.select(IteratorType::All, &()).unwrap() {
+            // Check space metadata is deserializable from what is actually in _space
+            let _meta: SpaceMetadata = tuple.decode().unwrap();
+        }
     }
 }

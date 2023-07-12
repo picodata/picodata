@@ -1153,4 +1153,13 @@ mod tests {
 
         space.drop().unwrap();
     }
+
+    #[crate::test(tarantool = "crate")]
+    fn sys_index_metadata() {
+        let sys_index = Space::from(SystemSpace::Index);
+        for tuple in sys_index.select(IteratorType::All, &()).unwrap() {
+            // Check index metadata is deserializable from what is actually in _index
+            let _meta: Metadata = tuple.decode().unwrap();
+        }
+    }
 }
