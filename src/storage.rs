@@ -1840,6 +1840,7 @@ pub fn ddl_create_space_on_master(
     debug_assert!(unsafe { tarantool::ffi::tarantool::box_txn() });
     let sys_space = Space::from(SystemSpace::Space);
     let sys_index = Space::from(SystemSpace::Index);
+    let sys_schema = Space::from(SystemSpace::Schema);
 
     let pico_space_def = storage
         .spaces
@@ -1864,6 +1865,13 @@ pub fn ddl_create_space_on_master(
         tt_bucket_id_def = Some(def.to_index_metadata());
     }
 
+    let tuple = sys_schema
+        .get(&["max_id"])?
+        .expect("_schema.max_id should always be set");
+    let max_space_id: SpaceId = tuple
+        .field(1)?
+        .expect("_schema.max_id should always be set");
+
     let res = (|| -> tarantool::Result<()> {
         if tt_pk_def.parts.is_empty() {
             return Err(tarantool::set_and_get_error!(
@@ -1878,6 +1886,9 @@ pub fn ddl_create_space_on_master(
         sys_index.insert(&tt_pk_def)?;
         if let Some(def) = tt_bucket_id_def {
             sys_index.insert(&def)?;
+        }
+        if tt_space_def.id > max_space_id {
+            sys_schema.replace(&("max_id", tt_space_def.id))?;
         }
 
         Ok(())

@@ -3,8 +3,10 @@ use std::collections::{BTreeMap, HashSet};
 use std::time::{Duration, Instant};
 
 use tarantool::space::{FieldType, SpaceCreateOptions, SpaceEngineType};
+use tarantool::space::{Space, SystemSpace};
 use tarantool::transaction::{transaction, TransactionError};
 use tarantool::{
+    index::IteratorType,
     index::Metadata as IndexMetadata,
     index::{IndexId, Part},
     schema::space::SpaceMetadata,
@@ -17,7 +19,6 @@ use tarantool::{
 use serde::{Deserialize, Serialize};
 
 use crate::cas::{self, compare_and_swap};
-use crate::storage::ToEntryIter;
 use crate::storage::SPACE_ID_INTERNAL_MAX;
 use crate::storage::{Clusterwide, ClusterwideSpaceId, PropertyName};
 use crate::traft::error::Error;
@@ -478,24 +479,31 @@ impl ValidCreateSpaceParams {
 
     /// Memoizes id if it is automatically selected.
     fn id(&mut self, storage: &Clusterwide) -> traft::Result<SpaceId> {
+        let _ = storage;
+        let sys_space = Space::from(SystemSpace::Space);
+
         let id = if let Some(id) = self.0.id {
             id
         } else {
             let mut id = SPACE_ID_INTERNAL_MAX;
-            // FIXME: space _bucket is the first space in the user space id range.
-            // See https://git.picodata.io/picodata/picodata/picodata/-/issues/288
-            id += 1;
 
-            // ToEntryIter::iter iterates in an order of ascending space ids
-            let iter = storage.spaces.iter()?;
+            let mut taken_ids = Vec::with_capacity(32);
+            // IteratorType::All iterates in an order of ascending space ids
+            for space in sys_space.select(IteratorType::All, &())? {
+                let space_id: SpaceId = space
+                    .field(0)?
+                    .expect("space metadata should contain a space_id");
+                taken_ids.push(space_id);
+            }
+
             // Find the first accessible space id.
-            for space in iter {
+            for space_id in taken_ids {
                 // We aren't forcing users to not use internal range, so we have
                 // to ignore those
-                if space.id <= SPACE_ID_INTERNAL_MAX {
+                if space_id <= SPACE_ID_INTERNAL_MAX {
                     continue;
                 }
-                if space.id != id + 1 {
+                if space_id != id + 1 {
                     break;
                 }
                 id += 1;

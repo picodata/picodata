@@ -1246,3 +1246,64 @@ def test_ddl_drop_space_by_snapshot_on_master(cluster: Cluster):
     # assert i4.call("box.space._space.index.name:get", "space_to_drop") is None
     # The space was replaced.
     assert i4.call("box.space._space.index.name:get", "space_to_replace") is not None
+
+
+################################################################################
+def test_local_spaces_dont_conflict_with_pico_create_space(cluster: Cluster):
+    i1, *_ = cluster.deploy(instance_count=1)
+
+    cluster.create_space(
+        dict(
+            name="a space",
+            format=[dict(name="id", type="unsigned", is_nullable=False)],
+            primary_key=["id"],
+            distribution="global",
+        )
+    )
+    assert i1.eval("return box.space._space.index.name:get(...).id", "a space") == 1026
+
+    i1.call("box.execute", 'create table "another space" ("id" unsigned primary key)')
+    assert (
+        i1.eval("return box.space._space.index.name:get(...).id", "another space")
+        == 1027
+    )
+
+    cluster.create_space(
+        dict(
+            name="one more space",
+            format=[dict(name="id", type="unsigned", is_nullable=False)],
+            primary_key=["id"],
+            distribution="global",
+        )
+    )
+    assert (
+        i1.eval("return box.space._space.index.name:get(...).id", "one more space")
+        == 1028
+    )
+
+
+################################################################################
+def test_pico_create_space_doesnt_conflict_with_local_spaces(cluster: Cluster):
+    i1, *_ = cluster.deploy(instance_count=1)
+
+    i1.call("box.execute", 'create table "a space" ("id" unsigned primary key)')
+    assert i1.eval("return box.space._space.index.name:get(...).id", "a space") == 1026
+
+    cluster.create_space(
+        dict(
+            name="another space",
+            format=[dict(name="id", type="unsigned", is_nullable=False)],
+            primary_key=["id"],
+            distribution="global",
+        )
+    )
+    assert (
+        i1.eval("return box.space._space.index.name:get(...).id", "another space")
+        == 1027
+    )
+
+    i1.call("box.execute", 'create table "one more space" ("id" unsigned primary key)')
+    assert (
+        i1.eval("return box.space._space.index.name:get(...).id", "one more space")
+        == 1028
+    )
