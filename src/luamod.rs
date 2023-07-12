@@ -440,7 +440,16 @@ pub(crate) fn setup(args: &args::Run) {
                     "value" integer,
                     primary key ("property")
                 ) using memtx distributed by ("property")
-                options (timeout = 3.0)
+                option (timeout = 3.0)
+            ]])
+            ---
+            - row_count: 1
+            ...
+
+            picodata> -- Drop 'wonderland' table.
+            picodata> pico.sql([[
+                drop table "wonderland"
+                option (timeout = 3.0)
             ]])
             ---
             - row_count: 1

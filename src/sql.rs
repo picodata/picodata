@@ -1,9 +1,10 @@
 //! Clusterwide SQL query execution.
 
-use crate::schema::{self, CreateSpaceParams, DistributionParam, Field, ShardingFn};
+use crate::schema::{self, CreateSpaceParams, DistributionParam, Field, ShardingFn, SpaceDef};
 use crate::sql::runtime::router::RouterRuntime;
 use crate::sql::runtime::storage::StorageRuntime;
-use crate::traft::{self, node, op::Op};
+use crate::traft::op::{Ddl as OpDdl, Op};
+use crate::traft::{self, node};
 
 use sbroad::backend::sql::ir::{EncodedPatternWithParams, PatternWithParams};
 use sbroad::debug;
@@ -17,7 +18,6 @@ use sbroad::otm::query_span;
 
 use std::time::Duration;
 
-use ::tarantool::decimal::Decimal;
 use ::tarantool::proc;
 use ::tarantool::space::FieldType;
 use ::tarantool::tuple::{RawBytes, Tuple};
@@ -46,13 +46,22 @@ pub fn dispatch_query(encoded_params: EncodedPatternWithParams) -> traft::Result
                 let top_id = ir_plan.get_top()?;
                 let ir_plan_mut = query.get_mut_exec_plan().get_mut_ir_plan();
                 let ddl = ir_plan_mut.get_mut_ddl_node(top_id)?;
-                match ddl {
+                let timeout: f64 = ddl.timeout()?;
+                let storage = &node::global()
+                    .map_err(|e| {
+                        SbroadError::Invalid(
+                            Entity::Runtime,
+                            Some(format!("raft node error {e:?}")),
+                        )
+                    })?
+                    .storage;
+                let ddl_op = match ddl {
                     Ddl::CreateShardedTable {
                         ref mut name,
                         ref mut format,
                         ref mut primary_key,
                         ref mut sharding_key,
-                        ref mut timeout,
+                        ..
                     } => {
                         let format = format
                             .iter_mut()
@@ -62,15 +71,6 @@ pub fn dispatch_query(encoded_params: EncodedPatternWithParams) -> traft::Result
                                 is_nullable: f.is_nullable,
                             })
                             .collect();
-                        let duration: f64 = std::mem::replace(timeout, Decimal::zero())
-                            .to_string()
-                            .parse()
-                            .map_err(|e| {
-                                SbroadError::Invalid(
-                                    Entity::SpaceMetadata,
-                                    Some(format!("timeout parsing error {e:?}")),
-                                )
-                            })?;
                         let params = CreateSpaceParams {
                             id: None,
                             name: std::mem::take(name),
@@ -80,9 +80,8 @@ pub fn dispatch_query(encoded_params: EncodedPatternWithParams) -> traft::Result
                             by_field: None,
                             sharding_key: Some(std::mem::take(sharding_key)),
                             sharding_fn: Some(ShardingFn::Murmur3),
-                            timeout: duration,
+                            timeout,
                         };
-                        let timeout = Duration::from_secs_f64(params.timeout);
                         let storage = &node::global()
                             .map_err(|e| {
                                 SbroadError::Invalid(
@@ -93,59 +92,63 @@ pub fn dispatch_query(encoded_params: EncodedPatternWithParams) -> traft::Result
                             .storage;
                         let mut params = params.validate(storage).map_err(|e| {
                             SbroadError::Invalid(
-                                Entity::SpaceMetadata,
+                                Entity::Table,
                                 Some(format!("space parameters validation error {e:?}")),
                             )
                         })?;
                         params.test_create_space(storage).map_err(|e| {
                             SbroadError::Invalid(
-                                Entity::SpaceMetadata,
+                                Entity::Table,
                                 Some(format!("space parameters test error {e:?}")),
                             )
                         })?;
-                        let ddl = params.into_ddl(storage).map_err(|e| {
+                        params.into_ddl(storage).map_err(|e| {
                             SbroadError::FailedTo(
                                 Action::Create,
-                                Some(Entity::SpaceMetadata),
+                                Some(Entity::Table),
                                 format!("{e:?}"),
                             )
-                        })?;
-                        let schema_version =
-                            storage.properties.next_schema_version().map_err(|e| {
+                        })?
+                    }
+                    Ddl::DropTable { ref name, .. } => {
+                        let space_def: SpaceDef = storage
+                            .spaces
+                            .by_name(name)
+                            .map_err(|e| {
                                 SbroadError::FailedTo(
-                                    Action::Get,
-                                    Some(Entity::Schema),
+                                    Action::Find,
+                                    Some(Entity::Table),
                                     format!("{e:?}"),
                                 )
+                            })?
+                            .ok_or_else(|| {
+                                SbroadError::FailedTo(
+                                    Action::Find,
+                                    Some(Entity::Table),
+                                    format!("{name} doesn't exist in pico_space"),
+                                )
                             })?;
-                        let op = Op::DdlPrepare {
-                            schema_version,
-                            ddl,
-                        };
-                        let index = schema::prepare_schema_change(op, timeout).map_err(|e| {
-                            SbroadError::FailedTo(
-                                Action::Prepare,
-                                Some(Entity::Schema),
-                                format!("{e:?}"),
-                            )
-                        })?;
-                        schema::wait_for_ddl_commit(index, timeout).map_err(|e| {
-                            SbroadError::FailedTo(
-                                Action::Create,
-                                Some(Entity::Space),
-                                format!("{e:?}"),
-                            )
-                        })?;
-                        let result = ConsumerResult { row_count: 1 };
-                        Tuple::new(&(result,)).map_err(|e| {
-                            SbroadError::FailedTo(
-                                Action::Decode,
-                                Some(Entity::Tuple),
-                                format!("{:?}", e),
-                            )
-                        })
+                        OpDdl::DropSpace { id: space_def.id }
                     }
-                }
+                };
+                let duration = Duration::from_secs_f64(timeout);
+                let schema_version = storage.properties.next_schema_version().map_err(|e| {
+                    SbroadError::FailedTo(Action::Get, Some(Entity::Schema), format!("{e:?}"))
+                })?;
+                let op = Op::DdlPrepare {
+                    schema_version,
+                    ddl: ddl_op,
+                };
+                let index = schema::prepare_schema_change(op, duration).map_err(|e| {
+                    SbroadError::FailedTo(Action::Prepare, Some(Entity::Schema), format!("{e:?}"))
+                })?;
+                schema::wait_for_ddl_commit(index, duration).map_err(|e| {
+                    SbroadError::FailedTo(Action::Create, Some(Entity::Space), format!("{e:?}"))
+                })?;
+                let result = ConsumerResult { row_count: 1 };
+                Tuple::new(&(result,)).map_err(|e| {
+                    SbroadError::FailedTo(Action::Decode, Some(Entity::Tuple), format!("{:?}", e))
+                })
             } else {
                 match query.dispatch() {
                     Ok(mut any_tuple) => {

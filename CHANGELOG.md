@@ -27,6 +27,9 @@ with the `YY.0M.MICRO` scheme.
 - _Clusterwide SQL_ now enables the creation of sharded tables.
   To learn more, please consult `pico.help('sql')`.
 
+- _Clusterwide SQL_ introduces the capability to delete sharded tables.
+  To obtain more details, please consult `pico.help('sql')`.
+
 ### Lua API:
 
 - Update `pico.LUA_API_VERSION`: `1.0.0` -> `1.3.0`

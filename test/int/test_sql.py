@@ -146,3 +146,42 @@ def test_select_string_field(cluster: Cluster):
     assert data["row_count"] == 1
     data = i1.sql("""select * from STUFF """)
     assert data["rows"] == [[1337, "foo"]]
+
+
+def test_drop_table(cluster: Cluster):
+    cluster.deploy(instance_count=2)
+    i1, i2 = cluster.instances
+
+    ddl = i1.sql(
+        """
+        create table "t" ("a" integer not null, "b" int not null, primary key ("b", "a"))
+        using memtx
+        distributed by ("a", "b")
+        option (timeout = 3)
+    """
+    )
+    assert ddl["row_count"] == 1
+
+    ddl = i2.sql(
+        """
+        drop table "t"
+        option (timeout = 3)
+    """
+    )
+    assert ddl["row_count"] == 1
+
+    ddl = i2.sql(
+        """
+        create table "t" ("a" integer not null, "b" int not null, primary key ("b", "a"))
+        using memtx
+        distributed by ("a", "b")
+    """
+    )
+    assert ddl["row_count"] == 1
+
+    ddl = i1.sql(
+        """
+        drop table "t"
+    """
+    )
+    assert ddl["row_count"] == 1
