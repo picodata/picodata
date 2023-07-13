@@ -605,6 +605,7 @@ fn wait_for_no_pending_schema_change(
 /// Waits for any pending schema change to finalize.
 ///
 /// If `timeout` is reached earlier returns an error.
+// TODO: Use deadline instead of timeout
 pub fn prepare_schema_change(op: Op, timeout: Duration) -> traft::Result<RaftIndex> {
     debug_assert!(op.is_schema_change());
 
@@ -623,17 +624,17 @@ pub fn prepare_schema_change(op: Op, timeout: Duration) -> traft::Result<RaftInd
             index,
             term,
             ranges: vec![
-                cas::Range::new(ClusterwideSpaceId::Property as _)
+                cas::Range::new(ClusterwideSpaceId::Property)
                     .eq((PropertyName::PendingSchemaChange,)),
                 cas::Range::new(ClusterwideSpaceId::Property as _)
                     .eq((PropertyName::PendingSchemaVersion,)),
                 cas::Range::new(ClusterwideSpaceId::Property as _)
                     .eq((PropertyName::GlobalSchemaVersion,)),
-                cas::Range::new(ClusterwideSpaceId::Property as _)
+                cas::Range::new(ClusterwideSpaceId::Property)
                     .eq((PropertyName::NextSchemaVersion,)),
             ],
         };
-        let (index, term) = compare_and_swap(op, predicate)?;
+        let (index, term) = compare_and_swap(op, predicate, timeout)?;
         node.wait_index(index, timeout)?;
         if raft::Storage::term(raft_storage, index)? != term {
             // leader switched - retry
@@ -660,15 +661,15 @@ pub fn abort_ddl(timeout: Duration) -> traft::Result<RaftIndex> {
             index,
             term,
             ranges: vec![
-                cas::Range::new(ClusterwideSpaceId::Property as _)
+                cas::Range::new(ClusterwideSpaceId::Property)
                     .eq((PropertyName::PendingSchemaChange,)),
-                cas::Range::new(ClusterwideSpaceId::Property as _)
+                cas::Range::new(ClusterwideSpaceId::Property)
                     .eq((PropertyName::GlobalSchemaVersion,)),
-                cas::Range::new(ClusterwideSpaceId::Property as _)
+                cas::Range::new(ClusterwideSpaceId::Property)
                     .eq((PropertyName::NextSchemaVersion,)),
             ],
         };
-        let (index, term) = compare_and_swap(Op::DdlAbort, predicate)?;
+        let (index, term) = compare_and_swap(Op::DdlAbort, predicate, timeout)?;
         node.wait_index(index, timeout)?;
         if raft::Storage::term(&node.raft_storage, index)? != term {
             // leader switched - retry
