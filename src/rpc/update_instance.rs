@@ -1,9 +1,13 @@
+use std::time::Duration;
+
 use crate::failure_domain::FailureDomain;
 use crate::instance::grade::{CurrentGrade, TargetGradeVariant};
 use crate::instance::InstanceId;
 use crate::tlog;
 use crate::traft::Result;
 use crate::traft::{error::Error, node};
+
+const TIMEOUT: Duration = Duration::from_secs(10);
 
 crate::define_rpc_request! {
     fn proc_update_instance(req: Request) -> Result<Response> {
@@ -20,16 +24,13 @@ crate::define_rpc_request! {
         let mut req = req;
         let instance_id = &*req.instance_id;
         if let Some(current_grade) = req.current_grade.take() {
-            tlog!(Warning, "attempt to change current_grade by instance";
+            tlog!(Warning, "attempt to change current_grade for instance";
                 "instance_id" => instance_id,
                 "current_grade" => %current_grade,
             );
         }
-        match node.handle_update_instance_request_and_wait(req) {
-            Ok(_) => Ok(Response::Ok {}),
-            Err(Error::NotALeader) => Ok(Response::ErrNotALeader),
-            Err(e) => Err(e),
-        }
+        node.handle_update_instance_request_and_wait(req, TIMEOUT)?;
+        Ok(Response {})
     }
 
     /// Request to update the instance in the storage.
@@ -44,11 +45,7 @@ crate::define_rpc_request! {
         pub failure_domain: Option<FailureDomain>,
     }
 
-    /// Response to a [`Request`]
-    pub enum Response {
-        Ok,
-        ErrNotALeader,
-    }
+    pub struct Response {}
 }
 
 impl Request {

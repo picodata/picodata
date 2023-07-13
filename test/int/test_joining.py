@@ -54,11 +54,11 @@ def test_request_follower(cluster2: Cluster):
     i1, i2 = cluster2.instances
     i2.assert_raft_status("Follower")
 
-    expected = [{"ErrNotALeader": {"raft_id": 1, "address": i1.listen}}]
     actual = raft_join(
         instance=i2, cluster_id=cluster2.id, instance_id="fake-0", timeout_seconds=1
     )
-    assert actual == expected
+    # Even though a follower is called new instance is joined successfully
+    assert actual[0]["instance"]["raft_id"] == 3
 
 
 def test_discovery(cluster3: Cluster):
@@ -353,63 +353,3 @@ def test_fail_to_join(cluster: Cluster):
     """
     )
     assert {tuple(i) for i in joined_instances} == {(i1.instance_id, i1.raft_id)}
-
-
-def test_not_a_leader_at_postjoin(cluster: Cluster):
-    # Scenario: join instance even if leader changed at postjoin step
-    #   Given a cluster
-    #   When new instance join the leader
-    #   And leader has been changed moment before the postjoin step
-    #   Then the joining instance does not fall
-    #   And the joining instance joined to new leader
-
-    cluster.deploy(instance_count=2)
-    i1, i2 = cluster.instances
-    i1.assert_raft_status("Leader")
-    i1.eval(
-        """
-        local args = ...
-        box.schema.func.drop(".proc_update_instance")
-        _G[""] = { proc_update_instance = function()
-            box.schema.func.create(".proc_update_instance", {language="C", if_not_exists=true})
-            require("net.box").connect(args.addr):call("pico.raft_timeout_now")
-            return {'ErrNotALeader'}
-        end }
-        """,
-        dict(addr=i2.listen),
-    )
-    i3 = cluster.add_instance()
-
-    i1.assert_raft_status("Follower")
-    i2.assert_raft_status("Leader")
-    i3.assert_raft_status("Follower")
-
-
-def test_not_a_leader_at_start_join(cluster: Cluster):
-    # Scenario: join instance even if leader changed at start_join step
-    #   Given a cluster
-    #   When new instance join the leader
-    #   And leader has been changed moment before the start_join step
-    #   Then the joining instance does not fall
-    #   And the joining instance joined to new leader
-
-    cluster.deploy(instance_count=2)
-    i1, i2 = cluster.instances
-    i1.assert_raft_status("Leader")
-    i1.eval(
-        """
-        args = ...
-        box.schema.func.drop(".proc_raft_join")
-        _G[""] = { proc_raft_join = function()
-            box.schema.func.create(".proc_raft_join", {language="C", if_not_exists=true})
-            require("net.box").connect(args.addr):call("pico.raft_timeout_now")
-            return {{["ErrNotALeader"] = {raft_id=args.id, address=args.addr}}}
-        end }
-        """,
-        dict(id=i2.raft_id, addr=i2.listen),
-    )
-    i3 = cluster.add_instance()
-
-    i1.assert_raft_status("Follower")
-    i2.assert_raft_status("Leader")
-    i3.assert_raft_status("Follower")

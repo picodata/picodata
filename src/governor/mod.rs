@@ -32,6 +32,7 @@ use plan::stage::*;
 impl Loop {
     const SYNC_TIMEOUT: Duration = Duration::from_secs(10);
     const RETRY_TIMEOUT: Duration = Duration::from_millis(250);
+    const UPDATE_INSTANCE_TIMEOUT: Duration = Duration::from_secs(3);
 
     async fn iter_fn(
         Args {
@@ -219,7 +220,7 @@ impl Loop {
                         "current_grade" => %current_grade,
                     ]
                     async {
-                        node.handle_update_instance_request_and_wait(req)?
+                        node.handle_update_instance_request_and_wait(req, Loop::UPDATE_INSTANCE_TIMEOUT)?
                     }
                 }
             }
@@ -301,7 +302,7 @@ impl Loop {
                         "current_grade" => %current_grade,
                     ]
                     async {
-                        node.handle_update_instance_request_and_wait(req)?
+                        node.handle_update_instance_request_and_wait(req, Loop::UPDATE_INSTANCE_TIMEOUT)?
                     }
                 }
             }
@@ -344,7 +345,7 @@ impl Loop {
                         "current_grade" => %current_grade,
                     ]
                     async {
-                        node.handle_update_instance_request_and_wait(req)?
+                        node.handle_update_instance_request_and_wait(req, Loop::UPDATE_INSTANCE_TIMEOUT)?
                     }
                 }
             }
@@ -382,7 +383,7 @@ impl Loop {
                         "current_grade" => %current_grade,
                     ]
                     async {
-                        node.handle_update_instance_request_and_wait(req)?
+                        node.handle_update_instance_request_and_wait(req, Loop::UPDATE_INSTANCE_TIMEOUT)?
                     }
                 }
             }
@@ -436,7 +437,7 @@ impl Loop {
                         "current_grade" => %current_grade,
                     ]
                     async {
-                        node.handle_update_instance_request_and_wait(req)?
+                        node.handle_update_instance_request_and_wait(req, Loop::UPDATE_INSTANCE_TIMEOUT)?
                     }
                 }
             }

@@ -8,7 +8,6 @@ use crate::rpc;
 use crate::storage::ClusterwideSpaceId;
 use crate::tlog;
 use crate::traft;
-use crate::traft::error::Error;
 use crate::traft::node;
 use crate::unwrap_ok_or;
 
@@ -78,44 +77,14 @@ fn go_offline() -> traft::Result<()> {
         .with_target_grade(TargetGradeVariant::Offline);
 
     loop {
-        let Some(leader_id) = node.status().leader_id else {
-            node.wait_status();
-            continue
-        };
-
         let now = Instant::now();
         let wait_before_retry = Duration::from_millis(300);
 
-        if leader_id == raft_id {
-            match node.handle_update_instance_request_and_wait(req.clone()) {
-                Err(Error::NotALeader) => {
-                    // We've lost leadership while waiting for NodeImpl
-                    // mutex. Retry after a small pause.
-                    fiber::sleep(wait_before_retry.saturating_sub(now.elapsed()));
-                    continue;
-                }
-                Err(e) => break Err(e),
-                Ok(_) => break Ok(()),
-            }
-        }
-
-        let Some(leader_address) = node.storage.peer_addresses.get(leader_id)? else {
-            // Leader address is unknown, maybe later we'll find it out?
-            fiber::sleep(wait_before_retry.saturating_sub(now.elapsed()));
-            continue;
-        };
-        let res = match fiber::block_on(rpc::network_call(&leader_address, &req)) {
-            Ok(rpc::update_instance::Response::Ok) => Ok(()),
-            Ok(rpc::update_instance::Response::ErrNotALeader) => Err(Error::NotALeader),
-            Err(e) => Err(e.into()),
-        };
-
-        match res {
-            Ok(()) => break Ok(()),
+        match node.handle_update_instance_request_and_wait(req.clone(), wait_before_retry) {
+            Ok(_) => break Ok(()),
             Err(e) => {
                 tlog!(Warning,
                     "failed setting target grade Offline: {e}, retrying ...";
-                    "raft_id" => leader_id,
                 );
                 fiber::sleep(wait_before_retry.saturating_sub(now.elapsed()));
                 continue;

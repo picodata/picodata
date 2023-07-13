@@ -1135,6 +1135,14 @@ impl PeerAddresses {
         self.get(raft_id)?
             .ok_or(Error::AddressUnknownForRaftId(raft_id))
     }
+
+    #[inline]
+    pub fn addresses_by_ids(
+        &self,
+        ids: impl IntoIterator<Item = RaftId>,
+    ) -> Result<HashSet<traft::Address>> {
+        ids.into_iter().map(|id| self.try_get(id)).collect()
+    }
 }
 
 impl ToEntryIter for PeerAddresses {
@@ -1202,7 +1210,7 @@ impl Instances {
         Ok(())
     }
 
-    /// Find a instance by `id` (see trait [`InstanceId`]).
+    /// Finds an instance by `id` (see trait [`InstanceId`]).
     #[inline(always)]
     pub fn get(&self, id: &impl InstanceId) -> Result<Instance> {
         let res = id
@@ -1212,7 +1220,17 @@ impl Instances {
         Ok(res)
     }
 
-    /// Find a instance by `id` (see `InstanceId`) and return a single field
+    /// Checks if an instance with `id` (see trait [`InstanceId`]) is present.
+    #[inline]
+    pub fn contains(&self, id: &impl InstanceId) -> Result<bool> {
+        match id.find_in(self) {
+            Ok(_) => Ok(true),
+            Err(Error::NoInstanceWithInstanceId(_)) => Ok(false),
+            Err(err) => Err(err),
+        }
+    }
+
+    /// Finds an instance by `id` (see `InstanceId`) and return a single field
     /// specified by `F` (see `InstanceFieldDef` & `instance_field` module).
     #[inline(always)]
     pub fn field<F>(&self, id: &impl InstanceId) -> Result<F::Type>
@@ -1224,7 +1242,7 @@ impl Instances {
         Ok(res)
     }
 
-    /// Return an iterator over all instances. Items of the iterator are
+    /// Returns an iterator over all instances. Items of the iterator are
     /// specified by `F` (see `InstanceFieldDef` & `instance_field` module).
     #[inline(always)]
     pub fn instances_fields<F>(&self) -> Result<InstancesFields<F>>

@@ -5,6 +5,7 @@
 //! - handling configuration changes,
 //! - processing raft `Ready` - persisting entries, communicating with other raft nodes.
 
+use crate::cas;
 use crate::governor;
 use crate::has_grades;
 use crate::instance::Instance;
@@ -16,7 +17,6 @@ use crate::schema::{Distribution, IndexDef, SpaceDef};
 use crate::storage::acl;
 use crate::storage::ddl_meta_drop_space;
 use crate::storage::SnapshotData;
-use crate::storage::ToEntryIter as _;
 use crate::storage::{ddl_abort_on_master, ddl_meta_space_update_operable};
 use crate::storage::{local_schema_version, set_local_schema_version};
 use crate::storage::{Clusterwide, ClusterwideSpaceId, PropertyName};
@@ -38,7 +38,6 @@ use crate::traft::RaftIndex;
 use crate::traft::RaftSpaceAccess;
 use crate::traft::RaftTerm;
 use crate::traft::Topology;
-use crate::unwrap_some_or;
 use crate::util::instant_saturating_add;
 use crate::util::AnyWithTypeName;
 use crate::warn_or_panic;
@@ -64,13 +63,13 @@ use ::tarantool::tuple::Decode;
 use ::tarantool::vclock::Vclock;
 use protobuf::Message as _;
 use std::cell::Cell;
+use std::cell::RefCell;
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 use std::convert::TryFrom;
 use std::rc::Rc;
 use std::time::Duration;
 use std::time::Instant;
-use tarantool::tuple::Tuple;
 use ApplyEntryResult::*;
 
 type RawNode = raft::RawNode<RaftSpaceAccess>;
@@ -145,6 +144,7 @@ pub struct Node {
     pub(crate) governor_loop: governor::Loop,
     status: watch::Receiver<Status>,
     watchers: Rc<Mutex<StorageWatchers>>,
+    topology: Rc<RefCell<Topology>>,
 }
 
 impl std::fmt::Debug for Node {
@@ -159,7 +159,8 @@ impl Node {
     /// Initialize the raft node.
     /// **This function yields**
     pub fn new(storage: Clusterwide, raft_storage: RaftSpaceAccess) -> Result<Self, RaftError> {
-        let node_impl = NodeImpl::new(storage.clone(), raft_storage.clone())?;
+        let topology = Rc::new(RefCell::new(Topology::from(storage.clone())));
+        let node_impl = NodeImpl::new(storage.clone(), raft_storage.clone(), topology.clone())?;
 
         let raft_id = node_impl.raft_id();
         let status = node_impl.status.subscribe();
@@ -180,6 +181,7 @@ impl Node {
             raft_storage,
             status,
             watchers,
+            topology,
         };
 
         // Wait for the node to enter the main loop
@@ -320,28 +322,94 @@ impl Node {
     /// entries to the raft log (if successful).
     ///
     /// Returns the resulting [`Instance`] when the entry is committed.
-    ///
-    /// Returns an error if the callee node isn't a raft leader.
-    ///
-    /// **This function yields**
+    // TODO: to make this function async and have an outer timeout,
+    // wait_* fns also need to be async.
     pub fn handle_join_request_and_wait(
         &self,
         req: rpc::join::Request,
+        timeout: Duration,
     ) -> traft::Result<(Box<Instance>, HashSet<Address>)> {
-        let (notify_addr, notify_instance, replication_addresses) =
-            self.raw_operation(|node_impl| node_impl.process_join_request_async(req))?;
-        fiber::block_on(async {
-            let (addr, instance): (
-                _,
-                Result<Result<Option<Tuple>, ::tarantool::error::Error>, _>,
-            ) = futures::join!(notify_addr.recv_any(), notify_instance.recv());
-            addr?;
-            let instance = instance??
-                .expect("option is always some")
-                .decode()
-                .expect("decoding should not fail");
-            Ok((Box::new(instance), replication_addresses))
-        })
+        let deadline = instant_saturating_add(Instant::now(), timeout);
+
+        loop {
+            let instance = self
+                .topology
+                .borrow()
+                .build_instance(
+                    req.instance_id.as_ref(),
+                    req.replicaset_id.as_ref(),
+                    &req.failure_domain,
+                )
+                .map_err(RaftError::ConfChangeError)?;
+            let mut replication_addresses = self.storage.peer_addresses.addresses_by_ids(
+                self.topology
+                    .borrow()
+                    .get_replication_ids(&instance.replicaset_id),
+            )?;
+            replication_addresses.insert(req.advertise_address.clone());
+            let peer_address = traft::PeerAddress {
+                raft_id: instance.raft_id,
+                address: req.advertise_address.clone(),
+            };
+            let op_addr = Dml::replace(ClusterwideSpaceId::Address, &peer_address)
+                .expect("encoding should not fail");
+            let op_instance = Dml::replace(ClusterwideSpaceId::Instance, &instance)
+                .expect("encoding should not fail");
+            let ranges = vec![
+                cas::Range::new(ClusterwideSpaceId::Instance),
+                cas::Range::new(ClusterwideSpaceId::Address),
+                cas::Range::new(ClusterwideSpaceId::Property)
+                    .eq((PropertyName::ReplicationFactor,)),
+            ];
+            macro_rules! handle_result {
+                ($res:expr) => {
+                    match $res {
+                        Ok((index, term)) => {
+                            self.wait_index(
+                                index,
+                                deadline.saturating_duration_since(Instant::now()),
+                            )?;
+                            if term != raft::Storage::term(&self.raft_storage, index)? {
+                                // leader switched - retry
+                                self.wait_status();
+                                continue;
+                            }
+                        }
+                        Err(err) => {
+                            if err.is_cas_err() | err.is_term_mismatch_err() {
+                                // cas error - retry
+                                fiber::sleep(Duration::from_millis(500));
+                                continue;
+                            } else {
+                                return Err(err);
+                            }
+                        }
+                    }
+                };
+            }
+            // Only in this order - so that when instance exists - address will always be there.
+            handle_result!(cas::compare_and_swap(
+                Op::Dml(op_addr),
+                cas::Predicate {
+                    index: self.raft_storage.applied()?,
+                    term: self.raft_storage.term()?,
+                    ranges: ranges.clone(),
+                },
+                deadline.saturating_duration_since(Instant::now()),
+            ));
+            handle_result!(cas::compare_and_swap(
+                Op::Dml(op_instance),
+                cas::Predicate {
+                    index: self.raft_storage.applied()?,
+                    term: self.raft_storage.term()?,
+                    ranges,
+                },
+                deadline.saturating_duration_since(Instant::now()),
+            ));
+
+            self.main_loop.wakeup();
+            return Ok((instance.into(), replication_addresses));
+        }
     }
 
     /// Processes the [`rpc::update_instance::Request`] and appends
@@ -349,17 +417,61 @@ impl Node {
     ///
     /// Returns `Ok(())` when the entry is committed.
     ///
-    /// Returns an error if the callee node isn't a raft leader.
-    ///
     /// **This function yields**
+    // TODO: for this function to be async and have an outer timeout wait_* fns need to be async
     pub fn handle_update_instance_request_and_wait(
         &self,
         req: rpc::update_instance::Request,
+        timeout: Duration,
     ) -> traft::Result<()> {
-        let notify =
-            self.raw_operation(|node_impl| node_impl.process_update_instance_request_async(req))?;
-        fiber::block_on(notify.recv_any())?;
-        Ok(())
+        let deadline = instant_saturating_add(Instant::now(), timeout);
+
+        loop {
+            let instance = self
+                .topology
+                .borrow()
+                .build_updated_instance(&req)
+                .map_err(RaftError::ConfChangeError)?;
+            let dml = Dml::replace(ClusterwideSpaceId::Instance, &instance)
+                .expect("encoding should not fail");
+
+            let ranges = vec![
+                cas::Range::new(ClusterwideSpaceId::Instance),
+                cas::Range::new(ClusterwideSpaceId::Address),
+                cas::Range::new(ClusterwideSpaceId::Property)
+                    .eq((PropertyName::ReplicationFactor,)),
+            ];
+            let res = cas::compare_and_swap(
+                Op::Dml(dml),
+                cas::Predicate {
+                    index: self.raft_storage.applied()?,
+                    term: self.raft_storage.term()?,
+                    ranges,
+                },
+                deadline.saturating_duration_since(Instant::now()),
+            );
+            match res {
+                Ok((index, term)) => {
+                    self.wait_index(index, deadline.saturating_duration_since(Instant::now()))?;
+                    if term != raft::Storage::term(&self.raft_storage, index)? {
+                        // leader switched - retry
+                        self.wait_status();
+                        continue;
+                    }
+                }
+                Err(err) => {
+                    if err.is_cas_err() | err.is_term_mismatch_err() {
+                        // cas error - retry
+                        fiber::sleep(Duration::from_millis(500));
+                        continue;
+                    } else {
+                        return Err(err);
+                    }
+                }
+            }
+            self.main_loop.wakeup();
+            return Ok(());
+        }
     }
 
     /// Only the conf_change_loop on a leader is eligible to call this function.
@@ -423,7 +535,7 @@ impl Node {
 pub(crate) struct NodeImpl {
     pub raw_node: RawNode,
     pub notifications: HashMap<LogicalClock, Notifier>,
-    topology_cache: KVCell<RaftTerm, Topology>,
+    topology: Rc<RefCell<Topology>>,
     joint_state_latch: KVCell<RaftIndex, oneshot::Sender<Result<(), RaftError>>>,
     storage: Clusterwide,
     raft_storage: RaftSpaceAccess,
@@ -433,7 +545,11 @@ pub(crate) struct NodeImpl {
 }
 
 impl NodeImpl {
-    fn new(storage: Clusterwide, raft_storage: RaftSpaceAccess) -> Result<Self, RaftError> {
+    fn new(
+        storage: Clusterwide,
+        raft_storage: RaftSpaceAccess,
+        topology: Rc<RefCell<Topology>>,
+    ) -> Result<Self, RaftError> {
         let box_err = |e| StorageError::Other(Box::new(e));
 
         let raft_id: RaftId = raft_storage
@@ -471,7 +587,7 @@ impl NodeImpl {
         Ok(Self {
             raw_node,
             notifications: Default::default(),
-            topology_cache: KVCell::new(),
+            topology,
             joint_state_latch: KVCell::new(),
             storage,
             raft_storage,
@@ -483,39 +599,6 @@ impl NodeImpl {
 
     fn raft_id(&self) -> RaftId {
         self.raw_node.raft.id
-    }
-
-    /// Provides mutable access to the Topology struct which reflects
-    /// uncommitted state of the cluster. Ensures the node is a leader.
-    /// In case it's not — returns an error.
-    ///
-    /// It's important to access topology through this function so that
-    /// new changes are consistent with uncommitted ones.
-    fn topology_mut(&mut self) -> Result<&mut Topology, Error> {
-        if self.raw_node.raft.state != RaftStateRole::Leader {
-            self.topology_cache.take(); // invalidate the cache
-            return Err(Error::NotALeader);
-        }
-
-        let current_term = self.raw_node.raft.term;
-
-        let topology: Topology = unwrap_some_or! {
-            self.topology_cache.take_or_drop(&current_term),
-            {
-                let mut instances = vec![];
-                for instance @ Instance { raft_id, .. } in self.storage.instances.iter()? {
-                    instances.push((instance, self.storage.peer_addresses.try_get(raft_id)?))
-                }
-                let replication_factor = self
-                    .storage
-                    .properties
-                    .get(PropertyName::ReplicationFactor)?
-                    .ok_or_else(|| Error::other("missing replication_factor value in storage"))?;
-                Topology::new(instances).with_replication_factor(replication_factor)
-            }
-        };
-
-        Ok(self.topology_cache.insert(current_term, topology))
     }
 
     pub fn read_index_async(&mut self) -> Result<Notify, RaftError> {
@@ -586,89 +669,6 @@ impl NodeImpl {
         for _ in 0..n_times {
             self.raw_node.tick();
         }
-    }
-
-    /// Processes the [`rpc::join::Request`] and appends necessary
-    /// entries to the raft log (if successful).
-    ///
-    /// Returns an error if the callee node isn't a Raft leader.
-    ///
-    /// **This function doesn't yield**
-    pub fn process_join_request_async(
-        &mut self,
-        req: rpc::join::Request,
-    ) -> traft::Result<(Notify, Notify, HashSet<Address>)> {
-        let topology = self.topology_mut()?;
-        let (instance, address, replication_addresses) = topology
-            .join(
-                req.instance_id,
-                req.replicaset_id,
-                req.advertise_address,
-                req.failure_domain,
-            )
-            .map_err(RaftError::ConfChangeError)?;
-        let peer_address = traft::PeerAddress {
-            raft_id: instance.raft_id,
-            address,
-        };
-        let op_addr = Dml::replace(ClusterwideSpaceId::Address, &peer_address)
-            .expect("encoding should not fail");
-        let op_instance = Dml::replace(ClusterwideSpaceId::Instance, &instance)
-            .expect("encoding should not fail");
-        // Important! Calling `raw_node.propose()` may result in
-        // `ProposalDropped` error, but the topology has already been
-        // modified. The correct handling of this case should be the
-        // following.
-        //
-        // The `topology_cache` should be preserved. It won't be fully
-        // consistent anymore, but that's bearable. (TODO: examine how
-        // the particular requests are handled). At least it doesn't
-        // much differ from the case of overriding the entry due to a
-        // re-election.
-        //
-        // On the other hand, dropping topology_cache may be much more
-        // harmful. Loss of the uncommitted entries could result in
-        // assigning the same `raft_id` to a two different nodes.
-        Ok((
-            self.propose_async(op_addr)?,
-            self.propose_async(op_instance)?,
-            replication_addresses,
-        ))
-    }
-
-    /// Processes the [`rpc::update_instance::Request`] and appends
-    /// a corresponding [`Op::Dml`] entry to the raft log (if successful).
-    ///
-    /// Returns an error if the callee node isn't a Raft leader.
-    ///
-    /// **This function doesn't yield**
-    pub fn process_update_instance_request_async(
-        &mut self,
-        req: rpc::update_instance::Request,
-    ) -> traft::Result<Notify> {
-        let topology = self.topology_mut()?;
-        let instance = topology
-            .update_instance(req)
-            .map_err(RaftError::ConfChangeError)?;
-        // Important! Calling `raw_node.propose()` may result in
-        // `ProposalDropped` error, but the topology has already been
-        // modified. The correct handling of this case should be the
-        // following.
-        //
-        // The `topology_cache` should be preserved. It won't be fully
-        // consistent anymore, but that's bearable. (TODO: examine how
-        // the particular requests are handled). At least it doesn't
-        // much differ from the case of overriding the entry due to a
-        // re-election.
-        //
-        // On the other hand, dropping topology_cache may be much more
-        // harmful. Loss of the uncommitted entries could result in
-        // assigning the same `raft_id` to a two different nodes.
-        //
-        Ok(self.propose_async(
-            Dml::replace(ClusterwideSpaceId::Instance, &instance)
-                .expect("encoding should not fail"),
-        )?)
     }
 
     fn propose_conf_change_async(
@@ -806,6 +806,8 @@ impl NodeImpl {
         let op = entry.into_op().unwrap_or(Op::Nop);
         tlog!(Debug, "applying entry: {op}"; "index" => index);
 
+        let mut instance_update = None;
+        let mut old_instance = None;
         match &op {
             Op::Dml(op) => {
                 let space = op.space();
@@ -830,6 +832,20 @@ impl NodeImpl {
                             // cannot exit during a transaction
                             *expelled = true;
                         }
+                        if self
+                            .storage
+                            .instances
+                            .contains(&instance.instance_id)
+                            .expect("storage should not fail")
+                        {
+                            old_instance = Some(
+                                self.storage
+                                    .instances
+                                    .get(&instance.instance_id)
+                                    .expect("storage should not fail"),
+                            );
+                        }
+                        instance_update = Some(instance);
                     }
                 }
                 storage_changes.insert(space);
@@ -1051,6 +1067,13 @@ impl NodeImpl {
                     .put(PropertyName::NextSchemaVersion, &(v_pending + 1))
                     .expect("storage error");
             }
+        }
+
+        // Keep topology in sync with storage
+        if let Some(instance_update) = instance_update {
+            self.topology
+                .borrow_mut()
+                .update(instance_update, old_instance)
         }
 
         if let Some(lc) = &lc {
@@ -1662,6 +1685,7 @@ impl MainLoop {
             return FlowControl::Break;
         }
 
+        // FIXME: potential deadlock - can't use sync mutex in async fn
         let mut node_impl = args.node_impl.lock(); // yields
         if state.stop_flag.take() {
             return FlowControl::Break;

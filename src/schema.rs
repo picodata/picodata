@@ -626,9 +626,9 @@ pub fn prepare_schema_change(op: Op, timeout: Duration) -> traft::Result<RaftInd
             ranges: vec![
                 cas::Range::new(ClusterwideSpaceId::Property)
                     .eq((PropertyName::PendingSchemaChange,)),
-                cas::Range::new(ClusterwideSpaceId::Property as _)
+                cas::Range::new(ClusterwideSpaceId::Property)
                     .eq((PropertyName::PendingSchemaVersion,)),
-                cas::Range::new(ClusterwideSpaceId::Property as _)
+                cas::Range::new(ClusterwideSpaceId::Property)
                     .eq((PropertyName::GlobalSchemaVersion,)),
                 cas::Range::new(ClusterwideSpaceId::Property)
                     .eq((PropertyName::NextSchemaVersion,)),

@@ -1,11 +1,15 @@
+use std::time::Duration;
+
 use crate::instance::grade::TargetGradeVariant;
 use crate::instance::InstanceId;
 use crate::rpc;
 use crate::traft::Result;
 use crate::traft::{error::Error, node};
 
+const TIMEOUT: Duration = Duration::from_secs(10);
+
 crate::define_rpc_request! {
-    fn proc_expel_on_leader(req: Request) -> Result<Response> {
+    fn proc_expel(req: Request) -> Result<Response> {
         let node = node::global()?;
         let raft_storage = &node.raft_storage;
         let cluster_id = raft_storage.cluster_id()?;
@@ -17,21 +21,15 @@ crate::define_rpc_request! {
             });
         }
 
-        let leader_id = node.status().leader_id.ok_or(Error::LeaderUnknown)?;
-        if node.raft_id() != leader_id {
-            return Err(Error::NotALeader);
-        }
-
         let req = rpc::update_instance::Request::new(req.instance_id, req.cluster_id)
             .with_target_grade(TargetGradeVariant::Expelled);
-        node.handle_update_instance_request_and_wait(req)?;
+        node.handle_update_instance_request_and_wait(req, TIMEOUT)?;
 
         Ok(Response {})
     }
 
     /// A request to expel an instance.
     ///
-    /// This request is only handled by the leader.
     /// Use [`redirect::Request`] for automatic redirection from any instance to
     /// leader.
     pub struct Request {

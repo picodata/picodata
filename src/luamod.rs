@@ -1051,7 +1051,8 @@ pub(crate) fn setup(args: &args::Run) {
              -> traft::Result<RaftIndex> {
                 let op = op::Dml::from_lua_args(op).map_err(traft::error::Error::other)?;
                 let predicate = cas::Predicate::from_lua_args(predicate.unwrap_or_default())?;
-                let (index, _) = compare_and_swap(op.into(), predicate)?;
+                // TODO: Add timeout to API
+                let (index, _) = compare_and_swap(op.into(), predicate, Duration::from_secs(3))?;
                 Ok(index)
             },
         ),

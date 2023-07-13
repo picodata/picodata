@@ -4,8 +4,7 @@ use serde::{Deserialize, Serialize};
 use ::raft::prelude as raft;
 use ::tarantool::error::Error as TntError;
 use ::tarantool::fiber;
-use ::tarantool::fiber::r#async::timeout;
-use ::tarantool::fiber::r#async::timeout::IntoTimeout as _;
+use ::tarantool::fiber::r#async::timeout::{self, IntoTimeout};
 use ::tarantool::tlua;
 use ::tarantool::transaction::transaction;
 use rpc::{join, update_instance};
@@ -354,13 +353,11 @@ fn start_discover(args: &args::Run, to_supervisor: ipc::Sender<IpcMessage>) {
 fn start_boot(args: &args::Run) {
     tlog!(Info, ">>>>> start_boot()");
 
-    let (instance, address, _) = traft::topology::initial_instance(
+    let instance = traft::topology::initial_instance(
         args.instance_id.clone(),
         args.replicaset_id.clone(),
-        args.advertise_address(),
         args.failure_domain(),
-    )
-    .expect("failed adding initial instance");
+    );
     let raft_id = instance.raft_id;
     let instance_id = instance.instance_id.clone();
 
@@ -408,7 +405,10 @@ fn start_boot(args: &args::Run) {
         init_entries_push_op(
             op::Dml::insert(
                 ClusterwideSpaceId::Address,
-                &traft::PeerAddress { raft_id, address },
+                &traft::PeerAddress {
+                    raft_id,
+                    address: args.advertise_address(),
+                },
             )
             .expect("cannot fail")
             .into(),
@@ -486,8 +486,8 @@ fn start_boot(args: &args::Run) {
     postjoin(args, storage, raft_storage)
 }
 
-fn start_join(args: &args::Run, leader_address: String) {
-    tlog!(Info, ">>>>> start_join({leader_address})");
+fn start_join(args: &args::Run, instance_address: String) {
+    tlog!(Info, ">>>>> start_join({instance_address})");
 
     let req = join::Request {
         cluster_id: args.cluster_id.clone(),
@@ -497,32 +497,19 @@ fn start_join(args: &args::Run, leader_address: String) {
         failure_domain: args.failure_domain(),
     };
 
-    let mut leader_address = leader_address;
-
     // Arch memo.
     // - There must be no timeouts. Retrying may lead to flooding the
     //   topology with phantom instances. No worry, specifying a
     //   particular `instance_id` for every instance protects from that
     //   flood.
     // - It's fine to retry "connection refused" errors.
-    // - TODO renew leader_address if the current one says it's not a
-    //   leader.
-    let resp: rpc::join::OkResponse = loop {
+    let resp: rpc::join::Response = loop {
         let now = Instant::now();
         // TODO: exponential delay
         let timeout = Duration::from_secs(1);
-        match fiber::block_on(rpc::network_call(&leader_address, &req)) {
-            Ok(join::Response::Ok(resp)) => {
+        match fiber::block_on(rpc::network_call(&instance_address, &req)) {
+            Ok(resp) => {
                 break resp;
-            }
-            Ok(join::Response::ErrNotALeader(maybe_new_leader)) => {
-                tlog!(Warning, "join request failed: not a leader, retry...");
-                if let Some(new_leader) = maybe_new_leader {
-                    leader_address = new_leader.address;
-                } else {
-                    fiber::sleep(Duration::from_millis(100));
-                }
-                continue;
             }
             Err(TntError::Tcp(e)) => {
                 tlog!(Warning, "join request failed: {e}, retry...");
@@ -627,6 +614,7 @@ fn postjoin(args: &args::Run, storage: Clusterwide, raft_storage: RaftSpaceAcces
         tlog!(Error, "failed setting on_shutdown trigger: {e}");
     }
 
+    // Activates instance
     loop {
         let instance = storage
             .instances
@@ -635,6 +623,7 @@ fn postjoin(args: &args::Run, storage: Clusterwide, raft_storage: RaftSpaceAcces
         let cluster_id = raft_storage
             .cluster_id()
             .expect("storage should never fail");
+        // Doesn't have to be leader - can be any online peer
         let leader_id = node.status().leader_id;
         let leader_address = leader_id.and_then(|id| storage.peer_addresses.try_get(id).ok());
         let Some(leader_address) = leader_address else {
@@ -653,31 +642,22 @@ fn postjoin(args: &args::Run, storage: Clusterwide, raft_storage: RaftSpaceAcces
         let req = update_instance::Request::new(instance.instance_id, cluster_id)
             .with_target_grade(TargetGradeVariant::Online)
             .with_failure_domain(args.failure_domain());
-
-        // It's necessary to call `proc_update_instance` remotely on a
-        // leader over net_box. It always fails otherwise. Only the
-        // leader is permitted to propose changes to _pico_instance.
         let now = Instant::now();
         let timeout = Duration::from_secs(10);
         match fiber::block_on(rpc::network_call(&leader_address, &req).timeout(timeout)) {
-            Ok(update_instance::Response::Ok) => {
+            Ok(update_instance::Response {}) => {
                 break;
             }
-            Ok(update_instance::Response::ErrNotALeader) => {
-                tlog!(Warning, "failed to activate myself: not a leader, retry...");
-                fiber::sleep(Duration::from_millis(100));
-                continue;
-            }
             Err(timeout::Error::Failed(TntError::Tcp(e))) => {
-                tlog!(Warning, "failed to activate myself: {e}, retry...");
+                tlog!(Warning, "failed to activate myself: {e}, retrying...");
                 fiber::sleep(timeout.saturating_sub(now.elapsed()));
                 continue;
             }
             Err(e) => {
-                tlog!(Error, "failed to activate myself: {e}");
+                tlog!(Error, "failed to activate myself: {e}, shutting down...");
                 std::process::exit(-1);
             }
-        };
+        }
     }
 }
 

@@ -14,7 +14,7 @@ use std::time::{Duration, Instant};
 
 const INFINITY: Duration = Duration::from_secs(30 * 365 * 24 * 60 * 60);
 
-// TODO: move to tarantool_module when we have custom `Instance` there
+// TODO: move to tarantool_module when we have custom `Instant` there.
 pub fn instant_saturating_add(t: Instant, d: Duration) -> Instant {
     t.checked_add(d)
         .unwrap_or_else(|| t.checked_add(INFINITY).expect("that's too much, man"))
@@ -22,8 +22,9 @@ pub fn instant_saturating_add(t: Instant, d: Duration) -> Instant {
 
 // TODO: move to tarantool_module
 pub async fn sleep_async(time: Duration) {
-    let (_, rx) = fiber::r#async::oneshot::channel::<()>();
+    let (tx, rx) = fiber::r#async::oneshot::channel::<()>();
     rx.timeout(time).await.unwrap_err();
+    drop(tx);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -565,8 +566,12 @@ mod tests {
 mod tarantool_tests {
     use std::time::Duration;
 
+    use ::tarantool::fiber;
+
     #[::tarantool::test]
-    async fn sleep_wakes_up() {
-        super::sleep_async(Duration::from_millis(10)).await;
+    fn sleep_wakes_up() {
+        let should_yield =
+            fiber::check_yield(|| fiber::block_on(super::sleep_async(Duration::from_millis(10))));
+        assert_eq!(should_yield, fiber::YieldResult::Yielded(()));
     }
 }
