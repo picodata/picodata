@@ -83,6 +83,22 @@ impl Error {
     {
         Self::Other(error.into())
     }
+
+    /// Temporary solution until proc_cas returns structured errors
+    pub fn is_cas_err(&self) -> bool {
+        self.to_string().contains("compare-and-swap request failed")
+    }
+
+    /// Temporary solution until proc_cas returns structured errors
+    pub fn is_term_mismatch_err(&self) -> bool {
+        self.to_string()
+            .contains("operation request from different term")
+    }
+
+    /// Temporary solution until proc_cas returns structured errors
+    pub fn is_not_leader_err(&self) -> bool {
+        self.to_string().contains("not a leader")
+    }
 }
 
 impl<E> From<timeout::Error<E>> for Error
