@@ -457,21 +457,21 @@ deploy-packages:
     - echo "Deploying ubuntu focal deb-packets..."
     - ssh -o stricthostkeychecking=no ansible@picodata.io "mkdir -p ~/.deb/ubuntu"
     - scp -o stricthostkeychecking=no build_focal/picodata*deb ansible@picodata.io:.deb/ubuntu/
-    - ssh -o stricthostkeychecking=no ansible@picodata.io "reprepro -b /data/nginx/www/packrepo/tarantool-picodata/ubuntu/ -C main includedeb focal ~/.deb/ubuntu/picodata*focal*deb; rm ~/.deb/ubuntu/picodata*focal*deb"
+    - ssh -o stricthostkeychecking=no ansible@picodata.io "reprepro --keepunreferencedfiles -b /data/nginx/www/packrepo/tarantool-picodata/ubuntu/ -C main includedeb focal ~/.deb/ubuntu/picodata*focal*deb; rm ~/.deb/ubuntu/picodata*focal*deb"
     - echo "ubuntu focal deb-packets successfully deployed."
     - echo
     # Ubuntu jammy
     - echo "Deploying ubuntu jammy deb-packets..."
     - ssh -o stricthostkeychecking=no ansible@picodata.io "mkdir -p ~/.deb/ubuntu"
     - scp -o stricthostkeychecking=no build_jammy/picodata*deb ansible@picodata.io:.deb/ubuntu/
-    - ssh -o stricthostkeychecking=no ansible@picodata.io "reprepro -b /data/nginx/www/packrepo/tarantool-picodata/ubuntu/ -C main includedeb jammy ~/.deb/ubuntu/picodata*jammy*deb; rm ~/.deb/ubuntu/picodata*jammy*deb"
+    - ssh -o stricthostkeychecking=no ansible@picodata.io "reprepro --keepunreferencedfiles -b /data/nginx/www/packrepo/tarantool-picodata/ubuntu/ -C main includedeb jammy ~/.deb/ubuntu/picodata*jammy*deb; rm ~/.deb/ubuntu/picodata*jammy*deb"
     - echo "ubuntu jammy deb-packets successfully deployed."
     - echo
     # Debian
     - echo "Deploying debian packets..."
     - ssh -o stricthostkeychecking=no ansible@picodata.io "mkdir -p ~/.deb/debian"
     - scp -o stricthostkeychecking=no build_debian/picodata*deb ansible@picodata.io:.deb/debian/
-    - ssh -o stricthostkeychecking=no ansible@picodata.io "reprepro -b /data/nginx/www/packrepo/tarantool-picodata/debian/ -C main includedeb bullseye ~/.deb/debian/picodata*bullseye*deb; rm ~/.deb/debian/picodata*bullseye*deb"
+    - ssh -o stricthostkeychecking=no ansible@picodata.io "reprepro --keepunreferencedfiles -b /data/nginx/www/packrepo/tarantool-picodata/debian/ -C main includedeb bullseye ~/.deb/debian/picodata*bullseye*deb; rm ~/.deb/debian/picodata*bullseye*deb"
     - echo "debian packets successfully deployed."
     - echo
     # Altlinux p9
@@ -496,7 +496,7 @@ deploy-packages:
     - echo "Deploying Astralinux packet..."
     - ssh -o stricthostkeychecking=no ansible@picodata.io "mkdir -p ~/.deb/astra"
     - scp -o stricthostkeychecking=no build_astra/picodata*_signed.deb ansible@picodata.io:.deb/astra/
-    - ssh -o stricthostkeychecking=no ansible@picodata.io "reprepro -b /data/nginx/www/packrepo/tarantool-picodata/astra -C main includedeb orel ~/.deb/astra/picodata*_signed.deb; rm -rf ~/.deb/astra"
+    - ssh -o stricthostkeychecking=no ansible@picodata.io "reprepro --keepunreferencedfiles -b /data/nginx/www/packrepo/tarantool-picodata/astra -C main includedeb orel ~/.deb/astra/picodata*_signed.deb; rm -rf ~/.deb/astra"
     - echo "Astralinux-packets successfully deployed."
     - echo
   dependencies:
