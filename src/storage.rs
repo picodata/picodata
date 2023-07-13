@@ -2307,14 +2307,14 @@ impl SchemaDef for UserDef {
     #[inline(always)]
     fn on_insert(&self, storage: &Clusterwide) -> traft::Result<()> {
         _ = storage;
-        acl_create_user_on_master(self)?;
+        acl::on_master_create_user(self)?;
         Ok(())
     }
 
     #[inline(always)]
     fn on_delete(user_id: &UserId, storage: &Clusterwide) -> traft::Result<()> {
         _ = storage;
-        acl_drop_user_on_master(*user_id)?;
+        acl::on_master_drop_user(*user_id)?;
         Ok(())
     }
 }
@@ -2335,14 +2335,14 @@ impl SchemaDef for RoleDef {
     #[inline(always)]
     fn on_insert(&self, storage: &Clusterwide) -> traft::Result<()> {
         _ = storage;
-        acl_create_role_on_master(self)?;
+        acl::on_master_create_role(self)?;
         Ok(())
     }
 
     #[inline(always)]
     fn on_delete(user_id: &UserId, storage: &Clusterwide) -> traft::Result<()> {
         _ = storage;
-        acl_drop_role_on_master(*user_id)?;
+        acl::on_master_drop_role(*user_id)?;
         Ok(())
     }
 }
@@ -2363,236 +2363,244 @@ impl SchemaDef for PrivilegeDef {
     #[inline(always)]
     fn on_insert(&self, storage: &Clusterwide) -> traft::Result<()> {
         _ = storage;
-        acl_grant_privilege_on_master(self)?;
+        acl::on_master_grant_privilege(self)?;
         Ok(())
     }
 
     #[inline(always)]
     fn on_delete(this: &Self, storage: &Clusterwide) -> traft::Result<()> {
         _ = storage;
-        acl_revoke_privilege_on_master(this)?;
+        acl::on_master_revoke_privilege(this)?;
         Ok(())
     }
-}
-
-////////////////////////////////////////////////////////////////////////////////
-// acl global
-////////////////////////////////////////////////////////////////////////////////
-
-/// Persist a user definition in the internal clusterwide storage.
-pub fn acl_global_create_user(storage: &Clusterwide, user_def: &UserDef) -> tarantool::Result<()> {
-    storage.users.insert(user_def)?;
-    Ok(())
-}
-
-/// Remove a user definition and any entities owned by it from the internal
-/// clusterwide storage.
-pub fn acl_global_change_user_auth(
-    storage: &Clusterwide,
-    user_id: UserId,
-    auth: &AuthDef,
-) -> tarantool::Result<()> {
-    storage.users.update_auth(user_id, auth)?;
-    Ok(())
-}
-
-/// Remove a user definition and any entities owned by it from the internal
-/// clusterwide storage.
-pub fn acl_global_drop_user(storage: &Clusterwide, user_id: UserId) -> tarantool::Result<()> {
-    storage.privileges.delete_all_by_grantee_id(user_id)?;
-    storage.users.delete(user_id)?;
-    Ok(())
-}
-
-/// Persist a role definition in the internal clusterwide storage.
-pub fn acl_global_create_role(storage: &Clusterwide, role_def: &RoleDef) -> tarantool::Result<()> {
-    storage.roles.insert(role_def)?;
-    Ok(())
-}
-
-/// Remove a role definition and any entities owned by it from the internal
-/// clusterwide storage.
-pub fn acl_global_drop_role(storage: &Clusterwide, role_id: UserId) -> Result<()> {
-    storage.privileges.delete_all_by_grantee_id(role_id)?;
-    if let Some(role_def) = storage.roles.by_id(role_id)? {
-        // Revoke the role from any grantees.
-        storage
-            .privileges
-            .delete_all_by_granted_role(&role_def.name)?;
-        storage.roles.delete(role_id)?;
-    }
-    Ok(())
-}
-
-/// Persist a privilege definition in the internal clusterwide storage.
-pub fn acl_global_grant_privilege(
-    storage: &Clusterwide,
-    priv_def: &PrivilegeDef,
-) -> tarantool::Result<()> {
-    storage.privileges.insert(priv_def)?;
-    Ok(())
-}
-
-/// Remove a privilege definition from the internal clusterwide storage.
-pub fn acl_global_revoke_privilege(
-    storage: &Clusterwide,
-    priv_def: &PrivilegeDef,
-) -> tarantool::Result<()> {
-    // FIXME: currently there's no way to revoke a default privilege
-    storage.privileges.delete(
-        priv_def.grantee_id,
-        &priv_def.object_type,
-        &priv_def.object_name,
-        &priv_def.privilege,
-    )?;
-
-    Ok(())
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 // acl
 ////////////////////////////////////////////////////////////////////////////////
 
-/// Create a tarantool user. Grant it default privileges.
-pub fn acl_create_user_on_master(user_def: &UserDef) -> tarantool::Result<()> {
-    let sys_user = Space::from(SystemSpace::User);
+pub mod acl {
+    use super::*;
 
-    // This impelemtation was copied from box.schema.user.create excluding the
-    // password hashing.
-    let user_id = user_def.id;
-    let euid = ::tarantool::session::euid()?;
+    ////////////////////////////////////////////////////////////////////////////
+    // acl in global storage
+    ////////////////////////////////////////////////////////////////////////////
 
-    // Tarantool expects auth info to be a map of form `{ method: data }`,
-    // and currently the simplest way to achieve this is to use a HashMap.
-    let auth_map = HashMap::from([(user_def.auth.method, &user_def.auth.data)]);
-    sys_user.insert(&(user_id, euid, &user_def.name, "user", auth_map, &[(); 0], 0))?;
+    /// Persist a user definition in the internal clusterwide storage.
+    pub fn global_create_user(storage: &Clusterwide, user_def: &UserDef) -> tarantool::Result<()> {
+        storage.users.insert(user_def)?;
+        Ok(())
+    }
 
-    let lua = ::tarantool::lua_state();
-    lua.exec_with("box.schema.user.grant(...)", (user_id, "public"))
-        .map_err(LuaError::from)?;
-    lua.exec_with(
-        "box.schema.user.grant(...)",
-        (user_id, "alter", "user", user_id),
-    )
-    .map_err(LuaError::from)?;
-    lua.exec_with(
-        "box.session.su('admin', box.schema.user.grant, ...)",
-        (
-            user_id,
-            "session,usage",
-            "universe",
-            tlua::Nil,
-            tlua::AsTable((("if_not_exists", true),)),
-        ),
-    )
-    .map_err(LuaError::from)?;
+    /// Remove a user definition and any entities owned by it from the internal
+    /// clusterwide storage.
+    pub fn global_change_user_auth(
+        storage: &Clusterwide,
+        user_id: UserId,
+        auth: &AuthDef,
+    ) -> tarantool::Result<()> {
+        storage.users.update_auth(user_id, auth)?;
+        Ok(())
+    }
 
-    Ok(())
-}
+    /// Remove a user definition and any entities owned by it from the internal
+    /// clusterwide storage.
+    pub fn global_drop_user(storage: &Clusterwide, user_id: UserId) -> tarantool::Result<()> {
+        storage.privileges.delete_all_by_grantee_id(user_id)?;
+        storage.users.delete(user_id)?;
+        Ok(())
+    }
 
-/// Update a tarantool user's authentication details.
-pub fn acl_change_user_auth_on_master(user_id: UserId, auth: &AuthDef) -> tarantool::Result<()> {
-    const USER_FIELD_AUTH: i32 = 4;
-    const USER_FIELD_LAST_MODIFIED: i32 = 6;
-    let sys_user = Space::from(SystemSpace::User);
+    /// Persist a role definition in the internal clusterwide storage.
+    pub fn global_create_role(storage: &Clusterwide, role_def: &RoleDef) -> tarantool::Result<()> {
+        storage.roles.insert(role_def)?;
+        Ok(())
+    }
 
-    // Tarantool expects auth info to be a map of form `{ method: data }`,
-    // and currently the simplest way to achieve this is to use a HashMap.
-    let auth_map = HashMap::from([(auth.method, &auth.data)]);
-    let mut ops = UpdateOps::with_capacity(2);
-    ops.assign(USER_FIELD_AUTH, auth_map)?;
-    ops.assign(USER_FIELD_LAST_MODIFIED, fiber::time() as u64)?;
-    sys_user.update(&[user_id], ops)?;
-    Ok(())
-}
+    /// Remove a role definition and any entities owned by it from the internal
+    /// clusterwide storage.
+    pub fn global_drop_role(storage: &Clusterwide, role_id: UserId) -> Result<()> {
+        storage.privileges.delete_all_by_grantee_id(role_id)?;
+        if let Some(role_def) = storage.roles.by_id(role_id)? {
+            // Revoke the role from any grantees.
+            storage
+                .privileges
+                .delete_all_by_granted_role(&role_def.name)?;
+            storage.roles.delete(role_id)?;
+        }
+        Ok(())
+    }
 
-/// Drop a tarantool user and any entities (spaces, etc.) owned by it.
-pub fn acl_drop_user_on_master(user_id: UserId) -> tarantool::Result<()> {
-    let lua = ::tarantool::lua_state();
-    lua.exec_with("box.schema.user.drop(...)", user_id)
-        .map_err(LuaError::from)?;
+    /// Persist a privilege definition in the internal clusterwide storage.
+    pub fn global_grant_privilege(
+        storage: &Clusterwide,
+        priv_def: &PrivilegeDef,
+    ) -> tarantool::Result<()> {
+        storage.privileges.insert(priv_def)?;
+        Ok(())
+    }
 
-    Ok(())
-}
-
-/// Create a tarantool role.
-pub fn acl_create_role_on_master(role_def: &RoleDef) -> tarantool::Result<()> {
-    let sys_user = Space::from(SystemSpace::User);
-
-    // This impelemtation was copied from box.schema.role.create.
-
-    // Tarantool expects auth info to be a map `{}`, and currently the simplest
-    // way to achieve this is to use a HashMap.
-    sys_user.insert(&(
-        role_def.id,
-        ::tarantool::session::euid()?,
-        &role_def.name,
-        "role",
-        HashMap::<(), ()>::new(),
-        &[(); 0],
-        0,
-    ))?;
-
-    Ok(())
-}
-
-/// Drop a tarantool role and revoke it from anybody it was assigned to.
-pub fn acl_drop_role_on_master(role_id: UserId) -> tarantool::Result<()> {
-    let lua = ::tarantool::lua_state();
-    lua.exec_with("box.schema.role.drop(...)", role_id)
-        .map_err(LuaError::from)?;
-
-    Ok(())
-}
-
-/// Grant a tarantool user some privilege defined by `priv_def`.
-pub fn acl_grant_privilege_on_master(priv_def: &PrivilegeDef) -> tarantool::Result<()> {
-    let lua = ::tarantool::lua_state();
-    lua.exec_with(
-        "local grantee_id, privilege, object_type, object_name = ...
-        local grantee_def = box.space._user:get(grantee_id)
-        if grantee_def.type == 'user' then
-            box.schema.user.grant(grantee_id, privilege, object_type, object_name)
-        else
-            box.schema.role.grant(grantee_id, privilege, object_type, object_name)
-        end",
-        (
+    /// Remove a privilege definition from the internal clusterwide storage.
+    pub fn global_revoke_privilege(
+        storage: &Clusterwide,
+        priv_def: &PrivilegeDef,
+    ) -> tarantool::Result<()> {
+        // FIXME: currently there's no way to revoke a default privilege
+        storage.privileges.delete(
             priv_def.grantee_id,
-            &priv_def.privilege,
             &priv_def.object_type,
             &priv_def.object_name,
-        ),
-    )
-    .map_err(LuaError::from)?;
-
-    Ok(())
-}
-
-/// Revoke a privilege from a tarantool user.
-pub fn acl_revoke_privilege_on_master(priv_def: &PrivilegeDef) -> tarantool::Result<()> {
-    let lua = ::tarantool::lua_state();
-    lua.exec_with(
-        "local grantee_id, privilege, object_type, object_name = ...
-        local grantee_def = box.space._user:get(grantee_id)
-        if not grantee_def then
-            -- Grantee already dropped -> privileges already revoked
-            return
-        end
-        if grantee_def.type == 'user' then
-            box.schema.user.revoke(grantee_id, privilege, object_type, object_name)
-        else
-            box.schema.role.revoke(grantee_id, privilege, object_type, object_name)
-        end",
-        (
-            priv_def.grantee_id,
             &priv_def.privilege,
-            &priv_def.object_type,
-            &priv_def.object_name,
-        ),
-    )
-    .map_err(LuaError::from)?;
+        )?;
 
-    Ok(())
+        Ok(())
+    }
+
+    ////////////////////////////////////////////////////////////////////////////
+    // acl in local storage on replicaset leader
+    ////////////////////////////////////////////////////////////////////////////
+
+    /// Create a tarantool user. Grant it default privileges.
+    pub fn on_master_create_user(user_def: &UserDef) -> tarantool::Result<()> {
+        let sys_user = Space::from(SystemSpace::User);
+
+        // This impelemtation was copied from box.schema.user.create excluding the
+        // password hashing.
+        let user_id = user_def.id;
+        let euid = ::tarantool::session::euid()?;
+
+        // Tarantool expects auth info to be a map of form `{ method: data }`,
+        // and currently the simplest way to achieve this is to use a HashMap.
+        let auth_map = HashMap::from([(user_def.auth.method, &user_def.auth.data)]);
+        sys_user.insert(&(user_id, euid, &user_def.name, "user", auth_map, &[(); 0], 0))?;
+
+        let lua = ::tarantool::lua_state();
+        lua.exec_with("box.schema.user.grant(...)", (user_id, "public"))
+            .map_err(LuaError::from)?;
+        lua.exec_with(
+            "box.schema.user.grant(...)",
+            (user_id, "alter", "user", user_id),
+        )
+        .map_err(LuaError::from)?;
+        lua.exec_with(
+            "box.session.su('admin', box.schema.user.grant, ...)",
+            (
+                user_id,
+                "session,usage",
+                "universe",
+                tlua::Nil,
+                tlua::AsTable((("if_not_exists", true),)),
+            ),
+        )
+        .map_err(LuaError::from)?;
+
+        Ok(())
+    }
+
+    /// Update a tarantool user's authentication details.
+    pub fn on_master_change_user_auth(user_id: UserId, auth: &AuthDef) -> tarantool::Result<()> {
+        const USER_FIELD_AUTH: i32 = 4;
+        const USER_FIELD_LAST_MODIFIED: i32 = 6;
+        let sys_user = Space::from(SystemSpace::User);
+
+        // Tarantool expects auth info to be a map of form `{ method: data }`,
+        // and currently the simplest way to achieve this is to use a HashMap.
+        let auth_map = HashMap::from([(auth.method, &auth.data)]);
+        let mut ops = UpdateOps::with_capacity(2);
+        ops.assign(USER_FIELD_AUTH, auth_map)?;
+        ops.assign(USER_FIELD_LAST_MODIFIED, fiber::time() as u64)?;
+        sys_user.update(&[user_id], ops)?;
+        Ok(())
+    }
+
+    /// Drop a tarantool user and any entities (spaces, etc.) owned by it.
+    pub fn on_master_drop_user(user_id: UserId) -> tarantool::Result<()> {
+        let lua = ::tarantool::lua_state();
+        lua.exec_with("box.schema.user.drop(...)", user_id)
+            .map_err(LuaError::from)?;
+
+        Ok(())
+    }
+
+    /// Create a tarantool role.
+    pub fn on_master_create_role(role_def: &RoleDef) -> tarantool::Result<()> {
+        let sys_user = Space::from(SystemSpace::User);
+
+        // This impelemtation was copied from box.schema.role.create.
+
+        // Tarantool expects auth info to be a map `{}`, and currently the simplest
+        // way to achieve this is to use a HashMap.
+        sys_user.insert(&(
+            role_def.id,
+            ::tarantool::session::euid()?,
+            &role_def.name,
+            "role",
+            HashMap::<(), ()>::new(),
+            &[(); 0],
+            0,
+        ))?;
+
+        Ok(())
+    }
+
+    /// Drop a tarantool role and revoke it from anybody it was assigned to.
+    pub fn on_master_drop_role(role_id: UserId) -> tarantool::Result<()> {
+        let lua = ::tarantool::lua_state();
+        lua.exec_with("box.schema.role.drop(...)", role_id)
+            .map_err(LuaError::from)?;
+
+        Ok(())
+    }
+
+    /// Grant a tarantool user some privilege defined by `priv_def`.
+    pub fn on_master_grant_privilege(priv_def: &PrivilegeDef) -> tarantool::Result<()> {
+        let lua = ::tarantool::lua_state();
+        lua.exec_with(
+            "local grantee_id, privilege, object_type, object_name = ...
+            local grantee_def = box.space._user:get(grantee_id)
+            if grantee_def.type == 'user' then
+                box.schema.user.grant(grantee_id, privilege, object_type, object_name)
+            else
+                box.schema.role.grant(grantee_id, privilege, object_type, object_name)
+            end",
+            (
+                priv_def.grantee_id,
+                &priv_def.privilege,
+                &priv_def.object_type,
+                &priv_def.object_name,
+            ),
+        )
+        .map_err(LuaError::from)?;
+
+        Ok(())
+    }
+
+    /// Revoke a privilege from a tarantool user.
+    pub fn on_master_revoke_privilege(priv_def: &PrivilegeDef) -> tarantool::Result<()> {
+        let lua = ::tarantool::lua_state();
+        lua.exec_with(
+            "local grantee_id, privilege, object_type, object_name = ...
+            local grantee_def = box.space._user:get(grantee_id)
+            if not grantee_def then
+                -- Grantee already dropped -> privileges already revoked
+                return
+            end
+            if grantee_def.type == 'user' then
+                box.schema.user.revoke(grantee_id, privilege, object_type, object_name)
+            else
+                box.schema.role.revoke(grantee_id, privilege, object_type, object_name)
+            end",
+            (
+                priv_def.grantee_id,
+                &priv_def.privilege,
+                &priv_def.object_type,
+                &priv_def.object_name,
+            ),
+        )
+        .map_err(LuaError::from)?;
+
+        Ok(())
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -13,16 +13,10 @@ use crate::loop_start;
 use crate::r#loop::FlowControl;
 use crate::rpc;
 use crate::schema::{Distribution, IndexDef, SpaceDef};
+use crate::storage::acl;
 use crate::storage::ddl_meta_drop_space;
 use crate::storage::SnapshotData;
 use crate::storage::ToEntryIter as _;
-use crate::storage::{
-    acl_change_user_auth_on_master, acl_create_role_on_master, acl_create_user_on_master,
-    acl_drop_role_on_master, acl_drop_user_on_master, acl_global_change_user_auth,
-    acl_global_create_role, acl_global_create_user, acl_global_drop_role, acl_global_drop_user,
-    acl_global_grant_privilege, acl_global_revoke_privilege, acl_grant_privilege_on_master,
-    acl_revoke_privilege_on_master,
-};
 use crate::storage::{ddl_abort_on_master, ddl_meta_space_update_operable};
 use crate::storage::{local_schema_version, set_local_schema_version};
 use crate::storage::{Clusterwide, ClusterwideSpaceId, PropertyName};
@@ -987,31 +981,31 @@ impl NodeImpl {
                     } else {
                         match &acl {
                             Acl::CreateUser { user_def } => {
-                                acl_create_user_on_master(user_def)
+                                acl::on_master_create_user(user_def)
                                     .expect("creating user shouldn't fail");
                             }
                             Acl::ChangeAuth { user_id, auth, .. } => {
-                                acl_change_user_auth_on_master(*user_id, auth)
+                                acl::on_master_change_user_auth(*user_id, auth)
                                     .expect("changing user auth shouldn't fail");
                             }
                             Acl::DropUser { user_id, .. } => {
-                                acl_drop_user_on_master(*user_id)
+                                acl::on_master_drop_user(*user_id)
                                     .expect("droping user shouldn't fail");
                             }
                             Acl::CreateRole { role_def } => {
-                                acl_create_role_on_master(role_def)
+                                acl::on_master_create_role(role_def)
                                     .expect("creating role shouldn't fail");
                             }
                             Acl::DropRole { role_id, .. } => {
-                                acl_drop_role_on_master(*role_id)
+                                acl::on_master_drop_role(*role_id)
                                     .expect("droping role shouldn't fail");
                             }
                             Acl::GrantPrivilege { priv_def } => {
-                                acl_grant_privilege_on_master(priv_def)
+                                acl::on_master_grant_privilege(priv_def)
                                     .expect("granting a privilege shouldn't fail");
                             }
                             Acl::RevokePrivilege { priv_def } => {
-                                acl_revoke_privilege_on_master(priv_def)
+                                acl::on_master_revoke_privilege(priv_def)
                                     .expect("revoking a privilege shouldn't fail");
                             }
                         }
@@ -1021,31 +1015,31 @@ impl NodeImpl {
 
                 match &acl {
                     Acl::CreateUser { user_def } => {
-                        acl_global_create_user(&self.storage, user_def)
+                        acl::global_create_user(&self.storage, user_def)
                             .expect("persisting a user definition shouldn't fail");
                     }
                     Acl::ChangeAuth { user_id, auth, .. } => {
-                        acl_global_change_user_auth(&self.storage, *user_id, auth)
+                        acl::global_change_user_auth(&self.storage, *user_id, auth)
                             .expect("changing user definition shouldn't fail");
                     }
                     Acl::DropUser { user_id, .. } => {
-                        acl_global_drop_user(&self.storage, *user_id)
+                        acl::global_drop_user(&self.storage, *user_id)
                             .expect("droping a user definition shouldn't fail");
                     }
                     Acl::CreateRole { role_def } => {
-                        acl_global_create_role(&self.storage, role_def)
+                        acl::global_create_role(&self.storage, role_def)
                             .expect("persisting a role definition shouldn't fail");
                     }
                     Acl::DropRole { role_id, .. } => {
-                        acl_global_drop_role(&self.storage, *role_id)
+                        acl::global_drop_role(&self.storage, *role_id)
                             .expect("droping a role definition shouldn't fail");
                     }
                     Acl::GrantPrivilege { priv_def } => {
-                        acl_global_grant_privilege(&self.storage, priv_def)
+                        acl::global_grant_privilege(&self.storage, priv_def)
                             .expect("persiting a privilege definition shouldn't fail");
                     }
                     Acl::RevokePrivilege { priv_def } => {
-                        acl_global_revoke_privilege(&self.storage, priv_def)
+                        acl::global_revoke_privilege(&self.storage, priv_def)
                             .expect("removing a privilege definition shouldn't fail");
                     }
                 }
