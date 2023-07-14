@@ -130,6 +130,8 @@ pub struct Sender<T> {
 
 unsafe impl<T> Send for Sender<T> {}
 
+unsafe impl<T> Sync for Sender<T> {}
+
 impl<T> Sender<T> {
     /// Attempts to send a value on this channel.
     ///
