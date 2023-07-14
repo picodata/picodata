@@ -1,3 +1,5 @@
+//! A [`Decimal`] number implemented using the builtin tarantool api.
+
 use crate::ffi::decimal as ffi;
 
 use std::convert::{TryFrom, TryInto};
@@ -7,7 +9,7 @@ use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 
 /// A Decimal number implemented using the builtin tarantool api.
-
+///
 /// ## Availability
 /// This api is not available in all versions of tarantool.
 /// Use [`tarantool::ffi::has_decimal`] to check if it is supported in your
@@ -15,11 +17,7 @@ use serde::{Deserialize, Serialize};
 /// If `has_decimal` returns `false`, using any function from this module
 /// will result in a **panic**.
 ///
-/// ## Safety
-/// This API is not thread-safe by default. It sacrifices thread-safety for performance.
-/// Therfore using [`Decimal`] (even just instantiating it) in concurrent threads is an undefined behavior.
-///
-/// Use `thread_safe_decimal` crate feature to enable thread-safety by sacrificing some performance.
+/// This API is thread-safe unlike the original tarantool decimal API.
 ///
 /// [`tarantool::ffi::has_decimal`]: crate::ffi::has_decimal
 #[derive(Debug, Copy, Clone)]
@@ -126,7 +124,8 @@ impl Decimal {
         }
 
         let ndig = (self.precision() - self.scale() + scale as i32).max(1);
-        let mut update_ctx = |ctx: &mut dec::Context<_>| {
+        CONTEXT.with(|ctx| {
+            let Context(mut ctx) = ctx.borrow().clone();
             ctx.set_precision(ndig as _).unwrap();
             ctx.set_max_exponent(ndig as _).unwrap();
             ctx.set_min_exponent(if scale != 0 { -1 } else { 0 })
@@ -135,19 +134,7 @@ impl Decimal {
 
             ctx.plus(&mut self.inner);
             check_status(ctx.status()).ok()
-        };
-        #[cfg(not(feature = "thread_safe_decimal"))]
-        {
-            let mut ctx = unsafe { &*CONTEXT }.clone();
-            update_ctx(&mut ctx.0)?;
-        }
-        #[cfg(feature = "thread_safe_decimal")]
-        {
-            CONTEXT.with(|ctx| {
-                let mut ctx: Context = ctx.borrow().clone();
-                update_ctx(&mut ctx.0)
-            })?;
-        }
+        })?;
         Self::try_from(self.inner).ok()
     }
 
@@ -309,11 +296,7 @@ impl Default for Context {
     }
 }
 
-#[cfg(not(feature = "thread_safe_decimal"))]
-static mut CONTEXT: Lazy<Context> = Lazy::new(Context::default);
-
-// This will make Decimals thread safe in exchange for some performance penalty.
-#[cfg(feature = "thread_safe_decimal")]
+// This makes Decimals thread safe in exchange for some performance penalty.
 thread_local! {
     static CONTEXT: Lazy<std::cell::RefCell<Context>> = Lazy::new(std::cell::RefCell::default);
 }
@@ -323,24 +306,13 @@ fn with_context<F, T>(f: F) -> Option<T>
 where
     F: FnOnce(&mut dec::Context<DecimalImpl>) -> T,
 {
-    let update_ctx = |ctx: &mut dec::Context<_>| {
+    CONTEXT.with(|ctx| {
+        let Context(ctx) = &mut *ctx.borrow_mut();
         let res = f(ctx);
         let status = ctx.status();
         ctx.set_status(Default::default());
         check_status(status).map(|()| res).ok()
-    };
-    #[cfg(not(feature = "thread_safe_decimal"))]
-    {
-        let ctx = unsafe { &mut CONTEXT };
-        update_ctx(&mut ctx.0)
-    }
-    #[cfg(feature = "thread_safe_decimal")]
-    {
-        CONTEXT.with(|ctx| {
-            let ctx = &mut *ctx.borrow_mut();
-            update_ctx(&mut ctx.0)
-        })
-    }
+    })
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -677,26 +649,12 @@ macro_rules! impl_from_int {
 impl_from_int! {i8 i16 i32 u8 u16 u32 => DecimalImpl::from}
 impl_from_int! {
     i64 isize => |num| {
-        #[cfg(not(feature = "thread_safe_decimal"))]
-        {
-            CONTEXT.0.from_i64(num as _)
-        }
-        #[cfg(feature = "thread_safe_decimal")]
-        {
-            CONTEXT.with(|ctx| ctx.borrow_mut().0.from_i64(num as _))
-        }
+        CONTEXT.with(|ctx| ctx.borrow_mut().0.from_i64(num as _))
     }
 }
 impl_from_int! {
     u64 usize => |num| {
-        #[cfg(not(feature = "thread_safe_decimal"))]
-        {
-            CONTEXT.0.from_u64(num as _)
-        }
-        #[cfg(feature = "thread_safe_decimal")]
-        {
-            CONTEXT.with(|ctx| ctx.borrow_mut().0.from_u64(num as _))
-        }
+        CONTEXT.with(|ctx| ctx.borrow_mut().0.from_u64(num as _))
     }
 }
 
@@ -906,12 +864,8 @@ macro_rules! decimal {
 #[cfg(test)]
 mod test {
     use super::Decimal;
-    use once_cell::sync::Lazy;
     use std::convert::TryFrom;
-    use std::sync::Mutex;
-    static DECIMALS_ARENT_THREAD_SAFE: Lazy<Mutex<()>> = Lazy::new(Default::default);
 
-    #[cfg(feature = "thread_safe_decimal")]
     #[test]
     fn thread_safe_decimal() {
         let mut handles = Vec::new();
@@ -932,7 +886,6 @@ mod test {
 
     #[test]
     fn from_string() {
-        let _lock = DECIMALS_ARENT_THREAD_SAFE.lock().unwrap();
         let d: Decimal = "-81.1e-1".parse().unwrap();
         assert_eq!(d.to_string(), "-8.11");
         assert_eq!(decimal!(-81.1e-1).to_string(), "-8.11");
@@ -948,7 +901,6 @@ mod test {
 
     #[test]
     fn from_num() {
-        let _lock = DECIMALS_ARENT_THREAD_SAFE.lock().unwrap();
         assert_eq!(Decimal::from(0i8), Decimal::zero());
         assert_eq!(Decimal::from(42i8).to_string(), "42");
         assert_eq!(Decimal::from(i8::MAX).to_string(), "127");
@@ -1064,7 +1016,6 @@ mod test {
 
     #[test]
     pub fn to_num() {
-        let _lock = DECIMALS_ARENT_THREAD_SAFE.lock().unwrap();
         assert_eq!(i64::try_from(decimal!(420)).unwrap(), 420);
         assert_eq!(
             i64::try_from(decimal!(9223372036854775807)).unwrap(),
@@ -1160,7 +1111,6 @@ mod test {
 
     #[test]
     pub fn cmp() {
-        let _lock = DECIMALS_ARENT_THREAD_SAFE.lock().unwrap();
         assert!(decimal!(.1) < decimal!(.2));
         assert!(decimal!(.1) <= decimal!(.2));
         assert!(decimal!(.2) > decimal!(.1));
@@ -1174,7 +1124,6 @@ mod test {
 
     #[test]
     pub fn hash() {
-        let _lock = DECIMALS_ARENT_THREAD_SAFE.lock().unwrap();
         fn to_hash<T: std::hash::Hash>(t: &T) -> u64 {
             let mut s = std::collections::hash_map::DefaultHasher::new();
             t.hash(&mut s);
@@ -1217,7 +1166,6 @@ mod test {
     #[test]
     #[allow(clippy::bool_assert_comparison)]
     pub fn ops() {
-        let _lock = DECIMALS_ARENT_THREAD_SAFE.lock().unwrap();
         let a = decimal!(.1);
         let b = decimal!(.2);
         let c = decimal!(.3);

@@ -57,7 +57,7 @@ rustflags = [
 Add the following lines to your project's Cargo.toml:
 ```toml
 [dependencies]
-tarantool = "1.1"
+tarantool = "2.0"
 
 [lib]
 crate-type = ["cdylib"]

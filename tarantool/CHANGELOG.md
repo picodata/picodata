@@ -9,8 +9,7 @@
 - `examples/luaopen` example of how to implement native lua modules.
 - `tarantool::cbus` module for communication between any arbitrary thread and 
 tarantool thread via syncronization primitives (channels) and low-level cbus api.
-- `thread_safe_decimal` crate feature, which if enabled allows decimal api to be used in concurrent threads
-in exchange for some performance penalty.
+- `tarantool::decimal` api is now thread safe, which allows to be used in concurrent threads.
 
 ### Fixed
 - `log::Log::enabled` implementation for TarantoolLogger no longer ignores the
