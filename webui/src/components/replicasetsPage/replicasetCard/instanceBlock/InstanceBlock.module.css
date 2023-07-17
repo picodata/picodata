@@ -1,0 +1,18 @@
+.instancesWrapper {
+  padding: 16px 112px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.instanceWrapper {
+  border: 1px solid;
+  border-radius: 8px;
+  display: flex;
+  padding: 16px 40px;
+  gap: 56px;
+}
+
+.noMargin {
+  margin: 0;
+}

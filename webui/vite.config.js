@@ -5,6 +5,7 @@ import * as fs from "fs";
 import * as path from "path";
 import mime from "mime-types";
 import debug from "debug";
+import svgr from "vite-plugin-svgr";
 
 const currentDir = "./picodata-ui";
 
@@ -21,7 +22,7 @@ const walkSync = function (dir, filelist = []) {
   return currentFileList;
 };
 
-const somePluginFunc = (currentNamespace = "") => {
+const generateBuildFolder = (currentNamespace = "") => {
   const currentOptions = {
     namespace: currentNamespace,
     bundleName: "bundle.lua",
@@ -69,5 +70,5 @@ const somePluginFunc = (currentNamespace = "") => {
 
 // https://vitejs.dev/config/
 export default defineConfig({
-  plugins: [react(), somePluginFunc()],
+  plugins: [react(), generateBuildFolder(), svgr()],
 });

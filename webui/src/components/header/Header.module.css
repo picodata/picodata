@@ -1,0 +1,8 @@
+.header {
+  width: 100%;
+  height: 104px;
+  background: #323232;
+  display: flex;
+  align-items: center;
+  padding-left: 25px;
+}
