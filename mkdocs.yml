@@ -8,6 +8,7 @@ nav:
     - description.md
     - benefits.md
     - benefits_rust.md
+    - sbroad/sql_index.md
   - Инструкции и руководства:
     - install.md
     - deploy.md
@@ -24,7 +25,7 @@ nav:
   - Архитектурная документация:
     - clustering.md
     - sbroad/sql_review.md
-  - sbroad/sql_index.md
+
   
 
 theme:
@@ -40,7 +41,6 @@ theme:
     features:
         - navigation.indexes
         - navigation.path
-       # - navigation.expand
         - toc.follow
         - content.code.copy
         
