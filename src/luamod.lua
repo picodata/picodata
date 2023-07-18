@@ -2,6 +2,9 @@ local pico = {}
 local help = {}
 setmetatable(pico, help)
 
+local fiber = require 'fiber'
+local log = require 'log'
+
 local intro = [[
 pico.help([topic])
 ==================
@@ -77,6 +80,97 @@ local function next_schema_version()
     return 1
 end
 
+local function has_pending_schema_change()
+    return box.space._pico_property:get("pending_schema_change") ~= nil
+end
+
+local function is_retriable_error(error)
+    if type(error) ~= 'string' then
+        -- TODO
+        return false
+    end
+
+    if error:find('operation request from different term')
+        or error:find('not a leader')
+        or error:find('log unavailable')
+    then
+        return true
+    end
+
+    if error:find('compare-and-swap') then
+        return error:find('Compacted') or error:find('ConflictFound')
+    end
+
+    return false
+end
+
+-- Performs a reenterable schema change CaS request.
+--
+-- Params:
+--
+--     1. deadline (number), time by which the request should complete,
+--          or an error is returned.
+--
+--     2. make_op_if_needed (function), callback which should check if the
+--          corresponding schema entity is already in the desired state or else
+--          return a raft operation for CaS request. Should return `nil` if no
+--          action is needed, a table representing a raft operation if request
+--          should proceed. May throw an error if conflict is detected.
+--          It is called after raft_read_index and after any pending schema
+--          change has been finalized.
+--
+local function reenterable_schema_change_request(deadline, make_op_if_needed)
+    while true do
+        ::retry::
+
+        if fiber.clock() >= deadline then
+            return nil, box.error.new(box.error.TIMEOUT)
+        end
+
+        local index, err = pico.raft_read_index(deadline - fiber.clock())
+        if index == nil then
+            return nil, err
+        end
+
+        if has_pending_schema_change() then
+            -- Wait until applied index changes (or timeout) and then retry.
+            pico.raft_wait_index(index + 1, deadline - fiber.clock())
+            goto retry
+        end
+
+        local ok, op = pcall(make_op_if_needed)
+        if not ok then
+            local err = op
+            return nil, err
+        elseif op == nil then
+            -- Request is satisfied at current index
+            return index
+        end
+
+        local index, term = pico._schema_change_cas_request(op, index, deadline - fiber.clock())
+        if index == nil then
+            local err = term
+            if is_retriable_error(err) then
+                goto retry
+            else
+                return nil, err
+            end
+        end
+
+        local res = pico.raft_wait_index(index, deadline - fiber.clock())
+        if res == nil then
+            return nil, box.error.new(box.error.TIMEOUT)
+        end
+
+        if pico.raft_term(index) ~= term then
+            -- Leader has changed and the entry got rolled back, retry.
+            goto retry
+        end
+
+        return index
+    end
+end
+
 help.create_user = [[
 pico.create_user(user, password, [opts])
 ========================================
@@ -86,17 +180,16 @@ Creates a user on each instance of the cluster.
 Proposes a raft entry which when applied on an instance creates a user on it.
 Waits for opts.timeout seconds for the entry to be applied locally.
 On success returns a raft index at which the user should exist.
+Skips the request if the user already exists.
 
 NOTE: If this function returns a timeout error, the user may have been locally
-created and in the future it's creation can either be committed or rolled back,
-even if the subsequent call to this function returns an "already exists" error.
+created and in the future it's creation can either be committed or rolled back.
 
 Params:
 
     1. user (string), username
     2. password (string)
     3. opts (table)
-        - if_not_exists (boolean), if true, do nothing if user with given name already exists
         - timeout (number), seconds
 
 Returns:
@@ -109,7 +202,8 @@ function pico.create_user(user, password, opts)
     local ok, err = pcall(function()
         box.internal.check_param(user, 'user', 'string')
         box.internal.check_param(password, 'password', 'string')
-        box.internal.check_param_table(opts, { if_not_exists = 'boolean', timeout = 'number' })
+        -- TODO: check password requirements.
+        box.internal.check_param_table(opts, { timeout = 'number' })
         opts = opts or {}
         if not opts.timeout then
             box.error(box.error.ILLEGAL_PARAMS, 'opts.timeout is mandatory')
@@ -119,35 +213,40 @@ function pico.create_user(user, password, opts)
         return nil, err
     end
 
-    local grantee_def = box.space._user.index.name:get(user)
-    if grantee_def ~= nil then
-        if grantee_def.type == "role" then
-            return nil, box.error.new(box.error.ROLE_EXISTS, user)
-        elseif opts.if_not_exists == true then
-            -- User exists at current index.
-            return pico.raft_get_index()
-        else
-            return nil, box.error.new(box.error.USER_EXISTS, user)
+    local deadline = fiber.clock() + opts.timeout
+
+    -- XXX: we construct this closure every time the function is called,
+    -- which is bad for performance/jit. Refactor if problems are discovered.
+    local auth_data = box.internal.prepare_auth("chap-sha1", password)
+    local function make_op_if_needed()
+        local grantee_def = box.space._user.index.name:get(user)
+        if grantee_def ~= nil then
+            if grantee_def.type == "role" then
+                box.error(box.error.ROLE_EXISTS, user)
+            else
+                -- TODO: check auth is the same
+                -- User already exists, request is satisfied, no op needed
+                return nil
+            end
         end
-    end
 
-    -- TODO: check password requirements.
-
-    local op = {
-        kind = 'acl',
-        op_kind = 'create_user',
-        user_def = {
-            id = get_next_grantee_id(),
-            name = user,
-            schema_version = next_schema_version(),
-            auth = {
-                method = "chap-sha1",
-                data = box.internal.prepare_auth("chap-sha1", password),
+        -- Doesn't exist yet, need to send request
+        return {
+            kind = 'acl',
+            op_kind = 'create_user',
+            user_def = {
+                id = get_next_grantee_id(),
+                name = user,
+                schema_version = next_schema_version(),
+                auth = {
+                    method = "chap-sha1",
+                    data = auth_data,
+                }
             }
         }
-    }
+    end
 
-    return pico._prepare_schema_change(op, opts.timeout)
+    return reenterable_schema_change_request(deadline, make_op_if_needed)
 end
 
 help.change_password = [[
@@ -159,6 +258,7 @@ Change the user's password on each instance of the cluster.
 Proposes a raft entry which when applied on an instance changes the user's password on it.
 Waits for opts.timeout seconds for the entry to be applied locally.
 On success returns an index of the corresponding raft entry.
+Skips the request if the password matches the current one.
 
 NOTE: If this function returns a timeout error, the change may have been locally
 applied and in the future it can either be committed or rolled back.
@@ -190,26 +290,38 @@ function pico.change_password(user, password, opts)
         return nil, err
     end
 
-    -- TODO: allow `user` to be a user id instead of name
-    local user_def = box.space._pico_user.index.name:get(user)
-    if user_def == nil then
-        return nil, box.error.new(box.error.NO_SUCH_USER, user)
-    end
-
     -- TODO: check password requirements.
 
-    local op = {
-        kind = 'acl',
-        op_kind = 'change_auth',
-        user_id = user_def.id,
-        schema_version = next_schema_version(),
-        auth = {
-            method = "chap-sha1",
-            data = box.internal.prepare_auth("chap-sha1", password),
-        }
-    }
+    local deadline = fiber.clock() + opts.timeout
 
-    return pico._prepare_schema_change(op, opts.timeout)
+    -- XXX: we construct this closure every time the function is called,
+    -- which is bad for performance/jit. Refactor if problems are discovered.
+    local auth_data = box.internal.prepare_auth("chap-sha1", password)
+    local function make_op_if_needed()
+        -- TODO: allow `user` to be a user id instead of name
+        local user_def = box.space._pico_user.index.name:get(user)
+        if user_def == nil then
+            box.error(box.error.NO_SUCH_USER, user)
+        end
+
+        if table.equals(user_def.auth, { ["chap-sha1"] = auth_data }) then
+            -- Password is already the one given, no op needed
+            return nil
+        end
+
+        return {
+            kind = 'acl',
+            op_kind = 'change_auth',
+            user_id = user_def.id,
+            schema_version = next_schema_version(),
+            auth = {
+                method = "chap-sha1",
+                data = auth_data,
+            }
+        }
+    end
+
+    return reenterable_schema_change_request(deadline, make_op_if_needed)
 end
 
 help.drop_user = [[
@@ -221,16 +333,15 @@ Drop the user and any entities owned by them on each instance of the cluster.
 Proposes a raft entry which when applied on an instance drops the user on it.
 Waits for opts.timeout seconds for the entry to be applied locally.
 On success returns a raft index at which the user should no longer exist.
+Skips the request if the user doesn't exist.
 
 NOTE: If this function returns a timeout error, the user may have been locally
-dropped and in the future the change can either be committed or rolled back,
-even if the subsequent call to this function returns an "does not exist" error.
+dropped and in the future the change can either be committed or rolled back.
 
 Params:
 
     1. user (string), username
     2. opts (table)
-        - if_exists (boolean), if true do nothing if user with given name doesn't exist
         - timeout (number), seconds
 
 Returns:
@@ -242,7 +353,7 @@ Returns:
 function pico.drop_user(user, opts)
     local ok, err = pcall(function()
         box.internal.check_param(user, 'user', 'string')
-        box.internal.check_param_table(opts, { if_exists = 'boolean', timeout = 'number' })
+        box.internal.check_param_table(opts, { timeout = 'number' })
         opts = opts or {}
         if not opts.timeout then
             box.error(box.error.ILLEGAL_PARAMS, 'opts.timeout is mandatory')
@@ -252,24 +363,27 @@ function pico.drop_user(user, opts)
         return nil, err
     end
 
-    local user_def = box.space._pico_user.index.name:get(user)
-    if user_def == nil then
-        if opts.if_exists then
-            -- User doesn't exist at current index
-            return pico.raft_get_index()
-        else
-            return nil, box.error.new(box.error.NO_SUCH_USER, user)
+    local deadline = fiber.clock() + opts.timeout
+
+    -- XXX: we construct this closure every time the function is called,
+    -- which is bad for performance/jit. Refactor if problems are discovered.
+    local function make_op_if_needed()
+        local user_def = box.space._pico_user.index.name:get(user)
+        if user_def == nil then
+            -- User doesn't exists, request is satisfied, no op needed
+            return nil
         end
+
+        -- Does still exist, need to send request
+        return {
+            kind = 'acl',
+            op_kind = 'drop_user',
+            user_id = user_def.id,
+            schema_version = next_schema_version(),
+        }
     end
 
-    local op = {
-        kind = 'acl',
-        op_kind = 'drop_user',
-        user_id = user_def.id,
-        schema_version = next_schema_version(),
-    }
-
-    return pico._prepare_schema_change(op, opts.timeout)
+    return reenterable_schema_change_request(deadline, make_op_if_needed)
 end
 
 help.create_role = [[
@@ -281,12 +395,15 @@ Creates a role on each instance of the cluster.
 Proposes a raft entry which when applied on an instance creates a role on it.
 Waits for opts.timeout seconds for the entry to be applied locally.
 On success returns an index of the corresponding raft entry.
+Skips the request if the role already exists.
+
+NOTE: If this function returns a timeout error, the role may have been locally
+created and in the future it's creation can either be committed or rolled back.
 
 Params:
 
     1. name (string), role name
     2. opts (table)
-        - if_not_exists (boolean), if true, do nothing if role with given name already exists
         - timeout (number), seconds
 
 Returns:
@@ -298,7 +415,7 @@ Returns:
 function pico.create_role(role, opts)
     local ok, err = pcall(function()
         box.internal.check_param(role, 'role', 'string')
-        box.internal.check_param_table(opts, { if_not_exists = 'boolean', timeout = 'number' })
+        box.internal.check_param_table(opts, { timeout = 'number' })
         opts = opts or {}
         if not opts.timeout then
             box.error(box.error.ILLEGAL_PARAMS, 'opts.timeout is mandatory')
@@ -308,29 +425,33 @@ function pico.create_role(role, opts)
         return nil, err
     end
 
-    local grantee_def = box.space._user.index.name:get(role)
-    if grantee_def ~= nil then
-        if grantee_def.type == "user" then
-            return nil, box.error.new(box.error.USER_EXISTS, role)
-        elseif opts.if_not_exists == true then
-            -- Role exists at current index.
-            return pico.raft_get_index()
-        else
-            return nil, box.error.new(box.error.ROLE_EXISTS, role)
+    local deadline = fiber.clock() + opts.timeout
+
+    -- XXX: we construct this closure every time the function is called,
+    -- which is bad for performance/jit. Refactor if problems are discovered.
+    local function make_op_if_needed()
+        local grantee_def = box.space._user.index.name:get(role)
+        if grantee_def ~= nil then
+            if grantee_def.type == "user" then
+                box.error(box.error.USER_EXISTS, role)
+            else
+                -- Role exists at current index, no op needed
+                return nil
+            end
         end
+
+        return {
+            kind = 'acl',
+            op_kind = 'create_role',
+            role_def = {
+                id = get_next_grantee_id(),
+                name = role,
+                schema_version = next_schema_version(),
+            }
+        }
     end
 
-    local op = {
-        kind = 'acl',
-        op_kind = 'create_role',
-        role_def = {
-            id = get_next_grantee_id(),
-            name = role,
-            schema_version = next_schema_version(),
-        }
-    }
-
-    return pico._prepare_schema_change(op, opts.timeout)
+    return reenterable_schema_change_request(deadline, make_op_if_needed)
 end
 
 help.drop_role = [[
@@ -342,12 +463,15 @@ Drop the role and any entities owned by them on each instance of the cluster.
 Proposes a raft entry which when applied on an instance drops the role on it.
 Waits for opts.timeout seconds for the entry to be applied locally.
 On success returns a raft index at which the role should no longer exist.
+Skips the request if the role doesn't exist.
+
+NOTE: If this function returns a timeout error, the role may have been locally
+dropped and in the future the change can either be committed or rolled back.
 
 Params:
 
     1. role (string), role name
     2. opts (table)
-        - if_exists (boolean), if true do nothing if role with given name doesn't exist
         - timeout (number), seconds
 
 Returns:
@@ -359,7 +483,7 @@ Returns:
 function pico.drop_role(role, opts)
     local ok, err = pcall(function()
         box.internal.check_param(role, 'role', 'string')
-        box.internal.check_param_table(opts, { if_exists = 'boolean', timeout = 'number' })
+        box.internal.check_param_table(opts, { timeout = 'number' })
         opts = opts or {}
         if not opts.timeout then
             box.error(box.error.ILLEGAL_PARAMS, 'opts.timeout is mandatory')
@@ -369,24 +493,26 @@ function pico.drop_role(role, opts)
         return nil, err
     end
 
-    local role_def = box.space._pico_role.index.name:get(role)
-    if role_def == nil then
-        if opts.if_exists then
-            -- Role doesn't exist at current index
-            return pico.raft_get_index()
-        else
-            return nil, box.error.new(box.error.NO_SUCH_ROLE, role)
+    local deadline = fiber.clock() + opts.timeout
+
+    -- XXX: we construct this closure every time the function is called,
+    -- which is bad for performance/jit. Refactor if problems are discovered.
+    local function make_op_if_needed()
+        local role_def = box.space._pico_role.index.name:get(role)
+        if role_def == nil then
+            -- Role doesn't exists, request is satisfied, no op needed
+            return nil
         end
+
+        return {
+            kind = 'acl',
+            op_kind = 'drop_role',
+            role_id = role_def.id,
+            schema_version = next_schema_version(),
+        }
     end
 
-    local op = {
-        kind = 'acl',
-        op_kind = 'drop_role',
-        role_id = role_def.id,
-        schema_version = next_schema_version(),
-    }
-
-    return pico._prepare_schema_change(op, opts.timeout)
+    return reenterable_schema_change_request(deadline, make_op_if_needed)
 end
 
 -- A lookup map
@@ -561,10 +687,10 @@ Proposes a raft entry which when applied on an instance grants the grantee the
 specified privilege on it.
 Waits for opts.timeout seconds for the entry to be applied locally.
 On success returns an index of the corresponding raft entry.
+Skips the request if the privilege is already granted.
 
 NOTE: If this function returns a timeout error, the change may have been locally
-applied and in the future it can either be committed or rolled back,
-even if the subsequent call to this function returns an "already granted" error.
+applied and in the future it can either be committed or rolled back.
 
 Params:
 
@@ -618,46 +744,50 @@ function pico.grant_privilege(grantee, privilege, object_type, object_name, opts
         if not opts.timeout then
             box.error(box.error.ILLEGAL_PARAMS, 'opts.timeout is mandatory')
         end
+
+        privilege_check(privilege, object_type, 'grant_privilege')
     end)
     if not ok then
         return nil, err
     end
 
-    local grantee_def = box.space._pico_user.index.name:get(grantee)
-    if grantee_def == nil then
-        grantee_def = box.space._pico_role.index.name:get(grantee)
-    end
-    if grantee_def == nil then
-        return nil, box.error.new(box.error.NO_SUCH_USER, grantee)
+    local deadline = fiber.clock() + opts.timeout
+
+    -- XXX: we construct this closure every time the function is called,
+    -- which is bad for performance/jit. Refactor if problems are discovered.
+    local function make_op_if_needed()
+        -- This is being checked after raft_read_index, so enough time has
+        -- passed for any required entities to be created
+        local grantee_def = box.space._pico_user.index.name:get(grantee)
+        if grantee_def == nil then
+            grantee_def = box.space._pico_role.index.name:get(grantee)
+        end
+        if grantee_def == nil then
+            box.error(box.error.NO_SUCH_USER, grantee)
+        end
+
+        -- Throws error if object doesn't exist
+        object_resolve(object_type, object_name)
+
+        if box.space._pico_privilege:get{grantee_def.id, object_type, object_name, privilege} ~= nil then
+            -- Privilege is already granted, no op needed
+            return nil
+        end
+
+        return {
+            kind = 'acl',
+            op_kind = 'grant_privilege',
+            priv_def = {
+                grantee_id = grantee_def.id,
+                object_type = object_type,
+                object_name = object_name,
+                privilege = privilege,
+                schema_version = next_schema_version(),
+            },
+        }
     end
 
-    local ok, err = pcall(privilege_check, privilege, object_type, 'grant_privilege')
-    if not ok then
-        return nil, err
-    end
-
-    local ok, err = pcall(object_resolve, object_type, object_name)
-    if not ok then
-        return nil, err
-    end
-
-    if box.space._pico_privilege:get{grantee_def.id, object_type, object_name, privilege} ~= nil then
-        return nil, box.error.new(box.error.PRIV_GRANTED, grantee, privilege, object_type, (" '%s'"):format(object_name))
-    end
-
-    local op = {
-        kind = 'acl',
-        op_kind = 'grant_privilege',
-        priv_def = {
-            grantee_id = grantee_def.id,
-            object_type = object_type,
-            object_name = object_name,
-            privilege = privilege,
-            schema_version = next_schema_version(),
-        },
-    }
-
-    return pico._prepare_schema_change(op, opts.timeout)
+    return reenterable_schema_change_request(deadline, make_op_if_needed)
 end
 
 help.revoke_privilege = [[
@@ -670,10 +800,10 @@ Proposes a raft entry which when applied on an instance revokes the specified
 privilege from the grantee on it.
 Waits for opts.timeout seconds for the entry to be applied locally.
 On success returns an index of the corresponding raft entry.
+Skips the request if the privilege is not yet granted.
 
 NOTE: If this function returns a timeout error, the change may have been locally
-applied and in the future it can either be committed or rolled back,
-even if the subsequent call to this function returns an "not granted" error.
+applied and in the future it can either be committed or rolled back.
 
 Params:
 
@@ -710,46 +840,50 @@ function pico.revoke_privilege(grantee, privilege, object_type, object_name, opt
         if not opts.timeout then
             box.error(box.error.ILLEGAL_PARAMS, 'opts.timeout is mandatory')
         end
+
+        privilege_check(privilege, object_type, 'revoke_privilege')
     end)
     if not ok then
         return nil, err
     end
 
-    local grantee_def = box.space._pico_user.index.name:get(grantee)
-    if grantee_def == nil then
-        grantee_def = box.space._pico_role.index.name:get(grantee)
-    end
-    if grantee_def == nil then
-        return nil, box.error.new(box.error.NO_SUCH_USER, grantee)
+    local deadline = fiber.clock() + opts.timeout
+
+    -- XXX: we construct this closure every time the function is called,
+    -- which is bad for performance/jit. Refactor if problems are discovered.
+    local function make_op_if_needed()
+        -- This is being checked after raft_read_index, so enough time has
+        -- passed for any required entities to be created
+        local grantee_def = box.space._pico_user.index.name:get(grantee)
+        if grantee_def == nil then
+            grantee_def = box.space._pico_role.index.name:get(grantee)
+        end
+        if grantee_def == nil then
+            box.error(box.error.NO_SUCH_USER, grantee)
+        end
+
+        -- Throws error if object doesn't exist
+        object_resolve(object_type, object_name)
+
+        if box.space._pico_privilege:get{grantee_def.id, object_type, object_name, privilege} == nil then
+            -- Privilege is not yet granted, no op needed
+            return nil
+        end
+
+        return {
+            kind = 'acl',
+            op_kind = 'revoke_privilege',
+            priv_def = {
+                grantee_id = grantee_def.id,
+                object_type = object_type,
+                object_name = object_name,
+                privilege = privilege,
+                schema_version = next_schema_version(),
+            },
+        }
     end
 
-    local ok, err = pcall(privilege_check, privilege, object_type, 'revoke_privilege')
-    if not ok then
-        return nil, err
-    end
-
-    local ok, err = pcall(object_resolve, object_type, object_name)
-    if not ok then
-        return nil, err
-    end
-
-    if box.space._pico_privilege:get{grantee_def.id, object_type, object_name, privilege} == nil then
-        return nil, box.error.new(box.error.PRIV_NOT_GRANTED, grantee, privilege, object_type, object_name)
-    end
-
-    local op = {
-        kind = 'acl',
-        op_kind = 'revoke_privilege',
-        priv_def = {
-            grantee_id = grantee_def.id,
-            object_type = object_type,
-            object_name = object_name,
-            privilege = privilege,
-            schema_version = next_schema_version(),
-        },
-    }
-
-    return pico._prepare_schema_change(op, opts.timeout)
+    return reenterable_schema_change_request(deadline, make_op_if_needed)
 end
 
 help.drop_space = [[

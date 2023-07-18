@@ -6,6 +6,7 @@ use std::time::Duration;
 use crate::cas::{self, compare_and_swap};
 use crate::instance::InstanceId;
 use crate::schema::{self, CreateSpaceParams};
+use crate::traft::error::Error;
 use crate::traft::op::{self, Op};
 use crate::traft::{self, node, RaftIndex, RaftTerm};
 use crate::util::str_eq;
@@ -661,6 +662,66 @@ pub(crate) fn setup(args: &args::Run) {
             let index = schema::prepare_schema_change(op, timeout)?;
             Ok(index)
         }),
+    );
+
+    luamod_set(
+        &l,
+        "_schema_change_cas_request",
+        indoc! {"
+        pico._schema_change_cas_request(op, index)
+        ============================
+
+        Internal API, see src/luamod.rs for the details.
+
+        Params:
+
+            1. op (table)
+            2. index (number)
+            3. timeout (number)
+
+        Returns:
+
+            (number, number) raft index, raft term
+            or
+            (nil, string) in case of an error
+        "},
+        tlua::Function::new(
+            |lua: tlua::StaticLua| -> traft::Result<(RaftIndex, RaftTerm)> {
+                use tlua::{AnyLuaString, AsLua, LuaError, LuaTable};
+
+                let t: LuaTable<_> = (&lua).read_at(1).map_err(|(_, e)| LuaError::from(e))?;
+                // We do [lua value -> msgpack -> rust -> msgpack]
+                // instead of [lua value -> rust -> msgpack]
+                // because despite what it may seem this is much simpler.
+                // (The final [-> msgpack] is when we eventually do the rpc).
+                // The transmition medium is always msgpack.
+                let mp: AnyLuaString = lua
+                    .eval_with("return require 'msgpack'.encode(...)", &t)
+                    .map_err(LuaError::from)?;
+                let op: Op = Decode::decode(mp.as_bytes())?;
+                if !op.is_schema_change() {
+                    return Err(Error::other(
+                        "only schema changing operations are supported",
+                    ));
+                }
+
+                let index: RaftIndex = (&lua).read_at(2).map_err(|(_, e)| LuaError::from(e))?;
+
+                let timeout: f64 = (&lua).read_at(3).map_err(|(_, e)| LuaError::from(e))?;
+                let timeout = Duration::from_secs_f64(timeout);
+
+                let node = node::global()?;
+                let term = raft::Storage::term(&node.raft_storage, index)?;
+                let predicate = cas::Predicate {
+                    index,
+                    term,
+                    ranges: cas::schema_change_ranges().into(),
+                };
+                // TODO: pass the timeout
+                let res = compare_and_swap(op, predicate, timeout)?;
+                Ok(res)
+            },
+        ),
     );
 
     ///////////////////////////////////////////////////////////////////////////
