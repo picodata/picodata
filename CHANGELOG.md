@@ -26,7 +26,7 @@ with the `YY.0M.MICRO` scheme.
 
 ### Lua API:
 
-- Update `pico.LUA_API_VERSION`: `1.0.0` -> `1.2.0`
+- Update `pico.LUA_API_VERSION`: `1.0.0` -> `1.3.0`
 - Add `pico.raft_term()`
 - Add `pico.create_user()`
 - Add `pico.drop_user()`
@@ -35,6 +35,8 @@ with the `YY.0M.MICRO` scheme.
 - Add `pico.revoke_privilege()`
 - Add `pico.drop_space()`
 - Add `pico.wait_ddl_finalize()`
+- Add `pico.create_role()`
+- Add `pico.drop_role()`
 
 ## [23.06.0] - 2023-06-16
 
