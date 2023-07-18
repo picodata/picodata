@@ -285,7 +285,11 @@ fn build_tarantool(build_root: &Path) {
         // duplicate symbols which is not allowed (by default) when linking with
         // via -l... option
         let lib_dir = format!("{tarantool_build}/third_party/libunwind/src/.libs");
-        rustc::link_arg(format!("{lib_dir}/libunwind-x86_64.a"));
+        if cfg!(target_arch = "x86_64") {
+            rustc::link_arg(format!("{lib_dir}/libunwind-x86_64.a"));
+        } else if cfg!(target_arch = "aarch64") {
+            rustc::link_arg(format!("{lib_dir}/libunwind-aarch64.a"));
+        }
         rustc::link_arg(format!("{lib_dir}/libunwind.a"));
     }
 
