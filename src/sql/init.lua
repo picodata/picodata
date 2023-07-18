@@ -1,5 +1,6 @@
 require('sbroad.core-router')
 require('sbroad.core-storage')
+local helper = require('sbroad.helper')
 
 local function trace(query, params, context, id)
     local has_err, parser_res = pcall(
@@ -12,7 +13,7 @@ local function trace(query, params, context, id)
         return nil, parser_res
     end
 
-    return parser_res[1]
+    return helper.format_result(parser_res[1])
 end
 
 local function sql(...)
@@ -38,7 +39,7 @@ local function sql(...)
         return nil, parser_res
     end
 
-    return parser_res[1]
+    return helper.format_result(parser_res[1])
 end
 
 return {
