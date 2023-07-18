@@ -25,8 +25,6 @@ use tarantool::space::{Space, SpaceId};
 use tarantool::tlua;
 use tarantool::tuple::{KeyDef, ToTupleBuffer, Tuple, TupleBuffer};
 
-use once_cell::sync::Lazy;
-
 /// This spaces cannot be changed directly dy a [`Dml`] operation. They have
 /// dedicated operation types (e.g. Ddl, Acl) because updating these spaces
 /// requires automatically updating corresponding local spaces.
@@ -395,20 +393,6 @@ impl Predicate {
             requested: self.index,
             conflict_index: entry_index,
         };
-        let ddl_keys: Lazy<Vec<Tuple>> = Lazy::new(|| {
-            use crate::storage::PropertyName::*;
-
-            [
-                PendingSchemaChange.into(),
-                PendingSchemaVersion.into(),
-                GlobalSchemaVersion.into(),
-                NextSchemaVersion.into(),
-            ]
-            .into_iter()
-            .map(|key: &str| Tuple::new(&(key,)))
-            .collect::<tarantool::Result<_>>()
-            .expect("keys should convert to tuple")
-        });
         for range in &self.ranges {
             if modifies_operable(entry_op, range.space, storage) {
                 return Err(error());
@@ -438,7 +422,7 @@ impl Predicate {
                 }
                 Op::DdlPrepare { .. } | Op::DdlCommit | Op::DdlAbort | Op::Acl { .. } => {
                     let key_def = storage.key_def_for_key(space, 0)?;
-                    for key in ddl_keys.iter() {
+                    for key in schema_related_property_keys() {
                         if range.contains(&key_def, key) {
                             return Err(error());
                         }
@@ -448,6 +432,53 @@ impl Predicate {
             };
         }
         Ok(())
+    }
+}
+
+const SCHEMA_RELATED_PROPERTIES: [&str; 4] = [
+    crate::storage::PropertyName::PendingSchemaChange.as_str(),
+    crate::storage::PropertyName::PendingSchemaVersion.as_str(),
+    crate::storage::PropertyName::GlobalSchemaVersion.as_str(),
+    crate::storage::PropertyName::NextSchemaVersion.as_str(),
+];
+
+/// Returns a slice of tuples representing keys of space _pico_property which
+/// should be used to check predicates of schema changing CaS operations.
+fn schema_related_property_keys() -> &'static [Tuple] {
+    static mut DATA: Option<Vec<Tuple>> = None;
+
+    // Safety: we only call this from tx thread, so it's ok, trust me
+    unsafe {
+        if DATA.is_none() {
+            let mut data = Vec::with_capacity(SCHEMA_RELATED_PROPERTIES.len());
+            for key in SCHEMA_RELATED_PROPERTIES {
+                let t = Tuple::new(&(key,)).expect("keys should convert to tuple");
+                data.push(t);
+            }
+            DATA = Some(data);
+        }
+
+        DATA.as_ref().unwrap()
+    }
+}
+
+/// Returns a slice of [`Range`] structs which are needed for the CaS
+/// request which performs a schema change operation.
+pub fn schema_change_ranges() -> &'static [Range] {
+    static mut DATA: Option<Vec<Range>> = None;
+
+    // Safety: we only call this from tx thread, so it's ok, trust me
+    unsafe {
+        if DATA.is_none() {
+            let mut data = Vec::with_capacity(SCHEMA_RELATED_PROPERTIES.len());
+            for key in SCHEMA_RELATED_PROPERTIES {
+                let r = Range::new(ClusterwideSpaceId::Property).eq((key,));
+                data.push(r);
+            }
+            DATA = Some(data);
+        }
+
+        DATA.as_ref().unwrap()
     }
 }
 

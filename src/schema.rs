@@ -631,16 +631,7 @@ pub fn prepare_schema_change(op: Op, timeout: Duration) -> traft::Result<RaftInd
         let predicate = cas::Predicate {
             index,
             term,
-            ranges: vec![
-                cas::Range::new(ClusterwideSpaceId::Property)
-                    .eq((PropertyName::PendingSchemaChange,)),
-                cas::Range::new(ClusterwideSpaceId::Property)
-                    .eq((PropertyName::PendingSchemaVersion,)),
-                cas::Range::new(ClusterwideSpaceId::Property)
-                    .eq((PropertyName::GlobalSchemaVersion,)),
-                cas::Range::new(ClusterwideSpaceId::Property)
-                    .eq((PropertyName::NextSchemaVersion,)),
-            ],
+            ranges: cas::schema_change_ranges().into(),
         };
         let (index, term) = compare_and_swap(op, predicate, timeout)?;
         node.wait_index(index, timeout)?;
