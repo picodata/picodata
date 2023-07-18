@@ -52,7 +52,7 @@ def test_cas_errors(instance: Instance):
         )
     assert e3.value.args == (
         "ER_PROC_C",
-        "compare-and-swap request failed: entry at index 1 has term 1, request implies term 2",
+        "compare-and-swap: EntryTermMismatch: entry at index 1 has term 1, request implies term 2",
     )
 
     # Wrong index (too big)
@@ -65,7 +65,7 @@ def test_cas_errors(instance: Instance):
         )
     assert e4.value.args == (
         "ER_PROC_C",
-        "compare-and-swap request failed: "
+        "compare-and-swap: NoSuchIndex: "
         + f"raft entry at index 2048 does not exist yet, the last is {index}",
     )
 
@@ -77,7 +77,7 @@ def test_cas_errors(instance: Instance):
         instance.cas("insert", "_pico_property", ["foo", "420"], index=index - 1)
     assert e5.value.args == (
         "ER_PROC_C",
-        "compare-and-swap request failed: "
+        "compare-and-swap: Compacted: "
         + f"raft index {index-1} is compacted at {index}",
     )
 
@@ -92,7 +92,7 @@ def test_cas_errors(instance: Instance):
             )
         assert e5.value.args == (
             "ER_PROC_C",
-            f"compare-and-swap request failed: space {space} is prohibited for use "
+            f"compare-and-swap: SpaceNotAllowed: space {space} is prohibited for use "
             + "in a predicate",
         )
 
@@ -128,7 +128,7 @@ def test_cas_predicate(instance: Instance):
         )
     assert e5.value.args == (
         "ER_PROC_C",
-        "compare-and-swap request failed: "
+        "compare-and-swap: ConflictFound: "
         + f"comparison failed for index {read_index} "
         + f"as it conflicts with {read_index+1}",
     )
@@ -194,7 +194,7 @@ def test_cas_lua_api(cluster: Cluster):
             ranges=[CasRange(eq="fruit")],
         )
     assert e5.value.args == (
-        "compare-and-swap request failed: "
+        "compare-and-swap: ConflictFound: "
         + f"comparison failed for index {read_index} "
         + f"as it conflicts with {read_index+1}",
     )

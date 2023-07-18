@@ -288,43 +288,47 @@ crate::define_rpc_request! {
 /// Usually it can't be handled and should be either retried from
 /// scratch or returned to a user as is.
 ///
+// NOTE: these error messages are relied on in luamod.lua,
+// don't forget to update them everywhere if you're changing them.
 #[derive(Debug, ::thiserror::Error)]
 pub enum Error {
     /// Can't check the predicate because raft log is compacted.
-    #[error("raft index {requested} is compacted at {compacted_index}")]
+    #[error("Compacted: raft index {requested} is compacted at {compacted_index}")]
     Compacted {
         requested: RaftIndex,
         compacted_index: RaftIndex,
     },
 
     /// Nearly impossible error indicating invalid request.
-    #[error("raft entry at index {requested} does not exist yet, the last is {last_index}")]
+    #[error(
+        "NoSuchIndex: raft entry at index {requested} does not exist yet, the last is {last_index}"
+    )]
     NoSuchIndex {
         requested: RaftIndex,
         last_index: RaftIndex,
     },
 
     /// Checking the predicate revealed a collision.
-    #[error("comparison failed for index {requested} as it conflicts with {conflict_index}")]
+    #[error("ConflictFound: comparison failed for index {requested} as it conflicts with {conflict_index}")]
     ConflictFound {
         requested: RaftIndex,
         conflict_index: RaftIndex,
     },
 
     /// Checking the predicate revealed a collision.
-    #[error("entry at index {index} has term {actual_term}, request implies term {expected_term}")]
+    #[error("EntryTermMismatch: entry at index {index} has term {actual_term}, request implies term {expected_term}")]
     EntryTermMismatch {
         index: RaftIndex,
         expected_term: RaftTerm,
         actual_term: RaftTerm,
     },
 
-    #[error("space {space} is prohibited for use in a predicate")]
+    #[error("SpaceNotAllowed: space {space} is prohibited for use in a predicate")]
     SpaceNotAllowed { space: String },
 
     /// An error related to `key_def` operation arised from tarantool
     /// depths while checking the predicate.
-    #[error("failed comparing predicate ranges: {0}")]
+    #[error("KeyTypeMismatch: failed comparing predicate ranges: {0}")]
     KeyTypeMismatch(#[from] TntError),
 }
 

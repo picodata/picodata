@@ -35,11 +35,15 @@ pub enum Error {
         instance_rsid: String,
         requested_rsid: String,
     },
+    // NOTE: this error message is relied on in luamod.lua,
+    // don't forget to update it everywhere if you're changing it.
     #[error("operation request from different term {requested}, current term is {current}")]
     TermMismatch {
         requested: RaftTerm,
         current: RaftTerm,
     },
+    // NOTE: this error message is relied on in luamod.lua,
+    // don't forget to update it everywhere if you're changing it.
     #[error("not a leader")]
     NotALeader,
     #[error("lua error: {0}")]
@@ -61,7 +65,7 @@ pub enum Error {
     #[error("governor has stopped")]
     GovernorStopped,
 
-    #[error("compare-and-swap request failed: {0}")]
+    #[error("compare-and-swap: {0}")]
     Cas(#[from] crate::cas::Error),
     #[error("ddl failed: {0}")]
     Ddl(#[from] crate::schema::DdlError),
@@ -86,7 +90,7 @@ impl Error {
 
     /// Temporary solution until proc_cas returns structured errors
     pub fn is_cas_err(&self) -> bool {
-        self.to_string().contains("compare-and-swap request failed")
+        self.to_string().contains("compare-and-swap")
     }
 
     /// Temporary solution until proc_cas returns structured errors
