@@ -149,8 +149,10 @@ impl<'a, T> Fiber<'a, T> {
         F: FnMut(Box<T>) -> i32,
     {
         let (callback_ptr, trampoline) = unsafe { unpack_callback(callback) };
+        // The pointer into this variable must be valid until `fiber_new` returns.
+        let name_cstr = CString::new(name).expect("fiber name should not contain nul bytes");
         Self {
-            inner: unsafe { ffi::fiber_new(CString::new(name).unwrap().into_raw(), trampoline) },
+            inner: unsafe { ffi::fiber_new(name_cstr.as_ptr(), trampoline) },
             callback: callback_ptr,
             phantom: PhantomData,
         }
@@ -173,14 +175,10 @@ impl<'a, T> Fiber<'a, T> {
         F: FnMut(Box<T>) -> i32,
     {
         let (callback_ptr, trampoline) = unsafe { unpack_callback(callback) };
+        // The pointer into this variable must be valid until `fiber_new_ex` returns.
+        let name_cstr = CString::new(name).expect("fiber name should not contain nul bytes");
         Self {
-            inner: unsafe {
-                ffi::fiber_new_ex(
-                    CString::new(name).unwrap().into_raw(),
-                    attr.inner,
-                    trampoline,
-                )
-            },
+            inner: unsafe { ffi::fiber_new_ex(name_cstr.as_ptr(), attr.inner, trampoline) },
             callback: callback_ptr,
             phantom: PhantomData,
         }

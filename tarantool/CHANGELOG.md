@@ -14,6 +14,7 @@ tarantool thread via syncronization primitives (channels) and low-level cbus api
 ### Fixed
 - `log::Log::enabled` implementation for TarantoolLogger no longer ignores the
   mapping provided at construction.
+- A copy of fiber name used to leak in `Fiber::new` and `Fiber::new_with_attr`.
 
 ### Breaking Changes
 - `transaction::start_transaction` has a more flexible error handling,
