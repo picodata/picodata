@@ -123,7 +123,6 @@ impl<T> Drop for SenderInner<T> {
 /// A sending-half of unbounded channel. Can be used in any context (tarantool cord or arbitrary thread).
 /// Messages can be sent through this channel with [`Sender::send`].
 /// Clone the sender if you need one more producer.
-#[derive(Clone)]
 pub struct Sender<T> {
     inner: Arc<SenderInner<T>>,
 }
@@ -131,6 +130,14 @@ pub struct Sender<T> {
 unsafe impl<T> Send for Sender<T> {}
 
 unsafe impl<T> Sync for Sender<T> {}
+
+impl<T> Clone for Sender<T> {
+    fn clone(&self) -> Self {
+        Self {
+            inner: self.inner.clone(),
+        }
+    }
+}
 
 impl<T> Sender<T> {
     /// Attempts to send a value on this channel.
