@@ -91,7 +91,7 @@ mod tests {
 
     #[crate::test(tarantool = "crate")]
     fn performance() {
-        let now = std::time::Instant::now();
+        let now = crate::time::Instant::now();
         let _ = super::csw();
         let elapsed = now.elapsed();
         print!("{elapsed:?} ");

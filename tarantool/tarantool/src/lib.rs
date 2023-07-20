@@ -69,6 +69,7 @@ pub mod space;
 pub mod sql;
 #[cfg(feature = "test")]
 pub mod test;
+pub mod time;
 pub mod transaction;
 pub mod trigger;
 pub mod tuple;

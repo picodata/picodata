@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use crate::coio::CoIOStream;
 use crate::error::Error;
-use crate::fiber::{is_cancelled, set_cancellable, sleep, time, Cond, Fiber};
+use crate::fiber::{clock, is_cancelled, set_cancellable, sleep, Cond, Fiber};
 use crate::net_box::stream::ConnStream;
 use crate::tuple::Decode;
 use crate::unwrap_or;
@@ -100,7 +100,7 @@ impl ConnInner {
     }
 
     pub fn wait_connected(self: &Rc<Self>, timeout: Option<Duration>) -> Result<bool, Error> {
-        let begin_ts = time();
+        let begin_ts = clock();
         loop {
             let state = self.state.get();
             match state {
@@ -112,9 +112,7 @@ impl ConnInner {
                 _ => {
                     let timeout = match timeout {
                         None => None,
-                        Some(timeout) => {
-                            timeout.checked_sub(Duration::from_secs_f64(time() - begin_ts))
-                        }
+                        Some(timeout) => timeout.checked_sub(clock().duration_since(begin_ts)),
                     };
 
                     if !self.wait_state_changed(timeout) {

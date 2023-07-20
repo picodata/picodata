@@ -9,16 +9,20 @@
 - `examples/luaopen` example of how to implement native lua modules.
 - `tarantool::cbus` module for communication between any arbitrary thread and 
 tarantool thread via syncronization primitives (channels) and low-level cbus api.
-- `tarantool::decimal` api is now thread safe, which allows to be used in concurrent threads.
+- `tarantool::time::Instant` a custom implementation of std-like `Instant` with more saturating operations
+and support of the `fiber_clock` API.
 
 ### Fixed
 - `log::Log::enabled` implementation for TarantoolLogger no longer ignores the
   mapping provided at construction.
 - A copy of fiber name used to leak in `Fiber::new` and `Fiber::new_with_attr`.
+- `tarantool::decimal` api is now thread safe, which allows it to be used in concurrent threads.
 
 ### Breaking Changes
 - `transaction::start_transaction` has a more flexible error handling,
   and is renamed to `transaction::transaction`
+- `fiber::clock` and `fiber::time` now return `tarantool::time::Instant`
+- `fiber::clock64` and `fiber::time64` removed in favor of a new `Instant` based API
 
 
 # [1.1.0] June 16 2023

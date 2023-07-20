@@ -27,14 +27,13 @@ use std::os::unix::prelude::IntoRawFd;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::task::{Context, Poll};
-use std::time::Instant;
 use std::{io, ptr};
 
 use futures::{AsyncRead, AsyncWrite};
 
 use crate::ffi::tarantool as ffi;
-use crate::fiber::r#async;
 use crate::fiber::r#async::context::ContextExt;
+use crate::fiber::{self, r#async};
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
@@ -213,7 +212,7 @@ impl AsyncWrite for TcpStream {
                 //
                 // SAFETY: Safe as long as this future is executed by
                 // `fiber::block_on` async executor.
-                unsafe { ContextExt::set_deadline(cx, Instant::now()) }
+                unsafe { ContextExt::set_deadline(cx, fiber::clock()) }
                 Poll::Pending
             }
             _ => Poll::Ready(Err(err)),
@@ -261,7 +260,7 @@ impl AsyncRead for TcpStream {
                 //
                 // SAFETY: Safe as long as this future is executed by
                 // `fiber::block_on` async executor.
-                unsafe { ContextExt::set_deadline(cx, Instant::now()) }
+                unsafe { ContextExt::set_deadline(cx, fiber::clock()) }
                 Poll::Pending
             }
             _ => Poll::Ready(Err(err)),

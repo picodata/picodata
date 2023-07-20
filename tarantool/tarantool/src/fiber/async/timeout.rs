@@ -8,9 +8,10 @@ use std::pin::Pin;
 use std::task::Context;
 use std::task::Poll;
 use std::time::Duration;
-use std::time::Instant;
 
 use super::context::ContextExt;
+use crate::fiber;
+use crate::time::Instant;
 
 /// Error returned by [`Timeout`]
 #[derive(thiserror::Error, Debug, PartialEq, Eq)]
@@ -56,7 +57,7 @@ pub struct Timeout<F> {
 pub fn timeout<F: Future>(timeout: Duration, f: F) -> Timeout<F> {
     Timeout {
         future: f,
-        deadline: Instant::now().checked_add(timeout),
+        deadline: fiber::clock().checked_add(timeout),
     }
 }
 
@@ -84,7 +85,7 @@ where
         // Then check deadline and, if necessary, update wakup condition
         // in the context.
         match deadline {
-            Some(deadline) if Instant::now() >= deadline => {
+            Some(deadline) if fiber::clock() >= deadline => {
                 Poll::Ready(Err(Error::Expired)) // expired
             }
             Some(deadline) => {

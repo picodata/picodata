@@ -18,6 +18,7 @@ use std::os::raw::c_void;
 use std::ptr::NonNull;
 use std::time::Duration;
 
+use crate::time::Instant;
 use crate::tlua::{self as tlua, AsLua};
 
 #[cfg(not(all(target_arch = "aarch64", target_os = "macos")))]
@@ -1315,24 +1316,23 @@ pub fn sleep(time: Duration) {
     unsafe { ffi::fiber_sleep(time.as_secs_f64()) }
 }
 
-/// Report loop begin time as double (cheap).
-pub fn time() -> f64 {
-    unsafe { ffi::fiber_time() }
+/// Get [`Instant`] corresponding to event loop iteration begin time.
+/// As this API doesn't use a monotonic clock, it is adviced to
+/// only use checked and saturating operations on [`Instant`].
+///
+/// For monotonic clock API see [fiber::clock](clock).
+#[inline]
+pub fn time() -> Instant {
+    let secs = unsafe { ffi::fiber_time() };
+    Instant(Duration::from_secs_f64(secs))
 }
 
-/// Report loop begin time as 64-bit int.
-pub fn time64() -> u64 {
-    unsafe { ffi::fiber_time64() }
-}
-
-/// Report loop begin time as double (cheap). Uses monotonic clock.
-pub fn clock() -> f64 {
-    unsafe { ffi::fiber_clock() }
-}
-
-/// Report loop begin time as 64-bit int. Uses monotonic clock.
-pub fn clock64() -> u64 {
-    unsafe { ffi::fiber_clock64() }
+/// Get [`Instant`] corresponding to event loop iteration begin time.
+/// Uses monotonic clock.
+#[inline]
+pub fn clock() -> Instant {
+    let secs = unsafe { ffi::fiber_clock() };
+    Instant(Duration::from_secs_f64(secs))
 }
 
 /// Yield control to the scheduler.
@@ -1617,5 +1617,16 @@ mod tests {
             .unwrap();
         jh.join();
         assert_eq!(*res.borrow(), 1);
+    }
+
+    #[crate::test(tarantool = "crate")]
+    fn fiber_sleep_and_clock() {
+        let before_sleep = clock();
+        let sleep_for = Duration::from_millis(100);
+        sleep(sleep_for);
+
+        assert!(before_sleep.elapsed() >= sleep_for);
+        assert!(clock() >= before_sleep);
+        assert!(clock() - before_sleep >= sleep_for);
     }
 }

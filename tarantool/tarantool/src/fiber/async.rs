@@ -25,13 +25,7 @@
 //!   - [`timeout::IntoTimeout`]
 //!   - [`IntoOnDrop`]
 
-use std::{
-    future::Future,
-    pin::Pin,
-    rc::Rc,
-    task::Poll,
-    time::{Duration, Instant},
-};
+use std::{future::Future, pin::Pin, rc::Rc, task::Poll, time::Duration};
 
 use futures::pin_mut;
 
@@ -138,9 +132,9 @@ pub(crate) mod context {
     use std::os::unix::io::RawFd;
     use std::task::Context;
     use std::task::Waker;
-    use std::time::Instant;
 
     use crate::ffi::tarantool as ffi;
+    use crate::time::Instant;
 
     /// The context is primarily used to pass wakup conditions from a
     /// pending future to the async executor (i.e `block_on`). There's
@@ -285,7 +279,7 @@ pub fn block_on<F: Future>(f: F) -> F::Output {
         }
 
         let timeout = match cx.deadline {
-            Some(deadline) => deadline.saturating_duration_since(Instant::now()),
+            Some(deadline) => deadline.duration_since(super::clock()),
             None => Duration::MAX,
         };
 

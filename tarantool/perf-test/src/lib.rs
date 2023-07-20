@@ -1,13 +1,11 @@
-use std::{
-    future::Future,
-    time::{Duration, Instant},
-};
+use std::{future::Future, time::Duration};
 
 use tarantool::{
     fiber,
     net_box::{Conn, ConnOptions, Options},
     network::client::{AsClient as _, Client},
     proc,
+    time::Instant,
 };
 
 const N_ITERS: usize = 100_000;

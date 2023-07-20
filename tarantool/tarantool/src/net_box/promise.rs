@@ -2,10 +2,10 @@ use std::{
     cell::{Cell, UnsafeCell},
     io,
     rc::{Rc, Weak},
-    time::{Duration, Instant},
+    time::Duration,
 };
 
-use crate::{clock::INFINITY, error::Error, fiber::Cond, tuple::Decode, Result};
+use crate::{clock::INFINITY, error::Error, fiber::Cond, time::Instant, tuple::Decode, Result};
 
 use super::{inner::ConnInner, protocol::Consumer};
 
