@@ -1,8 +1,8 @@
 //! Clusterwide SQL query execution.
 
 use crate::schema::{self, CreateSpaceParams, DistributionParam, Field, ShardingFn, SpaceDef};
-use crate::sql::runtime::router::RouterRuntime;
-use crate::sql::runtime::storage::StorageRuntime;
+use crate::sql::router::RouterRuntime;
+use crate::sql::storage::StorageRuntime;
 use crate::traft::error::Error;
 use crate::traft::op::{Ddl as OpDdl, Op};
 use crate::traft::{self, node};
@@ -23,7 +23,10 @@ use ::tarantool::proc;
 use ::tarantool::space::FieldType;
 use ::tarantool::tuple::{RawBytes, Tuple};
 
-pub mod runtime;
+pub mod router;
+pub mod storage;
+
+pub const DEFAULT_BUCKET_COUNT: u64 = 3000;
 
 /// Dispatches a query to the cluster.
 #[proc(packed_args)]
