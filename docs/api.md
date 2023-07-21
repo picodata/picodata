@@ -44,6 +44,7 @@ picodata> pico.help("help")
 | [pico.drop_user()](#picodrop_user) | Удаление пользователя в Picodata.
 | [pico.exit()](#picoexit) | Корректное завершение работы указанного инстанса Picodata.
 | [pico.expel()](#picoexpel) | [Контролируемый вывод](cli.md#expel) инстанса Picodata из кластера.
+| [pico.grant_privilege()](#picogrant_privilege) | Назначение права пользователю или роли в Picodata.
 | [pico.help()](#picohelp) | Доступ к встроенной справочной системе Picodata.
 | [pico.instance_info()](#picoinstance_info) | Получение информации об инстансе Picodata (идентификаторы, уровни ([grade](glossary.md#grade)) и прочее).
 | [pico.raft_compact_log()](#picoraft_compact_log) | [Компактизация](glossary.md#raft-raft-log-compaction) raft-журнала c удалением указанного числа наиболее старых записей.
@@ -53,6 +54,7 @@ picodata> pico.help("help")
 | [pico.raft_status()](#picoraft_status) | Получение данных о текущем состоянии raft ([терм](glossary.md#term), [лидер](glossary.md#leader) и т.д.)
 | [pico.raft_timeout_now()](#picoraft_timeout_now) | Немедленное объявление новых выборов в raft-группе.
 | [pico.raft_wait_index()](#picoraft_wait_index) |  Ожидание локального применения указанного raft-индекса.
+| [pico.revoke_privilege()](#picorevoke_privilege) |  Удаление права у пользователя или роли в Picodata.
 | [pico.wait_vclock()](#picowait_vclock) | Ожидание момента, когда значение [Vclock](glossary.md#vclock-vector-clock) достигнет целевого.
 | [pico.whoami()](#picowhoami) | Отображение данных о текущем инстансе.
 
@@ -447,6 +449,62 @@ calling rpc::sharding
 ```
 Инстанс в состоянии `expelled` останется запущенным. Если его остановить и запустить снова, то он не присоединится к raft-группе.
 
+### pico.grant_privilege
+Назначает право пользователю или роли на всех инстансах кластера.
+
+```lua
+function grant_privilege(grantee, privilege, object_type, [object_name], [opts])
+```
+Параметры:
+
+- `grantee` (_string_), имя пользователя или роли 
+- `privilege` (_string_), название права, варианты: `'read'` | '`write'
+  `| `'execute'` | `'session' `| `'usage'` | `'create'` | `'drop'` |
+          `'alter'` | `'reference'` | `'trigger'` | `'insert'` | `'update'` | `'delete'`
+- `object_type` (_string_), тип целевого объекта, варианты: `'universe'`
+  | `'space'` | `'sequence'` | `'function'` | `'role'` | `'user'`
+- `object_name` (_string_), имя целевого объекта (необязательный
+  параметр). Можно не указывать при адресации совокупностей целевых
+  объектов (см. примеры [ниже](#grant_pr))
+- `opts`: (_table_), необязательная таблица:
+    - `timeout` (_number_), в секундах
+
+Возвращаемое значение:
+
+(_number_) с номером raft-индекса или (_nil_, _error_ (ошибка в виде Lua-объекта)) в случае ошибки
+
+  _Примечание_: Данная функция может вернуть ошибку таймаута в случае,
+  если право было назначено локально. При повторном вызове она будет
+  возвращать сообщение "право уже назначено", несмотря на то, что
+  назначение права в дальнейшем может быть отменено или подтверждено. 
+
+Примеры:<a name="grant_pr"></a>
+
+Выдать право на чтение спейса 'Fruit' пользователю 'Dave':
+```lua
+pico.grant_privilege('Dave', 'read', 'space', 'Fruit')
+```
+
+Выдать пользователю 'Dave' право исполнять произвольный код Lua:
+```lua
+pico.grant_privilege('Dave', 'execute', 'universe')
+```
+
+Выдать пользователю 'Dave' право создавать новых пользователей:
+```lua
+pico.grant_privilege('Dave', 'create', 'user')
+```
+
+Выдать право на запись в спейс 'Junk' для роли 'Maintainer':
+```lua
+pico.grant_privilege('Maintainer', 'write', 'space', 'Junk')
+```
+
+Назначить роль 'Maintainer' пользователю 'Dave':
+```lua
+pico.grant_privilege('Dave', 'execute', 'role', 'Maintainer')
+```
+
 ### pico.help
 Предоставляет доступ к встроенной справочной системе в Picodata.
 
@@ -690,6 +748,35 @@ function raft_wait_index(target, timeout)
 
 Если за указанное время (`timeout`) функция не успеет получить индекс, она
 вернет сообщение об ошибке.
+
+### pico.revoke_privilege
+Удаляет право пользователя или роли на всех инстансах кластера.
+
+```lua
+function revoke_privilege(grantee, privilege, object_type, [object_name], [opts])
+```
+Параметры:
+
+- `grantee` (_string_), имя пользователя или роли 
+- `privilege` (_string_), название права, варианты: `'read'` | '`write'
+  `| `'execute'` | `'session' `| `'usage'` | `'create'` | `'drop'` |
+          `'alter'` | `'reference'` | `'trigger'` | `'insert'` | `'update'` | `'delete'`
+- `object_type` (_string_), тип целевого объекта, варианты: `'universe'`
+  | `'space'` | `'sequence'` | `'function'` | `'role'` | `'user'`
+- `object_name` (_string_), имя целевого объекта (необязательный
+  параметр). Можно не указывать при адресации совокупностей целевых
+  объектов (аналогично действию `grant_privilege`, см. примеры [выше](#grant_pr))
+- `opts`: (_table_), необязательная таблица:
+    - `timeout` (_number_), в секундах
+
+Возвращаемое значение:
+
+(_number_) с номером raft-индекса или (_nil_, _error_ (ошибка в виде Lua-объекта)) в случае ошибки
+
+  _Примечание_: Данная функция может вернуть ошибку таймаута в случае,
+  если право было удалено локально. При повторном вызове она будет
+  возвращать сообщение "право не назначено", несмотря на то, что
+  удаление права в дальнейшем может быть отменено или подтверждено. 
 
 ### pico.wait_vclock
 Ожидает момента, когда значение
