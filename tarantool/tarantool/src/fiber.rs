@@ -1317,17 +1317,6 @@ pub fn sleep(time: Duration) {
 }
 
 /// Get [`Instant`] corresponding to event loop iteration begin time.
-/// As this API doesn't use a monotonic clock, it is adviced to
-/// only use checked and saturating operations on [`Instant`].
-///
-/// For monotonic clock API see [fiber::clock](clock).
-#[inline]
-pub fn time() -> Instant {
-    let secs = unsafe { ffi::fiber_time() };
-    Instant(Duration::from_secs_f64(secs))
-}
-
-/// Get [`Instant`] corresponding to event loop iteration begin time.
 /// Uses monotonic clock.
 #[inline]
 pub fn clock() -> Instant {

@@ -22,8 +22,10 @@ and support of the `fiber_clock` API.
 ### Breaking Changes
 - `transaction::start_transaction` has a more flexible error handling,
   and is renamed to `transaction::transaction`
-- `fiber::clock` and `fiber::time` now return `tarantool::time::Instant`
-- `fiber::clock64` and `fiber::time64` removed in favor of a new `Instant` based API
+- `fiber::clock` now returns `tarantool::time::Instant`
+- `fiber::time` and `fiber::time64` returning non-monotonic time removed. If
+    calendar time is needed, use `std::time::SystemTime`.
+- `fiber::clock64` removed in favor of a new `Instant` based `fiber::clock` API
 
 
 # [1.1.0] June 16 2023

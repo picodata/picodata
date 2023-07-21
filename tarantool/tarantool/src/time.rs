@@ -4,10 +4,10 @@ use std::mem::MaybeUninit;
 use std::ops::{Add, AddAssign, Sub, SubAssign};
 use std::time::Duration;
 
-/// A measurement of a monotonically nondecreasing clock (if created with [`Instant::now`]).
+/// A measurement of a monotonically nondecreasing clock.
 /// Opaque and useful only with [`Duration`].
 ///
-/// Instants created with [`Instant::now`] are guaranteed to be no less than any previously
+/// Instants are guaranteed to be no less than any previously
 /// measured instant when created, and are often useful for tasks such as measuring
 /// benchmarks or timing how long an operation takes.
 ///
@@ -24,8 +24,7 @@ use std::time::Duration;
 ///
 /// This struct is almost identical to [`std::time::Instant`] but provides
 /// some additional saturating methods. And it can also be constructed with
-/// [`fiber::time`](crate::fiber::time) and [`fiber::clock`](crate::fiber::clock),
-/// in which cases it behaves in a tarantool specific way.
+/// [`fiber::clock`](crate::fiber::clock), in which case it behaves in a tarantool specific way.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub struct Instant(pub(crate) Duration);
 
