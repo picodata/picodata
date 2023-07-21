@@ -720,10 +720,10 @@ sbroad.execute([[explain select "id","name" from "assets" join (select "id3","na
 
 ```
 **Полное перемещение** происходит, когда требуется скопировать всю
-таблицу в правой части запроса на все шарды, содержащие таблицу в левой
-части. 
+внутреннюю таблицу (в правой части запроса) на все шарды, содержащие
+внешнюю таблицу (в левой части). 
 
-Пример `JOIN` несовпадающих наборов столбцов из двух таблиц:
+Пример `JOIN` с соединениям не по колонкам шардирования для обеих таблиц:
 
 ```
 sbroad.execute([[explain select "id","name","stock","year" from "characters" join (select "id" as "number","stock" from "assets") as stock on "characters"."id"=stock."number"]], {})
