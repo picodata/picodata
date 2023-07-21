@@ -246,18 +246,15 @@ fn build_tarantool(jsc: Option<&jobserver::Client>, build_root: &Path) {
     rustc::link_search(format!("{tarantool_build}/src"));
     rustc::link_search(format!("{tarantool_build}/src/box"));
     rustc::link_search(format!("{tarantool_build}/third_party/luajit/src"));
-    rustc::link_search(format!("{tarantool_build}/third_party/libyaml"));
     rustc::link_search(format!("{tarantool_build}/third_party/c-dt/build"));
-    rustc::link_search(format!("{tarantool_build}/build/nghttp2/dest/lib"));
 
     rustc::link_lib_static("tarantool");
-    rustc::link_lib_static("ev");
+    rustc::link_lib_dynamic("ev");
     rustc::link_lib_static("coro");
     rustc::link_lib_static("cdt");
     rustc::link_lib_static("server");
     rustc::link_lib_static("misc");
-    rustc::link_lib_static("nghttp2");
-    rustc::link_lib_static("zstd");
+    rustc::link_lib_dynamic("zstd");
     rustc::link_lib_static("decNumber");
     rustc::link_lib_static("eio");
     rustc::link_lib_static("box");
@@ -273,7 +270,7 @@ fn build_tarantool(jsc: Option<&jobserver::Client>, build_root: &Path) {
     rustc::link_lib_static("symbols");
     rustc::link_lib_static("cpu_feature");
     rustc::link_lib_static("luajit");
-    rustc::link_lib_static("yaml_static");
+    rustc::link_lib_dynamic("yaml");
     rustc::link_lib_static("xxhash");
 
     // Add LDAP authentication support libraries.
@@ -304,31 +301,27 @@ fn build_tarantool(jsc: Option<&jobserver::Client>, build_root: &Path) {
 
     rustc::link_arg("-lc");
 
-    rustc::link_search(format!("{tarantool_sys}/readline-prefix/lib"));
-    rustc::link_lib_static("readline");
+    rustc::link_lib_dynamic("readline");
 
-    rustc::link_search(format!("{tarantool_sys}/icu-prefix/lib"));
-    rustc::link_lib_static("icudata");
-    rustc::link_lib_static("icui18n");
-    rustc::link_lib_static("icuio");
-    rustc::link_lib_static("icutu");
-    rustc::link_lib_static("icuuc");
+    rustc::link_lib_dynamic("icudata");
+    rustc::link_lib_dynamic("icui18n");
+    rustc::link_lib_dynamic("icuio");
+    rustc::link_lib_dynamic("icutu");
+    rustc::link_lib_dynamic("icuuc");
 
-    rustc::link_search(format!("{tarantool_sys}/zlib-prefix/lib"));
-    rustc::link_lib_static("z");
+    /* linked with curl on cmake stage */
+    // rustc::link_lib_dynamic("z");
 
-    rustc::link_search(format!("{tarantool_build}/build/curl/dest/lib"));
-    rustc::link_lib_static("curl");
+    rustc::link_lib_dynamic("curl");
 
-    rustc::link_search(format!("{tarantool_build}/build/ares/dest/lib"));
-    rustc::link_lib_static("cares");
+    /* c-ares unused now because of using curl-openssl-dev */
+    // rustc::link_search(format!("{tarantool_build}/build/ares/dest/lib"));
+    // rustc::link_lib_dynamic("cares");
 
-    rustc::link_search(format!("{tarantool_sys}/openssl-prefix/lib"));
-    rustc::link_lib_static("ssl");
-    rustc::link_lib_static("crypto");
+    rustc::link_lib_dynamic("ssl");
+    rustc::link_lib_dynamic("crypto");
 
-    rustc::link_search(format!("{tarantool_sys}/ncurses-prefix/lib"));
-    rustc::link_lib_static("tinfo");
+    rustc::link_lib_dynamic("tinfo");
 
     rustc::link_search(format!("{tarantool_sys}/iconv-prefix/lib"));
     if cfg!(target_os = "macos") {
