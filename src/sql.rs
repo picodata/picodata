@@ -50,15 +50,15 @@ pub fn dispatch_query(encoded_params: EncodedPatternWithParams) -> traft::Result
                 let ir_plan = query.get_exec_plan().get_ir_plan();
                 let top_id = ir_plan.get_top().map_err(Error::from)?;
                 let ir_plan_mut = query.get_mut_exec_plan().get_mut_ir_plan();
-                let ddl = ir_plan_mut.get_mut_ddl_node(top_id).map_err(Error::from)?;
+                let ddl = ir_plan_mut.take_ddl_node(top_id).map_err(Error::from)?;
                 let timeout: f64 = ddl.timeout().map_err(Error::from)?;
                 let storage = &node::global()?.storage;
                 let ddl_op = match ddl {
                     Ddl::CreateShardedTable {
-                        ref mut name,
-                        ref mut format,
-                        ref mut primary_key,
-                        ref mut sharding_key,
+                        name,
+                        mut format,
+                        primary_key,
+                        sharding_key,
                         ..
                     } => {
                         let format = format
@@ -71,12 +71,12 @@ pub fn dispatch_query(encoded_params: EncodedPatternWithParams) -> traft::Result
                             .collect();
                         let params = CreateSpaceParams {
                             id: None,
-                            name: std::mem::take(name),
+                            name,
                             format,
-                            primary_key: std::mem::take(primary_key),
+                            primary_key,
                             distribution: DistributionParam::Sharded,
                             by_field: None,
-                            sharding_key: Some(std::mem::take(sharding_key)),
+                            sharding_key: Some(sharding_key),
                             sharding_fn: Some(ShardingFn::Murmur3),
                             timeout,
                         };
