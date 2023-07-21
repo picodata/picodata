@@ -306,13 +306,36 @@ pub fn block_on<F: Future>(f: F) -> F::Output {
     }
 }
 
+/// An async friendly version of [fiber::sleep](crate::fiber::sleep). Prefer this version when working in async
+/// contexts.
+pub async fn sleep(time: Duration) {
+    use timeout::IntoTimeout as _;
+
+    // We can't just do a `fiber::sleep` as we need this to work well with other futures
+    let (tx, rx) = oneshot::channel::<()>();
+    rx.timeout(time).await.unwrap_err();
+    drop(tx);
+}
+
 #[cfg(feature = "internal_test")]
 mod tests {
     use std::cell::Cell;
 
     use super::timeout::IntoTimeout as _;
     use super::*;
+    use crate::fiber;
     use crate::test::util::{always_pending, ok};
+
+    #[crate::test(tarantool = "crate")]
+    fn sleep_wakes_up() {
+        let before_sleep = fiber::clock();
+        let sleep_for = Duration::from_millis(100);
+
+        let should_yield = fiber::check_yield(|| fiber::block_on(sleep(sleep_for)));
+
+        assert_eq!(should_yield, fiber::YieldResult::Yielded(()));
+        assert!(before_sleep.elapsed() >= sleep_for);
+    }
 
     #[crate::test(tarantool = "crate")]
     fn on_drop_is_executed() {

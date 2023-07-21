@@ -24,7 +24,7 @@ use std::time::Duration;
 ///
 /// This struct is almost identical to [`std::time::Instant`] but provides
 /// some additional saturating methods. And it can also be constructed with
-/// [fiber::time](crate::fiber::time) and [fiber::clock](crate::fiber::clock),
+/// [`fiber::time`](crate::fiber::time) and [`fiber::clock`](crate::fiber::clock),
 /// in which cases it behaves in a tarantool specific way.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub struct Instant(pub(crate) Duration);
