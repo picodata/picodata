@@ -1,11 +1,31 @@
 # Аргументы командной строки Picodata
 Picodata является консольным приложением, которое поддерживает различные параметры запуска в виде аргументов командной строки. 
 
-Полный список аргументов доступен с помощью следующей команды:
+Полный список аргументов доступен с помощью команды `picodata help`:
+
+```console
+USAGE:
+    picodata <SUBCOMMAND>
+
+OPTIONS:
+    -h, --help       Print help information
+    -V, --version    Print version information
+
+SUBCOMMANDS:
+    connect      Сonnect a Picodata instance and start interactive Lua console
+    expel        Expel node from cluster
+    help         Print this message or the help of the given subcommand(s)
+    run          Run the picodata instance
+    tarantool    Run tarantool
+    test         Run picodata integration tests
+```
+
+В общем случае после `picodata` следует указать название команды и затем, опционально, ее параметры:
 
 ```console
 picodata <command> [<params>]
 ```
+
 ## Описание команды `run`
 Ниже приводится описание аргументов команды `run`.
 
