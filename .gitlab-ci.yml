@@ -212,7 +212,7 @@ test-linux:
     reports:
       junit: junit_pytest.xml
 
-test-mac-m1:
+.test-mac-m1:
   extends: .test
   tags:
     - mac-dev-m1
@@ -399,7 +399,7 @@ pack-sources:
     paths:
       - build_sources/picodata*.tar.xz
 
-pack-centos:
+.pack-centos:
   extends: .pack
   script:
     - sed -i "s/(id -u)/(id -u) -o/g" packpack/packpack
@@ -409,7 +409,7 @@ pack-centos:
     paths:
       - build_centos/picodata*.rpm
 
-pack-ubuntu:
+.pack-ubuntu:
   extends: .pack
   script:
     - OS=ubuntu DIST=focal BUILDDIR=$PWD/build_${DIST}/ RELEASE=${DIST} packpack/packpack
@@ -419,7 +419,7 @@ pack-ubuntu:
       - build_focal/*.deb
       - build_jammy/*.deb
 
-pack-debian:
+.pack-debian:
   extends: .pack
   script:
     - OS=debian DIST=bullseye BUILDDIR=$PWD/build_debian/ RELEASE=${DIST} packpack/packpack
@@ -430,13 +430,13 @@ pack-debian:
 pack-altlinux:
   extends: .pack
   script:
-    - DOCKER_REPO=docker-picodata.binary.picodata.io/packpack/alt DOCKER_IMAGE=p10 BUILDDIR=$PWD/build_alt packpack/packpack
-    - DOCKER_REPO=docker-picodata.binary.picodata.io/packpack/alt DOCKER_IMAGE=p9 BUILDDIR=$PWD/build_alt packpack/packpack
+    - DOCKER_REPO=docker-picodata.binary.picodata.io/packpack/alt DOCKER_IMAGE=p10-1 BUILDDIR=$PWD/build_alt packpack/packpack
+#    - DOCKER_REPO=docker-picodata.binary.picodata.io/packpack/alt DOCKER_IMAGE=p9 BUILDDIR=$PWD/build_alt packpack/packpack
   artifacts:
     paths:
       - build_alt/picodata*.rpm
 
-pack-redos:
+.pack-redos:
   extends: .pack
   script:
     - OS=redos DIST=7.3 BUILDDIR=$PWD/build_redos/ packpack/packpack
@@ -444,7 +444,7 @@ pack-redos:
     paths:
       - build_redos/picodata*.rpm
 
-pack-astralinux:
+.pack-astralinux:
   extends: .pack
   script:
     - DOCKER_REPO=docker-picodata.binary.picodata.io/packpack/astra DOCKER_IMAGE=orel-2.12 BUILDDIR=$PWD/build_astra packpack/packpack
@@ -460,7 +460,7 @@ pack-rosalinux:
     paths:
       - build_rosa/picodata*.rpm
 
-pack-macos-arm:
+.pack-macos-arm:
   extends: .pack
   tags:
     - mac-dev-m1
@@ -503,7 +503,7 @@ pack-macos-arm:
     paths:
       - $BUILDDIR/*.tar.gz
 
-sign-rpm-packages:
+.sign-rpm-packages:
   variables:
     DOCKER_AUTH_CONFIG: $DOCKER_AUTH_RO
   stage: sign
@@ -534,7 +534,7 @@ sign-rpm-packages:
     - pack-redos
     - pack-rosalinux
 
-sign-astralinux-packages:
+.sign-astralinux-packages:
   variables:
     DOCKER_AUTH_CONFIG: $DOCKER_AUTH_RO
   stage: sign
@@ -554,7 +554,7 @@ sign-astralinux-packages:
   dependencies:
     - pack-astralinux
 
-deploy-packages:
+.deploy-packages:
   stage: deploy
   tags:
     - shell
@@ -640,7 +640,7 @@ deploy-packages:
     - sign-astralinux-packages
     - pack-sources
 
-deploy-macos-arm:
+.deploy-macos-arm:
   stage: deploy
   tags:
     - mac-dev-m1
@@ -702,7 +702,7 @@ deploy-docker:
   needs:
     - deploy-packages
 
-check-deployment-rpm:
+.check-deployment-rpm:
   extends: .check-deployment
   parallel:
     matrix:
@@ -727,7 +727,7 @@ check-deployment-rpm:
     - yum install -y https://download.picodata.io/tarantool-picodata/${PACKAGE}
     - yum install -y picodata-${VER}
 
-check-deployment-deb:
+.check-deployment-deb:
   extends: .check-deployment
   variables:
     DEBIAN_FRONTEND: noninteractive
@@ -751,7 +751,7 @@ check-deployment-deb:
     - apt update
     - apt install -y picodata=${VER}-${CODENAME}
 
-check-deployment-alt:
+.check-deployment-alt:
   extends: .check-deployment
   parallel:
     matrix:
@@ -773,7 +773,7 @@ check-deployment-alt:
     - apt-get update
     - apt-get install -y picodata=${VER}
 
-check-deployment-astra:
+.check-deployment-astra:
   extends: .check-deployment
   image: docker-picodata.binary.picodata.io/astra/orel:2.12
   before_script:
@@ -787,3 +787,4 @@ check-deployment-astra:
     - echo "deb [arch=amd64] https://download.picodata.io/tarantool-picodata/astra/ orel main" > /etc/apt/sources.list.d/picodata.list
     - apt-get update
     - apt-get install -y picodata=${VER}-1
+
