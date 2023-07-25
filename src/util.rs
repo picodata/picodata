@@ -1,16 +1,25 @@
 use nix::sys::termios::{tcgetattr, tcsetattr, LocalFlags, SetArg::TCSADRAIN};
 
+use crate::traft::error::Error;
 use std::any::{Any, TypeId};
 use std::io::BufRead as _;
 use std::io::BufReader;
 use std::io::Write as _;
 use std::os::unix::io::AsRawFd as _;
 use std::time::Duration;
-
-use crate::traft::error::Error;
 pub use Either::{Left, Right};
 
 pub const INFINITY: Duration = Duration::from_secs(30 * 365 * 24 * 60 * 60);
+
+/// Converts `secs` to `Duration`. If `secs` is negative, it's clamped to zero.
+#[inline(always)]
+pub fn duration_from_secs_f64_clamped(secs: f64) -> Duration {
+    if secs > 0.0 {
+        Duration::from_secs_f64(secs)
+    } else {
+        Duration::ZERO
+    }
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 /// A generic enum that contains exactly one of two possible types. Equivalent

@@ -9,6 +9,7 @@ use crate::schema::{self, CreateSpaceParams};
 use crate::traft::error::Error;
 use crate::traft::op::{self, Op};
 use crate::traft::{self, node, RaftIndex, RaftTerm};
+use crate::util::duration_from_secs_f64_clamped;
 use crate::util::str_eq;
 use crate::{args, rpc, sync, tlog};
 use ::tarantool::fiber;
@@ -354,7 +355,7 @@ pub(crate) fn setup(args: &args::Run) {
             (nil, string) in case of an error
         "},
         tlua::function1(|timeout: f64| -> traft::Result<RaftIndex> {
-            traft::node::global()?.read_index(Duration::from_secs_f64(timeout))
+            traft::node::global()?.read_index(duration_from_secs_f64_clamped(timeout))
         }),
     );
     luamod_set(
@@ -384,7 +385,7 @@ pub(crate) fn setup(args: &args::Run) {
         tlua::function2(
             |target: RaftIndex, timeout: f64| -> traft::Result<RaftIndex> {
                 let node = traft::node::global()?;
-                node.wait_index(target, Duration::from_secs_f64(timeout))
+                node.wait_index(target, duration_from_secs_f64_clamped(timeout))
             },
         ),
     );
@@ -561,7 +562,7 @@ pub(crate) fn setup(args: &args::Run) {
         "},
         tlua::function2(
             |target: Vclock, timeout: f64| -> Result<Vclock, sync::TimeoutError> {
-                sync::wait_vclock(target, Duration::from_secs_f64(timeout))
+                sync::wait_vclock(target, duration_from_secs_f64_clamped(timeout))
             },
         ),
     );
@@ -624,51 +625,9 @@ pub(crate) fn setup(args: &args::Run) {
 
     luamod_set(
         &l,
-        "_prepare_schema_change",
-        indoc! {"
-        pico._prepare_schema_change(op, timeout)
-        ============================
-
-        Internal API, see src/luamod.rs for the details.
-
-        Params:
-
-            1. op (table)
-            2. timeout (number) seconds
-
-        Returns:
-
-            (number) raft index
-            or
-            (nil, error) in case of an error
-        "},
-        tlua::Function::new(|lua: tlua::StaticLua| -> traft::Result<RaftIndex> {
-            use tlua::{AnyLuaString, AsLua, LuaError, LuaTable};
-
-            let t: LuaTable<_> = (&lua).read_at(1).map_err(|(_, e)| LuaError::from(e))?;
-            // We do [lua value -> msgpack -> rust -> msgpack]
-            // instead of [lua value -> rust -> msgpack]
-            // because despite what it may seem this is much simpler.
-            // (The final [-> msgpack] is when we eventually do the rpc).
-            // The transmition medium is always msgpack.
-            let mp: AnyLuaString = lua
-                .eval_with("return require 'msgpack'.encode(...)", &t)
-                .map_err(LuaError::from)?;
-            let op: Op = Decode::decode(mp.as_bytes())?;
-
-            let timeout: f64 = (&lua).read_at(2).map_err(|(_, e)| LuaError::from(e))?;
-            let timeout = Duration::from_secs_f64(timeout);
-
-            let index = schema::prepare_schema_change(op, timeout)?;
-            Ok(index)
-        }),
-    );
-
-    luamod_set(
-        &l,
         "_schema_change_cas_request",
         indoc! {"
-        pico._schema_change_cas_request(op, index)
+        pico._schema_change_cas_request(op, index, timeout)
         ============================
 
         Internal API, see src/luamod.rs for the details.
@@ -719,7 +678,7 @@ pub(crate) fn setup(args: &args::Run) {
                 let index: RaftIndex = (&lua).read_at(2).map_err(|(_, e)| LuaError::from(e))?;
 
                 let timeout: f64 = (&lua).read_at(3).map_err(|(_, e)| LuaError::from(e))?;
-                let timeout = Duration::from_secs_f64(timeout);
+                let timeout = duration_from_secs_f64_clamped(timeout);
 
                 let node = node::global()?;
                 let term = raft::Storage::term(&node.raft_storage, index)?;
@@ -1300,7 +1259,7 @@ pub(crate) fn setup(args: &args::Run) {
         "},
         {
             tlua::function1(|timeout: f64| -> traft::Result<RaftIndex> {
-                schema::abort_ddl(Duration::from_secs_f64(timeout))
+                schema::abort_ddl(duration_from_secs_f64_clamped(timeout))
             })
         },
     );
@@ -1340,7 +1299,7 @@ pub(crate) fn setup(args: &args::Run) {
                             timeout = t;
                         }
                     }
-                    let timeout = Duration::from_secs_f64(timeout);
+                    let timeout = duration_from_secs_f64_clamped(timeout);
                     let commit_index = schema::wait_for_ddl_commit(index, timeout)?;
                     Ok(commit_index)
                 },

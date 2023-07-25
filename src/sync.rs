@@ -9,6 +9,7 @@ use std::time::Duration;
 
 use crate::traft::network::IdOfInstance;
 use crate::traft::{ConnectionPool, RaftIndex};
+use crate::util::duration_from_secs_f64_clamped;
 use crate::{rpc, traft};
 
 #[derive(thiserror::Error, Debug)]
@@ -61,7 +62,7 @@ impl rpc::Request for WaitVclockRpc {
 /// See [`wait_vclock`]
 #[proc]
 fn proc_wait_vclock(target: Vclock, timeout: f64) -> Result<(Vclock,), TimeoutError> {
-    wait_vclock(target, Duration::from_secs_f64(timeout)).map(|vclock| (vclock,))
+    wait_vclock(target, duration_from_secs_f64_clamped(timeout)).map(|vclock| (vclock,))
 }
 
 /// Block current fiber until Tarantool [`Vclock`] reaches the `target`.
@@ -135,7 +136,7 @@ impl rpc::Request for ReadIndexRpc {
 #[proc]
 fn proc_read_index(timeout: f64) -> traft::Result<(RaftIndex,)> {
     let node = traft::node::global()?;
-    node.read_index(Duration::from_secs_f64(timeout))
+    node.read_index(duration_from_secs_f64_clamped(timeout))
         .map(|index| (index,))
 }
 
@@ -162,7 +163,7 @@ impl rpc::Request for WaitIndexRpc {
 #[proc]
 fn proc_wait_index(target: RaftIndex, timeout: f64) -> traft::Result<(RaftIndex,)> {
     let node = traft::node::global()?;
-    node.wait_index(target, Duration::from_secs_f64(timeout))
+    node.wait_index(target, duration_from_secs_f64_clamped(timeout))
         .map(|index| (index,))
 }
 
