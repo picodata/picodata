@@ -7,31 +7,43 @@ use std::sync::Arc;
 /// A synchronization component between producers and a consumer.
 struct Waker {
     /// synchronize a waker, signal when waker is up to date
-    condition: Arc<Cond>,
+    condition: Option<Arc<Cond>>,
     /// indicate that waker already up to date
     woken: AtomicBool,
+    /// pipe for sending syncronization signals
+    pipe: LCPipe,
 }
 
 impl Waker {
-    fn new(cond: Cond) -> Self {
+    fn new(cond: Cond, pipe: LCPipe) -> Self {
         Self {
-            condition: Arc::new(cond),
+            condition: Some(Arc::new(cond)),
             woken: AtomicBool::new(false),
+            pipe,
         }
     }
 
+    /// Send wakeup signal to a [`Waker::wait`] caller.
+    fn force_wakeup(&self, cond: Arc<Cond>) {
+        let msg = Message::new(move || {
+            cond.signal();
+        });
+        self.pipe.push_message(msg);
+    }
+
     /// Release waker if it lock in [`Waker::wait`].
-    fn wakeup(&self, pipe: &LCPipe) {
+    fn wakeup(&self) {
         let do_wake = self
             .woken
             .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
             .is_ok();
         if do_wake {
-            let cond = Arc::clone(&self.condition);
-            let msg = Message::new(move || {
-                cond.signal();
-            });
-            pipe.push_message(msg);
+            let cond = Arc::clone(
+                self.condition
+                    .as_ref()
+                    .expect("unreachable: condition never empty"),
+            );
+            self.force_wakeup(cond);
         }
     }
 
@@ -42,7 +54,18 @@ impl Waker {
             .compare_exchange(true, false, Ordering::AcqRel, Ordering::Acquire)
             .is_err()
         {
-            self.condition.wait();
+            self.condition
+                .as_ref()
+                .expect("unreachable: condition never empty")
+                .wait();
+        }
+    }
+}
+
+impl Drop for Waker {
+    fn drop(&mut self) {
+        if let Some(cond) = self.condition.take() {
+            self.force_wakeup(cond);
         }
     }
 }
@@ -61,19 +84,17 @@ struct Channel<T> {
 
 impl<T> Channel<T> {
     /// Create a new channel.
-    fn new() -> Self {
+    ///
+    /// # Arguments
+    ///
+    /// * `pipe`: cbus lcpipe instance.
+    fn new(pipe: LCPipe) -> Self {
         let cond = Cond::new();
         Self {
             list: crossbeam_queue::SegQueue::new(),
-            waker: Waker::new(cond),
+            waker: Waker::new(cond, pipe),
             disconnected: AtomicBool::new(false),
         }
-    }
-}
-
-impl<T> Default for Channel<T> {
-    fn default() -> Self {
-        Self::new()
     }
 }
 
@@ -95,10 +116,10 @@ impl<T> Default for Channel<T> {
 /// }
 /// ```
 pub fn channel<T>(cbus_endpoint: &str) -> (Sender<T>, EndpointReceiver<T>) {
-    let chan = Arc::new(Channel::new());
+    let pipe = LCPipe::new(cbus_endpoint);
+    let chan = Arc::new(Channel::new(pipe));
     let s = SenderInner {
         chan: Arc::clone(&chan),
-        pipe: LCPipe::new(cbus_endpoint),
     };
     let r = EndpointReceiver {
         chan: Arc::clone(&chan),
@@ -108,7 +129,6 @@ pub fn channel<T>(cbus_endpoint: &str) -> (Sender<T>, EndpointReceiver<T>) {
 
 struct SenderInner<T> {
     chan: Arc<Channel<T>>,
-    pipe: LCPipe,
 }
 
 unsafe impl<T> Send for SenderInner<T> {}
@@ -116,7 +136,7 @@ unsafe impl<T> Send for SenderInner<T> {}
 impl<T> Drop for SenderInner<T> {
     fn drop(&mut self) {
         self.chan.disconnected.store(true, Ordering::Release);
-        self.chan.waker.wakeup(&self.pipe);
+        self.chan.waker.wakeup();
     }
 }
 
@@ -148,7 +168,7 @@ impl<T> Sender<T> {
     pub fn send(&self, msg: T) {
         self.inner.chan.list.push(msg);
         // wake up a sleeping receiver
-        self.inner.chan.waker.wakeup(&self.inner.pipe);
+        self.inner.chan.waker.wakeup();
     }
 }
 
@@ -191,6 +211,7 @@ impl<T> EndpointReceiver<T> {
 mod tests {
     use super::super::tests::run_cbus_endpoint;
     use crate::cbus::{unbounded, RecvError};
+    use crate::fiber;
     use crate::fiber::{check_yield, YieldResult};
     use std::thread;
     use std::thread::JoinHandle;
@@ -222,6 +243,31 @@ mod tests {
             YieldResult::Yielded((0..1000).collect::<Vec<_>>())
         );
         thread.join().unwrap();
+        cbus_fiber.cancel();
+    }
+
+    #[crate::test(tarantool = "crate")]
+    pub fn unbounded_test_drop_rx_before_tx() {
+        // This test check that there is no memory corruption if sender part of channel drops after
+        // receiver part. Previously, when the receiver was drop after sender, [`Fiber::Cond`] release outside the tx thread
+        // and segfault is occurred.
+
+        let mut cbus_fiber = run_cbus_endpoint("unbounded_test_drop_rx_before_tx");
+        let (tx, rx) = unbounded::channel("unbounded_test_drop_rx_before_tx");
+
+        let thread = thread::spawn(move || {
+            for i in 1..300 {
+                tx.send(i);
+                if i % 100 == 0 {
+                    thread::sleep(Duration::from_secs(1));
+                }
+            }
+        });
+
+        fiber::sleep(Duration::from_secs(1));
+        drop(rx);
+        thread.join().unwrap();
+
         cbus_fiber.cancel();
     }
 
