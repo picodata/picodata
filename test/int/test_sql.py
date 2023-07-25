@@ -148,7 +148,7 @@ def test_select_string_field(cluster: Cluster):
     assert data["rows"] == [[1337, "foo"]]
 
 
-def test_drop_table(cluster: Cluster):
+def test_create_drop_table(cluster: Cluster):
     cluster.deploy(instance_count=2)
     i1, i2 = cluster.instances
 
@@ -162,6 +162,30 @@ def test_drop_table(cluster: Cluster):
     )
     assert ddl["row_count"] == 1
 
+    # Already exists -> ok.
+    ddl = i1.sql(
+        """
+        create table "t" ("a" integer not null, "b" int not null, primary key ("b", "a"))
+        using memtx
+        distributed by ("a", "b")
+        option (timeout = 3)
+    """
+    )
+    assert ddl["row_count"] == 0
+
+    # FIXME: this should fail
+    # see https://git.picodata.io/picodata/picodata/picodata/-/issues/331
+    # Already exists with different format -> error.
+    ddl = i1.sql(
+        """
+        create table "t" ("key" string not null, "value" string not null, primary key ("key"))
+        using memtx
+        distributed by ("key")
+        option (timeout = 3)
+    """
+    )
+    assert ddl["row_count"] == 0
+
     ddl = i2.sql(
         """
         drop table "t"
@@ -169,6 +193,15 @@ def test_drop_table(cluster: Cluster):
     """
     )
     assert ddl["row_count"] == 1
+
+    # Already dropped -> ok.
+    ddl = i2.sql(
+        """
+        drop table "t"
+        option (timeout = 3)
+    """
+    )
+    assert ddl["row_count"] == 0
 
     ddl = i2.sql(
         """

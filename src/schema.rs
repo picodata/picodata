@@ -349,7 +349,7 @@ pub struct CreateSpaceParams {
     ///
     /// Specifying the timeout identifies how long user is ready to wait for ddl to be applied.
     /// But it does not provide guarantees that a ddl will be aborted if wait for commit timeouts.
-    pub timeout: f64,
+    pub timeout: Option<f64>,
 }
 
 impl CreateSpaceParams {
@@ -725,7 +725,7 @@ mod tests {
             by_field: None,
             sharding_key: None,
             sharding_fn: None,
-            timeout: 0.0,
+            timeout: None,
         }
         .test_create_space()
         .unwrap();
@@ -740,7 +740,7 @@ mod tests {
             by_field: None,
             sharding_key: None,
             sharding_fn: None,
-            timeout: 0.0,
+            timeout: None,
         }
         .test_create_space()
         .unwrap_err();
@@ -774,7 +774,7 @@ mod tests {
             by_field: None,
             sharding_key: None,
             sharding_fn: None,
-            timeout: 0.0,
+            timeout: None,
         }
         .validate()
         .unwrap_err();
@@ -789,7 +789,7 @@ mod tests {
             by_field: None,
             sharding_key: None,
             sharding_fn: None,
-            timeout: 0.0,
+            timeout: None,
         }
         .validate()
         .unwrap_err();
@@ -804,7 +804,7 @@ mod tests {
             by_field: None,
             sharding_key: Some(vec![field2.name.clone()]),
             sharding_fn: None,
-            timeout: 0.0,
+            timeout: None,
         }
         .validate()
         .unwrap_err();
@@ -819,7 +819,7 @@ mod tests {
             by_field: None,
             sharding_key: Some(vec![field1.name.clone(), field1.name.clone()]),
             sharding_fn: None,
-            timeout: 0.0,
+            timeout: None,
         }
         .validate()
         .unwrap_err();
@@ -834,7 +834,7 @@ mod tests {
             by_field: Some(field2.name.clone()),
             sharding_key: None,
             sharding_fn: None,
-            timeout: 0.0,
+            timeout: None,
         }
         .validate()
         .unwrap_err();
@@ -849,7 +849,7 @@ mod tests {
             by_field: None,
             sharding_key: None,
             sharding_fn: None,
-            timeout: 0.0,
+            timeout: None,
         }
         .validate()
         .unwrap_err();
@@ -867,7 +867,7 @@ mod tests {
             by_field: Some(field2.name.clone()),
             sharding_key: Some(vec![]),
             sharding_fn: None,
-            timeout: 0.0,
+            timeout: None,
         }
         .validate()
         .unwrap_err();
@@ -885,7 +885,7 @@ mod tests {
             by_field: Some(field2.name),
             sharding_key: None,
             sharding_fn: None,
-            timeout: 0.0,
+            timeout: None,
         }
         .validate()
         .unwrap();

@@ -81,6 +81,7 @@ pub enum Error {
 }
 
 impl Error {
+    #[inline(always)]
     pub fn other<E>(error: E) -> Self
     where
         E: Into<Box<dyn std::error::Error>>,
@@ -89,20 +90,43 @@ impl Error {
     }
 
     /// Temporary solution until proc_cas returns structured errors
+    #[inline(always)]
     pub fn is_cas_err(&self) -> bool {
         self.to_string().contains("compare-and-swap")
     }
 
     /// Temporary solution until proc_cas returns structured errors
+    #[inline(always)]
     pub fn is_term_mismatch_err(&self) -> bool {
         self.to_string()
             .contains("operation request from different term")
     }
 
     /// Temporary solution until proc_cas returns structured errors
+    #[inline(always)]
     pub fn is_not_leader_err(&self) -> bool {
         self.to_string().contains("not a leader")
     }
+
+    #[inline(always)]
+    pub fn is_retriable(&self) -> bool {
+        is_retriable_error_message(&self.to_string())
+    }
+}
+
+pub fn is_retriable_error_message(msg: &str) -> bool {
+    if msg.contains("not a leader")
+        || msg.contains("log unavailable")
+        || msg.contains("operation request from different term")
+    {
+        return true;
+    }
+
+    if msg.contains("compare-and-swap") {
+        return msg.contains("Compacted") || msg.contains("ConflictFound");
+    }
+
+    return false;
 }
 
 impl<E> From<timeout::Error<E>> for Error

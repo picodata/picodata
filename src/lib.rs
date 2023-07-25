@@ -1,4 +1,5 @@
 #![allow(clippy::let_and_return)]
+#![allow(clippy::needless_return)]
 use serde::{Deserialize, Serialize};
 
 use ::raft::prelude as raft;

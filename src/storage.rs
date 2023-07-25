@@ -2494,7 +2494,7 @@ pub mod acl {
     pub fn on_master_create_user(user_def: &UserDef) -> tarantool::Result<()> {
         let sys_user = Space::from(SystemSpace::User);
 
-        // This impelemtation was copied from box.schema.user.create excluding the
+        // This implementation was copied from box.schema.user.create excluding the
         // password hashing.
         let user_id = user_def.id;
         let euid = ::tarantool::session::euid()?;
@@ -2556,7 +2556,7 @@ pub mod acl {
     pub fn on_master_create_role(role_def: &RoleDef) -> tarantool::Result<()> {
         let sys_user = Space::from(SystemSpace::User);
 
-        // This impelemtation was copied from box.schema.role.create.
+        // This implementation was copied from box.schema.role.create.
 
         // Tarantool expects auth info to be a map `{}`, and currently the simplest
         // way to achieve this is to use a HashMap.

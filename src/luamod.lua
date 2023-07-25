@@ -96,18 +96,7 @@ local function is_retriable_error(error)
         return false
     end
 
-    if error:find('operation request from different term')
-        or error:find('not a leader')
-        or error:find('log unavailable')
-    then
-        return true
-    end
-
-    if error:find('compare-and-swap') then
-        return error:find('Compacted') or error:find('ConflictFound')
-    end
-
-    return false
+    return pico._is_retriable_error_message(error)
 end
 
 -- Performs a reenterable schema change CaS request. On success returns an index
