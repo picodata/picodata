@@ -254,7 +254,6 @@ fn build_tarantool(jsc: Option<&jobserver::Client>, build_root: &Path) {
     rustc::link_lib_static("cdt");
     rustc::link_lib_static("server");
     rustc::link_lib_static("misc");
-    rustc::link_lib_dynamic("zstd");
     rustc::link_lib_static("decNumber");
     rustc::link_lib_static("eio");
     rustc::link_lib_static("box");
@@ -272,6 +271,7 @@ fn build_tarantool(jsc: Option<&jobserver::Client>, build_root: &Path) {
     rustc::link_lib_static("luajit");
     rustc::link_lib_dynamic("yaml");
     rustc::link_lib_static("xxhash");
+    rustc::link_lib_dynamic("zstd");
 
     // Add LDAP authentication support libraries.
     rustc::link_search(format!("{tarantool_build}/bundled-ldap-prefix/lib"));

@@ -39,7 +39,7 @@ BuildRequires: libcurl-devel
 BuildRequires: libicu-devel
 BuildRequires: libyaml-devel
 BuildRequires: libzstd-devel
-BuildRequires: luajit-devel
+#BuildRequires: luajit-devel
 %endif
 
 %description

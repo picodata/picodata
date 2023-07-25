@@ -10,7 +10,14 @@ RUN set -e; \
         python3-yaml \
         python3-six \
         python3-gevent \
-        python3-pip
+        python3-pip \
+        libzstd-dev \
+        libyaml-dev \
+        libcurl4-openssl-dev \
+        libssl-dev \
+        ncurses-dev \
+        libreadline-dev \
+        libicu-dev
 
 RUN set -e; \
     curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | \
