@@ -276,7 +276,7 @@ pub fn try_space_field_type_to_index_field_type(
 
 #[derive(Debug, thiserror::Error)]
 pub enum DdlError {
-    #[error("space creation failed: {0}")]
+    #[error("{0}")]
     CreateSpace(#[from] CreateSpaceError),
     #[error("ddl operation was aborted")]
     Aborted,
@@ -286,10 +286,12 @@ pub enum DdlError {
 
 #[derive(Debug, thiserror::Error)]
 pub enum CreateSpaceError {
-    #[error("space with id {0} already exists")]
-    IdExists(SpaceId),
-    #[error("space with name {0} already exists")]
-    NameExists(String),
+    #[error("space with id {id} exists with a different name '{actual_name}', but expected '{expected_name}'")]
+    ExistsWithDifferentName {
+        id: SpaceId,
+        expected_name: String,
+        actual_name: String,
+    },
     #[error("several fields have the same name: {0}")]
     DuplicateFieldName(String),
     #[error("no field with name: {0}")]
@@ -351,16 +353,45 @@ pub struct CreateSpaceParams {
 }
 
 impl CreateSpaceParams {
-    pub fn validate(self, storage: &Clusterwide) -> traft::Result<ValidCreateSpaceParams> {
-        // Check that there is no space with this name
-        if storage.spaces.by_name(&self.name)?.is_some() {
-            return Err(CreateSpaceError::NameExists(self.name).into());
-        }
-        // Check that there is no space with this id (if specified)
-        if let Some(id) = self.id {
-            if storage.spaces.get(id)?.is_some() {
-                return Err(CreateSpaceError::IdExists(id).into());
+    /// Checks if space described by options already exists. Returns an error if
+    /// the space with given id exists, but has a different name.
+    pub fn space_exists(&self) -> traft::Result<bool> {
+        // The check is performed using `box.space` API, so that local spaces are counted too.
+        let sys_space = Space::from(SystemSpace::Space);
+
+        let Some(id) = self.id else {
+            let sys_space_by_name = sys_space
+                .index_cached("name")
+                .expect("_space should have an index by name");
+            let t = sys_space_by_name
+                .get(&[&self.name])
+                .expect("reading from _space shouldn't fail");
+            return Ok(t.is_some());
+        };
+
+        let t = sys_space
+            .get(&[id])
+            .expect("reading from _space shouldn't fail");
+        let Some(t) = t else { return Ok(false); };
+
+        let existing_name: &str = t.get("name").expect("space metadata should contain a name");
+        if existing_name == self.name {
+            return Ok(true);
+        } else {
+            // TODO: check everything else is the same
+            // https://git.picodata.io/picodata/picodata/picodata/-/issues/331
+            return Err(CreateSpaceError::ExistsWithDifferentName {
+                id,
+                expected_name: self.name.clone(),
+                actual_name: existing_name.into(),
             }
+            .into());
+        }
+    }
+
+    pub fn validate(&self) -> traft::Result<()> {
+        // Check space id fits in the allowed range
+        if let Some(id) = self.id {
             if id <= SPACE_ID_INTERNAL_MAX {
                 crate::tlog!(Warning, "requested space id {id} is in the range 0..={SPACE_ID_INTERNAL_MAX} reserved for future use by picodata, you may have a conflict in a future version");
             }
@@ -429,35 +460,28 @@ impl CreateSpaceParams {
                 );
             }
         }
-        Ok(ValidCreateSpaceParams(self))
+        Ok(())
     }
-}
 
-#[derive(Debug)]
-pub struct ValidCreateSpaceParams(CreateSpaceParams);
-
-impl ValidCreateSpaceParams {
     /// Create space and then rollback.
     ///
     /// Should be used for checking if a space with these params can be created.
-    pub fn test_create_space(&mut self, storage: &Clusterwide) -> traft::Result<()> {
-        let id = self.id(storage)?;
-        let params = &self.0;
+    pub fn test_create_space(&self) -> traft::Result<()> {
+        let id = self.id.expect("space id should've been chosen by now");
         let err = transaction(|| -> Result<(), Option<tarantool::error::Error>> {
             ::tarantool::schema::space::create_space(
-                &params.name,
+                &self.name,
                 &SpaceCreateOptions {
                     if_not_exists: false,
                     engine: SpaceEngineType::Memtx,
                     id: Some(id),
-                    field_count: params.format.len() as u32,
+                    field_count: self.format.len() as u32,
                     user: None,
                     is_local: false,
                     is_temporary: false,
                     is_sync: false,
                     format: Some(
-                        params
-                            .format
+                        self.format
                             .iter()
                             .cloned()
                             .map(tarantool::space::Field::from)
@@ -480,12 +504,11 @@ impl ValidCreateSpaceParams {
         }
     }
 
-    /// Memoizes id if it is automatically selected.
-    fn id(&mut self, storage: &Clusterwide) -> traft::Result<SpaceId> {
-        let _ = storage;
+    /// Chooses an id for the new space if it's not set yet and sets `self.id`.
+    pub fn choose_id_if_not_specified(&mut self) -> traft::Result<()> {
         let sys_space = Space::from(SystemSpace::Space);
 
-        let id = if let Some(id) = self.0.id {
+        let id = if let Some(id) = self.id {
             id
         } else {
             let mut id = SPACE_ID_INTERNAL_MAX;
@@ -513,38 +536,36 @@ impl ValidCreateSpaceParams {
             }
             id + 1
         };
-        self.0.id = Some(id);
-        Ok(id)
+        self.id = Some(id);
+        Ok(())
     }
 
-    pub fn into_ddl(mut self, storage: &Clusterwide) -> traft::Result<Ddl> {
-        let id = self.id(storage)?;
-        let primary_key: Vec<_> = self.0.primary_key.into_iter().map(Part::field).collect();
+    pub fn into_ddl(self) -> traft::Result<Ddl> {
+        let id = self.id.expect("space id should've been chosen by now");
+        let primary_key: Vec<_> = self.primary_key.into_iter().map(Part::field).collect();
         let format: Vec<_> = self
-            .0
             .format
             .into_iter()
             .map(tarantool::space::Field::from)
             .collect();
-        let distribution = match self.0.distribution {
+        let distribution = match self.distribution {
             DistributionParam::Global => Distribution::Global,
             DistributionParam::Sharded => {
-                if let Some(field) = self.0.by_field {
+                if let Some(field) = self.by_field {
                     Distribution::ShardedByField { field }
                 } else {
                     Distribution::ShardedImplicitly {
                         sharding_key: self
-                            .0
                             .sharding_key
                             .expect("should be checked during `validate`"),
-                        sharding_fn: self.0.sharding_fn.unwrap_or_default(),
+                        sharding_fn: self.sharding_fn.unwrap_or_default(),
                     }
                 }
             }
         };
         let res = Ddl::CreateSpace {
             id,
-            name: self.0.name,
+            name: self.name,
             format,
             primary_key,
             distribution,
@@ -684,9 +705,8 @@ mod tests {
 
     #[::tarantool::test]
     fn test_create_space() {
-        let storage = Clusterwide::new().unwrap();
-        ValidCreateSpaceParams(CreateSpaceParams {
-            id: None,
+        CreateSpaceParams {
+            id: Some(1337),
             name: "friends_of_peppa".into(),
             format: vec![
                 Field {
@@ -706,12 +726,12 @@ mod tests {
             sharding_key: None,
             sharding_fn: None,
             timeout: 0.0,
-        })
-        .test_create_space(&storage)
+        }
+        .test_create_space()
         .unwrap();
         assert!(tarantool::space::Space::find("friends_of_peppa").is_none());
 
-        let err = ValidCreateSpaceParams(CreateSpaceParams {
+        let err = CreateSpaceParams {
             id: Some(0),
             name: "friends_of_peppa".into(),
             format: vec![],
@@ -721,8 +741,8 @@ mod tests {
             sharding_key: None,
             sharding_fn: None,
             timeout: 0.0,
-        })
-        .test_create_space(&storage)
+        }
+        .test_create_space()
         .unwrap_err();
         assert_eq!(
             err.to_string(),
@@ -732,21 +752,6 @@ mod tests {
 
     #[::tarantool::test]
     fn ddl() {
-        let storage = Clusterwide::new().unwrap();
-        let existing_space = "existing_space";
-        let existing_id = 0;
-        storage
-            .spaces
-            .insert(&SpaceDef {
-                id: existing_id,
-                name: existing_space.into(),
-                distribution: Distribution::Global,
-                format: vec![],
-                schema_version: 0,
-                operable: true,
-            })
-            .unwrap();
-
         let new_space = "new_space";
         let new_id = 1;
         let field1 = Field {
@@ -761,42 +766,6 @@ mod tests {
         };
 
         let err = CreateSpaceParams {
-            id: Some(existing_id),
-            name: new_space.into(),
-            format: vec![],
-            primary_key: vec![],
-            distribution: DistributionParam::Global,
-            by_field: None,
-            sharding_key: None,
-            sharding_fn: None,
-            timeout: 0.0,
-        }
-        .validate(&storage)
-        .unwrap_err();
-        assert_eq!(
-            err.to_string(),
-            "ddl failed: space creation failed: space with id 0 already exists"
-        );
-
-        let err = CreateSpaceParams {
-            id: Some(new_id),
-            name: existing_space.into(),
-            format: vec![],
-            primary_key: vec![],
-            distribution: DistributionParam::Global,
-            by_field: None,
-            sharding_key: None,
-            sharding_fn: None,
-            timeout: 0.0,
-        }
-        .validate(&storage)
-        .unwrap_err();
-        assert_eq!(
-            err.to_string(),
-            "ddl failed: space creation failed: space with name existing_space already exists"
-        );
-
-        let err = CreateSpaceParams {
             id: Some(new_id),
             name: new_space.into(),
             format: vec![field1.clone(), field1.clone()],
@@ -807,12 +776,9 @@ mod tests {
             sharding_fn: None,
             timeout: 0.0,
         }
-        .validate(&storage)
+        .validate()
         .unwrap_err();
-        assert_eq!(
-            err.to_string(),
-            "ddl failed: space creation failed: several fields have the same name: field1"
-        );
+        assert_eq!(err.to_string(), "several fields have the same name: field1");
 
         let err = CreateSpaceParams {
             id: Some(new_id),
@@ -825,12 +791,9 @@ mod tests {
             sharding_fn: None,
             timeout: 0.0,
         }
-        .validate(&storage)
+        .validate()
         .unwrap_err();
-        assert_eq!(
-            err.to_string(),
-            "ddl failed: space creation failed: no field with name: field2"
-        );
+        assert_eq!(err.to_string(), "no field with name: field2");
 
         let err = CreateSpaceParams {
             id: Some(new_id),
@@ -843,12 +806,9 @@ mod tests {
             sharding_fn: None,
             timeout: 0.0,
         }
-        .validate(&storage)
+        .validate()
         .unwrap_err();
-        assert_eq!(
-            err.to_string(),
-            "ddl failed: space creation failed: no field with name: field2"
-        );
+        assert_eq!(err.to_string(), "no field with name: field2");
 
         let err = CreateSpaceParams {
             id: Some(new_id),
@@ -861,12 +821,9 @@ mod tests {
             sharding_fn: None,
             timeout: 0.0,
         }
-        .validate(&storage)
+        .validate()
         .unwrap_err();
-        assert_eq!(
-            err.to_string(),
-            "ddl failed: space creation failed: several fields have the same name: field1"
-        );
+        assert_eq!(err.to_string(), "several fields have the same name: field1");
 
         let err = CreateSpaceParams {
             id: Some(new_id),
@@ -879,12 +836,9 @@ mod tests {
             sharding_fn: None,
             timeout: 0.0,
         }
-        .validate(&storage)
+        .validate()
         .unwrap_err();
-        assert_eq!(
-            err.to_string(),
-            "ddl failed: space creation failed: no field with name: field2"
-        );
+        assert_eq!(err.to_string(), "no field with name: field2");
 
         let err = CreateSpaceParams {
             id: Some(new_id),
@@ -897,11 +851,11 @@ mod tests {
             sharding_fn: None,
             timeout: 0.0,
         }
-        .validate(&storage)
+        .validate()
         .unwrap_err();
         assert_eq!(
             err.to_string(),
-            "ddl failed: space creation failed: distribution is `sharded`, but neither `by_field` nor `sharding_key` is set"
+            "distribution is `sharded`, but neither `by_field` nor `sharding_key` is set"
         );
 
         let err = CreateSpaceParams {
@@ -915,11 +869,11 @@ mod tests {
             sharding_fn: None,
             timeout: 0.0,
         }
-        .validate(&storage)
+        .validate()
         .unwrap_err();
         assert_eq!(
             err.to_string(),
-            "ddl failed: space creation failed: only one of sharding policy fields (`by_field`, `sharding_key`) should be set"
+            "only one of sharding policy fields (`by_field`, `sharding_key`) should be set"
         );
 
         CreateSpaceParams {
@@ -933,7 +887,7 @@ mod tests {
             sharding_fn: None,
             timeout: 0.0,
         }
-        .validate(&storage)
+        .validate()
         .unwrap();
     }
 }

@@ -69,7 +69,7 @@ pub fn dispatch_query(encoded_params: EncodedPatternWithParams) -> traft::Result
                                 is_nullable: f.is_nullable,
                             })
                             .collect();
-                        let params = CreateSpaceParams {
+                        let mut params = CreateSpaceParams {
                             id: None,
                             name,
                             format,
@@ -80,10 +80,14 @@ pub fn dispatch_query(encoded_params: EncodedPatternWithParams) -> traft::Result
                             sharding_fn: Some(ShardingFn::Murmur3),
                             timeout,
                         };
-                        let storage = &node::global()?.storage;
-                        let mut params = params.validate(storage)?;
-                        params.test_create_space(storage)?;
-                        params.into_ddl(storage)?
+                        params.validate()?;
+                        if params.space_exists()? {
+                            let result = ConsumerResult { row_count: 0 };
+                            return Ok(Tuple::new(&[result])?);
+                        }
+                        params.choose_id_if_not_specified()?;
+                        params.test_create_space()?;
+                        params.into_ddl()?
                     }
                     Ddl::DropTable { ref name, .. } => {
                         let space_def: SpaceDef =

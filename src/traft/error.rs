@@ -67,7 +67,7 @@ pub enum Error {
 
     #[error("compare-and-swap: {0}")]
     Cas(#[from] crate::cas::Error),
-    #[error("ddl failed: {0}")]
+    #[error("{0}")]
     Ddl(#[from] crate::schema::DdlError),
 
     #[error("sbroad: {0}")]

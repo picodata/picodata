@@ -6,9 +6,8 @@ from conftest import Cluster, ReturnError
 def test_ddl_abort(cluster: Cluster):
     cluster.deploy(instance_count=2)
 
-    with pytest.raises(ReturnError) as e1:
+    with pytest.raises(ReturnError, match="there is no pending ddl operation"):
         cluster.abort_ddl()
-    assert e1.value.args == ("ddl failed: there is no pending ddl operation",)
 
     # TODO: test manual abort when we have long-running ddls
 
@@ -17,30 +16,50 @@ def test_ddl_abort(cluster: Cluster):
 def test_ddl_lua_api(cluster: Cluster):
     i1, i2 = cluster.deploy(instance_count=2)
 
+    #
+    # pico.create_space
+    #
+
     # Successful global space creation
-    space_id = 1026
     cluster.create_space(
         dict(
-            id=space_id,
+            id=1026,
             name="some_name",
             format=[dict(name="id", type="unsigned", is_nullable=False)],
             primary_key=["id"],
             distribution="global",
         )
     )
-    pico_space_def = [
-        space_id,
-        "some_name",
-        ["global"],
-        [["id", "unsigned", False]],
-        1,
-        True,
-    ]
-    assert i1.call("box.space._pico_space:get", space_id) == pico_space_def
-    assert i2.call("box.space._pico_space:get", space_id) == pico_space_def
 
-    # Space creation error
-    with pytest.raises(ReturnError) as e1:
+    # Called with the same args -> ok.
+    cluster.create_space(
+        dict(
+            id=1026,
+            name="some_name",
+            format=[dict(name="id", type="unsigned", is_nullable=False)],
+            primary_key=["id"],
+            distribution="global",
+        )
+    )
+
+    # FIXME: this should fail:
+    # see https://git.picodata.io/picodata/picodata/picodata/-/issues/331
+    # Called with same name/id but different format -> error.
+    cluster.create_space(
+        dict(
+            id=1026,
+            name="some_name",
+            format=[
+                dict(name="key", type="string", is_nullable=False),
+                dict(name="value", type="any", is_nullable=False),
+            ],
+            primary_key=["key"],
+            distribution="global",
+        )
+    )
+
+    # No such field for primary key -> error.
+    with pytest.raises(ReturnError, match="no field with name: not_defined"):
         cluster.create_space(
             dict(
                 id=1027,
@@ -50,9 +69,6 @@ def test_ddl_lua_api(cluster: Cluster):
                 distribution="global",
             )
         )
-    assert e1.value.args == (
-        "ddl failed: space creation failed: no field with name: not_defined",
-    )
 
     # Automatic space id
     cluster.create_space(

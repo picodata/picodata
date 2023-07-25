@@ -675,7 +675,7 @@ pub(crate) fn setup(args: &args::Run) {
 
         Params:
 
-            1. op (table)
+            1. op (table | string)
             2. index (number)
             3. timeout (number)
 
@@ -689,15 +689,26 @@ pub(crate) fn setup(args: &args::Run) {
             |lua: tlua::StaticLua| -> traft::Result<(RaftIndex, RaftTerm)> {
                 use tlua::{AnyLuaString, AsLua, LuaError, LuaTable};
 
-                let t: LuaTable<_> = (&lua).read_at(1).map_err(|(_, e)| LuaError::from(e))?;
-                // We do [lua value -> msgpack -> rust -> msgpack]
-                // instead of [lua value -> rust -> msgpack]
-                // because despite what it may seem this is much simpler.
-                // (The final [-> msgpack] is when we eventually do the rpc).
-                // The transmition medium is always msgpack.
-                let mp: AnyLuaString = lua
-                    .eval_with("return require 'msgpack'.encode(...)", &t)
-                    .map_err(LuaError::from)?;
+                let mp: AnyLuaString;
+                let t: Option<LuaTable<_>> = (&lua).read_at(1).ok();
+                if let Some(t) = t {
+                    // We do [lua value -> msgpack -> rust -> msgpack]
+                    // instead of [lua value -> rust -> msgpack]
+                    // because despite what it may seem this is much simpler.
+                    // (The final [-> msgpack] is when we eventually do the rpc).
+                    // The transmition medium is always msgpack.
+                    mp = lua
+                        .eval_with("return require 'msgpack'.encode(...)", &t)
+                        .map_err(LuaError::from)?;
+                } else {
+                    let s: Option<AnyLuaString> = (&lua).read_at(1).ok();
+                    if let Some(s) = s {
+                        mp = s;
+                    } else {
+                        return Err(Error::other("op should be a table or a string"));
+                    }
+                }
+
                 let op: Op = Decode::decode(mp.as_bytes())?;
                 if !op.is_schema_change() {
                     return Err(Error::other(
@@ -1195,107 +1206,75 @@ pub(crate) fn setup(args: &args::Run) {
 
     luamod_set(
         &l,
-        "create_space",
+        "_check_create_space_opts",
         indoc! {"
-        pico.create_space(opts)
-        =======================
+        pico._check_create_space_opts(opts)
+        =================================
 
-        Creates a space.
-
-        Returns when the space is created globally and becomes operable on the
-        current instance. Returns the index of the corresponding Op::DdlCommit
-        raft entry. It's necessary for syncing with other instances.
+        Internal API, see src/luamod.rs for the details.
 
         Params:
 
             1. opts (table)
-                - name (string)
-                - format (table {table SpaceField,...}), see pico.help('table SpaceField')
-                - primary_key (table {string,...}), with field names
-                - id (optional number), default: implicitly generated
-                - distribution (string), one of 'global' | 'sharded'
-                    in case it's sharded, either `by_field` (for explicit sharding)
-                    or `sharding_key`+`sharding_fn` (for implicit sharding) options
-                    must be supplied.
-                - by_field (optional string), usually 'bucket_id'
-                - sharding_key (optional table {string,...}) with field names
-                - sharding_fn (optional string), only default 'murmur3' is supported for now
-                - timeout (number), in seconds
 
         Returns:
 
-            (number)
+            (true)
             or
             (nil, string) in case of an error
-
-        Example:
-
-            -- Creates a global space 'friends_of_peppa' with two fields:
-            -- id (unsigned) and name (string).
-            pico.create_space({
-                name = 'friends_of_peppa',
-                format = {
-                    {name = 'id', type = 'unsigned', is_nullable = false},
-                    {name = 'name', type = 'string', is_nullable = false},
-                },
-                primary_key = {'id'},
-                distribution = 'global',
-                timeout = 3,
-            })
-
-            -- Global spaces are updated with compare-and-swap, see pico.help('cas')
-            pico.cas({
-                kind = 'insert',
-                space = 'friends_of_peppa',
-                tuple = {1, 'Suzy'},
-            })
-
-            -- Global spaces are read with Tarantool `box` API for now.
-            box.space.friends_of_peppa:fselect()
-
-            -- Creates an implicitly sharded space 'wonderland' with two fields:
-            -- property (string) and value (any).
-            pico.create_space({
-                name = 'wonderland',
-                format = {
-                    {name = 'property', type = 'string', is_nullable = false},
-                    {name = 'value', type = 'integer', is_nullable = true}
-                },
-                primary_key = {'property'},
-                distribution = 'sharded',
-                sharding_key = {'property'},
-                timeout = 3,
-            })
-
-            -- Calculate an SQL-compatible hash for the bucket id.
-            local key = require('key_def').new({{fieldno = 1, type = 'string'}})
-            local tuple = box.tuple.new({'unicorns'})
-            local bucket_id = key:hash(tuple) % vshard.router.bucket_count()
-
-            -- Sharded spaces are updated via vshard api, see [1]
-            vshard.router.callrw(bucket_id, 'box.space.wonderland:insert', {{'unicorns', 12}})
-
-        See also:
-
-            [1]: https://www.tarantool.io/en/doc/latest/reference/reference_rock/vshard/vshard_router/
         "},
-        {
-            tlua::function1(|params: CreateSpaceParams| -> traft::Result<RaftIndex> {
-                let timeout = Duration::from_secs_f64(params.timeout);
+        tlua::function1(|params: CreateSpaceParams| -> traft::Result<bool> {
+            params.validate()?;
+            Ok(true)
+        }),
+    );
+    luamod_set(
+        &l,
+        "_make_create_space_op_if_needed",
+        indoc! {"
+        pico._make_create_space_op_if_needed(opts)
+        =================================
+
+        Internal API, see src/luamod.rs for the details.
+
+        Params:
+
+            1. opts (table), space create opts
+
+        Returns:
+
+            (string) raft op encoded as msgpack
+            or
+            (nil) in case no operation is needed
+            or
+            (nil, string) in case of conflict
+        "},
+        tlua::function1(
+            |mut params: CreateSpaceParams| -> traft::Result<Option<tlua::AnyLuaString>> {
                 let storage = &node::global()?.storage;
-                let mut params = params.validate(storage)?;
-                params.test_create_space(storage)?;
-                let ddl = params.into_ddl(storage)?;
+                if params.space_exists()? {
+                    return Ok(None);
+                }
+                params.choose_id_if_not_specified()?;
+                params.test_create_space()?;
+                let ddl = params.into_ddl()?;
                 let schema_version = storage.properties.next_schema_version()?;
                 let op = Op::DdlPrepare {
                     schema_version,
                     ddl,
                 };
-                let index = schema::prepare_schema_change(op, timeout)?;
-                let commit_index = schema::wait_for_ddl_commit(index, timeout)?;
-                Ok(commit_index)
-            })
-        },
+                // FIXME: this is stupid, we serialize op into msgpack just to
+                // pass it via lua into another rust callback where it will be
+                // deserialized back, just to get serialized once again for
+                // the rpc (not to mention that inside the rpc it will once
+                // again be serialized to be put into the raft log). It is
+                // however much better than converting this op to a lua value
+                // and back. Anyway this shouldn't be a perf problem because
+                // this is not a very hot function.
+                let mp = rmp_serde::to_vec_named(&op).expect("raft op shouldn't fail to serialize");
+                Ok(Some(tlua::AnyLuaString(mp)))
+            },
+        ),
     );
     luamod_set(
         &l,

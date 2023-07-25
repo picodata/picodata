@@ -47,6 +47,12 @@ function pico.help(topic)
     end
 end
 
+local function mandatory_param(value, name)
+    if value == nil then
+        box.error(box.error.ILLEGAL_PARAMS, name .. ' is mandatory')
+    end
+end
+
 -- Get next id unoccupied by a user or a role. Tarantool stores both users and
 -- roles in the same space, so they share the same set of ids.
 local function get_next_grantee_id()
@@ -906,6 +912,158 @@ function pico.revoke_privilege(grantee, privilege, object_type, object_name, opt
     end
 
     return reenterable_schema_change_request(deadline, make_op_if_needed)
+end
+
+help.create_space = [[
+pico.create_space(opts)
+=======================
+
+Creates a space.
+
+Returns when the space is created globally and becomes operable on the
+current instance. Returns the index of the corresponding Op::DdlCommit
+raft entry. It's necessary for syncing with other instances.
+Skips the request if the space already exists.
+
+NOTE: If this function returns a timeout error, the space may have been locally
+created and in the future the change can either be committed or rolled back.
+
+Params:
+
+    1. opts (table)
+        - name (string)
+        - format (table {table SpaceField,...}), see pico.help('table SpaceField')
+        - primary_key (table {string,...}), with field names
+        - id (optional number), default: implicitly generated
+        - distribution (string), one of 'global' | 'sharded'
+            in case it's sharded, either `by_field` (for explicit sharding)
+            or `sharding_key`+`sharding_fn` (for implicit sharding) options
+            must be supplied.
+        - by_field (optional string), usually 'bucket_id'
+        - sharding_key (optional table {string,...}) with field names
+        - sharding_fn (optional string), only default 'murmur3' is supported for now
+        - timeout (number), in seconds
+
+Returns:
+
+    (number)
+    or
+    (nil, string) in case of an error
+
+Example:
+
+    -- Creates a global space 'friends_of_peppa' with two fields:
+    -- id (unsigned) and name (string).
+    pico.create_space({
+        name = 'friends_of_peppa',
+        format = {
+            {name = 'id', type = 'unsigned', is_nullable = false},
+            {name = 'name', type = 'string', is_nullable = false},
+        },
+        primary_key = {'id'},
+        distribution = 'global',
+        timeout = 3,
+    })
+
+    -- Global spaces are updated with compare-and-swap, see pico.help('cas')
+    pico.cas({
+        kind = 'insert',
+        space = 'friends_of_peppa',
+        tuple = {1, 'Suzy'},
+    })
+
+    -- Global spaces are read with Tarantool `box` API for now.
+    box.space.friends_of_peppa:fselect()
+
+    -- Creates an implicitly sharded space 'wonderland' with two fields:
+    -- property (string) and value (any).
+    pico.create_space({
+        name = 'wonderland',
+        format = {
+            {name = 'property', type = 'string', is_nullable = false},
+            {name = 'value', type = 'integer', is_nullable = true}
+        },
+        primary_key = {'property'},
+        distribution = 'sharded',
+        sharding_key = {'property'},
+        timeout = 3,
+    })
+
+    -- Calculate an SQL-compatible hash for the bucket id.
+    local key = require('key_def').new({{fieldno = 1, type = 'string'}})
+    local tuple = box.tuple.new({'unicorns'})
+    local bucket_id = key:hash(tuple) % vshard.router.bucket_count()
+
+    -- Sharded spaces are updated via vshard api, see [1]
+    vshard.router.callrw(bucket_id, 'box.space.wonderland:insert', {{'unicorns', 12}})
+
+See also:
+
+    [1]: https://www.tarantool.io/en/doc/latest/reference/reference_rock/vshard/vshard_router/
+]]
+function pico.create_space(opts)
+    local ok, err = pcall(function()
+        box.internal.check_param_table(opts, {
+            name = 'string',
+            format = 'table',
+            primary_key = 'table',
+            id = 'number',
+            distribution = 'string',
+            by_field = 'string',
+            sharding_key = 'table',
+            sharding_fn = 'string',
+            timeout = 'number',
+        })
+        mandatory_param(opts, 'opts')
+        mandatory_param(opts.name, 'opts.name')
+        mandatory_param(opts.format, 'opts.format')
+        mandatory_param(opts.primary_key, 'opts.primary_key')
+        mandatory_param(opts.distribution, 'opts.distribution')
+        mandatory_param(opts.timeout, 'opts.timeout')
+
+        local ok, err = pico._check_create_space_opts(opts)
+        if not ok then
+            box.error(box.error.ILLEGAL_PARAMS, err)
+        end
+    end)
+    if not ok then
+        return nil, err
+    end
+
+    local deadline = fiber.clock() + opts.timeout
+
+    local should_wait_for_ddl_fin = true
+
+    -- XXX: we construct this closure every time the function is called,
+    -- which is bad for performance/jit. Refactor if problems are discovered.
+    local function make_op_if_needed()
+        local op, err = pico._make_create_space_op_if_needed(opts)
+        if op ~= nil then
+            return op
+        elseif err ~= nil then
+            error(err)
+        else
+            -- No op needed
+            should_wait_for_ddl_fin = false
+            return
+        end
+    end
+
+    local index, err = reenterable_schema_change_request(deadline, make_op_if_needed)
+    if index == nil then
+        return nil, err
+    end
+
+    if not should_wait_for_ddl_fin then
+        return index
+    end
+
+    local fin_index, err = pico.wait_ddl_finalize(index, { timeout = deadline - fiber.clock() })
+    if fin_index == nil then
+        return nil, err
+    end
+
+    return fin_index
 end
 
 help.drop_space = [[
