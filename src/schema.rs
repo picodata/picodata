@@ -198,6 +198,7 @@ pub struct AuthDef {
 ::tarantool::define_str_enum! {
     pub enum AuthMethod {
         ChapSha1 = "chap-sha1",
+        MD5 = "md5",
     }
 }
 

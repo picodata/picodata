@@ -217,7 +217,8 @@ function pico.create_user(user, password, opts)
 
     -- XXX: we construct this closure every time the function is called,
     -- which is bad for performance/jit. Refactor if problems are discovered.
-    local auth_data = box.internal.prepare_auth("chap-sha1", password)
+    local auth_type = box.cfg.auth_type
+    local auth_data = box.internal.prepare_auth(auth_type, password, user)
     local function make_op_if_needed()
         local grantee_def = box.space._user.index.name:get(user)
         if grantee_def ~= nil then
@@ -239,7 +240,7 @@ function pico.create_user(user, password, opts)
                 name = user,
                 schema_version = next_schema_version(),
                 auth = {
-                    method = "chap-sha1",
+                    method = auth_type,
                     data = auth_data,
                 }
             }
@@ -296,7 +297,8 @@ function pico.change_password(user, password, opts)
 
     -- XXX: we construct this closure every time the function is called,
     -- which is bad for performance/jit. Refactor if problems are discovered.
-    local auth_data = box.internal.prepare_auth("chap-sha1", password)
+    local auth_type = box.cfg.auth_type
+    local auth_data = box.internal.prepare_auth(auth_type, password, user)
     local function make_op_if_needed()
         -- TODO: allow `user` to be a user id instead of name
         local user_def = box.space._pico_user.index.name:get(user)
@@ -304,7 +306,7 @@ function pico.change_password(user, password, opts)
             box.error(box.error.NO_SUCH_USER, user)
         end
 
-        if table.equals(user_def.auth, { ["chap-sha1"] = auth_data }) then
+        if table.equals(user_def.auth, { [auth_type] = auth_data }) then
             -- Password is already the one given, no op needed
             return nil
         end
@@ -315,7 +317,7 @@ function pico.change_password(user, password, opts)
             user_id = user_def.id,
             schema_version = next_schema_version(),
             auth = {
-                method = "chap-sha1",
+                method = auth_type,
                 data = auth_data,
             }
         }
