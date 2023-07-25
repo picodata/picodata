@@ -100,15 +100,11 @@ def test_ddl_lua_api(cluster: Cluster):
     # pico.drop_space
     #
 
-    # No such space name -> error.
-    with pytest.raises(
-        ReturnError, match="Space 'Space does not exist' does not exist"
-    ):
-        cluster.drop_space("Space does not exist")
+    # No such space name -> ok.
+    cluster.drop_space("Space does not exist")
 
-    # No such space id -> error.
-    with pytest.raises(ReturnError, match="Space '69105' does not exist"):
-        cluster.drop_space(69105)
+    # No such space id -> ok.
+    cluster.drop_space(69105)
 
     # Ok by name.
     cluster.drop_space("some_name")

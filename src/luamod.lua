@@ -104,7 +104,8 @@ local function is_retriable_error(error)
     return false
 end
 
--- Performs a reenterable schema change CaS request.
+-- Performs a reenterable schema change CaS request. On success returns an index
+-- of the proposed raft entry.
 --
 -- Params:
 --
@@ -118,6 +119,12 @@ end
 --          should proceed. May throw an error if conflict is detected.
 --          It is called after raft_read_index and after any pending schema
 --          change has been finalized.
+--
+-- Returns:
+--
+--      (number) raft index
+--      or
+--      (nil, error) in case of an error
 --
 local function reenterable_schema_change_request(deadline, make_op_if_needed)
     while true do
@@ -909,6 +916,10 @@ Drops a space on each instance of the cluster.
 
 Waits for the space to be dropped globally or returns an error if the timeout is
 reached before that.
+Skips the request if the space doesn't exist.
+
+NOTE: If this function returns a timeout error, the space may have been locally
+dropped and in the future the change can either be committed or rolled back.
 
 Params:
 
@@ -938,42 +949,49 @@ function pico.drop_space(space, opts)
         return nil, err
     end
 
-    local space_id
-    if type(space) == 'string' then
-        local space_def = box.space._pico_space.index.name:get(space)
+    local deadline = fiber.clock() + opts.timeout
+
+    local should_wait_for_ddl_fin = true
+
+    -- XXX: we construct this closure every time the function is called,
+    -- which is bad for performance/jit. Refactor if problems are discovered.
+    local function make_op_if_needed()
+        local space_def = nil
+        if type(space) == 'string' then
+            space_def = box.space._pico_space.index.name:get(space)
+        elseif type(space) == 'number' then
+            space_def = box.space._pico_space:get(space)
+        end
         if space_def == nil then
-            return nil, box.error.new(box.error.NO_SUCH_SPACE, space)
+            -- Space doesn't exist yet, no op needed
+            should_wait_for_ddl_fin = false
+            return nil
         end
-        space_id = space_def.id
-    elseif type(space) == 'number' then
-        space_id = space
-        if box.space._pico_space:get(space_id) == nil then
-            return nil, box.error.new(box.error.NO_SUCH_SPACE, space)
-        end
-    end
 
-    local op = {
-        kind = 'ddl_prepare',
-        schema_version = next_schema_version(),
-        ddl = {
-            kind = 'drop_space',
-            id = space_id,
+        return {
+            kind = 'ddl_prepare',
+            schema_version = next_schema_version(),
+            ddl = {
+                kind = 'drop_space',
+                id = space_def.id,
+            }
         }
-    }
-
-    local timeout = opts.timeout
-    local ok, err = pico._prepare_schema_change(op, timeout)
-    if not ok then
-        return nil, err
     end
-    local index = ok
 
-    local ok, err = pico.wait_ddl_finalize(index, { timeout = timeout })
-    if not ok then
+    local index, err = reenterable_schema_change_request(deadline, make_op_if_needed)
+    if index == nil then
         return nil, err
     end
 
-    local fin_index = ok
+    if not should_wait_for_ddl_fin then
+        return index
+    end
+
+    local fin_index, err = pico.wait_ddl_finalize(index, { timeout = deadline - fiber.clock() })
+    if fin_index == nil then
+        return nil, err
+    end
+
     return fin_index
 end
 
