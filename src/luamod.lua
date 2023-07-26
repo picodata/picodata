@@ -184,8 +184,11 @@ Waits for opts.timeout seconds for the entry to be applied locally.
 On success returns a raft index at which the user should exist.
 Skips the request if the user already exists.
 
-NOTE: If this function returns a timeout error, the user may have been locally
-created and in the future it's creation can either be committed or rolled back.
+NOTE: If this function returns a timeout error the request is NOT cancelled and
+the change may still be applied some time later. For this reason it is always
+safe to call the same function with the same arguments again. And if the change
+is finalized in between calls, the subsequent calls return the corresponding
+result.
 
 Params:
 
@@ -267,8 +270,11 @@ Waits for opts.timeout seconds for the entry to be applied locally.
 On success returns an index of the corresponding raft entry.
 Skips the request if the password matches the current one.
 
-NOTE: If this function returns a timeout error, the change may have been locally
-applied and in the future it can either be committed or rolled back.
+NOTE: If this function returns a timeout error the request is NOT cancelled and
+the change may still be applied some time later. For this reason it is always
+safe to call the same function with the same arguments again. And if the change
+is finalized in between calls, the subsequent calls return the corresponding
+result.
 
 Params:
 
@@ -347,8 +353,11 @@ Waits for opts.timeout seconds for the entry to be applied locally.
 On success returns a raft index at which the user should no longer exist.
 Skips the request if the user doesn't exist.
 
-NOTE: If this function returns a timeout error, the user may have been locally
-dropped and in the future the change can either be committed or rolled back.
+NOTE: If this function returns a timeout error the request is NOT cancelled and
+the change may still be applied some time later. For this reason it is always
+safe to call the same function with the same arguments again. And if the change
+is finalized in between calls, the subsequent calls return the corresponding
+result.
 
 Params:
 
@@ -409,8 +418,11 @@ Waits for opts.timeout seconds for the entry to be applied locally.
 On success returns an index of the corresponding raft entry.
 Skips the request if the role already exists.
 
-NOTE: If this function returns a timeout error, the role may have been locally
-created and in the future it's creation can either be committed or rolled back.
+NOTE: If this function returns a timeout error the request is NOT cancelled and
+the change may still be applied some time later. For this reason it is always
+safe to call the same function with the same arguments again. And if the change
+is finalized in between calls, the subsequent calls return the corresponding
+result.
 
 Params:
 
@@ -477,8 +489,11 @@ Waits for opts.timeout seconds for the entry to be applied locally.
 On success returns a raft index at which the role should no longer exist.
 Skips the request if the role doesn't exist.
 
-NOTE: If this function returns a timeout error, the role may have been locally
-dropped and in the future the change can either be committed or rolled back.
+NOTE: If this function returns a timeout error the request is NOT cancelled and
+the change may still be applied some time later. For this reason it is always
+safe to call the same function with the same arguments again. And if the change
+is finalized in between calls, the subsequent calls return the corresponding
+result.
 
 Params:
 
@@ -701,8 +716,11 @@ Waits for opts.timeout seconds for the entry to be applied locally.
 On success returns an index of the corresponding raft entry.
 Skips the request if the privilege is already granted.
 
-NOTE: If this function returns a timeout error, the change may have been locally
-applied and in the future it can either be committed or rolled back.
+NOTE: If this function returns a timeout error the request is NOT cancelled and
+the change may still be applied some time later. For this reason it is always
+safe to call the same function with the same arguments again. And if the change
+is finalized in between calls, the subsequent calls return the corresponding
+result.
 
 Params:
 
@@ -819,8 +837,11 @@ Waits for opts.timeout seconds for the entry to be applied locally.
 On success returns an index of the corresponding raft entry.
 Skips the request if the privilege is not yet granted.
 
-NOTE: If this function returns a timeout error, the change may have been locally
-applied and in the future it can either be committed or rolled back.
+NOTE: If this function returns a timeout error the request is NOT cancelled and
+the change may still be applied some time later. For this reason it is always
+safe to call the same function with the same arguments again. And if the change
+is finalized in between calls, the subsequent calls return the corresponding
+result.
 
 Params:
 
@@ -914,8 +935,14 @@ current instance. Returns the index of the corresponding Op::DdlCommit
 raft entry. It's necessary for syncing with other instances.
 Skips the request if the space already exists.
 
-NOTE: If this function returns a timeout error, the space may have been locally
-created and in the future the change can either be committed or rolled back.
+NOTE: This operation requires updating state on multiple instances of the cluster
+and it will wait until a response is received from each one of them. If the timeout
+option is small enough it may happen that timeout is reached while only a part
+of instances have replied successfully. In this case a timeout error is returned
+to the user, but the requested change may still finalize some time later.
+For this reason it is always safe to retry calling the same function with the
+same arguments in case of a timeout error. If the change is finalized at some
+point the corresponding result is returned on each subsequent call.
 
 Params:
 
@@ -1065,8 +1092,14 @@ Waits for the space to be dropped globally or returns an error if the timeout is
 reached before that.
 Skips the request if the space doesn't exist.
 
-NOTE: If this function returns a timeout error, the space may have been locally
-dropped and in the future the change can either be committed or rolled back.
+NOTE: This operation requires updating state on multiple instances of the cluster
+and it will wait until a response is received from each one of them. If the timeout
+option is small enough it may happen that timeout is reached while only a part
+of instances have replied successfully. In this case a timeout error is returned
+to the user, but the requested change may still finalize some time later.
+For this reason it is always safe to retry calling the same function with the
+same arguments in case of a timeout error. If the change is finalized at some
+point the corresponding result is returned on each subsequent call.
 
 Params:
 
