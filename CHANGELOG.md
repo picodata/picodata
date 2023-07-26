@@ -42,7 +42,7 @@ with the `YY.0M.MICRO` scheme.
 ### Lua API:
 
 
-- Update `pico.LUA_API_VERSION`: `1.0.0` -> `2.0.0`
+- Update `pico.LUA_API_VERSION`: `1.0.0` -> `2.1.0`
 - New semantics of `pico.create_space()`. It's idempotent now.
 - Add `pico.drop_space()`
 - Add `pico.create_user()`, `pico.drop_user()`
@@ -51,7 +51,8 @@ with the `YY.0M.MICRO` scheme.
 - Add `pico.raft_term()`
 - Add `pico.change_password()`
 - Add `pico.wait_ddl_finalize()`
-- Changed `pico.raft_log()` options.
+- Change `pico.raft_log()` arguments
+- Make `opts.timeout` optional in most functions
 
 ## [23.06.0] - 2023-06-16
 

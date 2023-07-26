@@ -11,6 +11,7 @@ use crate::traft::op::{self, Op};
 use crate::traft::{self, node, RaftIndex, RaftTerm};
 use crate::util::duration_from_secs_f64_clamped;
 use crate::util::str_eq;
+use crate::util::INFINITY;
 use crate::{args, rpc, sync, tlog};
 use ::tarantool::fiber;
 use ::tarantool::tlua;
@@ -87,10 +88,10 @@ pub(crate) fn setup(args: &args::Run) {
 
             picodata> pico.LUA_API_VERSION
             ---
-            - 2.0.0
+            - 2.1.0
             ...
         "},
-        "2.0.0",
+        "2.1.0",
     );
 
     luamod_set(
@@ -286,7 +287,7 @@ pub(crate) fn setup(args: &args::Run) {
 
         Params:
 
-            1. timeout (number), in seconds
+            1. n_times (number)
 
         Returns:
 
@@ -1273,7 +1274,7 @@ pub(crate) fn setup(args: &args::Run) {
         &l,
         "abort_ddl",
         indoc! {"
-        pico.abort_ddl(timeout)
+        pico.abort_ddl([timeout])
         =======================
 
         Aborts a pending schema change.
@@ -1283,7 +1284,7 @@ pub(crate) fn setup(args: &args::Run) {
 
         Params:
 
-            1. timeout (number), in seconds
+            1. timeout (optional number), in seconds, default: infinity
 
         Returns:
 
@@ -1292,8 +1293,13 @@ pub(crate) fn setup(args: &args::Run) {
             (nil, string) in case of an error
         "},
         {
-            tlua::function1(|timeout: f64| -> traft::Result<RaftIndex> {
-                schema::abort_ddl(duration_from_secs_f64_clamped(timeout))
+            tlua::function1(|timeout: Option<f64>| -> traft::Result<RaftIndex> {
+                let timeout = if let Some(timeout) = timeout {
+                    duration_from_secs_f64_clamped(timeout)
+                } else {
+                    INFINITY
+                };
+                schema::abort_ddl(timeout)
             })
         },
     );
@@ -1301,7 +1307,7 @@ pub(crate) fn setup(args: &args::Run) {
         &l,
         "wait_ddl_finalize",
         indoc! {"
-        pico.wait_ddl_finalize(index, opts)
+        pico.wait_ddl_finalize(index, [opts])
         =======================
 
         Waits for the ddl operation at given raft index to be finalized.
@@ -1311,8 +1317,8 @@ pub(crate) fn setup(args: &args::Run) {
         Params:
 
             1. index (number), raft index
-            1. opts (table)
-                - timeout (number), in seconds, default: 3 seconds
+            2. opts (optional table)
+                - timeout (optional number), in seconds, default: infinity
 
         Returns:
 
@@ -1327,13 +1333,12 @@ pub(crate) fn setup(args: &args::Run) {
             }
             tlua::Function::new(
                 |index: RaftIndex, opts: Option<Opts>| -> traft::Result<RaftIndex> {
-                    let mut timeout = 3.0;
+                    let mut timeout = INFINITY;
                     if let Some(opts) = opts {
                         if let Some(t) = opts.timeout {
-                            timeout = t;
+                            timeout = duration_from_secs_f64_clamped(t);
                         }
                     }
-                    let timeout = duration_from_secs_f64_clamped(timeout);
                     let commit_index = schema::wait_for_ddl_commit(index, timeout)?;
                     Ok(commit_index)
                 },

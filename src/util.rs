@@ -12,12 +12,19 @@ pub use Either::{Left, Right};
 pub const INFINITY: Duration = Duration::from_secs(30 * 365 * 24 * 60 * 60);
 
 /// Converts `secs` to `Duration`. If `secs` is negative, it's clamped to zero.
+/// If `secs` overflows the `Duration` it's clamped to [`INFINITY`].
+///
+/// Panics if `secs` is NaN.
 #[inline(always)]
 pub fn duration_from_secs_f64_clamped(secs: f64) -> Duration {
-    if secs > 0.0 {
-        Duration::from_secs_f64(secs)
-    } else {
+    if secs <= 0.0 {
         Duration::ZERO
+    } else if secs.is_nan() {
+        panic!("attempt to construct a Duration from NaN of seconds");
+    } else if let Ok(d) = Duration::try_from_secs_f64(secs) {
+        d
+    } else {
+        INFINITY
     }
 }
 

@@ -47,6 +47,8 @@ function pico.help(topic)
     end
 end
 
+local TIMEOUT_INFINITY = 100 * 365 * 24 * 60 * 60
+
 local function mandatory_param(value, name)
     if value == nil then
         box.error(box.error.ILLEGAL_PARAMS, name .. ' is mandatory')
@@ -194,9 +196,10 @@ Params:
 
     1. user (string), username
     2. password (string)
-    3. opts (table)
-        - timeout (number), seconds
-        - auth_type (string)
+    3. opts (optional table)
+        - auth_type (optional string), authentication method name,
+            defaults to box.cfg.auth_type value
+        - timeout (optional number), in seconds, default: infinity
 
 Returns:
 
@@ -215,7 +218,7 @@ function pico.create_user(user, password, opts)
         })
         opts = opts or {}
         if not opts.timeout then
-            box.error(box.error.ILLEGAL_PARAMS, 'opts.timeout is mandatory')
+            opts.timeout = TIMEOUT_INFINITY
         end
     end)
     if not ok then
@@ -280,9 +283,10 @@ Params:
 
     1. user (string), username
     2. password (string)
-    3. opts (table)
-        - timeout (number), seconds
-        - auth_type (string)
+    3. opts (optional table)
+        - auth_type (optional string), authentication method name,
+            defaults to box.cfg.auth_type value
+        - timeout (optional number), in seconds, default: infinity
 
 Returns:
 
@@ -300,7 +304,7 @@ function pico.change_password(user, password, opts)
         })
         opts = opts or {}
         if not opts.timeout then
-            box.error(box.error.ILLEGAL_PARAMS, 'opts.timeout is mandatory')
+            opts.timeout = TIMEOUT_INFINITY
         end
     end)
     if not ok then
@@ -362,8 +366,8 @@ result.
 Params:
 
     1. user (string), username
-    2. opts (table)
-        - timeout (number), seconds
+    2. opts (optional table)
+        - timeout (optional number), in seconds, default: infinity
 
 Returns:
 
@@ -377,7 +381,7 @@ function pico.drop_user(user, opts)
         box.internal.check_param_table(opts, { timeout = 'number' })
         opts = opts or {}
         if not opts.timeout then
-            box.error(box.error.ILLEGAL_PARAMS, 'opts.timeout is mandatory')
+            opts.timeout = TIMEOUT_INFINITY
         end
     end)
     if not ok then
@@ -427,8 +431,8 @@ result.
 Params:
 
     1. name (string), role name
-    2. opts (table)
-        - timeout (number), seconds
+    2. opts (optional table)
+        - timeout (optional number), in seconds, default: infinity
 
 Returns:
 
@@ -442,7 +446,7 @@ function pico.create_role(role, opts)
         box.internal.check_param_table(opts, { timeout = 'number' })
         opts = opts or {}
         if not opts.timeout then
-            box.error(box.error.ILLEGAL_PARAMS, 'opts.timeout is mandatory')
+            opts.timeout = TIMEOUT_INFINITY
         end
     end)
     if not ok then
@@ -498,8 +502,8 @@ result.
 Params:
 
     1. role (string), role name
-    2. opts (table)
-        - timeout (number), seconds
+    2. opts (optional table)
+        - timeout (optional number), in seconds, default: infinity
 
 Returns:
 
@@ -513,7 +517,7 @@ function pico.drop_role(role, opts)
         box.internal.check_param_table(opts, { timeout = 'number' })
         opts = opts or {}
         if not opts.timeout then
-            box.error(box.error.ILLEGAL_PARAMS, 'opts.timeout is mandatory')
+            opts.timeout = TIMEOUT_INFINITY
         end
     end)
     if not ok then
@@ -736,8 +740,8 @@ Params:
     4. object_name (optional string), can be omitted when privilege concerns an
         entire class of entities, see examples below.
 
-    5. opts (table)
-        - timeout (number), seconds
+    5. opts (optional table)
+        - timeout (optional number), in seconds, default: infinity
 
 Returns:
 
@@ -777,7 +781,7 @@ function pico.grant_privilege(grantee, privilege, object_type, object_name, opts
         box.internal.check_param_table(opts, { timeout = 'number' })
         opts = opts or {}
         if not opts.timeout then
-            box.error(box.error.ILLEGAL_PARAMS, 'opts.timeout is mandatory')
+            opts.timeout = TIMEOUT_INFINITY
         end
 
         privilege_check(privilege, object_type, 'grant_privilege')
@@ -857,8 +861,8 @@ Params:
     4. object_name (optional string), can be omitted when privilege concerns an
         entire class of entities, see pico.help("pico.grant_privilege") for details.
 
-    5. opts (table)
-        - timeout (number), seconds
+    5. opts (optional table)
+        - timeout (optional number), in seconds, default: infinity
 
 Returns:
 
@@ -876,7 +880,7 @@ function pico.revoke_privilege(grantee, privilege, object_type, object_name, opt
         box.internal.check_param_table(opts, { timeout = 'number' })
         opts = opts or {}
         if not opts.timeout then
-            box.error(box.error.ILLEGAL_PARAMS, 'opts.timeout is mandatory')
+            opts.timeout = TIMEOUT_INFINITY
         end
 
         privilege_check(privilege, object_type, 'revoke_privilege')
@@ -958,7 +962,7 @@ Params:
         - by_field (optional string), usually 'bucket_id'
         - sharding_key (optional table {string,...}) with field names
         - sharding_fn (optional string), only default 'murmur3' is supported for now
-        - timeout (number), in seconds
+        - timeout (optional number), in seconds, default: infinity
 
 Returns:
 
@@ -1035,7 +1039,9 @@ function pico.create_space(opts)
         mandatory_param(opts.format, 'opts.format')
         mandatory_param(opts.primary_key, 'opts.primary_key')
         mandatory_param(opts.distribution, 'opts.distribution')
-        mandatory_param(opts.timeout, 'opts.timeout')
+        if not opts.timeout then
+            opts.timeout = TIMEOUT_INFINITY
+        end
 
         local ok, err = pico._check_create_space_opts(opts)
         if not ok then
@@ -1105,8 +1111,8 @@ Params:
 
     1. space (number | string), clusterwide space id or name
 
-    2. opts (table)
-        - timeout (number), seconds
+    2. opts (optional table)
+        - timeout (optional number), in seconds, default: infinity
 
 Returns:
 
@@ -1122,7 +1128,7 @@ function pico.drop_space(space, opts)
         box.internal.check_param_table(opts, { timeout = 'number' })
         opts = opts or {}
         if not opts.timeout then
-            box.error(box.error.ILLEGAL_PARAMS, 'opts.timeout is mandatory')
+            opts.timeout = TIMEOUT_INFINITY
         end
     end)
     if not ok then
