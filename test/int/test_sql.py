@@ -185,3 +185,99 @@ def test_drop_table(cluster: Cluster):
     """
     )
     assert ddl["row_count"] == 1
+
+
+def test_insert_on_conflict(cluster: Cluster):
+    cluster.deploy(instance_count=2)
+    i1, _ = cluster.instances
+
+    ddl = i1.sql(
+        """
+        create table "t" ("a" integer not null, "b" int not null, primary key ("a"))
+        using memtx
+        distributed by ("b")
+        option (timeout = 3)
+    """
+    )
+    assert ddl["row_count"] == 1
+
+    dml = i1.sql(
+        """
+        insert into "t" values (1, 1)
+    """
+    )
+    assert dml["row_count"] == 1
+
+    dml = i1.sql(
+        """
+        insert into "t" values (1, 1) on conflict do nothing
+    """
+    )
+    assert dml["row_count"] == 0
+
+    data = i1.sql(
+        """select * from "t"
+    """
+    )
+    assert data["rows"] == [[1, 1]]
+
+    dml = i1.sql(
+        """
+        insert into "t" values (1, 2) on conflict do replace
+    """
+    )
+    assert dml["row_count"] == 1
+
+    data = i1.sql(
+        """select * from "t"
+    """
+    )
+    assert data["rows"] == [[1, 2]]
+
+
+def test_sql_limits(cluster: Cluster):
+    cluster.deploy(instance_count=2)
+    i1, _ = cluster.instances
+
+    ddl = i1.sql(
+        """
+        create table "t" ("a" integer not null, "b" int not null, primary key ("a"))
+        using memtx
+        distributed by ("b")
+        option (timeout = 3)
+    """
+    )
+    assert ddl["row_count"] == 1
+
+    dml = i1.sql(
+        """
+    insert into "t" values (1, 1), (2, 1)
+    """
+    )
+    assert dml["row_count"] == 2
+
+    with pytest.raises(
+        ReturnError, match="Reached a limit on max executed vdbe opcodes. Limit: 5"
+    ):
+        i1.sql(
+            """
+        select * from "t" where "a" = 1 option(sql_vdbe_max_steps=5)
+    """
+        )
+
+    dql = i1.sql(
+        """
+        select * from "t" where "a" = 1 option(sql_vdbe_max_steps=50)
+    """
+    )
+    assert dql["rows"] == [[1, 1]]
+
+    with pytest.raises(
+        ReturnError,
+        match=r"Exceeded maximum number of rows \(1\) in virtual table: 2",
+    ):
+        i1.sql(
+            """
+        select * from "t" option(vtable_max_rows=1, sql_vdbe_max_steps=50)
+    """
+        )

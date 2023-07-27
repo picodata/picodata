@@ -37,7 +37,7 @@ use sbroad::executor::engine::helpers::{
 };
 use sbroad::executor::engine::Metadata;
 use sbroad::ir::function::Function;
-use sbroad::ir::relation::{Column, ColumnRole, Table, Type};
+use sbroad::ir::relation::{space_pk_columns, Column, ColumnRole, Table, Type};
 
 use std::borrow::Cow;
 
@@ -184,6 +184,7 @@ impl Vshard for RouterRuntime {
         optional: Binary,
         query_type: QueryType,
         conn_type: ConnectionType,
+        vtable_max_rows: u64,
     ) -> Result<Box<dyn Any>, SbroadError> {
         exec_ir_on_all_buckets(
             &*self.metadata()?,
@@ -191,6 +192,7 @@ impl Vshard for RouterRuntime {
             optional,
             query_type,
             conn_type,
+            vtable_max_rows,
         )
     }
 
@@ -222,6 +224,7 @@ impl Vshard for &RouterRuntime {
         optional: Binary,
         query_type: QueryType,
         conn_type: ConnectionType,
+        vtable_max_rows: u64,
     ) -> Result<Box<dyn Any>, SbroadError> {
         exec_ir_on_all_buckets(
             &*self.metadata()?,
@@ -229,6 +232,7 @@ impl Vshard for &RouterRuntime {
             optional,
             query_type,
             conn_type,
+            vtable_max_rows,
         )
     }
 
@@ -377,7 +381,7 @@ impl Metadata for RouterMetadata {
                 format!("serde error: {e}"),
             )
         })?;
-        let keys: Vec<_> = match &space_def.distribution {
+        let shard_key_cols: Vec<_> = match &space_def.distribution {
             Distribution::Global => {
                 return Err(SbroadError::Invalid(
                     Entity::Distribution,
@@ -406,11 +410,17 @@ impl Metadata for RouterMetadata {
                 ));
             }
         };
-        let sharding_keys: &[&str] = &keys.iter().map(String::as_str).collect::<Vec<_>>();
+        let sharding_key_arg: &[&str] = &shard_key_cols
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>();
+        let pk_cols = space_pk_columns(&name, &columns)?;
+        let pk_arg = &pk_cols.iter().map(String::as_str).collect::<Vec<_>>();
         Table::new_seg(
             &normalize_name_from_sql(table_name),
             columns,
-            sharding_keys,
+            sharding_key_arg,
+            pk_arg,
             engine.into(),
         )
     }

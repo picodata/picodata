@@ -31,10 +31,10 @@ pub const DEFAULT_BUCKET_COUNT: u64 = 3000;
 /// Dispatches a query to the cluster.
 #[proc(packed_args)]
 pub fn dispatch_query(encoded_params: EncodedPatternWithParams) -> traft::Result<Tuple> {
-    let mut params = PatternWithParams::from(encoded_params);
+    let mut params = PatternWithParams::try_from(encoded_params).map_err(Error::from)?;
     let id = params.clone_id();
     let ctx = params.extract_context();
-    let tracer = params.get_tracer();
+    let tracer = params.tracer;
 
     query_span::<Result<Tuple, Error>, _>(
         "\"api.router\"",

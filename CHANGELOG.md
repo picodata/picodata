@@ -30,6 +30,15 @@ with the `YY.0M.MICRO` scheme.
 - _Clusterwide SQL_ introduces the capability to delete sharded tables.
   To obtain more details, please consult `pico.help('sql')`.
 
+- _Clusterwide SQL_ now supports simple `on conflict` clause in insert
+  to specify behaviour when duplicate error arises. Supported behaviour:
+  replace the conflicting tuple (`do replace`), skip the tuple which causes
+  error (`do nothing`), return error back to user (`do fail`).
+
+- _Clusterwide SQL_ now supports two execution limits per query: 
+  max number of rows in virtual table and max number of VDBE opcodes
+  for local query execution.
+
 ### Lua API:
 
 - Update `pico.LUA_API_VERSION`: `1.0.0` -> `1.3.0`

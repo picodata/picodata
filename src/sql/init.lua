@@ -5,7 +5,8 @@ local helper = require('sbroad.helper')
 local function trace(query, params, context, id)
     local has_err, parser_res = pcall(
         function()
-            return box.func[".dispatch_query"]:call({ query, params, context, id, true })
+            return box.func[".dispatch_query"]:call({
+                query, params, context, id, helper.constants.STAT_TRACER })
         end
     )
 
@@ -31,7 +32,9 @@ local function sql(...)
 
     local has_err, parser_res = pcall(
         function()
-            return box.func[".dispatch_query"]:call({ query, params, box.NULL, box.NULL, false })
+            return box.func[".dispatch_query"]:call({
+                query, params, box.NULL, box.NULL,
+                helper.constants.GLOBAL_TRACER })
         end
     )
 
