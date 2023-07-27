@@ -105,18 +105,34 @@ impl<'a> From<&'a str> for NumOrStr {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(untagged)]
 pub enum Value<'a> {
     Num(u32),
+    Double(f64),
     Str(Cow<'a, str>),
     Bool(bool),
 }
+
+impl std::hash::Hash for Value<'_> {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        match self {
+            Self::Num(v) => v.hash(state),
+            Self::Double(v) => v.to_bits().hash(state),
+            Self::Str(v) => v.hash(state),
+            Self::Bool(v) => v.hash(state),
+        }
+    }
+}
+
+impl Eq for Value<'_> {}
 
 #[rustfmt::skip]
 impl From<bool> for Value<'_> { fn from(v: bool) -> Self { Self::Bool(v) } }
 #[rustfmt::skip]
 impl From<u32> for Value<'_> { fn from(v: u32) -> Self { Self::Num(v) } }
+#[rustfmt::skip]
+impl From<f64> for Value<'_> { fn from(v: f64) -> Self { Self::Double(v) } }
 #[rustfmt::skip]
 impl From<String> for Value<'_> { fn from(v: String) -> Self { Self::Str(v.into()) } }
 #[rustfmt::skip]
