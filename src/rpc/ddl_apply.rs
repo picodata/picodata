@@ -12,6 +12,18 @@ use tarantool::error::{TarantoolError, TarantoolErrorCode};
 use tarantool::ffi::tarantool as ffi;
 
 crate::define_rpc_request! {
+    /// Forces the target instance to actually apply the pending schema change locally.
+    ///
+    /// Should be called by a governor on every replicaset master in the cluster
+    /// at the corresponding stage of the schema change algorithm.
+    ///
+    /// Returns errors in the following cases:
+    /// 1. Raft node on a receiving peer is not yet initialized
+    /// 2. Storage failure
+    /// 3. Timeout while waiting for an index from the request
+    /// 4. Request has an incorrect term - leader changed
+    /// 5. The procedure was called on a read_only instance
+    /// 6. Failed to apply the schema change
     fn proc_apply_schema_change(req: Request) -> Result<Response> {
         let node = node::global()?;
         node.wait_index(req.applied, req.timeout)?;

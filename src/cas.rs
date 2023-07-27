@@ -102,7 +102,7 @@ pub async fn compare_and_swap_async(
 /// appends the `op` to the raft log and returns its index and term.
 ///
 /// # Errors
-/// See [`rpc::cas::Error`] for CaS-specific errors.
+/// See [`Error`] for CaS-specific errors.
 /// It can also return general picodata errors in cases of faulty network or storage.
 pub fn compare_and_swap(
     op: Op,
@@ -264,6 +264,20 @@ fn proc_cas_local(req: Request) -> Result<Response> {
 }
 
 crate::define_rpc_request! {
+    /// Performs a clusterwide compare and swap operation.
+    /// Should be called only on the raft leader.
+    ///
+    /// The leader checks the predicate and if no conflicting
+    /// entries were found appends the `op` to the raft log and returns its
+    /// index and term.
+    ///
+    /// Returns errors in the following cases:
+    /// 1. Raft node on a receiving instance is not yet initialized
+    /// 2. Storage failure
+    /// 3. Cluster id mismatch
+    /// 4. Request has an incorrect term - leader changed
+    /// 5. Receiveing instance is not a raft-leader
+    /// 6. [Compare and swap error](Error)
     // TODO Result<Either<Response, Error>>
     fn proc_cas(req: Request) -> Result<Response> {
         proc_cas_local(req)

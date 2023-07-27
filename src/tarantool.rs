@@ -73,6 +73,8 @@ mod tests {
     }
 }
 
+/// Tarantool configuration.
+/// See <https://www.tarantool.io/en/doc/latest/reference/configuration/#configuration-parameters>
 #[derive(Clone, Debug, tlua::Push, tlua::LuaRead, PartialEq, Eq)]
 pub struct Cfg {
     pub listen: Option<String>,

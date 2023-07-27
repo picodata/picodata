@@ -10,6 +10,18 @@ use crate::traft::{error::Error, node};
 const TIMEOUT: Duration = Duration::from_secs(10);
 
 crate::define_rpc_request! {
+    /// Submits a request to update the specified instance. If successful
+    /// the updated information about the instance will be replicated
+    /// on all of the cluster instances through Raft.
+    ///
+    /// Can be called on any instance that has already joined the cluster.
+    ///
+    /// Returns errors in the following cases:
+    /// 1. Raft node on a receiving instance is not yet initialized
+    /// 2. Storage failure
+    /// 3. Incorrect request (e.g. instance expelled or an error in validation of failure domains)
+    /// 4. Compare and swap request to commit updated instance failed
+    /// with an error that cannot be retried.
     fn proc_update_instance(req: Request) -> Result<Response> {
         let node = node::global()?;
         let cluster_id = node.raft_storage.cluster_id()?;

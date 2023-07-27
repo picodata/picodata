@@ -9,6 +9,18 @@ use crate::traft::{error::Error, node};
 const TIMEOUT: Duration = Duration::from_secs(10);
 
 crate::define_rpc_request! {
+    /// Submits a request to expel the specified instance. If successful
+    /// the instance's target grade - expelled - will be replicated
+    /// on all of the cluster instances through Raft.
+    ///
+    /// Can be called on any instance that has already joined the cluster.
+    ///
+    /// Returns errors in the following cases:
+    /// 1. Raft node on a receiving instance is not yet initialized
+    /// 2. Storage failure
+    /// 3. Incorrect request (e.g. instance already expelled)
+    /// 4. Compare and swap request to commit updated instance failed
+    /// with an error that cannot be retried.
     fn proc_expel(req: Request) -> Result<Response> {
         let node = node::global()?;
         let raft_storage = &node.raft_storage;

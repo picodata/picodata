@@ -6,6 +6,16 @@ use crate::traft::{node, RaftIndex, RaftTerm};
 use std::time::Duration;
 
 crate::define_rpc_request! {
+    /// (Re)configures sharding. Sets up the vshard storage and vshard router
+    /// components on the target instance. The configuration for them is taken
+    /// from local storage.
+    ///
+    /// Returns errors in the following cases:
+    /// 1. Raft node on a receiving instance is not yet initialized
+    /// 2. Storage failure
+    /// 3. Timeout while waiting for an index from the request
+    /// 4. Request has an incorrect term - leader changed
+    /// 5. Lua error during vshard setup
     fn proc_sharding(req: Request) -> Result<Response> {
         let node = node::global()?;
         node.wait_index(req.applied, req.timeout)?;
@@ -42,7 +52,9 @@ crate::define_rpc_request! {
     /// Request to configure vshard.
     #[derive(Default)]
     pub struct Request {
+        /// Current term of the sender.
         pub term: RaftTerm,
+        /// Current applied index of the sender.
         pub applied: RaftIndex,
         pub timeout: Duration,
     }
@@ -57,6 +69,15 @@ pub mod bootstrap {
     use super::*;
 
     crate::define_rpc_request! {
+        /// Calls `vshard.router.bootstrap()` on the target instance.
+        /// See [tarantool documentaion](https://www.tarantool.io/en/doc/latest/reference/reference_rock/vshard/vshard_router/#lua-function.vshard.router.bootstrap)
+        /// for more information on vshard router bootstrap process.
+        ///
+        /// Returns errors in the following cases:
+        /// 1. Raft node on a receiving instance is not yet initialized
+        /// 2. Timeout while waiting for an index from the request
+        /// 3. Request has an incorrect term - leader changed
+        /// 4. Lua error during vshard router bootstrap
         fn proc_sharding_bootstrap(req: Request) -> Result<Response> {
             let node = node::global()?;
             node.wait_index(req.applied, req.timeout)?;
