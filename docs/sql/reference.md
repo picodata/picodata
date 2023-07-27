@@ -1,4 +1,4 @@
-## Поддерживаемые функции стандарта SQL
+# Поддерживаемые функции стандарта SQL
 Приведенный ниже перечень функциональности планировщика отражает соответствие SQL Broadcaster в Picodata требованиям стандарта SQL:2016, а именно ISO/IEC 9075 «Database Language SQL» (Язык баз данных SQL).
 
 ### E011. Числовые типы данных
@@ -94,7 +94,7 @@
 ### E071-03. Табличный оператор EXCEPT DISTINCT
 ### F041-03. LEFT OUTER JOIN.
 
-См. также: [Пример работы с SQL Broadcaster в Picodata](../sql_tutorial).
+См. также: [Пример работы с SQL Broadcaster в Picodata](../tutorial).
 
 ---
-[Исходный код страницы](https://git.picodata.io/picodata/picodata/docs/-/blob/main/docs/sbroad/sql_reference.md)
+[Исходный код страницы](https://git.picodata.io/picodata/picodata/docs/-/blob/main/docs/sql/reference.md)

@@ -8,23 +8,23 @@ nav:
     - description.md
     - benefits.md
     - benefits_rust.md
-    - sbroad/sql_index.md
+    - sql/index.md
   - Инструкции и руководства:
     - install.md
     - deploy.md
     - monitoring.md
     - tutorial.md
-    - sbroad/sql_tutorial.md
+    - sql/tutorial.md
   - Справочные материалы:
     - cli.md
     - api.md
-    - sbroad/sql_queries.md
-    - sbroad/sql_datatypes.md
-    - sbroad/sql_reference.md
+    - sql/queries.md
+    - sql/datatypes.md
+    - sql/reference.md
     - glossary.md
   - Архитектурная документация:
     - clustering.md
-    - sbroad/sql_review.md
+    - sql/review.md
 
   
 

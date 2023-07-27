@@ -13,26 +13,26 @@ Picodata — распределенная система
 * [Общее описание продукта](description)
 * [Преимущества использования Picodata](benefits)
 * [Преимущества языка Rust](benefits_rust)
-* [Работа с SQL в Picodata](sbroad/sql_index)
+* [Работа с SQL в Picodata](sql/)
 
 ### Инструкции и руководства
 * [Установка Picodata](install)
 * [Развертывание кластера](deploy)
 * [Мониторинг кластера](monitoring)
 * [Пример работы с кластером Picodata](tutorial)
-* [Пример работы с SQL Broadcaster в Picodata](sbroad/sql_tutorial)
+* [Пример работы с SQL Broadcaster в Picodata](sql/tutorial)
 
 ### Справочные материалы
 * [Аргументы командной строки Picodata](cli)
 * [Публичный API Picodata](api)
-* [Команды SQL](sbroad/sql_queries)
-* [Поддерживаемые типы данных SQL](sbroad/sql_datatypes)
-* [Поддерживаемые функции стандарта SQL](sbroad/sql_reference)
+* [Команды SQL](sql/queries)
+* [Поддерживаемые типы данных SQL](sql/datatypes)
+* [Поддерживаемые функции стандарта SQL](sql/reference)
 * [Глоссарий](glossary)
 
 ### Архитектурная документация
 * [Схема инициализации кластера](clustering)
-* [Принципы работы распределенного SQL](sbroad/sql_review)
+* [Принципы работы распределенного SQL](sql/review)
 
 
 На данном портале представлена техническая документация программного

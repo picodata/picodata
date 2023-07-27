@@ -776,8 +776,8 @@ sbroad.execute([[explain select count("id") from "characters"]], {})
 
 ```
 
-Читать далее: [Поддерживаемые типы данных SQL](../sql_datatypes)
+Читать далее: [Поддерживаемые типы данных SQL](../datatypes)
 <!-- ebnf source: https://git.picodata.io/picodata/picodata/sbroad/-/blob/main/doc/sql/query.ebnf -->
 
 ---
-[Исходный код страницы](https://git.picodata.io/picodata/picodata/docs/-/blob/main/docs/sbroad/sql_queries.md)
+[Исходный код страницы](https://git.picodata.io/picodata/picodata/docs/-/blob/main/docs/sql/queries.md)

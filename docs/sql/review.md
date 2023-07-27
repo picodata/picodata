@@ -11,7 +11,7 @@
 На схеме ниже показан общий принцип работы распределенного SQL-запроса в
 кластере с одним роутером.
 
-![Distributed query](sbroad-curves.svg "general distributed query flow")
+![Distributed query](picosql-curves.svg "general distributed query flow")
 
 На схеме <span style="color:#ff0000ff">_красным_</span> показан исходный
 пользовательский запрос, <span style="color:#fcc501ff">_желтым_</span> —
@@ -52,7 +52,7 @@ SQL Broadcaster включает внутреннюю функцию по выч
 `sharding_key`, попадут в один бакет.
 
 Описание поддерживаемых запросов и их синтаксиса приведены в разделе:
-[Команды SQL](../sql_queries)
+[Команды SQL](../queries)
 
 ---
-[Исходный код страницы](https://git.picodata.io/picodata/picodata/docs/-/blob/main/docs/sbroad/sql_review.md)
+[Исходный код страницы](https://git.picodata.io/picodata/picodata/docs/-/blob/main/docs/sql/review.md)
