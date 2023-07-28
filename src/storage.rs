@@ -1,5 +1,4 @@
 use ::tarantool::error::Error as TntError;
-use ::tarantool::fiber;
 use ::tarantool::index::{Index, IndexId, IndexIterator, IteratorType};
 use ::tarantool::msgpack::{ArrayWriter, ValueIter};
 use ::tarantool::space::UpdateOps;
@@ -2409,6 +2408,8 @@ impl SchemaDef for PrivilegeDef {
 ////////////////////////////////////////////////////////////////////////////////
 
 pub mod acl {
+    use tarantool::clock;
+
     use super::*;
 
     ////////////////////////////////////////////////////////////////////////////
@@ -2537,7 +2538,7 @@ pub mod acl {
         let auth_map = HashMap::from([(auth.method, &auth.data)]);
         let mut ops = UpdateOps::with_capacity(2);
         ops.assign(USER_FIELD_AUTH, auth_map)?;
-        ops.assign(USER_FIELD_LAST_MODIFIED, fiber::time() as u64)?;
+        ops.assign(USER_FIELD_LAST_MODIFIED, clock::time64())?;
         sys_user.update(&[user_id], ops)?;
         Ok(())
     }
