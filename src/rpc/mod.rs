@@ -22,7 +22,7 @@ pub mod update_instance;
 
 /// Types implementing this trait represent an RPC's (remote procedure call)
 /// arguments. This trait contains information about the request.
-pub trait Request: Encode + DecodeOwned {
+pub trait RequestArgs: Encode + DecodeOwned {
     /// Remote procedure name.
     const PROC_NAME: &'static str;
 
@@ -33,7 +33,7 @@ pub trait Request: Encode + DecodeOwned {
 /// Invoke remote procedure call on an instance specified by `address`.
 pub async fn network_call<R>(address: &str, request: &R) -> ::tarantool::Result<R::Response>
 where
-    R: Request,
+    R: RequestArgs,
 {
     // TODO: move address parsing into client
     let (address, port) = address.rsplit_once(':').ok_or_else(|| {
@@ -53,7 +53,7 @@ where
 /// Invoke remote procedure call on a Raft leader.
 pub async fn network_call_to_leader<R>(request: &R) -> Result<R::Response>
 where
-    R: Request,
+    R: RequestArgs,
 {
     let node = node::global()?;
     let leader_id = node.status().leader_id.ok_or(Error::LeaderUnknown)?;
@@ -100,7 +100,7 @@ macro_rules! define_rpc_request {
         $({ $($res_named_fields)* })?
         $(( $($res_unnamed_fields)* );)?
 
-        impl $crate::rpc::Request for $request {
+        impl $crate::rpc::RequestArgs for $request {
             const PROC_NAME: &'static str = $crate::stringify_cfunc!($proc);
             type Response = $response;
         }

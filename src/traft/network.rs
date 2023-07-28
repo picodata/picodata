@@ -238,7 +238,7 @@ impl PoolWorker {
     /// - in case peer responded with an error
     pub fn rpc<R>(&mut self, request: &R, cb: impl FnOnce(Result<R::Response>) + 'static)
     where
-        R: rpc::Request,
+        R: rpc::RequestArgs,
     {
         let args = unwrap_ok_or!(request.to_tuple_buffer(),
             Err(e) => { return cb(Err(e.into())) }
@@ -449,7 +449,7 @@ impl ConnectionPool {
         req: &R,
     ) -> Result<impl Future<Output = Result<R::Response>>>
     where
-        R: rpc::Request,
+        R: rpc::RequestArgs,
     {
         let (tx, mut rx) = oneshot::channel();
         id.get_or_create_in(self)?.rpc(req, move |res| {

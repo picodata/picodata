@@ -52,7 +52,7 @@ pub struct WaitVclockRpc {
 
 impl Encode for WaitVclockRpc {}
 
-impl rpc::Request for WaitVclockRpc {
+impl rpc::RequestArgs for WaitVclockRpc {
     const PROC_NAME: &'static str = crate::stringify_cfunc!(proc_wait_vclock);
     type Response = (Vclock,);
 }
@@ -125,7 +125,7 @@ pub struct ReadIndexRpc {
 
 impl Encode for ReadIndexRpc {}
 
-impl rpc::Request for ReadIndexRpc {
+impl rpc::RequestArgs for ReadIndexRpc {
     const PROC_NAME: &'static str = crate::stringify_cfunc!(proc_read_index);
     type Response = (RaftIndex,);
 }
@@ -152,7 +152,7 @@ pub struct WaitIndexRpc {
 
 impl Encode for WaitIndexRpc {}
 
-impl rpc::Request for WaitIndexRpc {
+impl rpc::RequestArgs for WaitIndexRpc {
     const PROC_NAME: &'static str = crate::stringify_cfunc!(proc_wait_index);
     type Response = (RaftIndex,);
 }
