@@ -14,7 +14,7 @@ use crate::storage::Clusterwide;
 use crate::storage::ToEntryIter as _;
 use crate::tlog;
 use crate::traft::error::Error;
-use crate::traft::network::ConnectionPool;
+use crate::traft::network::{ConnectionPool, WorkerOptions};
 use crate::traft::node::global;
 use crate::traft::node::Status;
 use crate::traft::raft_storage::RaftSpaceAccess;
@@ -530,12 +530,16 @@ impl Loop {
 
         let (waker_tx, waker_rx) = watch::channel(());
 
+        let opts = WorkerOptions {
+            call_timeout: Duration::from_secs(1),
+            ..Default::default()
+        };
+        let pool = ConnectionPool::new(args.storage.clone(), opts);
+
         let state = State {
             status,
             waker: waker_rx,
-            pool: ConnectionPool::builder(args.storage.clone())
-                .call_timeout(Duration::from_secs(1))
-                .build(),
+            pool,
         };
 
         Self {

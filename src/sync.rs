@@ -178,7 +178,7 @@ mod tests {
     async fn vclock_proc() {
         let storage = Clusterwide::new().unwrap();
         // Connect to the current Tarantool instance
-        let mut pool = ConnectionPool::builder(storage.clone()).build();
+        let mut pool = ConnectionPool::new(storage.clone(), Default::default());
         let l = ::tarantool::lua_state();
         let listen: String = l.eval("return box.info.listen").unwrap();
 

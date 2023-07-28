@@ -34,15 +34,15 @@ pub const DEFAULT_CUNCURRENT_FUTURES: usize = 10;
 
 #[derive(Clone, Debug)]
 pub struct WorkerOptions {
-    handler_name: &'static str,
-    call_timeout: Duration,
-    max_concurrent_futs: usize,
+    pub raft_msg_handler: &'static str,
+    pub call_timeout: Duration,
+    pub max_concurrent_futs: usize,
 }
 
 impl Default for WorkerOptions {
     fn default() -> Self {
         Self {
-            handler_name: "",
+            raft_msg_handler: crate::stringify_cfunc!(crate::traft::node::proc_raft_interact),
             call_timeout: DEFAULT_CALL_TIMEOUT,
             max_concurrent_futs: DEFAULT_CUNCURRENT_FUTURES,
         }
@@ -86,7 +86,13 @@ pub struct PoolWorker {
     fiber: fiber::UnitJoinHandle<'static>,
     inbox_ready: watch::Sender<()>,
     stop: oneshot::Sender<()>,
-    handler_name: &'static str,
+
+    /// Stored proc name which is called to pass raft messages between nodes.
+    /// This should always be ".proc_raft_interact".
+    ///
+    /// The only reason this is a parameter at all is because it is used in a
+    /// couple of unit tests, which is stupid and we should probably fix this.
+    raft_msg_handler: &'static str,
 }
 
 impl PoolWorker {
@@ -142,7 +148,7 @@ impl PoolWorker {
             inbox,
             inbox_ready: inbox_ready_sender,
             stop: stop_sender,
-            handler_name: opts.handler_name,
+            raft_msg_handler: opts.raft_msg_handler,
         })
     }
 
@@ -242,7 +248,7 @@ impl PoolWorker {
             ),
         };
         self.inbox
-            .send(Request::new(self.handler_name, args, on_result));
+            .send(Request::new(self.raft_msg_handler, args, on_result));
         if self.inbox_ready.send(()).is_err() {
             tlog!(Warning, "failed sending request to peer, worker loop receiver dropped";
                 "raft_id" => raft_id,
@@ -332,40 +338,6 @@ impl std::fmt::Debug for PoolWorker {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// ConnectionPoolBuilder
-////////////////////////////////////////////////////////////////////////////////
-
-pub struct ConnectionPoolBuilder {
-    worker_options: WorkerOptions,
-    storage: Clusterwide,
-}
-
-macro_rules! builder_option {
-    ($opt:ident, $t:ty) => {
-        pub fn $opt(mut self, val: $t) -> Self {
-            self.worker_options.$opt = val;
-            self
-        }
-    };
-}
-
-impl ConnectionPoolBuilder {
-    builder_option!(handler_name, &'static str);
-    builder_option!(call_timeout, Duration);
-    builder_option!(max_concurrent_futs, usize);
-
-    pub fn build(self) -> ConnectionPool {
-        ConnectionPool {
-            worker_options: self.worker_options,
-            workers: HashMap::new(),
-            raft_ids: HashMap::new(),
-            peer_addresses: self.storage.peer_addresses,
-            instances: self.storage.instances,
-        }
-    }
-}
-
-////////////////////////////////////////////////////////////////////////////////
 // ConnectionPool
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -380,10 +352,14 @@ pub struct ConnectionPool {
 }
 
 impl ConnectionPool {
-    pub fn builder(storage: Clusterwide) -> ConnectionPoolBuilder {
-        ConnectionPoolBuilder {
-            storage,
-            worker_options: Default::default(),
+    #[inline(always)]
+    pub fn new(storage: Clusterwide, worker_options: WorkerOptions) -> Self {
+        Self {
+            worker_options,
+            workers: HashMap::new(),
+            raft_ids: HashMap::new(),
+            peer_addresses: storage.peer_addresses,
+            instances: storage.instances,
         }
     }
 
@@ -602,7 +578,7 @@ mod tests {
 
         let storage = Clusterwide::new().unwrap();
         // Connect to the current Tarantool instance
-        let mut pool = ConnectionPool::builder(storage.clone()).build();
+        let mut pool = ConnectionPool::new(storage.clone(), Default::default());
         let listen: String = l.eval("return box.info.listen").unwrap();
 
         let instance = traft::Instance {
@@ -647,10 +623,12 @@ mod tests {
 
         let storage = Clusterwide::new().unwrap();
         // Connect to the current Tarantool instance
-        let mut pool = ConnectionPool::builder(storage.clone())
-            .handler_name("test_interact")
-            .call_timeout(Duration::from_millis(50))
-            .build();
+        let opts = WorkerOptions {
+            raft_msg_handler: "test_interact",
+            call_timeout: Duration::from_millis(50),
+            ..Default::default()
+        };
+        let mut pool = ConnectionPool::new(storage.clone(), opts);
         let listen: String = l.eval("return box.info.listen").unwrap();
 
         let instance = traft::Instance {
@@ -731,10 +709,12 @@ mod tests {
 
         let storage = Clusterwide::new().unwrap();
         // Connect to the current Tarantool instance
-        let mut pool = ConnectionPool::builder(storage.clone())
-            .handler_name("test_interact")
-            .call_timeout(Duration::from_millis(50))
-            .build();
+        let opts = WorkerOptions {
+            raft_msg_handler: "test_interact",
+            call_timeout: Duration::from_millis(50),
+            ..Default::default()
+        };
+        let mut pool = ConnectionPool::new(storage.clone(), opts);
         let listen: String = l.eval("return box.info.listen").unwrap();
 
         let instance = traft::Instance {
@@ -807,10 +787,12 @@ mod tests {
 
         let storage = Clusterwide::new().unwrap();
         // Connect to the current Tarantool instance
-        let mut pool = ConnectionPool::builder(storage.clone())
-            .handler_name("test_interact")
-            .call_timeout(Duration::from_millis(3000))
-            .build();
+        let opts = WorkerOptions {
+            raft_msg_handler: "test_interact",
+            call_timeout: Duration::from_secs(3),
+            ..Default::default()
+        };
+        let mut pool = ConnectionPool::new(storage.clone(), opts);
         let listen: String = l.eval("return box.info.listen").unwrap();
 
         let instance = traft::Instance {

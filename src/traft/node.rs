@@ -71,6 +71,8 @@ use std::rc::Rc;
 use std::time::Duration;
 use ApplyEntryResult::*;
 
+use super::network::WorkerOptions;
+
 type RawNode = raft::RawNode<RaftSpaceAccess>;
 
 ::tarantool::define_str_enum! {
@@ -557,10 +559,12 @@ impl NodeImpl {
             LogicalClock::new(raft_id, gen)
         };
 
-        let pool = ConnectionPool::builder(storage.clone())
-            .handler_name(stringify_cfunc!(proc_raft_interact))
-            .call_timeout(MainLoop::TICK.saturating_mul(4))
-            .build();
+        let opts = WorkerOptions {
+            raft_msg_handler: stringify_cfunc!(proc_raft_interact),
+            call_timeout: MainLoop::TICK.saturating_mul(4),
+            ..Default::default()
+        };
+        let pool = ConnectionPool::new(storage.clone(), opts);
 
         let cfg = raft::Config {
             id: raft_id,
