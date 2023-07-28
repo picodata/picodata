@@ -8,6 +8,9 @@ use std::process::Stdio;
 
 // See also: https://doc.rust-lang.org/cargo/reference/build-scripts.html
 fn main() {
+    let jobserver = unsafe { jobserver::Client::from_env() };
+    let jobserver = jobserver.as_ref();
+
     // The file structure roughly looks as follows:
     // .
     // ├── build.rs                         // you are here
@@ -44,8 +47,8 @@ fn main() {
     }
 
     generate_export_stubs(&out_dir);
-    build_tarantool(build_root);
-    build_http(build_root);
+    build_tarantool(jobserver, build_root);
+    build_http(jobserver, build_root);
     #[cfg(feature = "webui")]
     build_webui(build_root);
 
@@ -142,7 +145,7 @@ fn build_webui(build_root: &Path) {
         .run();
 }
 
-fn build_http(build_root: &Path) {
+fn build_http(jsc: Option<&jobserver::Client>, build_root: &Path) {
     let build_dir = build_root.join("tarantool-http");
     let build_dir_str = build_dir.display().to_string();
 
@@ -155,10 +158,12 @@ fn build_http(build_root: &Path) {
         .arg(format!("-DTARANTOOL_DIR={tarantool_dir_str}"))
         .run();
 
-    Command::new("cmake")
-        .args(["--build", &build_dir_str])
-        .arg("-j")
-        .run();
+    let mut cmd = Command::new("cmake");
+    cmd.args(["--build", &build_dir_str]);
+    if let Some(jsc) = jsc {
+        jsc.configure(&mut cmd);
+    }
+    cmd.run();
 
     Command::new("ar")
         .arg("-rcs")
@@ -169,7 +174,7 @@ fn build_http(build_root: &Path) {
     rustc::link_search(build_dir_str);
 }
 
-fn build_tarantool(build_root: &Path) {
+fn build_tarantool(jsc: Option<&jobserver::Client>, build_root: &Path) {
     let tarantool_sys = build_root.join("tarantool-sys");
     let tarantool_build = tarantool_sys.join("tarantool-prefix/src/tarantool-build");
 
@@ -186,21 +191,23 @@ fn build_tarantool(build_root: &Path) {
                 "-DBUILD_DOC=FALSE",
             ))
             .run();
-        Command::new("cmake")
-            .arg("--build")
-            .arg(&tarantool_sys)
-            .arg("-j")
-            .run();
+        let mut cmd = Command::new("cmake");
+        cmd.arg("--build").arg(&tarantool_sys);
+        if let Some(jsc) = jsc {
+            jsc.configure(&mut cmd);
+        }
+        cmd.run();
     } else {
         // static-build/CMakeFiles.txt builds tarantool via the ExternalProject
         // module, which doesn't rebuild subprojects if their contents changed,
         // therefore we dive into `tarantool-prefix/src/tarantool-build`
         // directly and try to rebuild it individually.
-        Command::new("cmake")
-            .arg("--build")
-            .arg(&tarantool_build)
-            .arg("-j")
-            .run();
+        let mut cmd = Command::new("cmake");
+        cmd.arg("--build").arg(&tarantool_build);
+        if let Some(jsc) = jsc {
+            jsc.configure(&mut cmd);
+        }
+        cmd.run();
     }
 
     let tarantool_sys = tarantool_sys.display();

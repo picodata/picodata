@@ -49,6 +49,7 @@ pretty_assertions = "0.6.1"
 
 [build-dependencies]
 nix = "0.23.1"
+jobserver = "0.1.26"
 
 [patch."https://git.picodata.io/picodata/picodata/tarantool-module.git"]
 tarantool = { path = "./tarantool/tarantool" }
