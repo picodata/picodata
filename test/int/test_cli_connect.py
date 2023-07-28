@@ -124,8 +124,7 @@ def test_wrong_pass(i1: Instance):
     cli.expect_exact("Enter password for testuser: ")
     cli.sendline("badpass")
 
-    # FIXME: https://git.picodata.io/picodata/picodata/picodata/-/issues/247
-    cli.expect_exact("attempt to call method 'endswith' (a nil value)")
+    cli.expect_exact("Connection is not established")
     cli.expect_exact(pexpect.EOF)
 
 
@@ -161,6 +160,5 @@ def test_connection_refused(binary_path: str):
     cli.expect_exact("Enter password for testuser: ")
     cli.sendline("")
 
-    # FIXME: https://git.picodata.io/picodata/picodata/picodata/-/issues/247
-    cli.expect_exact("attempt to call method 'endswith' (a nil value)")
+    cli.expect_exact("Connection is not established")
     cli.expect_exact(pexpect.EOF)
