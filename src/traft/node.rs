@@ -1570,8 +1570,7 @@ impl NodeImpl {
             ));
         }
         let master = self.storage.instances.get(&replicaset.master_id)?;
-        let master_vclock =
-            fiber::block_on(sync::call_get_vclock(&mut self.pool, &master.raft_id))?;
+        let master_vclock = fiber::block_on(sync::call_get_vclock(&self.pool, &master.raft_id))?;
         let local_vclock = Vclock::current();
         if matches!(
             local_vclock.partial_cmp(&master_vclock),

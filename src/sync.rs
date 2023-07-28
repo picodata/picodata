@@ -31,7 +31,7 @@ fn proc_get_vclock() -> traft::Result<Vclock> {
 
 /// Calls [`proc_get_vclock`] on instance with `instance_id`.
 pub async fn call_get_vclock(
-    pool: &mut ConnectionPool,
+    pool: &ConnectionPool,
     instance_id: &impl IdOfInstance,
 ) -> traft::Result<Vclock> {
     let (vclock,): (Vclock,) = pool
@@ -178,7 +178,7 @@ mod tests {
     async fn vclock_proc() {
         let storage = Clusterwide::new().unwrap();
         // Connect to the current Tarantool instance
-        let mut pool = ConnectionPool::new(storage.clone(), Default::default());
+        let pool = ConnectionPool::new(storage.clone(), Default::default());
         let l = ::tarantool::lua_state();
         let listen: String = l.eval("return box.info.listen").unwrap();
 
@@ -193,7 +193,7 @@ mod tests {
             .unwrap();
         crate::init_handlers();
 
-        let result = call_get_vclock(&mut pool, &instance.raft_id).await.unwrap();
+        let result = call_get_vclock(&pool, &instance.raft_id).await.unwrap();
         assert_eq!(result, Vclock::current());
 
         pool.call(
