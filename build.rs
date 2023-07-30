@@ -276,6 +276,13 @@ fn build_tarantool(jsc: Option<&jobserver::Client>, build_root: &Path) {
     rustc::link_lib_static("yaml_static");
     rustc::link_lib_static("xxhash");
 
+    // Add LDAP authentication support libraries.
+    rustc::link_search(format!("{tarantool_build}/bundled-ldap-prefix/lib"));
+    rustc::link_lib_static("ldap");
+    rustc::link_lib_static("lber");
+    rustc::link_search(format!("{tarantool_build}/bundled-sasl-prefix/lib"));
+    rustc::link_lib_static("sasl2");
+
     if cfg!(target_os = "macos") {
         // Currently we link against 2 versions of `decNumber` library: one
         // comes with tarantool and ther other comes from the `dec` cargo crate.
@@ -291,12 +298,9 @@ fn build_tarantool(jsc: Option<&jobserver::Client>, build_root: &Path) {
         // These two must be linked as positional arguments, because they define
         // duplicate symbols which is not allowed (by default) when linking with
         // via -l... option
+        let arch = std::env::var("CARGO_CFG_TARGET_ARCH").unwrap();
         let lib_dir = format!("{tarantool_build}/third_party/libunwind/src/.libs");
-        if cfg!(target_arch = "x86_64") {
-            rustc::link_arg(format!("{lib_dir}/libunwind-x86_64.a"));
-        } else if cfg!(target_arch = "aarch64") {
-            rustc::link_arg(format!("{lib_dir}/libunwind-aarch64.a"));
-        }
+        rustc::link_arg(format!("{lib_dir}/libunwind-{arch}.a"));
         rustc::link_arg(format!("{lib_dir}/libunwind.a"));
     }
 
