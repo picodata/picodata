@@ -740,6 +740,11 @@ function pico.grant_privilege(grantee, privilege, object_type, object_name, opts
         box.internal.check_param(privilege, 'privilege', 'string')
         box.internal.check_param(object_type, 'object_type', 'string')
         object_name = object_name ~= nil and object_name or ''
+        -- `object_name` is optional, thus it might contain `opts` instead
+        if type(object_name) == 'table' and opts == nil then
+            opts = object_name
+            object_name = ''
+        end
         box.internal.check_param(object_name, 'object_name', 'string')
         box.internal.check_param_table(opts, { timeout = 'number' })
         opts = opts or {}
