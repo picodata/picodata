@@ -38,7 +38,6 @@ use crate::traft::RaftIndex;
 use crate::traft::RaftSpaceAccess;
 use crate::traft::RaftTerm;
 use crate::traft::Topology;
-use crate::util::instant_saturating_add;
 use crate::util::AnyWithTypeName;
 use crate::warn_or_panic;
 use ::raft::prelude as raft;
@@ -57,6 +56,7 @@ use ::tarantool::index::Part;
 use ::tarantool::proc;
 use ::tarantool::space::FieldType as SFT;
 use ::tarantool::space::SpaceId;
+use ::tarantool::time::Instant;
 use ::tarantool::tlua;
 use ::tarantool::transaction::transaction;
 use ::tarantool::tuple::Decode;
@@ -69,7 +69,6 @@ use std::collections::{HashMap, HashSet};
 use std::convert::TryFrom;
 use std::rc::Rc;
 use std::time::Duration;
-use std::time::Instant;
 use ApplyEntryResult::*;
 
 type RawNode = raft::RawNode<RaftSpaceAccess>;
@@ -233,12 +232,12 @@ impl Node {
     ///
     /// **This function yields**
     pub fn read_index(&self, timeout: Duration) -> traft::Result<RaftIndex> {
-        let deadline = instant_saturating_add(Instant::now(), timeout);
+        let deadline = fiber::clock().saturating_add(timeout);
 
         let notify = self.raw_operation(|node_impl| node_impl.read_index_async())?;
         let index: RaftIndex = fiber::block_on(notify.recv_timeout(timeout))?;
 
-        self.wait_index(index, deadline.saturating_duration_since(Instant::now()))
+        self.wait_index(index, deadline.duration_since(fiber::clock()))
     }
 
     /// Waits for [`RaftIndex`] to be applied to the storage locally.
@@ -250,16 +249,14 @@ impl Node {
     /// **This function yields**
     #[inline]
     pub fn wait_index(&self, target: RaftIndex, timeout: Duration) -> traft::Result<RaftIndex> {
-        let deadline = instant_saturating_add(Instant::now(), timeout);
+        let deadline = fiber::clock().saturating_add(timeout);
         loop {
             let current = self.get_index();
             if current >= target {
                 return Ok(current);
             }
 
-            if let Some(timeout) = deadline.checked_duration_since(Instant::now()) {
-                event::wait_timeout(event::Event::EntryApplied, timeout)?;
-            } else {
+            if event::wait_deadline(event::Event::EntryApplied, deadline)?.is_timeout() {
                 return Err(Error::Timeout);
             }
         }
@@ -329,7 +326,7 @@ impl Node {
         req: rpc::join::Request,
         timeout: Duration,
     ) -> traft::Result<(Box<Instance>, HashSet<Address>)> {
-        let deadline = instant_saturating_add(Instant::now(), timeout);
+        let deadline = fiber::clock().saturating_add(timeout);
 
         loop {
             let instance = self
@@ -365,10 +362,7 @@ impl Node {
                 ($res:expr) => {
                     match $res {
                         Ok((index, term)) => {
-                            self.wait_index(
-                                index,
-                                deadline.saturating_duration_since(Instant::now()),
-                            )?;
+                            self.wait_index(index, deadline.duration_since(fiber::clock()))?;
                             if term != raft::Storage::term(&self.raft_storage, index)? {
                                 // leader switched - retry
                                 self.wait_status();
@@ -395,7 +389,7 @@ impl Node {
                     term: self.raft_storage.term()?,
                     ranges: ranges.clone(),
                 },
-                deadline.saturating_duration_since(Instant::now()),
+                deadline.duration_since(fiber::clock()),
             ));
             handle_result!(cas::compare_and_swap(
                 Op::Dml(op_instance),
@@ -404,7 +398,7 @@ impl Node {
                     term: self.raft_storage.term()?,
                     ranges,
                 },
-                deadline.saturating_duration_since(Instant::now()),
+                deadline.duration_since(fiber::clock()),
             ));
 
             self.main_loop.wakeup();
@@ -424,7 +418,7 @@ impl Node {
         req: rpc::update_instance::Request,
         timeout: Duration,
     ) -> traft::Result<()> {
-        let deadline = instant_saturating_add(Instant::now(), timeout);
+        let deadline = fiber::clock().saturating_add(timeout);
 
         loop {
             let instance = self
@@ -448,11 +442,11 @@ impl Node {
                     term: self.raft_storage.term()?,
                     ranges,
                 },
-                deadline.saturating_duration_since(Instant::now()),
+                deadline.duration_since(fiber::clock()),
             );
             match res {
                 Ok((index, term)) => {
-                    self.wait_index(index, deadline.saturating_duration_since(Instant::now()))?;
+                    self.wait_index(index, deadline.duration_since(fiber::clock()))?;
                     if term != raft::Storage::term(&self.raft_storage, index)? {
                         // leader switched - retry
                         self.wait_status();
@@ -1695,7 +1689,7 @@ impl MainLoop {
 
         let now = Instant::now();
         if now > state.next_tick {
-            state.next_tick = instant_saturating_add(now, Self::TICK);
+            state.next_tick = now.saturating_add(Self::TICK);
             node_impl.raw_node.tick();
         }
 

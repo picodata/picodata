@@ -1,7 +1,8 @@
 use std::borrow::Cow;
 use std::collections::{BTreeMap, HashSet};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
+use tarantool::fiber;
 use tarantool::space::{FieldType, SpaceCreateOptions, SpaceEngineType};
 use tarantool::space::{Space, SystemSpace};
 use tarantool::transaction::{transaction, TransactionError};
@@ -24,7 +25,6 @@ use crate::storage::{Clusterwide, ClusterwideSpaceId, PropertyName};
 use crate::traft::error::Error;
 use crate::traft::op::{Ddl, Op};
 use crate::traft::{self, event, node, RaftIndex};
-use crate::util::instant_saturating_add;
 
 ////////////////////////////////////////////////////////////////////////////////
 // SpaceDef
@@ -561,7 +561,7 @@ pub fn wait_for_ddl_commit(
     timeout: Duration,
 ) -> traft::Result<RaftIndex> {
     let raft_storage = &node::global()?.raft_storage;
-    let deadline = instant_saturating_add(Instant::now(), timeout);
+    let deadline = fiber::clock().saturating_add(timeout);
     let last_seen = prepare_commit;
     loop {
         let cur_applied = raft_storage.applied()?;
@@ -579,9 +579,7 @@ pub fn wait_for_ddl_commit(
             }
         }
 
-        if let Some(timeout) = deadline.checked_duration_since(Instant::now()) {
-            event::wait_timeout(event::Event::EntryApplied, timeout)?;
-        } else {
+        if event::wait_deadline(event::Event::EntryApplied, deadline)?.is_timeout() {
             return Err(Error::Timeout);
         }
     }
@@ -594,15 +592,13 @@ fn wait_for_no_pending_schema_change(
     storage: &Clusterwide,
     timeout: Duration,
 ) -> traft::Result<()> {
-    let deadline = instant_saturating_add(Instant::now(), timeout);
+    let deadline = fiber::clock().saturating_add(timeout);
     loop {
         if storage.properties.pending_schema_change()?.is_none() {
             return Ok(());
         }
 
-        if let Some(timeout) = deadline.checked_duration_since(Instant::now()) {
-            event::wait_timeout(event::Event::EntryApplied, timeout)?;
-        } else {
+        if event::wait_deadline(event::Event::EntryApplied, deadline)?.is_timeout() {
             return Err(Error::Timeout);
         }
     }

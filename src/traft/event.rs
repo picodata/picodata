@@ -3,10 +3,11 @@ use std::collections::{HashMap, LinkedList};
 use std::fmt::Write;
 use std::rc::Rc;
 use std::str::FromStr;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
-use ::tarantool::fiber::{mutex::MutexGuard, Cond, Mutex};
+use ::tarantool::fiber::{self, mutex::MutexGuard, Cond, Mutex};
 use ::tarantool::proc;
+use ::tarantool::time::Instant;
 use ::tarantool::unwrap_or;
 
 use crate::tlog;
@@ -93,6 +94,8 @@ impl WaitTimeout {
 /// Waits for the event to happen or timeout to end.
 ///
 /// Returns an error if the `EVENTS` is uninitialized.
+///
+/// **This function yields**
 pub fn wait_timeout(event: Event, timeout: Duration) -> Result<WaitTimeout> {
     let mut events = events()?;
     let cond = events.regular_cond(event);
@@ -106,19 +109,25 @@ pub fn wait_timeout(event: Event, timeout: Duration) -> Result<WaitTimeout> {
 }
 
 /// Waits for the event to happen or deadline to be reached.
+/// Uses the [`fiber::clock`] API to get the current instant.
 ///
 /// Returns an error if the `EVENTS` is uninitialized.
+///
+/// **This function yields**
 pub fn wait_deadline(event: Event, deadline: Instant) -> Result<WaitTimeout> {
     let mut events = events()?;
     let cond = events.regular_cond(event);
     // events must be released before yielding
     drop(events);
-    let timeout = deadline.saturating_duration_since(Instant::now());
-    Ok(if cond.wait_timeout(timeout) {
-        WaitTimeout::Signal
+    if let Some(timeout) = deadline.checked_duration_since(fiber::clock()) {
+        if cond.wait_timeout(timeout) {
+            Ok(WaitTimeout::Signal)
+        } else {
+            Ok(WaitTimeout::Timeout)
+        }
     } else {
-        WaitTimeout::Timeout
-    })
+        Ok(WaitTimeout::Timeout)
+    }
 }
 
 /// Signals to everybody who's waiting for this `event` either repeated or one

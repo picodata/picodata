@@ -1,22 +1,16 @@
 use nix::sys::termios::{tcgetattr, tcsetattr, LocalFlags, SetArg::TCSADRAIN};
+
+use std::any::{Any, TypeId};
 use std::io::BufRead as _;
 use std::io::BufReader;
 use std::io::Write as _;
 use std::os::unix::io::AsRawFd as _;
-pub use Either::{Left, Right};
+use std::time::Duration;
 
 use crate::traft::error::Error;
+pub use Either::{Left, Right};
 
-use std::any::{Any, TypeId};
-use std::time::{Duration, Instant};
-
-const INFINITY: Duration = Duration::from_secs(30 * 365 * 24 * 60 * 60);
-
-// TODO: move to tarantool_module when we have custom `Instant` there.
-pub fn instant_saturating_add(t: Instant, d: Duration) -> Instant {
-    t.checked_add(d)
-        .unwrap_or_else(|| t.checked_add(INFINITY).expect("that's too much, man"))
-}
+pub const INFINITY: Duration = Duration::from_secs(30 * 365 * 24 * 60 * 60);
 
 ////////////////////////////////////////////////////////////////////////////////
 /// A generic enum that contains exactly one of two possible types. Equivalent

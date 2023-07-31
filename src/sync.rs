@@ -5,11 +5,10 @@ use ::tarantool::vclock::Vclock;
 use ::tarantool::{fiber, proc};
 use serde::{Deserialize, Serialize};
 
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use crate::traft::network::IdOfInstance;
 use crate::traft::{ConnectionPool, RaftIndex};
-use crate::util::instant_saturating_add;
 use crate::{rpc, traft};
 
 #[derive(thiserror::Error, Debug)]
@@ -75,14 +74,14 @@ fn proc_wait_vclock(target: Vclock, timeout: f64) -> Result<(Vclock,), TimeoutEr
 ///
 pub fn wait_vclock(target: Vclock, timeout: Duration) -> Result<Vclock, TimeoutError> {
     // TODO: this all should be a part of tarantool C API
-    let deadline = instant_saturating_add(Instant::now(), timeout);
+    let deadline = fiber::clock().saturating_add(timeout);
     loop {
         let current = Vclock::current();
         if current >= target {
             return Ok(current);
         }
 
-        if Instant::now() < deadline {
+        if fiber::clock() < deadline {
             fiber::sleep(traft::node::MainLoop::TICK);
         } else {
             return Err(TimeoutError);
