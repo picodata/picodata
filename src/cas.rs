@@ -12,7 +12,6 @@ use crate::traft::Result;
 use crate::traft::{EntryContext, EntryContextNormal};
 use crate::traft::{RaftIndex, RaftTerm};
 use crate::unwrap_ok_or;
-use crate::util;
 
 use ::raft::prelude as raft;
 use ::raft::Error as RaftError;
@@ -20,6 +19,7 @@ use ::raft::StorageError;
 
 use tarantool::error::Error as TntError;
 use tarantool::fiber;
+use tarantool::fiber::r#async::sleep;
 use tarantool::fiber::r#async::timeout::IntoTimeout;
 use tarantool::space::{Space, SpaceId};
 use tarantool::tlua;
@@ -67,7 +67,7 @@ pub async fn compare_and_swap_async(
             Err(e) => {
                 tlog!(Warning, "failed getting leader address: {e}");
                 tlog!(Info, "going to retry in a while...");
-                util::sleep_async(Duration::from_millis(250)).await;
+                sleep(Duration::from_millis(250)).await;
                 continue;
             }
         );

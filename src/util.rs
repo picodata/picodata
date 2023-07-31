@@ -3,8 +3,6 @@ use std::io::BufRead as _;
 use std::io::BufReader;
 use std::io::Write as _;
 use std::os::unix::io::AsRawFd as _;
-use tarantool::fiber;
-use tarantool::fiber::r#async::timeout::IntoTimeout;
 pub use Either::{Left, Right};
 
 use crate::traft::error::Error;
@@ -18,13 +16,6 @@ const INFINITY: Duration = Duration::from_secs(30 * 365 * 24 * 60 * 60);
 pub fn instant_saturating_add(t: Instant, d: Duration) -> Instant {
     t.checked_add(d)
         .unwrap_or_else(|| t.checked_add(INFINITY).expect("that's too much, man"))
-}
-
-// TODO: move to tarantool_module
-pub async fn sleep_async(time: Duration) {
-    let (tx, rx) = fiber::r#async::oneshot::channel::<()>();
-    rx.timeout(time).await.unwrap_err();
-    drop(tx);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -560,18 +551,5 @@ mod tests {
             err.to_string(),
             r#"downcast error: expected "i8", actual: "u8""#
         );
-    }
-}
-
-mod tarantool_tests {
-    use std::time::Duration;
-
-    use ::tarantool::fiber;
-
-    #[::tarantool::test]
-    fn sleep_wakes_up() {
-        let should_yield =
-            fiber::check_yield(|| fiber::block_on(super::sleep_async(Duration::from_millis(10))));
-        assert_eq!(should_yield, fiber::YieldResult::Yielded(()));
     }
 }
