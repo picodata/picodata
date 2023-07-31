@@ -254,8 +254,8 @@ fn main_connect(args: args::Connect) -> ! {
     };
 
     let address = format!(
-        "{user}:{password}@{}:{}",
-        args.address.host, args.address.port
+        "{user}:{password}@{}:{}?auth_type={}",
+        args.address.host, args.address.port, args.auth_method
     );
 
     let rc = tarantool_main!(

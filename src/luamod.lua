@@ -191,6 +191,7 @@ Params:
     2. password (string)
     3. opts (table)
         - timeout (number), seconds
+        - auth_type (string)
 
 Returns:
 
@@ -203,7 +204,10 @@ function pico.create_user(user, password, opts)
         box.internal.check_param(user, 'user', 'string')
         box.internal.check_param(password, 'password', 'string')
         -- TODO: check password requirements.
-        box.internal.check_param_table(opts, { timeout = 'number' })
+        box.internal.check_param_table(opts, {
+            timeout = 'number',
+            auth_type = 'string',
+        })
         opts = opts or {}
         if not opts.timeout then
             box.error(box.error.ILLEGAL_PARAMS, 'opts.timeout is mandatory')
@@ -217,7 +221,7 @@ function pico.create_user(user, password, opts)
 
     -- XXX: we construct this closure every time the function is called,
     -- which is bad for performance/jit. Refactor if problems are discovered.
-    local auth_type = box.cfg.auth_type
+    local auth_type = opts.auth_type or box.cfg.auth_type
     local auth_data = box.internal.prepare_auth(auth_type, password, user)
     local function make_op_if_needed()
         local grantee_def = box.space._user.index.name:get(user)
@@ -270,6 +274,7 @@ Params:
     2. password (string)
     3. opts (table)
         - timeout (number), seconds
+        - auth_type (string)
 
 Returns:
 
@@ -281,7 +286,10 @@ function pico.change_password(user, password, opts)
     local ok, err = pcall(function()
         box.internal.check_param(user, 'user', 'string')
         box.internal.check_param(password, 'password', 'string')
-        box.internal.check_param_table(opts, { timeout = 'number' })
+        box.internal.check_param_table(opts, {
+            timeout = 'number',
+            auth_type = 'string',
+        })
         opts = opts or {}
         if not opts.timeout then
             box.error(box.error.ILLEGAL_PARAMS, 'opts.timeout is mandatory')
@@ -297,7 +305,7 @@ function pico.change_password(user, password, opts)
 
     -- XXX: we construct this closure every time the function is called,
     -- which is bad for performance/jit. Refactor if problems are discovered.
-    local auth_type = box.cfg.auth_type
+    local auth_type = opts.auth_type or box.cfg.auth_type
     local auth_data = box.internal.prepare_auth(auth_type, password, user)
     local function make_op_if_needed()
         -- TODO: allow `user` to be a user id instead of name

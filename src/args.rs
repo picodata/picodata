@@ -11,6 +11,7 @@ use thiserror::Error;
 use crate::failure_domain::FailureDomain;
 use crate::instance::InstanceId;
 use crate::replicaset::ReplicasetId;
+use crate::schema::AuthMethod;
 use crate::util::Uppercase;
 
 #[derive(Debug, Parser)]
@@ -316,12 +317,22 @@ pub struct Connect {
     #[clap(
         short = 'u',
         long = "user",
-        value_name = "user",
+        value_name = "USER",
         default_value = "guest",
         env = "PICODATA_USER"
     )]
     /// The username to connect with. Ignored if provided in <ADDRESS>.
     pub user: String,
+
+    #[clap(
+        short = 'a',
+        long = "auth-type",
+        value_name = "METHOD",
+        default_value = AuthMethod::ChapSha1.as_str(),
+        arg_enum,
+    )]
+    /// The preferred authentication method.
+    pub auth_method: AuthMethod,
 
     #[clap(value_name = "ADDRESS")]
     /// Picodata instance address. Format: `[user@][host][:port]`

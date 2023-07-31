@@ -162,3 +162,61 @@ def test_connection_refused(binary_path: str):
 
     cli.expect_exact("Connection is not established")
     cli.expect_exact(pexpect.EOF)
+
+
+def test_connect_auth_type_ok(i1: Instance):
+    cli = pexpect.spawn(
+        command=i1.binary_path,
+        args=["connect", f"{i1.host}:{i1.port}", "-u", "testuser", "-a", "chap-sha1"],
+        encoding="utf-8",
+        timeout=1,
+    )
+    cli.logfile = sys.stdout
+
+    cli.expect_exact("Enter password for testuser: ")
+    cli.sendline("testpass")
+
+    cli.expect_exact(f"connected to {i1.host}:{i1.port}")
+    cli.expect_exact(f"{i1.host}:{i1.port}>")
+
+    cli.sendline("box.session.user()")
+    cli.expect_exact("---\r\n")
+    cli.expect_exact("- testuser\r\n")
+    cli.expect_exact("...\r\n")
+    cli.expect_exact("\r\n")
+
+    eprint("^D")
+    cli.sendcontrol("d")
+    cli.expect_exact(pexpect.EOF)
+
+
+def test_connect_auth_type_different(i1: Instance):
+    cli = pexpect.spawn(
+        command=i1.binary_path,
+        args=["connect", f"{i1.host}:{i1.port}", "-u", "testuser", "-a", "chap-sha1"],
+        encoding="utf-8",
+        timeout=1,
+    )
+    cli.logfile = sys.stdout
+
+    cli.expect_exact("Enter password for testuser: ")
+    cli.sendline("")
+
+    cli.expect_exact("Connection is not established")
+    cli.expect_exact(pexpect.EOF)
+
+
+def test_connect_auth_type_unknown(binary_path: str):
+    cli = pexpect.spawn(
+        command=binary_path,
+        args=["connect", ":0", "-u", "testuser", "-a", "deadbeef"],
+        env={"NO_COLOR": "1"},
+        encoding="utf-8",
+        timeout=1,
+    )
+    cli.logfile = sys.stdout
+
+    cli.expect_exact(
+        "error: \"deadbeef\" isn't a valid value for '--auth-type <METHOD>"
+    )
+    cli.expect_exact(pexpect.EOF)
