@@ -34,8 +34,13 @@ pub async fn call_get_vclock(
     pool: &ConnectionPool,
     instance_id: &impl IdOfInstance,
 ) -> traft::Result<Vclock> {
-    let (vclock,): (Vclock,) = pool
-        .call_raw(instance_id, crate::stringify_cfunc!(proc_get_vclock), &())?
+    let vclock: Vclock = pool
+        .call_raw(
+            instance_id,
+            crate::stringify_cfunc!(proc_get_vclock),
+            &(),
+            None,
+        )?
         .await?;
     Ok(vclock)
 }
@@ -109,7 +114,12 @@ pub async fn call_get_index(
     instance_id: &impl IdOfInstance,
 ) -> traft::Result<RaftIndex> {
     let (index,): (RaftIndex,) = pool
-        .call_raw(instance_id, crate::stringify_cfunc!(proc_get_index), &())?
+        .call_raw(
+            instance_id,
+            crate::stringify_cfunc!(proc_get_index),
+            &(),
+            None,
+        )?
         .await?;
     Ok(index)
 }
@@ -202,6 +212,7 @@ mod tests {
                 target: Vclock::current(),
                 timeout: 1.0,
             },
+            None,
         )
         .unwrap()
         .await

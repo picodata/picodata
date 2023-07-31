@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::rc::Rc;
 use std::time::Duration;
 
 use ::tarantool::fiber;
@@ -14,7 +15,7 @@ use crate::storage::Clusterwide;
 use crate::storage::ToEntryIter as _;
 use crate::tlog;
 use crate::traft::error::Error;
-use crate::traft::network::{ConnectionPool, WorkerOptions};
+use crate::traft::network::ConnectionPool;
 use crate::traft::node::global;
 use crate::traft::node::Status;
 use crate::traft::raft_storage::RaftSpaceAccess;
@@ -30,6 +31,7 @@ use plan::action_plan;
 use plan::stage::*;
 
 impl Loop {
+    const RPC_TIMEOUT: Duration = Duration::from_secs(1);
     const SYNC_TIMEOUT: Duration = Duration::from_secs(10);
     const RETRY_TIMEOUT: Duration = Duration::from_millis(250);
     const UPDATE_INSTANCE_TIMEOUT: Duration = Duration::from_secs(3);
@@ -166,7 +168,7 @@ impl Loop {
                         "replicaset_id" => %replicaset_id,
                     ]
                     async {
-                        pool.call(instance_id, &rpc)?
+                        pool.call(instance_id, &rpc, Self::RPC_TIMEOUT)?
                             // TODO: don't hard code timeout
                             .timeout(Duration::from_secs(3))
                             .await?
@@ -197,7 +199,7 @@ impl Loop {
                         let mut fs = vec![];
                         for instance_id in targets {
                             tlog!(Info, "calling rpc::sharding"; "instance_id" => %instance_id);
-                            let resp = pool.call(instance_id, &rpc)?;
+                            let resp = pool.call(instance_id, &rpc, Self::RPC_TIMEOUT)?;
                             fs.push(async move {
                                 resp.await.map_err(|e| {
                                     tlog!(Warning, "failed calling rpc::sharding: {e}";
@@ -237,7 +239,7 @@ impl Loop {
                         "replicaset_id" => %replicaset_id,
                     ]
                     async {
-                        pool.call(master_id, &rpc)?
+                        pool.call(master_id, &rpc, Self::RPC_TIMEOUT)?
                             .timeout(Duration::from_secs(3))
                             .await?
                     }
@@ -270,7 +272,7 @@ impl Loop {
                         for instance_id in targets {
                             tlog!(Info, "calling rpc::replication"; "instance_id" => %instance_id);
                             rpc.is_master = instance_id == master_id;
-                            let resp = pool.call(instance_id, &rpc)?;
+                            let resp = pool.call(instance_id, &rpc, Self::RPC_TIMEOUT)?;
                             fs.push(async move {
                                 match resp.await {
                                     Ok(resp) => {
@@ -314,7 +316,7 @@ impl Loop {
                         let mut fs = vec![];
                         for instance_id in targets {
                             tlog!(Info, "calling rpc::sharding"; "instance_id" => %instance_id);
-                            let resp = pool.call(instance_id, &rpc)?;
+                            let resp = pool.call(instance_id, &rpc, Self::RPC_TIMEOUT)?;
                             fs.push(async move {
                                 match resp.await {
                                     Ok(_) => {
@@ -357,7 +359,7 @@ impl Loop {
                     ]
                     async {
                         pool
-                            .call(target, &rpc)?
+                            .call(target, &rpc, Self::RPC_TIMEOUT)?
                             .timeout(Loop::SYNC_TIMEOUT)
                             .await?;
                         node.propose_and_wait(op, Duration::from_secs(3))??
@@ -395,7 +397,7 @@ impl Loop {
                         let mut fs = vec![];
                         for instance_id in targets {
                             tlog!(Info, "calling rpc::sharding"; "instance_id" => %instance_id);
-                            let resp = pool.call(instance_id, &rpc)?;
+                            let resp = pool.call(instance_id, &rpc, Self::RPC_TIMEOUT)?;
                             fs.push(async move {
                                 match resp.await {
                                     Ok(_) => {
@@ -450,7 +452,7 @@ impl Loop {
                         let mut fs = vec![];
                         for instance_id in targets {
                             tlog!(Info, "calling proc_apply_schema_change"; "instance_id" => %instance_id);
-                            let resp = pool.call(instance_id, &rpc)?;
+                            let resp = pool.call(instance_id, &rpc, Self::RPC_TIMEOUT)?;
                             fs.push(async move {
                                 match resp.await {
                                     Ok(rpc::ddl_apply::Response::Ok) => {
@@ -519,6 +521,7 @@ impl Loop {
     }
 
     pub fn start(
+        pool: Rc<ConnectionPool>,
         status: watch::Receiver<Status>,
         storage: Clusterwide,
         raft_storage: RaftSpaceAccess,
@@ -529,12 +532,6 @@ impl Loop {
         };
 
         let (waker_tx, waker_rx) = watch::channel(());
-
-        let opts = WorkerOptions {
-            call_timeout: Duration::from_secs(1),
-            ..Default::default()
-        };
-        let pool = ConnectionPool::new(args.storage.clone(), opts);
 
         let state = State {
             status,
@@ -566,5 +563,5 @@ struct Args {
 struct State {
     status: watch::Receiver<Status>,
     waker: watch::Receiver<()>,
-    pool: ConnectionPool,
+    pool: Rc<ConnectionPool>,
 }

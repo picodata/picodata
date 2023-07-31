@@ -57,6 +57,7 @@ impl Default for WorkerOptions {
 struct Request {
     proc: &'static str,
     args: TupleBuffer,
+    timeout: Option<Duration>,
     on_result: Box<dyn FnOnce(Result<Tuple>)>,
 }
 
@@ -69,6 +70,7 @@ impl Request {
         Self {
             proc,
             args,
+            timeout: None,
             on_result: Box::new(on_result),
         }
     }
@@ -184,7 +186,10 @@ impl PoolWorker {
                     Box::pin(async move {
                         client
                             .call(request.proc, &request.args)
-                            .timeout(call_timeout)
+                            // TODO: it would be better to get a deadline from
+                            // the caller instead of the timeout, so we can more
+                            // accurately limit the time of the given rpc request.
+                            .timeout(request.timeout.unwrap_or(call_timeout))
                             .await
                     }),
                 ));
@@ -265,28 +270,16 @@ impl PoolWorker {
     /// - in case peer was disconnected
     /// - in case response failed to deserialize
     /// - in case peer responded with an error
-    pub fn rpc<R>(&self, request: &R, cb: impl FnOnce(Result<R::Response>) + 'static)
-    where
+    #[inline(always)]
+    pub fn rpc<R>(
+        &self,
+        request: &R,
+        timeout: Option<Duration>,
+        cb: impl FnOnce(Result<R::Response>) + 'static,
+    ) where
         R: rpc::RequestArgs,
     {
-        let args = unwrap_ok_or!(request.to_tuple_buffer(),
-            Err(e) => { return cb(Err(e.into())) }
-        );
-        let convert_result = |bytes: Result<Tuple>| {
-            let tuple: Tuple = bytes?;
-            let ((res,),) = tuple.decode()?;
-            Ok(res)
-        };
-        self.inbox
-            .send(Request::new(R::PROC_NAME, args, move |res| {
-                cb(convert_result(res))
-            }));
-        if self.inbox_ready.send(()).is_err() {
-            tlog!(
-                Warning,
-                "failed sending request to peer, worker loop receiver dropped"
-            );
-        }
+        self.rpc_raw(R::PROC_NAME, request, timeout, cb)
     }
 
     /// Send an RPC `request` and invoke `cb` whenever the result is ready.
@@ -300,6 +293,7 @@ impl PoolWorker {
         &self,
         proc: &'static str,
         args: &Args,
+        timeout: Option<Duration>,
         cb: impl FnOnce(Result<Response>) + 'static,
     ) where
         Args: ToTupleBuffer,
@@ -310,11 +304,31 @@ impl PoolWorker {
         );
         let convert_result = |bytes: Result<Tuple>| {
             let tuple: Tuple = bytes?;
-            let (res,) = tuple.decode()?;
+            // NOTE: this double layer of single element tuple here is
+            // intentional. The thing is that tarantool wraps all the returned
+            // values from stored procs into an msgpack array. This is true for
+            // both native and lua procs. However in case of lua this outermost
+            // array helps with multiple return values such that if a lua proc
+            // returns 2 values, the messagepack representation would be an
+            // array of 2 elements. But for some reason native procs get a
+            // different treatment: their return values are always wrapped in an
+            // outermost array of one element (!) which contains an array whose
+            // elements are actual values returned by proc. To be exact, each
+            // element of this inner array is a value passed to box_return_mp
+            // therefore there's exactly as many elements as there were calls to
+            // box_return_mp during execution of the proc.
+            // The way #[tarantool::proc] is implemented we always call
+            // box_return_mp exactly once therefore procs defined such way
+            // always have their return values wrapped in 2 layers of one
+            // element arrays.
+            // For that reason we unwrap those 2 layers here and pass to the
+            // user just the value they returned from their #[tarantool::proc].
+            let ((res,),) = tuple.decode()?;
             Ok(res)
         };
-        self.inbox
-            .send(Request::new(proc, args, move |res| cb(convert_result(res))));
+        let mut request = Request::new(proc, args, move |res| cb(convert_result(res)));
+        request.timeout = timeout;
+        self.inbox.send(request);
         if self.inbox_ready.send(()).is_err() {
             tlog!(
                 Warning,
@@ -437,34 +451,21 @@ impl ConnectionPool {
     /// Send a request to instance with `id` (see `IdOfInstance`) returning a
     /// future.
     ///
+    /// If `timeout` is None, the `WorkerOptions::call_timeout` is used.
+    ///
     /// If the request failed, it's a responsibility of the caller
     /// to re-send it later.
+    #[inline(always)]
     pub fn call<R>(
         &self,
         id: &impl IdOfInstance,
         req: &R,
+        timeout: impl Into<Option<Duration>>,
     ) -> Result<impl Future<Output = Result<R::Response>>>
     where
         R: rpc::RequestArgs,
     {
-        let (tx, mut rx) = oneshot::channel();
-        id.get_or_create_in(self)?.rpc(req, move |res| {
-            if tx.send(res).is_err() {
-                tlog!(
-                    Debug,
-                    "rpc response ignored because caller dropped the future"
-                )
-            }
-        });
-
-        // We use an explicit type implementing Future instead of defining an
-        // async fn, because we need to tell rust explicitly that the `id` &
-        // `req` arguments are not borrowed by the returned future.
-        let f = poll_fn(move |cx| {
-            let rx = Pin::new(&mut rx);
-            Future::poll(rx, cx).map(|r| r.unwrap_or_else(|_| Err(Error::other("disconnected"))))
-        });
-        Ok(f)
+        self.call_raw(id, R::PROC_NAME, req, timeout.into())
     }
 
     /// Call an rpc on instance with `id` (see `IdOfInstance`) returning a
@@ -473,6 +474,8 @@ impl ConnectionPool {
     /// This method is similar to [`Self::call`] but allows to call rpcs
     /// without using [`rpc::Request`] trait.
     ///
+    /// If `timeout` is None, the `WorkerOptions::call_timeout` is used.
+    ///
     /// If the request failed, it's a responsibility of the caller
     /// to re-send it later.
     pub fn call_raw<Args, Response>(
@@ -480,20 +483,22 @@ impl ConnectionPool {
         id: &impl IdOfInstance,
         proc: &'static str,
         args: &Args,
+        timeout: Option<Duration>,
     ) -> Result<impl Future<Output = Result<Response>>>
     where
         Response: serde::de::DeserializeOwned + 'static,
         Args: ToTupleBuffer,
     {
         let (tx, mut rx) = oneshot::channel();
-        id.get_or_create_in(self)?.rpc_raw(proc, args, move |res| {
-            if tx.send(res).is_err() {
-                tlog!(
-                    Debug,
-                    "rpc response ignored because caller dropped the future"
-                )
-            }
-        });
+        id.get_or_create_in(self)?
+            .rpc_raw(proc, args, timeout, move |res| {
+                if tx.send(res).is_err() {
+                    tlog!(
+                        Debug,
+                        "rpc response ignored because caller dropped the future"
+                    )
+                }
+            });
 
         // We use an explicit type implementing Future instead of defining an
         // async fn, because we need to tell rust explicitly that the `id` &
@@ -567,9 +572,15 @@ mod tests {
         l.exec(
             r#"
             function test_stored_proc(a, b)
-                return a + b
+                -- Tarantool always wraps return values from native stored procs
+                -- into an additional array, while it doesn't do that for lua
+                -- procs. Our network module is implemented to expect that
+                -- additional layer of array, so seeing how this test proc is
+                -- intended to emulate one of our rust procs, we explicitly
+                -- add a table layer.
+                return {a + b}
             end
-            
+
             box.schema.func.create('test_stored_proc')
             "#,
         )
@@ -591,7 +602,7 @@ mod tests {
             .unwrap();
 
         let result: u32 = fiber::block_on(
-            pool.call_raw(&instance.raft_id, "test_stored_proc", &(1u32, 2u32))
+            pool.call_raw(&instance.raft_id, "test_stored_proc", &(1u32, 2u32), None)
                 .unwrap(),
         )
         .unwrap();

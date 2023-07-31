@@ -161,7 +161,20 @@ impl Node {
     /// **This function yields**
     pub fn new(storage: Clusterwide, raft_storage: RaftSpaceAccess) -> Result<Self, RaftError> {
         let topology = Rc::new(RefCell::new(Topology::from(storage.clone())));
-        let node_impl = NodeImpl::new(storage.clone(), raft_storage.clone(), topology.clone())?;
+
+        let opts = WorkerOptions {
+            raft_msg_handler: stringify_cfunc!(proc_raft_interact),
+            call_timeout: MainLoop::TICK.saturating_mul(4),
+            ..Default::default()
+        };
+        let pool = Rc::new(ConnectionPool::new(storage.clone(), opts));
+
+        let node_impl = NodeImpl::new(
+            pool.clone(),
+            storage.clone(),
+            raft_storage.clone(),
+            topology.clone(),
+        )?;
 
         let raft_id = node_impl.raft_id();
         let status = node_impl.status.subscribe();
@@ -173,6 +186,7 @@ impl Node {
             raft_id,
             main_loop: MainLoop::start(node_impl.clone(), watchers.clone()), // yields
             governor_loop: governor::Loop::start(
+                pool,
                 status.clone(),
                 storage.clone(),
                 raft_storage.clone(),
@@ -535,13 +549,14 @@ pub(crate) struct NodeImpl {
     joint_state_latch: KVCell<RaftIndex, oneshot::Sender<Result<(), RaftError>>>,
     storage: Clusterwide,
     raft_storage: RaftSpaceAccess,
-    pool: ConnectionPool,
+    pool: Rc<ConnectionPool>,
     lc: LogicalClock,
     status: watch::Sender<Status>,
 }
 
 impl NodeImpl {
     fn new(
+        pool: Rc<ConnectionPool>,
         storage: Clusterwide,
         raft_storage: RaftSpaceAccess,
         topology: Rc<RefCell<Topology>>,
@@ -558,13 +573,6 @@ impl NodeImpl {
             raft_storage.persist_gen(gen).unwrap();
             LogicalClock::new(raft_id, gen)
         };
-
-        let opts = WorkerOptions {
-            raft_msg_handler: stringify_cfunc!(proc_raft_interact),
-            call_timeout: MainLoop::TICK.saturating_mul(4),
-            ..Default::default()
-        };
-        let pool = ConnectionPool::new(storage.clone(), opts);
 
         let cfg = raft::Config {
             id: raft_id,
