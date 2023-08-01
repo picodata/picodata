@@ -13,6 +13,7 @@ use crate::loop_start;
 use crate::r#loop::FlowControl;
 use crate::rpc;
 use crate::schema::{Distribution, IndexDef, SpaceDef};
+use crate::sentinel;
 use crate::storage::acl;
 use crate::storage::ddl_meta_drop_space;
 use crate::storage::SnapshotData;
@@ -64,6 +65,7 @@ use ::tarantool::vclock::Vclock;
 use protobuf::Message as _;
 
 use std::cell::Cell;
+use std::cell::RefCell;
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 use std::convert::TryFrom;
@@ -141,6 +143,7 @@ pub struct Node {
     pub(crate) raft_storage: RaftSpaceAccess,
     pub(crate) main_loop: MainLoop,
     pub(crate) governor_loop: governor::Loop,
+    pub(crate) sentinel_loop: sentinel::Loop,
     status: watch::Receiver<Status>,
     watchers: Rc<Mutex<StorageWatchers>>,
 
@@ -171,7 +174,7 @@ impl Node {
         let instance_reachability = Rc::new(RefCell::new(InstanceReachabilityManager::new(
             storage.clone(),
         )));
-        pool.instance_reachability = instance_reachability;
+        pool.instance_reachability = instance_reachability.clone();
         let pool = Rc::new(pool);
 
         let node_impl = NodeImpl::new(pool.clone(), storage.clone(), raft_storage.clone())?;
@@ -186,10 +189,17 @@ impl Node {
             raft_id,
             main_loop: MainLoop::start(node_impl.clone(), watchers.clone()), // yields
             governor_loop: governor::Loop::start(
+                pool.clone(),
+                status.clone(),
+                storage.clone(),
+                raft_storage.clone(),
+            ),
+            sentinel_loop: sentinel::Loop::start(
                 pool,
                 status.clone(),
                 storage.clone(),
                 raft_storage.clone(),
+                instance_reachability,
             ),
             node_impl,
             storage,

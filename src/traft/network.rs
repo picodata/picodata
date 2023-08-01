@@ -16,6 +16,7 @@ use futures::FutureExt as _;
 use std::cell::RefCell;
 use std::cell::UnsafeCell;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::collections::VecDeque;
 use std::pin::Pin;
 use std::rc::Rc;
@@ -410,6 +411,7 @@ pub type InstanceReachabilityManagerRef = Rc<RefCell<InstanceReachabilityManager
 
 impl InstanceReachabilityManager {
     // TODO: make these configurable via _pico_property
+    const MAX_TIME_SINCE_SUCCESS: Duration = Duration::from_secs(5);
     const MAX_HEARTBEAT_PERIOD: Duration = Duration::from_secs(5);
 
     pub fn new(storage: Clusterwide) -> Self {
@@ -420,7 +422,8 @@ impl InstanceReachabilityManager {
     }
 
     /// Is called from a connection pool worker loop to report results of raft
-    /// messages sent to other instances. Updates info for the given instance.
+    /// messages sent to other instances. For example a timeout is considered
+    /// a failure. Updates info for the given instance.
     pub fn report_result(&mut self, raft_id: RaftId, success: bool) {
         let now = fiber::clock();
         let info = self.infos.entry(raft_id).or_insert_with(Default::default);
@@ -446,23 +449,49 @@ impl InstanceReachabilityManager {
     pub fn take_unreachables_to_report(&mut self) -> Vec<RaftId> {
         let mut res = Vec::with_capacity(16);
         for (raft_id, info) in &mut self.infos {
-            if info.last_success.is_none() {
-                // Don't report nodes which didn't previously respond once,
-                // so that they can safely boot atleast.
-                continue;
-            }
             if info.is_reported {
                 // Don't report nodes repeatedly.
                 continue;
             }
-            // TODO: add configurable parameters, for example number of attempts
-            // before report.
-            if info.fail_streak > 0 {
+            if Self::determine_reachability(info) == Unreachable {
                 res.push(*raft_id);
                 info.is_reported = true;
             }
         }
         res
+    }
+
+    /// Is called by sentinel to get information about which instances should be
+    /// automatically assigned a different grade.
+    pub fn get_unreachables(&self) -> HashSet<RaftId> {
+        let mut res = HashSet::with_capacity(self.infos.len() / 3);
+        for (raft_id, info) in &self.infos {
+            if Self::determine_reachability(info) == Unreachable {
+                res.insert(*raft_id);
+            }
+        }
+        return res;
+    }
+
+    /// Make a descision on the given instance's reachability based on the
+    /// provided `info`. This is an internal function.
+    fn determine_reachability(info: &InstanceReachabilityInfo) -> ReachabilityState {
+        let Some(last_success) = info.last_success else {
+            // Don't make decisions about instances which didn't previously
+            // respond once so as to not interrup the process of booting up.
+            // TODO: report unreachable if fail_streak is big enough.
+            return Undecided;
+        };
+        if info.fail_streak == 0 {
+            // Didn't fail once, so can't be unreachable.
+            return Reachable;
+        }
+        let now = fiber::clock();
+        if now.duration_since(last_success) > Self::MAX_TIME_SINCE_SUCCESS {
+            Unreachable
+        } else {
+            Reachable
+        }
     }
 
     /// Is called from raft main loop when handling raft messages, passing a
@@ -504,14 +533,23 @@ impl InstanceReachabilityManager {
         // DN == attemptN.duration_since(last_success)
         //
         let now = fiber::clock();
-        let wait_timeout = last_attempt.duration_since(last_success).min(Self::MAX_HEARTBEAT_PERIOD);
-        if now > last_attempt + wait_timeout {
+        let since_last_success = last_attempt.duration_since(last_success);
+        let delay = since_last_success.min(Self::MAX_HEARTBEAT_PERIOD);
+        if now > last_attempt + delay {
             return true;
         }
 
         return false;
     }
 }
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum ReachabilityState {
+    Undecided,
+    Reachable,
+    Unreachable,
+}
+use ReachabilityState::*;
 
 /// Information about recent attempts to communicate with a single given instance.
 #[derive(Debug, Default, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]

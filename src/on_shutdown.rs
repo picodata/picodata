@@ -1,30 +1,21 @@
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use ::tarantool::fiber;
 
 use crate::has_grades;
-use crate::instance::grade::TargetGradeVariant;
-use crate::rpc;
-use crate::rpc::update_instance::handle_update_instance_request_and_wait;
 use crate::storage::ClusterwideSpaceId;
 use crate::tlog;
-use crate::traft;
 use crate::traft::node;
 use crate::unwrap_ok_or;
 
 pub async fn callback() {
-    // 1. Try setting target grade Offline in a separate fiber
-    tlog!(Info, "trying to shutdown gracefully ...");
-    let go_offline = fiber::Builder::new()
-        .name("go_offline")
-        .func(|| match go_offline() {
-            Ok(()) => tlog!(Info, "target grade set Offline"),
-            Err(e) => tlog!(Error, "failed setting target grade Offline: {e}"),
-        });
-    std::mem::forget(go_offline.start());
+    let node = node::global().unwrap();
+
+    // 1. Wake up the sentinel so it starts trying to set target grade Offline.
+    node.sentinel_loop.on_shut_down();
+    fiber::reschedule();
 
     // 2. Meanwhile, wait until either it succeeds or there is no quorum.
-    let node = node::global().unwrap();
     let raft_id = node.raft_id();
     let mut instances_watcher = node.storage_watcher(ClusterwideSpaceId::Instance);
     loop {
@@ -64,32 +55,5 @@ pub async fn callback() {
         if let Err(e) = instances_watcher.changed().await {
             tlog!(Warning, "failed to shutdown gracefully: {e}");
         }
-    }
-}
-
-fn go_offline() -> traft::Result<()> {
-    let node = node::global()?;
-    let raft_id = node.raft_id();
-
-    let instance = node.storage.instances.get(&raft_id)?;
-    let cluster_id = node.raft_storage.cluster_id()?;
-
-    let req = rpc::update_instance::Request::new(instance.instance_id, cluster_id)
-        .with_target_grade(TargetGradeVariant::Offline);
-
-    loop {
-        let now = Instant::now();
-        let wait_before_retry = Duration::from_millis(300);
-
-        match handle_update_instance_request_and_wait(req.clone(), wait_before_retry) {
-            Ok(_) => break Ok(()),
-            Err(e) => {
-                tlog!(Warning,
-                    "failed setting target grade Offline: {e}, retrying ...";
-                );
-                fiber::sleep(wait_before_retry.saturating_sub(now.elapsed()));
-                continue;
-            }
-        };
     }
 }

@@ -1,6 +1,7 @@
 import pytest
+import time
 
-from conftest import Cluster, Instance, retrying, ReturnError
+from conftest import Cluster, Instance, retrying, ReturnError, Retriable
 
 
 @pytest.fixture
@@ -143,3 +144,31 @@ def test_leader_disruption(cluster3: Cluster):
 
     # i3 should become the follower again without disrupting i1
     retrying(lambda: i3.assert_raft_status("Follower", i1.raft_id))
+
+
+def get_instance_grades(peer: Instance, instance_id) -> tuple[str, str]:
+    instance_info = peer.call("pico.instance_info", instance_id)
+    return (
+        instance_info["current_grade"]["variant"],
+        instance_info["target_grade"]["variant"],
+    )
+
+
+def test_instance_automatic_offline_detection(cluster: Cluster):
+    i1, i2, i3 = cluster.deploy(instance_count=3)
+
+    assert get_instance_grades(i1, i3.instance_id) == ("Online", "Online")
+
+    i3.kill()
+
+    # Give the governor some time to detect the problem and act accordingly.
+    time.sleep(10)
+
+    assert get_instance_grades(i1, i3.instance_id) == ("Offline", "Offline")
+
+    i3.start()
+
+    def assert_online(peer, instance_id):
+        assert get_instance_grades(peer, instance_id) == ("Online", "Online")
+
+    Retriable(timeout=6, rps=5).call(lambda: assert_online(i1, i3.instance_id))

@@ -42,6 +42,7 @@ pub mod on_shutdown;
 pub mod replicaset;
 pub mod rpc;
 pub mod schema;
+pub mod sentinel;
 pub mod sql;
 pub mod storage;
 pub mod sync;
@@ -701,6 +702,8 @@ fn postjoin(args: &args::Run, storage: Clusterwide, raft_storage: RaftSpaceAcces
             }
         }
     }
+
+    node.sentinel_loop.on_self_activate();
 }
 
 pub async fn tt_expel(args: args::Expel) {

@@ -44,6 +44,8 @@ crate::define_rpc_request! {
         /// Can be set by instance
         pub target_grade: Option<TargetGradeVariant>,
         pub failure_domain: Option<FailureDomain>,
+        /// If `true` then the resulting CaS request is not retried upon failure.
+        pub dont_retry: bool,
     }
 
     pub struct Response {}
@@ -55,8 +57,14 @@ impl Request {
         Self {
             instance_id,
             cluster_id,
+            dont_retry: false,
             ..Request::default()
         }
+    }
+    #[inline]
+    pub fn with_dont_retry(mut self, value: bool) -> Self {
+        self.dont_retry = value;
+        self
     }
     #[inline]
     pub fn with_current_grade(mut self, value: CurrentGrade) -> Self {
@@ -127,7 +135,10 @@ pub fn handle_update_instance_request_and_wait(req: Request, timeout: Duration) 
                 }
             }
             Err(err) => {
-                if err.is_cas_err() | err.is_term_mismatch_err() {
+                if req.dont_retry {
+                    return Err(err);
+                }
+                if err.is_cas_err() || err.is_term_mismatch_err() {
                     // cas error - retry
                     fiber::sleep(Duration::from_millis(500));
                     continue;
