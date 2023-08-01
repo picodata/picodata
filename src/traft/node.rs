@@ -26,6 +26,8 @@ use crate::traft;
 use crate::traft::error::Error;
 use crate::traft::event;
 use crate::traft::event::Event;
+use crate::traft::network::InstanceReachabilityManager;
+use crate::traft::network::WorkerOptions;
 use crate::traft::notify::{notification, Notifier, Notify};
 use crate::traft::op::{Acl, Ddl, Dml, Op, OpResult};
 use crate::traft::ConnectionPool;
@@ -68,8 +70,6 @@ use std::convert::TryFrom;
 use std::rc::Rc;
 use std::time::Duration;
 use ApplyEntryResult::*;
-
-use super::network::WorkerOptions;
 
 type RawNode = raft::RawNode<RaftSpaceAccess>;
 
@@ -167,7 +167,12 @@ impl Node {
             call_timeout: MainLoop::TICK.saturating_mul(4),
             ..Default::default()
         };
-        let pool = Rc::new(ConnectionPool::new(storage.clone(), opts));
+        let mut pool = ConnectionPool::new(storage.clone(), opts);
+        let instance_reachability = Rc::new(RefCell::new(InstanceReachabilityManager::new(
+            storage.clone(),
+        )));
+        pool.instance_reachability = instance_reachability;
+        let pool = Rc::new(pool);
 
         let node_impl = NodeImpl::new(pool.clone(), storage.clone(), raft_storage.clone())?;
 
@@ -393,6 +398,7 @@ pub(crate) struct NodeImpl {
     pool: Rc<ConnectionPool>,
     lc: LogicalClock,
     status: watch::Sender<Status>,
+    instance_reachability: Rc<RefCell<InstanceReachabilityManager>>,
 }
 
 impl NodeImpl {
@@ -436,6 +442,7 @@ impl NodeImpl {
             joint_state_latch: KVCell::new(),
             storage,
             raft_storage,
+            instance_reachability: pool.instance_reachability.clone(),
             pool,
             lc,
             status,
@@ -1161,7 +1168,13 @@ impl NodeImpl {
 
     /// Is called during a transaction
     fn handle_messages(&mut self, messages: Vec<raft::Message>) {
+        let instance_reachability = self.instance_reachability.borrow();
         for msg in messages {
+            if msg.msg_type == raft::MessageType::MsgHeartbeat
+                && !instance_reachability.should_send_heartbeat_this_tick(msg.to)
+            {
+                continue;
+            }
             if let Err(e) = self.pool.send(msg) {
                 tlog!(Error, "{e}");
             }
@@ -1189,6 +1202,28 @@ impl NodeImpl {
         expelled: &mut bool,
         storage_changes: &mut StorageChanges,
     ) {
+        // Handle any unreachable nodes from previous iteration.
+        let unreachables = self
+            .instance_reachability
+            .borrow_mut()
+            .take_unreachables_to_report();
+        for raft_id in unreachables {
+            self.raw_node.report_unreachable(raft_id);
+
+            // TODO: remove infos when instances are expelled.
+            let Some(pr) = self.raw_node.raft.mut_prs().get_mut(raft_id) else { continue; };
+            // NOTE: Raft-rs will not check if the node should be paused until
+            // a new raft entry is appended to the log. This means that once an
+            // instance goes silent it will still be bombarded with heartbeats
+            // until someone proposes an operation. This is a workaround for
+            // that particular case.
+            // The istance's state would've only changed if it was not in the
+            // Snapshot state, so we have to check for that.
+            if pr.state == ::raft::ProgressState::Probe {
+                pr.pause();
+            }
+        }
+
         // Get the `Ready` with `RawNode::ready` interface.
         if !self.raw_node.has_ready() {
             return;
