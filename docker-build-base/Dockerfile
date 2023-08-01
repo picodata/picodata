@@ -14,7 +14,7 @@ RUN set -e; \
 
 RUN set -e; \
     curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | \
-    sh -s -- -y --profile default --default-toolchain 1.65.0
+    sh -s -- -y --profile default --default-toolchain 1.68.2
 ENV PATH=/root/.cargo/bin:${PATH}
 
 COPY ci-log-section /usr/bin/ci-log-section
