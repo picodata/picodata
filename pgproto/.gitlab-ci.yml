@@ -1,0 +1,57 @@
+stages:
+  - build-base-image
+  - build
+  - test
+  - deploy
+
+variables:
+  REGISTRY: docker-public.binary.picodata.io
+  BASE_IMAGE: ${REGISTRY}/pgproto-base-build-image
+  BASE_IMAGE_TAG: ${CI_COMMIT_SHA}
+  DOCKERFILE: ./Dockerfile.ci
+
+build-base-image:
+  stage: build-base-image
+  tags:
+    - shell-ci2
+  script:
+    - docker pull ${BASE_IMAGE}:latest || true
+    - >
+      docker build
+      --cache-from ${BASE_IMAGE}:latest
+      --label GIT_COMMIT=${CI_COMMIT_SHA}
+      -t ${BASE_IMAGE}:${BASE_IMAGE_TAG}
+      -f ${DOCKERFILE}
+      .
+    - |
+      # Push image to registry
+      if [ "${CI_COMMIT_BRANCH}" == "${CI_DEFAULT_BRANCH}" ]; then
+        echo "Pushing ${BASE_IMAGE}:${BASE_IMAGE_TAG}"
+        mkdir -p $CI_PROJECT_DIR/.docker
+        echo $DOCKER_AUTH_RW > $CI_PROJECT_DIR/.docker/config.json
+        docker --config $CI_PROJECT_DIR/.docker/ push ${BASE_IMAGE}:${BASE_IMAGE_TAG}
+      else
+        echo "Skip pushing image on a non-master branch"
+      fi
+
+
+
+build-job:
+  stage: build
+  image: ${BASE_IMAGE}:${BASE_IMAGE_TAG}
+  script:
+    - cmake . -DPICODATA_TARGET_DIR=/picodata/target/debug/
+    - make -j
+
+unit-test-job:
+  stage: test
+  image: ${BASE_IMAGE}:${BASE_IMAGE_TAG}
+  script:
+    - make test
+
+# lint-test-job:   # This job also runs in the test stage.
+#   stage: test    # It can run at the same time as unit-test-job (in parallel).
+#   script:
+#     - echo "Linting code... This will take about 10 seconds."
+#     - sleep 10
+#     - echo "No lint issues found."
