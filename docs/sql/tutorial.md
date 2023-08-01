@@ -1,49 +1,5 @@
 # Пример работы с SQL Broadcaster в Picodata
-## Общие сведения для установки
-На данный момент функциональность распределенного SQL обеспечивается
-только для приложений, использующих Tarantool Cartridge. Однако, при
-этом требуется использовать версию Tarantool, которая поставляется
-вместе с программным продуктом Picodata. Для использования
-распределенного SQL требуется установить компонент SQL Broadcaster
-согласно инструкциям в его
-[Git-репозитории](https://git.picodata.io/picodata/picodata/sbroad).
-Установка возможна либо путём компиляции исходного кода, либо
-посредством утилиты `tarantoolctl`. В обоих случаях требуется выполнять
-команды из директории Cartridge-приложения. Для ознакомления и
-тестирования удобно воспользоваться [тестовым
-приложением](https://git.picodata.io/picodata/picodata/sbroad/-/tree/main/sbroad-cartridge/test_app),
-поставляемым вместе с кодом SQL Broadcaster.
 
-## Пример установки для CentOS 7
-Ниже показан пример установки сборочных зависимостей и компиляции
-исходного кода SQL Broadcaster в операционной системе CentOS 7. Шаги для
-других дистрибутивов Linux могут отличаться. Для начала требуется
-подключить репозиторий с пакетами Picodata. Этот этап документирован для
-[страницы загрузки Picodata](https://picodata.io/download/). Далее
-предлагается выполнить в терминале следующие команды:
-
-<style>
-  code {
-    white-space : pre-wrap !important;
-    word-break: break-word;
-  }
-</style>
-
-````bash
-sudo yum --disablerepo="*" --enablerepo="picodata" install -y tarantool-picodata tarantool-picodata-devel
-sudo yum install cartridge-cli
-sudo yum groupinstall -y "Development Tools"
-sudo yum install rust cargo cmake3
-sudo ln -s /usr/bin/cmake3 /usr/local/bin/cmake
-git clone https://git.picodata.io/picodata/picodata/sbroad.git
-cd sbroad/sbroad-cartridge/test_app
-````
-
-Сборка SQL Broadcaster, запуск приложения, настройка тестового шардирования:
-````bash
-cd .. && make build_integration
-cd test_app
-cartridge start -d
 cartridge replicasets setup --bootstrap-vshard
 ````
 ## Пример использования

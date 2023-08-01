@@ -3,20 +3,27 @@
 
 Функциональность компонента Sbroad в Picodata обеспечивает поддержку
 распределенных запросов для записи и чтения данных. На верхнем уровне
-схема возможных SQL-запросов в Picodata включает команды для собственно
-манипуляции данными (DML), к которым относятся `SELECT` и `INSERT`, а
-также отдельную команду `EXPLAIN` для анализа и планирования DML-запросов ([подробнее](#explain)).
+схема возможных SQL-запросов в Picodata включает команды для управления
+таблицами (DDL), манипуляции данными (DML) с помощью команд `SELECT` и
+`INSERT`, а также отдельную команду `EXPLAIN` для анализа и планирования
+DML-запросов ([подробнее](#explain)).
 
 Это отражено на схеме ниже: 
 
 ### **STATEMENT**
 ![Statement](ebnf/STATEMENT.svg)
 
+Схема DDL-команд отражает возможности для создания и удаления таблиц (спейсов):
 
-В свою очередь, схема возможных DML-запросов имеет следующий вид:
+### **DDL**
+![DDL](ebnf/DDL.svg)
+
+В свою очередь, схема возможных DML-запросов включает функции для добавления и считывания данных из таблиц (спейсов):
 
 ### **DML**
 ![DML](ebnf/DML.svg)
+
+
 
 Ниже приведены особенности синтаксиса команд и дано описание часто используемых команд с примерами их выполнения.
 
@@ -27,7 +34,7 @@
 консоли Picodata и предполагает, что любой SQL-запрос должен содержаться
 в обертке следующего вида: 
 ```
-sbroad.execute([[запрос]], {значения передаваемых параметров})
+pico.sql([[запрос]], {значения передаваемых параметров})
 ```
 Для примера в этом разделе будем использовать два тестовых спейса для учета персонажей из "Истории игрушек":
 
@@ -41,17 +48,17 @@ sbroad.execute([[запрос]], {значения передаваемых па
 Команды Sbroad будут отличаться в зависимости от того, записываем ли мы в БД данные (`INSERT`) или считываем их (`SELECT`).
 Так как при SELECT-запросах мы не передаем каких-либо параметров, то содержимое фигурных скобок будет пустым. Пример:
 ```
-sbroad.execute([[select * from "characters"]], {})
+pico.sql([[select * from "characters"]], {})
 ```
 
 ### Использование параметризированного ввода
 Запись строки данных в таблицу командой `INSERT` возможна как в обычном виде:
 ```
-sbroad.execute([[insert into "characters" ("id", "name", "year") values (1, 'Woody', 1995)]], {})
+pico.sql([[insert into "characters" ("id", "name", "year") values (1, 'Woody', 1995)]], {})
 ```
 Так и параметризированном:
 ```
-sbroad.execute([[insert into "characters" ("id", "name", "year") values (?, ?, ?)]], {1, "Woody", 1995})
+pico.sql([[insert into "characters" ("id", "name", "year") values (?, ?, ?)]], {1, "Woody", 1995})
 ```
 
 ### Использование агрегатных функций <a name="aggregate"></a>
@@ -67,7 +74,7 @@ sbroad.execute([[insert into "characters" ("id", "name", "year") values (?, ?, ?
 
 Пример подсчета общего числа товаров на складе:
 ```
-sbroad.execute([[select sum("stock") from "assets"]], {})
+pico.sql([[select sum("stock") from "assets"]], {})
 ```
 
 Вывод в консоль:
@@ -82,7 +89,7 @@ sbroad.execute([[select sum("stock") from "assets"]], {})
 Пример добавления текста к значениям в колонке:
 
 ```
-sbroad.execute([[select group_concat("name",' character, ') from "characters"]], {})
+pico.sql([[select group_concat("name",' character, ') from "characters"]], {})
 ```
 
 Вывод в консоль:
@@ -97,6 +104,27 @@ sbroad.execute([[select group_concat("name",' character, ') from "characters"]],
 ```
 
 Далее приведены подробности использования SQL-команд в Picodata.
+
+## Управление таблицами (DDL)
+
+### **CreateTable**
+![Create table](ebnf/CreateTable.svg)
+
+### **Column**
+![Column](ebnf/Column.svg)
+
+### **PrimaryKey**
+![Primary Key](ebnf/PrimaryKey.svg)
+
+### **Distribution**
+![Distribution](ebnf/Distribution.svg)
+
+### **DropTable**
+![Drop table](ebnf/DropTable.svg)
+
+### **Option**
+![Option](ebnf/Option.svg)
+
 
 ## Запрос SELECT
 
@@ -122,7 +150,7 @@ Cхема возможных распределенных запросов `SELE
 
 Вывод всех данных одной таблицы:
 ```
-sbroad.execute([[select * from "characters"]], {})
+pico.sql([[select * from "characters"]], {})
 ```
 
 Вывод в консоль:
@@ -152,7 +180,7 @@ _Примечание_: строки в выводе идут в том поря
 
 Вывод строки по известному `id`:
 ```
-sbroad.execute([[select "name" from "characters" where "id"=1]], {})
+pico.sql([[select "name" from "characters" where "id"=1]], {})
 ```
 
 Вывод в консоль:
@@ -164,7 +192,7 @@ sbroad.execute([[select "name" from "characters" where "id"=1]], {})
 
 Вывод строк по нескольким условиям для разных столбцов:
 ```
-sbroad.execute([[select "name","year" from "characters" where "id">3 and "year">2000 ]], {})
+pico.sql([[select "name","year" from "characters" where "id">3 and "year">2000 ]], {})
 ```
 
 Вывод в консоль:
@@ -244,7 +272,7 @@ sbroad.execute([[select "name","year" from "characters" where "id">3 and "year">
 игрушки, зная её количество на складе:
 
 ```
-sbroad.execute([[select "name" from "assets" where ("stock") in (values (2561))]], {})
+pico.sql([[select "name" from "assets" where ("stock") in (values (2561))]], {})
 ```
 Вывод в консоль:
 ```
@@ -266,7 +294,7 @@ sbroad.execute([[select "name" from "assets" where ("stock") in (values (2561))]
 превышают 1000 штук:
 
 ```
-sbroad.execute([[select "name"  from "characters" where "year"=1995 union all select "name" from "assets" where "stock">1000]], {})
+pico.sql([[select "name"  from "characters" where "year"=1995 union all select "name" from "assets" where "stock">1000]], {})
 ```
 
 Вывод в консоль:
@@ -301,7 +329,7 @@ sbroad.execute([[select "name"  from "characters" where "year"=1995 union all se
 только если их запасы меньше 1000 штук: 
 
 ```
- sbroad.execute([[select "name"  from "characters" where "year"=1995 except select "name" from "assets" where "stock">1000]], {})
+ pico.sql([[select "name"  from "characters" where "year"=1995 except select "name" from "assets" where "stock">1000]], {})
 ```
 Вывод в консоль:
 ```
@@ -324,7 +352,7 @@ sbroad.execute([[select "name"  from "characters" where "year"=1995 union all se
 
 Пример для вывода столбцы таблицы:
 ```
-sbroad.execute([[select "score" as "Total_score" from "scoring"]], {})
+pico.sql([[select "score" as "Total_score" from "scoring"]], {})
 ---
 - {
   'metadata': [
@@ -339,7 +367,7 @@ sbroad.execute([[select "score" as "Total_score" from "scoring"]], {})
 
 Пример для функции `CAST()`:
 ```
-sbroad.execute([[select sum(cast("score" as int)) as "_Total_score_1" from "scoring"]], {})
+pico.sql([[select sum(cast("score" as int)) as "_Total_score_1" from "scoring"]], {})
 ---
 - {
   'metadata': [
@@ -367,7 +395,7 @@ sbroad.execute([[select sum(cast("score" as int)) as "_Total_score_1" from "scor
 Команда:
 
 ```
-sbroad.execute([[select "id","name","stock","year" from "characters" join (select "id" as "number","stock" from "assets") as stock on "characters"."id"=stock."number"]], {})
+pico.sql([[select "id","name","stock","year" from "characters" join (select "id" as "number","stock" from "assets") as stock on "characters"."id"=stock."number"]], {})
 ```
 
 
@@ -402,7 +430,7 @@ sbroad.execute([[select "id","name","stock","year" from "characters" join (selec
 Пример:
 
 ```
- sbroad.execute([[select "id" as "id1","name" as "name1","stock" as "stock1","year" as "year1" from "characters" join (select "id" as "number","stock" from "assets") as stock on "characters"."id"=stock."number"]], {})
+ pico.sql([[select "id" as "id1","name" as "name1","stock" as "stock1","year" as "year1" from "characters" join (select "id" as "number","stock" from "assets") as stock on "characters"."id"=stock."number"]], {})
 ```
 
 Вывод в консоль:
@@ -469,7 +497,7 @@ SELECT-запросах. С ее помощью можно преобразов�
 
 В обычном виде значения столбца `score` имеют дробную часть и определены в схеме данных типом `decimal`:
 ```
-sbroad.execute([[select "score" from "scoring"]], {})
+pico.sql([[select "score" from "scoring"]], {})
 ---
 - {
   'metadata': [
@@ -484,7 +512,7 @@ sbroad.execute([[select "score" from "scoring"]], {})
 ```
 Преобразуем эти числа в `int`:
 ```
-sbroad.execute([[select cast("score" as int) from "scoring"]], {})
+pico.sql([[select cast("score" as int) from "scoring"]], {})
 ---
 - {
   'metadata': [
@@ -511,7 +539,7 @@ sbroad.execute([[select cast("score" as int) from "scoring"]], {})
 Пример использования со вставкой строки значений в таблицу при помощи команды `INSERT`:
 
 ```
-sbroad.execute([[insert into "assets" ("id", "name", "stock") values (?, ?, ?)]], {1, "Woody", 2561})
+pico.sql([[insert into "assets" ("id", "name", "stock") values (?, ?, ?)]], {1, "Woody", 2561})
 ```
 
 В данном случае использовалась параметризированная вставка с явным
@@ -519,7 +547,7 @@ sbroad.execute([[insert into "assets" ("id", "name", "stock") values (?, ?, ?)]]
 значения для всех столбцов, то их можно явно не указывать:
 
 ```
-sbroad.execute([[insert into "assets" values (1, 'Woody', 2561)]], {})
+pico.sql([[insert into "assets" values (1, 'Woody', 2561)]], {})
 ```
 
 Вывод в консоль при успешной вставке:
@@ -549,7 +577,7 @@ sbroad.execute([[insert into "assets" values (1, 'Woody', 2561)]], {})
 Для начала рассмотрим план простого запроса на получение данных одного столбца таблицы:
 
 ```
-sbroad.execute([[explain select "score" from "scoring"]], {})
+pico.sql([[explain select "score" from "scoring"]], {})
 ```
 
 Вывод в консоль:
@@ -569,7 +597,7 @@ sbroad.execute([[explain select "score" from "scoring"]], {})
 Если в запросе есть условие (`where`), то в план добавляется узел `selection`:
 
 ```
-sbroad.execute([[explain select "score" from "scoring" where "score">70]], {})
+pico.sql([[explain select "score" from "scoring" where "score">70]], {})
 ```
 
 Вывод в консоль:
@@ -593,7 +621,7 @@ sbroad.execute([[explain select "score" from "scoring" where "score">70]], {})
 Пример построения проекции из более сложного запроса:
 
 ```
-sbroad.execute([[explain select "id","name"  from "characters" except select "id","name" from "assets" where "stock">1000]], {})
+pico.sql([[explain select "id","name"  from "characters" except select "id","name" from "assets" where "stock">1000]], {})
 ```
 
 Вывод в консоль:
@@ -658,7 +686,7 @@ sbroad.execute([[explain select "id","name"  from "characters" except select "id
 **Локальная вставка** характерна для `INSERT` с передачей строки значений:
 
 ```
-sbroad.execute([[explain insert into "assets" values (1, 'Woody', 2561)]], {})
+pico.sql([[explain insert into "assets" values (1, 'Woody', 2561)]], {})
 ```
 
 Вывод в консоль:
@@ -680,7 +708,7 @@ sbroad.execute([[explain insert into "assets" values (1, 'Woody', 2561)]], {})
 Пример `INSERT` со вставкой из читающего запроса другой таблицы, у которой отличается ключ шардирования:
 
 ```
-sbroad.execute([[explain insert into "assets" select * from "assets3" where "id3"=1]], {})
+pico.sql([[explain insert into "assets" select * from "assets3" where "id3"=1]], {})
 ```
 
 Вывод в консоль:
@@ -700,7 +728,7 @@ sbroad.execute([[explain insert into "assets" select * from "assets3" where "id3
 Пример `JOIN` двух таблиц с разными ключами шардирования:
 
 ```
-sbroad.execute([[explain select "id","name" from "assets" join (select "id3","name3" from "assets3") as "new_assets" on "assets"."id"="new_assets"."id3"]], {})
+pico.sql([[explain select "id","name" from "assets" join (select "id3","name3" from "assets3") as "new_assets" on "assets"."id"="new_assets"."id3"]], {})
 ```
 
 Вывод в консоль:
@@ -726,7 +754,7 @@ sbroad.execute([[explain select "id","name" from "assets" join (select "id3","na
 Пример `JOIN` с соединениям не по колонкам шардирования для обеих таблиц:
 
 ```
-sbroad.execute([[explain select "id","name","stock","year" from "characters" join (select "id" as "number","stock" from "assets") as stock on "characters"."id"=stock."number"]], {})
+pico.sql([[explain select "id","name","stock","year" from "characters" join (select "id" as "number","stock" from "assets") as stock on "characters"."id"=stock."number"]], {})
 ```
 
 Вывод в консоль:
@@ -758,7 +786,7 @@ sbroad.execute([[explain select "id","name","stock","year" from "characters" joi
 Пример выполнения агрегатной функции.
 
 ```
-sbroad.execute([[explain select count("id") from "characters"]], {})
+pico.sql([[explain select count("id") from "characters"]], {})
 ```
 
 Вывод в консоль:
