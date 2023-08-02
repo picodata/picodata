@@ -7,7 +7,6 @@
 * [Команды SQL](queries)
 * [Принципы работы распределенного SQL](review)
 * [Поддерживаемые типы данных SQL](datatypes)
-* [Пример работы с SQL Broadcaster в Picodata](tutorial)
 * [Поддерживаемые функции стандарта SQL](reference)
 
 

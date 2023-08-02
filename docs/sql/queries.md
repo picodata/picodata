@@ -1,5 +1,6 @@
 # Команды SQL
-Данный справочник предоставляет основные варианты использования команд SQL в Picodata при работе с распределенной СУБД.
+Данный справочник предоставляет основные варианты использования команд SQL в
+Picodata при работе с распределенной СУБД.
 
 Функциональность компонента Sbroad в Picodata обеспечивает поддержку
 распределенных запросов для записи и чтения данных. На верхнем уровне
@@ -18,14 +19,14 @@ DML-запросов ([подробнее](#explain)).
 ### **DDL**
 ![DDL](ebnf/DDL.svg)
 
-В свою очередь, схема возможных DML-запросов включает функции для добавления и считывания данных из таблиц (спейсов):
+В свою очередь, схема возможных DML-запросов включает функции для добавления и
+считывания данных из таблиц (спейсов):
 
 ### **DML**
 ![DML](ebnf/DML.svg)
 
-
-
-Ниже приведены особенности синтаксиса команд и дано описание часто используемых команд с примерами их выполнения.
+Ниже приведены особенности синтаксиса команд и дано описание часто используемых
+команд с примерами их выполнения.
 
 ## Использование SQL-команд в консоли Picodata
 После подключения в консоли к узлу-маршрутизатору (роль `vshard.router`), можно
@@ -36,7 +37,8 @@ DML-запросов ([подробнее](#explain)).
 ```
 pico.sql([[запрос]], {значения передаваемых параметров})
 ```
-Для примера в этом разделе будем использовать два тестовых спейса для учета персонажей из "Истории игрушек":
+Для примера в этом разделе будем использовать два тестовых спейса для учета
+персонажей из "Истории игрушек":
 
 - `characters` — список персонажей с указанием года выхода на экран;
 - `assets` — список соответствующих игрушек с указанием их остатков на складе.
@@ -80,9 +82,10 @@ pico.sql([[select sum("stock") from "assets"]], {})
 Вывод в консоль:
 ```
 ---
-- {
-  'metadata': [{'name': 'COL_1', 'type': 'decimal'}], 'rows': [[10536]]
-  }
+- metadata:
+  - {'name': 'COL_1', 'type': 'decimal'}
+  rows:
+  - [10536]
 ...
 ```
 
@@ -95,10 +98,12 @@ pico.sql([[select group_concat("name",' character, ') from "characters"]], {})
 Вывод в консоль:
 ```
 ---
-- {'metadata': [{'name': 'COL_1', 'type': 'string'}], 'rows': [['Woody character,
-        Slinky Dog character, Forky character, Dragon character, The Dummies character,
-        Buzz Lightyear character, Bo Peep character, Mr. Potato Head character, Barbie
-        character, Daisy']]}
+- metadata:
+  - {'name': 'COL_1', 'type': 'string'}
+  rows:
+  - ['Woody character, Buzz Lightyear character, Bo Peep character, Mr. Potato Head
+      character, Slinky Dog character, Barbie character, Daisy character, Forky character,
+      Dragon character, The Dummies']
 ...
 
 ```
@@ -106,6 +111,8 @@ pico.sql([[select group_concat("name",' character, ') from "characters"]], {})
 Далее приведены подробности использования SQL-команд в Picodata.
 
 ## Управление таблицами (DDL)
+
+Ниже показаны схемы запросов для создания и удаления таблиц.
 
 ### **CreateTable**
 ![Create table](ebnf/CreateTable.svg)
@@ -125,6 +132,36 @@ pico.sql([[select group_concat("name",' character, ') from "characters"]], {})
 ### **Option**
 ![Option](ebnf/Option.svg)
 
+### Примеры запросов
+
+Создание таблицы со списком персонажей:
+
+```
+pico.sql([[
+	create table "characters" (
+    	        "id" integer,
+              "name" text not null,
+    	        "year" integer,
+    	        primary key ("id")
+	) using memtx distributed by ("id")
+	option (timeout = 3.0)
+]])
+```
+
+При создании таблицы можно выбрать один из доступных движеов хранения данных:
+
+  - `memtx` — движок для хранения вех данных в ОЗУ (in-memory);
+  - `vinyl` — дисковый движок хранения данных (позволяет работать с гораздо
+    большими объемами данных за счет компромисса в скорости их записи).
+
+
+Удаление таблицы:
+
+```
+pico.sql([[
+	drop table "characters"
+]])
+```
 
 ## Запрос SELECT
 
@@ -156,25 +193,22 @@ pico.sql([[select * from "characters"]], {})
 Вывод в консоль:
 ```
 ---
-- {
-  'metadata': [
-    {'name': 'id', 'type': 'integer'},
-    {'name': 'name', 'type': 'string'},
-    {'name': 'year', 'type': 'integer'}], 
-  'rows': [
-    [1, 'Woody', 1995], 
-    [3, 'Bo Peep', 1995],
-    [7, 'Daisy', 2010], 
-    [8, 'Forky', 2019], 
-    [2, 'Buzz Lightyear', 1995],
-    [4, 'Mr. Potato Head', 1995], 
-    [5, 'Slinky Dog', 1995], 
-    [6, 'Barbie', 2010], 
-    [9, 'Dragon', 2019], 
-    [10, 'The Dummies', 2019]]
-    }
+- metadata:
+  - {'name': 'id', 'type': 'integer'}
+  - {'name': 'name', 'type': 'string'}
+  - {'name': 'year', 'type': 'integer'}
+  rows:
+  - [1, 'Woody', 1995]
+  - [2, 'Buzz Lightyear', 1995]
+  - [3, 'Bo Peep', 1995]
+  - [4, 'Mr. Potato Head', 1995]
+  - [5, 'Slinky Dog', 1995]
+  - [6, 'Barbie', 2010]
+  - [7, 'Daisy', 2010]
+  - [8, 'Forky', 2019]
+  - [9, 'Dragon', 2019]
+  - [10, 'The Dummies', 2019]
 ...
-
 ```
 _Примечание_: строки в выводе идут в том порядке, в каком их отдают узлы хранения Picodata (с ролью `vshard.storage`).
 
@@ -186,7 +220,10 @@ pico.sql([[select "name" from "characters" where "id"=1]], {})
 Вывод в консоль:
 ```
 ---
-- {'metadata': [{'name': 'name', 'type': 'string'}], 'rows': [['Woody']]}
+- metadata:
+  - {'name': 'name', 'type': 'string'}
+  rows:
+  - ['Woody']
 ...
 ```
 
@@ -198,19 +235,16 @@ pico.sql([[select "name","year" from "characters" where "id">3 and "year">2000 ]
 Вывод в консоль:
 ```
 ---
-- {
-  'metadata': [
-    {'name': 'name', 'type': 'string'},
-    {'name': 'year', 'type': 'integer'}],
-  'rows': [
-    ['Daisy', 2010], 
-    ['Forky', 2019], 
-    ['Barbie', 2010], 
-    ['Dragon', 2019], 
-    ['The Dummies', 2019]]
-    }
+- metadata:
+  - {'name': 'name', 'type': 'string'}
+  - {'name': 'year', 'type': 'integer'}
+  rows:
+  - ['Barbie', 2010]
+  - ['Daisy', 2010]
+  - ['Forky', 2019]
+  - ['Dragon', 2019]
+  - ['The Dummies', 2019]
 ...
-
 ```
 
 Структурно SQL-запрос состоит из трех частей:
@@ -274,12 +308,15 @@ pico.sql([[select "name","year" from "characters" where "id">3 and "year">2000 ]
 ```
 pico.sql([[select "name" from "assets" where ("stock") in (values (2561))]], {})
 ```
+
 Вывод в консоль:
 ```
 ---
-- {'metadata': [{'name': 'name', 'type': 'string'}], 'rows': [['Woody']]}
+- metadata:
+  - {'name': 'name', 'type': 'string'}
+  rows:
+  - ['Woody']
 ...
-
 ```
 
 
@@ -300,19 +337,17 @@ pico.sql([[select "name"  from "characters" where "year"=1995 union all select "
 Вывод в консоль:
 ```
 ---
-- {
-  'metadata': [
-    {'name': 'name', 'type': 'string'}],
- 'rows': [
-    ['Woody'], 
-    ['Bo Peep'],
-    ['Woody'], 
-    ['Buzz Lightyear'], 
-    ['Mr. Potato Head'], 
-    ['Slinky Dog'], 
-    ['Buzz Lightyear'],
-    ['Slinky Dog']]
-    }
+- metadata:
+  - {'name': 'name', 'type': 'string'}
+  rows:
+  - ['Woody']
+  - ['Buzz Lightyear']
+  - ['Bo Peep']
+  - ['Mr. Potato Head']
+  - ['Slinky Dog']
+  - ['Woody']
+  - ['Buzz Lightstock']
+  - ['Slinky Dog']
 ...
 ```
 
@@ -329,20 +364,20 @@ pico.sql([[select "name"  from "characters" where "year"=1995 union all select "
 только если их запасы меньше 1000 штук: 
 
 ```
- pico.sql([[select "name"  from "characters" where "year"=1995 except select "name" from "assets" where "stock">1000]], {})
+pico.sql([[select "name"  from "characters" where "year"=1995 except select "name" from "assets" where "stock">1000]], {})
 ```
 Вывод в консоль:
 ```
 ---
-- {
-  'metadata': [
-    {'name': 'name', 'type': 'string'}], 
-  'rows': [
-    ['Bo Peep'], 
-    ['Mr. Potato Head']]
-    }
+- metadata:
+  - {'name': 'name', 'type': 'string'}
+  rows:
+  - ['Bo Peep']
+  - ['Buzz Lightyear']
+  - ['Mr. Potato Head']
 ...
 ```
+
 ## Использование псевдонимов
 Использование псевдонимов (aliases) позволяет переопределить названия
 получаемых столбцов в SELECT-запросах. Псевдоним вставляется после
@@ -354,14 +389,12 @@ pico.sql([[select "name"  from "characters" where "year"=1995 union all select "
 ```
 pico.sql([[select "score" as "Total_score" from "scoring"]], {})
 ---
-- {
-  'metadata': [
-    {'name': 'Total_score', 'type': 'decimal'}], 
-  'rows': [
-    [78.33],
-    [84.61],
-    [47.28]]
-    }
+- metadata:
+  - {'name': 'Total_score', 'type': 'decimal'}
+  rows:
+  - [78.33]
+  - [84.61]
+  - [47.28]
 ...
 ```
 
@@ -369,11 +402,10 @@ pico.sql([[select "score" as "Total_score" from "scoring"]], {})
 ```
 pico.sql([[select sum(cast("score" as int)) as "_Total_score_1" from "scoring"]], {})
 ---
-- {
-  'metadata': [
-    {'name': '_Total_score_1', 'type': 'decimal'}], 
-  'rows': 
-  [[209]]}
+- metadata:
+  - {'name': '_Total_score_1', 'type': 'decimal'}
+  rows:
+  - [209]
 ...
 ```
 
@@ -402,26 +434,23 @@ pico.sql([[select "id","name","stock","year" from "characters" join (select "id"
 Вывод в консоль:
 ```
 ---
-- {
-  'metadata': [
-    {'name': 'characters.id', 'type': 'integer'}, 
-    {'name': 'characters.name', 'type': 'string'}, 
-    {'name': 'STOCK.stock', 'type': 'integer'}, 
-    {'name': 'characters.year', 'type': 'integer'}], 
-  'rows': [
-    [1, 'Woody', 2561, 1995], 
-    [3, 'Bo Peep', 255, 1995], 
-    [7, 'Daisy', 66, 2010], 
-    [8, 'Forky', 341, 2019], 
-    [2, 'Buzz Lightyear', 4781, 1995], 
-    [4, 'Mr. Potato Head', 109, 1995], 
-    [5, 'Slinky Dog', 1112, 1995],
-    [6, 'Barbie', 998, 2010], 
-    [9, 'Dragon', 235, 2019], 
-    [10, 'The Dummies', 78, 2019]]
-    }
+- metadata:
+  - {'name': 'characters.id', 'type': 'integer'}
+  - {'name': 'characters.name', 'type': 'string'}
+  - {'name': 'STOCK.stock', 'type': 'integer'}
+  - {'name': 'characters.year', 'type': 'integer'}
+  rows:
+  - [1, 'Woody', 2561, 1995]
+  - [2, 'Buzz Lightyear', 4781, 1995]
+  - [3, 'Bo Peep', 255, 1995]
+  - [4, 'Mr. Potato Head', 109, 1995]
+  - [5, 'Slinky Dog', 1112, 1995]
+  - [6, 'Barbie', 998, 2010]
+  - [7, 'Daisy', 66, 2010]
+  - [8, 'Forky', 341, 2019]
+  - [9, 'Dragon', 235, 2019]
+  - [10, 'The Dummies', 78, 2019]
 ...
-
 ```
 При использование после `JOIN` подзапроса (см. [схему](#select))
 обязательно следует указать псевдоним (`AS`) для временной таблицы
@@ -430,32 +459,29 @@ pico.sql([[select "id","name","stock","year" from "characters" join (select "id"
 Пример:
 
 ```
- pico.sql([[select "id" as "id1","name" as "name1","stock" as "stock1","year" as "year1" from "characters" join (select "id" as "number","stock" from "assets") as stock on "characters"."id"=stock."number"]], {})
+pico.sql([[select "id" as "id1","name" as "name1","stock" as "stock1","year" as "year1" from "characters" join (select "id" as "number","stock" from "assets") as stock on "characters"."id"=stock."number"]], {})
 ```
 
 Вывод в консоль:
 ```
 ---
-- {
-  'metadata': [
-    {'name': 'id1', 'type': 'integer'}, 
-    {'name': 'name1', 'type': 'string'},
-    {'name': 'stock1', 'type': 'integer'}, 
-    {'name': 'year1', 'type': 'integer'}],
-  'rows': [
-    [1, 'Woody', 2561, 1995], 
-    [3, 'Bo Peep', 255, 1995], 
-    [7, 'Daisy', 66, 2010],
-    [8, 'Forky', 341, 2019], 
-    [2, 'Buzz Lightyear', 4781, 1995], 
-    [4, 'Mr. Potato Head', 109, 1995], 
-    [5, 'Slinky Dog', 1112, 1995], 
-    [6, 'Barbie', 998, 2010], 
-    [9, 'Dragon', 235, 2019], 
-    [10, 'The Dummies', 78, 2019]]
-    }
+- metadata:
+  - {'name': 'id1', 'type': 'integer'}
+  - {'name': 'name1', 'type': 'string'}
+  - {'name': 'stock1', 'type': 'integer'}
+  - {'name': 'year1', 'type': 'integer'}
+  rows:
+  - [1, 'Woody', 2561, 1995]
+  - [2, 'Buzz Lightyear', 4781, 1995]
+  - [3, 'Bo Peep', 255, 1995]
+  - [4, 'Mr. Potato Head', 109, 1995]
+  - [5, 'Slinky Dog', 1112, 1995]
+  - [6, 'Barbie', 998, 2010]
+  - [7, 'Daisy', 66, 2010]
+  - [8, 'Forky', 341, 2019]
+  - [9, 'Dragon', 235, 2019]
+  - [10, 'The Dummies', 78, 2019]
 ...
-
 ```
 Более того, использование псевдонимов может быть обязательным, если во
 внутренней и внешней таблицах есть колонки с одинаковыми именами: так как
@@ -499,14 +525,12 @@ SELECT-запросах. С ее помощью можно преобразов�
 ```
 pico.sql([[select "score" from "scoring"]], {})
 ---
-- {
   'metadata': [
    {'name': 'score', 'type': 'decimal'}], 
   'rows': [
     [78.33],
     [84.61],
     [47.28]]
-    }
 ...
 
 ```
@@ -514,14 +538,12 @@ pico.sql([[select "score" from "scoring"]], {})
 ```
 pico.sql([[select cast("score" as int) from "scoring"]], {})
 ---
-- {
   'metadata': [
   {'name': 'COL_1', 'type': 'integer'}],
   'rows': [
   [78],
   [84],
   [47]]
-  }
 ...
 ```
 
@@ -535,7 +557,7 @@ pico.sql([[select cast("score" as int) from "scoring"]], {})
 
 ![Insert](ebnf/INSERT.svg)
 
-### Пример запроса
+### Примеры запросов
 Пример использования со вставкой строки значений в таблицу при помощи команды `INSERT`:
 
 ```
@@ -554,9 +576,51 @@ pico.sql([[insert into "assets" values (1, 'Woody', 2561)]], {})
 
 ```
 ---
-- {'row_count': 1}
+- row_count: 1
+...
+```
+В некоторых случаях вставка строки может вернуть ошибку, например, при попытке
+вставить строку с уже существующим индексом:
 
 ```
+pico.sql([[insert into "characters" ("id", "name", "year") values (10, 'Duke Caboom', 2019)]], {})
+---
+- null
+- 'sbroad: Lua error (IR dispatch): LuaError(ExecutionError("sbroad: failed to create
+  transaction: RolledBack(FailedTo(Insert, Some(Space), \"TupleFound: Duplicate key
+  exists in unique index \\\"primary_key\\\" in space \\\"characters\\\" with old
+  tuple - [10, 2695, \\\"The Dummies\\\", 2019] and new tuple - [10, 2695, \\\"Duke
+  Caboom\\\", 2019]\"))"))'
+...
+```
+Для обработки таких ситуаций можно использовать необязательный параметр `on conflict`, который может принимать одно из трех значений:
+
+- `nothing`, ничего не делать
+- `replace`, затереть старую строку новой
+- `fail`, вернуть ошибку в случае конфликта
+
+
+Если параметр `on confilct` не указан, то по умолчанию используется поведение
+`do fail`, т.е. вывод подробностей ошибки, если она возникает. Вариант `do
+nothing` позволяет не выводить подробности операции, а просто печатать итог (`0`
+— вставка не состоялась, `1` — вставка удалась):
+
+```
+pico.sql([[insert into "characters" ("id", "name", "year") values (10, 'Duke Caboom', 2019) on conflict do nothing]], {})
+---
+- row_count: 0
+...
+```
+
+Для успешной вставки (замены строки) следует использовать вариант `do replace`:
+
+```
+pico.sql([[insert into "characters" ("id", "name", "year") values (10, 'Duke Caboom', 2019) on conflict do replace]], {})
+---
+- row_count: 1
+...
+```
+
 
 
 ## Запрос EXPLAIN
@@ -583,9 +647,8 @@ pico.sql([[explain select "score" from "scoring"]], {})
 Вывод в консоль:
 ```
 ---
-- [
-  'projection ("scoring"."score" -> "score")', 
-  '    scan "scoring"']
+- - projection ("scoring"."score"::decimal -> "score")
+  - '    scan "scoring"'
 ...
 ```
 Обязательными элементами плана запроса являются `scan` и `projection`.
@@ -603,11 +666,9 @@ pico.sql([[explain select "score" from "scoring" where "score">70]], {})
 Вывод в консоль:
 ```
 ---
-- [
-  'projection 
-  ("scoring"."score" -> "score")', 
-  '    selection ROW("scoring"."score") > ROW(70)', 
-  '        scan "scoring"']
+- - projection ("scoring"."score"::decimal -> "score")
+  - '    selection ROW("scoring"."score"::decimal) > ROW(70::unsigned)'
+  - '        scan "scoring"'
 ...
 ```
 Если `projection` выбирает столбцы (атрибуты таблицы), то `selection`
@@ -626,18 +687,17 @@ pico.sql([[explain select "id","name"  from "characters" except select "id","nam
 
 Вывод в консоль:
 ```
-- [
-  'except', 
-  '    projection ("characters"."id" -> "id", "characters"."name" -> "name")',
-  '        scan "characters"', 
-  '    projection ("assets"."id" -> "id", "assets"."name" -> "name")', 
-  '        selection ROW("assets"."stock") > ROW(1000)', 
-  '            scan "assets"'
-  ]
+---
+- - except
+  - '    projection ("characters"."id"::integer -> "id", "characters"."name"::string
+    -> "name")'
+  - '        scan "characters"'
+  - '    projection ("assets"."id"::integer -> "id", "assets"."name"::string -> "name")'
+  - '        selection ROW("assets"."stock"::integer) > ROW(1000::unsigned)'
+  - '            scan "assets"'
 ...
-
-
 ```
+
 В таком плане запроса присутствует два блока `projection`, перед
 которыми стоит логическое условие (`except`). В каждом блоке есть свое
 сканирование таблицы и, опционально, дополнительный фильтр по строкам
@@ -692,14 +752,11 @@ pico.sql([[explain insert into "assets" values (1, 'Woody', 2561)]], {})
 Вывод в консоль:
 ```
 ---
-- [
-  'insert "assets"', 
-  '    motion [policy: local segment([ref("COLUMN_1")])]', 
-  '        values',
-  '            value row (data=ROW(1::unsigned, ''Woody''::string, 2561::unsigned))'
-  ]
+- - 'insert "assets" on conflict: fail'
+  - '    motion [policy: local segment([ref("COLUMN_1")])]'
+  - '        values'
+  - '            value row (data=ROW(1::unsigned, ''Woody''::string, 2561::unsigned))'
 ...
-
 ```
 
 **Частичное перемещение** происходит, когда требуется отправить на узлы
@@ -714,17 +771,15 @@ pico.sql([[explain insert into "assets" select * from "assets3" where "id3"=1]],
 Вывод в консоль:
 ```
 ---
-- [
-  'insert "assets"', 
-  '    motion [policy: segment([ref("id3")])]', 
-  '        projection ("assets3"."id3"::integer -> "id3", "assets3"."name3"::string -> "name3", "assets3"."stock3"::integer
-    -> "stock3")', 
-  '            selection ROW("assets3"."id3"::integer) = ROW(1::unsigned)',
-  '                scan "assets3"'
-  ]
+- - 'insert "assets" on conflict: fail'
+  - '    motion [policy: segment([ref("id3")])]'
+  - '        projection ("assets3"."id3"::integer -> "id3", "assets3"."name3"::string
+    -> "name3", "assets3"."stock3"::integer -> "stock3")'
+  - '            selection ROW("assets3"."id3"::integer) = ROW(1::unsigned)'
+  - '                scan "assets3"'
 ...
-
 ```
+
 Пример `JOIN` двух таблиц с разными ключами шардирования:
 
 ```
@@ -734,19 +789,20 @@ pico.sql([[explain select "id","name" from "assets" join (select "id3","name3" f
 Вывод в консоль:
 ```
 ---
-- [
-  'projection ("assets"."id"::integer -> "id", "assets"."name"::string -> "name")',
-  '    join on ROW("assets"."id"::integer) = ROW("new_assets"."id3"::integer)', 
-  '        scan "assets"', 
-  '            projection ("assets"."id"::integer -> "id", "assets"."name"::string -> "name", "assets"."stock"::integer -> "stock")', '                scan "assets"',
-  '        motion [policy: segment([ref("id3")])]', 
-  '            scan "new_assets"',
-  '                projection ("assets3"."id3"::integer -> "id3", "assets3"."name3"::string -> "name3")', 
-  '                    scan "assets3"'
-  ]
+- - projection ("assets"."id"::integer -> "id", "assets"."name"::string -> "name")
+  - '    join on ROW("assets"."id"::integer) = ROW("new_assets"."id3"::integer)'
+  - '        scan "assets"'
+  - '            projection ("assets"."id"::integer -> "id", "assets"."name"::string
+    -> "name", "assets"."stock"::integer -> "stock")'
+  - '                scan "assets"'
+  - '        motion [policy: segment([ref("id3")])]'
+  - '            scan "new_assets"'
+  - '                projection ("assets3"."id3"::integer -> "id3", "assets3"."name3"::string
+    -> "name3")'
+  - '                    scan "assets3"'
 ...
-
 ```
+
 **Полное перемещение** происходит, когда требуется скопировать всю
 внутреннюю таблицу (в правой части запроса) на все шарды, содержащие
 внешнюю таблицу (в левой части). 
@@ -760,26 +816,24 @@ pico.sql([[explain select "id","name","stock","year" from "characters" join (sel
 Вывод в консоль:
 ```
 ---
-- [
-  'projection (
-    "characters"."id" -> "id", 
-    "characters"."name" -> "name", 
-    "STOCK"."stock" -> "stock", 
-    "characters"."year" -> "year")', 
-    '    join on ROW("characters"."id") = ROW("STOCK"."number")', 
-    '        scan "characters"', 
-    '            projection (
-      "characters"."id" -> "id", 
-      "characters"."name" -> "name", 
-      "characters"."year" -> "year")', 
-      '                scan "characters"', 
-      '        motion [policy: full]',
-      '            scan "STOCK"', 
-      '                projection (
-        "assets"."id" -> "number",
-        "assets"."stock" -> "stock")', 
-        '                    scan "assets"'
-  ]
+- - projection (
+    - "characters"."id" -> "id", 
+    - "characters"."name" -> "name", 
+    - "STOCK"."stock" -> "stock", 
+    - "characters"."year" -> "year")', 
+    - '    join on ROW("characters"."id") = ROW("STOCK"."number")', 
+    - '        scan "characters"', 
+    - '            projection (
+    -   "characters"."id" -> "id", 
+    -   "characters"."name" -> "name", 
+    -   "characters"."year" -> "year")', 
+    -   '                scan "characters"', 
+    -   '        motion [policy: full]',
+    -   '            scan "STOCK"', 
+    -   '                projection (
+    -     "assets"."id" -> "number",
+    -     "assets"."stock" -> "stock")', 
+    -     '                    scan "assets"'
 ...
 ```
 
@@ -792,16 +846,13 @@ pico.sql([[explain select count("id") from "characters"]], {})
 Вывод в консоль:
 ```
 ---
-- [
-  'projection (sum(("6cfcf453444844559d3f62de0fc31571_count_11"::integer))::decimal -> "COL_1")', 
-  '    motion [policy: full]', 
-  '        scan', 
-  '            projection (count(("characters"."id"::integer))::integer -> "6cfcf453444844559d3f62de0fc31571_count_11")',
-  '                scan "characters"'
-  ]
+- - projection (sum(("8278664dae744882bfeec573f427fd0d_count_11"::integer))::decimal
+    -> "COL_1")
+  - '    motion [policy: full]'
+  - '        scan'
+  - '            projection (count(("characters"."id"::integer))::integer -> "8278664dae744882bfeec573f427fd0d_count_11")'
+  - '                scan "characters"'
 ...
-
-
 ```
 
 Читать далее: [Поддерживаемые типы данных SQL](../datatypes)

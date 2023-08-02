@@ -14,7 +14,6 @@ nav:
     - deploy.md
     - monitoring.md
     - tutorial.md
-    - sql/tutorial.md
   - Справочные материалы:
     - cli.md
     - api.md

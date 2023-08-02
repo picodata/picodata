@@ -20,7 +20,6 @@ Picodata — распределенная система
 * [Развертывание кластера](deploy)
 * [Мониторинг кластера](monitoring)
 * [Пример работы с кластером Picodata](tutorial)
-* [Пример работы с SQL Broadcaster в Picodata](sql/tutorial)
 
 ### Справочные материалы
 * [Аргументы командной строки Picodata](cli)
