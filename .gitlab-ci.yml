@@ -121,6 +121,8 @@ build-base-image:
       # Restore cache
       if [ "$CI_COMMIT_BRANCH" == "$CI_DEFAULT_BRANCH" ]; then
         echo "Skip restoring cache on the master branch"
+      elif git diff origin/"$CI_DEFAULT_BRANCH" "$CI_COMMIT_SHA" --submodule=short | grep '^[+-]Subproject commit'; then
+        echo "Skip restoring cache because submodule(s) changed"
       elif [ -f "${CACHE_ARCHIVE}" ]; then
         ci-log-section start "restore-cache" Restoring cache from ${CACHE_ARCHIVE} ...
         tar -xf ${CACHE_ARCHIVE}
