@@ -22,8 +22,8 @@
      inkscape:deskcolor="#d1d1d1"
      showgrid="false"
      inkscape:zoom="6.6512821"
-     inkscape:cx="86.599846"
-     inkscape:cy="40.443331"
+     inkscape:cx="75.774865"
+     inkscape:cy="40.44333"
      inkscape:window-width="1439"
      inkscape:window-height="749"
      inkscape:window-x="50"
@@ -57,7 +57,7 @@ polygon.regexp { fill: #FFC7C7; stroke: #330000; stroke-width: 1; }
      style="fill:#330000;stroke:#330000"
      d="M 17,17 9,13 v 8 z" />
   <a
-     xlink:href="#CreateTable"
+     xlink:href="#createtable"
      xlink:title="CreateTable"
      id="a16">
     <path
@@ -110,7 +110,7 @@ polygon.regexp { fill: #FFC7C7; stroke: #330000; stroke-width: 1; }
     </g>
   </a>
   <a
-     xlink:href="#DropTable"
+     xlink:href="#droptable"
      xlink:title="DropTable"
      id="a24">
     <path

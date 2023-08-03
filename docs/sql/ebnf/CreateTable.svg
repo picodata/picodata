@@ -22,7 +22,7 @@
      inkscape:deskcolor="#d1d1d1"
      showgrid="false"
      inkscape:zoom="1.0790349"
-     inkscape:cx="240.0293"
+     inkscape:cx="377.18891"
      inkscape:cy="123.25829"
      inkscape:window-width="1439"
      inkscape:window-height="749"
@@ -158,7 +158,7 @@ polygon.regexp { fill: #FFC7C7; stroke: #330000; stroke-width: 1; }
        id="path705" />
   </g>
   <a
-     xlink:href="#Column"
+     xlink:href="#column"
      xlink:title="Column"
      id="a391">
     <path
@@ -214,7 +214,7 @@ polygon.regexp { fill: #FFC7C7; stroke: #330000; stroke-width: 1; }
        id="path685" />
   </g>
   <a
-     xlink:href="#PrimaryKey"
+     xlink:href="#primarykey"
      xlink:title="PrimaryKey"
      id="a405">
     <path
@@ -372,7 +372,7 @@ polygon.regexp { fill: #FFC7C7; stroke: #330000; stroke-width: 1; }
        id="path626" />
   </g>
   <a
-     xlink:href="#Distribution"
+     xlink:href="#distribution"
      xlink:title="Distribution"
      id="a437">
     <path
@@ -428,7 +428,7 @@ polygon.regexp { fill: #FFC7C7; stroke: #330000; stroke-width: 1; }
     </g>
   </a>
   <a
-     xlink:href="#Option"
+     xlink:href="#option"
      xlink:title="Option"
      id="a445">
     <path
