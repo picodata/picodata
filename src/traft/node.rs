@@ -870,17 +870,17 @@ impl NodeImpl {
                 schema_version,
             } => {
                 self.apply_op_ddl_prepare(ddl, schema_version)
-                    .expect("storage error");
+                    .expect("storage should not fail");
             }
             Op::DdlCommit => {
-                let v_local = local_schema_version().expect("storage error");
+                let v_local = local_schema_version().expect("storage should not fail");
                 let v_pending = storage_properties
                     .pending_schema_version()
-                    .expect("storage error")
+                    .expect("storage should not fail")
                     .expect("granted we don't mess up log compaction, this should not be None");
                 let ddl = storage_properties
                     .pending_schema_change()
-                    .expect("storage error")
+                    .expect("storage should not fail")
                     .expect("granted we don't mess up log compaction, this should not be None");
 
                 // This instance is catching up to the cluster.
@@ -889,21 +889,23 @@ impl NodeImpl {
                         return SleepAndRetry;
                     } else {
                         // Master applies schema change at this point.
-                        let resp = rpc::ddl_apply::apply_schema_change(
+                        let res = rpc::ddl_apply::apply_schema_change(
                             &self.storage,
                             &ddl,
                             v_pending,
                             true,
-                        )
-                        .expect("storage error");
-                        match resp {
-                            rpc::ddl_apply::Response::Abort { reason } => {
+                        );
+                        match res {
+                            Err(rpc::ddl_apply::Error::Other(err)) => {
+                                panic!("storage should not fail, but failed with: {err}")
+                            }
+                            Err(rpc::ddl_apply::Error::Aborted(reason)) => {
                                 tlog!(Warning, "failed applying committed ddl operation: {reason}";
                                     "ddl" => ?ddl,
                                 );
                                 return SleepAndRetry;
                             }
-                            rpc::ddl_apply::Response::Ok => {}
+                            Ok(()) => {}
                         }
                     }
                 }
@@ -926,23 +928,23 @@ impl NodeImpl {
 
                 storage_properties
                     .delete(PropertyName::PendingSchemaChange)
-                    .expect("storage error");
+                    .expect("storage should not fail");
                 storage_properties
                     .delete(PropertyName::PendingSchemaVersion)
-                    .expect("storage error");
+                    .expect("storage should not fail");
                 storage_properties
                     .put(PropertyName::GlobalSchemaVersion, &v_pending)
-                    .expect("storage error");
+                    .expect("storage should not fail");
             }
             Op::DdlAbort => {
-                let v_local = local_schema_version().expect("storage error");
+                let v_local = local_schema_version().expect("storage should not fail");
                 let v_pending: u64 = storage_properties
                     .pending_schema_version()
-                    .expect("storage error")
+                    .expect("storage should not fail")
                     .expect("granted we don't mess up log compaction, this should not be None");
                 let ddl = storage_properties
                     .pending_schema_change()
-                    .expect("storage error")
+                    .expect("storage should not fail")
                     .expect("granted we don't mess up log compaction, this should not be None");
                 // This condition means, schema versions must always increase
                 // even after an DdlAbort
@@ -952,8 +954,8 @@ impl NodeImpl {
                     } else {
                         let v_global = storage_properties
                             .global_schema_version()
-                            .expect("storage error");
-                        ddl_abort_on_master(&ddl, v_global).expect("storage error");
+                            .expect("storage should not fail");
+                        ddl_abort_on_master(&ddl, v_global).expect("storage should not fail");
                     }
                 }
 
@@ -975,14 +977,14 @@ impl NodeImpl {
 
                 storage_properties
                     .delete(PropertyName::PendingSchemaChange)
-                    .expect("storage error");
+                    .expect("storage should not fail");
                 storage_properties
                     .delete(PropertyName::PendingSchemaVersion)
-                    .expect("storage error");
+                    .expect("storage should not fail");
             }
 
             Op::Acl(acl) => {
-                let v_local = local_schema_version().expect("storage error");
+                let v_local = local_schema_version().expect("storage shoudl not fail");
                 let v_pending = acl.schema_version();
                 if v_local < v_pending {
                     if self.is_readonly() {
@@ -1019,7 +1021,7 @@ impl NodeImpl {
                                     .expect("revoking a privilege shouldn't fail");
                             }
                         }
-                        set_local_schema_version(v_pending).expect("storage error");
+                        set_local_schema_version(v_pending).expect("storage should not fail");
                     }
                 }
 
@@ -1056,10 +1058,10 @@ impl NodeImpl {
 
                 storage_properties
                     .put(PropertyName::GlobalSchemaVersion, &v_pending)
-                    .expect("storage error");
+                    .expect("storage should not fail");
                 storage_properties
                     .put(PropertyName::NextSchemaVersion, &(v_pending + 1))
-                    .expect("storage error");
+                    .expect("storage should not fail");
             }
         }
 
