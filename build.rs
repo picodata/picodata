@@ -278,10 +278,10 @@ fn build_tarantool(jsc: Option<&jobserver::Client>, build_root: &Path) {
 
     // Add LDAP authentication support libraries.
     rustc::link_search(format!("{tarantool_build}/bundled-ldap-prefix/lib"));
-    rustc::link_lib_static("ldap");
-    rustc::link_lib_static("lber");
+    rustc::link_lib_static_no_whole_archive("ldap");
+    rustc::link_lib_static_no_whole_archive("lber");
     rustc::link_search(format!("{tarantool_build}/bundled-sasl-prefix/lib"));
-    rustc::link_lib_static("sasl2");
+    rustc::link_lib_static_no_whole_archive("sasl2");
 
     if cfg!(target_os = "macos") {
         // Currently we link against 2 versions of `decNumber` library: one
@@ -388,6 +388,11 @@ mod rustc {
             "cargo:rustc-link-lib=static:+whole-archive,-bundle={}",
             lib.as_ref()
         );
+    }
+
+    // NB: this is needed less often and thus designed to be opt-out.
+    pub fn link_lib_static_no_whole_archive(lib: impl AsRef<str>) {
+        println!("cargo:rustc-link-lib=static:-bundle={}", lib.as_ref());
     }
 
     pub fn link_lib_dynamic(lib: impl AsRef<str>) {
