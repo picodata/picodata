@@ -689,8 +689,7 @@ pico.sql([[explain select "id","name"  from "characters" except select "id","nam
 ```
 ---
 - - except
-  - '    projection ("characters"."id"::integer -> "id", "characters"."name"::string
-    -> "name")'
+  - '    projection ("characters"."id"::integer -> "id", "characters"."name"::string -> "name")'
   - '        scan "characters"'
   - '    projection ("assets"."id"::integer -> "id", "assets"."name"::string -> "name")'
   - '        selection ROW("assets"."stock"::integer) > ROW(1000::unsigned)'
