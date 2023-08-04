@@ -13,7 +13,8 @@ nav:
     - install.md
     - deploy.md
     - monitoring.md
-    - tutorial.md
+    - tutorial_lua.md
+    - tutorial_sql.md
   - Справочные материалы:
     - cli.md
     - api.md

@@ -84,7 +84,8 @@ box.space._pico_property:get("current_schema_version")
 увеличению этого номера. 
 
 Подробнее о работе с данными в Picodata см. в разделе
-[Пример работы с кластером Picodata](../tutorial). 
+[Работа с данными через Lua API](../tutorial_lua). 
 
 ---
 [Исходный код страницы](https://git.picodata.io/picodata/picodata/docs/-/blob/main/docs/monitoring.md)
+
