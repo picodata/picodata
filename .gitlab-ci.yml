@@ -518,6 +518,7 @@ deploy-macos-arm:
     PKGNAME: 'picodata'
     BUILDDIR: 'build_mac_arm'
   script: |
+    until git describe; do git fetch --deepen 100; done
     VER=$(git describe --long | gsed -n 's/^\([0-9\.]*\)-\([0-9]*\)-\([a-z0-9]*\)/\1.\2/p')
     MAJOR=$(echo $VER | cut -f 1-2 -d '.')
     curl -v -H "Authorization: Basic $RAW_AUTH_RW" --upload-file $BUILDDIR/$PKGNAME-$VER.tar.gz $RAW_REGISTRY/brew/packages/
