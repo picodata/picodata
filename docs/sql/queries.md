@@ -125,9 +125,7 @@ Cхема возможных распределенных запросов `SELE
 
 ### Примеры запросов
 
-Так как при SELECT-запросах мы не передаем каких-либо параметров, то
-содержимое фигурных скобок будет пустым. Пример получения данных всей
-таблицы:
+Пример получения данных всей таблицы:
 
 ```
 pico.sql([[select * from "characters"]], {})
@@ -155,9 +153,16 @@ pico.sql([[select * from "characters"]], {})
 ```
 _Примечание_: строки в выводе идут в том порядке, в каком их отдают узлы хранения Picodata (с ролью `vshard.storage`).
 
-Вывод строки по известному `id`:
+В читающих запросах с условиями можно использовать как обычный вид, так
+и параметризированный. Например, следующие две команды дадут одинаковый
+результат (вывод строки по известному `id`):
+
 ```
 pico.sql([[select "name" from "characters" where "id"=1]], {})
+```
+
+```
+pico.sql([[select "name" from "characters" where "id"=?]], {1})
 ```
 
 Вывод в консоль:
@@ -170,9 +175,22 @@ pico.sql([[select "name" from "characters" where "id"=1]], {})
 ...
 ```
 
-Вывод строк по нескольким условиям для разных столбцов:
+Разница состоит в том, что при параметризации происходит кеширование
+плана запроса по ключу от шаблона SQL (в данном случае `select "name"
+from "characters" where "id"=?`), и если подобных запросов несколько, то
+они все смогут использовать кешированный план. Без параметризации у
+каждого запроса будет свой отдельный план, и ускорения от кеша не
+произойдет.
+
+Пример вывода строк по нескольким условиям для разных столбцов (также
+два варианта):
+
 ```
 pico.sql([[select "name","year" from "characters" where "id">3 and "year">2000 ]], {})
+```
+
+```
+pico.sql([[select "name","year" from "characters" where "id">? and "year">? ]], {3, 2000})
 ```
 
 Вывод в консоль:
@@ -197,6 +215,8 @@ pico.sql([[select "name","year" from "characters" where "id">3 and "year">2000 ]
 3. Оставшаяся часть запроса, которая логически представляет собой одну
    сущность и может включать как простое указание на таблицу, так и
    конструкцию из разных условий.
+
+### Параметризированные запросы
 
 ### **values**
 
@@ -246,7 +266,8 @@ pico.sql([[select "name","year" from "characters" where "id">3 and "year">2000 ]
 - `TOTAL`, сумма значений в колонке (если строк нет, возвращает `0`);
 - `MIN`, минимальное значение в колонке;
 - `MAX`, максимальное значение в колонке;
-- `GROUP_CONCAT` [`"column_name"`, `'string'`], добавляет к каждому значению колонки `column_name` указанное значение `string`.
+- `GROUP_CONCAT` [`"column_name"`, `'string'`], добавляет к каждому
+  значению колонки `column_name` указанное значение `string`.
 
 Пример подсчета общего числа товаров на складе:
 ```
@@ -316,7 +337,14 @@ pico.sql([[select "name" from "assets" where ("stock") in (values (2561))]], {})
 превышают 1000 штук:
 
 ```
-pico.sql([[select "name"  from "characters" where "year" = 1995 union all select "name" from "assets" where "stock">1000]], {})
+pico.sql([[
+  select "name" 
+  from "characters" 
+  where "year" = 1995 
+  union all 
+  select "name" from "assets" 
+  where "stock">1000
+]], {})
 ```
 
 Вывод в консоль:
@@ -412,7 +440,15 @@ pico.sql([[select sum(cast("score" as int)) as "_Total_score_1" from "scoring"]]
 Команда:
 
 ```
-pico.sql([[select "id","name","stock","year" from "characters" join (select "id" as "number","stock" from "assets") as stock on "characters"."id"=stock."number"]], {})
+pico.sql([[
+  select
+   "id","name","stock","year"
+  from "characters" 
+  join (
+    select "id" as "number","stock" from "assets"
+    ) as stock
+    on "characters"."id"=stock."number"
+]], {})
 ```
 
 
@@ -444,7 +480,18 @@ pico.sql([[select "id","name","stock","year" from "characters" join (select "id"
 Пример:
 
 ```
-pico.sql([[select "id" as "id1","name" as "name1","stock" as "stock1","year" as "year1" from "characters" join (select "id" as "number","stock" from "assets") as stock on "characters"."id"=stock."number"]], {})
+pico.sql([[
+  select
+    "id" as "id1",
+    "name" as "name1",
+    "stock" as "stock1",
+    "year" as "year1"
+  from "characters"
+  join (
+    select "id" as "number", "stock" from "assets"
+  ) as stock
+  on "characters"."id"=stock."number"
+]], {})
 ```
 
 Вывод в консоль:
@@ -477,7 +524,7 @@ pico.sql([[select "id" as "id1","name" as "name1","stock" as "stock1","year" as 
 Функция `CAST()` используется для изменения получаемого типа данных при
 SELECT-запросах. С ее помощью можно преобразовать числа в текст, дробные
 числа в целые и так далее согласно приведенной [выше](#type) схеме. В
-частности, поддерживаются следующие типы данных:
+частности, поддерживаются следующие типы данных: <a name="data_types"></a>
 
 - `ANY`. Любой тип данных / тип данных не задан;
 - `BOOL`, `BOOLEAN`. Логический тип данных, поддерживаемые значения:
@@ -558,15 +605,33 @@ pico.sql([[insert into "assets" ("id", "name", "stock") values (?, ?, ?)]], {1, 
 pico.sql([[insert into "assets" values (1, 'Woody', 2561)]], {})
 ```
 
-Вывод в консоль при успешной вставке:
+Параметризация значений при `INSERT` влияет на тип данных при выполнении
+запроса. Так, в обычном виде дробные числа конвертируются в числа с
+фиксированной запятой (например, `values(2.5)` > `decimal 2.5`). В
+параметризированном виде дробнному числу будет назначен типа с плавающей
+запятой (например, `values(?), {2.5}` > `double 2.5`). См.
+[подробнее](#data_types) о типах данных.
+
+При использовании `INSERT` вместе с подзапросом (`SELECT`) происходит
+кеширование подзапроса, поэтому его тоже имеет смысл параметризировать,
+чтобы выиграть в скорости при выполнении последующих подобных запросов:
+
+```
+pico.sql([[insert into "assets" select * from "assets2" where "id2"=?]], {11}
+```
+
+Результатом `INSERT` в приведенных примерах будет вывод в консоль
+информации о количестве успешно вставленных строк:
 
 ```
 ---
 - row_count: 1
 ...
 ```
-В некоторых случаях вставка строки может вернуть ошибку, например, при попытке
-вставить строку с уже существующим индексом:
+
+### Обработка конфликтов
+В некоторых случаях вставка строки может вернуть ошибку, например, при
+попытке вставить строку с уже существующим индексом:
 
 ```
 pico.sql([[insert into "characters" ("id", "name", "year") values (10, 'Duke Caboom', 2019)]], {})
@@ -611,7 +676,11 @@ pico.sql([[insert into "characters" ("id", "name", "year") values (10, 'Duke Cab
 `do fail`.
 
 ```
-pico.sql([[insert into "characters" ("id", "name", "year") values (10, 'Duke Caboom', 2019) on conflict do nothing]], {})
+pico.sql([[
+  insert into "characters" ("id", "name", "year")
+  values (10, 'Duke Caboom', 2019) 
+  on conflict do nothing
+]], {})
 ---
 - row_count: 0
 ...
@@ -620,7 +689,11 @@ pico.sql([[insert into "characters" ("id", "name", "year") values (10, 'Duke Cab
 Для успешной вставки (замены строки) следует использовать вариант `do replace`:
 
 ```
-pico.sql([[insert into "characters" ("id", "name", "year") values (10, 'Duke Caboom', 2019) on conflict do replace]], {})
+pico.sql([[
+  insert into "characters" ("id", "name", "year")
+  values (10, 'Duke Caboom', 2019) 
+  on conflict do replace
+]], {})
 ---
 - row_count: 1
 ...
@@ -687,7 +760,14 @@ pico.sql([[explain select "score" from "scoring" where "score">70]], {})
 Пример построения проекции из более сложного запроса:
 
 ```
-pico.sql([[explain select "id","name"  from "characters" except select "id","name" from "assets" where "stock">1000]], {})
+pico.sql([[
+  explain select 
+    "id","name" 
+  from "characters" 
+  except select 
+    "id","name" from "assets"
+  where "stock">1000
+]], {})
 ```
 
 Вывод в консоль:
@@ -787,7 +867,15 @@ pico.sql([[explain insert into "assets" select * from "assets3" where "id3"=1]],
 Пример `JOIN` двух таблиц с разными ключами шардирования:
 
 ```
-pico.sql([[explain select "id","name" from "assets" join (select "id3","name3" from "assets3") as "new_assets" on "assets"."id"="new_assets"."id3"]], {})
+pico.sql([[
+  explain select
+   "id","name" 
+  from "assets"
+  join (
+    select "id3","name3" from "assets3"
+    ) as "new_assets" 
+  on "assets"."id"="new_assets"."id3"
+]], {})
 ```
 
 Вывод в консоль:
@@ -813,7 +901,15 @@ pico.sql([[explain select "id","name" from "assets" join (select "id3","name3" f
 Пример `JOIN` с соединениям не по колонкам шардирования для обеих таблиц:
 
 ```
-pico.sql([[explain select "id","name","stock","year" from "characters" join (select "id" as "number","stock" from "assets") as stock on "characters"."id"=stock."number"]], {})
+pico.sql([[
+  explain select
+   "id","name","stock","year" 
+  from "characters" 
+  join (
+    select "id" as "number","stock" from "assets"
+  ) as stock 
+  on "characters"."id"=stock."number"
+]], {})
 ```
 
 Вывод в консоль:
