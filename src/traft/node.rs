@@ -12,6 +12,7 @@ use crate::instance::Instance;
 use crate::kvcell::KVCell;
 use crate::loop_start;
 use crate::r#loop::FlowControl;
+use crate::replicaset::ReplicasetId;
 use crate::rpc;
 use crate::schema::{Distribution, IndexDef, SpaceDef};
 use crate::storage::acl;
@@ -37,9 +38,9 @@ use crate::traft::RaftId;
 use crate::traft::RaftIndex;
 use crate::traft::RaftSpaceAccess;
 use crate::traft::RaftTerm;
-use crate::traft::Topology;
 use crate::util::AnyWithTypeName;
 use crate::warn_or_panic;
+
 use ::raft::prelude as raft;
 use ::raft::Error as RaftError;
 use ::raft::StateRole as RaftStateRole;
@@ -62,8 +63,8 @@ use ::tarantool::transaction::transaction;
 use ::tarantool::tuple::Decode;
 use ::tarantool::vclock::Vclock;
 use protobuf::Message as _;
+
 use std::cell::Cell;
-use std::cell::RefCell;
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 use std::convert::TryFrom;
@@ -145,7 +146,6 @@ pub struct Node {
     pub(crate) governor_loop: governor::Loop,
     status: watch::Receiver<Status>,
     watchers: Rc<Mutex<StorageWatchers>>,
-    topology: Rc<RefCell<Topology>>,
 }
 
 impl std::fmt::Debug for Node {
@@ -160,8 +160,6 @@ impl Node {
     /// Initialize the raft node.
     /// **This function yields**
     pub fn new(storage: Clusterwide, raft_storage: RaftSpaceAccess) -> Result<Self, RaftError> {
-        let topology = Rc::new(RefCell::new(Topology::from(storage.clone())));
-
         let opts = WorkerOptions {
             raft_msg_handler: stringify_cfunc!(proc_raft_interact),
             call_timeout: MainLoop::TICK.saturating_mul(4),
@@ -169,12 +167,7 @@ impl Node {
         };
         let pool = Rc::new(ConnectionPool::new(storage.clone(), opts));
 
-        let node_impl = NodeImpl::new(
-            pool.clone(),
-            storage.clone(),
-            raft_storage.clone(),
-            topology.clone(),
-        )?;
+        let node_impl = NodeImpl::new(pool.clone(), storage.clone(), raft_storage.clone())?;
 
         let raft_id = node_impl.raft_id();
         let status = node_impl.status.subscribe();
@@ -196,7 +189,6 @@ impl Node {
             raft_storage,
             status,
             watchers,
-            topology,
         };
 
         // Wait for the node to enter the main loop
@@ -331,6 +323,24 @@ impl Node {
         })
     }
 
+    pub fn get_replication_ids(&self, replicaset_id: &ReplicasetId) -> HashSet<RaftId> {
+        if let Some(replication_ids) = self.storage.cache().replicasets.get(replicaset_id) {
+            replication_ids
+                .iter()
+                .map(|id| {
+                    let instance = self
+                        .storage
+                        .instances
+                        .get(id)
+                        .expect("storage should not fail");
+                    instance.raft_id
+                })
+                .collect()
+        } else {
+            HashSet::new()
+        }
+    }
+
     /// Processes the [`rpc::join::Request`] and appends necessary
     /// entries to the raft log (if successful).
     ///
@@ -345,20 +355,17 @@ impl Node {
         let deadline = fiber::clock().saturating_add(timeout);
 
         loop {
-            let instance = self
-                .topology
-                .borrow()
-                .build_instance(
-                    req.instance_id.as_ref(),
-                    req.replicaset_id.as_ref(),
-                    &req.failure_domain,
-                )
-                .map_err(RaftError::ConfChangeError)?;
-            let mut replication_addresses = self.storage.peer_addresses.addresses_by_ids(
-                self.topology
-                    .borrow()
-                    .get_replication_ids(&instance.replicaset_id),
-            )?;
+            let instance = Instance::new(
+                req.instance_id.as_ref(),
+                req.replicaset_id.as_ref(),
+                &req.failure_domain,
+                &self.storage,
+            )
+            .map_err(RaftError::ConfChangeError)?;
+            let mut replication_addresses = self
+                .storage
+                .peer_addresses
+                .addresses_by_ids(self.get_replication_ids(&instance.replicaset_id))?;
             replication_addresses.insert(req.advertise_address.clone());
             let peer_address = traft::PeerAddress {
                 raft_id: instance.raft_id,
@@ -438,9 +445,10 @@ impl Node {
 
         loop {
             let instance = self
-                .topology
-                .borrow()
-                .build_updated_instance(&req)
+                .storage
+                .instances
+                .get(&req.instance_id)?
+                .update(&req, &self.storage)
                 .map_err(RaftError::ConfChangeError)?;
             let dml = Dml::replace(ClusterwideSpaceId::Instance, &instance)
                 .expect("encoding should not fail");
@@ -545,7 +553,6 @@ impl Node {
 pub(crate) struct NodeImpl {
     pub raw_node: RawNode,
     pub notifications: HashMap<LogicalClock, Notifier>,
-    topology: Rc<RefCell<Topology>>,
     joint_state_latch: KVCell<RaftIndex, oneshot::Sender<Result<(), RaftError>>>,
     storage: Clusterwide,
     raft_storage: RaftSpaceAccess,
@@ -559,7 +566,6 @@ impl NodeImpl {
         pool: Rc<ConnectionPool>,
         storage: Clusterwide,
         raft_storage: RaftSpaceAccess,
-        topology: Rc<RefCell<Topology>>,
     ) -> Result<Self, RaftError> {
         let box_err = |e| StorageError::Other(Box::new(e));
 
@@ -593,7 +599,6 @@ impl NodeImpl {
         Ok(Self {
             raw_node,
             notifications: Default::default(),
-            topology,
             joint_state_latch: KVCell::new(),
             storage,
             raft_storage,
@@ -1077,11 +1082,11 @@ impl NodeImpl {
             }
         }
 
-        // Keep topology in sync with storage
+        // Keep cache in sync with the storage
         if let Some(instance_update) = instance_update {
-            self.topology
-                .borrow_mut()
-                .update(instance_update, old_instance)
+            self.storage
+                .cache_mut()
+                .on_instance_change(instance_update, old_instance);
         }
 
         if let Some(lc) = &lc {

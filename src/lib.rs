@@ -20,6 +20,7 @@ use protobuf::Message as _;
 
 use crate::args::Address;
 use crate::instance::grade::TargetGradeVariant;
+use crate::instance::Instance;
 use crate::traft::op;
 use crate::traft::LogicalClock;
 
@@ -354,7 +355,7 @@ fn start_discover(args: &args::Run, to_supervisor: ipc::Sender<IpcMessage>) {
 fn start_boot(args: &args::Run) {
     tlog!(Info, ">>>>> start_boot()");
 
-    let instance = traft::topology::initial_instance(
+    let instance = Instance::initial(
         args.instance_id.clone(),
         args.replicaset_id.clone(),
         args.failure_domain(),

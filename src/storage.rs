@@ -7,6 +7,7 @@ use ::tarantool::tlua::{self, LuaError};
 use ::tarantool::tuple::KeyDef;
 use ::tarantool::tuple::{Decode, DecodeOwned, Encode};
 use ::tarantool::tuple::{RawBytes, ToTupleBuffer, Tuple, TupleBuffer};
+use once_cell::sync::OnceCell;
 
 use crate::failure_domain as fd;
 use crate::instance::{self, grade, Instance};
@@ -20,9 +21,10 @@ use crate::traft::error::Error;
 use crate::traft::op::Ddl;
 use crate::traft::RaftId;
 use crate::traft::Result;
+use crate::util::Uppercase;
 
 use std::collections::hash_map::Entry;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::marker::PhantomData;
 use std::rc::Rc;
 
@@ -2673,6 +2675,77 @@ pub fn tweak_max_space_id() -> tarantool::Result<()> {
         sys_schema.put(&("max_id", SPACE_ID_INTERNAL_MAX))?;
     }
     Ok(())
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// cache
+////////////////////////////////////////////////////////////////////////////////
+
+static CACHE: OnceCell<Cache> = OnceCell::new();
+
+/// Information that can be derived from [`Clusterwide`]
+/// but is costly to recalculate.
+///
+/// Should only be mutated, when storage is mutated.
+#[derive(Debug)]
+struct Cache {
+    pub(crate) max_raft_id: RaftId,
+    pub(crate) replicasets: BTreeMap<ReplicasetId, HashSet<crate::instance::InstanceId>>,
+    pub(crate) failure_domain_names: HashSet<Uppercase>,
+}
+
+impl Cache {
+    pub fn on_instance_change(&mut self, instance: Instance, old_instance: Option<Instance>) {
+        self.max_raft_id = std::cmp::max(self.max_raft_id, instance.raft_id);
+
+        let instance_id = instance.instance_id.clone();
+        let replicaset_id = instance.replicaset_id.clone();
+
+        if let Some(old_instance) = old_instance {
+            self.replicasets
+                .get_mut(&old_instance.replicaset_id)
+                .map(|r| r.remove(&old_instance.instance_id));
+        }
+
+        self.failure_domain_names
+            .extend(instance.failure_domain.names().cloned());
+        self.replicasets
+            .entry(replicaset_id)
+            .or_default()
+            .insert(instance_id);
+    }
+}
+
+impl Clusterwide {
+    #[inline]
+    pub fn cache(&self) -> &Cache {
+        CACHE.get_or_init(|| Cache::from(self))
+    }
+
+    /// Cache should only be mutated, when storage is mutated.
+    #[inline]
+    pub fn cache_mut(&self) -> &mut Cache {
+        CACHE.get_or_init(|| Cache::from(self));
+        CACHE.get_mut().expect("just set")
+    }
+}
+
+impl From<&Clusterwide> for Cache {
+    fn from(storage: &Clusterwide) -> Self {
+        let mut cache = Cache {
+            max_raft_id: 0,
+            failure_domain_names: Default::default(),
+            replicasets: Default::default(),
+        };
+        let instances = storage
+            .instances
+            .all_instances()
+            .expect("storage should not fail");
+        for instance in instances {
+            cache.on_instance_change(instance, None);
+        }
+        cache
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
