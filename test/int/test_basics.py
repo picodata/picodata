@@ -193,13 +193,13 @@ def test_instance_info(instance: Instance):
 
 
 def test_raft_log(instance: Instance):
-    # fails due to screen size calculation
-    with pytest.raises(ReturnError) as _:
-        instance.call("pico.raft_log")
+    raft_log = instance.call("pico.raft_log", dict(max_width=256))
 
-    raft_log = instance.call("pico.raft_log", dict(return_string=True))
+    raft_log = str.join("\n", raft_log)
 
     def strip_spaces(s: str):
+        s = s.strip()
+        s = s.replace("\u200b", "")
         s = re.sub(r"[ ]*\|[ ]*", "|", s)
         s = re.sub(r"[-]*\+[-]*", "+", s)
         return s

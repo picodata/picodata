@@ -829,8 +829,8 @@ pub(crate) fn setup(args: &args::Run) {
     }
     #[derive(::tarantool::tlua::LuaRead)]
     struct RaftLogOpts {
-        return_string: Option<bool>,
         justify_contents: Option<Justify>,
+        max_width: Option<usize>,
     }
     luamod_set(
         &l,
@@ -839,24 +839,51 @@ pub(crate) fn setup(args: &args::Run) {
         pico.raft_log([opts])
         ====================================
 
-        Internal API.
+        Inspect raft log contents in human readable format. The contents are
+        returned as a table of strings similarly to how fselect works for
+        spaces.
 
-        If `return_string` is true, returns a string with formatted contents of
-        raft log. Otherwise, prints the formatted raft log contents to the
-        standard output.
+        opt.justify_contents can be used to control how contents are justified.
+
+        If opts.max_width is specified the output will not be wider than this
+        many printable characters. If not specified the terminal width is
+        used, unless it is called in context of a remote session.
+
+        Params:
+
+            1. opts (table)
+                - justify_contents (string), one of 'center' | 'left' | 'right', default: 'center'
+                - max_width (number), default for remote context: 80
+
+        Returns:
+
+            (table)
 
         Example:
 
-            pico.raft_log({justify_contents = 'center', return_string = false})
+            pico.raft_log({justify_contents = 'center', max_width = 100})
         "},
         tlua::function1(
-            |opts: Option<RaftLogOpts>| -> traft::Result<Option<String>> {
-                let mut return_string = false;
+            |opts: Option<RaftLogOpts>| -> traft::Result<Option<Vec<String>>> {
                 let mut justify_contents = Default::default();
+                let mut max_width = None;
                 if let Some(opts) = opts {
-                    return_string = opts.return_string.unwrap_or(false);
                     justify_contents = opts.justify_contents.unwrap_or_default();
+                    max_width = opts.max_width;
                 }
+                let remote_ctx =
+                    crate::tarantool::eval("return box.session.peer() ~= nil").unwrap();
+                let max_width = crate::unwrap_some_or!(
+                    max_width,
+                    if remote_ctx {
+                        80
+                    } else {
+                        // Need to subtract 4, because this is how many symbols
+                        // are prepended by the console when output format is yaml.
+                        crate::util::screen_size().1 as usize - 5
+                    }
+                );
+
                 let header = ["index", "term", "lc", "contents"];
                 let [index, term, lc, contents] = header;
                 let mut rows = vec![];
@@ -883,13 +910,8 @@ pub(crate) fn setup(args: &args::Run) {
                 let [iw, tw, lw, mut cw] = col_widths;
 
                 let total_width = 1 + header.len() + col_widths.iter().sum::<usize>();
-                let cols = if return_string {
-                    256
-                } else {
-                    crate::util::screen_size().1 as usize
-                };
-                if total_width > cols {
-                    match cw.checked_sub(total_width - cols) {
+                if total_width > max_width {
+                    match cw.checked_sub(total_width - max_width) {
                         Some(new_cw) if new_cw > 0 => cw = new_cw,
                         _ => {
                             return Err(traft::error::Error::other("screen too small"));
@@ -909,34 +931,42 @@ pub(crate) fn setup(args: &args::Run) {
                 let row_sep = |buf: &mut Vec<u8>| {
                     match justify_contents {
                         Justify::Left => {
-                            writeln!(buf, "+{0:-^iw$}+{0:-^tw$}+{0:-^lw$}+{0:-<cw$}+", "")
+                            // NOTE: here and later a special unicode character \u{200b} is used.
+                            // This is a ZERO WIDTH SPACE and it helps with the tarantool's console.
+                            // The way it works is that tarantool's console when printing the values
+                            // returned from a function will surround string values with quotes if
+                            // for instance they start with a '|' pipe character, which is our case.
+                            // Adding a space before '|' doesn't help but a ZERO WIDTH SPACE
+                            // for what ever reason does. So this is basically a crutch,
+                            // but if it's good enough for tarantool developers, it's good enough for us.
+                            writeln!(buf, "\u{200b}+{0:-^iw$}+{0:-^tw$}+{0:-^lw$}+{0:-<cw$}+", "")
                         }
                         Justify::Center => {
-                            writeln!(buf, "+{0:-^iw$}+{0:-^tw$}+{0:-^lw$}+{0:-^cw$}+", "")
+                            writeln!(buf, "\u{200b}+{0:-^iw$}+{0:-^tw$}+{0:-^lw$}+{0:-^cw$}+", "")
                         }
                         Justify::Right => {
-                            writeln!(buf, "+{0:-^iw$}+{0:-^tw$}+{0:-^lw$}+{0:->cw$}+", "")
+                            writeln!(buf, "\u{200b}+{0:-^iw$}+{0:-^tw$}+{0:-^lw$}+{0:->cw$}+", "")
                         }
                     }
                     .unwrap()
                 };
                 row_sep(&mut buf);
-                write!(buf, "|{index: ^iw$}|{term: ^tw$}|{lc: ^lw$}|").unwrap();
+                write!(buf, "\u{200b}|{index: ^iw$}|{term: ^tw$}|{lc: ^lw$}|").unwrap();
                 write_contents(&mut buf, contents).unwrap();
                 row_sep(&mut buf);
                 for [index, term, lc, contents] in rows {
                     if contents.len() <= cw {
-                        write!(buf, "|{index: ^iw$}|{term: ^tw$}|{lc: ^lw$}|").unwrap();
+                        write!(buf, "\u{200b}|{index: ^iw$}|{term: ^tw$}|{lc: ^lw$}|").unwrap();
                         write_contents(&mut buf, &contents).unwrap();
                     } else {
-                        write!(buf, "|{index: ^iw$}|{term: ^tw$}|{lc: ^lw$}|").unwrap();
+                        write!(buf, "\u{200b}|{index: ^iw$}|{term: ^tw$}|{lc: ^lw$}|").unwrap();
                         write_contents(&mut buf, &contents[..cw]).unwrap();
                         let mut rest = &contents[cw..];
                         while !rest.is_empty() {
                             let clamped_cw = usize::min(rest.len(), cw);
                             write!(
                                 buf,
-                                "|{blank: ^iw$}|{blank: ^tw$}|{blank: ^lw$}|",
+                                "\u{200b}|{blank: ^iw$}|{blank: ^tw$}|{blank: ^lw$}|",
                                 blank = "~",
                             )
                             .unwrap();
@@ -946,12 +976,13 @@ pub(crate) fn setup(args: &args::Run) {
                     }
                 }
                 row_sep(&mut buf);
-                if return_string {
-                    Ok(Some(String::from_utf8_lossy(&buf).into()))
-                } else {
-                    std::io::stdout().write_all(&buf).unwrap();
-                    Ok(None)
+
+                let s = String::from_utf8_lossy(&buf);
+                let mut res = vec![];
+                for line in s.lines() {
+                    res.push(line.into());
                 }
+                Ok(Some(res))
             },
         ),
     );

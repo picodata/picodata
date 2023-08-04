@@ -51,6 +51,7 @@ with the `YY.0M.MICRO` scheme.
 - Add `pico.raft_term()`
 - Add `pico.change_password()`
 - Add `pico.wait_ddl_finalize()`
+- Changed `pico.raft_log()` options.
 
 ## [23.06.0] - 2023-06-16
 
