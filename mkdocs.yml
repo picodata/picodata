@@ -24,9 +24,10 @@ nav:
     - glossary.md
   - Архитектурная документация:
     - clustering.md
+    - discovery.md
     - sql/review.md
 
-  
+
 
 theme:
     name: material
@@ -42,8 +43,8 @@ theme:
         - navigation.path
         - toc.follow
         - content.code.copy
-        
- 
+
+
 
 extra:
     homepage: https://docs.picodata.io/
@@ -61,9 +62,9 @@ extra:
         - icon: material/emoticon-sad-outline
           name: Страница требует улучшения
           data: 0
-          note: >- 
+          note: >-
             Благодарим за отзыв! <a href="https://t.me/picodataru" target="_blank" rel="noopener">Напишите</a>, что бы вы хотели улучшить на этой странице или в целом на сайте документации.
-       
+
 extra_css:
     - extra/style.css
 
@@ -72,7 +73,7 @@ plugins:
     - git-revision-date-localized:
         enable_creation_date: true
     - search:
-        lang: 
+        lang:
           - en
           - ru
 markdown_extensions:
@@ -81,4 +82,3 @@ markdown_extensions:
   - meta
   - toc:
         permalink: True
-  
