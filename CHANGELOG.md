@@ -41,7 +41,7 @@ with the `YY.0M.MICRO` scheme.
 
 ### Lua API:
 
-- Update `pico.LUA_API_VERSION`: `1.0.0` -> `1.3.0`
+- Update `pico.LUA_API_VERSION`: `1.0.0` -> `2.0.0`
 - Add `pico.raft_term()`
 - Add `pico.create_user()`
 - Add `pico.drop_user()`
