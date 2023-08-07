@@ -40,19 +40,18 @@ pico.sql([[
 Можно использовать обычный запрос с прямой передачей значений:
  
 ```sql
-pico.sql([[
-  insert into "friends_of_peppa" ("id", "name") values (?, ?)
-]],
-{1, "Suzy"})
+pico.sql(
+	[[insert into "friends_of_peppa" ("id", "name") values (?, ?)]], 
+	{1, "Suzy"}
+)
 ```
 
 Либо параметризированный запрос:
 
 ```sql
-pico.sql([[
-  insert into "friends_of_peppa" ("id", "name") values (1, "Suzy")
-]],
-{})
+pico.sql(
+	[[insert into "friends_of_peppa" ("id", "name") values (1, "Suzy")]],{}
+)
 ```
 См. [подробнее](sql/queries.md#insert) о различиях в `INSERT`-запросах.
 
