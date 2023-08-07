@@ -35,23 +35,22 @@ with the `YY.0M.MICRO` scheme.
   replace the conflicting tuple (`do replace`), skip the tuple which causes
   error (`do nothing`), return error back to user (`do fail`).
 
-- _Clusterwide SQL_ now supports two execution limits per query: 
+- _Clusterwide SQL_ now supports two execution limits per query:
   max number of rows in virtual table and max number of VDBE opcodes
   for local query execution.
 
 ### Lua API:
 
+
 - Update `pico.LUA_API_VERSION`: `1.0.0` -> `2.0.0`
-- Add `pico.raft_term()`
-- Add `pico.create_user()`
-- Add `pico.drop_user()`
-- Add `pico.change_password()`
-- Add `pico.grant_privilege()`
-- Add `pico.revoke_privilege()`
+- New semantics of `pico.create_space()`. It's idempotent now.
 - Add `pico.drop_space()`
+- Add `pico.create_user()`, `pico.drop_user()`
+- Add `pico.create_role()`, `pico.drop_role()`
+- Add `pico.grant_privilege()`, `pico.revoke_privilege()`
+- Add `pico.raft_term()`
+- Add `pico.change_password()`
 - Add `pico.wait_ddl_finalize()`
-- Add `pico.create_role()`
-- Add `pico.drop_role()`
 
 ## [23.06.0] - 2023-06-16
 
