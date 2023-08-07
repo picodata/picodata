@@ -19,7 +19,7 @@ connect`, в интерактивной консоли Picodata доступна
 pico.sql([[
 	create table "friends_of_peppa" (
     	        "id" integer,
-              "name" text not null,
+                "name" text not null,
     	        primary key ("id")
 	) using memtx distributed by ("id")
 	option (timeout = 3.0)
