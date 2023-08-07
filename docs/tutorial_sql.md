@@ -66,7 +66,7 @@ pico.sql([[select * from "friends_of_peppa"]], {})
 Можно вывести отдельно строку по известному полю:
 
 ```
-pico.sql([[select * from "friends_of_peppa" where "id"=1]], {})
+pico.sql([[select * from "friends_of_peppa" where "id" = 1]], {})
 ```
 
 См. [подробнее](sql/queries.md#select) о вариантах чтения данных в SQL.
