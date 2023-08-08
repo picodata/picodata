@@ -8,11 +8,11 @@
 use crate::cas;
 use crate::governor;
 use crate::has_grades;
+use crate::instance::replication_ids;
 use crate::instance::Instance;
 use crate::kvcell::KVCell;
 use crate::loop_start;
 use crate::r#loop::FlowControl;
-use crate::replicaset::ReplicasetId;
 use crate::rpc;
 use crate::schema::{Distribution, IndexDef, SpaceDef};
 use crate::storage::acl;
@@ -158,6 +158,7 @@ impl std::fmt::Debug for Node {
 
 impl Node {
     /// Initialize the raft node.
+    ///
     /// **This function yields**
     pub fn new(storage: Clusterwide, raft_storage: RaftSpaceAccess) -> Result<Self, RaftError> {
         let opts = WorkerOptions {
@@ -323,24 +324,6 @@ impl Node {
         })
     }
 
-    pub fn get_replication_ids(&self, replicaset_id: &ReplicasetId) -> HashSet<RaftId> {
-        if let Some(replication_ids) = self.storage.cache().replicasets.get(replicaset_id) {
-            replication_ids
-                .iter()
-                .map(|id| {
-                    let instance = self
-                        .storage
-                        .instances
-                        .get(id)
-                        .expect("storage should not fail");
-                    instance.raft_id
-                })
-                .collect()
-        } else {
-            HashSet::new()
-        }
-    }
-
     /// Processes the [`rpc::join::Request`] and appends necessary
     /// entries to the raft log (if successful).
     ///
@@ -365,7 +348,7 @@ impl Node {
             let mut replication_addresses = self
                 .storage
                 .peer_addresses
-                .addresses_by_ids(self.get_replication_ids(&instance.replicaset_id))?;
+                .addresses_by_ids(replication_ids(&instance.replicaset_id, &self.storage))?;
             replication_addresses.insert(req.advertise_address.clone());
             let peer_address = traft::PeerAddress {
                 raft_id: instance.raft_id,

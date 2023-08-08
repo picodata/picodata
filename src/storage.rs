@@ -2681,14 +2681,14 @@ pub fn tweak_max_space_id() -> tarantool::Result<()> {
 // cache
 ////////////////////////////////////////////////////////////////////////////////
 
-static CACHE: OnceCell<Cache> = OnceCell::new();
+static mut CACHE: OnceCell<Cache> = OnceCell::new();
 
 /// Information that can be derived from [`Clusterwide`]
 /// but is costly to recalculate.
 ///
 /// Should only be mutated, when storage is mutated.
 #[derive(Debug)]
-struct Cache {
+pub struct Cache {
     pub(crate) max_raft_id: RaftId,
     pub(crate) replicasets: BTreeMap<ReplicasetId, HashSet<crate::instance::InstanceId>>,
     pub(crate) failure_domain_names: HashSet<Uppercase>,
@@ -2719,14 +2719,19 @@ impl Cache {
 impl Clusterwide {
     #[inline]
     pub fn cache(&self) -> &Cache {
-        CACHE.get_or_init(|| Cache::from(self))
+        // SAFETY: this is safe as long as `CACHE` is only accessed from tx thread
+        unsafe { CACHE.get_or_init(|| Cache::from(self)) }
     }
 
     /// Cache should only be mutated, when storage is mutated.
     #[inline]
+    #[allow(clippy::mut_from_ref)]
     pub fn cache_mut(&self) -> &mut Cache {
-        CACHE.get_or_init(|| Cache::from(self));
-        CACHE.get_mut().expect("just set")
+        // SAFETY: this is safe as long as `CACHE` is only accessed from tx thread
+        unsafe {
+            CACHE.get_or_init(|| Cache::from(self));
+            CACHE.get_mut().expect("just set")
+        }
     }
 }
 
