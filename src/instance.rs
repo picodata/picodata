@@ -55,6 +55,7 @@ pub struct Instance {
 impl Encode for Instance {}
 
 impl Instance {
+    /// Constructs new `Instance` as part of the instance joining process.
     pub fn new(
         instance_id: Option<&InstanceId>,
         replicaset_id: Option<&ReplicasetId>,
@@ -96,7 +97,7 @@ impl Instance {
         Ok(instance)
     }
 
-    /// Create first instance in the cluster
+    /// Create first instance in the cluster.
     pub fn initial(
         instance_id: Option<InstanceId>,
         replicaset_id: Option<ReplicasetId>,
@@ -118,6 +119,7 @@ impl Instance {
         }
     }
 
+    /// Updates existing [`Instance`]. Returns an updated instance.
     pub fn update(
         &self,
         req: &rpc::update_instance::Request,
@@ -178,6 +180,7 @@ impl Instance {
     }
 }
 
+/// Choose [`InstanceId`] based on `raft_id`.
 fn choose_instance_id(raft_id: RaftId, storage: &Clusterwide) -> InstanceId {
     let mut suffix: Option<u64> = None;
     loop {
@@ -199,6 +202,7 @@ fn choose_instance_id(raft_id: RaftId, storage: &Clusterwide) -> InstanceId {
     }
 }
 
+/// Choose a [`ReplicasetId`] for a new instance given its `failure_domain`.
 fn choose_replicaset_id(failure_domain: &FailureDomain, storage: &Clusterwide) -> ReplicasetId {
     'next_replicaset: for (replicaset_id, instances) in storage.cache().replicasets.iter() {
         let replication_factor = storage
@@ -227,6 +231,7 @@ fn choose_replicaset_id(failure_domain: &FailureDomain, storage: &Clusterwide) -
     }
 }
 
+/// Check that `fd` contains all `required_domains`.
 pub fn check_required_failure_domain(
     fd: &FailureDomain,
     required_domains: &HashSet<Uppercase>,
@@ -246,6 +251,7 @@ pub fn check_required_failure_domain(
     Err(format!("missing failure domain names: {}", res.join(", ")))
 }
 
+/// Get ids of instances that are part of a replicaset with `replicaset_id`.
 pub fn replication_ids(replicaset_id: &ReplicasetId, storage: &Clusterwide) -> HashSet<RaftId> {
     if let Some(replication_ids) = storage.cache().replicasets.get(replicaset_id) {
         replication_ids
