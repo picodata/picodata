@@ -1,0 +1,11 @@
+*.snap
+*.xlog
+.rocks
+.venv
+/target
+__pycache__
+__pycache__/
+build
+tags
+tmp/
+venv
