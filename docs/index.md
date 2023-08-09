@@ -13,7 +13,7 @@ Picodata — распределенная система
 * [Общее описание продукта](description)
 * [Преимущества использования Picodata](benefits)
 * [Преимущества языка Rust](benefits_rust)
-* [Работа с SQL в Picodata](sql/)
+* [Работа с SQL в Picodata](sql/home)
 
 ### Инструкции и руководства
 * [Установка Picodata](install)
