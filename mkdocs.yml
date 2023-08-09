@@ -8,7 +8,7 @@ nav:
     - description.md
     - benefits.md
     - benefits_rust.md
-    - sql/index.md
+    - sql/home.md
   - Инструкции и руководства:
     - install.md
     - deploy.md
