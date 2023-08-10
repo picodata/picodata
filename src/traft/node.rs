@@ -1461,11 +1461,8 @@ pub(crate) struct MainLoop {
     stop_flag: Rc<Cell<bool>>,
 }
 
-struct MainLoopArgs {
-    node_impl: Rc<Mutex<NodeImpl>>,
-}
-
 struct MainLoopState {
+    node_impl: Rc<Mutex<NodeImpl>>,
     next_tick: Instant,
     loop_waker: watch::Receiver<()>,
     stop_flag: Rc<Cell<bool>>,
@@ -1479,8 +1476,8 @@ impl MainLoop {
         let (loop_waker_tx, loop_waker_rx) = watch::channel(());
         let stop_flag: Rc<Cell<bool>> = Default::default();
 
-        let args = MainLoopArgs { node_impl };
-        let initial_state = MainLoopState {
+        let state = MainLoopState {
+            node_impl,
             next_tick: Instant::now(),
             loop_waker: loop_waker_rx,
             stop_flag: stop_flag.clone(),
@@ -1489,7 +1486,7 @@ impl MainLoop {
 
         Self {
             // implicit yield
-            _loop: loop_start!("raft_main_loop", Self::iter_fn, args, initial_state),
+            _loop: loop_start!("raft_main_loop", Self::iter_fn, state),
             loop_waker: loop_waker_tx,
             stop_flag,
         }
@@ -1499,14 +1496,14 @@ impl MainLoop {
         let _ = self.loop_waker.send(());
     }
 
-    async fn iter_fn(args: &MainLoopArgs, state: &mut MainLoopState) -> FlowControl {
+    async fn iter_fn(state: &mut MainLoopState) -> FlowControl {
         let _ = state.loop_waker.changed().timeout(Self::TICK).await;
         if state.stop_flag.take() {
             return FlowControl::Break;
         }
 
         // FIXME: potential deadlock - can't use sync mutex in async fn
-        let mut node_impl = args.node_impl.lock(); // yields
+        let mut node_impl = state.node_impl.lock(); // yields
         if state.stop_flag.take() {
             return FlowControl::Break;
         }

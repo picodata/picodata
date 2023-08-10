@@ -38,11 +38,9 @@ impl Loop {
     const UPDATE_INSTANCE_TIMEOUT: Duration = Duration::from_secs(3);
 
     async fn iter_fn(
-        Args {
+        State {
             storage,
             raft_storage,
-        }: &Args,
-        State {
             status,
             waker,
             pool,
@@ -527,21 +525,18 @@ impl Loop {
         storage: Clusterwide,
         raft_storage: RaftSpaceAccess,
     ) -> Self {
-        let args = Args {
-            storage,
-            raft_storage,
-        };
-
         let (waker_tx, waker_rx) = watch::channel(());
 
         let state = State {
+            storage,
+            raft_storage,
             status,
             waker: waker_rx,
             pool,
         };
 
         Self {
-            _loop: crate::loop_start!("governor_loop", Self::iter_fn, args, state),
+            _loop: crate::loop_start!("governor_loop", Self::iter_fn, state),
             waker: waker_tx,
         }
     }
@@ -556,12 +551,9 @@ pub struct Loop {
     waker: watch::Sender<()>,
 }
 
-struct Args {
+struct State {
     storage: Clusterwide,
     raft_storage: RaftSpaceAccess,
-}
-
-struct State {
     status: watch::Receiver<Status>,
     waker: watch::Receiver<()>,
     pool: Rc<ConnectionPool>,
