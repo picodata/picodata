@@ -107,7 +107,7 @@ fn main_run(args: args::Run) -> ! {
     let parent = unistd::getpid();
     let mut entrypoint = Entrypoint::StartDiscover {};
     loop {
-        println!("[supervisor:{parent}] running {entrypoint:?}");
+        eprintln!("[supervisor:{parent}] running {entrypoint:?}");
 
         let (from_child, to_parent) =
             ipc::channel::<IpcMessage>().expect("ipc channel creation failed");
@@ -164,13 +164,44 @@ fn main_run(args: args::Run) -> ! {
                 }
 
                 if let Some(sig) = unsafe { SIGNALLED } {
-                    println!("[supervisor:{parent}] got signal {sig}");
+                    eprintln!("[supervisor:{parent}] got signal {sig}");
                 }
 
-                println!("[supervisor:{parent}] ipc message from child: {msg:?}");
+                match &msg {
+                    Ok(msg) => {
+                        eprintln!("[supervisor:{parent}] ipc message from child: {msg:?}");
+                    }
+                    Err(rmp_serde::decode::Error::InvalidMarkerRead(e))
+                        if e.kind() == std::io::ErrorKind::UnexpectedEof =>
+                    {
+                        eprintln!("[supervisor:{parent}] no ipc message from child");
+                    }
+                    Err(e) => {
+                        eprintln!(
+                            "[supervisor:{parent}] failed reading ipc message from child: {e}"
+                        );
+                    }
+                }
 
                 let status = status.unwrap();
-                println!("[supervisor:{parent}] subprocess finished: {status:?}");
+                match status {
+                    nix::sys::wait::WaitStatus::Exited(pid, rc) => {
+                        eprintln!("[supervisor:{parent}] subprocess {pid} exited with code {rc}");
+                    }
+                    nix::sys::wait::WaitStatus::Signaled(pid, signal, core_dumped) => {
+                        eprintln!(
+                            "[supervisor:{parent}] subprocess {pid} was signaled with {signal}"
+                        );
+                        if core_dumped {
+                            eprintln!("[supervisor:{parent}] core dumped");
+                        }
+                    }
+                    status => {
+                        eprintln!(
+                            "[supervisor:{parent}] subprocess finished with status: {status:?}"
+                        );
+                    }
+                }
 
                 if let Ok(msg) = msg {
                     entrypoint = msg.next_entrypoint;
@@ -202,7 +233,7 @@ fn rm_tarantool_files(data_dir: &str) {
                 .unwrap_or(false)
         })
         .for_each(|f| {
-            println!("[supervisor] removing file: {}", f.to_string_lossy());
+            eprintln!("[supervisor] removing file: {}", f.to_string_lossy());
             std::fs::remove_file(f).unwrap();
         });
 }
