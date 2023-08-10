@@ -513,12 +513,17 @@ fn start_join(args: &args::Run, instance_address: String) {
                 break resp;
             }
             Err(TntError::Tcp(e)) => {
-                tlog!(Warning, "join request failed: {e}, retry...");
+                tlog!(Warning, "join request failed: {e}, retrying...");
+                fiber::sleep(timeout.saturating_sub(now.elapsed()));
+                continue;
+            }
+            Err(TntError::IO(e)) => {
+                tlog!(Warning, "join request failed: {e}, retrying...");
                 fiber::sleep(timeout.saturating_sub(now.elapsed()));
                 continue;
             }
             Err(e) => {
-                tlog!(Error, "join request failed: {e}");
+                tlog!(Error, "join request failed: {e}, shutting down...");
                 std::process::exit(-1);
             }
         }
@@ -650,6 +655,11 @@ fn postjoin(args: &args::Run, storage: Clusterwide, raft_storage: RaftSpaceAcces
                 break;
             }
             Err(timeout::Error::Failed(TntError::Tcp(e))) => {
+                tlog!(Warning, "failed to activate myself: {e}, retrying...");
+                fiber::sleep(timeout.saturating_sub(now.elapsed()));
+                continue;
+            }
+            Err(timeout::Error::Failed(TntError::IO(e))) => {
                 tlog!(Warning, "failed to activate myself: {e}, retrying...");
                 fiber::sleep(timeout.saturating_sub(now.elapsed()));
                 continue;
