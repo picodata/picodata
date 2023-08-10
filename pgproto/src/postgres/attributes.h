@@ -36,35 +36,22 @@ struct pg_attribute {
 		      struct pg_port *port, const char **data);
 };
 
-enum {
-	TYPEMOD_DEFAULT = -1,
+/**
+ * Row description message.
+ * Describes the format of subsequent RowData messages.
+ */
+struct row_description {
+	/** Number of attributes. */
+	uint32_t natts;
+	/** Attribute descriptions. */
+	struct pg_attribute *atts;
 };
 
-/** Initialize attribute for INT8 type. */
-void
-pg_attribute_int8(struct pg_attribute *att,
-		  const char *name, uint32_t name_len,
-		  uint16_t format, uint32_t typemod);
-
-/** Initialize attribute for TEXT type. */
-void
-pg_attribute_text(struct pg_attribute *att, const char *name, uint32_t name_len,
-		  uint16_t format, uint32_t typemod);
-
-/** Initialize attribute for BOOL type. */
-void
-pg_attribute_bool(struct pg_attribute *att,
-		  const char *name, uint32_t name_len,
-		  uint16_t format, uint32_t typemod);
-
-/** Initialize attribute for FLOAT8 type. */
-void
-pg_attribute_float8(struct pg_attribute *att,
-		    const char *name, uint32_t name_len,
-		    uint16_t format, uint32_t typemod);
-
-/** Initialize attribute for UNKNOWN type. */
-void
-pg_attribute_unknown(struct pg_attribute *att,
-		     const char *name, uint32_t name_len,
-		     uint16_t format, uint32_t typemod);
+/**
+ * Get row description from the metadata.
+ * Format is not mentioned in metadata so the caller must choose it him self.
+ */
+int
+parse_metadata(const char **data,
+	       struct row_description *row_desc,
+	       uint16_t format);

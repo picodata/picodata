@@ -30,6 +30,10 @@
 #include "port.h"
 #include "report.h"
 
+enum {
+	TYPEMOD_DEFAULT = -1,
+};
+
 static void
 write_unknown(const struct pg_attribute *this,
 	      struct pg_port *port, const char **data)
@@ -46,7 +50,7 @@ write_unknown(const struct pg_attribute *this,
 	}
 }
 
-void
+static void
 pg_attribute_unknown(struct pg_attribute *att,
 		     const char *name, uint32_t name_len,
 		     uint16_t format, uint32_t typemod)
@@ -83,7 +87,7 @@ write_int8(const struct pg_attribute *this,
 	}
 }
 
-void
+static void
 pg_attribute_int8(struct pg_attribute *att,
 		  const char *name, uint32_t name_len,
 		  uint16_t format, uint32_t typemod)
@@ -116,7 +120,7 @@ write_text(const struct pg_attribute *this,
 	}
 }
 
-void
+static void
 pg_attribute_text(struct pg_attribute *att, const char *name, uint32_t name_len,
 		  uint16_t format, uint32_t typemod)
 {
@@ -147,7 +151,7 @@ write_bool(const struct pg_attribute *this,
 	}
 }
 
-void
+static void
 pg_attribute_bool(struct pg_attribute *att,
 		  const char *name, uint32_t name_len,
 		  uint16_t format, uint32_t typemod)
@@ -180,7 +184,7 @@ write_float8(const struct pg_attribute *this,
 	}
 }
 
-void
+static void
 pg_attribute_float8(struct pg_attribute *att,
 		    const char *name, uint32_t name_len,
 		    uint16_t format, uint32_t typemod)
@@ -192,4 +196,65 @@ pg_attribute_float8(struct pg_attribute *att,
 	att->typemod = typemod;
 	att->format = format;
 	att->write = write_float8;
+}
+
+/**
+ * Get row description from the metadata.
+ * Format is not mentioned in metadata so the caller must choose it him self.
+ */
+int
+parse_metadata(const char **data,
+	       struct row_description *row_desc,
+	       uint16_t format)
+{
+	uint32_t natts = mp_decode_array(data);
+	if (natts >= (uint16_t)-1) {
+		pg_debug("too many attributes: %"PRIu32, natts);
+		return -1;
+	}
+	row_desc->natts = (uint16_t)natts;
+	row_desc->atts = box_region_alloc(sizeof(*row_desc->atts) * natts);
+	const char *str;
+	uint32_t len;
+	for (uint32_t i = 0; i < row_desc->natts; ++i) {
+		assert(mp_typeof(**data) == MP_MAP);
+		uint32_t map_size = mp_decode_map(data);
+		assert(map_size == 2);
+		str = mp_decode_str(data, &len);
+		assert(len == 4 && strncmp(str, "name", 4) == 0);
+		uint32_t name_len;
+		const char *name = mp_decode_str(data, &name_len);
+		str = mp_decode_str(data, &len);
+		assert(len == 4 && strncmp(str, "type", 4) == 0);
+
+		const char *type = mp_decode_str(data, &len);
+		struct pg_attribute *att = &row_desc->atts[i];
+		if (strncmp(type, "integer", len) == 0) {
+			pg_attribute_int8(att, name, name_len, format,
+					  TYPEMOD_DEFAULT);
+		} else if (strncmp(type, "string", len) == 0) {
+			pg_attribute_text(att, name, name_len, format,
+					  TYPEMOD_DEFAULT);
+		} else if (strncmp(type, "boolean", len) == 0) {
+			pg_attribute_bool(att, name, name_len, format,
+					  TYPEMOD_DEFAULT);
+		} else if (strncmp(type, "double", len) == 0) {
+			pg_attribute_float8(att, name, name_len, format,
+					    TYPEMOD_DEFAULT);
+		} else if (strncmp(type, "any", len) == 0) {
+			pg_attribute_unknown(att, name, name_len, format,
+					     TYPEMOD_DEFAULT);
+		} else {
+			/**
+			 * Unsigned type is not supported by postgres.
+			 * Decimal type is supported in picodata and can be
+			 * matched to NUMERIC type in postgres but it is not
+			 * trivial to work with it compared to the other types.
+			 */
+			pg_error(NULL, ERRCODE_INTERNAL_ERROR,
+				 "unknown type \'%.*s\'", len, type);
+			return -1;
+		}
+	}
+	return 0;
 }

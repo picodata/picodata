@@ -1,10 +1,12 @@
 set(POSTGRES_SOURCES
-    report.c
-    port.c
-    startup.c
+    attributes.c
     auth.c
+    messages.c
+    port.c
     postgres.c
-    attributes.c)
+    report.c
+    startup.c
+)
 
 
 build_module(postgres "${POSTGRES_SOURCES}")
