@@ -3,9 +3,7 @@
 Picodata при работе с распределенной СУБД.
 
 ## Поддерживаемые функции
-Возможности SQL в Picodata обеспечиваютcя встроенным компонентом
-[Sbroad](https://git.picodata.io/picodata/picodata/sbroad){:target="_blank"}
-и включают следующие функции:
+Возможности SQL в Picodata включают следующие функции:
 
 - Data Definition Language (`DDL`), команды для
   [создания](#create_space) и [удаления](#drop_space)
