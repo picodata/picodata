@@ -154,9 +154,9 @@ fn main_run(args: args::Run) -> ! {
                 drop(from_parent);
                 drop(to_parent);
 
-                let msg = from_child.recv();
-
                 let status = waitpid(child, None);
+
+                let msg = from_child.recv();
 
                 // Restore termios configuration as planned
                 if let Some(tcattr) = tcattr.as_ref() {
