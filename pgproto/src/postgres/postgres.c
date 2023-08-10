@@ -1,8 +1,8 @@
 #include <module.h>
 #include <msgpuck.h>
 #include <inttypes.h>
-#include <strings.h> /* for strncasecmp */
-#include <ctype.h> /* for isspace */
+#include <strings.h>
+#include <ctype.h>
 
 #include "postgres.h"
 #include "report.h"
@@ -11,7 +11,6 @@
 #include "auth.h"
 #include "attributes.h"
 #include "tarantool/trivia/util.h"
-
 
 /**
  * Format of ReadyForQuery message.
@@ -55,26 +54,6 @@ struct query_message {
 	/** The query string. */
 	const char *query;
 };
-
-/** Read query string consistin in QueryMessage  */
-static const char *
-read_query_string(struct pg_port *port, size_t *query_len)
-{
-	struct query_message message;
-	if (pg_read_uint32(port, &message.len) < 0)
-		goto error;
-
-	*query_len = message.len - sizeof(message.len);
-	message.query = pg_read_bytes(port, *query_len);
-	if (message.query == NULL)
-		goto error;
-
-	return message.query;
-error:
-	pg_error(NULL, ERRCODE_INTERNAL_ERROR,
-		 "failed to read a query message");
-	return NULL;
-}
 
 #define COMPARE_AND_RETURN_IF_EQUALS(query, tag)	\
 	if (strncasecmp(query, tag, strlen(tag)) == 0)	\
@@ -360,9 +339,12 @@ static int
 process_simple_query_impl(struct pg_port *port)
 {
 	size_t query_len;
-	const char *query = read_query_string(port, &query_len);
-	if (query == NULL)
+	const char *query = pg_read_cstr(port, &query_len);
+	if (query == NULL) {
+		pg_error(port, ERRCODE_INTERNAL_ERROR,
+			 "failed to read a query message");
 		return -1;
+	}
 
 	pg_debug("processing query \'%s\'", query);
 	const char *response = dispatch_query_wrapped(query, query_len);

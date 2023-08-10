@@ -77,6 +77,25 @@ pg_port_close(struct pg_port *port)
 	free(port->user);
 }
 
+char *
+pg_read_cstr(struct pg_port *port, size_t *len)
+{
+	uint32_t packet_len;
+	if (pg_read_uint32(port, &packet_len) < 0)
+		return NULL;
+
+	if (packet_len < sizeof(uint32_t) + 1)
+		return NULL;
+
+	size_t cstr_len = packet_len - sizeof(uint32_t);
+	char *query = pg_read_bytes(port, cstr_len);
+	if (query == NULL || query[cstr_len - 1] != '\0')
+		return NULL;
+
+	*len = cstr_len - 1;
+	return query;
+}
+
 void *
 pg_read_bytes(struct pg_port *port, size_t size)
 {

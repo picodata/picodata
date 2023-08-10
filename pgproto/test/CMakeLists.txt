@@ -1,9 +1,11 @@
 get_all_targets(SOURCE_TARGETS ${PROJECT_SOURCE_DIR}/src)
 
+set(LUA_CPATH "${PROJECT_BINARY_DIR}/src/server/?.so")
+
 add_custom_target(test
     DEPENDS ${SOURCE_TARGETS}
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
     COMMAND ${CMAKE_COMMAND} -E env
     "PICODATA_EXECUTABLE=${PICODATA_EXECUTABLE}"
-    "LUA_CPATH=${PROJECT_BINARY_DIR}/src/server/?.so"
+    "LUA_CPATH=${LUA_CPATH}"
     pytest)

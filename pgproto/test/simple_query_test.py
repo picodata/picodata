@@ -7,25 +7,20 @@ import time
 def start_pg_server(instance, host, service):
     start_pg_server_lua_code = f"""
         package.cpath="{os.environ['LUA_CPATH']}"
-        net_box = require('net.box')
-        box.schema.func.create('tcpserver.server_start', {{language = 'C'}})
+
+        box.schema.func.create('tcpserver.server_start', {{ language = 'C' }})
         box.schema.user.grant('guest', 'execute', 'function', 'tcpserver.server_start')
 
-        box.cfg{{listen=3301}}
-        caller = net_box:new(3301)
-        caller:call('tcpserver.server_start', {{ '{host}', '{service}' }})
+        box.func['tcpserver.server_start']:call({{ '{host}', '{service}' }})
     """
     instance.eval(start_pg_server_lua_code)
 
 def stop_pg_server(instance):
     stop_pg_server_lua_code = f"""
-        local net_box = require('net.box')
         box.schema.func.create('tcpserver.server_stop', {{language = 'C'}})
         box.schema.user.grant('guest', 'execute', 'function', 'tcpserver.server_stop')
 
-        box.cfg{{listen=3301}}
-        local caller = net_box:new(3301)
-        caller:call('tcpserver.server_stop')
+        box.func['tcpserver.server_stop']:call()
 
         box.schema.func.drop('tcpserver.server_start')
         box.schema.func.drop('tcpserver.server_stop')
@@ -69,11 +64,11 @@ def test_simple_flow_session(cluster: Cluster):
     i1 = cluster.instances[0]
 
     host = '127.0.0.1'
-    service = '35776'
+    service = '5432'
     start_pg_server(i1, host, service)
 
     user = 'admin'
-    password = '`fANPIOUWEh79p12hdunqwADI`'
+    password = 'password'
     i1.eval("box.cfg{auth_type='md5', log_level=7}")
     i1.eval(f"box.schema.user.passwd('{user}', '{password}')")
 

@@ -78,6 +78,17 @@ void
 pg_port_close(struct pg_port *port);
 
 /**
+ * Read a null-terminated string to the port buffer, set size to its length
+ * excluding the terminator and return a pointer to the data read.
+ *
+ * @retval not-NULL on success.
+ * @retval NULL on EOF or error,
+ *         check pg_port::state to understand what happened.
+ */
+char *
+pg_read_cstr(struct pg_port *port, size_t *size);
+
+/**
  * Read size bytes to the port buffer and return a pointer to the data read.
  *
  * @retval not-NULL on success.
