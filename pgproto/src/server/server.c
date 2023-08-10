@@ -270,6 +270,7 @@ server_should_try_again(int err)
 static int
 server_worker(va_list args)
 {
+	(void)args;
 	say_info("server has been started");
 	while (! fiber_is_cancelled()) {
 		if (server_wait_for_connection()) {

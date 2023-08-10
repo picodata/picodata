@@ -13,24 +13,6 @@
 #include "tarantool/trivia/util.h"
 
 /**
- * Format of ReadyForQuery message.
- * ReadyForQuery informs the frontend that it can safely send a new command.
-*/
-struct ready_for_query_message {
-	/** Type byte, equals 'Z' */
-	uint8_t type;
-	/** Packet length without the type byte, including len field itself. */
-	uint32_t len;
-	/**
-	 * Current backend transaction status indicator.
-	 * Possible values are 'I' if idle (not in a transaction block);
-	 * 'T' if in a transaction block; or 'E' if in a failed transaction
-	 * block (queries will be rejected until block is ended).
-	 */
-	uint8_t transaction_status;
-};
-
-/**
  * Send ReadyForQuery message.
  * ReadyForQuery informs the frontend that it can safely send a new command.
  */
@@ -44,16 +26,6 @@ send_ready_for_query(struct pg_port *port)
 	/** Notify the client that we are ready for queries. */
 	pg_flush(port);
 }
-
-/** Query message format. */
-struct query_message {
-	/** Type byte. Equals 'Q' */
-	uint8_t type;
-	/** Message length, including the len field. */
-	uint32_t len;
-	/** The query string. */
-	const char *query;
-};
 
 #define COMPARE_AND_RETURN_IF_EQUALS(query, tag)	\
 	if (strncasecmp(query, tag, strlen(tag)) == 0)	\
@@ -267,6 +239,7 @@ send_data_row(struct pg_port *port, const char **data,
 	      const struct row_description *row_desc,
 	      uint16_t format)
 {
+	(void)format;
 	pg_begin_msg(port, 'D');
 	pg_write_uint16(port, row_desc->natts);
 	const struct pg_attribute *atts = row_desc->atts;
