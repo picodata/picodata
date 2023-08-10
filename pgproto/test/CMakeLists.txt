@@ -1,6 +1,8 @@
 get_all_targets(SOURCE_TARGETS ${PROJECT_SOURCE_DIR}/src)
 
-set(LUA_CPATH "${PROJECT_BINARY_DIR}/src/server/?.so")
+list(APPEND LUA_CPATH "${PROJECT_BINARY_DIR}/src/server/?.so")
+list(APPEND LUA_CPATH "${PROJECT_BINARY_DIR}/src/server/?.dylib")
+list(JOIN LUA_CPATH "\;" LUA_CPATH)
 
 add_custom_target(test
     DEPENDS ${SOURCE_TARGETS}

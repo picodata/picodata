@@ -143,10 +143,15 @@ dispatch_query_wrapped(const char *query, size_t query_len)
 	port_c_create(&out);
 	struct box_function_ctx ctx = { &out };
 	int rc = dispatch_query(&ctx, args, args_end);
-	if (rc != 0)
-		return NULL;
+	/**
+	 * Wait for the commit.
+	 * @todo: fix me
+	 */
+	fiber_sleep(0.01);
+	const char *response = NULL;
 	uint32_t response_size;
-	const char *response = port_get_msgpack(&out, &response_size);
+	if (rc == 0)
+		response = port_get_msgpack(&out, &response_size);
 	port_destroy(&out);
 	return response;
 }
@@ -288,7 +293,11 @@ send_data_rows(struct pg_port *port, const char **data,
 	return row_count;
 }
 
-static uint32_t
+/**
+ * Parse and send query response.
+ * Returns -1 in case of error,
+ */
+static int64_t
 process_query_response(struct pg_port *port, const char **response)
 {
 	size_t row_count = 0;
@@ -335,6 +344,11 @@ process_query_response(struct pg_port *port, const char **response)
 	return row_count;
 }
 
+/**
+ * Process a pending simple query message.
+ * Allocates on box region.
+ * Returns 0 if the query cycle can be continued, -1 otherwise.
+ */
 static int
 process_simple_query_impl(struct pg_port *port)
 {
@@ -343,6 +357,10 @@ process_simple_query_impl(struct pg_port *port)
 	if (query == NULL) {
 		pg_error(port, ERRCODE_INTERNAL_ERROR,
 			 "failed to read a query message");
+		/**
+		 * We can't restore the message borders,
+		 * so the cycle should be stopped.
+		 */
 		return -1;
 	}
 
@@ -354,19 +372,18 @@ process_simple_query_impl(struct pg_port *port)
 			 "failed to execute query \'%s\': %s",
 			 query, box_error_message(box_error_last()));
 		/**
-		 * Got client or memory error.
-		 * The error code should be considered to decide what to return.
-		 * In case of sql error 0 should be returned and pg_error should
-		 * report the code, otherwise -1 should be returned.
-		 * @todo: Handle it smarter.
+		 * The error was properly handled,
+		 * so we can continue the query cycle.
 		 */
 		return 0;
 	}
 
 	bool display_row_count;
 	const char *command_tag = get_command_tag(query, &display_row_count);
-	size_t row_count = process_query_response(port, &response);
-	send_command_complete(port, command_tag, display_row_count, row_count);
+	int64_t row_count = process_query_response(port, &response);
+	/** Send CommandComplete only if no error happened. */
+	if (row_count != -1)
+		send_command_complete(port, command_tag, display_row_count, row_count);
 	return 0;
 }
 
@@ -457,7 +474,7 @@ postgres_main(struct iostream *iostream)
 
 	pg_send_parameter_status(&port, "client_encoding", "UTF8");
 
-	if (start_query_cycle(&port)  != 0) {
+	if (start_query_cycle(&port) != 0) {
 		ret = -1;
 		goto close_connection;
 	}

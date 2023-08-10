@@ -69,7 +69,7 @@ def test_simple_flow_session(cluster: Cluster):
 
     user = 'admin'
     password = 'password'
-    i1.eval("box.cfg{auth_type='md5', log_level=7}")
+    i1.eval("box.cfg{auth_type='md5'}")
     i1.eval(f"box.schema.user.passwd('{user}', '{password}')")
 
     os.environ['PGSSLMODE'] = 'disable'
@@ -105,4 +105,50 @@ def test_simple_flow_session(cluster: Cluster):
     assert [2, 'to', False, 0.2] in tuples
     assert [4, 'for', True, 0.4] in tuples
 
+    cur.execute("""
+        DROP TABLE "tall";
+    """)
+
     stop_pg_server(i1)
+
+# Aggregates return value type is decimal, which is currently not supported,
+# so an error is expected
+def test_aggregate_error(cluster: Cluster):
+    cluster.deploy(instance_count=1)
+    i1 = cluster.instances[0]
+
+    host = '127.0.0.1'
+    service = '54321'
+    start_pg_server(i1, host, service)
+
+    user = 'admin'
+    password = 'password'
+    i1.eval("box.cfg{auth_type='md5'}")
+    i1.eval(f"box.schema.user.passwd('{user}', '{password}')")
+
+    os.environ['PGSSLMODE'] = 'disable'
+    conn = pg.Connection(user, password=password, host=host, port=int(service))
+    conn.autocommit = True
+    cur = conn.cursor()
+
+    cur.execute("""
+        create table "tall" (
+            "id" integer not null,
+            "str" string,
+            "bool" boolean,
+            "real" double,
+            primary key ("id")
+        )
+        using memtx distributed by ("id")
+        option (timeout = 3);
+    """)
+
+    with pytest.raises(pg.DatabaseError, match="can't parse attributes description"):
+        cur.execute("""
+            SELECT COUNT(*) FROM "tall";
+        """)
+
+    with pytest.raises(pg.DatabaseError, match="can't parse attributes description"):
+        cur.execute("""
+            SELECT SUM("id") FROM "tall";
+        """)
