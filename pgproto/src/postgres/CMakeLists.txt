@@ -8,9 +8,6 @@ set(POSTGRES_SOURCES
     startup.c
 )
 
-
-build_module(postgres "${POSTGRES_SOURCES}")
-message("MSGPUCK_LIBRARIES: ${MSGPUCK_LIBRARIES}")
-target_link_libraries(postgres PRIVATE ${MSGPUCK_LIBRARIES})
-
+add_library(postgres STATIC ${POSTGRES_SOURCES})
+set_property(TARGET postgres PROPERTY POSITION_INDEPENDENT_CODE ON)
 target_compile_options(postgres PRIVATE "-Wno-format-security")

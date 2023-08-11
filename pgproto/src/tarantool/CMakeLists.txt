@@ -1,5 +1,7 @@
 set(TARANTOOL_MODULE_SOURCES
     sio.c
-    evio.c)
+    evio.c
+)
 
-build_module(tarantool "${TARANTOOL_MODULE_SOURCES}")
+add_library(tarantool STATIC ${TARANTOOL_MODULE_SOURCES})
+set_property(TARGET tarantool PROPERTY POSITION_INDEPENDENT_CODE ON)
