@@ -71,7 +71,7 @@ pg_send_auth_request(struct pg_port *port, enum PG_AUTH_REQUEST_CODE code,
 	if (code != AUTH_REQ_OK)
 		pg_flush(port);
 
-	pg_debug("sent auth request(%d) to user \'%s\'", code, port->user);
+	say_debug("sent auth request(%d) to user \'%s\'", code, port->user);
 }
 
 /** AuthResponse packet format. */
@@ -122,7 +122,7 @@ pg_recv_auth_response(struct pg_port *port, struct auth_response *packet)
 	if (packet->data == NULL)
 		return -1;
 
-	pg_debug("received auth response from user \'%s\'", port->user);
+	say_debug("received auth response from user \'%s\'", port->user);
 	pg_read_gc(port);
 	return 0;
 }
@@ -206,14 +206,14 @@ pg_authenticate(struct pg_port *port)
 	if (strcmp(auth_method, "md5") == 0) {
 		rc = pg_authenticate_md5(port);
 	} else {
-		pg_debug("unknown auth method %s", auth_method);
+		say_debug("unknown auth method %s", auth_method);
 		goto auth_failed;
 	}
 	if (rc != 0)
 		goto auth_failed;
 
 	pg_send_auth_ok(port);
-	pg_info("authenticated");
+	say_info("authenticated");
 	return 0;
 
 auth_failed:

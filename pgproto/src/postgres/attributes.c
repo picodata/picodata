@@ -209,7 +209,7 @@ parse_metadata(const char **data,
 {
 	uint32_t natts = mp_decode_array(data);
 	if (natts >= (uint16_t)-1) {
-		pg_debug("too many attributes: %"PRIu32, natts);
+		say_error("too many attributes: %"PRIu32, natts);
 		return -1;
 	}
 	row_desc->natts = (uint16_t)natts;

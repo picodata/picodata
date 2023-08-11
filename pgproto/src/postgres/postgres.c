@@ -163,7 +163,7 @@ process_simple_query_impl(struct pg_port *port)
 		return -1;
 	}
 
-	pg_debug("processing query \'%s\'", query);
+	say_debug("processing query \'%s\'", query);
 	const char *response = dispatch_query_wrapped(query, query_len);
 
 	if (response == NULL) {
@@ -204,8 +204,7 @@ start_query_cycle(struct pg_port *port)
 		uint8_t msg_type;
 		pg_read_uint8(port, &msg_type);
 		if (port->status == PG_EOF) {
-			pg_error(NULL, ERRCODE_CONNECTION_DOES_NOT_EXIST,
-				 "unexpected EOF on client connection");
+			say_error("unexpected EOF on client connection");
 			return -1;
 		} else if (port->status == PG_ERR) {
 			/* Error has already been logged. */
@@ -218,7 +217,7 @@ start_query_cycle(struct pg_port *port)
 				return -1;
 			break;
 		case 'X': /* Terminate */
-			pg_debug("got Terminate message");
+			say_debug("got Terminate message");
 			return 0;
 		default:
 			pg_error(port, ERRCODE_FEATURE_NOT_SUPPORTED,
@@ -268,7 +267,7 @@ cleanup:
 	if (fiber_is_cancelled())
 		pg_notice(&port, "shutting down");
 
-	pg_info("disconnected");
+	say_info("disconnected");
 	pg_port_close(&port);
 	return ret;
 }

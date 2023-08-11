@@ -244,6 +244,6 @@ pg_process_startup_message(struct pg_port *port)
 		return -1;
 	}
 
-	pg_debug("processed startup message for user \"%s\"", port->user);
+	say_debug("processed startup message for user \"%s\"", port->user);
 	return 0;
 }

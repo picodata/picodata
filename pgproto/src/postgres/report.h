@@ -25,18 +25,6 @@ void
 send_message_to_frontend(int level, struct pg_port *port,
 			 const char *sql_error_code, const char *fmt, ...);
 
-/** Log a debug message. Message is not sent to the client. */
-#define pg_debug(...) \
-	say_debug(__VA_ARGS__)
-
-/** Log an info message. Message is not sent to the client. */
-#define pg_info(...) \
-	say_info(__VA_ARGS__)
-
-/** Log a warning message.  Message is not sent to the client. */
-#define pg_warning(format, ...) \
-	say_warning(format, __VA_ARGS__)
-
 /** Log an error message.  Message is sent to the client if port != NULL. */
 #define pg_error(port, sql_code, ...) do {	\
 	say_error(__VA_ARGS__);	\
