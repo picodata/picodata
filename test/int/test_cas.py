@@ -129,8 +129,7 @@ def test_cas_predicate(instance: Instance):
     assert e5.value.args == (
         "ER_PROC_C",
         "compare-and-swap: ConflictFound: "
-        + f"comparison failed for index {read_index} "
-        + f"as it conflicts with {read_index+1}",
+        + f"found a conflicting entry at index {read_index+1}",
     )
 
     # Stale index, yet successful insert of another key
@@ -195,7 +194,6 @@ def test_cas_lua_api(cluster: Cluster):
         )
     assert e5.value.args == (
         "compare-and-swap: ConflictFound: "
-        + f"comparison failed for index {read_index} "
-        + f"as it conflicts with {read_index+1}",
+        + f"found a conflicting entry at index {read_index+1}",
     )
     pass

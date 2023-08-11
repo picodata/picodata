@@ -321,11 +321,8 @@ pub enum Error {
     },
 
     /// Checking the predicate revealed a collision.
-    #[error("ConflictFound: comparison failed for index {requested} as it conflicts with {conflict_index}")]
-    ConflictFound {
-        requested: RaftIndex,
-        conflict_index: RaftIndex,
-    },
+    #[error("ConflictFound: found a conflicting entry at index {conflict_index}")]
+    ConflictFound { conflict_index: RaftIndex },
 
     /// Checking the predicate revealed a collision.
     #[error("EntryTermMismatch: entry at index {index} has term {actual_term}, request implies term {expected_term}")]
@@ -404,7 +401,6 @@ impl Predicate {
         storage: &Clusterwide,
     ) -> std::result::Result<(), Error> {
         let error = || Error::ConflictFound {
-            requested: self.index,
             conflict_index: entry_index,
         };
         for range in &self.ranges {
