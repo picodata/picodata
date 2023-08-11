@@ -13,10 +13,6 @@
 #include "attributes.h"
 #include "tarantool/trivia/util.h"
 
-#define COMPARE_AND_RETURN_IF_EQUALS(query, tag)	\
-	if (strncasecmp(query, tag, strlen(tag)) == 0)	\
-		return tag
-
 /**
  * Get a command tag that should be sent in CommandComplete message.
  * It returns the exact command tag only if the tag must be sent with row count.
@@ -24,7 +20,7 @@
 static const char *
 get_command_tag(const char *query, bool *display_row_count)
 {
-	/* skip leading spaces */
+	/** skip leading spaces */
 	while (isspace(*query) && *query)
 		query++;
 
@@ -32,21 +28,20 @@ get_command_tag(const char *query, bool *display_row_count)
 	 * tagname is only considered in the folowing cases
 	 * and these are actually the only cases we need to send row count
 	 */
-	*display_row_count = true;
-	COMPARE_AND_RETURN_IF_EQUALS(query, "SELECT");
-	COMPARE_AND_RETURN_IF_EQUALS(query, "DELETE");
-	COMPARE_AND_RETURN_IF_EQUALS(query, "UPDATE");
-	COMPARE_AND_RETURN_IF_EQUALS(query, "INSERT");
-	COMPARE_AND_RETURN_IF_EQUALS(query, "FETCH");
-	COMPARE_AND_RETURN_IF_EQUALS(query, "MERGE");
-	COMPARE_AND_RETURN_IF_EQUALS(query, "MOVE");
-	COMPARE_AND_RETURN_IF_EQUALS(query, "COPY");
+	static const char *tags[] = {
+		"SELECT", "DELETE", "UPDATE", "INSERT",
+		"FETCH", "MERGE", "MOVE", "COPY",
+	};
+	for (size_t i = 0; i < lengthof(tags); ++i) {
+		if (strncasecmp(query, tags[i], strlen(tags[i])) == 0) {
+			*display_row_count = true;
+			return tags[i];
+		}
+	}
 
 	*display_row_count = false;
 	return "DONE";
 }
-
-#undef COMPARE_AND_RETURN_IF_EQUALS
 
 /** Picodata's sql worker. */
 extern int
