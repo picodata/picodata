@@ -8,22 +8,22 @@ def start_pg_server(instance, host, service):
     start_pg_server_lua_code = f"""
         package.cpath="{os.environ['LUA_CPATH']}"
 
-        box.schema.func.create('tcpserver.server_start', {{ language = 'C' }})
-        box.schema.user.grant('guest', 'execute', 'function', 'tcpserver.server_start')
+        box.schema.func.create('pgproto.server_start', {{ language = 'C' }})
+        box.schema.user.grant('guest', 'execute', 'function', 'pgproto.server_start')
 
-        box.func['tcpserver.server_start']:call({{ '{host}', '{service}' }})
+        box.func['pgproto.server_start']:call({{ '{host}', '{service}' }})
     """
     instance.eval(start_pg_server_lua_code)
 
 def stop_pg_server(instance):
     stop_pg_server_lua_code = f"""
-        box.schema.func.create('tcpserver.server_stop', {{language = 'C'}})
-        box.schema.user.grant('guest', 'execute', 'function', 'tcpserver.server_stop')
+        box.schema.func.create('pgproto.server_stop', {{language = 'C'}})
+        box.schema.user.grant('guest', 'execute', 'function', 'pgproto.server_stop')
 
-        box.func['tcpserver.server_stop']:call()
+        box.func['pgproto.server_stop']:call()
 
-        box.schema.func.drop('tcpserver.server_start')
-        box.schema.func.drop('tcpserver.server_stop')
+        box.schema.func.drop('pgproto.server_start')
+        box.schema.func.drop('pgproto.server_stop')
     """
     instance.eval(stop_pg_server_lua_code)
 
