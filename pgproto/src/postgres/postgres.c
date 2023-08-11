@@ -101,6 +101,13 @@ process_query_response(struct pg_port *port, const char **response)
 	assert(size == 1);
 	assert(mp_typeof(**data) == MP_ARRAY);
 	size = mp_decode_array(data);
+	if (mp_typeof(**data) == MP_ARRAY) {
+		/** Explain query */
+		struct row_description row_desc;
+		row_description_explain(&row_desc);
+		send_row_description_message(port, &row_desc);
+		return send_data_rows(port, data, &row_desc);
+	}
 	assert(mp_typeof(**data) == MP_MAP);
 	size = mp_decode_map(data);
 	uint32_t len;

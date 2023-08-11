@@ -258,3 +258,12 @@ parse_metadata(const char **data,
 	}
 	return 0;
 }
+
+void
+row_description_explain(struct row_description *row_desc)
+{
+	row_desc->natts = 1;
+	row_desc->atts = box_region_alloc(sizeof(*row_desc->atts));
+	pg_attribute_text(row_desc->atts, "QUERY PLAN", strlen("QUERY PLAN"),
+			  TEXT_FORMAT, TYPEMOD_DEFAULT);
+}

@@ -70,9 +70,16 @@ send_data_row(struct pg_port *port, const char **data,
 	pg_begin_msg(port, 'D');
 	pg_write_uint16(port, row_desc->natts);
 	const struct pg_attribute *atts = row_desc->atts;
-	assert(mp_typeof(**data) == MP_ARRAY);
-	uint32_t row_size = mp_decode_array(data);
-	assert(row_size == row_desc->natts);
+	/**
+	 * All queries except explain return rows as arrays,
+	 * explain returns strings, so there is no need for decoding.
+	 */
+	if (mp_typeof(**data) == MP_ARRAY) {
+		uint32_t row_size = mp_decode_array(data);
+		assert(row_size == row_desc->natts);
+	} else {
+		assert(mp_typeof(**data) == MP_STR);
+	}
 	for (uint16_t i = 0; i < row_desc->natts; ++i)
 		atts[i].write(&atts[i], port, data);
 	pg_end_msg(port);

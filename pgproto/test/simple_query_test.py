@@ -2,7 +2,6 @@ import pytest
 from conftest import Cluster
 import pg8000.dbapi as pg
 import os
-import time
 
 def start_pg_server(instance, host, service):
     start_pg_server_lua_code = f"""
@@ -111,6 +110,74 @@ def test_simple_flow_session(cluster: Cluster):
 
     stop_pg_server(i1)
 
+def test_explain(cluster: Cluster):
+    cluster.deploy(instance_count=1)
+    i1 = cluster.instances[0]
+
+    host = '127.0.0.1'
+    service = '54321'
+    start_pg_server(i1, host, service)
+
+    user = 'admin'
+    password = 'password'
+    i1.eval("box.cfg{auth_type='md5'}")
+    i1.eval(f"box.schema.user.passwd('{user}', '{password}')")
+
+    os.environ['PGSSLMODE'] = 'disable'
+    conn = pg.Connection(user, password=password, host=host, port=int(service))
+    conn.autocommit = True
+    cur = conn.cursor()
+
+    cur.execute("""
+        create table "explain" (
+            "id" integer not null,
+            primary key ("id")
+        )
+        using memtx distributed by ("id")
+        option (timeout = 3);
+    """)
+
+    query = """
+        insert into "explain" values (0);
+    """
+    cur.execute("explain " + query)
+    plan = cur.fetchall()
+    assert 'insert "explain" on conflict: fail' in plan[0]
+    assert '    motion [policy: local segment([ref("COLUMN_1")])]' in plan[1]
+    assert '        values' in plan[2]
+    assert '            value row (data=ROW(0::unsigned))' in plan[3]
+    assert 'execution options:' in plan[4]
+
+    cur.execute(query)
+    cur.execute("explain " + query)
+    plan = cur.fetchall()
+    assert 'insert "explain" on conflict: fail' in plan[0]
+    assert '    motion [policy: local segment([ref("COLUMN_1")])]' in plan[1]
+    assert '        values' in plan[2]
+    assert '            value row (data=ROW(0::unsigned))' in plan[3]
+    assert 'execution options:' in plan[4]
+
+    query = """
+        select * from "explain";
+    """
+    cur.execute("explain " + query)
+    plan = cur.fetchall()
+    assert 'projection ("explain"."id"::integer -> "id")' in plan[0]
+    assert '    scan "explain"' in plan[1]
+    assert 'execution options:' in plan[2]
+
+    cur.execute(query)
+    cur.execute("explain " + query)
+    plan = cur.fetchall()
+    assert 'projection ("explain"."id"::integer -> "id")' in plan[0]
+    assert '    scan "explain"' in plan[1]
+    assert 'execution options:' in plan[2]
+
+    cur.execute('drop table "explain";')
+
+    stop_pg_server(i1)
+
+
 # Aggregates return value type is decimal, which is currently not supported,
 # so an error is expected
 def test_aggregate_error(cluster: Cluster):
@@ -152,3 +219,5 @@ def test_aggregate_error(cluster: Cluster):
         cur.execute("""
             SELECT SUM("id") FROM "tall";
         """)
+
+    stop_pg_server(i1)

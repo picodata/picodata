@@ -48,10 +48,20 @@ struct row_description {
 };
 
 /**
- * Get row description from the metadata.
+ * Get a row description from the metadata.
  * Format is not mentioned in metadata so the caller must choose it him self.
+ * After the call metadata is consumed and the data points to the begining of
+ * the rows array.
+ * Allocates on box region.
  */
 int
 parse_metadata(const char **data,
 	       struct row_description *row_desc,
 	       uint16_t format);
+
+/**
+ * Get a row description for an explain query.
+ * Allocates on box region.
+ */
+void
+row_description_explain(struct row_description *row_desc);
