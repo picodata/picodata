@@ -25,7 +25,7 @@ use std::time::Duration;
 /// This struct is almost identical to [`std::time::Instant`] but provides
 /// some additional saturating methods. And it can also be constructed with
 /// [`fiber::clock`](crate::fiber::clock), in which case it behaves in a tarantool specific way.
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
 pub struct Instant(pub(crate) Duration);
 
 impl Instant {
@@ -150,6 +150,21 @@ impl Instant {
     #[inline]
     pub fn duration_since(&self, earlier: Instant) -> Duration {
         self.0.saturating_sub(earlier.0)
+    }
+
+    #[inline(always)]
+    pub fn as_secs(&self) -> u64 {
+        self.0.as_secs()
+    }
+
+    #[inline(always)]
+    pub fn as_secs_f64(&self) -> f64 {
+        self.0.as_secs_f64()
+    }
+
+    #[inline(always)]
+    pub fn as_secs_f32(&self) -> f32 {
+        self.0.as_secs_f32()
     }
 }
 
