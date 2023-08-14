@@ -2,9 +2,9 @@ use std::time::Duration;
 
 use crate::cas;
 use crate::failure_domain::FailureDomain;
-use crate::instance::grade::{CurrentGrade, TargetGradeVariant};
-use crate::instance::InstanceId;
-use crate::storage::{ClusterwideSpaceId, PropertyName};
+use crate::instance::grade::{CurrentGrade, CurrentGradeVariant, Grade, TargetGradeVariant};
+use crate::instance::{Instance, InstanceId};
+use crate::storage::{Clusterwide, ClusterwideSpaceId, PropertyName};
 use crate::traft::op::{Dml, Op};
 use crate::traft::Result;
 use crate::traft::{error::Error, node};
@@ -97,11 +97,8 @@ pub fn handle_update_instance_request_and_wait(req: Request, timeout: Duration) 
 
     let deadline = fiber::clock().saturating_add(timeout);
     loop {
-        let instance = storage
-            .instances
-            .get(&req.instance_id)?
-            .update(&req, storage)
-            .map_err(raft::Error::ConfChangeError)?;
+        let mut instance = storage.instances.get(&req.instance_id)?;
+        update_instance(&mut instance, &req, storage).map_err(raft::Error::ConfChangeError)?;
         let dml = Dml::replace(ClusterwideSpaceId::Instance, &instance)
             .expect("encoding should not fail");
 
@@ -141,4 +138,50 @@ pub fn handle_update_instance_request_and_wait(req: Request, timeout: Duration) 
         node.main_loop.wakeup();
         return Ok(());
     }
+}
+
+/// Updates existing [`Instance`].
+pub fn update_instance(
+    instance: &mut Instance,
+    req: &Request,
+    storage: &Clusterwide,
+) -> std::result::Result<(), String> {
+    if instance.current_grade == CurrentGradeVariant::Expelled
+        && !matches!(
+            req,
+            Request {
+                target_grade: None,
+                current_grade: Some(current_grade),
+                failure_domain: None,
+                ..
+            } if *current_grade == CurrentGradeVariant::Expelled
+        )
+    {
+        return Err(format!(
+            "cannot update expelled instance \"{}\"",
+            instance.instance_id
+        ));
+    }
+
+    if let Some(fd) = req.failure_domain.as_ref() {
+        fd.check(&storage.cache().failure_domain_names)?;
+        instance.failure_domain = fd.clone();
+    }
+
+    if let Some(value) = req.current_grade {
+        instance.current_grade = value;
+    }
+
+    if let Some(variant) = req.target_grade {
+        let incarnation = match variant {
+            TargetGradeVariant::Online => instance.target_grade.incarnation + 1,
+            _ => instance.current_grade.incarnation,
+        };
+        instance.target_grade = Grade {
+            variant,
+            incarnation,
+        };
+    }
+
+    Ok(())
 }

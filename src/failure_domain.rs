@@ -102,6 +102,23 @@ impl FailureDomain {
             .filter(|&&key| self.data.get(key) != other.data.get(key))
             .count() as u64
     }
+
+    /// Check that this failure domain contains all `required_domains`.
+    pub fn check(&self, required_domains: &HashSet<Uppercase>) -> Result<(), String> {
+        let mut res = Vec::new();
+        for domain_name in required_domains {
+            if !self.contains_name(domain_name) {
+                res.push(domain_name.to_string());
+            }
+        }
+
+        if res.is_empty() {
+            return Ok(());
+        }
+
+        res.sort();
+        Err(format!("missing failure domain names: {}", res.join(", ")))
+    }
 }
 
 impl std::fmt::Display for FailureDomain {

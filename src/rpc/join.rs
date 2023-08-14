@@ -1,14 +1,16 @@
+use std::collections::HashSet;
 use std::time::Duration;
 
 use crate::cas;
 use crate::failure_domain::FailureDomain;
-use crate::instance::replication_ids;
+use crate::has_grades;
+use crate::instance::grade::{CurrentGrade, TargetGrade};
 use crate::instance::{Instance, InstanceId};
 use crate::replicaset::ReplicasetId;
-use crate::storage::ToEntryIter as _;
+use crate::storage::{Clusterwide, ToEntryIter as _};
 use crate::storage::{ClusterwideSpaceId, PropertyName};
-use crate::traft;
 use crate::traft::op::{Dml, Op};
+use crate::traft::{self, RaftId};
 use crate::traft::{error::Error, node, Address, PeerAddress, Result};
 
 use ::tarantool::fiber;
@@ -74,7 +76,7 @@ pub fn handle_join_request_and_wait(req: Request, timeout: Duration) -> Result<R
 
     let deadline = fiber::clock().saturating_add(timeout);
     loop {
-        let instance = Instance::new(
+        let instance = build_instance(
             req.instance_id.as_ref(),
             req.replicaset_id.as_ref(),
             &req.failure_domain,
@@ -150,5 +152,107 @@ pub fn handle_join_request_and_wait(req: Request, timeout: Duration) -> Result<R
             peer_addresses,
             box_replication: replication_addresses.into_iter().collect(),
         });
+    }
+}
+
+pub fn build_instance(
+    instance_id: Option<&InstanceId>,
+    replicaset_id: Option<&ReplicasetId>,
+    failure_domain: &FailureDomain,
+    storage: &Clusterwide,
+) -> std::result::Result<Instance, String> {
+    if let Some(id) = instance_id {
+        let existing_instance = storage.instances.get(id);
+        if matches!(existing_instance, Ok(instance) if has_grades!(instance, Online -> *)) {
+            let e = format!("{} is already joined", id);
+            return Err(e);
+        }
+    }
+
+    failure_domain.check(&storage.cache().failure_domain_names)?;
+
+    // Anyway, `join` always produces a new raft_id.
+    let raft_id = storage.cache().max_raft_id + 1;
+    let instance_id = instance_id
+        .map(Clone::clone)
+        .unwrap_or_else(|| choose_instance_id(raft_id, storage));
+    let replicaset_id = replicaset_id
+        .map(Clone::clone)
+        .unwrap_or_else(|| choose_replicaset_id(failure_domain, storage));
+
+    let instance = Instance::new(
+        Some(raft_id),
+        Some(instance_id),
+        Some(replicaset_id),
+        CurrentGrade::offline(0),
+        TargetGrade::offline(0),
+        failure_domain.clone(),
+    );
+    Ok(instance)
+}
+
+/// Choose [`InstanceId`] based on `raft_id`.
+fn choose_instance_id(raft_id: RaftId, storage: &Clusterwide) -> InstanceId {
+    let mut suffix: Option<u64> = None;
+    loop {
+        let ret = match suffix {
+            None => format!("i{raft_id}"),
+            Some(x) => format!("i{raft_id}-{x}"),
+        }
+        .into();
+
+        if !storage
+            .instances
+            .contains(&ret)
+            .expect("storage should not fail")
+        {
+            return ret;
+        }
+
+        suffix = Some(suffix.map_or(2, |x| x + 1));
+    }
+}
+
+/// Choose a [`ReplicasetId`] for a new instance given its `failure_domain`.
+fn choose_replicaset_id(failure_domain: &FailureDomain, storage: &Clusterwide) -> ReplicasetId {
+    'next_replicaset: for (replicaset_id, instances) in storage.cache().replicasets.iter() {
+        let replication_factor = storage
+            .properties
+            .replication_factor()
+            .expect("storage should not fail");
+
+        if instances.len() < replication_factor {
+            for instance_id in instances {
+                let instance = storage.instances.get(instance_id).unwrap();
+                if instance.failure_domain.intersects(failure_domain) {
+                    continue 'next_replicaset;
+                }
+            }
+            return replicaset_id.clone();
+        }
+    }
+
+    let mut i = 0u64;
+    loop {
+        i += 1;
+        let replicaset_id = ReplicasetId(format!("r{i}"));
+        if storage.cache().replicasets.get(&replicaset_id).is_none() {
+            return replicaset_id;
+        }
+    }
+}
+
+/// Get ids of instances that are part of a replicaset with `replicaset_id`.
+pub fn replication_ids(replicaset_id: &ReplicasetId, storage: &Clusterwide) -> HashSet<RaftId> {
+    if let Some(replication_ids) = storage.cache().replicasets.get(replicaset_id) {
+        replication_ids
+            .iter()
+            .map(|id| {
+                let instance = storage.instances.get(id).expect("storage should not fail");
+                instance.raft_id
+            })
+            .collect()
+    } else {
+        HashSet::new()
     }
 }
