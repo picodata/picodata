@@ -699,6 +699,7 @@ fn modifies_operable(op: &Op, space: SpaceId, storage: &Clusterwide) -> bool {
 
 /// Predicate tests based on the CaS Design Document.
 mod tests {
+    use tarantool::space::SpaceEngineType;
     use tarantool::tuple::ToTupleBuffer;
 
     use crate::schema::{Distribution, SpaceDef};
@@ -733,6 +734,7 @@ mod tests {
             format: vec![],
             primary_key: vec![],
             distribution: Distribution::Global,
+            engine: SpaceEngineType::Memtx,
         });
         let drop_space = builder.with_op(Ddl::DropSpace { id: space_id });
         let create_index = builder.with_op(Ddl::CreateIndex {
@@ -769,6 +771,7 @@ mod tests {
                 distribution: Distribution::Global,
                 format: vec![],
                 schema_version: 1,
+                engine: SpaceEngineType::Memtx,
             })
             .unwrap();
         assert!(t(&drop_space, Range::new(props).eq(&pending_schema_change)).is_err());

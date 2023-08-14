@@ -962,6 +962,7 @@ Params:
         - by_field (optional string), usually 'bucket_id'
         - sharding_key (optional table {string,...}) with field names
         - sharding_fn (optional string), only default 'murmur3' is supported for now
+        - engine (optional string), one of 'memtx' | 'vinyl', default: 'memtx'
         - timeout (optional number), in seconds, default: infinity
 
 Returns:
@@ -972,7 +973,7 @@ Returns:
 
 Example:
 
-    -- Creates a global space 'friends_of_peppa' with two fields:
+    -- Creates a global memtx space 'friends_of_peppa' with two fields:
     -- id (unsigned) and name (string).
     pico.create_space({
         name = 'friends_of_peppa',
@@ -1016,7 +1017,7 @@ Example:
 
     -- Sharded spaces are updated via vshard api, see [1]
     vshard.router.callrw(bucket_id, 'box.space.wonderland:insert', {{'unicorns', 12}})
-
+    
 See also:
 
     [1]: https://www.tarantool.io/en/doc/latest/reference/reference_rock/vshard/vshard_router/
@@ -1032,6 +1033,7 @@ function pico.create_space(opts)
             by_field = 'string',
             sharding_key = 'table',
             sharding_fn = 'string',
+            engine = 'string',
             timeout = 'number',
         })
         mandatory_param(opts, 'opts')

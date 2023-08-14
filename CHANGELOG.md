@@ -15,6 +15,8 @@ with the `YY.0M.MICRO` scheme.
 - Allow specifying `picodata connect [user@][host][:port]` format. It
   overrides the `--user` option.
 
+- Allow creating sharded vinyl spaces via `pico.create_space`.
+
 - _Clusterwide SQL_ now uses an internal module called `key_def` to
   determine tuple buckets. In case the spaces were sharded using a
   different hash function, executing SQL queries on these spaces would
@@ -42,8 +44,10 @@ with the `YY.0M.MICRO` scheme.
 ### Lua API:
 
 
-- Update `pico.LUA_API_VERSION`: `1.0.0` -> `2.1.0`
+- Update `pico.LUA_API_VERSION`: `1.0.0` -> `2.2.0`
 - New semantics of `pico.create_space()`. It's idempotent now.
+- `pico.create_space()` has new optional parameter: `engine`. 
+  Note: global spaces can only have memtx engine.
 - Add `pico.drop_space()`
 - Add `pico.create_user()`, `pico.drop_user()`
 - Add `pico.create_role()`, `pico.drop_role()`

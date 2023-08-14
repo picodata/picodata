@@ -952,6 +952,7 @@ impl NodeImpl {
                 mut format,
                 mut primary_key,
                 distribution,
+                engine,
             } => {
                 use ::tarantool::util::NumOrStr::*;
 
@@ -1071,6 +1072,7 @@ impl NodeImpl {
                     schema_version,
                     format,
                     operable: false,
+                    engine,
                 };
                 let res = self.storage.spaces.insert(&space_def);
                 if let Err(e) = res {

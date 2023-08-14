@@ -307,6 +307,7 @@ fn start_discover(args: &args::Run, to_supervisor: ipc::Sender<IpcMessage>) {
         read_only: false,
         wal_dir: args.data_dir.clone(),
         memtx_dir: args.data_dir.clone(),
+        vinyl_dir: args.data_dir.clone(),
         log_level: args.log_level() as u8,
         ..Default::default()
     };
@@ -377,6 +378,7 @@ fn start_boot(args: &args::Run) {
         replicaset_uuid: Some(instance.replicaset_uuid.clone()),
         wal_dir: args.data_dir.clone(),
         memtx_dir: args.data_dir.clone(),
+        vinyl_dir: args.data_dir.clone(),
         log_level: args.log_level() as u8,
         ..Default::default()
     };
@@ -545,6 +547,7 @@ fn start_join(args: &args::Run, instance_address: String) {
         replication: resp.box_replication.clone(),
         wal_dir: args.data_dir.clone(),
         memtx_dir: args.data_dir.clone(),
+        vinyl_dir: args.data_dir.clone(),
         log_level: args.log_level() as u8,
         ..Default::default()
     };

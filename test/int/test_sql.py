@@ -219,6 +219,25 @@ def test_create_drop_table(cluster: Cluster):
     )
     assert ddl["row_count"] == 1
 
+    # Check vinyl space
+    ddl = i1.sql(
+        """
+        create table "t" ("key" string not null, "value" string not null, primary key ("key"))
+        using vinyl
+        distributed by ("key")
+        option (timeout = 3)
+    """
+    )
+    assert ddl["row_count"] == 1
+
+    ddl = i2.sql(
+        """
+        drop table "t"
+        option (timeout = 3)
+    """
+    )
+    assert ddl["row_count"] == 1
+
 
 def test_insert_on_conflict(cluster: Cluster):
     cluster.deploy(instance_count=2)

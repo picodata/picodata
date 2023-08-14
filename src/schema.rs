@@ -41,6 +41,7 @@ pub struct SpaceDef {
     pub format: Vec<tarantool::space::Field>,
     pub schema_version: u64,
     pub operable: bool,
+    pub engine: SpaceEngineType,
 }
 
 impl Encode for SpaceDef {}
@@ -76,7 +77,7 @@ impl SpaceDef {
             // Do we want to be more explicit about user_id?
             user_id: uid()? as _,
             name: self.name.as_str().into(),
-            engine: SpaceEngineType::Memtx,
+            engine: self.engine,
             field_count: 0,
             flags,
             format,
@@ -300,6 +301,8 @@ pub enum CreateSpaceError {
     ShardingPolicyUndefined,
     #[error("only one of sharding policy fields (`by_field`, `sharding_key`) should be set")]
     ConflictingShardingPolicy,
+    #[error("global spaces only support memtx engine")]
+    IncompatibleGlobalSpaceEngine,
 }
 
 impl From<CreateSpaceError> for Error {
@@ -345,6 +348,7 @@ pub struct CreateSpaceParams {
     pub(crate) by_field: Option<String>,
     pub(crate) sharding_key: Option<Vec<String>>,
     pub(crate) sharding_fn: Option<ShardingFn>,
+    pub(crate) engine: Option<SpaceEngineType>,
     /// Timeout in seconds.
     ///
     /// Specifying the timeout identifies how long user is ready to wait for ddl to be applied.
@@ -408,6 +412,12 @@ impl CreateSpaceParams {
             if !field_names.contains(part.as_str()) {
                 return Err(CreateSpaceError::FieldUndefined(part.clone()).into());
             }
+        }
+        // Global spaces must have memtx engine
+        if self.distribution == DistributionParam::Global
+            && self.engine.is_some_and(|e| e != SpaceEngineType::Memtx)
+        {
+            return Err(CreateSpaceError::IncompatibleGlobalSpaceEngine.into());
         }
         // All sharding key components exist in fields
         if self.distribution == DistributionParam::Sharded {
@@ -473,7 +483,7 @@ impl CreateSpaceParams {
                 &self.name,
                 &SpaceCreateOptions {
                     if_not_exists: false,
-                    engine: SpaceEngineType::Memtx,
+                    engine: self.engine.unwrap_or_default(),
                     id: Some(id),
                     field_count: self.format.len() as u32,
                     user: None,
@@ -569,6 +579,7 @@ impl CreateSpaceParams {
             format,
             primary_key,
             distribution,
+            engine: self.engine.unwrap_or_default(),
         };
         Ok(res)
     }
@@ -725,6 +736,23 @@ mod tests {
             by_field: None,
             sharding_key: None,
             sharding_fn: None,
+            engine: None,
+            timeout: None,
+        }
+        .test_create_space()
+        .unwrap();
+        assert!(tarantool::space::Space::find("friends_of_peppa").is_none());
+
+        CreateSpaceParams {
+            id: Some(1337),
+            name: "friends_of_peppa".into(),
+            format: vec![],
+            primary_key: vec![],
+            distribution: DistributionParam::Sharded,
+            by_field: None,
+            sharding_key: None,
+            sharding_fn: None,
+            engine: Some(SpaceEngineType::Vinyl),
             timeout: None,
         }
         .test_create_space()
@@ -740,6 +768,7 @@ mod tests {
             by_field: None,
             sharding_key: None,
             sharding_fn: None,
+            engine: None,
             timeout: None,
         }
         .test_create_space()
@@ -774,6 +803,7 @@ mod tests {
             by_field: None,
             sharding_key: None,
             sharding_fn: None,
+            engine: None,
             timeout: None,
         }
         .validate()
@@ -789,6 +819,7 @@ mod tests {
             by_field: None,
             sharding_key: None,
             sharding_fn: None,
+            engine: None,
             timeout: None,
         }
         .validate()
@@ -804,6 +835,7 @@ mod tests {
             by_field: None,
             sharding_key: Some(vec![field2.name.clone()]),
             sharding_fn: None,
+            engine: None,
             timeout: None,
         }
         .validate()
@@ -819,6 +851,7 @@ mod tests {
             by_field: None,
             sharding_key: Some(vec![field1.name.clone(), field1.name.clone()]),
             sharding_fn: None,
+            engine: None,
             timeout: None,
         }
         .validate()
@@ -834,6 +867,7 @@ mod tests {
             by_field: Some(field2.name.clone()),
             sharding_key: None,
             sharding_fn: None,
+            engine: None,
             timeout: None,
         }
         .validate()
@@ -849,6 +883,7 @@ mod tests {
             by_field: None,
             sharding_key: None,
             sharding_fn: None,
+            engine: None,
             timeout: None,
         }
         .validate()
@@ -867,6 +902,7 @@ mod tests {
             by_field: Some(field2.name.clone()),
             sharding_key: Some(vec![]),
             sharding_fn: None,
+            engine: None,
             timeout: None,
         }
         .validate()
@@ -879,15 +915,32 @@ mod tests {
         CreateSpaceParams {
             id: Some(new_id),
             name: new_space.into(),
-            format: vec![field1, field2.clone()],
+            format: vec![field1.clone(), field2.clone()],
             primary_key: vec![field2.name.clone()],
             distribution: DistributionParam::Sharded,
-            by_field: Some(field2.name),
+            by_field: Some(field2.name.clone()),
             sharding_key: None,
             sharding_fn: None,
+            engine: None,
             timeout: None,
         }
         .validate()
         .unwrap();
+
+        let err = CreateSpaceParams {
+            id: Some(new_id),
+            name: new_space.into(),
+            format: vec![field1, field2.clone()],
+            primary_key: vec![field2.name],
+            distribution: DistributionParam::Global,
+            by_field: None,
+            sharding_key: None,
+            sharding_fn: None,
+            engine: Some(SpaceEngineType::Vinyl),
+            timeout: None,
+        }
+        .validate()
+        .unwrap_err();
+        assert_eq!(err.to_string(), "global spaces only support memtx engine");
     }
 }

@@ -6,6 +6,7 @@ use ::tarantool::space::{Field, SpaceId};
 use ::tarantool::tlua;
 use ::tarantool::tuple::{ToTupleBuffer, Tuple, TupleBuffer};
 use serde::{Deserialize, Serialize};
+use tarantool::space::SpaceEngineType;
 
 ////////////////////////////////////////////////////////////////////////////////
 // OpResult
@@ -429,6 +430,7 @@ pub enum Ddl {
         format: Vec<Field>,
         primary_key: Vec<Part>,
         distribution: Distribution,
+        engine: SpaceEngineType,
     },
     DropSpace {
         id: SpaceId,

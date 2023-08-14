@@ -88,6 +88,7 @@ pub struct Cfg {
 
     pub wal_dir: String,
     pub memtx_dir: String,
+    pub vinyl_dir: String,
 
     pub memtx_memory: u64,
 
@@ -116,6 +117,7 @@ impl Default for Cfg {
 
             wal_dir: ".".into(),
             memtx_dir: ".".into(),
+            vinyl_dir: ".".into(),
 
             memtx_memory: 32 * 1024 * 1024,
 

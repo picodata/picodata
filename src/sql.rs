@@ -96,6 +96,7 @@ fn reenterable_ddl_request(
             format,
             primary_key,
             sharding_key,
+            engine_type,
             ..
         } => {
             let format = format
@@ -115,6 +116,7 @@ fn reenterable_ddl_request(
                 by_field: None,
                 sharding_key: Some(sharding_key),
                 sharding_fn: Some(ShardingFn::Murmur3),
+                engine: Some(engine_type),
                 timeout: None,
             };
             params.validate()?;
