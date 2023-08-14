@@ -1027,10 +1027,14 @@ pub(crate) fn setup(args: &args::Run) {
         Performs a clusterwide compare-and-swap operation. Works for global
         spaces only.
 
-        E.g. it checks the `predicate` on leader and if no conflicting entries
-        were found appends the `op` to the raft log and returns its index. If
-        predicate is not supplied, it will be auto generated with `index` and
-        `term` taken from the current instance and with empty `ranges`.
+        E.g. it checks the `predicate` on leader and, if no conflicting entries
+        were found, appends the new entry to the raft log and returns its index
+        (uncommitted yet).
+
+        If `predicate` is not supplied, it will be auto generated with `index`
+        and `term` taken from the current instance and with empty `ranges`.
+        Omitting `ranges` implies a blind write, therefore such usage is
+        discouraged.
 
         Returns when the operation is appended to the raft log on a leader.
         Returns the index of the corresponding Op::Dml.
