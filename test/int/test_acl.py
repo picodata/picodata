@@ -685,7 +685,7 @@ def test_acl_from_snapshot(cluster: Cluster):
     i3.raft_compact_log()
 
     #
-    # Cacthup by snapshot.
+    # Catchup by snapshot.
     #
     i4.start()
     i5.start()

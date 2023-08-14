@@ -644,13 +644,20 @@ impl Clusterwide {
 
         // If we're not the replication master, the rest of the data will come
         // via tarantool replication.
-        if is_master {
+        //
+        // v_local == v_snapshot could happen for example in case of an
+        // unfortunately timed replication master failover, in which case the
+        // schema portion of the snapshot was already applied and we should skip
+        // it here.
+        let v_local = local_schema_version()?;
+        let v_snapshot = data.schema_version;
+        if is_master && v_local < v_snapshot {
             self.apply_schema_changes_on_master(self.spaces.iter()?, &old_space_versions)?;
             // TODO: secondary indexes
             self.apply_schema_changes_on_master(self.users.iter()?, &old_user_versions)?;
             self.apply_schema_changes_on_master(self.roles.iter()?, &old_role_versions)?;
             self.apply_schema_changes_on_master(self.privileges.iter()?, &old_priv_versions)?;
-            set_local_schema_version(data.schema_version)?;
+            set_local_schema_version(v_snapshot)?;
         }
 
         for space_dump in &data.space_dumps {
@@ -718,7 +725,14 @@ impl Clusterwide {
             }
 
             // Schema definition was dropped.
-            T::on_delete(old_key, self)?;
+            if let Err(e) = T::on_delete(old_key, self) {
+                tlog!(
+                    Error,
+                    "failed handling delete of {} with key {old_key:?}: {e}",
+                    std::any::type_name::<T>(),
+                );
+                return Err(e);
+            }
         }
 
         // Now create any new schema entities, or replace ones that changed.
@@ -734,7 +748,14 @@ impl Clusterwide {
                 }
 
                 // Schema entity changed, need to drop it an recreate.
-                T::on_delete(&key, self)?;
+                if let Err(e) = T::on_delete(&key, self) {
+                    tlog!(
+                        Error,
+                        "failed handling delete of {} with key {key:?}: {e}",
+                        std::any::type_name::<T>(),
+                    );
+                    return Err(e);
+                }
             } else {
                 // New schema entity.
             }
@@ -746,7 +767,14 @@ impl Clusterwide {
                 continue;
             }
 
-            T::on_insert(def, self)?;
+            if let Err(e) = T::on_insert(def, self) {
+                tlog!(
+                    Error,
+                    "failed handling insert of {} with key {key:?}: {e}",
+                    std::any::type_name::<T>(),
+                );
+                return Err(e);
+            }
         }
 
         Ok(())
@@ -2280,7 +2308,7 @@ impl ToEntryIter for Privileges {
 trait SchemaDef {
     /// Type of unique key used to identify entities for the purpose of
     /// associating the schema version with.
-    type Key: std::hash::Hash + Eq;
+    type Key: std::hash::Hash + Eq + std::fmt::Debug;
 
     /// Extract unique key from the entity.
     fn key(&self) -> Self::Key;
