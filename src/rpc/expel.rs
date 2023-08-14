@@ -3,6 +3,7 @@ use std::time::Duration;
 use crate::instance::grade::TargetGradeVariant;
 use crate::instance::InstanceId;
 use crate::rpc;
+use crate::rpc::update_instance::handle_update_instance_request_and_wait;
 use crate::traft::Result;
 use crate::traft::{error::Error, node};
 
@@ -35,7 +36,7 @@ crate::define_rpc_request! {
 
         let req = rpc::update_instance::Request::new(req.instance_id, req.cluster_id)
             .with_target_grade(TargetGradeVariant::Expelled);
-        node.handle_update_instance_request_and_wait(req, TIMEOUT)?;
+        handle_update_instance_request_and_wait(req, TIMEOUT)?;
 
         Ok(Response {})
     }

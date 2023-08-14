@@ -1,11 +1,15 @@
 use std::time::Duration;
 
+use crate::cas;
 use crate::failure_domain::FailureDomain;
 use crate::instance::grade::{CurrentGrade, TargetGradeVariant};
 use crate::instance::InstanceId;
-use crate::tlog;
+use crate::storage::{ClusterwideSpaceId, PropertyName};
+use crate::traft::op::{Dml, Op};
 use crate::traft::Result;
 use crate::traft::{error::Error, node};
+
+use ::tarantool::fiber;
 
 const TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -23,25 +27,10 @@ crate::define_rpc_request! {
     /// 4. Compare and swap request to commit updated instance failed
     /// with an error that cannot be retried.
     fn proc_update_instance(req: Request) -> Result<Response> {
-        let node = node::global()?;
-        let cluster_id = node.raft_storage.cluster_id()?;
-
-        if req.cluster_id != cluster_id {
-            return Err(Error::ClusterIdMismatch {
-                instance_cluster_id: req.cluster_id,
-                cluster_cluster_id: cluster_id,
-            });
+        if req.current_grade.is_some() {
+           return Err(Error::Other("Changing current grade through Proc API is not allowed.".into()));
         }
-
-        let mut req = req;
-        let instance_id = &*req.instance_id;
-        if let Some(current_grade) = req.current_grade.take() {
-            tlog!(Warning, "attempt to change current_grade for instance";
-                "instance_id" => instance_id,
-                "current_grade" => %current_grade,
-            );
-        }
-        node.handle_update_instance_request_and_wait(req, TIMEOUT)?;
+        handle_update_instance_request_and_wait(req, TIMEOUT)?;
         Ok(Response {})
     }
 
@@ -83,5 +72,73 @@ impl Request {
     pub fn with_failure_domain(mut self, value: FailureDomain) -> Self {
         self.failure_domain = Some(value);
         self
+    }
+}
+
+/// Processes the [`rpc::update_instance::Request`] and appends
+/// the corresponding [`Op::Dml`] entry to the raft log (if successful).
+///
+/// Returns `Ok(())` when the entry is committed.
+///
+/// **This function yields**
+// TODO: for this function to be async and have an outer timeout wait_* fns need to be async
+pub fn handle_update_instance_request_and_wait(req: Request, timeout: Duration) -> Result<()> {
+    let node = node::global()?;
+    let cluster_id = node.raft_storage.cluster_id()?;
+    let storage = &node.storage;
+    let raft_storage = &node.raft_storage;
+
+    if req.cluster_id != cluster_id {
+        return Err(Error::ClusterIdMismatch {
+            instance_cluster_id: req.cluster_id,
+            cluster_cluster_id: cluster_id,
+        });
+    }
+
+    let deadline = fiber::clock().saturating_add(timeout);
+    loop {
+        let instance = storage
+            .instances
+            .get(&req.instance_id)?
+            .update(&req, storage)
+            .map_err(raft::Error::ConfChangeError)?;
+        let dml = Dml::replace(ClusterwideSpaceId::Instance, &instance)
+            .expect("encoding should not fail");
+
+        let ranges = vec![
+            cas::Range::new(ClusterwideSpaceId::Instance),
+            cas::Range::new(ClusterwideSpaceId::Address),
+            cas::Range::new(ClusterwideSpaceId::Property).eq((PropertyName::ReplicationFactor,)),
+        ];
+        let res = cas::compare_and_swap(
+            Op::Dml(dml),
+            cas::Predicate {
+                index: raft_storage.applied()?,
+                term: raft_storage.term()?,
+                ranges,
+            },
+            deadline.duration_since(fiber::clock()),
+        );
+        match res {
+            Ok((index, term)) => {
+                node.wait_index(index, deadline.duration_since(fiber::clock()))?;
+                if term != raft::Storage::term(raft_storage, index)? {
+                    // leader switched - retry
+                    node.wait_status();
+                    continue;
+                }
+            }
+            Err(err) => {
+                if err.is_cas_err() | err.is_term_mismatch_err() {
+                    // cas error - retry
+                    fiber::sleep(Duration::from_millis(500));
+                    continue;
+                } else {
+                    return Err(err);
+                }
+            }
+        }
+        node.main_loop.wakeup();
+        return Ok(());
     }
 }

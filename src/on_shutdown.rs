@@ -5,6 +5,7 @@ use ::tarantool::fiber;
 use crate::has_grades;
 use crate::instance::grade::TargetGradeVariant;
 use crate::rpc;
+use crate::rpc::update_instance::handle_update_instance_request_and_wait;
 use crate::storage::ClusterwideSpaceId;
 use crate::tlog;
 use crate::traft;
@@ -80,7 +81,7 @@ fn go_offline() -> traft::Result<()> {
         let now = Instant::now();
         let wait_before_retry = Duration::from_millis(300);
 
-        match node.handle_update_instance_request_and_wait(req.clone(), wait_before_retry) {
+        match handle_update_instance_request_and_wait(req.clone(), wait_before_retry) {
             Ok(_) => break Ok(()),
             Err(e) => {
                 tlog!(Warning,

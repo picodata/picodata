@@ -5,10 +5,8 @@
 //! - handling configuration changes,
 //! - processing raft `Ready` - persisting entries, communicating with other raft nodes.
 
-use crate::cas;
 use crate::governor;
 use crate::has_grades;
-use crate::instance::replication_ids;
 use crate::instance::Instance;
 use crate::kvcell::KVCell;
 use crate::loop_start;
@@ -30,7 +28,6 @@ use crate::traft::event;
 use crate::traft::event::Event;
 use crate::traft::notify::{notification, Notifier, Notify};
 use crate::traft::op::{Acl, Ddl, Dml, Op, OpResult};
-use crate::traft::Address;
 use crate::traft::ConnectionPool;
 use crate::traft::ContextCoercion as _;
 use crate::traft::LogicalClock;
@@ -322,157 +319,6 @@ impl Node {
             msg_type: raft::MessageType::MsgTimeoutNow,
             ..Default::default()
         })
-    }
-
-    /// Processes the [`rpc::join::Request`] and appends necessary
-    /// entries to the raft log (if successful).
-    ///
-    /// Returns the resulting [`Instance`] when the entry is committed.
-    // TODO: to make this function async and have an outer timeout,
-    // wait_* fns also need to be async.
-    pub fn handle_join_request_and_wait(
-        &self,
-        req: rpc::join::Request,
-        timeout: Duration,
-    ) -> traft::Result<(Box<Instance>, HashSet<Address>)> {
-        let deadline = fiber::clock().saturating_add(timeout);
-
-        loop {
-            let instance = Instance::new(
-                req.instance_id.as_ref(),
-                req.replicaset_id.as_ref(),
-                &req.failure_domain,
-                &self.storage,
-            )
-            .map_err(RaftError::ConfChangeError)?;
-            let mut replication_addresses = self
-                .storage
-                .peer_addresses
-                .addresses_by_ids(replication_ids(&instance.replicaset_id, &self.storage))?;
-            replication_addresses.insert(req.advertise_address.clone());
-            let peer_address = traft::PeerAddress {
-                raft_id: instance.raft_id,
-                address: req.advertise_address.clone(),
-            };
-            let op_addr = Dml::replace(ClusterwideSpaceId::Address, &peer_address)
-                .expect("encoding should not fail");
-            let op_instance = Dml::replace(ClusterwideSpaceId::Instance, &instance)
-                .expect("encoding should not fail");
-            let ranges = vec![
-                cas::Range::new(ClusterwideSpaceId::Instance),
-                cas::Range::new(ClusterwideSpaceId::Address),
-                cas::Range::new(ClusterwideSpaceId::Property)
-                    .eq((PropertyName::ReplicationFactor,)),
-            ];
-            macro_rules! handle_result {
-                ($res:expr) => {
-                    match $res {
-                        Ok((index, term)) => {
-                            self.wait_index(index, deadline.duration_since(fiber::clock()))?;
-                            if term != raft::Storage::term(&self.raft_storage, index)? {
-                                // leader switched - retry
-                                self.wait_status();
-                                continue;
-                            }
-                        }
-                        Err(err) => {
-                            if err.is_cas_err() | err.is_term_mismatch_err() {
-                                // cas error - retry
-                                fiber::sleep(Duration::from_millis(500));
-                                continue;
-                            } else {
-                                return Err(err);
-                            }
-                        }
-                    }
-                };
-            }
-            // Only in this order - so that when instance exists - address will always be there.
-            handle_result!(cas::compare_and_swap(
-                Op::Dml(op_addr),
-                cas::Predicate {
-                    index: self.raft_storage.applied()?,
-                    term: self.raft_storage.term()?,
-                    ranges: ranges.clone(),
-                },
-                deadline.duration_since(fiber::clock()),
-            ));
-            handle_result!(cas::compare_and_swap(
-                Op::Dml(op_instance),
-                cas::Predicate {
-                    index: self.raft_storage.applied()?,
-                    term: self.raft_storage.term()?,
-                    ranges,
-                },
-                deadline.duration_since(fiber::clock()),
-            ));
-
-            self.main_loop.wakeup();
-            return Ok((instance.into(), replication_addresses));
-        }
-    }
-
-    /// Processes the [`rpc::update_instance::Request`] and appends
-    /// the corresponding [`Op::Dml`] entry to the raft log (if successful).
-    ///
-    /// Returns `Ok(())` when the entry is committed.
-    ///
-    /// **This function yields**
-    // TODO: for this function to be async and have an outer timeout wait_* fns need to be async
-    pub fn handle_update_instance_request_and_wait(
-        &self,
-        req: rpc::update_instance::Request,
-        timeout: Duration,
-    ) -> traft::Result<()> {
-        let deadline = fiber::clock().saturating_add(timeout);
-
-        loop {
-            let instance = self
-                .storage
-                .instances
-                .get(&req.instance_id)?
-                .update(&req, &self.storage)
-                .map_err(RaftError::ConfChangeError)?;
-            let dml = Dml::replace(ClusterwideSpaceId::Instance, &instance)
-                .expect("encoding should not fail");
-
-            let ranges = vec![
-                cas::Range::new(ClusterwideSpaceId::Instance),
-                cas::Range::new(ClusterwideSpaceId::Address),
-                cas::Range::new(ClusterwideSpaceId::Property)
-                    .eq((PropertyName::ReplicationFactor,)),
-            ];
-            let res = cas::compare_and_swap(
-                Op::Dml(dml),
-                cas::Predicate {
-                    index: self.raft_storage.applied()?,
-                    term: self.raft_storage.term()?,
-                    ranges,
-                },
-                deadline.duration_since(fiber::clock()),
-            );
-            match res {
-                Ok((index, term)) => {
-                    self.wait_index(index, deadline.duration_since(fiber::clock()))?;
-                    if term != raft::Storage::term(&self.raft_storage, index)? {
-                        // leader switched - retry
-                        self.wait_status();
-                        continue;
-                    }
-                }
-                Err(err) => {
-                    if err.is_cas_err() | err.is_term_mismatch_err() {
-                        // cas error - retry
-                        fiber::sleep(Duration::from_millis(500));
-                        continue;
-                    } else {
-                        return Err(err);
-                    }
-                }
-            }
-            self.main_loop.wakeup();
-            return Ok(());
-        }
     }
 
     /// Only the conf_change_loop on a leader is eligible to call this function.
