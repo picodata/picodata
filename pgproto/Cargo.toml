@@ -1,0 +1,16 @@
+[package]
+name = "pgproto"
+version = "0.0.0"
+edition = "2021"
+
+[lib]
+name = "pgproto"
+crate-type = ["cdylib"]
+
+[dependencies]
+bytes = "1.4.0"
+ctor = "0.2.4"
+log = "0.4.20"
+pgwire = "0.16.0"
+tarantool = "1.1.0"
+tokio-util = { version = "0.7.8", features = ["codec"] }

@@ -9,3 +9,5 @@ build
 tags
 tmp/
 venv
+/target
+/Cargo.lock
