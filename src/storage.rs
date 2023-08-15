@@ -992,6 +992,14 @@ pub trait TClusterwideSpaceIndex {
         NextSchemaVersion = "next_schema_version",
 
         PasswordMinLength = "password_min_length",
+
+        /// Number of seconds to wait before automatically changing an
+        /// unresponsive instance's grade to Offline.
+        AutoOfflineTimeout = "auto_offline_timeout",
+
+        /// Maximum number of seconds to wait before sending another heartbeat
+        /// to an unresponsive instance.
+        MaxHeartbeatPeriod = "max_heartbeat_period",
     }
 }
 

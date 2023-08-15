@@ -156,13 +156,15 @@ def get_instance_grades(peer: Instance, instance_id) -> tuple[str, str]:
 
 def test_instance_automatic_offline_detection(cluster: Cluster):
     i1, i2, i3 = cluster.deploy(instance_count=3)
+    index = cluster.cas("insert", "_pico_property", ["auto_offline_timeout", 0.5])
+    cluster.raft_wait_index(index, 3)
 
     assert get_instance_grades(i1, i3.instance_id) == ("Online", "Online")
 
     i3.kill()
 
-    # Give the governor some time to detect the problem and act accordingly.
-    time.sleep(10)
+    # Give the sentinel some time to detect the problem and act accordingly.
+    time.sleep(2)
 
     assert get_instance_grades(i1, i3.instance_id) == ("Offline", "Offline")
 
