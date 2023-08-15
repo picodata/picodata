@@ -20,9 +20,9 @@
      inkscape:pageopacity="0.0"
      inkscape:pagecheckerboard="0"
      inkscape:deskcolor="#d1d1d1"
-     inkscape:zoom="2.0571429"
-     inkscape:cx="340.52083"
-     inkscape:cy="107.1875"
+     inkscape:zoom="1.9825927"
+     inkscape:cx="395.69398"
+     inkscape:cy="132.40238"
      inkscape:window-width="1854"
      inkscape:window-height="1011"
      inkscape:window-x="66"
@@ -64,28 +64,31 @@
        y="21"
        id="text3">SELECT</text>
   </a>
-  <rect
-     x="157"
-     y="35"
-     width="96"
-     height="32"
-     rx="10"
-     id="rect4" />
-  <rect
-     x="155"
-     y="33"
-     width="96"
-     height="32"
-     class="terminal"
-     rx="10"
-     id="rect5" />
-  <text
-     class="terminal"
-     x="165"
-     y="53"
-     id="text5">UNION ALL</text>
   <a
-     xlink:href="#except"
+     xlink:href="#union_all"
+     xlink:title="UNION_ALL"
+     id="a5">
+    <rect
+       x="157"
+       y="35"
+       width="92"
+       height="32"
+       id="rect4" />
+    <rect
+       x="155"
+       y="33"
+       width="92"
+       height="32"
+       class="nonterminal"
+       id="rect5" />
+    <text
+       class="nonterminal"
+       x="165"
+       y="53"
+       id="text5">UNION_ALL</text>
+  </a>
+  <a
+     xlink:href="#EXCEPT"
      xlink:title="EXCEPT"
      id="a7">
     <rect
@@ -149,7 +152,7 @@
   </a>
   <path
      class="line"
-     d="m17 17 h2 m0 0 h10 m66 0 h10 m20 0 h10 m0 0 h350 m-380 0 h20 m360 0 h20 m-400 0 q10 0 10 10 m380 0 q0 -10 10 -10 m-390 10 v12 m380 0 v-12 m-380 12 q0 10 10 10 m360 0 q10 0 10 -10 m-350 10 h10 m96 0 h10 m0 0 h118 m-254 0 h20 m234 0 h20 m-274 0 q10 0 10 10 m254 0 q0 -10 10 -10 m-264 10 v24 m254 0 v-24 m-254 24 q0 10 10 10 m234 0 q10 0 10 -10 m-244 10 h10 m68 0 h10 m20 0 h10 m0 0 h96 m-126 0 h20 m106 0 h20 m-146 0 q10 0 10 10 m126 0 q0 -10 10 -10 m-136 10 v12 m126 0 v-12 m-126 12 q0 10 10 10 m106 0 q10 0 10 -10 m-116 10 h10 m86 0 h10 m40 -76 h10 m66 0 h10 m23 -32 h-3"
+     d="m17 17 h2 m0 0 h10 m66 0 h10 m20 0 h10 m0 0 h350 m-380 0 h20 m360 0 h20 m-400 0 q10 0 10 10 m380 0 q0 -10 10 -10 m-390 10 v12 m380 0 v-12 m-380 12 q0 10 10 10 m360 0 q10 0 10 -10 m-350 10 h10 m92 0 h10 m0 0 h122 m-254 0 h20 m234 0 h20 m-274 0 q10 0 10 10 m254 0 q0 -10 10 -10 m-264 10 v24 m254 0 v-24 m-254 24 q0 10 10 10 m234 0 q10 0 10 -10 m-244 10 h10 m68 0 h10 m20 0 h10 m0 0 h96 m-126 0 h20 m106 0 h20 m-146 0 q10 0 10 10 m126 0 q0 -10 10 -10 m-136 10 v12 m126 0 v-12 m-126 12 q0 10 10 10 m106 0 q10 0 10 -10 m-116 10 h10 m86 0 h10 m40 -76 h10 m66 0 h10 m23 -32 h-3"
      id="path11" />
   <polygon
      points="515 17 523 13 523 21"
