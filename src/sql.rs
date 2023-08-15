@@ -1,6 +1,6 @@
 //! Clusterwide SQL query execution.
 
-use crate::schema::{CreateSpaceParams, DistributionParam, Field, ShardingFn};
+use crate::schema::{wait_for_ddl_commit, CreateSpaceParams, DistributionParam, Field, ShardingFn};
 use crate::sql::router::RouterRuntime;
 use crate::sql::storage::StorageRuntime;
 use crate::traft::error::Error;
@@ -188,6 +188,7 @@ fn reenterable_ddl_request(
         );
 
         node.wait_index(index, deadline.duration_since(Instant::now()))?;
+        wait_for_ddl_commit(index, deadline.duration_since(Instant::now()))?;
 
         if term != raft::Storage::term(&node.raft_storage, index)? {
             // Leader has changed and the entry got rolled back, retry.
