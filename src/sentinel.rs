@@ -1,12 +1,12 @@
 use crate::has_grades;
 use crate::instance::grade::TargetGradeVariant;
 use crate::r#loop::FlowControl::{self, Break, Continue};
+use crate::reachability::InstanceReachabilityManagerRef;
 use crate::rpc;
 use crate::storage::Clusterwide;
 use crate::tlog;
 use crate::traft::error::Error;
 use crate::traft::network::ConnectionPool;
-use crate::traft::network::InstanceReachabilityManagerRef;
 use crate::traft::{node, RaftSpaceAccess};
 use ::tarantool::fiber;
 use ::tarantool::fiber::r#async::timeout::IntoTimeout as _;

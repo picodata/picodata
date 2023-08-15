@@ -39,6 +39,7 @@ pub mod r#loop;
 mod luamod;
 pub mod mailbox;
 pub mod on_shutdown;
+pub mod reachability;
 pub mod replicaset;
 pub mod rpc;
 pub mod schema;
