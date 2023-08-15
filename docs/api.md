@@ -54,6 +54,7 @@ picodata> pico.help("help")
 | [pico.raft_wait_index()](#picoraft_wait_index) |  Ожидание локального применения указанного raft-индекса.
 | [pico.revoke_privilege()](#picorevoke_privilege) |  Удаление права у пользователя или роли.
 | [pico.sql()](#picosql) |  Выполнение кластерных SQL-запросов.
+| [pico.wait_ddl_finalize()](#picowait_ddl_finalize) | Ожидание применения (финализации) DDL-операции.
 | [pico.wait_vclock()](#picowait_vclock) | Ожидание момента, когда значение [Vclock](glossary.md#vclock-vector-clock) достигнет целевого.
 | [pico.whoami()](#picowhoami) | Отображение данных о текущем инстансе.
 
@@ -881,7 +882,7 @@ function revoke_privilege(grantee, privilege, object_type, [object_name], [opts]
   безопасны.
 
 ### pico.sql
-Выполнение кластерных (распределенных) SQL-запросов по следующей схеме:
+Выполняет кластерные (распределенные) SQL-запросы по следующей схеме:
 
 - каждый запрос обрабатывается и проверяется на корректность, после чего
   составляется распределенный план запроса для выполнения на текущем
@@ -963,6 +964,24 @@ pico.sql([[
 
 См. также [пример работы с SQL в Picodata](tutorial_sql.md) и [описание
 команд SQL](sql/queries.md).
+
+### pico.wait_ddl_finalize
+Ожидает применения (финализации) DDL-операции для указанного
+raft-индекса. Возвращает raft-индекс финализированной записи.
+
+```lua
+function wait_ddl_finalize(index, opts)
+```
+
+Параметры:
+
+- `index` (_number_), raft-index
+- `opts`: (_table_), таблица:
+    - `timeout` (_number_), в секундах (значение по умолчанию: 3 с.)
+
+Возвращаемое значение:
+
+(_number_) с номером raft-индекса или <br>(_nil_, _string_) в случае ошибки.
 
 ### pico.wait_vclock
 
