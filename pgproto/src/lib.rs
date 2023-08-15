@@ -1,4 +1,5 @@
 use bytes::{BufMut, BytesMut};
+use pgwire::messages::Message;
 use std::io::{self, Read};
 use tarantool::{
     coio::{CoIOListener, CoIOStream},
@@ -29,7 +30,7 @@ fn setup_logger() {
 #[tarantool::proc]
 fn server_start() {
     log::info!("starting server...");
-    let server = server_bind();
+    let server = server_bind(("127.0.0.1", 5432)).unwrap();
 
     // TODO: handle each client in a new fiber.
     while let Ok(s) = server.accept() {
@@ -37,27 +38,21 @@ fn server_start() {
     }
 }
 
-fn server_bind() -> CoIOListener {
+fn server_bind(addr: (&str, u16)) -> io::Result<CoIOListener> {
     let mut socket = None;
     let mut f = |_| {
-        let raw = match std::net::TcpListener::bind(("127.0.0.1", 5432)) {
-            Ok(listener) => listener,
-            Err(e) => {
-                log::error!("failed to bind postgres socket: {e}");
-                return -1;
-            }
-        };
-
-        log::info!("new postgres server: {raw:?}");
-        socket.replace(raw);
+        let wrapped = std::net::TcpListener::bind(addr);
+        log::info!("PG socket bind result: {wrapped:?}");
+        socket.replace(wrapped);
         0
     };
 
-    let res = tarantool::coio::coio_call(&mut f, ());
-    assert!(res == 0);
+    if tarantool::coio::coio_call(&mut f, ()) != 0 {
+        return Err(io::Error::last_os_error());
+    }
 
-    let socket = socket.expect("uninitialized socket");
-    tarantool::coio::CoIOListener::try_from(socket).unwrap()
+    let socket = socket.expect("uninitialized socket")?;
+    tarantool::coio::CoIOListener::try_from(socket)
 }
 
 fn handle_client(mut client: CoIOStream) {
@@ -66,7 +61,6 @@ fn handle_client(mut client: CoIOStream) {
     log::info!("read {cnt} bytes");
 
     log::info!("raw message: {buf:x?}");
-    use pgwire::messages::Message;
     let message = pgwire::messages::startup::Startup::decode(&mut buf)
         .unwrap()
         .unwrap();
