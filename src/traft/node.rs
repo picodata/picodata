@@ -1229,42 +1229,26 @@ impl NodeImpl {
                 }
             );
 
-            let v_local = local_schema_version().expect("storage souldn't fail");
-            let v_global = self
-                .storage
-                .properties
-                .global_schema_version()
-                .expect("storage shouldn't fail");
             let v_snapshot = snapshot_data.schema_version;
 
-            assert!(
-                v_global <= v_local,
-                "global schema version is only ever increased after local"
-            );
-            assert!(
-                v_global <= v_snapshot,
-                "global schema version updates are distributed via raft"
-            );
-
-            if v_local > v_snapshot {
-                tlog!(
-                    Warning,
-                    "skipping stale snapshot: local schema version: {}, snapshot schema version: {}",
-                    v_local,
-                    snapshot_data.schema_version,
-                );
-                return None;
-            }
-
             loop {
-                if !self.is_readonly() {
-                    break;
-                }
+                let v_local = local_schema_version().expect("storage souldn't fail");
+                let v_global = self
+                    .storage
+                    .properties
+                    .global_schema_version()
+                    .expect("storage shouldn't fail");
 
-                let v_local = local_schema_version().expect("storage error");
-                if v_local == v_snapshot {
-                    break;
-                }
+                assert!(
+                    v_global <= v_local,
+                    "global schema version is only ever increased after local"
+                );
+
+                assert!(
+                    v_global <= v_snapshot,
+                    "global schema version updates are distributed via raft"
+                );
+
                 if v_local > v_snapshot {
                     tlog!(
                         Warning,
@@ -1275,11 +1259,22 @@ impl NodeImpl {
                     return None;
                 }
 
+                if !self.is_readonly() {
+                    // Replicaset leader applies the schema changes directly.
+                    return Some(snapshot_data);
+                }
+
+                if v_local == v_snapshot {
+                    // Replicaset follower has synced schema with the leader,
+                    // now global space dumps should be handled.
+                    return Some(snapshot_data);
+                }
+
+                // Replicaset follower needs to sync with leader via tarantool
+                // replication.
                 let timeout = MainLoop::TICK * 4;
                 fiber::sleep(timeout);
             }
-
-            Some(snapshot_data)
         })();
 
         if let Some(snapshot_data) = snapshot_data {
