@@ -59,7 +59,10 @@ fn main_run(args: args::Run) -> ! {
     // Tarantool implicitly parses some environment variables.
     // We don't want them to affect the behavior and thus filter them out.
     for (k, _) in std::env::vars() {
-        if k.starts_with("TT_") || k.starts_with("TARANTOOL_") {
+        // NB: For the moment we'd rather allow LDAP-related variables,
+        // but see https://git.picodata.io/picodata/tarantool/-/issues/25.
+        let is_relevant = k.starts_with("TT_") || k.starts_with("TARANTOOL_");
+        if !k.starts_with("TT_LDAP") && is_relevant {
             std::env::remove_var(k)
         }
     }
