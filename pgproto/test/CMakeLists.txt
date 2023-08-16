@@ -1,13 +1,25 @@
 get_all_targets(SOURCE_TARGETS ${PROJECT_SOURCE_DIR}/src)
 
-list(APPEND LUA_CPATH "${PROJECT_BINARY_DIR}/src/server/?.so")
-list(APPEND LUA_CPATH "${PROJECT_BINARY_DIR}/src/server/?.dylib")
-list(JOIN LUA_CPATH "\;" LUA_CPATH)
+list(APPEND LUA_CPATH_C "${PROJECT_BINARY_DIR}/src/server/?.so")
+list(APPEND LUA_CPATH_C "${PROJECT_BINARY_DIR}/src/server/?.dylib")
+list(JOIN LUA_CPATH_C "\;" LUA_CPATH_C)
+
+list(APPEND LUA_CPATH_RUST "${CMAKE_SOURCE_DIR}/target/debug/?.so")
+list(APPEND LUA_CPATH_RUST "${CMAKE_SOURCE_DIR}/target/debug/?.dylib")
+list(JOIN LUA_CPATH_RUST "\;" LUA_CPATH_RUST)
 
 add_custom_target(test
     DEPENDS ${SOURCE_TARGETS}
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
     COMMAND ${CMAKE_COMMAND} -E env
     "PICODATA_EXECUTABLE=${PICODATA_EXECUTABLE}"
-    "LUA_CPATH=${LUA_CPATH}"
+    "LUA_CPATH=${LUA_CPATH_C}"
+    pytest)
+
+add_custom_target(test-rust
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    COMMAND cargo build
+    COMMAND ${CMAKE_COMMAND} -E env
+    "PICODATA_EXECUTABLE=${PICODATA_EXECUTABLE}"
+    "LUA_CPATH=${LUA_CPATH_RUST}"
     pytest)
