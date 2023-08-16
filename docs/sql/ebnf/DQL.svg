@@ -44,7 +44,7 @@
      style="fill:#330000;stroke:#330000"
      d="M 17,17 9,13 v 8 z" />
   <a
-     xlink:href="#SELECT"
+     xlink:href="#select"
      xlink:title="SELECT"
      id="a3">
     <path
@@ -104,7 +104,7 @@
        aria-label="ALL" />
   </a>
   <a
-     xlink:href="#EXCEPT"
+     xlink:href="#except"
      xlink:title="EXCEPT"
      id="a9">
     <path
@@ -139,7 +139,7 @@
      style="font-weight:bold;font-size:14px;font-family:HelveticaNeueCyr, Sans-serif;fill:#140000"
      aria-label="DISTINCT" />
   <a
-     xlink:href="#SELECT"
+     xlink:href="#select"
      xlink:title="SELECT"
      id="a13">
     <path
