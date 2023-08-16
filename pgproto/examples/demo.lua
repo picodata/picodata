@@ -26,5 +26,5 @@ fiber.create(function()
         ]]
     end)
 
-    box.func['libpgproto.server_start']:call { 'localhost', 5432 }
+    box.func['libpgproto.server_start']:call { 'localhost', '5432' }
 end)

@@ -14,9 +14,11 @@ fn setup_logger() {
 }
 
 #[tarantool::proc]
-fn server_start() {
-    log::info!("starting postgres server...");
-    let server = server::new_listener(("127.0.0.1", 5432)).unwrap();
+fn server_start(host: &str, port: &str) {
+    let port = port.parse::<u16>().expect("bad port");
+
+    log::info!("starting postgres server at {host}:{port}...");
+    let server = server::new_listener((host, port)).unwrap();
 
     let mut handles = vec![];
     while let Ok(raw) = server.accept() {
