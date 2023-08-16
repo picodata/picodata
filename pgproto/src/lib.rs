@@ -1,23 +1,9 @@
-use bytes::{BufMut, BytesMut};
-use pgwire::messages::Message;
-use std::io::{self, Read};
-use tarantool::{
-    coio::{CoIOListener, CoIOStream},
-    log::TarantoolLogger,
-};
+mod server;
+mod stream;
 
-fn read_into_buf(reader: &mut CoIOStream, buf: &mut impl BufMut) -> io::Result<usize> {
-    let slice = buf.chunk_mut();
-
-    // SAFETY: coio's Read impl won't read uninitialized bytes.
-    let cnt = unsafe {
-        let uninit = slice.as_uninit_slice_mut();
-        reader.read(std::mem::transmute(uninit))
-    }?;
-
-    unsafe { buf.advance_mut(cnt) }
-    Ok(cnt)
-}
+use std::io;
+use stream::{messages, BeMessage, PgStream};
+use tarantool::{coio::CoIOStream, fiber::UnitJoinHandle, log::TarantoolLogger};
 
 // This will be executed once the library is loaded.
 #[ctor::ctor]
@@ -29,41 +15,51 @@ fn setup_logger() {
 
 #[tarantool::proc]
 fn server_start() {
-    log::info!("starting server...");
-    let server = server_bind(("127.0.0.1", 5432)).unwrap();
+    log::info!("starting postgres server...");
+    let server = server::new_listener(("127.0.0.1", 5432)).unwrap();
 
-    // TODO: handle each client in a new fiber.
-    while let Ok(s) = server.accept() {
-        handle_client(s);
+    let mut handles = vec![];
+    while let Ok(raw) = server.accept() {
+        let stream = PgStream::new(raw);
+        handles.push(handle_client(stream));
+    }
+
+    // TODO: this feels forced; find a better way.
+    for handle in handles {
+        handle.join();
     }
 }
 
-fn server_bind(addr: (&str, u16)) -> io::Result<CoIOListener> {
-    let mut socket = None;
-    let mut f = |_| {
-        let wrapped = std::net::TcpListener::bind(addr);
-        log::info!("PG socket bind result: {wrapped:?}");
-        socket.replace(wrapped);
-        0
-    };
-
-    if tarantool::coio::coio_call(&mut f, ()) != 0 {
-        return Err(io::Error::last_os_error());
-    }
-
-    let socket = socket.expect("uninitialized socket")?;
-    tarantool::coio::CoIOListener::try_from(socket)
+fn handle_client(client: PgStream<CoIOStream>) -> UnitJoinHandle<'static> {
+    log::info!("spawning a new fiber for postgres client connection");
+    tarantool::fiber::start_proc(move || {
+        let res = do_handle_client(client);
+        if let Err(e) = res {
+            log::error!("postgres client connection error: {e}");
+        }
+    })
 }
 
-fn handle_client(mut client: CoIOStream) {
-    let mut buf = BytesMut::with_capacity(8192);
-    let cnt = read_into_buf(&mut client, &mut buf).unwrap();
-    log::info!("read {cnt} bytes");
+fn do_handle_client(mut client: PgStream<CoIOStream>) -> io::Result<()> {
+    let message = client.read_message()?;
+    log::info!("received a message: {message:?}");
 
-    log::info!("raw message: {buf:x?}");
-    let message = pgwire::messages::startup::Startup::decode(&mut buf)
-        .unwrap()
-        .unwrap();
+    client
+        .write_message_noflush(BeMessage::Authentication(
+            messages::startup::Authentication::Ok,
+        ))?
+        .write_message_noflush(BeMessage::ParameterStatus(
+            messages::startup::ParameterStatus::new(
+                String::from("server_version"),
+                String::from("15.3"),
+            ),
+        ))?
+        .write_message(BeMessage::ReadyForQuery(
+            messages::response::ReadyForQuery::new(messages::response::READY_STATUS_IDLE),
+        ))?;
 
-    log::info!("parsed message: {message:?}");
+    // Now sleep indefinitely...
+    loop {
+        tarantool::fiber::sleep(std::time::Duration::from_secs(1));
+    }
 }
