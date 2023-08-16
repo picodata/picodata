@@ -1,9 +1,16 @@
-import { useCallback } from "react";
+import { FC, useCallback } from "react";
 import styles from "./InstanceBlock.module.css";
 
-export const InstanceBlock = ({ instances }) => {
+export interface Instance {
+  name: string;
+  info: string;
+}
+export interface InstaceBlockProps {
+  instances: Instance[];
+}
+export const InstanceBlock: FC<InstaceBlockProps> = ({ instances }) => {
   const instanceEl = useCallback(
-    (instance) => (
+    (instance: Instance) => (
       <div className={styles.instanceWrapper}>
         <p className={styles.noMargin}>{instance.name}</p>
         <p className={styles.noMargin}>{instance.info}</p>

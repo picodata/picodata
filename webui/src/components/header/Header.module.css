@@ -4,5 +4,8 @@
   background: #323232;
   display: flex;
   align-items: center;
+}
+
+.logo {
   padding-left: 25px;
 }
