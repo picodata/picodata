@@ -1,0 +1,14 @@
+.pageWrapper {
+  padding-top: 40px;
+  overflow: scroll;
+  max-height: calc(100vh - 104px);
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.replicasetsWrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}

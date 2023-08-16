@@ -1,0 +1,33 @@
+.nonActiveWrapper {
+  background: linear-gradient(
+      0deg,
+      rgba(12, 12, 12, 0.15) 0%,
+      rgba(12, 12, 12, 0.15) 100%
+    ),
+    lightgray 50% / cover no-repeat;
+  height: 100%;
+  min-width: 112px;
+}
+
+.activeWrapper {
+  backdrop-filter: blur(10px);
+  flex-grow: 1;
+}
+
+.linksWrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.link {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 16px;
+}
+
+.menuIcon {
+  margin-top: 40px;
+  margin-left: 40px;
+}

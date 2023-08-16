@@ -85,10 +85,12 @@ module.exports = {
       node: {
         extensions: ['.js', '.jsx', '.ts', '.tsx'],
         moduleDirectory: ['node_modules', 'src/'],
+        paths: ['src']
       },
       typescript: {
         alwaysTryTypes: true,
       },
     },
+    'import/ignore': ['.mobule.css']
   },
 };
