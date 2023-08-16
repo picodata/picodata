@@ -1,39 +1,15 @@
 import pytest
-from conftest import Cluster
 import pg8000.dbapi as pg
 import os
-
-def start_pg_server(instance, host, service):
-    start_pg_server_lua_code = f"""
-        package.cpath="{os.environ['LUA_CPATH']}"
-
-        box.schema.func.create('pgproto.server_start', {{ language = 'C' }})
-        box.schema.user.grant('guest', 'execute', 'function', 'pgproto.server_start')
-
-        box.func['pgproto.server_start']:call({{ '{host}', '{service}' }})
-    """
-    instance.eval(start_pg_server_lua_code)
-
-def stop_pg_server(instance):
-    stop_pg_server_lua_code = f"""
-        box.schema.func.create('pgproto.server_stop', {{language = 'C'}})
-        box.schema.user.grant('guest', 'execute', 'function', 'pgproto.server_stop')
-
-        box.func['pgproto.server_stop']:call()
-
-        box.schema.func.drop('pgproto.server_start')
-        box.schema.func.drop('pgproto.server_stop')
-    """
-    instance.eval(stop_pg_server_lua_code)
+from conftest import Postgres
 
 
-def test_simple_query_flow_errors(cluster: Cluster):
-    cluster.deploy(instance_count=1)
-    i1 = cluster.instances[0]
-
+def test_simple_query_flow_errors(postgres: Postgres):
     host = '127.0.0.1'
-    service = '35776'
-    start_pg_server(i1, host, service)
+    port = 5432
+
+    postgres.start(host, port)
+    i1 = postgres.instance
 
     user = 'admin'
     password = 'fANPIOUWEh79p12hdunqwADI'
@@ -41,10 +17,10 @@ def test_simple_query_flow_errors(cluster: Cluster):
     i1.eval(f"box.schema.user.passwd('{user}', '{password}')")
 
     with pytest.raises(pg.InterfaceError, match="Server refuses SSL"):
-        pg.Connection(user, password=password, host=host, port=int(service), ssl_context=True)
+        pg.Connection(user, password=password, host=host, port=port, ssl_context=True)
 
     os.environ['PGSSLMODE'] = 'disable'
-    conn = pg.Connection(user, password=password, host=host, port=int(service))
+    conn = pg.Connection(user, password=password, host=host, port=port)
     conn.autocommit = True
     cur = conn.cursor()
 
@@ -58,13 +34,13 @@ def test_simple_query_flow_errors(cluster: Cluster):
             INSERT INTO book VALUES (1, 2);
         """)
 
-def test_simple_flow_session(cluster: Cluster):
-    cluster.deploy(instance_count=1)
-    i1 = cluster.instances[0]
 
+def test_simple_flow_session(postgres: Postgres):
     host = '127.0.0.1'
-    service = '5432'
-    start_pg_server(i1, host, service)
+    port = 5432
+
+    postgres.start(host, port)
+    i1 = postgres.instance
 
     user = 'admin'
     password = 'password'
@@ -72,7 +48,7 @@ def test_simple_flow_session(cluster: Cluster):
     i1.eval(f"box.schema.user.passwd('{user}', '{password}')")
 
     os.environ['PGSSLMODE'] = 'disable'
-    conn = pg.Connection(user, password=password, host=host, port=int(service))
+    conn = pg.Connection(user, password=password, host=host, port=port)
     conn.autocommit = True
     cur = conn.cursor()
 
@@ -108,15 +84,13 @@ def test_simple_flow_session(cluster: Cluster):
         DROP TABLE "tall";
     """)
 
-    stop_pg_server(i1)
 
-def test_explain(cluster: Cluster):
-    cluster.deploy(instance_count=1)
-    i1 = cluster.instances[0]
-
+def test_explain(postgres: Postgres):
     host = '127.0.0.1'
-    service = '54321'
-    start_pg_server(i1, host, service)
+    port = 5432
+
+    postgres.start(host, port)
+    i1 = postgres.instance
 
     user = 'admin'
     password = 'password'
@@ -124,7 +98,7 @@ def test_explain(cluster: Cluster):
     i1.eval(f"box.schema.user.passwd('{user}', '{password}')")
 
     os.environ['PGSSLMODE'] = 'disable'
-    conn = pg.Connection(user, password=password, host=host, port=int(service))
+    conn = pg.Connection(user, password=password, host=host, port=port)
     conn.autocommit = True
     cur = conn.cursor()
 
@@ -175,18 +149,15 @@ def test_explain(cluster: Cluster):
 
     cur.execute('drop table "explain";')
 
-    stop_pg_server(i1)
-
 
 # Aggregates return value type is decimal, which is currently not supported,
 # so an error is expected
-def test_aggregate_error(cluster: Cluster):
-    cluster.deploy(instance_count=1)
-    i1 = cluster.instances[0]
-
+def test_aggregate_error(postgres: Postgres):
     host = '127.0.0.1'
-    service = '54321'
-    start_pg_server(i1, host, service)
+    port = 5432
+
+    postgres.start(host, port)
+    i1 = postgres.instance
 
     user = 'admin'
     password = 'password'
@@ -194,7 +165,7 @@ def test_aggregate_error(cluster: Cluster):
     i1.eval(f"box.schema.user.passwd('{user}', '{password}')")
 
     os.environ['PGSSLMODE'] = 'disable'
-    conn = pg.Connection(user, password=password, host=host, port=int(service))
+    conn = pg.Connection(user, password=password, host=host, port=port)
     conn.autocommit = True
     cur = conn.cursor()
 
@@ -219,5 +190,3 @@ def test_aggregate_error(cluster: Cluster):
         cur.execute("""
             SELECT SUM("id") FROM "tall";
         """)
-
-    stop_pg_server(i1)

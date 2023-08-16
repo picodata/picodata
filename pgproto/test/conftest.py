@@ -1259,3 +1259,30 @@ def pgrep_tree(pid):
         return [pid, *subps]
     except subprocess.SubprocessError:
         return [pid]
+
+
+@dataclass
+class Postgres:
+    instance: Instance
+
+    def install(self):
+        code = f"""
+            package.cpath="{os.environ['LUA_CPATH']}"
+
+            box.schema.func.create('pgproto.server_start', {{ language = 'C' }})
+            box.schema.user.grant('guest', 'execute', 'function', 'pgproto.server_start')
+        """
+        self.instance.eval(code)
+        return self
+
+    def start(self, host, port):
+        code = f"""
+            box.func['pgproto.server_start']:call({{ '{host}', '{port}' }})
+        """
+        self.instance.eval(code)
+        return self
+
+
+@pytest.fixture
+def postgres(instance: Instance):
+    return Postgres(instance).install()

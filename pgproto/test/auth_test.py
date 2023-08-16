@@ -1,43 +1,14 @@
 import pytest
-from conftest import Cluster
 import pg8000.dbapi as pg
-import os
+from conftest import Postgres
 
-def start_pg_server(instance, host, service):
-    start_pg_server_lua_code = f"""
-        package.cpath="{os.environ['LUA_CPATH']}"
-        net_box = require('net.box')
-        box.schema.func.create('pgproto.server_start', {{language = 'C'}})
-        box.schema.user.grant('guest', 'execute', 'function', 'pgproto.server_start')
 
-        box.cfg{{listen=3301}}
-        caller = net_box:new(3301)
-        caller:call('pgproto.server_start', {{ '{host}', '{service}' }})
-    """
-    instance.eval(start_pg_server_lua_code)
-
-def stop_pg_server(instance):
-    stop_pg_server_lua_code = f"""
-        local net_box = require('net.box')
-        box.schema.func.create('pgproto.server_stop', {{language = 'C'}})
-        box.schema.user.grant('guest', 'execute', 'function', 'pgproto.server_stop')
-
-        box.cfg{{listen=3301}}
-        local caller = net_box:new(3301)
-        caller:call('pgproto.server_stop')
-
-        box.schema.func.drop('pgproto.server_start')
-        box.schema.func.drop('pgproto.server_stop')
-    """
-    instance.eval(stop_pg_server_lua_code)
-
-def test_auth(cluster: Cluster):
-    cluster.deploy(instance_count=1)
-    i1 = cluster.instances[0]
-
+def test_auth(postgres: Postgres):
     host = '127.0.0.1'
-    service = '36118'
-    start_pg_server(i1, host, service)
+    port = 5432
+
+    postgres.start(host, port)
+    i1 = postgres.instance
 
     user = 'user'
     password = 'fANPIOUWEh79p12hdunqwADI'
@@ -45,16 +16,16 @@ def test_auth(cluster: Cluster):
     i1.call("pico.create_user", user, password, dict(timeout=3))
 
     # test successful authentication
-    conn = pg.Connection(user, password=password, host=host, port=int(service))
+    conn = pg.Connection(user, password=password, host=host, port=port)
     conn.close()
 
     # test authentication with a wrong password
     with pytest.raises(pg.DatabaseError, match=f"md5 authentication failed for user '{user}'"):
-        pg.Connection(user, password='wrong password', host=host, port=int(service))
+        pg.Connection(user, password='wrong password', host=host, port=port)
 
     # test authentication with an unknown user
     with pytest.raises(pg.DatabaseError, match=f"authentication failed for user 'unknown-user'"):
-        pg.Connection("unknown-user", password='aaa', host=host, port=int(service))
+        pg.Connection("unknown-user", password='aaa', host=host, port=port)
 
     sha_user = 'chap-sha-enjoyer'
     sha_password = '231321fnijphui217h08'
@@ -63,4 +34,4 @@ def test_auth(cluster: Cluster):
 
     # test authentication with an unsupported method
     with pytest.raises(pg.DatabaseError, match=f"authentication failed for user '{sha_user}'"):
-        pg.Connection(sha_user, password='aaa', host=host, port=int(service))
+        pg.Connection(sha_user, password='aaa', host=host, port=port)
