@@ -2,7 +2,6 @@ add_compile_options(-Wall -Wextra -Werror)
 
 function(build_module module files)
     add_library(${module} SHARED ${files})
-    set_target_properties(${module} PROPERTIES PREFIX "")
     if(TARGET_OS_DARWIN)
         set_target_properties(${module} PROPERTIES LINK_FLAGS "-undefined dynamic_lookup")
     endif(TARGET_OS_DARWIN)

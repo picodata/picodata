@@ -1269,15 +1269,15 @@ class Postgres:
         code = f"""
             package.cpath="{os.environ['LUA_CPATH']}"
 
-            box.schema.func.create('pgproto.server_start', {{ language = 'C' }})
-            box.schema.user.grant('guest', 'execute', 'function', 'pgproto.server_start')
+            box.schema.func.create('libpgproto.server_start', {{ language = 'C' }})
+            box.schema.user.grant('guest', 'execute', 'function', 'libpgproto.server_start')
         """
         self.instance.eval(code)
         return self
 
     def start(self, host, port):
         code = f"""
-            box.func['pgproto.server_start']:call({{ '{host}', '{port}' }})
+            box.func['libpgproto.server_start']:call({{ '{host}', '{port}' }})
         """
         self.instance.eval(code)
         return self
