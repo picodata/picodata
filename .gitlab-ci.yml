@@ -338,6 +338,14 @@ pack-astralinux:
     paths:
       - build_astra/*.deb
 
+pack-rosalinux:
+  extends: .pack
+  script:
+    - DOCKER_REPO=docker-picodata.binary.picodata.io/packpack/rosa DOCKER_IMAGE=chrome BUILDDIR=$PWD/build_rosa packpack/packpack
+  artifacts:
+    paths:
+      - build_rosa/picodata*.rpm
+
 pack-macos-arm:
   extends: .pack
   tags:
@@ -394,19 +402,23 @@ sign-rpm-packages:
     - echo "$GPG_KEY_KDY" | base64 -d > build_centos/kdy.asc
     - echo "$GPG_KEY_KDY" | base64 -d > build_alt/kdy.asc
     - echo "$GPG_KEY_KDY" | base64 -d > build_redos/kdy.asc
+    - echo "$GPG_KEY_KDY" | base64 -d > build_rosa/kdy.asc
   script:
     - docker run --rm -e KEY_FILE=kdy.asc -v $PWD/build_centos:/build docker-picodata.binary.picodata.io/rpmsign:centos7
     - docker run --rm -e KEY_FILE=kdy.asc -v $PWD/build_alt:/build docker-picodata.binary.picodata.io/rpmsign:centos7
     - docker run --rm -e KEY_FILE=kdy.asc -v $PWD/build_redos:/build docker-picodata.binary.picodata.io/rpmsign:centos7
+    - docker run --rm -e KEY_FILE=kdy.asc -v $PWD/build_rosa:/build docker-picodata.binary.picodata.io/rpmsign:centos7
   artifacts:
     paths:
       - build_centos/picodata*.rpm
       - build_alt/picodata*.rpm
       - build_redos/picodata*.rpm
+      - build_rosa/picodata*.rpm
   dependencies:
     - pack-centos
     - pack-altlinux
     - pack-redos
+    - pack-rosalinux
 
 sign-astralinux-packages:
   variables:
@@ -444,62 +456,68 @@ deploy-packages:
     - echo "Deploying sources..."
     - scp -o stricthostkeychecking=no build_sources/picodata*.tar.xz ansible@picodata.io:/data/nginx/www/packrepo/tarantool-picodata/sources/
     # CentOS 7
-    - echo "Deploying rpm-centos7-packet..."
+    - echo "Deploying rpm-centos7-package..."
     - scp -o stricthostkeychecking=no build_centos/picodata*.el7.*rpm ansible@picodata.io:/data/nginx/www/packrepo/tarantool-picodata/el/7/x86_64/
     - ssh -o stricthostkeychecking=no ansible@picodata.io "cd /data/nginx/www/packrepo/tarantool-picodata/el/7/ && createrepo --update x86_64 && gpg --no-tty --yes -u kdy@picodata.io --detach-sign --armor x86_64/repodata/repomd.xml"
-    - echo "rpm-centos7-packet successfully deployed."
+    - echo "rpm-centos7-package successfully deployed."
     - echo
     # CentOS 8
-    - echo "Deploying rpm-centos8-packet..."
+    - echo "Deploying rpm-centos8-package..."
     - scp -o stricthostkeychecking=no build_centos/picodata*.el8.*rpm ansible@picodata.io:/data/nginx/www/packrepo/tarantool-picodata/el/8/x86_64/
     - ssh -o stricthostkeychecking=no ansible@picodata.io "cd /data/nginx/www/packrepo/tarantool-picodata/el/8/ && createrepo --update x86_64 && gpg --no-tty --yes -u kdy@picodata.io --detach-sign --armor x86_64/repodata/repomd.xml"
-    - echo "rpm-centos8-packet successfully deployed."
+    - echo "rpm-centos8-package successfully deployed."
     - echo
     # Ubuntu focal
-    - echo "Deploying ubuntu focal deb-packets..."
+    - echo "Deploying ubuntu focal deb-packages..."
     - ssh -o stricthostkeychecking=no ansible@picodata.io "mkdir -p ~/.deb/ubuntu"
     - scp -o stricthostkeychecking=no build_focal/picodata*deb ansible@picodata.io:.deb/ubuntu/
     - ssh -o stricthostkeychecking=no ansible@picodata.io "reprepro --keepunreferencedfiles -b /data/nginx/www/packrepo/tarantool-picodata/ubuntu/ -C main includedeb focal ~/.deb/ubuntu/picodata*focal*deb; rm ~/.deb/ubuntu/picodata*focal*deb"
-    - echo "ubuntu focal deb-packets successfully deployed."
+    - echo "ubuntu focal deb-packages successfully deployed."
     - echo
     # Ubuntu jammy
-    - echo "Deploying ubuntu jammy deb-packets..."
+    - echo "Deploying ubuntu jammy deb-packages..."
     - ssh -o stricthostkeychecking=no ansible@picodata.io "mkdir -p ~/.deb/ubuntu"
     - scp -o stricthostkeychecking=no build_jammy/picodata*deb ansible@picodata.io:.deb/ubuntu/
     - ssh -o stricthostkeychecking=no ansible@picodata.io "reprepro --keepunreferencedfiles -b /data/nginx/www/packrepo/tarantool-picodata/ubuntu/ -C main includedeb jammy ~/.deb/ubuntu/picodata*jammy*deb; rm ~/.deb/ubuntu/picodata*jammy*deb"
-    - echo "ubuntu jammy deb-packets successfully deployed."
+    - echo "ubuntu jammy deb-packages successfully deployed."
     - echo
     # Debian
-    - echo "Deploying debian packets..."
+    - echo "Deploying debian packages..."
     - ssh -o stricthostkeychecking=no ansible@picodata.io "mkdir -p ~/.deb/debian"
     - scp -o stricthostkeychecking=no build_debian/picodata*deb ansible@picodata.io:.deb/debian/
     - ssh -o stricthostkeychecking=no ansible@picodata.io "reprepro --keepunreferencedfiles -b /data/nginx/www/packrepo/tarantool-picodata/debian/ -C main includedeb bullseye ~/.deb/debian/picodata*bullseye*deb; rm ~/.deb/debian/picodata*bullseye*deb"
-    - echo "debian packets successfully deployed."
+    - echo "debian packages successfully deployed."
     - echo
     # Altlinux p9
     - ssh -o stricthostkeychecking=no ansible@picodata.io "mkdir -p /tmp/altlinux/"
-    - echo "Deploying altlinux-p9 packet..."
+    - echo "Deploying altlinux-p9 package..."
     - scp -o stricthostkeychecking=no build_alt/picodata*.p9.*rpm ansible@picodata.io:/tmp/altlinux/
-    - echo "altlinux-p9 packet successfully deployed."
+    - echo "altlinux-p9 package successfully deployed."
     - echo
     # Altlinux p10
-    - echo "Deploying altlinux-p10 packet..."
+    - echo "Deploying altlinux-p10 package..."
     - scp -o stricthostkeychecking=no build_alt/picodata*.p10.*rpm ansible@picodata.io:/tmp/altlinux/
     - ssh -o stricthostkeychecking=no ansible@picodata.io "/usr/local/bin/repogen.sh"
-    - echo "altlinux-p10 packet successfully deployed."
+    - echo "altlinux-p10 package successfully deployed."
     - echo
     # RedOS
-    - echo "Deploying RedOS 7 packet..."
+    - echo "Deploying RedOS 7 package..."
     - scp -o stricthostkeychecking=no build_redos/picodata*.el7.*rpm ansible@picodata.io:/data/nginx/www/packrepo/tarantool-picodata/redos/7/x86_64/
     - ssh -o stricthostkeychecking=no ansible@picodata.io "cd /data/nginx/www/packrepo/tarantool-picodata/redos/7/ && createrepo --update x86_64 && gpg --no-tty --yes -u kdy@picodata.io --detach-sign --armor x86_64/repodata/repomd.xml"
-    - echo "RedOS 7 packet successfully deployed."
+    - echo "RedOS 7 package successfully deployed."
     - echo
     # Astralinux
-    - echo "Deploying Astralinux packet..."
+    - echo "Deploying Astralinux package..."
     - ssh -o stricthostkeychecking=no ansible@picodata.io "mkdir -p ~/.deb/astra"
     - scp -o stricthostkeychecking=no build_astra/picodata*_signed.deb ansible@picodata.io:.deb/astra/
     - ssh -o stricthostkeychecking=no ansible@picodata.io "reprepro --keepunreferencedfiles -b /data/nginx/www/packrepo/tarantool-picodata/astra -C main includedeb orel ~/.deb/astra/picodata*_signed.deb; rm -rf ~/.deb/astra"
-    - echo "Astralinux-packets successfully deployed."
+    - echo "Astralinux-packages successfully deployed."
+    - echo
+    # ROSAlinux
+    - echo "Deploying Rosa Linux package..."
+    - scp -o stricthostkeychecking=no build_rosa/picodata*-rosa*rpm ansible@picodata.io:/data/nginx/www/packrepo/tarantool-picodata/rosa/chrome/x86_64
+    - ssh -o stricthostkeychecking=no ansible@picodata.io "cd /data/nginx/www/packrepo/tarantool-picodata/rosa/chrome && createrepo --update x86_64 && gpg --no-tty --yes -u kdy@picodata.io --detach-sign --armor x86_64/repodata/repomd.xml"
+    - echo "ROSA Linux package successfully deployed."
     - echo
   dependencies:
     - pack-ubuntu
@@ -575,13 +593,16 @@ check-deployment-rpm:
   parallel:
     matrix:
       - BASE_IMAGE: centos:7
-        PACKAGE: el/7/x86_64/picodata-release-1.1.1.0-1.el7.x86_64.rpm
+        PACKAGE: el/7/x86_64/picodata-release-1.1.2.0-1.el7.x86_64.rpm
         GIT_FETCH_PARAM: depth
       - BASE_IMAGE: rockylinux:8
-        PACKAGE: el/8/x86_64/picodata-release-1.1.1.0-1.el8.x86_64.rpm
+        PACKAGE: el/8/x86_64/picodata-release-1.1.2.0-1.el8.x86_64.rpm
         GIT_FETCH_PARAM: deepen
       - BASE_IMAGE: packpack/packpack:redos-7.3
-        PACKAGE: redos/7/x86_64/picodata-release-1.1.1.0-1.el7.x86_64.rpm
+        PACKAGE: redos/7/x86_64/picodata-release-1.1.2.0-1.el7.x86_64.rpm
+        GIT_FETCH_PARAM: deepen
+      - BASE_IMAGE: docker-picodata.binary.picodata.io/rosa/rosa-chrome:2021.1
+        PACKAGE: rosa/chrome/x86_64/picodata-release-1.1.2.0-1-rosa2021.1.x86_64.rpm
         GIT_FETCH_PARAM: deepen
   before_script:
     - yum install -y git

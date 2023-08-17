@@ -21,6 +21,28 @@ BuildRequires: cmake3
 BuildRequires: libstdc++-static
 %endif
 
+%if "%{?mandriva_os}" == "linux"
+BuildRequires: lib64luajit-5.1-devel
+BuildRequires: lib64zstd-devel
+BuildRequires: lib64z-devel
+BuildRequires: lib64yaml-devel
+BuildRequires: lib64curl-devel
+BuildRequires: lib64icu-devel
+BuildRequires: lib64openssl-devel
+BuildRequires: lib64readline-devel
+BuildRequires: lib64stdc++-static-devel
+BuildRequires: lib64gomp-static-devel
+%else
+BuildRequires: readline-devel
+BuildRequires: openssl-devel
+BuildRequires: libcurl-devel
+BuildRequires: libicu-devel
+BuildRequires: libyaml-devel
+BuildRequires: libzstd-devel
+#BuildRequires: luajit-devel
+%endif
+
+
 %description
 Picodata is a high performance in-memory NoSQL database and Rust
 application server. Picodata supports replication, online backup and
@@ -33,6 +55,7 @@ This package provides the repository binary and tools
 
 %build
 make install-cargo
+sudo find {/opt,/usr} -name libgomp.spec -delete
 
 %if %use_cmake3
 make centos7-cmake3
@@ -42,7 +65,7 @@ make build
 
 %install
 
-%if %{?_build_vendor} == alt
+%if "%{?_build_vendor}" == "alt"
 %makeinstall_std
 %else
 %make_install
@@ -57,7 +80,7 @@ make build
 %{_bindir}/picodata
 %doc README.md
 %{!?_licensedir:%global license %doc}
-%if %{?_build_vendor} == alt
+%if "%{?_build_vendor}" == "alt"
 %doc docs/licenses/eula_en.txt docs/licenses/eula_ru.txt AUTHORS
 %else
 %license docs/licenses/eula_en.txt docs/licenses/eula_ru.txt AUTHORS
