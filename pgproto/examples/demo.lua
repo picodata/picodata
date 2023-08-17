@@ -15,7 +15,7 @@ fiber.create(function()
         box.schema.user.grant('guest', 'execute', 'function', 'libpgproto.server_start')
 
         log.info('creating user "postgres" with password "password"')
-        -- box.schema.user.create('postgres', 'password', { auth_type = 'md5' })
+        box.schema.user.create('postgres', { auth_type = 'md5', password = 'password' })
 
         log.info('creating exemplary tables')
         pico.sql [[

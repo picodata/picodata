@@ -1,8 +1,14 @@
+mod auth;
+mod client;
+mod error;
+mod helpers;
+mod messages;
 mod server;
 mod stream;
 
+use crate::client::PgClient;
 use std::io;
-use stream::{messages, BeMessage, PgStream};
+use stream::PgStream;
 use tarantool::{coio::CoIOStream, fiber::UnitJoinHandle, log::TarantoolLogger};
 
 // This will be executed once the library is loaded.
@@ -42,26 +48,9 @@ fn handle_client(client: PgStream<CoIOStream>) -> UnitJoinHandle<'static> {
     })
 }
 
-fn do_handle_client(mut client: PgStream<CoIOStream>) -> io::Result<()> {
-    let message = client.read_message()?;
-    log::info!("received a message: {message:?}");
-
-    client
-        .write_message_noflush(BeMessage::Authentication(
-            messages::startup::Authentication::Ok,
-        ))?
-        .write_message_noflush(BeMessage::ParameterStatus(
-            messages::startup::ParameterStatus::new(
-                String::from("server_version"),
-                String::from("15.3"),
-            ),
-        ))?
-        .write_message(BeMessage::ReadyForQuery(
-            messages::response::ReadyForQuery::new(messages::response::READY_STATUS_IDLE),
-        ))?;
-
-    // Now sleep indefinitely...
-    loop {
-        tarantool::fiber::sleep(std::time::Duration::from_secs(1));
-    }
+fn do_handle_client(stream: PgStream<CoIOStream>) -> io::Result<()> {
+    let mut client = PgClient::new(stream)?;
+    client.send_parameter("server_version", "15.0")?;
+    client.start_query_cycle()?;
+    Ok(())
 }

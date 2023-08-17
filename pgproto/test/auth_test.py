@@ -20,7 +20,7 @@ def test_auth(postgres: Postgres):
     conn.close()
 
     # test authentication with a wrong password
-    with pytest.raises(pg.DatabaseError, match=f"md5 authentication failed for user '{user}'"):
+    with pytest.raises(pg.DatabaseError, match=f"authentication failed for user '{user}'"):
         pg.Connection(user, password='wrong password', host=host, port=port)
 
     # test authentication with an unknown user
