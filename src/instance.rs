@@ -51,6 +51,7 @@ impl Instance {
     /// Instance has a grade that implies it may cooperate.
     /// Currently this means that target_grade is neither Offline nor Expelled.
     #[inline]
+    #[allow(clippy::nonminimal_bool)]
     pub fn may_respond(&self) -> bool {
         has_grades!(self, * -> not Offline) && has_grades!(self, * -> not Expelled)
     }

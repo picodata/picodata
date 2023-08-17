@@ -7,7 +7,7 @@ RUN dnf -y install dnf-plugins-core \
 
 RUN set -e; \
     curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | \
-    sh -s -- -y --profile default --default-toolchain 1.65.0
+    sh -s -- -y --profile default --default-toolchain 1.71.0
 ENV PATH=/root/.cargo/bin:${PATH}
 
 WORKDIR /build/picodata

@@ -815,7 +815,7 @@ mod tests {
         assert!(t(&abort, Range::new(props).eq(&pending_schema_change)).is_err());
         assert!(t(&abort, Range::new(props).eq(&pending_schema_version)).is_err());
         assert!(t(&abort, Range::new(props).eq(&global_schema_version)).is_err());
-        assert!(t(&abort, Range::new(props).eq(&next_schema_version)).is_err());
+        assert!(t(&abort, Range::new(props).eq(next_schema_version)).is_err());
         assert!(t(&abort, Range::new(props).eq(("another_key",))).is_ok());
 
         assert!(t(&abort, Range::new(69105u32).eq(("any_key",))).is_ok());
