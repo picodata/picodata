@@ -138,6 +138,18 @@ pipenv run lint
 python3.10 -m pipenv run pytest -n 20
 ```
 
+#### Running manual/test_scaling.py::test_cas_conflicts
+
+This test is not ran by default, but can be used for benchmarking instance join time and cas conflicts.
+The test plots a chart and therefore also requires `matplotlib` dependency to be avaliable.
+
+Install it with:
+```bash
+python3.10 -m pipenv install matplotlib
+```
+
+But do not commit the changes to `Pipfile` and `Pipfile.lock` that this installation generates. As we
+do not want to have `matplotlib` installed by default.
 ---
 
 ### macOS
