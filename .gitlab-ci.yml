@@ -152,6 +152,28 @@ test-linux:
     pull_policy: if-not-present
 
   script:
+    - |
+      # Check rust version consistency
+      ci-log-section start "rust-version" Checking rust version consistency ...
+      exec 3>&1 # duplicate stdout fd
+      grep_rust_version() { echo "$1: $(sed -nr "s/.*rust-version = \"(\S+)\".*/\1/p" $1)"; }
+      grep_toolchain() { echo "$1: $(sed -nr "s/.*--default-toolchain (\S+).*/\1/p" $1)"; }
+      UNIQUE_VERSIONS=$(
+        {
+          grep_rust_version Cargo.toml;
+          grep_toolchain Makefile;
+          grep_toolchain docker-build-base/Dockerfile;
+          grep_toolchain helm/picodata.Dockerfile;
+        } \
+        | tee /dev/fd/3 \
+        | cut -d: -f2- | sort | uniq | wc -l
+      );
+      ci-log-section end "rust-version"
+      if [ "$UNIQUE_VERSIONS" != "1" ]; then
+        echo "Error: checking rust version consistency failed"
+        exit 1
+      fi
+
     - cargo -V
     - cargo build --locked
     - cargo build --features webui --locked
