@@ -23,6 +23,7 @@ use crate::tlua::{self as tlua, AsLua};
 
 #[cfg(not(all(target_arch = "aarch64", target_os = "macos")))]
 use ::va_list::{VaList, VaPrimitive};
+use tlua::unwrap_or;
 
 #[cfg(all(target_arch = "aarch64", target_os = "macos"))]
 use crate::va_list::{VaList, VaPrimitive};
@@ -283,30 +284,21 @@ impl Builder<NoFunc> {
 
     /// Sets the callee function for the new fiber.
     #[inline]
-    pub fn func<'f, F, T>(self, f: F) -> Builder<FiberFunc<'f, F, T>>
+    pub fn func<'f, F, T>(self, f: F) -> Builder<F>
     where
         F: FnOnce() -> T,
         F: 'f,
     {
-        let func = FiberFunc {
-            f: Box::new(f),
-            result: if needs_returning::<T>() {
-                Some(FiberResultCell::default())
-            } else {
-                None
-            },
-            marker: PhantomData,
-        };
         Builder {
             name: self.name,
             attr: self.attr,
-            f: func,
+            f,
         }
     }
 
     /// Sets the callee async function for the new fiber.
     #[inline(always)]
-    pub fn func_async<'f, F, T>(self, f: F) -> Builder<FiberFunc<'f, impl FnOnce() -> T + 'f, T>>
+    pub fn func_async<'f, F, T>(self, f: F) -> Builder<impl FnOnce() -> T + 'f>
     where
         F: Future<Output = T> + 'f,
         T: 'f,
@@ -317,7 +309,7 @@ impl Builder<NoFunc> {
     /// Sets the callee procedure for the new fiber.
     #[deprecated = "Use `Builder::func` instead"]
     #[inline(always)]
-    pub fn proc<'f, F>(self, f: F) -> Builder<FiberFunc<'f, F, ()>>
+    pub fn proc<'f, F>(self, f: F) -> Builder<F>
     where
         F: FnOnce(),
         F: 'f,
@@ -328,7 +320,7 @@ impl Builder<NoFunc> {
     /// Sets the callee async procedure for the new fiber.
     #[deprecated = "Use `Builder::func_async` instead"]
     #[inline(always)]
-    pub fn proc_async<'f, F>(self, f: F) -> Builder<FiberFunc<'f, impl FnOnce() + 'f, ()>>
+    pub fn proc_async<'f, F>(self, f: F) -> Builder<impl FnOnce() + 'f>
     where
         F: Future<Output = ()> + 'f,
     {
@@ -369,7 +361,7 @@ impl<F> Builder<F> {
     }
 }
 
-impl<'f, F, T> Builder<FiberFunc<'f, F, T>>
+impl<'f, F, T> Builder<F>
 where
     F: FnOnce() -> T + 'f,
     T: 'f,
@@ -385,7 +377,7 @@ where
     pub fn start(self) -> Result<JoinHandle<'f, T>> {
         let Self { name, attr, f } = self;
         let name = name.unwrap_or_else(|| "<rust>".into());
-        Ok(Fyber::immediate(name, f, attr.as_ref())?.spawn())
+        Ok(Fyber::<F, T, false>::spawn(name, f, attr.as_ref())?)
     }
 
     #[cfg(feature = "defer")]
@@ -403,7 +395,7 @@ where
     pub fn defer(self) -> Result<JoinHandle<'f, T>> {
         let Self { name, attr, f } = self;
         let name = name.unwrap_or_else(|| "<rust>".into());
-        Ok(Fyber::deferred(name, f, attr.as_ref())?.spawn())
+        Ok(Fyber::<F, T, true>::spawn(name, f, attr.as_ref())?)
     }
 }
 
@@ -411,31 +403,28 @@ where
 // Fyber
 ////////////////////////////////////////////////////////////////////////////////
 
-/// A handle to a fiber.
+/// A helper struct which is used to store information about a fiber being
+/// created. It's only utility is the generic parameter which are associated
+/// with it.
 ///
-/// This is a (somewhat) high-level abstraction intended to facilitate a safe
-/// and idiomatic way to work with fibers. It is configurable with different
-/// types of behavior enabled by the type parameters which will be set by the
-/// [`Builder`].
-///
-/// **TODO**: add support for cancelable fibers.
-pub struct Fyber<'f, F, T, const DEFERRED: bool> {
-    inner: NonNull<ffi::Fiber>,
-    func: FiberFunc<'f, F, T>,
+/// **TODO**: add support for cancellable fibers.
+/// **TODO**: add support for non-joinable fibers.
+pub struct Fyber<F, T, const DEFERRED: bool> {
+    _marker: PhantomData<(F, T)>,
 }
 
-impl<'f, F, T, const DEFERRED: bool> ::std::fmt::Debug for Fyber<'f, F, T, { DEFERRED }> {
+impl<F, T, const DEFERRED: bool> ::std::fmt::Debug for Fyber<F, T, { DEFERRED }> {
     fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
         f.debug_struct("Fyber").finish_non_exhaustive()
     }
 }
 
-impl<'f, F, T, const DEFERRED: bool> Fyber<'f, F, T, { DEFERRED }>
+impl<'f, F, T, const DEFERRED: bool> Fyber<F, T, { DEFERRED }>
 where
     F: FnOnce() -> T + 'f,
     T: 'f,
 {
-    fn new(name: String, func: FiberFunc<'f, F, T>, attr: Option<&FiberAttr>) -> Result<Self> {
+    pub fn spawn(name: String, f: F, attr: Option<&FiberAttr>) -> Result<JoinHandle<'f, T>> {
         let cname = CString::new(name).expect("fiber name may not contain interior null bytes");
 
         let inner_raw = unsafe {
@@ -446,27 +435,28 @@ where
             }
         };
 
-        if let Some(inner) = NonNull::new(inner_raw) {
-            Ok(Self { inner, func })
-        } else {
-            Err(TarantoolError::last().into())
-        }
-    }
+        let inner = unwrap_or!(NonNull::new(inner_raw),
+            return Err(TarantoolError::last().into());
+        );
 
-    pub fn spawn(self) -> JoinHandle<'f, T> {
         unsafe {
-            ffi::fiber_set_joinable(self.inner.as_ptr(), true);
+            ffi::fiber_set_joinable(inner.as_ptr(), true);
+
+            let mut result_cell: Option<FiberResultCell<T>> = None;
             let mut result_ptr: *mut Option<T> = std::ptr::null_mut();
-            if let Some(result_cell) = &self.func.result {
-                result_ptr = result_cell.get();
+            if needs_returning::<T>() {
+                let cell = FiberResultCell::default();
+                result_ptr = cell.get();
+                result_cell = Some(cell);
             }
 
-            ffi::fiber_start(self.inner.as_ptr(), Box::into_raw(self.func.f), result_ptr);
-            let jh = JoinHandle::new(self.inner, self.func.result);
+            let boxed_f = Box::new(f);
+            ffi::fiber_start(inner.as_ptr(), Box::into_raw(boxed_f), result_ptr);
+            let jh = JoinHandle::new(inner, result_cell);
             if DEFERRED {
-                ffi::fiber_wakeup(self.inner.as_ptr())
+                ffi::fiber_wakeup(inner.as_ptr())
             }
-            jh
+            Ok(jh)
         }
     }
 
@@ -489,42 +479,12 @@ where
     }
 }
 
-impl<'f, F, T> Fyber<'f, F, T, false>
-where
-    F: FnOnce() -> T + 'f,
-    T: 'f,
-{
-    #[inline(always)]
-    pub fn immediate(
-        name: String,
-        func: FiberFunc<'f, F, T>,
-        attr: Option<&FiberAttr>,
-    ) -> Result<Self> {
-        Self::new(name, func, attr)
-    }
-}
-
-impl<'f, F, T> Fyber<'f, F, T, true>
-where
-    F: FnOnce() -> T + 'f,
-    T: 'f,
-{
-    #[inline(always)]
-    pub fn deferred(
-        name: String,
-        func: FiberFunc<'f, F, T>,
-        attr: Option<&FiberAttr>,
-    ) -> Result<Self> {
-        Self::new(name, func, attr)
-    }
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 /// LuaFiber
 ////////////////////////////////////////////////////////////////////////////////
 
 pub struct LuaFiber<'f, F> {
-    func: LuaFiberFunc<'f, F>,
+    _marker: PhantomData<&'f F>,
 }
 
 impl_debug_stub! {LuaFiber<'f, F>}
@@ -538,19 +498,14 @@ impl<'f, F, T> LuaFiber<'f, F>
 where
     F: FnOnce() -> T + 'f,
 {
-    pub fn new(func: LuaFiberFunc<'f, F>) -> Self {
-        Self { func }
-    }
-
-    pub fn spawn(self) -> Result<LuaJoinHandle<'f, T>> {
-        let Self { func } = self;
+    pub fn spawn(f: F) -> Result<LuaJoinHandle<'f, T>> {
         let fiber_ref = unsafe {
             let l = ffi::luaT_state();
             lua::lua_getglobal(l, c_ptr!("require"));
             lua::lua_pushstring(l, c_ptr!("fiber"));
             impl_details::guarded_pcall(l, 1, 1)?;
             lua::lua_getfield(l, -1, c_ptr!("new"));
-            impl_details::push_userdata(l, func.f);
+            impl_details::push_userdata(l, f);
             lua::lua_pushcclosure(l, Self::trampoline, 1);
             impl_details::guarded_pcall(l, 1, 1).map_err(|e| {
                 // Pop the fiber module from the stack
@@ -559,7 +514,7 @@ where
             })?;
             lua::lua_getfield(l, -1, c_ptr!("set_joinable"));
             lua::lua_pushvalue(l, -2);
-            lua::lua_pushboolean(l, true as i32);
+            lua::lua_pushboolean(l, true as _);
             impl_details::guarded_pcall(l, 2, 0)
                 .map_err(|e| panic!("{}", e))
                 .unwrap();
@@ -780,37 +735,9 @@ mod impl_details {
     }
 }
 
-////////////////////////////////////////////////////////////////////////////////
-/// LuaFiberFunc
-////////////////////////////////////////////////////////////////////////////////
-
-pub struct LuaFiberFunc<'f, F> {
-    f: F,
-    marker: PhantomData<&'f ()>,
-}
-
-impl<'f, F> LuaFiberFunc<'f, F> {
-    pub fn new(f: F) -> Self {
-        Self {
-            f,
-            marker: PhantomData,
-        }
-    }
-}
-
 /// This is a *typestate* helper type representing the state of a [`Builder`]
 /// that hasn't been assigned a fiber function yet.
 pub struct NoFunc;
-
-/// This is a helper type used to configure [`Fyber`] with the appropriate
-/// behavior for the fiber function.
-pub struct FiberFunc<'f, F, T> {
-    f: Box<F>,
-    result: Option<FiberResultCell<T>>,
-    marker: PhantomData<&'f ()>,
-}
-
-type FiberResultCell<T> = Box<UnsafeCell<Option<T>>>;
 
 ////////////////////////////////////////////////////////////////////////////////
 // JoinHandle
@@ -822,6 +749,7 @@ pub struct JoinHandle<'f, T> {
     result: Option<FiberResultCell<T>>,
     marker: PhantomData<&'f ()>,
 }
+type FiberResultCell<T> = Box<UnsafeCell<Option<T>>>;
 
 impl_debug_stub! {JoinHandle<'f, T>}
 impl_eq_hash! {JoinHandle<'f, T>}
@@ -983,7 +911,7 @@ where
     F: 'f,
     T: 'f,
 {
-    LuaFiber::new(LuaFiberFunc::new(f)).spawn().unwrap()
+    LuaFiber::spawn(f).unwrap()
 }
 
 /// Async version of [`defer`].
