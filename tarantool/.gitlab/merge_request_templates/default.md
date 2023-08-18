@@ -7,4 +7,4 @@
 - [ ] New code is covered by tests
 - [ ] API is documented
 - [ ] Changelog is up to date
-- [ ] version is bumped in the appropriate `Cargo.toml` files
+- [ ] Version is bumped in the appropriate `Cargo.toml` files
