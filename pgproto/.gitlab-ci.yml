@@ -1,57 +1,91 @@
 stages:
-  - build-base-image
   - build
   - test
-  - deploy
 
 variables:
   REGISTRY: docker-public.binary.picodata.io
-  BASE_IMAGE: ${REGISTRY}/pgproto-base-build-image
-  BASE_IMAGE_TAG: ${CI_COMMIT_SHA}
-  DOCKERFILE: ./Dockerfile.ci
+  BASE_IMAGE: ${REGISTRY}/picodata-build-base:latest
 
-build-base-image:
-  stage: build-base-image
-  tags:
-    - shell-ci2
-  script:
-    - docker pull ${BASE_IMAGE}:latest || true
-    - >
-      docker build
-      --cache-from ${BASE_IMAGE}:latest
-      --label GIT_COMMIT=${CI_COMMIT_SHA}
-      -t ${BASE_IMAGE}:${BASE_IMAGE_TAG}
-      -f ${DOCKERFILE}
-      .
+  SHARED_STORAGE: /data/gitlab-runner/shared-storage/pgproto
+
+  CARGO_HOME: ${SHARED_STORAGE}/.cargo
+  CACHE_ARCHIVE: ${SHARED_STORAGE}/cache.tar
+  CACHE_PATHS: target .venv
+
+.test:
+  stage: test
+  variables:
+    GIT_DEPTH: 100
+    GIT_SUBMODULE_STRATEGY: recursive
+    RUST_BACKTRACE: full
+  before_script:
+    # Gitlab CI caching is shit. So we implement it manually
     - |
-      # Push image to registry
-      if [ "${CI_COMMIT_BRANCH}" == "${CI_DEFAULT_BRANCH}" ]; then
-        echo "Pushing ${BASE_IMAGE}:${BASE_IMAGE_TAG}"
-        mkdir -p $CI_PROJECT_DIR/.docker
-        echo $DOCKER_AUTH_RW > $CI_PROJECT_DIR/.docker/config.json
-        docker --config $CI_PROJECT_DIR/.docker/ push ${BASE_IMAGE}:${BASE_IMAGE_TAG}
+      # Restore cache
+      if [ "$CI_COMMIT_BRANCH" == "$CI_DEFAULT_BRANCH" ]; then
+        echo "Skip restoring cache on the master branch"
+      elif git diff origin/"$CI_DEFAULT_BRANCH" "$CI_COMMIT_SHA" --submodule=short | grep '^[+-]Subproject commit'; then
+        echo "Skip restoring cache because submodule(s) changed"
+      elif [ -f "${CACHE_ARCHIVE}" ]; then
+        ci-log-section start "restore-cache" Restoring cache from ${CACHE_ARCHIVE} ...
+        tar -xf ${CACHE_ARCHIVE}
+        echo "Ok"
+        du -sh ${CACHE_PATHS} || true
+        ci-log-section end "restore-cache"
       else
-        echo "Skip pushing image on a non-master branch"
+        echo "No cache found"
       fi
 
+test-linux:
+  extends: .test
+  tags:
+    - docker
+  image:
+    name: ${BASE_IMAGE}
+    pull_policy: if-not-present
 
-
-build-job:
-  stage: build
-  image: ${BASE_IMAGE}:${BASE_IMAGE_TAG}
   script:
-    - cmake . -DPICODATA_TARGET_DIR=/picodata/target/debug/
-    - make -j
+    - cargo -V
+    - cargo build --locked
+    # - cargo test --locked
 
-unit-test-job:
-  stage: test
-  image: ${BASE_IMAGE}:${BASE_IMAGE_TAG}
+    - cargo fmt -- -v --check
+    - cargo clippy --version
+    - cargo clippy -- --deny clippy::all
+
+    - |
+      # Pipenv install
+      ci-log-section start "pipenv-install" Installing pip dependencies ...
+      PIPENV_VENV_IN_PROJECT=1 PIP_NO_CACHE_DIR=true python3.10 -m pipenv install --deploy
+      ci-log-section end "pipenv-install"
+    # - pipenv run pytest --numprocesses auto -v
+    # - pipenv run lint
+
+    - |
+      # Save cache
+      if [ "$CI_COMMIT_BRANCH" == "$CI_DEFAULT_BRANCH" ]; then
+        ci-log-section start "save-cache" Saving cache to ${CACHE_ARCHIVE} ...
+        du -sh ${CACHE_PATHS} || true
+        TMPEXT=$RANDOM
+        tar -cf "${CACHE_ARCHIVE}.${TMPEXT}" ${CACHE_PATHS}
+        mv -f "${CACHE_ARCHIVE}.${TMPEXT}" "${CACHE_ARCHIVE}"
+        echo Ok
+        du -sh ${CACHE_ARCHIVE}
+        ci-log-section end "save-cache"
+      else
+        echo "Skip saving cache on a non-master branch"
+      fi
+
+test-mac-m1:
+  extends: .test
+  tags:
+    - mac-dev-m1
   script:
-    - make test
+    - export CARGO_HOME=$HOME/.cargo
+    - cargo -V
+    - cargo build --locked
+    # - cargo test --locked
 
-# lint-test-job:   # This job also runs in the test stage.
-#   stage: test    # It can run at the same time as unit-test-job (in parallel).
-#   script:
-#     - echo "Linting code... This will take about 10 seconds."
-#     - sleep 10
-#     - echo "No lint issues found."
+    - cargo fmt -- -v --check
+    - cargo clippy --version
+    - cargo clippy -- --deny clippy::all
