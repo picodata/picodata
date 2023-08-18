@@ -81,8 +81,8 @@ macro_rules! impl_eq_hash {
     }
 }
 
-/// *OBSOLETE*: This struct is being deprecated in favour of [`Immediate`],
-/// [`Deferred`], etc. due to them being more efficient and idiomatic.
+/// *OBSOLETE*: This struct is being deprecated in favour of [`Fyber`], due to
+/// them being more efficient and idiomatic.
 ///
 /// A fiber is a set of instructions which are executed with cooperative multitasking.
 ///
@@ -369,14 +369,6 @@ impl<F> Builder<F> {
     }
 }
 
-macro_rules! inner_spawn {
-    ($self:expr, $invocation:tt) => {{
-        let Self { name, attr, f } = $self;
-        let name = name.unwrap_or_else(|| "<rust>".into());
-        Ok(Fyber::$invocation(name, f, attr.as_ref())?.spawn())
-    }};
-}
-
 impl<'f, F, T> Builder<FiberFunc<'f, F, T>>
 where
     F: FnOnce() -> T + 'f,
@@ -391,7 +383,9 @@ where
     /// See the [`start`] free function for more details.
     #[inline(always)]
     pub fn start(self) -> Result<JoinHandle<'f, T>> {
-        inner_spawn!(self, immediate)
+        let Self { name, attr, f } = self;
+        let name = name.unwrap_or_else(|| "<rust>".into());
+        Ok(Fyber::immediate(name, f, attr.as_ref())?.spawn())
     }
 
     #[cfg(feature = "defer")]
@@ -407,7 +401,9 @@ where
     /// See the [`defer`] free function for more details.
     #[inline(always)]
     pub fn defer(self) -> Result<JoinHandle<'f, T>> {
-        inner_spawn!(self, deferred)
+        let Self { name, attr, f } = self;
+        let name = name.unwrap_or_else(|| "<rust>".into());
+        Ok(Fyber::deferred(name, f, attr.as_ref())?.spawn())
     }
 }
 
@@ -422,24 +418,22 @@ where
 /// types of behavior enabled by the type parameters which will be set by the
 /// [`Builder`].
 ///
-/// Currently there is 1 kind of configuration supported:
-/// - [`Invocation`]: configures the style of fiber invocation (immediately after
-///                   creation or at some point in the future)
-///
 /// **TODO**: add support for cancelable fibers.
-pub struct Fyber<'f, F, T, I> {
+pub struct Fyber<'f, F, T, const DEFERRED: bool> {
     inner: NonNull<ffi::Fiber>,
     func: FiberFunc<'f, F, T>,
-    _invocation: PhantomData<I>,
 }
 
-impl_debug_stub! {Fyber<'f, F, T, I>}
+impl<'f, F, T, const DEFERRED: bool> ::std::fmt::Debug for Fyber<'f, F, T, { DEFERRED }> {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+        f.debug_struct("Fyber").finish_non_exhaustive()
+    }
+}
 
-impl<'f, F, T, I> Fyber<'f, F, T, I>
+impl<'f, F, T, const DEFERRED: bool> Fyber<'f, F, T, { DEFERRED }>
 where
     F: FnOnce() -> T + 'f,
     T: 'f,
-    I: Invocation,
 {
     fn new(name: String, func: FiberFunc<'f, F, T>, attr: Option<&FiberAttr>) -> Result<Self> {
         let cname = CString::new(name).expect("fiber name may not contain interior null bytes");
@@ -453,11 +447,7 @@ where
         };
 
         if let Some(inner) = NonNull::new(inner_raw) {
-            Ok(Self {
-                inner,
-                func,
-                _invocation: PhantomData,
-            })
+            Ok(Self { inner, func })
         } else {
             Err(TarantoolError::last().into())
         }
@@ -473,7 +463,9 @@ where
 
             ffi::fiber_start(self.inner.as_ptr(), Box::into_raw(self.func.f), result_ptr);
             let jh = JoinHandle::new(self.inner, self.func.result);
-            I::after_start(self.inner);
+            if DEFERRED {
+                ffi::fiber_wakeup(self.inner.as_ptr())
+            }
             jh
         }
     }
@@ -481,7 +473,11 @@ where
     unsafe extern "C" fn trampoline(mut args: VaList) -> i32 {
         let f = args.get_boxed::<F>();
         let result_ptr = args.get_ptr::<Option<T>>();
-        I::before_callee();
+        if DEFERRED {
+            // FIXME: use fiber_wakeup and fiber_set_ctx for setting callback
+            // data
+            ffi::fiber_yield()
+        }
         let t = f();
         if needs_returning::<T>() {
             assert!(!result_ptr.is_null());
@@ -493,7 +489,7 @@ where
     }
 }
 
-impl<'f, F, T> Fyber<'f, F, T, Immediate>
+impl<'f, F, T> Fyber<'f, F, T, false>
 where
     F: FnOnce() -> T + 'f,
     T: 'f,
@@ -508,7 +504,7 @@ where
     }
 }
 
-impl<'f, F, T> Fyber<'f, F, T, Deferred>
+impl<'f, F, T> Fyber<'f, F, T, true>
 where
     F: FnOnce() -> T + 'f,
     T: 'f,
@@ -815,55 +811,6 @@ pub struct FiberFunc<'f, F, T> {
 }
 
 type FiberResultCell<T> = Box<UnsafeCell<Option<T>>>;
-
-////////////////////////////////////////////////////////////////////////////////
-/// Invocation
-////////////////////////////////////////////////////////////////////////////////
-
-/// Types implementing this trait represent [`Fyber`] configurations relating to
-/// kinds of fiber invocations. Currently there are 2 kinds of invocations
-/// supported:
-/// - [`Immediate`]: fiber that is started immediately after creation
-/// - [`Deferred`]: fiber that is created and is scheduled for execution.
-///                 **WARNING**: current implementation of deferred fibers
-///                 doesn't support transactions due to tarantool API
-///                 limitations
-pub trait Invocation {
-    /// This method is called from the `Fyber::trampoline` function right
-    /// before calling the fiber function.
-    ///
-    /// # Safety
-    /// This is an implementation detail and will most likely be removed in the
-    /// future.
-    unsafe fn before_callee();
-
-    /// This method is called from the [`Fyber::spawn`] function right
-    /// after starting the fiber.
-    ///
-    /// # Safety
-    /// This is an implementation detail and will most likely be removed in the
-    /// future.
-    unsafe fn after_start(f: NonNull<ffi::Fiber>);
-}
-
-pub struct Immediate;
-
-impl Invocation for Immediate {
-    unsafe fn before_callee() {}
-    unsafe fn after_start(_: NonNull<ffi::Fiber>) {}
-}
-
-pub struct Deferred;
-
-impl Invocation for Deferred {
-    unsafe fn before_callee() {
-        ffi::fiber_yield()
-    }
-
-    unsafe fn after_start(f: NonNull<ffi::Fiber>) {
-        ffi::fiber_wakeup(f.as_ptr())
-    }
-}
 
 ////////////////////////////////////////////////////////////////////////////////
 // JoinHandle
