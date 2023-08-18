@@ -72,13 +72,6 @@ dispatch_query_wrapped(const char *query, size_t query_len)
 	port_c_create(&out);
 	struct box_function_ctx ctx = { &out };
 	int rc = dispatch_query(&ctx, args, args_end);
-
-	/**
-	 * Wait for the commit.
-	 * @todo: fix me
-	 */
-	fiber_sleep(0.01);
-
 	const char *response = NULL;
 	uint32_t response_size;
 	if (rc == 0)
