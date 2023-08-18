@@ -253,14 +253,13 @@ impl<'a, T> Fiber<'a, T> {
 ///
 /// * `name`:       specifies an associated name for the fiber
 /// * `stack_size`: specifies the desired stack size for the fiber
-/// * `func`/`proc`: specifies the fiber function (or procedure)
+/// * `func`:       specifies the fiber function
 ///
 /// The [`start`](#method.start) and [`defer`](#method.defer) methods will
 /// take ownership of the builder and create a [`Result`] to the fiber handle
 /// with the given configuration.
 ///
-/// The [`fiber::start`](start), [`fiber::start_proc`](start_proc),
-/// [`fiber::defer`](defer) and [`fiber::defer_proc`](defer_proc) free functions
+/// The [`fiber::start`](start), [`fiber::defer`](defer) free functions
 /// use a `Builder` with default configuration and unwraps its return value.
 pub struct Builder<F> {
     name: Option<String>,
@@ -273,6 +272,7 @@ impl_debug_stub! {Builder<F>}
 impl Builder<NoFunc> {
     /// Generates the base configuration for spawning a fiber, from which
     /// configuration methods can be chained.
+    #[inline(always)]
     pub fn new() -> Self {
         Builder {
             name: None,
@@ -282,59 +282,62 @@ impl Builder<NoFunc> {
     }
 
     /// Sets the callee function for the new fiber.
+    #[inline]
     pub fn func<'f, F, T>(self, f: F) -> Builder<FiberFunc<'f, F, T>>
     where
         F: FnOnce() -> T,
         F: 'f,
     {
+        let func = FiberFunc {
+            f: Box::new(f),
+            result: if needs_returning::<T>() {
+                Some(FiberResultCell::default())
+            } else {
+                None
+            },
+            marker: PhantomData,
+        };
         Builder {
             name: self.name,
             attr: self.attr,
-            f: FiberFunc {
-                f: Box::new(f),
-                result: Default::default(),
-                marker: PhantomData,
-            },
+            f: func,
         }
     }
 
     /// Sets the callee async function for the new fiber.
-    pub fn func_async<'f, F, T>(
-        self,
-        f: F,
-    ) -> Builder<FiberFunc<'f, Box<dyn FnOnce() -> T + 'f>, T>>
+    #[inline(always)]
+    pub fn func_async<'f, F, T>(self, f: F) -> Builder<FiberFunc<'f, impl FnOnce() -> T + 'f, T>>
     where
         F: Future<Output = T> + 'f,
+        T: 'f,
     {
-        self.func(Box::new(|| block_on(f)))
+        self.func(|| block_on(f))
     }
 
     /// Sets the callee procedure for the new fiber.
-    pub fn proc<'f, F>(self, f: F) -> Builder<FiberProc<'f, F>>
+    #[deprecated = "Use `Builder::func` instead"]
+    #[inline(always)]
+    pub fn proc<'f, F>(self, f: F) -> Builder<FiberFunc<'f, F, ()>>
     where
         F: FnOnce(),
         F: 'f,
     {
-        Builder {
-            name: self.name,
-            attr: self.attr,
-            f: FiberProc {
-                f: Box::new(f),
-                marker: PhantomData,
-            },
-        }
+        self.func(f)
     }
 
     /// Sets the callee async procedure for the new fiber.
-    pub fn proc_async<'f, F>(self, f: F) -> Builder<FiberProc<'f, Box<dyn FnOnce() + 'f>>>
+    #[deprecated = "Use `Builder::func_async` instead"]
+    #[inline(always)]
+    pub fn proc_async<'f, F>(self, f: F) -> Builder<FiberFunc<'f, impl FnOnce() + 'f, ()>>
     where
         F: Future<Output = ()> + 'f,
     {
-        self.proc(Box::new(|| block_on(f)))
+        self.func_async(f)
     }
 }
 
 impl Default for Builder<NoFunc> {
+    #[inline(always)]
     fn default() -> Self {
         Self::new()
     }
@@ -344,6 +347,7 @@ impl<F> Builder<F> {
     /// Names the fiber-to-be.
     ///
     /// The name must not contain null bytes (`\0`).
+    #[inline(always)]
     pub fn name(mut self, name: impl Into<String>) -> Self {
         self.name = Some(name.into());
         self
@@ -356,6 +360,7 @@ impl<F> Builder<F> {
     /// returned.
     ///
     /// [`Error::Tarantool`]: crate::error::Error::Tarantool
+    #[inline(always)]
     pub fn stack_size(mut self, stack_size: usize) -> Result<Self> {
         let mut attr = FiberAttr::new();
         attr.set_stack_size(stack_size)?;
@@ -372,9 +377,10 @@ macro_rules! inner_spawn {
     }};
 }
 
-impl<C> Builder<C>
+impl<'f, F, T> Builder<FiberFunc<'f, F, T>>
 where
-    C: Callee,
+    F: FnOnce() -> T + 'f,
+    T: 'f,
 {
     /// Spawns a new fiber by taking ownership of the `Builder`, and returns a
     /// [`Result`] to its [`JoinHandle`].
@@ -383,7 +389,8 @@ where
     /// to the new fiber immediately.
     ///
     /// See the [`start`] free function for more details.
-    pub fn start(self) -> Result<C::JoinHandle> {
+    #[inline(always)]
+    pub fn start(self) -> Result<JoinHandle<'f, T>> {
         inner_spawn!(self, immediate)
     }
 
@@ -398,7 +405,8 @@ where
     /// In the future we are planning to add a correct implementation.
     ///
     /// See the [`defer`] free function for more details.
-    pub fn defer(self) -> Result<C::JoinHandle> {
+    #[inline(always)]
+    pub fn defer(self) -> Result<JoinHandle<'f, T>> {
         inner_spawn!(self, deferred)
     }
 }
@@ -414,27 +422,26 @@ where
 /// types of behavior enabled by the type parameters which will be set by the
 /// [`Builder`].
 ///
-/// Currently there are 2 kinds of configuration supported:
-/// - [`Callee`]: configures the kind of fiber function to be executed (one that
-///               returns a value or one that does not)
-/// - [`Invocation`]: configures the style of fibe invocation (immediately after
+/// Currently there is 1 kind of configuration supported:
+/// - [`Invocation`]: configures the style of fiber invocation (immediately after
 ///                   creation or at some point in the future)
 ///
 /// **TODO**: add support for cancelable fibers.
-pub struct Fyber<C, I> {
+pub struct Fyber<'f, F, T, I> {
     inner: NonNull<ffi::Fiber>,
-    callee: C,
+    func: FiberFunc<'f, F, T>,
     _invocation: PhantomData<I>,
 }
 
-impl_debug_stub! {Fyber<C, I>}
+impl_debug_stub! {Fyber<'f, F, T, I>}
 
-impl<C, I> Fyber<C, I>
+impl<'f, F, T, I> Fyber<'f, F, T, I>
 where
-    C: Callee,
+    F: FnOnce() -> T + 'f,
+    T: 'f,
     I: Invocation,
 {
-    fn new(name: String, callee: C, attr: Option<&FiberAttr>) -> Result<Self> {
+    fn new(name: String, func: FiberFunc<'f, F, T>, attr: Option<&FiberAttr>) -> Result<Self> {
         let cname = CString::new(name).expect("fiber name may not contain interior null bytes");
 
         let inner_raw = unsafe {
@@ -448,7 +455,7 @@ where
         if let Some(inner) = NonNull::new(inner_raw) {
             Ok(Self {
                 inner,
-                callee,
+                func,
                 _invocation: PhantomData,
             })
         } else {
@@ -456,38 +463,63 @@ where
         }
     }
 
-    pub fn spawn(self) -> C::JoinHandle {
+    pub fn spawn(self) -> JoinHandle<'f, T> {
         unsafe {
             ffi::fiber_set_joinable(self.inner.as_ptr(), true);
-            let jh = self.callee.start_fiber(self.inner);
+            let mut result_ptr: *mut Option<T> = std::ptr::null_mut();
+            if let Some(result_cell) = &self.func.result {
+                result_ptr = result_cell.get();
+            }
+
+            ffi::fiber_start(self.inner.as_ptr(), Box::into_raw(self.func.f), result_ptr);
+            let jh = JoinHandle::new(self.inner, self.func.result);
             I::after_start(self.inner);
             jh
         }
     }
 
-    unsafe extern "C" fn trampoline(args: VaList) -> i32 {
-        let a = C::parse_args(args);
+    unsafe extern "C" fn trampoline(mut args: VaList) -> i32 {
+        let f = args.get_boxed::<F>();
+        let result_ptr = args.get_ptr::<Option<T>>();
         I::before_callee();
-        C::invoke(a);
+        let t = f();
+        if needs_returning::<T>() {
+            assert!(!result_ptr.is_null());
+            std::ptr::write(result_ptr, Some(t));
+        } else if cfg!(debug_assertions) {
+            assert!(result_ptr.is_null());
+        }
         0
     }
 }
 
-impl<C> Fyber<C, Immediate>
+impl<'f, F, T> Fyber<'f, F, T, Immediate>
 where
-    C: Callee,
+    F: FnOnce() -> T + 'f,
+    T: 'f,
 {
-    pub fn immediate(name: String, callee: C, attr: Option<&FiberAttr>) -> Result<Self> {
-        Self::new(name, callee, attr)
+    #[inline(always)]
+    pub fn immediate(
+        name: String,
+        func: FiberFunc<'f, F, T>,
+        attr: Option<&FiberAttr>,
+    ) -> Result<Self> {
+        Self::new(name, func, attr)
     }
 }
 
-impl<C> Fyber<C, Deferred>
+impl<'f, F, T> Fyber<'f, F, T, Deferred>
 where
-    C: Callee,
+    F: FnOnce() -> T + 'f,
+    T: 'f,
 {
-    pub fn deferred(name: String, callee: C, attr: Option<&FiberAttr>) -> Result<Self> {
-        Self::new(name, callee, attr)
+    #[inline(always)]
+    pub fn deferred(
+        name: String,
+        func: FiberFunc<'f, F, T>,
+        attr: Option<&FiberAttr>,
+    ) -> Result<Self> {
+        Self::new(name, func, attr)
     }
 }
 
@@ -495,34 +527,34 @@ where
 /// LuaFiber
 ////////////////////////////////////////////////////////////////////////////////
 
-pub struct LuaFiber<C> {
-    callee: C,
+pub struct LuaFiber<'f, F> {
+    func: LuaFiberFunc<'f, F>,
 }
 
-impl_debug_stub! {LuaFiber<C>}
+impl_debug_stub! {LuaFiber<'f, F>}
 
 /// Deferred non-yielding fiber implemented using **lua** api. This (hopefully)
 /// temporary implementation is a workaround. Tarantool C API lacks the method
 /// for passing the necessary information into the underlying `struct fiber`
 /// reliably. In this case we need to be able to set the `void *f_arg` field to
 /// be able to implement correct deferred fibers which don't yield.
-impl<C> LuaFiber<C>
+impl<'f, F, T> LuaFiber<'f, F>
 where
-    C: LuaCallee,
+    F: FnOnce() -> T + 'f,
 {
-    pub fn new(callee: C) -> Self {
-        Self { callee }
+    pub fn new(func: LuaFiberFunc<'f, F>) -> Self {
+        Self { func }
     }
 
-    pub fn spawn(self) -> Result<C::JoinHandle> {
-        let Self { callee } = self;
+    pub fn spawn(self) -> Result<LuaJoinHandle<'f, T>> {
+        let Self { func } = self;
         let fiber_ref = unsafe {
             let l = ffi::luaT_state();
             lua::lua_getglobal(l, c_ptr!("require"));
             lua::lua_pushstring(l, c_ptr!("fiber"));
             impl_details::guarded_pcall(l, 1, 1)?;
             lua::lua_getfield(l, -1, c_ptr!("new"));
-            impl_details::push_userdata(l, callee.into_inner());
+            impl_details::push_userdata(l, func.f);
             lua::lua_pushcclosure(l, Self::trampoline, 1);
             impl_details::guarded_pcall(l, 1, 1).map_err(|e| {
                 // Pop the fiber module from the stack
@@ -542,13 +574,13 @@ where
             fiber_ref
         };
 
-        Ok(C::join_handle(fiber_ref))
+        Ok(LuaJoinHandle::new(fiber_ref))
     }
 
     unsafe extern "C" fn trampoline(l: *mut lua::lua_State) -> i32 {
         let ud_ptr = lua::lua_touserdata(l, lua::lua_upvalueindex(1));
 
-        let f = (ud_ptr as *mut Option<C::Function>)
+        let f = (ud_ptr as *mut Option<F>)
             .as_mut()
             .unwrap_or_else(||
                 // lua_touserdata returned NULL
@@ -563,7 +595,12 @@ where
         let res = f();
 
         // return results to lua
-        C::save_result(l, res)
+        if needs_returning::<T>() {
+            impl_details::push_userdata(l, res);
+            1
+        } else {
+            0
+        }
     }
 }
 
@@ -591,17 +628,27 @@ impl<'f, T> LuaJoinHandle<'f, T> {
         // It's safe to unwrap fiber_ref here because join will only be called
         // once after the join handle creation
         let fiber_ref = self.fiber_ref.take().unwrap();
+        // SAFETY: this is safe because... we have tested it?
         unsafe {
             let guard = impl_details::lua_fiber_join(fiber_ref)
                 .map_err(|e| panic!("Unrecoverable lua failure: {}", e))
                 .unwrap();
-            let ud_ptr = lua::lua_touserdata(guard.as_lua(), -1);
-            let res = (ud_ptr as *mut Option<T>)
-                .as_mut()
-                .expect("fiber:join must return correct userdata")
-                .take()
-                .expect("data can only be taken once from the UDBox");
-            res
+            if needs_returning::<T>() {
+                let ud_ptr = lua::lua_touserdata(guard.as_lua(), -1);
+                let res = (ud_ptr as *mut Option<T>)
+                    .as_mut()
+                    .expect("fiber:join must return correct userdata")
+                    .take()
+                    .expect("data can only be taken once from the UDBox");
+                res
+            } else {
+                if cfg!(debug_assertions) {
+                    assert!(lua::lua_isnil(guard.as_lua(), -1));
+                }
+                // SAFETY: this is safe because () is a zero sized type.
+                #[allow(clippy::uninit_assumed_init)]
+                std::mem::MaybeUninit::uninit().assume_init()
+            }
         }
     }
 }
@@ -610,43 +657,6 @@ impl<'f, T> Drop for LuaJoinHandle<'f, T> {
     fn drop(&mut self) {
         if self.fiber_ref.is_some() {
             panic!("LuaJoinHandle dropped before being joined")
-        }
-    }
-}
-
-////////////////////////////////////////////////////////////////////////////////
-/// LuaUnitJoinHandle
-////////////////////////////////////////////////////////////////////////////////
-
-#[derive(PartialEq, Eq, Hash)]
-pub struct LuaUnitJoinHandle<'f> {
-    fiber_ref: Option<i32>,
-    marker: PhantomData<&'f ()>,
-}
-
-impl_debug_stub! {LuaUnitJoinHandle<'f>}
-
-impl<'f> LuaUnitJoinHandle<'f> {
-    fn new(fiber_ref: i32) -> Self {
-        Self {
-            fiber_ref: Some(fiber_ref),
-            marker: PhantomData,
-        }
-    }
-
-    pub fn join(mut self) {
-        let fiber_ref = self.fiber_ref.take().unwrap();
-        match unsafe { impl_details::lua_fiber_join(fiber_ref) } {
-            Ok(_pushguard) => (),
-            Err(e) => panic!("Unrecoverable lua failure: {}", e),
-        }
-    }
-}
-
-impl<'f> Drop for LuaUnitJoinHandle<'f> {
-    fn drop(&mut self) {
-        if self.fiber_ref.is_some() {
-            panic!("LuaUnitJoinHandle dropped before being joined")
         }
     }
 }
@@ -691,6 +701,7 @@ mod impl_details {
     pub(super) unsafe fn lua_fiber_join(f_ref: i32) -> Result<PushGuard<StaticLua>> {
         let l = crate::global_lua();
         let lptr = l.as_lua();
+        let top_svp = lua::lua_gettop(lptr);
         lua::lua_rawgeti(lptr, lua::LUA_REGISTRYINDEX, f_ref);
         lua::lua_getfield(lptr, -1, c_ptr!("join"));
         lua::lua_pushvalue(lptr, -2);
@@ -706,6 +717,8 @@ mod impl_details {
 
         // 3 values on the stack that need to be dropped:
         // 1) fiber; 2) flag; 3) return value / error
+        let top = lua::lua_gettop(lptr);
+        assert_eq!(top - top_svp, 3);
         let guard = PushGuard::new(l, 3);
 
         // check fiber return code
@@ -772,35 +785,6 @@ mod impl_details {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-/// LuaCallee
-////////////////////////////////////////////////////////////////////////////////
-
-pub trait LuaCallee {
-    /// Type of the callee
-    type Function: FnOnce() -> Self::Output;
-
-    /// Return type of the callee
-    type Output;
-
-    /// Type of the join handle returned by [`LuaFiber::spawn`] method
-    type JoinHandle;
-
-    /// Extract the inner function
-    fn into_inner(self) -> Self::Function;
-
-    /// Construct a `Self::JoinHandle` from a fiber reference
-    fn join_handle(fiber_ref: i32) -> Self::JoinHandle;
-
-    /// This function is called within `LuaFiber::trampoline` to save the
-    /// return value after the callee's invocation
-    ///
-    /// # Safety
-    /// The function must return the number of values that it has put onto the
-    /// stack as result values
-    unsafe fn save_result(l: *mut lua::lua_State, res: Self::Output) -> i32;
-}
-
-////////////////////////////////////////////////////////////////////////////////
 /// LuaFiberFunc
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -818,189 +802,19 @@ impl<'f, F> LuaFiberFunc<'f, F> {
     }
 }
 
-impl<'f, F, T> LuaCallee for LuaFiberFunc<'f, F>
-where
-    F: FnOnce() -> T,
-    F: 'f,
-    T: 'f,
-{
-    type Function = F;
-    type Output = T;
-    type JoinHandle = LuaJoinHandle<'f, T>;
-
-    fn into_inner(self) -> F {
-        self.f
-    }
-
-    fn join_handle(fiber_ref: i32) -> Self::JoinHandle {
-        LuaJoinHandle::new(fiber_ref)
-    }
-
-    unsafe fn save_result(l: *mut lua::lua_State, res: T) -> i32 {
-        impl_details::push_userdata(l, res);
-        1
-    }
-}
-
-////////////////////////////////////////////////////////////////////////////////
-/// LuaFiberProc
-////////////////////////////////////////////////////////////////////////////////
-
-pub struct LuaFiberProc<'f, F> {
-    f: F,
-    marker: PhantomData<&'f ()>,
-}
-
-impl<'f, F> LuaFiberProc<'f, F> {
-    pub fn new(f: F) -> Self {
-        Self {
-            f,
-            marker: PhantomData,
-        }
-    }
-}
-
-impl<'f, F> LuaCallee for LuaFiberProc<'f, F>
-where
-    F: FnOnce(),
-    F: 'f,
-{
-    type Function = F;
-    type Output = ();
-    type JoinHandle = LuaUnitJoinHandle<'f>;
-
-    fn join_handle(fiber_ref: i32) -> Self::JoinHandle {
-        LuaUnitJoinHandle::new(fiber_ref)
-    }
-
-    fn into_inner(self) -> F {
-        self.f
-    }
-
-    unsafe fn save_result(_: *mut lua::lua_State, _: ()) -> i32 {
-        0
-    }
-}
-
-////////////////////////////////////////////////////////////////////////////////
-/// Callee
-////////////////////////////////////////////////////////////////////////////////
-
-/// Types implementing this trait represent [`Fyber`] configurations relating to
-/// the kind of the fiber function. Currently only 2 kinds of functions are
-/// supported:
-/// - [`FiberFunc`]: a no arguments function that returns a value
-/// - [`FiberProc`]: a no arguments function that doesn't return a value
-///
-/// **TODO**: add support for functions which take arguments?
-pub trait Callee {
-    /// Arguments for the trampoline function which will be passed through the
-    /// [`va_list::VaList`]
-    type Args;
-
-    /// JoinHandle type which will be returned from the [`Fyber::spawn`]
-    /// function
-    type JoinHandle;
-
-    /// This function is called within [`Fyber::spawn`] to prepare the arguments
-    /// for and invoke the [`ffi::fiber_start`] function.
-    ///
-    /// # Safety
-    /// This function is unsafe, because it is very easy to mess things up
-    /// when preparing arugments.
-    unsafe fn start_fiber(self, inner: NonNull<ffi::Fiber>) -> Self::JoinHandle;
-
-    /// This function is called within `Fyber::trampoline` to extract the
-    /// arguments from the [`va_list::VaList`].
-    ///
-    /// # Safety
-    /// This function is unsafe, because it is very easy to mess things up
-    /// when extracting arugments.
-    unsafe fn parse_args(args: VaList) -> Self::Args;
-
-    /// This function is called within `Fyber::trampoline` to invoke the
-    /// underlying callee function and process it's results.
-    ///
-    /// # Safety
-    /// This function is unsafe, because it is very easy to mess things up
-    /// when storing the callee's result values.
-    unsafe fn invoke(a: Self::Args);
-}
-
 /// This is a *typestate* helper type representing the state of a [`Builder`]
 /// that hasn't been assigned a fiber function yet.
 pub struct NoFunc;
 
 /// This is a helper type used to configure [`Fyber`] with the appropriate
-/// behavior for the fiber function that returns a value.
-pub struct FiberFunc<'f, F, T>
-where
-    F: FnOnce() -> T,
-    F: 'f,
-{
+/// behavior for the fiber function.
+pub struct FiberFunc<'f, F, T> {
     f: Box<F>,
-    result: Box<UnsafeCell<Option<T>>>,
+    result: Option<FiberResultCell<T>>,
     marker: PhantomData<&'f ()>,
 }
 
-impl<'f, F, T> Callee for FiberFunc<'f, F, T>
-where
-    F: FnOnce() -> T,
-    F: 'f,
-    T: 'f,
-{
-    type JoinHandle = JoinHandle<'f, T>;
-    type Args = (Box<F>, *mut Option<T>);
-
-    unsafe fn start_fiber(self, inner: NonNull<ffi::Fiber>) -> Self::JoinHandle {
-        let (f, result): Self::Args = (self.f, self.result.get());
-        ffi::fiber_start(inner.as_ptr(), Box::into_raw(f), result);
-        JoinHandle::new(inner, self.result)
-    }
-
-    unsafe fn parse_args(mut args: VaList) -> Self::Args {
-        let f = args.get_boxed::<F>();
-        let result = args.get_ptr::<Option<T>>();
-        (f, result)
-    }
-
-    unsafe fn invoke((f, result): Self::Args) {
-        std::ptr::write(result, Some(f()))
-    }
-}
-
-/// This is a helper type used to configure [`Fyber`] with the appropriate
-/// behavior for the fiber procedure (function which doens't return a value).
-pub struct FiberProc<'f, F>
-where
-    F: FnOnce(),
-{
-    f: Box<F>,
-    marker: PhantomData<&'f ()>,
-}
-
-impl<'f, F> Callee for FiberProc<'f, F>
-where
-    F: FnOnce(),
-    F: 'f,
-{
-    type JoinHandle = UnitJoinHandle<'f>;
-    type Args = Box<F>;
-
-    unsafe fn start_fiber(self, inner: NonNull<ffi::Fiber>) -> Self::JoinHandle {
-        let f: Self::Args = self.f;
-        ffi::fiber_start(inner.as_ptr(), Box::into_raw(f));
-        UnitJoinHandle::new(inner)
-    }
-
-    unsafe fn parse_args(mut args: VaList) -> Self::Args {
-        args.get_boxed::<F>()
-    }
-
-    unsafe fn invoke(f: Self::Args) {
-        f()
-    }
-}
+type FiberResultCell<T> = Box<UnsafeCell<Option<T>>>;
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Invocation
@@ -1058,7 +872,7 @@ impl Invocation for Deferred {
 /// An owned permission to join on an immediate fiber (block on its termination).
 pub struct JoinHandle<'f, T> {
     inner: Option<NonNull<ffi::Fiber>>,
-    result: Box<UnsafeCell<Option<T>>>,
+    result: Option<FiberResultCell<T>>,
     marker: PhantomData<&'f ()>,
 }
 
@@ -1066,7 +880,7 @@ impl_debug_stub! {JoinHandle<'f, T>}
 impl_eq_hash! {JoinHandle<'f, T>}
 
 impl<'f, T> JoinHandle<'f, T> {
-    fn new(inner: NonNull<ffi::Fiber>, result: Box<UnsafeCell<Option<T>>>) -> Self {
+    fn new(inner: NonNull<ffi::Fiber>, result: Option<FiberResultCell<T>>) -> Self {
         Self {
             inner: Some(inner),
             result,
@@ -1081,7 +895,26 @@ impl<'f, T> JoinHandle<'f, T> {
         let inner_raw = self.inner.take().unwrap().as_ptr();
         // TODO: add error handling
         let _code = unsafe { ffi::fiber_join(inner_raw) };
-        self.result.get_mut().take().unwrap()
+
+        if needs_returning::<T>() {
+            let mut result_cell = self
+                .result
+                .take()
+                .expect("should not be None for non unit types");
+            result_cell
+                .get_mut()
+                .take()
+                .expect("should have been set by the fiber function")
+        } else {
+            if cfg!(debug_assertions) {
+                assert!(self.result.is_none());
+            }
+            // SAFETY: this is safe because () is a zero sized type.
+            #[allow(clippy::uninit_assumed_init)]
+            unsafe {
+                std::mem::MaybeUninit::uninit().assume_init()
+            }
+        }
     }
 }
 
@@ -1089,46 +922,6 @@ impl<'f, T> Drop for JoinHandle<'f, T> {
     fn drop(&mut self) {
         if self.inner.is_some() {
             panic!("JoinHandle dropped before being joined")
-        }
-    }
-}
-
-////////////////////////////////////////////////////////////////////////////////
-// UnitJoinHandle
-////////////////////////////////////////////////////////////////////////////////
-
-/// An owned permission to join on an immediate fiber (block on its termination).
-///
-/// This is an optimized case of [`JoinHandle`]`<()>`.
-pub struct UnitJoinHandle<'f> {
-    inner: Option<NonNull<ffi::Fiber>>,
-    marker: PhantomData<&'f ()>,
-}
-
-impl_debug_stub! {UnitJoinHandle<'f>}
-impl_eq_hash! {UnitJoinHandle<'f>}
-
-impl<'f> UnitJoinHandle<'f> {
-    fn new(inner: NonNull<ffi::Fiber>) -> Self {
-        Self {
-            inner: Some(inner),
-            marker: PhantomData,
-        }
-    }
-
-    /// Block until the fiber's termination.
-    pub fn join(mut self) {
-        // It's safe to unwrap because join will only be called once after the
-        // join handle was created
-        let inner_raw = self.inner.take().unwrap().as_ptr();
-        let _code = unsafe { ffi::fiber_join(inner_raw) };
-    }
-}
-
-impl<'f> Drop for UnitJoinHandle<'f> {
-    fn drop(&mut self) {
-        if self.inner.is_some() {
-            panic!("UnitJoinHandle dropped before being joined")
         }
     }
 }
@@ -1176,9 +969,6 @@ impl TrampolineArgs for VaList {
 /// Creates a new fiber and **yields** execution to it immediately, returning a
 /// [`JoinHandle`] for the new fiber.
 ///
-/// **NOTE**: The argument `f` is a function that returns `T`. In case when `T =
-/// ()` (no return value) one should instead use [`start_proc`].
-///
 /// The join handle will implicitly *detach* the child fiber upon being
 /// dropped. In this case, the child fiber may outlive the parent. Additionally,
 /// the join handle provides a [`JoinHandle::join`] method that can be used to
@@ -1187,6 +977,7 @@ impl TrampolineArgs for VaList {
 /// This will create a fiber using default parameters of [`Builder`], if you
 /// want to specify the stack size or the name of the thread, use builder's API
 /// instead.
+#[inline(always)]
 pub fn start<'f, F, T>(f: F) -> JoinHandle<'f, T>
 where
     F: FnOnce() -> T,
@@ -1207,6 +998,7 @@ where
 /// });
 /// jh.join().unwrap();
 /// ```
+#[inline(always)]
 pub fn start_async<'f, F, T>(f: F) -> JoinHandle<'f, T>
 where
     F: Future<Output = T> + 'f,
@@ -1215,21 +1007,18 @@ where
     start(|| block_on(f))
 }
 
-/// Creates a new proc fiber and **yields** execution to it immediately,
-/// returning a [`UnitJoinHandle`] for the new fiber.
-///
-/// The *proc fiber* is a special case of a fiber whose function does not return
-/// a value. In fact `UnitJoinHandle` is identical to `JoinHanble<()>` is all
-/// aspects instead that it is implemented more efficiently and the former
-/// should always be used instead of the latter.
+/// Creates a new fiber and **yields** execution to it immediately,
+/// returning a [`JoinHandle<()>`] for the new fiber.
 ///
 /// For more details see: [`start`]
-pub fn start_proc<'f, F>(f: F) -> UnitJoinHandle<'f>
+#[deprecated = "Use `fiber::start` instead"]
+#[inline(always)]
+pub fn start_proc<'f, F>(f: F) -> JoinHandle<'f, ()>
 where
     F: FnOnce(),
     F: 'f,
 {
-    Builder::new().proc(f).start().unwrap()
+    start(f)
 }
 
 /// Creates a new fiber and schedules it for execution, returning a
@@ -1238,11 +1027,9 @@ where
 /// **NOTE:** In the current implementation the fiber is constructed using the
 /// lua api, so it's efficiency is far from perfect.
 ///
-/// **NOTE**: The argument `f` is a function that returns `T`. In case when `T =
-/// ()` (no return value) one should instead use [`defer_proc`].
-///
 /// The new fiber can be joined by calling [`LuaJoinHandle::join`] method on
 /// it's join handle.
+#[inline(always)]
 pub fn defer<'f, F, T>(f: F) -> LuaJoinHandle<'f, T>
 where
     F: FnOnce() -> T,
@@ -1263,6 +1050,7 @@ where
 /// });
 /// jh.join().unwrap();
 /// ```
+#[inline(always)]
 pub fn defer_async<'f, F, T>(f: F) -> LuaJoinHandle<'f, T>
 where
     F: Future<Output = T> + 'f,
@@ -1271,22 +1059,24 @@ where
     defer(|| block_on(f))
 }
 
-/// Creates a new proc fiber and schedules it for execution, returning a
-/// [`LuaUnitJoinHandle`] for it.
+/// Creates a new fiber and schedules it for execution, returning a
+/// [`LuaJoinHandle`]`<()>` for it.
 ///
 /// **NOTE:** In the current implementation the fiber is constructed using the
 /// lua api, so it's efficiency is far from perfect.
 ///
-/// The new fiber can be joined by calling [`LuaUnitJoinHandle::join`] method on
+/// The new fiber can be joined by calling [`LuaJoinHandle::join`] method on
 /// it's join handle.
 ///
 /// This is an optimized version [`defer`]`<F, ()>`.
-pub fn defer_proc<'f, F>(f: F) -> LuaUnitJoinHandle<'f>
+#[deprecated = "Use `fiber::defer` instead"]
+#[inline(always)]
+pub fn defer_proc<'f, F>(f: F) -> LuaJoinHandle<'f, ()>
 where
     F: FnOnce(),
     F: 'f,
 {
-    LuaFiber::new(LuaFiberProc::new(f)).spawn().unwrap()
+    defer(f)
 }
 
 /// Make it possible or not possible to wakeup the current
@@ -1312,13 +1102,14 @@ pub fn is_cancelled() -> bool {
 /// - `time` - time to sleep
 ///
 /// > **Note:** this is a cancellation point (See also: [is_cancelled()](fn.is_cancelled.html))
+#[inline(always)]
 pub fn sleep(time: Duration) {
     unsafe { ffi::fiber_sleep(time.as_secs_f64()) }
 }
 
 /// Get [`Instant`] corresponding to event loop iteration begin time.
 /// Uses monotonic clock.
-#[inline]
+#[inline(always)]
 pub fn clock() -> Instant {
     let secs = unsafe { ffi::fiber_clock() };
     Instant(Duration::from_secs_f64(secs))
@@ -1340,6 +1131,7 @@ pub fn clock() -> Instant {
 /// [`fiber::start`]: crate::fiber::start
 /// [`fiber::defer`]: crate::fiber::defer
 /// [`fiber::yield`]: crate::fiber::yield
+#[inline(always)]
 pub fn fiber_yield() {
     unsafe { ffi::fiber_yield() }
 }
@@ -1358,6 +1150,7 @@ pub fn r#yield() -> Result<()> {
 }
 
 /// Reschedule fiber to end of event loop cycle.
+#[inline(always)]
 pub fn reschedule() {
     unsafe { ffi::fiber_reschedule() }
 }
@@ -1373,6 +1166,7 @@ impl FiberAttr {
     /// Can be used for many fibers creation, corresponding fibers will not take ownership.
     ///
     /// This is safe to drop `FiberAttr` value when fibers created with this attribute still exist.
+    #[inline(always)]
     pub fn new() -> Self {
         FiberAttr {
             inner: unsafe { ffi::fiber_attr_new() },
@@ -1382,6 +1176,7 @@ impl FiberAttr {
     /// Get stack size from the fiber attribute.
     ///
     /// Returns: stack size
+    #[inline(always)]
     pub fn stack_size(&self) -> usize {
         unsafe { ffi::fiber_attr_getstacksize(self.inner) }
     }
@@ -1389,6 +1184,7 @@ impl FiberAttr {
     ///Set stack size for the fiber attribute.
     ///
     /// - `stack_size` - stack size for new fibers
+    #[inline(always)]
     pub fn set_stack_size(&mut self, stack_size: usize) -> Result<()> {
         if unsafe { ffi::fiber_attr_setstacksize(self.inner, stack_size) } < 0 {
             Err(TarantoolError::last().into())
@@ -1399,12 +1195,14 @@ impl FiberAttr {
 }
 
 impl Default for FiberAttr {
+    #[inline(always)]
     fn default() -> Self {
         Self::new()
     }
 }
 
 impl Drop for FiberAttr {
+    #[inline(always)]
     fn drop(&mut self) {
         unsafe { ffi::fiber_attr_delete(self.inner) }
     }
@@ -1450,6 +1248,7 @@ pub struct Cond {
 /// - call [cond.broadcast()](#method.broadcast) to send a signal to all fibers that have executed [cond.wait()](#method.wait).
 impl Cond {
     /// Instantiate a new fiber cond object.
+    #[inline(always)]
     pub fn new() -> Self {
         Cond {
             inner: unsafe { ffi::fiber_cond_new() },
@@ -1458,12 +1257,14 @@ impl Cond {
 
     /// Wake one fiber waiting for the cond.
     /// Does nothing if no one is waiting. Does not yield.
+    #[inline(always)]
     pub fn signal(&self) {
         unsafe { ffi::fiber_cond_signal(self.inner) }
     }
 
     /// Wake up all fibers waiting for the cond.
     /// Does not yield.
+    #[inline(always)]
     pub fn broadcast(&self) {
         unsafe { ffi::fiber_cond_broadcast(self.inner) }
     }
@@ -1480,23 +1281,27 @@ impl Cond {
     /// Returns:
     /// - `true` on [signal()](#method.signal) call or a spurious wake up.
     /// - `false` on timeout, diag is set to `TimedOut`
+    #[inline(always)]
     pub fn wait_timeout(&self, timeout: Duration) -> bool {
         unsafe { ffi::fiber_cond_wait_timeout(self.inner, timeout.as_secs_f64()) >= 0 }
     }
 
     /// Shortcut for [wait_timeout()](#method.wait_timeout).
+    #[inline(always)]
     pub fn wait(&self) -> bool {
         unsafe { ffi::fiber_cond_wait(self.inner) >= 0 }
     }
 }
 
 impl Default for Cond {
+    #[inline(always)]
     fn default() -> Self {
         Self::new()
     }
 }
 
 impl Drop for Cond {
+    #[inline(always)]
     fn drop(&mut self) {
         unsafe { ffi::fiber_cond_delete(self.inner) }
     }
@@ -1510,6 +1315,7 @@ pub struct Latch {
 
 impl Latch {
     /// Allocate and initialize the new latch.
+    #[inline(always)]
     pub fn new() -> Self {
         Latch {
             inner: unsafe { ffi::box_latch_new() },
@@ -1517,6 +1323,7 @@ impl Latch {
     }
 
     /// Lock a latch. Waits indefinitely until the current fiber can gain access to the latch.
+    #[inline(always)]
     pub fn lock(&self) -> LatchGuard {
         unsafe { ffi::box_latch_lock(self.inner) };
         LatchGuard {
@@ -1529,6 +1336,7 @@ impl Latch {
     /// Returns:
     /// - `Some` - success
     /// - `None` - the latch is locked.
+    #[inline(always)]
     pub fn try_lock(&self) -> Option<LatchGuard> {
         if unsafe { ffi::box_latch_trylock(self.inner) } == 0 {
             Some(LatchGuard {
@@ -1541,12 +1349,14 @@ impl Latch {
 }
 
 impl Default for Latch {
+    #[inline(always)]
     fn default() -> Self {
         Self::new()
     }
 }
 
 impl Drop for Latch {
+    #[inline(always)]
     fn drop(&mut self) {
         unsafe { ffi::box_latch_delete(self.inner) }
     }
@@ -1560,6 +1370,7 @@ pub struct LatchGuard {
 }
 
 impl Drop for LatchGuard {
+    #[inline(always)]
     fn drop(&mut self) {
         unsafe { ffi::box_latch_unlock(self.latch_inner) }
     }
@@ -1580,6 +1391,30 @@ where
     (callback as *mut F as *mut c_void, Some(trampoline::<F, T>))
 }
 
+/// Returns `true` if a fiber function with this return type needs to return the
+/// value to the caller when joined.
+///
+/// This is used for optimizations. Basically if this function returns `false`
+/// for the return type of a fiber then we save on some overhead.
+const fn needs_returning<T>() -> bool {
+    std::mem::size_of::<T>() != 0 || std::mem::needs_drop::<T>()
+}
+
+const _: () = {
+    assert!(needs_returning::<i32>());
+    assert!(needs_returning::<bool>());
+    assert!(!needs_returning::<()>());
+
+    struct UnitStruct;
+    assert!(!needs_returning::<UnitStruct>());
+
+    struct DroppableUnitStruct;
+    impl Drop for DroppableUnitStruct {
+        fn drop(&mut self) {}
+    }
+    assert!(needs_returning::<DroppableUnitStruct>());
+};
+
 #[cfg(feature = "internal_test")]
 mod tests {
     use super::*;
@@ -1595,6 +1430,7 @@ mod tests {
     }
 
     #[crate::test(tarantool = "crate")]
+    #[allow(deprecated)]
     fn builder_async_proc() {
         let res = Rc::new(RefCell::new(0u32));
         let res_moved = res.clone();

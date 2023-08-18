@@ -21,6 +21,13 @@ and support of the `fiber_clock` API.
 - A copy of fiber name used to leak in `Fiber::new` and `Fiber::new_with_attr`.
 - `tarantool::decimal` api is now thread safe, which allows it to be used in concurrent threads.
 
+### Deprecated
+- `fiber::start_proc`, `fiber::defer_proc`, `fiber::Builder::proc`, `fiber::Builder::proc_async`:
+  in favor of `fiber::start`, `fiber::defer`, etc. These used to be implemented with optimizations,
+  but now their internals are simplified and unified, so there's now no difference between the
+  "proc" and "non-proc" variants. This may result in minor performance degradation in debug builds,
+  but in release builds there shouldn't be any difference.
+
 ### Breaking Changes
 - `transaction::start_transaction` has a more flexible error handling,
   and is renamed to `transaction::transaction`

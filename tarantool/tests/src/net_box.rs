@@ -4,7 +4,7 @@ use std::rc::Rc;
 use std::time::Duration;
 
 use tarantool::error::Error;
-use tarantool::fiber::{reschedule, sleep, start_proc, Cond, Fiber};
+use tarantool::fiber::{reschedule, sleep, start, Cond, Fiber};
 use tarantool::index::IteratorType;
 use tarantool::net_box::{promise::State, Conn, ConnOptions, ConnTriggers, Options};
 use tarantool::space::Space;
@@ -208,7 +208,7 @@ pub fn call_async_timeout() {
 pub fn call_async_wait_disconnected() {
     let conn = test_user_conn();
     let p = conn.call_async::<_, ()>("test_timeout", ()).unwrap();
-    let jh = start_proc(|| {
+    let jh = start(|| {
         reschedule();
         drop(conn);
     });
