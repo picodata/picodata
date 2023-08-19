@@ -122,7 +122,7 @@ pub fn multiple_deferred() {
         .map(|v| fiber::defer(move || v.into_iter().map(|e| e + 1).collect::<Vec<_>>()))
         .collect::<Vec<_>>();
     res.push(1);
-    res.extend(fibers.into_iter().flat_map(fiber::LuaJoinHandle::join));
+    res.extend(fibers.into_iter().flat_map(fiber::JoinHandle::join));
     res.push(8);
     assert_eq!(res, vec![1, 2, 3, 4, 5, 6, 7, 8]);
 }
@@ -221,7 +221,7 @@ pub fn start_error() {
         "#,
     );
 
-    match fiber::LuaFiber::spawn(|| ()) {
+    match fiber::Builder::new().func(|| ()).defer_lua() {
         Err(e) => assert_eq!(format!("{}", e), "lua error: Artificial error"),
         _ => panic!(),
     }
@@ -245,7 +245,7 @@ pub fn require_error() {
         "#,
     );
 
-    match fiber::LuaFiber::spawn(|| ()) {
+    match fiber::Builder::new().func(|| ()).defer_lua() {
         Err(e) => assert_eq!(format!("{}", e), "lua error: Artificial require error"),
         _ => panic!(),
     }
@@ -282,7 +282,7 @@ pub fn defer_dont_join() {
     assert_eq!(rx.upgrade().unwrap().get(), 0);
     drop(f);
     // There's a memory leak that we can't do anything about if we drop the
-    // LuaJoinHandle without joining it first
+    // JoinHandle without joining it first
     assert_eq!(rx.strong_count(), 1);
     assert_eq!(rx.upgrade().unwrap().get(), 0);
 }
@@ -299,7 +299,7 @@ pub fn defer_proc_dont_join() {
     assert_eq!(rx.upgrade().unwrap().get(), 0);
     drop(f);
     // There's a memory leak that we can't do anything about if we drop the
-    // LuaJoinHandle without joining it first
+    // JoinHandle without joining it first
     assert_eq!(rx.strong_count(), 1);
     assert_eq!(rx.upgrade().unwrap().get(), 0);
 }

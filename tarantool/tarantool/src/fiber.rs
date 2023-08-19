@@ -377,7 +377,7 @@ where
     pub fn start(self) -> Result<JoinHandle<'f, T>> {
         let Self { name, attr, f } = self;
         let name = name.unwrap_or_else(|| "<rust>".into());
-        Ok(Fyber::<F, T, false>::spawn(name, f, attr.as_ref())?)
+        Ok(Fyber::<F, T>::spawn_and_yield(name, f, attr.as_ref())?)
     }
 
     #[cfg(feature = "defer")]
@@ -395,7 +395,19 @@ where
     pub fn defer(self) -> Result<JoinHandle<'f, T>> {
         let Self { name, attr, f } = self;
         let name = name.unwrap_or_else(|| "<rust>".into());
-        Ok(Fyber::<F, T, true>::spawn(name, f, attr.as_ref())?)
+        Ok(Fyber::<F, T>::spawn_deferred(name, f, attr.as_ref())?)
+    }
+
+    /// Spawns a new deferred lua fiber by taking ownership of the `Builder`,
+    /// and returns a [`Result`] to its [`JoinHandle`].
+    ///
+    /// This is legacy api and you probably don't want to use it. This mainly
+    /// exists for testing.
+    #[inline(always)]
+    pub fn defer_lua(self) -> Result<JoinHandle<'f, T>> {
+        let Self { name, attr, f } = self;
+        let name = name.unwrap_or_else(|| "<rust>".into());
+        Ok(Fyber::<F, T>::spawn_lua(name, f, attr.as_ref())?)
     }
 }
 
@@ -409,29 +421,38 @@ where
 ///
 /// **TODO**: add support for cancellable fibers.
 /// **TODO**: add support for non-joinable fibers.
-pub struct Fyber<F, T, const DEFERRED: bool> {
+pub struct Fyber<F, T> {
     _marker: PhantomData<(F, T)>,
 }
 
-impl<F, T, const DEFERRED: bool> ::std::fmt::Debug for Fyber<F, T, { DEFERRED }> {
+impl<F, T> ::std::fmt::Debug for Fyber<F, T> {
     fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
         f.debug_struct("Fyber").finish_non_exhaustive()
     }
 }
 
-impl<'f, F, T, const DEFERRED: bool> Fyber<F, T, { DEFERRED }>
+impl<'f, F, T> Fyber<F, T>
 where
     F: FnOnce() -> T + 'f,
     T: 'f,
 {
-    pub fn spawn(name: String, f: F, attr: Option<&FiberAttr>) -> Result<JoinHandle<'f, T>> {
+    /// Creates a joinable fiber and immediately **yields** execution to it.
+    pub fn spawn_and_yield(
+        name: String,
+        f: F,
+        attr: Option<&FiberAttr>,
+    ) -> Result<JoinHandle<'f, T>> {
         let cname = CString::new(name).expect("fiber name may not contain interior null bytes");
 
         let inner_raw = unsafe {
             if let Some(attr) = attr {
-                ffi::fiber_new_ex(cname.as_ptr(), attr.inner, Some(Self::trampoline))
+                ffi::fiber_new_ex(
+                    cname.as_ptr(),
+                    attr.inner,
+                    Some(Self::trampoline_for_immediate),
+                )
             } else {
-                ffi::fiber_new(cname.as_ptr(), Some(Self::trampoline))
+                ffi::fiber_new(cname.as_ptr(), Some(Self::trampoline_for_immediate))
             }
         };
 
@@ -452,22 +473,14 @@ where
 
             let boxed_f = Box::new(f);
             ffi::fiber_start(inner.as_ptr(), Box::into_raw(boxed_f), result_ptr);
-            let jh = JoinHandle::new(inner, result_cell);
-            if DEFERRED {
-                ffi::fiber_wakeup(inner.as_ptr())
-            }
+            let jh = JoinHandle::ffi(inner, result_cell);
             Ok(jh)
         }
     }
 
-    unsafe extern "C" fn trampoline(mut args: VaList) -> i32 {
+    unsafe extern "C" fn trampoline_for_immediate(mut args: VaList) -> i32 {
         let f = args.get_boxed::<F>();
         let result_ptr = args.get_ptr::<Option<T>>();
-        if DEFERRED {
-            // FIXME: use fiber_wakeup and fiber_set_ctx for setting callback
-            // data
-            ffi::fiber_yield()
-        }
         let t = f();
         if needs_returning::<T>() {
             assert!(!result_ptr.is_null());
@@ -477,47 +490,50 @@ where
         }
         0
     }
-}
 
-////////////////////////////////////////////////////////////////////////////////
-/// LuaFiber
-////////////////////////////////////////////////////////////////////////////////
+    /// Creates a joinable **LUA** fiber and schedules it for execution at some
+    /// point later. Does **NOT** yield.
+    pub fn spawn_deferred(
+        name: String,
+        f: F,
+        attr: Option<&FiberAttr>,
+    ) -> Result<JoinHandle<'f, T>> {
+        Self::spawn_lua(name, f, attr)
+    }
 
-pub struct LuaFiber<'f, F> {
-    _marker: PhantomData<&'f F>,
-}
-
-impl_debug_stub! {LuaFiber<'f, F>}
-
-/// Deferred non-yielding fiber implemented using **lua** api. This (hopefully)
-/// temporary implementation is a workaround. Tarantool C API lacks the method
-/// for passing the necessary information into the underlying `struct fiber`
-/// reliably. In this case we need to be able to set the `void *f_arg` field to
-/// be able to implement correct deferred fibers which don't yield.
-impl<'f, F, T> LuaFiber<'f, F>
-where
-    F: FnOnce() -> T + 'f,
-{
-    pub fn spawn(f: F) -> Result<LuaJoinHandle<'f, T>> {
+    /// Creates a joinable **LUA** fiber and schedules it for execution at some
+    /// point later. Does **NOT** yield.
+    pub fn spawn_lua(name: String, f: F, _attr: Option<&FiberAttr>) -> Result<JoinHandle<'f, T>> {
         let fiber_ref = unsafe {
             let l = ffi::luaT_state();
             lua::lua_getglobal(l, c_ptr!("require"));
             lua::lua_pushstring(l, c_ptr!("fiber"));
-            impl_details::guarded_pcall(l, 1, 1)?;
+            impl_details::guarded_pcall(l, 1, 1)?; // stack[top] = require('fiber')
+
             lua::lua_getfield(l, -1, c_ptr!("new"));
             impl_details::push_userdata(l, f);
-            lua::lua_pushcclosure(l, Self::trampoline, 1);
+            lua::lua_pushcclosure(l, Self::trampoline_for_lua, 1);
             impl_details::guarded_pcall(l, 1, 1).map_err(|e| {
+                // stack[top] = fiber.new(c_closure)
                 // Pop the fiber module from the stack
                 lua::lua_pop(l, 1);
                 e
             })?;
+
             lua::lua_getfield(l, -1, c_ptr!("set_joinable"));
-            lua::lua_pushvalue(l, -2);
+            lua::lua_pushvalue(l, -2); // duplicate the fiber object
             lua::lua_pushboolean(l, true as _);
-            impl_details::guarded_pcall(l, 2, 0)
+            impl_details::guarded_pcall(l, 2, 0) // f:set_joinable(true)
                 .map_err(|e| panic!("{}", e))
                 .unwrap();
+
+            lua::lua_getfield(l, -1, c_ptr!("name"));
+            lua::lua_pushvalue(l, -2); // duplicate the fiber object
+            lua::lua_pushlstring(l, name.as_ptr() as _, name.len());
+            impl_details::guarded_pcall(l, 2, 0) // f:name(name)
+                .map_err(|e| panic!("{}", e))
+                .unwrap();
+
             let fiber_ref = lua::luaL_ref(l, lua::LUA_REGISTRYINDEX);
             // pop the fiber module from the stack
             lua::lua_pop(l, 1);
@@ -525,10 +541,10 @@ where
             fiber_ref
         };
 
-        Ok(LuaJoinHandle::new(fiber_ref))
+        Ok(JoinHandle::lua(fiber_ref))
     }
 
-    unsafe extern "C" fn trampoline(l: *mut lua::lua_State) -> i32 {
+    unsafe extern "C" fn trampoline_for_lua(l: *mut lua::lua_State) -> i32 {
         let ud_ptr = lua::lua_touserdata(l, lua::lua_upvalueindex(1));
 
         let f = (ud_ptr as *mut Option<F>)
@@ -551,63 +567,6 @@ where
             1
         } else {
             0
-        }
-    }
-}
-
-////////////////////////////////////////////////////////////////////////////////
-/// LuaJoinHandle
-////////////////////////////////////////////////////////////////////////////////
-
-#[derive(PartialEq, Eq, Hash)]
-pub struct LuaJoinHandle<'f, T> {
-    fiber_ref: Option<i32>,
-    marker: PhantomData<(&'f (), T)>,
-}
-
-impl_debug_stub! {LuaJoinHandle<'f, T>}
-
-impl<'f, T> LuaJoinHandle<'f, T> {
-    fn new(fiber_ref: i32) -> Self {
-        Self {
-            fiber_ref: Some(fiber_ref),
-            marker: PhantomData,
-        }
-    }
-
-    pub fn join(mut self) -> T {
-        // It's safe to unwrap fiber_ref here because join will only be called
-        // once after the join handle creation
-        let fiber_ref = self.fiber_ref.take().unwrap();
-        // SAFETY: this is safe because... we have tested it?
-        unsafe {
-            let guard = impl_details::lua_fiber_join(fiber_ref)
-                .map_err(|e| panic!("Unrecoverable lua failure: {}", e))
-                .unwrap();
-            if needs_returning::<T>() {
-                let ud_ptr = lua::lua_touserdata(guard.as_lua(), -1);
-                let res = (ud_ptr as *mut Option<T>)
-                    .as_mut()
-                    .expect("fiber:join must return correct userdata")
-                    .take()
-                    .expect("data can only be taken once from the UDBox");
-                res
-            } else {
-                if cfg!(debug_assertions) {
-                    assert!(lua::lua_isnil(guard.as_lua(), -1));
-                }
-                // SAFETY: this is safe because () is a zero sized type.
-                #[allow(clippy::uninit_assumed_init)]
-                std::mem::MaybeUninit::uninit().assume_init()
-            }
-        }
-    }
-}
-
-impl<'f, T> Drop for LuaJoinHandle<'f, T> {
-    fn drop(&mut self) {
-        if self.fiber_ref.is_some() {
-            panic!("LuaJoinHandle dropped before being joined")
         }
     }
 }
@@ -745,50 +704,101 @@ pub struct NoFunc;
 
 /// An owned permission to join on an immediate fiber (block on its termination).
 pub struct JoinHandle<'f, T> {
-    inner: Option<NonNull<ffi::Fiber>>,
-    result: Option<FiberResultCell<T>>,
+    inner: Option<JoinHandleImpl<T>>,
     marker: PhantomData<&'f ()>,
 }
+
+#[deprecated = "Use `fiber::JoinHandle` instead"]
+pub type LuaJoinHandle<'f, T> = JoinHandle<'f, T>;
+
+#[derive(Debug)]
+enum JoinHandleImpl<T> {
+    Ffi {
+        fiber: NonNull<ffi::Fiber>,
+        result_cell: Option<FiberResultCell<T>>,
+    },
+    Lua {
+        fiber_ref: i32,
+    },
+}
+
 type FiberResultCell<T> = Box<UnsafeCell<Option<T>>>;
 
 impl_debug_stub! {JoinHandle<'f, T>}
 impl_eq_hash! {JoinHandle<'f, T>}
 
 impl<'f, T> JoinHandle<'f, T> {
-    fn new(inner: NonNull<ffi::Fiber>, result: Option<FiberResultCell<T>>) -> Self {
+    #[inline(always)]
+    fn ffi(fiber: NonNull<ffi::Fiber>, result_cell: Option<FiberResultCell<T>>) -> Self {
         Self {
-            inner: Some(inner),
-            result,
+            inner: Some(JoinHandleImpl::Ffi { fiber, result_cell }),
+            marker: PhantomData,
+        }
+    }
+
+    #[inline(always)]
+    fn lua(fiber_ref: i32) -> Self {
+        Self {
+            inner: Some(JoinHandleImpl::Lua { fiber_ref }),
             marker: PhantomData,
         }
     }
 
     /// Block until the fiber's termination and return it's result value.
     pub fn join(mut self) -> T {
-        // It's safe to unwrap because join will only be called once after the
-        // join handle was created
-        let inner_raw = self.inner.take().unwrap().as_ptr();
-        // TODO: add error handling
-        let _code = unsafe { ffi::fiber_join(inner_raw) };
+        let inner = self
+            .inner
+            .take()
+            .expect("after construction join is called at most once");
+        match inner {
+            JoinHandleImpl::Ffi {
+                fiber,
+                mut result_cell,
+            } => {
+                // TODO: add error handling
+                let _code = unsafe { ffi::fiber_join(fiber.as_ptr()) };
 
-        if needs_returning::<T>() {
-            let mut result_cell = self
-                .result
-                .take()
-                .expect("should not be None for non unit types");
-            result_cell
-                .get_mut()
-                .take()
-                .expect("should have been set by the fiber function")
-        } else {
-            if cfg!(debug_assertions) {
-                assert!(self.result.is_none());
+                if needs_returning::<T>() {
+                    let mut result_cell = result_cell
+                        .take()
+                        .expect("should not be None for non unit types");
+                    result_cell
+                        .get_mut()
+                        .take()
+                        .expect("should have been set by the fiber function")
+                } else {
+                    if cfg!(debug_assertions) {
+                        assert!(result_cell.is_none());
+                    }
+                    // SAFETY: this is safe because () is a zero sized type.
+                    #[allow(clippy::uninit_assumed_init)]
+                    unsafe {
+                        std::mem::MaybeUninit::uninit().assume_init()
+                    }
+                }
             }
-            // SAFETY: this is safe because () is a zero sized type.
-            #[allow(clippy::uninit_assumed_init)]
-            unsafe {
-                std::mem::MaybeUninit::uninit().assume_init()
-            }
+            JoinHandleImpl::Lua { fiber_ref } => unsafe {
+                let guard = impl_details::lua_fiber_join(fiber_ref)
+                    .map_err(|e| panic!("Unrecoverable lua failure: {}", e))
+                    .unwrap();
+
+                if needs_returning::<T>() {
+                    let ud_ptr = lua::lua_touserdata(guard.as_lua(), -1);
+                    let res = (ud_ptr as *mut Option<T>)
+                        .as_mut()
+                        .expect("fiber:join must return correct userdata")
+                        .take()
+                        .expect("data can only be taken once from the UDBox");
+                    res
+                } else {
+                    if cfg!(debug_assertions) {
+                        assert!(lua::lua_isnil(guard.as_lua(), -1));
+                    }
+                    // SAFETY: this is safe because () is a zero sized type.
+                    #[allow(clippy::uninit_assumed_init)]
+                    std::mem::MaybeUninit::uninit().assume_init()
+                }
+            },
         }
     }
 }
@@ -797,6 +807,35 @@ impl<'f, T> Drop for JoinHandle<'f, T> {
     fn drop(&mut self) {
         if self.inner.is_some() {
             panic!("JoinHandle dropped before being joined")
+        }
+    }
+}
+
+#[rustfmt::skip]
+impl<T> ::std::cmp::PartialEq for JoinHandleImpl<T> {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Ffi { fiber: self_fiber, .. }, Self::Ffi { fiber: other_fiber, .. },) => {
+                self_fiber == other_fiber
+            }
+            (Self::Lua { fiber_ref: self_ref, .. }, Self::Lua { fiber_ref: other_ref, .. },) => {
+                self_ref == other_ref
+            }
+            (_, _) => false,
+        }
+    }
+}
+
+impl<T> ::std::cmp::Eq for JoinHandleImpl<T> {}
+
+impl<T> ::std::hash::Hash for JoinHandleImpl<T> {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: ::std::hash::Hasher,
+    {
+        match self {
+            Self::Ffi { fiber, .. } => fiber.hash(state),
+            Self::Lua { fiber_ref, .. } => fiber_ref.hash(state),
         }
     }
 }
@@ -897,21 +936,21 @@ where
 }
 
 /// Creates a new fiber and schedules it for execution, returning a
-/// [`LuaJoinHandle`] for it.
+/// [`JoinHandle`] for it.
 ///
 /// **NOTE:** In the current implementation the fiber is constructed using the
 /// lua api, so it's efficiency is far from perfect.
 ///
-/// The new fiber can be joined by calling [`LuaJoinHandle::join`] method on
+/// The new fiber can be joined by calling [`JoinHandle::join`] method on
 /// it's join handle.
 #[inline(always)]
-pub fn defer<'f, F, T>(f: F) -> LuaJoinHandle<'f, T>
+pub fn defer<'f, F, T>(f: F) -> JoinHandle<'f, T>
 where
     F: FnOnce() -> T,
     F: 'f,
     T: 'f,
 {
-    LuaFiber::spawn(f).unwrap()
+    Builder::new().func(f).defer().unwrap()
 }
 
 /// Async version of [`defer`].
@@ -926,7 +965,7 @@ where
 /// jh.join().unwrap();
 /// ```
 #[inline(always)]
-pub fn defer_async<'f, F, T>(f: F) -> LuaJoinHandle<'f, T>
+pub fn defer_async<'f, F, T>(f: F) -> JoinHandle<'f, T>
 where
     F: Future<Output = T> + 'f,
     T: 'f,
@@ -935,18 +974,18 @@ where
 }
 
 /// Creates a new fiber and schedules it for execution, returning a
-/// [`LuaJoinHandle`]`<()>` for it.
+/// [`JoinHandle`]`<()>` for it.
 ///
 /// **NOTE:** In the current implementation the fiber is constructed using the
 /// lua api, so it's efficiency is far from perfect.
 ///
-/// The new fiber can be joined by calling [`LuaJoinHandle::join`] method on
+/// The new fiber can be joined by calling [`JoinHandle::join`] method on
 /// it's join handle.
 ///
 /// This is an optimized version [`defer`]`<F, ()>`.
 #[deprecated = "Use `fiber::defer` instead"]
 #[inline(always)]
-pub fn defer_proc<'f, F>(f: F) -> LuaJoinHandle<'f, ()>
+pub fn defer_proc<'f, F>(f: F) -> JoinHandle<'f, ()>
 where
     F: FnOnce(),
     F: 'f,
