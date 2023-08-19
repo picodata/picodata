@@ -58,3 +58,21 @@ pub fn has_tuple_field_by_path() -> bool {
 pub fn has_datetime() -> bool {
     unsafe { helper::has_dyn_symbol(crate::c_str!("tnt_mp_encode_datetime")) }
 }
+
+/// Check whether the current tarantool executable supports fiber_set_ctx api.
+/// If this function returns `false` using functions in
+/// [`fiber_set_ctx`] & [`fiber_get_ctx`] may result in a **panic**.
+///
+/// # Safety
+/// This function is only safe to be called from the tx thread.
+///
+/// [`fiber_set_ctx`]: crate::ffi::tarantool::fiber_set_ctx
+/// [`fiber_get_ctx`]: crate::ffi::tarantool::fiber_get_ctx
+#[inline]
+pub unsafe fn has_fiber_set_ctx() -> bool {
+    static mut RESULT: Option<bool> = None;
+    if RESULT.is_none() {
+        RESULT = Some(helper::has_dyn_symbol(crate::c_str!("fiber_set_ctx")));
+    }
+    RESULT.unwrap()
+}

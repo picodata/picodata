@@ -102,6 +102,14 @@ pub fn deferred() {
     assert_eq!(jh.join(), 42);
 }
 
+pub fn deferred_ffi() {
+    let csw_before = fiber::csw();
+    let jh = fiber::Builder::new().func(|| 1337).defer_ffi().unwrap();
+    assert_eq!(fiber::csw(), csw_before);
+    assert_eq!(jh.join(), 1337);
+    assert_eq!(fiber::csw(), csw_before + 1);
+}
+
 pub fn deferred_with_attrs() {
     let res = fiber::Builder::new()
         .name("boo")

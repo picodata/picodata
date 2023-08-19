@@ -377,25 +377,48 @@ where
     pub fn start(self) -> Result<JoinHandle<'f, T>> {
         let Self { name, attr, f } = self;
         let name = name.unwrap_or_else(|| "<rust>".into());
-        Ok(Fyber::<F, T>::spawn_and_yield(name, f, attr.as_ref())?)
+        Fyber::spawn_and_yield(name, f, attr.as_ref())
     }
 
-    #[cfg(feature = "defer")]
     /// Spawns a new deferred fiber by taking ownership of the `Builder`, and
     /// returns a [`Result`] to its [`JoinHandle`].
     ///
-    /// **NOTE:** In the current implementation the current fiber performs a
-    /// **yield** to start the newly created fiber and then the new fiber
-    /// performs another **yield**. This means that the deferred fiber is **not
-    /// applicable for transactions** (which do not allow any context switches).
-    /// In the future we are planning to add a correct implementation.
+    /// **NOTE:** On older versions of tarantool this will create a lua fiber
+    /// which is less efficient. You can use [`ffi::has_fiber_set_ctx`]
+    /// to check if your version of tarantool has api needed for this function
+    /// to work efficiently.
     ///
     /// See the [`defer`] free function for more details.
+    ///
+    /// [`ffi::has_fiber_set_ctx`]: crate::ffi::has_fiber_set_ctx
     #[inline(always)]
     pub fn defer(self) -> Result<JoinHandle<'f, T>> {
         let Self { name, attr, f } = self;
         let name = name.unwrap_or_else(|| "<rust>".into());
-        Ok(Fyber::<F, T>::spawn_deferred(name, f, attr.as_ref())?)
+        // SAFETY this is safe as long as we only call this from the tx thread.
+        if unsafe { crate::ffi::has_fiber_set_ctx() } {
+            Fyber::spawn_deferred(name, f, attr.as_ref())
+        } else {
+            Fyber::spawn_lua(name, f, attr.as_ref())
+        }
+    }
+
+    /// Spawns a new deferred fiber by taking ownership of the `Builder`, and
+    /// returns a [`Result`] to its [`JoinHandle`].
+    ///
+    /// # Panicking
+    /// This may panic on older version of tarantool. You can use
+    /// [`ffi::has_fiber_set_ctx`] to check if your version of
+    /// tarantool has the needed api.
+    ///
+    /// Consider using [`Self::defer`] instead.
+    ///
+    /// [`ffi::has_fiber_set_ctx`]: crate::ffi::has_fiber_set_ctx
+    #[inline(always)]
+    pub fn defer_ffi(self) -> Result<JoinHandle<'f, T>> {
+        let Self { name, attr, f } = self;
+        let name = name.unwrap_or_else(|| "<rust>".into());
+        Fyber::spawn_deferred(name, f, attr.as_ref())
     }
 
     /// Spawns a new deferred lua fiber by taking ownership of the `Builder`,
@@ -403,11 +426,13 @@ where
     ///
     /// This is legacy api and you probably don't want to use it. This mainly
     /// exists for testing.
+    ///
+    /// Consider using [`Self::defer`] instead.
     #[inline(always)]
     pub fn defer_lua(self) -> Result<JoinHandle<'f, T>> {
         let Self { name, attr, f } = self;
         let name = name.unwrap_or_else(|| "<rust>".into());
-        Ok(Fyber::<F, T>::spawn_lua(name, f, attr.as_ref())?)
+        Fyber::spawn_lua(name, f, attr.as_ref())
     }
 }
 
@@ -463,13 +488,10 @@ where
         unsafe {
             ffi::fiber_set_joinable(inner.as_ptr(), true);
 
-            let mut result_cell: Option<FiberResultCell<T>> = None;
-            let mut result_ptr: *mut Option<T> = std::ptr::null_mut();
-            if needs_returning::<T>() {
-                let cell = FiberResultCell::default();
-                result_ptr = cell.get();
-                result_cell = Some(cell);
-            }
+            let result_cell = needs_returning::<T>().then(FiberResultCell::default);
+            let result_ptr = result_cell
+                .as_ref()
+                .map_or(std::ptr::null_mut(), |cell| cell.get());
 
             let boxed_f = Box::new(f);
             ffi::fiber_start(inner.as_ptr(), Box::into_raw(boxed_f), result_ptr);
@@ -479,9 +501,14 @@ where
     }
 
     unsafe extern "C" fn trampoline_for_immediate(mut args: VaList) -> i32 {
+        // Extract arugments from the va_list.
         let f = args.get_boxed::<F>();
         let result_ptr = args.get_ptr::<Option<T>>();
+
+        // Call `f` and drop the closure.
         let t = f();
+
+        // Write results into the join handle if needed.
         if needs_returning::<T>() {
             assert!(!result_ptr.is_null());
             std::ptr::write(result_ptr, Some(t));
@@ -491,16 +518,84 @@ where
         0
     }
 
-    /// Creates a joinable **LUA** fiber and schedules it for execution at some
+    /// Creates a joinable fiber and schedules it for execution at some
     /// point later. Does **NOT** yield.
+    ///
+    /// # Panicking
+    /// May panic if the current tarantool executable doesn't support the
+    /// `fiber_set_ctx` api.
     pub fn spawn_deferred(
         name: String,
         f: F,
         attr: Option<&FiberAttr>,
     ) -> Result<JoinHandle<'f, T>> {
-        Self::spawn_lua(name, f, attr)
+        let cname = CString::new(name).expect("fiber name may not contain interior null bytes");
+
+        let inner_raw = unsafe {
+            if let Some(attr) = attr {
+                ffi::fiber_new_ex(
+                    cname.as_ptr(),
+                    attr.inner,
+                    Some(Self::trampoline_for_deferred_ffi),
+                )
+            } else {
+                ffi::fiber_new(cname.as_ptr(), Some(Self::trampoline_for_deferred_ffi))
+            }
+        };
+
+        let inner = unwrap_or!(NonNull::new(inner_raw),
+            return Err(TarantoolError::last().into());
+        );
+
+        unsafe {
+            ffi::fiber_set_joinable(inner.as_ptr(), true);
+
+            let result_cell = needs_returning::<T>().then(FiberResultCell::default);
+            let result_ptr = result_cell
+                .as_ref()
+                .map_or(std::ptr::null_mut(), |cell| cell.get());
+            let ctx = Box::new(DeferredFiberContext { f, result_ptr });
+
+            ffi::fiber_set_ctx(inner.as_ptr(), Box::into_raw(ctx) as _);
+            ffi::fiber_wakeup(inner.as_ptr());
+            let jh = JoinHandle::ffi(inner, result_cell);
+            Ok(jh)
+        }
     }
 
+    unsafe extern "C" fn trampoline_for_deferred_ffi(_: VaList) -> i32 {
+        // Extract arugments from fiber context.
+        let fiber_self = ffi::fiber_self();
+        let ctx = ffi::fiber_get_ctx(fiber_self);
+        let ctx = Box::from_raw(ctx.cast::<DeferredFiberContext<F, T>>());
+
+        // Overwrite the context so that the callback doesn't mess it up somehow.
+        ffi::fiber_set_ctx(fiber_self, std::ptr::null_mut());
+
+        // Call `f` and drop the closure.
+        let t = (ctx.f)();
+
+        // Write results into the join handle if needed.
+        if needs_returning::<T>() {
+            assert!(!ctx.result_ptr.is_null());
+            std::ptr::write(ctx.result_ptr, Some(t));
+        } else if cfg!(debug_assertions) {
+            assert!(ctx.result_ptr.is_null());
+        }
+        0
+    }
+}
+
+struct DeferredFiberContext<F, T> {
+    f: F,
+    result_ptr: *mut Option<T>,
+}
+
+impl<'f, F, T> Fyber<F, T>
+where
+    F: FnOnce() -> T + 'f,
+    T: 'f,
+{
     /// Creates a joinable **LUA** fiber and schedules it for execution at some
     /// point later. Does **NOT** yield.
     pub fn spawn_lua(name: String, f: F, _attr: Option<&FiberAttr>) -> Result<JoinHandle<'f, T>> {
@@ -514,11 +609,10 @@ where
             impl_details::push_userdata(l, f);
             lua::lua_pushcclosure(l, Self::trampoline_for_lua, 1);
             impl_details::guarded_pcall(l, 1, 1).map_err(|e| {
-                // stack[top] = fiber.new(c_closure)
                 // Pop the fiber module from the stack
                 lua::lua_pop(l, 1);
                 e
-            })?;
+            })?; // stack[top] = fiber.new(c_closure)
 
             lua::lua_getfield(l, -1, c_ptr!("set_joinable"));
             lua::lua_pushvalue(l, -2); // duplicate the fiber object
@@ -938,11 +1032,15 @@ where
 /// Creates a new fiber and schedules it for execution, returning a
 /// [`JoinHandle`] for it.
 ///
-/// **NOTE:** In the current implementation the fiber is constructed using the
-/// lua api, so it's efficiency is far from perfect.
+/// **NOTE:** On older versions of tarantool this will create a lua fiber
+/// which is less efficient. You can use [`ffi::has_fiber_set_ctx`]
+/// to check if your version of tarantool has api needed for this function
+/// to work efficiently.
 ///
 /// The new fiber can be joined by calling [`JoinHandle::join`] method on
 /// it's join handle.
+///
+/// [`ffi::has_fiber_set_ctx`]: crate::ffi::has_fiber_set_ctx
 #[inline(always)]
 pub fn defer<'f, F, T>(f: F) -> JoinHandle<'f, T>
 where

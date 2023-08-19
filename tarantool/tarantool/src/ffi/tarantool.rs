@@ -125,6 +125,9 @@ pub struct FiberCond {
 pub type FiberFunc = Option<unsafe extern "C" fn(VaList) -> c_int>;
 
 extern "C" {
+    /// Return the current fiber
+    pub fn fiber_self() -> *mut Fiber;
+
     /// Create a new fiber.
     ///
     /// Takes a fiber from fiber cache, if it's not empty.
@@ -458,6 +461,22 @@ crate::define_dlsym_reloc! {
     /// Check if the channel has writer fibers that wait
     /// for readers.
     pub fn fiber_channel_has_writers(ch: *mut fiber_channel) -> bool;
+
+    /// Set a pointer to context for the fiber. Can be used to avoid calling
+    /// `fiber_start` which means no yields.
+    ///
+    /// `f`    fiber to set the context for
+    /// `ctx`  context for the fiber function
+    pub fn fiber_set_ctx(f: *mut Fiber, ctx: *mut c_void);
+
+    /// Get the context for the fiber which was set via the `fiber_set_ctx`
+    /// function. Can be used to avoid calling `fiber_start` which means no yields.
+    ///
+    /// Returns context for the fiber function set by `fiber_set_ctx` function
+    ///
+    /// See also [`fiber_set_ctx`].
+    pub fn fiber_get_ctx(f: *mut Fiber) -> *mut c_void;
+
 }
 
 /// Channel buffer size.

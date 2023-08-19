@@ -380,6 +380,11 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
             ]);
 
             tests.append(&mut tests![
+                [should_panic_if: unsafe { !tarantool::ffi::has_fiber_set_ctx() }]
+                fiber::deferred_ffi,
+            ]);
+
+            tests.append(&mut tests![
                 [should_panic_if: !tarantool::ffi::has_fiber_channel()]
                 fiber::lua_thread,
 

@@ -15,6 +15,10 @@ and support of the `fiber_clock` API.
 - `SpaceEngineType` variants `SysView`, `Blackhole` and `Service` which cannot
   be created by users, but can be deserialized from contents of _space system space.
 
+### Changed
+- `fiber::defer` will now use a more efficient implementation on newer versions
+  of tarantool.
+
 ### Fixed
 - `log::Log::enabled` implementation for TarantoolLogger no longer ignores the
   mapping provided at construction.
