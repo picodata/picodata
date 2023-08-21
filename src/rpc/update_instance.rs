@@ -106,9 +106,19 @@ pub fn handle_update_instance_request_and_wait(req: Request, timeout: Duration) 
 
     let deadline = fiber::clock().saturating_add(timeout);
     loop {
-        let mut instance = storage.instances.get(&req.instance_id)?;
-        update_instance(&mut instance, &req, storage).map_err(raft::Error::ConfChangeError)?;
-        let dml = Dml::replace(ClusterwideSpaceId::Instance, &instance)
+        let old_instance = storage.instances.get(&req.instance_id)?;
+        let mut new_instance = old_instance.clone();
+        update_instance(&mut new_instance, &req, storage).map_err(raft::Error::ConfChangeError)?;
+        if old_instance == new_instance {
+            // No point in proposing an operation which doesn't change anything.
+            // Note: if the request tried setting target grade Online while it
+            // was already Online the incarnation will be increased and so
+            // old_instance will be different from new_instance and this is the
+            // intended behaviour.
+            return Ok(());
+        }
+
+        let dml = Dml::replace(ClusterwideSpaceId::Instance, &new_instance)
             .expect("encoding should not fail");
 
         let ranges = vec![

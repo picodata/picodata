@@ -704,6 +704,31 @@ fn postjoin(args: &args::Run, storage: Clusterwide, raft_storage: RaftSpaceAcces
         }
     }
 
+    // Wait for target grade to change to Online, so that sentinel doesn't send
+    // a redundant unpdate instance request.
+    // Otherwise incarnations grow by 2 every time.
+    let timeout = Duration::from_secs(10);
+    let deadline = fiber::clock().saturating_add(timeout);
+    loop {
+        let instance = storage
+            .instances
+            .get(&raft_id)
+            .expect("instance must be persisted at the time of postjoin");
+        if has_grades!(instance, * -> Online) {
+            tlog!(Info, "self-activated successfully");
+            break;
+        }
+        if fiber::clock() > deadline {
+            tlog!(
+                Warning,
+                "didn't receive confirmation of self activation in time"
+            );
+            break;
+        }
+        let index = node.get_index();
+        _ = node.wait_index(index + 1, deadline.duration_since(fiber::clock()));
+    }
+
     node.sentinel_loop.on_self_activate();
 }
 
