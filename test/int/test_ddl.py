@@ -1319,3 +1319,83 @@ def test_pico_create_space_doesnt_conflict_with_local_spaces(cluster: Cluster):
         i1.eval("return box.space._space.index.name:get(...).id", "one more space")
         == 1028
     )
+
+
+################################################################################
+def test_ddl_alter_space_by_snapshot(cluster: Cluster):
+    # These ones are for quorum.
+    i1 = cluster.add_instance(wait_online=True, replicaset_id="R1")
+    i2 = cluster.add_instance(wait_online=True, replicaset_id="R1")
+    i3 = cluster.add_instance(wait_online=True, replicaset_id="R1")
+    i4 = cluster.add_instance(wait_online=True, replicaset_id="R2")
+    i5 = cluster.add_instance(wait_online=True, replicaset_id="R2")
+
+    #
+    # Set up.
+    #
+    space_name = "space_which_changes_format"
+    cluster.create_space(
+        dict(
+            name=space_name,
+            format=[
+                dict(name="id", type="unsigned", is_nullable=False),
+                dict(name="value", type="unsigned", is_nullable=False),
+            ],
+            primary_key=["id"],
+            distribution="global",
+        ),
+    )
+
+    for i in cluster.instances:
+        assert i.call("box.space._space.index.name:get", space_name) is not None
+
+    for row in ([1, 10], [2, 20], [3, 30]):
+        index = cluster.cas("insert", space_name, row)
+        cluster.raft_wait_index(index, 3)
+
+    #
+    # This one will be catching up by snapshot.
+    #
+    i5.terminate()
+
+    #
+    # Change the space format.
+    #
+    cluster.drop_space(space_name)
+    assert i1.call("box.space._space.index.name:get", space_name) is None
+    assert i2.call("box.space._space.index.name:get", space_name) is None
+    assert i3.call("box.space._space.index.name:get", space_name) is None
+    assert i4.call("box.space._space.index.name:get", space_name) is None
+
+    cluster.create_space(
+        dict(
+            name=space_name,
+            format=[
+                dict(name="id", type="unsigned", is_nullable=False),
+                dict(name="value", type="string", is_nullable=False),
+            ],
+            primary_key=["id"],
+            distribution="global",
+        ),
+    )
+
+    for row in ([1, "one"], [2, "two"], [3, "three"]):  # type: ignore
+        index = cluster.cas("insert", space_name, row)
+        cluster.raft_wait_index(index, 3)
+
+    # Compact raft log to trigger snapshot generation.
+    i1.raft_compact_log()
+    i2.raft_compact_log()
+    i3.raft_compact_log()
+    i4.raft_compact_log()
+
+    # Shut down the replicaset master to trigger switchover.
+    i4.terminate()
+
+    # Wake up the catching up instance which becomes the master.
+    i5.start()
+    i5.wait_online()
+
+    # The space was replaced.
+    rows = i5.eval("return box.space[...]:select()", space_name)
+    assert rows == [[1, "one"], [2, "two"], [3, "three"]]

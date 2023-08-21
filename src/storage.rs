@@ -627,13 +627,17 @@ impl Clusterwide {
             old_priv_versions.insert(def, schema_version);
         }
 
-        let mut dont_exist_yet = Vec::new();
         for space_dump in &data.space_dumps {
-            let space_name = &space_dump.space_name;
-            let Ok(space) = self.space_by_name(space_name) else {
-                dont_exist_yet.push(space_dump);
+            let space_name = &*space_dump.space_name;
+            if !SCHEMA_DEFINITION_SPACES.contains(&space_name) {
+                // First we restore contents of global schema spaces
+                // (_pico_space, _pico_user, etc.), so that we can apply the
+                // schema changes to them.
                 continue;
-            };
+            }
+            let space = self
+                .space_by_name(space_name)
+                .expect("global schema definition spaces should always be present");
             space.truncate()?;
             let tuples = space_dump.tuples.as_ref();
             for tuple in ValueIter::from_array(tuples).map_err(TntError::from)? {
@@ -652,11 +656,12 @@ impl Clusterwide {
             set_local_schema_version(data.schema_version)?;
         }
 
-        // These are likely globally distributed user-defined spaces, which
-        // just got defined from the metadata which arrived in the _pico_space
-        // dump.
-        for space_dump in &dont_exist_yet {
-            let space_name = &space_dump.space_name;
+        for space_dump in &data.space_dumps {
+            let space_name = &*space_dump.space_name;
+            if SCHEMA_DEFINITION_SPACES.contains(&space_name) {
+                // Already handled in the loop above.
+                continue;
+            }
             let Ok(space) = self.space_by_name(space_name) else {
                 crate::warn_or_panic!("a dump for a non existent space '{}' arrived via snapshot", space_name);
                 continue;
@@ -668,7 +673,15 @@ impl Clusterwide {
             }
         }
 
-        Ok(())
+        return Ok(());
+
+        const SCHEMA_DEFINITION_SPACES: [&str; 5] = [
+            ClusterwideSpace::Space.as_str(),
+            ClusterwideSpace::Index.as_str(),
+            ClusterwideSpace::User.as_str(),
+            ClusterwideSpace::Role.as_str(),
+            ClusterwideSpace::Privilege.as_str(),
+        ];
     }
 
     /// Updates local storage of the given schema entity in accordance with
