@@ -14,7 +14,7 @@ Astra Linux 1.7 SE, Debian 11, Ubuntu 20.04, 22.04 и Alt Linux p10.
 
 ## Установка из исходного кода
 ### Необходимые инструменты для сборки
-- Rust и Cargo 1.59 или новее
+- Rust и Cargo 1.71 или новее
 - Cmake 3.16 или новее
 - gcc, g++
 - libstc++-static
