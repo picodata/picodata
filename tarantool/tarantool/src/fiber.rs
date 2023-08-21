@@ -802,8 +802,14 @@ pub struct JoinHandle<'f, T> {
     marker: PhantomData<&'f ()>,
 }
 
-#[deprecated = "Use `fiber::JoinHandle` instead"]
+#[deprecated = "Use `fiber::JoinHandle<'f, ()>` instead"]
+pub type UnitJoinHandle<'f> = JoinHandle<'f, ()>;
+
+#[deprecated = "Use `fiber::JoinHandle<'f, T>` instead"]
 pub type LuaJoinHandle<'f, T> = JoinHandle<'f, T>;
+
+#[deprecated = "Use `fiber::JoinHandle<'f, ()>` instead"]
+pub type LuaUnitJoinHandle<'f> = JoinHandle<'f, ()>;
 
 #[derive(Debug)]
 enum JoinHandleImpl<T> {

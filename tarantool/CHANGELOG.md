@@ -14,6 +14,8 @@ and support of the `fiber_clock` API.
 - `r#async::sleep` - an async friendly analog of `fiber::sleep`.
 - `SpaceEngineType` variants `SysView`, `Blackhole` and `Service` which cannot
   be created by users, but can be deserialized from contents of _space system space.
+- `fiber::Builder::defer_ffi` & `fiber::Builder::defer_lua` low-level functions.
+  Users should use `fiber::Builder::defer` instead in most cases.
 
 ### Changed
 - `fiber::defer` will now use a more efficient implementation on newer versions
@@ -31,6 +33,8 @@ and support of the `fiber_clock` API.
   but now their internals are simplified and unified, so there's now no difference between the
   "proc" and "non-proc" variants. This may result in minor performance degradation in debug builds,
   but in release builds there shouldn't be any difference.
+- `fiber::UnitJoinHandle`, `fiber::LuaJoinHandle` & `fiber::LuaUnitJoinHandle`
+    are now just aliases to `fiber::JoinHandle` and are deprecated.
 
 ### Breaking Changes
 - `transaction::start_transaction` has a more flexible error handling,
@@ -46,7 +50,12 @@ and support of the `fiber_clock` API.
 - `Error::Decode` now contains expected rust type and actual incorrect msgpack
     contents.
 - `sql::Statement::execute` now returns `Error::DecodeRmpValue`.
-
+- Removed a lot of helper structs and traits from `fiber` module, including
+  `fiber::LuaFiber`, `fiber::FiberFunc`, etc. Users
+  should not have been using those anyway, because `fiber::start`, `fiber::defer`,
+  `fiber::Builder::start`, `fiber::Builder::defer` exist.
+- Changed return types of function which spawn fibers.
+  Now a single `fiber::JoinHandle` type is used everywhere.
 
 
 # [1.1.0] June 16 2023
