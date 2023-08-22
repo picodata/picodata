@@ -143,6 +143,10 @@ pub struct Node {
     pub(crate) governor_loop: governor::Loop,
     status: watch::Receiver<Status>,
     watchers: Rc<Mutex<StorageWatchers>>,
+
+    /// Should be locked during join and update instance request
+    /// to avoid costly cas conflicts during concurrent requests.
+    pub instances_update: Mutex<()>,
 }
 
 impl std::fmt::Debug for Node {
@@ -187,6 +191,7 @@ impl Node {
             raft_storage,
             status,
             watchers,
+            instances_update: Mutex::new(()),
         };
 
         // Wait for the node to enter the main loop

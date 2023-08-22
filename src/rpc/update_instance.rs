@@ -87,6 +87,7 @@ pub fn handle_update_instance_request_and_wait(req: Request, timeout: Duration) 
     let cluster_id = node.raft_storage.cluster_id()?;
     let storage = &node.storage;
     let raft_storage = &node.raft_storage;
+    let guard = node.instances_update.lock();
 
     if req.cluster_id != cluster_id {
         return Err(Error::ClusterIdMismatch {
@@ -136,6 +137,7 @@ pub fn handle_update_instance_request_and_wait(req: Request, timeout: Duration) 
             }
         }
         node.main_loop.wakeup();
+        drop(guard);
         return Ok(());
     }
 }

@@ -66,6 +66,7 @@ pub fn handle_join_request_and_wait(req: Request, timeout: Duration) -> Result<R
     let cluster_id = node.raft_storage.cluster_id()?;
     let storage = &node.storage;
     let raft_storage = &node.raft_storage;
+    let guard = node.instances_update.lock();
 
     if req.cluster_id != cluster_id {
         return Err(Error::ClusterIdMismatch {
@@ -147,6 +148,7 @@ pub fn handle_join_request_and_wait(req: Request, timeout: Duration) -> Result<R
         // A joined instance needs to communicate with other nodes.
         // TODO: limit the number of entries sent to reduce response size.
         let peer_addresses = node.storage.peer_addresses.iter()?.collect();
+        drop(guard);
         return Ok(Response {
             instance: instance.into(),
             peer_addresses,

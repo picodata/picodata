@@ -1,7 +1,8 @@
+# mypy: disable-error-code="import"
 import funcy  # type: ignore
 import time
-from matplotlib import pyplot  # type: ignore
-import matplotlib  # type: ignore
+from matplotlib import pyplot
+import matplotlib
 
 from conftest import (
     Cluster,
