@@ -47,9 +47,11 @@ picodata> pico.help("help")
 | [pico.instance_info()](#picoinstance_info) | Получение информации об инстансе (идентификаторы, уровни ([grade](glossary.md#grade)) и прочее).
 | [pico.raft_compact_log()](#picoraft_compact_log) | [Компактизация](glossary.md#raft-raft-log-compaction) raft-журнала c удалением указанного числа наиболее старых записей.
 | [pico.raft_get_index()](#picoraft_get_index) | Получение текущего примененного индекса raft-журнала.
+| [pico.raft_log()](#picoraft_log) | Чтение содержимого raft-журнала.
 | [pico.raft_propose_nop()](#picoraft_propose_nop) | Добавление в raft-журнал запись `Nop` (no operation).
 | [pico.raft_read_index()](#picoraft_read_index) | Кворумное чтение индекса raft-журнала.
-| [pico.raft_status()](#picoraft_status) | Получение данных о текущем состоянии raft ([терм](glossary.md#term), [лидер](glossary.md#leader) и т.д.)
+| [pico.raft_status()](#picoraft_status) | Получение данных о текущем состоянии raft ([терм](glossary.md#term), [лидер](glossary.md#leader) и т.д.).
+| [pico.raft_term()](#picoraft_term) | Получение номера терма (текущего или для указанной записи).
 | [pico.raft_timeout_now()](#picoraft_timeout_now) | Немедленное объявление новых выборов в raft-группе.
 | [pico.raft_wait_index()](#picoraft_wait_index) |  Ожидание локального применения указанного raft-индекса.
 | [pico.revoke_privilege()](#picorevoke_privilege) |  Удаление права у пользователя или роли.
@@ -187,6 +189,11 @@ function cas(dml[, predicate])
         default: {} (empty table)
 
 
+Возвращаемое значение:
+
+(_number_)
+
+Функция возвращает индекс сделанной записи в raft-журнале.
 
 Пример без указания предиката:
 ```lua
@@ -213,12 +220,6 @@ pico.cas({
 })
 ```
 
-Возвращаемое значение:
-
-(_number_)
-
-Функция возвращает индекс сделанной записи в raft-журнале.
-
 ### pico.change_password
 
 Изменяет пароль пользователя на всех инстансах кластера. Функция
@@ -234,10 +235,12 @@ function change_password(user, password, [opts])
 
 - `user` (_string_), имя пользователя
 - `password` (_string_), пароль пользователя
-- `opts`: (_table_), необязательная таблица:
-    - `timeout` (_number_), в секундах
-    - `auth_type` (_string_), тип аутентификации, варианты:
-      `'chap-sha1'` | `'md5'` | `'ldap'`
+- `opts`: (optional _table_), таблица:
+    - `auth_type` (optional _string_), тип аутентификации,
+      варианты: `'chap-sha1'` | `'md5'` | `'ldap'`. По умолчанию
+      используется значение из `box.cfg.auth_type`.
+    - `timeout` (optional _number_), число в секундах. По
+      умолчанию используется бесконечное значение.
 
 Возвращаемое значение:
 
@@ -262,8 +265,9 @@ function create_role(name, [opts])
 Параметры:
 
 - `name` (_string_), имя роли
-- `opts`: (_table_), необязательная таблица:
-    - `timeout` (_number_), в секундах
+- `opts`: (optional_table_), таблица:
+    - `timeout` (optional _number_), число в секундах. По умолчанию
+      используется бесконечное значение.
 
 Возвращаемое значение:
 
@@ -298,7 +302,8 @@ function create_space(opts)
     - `by_field` (optional _string_), обычно используется `bucket_id`
     - `sharding_key `(optional _table_ {string,...}) с именами полей
     - `sharding_fn` (optional _string_), поддерживается пока только функция `murmur3`
-    - `timeout` (_number_), в секундах
+    - `timeout` (optional _number_), число в секундах. По умолчанию
+      используется бесконечное значение.
 
 Возвращаемое значение:
 
@@ -390,10 +395,11 @@ function create_user(user, password, [opts])
 
 - `user` (_string_), имя пользователя
 - `password` (_string_), пароль пользователя
-- `opts`: (_table_), необязательная таблица:
-    - `timeout` (_number_), в секундах
-    - `auth_type` (_string_), тип аутентификации, варианты:
+- `opts`: (optional _table_), таблица:
+    - `auth_type` (optional _string_), тип аутентификации, варианты:
       `'chap-sha1'` | `'md5'` | `'ldap'`
+    - `timeout` (optional _number_), число в секундах. По умолчанию
+      используется бесконечное значение.
 
 Возвращаемое значение:
 
@@ -420,8 +426,9 @@ function drop_role (role, [opts])
 Параметры:
 
 - `role` (_string_), имя роли
-- `opts`: (_table_), необязательная таблица:
-    - `timeout` (_number_), в секундах
+- `opts`: (optional _table_), таблица:
+    - `timeout` (optional _number_), число в секундах. По умолчанию
+      используется бесконечное значение.
 
 Возвращаемое значение:
 
@@ -445,8 +452,9 @@ function drop_space(space, [opts])
 Параметры:
 
 - `space` (_number_ | _string_), id или имя спейса 
-- `opts`: (_table_), необязательная таблица:
-    - `timeout` (_number_), в секундах
+- `opts`: (optional _table_), таблица:
+    - `timeout` (optional _number_), число в секундах. По умолчанию
+      используется бесконечное значение.
 
 Возвращаемое значение:
 
@@ -476,8 +484,9 @@ function drop_user (user, [opts])
 Параметры:
 
 - `user` (_string_), имя пользователя 
-- `opts`: (_table_), необязательная таблица:
-    - `timeout` (_number_), в секундах
+- `opts`: (optional _table_), таблица:
+    - `timeout` (optional _number_), число в секундах. По умолчанию
+      используется бесконечное значение.
 
 Возвращаемое значение:
 
@@ -526,15 +535,16 @@ function expel("instance_id")
 
 - `instance_id`: (_string_)
 
+Возвращаемые значения:
+
+- (_true_) — при успешном выполнении;
+- <br>(_nil_, _string_) — при ошибке;
+
 Пример:
 
 ```lua
 pico.expel("i2")
 ```
-Возвращаемые значения:
-
-- (_true_) — при успешном выполнении;
-- <br>(_nil_, _string_) — при ошибке;
 
 ### pico.grant_privilege
 
@@ -556,11 +566,12 @@ function grant_privilege(grantee, privilege, object_type, [object_name], [opts])
           `'alter'` | `'reference'` | `'trigger'` | `'insert'` | `'update'` | `'delete'`
 - `object_type` (_string_), тип целевого объекта, варианты: `'universe'`
   | `'space'` | `'sequence'` | `'function'` | `'role'` | `'user'`
-- `object_name` (_string_), имя целевого объекта (необязательный
-  параметр). Можно не указывать при адресации совокупностей целевых
-  объектов (см. примеры [ниже](#grant_pr))
-- `opts`: (_table_), необязательная таблица:
-    - `timeout` (_number_), в секундах
+- `object_name` (optional _string_), имя целевого объекта. Можно не
+  указывать при адресации совокупностей целевых объектов (см. примеры
+  [ниже](#grant_pr))
+- `opts`: (optional _table_), таблица:
+    - `timeout` (optional _number_), число в секундах. По умолчанию
+      используется бесконечное значение.
 
 Возвращаемое значение:
 
@@ -607,7 +618,7 @@ function help(topic)
 ```
 Параметры:
 
-- `topic`: (_string_) (_optional_)
+- `topic`: (optional _string_)
 
 Пример:
 ```
@@ -676,7 +687,7 @@ function raft_compact_log(up_to)
 ```
 Параметры:
 
-- `up_to`: (_number_) (_optional_, default: `inf`)
+- `up_to`: (optional _number_), значение по умолчанию: `inf`
 
 Возвращаемое значение:
 
@@ -697,11 +708,48 @@ function raft_get_index()
 
 (_number_)
 
+### pico.raft_log
+
+Позволяет ознакомиться с содержимым raft-журнала в человекочитаемом
+формате. Содержимое журнала предоставляется в виде таблицы со строками,
+подобно тому как `fselect` выводит содержимое спейсов.
+
+Параметр `opt.justify_contents` можно использовать для изменения
+выравнивания столбцов таблицы.
+
+Параметр `opts.max_width` позволяет задать максимальную ширину таблицы в
+знаках. Если фактически таблица шире, то часть данных будет обрезана.
+Если этот параметр не указывать, то по умолчанию в локальной сессии
+будет использоваться максимальная ширина терминала (для удаленной сессии
+используется другое значение, см. ниже).
+
+```lua
+function raft_log([opts])
+```
+Параметры:
+
+- `opts`: (_table_), таблица:
+    - `justify_contents` (_string_), варианты: `'center'` | `'left'` |
+      `'right'`, вариант по умолчанию: `'center'`
+    - `max_width` (_number_), значение по умолчанию для удаленной
+      сессии: `80` знаков.
+
+Возвращаемое значение:
+
+(_table_)
+
+Пример:
+
+```console
+pico.raft_log({justify_contents = 'center', max_width = 100})
+```
+
 ### pico.raft_propose_nop
 
 Добавляет в raft-журнал запись `Nop` (no operation). Используется для
 обновления raft-журнала путем добавления в него свежей записи. Функция
 не имеет передаваемых параметров.
+
 
 ### pico.raft_read_index
 
@@ -729,6 +777,10 @@ function raft_read_index(timeout)
 Функция принимает в качестве параметра число секунд, в течение которых
 она ожидает ответа от инстанса.
 
+Возвращаемое значение:
+
+(_number_) или <br>(_nil_, _string_) в случае ошибки.
+
 Пример:
 
 ```console
@@ -737,9 +789,6 @@ picodata> pico.raft_read_index(1)
 - 42
 ...
 ```
-Возвращаемое значение:
-
-(_number_) или <br>(_nil_, _string_) в случае ошибки.
 
 ### pico.raft_status
 
@@ -773,6 +822,22 @@ picodata> pico.raft_status()
   id: 1
 ...
 ```
+
+### pico.raft_term
+
+Возвращает номера терма для указанной записи, либо текущий номер терма если запись не указана.
+
+```lua
+function raft_term([index])
+```
+
+Параметры:
+
+- `index`: (optional _number_), номер raft-записи
+
+Возвращаемое значение:
+
+(_number_) или <br>(_nil_, _string_) в случае ошибки.
 
 ### pico.raft_timeout_now
 
@@ -867,15 +932,17 @@ function revoke_privilege(grantee, privilege, object_type, [object_name], [opts]
           `'alter'` | `'reference'` | `'trigger'` | `'insert'` | `'update'` | `'delete'`
 - `object_type` (_string_), тип целевого объекта, варианты: `'universe'`
   | `'space'` | `'sequence'` | `'function'` | `'role'` | `'user'`
-- `object_name` (_string_), имя целевого объекта (необязательный
-  параметр). Можно не указывать при адресации совокупностей целевых
-  объектов (аналогично действию `grant_privilege`, см. примеры [выше](#grant_pr))
-- `opts`: (_table_), необязательная таблица:
-    - `timeout` (_number_), в секундах
+- `object_name` (optional _string_), имя целевого объекта. Можно не
+  указывать при адресации совокупностей целевых объектов (аналогично
+  действию `grant_privilege`, см. примеры [выше](#grant_pr))
+- `opts`: (optional _table_), таблица:
+    - `timeout` (optional _number_), число в секундах. По умолчанию
+      используется бесконечное значение.
 
 Возвращаемое значение:
 
-(_number_) с номером raft-индекса или <br>(_nil_, _error_ (ошибка в виде Lua-объекта)) в случае ошибки.
+(_number_) с номером raft-индекса или <br>(_nil_, _error_ (ошибка в виде
+Lua-объекта)) в случае ошибки.
 
   _Примечание_: Если эта функция возвращает ошибку таймаута, то запрос
   НЕ отменяется и изменение может быть применено некоторое время спустя.
@@ -900,7 +967,13 @@ function sql(query[, params])
 Параметры:
 
 - `query` (_string_)
-- `opts`: (_table_), необязательный список параметров
+- `opts`: (optional _table_), список параметров
+
+Возвращаемое значение:
+
+- [`table DqlResult`](#dql_table), при чтении данных;
+- [`table DmlResult`](#dml_table), при модификации данных;
+- (_nil_, _string_) в случае ошибки.
 
 Пример создания шардированного спейса:
 
@@ -956,12 +1029,6 @@ pico.sql([[
     - ['dragon', 13]
 ...
 ```
-
-Возвращаемое значение:
-
-- [`table DqlResult`](#dql_table), при чтении данных;
-- [`table DmlResult`](#dml_table), при модификации данных;
-- (_nil_, _string_) в случае ошибки.
 
 См. также [пример работы с SQL в Picodata](tutorial_sql.md) и [описание
 команд SQL](sql/queries.md).
