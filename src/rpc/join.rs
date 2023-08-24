@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::BTreeMap;
 use std::time::Duration;
 
 use crate::cas;
@@ -84,10 +84,6 @@ pub fn handle_join_request_and_wait(req: Request, timeout: Duration) -> Result<R
             storage,
         )
         .map_err(raft::Error::ConfChangeError)?;
-        let mut replication_addresses = storage
-            .peer_addresses
-            .addresses_by_ids(replication_ids(&instance.replicaset_id, storage))?;
-        replication_addresses.insert(req.advertise_address.clone());
         let peer_address = traft::PeerAddress {
             raft_id: instance.raft_id,
             address: req.advertise_address.clone(),
@@ -148,6 +144,15 @@ pub fn handle_join_request_and_wait(req: Request, timeout: Duration) -> Result<R
         // A joined instance needs to communicate with other nodes.
         // TODO: limit the number of entries sent to reduce response size.
         let peer_addresses = node.storage.peer_addresses.iter()?.collect();
+        let mut replication_addresses = storage.peer_addresses.addresses_by_ids(
+            storage
+                .instances
+                .replicaset_instances(&instance.replicaset_id)
+                .expect("storage should not fail")
+                .map(|i| i.raft_id),
+        )?;
+        replication_addresses.insert(req.advertise_address.clone());
+
         drop(guard);
         return Ok(Response {
             instance: instance.into(),
@@ -171,10 +176,18 @@ pub fn build_instance(
         }
     }
 
-    failure_domain.check(&storage.cache().failure_domain_names)?;
+    let existing_fds = storage
+        .instances
+        .failure_domain_names()
+        .expect("storage should not fail");
+    failure_domain.check(&existing_fds)?;
 
     // Anyway, `join` always produces a new raft_id.
-    let raft_id = storage.cache().max_raft_id + 1;
+    let raft_id = storage
+        .instances
+        .max_raft_id()
+        .expect("storage should not fail")
+        + 1;
     let instance_id = instance_id
         .map(Clone::clone)
         .unwrap_or_else(|| choose_instance_id(raft_id, storage));
@@ -217,15 +230,27 @@ fn choose_instance_id(raft_id: RaftId, storage: &Clusterwide) -> InstanceId {
 
 /// Choose a [`ReplicasetId`] for a new instance given its `failure_domain`.
 fn choose_replicaset_id(failure_domain: &FailureDomain, storage: &Clusterwide) -> ReplicasetId {
-    'next_replicaset: for (replicaset_id, instances) in storage.cache().replicasets.iter() {
-        let replication_factor = storage
-            .properties
-            .replication_factor()
-            .expect("storage should not fail");
-
+    let replication_factor = storage
+        .properties
+        .replication_factor()
+        .expect("storage should not fail");
+    // `BTreeMap` is used so that we get a determenistic order of instance addition to replicasets.
+    // E.g. if both "r1" and "r2" are suitable, "r1" will always be prefered.
+    let mut replicasets: BTreeMap<_, Vec<_>> = BTreeMap::new();
+    for instance in storage
+        .instances
+        .all_instances()
+        .expect("storage should not fail")
+        .into_iter()
+    {
+        replicasets
+            .entry(instance.replicaset_id.clone())
+            .or_default()
+            .push(instance);
+    }
+    'next_replicaset: for (replicaset_id, instances) in replicasets.iter() {
         if instances.len() < replication_factor {
-            for instance_id in instances {
-                let instance = storage.instances.get(instance_id).unwrap();
+            for instance in instances {
                 if instance.failure_domain.intersects(failure_domain) {
                     continue 'next_replicaset;
                 }
@@ -238,23 +263,8 @@ fn choose_replicaset_id(failure_domain: &FailureDomain, storage: &Clusterwide) -
     loop {
         i += 1;
         let replicaset_id = ReplicasetId(format!("r{i}"));
-        if storage.cache().replicasets.get(&replicaset_id).is_none() {
+        if !replicasets.contains_key(&replicaset_id) {
             return replicaset_id;
         }
-    }
-}
-
-/// Get ids of instances that are part of a replicaset with `replicaset_id`.
-pub fn replication_ids(replicaset_id: &ReplicasetId, storage: &Clusterwide) -> HashSet<RaftId> {
-    if let Some(replication_ids) = storage.cache().replicasets.get(replicaset_id) {
-        replication_ids
-            .iter()
-            .map(|id| {
-                let instance = storage.instances.get(id).expect("storage should not fail");
-                instance.raft_id
-            })
-            .collect()
-    } else {
-        HashSet::new()
     }
 }

@@ -112,7 +112,7 @@ mod tests {
     use crate::failure_domain::FailureDomain;
     use crate::instance::grade::{CurrentGrade, Grade, TargetGrade, TargetGradeVariant};
     use crate::replicaset::ReplicasetId;
-    use crate::rpc::join::{build_instance, replication_ids};
+    use crate::rpc::join::build_instance;
     use crate::storage::Clusterwide;
     use crate::rpc;
     use crate::rpc::update_instance::update_instance;
@@ -191,6 +191,14 @@ mod tests {
         storage.properties.put(crate::storage::PropertyName::ReplicationFactor, &replication_factor).unwrap();
     }
 
+    fn replication_ids(replicaset_id: &ReplicasetId, storage: &Clusterwide) -> HashSet<RaftId> {
+        storage
+            .instances
+            .replicaset_instances(replicaset_id)
+            .expect("storage should not fail")
+            .map(|i| i.raft_id).collect()
+    }
+
     #[::tarantool::test]
     fn test_simple() {
         let storage = Clusterwide::new().unwrap();
@@ -202,7 +210,6 @@ mod tests {
             Instance::new(Some(1), Some("i1"), Some("r1"), CurrentGrade::offline(0), TargetGrade::offline(0), FailureDomain::default()),
         );
         storage.instances.put(&instance).unwrap();
-        storage.cache_mut().on_instance_change(instance, None);
 
         let instance = build_instance(None, None, &FailureDomain::default(), &storage).unwrap();
         assert_eq!(
@@ -210,7 +217,6 @@ mod tests {
             Instance::new(Some(2), Some("i2"), Some("r2"), CurrentGrade::offline(0), TargetGrade::offline(0), FailureDomain::default()),
         );
         storage.instances.put(&instance).unwrap();
-        storage.cache_mut().on_instance_change(instance, None);
 
         let instance = build_instance(None, Some(&ReplicasetId::from("R3")), &FailureDomain::default(), &storage).unwrap();
         assert_eq!(
@@ -218,7 +224,6 @@ mod tests {
             Instance::new(Some(3), Some("i3"), Some("R3"), CurrentGrade::offline(0), TargetGrade::offline(0), FailureDomain::default()),
         );
         storage.instances.put(&instance).unwrap();
-        storage.cache_mut().on_instance_change(instance, None);
 
         let instance = build_instance(Some(&InstanceId::from("I4")), None, &FailureDomain::default(), &storage).unwrap();
         assert_eq!(
@@ -226,7 +231,6 @@ mod tests {
             Instance::new(Some(4), Some("I4"), Some("r3"), CurrentGrade::offline(0), TargetGrade::offline(0), FailureDomain::default()),
         );
         storage.instances.put(&instance).unwrap();
-        storage.cache_mut().on_instance_change(instance, None);
     }
 
     #[::tarantool::test]
@@ -311,7 +315,6 @@ mod tests {
             Instance::new(Some(11), Some("i1"), Some("r1"), CurrentGrade::offline(0), TargetGrade::offline(0), FailureDomain::default()),
         );
         storage.instances.put(&instance).unwrap();
-        storage.cache_mut().on_instance_change(instance, None);
         assert_eq!(replication_ids(&ReplicasetId::from("r1"), &storage), HashSet::from([11]));
 
         let instance = build_instance(Some(&InstanceId::from("i2")), None, &FailureDomain::default(), &storage).unwrap();
@@ -320,7 +323,6 @@ mod tests {
             Instance::new(Some(12), Some("i2"), Some("r1"), CurrentGrade::offline(0), TargetGrade::offline(0), FailureDomain::default()),
         );
         storage.instances.put(&instance).unwrap();
-        storage.cache_mut().on_instance_change(instance, None);
         assert_eq!(replication_ids(&ReplicasetId::from("r1"), &storage), HashSet::from([11, 12]));
 
         let instance = build_instance(Some(&InstanceId::from("i3")), None, &FailureDomain::default(), &storage).unwrap();
@@ -329,7 +331,6 @@ mod tests {
             Instance::new(Some(13), Some("i3"), Some("r2"), CurrentGrade::offline(0), TargetGrade::offline(0), FailureDomain::default()),
         );
         storage.instances.put(&instance).unwrap();
-        storage.cache_mut().on_instance_change(instance, None);
         assert_eq!(replication_ids(&ReplicasetId::from("r2"), &storage), HashSet::from([13]));
 
         let instance = build_instance(Some(&InstanceId::from("i4")), None, &FailureDomain::default(), &storage).unwrap();
@@ -338,7 +339,6 @@ mod tests {
             Instance::new(Some(14), Some("i4"), Some("r2"), CurrentGrade::offline(0), TargetGrade::offline(0), FailureDomain::default()),
         );
         storage.instances.put(&instance).unwrap();
-        storage.cache_mut().on_instance_change(instance, None);
         assert_eq!(replication_ids(&ReplicasetId::from("r2"), &storage), HashSet::from([13, 14]));
     }
 
@@ -352,7 +352,6 @@ mod tests {
         // governor has the authority over it
         let instance_v1 = set_grade(instance_v0.clone(), &storage, CurrentGrade::offline(0)).unwrap();
         storage.instances.put(&instance_v1).unwrap();
-        storage.cache_mut().on_instance_change(instance_v1.clone(), Some(instance_v0));
         assert_eq!(
             instance_v1,
             Instance::new(Some(1), Some("i1"), Some("r1"), CurrentGrade::offline(0), TargetGrade::online(1), FailureDomain::default())
@@ -361,7 +360,6 @@ mod tests {
         // idempotency
         let instance_v2 = set_grade(instance_v1.clone(), &storage, CurrentGrade::offline(0)).unwrap();
         storage.instances.put(&instance_v2).unwrap();
-        storage.cache_mut().on_instance_change(instance_v2.clone(), Some(instance_v1));
         assert_eq!(
             instance_v2,
             Instance::new(Some(1), Some("i1"), Some("r1"), CurrentGrade::offline(0), TargetGrade::online(1), FailureDomain::default())
@@ -370,7 +368,6 @@ mod tests {
         // TargetGradeVariant::Offline takes incarnation from current grade
         let instance_v3 = set_grade(instance_v2.clone(), &storage, TargetGradeVariant::Offline).unwrap();
         storage.instances.put(&instance_v3).unwrap();
-        storage.cache_mut().on_instance_change(instance_v3.clone(), Some(instance_v2));
         assert_eq!(
             instance_v3,
             Instance::new(Some(1), Some("i1"), Some("r1"), CurrentGrade::offline(0), TargetGrade::offline(0), FailureDomain::default()),
@@ -379,7 +376,6 @@ mod tests {
         // TargetGradeVariant::Online increases incarnation
         let instance_v4 = set_grade(instance_v3.clone(), &storage, TargetGradeVariant::Online).unwrap();
         storage.instances.put(&instance_v4).unwrap();
-        storage.cache_mut().on_instance_change(instance_v4.clone(), Some(instance_v3));
         assert_eq!(
             instance_v4,
             Instance::new(Some(1), Some("i1"), Some("r1"), CurrentGrade::offline(0), TargetGrade::online(1), FailureDomain::default())
@@ -388,7 +384,6 @@ mod tests {
         // No idempotency, incarnation goes up
         let instance_v5 = set_grade(instance_v4.clone(), &storage, TargetGradeVariant::Online).unwrap();
         storage.instances.put(&instance_v5).unwrap();
-        storage.cache_mut().on_instance_change(instance_v5.clone(), Some(instance_v4));
         assert_eq!(
             instance_v5,
             Instance::new(Some(1), Some("i1"), Some("r1"), CurrentGrade::offline(0), TargetGrade::online(2), FailureDomain::default())
@@ -397,7 +392,6 @@ mod tests {
         // TargetGrade::Expelled takes incarnation from current grade
         let instance_v6 = set_grade(instance_v5.clone(), &storage, TargetGradeVariant::Expelled).unwrap();
         storage.instances.put(&instance_v6).unwrap();
-        storage.cache_mut().on_instance_change(instance_v6.clone(), Some(instance_v5));
         assert_eq!(
             instance_v6,
             Instance::new(Some(1), Some("i1"), Some("r1"), CurrentGrade::offline(0), TargetGrade::expelled(0), FailureDomain::default()),
@@ -406,7 +400,6 @@ mod tests {
         // Instance get's expelled
         let instance_v7 = set_grade(instance_v6.clone(), &storage, CurrentGrade::expelled(69)).unwrap();
         storage.instances.put(&instance_v7).unwrap();
-        storage.cache_mut().on_instance_change(instance_v7.clone(), Some(instance_v6));
         assert_eq!(
             instance_v7,
             Instance::new(Some(1), Some("i1"), Some("r1"), CurrentGrade::expelled(69), TargetGrade::expelled(0), FailureDomain::default()),
@@ -429,35 +422,30 @@ mod tests {
                 .unwrap();
         assert_eq!(instance.replicaset_id, "r1");
         storage.instances.put(&instance).unwrap();
-        storage.cache_mut().on_instance_change(instance, None);
 
         let instance = 
             build_instance(None, None, &faildoms! {planet: Earth}, &storage)
                 .unwrap();
         assert_eq!(instance.replicaset_id, "r2");
         storage.instances.put(&instance).unwrap();
-        storage.cache_mut().on_instance_change(instance, None);
 
         let instance = 
             build_instance(None, None, &faildoms! {planet: Mars}, &storage)
                 .unwrap();
         assert_eq!(instance.replicaset_id, "r1");
         storage.instances.put(&instance).unwrap();
-        storage.cache_mut().on_instance_change(instance, None);
 
         let instance = 
             build_instance(None, None, &faildoms! {planet: Earth, os: BSD}, &storage)
                 .unwrap();
         assert_eq!(instance.replicaset_id, "r3");
         storage.instances.put(&instance).unwrap();
-        storage.cache_mut().on_instance_change(instance, None);
 
         let instance = 
             build_instance(None, None, &faildoms! {planet: Mars, os: BSD}, &storage)
                 .unwrap();
         assert_eq!(instance.replicaset_id, "r2");
         storage.instances.put(&instance).unwrap();
-        storage.cache_mut().on_instance_change(instance, None);
 
         assert_eq!(
             build_instance(None, None, &faildoms! {os: Arch}, &storage)
@@ -470,21 +458,18 @@ mod tests {
                 .unwrap();
         assert_eq!(instance.replicaset_id, "r1");
         storage.instances.put(&instance).unwrap();
-        storage.cache_mut().on_instance_change(instance, None);
 
         let instance = 
             build_instance(None, None, &faildoms! {planet: Venus, os: Mac}, &storage)
                 .unwrap();
         assert_eq!(instance.replicaset_id, "r2");
         storage.instances.put(&instance).unwrap();
-        storage.cache_mut().on_instance_change(instance, None);
 
         let instance = 
             build_instance(None, None, &faildoms! {planet: Mars, os: Mac}, &storage)
                 .unwrap();
         assert_eq!(instance.replicaset_id, "r3");
         storage.instances.put(&instance).unwrap();
-        storage.cache_mut().on_instance_change(instance, None);
 
         assert_eq!(
             build_instance(None, None, &faildoms! {}, &storage)
@@ -501,7 +486,6 @@ mod tests {
         // first instance
         let instance1_v1 = build_instance(Some(&InstanceId::from("i1")), None, &faildoms! {planet: Earth}, &storage).unwrap();
         storage.instances.put(&instance1_v1).unwrap();
-        storage.cache_mut().on_instance_change(instance1_v1.clone(), None);
         assert_eq!(instance1_v1.failure_domain, faildoms! {planet: Earth});
         assert_eq!(instance1_v1.replicaset_id, "r1");
 
@@ -515,7 +499,6 @@ mod tests {
         // reconfigure single instance, success
         let instance1_v2 = set_faildoms(instance1_v1.clone(), &storage, faildoms! {planet: Mars, owner: Ivan}).unwrap();
         storage.instances.put(&instance1_v2).unwrap();
-        storage.cache_mut().on_instance_change(instance1_v2.clone(), Some(instance1_v1));
         assert_eq!(instance1_v2.failure_domain, faildoms! {planet: Mars, owner: Ivan});
         assert_eq!(instance1_v2.replicaset_id, "r1"); // same replicaset
 
@@ -532,7 +515,6 @@ mod tests {
         let instance2_v1 = build_instance(Some(&InstanceId::from("i2")), None, &faildoms! {planet: Mars, owner: Mike}, &storage)
             .unwrap();
         storage.instances.put(&instance2_v1).unwrap();
-        storage.cache_mut().on_instance_change(instance2_v1.clone(), None);
         assert_eq!(instance2_v1.failure_domain, faildoms! {planet: Mars, owner: Mike});
         // doesn't fit into r1
         assert_eq!(instance2_v1.replicaset_id, "r2");
@@ -540,7 +522,6 @@ mod tests {
         // reconfigure second instance, success
         let instance2_v2 = set_faildoms(instance2_v1.clone(), &storage, faildoms! {planet: Earth, owner: Mike}).unwrap();
         storage.instances.put(&instance2_v2).unwrap();
-        storage.cache_mut().on_instance_change(instance2_v2.clone(), Some(instance2_v1));
         assert_eq!(instance2_v2.failure_domain, faildoms! {planet: Earth, owner: Mike});
         // replicaset doesn't change automatically
         assert_eq!(instance2_v2.replicaset_id, "r2");
@@ -550,7 +531,6 @@ mod tests {
         let instance3_v1 = build_instance(Some(&InstanceId::from("i3")), None, &faildoms! {planet: B, owner: V, dimension: C137}, &storage)
             .unwrap();
         storage.instances.put(&instance3_v1).unwrap();
-        storage.cache_mut().on_instance_change(instance3_v1.clone(), None);
         assert_eq!(
             instance3_v1.failure_domain,
             faildoms! {planet: B, owner: V, dimension: C137}

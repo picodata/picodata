@@ -651,8 +651,6 @@ impl NodeImpl {
         let op = entry.into_op().unwrap_or(Op::Nop);
         tlog!(Debug, "applying entry: {op}"; "index" => index);
 
-        let mut instance_update = None;
-        let mut old_instance = None;
         match &op {
             Op::Dml(op) => {
                 let space = op.space();
@@ -677,20 +675,6 @@ impl NodeImpl {
                             // cannot exit during a transaction
                             *expelled = true;
                         }
-                        if self
-                            .storage
-                            .instances
-                            .contains(&instance.instance_id)
-                            .expect("storage should not fail")
-                        {
-                            old_instance = Some(
-                                self.storage
-                                    .instances
-                                    .get(&instance.instance_id)
-                                    .expect("storage should not fail"),
-                            );
-                        }
-                        instance_update = Some(instance);
                     }
                 }
                 storage_changes.insert(space);
@@ -914,13 +898,6 @@ impl NodeImpl {
                     .put(PropertyName::NextSchemaVersion, &(v_pending + 1))
                     .expect("storage should not fail");
             }
-        }
-
-        // Keep cache in sync with the storage
-        if let Some(instance_update) = instance_update {
-            self.storage
-                .cache_mut()
-                .on_instance_change(instance_update, old_instance);
         }
 
         if let Some(lc) = &lc {

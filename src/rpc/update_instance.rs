@@ -166,7 +166,11 @@ pub fn update_instance(
     }
 
     if let Some(fd) = req.failure_domain.as_ref() {
-        fd.check(&storage.cache().failure_domain_names)?;
+        let existing_fds = storage
+            .instances
+            .failure_domain_names()
+            .expect("storage should not fail");
+        fd.check(&existing_fds)?;
         instance.failure_domain = fd.clone();
     }
 
