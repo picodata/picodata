@@ -333,3 +333,49 @@ def test_sql_limits(cluster: Cluster):
         select * from "t" option(vtable_max_rows=1, sql_vdbe_max_steps=50)
     """
         )
+
+
+def test_distributed_sql_via_set_language(cluster: Cluster):
+    cluster.deploy(instance_count=2)
+    i1, i2 = cluster.instances
+
+    prelude = """
+        local console = require('console')
+        console.eval([[\\ set language sql]])
+        console.eval([[\\ set delimiter ;]])
+    """
+
+    i1.eval(
+        f"""
+        {prelude}
+        return console.eval('create table t \
+            (a integer not null, b int not null, primary key (a)) \
+                using memtx distributed by (b) option (timeout = 3);')
+    """
+    )
+
+    i1.eval(
+        f"""
+        {prelude}
+        return console.eval('insert into t values (22, 8);')
+    """
+    )
+
+    select_from_second_instance = i2.eval(
+        f"""
+        {prelude}
+        return console.eval('select * from t where a = 22;')
+    """
+    )
+
+    assert (
+        select_from_second_instance
+        == """---
+- metadata:
+  - {'name': 'A', 'type': 'integer'}
+  - {'name': 'B', 'type': 'integer'}
+  rows:
+  - [22, 8]
+...
+"""
+    )

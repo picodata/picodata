@@ -12,6 +12,8 @@ with the `YY.0M.MICRO` scheme.
 
 ### Features
 
+- _Clusterwide SQL_ now availiable via `\set language sql` in interactive console.
+
 - Allow specifying `picodata connect [user@][host][:port]` format. It
   overrides the `--user` option.
 
@@ -46,7 +48,7 @@ with the `YY.0M.MICRO` scheme.
 
 - Update `pico.LUA_API_VERSION`: `1.0.0` -> `2.2.0`
 - New semantics of `pico.create_space()`. It's idempotent now.
-- `pico.create_space()` has new optional parameter: `engine`. 
+- `pico.create_space()` has new optional parameter: `engine`.
   Note: global spaces can only have memtx engine.
 - Add `pico.drop_space()`
 - Add `pico.create_user()`, `pico.drop_user()`

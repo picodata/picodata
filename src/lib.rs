@@ -243,6 +243,17 @@ fn set_console_prompt() {
     .expect("setting prompt should never fail")
 }
 
+fn redirect_interactive_sql() {
+    tarantool::exec(
+        r#"
+        local console = require('console')
+        assert(pico.sql)
+        console.set_sql_executor(pico.sql)
+        "#,
+    )
+    .expect("overriding sql executor shouldn't fail")
+}
+
 #[allow(clippy::enum_variant_names)]
 #[derive(Debug, Serialize, Deserialize)]
 pub enum Entrypoint {
@@ -285,6 +296,7 @@ fn init_common(args: &args::Run, cfg: &tarantool::Cfg) -> (Clusterwide, RaftSpac
     init_sbroad();
 
     set_console_prompt();
+    redirect_interactive_sql();
     init_handlers();
     traft::event::init();
 
