@@ -71,7 +71,7 @@ build-base-image:
     - docker pull ${PICODATA_DOCKER_IMAGE} || true
     - >
       docker build
-      --build-arg RUST_VERSION=1.61.0
+      --build-arg RUST_VERSION=1.67.1
       -t ${VANILLA_DOCKER_IMAGE}:${BASE_IMAGE_TAG}
       -f ./docker/vanilla.Dockerfile
       --label GIT_COMMIT=${CI_COMMIT_SHA}
@@ -79,7 +79,7 @@ build-base-image:
       ./docker
     - >
       docker build
-      --build-arg RUST_VERSION=1.61.0
+      --build-arg RUST_VERSION=1.67.1
       --build-arg TARANTOOL_TAG=latest
       -t ${PICODATA_DOCKER_IMAGE}:${BASE_IMAGE_TAG}
       -f ./docker/picodata.Dockerfile
