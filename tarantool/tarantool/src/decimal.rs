@@ -403,7 +403,7 @@ fn check_status(status: dec::Status) -> Result<(), Status> {
     let ignore = Status::from(ignore).inner;
     let mut status = Status::from(status);
     status.inner &= !ignore;
-    (status.inner == 0).then(|| ()).ok_or(status)
+    (status.inner == 0).then_some(()).ok_or(status)
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -145,10 +145,7 @@ where
 }
 
 #[inline]
-pub fn read_userdata<'t, 'c, T>(
-    lua: &'c InsideCallback,
-    index: i32,
-) -> Result<&'t mut T, &'c InsideCallback>
+pub fn read_userdata<'t, T>(lua: &InsideCallback, index: i32) -> Result<&'t mut T, &InsideCallback>
 where
     T: 'static + Any,
 {

@@ -95,7 +95,7 @@ pub static TARANTOOL_MODULE_TESTS: [TestCase] = [..];
 ///
 /// [`tarantool::test`]: macro@crate::test
 pub fn test_cases() -> &'static [TestCase] {
-    &*TARANTOOL_MODULE_TESTS
+    &TARANTOOL_MODULE_TESTS
 }
 
 /// Returns a vec test description structs which can be used with

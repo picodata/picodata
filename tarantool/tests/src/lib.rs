@@ -1,10 +1,8 @@
 #![allow(clippy::approx_constant)]
-// FIXME: remove this after we fully switch to 1.65
-#![allow(unknown_lints)]
-#![allow(clippy::blacklisted_name)]
 #![allow(clippy::disallowed_names)]
 #![allow(clippy::bool_assert_comparison)]
 #![allow(clippy::upper_case_acronyms)]
+#![allow(clippy::needless_borrow)]
 use std::ffi::CStr;
 use std::io;
 use std::os::raw::{c_char, c_int};

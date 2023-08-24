@@ -142,7 +142,7 @@ impl ObufWrapper {
 
 impl Read for ObufWrapper {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-        let mut remains_read = cmp::min(buf.len(), self.inner.used as usize - self.read_pos);
+        let mut remains_read = cmp::min(buf.len(), self.inner.used - self.read_pos);
         let mut buf_pos = 0;
 
         while remains_read > 0 {

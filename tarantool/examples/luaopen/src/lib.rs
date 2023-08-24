@@ -1,3 +1,4 @@
+#![allow(clippy::missing_safety_doc)]
 //! This example describes how you can define a simple lua module in rust.
 //!
 //! To test this module do the following:

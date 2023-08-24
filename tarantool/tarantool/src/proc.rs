@@ -78,7 +78,7 @@ pub static TARANTOOL_MODULE_STORED_PROCS: [Proc] = [..];
 ///
 /// [`tarantool::proc`]: macro@crate::proc
 pub fn all_procs() -> &'static [Proc] {
-    &*TARANTOOL_MODULE_STORED_PROCS
+    &TARANTOOL_MODULE_STORED_PROCS
 }
 
 ////////////////////////////////////////////////////////////////////////////////

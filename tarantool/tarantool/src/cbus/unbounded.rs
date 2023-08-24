@@ -105,8 +105,6 @@ impl<T> Channel<T> {
 /// * `cbus_endpoint`: cbus endpoint name. Note that the tx thread (or any other cord)
 /// must have a fiber occupied by the endpoint cbus_loop.
 ///
-/// returns: (Sender<T>, Receiver<T>)
-///
 /// # Examples
 ///
 /// ```no_run

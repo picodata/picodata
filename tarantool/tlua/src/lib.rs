@@ -1,3 +1,4 @@
+#![allow(clippy::needless_return)]
 //! High-level zero-cost bindings for Lua (fork of
 //! [hlua](https://crates.io/crates/hlua))
 //!

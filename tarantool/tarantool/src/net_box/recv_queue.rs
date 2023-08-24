@@ -130,7 +130,7 @@ impl RecvQueue {
                 let chunk_offset = buffer.position() as _;
                 let new_offset = chunk_offset + chunk_len;
                 if new_offset > data_len {
-                    overflow_range = (prefix_chunk_offset as usize)..(data_len as usize);
+                    overflow_range = (prefix_chunk_offset as usize)..data_len;
                     break;
                 }
 
@@ -173,7 +173,7 @@ impl RecvQueue {
                 .borrow_mut()
                 .get_mut()
                 .copy_within(overflow_range, 0);
-            new_read_offset as usize
+            new_read_offset
         } else {
             0
         };

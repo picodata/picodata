@@ -221,9 +221,8 @@ pub fn derive_encode(input: TokenStream) -> TokenStream {
 pub fn impl_tuple_encode(_input: TokenStream) -> TokenStream {
     let mut impls = vec![];
     for i in 1usize..=16usize {
-        let is: Vec<_> = (0..i).into_iter().map(syn::Index::from).collect();
+        let is: Vec<_> = (0..i).map(syn::Index::from).collect();
         let tys: Vec<_> = (0..i)
-            .into_iter()
             .map(|i| Ident::new(format!("T{i}").as_str(), Span::call_site()))
             .collect();
         impls.push(quote! {

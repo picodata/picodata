@@ -356,7 +356,7 @@ pub fn update() {
     let update_result = space
         .update(
             &(input.id,),
-            &[QueryOperation {
+            [QueryOperation {
                 op: "=".to_string(),
                 field_id: 1,
                 value: "New".into(),
@@ -600,7 +600,7 @@ pub fn upsert() {
                 id: 1,
                 text: "New".to_string(),
             },
-            &[QueryOperation {
+            [QueryOperation {
                 op: "=".to_string(),
                 field_id: 1,
                 value: "Test 1".into(),
@@ -614,7 +614,7 @@ pub fn upsert() {
                 id: 2,
                 text: "New".to_string(),
             },
-            &[QueryOperation {
+            [QueryOperation {
                 op: "=".to_string(),
                 field_id: 1,
                 value: "Test 2".into(),

@@ -56,8 +56,6 @@ pub struct EndpointReceiver<T> {
 ///
 /// * `pipe`: lcpipe - a cbus communication channel
 ///
-/// returns: (Sender<T>, Receiver<T>)
-///
 /// # Examples
 ///
 /// ```no_run
@@ -87,8 +85,6 @@ pub fn channel_on_pipe<T>(pipe: Arc<LCPipe>) -> (Sender<T>, EndpointReceiver<T>)
 ///
 /// * `cbus_endpoint`: cbus endpoint name. Note that the tx thread (or any other cord)
 /// must have a fiber occupied by the endpoint cbus_loop.
-///
-/// returns: (Sender<T>, Receiver<T>)
 ///
 /// # Examples
 ///

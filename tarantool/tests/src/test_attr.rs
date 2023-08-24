@@ -1,3 +1,4 @@
+#![allow(clippy::assertions_on_constants)]
 use tarantool::test::TestCase;
 
 #[tarantool::test]

@@ -394,7 +394,7 @@ where
     ) -> Result<PushGuard<InsideCallback>, (T::Err, InsideCallback)> {
         match self {
             Ok(val) => val.push_into_lua(lua),
-            Err(val) => Ok(lua.push(&(Nil, val.to_string()))),
+            Err(val) => Ok(lua.push((Nil, val.to_string()))),
         }
     }
 }
@@ -467,7 +467,7 @@ where
     let tmp_lua = InsideCallback(lua.as_lua());
 
     // trying to read the arguments
-    let arguments_count = unsafe { ffi::lua_gettop(lua) } as i32;
+    let arguments_count = unsafe { ffi::lua_gettop(lua) };
     // TODO: what if the user has the wrong params?
     let args = A::lua_read_at_maybe_zero_position(&tmp_lua, -arguments_count);
     let args = match args {
@@ -477,7 +477,7 @@ where
                 "{}",
                 WrongType::info("reading value(s) passed into rust callback")
                     .expected_type::<A>()
-                    .actual_multiple_lua(&lua, arguments_count)
+                    .actual_multiple_lua(lua, arguments_count)
                     .subtype(e),
             )
         }

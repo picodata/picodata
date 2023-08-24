@@ -1,3 +1,4 @@
+#![allow(clippy::let_and_return)]
 //! Tarantool C API bindings for Rust.
 //! This library contains the following Tarantool API's:
 //!

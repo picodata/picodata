@@ -274,7 +274,7 @@ where
     ///   first few values will be returned.
     /// * If the expected number of values is greater than the actual, the
     ///   function will return an error, unless the excess elements are
-    ///   Option<T>.
+    ///   `Option<T>`.
     ///
     /// You can either pass a single value by passing a single value, or multiple parameters by
     /// passing a tuple.
@@ -333,7 +333,7 @@ where
     ///   first few values will be returned.
     /// * If the expected number of values is greater than the actual, the
     ///   function will return an error, unless the excess elements are
-    ///   Option<T>.
+    ///   `Option<T>`.
     ///
     /// You can either pass a single value by passing a single value, or multiple parameters by
     /// passing a tuple.

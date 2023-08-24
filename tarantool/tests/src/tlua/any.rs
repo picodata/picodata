@@ -109,9 +109,9 @@ pub fn read_tables() {
         let test_key = AnyLuaValue::LuaString(key.to_owned());
         match *table {
             AnyLuaValue::LuaArray(ref vec) => {
-                let &(_, ref value) = vec
+                let (_, value) = vec
                     .iter()
-                    .find(|&&(ref key, _)| key == &test_key)
+                    .find(|&(key, _)| key == &test_key)
                     .expect("key not found");
                 value
             }
@@ -123,9 +123,9 @@ pub fn read_tables() {
         let test_key = AnyLuaValue::LuaNumber(key as f64);
         match *table {
             AnyLuaValue::LuaArray(ref vec) => {
-                let &(_, ref value) = vec
+                let (_, value) = vec
                     .iter()
-                    .find(|&&(ref key, _)| key == &test_key)
+                    .find(|&(key, _)| key == &test_key)
                     .expect("key not found");
                 value
             }
@@ -167,9 +167,9 @@ pub fn read_hashable_tables() {
         let test_key = AnyHashableLuaValue::LuaString(key.to_owned());
         match *table {
             AnyHashableLuaValue::LuaArray(ref vec) => {
-                let &(_, ref value) = vec
+                let (_, value) = vec
                     .iter()
-                    .find(|&&(ref key, _)| key == &test_key)
+                    .find(|&(key, _)| key == &test_key)
                     .expect("key not found");
                 value
             }
@@ -181,9 +181,9 @@ pub fn read_hashable_tables() {
         let test_key = AnyHashableLuaValue::LuaNumber(key as i32);
         match *table {
             AnyHashableLuaValue::LuaArray(ref vec) => {
-                let &(_, ref value) = vec
+                let (_, value) = vec
                     .iter()
-                    .find(|&&(ref key, _)| key == &test_key)
+                    .find(|&(key, _)| key == &test_key)
                     .expect("key not found");
                 value
             }
