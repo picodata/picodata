@@ -88,6 +88,7 @@ impl<S: io::Write> PgStream<S> {
     /// Flush all buffered messages to an underlying byte stream.
     pub fn flush(&mut self) -> PgWireResult<&mut Self> {
         self.raw.write_all(&self.obuf)?;
+        self.obuf.clear();
         Ok(self)
     }
 
