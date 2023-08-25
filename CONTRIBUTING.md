@@ -54,6 +54,30 @@ source "$HOME/.cargo/env"
 brew install node yarn
 ```
 
+### Prerequisites for Fedora 37 (likely 38 as well)
+
+```shell
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+source "$HOME/.cargo/env"
+
+dnf install perl automake libtool nodejs yarnpkg
+```
+
+Note that nodejs and yarnpkg packages are needed only for webui.
+
+Additionally one hack is required to successfully link with `libgomp`. We need to ignore its spec file:
+
+`mv /usr/lib/gcc/x86_64-redhat-linux/12/libgomp.spec /usr/lib/gcc/x86_64-redhat-linux/12/libgomp.spec_`
+
+This is needed because static linking of libgomp is not supported.
+
+The problem manifests itself in a following linking error:
+
+```
+/usr/bin/ld: /usr/lib/gcc/x86_64-redhat-linux/12/libgomp.a(parallel.o): relocation R_X86_64_32 against hidden symbol `gomp_global_icv' can not be used when making a PIE object
+  /usr/bin/ld: failed to set dynamic section sizes: bad value
+```
+
 ### Getting and building the source code
 ```bash
 git clone https://git.picodata.io/picodata/picodata/picodata.git
