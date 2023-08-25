@@ -175,6 +175,24 @@ local function reenterable_schema_change_request(deadline, make_op_if_needed)
     end
 end
 
+local function check_password_min_length(password)
+    local password_min_length = box.space._pico_property:get("password_min_length")
+    if password_min_length == nil then
+        -- Despite the fact that we've set password_min_length during cluster bootstrap
+        -- it will be missing for clusters that were upgraded from previous version.
+        -- Retain previous behavior for those.
+        return
+    end
+
+    password_min_length = password_min_length[2]
+
+    local password_len = string.len(password)
+    if password_len < password_min_length then
+        box.error(box.error.ILLEGAL_PARAMS,
+                    "password is too short: expected at least " .. password_min_length .. ", got " .. password_len)
+    end
+end
+
 help.create_user = [[
 pico.create_user(user, password, [opts])
 ========================================
@@ -185,6 +203,8 @@ Proposes a raft entry which when applied on an instance creates a user on it.
 Waits for opts.timeout seconds for the entry to be applied locally.
 On success returns a raft index at which the user should exist.
 Skips the request if the user already exists.
+
+The function respects password_min_length parameter from _pico_property space.
 
 NOTE: If this function returns a timeout error the request is NOT cancelled and
 the change may still be applied some time later. For this reason it is always
@@ -211,7 +231,9 @@ function pico.create_user(user, password, opts)
     local ok, err = pcall(function()
         box.internal.check_param(user, 'user', 'string')
         box.internal.check_param(password, 'password', 'string')
-        -- TODO: check password requirements.
+
+        check_password_min_length(password)
+
         box.internal.check_param_table(opts, {
             timeout = 'number',
             auth_type = 'string',
@@ -273,6 +295,8 @@ Waits for opts.timeout seconds for the entry to be applied locally.
 On success returns an index of the corresponding raft entry.
 Skips the request if the password matches the current one.
 
+The function respects password_min_length parameter from _pico_property space.
+
 NOTE: If this function returns a timeout error the request is NOT cancelled and
 the change may still be applied some time later. For this reason it is always
 safe to call the same function with the same arguments again. And if the change
@@ -298,6 +322,9 @@ function pico.change_password(user, password, opts)
     local ok, err = pcall(function()
         box.internal.check_param(user, 'user', 'string')
         box.internal.check_param(password, 'password', 'string')
+
+        check_password_min_length(password)
+
         box.internal.check_param_table(opts, {
             timeout = 'number',
             auth_type = 'string',
@@ -310,8 +337,6 @@ function pico.change_password(user, password, opts)
     if not ok then
         return nil, err
     end
-
-    -- TODO: check password requirements.
 
     local deadline = fiber.clock() + opts.timeout
 

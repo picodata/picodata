@@ -1,6 +1,29 @@
 import pytest
-from conftest import Cluster, TarantoolError, ReturnError
+from conftest import Cluster, Instance, TarantoolError, ReturnError
 from tarantool.error import NetworkError  # type: ignore
+
+VALID_PASSWORD = "long enough"
+PASSWORD_MIN_LENGTH_KEY = "password_min_length"
+
+
+def expected_min_password_violation_error(min_length: int):
+    return f"password is too short: expected at least {min_length}, got"
+
+
+def set_min_password_len(cluster: Cluster, i1: Instance, min_password_len: int):
+    read_index = cluster.instances[0].raft_read_index()
+
+    # Successful insert
+    ret = cluster.cas(
+        "replace",
+        "_pico_property",
+        [PASSWORD_MIN_LENGTH_KEY, min_password_len],
+        read_index,
+    )
+    assert ret == read_index + 1
+    cluster.raft_wait_index(ret)
+    check = i1.call("box.space._pico_property:get", PASSWORD_MIN_LENGTH_KEY)
+    assert check[1] == min_password_len
 
 
 def test_acl_lua_api(cluster: Cluster):
@@ -18,11 +41,18 @@ def test_acl_lua_api(cluster: Cluster):
     with pytest.raises(ReturnError, match="password should be a string"):
         i1.call("pico.create_user", "Dave")
 
-    # This is probably not ok.
-    i1.call("pico.create_user", "Dave", "")
+    initial_password_min_length = i1.call(
+        "box.space._pico_property:get", PASSWORD_MIN_LENGTH_KEY
+    )[1]
+    expected = expected_min_password_violation_error(initial_password_min_length)
+
+    with pytest.raises(ReturnError, match=expected):
+        i1.call("pico.create_user", "Dave", "")
+
+    i1.call("pico.create_user", "Dave", VALID_PASSWORD)
 
     # Already exists -> ok.
-    i1.call("pico.create_user", "Dave", "")
+    i1.call("pico.create_user", "Dave", VALID_PASSWORD)
 
     # FIXME
     # Already exists but with different parameters -> should fail,
@@ -31,11 +61,36 @@ def test_acl_lua_api(cluster: Cluster):
 
     # Role already exists -> error.
     with pytest.raises(ReturnError, match="Role 'super' already exists"):
-        i1.call("pico.create_user", "super", "")
+        i1.call("pico.create_user", "super", VALID_PASSWORD)
+
+    # Test the behavior when password_min_length is missing form properties
+    # possibly because instance was upgraded from one that didnt have the value
+    # populated at bootstrap time.
+    i1.call("box.space._pico_property:delete", PASSWORD_MIN_LENGTH_KEY)
+
+    i1.call("pico.create_user", "Dave", "short")
+
+    # restore
+    i1.eval(
+        f'box.space._pico_property:insert{{"{PASSWORD_MIN_LENGTH_KEY}", '
+        f"{initial_password_min_length}}}"
+    )
+
+    # change the value using cas
+    set_min_password_len(cluster, i1, 20)
+
+    with pytest.raises(ReturnError, match=expected_min_password_violation_error(20)):
+        i1.call("pico.create_user", "Dave", VALID_PASSWORD)
+
+    set_min_password_len(cluster, i1, initial_password_min_length)
 
     #
     # pico.change_password
     #
+
+    # Change password to invalid one -> ok.
+    with pytest.raises(ReturnError, match=expected):
+        i1.call("pico.change_password", "Dave", "secret")
 
     # Change password -> ok.
     i1.call("pico.change_password", "Dave", "no-one-will-know")
@@ -260,24 +315,25 @@ def test_acl_lua_api(cluster: Cluster):
 
     # Options is not table -> error.
     with pytest.raises(ReturnError, match="options should be a table"):
-        i1.call("pico.create_user", "Dave", "pass", "timeout after 3 seconds please")
+        i1.call(
+            "pico.create_user", "Dave", VALID_PASSWORD, "timeout after 3 seconds please"
+        )
 
     # Unknown option -> error.
     with pytest.raises(ReturnError, match="unexpected option 'deadline'"):
-        i1.call("pico.create_user", "Dave", "pass", dict(deadline="June 7th"))
+        i1.call("pico.create_user", "Dave", VALID_PASSWORD, dict(deadline="June 7th"))
 
     # Unknown option -> error.
     with pytest.raises(
         ReturnError, match="options parameter 'timeout' should be of type number"
     ):
-        i1.call("pico.create_user", "Dave", "pass", dict(timeout="3s"))
+        i1.call("pico.create_user", "Dave", VALID_PASSWORD, dict(timeout="3s"))
 
 
 def test_acl_basic(cluster: Cluster):
     i1, *_ = cluster.deploy(instance_count=4, init_replication_factor=2)
 
     user = "Bobby"
-    password = "s3cr3t"
     v = 0
 
     # Initial state.
@@ -288,7 +344,7 @@ def test_acl_basic(cluster: Cluster):
     #
     #
     # Create user.
-    index = i1.call("pico.create_user", user, password)
+    index = i1.call("pico.create_user", user, VALID_PASSWORD)
     cluster.raft_wait_index(index)
     v += 1
 
@@ -363,12 +419,14 @@ def test_acl_basic(cluster: Cluster):
                 "box.space.money:insert",
                 [user, dummy_bucket_id, 1_000_000],
                 user=user,
-                password=password,
+                password=VALID_PASSWORD,
             )
 
     # Try reading from space on behalf of the user.
     for i in cluster.instances:
-        assert i.call("box.space.money:select", user=user, password=password) == []
+        assert (
+            i.call("box.space.money:select", user=user, password=VALID_PASSWORD) == []
+        )
 
     #
     #
@@ -383,13 +441,16 @@ def test_acl_basic(cluster: Cluster):
             TarantoolError,
             match="Read access to space 'money' is denied for user 'Bobby'",
         ):
-            assert i.call("box.space.money:select", user=user, password=password) == []
+            assert (
+                i.call("box.space.money:select", user=user, password=VALID_PASSWORD)
+                == []
+            )
 
     #
     #
     # Change user's password.
-    old_password = password
-    new_password = "$3kr3T"
+    old_password = VALID_PASSWORD
+    new_password = "L0ng$3kr3T"
     index = i1.call("pico.change_password", user, new_password)
     cluster.raft_wait_index(index)
     v += 1
@@ -440,10 +501,9 @@ def test_acl_roles_basic(cluster: Cluster):
     i1, *_ = cluster.deploy(instance_count=4, init_replication_factor=2)
 
     user = "Steven"
-    password = "1234"
 
     # Create user.
-    index = i1.call("pico.create_user", user, password)
+    index = i1.call("pico.create_user", user, VALID_PASSWORD)
     cluster.raft_wait_index(index)
 
     # Doing anything via remote function execution requires execute access
@@ -457,7 +517,9 @@ def test_acl_roles_basic(cluster: Cluster):
             TarantoolError,
             match="Read access to space '_pico_property' is denied for user 'Steven'",
         ):
-            i.call("box.space._pico_property:select", user=user, password=password)
+            i.call(
+                "box.space._pico_property:select", user=user, password=VALID_PASSWORD
+            )
 
     #
     #
@@ -476,7 +538,9 @@ def test_acl_roles_basic(cluster: Cluster):
 
     # Try reading from space on behalf of the user again. Now succeed.
     for i in cluster.instances:
-        rows = i.call("box.space._pico_property:select", user=user, password=password)
+        rows = i.call(
+            "box.space._pico_property:select", user=user, password=VALID_PASSWORD
+        )
         assert len(rows) > 0
 
     # Revoke read access from the role.
@@ -495,7 +559,9 @@ def test_acl_roles_basic(cluster: Cluster):
             TarantoolError,
             match="Read access to space '_pico_property' is denied for user 'Steven'",
         ):
-            i.call("box.space._pico_property:select", user=user, password=password)
+            i.call(
+                "box.space._pico_property:select", user=user, password=VALID_PASSWORD
+            )
 
     # Drop the role.
     index = i1.call("pico.drop_role", role)
@@ -507,7 +573,9 @@ def test_acl_roles_basic(cluster: Cluster):
             TarantoolError,
             match="Read access to space '_pico_property' is denied for user 'Steven'",
         ):
-            i.call("box.space._pico_property:select", user=user, password=password)
+            i.call(
+                "box.space._pico_property:select", user=user, password=VALID_PASSWORD
+            )
 
 
 def to_set_of_tuples(list_of_lists):
@@ -524,7 +592,7 @@ def test_acl_from_snapshot(cluster: Cluster):
     #
     # Initial state.
     #
-    index = i1.call("pico.create_user", "Sam", "pass")
+    index = i1.call("pico.create_user", "Sam", VALID_PASSWORD)
     cluster.raft_wait_index(index)
 
     index = i1.call("pico.create_role", "Captain")
@@ -581,7 +649,7 @@ def test_acl_from_snapshot(cluster: Cluster):
     index = i1.call("pico.drop_user", "Sam")
     cluster.raft_wait_index(index)
 
-    index = i1.call("pico.create_user", "Blam", "pass")
+    index = i1.call("pico.create_user", "Blam", VALID_PASSWORD)
     cluster.raft_wait_index(index)
 
     index = i1.call(

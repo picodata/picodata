@@ -216,15 +216,16 @@ def test_raft_log(instance: Instance):
 |  3  | 1  |1.0.3|Insert({_pico_property}, ["replication_factor",1])|
 |  4  | 1  |1.0.4|Insert({_pico_property}, ["global_schema_version",0])|
 |  5  | 1  |1.0.5|Insert({_pico_property}, ["next_schema_version",1])|
-|  6  | 1  |     |AddNode(1)|
-|  7  | 2  |     |-|
-|  8  | 2  |1.1.1|Replace({_pico_instance}, ["i1","68d4a766-4144-3248-aeb4-e212356716e4",1,"r1","e0df68c5-e7f9-395f-86b3-30ad9e1b7b07",["Offline",0],["Online",1],{b}])|
-|  9  | 2  |1.1.2|Insert({_pico_replicaset}, ["r1","e0df68c5-e7f9-395f-86b3-30ad9e1b7b07","i1",[0.0,"Auto","Initial"]])|
-| 10  | 2  |1.1.3|Replace({_pico_instance}, ["i1","68d4a766-4144-3248-aeb4-e212356716e4",1,"r1","e0df68c5-e7f9-395f-86b3-30ad9e1b7b07",["Replicated",1],["Online",1],{b}])|
-| 11  | 2  |1.1.4|Update({_pico_replicaset}, ["r1"], [["=","weight[1]",1.0], ["=","weight[3]","UpToDate"]])|
-| 12  | 2  |1.1.5|Replace({_pico_instance}, ["i1","68d4a766-4144-3248-aeb4-e212356716e4",1,"r1","e0df68c5-e7f9-395f-86b3-30ad9e1b7b07",["ShardingInitialized",1],["Online",1],{b}])|
-| 13  | 2  |1.1.6|Replace({_pico_property}, ["vshard_bootstrapped",true])|
-| 14  | 2  |1.1.7|Replace({_pico_instance}, ["i1","68d4a766-4144-3248-aeb4-e212356716e4",1,"r1","e0df68c5-e7f9-395f-86b3-30ad9e1b7b07",["Online",1],["Online",1],{b}])|
+|  6  | 1  |1.0.6|Insert({_pico_property}, ["password_min_length",8])|
+|  7  | 1  |     |AddNode(1)|
+|  8  | 2  |     |-|
+|  9  | 2  |1.1.1|Replace({_pico_instance}, ["i1","68d4a766-4144-3248-aeb4-e212356716e4",1,"r1","e0df68c5-e7f9-395f-86b3-30ad9e1b7b07",["Offline",0],["Online",1],{b}])|
+| 10  | 2  |1.1.2|Insert({_pico_replicaset}, ["r1","e0df68c5-e7f9-395f-86b3-30ad9e1b7b07","i1",[0.0,"Auto","Initial"]])|
+| 11  | 2  |1.1.3|Replace({_pico_instance}, ["i1","68d4a766-4144-3248-aeb4-e212356716e4",1,"r1","e0df68c5-e7f9-395f-86b3-30ad9e1b7b07",["Replicated",1],["Online",1],{b}])|
+| 12  | 2  |1.1.4|Update({_pico_replicaset}, ["r1"], [["=","weight[1]",1.0], ["=","weight[3]","UpToDate"]])|
+| 13  | 2  |1.1.5|Replace({_pico_instance}, ["i1","68d4a766-4144-3248-aeb4-e212356716e4",1,"r1","e0df68c5-e7f9-395f-86b3-30ad9e1b7b07",["ShardingInitialized",1],["Online",1],{b}])|
+| 14  | 2  |1.1.6|Replace({_pico_property}, ["vshard_bootstrapped",true])|
+| 15  | 2  |1.1.7|Replace({_pico_instance}, ["i1","68d4a766-4144-3248-aeb4-e212356716e4",1,"r1","e0df68c5-e7f9-395f-86b3-30ad9e1b7b07",["Online",1],["Online",1],{b}])|
 +-----+----+-----+--------+
 """.format(  # noqa: E501
         p=instance.port,

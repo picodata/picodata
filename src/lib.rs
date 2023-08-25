@@ -49,6 +49,8 @@ pub mod tlog;
 pub mod traft;
 pub mod util;
 
+const INITIAL_PASSWORD_MIN_LENGTH: usize = 8;
+
 macro_rules! lua_preload {
     ($lua:ident, $module:literal, $path_prefix:literal, $path:literal) => {
         $lua.exec_with(
@@ -448,6 +450,15 @@ fn start_boot(args: &args::Run) {
             op::Dml::insert(
                 ClusterwideSpaceId::Property,
                 &(PropertyName::NextSchemaVersion, 1),
+            )
+            .expect("cannot fail")
+            .into(),
+        );
+
+        init_entries_push_op(
+            op::Dml::insert(
+                ClusterwideSpaceId::Property,
+                &(PropertyName::PasswordMinLength, INITIAL_PASSWORD_MIN_LENGTH),
             )
             .expect("cannot fail")
             .into(),

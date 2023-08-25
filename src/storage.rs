@@ -962,6 +962,8 @@ pub trait TClusterwideSpaceIndex {
         /// log no matter if it is committed or aborted.
         /// This guards us from some painfull corner cases.
         NextSchemaVersion = "next_schema_version",
+
+        PasswordMinLength = "password_min_length",
     }
 }
 
