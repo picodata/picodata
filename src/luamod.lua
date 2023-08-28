@@ -204,7 +204,8 @@ Waits for opts.timeout seconds for the entry to be applied locally.
 On success returns a raft index at which the user should exist.
 Skips the request if the user already exists.
 
-The function respects password_min_length parameter from _pico_property space.
+The function respects `password_min_length` parameter from `_pico_property` space.
+(by default set to be at least 8 characters).
 
 NOTE: If this function returns a timeout error the request is NOT cancelled and
 the change may still be applied some time later. For this reason it is always
@@ -295,7 +296,8 @@ Waits for opts.timeout seconds for the entry to be applied locally.
 On success returns an index of the corresponding raft entry.
 Skips the request if the password matches the current one.
 
-The function respects password_min_length parameter from _pico_property space.
+The function respects `password_min_length` parameter from `_pico_property` space 
+(by default set to be at least 8 characters).
 
 NOTE: If this function returns a timeout error the request is NOT cancelled and
 the change may still be applied some time later. For this reason it is always
