@@ -1031,6 +1031,10 @@ pub(crate) fn setup(args: &args::Run) {
         E.g. it checks the `predicate` on leader and, if no conflicting entries
         were found, appends the new entry to the raft log and returns its index
         (uncommitted yet).
+        The `predicate` consists of three parts:
+        - index
+        - term
+        - ranges
 
         If `predicate` is not supplied, it will be auto generated with `index`
         and `term` taken from the current instance and with empty `ranges`.
