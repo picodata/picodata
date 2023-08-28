@@ -2050,14 +2050,14 @@ mod test {
         let err = <(String, String)>::decode(buf.as_ref()).unwrap_err();
         assert_eq!(
             err.to_string(),
-            r#"Failed to decode tuple: invalid type: integer `1`, expected a string when decoding msgpack b"\x93\x01\x02\x03" into rust type (alloc::string::String, alloc::string::String)"#
+            r#"failed to decode tuple: invalid type: integer `1`, expected a string when decoding msgpack b"\x93\x01\x02\x03" into rust type (alloc::string::String, alloc::string::String)"#
         );
 
         let buf = ("hello", [1, 2, 3], "goodbye").to_tuple_buffer().unwrap();
         let err = <(String, (i32, String, i32), String)>::decode(buf.as_ref()).unwrap_err();
         assert_eq!(
             err.to_string(),
-            r#"Failed to decode tuple: invalid type: integer `2`, expected a string when decoding msgpack b"\x93\xa5\x68\x65\x6c\x6c\x6f\x93\x01\x02\x03\xa7\x67\x6f\x6f\x64\x62\x79\x65" into rust type (alloc::string::String, (i32, alloc::string::String, i32), alloc::string::String)"#
+            r#"failed to decode tuple: invalid type: integer `2`, expected a string when decoding msgpack b"\x93\xa5\x68\x65\x6c\x6c\x6f\x93\x01\x02\x03\xa7\x67\x6f\x6f\x64\x62\x79\x65" into rust type (alloc::string::String, (i32, alloc::string::String, i32), alloc::string::String)"#
         )
     }
 }

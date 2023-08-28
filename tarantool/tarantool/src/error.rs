@@ -45,14 +45,14 @@ pub enum Error {
     #[error("failed to encode tuple: {0}")]
     Encode(#[from] Encode),
 
-    #[error("Failed to decode tuple: {error} when decoding msgpack {} into rust type {expected_type}", crate::util::DisplayAsHexBytes(.actual_msgpack))]
+    #[error("failed to decode tuple: {error} when decoding msgpack {} into rust type {expected_type}", crate::util::DisplayAsHexBytes(.actual_msgpack))]
     Decode {
         error: rmp_serde::decode::Error,
         expected_type: String,
         actual_msgpack: Vec<u8>,
     },
 
-    #[error("Failed to decode tuple: {0}")]
+    #[error("failed to decode tuple: {0}")]
     DecodeRmpValue(#[from] rmp_serde::decode::Error),
 
     #[error("unicode string decode error: {0}")]
