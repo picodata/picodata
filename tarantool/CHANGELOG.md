@@ -1,6 +1,6 @@
 # Change Log
 
-# [2.0.0] Unreleased
+# [2.0.0] Aug 28 2023
 
 ### Added
 - `tarantool::log::TarantoolLogger::convert_level` method for converting
@@ -58,7 +58,7 @@ and support of the `fiber_clock` API.
   Now a single `fiber::JoinHandle` type is used everywhere.
 
 
-# [1.1.0] June 16 2023
+# [1.1.0] Jun 16 2023
 
 ### Added
 - `vclock::Vclock` data structure representing Tarantool vector clock
