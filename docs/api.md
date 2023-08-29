@@ -239,8 +239,7 @@ function change_password(user, password, [opts])
 Параметры:
 
 - `user` (_string_), имя пользователя
-- `password` (_string_), пароль пользователя (с учётом требований
-  параметра `password_min_length`)
+- `password` (_string_), пароль пользователя
 - `opts`: (optional _table_), таблица:
     - `auth_type` (optional _string_), тип аутентификации,
       варианты: `'chap-sha1'` | `'md5'` | `'ldap'`. По умолчанию
