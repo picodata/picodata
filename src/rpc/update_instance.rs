@@ -75,7 +75,7 @@ impl Request {
     }
 }
 
-/// Processes the [`rpc::update_instance::Request`] and appends
+/// Processes the [`crate::rpc::update_instance::Request`] and appends
 /// the corresponding [`Op::Dml`] entry to the raft log (if successful).
 ///
 /// Returns `Ok(())` when the entry is committed.

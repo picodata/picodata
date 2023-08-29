@@ -175,21 +175,22 @@ test-linux:
       fi
 
     - cargo -V
-    - cargo build --locked
-    - cargo build --features webui --locked
-    # There are no Rust tests for `webui` feature.
-    # It will be checked during integration tests.
-    - cargo test --locked
-    - cargo fmt -- -v --check
-    - cargo clippy --version
-    - cargo clippy --features webui -- --deny clippy::all
+
     - |
       # Pipenv install
       ci-log-section start "pipenv-install" Installing pip dependencies ...
       PIPENV_VENV_IN_PROJECT=1 PIP_NO_CACHE_DIR=true python3.10 -m pipenv install --deploy
       ci-log-section end "pipenv-install"
+
+    - make lint
+
+    - cargo build --locked
+    - cargo build --features webui --locked
+    # There are no Rust tests for `webui` feature.
+    # It will be checked during integration tests.
+    - cargo test --locked
+
     - pipenv run pytest --numprocesses auto -v
-    - pipenv run lint
     - |
       # Save cache
       if [ "$CI_COMMIT_BRANCH" == "$CI_DEFAULT_BRANCH" ]; then

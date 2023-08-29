@@ -2276,7 +2276,7 @@ impl ToEntryIter for Privileges {
 /// (both ddl and acl).
 ///
 /// This trait is currently only used to minimize code duplication in the
-/// [`apply_snapshot_data`] function.
+/// [`Clusterwide::apply_snapshot_data`] function.
 trait SchemaDef {
     /// Type of unique key used to identify entities for the purpose of
     /// associating the schema version with.

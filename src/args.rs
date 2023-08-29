@@ -321,7 +321,7 @@ pub struct Connect {
         default_value = "guest",
         env = "PICODATA_USER"
     )]
-    /// The username to connect with. Ignored if provided in <ADDRESS>.
+    /// The username to connect with. Ignored if provided in `ADDRESS`.
     pub user: String,
 
     #[clap(

@@ -39,7 +39,11 @@ fmt:
 lint:
 	cargo fmt --check
 	cargo check
+	cargo clippy --version
 	cargo clippy -- --deny clippy::all
+
+	RUSTDOCFLAGS="-Dwarnings -Arustdoc::private_intra_doc_links" cargo doc --workspace --no-deps --document-private-items
+
 	pipenv run lint
 
 test:

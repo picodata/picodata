@@ -55,7 +55,7 @@ crate::define_rpc_request! {
     }
 }
 
-/// Processes the [`rpc::join::Request`] and appends necessary
+/// Processes the [`crate::rpc::join::Request`] and appends necessary
 /// entries to the raft log (if successful).
 ///
 /// Returns the [`Response`] containing the resulting [`Instance`] when the entry is committed.

@@ -472,7 +472,7 @@ impl ConnectionPool {
     /// future.
     ///
     /// This method is similar to [`Self::call`] but allows to call rpcs
-    /// without using [`rpc::Request`] trait.
+    /// without using [`crate::rpc::RequestArgs`] trait.
     ///
     /// If `timeout` is None, the `WorkerOptions::call_timeout` is used.
     ///
