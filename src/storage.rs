@@ -520,6 +520,7 @@ define_clusterwide_spaces! {
                 space: Space,
                 #[primary]
                 primary_key: Index => Primary = "primary",
+                object_idx: Index => Object = "object",
             }
 
             /// An enumeration of indexes defined for "_pico_privilege".
@@ -1849,11 +1850,16 @@ pub fn ddl_meta_space_update_operable(
 ///
 /// This function is called when applying the different ddl operations.
 pub fn ddl_meta_drop_space(storage: &Clusterwide, space_id: SpaceId) -> traft::Result<()> {
-    storage.spaces.delete(space_id)?;
+    if let Some(space_name) = storage.spaces.get(space_id)?.map(|s| s.name) {
+        storage
+            .privileges
+            .delete_all_by_object("space", &space_name)?;
+    }
     let iter = storage.indexes.by_space_id(space_id)?;
     for index in iter {
         storage.indexes.delete(index.space_id, index.id)?;
     }
+    storage.spaces.delete(space_id)?;
     Ok(())
 }
 
@@ -1963,7 +1969,8 @@ pub fn ddl_create_space_on_master(
     Ok(res.err())
 }
 
-/// Drop tarantool space and any entities which depend on it (currently just indexes).
+/// Drop tarantool space and any entities which depend on it (indexes, privileges
+/// and truncates).
 ///
 /// Return values:
 /// * `Ok(None)` in case of success.
@@ -1981,6 +1988,7 @@ pub fn ddl_drop_space_on_master(space_id: SpaceId) -> traft::Result<Option<TntEr
     let sys_space = Space::from(SystemSpace::Space);
     let sys_index = Space::from(SystemSpace::Index);
     let sys_truncate = Space::from(SystemSpace::Truncate);
+    let sys_priv = Space::from(SystemSpace::Priv);
 
     let iter = sys_index.select(IteratorType::Eq, &[space_id])?;
     let mut index_ids = Vec::with_capacity(4);
@@ -1993,8 +2001,23 @@ pub fn ddl_drop_space_on_master(space_id: SpaceId) -> traft::Result<Option<TntEr
             index_ids.push(index_id);
         }
     }
+
+    let priv_idx: Index = sys_priv
+        .index("object")
+        .expect("index 'object' not found in space '_priv'");
+    let iter = priv_idx.select(IteratorType::Eq, &("space", space_id))?;
+    let mut priv_ids = Vec::new();
+    for tuple in iter {
+        let grantee: u32 = tuple
+            .field(1)?
+            .expect("decoding metadata should never fail");
+        priv_ids.push((grantee, "space", space_id));
+    }
+
     let res = (|| -> tarantool::Result<()> {
-        // TODO: delete it from _truncate, delete grants
+        for pk_tuple in priv_ids.iter().rev() {
+            sys_priv.delete(pk_tuple)?;
+        }
         for iid in index_ids.iter().rev() {
             sys_index.delete(&(space_id, iid))?;
         }
@@ -2212,7 +2235,19 @@ impl Privileges {
             .if_not_exists(true)
             .create()?;
 
-        Ok(Self { space, primary_key })
+        let object_idx = space
+            .index_builder(IndexOf::<Self>::Object.as_str())
+            .unique(false)
+            .part("object_type")
+            .part("object_name")
+            .if_not_exists(true)
+            .create()?;
+
+        Ok(Self {
+            space,
+            primary_key,
+            object_idx,
+        })
     }
 
     #[inline(always)]
@@ -2233,6 +2268,18 @@ impl Privileges {
     #[inline(always)]
     pub fn by_grantee_id(&self, grantee_id: UserId) -> tarantool::Result<EntryIter<PrivilegeDef>> {
         let iter = self.primary_key.select(IteratorType::Eq, &[grantee_id])?;
+        Ok(EntryIter::new(iter))
+    }
+
+    #[inline(always)]
+    pub fn by_object(
+        &self,
+        object_type: &str,
+        object_name: &str,
+    ) -> tarantool::Result<EntryIter<PrivilegeDef>> {
+        let iter = self
+            .object_idx
+            .select(IteratorType::Eq, &(object_type, object_name))?;
         Ok(EntryIter::new(iter))
     }
 
@@ -2290,6 +2337,24 @@ impl Privileges {
                     &priv_def.privilege,
                 )?;
             }
+        }
+        Ok(())
+    }
+
+    /// Remove any privilege definitions granted to the given object.
+    #[inline]
+    pub fn delete_all_by_object(
+        &self,
+        object_type: &str,
+        object_name: &str,
+    ) -> tarantool::Result<()> {
+        for priv_def in self.by_object(object_type, object_name)? {
+            self.delete(
+                priv_def.grantee_id,
+                &priv_def.object_type,
+                &priv_def.object_name,
+                &priv_def.privilege,
+            )?;
         }
         Ok(())
     }

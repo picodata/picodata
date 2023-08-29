@@ -715,5 +715,23 @@ def test_acl_from_snapshot(cluster: Cluster):
         }
 
 
+def test_acl_drop_space_with_privileges(cluster: Cluster):
+    i1, *_ = cluster.deploy(instance_count=1)
+
+    # Check that we can drop a space with privileges granted on it.
+    index = i1.call("pico.create_user", "Dave", VALID_PASSWORD)
+    cluster.raft_wait_index(index)
+    ddl = i1.sql(""" create table t (a int, primary key (a)) distributed by (a) """)
+    assert ddl["row_count"] == 1
+    index = i1.call("pico.grant_privilege", "Dave", "read", "space", "T")
+    cluster.raft_wait_index(index)
+    ddl = i1.sql(""" drop table t """)
+    assert ddl["row_count"] == 1
+
+    # Check that the picodata privileges are gone.
+    privs = i1.call("box.execute", """ select count(*) from "_pico_privilege" """)
+    assert privs["rows"][0][0] == 0
+
+
 # TODO: test acl get denied when there's an unfinished ddl
 # TODO: check various retryable cas outcomes when doing schema change requests
