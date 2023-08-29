@@ -587,37 +587,45 @@ macro_rules! impl_tuple {
 impl_tuple! { A B C D E F G H I J K L M N O P }
 
 /// A general purpose trait for msgpack serialization.
-///
 /// Writes `self` to writer supplied in `w`.
-/// `struct_as_map` sets if struct fields should be serialized as tuple (`false`) or as map (`true`).
 ///
-/// E.g. given `let foo = Foo { a: 1, b: true}`
-/// `struct_as_map: false` - `foo` is identical to `(1, true)` during serialization.
-/// `struct_as_map: true` - `foo` is identical to `HashMap<String, _>` with
-/// keys `"a"` and `"b"` and values `1`, `true` accordingly.
+/// For most use cases this trait can be derived (`#[derive(tarantool_proc::Encode)]`).
+/// When deriving the trait for a structure it's possible to additionally specify
+/// if the structure should be represented as `MP_MAP` or as an `MP_ARRAY`.
+/// `MP_ARRAY` is chosen by default for compactness. To serailize a structure as an `MP_MAP`
+/// add [`encode(as_map)`] attribute to it.
 ///
-/// It should replace `Encode` after `raw` attribute is finished
+/// E.g. given `let foo = Foo { a: 1, b: 3}`
+/// As `MP_ARRAY` `foo` should be identical to `(1, 3)` during serialization.
+/// As `MP_MAP` `foo` should be identical to `HashMap<String, usize>` with
+/// keys `"a"` and `"b"` and values `1`, `3` accordingly.
+///
+/// It should replace `Encode` when it's ready
 /// `_` prefix is used for disambiguation and is temporary.
 ///
 /// # Example
 /// ```
 /// use tarantool_proc::Encode;
 /// use tarantool::tuple::_Encode;
-/// // For most use cases this trait can be derived
+///
 /// #[derive(Encode)]
-/// struct Foo;
+/// #[encode(as_map)]
+/// struct Foo {
+///     a: usize,
+///     b: usize,
+/// };
 ///
 /// let mut buffer = vec![];
-/// Foo.encode(&mut buffer, false).unwrap();
+/// Foo {a: 1, b: 3}.encode(&mut buffer).unwrap();
 /// ```
 // TODO: Remove `_` prefix and use this trait instead of previous, replace derive `Serialize` to derive `Encode`
 pub trait _Encode {
-    fn encode(&self, w: &mut impl Write, struct_as_map: bool) -> Result<()>;
+    fn encode(&self, w: &mut impl Write) -> Result<()>;
 }
 
 impl _Encode for () {
     #[inline(always)]
-    fn encode(&self, w: &mut impl Write, _named: bool) -> Result<()> {
+    fn encode(&self, w: &mut impl Write) -> Result<()> {
         rmp::encode::write_nil(w)?;
         Ok(())
     }
@@ -628,10 +636,10 @@ where
     T: _Encode,
 {
     #[inline]
-    fn encode(&self, w: &mut impl Write, named: bool) -> Result<()> {
+    fn encode(&self, w: &mut impl Write) -> Result<()> {
         rmp::encode::write_array_len(w, self.len() as u32)?;
         for v in self.iter() {
-            v.encode(w, named)?;
+            v.encode(w)?;
         }
         Ok(())
     }
@@ -642,8 +650,8 @@ where
     T: _Encode,
 {
     #[inline(always)]
-    fn encode(&self, w: &mut impl Write, named: bool) -> Result<()> {
-        self[..].as_ref().encode(w, named)
+    fn encode(&self, w: &mut impl Write) -> Result<()> {
+        self[..].as_ref().encode(w)
     }
 }
 
@@ -652,21 +660,21 @@ where
     T: _Encode + ToOwned + ?Sized,
 {
     #[inline(always)]
-    fn encode(&self, w: &mut impl Write, named: bool) -> Result<()> {
-        self.deref().encode(w, named)
+    fn encode(&self, w: &mut impl Write) -> Result<()> {
+        self.deref().encode(w)
     }
 }
 
 impl _Encode for String {
     #[inline(always)]
-    fn encode(&self, w: &mut impl Write, named: bool) -> Result<()> {
-        self.as_str().encode(w, named)
+    fn encode(&self, w: &mut impl Write) -> Result<()> {
+        self.as_str().encode(w)
     }
 }
 
 impl _Encode for str {
     #[inline(always)]
-    fn encode(&self, w: &mut impl Write, _named: bool) -> Result<()> {
+    fn encode(&self, w: &mut impl Write) -> Result<()> {
         rmp::encode::write_str(w, self).map_err(Into::into)
     }
 }
@@ -677,11 +685,11 @@ where
     V: _Encode,
 {
     #[inline]
-    fn encode(&self, w: &mut impl Write, named: bool) -> Result<()> {
+    fn encode(&self, w: &mut impl Write) -> Result<()> {
         rmp::encode::write_map_len(w, self.len() as u32)?;
         for (k, v) in self.iter() {
-            k.encode(w, named)?;
-            v.encode(w, named)?;
+            k.encode(w)?;
+            v.encode(w)?;
         }
         Ok(())
     }
@@ -689,8 +697,8 @@ where
 
 impl _Encode for char {
     #[inline(always)]
-    fn encode(&self, w: &mut impl Write, named: bool) -> Result<()> {
-        self.to_string().encode(w, named)
+    fn encode(&self, w: &mut impl Write) -> Result<()> {
+        self.to_string().encode(w)
     }
 }
 
@@ -699,7 +707,7 @@ macro_rules! impl_simple_encode {
         $(
             impl _Encode for $t{
                 #[inline(always)]
-                fn encode(&self, w: &mut impl Write, _named: bool) -> Result<()> {
+                fn encode(&self, w: &mut impl Write) -> Result<()> {
                     rmp::encode::$f(w, *self as $conv)?;
                     Ok(())
                 }
@@ -731,10 +739,10 @@ macro_rules! _impl_array {
             #[allow(clippy::zero_prefixed_literal)]
             impl<T> _Encode for [T; $n] where T: _Encode {
                 #[inline]
-                fn encode(&self, w: &mut impl Write, named: bool) -> Result<()> {
+                fn encode(&self, w: &mut impl Write) -> Result<()> {
                     rmp::encode::write_array_len(w, $n)?;
                     for item in self {
-                        item.encode(w, named)?;
+                        item.encode(w)?;
                     }
                     Ok(())
                 }
@@ -752,12 +760,8 @@ impl_tuple_encode!();
 
 impl _Encode for serde_json::Value {
     #[inline]
-    fn encode(&self, w: &mut impl Write, named: bool) -> Result<()> {
-        let bytes = if named {
-            rmp_serde::to_vec_named(self)?
-        } else {
-            rmp_serde::to_vec(self)?
-        };
+    fn encode(&self, w: &mut impl Write) -> Result<()> {
+        let bytes = rmp_serde::to_vec(self)?;
         w.write_all(bytes.as_slice())?;
         Ok(())
     }
@@ -765,12 +769,8 @@ impl _Encode for serde_json::Value {
 
 impl _Encode for serde_json::Map<String, serde_json::Value> {
     #[inline]
-    fn encode(&self, w: &mut impl Write, named: bool) -> Result<()> {
-        let bytes = if named {
-            rmp_serde::to_vec_named(self)?
-        } else {
-            rmp_serde::to_vec(self)?
-        };
+    fn encode(&self, w: &mut impl Write) -> Result<()> {
+        let bytes = rmp_serde::to_vec(self)?;
         w.write_all(bytes.as_slice())?;
         Ok(())
     }
@@ -1831,27 +1831,30 @@ mod tests {
             b: u32,
         }
         #[derive(Clone, Encode, Deserialize, PartialEq, Debug)]
-        #[encode(tarantool = "crate")]
+        #[encode(tarantool = "crate", as_map)]
         struct Test {
             a: usize,
             b: String,
             c: Test1,
         }
+
         let mut bytes = vec![];
+        let test_1 = Test1 { b: 42 };
+        test_1.encode(&mut bytes).unwrap();
+        assert_array(&bytes);
+        let test_1_dec: Test1 = rmp_serde::from_slice(bytes.as_slice()).unwrap();
+        assert_eq!(test_1_dec, test_1);
+
         let mut bytes_named = vec![];
-        let original = Test {
+        let test = Test {
             a: 1,
             b: "abc".to_owned(),
-            c: Test1 { b: 0 },
+            c: test_1,
         };
-        original.encode(&mut bytes, false).unwrap();
-        assert_array(&bytes);
-        original.encode(&mut bytes_named, true).unwrap();
+        test.encode(&mut bytes_named).unwrap();
         assert_map(&bytes_named);
-        let decoded: Test = rmp_serde::from_slice(bytes.as_slice()).unwrap();
-        assert_eq!(original, decoded);
-        let decoded_named: Test = rmp_serde::from_slice(bytes_named.as_slice()).unwrap();
-        assert_eq!(original, decoded_named);
+        let test_dec: Test = rmp_serde::from_slice(bytes_named.as_slice()).unwrap();
+        assert_eq!(test_dec, test);
     }
 
     #[test]
@@ -1860,15 +1863,9 @@ mod tests {
         #[encode(tarantool = "crate")]
         struct Test(u32, bool);
         let mut bytes = vec![];
-        let mut bytes_named = vec![];
         let original = Test(0, true);
-        original.encode(&mut bytes, false).unwrap();
+        original.encode(&mut bytes).unwrap();
         assert_array(&bytes);
-        original.encode(&mut bytes_named, true).unwrap();
-        assert_eq!(
-            bytes, bytes_named,
-            "tuple structs are always encoded as arrays"
-        );
         let decoded: Test = rmp_serde::from_slice(bytes.as_slice()).unwrap();
         assert_eq!(original, decoded);
     }
@@ -1880,7 +1877,7 @@ mod tests {
         struct Test;
         let mut bytes = vec![];
         let original = Test;
-        original.encode(&mut bytes, false).unwrap();
+        original.encode(&mut bytes).unwrap();
         let decoded: Test = rmp_serde::from_slice(bytes.as_slice()).unwrap();
         assert_eq!(original, decoded);
     }
@@ -1898,57 +1895,49 @@ mod tests {
         }
         let mut bytes = vec![];
         let original = Foo::BarUnit;
-        original.encode(&mut bytes, false).unwrap();
+        original.encode(&mut bytes).unwrap();
         let decoded: Foo = rmp_serde::from_slice(bytes.as_slice()).unwrap();
         assert_eq!(original, decoded);
 
         let mut bytes = vec![];
         let original = Foo::BarTuple1(true);
-        original.encode(&mut bytes, false).unwrap();
+        original.encode(&mut bytes).unwrap();
         let decoded: Foo = rmp_serde::from_slice(bytes.as_slice()).unwrap();
         assert_eq!(original, decoded);
 
         let mut bytes = vec![];
         let original = Foo::BarTupleN((), (), ());
-        original.encode(&mut bytes, false).unwrap();
+        original.encode(&mut bytes).unwrap();
         let decoded: Foo = rmp_serde::from_slice(bytes.as_slice()).unwrap();
         assert_eq!(original, decoded);
 
         let mut bytes = vec![];
-        let mut bytes_named = vec![];
         let original = Foo::BarStruct1 { bar: false };
-        original.encode(&mut bytes, false).unwrap();
-        original.encode(&mut bytes_named, true).unwrap();
+        original.encode(&mut bytes).unwrap();
         let decoded: Foo = rmp_serde::from_slice(bytes.as_slice()).unwrap();
         assert_eq!(original, decoded);
-        let decoded_named: Foo = rmp_serde::from_slice(bytes.as_slice()).unwrap();
-        assert_eq!(original, decoded_named);
 
         let mut bytes = vec![];
-        let mut bytes_named = vec![];
         let original = Foo::BarStructN {
             bar1: (),
             bar2: (),
             bar3: (),
         };
-        original.encode(&mut bytes, false).unwrap();
-        original.encode(&mut bytes_named, true).unwrap();
+        original.encode(&mut bytes).unwrap();
         let decoded: Foo = rmp_serde::from_slice(bytes.as_slice()).unwrap();
         assert_eq!(original, decoded);
-        let decoded_named: Foo = rmp_serde::from_slice(bytes.as_slice()).unwrap();
-        assert_eq!(original, decoded_named);
     }
 
     #[test]
     fn encode_named_with_raw_ident() {
         #[derive(Clone, Encode, Deserialize, PartialEq, Debug)]
-        #[encode(tarantool = "crate")]
+        #[encode(tarantool = "crate", as_map)]
         struct Test {
             r#fn: u32,
         }
         let mut bytes = vec![];
         let original = Test { r#fn: 1 };
-        original.encode(&mut bytes, true).unwrap();
+        original.encode(&mut bytes).unwrap();
         let mut bytes = Cursor::new(bytes);
         let marker = rmp::decode::read_marker(&mut bytes).unwrap();
         assert!(matches!(marker, rmp::Marker::FixMap(1)));
@@ -1961,13 +1950,13 @@ mod tests {
     fn encode_vec() {
         let mut bytes = vec![];
         let original = vec![1u32];
-        original.encode(&mut bytes, false).unwrap();
+        original.encode(&mut bytes).unwrap();
         let decoded: Vec<u32> = rmp_serde::from_slice(bytes.as_slice()).unwrap();
         assert_eq!(original, decoded);
 
         let mut bytes = vec![];
         let original = vec![(), (), (), (), ()];
-        original.encode(&mut bytes, false).unwrap();
+        original.encode(&mut bytes).unwrap();
         let decoded: Vec<()> = rmp_serde::from_slice(bytes.as_slice()).unwrap();
         assert_eq!(original, decoded);
     }
@@ -1978,7 +1967,7 @@ mod tests {
         let mut original = BTreeMap::new();
         original.insert(1, "abc".to_string());
         original.insert(2, "def".to_string());
-        original.encode(&mut bytes, false).unwrap();
+        original.encode(&mut bytes).unwrap();
         let decoded: BTreeMap<u32, String> = rmp_serde::from_slice(bytes.as_slice()).unwrap();
         assert_eq!(original, decoded);
     }
