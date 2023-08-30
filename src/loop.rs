@@ -8,7 +8,7 @@ macro_rules! loop_start {
     ($name:expr, $fn:expr, $state:expr $(,)?) => {
         ::tarantool::fiber::Builder::new()
             .name($name)
-            .proc(move || {
+            .func(move || {
                 ::tarantool::fiber::block_on(async {
                     let mut state = $state;
                     let iter_fn = $fn;

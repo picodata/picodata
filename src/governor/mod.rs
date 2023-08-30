@@ -547,7 +547,7 @@ impl Loop {
 }
 
 pub struct Loop {
-    _loop: Option<fiber::UnitJoinHandle<'static>>,
+    _loop: Option<fiber::JoinHandle<'static, ()>>,
     waker: watch::Sender<()>,
 }
 

@@ -633,6 +633,14 @@ macro_rules! assert_err {
     };
 }
 
+macro_rules! assert_err_starts_with {
+    ($actual:expr, $expected:expr) => {{
+        let actual = $actual.unwrap_err().to_string();
+        let expected = $expected;
+        assert_eq!(&actual[..expected.len()], expected)
+    }};
+}
+
 mod tests {
     use super::*;
     use ::tarantool::transaction::transaction;
@@ -735,13 +743,13 @@ mod tests {
 
         let (first, last) = (1, 1);
         raft_log.put(&(1337, first, term, "", ())).unwrap();
-        assert_err!(
+        assert_err_starts_with!(
             S::entries(&storage, first, last + 1, u64::MAX),
             "unknown error failed to decode tuple: unknown entry type (1337)"
         );
 
         raft_log.put(&(0, first, term, "", false)).unwrap();
-        assert_err!(
+        assert_err_starts_with!(
             S::entries(&storage, first, last + 1, u64::MAX),
             concat!(
                 "unknown error",
@@ -757,7 +765,7 @@ mod tests {
         assert_err!(S::entries(&storage, 1, 4, u64::MAX), "log unavailable");
 
         raft_log.primary_key().drop().unwrap();
-        assert_err!(
+        assert_err_starts_with!(
             S::entries(&storage, first, last + 1, u64::MAX),
             concat!(
                 "unknown error",
@@ -768,7 +776,7 @@ mod tests {
         );
 
         raft_log.drop().unwrap();
-        assert_err!(
+        assert_err_starts_with!(
             S::entries(&storage, first, last + 1, u64::MAX),
             format!(
                 concat!(

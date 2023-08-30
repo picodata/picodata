@@ -103,7 +103,7 @@ pub struct PoolWorker {
     // Store instance_id for the debugging purposes only.
     instance_id: Option<InstanceId>,
     inbox: Queue,
-    fiber: fiber::UnitJoinHandle<'static>,
+    fiber: fiber::JoinHandle<'static, ()>,
     inbox_ready: watch::Sender<()>,
     stop: oneshot::Sender<()>,
 
@@ -143,7 +143,7 @@ impl PoolWorker {
                     .map(|instance_id| format!("to:{instance_id}"))
                     .unwrap_or_else(|| format!("to:raft:{raft_id}")),
             )
-            .proc_async({
+            .func_async({
                 let inbox = inbox.clone();
                 async move {
                     futures::select! {
@@ -588,7 +588,7 @@ impl IdOfInstance for InstanceId {
 ////////////////////////////////////////////////////////////////////////////////
 
 // TODO test connecting twice (reconnecting)
-// thread 'main' panicked at 'UnitJoinHandle dropped before being joined',
+// thread 'main' panicked at 'JoinHandle dropped before being joined',
 // picodata::traft::network::ConnectionPool::connect
 
 mod tests {

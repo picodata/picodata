@@ -1501,7 +1501,7 @@ enum ApplyEntryResult {
 }
 
 pub(crate) struct MainLoop {
-    _loop: Option<fiber::UnitJoinHandle<'static>>,
+    _loop: Option<fiber::JoinHandle<'static, ()>>,
     loop_waker: watch::Sender<()>,
     stop_flag: Rc<Cell<bool>>,
 }

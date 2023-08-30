@@ -322,7 +322,7 @@ mod example {
         let event = &event::SomeEvent();
         let storage = &storage::SomeStorage();
 
-        let jh = fiber::defer_proc(move || app.run(event, storage, &rpc).unwrap());
+        let jh = fiber::defer(move || app.run(event, storage, &rpc).unwrap());
         event.set();
 
         jh.join();
