@@ -1,10 +1,7 @@
 .wrapper {
   display: flex;
-  background: #f3e7d8;
   border-radius: 16px;
-  padding: 20px 16px;
   gap: 80px;
-  padding: 24px;
 }
 
 .button {
@@ -21,14 +18,15 @@
 }
 
 .searchBar {
-  max-width: 538px;
+  max-width: 324px;
   width: 100%;
   border-radius: 4px;
   border: none;
   height: 56px;
   padding: 0;
   font-family: Montserrat;
-  font-size: 20px;
+  font-size: 16px;
+  padding: 0px 20px;
 }
 
 .buttonsWrapper {

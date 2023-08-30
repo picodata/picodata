@@ -1,18 +1,41 @@
 .instancesWrapper {
-  padding: 16px 112px;
+  padding: 24px 104px;
   display: flex;
   flex-direction: column;
   gap: 16px;
 }
 
 .instanceWrapper {
-  border: 1px solid;
   border-radius: 8px;
-  display: flex;
+  display: grid;
+  grid-template-columns: 180px auto auto auto auto;
+  grid-auto-flow: row;
   padding: 16px 40px;
-  gap: 56px;
+  border: 1px solid #323232;
+  background: white;
+  font-size: 16px;
+}
+
+.infoColumn {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  justify-content: center;
+  align-items: flex-start;
 }
 
 .noMargin {
   margin: 0;
+}
+
+.instanceInfo {
+  margin: 0;
+  font-weight: 600;
+}
+
+.instanceNameBlock {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
 }

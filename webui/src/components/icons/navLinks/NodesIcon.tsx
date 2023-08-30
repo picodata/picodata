@@ -1,4 +1,3 @@
-// import { Icon, IconProps } from "components/icon/Icon";
 import { Icon, IconProps } from "components/icon/Icon";
 import { FC } from "react";
 

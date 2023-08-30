@@ -1,0 +1,18 @@
+.gridWrapper {
+  display: flex;
+  background-color: #5f5e5e;
+  flex-direction: column;
+  gap: 24px;
+  padding: 24px;
+  border-radius: 16px;
+  height: 100%;
+  margin-bottom: 20px;
+  overflow: scroll;
+}
+
+.replicasetsWrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  overflow: scroll;
+}

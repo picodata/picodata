@@ -1,0 +1,70 @@
+.wrapper {
+  background-color: #f3e7d8;
+  padding: 24px;
+  border-radius: 16px;
+  display: grid;
+  grid-template-columns: 360px auto auto auto;
+}
+
+.infoColumn {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  align-items: center;
+}
+
+.noMargin {
+  margin: 0;
+  max-width: 110px;
+  text-align: center;
+}
+
+.capacityWrapper {
+  display: flex;
+  flex-direction: column;
+}
+
+.flexWrapper {
+  display: flex;
+}
+
+.textBlock {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.textWrapper {
+  display: flex;
+  gap: 16px;
+}
+
+.boldText {
+  font-weight: 600;
+  margin: 0;
+  font-size: 24px;
+}
+
+.greyText {
+  color: #848484;
+  font-size: 16px;
+  font-weight: 400;
+  margin: 0;
+}
+
+.centredWrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.columnName {
+  margin: 0;
+  font-size: 24px;
+}
+
+.instancesBlock {
+  display: flex;
+  gap: 16px;
+}

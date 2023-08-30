@@ -11,7 +11,7 @@ export const SideMenu = () => {
     () => (
       <div className={styles.nonActiveWrapper}>
         <div className={styles.menuIcon}>
-          <BurgerIcon />
+          <BurgerIcon fill="#848484" />
         </div>
       </div>
     ),
@@ -23,7 +23,7 @@ export const SideMenu = () => {
       <div className={styles.activeWrapper}>
         <div className={styles.linksWrapper}>
           <NavLink to="/" className={styles.link}>
-            <NodesIcon className={styles.linkIcon} />
+            <NodesIcon fill="#848484" className={styles.linkIcon} />
             Nodes
           </NavLink>
         </div>

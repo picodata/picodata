@@ -1,47 +1,52 @@
 import styles from "./ReplicasetCard.module.css";
-import classNames from "classnames";
 import { Instance, InstanceBlock } from "./instanceBlock/InstanceBlock";
-import { FC } from "react";
+import { FC, useMemo, useState } from "react";
+import { ChevronDown } from "components/icons/ChevronDown";
+import { ChevronUp } from "components/icons/ChevronUp";
 
-const cn = classNames;
 export interface Replicaset {
   id: string;
-  roles: string[];
-  isProblem: boolean;
-  status: string;
+  instanceCount: number;
   instances: Instance[];
-  errorsCount: number;
   version: string;
+  grade: string;
+  capacity: string;
 }
 export interface ReplicasetCardProps {
   replicaset: Replicaset;
 }
 export const ReplicasetCard: FC<ReplicasetCardProps> = ({ replicaset }) => {
+  const [isOpen, setIsOpen] = useState<boolean>(false);
+
+  const elChevron = useMemo(() => {
+    if (!isOpen) {
+      return <ChevronDown onClick={() => setIsOpen(true)} />;
+    }
+    return <ChevronUp onClick={() => setIsOpen(false)} />;
+  }, [isOpen, setIsOpen]);
+
   return (
     <div className={styles.cardWrapper}>
-      <div className={styles.topBlock}>
-        <div className={styles.topLeftBlock}>
-          <p className={styles.noMargin}>{replicaset.id}</p>
-          <div className={styles.flexWrapper}>
-            Replicaset roles :
-            {replicaset.roles.map((role) => (
-              <p className={cn(styles.noMargin, styles.role)}>{`${role} |`}</p>
-            ))}
-          </div>
+      <div className={styles.replicasetInfo}>
+        <div className={styles.infoColumn}>
+          <p className={styles.noMargin}> Name</p>
+          <p className={styles.infoValue}>{replicaset.id}</p>
         </div>
-        <div
-          className={cn(styles.topRightBlock, styles.good, {
-            [styles.problem]: replicaset.isProblem,
-          })}
-        >
-          {replicaset.status}
+        <div className={styles.infoColumn}>
+          <p className={styles.noMargin}> Instances</p>
+          <p className={styles.infoValue}>{replicaset.instanceCount}</p>
         </div>
+        <div className={styles.infoColumn}>
+          <p className={styles.noMargin}> Grade</p>
+          <p className={styles.infoValue}>{replicaset.grade}</p>
+        </div>
+        <div className={styles.infoColumn}>
+          <p className={styles.noMargin}> Capacity</p>
+          <p className={styles.infoValue}>{replicaset.capacity}</p>
+        </div>
+        <div className={styles.infoColumn}>{elChevron}</div>
       </div>
-      <InstanceBlock instances={replicaset.instances} />
-      <div className={styles.bottomBlock}>
-        <p className={styles.noMargin}>{replicaset.version}</p>
-        <p className={styles.noMargin}>Errors : {replicaset.errorsCount}</p>
-      </div>
+      {isOpen && <InstanceBlock instances={replicaset.instances} />}
     </div>
   );
 };
