@@ -81,4 +81,4 @@ markdown_extensions:
   - md_in_html
   - meta
   - toc:
-        permalink: True
+        permalink: False
