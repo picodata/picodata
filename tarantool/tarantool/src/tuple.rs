@@ -14,7 +14,7 @@ use std::collections::BTreeMap;
 use std::convert::TryFrom;
 use std::ffi::{CStr, CString};
 use std::fmt::{self, Debug, Formatter};
-use std::io::Write;
+use std::io::{Read, Write};
 use std::ops::{Deref, Range};
 use std::os::raw::{c_char, c_int};
 use std::ptr::{null, NonNull};
@@ -521,6 +521,162 @@ impl_tuple! { A B C D E F G H I J K L M N O P }
 /// Encodes `value` as a vector of bytes in msgpack.
 /// Will be public when `Encode/Decode` traits are ready.
 #[allow(dead_code)]
+fn decode<T: _Decode>(mut bytes: &[u8]) -> Result<T> {
+    T::decode(&mut bytes, EncodeStyle::Default)
+}
+
+// TODO: move Encode and Decode to `tarantool::msgpack` module.
+/// A general purpose trait for msgpack deserialization.
+/// Reads `self` from reade supplied in `r`.
+///
+/// For most use cases this trait can be derived (`#[derive(tarantool_proc::Decode)]`).
+/// When deriving the trait for a structure it's possible to additionally specify
+/// if the structure should be represented as `MP_MAP` or as an `MP_ARRAY`.
+/// `MP_ARRAY` is chosen by default for compactness. To deserailize a structure as an `MP_MAP`
+/// add [`encode(as_map)`] attribute to it.
+///
+/// E.g. given `let foo = Foo { a: 1, b: 3}`
+/// As `MP_ARRAY` `foo` should be identical to `(1, 3)` during serialization.
+/// As `MP_MAP` `foo` should be identical to `HashMap<String, usize>` with
+/// keys `"a"` and `"b"` and values `1`, `3` accordingly.
+///
+/// It should replace `Decode` when it's ready
+/// `_` prefix is used for disambiguation and is temporary.
+///
+/// # Example
+/// ```
+/// use tarantool_proc::Decode;
+/// use tarantool::tuple::_Decode;
+///
+/// #[derive(Decode)]
+/// #[encode(as_map)]
+/// struct Foo {
+///     a: usize,
+///     b: usize,
+/// };
+///
+/// let mut buffer: Vec<u8> = vec![0x92, 0x01, 0x03];
+/// let foo = <Foo as Decode>::decode(&mut buffer).unwrap();
+/// assert_eq!(foo, Foo {a: 1, b: 3});
+/// ```
+// TODO: Remove `_` prefix and use this trait instead of previous, replace derive `Deserialize` to derive `Decode`
+pub trait _Decode: Sized {
+    fn decode(r: &mut impl Read, style: EncodeStyle) -> Result<Self>;
+}
+
+impl _Decode for () {
+    #[inline(always)]
+    fn decode(r: &mut impl Read, _style: EncodeStyle) -> Result<Self> {
+        rmp::decode::read_nil(r)?;
+        Ok(())
+    }
+}
+
+impl<T> _Decode for Vec<T>
+where
+    T: _Decode,
+{
+    #[inline]
+    fn decode(r: &mut impl Read, _style: EncodeStyle) -> Result<Self> {
+        let n = rmp::decode::read_array_len(r)? as usize;
+        let mut res = Vec::with_capacity(n);
+        for _ in 0..n {
+            res.push(T::decode(r, EncodeStyle::Default)?);
+        }
+        Ok(res)
+    }
+}
+
+impl<'a, T> _Decode for Cow<'a, T>
+where
+    T: _Decode + ToOwned + ?Sized,
+{
+    #[inline(always)]
+    fn decode(r: &mut impl Read, _style: EncodeStyle) -> Result<Self> {
+        Ok(Cow::Owned(
+            <T as _Decode>::decode(r, EncodeStyle::Default)?.to_owned(),
+        ))
+    }
+}
+
+impl _Decode for String {
+    #[inline]
+    fn decode(r: &mut impl Read, _style: EncodeStyle) -> Result<Self> {
+        let n = rmp::decode::read_str_len(r)? as usize;
+        let mut buf = Vec::with_capacity(n);
+        buf.resize(n, 0);
+        //TODO: better error handling
+        r.read_exact(&mut buf)
+            .map_err(|err| Error::DecodeString(err.to_string()))?;
+        Ok(String::from_utf8(buf).map_err(|err| Error::DecodeString(err.to_string()))?)
+    }
+}
+
+impl<K, V> _Decode for BTreeMap<K, V>
+where
+    K: _Decode + Ord,
+    V: _Decode,
+{
+    #[inline]
+    fn decode(r: &mut impl Read, _style: EncodeStyle) -> Result<Self> {
+        let n = rmp::decode::read_map_len(r)?;
+        let mut res = BTreeMap::new();
+        for _ in 0..n {
+            let k = K::decode(r, EncodeStyle::Default)?;
+            let v = V::decode(r, EncodeStyle::Default)?;
+            res.insert(k, v);
+        }
+        Ok(res)
+    }
+}
+
+impl _Decode for char {
+    #[inline(always)]
+    fn decode(r: &mut impl Read, _style: EncodeStyle) -> Result<Self> {
+        let s = <String as _Decode>::decode(r, EncodeStyle::Default)?;
+        if s.len() != 1 {
+            Err(rmp::decode::ValueReadError::TypeMismatch(rmp::Marker::FixStr(1)).into())
+        } else {
+            Ok(s.chars()
+                .next()
+                .expect("just checked that there is 1 element"))
+        }
+    }
+}
+
+macro_rules! impl_simple_decode {
+    ($(($t:ty, $f:tt, $conv:ty))+) => {
+        $(
+            impl _Decode for $t{
+                #[inline(always)]
+                fn decode(r: &mut impl Read, _style: EncodeStyle) -> Result<Self> {
+                    let value = rmp::decode::$f(r)?;
+                    Ok(value)
+                }
+            }
+        )+
+    }
+}
+
+impl_simple_decode! {
+    (u8, read_int, u64)
+    (u16, read_int, u64)
+    (u32, read_int, u64)
+    (u64, read_int, u64)
+    (usize, read_int, u64)
+    (i8, read_int, i64)
+    (i16, read_int, i64)
+    (i32, read_int, i64)
+    (i64, read_int, i64)
+    (isize, read_int, i64)
+    (f32, read_f32, f32)
+    (f64, read_f64, f64)
+    (bool, read_bool, bool)
+}
+
+/// Encodes `value` as a vector of bytes in msgpack.
+/// Will be public when `Encode/Decode` traits are ready.
+#[allow(dead_code)]
 fn encode(value: &impl _Encode) -> Result<Vec<u8>> {
     let mut v = Vec::new();
     value.encode(&mut v, EncodeStyle::Default)?;
@@ -695,7 +851,7 @@ impl_simple_encode! {
     (&str, write_str, &str)
 }
 
-macro_rules! _impl_array {
+macro_rules! _impl_array_encode {
     ($($n:literal)+) => {
         $(
             #[allow(clippy::zero_prefixed_literal)]
@@ -713,7 +869,7 @@ macro_rules! _impl_array {
     }
 }
 
-_impl_array! {
+_impl_array_encode! {
     00 01 02 03 04 05 06 07 08 09 10 11 12 13 14 15
     16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32
 }
@@ -1762,10 +1918,9 @@ mod picodata {
 mod tests {
     use std::{collections::BTreeMap, io::Cursor};
 
-    use super::{_Encode, encode, EncodeStyle};
+    use super::{_Encode, encode, EncodeStyle, _Decode, decode};
     use rmp::decode::Bytes;
-    use serde::Deserialize;
-    use tarantool_proc::Encode;
+    use tarantool_proc::{Decode, Encode};
 
     #[track_caller]
     fn assert_map(bytes: &[u8]) {
@@ -1785,14 +1940,20 @@ mod tests {
         ))
     }
 
+    #[track_caller]
+    fn assert_value(mut bytes: &[u8], v: rmpv::Value) {
+        let got = rmpv::decode::read_value(&mut bytes).unwrap();
+        assert_eq!(got, v);
+    }
+
     #[test]
     fn encode_struct() {
-        #[derive(Clone, Encode, Deserialize, PartialEq, Debug)]
+        #[derive(Clone, Encode, Decode, PartialEq, Debug)]
         #[encode(tarantool = "crate")]
         struct Test1 {
             b: u32,
         }
-        #[derive(Clone, Encode, Deserialize, PartialEq, Debug)]
+        #[derive(Clone, Encode, Decode, PartialEq, Debug)]
         #[encode(tarantool = "crate", as_map)]
         struct Test {
             a: usize,
@@ -1804,14 +1965,15 @@ mod tests {
         let test_1 = Test1 { b: 42 };
         let bytes = encode(&test_1).unwrap();
         assert_array(&bytes);
-        let test_1_dec: Test1 = rmp_serde::from_slice(bytes.as_slice()).unwrap();
+        let test_1_dec: Test1 = decode(bytes.as_slice()).unwrap();
         assert_eq!(test_1_dec, test_1);
 
         // Override, encode as map
         let mut bytes = vec![];
         test_1.encode(&mut bytes, EncodeStyle::ForceAsMap).unwrap();
         assert_map(&bytes);
-        let test_1_dec: Test1 = rmp_serde::from_slice(bytes.as_slice()).unwrap();
+        let test_1_dec: Test1 =
+            _Decode::decode(&mut bytes.as_slice(), EncodeStyle::ForceAsMap).unwrap();
         assert_eq!(test_1_dec, test_1);
 
         // Do not override, encode as map
@@ -1822,7 +1984,7 @@ mod tests {
         };
         let bytes_named = encode(&test).unwrap();
         assert_map(&bytes_named);
-        let test_dec: Test = rmp_serde::from_slice(bytes_named.as_slice()).unwrap();
+        let test_dec: Test = decode(bytes_named.as_slice()).unwrap();
         assert_eq!(test_dec, test);
 
         // Override, encode as array
@@ -1830,36 +1992,37 @@ mod tests {
         test.encode(&mut bytes_named, EncodeStyle::ForceAsArray)
             .unwrap();
         assert_array(&bytes_named);
-        let test_dec: Test = rmp_serde::from_slice(bytes_named.as_slice()).unwrap();
+        let test_dec: Test =
+            _Decode::decode(&mut bytes_named.as_slice(), EncodeStyle::ForceAsArray).unwrap();
         assert_eq!(test_dec, test);
     }
 
     #[test]
     fn encode_tuple_struct() {
-        #[derive(Clone, Encode, Deserialize, PartialEq, Debug)]
+        #[derive(Clone, Encode, Decode, PartialEq, Debug)]
         #[encode(tarantool = "crate")]
         struct Test(u32, bool);
         let original = Test(0, true);
         let bytes = encode(&original).unwrap();
         assert_array(&bytes);
-        let decoded: Test = rmp_serde::from_slice(bytes.as_slice()).unwrap();
+        let decoded: Test = decode(bytes.as_slice()).unwrap();
         assert_eq!(original, decoded);
     }
 
     #[test]
     fn encode_unit_struct() {
-        #[derive(Clone, Encode, Deserialize, PartialEq, Debug)]
+        #[derive(Clone, Encode, Decode, PartialEq, Debug)]
         #[encode(tarantool = "crate")]
         struct Test;
         let original = Test;
         let bytes = encode(&original).unwrap();
-        let decoded: Test = rmp_serde::from_slice(bytes.as_slice()).unwrap();
+        let decoded: Test = decode(bytes.as_slice()).unwrap();
         assert_eq!(original, decoded);
     }
 
     #[test]
     fn encode_enum() {
-        #[derive(Clone, Encode, Deserialize, PartialEq, Debug)]
+        #[derive(Clone, Encode, Decode, PartialEq, Debug)]
         #[encode(tarantool = "crate")]
         enum Foo {
             BarUnit,
@@ -1870,22 +2033,22 @@ mod tests {
         }
         let original = Foo::BarUnit;
         let bytes = encode(&original).unwrap();
-        let decoded: Foo = rmp_serde::from_slice(bytes.as_slice()).unwrap();
+        let decoded: Foo = decode(bytes.as_slice()).unwrap();
         assert_eq!(original, decoded);
 
         let original = Foo::BarTuple1(true);
         let bytes = encode(&original).unwrap();
-        let decoded: Foo = rmp_serde::from_slice(bytes.as_slice()).unwrap();
+        let decoded: Foo = decode(bytes.as_slice()).unwrap();
         assert_eq!(original, decoded);
 
         let original = Foo::BarTupleN((), (), ());
         let bytes = encode(&original).unwrap();
-        let decoded: Foo = rmp_serde::from_slice(bytes.as_slice()).unwrap();
+        let decoded: Foo = decode(bytes.as_slice()).unwrap();
         assert_eq!(original, decoded);
 
         let original = Foo::BarStruct1 { bar: false };
         let bytes = encode(&original).unwrap();
-        let decoded: Foo = rmp_serde::from_slice(bytes.as_slice()).unwrap();
+        let decoded: Foo = decode(bytes.as_slice()).unwrap();
         assert_eq!(original, decoded);
 
         let original = Foo::BarStructN {
@@ -1894,13 +2057,13 @@ mod tests {
             bar3: (),
         };
         let bytes = encode(&original).unwrap();
-        let decoded: Foo = rmp_serde::from_slice(bytes.as_slice()).unwrap();
+        let decoded: Foo = decode(bytes.as_slice()).unwrap();
         assert_eq!(original, decoded);
     }
 
     #[test]
     fn encode_named_with_raw_ident() {
-        #[derive(Clone, Encode, Deserialize, PartialEq, Debug)]
+        #[derive(Clone, Encode, Decode, PartialEq, Debug)]
         #[encode(tarantool = "crate", as_map)]
         struct Test {
             r#fn: u32,
@@ -1919,12 +2082,12 @@ mod tests {
     fn encode_vec() {
         let original = vec![1u32];
         let bytes = encode(&original).unwrap();
-        let decoded: Vec<u32> = rmp_serde::from_slice(bytes.as_slice()).unwrap();
+        let decoded: Vec<u32> = decode(bytes.as_slice()).unwrap();
         assert_eq!(original, decoded);
 
         let original = vec![(), (), (), (), ()];
         let bytes = encode(&original).unwrap();
-        let decoded: Vec<()> = rmp_serde::from_slice(bytes.as_slice()).unwrap();
+        let decoded: Vec<()> = decode(bytes.as_slice()).unwrap();
         assert_eq!(original, decoded);
     }
 
@@ -1934,7 +2097,15 @@ mod tests {
         original.insert(1, "abc".to_string());
         original.insert(2, "def".to_string());
         let bytes = encode(&original).unwrap();
-        let decoded: BTreeMap<u32, String> = rmp_serde::from_slice(bytes.as_slice()).unwrap();
+        let decoded: BTreeMap<u32, String> = decode(bytes.as_slice()).unwrap();
+        assert_eq!(original, decoded);
+    }
+
+    #[test]
+    fn encode_str() {
+        let original = "hello";
+        let bytes = encode(&original).unwrap();
+        let decoded: String = decode(&bytes).unwrap();
         assert_eq!(original, decoded);
     }
 }

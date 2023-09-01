@@ -60,11 +60,21 @@ pub enum Error {
     #[error("numeric value read error: {0}")]
     NumValueRead(#[from] NumValueReadError),
 
-    #[error("value read error: {0}")]
+    #[error("msgpack read error: {0}")]
     ValueRead(#[from] ValueReadError),
 
-    #[error("value write error: {0}")]
+    #[error("msgpack write error: {0}")]
     ValueWrite(#[from] ValueWriteError),
+
+    #[error("msgpack read string error: {0}")]
+    DecodeString(String),
+
+    // TODO: Map all errors in encode and decode first into `FailedToEncodeStruct`
+    #[error("failed to decode structure from msgpack: expected field {expected} got {got}")]
+    DecodeField { expected: String, got: String },
+
+    #[error("failed to decode enum: no variant {0} present")]
+    DecodeNoEnumVariant(String),
 
     #[cfg(feature = "net_box")]
     #[error("server responded with error: {0}")]

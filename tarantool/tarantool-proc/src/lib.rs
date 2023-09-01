@@ -28,7 +28,7 @@ mod msgpack {
 
     #[derive(Default, FromDeriveInput)]
     #[darling(attributes(encode), default)]
-    pub struct EncodeArgs {
+    pub struct Args {
         /// Whether this struct should be serialized as MP_MAP instead of MP_ARRAY.
         pub as_map: bool,
         /// Path to tarantool crate.
@@ -153,7 +153,6 @@ mod msgpack {
                             // TODO: allow `#[encode(as_map)]` for struct variants
                             quote! {
                                  Self::#variant_name { #(#field_names),*} => {
-                                    #tarantool_crate::tuple::rmp::encode::write_map_len(w, 1)?;
                                     #tarantool_crate::tuple::rmp::encode::write_str(w, stringify!(#variant_name).trim_start_matches("r#"))?;
                                     #tarantool_crate::tuple::rmp::encode::write_array_len(w, #field_count)?;
                                     let as_map = false;
@@ -165,45 +164,216 @@ mod msgpack {
                             let field_count = fields.unnamed.len() as u32;
                             let variant_name = &variant.ident;
                             let field_names = fields.unnamed.iter().enumerate().map(|(i, _)| format_ident!("t{}", i));
+                            // TODO: use encode_unnamed_fields?
                             let fields: proc_macro2::TokenStream = field_names.clone()
                                 .flat_map(|field_name| quote! {
                                     #tarantool_crate::tuple::_Encode::encode(#field_name, w, EncodeStyle::Default)?;
                                 })
                                 .collect();
-                            if field_count > 1 {
-                                quote! {
-                                    Self::#variant_name ( #(#field_names),* ) => {
-                                        #tarantool_crate::tuple::rmp::encode::write_map_len(w, 1)?;
-                                        #tarantool_crate::tuple::rmp::encode::write_str(w,
-                                            stringify!(#variant_name).trim_start_matches("r#"))?;
-                                        #tarantool_crate::tuple::rmp::encode::write_array_len(w, #field_count)?;
-                                        #fields
-                                    }
+                            quote! {
+                                Self::#variant_name ( #(#field_names),* ) => {
+                                    #tarantool_crate::tuple::rmp::encode::write_str(w,
+                                        stringify!(#variant_name).trim_start_matches("r#"))?;
+                                    #tarantool_crate::tuple::rmp::encode::write_array_len(w, #field_count)?;
+                                    #fields
                                 }
-                            } else {
-                                quote! {
-                                    Self::#variant_name ( v ) => {
-                                        #tarantool_crate::tuple::rmp::encode::write_map_len(w, 1)?;
-                                        #tarantool_crate::tuple::rmp::encode::write_str(w,
-                                            stringify!(#variant_name).trim_start_matches("r#"))?;
-                                        #tarantool_crate::tuple::_Encode::encode(v, w, EncodeStyle::Default)?;
-                                    }
-                                }
-                            }
+                           }
                         }
                         Fields::Unit => {
                             let variant_name = &variant.ident;
                             quote! {
                                 Self::#variant_name => {
-                                    #tarantool_crate::tuple::rmp::encode::write_str(w, stringify!(#variant_name))?;
+                                    #tarantool_crate::tuple::rmp::encode::write_str(w,
+                                        stringify!(#variant_name).trim_start_matches("r#"))?;
+                                    // FIXME: changed here to () - probably no longer compatible with serde
+                                    #tarantool_crate::tuple::_Encode::encode(&(), w, EncodeStyle::Default)?;
                                 }
                             }
                         },
                     })
                     .collect();
                 quote! {
+                    #tarantool_crate::tuple::rmp::encode::write_map_len(w, 1)?;
                     match self {
                         #variants
+                    }
+                }
+            }
+            Data::Union(_) => unimplemented!(),
+        }
+    }
+
+    fn decode_named_fields(
+        fields: &FieldsNamed,
+        tarantool_crate: &Path,
+        enum_variant: Option<&syn::Ident>,
+    ) -> proc_macro2::TokenStream {
+        let (code, var_names): (proc_macro2::TokenStream, Vec<_>) = fields
+            .named
+            .iter()
+            .map(|f| {
+                let name = f.ident.as_ref().expect("only named fields here");
+                let var_name = format_ident!("_field_{}", name);
+                // TODO: allow `#[encode(as_map)]` and `#[encode(as_vec)]` for struct fields
+                // to overwrite external structure encoding behavior
+                (quote_spanned! {f.span()=>
+                    if as_map {
+                        let field_name: String = #tarantool_crate::tuple::_Decode::decode(r, EncodeStyle::Default)?;
+                        let expected = stringify!(#name).trim_start_matches("r#");
+                        if field_name != expected {
+                            return Err(#tarantool_crate::error::Error::DecodeField {
+                                expected: expected.into(),
+                                got: field_name,
+                            })
+                        }
+                    }
+                    let #var_name = #tarantool_crate::tuple::_Decode::decode(r, EncodeStyle::Default)?;
+                }, var_name)
+            })
+            .unzip();
+        let field_names = fields.named.iter().map(|f| &f.ident);
+        let enum_variant = if let Some(variant) = enum_variant {
+            quote! { ::#variant }
+        } else {
+            quote! {}
+        };
+        quote! {
+            #code
+            Ok(Self #enum_variant {
+                #(#field_names: #var_names),*
+            })
+        }
+    }
+
+    fn decode_unnamed_fields(
+        fields: &FieldsUnnamed,
+        tarantool_crate: &Path,
+        enum_variant: Option<&syn::Ident>,
+    ) -> proc_macro2::TokenStream {
+        let (code, var_names): (proc_macro2::TokenStream, Vec<_>) = fields
+            .unnamed
+            .iter()
+            .enumerate()
+            .map(|(i, f)| {
+                let index = Index::from(i);
+                let var_name = quote::format_ident!("_field_{}", index);
+                (quote_spanned! {f.span()=>
+                    let #var_name = #tarantool_crate::tuple::_Decode::decode(r, EncodeStyle::Default)?;
+                }, var_name)
+            })
+            .unzip();
+        let enum_variant = if let Some(variant) = enum_variant {
+            quote! { ::#variant }
+        } else {
+            quote! {}
+        };
+        quote! {
+            #code
+            Ok(Self #enum_variant (
+                #(#var_names),*
+            ))
+        }
+    }
+
+    pub fn decode_fields(
+        data: &Data,
+        tarantool_crate: &Path,
+        attrs_span: impl Fn() -> SpanRange,
+        as_map: bool,
+    ) -> proc_macro2::TokenStream {
+        match *data {
+            Data::Struct(ref data) => match data.fields {
+                Fields::Named(ref fields) => {
+                    let fields = decode_named_fields(fields, tarantool_crate, None);
+                    quote! {
+                        let as_map = match style {
+                            EncodeStyle::Default => #as_map,
+                            EncodeStyle::ForceAsMap => true,
+                            EncodeStyle::ForceAsArray => false,
+                        };
+                        // TODO: Assert map and array len with number of struct fields
+                        if as_map {
+                            #tarantool_crate::tuple::rmp::decode::read_map_len(r)?;
+                        } else {
+                            #tarantool_crate::tuple::rmp::decode::read_array_len(r)?;
+                        }
+                        #fields
+                    }
+                }
+                Fields::Unnamed(ref fields) => {
+                    if as_map {
+                        abort!(
+                            attrs_span(),
+                            "`as_map` attribute can be specified only for structs with named fields"
+                        );
+                    }
+                    let fields = decode_unnamed_fields(fields, tarantool_crate, None);
+                    quote! {
+                        #tarantool_crate::tuple::rmp::decode::read_array_len(r)?;
+                        #fields
+                    }
+                }
+                Fields::Unit => {
+                    quote! {
+                        let () = #tarantool_crate::tuple::_Decode::decode(r, EncodeStyle::Default)?;
+                        Ok(Self)
+                    }
+                }
+            },
+            Data::Enum(ref variants) => {
+                if as_map {
+                    abort!(
+                        attrs_span(),
+                        "`as_map` attribute can be specified only for structs"
+                    );
+                }
+                let variants: proc_macro2::TokenStream = variants
+                    .variants
+                    .iter()
+                    .flat_map(|variant| {
+                        let variant_name = format_ident!("{}", variant.ident);
+                        match variant.fields {
+                        Fields::Named(ref fields) => {
+                            let fields = decode_named_fields(fields, tarantool_crate, Some(&variant.ident));
+                            // TODO: allow `#[encode(as_map)]` for struct variants
+                            quote! {
+                                 stringify!(#variant_name) => {
+                                    #tarantool_crate::tuple::rmp::decode::read_array_len(r)?;
+                                    let as_map = false;
+                                    #fields
+                                }
+                            }
+                        },
+                        Fields::Unnamed(ref fields) => {
+                            let fields = decode_unnamed_fields(fields, tarantool_crate, Some(&variant.ident));
+                            quote! {
+                                 stringify!(#variant_name) => {
+                                    #tarantool_crate::tuple::rmp::decode::read_array_len(r)?;
+                                    let as_map = false;
+                                    #fields
+                                }
+                            }
+                        }
+                        Fields::Unit => {
+                            let variant_name = &variant.ident;
+                            quote! {
+                                stringify!(#variant_name) => {
+                                    let () = #tarantool_crate::tuple::_Decode::decode(r, EncodeStyle::Default)?;
+                                    Ok(Self::#variant_name)
+                                }
+                            }
+                        },
+                    }})
+                    .collect();
+                quote! {
+                    // TODO: assert map len 1
+                    #tarantool_crate::tuple::rmp::decode::read_map_len(r)?;
+                    let variant_name: String = #tarantool_crate::tuple::_Decode::decode(r, EncodeStyle::Default)?;
+                    match variant_name.as_str() {
+                        #variants
+                        other => {
+                            Err(#tarantool_crate::error::Error::DecodeNoEnumVariant(other.into()))
+                        }
                     }
                 }
             }
@@ -235,7 +405,7 @@ pub fn derive_encode(input: TokenStream) -> TokenStream {
     let name = &input.ident;
 
     // Get attribute arguments
-    let args: msgpack::EncodeArgs = darling::FromDeriveInput::from_derive_input(&input).unwrap();
+    let args: msgpack::Args = darling::FromDeriveInput::from_derive_input(&input).unwrap();
     let tarantool_crate = args.tarantool.unwrap_or_else(|| "tarantool".to_string());
     let tarantool_crate = Ident::new(tarantool_crate.as_str(), Span::call_site()).into();
 
@@ -257,6 +427,47 @@ pub fn derive_encode(input: TokenStream) -> TokenStream {
                 use #tarantool_crate::tuple::EncodeStyle;
                 #encode_fields
                 Ok(())
+            }
+        }
+    };
+
+    expanded.into()
+}
+
+/// Macro to automatically derive `tarantool::tuple::_Decode`
+/// Deriving this trait will allow decoding this struct from msgpack format.
+/// It is meant as a replacement for serde + rmp_serde
+/// allowing us to customize it for tarantool case and hopefully also decreasing compile-time due to its simplicity.
+///
+/// For more information see `tarantool::tuple::_Decode`
+#[proc_macro_error]
+#[proc_macro_derive(Decode, attributes(encode))]
+pub fn derive_decode(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    let name = &input.ident;
+
+    // Get attribute arguments
+    let args: msgpack::Args = darling::FromDeriveInput::from_derive_input(&input).unwrap();
+    let tarantool_crate = args.tarantool.unwrap_or_else(|| "tarantool".to_string());
+    let tarantool_crate = Ident::new(tarantool_crate.as_str(), Span::call_site()).into();
+
+    // Add a bound to every type parameter.
+    let generics = msgpack::add_trait_bounds(input.generics, &tarantool_crate);
+    let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
+    let encode_fields = msgpack::decode_fields(
+        &input.data,
+        &tarantool_crate,
+        // Use a closure as the function might be costly, but is only used for errors
+        // and we don't want to slow down compilation.
+        || attrs_span(&input.attrs),
+        args.as_map,
+    );
+    let expanded = quote! {
+        // The generated impl.
+        impl #impl_generics #tarantool_crate::tuple::_Decode for #name #ty_generics #where_clause {
+            fn decode(r: &mut impl ::std::io::Read, style: #tarantool_crate::tuple::EncodeStyle) -> #tarantool_crate::Result<Self> {
+                use #tarantool_crate::tuple::EncodeStyle;
+                #encode_fields
             }
         }
     };
