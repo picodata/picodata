@@ -26,6 +26,7 @@ nav:
     - clustering.md
     - discovery.md
     - sql/review.md
+    - auth_ldap.md
 
 
 
