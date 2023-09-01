@@ -23,7 +23,7 @@ Astra Linux 1.7 SE, Debian 11, Ubuntu 20.04, 22.04 и Alt Linux p10.
 Используйте следующие команды для установки необходимых зависимостей для
 сборки Picodata из исходного кода. Обратите внимание, что потребуется
 установить актуальные версии Rust и Cargo, используя официальные
-инструкции с сайта [rustup.rs](http://www.rustup.rs):
+инструкции с сайта [rustup.rs](http://www.rustup.rs){:target="_blank"}:
 ```bash
 sudo dnf config-manager --set-enabled powertools
 sudo dnf in -y gcc gcc-c++ make cmake git patch libstdc++-static
@@ -43,7 +43,7 @@ sudo apt-get install build-essential cargo git cmake -y
 Используйте следующие команды для установки необходимых зависимостей для
 сборки Picodata из исходного кода. Обратите внимание, что потребуется
 установить актуальные версии Rust и Cargo, используя официальные
-инструкции с сайта [rustup.rs](http://www.rustup.rs):
+инструкции с сайта [rustup.rs](http://www.rustup.rs){:target="_blank"}:
 ```bash
 su -
 apt-get install gcc gcc-c++ cmake git patch libstdc++10-devel-static libgomp10-devel-static -y && exit

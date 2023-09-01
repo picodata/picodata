@@ -65,7 +65,7 @@ picodata> pico.help("help")
 
 Строковая переменная (не функция), которая содержит версию Lua API Picodata.
 Формат соответствует семантическому версионированию ([Semantic
-Versioning][semver]).
+Versioning][semver]{:target="_blank"}).
 
 [semver]: https://semver.org/
 
@@ -83,7 +83,7 @@ picodata> pico.LUA_API_VERSION
 
 Строковая переменная (не функция), которая содержит версию Picodata.
 Формат соответствует календарному версионированию ([Calendar
-Versioning][calver]) с форматом `YY.0M.MICRO`.
+Versioning][calver]{:target="_blank"}) с форматом `YY.0M.MICRO`.
 
 [calver]: https://calver.org/#scheme
 
@@ -371,7 +371,7 @@ local tuple = box.tuple.new({'unicorns'})
 local bucket_id = key:hash(tuple) % vshard.router.bucket_count()
 ```
 
-Добавление данных в шардированный спейс происходит с помощью [VShard API](https://www.tarantool.io/en/doc/latest/reference/reference_rock/vshard/vshard_router/):
+Добавление данных в шардированный спейс происходит с помощью [VShard API](https://www.tarantool.io/en/doc/latest/reference/reference_rock/vshard/vshard_router/){:target="_blank"}:
 
 ```lua
 local bucket_id = vshard.router.bucket_id_mpcrc32('unicorns')
@@ -520,7 +520,7 @@ function exit([code])
 - `code`: (_table_)
 
 В качестве параметров функция может принимать [код
-выхода](https://linuxconfig.org/list-of-exit-codes-on-linux),
+выхода](https://linuxconfig.org/list-of-exit-codes-on-linux){:target="_blank"},
 обозначающий состояние завершения процесса.
 
 Результат работы:
@@ -1173,8 +1173,8 @@ Lua-таблица, описывающая поле в составе спейс
 
 См. также:
 
-- Описание [space_object:format()](https://www.tarantool.io/en/doc/latest/reference/reference_lua/box_space/format/)
-- Описание [типов полей в спейсах Tarantool](https://docs.rs/tarantool/latest/tarantool/space/enum.FieldType.html)
+- Описание [space_object:format()](https://www.tarantool.io/en/doc/latest/reference/reference_lua/box_space/format/){:target="_blank"}
+- Описание [типов полей в спейсах Tarantool](https://docs.rs/tarantool/latest/tarantool/space/enum.FieldType.html){:target="_blank"}
 
 ### table Vclock {: #vclock_table }
 
