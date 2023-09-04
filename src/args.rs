@@ -6,7 +6,6 @@ use std::{
 };
 use tarantool::log::SayLevel;
 use tarantool::tlua;
-use thiserror::Error;
 
 use crate::failure_domain::FailureDomain;
 use crate::instance::InstanceId;
@@ -33,7 +32,7 @@ pub enum Picodata {
 pub struct Run {
     #[clap(
         long,
-        value_name = "name",
+        value_name = "NAME",
         default_value = "demo",
         env = "PICODATA_CLUSTER_ID"
     )]
@@ -43,22 +42,21 @@ pub struct Run {
 
     #[clap(
         long,
-        value_name = "path",
+        value_name = "PATH",
         default_value = ".",
-        env = "PICODATA_DATA_DIR",
-        parse(try_from_str = try_parse_path)
+        env = "PICODATA_DATA_DIR"
     )]
     /// Here the instance persists all of its data
     pub data_dir: String,
 
-    #[clap(long, value_name = "name", env = "PICODATA_INSTANCE_ID")]
+    #[clap(long, value_name = "NAME", env = "PICODATA_INSTANCE_ID")]
     /// Name of the instance.
     /// If not defined, it'll be generated automatically.
     pub instance_id: Option<InstanceId>,
 
     #[clap(
         long = "advertise",
-        value_name = "[host][:port]",
+        value_name = "[HOST][:PORT]",
         env = "PICODATA_ADVERTISE"
     )]
     /// Address the other instances should use to connect to this instance.
@@ -68,7 +66,7 @@ pub struct Run {
     #[clap(
         short = 'l',
         long = "listen",
-        value_name = "[host][:port]",
+        value_name = "[HOST][:PORT]",
         default_value = "localhost:3301",
         env = "PICODATA_LISTEN"
     )]
@@ -77,7 +75,7 @@ pub struct Run {
 
     #[clap(
         long = "peer",
-        value_name = "[host][:port]",
+        value_name = "[HOST][:PORT]",
         require_value_delimiter = true,
         use_value_delimiter = true,
         default_value = "localhost:3301",
@@ -88,7 +86,7 @@ pub struct Run {
 
     #[clap(
         long = "failure-domain",
-        value_name = "key=value",
+        value_name = "KEY=VALUE",
         require_value_delimiter = true,
         use_value_delimiter = true,
         parse(try_from_str = try_parse_kv_uppercase),
@@ -103,7 +101,7 @@ pub struct Run {
     /// failure domains until the desired replication factor is reached.
     pub failure_domain: Vec<(Uppercase, Uppercase)>,
 
-    #[clap(long, value_name = "name", env = "PICODATA_REPLICASET_ID")]
+    #[clap(long, value_name = "NAME", env = "PICODATA_REPLICASET_ID")]
     /// Name of the replicaset
     pub replicaset_id: Option<ReplicasetId>,
 
@@ -117,19 +115,14 @@ pub struct Run {
     /// (when the first instance bootstraps), and ignored aftwerwards.
     pub init_replication_factor: u8,
 
-    #[clap(
-        long,
-        value_name = "path",
-        env = "PICODATA_SCRIPT",
-        parse(try_from_str = try_parse_path)
-    )]
+    #[clap(long, value_name = "PATH", env = "PICODATA_SCRIPT")]
     /// A path to a lua script that will be executed at postjoin stage.
     /// At the moment the script is executed, the local storage is
     /// already initialized and HTTP server is running (if specified).
     /// But the raft node is uninitialized yet.
     pub script: Option<String>,
 
-    #[clap(long, value_name = "[host][:port]", env = "PICODATA_HTTP_LISTEN")]
+    #[clap(long, value_name = "[HOST][:PORT]", env = "PICODATA_HTTP_LISTEN")]
     /// Address to start the HTTP server on. The routing API is exposed
     /// in Lua as `_G.pico.httpd` variable. If not specified, it won't
     /// be initialized.
@@ -138,6 +131,13 @@ pub struct Run {
     #[clap(short = 'i', long = "interactive", env = "PICODATA_INTERACTIVE_MODE")]
     /// Enable interactive console
     pub interactive_mode: bool,
+
+    #[clap(long, value_name = "PATH", env = "PICODATA_CONSOLE_SOCK")]
+    /// Unix socket for the interactive console to connect using
+    /// `picodata connect --unix`. Unlike connecting to a
+    /// `--listen` address, console communication occurs in plain text
+    /// and always operates under the admin account.
+    pub console_sock: Option<String>,
 }
 
 // Copy enum because clap:ArgEnum can't be derived for the foreign SayLevel.
@@ -230,17 +230,17 @@ impl Tarantool {
 #[derive(Debug, Parser, tlua::Push)]
 #[clap(about = "Expel node from cluster")]
 pub struct Expel {
-    #[clap(long, value_name = "name", default_value = "demo")]
+    #[clap(long, value_name = "NAME", default_value = "demo")]
     /// Name of the cluster from instance should be expelled.
     pub cluster_id: String,
 
-    #[clap(long, value_name = "name", default_value = "")]
+    #[clap(long, value_name = "NAME", default_value = "")]
     /// Name of the instance to expel.
     pub instance_id: InstanceId,
 
     #[clap(
         long = "peer",
-        value_name = "[host][:port]",
+        value_name = "[HOST][:PORT]",
         default_value = "localhost:3301"
     )]
     /// Address of any instance from the cluster.
@@ -290,28 +290,6 @@ fn current_exe() -> Result<CString, String> {
     .map_err(|e| format!("Current executable path contains nul bytes: {e}"))
 }
 
-#[derive(Error, Debug)]
-pub enum ParseAddressError {
-    #[error("bad address: {0}")]
-    BadAddress(&'static str),
-
-    #[error("bad port: {0}")]
-    BadPort(#[from] std::num::ParseIntError),
-}
-
-#[derive(Error, Debug)]
-pub enum ParsePathError {
-    #[error("empty path is not supported, use \".\" for current dir")]
-    EmptyPath,
-}
-
-fn try_parse_path(text: &str) -> Result<String, ParsePathError> {
-    match text {
-        "" => Err(ParsePathError::EmptyPath),
-        _ => Ok(text.to_string()),
-    }
-}
-
 /// Parses a '=' sepparated string of key and value and converts both to
 /// uppercase.
 fn try_parse_kv_uppercase(s: &str) -> Result<(Uppercase, Uppercase), String> {
@@ -348,9 +326,14 @@ pub struct Connect {
     /// The preferred authentication method.
     pub auth_method: AuthMethod,
 
+    #[clap(long = "unix")]
+    /// Treat ADDRESS as a unix socket path.
+    pub address_as_socket: bool,
+
     #[clap(value_name = "ADDRESS")]
-    /// Picodata instance address. Format: `[user@][host][:port]`
-    pub address: Address,
+    /// Picodata instance address to connect. Format:
+    /// `[user@][host][:port]` or `--unix <PATH>`.
+    pub address: String,
 }
 
 impl Connect {
@@ -497,11 +480,6 @@ mod tests {
         assert!("user:pass@host".parse::<Address>().is_err());
         assert!("@host".parse::<Address>().is_err());
         assert!("host:".parse::<Address>().is_err());
-    }
-
-    #[test]
-    fn test_parse_path() {
-        assert!(try_parse_path("").is_err());
     }
 
     macro_rules! parse {
@@ -755,28 +733,6 @@ mod tests {
         }
 
         {
-            let parsed = parse![Connect, "somewhere:3301"];
-            assert_eq!(parsed.user, "guest");
-            assert_eq!(
-                parsed.address,
-                Address {
-                    user: None,
-                    host: "somewhere".into(),
-                    port: "3301".into()
-                }
-            );
-
-            let parsed = parse![Connect, "user@host:port", "--user", "superman"];
-            assert_eq!(parsed.user, "superman");
-            assert_eq!(
-                parsed.address,
-                Address {
-                    user: Some("user".into()),
-                    host: "host".into(),
-                    port: "port".into(),
-                }
-            );
-
             std::env::set_var("PICODATA_USER", "batman");
             let parsed = parse!(Connect, "somewhere:3301");
             assert_eq!(parsed.user, "batman");

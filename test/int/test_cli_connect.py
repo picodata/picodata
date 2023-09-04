@@ -128,25 +128,6 @@ def test_wrong_pass(i1: Instance):
     cli.expect_exact(pexpect.EOF)
 
 
-def test_address_wrong_format(binary_path: str):
-    eprint("")
-    cli = pexpect.spawn(
-        command=binary_path,
-        args=["connect", "testuser:testpass@localhost:3301"],
-        env={"NO_COLOR": "1"},
-        encoding="utf-8",
-        timeout=1,
-    )
-    cli.logfile = sys.stdout
-
-    cli.expect_exact(
-        'error: Invalid value "testuser:testpass@localhost:3301" '
-        + "for '<ADDRESS>': valid format: [user@][host][:port]\r\n\r\n"
-        + "For more information try --help\r\n"
-    )
-    cli.expect_exact(pexpect.EOF)
-
-
 def test_connection_refused(binary_path: str):
     eprint("")
     cli = pexpect.spawn(
@@ -219,4 +200,98 @@ def test_connect_auth_type_unknown(binary_path: str):
     cli.expect_exact(
         "error: \"deadbeef\" isn't a valid value for '--auth-type <METHOD>"
     )
+    cli.expect_exact(pexpect.EOF)
+
+
+def test_connect_unix_enoent(binary_path: str):
+    cli = pexpect.spawn(
+        command=binary_path,
+        args=["connect", "--unix", "wrong/path/t.sock"],
+        env={"NO_COLOR": "1"},
+        encoding="utf-8",
+        timeout=1,
+    )
+    cli.logfile = sys.stdout
+
+    cli.expect_exact("Connection is not established: No such file or directory")
+    cli.expect_exact("uri: unix/:./wrong/path/t.sock")
+    cli.expect_exact(pexpect.EOF)
+
+
+def test_connect_unix_econnrefused(binary_path: str):
+    cli = pexpect.spawn(
+        command=binary_path,
+        args=["connect", "--unix", "/dev/null"],
+        env={"NO_COLOR": "1"},
+        encoding="utf-8",
+        timeout=1,
+    )
+    cli.logfile = sys.stdout
+
+    cli.expect_exact("Connection is not established: Connection refused")
+    cli.expect_exact("uri: unix/:/dev/null")
+    cli.expect_exact(pexpect.EOF)
+
+
+def test_connect_unix_invalid_path(binary_path: str):
+    cli = pexpect.spawn(
+        command=binary_path,
+        args=["connect", "--unix", "./[][]"],
+        env={"NO_COLOR": "1"},
+        encoding="utf-8",
+        timeout=1,
+    )
+    cli.logfile = sys.stdout
+
+    cli.expect_exact("invalid socket path: ./[][]")
+    cli.expect_exact(pexpect.EOF)
+
+
+def test_connect_unix_empty_path(binary_path: str):
+    cli = pexpect.spawn(
+        command=binary_path,
+        args=["connect", "--unix", ""],
+        env={"NO_COLOR": "1"},
+        encoding="utf-8",
+        timeout=1,
+    )
+    cli.logfile = sys.stdout
+
+    cli.expect_exact("invalid socket path:")
+    cli.expect_exact(pexpect.EOF)
+
+
+def test_connect_unix_ok(cluster: Cluster, tmpdir):
+    i1 = cluster.add_instance(wait_online=False)
+    i1.env.update({"PICODATA_CONSOLE_SOCK": f"{i1.data_dir}/console.sock"})
+    i1.start()
+    i1.wait_online()
+
+    cli = pexpect.spawn(
+        # For some uninvestigated reason, readline trims the propmt in CI
+        # Instead of
+        #   unix/:/some/path/to/console.sock>
+        # it prints
+        #   </path/to/console.sock>
+        #
+        # We were unable to debug it quickly and used cwd as a workaround
+        cwd=i1.data_dir,
+        command=i1.binary_path,
+        args=["connect", "--unix", "./console.sock"],
+        encoding="utf-8",
+        timeout=1,
+    )
+    cli.logfile = sys.stdout
+
+    cli.expect_exact("connected to unix/:./console.sock")
+    cli.expect_exact("unix/:./console.sock>")
+
+    cli.sendline("box.session.user()")
+    cli.expect_exact("---\r\n")
+    cli.expect_exact("- admin\r\n")
+    cli.expect_exact("...\r\n")
+    cli.expect_exact("\r\n")
+
+    eprint("^D")
+    cli.sendcontrol("d")
     cli.expect_exact(pexpect.EOF)

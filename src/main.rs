@@ -3,9 +3,11 @@ use nix::sys::signal;
 use nix::sys::termios::{tcgetattr, tcsetattr, SetArg::TCSADRAIN};
 use nix::sys::wait::{waitpid, WaitStatus};
 use nix::unistd::{self, fork, ForkResult};
-use picodata::args;
+use picodata::args::{self, Address};
 use picodata::ipc;
 use picodata::tlog;
+use picodata::util::validate_and_complete_unix_socket_path;
+use picodata::util::Either::{Left, Right};
 use picodata::Entrypoint;
 use picodata::IpcMessage;
 use tarantool::fiber;
@@ -273,39 +275,57 @@ fn main_expel(args: args::Expel) -> ! {
 }
 
 fn main_connect(args: args::Connect) -> ! {
-    let user = args.address.user.as_ref().unwrap_or(&args.user).clone();
-    let prompt = format!("Enter password for {}: ", &user);
-    let password = match picodata::util::prompt_password(&prompt) {
-        Ok(Some(password)) => password,
-        Ok(None) => {
-            eprintln!("\nNo password provided");
-            std::process::exit(1);
+    fn unwrap_or_terminate<T>(res: Result<T, String>) -> T {
+        match res {
+            Ok(value) => value,
+            Err(msg) => {
+                tlog!(Critical, "{msg}");
+                std::process::exit(1);
+            }
         }
-        Err(e) => {
-            eprintln!("Failed to prompt for a password: {e}");
-            std::process::exit(2);
-        }
-    };
-
-    let address = format!(
-        "{user}:{password}@{}:{}?auth_type={}",
-        args.address.host, args.address.port, args.auth_method
-    );
+    }
 
     let rc = tarantool_main!(
         args.tt_args().unwrap(),
-        callback_data: address,
-        callback_data_type: String,
+        callback_data: args,
+        callback_data_type: args::Connect,
         callback_body: {
-            let lua = ::tarantool::lua_state();
-            if let Err(e) = lua.exec_with(
+            let endpoint = unwrap_or_terminate({
+                if args.address_as_socket {
+                    validate_and_complete_unix_socket_path(&args.address).map(Right)
+                } else {
+                    args.address.parse::<Address>()
+                        .map_err(|msg| format!("invalid format of address argument: {msg}"))
+                        .map(Left)
+                }
+            });
+
+            let raw_endpoint = match endpoint {
+                Left(address) => {
+                    let user = address.user.as_ref().unwrap_or(&args.user).clone();
+                    let prompt = format!("Enter password for {user}: ");
+                    let password = unwrap_or_terminate(
+                        picodata::util::prompt_password(&prompt)
+                            .map_err(|e| format!("Failed to prompt for a password: {e}")),
+                    );
+
+                    let password = unwrap_or_terminate(
+                        password.ok_or("\nNo password provided".into()),
+                    );
+
+                    format!(
+                        "{user}:{password}@{}:{}?auth_type={}",
+                        address.host, address.port, args.auth_method
+                    )
+                }
+                Right(socket_path) => socket_path,
+            };
+
+            unwrap_or_terminate(::tarantool::lua_state().exec_with(
                 r#"local code, arg = ...
                 return load(code, '@src/connect.lua')(arg)"#,
-                (include_str!("connect.lua"), address)
-            ) {
-                eprintln!("{e}");
-                std::process::exit(3);
-            }
+                (include_str!("connect.lua"), raw_endpoint)
+            ).map_err(|e| e.to_string()));
         }
     );
 

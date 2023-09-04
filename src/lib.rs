@@ -24,6 +24,7 @@ use crate::instance::grade::{CurrentGrade, TargetGrade, TargetGradeVariant};
 use crate::instance::Instance;
 use crate::traft::op;
 use crate::traft::LogicalClock;
+use crate::util::validate_and_complete_unix_socket_path;
 
 #[doc(hidden)]
 mod app;
@@ -648,6 +649,32 @@ fn postjoin(args: &args::Run, storage: Clusterwide, raft_storage: RaftSpaceAcces
 
     box_cfg.listen = Some(format!("{}:{}", args.listen.host, args.listen.port));
     tarantool::set_cfg(&box_cfg);
+
+    // Listen interactive console connections on a unix socket
+    if let Some(ref console_sock) = args.console_sock {
+        let l = ::tarantool::lua_state();
+
+        let validated_path = validate_and_complete_unix_socket_path(console_sock);
+
+        if validated_path.is_err() {
+            tlog!(
+                Critical,
+                "failed to listen interactive console on {console_sock:?}: invalid path"
+            );
+            std::process::exit(-1);
+        }
+
+        let console_sock = validated_path.unwrap();
+        if let Err(e) = l.exec_with(r#"require('console').listen(...)"#, &console_sock) {
+            tlog!(Error, "{e}");
+            tlog!(
+                Critical,
+                "failed to listen interactive console on {console_sock:?}: {}",
+                errno::errno()
+            );
+            std::process::exit(-1);
+        }
+    }
 
     if let Err(e) = tarantool::on_shutdown(|| fiber::block_on(on_shutdown::callback())) {
         tlog!(Error, "failed setting on_shutdown trigger: {e}");

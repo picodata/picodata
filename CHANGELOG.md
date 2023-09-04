@@ -12,6 +12,10 @@ with the `YY.0M.MICRO` scheme.
 
 ### Features
 
+- Allow connecting interactive console over a unix socket `picodata run --console-sock`.
+  Use `picodata connect --unix` to connect. Unlike connecting to a `--listen` address,
+  console communication occurs in plain text and always operates under the admin account.
+
 - _Clusterwide SQL_ now availiable via `\set language sql` in interactive console.
 
 - Interactive console is disabled by default. Enable it implicitly with `picodata run -i`.

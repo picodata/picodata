@@ -508,6 +508,32 @@ pub fn prompt_password(prompt: &str) -> Result<Option<String>, std::io::Error> {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+/// Validate unix socket uri via lua uri module
+///
+/// Unix socket uri should start with ./ or ../ so we prepend it manually
+///
+/// Return None in case of incorrect path
+/// Return Some(`value`) with `unix/:` and, probably, `./`, `../` prepended to `value`
+pub fn validate_and_complete_unix_socket_path(socket_path: &str) -> Result<String, String> {
+    let l = ::tarantool::lua_state();
+    let path = std::path::Path::new(socket_path);
+    let console_sock = match path.components().next() {
+        Some(std::path::Component::Normal(_)) => {
+            format!("unix/:./{socket_path}")
+        }
+        _ => format!("unix/:{socket_path}"),
+    };
+
+    // Check that Lua can correctly parse the unix socket path
+    l.exec_with(
+        "local u = require('uri').parse(...); assert(u and u.unix)",
+        &console_sock,
+    )
+    .map_err(|_| format!("invalid socket path: {socket_path}"))?;
+
+    Ok(console_sock)
+}
+////////////////////////////////////////////////////////////////////////////////
 /// IsSameType
 
 pub trait IsSameType<L, R> {
