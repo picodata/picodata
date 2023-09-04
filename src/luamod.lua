@@ -845,6 +845,7 @@ function pico.grant_privilege(grantee, privilege, object_type, object_name, opts
             op_kind = 'grant_privilege',
             priv_def = {
                 grantee_id = grantee_def.id,
+                grantor_id = box.session.uid(),
                 object_type = object_type,
                 object_name = object_name,
                 privilege = privilege,
@@ -934,7 +935,8 @@ function pico.revoke_privilege(grantee, privilege, object_type, object_name, opt
         -- Throws error if object doesn't exist
         object_resolve(object_type, object_name)
 
-        if box.space._pico_privilege:get{grantee_def.id, object_type, object_name, privilege} == nil then
+        local priv = box.space._pico_privilege:get{grantee_def.id, object_type, object_name, privilege}
+        if priv == nil then
             -- Privilege is not yet granted, no op needed
             return nil
         end
@@ -944,6 +946,7 @@ function pico.revoke_privilege(grantee, privilege, object_type, object_name, opt
             op_kind = 'revoke_privilege',
             priv_def = {
                 grantee_id = grantee_def.id,
+                grantor_id = priv.grantor_id,
                 object_type = object_type,
                 object_name = object_name,
                 privilege = privilege,

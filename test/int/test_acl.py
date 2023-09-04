@@ -190,6 +190,14 @@ def test_acl_lua_api(cluster: Cluster):
         "_pico_property",
     )
 
+    dave_id = i1.call("box.space._pico_user.index.name:get", "Dave")[0]
+
+    priv = i1.call(
+        "box.space._pico_privilege:get", (dave_id, "space", "_pico_property", "read")
+    )
+
+    assert priv[1] == 0  # The above grant was executed from guest. 0 is guest user id.
+
     # Already granted -> ok.
     i1.call(
         "pico.grant_privilege",

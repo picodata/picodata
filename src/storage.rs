@@ -2221,6 +2221,7 @@ impl Privileges {
             .is_local(true)
             .is_temporary(false)
             .field(("grantee_id", FieldType::Unsigned))
+            .field(("grantor_id", FieldType::Unsigned))
             .field(("object_type", FieldType::String))
             .field(("object_name", FieldType::String))
             .field(("privilege", FieldType::String))
