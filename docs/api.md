@@ -12,7 +12,7 @@
 ## Lua API {: #lau-api }
 
 Данный раздел интерфейса больше подходит для использования в
-интерактивной консоли (`picodata run` или `picodata connect`).
+интерактивной консоли (`picodata run -i` или `picodata connect`).
 
 Пример:
 
