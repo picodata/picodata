@@ -784,7 +784,9 @@ nothing`.
 только к определенным строкам таблицы. В то время как для полной замены
 строк можно использовать команду `INSERT` c параметром `on conflict do
 replace`, команда `UPDATE` подойдет для выборочной замены значений
-отдельных колонок в нужных строках.
+отдельных колонок в нужных строках. В качестве источника данных для
+`UPDATE` можно использовать как непосредственно передаваемые значения,
+так и результат подзапроса в конструкции `from (select ...)`.
 
 Схема возможных запросов `UPDATE` показана ниже.
 
@@ -808,7 +810,16 @@ pico.sql([[update "characters" set "name" = 'Etch', "year" = 2010 where "id" = 2
 pico.sql([[update "characters" set "year" = 2010]], {})
 ```
 
-Результатом успешного выполнение будет сообщение с количеством обработанных строк. Например:
+Обновление значений колонки на основе значений другой колонки:
+```sql
+pico.sql([[update "characters" set "name" = "item" from (select "id" as i, "name" as "item" from "assets") where "id" = i]], {})
+```
+
+В данном случае использования подзапроса (`from (select ...)`),
+потребуется указать и фильтр (`where`) для того, чтобы каждой строке
+первой таблицы соответствовала ровно одна строка второй таблицы.
+
+Результатом успешного выполнения будет сообщение с количеством обработанных строк. Например:
 ```lua
 ---
 - row_count: 10
@@ -1023,9 +1034,31 @@ picodata> pico.sql([[explain delete from "characters" where "id" = 1]], {})
   - '                scan "characters"'
 ...
 ```
-<!--
-вставить пример с update, когда он появится
--->
+Локальная материализация происходит и при обновлении данных в тех
+случаях, если не затрагивается колонка, по которой таблица
+шардирована. Например, если при создании таблицы было указано
+шардирование по колонке `id` (`distributed by ("id")`), то обновление
+данных в других колонках не приведет к их перемещению через
+узел-маршрутизатор. Поскольку при `UPDATE` не происходит пересчет
+`bucket_id`, то планировщик использует политику `local`:
+
+```
+picodata> pico.sql([[explain update "characters" set "year" = 2010]], {})
+```
+
+Вывод в консоль:
+```
+---
+- - update "characters"
+  - '"year" = COL_0'
+  - '    motion [policy: local]'
+  - '        projection (2010::unsigned -> COL_0, "characters"."id"::integer -> COL_1)'
+  - '            scan "characters"'
+  - 'execution options:'
+  - sql_vdbe_max_steps = 45000
+  - vtable_max_rows = 5000
+...
+```
 
 **Частичное перемещение** происходит, когда требуется отправить на узлы
 хранения недостающую часть таблицы.
@@ -1077,6 +1110,31 @@ pico.sql([[
   - '            scan "new_assets"'
   - '                projection ("assets3"."id3"::integer -> "id3", "assets3"."name3"::string -> "name3")'
   - '                    scan "assets3"'
+...
+```
+
+Пример `UPDATE` с обновлением колонки, по которой шардирована таблица (например, `distributed by ("id", "name")`):
+
+```
+picodata> pico.sql([[explain update "characters" set "name" = 'Etch', "year" = 2010 where "id" = 2]], {})
+```
+
+Вывод в консоль:
+```
+---
+- - update "characters"
+  - '"id" = COL_0'
+  - '"name" = COL_1'
+  - '"year" = COL_2'
+  - '    motion [policy: segment([])]'
+  - '        projection ("characters"."id"::integer -> COL_0, ''Etch''::string ->
+    COL_1, 2010::unsigned -> COL_2, "characters"."id"::integer -> COL_3, "characters"."name"::string
+    -> COL_4)'
+  - '            selection ROW("characters"."id"::integer) = ROW(2::unsigned)'
+  - '                scan "characters"'
+  - 'execution options:'
+  - sql_vdbe_max_steps = 45000
+  - vtable_max_rows = 5000
 ...
 ```
 
