@@ -134,6 +134,10 @@ pub struct Run {
     /// in Lua as `_G.pico.httpd` variable. If not specified, it won't
     /// be initialized.
     pub http_listen: Option<Address>,
+
+    #[clap(short = 'i', long = "interactive", env = "PICODATA_INTERACTIVE_MODE")]
+    /// Enable interactive console
+    pub interactive_mode: bool,
 }
 
 // Copy enum because clap:ArgEnum can't be derived for the foreign SayLevel.
@@ -168,7 +172,17 @@ impl From<LogLevel> for SayLevel {
 impl Run {
     /// Get the arguments that will be passed to `tarantool_main`
     pub fn tt_args(&self) -> Result<Vec<CString>, String> {
-        Ok(vec![current_exe()?])
+        let mut args = vec![
+            current_exe()?,
+            CString::new(r"-e").unwrap(),
+            CString::new(r#" "#).unwrap(),
+        ];
+
+        if self.interactive_mode {
+            args.push(CString::new("-i").unwrap());
+        }
+
+        Ok(args)
     }
 
     pub fn advertise_address(&self) -> String {
@@ -727,6 +741,17 @@ mod tests {
             std::env::set_var("PICODATA_INIT_REPLICATION_FACTOR", "9");
             let parsed = parse![Run,];
             assert_eq!(parsed.init_replication_factor, 9);
+        }
+
+        {
+            let parsed = parse![Run, "-i"];
+            assert_eq!(parsed.interactive_mode, true);
+
+            let parsed = parse![Run, "--interactive"];
+            assert_eq!(parsed.interactive_mode, true);
+
+            let parsed = parse![Run,];
+            assert_eq!(parsed.interactive_mode, false);
         }
 
         {

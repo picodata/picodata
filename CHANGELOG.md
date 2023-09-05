@@ -14,6 +14,8 @@ with the `YY.0M.MICRO` scheme.
 
 - _Clusterwide SQL_ now availiable via `\set language sql` in interactive console.
 
+- Interactive console is disabled by default. Enable it implicitly with `picodata run -i`.
+
 - Allow specifying `picodata connect [user@][host][:port]` format. It
   overrides the `--user` option.
 
