@@ -49,7 +49,6 @@ mod msgpack {
     fn encode_named_fields(
         fields: &FieldsNamed,
         tarantool_crate: &Path,
-        as_map: bool,
         add_self: bool,
     ) -> proc_macro2::TokenStream {
         fields
@@ -62,17 +61,14 @@ mod msgpack {
                 } else {
                     quote! {}
                 };
-                let encode_name = if as_map {
-                    quote! {
+                // TODO: allow `#[encode(as_map)]` and `#[encode(as_vec)]` for struct fields
+                // to overwrite external structure encoding behavior
+                quote_spanned! {f.span()=>
+                    if as_map {
                         #tarantool_crate::tuple::rmp::encode::write_str(w,
                             stringify!(#name).trim_start_matches("r#"))?;
                     }
-                } else {
-                    quote! {}
-                };
-                quote_spanned! {f.span()=>
-                    #encode_name
-                    #tarantool_crate::tuple::_Encode::encode(#s #name, w)?;
+                    #tarantool_crate::tuple::_Encode::encode(#s #name, w, EncodeStyle::Default)?;
                 }
             })
             .collect()
@@ -89,7 +85,7 @@ mod msgpack {
             .flat_map(|(i, f)| {
                 let index = Index::from(i);
                 quote_spanned! {f.span()=>
-                    #tarantool_crate::tuple::_Encode::encode(&self.#index, w)?;
+                    #tarantool_crate::tuple::_Encode::encode(&self.#index, w, EncodeStyle::Default)?;
                 }
             })
             .collect()
@@ -105,17 +101,19 @@ mod msgpack {
             Data::Struct(ref data) => match data.fields {
                 Fields::Named(ref fields) => {
                     let field_count = fields.named.len() as u32;
-                    let fields = encode_named_fields(fields, tarantool_crate, as_map, true);
-                    if as_map {
-                        quote! {
+                    let fields = encode_named_fields(fields, tarantool_crate, true);
+                    quote! {
+                        let as_map = match style {
+                            EncodeStyle::Default => #as_map,
+                            EncodeStyle::ForceAsMap => true,
+                            EncodeStyle::ForceAsArray => false,
+                        };
+                        if as_map {
                             #tarantool_crate::tuple::rmp::encode::write_map_len(w, #field_count)?;
-                            #fields
-                        }
-                    } else {
-                        quote! {
+                        } else {
                             #tarantool_crate::tuple::rmp::encode::write_array_len(w, #field_count)?;
-                            #fields
                         }
+                        #fields
                     }
                 }
                 Fields::Unnamed(ref fields) => {
@@ -133,7 +131,7 @@ mod msgpack {
                     }
                 }
                 Fields::Unit => {
-                    quote!(#tarantool_crate::tuple::_Encode::encode(&(), w)?;)
+                    quote!(#tarantool_crate::tuple::_Encode::encode(&(), w, EncodeStyle::Default)?;)
                 }
             },
             Data::Enum(ref variants) => {
@@ -151,13 +149,14 @@ mod msgpack {
                             let field_count = fields.named.len() as u32;
                             let variant_name = &variant.ident;
                             let field_names = fields.named.iter().map(|field| field.ident.clone());
-                            let fields = encode_named_fields(fields, tarantool_crate, false, false);
+                            let fields = encode_named_fields(fields, tarantool_crate, false);
                             // TODO: allow `#[encode(as_map)]` for struct variants
                             quote! {
                                  Self::#variant_name { #(#field_names),*} => {
                                     #tarantool_crate::tuple::rmp::encode::write_map_len(w, 1)?;
                                     #tarantool_crate::tuple::rmp::encode::write_str(w, stringify!(#variant_name).trim_start_matches("r#"))?;
                                     #tarantool_crate::tuple::rmp::encode::write_array_len(w, #field_count)?;
+                                    let as_map = false;
                                     #fields
                                 }
                             }
@@ -168,7 +167,7 @@ mod msgpack {
                             let field_names = fields.unnamed.iter().enumerate().map(|(i, _)| format_ident!("t{}", i));
                             let fields: proc_macro2::TokenStream = field_names.clone()
                                 .flat_map(|field_name| quote! {
-                                    #tarantool_crate::tuple::_Encode::encode(#field_name, w)?;
+                                    #tarantool_crate::tuple::_Encode::encode(#field_name, w, EncodeStyle::Default)?;
                                 })
                                 .collect();
                             if field_count > 1 {
@@ -187,7 +186,7 @@ mod msgpack {
                                         #tarantool_crate::tuple::rmp::encode::write_map_len(w, 1)?;
                                         #tarantool_crate::tuple::rmp::encode::write_str(w,
                                             stringify!(#variant_name).trim_start_matches("r#"))?;
-                                        #tarantool_crate::tuple::_Encode::encode(v, w)?;
+                                        #tarantool_crate::tuple::_Encode::encode(v, w, EncodeStyle::Default)?;
                                     }
                                 }
                             }
@@ -254,7 +253,8 @@ pub fn derive_encode(input: TokenStream) -> TokenStream {
     let expanded = quote! {
         // The generated impl.
         impl #impl_generics #tarantool_crate::tuple::_Encode for #name #ty_generics #where_clause {
-            fn encode(&self, w: &mut impl ::std::io::Write) -> #tarantool_crate::Result<()> {
+            fn encode(&self, w: &mut impl ::std::io::Write, style: #tarantool_crate::tuple::EncodeStyle) -> #tarantool_crate::Result<()> {
+                use #tarantool_crate::tuple::EncodeStyle;
                 #encode_fields
                 Ok(())
             }
@@ -277,9 +277,9 @@ pub fn impl_tuple_encode(_input: TokenStream) -> TokenStream {
             where
                 #(#tys: _Encode,)*
             {
-                fn encode(&self, w: &mut impl Write) -> Result<()> {
+                fn encode(&self, w: &mut impl Write, _style: EncodeStyle) -> Result<()> {
                     rmp::encode::write_array_len(w, #i as u32)?;
-                    #(self.#is.encode(w)?;)*
+                    #(self.#is.encode(w, EncodeStyle::Default)?;)*
                     Ok(())
                 }
             }
