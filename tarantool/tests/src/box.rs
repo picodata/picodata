@@ -5,7 +5,8 @@ use std::collections::BTreeMap;
 use tarantool::index::{self, IndexOptions, IteratorType};
 use tarantool::sequence::Sequence;
 use tarantool::space::UpdateOps;
-use tarantool::space::{self, Field, Space, SpaceCreateOptions, SpaceEngineType, SystemSpace};
+use tarantool::space::{self, Field, Space, SystemSpace};
+use tarantool::space::{SpaceCreateOptions, SpaceEngineType, SpaceType};
 use tarantool::tuple::Tuple;
 use tarantool::util::Value;
 use tarantool::{update, upsert};
@@ -844,8 +845,7 @@ pub fn index_create_drop() {
 
 pub fn space_create_is_sync() {
     let opts = SpaceCreateOptions {
-        is_local: false,
-        is_sync: true,
+        space_type: SpaceType::Synchronous,
         ..Default::default()
     };
 
@@ -910,7 +910,7 @@ pub fn space_meta() {
 
     let opts = SpaceCreateOptions {
         engine: SpaceEngineType::Memtx,
-        is_local: true,
+        space_type: SpaceType::DataLocal,
         format: Some(vec![
             Field::unsigned("f1"),
             Field::boolean("f2"),
@@ -934,23 +934,16 @@ pub fn space_meta() {
     assert_field(meta.format.get(1).unwrap(), "f2", "boolean", false);
     assert_field(meta.format.get(2).unwrap(), "f3", "string", true);
 
-    let opts = SpaceCreateOptions {
-        is_local: false,
-        is_temporary: true,
-        is_sync: true,
-        format: Some(vec![Field::unsigned("f1")]),
-        ..Default::default()
-    };
-    let space = Space::create("new_space_10", &opts).expect("space new_space_10 should exists");
+    let space = Space::builder("new_space_10")
+        .space_type(SpaceType::DataTemporary)
+        .format([Field::unsigned("f1")])
+        .create()
+        .unwrap();
     let meta = space.meta().expect("meta should exists");
 
     assert_eq!(meta.name, "new_space_10");
     assert!(matches!(
         meta.flags.get("temporary").unwrap(),
-        Value::Bool(true)
-    ));
-    assert!(matches!(
-        meta.flags.get("is_sync").unwrap(),
         Value::Bool(true)
     ));
 }
@@ -990,4 +983,111 @@ pub fn index_parts() {
         Some((3, 3.14, [3, 2, 1]))
     );
     assert!(iter.next().is_none());
+}
+
+pub fn fully_temporary_space() {
+    // This will panic in case fully-temporary api is not supported in
+    // current version of tarantool, before doing box.cfg { read_only = true }.
+    // Otherwise testing harness will fail to run other tests in read-only mode.
+    Space::builder("fully-temporary")
+        .space_type(SpaceType::Temporary)
+        .create()
+        .unwrap()
+        .drop()
+        .unwrap();
+
+    let lua = tarantool::lua_state();
+    lua.exec("box.cfg { read_only = true }").unwrap();
+
+    // Data-temporary space cannot be created when read_only = true
+    let err = Space::builder("data-temporary")
+        .space_type(SpaceType::DataTemporary)
+        .create()
+        .unwrap_err();
+    assert_eq!(
+        err.to_string(),
+        "tarantool error: Readonly: Can't modify data on a read-only instance - box.cfg.read_only is true"
+    );
+
+    // But fully-temporary space can
+    let space = Space::builder("fully-temporary")
+        .space_type(SpaceType::Temporary)
+        .create()
+        .unwrap();
+
+    assert_eq!(
+        space.meta().unwrap().flags.get("type"),
+        Some(&Value::Str("temporary".into()))
+    );
+
+    // Index creation also works
+    let index = space.index_builder("pk").create().unwrap();
+
+    // Inserting obviously works, because the space is data-temporary
+    space.put(&(1, 2, 3)).unwrap();
+    let row = space
+        .select(IteratorType::All, &())
+        .unwrap()
+        .map(|t| t.decode::<(i32, i32, i32)>().unwrap())
+        .next()
+        .unwrap();
+    assert_eq!(row, (1, 2, 3));
+
+    // Truncating also works
+    space.truncate().unwrap();
+    let count = space.select(IteratorType::All, &()).unwrap().count();
+    assert_eq!(count, 0);
+
+    // Drop space and index works
+    index.drop().unwrap();
+    space.drop().unwrap();
+
+    // The next available id in the fully-temporary range is given out each time
+    let space_1 = Space::builder("t1")
+        .space_type(SpaceType::Temporary)
+        .create()
+        .unwrap();
+
+    let space_2 = Space::builder("t2")
+        .space_type(SpaceType::Temporary)
+        .create()
+        .unwrap();
+    assert_eq!(space_2.id(), space_1.id() + 1);
+
+    let space_3 = Space::builder("t3")
+        .space_type(SpaceType::Temporary)
+        .create()
+        .unwrap();
+    assert_eq!(space_3.id(), space_1.id() + 2);
+
+    // Id of space "t2" is now free but we don't start filling the holes until ids overflow
+    space_2.drop().unwrap();
+    let space_4 = Space::builder("t4")
+        .space_type(SpaceType::Temporary)
+        .create()
+        .unwrap();
+    assert_eq!(space_4.id(), space_1.id() + 3);
+
+    // Take the maximum space id to force ids to start filling the holes
+    let space_5 = Space::builder("t5")
+        .id(tarantool::space::SPACE_ID_MAX)
+        .space_type(SpaceType::Temporary)
+        .create()
+        .unwrap();
+    assert_eq!(space_5.id(), tarantool::space::SPACE_ID_MAX);
+
+    // Now the id of space "t2" is taken
+    let space_6 = Space::builder("t6")
+        .space_type(SpaceType::Temporary)
+        .create()
+        .unwrap();
+    assert_eq!(space_6.id(), space_1.id() + 1);
+
+    space_1.drop().unwrap();
+    space_3.drop().unwrap();
+    space_4.drop().unwrap();
+    space_5.drop().unwrap();
+    space_6.drop().unwrap();
+
+    lua.exec("box.cfg { read_only = false }").unwrap();
 }

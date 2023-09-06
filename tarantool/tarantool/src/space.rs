@@ -6,25 +6,28 @@
 //! See also:
 //! - [Lua reference: Submodule box.space](https://www.tarantool.io/en/doc/latest/reference/reference_lua/box_space/)
 //! - [C API reference: Module box](https://www.tarantool.io/en/doc/latest/dev_guide/reference_capi/box/)
+use crate::error::{Error, TarantoolError};
+use crate::ffi::tarantool as ffi;
+use crate::index::{Index, IndexIterator, IteratorType};
+use crate::tuple::{Encode, ToTupleBuffer, Tuple, TupleBuffer};
+use crate::tuple_from_box_api;
+use crate::unwrap_or;
+use crate::util::Value;
+use num_derive::ToPrimitive;
+use serde::{Deserialize, Serialize};
+use serde_json::Map;
+use std::borrow::Cow;
 use std::cell::RefCell;
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::ops::Range;
 use std::os::raw::c_char;
 
-use num_derive::ToPrimitive;
-use serde::{Deserialize, Serialize};
-use serde_json::{Map, Value};
-
-use crate::error::{Error, TarantoolError};
-use crate::ffi::tarantool as ffi;
-use crate::index::{Index, IndexIterator, IteratorType};
-use crate::schema::space::SpaceMetadata;
-use crate::tuple::{Encode, ToTupleBuffer, Tuple, TupleBuffer};
-use crate::tuple_from_box_api;
-use crate::unwrap_or;
-
 /// End of the reserved range of system spaces.
 pub const SYSTEM_ID_MAX: SpaceId = 511;
+
+/// Maximum possible space id.
+pub const SPACE_ID_MAX: SpaceId = i32::MAX as _;
 
 pub type SpaceId = u32;
 
@@ -33,8 +36,7 @@ pub type SpaceId = u32;
 /// Example:
 /// ```rust
 /// use tarantool::space::SystemSpace;
-/// use num_traits::ToPrimitive;
-/// assert_eq!(SystemSpace::Schema.to_u32(), Some(272))
+/// assert_eq!(SystemSpace::Schema as u32, 272)
 /// ```
 #[repr(u32)]
 #[derive(Copy, Clone, Debug, PartialEq, Eq, ToPrimitive)]
@@ -91,6 +93,13 @@ pub enum SystemSpace {
     SessionSettings = 380,
 }
 
+impl SystemSpace {
+    #[inline(always)]
+    pub fn as_space(&self) -> Space {
+        Space { id: *self as _ }
+    }
+}
+
 impl From<SystemSpace> for Space {
     #[inline(always)]
     fn from(ss: SystemSpace) -> Self {
@@ -119,7 +128,7 @@ crate::define_str_enum! {
         /// system space.
         ///
         /// Cannot be used as type of user defined spaces.
-        /// Is used as part of [`SpaceMetadata`] when decoding tuples from
+        /// Is used as part of [`Metadata`] when decoding tuples from
         /// _space.
         ///
         /// See <https://www.tarantool.io/en/doc/latest/reference/reference_lua/box_space/system_views/>
@@ -130,7 +139,7 @@ crate::define_str_enum! {
         /// You shouldn't care about this.
         ///
         /// Cannot be used as type of user defined spaces.
-        /// Is used as part of [`SpaceMetadata`] when decoding tuples from
+        /// Is used as part of [`Metadata`] when decoding tuples from
         /// _space.
         Service = "service",
 
@@ -138,7 +147,7 @@ crate::define_str_enum! {
         /// internal issue. You shouldn't care about this.
         ///
         /// Cannot be used as type of user defined spaces.
-        /// Is used as part of [`SpaceMetadata`] when decoding tuples from
+        /// Is used as part of [`Metadata`] when decoding tuples from
         /// _space.
         Blackhole = "blackhole",
 
@@ -154,36 +163,51 @@ impl Default for SpaceEngineType {
 
 /// Options for new space, used by Space::create.
 /// (for details see [Options for box.schema.space.create](https://www.tarantool.io/en/doc/latest/reference/reference_lua/box_schema/space_create/)).
-///
-/// `format` option is not supported at this moment.
-#[derive(Clone, Debug, Serialize)]
+#[derive(Default, Clone, Debug)]
 pub struct SpaceCreateOptions {
     pub if_not_exists: bool,
     pub engine: SpaceEngineType,
     pub id: Option<SpaceId>,
     pub field_count: u32,
     pub user: Option<String>,
-    pub is_local: bool,
-    pub is_temporary: bool,
-    pub is_sync: bool,
+    pub space_type: SpaceType,
     pub format: Option<Vec<Field>>,
 }
 
-impl Default for SpaceCreateOptions {
-    #[inline(always)]
-    fn default() -> Self {
-        SpaceCreateOptions {
-            if_not_exists: false,
-            engine: SpaceEngineType::Memtx,
-            id: None,
-            field_count: 0,
-            user: None,
-            is_local: false,
-            is_temporary: false,
-            is_sync: false,
-            format: None,
-        }
-    }
+/// Possible values for the [`SpaceCreateOptions::space_type`] field.
+#[derive(Copy, Clone, Default, Debug, PartialEq, Eq)]
+pub enum SpaceType {
+    /// Default space type. Data and meta-data is persisted and replicated.
+    #[default]
+    Normal,
+
+    /// Space is created on all replicas and exists after restart,
+    /// but the data is neither persisted nor replicated.
+    ///
+    /// Same as `{ type = 'data-temporary' }` in lua.
+    DataTemporary,
+
+    /// Space is only created on current instance and doesn't exist after restart,
+    /// and the data is also neither persisted nor replicated.
+    ///
+    /// Such space can be created in readonly mode.
+    ///
+    /// Same as `{ type = 'temporary' }` in lua.
+    Temporary,
+
+    /// Space is created on all replicas and exists after restart,
+    /// data is persisted but not replicated.
+    ///
+    /// Same as `{ is_local = true }` in lua.
+    DataLocal,
+
+    /// Space is created on all replicas and exists after restart,
+    /// data is persisted and replicated synchronously, see
+    /// <https://www.tarantool.io/en/doc/latest/concepts/replication/repl_sync/>
+    /// for more info.
+    ///
+    /// Same as `{ is_sync = true }` in lua.
+    Synchronous,
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -360,7 +384,8 @@ pub struct FuncMetadata {
     pub language: String,
     pub body: String,
     pub routine_type: String,
-    pub param_list: Vec<Value>,
+    // TODO: Use util::Value instead, extend it if needed.
+    pub param_list: Vec<serde_json::Value>,
     pub returns: String,
     pub aggregate: String,
     pub sql_data_access: String,
@@ -368,7 +393,8 @@ pub struct FuncMetadata {
     pub is_sandboxed: bool,
     pub is_null_call: bool,
     pub exports: Vec<String>,
-    pub opts: Map<String, Value>,
+    // TODO: Use util::Value instead, extend it if needed.
+    pub opts: Map<String, serde_json::Value>,
     pub comment: String,
     pub created: String,
     pub last_altered: String,
@@ -598,9 +624,7 @@ impl Space {
         Index::new(self.id, 0)
     }
 
-    /// Insert a tuple into a space.
-    ///
-    /// - `value` - tuple value to insert
+    /// Insert a `value` into a space.
     ///
     /// Returns a new tuple.
     ///
@@ -628,11 +652,13 @@ impl Space {
         .map(|t| t.expect("Returned tuple cannot be null"))
     }
 
-    /// Insert a tuple into a space.
-    /// If a tuple with the same primary key already exists, [space.replace()](#method.replace) replaces the existing
-    /// tuple with a new one. The syntax variants [space.replace()](#method.replace) and [space.put()](#method.put)
-    /// have the same effect;
-    /// the latter is sometimes used to show that the effect is the converse of [space.get()](#method.get).
+    /// Insert a `value` into a space passing.
+    ///
+    /// If a tuple with the same primary key already exists, it is replaced
+    /// with a new one.
+    ///
+    /// Has the same effect as [`Space::put`] but the latter is sometimes used
+    /// to show that the effect is the converse of [`Space::get`].
     ///
     /// - `value` - tuple value to replace with
     ///
@@ -670,9 +696,13 @@ impl Space {
         self.replace(value)
     }
 
-    /// Deletes all tuples. The method is performed in background and doesn’t block consequent requests.
+    /// Deletes all tuples.
+    ///
+    /// The method is performed in background and doesn’t block consequent
+    /// requests.
     #[inline(always)]
     pub fn truncate(&self) -> Result<(), Error> {
+        // SAFETY: this is always safe actually
         if unsafe { ffi::box_truncate(self.id) } < 0 {
             return Err(TarantoolError::last().into());
         }
@@ -737,9 +767,10 @@ impl Space {
         self.primary_key().count(iterator_type, key)
     }
 
-    /// Delete a tuple identified by a primary key.
+    /// Delete a tuple identified by a primary `key`.
     ///
-    /// - `key` - encoded key in the MsgPack Array format (`[part1, part2, ...]`).
+    /// The `key` must represent a msgpack array consisting of the appropriate
+    /// amount of the primary index's parts.
     ///
     /// Returns the deleted tuple
     #[inline(always)]
@@ -870,12 +901,29 @@ impl Space {
 
     // Return space metadata from system `_space` space.
     #[inline(always)]
-    pub fn meta(&self) -> Result<SpaceMetadata, Error> {
+    pub fn meta(&self) -> Result<Metadata, Error> {
         let sys_space: Space = SystemSpace::Space.into();
         let tuple = sys_space.get(&(self.id,))?.ok_or(Error::MetaNotFound)?;
-        tuple.decode::<SpaceMetadata>()
+        tuple.decode::<Metadata>()
     }
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// Metadata
+////////////////////////////////////////////////////////////////////////////////
+
+/// Space metadata. Represents a tuple of a system `_space` space.
+#[derive(Default, serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct Metadata<'a> {
+    pub id: u32,
+    pub user_id: u32,
+    pub name: Cow<'a, str>,
+    pub engine: SpaceEngineType,
+    pub field_count: u32,
+    pub flags: BTreeMap<Cow<'a, str>, Value<'a>>,
+    pub format: Vec<BTreeMap<Cow<'a, str>, Value<'a>>>,
+}
+impl Encode for Metadata<'_> {}
 
 ////////////////////////////////////////////////////////////////////////////////
 // Builder
@@ -914,9 +962,34 @@ impl<'a> Builder<'a> {
         id(id: SpaceId)
         field_count(field_count: u32)
         user(user: String)
-        is_local(is_local: bool)
-        is_temporary(is_temporary: bool)
-        is_sync(is_sync: bool)
+        space_type(space_type: SpaceType)
+    }
+
+    #[deprecated = "use Builder::space_type instead"]
+    #[inline(always)]
+    pub fn is_local(mut self, is_local: bool) -> Self {
+        if is_local {
+            self.opts.space_type = SpaceType::DataLocal
+        }
+        self
+    }
+
+    #[deprecated = "use Builder::space_type instead"]
+    #[inline(always)]
+    pub fn temporary(mut self, temporary: bool) -> Self {
+        if temporary {
+            self.opts.space_type = SpaceType::DataTemporary
+        }
+        self
+    }
+
+    #[deprecated = "use Builder::space_type instead"]
+    #[inline(always)]
+    pub fn is_sync(mut self, is_sync: bool) -> Self {
+        if is_sync {
+            self.opts.space_type = SpaceType::Synchronous
+        }
+        self
     }
 
     /// Add a field to the space's format.
@@ -1204,7 +1277,7 @@ impl IntoIterator for UpdateOps {
 macro_rules! update {
     ($target:expr, $key:expr, $($op:expr),+ $(,)?) => {{
         use $crate::tuple::ToTupleBuffer;
-        let mut f = || -> $crate::Result<Option<$crate::tuple::Tuple>> {
+        let f = || -> $crate::Result<Option<$crate::tuple::Tuple>> {
             let key = $key;
             let buf;
             let key_data = $crate::unwrap_or!(key.tuple_data(), {
@@ -1213,9 +1286,9 @@ macro_rules! update {
                 buf.as_ref()
             });
 
-            const len: u32 = $crate::expr_count!($($op),+);
-            let mut ops_buf = Vec::with_capacity((4 + len * 4) as _);
-            $crate::msgpack::write_array_len(&mut ops_buf, len)?;
+            const LEN: u32 = $crate::expr_count!($($op),+);
+            let mut ops_buf = Vec::with_capacity((4 + LEN * 4) as _);
+            $crate::msgpack::write_array_len(&mut ops_buf, LEN)?;
             $( $op.write_tuple_data(&mut ops_buf)?; )+
             #[allow(unused_unsafe)]
             unsafe {
@@ -1240,7 +1313,7 @@ macro_rules! update {
 macro_rules! upsert {
     ($target:expr, $value: expr, $($op:expr),+ $(,)?) => {{
         use $crate::tuple::ToTupleBuffer;
-        let mut f = || -> $crate::Result<()> {
+        let f = || -> $crate::Result<()> {
             let value = $value;
             let buf;
             let value_data = $crate::unwrap_or!(value.tuple_data(), {
@@ -1249,9 +1322,9 @@ macro_rules! upsert {
                 buf.as_ref()
             });
 
-            const len: u32 = $crate::expr_count!($($op),+);
-            let mut ops_buf = Vec::with_capacity((4 + len * 4) as _);
-            $crate::msgpack::write_array_len(&mut ops_buf, len)?;
+            const LEN: u32 = $crate::expr_count!($($op),+);
+            let mut ops_buf = Vec::with_capacity((4 + LEN * 4) as _);
+            $crate::msgpack::write_array_len(&mut ops_buf, LEN)?;
             $( $op.write_tuple_data(&mut ops_buf)?; )+
             #[allow(unused_unsafe)]
             unsafe {
@@ -1284,7 +1357,7 @@ mod test {
         let sys_space = Space::from(SystemSpace::Space);
         for tuple in sys_space.select(IteratorType::All, &()).unwrap() {
             // Check space metadata is deserializable from what is actually in _space
-            let _meta: SpaceMetadata = tuple.decode().unwrap();
+            let _meta: Metadata = tuple.decode().unwrap();
         }
     }
 }

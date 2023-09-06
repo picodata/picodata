@@ -1,18 +1,17 @@
-use std::borrow::Cow;
-use std::{cmp::max, collections::BTreeMap};
-
-use serde::{Deserialize, Serialize};
-
 use crate::error::{Error, TarantoolError, TarantoolErrorCode};
 use crate::index::IteratorType;
 use crate::schema;
 use crate::schema::sequence as schema_seq;
 use crate::session;
 use crate::set_error;
-use crate::space::{Space, SystemSpace, SYSTEM_ID_MAX};
-use crate::space::{SpaceCreateOptions, SpaceEngineType};
-use crate::tuple::{Encode, Tuple};
+use crate::space;
+use crate::space::{Metadata, SpaceCreateOptions};
+use crate::space::{Space, SpaceId, SpaceType, SystemSpace};
+use crate::tuple::Tuple;
+use crate::unwrap_or;
+use crate::update;
 use crate::util::Value;
+use std::collections::BTreeMap;
 
 /// Create a space.
 /// (for details see [box.schema.space.create()](https://www.tarantool.io/en/doc/latest/reference/reference_lua/box_schema/space_create/)).
@@ -48,18 +47,28 @@ pub fn create_space(name: &str, opts: &SpaceCreateOptions) -> Result<Space, Erro
     };
 
     // Resolve ID of new space or use ID, specified in options.
-    let id = opts.id.map(Ok).unwrap_or_else(resolve_new_space_id)?;
+    let id = if let Some(opts_id) = opts.id {
+        opts_id
+    } else {
+        generate_space_id(opts.space_type == SpaceType::Temporary)?
+    };
 
-    let flags = opts
-        .is_local
-        .then(|| ("group_id".into(), Value::Num(1)))
-        .into_iter()
-        .chain(
-            opts.is_temporary
-                .then(|| ("temporary".into(), Value::Bool(true))),
-        )
-        .chain(opts.is_sync.then(|| ("is_sync".into(), Value::Bool(true))))
-        .collect();
+    let mut flags = BTreeMap::new();
+    match opts.space_type {
+        SpaceType::DataTemporary => {
+            flags.insert("temporary".into(), true.into());
+        }
+        SpaceType::Temporary => {
+            flags.insert("type".into(), "temporary".into());
+        }
+        SpaceType::DataLocal => {
+            flags.insert("group_id".into(), 1.into());
+        }
+        SpaceType::Synchronous => {
+            flags.insert("is_sync".into(), true.into());
+        }
+        SpaceType::Normal => {}
+    }
 
     let format = opts
         .format
@@ -76,7 +85,7 @@ pub fn create_space(name: &str, opts: &SpaceCreateOptions) -> Result<Space, Erro
         .collect();
 
     let sys_space: Space = SystemSpace::Space.into();
-    sys_space.insert(&SpaceMetadata {
+    sys_space.insert(&Metadata {
         id,
         user_id,
         name: name.into(),
@@ -86,59 +95,113 @@ pub fn create_space(name: &str, opts: &SpaceCreateOptions) -> Result<Space, Erro
         format,
     })?;
 
-    Ok(Space::find(name).unwrap())
+    // Safety: this is safe because inserting into _space didn't fail, so the
+    // space has been created.
+    let space = unsafe { Space::from_id_unchecked(id) };
+    Ok(space)
 }
 
-/// SpaceMetadata is tuple, holding space metadata in system `_space` space.
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
-pub struct SpaceMetadata<'a> {
-    pub id: u32,
-    pub user_id: u32,
-    pub name: Cow<'a, str>,
-    pub engine: SpaceEngineType,
-    pub field_count: u32,
-    pub flags: BTreeMap<Cow<'a, str>, Value<'a>>,
-    pub format: Vec<BTreeMap<Cow<'a, str>, Value<'a>>>,
+#[deprecated = "use `tarantool::space::Metadata` instead"]
+pub type SpaceMetadata<'a> = Metadata<'a>;
+
+/// Returns `None` if fully temporary spaces aren't supported in the current
+/// tarantool executable.
+fn space_id_temporary_min() -> Option<SpaceId> {
+    // Safety: this is safe because we only create space in tx thread.
+    unsafe {
+        static mut VALUE: Option<Option<SpaceId>> = None;
+        if VALUE.is_none() {
+            VALUE = Some(
+                crate::lua_state()
+                    .eval("return box.schema.SPACE_ID_TEMPORARY_MIN")
+                    .ok(),
+            )
+        }
+        VALUE.unwrap()
+    }
 }
 
-impl Encode for SpaceMetadata<'_> {}
-
-fn resolve_new_space_id() -> Result<u32, Error> {
-    let sys_space: Space = SystemSpace::Space.into();
-    let sys_schema: Space = SystemSpace::Schema.into();
-
-    // Try to update max_id in _schema space.
-    let new_max_id = sys_schema.update(&("max_id",), [("+", 1, 1)])?;
-
-    let space_id = if let Some(new_max_id) = new_max_id {
-        // In case of successful update max_id return its value.
-        new_max_id.field::<u32>(1)?.unwrap()
+/// Implementation ported from box_generate_space_id.
+/// <https://github.com/tarantool/tarantool/blob/70e423e92fc00df2ffe385f31dae9ea8e1cc1732/src/box/box.cc#L5737>
+fn generate_space_id(is_temporary: bool) -> Result<SpaceId, Error> {
+    let sys_space = SystemSpace::Space.as_space();
+    let (id_range_min, id_range_max);
+    if is_temporary {
+        id_range_min = unwrap_or!(space_id_temporary_min(), {
+            set_error!(
+                TarantoolErrorCode::Unsupported,
+                "fully temporary space api is not supported in the current tarantool executable"
+            );
+            return Err(TarantoolError::last().into());
+        });
+        id_range_max = space::SPACE_ID_MAX + 1;
     } else {
-        // Get tuple with greatest id. Increment it and use as id of new space.
-        let max_tuple = sys_space.index("primary").unwrap().max(&())?.unwrap();
-        let max_tuple_id = max_tuple.field::<u32>(0)?.unwrap();
-        let max_id_val = max(max_tuple_id, SYSTEM_ID_MAX);
-        // Insert max_id into _schema space.
-        let created_max_id = sys_schema.insert(&("max_id".to_string(), max_id_val + 1))?;
-        created_max_id.field::<u32>(1)?.unwrap()
+        id_range_min = space::SYSTEM_ID_MAX + 1;
+        id_range_max = space_id_temporary_min().unwrap_or(space::SPACE_ID_MAX + 1);
     };
+
+    let mut iter = sys_space.select(IteratorType::LT, &[id_range_max])?;
+    let tuple = iter.next().expect("there's always at least system spaces");
+    let mut max_id: SpaceId = tuple
+        .field(0)
+        .expect("space metadata should decode fine")
+        .expect("space id should always be present");
+
+    let find_next_unused_id = |start: SpaceId| -> Result<SpaceId, Error> {
+        let iter = sys_space.select(IteratorType::GE, &[start])?;
+        let mut next_id = start;
+        for tuple in iter {
+            let id: SpaceId = tuple
+                .field(0)
+                .expect("space metadata should decode fine")
+                .expect("space id should always be present");
+            if id != next_id {
+                // Found a hole in the id range.
+                return Ok(next_id);
+            }
+            next_id += 1;
+        }
+        Ok(next_id)
+    };
+
+    if max_id < id_range_min {
+        max_id = id_range_min;
+    }
+
+    let mut space_id = find_next_unused_id(max_id)?;
+    if space_id >= id_range_max {
+        space_id = find_next_unused_id(id_range_min)?;
+        if space_id >= id_range_max {
+            set_error!(TarantoolErrorCode::CreateSpace, "space id limit is reached");
+            return Err(TarantoolError::last().into());
+        }
+    }
+
+    // Update max_id for backwards compatibility.
+    if !is_temporary {
+        let sys_schema = SystemSpace::Schema.as_space();
+        update!(sys_schema, &["max_id"], ("=", "value", space_id))?;
+    }
 
     Ok(space_id)
 }
 
+pub fn space_metadata(space_id: SpaceId) -> Result<Metadata<'static>, Error> {
+    let sys_space = SystemSpace::VSpace.as_space();
+    let tuple = sys_space.get(&[space_id])?.ok_or(Error::MetaNotFound)?;
+    tuple.decode::<Metadata>()
+}
+
 /// Drop a space.
-pub fn drop_space(space_id: u32) -> Result<(), Error> {
+pub fn drop_space(space_id: SpaceId) -> Result<(), Error> {
     // Delete automatically generated sequence.
     let sys_space_sequence: Space = SystemSpace::SpaceSequence.into();
-    let seq_tuple = sys_space_sequence.delete(&(space_id,))?;
-    match seq_tuple {
-        None => (),
-        Some(t) => {
-            let is_generated = t.field::<bool>(2)?.unwrap();
-            if is_generated {
-                let seq_id = t.field::<u32>(1)?.unwrap();
-                schema_seq::drop_sequence(seq_id)?;
-            }
+    if let Some(t) = sys_space_sequence.get(&(space_id,))? {
+        sys_space_sequence.delete(&(space_id,))?;
+        let is_generated = t.field::<bool>(2)?.unwrap();
+        if is_generated {
+            let seq_id = t.field::<u32>(1)?.unwrap();
+            schema_seq::drop_sequence(seq_id)?;
         }
     }
 

@@ -718,6 +718,10 @@ extern "C" {
     pub fn box_truncate(space_id: u32) -> c_int;
 }
 
+////////////////////////////////////////////////////////////////////////////////
+// ...
+////////////////////////////////////////////////////////////////////////////////
+
 extern "C" {
     pub fn box_index_id_by_name(space_id: u32, name: *const c_char, len: u32) -> u32;
     pub fn box_space_id_by_name(name: *const c_char, len: u32) -> u32;

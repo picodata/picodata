@@ -76,3 +76,16 @@ pub unsafe fn has_fiber_set_ctx() -> bool {
     }
     RESULT.unwrap()
 }
+
+/// Check whether the current tarantool executable supports the api for
+/// fully temporary spaces.
+///
+/// If this function returns `false` creating spaces with
+/// [`SpaceType::Temporary`] will not work.
+///
+/// [`SpaceType::Temporary`]: crate::space::SpaceType::Temporary
+pub fn has_fully_temporary_spaces() -> bool {
+    crate::global_lua()
+        .eval::<crate::space::SpaceId>("return box.schema.SPACE_ID_TEMPORARY_MIN")
+        .is_ok()
+}

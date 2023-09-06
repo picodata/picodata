@@ -10,6 +10,16 @@
 - New `tarantool::session::user_id_by_name` API is available when running `picodata`.
 - New `AuthData` generates authentication data when running `picodata` (a wrapper over `box_auth_data_prepare` symbol from the C API).
 - Authentication methods enum (`AuthMethod`) was added to the module.
+- Method `space::Builder::space_type`, field `SpaceCreateOptions::space_type` and
+  enum `SpaceType` which is now the primary way of specify the type of space.
+- Fully-temporary spaces can now be created, destroyed and indexes can be created
+  for them as well (see `SpaceType::Temporary`). This feature requires your
+  tarantool executable to support some low level APIs, you can use the newly
+  added `ffi::has_fully_temporary_spaces` function to check if the required
+  APIs are supported.
+- `SystemSpace::as_space` method for easier conversion to `Space`.
+- `schema::space::space_metadata` function
+- `space::SPACE_ID_MAX` constant with a value of the maximum possible space id.
 
 ### Fixed
 
@@ -19,9 +29,18 @@
 ### Changed
 - `network::client::tcp::TcpStream` will now always try IPv4 addresses first when connecting.
 - `tarantool::session::uid` and `tarantool::session::euid` when running `picodata` now use native C-API instead of calling into Lua.
+- Updated some doc comments for Space and Index methods.
+
+### Deprecated
+- Methods `temporary`, `is_local` & `is_sync` of struct `space::Builder` are
+  deprecated in favour of new method `space_type`.
+- `schema::space::SpaceMetadata` is now a deprecated alias of `space::Metadata`.
 
 ### Breaking changes
 - `tarantool::session::uid` and `tarantool::session::euid` now return `UserId` type which is an alias for `u32`. Previously `isize` was used.
+- `SpaceCreateOptions` fields `is_temporary`, `is_local` & `is_sync` are
+    removed in favour of new field `space_type`.
+
 
 # [2.0.0] Aug 28 2023
 

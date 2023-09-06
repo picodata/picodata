@@ -466,6 +466,10 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 tuple::raw_bytes,
             ]);
             tests.append(&mut tests![
+                [should_panic_if: !tarantool::ffi::has_fully_temporary_spaces()]
+                r#box::fully_temporary_space,
+            ]);
+            tests.append(&mut tests![
                 [should_panic_if: !tarantool::ffi::has_tuple_field_by_path()]
                 tuple::tuple_get_field_path,
             ]);
