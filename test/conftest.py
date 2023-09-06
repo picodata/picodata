@@ -1191,17 +1191,20 @@ class Cluster:
 
 
 @pytest.fixture(scope="session")
-def compile() -> None:
-    """Run `cargo build` before tests."""
-
-    assert (
-        subprocess.call(["cargo", "build", "--features", "webui"]) == 0
-    ), "cargo build failed"
+def binary_path() -> str:
+    """Path to the picodata binary, e.g. "./target/debug/picodata"."""
+    assert subprocess.call(["cargo", "build"]) == 0, "cargo build failed"
+    metadata = subprocess.check_output(["cargo", "metadata", "--format-version=1"])
+    target = json.loads(metadata)["target_directory"]
+    return os.path.realpath(os.path.join(target, "debug/picodata"))
 
 
 @pytest.fixture(scope="session")
-def binary_path(compile) -> str:
-    """Path to the picodata binary, e.g. "./target/debug/picodata"."""
+def path_to_binary_with_webui() -> str:
+    """Path to the picodata binary built with webui feature, e.g. "./target/debug/picodata"."""
+    assert (
+        subprocess.call(["cargo", "build", "--features", "webui"]) == 0
+    ), "cargo build failed"
     metadata = subprocess.check_output(["cargo", "metadata", "--format-version=1"])
     target = json.loads(metadata)["target_directory"]
     return os.path.realpath(os.path.join(target, "debug/picodata"))
@@ -1221,6 +1224,24 @@ def cluster(
     base_port, max_port = port_range
     cluster = Cluster(
         binary_path=binary_path,
+        id=next(cluster_ids),
+        data_dir=tmpdir,
+        base_host=BASE_HOST,
+        base_port=base_port,
+        max_port=max_port,
+    )
+    yield cluster
+    cluster.kill()
+
+
+@pytest.fixture
+def cluster_with_webui(
+    path_to_binary_with_webui, tmpdir, cluster_ids, port_range
+) -> Generator[Cluster, None, None]:
+    """Return a `Cluster` object capable of deploying test clusters with webui feature enabled."""
+    base_port, max_port = port_range
+    cluster = Cluster(
+        binary_path=path_to_binary_with_webui,
         id=next(cluster_ids),
         data_dir=tmpdir,
         base_host=BASE_HOST,

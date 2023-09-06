@@ -28,7 +28,12 @@ def test_http_routes(instance: Instance):
         assert response.read() == b"world"
 
 
-def test_webui(instance: Instance):
-    http_listen = instance.env["PICODATA_HTTP_LISTEN"]
+def test_webui(cluster_with_webui: Cluster):
+    c = cluster_with_webui
+    instance = c.add_instance(wait_online=False)
+    http_listen = f"{c.base_host}:{c.base_port+80}"
+    instance.env["PICODATA_HTTP_LISTEN"] = http_listen
+    instance.start()
+    instance.wait_online()
     with urlopen(f"http://{http_listen}/") as response:
         assert response.headers.get("content-type") == "text/html"
