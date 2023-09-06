@@ -159,7 +159,7 @@ impl std::fmt::Display for Op {
                     schema_version,
                     ..
                 } = priv_def;
-                write!(f, "GrantPrivilege({schema_version}, {grantee_id}, {grantor_id}, {object_type}, {object_name}, {privilege})")
+                write!(f, "GrantPrivilege({schema_version}, {grantor_id}, {grantee_id}, {object_type}, {object_name}, {privilege})")
             }
             Self::Acl(Acl::RevokePrivilege { priv_def }) => {
                 let PrivilegeDef {
@@ -171,7 +171,7 @@ impl std::fmt::Display for Op {
                     schema_version,
                     ..
                 } = priv_def;
-                write!(f, "RevokePrivilege({schema_version}, {grantee_id}, {grantor_id}, {object_type}, {object_name}, {privilege})")
+                write!(f, "RevokePrivilege({schema_version}, {grantor_id}, {grantee_id}, {object_type}, {object_name}, {privilege})")
             }
         };
 

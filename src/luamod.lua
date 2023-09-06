@@ -844,8 +844,8 @@ function pico.grant_privilege(grantee, privilege, object_type, object_name, opts
             kind = 'acl',
             op_kind = 'grant_privilege',
             priv_def = {
-                grantee_id = grantee_def.id,
                 grantor_id = box.session.uid(),
+                grantee_id = grantee_def.id,
                 object_type = object_type,
                 object_name = object_name,
                 privilege = privilege,

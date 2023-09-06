@@ -236,8 +236,8 @@ pub struct PrivilegeDef {
     ///
     /// In tarantool users and roles are stored in the same space, which means a
     /// role and a user cannot have the same id or name.
-    pub grantee_id: UserId,
     pub grantor_id: UserId,
+    pub grantee_id: UserId,
     pub object_type: String,
     pub object_name: String,
     pub privilege: String,
