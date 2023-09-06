@@ -4,6 +4,7 @@ use std::io::{Read, Seek, SeekFrom};
 use byteorder::{BigEndian, ReadBytesExt};
 
 use super::tuple::{Decode, RawBytes, ToTupleBuffer};
+use crate::unwrap_ok_or;
 use crate::Result;
 
 pub fn skip_value(cur: &mut (impl Read + Seek)) -> Result<()> {
@@ -333,6 +334,229 @@ impl<'a> Iterator for ValueIter<'a> {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// ViaMsgpack
+////////////////////////////////////////////////////////////////////////////////
+
+/// A wrapper type for passing values between rust and lua by converting them
+/// into msgpack first.
+///
+/// This type may be useful in certain situations including:
+/// 1. For types from external crates for which you can't
+///    #[derive(tlua::Push, tlua::LuaRead)]
+/// 2. For cases when you want the lua representation of the data to be
+///    equivalent to the msgpack representation.
+///
+/// This type is obiously not suitable for performance critical applications
+/// because it involves extra encoding & decoding of all the values to & from
+/// msgpack.
+///
+/// This type implements [`tlua::LuaRead`] & [`tlua::Push`] & [`tlua::PushInto`].
+///
+/// When reading a lua value it will first call `require('msgpack').encode(...)`,
+/// then it will read the resulting strign from lua, and then finally it will
+/// use [`Decode::decode`] to decode the msgpack into the rust value.
+///
+/// When pushing a rust value onto the lua stack it will first call
+/// [`rmp_serde::to_vec_named`], then it will push the resulting string into lua
+/// and then finally it will use `require('msgpack').decode(...)` to decode
+/// msgpack into the lua value.
+///
+/// # Examples
+/// ```no_run
+/// use std::net::*;
+/// use tarantool::msgpack::ViaMsgpack;
+///
+/// let lua = tarantool::lua_state();
+///
+/// let v = ViaMsgpack(SocketAddr::from(([93, 184, 216, 34], 80)));
+/// lua.exec_with("assert(table.equals(..., { V4 = {{93, 184, 216, 34}, 80} }))", v).unwrap();
+///
+/// let d: ViaMsgpack<std::time::Duration> = lua.eval("return { 420, 69 }").unwrap();
+/// assert_eq!(d.0.as_secs(), 420);
+/// assert_eq!(d.0.subsec_nanos(), 69);
+/// ```
+#[derive(
+    Debug,
+    Default,
+    Clone,
+    Hash,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    serde::Deserialize,
+    serde::Serialize,
+)]
+pub struct ViaMsgpack<T>(pub T);
+
+impl<L, T> tlua::Push<L> for ViaMsgpack<T>
+where
+    L: tlua::AsLua,
+    T: serde::Serialize,
+{
+    type Err = crate::error::Error;
+
+    fn push_to_lua(&self, lua: L) -> tlua::PushResult<L, Self> {
+        let res = rmp_serde::to_vec_named(&self.0);
+        let mp = unwrap_ok_or!(res,
+            Err(e) => {
+                return Err((e.into(), lua));
+            }
+        );
+
+        let res = tlua::LuaFunction::load(lua.as_lua(), "return require('msgpack').decode(...)");
+        let decode = unwrap_ok_or!(res,
+            Err(e) => {
+                return Err((e.into(), lua));
+            }
+        );
+
+        let res = decode.into_call_with_args(&tlua::AnyLuaString(mp));
+        let mp: tlua::Object<_> = unwrap_ok_or!(res,
+            Err(e) => {
+                return Err((tlua::LuaError::from(e).into(), lua))
+            }
+        );
+
+        // Safety: this is safe as long as the assertions hold
+        unsafe {
+            // Stack:
+            // ..: ...
+            // -3: msgpack.decode -- we dont want this
+            // -2: result         -- we want this
+            // -1: position       -- we dont want this
+
+            let res_guard = mp.into_guard();
+            // It says 2 even though there's 3 values guarded by res_guard,
+            // because there's a nested guard inside, and this stupid library
+            // doesn't have a way of getting the total size because of
+            // parametric polymorphism...
+            debug_assert_eq!(res_guard.size(), 2);
+
+            // Now we have to shuffle the stack into this configuration:
+            // ..: ...
+            // -3: result
+            // -2: msgpack.decode
+            // -1: position
+            //
+            // NOTE: We have to do this because this stupid library
+            // will not let us disable the nested push guard without popping
+            // the values guarded by the outter push guard...
+            tlua::ffi::lua_insert(lua.as_lua(), -2); // Swap result <-> position
+            tlua::ffi::lua_insert(lua.as_lua(), -3); // Put result above msgpack.decode
+
+            // This call to PushGuard::into_inner will pop 2 topmost values off
+            // the stack, basically this is the spot which makes us do stupid
+            // things above
+            let res_guard = res_guard.into_inner().into_inner();
+
+            // This push guard was originally guarding the msgpack.decode
+            // function, but it doesn't know anything about what it's guarding,
+            // it only knows the number of values it must pop off the stack.
+            //
+            // Anyway we have to `forget` it because of the stupid parametric
+            // polymorphism, because it's type doesn't match the return type of
+            // this function.
+            debug_assert_eq!(res_guard.forget(), 1);
+
+            Ok(tlua::PushGuard::new(lua, 1))
+        }
+    }
+}
+impl<L, T> tlua::PushOne<L> for ViaMsgpack<T>
+where
+    L: tlua::AsLua,
+    T: serde::Serialize,
+{
+}
+
+impl<L, T> tlua::PushInto<L> for ViaMsgpack<T>
+where
+    L: tlua::AsLua,
+    T: serde::Serialize,
+{
+    type Err = crate::error::Error;
+
+    #[inline(always)]
+    fn push_into_lua(self, lua: L) -> tlua::PushIntoResult<L, Self> {
+        tlua::Push::push_to_lua(&self, lua)
+    }
+}
+impl<L, T> tlua::PushOneInto<L> for ViaMsgpack<T>
+where
+    L: tlua::AsLua,
+    T: serde::Serialize,
+{
+}
+
+impl<L, T> tlua::LuaRead<L> for ViaMsgpack<T>
+where
+    L: tlua::AsLua,
+    T: for<'de> serde::Deserialize<'de>,
+{
+    fn lua_read_at_position(lua: L, index: std::num::NonZeroI32) -> tlua::ReadResult<Self, L> {
+        use tlua::AsLua;
+        let res = (&lua).read_at_nz(index);
+        let object: tlua::Object<_> = unwrap_ok_or!(res,
+            Err((_, e)) => {
+                return Err((lua, e));
+            }
+        );
+
+        const ERROR_INFO: &str = "reading lua value via msgpack";
+        let res = tlua::LuaFunction::load(lua.as_lua(), "return require('msgpack').encode(...)");
+        let encode = unwrap_ok_or!(res,
+            Err(e) => {
+                return Err((
+                    lua,
+                    tlua::WrongType::info(ERROR_INFO)
+                        .expected("require('msgpack').encode(...)")
+                        .actual(e.to_string())
+                ))
+            }
+        );
+
+        let res = encode.into_call_with_args(object);
+        let mp: tlua::AnyLuaString = unwrap_ok_or!(res,
+            Err(e) => {
+                return Err((
+                    lua,
+                    tlua::WrongType::info(ERROR_INFO)
+                        .expected("successful conversion to msgpack")
+                        .actual(e.to_string())
+                ))
+            }
+        );
+
+        let res = T::decode(mp.as_bytes());
+        match res {
+            Err(crate::error::Error::Decode { error, .. }) => {
+                return Err((
+                    lua,
+                    tlua::WrongType::info(ERROR_INFO)
+                        .expected_type::<T>()
+                        .actual(format!(
+                            "error: {error}; when decoding msgpack {}",
+                            crate::util::DisplayAsHexBytes(mp.as_bytes())
+                        )),
+                ))
+            }
+            Err(e) => {
+                return Err((
+                    lua,
+                    tlua::WrongType::info(ERROR_INFO)
+                        .expected("successful msgpack conversion")
+                        .actual(format!("error: {e}")),
+                ))
+            }
+            Ok(v) => {
+                return Ok(ViaMsgpack(v));
+            }
+        }
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // test
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -396,5 +620,193 @@ mod test {
         let v: (u32, Vec<Option<bool>>, String) =
             rmp_serde::from_slice(iter.next().unwrap()).unwrap();
         assert_eq!(v, (42, vec![None, Some(false), Some(true)], "sup".into()));
+    }
+}
+
+#[cfg(feature = "internal_test")]
+mod tests {
+    use super::*;
+    use pretty_assertions::assert_eq;
+    use std::result::Result;
+
+    #[crate::test(tarantool = "crate")]
+    fn via_msgpack() {
+        let lua = crate::lua_state();
+
+        //
+        // serialize
+        //
+
+        // struct
+        #[derive(serde::Serialize)]
+        struct S {
+            a: String,
+            b: i32,
+            c: (bool, (), f32),
+        }
+
+        let v = ViaMsgpack(S {
+            a: "foo".into(),
+            b: 420,
+            c: (true, (), 13.37),
+        });
+        let t: tlua::LuaTable<_> = lua.eval_with("return ...", v).unwrap();
+        let s: String = t.get("a").unwrap();
+        assert_eq!(s, "foo");
+        let b: i32 = t.get("b").unwrap();
+        assert_eq!(b, 420);
+        {
+            let c: tlua::LuaTable<_> = t.get("c").unwrap();
+            let c_1: bool = c.get(1).unwrap();
+            assert_eq!(c_1, true);
+            let _c_2: tlua::Null = c.get(2).unwrap();
+            let c_3: f32 = c.get(3).unwrap();
+            assert_eq!(c_3, 13.37);
+        }
+
+        {
+            // enum
+            #[derive(serde::Serialize)]
+            enum E {
+                A,
+                B(i32, i32),
+                C {
+                    foo: &'static str,
+                    bar: &'static str,
+                },
+            }
+
+            let j: String = lua
+                .eval_with("return require'json'.encode(...)", ViaMsgpack(E::A))
+                .unwrap();
+            assert_eq!(j, "\"A\"");
+
+            let j: String = lua
+                .eval_with("return require'json'.encode(...)", ViaMsgpack(E::B(13, 37)))
+                .unwrap();
+            assert_eq!(j, r#"{"B":[13,37]}"#);
+
+            let j: String = lua
+                .eval_with(
+                    "return require'json'.encode(...)",
+                    ViaMsgpack(E::C {
+                        foo: "hello",
+                        bar: "jason",
+                    }),
+                )
+                .unwrap();
+            assert_eq!(j, r#"{"C":{"foo":"hello","bar":"jason"}}"#);
+        }
+
+        //
+        // deserialize
+        //
+
+        #[derive(Debug, PartialEq, serde::Deserialize)]
+        struct D {
+            a: String,
+            b: i32,
+            c: (bool, (), f32),
+        }
+
+        let d: ViaMsgpack<D> = lua
+            .eval("return { a = 'bar', b = 69, c = { true, box.NULL, 3.14 } }")
+            .unwrap();
+        assert_eq!(
+            d.0,
+            D {
+                a: "bar".into(),
+                b: 69,
+                c: (true, (), 3.14)
+            },
+        );
+
+        // errors
+        let d: Result<ViaMsgpack<D>, _> = lua.eval("return { a = 'bar' }");
+        assert_eq!(
+            d.unwrap_err().to_string(),
+            r#"failed reading lua value via msgpack: tarantool::msgpack::tests::via_msgpack::D expected, got error: missing field `b`; when decoding msgpack b"\x81\xa1\x61\xa3\x62\x61\x72"
+    while reading value(s) returned by Lua: tarantool::msgpack::ViaMsgpack<tarantool::msgpack::tests::via_msgpack::D> expected, got table"#,
+        );
+
+        let d: Result<ViaMsgpack<D>, _> = lua
+            // tostring is a function, it can't be encoded as msgpack
+            .eval("return { a = tostring }");
+        assert_eq!(
+            d.unwrap_err().to_string(),
+            r#"failed reading lua value via msgpack: successful conversion to msgpack expected, got Lua error: unsupported Lua type 'function'
+    while reading value(s) returned by Lua: tarantool::msgpack::ViaMsgpack<tarantool::msgpack::tests::via_msgpack::D> expected, got table"#,
+        );
+
+        // This is ok in the rmp_serde version we're using.
+        let d: Result<ViaMsgpack<D>, _> =
+            lua.eval("return { a = '', b = 0, c = { true, box.NULL, 0 }, d = 'unexpected' }");
+        assert!(d.is_ok());
+
+        {
+            // enum
+            #[derive(serde::Deserialize, PartialEq, Debug)]
+            enum E {
+                Foo,
+                Bar(i32, i32),
+                Car { foo: String, bar: String },
+            }
+
+            let e: ViaMsgpack<E> = lua.eval("return 'Foo'").unwrap();
+            assert_eq!(e.0, E::Foo);
+
+            let e: ViaMsgpack<E> = lua.eval("return { Bar = { 18, 84 } }").unwrap();
+            assert_eq!(e.0, E::Bar(18, 84));
+
+            let e: ViaMsgpack<E> = lua
+                .eval("return { Car = { foo = 'f', bar = 'u' } }")
+                .unwrap();
+            assert_eq!(
+                e.0,
+                E::Car {
+                    foo: "f".into(),
+                    bar: "u".into()
+                }
+            );
+
+            let e: Result<ViaMsgpack<E>, _> = lua.eval("return { NoSuchTag = { 1, 2, 3 } }");
+            assert_eq!(
+                e.unwrap_err().to_string(),
+                r#"failed reading lua value via msgpack: tarantool::msgpack::tests::via_msgpack::E expected, got error: unknown variant `NoSuchTag`, expected one of `Foo`, `Bar`, `Car`; when decoding msgpack b"\x81\xa9\x4e\x6f\x53\x75\x63\x68\x54\x61\x67\x93\x01\x02\x03"
+    while reading value(s) returned by Lua: tarantool::msgpack::ViaMsgpack<tarantool::msgpack::tests::via_msgpack::E> expected, got table"#,
+            );
+        }
+
+        //
+        // support for values from external crates (std is not external though...)
+        //
+
+        // serialize
+        use std::net::*;
+        let a = SocketAddr::from(([93, 184, 216, 34], 80));
+        let j: String = lua
+            .eval_with("return require'json'.encode(...)", ViaMsgpack(a))
+            .unwrap();
+        assert_eq!(j, r#"{"V4":[[93,184,216,34],80]}"#);
+
+        // deserialize
+        let a: ViaMsgpack<SocketAddr> = lua
+            .eval(
+                "return { V6 = { { 32, 1, 13, 184, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1 }, 8080 } }",
+            )
+            .unwrap();
+        assert_eq!(
+            a.0,
+            SocketAddr::from(SocketAddrV6::new(
+                [0x2001, 0xdb8, 0, 0, 0, 0, 0, 1].into(),
+                8080,
+                0,
+                0
+            )),
+        );
+
+        let d: ViaMsgpack<std::time::Duration> = lua.eval("return {420, 69}").unwrap();
+        assert_eq!(d.0.as_secs(), 420);
+        assert_eq!(d.0.subsec_nanos(), 69);
     }
 }

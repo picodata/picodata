@@ -1,4 +1,7 @@
+#![allow(clippy::let_and_return)]
+#![allow(clippy::approx_constant)]
 #![allow(clippy::needless_return)]
+#![allow(clippy::redundant_closure_call)]
 //! High-level zero-cost bindings for Lua (fork of
 //! [hlua](https://crates.io/crates/hlua))
 //!

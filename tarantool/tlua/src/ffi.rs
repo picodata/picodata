@@ -461,6 +461,11 @@ extern "C" {
     /// pseudo-index, because a pseudo-index is not an actual stack position.
     /// **[-1, +1, -]**
     pub fn lua_insert(l: *mut lua_State, index: c_int);
+
+    /// Removes the element at the given valid index, shifting down the elements
+    /// above this index to fill the gap. Cannot be called with a pseudo-index,
+    /// because a pseudo-index is not an actual stack position.
+    /// **[-1, +0, -]**
     pub fn lua_remove(l: *mut lua_State, index: c_int);
 
     pub fn luaopen_base(l: *mut lua_State);

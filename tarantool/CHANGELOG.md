@@ -3,7 +3,6 @@
 # [3.0.0] Unreleased
 
 ### Added
-
 - With the new `async-std` feature flag `network::client::tcp::TcpStream` implements
   async `Read` and `Write` traits from `async-std` crate instead of `futures`.
 - `box.session.su` API is now supported. When building for picodata with `picodata` feature enabled this API will use C-API directly. When used with vanilla tarantool lua polyfill is used.
@@ -20,9 +19,10 @@
 - `SystemSpace::as_space` method for easier conversion to `Space`.
 - `schema::space::space_metadata` function
 - `space::SPACE_ID_MAX` constant with a value of the maximum possible space id.
+- `ViaMsgpack` wrapper type for passing values to/from lua by converting them
+  to msgpack first.
 
 ### Fixed
-
 - `tarantool::log::say` used to do undefined behaviour when the message
   contained formatting sequences of %n sort.
 
