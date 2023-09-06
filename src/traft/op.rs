@@ -181,12 +181,67 @@ impl std::fmt::Display for Op {
             fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
                 if let Some(data) = rmp_serde::from_slice::<serde_json::Value>(self.0.as_ref())
                     .ok()
-                    .and_then(|v| serde_json::to_string(&v).ok())
+                    .and_then(|v| serde_json::to_string(&ValueWithTruncations(&v)).ok())
                 {
                     return write!(f, "{data}");
                 }
 
                 write!(f, "{:?}", self.0)
+            }
+        }
+
+        const TRUNCATION_THRESHOLD_FOR_STRING: usize = 100;
+        const TRUNCATION_THRESHOLD_FOR_ARRAY: usize = 10;
+        const TRUNCATION_THRESHOLD_FOR_MAP: usize = 10;
+        struct ValueWithTruncations<'a>(&'a serde_json::Value);
+        impl Serialize for ValueWithTruncations<'_> {
+            #[inline]
+            fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+            where
+                S: ::serde::Serializer,
+            {
+                use serde_json::Value;
+
+                match self.0 {
+                    Value::Null => serializer.serialize_unit(),
+                    Value::Bool(b) => serializer.serialize_bool(*b),
+                    Value::Number(n) => n.serialize(serializer),
+                    Value::String(s) => {
+                        let threshold = TRUNCATION_THRESHOLD_FOR_STRING;
+                        if s.len() > threshold {
+                            let s = format!("{}<TRUNCATED>...", &s[..threshold]);
+                            serializer.serialize_str(&s)
+                        } else {
+                            serializer.serialize_str(s)
+                        }
+                    }
+                    Value::Array(v) => {
+                        let threshold = TRUNCATION_THRESHOLD_FOR_ARRAY;
+                        if v.len() > threshold {
+                            let mut t = Vec::with_capacity(threshold + 1);
+                            t.extend_from_slice(&v[..threshold]);
+                            t.push(Value::from("<TRUNCATED>"));
+                            t.serialize(serializer)
+                        } else {
+                            v.serialize(serializer)
+                        }
+                    }
+                    Value::Object(m) => {
+                        use serde::ser::SerializeMap;
+                        let mut map = serializer.serialize_map(Some(m.len()))?;
+                        let threshold = TRUNCATION_THRESHOLD_FOR_MAP;
+                        for (k, v) in m.iter().take(threshold) {
+                            map.serialize_entry(k, v)?;
+                        }
+                        if m.len() > threshold {
+                            map.serialize_entry(
+                                &Value::from("<TRUNCATED>"),
+                                &Value::from("<TRUNCATED>"),
+                            )?;
+                        }
+                        map.end()
+                    }
+                }
             }
         }
 
