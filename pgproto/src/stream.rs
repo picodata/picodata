@@ -58,7 +58,7 @@ impl<S: io::Read> PgStream<S> {
 
         // This is done once at connection startup.
         let startup = Startup::decode(&mut self.ibuf)?.map(|x| {
-            log::info!("received StartupPacket from client");
+            log::debug!("received StartupPacket from client");
             self.startup_processed = true;
             FeMessage::Startup(x)
         });
@@ -70,7 +70,7 @@ impl<S: io::Read> PgStream<S> {
     pub fn read_message(&mut self) -> PgWireResult<FeMessage> {
         loop {
             let cnt = read_into_buf(&mut self.raw, &mut self.ibuf)?;
-            log::info!("received {cnt} bytes from client");
+            log::debug!("received {cnt} bytes from client");
             assert!(
                 cnt > 0,
                 "TODO: check if coio wrapper returns 0 or EOF error"

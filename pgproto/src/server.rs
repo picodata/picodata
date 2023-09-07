@@ -5,7 +5,7 @@ pub fn new_listener(addr: (&str, u16)) -> io::Result<CoIOListener> {
     let mut socket = None;
     let mut f = |_| {
         let wrapped = std::net::TcpListener::bind(addr);
-        log::info!("PG socket bind result: {wrapped:?}");
+        log::debug!("PG socket bind result: {wrapped:?}");
         socket.replace(wrapped);
         0
     };
