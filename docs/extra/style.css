@@ -337,3 +337,11 @@ h6 {
 .md-main {
     background: white;
 }
+
+.main-site-icon {
+    max-width: 5.9rem !important;
+}
+
+.md-header__source {
+    max-width: 4.1rem;
+}
