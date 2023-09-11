@@ -45,6 +45,7 @@
 //! Our examples are a good starting point for users who want to confidently start writing their own stored procedures.
 //!
 //! [stored procedure]: macro@crate::proc
+pub mod auth;
 #[cfg(feature = "picodata")]
 pub mod cbus;
 pub mod clock;

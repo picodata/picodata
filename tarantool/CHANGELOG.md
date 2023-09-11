@@ -8,6 +8,8 @@
   async `Read` and `Write` traits from `async-std` crate instead of `futures`.
 - `box.session.su` API is now supported. When building for picodata with `picodata` feature enabled this API will use C-API directly. When used with vanilla tarantool lua polyfill is used.
 - New `tarantool::session::user_id_by_name` API is available when running `picodata`.
+- New `AuthData` generates authentication data when running `picodata` (a wrapper over `box_auth_data_prepare` symbol from the C API).
+- Authentication methods enum (`AuthMethod`) was added to the module.
 
 ### Fixed
 

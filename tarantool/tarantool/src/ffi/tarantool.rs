@@ -1137,3 +1137,18 @@ extern "C" {
         uid: *mut u32,
     ) -> c_int;
 }
+
+// Authentication.
+#[cfg(feature = "picodata")]
+extern "C" {
+    pub fn box_auth_data_prepare(
+        method_name: *const c_char,
+        method_name_end: *const c_char,
+        password: *const c_char,
+        password_end: *const c_char,
+        user_name: *const c_char,
+        user_name_end: *const c_char,
+        data: *const *const c_char,
+        data_end: *const *const c_char,
+    ) -> c_int;
+}
