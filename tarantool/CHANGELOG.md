@@ -2,6 +2,11 @@
 
 # Unreleased
 
+### Added
+
+- With the new `async_std` feature flag `network::client::tcp::TcpStream` implements
+  async `Read` and `Write` traits from `async-std` crate instead of `futures`.
+
 ### Changed
 - `network::client::tcp::TcpStream` will now always try IPv4 addresses first when connecting.
 

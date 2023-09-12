@@ -29,6 +29,9 @@ use std::rc::Rc;
 use std::task::{Context, Poll};
 use std::{io, ptr};
 
+#[cfg(feature = "async-std")]
+use async_std::io::{Read as AsyncRead, Write as AsyncWrite};
+#[cfg(not(feature = "async-std"))]
 use futures::{AsyncRead, AsyncWrite};
 
 use crate::ffi::tarantool as ffi;
