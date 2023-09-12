@@ -291,10 +291,8 @@ fn build_tarantool(jsc: Option<&jobserver::Client>, build_root: &Path) {
         // So we add the second library explicitly via full path to the file.
         rustc::link_arg(format!("{tarantool_build}/libdecNumber.a"));
 
-        // OpenMP and Libunwind are builtin to the compiler on macos
+        // Libunwind is built into the compiler on macos
     } else {
-        rustc::link_lib_static("gomp");
-
         // These two must be linked as positional arguments, because they define
         // duplicate symbols which is not allowed (by default) when linking with
         // via -l... option
