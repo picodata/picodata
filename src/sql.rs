@@ -257,12 +257,17 @@ fn reenterable_ddl_request(
                     is_nullable: f.is_nullable,
                 })
                 .collect();
+            let distribution = if sharding_key.is_some() {
+                DistributionParam::Sharded
+            } else {
+                DistributionParam::Global
+            };
             let params = CreateSpaceParams {
                 id: None,
                 name,
                 format,
                 primary_key,
-                distribution: DistributionParam::Sharded,
+                distribution,
                 by_field: None,
                 sharding_key,
                 sharding_fn: Some(ShardingFn::Murmur3),

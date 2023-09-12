@@ -238,6 +238,29 @@ def test_create_drop_table(cluster: Cluster):
     )
     assert ddl["row_count"] == 1
 
+    # Check global space
+    ddl = i1.sql(
+        """
+        create table "global_t" ("key" string not null, "value" string not null,
+        primary key ("key"))
+        using memtx
+        distributed globally
+        option (timeout = 3)
+    """
+    )
+    assert ddl["row_count"] == 1
+
+    with pytest.raises(ReturnError, match="global spaces can use only memtx engine"):
+        i1.sql(
+            """
+            create table "t" ("key" string not null, "value" string not null,
+            primary key ("key"))
+            using vinyl
+            distributed globally
+            option (timeout = 3)
+            """
+        )
+
 
 def test_insert_on_conflict(cluster: Cluster):
     cluster.deploy(instance_count=1)
