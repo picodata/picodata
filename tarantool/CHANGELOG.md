@@ -4,7 +4,7 @@
 
 ### Added
 
-- With the new `async_std` feature flag `network::client::tcp::TcpStream` implements
+- With the new `async-std` feature flag `network::client::tcp::TcpStream` implements
   async `Read` and `Write` traits from `async-std` crate instead of `futures`.
 
 ### Changed

@@ -1,0 +1,14 @@
+[package]
+name = "async-h1-client"
+version = "0.1.0"
+edition = "2021"
+license = "BSD-2-Clause"
+
+[dependencies]
+tarantool = { path = "../../tarantool" }
+http-types = "2.9.0"
+async-h1 = "2.3.3"
+
+[lib]
+test = false
+crate-type = ["cdylib"]
