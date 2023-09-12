@@ -86,6 +86,45 @@ def test_select(cluster: Cluster):
     assert data["rows"] == [[2, 2]]
 
 
+def test_read_from_global_tables(cluster: Cluster):
+    cluster.deploy(instance_count=2)
+    i1, i2 = cluster.instances
+
+    cluster.create_table(
+        dict(
+            name="global_t",
+            format=[dict(name="id", type="unsigned", is_nullable=False)],
+            primary_key=["id"],
+            distribution="global",
+        )
+    )
+    index = i1.cas("insert", "global_t", [1])
+    i1.raft_wait_index(index, 3)
+    i2.raft_wait_index(index, 3)
+
+    data = i2.sql(
+        """
+        select * from "global_t"
+        """,
+    )
+    assert data["rows"] == [[1]]
+
+    data = i1.sql(
+        """
+        select * from "_pico_space"
+        """,
+    )
+    assert len(data["rows"]) == 1
+
+    data = i2.sql(
+        """
+        select * from "_pico_space"
+        where "name" = 'global_t'
+        """,
+    )
+    assert len(data["rows"]) == 1
+
+
 def test_hash(cluster: Cluster):
     cluster.deploy(instance_count=1)
     i1 = cluster.instances[0]

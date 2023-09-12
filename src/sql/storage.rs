@@ -5,10 +5,12 @@
 use sbroad::errors::{Action, Entity, SbroadError};
 use sbroad::executor::bucket::Buckets;
 use sbroad::executor::engine::helpers::storage::meta::StorageMetadata;
-use sbroad::executor::engine::helpers::storage::runtime::unprepare;
+use sbroad::executor::engine::helpers::storage::runtime::{read_unprepared, unprepare};
 use sbroad::executor::engine::helpers::storage::PreparedStmt;
 use sbroad::executor::engine::helpers::vshard::get_random_bucket;
-use sbroad::executor::engine::helpers::{self, normalize_name_for_space_api};
+use sbroad::executor::engine::helpers::{
+    self, exec_if_in_cache, normalize_name_for_space_api, prepare_and_read,
+};
 use sbroad::executor::engine::{QueryCache, StorageCache, Vshard};
 use sbroad::executor::ir::{ConnectionType, ExecutionPlan, QueryType};
 use sbroad::executor::lru::{Cache, EvictFn, LRUCache, DEFAULT_CAPACITY};
@@ -17,6 +19,8 @@ use sbroad::ir::value::Value;
 
 use crate::sql::router::{get_table_version, VersionMap};
 use crate::traft::node;
+use sbroad::backend::sql::tree::{OrderedSyntaxNodes, SyntaxPlan};
+use sbroad::ir::tree::Snapshot;
 use std::collections::HashMap;
 use std::{any::Any, cell::RefCell, rc::Rc};
 
@@ -189,6 +193,62 @@ impl Vshard for StorageRuntime {
             Entity::Runtime,
             Some("exec_ir_on_some is not supported on the storage".to_string()),
         ))
+    }
+
+    fn exec_ir_on_any_node(
+        &self,
+        mut sub_plan: ExecutionPlan,
+    ) -> Result<Box<dyn Any>, SbroadError> {
+        let vtable_max_rows = sub_plan.get_vtable_max_rows();
+        let opts = std::mem::take(&mut sub_plan.get_mut_ir_plan().options.execute_options);
+        let plan = sub_plan.get_ir_plan();
+        let top_id = plan.get_top()?;
+        if sub_plan.subtree_modifies_data(top_id)? {
+            return Err(SbroadError::Invalid(
+                Entity::Plan,
+                Some("dml can't be executed locally".into()),
+            ));
+        }
+        let plan_id = plan.pattern_id(top_id)?;
+        let sp = SyntaxPlan::new(&sub_plan, top_id, Snapshot::Oldest)?;
+        let ordered = OrderedSyntaxNodes::try_from(sp)?;
+        let nodes = ordered.to_syntax_data()?;
+        let params = sub_plan.to_params(&nodes, &Buckets::All)?;
+        let can_be_cached = sub_plan.vtables_empty();
+        let schema_info = SchemaInfo::new(sub_plan.get_ir_plan().version_map.clone());
+        if can_be_cached {
+            if let Some(res) =
+                exec_if_in_cache(self, &params, &plan_id, vtable_max_rows, opts.clone())?
+            {
+                return Ok(res);
+            }
+
+            let (pattern_with_params, _tmp_spaces) = sub_plan.to_sql(
+                &nodes,
+                &Buckets::All,
+                &uuid::Uuid::new_v4().as_simple().to_string(),
+            )?;
+            prepare_and_read(
+                self,
+                &pattern_with_params,
+                &plan_id,
+                vtable_max_rows,
+                opts,
+                &schema_info,
+            )
+        } else {
+            let (pattern_with_params, _tmp_spaces) = sub_plan.to_sql(
+                &nodes,
+                &Buckets::All,
+                &uuid::Uuid::new_v4().as_simple().to_string(),
+            )?;
+            read_unprepared(
+                &pattern_with_params.pattern,
+                &pattern_with_params.params,
+                vtable_max_rows,
+                opts,
+            )
+        }
     }
 }
 
