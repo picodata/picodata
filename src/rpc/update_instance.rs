@@ -8,6 +8,7 @@ use crate::storage::{Clusterwide, ClusterwideSpace};
 use crate::traft::op::{Dml, Op};
 use crate::traft::Result;
 use crate::traft::{error::Error, node};
+use crate::ADMIN_USER_ID;
 
 use ::tarantool::fiber;
 
@@ -133,6 +134,7 @@ pub fn handle_update_instance_request_and_wait(req: Request, timeout: Duration) 
                 term: raft_storage.term()?,
                 ranges,
             },
+            ADMIN_USER_ID,
             deadline.duration_since(fiber::clock()),
         );
         match res {

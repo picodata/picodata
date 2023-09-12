@@ -2,7 +2,6 @@
 
 use crate::schema::{
     wait_for_ddl_commit, CreateSpaceParams, DistributionParam, Field, RoleDef, ShardingFn, UserDef,
-    UserId,
 };
 use crate::sql::pgproto::{
     with_portals, BoxedPortal, Describe, Descriptor, UserDescriptors, PG_PORTALS,
@@ -13,7 +12,7 @@ use crate::traft::error::Error;
 use crate::traft::node::Node as TraftNode;
 use crate::traft::op::{Acl as OpAcl, Ddl as OpDdl, Op};
 use crate::traft::{self, node};
-use crate::util::duration_from_secs_f64_clamped;
+use crate::util::{duration_from_secs_f64_clamped, effective_user_id};
 use crate::{cas, unwrap_ok_or};
 
 use sbroad::backend::sql::ir::{EncodedPatternWithParams, PatternWithParams};
@@ -36,6 +35,7 @@ use serde::Deserialize;
 
 use ::tarantool::auth::{AuthData, AuthDef, AuthMethod};
 use ::tarantool::proc;
+use ::tarantool::session::UserId;
 use ::tarantool::space::{FieldType, Space, SystemSpace};
 use ::tarantool::time::Instant;
 use ::tarantool::tuple::{RawBytes, Tuple};
@@ -572,7 +572,14 @@ fn reenterable_schema_change_request(
             term,
             ranges: cas::schema_change_ranges().into(),
         };
-        let res = cas::compare_and_swap(op, predicate, deadline.duration_since(Instant::now()));
+        // Note: as_user doesnt really serve any purpose for DDL checks
+        // It'll change when access control checks will be introduced for DDL
+        let res = cas::compare_and_swap(
+            op,
+            predicate,
+            effective_user_id(),
+            deadline.duration_since(Instant::now()),
+        );
         let (index, term) = unwrap_ok_or!(res,
             Err(e) => {
                 if e.is_retriable() {

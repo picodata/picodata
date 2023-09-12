@@ -12,6 +12,7 @@ use crate::storage::{Clusterwide, ToEntryIter as _};
 use crate::traft::op::{Dml, Op};
 use crate::traft::{self, RaftId};
 use crate::traft::{error::Error, node, Address, PeerAddress, Result};
+use crate::ADMIN_USER_ID;
 
 use ::tarantool::fiber;
 
@@ -130,6 +131,7 @@ pub fn handle_join_request_and_wait(req: Request, timeout: Duration) -> Result<R
                 term: raft_storage.term()?,
                 ranges: ranges.clone(),
             },
+            ADMIN_USER_ID,
             deadline.duration_since(fiber::clock()),
         ));
         handle_result!(cas::compare_and_swap(
@@ -139,6 +141,7 @@ pub fn handle_join_request_and_wait(req: Request, timeout: Duration) -> Result<R
                 term: raft_storage.term()?,
                 ranges,
             },
+            ADMIN_USER_ID,
             deadline.duration_since(fiber::clock()),
         ));
         node.main_loop.wakeup();

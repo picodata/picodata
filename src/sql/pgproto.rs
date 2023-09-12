@@ -2,6 +2,7 @@
 
 use crate::traft::error::Error;
 use crate::traft::{self, node};
+use crate::util::effective_user_id;
 use sbroad::errors::{Entity, SbroadError};
 use sbroad::executor::result::MetadataColumn;
 use sbroad::ir::acl::Acl;
@@ -17,18 +18,12 @@ use std::ops::Bound::Included;
 use std::os::raw::c_int;
 use std::rc::Rc;
 use tarantool::proc::{Return, ReturnMsgpack};
-use tarantool::session::{euid, UserId};
+use tarantool::session::UserId;
 use tarantool::tuple::FunctionCtx;
 
 pub const DEFAULT_MAX_PG_PORTALS: usize = 50;
 
 pub type Descriptor = usize;
-
-#[inline]
-fn current_user() -> UserId {
-    // Current effective user id is infallible in Picodata.
-    euid().unwrap()
-}
 
 pub struct PortalStorage {
     map: BTreeMap<(UserId, Descriptor), BoxedPortal>,
@@ -67,7 +62,7 @@ impl PortalStorage {
     }
 
     pub fn remove(&mut self, key: Descriptor) -> traft::Result<BoxedPortal> {
-        let user_id = current_user();
+        let user_id = effective_user_id();
         let portal = self.map.remove(&(user_id, key)).map_or_else(
             || {
                 Err(Error::Other(
@@ -81,7 +76,7 @@ impl PortalStorage {
     }
 
     pub fn keys(&self) -> Vec<Descriptor> {
-        let user_id = current_user();
+        let user_id = effective_user_id();
         self.map
             .range((
                 Included((user_id, Descriptor::MIN)),
@@ -141,7 +136,7 @@ impl Portal {
     }
 
     fn new(id: String, sql: String, plan: Plan) -> Self {
-        let user_id = current_user();
+        let user_id = effective_user_id();
         Self {
             id,
             sql,

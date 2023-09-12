@@ -1,4 +1,4 @@
-use crate::schema::{Distribution, PrivilegeDef, RoleDef, UserDef, UserId};
+use crate::schema::{Distribution, PrivilegeDef, RoleDef, UserDef};
 use crate::storage::space_by_name;
 use crate::storage::Clusterwide;
 use ::tarantool::auth::AuthDef;
@@ -7,6 +7,7 @@ use ::tarantool::space::{Field, SpaceId};
 use ::tarantool::tlua;
 use ::tarantool::tuple::{ToTupleBuffer, Tuple, TupleBuffer};
 use serde::{Deserialize, Serialize};
+use tarantool::session::UserId;
 use tarantool::space::SpaceEngineType;
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -586,6 +586,49 @@ def test_acl_roles_basic(cluster: Cluster):
             )
 
 
+def test_cas_permissions(cluster: Cluster):
+    i1, *_ = cluster.deploy(instance_count=4, init_replication_factor=2)
+
+    user = "Steven"
+
+    # Create user.
+    index = i1.call("pico.create_user", user, VALID_PASSWORD)
+    cluster.raft_wait_index(index)
+
+    with pytest.raises(
+        Exception,
+        match="Write access to space '_pico_property' is denied for user 'Steven'",
+    ):
+        cluster.cas(
+            "replace",
+            "_pico_property",
+            ["foo", 128],
+            user=user,
+            password=VALID_PASSWORD,
+        )
+
+    index = i1.call(
+        "pico.grant_privilege",
+        user,
+        "write",
+        "table",
+        "_pico_property",
+    )
+    cluster.raft_wait_index(index)
+
+    index = cluster.cas(
+        "replace",
+        "_pico_property",
+        ["foo", 128],
+        user=user,
+        password=VALID_PASSWORD,
+    )
+
+    cluster.raft_wait_index(index)
+
+    assert i1.pico_property("foo") == 128
+
+
 def to_set_of_tuples(list_of_lists):
     return set((tuple(list) for list in list_of_lists))
 

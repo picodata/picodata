@@ -1,24 +1,25 @@
-use ::tarantool::auth::AuthDef;
-use ::tarantool::error::Error as TntError;
-use ::tarantool::fiber;
-use ::tarantool::index::{Index, IndexId, IndexIterator, IteratorType};
-use ::tarantool::msgpack::{ArrayWriter, ValueIter};
-use ::tarantool::read_view::ReadView;
-use ::tarantool::read_view::ReadViewIterator;
-use ::tarantool::space::UpdateOps;
-use ::tarantool::space::{FieldType, Space, SpaceId, SpaceType, SystemSpace};
-use ::tarantool::time::Instant;
-use ::tarantool::tlua::{self, LuaError};
-use ::tarantool::tuple::KeyDef;
-use ::tarantool::tuple::{Decode, DecodeOwned, Encode};
-use ::tarantool::tuple::{RawBytes, ToTupleBuffer, Tuple, TupleBuffer};
+use tarantool::auth::AuthDef;
+use tarantool::error::Error as TntError;
+use tarantool::fiber;
+use tarantool::index::{Index, IndexId, IndexIterator, IteratorType};
+use tarantool::msgpack::{ArrayWriter, ValueIter};
+use tarantool::read_view::ReadView;
+use tarantool::read_view::ReadViewIterator;
+use tarantool::session::UserId;
+use tarantool::space::UpdateOps;
+use tarantool::space::{FieldType, Space, SpaceId, SpaceType, SystemSpace};
+use tarantool::time::Instant;
+use tarantool::tlua::{self, LuaError};
+use tarantool::tuple::KeyDef;
+use tarantool::tuple::{Decode, DecodeOwned, Encode};
+use tarantool::tuple::{RawBytes, ToTupleBuffer, Tuple, TupleBuffer};
 
 use crate::failure_domain as fd;
 use crate::instance::{self, grade, Instance};
 use crate::replicaset::{Replicaset, ReplicasetId};
 use crate::schema::Distribution;
 use crate::schema::{IndexDef, SpaceDef};
-use crate::schema::{PrivilegeDef, RoleDef, UserDef, UserId};
+use crate::schema::{PrivilegeDef, RoleDef, UserDef};
 use crate::sql::pgproto::DEFAULT_MAX_PG_PORTALS;
 use crate::tier::Tier;
 use crate::tlog;
@@ -3040,7 +3041,7 @@ mod tests {
     use crate::tier::DEFAULT_TIER;
 
     use super::*;
-    use ::tarantool::transaction::transaction;
+    use tarantool::transaction::transaction;
 
     #[rustfmt::skip]
     #[::tarantool::test]

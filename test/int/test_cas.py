@@ -98,15 +98,6 @@ def test_cas_errors(instance: Instance):
 
 
 def test_cas_predicate(instance: Instance):
-    def property(k: str):
-        return instance.eval(
-            """
-            local tuple = box.space._pico_property:get(...)
-            return tuple and tuple.value
-            """,
-            k,
-        )
-
     instance.raft_compact_log()
     read_index = instance.raft_read_index(_3_SEC)
 
@@ -115,7 +106,7 @@ def test_cas_predicate(instance: Instance):
     assert ret == read_index + 1
     instance.raft_wait_index(ret, _3_SEC)
     assert instance.raft_read_index(_3_SEC) == ret
-    assert property("fruit") == "apple"
+    assert instance.pico_property("fruit") == "apple"
 
     # CaS rejected
     with pytest.raises(TarantoolError) as e5:
@@ -143,7 +134,7 @@ def test_cas_predicate(instance: Instance):
     assert ret == read_index + 2
     instance.raft_wait_index(ret, _3_SEC)
     assert instance.raft_read_index(_3_SEC) == ret
-    assert property("flower") == "tulip"
+    assert instance.pico_property("flower") == "tulip"
 
 
 # Previous tests use stored procedure `.proc_cas`, this one uses `pico.cas` lua api instead

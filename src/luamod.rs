@@ -9,11 +9,12 @@ use crate::schema::{self, CreateSpaceParams};
 use crate::traft::error::Error;
 use crate::traft::op::{self, Op};
 use crate::traft::{self, node, RaftIndex, RaftTerm};
-use crate::util::duration_from_secs_f64_clamped;
 use crate::util::str_eq;
 use crate::util::INFINITY;
-use crate::{args, rpc, sync, tlog};
+use crate::util::{duration_from_secs_f64_clamped, effective_user_id};
+use crate::{args, rpc, sync, tlog, ADMIN_USER_ID};
 use ::tarantool::fiber;
+use ::tarantool::session;
 use ::tarantool::tlua;
 use ::tarantool::tlua::{LuaState, LuaThread, PushOneInto, Void};
 use ::tarantool::transaction::transaction;
@@ -692,7 +693,8 @@ pub(crate) fn setup(args: &args::Run) {
                     term,
                     ranges: cas::schema_change_ranges().into(),
                 };
-                let res = compare_and_swap(op, predicate, timeout)?;
+
+                let res = compare_and_swap(op, predicate, effective_user_id(), timeout)?;
                 Ok(res)
             },
         ),
@@ -1145,9 +1147,18 @@ pub(crate) fn setup(args: &args::Run) {
             |op: op::DmlInLua,
              predicate: Option<cas::PredicateInLua>|
              -> traft::Result<RaftIndex> {
+                // su is needed here because for cas execution we need to consult with system spaces like `_raft_state`
+                // and the user executing cas request may not (even shouldnt) have access to these spaces
+                let su = session::su(ADMIN_USER_ID)?;
+
                 let op = op::Dml::from_lua_args(op).map_err(traft::error::Error::other)?;
                 let predicate = cas::Predicate::from_lua_args(predicate.unwrap_or_default())?;
-                let (index, _) = compare_and_swap(op.into(), predicate, Duration::from_secs(3))?;
+                let (index, _) = compare_and_swap(
+                    op.into(),
+                    predicate,
+                    su.original_user_id,
+                    Duration::from_secs(3),
+                )?;
                 Ok(index)
             },
         ),

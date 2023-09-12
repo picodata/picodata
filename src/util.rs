@@ -1,4 +1,5 @@
 use nix::sys::termios::{tcgetattr, tcsetattr, LocalFlags, SetArg::TCSADRAIN};
+use tarantool::session::{self, UserId};
 
 use crate::traft::error::Error;
 use std::any::{Any, TypeId};
@@ -590,6 +591,11 @@ impl Drop for NoYieldsGuard {
             panic!("NoYieldsGuard: fiber yielded when it wasn't supposed to");
         }
     }
+}
+
+#[inline]
+pub(crate) fn effective_user_id() -> UserId {
+    session::euid().expect("infallible in picodata")
 }
 
 ////////////////////////////////////////////////////////////////////////////////

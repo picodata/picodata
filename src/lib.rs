@@ -7,6 +7,7 @@ use ::raft::prelude as raft;
 use ::tarantool::error::Error as TntError;
 use ::tarantool::fiber;
 use ::tarantool::fiber::r#async::timeout::{self, IntoTimeout};
+use ::tarantool::session::UserId;
 use ::tarantool::time::Instant;
 use ::tarantool::tlua;
 use ::tarantool::transaction::transaction;
@@ -57,6 +58,10 @@ pub mod tier;
 pub mod tlog;
 pub mod traft;
 pub mod util;
+
+// This is the user id used when we need to elevate privileges
+// because current user doesnt have access to system spaces
+const ADMIN_USER_ID: UserId = 1;
 
 macro_rules! lua_preload {
     ($lua:ident, $module:literal, $path_prefix:literal, $path:literal) => {
@@ -240,6 +245,14 @@ fn init_handlers() {
         )
         .expect("box.schema.func.create should never fail");
     }
+
+    lua.exec(
+        r#"
+        box.schema.func.create('pico.cas', {if_not_exists = true});
+        box.schema.role.grant('public', 'execute', 'function', 'pico.cas', {if_not_exists = true})
+    "#,
+    )
+    .expect("pico.cas registration should never fail");
 }
 
 /// Sets interactive prompt to display `picodata>`.

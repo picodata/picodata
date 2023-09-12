@@ -17,10 +17,14 @@ use ::raft::prelude as raft;
 use ::raft::Error as RaftError;
 use ::raft::StorageError;
 
+use tarantool::access_control::box_access_check_space;
+use tarantool::access_control::PrivType;
 use tarantool::error::Error as TntError;
 use tarantool::fiber;
 use tarantool::fiber::r#async::sleep;
 use tarantool::fiber::r#async::timeout::IntoTimeout;
+use tarantool::session;
+use tarantool::session::UserId;
 use tarantool::space::{Space, SpaceId};
 use tarantool::tlua;
 use tarantool::tuple::{KeyDef, ToTupleBuffer, Tuple, TupleBuffer};
@@ -49,12 +53,14 @@ const PROHIBITED_SPACES: &[ClusterwideSpace] = &[
 pub async fn compare_and_swap_async(
     op: Op,
     predicate: Predicate,
+    as_user: UserId,
 ) -> traft::Result<(RaftIndex, RaftTerm)> {
     let node = node::global()?;
     let request = Request {
         cluster_id: node.raft_storage.cluster_id()?,
         predicate,
         op,
+        as_user,
     };
     loop {
         let Some(leader_id) = node.status().leader_id else {
@@ -110,9 +116,11 @@ pub async fn compare_and_swap_async(
 pub fn compare_and_swap(
     op: Op,
     predicate: Predicate,
+    as_user: UserId,
     timeout: Duration,
 ) -> traft::Result<(RaftIndex, RaftTerm)> {
-    fiber::block_on(compare_and_swap_async(op, predicate).timeout(timeout)).map_err(Into::into)
+    fiber::block_on(compare_and_swap_async(op, predicate, as_user).timeout(timeout))
+        .map_err(Into::into)
 }
 
 fn proc_cas_local(req: Request) -> Result<Response> {
@@ -126,6 +134,14 @@ fn proc_cas_local(req: Request) -> Result<Response> {
             instance_cluster_id: req.cluster_id,
             cluster_cluster_id: cluster_id,
         });
+    }
+
+    // Other operation types are not used with CaS
+    if !matches!(
+        req.op,
+        Op::Acl(..) | Op::Dml(..) | Op::DdlPrepare { .. } | Op::DdlAbort
+    ) {
+        return Err(TraftError::Cas(Error::InvalidOpKind(req.op)));
     }
 
     let Predicate {
@@ -190,7 +206,7 @@ fn proc_cas_local(req: Request) -> Result<Response> {
     for range in &req.predicate.ranges {
         let Ok(table) = ClusterwideSpace::try_from(range.table) else {
             continue;
-         };
+        };
         if PROHIBITED_SPACES.contains(&table) {
             return Err(Error::SpaceNotAllowed {
                 space: table.name().into(),
@@ -251,6 +267,15 @@ fn proc_cas_local(req: Request) -> Result<Response> {
         req.predicate.check_entry(entry.index, &op, storage)?;
     }
 
+    // TODO DDL/ACL are expected to be implemented next in second part of this ticket:
+    // https://git.picodata.io/picodata/picodata/picodata/-/issues/339
+    if let Op::Dml(dml) = &req.op {
+        let _su = session::su(req.as_user)?;
+        // Note: audit log record is automatically emmitted,
+        // because it is hooked into AccessDenied error creation
+        box_access_check_space(dml.space(), PrivType::Write)?;
+    }
+
     // TODO: apply to limbo first
 
     // Don't wait for the proposal to be accepted, instead return the index
@@ -292,6 +317,7 @@ crate::define_rpc_request! {
         pub cluster_id: String,
         pub predicate: Predicate,
         pub op: Op,
+        pub as_user: UserId,
     }
 
     pub struct Response {
@@ -344,6 +370,9 @@ pub enum Error {
     /// depths while checking the predicate.
     #[error("KeyTypeMismatch: failed comparing predicate ranges: {0}")]
     KeyTypeMismatch(#[from] TntError),
+
+    #[error("InvalidOpKind: Expected one of Acl, Dml, DdlPrepare or DdlAbort, got {0}")]
+    InvalidOpKind(Op),
 }
 
 /// Represents a lua table describing a [`Predicate`].

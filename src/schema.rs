@@ -6,6 +6,7 @@ use tarantool::auth::AuthDef;
 use tarantool::error::TarantoolError;
 use tarantool::error::TarantoolErrorCode;
 use tarantool::fiber;
+use tarantool::session::UserId;
 use tarantool::set_error;
 use tarantool::space::{FieldType, SpaceCreateOptions, SpaceEngineType};
 use tarantool::space::{Metadata as SpaceMetadata, Space, SpaceType, SystemSpace};
@@ -28,6 +29,7 @@ use crate::storage::{ClusterwideSpace, PropertyName};
 use crate::traft::error::Error;
 use crate::traft::op::{Ddl, Op};
 use crate::traft::{self, event, node, RaftIndex};
+use crate::util::effective_user_id;
 
 ////////////////////////////////////////////////////////////////////////////////
 // SpaceDef
@@ -189,8 +191,6 @@ pub struct UserDef {
     pub schema_version: u64,
     pub auth: AuthDef,
 }
-
-pub type UserId = u32;
 
 impl Encode for UserDef {}
 
@@ -653,7 +653,9 @@ pub fn abort_ddl(timeout: Duration) -> traft::Result<RaftIndex> {
                 cas::Range::new(ClusterwideSpace::Property).eq([PropertyName::NextSchemaVersion]),
             ],
         };
-        let (index, term) = compare_and_swap(Op::DdlAbort, predicate, timeout)?;
+
+        let (index, term) =
+            compare_and_swap(Op::DdlAbort, predicate, effective_user_id(), timeout)?;
         node.wait_index(index, timeout)?;
         if raft::Storage::term(&node.raft_storage, index)? != term {
             // leader switched - retry

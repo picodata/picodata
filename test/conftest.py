@@ -740,15 +740,24 @@ class Instance:
         else:
             raise Exception(f"unsupported {op_kind=}")
 
+        # guest has super privs for now by default this should be equal
+        # to ADMIN_USER_ID on the rust side
+        as_user = 1
+
         eprint(f"CaS:\n  {predicate=}\n  {op=}")
-        return self.call(".proc_cas", self.cluster_id, predicate, op)[0]["index"]
+        return self.call(".proc_cas", self.cluster_id, predicate, op, as_user)[0][
+            "index"
+        ]
+
+    def pico_property(self, key: str):
+        tup = self.call("box.space._pico_property:get", key)
+        if tup is None:
+            return None
+
+        return tup[1]
 
     def next_schema_version(self) -> int:
-        t = self.call("box.space._pico_property:get", "next_schema_version")
-        if t is None:
-            return 1
-
-        return t[1]
+        return self.pico_property("next_schema_version") or 1
 
     def create_table(self, params: dict, timeout: float = 3.0) -> int:
         """
@@ -1177,6 +1186,8 @@ class Cluster:
         ranges: List[CasRange] | None = None,
         # If specified send CaS through this instance
         instance: Instance | None = None,
+        user: str | None = None,
+        password: str | None = None,
     ) -> int:
         """
         Performs a clusterwide compare and swap operation.
@@ -1215,7 +1226,7 @@ class Cluster:
             raise Exception(f"unsupported {dml_kind=}")
 
         eprint(f"CaS:\n  {predicate=}\n  {dml=}")
-        return instance.call("pico.cas", dml, predicate)
+        return instance.call("pico.cas", dml, predicate, user=user, password=password)
 
 
 @dataclass
