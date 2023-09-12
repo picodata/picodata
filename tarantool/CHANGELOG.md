@@ -1,5 +1,10 @@
 # Change Log
 
+# Unreleased
+
+### Changed
+- `network::client::tcp::TcpStream` will now always try IPv4 addresses first when connecting.
+
 # [2.0.0] Aug 28 2023
 
 ### Added

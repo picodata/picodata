@@ -78,9 +78,9 @@ impl TcpStream {
             let addr_info = get_address_info(url).await?;
             let addrs = get_addrs_from_info(addr_info, port);
             libc::freeaddrinfo(addr_info);
-            addrs
+            // Try IPv4 addresses first when connecting
+            ipv4_first(addrs?)
         };
-        let addrs = addrs?;
         let stream = std::net::TcpStream::connect(addrs.as_slice()).map_err(Error::Connect)?;
         stream.set_nonblocking(true).map_err(Error::SetNonBlock)?;
         Ok(Self {
@@ -110,6 +110,13 @@ impl CloseToken {
             Ok(())
         }
     }
+}
+
+/// Sorts the supplied `addrs` so that IPv4 addresses are first.
+fn ipv4_first(addrs: impl IntoIterator<Item = SocketAddr>) -> Vec<SocketAddr> {
+    let (mut ipv4, mut ipv6): (Vec<_>, Vec<_>) = addrs.into_iter().partition(|addr| addr.is_ipv4());
+    ipv4.append(&mut ipv6);
+    ipv4
 }
 
 unsafe fn get_addrs_from_info(
@@ -283,7 +290,8 @@ mod tests {
     use crate::test::util::always_pending;
     use crate::test::util::TARANTOOL_LISTEN;
 
-    use std::net::TcpListener;
+    use std::collections::HashSet;
+    use std::net::{TcpListener, ToSocketAddrs};
     use std::thread;
     use std::time::Duration;
 
@@ -297,6 +305,26 @@ mod tests {
         unsafe {
             let _ = fiber::block_on(get_address_info("localhost").timeout(_10_SEC)).unwrap();
         }
+    }
+
+    #[crate::test(tarantool = "crate")]
+    async fn resolve_same_as_std() {
+        let addrs_1: HashSet<_> = unsafe {
+            get_addrs_from_info(
+                get_address_info("example.org")
+                    .timeout(_10_SEC)
+                    .await
+                    .unwrap(),
+                80,
+            )
+            .unwrap()
+            .into_iter()
+            .collect()
+        };
+        let addrs_2: HashSet<_> = ToSocketAddrs::to_socket_addrs("example.org:80")
+            .unwrap()
+            .collect();
+        assert_eq!(addrs_1, addrs_2);
     }
 
     #[crate::test(tarantool = "crate")]
