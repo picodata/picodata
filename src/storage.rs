@@ -50,23 +50,11 @@ macro_rules! define_clusterwide_spaces {
                     pub struct $space_struct:ident {
                         $space_field:ident: $space_ty:ty,
                         #[primary]
-                        $index_field_pk:ident: $index_ty_pk:ty
-                            => $index_var_pk:ident = $index_name_pk:expr,
-                        $(
-                            $index_field:ident: $index_ty:ty
-                                => $index_var:ident = $index_name:expr,
-                        )*
+                        $index_field_pk:ident: $index_ty_pk:ty => $index_name_pk:expr,
+                        $( $index_field:ident: $index_ty:ty => $index_name:expr, )*
                     }
-
-                    $(#[$index_meta:meta])*
-                    pub enum $index:ident;
                 }
             )+
-        }
-
-        $(#[$ClusterwideSpaceIndex_meta:meta])*
-        pub enum $ClusterwideSpaceIndex:ident {
-            #space_name( $index_of:ident <#space_struct_name>),
         }
     ) => {
         ////////////////////////////////////////////////////////////////////////
@@ -126,131 +114,7 @@ macro_rules! define_clusterwide_spaces {
             }
         }
 
-        impl $ClusterwideSpace {
-            pub fn primary_index(&self) -> $ClusterwideSpaceIndex {
-                match self {
-                    $(
-                        $ClusterwideSpace::$cw_space_var => $ClusterwideSpaceIndex::$cw_space_var(<$space_struct>::primary_index()),
-                    )+
-                }
-            }
-        }
-
         $( const _: $crate::util::CheckIsSameType<$_Clusterwide, $Clusterwide> = (); )+
-
-        ////////////////////////////////////////////////////////////////////////
-        // ClusterwideSpaceIndex
-        $(#[$ClusterwideSpaceIndex_meta])*
-        #[derive(Copy, Clone, Debug, serde::Serialize, serde::Deserialize, PartialEq, Eq, Hash)]
-        pub enum $ClusterwideSpaceIndex {
-            $( $cw_space_var($index_of<$space_struct>),)+
-        }
-
-        impl From<$ClusterwideSpace> for $ClusterwideSpaceIndex {
-            fn from(space: $ClusterwideSpace) -> Self {
-                space.primary_index()
-            }
-        }
-
-        impl $ClusterwideSpaceIndex {
-            pub const fn space(&self) -> $ClusterwideSpace {
-                match self {
-                    $(
-                        Self::$cw_space_var(_) => $ClusterwideSpace::$cw_space_var,
-                    )+
-                }
-            }
-
-            pub const fn index_name(&self) -> &'static str {
-                match self {
-                    $( Self::$cw_space_var(idx) => idx.as_str(), )+
-                }
-            }
-
-            pub fn is_primary(&self) -> bool {
-                match self {
-                    $( Self::$cw_space_var(idx) => idx.is_primary(), )+
-                }
-            }
-        }
-
-        impl<L: ::tarantool::tlua::AsLua> ::tarantool::tlua::LuaRead<L> for $ClusterwideSpaceIndex {
-            fn lua_read_at_position(lua: L, index: ::std::num::NonZeroI32) -> ::tarantool::tlua::ReadResult<Self, L> {
-                use ::tarantool::tlua;
-
-                #[derive(tlua::LuaRead)]
-                struct ClusterwideSpaceIndexInfo {
-                    name: Option<String>,
-                    index_name: Option<String>,
-                    space_id: Option<u32>,
-                    space_name: Option<String>,
-                }
-
-                let when = "reading cluster-wide space index info";
-                let info = $crate::unwrap_ok_or! {
-                    ClusterwideSpaceIndexInfo::lua_read_at_position(&lua, index),
-                    Err((_, err)) => {
-                        let err = err.when(when).expected("Lua table");
-                        return Err((lua, err));
-                    }
-                };
-
-                let index_name = if let Some(index_name) = info.name {
-                    index_name
-                } else if let Some(index_name) = info.index_name {
-                    index_name
-                } else {
-                    let err = tlua::WrongType::info(when)
-                        .expected("field 'name' or 'index_name'")
-                        .actual("table with none of them");
-                    return Err((lua, err));
-                };
-
-                let space_name = if let Some(space_name) = info.space_name {
-                    space_name
-                } else if let Some(space_id) = info.space_id {
-                    let space = unsafe { Space::from_id_unchecked(space_id) };
-                    let meta = $crate::unwrap_ok_or! { space.meta(),
-                        Err(err) => {
-                            let err = tlua::WrongType::info(when)
-                                .expected("valid space id")
-                                .actual(format!("error: {err}"));
-                            return Err((lua, err));
-                        }
-                    };
-                    meta.name.into()
-                } else {
-                    let err = tlua::WrongType::info(when)
-                        .expected("field 'space_name' or 'space_id'")
-                        .actual("table with none of them");
-                    return Err((lua, err));
-                };
-
-                match &*space_name {
-                    $(
-                        $cw_space_name => {
-                            let index = match &*index_name {
-                                $index_name_pk => $index::$index_var_pk,
-                                $( $index_name => $index::$index_var, )*
-                                unknown_index => {
-                                    let err = tlua::WrongType::info(when)
-                                        .expected(format!("one of {:?}", $index_of::<$space_struct>::values()))
-                                        .actual(unknown_index);
-                                    return Err((lua, err))
-                                }
-                            };
-                            Ok(Self::$cw_space_var(index))
-                        }
-                    )+
-                    unknown_space => {
-                        let err = tlua::WrongType::info(when)
-                            .expected(format!("one of {:?}", $ClusterwideSpace::values()))
-                            .actual(unknown_space);
-                        return Err((lua, err))
-                    }
-                }
-            }
-        }
 
         ////////////////////////////////////////////////////////////////////////
         // Clusterwide
@@ -275,18 +139,6 @@ macro_rules! define_clusterwide_spaces {
                     $( $cw_space_name => Ok(self.$Clusterwide_field.space.clone()), )+
                     _ => space_by_name(space),
 
-                }
-            }
-
-            #[inline(always)]
-            fn index(&self, index: impl Into<$ClusterwideSpaceIndex>) -> &Index {
-                match index.into() {
-                    $(
-                        $ClusterwideSpaceIndex::$cw_space_var(idx) => match idx {
-                            $index_of::<$space_struct>::$index_var_pk => &self.$Clusterwide_field.$index_field_pk,
-                            $( $index_of::<$space_struct>::$index_var => &self.$Clusterwide_field.$index_field, )*
-                        }
-                    )+
                 }
             }
 
@@ -322,36 +174,13 @@ macro_rules! define_clusterwide_spaces {
                 $( $index_field: $index_ty, )*
             }
 
-            ::tarantool::define_str_enum! {
-                $(#[$index_meta])*
-                pub enum $index {
-                    $index_var_pk = $index_name_pk,
-                    $( $index_var = $index_name, )*
-                }
-            }
-
-            impl From<$index> for $ClusterwideSpaceIndex {
-                fn from(index: $index) -> Self {
-                    Self::$cw_space_var(index)
-                }
-            }
-
             impl TClusterwideSpace for $space_struct {
-                type Index = $index;
                 const SPACE_NAME: &'static str = $cw_space_name;
                 const SPACE_ID: SpaceId = $cw_space_id_value;
-            }
-
-            impl TClusterwideSpaceIndex for IndexOf<$space_struct> {
-                #[inline(always)]
-                fn primary() -> Self {
-                    Self::$index_var_pk
-                }
-
-                #[inline(always)]
-                fn is_primary(&self) -> bool {
-                    matches!(self, Self::$index_var_pk)
-                }
+                const INDEX_NAMES: &'static [&'static str] = &[
+                    $index_name_pk,
+                    $( $index_name, )*
+                ];
             }
         )+
     }
@@ -403,14 +232,10 @@ define_clusterwide_spaces! {
             pub struct Instances {
                 space: Space,
                 #[primary]
-                index_instance_id:   Index => InstanceId   = "instance_id",
-                index_raft_id:       Index => RaftId       = "raft_id",
-                index_replicaset_id: Index => ReplicasetId = "replicaset_id",
+                index_instance_id:   Index => "instance_id",
+                index_raft_id:       Index => "raft_id",
+                index_replicaset_id: Index => "replicaset_id",
             }
-
-            /// An enumeration of indexes defined for instance space.
-            #[allow(clippy::enum_variant_names)]
-            pub enum SpaceInstanceIndex;
         }
         Address = 514, "_pico_peer_address" => {
             Clusterwide::peer_addresses;
@@ -419,11 +244,8 @@ define_clusterwide_spaces! {
             pub struct PeerAddresses {
                 space: Space,
                 #[primary]
-                index: Index => RaftId = "raft_id",
+                index: Index => "raft_id",
             }
-
-            /// An enumeration of indexes defined for peer address space.
-            pub enum SpacePeerAddressIndex;
         }
         Property = 516, "_pico_property" => {
             Clusterwide::properties;
@@ -432,11 +254,8 @@ define_clusterwide_spaces! {
             pub struct Properties {
                 space: Space,
                 #[primary]
-                index: Index => Key = "key",
+                index: Index => "key",
             }
-
-            /// An enumeration of indexes defined for property space.
-            pub enum SpacePropertyIndex;
         }
         Replicaset = 517, "_pico_replicaset" => {
             Clusterwide::replicasets;
@@ -445,11 +264,8 @@ define_clusterwide_spaces! {
             pub struct Replicasets {
                 space: Space,
                 #[primary]
-                index: Index => ReplicasetId = "replicaset_id",
+                index: Index => "replicaset_id",
             }
-
-            /// An enumeration of indexes defined for replicaset space.
-            pub enum SpaceReplicasetIndex;
         }
         Space = 512, "_pico_space" => {
             Clusterwide::spaces;
@@ -458,13 +274,9 @@ define_clusterwide_spaces! {
             pub struct Spaces {
                 space: Space,
                 #[primary]
-                index_id: Index => Id = "id",
-                index_name: Index => Name = "name",
+                index_id: Index => "id",
+                index_name: Index => "name",
             }
-
-            /// An enumeration of indexes defined for "_pico_space".
-            #[allow(clippy::enum_variant_names)]
-            pub enum SpaceSpaceIndex;
         }
         Index = 513, "_pico_index" => {
             Clusterwide::indexes;
@@ -473,13 +285,9 @@ define_clusterwide_spaces! {
             pub struct Indexes {
                 space: Space,
                 #[primary]
-                index_id: Index => Id = "id",
-                index_name: Index => Name = "name",
+                index_id: Index => "id",
+                index_name: Index => "name",
             }
-
-            /// An enumeration of indexes defined for "_pico_index".
-            #[allow(clippy::enum_variant_names)]
-            pub enum SpaceIndexIndex;
         }
         User = 520, "_pico_user" => {
             Clusterwide::users;
@@ -488,13 +296,9 @@ define_clusterwide_spaces! {
             pub struct Users {
                 space: Space,
                 #[primary]
-                index_id: Index => Id = "id",
-                index_name: Index => Name = "name",
+                index_id: Index => "id",
+                index_name: Index => "name",
             }
-
-            /// An enumeration of indexes defined for "_pico_user".
-            #[allow(clippy::enum_variant_names)]
-            pub enum SpaceUserIndex;
         }
         Role = 522, "_pico_role" => {
             Clusterwide::roles;
@@ -503,13 +307,9 @@ define_clusterwide_spaces! {
             pub struct Roles {
                 space: Space,
                 #[primary]
-                index_id: Index => Id = "id",
-                index_name: Index => Name = "name",
+                index_id: Index => "id",
+                index_name: Index => "name",
             }
-
-            /// An enumeration of indexes defined for "_pico_role".
-            #[allow(clippy::enum_variant_names)]
-            pub enum SpaceRoleIndex;
         }
         Privilege = 521, "_pico_privilege" => {
             Clusterwide::privileges;
@@ -519,19 +319,10 @@ define_clusterwide_spaces! {
             pub struct Privileges {
                 space: Space,
                 #[primary]
-                primary_key: Index => Primary = "primary",
-                object_idx: Index => Object = "object",
+                primary_key: Index => "primary",
+                object_idx: Index => "object",
             }
-
-            /// An enumeration of indexes defined for "_pico_privilege".
-            #[allow(clippy::enum_variant_names)]
-            pub enum SpacePrivilegeIndex;
         }
-    }
-
-    /// An index of a clusterwide space.
-    pub enum ClusterwideSpaceIndex {
-        #space_name(IndexOf<#space_struct_name>),
     }
 }
 
@@ -909,14 +700,9 @@ impl ClusterwideSpace {
 
 /// Types implementing this trait represent clusterwide spaces.
 pub trait TClusterwideSpace {
-    type Index: TClusterwideSpaceIndex;
     const SPACE_NAME: &'static str;
     const SPACE_ID: SpaceId;
-
-    #[inline(always)]
-    fn primary_index() -> Self::Index {
-        Self::Index::primary()
-    }
+    const INDEX_NAMES: &'static [&'static str];
 }
 
 impl ClusterwideSpaceId {
@@ -931,28 +717,6 @@ impl From<ClusterwideSpaceId> for SpaceId {
     fn from(id: ClusterwideSpaceId) -> SpaceId {
         id as _
     }
-}
-
-////////////////////////////////////////////////////////////////////////////////
-// ClusterwideSpaceIndex
-////////////////////////////////////////////////////////////////////////////////
-
-/// A type alias for getting the enumeration of indexes for a clusterwide space.
-pub type IndexOf<T> = <T as TClusterwideSpace>::Index;
-
-impl std::fmt::Display for ClusterwideSpaceIndex {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if self.is_primary() {
-            write!(f, "{}", self.space())
-        } else {
-            write!(f, "{}.index.{}", self.space(), self.index_name())
-        }
-    }
-}
-
-pub trait TClusterwideSpaceIndex {
-    fn primary() -> Self;
-    fn is_primary(&self) -> bool;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1020,7 +784,7 @@ impl Properties {
             .create()?;
 
         let index = space
-            .index_builder(Self::primary_index().as_str())
+            .index_builder("key")
             .unique(true)
             .part("key")
             .if_not_exists(true)
@@ -1112,7 +876,7 @@ impl Replicasets {
             .create()?;
 
         let index = space
-            .index_builder(Self::primary_index().as_str())
+            .index_builder("replicaset_id")
             .unique(true)
             .part("replicaset_id")
             .if_not_exists(true)
@@ -1156,7 +920,7 @@ impl PeerAddresses {
             .create()?;
 
         let index = space
-            .index_builder(Self::primary_index().as_str())
+            .index_builder("raft_id")
             .unique(true)
             .part("raft_id")
             .if_not_exists(true)
@@ -1223,21 +987,21 @@ impl Instances {
             .create()?;
 
         let index_instance_id = space_instances
-            .index_builder(IndexOf::<Self>::InstanceId.as_str())
+            .index_builder("instance_id")
             .unique(true)
             .part(instance_field::InstanceId)
             .if_not_exists(true)
             .create()?;
 
         let index_raft_id = space_instances
-            .index_builder(IndexOf::<Self>::RaftId.as_str())
+            .index_builder("raft_id")
             .unique(true)
             .part(instance_field::RaftId)
             .if_not_exists(true)
             .create()?;
 
         let index_replicaset_id = space_instances
-            .index_builder(IndexOf::<Self>::ReplicasetId.as_str())
+            .index_builder("replicaset_id")
             .unique(false)
             .part(instance_field::ReplicasetId)
             .if_not_exists(true)
@@ -1646,14 +1410,14 @@ impl Spaces {
             .create()?;
 
         let index_id = space
-            .index_builder(IndexOf::<Self>::Id.as_str())
+            .index_builder("id")
             .unique(true)
             .part("id")
             .if_not_exists(true)
             .create()?;
 
         let index_name = space
-            .index_builder(IndexOf::<Self>::Name.as_str())
+            .index_builder("name")
             .unique(true)
             .part("name")
             .if_not_exists(true)
@@ -1739,7 +1503,7 @@ impl Indexes {
             .create()?;
 
         let index_id = space
-            .index_builder(IndexOf::<Self>::Id.as_str())
+            .index_builder("id")
             .unique(true)
             .part("space_id")
             .part("id")
@@ -1747,7 +1511,7 @@ impl Indexes {
             .create()?;
 
         let index_name = space
-            .index_builder(IndexOf::<Self>::Name.as_str())
+            .index_builder("name")
             .unique(true)
             .part("space_id")
             .part("name")
@@ -2049,14 +1813,14 @@ impl Users {
             .create()?;
 
         let index_id = space
-            .index_builder(IndexOf::<Self>::Id.as_str())
+            .index_builder("id")
             .unique(true)
             .part("id")
             .if_not_exists(true)
             .create()?;
 
         let index_name = space
-            .index_builder(IndexOf::<Self>::Name.as_str())
+            .index_builder("name")
             .unique(true)
             .part("name")
             .if_not_exists(true)
@@ -2142,14 +1906,14 @@ impl Roles {
             .create()?;
 
         let index_id = space
-            .index_builder(IndexOf::<Self>::Id.as_str())
+            .index_builder("id")
             .unique(true)
             .part("id")
             .if_not_exists(true)
             .create()?;
 
         let index_name = space
-            .index_builder(IndexOf::<Self>::Name.as_str())
+            .index_builder("name")
             .unique(true)
             .part("name")
             .if_not_exists(true)
@@ -2230,14 +1994,14 @@ impl Privileges {
             .create()?;
 
         let primary_key = space
-            .index_builder(IndexOf::<Self>::Primary.as_str())
+            .index_builder("primary")
             .unique(true)
             .parts(["grantee_id", "object_type", "object_name", "privilege"])
             .if_not_exists(true)
             .create()?;
 
         let object_idx = space
-            .index_builder(IndexOf::<Self>::Object.as_str())
+            .index_builder("object")
             .unique(false)
             .part("object_type")
             .part("object_name")
@@ -2924,36 +2688,6 @@ mod tests {
             assert_eq!(box_replication("r3"), ["addr:5"]);
         }
 
-        storage.index(IndexOf::<Instances>::RaftId).drop().unwrap();
-
-        assert_err!(
-            storage.instances.get(&1),
-            concat!(
-                "tarantool error: NoSuchIndexID: No index #1 is defined",
-                " in space '_pico_instance'",
-            )
-        );
-
-        storage.index(IndexOf::<Instances>::ReplicasetId).drop().unwrap();
-
-        assert_err!(
-            storage.instances.replicaset_instances(""),
-            concat!(
-                "tarantool error: NoSuchIndexID: No index #2 is defined",
-                " in space '_pico_instance'",
-            )
-        );
-
-        storage.index(IndexOf::<Instances>::InstanceId).drop().unwrap();
-
-        assert_err!(
-            storage.instances.get(&InstanceId::from("i1")),
-            concat!(
-                "tarantool error: NoSuchIndexID: No index #0 is defined",
-                " in space '_pico_instance'",
-            )
-        );
-
         let space = storage.space_by_name(ClusterwideSpace::Instance).unwrap();
         space.drop().unwrap();
 
@@ -2991,11 +2725,7 @@ mod tests {
         };
         storage.instances.put(&inst(1, "bob")).unwrap();
 
-        let t = storage
-            .index(IndexOf::<Instances>::RaftId)
-            .get(&[1])
-            .unwrap()
-            .unwrap();
+        let t = storage.instances.index_raft_id.get(&[1]).unwrap().unwrap();
         let i: Instance = t.decode().unwrap();
         assert_eq!(i.raft_id, 1);
         assert_eq!(i.instance_id, "bob");

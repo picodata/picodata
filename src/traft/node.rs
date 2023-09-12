@@ -67,7 +67,7 @@ use protobuf::Message as _;
 use std::cell::Cell;
 use std::cell::RefCell;
 use std::cmp::Ordering;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::rc::Rc;
 use std::time::Duration;
@@ -125,9 +125,6 @@ impl Status {
     }
 }
 
-type StorageWatchers = HashMap<SpaceId, watch::Sender<()>>;
-type StorageChanges = HashSet<SpaceId>;
-
 /// The heart of `traft` module - the Node.
 pub struct Node {
     /// RaftId of the Node.
@@ -145,7 +142,6 @@ pub struct Node {
     pub(crate) governor_loop: governor::Loop,
     pub(crate) sentinel_loop: sentinel::Loop,
     status: watch::Receiver<Status>,
-    watchers: Rc<Mutex<StorageWatchers>>,
 
     /// Should be locked during join and update instance request
     /// to avoid costly cas conflicts during concurrent requests.
@@ -183,11 +179,10 @@ impl Node {
         let status = node_impl.status.subscribe();
 
         let node_impl = Rc::new(Mutex::new(node_impl));
-        let watchers = Rc::new(Mutex::new(HashMap::new()));
 
         let node = Node {
             raft_id,
-            main_loop: MainLoop::start(node_impl.clone(), watchers.clone()), // yields
+            main_loop: MainLoop::start(node_impl.clone()), // yields
             governor_loop: governor::Loop::start(
                 pool.clone(),
                 status.clone(),
@@ -205,7 +200,6 @@ impl Node {
             storage,
             raft_storage,
             status,
-            watchers,
             instances_update: Mutex::new(()),
         };
 
@@ -377,25 +371,6 @@ impl Node {
     #[inline]
     pub fn all_traft_entries(&self) -> ::tarantool::Result<Vec<traft::Entry>> {
         self.raft_storage.all_traft_entries()
-    }
-
-    /// Returns a watch which will be notified when a clusterwide space is
-    /// modified via the specified `index`.
-    ///
-    /// You can also pass a [ClusterwideSpace](crate::storage::ClusterwideSpace) in which case the space's
-    /// primary index will be used.
-    #[inline(always)]
-    pub fn storage_watcher(&self, space: impl Into<SpaceId>) -> watch::Receiver<()> {
-        use std::collections::hash_map::Entry;
-        let mut watchers = self.watchers.lock();
-        match watchers.entry(space.into()) {
-            Entry::Vacant(entry) => {
-                let (tx, rx) = watch::channel(());
-                entry.insert(tx);
-                rx
-            }
-            Entry::Occupied(entry) => entry.get().subscribe(),
-        }
     }
 }
 
@@ -592,7 +567,6 @@ impl NodeImpl {
         entries: &[raft::Entry],
         wake_governor: &mut bool,
         expelled: &mut bool,
-        storage_changes: &mut StorageChanges,
     ) -> traft::Result<()> {
         let mut entries = entries.iter().peekable();
 
@@ -610,12 +584,8 @@ impl NodeImpl {
                 let entry_index = entry.index;
                 match entry.entry_type {
                     raft::EntryType::EntryNormal => {
-                        apply_entry_result = self.handle_committed_normal_entry(
-                            entry,
-                            wake_governor,
-                            expelled,
-                            storage_changes,
-                        );
+                        apply_entry_result =
+                            self.handle_committed_normal_entry(entry, wake_governor, expelled);
                         if apply_entry_result != EntryApplied {
                             return Ok(());
                         }
@@ -660,7 +630,6 @@ impl NodeImpl {
         entry: traft::Entry,
         wake_governor: &mut bool,
         expelled: &mut bool,
-        storage_changes: &mut StorageChanges,
     ) -> ApplyEntryResult {
         assert_eq!(entry.entry_type, raft::EntryType::EntryNormal);
         let lc = entry.lc();
@@ -694,7 +663,6 @@ impl NodeImpl {
                         }
                     }
                 }
-                storage_changes.insert(space);
             }
             Op::DdlPrepare { .. } => {
                 *wake_governor = true;
@@ -1206,12 +1174,7 @@ impl NodeImpl {
     /// - or better <https://github.com/etcd-io/etcd/blob/v3.5.5/raft/node.go#L49>
     ///
     /// This function yields.
-    fn advance(
-        &mut self,
-        wake_governor: &mut bool,
-        expelled: &mut bool,
-        storage_changes: &mut StorageChanges,
-    ) {
+    fn advance(&mut self, wake_governor: &mut bool, expelled: &mut bool) {
         // Handle any unreachable nodes from previous iteration.
         let unreachables = self
             .instance_reachability
@@ -1358,12 +1321,7 @@ impl NodeImpl {
         self.handle_read_states(ready.read_states());
 
         // Apply committed entries.
-        let res = self.handle_committed_entries(
-            ready.committed_entries(),
-            wake_governor,
-            expelled,
-            storage_changes,
-        );
+        let res = self.handle_committed_entries(ready.committed_entries(), wake_governor, expelled);
         if let Err(e) = res {
             tlog!(Warning, "dropping raft ready: {ready:#?}");
             panic!("transaction failed: {e}, {}", TarantoolError::last());
@@ -1404,12 +1362,8 @@ impl NodeImpl {
         }
 
         // Apply committed entries.
-        let res = self.handle_committed_entries(
-            light_rd.committed_entries(),
-            wake_governor,
-            expelled,
-            storage_changes,
-        );
+        let res =
+            self.handle_committed_entries(light_rd.committed_entries(), wake_governor, expelled);
         if let Err(e) = res {
             tlog!(Warning, "dropping raft light ready: {light_rd:#?}");
             panic!("transaction failed: {e}, {}", TarantoolError::last());
@@ -1511,13 +1465,12 @@ struct MainLoopState {
     next_tick: Instant,
     loop_waker: watch::Receiver<()>,
     stop_flag: Rc<Cell<bool>>,
-    watchers: Rc<Mutex<StorageWatchers>>,
 }
 
 impl MainLoop {
     pub const TICK: Duration = Duration::from_millis(100);
 
-    fn start(node_impl: Rc<Mutex<NodeImpl>>, watchers: Rc<Mutex<StorageWatchers>>) -> Self {
+    fn start(node_impl: Rc<Mutex<NodeImpl>>) -> Self {
         let (loop_waker_tx, loop_waker_rx) = watch::channel(());
         let stop_flag: Rc<Cell<bool>> = Default::default();
 
@@ -1526,7 +1479,6 @@ impl MainLoop {
             next_tick: Instant::now(),
             loop_waker: loop_waker_rx,
             stop_flag: stop_flag.clone(),
-            watchers,
         };
 
         Self {
@@ -1563,24 +1515,10 @@ impl MainLoop {
 
         let mut wake_governor = false;
         let mut expelled = false;
-        let mut storage_changes = StorageChanges::new();
-        node_impl.advance(&mut wake_governor, &mut expelled, &mut storage_changes); // yields
+        node_impl.advance(&mut wake_governor, &mut expelled); // yields
         drop(node_impl);
         if state.stop_flag.take() {
             return FlowControl::Break;
-        }
-
-        {
-            // node_impl lock must be dropped before this to avoid deadlocking
-            let mut watchers = state.watchers.lock();
-            for index in storage_changes {
-                if let Some(tx) = watchers.get(&index) {
-                    let res = tx.send(());
-                    if res.is_err() {
-                        watchers.remove(&index);
-                    }
-                }
-            }
         }
 
         if expelled {

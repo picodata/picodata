@@ -3,8 +3,8 @@ use std::time::Duration;
 use ::tarantool::fiber;
 
 use crate::has_grades;
-use crate::storage::ClusterwideSpaceId;
 use crate::tlog;
+use crate::traft::event;
 use crate::traft::node;
 use crate::unwrap_ok_or;
 
@@ -17,7 +17,6 @@ pub async fn callback() {
 
     // 2. Meanwhile, wait until either it succeeds or there is no quorum.
     let raft_id = node.raft_id();
-    let mut instances_watcher = node.storage_watcher(ClusterwideSpaceId::Instance);
     loop {
         let me = unwrap_ok_or!(
             node.storage.instances.get(&raft_id),
@@ -52,7 +51,7 @@ pub async fn callback() {
             break;
         }
 
-        if let Err(e) = instances_watcher.changed().await {
+        if let Err(e) = event::wait_timeout(event::Event::EntryApplied, Duration::MAX) {
             tlog!(Warning, "failed to shutdown gracefully: {e}");
         }
     }
