@@ -17,11 +17,11 @@ def test_ddl_lua_api(cluster: Cluster):
     i1, i2 = cluster.deploy(instance_count=2)
 
     #
-    # pico.create_space
+    # pico.create_table
     #
 
     # Successful global space creation
-    cluster.create_space(
+    cluster.create_table(
         dict(
             id=1026,
             name="some_name",
@@ -32,7 +32,7 @@ def test_ddl_lua_api(cluster: Cluster):
     )
 
     # Called with the same args -> ok.
-    cluster.create_space(
+    cluster.create_table(
         dict(
             id=1026,
             name="some_name",
@@ -45,7 +45,7 @@ def test_ddl_lua_api(cluster: Cluster):
     # FIXME: this should fail:
     # see https://git.picodata.io/picodata/picodata/picodata/-/issues/331
     # Called with same name/id but different format -> error.
-    cluster.create_space(
+    cluster.create_table(
         dict(
             id=1026,
             name="some_name",
@@ -60,7 +60,7 @@ def test_ddl_lua_api(cluster: Cluster):
 
     # No such field for primary key -> error.
     with pytest.raises(ReturnError, match="no field with name: not_defined"):
-        cluster.create_space(
+        cluster.create_table(
             dict(
                 id=1027,
                 name="different_name",
@@ -71,7 +71,7 @@ def test_ddl_lua_api(cluster: Cluster):
         )
 
     # Automatic space id
-    cluster.create_space(
+    cluster.create_table(
         dict(
             name="space 2",
             format=[dict(name="id", type="unsigned", is_nullable=False)],
@@ -93,7 +93,7 @@ def test_ddl_lua_api(cluster: Cluster):
     assert i2.call("box.space._pico_space:get", space_id) == pico_space_def
 
     # Another one
-    cluster.create_space(
+    cluster.create_table(
         dict(
             name="space the third",
             format=[dict(name="id", type="unsigned", is_nullable=False)],
@@ -130,7 +130,7 @@ def test_ddl_lua_api(cluster: Cluster):
         True,
         "vinyl",
     ]
-    cluster.create_space(
+    cluster.create_table(
         dict(
             id=space_id,
             name="stuffy",
@@ -150,7 +150,7 @@ def test_ddl_lua_api(cluster: Cluster):
     assert i2.eval("return box.space.stuffy.engine") == "vinyl"
 
     #
-    # pico.drop_space
+    # pico.drop_table
     #
 
     # No such space name -> ok.
@@ -175,21 +175,21 @@ def test_ddl_lua_api(cluster: Cluster):
 
     # Options is not table -> error.
     with pytest.raises(ReturnError, match="options should be a table"):
-        i1.call("pico.drop_space", "some_name", "timeout after 3 seconds please")
+        i1.call("pico.drop_table", "some_name", "timeout after 3 seconds please")
 
     # Unknown option -> error.
     with pytest.raises(ReturnError, match="unexpected option 'deadline'"):
-        i1.call("pico.drop_space", "some_name", dict(deadline="June 7th"))
+        i1.call("pico.drop_table", "some_name", dict(deadline="June 7th"))
 
     # Unknown option -> error.
     with pytest.raises(
         ReturnError, match="options parameter 'timeout' should be of type number"
     ):
-        i1.call("pico.drop_space", "some_name", dict(timeout="3s"))
+        i1.call("pico.drop_table", "some_name", dict(timeout="3s"))
 
 
 ################################################################################
-def test_ddl_create_space_bulky(cluster: Cluster):
+def test_ddl_create_table_bulky(cluster: Cluster):
     i1, i2, i3, i4 = cluster.deploy(instance_count=4, init_replication_factor=2)
 
     # At cluster boot schema version is 0
@@ -249,7 +249,7 @@ def test_ddl_create_space_bulky(cluster: Cluster):
     ############################################################################
     # Propose a space creation which will succeed
 
-    cluster.create_space(
+    cluster.create_table(
         dict(
             id=space_id,
             name="stuff",
@@ -363,7 +363,7 @@ def test_ddl_create_sharded_space(cluster: Cluster):
     # Propose a space creation which will succeed
     schema_version = i1.next_schema_version()
     space_id = 679
-    cluster.create_space(
+    cluster.create_table(
         dict(
             id=space_id,
             name="stuff",
@@ -470,7 +470,7 @@ def test_ddl_create_sharded_space(cluster: Cluster):
 
 
 ################################################################################
-def test_ddl_create_space_unfinished_from_snapshot(cluster: Cluster):
+def test_ddl_create_table_unfinished_from_snapshot(cluster: Cluster):
     i1, i2, i3 = cluster.deploy(instance_count=3)
 
     # Put i3 to sleep, so that schema change get's blocked.
@@ -525,7 +525,7 @@ def test_ddl_create_space_unfinished_from_snapshot(cluster: Cluster):
 
 
 ################################################################################
-def test_ddl_create_space_abort(cluster: Cluster):
+def test_ddl_create_table_abort(cluster: Cluster):
     i1, i2, i3 = cluster.deploy(instance_count=3, init_replication_factor=1)
 
     # Create a conflict to force ddl abort.
@@ -592,7 +592,7 @@ def test_ddl_create_space_abort(cluster: Cluster):
 
 
 ################################################################################
-def test_ddl_create_space_partial_failure(cluster: Cluster):
+def test_ddl_create_table_partial_failure(cluster: Cluster):
     # i2 & i3 are for quorum
     i1, i2, i3, i4, i5 = cluster.deploy(instance_count=5)
 
@@ -682,7 +682,7 @@ def test_successful_wakeup_after_ddl(cluster: Cluster):
         primary_key=["id"],
         distribution="global",
     )
-    index = i1.create_space(space_def)
+    index = i1.create_table(space_def)
 
     i2.raft_wait_index(index, 3)
 
@@ -699,7 +699,7 @@ def test_successful_wakeup_after_ddl(cluster: Cluster):
 
 
 ################################################################################
-def test_ddl_create_space_from_snapshot_at_boot(cluster: Cluster):
+def test_ddl_create_table_from_snapshot_at_boot(cluster: Cluster):
     # Second instance is only for quorum
     i1, i2 = cluster.deploy(instance_count=2, init_replication_factor=2)
 
@@ -708,7 +708,7 @@ def test_ddl_create_space_from_snapshot_at_boot(cluster: Cluster):
     # TODO: check other ddl operations
     # Propose a space creation which will succeed
     space_id = 632
-    cluster.create_space(
+    cluster.create_table(
         dict(
             id=space_id,
             name="stuff",
@@ -777,7 +777,7 @@ def test_ddl_create_space_from_snapshot_at_boot(cluster: Cluster):
 
 
 ################################################################################
-def test_ddl_create_space_from_snapshot_at_catchup(cluster: Cluster):
+def test_ddl_create_table_from_snapshot_at_catchup(cluster: Cluster):
     # Second instance is only for quorum
     i1 = cluster.add_instance(wait_online=True, replicaset_id="r1")
     i2 = cluster.add_instance(wait_online=True, replicaset_id="R2")
@@ -790,7 +790,7 @@ def test_ddl_create_space_from_snapshot_at_catchup(cluster: Cluster):
     # TODO: check other ddl operations
     # Propose a space creation which will succeed
     space_id = 649
-    index = i1.create_space(
+    index = i1.create_table(
         dict(
             id=space_id,
             name="stuff",
@@ -841,7 +841,7 @@ def test_ddl_create_space_from_snapshot_at_catchup(cluster: Cluster):
 
 
 ################################################################################
-def test_ddl_create_space_at_catchup_with_master_switchover(cluster: Cluster):
+def test_ddl_create_table_at_catchup_with_master_switchover(cluster: Cluster):
     # For quorum.
     i1, i2 = cluster.deploy(instance_count=2, init_replication_factor=1)
     # This is a master, who will be present at ddl.
@@ -854,7 +854,7 @@ def test_ddl_create_space_at_catchup_with_master_switchover(cluster: Cluster):
     # TODO: check other ddl operations
     # Propose a space creation which will succeed
     space_name = "table"
-    cluster.create_space(
+    cluster.create_table(
         dict(
             name=space_name,
             format=[dict(name="id", type="unsigned", is_nullable=False)],
@@ -889,7 +889,7 @@ def test_ddl_drop_space_normal(cluster: Cluster):
 
     # Set up.
     space_name = "things"
-    cluster.create_space(
+    cluster.create_table(
         dict(
             name=space_name,
             format=[dict(name="id", type="unsigned", is_nullable=False)],
@@ -908,7 +908,7 @@ def test_ddl_drop_space_normal(cluster: Cluster):
         assert i.call("box.space._space.index.name:get", space_name) is None
 
     # Now we can create another space with the same name.
-    cluster.create_space(
+    cluster.create_table(
         dict(
             name=space_name,
             format=[
@@ -934,7 +934,7 @@ def test_ddl_drop_space_partial_failure(cluster: Cluster):
 
     # Set up.
     space_name = "trinkets"
-    cluster.create_space(
+    cluster.create_table(
         dict(
             name=space_name,
             format=[dict(name="id", type="unsigned", is_nullable=False)],
@@ -1011,7 +1011,7 @@ def test_ddl_drop_space_by_raft_log_at_catchup(cluster: Cluster):
     i3 = cluster.add_instance(wait_online=True, replicaset_id="r99")
 
     # Set up.
-    cluster.create_space(
+    cluster.create_table(
         dict(
             name="replace_me",
             format=[dict(name="id", type="unsigned", is_nullable=False)],
@@ -1024,7 +1024,7 @@ def test_ddl_drop_space_by_raft_log_at_catchup(cluster: Cluster):
     for i in cluster.instances:
         assert i.call("box.space._space.index.name:get", "replace_me") is not None
 
-    cluster.create_space(
+    cluster.create_table(
         dict(
             name="drop_me",
             format=[dict(name="id", type="unsigned", is_nullable=False)],
@@ -1047,7 +1047,7 @@ def test_ddl_drop_space_by_raft_log_at_catchup(cluster: Cluster):
     #
     # We replace a sharded space with a global one to check indexes were dropped
     # correctly.
-    cluster.create_space(
+    cluster.create_table(
         dict(
             name="replace_me",
             format=[
@@ -1081,7 +1081,7 @@ def test_ddl_drop_space_by_raft_log_at_boot(cluster: Cluster):
     #
     # Set up.
     #
-    cluster.create_space(
+    cluster.create_table(
         dict(
             name="replace_me",
             format=[dict(name="id", type="unsigned", is_nullable=False)],
@@ -1094,7 +1094,7 @@ def test_ddl_drop_space_by_raft_log_at_boot(cluster: Cluster):
     for i in cluster.instances:
         assert i.call("box.space._space.index.name:get", "replace_me") is not None
 
-    cluster.create_space(
+    cluster.create_table(
         dict(
             name="drop_me",
             format=[dict(name="id", type="unsigned", is_nullable=False)],
@@ -1116,7 +1116,7 @@ def test_ddl_drop_space_by_raft_log_at_boot(cluster: Cluster):
     #
     # We replace a sharded space with a global one to check indexes were dropped
     # correctly.
-    cluster.create_space(
+    cluster.create_table(
         dict(
             name="replace_me",
             format=[
@@ -1161,7 +1161,7 @@ def test_ddl_drop_space_by_snapshot_on_replica(cluster: Cluster):
     i3 = cluster.add_instance(wait_online=True, replicaset_id="r99")
 
     # Set up.
-    cluster.create_space(
+    cluster.create_table(
         dict(
             name="replace_me",
             format=[dict(name="id", type="unsigned", is_nullable=False)],
@@ -1174,7 +1174,7 @@ def test_ddl_drop_space_by_snapshot_on_replica(cluster: Cluster):
     for i in cluster.instances:
         assert i.call("box.space._space.index.name:get", "replace_me") is not None
 
-    cluster.create_space(
+    cluster.create_table(
         dict(
             name="drop_me",
             format=[dict(name="id", type="unsigned", is_nullable=False)],
@@ -1197,7 +1197,7 @@ def test_ddl_drop_space_by_snapshot_on_replica(cluster: Cluster):
 
     # We replace a sharded space with a global one to check indexes were dropped
     # correctly.
-    cluster.create_space(
+    cluster.create_table(
         dict(
             name="replace_me",
             format=[
@@ -1237,7 +1237,7 @@ def test_ddl_drop_space_by_snapshot_on_master(cluster: Cluster):
     i4 = cluster.add_instance(wait_online=True, replicaset_id="r99")
 
     # Set up.
-    cluster.create_space(
+    cluster.create_table(
         dict(
             name="space_to_drop",
             format=[dict(name="id", type="unsigned", is_nullable=False)],
@@ -1245,7 +1245,7 @@ def test_ddl_drop_space_by_snapshot_on_master(cluster: Cluster):
             distribution="global",
         ),
     )
-    cluster.create_space(
+    cluster.create_table(
         dict(
             name="space_to_replace",
             format=[dict(name="id", type="unsigned", is_nullable=False)],
@@ -1274,7 +1274,7 @@ def test_ddl_drop_space_by_snapshot_on_master(cluster: Cluster):
 
     # We replace a sharded space with a global one to check indexes were dropped
     # correctly.
-    cluster.create_space(
+    cluster.create_table(
         dict(
             name="space_to_replace",
             format=[dict(name="id", type="unsigned", is_nullable=False)],
@@ -1305,10 +1305,10 @@ def test_ddl_drop_space_by_snapshot_on_master(cluster: Cluster):
 
 
 ################################################################################
-def test_local_spaces_dont_conflict_with_pico_create_space(cluster: Cluster):
+def test_local_spaces_dont_conflict_with_pico_create_table(cluster: Cluster):
     i1, *_ = cluster.deploy(instance_count=1)
 
-    cluster.create_space(
+    cluster.create_table(
         dict(
             name="a space",
             format=[dict(name="id", type="unsigned", is_nullable=False)],
@@ -1324,7 +1324,7 @@ def test_local_spaces_dont_conflict_with_pico_create_space(cluster: Cluster):
         == 1027
     )
 
-    cluster.create_space(
+    cluster.create_table(
         dict(
             name="one more space",
             format=[dict(name="id", type="unsigned", is_nullable=False)],
@@ -1339,13 +1339,13 @@ def test_local_spaces_dont_conflict_with_pico_create_space(cluster: Cluster):
 
 
 ################################################################################
-def test_pico_create_space_doesnt_conflict_with_local_spaces(cluster: Cluster):
+def test_pico_create_table_doesnt_conflict_with_local_spaces(cluster: Cluster):
     i1, *_ = cluster.deploy(instance_count=1)
 
     i1.call("box.execute", 'create table "a space" ("id" unsigned primary key)')
     assert i1.eval("return box.space._space.index.name:get(...).id", "a space") == 1026
 
-    cluster.create_space(
+    cluster.create_table(
         dict(
             name="another space",
             format=[dict(name="id", type="unsigned", is_nullable=False)],
@@ -1378,7 +1378,7 @@ def test_ddl_alter_space_by_snapshot(cluster: Cluster):
     # Set up.
     #
     space_name = "space_which_changes_format"
-    cluster.create_space(
+    cluster.create_table(
         dict(
             name=space_name,
             format=[
@@ -1411,7 +1411,7 @@ def test_ddl_alter_space_by_snapshot(cluster: Cluster):
     assert i3.call("box.space._space.index.name:get", space_name) is None
     assert i4.call("box.space._space.index.name:get", space_name) is None
 
-    cluster.create_space(
+    cluster.create_table(
         dict(
             name=space_name,
             format=[

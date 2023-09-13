@@ -55,8 +55,8 @@ local function mandatory_param(value, name)
     end
 end
 
--- Get next id unoccupied by a user or a role. Tarantool stores both users and
--- roles in the same space, so they share the same set of ids.
+-- Get next id unoccupied by a user or a role. Picodata stores both
+-- users and roles in the same table, so they share the same set of ids.
 local function get_next_grantee_id()
     -- TODO: if id overflows start filling the holes
     local max_user = box.space._pico_user.index[0]:max()
@@ -204,7 +204,7 @@ Waits for opts.timeout seconds for the entry to be applied locally.
 On success returns a raft index at which the user should exist.
 Skips the request if the user already exists.
 
-The function respects `password_min_length` parameter from `_pico_property` space.
+The function respects `password_min_length` parameter from `_pico_property` table.
 (by default set to be at least 8 characters).
 
 NOTE: If this function returns a timeout error the request is NOT cancelled and
@@ -296,7 +296,7 @@ Waits for opts.timeout seconds for the entry to be applied locally.
 On success returns an index of the corresponding raft entry.
 Skips the request if the password matches the current one.
 
-The function respects `password_min_length` parameter from `_pico_property` space 
+The function respects `password_min_length` parameter from `_pico_property` table
 (by default set to be at least 8 characters).
 
 NOTE: If this function returns a timeout error the request is NOT cancelled and
@@ -762,7 +762,7 @@ Params:
         'alter' | 'reference' | 'trigger' | 'insert' | 'update' | 'delete'
 
     3. object_type (string), one of
-        'universe' | 'space' | 'sequence' | 'function' | 'role' | 'user'
+        'universe' | 'table' | 'sequence' | 'function' | 'role' | 'user'
 
     4. object_name (optional string), can be omitted when privilege concerns an
         entire class of entities, see examples below.
@@ -778,8 +778,8 @@ Returns:
 
 Examples:
 
-    -- Grant read access to space 'Fruit' for user 'Dave'.
-    pico.grant_privilege('Dave', 'read', 'space', 'Fruit')
+    -- Grant read access to table 'Fruit' for user 'Dave'.
+    pico.grant_privilege('Dave', 'read', 'table', 'Fruit')
 
     -- Grant user 'Dave' privilege to execute arbitrary lua code.
     pico.grant_privilege('Dave', 'execute', 'universe')
@@ -787,13 +787,14 @@ Examples:
     -- Grant user 'Dave' privilege to create new users.
     pico.grant_privilege('Dave', 'create', 'user')
 
-    -- Grant write access to space 'Junk' for role 'Maintainer'.
-    pico.grant_privilege('Maintainer', 'write', 'space', 'Junk')
+    -- Grant write access to table 'Junk' for role 'Maintainer'.
+    pico.grant_privilege('Maintainer', 'write', 'table', 'Junk')
 
     -- Assign role 'Maintainer' to user 'Dave'.
     pico.grant_privilege('Dave', 'execute', 'role', 'Maintainer')
 ]]
 function pico.grant_privilege(grantee, privilege, object_type, object_name, opts)
+    object_type = object_type == "table" and "space" or object_type
     local ok, err = pcall(function()
         box.internal.check_param(grantee, 'grantee', 'string')
         box.internal.check_param(privilege, 'privilege', 'string')
@@ -884,7 +885,7 @@ Params:
         'alter' | 'reference' | 'trigger' | 'insert' | 'update' | 'delete'
 
     3. object_type (string), one of
-        'universe' | 'space' | 'sequence' | 'function' | 'role' | 'user'
+        'universe' | 'table' | 'sequence' | 'function' | 'role' | 'user'
 
     4. object_name (optional string), can be omitted when privilege concerns an
         entire class of entities, see pico.help("pico.grant_privilege") for details.
@@ -899,6 +900,7 @@ Returns:
     (nil, error) in case of an error
 ]]
 function pico.revoke_privilege(grantee, privilege, object_type, object_name, opts)
+    object_type = object_type == "table" and "space" or object_type
     local ok, err = pcall(function()
         box.internal.check_param(grantee, 'grantee', 'string')
         box.internal.check_param(privilege, 'privilege', 'string')
@@ -958,16 +960,16 @@ function pico.revoke_privilege(grantee, privilege, object_type, object_name, opt
     return reenterable_schema_change_request(deadline, make_op_if_needed)
 end
 
-help.create_space = [[
-pico.create_space(opts)
+help.create_table = [[
+pico.create_table(opts)
 =======================
 
-Creates a space.
+Creates a table.
 
-Returns when the space is created globally and becomes operable on the
+Returns when the table is created globally and becomes operable on the
 current instance. Returns the index of the corresponding Op::DdlCommit
 raft entry. It's necessary for syncing with other instances.
-Skips the request if the space already exists.
+Skips the request if the table already exists.
 
 NOTE: This operation requires updating state on multiple instances of the cluster
 and it will wait until a response is received from each one of them. If the timeout
@@ -982,7 +984,7 @@ Params:
 
     1. opts (table)
         - name (string)
-        - format (table {table SpaceField,...}), see pico.help('table SpaceField')
+        - format (table {table TableField,...}), see pico.help('table TableField')
         - primary_key (table {string,...}), with field names
         - id (optional number), default: implicitly generated
         - distribution (string), one of 'global' | 'sharded'
@@ -1003,9 +1005,9 @@ Returns:
 
 Example:
 
-    -- Creates a global memtx space 'friends_of_peppa' with two fields:
+    -- Creates a global memtx table 'friends_of_peppa' with two fields:
     -- id (unsigned) and name (string).
-    pico.create_space({
+    pico.create_table({
         name = 'friends_of_peppa',
         format = {
             {name = 'id', type = 'unsigned', is_nullable = false},
@@ -1016,19 +1018,19 @@ Example:
         timeout = 3,
     })
 
-    -- Global spaces are updated with compare-and-swap, see pico.help('cas')
+    -- Global tables are updated with compare-and-swap, see pico.help('cas')
     pico.cas({
         kind = 'insert',
-        space = 'friends_of_peppa',
+        table = 'friends_of_peppa',
         tuple = {1, 'Suzy'},
     })
 
-    -- Global spaces are read with Tarantool `box` API for now.
+    -- Global tables are read with Tarantool `box.space` API for now.
     box.space.friends_of_peppa:fselect()
 
-    -- Creates an implicitly sharded space 'wonderland' with two fields:
+    -- Creates an implicitly sharded table 'wonderland' with two fields:
     -- property (string) and value (any).
-    pico.create_space({
+    pico.create_table({
         name = 'wonderland',
         format = {
             {name = 'property', type = 'string', is_nullable = false},
@@ -1045,14 +1047,14 @@ Example:
     local tuple = box.tuple.new({'unicorns'})
     local bucket_id = key:hash(tuple) % vshard.router.bucket_count()
 
-    -- Sharded spaces are updated via vshard api, see [1]
+    -- Sharded tables are updated via vshard api, see [1]
     vshard.router.callrw(bucket_id, 'box.space.wonderland:insert', {{'unicorns', 12}})
-    
+
 See also:
 
     [1]: https://www.tarantool.io/en/doc/latest/reference/reference_rock/vshard/vshard_router/
 ]]
-function pico.create_space(opts)
+function pico.create_table(opts)
     local ok, err = pcall(function()
         box.internal.check_param_table(opts, {
             name = 'string',
@@ -1075,7 +1077,7 @@ function pico.create_space(opts)
             opts.timeout = TIMEOUT_INFINITY
         end
 
-        local ok, err = pico._check_create_space_opts(opts)
+        local ok, err = pico._check_create_table_opts(opts)
         if not ok then
             box.error(box.error.ILLEGAL_PARAMS, err)
         end
@@ -1091,7 +1093,7 @@ function pico.create_space(opts)
     -- XXX: we construct this closure every time the function is called,
     -- which is bad for performance/jit. Refactor if problems are discovered.
     local function make_op_if_needed()
-        local op, err = pico._make_create_space_op_if_needed(opts)
+        local op, err = pico._make_create_table_op_if_needed(opts)
         if op ~= nil then
             return op
         elseif err ~= nil then
@@ -1120,15 +1122,15 @@ function pico.create_space(opts)
     return fin_index
 end
 
-help.drop_space = [[
-pico.drop_space(space, [opts])
+help.drop_table = [[
+pico.drop_table(table, [opts])
 ======================
 
-Drops a space on each instance of the cluster.
+Drops a table on each instance of the cluster.
 
-Waits for the space to be dropped globally or returns an error if the timeout is
+Waits for the table to be dropped globally or returns an error if the timeout is
 reached before that.
-Skips the request if the space doesn't exist.
+Skips the request if the table doesn't exist.
 
 NOTE: This operation requires updating state on multiple instances of the cluster
 and it will wait until a response is received from each one of them. If the timeout
@@ -1141,7 +1143,7 @@ point the corresponding result is returned on each subsequent call.
 
 Params:
 
-    1. space (number | string), clusterwide space id or name
+    1. table (number | string), clusterwide table id or name
 
     2. opts (optional table)
         - timeout (optional number), in seconds, default: infinity
@@ -1152,10 +1154,10 @@ Returns:
     or
     (nil, error) in case of an error
 ]]
-function pico.drop_space(space, opts)
+function pico.drop_table(table, opts)
     local ok, err = pcall(function()
-        if type(space) ~= 'string' and type(space) ~= 'number' then
-            box.error(box.error.ILLEGAL_PARAMS, 'space should be a number or a string')
+        if type(table) ~= 'string' and type(table) ~= 'number' then
+            box.error(box.error.ILLEGAL_PARAMS, 'table should be a number or a string')
         end
         box.internal.check_param_table(opts, { timeout = 'number' })
         opts = opts or {}
@@ -1175,13 +1177,13 @@ function pico.drop_space(space, opts)
     -- which is bad for performance/jit. Refactor if problems are discovered.
     local function make_op_if_needed()
         local space_def = nil
-        if type(space) == 'string' then
-            space_def = box.space._pico_space.index.name:get(space)
-        elseif type(space) == 'number' then
-            space_def = box.space._pico_space:get(space)
+        if type(table) == 'string' then
+            space_def = box.space._pico_space.index.name:get(table)
+        elseif type(table) == 'number' then
+            space_def = box.space._pico_space:get(table)
         end
         if space_def == nil then
-            -- Space doesn't exist yet, no op needed
+            -- Table doesn't exist yet, no op needed
             should_wait_for_ddl_fin = false
             return nil
         end

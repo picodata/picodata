@@ -54,19 +54,19 @@ impl std::fmt::Display for Op {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         return match self {
             Self::Nop => f.write_str("Nop"),
-            Self::Dml(Dml::Insert { space, tuple }) => {
-                write!(f, "Insert({space}, {})", DisplayAsJson(tuple))
+            Self::Dml(Dml::Insert { table, tuple }) => {
+                write!(f, "Insert({table}, {})", DisplayAsJson(tuple))
             }
-            Self::Dml(Dml::Replace { space, tuple }) => {
-                write!(f, "Replace({space}, {})", DisplayAsJson(tuple))
+            Self::Dml(Dml::Replace { table, tuple }) => {
+                write!(f, "Replace({table}, {})", DisplayAsJson(tuple))
             }
-            Self::Dml(Dml::Update { space, key, ops }) => {
+            Self::Dml(Dml::Update { table, key, ops }) => {
                 let key = DisplayAsJson(key);
                 let ops = DisplayAsJson(&**ops);
-                write!(f, "Update({space}, {key}, {ops})")
+                write!(f, "Update({table}, {key}, {ops})")
             }
-            Self::Dml(Dml::Delete { space, key }) => {
-                write!(f, "Delete({space}, {})", DisplayAsJson(key))
+            Self::Dml(Dml::Delete { table, key }) => {
+                write!(f, "Delete({table}, {})", DisplayAsJson(key))
             }
             Self::DdlPrepare {
                 schema_version,
@@ -301,17 +301,17 @@ impl OpResult for Op {
 #[serde(tag = "op_kind")]
 pub enum Dml {
     Insert {
-        space: SpaceId,
+        table: SpaceId,
         #[serde(with = "serde_bytes")]
         tuple: TupleBuffer,
     },
     Replace {
-        space: SpaceId,
+        table: SpaceId,
         #[serde(with = "serde_bytes")]
         tuple: TupleBuffer,
     },
     Update {
-        space: SpaceId,
+        table: SpaceId,
         /// Key in primary index
         #[serde(with = "serde_bytes")]
         key: TupleBuffer,
@@ -319,7 +319,7 @@ pub enum Dml {
         ops: Vec<TupleBuffer>,
     },
     Delete {
-        space: SpaceId,
+        table: SpaceId,
         /// Key in primary index
         #[serde(with = "serde_bytes")]
         key: TupleBuffer,
@@ -357,7 +357,7 @@ impl Dml {
         tuple: &impl ToTupleBuffer,
     ) -> tarantool::Result<Self> {
         let res = Self::Insert {
-            space: space.into(),
+            table: space.into(),
             tuple: tuple.to_tuple_buffer()?,
         };
         Ok(res)
@@ -370,7 +370,7 @@ impl Dml {
         tuple: &impl ToTupleBuffer,
     ) -> tarantool::Result<Self> {
         let res = Self::Replace {
-            space: space.into(),
+            table: space.into(),
             tuple: tuple.to_tuple_buffer()?,
         };
         Ok(res)
@@ -384,7 +384,7 @@ impl Dml {
         ops: impl Into<Vec<TupleBuffer>>,
     ) -> tarantool::Result<Self> {
         let res = Self::Update {
-            space: space.into(),
+            table: space.into(),
             key: key.to_tuple_buffer()?,
             ops: ops.into(),
         };
@@ -395,7 +395,7 @@ impl Dml {
     #[inline(always)]
     pub fn delete(space: impl Into<SpaceId>, key: &impl ToTupleBuffer) -> tarantool::Result<Self> {
         let res = Self::Delete {
-            space: space.into(),
+            table: space.into(),
             key: key.to_tuple_buffer()?,
         };
         Ok(res)
@@ -404,35 +404,29 @@ impl Dml {
     #[rustfmt::skip]
     pub fn space(&self) -> SpaceId {
         match self {
-            Self::Insert { space, .. } => *space,
-            Self::Replace { space, .. } => *space,
-            Self::Update { space, .. } => *space,
-            Self::Delete { space, .. } => *space,
+            Self::Insert { table, .. } => *table,
+            Self::Replace { table, .. } => *table,
+            Self::Update { table, .. } => *table,
+            Self::Delete { table, .. } => *table,
         }
     }
 
     /// Parse lua arguments to an api function such as `pico.cas`.
     pub fn from_lua_args(op: DmlInLua) -> Result<Self, String> {
-        let space = space_by_name(&op.space).map_err(|e| e.to_string())?;
-        let space_id = space.id();
+        let space = space_by_name(&op.table).map_err(|e| e.to_string())?;
+        let table = space.id();
         match op.kind {
             DmlKind::Insert => {
                 let Some(tuple) = op.tuple else {
                     return Err("insert operation must have a tuple".into());
                 };
-                Ok(Self::Insert {
-                    space: space_id,
-                    tuple,
-                })
+                Ok(Self::Insert { table, tuple })
             }
             DmlKind::Replace => {
                 let Some(tuple) = op.tuple else {
                     return Err("replace operation must have a tuple".into());
                 };
-                Ok(Self::Replace {
-                    space: space_id,
-                    tuple,
-                })
+                Ok(Self::Replace { table, tuple })
             }
             DmlKind::Update => {
                 let Some(key) = op.key else {
@@ -441,20 +435,13 @@ impl Dml {
                 let Some(ops) = op.ops else {
                     return Err("update operation must have ops".into());
                 };
-                Ok(Self::Update {
-                    space: space_id,
-                    key,
-                    ops,
-                })
+                Ok(Self::Update { table, key, ops })
             }
             DmlKind::Delete => {
                 let Some(key) = op.key else {
                     return Err("delete operation must have a key".into());
                 };
-                Ok(Self::Delete {
-                    space: space_id,
-                    key,
-                })
+                Ok(Self::Delete { table, key })
             }
         }
     }
@@ -466,7 +453,7 @@ impl Dml {
 /// `pico.cas`.
 #[derive(Clone, Debug, PartialEq, Eq, tlua::LuaRead)]
 pub struct DmlInLua {
-    pub space: String,
+    pub table: String,
     pub kind: DmlKind,
     pub tuple: Option<TupleBuffer>,
     pub key: Option<TupleBuffer>,

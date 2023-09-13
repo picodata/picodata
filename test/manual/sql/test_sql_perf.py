@@ -14,7 +14,7 @@ def test_projection(cluster: Cluster):
     i1, i2 = cluster.instances
 
     # Create a sharded space and populate it with data.
-    cluster.create_space(
+    cluster.create_table(
         dict(
             id=895,
             name="T",

@@ -188,12 +188,12 @@ fn proc_cas_local(req: Request) -> Result<Response> {
 
     // Check if ranges in predicate contain prohibited spaces.
     for range in &req.predicate.ranges {
-        let Ok(space) = ClusterwideSpace::try_from(range.space) else {
+        let Ok(table) = ClusterwideSpace::try_from(range.table) else {
             continue;
-        };
-        if PROHIBITED_SPACES.contains(&space) {
+         };
+        if PROHIBITED_SPACES.contains(&table) {
             return Err(Error::SpaceNotAllowed {
-                space: space.name().into(),
+                space: table.name().into(),
             }
             .into());
         }
@@ -409,14 +409,14 @@ impl Predicate {
             conflict_index: entry_index,
         };
         for range in &self.ranges {
-            if modifies_operable(entry_op, range.space, storage) {
+            if modifies_operable(entry_op, range.table, storage) {
                 return Err(error());
             }
             let Some(space) = space(entry_op) else {
                 continue;
             };
             // TODO: check `space` exists
-            if space != range.space {
+            if space != range.table {
                 continue;
             }
 
@@ -503,8 +503,8 @@ pub fn schema_change_ranges() -> &'static [Range] {
 /// `pico.cas`.
 #[derive(Clone, Debug, ::serde::Serialize, ::serde::Deserialize, tlua::LuaRead)]
 pub struct RangeInLua {
-    /// Space name.
-    pub space: String,
+    /// Table name.
+    pub table: String,
     pub key_min: Bound,
     pub key_max: Bound,
 }
@@ -512,7 +512,7 @@ pub struct RangeInLua {
 /// A range of keys used as an argument for a [`Predicate`].
 #[derive(Clone, Debug, ::serde::Serialize, ::serde::Deserialize, tlua::LuaRead)]
 pub struct Range {
-    pub space: SpaceId,
+    pub table: SpaceId,
     pub key_min: Bound,
     pub key_max: Bound,
 }
@@ -520,37 +520,37 @@ pub struct Range {
 impl Range {
     pub fn from_lua_args(range: RangeInLua) -> traft::Result<Self> {
         let node = traft::node::global()?;
-        let space_id = if let Some(space) = node.storage.spaces.by_name(&range.space)? {
-            space.id
-        } else if let Some(space) = Space::find(&range.space) {
-            space.id()
+        let table_id = if let Some(table) = node.storage.spaces.by_name(&range.table)? {
+            table.id
+        } else if let Some(table) = Space::find(&range.table) {
+            table.id()
         } else {
             return Err(TraftError::other(format!(
-                "space '{}' not found",
-                range.space
+                "table '{}' not found",
+                range.table
             )));
         };
         Ok(Self {
-            space: space_id,
+            table: table_id,
             key_min: range.key_min,
             key_max: range.key_max,
         })
     }
 
-    /// Creates new unbounded range in `space`. Use other methods to restrict it.
+    /// Creates new unbounded range in `table`. Use other methods to restrict it.
     ///
     /// # Example
     /// ```
     /// use picodata::cas::Range;
     ///
     /// // Creates a range for tuples with keys from 1 (excluding) to 10 (excluding)
-    /// let my_space_id: u32 = 2222;
-    /// let range = Range::new(my_space_id).gt((1,)).lt((10,));
+    /// let my_table_id: u32 = 2222;
+    /// let range = Range::new(my_table_id).gt((1,)).lt((10,));
     /// ```
     #[inline(always)]
-    pub fn new(space: impl Into<SpaceId>) -> Self {
+    pub fn new(table: impl Into<SpaceId>) -> Self {
         Self {
-            space: space.into(),
+            table: table.into(),
             key_min: Bound::unbounded(),
             key_max: Bound::unbounded(),
         }
@@ -845,23 +845,23 @@ mod tests {
             predicate.check_entry(2, &Op::Dml(op.clone()), &storage)
         };
 
-        let space = ClusterwideSpace::Space;
+        let table = ClusterwideSpace::Space;
         let ops = &[
             Dml::Insert {
-                space: space.into(),
+                table: table.into(),
                 tuple: tuple.clone(),
             },
             Dml::Replace {
-                space: space.into(),
+                table: table.into(),
                 tuple,
             },
             Dml::Update {
-                space: space.into(),
+                table: table.into(),
                 key: key.clone(),
                 ops: vec![],
             },
             Dml::Delete {
-                space: space.into(),
+                table: table.into(),
                 key,
             },
         ];

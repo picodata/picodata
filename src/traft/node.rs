@@ -677,10 +677,10 @@ impl NodeImpl {
             Op::Nop => {}
             Op::Dml(op) => {
                 let res = match &op {
-                    Dml::Insert { space, tuple } => self.storage.insert(*space, tuple).map(Some),
-                    Dml::Replace { space, tuple } => self.storage.replace(*space, tuple).map(Some),
-                    Dml::Update { space, key, ops } => self.storage.update(*space, key, ops),
-                    Dml::Delete { space, key } => self.storage.delete(*space, key),
+                    Dml::Insert { table, tuple } => self.storage.insert(*table, tuple).map(Some),
+                    Dml::Replace { table, tuple } => self.storage.replace(*table, tuple).map(Some),
+                    Dml::Update { table, key, ops } => self.storage.update(*table, key, ops),
+                    Dml::Delete { table, key } => self.storage.delete(*table, key),
                 };
                 result = Box::new(res) as _;
             }

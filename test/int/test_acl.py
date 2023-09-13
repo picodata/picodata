@@ -171,7 +171,7 @@ def test_acl_lua_api(cluster: Cluster):
 
         # Wrong combo -> error.
         with pytest.raises(ReturnError, match="Unsupported space privilege 'grant'"):
-            i1.call(f"pico.{f}", "Dave", "grant", "space", None)
+            i1.call(f"pico.{f}", "Dave", "grant", "table", None)
 
         # No such role -> error.
         with pytest.raises(ReturnError, match="Role 'Joker' is not found"):
@@ -186,7 +186,7 @@ def test_acl_lua_api(cluster: Cluster):
         "pico.grant_privilege",
         "Dave",
         "read",
-        "space",
+        "table",
         "_pico_property",
     )
 
@@ -203,7 +203,7 @@ def test_acl_lua_api(cluster: Cluster):
         "pico.grant_privilege",
         "Dave",
         "read",
-        "space",
+        "table",
         "_pico_property",
     )
 
@@ -212,7 +212,7 @@ def test_acl_lua_api(cluster: Cluster):
         "pico.grant_privilege",
         "Parent",
         "write",
-        "space",
+        "table",
         "_pico_property",
     )
 
@@ -221,7 +221,7 @@ def test_acl_lua_api(cluster: Cluster):
         "pico.grant_privilege",
         "Parent",
         "write",
-        "space",
+        "table",
         "_pico_property",
     )
 
@@ -240,7 +240,7 @@ def test_acl_lua_api(cluster: Cluster):
         "pico.revoke_privilege",
         "Dave",
         "read",
-        "space",
+        "table",
         "_pico_property",
     )
 
@@ -249,7 +249,7 @@ def test_acl_lua_api(cluster: Cluster):
         "pico.revoke_privilege",
         "Dave",
         "read",
-        "space",
+        "table",
         "_pico_property",
     )
 
@@ -258,7 +258,7 @@ def test_acl_lua_api(cluster: Cluster):
         "pico.revoke_privilege",
         "Parent",
         "write",
-        "space",
+        "table",
         "_pico_property",
     )
 
@@ -267,7 +267,7 @@ def test_acl_lua_api(cluster: Cluster):
         "pico.revoke_privilege",
         "Parent",
         "write",
-        "space",
+        "table",
         "_pico_property",
     )
 
@@ -363,8 +363,8 @@ def test_acl_basic(cluster: Cluster):
 
     #
     #
-    # Create a space to have something to grant privileges to.
-    cluster.create_space(
+    # Create a table to have something to grant privileges to.
+    cluster.create_table(
         dict(
             name="money",
             format=[
@@ -391,7 +391,7 @@ def test_acl_basic(cluster: Cluster):
     cluster.raft_wait_index(index)
     v += 1
 
-    index = i1.call("pico.grant_privilege", user, "read", "space", "money")
+    index = i1.call("pico.grant_privilege", user, "read", "table", "money")
     cluster.raft_wait_index(index)
     v += 1
 
@@ -416,7 +416,7 @@ def test_acl_basic(cluster: Cluster):
     # Make sure we actually do call to somebody.
     assert len(masters) != 0
 
-    # Try writing into space on behalf of the user.
+    # Try writing into table on behalf of the user.
     for i in masters:
         dummy_bucket_id = 69
         with pytest.raises(
@@ -430,7 +430,7 @@ def test_acl_basic(cluster: Cluster):
                 password=VALID_PASSWORD,
             )
 
-    # Try reading from space on behalf of the user.
+    # Try reading from table on behalf of the user.
     for i in cluster.instances:
         assert (
             i.call("box.space.money:select", user=user, password=VALID_PASSWORD) == []
@@ -439,11 +439,11 @@ def test_acl_basic(cluster: Cluster):
     #
     #
     # Revoke the privilege.
-    index = i1.call("pico.revoke_privilege", user, "read", "space", "money")
+    index = i1.call("pico.revoke_privilege", user, "read", "table", "money")
     cluster.raft_wait_index(index)
     v += 1
 
-    # Try reading from space on behalf of the user again.
+    # Try reading from table on behalf of the user again.
     for i in cluster.instances:
         with pytest.raises(
             TarantoolError,
@@ -519,7 +519,7 @@ def test_acl_roles_basic(cluster: Cluster):
     index = i1.call("pico.grant_privilege", user, "execute", "universe", None)
     cluster.raft_wait_index(index)
 
-    # Try reading from space on behalf of the user.
+    # Try reading from table on behalf of the user.
     for i in cluster.instances:
         with pytest.raises(
             TarantoolError,
@@ -537,14 +537,14 @@ def test_acl_roles_basic(cluster: Cluster):
     cluster.raft_wait_index(index)
 
     # Grant the role read access.
-    index = i1.call("pico.grant_privilege", role, "read", "space", "_pico_property")
+    index = i1.call("pico.grant_privilege", role, "read", "table", "_pico_property")
     cluster.raft_wait_index(index)
 
     # Assign role to user.
     index = i1.call("pico.grant_privilege", user, "execute", "role", role)
     cluster.raft_wait_index(index)
 
-    # Try reading from space on behalf of the user again. Now succeed.
+    # Try reading from table on behalf of the user again. Now succeed.
     for i in cluster.instances:
         rows = i.call(
             "box.space._pico_property:select", user=user, password=VALID_PASSWORD
@@ -556,12 +556,12 @@ def test_acl_roles_basic(cluster: Cluster):
         "pico.revoke_privilege",
         role,
         "read",
-        "space",
+        "table",
         "_pico_property",
     )
     cluster.raft_wait_index(index)
 
-    # Try reading from space on behalf of the user yet again, which fails again.
+    # Try reading from table on behalf of the user yet again, which fails again.
     for i in cluster.instances:
         with pytest.raises(
             TarantoolError,
@@ -610,7 +610,7 @@ def test_acl_from_snapshot(cluster: Cluster):
         "pico.grant_privilege",
         "Sam",
         "read",
-        "space",
+        "table",
         "_pico_property",
     )
     cluster.raft_wait_index(index)
@@ -619,7 +619,7 @@ def test_acl_from_snapshot(cluster: Cluster):
         "pico.grant_privilege",
         "Captain",
         "read",
-        "space",
+        "table",
         "_pico_space",
     )
     cluster.raft_wait_index(index)
@@ -664,7 +664,7 @@ def test_acl_from_snapshot(cluster: Cluster):
         "pico.revoke_privilege",
         "Captain",
         "read",
-        "space",
+        "table",
         "_pico_space",
     )
     cluster.raft_wait_index(index)
@@ -673,7 +673,7 @@ def test_acl_from_snapshot(cluster: Cluster):
         "pico.grant_privilege",
         "Captain",
         "read",
-        "space",
+        "table",
         "_pico_instance",
     )
     cluster.raft_wait_index(index)
@@ -726,12 +726,12 @@ def test_acl_from_snapshot(cluster: Cluster):
 def test_acl_drop_space_with_privileges(cluster: Cluster):
     i1, *_ = cluster.deploy(instance_count=1)
 
-    # Check that we can drop a space with privileges granted on it.
+    # Check that we can drop a table with privileges granted on it.
     index = i1.call("pico.create_user", "Dave", VALID_PASSWORD)
     cluster.raft_wait_index(index)
     ddl = i1.sql(""" create table t (a int, primary key (a)) distributed by (a) """)
     assert ddl["row_count"] == 1
-    index = i1.call("pico.grant_privilege", "Dave", "read", "space", "T")
+    index = i1.call("pico.grant_privilege", "Dave", "read", "table", "T")
     cluster.raft_wait_index(index)
     ddl = i1.sql(""" drop table t """)
     assert ddl["row_count"] == 1

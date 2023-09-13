@@ -161,7 +161,7 @@ def test_cas_lua_api(cluster: Cluster):
 
     # We cannot use `_pico_property` here as it does not have
     # a corresponding entry in `Spaces`
-    cluster.create_space(
+    cluster.create_table(
         dict(
             id=1026,
             name="some_space",

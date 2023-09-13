@@ -673,7 +673,7 @@ class Instance:
     def cas(
         self,
         op_kind: Literal["insert", "replace", "delete"],
-        space: str | int,
+        table: str | int,
         tuple: Tuple | List | None = None,
         index: int | None = None,
         term: int | None = None,
@@ -695,14 +695,14 @@ class Instance:
         elif term is None:
             term = self.raft_term_by_index(index)
 
-        space_id = self.space_id(space)
+        table_id = self.space_id(table)
 
         predicate_ranges = []
         if ranges is not None:
             for range in ranges:
                 predicate_ranges.append(
                     dict(
-                        space=space_id,
+                        table=table_id,
                         key_min=range.key_min_packed,
                         key_max=range.key_max_packed,
                     )
@@ -718,14 +718,14 @@ class Instance:
             op = dict(
                 kind="dml",
                 op_kind=op_kind,
-                space=space_id,
+                table=table_id,
                 tuple=msgpack.packb(tuple),
             )
         elif op_kind == "delete":
             op = dict(
                 kind="dml",
                 op_kind=op_kind,
-                space=space_id,
+                table=table_id,
                 key=msgpack.packb(tuple),
             )
         else:
@@ -741,7 +741,7 @@ class Instance:
 
         return t[1]
 
-    def create_space(self, params: dict, timeout: float = 3.0) -> int:
+    def create_table(self, params: dict, timeout: float = 3.0) -> int:
         """
         Creates a space. Returns a raft index at which a newly created space
         has to exist on all peers.
@@ -750,7 +750,7 @@ class Instance:
         which is more low level and directly proposes a raft entry.
         """
         params["timeout"] = timeout
-        index = self.call("pico.create_space", params, timeout, timeout=timeout + 0.5)
+        index = self.call("pico.create_table", params, timeout, timeout=timeout + 0.5)
         return index
 
     def drop_space(self, space: int | str, timeout: float = 3.0):
@@ -759,7 +759,7 @@ class Instance:
         dropped on all peers.
         """
         index = self.call(
-            "pico.drop_space", space, dict(timeout=timeout), timeout=timeout + 0.5
+            "pico.drop_table", space, dict(timeout=timeout), timeout=timeout + 0.5
         )
         return index
 
@@ -1118,11 +1118,11 @@ class Cluster:
                     timeout = 0
                 instance.raft_wait_index(index, timeout)
 
-    def create_space(self, params: dict, timeout: float = 3.0):
+    def create_table(self, params: dict, timeout: float = 3.0):
         """
         Creates a space. Waits for all online peers to be aware of it.
         """
-        index = self.instances[0].create_space(params, timeout)
+        index = self.instances[0].create_table(params, timeout)
         self.raft_wait_index(index, timeout)
 
     def drop_space(self, space: int | str, timeout: float = 3.0):
@@ -1142,7 +1142,7 @@ class Cluster:
     def cas(
         self,
         dml_kind: Literal["insert", "replace", "delete"],
-        space: str,
+        table: str,
         tuple: Tuple | List,
         index: int | None = None,
         term: int | None = None,
@@ -1166,7 +1166,7 @@ class Cluster:
             for range in ranges:
                 predicate_ranges.append(
                     dict(
-                        space=space,
+                        table=table,
                         key_min=range.key_min,
                         key_max=range.key_max,
                     )
@@ -1179,7 +1179,7 @@ class Cluster:
         )
         if dml_kind in ["insert", "replace", "delete"]:
             dml = dict(
-                space=space,
+                table=table,
                 kind=dml_kind,
                 tuple=tuple,
             )

@@ -88,10 +88,10 @@ pub(crate) fn setup(args: &args::Run) {
 
             picodata> pico.LUA_API_VERSION
             ---
-            - 2.2.0
+            - 3.0.0
             ...
         "},
-        "2.2.0",
+        "3.0.0",
     );
 
     luamod_set(
@@ -1026,7 +1026,7 @@ pub(crate) fn setup(args: &args::Run) {
         ==========================
 
         Performs a clusterwide compare-and-swap operation. Works for global
-        spaces only.
+        tables only.
 
         E.g. it checks the `predicate` on leader and, if no conflicting entries
         were found, appends the new entry to the raft log and returns its index
@@ -1048,7 +1048,7 @@ pub(crate) fn setup(args: &args::Run) {
 
             1. dml (table)
                 - kind (string), one of 'insert' | 'replace' | 'update' | 'delete'
-                - space (string)
+                - table (string)
                 - tuple (optional table), mandatory for insert and replace, see [1, 2]
                 - key (optional table), mandatory for update and delete, see [3, 4]
                 - ops (optional table), mandatory for update see [3]
@@ -1074,26 +1074,26 @@ pub(crate) fn setup(args: &args::Run) {
 
         Example:
 
-            -- Assuming there exists a space 'friends_of_peppa' with two
+            -- Assuming there exists a table 'friends_of_peppa' with two
             -- fields: id (unsigned) and name (string) and corresponding
             -- unique indexes.
 
-            -- Insert a tuple {1, 'Suzy'} into this space. This will fail
+            -- Insert a tuple {1, 'Suzy'} into this table. This will fail
             -- if the term of the current instance is outdated.
             pico.cas({
                 kind = 'insert',
-                space = 'friends_of_peppa',
+                table = 'friends_of_peppa',
                 tuple = {1, 'Suzy'},
             })
 
             -- Add Rebecca, but only if no other friends were added after Suzy.
             pico.cas({
                 kind = 'replace',
-                space = 'friends_of_peppa',
+                table = 'friends_of_peppa',
                 tuple = {2, 'Rebecca'},
             }, {
                 ranges = {{
-                    space = 'friends_of_peppa',
+                    table = 'friends_of_peppa',
                     key_min = { kind = 'excluded', key = {1,} },
                     key_max = { kind = 'unbounded' },
                 }},
@@ -1103,12 +1103,12 @@ pub(crate) fn setup(args: &args::Run) {
             -- Peppa friend, replacing 'Rebecca' with 'Emily'.
             pico.cas({
                 kind = 'update',
-                space = 'friends_of_peppa',
+                table = 'friends_of_peppa',
                 key = {2},
                 ops = {'=', 2, 'Emily'},
             }, {
                 ranges = {{
-                    space = 'friends_of_peppa',
+                    table = 'friends_of_peppa',
                     key_min = { kind = 'included', key = {2} },
                     key_max = { kind = 'included', key = {2} },
                 }},
@@ -1125,13 +1125,13 @@ pub(crate) fn setup(args: &args::Run) {
 
             pico.cas({
                 kind = 'delete',
-                space = 'friends_of_peppa',
+                table = 'friends_of_peppa',
                 key = {emily.id},
             }, {
                 index = index,
                 term = term,
                 ranges = {{
-                    space = 'friends_of_peppa',
+                    table = 'friends_of_peppa',
                     key_min = { kind = 'included', key = {emily.id} },
                     key_max = { kind = 'included', key = {emily.id} },
                 }},
@@ -1161,7 +1161,7 @@ pub(crate) fn setup(args: &args::Run) {
 
         Fields:
 
-            - space (string)
+            - table (string)
             - key_min (table CasBound), see pico.help('table CasBound')
             - key_max (table CasBound)
 
@@ -1172,14 +1172,14 @@ pub(crate) fn setup(args: &args::Run) {
             local excluding_3 = { kind = 'excluded', key = {3,} }
 
             local range_a = {
-                space = 'friends_of_peppa',
+                table = 'friends_of_peppa',
                 key_min = unbounded,
                 key_max = unbounded,
             }
 
             -- [1, 3)
             local range_a = {
-                space = 'friends_of_peppa',
+                table = 'friends_of_peppa',
                 key_min = including_1,
                 key_max = excluding_3,
             }
@@ -1204,9 +1204,9 @@ pub(crate) fn setup(args: &args::Run) {
 
     luamod_set(
         &l,
-        "_check_create_space_opts",
+        "_check_create_table_opts",
         indoc! {"
-        pico._check_create_space_opts(opts)
+        pico._check_create_table_opts(opts)
         =================================
 
         Internal API, see src/luamod.rs for the details.
@@ -1228,9 +1228,9 @@ pub(crate) fn setup(args: &args::Run) {
     );
     luamod_set(
         &l,
-        "_make_create_space_op_if_needed",
+        "_make_create_table_op_if_needed",
         indoc! {"
-        pico._make_create_space_op_if_needed(opts)
+        pico._make_create_table_op_if_needed(opts)
         =================================
 
         Internal API, see src/luamod.rs for the details.
@@ -1351,12 +1351,12 @@ pub(crate) fn setup(args: &args::Run) {
     );
     luamod_set_help_only(
         &l,
-        "table SpaceField",
+        "table TableField",
         indoc! {"
-        table SpaceField
+        table TableField
         ================
 
-        A Lua table describing a field in a space, see [1].
+        A Lua table describing a field in a table, see [1].
 
         Fields:
 

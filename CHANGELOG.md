@@ -52,11 +52,12 @@ with the `YY.0M.MICRO` scheme.
 ### Lua API:
 
 
-- Update `pico.LUA_API_VERSION`: `1.0.0` -> `2.2.0`
-- New semantics of `pico.create_space()`. It's idempotent now.
-- `pico.create_space()` has new optional parameter: `engine`.
+- Changes in terminology - all appearances of `space` changed to `table`
+- Update `pico.LUA_API_VERSION`: `1.0.0` -> `3.0.0`
+- New semantics of `pico.create_table()`. It's idempotent now.
+- `pico.create_table()` has new optional parameter: `engine`.
   Note: global spaces can only have memtx engine.
-- Add `pico.drop_space()`
+- Add `pico.drop_table()`
 - Add `pico.create_user()`, `pico.drop_user()`
 - Add `pico.create_role()`, `pico.drop_role()`
 - Add `pico.grant_privilege()`, `pico.revoke_privilege()`

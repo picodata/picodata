@@ -13,7 +13,7 @@ def test_global_space_dml_catchup_by_log(cluster: Cluster):
     # Catcher-upper replicaset follower
     i5 = cluster.add_instance(wait_online=True, replicaset_id="r2")
 
-    cluster.create_space(
+    cluster.create_table(
         dict(
             id=812,
             name="candy",
@@ -102,7 +102,7 @@ def test_global_space_dml_catchup_by_snapshot(cluster: Cluster):
     # Catcher-upper replicaset follower
     i5 = cluster.add_instance(wait_online=True, replicaset_id="r2")
 
-    cluster.create_space(
+    cluster.create_table(
         dict(
             id=812,
             name="candy",
