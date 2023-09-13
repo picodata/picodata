@@ -168,7 +168,8 @@ mod tests {
         let err = client.ping().await.unwrap_err();
         let correct_err = [
             "tcp stream error: failed to connect to supplied address: Connection refused (os error 111)",
-            "tcp stream error: failed to connect to supplied address: Cannot assign requested address (os error 99)"
+            "tcp stream error: failed to connect to supplied address: Cannot assign requested address (os error 99)",
+            "tcp stream error: failed to connect to supplied address: Can't assign requested address (os error 49)",
         ].contains(&err.to_string().as_str());
         assert!(correct_err);
     }

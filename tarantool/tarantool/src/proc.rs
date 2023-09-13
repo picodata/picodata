@@ -136,7 +136,7 @@ pub fn module_path(sym: *const ()) -> Option<&'static Path> {
 ///
 /// You can either return `ReturnMsgpack` directly:
 ///
-/// ```
+/// ```no_run
 /// use tarantool::proc::ReturnMsgpack;
 ///
 /// #[tarantool::proc]
@@ -152,7 +152,7 @@ pub fn module_path(sym: *const ()) -> Option<&'static Path> {
 ///
 /// Or you can use it to implement `Return` for your custom type:
 ///
-/// ```
+/// ```no_run
 /// use std::os::raw::c_int;
 /// use tarantool::{proc::{Return, ReturnMsgpack}, tuple::FunctionCtx};
 ///

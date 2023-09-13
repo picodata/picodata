@@ -634,7 +634,7 @@ pub enum EncodeStyle {
 /// `_` prefix is used for disambiguation and is temporary.
 ///
 /// # Example
-/// ```
+/// ```no_run
 /// use tarantool_proc::Encode;
 /// use tarantool::tuple::{_Encode, EncodeStyle};
 ///

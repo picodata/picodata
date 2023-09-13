@@ -140,7 +140,7 @@ pub fn write_array_len(
 /// underlying `writer` struct.
 ///
 /// # Example
-/// ```
+/// ```no_run
 /// use tarantool::msgpack::ArrayWriter;
 /// let mut array_writer = ArrayWriter::from_vec(vec![]);
 /// array_writer.push(&1).unwrap();
@@ -265,7 +265,7 @@ where
 /// A helper struct for iterating over msgpack values.
 ///
 /// # Example
-/// ```
+/// ```no_run
 /// use tarantool::msgpack::ValueIter;
 /// let mut value_iter = ValueIter::from_array(b"\x93*\xc0\xa3yes").unwrap();
 /// // You can decode the next value

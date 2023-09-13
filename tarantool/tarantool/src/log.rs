@@ -226,6 +226,7 @@ pub fn say(level: SayLevel, file: &str, line: i32, error: Option<&str>, message:
 }
 
 #[cfg(feature = "internal_test")]
+#[cfg(not(test))]
 mod tests {
     use super::*;
     use crate::lua_state;

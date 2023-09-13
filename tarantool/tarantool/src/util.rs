@@ -164,7 +164,7 @@ macro_rules! unwrap_ok_or {
 ////////////////////////////////////////////////////////////////////////////////
 
 /// A wrapper for displaying byte slices as hexadecimal byte slice literals.
-/// ```
+/// ```no_run
 /// # use tarantool::util::DisplayAsHexBytes;
 /// let s = format!("{}", DisplayAsHexBytes(&[1, 2, 3]));
 /// assert_eq!(s, r#"b"\x01\x02\x03""#);

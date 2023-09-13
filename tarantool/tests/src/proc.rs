@@ -1,7 +1,6 @@
 use crate::common::lib_name;
 use rmpv::Value;
 use std::ffi::OsStr;
-use std::path::Path;
 use tarantool::{
     proc::ReturnMsgpack,
     tlua::{
@@ -314,6 +313,7 @@ pub fn inject_with_packed() {
 }
 
 #[::tarantool::test]
+#[cfg(target_os = "linux")]
 fn module_path() {
     let path = ::tarantool::proc::module_path(module_path as _).unwrap();
     assert_eq!(
@@ -322,6 +322,22 @@ fn module_path() {
     );
     assert_eq!(
         ::tarantool::proc::module_path(::tarantool::ffi::tarantool::box_txn as _),
-        Some(Path::new("tarantool run_tests.lua <running>"))
+        Some(std::path::Path::new("tarantool run_tests.lua <running>"))
+    );
+}
+
+#[::tarantool::test]
+#[cfg(target_os = "macos")]
+fn module_path() {
+    let path = ::tarantool::proc::module_path(module_path as _).unwrap();
+    assert_eq!(
+        path.file_stem(),
+        Some(OsStr::new("libtarantool_module_test_runner"))
+    );
+    assert_eq!(
+        ::tarantool::proc::module_path(::tarantool::ffi::tarantool::box_txn as _)
+            .unwrap()
+            .file_stem(),
+        Some(OsStr::new("tarantool"))
     );
 }

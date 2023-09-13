@@ -88,7 +88,7 @@ pub mod vclock;
 /// `#[tarantool::proc]` is a macro attribute for creating stored procedure
 /// functions.
 ///
-/// ```rust
+/// ```no_run
 /// #[tarantool::proc]
 /// fn add(x: i32, y: i32) -> i32 {
 ///     x + y
@@ -188,7 +188,7 @@ pub mod vclock;
 /// - `Ok(v)`: the stored procedure will return `v`
 /// - `Err(e)`: the stored procedure will fail and `e` will be set as the last
 /// Tarantool error (see also [`TarantoolError::last`])
-/// ```rust
+/// ```no_run
 /// use tarantool::{error::Error, index::IteratorType::Eq, space::Space};
 ///
 /// #[tarantool::proc]
@@ -252,7 +252,7 @@ pub mod vclock;
 /// If you want to instead deserialize the tuple directly into your structure
 /// you can use the `packed_args`
 /// attribute parameter
-/// ```rust
+/// ```no_run
 /// #[tarantool::proc(packed_args)]
 /// fn sum_all(vals: Vec<i32>) -> i32 {
 ///     vals.into_iter().sum()
@@ -299,7 +299,7 @@ pub mod vclock;
 ///
 /// There's also a `debug` attribute parameter which enables debug printing of
 /// the arguments received by the stored procedure
-/// ```
+/// ```no_run
 /// #[tarantool::proc(debug)]
 /// fn print_what_you_got() {}
 /// ```

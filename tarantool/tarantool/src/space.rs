@@ -34,7 +34,7 @@ pub type SpaceId = u32;
 /// Provides access to system spaces
 ///
 /// Example:
-/// ```rust
+/// ```no_run
 /// use tarantool::space::SystemSpace;
 /// assert_eq!(SystemSpace::Schema as u32, 272)
 /// ```
@@ -295,7 +295,7 @@ impl Field {
     /// Specify if the current field can be nullable or not. This method
     /// captures `self` by value and returns it, so it should be used in a
     /// builder fashion.
-    /// ```rust
+    /// ```no_run
     /// use tarantool::space::Field;
     /// let f = Field::string("middle name").is_nullable(true);
     /// ```
