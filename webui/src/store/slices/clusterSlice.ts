@@ -158,7 +158,7 @@ export const getReplicasets = createAsyncThunk<ReplicasetType[]>(
 );
 
 export const getClusterInfo = createAsyncThunk<ClusterInfoType>(
-  "cluster,getClusterInfo",
+  "cluster/getClusterInfo",
   async () => {
     return new Promise((res) => {
       res({
@@ -185,7 +185,7 @@ export const clusterSlice = createSlice({
       return { ...state, replicasets: [...action.payload] };
     });
     builder.addCase(getClusterInfo.fulfilled, (state, action) => {
-      return { ...state, clusterSlice: { ...action.payload } };
+      return { ...state, clusterInfo: { ...action.payload } };
     });
   },
 });
