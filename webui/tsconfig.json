@@ -1,8 +1,10 @@
 {
   "compilerOptions": {
+    "experimentalDecorators": true,
+    "allowJs": true,
     "baseUrl": "src",
     "target": "ESNext",
-    "lib": ["DOM", "DOM.Iterable", "ESNext"],
+    "lib": ["ESNext"],
     "skipLibCheck": true,
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,

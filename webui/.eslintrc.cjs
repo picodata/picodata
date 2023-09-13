@@ -51,18 +51,6 @@ module.exports = {
         'ts-check': 'allow-with-description',
       },
     ],
-    // 'import/no-extraneous-dependencies': [
-    //     'error',
-    //     {
-    //         devDependencies: [
-    //             'src/shared/utils/test.util.tsx',
-    //             'src/setupTests.ts',
-    //             'src/mocks/**/*',
-    //             '**/*.stories.tsx',
-    //             '**/*.test.tsx',
-    //         ],
-    //     },
-    // ],
     'max-len': [0, 120, 2, { ignoreUrls: true }],
     '@typescript-eslint/dot-notation': ['warn'],
     '@typescript-eslint/no-explicit-any': ['error', { fixToUnknown: true, ignoreRestArgs: true }],
@@ -79,6 +67,7 @@ module.exports = {
         patterns: [{ group: ['../../*'], message: 'usage of relative imports by more than one level not allowed' }],
       },
     ],
+    quotes: ["error", "double"],
   },
   settings: {
     'import/resolver': {
