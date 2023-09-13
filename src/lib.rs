@@ -14,7 +14,7 @@ use std::convert::TryFrom;
 use std::time::{Duration, Instant};
 use storage::tweak_max_space_id;
 use storage::Clusterwide;
-use storage::{ClusterwideSpaceId, PropertyName};
+use storage::{ClusterwideSpace, PropertyName};
 use traft::RaftSpaceAccess;
 
 use protobuf::Message as _;
@@ -428,7 +428,7 @@ fn start_boot(args: &args::Run) {
 
         init_entries_push_op(
             op::Dml::insert(
-                ClusterwideSpaceId::Address,
+                ClusterwideSpace::Address,
                 &traft::PeerAddress {
                     raft_id,
                     address: args.advertise_address(),
@@ -438,13 +438,13 @@ fn start_boot(args: &args::Run) {
             .into(),
         );
         init_entries_push_op(
-            op::Dml::insert(ClusterwideSpaceId::Instance, &instance)
+            op::Dml::insert(ClusterwideSpace::Instance, &instance)
                 .expect("cannot fail")
                 .into(),
         );
         init_entries_push_op(
             op::Dml::insert(
-                ClusterwideSpaceId::Property,
+                ClusterwideSpace::Property,
                 &(
                     PropertyName::ReplicationFactor,
                     args.init_replication_factor,
@@ -455,7 +455,7 @@ fn start_boot(args: &args::Run) {
         );
         init_entries_push_op(
             op::Dml::insert(
-                ClusterwideSpaceId::Property,
+                ClusterwideSpace::Property,
                 &(PropertyName::GlobalSchemaVersion, 0),
             )
             .expect("cannot fail")
@@ -463,7 +463,7 @@ fn start_boot(args: &args::Run) {
         );
         init_entries_push_op(
             op::Dml::insert(
-                ClusterwideSpaceId::Property,
+                ClusterwideSpace::Property,
                 &(PropertyName::NextSchemaVersion, 1),
             )
             .expect("cannot fail")
@@ -472,7 +472,7 @@ fn start_boot(args: &args::Run) {
 
         init_entries_push_op(
             op::Dml::insert(
-                ClusterwideSpaceId::Property,
+                ClusterwideSpace::Property,
                 &(PropertyName::PasswordMinLength, INITIAL_PASSWORD_MIN_LENGTH),
             )
             .expect("cannot fail")

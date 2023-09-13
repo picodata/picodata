@@ -8,7 +8,7 @@ use crate::instance::grade::{CurrentGrade, TargetGrade};
 use crate::instance::{Instance, InstanceId};
 use crate::replicaset::ReplicasetId;
 use crate::storage::{Clusterwide, ToEntryIter as _};
-use crate::storage::{ClusterwideSpaceId, PropertyName};
+use crate::storage::{ClusterwideSpace, PropertyName};
 use crate::traft::op::{Dml, Op};
 use crate::traft::{self, RaftId};
 use crate::traft::{error::Error, node, Address, PeerAddress, Result};
@@ -88,14 +88,14 @@ pub fn handle_join_request_and_wait(req: Request, timeout: Duration) -> Result<R
             raft_id: instance.raft_id,
             address: req.advertise_address.clone(),
         };
-        let op_addr = Dml::replace(ClusterwideSpaceId::Address, &peer_address)
+        let op_addr = Dml::replace(ClusterwideSpace::Address, &peer_address)
             .expect("encoding should not fail");
-        let op_instance = Dml::replace(ClusterwideSpaceId::Instance, &instance)
-            .expect("encoding should not fail");
+        let op_instance =
+            Dml::replace(ClusterwideSpace::Instance, &instance).expect("encoding should not fail");
         let ranges = vec![
-            cas::Range::new(ClusterwideSpaceId::Instance),
-            cas::Range::new(ClusterwideSpaceId::Address),
-            cas::Range::new(ClusterwideSpaceId::Property).eq((PropertyName::ReplicationFactor,)),
+            cas::Range::new(ClusterwideSpace::Instance),
+            cas::Range::new(ClusterwideSpace::Address),
+            cas::Range::new(ClusterwideSpace::Property).eq((PropertyName::ReplicationFactor,)),
         ];
         macro_rules! handle_result {
             ($res:expr) => {

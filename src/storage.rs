@@ -34,16 +34,11 @@ macro_rules! define_clusterwide_spaces {
             pub #space_name_lower: #space_name_upper,
         }
 
-        $(#[$ClusterwideSpaceId_meta:meta])*
-        pub enum $ClusterwideSpaceId:ident {
-            #space_name_upper = #space_id,
-        }
-
         $(#[$ClusterwideSpace_meta:meta])*
         pub enum $ClusterwideSpace:ident {
             $(
                 $(#[$cw_field_meta:meta])*
-                $cw_space_var:ident = $cw_space_id_value:expr, $cw_space_name:expr => {
+                $cw_space_var:ident = $cw_space_id:expr, $cw_space_name:expr => {
                     $_Clusterwide:ident :: $Clusterwide_field:ident;
 
                     $(#[$space_struct_meta:meta])*
@@ -69,47 +64,35 @@ macro_rules! define_clusterwide_spaces {
             }
         }
 
-        $(#[$ClusterwideSpaceId_meta])*
-        pub enum $ClusterwideSpaceId {
-            $( $cw_space_var = $cw_space_id_value, )+
-        }
-
-        impl From<$ClusterwideSpaceId> for $ClusterwideSpace {
-            fn from(space_id: $ClusterwideSpaceId) -> Self {
-                match space_id {
-                    $( $ClusterwideSpaceId::$cw_space_var => Self::$cw_space_var, )+
+        impl $ClusterwideSpace {
+            /// Id of the corrseponding system global space.
+            pub const fn id(&self) -> SpaceId {
+                match self {
+                    $( Self::$cw_space_var => $cw_space_id, )+
                 }
             }
-        }
 
-        impl From<$ClusterwideSpace> for $ClusterwideSpaceId {
-            fn from(space_name: $ClusterwideSpace) -> Self {
-                match space_name {
-                    $(
-                        $ClusterwideSpace::$cw_space_var => Self::$cw_space_var,
-                    )+
-                }
-            }
-        }
-
-        impl $ClusterwideSpaceId {
-            #[inline(always)]
+            /// Name of the corrseponding system global space.
             pub const fn name(&self) -> &'static str {
                 match self {
                     $( Self::$cw_space_var => $cw_space_name, )+
                 }
             }
+
+            /// A slice of all possible variants of `Self`.
+            pub const fn all_spaces() -> &'static [Self] {
+                &[ $( Self::$cw_space_var, )+ ]
+            }
         }
 
-        impl TryFrom<SpaceId> for $ClusterwideSpaceId {
-            // TODO: conform to bureaucracy
-            type Error = ();
+        impl TryFrom<SpaceId> for $ClusterwideSpace {
+            type Error = SpaceId;
 
             #[inline(always)]
-            fn try_from(id: SpaceId) -> ::std::result::Result<$ClusterwideSpaceId, Self::Error> {
+            fn try_from(id: SpaceId) -> ::std::result::Result<$ClusterwideSpace, Self::Error> {
                 match id {
-                    $( $cw_space_id_value => Ok(Self::$cw_space_var), )+
-                    _ => Err(()),
+                    $( $cw_space_id => Ok(Self::$cw_space_var), )+
+                    _ => Err(id),
                 }
             }
         }
@@ -176,7 +159,7 @@ macro_rules! define_clusterwide_spaces {
 
             impl TClusterwideSpace for $space_struct {
                 const SPACE_NAME: &'static str = $cw_space_name;
-                const SPACE_ID: SpaceId = $cw_space_id_value;
+                const SPACE_ID: SpaceId = $cw_space_id;
                 const INDEX_NAMES: &'static [&'static str] = &[
                     $index_name_pk,
                     $( $index_name, )*
@@ -186,7 +169,7 @@ macro_rules! define_clusterwide_spaces {
     }
 }
 
-fn space_by_id(space_id: SpaceId) -> tarantool::Result<Space> {
+fn space_by_id_unchecked(space_id: SpaceId) -> tarantool::Result<Space> {
     let space = unsafe { Space::from_id_unchecked(space_id) };
     // TODO: maybe we should verify the space exists, but it's not a big deal
     // currently, because first of all tarantool api will just return a no such
@@ -216,14 +199,7 @@ define_clusterwide_spaces! {
         pub #space_name_lower: #space_name_upper,
     }
 
-    /// An enumeration of system clusterwide spaces' ids.
-    #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
-    pub enum ClusterwideSpaceId {
-        #space_name_upper = #space_id,
-    }
-
     /// An enumeration of builtin cluster-wide spaces
-    // TODO: maybe rename ClusterwideSpaceName
     pub enum ClusterwideSpace {
         Instance = 515, "_pico_instance" => {
             Clusterwide::instances;
@@ -333,7 +309,7 @@ impl Clusterwide {
     pub fn snapshot_data() -> tarantool::Result<SnapshotData> {
         let mut space_dumps = Self::internal_space_dumps()?;
 
-        let pico_space = space_by_name(&ClusterwideSpace::Space)?;
+        let pico_space = space_by_id_unchecked(ClusterwideSpace::Space.id())?;
         let iter = pico_space.select(IteratorType::All, &())?;
         for tuple in iter {
             let space_def: SpaceDef = tuple.decode()?;
@@ -343,7 +319,7 @@ impl Clusterwide {
             space_dumps.push(Self::space_dump(&space_def.name)?);
         }
 
-        let pico_property = space_by_id(ClusterwideSpaceId::Property.value())?;
+        let pico_property = space_by_id_unchecked(ClusterwideSpace::Property.id())?;
         let tuple = pico_property.get(&[PropertyName::GlobalSchemaVersion.as_str()])?;
         let mut schema_version = 0;
         if let Some(tuple) = tuple {
@@ -579,9 +555,9 @@ impl Clusterwide {
         space_id: SpaceId,
         index_id: IndexId,
     ) -> tarantool::Result<Rc<KeyDef>> {
-        static mut KEY_DEF: Option<HashMap<(ClusterwideSpaceId, IndexId), Rc<KeyDef>>> = None;
+        static mut KEY_DEF: Option<HashMap<(ClusterwideSpace, IndexId), Rc<KeyDef>>> = None;
         let key_defs = unsafe { KEY_DEF.get_or_insert_with(HashMap::new) };
-        if let Ok(sys_space_id) = ClusterwideSpaceId::try_from(space_id) {
+        if let Ok(sys_space_id) = ClusterwideSpace::try_from(space_id) {
             let key_def = match key_defs.entry((sys_space_id, index_id)) {
                 Entry::Occupied(o) => o.into_mut(),
                 Entry::Vacant(v) => {
@@ -607,9 +583,9 @@ impl Clusterwide {
         space_id: SpaceId,
         index_id: IndexId,
     ) -> tarantool::Result<Rc<KeyDef>> {
-        static mut KEY_DEF: Option<HashMap<(ClusterwideSpaceId, IndexId), Rc<KeyDef>>> = None;
+        static mut KEY_DEF: Option<HashMap<(ClusterwideSpace, IndexId), Rc<KeyDef>>> = None;
         let key_defs = unsafe { KEY_DEF.get_or_insert_with(HashMap::new) };
-        if let Ok(sys_space_id) = ClusterwideSpaceId::try_from(space_id) {
+        if let Ok(sys_space_id) = ClusterwideSpace::try_from(space_id) {
             let key_def = match key_defs.entry((sys_space_id, index_id)) {
                 Entry::Occupied(o) => o.into_mut(),
                 Entry::Vacant(v) => {
@@ -633,7 +609,7 @@ impl Clusterwide {
         space_id: SpaceId,
         tuple: &TupleBuffer,
     ) -> tarantool::Result<Tuple> {
-        let space = space_by_id(space_id)?;
+        let space = space_by_id_unchecked(space_id)?;
         let res = space.insert(tuple)?;
         Ok(res)
     }
@@ -643,7 +619,7 @@ impl Clusterwide {
         space_id: SpaceId,
         tuple: &TupleBuffer,
     ) -> tarantool::Result<Tuple> {
-        let space = space_by_id(space_id)?;
+        let space = space_by_id_unchecked(space_id)?;
         let res = space.replace(tuple)?;
         Ok(res)
     }
@@ -654,7 +630,7 @@ impl Clusterwide {
         key: &TupleBuffer,
         ops: &[TupleBuffer],
     ) -> tarantool::Result<Option<Tuple>> {
-        let space = space_by_id(space_id)?;
+        let space = space_by_id_unchecked(space_id)?;
         let res = space.update(key, ops)?;
         Ok(res)
     }
@@ -664,7 +640,7 @@ impl Clusterwide {
         space_id: SpaceId,
         key: &TupleBuffer,
     ) -> tarantool::Result<Option<Tuple>> {
-        let space = space_by_id(space_id)?;
+        let space = space_by_id_unchecked(space_id)?;
         let res = space.delete(key)?;
         Ok(res)
     }
@@ -705,17 +681,10 @@ pub trait TClusterwideSpace {
     const INDEX_NAMES: &'static [&'static str];
 }
 
-impl ClusterwideSpaceId {
+impl From<ClusterwideSpace> for SpaceId {
     #[inline(always)]
-    pub const fn value(&self) -> SpaceId {
-        *self as _
-    }
-}
-
-impl From<ClusterwideSpaceId> for SpaceId {
-    #[inline(always)]
-    fn from(id: ClusterwideSpaceId) -> SpaceId {
-        id as _
+    fn from(space: ClusterwideSpace) -> SpaceId {
+        space.id()
     }
 }
 

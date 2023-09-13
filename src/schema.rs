@@ -21,7 +21,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::cas::{self, compare_and_swap};
 use crate::storage::SPACE_ID_INTERNAL_MAX;
-use crate::storage::{Clusterwide, ClusterwideSpaceId, PropertyName};
+use crate::storage::{Clusterwide, ClusterwideSpace, PropertyName};
 use crate::traft::error::Error;
 use crate::traft::op::{Ddl, Op};
 use crate::traft::{self, event, node, RaftIndex};
@@ -688,16 +688,14 @@ pub fn abort_ddl(timeout: Duration) -> traft::Result<RaftIndex> {
         }
         let index = node.get_index();
         let term = raft::Storage::term(&node.raft_storage, index)?;
+        #[rustfmt::skip]
         let predicate = cas::Predicate {
             index,
             term,
             ranges: vec![
-                cas::Range::new(ClusterwideSpaceId::Property)
-                    .eq((PropertyName::PendingSchemaChange,)),
-                cas::Range::new(ClusterwideSpaceId::Property)
-                    .eq((PropertyName::GlobalSchemaVersion,)),
-                cas::Range::new(ClusterwideSpaceId::Property)
-                    .eq((PropertyName::NextSchemaVersion,)),
+                cas::Range::new(ClusterwideSpace::Property).eq([PropertyName::PendingSchemaChange]),
+                cas::Range::new(ClusterwideSpace::Property).eq([PropertyName::GlobalSchemaVersion]),
+                cas::Range::new(ClusterwideSpace::Property).eq([PropertyName::NextSchemaVersion]),
             ],
         };
         let (index, term) = compare_and_swap(Op::DdlAbort, predicate, timeout)?;

@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use crate::rpc;
 use crate::storage::Clusterwide;
-use crate::storage::ClusterwideSpaceId;
+use crate::storage::ClusterwideSpace;
 use crate::tlog;
 use crate::traft;
 use crate::traft::error::Error as TraftError;
@@ -28,12 +28,12 @@ use tarantool::tuple::{KeyDef, ToTupleBuffer, Tuple, TupleBuffer};
 /// This spaces cannot be changed directly dy a [`Dml`] operation. They have
 /// dedicated operation types (e.g. Ddl, Acl) because updating these spaces
 /// requires automatically updating corresponding local spaces.
-const PROHIBITED_SPACES: &[ClusterwideSpaceId] = &[
-    ClusterwideSpaceId::Space,
-    ClusterwideSpaceId::Index,
-    ClusterwideSpaceId::User,
-    ClusterwideSpaceId::Role,
-    ClusterwideSpaceId::Privilege,
+const PROHIBITED_SPACES: &[ClusterwideSpace] = &[
+    ClusterwideSpace::Space,
+    ClusterwideSpace::Index,
+    ClusterwideSpace::User,
+    ClusterwideSpace::Role,
+    ClusterwideSpace::Privilege,
 ];
 
 // FIXME: cas::Error will be returned as a string when rpc is called
@@ -185,7 +185,7 @@ fn proc_cas_local(req: Request) -> Result<Response> {
 
     // Check if ranges in predicate contain prohibited spaces.
     for range in &req.predicate.ranges {
-        let Ok(space) = ClusterwideSpaceId::try_from(range.space) else { continue; };
+        let Ok(space) = ClusterwideSpace::try_from(range.space) else { continue; };
         if PROHIBITED_SPACES.contains(&space) {
             return Err(Error::SpaceNotAllowed {
                 space: space.name().into(),
@@ -482,7 +482,7 @@ pub fn schema_change_ranges() -> &'static [Range] {
         if DATA.is_none() {
             let mut data = Vec::with_capacity(SCHEMA_RELATED_PROPERTIES.len());
             for key in SCHEMA_RELATED_PROPERTIES {
-                let r = Range::new(ClusterwideSpaceId::Property).eq((key,));
+                let r = Range::new(ClusterwideSpace::Property).eq((key,));
                 data.push(r);
             }
             DATA = Some(data);
@@ -662,7 +662,7 @@ fn space(op: &Op) -> Option<SpaceId> {
     match op {
         Op::Dml(dml) => Some(dml.space()),
         Op::DdlPrepare { .. } | Op::DdlCommit | Op::DdlAbort | Op::Acl { .. } => {
-            Some(ClusterwideSpaceId::Property.into())
+            Some(ClusterwideSpace::Property.id())
         }
         Op::Nop => None,
     }
@@ -836,7 +836,7 @@ mod tests {
             predicate.check_entry(2, &Op::Dml(op.clone()), &storage)
         };
 
-        let space = ClusterwideSpaceId::Space;
+        let space = ClusterwideSpace::Space;
         let ops = &[
             Dml::Insert {
                 space: space.into(),
@@ -857,7 +857,7 @@ mod tests {
             },
         ];
 
-        let space = ClusterwideSpaceId::Space.value();
+        let space = ClusterwideSpace::Space.id();
         for op in ops {
             assert!(test(op, Range::new(space)).is_err());
             assert!(test(op, Range::new(space).le((12,))).is_err());

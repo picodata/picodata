@@ -20,7 +20,7 @@ use crate::storage::ddl_meta_drop_space;
 use crate::storage::SnapshotData;
 use crate::storage::{ddl_abort_on_master, ddl_meta_space_update_operable};
 use crate::storage::{local_schema_version, set_local_schema_version};
-use crate::storage::{Clusterwide, ClusterwideSpaceId, PropertyName};
+use crate::storage::{Clusterwide, ClusterwideSpace, PropertyName};
 use crate::stringify_cfunc;
 use crate::sync;
 use crate::tlog;
@@ -56,7 +56,6 @@ use ::tarantool::index::FieldType as IFT;
 use ::tarantool::index::Part;
 use ::tarantool::proc;
 use ::tarantool::space::FieldType as SFT;
-use ::tarantool::space::SpaceId;
 use ::tarantool::time::Instant;
 use ::tarantool::tlua;
 use ::tarantool::transaction::transaction;
@@ -640,11 +639,11 @@ impl NodeImpl {
         match &op {
             Op::Dml(op) => {
                 let space = op.space();
-                if space == ClusterwideSpaceId::Property as SpaceId
-                    || space == ClusterwideSpaceId::Replicaset as SpaceId
+                if space == ClusterwideSpace::Property.id()
+                    || space == ClusterwideSpace::Replicaset.id()
                 {
                     *wake_governor = true;
-                } else if space == ClusterwideSpaceId::Instance as SpaceId {
+                } else if space == ClusterwideSpace::Instance.id() {
                     *wake_governor = true;
                     let instance = match op {
                         Dml::Insert { tuple, .. } => Some(tuple),

@@ -4,7 +4,7 @@ use crate::cas;
 use crate::failure_domain::FailureDomain;
 use crate::instance::grade::{CurrentGrade, CurrentGradeVariant, Grade, TargetGradeVariant};
 use crate::instance::{Instance, InstanceId};
-use crate::storage::{Clusterwide, ClusterwideSpaceId, PropertyName};
+use crate::storage::{Clusterwide, ClusterwideSpace, PropertyName};
 use crate::traft::op::{Dml, Op};
 use crate::traft::Result;
 use crate::traft::{error::Error, node};
@@ -118,13 +118,13 @@ pub fn handle_update_instance_request_and_wait(req: Request, timeout: Duration) 
             return Ok(());
         }
 
-        let dml = Dml::replace(ClusterwideSpaceId::Instance, &new_instance)
+        let dml = Dml::replace(ClusterwideSpace::Instance, &new_instance)
             .expect("encoding should not fail");
 
         let ranges = vec![
-            cas::Range::new(ClusterwideSpaceId::Instance),
-            cas::Range::new(ClusterwideSpaceId::Address),
-            cas::Range::new(ClusterwideSpaceId::Property).eq((PropertyName::ReplicationFactor,)),
+            cas::Range::new(ClusterwideSpace::Instance),
+            cas::Range::new(ClusterwideSpace::Address),
+            cas::Range::new(ClusterwideSpace::Property).eq((PropertyName::ReplicationFactor,)),
         ];
         let res = cas::compare_and_swap(
             Op::Dml(dml),
