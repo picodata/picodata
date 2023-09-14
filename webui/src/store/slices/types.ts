@@ -26,3 +26,8 @@ export interface ClusterInfoType {
   instancesCurrentGradeOffline: number;
   currentInstaceVersion: string;
 }
+
+export enum ActionTypes {
+  getClusterInfoType = "cluster/getClusterInfo",
+  getReplicasetsType = "cluster/getReplicasets",
+}

@@ -1,5 +1,5 @@
 import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
-import { ClusterInfoType, ReplicasetType } from "./types";
+import { ActionTypes, ClusterInfoType, ReplicasetType } from "./types";
 
 export interface ClusterState {
   clusterInfo: ClusterInfoType;
@@ -40,7 +40,7 @@ const initialState: ClusterState = {
 };
 
 export const getReplicasets = createAsyncThunk<ReplicasetType[]>(
-  "cluster/getReplicasets",
+  ActionTypes.getReplicasetsType,
   async () => {
     return new Promise((res) => {
       res([
@@ -158,7 +158,7 @@ export const getReplicasets = createAsyncThunk<ReplicasetType[]>(
 );
 
 export const getClusterInfo = createAsyncThunk<ClusterInfoType>(
-  "cluster/getClusterInfo",
+  ActionTypes.getClusterInfoType,
   async () => {
     return new Promise((res) => {
       res({
