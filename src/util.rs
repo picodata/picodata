@@ -548,6 +548,40 @@ impl<T> IsSameType<T, T> for T {
 pub type CheckIsSameType<L, R> = <L as IsSameType<L, R>>::Void;
 
 ////////////////////////////////////////////////////////////////////////////////
+// no yields check
+////////////////////////////////////////////////////////////////////////////////
+
+/// A helper struct to enforce that a function must not yield. Will cause a
+/// panic if fiber yields are detected when drop is called for it.
+pub struct NoYieldsGuard {
+    csw: i32,
+}
+
+#[allow(clippy::new_without_default)]
+impl NoYieldsGuard {
+    #[inline(always)]
+    pub fn new() -> Self {
+        Self {
+            csw: tarantool::fiber::csw(),
+        }
+    }
+
+    #[inline(always)]
+    pub fn has_yielded(&self) -> bool {
+        tarantool::fiber::csw() != self.csw
+    }
+}
+
+impl Drop for NoYieldsGuard {
+    #[inline(always)]
+    fn drop(&mut self) {
+        if self.has_yielded() {
+            panic!("NoYieldsGuard: fiber yielded when it wasn't supposed to");
+        }
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
 /// tests
 #[cfg(test)]
 mod tests {
