@@ -1,8 +1,4 @@
 .instancesWrapper {
-  padding: 24px 104px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
 }
 
 .instanceWrapper {

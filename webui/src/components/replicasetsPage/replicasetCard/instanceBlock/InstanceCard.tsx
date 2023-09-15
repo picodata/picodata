@@ -1,22 +1,25 @@
-import { FC, useCallback } from "react";
-import styles from "./InstanceBlock.module.css";
+import { FC, useCallback, useState } from "react";
+import { InstanceType } from "store/slices/types";
+import styles from "./InstanceCard.module.css";
+import { InstanceModal } from "./instanceModal/InstanceModal";
 import { LeaderIcon } from "components/icons/LeaderIcon";
 
-export interface Instance {
-  name: string;
-  targetGrade: string;
-  currentGrade: string;
-  failureDomain: string;
-  version: string;
-  isLeader: boolean;
+interface InstanceCardProps {
+  instance: InstanceType;
 }
-export interface InstaceBlockProps {
-  instances: Instance[];
-}
-export const InstanceBlock: FC<InstaceBlockProps> = ({ instances }) => {
-  const instanceEl = useCallback(
-    (instance: Instance) => (
-      <div className={styles.instanceWrapper}>
+
+export const InstanceCard: FC<InstanceCardProps> = ({ instance }) => {
+  const [isOpenModal, setIsOpenModal] = useState<boolean>(false);
+  const onCloseHandler = useCallback(() => {
+    setIsOpenModal(false);
+  }, []);
+
+  return (
+    <>
+      <div
+        onClick={() => setIsOpenModal(true)}
+        className={styles.instanceWrapper}
+      >
         <div className={styles.infoColumn}>
           <p className={styles.noMargin}>Instance name</p>
           <div className={styles.instanceNameBlock}>
@@ -41,14 +44,12 @@ export const InstanceBlock: FC<InstaceBlockProps> = ({ instances }) => {
           <p className={styles.instanceInfo}>{instance.version}</p>
         </div>
       </div>
-    ),
-    []
-  );
-
-  return (
-    <div className={styles.instancesWrapper}>
-      {instances.length > 0 &&
-        instances.map((instance) => instanceEl(instance))}
-    </div>
+      <InstanceModal
+        key={instance.name}
+        instance={instance}
+        isOpen={isOpenModal}
+        onClose={onCloseHandler}
+      />
+    </>
   );
 };

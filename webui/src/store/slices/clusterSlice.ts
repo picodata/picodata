@@ -45,7 +45,7 @@ export const getReplicasets = createAsyncThunk<ReplicasetType[]>(
     return new Promise((res) => {
       res([
         {
-          id: "Test123",
+          id: "Test1231",
           instanceCount: 2,
           instances: [
             {
@@ -128,7 +128,7 @@ export const getReplicasets = createAsyncThunk<ReplicasetType[]>(
           capacity: "2,5MiB/50 GiB",
         },
         {
-          id: "Test123",
+          id: "Test1232",
           instanceCount: 2,
           instances: [
             {

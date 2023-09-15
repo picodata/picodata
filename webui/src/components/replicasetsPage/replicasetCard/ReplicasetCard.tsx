@@ -1,13 +1,14 @@
 import styles from "./ReplicasetCard.module.css";
-import { Instance, InstanceBlock } from "./instanceBlock/InstanceBlock";
 import { FC, useMemo, useState } from "react";
 import { ChevronDown } from "components/icons/ChevronDown";
 import { ChevronUp } from "components/icons/ChevronUp";
+import { InstanceType } from "store/slices/types";
+import { InstanceCard } from "./instanceBlock/InstanceCard";
 
 export interface Replicaset {
   id: string;
   instanceCount: number;
-  instances: Instance[];
+  instances: InstanceType[];
   version: string;
   grade: string;
   capacity: string;
@@ -46,7 +47,13 @@ export const ReplicasetCard: FC<ReplicasetCardProps> = ({ replicaset }) => {
         </div>
         <div className={styles.infoColumn}>{elChevron}</div>
       </div>
-      {isOpen && <InstanceBlock instances={replicaset.instances} />}
+      {isOpen && (
+        <div className={styles.instancesWrapper}>
+          {replicaset.instances.map((instance) => (
+            <InstanceCard key={instance.name} instance={instance} />
+          ))}
+        </div>
+      )}
     </div>
   );
 };

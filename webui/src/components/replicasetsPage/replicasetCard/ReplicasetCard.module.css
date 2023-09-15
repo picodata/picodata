@@ -34,3 +34,10 @@
   font-size: 24px;
   font-weight: 600;
 }
+
+.instancesWrapper {
+  padding: 24px 104px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
