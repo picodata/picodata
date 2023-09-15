@@ -154,14 +154,8 @@ fn preload_http() {
 fn start_http_server(Address { host, port, .. }: &Address) {
     tlog!(Info, "starting http server at {host}:{port}");
     let lua = ::tarantool::lua_state();
-    lua.exec_with(
-        "local host, port = ...;
-        local httpd = require('http.server').new(host, port);
-        httpd:start();
-        _G.pico.httpd = httpd",
-        (host, port),
-    )
-    .expect("failed to start http server")
+    lua.exec_with(include_str!("http_server.lua"), (host, port))
+        .expect("failed to start http server")
 }
 
 #[cfg(feature = "webui")]

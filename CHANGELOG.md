@@ -49,6 +49,9 @@ with the `YY.0M.MICRO` scheme.
   max number of rows in virtual table and max number of VDBE opcodes
   for local query execution.
 
+- _Picodata WebUI_ is introduced. It includes cluster status panel and replicaset list.
+  Current status of WebUI is still beta.
+
 ### Lua API:
 
 
