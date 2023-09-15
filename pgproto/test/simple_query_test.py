@@ -24,7 +24,7 @@ def test_simple_query_flow_errors(postgres: Postgres):
     conn.autocommit = True
     cur = conn.cursor()
 
-    with pytest.raises(pg.DatabaseError, match="expected CreateTable, DropTable, Explain, or Query"):
+    with pytest.raises(pg.DatabaseError, match="expected CreateUser, DropUser, CreateRole,"):
         cur.execute("""
             CREATE TEMPORARY TABLE book (id SERIAL, title TEXT);
         """)
@@ -151,7 +151,7 @@ def test_explain(postgres: Postgres):
 
 
 # Aggregates return value type is decimal, which is currently not supported,
-# so an error is expected
+# so an error is expected.
 def test_aggregate_error(postgres: Postgres):
     host = '127.0.0.1'
     port = 5432
@@ -181,12 +181,12 @@ def test_aggregate_error(postgres: Postgres):
         option (timeout = 3);
     """)
 
-    with pytest.raises(pg.DatabaseError, match="can't parse attributes description"):
-        cur.execute("""
-            SELECT COUNT(*) FROM "tall";
-        """)
-
-    with pytest.raises(pg.DatabaseError, match="can't parse attributes description"):
+    with pytest.raises(pg.DatabaseError, match="unknown column type \'decimal\'"):
         cur.execute("""
             SELECT SUM("id") FROM "tall";
+        """)
+
+    with pytest.raises(pg.DatabaseError, match="unknown column type \'decimal\'"):
+        cur.execute("""
+            SELECT AVG("id") FROM "tall";
         """)

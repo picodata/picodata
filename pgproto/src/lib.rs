@@ -1,9 +1,9 @@
-mod auth;
 mod client;
 mod error;
 mod helpers;
 mod messages;
 mod server;
+mod sql;
 mod stream;
 
 use crate::client::PgClient;
@@ -49,8 +49,8 @@ fn handle_client(client: PgStream<CoIOStream>) -> UnitJoinHandle<'static> {
 }
 
 fn do_handle_client(stream: PgStream<CoIOStream>) -> PgResult<()> {
-    let mut client = PgClient::new(stream)?;
+    let mut client = PgClient::accept(stream)?;
     client.send_parameter("server_version", "15.0")?;
-    client.start_query_cycle()?;
+    client.process_messages_loop()?;
     Ok(())
 }

@@ -1,4 +1,4 @@
-#!/usr/bin/env -S picodata run --script
+#!/usr/bin/env -S picodata run -i --script
 
 package.cpath = 'target/debug/?.so;target/release/?.so;target/debug/?.dylib;target/release/?.dylib'
 

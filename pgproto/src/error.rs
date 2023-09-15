@@ -19,8 +19,28 @@ pub enum PgError {
     #[error("IO error: {0}")]
     IoError(#[from] io::Error),
 
+    #[error("encoding error: {0}")]
+    EncodingError(String),
+
     #[error("pgwire error: {0}")]
     PgWireError(#[from] PgWireError),
+
+    #[error("lua error: {0}")]
+    TarantoolError(#[from] tarantool::tlua::LuaError),
+
+    #[error("json error: {0}")]
+    JsonError(#[from] serde_json::Error),
+}
+
+/// Build error info from PgError.
+impl PgError {
+    pub fn info(&self) -> ErrorInfo {
+        ErrorInfo::new(
+            "ERROR".to_string(),
+            self.code().to_string(),
+            self.to_string(),
+        )
+    }
 }
 
 impl PgError {
@@ -32,16 +52,7 @@ impl PgError {
             InvalidPassword(_) => "28P01",
             IoError(_) => "58030",
             // TODO: make the code depending on the error kind
-            PgWireError(_) => "XX000",
+            _otherwise => "XX000",
         }
     }
-}
-
-/// Build error info from PgError.
-pub fn error_info(error: &PgError) -> ErrorInfo {
-    ErrorInfo::new(
-        "ERROR".to_string(),
-        error.code().to_string(),
-        error.to_string(),
-    )
 }
