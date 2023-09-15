@@ -213,7 +213,16 @@ pub fn say(level: SayLevel, file: &str, line: i32, error: Option<&str>, message:
     };
     let message = CString::new(message).unwrap();
 
-    unsafe { ffi::SAY_FN.unwrap()(level, file.as_ptr(), line, error_ptr, message.as_ptr()) }
+    unsafe {
+        ffi::SAY_FN.unwrap()(
+            level,
+            file.as_ptr(),
+            line,
+            error_ptr,
+            crate::c_ptr!("%s"),
+            message.as_ptr(),
+        )
+    }
 }
 
 #[cfg(feature = "internal_test")]
@@ -332,5 +341,14 @@ mod tests {
 
         let lvl: String = lua.eval_with("return ...", &SayLevel::Crit).unwrap();
         assert_eq!(lvl, "crit");
+    }
+
+    #[crate::test(tarantool = "crate")]
+    fn log_format_sequences() {
+        for c in b'a'..=b'z' {
+            let c = c as char;
+            let s = format!("%{c}");
+            say(SayLevel::Warn, "<file>", 0, Some("<error>"), &s);
+        }
     }
 }

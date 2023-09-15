@@ -7,6 +7,11 @@
 - With the new `async-std` feature flag `network::client::tcp::TcpStream` implements
   async `Read` and `Write` traits from `async-std` crate instead of `futures`.
 
+### Fixed
+
+- `tarantool::log::say` used to do undefined behaviour when the message
+  contained formatting sequences of %n sort.
+
 ### Changed
 - `network::client::tcp::TcpStream` will now always try IPv4 addresses first when connecting.
 
