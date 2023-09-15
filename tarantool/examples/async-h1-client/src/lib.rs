@@ -7,14 +7,33 @@ use tarantool::proc;
 fn get(url: &str) -> http_types::Result<()> {
     fiber::block_on(async {
         println!("Connecting...");
-        let stream = TcpStream::connect(url.strip_prefix("http://").unwrap(), 80)
-            .await
-            .map_err(http_types::Error::from_display)?;
         let url = Url::parse(url)?;
+        let host = url
+            .host_str()
+            .ok_or(http_types::Error::from_display("host not specified"))?;
+        let req = Request::new(Method::Get, url.clone());
+        let mut res = match url.scheme() {
+            "http" => {
+                let stream = TcpStream::connect(host, 80)
+                    .await
+                    .map_err(http_types::Error::from_display)?;
+                println!("Sending request over http...");
+                async_h1::connect(stream, req).await?
+            }
+            #[cfg(feature = "tls")]
+            "https" => {
+                let stream = TcpStream::connect(host, 443)
+                    .await
+                    .map_err(http_types::Error::from_display)?;
+                let stream = async_native_tls::connect(host, stream).await?;
+                println!("Sending request over https...");
+                async_h1::connect(stream, req).await?
+            }
+            _ => {
+                return Err(http_types::Error::from_display("scheme not supported"));
+            }
+        };
 
-        println!("Sending request...");
-        let req = Request::new(Method::Get, url);
-        let mut res = async_h1::connect(stream, req).await?;
         println!("Response Status: {}", res.status());
         println!("Response Body: {}", res.body_string().await?);
         Ok(())

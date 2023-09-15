@@ -8,6 +8,12 @@ Build the code:
 cargo build -p async-h1-client
 ```
 
+_(Optional)_ Build the code with TLS support, to make requests also via HTTPS:
+```bash
+cargo build -p async-h1-client --features tls
+```
+_For this to work OpenSSL has to be installed in the system._
+
 Make sure `LUA_CPATH` environment variable is setup correctly, e.g. if your
 target director is `./target`:
 ```bash
