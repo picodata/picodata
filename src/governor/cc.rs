@@ -125,8 +125,9 @@ pub(crate) fn raft_conf_change(
             TargetGradeVariant::Offline => {
                 // A voter goes offline. Replace it with
                 // another online instance if possible.
-                let Some((next_voter_id, _)) =
-                    next_farthest(&raft_conf, &promotable) else { continue };
+                let Some((next_voter_id, _)) = next_farthest(&raft_conf, &promotable) else {
+                    continue;
+                };
 
                 let ccs1 = raft_conf.change_single(AddLearnerNode, instance.raft_id);
                 let ccs2 = raft_conf.change_single(AddNode, next_voter_id);
@@ -170,7 +171,9 @@ pub(crate) fn raft_conf_change(
 
     // Promote more voters
     while raft_conf.voters.len() < voters_needed {
-        let Some((new_voter_id, _)) = next_farthest(&raft_conf, &promotable) else { break };
+        let Some((new_voter_id, _)) = next_farthest(&raft_conf, &promotable) else {
+            break;
+        };
         let ccs = raft_conf.change_single(AddNode, new_voter_id);
         changes.push(ccs);
         promotable.remove(&new_voter_id);
@@ -183,7 +186,10 @@ pub(crate) fn raft_conf_change(
         let other_voters = other_voters;
 
         let Some((new_voter_id, new_distance)) =
-            find_farthest(&raft_conf.all, &other_voters, &promotable) else { break };
+            find_farthest(&raft_conf.all, &other_voters, &promotable)
+        else {
+            break;
+        };
 
         if new_distance > sum_distance(&raft_conf.all, &other_voters, voter_id) {
             let ccs1 = raft_conf.change_single(AddLearnerNode, *voter_id);

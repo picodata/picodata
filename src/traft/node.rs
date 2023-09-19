@@ -939,7 +939,10 @@ impl NodeImpl {
                                 // Ddl prepare operations should be verified before being proposed,
                                 // so this shouldn't ever happen. But ignoring this is safe anyway,
                                 // because proc_apply_schema_change will catch the error and ddl will be aborted.
-                                tlog!(Warning, "invalid primary key part: field '{name}' not found");
+                                tlog!(
+                                    Warning,
+                                    "invalid primary key part: field '{name}' not found"
+                                );
                                 continue;
                             };
                             // We store all index parts as field indexes.
@@ -948,12 +951,16 @@ impl NodeImpl {
                         }
                     };
                     let Some(field_type) =
-                        crate::schema::try_space_field_type_to_index_field_type(field.field_type) else
-                    {
+                        crate::schema::try_space_field_type_to_index_field_type(field.field_type)
+                    else {
                         // Ddl prepare operations should be verified before being proposed,
                         // so this shouldn't ever happen. But ignoring this is safe anyway,
                         // because proc_apply_schema_change will catch the error and ddl will be aborted.
-                        tlog!(Warning, "invalid primary key part: field type {} cannot be part of an index", field.field_type);
+                        tlog!(
+                            Warning,
+                            "invalid primary key part: field type {} cannot be part of an index",
+                            field.field_type
+                        );
                         continue;
                     };
                     // We overwrite the one provided in the request because
@@ -1183,7 +1190,9 @@ impl NodeImpl {
             self.raw_node.report_unreachable(raft_id);
 
             // TODO: remove infos when instances are expelled.
-            let Some(pr) = self.raw_node.raft.mut_prs().get_mut(raft_id) else { continue; };
+            let Some(pr) = self.raw_node.raft.mut_prs().get_mut(raft_id) else {
+                continue;
+            };
             // NOTE: Raft-rs will not check if the node should be paused until
             // a new raft entry is appended to the log. This means that once an
             // instance goes silent it will still be bombarded with heartbeats

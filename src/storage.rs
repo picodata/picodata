@@ -435,7 +435,10 @@ impl Clusterwide {
                 continue;
             }
             let Ok(space) = self.space_by_name(space_name) else {
-                crate::warn_or_panic!("a dump for a non existent space '{}' arrived via snapshot", space_name);
+                crate::warn_or_panic!(
+                    "a dump for a non existent space '{}' arrived via snapshot",
+                    space_name
+                );
                 continue;
             };
             space.truncate()?;
@@ -913,7 +916,9 @@ impl PeerAddresses {
 
     #[inline(always)]
     pub fn get(&self, raft_id: RaftId) -> Result<Option<traft::Address>> {
-        let Some(tuple) = self.space.get(&[raft_id])? else { return Ok(None) };
+        let Some(tuple) = self.space.get(&[raft_id])? else {
+            return Ok(None);
+        };
         tuple.field(1).map_err(Into::into)
     }
 

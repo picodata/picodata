@@ -58,7 +58,10 @@ pub async fn compare_and_swap_async(
     };
     loop {
         let Some(leader_id) = node.status().leader_id else {
-            tlog!(Warning, "leader id is unknown, waiting for status change...");
+            tlog!(
+                Warning,
+                "leader id is unknown, waiting for status change..."
+            );
             node.wait_status();
             continue;
         };
@@ -185,7 +188,9 @@ fn proc_cas_local(req: Request) -> Result<Response> {
 
     // Check if ranges in predicate contain prohibited spaces.
     for range in &req.predicate.ranges {
-        let Ok(space) = ClusterwideSpace::try_from(range.space) else { continue; };
+        let Ok(space) = ClusterwideSpace::try_from(range.space) else {
+            continue;
+        };
         if PROHIBITED_SPACES.contains(&space) {
             return Err(Error::SpaceNotAllowed {
                 space: space.name().into(),
@@ -237,12 +242,12 @@ fn proc_cas_local(req: Request) -> Result<Response> {
     for entry in unstable {
         assert_eq!(entry.term, status.term);
         let Ok(cx) = EntryContext::from_raft_entry(&entry) else {
-                tlog!(Warning, "raft entry has invalid context"; "entry" => ?entry);
-                continue;
-            };
+            tlog!(Warning, "raft entry has invalid context"; "entry" => ?entry);
+            continue;
+        };
         let Some(EntryContext::Normal(EntryContextNormal { op, .. })) = cx else {
-                continue;
-            };
+            continue;
+        };
         req.predicate.check_entry(entry.index, &op, storage)?;
     }
 
@@ -408,7 +413,7 @@ impl Predicate {
                 return Err(error());
             }
             let Some(space) = space(entry_op) else {
-                continue
+                continue;
             };
             // TODO: check `space` exists
             if space != range.space {
@@ -794,7 +799,11 @@ mod tests {
         assert!(t(&drop_index, Range::new(space_id).eq(("any_key",))).is_ok());
 
         // Abort and Commit need a pending schema change to get space name
-        let Op::DdlPrepare{ ddl: create_space_ddl, ..} = create_space else {
+        let Op::DdlPrepare {
+            ddl: create_space_ddl,
+            ..
+        } = create_space
+        else {
             unreachable!();
         };
         storage

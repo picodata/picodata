@@ -695,7 +695,10 @@ fn postjoin(args: &args::Run, storage: Clusterwide, raft_storage: RaftSpaceAcces
         let Some(leader_address) = leader_address else {
             // FIXME: don't hard code timeout
             let timeout = Duration::from_millis(1000);
-            tlog!(Debug, "leader address is still unkown, retrying in {timeout:?}");
+            tlog!(
+                Debug,
+                "leader address is still unkown, retrying in {timeout:?}"
+            );
             fiber::sleep(timeout);
             continue;
         };

@@ -377,7 +377,9 @@ impl CreateSpaceParams {
         let t = sys_space
             .get(&[id])
             .expect("reading from _space shouldn't fail");
-        let Some(t) = t else { return Ok(false); };
+        let Some(t) = t else {
+            return Ok(false);
+        };
 
         let existing_name: &str = t.get("name").expect("space metadata should contain a name");
         if existing_name == self.name {

@@ -144,7 +144,7 @@ impl Cache<String, Plan> for PicoRouterCache {
 
     fn get(&mut self, key: &String) -> Result<Option<&Plan>, SbroadError> {
         let Some((ir, version_map)) = self.inner.get(key)? else {
-            return Ok(None)
+            return Ok(None);
         };
         // check Plan's tables have up to date schema
         let node = node::global()
@@ -158,10 +158,11 @@ impl Cache<String, Plan> for PicoRouterCache {
                     format!("in version map with name: {}", space_name),
                 )
             })?;
-            let Some(space_def) = storage_spaces.by_name(space_name.as_str()).map_err(|e|
+            let Some(space_def) = storage_spaces.by_name(space_name.as_str()).map_err(|e| {
                 SbroadError::FailedTo(Action::Get, None, format!("space_def: {}", e))
-            )? else {
-                return Ok(None)
+            })?
+            else {
+                return Ok(None);
             };
             // The outdated entry will be replaced when
             // `put` is called (which is always called

@@ -339,9 +339,11 @@ pub(super) fn action_plan<'i>(
         // `for instances { replicasets.get() }` instead of `for replicasets { instances.find() }`
         for r in replicasets.values() {
             let Some(master) = instances.iter().find(|i| i.instance_id == r.master_id) else {
-                tlog!(Warning,
+                tlog!(
+                    Warning,
                     "couldn't find instance with id {}, which is chosen as master of replicaset {}",
-                    r.master_id, r.replicaset_id,
+                    r.master_id,
+                    r.replicaset_id,
                 );
                 // Send them a request anyway just to be safe
                 targets.push(&r.master_id);
@@ -484,14 +486,17 @@ fn get_new_replicaset_master_if_needed<'i>(
         let Some(master) = instances.iter().find(|i| i.instance_id == r.master_id) else {
             crate::warn_or_panic!(
                 "couldn't find instance with id {}, which is chosen as master of replicaset {}",
-                r.master_id, r.replicaset_id,
+                r.master_id,
+                r.replicaset_id,
             );
             continue;
         };
         if !has_grades!(master, * -> Offline) {
             continue;
         }
-        let Some(new_master) = maybe_responding(instances).find(|i| i.replicaset_id == r.replicaset_id) else {
+        let Some(new_master) =
+            maybe_responding(instances).find(|i| i.replicaset_id == r.replicaset_id)
+        else {
             continue;
         };
 
