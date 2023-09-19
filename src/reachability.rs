@@ -1,3 +1,4 @@
+use crate::storage;
 use crate::storage::Clusterwide;
 use crate::storage::PropertyName;
 use crate::traft::RaftId;
@@ -26,10 +27,6 @@ pub struct InstanceReachabilityManager {
 pub type InstanceReachabilityManagerRef = Rc<RefCell<InstanceReachabilityManager>>;
 
 impl InstanceReachabilityManager {
-    // TODO: make these configurable via _pico_property
-    const DEFAULT_AUTO_OFFLINE_TIMEOUT: Duration = Duration::from_secs(5);
-    const DEFAULT_MAX_HEARTBEAT_PERIOD: Duration = Duration::from_secs(5);
-
     pub fn new(storage: Clusterwide) -> Self {
         Self {
             storage: Some(storage),
@@ -176,7 +173,7 @@ impl InstanceReachabilityManager {
                 return Duration::from_secs_f64(t);
             }
         };
-        Self::DEFAULT_AUTO_OFFLINE_TIMEOUT
+        Duration::from_secs_f64(storage::DEFAULT_AUTO_OFFLINE_TIMEOUT)
     }
 
     fn max_heartbeat_period(&self) -> Duration {
@@ -192,7 +189,7 @@ impl InstanceReachabilityManager {
                 return Duration::from_secs_f64(t);
             }
         };
-        Self::DEFAULT_MAX_HEARTBEAT_PERIOD
+        Duration::from_secs_f64(storage::DEFAULT_MAX_HEARTBEAT_PERIOD)
     }
 }
 

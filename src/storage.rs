@@ -765,6 +765,10 @@ impl From<ClusterwideSpace> for SpaceId {
 // Properties
 ////////////////////////////////////////////////////////////////////////////////
 
+pub const DEFAULT_PASSWORD_MIN_LENGTH: usize = 8;
+pub const DEFAULT_AUTO_OFFLINE_TIMEOUT: f64 = 5.0;
+pub const DEFAULT_MAX_HEARTBEAT_PERIOD: f64 = 5.0;
+
 impl Properties {
     pub fn new() -> tarantool::Result<Self> {
         let space = Space::builder(Self::SPACE_NAME)
