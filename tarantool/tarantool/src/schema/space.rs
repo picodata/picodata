@@ -34,7 +34,7 @@ pub fn create_space(name: &str, opts: &SpaceCreateOptions) -> Result<Space, Erro
 
     // Resolve ID of user, specified in options, or use ID of current session's user.
     let user_id = match &opts.user {
-        None => session::uid()? as u32,
+        None => session::uid()?,
         Some(user) => {
             let resolved_uid = schema::resolve_user_or_role(user.as_str())?;
             match resolved_uid {

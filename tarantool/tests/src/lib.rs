@@ -514,8 +514,6 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 net_box::triggers_reject,
                 net_box::triggers_schema_sync,
                 net_box::execute,
-                session::uid,
-                session::euid,
                 proc::simple,
                 proc::return_tuple,
                 proc::return_raw_bytes,

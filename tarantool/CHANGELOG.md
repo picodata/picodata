@@ -1,11 +1,13 @@
 # Change Log
 
-# Unreleased
+# [3.0.0] Unreleased
 
 ### Added
 
 - With the new `async-std` feature flag `network::client::tcp::TcpStream` implements
   async `Read` and `Write` traits from `async-std` crate instead of `futures`.
+- `box.session.su` API is now supported. When building for picodata with `picodata` feature enabled this API will use C-API directly. When used with vanilla tarantool lua polyfill is used.
+- New `tarantool::session::user_id_by_name` API is available when running `picodata`.
 
 ### Fixed
 
@@ -14,6 +16,10 @@
 
 ### Changed
 - `network::client::tcp::TcpStream` will now always try IPv4 addresses first when connecting.
+- `tarantool::session::uid` and `tarantool::session::euid` when running `picodata` now use native C-API instead of calling into Lua.
+
+### Breaking changes
+- `tarantool::session::uid` and `tarantool::session::euid` now return `UserId` type which is an alias for `u32`. Previously `isize` was used.
 
 # [2.0.0] Aug 28 2023
 
