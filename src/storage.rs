@@ -4,6 +4,7 @@ use ::tarantool::fiber;
 use ::tarantool::index::{Index, IndexId, IndexIterator, IteratorType};
 use ::tarantool::msgpack::{ArrayWriter, ValueIter};
 use ::tarantool::read_view::ReadView;
+use ::tarantool::read_view::ReadViewIterator;
 use ::tarantool::space::UpdateOps;
 use ::tarantool::space::{FieldType, Space, SpaceId, SpaceType, SystemSpace};
 use ::tarantool::time::Instant;
@@ -34,6 +35,7 @@ use std::cell::UnsafeCell;
 use std::collections::hash_map::Entry;
 use std::collections::BTreeMap;
 use std::collections::{HashMap, HashSet};
+use std::iter::Peekable;
 use std::marker::PhantomData;
 use std::rc::Rc;
 use std::time::Duration;
@@ -390,13 +392,17 @@ impl Clusterwide {
         Ok(SnapshotReadView {
             entry_id,
             time_opened: fiber::clock(),
+            unfinished_iterators: Default::default(),
             read_view,
             ref_count: 0,
-            first_chunk: Default::default(),
+            sole_chunk: Default::default(),
         })
     }
 
-    #[inline]
+    /// Generate the next snapshot chunk starting a `position`.
+    ///
+    /// Will cache the iterator into `rv` so that chunk generation can resume
+    /// later from the same position.
     pub fn next_snapshot_data_chunk_impl(
         &self,
         rv: &mut SnapshotReadView,
@@ -417,25 +423,43 @@ impl Clusterwide {
             if space_id < position.space_id {
                 continue;
             }
-            let Some(iter) = rv.read_view.iter_all(space_id, index_id)? else {
-                tlog!(Warning, "read view didn't contain space #{space_id}");
-                continue;
-            };
 
-            // FIXME: Here we're linearly skipping all of the tuples which we've
-            // already sent. This is very slow. Here's some ideas how to fix it:
-            // - It would be nice if read view iterators supported pagination,
-            //   but they don't, and not likely are going to,
-            //   unless we implement that ourselves.
-            // - We could instead store the iterator in it's current state next
-            //   to the read view in the snapshot cache, it would be uniquely
-            //   identified by (entry_id, last_space_id, last_space_tuple_count),
-            //   which means we're gucci...
+            let mut iter: Option<Peekable<ReadViewIterator<'static>>> = None;
+            if space_id == position.space_id {
+                // Get a cached iterator
+                if let Entry::Occupied(mut kv) = rv.unfinished_iterators.entry(position) {
+                    let t = kv.get_mut();
+                    iter = t.pop();
+                    if t.is_empty() {
+                        kv.remove_entry();
+                    }
+                }
+                if iter.is_none() {
+                    let entry_id = rv.entry_id;
+                    warn_or_panic!("missing iterator for a non-zero snapshot position ({entry_id}, {position})");
+                    return Err(Error::other(format!(
+                        "missing iterator for snapshot position ({entry_id}, {position})"
+                    )));
+                }
+            } else {
+                // Get a new iterator from the read view
+                let it = rv.read_view.iter_all(space_id, 0)?.map(Iterator::peekable);
+                if it.is_none() {
+                    warn_or_panic!("read view didn't contain space #{space_id}");
+                    continue;
+                }
+                // SAFETY: It is only required that `iter` is never used (other
+                // than `drop`) once the corresponding `read_view` is dropped.
+                // This assumption holds as long as iterators are always stored
+                // next to the corresponding read views (which they are) and
+                // that iterators are dropped at the same time as read views
+                // (which they are). So it's safe.
+                unsafe { iter = std::mem::transmute(it) };
+            }
+            let mut iter = iter.expect("just made sure it's Some");
 
             let mut array_writer = ArrayWriter::from_vec(Vec::with_capacity(32 * 1024));
-            #[rustfmt::skip]
-            let skip = if space_id == position.space_id { position.tuple_offset } else { 0 };
-            for tuple_data in iter.skip(skip as _) {
+            while let Some(tuple_data) = iter.peek() {
                 if total_size + tuple_data.len() > snapshot_chunk_max_size && total_size != 0 {
                     hit_threashold = true;
                     break;
@@ -443,6 +467,9 @@ impl Clusterwide {
                 array_writer.push_raw(tuple_data)?;
                 total_size += tuple_data.len();
                 position.tuple_offset += 1;
+
+                // Actually advance the iterator.
+                _ = iter.next();
             }
             let count = array_writer.len();
             let tuples = array_writer.finish()?.into_inner();
@@ -462,6 +489,11 @@ impl Clusterwide {
 
             position.space_id = space_id;
             if hit_threashold {
+                #[rustfmt::skip]
+                match rv.unfinished_iterators.entry(position) {
+                    Entry::Occupied(mut slot) => { slot.get_mut().push(iter); }
+                    Entry::Vacant(slot)       => { slot.insert(vec![iter]); }
+                };
                 break;
             } else {
                 // This space is finished, reset the offset.
@@ -505,10 +537,6 @@ impl Clusterwide {
         if snapshot_data.next_chunk_position.is_none() {
             // This customer has been served.
             rv.ref_count -= 1;
-            if rv.ref_count == 0 {
-                tlog!(Info, "closing snapshot read view for {entry_id:?}");
-                self.snapshot_cache.read_views().remove(&entry_id);
-            }
         }
         Ok(snapshot_data)
     }
@@ -527,12 +555,20 @@ impl Clusterwide {
         // FIXME: test & fix case when raft log is compacted again after
         // snapshot was generated.
         if let Some((_, rv)) = snapshots.next() {
-            if rv.first_chunk.next_chunk_position.is_some() {
+            if let Some(sole_chunk) = &rv.sole_chunk {
+                #[rustfmt::skip]
+                debug_assert_eq!(rv.ref_count, 0, "single chunk snapshots don't need reference counting");
+                tlog!(Debug, "returning a cached snapshot chunk"; "entry_id" => %rv.entry_id);
+                return Ok((sole_chunk.clone(), rv.entry_id));
+            } else {
+                tlog!(Info, "reusing a snapshot read view for {entry_id}");
+                let position = SnapshotPosition::default();
+                let snapshot_data = self.next_snapshot_data_chunk_impl(rv, position)?;
                 // A new instance has started applying this snapshot,
                 // so we must keep it open until it finishes.
                 rv.ref_count += 1;
+                return Ok((snapshot_data, rv.entry_id));
             }
-            return Ok((rv.first_chunk.clone(), rv.entry_id));
         }
 
         let mut rv = self.open_read_view(entry_id)?;
@@ -541,16 +577,20 @@ impl Clusterwide {
         let mut snapshot_data = self.next_snapshot_data_chunk_impl(&mut rv, position)?;
         snapshot_data.schema_version = self.properties.global_schema_version()?;
 
-        rv.first_chunk = snapshot_data.clone();
-        if snapshot_data.next_chunk_position.is_some() {
+        if snapshot_data.next_chunk_position.is_none() {
+            // If snapshot fits into a single chunk, cache it.
+            rv.sole_chunk = Some(snapshot_data.clone());
+            // Don't increase the reference count, so that it's cleaned up next
+            // time a new snapshot is generated.
+        } else {
             rv.ref_count = 1;
         }
 
         let timeout = self.properties.snapshot_read_view_close_timeout()?;
         let now = fiber::clock();
         // Clear old snapshots.
-        // This is where we clear any stale single chunk snapshots, which never
-        // had any references, and snapshots with (probably) dangling references
+        // This is where we clear any stale snapshots with no references
+        // and snapshots with (probably) dangling references
         // which outlived the allotted time.
         #[rustfmt::skip]
         self.snapshot_cache.read_views().retain(|entry_id, rv| {
@@ -1728,6 +1768,27 @@ pub struct SnapshotReadView {
 
     read_view: ReadView,
 
+    /// A table of in progress iterators. Whenever a snapshot chunk hits the
+    /// size threshold, if the iterator didn't reach the end it's inserted into
+    /// this table so that snapshot generation can be resumed.
+    ///
+    /// It would be nice if read view iterators supported pagination (there's
+    /// actually no reason they shouldn't be able to) but they currently don't.
+    /// If they did we wouldn't have to store the iterators, which is a pain
+    /// because of rust, but for now it is what it is.
+    ///
+    /// NOTE: there's a 'static lifetime which is a bit of a lie. The iterators
+    /// are actually borrowing the `read_view` field of this struct, but rust
+    /// doesn't think we should be able to do that. NBD though, see the SAFETY
+    /// note next to a `transmute` in `next_snapshot_data_chunk_impl` for more
+    /// details.
+    ///
+    /// Fun fact: did you know that the underlying implementation of HashMap
+    /// allows for it to be used as a multimap with multiple values associated
+    /// with a single key? But there's no api for it, so we must do this ugly
+    /// ass shit. Oh well..
+    unfinished_iterators: HashMap<SnapshotPosition, Vec<Peekable<ReadViewIterator<'static>>>>,
+
     // TODO: this only works, if everybody who requested a snapshot always
     // reports when the last snapshot piece is received. But if an instance
     // suddenly diseapears it's ref_count will never be decremented and we'll
@@ -1739,9 +1800,11 @@ pub struct SnapshotReadView {
     // instance is *determined* to not need it.
     ref_count: u32,
 
-    // The first chunk which is generated when the snapshot is requested for the
-    // first time for a given raft entry id. It's an optimization I guess.
-    first_chunk: SnapshotData,
+    /// If the snapshot fits into a single chunk, we cache it so that we don't
+    /// have to generated it again, if someone requests a snapshot for the same
+    /// entry id. If it doesn't fit into a single chunk we don't store it,
+    /// because of the problems with unfinished iterators.
+    sole_chunk: Option<SnapshotData>,
 }
 
 #[derive(Clone, Debug, Default, ::serde::Serialize, ::serde::Deserialize)]
