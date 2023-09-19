@@ -21,6 +21,7 @@ use crate::traft::op::Ddl;
 use crate::traft::RaftId;
 use crate::traft::Result;
 use crate::util::Uppercase;
+use crate::warn_or_panic;
 
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
@@ -371,7 +372,7 @@ impl Clusterwide {
             tuples.len()
         );
         Ok(SpaceDump {
-            space_name: space_name.into(),
+            space_id: space.id(),
             tuples,
         })
     }
@@ -413,15 +414,15 @@ impl Clusterwide {
         }
 
         for space_dump in &data.space_dumps {
-            let space_name = &*space_dump.space_name;
-            if !SCHEMA_DEFINITION_SPACES.contains(&space_name) {
+            let space_id = space_dump.space_id;
+            if !SCHEMA_DEFINITION_SPACES.contains(&space_id) {
                 // First we restore contents of global schema spaces
                 // (_pico_space, _pico_user, etc.), so that we can apply the
                 // schema changes to them.
                 continue;
             }
             let space = self
-                .space_by_name(space_name)
+                .space_by_id(space_id)
                 .expect("global schema definition spaces should always be present");
             space.truncate()?;
             let tuples = space_dump.tuples.as_ref();
@@ -449,15 +450,15 @@ impl Clusterwide {
         }
 
         for space_dump in &data.space_dumps {
-            let space_name = &*space_dump.space_name;
-            if SCHEMA_DEFINITION_SPACES.contains(&space_name) {
+            let space_id = space_dump.space_id;
+            if SCHEMA_DEFINITION_SPACES.contains(&space_id) {
                 // Already handled in the loop above.
                 continue;
             }
-            let Ok(space) = self.space_by_name(space_name) else {
-                crate::warn_or_panic!(
-                    "a dump for a non existent space '{}' arrived via snapshot",
-                    space_name
+            let Ok(space) = self.space_by_id(space_id) else {
+                warn_or_panic!(
+                    "a dump for a non existent space #{} arrived via snapshot",
+                    space_id
                 );
                 continue;
             };
@@ -470,12 +471,12 @@ impl Clusterwide {
 
         return Ok(());
 
-        const SCHEMA_DEFINITION_SPACES: [&str; 5] = [
-            ClusterwideSpace::Space.as_str(),
-            ClusterwideSpace::Index.as_str(),
-            ClusterwideSpace::User.as_str(),
-            ClusterwideSpace::Role.as_str(),
-            ClusterwideSpace::Privilege.as_str(),
+        const SCHEMA_DEFINITION_SPACES: &[SpaceId] = &[
+            ClusterwideSpace::Space.id(),
+            ClusterwideSpace::Index.id(),
+            ClusterwideSpace::User.id(),
+            ClusterwideSpace::Role.id(),
+            ClusterwideSpace::Privilege.id(),
         ];
     }
 
@@ -1378,7 +1379,7 @@ impl Encode for SnapshotData {}
 
 #[derive(Debug, ::serde::Serialize, ::serde::Deserialize)]
 pub struct SpaceDump {
-    pub space_name: String,
+    pub space_id: SpaceId,
     #[serde(with = "serde_bytes")]
     pub tuples: TupleBuffer,
 }
@@ -2761,14 +2762,14 @@ mod tests {
         assert_eq!(space_dumps.len(), n_internal_spaces);
 
         for space_dump in &space_dumps {
-            match &space_dump.space_name {
-                s if s == &*ClusterwideSpace::Instance => {
+            match space_dump.space_id {
+                s if s == ClusterwideSpace::Instance.id() => {
                     let [instance]: [Instance; 1] =
                         Decode::decode(space_dump.tuples.as_ref()).unwrap();
                     assert_eq!(instance, i);
                 }
 
-                s if s == &*ClusterwideSpace::Address => {
+                s if s == ClusterwideSpace::Address.id() => {
                     let addrs: [(i32, String); 2] =
                         Decode::decode(space_dump.tuples.as_ref()).unwrap();
                     assert_eq!(
@@ -2777,20 +2778,22 @@ mod tests {
                     );
                 }
 
-                s if s == &*ClusterwideSpace::Property => {
+                s if s == ClusterwideSpace::Property.id() => {
                     let [property]: [(String, String); 1] =
                         Decode::decode(space_dump.tuples.as_ref()).unwrap();
                     assert_eq!(property, ("foo".to_owned(), "bar".to_owned()));
                 }
 
-                s if s == &*ClusterwideSpace::Replicaset => {
+                s if s == ClusterwideSpace::Replicaset.id() => {
                     let [replicaset]: [Replicaset; 1] =
                         Decode::decode(space_dump.tuples.as_ref()).unwrap();
                     assert_eq!(replicaset, r);
                 }
 
-                s => {
-                    assert!(ClusterwideSpace::values().contains(dbg!(&&**s)));
+                s_id => {
+                    dbg!(s_id);
+                    #[rustfmt::skip]
+                    assert!(ClusterwideSpace::all_spaces().iter().any(|s| s.id() == s_id));
                     let []: [(); 0] = Decode::decode(space_dump.tuples.as_ref()).unwrap();
                 }
             }
@@ -2813,19 +2816,19 @@ mod tests {
         };
         let tuples = [&i].to_tuple_buffer().unwrap();
         data.space_dumps.push(SpaceDump {
-            space_name: ClusterwideSpace::Instance.into(),
+            space_id: ClusterwideSpace::Instance.into(),
             tuples,
         });
 
         let tuples = [(1, "google.com"), (2, "ya.ru")].to_tuple_buffer().unwrap();
         data.space_dumps.push(SpaceDump {
-            space_name: ClusterwideSpace::Address.into(),
+            space_id: ClusterwideSpace::Address.into(),
             tuples,
         });
 
         let tuples = [("foo", "bar")].to_tuple_buffer().unwrap();
         data.space_dumps.push(SpaceDump {
-            space_name: ClusterwideSpace::Property.into(),
+            space_id: ClusterwideSpace::Property.into(),
             tuples,
         });
 
@@ -2837,7 +2840,7 @@ mod tests {
         };
         let tuples = [&r].to_tuple_buffer().unwrap();
         data.space_dumps.push(SpaceDump {
-            space_name: ClusterwideSpace::Replicaset.into(),
+            space_id: ClusterwideSpace::Replicaset.into(),
             tuples,
         });
 
