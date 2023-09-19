@@ -324,6 +324,39 @@ define_clusterwide_spaces! {
 }
 
 impl Clusterwide {
+    /// Get a reference to a global instance of clusterwide storage.
+    /// If `init` is true, will do the initialization which may involve creation
+    /// of system spaces. This should only be done at instance initialization in
+    /// init_common.
+    /// Returns an error
+    ///   - if `init` is `false` and storage is not initialized.
+    ///   - if `init` is `true` and storage initialization failed.
+    #[inline]
+    pub fn try_get(init: bool) -> Result<&'static Self> {
+        static mut STORAGE: Option<Clusterwide> = None;
+
+        // Safety: this is safe as long as we only use it in tx thread.
+        unsafe {
+            if STORAGE.is_none() {
+                if !init {
+                    return Err(Error::Uninitialized);
+                }
+                STORAGE = Some(Self::new()?);
+            }
+            Ok(STORAGE.as_ref().unwrap())
+        }
+    }
+
+    /// Get a reference to a global instance of clusterwide storage.
+    ///
+    /// # Panicking
+    /// Will panic if storage is not initialized before a call to this function.
+    /// Consider using [`Clusterwide::try_get`] if this is a problem.
+    #[inline(always)]
+    pub fn get() -> &'static Self {
+        Self::try_get(false).expect("shouldn't be calling this until it's initialized")
+    }
+
     // This doesn't have `&self` parameter, because it is called from
     // RaftSpaceAccess, which doesn't have a reference to Node at least
     // for now.

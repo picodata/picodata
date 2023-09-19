@@ -303,10 +303,10 @@ fn init_common(args: &args::Run, cfg: &tarantool::Cfg) -> (Clusterwide, RaftSpac
     traft::event::init();
 
     tweak_max_space_id().expect("setting max_id should never fail");
-    let storage = Clusterwide::new().expect("storage initialization should never fail");
+    let storage = Clusterwide::try_get(true).expect("storage initialization should never fail");
     let raft_storage =
         RaftSpaceAccess::new().expect("raft storage initialization should never fail");
-    (storage, raft_storage)
+    (storage.clone(), raft_storage)
 }
 
 fn start_discover(args: &args::Run, to_supervisor: ipc::Sender<IpcMessage>) {
