@@ -121,7 +121,14 @@ macro_rules! define_clusterwide_spaces {
                 match space {
                     $( $cw_space_name => Ok(self.$Clusterwide_field.space.clone()), )+
                     _ => space_by_name(space),
+                }
+            }
 
+            #[inline(always)]
+            fn space_by_id(&self, space: SpaceId) -> tarantool::Result<Space> {
+                match space {
+                    $( $cw_space_id => Ok(self.$Clusterwide_field.space.clone()), )+
+                    _ => space_by_id(space),
                 }
             }
 
@@ -169,13 +176,23 @@ macro_rules! define_clusterwide_spaces {
     }
 }
 
-fn space_by_id_unchecked(space_id: SpaceId) -> tarantool::Result<Space> {
-    let space = unsafe { Space::from_id_unchecked(space_id) };
-    // TODO: maybe we should verify the space exists, but it's not a big deal
-    // currently, because first of all tarantool api will just return a no such
-    // space id error from any box_* function, and secondly this function is
-    // only used internally for now anyway.
-    Ok(space)
+#[inline(always)]
+fn space_by_id_unchecked(space_id: SpaceId) -> Space {
+    unsafe { Space::from_id_unchecked(space_id) }
+}
+
+pub fn space_by_id(space_id: SpaceId) -> tarantool::Result<Space> {
+    let sys_space = Space::from(SystemSpace::Space);
+    if sys_space.get(&[space_id])?.is_none() {
+        tarantool::set_error!(
+            tarantool::error::TarantoolErrorCode::NoSuchSpace,
+            "no such space #{}",
+            space_id
+        );
+        return Err(tarantool::error::TarantoolError::last().into());
+    }
+
+    Ok(space_by_id_unchecked(space_id))
 }
 
 pub fn space_by_name(space_name: &str) -> tarantool::Result<Space> {
@@ -199,7 +216,10 @@ define_clusterwide_spaces! {
         pub #space_name_lower: #space_name_upper,
     }
 
-    /// An enumeration of builtin cluster-wide spaces
+    /// An enumeration of builtin cluster-wide spaces.
+    ///
+    /// Use [`Self::id`] to get [`SpaceId`].
+    /// Use [`Self::name`] to get space name.
     pub enum ClusterwideSpace {
         Instance = 515, "_pico_instance" => {
             Clusterwide::instances;
@@ -309,7 +329,7 @@ impl Clusterwide {
     pub fn snapshot_data() -> tarantool::Result<SnapshotData> {
         let mut space_dumps = Self::internal_space_dumps()?;
 
-        let pico_space = space_by_id_unchecked(ClusterwideSpace::Space.id())?;
+        let pico_space = space_by_id_unchecked(ClusterwideSpace::Space.id());
         let iter = pico_space.select(IteratorType::All, &())?;
         for tuple in iter {
             let space_def: SpaceDef = tuple.decode()?;
@@ -319,7 +339,7 @@ impl Clusterwide {
             space_dumps.push(Self::space_dump(&space_def.name)?);
         }
 
-        let pico_property = space_by_id_unchecked(ClusterwideSpace::Property.id())?;
+        let pico_property = space_by_id_unchecked(ClusterwideSpace::Property.id());
         let tuple = pico_property.get(&[PropertyName::GlobalSchemaVersion.as_str()])?;
         let mut schema_version = 0;
         if let Some(tuple) = tuple {
@@ -612,7 +632,7 @@ impl Clusterwide {
         space_id: SpaceId,
         tuple: &TupleBuffer,
     ) -> tarantool::Result<Tuple> {
-        let space = space_by_id_unchecked(space_id)?;
+        let space = space_by_id_unchecked(space_id);
         let res = space.insert(tuple)?;
         Ok(res)
     }
@@ -622,7 +642,7 @@ impl Clusterwide {
         space_id: SpaceId,
         tuple: &TupleBuffer,
     ) -> tarantool::Result<Tuple> {
-        let space = space_by_id_unchecked(space_id)?;
+        let space = space_by_id_unchecked(space_id);
         let res = space.replace(tuple)?;
         Ok(res)
     }
@@ -633,7 +653,7 @@ impl Clusterwide {
         key: &TupleBuffer,
         ops: &[TupleBuffer],
     ) -> tarantool::Result<Option<Tuple>> {
-        let space = space_by_id_unchecked(space_id)?;
+        let space = space_by_id_unchecked(space_id);
         let res = space.update(key, ops)?;
         Ok(res)
     }
@@ -643,7 +663,7 @@ impl Clusterwide {
         space_id: SpaceId,
         key: &TupleBuffer,
     ) -> tarantool::Result<Option<Tuple>> {
-        let space = space_by_id_unchecked(space_id)?;
+        let space = space_by_id_unchecked(space_id);
         let res = space.delete(key)?;
         Ok(res)
     }
