@@ -1,6 +1,7 @@
-use crate::schema::{AuthDef, Distribution, PrivilegeDef, RoleDef, UserDef, UserId};
+use crate::schema::{Distribution, PrivilegeDef, RoleDef, UserDef, UserId};
 use crate::storage::space_by_name;
 use crate::storage::Clusterwide;
+use ::tarantool::auth::AuthDef;
 use ::tarantool::index::{IndexId, Part};
 use ::tarantool::space::{Field, SpaceId};
 use ::tarantool::tlua;

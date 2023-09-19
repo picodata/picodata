@@ -1,3 +1,4 @@
+use ::tarantool::auth::AuthDef;
 use ::tarantool::error::Error as TntError;
 use ::tarantool::index::{Index, IndexId, IndexIterator, IteratorType};
 use ::tarantool::msgpack::{ArrayWriter, ValueIter};
@@ -11,9 +12,7 @@ use ::tarantool::tuple::{RawBytes, ToTupleBuffer, Tuple, TupleBuffer};
 use crate::failure_domain as fd;
 use crate::instance::{self, grade, Instance};
 use crate::replicaset::{Replicaset, ReplicasetId};
-use crate::schema::{
-    AuthDef, Distribution, IndexDef, PrivilegeDef, RoleDef, SpaceDef, UserDef, UserId,
-};
+use crate::schema::{Distribution, IndexDef, PrivilegeDef, RoleDef, SpaceDef, UserDef, UserId};
 use crate::tlog;
 use crate::traft;
 use crate::traft::error::Error;

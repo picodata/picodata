@@ -2,7 +2,7 @@ use std::borrow::Cow;
 use std::collections::{BTreeMap, HashSet};
 use std::time::Duration;
 
-use tarantool::auth::AuthMethod;
+use tarantool::auth::AuthDef;
 use tarantool::fiber;
 use tarantool::space::{FieldType, SpaceCreateOptions, SpaceEngineType};
 use tarantool::space::{Metadata as SpaceMetadata, Space, SpaceType, SystemSpace};
@@ -189,17 +189,10 @@ pub struct UserDef {
 
 pub type UserId = u32;
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-pub struct AuthDef {
-    pub method: AuthMethod,
-    /// Base64 encoded digest.
-    pub data: String,
-}
-
 impl Encode for UserDef {}
 
 impl UserDef {
-    pub const FIELD_AUTH: usize = 3;
+    pub const FIELD_AUTH: usize = 4;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

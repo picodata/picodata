@@ -1,7 +1,8 @@
 //! Clusterwide SQL query execution.
 
 use crate::schema::{
-    wait_for_ddl_commit, CreateSpaceParams, DistributionParam, Field, RoleDef, ShardingFn, UserId,
+    wait_for_ddl_commit, CreateSpaceParams, DistributionParam, Field, RoleDef, ShardingFn, UserDef,
+    UserId,
 };
 use crate::sql::router::RouterRuntime;
 use crate::sql::storage::StorageRuntime;
@@ -23,11 +24,12 @@ use sbroad::ir::ddl::Ddl;
 use sbroad::otm::query_span;
 
 use crate::traft::node::Node;
+use ::tarantool::auth::{AuthData, AuthDef, AuthMethod};
 use ::tarantool::proc;
-use ::tarantool::space::FieldType;
+use ::tarantool::space::{FieldType, Space, SystemSpace};
 use ::tarantool::time::Instant;
 use ::tarantool::tuple::{RawBytes, Tuple};
-use tarantool::space::{Space, SystemSpace};
+use std::str::FromStr;
 
 pub mod router;
 pub mod storage;
@@ -143,9 +145,19 @@ fn reenterable_acl_request(
             // Nothing to check
             Params::CreateRole(name)
         }
-        Acl::DropRole { .. } | Acl::CreateUser { .. } => {
-            return Err(Error::Other("ACL is not implemented yet".into()))
+        Acl::CreateUser {
+            name,
+            password,
+            auth_method,
+            ..
+        } => {
+            let method = AuthMethod::from_str(&auth_method)
+                .map_err(|_| Error::Other(format!("Unknown auth method: {auth_method}").into()))?;
+            let data = AuthData::new(&method, &name, &password);
+            let auth = AuthDef::new(method, data.into_string());
+            Params::CreateUser(name, auth)
         }
+        Acl::DropRole { .. } => return Err(Error::Other("ACL is not implemented yet".into())),
     };
 
     'retry: loop {
@@ -158,6 +170,29 @@ fn reenterable_acl_request(
 
         // Check for conflicts and make the op.
         let acl = match &params {
+            Params::CreateUser(name, auth) => {
+                if storage.roles.by_name(name)?.is_some() {
+                    return Err(Error::Other(format!("Role {name} already exists").into()));
+                }
+                if let Some(user_def) = storage.users.by_name(name)? {
+                    if user_def.auth != *auth {
+                        return Err(Error::Other(
+                            format!("User {name} already exists with different auth method").into(),
+                        ));
+                    }
+                    // User already exists, no op needed
+                    return Ok(ConsumerResult { row_count: 0 });
+                }
+                let id = node.get_next_grantee_id()?;
+                let schema_version = storage.properties.next_schema_version()?;
+                let user_def = UserDef {
+                    id,
+                    name: name.clone(),
+                    schema_version,
+                    auth: auth.clone(),
+                };
+                OpAcl::CreateUser { user_def }
+            }
             Params::DropUser(name) => {
                 let Some(user_def) = storage.users.by_name(name)? else {
                     // User doesn't exist yet, no op needed
@@ -227,6 +262,7 @@ fn reenterable_acl_request(
     }
 
     enum Params {
+        CreateUser(String, AuthDef),
         DropUser(String),
         CreateRole(String),
     }

@@ -60,6 +60,8 @@ with the `YY.0M.MICRO` scheme.
 - _Clusterwide SQL_ now allows creation of a global table through 
   `create table`.
 
+- _Clusterwide SQL_ introduces the capability to create picodata users.
+
 ### Lua API:
 
 

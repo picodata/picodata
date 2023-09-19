@@ -358,17 +358,22 @@ def test_sql_limits(cluster: Cluster):
         )
 
 
-def test_sql_acl(cluster: Cluster):
+def test_sql_acl_user(cluster: Cluster):
     cluster.deploy(instance_count=2)
     i1, i2 = cluster.instances
 
     username = "User"
     password = "Password"
     upper_username = "USER"
-    i1.call("pico.create_user", username, password)
-    assert i1.call("box.space._pico_user:select") == [
-        [32, "User", 1, ["chap-sha1", "+6fC0nydBfP9TEaaG7r1VxFOVZQ="]]
-    ]
+    acl = i1.sql(
+        """
+        create user "{username}" with password '{password}'
+        using md5 option (timeout = 3)
+    """.format(
+            username=username, password=password
+        )
+    )
+    assert acl["row_count"] == 1
 
     # Dropping user that doesn't exist should return 0.
     acl = i1.sql(f"drop user {upper_username}")
@@ -380,30 +385,83 @@ def test_sql_acl(cluster: Cluster):
     assert i1.call("box.space._pico_user:select") == []
 
     # All the usernames below should match the same user.
-    i1.call("pico.create_user", upper_username, password)
+    acl = i1.sql(
+        """
+        create user "{username}" password '{password}'
+        using chap-sha1
+    """.format(
+            username=upper_username, password=password
+        )
+    )
+    assert acl["row_count"] == 1
     acl = i1.sql(f'drop user "{upper_username}"')
     assert acl["row_count"] == 1
-    i1.call("pico.create_user", upper_username, password)
+
+    acl = i1.sql(
+        """
+        create user "{username}" password '' using ldap
+    """.format(
+            username=upper_username
+        )
+    )
+    assert acl["row_count"] == 1
     acl = i1.sql(f"drop user {username}")
     assert acl["row_count"] == 1
-    i1.call("pico.create_user", upper_username, password)
+
+    acl = i1.sql(
+        """
+        create user {username} with password '{password}'
+        option (timeout = 3)
+    """.format(
+            username=username, password=password
+        )
+    )
     acl = i1.sql(f'drop user "{upper_username}"')
+    assert acl["row_count"] == 1
+
+    # We can safely retry creating the same user.
+    acl = i1.sql(f"create user {username} with password '{password}' using md5")
+    assert acl["row_count"] == 1
+    acl = i1.sql(f"create user {username} with password '{password}' using md5")
+    assert acl["row_count"] == 0
+    acl = i1.sql(f"drop user {username}")
     assert acl["row_count"] == 1
 
     # Zero timeout should return timeout error.
     with pytest.raises(ReturnError, match="timeout"):
         i1.sql(f"drop user {username} option (timeout = 0)")
+    with pytest.raises(ReturnError, match="timeout"):
+        i1.sql(
+            """
+            create user {username} with password '{password}'
+            option (timeout = 0)
+        """.format(
+                username=username, password=password
+            )
+        )
 
     # Username in single quotes is unsupported.
     with pytest.raises(ReturnError, match="rule parsing error"):
         i1.sql(f"drop user '{username}'")
+    with pytest.raises(ReturnError, match="rule parsing error"):
+        i1.sql(f"create user '{username}' with password '{password}'")
 
-    i1.call("pico.create_user", username, password)
-    assert i1.call("box.space._pico_user:select") == [
-        [32, "User", 9, ["chap-sha1", "+6fC0nydBfP9TEaaG7r1VxFOVZQ="]]
-    ]
+    # Can't create same user with different auth methods.
+    with pytest.raises(ReturnError, match="already exists with different auth method"):
+        i1.sql(f"create user {username} with password '{password}' using md5")
+        i1.sql(f"create user {username} with password '{password}' using chap-sha1")
+
+    # Can't create same user with different password.
+    with pytest.raises(ReturnError, match="already exists with different auth method"):
+        i1.sql(f"create user {username} with password '123' using md5")
+        i1.sql(f"create user {username} with password '321' using md5")
+    acl = i1.sql(f"drop user {username}")
+    assert acl["row_count"] == 1
+
     # Attempt to create role with the name of already existed user
     # should lead to an error.
+    acl = i1.sql(f""" create user "{username}" with password '123' using md5 """)
+    assert acl["row_count"] == 1
     with pytest.raises(ReturnError, match="User with the same name already exists"):
         i1.sql(f'create role "{username}"')
 
