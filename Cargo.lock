@@ -1148,6 +1148,7 @@ dependencies = [
  "protobuf",
  "raft",
  "rand",
+ "rmp",
  "rmp-serde",
  "rmpv",
  "rustyline",

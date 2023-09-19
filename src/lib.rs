@@ -517,6 +517,26 @@ fn start_boot(args: &args::Run) {
             .into(),
         );
 
+        #[rustfmt::skip]
+        init_entries_push_op(
+            op::Dml::insert(
+                ClusterwideSpace::Property,
+                &(PropertyName::SnapshotChunkMaxSize, storage::DEFAULT_SNAPSHOT_CHUNK_MAX_SIZE),
+            )
+            .expect("cannot fail")
+            .into(),
+        );
+
+        #[rustfmt::skip]
+        init_entries_push_op(
+            op::Dml::insert(
+                ClusterwideSpace::Property,
+                &(PropertyName::SnapshotReadViewCloseTimeout, storage::DEFAULT_SNAPSHOT_READ_VIEW_CLOSE_TIMEOUT),
+            )
+            .expect("cannot fail")
+            .into(),
+        );
+
         init_entries.push({
             let conf_change = raft::ConfChange {
                 change_type: raft::ConfChangeType::AddNode,

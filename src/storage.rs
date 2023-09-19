@@ -1,9 +1,12 @@
 use ::tarantool::auth::AuthDef;
 use ::tarantool::error::Error as TntError;
+use ::tarantool::fiber;
 use ::tarantool::index::{Index, IndexId, IndexIterator, IteratorType};
 use ::tarantool::msgpack::{ArrayWriter, ValueIter};
+use ::tarantool::read_view::ReadView;
 use ::tarantool::space::UpdateOps;
 use ::tarantool::space::{FieldType, Space, SpaceId, SpaceType, SystemSpace};
+use ::tarantool::time::Instant;
 use ::tarantool::tlua::{self, LuaError};
 use ::tarantool::tuple::KeyDef;
 use ::tarantool::tuple::{Decode, DecodeOwned, Encode};
@@ -12,27 +15,38 @@ use ::tarantool::tuple::{RawBytes, ToTupleBuffer, Tuple, TupleBuffer};
 use crate::failure_domain as fd;
 use crate::instance::{self, grade, Instance};
 use crate::replicaset::{Replicaset, ReplicasetId};
-use crate::schema::{Distribution, IndexDef, PrivilegeDef, RoleDef, SpaceDef, UserDef, UserId};
+use crate::schema::Distribution;
+use crate::schema::{IndexDef, SpaceDef};
+use crate::schema::{PrivilegeDef, RoleDef, UserDef, UserId};
 use crate::sql::pgproto::DEFAULT_MAX_PG_PORTALS;
 use crate::tlog;
 use crate::traft;
 use crate::traft::error::Error;
 use crate::traft::op::Ddl;
+use crate::traft::RaftEntryId;
 use crate::traft::RaftId;
 use crate::traft::Result;
 use crate::util::Uppercase;
 use crate::warn_or_panic;
 
+use std::borrow::Cow;
+use std::cell::UnsafeCell;
 use std::collections::hash_map::Entry;
+use std::collections::BTreeMap;
 use std::collections::{HashMap, HashSet};
 use std::marker::PhantomData;
 use std::rc::Rc;
+use std::time::Duration;
 
 macro_rules! define_clusterwide_spaces {
     (
         $(#[$Clusterwide_meta:meta])*
         pub struct $Clusterwide:ident {
             pub #space_name_lower: #space_name_upper,
+            $(
+                $(#[$Clusterwide_extra_field_meta:meta])*
+                pub $Clusterwide_extra_field:ident: $Clusterwide_extra_field_type:ty,
+            )*
         }
 
         $(#[$ClusterwideSpace_meta:meta])*
@@ -106,6 +120,10 @@ macro_rules! define_clusterwide_spaces {
         #[derive(Clone, Debug)]
         pub struct $Clusterwide {
             $( pub $Clusterwide_field: $space_struct, )+
+            $(
+                $(#[$Clusterwide_extra_field_meta:meta])*
+                pub $Clusterwide_extra_field: $Clusterwide_extra_field_type,
+            )*
         }
 
         impl $Clusterwide {
@@ -113,6 +131,7 @@ macro_rules! define_clusterwide_spaces {
             pub fn new() -> tarantool::Result<Self> {
                 Ok(Self {
                     $( $Clusterwide_field: $space_struct::new()?, )+
+                    $( $Clusterwide_extra_field: Default::default(), )*
                 })
             }
 
@@ -142,14 +161,6 @@ macro_rules! define_clusterwide_spaces {
             {
                 $( cb(&self.$Clusterwide_field.space)?; )+
                 Ok(())
-            }
-
-            #[inline(always)]
-            pub fn internal_space_dumps() -> tarantool::Result<Vec<SpaceDump>> {
-                let res = vec![
-                    $( Self::space_dump(&$ClusterwideSpace::$cw_space_var)?, )+
-                ];
-                Ok(res)
             }
         }
 
@@ -215,6 +226,7 @@ pub fn space_by_name(space_name: &str) -> tarantool::Result<Space> {
 define_clusterwide_spaces! {
     pub struct Clusterwide {
         pub #space_name_lower: #space_name_upper,
+        pub snapshot_cache: Rc<SnapshotCache>,
     }
 
     /// An enumeration of builtin cluster-wide spaces.
@@ -357,57 +369,217 @@ impl Clusterwide {
         Self::try_get(false).expect("shouldn't be calling this until it's initialized")
     }
 
-    // This doesn't have `&self` parameter, because it is called from
-    // RaftSpaceAccess, which doesn't have a reference to Node at least
-    // for now.
-    pub fn snapshot_data() -> tarantool::Result<SnapshotData> {
-        let mut space_dumps = Self::internal_space_dumps()?;
+    fn open_read_view(&self, entry_id: RaftEntryId) -> Result<SnapshotReadView> {
+        let mut space_indexes = Vec::with_capacity(32);
+        for space in ClusterwideSpace::all_spaces() {
+            space_indexes.push((space.id(), 0));
+        }
+        // ClusterwideSpace::all_spaces is not guaranteed to iterate in order
+        // of ascending space ids, so we sort it explicitly.
+        // TODO: we should probably fix the enum so that we don't have to sort.
+        space_indexes.sort_unstable();
 
-        let pico_space = space_by_id_unchecked(ClusterwideSpace::Space.id());
-        let iter = pico_space.select(IteratorType::All, &())?;
-        for tuple in iter {
-            let space_def: SpaceDef = tuple.decode()?;
+        for space_def in self.spaces.iter()? {
             if !matches!(space_def.distribution, Distribution::Global) {
                 continue;
             }
-            space_dumps.push(Self::space_dump(&space_def.name)?);
+            space_indexes.push((space_def.id, 0));
         }
 
-        let pico_property = space_by_id_unchecked(ClusterwideSpace::Property.id());
-        let tuple = pico_property.get(&[PropertyName::GlobalSchemaVersion.as_str()])?;
-        let mut schema_version = 0;
-        if let Some(tuple) = tuple {
-            if let Some(v) = tuple.field(1)? {
-                schema_version = v;
-            }
-        }
-
-        Ok(SnapshotData {
-            schema_version,
-            space_dumps,
+        let read_view = ReadView::for_space_indexes(space_indexes)?;
+        Ok(SnapshotReadView {
+            entry_id,
+            time_opened: fiber::clock(),
+            read_view,
+            ref_count: 0,
+            first_chunk: Default::default(),
         })
     }
 
-    /// Returns the contents of the given space as a `SpaceDump`, i.e. a raw
-    /// msgpack array of tuples.
-    fn space_dump(space_name: &str) -> tarantool::Result<SpaceDump> {
-        let space = space_by_name(space_name)?;
-        let mut array_writer = ArrayWriter::from_vec(Vec::with_capacity(space.bsize()?));
-        for t in space.select(IteratorType::All, &())? {
-            array_writer.push_tuple(&t)?;
+    #[inline]
+    pub fn next_snapshot_data_chunk_impl(
+        &self,
+        rv: &mut SnapshotReadView,
+        mut position: SnapshotPosition,
+    ) -> Result<SnapshotData> {
+        let global_spaces = rv.read_view.space_indexes().unwrap();
+        let mut space_dumps = Vec::with_capacity(global_spaces.len());
+        let mut total_size = 0;
+        let mut hit_threashold = false;
+        let snapshot_chunk_max_size = self.properties.snapshot_chunk_max_size()?;
+        let t0 = std::time::Instant::now();
+        for &(space_id, index_id) in global_spaces {
+            debug_assert_eq!(index_id, 0, "only primary keys should be added");
+
+            // NOTE: we do linear search here, but it shouldn't matter, unless
+            // somebody decides to have a lot of global spaces. But in that case
+            // I doubt this is going to be the slowest part of picodata...
+            if space_id < position.space_id {
+                continue;
+            }
+            let Some(iter) = rv.read_view.iter_all(space_id, index_id)? else {
+                tlog!(Warning, "read view didn't contain space #{space_id}");
+                continue;
+            };
+
+            // FIXME: Here we're linearly skipping all of the tuples which we've
+            // already sent. This is very slow. Here's some ideas how to fix it:
+            // - It would be nice if read view iterators supported pagination,
+            //   but they don't, and not likely are going to,
+            //   unless we implement that ourselves.
+            // - We could instead store the iterator in it's current state next
+            //   to the read view in the snapshot cache, it would be uniquely
+            //   identified by (entry_id, last_space_id, last_space_tuple_count),
+            //   which means we're gucci...
+
+            let mut array_writer = ArrayWriter::from_vec(Vec::with_capacity(32 * 1024));
+            #[rustfmt::skip]
+            let skip = if space_id == position.space_id { position.tuple_offset } else { 0 };
+            for tuple_data in iter.skip(skip as _) {
+                if total_size + tuple_data.len() > snapshot_chunk_max_size && total_size != 0 {
+                    hit_threashold = true;
+                    break;
+                }
+                array_writer.push_raw(tuple_data)?;
+                total_size += tuple_data.len();
+                position.tuple_offset += 1;
+            }
+            let count = array_writer.len();
+            let tuples = array_writer.finish()?.into_inner();
+            // SAFETY: ArrayWriter guarantees the result is a valid msgpack array
+            let tuples = unsafe { TupleBuffer::from_vec_unchecked(tuples) };
+
+            let space_name = self
+                .global_space_name(space_id)
+                .expect("this id is from _pico_space");
+            tlog!(
+                Info,
+                "generated snapshot chunk for clusterwide space '{space_name}': {} tuples [{} bytes]",
+                count,
+                tuples.len(),
+            );
+            space_dumps.push(SpaceDump { space_id, tuples });
+
+            position.space_id = space_id;
+            if hit_threashold {
+                break;
+            } else {
+                // This space is finished, reset the offset.
+                position.tuple_offset = 0;
+            }
         }
-        let tuples = array_writer.finish()?.into_inner();
-        // SAFETY: ArrayWriter guarantees the result is a valid msgpack array
-        let tuples = unsafe { TupleBuffer::from_vec_unchecked(tuples) };
-        tlog!(
-            Info,
-            "generated snapshot for clusterwide space '{space_name}': {} bytes",
-            tuples.len()
+
+        let is_final = !hit_threashold;
+        tlog!(Debug, "generating snapshot chunk took {:?}", t0.elapsed();
+            "is_final" => is_final,
         );
-        Ok(SpaceDump {
-            space_id: space.id(),
-            tuples,
-        })
+
+        let snapshot_data = SnapshotData {
+            // Only the first chunk contains the schema_version, after that
+            // there's no need for it.
+            schema_version: u64::MAX,
+            space_dumps,
+            next_chunk_position: hit_threashold.then_some(position),
+        };
+        Ok(snapshot_data)
+    }
+
+    pub fn next_snapshot_data_chunk(
+        &self,
+        entry_id: RaftEntryId,
+        position: SnapshotPosition,
+    ) -> Result<SnapshotData> {
+        // We keep a &mut on the read views container here,
+        // so we mustn't yield for the duration of that borrow.
+        #[cfg(debug_assertions)]
+        let _guard = crate::util::NoYieldsGuard::new();
+
+        let Some(rv) = self.snapshot_cache.read_views().get_mut(&entry_id) else {
+            warn_or_panic!("read view for entry {entry_id:?} is not available");
+            return Err(Error::other(format!(
+                "read view not available for {entry_id:?}"
+            )));
+        };
+
+        let snapshot_data = self.next_snapshot_data_chunk_impl(rv, position)?;
+        if snapshot_data.next_chunk_position.is_none() {
+            // This customer has been served.
+            rv.ref_count -= 1;
+            if rv.ref_count == 0 {
+                tlog!(Info, "closing snapshot read view for {entry_id:?}");
+                self.snapshot_cache.read_views().remove(&entry_id);
+            }
+        }
+        Ok(snapshot_data)
+    }
+
+    pub fn first_snapshot_data_chunk(
+        &self,
+        entry_id: RaftEntryId,
+    ) -> Result<(SnapshotData, RaftEntryId)> {
+        // We keep a &mut on the read views container here,
+        // so we mustn't yield for the duration of that borrow.
+        #[cfg(debug_assertions)]
+        let _guard = crate::util::NoYieldsGuard::new();
+
+        // Find the latest available snapshot
+        let mut snapshots = self.snapshot_cache.read_views().iter_mut().rev();
+        // FIXME: test & fix case when raft log is compacted again after
+        // snapshot was generated.
+        if let Some((_, rv)) = snapshots.next() {
+            if rv.first_chunk.next_chunk_position.is_some() {
+                // A new instance has started applying this snapshot,
+                // so we must keep it open until it finishes.
+                rv.ref_count += 1;
+            }
+            return Ok((rv.first_chunk.clone(), rv.entry_id));
+        }
+
+        let mut rv = self.open_read_view(entry_id)?;
+        tlog!(Info, "opened snapshot read view for {entry_id}");
+        let position = SnapshotPosition::default();
+        let mut snapshot_data = self.next_snapshot_data_chunk_impl(&mut rv, position)?;
+        snapshot_data.schema_version = self.properties.global_schema_version()?;
+
+        rv.first_chunk = snapshot_data.clone();
+        if snapshot_data.next_chunk_position.is_some() {
+            rv.ref_count = 1;
+        }
+
+        let timeout = self.properties.snapshot_read_view_close_timeout()?;
+        let now = fiber::clock();
+        // Clear old snapshots.
+        // This is where we clear any stale single chunk snapshots, which never
+        // had any references, and snapshots with (probably) dangling references
+        // which outlived the allotted time.
+        #[rustfmt::skip]
+        self.snapshot_cache.read_views().retain(|entry_id, rv| {
+            if rv.ref_count == 0 {
+                tlog!(Info, "closing snapshot read view for {entry_id:?}, reason: no references");
+                return false;
+            }
+            if now.duration_since(rv.time_opened) > timeout {
+                tlog!(Info, "closing snapshot read view for {entry_id:?}, reason: timeout");
+                return false;
+            }
+            true
+        });
+
+        // Save this read view for later
+        self.snapshot_cache.read_views().insert(rv.entry_id, rv);
+
+        Ok((snapshot_data, entry_id))
+    }
+
+    fn global_space_name(&self, id: SpaceId) -> Result<Cow<'static, str>> {
+        if let Ok(space) = ClusterwideSpace::try_from(id) {
+            Ok(space.name().into())
+        } else {
+            let Some(space_def) = self.spaces.get(id)? else {
+                return Err(Error::other(format!("global space #{id} not found")));
+            };
+            Ok(space_def.name.into())
+        }
     }
 
     /// Applies contents of the raft snapshot. This includes
@@ -446,6 +618,15 @@ impl Clusterwide {
             old_priv_versions.insert(def, schema_version);
         }
 
+        // There can be mutliple space dumps for a given space in SnapshotData,
+        // because snapshots arrive in chunks. So when restoring space dumps we
+        // shouldn't truncate spaces which previously already restored chunk of
+        // space dump. The simplest way to solve this problem I found is to just
+        // store the ids of spaces we trunacted in a HashSet.
+        let mut truncated_spaces = HashSet::new();
+
+        let mut tuples_count = 0;
+        let t0 = std::time::Instant::now();
         for space_dump in &data.space_dumps {
             let space_id = space_dump.space_id;
             if !SCHEMA_DEFINITION_SPACES.contains(&space_id) {
@@ -457,12 +638,26 @@ impl Clusterwide {
             let space = self
                 .space_by_id(space_id)
                 .expect("global schema definition spaces should always be present");
-            space.truncate()?;
+
+            if !truncated_spaces.contains(&space_id) {
+                space.truncate()?;
+                truncated_spaces.insert(space_id);
+            }
+
             let tuples = space_dump.tuples.as_ref();
-            for tuple in ValueIter::from_array(tuples).map_err(TntError::from)? {
+            let tuples = ValueIter::from_array(tuples).map_err(TntError::from)?;
+            tuples_count += tuples.len().expect("ValueIter::from_array sets the length");
+
+            for tuple in tuples {
                 space.insert(RawBytes::new(tuple))?;
             }
         }
+        tlog!(
+            Debug,
+            "restoring global schema defintions took {:?} [{} tuples]",
+            t0.elapsed(),
+            tuples_count
+        );
 
         // If we're not the replication master, the rest of the data will come
         // via tarantool replication.
@@ -474,14 +669,24 @@ impl Clusterwide {
         let v_local = local_schema_version()?;
         let v_snapshot = data.schema_version;
         if is_master && v_local < v_snapshot {
+            let t0 = std::time::Instant::now();
+
             self.apply_schema_changes_on_master(self.spaces.iter()?, &old_space_versions)?;
             // TODO: secondary indexes
             self.apply_schema_changes_on_master(self.users.iter()?, &old_user_versions)?;
             self.apply_schema_changes_on_master(self.roles.iter()?, &old_role_versions)?;
             self.apply_schema_changes_on_master(self.privileges.iter()?, &old_priv_versions)?;
             set_local_schema_version(v_snapshot)?;
+
+            tlog!(
+                Debug,
+                "applying global schema changes took {:?}",
+                t0.elapsed()
+            );
         }
 
+        let mut tuples_count = 0;
+        let t0 = std::time::Instant::now();
         for space_dump in &data.space_dumps {
             let space_id = space_dump.space_id;
             if SCHEMA_DEFINITION_SPACES.contains(&space_id) {
@@ -495,12 +700,52 @@ impl Clusterwide {
                 );
                 continue;
             };
-            space.truncate()?;
+
+            if !truncated_spaces.contains(&space_id) {
+                space.truncate()?;
+                truncated_spaces.insert(space_id);
+            }
+
             let tuples = space_dump.tuples.as_ref();
-            for tuple in ValueIter::from_array(tuples).map_err(TntError::from)? {
+            let tuples = ValueIter::from_array(tuples).map_err(TntError::from)?;
+            tuples_count += tuples.len().expect("ValueIter::from_array sets the length");
+
+            for tuple in tuples {
                 space.insert(RawBytes::new(tuple))?;
             }
+            // Debug:   restoring rest of snapshot data took 5.9393054s [4194323 tuples]
+            // Release: restoring rest of snapshot data took 3.748683s [4194323 tuples]
+
+            // This works better in debug builds, but requires exporting mp_next
+            // or (better) porting it to rust. rmp::decode is based on the Read
+            // trait, which makes it really painfull to work with and also suck
+            // at debug build performance...
+            //
+            // let mut data = space_dump.tuples.as_ref();
+            // let end = data.as_ptr_range().end;
+            // let len = rmp::decode::read_array_len(&mut data).map_err(TntError::from)?;
+            // tuples_count += len;
+            // let mut p = data.as_ptr();
+            // while p < end {
+            //     let s = p;
+            //     unsafe {
+            //         box_mp_next(&mut p);
+            //         let rc = tarantool::ffi::tarantool::box_insert(space_id, s as _, p as _, std::ptr::null_mut());
+            //         if rc != 0 { return Err(tarantool::error::TarantoolError::last().into()); }
+            //     }
+            // }
+            // extern "C" {
+            //     fn box_mp_next(data: *mut *const u8); // just calls mp_next from msgpuck
+            // }
+            // Debug:   restoring rest of snapshot data took 3.5061713s [4194323 tuples]
+            // Release: restoring rest of snapshot data took 3.5179512s [4194323 tuples]
         }
+        tlog!(
+            Debug,
+            "restoring rest of snapshot data took {:?} [{} tuples]",
+            t0.elapsed(),
+            tuples_count
+        );
 
         return Ok(());
 
@@ -794,6 +1039,23 @@ impl From<ClusterwideSpace> for SpaceId {
 
         /// PG portal storage size.
         MaxPgPortals = "max_pg_portals",
+
+        /// Raft snapshot will be sent out in chunks not bigger than this threshold.
+        /// Note: actual snapshot size may exceed this threshold. In most cases
+        /// it will just add a couple of dozen metadata bytes. But in extreme
+        /// cases if there's a tuple larger than this threshold, it will be sent
+        /// in one piece whatever size it has. Please don't store tuples of size
+        /// greater than this.
+        SnapshotChunkMaxSize = "snapshot_chunk_max_size",
+
+        /// Snapshot read views with live reference counts will be forcefully
+        /// closed after this number of seconds. This is necessary if followers
+        /// do not properly finalize the snapshot application.
+        // NOTE: maybe we should instead track the instance/raft ids of
+        // followers which requested the snapshots and automatically close the
+        // read views if the corresponding instances are *deteremined* to not
+        // need them anymore. Or maybe timeouts is the better way..
+        SnapshotReadViewCloseTimeout = "snapshot_read_view_close_timeout",
     }
 }
 
@@ -804,6 +1066,8 @@ impl From<ClusterwideSpace> for SpaceId {
 pub const DEFAULT_PASSWORD_MIN_LENGTH: usize = 8;
 pub const DEFAULT_AUTO_OFFLINE_TIMEOUT: f64 = 5.0;
 pub const DEFAULT_MAX_HEARTBEAT_PERIOD: f64 = 5.0;
+pub const DEFAULT_SNAPSHOT_CHUNK_MAX_SIZE: usize = 16 * 1024 * 1024;
+pub const DEFAULT_SNAPSHOT_READ_VIEW_CLOSE_TIMEOUT: f64 = (24 * 3600) as _;
 
 impl Properties {
     pub fn new() -> tarantool::Result<Self> {
@@ -895,6 +1159,24 @@ impl Properties {
             .get(PropertyName::MaxPgPortals)?
             .unwrap_or(DEFAULT_MAX_PG_PORTALS);
         Ok(res)
+    }
+
+    #[inline]
+    pub fn snapshot_chunk_max_size(&self) -> tarantool::Result<usize> {
+        let res = self
+            .get(PropertyName::SnapshotChunkMaxSize)?
+            // Just in case user deletes this property.
+            .unwrap_or(DEFAULT_SNAPSHOT_CHUNK_MAX_SIZE);
+        Ok(res)
+    }
+
+    #[inline]
+    pub fn snapshot_read_view_close_timeout(&self) -> tarantool::Result<Duration> {
+        let res = self
+            .get(PropertyName::SnapshotReadViewCloseTimeout)?
+            // Just in case user deletes this property.
+            .unwrap_or(DEFAULT_SNAPSHOT_READ_VIEW_CLOSE_TIMEOUT);
+        Ok(Duration::from_secs_f64(res))
     }
 
     #[inline]
@@ -1422,20 +1704,87 @@ impl<T> std::fmt::Debug for EntryIter<T> {
 // SnapshotData
 ////////////////////////////////////////////////////////////////////////////////
 
-#[derive(Debug, ::serde::Serialize, ::serde::Deserialize)]
+#[derive(Debug, Default)]
+pub struct SnapshotCache {
+    read_views: UnsafeCell<BTreeMap<RaftEntryId, SnapshotReadView>>,
+}
+
+impl SnapshotCache {
+    #[allow(clippy::mut_from_ref)]
+    fn read_views(&self) -> &mut BTreeMap<RaftEntryId, SnapshotReadView> {
+        // Safety: this is safe as long as we only use it in tx thread.
+        unsafe { &mut *self.read_views.get() }
+    }
+}
+
+pub struct SnapshotReadView {
+    /// Applied entry id at the time the read view was opened.
+    entry_id: RaftEntryId,
+
+    /// [`fiber::clock()`] value at the moment snapshot read view was opened.
+    /// Can be used to close stale read views with dangling references, which
+    /// may occur if followers drop off during chunkwise snapshot application.
+    time_opened: Instant,
+
+    read_view: ReadView,
+
+    // TODO: this only works, if everybody who requested a snapshot always
+    // reports when the last snapshot piece is received. But if an instance
+    // suddenly diseapears it's ref_count will never be decremented and we'll
+    // be holding on to a stale snapshot forever (until reboot).
+    //
+    // To fix this maybe we want to also store the id of an instance who
+    // requested the snapshot (btw in raft-rs 0.7 raft::Storage::snapshot also
+    // accepts a raft id of the requestor) and clear the references when the
+    // instance is *determined* to not need it.
+    ref_count: u32,
+
+    // The first chunk which is generated when the snapshot is requested for the
+    // first time for a given raft entry id. It's an optimization I guess.
+    first_chunk: SnapshotData,
+}
+
+#[derive(Clone, Debug, Default, ::serde::Serialize, ::serde::Deserialize)]
 pub struct SnapshotData {
     pub schema_version: u64,
     pub space_dumps: Vec<SpaceDump>,
+    /// Position in the read view of the next chunk. If this is `None` the
+    /// current chunk is the last one.
+    pub next_chunk_position: Option<SnapshotPosition>,
 }
 impl Encode for SnapshotData {}
 
-#[derive(Debug, ::serde::Serialize, ::serde::Deserialize)]
+#[derive(Clone, Debug, ::serde::Serialize, ::serde::Deserialize)]
 pub struct SpaceDump {
     pub space_id: SpaceId,
     #[serde(with = "serde_bytes")]
     pub tuples: TupleBuffer,
 }
 impl Encode for SpaceDump {}
+
+/// Descriptor of a position of an iterator over a space which is in an open
+/// read view.
+#[rustfmt::skip]
+#[derive(Debug, Default, Clone, Copy, Hash, PartialEq, Eq)]
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct SnapshotPosition {
+    /// Id of the space for which the last space dump was generated.
+    pub space_id: SpaceId,
+
+    /// Number of tuples from the last space which were sent out so far.
+    /// Basically it's an offset of the first tuple which hasn't been sent yet.
+    pub tuple_offset: u32,
+}
+
+impl std::fmt::Display for SnapshotPosition {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(
+            f,
+            "[space_id: {}, tuple_offset: {}]",
+            self.space_id, self.tuple_offset
+        )
+    }
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 // Spaces
@@ -2794,9 +3143,12 @@ mod tests {
         };
         storage.replicasets.space.insert(&r).unwrap();
 
-        let snapshot_data = Clusterwide::snapshot_data().unwrap();
-        let space_dumps = snapshot_data.space_dumps;
+        let (snapshot_data, _) = storage
+            .first_snapshot_data_chunk(Default::default())
+            .unwrap();
+        assert!(snapshot_data.next_chunk_position.is_none());
 
+        let space_dumps = snapshot_data.space_dumps;
         let n_internal_spaces = ClusterwideSpace::values().len();
         assert_eq!(space_dumps.len(), n_internal_spaces);
 
@@ -2846,6 +3198,7 @@ mod tests {
         let mut data = SnapshotData {
             schema_version: 0,
             space_dumps: vec![],
+            next_chunk_position: None,
         };
 
         let i = Instance {

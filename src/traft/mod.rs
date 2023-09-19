@@ -65,6 +65,12 @@ impl Ord for RaftEntryId {
     }
 }
 
+impl std::fmt::Display for RaftEntryId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "[term: {}, index: {}]", self.term, self.index)
+    }
+}
+
 //////////////////////////////////////////////////////////////////////////////////////////
 /// Timestamps for raft entries.
 ///

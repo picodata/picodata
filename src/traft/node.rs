@@ -34,10 +34,13 @@ use crate::traft::op::{Acl, Ddl, Dml, Op, OpResult};
 use crate::traft::ConnectionPool;
 use crate::traft::ContextCoercion as _;
 use crate::traft::LogicalClock;
+use crate::traft::RaftEntryId;
 use crate::traft::RaftId;
 use crate::traft::RaftIndex;
 use crate::traft::RaftSpaceAccess;
 use crate::traft::RaftTerm;
+use crate::unwrap_ok_or;
+use crate::unwrap_some_or;
 use crate::util::AnyWithTypeName;
 use crate::warn_or_panic;
 
@@ -1188,6 +1191,91 @@ impl NodeImpl {
         );
     }
 
+    fn fetch_chunkwise_snapshot(
+        &self,
+        snapshot_data: &mut SnapshotData,
+        entry_id: RaftEntryId,
+    ) -> traft::Result<()> {
+        #[rustfmt::skip]
+        let mut position = snapshot_data.next_chunk_position
+            .expect("shouldn't be None if this function is called");
+        let space_dumps = &mut snapshot_data.space_dumps;
+        #[cfg(debug_assertions)]
+        let mut last_space_id = 0;
+        #[cfg(debug_assertions)]
+        let mut last_space_tuple_count = 0;
+
+        loop {
+            self.main_loop_status("receiving snapshot");
+
+            let Some(leader_id) = self.status.get().leader_id else {
+                tlog!(Warning, "leader id is unknown while trying to request next snapshot chunk");
+                return Err(Error::LeaderUnknown);
+            };
+
+            #[cfg(debug_assertions)]
+            {
+                let last = space_dumps.last().expect("should not be empty");
+
+                if last.space_id != last_space_id {
+                    last_space_tuple_count = 0;
+                }
+                last_space_id = last.space_id;
+
+                let mut tuples = last.tuples.as_ref();
+                let count = rmp::decode::read_array_len(&mut tuples)
+                    .expect("space dump should contain a msgpack array");
+                last_space_tuple_count += count;
+
+                assert_eq!(last_space_id, position.space_id);
+                assert_eq!(last_space_tuple_count, position.tuple_offset);
+            }
+            let req = rpc::snapshot::Request { entry_id, position };
+
+            const SNAPSHOT_CHUNK_REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
+            tlog!(Debug, "requesting next snapshot chunk";
+                "entry_id" => %entry_id,
+                "position" => %position,
+            );
+
+            let fut = self
+                .pool
+                .call(&leader_id, &req, SNAPSHOT_CHUNK_REQUEST_TIMEOUT);
+            let fut = unwrap_ok_or!(fut,
+                Err(e) => {
+                    tlog!(Warning, "failed requesting next snapshot chunk: {e}");
+                    self.main_loop_status("error when receiving snapshot");
+                    fiber::sleep(MainLoop::TICK * 4);
+                    continue;
+                }
+            );
+
+            let resp = fiber::block_on(fut);
+            let mut resp = unwrap_ok_or!(resp,
+                Err(e) => {
+                    let msg = e.to_string();
+                    if msg.contains("read view not available") {
+                        tlog!(Warning, "aborting snapshot retrieval: {e}");
+                        return Err(e);
+                    }
+
+                    tlog!(Warning, "failed requesting next snapshot chunk: {e}");
+                    self.main_loop_status("error when receiving snapshot");
+                    fiber::sleep(MainLoop::TICK * 4);
+                    continue;
+                }
+            );
+            space_dumps.append(&mut resp.snapshot_data.space_dumps);
+
+            position = unwrap_some_or!(resp.snapshot_data.next_chunk_position, {
+                tlog!(Debug, "received final snapshot chunk");
+                break;
+            });
+        }
+
+        Ok(())
+    }
+
     #[inline(always)]
     fn main_loop_status(&self, status: &'static str) {
         tlog!(Debug, "main_loop_status = '{status}'");
@@ -1243,8 +1331,22 @@ impl NodeImpl {
 
         let mut ready: raft::Ready = self.raw_node.ready();
 
+        // Apply soft state changes before anything else, so that this info is
+        // awailable for other fibers as soon as main loop yields.
+        if let Some(ss) = ready.ss() {
+            self.status
+                .send_modify(|s| {
+                    s.leader_id = (ss.leader_id != INVALID_ID).then_some(ss.leader_id);
+                    s.raft_state = ss.raft_state.into();
+                })
+                .expect("status shouldn't ever be borrowed across yields");
+        }
+
         // Send out messages to the other nodes.
         self.handle_messages(ready.take_messages());
+
+        // Handle read states before applying snapshot which may fail.
+        self.handle_read_states(ready.read_states());
 
         // This is a snapshot, we need to apply the snapshot at first.
         let snapshot = ready.snapshot();
@@ -1309,7 +1411,21 @@ impl NodeImpl {
             }
         })();
 
-        if let Some(snapshot_data) = snapshot_data {
+        if let Some(mut snapshot_data) = snapshot_data {
+            if snapshot_data.next_chunk_position.is_some() {
+                self.main_loop_status("receiving snapshot");
+                let entry_id = RaftEntryId {
+                    index: snapshot.get_metadata().index,
+                    term: snapshot.get_metadata().term,
+                };
+                if let Err(e) = self.fetch_chunkwise_snapshot(&mut snapshot_data, entry_id) {
+                    // Error has been logged.
+                    _ = e;
+                    tlog!(Warning, "dropping snapshot data");
+                    return;
+                }
+            }
+
             self.main_loop_status("applying snapshot");
 
             if let Err(e) = transaction(|| -> traft::Result<()> {
@@ -1348,20 +1464,6 @@ impl NodeImpl {
             }
         }
 
-        if let Some(ss) = ready.ss() {
-            if let Err(e) = self.status.send_modify(|s| {
-                s.leader_id = (ss.leader_id != INVALID_ID).then_some(ss.leader_id);
-                s.raft_state = ss.raft_state.into();
-            }) {
-                tlog!(Warning, "failed updating node status: {e}";
-                    "leader_id" => ss.leader_id,
-                    "raft_state" => ?ss.raft_state,
-                )
-            }
-        }
-
-        self.handle_read_states(ready.read_states());
-
         // Apply committed entries.
         let res = self.handle_committed_entries(ready.committed_entries(), wake_governor, expelled);
         if let Err(e) = res {
@@ -1380,9 +1482,9 @@ impl NodeImpl {
             // Raft HardState changed, and we need to persist it.
             if let Some(hs) = ready.hs() {
                 self.raft_storage.persist_hard_state(hs).unwrap();
-                if let Err(e) = self.status.send_modify(|s| s.term = hs.term) {
-                    tlog!(Warning, "failed updating current term: {e}"; "term" => hs.term)
-                }
+                self.status
+                    .send_modify(|s| s.term = hs.term)
+                    .expect("status shouldn't ever be borrowed across yields");
             }
 
             Ok(())

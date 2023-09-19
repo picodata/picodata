@@ -596,23 +596,25 @@ impl raft::Storage for RaftSpaceAccess {
     }
 
     fn snapshot(&self, idx: RaftIndex) -> Result<raft::Snapshot, RaftError> {
-        let applied = self.applied().cvt_err()?;
-        if applied < idx {
+        let applied = self.applied_entry_id().cvt_err()?;
+        if applied.index < idx {
             crate::warn_or_panic!(
-                "requested snapshot for index {idx} greater than applied {applied}"
+                "requested snapshot for index {idx} greater than applied {}",
+                applied.index,
             );
             return Err(StorageError::SnapshotTemporarilyUnavailable.into());
         }
 
-        let mut snapshot = raft::Snapshot::new();
+        let storage = crate::storage::Clusterwide::get();
+        let (data, entry_id) = storage.first_snapshot_data_chunk(applied).cvt_err()?;
 
+        let mut snapshot = raft::Snapshot::new();
         let meta = snapshot.mut_metadata();
-        meta.index = applied;
-        meta.term = self.term().cvt_err()?;
+        meta.index = entry_id.index;
+        meta.term = entry_id.term;
         *meta.mut_conf_state() = self.conf_state().cvt_err()?;
 
-        let snapshot_data = crate::storage::Clusterwide::snapshot_data().cvt_err()?;
-        let data = snapshot_data.to_tuple_buffer().cvt_err()?;
+        let data = data.to_tuple_buffer().cvt_err()?;
         *snapshot.mut_data() = Vec::from(data).into();
 
         Ok(snapshot)
@@ -631,6 +633,20 @@ impl<T> CvtErr for Result<T, tarantool::error::Error> {
     #[inline(always)]
     fn cvt_err(self) -> Result<T, StorageError> {
         self.map_err(|e| StorageError::Other(Box::new(e)))
+    }
+}
+
+// This is needed because traft::error::Error doesn't implement Sync & Send,
+// because it has the `Other` variant which isn't Sync & Send.
+#[derive(thiserror::Error, Debug)]
+#[error("{0}")]
+struct SyncSendError(String);
+
+impl<T> CvtErr for Result<T, traft::error::Error> {
+    type T = T;
+    #[inline(always)]
+    fn cvt_err(self) -> Result<T, StorageError> {
+        self.map_err(|e| StorageError::Other(Box::new(SyncSendError(e.to_string()))))
     }
 }
 
