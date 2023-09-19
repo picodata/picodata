@@ -9,6 +9,7 @@ use std::convert::TryFrom as _;
 
 use crate::instance::InstanceId;
 use crate::traft;
+use crate::traft::RaftEntryId;
 use crate::traft::RaftId;
 use crate::traft::RaftIndex;
 use crate::traft::RaftTerm;
@@ -141,6 +142,14 @@ impl RaftSpaceAccess {
         let res = self.try_get_raft_state("applied")?;
         let res = res.unwrap_or(0);
         Ok(res)
+    }
+
+    #[inline(always)]
+    pub fn applied_entry_id(&self) -> tarantool::Result<RaftEntryId> {
+        Ok(RaftEntryId {
+            index: self.applied()?,
+            term: self.term()?,
+        })
     }
 
     #[inline(always)]

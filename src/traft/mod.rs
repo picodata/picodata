@@ -37,6 +37,35 @@ pub const INIT_RAFT_TERM: RaftTerm = 1;
 pub type Result<T> = std::result::Result<T, error::Error>;
 
 //////////////////////////////////////////////////////////////////////////////////////////
+// RaftEntryId
+//////////////////////////////////////////////////////////////////////////////////////////
+
+/// A pair of raft entry index and term. Uniquely identifies a raft log entry.
+/// Defines a strict lexicographical ordering equivalent to (term, index).
+#[rustfmt::skip]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct RaftEntryId {
+    pub index: RaftIndex,
+    pub term: RaftTerm,
+}
+impl Encode for RaftEntryId {}
+
+impl PartialOrd for RaftEntryId {
+    #[inline(always)]
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        (self.term, self.index).partial_cmp(&(other.term, other.index))
+    }
+}
+
+impl Ord for RaftEntryId {
+    #[inline(always)]
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        (self.term, self.index).cmp(&(other.term, other.index))
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////
 /// Timestamps for raft entries.
 ///
 /// Logical clock provides a cheap and easy way for generating globally unique identifiers.
