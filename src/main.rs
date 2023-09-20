@@ -9,11 +9,10 @@ use nix::sys::signal;
 use nix::sys::termios::{tcgetattr, tcsetattr, SetArg::TCSADRAIN};
 use nix::sys::wait::{waitpid, WaitStatus};
 use nix::unistd::{self, fork, ForkResult};
-use picodata::args::{self, Address};
+use picodata::args::{self, Address, DEFAULT_USERNAME};
 use picodata::ipc;
 use picodata::tlog;
-use picodata::util::validate_and_complete_unix_socket_path;
-use picodata::util::Either::{Left, Right};
+use picodata::util::{unwrap_or_terminate, validate_and_complete_unix_socket_path};
 use picodata::Entrypoint;
 use picodata::IpcMessage;
 use rustyline::error::ReadlineError;
@@ -284,58 +283,69 @@ fn main_expel(args: args::Expel) -> ! {
     std::process::exit(rc);
 }
 
-fn main_connect(args: args::Connect) -> ! {
-    fn unwrap_or_terminate<T>(res: Result<T, String>) -> T {
-        match res {
-            Ok(value) => value,
-            Err(msg) => {
-                tlog!(Critical, "{msg}");
-                std::process::exit(1);
-            }
-        }
+fn get_password_from_file(path: &str) -> Result<String, String> {
+    let content = std::fs::read_to_string(path).map_err(|e| {
+        format!(r#"can't read password from password file by "{path}", reason: {e}"#)
+    })?;
+
+    let password = content
+        .lines()
+        .next()
+        .ok_or("Empty password file".to_string())?
+        .trim();
+
+    if password.is_empty() {
+        return Ok(String::new());
     }
 
+    Ok(password.into())
+}
+
+fn connect_and_start_interacitve_console(args: args::Connect) -> Result<(), String> {
+    let endpoint = if args.address_as_socket {
+        validate_and_complete_unix_socket_path(&args.address)?
+    } else {
+        let address = args
+            .address
+            .parse::<Address>()
+            .map_err(|msg| format!("invalid format of address argument: {msg}"))?;
+        let user = address.user.unwrap_or(args.user);
+
+        let password = if user == DEFAULT_USERNAME {
+            String::new()
+        } else if let Some(path) = args.password_file {
+            get_password_from_file(&path)?
+        } else {
+            let prompt = format!("Enter password for {user}: ");
+            picodata::util::prompt_password(&prompt)
+                .map_err(|e| format!("\nFailed to prompt for a password: {e}"))?
+        };
+
+        format!(
+            "{}:{}@{}:{}?auth_type={}",
+            user, password, address.host, address.port, args.auth_method
+        )
+    };
+
+    tarantool::lua_state()
+        .exec_with(
+            r#"local code, arg = ...
+            return load(code, '@src/connect.lua')(arg)"#,
+            (include_str!("connect.lua"), endpoint),
+        )
+        .map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+fn main_connect(args: args::Connect) -> ! {
     let rc = tarantool_main!(
         args.tt_args().unwrap(),
         callback_data: args,
         callback_data_type: args::Connect,
         callback_body: {
-            let endpoint = unwrap_or_terminate({
-                if args.address_as_socket {
-                    validate_and_complete_unix_socket_path(&args.address).map(Right)
-                } else {
-                    args.address.parse::<Address>()
-                        .map_err(|msg| format!("invalid format of address argument: {msg}"))
-                        .map(Left)
-                }
-            });
-
-            let raw_endpoint = match endpoint {
-                Left(address) => {
-                    let user = address.user.as_ref().unwrap_or(&args.user).clone();
-                    let prompt = format!("Enter password for {user}: ");
-                    let password = unwrap_or_terminate(
-                        picodata::util::prompt_password(&prompt)
-                            .map_err(|e| format!("Failed to prompt for a password: {e}")),
-                    );
-
-                    let password = unwrap_or_terminate(
-                        password.ok_or("\nNo password provided".into()),
-                    );
-
-                    format!(
-                        "{user}:{password}@{}:{}?auth_type={}",
-                        address.host, address.port, args.auth_method
-                    )
-                }
-                Right(socket_path) => socket_path,
-            };
-
-            unwrap_or_terminate(::tarantool::lua_state().exec_with(
-                r#"local code, arg = ...
-                return load(code, '@src/connect.lua')(arg)"#,
-                (include_str!("connect.lua"), raw_endpoint)
-            ).map_err(|e| e.to_string()));
+            unwrap_or_terminate(connect_and_start_interacitve_console(args));
+            std::process::exit(0)
         }
     );
 
@@ -414,9 +424,6 @@ impl Display for ResultSet {
 
 #[derive(thiserror::Error, Debug)]
 enum SqlReplError {
-    #[error("\nNo password provided")]
-    NoPasswordProvided,
-
     #[error("{0}")]
     Client(#[from] client::Error),
 
@@ -430,10 +437,7 @@ enum SqlReplError {
 const HISTORY_FILE_NAME: &str = ".picodata_history";
 
 async fn sql_repl_main(args: args::ConnectSql) {
-    if let Err(e) = sql_repl(args).await {
-        eprintln!("{e}");
-        std::process::exit(1)
-    }
+    unwrap_or_terminate(sql_repl(args).await);
     std::process::exit(0)
 }
 
@@ -475,14 +479,18 @@ fn handle_special_sequence(line: &str) -> Result<ControlFlow<String>, SqlReplErr
 
 async fn sql_repl(args: args::ConnectSql) -> Result<(), SqlReplError> {
     let user = args.address.user.as_ref().unwrap_or(&args.user).clone();
-    let prompt = format!("Enter password for {user}: ");
-    let password = match picodata::util::prompt_password(&prompt) {
-        Ok(Some(password)) => password,
-        Ok(None) => {
-            return Err(SqlReplError::NoPasswordProvided);
-        }
-        Err(e) => {
-            return Err(SqlReplError::Prompt(e));
+
+    let password = if user == DEFAULT_USERNAME {
+        String::new()
+    } else if let Some(path) = args.password_file {
+        unwrap_or_terminate(get_password_from_file(&path))
+    } else {
+        let prompt = format!("Enter password for {user}: ");
+        match picodata::util::prompt_password(&prompt) {
+            Ok(password) => password,
+            Err(e) => {
+                return Err(SqlReplError::Prompt(e));
+            }
         }
     };
 

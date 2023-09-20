@@ -308,7 +308,7 @@ pub struct Connect {
         short = 'u',
         long = "user",
         value_name = "USER",
-        default_value = "guest",
+        default_value = DEFAULT_USERNAME,
         env = "PICODATA_USER"
     )]
     /// The username to connect with. Ignored if provided in `ADDRESS`.
@@ -331,6 +331,11 @@ pub struct Connect {
     /// Picodata instance address to connect. Format:
     /// `[user@][host][:port]` or `--unix <PATH>`.
     pub address: String,
+
+    #[clap(long, env = "PICODATA_PASSWORD_FILE")]
+    /// Path to a plain-text file with a password.
+    /// If this option isn't provided, the password is prompted from the terminal.
+    pub password_file: Option<String>,
 }
 
 impl Connect {
@@ -382,6 +387,11 @@ pub struct ConnectSql {
     #[clap(value_name = "ADDRESS")]
     /// Picodata instance address. Format: `[user@][host][:port]`
     pub address: Address,
+
+    #[clap(long, env = "PICODATA_PASSWORD_FILE")]
+    /// Path to a plain-text file with a password.
+    /// If this option isn't provided, the password is prompted from the terminal.
+    pub password_file: Option<String>,
 }
 
 impl ConnectSql {
@@ -391,6 +401,7 @@ impl ConnectSql {
     }
 }
 
+pub const DEFAULT_USERNAME: &str = "guest";
 const DEFAULT_HOST: &str = "localhost";
 const DEFAULT_PORT: &str = "3301";
 

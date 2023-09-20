@@ -78,9 +78,6 @@ def test_connect_guest(i1: Instance):
     )
     cli.logfile = sys.stdout
 
-    cli.expect_exact("Enter password for guest: ")
-    cli.sendline("")
-
     cli.expect_exact(f"connected to {i1.host}:{i1.port}")
     cli.expect_exact(f"{i1.host}:{i1.port}>")
 
@@ -98,17 +95,17 @@ def test_connect_guest(i1: Instance):
 def test_no_pass(i1: Instance):
     cli = pexpect.spawn(
         command=i1.binary_path,
-        args=["connect", f"{i1.host}:{i1.port}"],
+        args=["connect", f"{i1.host}:{i1.port}", "-u", "user"],
         encoding="utf-8",
         timeout=1,
     )
     cli.logfile = sys.stdout
 
-    cli.expect_exact("Enter password for guest: ")
+    cli.expect_exact("Enter password for user: ")
     eprint("^D")
     cli.sendcontrol("d")
 
-    cli.expect_exact("No password provided")
+    cli.expect_exact("Failed to prompt for a password: operation interrupted")
     cli.expect_exact(pexpect.EOF)
 
 
@@ -259,7 +256,7 @@ def test_connect_unix_empty_path(binary_path: str):
     cli.expect_exact(pexpect.EOF)
 
 
-def test_connect_unix_ok(cluster: Cluster, tmpdir):
+def test_connect_unix_ok(cluster: Cluster):
     i1 = cluster.add_instance(wait_online=False)
     i1.env.update({"PICODATA_CONSOLE_SOCK": f"{i1.data_dir}/console.sock"})
     i1.start()
@@ -287,6 +284,82 @@ def test_connect_unix_ok(cluster: Cluster, tmpdir):
     cli.sendline("box.session.user()")
     cli.expect_exact("---\r\n")
     cli.expect_exact("- admin\r\n")
+    cli.expect_exact("...\r\n")
+    cli.expect_exact("\r\n")
+
+    eprint("^D")
+    cli.sendcontrol("d")
+    cli.expect_exact(pexpect.EOF)
+
+
+def test_connect_with_empty_password_path(binary_path: str):
+    cli = pexpect.spawn(
+        command=binary_path,
+        args=["connect", ":3301", "--password-file", "", "-u", "trash"],
+        env={"NO_COLOR": "1"},
+        encoding="utf-8",
+        timeout=1,
+    )
+    cli.logfile = sys.stdout
+
+    cli.expect_exact(
+        'can\'t read password from password file by "", '
+        "reason: No such file or directory (os error 2)"
+    )
+    cli.expect_exact(pexpect.EOF)
+
+
+def test_connect_with_wrong_password_path(binary_path: str):
+    cli = pexpect.spawn(
+        command=binary_path,
+        args=[
+            "connect",
+            ":3301",
+            "--password-file",
+            "/not/existing/path",
+            "-u",
+            "trash",
+        ],
+        env={"NO_COLOR": "1"},
+        encoding="utf-8",
+        timeout=1,
+    )
+    cli.logfile = sys.stdout
+
+    cli.expect_exact(
+        'can\'t read password from password file by "/not/existing/path", '
+        "reason: No such file or directory (os error 2)"
+    )
+    cli.expect_exact(pexpect.EOF)
+
+
+def test_connect_with_password_from_file(i1: Instance, binary_path: str):
+    password_path = i1.data_dir + "/password"
+    with open(password_path, "w") as f:
+        f.write("testpass")
+
+    cli = pexpect.spawn(
+        command=binary_path,
+        args=[
+            "connect",
+            f"{i1.host}:{i1.port}",
+            "--password-file",
+            password_path,
+            "-u",
+            "testuser",
+        ],
+        env={"NO_COLOR": "1"},
+        encoding="utf-8",
+        timeout=1,
+    )
+    cli.logfile = sys.stdout
+
+    cli.expect_exact(f"connected to {i1.host}:{i1.port}")
+    cli.expect_exact(f"{i1.host}:{i1.port}>")
+
+    cli.sendline("box.session.user()")
+    cli.expect_exact("---\r\n")
+    cli.expect_exact("- testuser\r\n")
     cli.expect_exact("...\r\n")
     cli.expect_exact("\r\n")
 

@@ -459,10 +459,7 @@ where
 ///
 /// This function bypasses stdin redirection (like `cat script.lua |
 /// picodata connect`) and always prompts a password from a TTY.
-///
-/// If this function returns `Ok(None)`, the input was interrupted by a
-/// user.
-pub fn prompt_password(prompt: &str) -> Result<Option<String>, std::io::Error> {
+pub fn prompt_password(prompt: &str) -> Result<String, std::io::Error> {
     // See also: https://man7.org/linux/man-pages/man3/termios.3.html
     let mut tty = std::fs::File::options()
         .read(true)
@@ -500,11 +497,11 @@ pub fn prompt_password(prompt: &str) -> Result<Option<String>, std::io::Error> {
 
     if !password.ends_with('\n') {
         // Preliminary EOF, a user didn't hit enter
-        return Ok(None);
+        return Err(std::io::Error::from(std::io::ErrorKind::Interrupted));
     }
 
     let crlf = |c| matches!(c, '\r' | '\n');
-    Ok(Some(password.trim_end_matches(crlf).to_owned()))
+    Ok(password.trim_end_matches(crlf).to_owned())
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -532,6 +529,20 @@ pub fn validate_and_complete_unix_socket_path(socket_path: &str) -> Result<Strin
     .map_err(|_| format!("invalid socket path: {socket_path}"))?;
 
     Ok(console_sock)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// Like unwrap(), but instead of a panic it logs
+/// the error in picodata format and calls exit()
+///
+pub fn unwrap_or_terminate<T, E: std::fmt::Display>(res: Result<T, E>) -> T {
+    match res {
+        Ok(value) => value,
+        Err(msg) => {
+            crate::tlog!(Critical, "{msg}");
+            std::process::exit(1);
+        }
+    }
 }
 ////////////////////////////////////////////////////////////////////////////////
 /// IsSameType
