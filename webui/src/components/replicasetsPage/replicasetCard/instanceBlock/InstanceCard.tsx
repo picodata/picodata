@@ -37,7 +37,9 @@ export const InstanceCard: FC<InstanceCardProps> = ({ instance }) => {
         </div>
         <div className={styles.infoColumn}>
           <p className={styles.noMargin}>Failure domain</p>
-          <p className={styles.instanceInfo}>{instance.failureDomain}</p>
+          <p className={styles.instanceInfo}>
+            {JSON.stringify(instance.failureDomain)}
+          </p>
         </div>
         <div className={styles.infoColumn}>
           <p className={styles.noMargin}>Version</p>
@@ -45,7 +47,7 @@ export const InstanceCard: FC<InstanceCardProps> = ({ instance }) => {
         </div>
       </div>
       <InstanceModal
-        key={instance.name}
+        key={`${instance.name}_modal`}
         instance={instance}
         isOpen={isOpenModal}
         onClose={onCloseHandler}

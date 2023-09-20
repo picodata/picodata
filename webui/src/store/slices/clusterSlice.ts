@@ -1,4 +1,6 @@
+import axios from "axios";
 import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
+
 import { ActionTypes, ClusterInfoType, ReplicasetType } from "./types";
 
 export interface ClusterState {
@@ -10,8 +12,8 @@ const initialState: ClusterState = {
   clusterInfo: {
     capacityUsage: " ",
     memory: {
-      used: "",
-      usable: "",
+      used: 0,
+      usable: 0,
     },
     replicasetsCount: 0,
     instancesCurrentGradeOnline: 0,
@@ -39,140 +41,25 @@ const initialState: ClusterState = {
   ],
 };
 
+// TODO: Research how to add base URL to dev builds
+const GET_REPLICASETS_URL = "/api/v1/replicasets";
+
 export const getReplicasets = createAsyncThunk<ReplicasetType[]>(
   ActionTypes.getReplicasetsType,
   async () => {
-    return new Promise((res) => {
-      res([
-        {
-          id: "Test1231",
-          instanceCount: 2,
-          instances: [
-            {
-              name: "Test 1",
-              targetGrade: "target grade",
-              currentGrade: "current grade",
-              failureDomain: "Failure",
-              version: "1.2",
-              isLeader: true,
-            },
-            {
-              name: "Test 2",
-              targetGrade: "target grade",
-              currentGrade: "current grade",
-              failureDomain: "Failure",
-              version: "1.2",
-              isLeader: false,
-            },
-          ],
-          version: "1.1",
-          grade: "Main grade",
-          capacity: "2,5MiB/50 GiB",
-        },
-        {
-          id: "Test0",
-          instanceCount: 3,
-          instances: [
-            {
-              name: "Best",
-              targetGrade: "target grade",
-              currentGrade: "current grade",
-              failureDomain: "Failure",
-              version: "1.2",
-              isLeader: false,
-            },
-            {
-              name: "Lovely",
-              targetGrade: "target grade",
-              currentGrade: "current grade",
-              failureDomain: "Failure",
-              version: "1.2",
-              isLeader: true,
-            },
-          ],
-          version: "1.1",
-          grade: "Main grade",
-          capacity: "2,5MiB/50 GiB",
-        },
-        {
-          id: "Test123",
-          instanceCount: 1,
-          instances: [
-            {
-              name: "Donatello",
-              targetGrade: "target grade",
-              currentGrade: "current grade",
-              failureDomain: "Failure",
-              version: "1.2",
-              isLeader: true,
-            },
-            {
-              name: "Leonardo",
-              targetGrade: "target grade",
-              currentGrade: "current grade",
-              failureDomain: "Failure",
-              version: "1.2",
-              isLeader: false,
-            },
-            {
-              name: "Shredder",
-              targetGrade: "target grade",
-              currentGrade: "current grade",
-              failureDomain: "Failure",
-              version: "1.2",
-              isLeader: false,
-            },
-          ],
-          version: "1.1",
-          grade: "Main grade",
-          capacity: "2,5MiB/50 GiB",
-        },
-        {
-          id: "Test1232",
-          instanceCount: 2,
-          instances: [
-            {
-              name: "Raphael",
-              targetGrade: "target grade",
-              currentGrade: "current grade",
-              failureDomain: "Failure",
-              version: "1.2",
-              isLeader: false,
-            },
-            {
-              name: "Michelangelo",
-              targetGrade: "target grade",
-              currentGrade: "current grade",
-              failureDomain: "Failure",
-              version: "1.2",
-              isLeader: true,
-            },
-          ],
-          version: "1.1",
-          grade: "Main grade",
-          capacity: "2,5MiB/50 GiB",
-        },
-      ]);
-    });
+    const response = await axios.get(GET_REPLICASETS_URL);
+    return response.data;
   }
 );
+
+// TODO: Research how to add base URL to dev builds
+const CLUSTER_INFO_URL = "/api/v1/cluster";
 
 export const getClusterInfo = createAsyncThunk<ClusterInfoType>(
   ActionTypes.getClusterInfoType,
   async () => {
-    return new Promise((res) => {
-      res({
-        capacityUsage: "30%",
-        memory: {
-          used: "3GB",
-          usable: "24 GB",
-        },
-        replicasetsCount: 12,
-        instancesCurrentGradeOnline: 12,
-        instancesCurrentGradeOffline: 12,
-        currentInstaceVersion: "1.22",
-      });
-    });
+    const response = await axios.get(CLUSTER_INFO_URL);
+    return response.data;
   }
 );
 

@@ -14,8 +14,8 @@ export const LeaderBigIcon: FC<IconProps> = (props) => (
       fill="#FFBA79"
       stroke="#F7941D"
       stroke-width="1.5"
-      stroke-linecap="round"
-      stroke-linejoin="round"
+      strokeLinecap="round"
+      strokeLinejoin="round"
     />
   </Icon>
 );

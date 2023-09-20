@@ -18,8 +18,8 @@ export interface ReplicasetType {
 export interface ClusterInfoType {
   capacityUsage: string;
   memory: {
-    used: string;
-    usable: string;
+    used: number;
+    usable: number;
   };
   replicasetsCount: number;
   instancesCurrentGradeOnline: number;

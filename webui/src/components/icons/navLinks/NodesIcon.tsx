@@ -7,7 +7,7 @@ export const NodesIcon: FC<IconProps> = (props) => (
       d="M20 2H4C2.89543 2 2 2.89543 2 4V8C2 9.10457 2.89543 10 4 10H20C21.1046 10 22 9.10457 22 8V4C22 2.89543 21.1046 2 20 2Z"
       stroke="#F7941D"
       strokeWidth="1.5"
-      stroke-linecap="round"
+      strokeLinecap="round"
       strokeLinejoin="round"
     />
     <path

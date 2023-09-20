@@ -42,8 +42,8 @@ export const ReplicasetCard: FC<ReplicasetCardProps> = ({ replicaset }) => {
           <p className={styles.infoValue}>{replicaset.grade}</p>
         </div>
         <div className={styles.infoColumn}>
-          <p className={styles.noMargin}> Capacity</p>
-          <p className={styles.infoValue}>{replicaset.capacity}</p>
+          <p className={styles.noMargin}> Capacity usage</p>
+          <p className={styles.infoValue}>{`${replicaset.capacity}%`}</p>
         </div>
         <div className={styles.infoColumn}>{elChevron}</div>
       </div>

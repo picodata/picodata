@@ -14,6 +14,21 @@ export const ClusterInfo = () => {
     dispatch(getClusterInfo());
   }, [dispatch]);
 
+  const castMemorySize = (size: number): string => {
+    const megabyte = Math.pow(2, 20);
+    if (size / megabyte > 1) {
+      const mbs = Math.round(size / megabyte);
+      return `${mbs} Mb`;
+    }
+
+    const gigabyte = Math.pow(2, 30);
+    if (size / gigabyte > 1) {
+      const gbs = Math.round(size / gigabyte);
+      return `${gbs} Gb`;
+    }
+
+    return String(size);
+  };
   return (
     <div className={styles.wrapper}>
       <div className={styles.infoColumn}>
@@ -30,12 +45,14 @@ export const ClusterInfo = () => {
         <div className={styles.textWrapper}>
           <div className={styles.textBlock}>
             <p className={styles.greyText}>Used</p>
-            <p className={styles.boldText}>{clusterInfoSelector.memory.used}</p>
+            <p className={styles.boldText}>
+              {castMemorySize(clusterInfoSelector.memory.used)}
+            </p>
           </div>
           <div className={styles.textBlock}>
             <p className={styles.greyText}>Usable</p>
             <p className={styles.boldText}>
-              {clusterInfoSelector.memory.usable}
+              {castMemorySize(clusterInfoSelector.memory.usable)}
             </p>
           </div>
         </div>

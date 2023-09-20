@@ -30,7 +30,6 @@ export const InstanceModal: FC<InstanceModalProps> = ({
                 })}
               >
                 <span>
-                  <p className={styles.titleLabel}>Title</p>
                   <p className={styles.titleText}>{key}</p>
                 </span>
                 <p>{instance[key as keyof InstanceType]}</p>
@@ -57,7 +56,7 @@ export const InstanceModal: FC<InstanceModalProps> = ({
           <CloseIcon onClick={onClose} />
         </div>
         <div className={styles.tabGroup}>
-          <span>box.info</span>
+          <span>General</span>
         </div>
         <div className={styles.boxInfo}>{boxInfoEl}</div>
       </div>
