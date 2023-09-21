@@ -5,23 +5,10 @@ use ::tarantool::auth::AuthDef;
 use ::tarantool::index::{IndexId, Part};
 use ::tarantool::space::{Field, SpaceId};
 use ::tarantool::tlua;
-use ::tarantool::tuple::{ToTupleBuffer, Tuple, TupleBuffer};
+use ::tarantool::tuple::{ToTupleBuffer, TupleBuffer};
 use serde::{Deserialize, Serialize};
 use tarantool::session::UserId;
 use tarantool::space::SpaceEngineType;
-
-////////////////////////////////////////////////////////////////////////////////
-// OpResult
-////////////////////////////////////////////////////////////////////////////////
-
-// TODO: remove this trait completely.
-pub trait OpResult {
-    type Result: 'static;
-    // FIXME: this signature makes it look like result of any operation depends
-    // only on what is contained within the operation which is almost never true
-    // And it makes it hard to do anything useful inside this function.
-    fn result(&self) -> Self::Result;
-}
 
 ////////////////////////////////////////////////////////////////////////////////
 /// The operation on the raft state machine.
@@ -161,7 +148,7 @@ impl std::fmt::Display for Op {
 
                 write!(
                     f,
-                    "GrantPrivilege({schema_version}, {grantor_id}, {grantee_id}, {object_type}, {object_id:?}, {privilege})", 
+                    "GrantPrivilege({schema_version}, {grantor_id}, {grantee_id}, {object_type}, {object_id:?}, {privilege})",
                     schema_version = priv_def.schema_version(),
                     grantor_id = priv_def.grantor_id(),
                     grantee_id = priv_def.grantee_id(),
@@ -277,14 +264,6 @@ impl Op {
     }
 }
 
-// TODO: remove this
-impl OpResult for Op {
-    type Result = ();
-    fn result(&self) -> Self::Result {
-        unreachable!()
-    }
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 // Dml
 ////////////////////////////////////////////////////////////////////////////////
@@ -341,14 +320,6 @@ impl Dml {
         Replace = "replace",
         Update = "update",
         Delete = "delete",
-    }
-}
-
-// TODO: remove this
-impl OpResult for Dml {
-    type Result = tarantool::Result<(Option<Tuple>, Option<Tuple>)>;
-    fn result(&self) -> Self::Result {
-        unreachable!()
     }
 }
 

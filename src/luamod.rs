@@ -917,8 +917,8 @@ pub(crate) fn setup(args: &args::Run) {
                     }
                 );
 
-                let header = ["index", "term", "lc", "contents"];
-                let [index, term, lc, contents] = header;
+                let header = ["index", "term", "contents"];
+                let [index, term, contents] = header;
                 let mut rows = vec![];
                 let mut col_widths = header.map(|h| h.len());
                 let node = traft::node::global()?;
@@ -929,10 +929,6 @@ pub(crate) fn setup(args: &args::Run) {
                     let row = [
                         entry.index.to_string(),
                         entry.term.to_string(),
-                        entry
-                            .lc()
-                            .map(|lc| lc.to_string())
-                            .unwrap_or_else(String::new),
                         entry.payload().to_string(),
                     ];
                     for i in 0..col_widths.len() {
@@ -940,7 +936,7 @@ pub(crate) fn setup(args: &args::Run) {
                     }
                     rows.push(row);
                 }
-                let [iw, tw, lw, mut cw] = col_widths;
+                let [iw, tw, mut cw] = col_widths;
 
                 let total_width = 1 + header.len() + col_widths.iter().sum::<usize>();
                 if total_width > max_width {
@@ -972,37 +968,33 @@ pub(crate) fn setup(args: &args::Run) {
                             // Adding a space before '|' doesn't help but a ZERO WIDTH SPACE
                             // for what ever reason does. So this is basically a crutch,
                             // but if it's good enough for tarantool developers, it's good enough for us.
-                            writeln!(buf, "\u{200b}+{0:-^iw$}+{0:-^tw$}+{0:-^lw$}+{0:-<cw$}+", "")
+                            writeln!(buf, "\u{200b}+{0:-^iw$}+{0:-^tw$}+{0:-<cw$}+", "")
                         }
                         Justify::Center => {
-                            writeln!(buf, "\u{200b}+{0:-^iw$}+{0:-^tw$}+{0:-^lw$}+{0:-^cw$}+", "")
+                            writeln!(buf, "\u{200b}+{0:-^iw$}+{0:-^tw$}+{0:-^cw$}+", "")
                         }
                         Justify::Right => {
-                            writeln!(buf, "\u{200b}+{0:-^iw$}+{0:-^tw$}+{0:-^lw$}+{0:->cw$}+", "")
+                            writeln!(buf, "\u{200b}+{0:-^iw$}+{0:-^tw$}+{0:->cw$}+", "")
                         }
                     }
                     .unwrap()
                 };
                 row_sep(&mut buf);
-                write!(buf, "\u{200b}|{index: ^iw$}|{term: ^tw$}|{lc: ^lw$}|").unwrap();
+                write!(buf, "\u{200b}|{index: ^iw$}|{term: ^tw$}|").unwrap();
                 write_contents(&mut buf, contents).unwrap();
                 row_sep(&mut buf);
-                for [index, term, lc, contents] in rows {
+                for [index, term, contents] in rows {
                     if contents.len() <= cw {
-                        write!(buf, "\u{200b}|{index: ^iw$}|{term: ^tw$}|{lc: ^lw$}|").unwrap();
+                        write!(buf, "\u{200b}|{index: ^iw$}|{term: ^tw$}|").unwrap();
                         write_contents(&mut buf, &contents).unwrap();
                     } else {
-                        write!(buf, "\u{200b}|{index: ^iw$}|{term: ^tw$}|{lc: ^lw$}|").unwrap();
+                        write!(buf, "\u{200b}|{index: ^iw$}|{term: ^tw$}|").unwrap();
                         write_contents(&mut buf, &contents[..cw]).unwrap();
                         let mut rest = &contents[cw..];
                         while !rest.is_empty() {
                             let clamped_cw = usize::min(rest.len(), cw);
-                            write!(
-                                buf,
-                                "\u{200b}|{blank: ^iw$}|{blank: ^tw$}|{blank: ^lw$}|",
-                                blank = "~",
-                            )
-                            .unwrap();
+                            write!(buf, "\u{200b}|{blank: ^iw$}|{blank: ^tw$}|", blank = "~",)
+                                .unwrap();
                             write_contents(&mut buf, &rest[..clamped_cw]).unwrap();
                             rest = &rest[clamped_cw..];
                         }

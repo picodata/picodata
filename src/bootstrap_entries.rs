@@ -18,27 +18,20 @@ use crate::storage::PropertyName;
 use crate::tier::Tier;
 use crate::traft;
 use crate::traft::op;
-use crate::traft::LogicalClock;
 
 pub(super) fn prepare(args: &args::Run, instance: &Instance, tiers: &[Tier]) -> Vec<raft::Entry> {
-    let mut lc = LogicalClock::new(instance.raft_id, 0);
     let mut init_entries = Vec::new();
 
     let mut init_entries_push_op = |dml: tarantool::Result<op::Dml>| {
         let dml = dml.expect("serialization cannot fail");
 
-        lc.inc();
-
-        let ctx = traft::EntryContextNormal {
-            op: op::Op::from(dml),
-            lc,
-        };
+        let context = traft::EntryContext::Op(op::Op::from(dml));
         let e = traft::Entry {
             entry_type: raft::EntryType::EntryNormal,
             index: (init_entries.len() + 1) as _,
             term: traft::INIT_RAFT_TERM,
             data: vec![],
-            context: Some(traft::EntryContext::Normal(ctx)),
+            context,
         };
 
         init_entries.push(raft::Entry::try_from(e).unwrap());
@@ -221,7 +214,7 @@ pub(super) fn prepare(args: &args::Run, instance: &Instance, tiers: &[Tier]) -> 
             index: (init_entries.len() + 1) as _,
             term: traft::INIT_RAFT_TERM,
             data: conf_change.write_to_bytes().unwrap(),
-            context: None,
+            context: traft::EntryContext::None,
         };
 
         raft::Entry::try_from(e).unwrap()

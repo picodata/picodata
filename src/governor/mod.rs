@@ -174,7 +174,7 @@ impl Loop {
                 governor_step! {
                     "proposing replicaset target master change"
                     async {
-                        node.propose_and_wait(op, Duration::from_secs(3))??;
+                        node.propose_and_wait(op, Duration::from_secs(3))?;
                     }
                 }
             }
@@ -227,7 +227,7 @@ impl Loop {
                         "replicaset_id" => %replicaset_id,
                     ]
                     async {
-                        node.propose_and_wait(op, Duration::from_secs(3))??
+                        node.propose_and_wait(op, Duration::from_secs(3))?
                     }
                 }
             }
@@ -273,7 +273,7 @@ impl Loop {
                         "replicaset_id" => %replicaset_id,
                     ]
                     async {
-                        node.propose_and_wait(op, Duration::from_secs(3))??;
+                        node.propose_and_wait(op, Duration::from_secs(3))?;
                     }
                 }
             }
@@ -388,7 +388,7 @@ impl Loop {
                             .call(target, &rpc, Self::SYNC_TIMEOUT)?
                             .timeout(Self::SYNC_TIMEOUT)
                             .await?;
-                        node.propose_and_wait(op, Duration::from_secs(3))??
+                        node.propose_and_wait(op, Duration::from_secs(3))?
                     }
                 }
             }
@@ -398,7 +398,7 @@ impl Loop {
                 governor_step! {
                     "proposing replicaset state change"
                     async {
-                        node.propose_and_wait(op, Duration::from_secs(3))??;
+                        node.propose_and_wait(op, Duration::from_secs(3))?;
                     }
                 }
             }
@@ -502,7 +502,7 @@ impl Loop {
                 governor_step! {
                     "updating target vshard config"
                     async {
-                        node.propose_and_wait(dml, Duration::from_secs(3))??;
+                        node.propose_and_wait(dml, Duration::from_secs(3))?;
                     }
                 }
             }
@@ -533,7 +533,7 @@ impl Loop {
                 governor_step! {
                     "updating current vshard config"
                     async {
-                        node.propose_and_wait(dml, Duration::from_secs(3))??;
+                        node.propose_and_wait(dml, Duration::from_secs(3))?;
                     }
                 }
             }

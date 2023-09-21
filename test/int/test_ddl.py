@@ -651,7 +651,7 @@ def test_ddl_create_table_partial_failure(cluster: Cluster):
         "box.space._raft_log:select", None, dict(iterator="lt", limit=1)
     )
     # Has not yet been finalized
-    assert entry[4][1][0] == "ddl_prepare"
+    assert entry[4][0] == "ddl_prepare"
 
     # Expel the last conflicting instance to fix the conflict.
     i1.call("pico.expel", "i5")
@@ -967,7 +967,7 @@ def test_ddl_drop_table_partial_failure(cluster: Cluster):
         "box.space._raft_log:select", None, dict(iterator="lt", limit=1)
     )
     # Has not yet been finalized
-    assert entry[4][1][0] == "ddl_prepare"
+    assert entry[4][0] == "ddl_prepare"
 
     # Space is not yet dropped.
     assert i1.call("box.space._space.index.name:get", space_name) is not None

@@ -3,7 +3,6 @@
 pub mod error;
 pub(crate) mod network;
 pub mod node;
-pub mod notify;
 pub mod op;
 pub(crate) mod raft_storage;
 
@@ -11,9 +10,7 @@ use crate::instance::Instance;
 use crate::stringify_debug;
 use ::raft::prelude as raft;
 use ::tarantool::tuple::Encode;
-use error::CoercionError;
 use op::Op;
-use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::convert::TryFrom;
 use std::fmt::Debug;
@@ -71,7 +68,7 @@ impl std::fmt::Display for RaftEntryId {
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////
-/// Timestamps for raft entries.
+/// Timestamps for raft read states.
 ///
 /// Logical clock provides a cheap and easy way for generating globally unique identifiers.
 ///
@@ -98,6 +95,30 @@ impl LogicalClock {
 impl std::fmt::Display for LogicalClock {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(f, "{}.{}.{}", self.id, self.gen, self.count)
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// ReadStateContext
+////////////////////////////////////////////////////////////////////////////////
+
+/// Context of a raft read state request. Is required to distinguish between
+/// responses to different read state requests.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ReadStateContext {
+    pub lc: LogicalClock,
+}
+
+impl ReadStateContext {
+    #[inline(always)]
+    fn from_raft_ctx(ctx: &[u8]) -> Result<Self> {
+        let res = rmp_serde::from_slice(ctx).map_err(tarantool::error::Error::from)?;
+        Ok(res)
+    }
+
+    #[inline(always)]
+    fn to_raft_ctx(&self) -> Vec<u8> {
+        rmp_serde::to_vec_named(self).expect("out of memory")
     }
 }
 
@@ -143,11 +164,11 @@ pub struct Entry {
     pub data: Vec<u8>,
 
     /// Corresponding `entry.payload`. Managed by the Picodata.
-    pub context: Option<EntryContext>,
+    pub context: EntryContext,
 }
+impl Encode for Entry {}
 
 mod entry_type_as_i32 {
-    use super::error::CoercionError::UnknownEntryType;
     use ::raft::prelude as raft;
     use protobuf::ProtobufEnum as _;
     use serde::{self, Deserialize, Deserializer, Serializer};
@@ -166,7 +187,8 @@ mod entry_type_as_i32 {
         D: Deserializer<'de>,
     {
         let t = i32::deserialize(de)?;
-        raft::EntryType::from_i32(t).ok_or_else(|| D::Error::custom(UnknownEntryType(t)))
+        raft::EntryType::from_i32(t)
+            .ok_or_else(|| D::Error::custom(format!("unknown entry type ({t})")))
     }
 }
 
@@ -174,70 +196,37 @@ mod entry_type_as_i32 {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(untagged)]
 pub enum EntryContext {
-    Normal(EntryContextNormal),
-    ConfChange(EntryContextConfChange),
+    Op(Op),
+    None,
 }
-
-/// [`EntryContext`] of a normal entry.
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-pub struct EntryContextNormal {
-    pub lc: LogicalClock,
-    pub op: Op,
-}
-
-impl EntryContextNormal {
-    #[inline]
-    pub fn new(lc: LogicalClock, op: impl Into<Op>) -> Self {
-        Self { lc, op: op.into() }
-    }
-}
-
-/// [`EntryContext`] of a conf change entry, either `EntryConfChange` or `EntryConfChangeV2`
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-pub struct EntryContextConfChange {
-    pub instances: Vec<Instance>,
-}
-
-impl Encode for Entry {}
-impl ContextCoercion for EntryContextNormal {}
-impl ContextCoercion for EntryContextConfChange {}
+impl Encode for EntryContext {}
 
 impl Entry {
-    /// Returns the logical clock value if it's an `EntryNormal`.
-    pub fn lc(&self) -> Option<LogicalClock> {
-        match &self.context {
-            Some(EntryContext::Normal(v)) => Some(v.lc),
-            Some(EntryContext::ConfChange(_)) => None,
-            None => None,
-        }
-    }
-
     /// Returns the contained `Op` if it's an `EntryNormal`
     /// consuming `self` by value.
     pub fn into_op(self) -> Option<Op> {
         match self.context {
-            Some(EntryContext::Normal(v)) => Some(v.op),
-            Some(EntryContext::ConfChange(_)) => None,
-            None => None,
+            EntryContext::Op(op) => Some(op),
+            EntryContext::None => None,
         }
     }
 
     pub fn payload(&self) -> EntryPayload {
         match (self.entry_type, &self.context) {
-            (raft::EntryType::EntryNormal, None) => {
+            (raft::EntryType::EntryNormal, EntryContext::None) => {
                 debug_assert!(self.data.is_empty());
                 EntryPayload::NormalEmpty
             }
-            (raft::EntryType::EntryNormal, Some(EntryContext::Normal(ctx))) => {
+            (raft::EntryType::EntryNormal, EntryContext::Op(op)) => {
                 debug_assert!(self.data.is_empty());
-                EntryPayload::Normal(ctx)
+                EntryPayload::Normal(op)
             }
-            (raft::EntryType::EntryConfChange, None) => {
+            (raft::EntryType::EntryConfChange, EntryContext::None) => {
                 let mut cc = raft::ConfChange::default();
                 cc.merge_from_bytes(&self.data).unwrap();
                 EntryPayload::ConfChange(cc)
             }
-            (raft::EntryType::EntryConfChangeV2, None) => {
+            (raft::EntryType::EntryConfChangeV2, EntryContext::None) => {
                 let mut cc = raft::ConfChangeV2::default();
                 cc.merge_from_bytes(&self.data).unwrap();
                 EntryPayload::ConfChangeV2(cc)
@@ -253,7 +242,7 @@ impl Entry {
 #[derive(Debug)]
 pub enum EntryPayload<'a> {
     NormalEmpty,
-    Normal(&'a EntryContextNormal),
+    Normal(&'a Op),
     ConfChange(raft::ConfChange),
     ConfChangeV2(raft::ConfChangeV2),
 }
@@ -262,7 +251,7 @@ impl<'a> std::fmt::Display for EntryPayload<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         return match self {
             EntryPayload::NormalEmpty => f.write_str("-"),
-            EntryPayload::Normal(norm) => write!(f, "{}", norm.op),
+            EntryPayload::Normal(op) => write!(f, "{}", op),
             EntryPayload::ConfChange(cc) => {
                 write!(f, "{}({})", change_type(cc.change_type), cc.node_id)
             }
@@ -291,30 +280,28 @@ impl<'a> std::fmt::Display for EntryPayload<'a> {
 }
 
 impl EntryContext {
-    pub fn from_raft_entry(e: &raft::Entry) -> StdResult<Option<Self>, CoercionError> {
+    #[inline]
+    pub fn from_raft_entry(e: &raft::Entry) -> Result<Self> {
         if e.context.is_empty() {
-            return Ok(None);
+            return Ok(Self::None);
         }
-        let res = match e.entry_type {
-            raft::EntryType::EntryNormal => Self::Normal(ContextCoercion::from_bytes(&e.context)?),
-            raft::EntryType::EntryConfChange | raft::EntryType::EntryConfChangeV2 => {
-                Self::ConfChange(ContextCoercion::from_bytes(&e.context)?)
-            }
-        };
-        Ok(Some(res))
+        let res: Self = rmp_serde::from_slice(&e.context).map_err(tarantool::error::Error::from)?;
+        Ok(res)
     }
 
-    fn write_to_bytes(ctx: Option<&Self>) -> Vec<u8> {
-        match ctx {
-            None => vec![],
-            Some(Self::Normal(v)) => v.to_bytes(),
-            Some(Self::ConfChange(v)) => v.to_bytes(),
+    #[inline]
+    fn into_raft_ctx(self) -> Vec<u8> {
+        match self {
+            Self::None => vec![],
+            Self::Op(op) => {
+                rmp_serde::to_vec_named(&op).expect("encoding may only fail due to oom")
+            }
         }
     }
 }
 
 impl TryFrom<&raft::Entry> for self::Entry {
-    type Error = error::CoercionError;
+    type Error = error::Error;
 
     fn try_from(e: &raft::Entry) -> StdResult<Self, Self::Error> {
         let ret = Self {
@@ -336,7 +323,7 @@ impl From<self::Entry> for raft::Entry {
             index: row.index,
             term: row.term,
             data: row.data.into(),
-            context: EntryContext::write_to_bytes(row.context.as_ref()).into(),
+            context: row.context.into_raft_ctx().into(),
             ..Default::default()
         }
     }
@@ -372,20 +359,6 @@ impl TryFrom<self::MessagePb> for raft::Message {
         let mut ret = raft::Message::default();
         ret.merge_from_bytes(&pb.0)?;
         Ok(ret)
-    }
-}
-
-///////////////////////////////////////////////////////////////////////////////
-/// This trait allows converting `EntryContext` to / from `Vec<u8>`.
-pub trait ContextCoercion: Serialize + DeserializeOwned {
-    #[inline(always)]
-    fn from_bytes(bytes: &[u8]) -> StdResult<Self, error::CoercionError> {
-        Ok(rmp_serde::from_slice(bytes)?)
-    }
-
-    #[inline(always)]
-    fn to_bytes(&self) -> Vec<u8> {
-        rmp_serde::to_vec_named(self).unwrap()
     }
 }
 

@@ -9,8 +9,8 @@ use crate::traft;
 use crate::traft::error::Error as TraftError;
 use crate::traft::node;
 use crate::traft::op::{Ddl, Dml, Op};
+use crate::traft::EntryContext;
 use crate::traft::Result;
-use crate::traft::{EntryContext, EntryContextNormal};
 use crate::traft::{RaftIndex, RaftTerm};
 use crate::unwrap_ok_or;
 
@@ -260,7 +260,7 @@ fn proc_cas_local(req: Request) -> Result<Response> {
             tlog!(Warning, "raft entry has invalid context"; "entry" => ?entry);
             continue;
         };
-        let Some(EntryContext::Normal(EntryContextNormal { op, .. })) = cx else {
+        let EntryContext::Op(op) = cx else {
             continue;
         };
         req.predicate.check_entry(entry.index, &op, storage)?;
@@ -292,14 +292,12 @@ fn proc_cas_local(req: Request) -> Result<Response> {
     // Don't wait for the proposal to be accepted, instead return the index
     // to the requestor, so that they can wait for it.
 
-    let notify = node_impl.propose_async(req.op)?;
-    let raft_log = &node_impl.raw_node.raft.raft_log;
-    let index = raft_log.last_index();
-    let term = raft_log.term(index).unwrap();
+    let entry_id = node_impl.propose_async(req.op)?;
+    let index = entry_id.index;
+    let term = entry_id.term;
     assert_eq!(index, last + 1);
     assert_eq!(term, requested_term);
     drop(node_impl); // unlock the mutex
-    drop(notify); // don't wait for commit
 
     Ok(Response { index, term })
 }

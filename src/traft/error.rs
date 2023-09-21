@@ -4,8 +4,6 @@ use crate::instance::InstanceId;
 use crate::traft::{RaftId, RaftTerm};
 use ::tarantool::fiber::r#async::timeout;
 use ::tarantool::tlua::LuaError;
-use raft::StorageError;
-use rmp_serde::decode::Error as RmpDecodeError;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -159,19 +157,5 @@ impl<E: Display> From<::tarantool::transaction::TransactionError<E>> for Error {
 impl From<::tarantool::error::TarantoolError> for Error {
     fn from(err: ::tarantool::error::TarantoolError) -> Self {
         Self::Tarantool(err.into())
-    }
-}
-
-#[derive(Debug, Error)]
-pub enum CoercionError {
-    #[error("unknown entry type ({0})")]
-    UnknownEntryType(i32),
-    #[error("invalid msgpack: {0}")]
-    MsgpackDecodeError(#[from] RmpDecodeError),
-}
-
-impl From<CoercionError> for StorageError {
-    fn from(err: CoercionError) -> StorageError {
-        StorageError::Other(Box::new(err))
     }
 }

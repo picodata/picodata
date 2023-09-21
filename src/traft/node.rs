@@ -28,10 +28,8 @@ use crate::tlog;
 use crate::traft;
 use crate::traft::error::Error;
 use crate::traft::network::WorkerOptions;
-use crate::traft::notify::{notification, Notifier, Notify};
-use crate::traft::op::{Acl, Ddl, Dml, Op, OpResult};
+use crate::traft::op::{Acl, Ddl, Dml, Op};
 use crate::traft::ConnectionPool;
-use crate::traft::ContextCoercion as _;
 use crate::traft::LogicalClock;
 use crate::traft::RaftEntryId;
 use crate::traft::RaftId;
@@ -40,7 +38,6 @@ use crate::traft::RaftSpaceAccess;
 use crate::traft::RaftTerm;
 use crate::unwrap_ok_or;
 use crate::unwrap_some_or;
-use crate::util::AnyWithTypeName;
 use crate::warn_or_panic;
 
 use ::raft::prelude as raft;
@@ -284,8 +281,8 @@ impl Node {
     pub fn read_index(&self, timeout: Duration) -> traft::Result<RaftIndex> {
         let deadline = fiber::clock().saturating_add(timeout);
 
-        let notify = self.raw_operation(|node_impl| node_impl.read_index_async())?;
-        let index: RaftIndex = fiber::block_on(notify.recv_timeout(timeout))?;
+        let rx = self.raw_operation(|node_impl| node_impl.read_index_async())?;
+        let index: RaftIndex = fiber::block_on(rx.timeout(timeout)).map_err(|_| Error::Timeout)?;
 
         self.wait_index(index, deadline.duration_since(fiber::clock()))
     }
@@ -298,6 +295,9 @@ impl Node {
     ///
     /// **This function yields**
     #[inline]
+    // TODO: this should also take a term and return an error if the term
+    // changes, because it means that leader has changed and the entry got
+    // rolled back.
     pub fn wait_index(&self, target: RaftIndex, timeout: Duration) -> traft::Result<RaftIndex> {
         tlog!(Debug, "waiting for applied index {target}");
         let mut applied = self.applied.clone();
@@ -328,13 +328,12 @@ impl Node {
 
     /// Propose an operation and wait for it's result.
     /// **This function yields**
-    pub fn propose_and_wait<T: OpResult + Into<Op>>(
-        &self,
-        op: T,
-        timeout: Duration,
-    ) -> traft::Result<T::Result> {
-        let notify = self.raw_operation(|node_impl| node_impl.propose_async(op))?;
-        fiber::block_on(notify.recv_timeout::<T::Result>(timeout))
+    #[inline]
+    pub fn propose_and_wait(&self, op: impl Into<Op>, timeout: Duration) -> traft::Result<()> {
+        let entry_id = self.raw_operation(|node_impl| node_impl.propose_async(op))?;
+        self.wait_index(entry_id.index, timeout)?;
+        // TODO: check entry_id.term
+        Ok(())
     }
 
     /// Become a candidate and wait for a main loop round so that there's a
@@ -420,7 +419,7 @@ impl Node {
 
 pub(crate) struct NodeImpl {
     pub raw_node: RawNode,
-    pub notifications: HashMap<LogicalClock, Notifier>,
+    pub read_state_wakers: HashMap<LogicalClock, oneshot::Sender<RaftIndex>>,
     joint_state_latch: KVCell<RaftIndex, oneshot::Sender<Result<(), RaftError>>>,
     storage: Clusterwide,
     raft_storage: RaftSpaceAccess,
@@ -473,7 +472,7 @@ impl NodeImpl {
 
         Ok(Self {
             raw_node,
-            notifications: Default::default(),
+            read_state_wakers: Default::default(),
             joint_state_latch: KVCell::new(),
             storage,
             raft_storage,
@@ -489,7 +488,7 @@ impl NodeImpl {
         self.raw_node.raft.id
     }
 
-    pub fn read_index_async(&mut self) -> Result<Notify, RaftError> {
+    pub fn read_index_async(&mut self) -> Result<oneshot::Receiver<RaftIndex>, RaftError> {
         // In some states `raft-rs` ignores the ReadIndex request.
         // Check it preliminary, don't wait for the timeout.
         //
@@ -505,26 +504,38 @@ impl NodeImpl {
             return Err(RaftError::ProposalDropped);
         }
 
-        let (lc, notify) = self.schedule_notification();
+        let (lc, rx) = self.schedule_read_state_waker();
         // read_index puts this context into an Entry,
         // so we've got to compose full EntryContext,
         // despite single LogicalClock would be enough
-        let ctx = traft::EntryContextNormal::new(lc, Op::Nop);
-        self.raw_node.read_index(ctx.to_bytes());
-        Ok(notify)
+        let ctx = traft::ReadStateContext { lc };
+        self.raw_node.read_index(ctx.to_raft_ctx());
+        Ok(rx)
     }
 
     /// **Doesn't yield**
+    ///
+    /// Returns id of the proposed entry, which can be used to await it's
+    /// application.
+    /// NOTE: the entry may not actually be committed, and the entry at that
+    /// index may be some other one. It's the callers responsibility to verify
+    /// which entry got committed.
     #[inline]
-    // TODO: rename and document
-    pub fn propose_async<T>(&mut self, op: T) -> Result<Notify, RaftError>
+    pub fn propose_async<T>(&mut self, op: T) -> Result<RaftEntryId, RaftError>
     where
         T: Into<Op>,
     {
-        let (lc, notify) = self.schedule_notification();
-        let ctx = traft::EntryContextNormal::new(lc, op.into());
-        self.raw_node.propose(ctx.to_bytes(), vec![])?;
-        Ok(notify)
+        let index_before = self.raw_node.raft.raft_log.last_index();
+
+        let ctx = traft::EntryContext::Op(op.into());
+        self.raw_node.propose(ctx.into_raft_ctx(), vec![])?;
+
+        let term = self.raw_node.raft.term;
+        let index = self.raw_node.raft.raft_log.last_index();
+        debug_assert!(index == index_before + 1);
+
+        let entry_id = RaftEntryId { term, index };
+        Ok(entry_id)
     }
 
     /// Proposes a raft entry to be appended to the log and returns raft index
@@ -532,9 +543,8 @@ impl NodeImpl {
     ///
     /// **Doesn't yield**
     pub fn propose(&mut self, op: Op) -> Result<RaftIndex, RaftError> {
-        self.lc.inc();
-        let ctx = traft::EntryContextNormal::new(self.lc, op);
-        self.raw_node.propose(ctx.to_bytes(), vec![])?;
+        let ctx = traft::EntryContext::Op(op);
+        self.raw_node.propose(ctx.into_raft_ctx(), vec![])?;
         let index = self.raw_node.raft.raft_log.last_index();
         Ok(index)
     }
@@ -717,7 +727,6 @@ impl NodeImpl {
         expelled: &mut bool,
     ) -> ApplyEntryResult {
         assert_eq!(entry.entry_type, raft::EntryType::EntryNormal);
-        let lc = entry.lc();
         let index = entry.index;
         let op = entry.into_op().unwrap_or(Op::Nop);
         tlog!(Debug, "applying entry: {op}"; "index" => index);
@@ -727,7 +736,6 @@ impl NodeImpl {
         let storage_properties = &self.storage.properties;
 
         // apply the operation
-        let mut result = Box::new(()) as Box<dyn AnyWithTypeName>;
         match op {
             Op::Nop => {}
             Op::Dml(op) => {
@@ -898,8 +906,6 @@ impl NodeImpl {
                     }
                     Ok(_) => {}
                 }
-
-                result = Box::new(res) as _;
             }
             Op::DdlPrepare {
                 ddl,
@@ -1135,12 +1141,6 @@ impl NodeImpl {
                 storage_properties
                     .put(PropertyName::NextSchemaVersion, &(v_pending + 1))
                     .expect("storage should not fail");
-            }
-        }
-
-        if let Some(lc) = &lc {
-            if let Some(notify) = self.notifications.remove(lc) {
-                notify.notify_ok_any(result);
             }
         }
 
@@ -1390,15 +1390,15 @@ impl NodeImpl {
                 continue;
             }
             let ctx = crate::unwrap_ok_or!(
-                traft::EntryContextNormal::from_bytes(&rs.request_ctx),
+                traft::ReadStateContext::from_raft_ctx(&rs.request_ctx),
                 Err(e) => {
                     tlog!(Error, "abnormal read_state: {e}"; "read_state" => ?rs);
                     continue;
                 }
             );
 
-            if let Some(notify) = self.notifications.remove(&ctx.lc) {
-                notify.notify_ok(rs.index);
+            if let Some(waker) = self.read_state_wakers.remove(&ctx.lc) {
+                _ = waker.send(rs.index);
             }
         }
     }
@@ -1863,23 +1863,18 @@ impl NodeImpl {
         is_ro
     }
 
-    #[inline]
-    fn cleanup_notifications(&mut self) {
-        self.notifications.retain(|_, notify| !notify.is_closed());
-    }
-
     /// Generates a pair of logical clock and a notification channel.
     /// Logical clock is a unique identifier suitable for tagging
     /// entries in raft log. Notification is broadcasted when the
     /// corresponding entry is committed.
     #[inline]
-    fn schedule_notification(&mut self) -> (LogicalClock, Notify) {
-        let (tx, rx) = notification();
+    fn schedule_read_state_waker(&mut self) -> (LogicalClock, oneshot::Receiver<RaftIndex>) {
+        let (tx, rx) = oneshot::channel();
         let lc = {
             self.lc.inc();
             self.lc
         };
-        self.notifications.insert(lc, tx);
+        self.read_state_wakers.insert(lc, tx);
         (lc, rx)
     }
 }
@@ -1945,7 +1940,9 @@ impl MainLoop {
             return ControlFlow::Break(());
         }
 
-        node_impl.cleanup_notifications();
+        node_impl
+            .read_state_wakers
+            .retain(|_, waker| !waker.is_closed());
 
         let now = Instant::now();
         if now > state.next_tick {
