@@ -21,6 +21,7 @@ pub enum Picodata {
     Expel(Expel),
     Test(Test),
     Connect(Connect),
+    Sql(ConnectSql),
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -304,7 +305,7 @@ fn try_parse_kv_uppercase(s: &str) -> Result<(Uppercase, Uppercase), String> {
 ////////////////////////////////////////////////////////////////////////////////
 
 #[derive(Debug, Parser)]
-#[clap(about = "Сonnect a Picodata instance and start interactive Lua console")]
+#[clap(about = "Connect a Picodata instance and start interactive Lua console")]
 pub struct Connect {
     #[clap(
         short = 'u',
@@ -337,6 +338,58 @@ pub struct Connect {
 }
 
 impl Connect {
+    /// Get the arguments that will be passed to `tarantool_main`
+    pub fn tt_args(&self) -> Result<Vec<CString>, String> {
+        Ok(vec![current_exe()?])
+    }
+}
+
+#[derive(Debug, Parser)]
+#[clap(about = "Connect a Picodata instance and start interactive SQL console")]
+#[clap(
+    long_about = "Connect a Picodata instance and start interactive SQL console
+
+In addition to running sql queries picodata sql supports simple meta commands.
+
+Anything you enter in picodata sql that begins with an unquoted backslash is a
+meta-command that is processed by the cli itself. These commands make cli more
+useful for administration or scripting.
+
+Currently there is only one such command, but other ones are expected to appear.
+
+\\e (edit)
+    Opens a temporary file and passes it to binary specified in EDITOR environment
+    variable. When the editor is closed if the exit code is zero then the file
+    content is treated as a SQL query and attempted to be executed.
+"
+)]
+pub struct ConnectSql {
+    #[clap(
+        short = 'u',
+        long = "user",
+        value_name = "USER",
+        default_value = "guest",
+        env = "PICODATA_USER"
+    )]
+    /// The username to connect with. Ignored if provided in `ADDRESS`.
+    pub user: String,
+
+    #[clap(
+        short = 'a',
+        long = "auth-type",
+        value_name = "METHOD",
+        default_value = AuthMethod::ChapSha1.as_str(),
+        arg_enum,
+    )]
+    /// The preferred authentication method.
+    pub auth_method: AuthMethod,
+
+    #[clap(value_name = "ADDRESS")]
+    /// Picodata instance address. Format: `[user@][host][:port]`
+    pub address: Address,
+}
+
+impl ConnectSql {
     /// Get the arguments that will be passed to `tarantool_main`
     pub fn tt_args(&self) -> Result<Vec<CString>, String> {
         Ok(vec![current_exe()?])
