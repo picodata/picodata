@@ -48,10 +48,13 @@ impl Loop {
         // Should change own target grade to Offline and finish.
         if status.get() == SentinelStatus::ShuttingDown {
             let raft_id = node.raft_id();
-            let instance = storage
-                .instances
-                .get(&raft_id)
-                .expect("storage shouldn't fail");
+            let Ok(instance) = storage.instances.get(&raft_id) else {
+                // This can happen if for example a snapshot arrives
+                // and we truncate _pico_instance (read uncommitted btw).
+                // In this case we also just wait some more.
+                _ = status.changed().timeout(Self::SENTINEL_SHORT_RETRY).await;
+                return Continue;
+            };
 
             let req = rpc::update_instance::Request::new(instance.instance_id, cluster_id)
                 .with_target_grade(TargetGradeVariant::Offline);
@@ -127,10 +130,14 @@ impl Loop {
         // When running not on leader, check if own target has automatically
         // changed to Offline and try to update it to Online.
         let raft_id = node.raft_id();
-        let instance = storage
-            .instances
-            .get(&raft_id)
-            .expect("storage shouldn't fail");
+        let Ok(instance) = storage.instances.get(&raft_id) else {
+            // This can happen if for example a snapshot arrives
+            // and we truncate _pico_instance (read uncommitted btw).
+            // In this case we also just wait some more.
+            _ = status.changed().timeout(Self::SENTINEL_SHORT_RETRY).await;
+            return Continue;
+        };
+
         if has_grades!(instance, * -> Offline) {
             tlog!(Info, "setting own target grade Online");
             let req = rpc::update_instance::Request::new(instance.instance_id.clone(), cluster_id)

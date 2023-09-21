@@ -746,10 +746,14 @@ fn postjoin(args: &args::Run, storage: Clusterwide, raft_storage: RaftSpaceAcces
 
     // Activates instance
     loop {
-        let instance = storage
-            .instances
-            .get(&raft_id)
-            .expect("instance must be persisted at the time of postjoin");
+        let Ok(instance) = storage.instances.get(&raft_id) else {
+            // This can happen if for example a snapshot arrives
+            // and we truncate _pico_instance (read uncommitted btw).
+            // In this case we also just wait some more.
+            let timeout = Duration::from_millis(100);
+            fiber::sleep(timeout);
+            continue;
+        };
         let cluster_id = raft_storage
             .cluster_id()
             .expect("storage should never fail");
@@ -810,13 +814,15 @@ fn postjoin(args: &args::Run, storage: Clusterwide, raft_storage: RaftSpaceAcces
     let timeout = Duration::from_secs(10);
     let deadline = fiber::clock().saturating_add(timeout);
     loop {
-        let instance = storage
-            .instances
-            .get(&raft_id)
-            .expect("instance must be persisted at the time of postjoin");
-        if has_grades!(instance, * -> Online) {
-            tlog!(Info, "self-activated successfully");
-            break;
+        if let Ok(instance) = storage.instances.get(&raft_id) {
+            if has_grades!(instance, * -> Online) {
+                tlog!(Info, "self-activated successfully");
+                break;
+            }
+        } else {
+            // This can happen if for example a snapshot arrives
+            // and we truncate _pico_instance (read uncommitted btw).
+            // In this case we also just wait some more.
         }
         if fiber::clock() > deadline {
             tlog!(
