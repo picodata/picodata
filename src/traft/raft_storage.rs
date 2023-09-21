@@ -617,6 +617,11 @@ impl raft::Storage for RaftSpaceAccess {
         let data = data.to_tuple_buffer().cvt_err()?;
         *snapshot.mut_data() = Vec::from(data).into();
 
+        // SAFETY: this is safe as long as we only use tlog from tx thread.
+        unsafe {
+            crate::tlog::DONT_LOG_KV_FOR_NEXT_SENDING_FROM = true;
+        }
+
         Ok(snapshot)
     }
 }

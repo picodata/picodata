@@ -4,6 +4,8 @@ use std::collections::HashMap;
 
 static mut LOG_LEVEL: SayLevel = SayLevel::Info;
 
+pub static mut DONT_LOG_KV_FOR_NEXT_SENDING_FROM: bool = false;
+
 pub fn set_log_level(lvl: SayLevel) {
     // Used in single thread
     unsafe {
@@ -55,11 +57,25 @@ impl slog::Drain for Drain {
             str: format!("{}", record.msg()),
         };
 
-        use slog::KV;
-        // It's safe to use .unwrap() here since
-        // StrSerializer doesn't return anything but Ok()
-        record.kv().serialize(record, &mut s).unwrap();
-        values.serialize(record, &mut s).unwrap();
+        // XXX: this is the ugliest hack I've done so far. Basically raft-rs
+        // logs the full message it's sending if log level is Debug. But we're
+        // sending a pretty big snapshot via raft. This results in logging of a
+        // single message to take 400 milliseconds with protobuf (and > 1sec
+        // with prost). We should really fix this in raft-rs or protobuf, but
+        // because we delegate dependencies management to cargo there's no easy
+        // way to do this. We can only wait until upstream merges our PR...
+        // TODO: make a PR to raft-rs or protobuf
+        // Related: https://git.picodata.io/picodata/picodata/picodata/-/issues/375
+        if unsafe { DONT_LOG_KV_FOR_NEXT_SENDING_FROM } && s.str.contains("Sending from") {
+            unsafe { DONT_LOG_KV_FOR_NEXT_SENDING_FROM = false }
+            s.str.push_str(" MsgSnapshot");
+        } else {
+            use slog::KV;
+            // It's safe to use .unwrap() here since
+            // StrSerializer doesn't return anything but Ok()
+            record.kv().serialize(record, &mut s).unwrap();
+            values.serialize(record, &mut s).unwrap();
+        }
 
         say(lvl, record.file(), record.line() as i32, None, &s.str);
         Ok(())
