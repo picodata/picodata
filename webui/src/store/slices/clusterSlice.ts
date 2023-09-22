@@ -42,7 +42,7 @@ const initialState: ClusterState = {
 };
 
 // TODO: Research how to add base URL to dev builds
-const GET_REPLICASETS_URL = "/api/v1/replicasets";
+const GET_REPLICASETS_URL = "/api/v1/replicaset";
 
 export const getReplicasets = createAsyncThunk<ReplicasetType[]>(
   ActionTypes.getReplicasetsType,
