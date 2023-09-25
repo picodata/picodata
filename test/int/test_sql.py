@@ -61,7 +61,7 @@ def test_select(cluster: Cluster):
 
     ddl = i1.sql(
         """
-        create table t (a int, primary key (a))
+        create table t (a int not null, primary key (a))
         using memtx
         distributed by (a)
         option (timeout = 3)
@@ -92,7 +92,7 @@ def test_hash(cluster: Cluster):
 
     ddl = i1.sql(
         """
-        create table t (a int, primary key (a))
+        create table t (a int not null, primary key (a))
         using memtx
         distributed by (a)
     """
@@ -109,7 +109,7 @@ def test_hash(cluster: Cluster):
     data = i1.sql("""insert into t values(?);""", 1)
     assert data["row_count"] == 1
     data = i1.sql(""" select "bucket_id" from t where a = ?""", 1)
-    assert data["rows"] == [[lua_hash % bucket_count]]
+    assert data["rows"] == [[lua_hash % bucket_count + 1]]
 
 
 def test_select_lowercase_name(cluster: Cluster):
@@ -117,7 +117,7 @@ def test_select_lowercase_name(cluster: Cluster):
 
     ddl = i1.sql(
         """
-        create table "lowercase_name" ("id" int, primary key ("id"))
+        create table "lowercase_name" ("id" int not null, primary key ("id"))
         distributed by ("id")
     """
     )
@@ -259,6 +259,120 @@ def test_create_drop_table(cluster: Cluster):
             distributed globally
             option (timeout = 3)
             """
+        )
+
+
+def test_check_format(cluster: Cluster):
+    cluster.deploy(instance_count=2)
+    i1, i2 = cluster.instances
+
+    # Primary key missing.
+    with pytest.raises(ReturnError, match="Primary key column b not found"):
+        i1.sql(
+            """
+        create table "error" ("a" integer, primary key ("b"))
+        using memtx
+        distributed by ("a")
+    """
+        )
+    # Sharding key missing.
+    with pytest.raises(ReturnError, match="Sharding key column b not found"):
+        i1.sql(
+            """
+        create table "error" ("a" integer not null, primary key ("a"))
+        using memtx
+        distributed by ("b")
+    """
+        )
+    # Nullable primary key.
+    with pytest.raises(
+        ReturnError, match="Primary key mustn't contain nullable columns"
+    ):
+        i1.sql(
+            """
+        create table "error" ("a" integer null, primary key ("a"))
+        using memtx
+        distributed by ("a")
+    """
+        )
+
+    # Check format
+    ddl = i1.sql(
+        """
+        create table "t" (
+            "non_nullable" string not null,
+            "nullable" Boolean null,
+            "default" Decimal,
+            primary key ("non_nullable")
+            )
+        using memtx
+        distributed by ("non_nullable")
+        option (timeout = 3)
+    """
+    )
+    assert ddl["row_count"] == 1
+    format = i1.call("box.space.t:format")
+    assert format == [
+        {"is_nullable": False, "name": "non_nullable", "type": "string"},
+        {"is_nullable": False, "name": "bucket_id", "type": "unsigned"},
+        {"is_nullable": True, "name": "nullable", "type": "boolean"},
+        {"is_nullable": True, "name": "default", "type": "decimal"},
+    ]
+
+    # Inserting with nulls/nonnulls works.
+    dml = i1.sql(
+        """
+        insert into "t" values
+            ('Name1', true, 0.0),
+            ('Name2', null, -0.12974679036997294),
+            ('Name3', false, null)
+    """
+    )
+    assert dml["row_count"] == 3
+    # Inserting with nulls/nonnulls works using params.
+    dml = i1.sql(
+        """
+        insert into "t" ("non_nullable", "nullable") values
+            ('Name4', ?),
+            ('Name5', ?)
+    """,
+        True,
+        None,
+    )
+    assert dml["row_count"] == 2
+
+
+def test_insert(cluster: Cluster):
+    cluster.deploy(instance_count=2)
+    i1, _ = cluster.instances
+
+    ddl = i1.sql(
+        """
+        create table "t" ("a" integer not null, primary key ("a"))
+        using memtx
+        distributed by ("a")
+    """
+    )
+    assert ddl["row_count"] == 1
+
+    # Wrong parameters number.
+    with pytest.raises(
+        ReturnError,
+        match="invalid node: parameter node does not refer to an expression",
+    ):
+        i1.sql(
+            """
+        insert into "t" values (?)
+        """
+        )
+    with pytest.raises(
+        ReturnError, match="Expected at least 2 values for parameters. Got 1"
+    ):
+        i1.sql(
+            """
+        insert into "t" values (?), (?)
+            """,
+            1,
         )
 
 

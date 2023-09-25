@@ -68,6 +68,9 @@ with the `YY.0M.MICRO` scheme.
   already a table with the highest possible id, then the "wholes" in the id
   ranges start to get filled.
 
+### Fixes
+
+- `calculate_bucket_id` now returns values in inclusive range [1, bucket_count] instead of [0, bucket_count - 1] as it was previously.
 
 ### Lua API:
 

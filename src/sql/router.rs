@@ -308,7 +308,7 @@ pub(crate) fn calculate_bucket_id(tuple: &[&Value], bucket_count: u64) -> Result
     let key = KeyDef::new(key_parts.as_slice()).map_err(|e| {
         SbroadError::FailedTo(Action::Create, Some(Entity::KeyDef), format!("{e:?}"))
     })?;
-    Ok(u64::from(key.hash(&tnt_tuple)) % bucket_count)
+    Ok(u64::from(key.hash(&tnt_tuple)) % bucket_count + 1)
 }
 
 impl Vshard for RouterRuntime {
@@ -465,6 +465,25 @@ impl Metadata for RouterMetadata {
                     format!("column name is not a string: {name_value:?}"),
                 ));
             };
+            let is_nullable_value =
+                column_meta.get(&Cow::from("is_nullable")).ok_or_else(|| {
+                    SbroadError::FailedTo(
+                        Action::Get,
+                        Some(Entity::SpaceMetadata),
+                        format!(
+                            "column nullability attribute was not found in the space metadata: {column_meta:?}"
+                        ),
+                    )
+                })?;
+            let is_nullable = if let TarantoolValue::Bool(is_nullable) = is_nullable_value {
+                *is_nullable
+            } else {
+                return Err(SbroadError::FailedTo(
+                    Action::Get,
+                    Some(Entity::SpaceMetadata),
+                    format!("column nullability attribute is not a boolean: {is_nullable_value:?}"),
+                ));
+            };
             let type_value = column_meta.get(&Cow::from("type")).ok_or_else(|| {
                 SbroadError::FailedTo(
                     Action::Get,
@@ -490,6 +509,7 @@ impl Metadata for RouterMetadata {
                 name: normalize_name_from_schema(col_name),
                 r#type: col_type,
                 role,
+                is_nullable,
             };
             columns.push(column);
         }
@@ -506,8 +526,9 @@ impl Metadata for RouterMetadata {
                 format!("space id {}: {e}", meta.id),
             )
         })?;
-        let tuple =
-            tuple.ok_or_else(|| SbroadError::NotFound(Entity::ShardingKey, name.to_string()))?;
+        let tuple = tuple.ok_or_else(|| {
+            SbroadError::NotFound(Entity::Table, format!("{} in _pico_space", name))
+        })?;
         let space_def: SpaceDef = tuple.decode().map_err(|e| {
             SbroadError::FailedTo(
                 Action::Deserialize,

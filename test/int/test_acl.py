@@ -729,7 +729,11 @@ def test_acl_drop_space_with_privileges(cluster: Cluster):
     # Check that we can drop a table with privileges granted on it.
     index = i1.call("pico.create_user", "Dave", VALID_PASSWORD)
     cluster.raft_wait_index(index)
-    ddl = i1.sql(""" create table t (a int, primary key (a)) distributed by (a) """)
+    ddl = i1.sql(
+        """
+        create table t (a int not null, primary key (a)) distributed by (a)
+    """
+    )
     assert ddl["row_count"] == 1
     index = i1.call("pico.grant_privilege", "Dave", "read", "table", "T")
     cluster.raft_wait_index(index)
