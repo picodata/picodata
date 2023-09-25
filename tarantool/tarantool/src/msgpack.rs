@@ -1,11 +1,9 @@
-use std::io::Cursor;
-use std::io::{Read, Seek, SeekFrom};
-
-use byteorder::{BigEndian, ReadBytesExt};
-
-use super::tuple::{Decode, RawBytes, ToTupleBuffer};
+use super::tuple::{Decode, ToTupleBuffer};
 use crate::unwrap_ok_or;
 use crate::Result;
+use byteorder::{BigEndian, ReadBytesExt};
+use std::io::Cursor;
+use std::io::{Read, Seek, SeekFrom};
 
 pub fn skip_value(cur: &mut (impl Read + Seek)) -> Result<()> {
     use rmp::Marker;
@@ -280,31 +278,47 @@ where
 /// ```
 #[derive(Debug)]
 pub struct ValueIter<'a> {
+    len: Option<u32>,
     cursor: Cursor<&'a [u8]>,
 }
 
 impl<'a> ValueIter<'a> {
     /// Return an iterator over elements of msgpack `array`, or error in case
     /// `array` doesn't start with a valid msgpack array marker.
+    #[inline(always)]
     pub fn from_array(array: &'a [u8]) -> std::result::Result<Self, rmp::decode::ValueReadError> {
         let mut cursor = Cursor::new(array);
-        // Don't care about length, will just exhaust all the values in the slice
-        rmp::decode::read_array_len(&mut cursor)?;
-        Ok(Self { cursor })
+        let len = rmp::decode::read_array_len(&mut cursor)?;
+        Ok(Self {
+            len: Some(len),
+            cursor,
+        })
     }
 
     /// Return an iterator over msgpack values packed one after another in `data`.
+    #[inline(always)]
     pub fn new(data: &'a [u8]) -> Self {
         Self {
+            len: None,
             cursor: Cursor::new(data),
         }
     }
 
     /// Return an iterator over msgpack values packed one after another in `data`.
+    #[inline(always)]
     pub fn decode_next<T>(&mut self) -> Option<Result<T>>
     where
         T: Decode<'a>,
     {
+        let data = self.next_raw()?;
+        match data {
+            Ok(data) => Some(T::decode(data)),
+            Err(e) => Some(Err(e)),
+        }
+    }
+
+    #[inline]
+    pub fn next_raw(&mut self) -> Option<Result<&'a [u8]>> {
         if self.cursor.position() as usize >= self.cursor.get_ref().len() {
             return None;
         }
@@ -315,12 +329,19 @@ impl<'a> ValueIter<'a> {
         let end = self.cursor.position() as usize;
         debug_assert_ne!(start, end, "skip_value should've returned Err in this case");
 
-        let data = &self.cursor.get_ref()[start..end];
-        Some(T::decode(data))
+        Some(Ok(&self.cursor.get_ref()[start..end]))
     }
 
+    #[inline(always)]
     pub fn into_inner(self) -> Cursor<&'a [u8]> {
         self.cursor
+    }
+
+    /// Return the length of the underlying msgpack array if it's known, e.g.
+    /// if `self` was created using [`Self::from_array`].
+    #[inline(always)]
+    pub fn len(&self) -> Option<u32> {
+        self.len
     }
 }
 
@@ -329,7 +350,16 @@ impl<'a> Iterator for ValueIter<'a> {
 
     #[inline(always)]
     fn next(&mut self) -> Option<&'a [u8]> {
-        self.decode_next::<&RawBytes>()?.ok().map(|b| &**b)
+        self.next_raw()?.ok()
+    }
+
+    #[inline(always)]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        if let Some(len) = self.len {
+            (len as _, Some(len as _))
+        } else {
+            (0, None)
+        }
     }
 }
 
@@ -582,9 +612,11 @@ mod test {
     #[test]
     fn value_iter() {
         let mut iter = ValueIter::new(b"");
+        assert_eq!(iter.len(), None);
         assert_eq!(iter.next(), None);
 
         let mut iter = ValueIter::new(b"*");
+        assert_eq!(iter.len(), None);
         assert_eq!(iter.next(), Some(&b"*"[..]));
         assert_eq!(iter.next(), None);
 
@@ -592,15 +624,18 @@ mod test {
         assert_eq!(err.to_string(), "failed to read MessagePack marker");
 
         let mut iter = ValueIter::from_array(b"\x99").unwrap();
+        assert_eq!(iter.len(), Some(9));
         assert_eq!(iter.next(), None);
 
         let mut iter = ValueIter::from_array(b"\x99*").unwrap();
+        assert_eq!(iter.len(), Some(9));
         assert_eq!(iter.next(), Some(&b"*"[..]));
         assert_eq!(iter.next(), None);
 
         let data = b"\x93*\x93\xc0\xc2\xc3\xa3sup";
 
         let mut iter = ValueIter::from_array(data).unwrap();
+        assert_eq!(iter.len(), Some(3));
         let v: u32 = iter.decode_next().unwrap().unwrap();
         assert_eq!(v, 42);
         let v: Vec<Option<bool>> = iter.decode_next().unwrap().unwrap();
@@ -609,6 +644,7 @@ mod test {
         assert_eq!(v, "sup");
 
         let mut iter = ValueIter::from_array(data).unwrap();
+        assert_eq!(iter.len(), Some(3));
         let v = iter.next().unwrap();
         assert_eq!(v, b"*");
         let v = iter.next().unwrap();
@@ -617,6 +653,7 @@ mod test {
         assert_eq!(v, b"\xa3sup");
 
         let mut iter = ValueIter::new(data);
+        assert_eq!(iter.len(), None);
         let v: (u32, Vec<Option<bool>>, String) =
             rmp_serde::from_slice(iter.next().unwrap()).unwrap();
         assert_eq!(v, (42, vec![None, Some(false), Some(true)], "sup".into()));

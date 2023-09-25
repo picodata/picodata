@@ -21,6 +21,7 @@
 - `space::SPACE_ID_MAX` constant with a value of the maximum possible space id.
 - `ViaMsgpack` wrapper type for passing values to/from lua by converting them
   to msgpack first.
+- `msgpack::ValueIter::len` method which returns array length if it's known.
 
 ### Fixed
 - `tarantool::log::say` used to do undefined behaviour when the message

@@ -2,6 +2,7 @@
 #![allow(clippy::approx_constant)]
 #![allow(clippy::needless_return)]
 #![allow(clippy::redundant_closure_call)]
+#![allow(clippy::len_without_is_empty)]
 //! High-level zero-cost bindings for Lua (fork of
 //! [hlua](https://crates.io/crates/hlua))
 //!
