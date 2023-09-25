@@ -48,7 +48,7 @@ picodata run --data-dir i3 --listen :3303
 
 На `192.168.0.1`:
 ```shell
-picodata run --listen 192.168.0.1:3301
+picodata run --listen 192.168.0.1:3301 --peer 192.168.0.1:3301
 ```
 
 На `192.168.0.2`:
