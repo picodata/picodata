@@ -2798,6 +2798,25 @@ pub mod acl {
 
     use super::*;
 
+    impl PrivilegeDef {
+        /// Resolve grantee's type and name and return them as strings.
+        /// Panics if the storage's invariants do not uphold.
+        fn grantee_type_and_name(
+            &self,
+            storage: &Clusterwide,
+        ) -> tarantool::Result<(&'static str, String)> {
+            let role_def = storage.roles.by_id(self.grantee_id)?;
+            let user_def = storage.users.by_id(self.grantee_id)?;
+            match (role_def, user_def) {
+                (Some(role_def), None) => Ok(("role", role_def.name)),
+                (None, Some(user_def)) => Ok(("user", user_def.name)),
+                // TODO: maybe those should be proper errors or None instead.
+                (Some(_), Some(_)) => panic!("grantee_id is both user and role"),
+                (None, None) => panic!("found neither user nor role for grantee_id"),
+            }
+        }
+    }
+
     ////////////////////////////////////////////////////////////////////////////
     // acl in global storage
     ////////////////////////////////////////////////////////////////////////////
@@ -2805,31 +2824,66 @@ pub mod acl {
     /// Persist a user definition in the internal clusterwide storage.
     pub fn global_create_user(storage: &Clusterwide, user_def: &UserDef) -> tarantool::Result<()> {
         storage.users.insert(user_def)?;
+
+        let user = &user_def.name;
+        crate::audit!(
+            Warning,
+            "created user `{user}`";
+            "title" => "create_user",
+            "auth_type" => user_def.auth.method.as_str(),
+        );
+
         Ok(())
     }
 
-    /// Remove a user definition and any entities owned by it from the internal
-    /// clusterwide storage.
+    /// Change user's auth info in the internal clusterwide storage.
     pub fn global_change_user_auth(
         storage: &Clusterwide,
         user_id: UserId,
         auth: &AuthDef,
     ) -> tarantool::Result<()> {
         storage.users.update_auth(user_id, auth)?;
+
+        let user_def = storage.users.by_id(user_id)?.expect("failed to get user");
+        let user = &user_def.name;
+        crate::audit!(
+            Warning,
+            "password of user `{user}` was changed";
+            "title" => "change_password",
+            "auth_type" => auth.method.as_str(),
+        );
+
         Ok(())
     }
 
     /// Remove a user definition and any entities owned by it from the internal
     /// clusterwide storage.
     pub fn global_drop_user(storage: &Clusterwide, user_id: UserId) -> tarantool::Result<()> {
+        let user_def = storage.users.by_id(user_id)?.expect("failed to get user");
         storage.privileges.delete_all_by_grantee_id(user_id)?;
         storage.users.delete(user_id)?;
+
+        let user = &user_def.name;
+        crate::audit!(
+            Warning,
+            "dropped user `{user}`";
+            "title" => "drop_user",
+        );
+
         Ok(())
     }
 
     /// Persist a role definition in the internal clusterwide storage.
     pub fn global_create_role(storage: &Clusterwide, role_def: &RoleDef) -> tarantool::Result<()> {
         storage.roles.insert(role_def)?;
+
+        let role = &role_def.name;
+        crate::audit!(
+            Warning,
+            "created role `{role}`";
+            "title" => "create_role",
+        );
+
         Ok(())
     }
 
@@ -2837,13 +2891,22 @@ pub mod acl {
     /// clusterwide storage.
     pub fn global_drop_role(storage: &Clusterwide, role_id: UserId) -> Result<()> {
         storage.privileges.delete_all_by_grantee_id(role_id)?;
+
         if let Some(role_def) = storage.roles.by_id(role_id)? {
             // Revoke the role from any grantees.
             storage
                 .privileges
                 .delete_all_by_granted_role(&role_def.name)?;
             storage.roles.delete(role_id)?;
+
+            let role = &role_def.name;
+            crate::audit!(
+                Warning,
+                "dropped role `{role}`";
+                "title" => "drop_role",
+            );
         }
+
         Ok(())
     }
 
@@ -2853,6 +2916,29 @@ pub mod acl {
         priv_def: &PrivilegeDef,
     ) -> tarantool::Result<()> {
         storage.privileges.insert(priv_def)?;
+
+        let privilege = &priv_def.privilege;
+        let (object, object_type) = (&priv_def.object_name, &priv_def.object_type);
+        let (grantee_type, grantee) = priv_def.grantee_type_and_name(storage)?;
+
+        match (privilege.as_str(), object_type.as_str()) {
+            ("execute", "role") => {
+                crate::audit!(
+                    Warning,
+                    "granted role `{object}` to {grantee_type} `{grantee}`";
+                    "title" => "grant_role",
+                );
+            }
+            _ => {
+                crate::audit!(
+                    Warning,
+                    "granted privilege {privilege} on {object_type} `{object}` \
+                     to {grantee_type} `{grantee}`";
+                    "title" => "grant_privilege",
+                );
+            }
+        }
+
         Ok(())
     }
 
@@ -2868,6 +2954,28 @@ pub mod acl {
             &priv_def.object_name,
             &priv_def.privilege,
         )?;
+
+        let privilege = &priv_def.privilege;
+        let (object, object_type) = (&priv_def.object_name, &priv_def.object_type);
+        let (grantee_type, grantee) = priv_def.grantee_type_and_name(storage)?;
+
+        match (privilege.as_str(), object_type.as_str()) {
+            ("execute", "role") => {
+                crate::audit!(
+                    Warning,
+                    "revoke role `{object}` from {grantee_type} `{grantee}`";
+                    "title" => "revoke_role",
+                );
+            }
+            _ => {
+                crate::audit!(
+                    Warning,
+                    "revoked privilege {privilege} on {object_type} `{object}` \
+                     from {grantee_type} `{grantee}`";
+                    "title" => "revoke_privilege",
+                );
+            }
+        }
 
         Ok(())
     }

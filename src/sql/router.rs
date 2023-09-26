@@ -157,9 +157,9 @@ impl Cache<String, Plan> for PicoRouterCache {
             let Some(space_def) = storage_spaces.by_name(space_name.as_str()).map_err(|e| {
                 SbroadError::FailedTo(Action::Get, None, format!("space_def: {}", e))
             })?
-                else {
-                    return Ok(None);
-                };
+            else {
+                return Ok(None);
+            };
             // The outdated entry will be replaced when
             // `put` is called (which is always called
             // after cache miss).

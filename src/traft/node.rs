@@ -418,7 +418,7 @@ impl NodeImpl {
             ..Default::default()
         };
 
-        let raw_node = RawNode::new(&cfg, raft_storage.clone(), &tlog::root())?;
+        let raw_node = RawNode::new(&cfg, raft_storage.clone(), tlog::root())?;
 
         let (status, _) = watch::channel(Status {
             id: raft_id,
@@ -742,13 +742,28 @@ impl NodeImpl {
 
                 // Update pico metadata.
                 match ddl {
-                    Ddl::CreateSpace { id, .. } => {
+                    Ddl::CreateSpace { id, name, .. } => {
                         ddl_meta_space_update_operable(&self.storage, id, true)
                             .expect("storage shouldn't fail");
+
+                        crate::audit!(
+                            Warning,
+                            "created table `{name}`";
+                            "title" => "create_table",
+                        );
                     }
 
                     Ddl::DropSpace { id } => {
+                        let space_raw = self.storage.spaces.get(id);
+                        let space = space_raw.ok().flatten().expect("failed to get space");
                         ddl_meta_drop_space(&self.storage, id).expect("storage shouldn't fail");
+
+                        let name = &space.name;
+                        crate::audit!(
+                            Warning,
+                            "dropped table `{name}`";
+                            "title" => "drop_table",
+                        );
                     }
 
                     _ => {
@@ -1209,7 +1224,10 @@ impl NodeImpl {
             self.main_loop_status("receiving snapshot");
 
             let Some(leader_id) = self.status.get().leader_id else {
-                tlog!(Warning, "leader id is unknown while trying to request next snapshot chunk");
+                tlog!(
+                    Warning,
+                    "leader id is unknown while trying to request next snapshot chunk"
+                );
                 return Err(Error::LeaderUnknown);
             };
 

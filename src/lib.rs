@@ -35,6 +35,7 @@ use crate::traft::op;
 use crate::traft::LogicalClock;
 use crate::util::{unwrap_or_terminate, validate_and_complete_unix_socket_path};
 
+mod audit;
 pub mod cas;
 pub mod cli;
 pub mod discovery;
@@ -375,6 +376,8 @@ pub struct IpcMessage {
 /// - `start_join`
 ///
 fn init_common(args: &args::Run, cfg: &tarantool::Cfg) -> (Clusterwide, RaftSpaceAccess) {
+    audit::init();
+
     std::fs::create_dir_all(&args.data_dir).unwrap();
     tarantool::set_cfg(cfg);
 
