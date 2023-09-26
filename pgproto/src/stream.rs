@@ -69,12 +69,14 @@ impl<S: io::Read> PgStream<S> {
     /// Receive a new message from client.
     pub fn read_message(&mut self) -> PgWireResult<FeMessage> {
         loop {
-            let cnt = read_into_buf(&mut self.raw, &mut self.ibuf)?;
-            log::debug!("received {cnt} bytes from client");
-            assert!(
-                cnt > 0,
-                "TODO: check if coio wrapper returns 0 or EOF error"
-            );
+            if self.ibuf.is_empty() {
+                let cnt = read_into_buf(&mut self.raw, &mut self.ibuf)?;
+                log::debug!("received {cnt} bytes from client");
+                assert!(
+                    cnt > 0,
+                    "TODO: check if coio wrapper returns 0 or EOF error"
+                );
+            }
 
             if let Some(message) = self.try_decode_message()? {
                 return Ok(message);
