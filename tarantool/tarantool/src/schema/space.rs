@@ -9,7 +9,6 @@ use crate::space::{Metadata, SpaceCreateOptions};
 use crate::space::{Space, SpaceId, SpaceType, SystemSpace};
 use crate::tuple::Tuple;
 use crate::unwrap_or;
-use crate::update;
 use crate::util::Value;
 use std::collections::BTreeMap;
 
@@ -180,7 +179,7 @@ fn generate_space_id(is_temporary: bool) -> Result<SpaceId, Error> {
     // Update max_id for backwards compatibility.
     if !is_temporary {
         let sys_schema = SystemSpace::Schema.as_space();
-        update!(sys_schema, &["max_id"], ("=", "value", space_id))?;
+        sys_schema.replace(&("max_id", space_id))?;
     }
 
     Ok(space_id)
