@@ -8,13 +8,13 @@ Picodata с помощью [Lua API](api.md). Этот способ относи
 
 После подключения к инстансу кластера посредством команды `picodata
 connect`, в интерактивной консоли Picodata доступна функция
-`pico.create_space()`, позволяющая создавать глобальные таблицы.
+`pico.create_table()`, позволяющая создавать глобальные таблицы.
 
 Для примера создадим шаблон списка друзей Свинки Пеппы, в
 котором будет два поля: идентификатор записи и имя друга:
 
 ```lua
-pico.create_space({
+pico.create_table({
     name = 'friends_of_peppa',
     format = {
         {name = 'id', type = 'unsigned', is_nullable = false},
@@ -49,12 +49,12 @@ Picodata увеличивает номер схемы данных. В пуст�
 является изменением схемы данных.
 
 
-## Запись данных в глобальнцю таблицу {: #writing-to-global-table }
+## Запись данных в глобальную таблицу {: #writing-to-global-table }
 Запись данных, т.е. вставка строк, в таблицу происходит с помощью следующей команды:
 ```lua
       suzy_insert_index = pico.cas({
           kind = 'insert',
-          space = 'friends_of_peppa',
+          table = 'friends_of_peppa',
           tuple = {1, 'Suzy'},
       })
 ```
@@ -91,12 +91,12 @@ Suzy: <a name="insert-with-index"></a>
 ```lua
       pico.cas({
           kind = 'replace',
-          space = 'friends_of_peppa',
+          table = 'friends_of_peppa',
           tuple = {2, 'Rebecca'},
       }, {
           index = suzy_insert_index
           ranges = {{
-              space = 'friends_of_peppa',
+              table = 'friends_of_peppa',
               key_min = { kind = 'excluded', key = {1,} },
               key_max = { kind = 'unbounded' },
           }},
@@ -126,7 +126,7 @@ box.space.friends_of_peppa:format()
 ```lua
 pico.cas({
           kind = 'delete',
-          space = 'friends_of_peppa',
+          table = 'friends_of_peppa',
           key = {2},
       })
 ```
@@ -140,7 +140,7 @@ index, term =
 
 delete_rebecca = {
     kind = 'delete',
-    space = 'friends_of_peppa',
+    table = 'friends_of_peppa',
     key = {2}
 }
 
@@ -148,7 +148,7 @@ predicate = {
     index = index,
     term = term,
     ranges = {{
-        space = 'friends_of_peppa',
+        table = 'friends_of_peppa',
         key_min = { kind = 'included', key = {2} },
         key_max = { kind = 'included', key = {2} },
     }},

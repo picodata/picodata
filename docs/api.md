@@ -35,10 +35,10 @@ picodata> pico.help("help")
 | [pico.cas()](#picocas) | Запрос на изменение параметров методом [Compare and Swap](glossary.md#as-compare-and-swap).
 | [pico.change_password()](#picochange_password) | Изменение пароля пользователя.
 | [pico.create_role()](#picocreate_role) | Создание роли.
-| [pico.create_space()](#picocreate_space) | Создание таблицы.
+| [pico.create_table()](#picocreate_table) | Создание таблицы.
 | [pico.create_user()](#picocreate_user) | Создание пользователя.
 | [pico.drop_role()](#picodrop_role) | Удаление роли.
-| [pico.drop_space()](#picodrop_space) | Удаление таблицы.
+| [pico.drop_table()](#picodrop_table) | Удаление таблицы.
 | [pico.drop_user()](#picodrop_user) | Удаление пользователя.
 | [pico.exit()](#picoexit) | Корректное завершение работы указанного инстанса.
 | [pico.expel()](#picoexpel) | [Контролируемый вывод](cli.md#expel) инстанса из кластера.
@@ -179,7 +179,7 @@ function cas(dml[, predicate])
 
 - `dml`: (_table_):
     - `kind` (_string_), варианты: `'insert'` | `'replace'` | `'update'` | `'delete'`
-    - `space` (_stringLua_)
+    - `table` (_string_)
     - `tuple` (optional _table_), обязательно для `'insert'` и `'replace'`
     - `key` (optional _table_), обязательно для `'update'` и `'delete'`
     - `ops` (optional _table_), обязательно для `'update'`
@@ -200,7 +200,7 @@ function cas(dml[, predicate])
 ```lua
 pico.cas({
     kind = 'insert',
-    space = 'friends_of_peppa',
+    table = 'friends_of_peppa',
     tuple = {1, 'Suzy'},
 })
 ```
@@ -210,11 +210,11 @@ pico.cas({
 ```lua
 pico.cas({
     kind = 'replace',
-    space = 'friends_of_peppa',
+    table = 'friends_of_peppa',
     tuple = {2, 'Rebecca'},
 }, {
     ranges = {{
-        space = 'friends_of_peppa',
+        table = 'friends_of_peppa',
         key_min = { kind = 'excluded', key = {1,} },
         key_max = { kind = 'unbounded' },
     }},
@@ -284,22 +284,22 @@ function create_role(name, [opts])
   По этой причине повторные вызовы функции с теми же аргументами всегда
   безопасны.
 
-### pico.create_space
+### pico.create_table
 
-Создает таблицу (пространство для хранения данных). Функция завершится,
-как только таблица будет создана глобально и доступна с текущего инстанса.
-Функция возвращает индекс соответствующей записи `Op::DdlCommit` в
-raft-журнале, которая требуется для синхронизации с остальными
-инстансами. Если такая таблица уже существует, то запрос игнорируется.
+Создает таблицу. Функция завершается после того, как таблица создана
+глобально и доступна с текущего инстанса. Функция возвращает индекс
+соответствующей записи `Op::DdlCommit` в raft-журнале, который
+необходим для синхронизации с остальными инстансами. Если такая
+таблица уже существует, то запрос игнорируется.
 
 ```lua
-function create_space(opts)
+function create_table(opts)
 ```
 Параметры:
 
 - `opts`: (_table_):
     - `name` (_string_)
-    - `format` (_table_ {_table_ SpaceField,...}), см. [table SpaceField](#table-spacefield)
+    - `format` (_table_ {_table_ TableField,...}), см. [table TableField](#table-tablefield)
     - `primary_key `(_table_ {_string_,...}) с именами полей
     - `id` (optional _number_), по умолчанию генерируется автоматически
     - `distribution` (_string_), варианты: `'global'` | `'sharded'`
@@ -320,7 +320,7 @@ function create_space(opts)
 Создание глобальной таблицы с двумя полями:
 
 ```lua
-pico.create_space({
+pico.create_table({
     name = 'friends_of_peppa',
     format = {
         {name = 'id', type = 'unsigned', is_nullable = false},
@@ -336,7 +336,7 @@ pico.create_space({
 ```lua
 pico.cas({
     kind = 'insert',
-    space = 'friends_of_peppa',
+    table = 'friends_of_peppa',
     key = {1, 'Suzy'},
 })
 ```
@@ -350,7 +350,7 @@ box.space.friends_of_peppa:fselect()
 Создание шардированной таблицы с двумя полями:
 
 ```lua
-pico.create_space({
+pico.create_table({
     name = 'wonderland',
     format = {
         {name = 'property', type = 'string', is_nullable = false},
@@ -450,7 +450,7 @@ function drop_role (role, [opts])
   По этой причине повторные вызовы функции с теми же аргументами всегда
   безопасны.
 
-### pico.drop_space
+### pico.drop_table
 
 Удаляет таблицу (пространство для хранения данных) на всех инстансах
 кластера. Функция ожидает глобального удаления таблицы. Если ожидание
@@ -458,11 +458,11 @@ function drop_role (role, [opts])
 существует, то запрос игнорируется.
 
 ```lua
-function drop_space(space, [opts])
+function drop_table(table, [opts])
 ```
 Параметры:
 
-- `space` (_number_ | _string_), id или имя таблицы
+- `table` (_number_ | _string_), id или имя таблицы
 - `opts`: (optional _table_), таблица:
     - `timeout` (optional _number_), число в секундах. По умолчанию
       используется бесконечное значение.
@@ -576,7 +576,7 @@ function grant_privilege(grantee, privilege, object_type, [object_name], [opts])
   `| `'execute'` | `'session' `| `'usage'` | `'create'` | `'drop'` |
           `'alter'` | `'reference'` | `'trigger'` | `'insert'` | `'update'` | `'delete'`
 - `object_type` (_string_), тип целевого объекта, варианты: `'universe'`
-  | `'space'` | `'sequence'` | `'function'` | `'role'` | `'user'`
+  | `'table'` | `'sequence'` | `'function'` | `'role'` | `'user'`
 - `object_name` (optional _string_), имя целевого объекта. Можно не
   указывать при адресации совокупностей целевых объектов (см. примеры
   [ниже](#grant_pr))
@@ -597,7 +597,7 @@ function grant_privilege(grantee, privilege, object_type, [object_name], [opts])
 
 Выдать право на чтение таблицы 'Fruit' пользователю 'Dave':
 ```lua
-pico.grant_privilege('Dave', 'read', 'space', 'Fruit')
+pico.grant_privilege('Dave', 'read', 'table', 'Fruit')
 ```
 
 Выдать пользователю 'Dave' право исполнять произвольный код Lua:
@@ -612,7 +612,7 @@ pico.grant_privilege('Dave', 'create', 'user')
 
 Выдать право на запись в таблицу 'Junk' для роли 'Maintainer':
 ```lua
-pico.grant_privilege('Maintainer', 'write', 'space', 'Junk')
+pico.grant_privilege('Maintainer', 'write', 'table', 'Junk')
 ```
 
 Назначить роль 'Maintainer' пользователю 'Dave':
@@ -942,7 +942,7 @@ function revoke_privilege(grantee, privilege, object_type, [object_name], [opts]
   `| `'execute'` | `'session' `| `'usage'` | `'create'` | `'drop'` |
           `'alter'` | `'reference'` | `'trigger'` | `'insert'` | `'update'` | `'delete'`
 - `object_type` (_string_), тип целевого объекта, варианты: `'universe'`
-  | `'space'` | `'sequence'` | `'function'` | `'role'` | `'user'`
+  | `'table'` | `'sequence'` | `'function'` | `'role'` | `'user'`
 - `object_name` (optional _string_), имя целевого объекта. Можно не
   указывать при адресации совокупностей целевых объектов (аналогично
   действию `grant_privilege`, см. примеры [выше](#grant_pr))
@@ -1116,7 +1116,7 @@ Lua-таблица, задающая диапазон значений. Испо
 
 Поля:
 
-- `space` (_string_)
+- `table` (_string_)
 - `key_min` (table CasBound), см. [выше](#table-casbound)
 - `key_max` (table CasBound)
 
@@ -1128,14 +1128,14 @@ local including_1 = { kind = 'included', key = {1,} }
 local excluding_3 = { kind = 'excluded', key = {3,} }
 
 local range_a = {
-    space = 'friends_of_peppa',
+    table = 'friends_of_peppa',
     key_min = unbounded,
     key_max = unbounded,
 }
 
 -- [1, 3)
 local range_a = {
-    space = 'friends_of_peppa',
+    table = 'friends_of_peppa',
     key_min = including_1,
     key_max = excluding_3,
 }
@@ -1155,9 +1155,9 @@ Lua-таблица, содержащая количество измененны
 
 - `row_count` (_number_), количество измененных строк.
 
-### table SpaceField {: #spacefield_table }
+### table TableField {: #tablefield_table }
 
-Lua-таблица, описывающая поле в составе таблицы (см. [pico.create_space](#picocreate_space)).
+Lua-таблица, описывающая поле в составе таблицы (см. [pico.create_table](#picocreate_table)).
 
 Поля:
 
@@ -1174,7 +1174,7 @@ Lua-таблица, описывающая поле в составе табли
 См. также:
 
 - Описание [space_object:format()](https://www.tarantool.io/en/doc/latest/reference/reference_lua/box_space/format/){:target="_blank"}
-- Описание [типов полей в таблицых Tarantool](https://docs.rs/tarantool/latest/tarantool/space/enum.FieldType.html){:target="_blank"}
+- Описание [типов полей Tarantool](https://docs.rs/tarantool/latest/tarantool/space/enum.FieldType.html){:target="_blank"}
 
 ### table Vclock {: #vclock_table }
 
