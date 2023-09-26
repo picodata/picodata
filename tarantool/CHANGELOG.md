@@ -13,6 +13,9 @@
 
 ### Breaking changes
 - Remove erroneously added `clap::ArgEnum` implementation for `AuthMethod`.
+- Removed deprecated trait `AsTuple`
+- Removed deprecated `Tuple` methods `from_struct`, `as_struct` & `into_struct`
+- Removed deprecated `FunctionArgs` method `as_struct`
 
 ### Fixed (picodata)
 - A race condition causing undefined behaviour due to fiber_cond_delete being called outside tx sometimes

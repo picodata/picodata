@@ -57,20 +57,6 @@ impl Tuple {
         Ok(Self::from(&value.to_tuple_buffer()?))
     }
 
-    /// Creates new tuple from `value`.
-    ///
-    /// This function will serialize structure instance `value` of type `T` into tuple internal representation
-    ///
-    /// See also: [AsTuple](trait.AsTuple.html)
-    #[deprecated = "Use `Tuple::new` instead."]
-    #[inline]
-    pub fn from_struct<T>(value: &T) -> Result<Self>
-    where
-        T: ToTupleBuffer + ?Sized,
-    {
-        Self::new(value)
-    }
-
     /// # Safety
     /// `data` must point to a buffer containing `len` bytes representing a
     /// valid messagepack array
@@ -283,15 +269,6 @@ impl Tuple {
         Decode::decode(&raw_data)
     }
 
-    /// Deserializes tuple contents into structure of type `T`
-    #[deprecated = "Use `Tuple::decode` instead"]
-    pub fn as_struct<T>(&self) -> Result<T>
-    where
-        T: DecodeOwned,
-    {
-        self.decode()
-    }
-
     #[inline]
     pub(crate) fn as_buffer(&self) -> Vec<u8> {
         let size = self.bsize();
@@ -303,15 +280,6 @@ impl Tuple {
         }
 
         buf
-    }
-
-    /// Deserializes tuple contents into structure of type `T`
-    #[deprecated = "Use `Tuple::decode` instead"]
-    pub fn into_struct<T>(self) -> Result<T>
-    where
-        T: DecodeOwned,
-    {
-        self.decode()
     }
 
     #[inline(always)]
@@ -475,49 +443,14 @@ impl ToTupleBuffer for Tuple {
     }
 }
 
-#[allow(deprecated)]
 impl<T> ToTupleBuffer for T
 where
     T: ?Sized,
-    T: AsTuple,
+    T: Encode,
 {
-    #[inline]
-    fn write_tuple_data(&self, w: &mut impl Write) -> Result<()> {
-        self.serialize_to(w)
-    }
-}
-
-////////////////////////////////////////////////////////////////////////////////
-/// AsTuple
-////////////////////////////////////////////////////////////////////////////////
-
-#[deprecated = "This is a legacy trait which will be removed in future. \
-Implement `Encode` for custom types instead. \
-Use `ToTupleBuffer` if you need the tuple data instead."]
-/// Must be implemented for types, which will be used with box access methods as data
-pub trait AsTuple: Serialize {
-    /// Describes how object can be converted to [Tuple](struct.Tuple.html).
-    ///
-    /// Has default implementation, but can be overloaded for special cases
-    #[inline]
-    fn serialize_as_tuple(&self) -> Result<TupleBuffer> {
-        TupleBuffer::try_from(AsTuple::serialize(self)?)
-    }
-
-    #[inline]
-    fn serialize(&self) -> Result<Vec<u8>> {
-        // TODO(gmoshkin): tuple is required to be a message pack array only on
-        // the top layer, but `to_vec` serializes all of the nested structs as
-        // arrays, which is very bad. We should implement a custom serializer,
-        // which does the correct thing
-        let mut vec = Vec::with_capacity(128);
-        self.serialize_to(&mut vec)?;
-        Ok(vec)
-    }
-
     #[inline(always)]
-    fn serialize_to(&self, w: &mut impl Write) -> Result<()> {
-        rmp_serde::encode::write(w, self).map_err(Into::into)
+    fn write_tuple_data(&self, w: &mut impl Write) -> Result<()> {
+        self.encode(w)
     }
 }
 
@@ -824,18 +757,6 @@ impl _Encode for serde_json::Map<String, serde_json::Value> {
         let bytes = rmp_serde::to_vec(self)?;
         w.write_all(bytes.as_slice())?;
         Ok(())
-    }
-}
-
-#[allow(deprecated)]
-impl<T> AsTuple for T
-where
-    T: ?Sized,
-    T: Encode,
-{
-    #[inline(always)]
-    fn serialize_to(&self, w: &mut impl Write) -> Result<()> {
-        self.encode(w)
     }
 }
 
@@ -1419,16 +1340,6 @@ impl FunctionArgs {
             std::slice::from_raw_parts(self.start, self.end.offset_from(self.start) as _)
         };
         T::decode(slice)
-    }
-
-    /// Deserialize a tuple reprsented by the function args as `T`.
-    #[inline(always)]
-    #[deprecated = "Use `FunctionArgs::decode` instead."]
-    pub fn as_struct<T>(&self) -> Result<T>
-    where
-        T: DecodeOwned,
-    {
-        Tuple::from(self).decode()
     }
 }
 
