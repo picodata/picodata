@@ -1,6 +1,6 @@
 # Change Log
 
-# [3.0.0] Unreleased
+# [3.0.0] Sep 26 2023
 
 ### Added
 - With the new `async-std` feature flag `network::client::tcp::TcpStream` implements
