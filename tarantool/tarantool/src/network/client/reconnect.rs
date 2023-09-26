@@ -167,10 +167,10 @@ mod tests {
         let client = Client::new("localhost".into(), 0);
         let err = client.ping().await.unwrap_err();
         let correct_err = [
-            "tcp stream error: failed to connect to supplied address: Connection refused (os error 111)",
-            "tcp stream error: failed to connect to supplied address: Cannot assign requested address (os error 99)",
-            "tcp stream error: failed to connect to supplied address: Can't assign requested address (os error 49)",
-        ].contains(&err.to_string().as_str());
+            "failed to connect to address 'localhost:0': Connection refused (os error 111)",
+            "failed to connect to address 'localhost:0': Cannot assign requested address (os error 99)",
+            "failed to connect to address 'localhost:0': Can't assign requested address (os error 49)",
+        ].contains(dbg!(&&*err.to_string()));
         assert!(correct_err);
     }
 

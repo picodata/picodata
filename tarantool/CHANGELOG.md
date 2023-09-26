@@ -37,6 +37,8 @@
 - Methods `temporary`, `is_local` & `is_sync` of struct `space::Builder` are
   deprecated in favour of new method `space_type`.
 - `schema::space::SpaceMetadata` is now a deprecated alias of `space::Metadata`.
+- network::client::tcp::Error variants ResolveAddress & Connect now contain the
+  address for which the corresponding operation has failed.
 
 ### Breaking changes
 - `tarantool::session::uid` and `tarantool::session::euid` now return `UserId` type which is an alias for `u32`. Previously `isize` was used.

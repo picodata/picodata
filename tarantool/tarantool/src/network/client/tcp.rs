@@ -40,12 +40,12 @@ use crate::fiber::{self, r#async};
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
-    #[error("failed to resolve host address by domain name")]
-    ResolveAddress,
+    #[error("failed to resolve domain name '{0}'")]
+    ResolveAddress(String),
     #[error("input parameters contain ffi incompatible strings: {0}")]
     ConstructCString(NulError),
-    #[error("failed to connect to supplied address: {0}")]
-    Connect(io::Error),
+    #[error("failed to connect to address '{address}': {error}")]
+    Connect { error: io::Error, address: String },
     #[error("failed to set socket to nonblocking mode: {0}")]
     SetNonBlock(io::Error),
     #[error("unknown address family: {0}")]
@@ -84,7 +84,11 @@ impl TcpStream {
             // Try IPv4 addresses first when connecting
             ipv4_first(addrs?)
         };
-        let stream = std::net::TcpStream::connect(addrs.as_slice()).map_err(Error::Connect)?;
+        let stream = crate::unwrap_ok_or!(std::net::TcpStream::connect(addrs.as_slice()),
+            Err(e) => {
+                return Err(Error::Connect { error: e, address: format!("{url}:{port}") });
+            }
+        );
         stream.set_nonblocking(true).map_err(Error::SetNonBlock)?;
         Ok(Self {
             fd: stream.into_raw_fd(),
@@ -139,12 +143,12 @@ async unsafe fn get_address_info(url: &str) -> Result<*mut libc::addrinfo, Error
     struct GetAddrInfo(r#async::coio::GetAddrInfo);
 
     impl Future for GetAddrInfo {
-        type Output = Result<*mut libc::addrinfo, Error>;
+        type Output = Result<*mut libc::addrinfo, ()>;
 
         fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
             unsafe {
                 if self.0.err.get() {
-                    return Poll::Ready(Err(Error::ResolveAddress));
+                    return Poll::Ready(Err(()));
                 }
                 if self.0.res.get().is_null() {
                     ContextExt::set_coio_getaddrinfo(cx, self.0.clone());
@@ -167,6 +171,7 @@ async unsafe fn get_address_info(url: &str) -> Result<*mut libc::addrinfo, Error
         err: Rc::new(Cell::new(false)),
     })
     .await
+    .map_err(|()| Error::ResolveAddress(url.into()))
 }
 
 unsafe fn to_rs_sockaddr(addr: *const libc::sockaddr, port: u16) -> Result<SocketAddr, Error> {
@@ -336,7 +341,7 @@ mod tests {
             let err = fiber::block_on(get_address_info("invalid domain name").timeout(_10_SEC))
                 .unwrap_err()
                 .to_string();
-            assert_eq!(err, "failed to resolve host address by domain name")
+            assert_eq!(err, "failed to resolve domain name 'invalid domain name'")
         }
     }
 

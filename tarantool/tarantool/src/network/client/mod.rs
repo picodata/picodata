@@ -59,12 +59,12 @@ use futures::{AsyncReadExt, AsyncWriteExt};
 pub enum Error {
     /// The error is wrapped in a [`Arc`], because some libraries require
     /// error types to implement [`Sync`], which isn't implemented for [`Rc`].
-    #[error("tcp stream error: {0}")]
+    #[error("{0}")]
     Tcp(Arc<TcpError>),
-    #[error("io error: {0}")]
 
     /// The error is wrapped in a [`Arc`], because some libraries require
     /// error types to implement [`Sync`], which isn't implemented for [`Rc`].
+    #[error("{0}")]
     Io(Arc<io::Error>),
 
     /// The error is wrapped in a [`Arc`], because some libraries require
