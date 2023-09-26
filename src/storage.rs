@@ -2,7 +2,7 @@ use ::tarantool::error::Error as TntError;
 use ::tarantool::index::{Index, IndexId, IndexIterator, IteratorType};
 use ::tarantool::msgpack::{ArrayWriter, ValueIter};
 use ::tarantool::space::UpdateOps;
-use ::tarantool::space::{FieldType, Space, SpaceId, SystemSpace};
+use ::tarantool::space::{FieldType, Space, SpaceId, SpaceType, SystemSpace};
 use ::tarantool::tlua::{self, LuaError};
 use ::tarantool::tuple::KeyDef;
 use ::tarantool::tuple::{Decode, DecodeOwned, Encode};
@@ -806,8 +806,7 @@ impl Properties {
     pub fn new() -> tarantool::Result<Self> {
         let space = Space::builder(Self::SPACE_NAME)
             .id(Self::SPACE_ID)
-            .is_local(true)
-            .is_temporary(false)
+            .space_type(SpaceType::DataLocal)
             .field(("key", FieldType::String))
             .field(("value", FieldType::Any))
             .if_not_exists(true)
@@ -899,8 +898,7 @@ impl Replicasets {
     pub fn new() -> tarantool::Result<Self> {
         let space = Space::builder(Self::SPACE_NAME)
             .id(Self::SPACE_ID)
-            .is_local(true)
-            .is_temporary(false)
+            .space_type(SpaceType::DataLocal)
             .format(Replicaset::format())
             .if_not_exists(true)
             .create()?;
@@ -942,8 +940,7 @@ impl PeerAddresses {
     pub fn new() -> tarantool::Result<Self> {
         let space = Space::builder(Self::SPACE_NAME)
             .id(Self::SPACE_ID)
-            .is_local(true)
-            .is_temporary(false)
+            .space_type(SpaceType::DataLocal)
             .field(("raft_id", FieldType::Unsigned))
             .field(("address", FieldType::String))
             .if_not_exists(true)
@@ -1012,8 +1009,7 @@ impl Instances {
     pub fn new() -> tarantool::Result<Self> {
         let space_instances = Space::builder(Self::SPACE_NAME)
             .id(Self::SPACE_ID)
-            .is_local(true)
-            .is_temporary(false)
+            .space_type(SpaceType::DataLocal)
             .format(instance_format())
             .if_not_exists(true)
             .create()?;
@@ -1430,8 +1426,7 @@ impl Spaces {
     pub fn new() -> tarantool::Result<Self> {
         let space = Space::builder(Self::SPACE_NAME)
             .id(Self::SPACE_ID)
-            .is_local(true)
-            .is_temporary(false)
+            .space_type(SpaceType::DataLocal)
             .field(("id", FieldType::Unsigned))
             .field(("name", FieldType::String))
             .field(("distribution", FieldType::Array))
@@ -1521,8 +1516,7 @@ impl Indexes {
     pub fn new() -> tarantool::Result<Self> {
         let space = Space::builder(Self::SPACE_NAME)
             .id(Self::SPACE_ID)
-            .is_local(true)
-            .is_temporary(false)
+            .space_type(SpaceType::DataLocal)
             .field(("space_id", FieldType::Unsigned))
             .field(("id", FieldType::Unsigned))
             .field(("name", FieldType::String))
@@ -1835,8 +1829,7 @@ impl Users {
     pub fn new() -> tarantool::Result<Self> {
         let space = Space::builder(Self::SPACE_NAME)
             .id(Self::SPACE_ID)
-            .is_local(true)
-            .is_temporary(false)
+            .space_type(SpaceType::DataLocal)
             .field(("id", FieldType::Unsigned))
             .field(("name", FieldType::String))
             .field(("schema_version", FieldType::Unsigned))
@@ -1929,8 +1922,7 @@ impl Roles {
     pub fn new() -> tarantool::Result<Self> {
         let space = Space::builder(Self::SPACE_NAME)
             .id(Self::SPACE_ID)
-            .is_local(true)
-            .is_temporary(false)
+            .space_type(SpaceType::DataLocal)
             .field(("id", FieldType::Unsigned))
             .field(("name", FieldType::String))
             .field(("schema_version", FieldType::Unsigned))
@@ -2014,8 +2006,7 @@ impl Privileges {
     pub fn new() -> tarantool::Result<Self> {
         let space = Space::builder(Self::SPACE_NAME)
             .id(Self::SPACE_ID)
-            .is_local(true)
-            .is_temporary(false)
+            .space_type(SpaceType::DataLocal)
             .field(("grantor_id", FieldType::Unsigned))
             .field(("grantee_id", FieldType::Unsigned))
             .field(("object_type", FieldType::String))

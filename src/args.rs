@@ -1,17 +1,14 @@
-use clap::Parser;
-use std::{
-    borrow::Cow,
-    ffi::{CStr, CString},
-    str::FromStr,
-};
-use tarantool::log::SayLevel;
-use tarantool::tlua;
-
 use crate::failure_domain::FailureDomain;
 use crate::instance::InstanceId;
 use crate::replicaset::ReplicasetId;
-use crate::schema::AuthMethod;
 use crate::util::Uppercase;
+use clap::Parser;
+use std::borrow::Cow;
+use std::ffi::{CStr, CString};
+use std::str::FromStr;
+use tarantool::auth::AuthMethod;
+use tarantool::log::SayLevel;
+use tarantool::tlua;
 
 #[derive(Debug, Parser)]
 #[clap(name = "picodata", version = "23.06.0")]
@@ -322,7 +319,6 @@ pub struct Connect {
         long = "auth-type",
         value_name = "METHOD",
         default_value = AuthMethod::ChapSha1.as_str(),
-        arg_enum,
     )]
     /// The preferred authentication method.
     pub auth_method: AuthMethod,
@@ -379,7 +375,6 @@ pub struct ConnectSql {
         long = "auth-type",
         value_name = "METHOD",
         default_value = AuthMethod::ChapSha1.as_str(),
-        arg_enum,
     )]
     /// The preferred authentication method.
     pub auth_method: AuthMethod,

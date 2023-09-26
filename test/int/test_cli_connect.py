@@ -197,9 +197,7 @@ def test_connect_auth_type_unknown(binary_path: str):
     )
     cli.logfile = sys.stdout
 
-    cli.expect_exact(
-        "error: \"deadbeef\" isn't a valid value for '--auth-type <METHOD>"
-    )
+    cli.expect_exact('unknown AuthMethod "deadbeef"')
     cli.expect_exact(pexpect.EOF)
 
 

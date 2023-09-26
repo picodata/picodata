@@ -91,7 +91,7 @@ fn reenterable_ddl_request(
 
     // Check parameters
     let params = match ddl {
-        Ddl::CreateShardedTable {
+        Ddl::CreateTable {
             name,
             format,
             primary_key,
@@ -114,7 +114,7 @@ fn reenterable_ddl_request(
                 primary_key,
                 distribution: DistributionParam::Sharded,
                 by_field: None,
-                sharding_key: Some(sharding_key),
+                sharding_key,
                 sharding_fn: Some(ShardingFn::Murmur3),
                 engine: Some(engine_type),
                 timeout: None,

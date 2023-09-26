@@ -2,7 +2,7 @@ use ::raft::prelude as raft;
 use ::raft::Error as RaftError;
 use ::raft::StorageError;
 use ::tarantool::index::IteratorType;
-use ::tarantool::space::{Space, SpaceId};
+use ::tarantool::space::{Space, SpaceId, SpaceType};
 use ::tarantool::tuple::ToTupleBuffer;
 use std::cmp::Ordering;
 use std::convert::TryFrom as _;
@@ -34,8 +34,7 @@ impl RaftSpaceAccess {
 
         let space_raft_log = Space::builder(Self::SPACE_RAFT_LOG)
             .id(Self::SPACE_ID_RAFT_LOG)
-            .is_local(true)
-            .is_temporary(false)
+            .space_type(SpaceType::DataLocal)
             .field(Field::unsigned("entry_type"))
             .field(Field::unsigned("index"))
             .field(Field::unsigned("term"))
@@ -53,8 +52,7 @@ impl RaftSpaceAccess {
 
         let space_raft_state = Space::builder(Self::SPACE_RAFT_STATE)
             .id(Self::SPACE_ID_RAFT_STATE)
-            .is_local(true)
-            .is_temporary(false)
+            .space_type(SpaceType::DataLocal)
             .field(Field::string("key"))
             .field(Field::any("value"))
             .if_not_exists(true)

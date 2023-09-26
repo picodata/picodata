@@ -2,15 +2,15 @@ use std::borrow::Cow;
 use std::collections::{BTreeMap, HashSet};
 use std::time::Duration;
 
+use tarantool::auth::AuthMethod;
 use tarantool::fiber;
 use tarantool::space::{FieldType, SpaceCreateOptions, SpaceEngineType};
-use tarantool::space::{Space, SystemSpace};
+use tarantool::space::{Metadata as SpaceMetadata, Space, SpaceType, SystemSpace};
 use tarantool::transaction::{transaction, TransactionError};
 use tarantool::{
     index::IteratorType,
     index::Metadata as IndexMetadata,
     index::{IndexId, Part},
-    schema::space::SpaceMetadata,
     space::SpaceId,
     tlua::{self, LuaRead},
     tuple::Encode,
@@ -194,15 +194,6 @@ pub struct AuthDef {
     pub method: AuthMethod,
     /// Base64 encoded digest.
     pub data: String,
-}
-
-::tarantool::define_str_enum! {
-    #[derive(clap::ArgEnum)]
-    pub enum AuthMethod {
-        ChapSha1 = "chap-sha1",
-        MD5 = "md5",
-        Ldap = "ldap",
-    }
 }
 
 impl Encode for UserDef {}
@@ -490,9 +481,7 @@ impl CreateSpaceParams {
                     id: Some(id),
                     field_count: self.format.len() as u32,
                     user: None,
-                    is_local: false,
-                    is_temporary: false,
-                    is_sync: false,
+                    space_type: SpaceType::Normal,
                     format: Some(
                         self.format
                             .iter()
