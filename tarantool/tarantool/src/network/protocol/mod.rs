@@ -9,11 +9,9 @@
 pub mod api;
 pub mod codec;
 
-use std::cmp;
 use std::collections::HashMap;
 use std::io::{self, Cursor, Read, Seek};
 use std::str::Utf8Error;
-use std::vec::Drain;
 
 use api::Request;
 
@@ -153,7 +151,7 @@ impl Protocol {
     }
 
     /// Processes incoming request and buffers generated outgoing bytes.
-    /// Outgoing bytes can be retrieved with [`Protocol::drain_outgoing_data`]
+    /// Outgoing bytes can be retrieved with [`Protocol::take_outgoing_data`]
     ///
     /// Data can be sent independently of whether the protocol [`Self::is_ready`].
     /// If the protocol is not ready data will be queued and eventually processed
@@ -286,24 +284,19 @@ impl Protocol {
         self.outgoing.len()
     }
 
-    /// Drains and returns buffered outgoing data.
+    /// Returns buffered outgoing data leaving the buffer empty.
     ///
     /// The returned bytes can then be sent through a
     /// transport layer to a Tarantool server.
-    pub fn drain_outgoing_data(&mut self, max: Option<usize>) -> Drain<u8> {
-        let bound = if let Some(max) = max {
-            cmp::min(self.ready_outgoing_len(), max)
-        } else {
-            self.ready_outgoing_len()
-        };
-        self.outgoing.drain(..bound)
+    pub fn take_outgoing_data(&mut self) -> Vec<u8> {
+        std::mem::take(&mut self.outgoing)
     }
 
     fn process_pending_data(&mut self) {
         if self.is_ready() {
-            let pending_data = self.pending_outgoing.drain(..);
+            let mut pending_data = std::mem::take(&mut self.pending_outgoing);
             // TODO: limit the ready vec size
-            self.outgoing.extend(pending_data);
+            self.outgoing.append(&mut pending_data);
         }
     }
 }

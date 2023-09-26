@@ -377,12 +377,8 @@ async fn sender(
         if client.borrow().state.is_closed() {
             return;
         }
-        // TODO: Set max drain
-        let data: Vec<_> = client
-            .borrow_mut()
-            .protocol
-            .drain_outgoing_data(None)
-            .collect();
+        // TODO: limit max send size
+        let data = client.borrow_mut().protocol.take_outgoing_data();
         if data.is_empty() {
             // Wait for explicit wakeup, it should happen when there is new outgoing data
             waker.changed().await.expect("channel should be open");
@@ -594,5 +590,50 @@ mod tests {
         // error `ResponseDataNotFound` is never returned, the result is Ok(_) instead.
         client.eval("return", &()).await.unwrap();
         client.call("LUA", &("return",)).await.unwrap();
+    }
+
+    #[crate::test(tarantool = "crate")]
+    async fn big_data() {
+        // NOTE: random looking constants in this test are random.
+        // I'm just increasing the entropy for good luck.
+        use crate::tuple::RawByteBuf;
+
+        #[crate::proc(tarantool = "crate")]
+        fn proc_big_data<'a>(s: &'a serde_bytes::Bytes) -> usize {
+            s.len() + 17
+        }
+
+        let path = crate::proc::module_path(&big_data as *const _ as _).unwrap();
+        let module = path.file_stem().unwrap();
+        let module = module.to_str().unwrap();
+        let proc = format!("{module}.proc_big_data");
+
+        let lua = crate::lua_state();
+        lua.exec_with("box.schema.func.create(..., { language = 'C' })", &proc)
+            .unwrap();
+
+        let client = test_client().await;
+
+        const N: u32 = 0x6fff_ff69;
+        // SAFETY: this is basically a generation of a random array
+        #[allow(clippy::uninit_vec)]
+        let s = unsafe {
+            let buf_size = (N + 6) as usize;
+            let mut data = Vec::<u8>::with_capacity(buf_size);
+            data.set_len(buf_size);
+            data[0] = b'\x91';
+            data[1] = b'\xc6'; // BIN32
+            data[2..6].copy_from_slice(&N.to_be_bytes());
+            RawByteBuf::from(data)
+        };
+
+        let t0 = std::time::Instant::now();
+        let t = client.call(&proc, &s).await.unwrap();
+        // This is a pretty high threshold, but it still may flake sometimes, so
+        // maybe the check should be removed.
+        assert!(dbg!(t0.elapsed()) < std::time::Duration::from_secs(6));
+
+        let ((len,),): ((u32,),) = t.decode().unwrap();
+        assert_eq!(len, N + 17);
     }
 }

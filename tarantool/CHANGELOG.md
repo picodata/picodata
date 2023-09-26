@@ -26,6 +26,7 @@
 ### Fixed
 - `tarantool::log::say` used to do undefined behaviour when the message
   contained formatting sequences of %n sort.
+- performance issues when sending large amounts of data via network::client.
 
 ### Changed
 - `network::client::tcp::TcpStream` will now always try IPv4 addresses first when connecting.
