@@ -1156,3 +1156,52 @@ extern "C" {
         data_end: *const *const c_char,
     ) -> c_int;
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// box_read_view
+////////////////////////////////////////////////////////////////////////////////
+
+#[cfg(feature = "picodata")]
+#[allow(non_camel_case_types)]
+#[repr(C)]
+pub struct box_read_view_t {
+    _unused: [u8; 0],
+}
+
+#[cfg(feature = "picodata")]
+#[allow(non_camel_case_types)]
+#[repr(C)]
+pub struct box_read_view_iterator_t {
+    _unused: [u8; 0],
+}
+
+#[cfg(feature = "picodata")]
+#[allow(non_camel_case_types)]
+#[repr(C)]
+pub struct space_index_id {
+    pub space_id: u32,
+    pub index_id: u32,
+}
+
+#[cfg(feature = "picodata")]
+extern "C" {
+    pub fn box_read_view_open_for_given_spaces(
+        name: *const std::ffi::c_char,
+        space_index_ids: *const space_index_id,
+        space_index_ids_count: u32,
+        flags: u64,
+    ) -> *mut box_read_view_t;
+    pub fn box_read_view_close(rv: *mut box_read_view_t);
+    pub fn box_read_view_iterator_all(
+        rv: *mut box_read_view_t,
+        space_id: u32,
+        index_id: u32,
+        iter: *mut *mut box_read_view_iterator_t,
+    ) -> i32;
+    pub fn box_read_view_iterator_next_raw(
+        iter: *mut box_read_view_iterator_t,
+        data: *mut *const u8,
+        size: *mut u32,
+    ) -> i32;
+    pub fn box_read_view_iterator_free(iter: *mut box_read_view_iterator_t);
+}

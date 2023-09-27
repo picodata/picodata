@@ -18,6 +18,9 @@
 - enums `TarantoolErrorCode`, `IteratorType`, `SayLevel` & `SystemSpace` no
   longer implement trait `ToPrimitive`, just use `as i32` instead.
 
+### Added (picodata)
+- struct `read_view::ReadView` for opening read views on selected spaces.
+
 ### Fixed (picodata)
 - A race condition causing undefined behaviour due to fiber_cond_delete being called outside tx sometimes
 - A race condition causing unbounded channel receiver too block the thread forever
