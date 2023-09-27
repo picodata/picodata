@@ -11,7 +11,7 @@ crate::define_str_enum! {
 
 #[cfg(feature = "picodata")]
 crate::define_str_enum! {
-    #[derive(Default, clap::ArgEnum)]
+    #[derive(Default)]
     pub enum AuthMethod {
         #[default]
         ChapSha1 = "chap-sha1",

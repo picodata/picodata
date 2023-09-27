@@ -12,6 +12,7 @@
 ### Deprecated
 
 ### Breaking changes
+- Remove erroneously added `clap::ArgEnum` implementation for `AuthMethod`.
 
 ### Fixed (picodata)
 - A race condition causing undefined behaviour due to fiber_cond_delete being called outside tx sometimes
