@@ -229,6 +229,19 @@ fn reenterable_schema_change_request(
             let auth = AuthDef::new(method, data.into_string());
             Params::CreateUser(name, auth)
         }
+        IrNode::Acl(Acl::AlterUser {
+            name,
+            password,
+            auth_method,
+            ..
+        }) => {
+            let method = AuthMethod::from_str(&auth_method)
+                .map_err(|_| Error::Other(format!("Unknown auth method: {auth_method}").into()))?;
+            check_password_min_length(&password, &method, node)?;
+            let data = AuthData::new(&method, &name, &password);
+            let auth = AuthDef::new(method, data.into_string());
+            Params::AlterUser(name, auth)
+        }
         n => {
             unreachable!("this function should only be called for ddl or acl nodes, not {n:?}")
         }
@@ -303,6 +316,23 @@ fn reenterable_schema_change_request(
                     auth: auth.clone(),
                 };
                 Op::Acl(OpAcl::CreateUser { user_def })
+            }
+            Params::AlterUser(name, auth) => {
+                if storage.roles.by_name(name)?.is_some() {
+                    return Err(Error::Other(
+                        format!("Role {name} exists. Unable to alter role.").into(),
+                    ));
+                }
+                let Some(user_def) = storage.users.by_name(name)? else {
+                    // User doesn't exists, no op needed.
+                    return Ok(ConsumerResult { row_count: 0 });
+                };
+                Op::Acl(OpAcl::ChangeAuth {
+                    user_id: user_def.id,
+                    auth: auth.clone(),
+                    // This will be set right after the match statement.
+                    schema_version: 0,
+                })
             }
             Params::DropUser(name) => {
                 let Some(user_def) = storage.users.by_name(name)? else {
@@ -389,6 +419,7 @@ fn reenterable_schema_change_request(
         CreateSpace(CreateSpaceParams),
         DropSpace(String),
         CreateUser(String, AuthDef),
+        AlterUser(String, AuthDef),
         DropUser(String),
         CreateRole(String),
         DropRole(String),

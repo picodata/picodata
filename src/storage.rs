@@ -1440,6 +1440,7 @@ impl Spaces {
             .field(("format", FieldType::Array))
             .field(("schema_version", FieldType::Unsigned))
             .field(("operable", FieldType::Boolean))
+            .field(("engine", FieldType::String))
             .if_not_exists(true)
             .create()?;
 

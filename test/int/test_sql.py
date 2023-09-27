@@ -564,12 +564,10 @@ def test_sql_acl_user(cluster: Cluster):
     rolename = "Role"
     upper_rolename = "ROLE"
     acl = i1.sql(
-        """
+        f"""
         create user "{username}" with password '{password}'
         using md5 option (timeout = 3)
-    """.format(
-            username=username, password=password
-        )
+    """
     )
     assert acl["row_count"] == 1
 
@@ -583,38 +581,47 @@ def test_sql_acl_user(cluster: Cluster):
     assert i1.call("box.space._pico_user:select") == []
 
     # All the usernames below should match the same user.
+    # * Upcasted username in double parentheses shouldn't change.
     acl = i1.sql(
-        """
-        create user "{username}" password '{password}'
+        f"""
+        create user "{upper_username}" password '{password}'
         using chap-sha1
-    """.format(
-            username=upper_username, password=password
-        )
+    """
+    )
+    assert acl["row_count"] == 1
+    # * Username as is in double parentheses.
+    acl = i1.sql(f'drop user "{upper_username}"')
+    assert acl["row_count"] == 1
+
+    acl = i1.sql(
+        f"""
+        create user "{upper_username}" password '' using ldap
+    """
+    )
+    assert acl["row_count"] == 1
+    # * Username without parentheses should be upcasted.
+    acl = i1.sql(f"drop user {username}")
+    assert acl["row_count"] == 1
+    # * Username without parentheses should be upcasted.
+    acl = i1.sql(
+        f"""
+        create user {username} with password '{password}'
+        option (timeout = 3)
+    """
     )
     assert acl["row_count"] == 1
     acl = i1.sql(f'drop user "{upper_username}"')
     assert acl["row_count"] == 1
 
+    # Check user creation with LDAP works well with non-empty password specification
+    # (it must be ignored).
     acl = i1.sql(
-        """
-        create user "{username}" password '' using ldap
-    """.format(
-            username=upper_username
-        )
+        f"""
+        create user "{upper_username}" password 'smth' using ldap
+    """
     )
     assert acl["row_count"] == 1
     acl = i1.sql(f"drop user {username}")
-    assert acl["row_count"] == 1
-
-    acl = i1.sql(
-        """
-        create user {username} with password '{password}'
-        option (timeout = 3)
-    """.format(
-            username=username, password=password
-        )
-    )
-    acl = i1.sql(f'drop user "{upper_username}"')
     assert acl["row_count"] == 1
 
     # We can safely retry creating the same user.
@@ -632,12 +639,17 @@ def test_sql_acl_user(cluster: Cluster):
         i1.sql(f"drop role {username} option (timeout = 0)")
     with pytest.raises(ReturnError, match="timeout"):
         i1.sql(
-            """
+            f"""
             create user {username} with password '{password}'
             option (timeout = 0)
-        """.format(
-                username=username, password=password
-            )
+        """
+        )
+    with pytest.raises(ReturnError, match="timeout"):
+        i1.sql(
+            f"""
+            alter user {username} with password '{password}'
+            option (timeout = 0)
+        """
         )
 
     # Username in single quotes is unsupported.
@@ -645,6 +657,8 @@ def test_sql_acl_user(cluster: Cluster):
         i1.sql(f"drop user '{username}'")
     with pytest.raises(ReturnError, match="rule parsing error"):
         i1.sql(f"create user '{username}' with password '{password}'")
+    with pytest.raises(ReturnError, match="rule parsing error"):
+        i1.sql(f"alter user '{username}' with password '{password}'")
     # Rolename in single quotes is unsupported.
     with pytest.raises(ReturnError, match="rule parsing error"):
         i1.sql(f"drop role '{username}'")
@@ -658,6 +672,43 @@ def test_sql_acl_user(cluster: Cluster):
     with pytest.raises(ReturnError, match="already exists with different auth method"):
         i1.sql(f"create user {username} with password '123456789' using md5")
         i1.sql(f"create user {username} with password '987654321' using md5")
+    acl = i1.sql(f"drop user {username}")
+    assert acl["row_count"] == 1
+
+    another_password = "qwerty123"
+    # Alter of unexisted user should do nothing.
+    acl = i1.sql(f"alter user \"nobody\" with password '{another_password}'")
+    assert acl["row_count"] == 0
+
+    # Check altering works.
+    acl = i1.sql(f"create user {username} with password '{password}' using md5")
+    assert acl["row_count"] == 1
+    users_auth_was = i1.call("box.space._pico_user:select")[0][3]
+    # * Password and method aren't changed -> update nothing.
+    acl = i1.sql(f"alter user {username} with password '{password}' using md5")
+    assert acl["row_count"] == 1
+    users_auth_became = i1.call("box.space._pico_user:select")[0][3]
+    assert users_auth_was == users_auth_became
+    # * Password is changed -> update hash.
+    acl = i1.sql(f"alter user {username} with password '{another_password}' using md5")
+    assert acl["row_count"] == 1
+    users_auth_became = i1.call("box.space._pico_user:select")[0][3]
+    assert users_auth_was[0] == users_auth_became[0]
+    assert users_auth_was[1] != users_auth_became[1]
+    # * Password and method are changed -> update method and hash.
+    acl = i1.sql(
+        f"alter user {username} with password '{another_password}' using chap-sha1"
+    )
+    assert acl["row_count"] == 1
+    users_auth_became = i1.call("box.space._pico_user:select")[0][3]
+    assert users_auth_was[0] != users_auth_became[0]
+    assert users_auth_was[1] != users_auth_became[1]
+    # * LDAP should ignore password -> update method and hash.
+    acl = i1.sql(f"alter user {username} with password '{another_password}' using ldap")
+    assert acl["row_count"] == 1
+    users_auth_became = i1.call("box.space._pico_user:select")[0][3]
+    assert users_auth_was[0] != users_auth_became[0]
+    assert users_auth_became[1] == ""
     acl = i1.sql(f"drop user {username}")
     assert acl["row_count"] == 1
 
@@ -675,6 +726,11 @@ def test_sql_acl_user(cluster: Cluster):
     # Successive creation of role.
     acl = i1.sql(f'create role "{rolename}"')
     assert acl["row_count"] == 1
+    # Unable to alter role.
+    with pytest.raises(
+        ReturnError, match=f"Role {rolename} exists. Unable to alter role."
+    ):
+        i1.sql(f"alter user \"{rolename}\" with password '{password}'")
 
     # Creation of the role that already exists shouldn't do anything.
     acl = i1.sql(f'create role "{rolename}"')
