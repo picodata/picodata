@@ -3,7 +3,7 @@ use crate::cbus::RecvError;
 use crate::fiber::Cond;
 use std::cell::UnsafeCell;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
 
 /// A oneshot channel based on tarantool cbus. This a channel between any arbitrary thread and a cord.
 /// Cord - a thread with `libev` event loop inside (typically tx thread).
@@ -38,7 +38,7 @@ impl<T> Channel<T> {
 /// If sender dropped before [`Sender::send`] is calling then [`EndpointReceiver::receive`] will return with [`RecvError::Disconnected`].
 /// It is safe to drop sender when [`EndpointReceiver::receive`] is not calling.
 pub struct Sender<T> {
-    channel: Arc<Channel<T>>,
+    channel: Weak<Channel<T>>,
     pipe: Arc<LCPipe>,
 }
 
@@ -72,7 +72,7 @@ pub fn channel_on_pipe<T>(pipe: Arc<LCPipe>) -> (Sender<T>, EndpointReceiver<T>)
     let channel = Arc::new(Channel::new());
     (
         Sender {
-            channel: channel.clone(),
+            channel: Arc::downgrade(&channel),
             pipe,
         },
         EndpointReceiver { channel },
@@ -105,21 +105,32 @@ impl<T> Sender<T> {
     ///
     /// * `message`: message to send
     pub fn send(self, message: T) {
-        unsafe { *self.channel.message.get() = Some(message) };
-        self.channel.ready.store(true, Ordering::Release);
-        // [`Sender`] dropped at this point and [`Cond::signal()`] happens on drop.
-        // Another words, [`Cond::signal()`] happens anyway, regardless of the existence of message in the channel.
-        // After that, the receiver interprets the lack of a message as a disconnect.
+        if let Some(chan) = self.channel.upgrade() {
+            unsafe { *chan.message.get() = Some(message) };
+            chan.ready.store(true, Ordering::Release);
+            // [`Sender`] dropped at this point and [`Cond::signal()`] happens on drop.
+            // Another words, [`Cond::signal()`] happens anyway, regardless of the existence of message in the channel.
+            // After that, the receiver interprets the lack of a message as a disconnect.
+        }
     }
 }
 
 impl<T> Drop for Sender<T> {
     fn drop(&mut self) {
-        let cond = Arc::clone(&self.channel.cond);
-        let msg = Message::new(move || {
-            cond.signal();
-        });
-        self.pipe.push_message(msg);
+        let mb_chan = self.channel.upgrade();
+        let mb_cond = mb_chan.map(|chan| chan.cond.clone());
+        // at this point we are sure that there is at most one reference to a [`Channel`] - in receiver side,
+        // possible reference `mb_chan` will be dropped on previous line (in `map` call)
+
+        if let Some(cond) = mb_cond {
+            // ref-counter of `cond` will decrement at endpoint side (typically in tx thread) and not on
+            // sender drop, because `cond` moved in callback argument of [`cbus::Message`] and decrement
+            // when message is handling
+            let msg = Message::new(move || {
+                cond.signal();
+            });
+            self.pipe.push_message(msg);
+        }
     }
 }
 
