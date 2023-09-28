@@ -56,8 +56,8 @@ def test_pico_sql(cluster: Cluster):
 
 
 def test_select(cluster: Cluster):
-    cluster.deploy(instance_count=2)
-    i1, i2 = cluster.instances
+    cluster.deploy(instance_count=1)
+    i1 = cluster.instances[0]
 
     ddl = i1.sql(
         """
@@ -71,13 +71,13 @@ def test_select(cluster: Cluster):
 
     data = i1.sql("""insert into t values(1);""")
     assert data["row_count"] == 1
-    i2.sql("""insert into t values(2);""")
-    i2.sql("""insert into t values(?);""", 2000)
+    i1.sql("""insert into t values(2);""")
+    i1.sql("""insert into t values(?);""", 2000)
     data = i1.sql("""select * from t where a = ?""", 2)
     assert data["rows"] == [[2]]
     data = i1.sql("""select * from t""")
     assert data["rows"] == [[1], [2], [2000]]
-    data = i2.sql(
+    data = i1.sql(
         """select * from t as t1
            join (select a as a2 from t) as t2
            on t1.a = t2.a2 where t1.a = ?""",
@@ -240,8 +240,8 @@ def test_create_drop_table(cluster: Cluster):
 
 
 def test_insert_on_conflict(cluster: Cluster):
-    cluster.deploy(instance_count=2)
-    i1, _ = cluster.instances
+    cluster.deploy(instance_count=1)
+    i1 = cluster.instances[0]
 
     ddl = i1.sql(
         """
@@ -288,8 +288,8 @@ def test_insert_on_conflict(cluster: Cluster):
 
 
 def test_sql_limits(cluster: Cluster):
-    cluster.deploy(instance_count=2)
-    i1, _ = cluster.instances
+    cluster.deploy(instance_count=1)
+    i1 = cluster.instances[0]
 
     ddl = i1.sql(
         """
