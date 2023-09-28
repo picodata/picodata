@@ -1,5 +1,11 @@
 # Change Log
 
+# [3.0.2] Unreleased
+
+### Fixed(picodata)
+- A race condition causing undefined behaviour due to fiber_cond_delete being called outside tx sometimes
+- A race condition causing unbounded channel receiver too block the thread forever
+
 # [3.0.1] Sep 28 2023
 
 ### Fixed

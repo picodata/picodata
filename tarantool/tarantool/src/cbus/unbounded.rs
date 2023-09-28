@@ -3,6 +3,7 @@ use crate::cbus::RecvError;
 use crate::fiber::Cond;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::time::Duration;
 
 /// A synchronization component between producers and a consumer.
 struct Waker {
@@ -49,7 +50,7 @@ impl Waker {
 
     /// Lock until waker is woken up, or return instantly if waker already woken.
     fn wait(&self) {
-        while self
+        if self
             .woken
             .compare_exchange(true, false, Ordering::AcqRel, Ordering::Acquire)
             .is_err()
@@ -57,7 +58,7 @@ impl Waker {
             self.condition
                 .as_ref()
                 .expect("unreachable: condition never empty")
-                .wait();
+                .wait_timeout(Duration::from_millis(1));
         }
     }
 }
