@@ -1,5 +1,11 @@
 # Change Log
 
+# [3.0.1] Sep 28 2023
+
+### Fixed
+- Change tarantool-proc version to fix backwards compatibility
+
+
 # [3.0.0] Sep 26 2023
 
 ### Added
