@@ -22,7 +22,6 @@ use std::io;
 use std::str::Utf8Error;
 use std::sync::Arc;
 
-use num_derive::{FromPrimitive, ToPrimitive};
 use num_traits::FromPrimitive;
 use rmp::decode::{MarkerReadError, NumValueReadError, ValueReadError};
 use rmp::encode::ValueWriteError;
@@ -207,7 +206,7 @@ impl From<TarantoolError> for Error {
 
 /// Codes of Tarantool errors
 #[repr(u32)]
-#[derive(Debug, Copy, Clone, PartialEq, Eq, ToPrimitive, FromPrimitive)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, num_derive::FromPrimitive)]
 pub enum TarantoolErrorCode {
     Unknown = 0,
     IllegalParams = 1,

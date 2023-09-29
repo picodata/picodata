@@ -4,7 +4,6 @@ use std::io::{self, Cursor, Read, Seek, Write};
 use std::os::raw::c_char;
 use std::str::from_utf8;
 
-use num_derive::FromPrimitive;
 use sha1::{Digest, Sha1};
 
 use super::Error;
@@ -38,7 +37,7 @@ const ERROR: u8 = 0x31;
 const SQL_TEXT: u8 = 0x40;
 const SQL_BIND: u8 = 0x41;
 
-#[derive(Debug, Clone, Copy, serde::Deserialize, FromPrimitive)]
+#[derive(Debug, Clone, Copy, serde::Deserialize, num_derive::FromPrimitive)]
 #[serde(try_from = "u8")]
 #[repr(u8)]
 enum IProtoKey {

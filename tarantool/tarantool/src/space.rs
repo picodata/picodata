@@ -13,7 +13,6 @@ use crate::tuple::{Encode, ToTupleBuffer, Tuple, TupleBuffer};
 use crate::tuple_from_box_api;
 use crate::unwrap_or;
 use crate::util::Value;
-use num_derive::ToPrimitive;
 use serde::{Deserialize, Serialize};
 use serde_json::Map;
 use std::borrow::Cow;
@@ -39,7 +38,7 @@ pub type SpaceId = u32;
 /// assert_eq!(SystemSpace::Schema as u32, 272)
 /// ```
 #[repr(u32)]
-#[derive(Copy, Clone, Debug, PartialEq, Eq, ToPrimitive)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum SystemSpace {
     /// Space if of _vinyl_deferred_delete.
     VinylDeferredDelete = 257,

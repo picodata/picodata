@@ -13,8 +13,6 @@ use std::mem::MaybeUninit;
 use std::ops::Range;
 use std::ptr::null_mut;
 
-use num_derive::ToPrimitive;
-use num_traits::ToPrimitive;
 use serde::{Deserialize, Serialize};
 
 use crate::error::{Error, TarantoolError, TarantoolErrorCode};
@@ -55,7 +53,7 @@ pub struct Index {
 /// use `GE` or `LE` iteration types with start key equal to `None`.
 /// For `EQ`, the key must not be `None`.
 #[repr(i32)]
-#[derive(Debug, Copy, Clone, ToPrimitive)]
+#[derive(Debug, Copy, Clone)]
 pub enum IteratorType {
     /// key == x ASC order
     Eq = 0,
@@ -586,7 +584,7 @@ impl Index {
             ffi::box_index_iterator(
                 self.space_id,
                 self.index_id,
-                iterator_type.to_i32().unwrap(),
+                iterator_type as _,
                 start as _,
                 end as _,
             )
@@ -886,7 +884,7 @@ impl Index {
             ffi::box_index_count(
                 self.space_id,
                 self.index_id,
-                iterator_type.to_i32().unwrap(),
+                iterator_type as _,
                 start as _,
                 end as _,
             )

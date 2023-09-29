@@ -22,8 +22,7 @@ use std::ffi::CString;
 use std::ptr::null;
 
 use log::{Level, Log, Metadata, Record};
-use num_derive::{FromPrimitive, ToPrimitive};
-use num_traits::{FromPrimitive, ToPrimitive};
+use num_traits::FromPrimitive;
 
 use crate::ffi::tarantool as ffi;
 
@@ -73,7 +72,7 @@ impl Log for TarantoolLogger {
 
 /// Tarantool-native logging levels (use it with [say()](fn.say.html))
 #[repr(u32)]
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, ToPrimitive, FromPrimitive)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, num_derive::FromPrimitive)]
 pub enum SayLevel {
     Fatal = 0,
     System = 1,
@@ -204,7 +203,6 @@ impl<L> tlua::PushOneInto<L> for SayLevel where L: tlua::AsLua {}
 /// Format and print a message to the Tarantool log file.
 #[inline]
 pub fn say(level: SayLevel, file: &str, line: i32, error: Option<&str>, message: &str) {
-    let level = level.to_i32().unwrap();
     let file = CString::new(file).unwrap();
     let error = error.map(|e| CString::new(e).unwrap());
     let error_ptr = match error {
@@ -215,7 +213,7 @@ pub fn say(level: SayLevel, file: &str, line: i32, error: Option<&str>, message:
 
     unsafe {
         ffi::SAY_FN.unwrap()(
-            level,
+            level as _,
             file.as_ptr(),
             line,
             error_ptr,

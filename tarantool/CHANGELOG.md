@@ -15,6 +15,8 @@
 - Removed deprecated trait `AsTuple`
 - Removed deprecated `Tuple` methods `from_struct`, `as_struct` & `into_struct`
 - Removed deprecated `FunctionArgs` method `as_struct`
+- enums `TarantoolErrorCode`, `IteratorType`, `SayLevel` & `SystemSpace` no
+  longer implement trait `ToPrimitive`, just use `as i32` instead.
 
 ### Fixed (picodata)
 - A race condition causing undefined behaviour due to fiber_cond_delete being called outside tx sometimes
