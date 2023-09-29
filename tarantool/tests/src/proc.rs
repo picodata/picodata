@@ -322,7 +322,7 @@ fn module_path() {
     );
     assert_eq!(
         ::tarantool::proc::module_path(::tarantool::ffi::tarantool::box_txn as _),
-        Some(std::path::Path::new("tarantool run_tests.lua <running>"))
+        Some(std::path::Path::new(&std::env::args().next().unwrap())),
     );
 }
 
