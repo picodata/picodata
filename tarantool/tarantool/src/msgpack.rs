@@ -1,10 +1,23 @@
 use super::tuple::{Decode, ToTupleBuffer};
 use crate::unwrap_ok_or;
 use crate::Result;
-use byteorder::{BigEndian, ReadBytesExt};
 use std::io::Cursor;
 use std::io::{Read, Seek, SeekFrom};
 
+macro_rules! read_be {
+    ($r:expr, $ty:ty) => {{
+        let mut buf = [0_u8; std::mem::size_of::<$ty>()];
+        match std::io::Read::read_exact($r, &mut buf) {
+            Ok(()) => Ok(<$ty>::from_be_bytes(buf)),
+            Err(e) => Err(e),
+        }
+    }};
+}
+
+// TODO: we only ever Seek forward which is equivalent to reading into a buffer
+// and discarding the results. We should refactor this and make it accept a
+// concrete `&mut [u8]`, which will make it much nicer to use and will improve
+// both the build time and the debug perfromance.
 pub fn skip_value(cur: &mut (impl Read + Seek)) -> Result<()> {
     use rmp::Marker;
 
@@ -23,19 +36,19 @@ pub fn skip_value(cur: &mut (impl Read + Seek)) -> Result<()> {
             cur.seek(SeekFrom::Current(8))?;
         }
         Marker::FixStr(len) => {
-            cur.seek(SeekFrom::Current(len as i64))?;
+            cur.seek(SeekFrom::Current(len as _))?;
         }
         Marker::Str8 | Marker::Bin8 => {
-            let len = cur.read_u8()?;
-            cur.seek(SeekFrom::Current(len as i64))?;
+            let len = read_be!(cur, u8)?;
+            cur.seek(SeekFrom::Current(len as _))?;
         }
         Marker::Str16 | Marker::Bin16 => {
-            let len = cur.read_u16::<BigEndian>()?;
-            cur.seek(SeekFrom::Current(len as i64))?;
+            let len = read_be!(cur, u16)?;
+            cur.seek(SeekFrom::Current(len as _))?;
         }
         Marker::Str32 | Marker::Bin32 => {
-            let len = cur.read_u32::<BigEndian>()?;
-            cur.seek(SeekFrom::Current(len as i64))?;
+            let len = read_be!(cur, u32)?;
+            cur.seek(SeekFrom::Current(len as _))?;
         }
         Marker::FixArray(len) => {
             for _ in 0..len {
@@ -43,13 +56,13 @@ pub fn skip_value(cur: &mut (impl Read + Seek)) -> Result<()> {
             }
         }
         Marker::Array16 => {
-            let len = cur.read_u16::<BigEndian>()?;
+            let len = read_be!(cur, u16)?;
             for _ in 0..len {
                 skip_value(cur)?;
             }
         }
         Marker::Array32 => {
-            let len = cur.read_u32::<BigEndian>()?;
+            let len = read_be!(cur, u32)?;
             for _ in 0..len {
                 skip_value(cur)?;
             }
@@ -61,42 +74,52 @@ pub fn skip_value(cur: &mut (impl Read + Seek)) -> Result<()> {
             }
         }
         Marker::Map16 => {
-            let len = cur.read_u16::<BigEndian>()? * 2;
+            // Multiply by 2, because we skip key, value pairs.
+            let len = read_be!(cur, u16)? * 2;
             for _ in 0..len {
                 skip_value(cur)?;
             }
         }
         Marker::Map32 => {
-            let len = cur.read_u32::<BigEndian>()? * 2;
+            // Multiply by 2, because we skip key, value pairs.
+            let len = read_be!(cur, u32)? * 2;
             for _ in 0..len {
                 skip_value(cur)?;
             }
         }
         Marker::FixExt1 => {
-            cur.seek(SeekFrom::Current(2))?;
+            // Add 1, because we skip a 1-byte long type designator.
+            cur.seek(SeekFrom::Current(1 + 1))?;
         }
         Marker::FixExt2 => {
-            cur.seek(SeekFrom::Current(3))?;
+            // Add 1, because we skip a 1-byte long type designator.
+            cur.seek(SeekFrom::Current(2 + 1))?;
         }
         Marker::FixExt4 => {
-            cur.seek(SeekFrom::Current(5))?;
+            // Add 1, because we skip a 1-byte long type designator.
+            cur.seek(SeekFrom::Current(4 + 1))?;
         }
         Marker::FixExt8 => {
-            cur.seek(SeekFrom::Current(9))?;
+            // Add 1, because we skip a 1-byte long type designator.
+            cur.seek(SeekFrom::Current(8 + 1))?;
         }
         Marker::FixExt16 => {
-            cur.seek(SeekFrom::Current(17))?;
+            // Add 1, because we skip a 1-byte long type designator.
+            cur.seek(SeekFrom::Current(16 + 1))?;
         }
         Marker::Ext8 => {
-            let len = cur.read_u8()?;
+            let len = read_be!(cur, u8)?;
+            // Add 1, because we skip a 1-byte long type designator.
             cur.seek(SeekFrom::Current(len as i64 + 1))?;
         }
         Marker::Ext16 => {
-            let len = cur.read_u16::<BigEndian>()?;
+            let len = read_be!(cur, u16)?;
+            // Add 1, because we skip a 1-byte long type designator.
             cur.seek(SeekFrom::Current(len as i64 + 1))?;
         }
         Marker::Ext32 => {
-            let len = cur.read_u32::<BigEndian>()?;
+            let len = read_be!(cur, u32)?;
+            // Add 1, because we skip a 1-byte long type designator.
             cur.seek(SeekFrom::Current(len as i64 + 1))?;
         }
         Marker::Reserved => {
