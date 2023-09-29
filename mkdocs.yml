@@ -8,28 +8,25 @@ nav:
     - description.md
     - benefits.md
     - benefits_rust.md
-    - sql/home.md
+    - concepts.md
+    - feedback.md
   - Инструкции и руководства:
     - install.md
-    - deploy.md
+    - deploy_on_hosts.md
     - monitoring.md
-    - tutorial_lua.md
-    - tutorial_sql.md
+    - tutorial_first_steps.md
+    - auth_ldap.md
+    - tutorial_data.md
   - Справочные материалы:
     - cli.md
-    - api.md
-    - sql/queries.md
     - sql/datatypes.md
+    - sql/queries.md
+    - api.md
     - sql/reference.md
-    - glossary.md
-  - Архитектурная документация:
-    - clustering.md
+  - Архитектура:
+    - sql/broadcasted_sql.md
     - discovery.md
-    - sql/review.md
-    - auth_ldap.md
-
-
-
+    - clustering.md
 theme:
     name: material
     custom_dir: overrides
@@ -48,7 +45,7 @@ theme:
 
 
 extra:
-    homepage: /
+    homepage: https://picodata.io/
     analytics:
      provider: google
      property: G-6X8Z5N2CGR
