@@ -1,14 +1,13 @@
 use crate::error::{TarantoolError, TarantoolErrorCode};
 use crate::ffi::tarantool as ffi;
 use crate::set_error;
-
-use nix::errno;
+use crate::util::errno;
 
 /// Set a callback to be called on Tarantool shutdown.
 pub fn on_shutdown<F: FnOnce() + 'static>(cb: F) -> Result<(), TarantoolError> {
     let cb_ptr = Box::into_raw(Box::new(cb));
     if unsafe { ffi::box_on_shutdown(cb_ptr as _, Some(trampoline::<F>), None) } != 0 {
-        if errno::from_i32(errno::errno()) == errno::Errno::EINVAL {
+        if errno() == libc::EINVAL {
             set_error!(
                 TarantoolErrorCode::IllegalParams,
                 "invalid arguments to on_shutdown"
