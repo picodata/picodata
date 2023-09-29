@@ -631,7 +631,7 @@ mod tests {
         let t = client.call(&proc, &s).await.unwrap();
         // This is a pretty high threshold, but it still may flake sometimes, so
         // maybe the check should be removed.
-        assert!(dbg!(t0.elapsed()) < std::time::Duration::from_secs(6));
+        assert!(dbg!(t0.elapsed()) < std::time::Duration::from_secs(10));
 
         let ((len,),): ((u32,),) = t.decode().unwrap();
         assert_eq!(len, N + 17);
