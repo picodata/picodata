@@ -31,7 +31,7 @@ comfy-table = "7.0.1"
 
 [dependencies.protobuf]
 version = "2.27"
-features = ["bytes"]
+features = ["bytes", "with-bytes"]
 
 [dependencies.sbroad-core]
 version = "0.1"
