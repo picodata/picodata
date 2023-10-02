@@ -5,7 +5,7 @@ use std::any::{Any, TypeId};
 use std::io::BufRead as _;
 use std::io::BufReader;
 use std::io::Write as _;
-use std::os::unix::io::AsRawFd as _;
+use std::os::fd::AsRawFd;
 use std::time::Duration;
 pub use Either::{Left, Right};
 
