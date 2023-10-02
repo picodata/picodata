@@ -21,7 +21,6 @@ use std::ptr::{null, NonNull};
 
 use rmp::Marker;
 use serde::Serialize;
-use tarantool_proc::impl_tuple_encode;
 
 use crate::error::{self, Error, Result, TarantoolError};
 use crate::ffi::tarantool as ffi;
@@ -786,7 +785,29 @@ _impl_array! {
     16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32
 }
 
-impl_tuple_encode!();
+macro_rules! impl_tuple_encode {
+    () => {};
+    ($h:ident $($t:ident)*) => {
+        #[allow(non_snake_case)]
+        impl<$h, $($t),*> _Encode for ($h, $($t),*)
+        where
+            $h: _Encode,
+            $($t: _Encode,)*
+        {
+            fn encode(&self, w: &mut impl Write, _style: EncodeStyle) -> Result<()> {
+                let ($h, $($t),*) = self;
+                rmp::encode::write_array_len(w, crate::expr_count!($h $(, $t)*))?;
+                $h.encode(w, EncodeStyle::Default)?;
+                $( $t.encode(w, EncodeStyle::Default)?; )*
+                Ok(())
+            }
+        }
+
+        impl_tuple_encode! { $($t)* }
+    }
+}
+
+impl_tuple_encode! { A B C D E F G H I J K L M N O P }
 
 impl _Encode for serde_json::Value {
     #[inline]

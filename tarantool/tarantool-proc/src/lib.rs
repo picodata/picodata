@@ -264,30 +264,6 @@ pub fn derive_encode(input: TokenStream) -> TokenStream {
     expanded.into()
 }
 
-#[proc_macro]
-pub fn impl_tuple_encode(_input: TokenStream) -> TokenStream {
-    let mut impls = vec![];
-    for i in 1usize..=16usize {
-        let is: Vec<_> = (0..i).map(syn::Index::from).collect();
-        let tys: Vec<_> = (0..i)
-            .map(|i| Ident::new(format!("T{i}").as_str(), Span::call_site()))
-            .collect();
-        impls.push(quote! {
-            impl<#(#tys),*> _Encode for (#(#tys,)*)
-            where
-                #(#tys: _Encode,)*
-            {
-                fn encode(&self, w: &mut impl Write, _style: EncodeStyle) -> Result<()> {
-                    rmp::encode::write_array_len(w, #i as u32)?;
-                    #(self.#is.encode(w, EncodeStyle::Default)?;)*
-                    Ok(())
-                }
-            }
-        });
-    }
-    impls.into_iter().flatten().collect::<TokenStream2>().into()
-}
-
 /// Create a tarantool stored procedure.
 ///
 /// See `tarantool::proc` doc-comments in tarantool crate for details.
