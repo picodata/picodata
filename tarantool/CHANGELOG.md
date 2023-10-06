@@ -3,7 +3,6 @@
 # [?.?.?] Unreleased
 
 ### Added
-- util::errno function for getting errno
 
 ### Changed
 
