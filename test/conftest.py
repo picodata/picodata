@@ -1191,6 +1191,34 @@ class Cluster:
         return instance.call("pico.cas", dml, predicate)
 
 
+@dataclass
+class PortalStorage:
+    instance: Instance
+
+    @property
+    def descriptors(self):
+        return self.instance.call("pico.pg_portals")
+
+    def bind(self, *params):
+        return self.instance.call("pico.pg_bind", *params, False)
+
+    def close(self, descriptor: int):
+        return self.instance.call("pico.pg_close", descriptor)
+
+    def describe(self, descriptor: int) -> dict:
+        return self.instance.call("pico.pg_describe", descriptor, False)
+
+    def execute(self, descriptor: int) -> dict:
+        return self.instance.call("pico.pg_execute", descriptor, False)
+
+    def flush(self):
+        for descriptor in self.descriptors["available"]:
+            self.close(descriptor)
+
+    def parse(self, sql: str) -> int:
+        return self.instance.call("pico.pg_parse", sql, False)
+
+
 @pytest.fixture(scope="session")
 def binary_path() -> str:
     """Path to the picodata binary, e.g. "./target/debug/picodata"."""
@@ -1258,6 +1286,14 @@ def instance(cluster: Cluster) -> Generator[Instance, None, None]:
     """Returns a deployed instance forming a single-node cluster."""
     cluster.deploy(instance_count=1)
     yield cluster[0]
+
+
+@pytest.fixture
+def pg_portals(instance: Instance) -> Generator[PortalStorage, None, None]:
+    """Returns a PG portal storage on a single instance."""
+    portals = PortalStorage(instance)
+    yield portals
+    portals.flush()
 
 
 def retrying(fn, timeout=3):

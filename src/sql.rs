@@ -4,6 +4,9 @@ use crate::schema::{
     wait_for_ddl_commit, CreateSpaceParams, DistributionParam, Field, RoleDef, ShardingFn, UserDef,
     UserId,
 };
+use crate::sql::pgproto::{
+    with_portals, BoxedPortal, Describe, Descriptor, UserDescriptors, PG_PORTALS,
+};
 use crate::sql::router::RouterRuntime;
 use crate::sql::storage::StorageRuntime;
 use crate::traft::error::Error;
@@ -16,26 +19,70 @@ use crate::{cas, unwrap_ok_or};
 use sbroad::backend::sql::ir::{EncodedPatternWithParams, PatternWithParams};
 use sbroad::debug;
 use sbroad::errors::{Action, Entity, SbroadError};
-use sbroad::executor::engine::helpers::decode_msgpack;
+use sbroad::executor::engine::helpers::{decode_msgpack, normalize_name_for_space_api};
+use sbroad::executor::engine::{QueryCache, Router, TableVersionMap};
+use sbroad::executor::ir::ExecutionPlan;
+use sbroad::executor::lru::Cache;
 use sbroad::executor::protocol::{EncodedRequiredData, RequiredData};
 use sbroad::executor::result::ConsumerResult;
 use sbroad::executor::Query;
+use sbroad::frontend::Ast;
 use sbroad::ir::acl::Acl;
 use sbroad::ir::ddl::Ddl;
+use sbroad::ir::value::{LuaValue, Value};
 use sbroad::ir::Node as IrNode;
-use sbroad::otm::query_span;
+use sbroad::otm::{query_id, query_span, stat_query_span, OTM_CHAR_LIMIT};
+use serde::Deserialize;
 
 use ::tarantool::auth::{AuthData, AuthDef, AuthMethod};
 use ::tarantool::proc;
 use ::tarantool::space::{FieldType, Space, SystemSpace};
 use ::tarantool::time::Instant;
 use ::tarantool::tuple::{RawBytes, Tuple};
+use std::collections::HashMap;
 use std::str::FromStr;
 
+pub mod pgproto;
 pub mod router;
 pub mod storage;
 
 pub const DEFAULT_BUCKET_COUNT: u64 = 3000;
+
+fn dispatch(mut query: Query<RouterRuntime>) -> traft::Result<Tuple> {
+    if query.is_ddl().map_err(Error::from)? || query.is_acl().map_err(Error::from)? {
+        let ir_plan = query.get_exec_plan().get_ir_plan();
+        let top_id = ir_plan.get_top().map_err(Error::from)?;
+        let ir_plan_mut = query.get_mut_exec_plan().get_mut_ir_plan();
+
+        // XXX: add Node::take_node method to simplify the following 2 lines
+        let ir_node = ir_plan_mut.get_mut_node(top_id).map_err(Error::from)?;
+        let ir_node = std::mem::replace(ir_node, IrNode::Parameter);
+
+        let node = node::global()?;
+        let result = reenterable_schema_change_request(node, ir_node)?;
+        Tuple::new(&(result,)).map_err(Error::from)
+    } else {
+        match query.dispatch() {
+            Ok(mut any_tuple) => {
+                if let Some(tuple) = any_tuple.downcast_mut::<Tuple>() {
+                    debug!(
+                        Option::from("dispatch"),
+                        &format!("Dispatch result: {tuple:?}"),
+                    );
+                    let tuple: Tuple = std::mem::replace(tuple, Tuple::new(&())?);
+                    Ok(tuple)
+                } else {
+                    Err(Error::from(SbroadError::FailedTo(
+                        Action::Decode,
+                        None,
+                        format!("tuple {any_tuple:?}"),
+                    )))
+                }
+            }
+            Err(e) => Err(Error::from(e)),
+        }
+    }
+}
 
 /// Dispatches a query to the cluster.
 #[proc(packed_args)]
@@ -46,48 +93,182 @@ pub fn dispatch_query(encoded_params: EncodedPatternWithParams) -> traft::Result
     let tracer = params.tracer;
 
     query_span::<Result<Tuple, Error>, _>(
-        "\"api.router\"",
+        "\"api.router.dispatch\"",
         &id,
         &tracer,
         &ctx,
         &params.pattern,
         || {
             let runtime = RouterRuntime::new().map_err(Error::from)?;
-            let mut query =
+            let query =
                 Query::new(&runtime, &params.pattern, params.params).map_err(Error::from)?;
-            if query.is_ddl().map_err(Error::from)? || query.is_acl().map_err(Error::from)? {
-                let ir_plan = query.get_exec_plan().get_ir_plan();
-                let top_id = ir_plan.get_top().map_err(Error::from)?;
-                let ir_plan_mut = query.get_mut_exec_plan().get_mut_ir_plan();
+            dispatch(query)
+        },
+    )
+}
 
-                // XXX: add Node::take_node method to simplify the following 2 lines
-                let ir_node = ir_plan_mut.get_mut_node(top_id).map_err(Error::from)?;
-                let ir_node = std::mem::replace(ir_node, IrNode::Parameter);
+struct BindArgs {
+    descriptor: Descriptor,
+    params: Vec<Value>,
+    traceable: bool,
+}
 
-                let node = node::global()?;
-                let result = reenterable_schema_change_request(node, ir_node)?;
-                Tuple::new(&(result,)).map_err(Error::from)
-            } else {
-                match query.dispatch() {
-                    Ok(mut any_tuple) => {
-                        if let Some(tuple) = any_tuple.downcast_mut::<Tuple>() {
-                            debug!(
-                                Option::from("dispatch"),
-                                &format!("Dispatch result: {tuple:?}"),
-                            );
-                            let tuple: Tuple = std::mem::replace(tuple, Tuple::new(&())?);
-                            Ok(tuple)
-                        } else {
-                            Err(Error::from(SbroadError::FailedTo(
-                                Action::Decode,
-                                None,
-                                format!("tuple {any_tuple:?}"),
-                            )))
-                        }
-                    }
-                    Err(e) => Err(Error::from(e)),
+impl BindArgs {
+    fn take(self) -> (Descriptor, Vec<Value>, bool) {
+        (self.descriptor, self.params, self.traceable)
+    }
+}
+
+impl<'de> Deserialize<'de> for BindArgs {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct EncodedBindArgs(Descriptor, Option<Vec<LuaValue>>, Option<bool>);
+
+        let EncodedBindArgs(descriptor, params, traceable) =
+            EncodedBindArgs::deserialize(deserializer)?;
+
+        let params = params
+            .unwrap_or_default()
+            .into_iter()
+            .map(Value::from)
+            .collect::<Vec<Value>>();
+
+        Ok(Self {
+            descriptor,
+            params,
+            traceable: traceable.unwrap_or(false),
+        })
+    }
+}
+
+#[proc(packed_args)]
+pub fn proc_pg_bind(args: BindArgs) -> traft::Result<()> {
+    let (key, params, traceable) = args.take();
+    with_portals(key, |portal| {
+        let mut plan = std::mem::take(portal.plan_mut());
+        stat_query_span::<traft::Result<()>, _>(
+            "\"api.router.bind\"",
+            portal.sql(),
+            portal.id(),
+            traceable,
+            || {
+                if !plan.is_ddl()? && !plan.is_acl()? {
+                    plan.bind_params(params)?;
+                    plan.apply_options()?;
+                    plan.optimize()?;
                 }
+                Ok(())
+            },
+        )?;
+        *portal.plan_mut() = plan;
+        Ok(())
+    })
+}
+
+#[proc]
+pub fn proc_pg_portals() -> UserDescriptors {
+    UserDescriptors::new()
+}
+
+#[proc]
+pub fn proc_pg_close(key: Descriptor) -> traft::Result<()> {
+    let portal: BoxedPortal = PG_PORTALS.with(|storage| storage.borrow_mut().remove(key))?;
+    drop(portal);
+    Ok(())
+}
+
+#[proc]
+pub fn proc_pg_describe(key: Descriptor, traceable: bool) -> traft::Result<Describe> {
+    with_portals(key, |portal| {
+        let description = stat_query_span::<traft::Result<Describe>, _>(
+            "\"api.router.describe\"",
+            portal.sql(),
+            portal.id(),
+            traceable,
+            || Describe::new(portal.plan()).map_err(Error::from),
+        )?;
+        Ok(description)
+    })
+}
+
+#[proc]
+pub fn proc_pg_execute(key: Descriptor, traceable: bool) -> traft::Result<Tuple> {
+    with_portals(key, |portal| {
+        let res = stat_query_span::<traft::Result<Tuple>, _>(
+            "\"api.router.execute\"",
+            portal.sql(),
+            portal.id(),
+            traceable,
+            || {
+                let runtime = RouterRuntime::new().map_err(Error::from)?;
+                let query = Query::from_parts(
+                    portal.plan().is_explain(),
+                    // XXX: the router runtime cache contains only unbinded IR plans to
+                    // speed up SQL parsing and metadata resolution. We need to clone the
+                    // plan here as its IR would be mutate during query execution (bind,
+                    // optimization, dispatch steps). Otherwise we'll polute the parsing
+                    // cache entry.
+                    ExecutionPlan::from(portal.plan().clone()),
+                    &runtime,
+                    HashMap::new(),
+                );
+                dispatch(query)
+            },
+        )?;
+        Ok(res)
+    })
+}
+
+#[proc]
+pub fn proc_pg_parse(query: String, traceable: bool) -> traft::Result<Descriptor> {
+    let id = query_id(&query);
+    // Keep the query patterns for opentelemetry spans short enough.
+    let sql = query
+        .char_indices()
+        .filter_map(|(i, c)| if i <= OTM_CHAR_LIMIT { Some(c) } else { None })
+        .collect::<String>();
+    stat_query_span::<traft::Result<Descriptor>, _>(
+        "\"api.router.parse\"",
+        &sql.clone(),
+        &id.clone(),
+        traceable,
+        || {
+            let runtime = RouterRuntime::new().map_err(Error::from)?;
+            let mut cache = runtime
+                .cache()
+                .try_borrow_mut()
+                .map_err(|e| Error::Other(format!("runtime query cache: {e:?}").into()))?;
+            if let Some(plan) = cache.get(&query)? {
+                let portal = BoxedPortal::new(id, sql.clone(), plan.clone());
+                let descriptor = portal.descriptor();
+                PG_PORTALS.with(|cache| cache.borrow_mut().put(descriptor, portal))?;
+                return Ok(descriptor);
             }
+            let ast = <RouterRuntime as Router>::ParseTree::new(&query).map_err(Error::from)?;
+            let metadata = &*runtime.metadata().map_err(Error::from)?;
+            let mut plan = ast.resolve_metadata(metadata).map_err(Error::from)?;
+            if runtime.provides_versions() {
+                let mut table_version_map =
+                    TableVersionMap::with_capacity(plan.relations.tables.len());
+                for table in plan.relations.tables.keys() {
+                    let normalized = normalize_name_for_space_api(table);
+                    let version = runtime
+                        .get_table_version(normalized.as_str())
+                        .map_err(Error::from)?;
+                    table_version_map.insert(normalized, version);
+                }
+                plan.version_map = table_version_map;
+            }
+            if !plan.is_ddl()? && !plan.is_acl()? {
+                cache.put(query, plan.clone())?;
+            }
+            let portal = BoxedPortal::new(id, sql, plan);
+            let descriptor = portal.descriptor();
+            PG_PORTALS.with(|storage| storage.borrow_mut().put(descriptor, portal))?;
+            Ok(descriptor)
         },
     )
 }
@@ -433,30 +614,37 @@ pub fn execute(raw: &RawBytes) -> traft::Result<Tuple> {
 
     let mut required = RequiredData::try_from(EncodedRequiredData::from(raw_required))?;
 
-    let id: String = required.id().into();
     let ctx = required.extract_context();
     let tracer = required.tracer();
+    let trace_id = required.trace_id().to_string();
 
-    query_span::<Result<Tuple, Error>, _>("\"api.storage\"", &id, &tracer, &ctx, "", || {
-        let runtime = StorageRuntime::new().map_err(Error::from)?;
-        match runtime.execute_plan(&mut required, &mut raw_optional) {
-            Ok(mut any_tuple) => {
-                if let Some(tuple) = any_tuple.downcast_mut::<Tuple>() {
-                    debug!(
-                        Option::from("execute"),
-                        &format!("Execution result: {tuple:?}"),
-                    );
-                    let tuple: Tuple = std::mem::replace(tuple, Tuple::new(&())?);
-                    Ok(tuple)
-                } else {
-                    Err(Error::from(SbroadError::FailedTo(
-                        Action::Decode,
-                        None,
-                        format!("tuple {any_tuple:?}"),
-                    )))
+    query_span::<Result<Tuple, Error>, _>(
+        "\"api.storage.execute\"",
+        &trace_id,
+        &tracer,
+        &ctx,
+        "",
+        || {
+            let runtime = StorageRuntime::new().map_err(Error::from)?;
+            match runtime.execute_plan(&mut required, &mut raw_optional) {
+                Ok(mut any_tuple) => {
+                    if let Some(tuple) = any_tuple.downcast_mut::<Tuple>() {
+                        debug!(
+                            Option::from("execute"),
+                            &format!("Execution result: {tuple:?}"),
+                        );
+                        let tuple: Tuple = std::mem::replace(tuple, Tuple::new(&())?);
+                        Ok(tuple)
+                    } else {
+                        Err(Error::from(SbroadError::FailedTo(
+                            Action::Decode,
+                            None,
+                            format!("tuple {any_tuple:?}"),
+                        )))
+                    }
                 }
+                Err(e) => Err(Error::from(e)),
             }
-            Err(e) => Err(Error::from(e)),
-        }
-    })
+        },
+    )
 }

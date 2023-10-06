@@ -88,10 +88,10 @@ pub(crate) fn setup(args: &args::Run) {
 
             picodata> pico.LUA_API_VERSION
             ---
-            - 3.0.0
+            - 3.1.0
             ...
         "},
-        "3.0.0",
+        "3.1.0",
     );
 
     luamod_set(
@@ -412,6 +412,7 @@ pub(crate) fn setup(args: &args::Run) {
 
             1. query (string)
             2. params (table), optional
+            3. traceable (boolean), optional
 
         Returns:
 

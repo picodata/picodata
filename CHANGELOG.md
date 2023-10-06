@@ -68,6 +68,12 @@ with the `YY.0M.MICRO` scheme.
   already a table with the highest possible id, then the "wholes" in the id
   ranges start to get filled.
 
+- **BREAKING CHANGE**: pico.trace() function is removed. Now we can trace an
+  SQL query via pico.sql().
+
+- **BREAKING CHANGE**: opentelemetry tables __SBROAD_STAT and __SBROAD_QUERY were renamed
+  into _sql_stat and _sql_query tables.
+
 ### Fixes
 
 - `calculate_bucket_id` now returns values in inclusive range [1, bucket_count] instead of [0, bucket_count - 1] as it was previously.

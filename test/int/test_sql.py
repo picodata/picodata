@@ -13,7 +13,7 @@ def test_pico_sql(cluster: Cluster):
     cluster.deploy(instance_count=1)
     i1 = cluster.instances[0]
 
-    usage_msg = re.escape("Usage: sql(query[, params])")
+    usage_msg = re.escape("Usage: sql(query[, params, traceable])")
     with pytest.raises(ReturnError, match=usage_msg):
         i1.call(
             "pico.sql",
@@ -23,6 +23,7 @@ def test_pico_sql(cluster: Cluster):
             "pico.sql",
             "select * from t",
             {},
+            False,
             "extra",
         )
 
@@ -40,6 +41,10 @@ def test_pico_sql(cluster: Cluster):
             "select * from t",
             1,
         )
+
+    third_arg_msg = "SQL trace flag must be a boolean"
+    with pytest.raises(ReturnError, match=third_arg_msg):
+        i1.call("pico.sql", "select * from t", {}, "tracer")
 
     invalid_meta_msg = re.escape("sbroad: space")
     with pytest.raises(ReturnError, match=invalid_meta_msg):

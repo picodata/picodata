@@ -24,6 +24,7 @@ use crate::cli::args;
 use crate::cli::args::Address;
 use crate::instance::grade::{CurrentGrade, TargetGrade, TargetGradeVariant};
 use crate::instance::Instance;
+use crate::sql::pgproto;
 use crate::traft::op;
 use crate::traft::LogicalClock;
 use crate::util::validate_and_complete_unix_socket_path;
@@ -105,6 +106,7 @@ fn init_sbroad() {
         };
     }
 
+    preload!("pgproto", "src/sql/pgproto.lua");
     preload!("sbroad", "src/sql/init.lua");
     preload!("sbroad.helper", "sbroad/sbroad-core/src/helper.lua");
     preload!(
@@ -120,8 +122,18 @@ fn init_sbroad() {
         r#"
         _G.pico.sql = require('sbroad').sql;
         box.schema.func.create('pico.sql', {if_not_exists = true});
-        _G.pico.trace = require('sbroad').trace;
-        box.schema.func.create('pico.trace', {if_not_exists = true});
+        _G.pico.pg_bind = require('pgproto').pg_bind;
+        box.schema.func.create('pico.pg_bind', {if_not_exists = true});
+        _G.pico.pg_close = require('pgproto').pg_close;
+        box.schema.func.create('pico.pg_close', {if_not_exists = true});
+        _G.pico.pg_describe = require('pgproto').pg_describe;
+        box.schema.func.create('pico.pg_describe', {if_not_exists = true});
+        _G.pico.pg_execute = require('pgproto').pg_execute;
+        box.schema.func.create('pico.pg_execute', {if_not_exists = true});
+        _G.pico.pg_parse = require('pgproto').pg_parse;
+        box.schema.func.create('pico.pg_parse', {if_not_exists = true});
+        _G.pico.pg_portals = require('pgproto').pg_portals;
+        box.schema.func.create('pico.pg_portals', {if_not_exists = true});
     "#,
     )
     .unwrap();
@@ -490,6 +502,16 @@ fn start_boot(args: &args::Run) {
             op::Dml::insert(
                 ClusterwideSpace::Property,
                 &(PropertyName::MaxHeartbeatPeriod, storage::DEFAULT_MAX_HEARTBEAT_PERIOD),
+            )
+            .expect("cannot fail")
+            .into(),
+        );
+
+        #[rustfmt::skip]
+        init_entries_push_op(
+            op::Dml::insert(
+                ClusterwideSpace::Property,
+                &(PropertyName::MaxPgPortals, pgproto::DEFAULT_MAX_PG_PORTALS),
             )
             .expect("cannot fail")
             .into(),

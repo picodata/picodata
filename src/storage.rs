@@ -13,6 +13,7 @@ use crate::failure_domain as fd;
 use crate::instance::{self, grade, Instance};
 use crate::replicaset::{Replicaset, ReplicasetId};
 use crate::schema::{Distribution, IndexDef, PrivilegeDef, RoleDef, SpaceDef, UserDef, UserId};
+use crate::sql::pgproto::DEFAULT_MAX_PG_PORTALS;
 use crate::tlog;
 use crate::traft;
 use crate::traft::error::Error;
@@ -790,6 +791,9 @@ impl From<ClusterwideSpace> for SpaceId {
         /// Maximum number of seconds to wait before sending another heartbeat
         /// to an unresponsive instance.
         MaxHeartbeatPeriod = "max_heartbeat_period",
+
+        /// PG portal storage size.
+        MaxPgPortals = "max_pg_portals",
     }
 }
 
@@ -882,6 +886,14 @@ impl Properties {
         let res = self
             .get(PropertyName::GlobalSchemaVersion)?
             .unwrap_or_default();
+        Ok(res)
+    }
+
+    #[inline]
+    pub fn max_pg_portals(&self) -> tarantool::Result<usize> {
+        let res = self
+            .get(PropertyName::MaxPgPortals)?
+            .unwrap_or(DEFAULT_MAX_PG_PORTALS);
         Ok(res)
     }
 
