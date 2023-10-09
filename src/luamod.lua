@@ -999,7 +999,7 @@ Params:
 
 Returns:
 
-    (number)
+    (number) raft index
     or
     (nil, string) in case of an error
 

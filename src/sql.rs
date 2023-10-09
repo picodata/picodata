@@ -4,7 +4,7 @@ use crate::schema::{wait_for_ddl_commit, CreateSpaceParams, DistributionParam, F
 use crate::sql::router::RouterRuntime;
 use crate::sql::storage::StorageRuntime;
 use crate::traft::error::Error;
-use crate::traft::op::{Ddl as OpDdl, Op};
+use crate::traft::op::{Acl as OpAcl, Ddl as OpDdl, Op};
 use crate::traft::{self, node};
 use crate::util::duration_from_secs_f64_clamped;
 use crate::{cas, unwrap_ok_or};
@@ -16,6 +16,7 @@ use sbroad::executor::engine::helpers::decode_msgpack;
 use sbroad::executor::protocol::{EncodedRequiredData, RequiredData};
 use sbroad::executor::result::ConsumerResult;
 use sbroad::executor::Query;
+use sbroad::ir::acl::Acl;
 use sbroad::ir::ddl::Ddl;
 use sbroad::otm::query_span;
 
@@ -57,6 +58,16 @@ pub fn dispatch_query(encoded_params: EncodedPatternWithParams) -> traft::Result
                 let node = node::global()?;
                 let result = reenterable_ddl_request(node, ddl, deadline)?;
                 Tuple::new(&(result,)).map_err(Error::from)
+            } else if query.is_acl().map_err(Error::from)? {
+                let ir_plan = query.get_exec_plan().get_ir_plan();
+                let top_id = ir_plan.get_top().map_err(Error::from)?;
+                let ir_plan_mut = query.get_mut_exec_plan().get_mut_ir_plan();
+                let acl = ir_plan_mut.take_acl_node(top_id).map_err(Error::from)?;
+                let timeout = duration_from_secs_f64_clamped(acl.timeout()?);
+                let deadline = Instant::now().saturating_add(timeout);
+                let node = node::global()?;
+                let result = reenterable_acl_request(node, acl, deadline)?;
+                Tuple::new(&(result,)).map_err(Error::from)
             } else {
                 match query.dispatch() {
                     Ok(mut any_tuple) => {
@@ -80,6 +91,80 @@ pub fn dispatch_query(encoded_params: EncodedPatternWithParams) -> traft::Result
             }
         },
     )
+}
+
+fn reenterable_acl_request(
+    node: &node::Node,
+    acl: Acl,
+    deadline: Instant,
+) -> traft::Result<ConsumerResult> {
+    let storage = &node.storage;
+
+    // Check parameters
+    let params = match acl {
+        Acl::DropUser { name, .. } => {
+            // Nothing to check
+            Params::DropUser(name)
+        }
+        Acl::DropRole { .. } | Acl::CreateRole { .. } | Acl::CreateUser { .. } => {
+            return Err(Error::Other("ACL is not implemented yet".into()))
+        }
+    };
+
+    'retry: loop {
+        let index = node.read_index(deadline.duration_since(Instant::now()))?;
+
+        if storage.properties.pending_schema_change()?.is_some() {
+            node.wait_index(index + 1, deadline.duration_since(Instant::now()))?;
+            continue 'retry;
+        }
+
+        // Check for conflicts and make the op.
+        let acl = match &params {
+            Params::DropUser(name) => {
+                let Some(user_def) = storage.users.by_name(name)? else {
+                    // User doesn't exist yet, no op needed
+                    return Ok(ConsumerResult { row_count: 0 });
+                };
+                let schema_version = storage.properties.next_schema_version()?;
+                OpAcl::DropUser {
+                    user_id: user_def.id,
+                    schema_version,
+                }
+            }
+        };
+
+        let op = Op::Acl(acl);
+        let term = raft::Storage::term(&node.raft_storage, index)?;
+        let predicate = cas::Predicate {
+            index,
+            term,
+            ranges: cas::schema_change_ranges().into(),
+        };
+        let res = cas::compare_and_swap(op, predicate, deadline.duration_since(Instant::now()));
+        let (index, term) = unwrap_ok_or!(res,
+            Err(e) => {
+                if e.is_retriable() {
+                    continue 'retry;
+                } else {
+                    return Err(e);
+                }
+            }
+        );
+
+        node.wait_index(index, deadline.duration_since(Instant::now()))?;
+
+        if term != raft::Storage::term(&node.raft_storage, index)? {
+            // Leader has changed and the entry got rolled back, retry.
+            continue 'retry;
+        }
+
+        return Ok(ConsumerResult { row_count: 1 });
+    }
+
+    enum Params {
+        DropUser(String),
+    }
 }
 
 fn reenterable_ddl_request(

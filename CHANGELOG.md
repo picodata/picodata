@@ -52,6 +52,8 @@ with the `YY.0M.MICRO` scheme.
 - _Picodata WebUI_ is introduced. It includes cluster status panel and replicaset list.
   Current status of WebUI is still beta.
 
+- _Clusterwide SQL_ introduces the capability to drop picodata users.
+
 ### Lua API:
 
 

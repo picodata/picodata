@@ -156,6 +156,11 @@ pytest
 pipenv run lint
 ```
 
+#### Running specific test
+```bash
+python3.10 -m pipenv run pytest -k test_sql_acl
+```
+
 #### Running tests in parallel with pytest-xdist
 
 ```bash

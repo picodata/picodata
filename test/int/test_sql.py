@@ -335,6 +335,47 @@ def test_sql_limits(cluster: Cluster):
         )
 
 
+def test_sql_acl(cluster: Cluster):
+    cluster.deploy(instance_count=2)
+    i1, i2 = cluster.instances
+
+    username = "User"
+    password = "Password"
+    upper_username = "USER"
+    i1.call("pico.create_user", username, password)
+    assert i1.call("box.space._pico_user:select") == [
+        [32, "User", 1, ["chap-sha1", "+6fC0nydBfP9TEaaG7r1VxFOVZQ="]]
+    ]
+
+    # Dropping user that doesn't exist should return 0.
+    acl = i1.sql(f"drop user {upper_username}")
+    assert acl["row_count"] == 0
+
+    # Dropping user that does exist should return 1.
+    acl = i1.sql(f'drop user "{username}"')
+    assert acl["row_count"] == 1
+    assert i1.call("box.space._pico_user:select") == []
+
+    # All the usernames below should match the same user.
+    i1.call("pico.create_user", upper_username, password)
+    acl = i1.sql(f'drop user "{upper_username}"')
+    assert acl["row_count"] == 1
+    i1.call("pico.create_user", upper_username, password)
+    acl = i1.sql(f"drop user {username}")
+    assert acl["row_count"] == 1
+    i1.call("pico.create_user", upper_username, password)
+    acl = i1.sql(f'drop user "{upper_username}"')
+    assert acl["row_count"] == 1
+
+    # Zero timeout should return timeout error.
+    with pytest.raises(ReturnError, match="timeout"):
+        i1.sql(f"drop user {username} option (timeout = 0)")
+
+    # Username in single quotes is unsupported.
+    with pytest.raises(ReturnError, match="rule parsing error"):
+        i1.sql(f"drop user '{username}'")
+
+
 def test_distributed_sql_via_set_language(cluster: Cluster):
     cluster.deploy(instance_count=2)
     i1, i2 = cluster.instances
