@@ -7,7 +7,7 @@ Picodata при работе с распределенной СУБД.
 
 - Data Definition Language (`DDL`): команды для
   [создания](#create_table) и [удаления](#drop_table)
-  [таблиц](../concepts.md#table);
+  [таблиц](../glossary.md#table);
 - Data Modification Language (`DML`): команды [`INSERT`](#insert) для
   добавления, [`DELETE`](#delete) для удаления и [`UPDATE`](#update) для
   обновления данных;

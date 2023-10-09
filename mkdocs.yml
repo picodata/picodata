@@ -7,8 +7,7 @@ nav:
   - Ознакомление с ПО Picodata:
     - description.md
     - benefits.md
-    - benefits_rust.md
-    - concepts.md
+    - glossary.md
     - feedback.md
   - Инструкции и руководства:
     - install.md
