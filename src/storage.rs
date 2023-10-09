@@ -860,6 +860,11 @@ impl Properties {
     }
 
     #[inline]
+    pub fn password_min_length(&self) -> tarantool::Result<Option<usize>> {
+        self.get(PropertyName::PasswordMinLength)
+    }
+
+    #[inline]
     pub fn pending_schema_change(&self) -> tarantool::Result<Option<Ddl>> {
         self.get(PropertyName::PendingSchemaChange)
     }

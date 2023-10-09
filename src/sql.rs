@@ -128,6 +128,39 @@ impl Node {
     }
 }
 
+fn check_password_min_length(
+    password: &str,
+    auth_method: &AuthMethod,
+    node: &node::Node,
+) -> traft::Result<()> {
+    if let AuthMethod::Ldap = auth_method {
+        // LDAP doesn't need password for authentication
+        return Ok(());
+    }
+
+    let storage = &node.storage;
+    let password_min_length = storage.properties.password_min_length()?;
+    if let Some(password_min_length) = password_min_length {
+        if password.len() < password_min_length {
+            return Err(Error::Other(
+                format!(
+                    "password is too short: expected at least {}, got {}",
+                    password_min_length,
+                    password.len()
+                )
+                .into(),
+            ));
+        }
+    } else {
+        // Despite the fact that we've set password_min_length during cluster bootstrap
+        // it will be missing for clusters that were upgraded from previous version.
+        // Retain previous behavior for those.
+        return Ok(());
+    }
+
+    Ok(())
+}
+
 fn reenterable_acl_request(
     node: &node::Node,
     acl: Acl,
@@ -153,6 +186,7 @@ fn reenterable_acl_request(
         } => {
             let method = AuthMethod::from_str(&auth_method)
                 .map_err(|_| Error::Other(format!("Unknown auth method: {auth_method}").into()))?;
+            check_password_min_length(&password, &method, node)?;
             let data = AuthData::new(&method, &name, &password);
             let auth = AuthDef::new(method, data.into_string());
             Params::CreateUser(name, auth)

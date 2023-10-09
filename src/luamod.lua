@@ -175,7 +175,12 @@ local function reenterable_schema_change_request(deadline, make_op_if_needed)
     end
 end
 
-local function check_password_min_length(password)
+local function check_password_min_length(password, auth_type)
+    if string.lower(auth_type) == 'ldap' then
+	    -- LDAP doesn't need password for authentication
+	    return
+    end
+
     local password_min_length = box.space._pico_property:get("password_min_length")
     if password_min_length == nil then
         -- Despite the fact that we've set password_min_length during cluster bootstrap
@@ -229,20 +234,25 @@ Returns:
     (nil, error) in case of an error
 ]]
 function pico.create_user(user, password, opts)
+    local auth_type = box.cfg.auth_type
+
     local ok, err = pcall(function()
-        box.internal.check_param(user, 'user', 'string')
-        box.internal.check_param(password, 'password', 'string')
-
-        check_password_min_length(password)
-
         box.internal.check_param_table(opts, {
             timeout = 'number',
             auth_type = 'string',
         })
-        opts = opts or {}
-        if not opts.timeout then
-            opts.timeout = TIMEOUT_INFINITY
-        end
+	opts = opts or {}
+	if not opts.timeout then
+	    opts.timeout = TIMEOUT_INFINITY
+	end
+	if opts.auth_type then
+	    auth_type = opts.auth_type
+	end
+
+        box.internal.check_param(user, 'user', 'string')
+        box.internal.check_param(password, 'password', 'string')
+
+        check_password_min_length(password, auth_type)
     end)
     if not ok then
         return nil, err
@@ -252,7 +262,6 @@ function pico.create_user(user, password, opts)
 
     -- XXX: we construct this closure every time the function is called,
     -- which is bad for performance/jit. Refactor if problems are discovered.
-    local auth_type = opts.auth_type or box.cfg.auth_type
     local auth_data = box.internal.prepare_auth(auth_type, password, user)
     local function make_op_if_needed()
         local grantee_def = box.space._user.index.name:get(user)
@@ -321,20 +330,25 @@ Returns:
     (nil, error) in case of an error
 ]]
 function pico.change_password(user, password, opts)
+    local auth_type = box.cfg.auth_type
+
     local ok, err = pcall(function()
-        box.internal.check_param(user, 'user', 'string')
-        box.internal.check_param(password, 'password', 'string')
-
-        check_password_min_length(password)
-
         box.internal.check_param_table(opts, {
             timeout = 'number',
             auth_type = 'string',
         })
-        opts = opts or {}
-        if not opts.timeout then
-            opts.timeout = TIMEOUT_INFINITY
-        end
+	opts = opts or {}
+	if not opts.timeout then
+	    opts.timeout = TIMEOUT_INFINITY
+	end
+	if opts.auth_type then
+	    auth_type = opts.auth_type
+	end
+
+        box.internal.check_param(user, 'user', 'string')
+        box.internal.check_param(password, 'password', 'string')
+
+        check_password_min_length(password, auth_type)
     end)
     if not ok then
         return nil, err
@@ -344,7 +358,6 @@ function pico.change_password(user, password, opts)
 
     -- XXX: we construct this closure every time the function is called,
     -- which is bad for performance/jit. Refactor if problems are discovered.
-    local auth_type = opts.auth_type or box.cfg.auth_type
     local auth_data = box.internal.prepare_auth(auth_type, password, user)
     local function make_op_if_needed()
         -- TODO: allow `user` to be a user id instead of name

@@ -358,6 +358,50 @@ def test_sql_limits(cluster: Cluster):
         )
 
 
+def test_sql_acl_password_length(cluster: Cluster):
+    cluster.deploy(instance_count=2)
+    i1, i2 = cluster.instances
+
+    username = "USER"
+    password_short = "pwd"
+    password_long = "password"
+
+    acl = i1.sql(
+        """
+        create user {username} with password '{password}'
+        using md5 option (timeout = 3)
+    """.format(
+            username=username, password=password_long
+        )
+    )
+    assert acl["row_count"] == 1
+    acl = i1.sql(f"drop user {username}")
+    assert acl["row_count"] == 1
+
+    usage_msg = re.escape("password is too short")
+    with pytest.raises(ReturnError, match=usage_msg):
+        acl = i1.sql(
+            """
+            create user {username} with password '{password}'
+            using md5 option (timeout = 3)
+        """.format(
+                username=username, password=password_short
+            )
+        )
+
+    acl = i1.sql(
+        """
+        create user {username} with password '{password}'
+        using ldap option (timeout = 3)
+    """.format(
+            username=username, password=password_short
+        )
+    )
+    assert acl["row_count"] == 1
+    acl = i1.sql(f"drop user {username}")
+    assert acl["row_count"] == 1
+
+
 def test_sql_acl_user(cluster: Cluster):
     cluster.deploy(instance_count=2)
     i1, i2 = cluster.instances
@@ -453,14 +497,14 @@ def test_sql_acl_user(cluster: Cluster):
 
     # Can't create same user with different password.
     with pytest.raises(ReturnError, match="already exists with different auth method"):
-        i1.sql(f"create user {username} with password '123' using md5")
-        i1.sql(f"create user {username} with password '321' using md5")
+        i1.sql(f"create user {username} with password '123456789' using md5")
+        i1.sql(f"create user {username} with password '987654321' using md5")
     acl = i1.sql(f"drop user {username}")
     assert acl["row_count"] == 1
 
     # Attempt to create role with the name of already existed user
     # should lead to an error.
-    acl = i1.sql(f""" create user "{username}" with password '123' using md5 """)
+    acl = i1.sql(f""" create user "{username}" with password '123456789' using md5 """)
     assert acl["row_count"] == 1
     with pytest.raises(ReturnError, match="User with the same name already exists"):
         i1.sql(f'create role "{username}"')
