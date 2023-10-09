@@ -1205,3 +1205,9 @@ extern "C" {
     ) -> i32;
     pub fn box_read_view_iterator_free(iter: *mut box_read_view_iterator_t);
 }
+
+// Access control.
+#[cfg(feature = "picodata")]
+extern "C" {
+    pub fn box_access_check_space(space_id: u32, user_access: u16) -> c_int;
+}

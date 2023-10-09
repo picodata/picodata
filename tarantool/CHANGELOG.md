@@ -20,6 +20,7 @@
 
 ### Added (picodata)
 - struct `read_view::ReadView` for opening read views on selected spaces.
+- Expose `box_access_check_space` to be able to run access checks on spaces externally
 
 ### Fixed (picodata)
 - A race condition causing undefined behaviour due to fiber_cond_delete being called outside tx sometimes

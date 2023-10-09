@@ -18,6 +18,7 @@ use tarantool::ffi::lua as ffi_lua;
 use tarantool::index::IndexType;
 use tarantool::space::{Field, FieldType, Space};
 
+mod access_control;
 mod auth;
 mod r#box;
 mod coio;
