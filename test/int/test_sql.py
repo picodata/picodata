@@ -375,6 +375,23 @@ def test_sql_acl(cluster: Cluster):
     with pytest.raises(ReturnError, match="rule parsing error"):
         i1.sql(f"drop user '{username}'")
 
+    i1.call("pico.create_user", username, password)
+    assert i1.call("box.space._pico_user:select") == [
+        [32, "User", 9, ["chap-sha1", "+6fC0nydBfP9TEaaG7r1VxFOVZQ="]]
+    ]
+    # Attempt to create role with the name of already existed user
+    # should lead to an error.
+    with pytest.raises(ReturnError, match="User with the same name already exists"):
+        i1.sql(f'create role "{username}"')
+
+    # Successive creation of role.
+    acl = i1.sql(f'create role "{upper_username}"')
+    assert acl["row_count"] == 1
+
+    # Creation of the role that already exists shouldn't do anything.
+    acl = i1.sql(f'create role "{upper_username}"')
+    assert acl["row_count"] == 0
+
 
 def test_distributed_sql_via_set_language(cluster: Cluster):
     cluster.deploy(instance_count=2)

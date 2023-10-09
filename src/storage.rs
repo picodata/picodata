@@ -1879,6 +1879,14 @@ impl Users {
     }
 
     #[inline]
+    pub fn max_user_id(&self) -> tarantool::Result<Option<UserId>> {
+        match self.index_id.max(&())? {
+            Some(user) => Ok(user.get(0).unwrap()),
+            None => Ok(None),
+        }
+    }
+
+    #[inline]
     pub fn replace(&self, user_def: &UserDef) -> tarantool::Result<()> {
         self.space.replace(user_def)?;
         Ok(())
@@ -1968,6 +1976,14 @@ impl Roles {
             res = Some(tuple.decode()?);
         }
         Ok(res)
+    }
+
+    #[inline]
+    pub fn max_role_id(&self) -> tarantool::Result<Option<UserId>> {
+        match self.index_id.max(&())? {
+            Some(role) => Ok(role.get(0).unwrap()),
+            None => Ok(None),
+        }
     }
 
     #[inline]

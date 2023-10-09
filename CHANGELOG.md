@@ -54,6 +54,8 @@ with the `YY.0M.MICRO` scheme.
 
 - _Clusterwide SQL_ introduces the capability to drop picodata users.
 
+- _Clusterwide SQL_ introduces the capability to create roles.
+
 ### Lua API:
 
 

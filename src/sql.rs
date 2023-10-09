@@ -1,6 +1,8 @@
 //! Clusterwide SQL query execution.
 
-use crate::schema::{wait_for_ddl_commit, CreateSpaceParams, DistributionParam, Field, ShardingFn};
+use crate::schema::{
+    wait_for_ddl_commit, CreateSpaceParams, DistributionParam, Field, RoleDef, ShardingFn, UserId,
+};
 use crate::sql::router::RouterRuntime;
 use crate::sql::storage::StorageRuntime;
 use crate::traft::error::Error;
@@ -11,7 +13,7 @@ use crate::{cas, unwrap_ok_or};
 
 use sbroad::backend::sql::ir::{EncodedPatternWithParams, PatternWithParams};
 use sbroad::debug;
-use sbroad::errors::{Action, SbroadError};
+use sbroad::errors::{Action, Entity, SbroadError};
 use sbroad::executor::engine::helpers::decode_msgpack;
 use sbroad::executor::protocol::{EncodedRequiredData, RequiredData};
 use sbroad::executor::result::ConsumerResult;
@@ -20,10 +22,12 @@ use sbroad::ir::acl::Acl;
 use sbroad::ir::ddl::Ddl;
 use sbroad::otm::query_span;
 
+use crate::traft::node::Node;
 use ::tarantool::proc;
 use ::tarantool::space::FieldType;
 use ::tarantool::time::Instant;
 use ::tarantool::tuple::{RawBytes, Tuple};
+use tarantool::space::{Space, SystemSpace};
 
 pub mod router;
 pub mod storage;
@@ -93,6 +97,35 @@ pub fn dispatch_query(encoded_params: EncodedPatternWithParams) -> traft::Result
     )
 }
 
+impl Node {
+    /// Helper method to retrieve next id for newly created user/role.
+    fn get_next_grantee_id(&self) -> traft::Result<UserId> {
+        let storage = &self.storage;
+        let max_user_id = storage.users.max_user_id()?;
+        let max_role_id = storage.roles.max_role_id()?;
+        let mut new_id: UserId = 0;
+        if let Some(max_user_id) = max_user_id {
+            new_id = max_user_id + 1
+        }
+        if let Some(max_role_id) = max_role_id {
+            if new_id <= max_role_id {
+                new_id = max_role_id + 1
+            }
+        }
+        if new_id != 0 {
+            return Ok(new_id);
+        }
+        let max_tarantool_user_id: UserId = Space::from(SystemSpace::User)
+            .index("primary")
+            .expect("_user should have a primary index")
+            .max(&())?
+            .expect("_user must contain at least one row")
+            .get(0)
+            .expect("_user rows must contain id column");
+        Ok(max_tarantool_user_id + 1)
+    }
+}
+
 fn reenterable_acl_request(
     node: &node::Node,
     acl: Acl,
@@ -106,7 +139,11 @@ fn reenterable_acl_request(
             // Nothing to check
             Params::DropUser(name)
         }
-        Acl::DropRole { .. } | Acl::CreateRole { .. } | Acl::CreateUser { .. } => {
+        Acl::CreateRole { name, .. } => {
+            // Nothing to check
+            Params::CreateRole(name)
+        }
+        Acl::DropRole { .. } | Acl::CreateUser { .. } => {
             return Err(Error::Other("ACL is not implemented yet".into()))
         }
     };
@@ -130,6 +167,33 @@ fn reenterable_acl_request(
                 OpAcl::DropUser {
                     user_id: user_def.id,
                     schema_version,
+                }
+            }
+            Params::CreateRole(name) => {
+                let schema_version = storage.properties.next_schema_version()?;
+
+                let sys_user = Space::from(SystemSpace::User)
+                    .index("name")
+                    .expect("_user should have an index by name")
+                    .get(&(name,))?;
+                if let Some(user) = sys_user {
+                    let entry_type: &str = user.get(3).unwrap();
+                    if entry_type == "user" {
+                        return Err(Error::Sbroad(SbroadError::Invalid(
+                            Entity::Acl,
+                            Some(format!("Unable to create role {name}. User with the same name already exists"))
+                        )));
+                    } else {
+                        return Ok(ConsumerResult { row_count: 0 });
+                    }
+                }
+                let id = node.get_next_grantee_id()?;
+                OpAcl::CreateRole {
+                    role_def: RoleDef {
+                        id,
+                        name: name.clone(),
+                        schema_version,
+                    },
                 }
             }
         };
@@ -164,6 +228,7 @@ fn reenterable_acl_request(
 
     enum Params {
         DropUser(String),
+        CreateRole(String),
     }
 }
 
