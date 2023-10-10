@@ -88,3 +88,27 @@ pub unsafe fn has_fiber_set_ctx() -> bool {
 pub fn has_fully_temporary_spaces() -> bool {
     crate::space::space_id_temporary_min().is_some()
 }
+
+/// Check whether the current tarantool executable supports the [`fiber_find`],
+/// [`fiber_set_name_n`], [`fiber_id`], [`fiber_csw`], [`fiber_name`] ffi apis.
+///
+/// If this function returns `false` then the corrsponding apis (e.g. setting
+/// fiber name) will use the less efficient implementation based on the lua
+/// interface.
+///
+/// # Safety
+/// This function is only safe to be called from the tx thread.
+///
+/// [`fiber_find`]: crate::ffi::tarantool::fiber_find
+/// [`fiber_set_name_n`]: crate::ffi::tarantool::fiber_set_name_n
+/// [`fiber_id`]: crate::ffi::tarantool::fiber_id
+/// [`fiber_name`]: crate::ffi::tarantool::fiber_name
+/// [`fiber_csw`]: crate::ffi::tarantool::fiber_csw
+#[inline]
+pub unsafe fn has_fiber_id() -> bool {
+    static mut RESULT: Option<bool> = None;
+    if RESULT.is_none() {
+        RESULT = Some(helper::has_dyn_symbol(crate::c_str!("fiber_id")));
+    }
+    RESULT.unwrap()
+}

@@ -2,8 +2,11 @@
 //!
 //! Those are mostly used for testing.
 
-/// Returns the number of context switches of the calling fiber.
-pub fn csw() -> i32 {
+use super::FiberId;
+
+/// Returns the number of context switches of the fiber with given id or of
+/// calling fiber if id is `None`. Returns `None` if fiber wasn't found.
+pub(crate) fn csw_lua(id: Option<FiberId>) -> Option<u64> {
     static mut FUNCTION_DEFINED: bool = false;
     let lua = crate::lua_state();
 
@@ -11,12 +14,21 @@ pub fn csw() -> i32 {
         #[rustfmt::skip]
         lua.exec(r#"
             local fiber = require('fiber')
-            function fiber_csw()
-                local fiber_self = fiber.self()
-                if fiber_self.csw ~= nil then
-                    return fiber_self:csw()
+            function fiber_csw(id)
+                local f
+                if id == nil then
+                    f = fiber.self()
+                    id = f.id()
                 else
-                    return fiber.info({bt = false})[fiber.id()].csw
+                    f = fiber.find(id)
+                end
+                if f == nil then
+                    return nil
+                end
+                if f.csw ~= nil then
+                    return f:csw()
+                else
+                    return fiber.info({bt = false})[id].csw
                 end
             end
         "#).unwrap();
@@ -27,7 +39,7 @@ pub fn csw() -> i32 {
 
     lua.get::<crate::tlua::LuaFunction<_>, _>("fiber_csw")
         .unwrap()
-        .into_call()
+        .into_call_with_args(id)
         .unwrap()
 }
 
@@ -53,9 +65,9 @@ pub fn check_yield<F, T>(f: F) -> YieldResult<T>
 where
     F: FnOnce() -> T,
 {
-    let csw_before = csw();
+    let csw_before = crate::fiber::csw();
     let res = f();
-    if csw() == csw_before {
+    if crate::fiber::csw() == csw_before {
         YieldResult::DidntYield(res)
     } else {
         YieldResult::Yielded(res)
@@ -92,7 +104,7 @@ mod tests {
     #[crate::test(tarantool = "crate")]
     fn performance() {
         let now = crate::time::Instant::now();
-        let _ = super::csw();
+        let _ = crate::fiber::csw();
         let elapsed = now.elapsed();
         print!("{elapsed:?} ");
         assert!(elapsed < Duration::from_millis(1));

@@ -25,6 +25,7 @@ use ::va_list::VaList;
 use tlua::unwrap_or;
 
 use crate::error::{TarantoolError, TarantoolErrorCode};
+use crate::ffi::has_fiber_id;
 use crate::ffi::{lua, tarantool as ffi};
 use crate::Result;
 use crate::{c_ptr, set_error};
@@ -43,8 +44,10 @@ pub use r#async::block_on;
 
 mod csw;
 pub use csw::check_yield;
-pub use csw::csw;
 pub use csw::YieldResult;
+
+/// Type alias for a fiber id.
+pub type FiberId = u64;
 
 /// *OBSOLETE*: This struct is being deprecated in favour of [`Fyber`], due to
 /// them being more efficient and idiomatic.
@@ -206,6 +209,33 @@ impl<'a, T> Fiber<'a, T> {
     /// [fiber.wakeup()](#method.wakeup)).
     pub fn cancel(&mut self) {
         unsafe { ffi::fiber_cancel(self.inner) }
+    }
+
+    /// Returns the fiber id.
+    ///
+    /// # Panicking
+    /// This will panic if the current tarantool executable doesn't support the
+    /// required api (i.e. [`has_fiber_id`] returns `false`).
+    /// Consider using [`Self::id_checked`] if you want to handle this error.
+    #[inline(always)]
+    #[track_caller]
+    pub fn id(&self) -> FiberId {
+        self.id_checked().expect("fiber_id api is not supported")
+    }
+
+    /// Returns the fiber id or `None` if the current tarantool
+    /// executable doesn't support the required api
+    /// (i.e. [`has_fiber_id`] returns `false`).
+    pub fn id_checked(&self) -> Option<FiberId> {
+        // SAFETY: safe as long as we only call this from the tx thread.
+        if unsafe { !has_fiber_id() } {
+            // There's no way to get fiber id from a fiber pointer in
+            // the current version of tarantool.
+            return None;
+        }
+        // SAFETY: safe as long as the fiber pointer is valid.
+        let res = unsafe { ffi::fiber_id(self.inner) };
+        Some(res)
     }
 }
 
@@ -882,6 +912,47 @@ impl<'f, T> JoinHandle<'f, T> {
             },
         }
     }
+
+    /// Returns the underlying fiber id.
+    ///
+    /// # Panicking
+    /// This will panic if the current tarantool executable doesn't support the
+    /// required api (i.e. [`has_fiber_id`] returns `false`).
+    /// Consider using [`Self::id_checked`] if you want to handle this error.
+    #[inline(always)]
+    #[track_caller]
+    pub fn id(&self) -> FiberId {
+        self.id_checked().expect("fiber_id api is not supported")
+    }
+
+    /// Returns the underlying fiber id or `None` if the current tarantool
+    /// executable doesn't support the required api
+    /// (i.e. [`has_fiber_id`] returns `false`).
+    pub fn id_checked(&self) -> Option<FiberId> {
+        match self.inner {
+            None => {
+                unreachable!("it has either been moved into JoinHandle::join, or been dropped")
+            }
+            Some(JoinHandleImpl::Ffi { fiber, .. }) => {
+                // SAFETY: safe as long as we only call this from the tx thread.
+                if unsafe { !has_fiber_id() } {
+                    // There's no way to get fiber id from a fiber pointer in
+                    // the current version of tarantool.
+                    return None;
+                }
+                // SAFETY: safe as long as the fiber pointer is valid.
+                let res = unsafe { ffi::fiber_id(fiber.as_ptr()) };
+                return Some(res);
+            }
+            Some(JoinHandleImpl::Lua { fiber_ref, .. }) => {
+                let lua = crate::global_lua();
+                let id: FiberId = lua
+                    .eval_with("return debug.getregistry()[...]:id()", fiber_ref)
+                    .expect("lua error");
+                return Some(id);
+            }
+        }
+    }
 }
 
 impl<'f, T> Drop for JoinHandle<'f, T> {
@@ -1127,6 +1198,186 @@ pub fn r#yield() -> Result<()> {
 #[inline(always)]
 pub fn reschedule() {
     unsafe { ffi::fiber_reschedule() }
+}
+
+/// Returns id of current fiber.
+///
+/// NOTE: if [`has_fiber_id`] returns `false` this function uses an
+/// inefficient implementation based on the lua api.
+#[inline]
+pub fn id() -> FiberId {
+    // SAFETY this is safe as long as we only call this from the tx thread.
+    if unsafe { has_fiber_id() } {
+        // SAFETY always safe
+        return unsafe { ffi::fiber_id(std::ptr::null_mut()) };
+    } else {
+        crate::global_lua()
+            .eval("return require'fiber'.id()")
+            .expect("lua error")
+    }
+}
+
+/// Returns number of context switches of the current fiber.
+///
+/// NOTE: if [`has_fiber_id`] returns `false` this function uses an
+/// inefficient implementation based on the lua api.
+#[inline]
+pub fn csw() -> u64 {
+    // SAFETY this is safe as long as we only call this from the tx thread.
+    if unsafe { has_fiber_id() } {
+        // SAFETY always safe
+        unsafe { ffi::fiber_csw(std::ptr::null_mut()) }
+    } else {
+        csw::csw_lua(None).expect("fiber.self() should always work")
+    }
+}
+
+/// Returns number of context switches of the fiber with given id or
+/// `None` if fiber with given id wasn't found.
+///
+/// NOTE: if [`has_fiber_id`] returns `false` this function uses an
+/// inefficient implementation based on the lua api.
+#[inline]
+pub fn csw_of(id: FiberId) -> Option<u64> {
+    // SAFETY this is safe as long as we only call this from the tx thread.
+    if unsafe { has_fiber_id() } {
+        // SAFETY always safe
+        unsafe {
+            let f = ffi::fiber_find(id);
+            if f.is_null() {
+                return None;
+            }
+            let res = ffi::fiber_csw(f);
+            return Some(res);
+        }
+    } else {
+        csw::csw_lua(Some(id))
+    }
+}
+
+/// Returns the name of the current fiber.
+///
+/// NOTE: if [`has_fiber_id`] returns `false` this function uses an
+/// inefficient implementation based on the lua api.
+///
+/// NOTE: it uses String::from_utf8_lossy to convert from the c-string, so the
+/// data may differ from the actual.
+#[inline]
+pub fn name() -> String {
+    // SAFETY this is safe as long as we only call this from the tx thread, and
+    // don't hold the reference after yielding.
+    let name = unsafe { name_raw(None) }.expect("fiber_self should always work");
+    String::from_utf8_lossy(name).into()
+}
+
+/// Returns the name of the fiber with the given id.
+///
+/// NOTE: if [`has_fiber_id`] returns `false` this function uses an
+/// inefficient implementation based on the lua api.
+///
+/// NOTE: it uses String::from_utf8_lossy to convert from the c-string, so the
+/// data may differ from the actual.
+#[inline]
+pub fn name_of(id: FiberId) -> Option<String> {
+    // SAFETY this is safe as long as we only call this from the tx thread, and
+    // don't hold the reference after yielding.
+    let name = unsafe { name_raw(Some(id)) }?;
+    let res = String::from_utf8_lossy(name).into();
+    Some(res)
+}
+
+/// Returns the name of the fiber with the given id, or `None` if fiber wasn't
+/// found. The name is returned as a slice of bytes, because it is allowed to
+/// contain nul bytes.
+///
+/// # Safety
+/// This functions returns a reference to the data with a limited lifetime
+/// (even though it says `'static` in the signature). The lifetime
+/// of the data depends on the implementation, and should be copied ASAP.
+/// Holding this reference across yields is definitely NOT safe.
+///
+/// NOTE: if [`has_fiber_id`] returns `false` this function uses an
+/// inefficient implementation based on the lua api.
+pub unsafe fn name_raw(id: Option<FiberId>) -> Option<&'static [u8]> {
+    if has_fiber_id() {
+        let mut f = std::ptr::null_mut();
+        if let Some(id) = id {
+            f = ffi::fiber_find(id);
+            if f.is_null() {
+                return None;
+            }
+        }
+        let p = ffi::fiber_name(f);
+        let cstr = std::ffi::CStr::from_ptr(p as _);
+        Some(cstr.to_bytes())
+    } else {
+        let lua = crate::global_lua();
+        let s: Option<tlua::StringInLua<_>> = lua
+            .eval_with(
+                "local fiber = require'fiber'
+                local f = fiber.find(... or fiber.id())
+                return f and f:name()",
+                id,
+            )
+            .expect("lua error");
+        let s = s?;
+        let res: &'static [u8] = std::mem::transmute(s.as_bytes());
+        Some(res)
+    }
+}
+
+/// Sets the name of the current fiber.
+///
+/// NOTE: if [`has_fiber_id`] returns `false` this function uses an
+/// inefficient implementation based on the lua api.
+#[inline]
+pub fn set_name(name: &str) {
+    // SAFETY: safe as long as we only call this from the tx thread.
+    if unsafe { has_fiber_id() } {
+        // SAFETY: always safe.
+        unsafe { ffi::fiber_set_name_n(std::ptr::null_mut(), name.as_ptr(), name.len() as _) }
+    } else {
+        let lua = crate::global_lua();
+        lua.exec_with("require'fiber'.name(...)", name)
+            .expect("lua error");
+    }
+}
+
+/// Sets the name of the fiber with the given id.
+/// Returns `false` if the fiber wasn't found, `true` otherwise.
+///
+/// NOTE: if [`has_fiber_id`] returns `false` this function uses an
+/// inefficient implementation based on the lua api.
+#[inline]
+pub fn set_name_of(id: FiberId, name: &str) -> bool {
+    // SAFETY: safe as long as we only call this from the tx thread.
+    if unsafe { has_fiber_id() } {
+        // SAFETY: always safe.
+        unsafe {
+            let f = ffi::fiber_find(id);
+            if f.is_null() {
+                return false;
+            }
+            ffi::fiber_set_name_n(f, name.as_ptr(), name.len() as _);
+            return true;
+        }
+    } else {
+        let lua = crate::global_lua();
+        let res: bool = lua
+            .eval_with(
+                "local fiber = require'fiber'
+                local id, name = ...
+                local f = fiber.find(id)
+                if f == nil then
+                    return false
+                end
+                f:name(name)
+                return true",
+                (id, name),
+            )
+            .expect("lua error");
+        return res;
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1412,7 +1663,7 @@ const _: () = {
 #[cfg(feature = "internal_test")]
 mod tests {
     use super::*;
-
+    use crate::fiber;
     use std::cell::RefCell;
     use std::rc::Rc;
 
@@ -1461,5 +1712,111 @@ mod tests {
             [0xaa; 4096]
         });
         drop(f);
+    }
+
+    #[crate::test(tarantool = "crate")]
+    fn fiber_id() {
+        fiber::id();
+
+        let jh = fiber::defer(|| {});
+
+        if unsafe { has_fiber_id() } {
+            assert!(jh.id_checked().is_some());
+        } else {
+            assert!(jh.id_checked().is_none());
+        }
+
+        jh.join();
+    }
+
+    #[crate::test(tarantool = "crate")]
+    fn fiber_name() {
+        const NAME1: &str = "test_fiber_name_1";
+        const NAME2: &str = "test_fiber_name_2";
+
+        if unsafe { has_fiber_id() } {
+            let jh = fiber::start(|| {
+                // Get/set name of current fiber.
+                fiber::set_name(NAME1);
+                assert_eq!(fiber::name(), NAME1);
+                fiber::reschedule();
+                // Get name of current fiber set by parent fiber.
+                assert_eq!(fiber::name(), NAME2);
+            });
+
+            let f_id = jh.id();
+            // Get name of child fiber set by itself.
+            assert_eq!(fiber::name_of(f_id).unwrap(), NAME1);
+            // Set/get name of child fiber.
+            assert!(fiber::set_name_of(f_id, NAME2));
+            assert_eq!(fiber::name_of(f_id).unwrap(), NAME2);
+            jh.join();
+
+            // After the fiber has been joined, it no longer exists.
+            assert!(fiber::name_of(f_id).is_none());
+            assert!(!fiber::set_name_of(f_id, "foo"));
+        } else {
+            // Check lua implementation at least works.
+            let jh = fiber::start(|| {
+                fiber::set_name(NAME1);
+                assert_eq!(fiber::name(), NAME1);
+
+                assert!(fiber::set_name_of(fiber::id(), NAME2));
+                assert_eq!(fiber::name_of(fiber::id()).unwrap(), NAME2);
+
+                assert!(!fiber::set_name_of(0xCAFE_BABE_DEAD_F00D, "foo"));
+                assert!(fiber::name_of(0xCAFE_BABE_DEAD_F00D).is_none());
+            });
+            jh.join();
+        }
+    }
+
+    #[crate::test(tarantool = "crate")]
+    fn fiber_csw() {
+        if unsafe { has_fiber_id() } {
+            let csw_parent_0 = fiber::csw();
+
+            let jh = fiber::defer(|| {
+                fiber::reschedule();
+                1337
+            });
+
+            assert_eq!(fiber::csw(), csw_parent_0);
+            let child_id = jh.id();
+            let csw_child_0 = fiber::csw_of(child_id).unwrap();
+
+            fiber::reschedule();
+
+            assert_eq!(fiber::csw(), csw_parent_0 + 1);
+            assert_eq!(fiber::csw_of(child_id).unwrap(), csw_child_0 + 1);
+
+            assert_eq!(jh.join(), 1337);
+
+            assert_eq!(fiber::csw(), csw_parent_0 + 2);
+            // After the fiber has been joined, it no longer exists.
+            assert!(fiber::csw_of(child_id).is_none());
+        } else {
+            // Check lua implementation at least works.
+            let csw_parent_0 = fiber::csw();
+
+            let jh = fiber::defer(|| {
+                let csw_0 = fiber::csw_of(fiber::id()).unwrap();
+                fiber::reschedule();
+                assert_eq!(fiber::csw_of(fiber::id()).unwrap(), csw_0 + 1);
+                1337
+            });
+
+            assert_eq!(fiber::csw(), csw_parent_0);
+
+            fiber::reschedule();
+
+            assert_eq!(fiber::csw(), csw_parent_0 + 1);
+
+            assert_eq!(jh.join(), 1337);
+
+            assert_eq!(fiber::csw(), csw_parent_0 + 2);
+
+            assert!(fiber::csw_of(0xFACE_BEEF_BAD_DEED5).is_none());
+        }
     }
 }

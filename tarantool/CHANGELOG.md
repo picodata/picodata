@@ -12,6 +12,13 @@
   fully temporary space id range.
 - `msgpack::encode` module which contains custom `Encode`, `Decode` traits
   and correponding derive macros for serialization to/from msgpack without using serde.
+- `FiberId` type alias.
+- `fiber::id`, `fiber::csw_of`, `fiber::name`, `fiber::name_of`,
+  `fiber::name_raw` `fiber::set_name`, `fiber::set_name_of`, `Fiber::id`,
+  `Fiber::id_checked`, `fiber::JoinHandle::id`, `fiber::JoinHandle::id_checked`
+  functions for getting and setting the corresponding properties of fibers and
+  `ffi::has_fiber_id` function for checking if the corresponding api is
+  supported in the current tarantool version.
 
 ### Changed
 
@@ -39,6 +46,7 @@
 - enums `TarantoolErrorCode`, `IteratorType`, `SayLevel` & `SystemSpace` no
   longer implement trait `ToPrimitive`, just use `as i32` instead.
 - `rmp` library reexport is moved from `tuple` module to `msgpack` module.
+- `fiber::csw` now returns `u64` instead of `i32`.
 
 ### Added (picodata)
 - struct `read_view::ReadView` for opening read views on selected spaces.

@@ -299,6 +299,36 @@ extern "C" {
     pub fn fiber_cond_wait(cond: *mut FiberCond) -> c_int;
 }
 
+crate::define_dlsym_reloc! {
+    /// Set fiber name.
+    /// - `fiber`: Target fiber, if it's NULL the current fiber is used.
+    /// - `name`:  A new name of `fiber`.
+    /// - `len`:   Length of the string pointed to by `name`.
+    pub fn fiber_set_name_n(fiber: *mut Fiber, name: *const u8, len: u32);
+
+    /// Get fiber name.
+    /// - `fiber`: Target fiber, if it's NULL the current fiber is used.
+    /// Returns pointer to a nul-terminated string.
+    pub fn fiber_name(fiber: *mut Fiber) -> *const u8;
+
+    /// Get fiber id.
+    /// - `fiber`: Target fiber, if it's NULL the current fiber is used.
+    pub fn fiber_id(fiber: *mut Fiber) -> u64;
+
+    /// Get number of context switches of the given fiber.
+    /// - `fiber`: Target fiber, if it's NULL the current fiber is used.
+    pub fn fiber_csw(fiber: *mut Fiber) -> u64;
+
+    /// Get a pointer to a live fiber in the current cord by the given fiber id,
+    /// which may be used for getting other info about the fiber (name, csw, etc.).
+    ///
+    /// - `fid` Target fiber id.
+    /// Returns fiber on success, NULL if fiber was not found.
+    ///
+    /// See also [`fiber_name`], [`fiber_csw`], [`fiber_id`]
+    pub fn fiber_find(fid: u64) -> *mut Fiber;
+}
+
 /// list entry and head structure
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
