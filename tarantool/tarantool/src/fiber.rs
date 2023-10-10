@@ -22,11 +22,11 @@ use crate::time::Instant;
 use crate::tlua::{self as tlua, AsLua};
 
 #[cfg(not(all(target_arch = "aarch64", target_os = "macos")))]
-use ::va_list::{VaList, VaPrimitive};
+use ::va_list::VaList;
 use tlua::unwrap_or;
 
 #[cfg(all(target_arch = "aarch64", target_os = "macos"))]
-use crate::va_list::{VaList, VaPrimitive};
+use crate::va_list::VaList;
 
 use crate::error::{TarantoolError, TarantoolErrorCode};
 use crate::ffi::{lua, tarantool as ffi};
@@ -49,38 +49,6 @@ mod csw;
 pub use csw::check_yield;
 pub use csw::csw;
 pub use csw::YieldResult;
-
-macro_rules! impl_debug_stub {
-    ($t:ident $($p:tt)*) => {
-        impl $($p)* ::std::fmt::Debug for $t $($p)* {
-            fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
-                f.debug_struct(::std::stringify!($t))
-                    .finish_non_exhaustive()
-            }
-        }
-    }
-}
-
-macro_rules! impl_eq_hash {
-    ($t:ident $($p:tt)*) => {
-        impl $($p)* ::std::cmp::PartialEq for $t $($p)* {
-            fn eq(&self, other: &Self) -> bool {
-                self.inner == other.inner
-            }
-        }
-
-        impl $($p)* ::std::cmp::Eq for $t $($p)* {}
-
-        impl $($p)* ::std::hash::Hash for $t $($p)* {
-            fn hash<H>(&self, state: &mut H)
-            where
-                H: ::std::hash::Hasher,
-            {
-                self.inner.hash(state)
-            }
-        }
-    }
-}
 
 /// *OBSOLETE*: This struct is being deprecated in favour of [`Fyber`], due to
 /// them being more efficient and idiomatic.
@@ -128,7 +96,11 @@ pub struct Fiber<'a, T: 'a> {
     phantom: PhantomData<&'a T>,
 }
 
-impl_debug_stub! {Fiber<'a, T>}
+impl<'a, T> ::std::fmt::Debug for Fiber<'a, T> {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+        f.debug_struct("Fiber").finish_non_exhaustive()
+    }
+}
 
 impl<'a, T> Fiber<'a, T> {
     /// Create a new fiber.
@@ -268,7 +240,11 @@ pub struct Builder<F> {
     f: F,
 }
 
-impl_debug_stub! {Builder<F>}
+impl<T> ::std::fmt::Debug for Builder<T> {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+        f.debug_struct("Builder").finish_non_exhaustive()
+    }
+}
 
 impl Builder<NoFunc> {
     /// Generates the base configuration for spawning a fiber, from which
@@ -502,8 +478,8 @@ where
 
     unsafe extern "C" fn trampoline_for_immediate(mut args: VaList) -> i32 {
         // Extract arugments from the va_list.
-        let f = args.get_boxed::<F>();
-        let result_ptr = args.get_ptr::<Option<T>>();
+        let f = Box::from_raw(args.get::<*const ()>() as *mut F);
+        let result_ptr = args.get::<*const ()>() as *mut Option<T>;
 
         // Call `f` and drop the closure.
         let t = f();
@@ -797,9 +773,16 @@ pub struct NoFunc;
 ////////////////////////////////////////////////////////////////////////////////
 
 /// An owned permission to join on an immediate fiber (block on its termination).
+#[derive(PartialEq, Eq, Hash)]
 pub struct JoinHandle<'f, T> {
     inner: Option<JoinHandleImpl<T>>,
     marker: PhantomData<&'f ()>,
+}
+
+impl<'f, T> std::fmt::Debug for JoinHandle<'f, T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        f.debug_struct("JoinHandle").finish_non_exhaustive()
+    }
 }
 
 #[deprecated = "Use `fiber::JoinHandle<'f, ()>` instead"]
@@ -823,9 +806,6 @@ enum JoinHandleImpl<T> {
 }
 
 type FiberResultCell<T> = Box<UnsafeCell<Option<T>>>;
-
-impl_debug_stub! {JoinHandle<'f, T>}
-impl_eq_hash! {JoinHandle<'f, T>}
 
 impl<'f, T> JoinHandle<'f, T> {
     #[inline(always)]
@@ -937,42 +917,6 @@ impl<T> ::std::hash::Hash for JoinHandleImpl<T> {
             Self::Ffi { fiber, .. } => fiber.hash(state),
             Self::Lua { fiber_ref, .. } => fiber_ref.hash(state),
         }
-    }
-}
-
-////////////////////////////////////////////////////////////////////////////////
-// TrampolineArgs
-////////////////////////////////////////////////////////////////////////////////
-
-/// A helper trait that implements some useful functions for working with
-/// trampoline function arguments.
-trait TrampolineArgs {
-    unsafe fn get<T>(&mut self) -> T
-    where
-        T: VaPrimitive;
-
-    unsafe fn get_boxed<T>(&mut self) -> Box<T> {
-        Box::from_raw(self.get::<*const c_void>() as *mut T)
-    }
-
-    unsafe fn get_ptr<T>(&mut self) -> *mut T {
-        self.get::<*const c_void>() as *mut T
-    }
-
-    unsafe fn get_str(&mut self) -> String {
-        let buf = self.get::<*const u8>() as *mut u8;
-        let length = self.get::<usize>();
-        let capacity = self.get::<usize>();
-        String::from_raw_parts(buf, length, capacity)
-    }
-}
-
-impl TrampolineArgs for VaList {
-    unsafe fn get<T>(&mut self) -> T
-    where
-        T: VaPrimitive,
-    {
-        self.get::<T>()
     }
 }
 
@@ -1173,6 +1117,10 @@ pub fn reschedule() {
     unsafe { ffi::fiber_reschedule() }
 }
 
+////////////////////////////////////////////////////////////////////////////////
+// FiberAttr
+////////////////////////////////////////////////////////////////////////////////
+
 /// Fiber attributes container
 #[derive(Debug)]
 pub struct FiberAttr {
@@ -1225,6 +1173,10 @@ impl Drop for FiberAttr {
         unsafe { ffi::fiber_attr_delete(self.inner) }
     }
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// Cond
+////////////////////////////////////////////////////////////////////////////////
 
 /// Conditional variable for cooperative multitasking (fibers).
 ///
@@ -1325,6 +1277,10 @@ impl Drop for Cond {
     }
 }
 
+////////////////////////////////////////////////////////////////////////////////
+// Latch
+////////////////////////////////////////////////////////////////////////////////
+
 /// A lock for cooperative multitasking environment
 #[derive(Debug)]
 pub struct Latch {
@@ -1394,6 +1350,10 @@ impl Drop for LatchGuard {
     }
 }
 
+////////////////////////////////////////////////////////////////////////////////
+// misc
+////////////////////////////////////////////////////////////////////////////////
+
 pub(crate) unsafe fn unpack_callback<F, T>(callback: &mut F) -> (*mut c_void, ffi::FiberFunc)
 where
     F: FnMut(Box<T>) -> i32,
@@ -1432,6 +1392,10 @@ const _: () = {
     }
     assert!(needs_returning::<DroppableUnitStruct>());
 };
+
+////////////////////////////////////////////////////////////////////////////////
+// tests
+////////////////////////////////////////////////////////////////////////////////
 
 #[cfg(feature = "internal_test")]
 mod tests {
