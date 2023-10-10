@@ -21,12 +21,8 @@ use std::time::Duration;
 use crate::time::Instant;
 use crate::tlua::{self as tlua, AsLua};
 
-#[cfg(not(all(target_arch = "aarch64", target_os = "macos")))]
 use ::va_list::VaList;
 use tlua::unwrap_or;
-
-#[cfg(all(target_arch = "aarch64", target_os = "macos"))]
-use crate::va_list::VaList;
 
 use crate::error::{TarantoolError, TarantoolErrorCode};
 use crate::ffi::{lua, tarantool as ffi};

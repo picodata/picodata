@@ -84,9 +84,6 @@ pub mod trigger;
 pub mod tuple;
 pub mod util;
 pub mod uuid;
-#[cfg(all(target_arch = "aarch64", target_os = "macos"))]
-#[doc(hidden)]
-mod va_list;
 pub mod vclock;
 
 /// `#[tarantool::proc]` is a macro attribute for creating stored procedure
