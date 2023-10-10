@@ -855,6 +855,99 @@ impl<'f, T> JoinHandle<'f, T> {
         }
     }
 
+    /// Detaches the underlying fiber, so it's impossible to join it after that.
+    ///
+    /// Returns the id of the underlying fiber, which can be used to [`cancel`]
+    /// or [`wakeup`].
+    ///
+    /// Returns [`DetachError::ReturnsNonZST`] if the underlying fiber function
+    /// has a non-ZST return type.
+    ///
+    /// Returns [`DetachError::FiberGetIdUnsupported`] if the current tarantool
+    /// version doesn't support the required api (i.e. [`has_fiber_id`]
+    /// returns `false`).
+    ///
+    /// The fiber will be marked as non-joinable and it's resources will be
+    /// automatically recycled by tarantool when the fiber finishes execution.
+    ///
+    /// # Panicking
+    /// Will panic if the underlying fiber function has a non ZST return type.
+    pub fn detach_checked(mut self) -> std::result::Result<FiberId, (Self, DetachError)> {
+        if needs_returning::<T>() {
+            // When the fiber function returns, it's result if any will
+            // be written into the result cell, which is owned by the
+            // join handle. When detaching the fiber the join handle
+            // gets dropped, so there's nowhere to store that result
+            // anymore, so we panic instead. There's no need to detach a
+            // fiber which returns a value anyway.
+            return Err((self, DetachError::ReturnsNonZST));
+        }
+
+        if matches!(&self.inner, Some(JoinHandleImpl::Ffi { .. })) {
+            // SAFETY: safe as long as we only call this from the tx thread.
+            if unsafe { !has_fiber_id() } {
+                return Err((self, DetachError::FiberGetIdUnsupported));
+            }
+        }
+
+        let inner = self
+            .inner
+            .take()
+            .expect("inner is only ever taken when self is consumed");
+        match inner {
+            JoinHandleImpl::Ffi { fiber, result_cell } => {
+                debug_assert!(result_cell.is_none());
+
+                // SAFETY: safe as long as the fiber pointer is valid.
+                unsafe {
+                    ffi::fiber_set_joinable(fiber.as_ptr(), false);
+                    let res = ffi::fiber_id(fiber.as_ptr());
+                    return Ok(res);
+                }
+            }
+            JoinHandleImpl::Lua { fiber_ref } => {
+                let lua = crate::global_lua();
+                let id: FiberId = lua
+                    .eval_with(
+                        "local f = debug.getregistry()[...]
+                        f:set_joinable(false)
+                        return f:id()",
+                        fiber_ref,
+                    )
+                    .expect("lua error");
+
+                // We're not going to be joining this fiber, so we don't need it
+                // to be referenced in the registry anymore.
+                unsafe {
+                    lua::luaL_unref(lua.as_lua(), lua::LUA_REGISTRYINDEX, fiber_ref);
+                }
+
+                Ok(id)
+            }
+        }
+    }
+
+    /// Detaches the underlying fiber, so it's impossible to join it after that.
+    /// Returns the id of the underlying fiber, which can be used to [`cancel`]
+    /// or [`wakeup`].
+    ///
+    /// The fiber will be marked as non-joinable and it's resources will be
+    /// automatically recycled by tarantool when the fiber finishes execution.
+    ///
+    /// # Panicking
+    /// Will panic if the underlying fiber function has a non ZST return type.
+    ///
+    /// Will panic if the current tarantool version doesn't support the required
+    /// api (i.e. [`has_fiber_id`] returns `false`).
+    ///
+    /// Consider using [`Self::detach_checked`] if you want to handle errors.
+    #[inline(always)]
+    #[track_caller]
+    pub fn detach(self) -> FiberId {
+        self.detach_checked()
+            .expect("should've called detach_checked")
+    }
+
     /// Block until the fiber's termination and return it's result value.
     pub fn join(mut self) -> T {
         let inner = self
@@ -953,6 +1046,19 @@ impl<'f, T> JoinHandle<'f, T> {
             }
         }
     }
+}
+
+/// Represents a possible error which can returned by
+/// [`JoinHandle::detach_checked`].
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
+pub enum DetachError {
+    /// The fiber function has a non [zero-sized] return type.
+    ///
+    /// [zero-sized]: https://doc.rust-lang.org/nomicon/exotic-sizes.html#zero-sized-types-zsts
+    ReturnsNonZST,
+    /// Current tarantool version doesn't support the required api
+    /// (i.e. [`has_fiber_id`] returns `false`).
+    FiberGetIdUnsupported,
 }
 
 impl<'f, T> Drop for JoinHandle<'f, T> {
@@ -1130,13 +1236,106 @@ where
 /// - `is_cancellable` - status to set
 ///
 /// Returns previous state.
+#[inline(always)]
 pub fn set_cancellable(is_cancellable: bool) -> bool {
     unsafe { ffi::fiber_set_cancellable(is_cancellable) }
 }
 
 /// Check current fiber for cancellation (it must be checked manually).
+///
+/// NOTE: Any yield is a cancel point be that implicit or explicit yield. This
+/// includes calling [`fiber::start`], inserting data into spaces, doing rpc,
+/// working with [`fiber::Channel`] or [`fiber::Cond`], etc. Because of rust's
+/// explicit error handling style it would not be useful to make all of these
+/// api methods automatically handle the fiber cancelation, because checking
+/// their result for some `FiberCancelled` error variant would be equivalent to
+/// just explicitly calling `is_cancelled` after each of those calls.
+///
+/// For this reason, if you suspect that your fiber may be cancelled at some
+/// point, you should design it such that it explicitly calls `is_cancelled`
+/// (for example once per some endless loop iteration) and finishes execution,
+/// otherwise the fiber's memory may leak.
+///
+/// [`fiber::start`]: crate::fiber::start
+/// [`fiber::Channel`]: crate::fiber::Channel
+/// [`fiber::Cond`]: crate::fiber::Cond
+#[inline(always)]
 pub fn is_cancelled() -> bool {
     unsafe { ffi::fiber_is_cancelled() }
+}
+
+/// Cancel the fiber with the given id.
+///
+/// **Does NOT yield**.
+///
+/// Returns `false` if the fiber was not found.
+///
+/// Returns `true` if the fiber was found and has been marked for cancelation.
+///
+/// NOTE: If the current tarantool executable doesn't support the required api
+/// (i.e. [`has_fiber_id`] returns `false`) this will use an inefficient
+/// implementation base on the lua api.
+///
+/// NOTE: tarantool does not guarantee that the cancelled fiber stops executing.
+/// It's the responsibility of the fiber's author to check if it was cancelled
+/// by checking [`is_cancelled`] or similar after any yielding calls and
+/// explicitly returning.
+#[inline(always)]
+#[must_use]
+pub fn cancel(id: FiberId) -> bool {
+    // SAFETY: safe as long as we only call this from the tx thread.
+    if unsafe { has_fiber_id() } {
+        // SAFETY: always safe.
+        let f = unsafe { ffi::fiber_find(id) };
+        if f.is_null() {
+            return false;
+        }
+
+        // SAFETY: always safe.
+        unsafe { ffi::fiber_cancel(f) };
+        return true;
+    } else {
+        let lua = crate::global_lua();
+        let res: bool = lua
+            .eval_with("return pcall(require 'fiber'.cancel, ...)", id)
+            .expect("lua error");
+        return res;
+    }
+}
+
+/// Wakeup the fiber with the given id.
+///
+/// **Does NOT yield**.
+///
+/// Returns `false` if the fiber was not found.
+///
+/// Returns `true` if the fiber was found and has been marked as ready to
+/// continue.
+///
+/// NOTE: If the current tarantool executable doesn't support the required api
+/// (i.e. [`has_fiber_id`] returns `false`) this will use an inefficient
+/// implementation base on the lua api.
+#[inline(always)]
+#[must_use]
+pub fn wakeup(id: FiberId) -> bool {
+    // SAFETY: safe as long as we only call this from the tx thread.
+    if unsafe { has_fiber_id() } {
+        // SAFETY: always safe.
+        let f = unsafe { ffi::fiber_find(id) };
+        if f.is_null() {
+            return false;
+        }
+
+        // SAFETY: always safe.
+        unsafe { ffi::fiber_wakeup(f) };
+        return true;
+    } else {
+        let lua = crate::global_lua();
+        let res: bool = lua
+            .eval_with("return pcall(require 'fiber'.wakeup, ...)", id)
+            .expect("lua error");
+        return res;
+    }
 }
 
 /// Put the current fiber to sleep for at least `time` seconds.
@@ -1162,20 +1361,16 @@ pub fn clock() -> Instant {
 
 /// Yield control to the scheduler.
 ///
-/// **NOTE**: currently the only way to wakeup a yielded fiber is to call
-/// [`Fiber::wakeup`], which isn't possible if the fiber was created via one of
-/// [`fiber::start`], [`fiber::defer`], etc.
-///
 /// Return control to another fiber and wait until it'll be explicitly awoken by
-/// another fiber.
+/// another fiber. The current fiber can later be awoken for example if another
+/// fiber calls [`fiber::wakeup`].
 ///
 /// Consider using [`fiber::sleep`]`(Duration::ZERO)` or [`fiber::yield`] instead, that way the
 /// fiber will be automatically awoken and will resume execution shortly.
 ///
 /// [`fiber::sleep`]: crate::fiber::sleep
-/// [`fiber::start`]: crate::fiber::start
-/// [`fiber::defer`]: crate::fiber::defer
 /// [`fiber::yield`]: crate::fiber::yield
+/// [`fiber::wakeup`]: crate::fiber::wakeup
 #[inline(always)]
 pub fn fiber_yield() {
     unsafe { ffi::fiber_yield() }
@@ -1664,6 +1859,7 @@ const _: () = {
 mod tests {
     use super::*;
     use crate::fiber;
+    use std::cell::Cell;
     use std::cell::RefCell;
     use std::rc::Rc;
 
@@ -1771,6 +1967,7 @@ mod tests {
         }
     }
 
+    #[allow(clippy::unusual_byte_groupings)]
     #[crate::test(tarantool = "crate")]
     fn fiber_csw() {
         if unsafe { has_fiber_id() } {
@@ -1817,6 +2014,73 @@ mod tests {
             assert_eq!(fiber::csw(), csw_parent_0 + 2);
 
             assert!(fiber::csw_of(0xFACE_BEEF_BAD_DEED5).is_none());
+        }
+    }
+
+    #[crate::test(tarantool = "crate")]
+    fn fiber_detach() {
+        if unsafe { has_fiber_id() } {
+            // Check we can't detach fibers, which need to write their return
+            // values into the join handle.
+            let jh = fiber::start(|| 10569);
+            let (jh, e) = jh.detach_checked().unwrap_err();
+            assert_eq!(e, fiber::DetachError::ReturnsNonZST);
+            jh.join();
+
+            // Happy path.
+            let jh = fiber::defer(|| {
+                while !fiber::is_cancelled() {
+                    fiber::fiber_yield();
+                }
+            });
+            let id = jh.detach();
+
+            let csw0 = fiber::csw_of(id).unwrap();
+            assert!(fiber::wakeup(id));
+            fiber::reschedule();
+            assert_eq!(fiber::csw_of(id).unwrap(), csw0 + 1);
+            assert!(fiber::wakeup(id));
+            fiber::reschedule();
+            assert_eq!(fiber::csw_of(id).unwrap(), csw0 + 2);
+            assert!(fiber::cancel(id));
+            fiber::reschedule();
+            // Fiber has voluntarily finished executing and was destroyed.
+            assert!(fiber::csw_of(id).is_none());
+            assert!(!fiber::wakeup(id));
+            assert!(!fiber::cancel(id));
+        } else {
+            // Check lua implementation at least works.
+            let id = Cell::new(0);
+
+            let jh = fiber::start(|| {
+                id.set(fiber::id());
+                while !fiber::is_cancelled() {
+                    fiber::fiber_yield();
+                }
+            });
+            let (jh, e) = jh.detach_checked().unwrap_err();
+            assert_eq!(e, fiber::DetachError::FiberGetIdUnsupported);
+
+            let id = id.get();
+
+            let csw0 = fiber::csw_of(id).unwrap();
+            assert!(fiber::wakeup(id));
+            fiber::reschedule();
+            assert_eq!(fiber::csw_of(id).unwrap(), csw0 + 1);
+            assert!(fiber::wakeup(id));
+            fiber::reschedule();
+            assert_eq!(fiber::csw_of(id).unwrap(), csw0 + 2);
+            assert!(fiber::cancel(id));
+            fiber::reschedule();
+            // Fiber is still joinable, so it hasn't been destroyed yet.
+            assert_eq!(fiber::csw_of(id).unwrap(), csw0 + 3);
+
+            jh.join();
+
+            // Fiber is destroyed after join.
+            assert!(fiber::csw_of(id).is_none());
+            assert!(!fiber::wakeup(id));
+            assert!(!fiber::cancel(id));
         }
     }
 }

@@ -177,12 +177,15 @@ extern "C" {
     /// - `f` fiber to be woken up
     pub fn fiber_wakeup(f: *mut Fiber);
 
-    /// Cancel the subject fiber. (set FIBER_IS_CANCELLED flag)
+    /// Cancel the subject fiber.
     ///
-    /// If target fiber's flag FIBER_IS_CANCELLABLE set, then it would
-    /// be woken up (maybe prematurely). Then current fiber yields
-    /// until the target fiber is dead (or is woken up by
-    /// see also: [fiber_wakeup](#fn.fiber_wakeup)).
+    /// Cancellation is asynchronous. Use fiber_join() to wait for the
+    /// cancellation to complete.
+    ///
+    /// After fiber_cancel() is called, the fiber may or may not check whether
+    /// it was cancelled. If the fiber does not check it, it cannot ever be
+    /// cancelled. However, as long as most of the cooperative code calls
+    /// fiber_testcancel(), most of the fibers are cancellable.
     ///
     /// - `f` fiber to be cancelled
     pub fn fiber_cancel(f: *mut Fiber);

@@ -19,6 +19,11 @@
   functions for getting and setting the corresponding properties of fibers and
   `ffi::has_fiber_id` function for checking if the corresponding api is
   supported in the current tarantool version.
+- `fiber::cancel` function for cancelling the fiber by id.
+- `fiber::wakeup` function for waking up the fiber by id.
+- `JoinHandle::detach`, `JoinHandle::detach_checked` functions for making a
+  fiber non-joinable and `fiber::DetachError` enum of errors which can happen
+  when doing so.
 
 ### Changed
 
