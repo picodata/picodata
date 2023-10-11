@@ -601,7 +601,7 @@ where
     /// Creates a joinable **LUA** fiber and schedules it for execution at some
     /// point later. Does **NOT** yield.
     pub fn spawn_lua(name: String, f: F, _attr: Option<&FiberAttr>) -> Result<JoinHandle<'f, T>> {
-        let fiber_ref = unsafe {
+        unsafe {
             let l = ffi::luaT_state();
             lua::lua_getglobal(l, c_ptr!("require"));
             lua::lua_pushstring(l, c_ptr!("fiber"));
@@ -630,14 +630,17 @@ where
                 .map_err(|e| panic!("{}", e))
                 .unwrap();
 
-            let fiber_ref = lua::luaL_ref(l, lua::LUA_REGISTRYINDEX);
+            lua::lua_getfield(l, -1, c_ptr!("id"));
+            lua::lua_insert(l, -2); // swap fiber object and id function on stack
+            impl_details::guarded_pcall(l, 1, 1) // f:id()
+                .expect("lua error");
+            let fiber_id = lua::lua_tointeger(l, -1);
+
             // pop the fiber module from the stack
             lua::lua_pop(l, 1);
 
-            fiber_ref
-        };
-
-        Ok(JoinHandle::lua(fiber_ref))
+            Ok(JoinHandle::lua(fiber_id as _))
+        }
     }
 
     unsafe extern "C" fn trampoline_for_lua(l: *mut lua::lua_State) -> i32 {
@@ -704,31 +707,31 @@ mod impl_details {
         }
     }
 
-    pub(super) unsafe fn lua_fiber_join(f_ref: i32) -> Result<PushGuard<StaticLua>> {
-        let l = crate::global_lua();
-        let lptr = l.as_lua();
-        let top_svp = lua::lua_gettop(lptr);
-        lua::lua_rawgeti(lptr, lua::LUA_REGISTRYINDEX, f_ref);
-        lua::lua_getfield(lptr, -1, c_ptr!("join"));
-        lua::lua_pushvalue(lptr, -2);
+    pub(super) unsafe fn lua_fiber_join(f_id: FiberId) -> Result<PushGuard<StaticLua>> {
+        let lua = crate::global_lua();
+        let l = lua.as_lua();
+        let top_svp = lua::lua_gettop(l);
 
-        // fiber instance can now be garbage collected by lua
-        lua::luaL_unref(lptr, lua::LUA_REGISTRYINDEX, f_ref);
+        lua::lua_getglobal(l, c_ptr!("require"));
+        lua::lua_pushstring(l, c_ptr!("fiber"));
+        impl_details::guarded_pcall(l, 1, 1)?; // stack[top] = require('fiber')
 
-        guarded_pcall(lptr, 1, 2).map_err(|e| {
-            // Pop the fiber value from the stack
-            lua::lua_pop(lptr, 1);
+        lua::lua_getfield(l, -1, c_ptr!("join"));
+        lua::lua_pushinteger(l, f_id as _);
+        guarded_pcall(l, 1, 2).map_err(|e| {
+            // Pop the fiber module from the stack
+            lua::lua_pop(l, 1);
             e
-        })?;
+        })?; // stack[top] = fiber.join(f_id)
 
         // 3 values on the stack that need to be dropped:
-        // 1) fiber; 2) flag; 3) return value / error
-        let top = lua::lua_gettop(lptr);
-        assert_eq!(top - top_svp, 3);
-        let guard = PushGuard::new(l, 3);
+        // 1) fiber module; 2) flag; 3) return value / error
+        let top = lua::lua_gettop(l);
+        debug_assert_eq!(top - top_svp, 3);
+        let guard = PushGuard::new(lua, 3);
 
         // check fiber return code
-        assert_ne!(lua::lua_toboolean(lptr, -2), 0);
+        debug_assert_ne!(lua::lua_toboolean(l, -2), 0);
 
         Ok(guard)
     }
@@ -832,7 +835,7 @@ enum JoinHandleImpl<T> {
         result_cell: Option<FiberResultCell<T>>,
     },
     Lua {
-        fiber_ref: i32,
+        fiber_id: FiberId,
     },
 }
 
@@ -848,9 +851,9 @@ impl<'f, T> JoinHandle<'f, T> {
     }
 
     #[inline(always)]
-    fn lua(fiber_ref: i32) -> Self {
+    fn lua(fiber_id: FiberId) -> Self {
         Self {
-            inner: Some(JoinHandleImpl::Lua { fiber_ref }),
+            inner: Some(JoinHandleImpl::Lua { fiber_id }),
             marker: PhantomData,
         }
     }
@@ -905,24 +908,12 @@ impl<'f, T> JoinHandle<'f, T> {
                     return Ok(res);
                 }
             }
-            JoinHandleImpl::Lua { fiber_ref } => {
+            JoinHandleImpl::Lua { fiber_id } => {
                 let lua = crate::global_lua();
-                let id: FiberId = lua
-                    .eval_with(
-                        "local f = debug.getregistry()[...]
-                        f:set_joinable(false)
-                        return f:id()",
-                        fiber_ref,
-                    )
+                lua.exec_with("require'fiber'.find(...):set_joinable(false)", fiber_id)
                     .expect("lua error");
 
-                // We're not going to be joining this fiber, so we don't need it
-                // to be referenced in the registry anymore.
-                unsafe {
-                    lua::luaL_unref(lua.as_lua(), lua::LUA_REGISTRYINDEX, fiber_ref);
-                }
-
-                Ok(id)
+                Ok(fiber_id)
             }
         }
     }
@@ -981,8 +972,8 @@ impl<'f, T> JoinHandle<'f, T> {
                     }
                 }
             }
-            JoinHandleImpl::Lua { fiber_ref } => unsafe {
-                let guard = impl_details::lua_fiber_join(fiber_ref)
+            JoinHandleImpl::Lua { fiber_id } => unsafe {
+                let guard = impl_details::lua_fiber_join(fiber_id)
                     .map_err(|e| panic!("Unrecoverable lua failure: {}", e))
                     .unwrap();
 
@@ -1037,13 +1028,7 @@ impl<'f, T> JoinHandle<'f, T> {
                 let res = unsafe { ffi::fiber_id(fiber.as_ptr()) };
                 return Some(res);
             }
-            Some(JoinHandleImpl::Lua { fiber_ref, .. }) => {
-                let lua = crate::global_lua();
-                let id: FiberId = lua
-                    .eval_with("return debug.getregistry()[...]:id()", fiber_ref)
-                    .expect("lua error");
-                return Some(id);
-            }
+            Some(JoinHandleImpl::Lua { fiber_id, .. }) => Some(fiber_id),
         }
     }
 }
@@ -1087,8 +1072,8 @@ impl<T> ::std::cmp::PartialEq for JoinHandleImpl<T> {
             (Self::Ffi { fiber: self_fiber, .. }, Self::Ffi { fiber: other_fiber, .. },) => {
                 self_fiber == other_fiber
             }
-            (Self::Lua { fiber_ref: self_ref, .. }, Self::Lua { fiber_ref: other_ref, .. },) => {
-                self_ref == other_ref
+            (Self::Lua { fiber_id: self_id, .. }, Self::Lua { fiber_id: other_id, .. },) => {
+                self_id == other_id
             }
             (_, _) => false,
         }
@@ -1104,7 +1089,7 @@ impl<T> ::std::hash::Hash for JoinHandleImpl<T> {
     {
         match self {
             Self::Ffi { fiber, .. } => fiber.hash(state),
-            Self::Lua { fiber_ref, .. } => fiber_ref.hash(state),
+            Self::Lua { fiber_id, .. } => fiber_id.hash(state),
         }
     }
 }
@@ -2082,5 +2067,15 @@ mod tests {
             assert!(!fiber::wakeup(id));
             assert!(!fiber::cancel(id));
         }
+    }
+
+    #[crate::test(tarantool = "crate")]
+    fn defer_lua() {
+        let jh = Builder::new().func(|| 42).defer_lua().unwrap();
+        let res = jh.join();
+        assert_eq!(res, 42);
+
+        let jh = Builder::new().func(|| ()).defer_lua().unwrap();
+        jh.join();
     }
 }
