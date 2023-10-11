@@ -110,6 +110,10 @@ pub struct Status {
     pub term: RaftTerm,
     /// Current raft state
     pub raft_state: RaftState,
+    /// Current state of the main loop.
+    ///
+    /// Set this before yielding from [`NodeImpl::advance`].
+    pub main_loop_status: &'static str,
 }
 
 impl Status {
@@ -418,6 +422,7 @@ impl NodeImpl {
             leader_id: None,
             term: traft::INIT_RAFT_TERM,
             raft_state: RaftState::Follower,
+            main_loop_status: "idle",
         });
 
         Ok(Self {
@@ -580,6 +585,8 @@ impl NodeImpl {
 
             let mut apply_entry_result = EntryApplied;
             transaction(|| -> tarantool::Result<()> {
+                self.main_loop_status("handling committed entries");
+
                 let entry_index = entry.index;
                 match entry.entry_type {
                     raft::EntryType::EntryNormal => {
@@ -609,6 +616,7 @@ impl NodeImpl {
 
             match apply_entry_result {
                 SleepAndRetry => {
+                    self.main_loop_status("blocked by raft entry");
                     let timeout = MainLoop::TICK * 4;
                     fiber::sleep(timeout);
                     continue;
@@ -1152,17 +1160,40 @@ impl NodeImpl {
 
     /// Is called during a transaction
     fn handle_messages(&mut self, messages: Vec<raft::Message>) {
+        if messages.is_empty() {
+            return;
+        }
+
+        self.main_loop_status("sending raft messages");
+        let mut sent_count = 0;
+        let mut skip_count = 0;
+
         let instance_reachability = self.instance_reachability.borrow();
         for msg in messages {
             if msg.msg_type == raft::MessageType::MsgHeartbeat
                 && !instance_reachability.should_send_heartbeat_this_tick(msg.to)
             {
+                skip_count += 1;
                 continue;
             }
+            sent_count += 1;
             if let Err(e) = self.pool.send(msg) {
                 tlog!(Error, "{e}");
             }
         }
+
+        tlog!(
+            Debug,
+            "done sending messages, sent: {sent_count}, skipped: {skip_count}"
+        );
+    }
+
+    #[inline(always)]
+    fn main_loop_status(&self, status: &'static str) {
+        tlog!(Debug, "main_loop_status = '{status}'");
+        self.status
+            .send_modify(|s| s.main_loop_status = status)
+            .expect("status shouldn't ever be borrowed across yields");
     }
 
     /// Processes a so-called "ready state" of the [`raft::RawNode`].
@@ -1270,6 +1301,7 @@ impl NodeImpl {
                     return Some(snapshot_data);
                 }
 
+                self.main_loop_status("awaiting replication");
                 // Replicaset follower needs to sync with leader via tarantool
                 // replication.
                 let timeout = MainLoop::TICK * 4;
@@ -1278,6 +1310,8 @@ impl NodeImpl {
         })();
 
         if let Some(snapshot_data) = snapshot_data {
+            self.main_loop_status("applying snapshot");
+
             if let Err(e) = transaction(|| -> traft::Result<()> {
                 let meta = snapshot.get_metadata();
                 self.raft_storage.handle_snapshot_metadata(meta)?;
@@ -1336,6 +1370,10 @@ impl NodeImpl {
         }
 
         if let Err(e) = transaction(|| -> Result<(), &str> {
+            if !ready.entries().is_empty() || ready.hs().is_some() {
+                self.main_loop_status("persisting entries");
+            }
+
             // Persist uncommitted entries in the raft log.
             self.raft_storage.persist_entries(ready.entries()).unwrap();
 
@@ -1379,6 +1417,8 @@ impl NodeImpl {
 
         // Advance the apply index.
         self.raw_node.advance_apply();
+
+        self.main_loop_status("idle");
     }
 
     #[allow(dead_code)]

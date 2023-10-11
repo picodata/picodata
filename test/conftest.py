@@ -212,6 +212,7 @@ class RaftStatus:
     id: int
     raft_state: str
     term: int
+    main_loop_status: str
     leader_id: int | None = None
 
 
