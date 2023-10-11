@@ -1,8 +1,9 @@
 use super::{LCPipe, Message};
 use crate::cbus::RecvError;
 use crate::fiber::Cond;
+use std::cell::RefCell;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
 use std::time::Duration;
 
 /// A synchronization component between producers and a consumer.
@@ -11,29 +12,26 @@ struct Waker {
     condition: Option<Arc<Cond>>,
     /// indicate that waker already up to date
     woken: AtomicBool,
-    /// pipe for sending syncronization signals
-    pipe: LCPipe,
 }
 
 impl Waker {
-    fn new(cond: Cond, pipe: LCPipe) -> Self {
+    fn new(cond: Cond) -> Self {
         Self {
             condition: Some(Arc::new(cond)),
             woken: AtomicBool::new(false),
-            pipe,
         }
     }
 
     /// Send wakeup signal to a [`Waker::wait`] caller.
-    fn force_wakeup(&self, cond: Arc<Cond>) {
+    fn force_wakeup(&self, cond: Arc<Cond>, pipe: &mut LCPipe) {
         let msg = Message::new(move || {
             cond.signal();
         });
-        self.pipe.push_message(msg);
+        pipe.push_message(msg);
     }
 
     /// Release waker if it lock in [`Waker::wait`].
-    fn wakeup(&self) {
+    fn wakeup(&self, pipe: &mut LCPipe) {
         let do_wake = self
             .woken
             .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
@@ -44,7 +42,7 @@ impl Waker {
                     .as_ref()
                     .expect("unreachable: condition never empty"),
             );
-            self.force_wakeup(cond);
+            self.force_wakeup(cond, pipe);
         }
     }
 
@@ -63,24 +61,16 @@ impl Waker {
     }
 }
 
-impl Drop for Waker {
-    fn drop(&mut self) {
-        if let Some(cond) = self.condition.take() {
-            self.force_wakeup(cond);
-        }
-    }
-}
-
 /// A unbounded mpsc channel based on tarantool cbus.
 /// This a channel between any arbitrary threads (producers) and a cord (consumer).
 /// Cord - a thread with `libev` event loop inside (typically tx thread).
 struct Channel<T> {
     /// [`crossbeam_queue::SegQueue`] is used as lock free buffer, internally this is a linked list with buckets
     list: crossbeam_queue::SegQueue<T>,
-    /// synchronize receiver and producers
-    waker: Waker,
     /// indicate that all producers are disconnected from channel
     disconnected: AtomicBool,
+    /// name of a cbus endpoint, using for create an LCPipe instances
+    cbus_endpoint: String,
 }
 
 impl<T> Channel<T> {
@@ -88,13 +78,12 @@ impl<T> Channel<T> {
     ///
     /// # Arguments
     ///
-    /// * `pipe`: cbus lcpipe instance.
-    fn new(pipe: LCPipe) -> Self {
-        let cond = Cond::new();
+    /// * `cbus_endpoint`: cbus endpoint name.
+    fn new(cbus_endpoint: &str) -> Self {
         Self {
             list: crossbeam_queue::SegQueue::new(),
-            waker: Waker::new(cond, pipe),
             disconnected: AtomicBool::new(false),
+            cbus_endpoint: cbus_endpoint.to_string(),
         }
     }
 }
@@ -115,15 +104,20 @@ impl<T> Channel<T> {
 /// }
 /// ```
 pub fn channel<T>(cbus_endpoint: &str) -> (Sender<T>, EndpointReceiver<T>) {
-    let pipe = LCPipe::new(cbus_endpoint);
-    let chan = Arc::new(Channel::new(pipe));
-    let s = SenderInner {
-        chan: Arc::clone(&chan),
+    let chan = Arc::new(Channel::new(cbus_endpoint));
+    let waker = Arc::new(Waker::new(Cond::new()));
+    let s = Sender {
+        inner: Arc::new(SenderInner {
+            chan: Arc::clone(&chan),
+        }),
+        waker: Arc::downgrade(&waker),
+        lcpipe: RefCell::new(LCPipe::new(&chan.cbus_endpoint)),
     };
     let r = EndpointReceiver {
         chan: Arc::clone(&chan),
+        waker: Arc::clone(&waker),
     };
-    (Sender { inner: Arc::new(s) }, r)
+    (s, r)
 }
 
 struct SenderInner<T> {
@@ -135,7 +129,6 @@ unsafe impl<T> Send for SenderInner<T> {}
 impl<T> Drop for SenderInner<T> {
     fn drop(&mut self) {
         self.chan.disconnected.store(true, Ordering::Release);
-        self.chan.waker.wakeup();
     }
 }
 
@@ -143,37 +136,68 @@ impl<T> Drop for SenderInner<T> {
 /// Messages can be sent through this channel with [`Sender::send`].
 /// Clone the sender if you need one more producer.
 pub struct Sender<T> {
+    /// a "singleton" part of sender, drop of this part means that all sender's are dropped and
+    /// receiver must return [`RecvError::Disconnected`] on `recv`
     inner: Arc<SenderInner<T>>,
+    /// synchronize receiver and producers, using weak ref here cause drop `Waker` outside of
+    /// cord thread lead to segfault
+    waker: Weak<Waker>,
+    /// an LCPipe instance, unique for each sender
+    lcpipe: RefCell<LCPipe>,
 }
 
 unsafe impl<T> Send for Sender<T> {}
 
 unsafe impl<T> Sync for Sender<T> {}
 
-impl<T> Clone for Sender<T> {
-    fn clone(&self) -> Self {
-        Self {
-            inner: self.inner.clone(),
+impl<T> Drop for Sender<T> {
+    fn drop(&mut self) {
+        if let Some(waker) = self.waker.upgrade() {
+            waker.wakeup(&mut self.lcpipe.borrow_mut());
         }
     }
 }
 
+impl<T> Clone for Sender<T> {
+    fn clone(&self) -> Self {
+        Self {
+            inner: self.inner.clone(),
+            waker: self.waker.clone(),
+            lcpipe: RefCell::new(LCPipe::new(&self.inner.chan.cbus_endpoint)),
+        }
+    }
+}
+
+pub struct SendError<T>(pub T);
+
 impl<T> Sender<T> {
-    /// Attempts to send a value on this channel.
+    /// Attempts to send a value on this channel, returning it back if it could
+    /// not be sent.
+    ///
+    /// Note that a return value of [`Err`] means that the data will never be
+    /// received, but a return value of [`Ok`] does *not* mean that the data
+    /// will be received. It is possible for the corresponding receiver to
+    /// hang up immediately after this function returns [`Ok`].
     ///
     /// # Arguments
     ///
     /// * `message`: message to send
-    pub fn send(&self, msg: T) {
-        self.inner.chan.list.push(msg);
+    pub fn send(&self, msg: T) -> Result<(), SendError<T>> {
         // wake up a sleeping receiver
-        self.inner.chan.waker.wakeup();
+        if let Some(waker) = self.waker.upgrade() {
+            self.inner.chan.list.push(msg);
+            waker.wakeup(&mut self.lcpipe.borrow_mut());
+            Ok(())
+        } else {
+            Err(SendError(msg))
+        }
     }
 }
 
 /// Receiver part of unbounded channel. Must be used in cord context.
 pub struct EndpointReceiver<T> {
     chan: Arc<Channel<T>>,
+    waker: Arc<Waker>,
 }
 
 unsafe impl<T> Send for EndpointReceiver<T> {}
@@ -191,7 +215,7 @@ impl<T> EndpointReceiver<T> {
                 return Err(RecvError::Disconnected);
             }
 
-            self.chan.waker.wait();
+            self.waker.wait();
         }
     }
 
@@ -224,7 +248,7 @@ mod tests {
 
         let thread = thread::spawn(move || {
             for i in 0..1000 {
-                tx.send(i);
+                _ = tx.send(i);
                 if i % 100 == 0 {
                     thread::sleep(Duration::from_millis(1000));
                 }
@@ -256,7 +280,7 @@ mod tests {
 
         let thread = thread::spawn(move || {
             for i in 1..300 {
-                tx.send(i);
+                _ = tx.send(i);
                 if i % 100 == 0 {
                     thread::sleep(Duration::from_secs(1));
                 }
@@ -277,8 +301,8 @@ mod tests {
         let (tx, rx) = unbounded::channel("unbounded_disconnect_test");
 
         let thread = thread::spawn(move || {
-            tx.send(1);
-            tx.send(2);
+            _ = tx.send(1);
+            _ = tx.send(2);
         });
 
         assert!(matches!(rx.receive(), Ok(1)));
@@ -299,7 +323,7 @@ mod tests {
         fn create_producer(sender: unbounded::Sender<i32>) -> JoinHandle<()> {
             thread::spawn(move || {
                 for i in 0..MESSAGES_PER_PRODUCER {
-                    sender.send(i);
+                    _ = sender.send(i);
                 }
             })
         }

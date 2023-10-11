@@ -1,7 +1,7 @@
 use super::{LCPipe, Message};
 use crate::cbus::RecvError;
 use crate::fiber::Cond;
-use std::cell::UnsafeCell;
+use std::cell::{RefCell, UnsafeCell};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Weak};
 
@@ -39,44 +39,16 @@ impl<T> Channel<T> {
 /// It is safe to drop sender when [`EndpointReceiver::receive`] is not calling.
 pub struct Sender<T> {
     channel: Weak<Channel<T>>,
-    pipe: Arc<LCPipe>,
+    pipe: RefCell<LCPipe>,
 }
+
+unsafe impl<T> Send for Sender<T> {}
+
+unsafe impl<T> Sync for Sender<T> {}
 
 /// Receiver part of oneshot channel. Must be used in cord context.
 pub struct EndpointReceiver<T> {
     channel: Arc<Channel<T>>,
-}
-
-/// Creates a new oneshot channel, returning the sender/receiver halves with already created [`LCPipe`] instance.
-/// This method is useful if you want to avoid any memory allocations.
-/// Typically better use a [`channel`] method that create a new lcpipe instance,
-/// lcpipe is pretty small structure so overhead is not big.
-///
-/// # Arguments
-///
-/// * `pipe`: lcpipe - a cbus communication channel
-///
-/// # Examples
-///
-/// ```no_run
-/// #[cfg(feature = "picodata")] {
-/// use std::sync::Arc;
-/// use tarantool::cbus::oneshot;
-/// use tarantool::cbus::LCPipe;
-///
-/// let pipe = LCPipe::new("some_endpoint");
-/// let (sender, receiver) = oneshot::channel_on_pipe::<u8>(Arc::new(pipe));
-/// }
-/// ```
-pub fn channel_on_pipe<T>(pipe: Arc<LCPipe>) -> (Sender<T>, EndpointReceiver<T>) {
-    let channel = Arc::new(Channel::new());
-    (
-        Sender {
-            channel: Arc::downgrade(&channel),
-            pipe,
-        },
-        EndpointReceiver { channel },
-    )
 }
 
 /// Creates a new oneshot channel, returning the sender/receiver halves. Please note that the receiver should only be used inside the cord.
@@ -95,7 +67,14 @@ pub fn channel_on_pipe<T>(pipe: Arc<LCPipe>) -> (Sender<T>, EndpointReceiver<T>)
 /// }
 /// ```
 pub fn channel<T>(cbus_endpoint: &str) -> (Sender<T>, EndpointReceiver<T>) {
-    channel_on_pipe(Arc::new(LCPipe::new(cbus_endpoint)))
+    let channel = Arc::new(Channel::new());
+    (
+        Sender {
+            channel: Arc::downgrade(&channel),
+            pipe: RefCell::new(LCPipe::new(cbus_endpoint)),
+        },
+        EndpointReceiver { channel },
+    )
 }
 
 impl<T> Sender<T> {
@@ -129,7 +108,7 @@ impl<T> Drop for Sender<T> {
             let msg = Message::new(move || {
                 cond.signal();
             });
-            self.pipe.push_message(msg);
+            self.pipe.borrow_mut().push_message(msg);
         }
     }
 }
@@ -165,10 +144,8 @@ impl<T> Default for Channel<T> {
 #[cfg(feature = "internal_test")]
 mod tests {
     use super::super::tests::run_cbus_endpoint;
-    use crate::cbus;
     use crate::cbus::{oneshot, RecvError};
     use crate::fiber::{check_yield, YieldResult};
-    use std::sync::Arc;
     use std::time::Duration;
     use std::{mem, thread};
 
@@ -206,11 +183,8 @@ mod tests {
     pub fn oneshot_multiple_channels_test() {
         let mut cbus_fiber = run_cbus_endpoint("oneshot_multiple_channels_test");
 
-        let pipe = cbus::LCPipe::new("oneshot_multiple_channels_test");
-        let pipe = Arc::new(pipe);
-
-        let (sender1, receiver1) = oneshot::channel_on_pipe(Arc::clone(&pipe));
-        let (sender2, receiver2) = oneshot::channel_on_pipe(Arc::clone(&pipe));
+        let (sender1, receiver1) = oneshot::channel("oneshot_multiple_channels_test");
+        let (sender2, receiver2) = oneshot::channel("oneshot_multiple_channels_test");
 
         let thread1 = thread::spawn(move || {
             thread::sleep(Duration::from_secs(1));

@@ -31,7 +31,11 @@
 ### Fixed (picodata)
 - A race condition causing undefined behaviour due to fiber_cond_delete being called outside tx sometimes
 - A race condition causing unbounded channel receiver too block the thread forever
+- A race condition in cbus unbounded channels when two threads write into one LCPipe
 
+### Breaking changes (picodata)
+- Changes in the cbus LCPipe api: now `LCPipe::push_message` requires mutable self reference
+- `cbus::unbounded::Sender::send` return a `Result` type instead of nothing
 
 # [3.0.1] Sep 28 2023
 

@@ -175,10 +175,6 @@ pub struct LCPipe {
     pipe: *mut ffi::tarantool::LCPipe,
 }
 
-unsafe impl Send for LCPipe {}
-
-unsafe impl Sync for LCPipe {}
-
 impl LCPipe {
     /// Create and initialize a pipe and connect it to the consumer.
     /// The call returns only when the consumer, identified by endpoint name, has joined the bus.
@@ -192,7 +188,7 @@ impl LCPipe {
     }
 
     /// Push a new message into pipe. Message will be flushed to consumer queue (but not handled) immediately.
-    pub fn push_message<T>(&self, msg: Message<T>) {
+    pub fn push_message<T>(&mut self, msg: Message<T>) {
         let msg = Box::new(msg);
         // leaks a message, there is no `Box::from_raw` later, because it will happen implicitly
         // when [`MessageHop::f`] called
@@ -240,7 +236,7 @@ mod tests {
 
         let thread = thread::spawn(move || {
             unsafe { SENDER_THREAD_ID = Some(thread::current().id()) };
-            let pipe = cbus::LCPipe::new("cbus_send_message_test");
+            let mut pipe = cbus::LCPipe::new("cbus_send_message_test");
             let msg = Message::new(move || {
                 unsafe { TX_THREAD_ID = Some(thread::current().id()) };
                 let cond = unsafe { cond_ptr.0.as_ref().unwrap() };
