@@ -322,18 +322,28 @@ gamayun-run:
       else
         echo "No cache found"
       fi
-    - TUNNEL="ssh -L 9000:localhost:9000 sonar-reports -N -f"
+    # create an ssh tunned to gamayun server to allow the report uploading
+    - TUNNEL="ssh -4 -L 9000:localhost:9000 sonar-reports -N -f"
     - eval $TUNNEL
     - ls -la
     - |
+      find . -type d -name 'test*' -o -name 'doc' -o -name 'docs' | xargs -n1 rm -rvf
+      find tarantool-sys/third_party/ -type f -name '*.htm*' | xargs -n 1 rm -rfv
+      find tarantool-sys/vendor/ -type f -name '*.htm*' | xargs -n 1 rm -rfv
+      find . -type d -name stress-test | xargs -n 1 rm -rvf
+      find . -type d -name integration-tests | xargs -n 1 rm -rvf
+      find . -type d -name 'example*' | xargs -n 1 rm -rvf
+      find . -type d -name 'docsrc' | xargs -n 1 rm -rvf
+      find . -name '*.md' | xargs -n 1 rm -rvf
+      find http tarantool-sys vshard -type d -name .github | xargs -n 1 rm -rfv
+    - |
       docker run --rm -t \
         -v $PWD:/tmp/src:rw \
-        -e "SONAR_OPS=-Dsonar.python.version=3 -Dsonar.login=${SONAR} -Dsonar.projectKey=picodata-ci -Dsonar.exclusions=**/*.mod" \
+        -e "SONAR_OPS=-Dsonar.python.version=3 -Dsonar.login=${SONAR} -Dsonar.projectKey=Picodata-CI -Dsonar.exclusions=**/*.mod" \
         -e "SONAR_SCANNER_OPTS="-Xmx4096m"" \
         -e "CARGO_CLIPPY_FILE=clippy.json" \
         -u $(id -u):$(id -g) --ulimit nofile=100000:100000 --network=host \
         docker.binary.picodata.io/gamayun
-    - pkill -f "$TUNNEL"
 
 .pack:
   stage: pack

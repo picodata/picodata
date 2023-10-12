@@ -20,7 +20,7 @@ serde_bytes = "0.11"
 serde_repr = "0.1"
 rmp-serde = "1.0"
 rmp = "*"
-tempfile = "3"
+tempfile = "3.8"
 thiserror = "1.0"
 nix = { version = "0.26.4", features = ["fs", "term", "process", "signal"] }
 uuid = {version = "1.0", features = ["v3"]}

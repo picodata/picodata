@@ -26,7 +26,7 @@ build: tarantool-patch
 
 build-release: tarantool-patch
 	. ~/.cargo/env && \
-		cargo build --locked --release
+	cargo build --locked --release
 
 install:
 	mkdir -p $(DESTDIR)/usr/bin
