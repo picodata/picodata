@@ -1,5 +1,5 @@
+use crate::error::PgResult;
 use bytes::{BufMut, BytesMut};
-use pgwire::error::PgWireResult;
 use std::io;
 
 // Public re-exports.
@@ -49,11 +49,11 @@ impl<S> PgStream<S> {
 impl<S: io::Read> PgStream<S> {
     /// Try decoding an incoming message considering the connection's state.
     /// Return `None` if the packet is not complete for parsing.
-    fn try_decode_message(&mut self) -> PgWireResult<Option<FeMessage>> {
+    fn try_decode_message(&mut self) -> PgResult<Option<FeMessage>> {
         use messages::{startup::Startup, Message};
 
         if self.startup_processed {
-            return FeMessage::decode(&mut self.ibuf);
+            return FeMessage::decode(&mut self.ibuf).map_err(|e| e.into());
         }
 
         // This is done once at connection startup.
@@ -67,7 +67,7 @@ impl<S: io::Read> PgStream<S> {
     }
 
     /// Receive a new message from client.
-    pub fn read_message(&mut self) -> PgWireResult<FeMessage> {
+    pub fn read_message(&mut self) -> PgResult<FeMessage> {
         loop {
             if !self.ibuf.is_empty() {
                 if let Some(message) = self.try_decode_message()? {
@@ -88,20 +88,20 @@ impl<S: io::Read> PgStream<S> {
 /// Write part of the stream.
 impl<S: io::Write> PgStream<S> {
     /// Flush all buffered messages to an underlying byte stream.
-    pub fn flush(&mut self) -> PgWireResult<&mut Self> {
+    pub fn flush(&mut self) -> PgResult<&mut Self> {
         self.raw.write_all(&self.obuf)?;
         self.obuf.clear();
         Ok(self)
     }
 
     /// Put the message into the output buffer, but don't flush just yet.
-    pub fn write_message_noflush(&mut self, message: BeMessage) -> PgWireResult<&mut Self> {
+    pub fn write_message_noflush(&mut self, message: BeMessage) -> PgResult<&mut Self> {
         message.encode(&mut self.obuf)?;
         Ok(self)
     }
 
     /// Put the message into the output buffer and immediately flush everything.
-    pub fn write_message(&mut self, message: BeMessage) -> PgWireResult<&mut Self> {
+    pub fn write_message(&mut self, message: BeMessage) -> PgResult<&mut Self> {
         self.write_message_noflush(message)?.flush()
     }
 }

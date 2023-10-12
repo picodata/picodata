@@ -7,7 +7,7 @@ mod server;
 mod stream;
 
 use crate::client::PgClient;
-use std::io;
+use crate::error::PgResult;
 use stream::PgStream;
 use tarantool::{coio::CoIOStream, fiber::UnitJoinHandle, log::TarantoolLogger};
 
@@ -48,7 +48,7 @@ fn handle_client(client: PgStream<CoIOStream>) -> UnitJoinHandle<'static> {
     })
 }
 
-fn do_handle_client(stream: PgStream<CoIOStream>) -> io::Result<()> {
+fn do_handle_client(stream: PgStream<CoIOStream>) -> PgResult<()> {
     let mut client = PgClient::new(stream)?;
     client.send_parameter("server_version", "15.0")?;
     client.start_query_cycle()?;
