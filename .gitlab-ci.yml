@@ -264,6 +264,71 @@ test-docker:
         ci-log-section end "test-docker-${image}"
       done
 
+gamayun-prepare:
+  extends: .test
+  when: manual
+  rules:
+    - <<: *if-build-base-changes-on-master-branch
+      variables:
+        BASE_IMAGE_TAG: latest
+    - <<: *if-build-base-changes-on-dev-branch
+      variables:
+        BASE_IMAGE_TAG: ${CI_COMMIT_SHA}
+    - <<: *else
+      variables:
+        BASE_IMAGE_TAG: latest
+  image:
+    name: ${BASE_IMAGE}:${BASE_IMAGE_TAG}
+    pull_policy: if-not-present
+  tags:
+    - picodata-docker
+  script:
+    - export CARGO_HOME=$HOME/.cargo
+    - cargo -V
+    - cargo clippy --locked --message-format=json > clippy.json
+    - |
+      # Save cache
+      CACHE_ARCHIVE="${CACHE_ARCHIVE}_clippy"
+      ci-log-section start "save-cache" Saving cache to ${CACHE_ARCHIVE} ...
+      du -sh ${CACHE_PATHS} || true
+      TMPEXT=$RANDOM
+      tar -cf "${CACHE_ARCHIVE}.${TMPEXT}" clippy.json
+      mv -f "${CACHE_ARCHIVE}.${TMPEXT}" "${CACHE_ARCHIVE}"
+      echo Ok
+      du -sh ${CACHE_ARCHIVE}
+      ci-log-section end "save-cache"
+
+gamayun-run:
+  extends: .test
+  needs: ["gamayun-prepare"]
+  tags:
+    - picodata-shell
+  script:
+    - CACHE_ARCHIVE="/data/gitlab-runner/${CACHE_ARCHIVE}_clippy"
+    - ls -la ${CACHE_ARCHIVE}
+    - |
+      # Restore cache
+      if [ -f "${CACHE_ARCHIVE}" ]; then
+        ci-log-section start "restore-cache" Restoring cache from ${CACHE_ARCHIVE} ...
+        tar -xf ${CACHE_ARCHIVE}
+        echo "Ok"
+        ci-log-section end "restore-cache"
+      else
+        echo "No cache found"
+      fi
+    - TUNNEL="ssh -L 9000:localhost:9000 sonar-reports -N -f"
+    - eval $TUNNEL
+    - ls -la
+    - |
+      docker run --rm -t \
+        -v $PWD:/tmp/src:rw \
+        -e "SONAR_OPS=-Dsonar.python.version=3 -Dsonar.login=${SONAR} -Dsonar.projectKey=picodata-ci -Dsonar.exclusions=**/*.mod" \
+        -e "SONAR_SCANNER_OPTS="-Xmx4096m"" \
+        -e "CARGO_CLIPPY_FILE=clippy.json" \
+        -u $(id -u):$(id -g) --ulimit nofile=100000:100000 --network=host \
+        docker.binary.picodata.io/gamayun
+    - pkill -f "$TUNNEL"
+
 .pack:
   stage: pack
   tags:
