@@ -18,20 +18,20 @@ with the `YY.0M.MICRO` scheme.
   Use `picodata connect --unix` to connect. Unlike connecting to a `--listen` address,
   console communication occurs in plain text and always operates under the admin account.
 
-- _Clusterwide SQL_ now availiable via `\set language sql` in interactive console.
+- _Clusterwide SQL_ now available via `\set language sql` in interactive console.
 
 - Interactive console is disabled by default. Enable it implicitly with `picodata run -i`.
 
 - Allow specifying `picodata connect [user@][host][:port]` format. It
   overrides the `--user` option.
 
-- Allow creating sharded vinyl spaces via `pico.create_space`.
+- Allow creating sharded vinyl tables via `pico.create_table`.
 
 - _Clusterwide SQL_ now uses an internal module called `key_def` to
-  determine tuple buckets. In case the spaces were sharded using a
-  different hash function, executing SQL queries on these spaces would
+  determine tuple buckets. In case the tables were sharded using a
+  different hash function, executing SQL queries on these tables would
   return inaccurate outcomes. For more examples, refer to
-  `pico.help('create_space')`.
+  `pico.help('create_table')`.
 
 - _Clusterwide SQL_ now features Lua documentation. Refer to
   `pico.help('sql')` for more information.
@@ -62,6 +62,12 @@ with the `YY.0M.MICRO` scheme.
   `create table`.
 
 - _Clusterwide SQL_ introduces the capability to create users.
+
+- New clusterwide tables now have ids higher than any of the existing ones,
+  instead of taking the first available id as it was previously. If there's
+  already a table with the highest possible id, then the "wholes" in the id
+  ranges start to get filled.
+
 
 ### Lua API:
 

@@ -3,7 +3,10 @@ use std::collections::{BTreeMap, HashSet};
 use std::time::Duration;
 
 use tarantool::auth::AuthDef;
+use tarantool::error::TarantoolError;
+use tarantool::error::TarantoolErrorCode;
 use tarantool::fiber;
+use tarantool::set_error;
 use tarantool::space::{FieldType, SpaceCreateOptions, SpaceEngineType};
 use tarantool::space::{Metadata as SpaceMetadata, Space, SpaceType, SystemSpace};
 use tarantool::transaction::{transaction, TransactionError};
@@ -506,30 +509,46 @@ impl CreateSpaceParams {
         let id = if let Some(id) = self.id {
             id
         } else {
-            let mut id = SPACE_ID_INTERNAL_MAX;
+            let id_range_min = SPACE_ID_INTERNAL_MAX + 1;
+            let id_range_max = SPACE_ID_TEMPORARY_MIN;
 
-            let mut taken_ids = Vec::with_capacity(32);
-            // IteratorType::All iterates in an order of ascending space ids
-            for space in sys_space.select(IteratorType::All, &())? {
-                let space_id: SpaceId = space
-                    .field(0)?
-                    .expect("space metadata should contain a space_id");
-                taken_ids.push(space_id);
+            let mut iter = sys_space.select(IteratorType::LT, &[id_range_max])?;
+            let tuple = iter.next().expect("there's always at least system spaces");
+            let mut max_id: SpaceId = tuple
+                .field(0)
+                .expect("space metadata should decode fine")
+                .expect("space id should always be present");
+
+            let find_next_unused_id = |start: SpaceId| -> Result<SpaceId, Error> {
+                let iter = sys_space.select(IteratorType::GE, &[start])?;
+                let mut next_id = start;
+                for tuple in iter {
+                    let id: SpaceId = tuple
+                        .field(0)
+                        .expect("space metadata should decode fine")
+                        .expect("space id should always be present");
+                    if id != next_id {
+                        // Found a hole in the id range.
+                        return Ok(next_id);
+                    }
+                    next_id += 1;
+                }
+                Ok(next_id)
+            };
+
+            if max_id < id_range_min {
+                max_id = id_range_min;
             }
 
-            // Find the first accessible space id.
-            for space_id in taken_ids {
-                // We aren't forcing users to not use internal range, so we have
-                // to ignore those
-                if space_id <= SPACE_ID_INTERNAL_MAX {
-                    continue;
+            let mut id = find_next_unused_id(max_id)?;
+            if id >= id_range_max {
+                id = find_next_unused_id(id_range_min)?;
+                if id >= id_range_max {
+                    set_error!(TarantoolErrorCode::CreateSpace, "space id limit is reached");
+                    return Err(TarantoolError::last().into());
                 }
-                if space_id != id + 1 {
-                    break;
-                }
-                id += 1;
             }
-            id + 1
+            id
         };
         self.id = Some(id);
         Ok(())
@@ -569,6 +588,13 @@ impl CreateSpaceParams {
         Ok(res)
     }
 }
+
+/// Minimum id in the range of ids reserved for temporary spaces.
+///
+/// Temporary spaces need a special range of ids to avoid conflicts with
+/// spaces defined on replicas. This value is defined in tarantool, see
+/// <https://git.picodata.io/picodata/tarantool/-/blob/5c3c8ed32c7a9c84a0e86c8453269f0925ce63ed/src/box/schema_def.h#L67>
+const SPACE_ID_TEMPORARY_MIN: SpaceId = 1 << 30;
 
 /// Waits for a pending ddl to be either `Committed` or `Aborted` by the governor.
 ///
@@ -925,5 +951,14 @@ mod tests {
         .validate()
         .unwrap_err();
         assert_eq!(err.to_string(), "global spaces only support memtx engine");
+    }
+
+    #[::tarantool::test]
+    fn test_space_id_temporary_min() {
+        let lua = tarantool::lua_state();
+        let id: SpaceId = lua
+            .eval("return box.schema.SPACE_ID_TEMPORARY_MIN")
+            .unwrap();
+        assert_eq!(id, SPACE_ID_TEMPORARY_MIN);
     }
 }

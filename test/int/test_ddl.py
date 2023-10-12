@@ -1316,12 +1316,12 @@ def test_local_spaces_dont_conflict_with_pico_create_table(cluster: Cluster):
             distribution="global",
         )
     )
-    assert i1.eval("return box.space._space.index.name:get(...).id", "a space") == 1026
+    assert i1.eval("return box.space._space.index.name:get(...).id", "a space") == 1025
 
     i1.call("box.execute", 'create table "another space" ("id" unsigned primary key)')
     assert (
         i1.eval("return box.space._space.index.name:get(...).id", "another space")
-        == 1027
+        == 1026
     )
 
     cluster.create_table(
@@ -1334,7 +1334,7 @@ def test_local_spaces_dont_conflict_with_pico_create_table(cluster: Cluster):
     )
     assert (
         i1.eval("return box.space._space.index.name:get(...).id", "one more space")
-        == 1028
+        == 1027
     )
 
 
@@ -1342,8 +1342,11 @@ def test_local_spaces_dont_conflict_with_pico_create_table(cluster: Cluster):
 def test_pico_create_table_doesnt_conflict_with_local_spaces(cluster: Cluster):
     i1, *_ = cluster.deploy(instance_count=1)
 
-    i1.call("box.execute", 'create table "a space" ("id" unsigned primary key)')
-    assert i1.eval("return box.space._space.index.name:get(...).id", "a space") == 1026
+    # Tarantool doesn't care about _schema.max_id anymore and now if we want it
+    # to put spaces into our id range, we have to do so explicitly, otherwise
+    # space will have id in the picodata reserved range.
+    i1.eval("box.schema.create_space(...)", "a space", dict(id=1025))
+    assert i1.eval("return box.space._space.index.name:get(...).id", "a space") == 1025
 
     cluster.create_table(
         dict(
@@ -1355,13 +1358,13 @@ def test_pico_create_table_doesnt_conflict_with_local_spaces(cluster: Cluster):
     )
     assert (
         i1.eval("return box.space._space.index.name:get(...).id", "another space")
-        == 1027
+        == 1026
     )
 
     i1.call("box.execute", 'create table "one more space" ("id" unsigned primary key)')
     assert (
         i1.eval("return box.space._space.index.name:get(...).id", "one more space")
-        == 1028
+        == 1027
     )
 
 
