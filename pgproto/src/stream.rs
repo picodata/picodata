@@ -1,6 +1,6 @@
 use crate::error::PgResult;
 use bytes::{BufMut, BytesMut};
-use std::io;
+use std::io::{self, ErrorKind::UnexpectedEof};
 
 // Public re-exports.
 pub use pgwire::messages::{
@@ -76,11 +76,10 @@ impl<S: io::Read> PgStream<S> {
             }
 
             let cnt = read_into_buf(&mut self.raw, &mut self.ibuf)?;
-            log::info!("received {cnt} bytes from client");
-            assert!(
-                cnt > 0,
-                "TODO: check if coio wrapper returns 0 or EOF error"
-            );
+            log::debug!("received {cnt} bytes from client");
+            if cnt == 0 {
+                return Err(io::Error::from(UnexpectedEof).into());
+            }
         }
     }
 }
