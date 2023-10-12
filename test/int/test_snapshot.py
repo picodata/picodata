@@ -79,8 +79,8 @@ def test_large_snapshot(cluster: Cluster):
 
     param = dict(
         # Number of tuples to insert
-        N=4 * 1024 * 1024,
-        # N=4 * 1024 * 1024 / 8,
+        # N=4 * 1024 * 1024,
+        N=4 * 1024 * 1024 / 8,
         # Average size of each tuple (approximate, doesn't include key and meta)
         T=512,
         # Max deviation from the average tuple size
