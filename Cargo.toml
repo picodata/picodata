@@ -30,6 +30,12 @@ rustyline = "12.0.0"
 rmpv = "1.0.0"
 comfy-table = "7.0.1"
 
+linkme = "0.3.14"
+libloading = "0.8"
+abi_stable = "0.11.2"
+
+picodata-sdk = {path = "./sdk/picodata-sdk"}
+
 [dependencies.protobuf]
 version = "2.27"
 features = ["bytes", "with-bytes"]
@@ -72,3 +78,11 @@ doctest = true
 name = "inner"
 path = "test/inner.rs"
 harness = false
+
+[workspace]
+members = [
+        ".",
+        "sdk/picodata-sdk", # picodata / plugins etc. it is temporary naming
+        "sdk/plugin-example",
+        "sdk/plugin-example2",
+]

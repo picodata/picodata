@@ -24,13 +24,12 @@ use crate::cli::args;
 use crate::cli::args::Address;
 use crate::instance::grade::{CurrentGrade, TargetGrade, TargetGradeVariant};
 use crate::instance::Instance;
+use crate::plugin::*;
 use crate::sql::pgproto;
 use crate::traft::op;
 use crate::traft::LogicalClock;
 use crate::util::validate_and_complete_unix_socket_path;
 
-#[doc(hidden)]
-mod app;
 pub mod cas;
 pub mod cli;
 pub mod discovery;
@@ -43,6 +42,7 @@ pub mod r#loop;
 mod luamod;
 pub mod mailbox;
 pub mod on_shutdown;
+pub mod plugin;
 pub mod reachability;
 pub mod replicaset;
 pub mod rpc;
@@ -659,6 +659,8 @@ fn start_join(args: &args::Run, instance_address: String) {
 fn postjoin(args: &args::Run, storage: Clusterwide, raft_storage: RaftSpaceAccess) {
     tlog!(Info, ">>>>> postjoin()");
 
+    PluginList::global_init(&args.plugins);
+
     if let Some(addr) = &args.http_listen {
         start_http_server(addr);
         if cfg!(feature = "webui") {
@@ -733,7 +735,9 @@ fn postjoin(args: &args::Run, storage: Clusterwide, raft_storage: RaftSpaceAcces
         }
     }
 
-    if let Err(e) = tarantool::on_shutdown(|| fiber::block_on(on_shutdown::callback())) {
+    if let Err(e) =
+        tarantool::on_shutdown(move || fiber::block_on(on_shutdown::callback(PluginList::get())))
+    {
         tlog!(Error, "failed setting on_shutdown trigger: {e}");
     }
 
@@ -836,4 +840,8 @@ fn postjoin(args: &args::Run, storage: Clusterwide, raft_storage: RaftSpaceAcces
     }
 
     node.sentinel_loop.on_self_activate();
+
+    PluginList::get().iter().for_each(|plugin| {
+        plugin.start();
+    });
 }

@@ -136,6 +136,16 @@ pub struct Run {
     /// `--listen` address, console communication occurs in plain text
     /// and always operates under the admin account.
     pub console_sock: Option<String>,
+
+    #[clap(
+        long,
+        value_name = "PATH",
+        env = "PICODATA_PLUGINS",
+        require_value_delimiter = true,
+        use_value_delimiter = true
+    )]
+    /// Path to `some_plugin_name.so`
+    pub plugins: Vec<String>,
 }
 
 // Copy enum because clap:ArgEnum can't be derived for the foreign SayLevel.
