@@ -1964,7 +1964,10 @@ mod tests {
         // Do not override, encode as array
         let test_1 = Test1 { b: 42 };
         let bytes = encode(&test_1).unwrap();
-        assert_array(&bytes);
+        assert_value(
+            &bytes,
+            rmpv::Value::Array(vec![rmpv::Value::Integer(42.into())]),
+        );
         let test_1_dec: Test1 = decode(bytes.as_slice()).unwrap();
         assert_eq!(test_1_dec, test_1);
 
@@ -1983,7 +1986,23 @@ mod tests {
             c: test_1,
         };
         let bytes_named = encode(&test).unwrap();
-        assert_map(&bytes_named);
+        assert_value(
+            &bytes_named,
+            rmpv::Value::Map(vec![
+                (
+                    rmpv::Value::String("a".into()),
+                    rmpv::Value::Integer(1.into()),
+                ),
+                (
+                    rmpv::Value::String("b".into()),
+                    rmpv::Value::String("abc".into()),
+                ),
+                (
+                    rmpv::Value::String("c".into()),
+                    rmpv::Value::Array(vec![rmpv::Value::Integer(42.into())]),
+                ),
+            ]),
+        );
         let test_dec: Test = decode(bytes_named.as_slice()).unwrap();
         assert_eq!(test_dec, test);
 
@@ -2004,7 +2023,13 @@ mod tests {
         struct Test(u32, bool);
         let original = Test(0, true);
         let bytes = encode(&original).unwrap();
-        assert_array(&bytes);
+        assert_value(
+            &bytes,
+            rmpv::Value::Array(vec![
+                rmpv::Value::Integer(0.into()),
+                rmpv::Value::Boolean(true),
+            ]),
+        );
         let decoded: Test = decode(bytes.as_slice()).unwrap();
         assert_eq!(original, decoded);
     }
@@ -2016,6 +2041,7 @@ mod tests {
         struct Test;
         let original = Test;
         let bytes = encode(&original).unwrap();
+        assert_value(&bytes, rmpv::Value::Nil);
         let decoded: Test = decode(bytes.as_slice()).unwrap();
         assert_eq!(original, decoded);
     }
@@ -2033,21 +2059,49 @@ mod tests {
         }
         let original = Foo::BarUnit;
         let bytes = encode(&original).unwrap();
+        assert_value(
+            &bytes,
+            rmpv::Value::Map(vec![(
+                rmpv::Value::String("BarUnit".into()),
+                rmpv::Value::Nil,
+            )]),
+        );
         let decoded: Foo = decode(bytes.as_slice()).unwrap();
         assert_eq!(original, decoded);
 
         let original = Foo::BarTuple1(true);
         let bytes = encode(&original).unwrap();
+        assert_value(
+            &bytes,
+            rmpv::Value::Map(vec![(
+                rmpv::Value::String("BarTuple1".into()),
+                rmpv::Value::Array(vec![rmpv::Value::Boolean(true)]),
+            )]),
+        );
         let decoded: Foo = decode(bytes.as_slice()).unwrap();
         assert_eq!(original, decoded);
 
         let original = Foo::BarTupleN((), (), ());
         let bytes = encode(&original).unwrap();
+        assert_value(
+            &bytes,
+            rmpv::Value::Map(vec![(
+                rmpv::Value::String("BarTupleN".into()),
+                rmpv::Value::Array(vec![rmpv::Value::Nil; 3]),
+            )]),
+        );
         let decoded: Foo = decode(bytes.as_slice()).unwrap();
         assert_eq!(original, decoded);
 
         let original = Foo::BarStruct1 { bar: false };
         let bytes = encode(&original).unwrap();
+        assert_value(
+            &bytes,
+            rmpv::Value::Map(vec![(
+                rmpv::Value::String("BarStruct1".into()),
+                rmpv::Value::Array(vec![rmpv::Value::Boolean(false)]),
+            )]),
+        );
         let decoded: Foo = decode(bytes.as_slice()).unwrap();
         assert_eq!(original, decoded);
 
@@ -2057,6 +2111,13 @@ mod tests {
             bar3: (),
         };
         let bytes = encode(&original).unwrap();
+        assert_value(
+            &bytes,
+            rmpv::Value::Map(vec![(
+                rmpv::Value::String("BarStructN".into()),
+                rmpv::Value::Array(vec![rmpv::Value::Nil; 3]),
+            )]),
+        );
         let decoded: Foo = decode(bytes.as_slice()).unwrap();
         assert_eq!(original, decoded);
     }
