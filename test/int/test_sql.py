@@ -378,8 +378,7 @@ def test_sql_acl_password_length(cluster: Cluster):
     acl = i1.sql(f"drop user {username}")
     assert acl["row_count"] == 1
 
-    usage_msg = re.escape("password is too short")
-    with pytest.raises(ReturnError, match=usage_msg):
+    with pytest.raises(ReturnError, match="password is too short"):
         acl = i1.sql(
             """
             create user {username} with password '{password}'

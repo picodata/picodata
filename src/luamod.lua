@@ -177,19 +177,16 @@ end
 
 local function check_password_min_length(password, auth_type)
     if string.lower(auth_type) == 'ldap' then
-	    -- LDAP doesn't need password for authentication
-	    return
+        -- LDAP doesn't need password for authentication
+        return
     end
 
     local password_min_length = box.space._pico_property:get("password_min_length")
     if password_min_length == nil then
-        -- Despite the fact that we've set password_min_length during cluster bootstrap
-        -- it will be missing for clusters that were upgraded from previous version.
-        -- Retain previous behavior for those.
-        return
+        password_min_length = 0
+    else
+        password_min_length = password_min_length[2]
     end
-
-    password_min_length = password_min_length[2]
 
     local password_len = string.len(password)
     if password_len < password_min_length then
@@ -241,13 +238,13 @@ function pico.create_user(user, password, opts)
             timeout = 'number',
             auth_type = 'string',
         })
-	opts = opts or {}
-	if not opts.timeout then
-	    opts.timeout = TIMEOUT_INFINITY
-	end
-	if opts.auth_type then
-	    auth_type = opts.auth_type
-	end
+        opts = opts or {}
+        if not opts.timeout then
+            opts.timeout = TIMEOUT_INFINITY
+        end
+        if opts.auth_type then
+            auth_type = opts.auth_type
+        end
 
         box.internal.check_param(user, 'user', 'string')
         box.internal.check_param(password, 'password', 'string')
@@ -337,13 +334,13 @@ function pico.change_password(user, password, opts)
             timeout = 'number',
             auth_type = 'string',
         })
-	opts = opts or {}
-	if not opts.timeout then
-	    opts.timeout = TIMEOUT_INFINITY
-	end
-	if opts.auth_type then
-	    auth_type = opts.auth_type
-	end
+        opts = opts or {}
+        if not opts.timeout then
+            opts.timeout = TIMEOUT_INFINITY
+        end
+        if opts.auth_type then
+            auth_type = opts.auth_type
+        end
 
         box.internal.check_param(user, 'user', 'string')
         box.internal.check_param(password, 'password', 'string')

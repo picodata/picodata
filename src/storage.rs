@@ -860,8 +860,11 @@ impl Properties {
     }
 
     #[inline]
-    pub fn password_min_length(&self) -> tarantool::Result<Option<usize>> {
-        self.get(PropertyName::PasswordMinLength)
+    pub fn password_min_length(&self) -> tarantool::Result<usize> {
+        let res = self
+            .get(PropertyName::PasswordMinLength)?
+            .unwrap_or_default();
+        Ok(res)
     }
 
     #[inline]

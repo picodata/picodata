@@ -192,7 +192,7 @@ pub type UserId = u32;
 impl Encode for UserDef {}
 
 impl UserDef {
-    pub const FIELD_AUTH: usize = 4;
+    pub const FIELD_AUTH: usize = 3;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

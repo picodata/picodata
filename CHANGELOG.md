@@ -54,13 +54,13 @@ with the `YY.0M.MICRO` scheme.
 - _Picodata WebUI_ is introduced. It includes cluster status panel and replicaset list.
   Current status of WebUI is still beta.
 
-- _Clusterwide SQL_ introduces the capability to drop picodata users.
+- _Clusterwide SQL_ introduces the capability to drop users.
 
 - _Clusterwide SQL_ introduces the capability to create roles.
 - _Clusterwide SQL_ now allows creation of a global table through 
   `create table`.
 
-- _Clusterwide SQL_ introduces the capability to create picodata users.
+- _Clusterwide SQL_ introduces the capability to create users.
 
 ### Lua API:
 
