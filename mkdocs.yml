@@ -25,6 +25,7 @@ nav:
   - Архитектура:
     - sql/broadcasted_sql.md
     - discovery.md
+    - raft_voters.md
     - clustering.md
 theme:
     name: material
