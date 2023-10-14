@@ -1,0 +1,65 @@
+@import 'styles/vars';
+
+.container {
+  display: flex;
+}
+
+.progressLineContainer {
+  margin-left: 12px;
+  padding-top: 4px;
+  padding-bottom: 4px;
+}
+
+.progressLineInfo {
+  display: flex;
+  justify-content: space-between;
+}
+
+.text {
+  color: $colorTextBlack;
+}
+
+.medium {
+  .progressLineContainer {
+    margin-left: 12px;
+  }
+
+  .progressLineInfo {
+    margin-top: 8px;
+  }
+
+  .text {
+    font-size: 24px;
+    line-height: 30px;
+  }
+}
+
+.small {
+  .progressLineContainer {
+    margin-left: 4px;
+  }
+
+  .text {
+    font-size: 16px;
+    line-height: 24px;
+  }
+}
+
+.primary {
+  .text {
+    font-weight: 500;
+  }
+}
+
+.secondary {
+  .text {
+    font-weight: 400;
+  }
+}
+
+.label {
+  color: $colorTextGrey;
+  font-size: 16px;
+  font-weight: 400;
+  line-height: 24px;
+}

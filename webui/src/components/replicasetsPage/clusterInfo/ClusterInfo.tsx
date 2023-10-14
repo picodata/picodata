@@ -1,9 +1,10 @@
-import { CapacityIcon } from "components/icons/CapacityIcon";
-import styles from "./ClusterInfo.module.css";
+import styles from "./ClusterInfo.module.scss";
 import { useEffect } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { AppDispatch, RootState } from "store";
 import { getClusterInfo } from "store/slices/clusterSlice";
+import { CapacityProgress } from "./CapacityProgress/CapacityProgress";
+import cn from "classnames";
 
 export const ClusterInfo = () => {
   const dispatch = useDispatch<AppDispatch>();
@@ -14,46 +15,18 @@ export const ClusterInfo = () => {
     dispatch(getClusterInfo());
   }, [dispatch]);
 
-  const castMemorySize = (size: number): string => {
-    const megabyte = Math.pow(2, 20);
-    if (size / megabyte > 1) {
-      const mbs = Math.round(size / megabyte);
-      return `${mbs} Mb`;
-    }
-
-    const gigabyte = Math.pow(2, 30);
-    if (size / gigabyte > 1) {
-      const gbs = Math.round(size / gigabyte);
-      return `${gbs} Gb`;
-    }
-
-    return String(size);
-  };
   return (
     <div className={styles.wrapper}>
-      <div className={styles.infoColumn}>
+      <div className={cn(styles.infoColumn, styles.capacityInfoColumn)}>
         <p className={styles.columnName}>Capacity Usage</p>
         <div className={styles.capacityWrapper}>
           <div className={styles.flexWrapper}>
-            <p className={styles.boldText}>
-              {clusterInfoSelector.capacityUsage}
-            </p>
-            <CapacityIcon />
-          </div>
-        </div>
-
-        <div className={styles.textWrapper}>
-          <div className={styles.textBlock}>
-            <p className={styles.greyText}>Used</p>
-            <p className={styles.boldText}>
-              {castMemorySize(clusterInfoSelector.memory.used)}
-            </p>
-          </div>
-          <div className={styles.textBlock}>
-            <p className={styles.greyText}>Usable</p>
-            <p className={styles.boldText}>
-              {castMemorySize(clusterInfoSelector.memory.usable)}
-            </p>
+            <CapacityProgress
+              percent={clusterInfoSelector.capacityUsage}
+              currentValue={clusterInfoSelector.memory.used}
+              limit={clusterInfoSelector.memory.usable}
+              currentValueLabel="Useful capacity"
+            />
           </div>
         </div>
       </div>

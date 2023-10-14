@@ -1,0 +1,55 @@
+@import 'styles/vars';
+@import 'styles/mixins';
+
+.container {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+
+  max-height: 350px;
+  overflow: auto;
+
+  margin-top: 2px;
+
+  position: absolute;
+  top: 100%;
+  left: 0;
+  width: 100%;
+
+  background: red;
+  border-radius: 16px;
+
+  box-sizing: border-box;
+
+  border-radius: 4px;
+  background: $colorBgWhite;
+  box-shadow: 0px 4px 4px 0px rgba(37, 40, 43, 0.16);
+
+  z-index: $zIndexDropdown;
+}
+
+.upDirection {
+  bottom: 100%;
+  top: auto;
+  margin-top: 0;
+  margin-bottom: 2px;
+}
+
+.item {
+  padding: 12px 16px;
+  display: flex;
+  justify-content: flex-start;
+  cursor: pointer;
+
+  color: $colorTextBlack;
+
+  @include animate(background-color);
+
+  &:hover {
+    background-color: $colorFieldForm;
+  }
+}
+
+.selectedItem {
+  color: $colorTextOrange;
+}

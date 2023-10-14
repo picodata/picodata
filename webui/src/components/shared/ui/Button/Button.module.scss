@@ -1,0 +1,178 @@
+@import 'styles/vars';
+@import 'styles/mixins';
+
+.container {
+  display: inline-flex;
+  text-decoration: none;
+  align-items: center;
+  justify-content: center;
+  width: fit-content;
+  flex: 0 0 auto;
+  touch-action: none;
+  cursor: pointer;
+  border: none;
+  outline: none;
+  appearance: none;
+  -webkit-tap-highlight-color: transparent;
+
+  border-radius: 4px;
+
+  &:disabled {
+    cursor: initial;
+  }
+}
+
+.content {
+  display: flex;
+  align-items: center;
+
+  font-size: 20px;
+  font-weight: 400;
+  line-height: 20px;
+}
+
+.large {
+  padding: 16px 24px;
+
+  .leftIcon {
+    height: 24px;
+    width: 24px;
+    margin-right: 8px;
+
+    svg {
+      height: 100%;
+      width: 100%;
+    }
+  }
+
+  .rightIcon {
+    height: 24px;
+    width: 24px;
+    margin-left: 8px;
+
+    svg {
+      height: 100%;
+      width: 100%;
+    }
+  }
+}
+
+.normal {
+  padding: 8px 24px;
+
+  .leftIcon {
+    height: 24px;
+    width: 24px;
+
+    svg {
+      height: 100%;
+      width: 100%;
+    }
+    margin-right: 6px;
+  }
+
+  .rightIcon {
+    height: 24px;
+    width: 24px;
+
+    svg {
+      height: 100%;
+      width: 100%;
+    }
+    margin-left: 6px;
+  }
+}
+
+.small {
+  padding: 8px 20px;
+
+  .leftIcon {
+    height: 20px;
+    width: 20px;
+    margin-right: 8px;
+
+    svg {
+      height: 100%;
+      width: 100%;
+    }
+  }
+
+  .rightIcon {
+    height: 20px;
+    width: 20px;
+    margin-left: 8px;
+
+    svg {
+      height: 100%;
+      width: 100%;
+    }
+  }
+}
+
+.extraSmall {
+  padding: 6px 16px;
+
+  .leftIcon {
+    height: 16px;
+    width: 16px;
+    margin-right: 6px;
+
+    svg {
+      height: 100%;
+      width: 100%;
+    }
+  }
+
+  .rightIcon {
+    height: 16px;
+    width: 16px;
+    margin-left: 6px;
+
+    svg {
+      height: 100%;
+      width: 100%;
+    }
+  }
+}
+
+.primary {
+  background-color: $colorPrimary;
+
+  .text {
+    color: $colorTextBlack;
+  }
+
+  @include animate(background-color);
+
+  &:hover {
+    background-color: $colorPrimaryHover;
+  }
+
+  &:active {
+    background-color: $colorPrimarySelected;
+  }
+
+  &:disabled {
+    background-color: $colorPrimaryDisabled;
+  }
+}
+
+.secondary {
+  background-color: $colorSecondary;
+
+  .text {
+    color: $colorTextBlack;
+  }
+
+  &:hover {
+    background-color: $colorSecondaryHover;
+  }
+
+  &:active {
+    background-color: $colorSecondarySelected;
+  }
+
+  &:disabled {
+    background-color: $colorSecondaryDisabled;
+  }
+}

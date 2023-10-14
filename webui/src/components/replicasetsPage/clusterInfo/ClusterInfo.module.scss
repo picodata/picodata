@@ -1,6 +1,8 @@
+@import "styles/vars";
+
 .wrapper {
-  background-color: #f3e7d8;
-  padding: 24px;
+  background-color: $colorBgWhite;
+  padding: 16px 40px 14px 40px;
   border-radius: 16px;
   display: grid;
   grid-template-columns: 360px auto auto auto;
@@ -9,8 +11,12 @@
 .infoColumn {
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 16px;
   align-items: center;
+}
+
+.capacityInfoColumn {
+  align-items: flex-start;
 }
 
 .noMargin {

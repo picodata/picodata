@@ -8,8 +8,15 @@
   grid-auto-flow: row;
   padding: 16px 40px;
   border: 1px solid #323232;
-  background: white;
   font-size: 16px;
+}
+
+.primary {
+  background: white;
+}
+
+.secondary {
+  background: #dedfe1;
 }
 
 .infoColumn {
@@ -27,6 +34,15 @@
 .instanceInfo {
   margin: 0;
   font-weight: 600;
+}
+
+.instanceNameLabel {
+  display: flex;
+  align-items: center;
+}
+
+.leaderIcon {
+  margin-left: 8px;
 }
 
 .instanceNameBlock {

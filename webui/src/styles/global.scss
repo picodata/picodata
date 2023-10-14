@@ -1,3 +1,8 @@
+@import 'normalize.css';
+
+@import './vars';
+@import './mixins';
+
 :root {
   font-family: Montserrat;
   line-height: 1.5;

@@ -1,0 +1,12 @@
+@import './vars';
+
+@mixin animate($property...) {
+  $animatedProperty: #{''};
+  @if length($property) > 1 {
+    @for $i from 1 through length($property)-1 {
+      $animatedProperty: $animatedProperty nth($property, $i) $transition-normal #{', '};
+    }
+  }
+
+  transition: $animatedProperty nth($property, length($property)) $transition-normal;
+}

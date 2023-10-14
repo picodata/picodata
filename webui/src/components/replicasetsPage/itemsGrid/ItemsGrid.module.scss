@@ -1,6 +1,8 @@
+@import 'styles/vars';
+
 .gridWrapper {
   display: flex;
-  background-color: #5f5e5e;
+  background-color: $colorBgWhite;
   flex-direction: column;
   gap: 24px;
   padding: 24px;

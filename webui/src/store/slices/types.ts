@@ -16,7 +16,7 @@ export interface ReplicasetType {
 }
 
 export interface ClusterInfoType {
-  capacityUsage: string;
+  capacityUsage: number;
   memory: {
     used: number;
     usable: number;

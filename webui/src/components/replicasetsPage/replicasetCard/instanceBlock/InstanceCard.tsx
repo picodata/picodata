@@ -1,14 +1,20 @@
+import cn from "classnames";
 import { FC, useCallback, useState } from "react";
 import { InstanceType } from "store/slices/types";
-import styles from "./InstanceCard.module.css";
 import { InstanceModal } from "./instanceModal/InstanceModal";
 import { LeaderIcon } from "components/icons/LeaderIcon";
 
+import styles from "./InstanceCard.module.css";
+
 interface InstanceCardProps {
   instance: InstanceType;
+  theme?: "primary" | "secondary";
 }
 
-export const InstanceCard: FC<InstanceCardProps> = ({ instance }) => {
+export const InstanceCard: FC<InstanceCardProps> = ({
+  instance,
+  theme = "primary",
+}) => {
   const [isOpenModal, setIsOpenModal] = useState<boolean>(false);
   const onCloseHandler = useCallback(() => {
     setIsOpenModal(false);
@@ -18,13 +24,15 @@ export const InstanceCard: FC<InstanceCardProps> = ({ instance }) => {
     <>
       <div
         onClick={() => setIsOpenModal(true)}
-        className={styles.instanceWrapper}
+        className={cn(styles.instanceWrapper, styles[theme])}
       >
         <div className={styles.infoColumn}>
-          <p className={styles.noMargin}>Instance name</p>
+          <div className={styles.instanceNameLabel}>
+            <p className={styles.noMargin}>Instance name</p>
+            {instance.isLeader && <LeaderIcon className={styles.leaderIcon} />}
+          </div>
           <div className={styles.instanceNameBlock}>
             <p className={styles.instanceInfo}>{instance.name}</p>
-            {instance.isLeader && <LeaderIcon />}
           </div>
         </div>
         <div className={styles.infoColumn}>

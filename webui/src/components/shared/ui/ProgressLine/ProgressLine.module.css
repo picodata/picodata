@@ -1,0 +1,10 @@
+.container {
+  background-color: #f9f5f2;
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+.fill {
+  height: 100%;
+  width: 20px;
+}

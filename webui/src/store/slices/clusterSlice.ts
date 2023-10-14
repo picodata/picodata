@@ -10,7 +10,7 @@ export interface ClusterState {
 
 const initialState: ClusterState = {
   clusterInfo: {
-    capacityUsage: " ",
+    capacityUsage: 0,
     memory: {
       used: 0,
       usable: 0,

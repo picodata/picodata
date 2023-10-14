@@ -1,4 +1,4 @@
-import { defineConfig } from "vite";
+import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
 import * as fs from "fs";
 // import * as ChildProcess from 'child_process';
@@ -69,14 +69,27 @@ const generateBuildFolder = (currentNamespace = "") => {
 };
 
 // https://vitejs.dev/config/
-export default defineConfig({
-  plugins: [react(), generateBuildFolder(), svgr()],
-  resolve: {
-    alias: {
-      components: "/src/components",
-      assets: "/src/assets",
-      styles: "/src/styles",
-      store: "/src/store",
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), "");
+
+  return {
+    plugins: [react(), generateBuildFolder(), svgr()],
+    resolve: {
+      alias: {
+        components: "/src/components",
+        assets: "/src/assets",
+        styles: "/src/styles",
+        store: "/src/store",
+      },
     },
-  },
+    server: {
+      port: Number(env.PORT) || 3000,
+      proxy: {
+        "/api/": {
+          target: env.BACKEND_URL,
+          changeOrigin: true,
+        },
+      },
+    },
+  };
 });
