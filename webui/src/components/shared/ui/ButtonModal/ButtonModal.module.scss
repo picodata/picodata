@@ -1,0 +1,12 @@
+@import 'styles/vars';
+@import 'styles/mixins';
+
+.container {
+  position: relative;
+}
+
+.modalBody {
+  position: absolute;
+  right: 0;
+  margin-top: $dropdownOffset;
+}

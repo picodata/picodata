@@ -9,14 +9,13 @@
   max-height: 350px;
   overflow: auto;
 
-  margin-top: 2px;
+  margin-top: $dropdownOffset;
 
   position: absolute;
   top: 100%;
   left: 0;
   width: 100%;
 
-  background: red;
   border-radius: 16px;
 
   box-sizing: border-box;
@@ -32,7 +31,7 @@
   bottom: 100%;
   top: auto;
   margin-top: 0;
-  margin-bottom: 2px;
+  margin-bottom: $dropdownOffset;
 }
 
 .item {

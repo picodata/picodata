@@ -1,0 +1,18 @@
+@import 'styles/vars';
+@import 'styles/mixins';
+
+.container {
+  display: inline-flex;
+  padding: 4px 24px;
+  background-color: #ffffff;
+  border: 1px solid #9f9f9f;
+  cursor: pointer;
+  border-radius: 12px;
+
+  @include animate(background-color, border-color);
+}
+
+.activeContainer {
+  background-color: $colorBgNormal;
+  border-color: $colorBgNormal;
+}

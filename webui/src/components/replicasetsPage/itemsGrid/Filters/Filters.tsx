@@ -7,10 +7,12 @@ import {
 import { SortBy, SortByProps } from "./SortBy/SortBy";
 
 import styles from "./Filters.module.scss";
+import { FilterBy } from "./FilterBy/FilterBy";
 
 type FiltersProps = GroupByFilterProps &
   SortByProps & {
     showSortBy: boolean;
+    showFilterBy: boolean;
   };
 
 export const Filters: React.FC<FiltersProps> = (props) => {
@@ -20,6 +22,7 @@ export const Filters: React.FC<FiltersProps> = (props) => {
     showSortBy,
     sortByValue,
     setSortByValue,
+    showFilterBy,
   } = props;
 
   useEffect(() => {
@@ -37,13 +40,16 @@ export const Filters: React.FC<FiltersProps> = (props) => {
     <div className={styles.container}>
       <div />
       <div className={styles.right}>
-        {showSortBy && (
-          <SortBy sortByValue={sortByValue} setSortByValue={setSortByValue} />
-        )}
         <GroupByFilter
           groupByFilterValue={groupByFilterValue}
           setGroupByFilterValue={setGroupByFilterValue}
         />
+        {showSortBy && (
+          <SortBy sortByValue={sortByValue} setSortByValue={setSortByValue} />
+        )}
+        {showFilterBy && (
+          <FilterBy filterByValue={1} setFilterByValue={() => null} />
+        )}
       </div>
     </div>
   );

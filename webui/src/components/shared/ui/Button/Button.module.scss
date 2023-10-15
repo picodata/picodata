@@ -133,12 +133,17 @@
       width: 100%;
     }
   }
+
+  .content {
+    font-size: 14px;
+    line-height: 20px;
+  }
 }
 
 .primary {
   background-color: $colorPrimary;
 
-  .text {
+  .content {
     color: $colorTextBlack;
   }
 
@@ -160,7 +165,7 @@
 .secondary {
   background-color: $colorSecondary;
 
-  .text {
+  .content {
     color: $colorTextBlack;
   }
 

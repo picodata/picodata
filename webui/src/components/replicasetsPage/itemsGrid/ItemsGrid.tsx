@@ -40,6 +40,7 @@ export const ItemsGrid = ({}) => {
         sortByValue={sortByValue}
         showSortBy={!groupedByReplicates}
         setSortByValue={setSortByValue}
+        showFilterBy={!groupedByReplicates}
       />
       <div className={styles.replicasetsWrapper}>
         {groupedByReplicates &&

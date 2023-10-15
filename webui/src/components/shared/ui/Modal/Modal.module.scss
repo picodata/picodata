@@ -1,0 +1,16 @@
+@import 'styles/vars';
+
+.wrapper {
+  display: flex;
+  position: absolute;
+  justify-content: center;
+  align-items: center;
+  top: 0px;
+  right: 0px;
+  bottom: 0px;
+  left: 0px;
+  background-color: rgba(107, 114, 128, 0.5);
+  z-index: $zIndexModal;
+  width: 100%;
+  min-height: 100vh;
+}

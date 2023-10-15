@@ -1,0 +1,39 @@
+@import 'styles/vars';
+
+.container {
+  margin-left: 16px;
+  margin-right: 16px;
+}
+
+.field {
+  margin-bottom: 24px;
+}
+
+.label {
+  color: $colorTextBlack;
+  font-size: 16px;
+  font-weight: 400;
+  line-height: 24px;
+}
+
+.keyValueForm {
+  padding-left: 24px;
+}
+
+.keyValueField {
+  margin-top: 16px;
+  display: flex;
+}
+
+.keys {
+  display: flex;
+  flex-wrap: wrap;
+  row-gap: 24px;
+  column-gap: 12px;
+}
+
+.footer {
+  margin-top: 40px;
+  display: flex;
+  flex-direction: row-reverse;
+}
