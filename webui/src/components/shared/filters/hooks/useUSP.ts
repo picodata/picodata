@@ -1,13 +1,15 @@
-// eslint-disable-next-line no-restricted-imports
+/* eslint-disable no-restricted-imports */
+import { useUnMount } from "../../react/hooks/useUnMount";
 import { useMount } from "../../react/hooks/useMount";
 import { useCallback, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
 import { z } from "zod";
 
-export const useSelectFilter = <T extends z.ZodSchema>(args: {
+export const useUSP = <T extends z.ZodSchema>(args: {
   key: string;
   schema: T;
   defaultValue?: z.infer<T>;
+  resetUnMount?: boolean;
 }) => {
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -38,7 +40,13 @@ export const useSelectFilter = <T extends z.ZodSchema>(args: {
 
   useMount(() => {
     if (value != selectUrlValue) {
-      onChange(args.defaultValue);
+      onChange(value);
+    }
+  });
+
+  useUnMount(() => {
+    if (args.resetUnMount) {
+      onChange();
     }
   });
 

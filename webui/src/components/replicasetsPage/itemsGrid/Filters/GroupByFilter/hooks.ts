@@ -1,9 +1,9 @@
 // eslint-disable-next-line no-restricted-imports
-import { useSelectFilter } from "../../../../shared/filters/hooks/useSelectFilter";
+import { useUSP } from "../../../../shared/filters/hooks/useUSP";
 import { groupByValue } from "./config";
 
 export const useGroupByFilter = () => {
-  return useSelectFilter({
+  return useUSP({
     key: "groupBy",
     schema: groupByValue,
     defaultValue: "REPLICASETS",
