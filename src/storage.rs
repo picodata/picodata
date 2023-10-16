@@ -26,6 +26,7 @@ use crate::traft::error::Error;
 use crate::traft::op::Ddl;
 use crate::traft::RaftEntryId;
 use crate::traft::RaftId;
+use crate::traft::RaftIndex;
 use crate::traft::Result;
 use crate::util::Uppercase;
 use crate::warn_or_panic;
@@ -544,17 +545,19 @@ impl Clusterwide {
     pub fn first_snapshot_data_chunk(
         &self,
         entry_id: RaftEntryId,
+        compacted_index: RaftIndex,
     ) -> Result<(SnapshotData, RaftEntryId)> {
         // We keep a &mut on the read views container here,
         // so we mustn't yield for the duration of that borrow.
         #[cfg(debug_assertions)]
         let _guard = crate::util::NoYieldsGuard::new();
 
-        // Find the latest available snapshot
+        // Find the latest available snapshot which was opened after the last
+        // raft log compaction.
         let mut snapshots = self.snapshot_cache.read_views().iter_mut().rev();
-        // FIXME: test & fix case when raft log is compacted again after
-        // snapshot was generated.
-        if let Some((_, rv)) = snapshots.next() {
+        let snapshot = snapshots.find(|(entry_id, _)| entry_id.index >= compacted_index);
+
+        if let Some((_, rv)) = snapshot {
             if let Some(sole_chunk) = &rv.sole_chunk {
                 #[rustfmt::skip]
                 debug_assert_eq!(rv.ref_count, 0, "single chunk snapshots don't need reference counting");
@@ -3207,7 +3210,7 @@ mod tests {
         storage.replicasets.space.insert(&r).unwrap();
 
         let (snapshot_data, _) = storage
-            .first_snapshot_data_chunk(Default::default())
+            .first_snapshot_data_chunk(Default::default(), Default::default())
             .unwrap();
         assert!(snapshot_data.next_chunk_position.is_none());
 

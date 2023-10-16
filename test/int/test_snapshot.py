@@ -291,3 +291,33 @@ def test_large_snapshot(cluster: Cluster):
     """,  # noqa: E501
         timeout=10,
     )
+
+
+def test_repeated_snapshot_after_repeated_compaction(cluster: Cluster):
+    [i1] = cluster.deploy(instance_count=1)
+
+    index = i1.cas("insert", "_pico_property", ["googoo", "gaga"])
+    i1.raft_wait_index(index)
+
+    # Compact raft log to trigger creation of snapshot
+    i1.raft_compact_log()
+    i2 = cluster.add_instance(wait_online=True)
+
+    index = cluster.cas("insert", "_pico_property", ["booboo", "baba"])
+    i1.raft_wait_index(index)
+    i2.raft_wait_index(index)
+
+    # Compact raft log again
+    i1.raft_compact_log()
+    i2.raft_compact_log()
+
+    # A new snapshot is generated after the latest compaction
+    i3 = cluster.add_instance(wait_online=True)
+
+    # Compact raft log yet again
+    i1.raft_compact_log()
+    i2.raft_compact_log()
+    i3.raft_compact_log()
+
+    # Everything is still ok
+    _ = cluster.add_instance(wait_online=True)

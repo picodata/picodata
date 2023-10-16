@@ -605,8 +605,12 @@ impl raft::Storage for RaftSpaceAccess {
             return Err(StorageError::SnapshotTemporarilyUnavailable.into());
         }
 
+        let compacted_index = self.compacted_index().cvt_err()?;
+
         let storage = crate::storage::Clusterwide::get();
-        let (data, entry_id) = storage.first_snapshot_data_chunk(applied).cvt_err()?;
+        let (data, entry_id) = storage
+            .first_snapshot_data_chunk(applied, compacted_index)
+            .cvt_err()?;
 
         let mut snapshot = raft::Snapshot::new();
         let meta = snapshot.mut_metadata();
