@@ -7,6 +7,7 @@ use crate::schema::{
 use crate::sql::router::RouterRuntime;
 use crate::sql::storage::StorageRuntime;
 use crate::traft::error::Error;
+use crate::traft::node::Node as TraftNode;
 use crate::traft::op::{Acl as OpAcl, Ddl as OpDdl, Op};
 use crate::traft::{self, node};
 use crate::util::duration_from_secs_f64_clamped;
@@ -21,9 +22,9 @@ use sbroad::executor::result::ConsumerResult;
 use sbroad::executor::Query;
 use sbroad::ir::acl::Acl;
 use sbroad::ir::ddl::Ddl;
+use sbroad::ir::Node as IrNode;
 use sbroad::otm::query_span;
 
-use crate::traft::node::Node;
 use ::tarantool::auth::{AuthData, AuthDef, AuthMethod};
 use ::tarantool::proc;
 use ::tarantool::space::{FieldType, Space, SystemSpace};
@@ -54,25 +55,17 @@ pub fn dispatch_query(encoded_params: EncodedPatternWithParams) -> traft::Result
             let runtime = RouterRuntime::new().map_err(Error::from)?;
             let mut query =
                 Query::new(&runtime, &params.pattern, params.params).map_err(Error::from)?;
-            if query.is_ddl().map_err(Error::from)? {
+            if query.is_ddl().map_err(Error::from)? || query.is_acl().map_err(Error::from)? {
                 let ir_plan = query.get_exec_plan().get_ir_plan();
                 let top_id = ir_plan.get_top().map_err(Error::from)?;
                 let ir_plan_mut = query.get_mut_exec_plan().get_mut_ir_plan();
-                let ddl = ir_plan_mut.take_ddl_node(top_id).map_err(Error::from)?;
-                let timeout = duration_from_secs_f64_clamped(ddl.timeout()?);
-                let deadline = Instant::now().saturating_add(timeout);
+
+                // XXX: add Node::take_node method to simplify the following 2 lines
+                let ir_node = ir_plan_mut.get_mut_node(top_id).map_err(Error::from)?;
+                let ir_node = std::mem::replace(ir_node, IrNode::Parameter);
+
                 let node = node::global()?;
-                let result = reenterable_ddl_request(node, ddl, deadline)?;
-                Tuple::new(&(result,)).map_err(Error::from)
-            } else if query.is_acl().map_err(Error::from)? {
-                let ir_plan = query.get_exec_plan().get_ir_plan();
-                let top_id = ir_plan.get_top().map_err(Error::from)?;
-                let ir_plan_mut = query.get_mut_exec_plan().get_mut_ir_plan();
-                let acl = ir_plan_mut.take_acl_node(top_id).map_err(Error::from)?;
-                let timeout = duration_from_secs_f64_clamped(acl.timeout()?);
-                let deadline = Instant::now().saturating_add(timeout);
-                let node = node::global()?;
-                let result = reenterable_acl_request(node, acl, deadline)?;
+                let result = reenterable_schema_change_request(node, ir_node)?;
                 Tuple::new(&(result,)).map_err(Error::from)
             } else {
                 match query.dispatch() {
@@ -99,7 +92,7 @@ pub fn dispatch_query(encoded_params: EncodedPatternWithParams) -> traft::Result
     )
 }
 
-impl Node {
+impl TraftNode {
     /// Helper method to retrieve next id for newly created user/role.
     fn get_next_grantee_id(&self) -> traft::Result<UserId> {
         let storage = &self.storage;
@@ -131,7 +124,7 @@ impl Node {
 fn check_password_min_length(
     password: &str,
     auth_method: &AuthMethod,
-    node: &node::Node,
+    node: &TraftNode,
 ) -> traft::Result<()> {
     if let AuthMethod::Ldap = auth_method {
         // LDAP doesn't need password for authentication
@@ -153,164 +146,32 @@ fn check_password_min_length(
     Ok(())
 }
 
-fn reenterable_acl_request(
-    node: &node::Node,
-    acl: Acl,
-    deadline: Instant,
+fn reenterable_schema_change_request(
+    node: &TraftNode,
+    ir_node: IrNode,
 ) -> traft::Result<ConsumerResult> {
     let storage = &node.storage;
 
-    // Check parameters
-    let params = match acl {
-        Acl::DropUser { name, .. } => {
-            // Nothing to check
-            Params::DropUser(name)
+    let timeout = match &ir_node {
+        IrNode::Ddl(ddl) => ddl.timeout()?,
+        IrNode::Acl(acl) => acl.timeout()?,
+        n => {
+            unreachable!("this function should only be called for ddl or acl nodes, not {n:?}")
         }
-        Acl::CreateRole { name, .. } => {
-            // Nothing to check
-            Params::CreateRole(name)
-        }
-        Acl::CreateUser {
-            name,
-            password,
-            auth_method,
-            ..
-        } => {
-            let method = AuthMethod::from_str(&auth_method)
-                .map_err(|_| Error::Other(format!("Unknown auth method: {auth_method}").into()))?;
-            check_password_min_length(&password, &method, node)?;
-            let data = AuthData::new(&method, &name, &password);
-            let auth = AuthDef::new(method, data.into_string());
-            Params::CreateUser(name, auth)
-        }
-        Acl::DropRole { .. } => return Err(Error::Other("ACL is not implemented yet".into())),
     };
-
-    'retry: loop {
-        let index = node.read_index(deadline.duration_since(Instant::now()))?;
-
-        if storage.properties.pending_schema_change()?.is_some() {
-            node.wait_index(index + 1, deadline.duration_since(Instant::now()))?;
-            continue 'retry;
-        }
-
-        // Check for conflicts and make the op.
-        let acl = match &params {
-            Params::CreateUser(name, auth) => {
-                if storage.roles.by_name(name)?.is_some() {
-                    return Err(Error::Other(format!("Role {name} already exists").into()));
-                }
-                if let Some(user_def) = storage.users.by_name(name)? {
-                    if user_def.auth != *auth {
-                        return Err(Error::Other(
-                            format!("User {name} already exists with different auth method").into(),
-                        ));
-                    }
-                    // User already exists, no op needed
-                    return Ok(ConsumerResult { row_count: 0 });
-                }
-                let id = node.get_next_grantee_id()?;
-                let schema_version = storage.properties.next_schema_version()?;
-                let user_def = UserDef {
-                    id,
-                    name: name.clone(),
-                    schema_version,
-                    auth: auth.clone(),
-                };
-                OpAcl::CreateUser { user_def }
-            }
-            Params::DropUser(name) => {
-                let Some(user_def) = storage.users.by_name(name)? else {
-                    // User doesn't exist yet, no op needed
-                    return Ok(ConsumerResult { row_count: 0 });
-                };
-                let schema_version = storage.properties.next_schema_version()?;
-                OpAcl::DropUser {
-                    user_id: user_def.id,
-                    schema_version,
-                }
-            }
-            Params::CreateRole(name) => {
-                let schema_version = storage.properties.next_schema_version()?;
-
-                let sys_user = Space::from(SystemSpace::User)
-                    .index("name")
-                    .expect("_user should have an index by name")
-                    .get(&(name,))?;
-                if let Some(user) = sys_user {
-                    let entry_type: &str = user.get(3).unwrap();
-                    if entry_type == "user" {
-                        return Err(Error::Sbroad(SbroadError::Invalid(
-                            Entity::Acl,
-                            Some(format!("Unable to create role {name}. User with the same name already exists"))
-                        )));
-                    } else {
-                        return Ok(ConsumerResult { row_count: 0 });
-                    }
-                }
-                let id = node.get_next_grantee_id()?;
-                OpAcl::CreateRole {
-                    role_def: RoleDef {
-                        id,
-                        name: name.clone(),
-                        schema_version,
-                    },
-                }
-            }
-        };
-
-        let op = Op::Acl(acl);
-        let term = raft::Storage::term(&node.raft_storage, index)?;
-        let predicate = cas::Predicate {
-            index,
-            term,
-            ranges: cas::schema_change_ranges().into(),
-        };
-        let res = cas::compare_and_swap(op, predicate, deadline.duration_since(Instant::now()));
-        let (index, term) = unwrap_ok_or!(res,
-            Err(e) => {
-                if e.is_retriable() {
-                    continue 'retry;
-                } else {
-                    return Err(e);
-                }
-            }
-        );
-
-        node.wait_index(index, deadline.duration_since(Instant::now()))?;
-
-        if term != raft::Storage::term(&node.raft_storage, index)? {
-            // Leader has changed and the entry got rolled back, retry.
-            continue 'retry;
-        }
-
-        return Ok(ConsumerResult { row_count: 1 });
-    }
-
-    enum Params {
-        CreateUser(String, AuthDef),
-        DropUser(String),
-        CreateRole(String),
-    }
-}
-
-fn reenterable_ddl_request(
-    node: &node::Node,
-    ddl: Ddl,
-    deadline: Instant,
-) -> traft::Result<ConsumerResult> {
-    let storage = &node.storage;
+    let timeout = duration_from_secs_f64_clamped(timeout);
+    let deadline = Instant::now().saturating_add(timeout);
 
     // Check parameters
-    let params = match ddl {
-        Ddl::CreateTable {
+    let params = match ir_node {
+        IrNode::Ddl(Ddl::CreateTable {
             name,
             format,
             primary_key,
             sharding_key,
             engine_type,
             ..
-        } => {
+        }) => {
             let format = format
                 .into_iter()
                 .map(|f| Field {
@@ -339,9 +200,36 @@ fn reenterable_ddl_request(
             params.validate()?;
             Params::CreateSpace(params)
         }
-        Ddl::DropTable { name, .. } => {
+        IrNode::Ddl(Ddl::DropTable { name, .. }) => {
             // Nothing to check
             Params::DropSpace(name)
+        }
+        IrNode::Acl(Acl::DropUser { name, .. }) => {
+            // Nothing to check
+            Params::DropUser(name)
+        }
+        IrNode::Acl(Acl::CreateRole { name, .. }) => {
+            // Nothing to check
+            Params::CreateRole(name)
+        }
+        IrNode::Acl(Acl::CreateUser {
+            name,
+            password,
+            auth_method,
+            ..
+        }) => {
+            let method = AuthMethod::from_str(&auth_method)
+                .map_err(|_| Error::Other(format!("Unknown auth method: {auth_method}").into()))?;
+            check_password_min_length(&password, &method, node)?;
+            let data = AuthData::new(&method, &name, &password);
+            let auth = AuthDef::new(method, data.into_string());
+            Params::CreateUser(name, auth)
+        }
+        IrNode::Acl(Acl::DropRole { .. }) => {
+            return Err(Error::Other("ACL is not implemented yet".into()))
+        }
+        n => {
+            unreachable!("this function should only be called for ddl or acl nodes, not {n:?}")
         }
     };
 
@@ -358,7 +246,7 @@ fn reenterable_ddl_request(
         }
 
         // Check for conflicts and make the op
-        let ddl = match &params {
+        let mut op = match &params {
             Params::CreateSpace(params) => {
                 if params.space_exists()? {
                     // Space already exists, no op needed
@@ -373,22 +261,88 @@ fn reenterable_ddl_request(
                 let mut params = params.clone();
                 params.choose_id_if_not_specified()?;
                 params.test_create_space()?;
-                params.into_ddl()?
+                let ddl = params.into_ddl()?;
+                Op::DdlPrepare {
+                    // This will be set right after the match statement.
+                    schema_version: 0,
+                    ddl,
+                }
             }
             Params::DropSpace(name) => {
                 let Some(space_def) = storage.spaces.by_name(name)? else {
                     // Space doesn't exist yet, no op needed
                     return Ok(ConsumerResult { row_count: 0 });
                 };
-                OpDdl::DropSpace { id: space_def.id }
+                let ddl = OpDdl::DropSpace { id: space_def.id };
+                Op::DdlPrepare {
+                    // This will be set right after the match statement.
+                    schema_version: 0,
+                    ddl,
+                }
+            }
+            Params::CreateUser(name, auth) => {
+                if storage.roles.by_name(name)?.is_some() {
+                    return Err(Error::Other(format!("Role {name} already exists").into()));
+                }
+                if let Some(user_def) = storage.users.by_name(name)? {
+                    if user_def.auth != *auth {
+                        return Err(Error::Other(
+                            format!("User {name} already exists with different auth method").into(),
+                        ));
+                    }
+                    // User already exists, no op needed
+                    return Ok(ConsumerResult { row_count: 0 });
+                }
+                let id = node.get_next_grantee_id()?;
+                let user_def = UserDef {
+                    id,
+                    name: name.clone(),
+                    // This will be set right after the match statement.
+                    schema_version: 0,
+                    auth: auth.clone(),
+                };
+                Op::Acl(OpAcl::CreateUser { user_def })
+            }
+            Params::DropUser(name) => {
+                let Some(user_def) = storage.users.by_name(name)? else {
+                    // User doesn't exist yet, no op needed
+                    return Ok(ConsumerResult { row_count: 0 });
+                };
+                Op::Acl(OpAcl::DropUser {
+                    user_id: user_def.id,
+                    // This will be set right after the match statement.
+                    schema_version: 0,
+                })
+            }
+            Params::CreateRole(name) => {
+                let sys_user = Space::from(SystemSpace::User)
+                    .index("name")
+                    .expect("_user should have an index by name")
+                    .get(&(name,))?;
+                if let Some(user) = sys_user {
+                    let entry_type: &str = user.get(3).unwrap();
+                    if entry_type == "user" {
+                        return Err(Error::Sbroad(SbroadError::Invalid(
+                            Entity::Acl,
+                            Some(format!("Unable to create role {name}. User with the same name already exists"))
+                        )));
+                    } else {
+                        return Ok(ConsumerResult { row_count: 0 });
+                    }
+                }
+                let id = node.get_next_grantee_id()?;
+                let role_def = RoleDef {
+                    id,
+                    name: name.clone(),
+                    // This will be set right after the match statement.
+                    schema_version: 0,
+                };
+                Op::Acl(OpAcl::CreateRole { role_def })
             }
         };
+        op.set_schema_version(storage.properties.next_schema_version()?);
+        let is_ddl_prepare = matches!(op, Op::DdlPrepare { .. });
 
-        let schema_version = storage.properties.next_schema_version()?;
-        let op = Op::DdlPrepare {
-            schema_version,
-            ddl,
-        };
         let term = raft::Storage::term(&node.raft_storage, index)?;
         let predicate = cas::Predicate {
             index,
@@ -407,7 +361,9 @@ fn reenterable_ddl_request(
         );
 
         node.wait_index(index, deadline.duration_since(Instant::now()))?;
-        wait_for_ddl_commit(index, deadline.duration_since(Instant::now()))?;
+        if is_ddl_prepare {
+            wait_for_ddl_commit(index, deadline.duration_since(Instant::now()))?;
+        }
 
         if term != raft::Storage::term(&node.raft_storage, index)? {
             // Leader has changed and the entry got rolled back, retry.
@@ -420,6 +376,9 @@ fn reenterable_ddl_request(
     enum Params {
         CreateSpace(CreateSpaceParams),
         DropSpace(String),
+        CreateUser(String, AuthDef),
+        DropUser(String),
+        CreateRole(String),
     }
 }
 
