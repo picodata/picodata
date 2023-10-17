@@ -5,6 +5,10 @@ import { FunnelIcon } from "components/icons/FunnelIcon";
 import { ButtonModal } from "components/shared/ui/ButtonModal/ButtonModal";
 import { FilterByModal } from "./FilterByModal/FilterByModal";
 
+import { RootState } from "store";
+import { useSelector } from "react-redux";
+import { useInstancesFiltersData } from "./hooks";
+
 import styles from "./FilterBy.module.scss";
 
 export type FilterByProps = {
@@ -14,6 +18,9 @@ export type FilterByProps = {
 
 export const FilterBy: React.FC<FilterByProps> = () => {
   // const { filterByValue, setFilterByValue } = props;
+  const instances = useSelector((state: RootState) => state.cluster.instances);
+
+  const { instancesNames } = useInstancesFiltersData(instances);
 
   return (
     <ButtonModal
@@ -35,6 +42,7 @@ export const FilterBy: React.FC<FilterByProps> = () => {
               "region 4",
               "region 5",
             ]}
+            names={instancesNames}
           />
         ),
         bodyClassName: styles.modal,

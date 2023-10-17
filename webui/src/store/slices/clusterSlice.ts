@@ -1,11 +1,17 @@
 import axios from "axios";
 import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
-
-import { ActionTypes, ClusterInfoType, ReplicasetType } from "./types";
+import {
+  ActionTypes,
+  ClientInstanceType,
+  ClientReplicasetType,
+  ClusterInfoType,
+  ReplicasetType,
+} from "./types";
 
 export interface ClusterState {
   clusterInfo: ClusterInfoType;
-  replicasets: ReplicasetType[];
+  replicasets: ClientReplicasetType[];
+  instances: ClientInstanceType[];
 }
 
 const initialState: ClusterState = {
@@ -29,7 +35,7 @@ const initialState: ClusterState = {
           name: "",
           targetGrade: "",
           currentGrade: "",
-          failureDomain: "",
+          failureDomain: [],
           version: "",
           isLeader: false,
         },
@@ -39,6 +45,7 @@ const initialState: ClusterState = {
       capacity: "",
     },
   ],
+  instances: [],
 };
 
 // TODO: Research how to add base URL to dev builds
@@ -69,7 +76,29 @@ export const clusterSlice = createSlice({
   reducers: {},
   extraReducers: (builder) => {
     builder.addCase(getReplicasets.fulfilled, (state, action) => {
-      return { ...state, replicasets: [...action.payload] };
+      const replicasets = action.payload.map((replicaset) => {
+        return {
+          ...replicaset,
+          instances: replicaset.instances.map((instance) => ({
+            ...instance,
+            failureDomain: Object.entries(instance.failureDomain).map(
+              ([key, value]) => ({
+                key,
+                value,
+              })
+            ),
+          })),
+        };
+      });
+
+      return {
+        ...state,
+        replicasets,
+        // todo нужен уникальный id для instances
+        instances: replicasets
+          .map((replicaset) => replicaset.instances)
+          .flat(1),
+      };
     });
     builder.addCase(getClusterInfo.fulfilled, (state, action) => {
       return { ...state, clusterInfo: { ...action.payload } };

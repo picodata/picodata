@@ -8,6 +8,7 @@ import { SortBy, SortByProps } from "./SortBy/SortBy";
 
 import styles from "./Filters.module.scss";
 import { FilterBy } from "./FilterBy/FilterBy";
+import { DEFAULT_SORT_BY, DEFAULT_SORT_ORDER } from "./SortBy/config";
 
 type FiltersProps = GroupByFilterProps &
   SortByProps & {
@@ -27,7 +28,10 @@ export const Filters: React.FC<FiltersProps> = (props) => {
 
   useEffect(() => {
     if (showSortBy && sortByValue === undefined) {
-      setSortByValue("NAME");
+      setSortByValue({
+        by: DEFAULT_SORT_BY,
+        order: DEFAULT_SORT_ORDER,
+      });
     }
 
     if (!showSortBy) {

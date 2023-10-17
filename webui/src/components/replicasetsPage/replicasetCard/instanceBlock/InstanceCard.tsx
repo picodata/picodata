@@ -1,13 +1,14 @@
 import cn from "classnames";
 import { FC, useCallback, useState } from "react";
-import { InstanceType } from "store/slices/types";
 import { InstanceModal } from "./instanceModal/InstanceModal";
 import { LeaderIcon } from "components/icons/LeaderIcon";
 
 import styles from "./InstanceCard.module.css";
+import { ClientInstanceType } from "store/slices/types";
+import { formatFailDomain } from "components/replicasetsPage/itemsGrid/utils";
 
 interface InstanceCardProps {
-  instance: InstanceType;
+  instance: ClientInstanceType;
   theme?: "primary" | "secondary";
 }
 
@@ -46,7 +47,7 @@ export const InstanceCard: FC<InstanceCardProps> = ({
         <div className={styles.infoColumn}>
           <p className={styles.noMargin}>Failure domain</p>
           <p className={styles.instanceInfo}>
-            {JSON.stringify(instance.failureDomain)}
+            {formatFailDomain(instance.failureDomain)}
           </p>
         </div>
         <div className={styles.infoColumn}>

@@ -2,7 +2,7 @@ export interface InstanceType {
   name: string;
   targetGrade: string;
   currentGrade: string;
-  failureDomain: string;
+  failureDomain: Record<string, string>;
   version: string;
   isLeader: boolean;
 }
@@ -31,3 +31,11 @@ export enum ActionTypes {
   getClusterInfoType = "cluster/getClusterInfo",
   getReplicasetsType = "cluster/getReplicasets",
 }
+
+export type ClientInstanceType = Omit<InstanceType, "failureDomain"> & {
+  failureDomain: Array<{ key: string; value: string }>;
+};
+
+export type ClientReplicasetType = Omit<ReplicasetType, "instances"> & {
+  instances: ClientInstanceType[];
+};

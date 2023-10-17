@@ -1,6 +1,6 @@
 import { ReplicasetCard } from "../replicasetCard/ReplicasetCard";
 import { useDispatch, useSelector } from "react-redux";
-import { useEffect, useMemo } from "react";
+import { useEffect } from "react";
 import { getReplicasets } from "store/slices/clusterSlice";
 import { AppDispatch, RootState } from "store";
 import { Filters } from "./Filters/Filters";
@@ -13,20 +13,19 @@ import { useSortedInstances } from "./hooks";
 
 export const ItemsGrid = ({}) => {
   const dispatch = useDispatch<AppDispatch>();
-  const replicasets = useSelector(
-    (state: RootState) => state.cluster.replicasets
-  );
+  const { replicasets, instances } = useSelector((state: RootState) => {
+    return {
+      replicasets: state.cluster.replicasets,
+      instances: state.cluster.instances,
+    };
+  });
+
   useEffect(() => {
     dispatch(getReplicasets());
   }, [dispatch]);
 
   const [groupByFilterValue, setGroupByFilterValue] = useGroupByFilter();
   const [sortByValue, setSortByValue] = useSortBy();
-
-  // todo нужен уникальный id для instances
-  const instances = useMemo(() => {
-    return replicasets.map((replicaset) => replicaset.instances).flat(1);
-  }, [replicasets]);
 
   const sortedInstances = useSortedInstances(instances, sortByValue);
 

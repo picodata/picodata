@@ -1,0 +1,30 @@
+@import 'styles/vars';
+
+.commonControl {
+  cursor: pointer !important;
+  box-shadow: none !important;
+
+  background-color: $colorFieldForm;
+
+  &:hover {
+    border-color: $colorFieldStroke !important;
+  }
+}
+
+.focusedControl {
+  background-color: $colorBgWhite;
+  border-color: $colorFieldText !important;
+  box-shadow: 0px 0px 2px 0px #9d99ac;
+}
+
+.hoverControl {
+  border-color: $colorFieldStroke !important;
+}
+
+.disabledControl {
+  background-color: $colorFieldForm;
+}
+
+.normal {
+  height: 52px;
+}

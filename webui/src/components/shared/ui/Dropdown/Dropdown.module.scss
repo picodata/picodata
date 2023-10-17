@@ -33,22 +33,3 @@
   margin-top: 0;
   margin-bottom: $dropdownOffset;
 }
-
-.item {
-  padding: 12px 16px;
-  display: flex;
-  justify-content: flex-start;
-  cursor: pointer;
-
-  color: $colorTextBlack;
-
-  @include animate(background-color);
-
-  &:hover {
-    background-color: $colorFieldForm;
-  }
-}
-
-.selectedItem {
-  color: $colorTextOrange;
-}

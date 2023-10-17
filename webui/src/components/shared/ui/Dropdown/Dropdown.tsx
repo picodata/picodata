@@ -2,6 +2,7 @@ import { MouseEvent } from "react";
 import classNames from "classnames";
 
 import styles from "./Dropdown.module.scss";
+import { Option } from "../Option/Option";
 
 type DropdownItem<T extends string | number> = {
   value: T;
@@ -33,16 +34,13 @@ export const Dropdown = <T extends string | number>(
         const isSelected = props.value === item.value;
 
         return (
-          <div
+          <Option
             key={item.value}
-            className={classNames(
-              styles.item,
-              isSelected && styles.selectedItem
-            )}
+            isSelected={isSelected}
             onMouseDown={() => props.onChange?.(item.value)}
           >
             {item.label}
-          </div>
+          </Option>
         );
       })}
     </div>

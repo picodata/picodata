@@ -2,13 +2,13 @@ import styles from "./ReplicasetCard.module.css";
 import { FC, useMemo, useState } from "react";
 import { ChevronDown } from "components/icons/ChevronDown";
 import { ChevronUp } from "components/icons/ChevronUp";
-import { InstanceType } from "store/slices/types";
 import { InstanceCard } from "./instanceBlock/InstanceCard";
+import { ClientInstanceType } from "store/slices/types";
 
 export interface Replicaset {
   id: string;
   instanceCount: number;
-  instances: InstanceType[];
+  instances: ClientInstanceType[];
   version: string;
   grade: string;
   capacity: string;

@@ -18,7 +18,7 @@ export const useUSP = <T extends z.ZodSchema>(args: {
   const onChange = useCallback(
     (value?: z.infer<T>) => {
       setSearchParams((params) => {
-        if (value) params.set(args.key, String(value));
+        if (value) params.set(args.key, JSON.stringify(value));
 
         if (value === undefined) params.delete(args.key);
 
@@ -30,7 +30,10 @@ export const useUSP = <T extends z.ZodSchema>(args: {
 
   const value = useMemo(() => {
     try {
-      const selectValue = args.schema.parse(selectUrlValue);
+      const parsedValue = selectUrlValue
+        ? JSON.parse(selectUrlValue)
+        : selectUrlValue;
+      const selectValue = args.schema.parse(parsedValue);
 
       return selectValue as z.infer<T>;
     } catch (e) {

@@ -1,19 +1,28 @@
 import { useMemo } from "react";
-import { TSortByValue } from "./Filters/SortBy/config";
-import { InstanceType } from "store/slices/types";
+import { TSortValue } from "./Filters/SortBy/config";
 import { sortByString } from "components/shared/utils/string/sort";
+import { formatFailDomain } from "./utils";
+import { ClientInstanceType } from "store/slices/types";
 
 export const useSortedInstances = (
-  instances: InstanceType[],
-  sortBy?: TSortByValue
+  instances: ClientInstanceType[],
+  sortBy?: TSortValue
 ) => {
   return useMemo(() => {
+    if (!sortBy) return instances;
+
     return [...instances].sort((a, b) => {
-      if (sortBy === "FAILURE_DOMAIN") {
-        return sortByString(a.failureDomain, b.failureDomain);
+      if (sortBy.by === "FAILURE_DOMAIN") {
+        return sortByString(
+          formatFailDomain(a.failureDomain),
+          formatFailDomain(b.failureDomain),
+          {
+            order: sortBy.order,
+          }
+        );
       }
 
-      return sortByString(a.name, b.name);
+      return sortByString(a.name, b.name, { order: sortBy.order });
     });
   }, [instances, sortBy]);
 };

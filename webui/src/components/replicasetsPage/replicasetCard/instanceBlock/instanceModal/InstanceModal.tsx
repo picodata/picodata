@@ -2,14 +2,14 @@ import { FC, useMemo } from "react";
 import { createPortal } from "react-dom";
 import styles from "./InstanceModal.module.css";
 import { CloseIcon } from "components/icons/CloseIcon";
-import { InstanceType } from "store/slices/types";
 import { LeaderBigIcon } from "components/icons/LeaderBigIcon";
 import classNames from "classnames";
+import { ClientInstanceType } from "store/slices/types";
 
 export interface InstanceModalProps {
   isOpen: boolean;
   onClose: () => void;
-  instance: InstanceType;
+  instance: ClientInstanceType;
 }
 
 export const InstanceModal: FC<InstanceModalProps> = ({
@@ -22,7 +22,7 @@ export const InstanceModal: FC<InstanceModalProps> = ({
     return (
       <div className={styles.boxInfoWrapper}>
         {keys.map((key, index) => {
-          if (typeof instance[key as keyof InstanceType] === "string") {
+          if (typeof instance[key as keyof ClientInstanceType] === "string") {
             return (
               <div
                 className={classNames(styles.boxInfoRaw, {
@@ -32,7 +32,7 @@ export const InstanceModal: FC<InstanceModalProps> = ({
                 <span>
                   <p className={styles.titleText}>{key}</p>
                 </span>
-                <p>{instance[key as keyof InstanceType]}</p>
+                <p>{instance[key as keyof ClientInstanceType].toString()}</p>
               </div>
             );
           }
