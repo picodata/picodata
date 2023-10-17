@@ -454,6 +454,9 @@ impl NodeImpl {
             id: raft_id,
             applied,
             pre_vote: true,
+            // XXX: this value is pretty random, we should really do some
+            // testing to determine the best value for it.
+            max_size_per_msg: 64,
             ..Default::default()
         };
 

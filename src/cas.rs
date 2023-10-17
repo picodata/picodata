@@ -239,7 +239,7 @@ fn proc_cas_local(req: Request) -> Result<Response> {
 
     if requested < last_persisted {
         // there's at least one persisted entry to check
-        let persisted = raft_storage.entries(requested + 1, last_persisted + 1)?;
+        let persisted = raft_storage.entries(requested + 1, last_persisted + 1, None)?;
         if persisted.len() < (last_persisted - requested) as usize {
             return Err(RaftError::Store(StorageError::Unavailable).into());
         }

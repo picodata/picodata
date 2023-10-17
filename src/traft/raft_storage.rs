@@ -242,13 +242,22 @@ impl RaftSpaceAccess {
     ///
     /// Panics if `high` < `low`.
     ///
-    pub fn entries(&self, low: RaftIndex, high: RaftIndex) -> tarantool::Result<Vec<traft::Entry>> {
+    pub fn entries(
+        &self,
+        low: RaftIndex,
+        high: RaftIndex,
+        limit: Option<usize>,
+    ) -> tarantool::Result<Vec<traft::Entry>> {
         let iter = self.space_raft_log.select(IteratorType::GE, &(low,))?;
-        let mut ret = Vec::with_capacity((high - low) as _);
+        let limit = limit.unwrap_or(usize::MAX);
+        let mut ret = Vec::with_capacity(limit.min((high - low) as _));
 
         for tuple in iter {
             let row = tuple.decode::<traft::Entry>()?;
             if row.index >= high {
+                break;
+            }
+            if ret.len() == limit {
                 break;
             }
             ret.push(row);
@@ -530,14 +539,15 @@ impl raft::Storage for RaftSpaceAccess {
         &self,
         low: RaftIndex,
         high: RaftIndex,
-        _max_size: impl Into<Option<u64>>,
+        limit: impl Into<Option<u64>>,
     ) -> Result<Vec<raft::Entry>, RaftError> {
         if low <= self.compacted_index().cvt_err()? {
             return Err(RaftError::Store(StorageError::Compacted));
         }
 
-        let ret: Vec<traft::Entry> = self.entries(low, high).cvt_err()?;
-        if ret.len() < (high - low) as usize {
+        let limit = limit.into().map(|l| l as usize);
+        let ret: Vec<traft::Entry> = self.entries(low, high, limit).cvt_err()?;
+        if ret.len() < limit.unwrap_or(usize::MAX).min((high - low) as usize) {
             return Err(RaftError::Store(StorageError::Unavailable));
         }
         Ok(ret.into_iter().map(Into::into).collect())

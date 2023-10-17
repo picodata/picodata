@@ -1023,7 +1023,7 @@ pub fn wait_for_ddl_commit(
     let last_seen = prepare_commit;
     loop {
         let cur_applied = node.get_index();
-        let new_entries = raft_storage.entries(last_seen + 1, cur_applied + 1)?;
+        let new_entries = raft_storage.entries(last_seen + 1, cur_applied + 1, None)?;
         for entry in new_entries {
             if entry.entry_type != raft::prelude::EntryType::EntryNormal {
                 continue;
