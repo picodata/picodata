@@ -1,5 +1,6 @@
 use ::tarantool::tlua;
 
+use crate::traft::error::Error;
 use crate::traft::Result;
 use crate::traft::{node, RaftIndex, RaftTerm};
 
@@ -23,6 +24,7 @@ crate::define_rpc_request! {
 
         let storage = &node.storage;
         let cfg = cfg::Cfg::from_storage(storage)?;
+        crate::tlog!(Debug, "vshard config: {cfg:?}");
 
         let lua = ::tarantool::lua_state();
         // TODO: fix user's permissions
@@ -83,7 +85,19 @@ pub mod bootstrap {
             node.wait_index(req.applied, req.timeout)?;
             node.status().check_term(req.term)?;
 
-            ::tarantool::lua_state().exec("vshard.router.bootstrap()")?;
+            let lua = tarantool::lua_state();
+            let (ok, err): (Option<tlua::True>, Option<tlua::ToString>) =
+                lua.eval("return vshard.router.bootstrap()")?;
+
+            match (ok, err) {
+                (Some(tlua::True), None) => {}
+                (None, Some(tlua::ToString(e))) => {
+                    return Err(Error::other(format!(
+                        "vshard.router.bootstrap() failed: {e}"
+                    )));
+                }
+                res => unreachable!("{res:?}"),
+            }
 
             Ok(Response {})
         }
@@ -178,18 +192,23 @@ pub mod cfg {
                     );
                     continue;
                 };
-                let (weight, is_master) = match replicasets.get(&peer.replicaset_id) {
-                    Some(r) => (Some(r.weight.value), r.master_id == peer.instance_id),
-                    None => (None, false),
+                let Some(replicaset_info) = replicasets.get(&peer.replicaset_id) else {
+                    crate::tlog!(Debug, "skipping instance: replicaset not initialized yet";
+                        "instance_id" => %peer.instance_id,
+                    );
+                    continue;
                 };
+
+                let weight = replicaset_info.weight.value;
                 let replicaset = sharding.entry(peer.replicaset_uuid)
                     .or_insert_with(|| Replicaset::with_weight(weight));
+
                 replicaset.replicas.insert(
                     peer.instance_uuid,
                     Replica {
                         uri: format!("guest:@{address}"),
+                        master: replicaset_info.master_id == peer.instance_id,
                         name: peer.instance_id.into(),
-                        master: is_master,
                     },
                 );
             }
