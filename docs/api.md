@@ -308,6 +308,9 @@ function create_table(opts)
     - `by_field` (optional _string_), обычно используется `bucket_id`
     - `sharding_key `(optional _table_ {string,...}) с именами полей
     - `sharding_fn` (optional _string_), поддерживается пока только функция `murmur3`
+    - `engine` (optional _string_), движок хранения данных в БД;
+      варианты: `'memtx'` | `'vinyl'`. По умолчанию используется
+      `'memtx'`. См [подробнее](glossary.md#db-engine).
     - `timeout` (optional _number_), число в секундах. По умолчанию
       используется бесконечное значение.
 
