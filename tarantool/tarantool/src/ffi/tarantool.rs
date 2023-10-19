@@ -1265,6 +1265,13 @@ extern "C" {
 #[cfg(feature = "picodata")]
 extern "C" {
     pub fn box_access_check_space(space_id: u32, user_access: u16) -> c_int;
+    pub fn box_access_check_ddl(
+        name: *const c_char,
+        object_id: u32,
+        owner_id: u32,
+        object_type: u32,
+        access: u16,
+    ) -> c_int;
 }
 
 // Cord.
