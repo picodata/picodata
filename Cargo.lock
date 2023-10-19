@@ -894,15 +894,6 @@ checksum = "2dffe52ecf27772e601905b7522cb4ef790d2cc203488bbd0e2fe85fcb74566d"
 
 [[package]]
 name = "memoffset"
-version = "0.6.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5aa361d4faea93603064a027415f07bd8e1d5c88c9fbf68bf56a285428fd79ce"
-dependencies = [
- "autocfg",
-]
-
-[[package]]
-name = "memoffset"
 version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5de893c32cde5f383baa4c04c5d6dbdd735cfd4a794b0debdb2bb1b421da5ff4"
@@ -933,25 +924,13 @@ dependencies = [
 
 [[package]]
 name = "nix"
-version = "0.24.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fa52e972a9a719cecb6864fb88568781eb706bac2cd1d4f04a648542dbf78069"
-dependencies = [
- "bitflags 1.3.2",
- "cfg-if 1.0.0",
- "libc",
- "memoffset 0.6.5",
-]
-
-[[package]]
-name = "nix"
 version = "0.26.4"
 source = "git+https://git.picodata.io/picodata/picodata/nix.git?branch=fix-memfd-create-for-older-libc-backport-26-4#92a95c75320be3e268ba320283526e1096ea2211"
 dependencies = [
  "bitflags 1.3.2",
  "cfg-if 1.0.0",
  "libc",
- "memoffset 0.7.1",
+ "memoffset",
  "pin-utils",
 ]
 
@@ -1163,7 +1142,7 @@ dependencies = [
  "indoc",
  "jobserver",
  "libc",
- "nix 0.26.4",
+ "nix",
  "once_cell",
  "pretty_assertions",
  "protobuf",
@@ -1539,7 +1518,7 @@ dependencies = [
  "libc",
  "log",
  "memchr",
- "nix 0.26.4",
+ "nix",
  "radix_trie",
  "scopeguard",
  "unicode-segmentation",
@@ -1876,13 +1855,11 @@ checksum = "f764005d11ee5f36500a149ace24e00e3da98b0158b3e2d53a7495660d3f4d60"
 
 [[package]]
 name = "tarantool"
-version = "3.0.1"
+version = "4.0.0"
 dependencies = [
  "async-trait",
  "base64",
  "bitflags 1.3.2",
- "byteorder",
- "clap",
  "crossbeam-queue",
  "dec",
  "dlopen",
@@ -1890,7 +1867,6 @@ dependencies = [
  "libc",
  "linkme",
  "log",
- "nix 0.24.3",
  "num-derive",
  "num-traits",
  "once_cell",
@@ -1913,7 +1889,7 @@ dependencies = [
 
 [[package]]
 name = "tarantool-proc"
-version = "1.0.0"
+version = "2.0.1"
 dependencies = [
  "darling",
  "proc-macro-error",
