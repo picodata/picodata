@@ -2,8 +2,13 @@ import { useMemo } from "react";
 import RNSelect, { Props as RNSelectProps } from "react-select";
 import cn from "classnames";
 
-import styles from "./Select.module.scss";
 import { Option } from "../Option/Option";
+
+import styles from "./Select.module.scss";
+
+import type { TOption } from "./types";
+
+export type { TOption };
 
 type SelectProps<T> = RNSelectProps<T> & {
   size?: "normal";

@@ -5,7 +5,7 @@ import { LeaderIcon } from "components/icons/LeaderIcon";
 
 import styles from "./InstanceCard.module.css";
 import { ClientInstanceType } from "store/slices/types";
-import { formatFailDomain } from "components/replicasetsPage/itemsGrid/utils";
+import { formatFailDomains } from "components/replicasetsPage/itemsGrid/utils";
 
 interface InstanceCardProps {
   instance: ClientInstanceType;
@@ -47,7 +47,7 @@ export const InstanceCard: FC<InstanceCardProps> = ({
         <div className={styles.infoColumn}>
           <p className={styles.noMargin}>Failure domain</p>
           <p className={styles.instanceInfo}>
-            {formatFailDomain(instance.failureDomain)}
+            {formatFailDomains(instance.failureDomain)}
           </p>
         </div>
         <div className={styles.infoColumn}>

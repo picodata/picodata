@@ -9,11 +9,14 @@ import styles from "./ButtonModal.module.scss";
 
 type ButtonModalProps = {
   buttonProps: ButtonProps;
-  modalProps: Omit<ModalBodyProps, "onClose"> & { onClose?: () => void };
+  modalProps: Omit<ModalBodyProps, "onClose" | "children"> & {
+    onClose?: () => void;
+  };
+  children: ModalBodyProps["children"];
 };
 
 export const ButtonModal: React.FC<ButtonModalProps> = (props) => {
-  const { buttonProps, modalProps } = props;
+  const { buttonProps, modalProps, children } = props;
   const containerRef = useRef<HTMLDivElement>(null);
 
   const [modalIsOpen, setModalIsOpen] = useState(false);
@@ -40,7 +43,7 @@ export const ButtonModal: React.FC<ButtonModalProps> = (props) => {
           bodyClassName={cn(styles.modalBody, modalProps.bodyClassName)}
           onClose={() => setModalIsOpen(false)}
         >
-          {modalProps.children}
+          {children}
         </ModalBody>
       )}
     </div>

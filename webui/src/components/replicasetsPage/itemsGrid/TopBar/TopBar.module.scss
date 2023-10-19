@@ -1,9 +1,18 @@
 .container {
   display: flex;
+  flex-direction: column;
+}
+
+.controls {
+  display: flex;
   justify-content: space-between;
 }
 
 .right {
   display: flex;
   gap: 24px;
+}
+
+.filters {
+  margin-top: 35px;
 }

@@ -7,10 +7,12 @@ import styles from "./ModalBody.module.scss";
 
 export type ModalBodyProps = {
   title: React.ReactNode;
-  children: React.ReactNode;
+  children: (args: {
+    onClose: () => void;
+  }) => Exclude<React.ReactNode, "string"> | React.ReactNode;
   bodyClassName?: string;
   onClose: () => void;
-} & React.ButtonHTMLAttributes<HTMLDivElement>;
+} & Omit<React.HtmlHTMLAttributes<HTMLDivElement>, "children">;
 
 export const ModalBody: React.FC<ModalBodyProps> = (props) => {
   const { title, children, bodyClassName, onClose, ...other } = props;
@@ -21,7 +23,7 @@ export const ModalBody: React.FC<ModalBodyProps> = (props) => {
         <span className={styles.titleText}>{title}</span>
         <CloseIcon onClick={onClose} className={styles.closeIcon} />
       </div>
-      {children}
+      {typeof children === "function" ? children({ onClose }) : children}
     </div>
   );
 };

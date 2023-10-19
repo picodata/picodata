@@ -9,4 +9,6 @@
   position: absolute;
   right: 0;
   margin-top: $dropdownOffset;
+  overflow: auto;
+  max-height: 536px;
 }

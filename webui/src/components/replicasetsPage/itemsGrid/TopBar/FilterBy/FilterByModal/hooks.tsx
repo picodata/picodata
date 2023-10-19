@@ -1,14 +1,18 @@
 import { useState } from "react";
-import { TKeyValueFilter } from "./types";
+import { TKeyValueFilter } from "./DomainField/types";
 import { generateId, getEmptyKeyValueFilter } from "./utils";
 import { updateArrayItem } from "components/shared/utils/array/updateArrayItem";
 
-export const useKeyValues = (propsKeyValueFilters?: TKeyValueFilter[]) => {
+export const useKeyValues = (
+  propsKeyValueFilters: Omit<TKeyValueFilter, "id">[] = []
+) => {
   const [keyValueFilters, setKeyValueFilters] = useState<TKeyValueFilter[]>(
-    propsKeyValueFilters?.map((filter) => ({
-      ...filter,
-      id: generateId(),
-    })) ?? [getEmptyKeyValueFilter()]
+    propsKeyValueFilters.length > 0
+      ? propsKeyValueFilters?.map((filter) => ({
+          ...filter,
+          id: generateId(),
+        }))
+      : [getEmptyKeyValueFilter()]
   );
 
   const addNewKeyValueFilter = () => {

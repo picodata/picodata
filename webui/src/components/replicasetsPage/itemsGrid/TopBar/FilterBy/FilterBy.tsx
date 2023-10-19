@@ -16,11 +16,11 @@ export type FilterByProps = {
   setFilterByValue: (value?: TFilterByValue) => void;
 };
 
-export const FilterBy: React.FC<FilterByProps> = () => {
-  // const { filterByValue, setFilterByValue } = props;
+export const FilterBy: React.FC<FilterByProps> = (props) => {
+  const { filterByValue, setFilterByValue } = props;
   const instances = useSelector((state: RootState) => state.cluster.instances);
 
-  const { instancesNames } = useInstancesFiltersData(instances);
+  const { domains } = useInstancesFiltersData(instances);
 
   return (
     <ButtonModal
@@ -31,22 +31,23 @@ export const FilterBy: React.FC<FilterByProps> = () => {
       }}
       modalProps={{
         title: "Filter by",
-        children: (
-          <FilterByModal
-            keys={[
-              "srv",
-              "dc",
-              "region",
-              "region 2",
-              "region 3",
-              "region 4",
-              "region 5",
-            ]}
-            names={instancesNames}
-          />
-        ),
         bodyClassName: styles.modal,
       }}
-    />
+    >
+      {({ onClose }) => (
+        <FilterByModal
+          domains={domains}
+          values={{
+            domainValuesFilters: filterByValue?.domain,
+          }}
+          onApply={(values) => {
+            setFilterByValue({
+              domain: values.domainValuesFilters,
+            });
+            onClose();
+          }}
+        />
+      )}
+    </ButtonModal>
   );
 };
