@@ -7,11 +7,12 @@ use ::raft::prelude as raft;
 use ::tarantool::error::Error as TntError;
 use ::tarantool::fiber;
 use ::tarantool::fiber::r#async::timeout::{self, IntoTimeout};
+use ::tarantool::time::Instant;
 use ::tarantool::tlua;
 use ::tarantool::transaction::transaction;
 use rpc::{join, update_instance};
 use std::convert::TryFrom;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use storage::tweak_max_space_id;
 use storage::Clusterwide;
 use storage::{ClusterwideSpace, PropertyName};
@@ -693,6 +694,13 @@ fn postjoin(args: &args::Run, storage: Clusterwide, raft_storage: RaftSpaceAcces
         tlog!(Error, "failed setting on_shutdown trigger: {e}");
     }
 
+    // We will shut down, if we don't receive a confirmation of target grade
+    // change from leader before this time.
+    let activation_deadline = Instant::now().saturating_add(Duration::from_secs(10));
+
+    // This will be doubled on each retry.
+    let mut retry_timeout = Duration::from_millis(250);
+
     // Activates instance
     loop {
         let instance = storage
@@ -707,7 +715,7 @@ fn postjoin(args: &args::Run, storage: Clusterwide, raft_storage: RaftSpaceAcces
         let leader_address = leader_id.and_then(|id| storage.peer_addresses.try_get(id).ok());
         let Some(leader_address) = leader_address else {
             // FIXME: don't hard code timeout
-            let timeout = Duration::from_millis(1000);
+            let timeout = Duration::from_millis(250);
             tlog!(
                 Debug,
                 "leader address is still unkown, retrying in {timeout:?}"
@@ -725,19 +733,25 @@ fn postjoin(args: &args::Run, storage: Clusterwide, raft_storage: RaftSpaceAcces
             .with_target_grade(TargetGradeVariant::Online)
             .with_failure_domain(args.failure_domain());
         let now = Instant::now();
-        let timeout = Duration::from_secs(10);
-        match fiber::block_on(rpc::network_call(&leader_address, &req).timeout(timeout)) {
+        let fut = rpc::network_call(&leader_address, &req).timeout(activation_deadline - now);
+        match fiber::block_on(fut) {
             Ok(update_instance::Response {}) => {
                 break;
             }
             Err(timeout::Error::Failed(TntError::Tcp(e))) => {
-                tlog!(Warning, "failed to activate myself: {e}, retrying...");
-                fiber::sleep(timeout.saturating_sub(now.elapsed()));
+                let timeout = retry_timeout.saturating_sub(now.elapsed());
+                retry_timeout *= 2;
+                #[rustfmt::skip]
+                tlog!(Warning, "failed to activate myself: {e}, retrying in {timeout:.02?}...");
+                fiber::sleep(timeout);
                 continue;
             }
             Err(timeout::Error::Failed(TntError::IO(e))) => {
-                tlog!(Warning, "failed to activate myself: {e}, retrying...");
-                fiber::sleep(timeout.saturating_sub(now.elapsed()));
+                let timeout = retry_timeout.saturating_sub(now.elapsed());
+                retry_timeout *= 2;
+                #[rustfmt::skip]
+                tlog!(Warning, "failed to activate myself: {e}, retrying in {timeout:.02?}...");
+                fiber::sleep(timeout);
                 continue;
             }
             Err(e) => {
