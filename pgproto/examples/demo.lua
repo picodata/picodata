@@ -14,9 +14,6 @@ fiber.create(function()
         box.schema.func.create('libpgproto.server_start', { language = 'C' })
         box.schema.user.grant('guest', 'execute', 'function', 'libpgproto.server_start')
 
-        log.info('creating user "postgres" with password "password"')
-        box.schema.user.create('postgres', { auth_type = 'md5', password = 'password' })
-
         log.info('creating exemplary tables')
         pico.sql [[
             create table foo (val int, primary key(val)) distributed by (val);
@@ -24,6 +21,10 @@ fiber.create(function()
         pico.sql [[
             insert into foo values (1), (2), (3);
         ]]
+
+        log.info('creating user "postgres" with password "password"')
+        pico.create_user('postgres', 'password', { auth_type = 'md5' })
+        pico.grant_privilege('postgres', 'execute', 'role', 'super')
     end)
 
     box.func['libpgproto.server_start']:call { 'localhost', '5432' }
