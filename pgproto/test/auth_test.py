@@ -24,7 +24,7 @@ def test_auth(postgres: Postgres):
         pg.Connection(user, password='wrong password', host=host, port=port)
 
     # test authentication with an unknown user
-    with pytest.raises(pg.DatabaseError, match=f"authentication failed for user 'unknown-user'"):
+    with pytest.raises(pg.DatabaseError, match="authentication failed for user 'unknown-user'"):
         pg.Connection("unknown-user", password='aaa', host=host, port=port)
 
     sha_user = 'chap-sha-enjoyer'

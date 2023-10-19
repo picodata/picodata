@@ -87,8 +87,7 @@ def seed(pytestconfig):
     """Return a seed for randomized tests. Unless passed via
     command-line options it is generated automatically.
     """
-    seed = pytestconfig.getoption("seed")
-    return seed if seed else generate_seed()
+    return pytestconfig.getoption("seed")
 
 
 @pytest.fixture(scope="session")
