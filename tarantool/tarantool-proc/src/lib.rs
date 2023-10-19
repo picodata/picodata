@@ -185,7 +185,6 @@ mod msgpack {
                                 Self::#variant_name => {
                                     #tarantool_crate::tuple::rmp::encode::write_str(w,
                                         stringify!(#variant_name).trim_start_matches("r#"))?;
-                                    // FIXME: changed here to () - probably no longer compatible with serde
                                     #tarantool_crate::tuple::_Encode::encode(&(), w, EncodeStyle::Default)?;
                                 }
                             }
@@ -218,16 +217,15 @@ mod msgpack {
                 // to overwrite external structure encoding behavior
                 (quote_spanned! {f.span()=>
                     if as_map {
-                        let field_name: String = #tarantool_crate::tuple::_Decode::decode(r, EncodeStyle::Default)?;
+                        let field_name: String = #tarantool_crate::tuple::_Decode::decode(r, EncodeStyle::Default)
+                            .map_err(|err| #tarantool_crate::tuple::_DecodeError::new::<Self>(err).with_part("field name"))?;
                         let expected = stringify!(#name).trim_start_matches("r#");
                         if field_name != expected {
-                            return Err(#tarantool_crate::error::Error::DecodeField {
-                                expected: expected.into(),
-                                got: field_name,
-                            })
+                            return Err(#tarantool_crate::tuple::_DecodeError::new::<Self>(format!("expected field {}, got {}", expected, field_name)))
                         }
                     }
-                    let #var_name = #tarantool_crate::tuple::_Decode::decode(r, EncodeStyle::Default)?;
+                    let #var_name = #tarantool_crate::tuple::_Decode::decode(r, EncodeStyle::Default)
+                        .map_err(|err| #tarantool_crate::tuple::_DecodeError::new::<Self>(err).with_part(format!("field {}", stringify!(#name))))?;
                 }, var_name)
             })
             .unzip();
@@ -258,7 +256,8 @@ mod msgpack {
                 let index = Index::from(i);
                 let var_name = quote::format_ident!("_field_{}", index);
                 (quote_spanned! {f.span()=>
-                    let #var_name = #tarantool_crate::tuple::_Decode::decode(r, EncodeStyle::Default)?;
+                    let #var_name = #tarantool_crate::tuple::_Decode::decode(r, EncodeStyle::Default)
+                        .map_err(|err| #tarantool_crate::tuple::_DecodeError::new::<Self>(err).with_part(format!("field {}", #i)))?;
                 }, var_name)
             })
             .unzip();
@@ -293,9 +292,11 @@ mod msgpack {
                         };
                         // TODO: Assert map and array len with number of struct fields
                         if as_map {
-                            #tarantool_crate::tuple::rmp::decode::read_map_len(r)?;
+                            #tarantool_crate::tuple::rmp::decode::read_map_len(r)
+                                .map_err(|err| #tarantool_crate::tuple::_DecodeError::new::<Self>(err))?;
                         } else {
-                            #tarantool_crate::tuple::rmp::decode::read_array_len(r)?;
+                            #tarantool_crate::tuple::rmp::decode::read_array_len(r)
+                                .map_err(|err| #tarantool_crate::tuple::_DecodeError::new::<Self>(err))?;
                         }
                         #fields
                     }
@@ -309,7 +310,8 @@ mod msgpack {
                     }
                     let fields = decode_unnamed_fields(fields, tarantool_crate, None);
                     quote! {
-                        #tarantool_crate::tuple::rmp::decode::read_array_len(r)?;
+                        #tarantool_crate::tuple::rmp::decode::read_array_len(r)
+                            .map_err(|err| #tarantool_crate::tuple::_DecodeError::new::<Self>(err))?;
                         #fields
                     }
                 }
@@ -338,7 +340,8 @@ mod msgpack {
                             // TODO: allow `#[encode(as_map)]` for struct variants
                             quote! {
                                  stringify!(#variant_name) => {
-                                    #tarantool_crate::tuple::rmp::decode::read_array_len(r)?;
+                                    #tarantool_crate::tuple::rmp::decode::read_array_len(r)
+                                        .map_err(|err| #tarantool_crate::tuple::_DecodeError::new::<Self>(err))?;
                                     let as_map = false;
                                     #fields
                                 }
@@ -348,7 +351,8 @@ mod msgpack {
                             let fields = decode_unnamed_fields(fields, tarantool_crate, Some(&variant.ident));
                             quote! {
                                  stringify!(#variant_name) => {
-                                    #tarantool_crate::tuple::rmp::decode::read_array_len(r)?;
+                                    #tarantool_crate::tuple::rmp::decode::read_array_len(r)
+                                        .map_err(|err| #tarantool_crate::tuple::_DecodeError::new::<Self>(err))?;
                                     let as_map = false;
                                     #fields
                                 }
@@ -358,7 +362,8 @@ mod msgpack {
                             let variant_name = &variant.ident;
                             quote! {
                                 stringify!(#variant_name) => {
-                                    let () = #tarantool_crate::tuple::_Decode::decode(r, EncodeStyle::Default)?;
+                                    let () = #tarantool_crate::tuple::_Decode::decode(r, EncodeStyle::Default)
+                                        .map_err(|err| #tarantool_crate::tuple::_DecodeError::new::<Self>(err))?;
                                     Ok(Self::#variant_name)
                                 }
                             }
@@ -367,12 +372,16 @@ mod msgpack {
                     .collect();
                 quote! {
                     // TODO: assert map len 1
-                    #tarantool_crate::tuple::rmp::decode::read_map_len(r)?;
-                    let variant_name: String = #tarantool_crate::tuple::_Decode::decode(r, EncodeStyle::Default)?;
+                    #tarantool_crate::tuple::rmp::decode::read_map_len(r)
+                        .map_err(|err| #tarantool_crate::tuple::_DecodeError::new::<Self>(err))?;
+                    let variant_name: String = #tarantool_crate::tuple::_Decode::decode(r, EncodeStyle::Default)
+                        .map_err(|err| #tarantool_crate::tuple::_DecodeError::new::<Self>(err).with_part(format!("variant name")))?;
                     match variant_name.as_str() {
                         #variants
                         other => {
-                            Err(#tarantool_crate::error::Error::DecodeNoEnumVariant(other.into()))
+                            Err(#tarantool_crate::tuple::_DecodeError::new::<Self>(
+                                format!("enum variant {} does not exist", other)
+                            ))
                         }
                     }
                 }
@@ -465,7 +474,9 @@ pub fn derive_decode(input: TokenStream) -> TokenStream {
     let expanded = quote! {
         // The generated impl.
         impl #impl_generics #tarantool_crate::tuple::_Decode for #name #ty_generics #where_clause {
-            fn decode(r: &mut impl ::std::io::Read, style: #tarantool_crate::tuple::EncodeStyle) -> #tarantool_crate::Result<Self> {
+            fn decode(r: &mut impl ::std::io::Read, style: #tarantool_crate::tuple::EncodeStyle)
+                -> std::result::Result<Self, #tarantool_crate::tuple::_DecodeError>
+            {
                 use #tarantool_crate::tuple::EncodeStyle;
                 #encode_fields
             }

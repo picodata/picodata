@@ -13,11 +13,12 @@ use std::cmp::Ordering;
 use std::collections::BTreeMap;
 use std::convert::TryFrom;
 use std::ffi::{CStr, CString};
-use std::fmt::{self, Debug, Formatter};
+use std::fmt::{self, Debug, Display, Formatter};
 use std::io::{Read, Write};
 use std::ops::{Deref, Range};
 use std::os::raw::{c_char, c_int};
 use std::ptr::{null, NonNull};
+use std::result::Result as StdResult;
 
 use rmp::Marker;
 use serde::Serialize;
@@ -518,18 +519,18 @@ macro_rules! impl_tuple {
 
 impl_tuple! { A B C D E F G H I J K L M N O P }
 
-/// Encodes `value` as a vector of bytes in msgpack.
+/// Decodes `T` from a slice of bytes in msgpack.
 /// Will be public when `Encode/Decode` traits are ready.
 #[allow(dead_code)]
-fn decode<T: _Decode>(mut bytes: &[u8]) -> Result<T> {
+fn decode<T: _Decode>(mut bytes: &[u8]) -> StdResult<T, _DecodeError> {
     T::decode(&mut bytes, EncodeStyle::Default)
 }
 
 // TODO: move Encode and Decode to `tarantool::msgpack` module.
 /// A general purpose trait for msgpack deserialization.
-/// Reads `self` from reade supplied in `r`.
+/// Reads `self` from a reader supplied in `r`.
 ///
-/// For most use cases this trait can be derived (`#[derive(tarantool_proc::Decode)]`).
+/// For most use cases this trait can be derived (`#[derive(Decode)]`).
 /// When deriving the trait for a structure it's possible to additionally specify
 /// if the structure should be represented as `MP_MAP` or as an `MP_ARRAY`.
 /// `MP_ARRAY` is chosen by default for compactness. To deserailize a structure as an `MP_MAP`
@@ -547,27 +548,66 @@ fn decode<T: _Decode>(mut bytes: &[u8]) -> Result<T> {
 /// ```
 /// use tarantool_proc::Decode;
 /// use tarantool::tuple::_Decode;
+/// use tarantool::tuple::EncodeStyle;
 ///
-/// #[derive(Decode)]
-/// #[encode(as_map)]
+/// #[derive(Decode, Debug, PartialEq)]
 /// struct Foo {
 ///     a: usize,
 ///     b: usize,
 /// };
 ///
-/// let mut buffer: Vec<u8> = vec![0x92, 0x01, 0x03];
-/// let foo = <Foo as Decode>::decode(&mut buffer).unwrap();
+/// let buffer: Vec<u8> = vec![0x92, 0x01, 0x03];
+/// let foo = <Foo as _Decode>::decode(&mut &buffer[..], EncodeStyle::Default).unwrap();
 /// assert_eq!(foo, Foo {a: 1, b: 3});
 /// ```
 // TODO: Remove `_` prefix and use this trait instead of previous, replace derive `Deserialize` to derive `Decode`
 pub trait _Decode: Sized {
-    fn decode(r: &mut impl Read, style: EncodeStyle) -> Result<Self>;
+    fn decode(r: &mut impl Read, style: EncodeStyle) -> StdResult<Self, _DecodeError>;
+}
+
+// TODO: Provide a similar error type for encode
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct _DecodeError {
+    /// Type being decoded.
+    ty: &'static str,
+    /// Field, element or some other part of the decoded type.
+    part: Option<String>,
+    // It is just a string for simplicicty as we need Clone, Sync, etc.
+    /// The error that is wrapped by this error.
+    source: String,
+}
+
+impl Display for _DecodeError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "failed decoding {}", self.ty)?;
+        if let Some(ref part) = self.part {
+            write!(f, "({})", part)?;
+        }
+        write!(f, ": {}", self.source)
+    }
+}
+
+impl std::error::Error for _DecodeError {}
+
+impl _DecodeError {
+    pub fn new<DecodedTy>(source: impl ToString) -> Self {
+        Self {
+            ty: std::any::type_name::<DecodedTy>(),
+            source: source.to_string(),
+            part: None,
+        }
+    }
+
+    pub fn with_part(mut self, part: impl ToString) -> Self {
+        self.part = Some(part.to_string());
+        self
+    }
 }
 
 impl _Decode for () {
     #[inline(always)]
-    fn decode(r: &mut impl Read, _style: EncodeStyle) -> Result<Self> {
-        rmp::decode::read_nil(r)?;
+    fn decode(r: &mut impl Read, _style: EncodeStyle) -> StdResult<Self, _DecodeError> {
+        rmp::decode::read_nil(r).map_err(_DecodeError::new::<Self>)?;
         Ok(())
     }
 }
@@ -577,11 +617,15 @@ where
     T: _Decode,
 {
     #[inline]
-    fn decode(r: &mut impl Read, _style: EncodeStyle) -> Result<Self> {
-        let n = rmp::decode::read_array_len(r)? as usize;
+    fn decode(r: &mut impl Read, _style: EncodeStyle) -> StdResult<Self, _DecodeError> {
+        let n = rmp::decode::read_array_len(r).map_err(_DecodeError::new::<Self>)? as usize;
         let mut res = Vec::with_capacity(n);
-        for _ in 0..n {
-            res.push(T::decode(r, EncodeStyle::Default)?);
+        for i in 0..n {
+            res.push(
+                T::decode(r, EncodeStyle::Default).map_err(|err| {
+                    _DecodeError::new::<Self>(err).with_part(format!("element {i}"))
+                })?,
+            );
         }
         Ok(res)
     }
@@ -591,24 +635,25 @@ impl<'a, T> _Decode for Cow<'a, T>
 where
     T: _Decode + ToOwned + ?Sized,
 {
+    // Clippy doesn't notice the type difference
+    #[allow(clippy::redundant_clone)]
     #[inline(always)]
-    fn decode(r: &mut impl Read, _style: EncodeStyle) -> Result<Self> {
+    fn decode(r: &mut impl Read, _style: EncodeStyle) -> StdResult<Self, _DecodeError> {
         Ok(Cow::Owned(
-            <T as _Decode>::decode(r, EncodeStyle::Default)?.to_owned(),
+            <T as _Decode>::decode(r, EncodeStyle::Default)
+                .map_err(_DecodeError::new::<Self>)?
+                .to_owned(),
         ))
     }
 }
 
 impl _Decode for String {
     #[inline]
-    fn decode(r: &mut impl Read, _style: EncodeStyle) -> Result<Self> {
-        let n = rmp::decode::read_str_len(r)? as usize;
-        let mut buf = Vec::with_capacity(n);
-        buf.resize(n, 0);
-        //TODO: better error handling
-        r.read_exact(&mut buf)
-            .map_err(|err| Error::DecodeString(err.to_string()))?;
-        Ok(String::from_utf8(buf).map_err(|err| Error::DecodeString(err.to_string()))?)
+    fn decode(r: &mut impl Read, _style: EncodeStyle) -> StdResult<Self, _DecodeError> {
+        let n = rmp::decode::read_str_len(r).map_err(_DecodeError::new::<Self>)? as usize;
+        let mut buf = vec![0; n];
+        r.read_exact(&mut buf).map_err(_DecodeError::new::<Self>)?;
+        String::from_utf8(buf).map_err(_DecodeError::new::<Self>)
     }
 }
 
@@ -618,12 +663,14 @@ where
     V: _Decode,
 {
     #[inline]
-    fn decode(r: &mut impl Read, _style: EncodeStyle) -> Result<Self> {
-        let n = rmp::decode::read_map_len(r)?;
+    fn decode(r: &mut impl Read, _style: EncodeStyle) -> StdResult<Self, _DecodeError> {
+        let n = rmp::decode::read_map_len(r).map_err(_DecodeError::new::<Self>)?;
         let mut res = BTreeMap::new();
-        for _ in 0..n {
-            let k = K::decode(r, EncodeStyle::Default)?;
-            let v = V::decode(r, EncodeStyle::Default)?;
+        for i in 0..n {
+            let k = K::decode(r, EncodeStyle::Default)
+                .map_err(|err| _DecodeError::new::<Self>(err).with_part(format!("{i}th key")))?;
+            let v = V::decode(r, EncodeStyle::Default)
+                .map_err(|err| _DecodeError::new::<Self>(err).with_part(format!("{i}th value")))?;
             res.insert(k, v);
         }
         Ok(res)
@@ -632,10 +679,13 @@ where
 
 impl _Decode for char {
     #[inline(always)]
-    fn decode(r: &mut impl Read, _style: EncodeStyle) -> Result<Self> {
+    fn decode(r: &mut impl Read, _style: EncodeStyle) -> StdResult<Self, _DecodeError> {
         let s = <String as _Decode>::decode(r, EncodeStyle::Default)?;
         if s.len() != 1 {
-            Err(rmp::decode::ValueReadError::TypeMismatch(rmp::Marker::FixStr(1)).into())
+            Err(_DecodeError::new::<char>(format!(
+                "expected string length to be 1, got {}",
+                s.len()
+            )))
         } else {
             Ok(s.chars()
                 .next()
@@ -645,12 +695,13 @@ impl _Decode for char {
 }
 
 macro_rules! impl_simple_decode {
-    ($(($t:ty, $f:tt, $conv:ty))+) => {
+    ($(($t:ty, $f:tt))+) => {
         $(
             impl _Decode for $t{
                 #[inline(always)]
-                fn decode(r: &mut impl Read, _style: EncodeStyle) -> Result<Self> {
-                    let value = rmp::decode::$f(r)?;
+                fn decode(r: &mut impl Read, _style: EncodeStyle) -> StdResult<Self, _DecodeError> {
+                    let value = rmp::decode::$f(r)
+                        .map_err(_DecodeError::new::<Self>)?;
                     Ok(value)
                 }
             }
@@ -659,19 +710,19 @@ macro_rules! impl_simple_decode {
 }
 
 impl_simple_decode! {
-    (u8, read_int, u64)
-    (u16, read_int, u64)
-    (u32, read_int, u64)
-    (u64, read_int, u64)
-    (usize, read_int, u64)
-    (i8, read_int, i64)
-    (i16, read_int, i64)
-    (i32, read_int, i64)
-    (i64, read_int, i64)
-    (isize, read_int, i64)
-    (f32, read_f32, f32)
-    (f64, read_f64, f64)
-    (bool, read_bool, bool)
+    (u8, read_int)
+    (u16, read_int)
+    (u32, read_int)
+    (u64, read_int)
+    (usize, read_int)
+    (i8, read_int)
+    (i16, read_int)
+    (i32, read_int)
+    (i64, read_int)
+    (isize, read_int)
+    (f32, read_f32)
+    (f64, read_f64)
+    (bool, read_bool)
 }
 
 /// Encodes `value` as a vector of bytes in msgpack.
@@ -703,7 +754,7 @@ pub enum EncodeStyle {
 /// A general purpose trait for msgpack serialization.
 /// Writes `self` to writer supplied in `w`.
 ///
-/// For most use cases this trait can be derived (`#[derive(tarantool_proc::Encode)]`).
+/// For most use cases this trait can be derived (`#[derive(Encode)]`).
 /// When deriving the trait for a structure it's possible to additionally specify
 /// if the structure should be represented as `MP_MAP` or as an `MP_ARRAY`.
 /// `MP_ARRAY` is chosen by default for compactness. To serailize a structure as an `MP_MAP`
@@ -1954,6 +2005,11 @@ mod tests {
             b: u32,
         }
         #[derive(Clone, Encode, Decode, PartialEq, Debug)]
+        #[encode(tarantool = "crate")]
+        struct Test2 {
+            not_b: f32,
+        }
+        #[derive(Clone, Encode, Decode, PartialEq, Debug)]
         #[encode(tarantool = "crate", as_map)]
         struct Test {
             a: usize,
@@ -1971,6 +2027,14 @@ mod tests {
         let test_1_dec: Test1 = decode(bytes.as_slice()).unwrap();
         assert_eq!(test_1_dec, test_1);
 
+        // Try decoding as a different struct
+        let err = decode::<Test2>(bytes.as_slice()).unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "failed decoding tarantool::tuple::tests::encode_struct::Test2(field not_b): \
+            failed decoding f32: the type decoded isn't match with the expected one"
+        );
+
         // Override, encode as map
         let mut bytes = vec![];
         test_1.encode(&mut bytes, EncodeStyle::ForceAsMap).unwrap();
@@ -1978,6 +2042,13 @@ mod tests {
         let test_1_dec: Test1 =
             _Decode::decode(&mut bytes.as_slice(), EncodeStyle::ForceAsMap).unwrap();
         assert_eq!(test_1_dec, test_1);
+
+        // Try decoding as a different struct
+        let res: Result<Test2, _> = _Decode::decode(&mut bytes.as_slice(), EncodeStyle::ForceAsMap);
+        assert_eq!(
+            res.unwrap_err().to_string(),
+            "failed decoding tarantool::tuple::tests::encode_struct::Test2: expected field not_b, got b"
+        );
 
         // Do not override, encode as map
         let test = Test {
@@ -2005,6 +2076,7 @@ mod tests {
         );
         let test_dec: Test = decode(bytes_named.as_slice()).unwrap();
         assert_eq!(test_dec, test);
+        // TODO: add negative tests for nested structs
 
         // Override, encode as array
         let mut bytes_named = vec![];
@@ -2046,8 +2118,10 @@ mod tests {
         assert_eq!(original, decoded);
     }
 
+    #[allow(clippy::let_unit_value)]
     #[test]
     fn encode_enum() {
+        // TODO: add negative tests
         #[derive(Clone, Encode, Decode, PartialEq, Debug)]
         #[encode(tarantool = "crate")]
         enum Foo {

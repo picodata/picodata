@@ -66,16 +66,6 @@ pub enum Error {
     #[error("msgpack write error: {0}")]
     ValueWrite(#[from] ValueWriteError),
 
-    #[error("msgpack read string error: {0}")]
-    DecodeString(String),
-
-    // TODO: Map all errors in encode and decode first into `FailedToEncodeStruct`
-    #[error("failed to decode structure from msgpack: expected field {expected} got {got}")]
-    DecodeField { expected: String, got: String },
-
-    #[error("failed to decode enum: no variant {0} present")]
-    DecodeNoEnumVariant(String),
-
     #[cfg(feature = "net_box")]
     #[error("server responded with error: {0}")]
     Remote(#[from] crate::net_box::ResponseError),
