@@ -408,6 +408,8 @@ def test_sql_acl_user(cluster: Cluster):
     username = "User"
     password = "Password"
     upper_username = "USER"
+    rolename = "Role"
+    upper_rolename = "ROLE"
     acl = i1.sql(
         """
         create user "{username}" with password '{password}'
@@ -474,6 +476,8 @@ def test_sql_acl_user(cluster: Cluster):
     with pytest.raises(ReturnError, match="timeout"):
         i1.sql(f"drop user {username} option (timeout = 0)")
     with pytest.raises(ReturnError, match="timeout"):
+        i1.sql(f"drop role {username} option (timeout = 0)")
+    with pytest.raises(ReturnError, match="timeout"):
         i1.sql(
             """
             create user {username} with password '{password}'
@@ -488,6 +492,9 @@ def test_sql_acl_user(cluster: Cluster):
         i1.sql(f"drop user '{username}'")
     with pytest.raises(ReturnError, match="rule parsing error"):
         i1.sql(f"create user '{username}' with password '{password}'")
+    # Rolename in single quotes is unsupported.
+    with pytest.raises(ReturnError, match="rule parsing error"):
+        i1.sql(f"drop role '{username}'")
 
     # Can't create same user with different auth methods.
     with pytest.raises(ReturnError, match="already exists with different auth method"):
@@ -508,13 +515,36 @@ def test_sql_acl_user(cluster: Cluster):
     with pytest.raises(ReturnError, match="User with the same name already exists"):
         i1.sql(f'create role "{username}"')
 
+    # Dropping role that doesn't exist should return 0.
+    acl = i1.sql(f"drop role {rolename}")
+    assert acl["row_count"] == 0
+
     # Successive creation of role.
-    acl = i1.sql(f'create role "{upper_username}"')
+    acl = i1.sql(f'create role "{rolename}"')
     assert acl["row_count"] == 1
 
     # Creation of the role that already exists shouldn't do anything.
-    acl = i1.sql(f'create role "{upper_username}"')
+    acl = i1.sql(f'create role "{rolename}"')
     assert acl["row_count"] == 0
+
+    # Dropping role that does exist should return 1.
+    acl = i1.sql(f'drop role "{rolename}"')
+    assert acl["row_count"] == 1
+    assert i1.call("box.space._pico_role:select") == []
+
+    # All the rolenames below should match the same role.
+    acl = i1.sql(f'create role "{upper_rolename}"')
+    assert acl["row_count"] == 1
+    acl = i1.sql(f"drop role {upper_rolename}")
+    assert acl["row_count"] == 1
+    acl = i1.sql(f'create role "{upper_rolename}"')
+    assert acl["row_count"] == 1
+    acl = i1.sql(f"drop role {rolename}")
+    assert acl["row_count"] == 1
+    acl = i1.sql(f'create role "{upper_rolename}"')
+    assert acl["row_count"] == 1
+    acl = i1.sql(f'drop role "{upper_rolename}"')
+    assert acl["row_count"] == 1
 
 
 def test_distributed_sql_via_set_language(cluster: Cluster):

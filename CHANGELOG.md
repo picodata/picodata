@@ -56,7 +56,8 @@ with the `YY.0M.MICRO` scheme.
 
 - _Clusterwide SQL_ introduces the capability to drop users.
 
-- _Clusterwide SQL_ introduces the capability to create roles.
+- _Clusterwide SQL_ introduces the capability to create and drop roles.
+
 - _Clusterwide SQL_ now allows creation of a global table through 
   `create table`.
 

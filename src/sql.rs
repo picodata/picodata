@@ -212,6 +212,10 @@ fn reenterable_schema_change_request(
             // Nothing to check
             Params::CreateRole(name)
         }
+        IrNode::Acl(Acl::DropRole { name, .. }) => {
+            // Nothing to check
+            Params::DropRole(name)
+        }
         IrNode::Acl(Acl::CreateUser {
             name,
             password,
@@ -224,9 +228,6 @@ fn reenterable_schema_change_request(
             let data = AuthData::new(&method, &name, &password);
             let auth = AuthDef::new(method, data.into_string());
             Params::CreateUser(name, auth)
-        }
-        IrNode::Acl(Acl::DropRole { .. }) => {
-            return Err(Error::Other("ACL is not implemented yet".into()))
         }
         n => {
             unreachable!("this function should only be called for ddl or acl nodes, not {n:?}")
@@ -339,6 +340,17 @@ fn reenterable_schema_change_request(
                 };
                 Op::Acl(OpAcl::CreateRole { role_def })
             }
+            Params::DropRole(name) => {
+                let Some(role_def) = storage.roles.by_name(name)? else {
+                    // Role doesn't exist yet, no op needed
+                    return Ok(ConsumerResult { row_count: 0 });
+                };
+                Op::Acl(OpAcl::DropRole {
+                    role_id: role_def.id,
+                    // This will be set right after the match statement.
+                    schema_version: 0,
+                })
+            }
         };
         op.set_schema_version(storage.properties.next_schema_version()?);
         let is_ddl_prepare = matches!(op, Op::DdlPrepare { .. });
@@ -379,6 +391,7 @@ fn reenterable_schema_change_request(
         CreateUser(String, AuthDef),
         DropUser(String),
         CreateRole(String),
+        DropRole(String),
     }
 }
 
