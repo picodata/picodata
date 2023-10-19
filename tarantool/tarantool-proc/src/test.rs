@@ -9,7 +9,8 @@ pub fn impl_macro_attribute(attr: TS1, item: TS1) -> TS1 {
     let ctx = Context::from_args(args);
     let fn_name = &fn_item.sig.ident;
     let test_name = fn_name.to_string();
-    let test_name_ident = syn::Ident::new(&test_name.to_uppercase(), fn_name.span());
+    let unique_name = format!("TARANTOOL_MODULE_TEST_CASE_{}", test_name.to_uppercase());
+    let test_name_ident = syn::Ident::new(&unique_name, fn_name.span());
     let Context {
         tarantool,
         section,

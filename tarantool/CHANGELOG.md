@@ -7,6 +7,10 @@
 ### Changed
 
 ### Fixed
+- `#[tarantool::test]` declares a special static variable which is usually
+  invisible to the users, but previously it would have a not so unique name
+  which would sometimes lead to name conflicts with user-defined items.
+  This has been changed and the conflicts are now less likely to occur.
 
 ### Deprecated
 

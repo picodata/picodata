@@ -135,3 +135,14 @@ macro_rules! temp_space_name {
         )
     };
 }
+
+#[cfg(feature = "internal_test")]
+mod tests {
+    const NAMING_CONFLICT: () = ();
+
+    #[crate::test(tarantool = "crate")]
+    fn naming_conflict() {
+        // Before this commit this test couldn't even compile
+        let () = NAMING_CONFLICT;
+    }
+}
