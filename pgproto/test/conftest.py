@@ -1,11 +1,12 @@
 import io
-import json
 import os
 import re
 import socket
 import sys
 import time
 import threading
+import logging
+import shutil
 from types import SimpleNamespace
 import pytest
 import signal
@@ -1188,10 +1189,22 @@ class Cluster:
         eprint(f"CaS:\n  {predicate=}\n  {dml=}")
         return instance.call("pico.cas", dml, predicate)
 
+
 @pytest.fixture(scope="session")
 def binary_path() -> str:
-    """Path to the picodata binary, e.g. "./target/debug/picodata"."""
-    return os.path.abspath(os.path.expanduser(os.getenv("PICODATA_EXECUTABLE")))
+    """Path to the picodata binary, e.g. `./target/debug/picodata`."""
+    path = os.getenv("PICODATA_EXECUTABLE")
+    if path:
+        abs_path = os.path.abspath(os.path.expanduser(path))
+        logging.info(f"using picodata at {abs_path}")
+        return abs_path
+
+    path = shutil.which("picodata")
+    if path:
+        logging.info(f"using picodata at {path}")
+        return path
+
+    raise Exception("can't find picodata executable!")
 
 
 @pytest.fixture(scope="session")

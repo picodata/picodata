@@ -1,45 +1,38 @@
 # pgproto
 
-**TODO**: add a descritprion
-
-## Prerequisites
-[Picodata](https://git.picodata.io/picodata/picodata/picodata) and
-[MsgPuck](https://github.com/rtsisyk/msgpuck) library.
-
-
-**TODO**: TEST REQUIREMENTS
+**TODO**: describe the project
 
 ## Building
 
-Firstly, clone and build [picodata](https://git.picodata.io/picodata/picodata/picodata)
-by following the instructions from the repo.
+To build the project, simply execute the following command:
 
-Then you can build the pgproto library. Use PICODATA_TARGET_DIR to specify the directory
-target directory where picodata was built.
 ```bash
-mkdir build && cd build
-cmake .. -DPICODATA_DIR=~/picodata/picodata/target/debug
-make -j
-```
-
-If `MsgPuck` lib was no found, you need to specify where to find
-`libmsgpuck.a` and headers via `MSGPUCK_LIBRARY` and `MSGPUCK_INCLUDE_DIR`
-variables.
-
-Here is how cmake configuration command changes in this case:
-```bash
-cmake ..	\
-	-DPICODATA_DIR=~/picodata/picodata/target/debug	\
-	-DMSGPUCK_LIBRARY=~/install/msgpuck/libmsgpuck.a	\
-	-DMSGPUCK_INCLUDE_DIR=~/install/msgpuck/
+cargo build
 ```
 
 ## Testing
-Just run test target
+
+Firstly, clone and build [picodata](https://git.picodata.io/picodata/picodata/picodata)
+by following the instructions from the repo. Don't forget to build `pgproto` as well!
+
+Then, install the test harness:
+
 ```bash
-make test
+pipenv install
 ```
 
-> **NOTE**: If tests are failed because of missed symbol `mp_*`,
-> `msgpuck` library is missed so you should back to *Building* step
-> and configure `MSGPUCK_*` variables.
+Then, export the needed environment variables:
+
+```bash
+# Required: expose both debug and release builds for Linux and Mac
+export LUA_CPATH='target/debug/?.so;target/release/?.so;target/debug/?.dylib;target/release/?.dylib'
+
+# Optional: skip this one if picodata is already in $PATH
+export PICODATA_EXECUTABLE=...
+```
+
+After that, you may finally run the tests:
+
+```bash
+pipenv run pytest
+```
