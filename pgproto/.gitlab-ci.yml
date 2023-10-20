@@ -36,6 +36,26 @@ variables:
         echo "No cache found"
       fi
 
+lint-for-tests:
+  stage: test
+  tags:
+    - docker
+  image:
+    name: ${BASE_IMAGE}
+    pull_policy: if-not-present
+  variables:
+    GIT_DEPTH: 100
+    GIT_SUBMODULE_STRATEGY: recursive
+
+  script:
+    - |
+      # Pipenv install
+      ci-log-section start "pipenv-install" Installing pip dependencies ...
+      PIPENV_VENV_IN_PROJECT=1 PIP_NO_CACHE_DIR=true python3.10 -m pipenv install --deploy
+      ci-log-section end "pipenv-install"
+    # - pipenv run pytest --numprocesses auto -v
+    - pipenv run lint
+
 test-linux:
   extends: .test
   tags:
@@ -52,14 +72,6 @@ test-linux:
     - cargo fmt -- -v --check
     - cargo clippy --version
     - cargo clippy -- --deny clippy::all
-
-    - |
-      # Pipenv install
-      ci-log-section start "pipenv-install" Installing pip dependencies ...
-      PIPENV_VENV_IN_PROJECT=1 PIP_NO_CACHE_DIR=true python3.10 -m pipenv install --deploy
-      ci-log-section end "pipenv-install"
-    # - pipenv run pytest --numprocesses auto -v
-    # - pipenv run lint
 
     - |
       # Save cache
