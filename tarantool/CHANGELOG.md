@@ -11,6 +11,8 @@
   invisible to the users, but previously it would have a not so unique name
   which would sometimes lead to name conflicts with user-defined items.
   This has been changed and the conflicts are now less likely to occur.
+- Use after free when catching a panic after a drop of a non-joined join handle.
+  Memory is now leaked instead.
 
 ### Deprecated
 

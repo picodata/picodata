@@ -768,7 +768,12 @@ pub struct NoFunc;
 // JoinHandle
 ////////////////////////////////////////////////////////////////////////////////
 
-/// An owned permission to join on an immediate fiber (block on its termination).
+/// An owned permission to join a fiber (block on its termination).
+///
+/// NOTE: if `JoinHandle` is dropped before [`JoinHandle::join`] is called on it
+/// a panic will happen. Moreover some of the memory needed for passing the
+/// result from the fiber to the caller will be leaked in case the panic is
+/// caught. Note also that panics within tarantool are in general not recoverable.
 #[derive(PartialEq, Eq, Hash)]
 pub struct JoinHandle<'f, T> {
     inner: Option<JoinHandleImpl<T>>,
@@ -881,7 +886,18 @@ impl<'f, T> JoinHandle<'f, T> {
 
 impl<'f, T> Drop for JoinHandle<'f, T> {
     fn drop(&mut self) {
-        if self.inner.is_some() {
+        if let Some(mut inner) = self.inner.take() {
+            if let JoinHandleImpl::Ffi { result_cell, .. } = &mut inner {
+                // Panics in general aren't recoverable when running inside
+                // tarantool. But in our tests we do capture them and we must
+                // make sure, that other tests aren't corrupted after the fact.
+                // So in case of a failing test the spawned fiber will still at
+                // some point finish executing and attempt to write it's result
+                // value into the result_cell. For this reason we must make
+                // sure it's memory is not freed, and in this case we don't care
+                // if the memory leaks.
+                std::mem::forget(result_cell.take());
+            }
             panic!("JoinHandle dropped before being joined")
         }
     }
@@ -1431,5 +1447,19 @@ mod tests {
         assert!(before_sleep.elapsed() >= sleep_for);
         assert!(clock() >= before_sleep);
         assert!(clock() - before_sleep >= sleep_for);
+    }
+
+    #[crate::test(tarantool = "crate", should_panic)]
+    fn start_dont_join_no_use_after_free() {
+        let f = start(move || {
+            reschedule();
+            // This return value will be written into the result cell by the
+            // wrapper function. Before the fix by the time this happened the
+            // memory of the result cell would have been freed and likely reused
+            // by some other allocation, which would lead to this bytes
+            // overwriting someone else's data and likely resulting in a crash.
+            [0xaa; 4096]
+        });
+        drop(f);
     }
 }

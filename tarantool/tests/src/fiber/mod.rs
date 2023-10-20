@@ -284,7 +284,7 @@ pub fn defer_dont_join() {
 
     let tx = Rc::new(Cell::new(0));
     let rx = Rc::downgrade(&tx);
-    let f = fiber::defer(move || DropCounter(tx));
+    let f = fiber::defer(move || (DropCounter(tx), [0xcc; 4096]));
 
     assert_eq!(rx.strong_count(), 1);
     assert_eq!(rx.upgrade().unwrap().get(), 0);
