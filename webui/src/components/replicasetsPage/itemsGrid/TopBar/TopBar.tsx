@@ -55,10 +55,6 @@ export const TopBar: React.FC<TopBarProps> = (props) => {
       <div className={styles.controls}>
         <div />
         <div className={styles.right}>
-          <GroupByFilter
-            groupByFilterValue={groupByFilterValue}
-            setGroupByFilterValue={setGroupByFilterValue}
-          />
           {showSortBy && (
             <SortBy sortByValue={sortByValue} setSortByValue={setSortByValue} />
           )}
@@ -68,6 +64,10 @@ export const TopBar: React.FC<TopBarProps> = (props) => {
               setFilterByValue={setFilterByValue}
             />
           )}
+          <GroupByFilter
+            groupByFilterValue={groupByFilterValue}
+            setGroupByFilterValue={setGroupByFilterValue}
+          />
         </div>
       </div>
       {filterByValue && (
