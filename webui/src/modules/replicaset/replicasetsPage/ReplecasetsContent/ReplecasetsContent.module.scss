@@ -1,0 +1,30 @@
+@import 'styles/vars';
+
+$list-horizontal-padding: 16px;
+$list-horizontal-margin: 8px;
+$content-horizontal-indent: calc($list-horizontal-padding + $list-horizontal-margin);
+$vertical-indent: 24px;
+
+.gridWrapper {
+  display: flex;
+  flex-direction: column;
+  background-color: $colorBgWhite;
+  border-radius: 16px;
+  flex-grow: 1;
+  overflow: hidden;
+}
+
+.topBar {
+  margin: $vertical-indent $content-horizontal-indent;
+}
+
+.replicasetsWrapper {
+  display: flex;
+  flex-direction: column;
+  gap: $vertical-indent;
+  flex-grow: 1;
+  overflow: scroll;
+  padding: 0 $list-horizontal-padding;
+  margin: 0 $list-horizontal-margin;
+  padding-bottom: $vertical-indent;
+}

@@ -1,9 +1,0 @@
-.pageWrapper {
-  padding-top: 40px;
-  overflow: scroll;
-  max-height: calc(100vh - 144px);
-  display: flex;
-  flex-direction: column;
-  gap: 24px;
-  height: 100%;
-}

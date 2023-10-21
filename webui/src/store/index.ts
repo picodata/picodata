@@ -1,4 +1,5 @@
 import { configureStore } from "@reduxjs/toolkit";
+
 import { clusterSlice } from "./slices/clusterSlice";
 
 export const store = configureStore({

@@ -1,11 +1,11 @@
-import { defineConfig, loadEnv } from "vite";
-import react from "@vitejs/plugin-react";
 import * as fs from "fs";
-// import * as ChildProcess from 'child_process';
 import * as path from "path";
+
 import mime from "mime-types";
-import debug from "debug";
+import react from "@vitejs/plugin-react";
 import svgr from "vite-plugin-svgr";
+import debug from "debug";
+import { defineConfig, loadEnv } from "vite";
 
 const currentDir = "./picodata-ui";
 
@@ -76,7 +76,8 @@ export default defineConfig(({ mode }) => {
     plugins: [react(), generateBuildFolder(), svgr()],
     resolve: {
       alias: {
-        components: "/src/components",
+        modules: "/src/modules",
+        shared: "/src/shared",
         assets: "/src/assets",
         styles: "/src/styles",
         store: "/src/store",
