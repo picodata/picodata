@@ -118,25 +118,25 @@ fn init_sbroad() {
         "sbroad/sbroad-core/src/core-storage.lua"
     );
 
-    lua.exec(
-        r#"
-        _G.pico.sql = require('sbroad').sql;
-        box.schema.func.create('pico.sql', {if_not_exists = true});
-        _G.pico.pg_bind = require('pgproto').pg_bind;
-        box.schema.func.create('pico.pg_bind', {if_not_exists = true});
-        _G.pico.pg_close = require('pgproto').pg_close;
-        box.schema.func.create('pico.pg_close', {if_not_exists = true});
-        _G.pico.pg_describe = require('pgproto').pg_describe;
-        box.schema.func.create('pico.pg_describe', {if_not_exists = true});
-        _G.pico.pg_execute = require('pgproto').pg_execute;
-        box.schema.func.create('pico.pg_execute', {if_not_exists = true});
-        _G.pico.pg_parse = require('pgproto').pg_parse;
-        box.schema.func.create('pico.pg_parse', {if_not_exists = true});
-        _G.pico.pg_portals = require('pgproto').pg_portals;
-        box.schema.func.create('pico.pg_portals', {if_not_exists = true});
-    "#,
-    )
-    .unwrap();
+    for (module, func) in &[
+        ("sbroad", "sql"),
+        ("pgproto", "pg_bind"),
+        ("pgproto", "pg_close"),
+        ("pgproto", "pg_describe"),
+        ("pgproto", "pg_execute"),
+        ("pgproto", "pg_parse"),
+        ("pgproto", "pg_portals"),
+    ] {
+        let program = format!(
+            r#"
+            _G.pico.{func} = require('{module}').{func};
+            box.schema.func.create('pico.{func}', {{if_not_exists = true}});
+            box.schema.role.grant('public', 'execute', 'function', 'pico.{func}',
+                {{if_not_exists = true}})
+            "#
+        );
+        lua.exec(&program).unwrap();
+    }
 }
 
 #[link(name = "httpd")]
