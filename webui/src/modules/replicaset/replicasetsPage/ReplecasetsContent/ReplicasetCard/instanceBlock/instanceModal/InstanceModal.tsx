@@ -27,6 +27,7 @@ export const InstanceModal: FC<InstanceModalProps> = ({
           if (typeof instance[key as keyof ClientInstanceType] === "string") {
             return (
               <div
+                key={index}
                 className={classNames(styles.boxInfoRaw, {
                   [styles.grayRaw]: index % 2 !== 0,
                 })}

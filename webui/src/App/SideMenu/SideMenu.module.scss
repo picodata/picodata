@@ -1,29 +1,81 @@
-.nonActiveWrapper {
-  background: #5f5e5e;
-  height: 100%;
-  min-width: 112px;
-}
+@import 'styles/vars';
+@import 'styles/mixins';
 
-.activeWrapper {
-  backdrop-filter: blur(10px);
-  flex-grow: 1;
-}
+$menuIndent: 40px;
 
-.linksWrapper {
-  display: flex;
-  flex-direction: column;
-  gap: 24px;
-}
+.container {
+  width: 112px;
+  flex-shrink: 0;
+  background: linear-gradient(
+    176deg,
+    rgba(231, 222, 222, 0.5) 0%,
+    rgba(229, 206, 192, 0.32) 36.98%,
+    rgba(217, 208, 206, 0.4) 69.79%,
+    rgba(231, 225, 223, 0.5) 100%
+  );
+  backdrop-filter: blur(10px); // возможны тормоза в хроме из блюров, работать с ними аккуратнее
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
 
-.link {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 16px;
+  transition: width 0.3s ease-out;
 }
 
 .menuIcon {
-  margin-top: 40px;
-  margin-left: 40px;
-  color: #848484;
+  padding: $menuIndent;
+  color: $colorTextBlack;
+  cursor: pointer;
+
+  @include animate(color);
+
+  &:hover {
+    color: $colorTextGrey;
+  }
+}
+
+.navLinksList {
+  margin-top: $menuIndent;
+  opacity: 0;
+
+  @include animate(opacity);
+}
+
+.navLink {
+  color: $colorTextBlack;
+  display: flex;
+  align-items: center;
+  column-gap: 16px;
+  padding-left: $menuIndent;
+
+  @include animate(color);
+
+  &:hover {
+    color: $colorTextOrange;
+  }
+}
+
+.activeNavLink {
+  color: $colorTextOrange;
+}
+
+.navLinkText {
+  font-size: 24px;
+  font-weight: 500;
+  line-height: 30px;
+}
+
+.openContainer {
+  width: 301px;
+  background: linear-gradient(
+    176deg,
+    rgba(231, 222, 222, 0.5) 0%,
+    rgba(229, 206, 192, 0.5) 36.98%,
+    rgba(217, 208, 206, 0.4) 69.79%,
+    rgba(231, 225, 223, 0.5) 100%
+  );
+
+  .navLinksList {
+    opacity: 1;
+  }
 }

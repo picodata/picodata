@@ -1,4 +1,3 @@
-/* eslint-disable no-restricted-imports */
 import { useCallback, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
 import { z } from "zod";
@@ -14,7 +13,7 @@ export const useUSP = <T extends z.ZodSchema>(args: {
 }) => {
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const selectUrlValue = searchParams.get(args.key);
+  const urlValue = searchParams.get(args.key);
 
   const onChange = useCallback(
     (value?: z.infer<T>) => {
@@ -31,19 +30,17 @@ export const useUSP = <T extends z.ZodSchema>(args: {
 
   const value = useMemo(() => {
     try {
-      const parsedValue = selectUrlValue
-        ? JSON.parse(selectUrlValue)
-        : selectUrlValue;
-      const selectValue = args.schema.parse(parsedValue);
+      const parsedValue = urlValue ? JSON.parse(urlValue) : urlValue;
+      const validatedValue = args.schema.parse(parsedValue);
 
-      return selectValue as z.infer<T>;
+      return validatedValue as z.infer<T>;
     } catch (e) {
       return args.defaultValue;
     }
-  }, [args.defaultValue, args.schema, selectUrlValue]);
+  }, [args.defaultValue, args.schema, urlValue]);
 
   useMount(() => {
-    if (value != selectUrlValue) {
+    if (value != urlValue) {
       onChange(value);
     }
   });

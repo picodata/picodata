@@ -1,38 +1,51 @@
-import { useMemo, useState } from "react";
+import { useRef } from "react";
+import cn from "classnames";
 import { NavLink } from "react-router-dom";
+import { z } from "zod";
 
 import { BurgerIcon } from "shared/icons/BurgerIcon";
+import { useOutsideClickEvent } from "shared/react/hooks/useOutsideClickEvent";
 import { NodesIcon } from "shared/icons/navLinks/NodesIcon";
+import { URL_CONFIG } from "shared/router/config";
+import { useLsState } from "shared/localStorage/hooks/useLsState";
 
 import styles from "./SideMenu.module.scss";
 
 export const SideMenu = () => {
-  const [isActive] = useState<boolean>(false);
+  const [isOpen, setIsOpen] = useLsState({
+    key: "sideMenuOpenState",
+    schema: z.boolean(),
+    defaultValue: true,
+  });
 
-  const nonActiveMenu = useMemo(
-    () => (
-      <div className={styles.nonActiveWrapper}>
-        <div className={styles.menuIcon}>
-          <BurgerIcon fill="#848484" />
-        </div>
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useOutsideClickEvent(containerRef, () => {
+    setIsOpen(false);
+  });
+
+  return (
+    <div
+      className={cn(styles.container, isOpen && styles.openContainer)}
+      ref={containerRef}
+    >
+      <BurgerIcon
+        className={styles.menuIcon}
+        onClick={() => setIsOpen(!isOpen)}
+      />
+      <div className={styles.navLinksList}>
+        <NavLink
+          to={URL_CONFIG.NODES.absolutePath}
+          className={(isActive) => {
+            if (isActive) return cn(styles.navLink, styles.activeNavLink);
+
+            return styles.navLink;
+          }}
+        >
+          <NodesIcon />
+          <span className={styles.navLinkText}>Nodes</span>
+        </NavLink>
       </div>
-    ),
-    []
+    </div>
   );
-
-  const activeMenu = useMemo(
-    () => (
-      <div className={styles.activeWrapper}>
-        <div className={styles.linksWrapper}>
-          <NavLink to="/" className={styles.link}>
-            <NodesIcon fill="#848484" className={styles.linkIcon} />
-            Nodes
-          </NavLink>
-        </div>
-      </div>
-    ),
-    []
-  );
-
-  return <>{isActive ? activeMenu : nonActiveMenu}</>;
 };

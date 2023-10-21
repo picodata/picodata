@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 
-import { useUSP } from "shared/filters/hooks/useUSP";
+import { useUSP } from "shared/router/hooks/useUSP";
 import { ClientInstanceType } from "store/slices/types";
 
 import { filterByValue } from "./config";
