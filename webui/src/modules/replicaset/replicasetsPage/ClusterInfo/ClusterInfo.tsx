@@ -4,6 +4,7 @@ import cn from "classnames";
 
 import { AppDispatch, RootState } from "store";
 import { getClusterInfo } from "store/slices/clusterSlice";
+import { Content } from "shared/ui/layout/Content/Content";
 
 import { CapacityProgress } from "./CapacityProgress/CapacityProgress";
 
@@ -25,55 +26,64 @@ export const ClusterInfo = (props: ClusterInfoProps) => {
   }, [dispatch]);
 
   return (
-    <div className={cn(styles.wrapper, className)}>
+    <Content className={cn(styles.container, className)}>
       <div className={cn(styles.infoColumn, styles.capacityInfoColumn)}>
-        <p className={styles.columnName}>Capacity Usage</p>
+        <div className={styles.columnName}>Capacity Usage</div>
         <div className={styles.capacityWrapper}>
-          <div className={styles.flexWrapper}>
-            <CapacityProgress
-              percent={clusterInfoSelector.capacityUsage}
-              currentValue={clusterInfoSelector.memory.used}
-              limit={clusterInfoSelector.memory.usable}
-              currentValueLabel="Useful capacity"
-            />
-          </div>
+          <CapacityProgress
+            percent={clusterInfoSelector.capacityUsage}
+            currentValue={clusterInfoSelector.memory.used}
+            limit={clusterInfoSelector.memory.usable}
+            currentValueLabel="Useful capacity"
+          />
         </div>
       </div>
-      <div className={styles.infoColumn}>
-        <p className={styles.columnName}>Replicasets</p>
-        <div className={styles.centredWrapper}>
-          <p className={styles.boldText}>
+      <div className={cn(styles.infoColumn, styles.replicasetsColumn)}>
+        <div className={styles.columnName}>Replicasets</div>
+        <div className={styles.columnContent}>
+          <div className={styles.columnValue}>
             {clusterInfoSelector.replicasetsCount}
-          </p>
-          <p className={styles.noMargin}>total replicasets</p>
+          </div>
+          <div className={styles.columnLabel}>
+            total <br />
+            replicasets
+          </div>
         </div>
       </div>
-      <div className={styles.infoColumn}>
-        <p className={styles.columnName}>Instances</p>
+      <div className={cn(styles.infoColumn, styles.instancesColumn)}>
+        <div className={styles.columnName}>Instances</div>
         <div className={styles.instancesBlock}>
-          <div className={styles.centredWrapper}>
-            <p className={styles.boldText}>
+          <div className={styles.columnContent}>
+            <div className={styles.columnValue}>
               {clusterInfoSelector.instancesCurrentGradeOnline}
-            </p>
-            <p className={styles.noMargin}>current grade online</p>
+            </div>
+            <div className={styles.columnLabel}>
+              current grade <br />
+              online
+            </div>
           </div>
-          <div className={styles.centredWrapper}>
-            <p className={styles.boldText}>
+          <div className={styles.columnContent}>
+            <div className={styles.columnValue}>
               {clusterInfoSelector.instancesCurrentGradeOffline}
-            </p>
-            <p className={styles.noMargin}>current grade offline</p>
+            </div>
+            <div className={styles.columnLabel}>
+              current grade <br />
+              offline
+            </div>
           </div>
         </div>
       </div>
-      <div className={styles.infoColumn}>
-        <p className={styles.columnName}>Version</p>
-        <div className={styles.centredWrapper}>
-          <p className={styles.boldText}>
+      <div className={cn(styles.infoColumn, styles.versionColumn)}>
+        <div className={styles.columnName}>Version</div>
+        <div className={styles.columnContent}>
+          <div className={styles.columnValue}>
             {clusterInfoSelector.currentInstaceVersion}
-          </p>
-          <p className={styles.noMargin}>current instance</p>
+          </div>
+          <div className={styles.columnLabel}>
+            current <br /> instance
+          </div>
         </div>
       </div>
-    </div>
+    </Content>
   );
 };

@@ -3,6 +3,7 @@ import { useEffect } from "react";
 
 import { getReplicasets } from "store/slices/clusterSlice";
 import { AppDispatch, RootState } from "store";
+import { Content } from "shared/ui/layout/Content/Content";
 
 import { ReplicasetCard } from "./ReplicasetCard/ReplicasetCard";
 import { InstanceCard } from "./ReplicasetCard/instanceBlock/InstanceCard";
@@ -40,7 +41,7 @@ export const ReplecasetsContent = ({}) => {
   const groupedByReplicates = groupByFilterValue === "REPLICASETS";
 
   return (
-    <div className={styles.gridWrapper}>
+    <Content className={styles.gridWrapper}>
       <TopBar
         className={styles.topBar}
         groupByFilterValue={groupByFilterValue}
@@ -66,6 +67,6 @@ export const ReplecasetsContent = ({}) => {
             />
           ))}
       </div>
-    </div>
+    </Content>
   );
 };

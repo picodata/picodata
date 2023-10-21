@@ -8,8 +8,6 @@ $vertical-indent: 24px;
 .gridWrapper {
   display: flex;
   flex-direction: column;
-  background-color: $colorBgWhite;
-  border-radius: 16px;
   flex-grow: 1;
   overflow: hidden;
 }
@@ -26,5 +24,5 @@ $vertical-indent: 24px;
   overflow: scroll;
   padding: 0 $list-horizontal-padding;
   margin: 0 $list-horizontal-margin;
-  padding-bottom: $vertical-indent;
+  padding-bottom: 80px;
 }

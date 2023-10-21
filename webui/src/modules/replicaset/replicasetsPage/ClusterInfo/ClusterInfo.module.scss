@@ -1,11 +1,9 @@
-@import "styles/vars";
+@import 'styles/vars';
 
-.wrapper {
-  background-color: $colorBgWhite;
+.container {
   padding: 16px 40px 14px 40px;
-  border-radius: 16px;
-  display: grid;
-  grid-template-columns: 360px auto auto auto;
+  display: flex;
+  justify-content: space-between;
 }
 
 .infoColumn {
@@ -17,60 +15,60 @@
 
 .capacityInfoColumn {
   align-items: flex-start;
-}
-
-.noMargin {
-  margin: 0;
-  max-width: 110px;
-  text-align: center;
+  flex-basis: 32%;
 }
 
 .capacityWrapper {
   display: flex;
-  flex-direction: column;
 }
 
-.flexWrapper {
-  display: flex;
-}
-
-.textBlock {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-
-.textWrapper {
-  display: flex;
-  gap: 16px;
-}
-
-.boldText {
-  font-weight: 600;
-  margin: 0;
+.columnName {
   font-size: 24px;
+  font-weight: 500;
+  line-height: 30px;
+  color: $colorTextBlack;
 }
 
-.greyText {
-  color: #848484;
-  font-size: 16px;
-  font-weight: 400;
-  margin: 0;
-}
-
-.centredWrapper {
+.columnContent {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
 }
 
-.columnName {
-  margin: 0;
+.columnValue {
   font-size: 24px;
+  font-style: normal;
+  font-weight: 600;
+  line-height: 40px;
+  color: $colorTextBlack;
+}
+
+.columnLabel {
+  font-size: 16px;
+  font-style: normal;
+  font-weight: 400;
+  line-height: 24px;
+  color: $colorTextBlack;
+  text-align: center;
 }
 
 .instancesBlock {
   display: flex;
   gap: 16px;
+}
+
+.replicasetsColumn {
+  flex-basis: 15%;
+  margin-left: 7%;
+}
+
+.instancesColumn {
+  flex-basis: 23%;
+  margin-left: 4%;
+}
+
+.versionColumn {
+  flex-basis: 15%;
+  margin-left: 4%;
 }
