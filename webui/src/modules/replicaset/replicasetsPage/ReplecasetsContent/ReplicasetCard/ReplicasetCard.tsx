@@ -1,53 +1,62 @@
-import { FC, useMemo, useState } from "react";
+import { FC, useState } from "react";
+import cn from "classnames";
 
 import { ChevronDown } from "shared/icons/ChevronDown";
-import { ChevronUp } from "shared/icons/ChevronUp";
 import { ClientInstanceType } from "store/slices/types";
 
-import { InstanceCard } from "./instanceBlock/InstanceCard";
-import styles from "./ReplicasetCard.module.css";
+import { CapacityProgress } from "../../ClusterInfo/CapacityProgress/CapacityProgress";
 
-export interface Replicaset {
+import { InstanceCard } from "./instanceBlock/InstanceCard";
+
+import styles from "./ReplicasetCard.module.scss";
+
+export type TReplicaset = {
   id: string;
   instanceCount: number;
   instances: ClientInstanceType[];
   version: string;
   grade: string;
-  capacity: string;
-}
+  capacity: number;
+};
 export interface ReplicasetCardProps {
-  replicaset: Replicaset;
+  replicaset: TReplicaset;
 }
+
+/** Узнать откуда взять значения для прогресса ...*/
 export const ReplicasetCard: FC<ReplicasetCardProps> = ({ replicaset }) => {
   const [isOpen, setIsOpen] = useState<boolean>(false);
 
-  const elChevron = useMemo(() => {
-    if (!isOpen) {
-      return <ChevronDown onClick={() => setIsOpen(true)} />;
-    }
-    return <ChevronUp onClick={() => setIsOpen(false)} />;
-  }, [isOpen, setIsOpen]);
-
   return (
-    <div className={styles.cardWrapper}>
+    <div className={styles.cardWrapper} onClick={() => setIsOpen(!isOpen)}>
       <div className={styles.replicasetInfo}>
-        <div className={styles.infoColumn}>
-          <p className={styles.noMargin}> Name</p>
-          <p className={styles.infoValue}>{replicaset.id}</p>
+        <div className={cn(styles.infoColumn, styles.nameColumn)}>
+          <div className={styles.label}>Name</div>
+          <div className={styles.infoValue}>{replicaset.id}</div>
         </div>
         <div className={styles.infoColumn}>
-          <p className={styles.noMargin}> Instances</p>
-          <p className={styles.infoValue}>{replicaset.instanceCount}</p>
+          <div className={styles.label}>Instances</div>
+          <div className={styles.infoValue}>{replicaset.instanceCount}</div>
         </div>
         <div className={styles.infoColumn}>
-          <p className={styles.noMargin}> Grade</p>
-          <p className={styles.infoValue}>{replicaset.grade}</p>
+          <div className={styles.label}>Grade</div>
+          <div className={styles.infoValue}>{replicaset.grade}</div>
         </div>
-        <div className={styles.infoColumn}>
-          <p className={styles.noMargin}> Capacity usage</p>
-          <p className={styles.infoValue}>{`${replicaset.capacity}%`}</p>
+        <div className={cn(styles.infoColumn, styles.capacityColumn)}>
+          <div className={styles.label}>Capacity</div>
+          <CapacityProgress
+            percent={replicaset.capacity}
+            currentValue={1200000}
+            limit={1200000}
+            size="small"
+            theme="secondary"
+            progressLineWidth={190}
+          />
         </div>
-        <div className={styles.infoColumn}>{elChevron}</div>
+        <div className={cn(styles.infoColumn, styles.chevronColumn)}>
+          <ChevronDown
+            className={cn(styles.chevronIcon, isOpen && styles.chevronIconOpen)}
+          />
+        </div>
       </div>
       {isOpen && (
         <div className={styles.instancesWrapper}>

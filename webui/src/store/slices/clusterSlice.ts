@@ -10,42 +10,13 @@ import {
 } from "./types";
 
 export interface ClusterState {
-  clusterInfo: ClusterInfoType;
+  clusterInfo?: ClusterInfoType;
   replicasets: ClientReplicasetType[];
   instances: ClientInstanceType[];
 }
 
 const initialState: ClusterState = {
-  clusterInfo: {
-    capacityUsage: 0,
-    memory: {
-      used: 0,
-      usable: 0,
-    },
-    replicasetsCount: 0,
-    instancesCurrentGradeOnline: 0,
-    instancesCurrentGradeOffline: 0,
-    currentInstaceVersion: "",
-  },
-  replicasets: [
-    {
-      id: "",
-      instanceCount: 0,
-      instances: [
-        {
-          name: "",
-          targetGrade: "",
-          currentGrade: "",
-          failureDomain: [],
-          version: "",
-          isLeader: false,
-        },
-      ],
-      version: "",
-      grade: "",
-      capacity: "",
-    },
-  ],
+  replicasets: [],
   instances: [],
 };
 

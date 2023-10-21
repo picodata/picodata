@@ -14,7 +14,7 @@ type CapacityProgressProps = {
   theme?: "primary" | "secondary";
   size?: "small" | "medium";
   currentValueLabel?: string;
-  progressLineWidth?: number;
+  progressLineWidth?: number | string;
 };
 
 export const CapacityProgress: React.FC<CapacityProgressProps> = (props) => {
@@ -39,6 +39,7 @@ export const CapacityProgress: React.FC<CapacityProgressProps> = (props) => {
           width={progressLineWidth}
           percent={percent}
           theme={theme}
+          size={size}
         />
         <div className={styles.progressLineInfo}>
           <div className={styles.text}>{formatBytes(currentValue)}</div>

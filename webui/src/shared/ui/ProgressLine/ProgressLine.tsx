@@ -3,8 +3,8 @@ import React from "react";
 import styles from "./ProgressLine.module.css";
 
 export type ProgressLineProps = {
-  width: number;
-  height: number;
+  width: number | string;
+  height: number | string;
   percent: number;
   strokeColor?: string;
   trailColor?: string;
@@ -24,7 +24,7 @@ export const ProgressLine: React.FC<ProgressLineProps> = (props) => {
     >
       <div
         style={{
-          width: (props.width / 100) * props.percent,
+          width: `${props.percent}%`,
           backgroundColor: strokeColor,
         }}
         className={styles.fill}

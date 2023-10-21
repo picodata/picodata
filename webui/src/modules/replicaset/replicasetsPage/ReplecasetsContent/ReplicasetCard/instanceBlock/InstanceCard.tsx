@@ -5,8 +5,9 @@ import { LeaderIcon } from "shared/icons/LeaderIcon";
 import { ClientInstanceType } from "store/slices/types";
 import { formatFailDomains } from "modules/replicaset/replicasetsPage/ReplecasetsContent/utils";
 
-import styles from "./InstanceCard.module.css";
 import { InstanceModal } from "./instanceModal/InstanceModal";
+
+import styles from "./InstanceCard.module.scss";
 
 interface InstanceCardProps {
   instance: ClientInstanceType;
@@ -25,35 +26,36 @@ export const InstanceCard: FC<InstanceCardProps> = ({
   return (
     <>
       <div
-        onClick={() => setIsOpenModal(true)}
+        onClick={(event) => {
+          event.stopPropagation();
+          setIsOpenModal(true);
+        }}
         className={cn(styles.instanceWrapper, styles[theme])}
       >
         <div className={styles.infoColumn}>
           <div className={styles.instanceNameLabel}>
-            <p className={styles.noMargin}>Instance name</p>
+            <div className={styles.label}>Instance name</div>
             {instance.isLeader && <LeaderIcon className={styles.leaderIcon} />}
           </div>
-          <div className={styles.instanceNameBlock}>
-            <p className={styles.instanceInfo}>{instance.name}</p>
+          <div className={styles.value}>{instance.name}</div>
+        </div>
+        <div className={cn(styles.infoColumn, styles.targetGradeColumn)}>
+          <div className={styles.label}>Target grade</div>
+          <div className={styles.value}>{instance.targetGrade}</div>
+        </div>
+        <div className={cn(styles.infoColumn, styles.currentGradeColumn)}>
+          <div className={styles.label}>Current grade</div>
+          <div className={styles.value}>{instance.currentGrade}</div>
+        </div>
+        <div className={cn(styles.infoColumn, styles.domainColumn)}>
+          <div className={styles.label}>Failure domain</div>
+          <div className={styles.value}>
+            {formatFailDomains(instance.failureDomain)}
           </div>
         </div>
-        <div className={styles.infoColumn}>
-          <p className={styles.noMargin}>Target grade</p>
-          <p className={styles.instanceInfo}>{instance.targetGrade}</p>
-        </div>
-        <div className={styles.infoColumn}>
-          <p className={styles.noMargin}>Current grade</p>
-          <p className={styles.instanceInfo}>{instance.currentGrade}</p>
-        </div>
-        <div className={styles.infoColumn}>
-          <p className={styles.noMargin}>Failure domain</p>
-          <p className={styles.instanceInfo}>
-            {formatFailDomains(instance.failureDomain)}
-          </p>
-        </div>
-        <div className={styles.infoColumn}>
-          <p className={styles.noMargin}>Version</p>
-          <p className={styles.instanceInfo}>{instance.version}</p>
+        <div className={cn(styles.infoColumn, styles.versionColumn)}>
+          <div className={styles.label}>Version</div>
+          <div className={styles.value}>{instance.version}</div>
         </div>
       </div>
       <InstanceModal

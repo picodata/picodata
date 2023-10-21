@@ -55,7 +55,12 @@ export const InstanceModal: FC<InstanceModalProps> = ({
             {instance.isLeader && <LeaderBigIcon />}
             {instance.name}
           </span>
-          <CloseIcon onClick={onClose} />
+          <CloseIcon
+            onClick={(event) => {
+              event.stopPropagation();
+              onClose();
+            }}
+          />
         </div>
         <div className={styles.tabGroup}>
           <span>General</span>

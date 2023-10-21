@@ -25,6 +25,10 @@ export const ClusterInfo = (props: ClusterInfoProps) => {
     dispatch(getClusterInfo());
   }, [dispatch]);
 
+  if (!clusterInfoSelector) {
+    return null;
+  }
+
   return (
     <Content className={cn(styles.container, className)}>
       <div className={cn(styles.infoColumn, styles.capacityInfoColumn)}>

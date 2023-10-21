@@ -4,9 +4,7 @@
   background-color: $colorBgWhite;
   border-radius: 4px;
   padding: 40px 24px;
-  box-shadow:
-    0px 6px 8px 0px rgba(131, 131, 131, 0.12),
-    0px 0px 4px 0px rgba(131, 131, 131, 0.4);
+  box-shadow: $elevationBg;
 }
 
 .titleWrapper {

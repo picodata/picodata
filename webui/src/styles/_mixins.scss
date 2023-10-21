@@ -10,3 +10,9 @@
 
   transition: $animatedProperty nth($property, length($property)) $transition-normal;
 }
+
+@mixin ellipsis {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

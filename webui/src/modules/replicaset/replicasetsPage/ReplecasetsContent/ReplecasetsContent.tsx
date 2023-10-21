@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { getReplicasets } from "store/slices/clusterSlice";
 import { AppDispatch, RootState } from "store";
 import { Content } from "shared/ui/layout/Content/Content";
+import { NoData } from "shared/ui/NoData/NoData";
 
 import { ReplicasetCard } from "./ReplicasetCard/ReplicasetCard";
 import { InstanceCard } from "./ReplicasetCard/instanceBlock/InstanceCard";
@@ -40,33 +41,41 @@ export const ReplecasetsContent = ({}) => {
 
   const groupedByReplicates = groupByFilterValue === "REPLICASETS";
 
+  const isNoData = replicasets.length === 0;
+
   return (
     <Content className={styles.gridWrapper}>
-      <TopBar
-        className={styles.topBar}
-        groupByFilterValue={groupByFilterValue}
-        setGroupByFilterValue={setGroupByFilterValue}
-        sortByValue={sortByValue}
-        showSortBy={!groupedByReplicates}
-        setSortByValue={setSortByValue}
-        showFilterBy={!groupedByReplicates}
-        filterByValue={filterByValue}
-        setFilterByValue={setFilterByValue}
-      />
-      <div className={styles.replicasetsWrapper}>
-        {groupedByReplicates &&
-          replicasets.map((rep) => (
-            <ReplicasetCard key={rep.id} replicaset={rep} />
-          ))}
-        {!groupedByReplicates &&
-          sortedFilteredInstances.map((instance) => (
-            <InstanceCard
-              key={instance.name}
-              instance={instance}
-              theme="secondary"
-            />
-          ))}
-      </div>
+      {isNoData ? (
+        <NoData>No Data</NoData>
+      ) : (
+        <>
+          <TopBar
+            className={styles.topBar}
+            groupByFilterValue={groupByFilterValue}
+            setGroupByFilterValue={setGroupByFilterValue}
+            sortByValue={sortByValue}
+            showSortBy={!groupedByReplicates}
+            setSortByValue={setSortByValue}
+            showFilterBy={!groupedByReplicates}
+            filterByValue={filterByValue}
+            setFilterByValue={setFilterByValue}
+          />
+          <div className={styles.replicasetsWrapper}>
+            {groupedByReplicates &&
+              replicasets.map((rep) => (
+                <ReplicasetCard key={rep.id} replicaset={rep} />
+              ))}
+            {!groupedByReplicates &&
+              sortedFilteredInstances.map((instance) => (
+                <InstanceCard
+                  key={instance.name}
+                  instance={instance}
+                  theme="secondary"
+                />
+              ))}
+          </div>
+        </>
+      )}
     </Content>
   );
 };

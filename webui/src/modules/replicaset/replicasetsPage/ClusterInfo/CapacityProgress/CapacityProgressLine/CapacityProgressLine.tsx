@@ -12,7 +12,7 @@ import {
 } from "./config";
 
 export type CapacityProgressLineProps = Omit<ProgressLineProps, "height"> & {
-  height?: number;
+  height?: number | string;
   theme?: "primary" | "secondary";
   size?: "small" | "medium";
 };
