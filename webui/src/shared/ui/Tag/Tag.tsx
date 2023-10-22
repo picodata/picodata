@@ -7,30 +7,30 @@ import { Button, ButtonProps } from "../Button/Button";
 import styles from "./Tag.module.scss";
 
 type TagProps = ButtonProps & {
-  onIconClick?: (event: React.MouseEvent<HTMLDivElement, MouseEvent>) => void;
+  closeIcon?: boolean;
+  onClose?: (event: React.MouseEvent<HTMLDivElement, MouseEvent>) => void;
 };
 
 export const Tag: React.FC<TagProps> = (props) => {
-  const { onIconClick, ...other } = props;
+  const { closeIcon, rightIcon: RightIcon, onClose, ...other } = props;
 
-  return (
-    <Button
-      {...other}
-      rightIcon={
+  const renderIcon = () => {
+    if (RightIcon) return RightIcon;
+
+    if (closeIcon)
+      return (
         <div
-          onClick={
-            onIconClick
-              ? (event) => {
-                  event.stopPropagation();
-                  onIconClick?.(event);
-                }
-              : undefined
-          }
+          onClick={(event) => {
+            event.stopPropagation();
+            onClose?.(event);
+          }}
         >
           <CircleCloseIcon />
         </div>
-      }
-      className={styles.button}
-    />
+      );
+  };
+
+  return (
+    <Button {...other} rightIcon={renderIcon()} className={styles.button} />
   );
 };

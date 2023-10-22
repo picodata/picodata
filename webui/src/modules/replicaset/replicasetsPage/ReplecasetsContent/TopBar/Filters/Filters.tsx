@@ -50,7 +50,8 @@ export const Filters: React.FC<FiltersProps> = (props) => {
             key={label}
             theme="secondary"
             size="extraSmall"
-            onIconClick={() => deleteItem(domain)}
+            closeIcon
+            onClose={() => deleteItem(domain)}
           >
             {label}
           </Tag>

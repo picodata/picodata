@@ -1,6 +1,8 @@
 import { useMemo } from "react";
-import RNSelect, { Props as RNSelectProps } from "react-select";
+import RNSelect, { MultiValue, Props as RNSelectProps } from "react-select";
 import cn from "classnames";
+
+import { CircleCloseIcon } from "shared/icons/CircleCloseIcon";
 
 import { Option } from "../Option/Option";
 import { Tag } from "../Tag/Tag";
@@ -11,12 +13,18 @@ import styles from "./Select.module.scss";
 
 export type { TOption };
 
-type SelectProps<T> = RNSelectProps<T> & {
+type SelectProps<T extends TOption> = RNSelectProps<T> & {
   size?: "normal";
+  showMoreButtonCount?: number;
 };
 
-export const Select = <T,>(props: SelectProps<T>) => {
-  const { size = "normal", classNames: classNamesProps = {}, ...other } = props;
+export const Select = <T extends TOption>(props: SelectProps<T>) => {
+  const {
+    size = "normal",
+    classNames: classNamesProps = {},
+    showMoreButtonCount = 3,
+    ...other
+  } = props;
 
   const classNames = useMemo<SelectProps<T>["classNames"]>(() => {
     return {
@@ -46,6 +54,7 @@ export const Select = <T,>(props: SelectProps<T>) => {
 
   return (
     <RNSelect
+      closeMenuOnSelect={other.isMulti ? false : true}
       {...other}
       classNames={classNames}
       components={{
@@ -55,15 +64,41 @@ export const Select = <T,>(props: SelectProps<T>) => {
           </Option>
         ),
         IndicatorSeparator: null,
-        MultiValue: (args) => (
-          <Tag
-            size="extraSmall"
-            onIconClick={args.removeProps.onClick}
-            className={args.innerProps?.className}
-          >
-            {args.children}
-          </Tag>
-        ),
+        MultiValue: (args) => {
+          const value = args.selectProps.value as MultiValue<T>;
+
+          if (!args.selectProps.menuIsOpen) {
+            if (args.index > showMoreButtonCount) {
+              return null;
+            }
+
+            if (args.index === showMoreButtonCount) {
+              return (
+                <Tag
+                  size="extraSmall"
+                  theme="secondary"
+                  className={args.innerProps?.className}
+                >
+                  See all ({value.length})
+                </Tag>
+              );
+            }
+          }
+
+          return (
+            <Tag
+              size="extraSmall"
+              className={args.innerProps?.className}
+              rightIcon={
+                <div {...args.removeProps}>
+                  <CircleCloseIcon />
+                </div>
+              }
+            >
+              {args.children}
+            </Tag>
+          );
+        },
       }}
     />
   );

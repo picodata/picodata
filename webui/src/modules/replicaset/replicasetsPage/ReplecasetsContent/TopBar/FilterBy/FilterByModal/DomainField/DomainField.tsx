@@ -45,6 +45,10 @@ export const DomainField: React.FC<DomainFieldProps> = (props) => {
     [values]
   );
 
+  const domainValuesValue = useMemo(() => {
+    return domainValuesOptions.filter((o) => filter.value?.includes(o.value));
+  }, [domainValuesOptions, filter.value]);
+
   return (
     <div className={className}>
       <div className={styles.keyValueField}>
@@ -71,9 +75,7 @@ export const DomainField: React.FC<DomainFieldProps> = (props) => {
           options={domainValuesOptions}
           classNames={{ container: () => styles.valueSelect }}
           isMulti
-          value={domainValuesOptions.filter((o) =>
-            filter.value?.includes(o.value)
-          )}
+          value={domainValuesValue}
           onChange={(newOptions) => {
             if (!newOptions || !Array.isArray(newOptions)) return;
 
