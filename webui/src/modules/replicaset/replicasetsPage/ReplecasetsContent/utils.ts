@@ -1,5 +1,10 @@
-export const formatFailDomain = (domain: { key: string; value: string }) => {
-  return `${domain.key}: ${domain.value}`;
+export const formatFailDomain = (domain: {
+  key: string;
+  value: string | string[];
+}) => {
+  return `${domain.key}: ${
+    Array.isArray(domain.value) ? domain.value.join(", ") : domain.value
+  }`;
 };
 
 export const formatFailDomains = (

@@ -7,7 +7,7 @@ import { Button, ButtonProps } from "../Button/Button";
 import styles from "./Tag.module.scss";
 
 type TagProps = ButtonProps & {
-  onIconClick?: () => void;
+  onIconClick?: (event: React.MouseEvent<HTMLDivElement, MouseEvent>) => void;
 };
 
 export const Tag: React.FC<TagProps> = (props) => {
@@ -17,16 +17,18 @@ export const Tag: React.FC<TagProps> = (props) => {
     <Button
       {...other}
       rightIcon={
-        <CircleCloseIcon
+        <div
           onClick={
             onIconClick
               ? (event) => {
                   event.stopPropagation();
-                  onIconClick?.();
+                  onIconClick?.(event);
                 }
               : undefined
           }
-        />
+        >
+          <CircleCloseIcon />
+        </div>
       }
       className={styles.button}
     />

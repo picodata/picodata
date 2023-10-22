@@ -22,7 +22,7 @@ export const useFilteredInstances = (
           return instance.failureDomain.find(
             (domain) =>
               domain.key === domainFilter.key &&
-              domain.value === domainFilter.value
+              domainFilter.value.includes(domain.value)
           );
         });
       });

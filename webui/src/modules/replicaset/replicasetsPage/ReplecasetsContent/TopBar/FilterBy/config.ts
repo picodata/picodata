@@ -3,7 +3,7 @@ import { z } from "zod";
 export const domainFilterValue = z.array(
   z.object({
     key: z.string(),
-    value: z.string(),
+    value: z.array(z.string()),
   })
 );
 

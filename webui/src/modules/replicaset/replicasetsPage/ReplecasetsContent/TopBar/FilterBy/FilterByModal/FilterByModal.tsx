@@ -30,10 +30,10 @@ export const FilterByModal: React.FC<FilterByModalProps> = (props) => {
   const onApplyClick = useCallback(() => {
     const domainValuesFilters = keyValueFilters
       .map((filter) => {
-        if (!filter.key || !filter.value) return null;
+        if (!filter.key || !filter.value?.length) return null;
 
         return {
-          uniqueStr: `${filter.key}:${filter.value}`,
+          uniqueStr: `${filter.key}:${filter.value.join(",")}`,
           key: filter.key,
           value: filter.value,
         };

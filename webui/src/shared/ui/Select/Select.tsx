@@ -3,6 +3,7 @@ import RNSelect, { Props as RNSelectProps } from "react-select";
 import cn from "classnames";
 
 import { Option } from "../Option/Option";
+import { Tag } from "../Tag/Tag";
 
 import type { TOption } from "./types";
 
@@ -20,6 +21,13 @@ export const Select = <T,>(props: SelectProps<T>) => {
   const classNames = useMemo<SelectProps<T>["classNames"]>(() => {
     return {
       ...classNamesProps,
+      valueContainer: (state) => {
+        let valueContainerClassName = "";
+
+        if (state.isMulti) valueContainerClassName = styles.multiValueContainer;
+
+        return cn(valueContainerClassName);
+      },
       control: (state) => {
         let controlClassName = "";
         if (state.isDisabled) controlClassName = styles.disabledControl;
@@ -28,6 +36,7 @@ export const Select = <T,>(props: SelectProps<T>) => {
         return cn(
           styles.commonControl,
           controlClassName,
+          state.isMulti ? styles.multiControl : styles.control,
           styles[size],
           classNamesProps?.control?.(state)
         );
@@ -46,6 +55,15 @@ export const Select = <T,>(props: SelectProps<T>) => {
           </Option>
         ),
         IndicatorSeparator: null,
+        MultiValue: (args) => (
+          <Tag
+            size="extraSmall"
+            onIconClick={args.removeProps.onClick}
+            className={args.innerProps?.className}
+          >
+            {args.children}
+          </Tag>
+        ),
       }}
     />
   );

@@ -18,7 +18,7 @@ type FiltersProps = {
 export const Filters: React.FC<FiltersProps> = (props) => {
   const { filterByValue, className, setFilterByValue } = props;
 
-  const deleteItem = (filterForDelete: { key: string; value: string }) => {
+  const deleteItem = (filterForDelete: { key: string; value: string[] }) => {
     setFilterByValue({
       ...filterByValue,
       domain: filterByValue.domain?.filter(

@@ -25,6 +25,18 @@
   background-color: $colorFieldForm;
 }
 
-.normal {
-  height: 52px;
+.control {
+  &.normal {
+    height: 52px;
+  }
+}
+
+.multiControl {
+  &.normal {
+    padding: 16px;
+  }
+}
+
+.multiValueContainer {
+  gap: 4px;
 }

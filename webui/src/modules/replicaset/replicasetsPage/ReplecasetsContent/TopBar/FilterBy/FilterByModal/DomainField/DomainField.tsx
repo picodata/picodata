@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo } from "react";
 import cn from "classnames";
 
-import { Select, TOption } from "shared/ui/Select/Select";
+import { Select } from "shared/ui/Select/Select";
+import { isArrayContainsOtherArray } from "shared/utils/array/isArrayContainsOtherArray";
 
 import { FilterKey } from "./FilterKey/FilterKey";
 import { TKeyValueFilter } from "./types";
@@ -25,8 +26,12 @@ export const DomainField: React.FC<DomainFieldProps> = (props) => {
   const { keys, values } = useKeysValuesData(domains, filter);
 
   useEffect(() => {
-    if (filter.value && !values.includes(filter.value)) {
-      updateKeyValueFilter(filter.id, { value: "" });
+    if (
+      filter.value &&
+      filter.value.length &&
+      !isArrayContainsOtherArray(values, filter.value)
+    ) {
+      updateKeyValueFilter(filter.id, { value: [] });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [values, filter.value, filter.id]);
@@ -65,16 +70,16 @@ export const DomainField: React.FC<DomainFieldProps> = (props) => {
         <Select
           options={domainValuesOptions}
           classNames={{ container: () => styles.valueSelect }}
-          isMulti={false}
-          value={
-            domainValuesOptions.find((o) => o.value === filter.value) ?? null
-          }
-          onChange={(newOption) => {
-            if (!newOption || Array.isArray(newOption)) return;
+          isMulti
+          value={domainValuesOptions.filter((o) =>
+            filter.value?.includes(o.value)
+          )}
+          onChange={(newOptions) => {
+            if (!newOptions || !Array.isArray(newOptions)) return;
 
-            const option = newOption as TOption;
-
-            updateKeyValueFilter(filter.id, { value: option.value });
+            updateKeyValueFilter(filter.id, {
+              value: newOptions.map((o) => o.value),
+            });
           }}
         />
       </div>

@@ -1,7 +1,7 @@
 export type TKeyValueFilter = {
   id: number;
   key: string;
-  value: string;
+  value: string[];
 };
 
 export type TDomain = {
