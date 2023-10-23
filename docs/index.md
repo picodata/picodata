@@ -17,7 +17,7 @@ Picodata — распределенная система
 
 ### Инструкции и руководства {: #manuals-and-howtos }
 * [Установка Picodata](install)
-* [Кластер на физических узлах](deploy_on_hosts)
+* [Запуск кластера](deploy_on_hosts)
 * [Мониторинг кластера](monitoring)
 * [Подключение и работа в консоли](tutorial_first_steps)
 * [Авторизация с помощью LDAP](auth_ldap)
