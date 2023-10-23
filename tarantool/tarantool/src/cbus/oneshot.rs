@@ -3,7 +3,7 @@ use crate::cbus::RecvError;
 use crate::fiber::Cond;
 use std::cell::{RefCell, UnsafeCell};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Weak};
+use std::sync::{Arc, Mutex, Weak};
 
 /// A oneshot channel based on tarantool cbus. This a channel between any arbitrary thread and a cord.
 /// Cord - a thread with `libev` event loop inside (typically tx thread).
@@ -40,6 +40,12 @@ impl<T> Channel<T> {
 pub struct Sender<T> {
     channel: Weak<Channel<T>>,
     pipe: RefCell<LCPipe>,
+    /// This mutex used for create a critical that guards an invariant - when sender upgrade
+    /// `Weak<Channel<T>>` reference there is two `Arc<Channel<T>>` in the same moment of time (in
+    /// this case `Cond` in `Channel<T>` always dropped at receiver side) or
+    /// `Weak<Channel<T>>::upgrade` returns `None`. Compliance with this invariant guarantees that
+    /// the `Cond` always dropped at receiver (TX thread) side.
+    arc_guard: Arc<Mutex<()>>,
 }
 
 unsafe impl<T> Send for Sender<T> {}
@@ -48,7 +54,8 @@ unsafe impl<T> Sync for Sender<T> {}
 
 /// Receiver part of oneshot channel. Must be used in cord context.
 pub struct EndpointReceiver<T> {
-    channel: Arc<Channel<T>>,
+    channel: Option<Arc<Channel<T>>>,
+    arc_guard: Arc<Mutex<()>>,
 }
 
 /// Creates a new oneshot channel, returning the sender/receiver halves. Please note that the receiver should only be used inside the cord.
@@ -68,12 +75,18 @@ pub struct EndpointReceiver<T> {
 /// ```
 pub fn channel<T>(cbus_endpoint: &str) -> (Sender<T>, EndpointReceiver<T>) {
     let channel = Arc::new(Channel::new());
+    let arc_guard = Arc::new(Mutex::default());
+
     (
         Sender {
             channel: Arc::downgrade(&channel),
             pipe: RefCell::new(LCPipe::new(cbus_endpoint)),
+            arc_guard: Arc::clone(&arc_guard),
         },
-        EndpointReceiver { channel },
+        EndpointReceiver {
+            channel: Some(channel),
+            arc_guard,
+        },
     )
 }
 
@@ -84,6 +97,10 @@ impl<T> Sender<T> {
     ///
     /// * `message`: message to send
     pub fn send(self, message: T) {
+        // We assume that this lock has a minimal impact on performance, in most of situations
+        // lock of mutex will take the fast path.
+        let _crit_sect = self.arc_guard.lock().unwrap();
+
         if let Some(chan) = self.channel.upgrade() {
             unsafe { *chan.message.get() = Some(message) };
             chan.ready.store(true, Ordering::Release);
@@ -96,6 +113,10 @@ impl<T> Sender<T> {
 
 impl<T> Drop for Sender<T> {
     fn drop(&mut self) {
+        // We assume that this lock has a minimal impact on performance, in most of situations
+        // lock of mutex will take the fast path.
+        let _crit_sect = self.arc_guard.lock().unwrap();
+
         let mb_chan = self.channel.upgrade();
         let mb_cond = mb_chan.map(|chan| chan.cond.clone());
         // at this point we are sure that there is at most one reference to a [`Channel`] - in receiver side,
@@ -117,14 +138,19 @@ impl<T> EndpointReceiver<T> {
     /// Attempts to wait for a value on this receiver, returns a [`RecvError`]
     /// if the corresponding channel has hung up (sender was dropped).
     pub fn receive(self) -> Result<T, RecvError> {
-        if !self.channel.ready.swap(false, Ordering::Acquire) {
+        let channel = self
+            .channel
+            .as_ref()
+            .expect("unreachable: channel must exists");
+
+        if !channel.ready.swap(false, Ordering::Acquire) {
             // assume that situation when [`crate::fiber::Cond::signal()`] called before
             // [`crate::fiber::Cond::wait()`] and after swap `ready` to false  is never been happen,
             // cause signal and wait both calling in tx thread (or any other cord) and there is now yields between it
-            self.channel.cond.wait();
+            channel.cond.wait();
         }
         unsafe {
-            self.channel
+            channel
                 .message
                 .get()
                 .as_mut()
@@ -132,6 +158,13 @@ impl<T> EndpointReceiver<T> {
                 .take()
         }
         .ok_or(RecvError::Disconnected)
+    }
+}
+
+impl<T> Drop for EndpointReceiver<T> {
+    fn drop(&mut self) {
+        let _crit_sect = self.arc_guard.lock().unwrap();
+        drop(self.channel.take());
     }
 }
 

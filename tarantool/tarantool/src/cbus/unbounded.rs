@@ -3,7 +3,7 @@ use crate::cbus::RecvError;
 use crate::fiber::Cond;
 use std::cell::RefCell;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Weak};
+use std::sync::{Arc, Mutex, Weak};
 use std::time::Duration;
 
 /// A synchronization component between producers and a consumer.
@@ -106,16 +106,19 @@ impl<T> Channel<T> {
 pub fn channel<T>(cbus_endpoint: &str) -> (Sender<T>, EndpointReceiver<T>) {
     let chan = Arc::new(Channel::new(cbus_endpoint));
     let waker = Arc::new(Waker::new(Cond::new()));
+    let arc_guard = Arc::new(Mutex::default());
     let s = Sender {
         inner: Arc::new(SenderInner {
             chan: Arc::clone(&chan),
         }),
         waker: Arc::downgrade(&waker),
         lcpipe: RefCell::new(LCPipe::new(&chan.cbus_endpoint)),
+        arc_guard: Arc::clone(&arc_guard),
     };
     let r = EndpointReceiver {
         chan: Arc::clone(&chan),
-        waker: Arc::clone(&waker),
+        waker: Some(Arc::clone(&waker)),
+        arc_guard,
     };
     (s, r)
 }
@@ -144,6 +147,11 @@ pub struct Sender<T> {
     waker: Weak<Waker>,
     /// an LCPipe instance, unique for each sender
     lcpipe: RefCell<LCPipe>,
+    /// This mutex used for create a critical that guards an invariant - when sender upgrade
+    /// `Weak<Waker>` reference there is two `Arc<Waker>` in the same moment of time (in this case
+    /// `Waker` always dropped at receiver side) or `Weak<Waker>::upgrade` returns `None`. Compliance
+    /// with this invariant guarantees that the `Cond` always dropped at receiver (TX thread) side.
+    arc_guard: Arc<Mutex<()>>,
 }
 
 unsafe impl<T> Send for Sender<T> {}
@@ -152,6 +160,10 @@ unsafe impl<T> Sync for Sender<T> {}
 
 impl<T> Drop for Sender<T> {
     fn drop(&mut self) {
+        // We assume that this lock has a minimal impact on performance, in most of situations
+        // lock of mutex will take the fast path.
+        let _crit_section = self.arc_guard.lock().unwrap();
+
         if let Some(waker) = self.waker.upgrade() {
             waker.wakeup(&mut self.lcpipe.borrow_mut());
         }
@@ -164,6 +176,7 @@ impl<T> Clone for Sender<T> {
             inner: self.inner.clone(),
             waker: self.waker.clone(),
             lcpipe: RefCell::new(LCPipe::new(&self.inner.chan.cbus_endpoint)),
+            arc_guard: self.arc_guard.clone(),
         }
     }
 }
@@ -183,6 +196,10 @@ impl<T> Sender<T> {
     ///
     /// * `message`: message to send
     pub fn send(&self, msg: T) -> Result<(), SendError<T>> {
+        // We assume that this lock has a minimal impact on performance, in most of situations
+        // lock of mutex will take the fast path.
+        let _crit_section = self.arc_guard.lock().unwrap();
+
         // wake up a sleeping receiver
         if let Some(waker) = self.waker.upgrade() {
             self.inner.chan.list.push(msg);
@@ -197,10 +214,18 @@ impl<T> Sender<T> {
 /// Receiver part of unbounded channel. Must be used in cord context.
 pub struct EndpointReceiver<T> {
     chan: Arc<Channel<T>>,
-    waker: Arc<Waker>,
+    waker: Option<Arc<Waker>>,
+    arc_guard: Arc<Mutex<()>>,
 }
 
 unsafe impl<T> Send for EndpointReceiver<T> {}
+
+impl<T> Drop for EndpointReceiver<T> {
+    fn drop(&mut self) {
+        let _crit_section = self.arc_guard.lock().unwrap();
+        drop(self.waker.take());
+    }
+}
 
 impl<T> EndpointReceiver<T> {
     /// Attempts to wait for a value on this receiver, returns a [`RecvError::Disconnected`]
@@ -215,7 +240,10 @@ impl<T> EndpointReceiver<T> {
                 return Err(RecvError::Disconnected);
             }
 
-            self.waker.wait();
+            self.waker
+                .as_ref()
+                .expect("unreachable: waker must exists")
+                .wait();
         }
     }
 
