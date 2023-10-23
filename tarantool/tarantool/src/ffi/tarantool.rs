@@ -7,15 +7,9 @@
 //! 4. Latches.
 //! 5. Log.
 //! 6. Box - errors, sessions, sequences, transactions, indexes, spaces, tuples.
-use std::os::raw::{c_char, c_int, c_uint, c_void};
-
-use bitflags::bitflags;
-
-#[cfg(not(all(target_arch = "aarch64", target_os = "macos")))]
 use ::va_list::VaList;
-
-#[cfg(all(target_arch = "aarch64", target_os = "macos"))]
-use crate::va_list::VaList;
+use bitflags::bitflags;
+use std::os::raw::{c_char, c_int, c_uint, c_void};
 
 // Clock.
 extern "C" {
