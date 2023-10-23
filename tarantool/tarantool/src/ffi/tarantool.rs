@@ -1,12 +1,12 @@
 #![allow(non_camel_case_types)]
-/// Module provides FFI bindings for the following constants,
-/// types and functios from Tarantool module C API:
-/// 1. Clock.
-/// 2. COIO.
-/// 3. Fibers.
-/// 4. Latches.
-/// 5. Log.
-/// 6. Box - errors, sessions, sequences, transactions, indexes, spaces, tuples.
+//! Module provides FFI bindings for the following constants,
+//! types and functios from Tarantool module C API:
+//! 1. Clock.
+//! 2. COIO.
+//! 3. Fibers.
+//! 4. Latches.
+//! 5. Log.
+//! 6. Box - errors, sessions, sequences, transactions, indexes, spaces, tuples.
 use std::os::raw::{c_char, c_int, c_uint, c_void};
 
 use bitflags::bitflags;
