@@ -7,6 +7,7 @@ use crate::set_error;
 use crate::space;
 use crate::space::{Metadata, SpaceCreateOptions};
 use crate::space::{Space, SpaceId, SpaceType, SystemSpace};
+use crate::transaction;
 use crate::tuple::Tuple;
 use crate::unwrap_or;
 use crate::util::Value;
@@ -19,6 +20,12 @@ use std::collections::BTreeMap;
 /// - `opts` - see SpaceCreateOptions struct.
 ///
 /// Returns a new space.
+///
+/// **NOTE:** This function will initiate a transaction if there's isn't an
+/// active one, and if there is the active transaction may be aborted in case
+/// of an error. This shouldn't be a problem if you always consider this
+/// function returning an error to be worthy of a transcation roll back,
+/// which you should.
 pub fn create_space(name: &str, opts: &SpaceCreateOptions) -> Result<Space, Error> {
     // Check if space already exists.
     if let Some(space) = Space::find(name) {
@@ -83,16 +90,46 @@ pub fn create_space(name: &str, opts: &SpaceCreateOptions) -> Result<Space, Erro
         })
         .collect();
 
-    let sys_space: Space = SystemSpace::Space.into();
-    sys_space.insert(&Metadata {
-        id,
-        user_id,
-        name: name.into(),
-        engine: opts.engine,
-        field_count: opts.field_count,
-        flags,
-        format,
-    })?;
+    let nested_transaction = transaction::is_in_transaction();
+    if !nested_transaction {
+        transaction::begin()?;
+    }
+
+    let res = (|| -> Result<_, Error> {
+        let sys_space = SystemSpace::Space.as_space();
+        sys_space.insert(&Metadata {
+            id,
+            user_id,
+            name: name.into(),
+            engine: opts.engine,
+            field_count: opts.field_count,
+            flags,
+            format,
+        })?;
+
+        // Update max_id for backwards compatibility.
+        if opts.space_type != SpaceType::Temporary {
+            let sys_schema = SystemSpace::Schema.as_space();
+            sys_schema.replace(&("max_id", id))?;
+        }
+
+        Ok(())
+    })();
+
+    if let Err(e) = res {
+        // If we were already in the transaction before calling this function,
+        // the user can choose to ignore the result and commit the transaction
+        // anyway. This most likely would be a logic error, because we would've
+        // already rolled back any changes made by the caller and box_txn_commit
+        // would silently return ok, but unfortunately there's nothing we can do
+        // about it.
+        transaction::rollback()?;
+        return Err(e);
+    }
+
+    if !nested_transaction {
+        transaction::commit()?;
+    }
 
     // Safety: this is safe because inserting into _space didn't fail, so the
     // space has been created.
@@ -174,12 +211,6 @@ fn generate_space_id(is_temporary: bool) -> Result<SpaceId, Error> {
             set_error!(TarantoolErrorCode::CreateSpace, "space id limit is reached");
             return Err(TarantoolError::last().into());
         }
-    }
-
-    // Update max_id for backwards compatibility.
-    if !is_temporary {
-        let sys_schema = SystemSpace::Schema.as_space();
-        sys_schema.replace(&("max_id", space_id))?;
     }
 
     Ok(space_id)

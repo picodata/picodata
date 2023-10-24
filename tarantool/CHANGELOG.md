@@ -18,6 +18,11 @@
   This has been changed and the conflicts are now less likely to occur.
 - Use after free when catching a panic after a drop of a non-joined join handle.
   Memory is now leaked instead.
+- `schema::space::create_space`, `Space::create` & `space::Builder::create` will
+  no longer yield twice. After recent changes to space id generation we have
+  introduced some race conditions when spaces are created concurrently in
+  separate fibers. Under heavy load this could result in attempts to create
+  spaces with repeating ids. This is now fixed.
 
 ### Deprecated
 

@@ -486,6 +486,12 @@ impl Space {
     /// - `opts` - see SpaceCreateOptions struct.
     ///
     /// Returns a new space.
+    ///
+    /// **NOTE:** This function will initiate a transaction if there's isn't an
+    /// active one, and if there is the active transaction may be aborted in case
+    /// of an error. This shouldn't be a problem if you always consider this
+    /// function returning an error to be worthy of a transcation roll back,
+    /// which you should.
     #[inline(always)]
     pub fn create(name: &str, opts: &SpaceCreateOptions) -> Result<Space, Error> {
         crate::schema::space::create_space(name, opts)
@@ -1035,6 +1041,13 @@ impl<'a> Builder<'a> {
         self
     }
 
+    /// Create a space with the current configuration.
+    ///
+    /// **NOTE:** This function will initiate a transaction if there's isn't an
+    /// active one, and if there is the active transaction may be aborted in case
+    /// of an error. This shouldn't be a problem if you always consider this
+    /// function returning an error to be worthy of a transcation roll back,
+    /// which you should.
     #[inline(always)]
     pub fn create(self) -> crate::Result<Space> {
         crate::schema::space::create_space(self.name, &self.opts)

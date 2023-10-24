@@ -1047,6 +1047,7 @@ pub fn fully_temporary_space() {
         .space_type(SpaceType::Temporary)
         .create()
         .unwrap();
+    assert!(dbg!(space_1.id()) > 0x3fff_ffff);
 
     let space_2 = Space::builder("t2")
         .space_type(SpaceType::Temporary)
