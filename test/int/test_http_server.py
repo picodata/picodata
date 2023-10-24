@@ -56,7 +56,11 @@ def test_webui(cluster_with_webui: Cluster):
                     }
                 ],
                 "instanceCount": 1,
-                "capacity": 100,
+                "capacityUsage": 100,
+                "memory": {
+                    "usable": 33554432,
+                    "used": 33554432,
+                },
                 "uuid": instance.replicaset_uuid(),
                 "id": "r1",
             }

@@ -121,9 +121,13 @@ local function list_replicasets()
                     version = VERSION_PLACEHOLDER,
                     grade = is_leader and instance.current_grade[1],
                     -- frontend expects number
-                    capacity =
+                    capacityUsage =
                         is_leader
                         and instance_memory_info.quota_used / instance_memory_info.quota_size * 100,
+                    memory = is_leader and {
+                        used = instance_memory_info.quota_used,
+                        usable = instance_memory_info.quota_size,
+                    },
                 }
             else
                 local replicaset = acc[instance.replicaset_uuid]
