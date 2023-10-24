@@ -194,6 +194,7 @@ fn start_webui() {
             end
             if filename == 'index.html' then
                 pico.httpd:route({path = '/', method = 'GET'}, handler);
+                pico.httpd:route({path = '/*path', method = 'GET'}, handler);
             end
             pico.httpd:route({path = '/' .. filename, method = 'GET'}, handler);
         end",
