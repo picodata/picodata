@@ -28,6 +28,7 @@ use rmp::encode::ValueWriteError;
 
 use crate::ffi::tarantool as ffi;
 use crate::tlua::LuaError;
+use crate::transaction::TransactionError;
 
 /// A specialized [`Result`] type for the crate
 pub type Result<T> = std::result::Result<T, Error>;
@@ -201,6 +202,25 @@ impl Display for TarantoolError {
 impl From<TarantoolError> for Error {
     fn from(error: TarantoolError) -> Self {
         Error::Tarantool(error)
+    }
+}
+
+impl<E> From<TransactionError<E>> for Error
+where
+    Error: From<E>,
+{
+    #[inline]
+    fn from(e: TransactionError<E>) -> Self {
+        match e {
+            TransactionError::FailedToCommit(e) => e.into(),
+            TransactionError::FailedToRollback(e) => e.into(),
+            TransactionError::RolledBack(e) => e.into(),
+            TransactionError::AlreadyStarted => crate::set_and_get_error!(
+                TarantoolErrorCode::ActiveTransaction,
+                "transaction has already been started"
+            )
+            .into(),
+        }
     }
 }
 

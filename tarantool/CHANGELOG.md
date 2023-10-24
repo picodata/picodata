@@ -3,6 +3,11 @@
 # [?.?.?] Unreleased
 
 ### Added
+- `impl<E: Into<Error>> From<TransactionError<E>> for Error`.
+- `transaction::is_in_transaction`, `transaction::begin`, `transaction::commit`,
+  `transaction::rollback` shallow wrappers around corresponding ffi functions.
+  These are useful for specific non-trivial cases, but for most users
+  `transaction::transcation` is suitable.
 
 ### Changed
 

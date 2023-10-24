@@ -81,3 +81,54 @@ where
     }
     result.map_err(TransactionError::RolledBack)
 }
+
+/// Returns `true` if there's an active transaction.
+#[inline(always)]
+pub fn is_in_transaction() -> bool {
+    unsafe { ffi::box_txn() }
+}
+
+/// Begin a transaction in the current fiber.
+///
+/// One fiber can have at most one active transaction.
+///
+/// Returns an error if there's already an active transcation.
+/// May return an error in other cases.
+///
+/// **NOTE:** it is the caller's responsibility to call [`commit`] or
+/// [`rollback`]. Consider using [`transaction`] instead.
+#[inline(always)]
+pub fn begin() -> Result<(), TarantoolError> {
+    if unsafe { ffi::box_txn_begin() } < 0 {
+        return Err(TarantoolError::last());
+    }
+    Ok(())
+}
+
+/// Commit the active transaction.
+///
+/// Returns `Ok(())` if there is no active transaction.
+///
+/// Returns an error in case of IO failure.
+/// May return an error in other cases.
+#[inline(always)]
+pub fn commit() -> Result<(), TarantoolError> {
+    if unsafe { ffi::box_txn_commit() } < 0 {
+        return Err(TarantoolError::last());
+    }
+    Ok(())
+}
+
+/// Rollback the active transaction.
+///
+/// Returns `Ok(())` if there is no active transaction.
+///
+/// Returns an error if called from a nested statement, e.g. when called via a trigger.
+/// May return an error in other cases.
+#[inline(always)]
+pub fn rollback() -> Result<(), TarantoolError> {
+    if unsafe { ffi::box_txn_rollback() } < 0 {
+        return Err(TarantoolError::last());
+    }
+    Ok(())
+}
