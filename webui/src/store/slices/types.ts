@@ -12,7 +12,11 @@ export interface ReplicasetType {
   instances: InstanceType[];
   version: string;
   grade: string;
-  capacity: number;
+  capacityUsage: number;
+  memory: {
+    usable: number;
+    used: number;
+  };
 }
 
 export interface ClusterInfoType {

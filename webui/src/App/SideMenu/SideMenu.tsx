@@ -15,7 +15,7 @@ export const SideMenu = () => {
   const [isOpen, setIsOpen] = useLsState({
     key: "sideMenuOpenState",
     schema: z.boolean(),
-    defaultValue: true,
+    defaultValue: false,
   });
 
   const containerRef = useRef<HTMLDivElement>(null);

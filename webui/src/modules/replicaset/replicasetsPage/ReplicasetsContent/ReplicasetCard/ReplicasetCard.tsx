@@ -16,7 +16,11 @@ export type TReplicaset = {
   instances: ClientInstanceType[];
   version: string;
   grade: string;
-  capacity: number;
+  capacityUsage: number;
+  memory: {
+    usable: number;
+    used: number;
+  };
 };
 export interface ReplicasetCardProps {
   replicaset: TReplicaset;
@@ -45,9 +49,9 @@ export const ReplicasetCard: FC<ReplicasetCardProps> = React.memo(
           <div className={cn(styles.infoColumn, styles.capacityColumn)}>
             <div className={styles.label}>Capacity</div>
             <CapacityProgress
-              percent={replicaset.capacity}
-              currentValue={1200000}
-              limit={1200000}
+              percent={replicaset.capacityUsage}
+              currentValue={replicaset.memory.used}
+              limit={replicaset.memory.usable}
               size="small"
               theme="secondary"
               progressLineWidth={190}
