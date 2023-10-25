@@ -45,7 +45,7 @@ theme:
 
 
 extra:
-    homepage: https://picodata.io/
+    homepage: https://docs.picodata.io/
     analytics:
      provider: google
      property: G-6X8Z5N2CGR
