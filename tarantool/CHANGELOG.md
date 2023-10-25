@@ -23,6 +23,7 @@
   introduced some race conditions when spaces are created concurrently in
   separate fibers. Under heavy load this could result in attempts to create
   spaces with repeating ids. This is now fixed.
+- Some tests were broken on tarantool builds from master branch.
 
 ### Deprecated
 

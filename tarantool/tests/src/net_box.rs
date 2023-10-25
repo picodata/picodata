@@ -58,6 +58,10 @@ pub fn execute() {
         .insert(&(6002, "6002"))
         .unwrap();
 
+    let lua = tarantool::lua_state();
+    // Error is silently ignored on older versions, before 'compat' was introduced.
+    _ = lua.exec("require'compat'.sql_seq_scan_default = 'old'");
+
     let conn: Conn = test_user_conn();
 
     let result = conn

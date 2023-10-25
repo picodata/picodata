@@ -65,11 +65,27 @@ pub fn drop_sender() {
 }
 
 pub fn dont_drop_msg() {
+    let lua = tarantool::lua_state();
+    // On older version before module 'compat' was introduced
+    // this will return an error, which we silently ignore.
+    _ = lua.exec("require'compat'.fiber_channel_close_mode = 'old'");
+
     let (tx, rx) = fiber::Channel::new(1).into_clones();
     tx.send("don't drop this").unwrap();
     tx.close();
     // fiber_channel_close destroys all the messages, isn't that nice?
     assert_eq!(rx.recv(), None);
+
+    if lua
+        .exec("require'compat'.fiber_channel_close_mode = 'new'")
+        .is_ok()
+    {
+        let (tx, rx) = fiber::Channel::new(1).into_clones();
+        tx.send("don't drop this").unwrap();
+        tx.close();
+        // fiber_channel_close no longer destroys all the messages, hurray!
+        assert_eq!(rx.recv(), Some("don't drop this"));
+    }
 }
 
 pub fn one_v_two() {

@@ -12,7 +12,10 @@ pub fn to_tuple() {
 
 pub fn from_tuple() {
     let t: Tuple = tarantool::lua_state()
-        .eval("return box.tuple.new(require('datetime').parse('2023-11-11T10:11:12.10142+0500'))")
+        .eval(
+            "local dt = require('datetime').parse('2023-11-11T10:11:12.10142+0500')
+            return box.tuple.new(dt)",
+        )
         .unwrap();
     let (d,): (Datetime,) = t.decode().unwrap();
     assert_eq!(d.to_string(), "2023-11-11 10:11:12.10142 +05:00:00");

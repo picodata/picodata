@@ -487,6 +487,10 @@ mod tests {
 
         let client = test_client().await;
 
+        let lua = crate::lua_state();
+        // Error is silently ignored on older versions, before 'compat' was introduced.
+        _ = lua.exec("require'compat'.sql_seq_scan_default = 'old'");
+
         let result = client
             .execute(r#"SELECT * FROM "test_s1""#, &(), None)
             .timeout(Duration::from_secs(3))
@@ -633,7 +637,11 @@ mod tests {
         // maybe the check should be removed.
         assert!(dbg!(t0.elapsed()) < std::time::Duration::from_secs(10));
 
-        let ((len,),): ((u32,),) = t.decode().unwrap();
-        assert_eq!(len, N + 17);
+        if let Ok((len,)) = t.decode::<(u32,)>() {
+            assert_eq!(len, N + 17);
+        } else {
+            let ((len,),): ((u32,),) = t.decode().unwrap();
+            assert_eq!(len, N + 17);
+        }
     }
 }
