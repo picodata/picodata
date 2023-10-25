@@ -10,6 +10,8 @@
   `transaction::transcation` is suitable.
 - `space::space_id_temporary_min` function for getting minimum space id in the
   fully temporary space id range.
+- `msgpack::encode` module which contains custom `Encode`, `Decode` traits
+  for serialization to/from msgpack without using serde.
 
 ### Changed
 

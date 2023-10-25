@@ -1,8 +1,11 @@
-use super::tuple::{Decode, ToTupleBuffer};
+use super::tuple::ToTupleBuffer;
 use crate::unwrap_ok_or;
 use crate::Result;
 use std::io::Cursor;
 use std::io::{Read, Seek, SeekFrom};
+
+pub mod encode;
+pub use encode::*;
 
 macro_rules! read_be {
     ($r:expr, $ty:ty) => {{
@@ -331,7 +334,7 @@ impl<'a> ValueIter<'a> {
     #[inline(always)]
     pub fn decode_next<T>(&mut self) -> Option<Result<T>>
     where
-        T: Decode<'a>,
+        T: crate::tuple::Decode<'a>,
     {
         let data = self.next_raw()?;
         match data {
@@ -548,6 +551,8 @@ where
     T: for<'de> serde::Deserialize<'de>,
 {
     fn lua_read_at_position(lua: L, index: std::num::NonZeroI32) -> tlua::ReadResult<Self, L> {
+        use crate::tuple::Decode;
+
         use tlua::AsLua;
         let res = (&lua).read_at_nz(index);
         let object: tlua::Object<_> = unwrap_ok_or!(res,
