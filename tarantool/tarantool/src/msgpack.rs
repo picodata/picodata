@@ -6,6 +6,7 @@ use std::io::{Read, Seek, SeekFrom};
 
 pub mod encode;
 pub use encode::*;
+pub use rmp;
 
 macro_rules! read_be {
     ($r:expr, $ty:ty) => {{

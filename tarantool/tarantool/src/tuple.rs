@@ -27,8 +27,6 @@ use crate::index;
 use crate::tlua;
 use crate::util::NumOrStr;
 
-pub use rmp;
-
 /// Tuple
 pub struct Tuple {
     ptr: NonNull<ffi::BoxTuple>,

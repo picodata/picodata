@@ -38,6 +38,7 @@
 - Removed deprecated `FunctionArgs` method `as_struct`
 - enums `TarantoolErrorCode`, `IteratorType`, `SayLevel` & `SystemSpace` no
   longer implement trait `ToPrimitive`, just use `as i32` instead.
+- `rmp` library reexport is moved from `tuple` module to `msgpack` module.
 
 ### Added (picodata)
 - struct `read_view::ReadView` for opening read views on selected spaces.

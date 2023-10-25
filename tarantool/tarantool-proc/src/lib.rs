@@ -65,7 +65,7 @@ mod msgpack {
                 // to overwrite external structure encoding behavior
                 quote_spanned! {f.span()=>
                     if as_map {
-                        #tarantool_crate::tuple::rmp::encode::write_str(w,
+                        #tarantool_crate::msgpack::rmp::encode::write_str(w,
                             stringify!(#name).trim_start_matches("r#"))?;
                     }
                     #tarantool_crate::msgpack::Encode::encode(#s #name, w, EncodeStyle::Default)?;
@@ -109,9 +109,9 @@ mod msgpack {
                             EncodeStyle::ForceAsArray => false,
                         };
                         if as_map {
-                            #tarantool_crate::tuple::rmp::encode::write_map_len(w, #field_count)?;
+                            #tarantool_crate::msgpack::rmp::encode::write_map_len(w, #field_count)?;
                         } else {
-                            #tarantool_crate::tuple::rmp::encode::write_array_len(w, #field_count)?;
+                            #tarantool_crate::msgpack::rmp::encode::write_array_len(w, #field_count)?;
                         }
                         #fields
                     }
@@ -126,7 +126,7 @@ mod msgpack {
                     let field_count = fields.unnamed.len() as u32;
                     let fields = encode_unnamed_fields(fields, tarantool_crate);
                     quote! {
-                        #tarantool_crate::tuple::rmp::encode::write_array_len(w, #field_count)?;
+                        #tarantool_crate::msgpack::rmp::encode::write_array_len(w, #field_count)?;
                         #fields
                     }
                 }
@@ -153,8 +153,8 @@ mod msgpack {
                             // TODO: allow `#[encode(as_map)]` for struct variants
                             quote! {
                                  Self::#variant_name { #(#field_names),*} => {
-                                    #tarantool_crate::tuple::rmp::encode::write_str(w, stringify!(#variant_name).trim_start_matches("r#"))?;
-                                    #tarantool_crate::tuple::rmp::encode::write_array_len(w, #field_count)?;
+                                    #tarantool_crate::msgpack::rmp::encode::write_str(w, stringify!(#variant_name).trim_start_matches("r#"))?;
+                                    #tarantool_crate::msgpack::rmp::encode::write_array_len(w, #field_count)?;
                                     let as_map = false;
                                     #fields
                                 }
@@ -172,9 +172,9 @@ mod msgpack {
                                 .collect();
                             quote! {
                                 Self::#variant_name ( #(#field_names),* ) => {
-                                    #tarantool_crate::tuple::rmp::encode::write_str(w,
+                                    #tarantool_crate::msgpack::rmp::encode::write_str(w,
                                         stringify!(#variant_name).trim_start_matches("r#"))?;
-                                    #tarantool_crate::tuple::rmp::encode::write_array_len(w, #field_count)?;
+                                    #tarantool_crate::msgpack::rmp::encode::write_array_len(w, #field_count)?;
                                     #fields
                                 }
                            }
@@ -183,7 +183,7 @@ mod msgpack {
                             let variant_name = &variant.ident;
                             quote! {
                                 Self::#variant_name => {
-                                    #tarantool_crate::tuple::rmp::encode::write_str(w,
+                                    #tarantool_crate::msgpack::rmp::encode::write_str(w,
                                         stringify!(#variant_name).trim_start_matches("r#"))?;
                                     #tarantool_crate::msgpack::Encode::encode(&(), w, EncodeStyle::Default)?;
                                 }
@@ -192,7 +192,7 @@ mod msgpack {
                     })
                     .collect();
                 quote! {
-                    #tarantool_crate::tuple::rmp::encode::write_map_len(w, 1)?;
+                    #tarantool_crate::msgpack::rmp::encode::write_map_len(w, 1)?;
                     match self {
                         #variants
                     }
@@ -292,10 +292,10 @@ mod msgpack {
                         };
                         // TODO: Assert map and array len with number of struct fields
                         if as_map {
-                            #tarantool_crate::tuple::rmp::decode::read_map_len(r)
+                            #tarantool_crate::msgpack::rmp::decode::read_map_len(r)
                                 .map_err(|err| #tarantool_crate::msgpack::DecodeError::new::<Self>(err))?;
                         } else {
-                            #tarantool_crate::tuple::rmp::decode::read_array_len(r)
+                            #tarantool_crate::msgpack::rmp::decode::read_array_len(r)
                                 .map_err(|err| #tarantool_crate::msgpack::DecodeError::new::<Self>(err))?;
                         }
                         #fields
@@ -310,7 +310,7 @@ mod msgpack {
                     }
                     let fields = decode_unnamed_fields(fields, tarantool_crate, None);
                     quote! {
-                        #tarantool_crate::tuple::rmp::decode::read_array_len(r)
+                        #tarantool_crate::msgpack::rmp::decode::read_array_len(r)
                             .map_err(|err| #tarantool_crate::msgpack::DecodeError::new::<Self>(err))?;
                         #fields
                     }
@@ -340,7 +340,7 @@ mod msgpack {
                             // TODO: allow `#[encode(as_map)]` for struct variants
                             quote! {
                                  stringify!(#variant_name) => {
-                                    #tarantool_crate::tuple::rmp::decode::read_array_len(r)
+                                    #tarantool_crate::msgpack::rmp::decode::read_array_len(r)
                                         .map_err(|err| #tarantool_crate::msgpack::DecodeError::new::<Self>(err))?;
                                     let as_map = false;
                                     #fields
@@ -351,7 +351,7 @@ mod msgpack {
                             let fields = decode_unnamed_fields(fields, tarantool_crate, Some(&variant.ident));
                             quote! {
                                  stringify!(#variant_name) => {
-                                    #tarantool_crate::tuple::rmp::decode::read_array_len(r)
+                                    #tarantool_crate::msgpack::rmp::decode::read_array_len(r)
                                         .map_err(|err| #tarantool_crate::msgpack::DecodeError::new::<Self>(err))?;
                                     let as_map = false;
                                     #fields
@@ -372,7 +372,7 @@ mod msgpack {
                     .collect();
                 quote! {
                     // TODO: assert map len 1
-                    #tarantool_crate::tuple::rmp::decode::read_map_len(r)
+                    #tarantool_crate::msgpack::rmp::decode::read_map_len(r)
                         .map_err(|err| #tarantool_crate::msgpack::DecodeError::new::<Self>(err))?;
                     let variant_name: String = #tarantool_crate::msgpack::Decode::decode(r, EncodeStyle::Default)
                         .map_err(|err| #tarantool_crate::msgpack::DecodeError::new::<Self>(err).with_part(format!("variant name")))?;
