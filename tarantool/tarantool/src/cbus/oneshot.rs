@@ -1,4 +1,4 @@
-use super::{LCPipe, Message};
+use super::{LCPipe, Message, UnsafeCond};
 use crate::cbus::RecvError;
 use crate::fiber::Cond;
 use std::cell::{RefCell, UnsafeCell};
@@ -12,7 +12,7 @@ struct Channel<T> {
     /// Condition variable for synchronize consumer (cord) and producer,
     /// using an [`Arc`] instead of raw pointer cause there is a situation
     /// when channel dropped before cbus endpoint receive a cond
-    cond: Arc<Cond>,
+    cond: Arc<UnsafeCond>,
     /// Atomic flag, signaled that sender already have a data for receiver
     ready: AtomicBool,
 }
@@ -27,7 +27,7 @@ impl<T> Channel<T> {
         Self {
             message: UnsafeCell::new(None),
             ready: AtomicBool::new(false),
-            cond: Arc::new(Cond::new()),
+            cond: Arc::new(UnsafeCond(Cond::new())),
         }
     }
 }
@@ -127,7 +127,9 @@ impl<T> Drop for Sender<T> {
             // sender drop, because `cond` moved in callback argument of [`cbus::Message`] and decrement
             // when message is handling
             let msg = Message::new(move || {
-                cond.signal();
+                // SAFETY: it is ok to call as_ref() here because this callback will be invoked
+                // on the thread that created the channel with this cond
+                unsafe { (*cond).as_ref().signal() };
             });
             self.pipe.borrow_mut().push_message(msg);
         }
@@ -147,7 +149,11 @@ impl<T> EndpointReceiver<T> {
             // assume that situation when [`crate::fiber::Cond::signal()`] called before
             // [`crate::fiber::Cond::wait()`] and after swap `ready` to false  is never been happen,
             // cause signal and wait both calling in tx thread (or any other cord) and there is now yields between it
-            channel.cond.wait();
+
+            // SAFETY: it is ok to call wait() here because we're on original thread that created the cond
+            unsafe {
+                (*channel.cond).as_ref().wait();
+            }
         }
         unsafe {
             channel

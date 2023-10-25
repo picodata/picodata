@@ -49,6 +49,7 @@
 ### Breaking changes (picodata)
 - Changes in the cbus LCPipe api: now `LCPipe::push_message` requires mutable self reference
 - `cbus::unbounded::Sender::send` return a `Result` type instead of nothing
+- `cbus::Message` now require a `Send` implementation on a callback function
 
 # [3.0.1] Sep 28 2023
 

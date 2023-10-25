@@ -56,6 +56,7 @@ use crate::ffi;
 use crate::ffi::tarantool::{
     cbus_endpoint_delete, cbus_endpoint_new, cbus_loop, lcpipe_delete, lcpipe_new, lcpipe_push_now,
 };
+use crate::fiber::Cond;
 use std::ffi::CString;
 use std::os::raw::c_void;
 use std::ptr;
@@ -96,7 +97,7 @@ pub struct Message<T> {
 
 impl<F> Message<F>
 where
-    F: FnOnce() + 'static,
+    F: FnOnce() + Send + 'static,
 {
     unsafe fn trampoline(msg: *mut c_void) {
         let msg = msg.cast::<Self>();
@@ -202,6 +203,27 @@ impl Drop for LCPipe {
         unsafe { lcpipe_delete(self.pipe) };
     }
 }
+
+/// This is a wrapper over a [`Cond`] for sending it between threads.
+///
+/// # Safety.
+/// `UnsafeCond` must be dereferenced and dropped only in the cord thread, dropping this structure
+/// in thread that not created an underline `Cond` it will lead to an application crash.
+struct UnsafeCond(Cond);
+
+impl UnsafeCond {
+    /// Return a reference to underline `Cond`.
+    ///
+    /// # Safety.
+    /// It is safe to use a `Cond` only in a tarantool cord threads (TX thread in most cases).
+    unsafe fn as_ref(&self) -> &Cond {
+        &self.0
+    }
+}
+
+unsafe impl Send for UnsafeCond {}
+
+unsafe impl Sync for UnsafeCond {}
 
 #[cfg(feature = "internal_test")]
 mod tests {

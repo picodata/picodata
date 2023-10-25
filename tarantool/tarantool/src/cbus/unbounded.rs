@@ -1,4 +1,4 @@
-use super::{LCPipe, Message};
+use super::{LCPipe, Message, UnsafeCond};
 use crate::cbus::RecvError;
 use crate::fiber::Cond;
 use std::cell::RefCell;
@@ -9,7 +9,7 @@ use std::time::Duration;
 /// A synchronization component between producers and a consumer.
 struct Waker {
     /// synchronize a waker, signal when waker is up to date
-    condition: Option<Arc<Cond>>,
+    condition: Option<Arc<UnsafeCond>>,
     /// indicate that waker already up to date
     woken: AtomicBool,
 }
@@ -17,15 +17,17 @@ struct Waker {
 impl Waker {
     fn new(cond: Cond) -> Self {
         Self {
-            condition: Some(Arc::new(cond)),
+            condition: Some(Arc::new(UnsafeCond(cond))),
             woken: AtomicBool::new(false),
         }
     }
 
     /// Send wakeup signal to a [`Waker::wait`] caller.
-    fn force_wakeup(&self, cond: Arc<Cond>, pipe: &mut LCPipe) {
+    fn force_wakeup(&self, cond: Arc<UnsafeCond>, pipe: &mut LCPipe) {
         let msg = Message::new(move || {
-            cond.signal();
+            // SAFETY: it is ok to call as_ref() here because this callback will be invoked
+            // on the thread that created the channel with this cond
+            unsafe { (*cond).as_ref().signal() };
         });
         pipe.push_message(msg);
     }
@@ -53,10 +55,13 @@ impl Waker {
             .compare_exchange(true, false, Ordering::AcqRel, Ordering::Acquire)
             .is_err()
         {
-            self.condition
+            let cond = self
+                .condition
                 .as_ref()
-                .expect("unreachable: condition never empty")
-                .wait_timeout(Duration::from_millis(1));
+                .expect("unreachable: condition never empty");
+
+            // SAFETY: it is ok to call wait() here because we're on original thread that created the cond
+            unsafe { (**cond).as_ref().wait_timeout(Duration::from_millis(1)) };
         }
     }
 }
