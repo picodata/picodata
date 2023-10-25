@@ -4,72 +4,76 @@
 
 ## Установка готовых пакетов {: #available-packages }
 Picodata поставляется для поддерживаемых операционных систем и
-предназначена для архитектуры x86_64. Мы поддерживаем собственные
-репозитории с готовыми пакетами для RHEL/CentOS 7-8, РЕД ОС 7.3 "Муром",
-Astra Linux 1.7 SE, Debian 11, Ubuntu 20.04, 22.04 и Alt Linux p10.
-Внутри пакетов находится статически слинкованная версия исполняемого
-файла `picodata`. Более подробная информация об установке приведена на
-сайте
+предназначена для архитектуры x86_64 (в случае с macOS также
+поддерживается Apple Silicon). Для Linux мы поддерживаем собственные
+репозитории с готовыми пакетами для RHEL/CentOS 7-8 И Rocky Linux 8, РЕД
+ОС 7.3 "Муром", Astra Linux 1.7 SE, Debian 11, Ubuntu 20.04, 22.04, Alt
+Linux p10 и ROSA Chrome 2021.1. Внутри пакетов находится статически
+слинкованная версия исполняемого файла `picodata`. Более подробная
+информация об установке приведена на сайте
 [https://picodata.io/download](https://picodata.io/download/){:target="_blank"}.
 
 ## Установка из исходного кода {: #installing-from-sources }
-### Необходимые инструменты для сборки {: #prerequisites }
-- Rust и Cargo 1.71 или новее
-- Cmake 3.16 или новее
+### Необходимые инструменты {: #prerequisites }
+- [Rust и Cargo](http://www.rustup.rs){:target="_blank"} 1.71 или новее
+- cmake 3.16 или новее
 - gcc, g++
-- libstc++-static
+- libstdc++-static
 
-### Предварительные действия для CentOS 8 {: #centos-8 }
-Используйте следующие команды для установки необходимых зависимостей для
-сборки Picodata из исходного кода. Обратите внимание, что потребуется
-установить актуальные версии Rust и Cargo, используя официальные
-инструкции с сайта [rustup.rs](http://www.rustup.rs){:target="_blank"}:
+Далее приведены команды для их установки под разные ОС.
+
+#### CentOS 8 {: #centos-8 }
 ```bash
 sudo dnf config-manager --set-enabled powertools
 sudo dnf in -y gcc gcc-c++ make cmake git patch libstdc++-static
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 source "$HOME/.cargo/env"
 ```
-### Предварительные действия для Ubuntu 22.04 {: #ubuntu-22.04 }
-Используйте следующие команды для установки необходимых зависимостей для
-сборки Picodata из исходного кода. Обратите внимание, что Ubuntu 22.04
-предоставляет актуальные версии Rust и Cargo в стандартном репозитории,
-поэтому для их установки следует использовать `apt-get`:
+#### Ubuntu 22.04 {: #ubuntu-22.04 }
 ```bash
-sudo apt-get install build-essential cargo git cmake -y
+sudo apt-get install build-essential git cmake -y
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+source "$HOME/.cargo/env
 ```
 
-### Предварительные действия для Alt Server p10 {: #alt-server-p10}
-Используйте следующие команды для установки необходимых зависимостей для
-сборки Picodata из исходного кода. Обратите внимание, что потребуется
-установить актуальные версии Rust и Cargo, используя официальные
-инструкции с сайта [rustup.rs](http://www.rustup.rs){:target="_blank"}:
+#### Alt Server p10 {: #alt-server-p10}
 ```bash
 su -
 apt-get install gcc gcc-c++ cmake git patch libstdc++10-devel-static libgomp10-devel-static -y && exit
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 source "$HOME/.cargo/env"
 ```
+#### macOS {: #macos }
+Сборка под macOS почти не отличается от таковой в Linux. Потребуется
+macOS 10.15 Catalina, либо более новая версия (11+). Для начала нужно
+убедиться, что в системе имеется пакетный менеджер
+[Brew](https://brew.sh){:target="_blank"}:
 
-### Получение исходного когда и сборка {: #building-from-sources }
+```bash
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+```
+
+Далее потребуется установить актуальные версии [Rust и Cargo](https://rustup.rs){:target="_blank"}:
+
+```bash
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+```
+
+### Получение исходного кода {: #getting-sources }
 ```bash
 git clone https://git.picodata.io/picodata/picodata/picodata.git
 cd picodata
 git submodule update --init --recursive
 ```
-Сборка проекта:
-```bash
-cargo build
-```
 
-Таким образом будет собрана debug-версия. Если вам нужна релизная
-версия, используйте следующую команду при сборке:
+### Сборка {: #building }
+Введите следующую команду:
 
 ```bash
 cargo build --release
 ```
-Бинарные файлы приложения Picodata появятся в директории `target/debug`
-или `target/release`.
+
+Исполняемый файл `picodata` появится в директории `target/release`.
 
 ### Проверка установки {: #post-install-check }
 Когда программное обеспечение Picodata установлено, то можно проверить
