@@ -112,7 +112,7 @@ pub enum EncodeStyle {
 /// ```
 // TODO: Use this trait instead of `tuple::Decode`, replace derive `Deserialize` with derive `Decode`
 pub trait Decode: Sized {
-    fn decode(r: &mut impl Read, context: &Context) -> StdResult<Self, DecodeError>;
+    fn decode(r: &mut &[u8], context: &Context) -> StdResult<Self, DecodeError>;
 }
 
 // TODO: Provide a similar error type for encode
@@ -156,7 +156,7 @@ impl DecodeError {
 
 impl Decode for () {
     #[inline(always)]
-    fn decode(r: &mut impl Read, _context: &Context) -> StdResult<Self, DecodeError> {
+    fn decode(r: &mut &[u8], _context: &Context) -> StdResult<Self, DecodeError> {
         rmp::decode::read_nil(r).map_err(DecodeError::new::<Self>)?;
         Ok(())
     }
@@ -167,7 +167,7 @@ where
     T: Decode,
 {
     #[inline]
-    fn decode(r: &mut impl Read, _context: &Context) -> StdResult<Self, DecodeError> {
+    fn decode(r: &mut &[u8], _context: &Context) -> StdResult<Self, DecodeError> {
         let n = rmp::decode::read_array_len(r).map_err(DecodeError::new::<Self>)? as usize;
         let mut res = Vec::with_capacity(n);
         for i in 0..n {
@@ -188,7 +188,7 @@ where
     // Clippy doesn't notice the type difference
     #[allow(clippy::redundant_clone)]
     #[inline(always)]
-    fn decode(r: &mut impl Read, _context: &Context) -> StdResult<Self, DecodeError> {
+    fn decode(r: &mut &[u8], _context: &Context) -> StdResult<Self, DecodeError> {
         Ok(Cow::Owned(
             <T as Decode>::decode(r, &Default::default())
                 .map_err(DecodeError::new::<Self>)?
@@ -199,7 +199,7 @@ where
 
 impl Decode for String {
     #[inline]
-    fn decode(r: &mut impl Read, _context: &Context) -> StdResult<Self, DecodeError> {
+    fn decode(r: &mut &[u8], _context: &Context) -> StdResult<Self, DecodeError> {
         let n = rmp::decode::read_str_len(r).map_err(DecodeError::new::<Self>)? as usize;
         let mut buf = vec![0; n];
         r.read_exact(&mut buf).map_err(DecodeError::new::<Self>)?;
@@ -213,7 +213,7 @@ where
     V: Decode,
 {
     #[inline]
-    fn decode(r: &mut impl Read, _context: &Context) -> StdResult<Self, DecodeError> {
+    fn decode(r: &mut &[u8], _context: &Context) -> StdResult<Self, DecodeError> {
         let n = rmp::decode::read_map_len(r).map_err(DecodeError::new::<Self>)?;
         let mut res = BTreeMap::new();
         for i in 0..n {
@@ -229,7 +229,7 @@ where
 
 impl Decode for char {
     #[inline(always)]
-    fn decode(r: &mut impl Read, _context: &Context) -> StdResult<Self, DecodeError> {
+    fn decode(r: &mut &[u8], _context: &Context) -> StdResult<Self, DecodeError> {
         let s = <String as Decode>::decode(r, &Default::default())?;
         if s.len() != 1 {
             Err(DecodeError::new::<char>(format!(
@@ -249,7 +249,7 @@ macro_rules! impl_simple_decode {
         $(
             impl Decode for $t{
                 #[inline(always)]
-                fn decode(r: &mut impl Read, _context: &Context) -> StdResult<Self, DecodeError> {
+                fn decode(r: &mut &[u8], _context: &Context) -> StdResult<Self, DecodeError> {
                     let value = rmp::decode::$f(r)
                         .map_err(DecodeError::new::<Self>)?;
                     Ok(value)
