@@ -286,8 +286,8 @@ pico.sql([[select "name","year" from "characters" where "id" > ? and "year" > ? 
 ### **row**
 ![Column](ebnf/row.svg)
 
-### **column**
-![Column](ebnf/column.svg)
+### **alias**
+![Alias](ebnf/alias.svg)
 
 ### **expression**
 ![Expression](ebnf/expression.svg)

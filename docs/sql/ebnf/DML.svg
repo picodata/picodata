@@ -44,7 +44,7 @@
      style="fill:#330000;stroke:#330000"
      d="M 17,17 9,13 v 8 z" />
   <a
-     xlink:href="#DELETE"
+     xlink:href="#delete"
      xlink:title="DELETE"
      id="a3">
     <path
@@ -64,7 +64,7 @@
        aria-label="DELETE" />
   </a>
   <a
-     xlink:href="#INSERT"
+     xlink:href="#insert"
      xlink:title="INSERT"
      id="a5">
     <path
@@ -104,7 +104,7 @@
        aria-label="UPDATE" />
   </a>
   <a
-     xlink:href="#Options"
+     xlink:href="#options"
      xlink:title="Options"
      id="a9">
     <path
