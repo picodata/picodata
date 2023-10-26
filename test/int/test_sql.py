@@ -9,6 +9,22 @@ from conftest import (
 )
 
 
+# Check that sql query execution does smth.
+def sql_ok(res):
+    assert res["row_count"] == 1
+
+
+# Check that sql query execution does nothing.
+def sql_no(res):
+    assert res["row_count"] == 0
+
+
+# Check that query execution raises with given error and message pattern.
+def raises(error, pattern, func):
+    with pytest.raises(error, match=pattern):
+        func()
+
+
 def test_pico_sql(cluster: Cluster):
     cluster.deploy(instance_count=1)
     i1 = cluster.instances[0]
@@ -669,20 +685,20 @@ def test_sql_acl_password_length(cluster: Cluster):
     password_short = "pwd"
     password_long = "password"
 
-    acl = i1.sql(
-        """
+    sql_ok(
+        i1.sql(
+            """
         create user {username} with password '{password}'
         using md5 option (timeout = 3)
     """.format(
-            username=username, password=password_long
+                username=username, password=password_long
+            )
         )
     )
-    assert acl["row_count"] == 1
-    acl = i1.sql(f"drop user {username}")
-    assert acl["row_count"] == 1
+    sql_ok(i1.sql(f"drop user {username}"))
 
     with pytest.raises(ReturnError, match="password is too short"):
-        acl = i1.sql(
+        i1.sql(
             """
             create user {username} with password '{password}'
             using md5 option (timeout = 3)
@@ -691,20 +707,20 @@ def test_sql_acl_password_length(cluster: Cluster):
             )
         )
 
-    acl = i1.sql(
-        """
+    sql_ok(
+        i1.sql(
+            """
         create user {username} with password '{password}'
         using ldap option (timeout = 3)
     """.format(
-            username=username, password=password_short
+                username=username, password=password_short
+            )
         )
     )
-    assert acl["row_count"] == 1
-    acl = i1.sql(f"drop user {username}")
-    assert acl["row_count"] == 1
+    sql_ok(i1.sql(f"drop user {username}"))
 
 
-def test_sql_acl_user(cluster: Cluster):
+def test_sql_acl_users_roles(cluster: Cluster):
     cluster.deploy(instance_count=2)
     i1, i2 = cluster.instances
 
@@ -723,12 +739,11 @@ def test_sql_acl_user(cluster: Cluster):
         create user "{username}" with password '{password}'
         using md5 option (timeout = 3)
     """
+        )
     )
-    assert acl["row_count"] == 1
 
     # Dropping user that doesn't exist should return 0.
-    acl = i1.sql(f"drop user {upper_username}")
-    assert acl["row_count"] == 0
+    sql_ok(i1.sql(f"drop user {upper_username}"))
 
     # Dropping user that does exist should return 1.
     acl = i1.sql(f'drop user "{username}"')
@@ -737,55 +752,51 @@ def test_sql_acl_user(cluster: Cluster):
 
     # All the usernames below should match the same user.
     # * Upcasted username in double parentheses shouldn't change.
-    acl = i1.sql(
-        f"""
+    sql_ok(
+        i1.sql(
+            f"""
         create user "{upper_username}" password '{password}'
         using chap-sha1
     """
+        )
     )
-    assert acl["row_count"] == 1
     # * Username as is in double parentheses.
-    acl = i1.sql(f'drop user "{upper_username}"')
-    assert acl["row_count"] == 1
-
-    acl = i1.sql(
-        f"""
+    sql_ok(i1.sql(f'drop user "{upper_username}"'))
+    sql_ok(
+        i1.sql(
+            f"""
         create user "{upper_username}" password '' using ldap
     """
+        )
     )
-    assert acl["row_count"] == 1
     # * Username without parentheses should be upcasted.
-    acl = i1.sql(f"drop user {username}")
-    assert acl["row_count"] == 1
+    sql_ok(i1.sql(f"drop user {username}"))
     # * Username without parentheses should be upcasted.
-    acl = i1.sql(
-        f"""
+    sql_ok(
+        i1.sql(
+            f"""
         create user {username} with password '{password}'
         option (timeout = 3)
     """
+        )
     )
-    assert acl["row_count"] == 1
-    acl = i1.sql(f'drop user "{upper_username}"')
-    assert acl["row_count"] == 1
+    sql_ok(i1.sql(f'drop user "{upper_username}"'))
 
     # Check user creation with LDAP works well with non-empty password specification
     # (it must be ignored).
-    acl = i1.sql(
-        f"""
+    sql_ok(
+        i1.sql(
+            f"""
         create user "{upper_username}" password 'smth' using ldap
     """
+        )
     )
-    assert acl["row_count"] == 1
-    acl = i1.sql(f"drop user {username}")
-    assert acl["row_count"] == 1
+    sql_ok(i1.sql(f"drop user {username}"))
 
     # We can safely retry creating the same user.
-    acl = i1.sql(f"create user {username} with password '{password}' using md5")
-    assert acl["row_count"] == 1
-    acl = i1.sql(f"create user {username} with password '{password}' using md5")
-    assert acl["row_count"] == 0
-    acl = i1.sql(f"drop user {username}")
-    assert acl["row_count"] == 1
+    sql_ok(i1.sql(f"create user {username} with password '{password}' using md5"))
+    sql_no(i1.sql(f"create user {username} with password '{password}' using md5"))
+    sql_ok(i1.sql(f"drop user {username}"))
 
     # Zero timeout should return timeout error.
     with pytest.raises(ReturnError, match="timeout"):
@@ -827,13 +838,11 @@ def test_sql_acl_user(cluster: Cluster):
     with pytest.raises(ReturnError, match="already exists with different auth method"):
         i1.sql(f"create user {username} with password '123456789' using md5")
         i1.sql(f"create user {username} with password '987654321' using md5")
-    acl = i1.sql(f"drop user {username}")
-    assert acl["row_count"] == 1
+    sql_ok(i1.sql(f"drop user {username}"))
 
     another_password = "qwerty123"
     # Alter of unexisted user should do nothing.
-    acl = i1.sql(f"alter user \"nobody\" with password '{another_password}'")
-    assert acl["row_count"] == 0
+    sql_no(i1.sql(f"alter user \"nobody\" with password '{another_password}'"))
 
     # Check altering works.
     acl = i1.sql(f"create user {username} with password '{password}' using md5")
@@ -864,23 +873,20 @@ def test_sql_acl_user(cluster: Cluster):
     users_auth_became = i1.call("box.space._pico_user:select")[2][3]
     assert users_auth_was[0] != users_auth_became[0]
     assert users_auth_became[1] == ""
-    acl = i1.sql(f"drop user {username}")
-    assert acl["row_count"] == 1
+    sql_ok(i1.sql(f"drop user {username}"))
 
     # Attempt to create role with the name of already existed user
     # should lead to an error.
-    acl = i1.sql(f""" create user "{username}" with password '123456789' using md5 """)
-    assert acl["row_count"] == 1
+    sql_ok(i1.sql(f"create user \"{username}\" with password '123456789' using md5"))
     with pytest.raises(ReturnError, match="User with the same name already exists"):
         i1.sql(f'create role "{username}"')
+    sql_ok(i1.sql(f'drop user "{username}"'))
 
     # Dropping role that doesn't exist should return 0.
-    acl = i1.sql(f"drop role {rolename}")
-    assert acl["row_count"] == 0
+    sql_no(i1.sql(f"drop role {rolename}"))
 
     # Successive creation of role.
-    acl = i1.sql(f'create role "{rolename}"')
-    assert acl["row_count"] == 1
+    sql_ok(i1.sql(f'create role "{rolename}"'))
     # Unable to alter role.
     with pytest.raises(
         ReturnError, match=f"Role {rolename} exists. Unable to alter role."
@@ -888,8 +894,7 @@ def test_sql_acl_user(cluster: Cluster):
         i1.sql(f"alter user \"{rolename}\" with password '{password}'")
 
     # Creation of the role that already exists shouldn't do anything.
-    acl = i1.sql(f'create role "{rolename}"')
-    assert acl["row_count"] == 0
+    sql_no(i1.sql(f'create role "{rolename}"'))
 
     # Dropping role that does exist should return 1.
     acl = i1.sql(f'drop role "{rolename}"')
@@ -897,18 +902,333 @@ def test_sql_acl_user(cluster: Cluster):
     assert i1.call("box.space._pico_role:select") == default_roles
 
     # All the rolenames below should match the same role.
-    acl = i1.sql(f'create role "{upper_rolename}"')
-    assert acl["row_count"] == 1
-    acl = i1.sql(f"drop role {upper_rolename}")
-    assert acl["row_count"] == 1
-    acl = i1.sql(f'create role "{upper_rolename}"')
-    assert acl["row_count"] == 1
-    acl = i1.sql(f"drop role {rolename}")
-    assert acl["row_count"] == 1
-    acl = i1.sql(f'create role "{upper_rolename}"')
-    assert acl["row_count"] == 1
-    acl = i1.sql(f'drop role "{upper_rolename}"')
-    assert acl["row_count"] == 1
+    sql_ok(i1.sql(f'create role "{upper_rolename}"'))
+    sql_ok(i1.sql(f"drop role {upper_rolename}"))
+    sql_ok(i1.sql(f'create role "{upper_rolename}"'))
+    sql_ok(i1.sql(f"drop role {rolename}"))
+    sql_ok(i1.sql(f'create role "{upper_rolename}"'))
+    sql_ok(i1.sql(f'drop role "{upper_rolename}"'))
+
+
+# TODO: replace all Lua `i1.call`s to SQL `iq.sql`.
+# See https://git.picodata.io/picodata/picodata/sbroad/-/issues/492.
+def test_sql_acl_privileges(cluster: Cluster):
+    cluster.deploy(instance_count=2)
+    i1, i2 = cluster.instances
+
+    username = "USER"
+    another_username = "ANOTHER_USER"
+    password = "PASSWORD"
+    rolename = "ROLE"
+    another_rolename = "ANOTHER_ROLE"
+
+    # Create users.
+    sql_ok(i1.sql(f"create user {username} with password '{password}'"))
+    sql_ok(i1.sql(f"create user {another_username} with password '{password}'"))
+    # Create roles.
+    sql_ok(i1.sql(f"create role {rolename}"))
+    sql_ok(i1.sql(f"create role {another_rolename}"))
+    # Create tables.
+    table_name = "T1"
+    another_table_name = "T2"
+    sql_ok(
+        i1.sql(
+            f"""
+        create table {table_name} ("a" int not null, primary key ("a"))
+        distributed by ("a")
+    """
+        )
+    )
+    sql_ok(
+        i1.sql(
+            f"""
+        create table {another_table_name} ("a" int not null, primary key ("a"))
+        distributed by ("a")
+    """
+        )
+    )
+
+    # Grant remote functions call.
+    i1.call("pico.grant_privilege", username, "execute", "universe", None)
+
+    # =========================ERRORs======================
+    # Attempt to grant unsupported privileges.
+    raises(
+        ReturnError,
+        r"Supported privileges are: \[Read, Write, Alter, Drop\]",
+        lambda: i1.sql(f""" grant create on table {table_name} to {username} """),
+    )
+    raises(
+        ReturnError,
+        r"Supported privileges are: \[Create, Alter, Drop\]",
+        lambda: i1.sql(f""" grant read user to {username} """),
+    )
+    raises(
+        ReturnError,
+        r"Supported privileges are: \[Alter, Drop\]",
+        lambda: i1.sql(f""" grant create on user {username} to {rolename} """),
+    )
+    raises(
+        ReturnError,
+        r"Supported privileges are: \[Create, Drop\]",
+        lambda: i1.sql(f""" grant alter role to {username} """),
+    )
+    raises(
+        ReturnError,
+        r"Supported privileges are: \[Drop\]",
+        lambda: i1.sql(f""" grant create on role {rolename} to {username} """),
+    )
+
+    # Attempt to grant unexisted role.
+    raises(
+        ReturnError,
+        "There is no role with name SUPER",
+        lambda: i1.sql(f""" grant SUPER to {username} """),
+    )
+    # Attempt to grant TO unexisted role.
+    raises(
+        ReturnError,
+        "Nor user, neither role with name SUPER exists",
+        lambda: i1.sql(f""" grant {rolename} to SUPER """),
+    )
+    # Attempt to revoke unexisted role.
+    raises(
+        ReturnError,
+        "There is no role with name SUPER",
+        lambda: i1.sql(f""" revoke SUPER from {username} """),
+    )
+    # Attempt to revoke privilege that hasn't been granted yet do noting.
+    sql_no(i1.sql(f""" revoke read on table {table_name} from {username} """))
+    # TODO: Attempt to grant role that doesn't visible for user.
+    # TODO: Attempt to revoke role that doesn't visible for user.
+    # TODO: Attempt to grant TO a user that doesn't visible for user.
+    # TODO: Attempt to grant TO a role that doesn't visible for user.
+    # TODO: Attempt to revoke FROM a user that doesn't visible for user.
+    # TODO: Attempt to revoke FROM a role that doesn't visible for user.
+
+    # TODO: ================USERs interaction================
+    # * TODO: User creation is prohibited.
+    # * Grant CREATE to user.
+    sql_ok(i1.sql(f""" grant create user to {username} """))
+    # * Check privileges table is updated.
+    privs_rows = i1.sql(""" select * from "_pico_privilege" """)["rows"][1]
+    assert privs_rows[2] == "user"
+    assert privs_rows[3] == ""
+    assert privs_rows[4] == "create"
+    # * TODO: User creation is available.
+    # * Revoke CREATE from user.
+    sql_ok(i1.sql(f""" revoke create user from {username} """))
+    # * Check privileges table is updated.
+    privs_rows = i1.sql(""" select * from "_pico_privilege" """)["rows"]
+    assert len(privs_rows) == 1  # universe
+    # * TODO: Check that user with granted privileges can ALTER and DROP created user
+    #         as it's the owner.
+    # * TODO: Revoke automatically granted privileges.
+    # * TODO: Check ALTER and DROP are prohibited.
+    # * Grant global ALTER on users.
+    sql_ok(i1.sql(f""" grant alter user to {username} """))
+    # * Check privileges table is updated.
+    privs_rows = i1.sql(""" select * from "_pico_privilege" """)["rows"]
+    assert len(privs_rows) == 2  # universe + alter user
+    # * TODO: Check ALTER is available.
+    # * Revoke global ALTER.
+    sql_ok(i1.sql(f""" revoke alter user from {username} """))
+
+    # * TODO: Check another user can't initially interact with previously created new user.
+    # * TODO: Grant ALTER and DROP user privileges to another user.
+    # * TODO: Check user alternation is available.
+    # * TODO: Check user drop is available.
+
+    # TODO: ================ROLEs interaction================
+    # * TODO: Role creation is prohibited.
+    # * Grant CREATE to user.
+    sql_ok(i1.sql(f""" grant create role to {username} """))
+    # * Check privileges table is updated.
+    privs_rows = i1.sql(""" select * from "_pico_privilege" """)["rows"][0]
+    assert privs_rows[2] == "role"
+    assert privs_rows[3] == ""
+    assert privs_rows[4] == "create"
+    # * TODO: Role creation is available.
+    # * Revoke CREATE from user.
+    sql_ok(i1.sql(f""" revoke create role from {username} """))
+    # * Check privileges table is updated.
+    privs_rows = i1.sql(""" select * from "_pico_privilege" """)["rows"]
+    assert len(privs_rows) == 1  # universe
+    # * TODO: Check that user with granted privileges can DROP created role as it's the owner.
+    # * TODO: Revoke automatically granted privileges.
+    # * TODO: Check DROP are prohibited.
+    # * Grant global drop on role.
+    sql_ok(i1.sql(f""" grant drop role to {username} """))
+    # * Check privileges table is updated.
+    privs_rows = i1.sql(""" select * from "_pico_privilege" """)["rows"]
+    assert len(privs_rows) == 2  # universe + drop user
+    # * TODO: Check DROP is available.
+    # * Revoke global DROP.
+    sql_ok(i1.sql(f""" revoke drop role from {username} """))
+
+    # * TODO: Check another user can't initially interact with previously created new role.
+    # * TODO: Grant DROP role privileges to another user.
+    # * TODO: Check role drop is available.
+
+    # TODO: ================TABLEs interaction===============
+    # ------------------READ---------------------------------
+    # * READ is not available.
+    raises(
+        ReturnError,
+        rf"Read access to space '{table_name}' is denied for user '{username}'",
+        lambda: i1.sql(
+            f""" select * from {table_name} """, user=username, password=password
+        ),
+    )
+    # * Grant READ to user.
+    sql_ok(i1.sql(f""" grant read on table {table_name} to {username} """))
+    # * Granting already granted privilege do nothing.
+    sql_no(i1.sql(f""" grant read on table {table_name} to {username} """))
+    # * After grant READ succeeds.
+    i1.sql(f""" select * from {table_name} """, user=username, password=password)
+    # * Revoke READ.
+    sql_ok(i1.sql(f""" revoke read on table {table_name} from {username} """))
+    # * After revoke READ fails again.
+    raises(
+        ReturnError,
+        rf"Read access to space '{table_name}' is denied for user '{username}'",
+        lambda: i1.sql(
+            f""" select * from {table_name} """, user=username, password=password
+        ),
+    )
+    # ------------------WRITE---------------------------------
+    # TODO: remove
+    sql_ok(i1.sql(f""" grant read on table {table_name} to {username} """))
+    # * WRITE is not available.
+    raises(
+        ReturnError,
+        rf"Write access to space '{table_name}' is denied for user '{username}'",
+        lambda: i1.sql(
+            f""" insert into {table_name} values (1) """,
+            user=username,
+            password=password,
+        ),
+    )
+    # * Grant WRITE to user.
+    sql_ok(i1.sql(f""" grant write on table {table_name} to {username} """))
+    # * WRITE succeeds.
+    i1.sql(
+        f""" insert into {table_name} values (1) """, user=username, password=password
+    )
+    i1.sql(f""" delete from {table_name} where "a" = 1 """)
+    # * Revoke WRITE from role.
+    sql_ok(i1.sql(f""" revoke write on table {table_name} from {username} """))
+    # * WRITE fails again.
+    raises(
+        ReturnError,
+        rf"Write access to space '{table_name}' is denied for user '{username}'",
+        lambda: i1.sql(
+            f""" insert into {table_name} values (1) """,
+            user=username,
+            password=password,
+        ),
+    )
+    # TODO: remove
+    sql_ok(i1.sql(f""" revoke read on table {table_name} from {username} """))
+    # ------------------CREATE---------------------------------
+    # * TODO: Unable to create table.
+    # * Grant CREATE to user.
+    sql_ok(i1.sql(f""" grant create table to {username} """))
+    # * TODO: Creation is available.
+    # * TODO: Check user can do everything he wants on a table he created:
+    # ** READ.
+    # ** WRITE.
+    # ** CREATE index.
+    # ** ALTER index.
+    # ** DROP.
+    # * Revoke CREATE from user.
+    sql_ok(i1.sql(f""" revoke create table from {username} """))
+    # * TODO: Creation is not available again.
+    # ------------------ALTER--------------------------------
+    # * TODO: Unable to create new table index.
+    # * Grant ALTER to user.
+    sql_ok(i1.sql(f""" grant alter on table {table_name} to {username} """))
+    # * TODO: Index creation succeeds.
+    # * Revoke ALTER from user.
+    sql_ok(i1.sql(f""" revoke alter on table {table_name} from {username} """))
+    # * TODO: Attempt to remove index fails.
+    # ------------------DROP---------------------------------
+    # * TODO: Unable to drop table previously created by admin.
+    # * Grant DROP to user.
+    sql_ok(i1.sql(f""" grant drop on table {table_name} to {username} """))
+    # * TODO: Able to drop admin table.
+    # * Revoke DROP from user.
+    sql_ok(i1.sql(f""" revoke drop on table {table_name} from {username} """))
+
+    # Grant global tables READ, WRITE, ALTER, DROP.
+    sql_ok(i1.sql(f""" grant read table to {username} """))
+    sql_ok(i1.sql(f""" grant write table to {username} """))
+    sql_ok(i1.sql(f""" grant alter table to {username} """))
+    sql_ok(i1.sql(f""" grant drop table to {username} """))
+    # Check all operations available on another_table created by admin.
+    i1.sql(
+        f""" select * from {another_table_name} """, user=username, password=password
+    )
+    i1.sql(
+        f""" insert into {another_table_name} values (1) """,
+        user=username,
+        password=password,
+    )
+    i1.sql(f""" delete from {another_table_name} """, user=username, password=password)
+    i1.eval(
+        f"""
+        box.space.{another_table_name}:create_index('some', {{ parts = {{ 'a' }} }})
+    """
+    )
+    i1.sql(f""" delete from {another_table_name} """, user=username, password=password)
+    sql_ok(
+        i1.sql(
+            f""" drop table {another_table_name} """, user=username, password=password
+        )
+    )
+    # Revoke global privileges
+    sql_ok(i1.sql(f""" revoke read table from {username} """))
+    sql_ok(i1.sql(f""" revoke write table from {username} """))
+    sql_ok(i1.sql(f""" revoke alter table from {username} """))
+    sql_ok(i1.sql(f""" revoke drop table from {username} """))
+
+    # ================ROLE passing================
+    # * Check there are no privileges granted to anything initially.
+    privs_rows = i1.sql(""" select * from "_pico_privilege" """)["rows"]
+    assert len(privs_rows) == 1  # universe
+    # * Read from table is prohibited for user initially.
+    raises(
+        ReturnError,
+        rf"Read access to space '{table_name}' is denied for user '{username}'",
+        lambda: i1.sql(
+            f""" select * from {table_name} """, user=username, password=password
+        ),
+    )
+    # * Grant table READ and WRITE to role.
+    sql_ok(i1.sql(f""" grant read on table {table_name} to {rolename} """))
+    sql_ok(i1.sql(f""" grant write on table {table_name} to {rolename} """))
+    # * Grant ROLE to user.
+    sql_ok(i1.sql(f""" grant {rolename} to {username} """))
+    # * Check read and write is available for user.
+    i1.sql(f""" select * from {table_name} """, user=username, password=password)
+    i1.sql(
+        f""" insert into {table_name} values (1) """, user=username, password=password
+    )
+    i1.sql(f""" delete from {table_name} where "a" = 1 """)
+    # * Revoke privileges from role.
+    sql_ok(i1.sql(f""" revoke write on table {table_name} from {rolename} """))
+    sql_ok(i1.sql(f""" revoke read on table {table_name} from {rolename} """))
+    # * Check privilege revoked from role and user.
+    privs_rows = i1.sql(""" select * from "_pico_privilege" """)["rows"]
+    assert len(privs_rows) == 2  # universe, role for user
+    # * Check read is prohibited again.
+    raises(
+        ReturnError,
+        rf"Read access to space '{table_name}' is denied for user '{username}'",
+        lambda: i1.sql(
+            f""" select * from {table_name} """, user=username, password=password
+        ),
+    )
 
 
 def test_distributed_sql_via_set_language(cluster: Cluster):
@@ -961,96 +1281,123 @@ def test_sql_privileges(cluster: Cluster):
     cluster.deploy(instance_count=1)
     i1 = cluster.instances[0]
 
+    table_name = "t"
     # Create a test table
-    ddl = i1.sql(
-        """
-        create table "t" ("a" int not null, "b" int, primary key ("a"))
+    sql_ok(
+        i1.sql(
+            f"""
+        create table "{table_name}" ("a" int not null, "b" int, primary key ("a"))
         using memtx
         distributed by ("a")
         option (timeout = 3)
     """
+        )
     )
-    assert ddl["row_count"] == 1
+
+    username = "alice"
+    alice_pwd = "1234567890"
 
     # Create user with execute on universe privilege
-    alice_pwd = "1234567890"
-    acl = i1.sql(
-        f"""
-        create user "alice" with password '{alice_pwd}'
+    sql_ok(
+        i1.sql(
+            f"""
+        create user "{username}" with password '{alice_pwd}'
         using chap-sha1 option (timeout = 3)
-        """
+    """
+        )
     )
-    assert acl["row_count"] == 1
-    i1.eval(""" pico.grant_privilege("alice", "execute", "universe") """)
+    i1.eval(f""" pico.grant_privilege("{username}", "execute", "universe") """)
 
     # ------------------------
     # Check SQL read privilege
     # ------------------------
-    with pytest.raises(ReturnError, match="AccessDenied: Read access to space 't'"):
-        i1.sql(""" select * from "t" """, user="alice", password=alice_pwd)
-
+    raises(
+        ReturnError,
+        f"AccessDenied: Read access to space '{table_name}'",
+        lambda: i1.sql(f""" select * from "{table_name}" """, user=username, password=alice_pwd),
+    )
     # Grant read privilege
-    i1.eval(""" pico.grant_privilege("alice", "read", "table", "t") """)
-    dql = i1.sql(""" select * from "t" """, user="alice", password=alice_pwd)
+    i1.eval(f""" pico.grant_privilege("{username}", "read", "space", "{table_name}") """)
+    dql = i1.sql(f""" select * from "{table_name}" """, user=username, password=alice_pwd)
     assert dql["rows"] == []
 
     # Revoke read privilege
-    i1.eval(""" pico.revoke_privilege("alice", "read", "table", "t") """)
+    i1.eval(f""" pico.revoke_privilege("{username}", "read", "space", "{table_name}") """)
 
     # -------------------------
     # Check SQL write privilege
     # -------------------------
-    with pytest.raises(ReturnError, match="AccessDenied: Write access to space 't'"):
-        i1.sql(""" insert into "t" values (1, 2) """, user="alice", password=alice_pwd)
+    raises(
+        ReturnError,
+        f"AccessDenied: Write access to space '{table_name}'",
+        lambda: i1.sql(f""" insert into "{table_name}" values (1, 2) """, user=username, password=alice_pwd)
+    )
 
     # Grant write privilege
-    i1.eval(""" pico.grant_privilege("alice", "write", "table", "t") """)
-    dml = i1.sql(
-        """ insert into "t" values (1, 2) """, user="alice", password=alice_pwd
-    )
-    assert dml["row_count"] == 1
+    i1.eval(f""" pico.grant_privilege("{username}", "write", "space", "{table_name}") """)
+    sql_ok(i1.sql(
+        f""" insert into "{table_name}" values (1, 2) """, user=username, password=alice_pwd
+    ))
 
     # Revoke write privilege
-    i1.eval(""" pico.revoke_privilege("alice", "write", "table", "t") """)
+    i1.eval(f""" pico.revoke_privilege("{username}", "write", "space", "{table_name}") """)
 
     # -----------------------------------
     # Check SQL write and read privileges
     # -----------------------------------
-    with pytest.raises(ReturnError, match="AccessDenied: Read access to space 't'"):
-        i1.sql(
-            """ insert into "t" select "a" + 1, "b" from "t"  """,
-            user="alice",
+    raises(
+        ReturnError,
+        f"AccessDenied: Read access to space '{table_name}'",
+        lambda: i1.sql(
+            f""" insert into "{table_name}" select "a" + 1, "b" from "{table_name}"  """,
+            user=username,
             password=alice_pwd,
         )
-    with pytest.raises(ReturnError, match="AccessDenied: Read access to space 't'"):
-        i1.sql(""" update "t" set "b" = 42 """, user="alice", password=alice_pwd)
-    with pytest.raises(ReturnError, match="AccessDenied: Read access to space 't'"):
-        i1.sql(""" delete from "t" """, user="alice", password=alice_pwd)
+    )
+    raises(
+        ReturnError,
+        f"AccessDenied: Read access to space '{table_name}'",
+        lambda: i1.sql(f""" update "{table_name}" set "b" = 42 """, user=username, password=alice_pwd)
+    )
+    raises(
+        ReturnError,
+        f"AccessDenied: Read access to space '{table_name}'",
+        lambda: i1.sql(f""" delete from "{table_name}" """, user=username, password=alice_pwd)
+    )
 
     # Grant read privilege
-    i1.eval(""" pico.grant_privilege("alice", "read", "table", "t") """)
+    i1.eval(f""" pico.grant_privilege("{username}", "read", "space", "{table_name}") """)
 
-    with pytest.raises(ReturnError, match="AccessDenied: Write access to space 't'"):
-        i1.sql(
-            """ insert into "t" select "a" + 1, "b" from "t"  """,
-            user="alice",
+    raises(
+        ReturnError,
+        f"AccessDenied: Write access to space '{table_name}'",
+        lambda: i1.sql(
+            f""" insert into "{table_name}" select "a" + 1, "b" from "{table_name}"  """,
+            user=username,
             password=alice_pwd,
         )
-    with pytest.raises(ReturnError, match="AccessDenied: Write access to space 't'"):
-        i1.sql(""" update "t" set "b" = 42 """, user="alice", password=alice_pwd)
-    with pytest.raises(ReturnError, match="AccessDenied: Write access to space 't'"):
-        i1.sql(""" delete from "t" """, user="alice", password=alice_pwd)
+    )
+    raises(
+        ReturnError,
+        f"AccessDenied: Write access to space '{table_name}'",
+        lambda: i1.sql(f""" update "{table_name}" set "b" = 42 """, user=username, password=alice_pwd)
+    )
+    raises(
+        ReturnError,
+        f"AccessDenied: Write access to space '{table_name}'",
+        lambda: i1.sql(f""" delete from "{table_name}" """, user=username, password=alice_pwd)
+    )
 
     # Grant write privilege
-    i1.eval(""" pico.grant_privilege("alice", "write", "table", "t") """)
+    i1.eval(f""" pico.grant_privilege("{username}", "write", "space", "{table_name}") """)
 
     dml = i1.sql(
-        """ insert into "t" select "a" + 1, "b" from "t"  """,
-        user="alice",
+        f""" insert into "{table_name}" select "a" + 1, "b" from "{table_name}"  """,
+        user=username,
         password=alice_pwd,
     )
     assert dml["row_count"] == 1
-    dml = i1.sql(""" update "t" set "b" = 42 """, user="alice", password=alice_pwd)
+    dml = i1.sql(f""" update "{table_name}" set "b" = 42 """, user=username, password=alice_pwd)
     assert dml["row_count"] == 2
-    dml = i1.sql(""" delete from "t" """, user="alice", password=alice_pwd)
+    dml = i1.sql(f""" delete from "{table_name}" """, user=username, password=alice_pwd)
     assert dml["row_count"] == 2

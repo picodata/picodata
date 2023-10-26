@@ -5,7 +5,7 @@ use crate::traft::{self, node};
 use crate::util::effective_user_id;
 use sbroad::errors::{Entity, SbroadError};
 use sbroad::executor::result::MetadataColumn;
-use sbroad::ir::acl::Acl;
+use sbroad::ir::acl::{Acl, GrantRevokeType};
 use sbroad::ir::ddl::Ddl;
 use sbroad::ir::expression::Expression;
 use sbroad::ir::operator::Relational;
@@ -285,6 +285,14 @@ impl TryFrom<&Node> for CommandTag {
                 Acl::DropRole { .. } | Acl::DropUser { .. } => Ok(CommandTag::DropRole),
                 Acl::CreateRole { .. } | Acl::CreateUser { .. } => Ok(CommandTag::CreateRole),
                 Acl::AlterUser { .. } => Ok(CommandTag::AlterRole),
+                Acl::GrantPrivilege { grant_type, .. } => match grant_type {
+                    GrantRevokeType::RolePass { .. } => Ok(CommandTag::GrantRole),
+                    _ => Ok(CommandTag::Grant),
+                },
+                Acl::RevokePrivilege { revoke_type, .. } => match revoke_type {
+                    GrantRevokeType::RolePass { .. } => Ok(CommandTag::RevokeRole),
+                    _ => Ok(CommandTag::Revoke),
+                },
             },
             Node::Ddl(ddl) => match ddl {
                 Ddl::DropTable { .. } => Ok(CommandTag::DropTable),

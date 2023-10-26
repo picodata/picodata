@@ -76,6 +76,8 @@ with the `YY.0M.MICRO` scheme.
 
 - _Clusterwide SQL_ introduces the capability to create users.
 
+- _Clusterwide SQL_ introduces the capability to grant and revoke privileges.
+
 - New clusterwide tables now have ids higher than any of the existing ones,
   instead of taking the first available id as it was previously. If there's
   already a table with the highest possible id, then the "wholes" in the id
