@@ -13,7 +13,6 @@ use ::tarantool::transaction::transaction;
 use rpc::{join, update_instance};
 use std::convert::TryFrom;
 use std::time::Duration;
-use storage::tweak_max_space_id;
 use storage::Clusterwide;
 use storage::{ClusterwideSpace, PropertyName};
 use traft::RaftSpaceAccess;
@@ -298,7 +297,6 @@ fn init_common(args: &args::Run, cfg: &tarantool::Cfg) -> (Clusterwide, RaftSpac
     init_handlers();
     traft::event::init();
 
-    tweak_max_space_id().expect("setting max_id should never fail");
     let storage = Clusterwide::try_get(true).expect("storage initialization should never fail");
     let raft_storage =
         RaftSpaceAccess::new().expect("raft storage initialization should never fail");
