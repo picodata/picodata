@@ -8,6 +8,8 @@
   `transaction::rollback` shallow wrappers around corresponding ffi functions.
   These are useful for specific non-trivial cases, but for most users
   `transaction::transcation` is suitable.
+- `space::space_id_temporary_min` function for getting minimum space id in the
+  fully temporary space id range.
 
 ### Changed
 

@@ -84,8 +84,7 @@ pub unsafe fn has_fiber_set_ctx() -> bool {
 /// [`SpaceType::Temporary`] will not work.
 ///
 /// [`SpaceType::Temporary`]: crate::space::SpaceType::Temporary
+#[inline(always)]
 pub fn has_fully_temporary_spaces() -> bool {
-    crate::global_lua()
-        .eval::<crate::space::SpaceId>("return box.schema.SPACE_ID_TEMPORARY_MIN")
-        .is_ok()
+    crate::space::space_id_temporary_min().is_some()
 }

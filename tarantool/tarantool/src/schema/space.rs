@@ -5,6 +5,7 @@ use crate::schema::sequence as schema_seq;
 use crate::session;
 use crate::set_error;
 use crate::space;
+use crate::space::space_id_temporary_min;
 use crate::space::{Metadata, SpaceCreateOptions};
 use crate::space::{Space, SpaceId, SpaceType, SystemSpace};
 use crate::transaction;
@@ -108,9 +109,15 @@ pub fn create_space(name: &str, opts: &SpaceCreateOptions) -> Result<Space, Erro
         })?;
 
         // Update max_id for backwards compatibility.
-        if opts.space_type != SpaceType::Temporary {
+        if opts.id.is_none() && opts.space_type != SpaceType::Temporary {
             let sys_schema = SystemSpace::Schema.as_space();
-            sys_schema.replace(&("max_id", id))?;
+            if let Some(t) = sys_schema.get(&["max_id"])? {
+                if let Ok(Some(max_id)) = t.field::<SpaceId>(1) {
+                    if id > max_id {
+                        sys_schema.replace(&("max_id", id))?;
+                    }
+                }
+            }
         }
 
         Ok(())
@@ -139,23 +146,6 @@ pub fn create_space(name: &str, opts: &SpaceCreateOptions) -> Result<Space, Erro
 
 #[deprecated = "use `tarantool::space::Metadata` instead"]
 pub type SpaceMetadata<'a> = Metadata<'a>;
-
-/// Returns `None` if fully temporary spaces aren't supported in the current
-/// tarantool executable.
-fn space_id_temporary_min() -> Option<SpaceId> {
-    // Safety: this is safe because we only create space in tx thread.
-    unsafe {
-        static mut VALUE: Option<Option<SpaceId>> = None;
-        if VALUE.is_none() {
-            VALUE = Some(
-                crate::lua_state()
-                    .eval("return box.schema.SPACE_ID_TEMPORARY_MIN")
-                    .ok(),
-            )
-        }
-        VALUE.unwrap()
-    }
-}
 
 /// Implementation ported from box_generate_space_id.
 /// <https://github.com/tarantool/tarantool/blob/70e423e92fc00df2ffe385f31dae9ea8e1cc1732/src/box/box.cc#L5737>

@@ -1347,6 +1347,23 @@ macro_rules! upsert {
     }};
 }
 
+/// Returns `None` if fully temporary spaces aren't supported in the current
+/// tarantool executable.
+pub fn space_id_temporary_min() -> Option<SpaceId> {
+    static mut VALUE: Option<Option<SpaceId>> = None;
+    // SAFETY: this is safe as we only call this from tx thread.
+    unsafe {
+        if VALUE.is_none() {
+            VALUE = Some(
+                crate::lua_state()
+                    .eval("return box.schema.SPACE_ID_TEMPORARY_MIN")
+                    .ok(),
+            )
+        }
+        VALUE.unwrap()
+    }
+}
+
 #[cfg(feature = "internal_test")]
 mod test {
     use super::*;
@@ -1370,6 +1387,119 @@ mod test {
         for tuple in sys_space.select(IteratorType::All, &()).unwrap() {
             // Check space metadata is deserializable from what is actually in _space
             let _meta: Metadata = tuple.decode().unwrap();
+        }
+    }
+
+    #[crate::test(tarantool = "crate")]
+    fn dont_decrease_max_id() {
+        let sys_schema = SystemSpace::Schema.as_space();
+        let mut spaces = vec![];
+
+        //
+        // If _schema.max_id is not set, we don't care about it, because either
+        // it's the newer version of tarantool, which doesn't use it, or it's
+        // an older version, which knows what to do when _schema.max_id is unset.
+        //
+        sys_schema.delete(&["max_id"]).unwrap();
+
+        let space = Space::builder(&crate::temp_space_name!()).create().unwrap();
+        // Still no _schema.max_id
+        assert!(sys_schema.get(&["max_id"]).unwrap().is_none());
+        spaces.push(space);
+
+        //
+        // We also don't care if the user tries to break _schema.max_id, because
+        // tarantool doesn't care.
+        //
+        sys_schema
+            .put(&("max_id", "this is not a space id"))
+            .unwrap();
+
+        let space = Space::builder(&crate::temp_space_name!()).create().unwrap();
+        // We just take the next available space id.
+        assert_eq!(space.id(), spaces.last().unwrap().id() + 1);
+        // Whatever was in _schema.max_id is still there.
+        let not_max_id = sys_schema
+            .get(&["max_id"])
+            .unwrap()
+            .unwrap()
+            .field::<String>(1)
+            .unwrap()
+            .unwrap();
+        assert_eq!(not_max_id, "this is not a space id");
+        spaces.push(space);
+
+        //
+        // But if it is set, we assume it needs to be set correctly,
+        // so as not to break space creation via lua on older versions.
+        //
+        let max_id_before = 0;
+        sys_schema.put(&("max_id", max_id_before)).unwrap();
+
+        let space = Space::builder(&crate::temp_space_name!()).create().unwrap();
+        let max_id = sys_schema
+            .get(&["max_id"])
+            .unwrap()
+            .unwrap()
+            .field::<SpaceId>(1)
+            .unwrap()
+            .unwrap();
+        // We don't actually read value of _schema.max_id.
+        assert_ne!(space.id(), max_id_before + 1);
+        // But we do set it to the maximum known space id.
+        assert_eq!(space.id(), max_id);
+        spaces.push(space);
+
+        //
+        // And if it is set to a value larger than an existing space id,
+        // we don't care.
+        //
+        let max_id_before = max_id + 13;
+        sys_schema.put(&("max_id", max_id_before)).unwrap();
+
+        let space = Space::builder(&crate::temp_space_name!()).create().unwrap();
+        let max_id = sys_schema
+            .get(&["max_id"])
+            .unwrap()
+            .unwrap()
+            .field::<SpaceId>(1)
+            .unwrap()
+            .unwrap();
+        // We just take the next available space id.
+        assert_eq!(space.id(), spaces.last().unwrap().id() + 1);
+        // And we never decrease _schema.max_id.
+        assert!(space.id() < max_id);
+        assert_eq!(max_id, max_id_before);
+        spaces.push(space);
+
+        if crate::ffi::has_fully_temporary_spaces() {
+            //
+            // Also when creating a (fully-)temporary space, we don't update
+            // _schema.max_id, because firstly its id should go into a separate
+            // range, and secondly we know for sure, that the current version of
+            // tarantool doesn't care about _schema.max_id.
+            //
+            let space = Space::builder(&crate::temp_space_name!())
+                .space_type(SpaceType::Temporary)
+                .create()
+                .unwrap();
+            let max_id = sys_schema
+                .get(&["max_id"])
+                .unwrap()
+                .unwrap()
+                .field::<SpaceId>(1)
+                .unwrap()
+                .unwrap();
+            // Space has a greater id
+            assert!(space.id() > max_id);
+            // But _schema.max_id is unchanged.
+            assert_eq!(max_id, max_id_before);
+            spaces.push(space);
+        }
+
+        // Cleanup
+        for space in spaces {
+            space.drop().unwrap();
         }
     }
 }
