@@ -17,10 +17,11 @@ use std::time::Duration;
 /// experience time dilation (slow down or speed up), but it will never go
 /// backwards.
 ///
-/// Instants are opaque types that can only be compared to one another. There is
-/// no method to get "the number of seconds" from an instant. Instead, it only
-/// allows measuring the duration between two instants (or comparing two
-/// instants).
+/// Instants should generally be condsidered as opaque types that can only be compared to one another.
+/// Though there is a method to get "the number of seconds" from an instant it is implementation dependent
+/// and should be used with knowledge of how this particular `Instant` was constructed.
+/// Instead, prefer using other operations, such as measuring the duration between two instants, comparing two
+/// instants, adding and subtracting `Duration`.
 ///
 /// This struct is almost identical to [`std::time::Instant`] but provides
 /// some additional saturating methods. And it can also be constructed with
@@ -152,16 +153,40 @@ impl Instant {
         self.0.saturating_sub(earlier.0)
     }
 
+    /// Get the inner representation of an `Instant`.
+    ///
+    /// # Warning
+    /// The inner representation of an instant is implementation dependent
+    /// and should be used with knowledge of how this particular `Instant` was constructed.
+    ///
+    /// If possible prefer working with `Instant` and `Duration` directly without
+    /// getting its inner representation.
     #[inline(always)]
     pub fn as_secs(&self) -> u64 {
         self.0.as_secs()
     }
 
+    /// Get the inner representation of an `Instant`.
+    ///
+    /// # Warning
+    /// The inner representation of an instant is implementation dependent
+    /// and should be used with knowledge of how this particular `Instant` was constructed.
+    ///
+    /// If possible prefer working with `Instant` and `Duration` directly without
+    /// getting its inner representation.
     #[inline(always)]
     pub fn as_secs_f64(&self) -> f64 {
         self.0.as_secs_f64()
     }
 
+    /// Get the inner representation of an `Instant`.
+    ///
+    /// # Warning
+    /// The inner representation of an instant is implementation dependent
+    /// and should be used with knowledge of how this particular `Instant` was constructed.
+    ///
+    /// If possible prefer working with `Instant` and `Duration` directly without
+    /// getting its inner representation.
     #[inline(always)]
     pub fn as_secs_f32(&self) -> f32 {
         self.0.as_secs_f32()
