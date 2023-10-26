@@ -68,7 +68,7 @@ mod msgpack {
                         #tarantool_crate::msgpack::rmp::encode::write_str(w,
                             stringify!(#name).trim_start_matches("r#"))?;
                     }
-                    #tarantool_crate::msgpack::Encode::encode(#s #name, w, EncodeStyle::Default)?;
+                    #tarantool_crate::msgpack::Encode::encode(#s #name, w, &Default::default())?;
                 }
             })
             .collect()
@@ -85,7 +85,7 @@ mod msgpack {
             .flat_map(|(i, f)| {
                 let index = Index::from(i);
                 quote_spanned! {f.span()=>
-                    #tarantool_crate::msgpack::Encode::encode(&self.#index, w, EncodeStyle::Default)?;
+                    #tarantool_crate::msgpack::Encode::encode(&self.#index, w, &Default::default())?;
                 }
             })
             .collect()
@@ -103,7 +103,7 @@ mod msgpack {
                     let field_count = fields.named.len() as u32;
                     let fields = encode_named_fields(fields, tarantool_crate, true);
                     quote! {
-                        let as_map = match style {
+                        let as_map = match context.style {
                             EncodeStyle::Default => #as_map,
                             EncodeStyle::ForceAsMap => true,
                             EncodeStyle::ForceAsArray => false,
@@ -131,7 +131,7 @@ mod msgpack {
                     }
                 }
                 Fields::Unit => {
-                    quote!(#tarantool_crate::msgpack::Encode::encode(&(), w, EncodeStyle::Default)?;)
+                    quote!(#tarantool_crate::msgpack::Encode::encode(&(), w, &Default::default())?;)
                 }
             },
             Data::Enum(ref variants) => {
@@ -167,7 +167,7 @@ mod msgpack {
                             // TODO: use encode_unnamed_fields?
                             let fields: proc_macro2::TokenStream = field_names.clone()
                                 .flat_map(|field_name| quote! {
-                                    #tarantool_crate::msgpack::Encode::encode(#field_name, w, EncodeStyle::Default)?;
+                                    #tarantool_crate::msgpack::Encode::encode(#field_name, w, &Default::default())?;
                                 })
                                 .collect();
                             quote! {
@@ -185,7 +185,7 @@ mod msgpack {
                                 Self::#variant_name => {
                                     #tarantool_crate::msgpack::rmp::encode::write_str(w,
                                         stringify!(#variant_name).trim_start_matches("r#"))?;
-                                    #tarantool_crate::msgpack::Encode::encode(&(), w, EncodeStyle::Default)?;
+                                    #tarantool_crate::msgpack::Encode::encode(&(), w, &Default::default())?;
                                 }
                             }
                         },
@@ -217,14 +217,14 @@ mod msgpack {
                 // to overwrite external structure encoding behavior
                 (quote_spanned! {f.span()=>
                     if as_map {
-                        let field_name: String = #tarantool_crate::msgpack::Decode::decode(r, EncodeStyle::Default)
+                        let field_name: String = #tarantool_crate::msgpack::Decode::decode(r, &Default::default())
                             .map_err(|err| #tarantool_crate::msgpack::DecodeError::new::<Self>(err).with_part("field name"))?;
                         let expected = stringify!(#name).trim_start_matches("r#");
                         if field_name != expected {
                             return Err(#tarantool_crate::msgpack::DecodeError::new::<Self>(format!("expected field {}, got {}", expected, field_name)))
                         }
                     }
-                    let #var_name = #tarantool_crate::msgpack::Decode::decode(r, EncodeStyle::Default)
+                    let #var_name = #tarantool_crate::msgpack::Decode::decode(r, &Default::default())
                         .map_err(|err| #tarantool_crate::msgpack::DecodeError::new::<Self>(err).with_part(format!("field {}", stringify!(#name))))?;
                 }, var_name)
             })
@@ -256,7 +256,7 @@ mod msgpack {
                 let index = Index::from(i);
                 let var_name = quote::format_ident!("_field_{}", index);
                 (quote_spanned! {f.span()=>
-                    let #var_name = #tarantool_crate::msgpack::Decode::decode(r, EncodeStyle::Default)
+                    let #var_name = #tarantool_crate::msgpack::Decode::decode(r, &Default::default())
                         .map_err(|err| #tarantool_crate::msgpack::DecodeError::new::<Self>(err).with_part(format!("field {}", #i)))?;
                 }, var_name)
             })
@@ -285,7 +285,7 @@ mod msgpack {
                 Fields::Named(ref fields) => {
                     let fields = decode_named_fields(fields, tarantool_crate, None);
                     quote! {
-                        let as_map = match style {
+                        let as_map = match context.style {
                             EncodeStyle::Default => #as_map,
                             EncodeStyle::ForceAsMap => true,
                             EncodeStyle::ForceAsArray => false,
@@ -317,7 +317,7 @@ mod msgpack {
                 }
                 Fields::Unit => {
                     quote! {
-                        let () = #tarantool_crate::msgpack::Decode::decode(r, EncodeStyle::Default)?;
+                        let () = #tarantool_crate::msgpack::Decode::decode(r, &Default::default())?;
                         Ok(Self)
                     }
                 }
@@ -362,7 +362,7 @@ mod msgpack {
                             let variant_name = &variant.ident;
                             quote! {
                                 stringify!(#variant_name) => {
-                                    let () = #tarantool_crate::msgpack::Decode::decode(r, EncodeStyle::Default)
+                                    let () = #tarantool_crate::msgpack::Decode::decode(r, &Default::default())
                                         .map_err(|err| #tarantool_crate::msgpack::DecodeError::new::<Self>(err))?;
                                     Ok(Self::#variant_name)
                                 }
@@ -374,7 +374,7 @@ mod msgpack {
                     // TODO: assert map len 1
                     #tarantool_crate::msgpack::rmp::decode::read_map_len(r)
                         .map_err(|err| #tarantool_crate::msgpack::DecodeError::new::<Self>(err))?;
-                    let variant_name: String = #tarantool_crate::msgpack::Decode::decode(r, EncodeStyle::Default)
+                    let variant_name: String = #tarantool_crate::msgpack::Decode::decode(r, &Default::default())
                         .map_err(|err| #tarantool_crate::msgpack::DecodeError::new::<Self>(err).with_part(format!("variant name")))?;
                     match variant_name.as_str() {
                         #variants
@@ -432,7 +432,7 @@ pub fn derive_encode(input: TokenStream) -> TokenStream {
     let expanded = quote! {
         // The generated impl.
         impl #impl_generics #tarantool_crate::msgpack::Encode for #name #ty_generics #where_clause {
-            fn encode(&self, w: &mut impl ::std::io::Write, style: #tarantool_crate::msgpack::EncodeStyle) -> #tarantool_crate::Result<()> {
+            fn encode(&self, w: &mut impl ::std::io::Write, context: &#tarantool_crate::msgpack::Context) -> #tarantool_crate::Result<()> {
                 use #tarantool_crate::msgpack::EncodeStyle;
                 #encode_fields
                 Ok(())
@@ -474,7 +474,7 @@ pub fn derive_decode(input: TokenStream) -> TokenStream {
     let expanded = quote! {
         // The generated impl.
         impl #impl_generics #tarantool_crate::msgpack::Decode for #name #ty_generics #where_clause {
-            fn decode(r: &mut impl ::std::io::Read, style: #tarantool_crate::msgpack::EncodeStyle)
+            fn decode(r: &mut impl ::std::io::Read, context: &#tarantool_crate::msgpack::Context)
                 -> std::result::Result<Self, #tarantool_crate::msgpack::DecodeError>
             {
                 use #tarantool_crate::msgpack::EncodeStyle;

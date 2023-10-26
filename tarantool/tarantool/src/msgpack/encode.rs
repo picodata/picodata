@@ -23,7 +23,7 @@ pub use tarantool_proc::{Decode, Encode};
 #[inline(always)]
 pub fn encode(value: &impl Encode) -> Result<Vec<u8>> {
     let mut v = Vec::new();
-    value.encode(&mut v, EncodeStyle::Default)?;
+    value.encode(&mut v, &Default::default())?;
     Ok(v)
 }
 
@@ -32,7 +32,31 @@ pub fn encode(value: &impl Encode) -> Result<Vec<u8>> {
 /// See [`Decode`].
 #[inline(always)]
 pub fn decode<T: Decode>(mut bytes: &[u8]) -> StdResult<T, DecodeError> {
-    T::decode(&mut bytes, EncodeStyle::Default)
+    T::decode(&mut bytes, &Default::default())
+}
+
+/// Additional parameters that influence (de)serializetion through
+/// [`Encode`] and ['Decode'].
+pub struct Context {
+    /// Defines if the struct itself controls its (de)serialization
+    /// or if it is overriden.
+    ///
+    /// See [`Encode`], ['Decode'].
+    pub style: EncodeStyle,
+}
+
+impl Default for Context {
+    fn default() -> Self {
+        Self {
+            style: EncodeStyle::Default,
+        }
+    }
+}
+
+impl Context {
+    pub fn new(style: EncodeStyle) -> Self {
+        Self { style }
+    }
 }
 
 /// Defines if the struct itself controls its (de)serialization
@@ -66,11 +90,15 @@ pub enum EncodeStyle {
 /// As `MP_MAP` `foo` should be identical to `HashMap<String, usize>` with
 /// keys `"a"` and `"b"` and values `1`, `3` accordingly.
 ///
+/// `context.style` let's you override `as_map` attribute if it is defined for a struct.
+/// does not override behavior of std types. To override supply `Encode::ForceAsMap` or
+/// `EncodeStyle::ForceAsArray`. To leave the behavior up to the struct set it to `Encode::Default`.
+///
 /// It should replace `tuple::Decode` when it's ready.
 ///
 /// # Example
 /// ```
-/// use tarantool::msgpack::{Decode, EncodeStyle};
+/// use tarantool::msgpack::Decode;
 ///
 /// #[derive(Decode, Debug, PartialEq)]
 /// struct Foo {
@@ -79,12 +107,12 @@ pub enum EncodeStyle {
 /// };
 ///
 /// let buffer: Vec<u8> = vec![0x92, 0x01, 0x03];
-/// let foo = <Foo as Decode>::decode(&mut &buffer[..], EncodeStyle::Default).unwrap();
+/// let foo = <Foo as Decode>::decode(&mut &buffer[..], &Default::default()).unwrap();
 /// assert_eq!(foo, Foo {a: 1, b: 3});
 /// ```
-// TODO: Use this trait instead of `tuple::Decode`, replace derive `Deserialize` to derive `Decode`
+// TODO: Use this trait instead of `tuple::Decode`, replace derive `Deserialize` with derive `Decode`
 pub trait Decode: Sized {
-    fn decode(r: &mut impl Read, style: EncodeStyle) -> StdResult<Self, DecodeError>;
+    fn decode(r: &mut impl Read, context: &Context) -> StdResult<Self, DecodeError>;
 }
 
 // TODO: Provide a similar error type for encode
@@ -128,7 +156,7 @@ impl DecodeError {
 
 impl Decode for () {
     #[inline(always)]
-    fn decode(r: &mut impl Read, _style: EncodeStyle) -> StdResult<Self, DecodeError> {
+    fn decode(r: &mut impl Read, _context: &Context) -> StdResult<Self, DecodeError> {
         rmp::decode::read_nil(r).map_err(DecodeError::new::<Self>)?;
         Ok(())
     }
@@ -139,12 +167,12 @@ where
     T: Decode,
 {
     #[inline]
-    fn decode(r: &mut impl Read, _style: EncodeStyle) -> StdResult<Self, DecodeError> {
+    fn decode(r: &mut impl Read, _context: &Context) -> StdResult<Self, DecodeError> {
         let n = rmp::decode::read_array_len(r).map_err(DecodeError::new::<Self>)? as usize;
         let mut res = Vec::with_capacity(n);
         for i in 0..n {
             res.push(
-                T::decode(r, EncodeStyle::Default).map_err(|err| {
+                T::decode(r, &Default::default()).map_err(|err| {
                     DecodeError::new::<Self>(err).with_part(format!("element {i}"))
                 })?,
             );
@@ -160,9 +188,9 @@ where
     // Clippy doesn't notice the type difference
     #[allow(clippy::redundant_clone)]
     #[inline(always)]
-    fn decode(r: &mut impl Read, _style: EncodeStyle) -> StdResult<Self, DecodeError> {
+    fn decode(r: &mut impl Read, _context: &Context) -> StdResult<Self, DecodeError> {
         Ok(Cow::Owned(
-            <T as Decode>::decode(r, EncodeStyle::Default)
+            <T as Decode>::decode(r, &Default::default())
                 .map_err(DecodeError::new::<Self>)?
                 .to_owned(),
         ))
@@ -171,7 +199,7 @@ where
 
 impl Decode for String {
     #[inline]
-    fn decode(r: &mut impl Read, _style: EncodeStyle) -> StdResult<Self, DecodeError> {
+    fn decode(r: &mut impl Read, _context: &Context) -> StdResult<Self, DecodeError> {
         let n = rmp::decode::read_str_len(r).map_err(DecodeError::new::<Self>)? as usize;
         let mut buf = vec![0; n];
         r.read_exact(&mut buf).map_err(DecodeError::new::<Self>)?;
@@ -185,13 +213,13 @@ where
     V: Decode,
 {
     #[inline]
-    fn decode(r: &mut impl Read, _style: EncodeStyle) -> StdResult<Self, DecodeError> {
+    fn decode(r: &mut impl Read, _context: &Context) -> StdResult<Self, DecodeError> {
         let n = rmp::decode::read_map_len(r).map_err(DecodeError::new::<Self>)?;
         let mut res = BTreeMap::new();
         for i in 0..n {
-            let k = K::decode(r, EncodeStyle::Default)
+            let k = K::decode(r, &Default::default())
                 .map_err(|err| DecodeError::new::<Self>(err).with_part(format!("{i}th key")))?;
-            let v = V::decode(r, EncodeStyle::Default)
+            let v = V::decode(r, &Default::default())
                 .map_err(|err| DecodeError::new::<Self>(err).with_part(format!("{i}th value")))?;
             res.insert(k, v);
         }
@@ -201,8 +229,8 @@ where
 
 impl Decode for char {
     #[inline(always)]
-    fn decode(r: &mut impl Read, _style: EncodeStyle) -> StdResult<Self, DecodeError> {
-        let s = <String as Decode>::decode(r, EncodeStyle::Default)?;
+    fn decode(r: &mut impl Read, _context: &Context) -> StdResult<Self, DecodeError> {
+        let s = <String as Decode>::decode(r, &Default::default())?;
         if s.len() != 1 {
             Err(DecodeError::new::<char>(format!(
                 "expected string length to be 1, got {}",
@@ -221,7 +249,7 @@ macro_rules! impl_simple_decode {
         $(
             impl Decode for $t{
                 #[inline(always)]
-                fn decode(r: &mut impl Read, _style: EncodeStyle) -> StdResult<Self, DecodeError> {
+                fn decode(r: &mut impl Read, _context: &Context) -> StdResult<Self, DecodeError> {
                     let value = rmp::decode::$f(r)
                         .map_err(DecodeError::new::<Self>)?;
                     Ok(value)
@@ -263,7 +291,7 @@ impl_simple_decode! {
 /// As `MP_MAP` `foo` should be identical to `HashMap<String, usize>` with
 /// keys `"a"` and `"b"` and values `1`, `3` accordingly.
 ///
-/// `style` let's you override `as_map` attribute if it is defined for a struct.
+/// `context.style` let's you override `as_map` attribute if it is defined for a struct.
 /// does not override behavior of std types. To override supply `Encode::ForceAsMap` or
 /// `EncodeStyle::ForceAsArray`. To leave the behavior up to the struct set it to `Encode::Default`.
 ///
@@ -271,7 +299,7 @@ impl_simple_decode! {
 ///
 /// # Example
 /// ```
-/// use tarantool::msgpack::{Encode, EncodeStyle};
+/// use tarantool::msgpack::Encode;
 ///
 /// #[derive(Encode)]
 /// #[encode(as_map)]
@@ -281,16 +309,16 @@ impl_simple_decode! {
 /// };
 ///
 /// let mut buffer = vec![];
-/// Foo {a: 1, b: 3}.encode(&mut buffer, EncodeStyle::Default).unwrap();
+/// Foo {a: 1, b: 3}.encode(&mut buffer, &Default::default()).unwrap();
 /// ```
 // TODO: Use this trait instead of `tuple::Encode`, replace derive `Serialize` to derive `Encode`
 pub trait Encode {
-    fn encode(&self, w: &mut impl Write, style: EncodeStyle) -> Result<()>;
+    fn encode(&self, w: &mut impl Write, context: &Context) -> Result<()>;
 }
 
 impl Encode for () {
     #[inline(always)]
-    fn encode(&self, w: &mut impl Write, _style: EncodeStyle) -> Result<()> {
+    fn encode(&self, w: &mut impl Write, _context: &Context) -> Result<()> {
         rmp::encode::write_nil(w)?;
         Ok(())
     }
@@ -301,10 +329,10 @@ where
     T: Encode,
 {
     #[inline]
-    fn encode(&self, w: &mut impl Write, _style: EncodeStyle) -> Result<()> {
+    fn encode(&self, w: &mut impl Write, _context: &Context) -> Result<()> {
         rmp::encode::write_array_len(w, self.len() as u32)?;
         for v in self.iter() {
-            v.encode(w, EncodeStyle::Default)?;
+            v.encode(w, &Default::default())?;
         }
         Ok(())
     }
@@ -315,8 +343,8 @@ where
     T: Encode,
 {
     #[inline(always)]
-    fn encode(&self, w: &mut impl Write, _style: EncodeStyle) -> Result<()> {
-        self[..].as_ref().encode(w, EncodeStyle::Default)
+    fn encode(&self, w: &mut impl Write, _context: &Context) -> Result<()> {
+        self[..].as_ref().encode(w, &Default::default())
     }
 }
 
@@ -325,21 +353,21 @@ where
     T: Encode + ToOwned + ?Sized,
 {
     #[inline(always)]
-    fn encode(&self, w: &mut impl Write, _style: EncodeStyle) -> Result<()> {
-        self.deref().encode(w, EncodeStyle::Default)
+    fn encode(&self, w: &mut impl Write, _context: &Context) -> Result<()> {
+        self.deref().encode(w, &Default::default())
     }
 }
 
 impl Encode for String {
     #[inline(always)]
-    fn encode(&self, w: &mut impl Write, _style: EncodeStyle) -> Result<()> {
-        self.as_str().encode(w, EncodeStyle::Default)
+    fn encode(&self, w: &mut impl Write, _context: &Context) -> Result<()> {
+        self.as_str().encode(w, &Default::default())
     }
 }
 
 impl Encode for str {
     #[inline(always)]
-    fn encode(&self, w: &mut impl Write, _style: EncodeStyle) -> Result<()> {
+    fn encode(&self, w: &mut impl Write, _context: &Context) -> Result<()> {
         rmp::encode::write_str(w, self).map_err(Into::into)
     }
 }
@@ -350,11 +378,11 @@ where
     V: Encode,
 {
     #[inline]
-    fn encode(&self, w: &mut impl Write, _style: EncodeStyle) -> Result<()> {
+    fn encode(&self, w: &mut impl Write, _context: &Context) -> Result<()> {
         rmp::encode::write_map_len(w, self.len() as u32)?;
         for (k, v) in self.iter() {
-            k.encode(w, EncodeStyle::Default)?;
-            v.encode(w, EncodeStyle::Default)?;
+            k.encode(w, &Default::default())?;
+            v.encode(w, &Default::default())?;
         }
         Ok(())
     }
@@ -362,8 +390,8 @@ where
 
 impl Encode for char {
     #[inline(always)]
-    fn encode(&self, w: &mut impl Write, _style: EncodeStyle) -> Result<()> {
-        self.to_string().encode(w, EncodeStyle::Default)
+    fn encode(&self, w: &mut impl Write, _context: &Context) -> Result<()> {
+        self.to_string().encode(w, &Default::default())
     }
 }
 
@@ -372,7 +400,7 @@ macro_rules! impl_simple_encode {
         $(
             impl Encode for $t{
                 #[inline(always)]
-                fn encode(&self, w: &mut impl Write, _style: EncodeStyle) -> Result<()> {
+                fn encode(&self, w: &mut impl Write, _context: &Context) -> Result<()> {
                     rmp::encode::$f(w, *self as $conv)?;
                     Ok(())
                 }
@@ -404,10 +432,10 @@ macro_rules! _impl_array_encode {
             #[allow(clippy::zero_prefixed_literal)]
             impl<T> Encode for [T; $n] where T: Encode {
                 #[inline]
-                fn encode(&self, w: &mut impl Write, _style: EncodeStyle) -> Result<()> {
+                fn encode(&self, w: &mut impl Write, _context: &Context) -> Result<()> {
                     rmp::encode::write_array_len(w, $n)?;
                     for item in self {
-                        item.encode(w, EncodeStyle::Default)?;
+                        item.encode(w, &Default::default())?;
                     }
                     Ok(())
                 }
@@ -430,11 +458,11 @@ macro_rules! impl_tuple_encode {
             $h: Encode,
             $($t: Encode,)*
         {
-            fn encode(&self, w: &mut impl Write, _style: EncodeStyle) -> Result<()> {
+            fn encode(&self, w: &mut impl Write, _context: &Context) -> Result<()> {
                 let ($h, $($t),*) = self;
                 rmp::encode::write_array_len(w, crate::expr_count!($h $(, $t)*))?;
-                $h.encode(w, EncodeStyle::Default)?;
-                $( $t.encode(w, EncodeStyle::Default)?; )*
+                $h.encode(w, &Default::default())?;
+                $( $t.encode(w, &Default::default())?; )*
                 Ok(())
             }
         }
@@ -447,7 +475,7 @@ impl_tuple_encode! { A B C D E F G H I J K L M N O P }
 
 impl Encode for serde_json::Value {
     #[inline]
-    fn encode(&self, w: &mut impl Write, _style: EncodeStyle) -> Result<()> {
+    fn encode(&self, w: &mut impl Write, _context: &Context) -> Result<()> {
         let bytes = rmp_serde::to_vec(self)?;
         w.write_all(bytes.as_slice())?;
         Ok(())
@@ -456,7 +484,7 @@ impl Encode for serde_json::Value {
 
 impl Encode for serde_json::Map<String, serde_json::Value> {
     #[inline]
-    fn encode(&self, w: &mut impl Write, _style: EncodeStyle) -> Result<()> {
+    fn encode(&self, w: &mut impl Write, _context: &Context) -> Result<()> {
         let bytes = rmp_serde::to_vec(self)?;
         w.write_all(bytes.as_slice())?;
         Ok(())
@@ -467,7 +495,7 @@ impl Encode for serde_json::Map<String, serde_json::Value> {
 mod tests {
     use std::{collections::BTreeMap, io::Cursor};
 
-    use super::{decode, encode, Decode, Encode, EncodeStyle};
+    use super::{decode, encode, Context, Decode, Encode, EncodeStyle};
     use rmp::decode::Bytes;
 
     #[track_caller]
@@ -534,14 +562,22 @@ mod tests {
 
         // Override, encode as map
         let mut bytes = vec![];
-        test_1.encode(&mut bytes, EncodeStyle::ForceAsMap).unwrap();
+        test_1
+            .encode(&mut bytes, &Context::new(EncodeStyle::ForceAsMap))
+            .unwrap();
         assert_map(&bytes);
-        let test_1_dec: Test1 =
-            Decode::decode(&mut bytes.as_slice(), EncodeStyle::ForceAsMap).unwrap();
+        let test_1_dec: Test1 = Decode::decode(
+            &mut bytes.as_slice(),
+            &Context::new(EncodeStyle::ForceAsMap),
+        )
+        .unwrap();
         assert_eq!(test_1_dec, test_1);
 
         // Try decoding as a different struct
-        let res: Result<Test2, _> = Decode::decode(&mut bytes.as_slice(), EncodeStyle::ForceAsMap);
+        let res: Result<Test2, _> = Decode::decode(
+            &mut bytes.as_slice(),
+            &Context::new(EncodeStyle::ForceAsMap),
+        );
         assert_eq!(
             res.unwrap_err().to_string(),
             "failed decoding tarantool::msgpack::encode::tests::encode_struct::Test2: expected field not_b, got b"
@@ -577,11 +613,14 @@ mod tests {
 
         // Override, encode as array
         let mut bytes_named = vec![];
-        test.encode(&mut bytes_named, EncodeStyle::ForceAsArray)
+        test.encode(&mut bytes_named, &Context::new(EncodeStyle::ForceAsArray))
             .unwrap();
         assert_array(&bytes_named);
-        let test_dec: Test =
-            Decode::decode(&mut bytes_named.as_slice(), EncodeStyle::ForceAsArray).unwrap();
+        let test_dec: Test = Decode::decode(
+            &mut bytes_named.as_slice(),
+            &Context::new(EncodeStyle::ForceAsArray),
+        )
+        .unwrap();
         assert_eq!(test_dec, test);
     }
 
