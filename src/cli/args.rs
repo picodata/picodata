@@ -1,9 +1,11 @@
 use crate::failure_domain::FailureDomain;
 use crate::instance::InstanceId;
 use crate::replicaset::ReplicasetId;
+use crate::tier::{Tier, DEFAULT_TIER};
 use crate::util::Uppercase;
 use clap::Parser;
 use std::borrow::Cow;
+use std::collections::HashSet;
 use std::ffi::{CStr, CString};
 use std::str::FromStr;
 use tarantool::auth::AuthMethod;
@@ -107,7 +109,12 @@ pub struct Run {
     /// Log level
     log_level: LogLevel,
 
-    #[clap(long, default_value = "1", env = "PICODATA_INIT_REPLICATION_FACTOR")]
+    #[clap(
+        long,
+        default_value = "1",
+        env = "PICODATA_INIT_REPLICATION_FACTOR",
+        group = "init_cfg"
+    )]
     /// Total number of replicas (copies of data) for each replicaset in
     /// the cluster. It's only accounted upon the cluster initialization
     /// (when the first instance bootstraps), and ignored aftwerwards.
@@ -146,6 +153,16 @@ pub struct Run {
     )]
     /// Path to `some_plugin_name.so`
     pub plugins: Vec<String>,
+
+    /// Name of the tier for this instance.
+    #[clap(long = "tier", value_name = "TIER", default_value = DEFAULT_TIER, env = "PICODATA_INSTANCE_TIER")]
+    pub tier: String,
+
+    /// Filepath to configuration file in yaml format.
+    ///
+    /// For all available configuration parameters see [`InitCfg`].
+    #[clap(long = "init-cfg", value_name = "PATH", parse(try_from_str = try_parse_yaml_to_init_cfg), env = "PICODATA_INIT_CFG", group = "init_cfg")]
+    pub init_cfg: Option<InitCfg>,
 }
 
 // Copy enum because clap:ArgEnum can't be derived for the foreign SayLevel.
@@ -457,6 +474,40 @@ impl FromStr for Address {
             host: host.unwrap_or(DEFAULT_HOST).into(),
             port: port.unwrap_or(DEFAULT_PORT).into(),
         })
+    }
+}
+
+#[derive(Debug, serde::Deserialize, PartialEq, tlua::Push, Clone)]
+pub struct InitCfg {
+    pub tiers: Vec<Tier>,
+}
+
+fn try_parse_yaml_to_init_cfg(path: &str) -> Result<InitCfg, String> {
+    let content =
+        std::fs::read_to_string(path).map_err(|e| format!("can't read from {path}, error: {e}"))?;
+
+    let cfg: InitCfg = serde_yaml::from_str(&content)
+        .map_err(|e| format!("error while parsing {path}, error: {e}"))?;
+    let mut tiers_names = HashSet::new();
+    for tier in &cfg.tiers {
+        if tiers_names.contains(&tier.name) {
+            return Err(format!(
+                "found tiers with the same name - \"{}\" in config by path \"{path}\"",
+                &tier.name
+            ));
+        }
+
+        tiers_names.insert(tier.name.clone());
+    }
+
+    Ok(cfg)
+}
+
+impl Default for InitCfg {
+    fn default() -> Self {
+        InitCfg {
+            tiers: vec![Tier::default()],
+        }
     }
 }
 

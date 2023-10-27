@@ -20,6 +20,7 @@ use crate::schema::Distribution;
 use crate::schema::{IndexDef, SpaceDef};
 use crate::schema::{PrivilegeDef, RoleDef, UserDef, UserId};
 use crate::sql::pgproto::DEFAULT_MAX_PG_PORTALS;
+use crate::tier::Tier;
 use crate::tlog;
 use crate::traft;
 use crate::traft::error::Error;
@@ -333,6 +334,16 @@ define_clusterwide_spaces! {
                 #[primary]
                 primary_key: Index => "primary",
                 object_idx: Index => "object",
+            }
+        }
+        Tier = 523, "_pico_tier" => {
+            Clusterwide::tiers;
+
+            /// A struct for accessing info of all tiers in cluster.
+            pub struct Tiers {
+                space: Space,
+                #[primary]
+                index_name: Index => "name",
             }
         }
     }
@@ -1031,7 +1042,6 @@ impl From<ClusterwideSpace> for SpaceId {
 ::tarantool::define_str_enum! {
     /// An enumeration of [`ClusterwideSpace::Property`] key names.
     pub enum PropertyName {
-        ReplicationFactor = "replication_factor",
         VshardBootstrapped = "vshard_bootstrapped",
 
         /// Pending ddl operation which is to be either committed or aborted.
@@ -1154,14 +1164,6 @@ impl Properties {
     }
 
     #[inline]
-    pub fn replication_factor(&self) -> tarantool::Result<usize> {
-        let res = self
-            .get(PropertyName::ReplicationFactor)?
-            .expect("replication_factor must be set at boot");
-        Ok(res)
-    }
-
-    #[inline]
     pub fn password_min_length(&self) -> tarantool::Result<usize> {
         let res = self
             .get(PropertyName::PasswordMinLength)?
@@ -1251,10 +1253,8 @@ impl Replicasets {
     #[allow(unused)]
     #[inline]
     pub fn get(&self, replicaset_id: &str) -> tarantool::Result<Option<Replicaset>> {
-        match self.space.get(&[replicaset_id])? {
-            Some(tuple) => tuple.decode().map(Some),
-            None => Ok(None),
-        }
+        let tuple = self.space.get(&[replicaset_id])?;
+        tuple.as_ref().map(Tuple::decode).transpose()
     }
 }
 
@@ -1568,6 +1568,7 @@ define_instance_fields! {
     CurrentGrade   : grade::CurrentGrade  = ("current_grade",   FieldType::Array)
     TargetGrade    : grade::TargetGrade   = ("target_grade",    FieldType::Array)
     FailureDomain  : fd::FailureDomain    = ("failure_domain",  FieldType::Map)
+    Tier           : String               = ("tier",            FieldType::String)
 }
 
 impl tarantool::tuple::TupleIndex for InstanceField {
@@ -1880,10 +1881,8 @@ impl Spaces {
 
     #[inline]
     pub fn get(&self, id: SpaceId) -> tarantool::Result<Option<SpaceDef>> {
-        match self.space.get(&[id])? {
-            Some(tuple) => tuple.decode().map(Some),
-            None => Ok(None),
-        }
+        let tuple = self.space.get(&[id])?;
+        tuple.as_ref().map(Tuple::decode).transpose()
     }
 
     #[inline]
@@ -1913,10 +1912,8 @@ impl Spaces {
 
     #[inline]
     pub fn by_name(&self, name: &str) -> tarantool::Result<Option<SpaceDef>> {
-        match self.index_name.get(&[name])? {
-            Some(tuple) => tuple.decode().map(Some),
-            None => Ok(None),
-        }
+        let tuple = self.index_name.get(&[name])?;
+        tuple.as_ref().map(Tuple::decode).transpose()
     }
 }
 
@@ -1974,10 +1971,8 @@ impl Indexes {
 
     #[inline]
     pub fn get(&self, space_id: SpaceId, index_id: IndexId) -> tarantool::Result<Option<IndexDef>> {
-        match self.space.get(&(space_id, index_id))? {
-            Some(tuple) => tuple.decode().map(Some),
-            None => Ok(None),
-        }
+        let tuple = self.space.get(&(space_id, index_id))?;
+        tuple.as_ref().map(Tuple::decode).transpose()
     }
 
     #[inline]
@@ -2012,10 +2007,8 @@ impl Indexes {
 
     #[inline]
     pub fn by_name(&self, space_id: SpaceId, name: String) -> tarantool::Result<Option<IndexDef>> {
-        match self.index_name.get(&(space_id, name))? {
-            Some(tuple) => tuple.decode().map(Some),
-            None => Ok(None),
-        }
+        let tuple = self.index_name.get(&(space_id, name))?;
+        tuple.as_ref().map(Tuple::decode).transpose()
     }
 
     #[inline]
@@ -2271,21 +2264,13 @@ impl Users {
     #[inline]
     pub fn by_id(&self, user_id: UserId) -> tarantool::Result<Option<UserDef>> {
         let tuple = self.space.get(&[user_id])?;
-        let mut res = None;
-        if let Some(tuple) = tuple {
-            res = Some(tuple.decode()?);
-        }
-        Ok(res)
+        tuple.as_ref().map(Tuple::decode).transpose()
     }
 
     #[inline]
     pub fn by_name(&self, user_name: &str) -> tarantool::Result<Option<UserDef>> {
         let tuple = self.index_name.get(&[user_name])?;
-        let mut res = None;
-        if let Some(tuple) = tuple {
-            res = Some(tuple.decode()?);
-        }
-        Ok(res)
+        tuple.as_ref().map(Tuple::decode).transpose()
     }
 
     #[inline]
@@ -2371,21 +2356,13 @@ impl Roles {
     #[inline]
     pub fn by_id(&self, role_id: UserId) -> tarantool::Result<Option<RoleDef>> {
         let tuple = self.space.get(&[role_id])?;
-        let mut res = None;
-        if let Some(tuple) = tuple {
-            res = Some(tuple.decode()?);
-        }
-        Ok(res)
+        tuple.as_ref().map(Tuple::decode).transpose()
     }
 
     #[inline]
     pub fn by_name(&self, role_name: &str) -> tarantool::Result<Option<RoleDef>> {
         let tuple = self.index_name.get(&[role_name])?;
-        let mut res = None;
-        if let Some(tuple) = tuple {
-            res = Some(tuple.decode()?);
-        }
-        Ok(res)
+        tuple.as_ref().map(Tuple::decode).transpose()
     }
 
     #[inline]
@@ -2472,11 +2449,7 @@ impl Privileges {
         object_name: &str,
     ) -> tarantool::Result<Option<PrivilegeDef>> {
         let tuple = self.space.get(&(grantee_id, object_type, object_name))?;
-        let mut res = None;
-        if let Some(tuple) = tuple {
-            res = Some(tuple.decode()?);
-        }
-        Ok(res)
+        tuple.as_ref().map(Tuple::decode).transpose()
     }
 
     #[inline(always)]
@@ -2576,6 +2549,51 @@ impl Privileges {
 
 impl ToEntryIter for Privileges {
     type Entry = PrivilegeDef;
+
+    #[inline(always)]
+    fn index_iter(&self) -> Result<IndexIterator> {
+        Ok(self.space.select(IteratorType::All, &())?)
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Tiers
+////////////////////////////////////////////////////////////////////////////////
+impl Tiers {
+    pub fn new() -> tarantool::Result<Self> {
+        let space = Space::builder(Self::SPACE_NAME)
+            .id(Self::SPACE_ID)
+            .space_type(SpaceType::DataLocal)
+            .field(("name", FieldType::String))
+            .field(("replication_factor", FieldType::Unsigned))
+            .if_not_exists(true)
+            .create()?;
+
+        let index_name = space
+            .index_builder("name")
+            .unique(true)
+            .part("name")
+            .if_not_exists(true)
+            .create()?;
+
+        Ok(Self { space, index_name })
+    }
+
+    #[inline(always)]
+    pub fn by_name(&self, tier_name: &str) -> tarantool::Result<Option<Tier>> {
+        let tuple = self.index_name.get(&[tier_name])?;
+        tuple.as_ref().map(Tuple::decode).transpose()
+    }
+
+    #[inline]
+    pub fn put(&self, tier: &Tier) -> tarantool::Result<()> {
+        self.space.replace(tier)?;
+        Ok(())
+    }
+}
+
+impl ToEntryIter for Tiers {
+    type Entry = Tier;
 
     #[inline(always)]
     fn index_iter(&self) -> Result<IndexIterator> {
@@ -3019,6 +3037,8 @@ macro_rules! assert_err {
 }
 
 mod tests {
+    use crate::tier::DEFAULT_TIER;
+
     use super::*;
     use ::tarantool::transaction::transaction;
 
@@ -3037,13 +3057,13 @@ mod tests {
 
         for instance in vec![
             // r1
-            ("i1", "i1-uuid", 1u64, "r1", "r1-uuid", (CGV::Online, 0), (TGV::Online, 0), &faildom,),
-            ("i2", "i2-uuid", 2u64, "r1", "r1-uuid", (CGV::Online, 0), (TGV::Online, 0), &faildom,),
+            ("i1", "i1-uuid", 1u64, "r1", "r1-uuid", (CGV::Online, 0), (TGV::Online, 0), &faildom, "storage",),
+            ("i2", "i2-uuid", 2u64, "r1", "r1-uuid", (CGV::Online, 0), (TGV::Online, 0), &faildom, "storage",),
             // r2
-            ("i3", "i3-uuid", 3u64, "r2", "r2-uuid", (CGV::Online, 0), (TGV::Online, 0), &faildom,),
-            ("i4", "i4-uuid", 4u64, "r2", "r2-uuid", (CGV::Online, 0), (TGV::Online, 0), &faildom,),
+            ("i3", "i3-uuid", 3u64, "r2", "r2-uuid", (CGV::Online, 0), (TGV::Online, 0), &faildom, "storage",),
+            ("i4", "i4-uuid", 4u64, "r2", "r2-uuid", (CGV::Online, 0), (TGV::Online, 0), &faildom, "storage",),
             // r3
-            ("i5", "i5-uuid", 5u64, "r3", "r3-uuid", (CGV::Online, 0), (TGV::Online, 0), &faildom,),
+            ("i5", "i5-uuid", 5u64, "r3", "r3-uuid", (CGV::Online, 0), (TGV::Online, 0), &faildom, "storage",),
         ] {
             storage.space_by_name(ClusterwideSpace::Instance).unwrap().put(&instance).unwrap();
             let (_, _, raft_id, ..) = instance;
@@ -3060,6 +3080,7 @@ mod tests {
             storage.instances.put(&Instance {
                 raft_id: 1,
                 instance_id: "i99".into(),
+                tier: DEFAULT_TIER.into(),
                 ..Instance::default()
             }),
             format!(
@@ -3069,9 +3090,9 @@ mod tests {
                     " in unique index \"raft_id\"",
                     " in space \"_pico_instance\"",
                     " with old tuple",
-                    r#" - ["i1", "i1-uuid", 1, "r1", "r1-uuid", ["{gon}", 0], ["{tgon}", 0], {{"A": "B"}}]"#,
+                    r#" - ["i1", "i1-uuid", 1, "r1", "r1-uuid", ["{gon}", 0], ["{tgon}", 0], {{"A": "B"}}, "storage"]"#,
                     " and new tuple",
-                    r#" - ["i99", "", 1, "", "", ["{goff}", 0], ["{tgoff}", 0], {{}}]"#,
+                    r#" - ["i99", "", 1, "", "", ["{goff}", 0], ["{tgoff}", 0], {{}}, "storage"]"#,
                 ),
                 gon = CGV::Online,
                 goff = CGV::Offline,
@@ -3192,6 +3213,7 @@ mod tests {
             replicaset_uuid: "r1-uuid".into(),
             master_id: "i".into(),
             weight: crate::replicaset::weight::Info::default(),
+            tier: Default::default(),
         };
         storage.replicasets.space.insert(&r).unwrap();
 
@@ -3281,6 +3303,7 @@ mod tests {
             replicaset_uuid: "r1-uuid".into(),
             master_id: "i".into(),
             weight: crate::replicaset::weight::Info::default(),
+            tier: Default::default(),
         };
         let tuples = [&r].to_tuple_buffer().unwrap();
         data.space_dumps.push(SpaceDump {

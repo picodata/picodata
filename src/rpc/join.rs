@@ -7,8 +7,8 @@ use crate::has_grades;
 use crate::instance::grade::{CurrentGrade, TargetGrade};
 use crate::instance::{Instance, InstanceId};
 use crate::replicaset::ReplicasetId;
+use crate::storage::ClusterwideSpace;
 use crate::storage::{Clusterwide, ToEntryIter as _};
-use crate::storage::{ClusterwideSpace, PropertyName};
 use crate::traft::op::{Dml, Op};
 use crate::traft::{self, RaftId};
 use crate::traft::{error::Error, node, Address, PeerAddress, Result};
@@ -41,6 +41,7 @@ crate::define_rpc_request! {
         pub replicaset_id: Option<ReplicasetId>,
         pub advertise_address: String,
         pub failure_domain: FailureDomain,
+        pub tier: String,
     }
 
     pub struct Response {
@@ -82,6 +83,7 @@ pub fn handle_join_request_and_wait(req: Request, timeout: Duration) -> Result<R
             req.replicaset_id.as_ref(),
             &req.failure_domain,
             storage,
+            &req.tier,
         )
         .map_err(raft::Error::ConfChangeError)?;
         let peer_address = traft::PeerAddress {
@@ -95,7 +97,7 @@ pub fn handle_join_request_and_wait(req: Request, timeout: Duration) -> Result<R
         let ranges = vec![
             cas::Range::new(ClusterwideSpace::Instance),
             cas::Range::new(ClusterwideSpace::Address),
-            cas::Range::new(ClusterwideSpace::Property).eq((PropertyName::ReplicationFactor,)),
+            cas::Range::new(ClusterwideSpace::Tier),
         ];
         macro_rules! handle_result {
             ($res:expr) => {
@@ -167,6 +169,7 @@ pub fn build_instance(
     replicaset_id: Option<&ReplicasetId>,
     failure_domain: &FailureDomain,
     storage: &Clusterwide,
+    tier: &str,
 ) -> std::result::Result<Instance, String> {
     if let Some(id) = instance_id {
         let existing_instance = storage.instances.get(id);
@@ -191,9 +194,10 @@ pub fn build_instance(
     let instance_id = instance_id
         .map(Clone::clone)
         .unwrap_or_else(|| choose_instance_id(raft_id, storage));
-    let replicaset_id = replicaset_id
-        .map(Clone::clone)
-        .unwrap_or_else(|| choose_replicaset_id(failure_domain, storage));
+    let replicaset_id = match replicaset_id {
+        Some(replicaset_id) => replicaset_id.clone(),
+        None => choose_replicaset_id(failure_domain, storage, tier)?,
+    };
 
     let instance = Instance::new(
         Some(raft_id),
@@ -202,6 +206,7 @@ pub fn build_instance(
         CurrentGrade::offline(0),
         TargetGrade::offline(0),
         failure_domain.clone(),
+        tier.clone(),
     );
     Ok(instance)
 }
@@ -228,12 +233,21 @@ fn choose_instance_id(raft_id: RaftId, storage: &Clusterwide) -> InstanceId {
     }
 }
 
-/// Choose a [`ReplicasetId`] for a new instance given its `failure_domain`.
-fn choose_replicaset_id(failure_domain: &FailureDomain, storage: &Clusterwide) -> ReplicasetId {
+/// Choose a [`ReplicasetId`] for a new instance given its `failure_domain` and `tier`.
+fn choose_replicaset_id(
+    failure_domain: &FailureDomain,
+    storage: &Clusterwide,
+    tier: &str,
+) -> core::result::Result<ReplicasetId, String> {
     let replication_factor = storage
-        .properties
-        .replication_factor()
-        .expect("storage should not fail");
+        .tiers
+        .by_name(tier)
+        .expect("storage should not fail")
+        .ok_or(format!(
+            "tier \"{tier}\" for current instance should exists"
+        ))?
+        .replication_factor
+        .into();
     // `BTreeMap` is used so that we get a determenistic order of instance addition to replicasets.
     // E.g. if both "r1" and "r2" are suitable, "r1" will always be prefered.
     let mut replicasets: BTreeMap<_, Vec<_>> = BTreeMap::new();
@@ -249,13 +263,19 @@ fn choose_replicaset_id(failure_domain: &FailureDomain, storage: &Clusterwide) -
             .push(instance);
     }
     'next_replicaset: for (replicaset_id, instances) in replicasets.iter() {
-        if instances.len() < replication_factor {
+        if instances.len() < replication_factor
+            && instances
+                .first()
+                .expect("should not fail, each replicaset consists of at least one instance")
+                .tier
+                == tier
+        {
             for instance in instances {
                 if instance.failure_domain.intersects(failure_domain) {
                     continue 'next_replicaset;
                 }
             }
-            return replicaset_id.clone();
+            return Ok(replicaset_id.clone());
         }
     }
 
@@ -264,7 +284,7 @@ fn choose_replicaset_id(failure_domain: &FailureDomain, storage: &Clusterwide) -
         i += 1;
         let replicaset_id = ReplicasetId(format!("r{i}"));
         if !replicasets.contains_key(&replicaset_id) {
-            return replicaset_id;
+            return Ok(replicaset_id);
         }
     }
 }

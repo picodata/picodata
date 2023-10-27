@@ -5,6 +5,7 @@ use crate::replicaset::weight;
 use crate::replicaset::{Replicaset, ReplicasetId};
 use crate::rpc;
 use crate::storage::{ClusterwideSpace, PropertyName};
+use crate::tier::Tier;
 use crate::tlog;
 use crate::traft::op::Dml;
 use crate::traft::Result;
@@ -25,9 +26,9 @@ pub(super) fn action_plan<'i>(
     voters: &[RaftId],
     learners: &[RaftId],
     replicasets: &HashMap<&ReplicasetId, &'i Replicaset>,
+    tiers: &HashMap<&String, &Tier>,
     my_raft_id: RaftId,
     vshard_bootstrapped: bool,
-    replication_factor: usize,
     has_pending_schema_change: bool,
 ) -> Result<Plan<'i>> {
     ////////////////////////////////////////////////////////////////////////////
@@ -122,6 +123,7 @@ pub(super) fn action_plan<'i>(
         instance_id: master_id,
         replicaset_id,
         replicaset_uuid,
+        tier,
         ..
     }) = to_create_replicaset
     {
@@ -137,6 +139,7 @@ pub(super) fn action_plan<'i>(
                     origin: weight::Origin::Auto,
                     state: weight::State::Initial,
                 },
+                tier: tier.clone(),
             },
         )?;
         #[rustfmt::skip]
@@ -253,8 +256,7 @@ pub(super) fn action_plan<'i>(
 
     ////////////////////////////////////////////////////////////////////////////
     // proposing automatic sharding weight changes
-    let to_change_weights =
-        get_first_auto_weight_change(instances, replicasets, replication_factor);
+    let to_change_weights = get_first_auto_weight_change(instances, replicasets, tiers);
     if let Some(replicaset_id) = to_change_weights {
         let mut uops = UpdateOps::new();
         uops.assign(weight::Value::PATH, 1.)?;
@@ -472,7 +474,7 @@ pub mod stage {
     }
 }
 
-/// Checks if there's replicaset whose master if offline and tries to find a
+/// Checks if there's replicaset whose master is offline and tries to find a
 /// replica to promote.
 ///
 /// This covers the case when a replicaset is waking up.
@@ -510,19 +512,22 @@ fn get_new_replicaset_master_if_needed<'i>(
 fn get_first_auto_weight_change<'i>(
     instances: &'i [Instance],
     replicasets: &HashMap<&ReplicasetId, &Replicaset>,
-    replication_factor: usize,
+    tiers: &HashMap<&String, &Tier>,
 ) -> Option<&'i ReplicasetId> {
     let mut replicaset_sizes = HashMap::new();
     for Instance { replicaset_id, .. } in maybe_responding(instances) {
         let replicaset_size = replicaset_sizes.entry(replicaset_id).or_insert(0);
         *replicaset_size += 1;
-        let Some(Replicaset { weight, .. }) = replicasets.get(replicaset_id) else {
+        let Some(Replicaset { weight, tier, .. }) = replicasets.get(replicaset_id) else {
             continue;
         };
         if weight.origin == weight::Origin::User || weight.state == weight::State::Updating {
             continue;
         }
-        if *replicaset_size >= replication_factor && weight.value == 0. {
+        let Some(tier_info) = tiers.get(tier) else {
+            continue;
+        };
+        if *replicaset_size >= tier_info.replication_factor && weight.value == 0. {
             return Some(replicaset_id);
         }
     }

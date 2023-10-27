@@ -21,14 +21,15 @@ use traft::RaftSpaceAccess;
 use protobuf::Message as _;
 
 use crate::cli::args;
-use crate::cli::args::Address;
+use crate::cli::args::{Address, InitCfg};
 use crate::instance::grade::{CurrentGrade, TargetGrade, TargetGradeVariant};
 use crate::instance::Instance;
 use crate::plugin::*;
 use crate::sql::pgproto;
+use crate::tier::Tier;
 use crate::traft::op;
 use crate::traft::LogicalClock;
-use crate::util::validate_and_complete_unix_socket_path;
+use crate::util::{unwrap_or_terminate, validate_and_complete_unix_socket_path};
 
 pub mod cas;
 pub mod cli;
@@ -52,6 +53,7 @@ pub mod sql;
 pub mod storage;
 pub mod sync;
 pub mod tarantool;
+pub mod tier;
 pub mod tlog;
 pub mod traft;
 pub mod util;
@@ -380,6 +382,35 @@ fn start_discover(args: &args::Run, to_supervisor: ipc::Sender<IpcMessage>) {
 fn start_boot(args: &args::Run) {
     tlog!(Info, ">>>>> start_boot()");
 
+    let init_cfg = match &args.init_cfg {
+        Some(cfg) if cfg.tiers.is_empty() => {
+            unwrap_or_terminate(Err("empty 'tiers' field in 'init-cfg'"))
+        }
+        Some(cfg) => cfg.clone(),
+        _ => {
+            tlog!(Info, "init-cfg wasn't set");
+            tlog!(
+                Warning,
+                "filling init-cfg wigh default tier `storage` using replication-factor={}",
+                args.init_replication_factor
+            );
+            let tiers = vec![Tier::with_replication_factor(args.init_replication_factor)];
+            InitCfg { tiers }
+        }
+    };
+
+    let tiers = init_cfg.tiers;
+
+    let current_instance_tier = unwrap_or_terminate(
+        tiers
+            .iter()
+            .find(|tier| tier.name == args.tier)
+            .ok_or(format!(
+                "tier '{}' for current instance is not found in 'init-cfg'",
+                args.tier
+            )),
+    );
+
     let instance = Instance::new(
         None,
         args.instance_id.clone(),
@@ -387,6 +418,7 @@ fn start_boot(args: &args::Run) {
         CurrentGrade::offline(0),
         TargetGrade::offline(0),
         args.failure_domain(),
+        &current_instance_tier.name,
     );
     let raft_id = instance.raft_id;
     let instance_id = instance.instance_id.clone();
@@ -449,17 +481,13 @@ fn start_boot(args: &args::Run) {
                 .expect("cannot fail")
                 .into(),
         );
-        init_entries_push_op(
-            op::Dml::insert(
-                ClusterwideSpace::Property,
-                &(
-                    PropertyName::ReplicationFactor,
-                    args.init_replication_factor,
-                ),
-            )
-            .expect("cannot fail")
-            .into(),
-        );
+        for tier in tiers {
+            init_entries_push_op(
+                op::Dml::insert(ClusterwideSpace::Tier, &tier)
+                    .expect("cannot fail")
+                    .into(),
+            );
+        }
         init_entries_push_op(
             op::Dml::insert(
                 ClusterwideSpace::Property,
@@ -586,6 +614,7 @@ fn start_join(args: &args::Run, instance_address: String) {
         replicaset_id: args.replicaset_id.clone(),
         advertise_address: args.advertise_address(),
         failure_domain: args.failure_domain(),
+        tier: args.tier.clone(),
     };
 
     // Arch memo.
@@ -813,7 +842,7 @@ fn postjoin(args: &args::Run, storage: Clusterwide, raft_storage: RaftSpaceAcces
     }
 
     // Wait for target grade to change to Online, so that sentinel doesn't send
-    // a redundant unpdate instance request.
+    // a redundant update instance request.
     // Otherwise incarnations grow by 2 every time.
     let timeout = Duration::from_secs(10);
     let deadline = fiber::clock().saturating_add(timeout);

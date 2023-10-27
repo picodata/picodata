@@ -192,6 +192,7 @@ pub(crate) fn setup(args: &args::Run) {
             - target_grade (table),
                 `{variant = string, incarnation = number}`, where variant is one of
                 'Offline' | 'Replicated' | 'ShardingInitialized' | 'Online' | 'Expelled'
+            - tier (string)
 
         Example:
 
@@ -201,6 +202,7 @@ pub(crate) fn setup(args: &args::Run) {
               advertise_address: localhost:3301
               instance_id: i1
               instance_uuid: 68d4a766-4144-3248-aeb4-e212356716e4
+              tier: storage
               replicaset_id: r1
               replicaset_uuid: e0df68c5-e7f9-395f-86b3-30ad9e1b7b07
               current_grade:
@@ -230,6 +232,7 @@ pub(crate) fn setup(args: &args::Run) {
                 ("replicaset_uuid", instance.replicaset_uuid),
                 ("current_grade", instance.current_grade),
                 ("target_grade", instance.target_grade),
+                ("tier", instance.tier),
             )))
         }),
     );

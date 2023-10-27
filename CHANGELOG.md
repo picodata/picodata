@@ -12,6 +12,12 @@ with the `YY.0M.MICRO` scheme.
 
 ### Features
 
+- Transferred replication factor from Properties table to new Tier table. Each tier has his own replication factor.
+
+- New feature `tier` - group of instances with own replication factor.
+
+- New option `--init-cfg` for `picodata run` allows supplying bootstrap configuration in a yaml format file.
+
 - New option `--password-file` for `picodata connect' allows supplying password in a plain-text file.
 
 - Allow connecting interactive console over a unix socket `picodata run --console-sock`.
@@ -58,7 +64,7 @@ with the `YY.0M.MICRO` scheme.
 
 - _Clusterwide SQL_ introduces the capability to create and drop roles.
 
-- _Clusterwide SQL_ now allows creation of a global table through 
+- _Clusterwide SQL_ now allows creation of a global table through
   `create table`.
 
 - _Clusterwide SQL_ introduces the capability to create users.

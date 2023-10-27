@@ -4,7 +4,7 @@ use crate::cas;
 use crate::failure_domain::FailureDomain;
 use crate::instance::grade::{CurrentGrade, CurrentGradeVariant, Grade, TargetGradeVariant};
 use crate::instance::{Instance, InstanceId};
-use crate::storage::{Clusterwide, ClusterwideSpace, PropertyName};
+use crate::storage::{Clusterwide, ClusterwideSpace};
 use crate::traft::op::{Dml, Op};
 use crate::traft::Result;
 use crate::traft::{error::Error, node};
@@ -124,7 +124,7 @@ pub fn handle_update_instance_request_and_wait(req: Request, timeout: Duration) 
         let ranges = vec![
             cas::Range::new(ClusterwideSpace::Instance),
             cas::Range::new(ClusterwideSpace::Address),
-            cas::Range::new(ClusterwideSpace::Property).eq((PropertyName::ReplicationFactor,)),
+            cas::Range::new(ClusterwideSpace::Tier),
         ];
         let res = cas::compare_and_swap(
             Op::Dml(dml),

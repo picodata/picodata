@@ -17,6 +17,7 @@ pytest_harvest = "*"
 pytest-repeat = "*"
 msgpack = "*"
 pexpect = "*"
+pyyaml = "*"
 
 [requires]
 python_version = "3.10"

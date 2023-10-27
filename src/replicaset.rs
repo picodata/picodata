@@ -27,6 +27,8 @@ pub struct Replicaset {
 
     /// Sharding weight of the replicaset.
     pub weight: weight::Info,
+
+    pub tier: String,
 }
 impl Encode for Replicaset {}
 
@@ -38,6 +40,7 @@ impl Replicaset {
             Field::from(("replicaset_uuid", FieldType::String)),
             Field::from(("master_id", FieldType::String)),
             Field::from(("weight", FieldType::Array)),
+            Field::from(("tier", FieldType::String)),
         ]
     }
 }
@@ -46,8 +49,8 @@ impl std::fmt::Display for Replicaset {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(
             f,
-            "({}, master: {}, weight: {})",
-            self.replicaset_id, self.master_id, self.weight,
+            "({}, master: {}, weight: {}, tier: {})",
+            self.replicaset_id, self.master_id, self.weight, self.tier
         )
     }
 }

@@ -40,6 +40,7 @@ def raft_join(
         replicaset_id,
         address,
         failure_domain,
+        instance.tier if instance.tier is not None else "storage",
         timeout=timeout_seconds,
     )
 
@@ -142,6 +143,7 @@ def test_replication(cluster: Cluster):
             "current_grade": ["Online", 1],
             "target_grade": ["Online", 1],
             "failure_domain": dict(),
+            "tier": "storage",
         }
         assert {k: v for k, v in raft_instance.items() if k in expected} == expected
 
@@ -168,24 +170,10 @@ def test_replication(cluster: Cluster):
     Retriable(timeout=10, rps=2).call(check_replicated, i1)
 
 
-def test_init_replication_factor(cluster: Cluster):
-    # Scenario: first instance shares --init-replication-factor to the whole cluster
-    #   Given an Leader instance with --init_replication_factor=2
-    #   When a new instances with different --init-replication-factor joins to the cluster
-    #   Then there are two replicasets in the cluster
-
+def test_tier_replication_factor(cluster: Cluster):
     i1 = cluster.add_instance(init_replication_factor=2)
-    i2 = cluster.add_instance(init_replication_factor=3)
-    i3 = cluster.add_instance(init_replication_factor=4)
-
-    def read_replication_factor(instance):
-        return instance.eval(
-            'return box.space._pico_property:get("replication_factor").value'
-        )
-
-    assert read_replication_factor(i1) == 2
-    assert read_replication_factor(i2) == 2
-    assert read_replication_factor(i3) == 2
+    cluster.add_instance()
+    cluster.add_instance()
 
     replicaset_ids = i1.eval(
         """
@@ -342,6 +330,11 @@ def test_fail_to_join(cluster: Cluster):
     cluster.fail_to_add_instance(
         instance_id=i1.instance_id, failure_domain=dict(owner="Jim")
     )
+
+    # Tiers in cluster: storage
+    # instance with unexisting tier cannot join and therefore exits with failure
+    assert i1.instance_id is not None
+    cluster.fail_to_add_instance(tier="noexistent_tier")
 
     joined_instances = i1.eval(
         """

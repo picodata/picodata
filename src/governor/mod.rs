@@ -73,6 +73,13 @@ impl Loop {
             .map(|rs| (&rs.replicaset_id, rs))
             .collect();
 
+        let tiers: Vec<_> = storage
+            .tiers
+            .iter()
+            .expect("storage should never fail")
+            .collect();
+        let tiers: HashMap<_, _> = tiers.iter().map(|tier| (&tier.name, tier)).collect();
+
         let term = status.get().term;
         let applied = raft_storage.applied().expect("storage should never fail");
         let cluster_id = raft_storage
@@ -82,10 +89,6 @@ impl Loop {
         let vshard_bootstrapped = storage
             .properties
             .vshard_bootstrapped()
-            .expect("storage should never fail");
-        let replication_factor = storage
-            .properties
-            .replication_factor()
             .expect("storage should never fail");
         let pending_schema_change = storage
             .properties
@@ -102,9 +105,9 @@ impl Loop {
             &voters,
             &learners,
             &replicasets,
+            &tiers,
             node.raft_id,
             vshard_bootstrapped,
-            replication_factor,
             has_pending_schema_change,
         );
         let plan = unwrap_ok_or!(plan,

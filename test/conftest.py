@@ -7,6 +7,8 @@ import sys
 import time
 import threading
 from types import SimpleNamespace
+
+import yaml  # type: ignore
 import pytest
 import signal
 import subprocess
@@ -399,10 +401,12 @@ class Instance:
     peers: list[str]
     host: str
     port: int
-    init_replication_factor: int
 
     color: Callable[[str], str]
 
+    tier: str | None = None
+    init_replication_factor: int | None = None
+    init_cfg_path: str | None = None
     instance_id: str | None = None
     replicaset_id: str | None = None
     failure_domain: dict[str, str] = field(default_factory=dict)
@@ -438,7 +442,11 @@ class Instance:
             "--listen", self.listen,
             "--peer", ','.join(self.peers),
             *(f"--failure-domain={k}={v}" for k, v in self.failure_domain.items()),
-            "--init-replication-factor", f"{self.init_replication_factor}"
+            *(["--init-replication-factor", f"{self.init_replication_factor}"]
+              if self.init_replication_factor is not None else []),
+            *(["--init-cfg", self.init_cfg_path]
+              if self.init_cfg_path is not None else []),
+            *(["--tier", self.tier] if self.tier is not None else []),
         ]
         # fmt: on
 
@@ -962,6 +970,7 @@ class Cluster:
     base_port: int
     max_port: int
     instances: list[Instance] = field(default_factory=list)
+    cfg_path: str | None = None
 
     def __repr__(self):
         return f'Cluster("{self.base_host}:{self.base_port}", n={len(self.instances)})'
@@ -970,13 +979,19 @@ class Cluster:
         return self.instances[item]
 
     def deploy(
-        self, *, instance_count: int, init_replication_factor: int = 1
+        self,
+        *,
+        instance_count: int,
+        init_replication_factor: int | None = None,
+        tier: str | None = None,
     ) -> list[Instance]:
         assert not self.instances, "Already deployed"
 
         for _ in range(instance_count):
             self.add_instance(
-                wait_online=False, init_replication_factor=init_replication_factor
+                wait_online=False,
+                tier=tier,
+                init_replication_factor=init_replication_factor,
             )
 
         for instance in self.instances:
@@ -988,6 +1003,13 @@ class Cluster:
         eprint(f" {self} deployed ".center(80, "="))
         return self.instances
 
+    def set_init_cfg(self, cfg: dict):
+        assert self.cfg_path is None
+        self.cfg_path = self.data_dir + "/tier.yaml"
+        with open(self.cfg_path, "w") as yaml_file:
+            dump = yaml.dump(cfg, default_flow_style=False)
+            yaml_file.write(dump)
+
     def add_instance(
         self,
         wait_online=True,
@@ -995,7 +1017,8 @@ class Cluster:
         instance_id: str | bool = True,
         replicaset_id: str | None = None,
         failure_domain=dict(),
-        init_replication_factor=1,
+        init_replication_factor: int | None = None,
+        tier: str | None = None,
     ) -> Instance:
         """Add an `Instance` into the list of instances of the cluster and wait
         for it to attain Online grade unless `wait_online` is `False`.
@@ -1039,9 +1062,11 @@ class Cluster:
             host=self.base_host,
             port=port,
             peers=peers or [f"{self.base_host}:{self.base_port + 1}"],
-            init_replication_factor=init_replication_factor,
             color=CLUSTER_COLORS[len(self.instances) % len(CLUSTER_COLORS)],
             failure_domain=failure_domain,
+            init_replication_factor=init_replication_factor,
+            tier=tier,
+            init_cfg_path=self.cfg_path,
         )
 
         self.instances.append(instance)
@@ -1057,7 +1082,8 @@ class Cluster:
         peers=None,
         instance_id: str | bool = True,
         failure_domain=dict(),
-        init_replication_factor=1,
+        init_replication_factor: int | None = None,
+        tier: str = "storage",
     ):
         instance = self.add_instance(
             wait_online=False,
@@ -1065,6 +1091,7 @@ class Cluster:
             instance_id=instance_id,
             failure_domain=failure_domain,
             init_replication_factor=init_replication_factor,
+            tier=tier,
         )
         self.instances.remove(instance)
         instance.fail_to_start()
