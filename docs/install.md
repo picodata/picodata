@@ -29,6 +29,14 @@ sudo dnf in -y gcc gcc-c++ make cmake git patch libstdc++-static
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 source "$HOME/.cargo/env"
 ```
+
+#### Fedora 37-39 {: #fedora}
+```bash
+sudo dnf install perl automake libtool libstdc++-static
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+source "$HOME/.cargo/env"
+```
+
 #### Ubuntu 22.04 {: #ubuntu-22.04 }
 ```bash
 sudo apt-get install build-essential git cmake -y
