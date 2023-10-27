@@ -100,6 +100,12 @@ impl RaftSpaceAccess {
     }
 
     #[inline(always)]
+    pub fn tier(&self) -> tarantool::Result<Option<String>> {
+        let res = self.try_get_raft_state("tier")?;
+        Ok(res)
+    }
+
+    #[inline(always)]
     pub fn cluster_id(&self) -> tarantool::Result<String> {
         let res = self.try_get_raft_state("cluster_id")?;
         let res = res.expect("cluster_id should always be set");
@@ -267,6 +273,12 @@ impl RaftSpaceAccess {
     pub fn persist_instance_id(&self, instance_id: &InstanceId) -> tarantool::Result<()> {
         self.space_raft_state
             .insert(&("instance_id", instance_id))?;
+        Ok(())
+    }
+
+    #[inline(always)]
+    pub fn persist_tier(&self, tier: &str) -> tarantool::Result<()> {
+        self.space_raft_state.insert(&("tier", tier))?;
         Ok(())
     }
 

@@ -418,6 +418,7 @@ fn start_boot(args: &args::Run) {
         tiers
             .iter()
             .find(|tier| tier.name == args.tier)
+            .cloned()
             .ok_or(format!(
                 "tier '{}' for current instance is not found in 'init-cfg'",
                 args.tier
@@ -607,6 +608,9 @@ fn start_boot(args: &args::Run) {
     transaction(|| -> Result<(), TntError> {
         raft_storage.persist_raft_id(raft_id).unwrap();
         raft_storage.persist_instance_id(&instance_id).unwrap();
+        raft_storage
+            .persist_tier(&current_instance_tier.name)
+            .unwrap();
         raft_storage.persist_cluster_id(&args.cluster_id).unwrap();
         raft_storage.persist_entries(&init_entries).unwrap();
         raft_storage.persist_conf_state(&cs).unwrap();
@@ -691,6 +695,7 @@ fn start_join(args: &args::Run, instance_address: String) {
             .persist_instance_id(&resp.instance.instance_id)
             .unwrap();
         raft_storage.persist_cluster_id(&args.cluster_id).unwrap();
+        raft_storage.persist_tier(&args.tier).unwrap();
         Ok(())
     })
     .unwrap();

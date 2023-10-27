@@ -138,6 +138,7 @@ pub(crate) fn setup(args: &args::Run) {
             - raft_id (number)
             - cluster_id (string)
             - instance_id (string)
+            - tier (string)
 
         Example:
 
@@ -146,6 +147,7 @@ pub(crate) fn setup(args: &args::Run) {
             - raft_id: 1
               cluster_id: demo
               instance_id: i1
+              tier: storage
             ...
         "},
         tlua::function0(|| -> traft::Result<_> {
@@ -156,6 +158,7 @@ pub(crate) fn setup(args: &args::Run) {
                 ("raft_id", raft_storage.raft_id()?),
                 ("cluster_id", raft_storage.cluster_id()?),
                 ("instance_id", raft_storage.instance_id()?),
+                ("tier", raft_storage.tier()?),
             )))
         }),
     );

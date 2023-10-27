@@ -88,10 +88,11 @@ with the `YY.0M.MICRO` scheme.
 
 
 - Changes in terminology - all appearances of `space` changed to `table`
-- Update `pico.LUA_API_VERSION`: `1.0.0` -> `3.0.0`
+- Update `pico.LUA_API_VERSION`: `1.0.0` -> `3.1.0`
 - New semantics of `pico.create_table()`. It's idempotent now.
 - `pico.create_table()` has new optional parameter: `engine`.
   Note: global spaces can only have memtx engine.
+- `pico.whoami()` and `pico.instance_info()` returns new field `tier`
 - Add `pico.drop_table()`
 - Add `pico.create_user()`, `pico.drop_user()`
 - Add `pico.create_role()`, `pico.drop_role()`

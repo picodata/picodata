@@ -5,6 +5,7 @@ import signal
 import re
 
 from conftest import (
+    Cluster,
     Instance,
     Retriable,
     TarantoolError,
@@ -172,6 +173,34 @@ def test_whoami(instance: Instance):
         "raft_id": 1,
         "instance_id": "i1",
         "cluster_id": instance.cluster_id,
+        "tier": "storage",
+    }
+
+
+def test_whoami_in_different_tiers(cluster: Cluster):
+    cfg = {
+        "tiers": [
+            {"name": "storage", "replication_factor": 1},
+            {"name": "router", "replication_factor": 2},
+        ]
+    }
+
+    cluster.set_init_cfg(cfg)
+    i1 = cluster.add_instance(tier="storage")
+    i2 = cluster.add_instance(tier="router")
+
+    assert i1.call("pico.whoami") == {
+        "raft_id": 1,
+        "instance_id": "i1",
+        "cluster_id": i1.cluster_id,
+        "tier": "storage",
+    }
+
+    assert i2.call("pico.whoami") == {
+        "raft_id": 2,
+        "instance_id": "i2",
+        "cluster_id": i2.cluster_id,
+        "tier": "router",
     }
 
 
