@@ -608,6 +608,22 @@ impl raft::Storage for RaftSpaceAccess {
         let compacted_index = self.compacted_index().cvt_err()?;
 
         let storage = crate::storage::Clusterwide::get();
+
+        // NOTE: There's a problem. Ideally we would want to cache the generated
+        // snapshots and reuse them when someone else requests the compatible
+        // snapshot. But at the moment there's no good way to do this.
+        //
+        // If we do cache the snapshots, we also need to cache the conf_state
+        // at the moment of snapshot creation, otherwise there's a non-zero
+        // probability to break the cluster. The problem is raft-rs will
+        // silently ignore the snapshot if it's conf_state doesn't contain the
+        // receiving instance. The comment in the source states that this is
+        // just a precaution, and it's not obvious, that this should actually be
+        // done, but here we are.
+        // See <https://github.com/tikv/raft-rs/blob/f60fb9e143e5b93f7db8917ea376cda04effcbb4/src/raft.rs#L2589>
+        // We could work around this by adding more crutches and implementing
+        // our own system to report to the leader that the snapshot must be
+        // regenerated, but I guess this is a TODO.
         let (data, entry_id) = storage
             .first_snapshot_data_chunk(applied, compacted_index)
             .cvt_err()?;
@@ -616,6 +632,7 @@ impl raft::Storage for RaftSpaceAccess {
         let meta = snapshot.mut_metadata();
         meta.index = entry_id.index;
         meta.term = entry_id.term;
+        // XXX: make sure this conf state corresponds to the snapshot data.
         *meta.mut_conf_state() = self.conf_state().cvt_err()?;
 
         let data = data.to_tuple_buffer().cvt_err()?;

@@ -321,3 +321,30 @@ def test_repeated_snapshot_after_repeated_compaction(cluster: Cluster):
 
     # Everything is still ok
     _ = cluster.add_instance(wait_online=True)
+
+
+def test_snapshot_after_conf_change(cluster: Cluster):
+    [i1, i2, i3] = cluster.deploy(instance_count=3)
+
+    i3.terminate()
+
+    index = i1.cas("insert", "_pico_property", ["yoyo", "yaya"])
+    i1.raft_wait_index(index)
+    i2.raft_wait_index(index)
+
+    # Compact raft log to trigger creation of snapshot
+    i1.raft_compact_log()
+    i2.raft_compact_log()
+
+    i3.start()
+    i3.wait_online()
+
+    # The generated snapshot contains the uptodate conf state, otherwise
+    # instance wouldn't've become online.
+    _ = cluster.add_instance(wait_online=True)
+
+
+# TODO: test case which would show if we sent snapshot conf state inconsistent
+# with snapshot data. The situation should involve a conf change after the
+# snapshot data was generated which would be incompatible with conf state at the
+# moment the snapshot was requested.

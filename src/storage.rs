@@ -394,9 +394,8 @@ impl Clusterwide {
             entry_id,
             time_opened: fiber::clock(),
             unfinished_iterators: Default::default(),
-            read_view: Some(read_view),
+            read_view,
             ref_count: 0,
-            sole_chunk: Default::default(),
         })
     }
 
@@ -409,11 +408,7 @@ impl Clusterwide {
         rv: &mut SnapshotReadView,
         mut position: SnapshotPosition,
     ) -> Result<SnapshotData> {
-        let read_view = rv
-            .read_view
-            .as_ref()
-            .expect("shouldn't be None if this function is called");
-        let global_spaces = read_view.space_indexes().unwrap();
+        let global_spaces = rv.read_view.space_indexes().unwrap();
         let mut space_dumps = Vec::with_capacity(global_spaces.len());
         let mut total_size = 0;
         let mut hit_threashold = false;
@@ -448,7 +443,7 @@ impl Clusterwide {
                 }
             } else {
                 // Get a new iterator from the read view
-                let it = read_view.iter_all(space_id, 0)?.map(Iterator::peekable);
+                let it = rv.read_view.iter_all(space_id, 0)?.map(Iterator::peekable);
                 if it.is_none() {
                     warn_or_panic!("read view didn't contain space #{space_id}");
                     continue;
@@ -538,15 +533,6 @@ impl Clusterwide {
             )));
         };
 
-        if rv.sole_chunk.is_some() || rv.read_view.is_none() {
-            warn_or_panic!(
-                "next chunk was requested for a single chunk snapshot for entry {entry_id}"
-            );
-            return Err(Error::other(format!(
-                "read view not available for {entry_id}: single chunk"
-            )));
-        }
-
         let snapshot_data = self.next_snapshot_data_chunk_impl(rv, position)?;
         if snapshot_data.next_chunk_position.is_none() {
             // This customer has been served.
@@ -565,18 +551,12 @@ impl Clusterwide {
         #[cfg(debug_assertions)]
         let _guard = crate::util::NoYieldsGuard::new();
 
-        // Find the latest available snapshot which was opened after the last
-        // raft log compaction.
-        let mut snapshots = self.snapshot_cache.read_views().iter_mut().rev();
-        let snapshot = snapshots.find(|(entry_id, _)| entry_id.index >= compacted_index);
-
-        if let Some((_, rv)) = snapshot {
-            if let Some(sole_chunk) = &rv.sole_chunk {
-                #[rustfmt::skip]
-                debug_assert_eq!(rv.ref_count, 0, "single chunk snapshots don't need reference counting");
-                tlog!(Debug, "returning a cached snapshot chunk"; "entry_id" => %rv.entry_id);
-                return Ok((sole_chunk.clone(), rv.entry_id));
-            } else {
+        if entry_id.index >= compacted_index {
+            // Reuse the read view, if it's already open for the requested index.
+            // TODO: actually we can reuse even older read_views, as long as
+            // they have the same conf_state, although it doesn't seem likely...
+            let read_view = self.snapshot_cache.read_views().get_mut(&entry_id);
+            if let Some(rv) = read_view {
                 tlog!(Info, "reusing a snapshot read view for {entry_id}");
                 let position = SnapshotPosition::default();
                 let snapshot_data = self.next_snapshot_data_chunk_impl(rv, position)?;
@@ -594,9 +574,6 @@ impl Clusterwide {
         snapshot_data.schema_version = self.properties.global_schema_version()?;
 
         if snapshot_data.next_chunk_position.is_none() {
-            // If snapshot fits into a single chunk, cache it.
-            rv.sole_chunk = Some(snapshot_data.clone());
-            drop(rv.read_view.take());
             // Don't increase the reference count, so that it's cleaned up next
             // time a new snapshot is generated.
         } else {
@@ -1783,10 +1760,8 @@ pub struct SnapshotReadView {
     /// may occur if followers drop off during chunkwise snapshot application.
     time_opened: Instant,
 
-    /// The read view onto the global spaces. If the snapshot fits into a single
-    /// chunk, this is set to `None` so that the read view is immidiately
-    /// closed.
-    read_view: Option<ReadView>,
+    /// The read view onto the global spaces.
+    read_view: ReadView,
 
     /// A table of in progress iterators. Whenever a snapshot chunk hits the
     /// size threshold, if the iterator didn't reach the end it's inserted into
@@ -1819,12 +1794,6 @@ pub struct SnapshotReadView {
     // accepts a raft id of the requestor) and clear the references when the
     // instance is *determined* to not need it.
     ref_count: u32,
-
-    /// If the snapshot fits into a single chunk, we cache it so that we don't
-    /// have to generated it again, if someone requests a snapshot for the same
-    /// entry id. If it doesn't fit into a single chunk we don't store it,
-    /// because of the problems with unfinished iterators.
-    sole_chunk: Option<SnapshotData>,
 }
 
 #[derive(Clone, Debug, Default, ::serde::Serialize, ::serde::Deserialize)]
