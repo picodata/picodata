@@ -24,7 +24,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::cas::{self, compare_and_swap};
 use crate::storage::SPACE_ID_INTERNAL_MAX;
-use crate::storage::{Clusterwide, ClusterwideSpace, PropertyName};
+use crate::storage::{ClusterwideSpace, PropertyName};
 use crate::traft::error::Error;
 use crate::traft::op::{Ddl, Op};
 use crate::traft::{self, event, node, RaftIndex};
@@ -627,61 +627,6 @@ pub fn wait_for_ddl_commit(
         if event::wait_deadline(event::Event::EntryApplied, deadline)?.is_timeout() {
             return Err(Error::Timeout);
         }
-    }
-}
-
-/// Waits until there is no pending schema change.
-///
-/// If `timeout` is reached earlier returns an error.
-fn wait_for_no_pending_schema_change(
-    storage: &Clusterwide,
-    timeout: Duration,
-) -> traft::Result<()> {
-    let deadline = fiber::clock().saturating_add(timeout);
-    loop {
-        if storage.properties.pending_schema_change()?.is_none() {
-            return Ok(());
-        }
-
-        if event::wait_deadline(event::Event::EntryApplied, deadline)?.is_timeout() {
-            return Err(Error::Timeout);
-        }
-    }
-}
-
-/// Prepares an `op` for execution on a cluster-wide schema
-/// by proposing a corresponding Raft entry.
-/// Retries entry proposal if leader changes until the entry is added to the log.
-/// Waits for any pending schema change to finalize.
-///
-/// If `timeout` is reached earlier returns an error.
-// TODO: Use deadline instead of timeout
-pub fn prepare_schema_change(op: Op, timeout: Duration) -> traft::Result<RaftIndex> {
-    debug_assert!(op.is_schema_change());
-
-    loop {
-        let node = node::global()?;
-        let storage = &node.storage;
-        let raft_storage = &node.raft_storage;
-        let mut op = op.clone();
-        op.set_schema_version(storage.properties.next_schema_version()?);
-        wait_for_no_pending_schema_change(storage, timeout)?;
-        let index = node::global()?
-            .read_index(timeout)
-            .map_err(|e| Error::other(format!("read_index failed: {e}")))?;
-        let term = raft::Storage::term(raft_storage, index)?;
-        let predicate = cas::Predicate {
-            index,
-            term,
-            ranges: cas::schema_change_ranges().into(),
-        };
-        let (index, term) = compare_and_swap(op, predicate, timeout)?;
-        node.wait_index(index, timeout)?;
-        if raft::Storage::term(raft_storage, index)? != term {
-            // leader switched - retry
-            continue;
-        }
-        return Ok(index);
     }
 }
 
