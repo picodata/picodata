@@ -12,6 +12,7 @@ use ::tarantool::tlua;
 use ::tarantool::transaction::transaction;
 use rpc::{join, update_instance};
 use std::convert::TryFrom;
+use std::io;
 use std::time::Duration;
 use storage::Clusterwide;
 use storage::{ClusterwideSpace, PropertyName};
@@ -683,7 +684,7 @@ fn postjoin(args: &args::Run, storage: Clusterwide, raft_storage: RaftSpaceAcces
             tlog!(
                 Critical,
                 "failed to listen interactive console on {console_sock:?}: {}",
-                errno::errno()
+                io::Error::last_os_error()
             );
             std::process::exit(-1);
         }
