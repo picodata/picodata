@@ -20,7 +20,7 @@ pub use tarantool_proc::{Decode, Encode};
 /// Encodes `value` as a vector of bytes in msgpack.
 ///
 /// See [`Encode`].
-#[allow(dead_code)]
+#[inline(always)]
 pub fn encode(value: &impl Encode) -> Result<Vec<u8>> {
     let mut v = Vec::new();
     value.encode(&mut v, EncodeStyle::Default)?;
@@ -30,7 +30,7 @@ pub fn encode(value: &impl Encode) -> Result<Vec<u8>> {
 /// Decodes `T` from a slice of bytes in msgpack.
 ///
 /// See [`Decode`].
-#[allow(dead_code)]
+#[inline(always)]
 pub fn decode<T: Decode>(mut bytes: &[u8]) -> StdResult<T, DecodeError> {
     T::decode(&mut bytes, EncodeStyle::Default)
 }
