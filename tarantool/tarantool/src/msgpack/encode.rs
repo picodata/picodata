@@ -11,9 +11,6 @@ use std::collections::BTreeMap;
 use std::fmt::{self, Debug, Display, Formatter};
 use std::io::{Read, Write};
 use std::ops::Deref;
-use std::result::Result as StdResult;
-
-use crate::Result;
 
 pub use tarantool_proc::{Decode, Encode};
 
@@ -21,7 +18,7 @@ pub use tarantool_proc::{Decode, Encode};
 ///
 /// See [`Encode`].
 #[inline(always)]
-pub fn encode(value: &impl Encode) -> Result<Vec<u8>> {
+pub fn encode(value: &impl Encode) -> Result<Vec<u8>, EncodeError> {
     let mut v = Vec::new();
     value.encode(&mut v, &Default::default())?;
     Ok(v)
@@ -31,7 +28,7 @@ pub fn encode(value: &impl Encode) -> Result<Vec<u8>> {
 ///
 /// See [`Decode`].
 #[inline(always)]
-pub fn decode<T: Decode>(mut bytes: &[u8]) -> StdResult<T, DecodeError> {
+pub fn decode<T: Decode>(mut bytes: &[u8]) -> Result<T, DecodeError> {
     T::decode(&mut bytes, &Default::default())
 }
 
@@ -112,7 +109,7 @@ pub enum EncodeStyle {
 /// ```
 // TODO: Use this trait instead of `tuple::Decode`, replace derive `Deserialize` with derive `Decode`
 pub trait Decode: Sized {
-    fn decode(r: &mut &[u8], context: &Context) -> StdResult<Self, DecodeError>;
+    fn decode(r: &mut &[u8], context: &Context) -> Result<Self, DecodeError>;
 }
 
 // TODO: Provide a similar error type for encode
@@ -156,7 +153,7 @@ impl DecodeError {
 
 impl Decode for () {
     #[inline(always)]
-    fn decode(r: &mut &[u8], _context: &Context) -> StdResult<Self, DecodeError> {
+    fn decode(r: &mut &[u8], _context: &Context) -> Result<Self, DecodeError> {
         rmp::decode::read_nil(r).map_err(DecodeError::new::<Self>)?;
         Ok(())
     }
@@ -167,7 +164,7 @@ where
     T: Decode,
 {
     #[inline]
-    fn decode(r: &mut &[u8], _context: &Context) -> StdResult<Self, DecodeError> {
+    fn decode(r: &mut &[u8], _context: &Context) -> Result<Self, DecodeError> {
         let n = rmp::decode::read_array_len(r).map_err(DecodeError::new::<Self>)? as usize;
         let mut res = Vec::with_capacity(n);
         for i in 0..n {
@@ -188,7 +185,7 @@ where
     // Clippy doesn't notice the type difference
     #[allow(clippy::redundant_clone)]
     #[inline(always)]
-    fn decode(r: &mut &[u8], _context: &Context) -> StdResult<Self, DecodeError> {
+    fn decode(r: &mut &[u8], _context: &Context) -> Result<Self, DecodeError> {
         Ok(Cow::Owned(
             <T as Decode>::decode(r, &Default::default())
                 .map_err(DecodeError::new::<Self>)?
@@ -199,7 +196,7 @@ where
 
 impl Decode for String {
     #[inline]
-    fn decode(r: &mut &[u8], _context: &Context) -> StdResult<Self, DecodeError> {
+    fn decode(r: &mut &[u8], _context: &Context) -> Result<Self, DecodeError> {
         let n = rmp::decode::read_str_len(r).map_err(DecodeError::new::<Self>)? as usize;
         let mut buf = vec![0; n];
         r.read_exact(&mut buf).map_err(DecodeError::new::<Self>)?;
@@ -213,7 +210,7 @@ where
     V: Decode,
 {
     #[inline]
-    fn decode(r: &mut &[u8], _context: &Context) -> StdResult<Self, DecodeError> {
+    fn decode(r: &mut &[u8], _context: &Context) -> Result<Self, DecodeError> {
         let n = rmp::decode::read_map_len(r).map_err(DecodeError::new::<Self>)?;
         let mut res = BTreeMap::new();
         for i in 0..n {
@@ -229,7 +226,7 @@ where
 
 impl Decode for char {
     #[inline(always)]
-    fn decode(r: &mut &[u8], _context: &Context) -> StdResult<Self, DecodeError> {
+    fn decode(r: &mut &[u8], _context: &Context) -> Result<Self, DecodeError> {
         let s = <String as Decode>::decode(r, &Default::default())?;
         if s.len() != 1 {
             Err(DecodeError::new::<char>(format!(
@@ -249,7 +246,7 @@ macro_rules! impl_simple_decode {
         $(
             impl Decode for $t{
                 #[inline(always)]
-                fn decode(r: &mut &[u8], _context: &Context) -> StdResult<Self, DecodeError> {
+                fn decode(r: &mut &[u8], _context: &Context) -> Result<Self, DecodeError> {
                     let value = rmp::decode::$f(r)
                         .map_err(DecodeError::new::<Self>)?;
                     Ok(value)
@@ -313,12 +310,33 @@ impl_simple_decode! {
 /// ```
 // TODO: Use this trait instead of `tuple::Encode`, replace derive `Serialize` to derive `Encode`
 pub trait Encode {
-    fn encode(&self, w: &mut impl Write, context: &Context) -> Result<()>;
+    fn encode(&self, w: &mut impl Write, context: &Context) -> Result<(), EncodeError>;
+}
+
+// `EncodeError` is just an IO error, but we can't get the underlying
+// IO error type from rmp, so we might just as well store it as a `String`
+// for simplicity.
+// Also as it is an IO error the information about a type or a field
+// where it happened is irrelevant.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("failed encoding: {0}")]
+pub struct EncodeError(String);
+
+impl From<rmp::encode::ValueWriteError> for EncodeError {
+    fn from(err: rmp::encode::ValueWriteError) -> Self {
+        Self(err.to_string())
+    }
+}
+
+impl From<std::io::Error> for EncodeError {
+    fn from(err: std::io::Error) -> Self {
+        Self(err.to_string())
+    }
 }
 
 impl Encode for () {
     #[inline(always)]
-    fn encode(&self, w: &mut impl Write, _context: &Context) -> Result<()> {
+    fn encode(&self, w: &mut impl Write, _context: &Context) -> Result<(), EncodeError> {
         rmp::encode::write_nil(w)?;
         Ok(())
     }
@@ -329,7 +347,7 @@ where
     T: Encode,
 {
     #[inline]
-    fn encode(&self, w: &mut impl Write, _context: &Context) -> Result<()> {
+    fn encode(&self, w: &mut impl Write, _context: &Context) -> Result<(), EncodeError> {
         rmp::encode::write_array_len(w, self.len() as u32)?;
         for v in self.iter() {
             v.encode(w, &Default::default())?;
@@ -343,7 +361,7 @@ where
     T: Encode,
 {
     #[inline(always)]
-    fn encode(&self, w: &mut impl Write, _context: &Context) -> Result<()> {
+    fn encode(&self, w: &mut impl Write, _context: &Context) -> Result<(), EncodeError> {
         self[..].as_ref().encode(w, &Default::default())
     }
 }
@@ -353,21 +371,21 @@ where
     T: Encode + ToOwned + ?Sized,
 {
     #[inline(always)]
-    fn encode(&self, w: &mut impl Write, _context: &Context) -> Result<()> {
+    fn encode(&self, w: &mut impl Write, _context: &Context) -> Result<(), EncodeError> {
         self.deref().encode(w, &Default::default())
     }
 }
 
 impl Encode for String {
     #[inline(always)]
-    fn encode(&self, w: &mut impl Write, _context: &Context) -> Result<()> {
+    fn encode(&self, w: &mut impl Write, _context: &Context) -> Result<(), EncodeError> {
         self.as_str().encode(w, &Default::default())
     }
 }
 
 impl Encode for str {
     #[inline(always)]
-    fn encode(&self, w: &mut impl Write, _context: &Context) -> Result<()> {
+    fn encode(&self, w: &mut impl Write, _context: &Context) -> Result<(), EncodeError> {
         rmp::encode::write_str(w, self).map_err(Into::into)
     }
 }
@@ -378,7 +396,7 @@ where
     V: Encode,
 {
     #[inline]
-    fn encode(&self, w: &mut impl Write, _context: &Context) -> Result<()> {
+    fn encode(&self, w: &mut impl Write, _context: &Context) -> Result<(), EncodeError> {
         rmp::encode::write_map_len(w, self.len() as u32)?;
         for (k, v) in self.iter() {
             k.encode(w, &Default::default())?;
@@ -390,7 +408,7 @@ where
 
 impl Encode for char {
     #[inline(always)]
-    fn encode(&self, w: &mut impl Write, _context: &Context) -> Result<()> {
+    fn encode(&self, w: &mut impl Write, _context: &Context) -> Result<(), EncodeError> {
         self.to_string().encode(w, &Default::default())
     }
 }
@@ -400,7 +418,7 @@ macro_rules! impl_simple_encode {
         $(
             impl Encode for $t{
                 #[inline(always)]
-                fn encode(&self, w: &mut impl Write, _context: &Context) -> Result<()> {
+                fn encode(&self, w: &mut impl Write, _context: &Context) -> Result<(), EncodeError> {
                     rmp::encode::$f(w, *self as $conv)?;
                     Ok(())
                 }
@@ -432,7 +450,7 @@ macro_rules! _impl_array_encode {
             #[allow(clippy::zero_prefixed_literal)]
             impl<T> Encode for [T; $n] where T: Encode {
                 #[inline]
-                fn encode(&self, w: &mut impl Write, _context: &Context) -> Result<()> {
+                fn encode(&self, w: &mut impl Write, _context: &Context) -> Result<(), EncodeError> {
                     rmp::encode::write_array_len(w, $n)?;
                     for item in self {
                         item.encode(w, &Default::default())?;
@@ -458,7 +476,7 @@ macro_rules! impl_tuple_encode {
             $h: Encode,
             $($t: Encode,)*
         {
-            fn encode(&self, w: &mut impl Write, _context: &Context) -> Result<()> {
+            fn encode(&self, w: &mut impl Write, _context: &Context) -> Result<(), EncodeError> {
                 let ($h, $($t),*) = self;
                 rmp::encode::write_array_len(w, crate::expr_count!($h $(, $t)*))?;
                 $h.encode(w, &Default::default())?;
@@ -475,8 +493,8 @@ impl_tuple_encode! { A B C D E F G H I J K L M N O P }
 
 impl Encode for serde_json::Value {
     #[inline]
-    fn encode(&self, w: &mut impl Write, _context: &Context) -> Result<()> {
-        let bytes = rmp_serde::to_vec(self)?;
+    fn encode(&self, w: &mut impl Write, _context: &Context) -> Result<(), EncodeError> {
+        let bytes = rmp_serde::to_vec(self).map_err(|e| EncodeError(e.to_string()))?;
         w.write_all(bytes.as_slice())?;
         Ok(())
     }
@@ -484,8 +502,8 @@ impl Encode for serde_json::Value {
 
 impl Encode for serde_json::Map<String, serde_json::Value> {
     #[inline]
-    fn encode(&self, w: &mut impl Write, _context: &Context) -> Result<()> {
-        let bytes = rmp_serde::to_vec(self)?;
+    fn encode(&self, w: &mut impl Write, _context: &Context) -> Result<(), EncodeError> {
+        let bytes = rmp_serde::to_vec(self).map_err(|e| EncodeError(e.to_string()))?;
         w.write_all(bytes.as_slice())?;
         Ok(())
     }

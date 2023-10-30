@@ -26,6 +26,8 @@
   when doing so.
 
 ### Changed
+- `error::Error` enum now contains errors from `msgpack::encode` module in `MsgpackEncode`
+  and `MsgpackDecode` variants correspondingly.
 
 ### Fixed
 - `#[tarantool::test]` declares a special static variable which is usually

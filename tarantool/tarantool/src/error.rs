@@ -91,6 +91,12 @@ pub enum Error {
 
     #[error("space metadata not found")]
     MetaNotFound,
+
+    #[error("msgpack encode error: {0}")]
+    MsgpackEncode(#[from] crate::msgpack::EncodeError),
+
+    #[error("msgpack decode error: {0}")]
+    MsgpackDecode(#[from] crate::msgpack::DecodeError),
 }
 
 impl Error {

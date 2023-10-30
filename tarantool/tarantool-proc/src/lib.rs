@@ -432,7 +432,9 @@ pub fn derive_encode(input: TokenStream) -> TokenStream {
     let expanded = quote! {
         // The generated impl.
         impl #impl_generics #tarantool_crate::msgpack::Encode for #name #ty_generics #where_clause {
-            fn encode(&self, w: &mut impl ::std::io::Write, context: &#tarantool_crate::msgpack::Context) -> #tarantool_crate::Result<()> {
+            fn encode(&self, w: &mut impl ::std::io::Write, context: &#tarantool_crate::msgpack::Context)
+                -> Result<(), #tarantool_crate::msgpack::EncodeError>
+            {
                 use #tarantool_crate::msgpack::EncodeStyle;
                 #encode_fields
                 Ok(())
