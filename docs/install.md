@@ -19,27 +19,28 @@ Linux p10 и ROSA Chrome 2021.1. Внутри пакетов находится 
 - cmake 3.16 или новее
 - gcc, g++
 - libstdc++-static
+- NodeJS и Yarn (для сборки с веб-интерфейсом)
 
 Далее приведены команды для их установки под разные ОС.
 
 #### CentOS 8 {: #centos-8 }
 ```bash
 sudo dnf config-manager --set-enabled powertools
-sudo dnf in -y gcc gcc-c++ make cmake git patch libstdc++-static
+sudo dnf in -y gcc gcc-c++ make cmake git patch nodejs:19 yarnpkg libstdc++-static
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 source "$HOME/.cargo/env"
 ```
 
 #### Fedora 37-39 {: #fedora}
 ```bash
-sudo dnf install perl automake libtool libstdc++-static
+sudo dnf in -y perl automake libtool libstdc++-static
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 source "$HOME/.cargo/env"
 ```
 
 #### Ubuntu 22.04 {: #ubuntu-22.04 }
 ```bash
-sudo apt-get install build-essential git cmake -y
+sudo apt-get install build-essential git cmake nodejs yarnpkg -y
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 source "$HOME/.cargo/env
 ```
@@ -47,24 +48,32 @@ source "$HOME/.cargo/env
 #### Alt Server p10 {: #alt-server-p10}
 ```bash
 su -
-apt-get install gcc gcc-c++ cmake git patch libstdc++10-devel-static libgomp10-devel-static -y && exit
+apt-get install -y gcc gcc-c++ cmake git patch libstdc++10-devel-static libgomp10-devel-static node yarn
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 source "$HOME/.cargo/env"
 ```
 #### macOS {: #macos }
 Сборка под macOS почти не отличается от таковой в Linux. Потребуется
-macOS 10.15 Catalina, либо более новая версия (11+). Для начала нужно
-убедиться, что в системе имеется пакетный менеджер
-[Brew](https://brew.sh){:target="_blank"}:
+macOS 10.15 Catalina, либо более новая версия (11+).
 
+Для начала следует установить актуальные версии [Rust и
+Cargo](https://rustup.rs){:target="_blank"}:
+
+```bash
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+```
+Если планируется сборка Picodata c веб-интерфейсом, то нужно будет
+установить дополнительно NodeJS и Yarn при помощи пакетного менеджера
+[Brew](https://brew.sh){:target="_blank"}.
+
+Установка Brew:
 ```bash
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 ```
 
-Далее потребуется установить актуальные версии [Rust и Cargo](https://rustup.rs){:target="_blank"}:
-
-```bash
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+Установка NodeJS и Yarn:
+```
+brew install node yarn
 ```
 
 ### Получение исходного кода {: #getting-sources }
@@ -75,10 +84,16 @@ git submodule update --init --recursive
 ```
 
 ### Сборка {: #building }
-Введите следующую команду:
+Сборка Picodata только c консольным интерфейсом:
 
 ```bash
 cargo build --release
+```
+
+Сборка Picodata c консольным и веб-интерфейсом:
+
+```bash
+cargo build --release --features webui
 ```
 
 Исполняемый файл `picodata` появится в директории `target/release`.

@@ -21,6 +21,7 @@ Picodata — это распределенная система промышле
 * [Запуск кластера](deploy_on_hosts)
 * [Мониторинг кластера](monitoring)
 * [Подключение и работа в консоли](tutorial_first_steps)
+* [Работа в веб-интерфейсе](tutorial_webui)
 * [Авторизация с помощью LDAP](auth_ldap)
 * [Работа с данными SQL](tutorial_data)
 

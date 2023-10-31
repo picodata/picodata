@@ -14,6 +14,7 @@ nav:
     - deploy_on_hosts.md
     - monitoring.md
     - tutorial_first_steps.md
+    - tutorial_webui.md
     - auth_ldap.md
     - tutorial_data.md
   - Справочные материалы:
