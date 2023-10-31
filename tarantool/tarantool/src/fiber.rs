@@ -636,8 +636,8 @@ where
                 .expect("lua error");
             let fiber_id = lua::lua_tointeger(l, -1);
 
-            // pop the fiber module from the stack
-            lua::lua_pop(l, 1);
+            // pop the fiber module & fiber id from the stack
+            lua::lua_pop(l, 2);
 
             Ok(JoinHandle::lua(fiber_id as _))
         }
@@ -1844,6 +1844,7 @@ const _: () = {
 mod tests {
     use super::*;
     use crate::fiber;
+    use crate::test::util::LuaStackIntegrityGuard;
     use std::cell::Cell;
     use std::cell::RefCell;
     use std::rc::Rc;
@@ -1899,7 +1900,7 @@ mod tests {
     fn fiber_id() {
         fiber::id();
 
-        let jh = fiber::defer(|| {});
+        let jh = fiber::start(fiber::reschedule);
 
         if unsafe { has_fiber_id() } {
             assert!(jh.id_checked().is_some());
@@ -2071,6 +2072,8 @@ mod tests {
 
     #[crate::test(tarantool = "crate")]
     fn defer_lua() {
+        let _guard = LuaStackIntegrityGuard::global("defer_lua");
+
         let jh = Builder::new().func(|| 42).defer_lua().unwrap();
         let res = jh.join();
         assert_eq!(res, 42);

@@ -107,6 +107,8 @@ pub fn collect_tester() -> Vec<TestDescAndFn> {
 #[cfg(feature = "internal_test")]
 pub mod util {
     use std::convert::Infallible;
+    use tlua::AsLua;
+    use tlua::LuaState;
 
     /// The default port where tarantool listens in tests
     pub const TARANTOOL_LISTEN: u16 = 3301;
@@ -121,6 +123,52 @@ pub mod util {
     /// Wraps the provided value in a `Ok` of an `Infallible` `Result`.
     pub fn ok<T>(v: T) -> std::result::Result<T, Infallible> {
         Ok(v)
+    }
+
+    ////////////////////////////////////////////////////////////////////////////////
+    // LuaStackIntegrityGuard
+    ////////////////////////////////////////////////////////////////////////////////
+
+    pub struct LuaStackIntegrityGuard {
+        name: &'static str,
+        lua: LuaState,
+    }
+
+    impl LuaStackIntegrityGuard {
+        pub fn global(name: &'static str) -> Self {
+            Self::new(name, crate::global_lua())
+        }
+
+        pub fn new(name: &'static str, lua: impl AsLua) -> Self {
+            let lua = lua.as_lua();
+            unsafe { lua.push_one(name).forget() };
+            Self { name, lua }
+        }
+    }
+
+    impl Drop for LuaStackIntegrityGuard {
+        #[track_caller]
+        fn drop(&mut self) {
+            let single_value = unsafe { tlua::PushGuard::new(self.lua, 1) };
+            let msg: tlua::StringInLua<_> = crate::unwrap_ok_or!(single_value.read(),
+                Err((l, e)) => {
+                    eprintln!(
+                        "Lua stack integrity violation:
+    Error: {e}
+    Expected string: \"{}\"
+    Stack dump:",
+                        self.name,
+                    );
+                    let mut buf = Vec::with_capacity(64);
+                    unsafe { tlua::debug::dump_stack_raw_to(l.as_lua(), &mut buf).unwrap() };
+                    for line in String::from_utf8_lossy(&buf).lines() {
+                        eprintln!("        {line}");
+                    }
+                    panic!("Lua stack integrity violation: See error message above");
+                }
+            );
+            assert_eq!(msg, self.name);
+        }
     }
 }
 

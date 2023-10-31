@@ -1,9 +1,8 @@
 use serde::{Deserialize, Serialize};
 
-use tarantool::{
-    tlua::{self, AsLua, LuaState},
-    tuple::Encode,
-};
+pub use tarantool::test::util::LuaStackIntegrityGuard;
+use tarantool::tlua;
+use tarantool::tuple::Encode;
 
 #[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct S1Record {
@@ -53,41 +52,6 @@ impl Drop for DropCounter {
 }
 
 pub(crate) fn capture_value<T>(_: &T) {}
-
-pub(crate) struct LuaStackIntegrityGuard {
-    name: &'static str,
-    lua: LuaState,
-}
-
-impl LuaStackIntegrityGuard {
-    pub fn global(name: &'static str) -> Self {
-        Self::new(name, global_lua())
-    }
-
-    pub fn new(name: &'static str, lua: impl AsLua) -> Self {
-        let lua = lua.as_lua();
-        unsafe { lua.push_one(name).forget() };
-        Self { name, lua }
-    }
-}
-
-impl Drop for LuaStackIntegrityGuard {
-    fn drop(&mut self) {
-        let single_value = unsafe { tlua::PushGuard::new(self.lua, 1) };
-        let msg: tlua::StringInLua<_> = single_value
-            .read()
-            .map_err(|l| {
-                panic!(
-                    "Lua stack integrity violation
-    {:?}
-    Expected string: \"{}\"",
-                    l, self.name
-                )
-            })
-            .unwrap();
-        assert_eq!(msg, self.name);
-    }
-}
 
 pub(crate) struct LuaContextSpoiler {
     fix: Option<Box<dyn FnOnce()>>,
