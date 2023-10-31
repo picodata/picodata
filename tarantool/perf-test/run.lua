@@ -50,6 +50,10 @@ package.cpath = string.format(
 
 box.schema.func.create('libperf_test.bench_netbox', {language = 'C'})
 box.schema.func.create('libperf_test.bench_network_client', {language = 'C'})
+box.schema.func.create('libperf_test.bench_custom_encode', {language = 'C'})
+box.schema.func.create('libperf_test.bench_custom_decode', {language = 'C'})
+box.schema.func.create('libperf_test.bench_serde_encode', {language = 'C'})
+box.schema.func.create('libperf_test.bench_serde_decode', {language = 'C'})
 box.schema.func.create('libperf_test.l_print_stats', {language = 'C'})
 box.schema.func.create('libperf_test.l_n_iters', {language = 'C'})
 
@@ -69,7 +73,14 @@ function bench_lua_netbox()
     box.func['libperf_test.l_print_stats']:call{"lua_netbox", samples}
 end
 
+print("================ iproto_clients =================")
 bench_lua_netbox()
 box.func['libperf_test.bench_netbox']:call()
 box.func['libperf_test.bench_network_client']:call()
+print()
+print("============= msgpack_serialization =============")
+box.func['libperf_test.bench_custom_encode']:call()
+box.func['libperf_test.bench_serde_encode']:call()
+box.func['libperf_test.bench_custom_decode']:call()
+box.func['libperf_test.bench_serde_decode']:call()
 os.exit(0)
