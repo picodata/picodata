@@ -1,8 +1,8 @@
+use crate::args;
+use crate::ipc;
 use crate::tarantool_main;
 use ::tarantool::test::TestCase;
 use nix::unistd::{self, fork, ForkResult};
-use picodata::args;
-use picodata::ipc;
 
 macro_rules! color {
     (@priv red) => { "\x1b[0;31m" };
@@ -14,7 +14,7 @@ macro_rules! color {
     }
 }
 
-pub fn main_test(args: args::Test) -> ! {
+pub fn main(args: args::Test) -> ! {
     // Tarantool implicitly parses some environment variables.
     // We don't want them to affect the behavior and thus filter them out.
 
@@ -121,7 +121,7 @@ pub fn main_test(args: args::Test) -> ! {
 }
 
 fn test_one(test: &TestCase) {
-    use picodata::tarantool;
+    use crate::tarantool;
 
     let temp = tempfile::tempdir().expect("Failed creating a temp directory");
     std::env::set_current_dir(temp.path()).expect("Failed chainging current directory");

@@ -20,7 +20,8 @@ use traft::RaftSpaceAccess;
 
 use protobuf::Message as _;
 
-use crate::args::Address;
+use crate::cli::args;
+use crate::cli::args::Address;
 use crate::instance::grade::{CurrentGrade, TargetGrade, TargetGradeVariant};
 use crate::instance::Instance;
 use crate::traft::op;
@@ -29,8 +30,8 @@ use crate::util::validate_and_complete_unix_socket_path;
 
 #[doc(hidden)]
 mod app;
-pub mod args;
 pub mod cas;
+pub mod cli;
 pub mod discovery;
 pub mod failure_domain;
 pub mod governor;
@@ -261,7 +262,7 @@ pub enum Entrypoint {
 }
 
 impl Entrypoint {
-    pub fn exec(self, args: args::Run, to_supervisor: ipc::Sender<IpcMessage>) {
+    pub fn exec(self, args: cli::args::Run, to_supervisor: ipc::Sender<IpcMessage>) {
         match self {
             Self::StartDiscover => start_discover(&args, to_supervisor),
             Self::StartBoot => start_boot(&args),
@@ -787,26 +788,4 @@ fn postjoin(args: &args::Run, storage: Clusterwide, raft_storage: RaftSpaceAcces
     }
 
     node.sentinel_loop.on_self_activate();
-}
-
-pub async fn tt_expel(args: args::Expel) {
-    let req = rpc::expel::Request {
-        cluster_id: args.cluster_id,
-        instance_id: args.instance_id,
-    };
-    let res = rpc::network_call(
-        &format!("{}:{}", args.peer_address.host, args.peer_address.port),
-        &rpc::expel::redirect::Request(req),
-    )
-    .await;
-    match res {
-        Ok(_) => {
-            tlog!(Info, "Success expel call");
-            std::process::exit(0);
-        }
-        Err(e) => {
-            tlog!(Error, "Failed to expel instance: {e}");
-            std::process::exit(-1);
-        }
-    }
 }
