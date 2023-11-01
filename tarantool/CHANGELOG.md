@@ -25,6 +25,12 @@
   fiber non-joinable and `fiber::DetachError` enum of errors which can happen
   when doing so.
 - `util::str_eq` function for comparing strings at compile time.
+- `define_enum_with_introspection` enum for defining enums with some
+  introspection facilities including type-safe conversion from integers and
+  `MIN`, `MAX` & `VARIANTS` associated constants. For more details see the
+  implementation.
+- `define_str_enum` now also uses `define_enum_with_introspection` internally
+  so that these enums also have the introspection facilities.
 
 ### Changed
 - `error::Error` enum now contains errors from `msgpack::encode` module in `MsgpackEncode`

@@ -21,6 +21,9 @@ pub fn basic() {
         }
     }
 
+    assert_eq!(Color::MIN, Color::Black);
+    assert_eq!(Color::MAX, Color::White);
+    assert_eq!(Color::VARIANTS.len(), 2);
     assert_eq!(Color::default(), Color::Black);
     assert_eq!(Color::Black.as_ref(), "#000000");
     assert_eq!(Color::White.as_str(), "#FFFFFF");
