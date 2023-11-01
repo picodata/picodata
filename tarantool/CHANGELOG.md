@@ -61,6 +61,8 @@
   longer implement trait `ToPrimitive`, just use `as i32` instead.
 - `rmp` library reexport is moved from `tuple` module to `msgpack` module.
 - `fiber::csw` now returns `u64` instead of `i32`.
+- Removed `datetime::Error::ErrorEpochTypeConvert` as it's never used.
+- `TarantoolErrorCode` & `SayLevel` no longer implement `num_traits::FromPrimitive`.
 
 ### Added (picodata)
 - struct `read_view::ReadView` for opening read views on selected spaces.

@@ -22,7 +22,6 @@ use std::ffi::CString;
 use std::ptr::null;
 
 use log::{Level, Log, Metadata, Record};
-use num_traits::FromPrimitive;
 
 use crate::ffi::tarantool as ffi;
 
@@ -52,7 +51,7 @@ impl Log for TarantoolLogger {
     #[inline(always)]
     fn enabled(&self, metadata: &Metadata) -> bool {
         let level = self.convert_level(metadata.level());
-        level <= SayLevel::from_i32(unsafe { ffi::LOG_LEVEL }).unwrap()
+        level <= SayLevel::from_i64(unsafe { ffi::LOG_LEVEL as _ }).unwrap()
     }
 
     #[inline]
@@ -70,18 +69,19 @@ impl Log for TarantoolLogger {
     fn flush(&self) {}
 }
 
-/// Tarantool-native logging levels (use it with [say()](fn.say.html))
-#[repr(u32)]
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, num_derive::FromPrimitive)]
-pub enum SayLevel {
-    Fatal = 0,
-    System = 1,
-    Error = 2,
-    Crit = 3,
-    Warn = 4,
-    Info = 5,
-    Verbose = 6,
-    Debug = 7,
+crate::define_enum_with_introspection! {
+    /// Tarantool-native logging levels (use it with [say()](fn.say.html))
+    #[repr(u32)]
+    pub enum SayLevel {
+        Fatal = 0,
+        System = 1,
+        Error = 2,
+        Crit = 3,
+        Warn = 4,
+        Info = 5,
+        Verbose = 6,
+        Debug = 7,
+    }
 }
 
 impl From<Level> for SayLevel {
@@ -142,14 +142,14 @@ where
             let lvl = u32::lua_read_at_position(&lua, index)
                 .ok()
                 .expect("just made sure this is a number, so reading shouldn't ever fail");
-            let res = crate::unwrap_or!(Self::from_u32(lvl), {
+            let res = crate::unwrap_or!(Self::from_i64(lvl as _), {
                 return Err((
                     lua,
                     tlua::WrongType::info("reading tarantool log level")
                         .expected(format!(
                             "an integer in range {}..={}",
-                            Self::Fatal as u32,
-                            Self::Debug as u32
+                            Self::MIN as u32,
+                            Self::MAX as u32
                         ))
                         .actual(format!("{lvl}")),
                 ));

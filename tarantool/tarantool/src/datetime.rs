@@ -1,5 +1,4 @@
 use crate::ffi::datetime as ffi;
-use num_traits::ToPrimitive;
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use std::convert::TryInto;
@@ -15,8 +14,6 @@ pub enum Error {
     WrongUnixTimestamp(time::error::ComponentRange),
     #[error("incorrect offset value")]
     WrongUtcOffset(time::error::ComponentRange),
-    #[error("error while convert type of epoch value")]
-    ErrorEpochTypeConvert,
 }
 
 /// A Datetime type implemented using the builtin tarantool api. **Note** that
@@ -84,11 +81,10 @@ impl Datetime {
     fn from_ffi_dt(inner: ffi::datetime) -> Result<Self, Error> {
         let utc_offset = UtcOffset::from_whole_seconds((inner.tzoffset * 60).into())
             .map_err(Error::WrongUtcOffset)?;
-        let dt =
-            Inner::from_unix_timestamp(inner.epoch.to_i64().ok_or(Error::ErrorEpochTypeConvert)?)
-                .map_err(Error::WrongUnixTimestamp)?
-                .to_offset(utc_offset)
-                + Duration::nanoseconds(inner.nsec as i64);
+        let dt = Inner::from_unix_timestamp(inner.epoch as i64)
+            .map_err(Error::WrongUnixTimestamp)?
+            .to_offset(utc_offset)
+            + Duration::nanoseconds(inner.nsec as i64);
 
         Ok(dt.into())
     }

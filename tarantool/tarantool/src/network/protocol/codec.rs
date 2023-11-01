@@ -1,5 +1,4 @@
 use std::cmp::min;
-use std::convert::TryFrom;
 use std::io::{self, Cursor, Read, Seek, Write};
 use std::os::raw::c_char;
 use std::str::from_utf8;
@@ -36,39 +35,6 @@ const ERROR: u8 = 0x31;
 
 const SQL_TEXT: u8 = 0x40;
 const SQL_BIND: u8 = 0x41;
-
-#[derive(Debug, Clone, Copy, serde::Deserialize, num_derive::FromPrimitive)]
-#[serde(try_from = "u8")]
-#[repr(u8)]
-enum IProtoKey {
-    RequestType = REQUEST_TYPE,
-    Sync = SYNC,
-    SchemaVersion = SCHEMA_VERSION,
-    SpaceId = SPACE_ID,
-    IndexId = INDEX_ID,
-    Limit = LIMIT,
-    Offset = OFFSET,
-    Iterator = ITERATOR,
-    IndexBase = INDEX_BASE,
-    Key = KEY,
-    Tuple = TUPLE,
-    FunctionName = FUNCTION_NAME,
-    UserName = USER_NAME,
-    Expr = EXPR,
-    Ops = OPS,
-    Data = DATA,
-    Error = ERROR,
-    SqlText = SQL_TEXT,
-    SqlBind = SQL_BIND,
-}
-
-impl TryFrom<u8> for IProtoKey {
-    type Error = u8;
-
-    fn try_from(key: u8) -> Result<Self, u8> {
-        num_traits::FromPrimitive::from_u8(key).ok_or(key)
-    }
-}
 
 pub enum IProtoType {
     Select = 1,
